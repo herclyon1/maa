@@ -1,0 +1,108 @@
+2026-10-01 15:23:06.615 | INFO     | OK-WW 自动代理 | OK-WW 任务结果: OK-WW 运行超时, 日志锁已释放
+2026-10-01 15:23:06.620 | INFO     | 日志监控器 | 请求取消日志监控任务
+2026-10-01 15:23:06.621 | INFO     | 日志监控器 | 日志监控任务已中止
+2026-10-01 15:23:06.621 | SUCCESS  | 日志监控器 | 日志监控任务已停止
+2026-10-01 15:23:06.621 | WARNING  | OK-WW 自动代理 | 用户 wuwa - OK-WW 代理异常: OK-WW 运行超时
+2026-10-01 15:23:06.665 | INFO     | 系统服务 | 开始中止进程: D:\ark\okww\ok-ww.exe
+2026-10-01 15:23:06.669 | SUCCESS  | 系统服务 | 进程已中止: D:\ark\okww\ok-ww.exe
+2026-10-01 15:23:06.670 | INFO     | 系统服务 | 开始中止进程: D:\ark\okww\data\apps\ok-ww\python\pythonw.exe
+2026-10-01 15:23:06.673 | SUCCESS  | 系统服务 | 进程已中止: D:\ark\okww\data\apps\ok-ww\python\pythonw.exe
+2026-10-01 15:23:06.674 | INFO     | 任务执行 | 任务执行结束，开始收尾: AutoProxyTask
+2026-10-01 15:23:06.675 | INFO     | 日志监控器 | 请求取消日志监控任务
+2026-10-01 15:23:06.676 | SUCCESS  | 日志监控器 | 日志监控任务已停止
+2026-10-01 15:23:06.676 | INFO     | 系统服务 | 开始中止进程: D:\ark\okww\ok-ww.exe
+2026-10-01 15:23:06.679 | SUCCESS  | 系统服务 | 进程已中止: D:\ark\okww\ok-ww.exe
+2026-10-01 15:23:06.679 | INFO     | 系统服务 | 开始中止进程: D:\ark\okww\data\apps\ok-ww\python\pythonw.exe
+2026-10-01 15:23:06.681 | SUCCESS  | 系统服务 | 进程已中止: D:\ark\okww\data\apps\ok-ww\python\pythonw.exe
+2026-10-01 15:23:06.710 | INFO     | 配置管理 | 开始处理通用日志, 日志长度: 85, 日志标记: OK-WW 运行超时
+2026-10-01 15:23:06.713 | SUCCESS  | 配置管理 | 通用日志统计完成, 日志路径: D:\ark\automas\history\2026-10-01\wuwa\OK-WW-05-18-20.log
+2026-10-01 15:23:06.713 | INFO     | 配置管理 | 开始处理通用日志, 日志长度: 85, 日志标记: OK-WW 运行超时
+2026-10-01 15:23:06.715 | SUCCESS  | 配置管理 | 通用日志统计完成, 日志路径: D:\ark\automas\history\2026-10-01\wuwa\OK-WW-07-20-22.log
+2026-10-01 15:23:06.716 | INFO     | 配置管理 | 开始处理通用日志, 日志长度: 85, 日志标记: OK-WW 运行超时
+2026-10-01 15:23:06.718 | SUCCESS  | 配置管理 | 通用日志统计完成, 日志路径: D:\ark\automas\history\2026-10-01\wuwa\OK-WW-09-21-22.log
+2026-10-01 15:23:06.726 | INFO     | OK-WW 通知工具 | 开始推送通知, 模式: 统计信息, 标题: 10-01 |X|  wuwa 的 OK-WW 自动代理统计报告
+2026-10-01 15:23:06.728 | INFO     | 任务执行 | 任务收尾完成: AutoProxyTask - 用时: 0.047秒
+2026-10-01 15:23:06.728 | INFO     | OK-WW 调度器 | 复原 OK-WW 脚本配置文件: D:\ark\automas\data\c5e96ddc-aae9-4a73-b6fe-1312a417382d\Temp
+2026-10-01 15:23:06.751 | INFO     | 任务执行 | 任务执行结束，开始收尾: OkwwManager
+2026-10-01 15:23:06.752 | INFO     | OK-WW 调度器 | 复原 OK-WW 脚本配置文件: D:\ark\automas\data\c5e96ddc-aae9-4a73-b6fe-1312a417382d\Temp
+2026-10-01 15:23:06.793 | INFO     | OK-WW 通知工具 | 开始推送通知, 模式: 代理结果, 标题: 10-01 | OK-WW的自动代理任务报告
+2026-10-01 15:23:06.795 | INFO     | 任务执行 | 任务收尾完成: OkwwManager - 用时: 0.047秒
+2026-10-01 15:23:06.796 | INFO     | 业务调度 | 任务开始: 59da8762-8fa7-4260-8aee-10f9ca00097a
+2026-10-01 15:23:06.835 | SUCCESS  | MaaEnd 调度器 | 59da8762-8fa7-4260-8aee-10f9ca00097a已锁定, MAAEnd配置提取完成
+2026-10-01 15:23:06.977 | INFO     | MaaEnd 配置备份 | MaaEnd 原生配置无变化，跳过归档
+2026-10-01 15:23:06.977 | INFO     | MaaEnd 调度器 | 用户列表加载完成, 已筛选用户数: 1
+2026-10-01 15:23:06.979 | INFO     | MaaEnd 调度器 | 用户 cb329eaf-c4c0-4e12-9dd4-961e5b2cc7f1 配置来源: 脚本
+2026-10-01 15:23:07.031 | INFO     | MaaEnd 自动代理 | 开始代理用户 cb329eaf-c4c0-4e12-9dd4-961e5b2cc7f1
+2026-10-01 15:23:07.031 | INFO     | MaaEnd 自动代理 | 用户 endfield - 原配置阶段尝试次数: 1/3
+2026-10-01 15:23:07.034 | INFO     | MaaEnd 自动代理 | 启动终末地: D:\endfield\Hypergryph Launcher\games\Endfield Game\Endfield.exe
+2026-10-01 15:24:07.079 | INFO     | MaaEnd 自动代理 | 用户 cb329eaf-c4c0-4e12-9dd4-961e5b2cc7f1 未配置账号，跳过账号切换
+2026-10-01 15:24:07.080 | INFO     | MaaEnd 自动代理 | 开始配置 MaaEnd 运行参数: 自动代理
+2026-10-01 15:24:07.082 | INFO     | 系统服务 | 开始中止进程: D:\ark\maaend\MaaEnd.exe
+2026-10-01 15:24:07.085 | SUCCESS  | 系统服务 | 进程已中止: D:\ark\maaend\MaaEnd.exe
+2026-10-01 15:24:07.426 | INFO     | MaaEnd 配置备份 | MAS 配置无变化，跳过归档
+2026-10-01 15:24:07.519 | SUCCESS  | MaaEnd 自动代理 | MaaEnd 运行参数配置完成: 自动代理
+2026-10-01 15:24:07.519 | INFO     | MaaEnd 自动代理 | 运行脚本任务: D:\ark\maaend\MaaEnd.exe
+2026-10-01 15:24:11.954 | INFO     | 日志监控器 | 进程日志监控已启动: 23028
+2026-10-01 15:24:11.955 | INFO     | 日志监控器 | 开始监控进程日志: 23028
+2026-10-01 15:27:08.484 | INFO     | 更新服务 | 开始检查更新
+2026-10-01 15:27:08.936 | INFO     | 主程序 | HTTP Request: GET https://mirrorchyan.com/api/resources/AUTO_MAS/latest?user_agent=AutoMasGui&os=win&arch=x64&current_version=v5.6.0&cdk=***&channel=beta "HTTP/1.1 200 OK"
+2026-10-01 15:27:08.947 | SUCCESS  | 更新服务 | 获取版本信息成功
+2026-10-01 15:27:09.043 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=Globle&page=1&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:27:09.073 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=JP&page=1&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:27:09.079 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=CN&page=1&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:27:09.499 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=Globle&page=2&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:27:09.524 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=JP&page=2&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:27:09.544 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=CN&page=2&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:27:09.897 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=Globle&page=3&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:27:09.952 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=CN&page=3&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:27:09.970 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=JP&page=3&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:37:07.856 | INFO     | 更新服务 | 一小时内已进行过一次检查, 直接使用缓存的版本更新信息
+2026-10-01 15:47:07.800 | INFO     | 更新服务 | 一小时内已进行过一次检查, 直接使用缓存的版本更新信息
+2026-10-01 15:47:08.906 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=CN&page=1&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:47:08.917 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=JP&page=1&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:47:08.921 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=Globle&page=1&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:47:09.325 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=CN&page=2&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:47:09.342 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=JP&page=2&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:47:09.347 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=Globle&page=2&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:47:09.758 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=JP&page=3&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:47:09.775 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=Globle&page=3&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:47:09.822 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=CN&page=3&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 15:57:07.806 | INFO     | 更新服务 | 一小时内已进行过一次检查, 直接使用缓存的版本更新信息
+2026-10-01 16:07:07.800 | INFO     | 更新服务 | 一小时内已进行过一次检查, 直接使用缓存的版本更新信息
+2026-10-01 16:07:08.908 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=Globle&page=1&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 16:07:08.931 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=JP&page=1&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 16:07:08.942 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=CN&page=1&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 16:07:09.319 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=Globle&page=2&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 16:07:09.346 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=JP&page=2&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 16:07:09.356 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=CN&page=2&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 16:07:09.730 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=Globle&page=3&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 16:07:09.772 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=CN&page=3&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 16:07:09.781 | INFO     | 主程序 | HTTP Request: GET https://api.kivo.wiki/api/v1/timeline/?line_type=JP&page=3&page_size=50 "HTTP/1.1 200 OK"
+2026-10-01 16:10:00.012 | INFO     | MaaEnd 自动代理 | MaaEnd 任务结果: MaaEnd 进程超时, 日志锁已释放
+2026-10-01 16:10:00.014 | INFO     | 日志监控器 | 请求取消日志监控任务
+2026-10-01 16:10:00.016 | INFO     | 日志监控器 | 日志监控任务已中止
+2026-10-01 16:10:00.016 | SUCCESS  | 日志监控器 | 日志监控任务已停止
+2026-10-01 16:10:00.016 | WARNING  | MaaEnd 自动代理 | 用户: cb329eaf-c4c0-4e12-9dd4-961e5b2cc7f1 - 代理任务异常: MaaEnd 进程超时
+2026-10-01 16:10:00.026 | INFO     | MaaEnd 自动代理 | 中止 MaaEnd 进程: D:\ark\maaend\MaaEnd.exe
+2026-10-01 16:10:01.238 | INFO     | 系统服务 | 开始中止进程: D:\ark\maaend\MaaEnd.exe
+2026-10-01 16:10:01.242 | SUCCESS  | 系统服务 | 进程已中止: D:\ark\maaend\MaaEnd.exe
+2026-10-01 16:10:01.243 | INFO     | MaaEnd 自动代理 | 中止终末地进程
+2026-10-01 16:10:02.993 | INFO     | 系统服务 | 开始中止进程: D:\endfield\Hypergryph Launcher\games\Endfield Game\Endfield.exe
+2026-10-01 16:10:02.996 | SUCCESS  | 系统服务 | 进程已中止: D:\endfield\Hypergryph Launcher\games\Endfield Game\Endfield.exe
+2026-10-01 16:10:02.996 | INFO     | MaaEnd 自动代理 | 用户 endfield - 原配置阶段尝试次数: 2/3
+2026-10-01 16:10:02.999 | INFO     | MaaEnd 自动代理 | 启动终末地: D:\endfield\Hypergryph Launcher\games\Endfield Game\Endfield.exe
+2026-10-01 16:11:03.000 | INFO     | MaaEnd 自动代理 | 用户 cb329eaf-c4c0-4e12-9dd4-961e5b2cc7f1 未配置账号，跳过账号切换
+2026-10-01 16:11:03.000 | INFO     | MaaEnd 自动代理 | 开始配置 MaaEnd 运行参数: 自动代理
+2026-10-01 16:11:03.001 | INFO     | 系统服务 | 开始中止进程: D:\ark\maaend\MaaEnd.exe
+2026-10-01 16:11:03.006 | SUCCESS  | 系统服务 | 进程已中止: D:\ark\maaend\MaaEnd.exe
+2026-10-01 16:11:03.041 | INFO     | MaaEnd 配置备份 | MAS 配置无变化，跳过归档
+2026-10-01 16:11:03.172 | SUCCESS  | MaaEnd 自动代理 | MaaEnd 运行参数配置完成: 自动代理
+2026-10-01 16:11:03.173 | INFO     | MaaEnd 自动代理 | 运行脚本任务: D:\ark\maaend\MaaEnd.exe
+2026-10-01 16:11:07.209 | INFO     | 日志监控器 | 进程日志监控已启动: 7848
+2026-10-01 16:11:07.209 | INFO     | 日志监控器 | 开始监控进程日志: 7848
+2026-10-01 16:11:08.823 | INFO     | MaaEnd 自动代理 | MaaEnd 主进程已退出，退出码: 0
+2026-10-01 16:11:10.836 | INFO     | 日志监控器 | 请求取消日志监控任务
+2026-10-01 16:11:10.836 | INFO     | 日志监控器 | 日志监控任务已中止
+2026-10-01 16:11:10.836 | SUCCESS  | 日志监控器 | 日志监控任务已停止
+2026-10-01 16:11:10.838 | INFO     | MaaEnd 自动代理 | MaaEnd 未完成任务列表: {'🎁赠送干员礼物': ['5keio8g'], '🔧装备制造': ['cz98p6n'], '🤝拜访好友': ['2k4ci6o'], '🎁基建任务': ['1xrgha3'], '🛍️信用点购物': ['uomyyc4'], '🚚转交委托': ['8okjt23'], '🛒据点交易': ['rpxxjpi'], '🌿环境监测': ['yfw1j2w'], '📦自动囤货': ['ilpql0x'], '💰售卖弹性物资': ['cze2nc4'], '🏪购买稳定物资': ['asmcnxp'], '⚔️协议空间': ['c4kzbdr'], '🗡️选剑演武': ['tos0001'], '🧺自动采集': ['kc2yopu'], '📅日常奖励领取': ['dzglg11']}
+2026-10-01 16:11:10.839 | INFO     | MaaEnd 自动代理 | MaaEnd 任务结果: MaaEnd 部分任务执行失败: 🎁赠送干员礼物、🔧装备制造、🤝拜访好友、🎁基建任务、🛍️信用点购物、🚚转交委托、🛒据点交易、🌿环境监测、📦自动囤货、💰售卖弹性物资、🏪购买稳定物资、⚔️协议空间、🗡️选剑演武、🧺自动采集、📅日常奖励领取, 日志锁已释放

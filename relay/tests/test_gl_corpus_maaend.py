@@ -35,9 +35,10 @@ Probes:
            raw.<key> for each key of the record's raw dict.
   outcome  the outcome check of a MaaEnd run (outcome.maaend_checks over the record's
            log), compared field: says - the summary's first line, null for nothing.
-  episodes the records booked in a fresh ledger, then the ledger's episode_kinds
-           (a failure that is not a fault: "update", "maintenance"); compared
-           fields: kind:<record path>.
+  ledger   the records booked, in order, in a fresh ledger and read back as the
+           daily report reads them (probe_ledger); compared fields
+           <record>|kind (episode_kinds: a failure that is not a fault),
+           <record>|sanity, <record>|raw.<key>.
 
 Usage: test_gl_corpus_maaend.py [--tree <relay dir>] [--case <name> ...]
 """
@@ -192,10 +193,20 @@ def probe_outcome(root: Path, check: dict) -> dict:
     return {"says": says.splitlines()[0] if says else None}
 
 
-def probe_episodes(root: Path, check: dict) -> dict:
-    """Book `records` in a fresh ledger the way the relay does (State.append_ledger)
-    and read the day's episode kinds back (episode_kinds: "update", "maintenance",
-    ...). A tree with no episode_kinds excused nothing: every kind is None."""
+# The daily report's pass over the day's ledger lines before it reads them: an
+# Endfield record with one farming run gets its sanity spent from the previous
+# record's remaining sanity (90d845cb). Looked up by name where it lived.
+_FILL_STEPS = (("ark_relay.features.report.report", "_fill_single_run_sanity"),
+               ("ark_relay.report", "_fill_single_run_sanity"),
+               ("ark_relay.engine", "_fill_single_run_sanity"))
+
+
+def probe_ledger(root: Path, check: dict) -> dict:
+    """Book `records`, in order, in a fresh ledger the way the relay does
+    (book(), State.append_ledger), read the day back as the daily report does
+    (its sanity fill), and give per record: <record>|kind (episode_kinds:
+    "update", "maintenance", ... - None when the tree has no episode_kinds, which
+    excused nothing), <record>|sanity, <record>|raw.<key>."""
     ledger = _module("ark_relay.core.ledger", "ark_relay.core")
     with tempfile.TemporaryDirectory() as state_dir:
         state = ledger.State(Path(state_dir))
@@ -205,13 +216,28 @@ def probe_episodes(root: Path, check: dict) -> dict:
             rec = book(root, rel, Path(state_dir))
             state.append_ledger(rec)
             days.add(rec.started.strftime("%Y-%m-%d"))
-            ids[rel] = rec.run_id
+            ids[rec.run_id] = rel
         entries = [e for day in sorted(days) for e in state.read_ledger(day)]
+    for name, fn in _FILL_STEPS:
+        try:
+            fill = getattr(importlib.import_module(name), fn, None)
+        except ModuleNotFoundError:
+            continue
+        if fill is not None:
+            fill(entries)
+            break
     kinds = ledger.episode_kinds(entries) if hasattr(ledger, "episode_kinds") else {}
-    return {f"kind:{rel}": kinds.get(run_id) for rel, run_id in ids.items()}
+    out = {}
+    for e in entries:
+        rel = ids[e["run_id"]]
+        out[f"{rel}|kind"] = kinds.get(e["run_id"])
+        out[f"{rel}|sanity"] = e.get("sanity", ABSENT)
+        for k, v in (e.get("raw") or {}).items():
+            out[f"{rel}|raw.{k}"] = v
+    return out
 
 
-PROBES = {"record": probe_record, "outcome": probe_outcome, "episodes": probe_episodes}
+PROBES = {"record": probe_record, "outcome": probe_outcome, "ledger": probe_ledger}
 
 
 def _git_tracked(paths: list[Path]) -> list[Path]:
@@ -227,7 +253,23 @@ def _git_tracked(paths: list[Path]) -> list[Path]:
     return [p for p in paths if p.resolve() not in tracked]
 
 
-def run_case(case_dir: Path, fails: list[str]) -> int:
+def _diff(want, got) -> dict:
+    """{field: what was got} for each field of `want` that `got` does not match."""
+    if want is None or got is None:
+        return {} if got == want else {"none": got}
+    return {k: got.get(k, ABSENT) for k, v in want.items() if got.get(k, ABSENT) != v}
+
+
+def run_case(case_dir: Path, fails: list[str], pinned: list[str], on_head: bool) -> int:
+    """Run one case's checks; returns how many ran.
+
+    A check may carry "head_wrong": {"since": <commit>, "got": {...}} - this tree's
+    code gives a known wrong verdict on this real input, introduced by <commit>.
+    On this checkout (no --tree) the check then passes only while the code gives
+    exactly that wrong verdict, and says so on a ⚠ line and in the last line;
+    once the code gives `want` the check fails until the marker is removed. With
+    --tree (prove.py, old trees) `want` alone decides.
+    """
     spec = json.loads((case_dir / "case.json").read_text(encoding="utf-8"))
     n = 0
     with tempfile.TemporaryDirectory() as tmp:
@@ -240,34 +282,37 @@ def run_case(case_dir: Path, fails: list[str]) -> int:
         for i, check in enumerate(spec["checks"]):
             label = f"{case_dir.name}#{i} {check['probe']}"
             want = check["want"]
-            missing = [k for k in (want if isinstance(want, dict) else {"": 0})
-                       if not str((check.get("evidence") or {}).get(k or "none", "")).strip()]
+            missing = [k for k in (want if isinstance(want, dict) else {"none": 0})
+                       if not str((check.get("evidence") or {}).get(k, "")).strip()]
             if missing:
                 fails.append(label)
                 print(f"  ✗ {label}: no evidence for {missing} (rule 1: every expected value cites one)")
                 continue
             got = PROBES[check["probe"]](root, check)
             n += 1
-            if want is None or got is None:
-                if got != want:
-                    fails.append(label)
-                    print(f"  ✗ {label}: want {want!r}, got {got!r}")
-                else:
-                    print(f"  ✓ {label}: {got!r}")
-                continue
-            bad = {k: got.get(k, ABSENT) for k, v in want.items() if got.get(k, ABSENT) != v}
-            if bad:
+            bad = _diff(want, got)
+            wrong = check.get("head_wrong") if on_head else None
+            if wrong and not bad:
+                fails.append(label)
+                print(f"  ✗ {label}: gives the right verdict now - remove its head_wrong marker")
+            elif wrong and not _diff(wrong["got"], got):
+                pinned.append(f"{label} (since {wrong['since']})")
+                print(f"  ⚠ {label}: still the known wrong verdict since {wrong['since']}: "
+                      + ", ".join(f"{k}={v!r}" for k, v in wrong["got"].items())
+                      + "; right is " + ", ".join(f"{k}={v!r}" for k, v in want.items()))
+            elif bad:
                 fails.append(label)
                 print(f"  ✗ {label} ({spec['failure']})")
                 for k, v in bad.items():
-                    print(f"      {k}: want {want[k]!r}, got {v!r}")
+                    print(f"      {k}: want {(want or {}).get(k)!r}, got {v!r}")
             else:
-                print(f"  ✓ {label}: " + ", ".join(f"{k}={v!r}" for k, v in want.items()))
+                print(f"  ✓ {label}: " + (", ".join(f"{k}={v!r}" for k, v in want.items()) if want else "None"))
     return n
 
 
 def main(argv: list[str]) -> int:
     tree, only = _args(argv)
+    on_head = "--tree" not in argv
     sys.path.insert(0, str(tree))
     cases = sorted(p.parent for p in CORPUS.glob("*/case.json"))
     if only:
@@ -275,18 +320,20 @@ def main(argv: list[str]) -> int:
         if len(cases) != len(only):
             raise SystemExit(f"no such case among {only}")
     fails: list[str] = []
+    pinned: list[str] = []
     n = 0
     for case_dir in cases:
-        n += run_case(case_dir, fails)
+        n += run_case(case_dir, fails, pinned, on_head)
     if not only:
-        untracked = _git_tracked([p for p in CORPUS.rglob("*") if p.is_file()])
-        for p in untracked:
+        files = [p for p in CORPUS.rglob("*") if p.is_file() and "__pycache__" not in p.parts]
+        for p in _git_tracked(files):
             fails.append(str(p))
             print(f"  ✗ not tracked by git (add it with -f): {p.relative_to(HERE)}")
         if len(cases) < FLOOR:
             fails.append("floor")
             print(f"  ✗ only {len(cases)} cases found, want at least {FLOOR}")
-    print(f"\n{len(cases)} cases, {n} checks, " + (f"FAILED: {len(fails)}" if fails else "all checks passed"))
+    tail = f"; {len(pinned)} pinned wrong at this tree: {', '.join(pinned)}" if pinned else ""
+    print(f"\n{len(cases)} cases, {n} checks" + tail + ", " + (f"FAILED: {len(fails)}" if fails else "all checks passed"))
     return 1 if fails else 0
 
 

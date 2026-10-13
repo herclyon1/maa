@@ -1,0 +1,18 @@
+{
+ "failure": "10-12 V3: AUTO-MAS's 06:58 [更新] record (it installed a MaaEnd update between stages) was booked as a MaaEnd run (ledger 754-758)",
+ "fix": "d9f3fd12",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-10-12/endfield/MaaEnd-06-58-11.json",
+   "want": null,
+   "evidence": {
+    "none": "not a run record: AUTO-MAS writes the 「[更新]」 prefix for the record of its update phase (amas-src app/task/MaaEnd/AutoProxy.py:2172-2181 save_maaend_log(..., phase_label=\"更新\" if log_item.phase == \"Update\")), and this record's log is that phase only: 「首阶段检测到 MaaEnd 更新，正在确认安装结果 / MaaEnd 正在检查并安装更新 / MaaEnd 已更新到 v2.33.0-beta.2」, no task; the round itself is the next record, MaaEnd-06-58-38 「Success!」"
+   }
+  }
+ ],
+ "mtimes": {
+  "automas/history/2026-10-12/endfield/MaaEnd-06-58-11.json": 1791776293,
+  "automas/history/2026-10-12/endfield/MaaEnd-06-58-11.log": 1791776293
+ }
+}

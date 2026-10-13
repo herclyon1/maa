@@ -1,0 +1,29 @@
+{
+ "failure": "09-04 V4: sanity spent/left missed the last run - the one-claim Endfield retry printed 「—」 for spent in the daily report",
+ "fix": "90d845cb",
+ "checks": [
+  {
+   "probe": "ledger",
+   "records": [
+    "automas/history/2026-09-04/endfield/MaaEnd-05-09-20.json",
+    "automas/history/2026-09-04/endfield/MaaEnd-05-41-30.json"
+   ],
+   "want": {
+    "automas/history/2026-09-04/endfield/MaaEnd-05-09-20.json|sanity": 116,
+    "automas/history/2026-09-04/endfield/MaaEnd-05-41-30.json|sanity": 37,
+    "automas/history/2026-09-04/endfield/MaaEnd-05-41-30.json|raw.maaend_sanity_spent": 79
+   },
+   "evidence": {
+    "automas/history/2026-09-04/endfield/MaaEnd-05-09-20.json|sanity": "MaaEnd-05-09-20.log: claims after the readings 275 (line 438) and 196 (line 527), the last reading 「[2026-09-04 09:38:21.938] 当前理智 116/360」 (line 578), then 「09:39:39.614 任务失败: 🎱基质刷取」 - no third claim, 116 left",
+    "automas/history/2026-09-04/endfield/MaaEnd-05-41-30.json|sanity": "MaaEnd-05-41-30.log: one claim 「09:44:00.149 ✅已完成一次基质刷取」 then 「[2026-09-04 09:44:45.736] 当前理智 37/360」 (line 92) and the task ends",
+    "automas/history/2026-09-04/endfield/MaaEnd-05-41-30.json|raw.maaend_sanity_spent": "116 left after the 09:39 attempt, 37 after this retry's one claim, nothing else spent between (09:39:39 -> 09:42:45): 116 - 37 = 79"
+   }
+  }
+ ],
+ "mtimes": {
+  "automas/history/2026-09-04/endfield/MaaEnd-05-09-20.json": 1788486292,
+  "automas/history/2026-09-04/endfield/MaaEnd-05-09-20.log": 1788486292,
+  "automas/history/2026-09-04/endfield/MaaEnd-05-41-30.json": 1788486292,
+  "automas/history/2026-09-04/endfield/MaaEnd-05-41-30.log": 1788486292
+ }
+}

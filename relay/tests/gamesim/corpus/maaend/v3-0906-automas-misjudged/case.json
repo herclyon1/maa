@@ -1,0 +1,44 @@
+{
+ "failure": "09-06 V3: two morning failures were AUTO-MAS misjudgements - MaaEnd's renamed task (SellProduct -> 据点交易) and OK-WW exiting before AUTO-MAS saw its success line",
+ "fix": "d1a01d85",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-09-06/endfield/MaaEnd-05-40-21.json",
+   "want": {
+    "ok": true,
+    "failed_tasks": []
+   },
+   "evidence": {
+    "ok": "MaaEnd's own log: all 16 tasks it started end 「任务完成」, none 「任务失败」 (09:41:39 赠送干员礼物 ... [2026-09-06 10:11:11.067] 任务完成: 📅日常奖励领取), including line 155 「任务完成: 🛒据点交易」; AUTO-MAS's 「部分任务执行失败: SellProduct」 is its English fallback for a display name it could not look up - MaaEnd v2.28.0-beta.1 relabelled SellProduct as 据点交易 (tasks/OutpostTrading.json, key task.OutpostTrading.label; d1a01d85 notes)",
+    "failed_tasks": "same: no task failed"
+   },
+   "head_wrong": {
+    "since": "e539a57f",
+    "got": {
+     "ok": false,
+     "failed_tasks": [
+      "SellProduct"
+     ]
+    },
+    "why": "e539a57f made a finished round need its closing task (结束进程 / 关闭游戏) last and completed (collector_maaend._maaend_round_closed); this run's log has no closing task at all (grep -c 结束进程 = 0: the log ends after 日常奖励领取 with 「正在连接窗口... / 窗口连接成功」), although e539a57f's message says the 09-06 run 「really had」 结束进程 and gave test_maaend_name_mismatch.py's synthetic copy of it that line. Shown: e539a57f~1 GREEN, e539a57f RED on this case."
+   }
+  },
+  {
+   "probe": "record",
+   "record": "automas/history/2026-09-06/wuwa/OK-WW-05-20-17.json",
+   "want": {
+    "ok": true
+   },
+   "evidence": {
+    "ok": "OK-WW's own log line 638 「2026-09-06 09:36:18,776 INFO TaskExecutor DailyTask:Daily Task Completed」 then a normal shutdown (09:36:24 handler stopping ...); AUTO-MAS records 「在完成任务前退出」 when the process is gone before it sees its success line (amas-src app/task/Okww/AutoProxy.py)"
+   }
+  }
+ ],
+ "mtimes": {
+  "automas/history/2026-09-06/endfield/MaaEnd-05-40-21.json": 1788661058,
+  "automas/history/2026-09-06/endfield/MaaEnd-05-40-21.log": 1788661058,
+  "automas/history/2026-09-06/wuwa/OK-WW-05-20-17.json": 1788658821,
+  "automas/history/2026-09-06/wuwa/OK-WW-05-20-17.log": 1788658821
+ }
+}

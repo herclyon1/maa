@@ -15,15 +15,15 @@
    }
   },
   {
-   "probe": "episodes",
+   "probe": "ledger",
    "records": [
     "automas/history/2026-09-02/endfield/MaaEnd-05-41-29.json"
    ],
    "want": {
-    "kind:automas/history/2026-09-02/endfield/MaaEnd-05-41-29.json": "maintenance"
+    "automas/history/2026-09-02/endfield/MaaEnd-05-41-29.json|kind": "maintenance"
    },
    "evidence": {
-    "kind:automas/history/2026-09-02/endfield/MaaEnd-05-41-29.json": "same as raw.maaend_unreachable: a run that could not enter the game during the 09-02 version-update downtime is not a script fault"
+    "automas/history/2026-09-02/endfield/MaaEnd-05-41-29.json|kind": "same as raw.maaend_unreachable: a run that could not enter the game during the 09-02 version-update downtime is not a script fault"
    }
   }
  ],
