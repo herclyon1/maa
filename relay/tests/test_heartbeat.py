@@ -16,6 +16,16 @@ def check(label, got, want):
     if not ok:
         fails.append(label)
 
+
+def wait_for(pred, limit=10.0):
+    """Poll until pred() holds or `limit` seconds pass. A fixed 0.2 s sleep went red on a
+    loaded Windows runner (relay-windows runs 38391031443 and 38409766185, 2026-10-13: the
+    beat thread had not woken yet); a beat that is due still lands at once here."""
+    end = time.monotonic() + limit
+    while not pred() and time.monotonic() < end:
+        time.sleep(0.01)
+
+
 sent = []
 STATE = tmpdir()
 hb = phone.Heartbeat("t", STATE, post=lambda payload, title: sent.append(title))
@@ -26,7 +36,7 @@ stop = {"v": False}
 th = threading.Thread(target=hb.loop, args=(lambda: stop["v"],), daemon=True)
 th.start()
 
-time.sleep(0.2)
+wait_for(lambda: sent)
 check("刚起来先报一次在线", sent, ["hb"])
 sent.clear()
 check("之后没人看就不跳了", sent, [])
@@ -38,7 +48,7 @@ time.sleep(0.2)
 check("刚跳过（不到 HB_KICK_GAP）：说「我在看」不再多跳", sent, [])
 hb._last = time.time() - phone.HB_KICK_GAP - 1
 hb.watch()
-time.sleep(0.2)
+wait_for(lambda: sent)
 check("上一跳已经旧了：说「我在看」立刻跳", sent, ["hb"])
 check("计数落盘", hb.sent_today(), 2)
 check("有人看时的间隔", hb.interval(), phone.HEARTBEAT_SEC)
