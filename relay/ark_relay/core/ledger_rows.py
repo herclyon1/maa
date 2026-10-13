@@ -9,6 +9,7 @@ import re
 from datetime import datetime
 
 from ark_relay.core.config import SERVER_TZ, USER_TZ
+from ark_relay.features.verify.collector_maaend import _END_CLOSING_TASKS, _END_STOP_MARK
 
 
 def _fmt_items(d: dict, limit: int | None = None) -> str:
@@ -266,9 +267,11 @@ def _block(e: dict, finished: datetime) -> list[str]:
 
 
 # Farming is already stated in 做了, so it is not repeated in the daily list, and
-# wrap-up steps (「结束进程」, and 「停止任务」: MaaEnd stopping its own tasker)
-# are not in-game tasks.
-_END_FARM_NOTE_SKIP = ("基质刷取", "协议空间", "结束进程", "停止任务")
+# wrap-up steps (the closing tasks 「关闭游戏（PC）」 / 「结束进程」, and 「停止任务」:
+# MaaEnd stopping its own tasker) are not in-game tasks. The collector's own
+# tuples, so the report and the round-closed check agree on what a wrap-up is.
+_END_WRAPUP = (*_END_CLOSING_TASKS, _END_STOP_MARK)
+_END_FARM_NOTE_SKIP = ("基质刷取", "协议空间", *_END_WRAPUP)
 
 
 # A task the program called finished with nothing from the game to show for it:

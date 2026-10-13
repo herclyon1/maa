@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from ark_relay.core import texts
 from ark_relay.core.config import RunRecord, SERVER_TZ, USER_TZ, both_clocks
 from ark_relay.core.ledger_rows import (
-    UNVERIFIED_STEP, _END_FARM_NOTE_SKIP, _LABELS, _maaend_listed, _row, _rows_for, _with_causes,
+    UNVERIFIED_STEP, _END_FARM_NOTE_SKIP, _END_WRAPUP, _LABELS, _maaend_listed, _row, _rows_for, _with_causes,
     maaend_unverified,
 )
 from ark_relay.core.names import GAME_ZH
@@ -203,7 +203,7 @@ def _skipped_gathering_only(e: dict, raw: dict) -> bool:
     """A clean record whose only content is the gathering task skipped by weekday."""
     if not e.get("ok") or e.get("incomplete") or not raw.get("maaend_collect_skipped"):
         return False
-    done = [t for t in (raw.get("tasks_done") or []) if t not in ("自动采集", "结束进程")]
+    done = [t for t in (raw.get("tasks_done") or []) if not any(k in t for k in ("自动采集", *_END_WRAPUP))]
     return not done and not raw.get("tasks_failed") and not raw.get("maaend_collect_total")
 
 
