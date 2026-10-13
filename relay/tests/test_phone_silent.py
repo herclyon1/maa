@@ -58,7 +58,7 @@ print("[relay block raising]")
 getattr(phone, "_last_error", {}).clear()
 with mock.patch.object(modes, "debug_active", side_effect=RuntimeError("state broke")):
     st = payload()
-    check("relay stays {} (shape unchanged)", st.get("relay"), {})
+    check("relay carries only _错误 (audit A3; was {})", st.get("relay"), {"_错误": "RuntimeError: state broke"})
     check("one WARNING", grab.said("中继那一段"), 1)
     payload()
     check("same condition again -> no second WARNING", grab.said("中继那一段"), 0)
