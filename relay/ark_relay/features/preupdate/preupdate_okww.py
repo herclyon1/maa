@@ -218,9 +218,10 @@ def _okww_stamp(okww_dir: Path) -> float:
 def _okww_await_update(root: Path, budget_s: float, before_version: str,
                        before_avail: tuple[str, ...],
                        before_stamp: float, sleep=time.sleep,
-                       clock=time.monotonic) -> tuple[str, bool, str, str]:
+                       clock=time.monotonic) -> tuple[str, bool, str, str, tuple[str, ...]]:
     """Watch app.json until OK-WW is done: returns (new version, did it check, error,
-    the state it was still in when the budget ran out - "" unless it timed out busy).
+    the state it was still in when the budget ran out - "" unless it timed out busy,
+    the last non-empty available_versions read - `before_avail` if none was read).
 
     "Did it check" is true when the version list changed, app.json was
     rewritten, the update state left idle, or the version changed. A
@@ -232,9 +233,13 @@ def _okww_await_update(root: Path, budget_s: float, before_version: str,
     checked = False           # saw it actually move: state / version list / version
     failed = ""
     state = ""
+    version, avail = before_version, before_avail
+    latest = before_avail     # the list the verdict reads: the newest one seen
     while clock() < deadline:
         sleep(3)
         version, state, err, avail = _okww_state(root)
+        if avail:
+            latest = avail
         if err:
             log.warning("预更新：OK-WW 更新报错 %s", err[:200])
             failed = err[:200]
@@ -260,19 +265,20 @@ def _okww_await_update(root: Path, budget_s: float, before_version: str,
             # Out of time while app.json still says it is downloading or installing.
             log.warning("预更新：OK-WW %.0f 秒到了还在「%s」，没更新完；app.json 最后读到 "
                         "版本 %s，可用版本 %s", budget_s, state, version or "未知", list(avail[:3]))
-            return settled, checked, failed, state
-    return settled, checked, failed, ""
+            return settled, checked, failed, state, latest
+    return settled, checked, failed, "", latest
 
 
 def _okww_report(problems: list[str] | None, budget_s: float,
-                 before_version: str, before_avail: tuple[str, ...],
+                 before_version: str, latest_avail: tuple[str, ...],
                  settled: str, checked: bool, failed: str, stuck: str = "",
                  shot: "Path | None" = None) -> None:
     """Log the result of _okww_await_update and note a problem where one is due.
 
     Branches: update error; updated; out of time while busy; no sign of a check
-    (not the same as "no update"); checked with nothing newer installed (noted
-    when available_versions lists a newer one).
+    (not the same as "no update"); checked with nothing newer installed - a
+    problem when `latest_avail` (the version list as last read during the wait,
+    newest first) lists a newer one, otherwise 「无需更新」.
     """
     if failed:
         _note(problems, f"OK-WW 预更新：更新报错 {failed}")
@@ -289,9 +295,10 @@ def _okww_report(problems: list[str] | None, budget_s: float,
               f"OK-WW 预更新：{budget_s:.0f} 秒内没有任何检查迹象，"
               f"**无法确认是否检查过更新**（当前 {before_version or '版本未知'}）")
     else:
-        newest = before_avail[0] if before_avail else ""
-        log.info("预更新：OK-WW 无需更新（%s）", before_version or "版本未知")
-        if newest and newest != before_version:
+        newest = latest_avail[0] if latest_avail else ""
+        if not newest or newest == before_version:
+            log.info("预更新：OK-WW 无需更新（%s）", before_version or "版本未知")
+        else:
             _note(problems,
                   f"OK-WW 预更新：查到有 {newest}，但没装上"
                   f"（仍是 {before_version or '版本未知'}）")
@@ -340,7 +347,7 @@ def run_okww(okww_dir: Path | None,
     # `finally` below.
     was = _okww_autostart(root, False)
     if was is None:
-        _note(problems, "OK-WW 预更新：改不动 app.json，没有检查更新")
+        _note(problems, "OK-WW 预更新：改不动 Basic Options.json 里的自动开游戏开关，没有检查更新")
         return ""
     launched = False
     try:
@@ -352,9 +359,9 @@ def run_okww(okww_dir: Path | None,
             return ""
         launched = True
         log.info("预更新：已启动 OK-WW（已临时关掉自动开游戏），最多 %.0f 秒", budget_s)
-        settled, checked, failed, stuck = _okww_await_update(
+        settled, checked, failed, stuck, latest_avail = _okww_await_update(
             root, budget_s, before_version, before_avail, before_stamp)
-        _okww_report(problems, budget_s, before_version, before_avail,
+        _okww_report(problems, budget_s, before_version, latest_avail,
                      settled, checked, failed, stuck, _okww_timeout_shot() if stuck else None)
         if not before_version:
             _note(problems, "OK-WW 预更新：启动前读不到 app.json 里的版本号，这次装没装上新版没法比对"

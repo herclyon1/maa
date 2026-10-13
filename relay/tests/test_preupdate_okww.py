@@ -118,6 +118,7 @@ def main(root: Path) -> int:
 
     timeout_mid_download(root)
     baseline_unknown(root)
+    newer_listed_not_installed(root)
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
     return 0 if not FAILED else 1
 
@@ -133,7 +134,7 @@ def timeout_mid_download(root: Path) -> None:
     now = [0.0]
     out = m._okww_await_update(d, 240, "v3.7.3", ("v3.7.3",), m._okww_stamp(d),
                                sleep=lambda s: now.__setitem__(0, now[0] + s), clock=lambda: now[0])
-    check("超时仍在下载：带回卡住的状态", out, ("", True, "", "downloading"))
+    check("超时仍在下载：带回卡住的状态和最后读到的版本列表", out, ("", True, "", "downloading", ("v3.7.4", "v3.7.3")))
     check("等满了预算才算超时", now[0] >= 240, True)
 
     appjson.write_text(json.dumps({"current_version": "v3.7.3", "update_state": "idle",
@@ -141,7 +142,7 @@ def timeout_mid_download(root: Path) -> None:
     now[0] = 0.0
     out = m._okww_await_update(d, 240, "v3.7.3", (), m._okww_stamp(d) - 10,
                                sleep=lambda s: now.__setitem__(0, now[0] + s), clock=lambda: now[0])
-    check("空闲且检查过：照旧算查完，不算卡住", out, ("", True, "", ""))
+    check("空闲且检查过：照旧算查完，不算卡住", out, ("", True, "", "", ()))
     check("至少等过上游那 30 秒检查", now[0] >= m.OKWW_MIN_WAIT_SECONDS, True)
 
     probs = []
@@ -174,7 +175,7 @@ def timeout_mid_download(root: Path) -> None:
         m._okww_quiesce = lambda *a, **kw: order.append("quiesce")
         m._close = lambda exe: order.append("close")
         m._okww_timeout_shot = lambda: order.append("shot") or Path("t.png")
-        m._okww_await_update = lambda *a, **kw: ("", True, "", "downloading")
+        m._okww_await_update = lambda *a, **kw: ("", True, "", "downloading", ())
         m._spawn_interactive = lambda *a, **kw: order.append("spawn") or True
         probs = []
         check("超时下载中：不报已更新", m.run_okww(d, budget_s=240, problems=probs), "")
@@ -191,7 +192,7 @@ def timeout_mid_download(root: Path) -> None:
 
         order.clear()
         m._spawn_interactive = lambda *a, **kw: order.append("spawn") or True
-        m._okww_await_update = lambda *a, **kw: ("", True, "", "")
+        m._okww_await_update = lambda *a, **kw: ("", True, "", "", ())
         probs = []
         m.run_okww(d, budget_s=240, problems=probs)
         check("没卡住就不截图", "shot" in order, False)
@@ -226,7 +227,7 @@ def timeout_mid_download(root: Path) -> None:
         calls = []
         # First call turns it off (it was on); the one putting it back fails.
         m._okww_autostart = lambda root_, value: (calls.append(value), True if len(calls) == 1 else None)[1]
-        m._okww_await_update = lambda *a, **kw: ("", True, "", "")
+        m._okww_await_update = lambda *a, **kw: ("", True, "", "", ())
         try:
             m.run_okww(d, budget_s=240, problems=[])
         finally:
@@ -278,6 +279,54 @@ def baseline_unknown(root: Path) -> None:
     finally:
         for k, v in saved.items():
             setattr(m, k, v)
+
+
+def newer_listed_not_installed(root: Path) -> None:
+    """OK-WW lists a newer version during the wait but does not install it: a problem,
+    not 「无需更新」. The verdict used to read the list from before the launch, so
+    the newer entry seen inside the wait never reached it (audit #10)."""
+    print("[newer version listed during the wait, not installed]")
+    m = preupdate_okww
+    d = make(root / "newer", autostart=True)
+    appjson = d / "data" / "apps" / "ok-ww" / "app.json"
+    appjson.write_text(json.dumps({"current_version": "v3.7.3", "update_state": "idle",
+                                   "update_error": None, "available_versions": ["v3.7.3"]}),
+                       encoding="utf-8")
+    (d / "ok-ww.exe").write_text("", encoding="utf-8")
+    real_await = m._okww_await_update
+    now = [0.0]
+
+    def tick(s):
+        # OK-WW's check: the list gains v3.7.4, the installed version stays v3.7.3.
+        if now[0] == 0.0:
+            appjson.write_text(json.dumps({"current_version": "v3.7.3", "update_state": "idle",
+                                           "update_error": None,
+                                           "available_versions": ["v3.7.4", "v3.7.3"]}),
+                               encoding="utf-8")
+        now[0] += s
+
+    def fast_await(*a, **kw):
+        now[0] = 0.0
+        return real_await(*a, sleep=tick, clock=lambda: now[0], **kw)
+
+    saved = {k: getattr(m, k) for k in ("_spawn_interactive", "_okww_quiesce", "_close",
+                                        "_okww_await_update")}
+    try:
+        m._okww_quiesce = lambda *a, **kw: None
+        m._close = lambda exe: None
+        m._spawn_interactive = lambda *a, **kw: True
+        m._okww_await_update = fast_await
+        probs = []
+        got = m.run_okww(d, budget_s=240, problems=probs)
+    finally:
+        for k, v in saved.items():
+            setattr(m, k, v)
+    check("newer listed, not installed: not reported as updated", got, "")
+    check("newer listed, not installed: a problem naming v3.7.4",
+          [p_ for p_ in probs if "查到有 v3.7.4" in p_ and "没装上" in p_ and "v3.7.3" in p_] != [], True)
+    probs = []
+    m._okww_report(probs, 240, "v3.7.3", ("v3.7.4", "v3.7.3"), "", True, "", "", None)
+    check("the verdict reads the list it is given (the latest one)", len(probs), 1)
 
 
 if __name__ == "__main__":
