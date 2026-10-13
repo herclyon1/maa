@@ -1378,6 +1378,10 @@ def _install_hooks():
 
         def hooked(self, *a, **kw):
             if os.path.exists(NO_STAMINA_FLAG):
+                # Counted as called: the farm was reached and said why it did not run.
+                # Left unset, claim_daily_after_farm took it for 「upstream did not farm」,
+                # logged 「按刷到空…」 and called the farm a second time.
+                farm_called["ran"] = True
                 self.log_info("刷体力已禁用（标记文件在），这一趟不花波片")
                 return None
             farm_called["ran"] = True

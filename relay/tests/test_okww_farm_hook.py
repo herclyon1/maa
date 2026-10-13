@@ -324,6 +324,11 @@ for used in (USED_PART, USED_FULL):
     farm = d.farms[TacetTask]
     check(f"已用 {used}：一次都没进本", farm_calls(), [])
     check(f"已用 {used}：说了刷体力已禁用", any("刷体力已禁用（标记文件在）" in m for m in farm.logs))
+    check(f"used {used}: the flag line once, not again from claim_daily",
+          sum("刷体力已禁用" in m for m in farm.logs), 1)
+    if used == USED_PART:
+        check(f"used {used}: upstream reached the farm, so no 「按刷到空」 top-up line",
+              any("上游这趟不刷体力" in m for m in d.logs), False)
 check("补刷那条没有重复禁用的话", sum("刷体力已禁用" in m for m in d.farms[TacetTask].logs), 1)
 for cls, name in ((ForgeryTask, "farm_forgery"), (SimulationTask, "farm_simulation")):
     EV.clear()
