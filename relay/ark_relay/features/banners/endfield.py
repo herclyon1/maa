@@ -222,6 +222,12 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
              str(((n.get("data") or {}).get("html")) or ""))
             for n in ((d.get("data") or {}).get("list") or [])
             if "版本更新说明" in str(n.get("title") or "")])
+        if not html:
+            # No version notes in the list: no debuts can be told apart, which is
+            # "not read", not "no new banner". On 2026-10-13 the list still had the
+            # notes of 09-02 beside 10-13's pre-download notice, so the entry stays
+            # up all version; this guards a list that drops it.
+            raise ValueError("公告列表里没有「版本更新说明」")
         debut = parse_endfield_notice(html)
     except Exception:
         notice_ok = False

@@ -1933,15 +1933,17 @@ def _ef_no_token() -> None:
     check("没有森空岛令牌：日报写没读到", _block(text, "终末地"), "终末地\n· 这次没读到（没有森空岛令牌），不是没有卡池")
 
 
-def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None, pages=None):
+def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None, pages=None,
+                bulletin_title="「x」版本更新说明"):
     """_endfield with every web source stubbed: Skland is `sk_get`, the version
-    bulletin is `bulletin_html` (None = unreachable), `pages` maps URLs read as
-    text, the rest is offline. Returns ((got, next) or the exception, log records)."""
+    bulletin is `bulletin_html` (None = unreachable) under `bulletin_title`, `pages`
+    maps URLs read as text, the rest is offline. Returns ((got, next) or the
+    exception, log records)."""
     real = (_b._json, _b._text, _b.endfield_next_from_news, _b.endfield_pool_ends)
 
     def js(url, *a, **k):
         if url == _b._EF_BULLETIN and bulletin_html is not None:
-            return {"data": {"list": [{"title": "「x」版本更新说明", "data": {"html": bulletin_html}}]}}
+            return {"data": {"list": [{"title": bulletin_title, "data": {"html": bulletin_html}}]}}
         raise OSError(f"offline: {url}")
 
     def offline(url, *a, **k):
@@ -2012,6 +2014,24 @@ def _sf_ef_pool_ends() -> None:
           [True])
     out, recs = _ef_offline(sk, datetime(2026, 8, 20), bulletin_html=html)
     check("silent 1375: a readable bulletin says nothing about it", _warned(recs, "版本更新说明"), 0)
+
+
+def _ef_no_version_notes() -> None:
+    """s20 #4: a bulletin list with no 版本更新说明 entry gave no debuts and no
+    warning, so every running banner vanished and the report said
+    当期无新角色卡池. Read 2026-10-13 off the live list: the entry posted 09-02 09:00
+    is still there beside 10-13's 预下载与更新预告, so this has not happened yet."""
+    ef = json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8"))
+
+    def sk(path):
+        if path == "/web/v1/wiki/char-pool":
+            return {"data": {"list": ef}}
+        return {"data": {"item": {"name": "梨诺"}}}
+    out, recs = _ef_offline(sk, datetime(2026, 8, 20), bulletin_html="<p>预下载</p>",
+                            bulletin_title="预下载与\n更新预告")
+    check("没有版本更新说明：在开的池子照旧来自森空岛",
+          [b.chars for b in out[0]] if isinstance(out, tuple) else out, [("梨诺",)])
+    check("没有版本更新说明：当作公告没读到，说一次", _warned(recs, "公告取不到"), 1)
 
 
 def _sf_ef_brief_time() -> None:
@@ -2127,6 +2147,7 @@ def main() -> int:
     _ak_prts_clock()
     _sf_ef_names()
     _ef_no_token()
+    _ef_no_version_notes()
     _sf_ef_pool_ends()
     _sf_ef_brief_time()
     _sf_ww_first_half_end()
