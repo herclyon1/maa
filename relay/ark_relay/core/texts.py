@@ -876,6 +876,19 @@ def echo_farm_stop_unconfirmed(names: list[str]) -> str:
             + "，已交给我们这边去关**")
 
 
+def echo_farm_level(read: "tuple[str, str] | None", name: str) -> str:
+    """echofarm._finish: the level the game showed on the boss (echofarm.level_since),
+    never the configured one - the game keeps its own where no level page appears."""
+    if read is None:
+        return "（等级没读到）"
+    level, seen = read
+    def plain(x: str) -> str:
+        return "".join(ch for ch in x if ch not in " ·・･•‧.")
+    if not seen or not name or plain(seen) == plain(name):
+        return f"（游戏里 Lv.{level}）"
+    return f"（游戏里读到的是 Lv.{level} {seen}）"
+
+
 def echo_farm_progress(n: "int | None") -> str:
     """echofarm._finish: how many progress lines (a fight, an echo picked up, back in
     the realm) OK-WW logged during the farm; None when the log could not be read."""
