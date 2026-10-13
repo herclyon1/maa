@@ -11,8 +11,12 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-os.environ["TZ"] = "Asia/Shanghai"
-time.tzset()
+# The machine's zone where it can be set. time.tzset is Unix only ("Availability: Unix",
+# docs.python.org/3/library/time.html#time.tzset); the window and the stamps below are
+# both local wall-clock times, so the test holds in any zone (the Windows runner: UTC).
+if hasattr(time, "tzset"):
+    os.environ["TZ"] = "Asia/Shanghai"
+    time.tzset()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
