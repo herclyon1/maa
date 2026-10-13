@@ -122,7 +122,7 @@ COLLECT_RETRY_FAILED = "⚠️ 自动采集：补跑仍有路线没走通"
 COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，是复发性问题"
 EVIDENCE_SAVED = "🗂️ 证据包已送出机器"
 # One line in a group alarm whose evidence bundle could not be uploaded.
-EVIDENCE_NOT_SHIPPED = "证据包没传上去（原因见 relay.log）"
+EVIDENCE_NOT_SHIPPED = "证据包这次没传上去，原因记在机器上的中继日志里，我们这边照着查。"
 EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的打法要重新核对"
 # Skland answered with more than one Endfield role; nothing was read (resources.py).
 SKLAND_MULTI_ROLE = "⚠️ 森空岛给了不止一个终末地角色，没有读"
