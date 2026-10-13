@@ -49,6 +49,11 @@ def forget_scripts_cache() -> None:
 _RUNTIME_PATH = "/api/dispatch/runtime-snapshot"   # the only confirmed GET endpoint
 # Terminal states AUTO-MAS marks on a script/user. Anything not listed here
 # (running, waiting, and anything we have never seen) counts as still running.
+# Settled from AUTO-MAS source (beta ff285a3, 2026-10-10; audit s2 F6): ScriptItem /
+# UserItem.status is a free str, only ever set to 等待, 运行 (MAA users: 「运行 - <mode>」),
+# 完成, 异常, 跳过 (core/task_manager.py, task/*/manager.py, task/*/AutoProxy.py).
+# The three terminal ones are here; 失败 / 中止 / 取消 are never set on these items and
+# stay only as a harmless margin.
 _SNAPSHOT_DONE = {"完成", "异常", "失败", "跳过", "中止", "取消"}
 
 
