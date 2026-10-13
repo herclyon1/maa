@@ -1,0 +1,578 @@
+{
+ "cases": [
+  {
+   "id": "0907-05-19-17-entered-not-unreachable",
+   "run": "2026-09-07/wuwa/OK-WW-05-19-17",
+   "incident": "09-07 V2: failure reason said 'could not enter the game' when the game was entered",
+   "config": {
+    "DailyTask": {
+     "Additional Tasks to Run After Daily Task": [
+      "Auto Farm all Nightmare Nest",
+      "Check Weekly Garden",
+      "Teleport and Farm 4C Echo"
+     ],
+     "Which to Farm": "Tacet Suppression"
+    },
+    "_source": "relay.log 09-07 08:52:11 (additional tasks synced to DailyTask.json) and 09-04 15:14:44 ('Which to Farm' -> Tacet Suppression); no filter line in this era (85ca8649, 09-13)."
+   },
+   "expect": {
+    "ok": false,
+    "raw": {
+     "okww_unreachable": null
+    },
+    "failed_tasks": {
+     "lacks": [
+      "流程产生错误",
+      "进不了游戏"
+     ],
+     "any_of": [
+      [
+       "FarmEchoTask",
+       "周本"
+      ]
+     ]
+    }
+   },
+   "evidence": [
+    {
+     "kind": "owner",
+     "ref": "owner, 09-07 (quoted in the fix's own test, git show 3287c40d:relay/tests/test_okww_error_reason.py docstring): 「这三次报错可不是因为他没进去游戏。这个检查报错原因的机制有问题。」"
+    },
+    {
+     "kind": "log",
+     "ref": "line 96: the one 'waiting for game to start error' of the run; line 132 on: TaskExecutor DailyTask lines (the game was entered); line 1415: the real failure, FarmEchoTask 'farm 4c error' (the weekly boss task)"
+    },
+    {
+     "kind": "commit",
+     "ref": "3287c40d: only a run that never got in is unreachable; otherwise the log's own exception is the reason"
+    }
+   ],
+   "proof": {
+    "red_at": [
+     "3287c40d~1"
+    ],
+    "green_at": "3287c40d"
+   }
+  },
+  {
+   "id": "0907-06-00-55-entered-not-unreachable",
+   "run": "2026-09-07/wuwa/OK-WW-06-00-55",
+   "incident": "09-07 V2: failure reason said 'could not enter the game' when the game was entered",
+   "config": {
+    "DailyTask": {
+     "Additional Tasks to Run After Daily Task": [
+      "Auto Farm all Nightmare Nest",
+      "Check Weekly Garden",
+      "Teleport and Farm 4C Echo"
+     ],
+     "Which to Farm": "Tacet Suppression"
+    },
+    "_source": "relay.log 09-07 08:52:11 (additional tasks synced to DailyTask.json) and 09-04 15:14:44 ('Which to Farm' -> Tacet Suppression); no filter line in this era (85ca8649, 09-13)."
+   },
+   "expect": {
+    "ok": false,
+    "raw": {
+     "okww_unreachable": null
+    },
+    "failed_tasks": {
+     "lacks": [
+      "流程产生错误",
+      "进不了游戏"
+     ],
+     "any_of": [
+      [
+       "FarmEchoTask",
+       "周本"
+      ]
+     ]
+    }
+   },
+   "evidence": [
+    {
+     "kind": "owner",
+     "ref": "owner, 09-07 (quoted in the fix's own test, git show 3287c40d:relay/tests/test_okww_error_reason.py docstring): 「这三次报错可不是因为他没进去游戏。这个检查报错原因的机制有问题。」"
+    },
+    {
+     "kind": "log",
+     "ref": "line 67: the one 'waiting for game to start error' of the run; line 102 on: TaskExecutor DailyTask lines (the game was entered); line 292: the real failure, FarmEchoTask 'farm 4c error' (the weekly boss task)"
+    },
+    {
+     "kind": "commit",
+     "ref": "3287c40d: only a run that never got in is unreachable; otherwise the log's own exception is the reason"
+    }
+   ],
+   "proof": {
+    "red_at": [
+     "3287c40d~1"
+    ],
+    "green_at": "3287c40d"
+   }
+  },
+  {
+   "id": "0907-06-08-44-entered-not-unreachable",
+   "run": "2026-09-07/wuwa/OK-WW-06-08-44",
+   "incident": "09-07 V2: failure reason said 'could not enter the game' when the game was entered",
+   "config": {
+    "DailyTask": {
+     "Additional Tasks to Run After Daily Task": [
+      "Auto Farm all Nightmare Nest",
+      "Check Weekly Garden",
+      "Teleport and Farm 4C Echo"
+     ],
+     "Which to Farm": "Tacet Suppression"
+    },
+    "_source": "relay.log 09-07 08:52:11 (additional tasks synced to DailyTask.json) and 09-04 15:14:44 ('Which to Farm' -> Tacet Suppression); no filter line in this era (85ca8649, 09-13)."
+   },
+   "expect": {
+    "ok": false,
+    "raw": {
+     "okww_unreachable": null
+    },
+    "failed_tasks": {
+     "lacks": [
+      "流程产生错误",
+      "进不了游戏"
+     ],
+     "any_of": [
+      [
+       "FarmEchoTask",
+       "周本"
+      ]
+     ]
+    }
+   },
+   "evidence": [
+    {
+     "kind": "owner",
+     "ref": "owner, 09-07 (quoted in the fix's own test, git show 3287c40d:relay/tests/test_okww_error_reason.py docstring): 「这三次报错可不是因为他没进去游戏。这个检查报错原因的机制有问题。」"
+    },
+    {
+     "kind": "log",
+     "ref": "line 67: the one 'waiting for game to start error' of the run; line 102 on: TaskExecutor DailyTask lines (the game was entered); line 299: the real failure, FarmEchoTask 'farm 4c error' (the weekly boss task)"
+    },
+    {
+     "kind": "commit",
+     "ref": "3287c40d: only a run that never got in is unreachable; otherwise the log's own exception is the reason"
+    }
+   ],
+   "proof": {
+    "red_at": [
+     "3287c40d~1"
+    ],
+    "green_at": "3287c40d"
+   }
+  },
+  {
+   "id": "0921-weekly-never-entered",
+   "run": "2026-09-21/wuwa/OK-WW-05-33-53",
+   "incident": "09-23 V2: weekly not entered reported as fought / 'could not leave the dungeon'",
+   "config": {
+    "DailyTask": {
+     "Additional Tasks to Run After Daily Task": [
+      "Auto Farm all Nightmare Nest",
+      "Check Weekly Garden",
+      "Teleport and Farm 4C Echo"
+     ],
+     "Which to Farm": "Tacet Suppression"
+    },
+    "_source": "relay.log 09-07 08:52:11 (additional tasks synced to DailyTask.json) and 09-04 15:14:44 ('Which to Farm' -> Tacet Suppression); no filter line in this era (85ca8649, 09-13).",
+    "NightmareNestTask": {
+     "Only Farm These Nests": "落渊南丘",
+     "_source": "the run's own log: nightmare nest: 只刷 ['落渊南丘']（设置来自母本）"
+    }
+   },
+   "expect": {
+    "ok": true,
+    "verdict": {
+     "clean": false,
+     "has": [
+      "没进本"
+     ],
+     "lacks": [
+      "周本打了",
+      "退出副本"
+     ]
+    },
+    "raw_has": {
+     "okww_steps": [
+      "没进本"
+     ]
+    },
+    "raw_lacks": {
+     "okww_error": [
+      "退出副本"
+     ]
+    }
+   },
+   "evidence": [
+    {
+     "kind": "log",
+     "ref": "line 1155 'info_set Teleport to Boss Weekly Challenge 0' (logged before the book opens); line 1172 '找不到开启挑战'; lines 1206-1207 RuntimeError 'Teleport to boss failed'; no 'teleport_to_boss prepared as' and no FarmEchoTask enter combat"
+    },
+    {
+     "kind": "frame",
+     "ref": "0921_no_start_btn (M3 screenshot of the level page with no 开启挑战 button; scratchpad gamesim/failures/work/frames)"
+    },
+    {
+     "kind": "commit",
+     "ref": "4fb720e6: 'OK-WW-05-33-53.log 1155-1177 ... 09-21 never entered'"
+    }
+   ],
+   "proof": {
+    "red_at": [
+     "4fb720e6~1"
+    ],
+    "green_at": "4fb720e6"
+   }
+  },
+  {
+   "id": "0922-weekly-full-before-entry",
+   "run": "2026-09-22/wuwa/OK-WW-05-17-09",
+   "incident": "09-23 V2: 0/3 read before entry reported as if this run had claimed",
+   "config": {
+    "DailyTask": {
+     "Additional Tasks to Run After Daily Task": [
+      "Auto Farm all Nightmare Nest",
+      "Check Weekly Garden",
+      "Teleport and Farm 4C Echo"
+     ],
+     "Which to Farm": "Tacet Suppression"
+    },
+    "_source": "relay.log 09-07 08:52:11 (additional tasks synced to DailyTask.json) and 09-04 15:14:44 ('Which to Farm' -> Tacet Suppression); no filter line in this era (85ca8649, 09-13).",
+    "NightmareNestTask": {
+     "Only Farm These Nests": "落渊南丘",
+     "_source": "the run's own log: nightmare nest: 只刷 ['落渊南丘']（设置来自母本）"
+    }
+   },
+   "expect": {
+    "ok": true,
+    "verdict": {
+     "clean": true
+    },
+    "raw_has": {
+     "okww_steps": [
+      "0/3",
+      "这一趟没领"
+     ]
+    }
+   },
+   "evidence": [
+    {
+     "kind": "log",
+     "ref": "line 166 the game's counter '本周剩余可收取次数：0/3' read before entry; line 167 '本周周本次数已领满（0/3），不进本，跳过': the week was full before this run, which claimed nothing"
+    },
+    {
+     "kind": "commit",
+     "ref": "4fb720e6: 'ok-script.log 237-238 (09-22 read 0/3 and skipped)', '0/3 step says this run claimed none'"
+    },
+    {
+     "kind": "relay",
+     "ref": "state/ledger-2026-09-22.jsonl line 2: booked a success, nothing pushed"
+    }
+   ],
+   "proof": {
+    "red_at": [
+     "4fb720e6~1"
+    ],
+    "green_at": "4fb720e6"
+   }
+  },
+  {
+   "id": "0929-battle-pass-error-heard",
+   "run": "2026-09-29/wuwa/OK-WW-05-20-18",
+   "incident": "09-29 V7: 「can not battle pass, maybe ended」 in a round booked as success; nothing said",
+   "config": {
+    "DailyTask": {
+     "Additional Tasks to Run After Daily Task": [
+      "Auto Farm all Nightmare Nest",
+      "Check Weekly Garden",
+      "Teleport and Farm 4C Echo"
+     ],
+     "Which to Farm": "Tacet Suppression"
+    },
+    "_source": "relay.log 09-07 08:52:11 (additional tasks synced to DailyTask.json) and 09-04 15:14:44 ('Which to Farm' -> Tacet Suppression); no filter line in this era (85ca8649, 09-13).",
+    "NightmareNestTask": {
+     "Only Farm These Nests": "落渊南丘",
+     "_source": "the run's own log: nightmare nest: 只刷 ['落渊南丘']（设置来自母本）"
+    }
+   },
+   "expect": {
+    "ok": true,
+    "group": {
+     "any_of": [
+      [
+       "战令",
+       "can not battle pass"
+      ]
+     ]
+    }
+   },
+   "evidence": [
+    {
+     "kind": "log",
+     "ref": "line 476 'DailyTask:battle pass'; line 478 'ERROR TaskExecutor DailyTask:can not battle pass, maybe ended'; line 481 'Daily Task Completed' (no retry)"
+    },
+    {
+     "kind": "relay",
+     "ref": "state/ledger-2026-09-29.jsonl line 3: booked ok, no item about the battle pass"
+    },
+    {
+     "kind": "owner",
+     "ref": "2026-10-11 17:43 (relay/USER-SWITCHES.txt header): 「你们有多少东西只进日报不去修的？如果不是自己好了禁止只进日报」"
+    },
+    {
+     "kind": "commit",
+     "ref": "a6fdd68b: an unlisted ERROR line in a successful round's game log goes to the group (the 09-29 line named in gamelog_errors.py's docstring)"
+    }
+   ],
+   "proof": {
+    "red_at": [
+     "a6fdd68b~1"
+    ],
+    "green_at": "a6fdd68b"
+   }
+  },
+  {
+   "id": "1006-full-week-no-shortage-alarm",
+   "run": "2026-10-06/wuwa/OK-WW-05-19-08",
+   "incident": "10-06 V1: weekly waveplate shortage pushed as a failure alarm",
+   "config": {
+    "DailyTask": {
+     "Additional Tasks to Run After Daily Task": [
+      "Auto Farm all Nightmare Nest",
+      "Check Weekly Garden",
+      "Teleport and Farm 4C Echo"
+     ],
+     "Which to Farm": "Tacet Suppression"
+    },
+    "_source": "relay.log 09-07 08:52:11 (additional tasks synced to DailyTask.json) and 09-04 15:14:44 ('Which to Farm' -> Tacet Suppression); no filter line in this era (85ca8649, 09-13).",
+    "NightmareNestTask": {
+     "Only Farm These Nests": "落渊南丘",
+     "_source": "the run's own log: nightmare nest: 只刷 ['落渊南丘']（设置来自母本）"
+    }
+   },
+   "expect": {
+    "ok": true,
+    "verdict": {
+     "clean": true
+    }
+   },
+   "evidence": [
+    {
+     "kind": "log",
+     "ref": "lines 175-176: counter 0/3 read before entry, '本周周本次数已领满（0/3），不进本，跳过'; the only '结晶波片不足' is line 104, a pyappify-update changelog line (MainThread pyappify-update logger), not the game"
+    },
+    {
+     "kind": "alarm",
+     "ref": "state/alerts/20261006.jsonl 09:28:13 「⚠️ 这一轮没干完」 with the single item 「周本领到了奖励：结晶波片不够领奖」; every other item listed as done"
+    },
+    {
+     "kind": "commit",
+     "ref": "12edfb0b: the 10-06 false alarm came from the changelog line; only task lines are read. b799746e (same day) did not change this run's verdict"
+    }
+   ],
+   "proof": {
+    "red_at": [
+     "b799746e~1",
+     "12edfb0b~1"
+    ],
+    "green_at": "12edfb0b"
+   }
+  },
+  {
+   "id": "0901-shortage-at-start-said-as-shortage",
+   "run": "2026-09-01/wuwa/OK-WW-06-58-23",
+   "incident": "10-07 V1: shortage label wrong / shortage alarm (verdict later re-decided by 5ef071e7)",
+   "config": {
+    "DailyTask": {
+     "Additional Tasks to Run After Daily Task": [
+      "Auto Farm all Nightmare Nest"
+     ],
+     "Which to Farm": "Simulation Challenge"
+    },
+    "_source": "relay.log 09-03 02:00:56 (first recorded sync of the additional tasks; the value before it is not recorded) and 09-04 15:14:44 (set_master 'Which to Farm' Simulation Challenge -> Tacet Suppression); no 'Only Farm These Nests' line in logs before 85ca8649 (09-13), so no filter is given. This case asserts only on items the config does not decide."
+   },
+   "expect": {
+    "ok": true,
+    "verdict": {
+     "clean": false,
+     "has": [
+      "结晶波片不足"
+     ],
+     "lacks": [
+      "传送去 Boss 没成",
+      "无法获取奖励"
+     ]
+    }
+   },
+   "evidence": [
+    {
+     "kind": "log",
+     "ref": "line 180 counter '本周剩余可收取次数：1/3'; line 183 '波片不足挡住开启挑战，点取消跳过本次周本' (the overlay's own skip line: blocked at 开启挑战, no fight, so not the claim dialog 「结晶波片不足，无法获取奖励」)"
+    },
+    {
+     "kind": "commit",
+     "ref": "5ef071e7: a weekly-boss waveplate shortage is an item undone and pushed (the 10-07 'normal state' rested on the 10-06 false alarm, 12edfb0b; the AUTO-MAS history has a real shortage in 6 of 126 weekly runs, all 08-31/09-01 hand-runs)"
+    }
+   ],
+   "proof": {
+    "red_at": [
+     "3f6b2fbe~1",
+     "5ef071e7~1"
+    ],
+    "green_at": "5ef071e7"
+   }
+  },
+  {
+   "id": "0831-shortage-before-fight-said-as-shortage",
+   "run": "2026-08-31/wuwa/OK-WW-23-33-50",
+   "incident": "10-07 V1: shortage label wrong / shortage alarm (verdict later re-decided by 5ef071e7); also the 10-12 V1 shape: dailies already done, so the weekly item was never judged (f912c1f0)",
+   "config": {
+    "DailyTask": {
+     "Additional Tasks to Run After Daily Task": [
+      "Auto Farm all Nightmare Nest"
+     ],
+     "Which to Farm": "Simulation Challenge"
+    },
+    "_source": "relay.log 09-03 02:00:56 (first recorded sync of the additional tasks; the value before it is not recorded) and 09-04 15:14:44 (set_master 'Which to Farm' Simulation Challenge -> Tacet Suppression); no 'Only Farm These Nests' line in logs before 85ca8649 (09-13), so no filter is given. This case asserts only on items the config does not decide."
+   },
+   "expect": {
+    "ok": true,
+    "verdict": {
+     "clean": false,
+     "has": [
+      "结晶波片不足"
+     ],
+     "lacks": [
+      "无法获取奖励"
+     ]
+    }
+   },
+   "evidence": [
+    {
+     "kind": "log",
+     "ref": "line 186 counter '本周剩余可收取次数：3/3' at 03:36:21; line 188 '结晶波片不足，取消并跳过本次周本' at 03:36:26, no FarmEchoTask enter combat: skipped before any fight, so not the claim dialog 「结晶波片不足，无法获取奖励」 a won fight leaves; line 160 'total daily points 220' (dailies done before this run)"
+    },
+    {
+     "kind": "commit",
+     "ref": "5ef071e7: a weekly-boss waveplate shortage is an item undone and pushed (the 10-07 'normal state' rested on the 10-06 false alarm, 12edfb0b; the AUTO-MAS history has a real shortage in 6 of 126 weekly runs, all 08-31/09-01 hand-runs)"
+    },
+    {
+     "kind": "commit",
+     "ref": "f912c1f0: a run after the dailies were done still judges the weekly boss"
+    }
+   ],
+   "proof": {
+    "red_at": [
+     "3f6b2fbe~1",
+     "5ef071e7~1",
+     "f912c1f0~1"
+    ],
+    "green_at": "f912c1f0"
+   }
+  },
+  {
+   "id": "1005-additional-task-error-heard",
+   "run": "2026-10-05/wuwa/OK-WW-05-39-25",
+   "incident": "10-12 V1: log said 「这一趟按失败结束」/「附加任务出错」 (the 1005 line), item not reported",
+   "config": {
+    "DailyTask": {
+     "Additional Tasks to Run After Daily Task": [
+      "Auto Farm all Nightmare Nest",
+      "Check Weekly Garden",
+      "Teleport and Farm 4C Echo"
+     ],
+     "Which to Farm": "Tacet Suppression"
+    },
+    "_source": "relay.log 09-07 08:52:11 (additional tasks synced to DailyTask.json) and 09-04 15:14:44 ('Which to Farm' -> Tacet Suppression); no filter line in this era (85ca8649, 09-13)."
+   },
+   "expect": {
+    "ok": true,
+    "verdict": {
+     "clean": false,
+     "has": [
+      "附加任务出错"
+     ]
+    }
+   },
+   "evidence": [
+    {
+     "kind": "log",
+     "ref": "line 1329 'ERROR TaskExecutor DailyTask:附加任务出错，不拖垮当趟日常:  Traceback' (after line 1291 FarmEchoTask 'farm 4c error')"
+    },
+    {
+     "kind": "ledger",
+     "ref": "BOARD/报错台账.txt:760-764 (10-12 22:3x 验收 · 鸣潮日志写了「按失败结束」还判成干净): such lines are always a failure, 5fddd375"
+    },
+    {
+     "kind": "commit",
+     "ref": "5fddd375 (its own test quotes this run's line: 'OK-WW log 2026-10-05 10:34:52,359')"
+    }
+   ],
+   "proof": {
+    "red_at": [
+     "5fddd375~1"
+    ],
+    "green_at": "5fddd375"
+   }
+  },
+  {
+   "id": "1012-second-run-weekly-stop-heard",
+   "run": "2026-10-12/wuwa/OK-WW-07-41-07",
+   "incident": "10-12 V1: 11:45 weekly failed; outcome returned early on 'daily already done', silent",
+   "config": {
+    "DailyTask": {
+     "Additional Tasks to Run After Daily Task": [
+      "Auto Farm all Nightmare Nest",
+      "Check Weekly Garden",
+      "Teleport and Farm 4C Echo"
+     ],
+     "Which to Farm": "Tacet Suppression"
+    },
+    "_source": "relay.log 09-07 08:52:11 (additional tasks synced to DailyTask.json) and 09-04 15:14:44 ('Which to Farm' -> Tacet Suppression); no filter line in this era (85ca8649, 09-13).",
+    "NightmareNestTask": {
+     "Only Farm These Nests": "梦枢天罗,落渊南丘",
+     "_source": "the run's own log: nightmare nest: 只刷 ['梦枢天罗', '落渊南丘']（设置来自母本）"
+    }
+   },
+   "expect": {
+    "ok": true,
+    "verdict": {
+     "clean": false,
+     "has": [
+      "周本",
+      "没等到结算页"
+     ]
+    }
+   },
+   "evidence": [
+    {
+     "kind": "ledger",
+     "ref": "BOARD/报错台账.txt:718-722 (10-12 12:05 中继二 · 补跑那趟周本停下没进群): the 11:45:02 stop should have reached the group"
+    },
+    {
+     "kind": "relay",
+     "ref": "relay.log 10-12 11:49:23 '…OK-WW-07-41-07 是有人在 AUTO-MAS 上手动开的，跑完了，静默记账'"
+    },
+    {
+     "kind": "log",
+     "ref": "line 332 '周本领奖：已点确认'; lines 333-334 '没等到结算页' and '这一趟按失败结束'; line 373 'total daily points 140' (dailies already done)"
+    },
+    {
+     "kind": "frame",
+     "ref": "11-45-02.499_weekly_no_settlement (the 补充结晶波片 page, no settlement)"
+    },
+    {
+     "kind": "commit",
+     "ref": "f912c1f0"
+    }
+   ],
+   "proof": {
+    "red_at": [
+     "f912c1f0~1"
+    ],
+    "green_at": "f912c1f0"
+   }
+  }
+ ]
+}
