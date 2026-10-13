@@ -13,8 +13,9 @@ upstream's own call order, with the game's real text:
       no stop, the lap goes back to upstream
   a dialog that is not the claim dialog, or not the weekly boss: upstream's ESC
   unread 「本周剩余可收取次数」 before entering: stop, not 「enter anyway」
-  开启挑战: the waveplate dialog is looked for over ~5 s, not once (08-31), and a
-      dialog that is up but not recognised is never confirmed
+  开启挑战: a dialog that is up but not recognised is never confirmed (the
+      「无法获取奖励」 reminder comes after 单人挑战 under v3.7.4, see
+      test_okww_weekly_entry_paths.py)
 """
 import sys
 import types
@@ -83,12 +84,12 @@ class BaseWWTask(metaclass=_Any):
 
 class FarmEchoTask(BaseWWTask):
     def teleport_to_configured_boss(self):
-        # Upstream v3.7.3 FarmEchoTask.py:268-304, reduced to the steps after the book.
+        # Upstream v3.7.4 FarmEchoTask.py:273-308, reduced to the steps after the book.
         self.entries += 1
         is_team = self.click_on_book_target(1, 9)
         if is_team and not self.arena:
             self.click_configured_boss_level()
-            self.click(0.880, 0.911, after_sleep=2)
+            self.click_solo_challenge()
             self.click_team_challenge()
         self.wait_in_team_and_world(time_out=120)
         return is_team
@@ -103,6 +104,11 @@ class FarmEchoTask(BaseWWTask):
 
     def click_configured_boss_level(self):
         self.events.append("level")
+
+    # Upstream v3.7.4 FarmEchoTask.py:374-378, verbatim.
+    def click_solo_challenge(self):
+        self.click(0.880, 0.911, after_sleep=2)
+        self.wait_click_skip_dialog_confirm(time_out=1)
 
     def combat_once(self, wait_combat_time=200, raise_if_not_found=True, target=False):
         return True
@@ -465,19 +471,6 @@ t = task(pages=[PAGE[3]])
 t.teleport_to_configured_boss_and_prepare()
 check("进了本", t.prepared, "realm")
 check("记下 3", t._ark_weekly_left, 3)
-
-print("\n[开启挑战后第 3 次才读到波片不足（08-31 那种第一眼没读到）：点取消，跳过]")
-t = task(after=[[], [], ["结晶波片不足，无法获取奖励"]])
-try:
-    t.click_team_challenge()
-    got = "on"
-except Disabled:
-    got = "skip"
-check("跳过", got, "skip")
-check("点了取消，没点确认", [e for e in t.events if e in ("cancel", "confirm", "skip-confirm")], ["cancel"])
-check("留图", "nowave_dialog" in t.shots)
-check("日志照旧（日报认这句）", "结晶波片不足，取消并跳过本次周本" in t.logs)
-check("缺波片按跳过结束：没留失败原因", getattr(t, "_ark_failed", None), None)
 
 print("\n[开启挑战后有对话框、字一直认不出：不点确认，截图报手机，停下]")
 t = task(dialogs=["btn"] * 6)

@@ -297,6 +297,7 @@ PATCH_COVERAGE = {
 BEHAVIOUR_TESTS = {
     "FarmEchoTask.combat_once": "test_okww_weekly_entry_paths.py",
     "FarmEchoTask.click_team_challenge": "test_okww_weekly_entry_paths.py",
+    "FarmEchoTask.click_solo_challenge": "test_okww_weekly_entry_paths.py",
     "BaseWWTask.click_on_book_target": "test_okww_weekly_entry_paths.py",
     "FarmEchoTask.teleport_to_configured_boss": "test_okww_weekly_entry_paths.py",
     "FarmEchoTask.teleport_to_configured_boss_and_prepare": "test_okww_weekly_entry_paths.py",

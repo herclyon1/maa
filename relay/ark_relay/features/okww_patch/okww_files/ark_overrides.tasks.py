@@ -645,7 +645,12 @@ _MAX_FARM_RETRIES = 3
 SOLO_BOX = (0.60, 0.84, 0.98, 0.96)
 _SOLO_WAIT = 5          # seconds for 开启挑战 after each click
 _SOLO_RETRIES = 3       # extra clicks on 单人挑战 before the old error path runs
-_CHALLENGE_LOOKS = 6    # reads 1 s apart after 开启挑战 (~5 s) for the waveplate dialog
+_CHALLENGE_LOOKS = 6    # reads 1 s apart after 开启挑战 (~5 s) for an unknown dialog
+# Seconds to wait for the 「无法获取奖励」 reminder after 单人挑战. Upstream waits 1 s
+# (FarmEchoTask.py:374-378); on 10-12 11:43:16 and 15:28:19 it was found within
+# 0.3 s of that window opening. 2 s leaves room for a slower frame.
+_SOLO_DIALOG_WAIT = 2
+_CONFIRM_BTNS = ['confirm_btn_hcenter_vcenter', 'confirm_btn_highlight_hcenter_vcenter']
 
 # Stamina: upstream's own read box (BaseWWTask.get_stamina) and pattern. get_stamina
 # is replaced outright (its body is the bug), so it is pinned: hash of the game
@@ -659,14 +664,15 @@ _STAMINA_DIALOG_READS = 5   # reads, 1 s apart, inside use_stamina's reward dial
 def _confirm_solo(task):
     """Make sure the click on 「单人挑战」 was taken; returns how many extra clicks it took.
 
-    Upstream's teleport_to_configured_boss picks the level, clicks (0.880, 0.911)
-    once and never looks at the result (FarmEchoTask.py:262-264). On 2026-09-21 the
-    click landed inside the button and the game did not take it: the screen stayed
-    on 单人挑战 and the run died ten seconds later on 「no 开启挑战」. This waits for
-    开启挑战; while it is missing and 单人挑战 is still on screen, it takes a screenshot,
-    logs a line and clicks the button where OCR actually found it, up to
-    _SOLO_RETRIES times. Anything else on screen (the waveplate dialog, some other
-    screen) is left to click_team_challenge's own handling below.
+    The click on 单人挑战 is one click at (0.880, 0.911) (v3.7.4 click_solo_challenge,
+    FarmEchoTask.py:374-378, and ours for the weekly boss), and nothing checks that
+    the game took it. On 2026-09-21 the click landed inside the button and the game
+    did not take it: the screen stayed on 单人挑战 and the run died ten seconds later
+    on 「no 开启挑战」. This waits for 开启挑战; while it is missing and 单人挑战 is
+    still on screen, it takes a screenshot, logs a line and clicks the button where
+    OCR actually found it, up to _SOLO_RETRIES times. Anything else on screen is
+    left to click_team_challenge's own handling below. The 「无法获取奖励」 reminder is
+    answered before this, in click_solo_challenge.
     """
     for n in range(_SOLO_RETRIES + 1):
         if task.wait_feature("team_start_challenge", time_out=_SOLO_WAIT, raise_if_not_found=False):
@@ -677,8 +683,6 @@ def _confirm_solo(task):
             break
         seen = task.ocr(box=task.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
         text = " ".join(str(getattr(b, "name", b)) for b in seen)
-        if "结晶波片不足" in text or "无法获取奖励" in text:
-            return n
         solo = [b for b in (task.ocr(box=task.box_of_screen(*SOLO_BOX)) or [])
                 if "单人挑战" in str(getattr(b, "name", ""))]
         if not solo:
@@ -1190,13 +1194,59 @@ def _install_hooks():
             pass
         return pick_level(self)
 
-    # -- weekly boss: short on waveplates means no fight for nothing; the run is skipped --
+    # -- weekly boss: the 「无法获取奖励」 reminder after 单人挑战 ------------------
+    solo_challenge = getattr(FarmEchoTask, "click_solo_challenge", None)
+
+    @override(FarmEchoTask, "click_solo_challenge")
+    def click_solo_challenge(self):
+        # v3.7.4 clicks 单人挑战 and, within 1 s, confirms any dialog and ticks
+        # 「本次登录不再提示」 (FarmEchoTask.py:374-378, BaseWWTask.py:1069-1113). Its
+        # comment: when waveplates (backup included) are short, 「无法获取奖励，是否继续
+        # 进入」 comes up before the team screen. For the echo farm that is right (no
+        # reward wanted) and stays upstream's. For the weekly boss it confirmed a
+        # fight for no reward (10-12 11:43:16, ok-script.2026-10-12.log:1864-1870;
+        # 15:28:19, :2735-2740), and the tick hid the reminder for the rest of that
+        # login (:2877). Here: the same click; a dialog is read before anything is
+        # pressed. The reminder with waveplates + backup under one claim is a
+        # shortage: 取消, skipped. With enough, 确认 without the tick (the reward is
+        # paid at the crystal; the claim hook reads the bar again there). Any other
+        # dialog, or a bar that cannot be read, is a picture and a stop.
+        if not _weekly(self) or farming_echoes():
+            return solo_challenge(self)
+        self.click(0.880, 0.911, after_sleep=2)
+        up = self.wait_until(lambda: self.find_one(_CONFIRM_BTNS, horizontal_variance=0.1,
+                                                   vertical_variance=0.1),
+                             time_out=_SOLO_DIALOG_WAIT, raise_if_not_found=False)
+        if not up:
+            return None
+        found, text = _screen_read(self)
+        if "结晶波片不足" not in text and "无法获取奖励" not in text:
+            _stop(self, "solo_dialog_unknown",
+                  f"周本：点单人挑战后弹出认不出的对话框，不点确认，停下。整屏读到 {text[:600]}")
+        wave, spare = _waveplates(self, found)
+        if wave is None or spare is None:
+            _stop(self, "solo_dialog_bar_unread",
+                  f"周本：点单人挑战后弹出「无法获取奖励」，顶栏的波片没读全（波片 {wave}，备用 {spare}），"
+                  f"不点确认，停下。整屏读到 {text[:400]}")
+        self.log_info(f"周本：点单人挑战后弹出「无法获取奖励」，顶栏读到波片 {wave}/240，备用 {spare}")
+        if wave + spare < _CLAIM_COST:
+            # Logged before the click, which can raise: the relay reads this line as a
+            # shortage (outcome.WEEKLY_SHORT), an item undone, not an error.
+            self.log_info(f"结晶波片不足，取消并跳过本次周本（单人挑战后的提醒框：波片 {wave} + 备用 {spare}，"
+                          f"不够领一次的 {_CLAIM_COST}）")
+            _shot(self, "nowave_dialog")
+            self.click_dialog_left_button()
+            self.sleep(1)
+            _skip_short(self)
+        self.log_info(f"周本：波片 {wave} + 备用 {spare} 够领一次，提醒框点确认（不勾「本次登录不再提示」）")
+        self.click_dialog_right_button()
+        return None
+
+    # -- every boss entry: 单人挑战 taken, then 开启挑战; an unknown dialog stops --
     @override(FarmEchoTask, "click_team_challenge", expect_sha=_TEAM_CHALLENGE_SHA)
     def click_team_challenge(self):
         # Upstream clicks the challenge button and confirms whatever dialog follows
-        # in one go. That dialog can be the one saying there are not enough
-        # waveplates to collect a reward, and confirming it fights the boss for
-        # nothing. Split in two so the dialog is read before anything is confirmed.
+        # in one go. Split in two so a dialog is read before anything is confirmed.
         _confirm_solo(self)
         try:
             self.wait_click_feature("team_start_challenge", raise_if_not_found=True,
@@ -1207,32 +1257,19 @@ def _install_hooks():
                 seen = self.ocr(box=self.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
             except Exception:
                 pass
-            text = " ".join(str(b) for b in seen)
-            if "结晶波片不足" in text or "无法获取奖励" in text:
-                self.log_info("波片不足挡住开启挑战，点取消跳过本次周本")
-                try:
-                    self.click_dialog_left_button()
-                    self.sleep(1)
-                except Exception:
-                    pass
-                # Not fighting for no reward is right: the run ends as skipped (no
-                # AUTO-MAS retry), and the relay pushes the shortage as an item
-                # undone, see _skip_short.
-                _skip_short(self)
             try:
                 self.screenshot("no_start_btn")
                 self.log_info(f"找不到开启挑战，整屏读到: {seen}")
             except Exception:
                 pass
             raise
-        # The dialog is looked for again and again, not once. One read 1 s after
-        # 开启挑战 missed it on 2026-08-31, upstream's confirm then took the
-        # 「无法获取奖励」 dialog, and the boss was fought for no reward. Nothing is
-        # confirmed here any more: the one dialog known to follow is that one, and
-        # its answer is 取消. A dialog that is up (upstream's own confirm-button
-        # template, the one its wait_click_skip_dialog_confirm looks for) but whose
-        # text is not that one is unknown: picture, report, stop. Reaching the
-        # arena, or the whole window with no dialog, means there is nothing to answer.
+        # Nothing is confirmed after 开启挑战. Under v3.7.4 the 「无法获取奖励」 reminder
+        # comes after 单人挑战, before the team screen (click_solo_challenge above);
+        # every 「开启挑战后读到」 line on the machine since 10-06 is []. A dialog
+        # that is up here (upstream's own confirm-button template, the one its
+        # wait_click_skip_dialog_confirm looks for) is unknown: picture, report,
+        # stop. Reaching the arena, or the whole window with no dialog, means there
+        # is nothing to answer.
         dialog = None
         for n in range(_CHALLENGE_LOOKS):
             if n:
@@ -1240,14 +1277,7 @@ def _install_hooks():
             after = self.ocr(box=self.box_of_screen(0.20, 0.35, 0.80, 0.60)) or []
             if after or not n:
                 self.log_info(f"开启挑战后读到（第 {n + 1} 次）: {after}")
-            if any("结晶波片" in str(b) or "无法获取奖励" in str(b) for b in after):
-                self.log_info("结晶波片不足，取消并跳过本次周本")
-                _shot(self, "nowave_dialog")
-                self.click_dialog_left_button()
-                self.sleep(1)
-                _skip_short(self)
-            dialog = self.find_one(['confirm_btn_hcenter_vcenter', 'confirm_btn_highlight_hcenter_vcenter'],
-                                   horizontal_variance=0.1, vertical_variance=0.1)
+            dialog = self.find_one(_CONFIRM_BTNS, horizontal_variance=0.1, vertical_variance=0.1)
             if dialog is None and self.in_team_and_world():
                 break
         if dialog is not None:
