@@ -84,7 +84,7 @@ def _unfinished_queues(eng, now: datetime, entries: list[dict]) -> list[str]:
 
 
 # How far ahead a scheduled queue still counts as the one this boot was woken for
-# (the machine wakes about 15 minutes before the shift).
+# (the machine wakes 15 minutes before the morning shift, 10 before the evening one).
 SHIFT_AHEAD_MIN = 60
 
 
