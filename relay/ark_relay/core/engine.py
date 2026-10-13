@@ -626,6 +626,14 @@ class Engine:
         """
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         if self._shutdown_issued:
+            # Only one clock moment is left: ISSUED_STUCK_MIN after the command,
+            # shutdown.decide calls a machine still up 「not-down」 and the group
+            # hears 「关机被取消」. Sleeping to the hour backstop made that up to
+            # 50 minutes late (audit s2 F2).
+            from ark_relay.features.shutdown.shutdown import ISSUED_STUCK_MIN  # noqa: PLC0415
+            at = getattr(self, "_shutdown_issued_at", None)
+            if at is not None and (check := at + timedelta(minutes=ISSUED_STUCK_MIN)) > now:
+                return (check, "核对关机有没有关下去")
             return None
         cands: list[tuple[datetime, str]] = []
 
