@@ -20,8 +20,8 @@ if hasattr(time, "tzset"):
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay.features.evidence.logslice import slice_log  # noqa: E402
-from _tmp import tmpdir  # noqa: E402
+from ark_relay.features.evidence.logslice import slice_log
+from _tmp import tmpdir
 
 fails = []
 
