@@ -88,7 +88,7 @@ def okww_python_pids(timeout: "float | None" = None) -> "list[int] | None":
     return out
 
 
-def _okww_quiesce(sleep=time.sleep, launcher_root: Path | None = None) -> None:
+def _okww_quiesce(sleep=time.sleep, launcher_root: Path | None = None, left=None) -> None:
     """Stop OK-WW, the game and the Kuro launcher, so nothing rewrites OK-WW's
     config from memory.
 
@@ -99,8 +99,10 @@ def _okww_quiesce(sleep=time.sleep, launcher_root: Path | None = None) -> None:
     `launcher_root` is the Kuro launcher's folder (see _stop_wuwa_launcher).
     taskkill runs from the service's session and its result is not checked; a
     caller that must know the machine is clean uses _okww_close.
+    `left`, when given, returns the seconds a caller's time budget has left; each
+    PowerShell call here gets only that (echofarm.stop_okww).
     """
-    _stop_okww_python()
+    _stop_okww_python(timeout=left() if left else None)
     for name in ("ok-ww.exe", "Wuthering Waves.exe",
                  "Client-Win64-Shipping.exe", "KRSDKExternal.exe"):
         try:
@@ -108,7 +110,7 @@ def _okww_quiesce(sleep=time.sleep, launcher_root: Path | None = None) -> None:
                            capture_output=True, timeout=30)
         except (OSError, subprocess.SubprocessError):
             pass
-    _stop_wuwa_launcher(launcher_root)
+    _stop_wuwa_launcher(launcher_root, timeout=left() if left else None)
     # Two seconds for the processes to exit. `sleep` is injectable for tests.
     sleep(2)
 
@@ -178,7 +180,8 @@ def _is_wuwa_launcher(path, root: Path | None = None) -> bool:
     return _WW_LAUNCHER_SEGMENT in p
 
 
-def _wuwa_launcher_procs(root: Path | None = None) -> list[tuple[int, str]] | None:
+def _wuwa_launcher_procs(root: Path | None = None,
+                         timeout: "float | None" = None) -> list[tuple[int, str]] | None:
     """(PID, path) of the running Kuro launcher processes; None when the process
     list could not be read."""
     ps = ("Get-CimInstance Win32_Process -Filter "
@@ -189,7 +192,7 @@ def _wuwa_launcher_procs(root: Path | None = None) -> list[tuple[int, str]] | No
     # at 0.39-0.54 s over 5 runs.
     try:
         r = subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
-                           capture_output=True, timeout=60)
+                           capture_output=True, timeout=60 if timeout is None else timeout)
         data = json.loads((r.stdout or b"").decode("utf-8", "replace").strip() or "null")
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
@@ -204,14 +207,14 @@ def _wuwa_launcher_procs(root: Path | None = None) -> list[tuple[int, str]] | No
     return out
 
 
-def _stop_wuwa_launcher(root: Path | None = None) -> list[int]:
+def _stop_wuwa_launcher(root: Path | None = None, timeout: "float | None" = None) -> list[int]:
     """Stop the Kuro launcher processes, matched on their full executable path.
 
     Returns the PIDs taskkill confirmed (return code 0); one it could not stop
     is logged and left out (_okww_close tries again from the desktop).
     """
     stopped = []
-    for pid, path in _wuwa_launcher_procs(root) or []:
+    for pid, path in _wuwa_launcher_procs(root, timeout) or []:
         try:
             r = subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, timeout=30)
         except (OSError, subprocess.SubprocessError) as exc:

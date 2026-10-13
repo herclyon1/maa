@@ -99,5 +99,33 @@ check("读不到进程列表 → 什么都不停", (
              pk._stop_wuwa_launcher())[-1])(), [])
 subprocess.run = real_run
 
+print("[a caller's time budget reaches every PowerShell call (echofarm.stop_okww, 2026-10-13)]")
+_pwsh_timeouts = []
+
+
+def _rec(*a, **k):
+    if a and "-Command" in a[0]:
+        _pwsh_timeouts.append(k.get("timeout"))
+    return Done()
+
+
+subprocess.run = _rec
+try:
+    try:
+        pk._okww_quiesce(sleep=lambda _s: None, left=lambda: 3.0)
+    except TypeError as e:      # an older signature
+        _pwsh_timeouts.append(f"crashed: {type(e).__name__}")
+finally:
+    subprocess.run = real_run
+check("both PowerShell calls (OK-WW's python, the launcher list) get the budget's 3 s",
+      _pwsh_timeouts, [3.0, 3.0])
+_pwsh_timeouts.clear()
+subprocess.run = _rec
+try:
+    pk._okww_quiesce(sleep=lambda _s: None)
+finally:
+    subprocess.run = real_run
+check("without a budget they keep the 60 s guard", _pwsh_timeouts, [60, 60])
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

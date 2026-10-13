@@ -619,7 +619,7 @@ try:
     print("\n[游戏关不掉就必须说出来，不许报「已收工」]")
     # 2026-09-09: 收工 said 「配置已还原」 twice while 鸣潮 was still on screen. The
     # relay is a service in session 0 and taskkill from there does not reach the game.
-    _mod.game_alive = lambda: ["Client-Win64-Shipping.exe"]
+    _mod.game_alive = lambda timeout=None: ["Client-Win64-Shipping.exe"]
     _ran.clear()
     _note = _mod.stop_okww(sleep=lambda _s: None)
     check("话里点名还活着的进程", "Client-Win64-Shipping.exe" in _note, True)
@@ -670,6 +670,72 @@ try:
     check("nothing up: clean", _mod.game_alive(), [])
 finally:
     _sp.run, _pk._okww_quiesce = _real_run, _real_q
+
+print("\n[the wrap-up stop is bounded in time, and out of time it never says clean]")
+# 2026-10-13 review: after the desktop kill, ten looks each ran a process query free
+# to take its 60 s guard - one tick could last over ten minutes.
+_mod = importlib.reload(sys.modules["ark_relay.features.echofarm.echofarm"])
+_mod.STOP_BAT = str(tmpdir() / "ark-okww-stop.bat")
+_BOUND2 = getattr(_mod, "STOP_OKWW_SECONDS", None)   # None before the bound: checks fail, not crash
+
+
+def _wrapup_stop(alive, query_secs):
+    """The real stop_okww with fake time: `alive` gives each look's answer, and every
+    query runs `query_secs`, or to its timeout when None (a hung pwsh).
+    (note, seconds taken, timeouts handed out, looks)."""
+    clk = _Clock()
+    handed, looks = [], []
+
+    def spend(timeout):
+        handed.append(timeout)
+        clk.t += timeout if query_secs is None else min(query_secs, timeout or 60)
+
+    def quiesce(sleep=None, launcher_root=None, left=None):
+        spend(left() if left else 60)
+        spend(left() if left else 60)
+        clk.t += 2
+
+    def alive_now(timeout=None):
+        spend(timeout if timeout is not None else 60)
+        looks.append(1)
+        return alive(len(looks))
+
+    def pids(timeout=None):
+        spend(timeout if timeout is not None else 60)
+        return None if query_secs is None else [4242]
+
+    def nap(n):
+        clk.t += n
+    real = (_sp.run, _pk._okww_quiesce, _pk.okww_python_pids, _mod.game_alive, _mod._kill_on_desktop)
+    _sp.run = lambda *a, **k: _Done()
+    _pk._okww_quiesce, _pk.okww_python_pids = quiesce, pids
+    _mod.game_alive, _mod._kill_on_desktop = alive_now, (lambda pids=(): None)
+    try:
+        t0 = clk.t
+        try:
+            note = _mod.stop_okww(sleep=nap, clock=clk)
+        except TypeError as e:          # an older signature
+            note = f"crashed: {type(e).__name__}"
+        return note, clk.t - t0, handed, looks
+    finally:
+        (_sp.run, _pk._okww_quiesce, _pk.okww_python_pids, _mod.game_alive, _mod._kill_on_desktop) = real
+
+
+_note, _took, _handed, _looks = _wrapup_stop(lambda n: [_mod.UNREADABLE_SCRIPT], None)
+# Past the bound each remaining call still gets its one-second minimum: two in the
+# quiesce, the look, the PID query, plus the quiesce's 2 s pause.
+check("every query hangs: the stop still ends near its bound (at most 6 s past)",
+      _BOUND2 is not None and _took <= _BOUND2 + 6, True)
+check("…instead of the ten minutes it could take", _took < 120, True)
+check("…every query got only the time left", _BOUND2 is not None and all(x <= _BOUND2 for x in _handed), True)
+check("…and the line does not say clean", (_note != "", "关干净" in _note, "已交给我们这边去关" in _note), (True, True, True))
+check("…it names what was last seen", _mod.UNREADABLE_SCRIPT in _note, True)
+_note, _took, _handed, _looks = _wrapup_stop(lambda n: ["Client-Win64-Shipping.exe"] if n < 3 else [], 0.5)
+check("a normal stop: clean on the third look", (_note, len(_looks)), ("", 3))
+_note, _took, _handed, _looks = _wrapup_stop(lambda n: ["Client-Win64-Shipping.exe"], 0.5)
+check("a game that stays up with quick queries: ten looks after the first, as before", len(_looks), 11)
+check("…the old 「没关掉」 line naming it", ("没关掉" in _note, "Client-Win64-Shipping.exe" in _note), (True, True))
+check("…inside the bound", _BOUND2 is not None and _took <= _BOUND2, True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
