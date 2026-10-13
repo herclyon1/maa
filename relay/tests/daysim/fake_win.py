@@ -212,14 +212,26 @@ class FakeWin:
             self._kick()
         return hit
 
-    def drop_wmi(self, hresult: int = -2147023170) -> int:
-        """Every live process-start subscription ends with OnCompleted(hresult) (an outage)."""
+    def drop_wmi(self, hresult: int = -2147023170, before=None) -> int:
+        """Every live process-start subscription ends with OnCompleted(hresult) (an outage).
+
+        `before`, when given, runs once on the listener's thread just before the first
+        OnCompleted is delivered (inside its PumpWaitingMessages): what else changed on
+        the machine by the time the sink heard of the drop (world.py: the WMI service's
+        restart, which the relay's own diag then sees)."""
         n = 0
+        once = [before]
+
+        def deliver(s) -> None:
+            fn, once[0] = once[0], None
+            if fn is not None:
+                fn()
+            s.sink.OnCompleted(hresult, None, None)
         with self._lock:
             for s in self._subs:
                 if s.live:
                     s.live = False
-                    self._msgs[s.thread].append(lambda s=s: s.sink.OnCompleted(hresult, None, None))
+                    self._msgs[s.thread].append(lambda s=s: deliver(s))
                     n += 1
         self._kick()
         return n

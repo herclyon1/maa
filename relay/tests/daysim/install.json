@@ -1,0 +1,1378 @@
+{
+ "about": "daysim install copies; see install.py",
+ "as_of": "2026-10-13T17:06:37+09:00",
+ "files": [
+  {
+   "path": "D/ark/maa/config/gui.new.json",
+   "sha256": "307eda39dffa992fdced507ccf7a41ca94ba710cdfe0c33610b9ce8d8bd0cb81",
+   "len": 15048,
+   "mtime": "2026-10-11T08:46:15",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Copilot/formation.json",
+   "sha256": "d58ac5d2998ca385e3d0e9ab8f7bfc36b37f34959d9d77a9308efbbb3ae897e4",
+   "len": 18300,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/MiniGame/ALL.json",
+   "sha256": "a310845c35e88c1f9ef297dce7488ce82a7c37dc619728a239d0d02a4fdbafc9",
+   "len": 3283,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/MiniGame/AT.json",
+   "sha256": "bc4ce2a6c2326dcbd1a67e1b5ef541236e9fcb1cf80e262d93b23e0f6a84a447",
+   "len": 2642,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/MiniGame/AutoRaisePotential.json",
+   "sha256": "33b728b02ec9e0649dd6baec6abcfe256978bad85ac76ac488e3a5215a69aece",
+   "len": 7458,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/MiniGame/CursedRelic.json",
+   "sha256": "8a14d8337aa04a58de9c5cc3164d67d03d31d3523a167051504df2d29d7a4c81",
+   "len": 1879,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/MiniGame/InteractiveExhibition.json",
+   "sha256": "7b44ffe2e44109238bbfe09d5b5e8c109eac7cb6c156ca0156b0982cb81254f8",
+   "len": 6467,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/MiniGame/MaterialSynthesis.json",
+   "sha256": "db4f8eded351a54c28c5468076ab821004e56bce1960f9fdfc3998ac945c9118",
+   "len": 3741,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/MiniGame/OS.json",
+   "sha256": "8d121cee5b56e59b16b589a2569865da709a01e0906d99183b579c028d6a8252",
+   "len": 2040,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/MiniGame/PF.json",
+   "sha256": "411bdc3687bc77050a6c6149d6d9ce78744d24bd20b821036e75b0569941c601",
+   "len": 2406,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/MiniGame/PV-Reproduction.json",
+   "sha256": "4014d2085d8fd1e1e9478aba40116bd54fd4ad0f62de3f7799b9990093fa1550",
+   "len": 14912,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/MiniGame/PixelPaint.json",
+   "sha256": "aaa24cacf132c8670c110ddcae9ca1ea23fd7175450574e6a21ecd8ae2897e44",
+   "len": 2037,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/MiniGame/RebuildingMandate.json",
+   "sha256": "06a8b9f5ebefbc7bcdbb8f778361853a28d5cc529bc7c632e4ffc3e924c5f4d9",
+   "len": 6675,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/MiniGame/SPA.json",
+   "sha256": "441b6cea85d20b43c64d3169df33269d6bf1ccc868719d2b4016014beeea04e4",
+   "len": 4244,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/MiniGame/SecretFront.json",
+   "sha256": "c8856cb4f376c83b266db7e64469b36774a33e705348e9b4c50eff8fb53ff408",
+   "len": 7351,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/RA/Reclamation2.json",
+   "sha256": "3cffa28dc0e1b6f9026716ba760452798fa0f8b7efa0097294adc2469e504c5a",
+   "len": 17710,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/RA/Reclamation3.json",
+   "sha256": "462b4f31f08c92b28fe5dbbf24d60751d23cf9abf69bf366fa5d4772d466c8e3",
+   "len": 61322,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/RA/plugin/Tales.json",
+   "sha256": "ea89c0217b73fe228a21f1cb96d5f55c1ff391fa71fbbdba5a3d1cc6b3d42fd9",
+   "len": 35460,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/RA/plugin/base.json",
+   "sha256": "2ed8915e81b9614465f7c6bc64b02906437923a053f9fca6a26c9273c623bba8",
+   "len": 5053,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Roguelike/BlackFlow.json",
+   "sha256": "2b45fc61d0bfabd41408b1b7d68620a5216837cb22413930db8c43e371442789",
+   "len": 77467,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Roguelike/JieGarden.json",
+   "sha256": "e04575e2f4a8b7572ce4634e0b4d8530720247ba7788104ef3e984ce97b6099e",
+   "len": 60199,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Roguelike/Mizuki.json",
+   "sha256": "4dcd7c5d25e57db8d9286b9338b4c8bbc5660a2b83eda53400c81f13df7826a2",
+   "len": 22659,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Roguelike/Phantom.json",
+   "sha256": "3c4bd608c53150bab6633d67de7303a037872fdad5d304d6eb33c00726768f1c",
+   "len": 14583,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Roguelike/Sami.json",
+   "sha256": "d2486d335f6ffe1223bc6eaa09203ef875a3e110171a17b9fa3fb6759ddf05b4",
+   "len": 56178,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Roguelike/Sarkaz.json",
+   "sha256": "1e36260baa8165ad80fc575d4759a073c18ca855a91dad81e490b83f499b8e25",
+   "len": 45479,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Roguelike/base.json",
+   "sha256": "52abd8a79b450555b9fd430e3e656008e03d5b383acd7b0f6afbcafd31af1a59",
+   "len": 68809,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Roguelike/routing.json",
+   "sha256": "61edb99bbee8505c36634106a2daf1054c1fa6601bb55c8842d0b28256f375ae",
+   "len": 12263,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/AD.json",
+   "sha256": "d8d4520ae16b78c19c3495962dad7d8733e2bc2e95809a9038b775328a626a52",
+   "len": 1559,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/AS.json",
+   "sha256": "3aec51bd651eefd6003c82b1fe0b7734e1e0e640da3ad462f96099333c92c36e",
+   "len": 2203,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/AT.json",
+   "sha256": "de53d16b542e2f43435ba9fb9273be41fb4d8e3f2b00127bc3c74d1d7b029ccf",
+   "len": 1568,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/AveMujica.json",
+   "sha256": "f48e1eae2af197c57bf28db7fe43252fecf2d3dc6996f46303f854698e2c2f77",
+   "len": 2259,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/BB.json",
+   "sha256": "2495f39bdc58f5407ef45f866ac3b9d1925ef1959516a65bc42d10a9cebe8f5f",
+   "len": 1797,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/BP.json",
+   "sha256": "91f6306699ab0b697224cdbeddcc0ea1a9f7c2037deaef96947722e9a544a7cd",
+   "len": 1539,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/CF.json",
+   "sha256": "a4655a96331bf81382efc761b4e01bd9912e311df7b6390c4af2c9fd63ed2de4",
+   "len": 929,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/CR.json",
+   "sha256": "b13c4bac4dbd32418542da242e8ddffc6f1e2e315bcb264c9b76466c0e8283cf",
+   "len": 1029,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/CV.json",
+   "sha256": "ecf0bb3790fe2232712e7a1b2f898bfdcd608d966eb77bf82b077ef10745a28b",
+   "len": 1298,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/CW.json",
+   "sha256": "2ce99847ff62186c780be2b67c46b07076416d8054b1fce5447426f6fc8051ed",
+   "len": 1433,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/DH.json",
+   "sha256": "78eb5e16c4ac2e7cf0faad9621c2b99ff53412f7f64f30ae28a8d4c50bb1e7b5",
+   "len": 719,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/DT.json",
+   "sha256": "92e140fd6a6be02fa948092ca197ad5aa0a53c8778e6bd87dc5ebd73a1e669f0",
+   "len": 1808,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/DV.json",
+   "sha256": "4102c1cceed3bfbd4c14ab13ae3b777c7115f4eaff1e8c04834aa48a37984fdf",
+   "len": 1087,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/EA.json",
+   "sha256": "e42e595332afa5f4296865d5400464c479484bad9e87ec299ae176699b1cc7a8",
+   "len": 1467,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/EP.json",
+   "sha256": "6f5aed5e3aaf61b56978f993bb670a653987372f73992fe9992ddb3f39b52a48",
+   "len": 1693,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/FC.json",
+   "sha256": "4c4d250635e1361b0d5d994d028e43c9193751eb58d18b4434b27a1570610114",
+   "len": 1217,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/GA.json",
+   "sha256": "c08914c4bbcab8646a9a63d41e7b10393d023303a55a0e4a0abaf1644b511a4d",
+   "len": 1104,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/GO.json",
+   "sha256": "92fc4a726b2b8d4bed20c568edbbccf0ea93a0137fe5848c8be63d73a06b4544",
+   "len": 1721,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/GT.json",
+   "sha256": "bac4d764cbe9648b3b4184c00f83b6f0fdbe621cc3b17074008f4ae54526717f",
+   "len": 539,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/HE.json",
+   "sha256": "40c75b768d5f6c3b71de26fcf98ef587900f61ea896f20ea817b4896626b155f",
+   "len": 1127,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/HS.json",
+   "sha256": "0aa112058cfc6f9573bfdc7ed0b142cc3ac4708a282d93da7e3325bb71b541e3",
+   "len": 1294,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/IC.json",
+   "sha256": "3f72cd99557fb607a1f8e242529059111a4fde6803919f71229984da1a8416ae",
+   "len": 1040,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/IS.json",
+   "sha256": "36b39afc5c04bd8f3b9d46d71ca3d1a3283cb72397d36d321aa8573e1c4abd63",
+   "len": 1618,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/IW.json",
+   "sha256": "cc24ad563818c3fba1637c870177dd51db9586ae1d39adbfb6656f9022ccf928",
+   "len": 1098,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/LE.json",
+   "sha256": "6f83e1414bb4ef72c00757d3bc811ba36e1b453fa517d49cd964cec75f229e56",
+   "len": 1082,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/ME.json",
+   "sha256": "7209818db03a8225dc91865f46950abdab2c579ee5885e959d79244cb6d60602",
+   "len": 1591,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/MT.json",
+   "sha256": "95f99a38cc5716f5847b99e6ee0efa3c3e821427048ccd3cff48b87a953dbf27",
+   "len": 1730,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/NL.json",
+   "sha256": "577a08e9a4534d6548d109c17f97b4ec6aafea081e00dd1ca98cd65397042536",
+   "len": 1003,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/OD.json",
+   "sha256": "57e4314f3a2444a4b4bfbb6cd358683ee39ccbf5f254b2c4004af17a05fadd10",
+   "len": 1066,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/OF.json",
+   "sha256": "307106448b7bcc626fbb0842d174d418c145a3ba592dab09363bf06b7505170f",
+   "len": 1845,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/OR.json",
+   "sha256": "c8b370b53132e99868783e5394c7fce7d1766e0278a753591ad3e9262f174652",
+   "len": 1696,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/OS.json",
+   "sha256": "73120faff6d586453cc8e5d227a4569d48e8e0e6b690f2f61c8f439c9ecf85fb",
+   "len": 1598,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/PA.json",
+   "sha256": "44bada8d3d09c8da8582a6b856e7999024bf4d6d0c6e511a0f4c0f2ffcfcf967",
+   "len": 1380,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/PV.json",
+   "sha256": "2b4b36aa3db4194c4241085c33d3996ed3fedcf68ee5458d0d62d0775439c3ad",
+   "len": 1695,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/RS.json",
+   "sha256": "972d25760ed84caee9b863e92581071137dc7154731c64bccd858e442703563b",
+   "len": 1221,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/SL.json",
+   "sha256": "f4c8b1e40296f117ff0cae6a9e19b7a1b97bd5a92733b9d9a6b1347853b4a7e7",
+   "len": 1296,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/SN.json",
+   "sha256": "15978f05bdc06c2727883ae7074745872aefc1aa65df5f67dc0b4f6b53c0c683",
+   "len": 1484,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/SR.json",
+   "sha256": "c82bf7ae65821c2b6dabe6ad93a27f7534cbd25c27fad490edd122cea247f25f",
+   "len": 1792,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/Supplies.json",
+   "sha256": "dd6fdd5e224be69ae15b57ccff091daa2c0781ac3ab75a085ccb168a5969bf01",
+   "len": 3797,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/TA.json",
+   "sha256": "ded68fe93c53474e9d650c7080f49b11084b8b410261cc6ed27c15a4e8a6630c",
+   "len": 1590,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/TD.json",
+   "sha256": "2e5d9f88e14e694bd865b3be71b6b5c6e48748f732b2152e2e00cd71c3476099",
+   "len": 1601,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/TO.json",
+   "sha256": "60836db34a089e343fc96bdf97773401f54b47cc6800bb1a1694257c225788b8",
+   "len": 2033,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/UR.json",
+   "sha256": "50ea26a97986224269303b66c3aaa10ec9ed9a510c1050761714e6f0472e6c93",
+   "len": 1626,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/WB.json",
+   "sha256": "f0a18266d6cf0ac43e031aac57d526c2d00f249587919a74db1c5279eff3a7c8",
+   "len": 1042,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/YW.json",
+   "sha256": "30cf750f5790dbb9c158db108096eea9305d2d1cbdf7c1af2cdc452fbdeda285",
+   "len": 1584,
+   "mtime": "",
+   "src": "maa-pin dev cc780293"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/ZT.json",
+   "sha256": "df5c277161473f804d64c2fabe4fc237773594cf7113d82bc2d8a705fa5aa3e7",
+   "len": 1116,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/Stages/base.json",
+   "sha256": "c2cda59244e57262a9750fecef7100995a7bfcdf014d320dab4d4a922cb2cd76",
+   "len": 3803,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/UiTheme/Depot.json",
+   "sha256": "0aced418f4159573c903108514c0e1557982971ba74e6ea0dcb6cd9edc73ea6c",
+   "len": 2734,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/UiTheme/Friends.json",
+   "sha256": "ec3ca43303ed88eab1e0169fc50b673e4644a022709e7474123ee7e8b85e7c8f",
+   "len": 2809,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/UiTheme/Gacha.json",
+   "sha256": "439436aa665f38e0a5a4f5ca07df943eedb276741b4d0ae864cf728c85e09d30",
+   "len": 2735,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/UiTheme/Infrast.json",
+   "sha256": "c152e0e65189177e1a4ba7476e1cd3722b0346ce57cc838750f796f2d568424e",
+   "len": 2867,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/UiTheme/Mall.json",
+   "sha256": "c093a67a562c1b11dd3d0ba01ab2bc938149204c97e96c1cd3fa57e8acd2d0df",
+   "len": 2575,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/UiTheme/OperBox.json",
+   "sha256": "145aaecfa121f80fd7fff464a585967268f4272a0b626208c4ccf950c0edccde",
+   "len": 2904,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/UiTheme/QuickSwitch.json",
+   "sha256": "8ca2e30ff83732e399d45a11ef86b7110ca473e5a96abe0670752d96786b1bc4",
+   "len": 6279,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/UiTheme/Recruit.json",
+   "sha256": "ffe78b8732c7271525d07fae6eb80b33735c3055c91acfe0fb985613d576fd99",
+   "len": 2791,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/UiTheme/SwitchTheme.json",
+   "sha256": "5f8b5567a4bd70f909fee338351371951a3e454cdf04f4e2ce5f48a9b853f04c",
+   "len": 1544,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/UiTheme/SwitchThemeByName.json",
+   "sha256": "2472dc22169c97543e14920b4b9f3493d2e56cabf1bcf96e7939866ff780a03d",
+   "len": 3782,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/UiTheme/Task.json",
+   "sha256": "e9165cf1a304973fc89499333804fc325f347eacfb7234799ddb8ca3b6a9b3b1",
+   "len": 2675,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/UiTheme/Terminal.json",
+   "sha256": "357b077f1cc521d659d73fae396bf163c849d53cbe4d92e48553da56e195f608",
+   "len": 2952,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/hotfix/ocr_replace.json",
+   "sha256": "1af35755397fcaeeb0f2d4a7a7ae04848af72ad12c13a31ebfdf5fbd98743384",
+   "len": 5041,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maa/resource/tasks/tasks.json",
+   "sha256": "b258b97bbc790e74b21534ba321c2b8a0cbb4e0038911a5fcb6a4c99f944f179",
+   "len": 232804,
+   "mtime": "",
+   "src": "maa-pin v6.19.0-beta.1 54d20df3"
+  },
+  {
+   "path": "D/ark/maaend/config/maa_option.json",
+   "sha256": "0e8b893551ef229187b32265fc0ceb89b2646da152be892f72344feb243f103a",
+   "len": 112,
+   "mtime": "2026-08-14T05:49:37",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/maaend/config/mxu-MaaEnd.json",
+   "sha256": "a38d50d4af545b4164a3556c32ac1ee3dfe7c543306143c71c21da032bf1b26a",
+   "len": 56264,
+   "mtime": "2026-10-11T08:46:31",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/maaend/interface.json",
+   "sha256": "3ba04435e5333d690dc0c4387b3ddd862e61ed94c8f20ebc11822ae9017478cd",
+   "len": 9109,
+   "mtime": "2026-10-13T09:59:15",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/locales/interface/zh_cn.json",
+   "sha256": "3a0a951ad214e26f06e67414f834aeca1d53bc55aa8f32ca4d41bbb4dbf72e42",
+   "len": 216897,
+   "mtime": "2026-10-13T09:59:15",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/resource/default_pipeline.json",
+   "sha256": "def9b13cd4cbc04c96209ecea66dc50bc7c308abf32b0f168b0807a653789adc",
+   "len": 107,
+   "mtime": "2026-08-14T03:25:15",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/resource/pipeline/nodes.json",
+   "sha256": "bd2d2f0e058da0abf05212f275a3b388104fbe3a0f1544ceddb7027e69ef85da",
+   "len": 3677870,
+   "mtime": "2026-10-13T09:59:15",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AccountSwitch.json",
+   "sha256": "7ab33fc6ea2386dbd80865e79d536bc2cb87f671762c0b49bfc5a67a74dce13f",
+   "len": 4328,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AdbAutoFightTest.json",
+   "sha256": "e49f03cdb0bad96c203914ef8f103bf585679407f3d1bfadad32dbafe18e341e",
+   "len": 633,
+   "mtime": "2026-10-08T10:30:42",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AeroSalvage.json",
+   "sha256": "78280170a53f82f989d4faea54934727912a1b09604149b3632fc8f9cdec6c8e",
+   "len": 537,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AndroidOpenGame.json",
+   "sha256": "03de4dc598150186b8d8fef4bfea1996ee93064419b807593cd2b193d9dd72c4",
+   "len": 5799,
+   "mtime": "2026-10-13T09:59:15",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoCollect.json",
+   "sha256": "29ee719fd28ab195fe045f1280b72213412e07ec86696e5ecd49d6802bbb8319",
+   "len": 62133,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEcoFarm.json",
+   "sha256": "3f74bb99db98c57f14a39d29c3dea37eac69decf5e52b0228dc2bae354de37e7",
+   "len": 2538,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/AutoEssence.json",
+   "sha256": "bc7137961f7946c50c573ad44f71332d2a895504e9880f32e04d5a8ea9c6a9d5",
+   "len": 41124,
+   "mtime": "2026-10-06T09:52:59",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/ChooseLocation.json",
+   "sha256": "dc16bf82b4869e1a3f5425affc47c43cefe0b028f0bbdade1ff6cbf2b6a88351",
+   "len": 4967,
+   "mtime": "2026-10-06T09:52:59",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/SelectLocation.json",
+   "sha256": "a1b47d4b965f26d8bc4ec1523bcc59689c4e4a81ff30cb5560e0e3bed0e86512",
+   "len": 6677,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/Slot1.json",
+   "sha256": "f2bc1b485030e41369025de41755d61e10b242f70f3791efad73ee0b0d51bf63",
+   "len": 8859,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/VFOriginLodespring.json",
+   "sha256": "d13489ca8f54df470e80f38ced62389df5d86ff7322ca35741a1a94a5c3a5fb9",
+   "len": 26297,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/VFOriginiumSciencePark.json",
+   "sha256": "d54090b1e186c68f1da66532328978dd0f8badb339180c171c20b521441177ce",
+   "len": 25847,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/VFPowerPlateau.json",
+   "sha256": "8935f3e67c85b2555be796f34ad83596b050074138dc66cfe585d20bb92ea118",
+   "len": 26591,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/VFTheHub.json",
+   "sha256": "554645f690a236520f5e28ad666acd9521c8c9122dae69bfad2f2ab76dc5ff2f",
+   "len": 26605,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/WLMarkerStone.json",
+   "sha256": "d02af229c4b8917e47c8feb2941dc8dd7b439f000a758d479f83f6a24fad39c2",
+   "len": 26024,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/WLNorthWulingExclusionZone.json",
+   "sha256": "fa310f1483923ca5d48bea47a492fa65ac4e1263b8be500d22729f41cee00dc3",
+   "len": 26607,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/WLQingboStockade.json",
+   "sha256": "14687becc6c943a6f20439aa907b1cda31650f0cbd49d4e6a578528c3336a71f",
+   "len": 26327,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/WLSnowyForest.json",
+   "sha256": "82d0336d57117462486abf9dc19dd38b4e1ceaf11fdbd2c6fa2a7e234c9cc1e3",
+   "len": 26318,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/WLSwordVaultDale.json",
+   "sha256": "c6af5d2f4bd2c83f91262cc39872d3ec08c44b13244b0f80176a8da5ffc76dbe",
+   "len": 26037,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/WLTestArea.json",
+   "sha256": "286be5c13713df3150b3c23f3e33bf935c2eca3562120fe11bc7d82bd77da103",
+   "len": 26311,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/WLWulingCity.json",
+   "sha256": "683e934fb961ee305af649e848a988a3c682d010ab3dfeb10bf40954976a1d0a",
+   "len": 26115,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Location/WLYinglungPass.json",
+   "sha256": "43b0de9aeab101bf39b6bded6d817a13a54f2ec3d61d51d24f79e85f30b21a8b",
+   "len": 26703,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoEssence/Target/Target.json",
+   "sha256": "c126c4a74dc02cc76e9537fe550d32a7960535fcad5e49b9da2b91e066ac8df4",
+   "len": 38169,
+   "mtime": "2026-10-09T08:46:13",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoSell.json",
+   "sha256": "2edd4975d85fca394e9c82c73b26600839ff619444eb86cd7b96514d2ea479f6",
+   "len": 8888,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoStockStaple.json",
+   "sha256": "3358eaf7bcd67122ee7f265e559228f31dc81d1e15001a3b0be1ecaf0b0f5641",
+   "len": 109950,
+   "mtime": "2026-10-05T11:30:18",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/AutoStockpile.json",
+   "sha256": "d4ab8539627c13e9f8fc99a3e54c28ae5ccc9e999a49aa10cce759b0fb81a5c0",
+   "len": 6452,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/BakerEntry.json",
+   "sha256": "7d97a3dedb3ce037f37f48f11c1b57aa1e65caf5ad76b05a5631d698f3829d79",
+   "len": 627,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/BatchAddFriends.json",
+   "sha256": "00b388b83a6771739ca3516a781c089b153f0c0b80a0c0d36f265bfe726a100d",
+   "len": 1921,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/BatchDeleteFriends.json",
+   "sha256": "9cf71bdac0650b9173853f3fd95e80b43d3c5e98c819df35af1662d0b41d0e9f",
+   "len": 4083,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/BatchUseDetector.json",
+   "sha256": "7a179721137d03d5fc8724fc213fa058f94440b290df7cb71439caf31306ee26",
+   "len": 3612,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/ClaimSimulationRewards.json",
+   "sha256": "8c93892a9428855532d1eb2a7917dd9927a16018f10ecc0fb8352851e14db1b8",
+   "len": 2220,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/CloseGame.json",
+   "sha256": "a517b298172dd6ed6622165bdb0904065e366875dc9c0ae648f7c762ef41095c",
+   "len": 489,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/CloseGamePC.json",
+   "sha256": "e4e567e8acb1577398952f15d8a68bdb0119943fdd24779a6a3e98b6b315b2fd",
+   "len": 17653,
+   "mtime": "2026-10-12T10:58:14",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/Crafting.json",
+   "sha256": "da0828fce6506bbb1667e6694409c309c2861fb405e510e6bfd8ed0c00b7cf5d",
+   "len": 604,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/CreditShopping.json",
+   "sha256": "32f7e0d4cb608da9bbc54214fd0728f758b4608bd915b1d21c97f6fd063ea9f7",
+   "len": 100115,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/DailyRewards.json",
+   "sha256": "2a151bea961d1a78475baa0b6038427b3f703be75047b133831b8dea615139d5",
+   "len": 10182,
+   "mtime": "2026-10-12T10:58:14",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/DecomposeWeaponEssence.json",
+   "sha256": "4b903497172b9373a6ce008d80f7b8d23ce4d775748142017ce0888141adc61f",
+   "len": 3078,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/DeliveryJobs.json",
+   "sha256": "051abeab42dccf04235148d488f6a9552c726d1ca24dc4a03b079ad6c2069317",
+   "len": 2207045,
+   "mtime": "2026-10-06T09:52:59",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/DevTest.json",
+   "sha256": "ae5a65d7e139254e63877613351cf4ea7adc994e72a5b77d00da9feebb4c749f",
+   "len": 277,
+   "mtime": "2026-08-14T03:25:17",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/DijiangRewards.json",
+   "sha256": "a43bebd9814f1c854e4107e9f51c4988a6934bc6462d53f9cd3fc406d1bb6151",
+   "len": 37954,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/EnvironmentMonitoring.json",
+   "sha256": "63d0883332bec66d9aa790460af614878185641dee39a8bea7a6dc53b0b5f36d",
+   "len": 600,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/EssenceFilter.json",
+   "sha256": "e52a63795f5bb8110da6100d2b2466839fcd699f9834e764b480849fe42584b2",
+   "len": 19031,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/GearAssembly.json",
+   "sha256": "93e72d8b1d9ea43b3a985a6b2460d46affe1ead29142d5ad268d9c00e20eedea",
+   "len": 3757,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/GiftOperator.json",
+   "sha256": "b07a7e6b9fd74a2c85697f36558bbc89c0428cd696ceb62d74af909d6f8f72a3",
+   "len": 42803,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/ImportBluePrints.json",
+   "sha256": "22a2a17a477bd810d3146701ba2f19302235604903232287ce77d62fa8d77e38",
+   "len": 1517,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/IntelArchive.json",
+   "sha256": "6007a58b3a537b220aa9115f3de856bc75c3a4bf8580bbabd66c9d76ad45ab9d",
+   "len": 639,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/ItemTransfer.json",
+   "sha256": "6f3dec1a457acbb4ffc9b8bfbaf019b01eca263046038341eef1c45a8e234523",
+   "len": 1096327,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/OutpostTrading.json",
+   "sha256": "739bb09bb47c59a2a604c0720bb8e368b262cede8224c58da122a3b17c3f66ac",
+   "len": 259659,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/ProtocolSpace.json",
+   "sha256": "d935c13064fe6dd464b629553a383c15d947462fd8959407f58ea6ae172b65d1",
+   "len": 92035,
+   "mtime": "2026-10-13T09:59:15",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/PullCountCalculator.json",
+   "sha256": "83e0cf673608e65f957a38900b02426d10436686a49f71097af87af49a053128",
+   "len": 649,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/PuzzleSolver.json",
+   "sha256": "eb44c4da2f7fb265823d3f8ad3c8e0477737d2f5c81f140aced8da7f4ac0d076",
+   "len": 4574,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/ReadAllWiki.json",
+   "sha256": "5407f597d826f46562e22d7875ccdc9427a63ac3908ef95eeb06f89ef9f2370f",
+   "len": 631,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/RealTimeTask.json",
+   "sha256": "488ed55e991331079489d7f9f28fa8e5ce9ca3deb4be43bf4b6994ad3dfa4364",
+   "len": 34224,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/ReceiveProdManual.json",
+   "sha256": "3ae9b2f176e01fa8f56327dcd6338a01a43d8e652a906a6d251039ab28055b88",
+   "len": 651,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/ResourceRecycleStation.json",
+   "sha256": "b5103d629f3886fe175ed3ede38b55835e27b9afafb735f8b055a946c8043f07",
+   "len": 1754,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/SeizeDeliveryJobs.json",
+   "sha256": "e4e3895333b8de3b77a58cda26617916b65d045391c163efbf2fe92bbeb7abca",
+   "len": 47125,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/SharedZiplineDelete.json",
+   "sha256": "2f1642dfcbe2162140ec4759cfef2b49cd11abc83a3ed0def62939b6ae0cf2cf",
+   "len": 8120,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/SimpleProductionBatchStart.json",
+   "sha256": "240a9e55ba128f7fb4f410f97f70e9ee02dfc123b1d7a3cdfb619174b7d5093d",
+   "len": 679,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/StashBackpack.json",
+   "sha256": "3da265e40d2679d8b6bcce80a2c9c6b502a5b7075b1b91d08a9ba01ae48cff9b",
+   "len": 2422,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/SwitchTeam.json",
+   "sha256": "361c81ea3768ec144142c2bb3776eac3821da250fbe96550d50959c38b9149d8",
+   "len": 2813,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/TrialOfSwordmancy.json",
+   "sha256": "91f3216e3c3143086b8fa276b6498b9515bb42ac49ad729adf4dc41bdea51d6d",
+   "len": 7995,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/VisitFriends.json",
+   "sha256": "74374af20be772aafca10cf0b2251d2fe0d65e3af64a1347fe57bd8e324e0900",
+   "len": 11904,
+   "mtime": "2026-10-11T08:46:25",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/Weapon.json",
+   "sha256": "e3ba6b50be3c9f419cfa47d2f2f9d5a12e27d58398816592f22c7de73f702f13",
+   "len": 631,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/WebEvent202605.json",
+   "sha256": "7045b82f2fcfc86cb1ac777318bcefc47db5581ea9c4e423946727ec77083bed",
+   "len": 1310,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/ZiplineImport.json",
+   "sha256": "180fb7c599f57e76b2c5ad3505aabd9904b2de9202db8340c36deeefff8aa5b5",
+   "len": 1370,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/preset/DailyFull.json",
+   "sha256": "c21c1133b10a3c73845f5d438816557b6f16695fe6faccd7953ef8b8979b419d",
+   "len": 4123,
+   "mtime": "2026-09-19T08:46:44",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/preset/QuickDaily.json",
+   "sha256": "e5e5707b8879287d700c1061fb73fe26bf945e7d8c54109263f759433d8523cf",
+   "len": 2922,
+   "mtime": "2026-08-14T03:25:17",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/preset/RealtimeAssist.json",
+   "sha256": "7fbb90bd4c0e5c670e5418a6952a4740db2c540b69935df6773777a86cd204d1",
+   "len": 958,
+   "mtime": "2026-08-14T03:25:17",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/pretasks/GameSetting.json",
+   "sha256": "c1295982c3ee629955e3b592a12493f229c9c52de1f8616b7a1487b8364bd1ae",
+   "len": 7005,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/setting/Keymap.json",
+   "sha256": "07cb9c3a0cb4807df833d8265116042daad7665f270ee5bd21804c0f0e3e0205",
+   "len": 6454,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/maaend/tasks/setting/Zipline.json",
+   "sha256": "616dcfcd4287e466ada37be9e62f64a3fed4f654e246676e933340bddc3961c2",
+   "len": 1960,
+   "mtime": "2026-10-04T09:50:57",
+   "src": "u0 verbatim"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/app.json",
+   "sha256": "e2f64a458145ef8e4c6d0f8e064c4346f592dc1f35efa8d07baacb844df9335b",
+   "len": 1822,
+   "mtime": "2026-10-13T11:07:42",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/repo/.git/HEAD",
+   "sha256": "e49e2e2c62b9c72cfbb541117c980613684ca75ce5d5adb24c177bcd1834f318",
+   "len": 41,
+   "mtime": "2026-10-06T06:11:03",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/AutoCombatTask.json",
+   "sha256": "54d6990de242e928490f4e0d04cd77ff0f0f88de24ae275d40ad52640dcfd169",
+   "len": 151,
+   "mtime": "2026-08-24T12:38:40",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/AutoDialogTask.json",
+   "sha256": "e9e4759ef395efbb0f20c87fb6dce8ef7121c8813d8ce3f9fa84ba09010d4f1c",
+   "len": 23,
+   "mtime": "2026-08-24T12:38:40",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/AutoLoginTask.json",
+   "sha256": "e9e4759ef395efbb0f20c87fb6dce8ef7121c8813d8ce3f9fa84ba09010d4f1c",
+   "len": 23,
+   "mtime": "2026-08-24T12:38:40",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/AutoPickTask.json",
+   "sha256": "1aea4b5ae63b84ce8289e2a11fbfdd6e264af9d0293cc6ce9e512d835732f6e1",
+   "len": 201,
+   "mtime": "2026-08-24T12:38:40",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/Basic Options.json",
+   "sha256": "62c36e6a3018cd3515ec1cdf3a82f3d6e3e574343bbe52f28a89ea9c192d379e",
+   "len": 453,
+   "mtime": "2026-10-13T08:47:03",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/ChangeEchoTask.json",
+   "sha256": "132b9f5ad69c76c245952b7fdc06b4be0673cd4404aef5d0e451bf0d7580b67e",
+   "len": 31,
+   "mtime": "2026-08-24T12:38:40",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/Character Config.json",
+   "sha256": "445c7f9578f3448b11eb5c808fb75dd2d848253b12d7a8412ce14155fa02beb6",
+   "len": 45,
+   "mtime": "2026-08-24T12:38:39",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/DailyTask.json",
+   "sha256": "858220ba585afeb2bbb5d24c144c494f794f41cd92b3aa81be263955641df45f",
+   "len": 327,
+   "mtime": "2026-09-07T14:19:32",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/EnhanceEchoTask.json",
+   "sha256": "0d4b5312fa746b0a846694e1455a1ebc5024d54b486d5b80ff24d11ac36dec86",
+   "len": 309,
+   "mtime": "2026-08-24T12:38:40",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/FarmEchoTask.ark-saved.json",
+   "sha256": "e9a875382b4a6789c6c86d7780366f569362e965e737888365eb3380a9dd7fd2",
+   "len": 354,
+   "mtime": "2026-09-09T03:35:14",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/FarmEchoTask.json",
+   "sha256": "e9a875382b4a6789c6c86d7780366f569362e965e737888365eb3380a9dd7fd2",
+   "len": 354,
+   "mtime": "2026-10-13T11:57:39",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/FastTravelTask.json",
+   "sha256": "e9e4759ef395efbb0f20c87fb6dce8ef7121c8813d8ce3f9fa84ba09010d4f1c",
+   "len": 23,
+   "mtime": "2026-08-24T13:17:14",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/ForgeryTask.json",
+   "sha256": "e231f8fbd1db09137d9c35598a2ae123915216c933c160fa9650f505058fa965",
+   "len": 43,
+   "mtime": "2026-08-24T12:38:40",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/Game Hotkey.json",
+   "sha256": "a6e2a2197311ad250488e72ab52366ecab23ce963d80b2d9dcd898b4455f653e",
+   "len": 203,
+   "mtime": "2026-08-24T12:38:39",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/GardenTask.json",
+   "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+   "len": 3,
+   "mtime": "2026-08-24T12:38:40",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/MergeEchoTask.json",
+   "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+   "len": 3,
+   "mtime": "2026-08-24T12:38:40",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/Monthly Card Config.json",
+   "sha256": "380e364a4028196d32e8809db7854e39cf11d1e5bfda7eca1ebe92302bcdec43",
+   "len": 59,
+   "mtime": "2026-08-24T12:38:39",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/MouseResetTask.json",
+   "sha256": "e9e4759ef395efbb0f20c87fb6dce8ef7121c8813d8ce3f9fa84ba09010d4f1c",
+   "len": 23,
+   "mtime": "2026-08-24T12:38:40",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/MultiAccountDailyTask.json",
+   "sha256": "a8a772355fe4549e002933cb7e0835659442364054d8516da5bb1496c53eee8a",
+   "len": 31,
+   "mtime": "2026-08-24T12:38:40",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/NightmareNestTask.json",
+   "sha256": "e0cc5982bb01c40d489ad4fd38bbf4cec64ad79682954172fc9a0cb75ec591f1",
+   "len": 74,
+   "mtime": "2026-09-09T14:22:25",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/Notification.json",
+   "sha256": "ff0a0e57dbc583df5eb10165721f6f420297fa152f33afa309c79373f20e63ed",
+   "len": 758,
+   "mtime": "2026-09-08T02:41:44",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/SimulationTask.json",
+   "sha256": "ad50f17c55900aea935cdd04631e0eed9453f678fef41c39e0bc7646322448aa",
+   "len": 43,
+   "mtime": "2026-08-24T12:38:40",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/TacetTask.json",
+   "sha256": "479a84a97afaf265774fbb4824680a1f04fbd330a536430e745dfe30809619c6",
+   "len": 43,
+   "mtime": "2026-08-24T12:38:40",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/_con_full_size.json",
+   "sha256": "fe3bb0eb2fbdc2fb8fff8fb03dba3672a15858114f600a214e92d12e06c0de0e",
+   "len": 71,
+   "mtime": "2026-10-13T11:56:55",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/_ok.json",
+   "sha256": "8eb8d4195a50b6cc09c0a58fdb6f228f7dc6eb5d36a87aeb54325cce8333c50f",
+   "len": 173,
+   "mtime": "2026-10-13T11:54:55",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/devices.json",
+   "sha256": "269d142c62d5574ba61decfc520ddd6aeaa0c9df635d2267e16eb0dacf71ab35",
+   "len": 265,
+   "mtime": "2026-10-13T11:54:45",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/main_window.json",
+   "sha256": "4b8ebfcaedd8aa512251188bf7bdb23cbffadbdddfecb09828ca188831119f72",
+   "len": 31,
+   "mtime": "2026-10-07T08:47:08",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/schedule_tasks_cache.json",
+   "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+   "len": 3,
+   "mtime": "2026-10-13T11:54:24",
+   "src": "u0 redacted"
+  },
+  {
+   "path": "D/ark/okww/data/apps/ok-ww/working/configs/template_tab.json",
+   "sha256": "f25daf4905651ef31fcc3fecbc8b3209e692a01e0aafe3c063eae0d069f3a061",
+   "len": 90,
+   "mtime": "2026-08-24T15:43:03",
+   "src": "u0 redacted"
+  }
+ ]
+}

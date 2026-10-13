@@ -53,6 +53,19 @@ Design notes - where the units' interfaces meet, decided once here
   did (design.md "Divergence").
 * Boot 0 of a day the machine was already on at 00:00 (10-06): the relay is
   started fresh at t0, so its boot stages run once more than on the machine.
+* The programs' own files (install.py): AUTO-MAS's master copies under data/<uid>/,
+  MaaEnd's install, OK-WW's configs and app.json, MAA's resource/tasks and a stub
+  app.asar are planted after the seed, from the corpus's `_install/` (a day refuses to
+  start without it). They are the machine's as of 10-13; the master's 「Only Farm These
+  Nests」 is the day's (MASTER_NESTS).
+* Outside services the relay reads once a Skland token is set (web_routes): Skland
+  answers in the shapes skland.py reads with the record's stamina, the Endfield banner
+  sources from the repo's recorded copies.
+* OK-WW's own doings the record shows: its pre-update launch rewrites app.json
+  (_okww_preupdate) and its start writes the overrides' report (_overlay_report).
+* A recorded WMI drop is delivered as OnCompleted(0x800706BE) with the WMI service
+  restarted inside the same pump (fake_win.drop_wmi `before`), the order the record's
+  drop line and #59's diag show.
 """
 from __future__ import annotations
 
@@ -61,11 +74,14 @@ import ctypes
 import ctypes.util
 import json
 import os
+import re
 import shutil
 import threading
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+import install
 
 HERE = Path(__file__).resolve().parent
 RELAY = HERE.parents[1]
@@ -115,6 +131,26 @@ ORDER_ZH = {"set_master": "改脚本自己的设置", "set_config": "改设置",
             "echo_farm": "开始刷 4C 声骸", "echo_farm_stop": "刷声骸收工",
             "echo_farm_until": "改刷声骸的收工时刻", "monthcard": "登记月卡"}
 ZH_ORDER = {v: k for k, v in ORDER_ZH.items()}
+# The master's 「Only Farm These Nests」 at the day's start (install.set_nests), as the
+# overrides logged it 「（设置来自母本）」 in the day's #26 line. It was changed from the
+# Mac 10-12 11:2x (mastercfg_okww.OKWW_READONLY), which no day records as an input.
+MASTER_NESTS = {
+    "2026-10-06": ("落渊南丘", "relay.log 10-06 09:28:13 #26: 只刷 ['落渊南丘']（设置来自母本）"),
+    "2026-10-12": ("落渊南丘", "relay.log 10-12 10:04:11 #26: 只刷 ['落渊南丘']（设置来自母本）"),
+    "2026-10-13": ("梦枢天罗,落渊南丘", "relay.log 10-13 09:36:59 #26: 只刷 ['梦枢天罗', '落渊南丘']（设置来自母本）"),
+}
+# When OK-WW rewrites app.json after it is launched. Measured on the machine's own copy
+# (install.py's u0 read, 2026-10-13): app.json's last_start 03:07:04.9Z (11:07:04.9
+# Beijing) and its mtime 11:07:42, so 38 s. The relay's verdict waits
+# preupdate_okww.OKWW_MIN_WAIT_SECONDS (45) anyway: the record has the launch
+# (10-12 08:46:17) and 「无需更新（v3.7.4）」 45 s later (08:47:02).
+OKWW_APPJSON_REWRITE_S = 38
+# OK-WW loads the relay's overrides at start (ok-script log 「task_manager:Found tasks:
+# [...ark_overrides.py]」) and they write C:\ProgramData\ark-okww-overlay.json then
+# (ark_overrides.tasks.py _write_report): 10-12 09:19:07.833 in the log, 「覆盖层报告
+# （09:19:07 写）」 in the relay's #26 line.
+OVERRIDES_LOADED = re.compile(rb"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),\d+ INFO \S+ task_manager:Found tasks: "
+                              rb".*ark_overrides\.py", re.M)
 
 
 def epoch(s) -> float:
@@ -256,7 +292,7 @@ def env_for(tree: Path) -> dict:
         "SERVERCHAN_KEY": "SCTdaysim",
         "COS_SECRET_ID": "daysim", "COS_SECRET_KEY": "daysim", "COS_BUCKET": "daysim-1250000000",
         "COS_REGION": "ap-shanghai",
-        "SKLAND_TOKEN": "",                       # zonai.skland.com is not routed (W3)
+        "SKLAND_TOKEN": "daysim",                 # answered by the World's Skland (skland_routes)
     }
 
 
@@ -285,6 +321,12 @@ def materialize(day: str, tree: Path, corpus: Path, code_src: Path) -> dict:
         if not dst.exists():
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_text(data, encoding="utf-8")
+    t0 = epoch(seed["t0"])
+    missing = install.plant(tree, t0, automas_rel=AUTOMAS_REL, clone=clone, nests=MASTER_NESTS.get(day, ("", ""))[0])
+    if missing:
+        raise SystemExit(f"daysim: {len(missing)} install copies missing under {install.ROOT} "
+                         f"(install.py build), e.g. {missing[0]}")
+    install.asar_stub(tree, AUTOMAS_REL, DATA_REL + "/state")
     sim = tree / "_sim"
     sim.mkdir(exist_ok=True)
     (sim / "world.json").write_text(json.dumps({"applied": []}), encoding="utf-8")
@@ -315,7 +357,6 @@ def windows_programs(tree: Path) -> list[str]:
         text = cfg.read_text(encoding="utf-8-sig")
     except OSError:
         return names
-    import re  # noqa: PLC0415
     for m in re.finditer(r'"Path":\s*"((?:[^"\\]|\\.)*\.exe)"', text, re.I):
         names.append(json.loads(f'"{m.group(1)}"'))
     return names
@@ -381,6 +422,9 @@ class World:
         self.win.on_task_run = self._task_run
         self.win.on_spawn = self._spawn
         self.win.on_power_off = self._power_off
+        self.stamina = recorded_stamina(self.corpus, self.seed, day)
+        for prefix, answer in web_routes(self.sched.now, self.stamina).items():
+            self.net.set_web(prefix, answer)
 
     # -------- helpers
     def note(self, what: str, **f) -> None:
@@ -421,7 +465,6 @@ class World:
     def automas_version(self) -> str:
         """AUTO-MAS's own version, as its app.log names it (the update check's
         current_version=...); "" when the day's log has none."""
-        import re  # noqa: PLC0415
         got = ""
         for ev in self.events:
             if ev["kind"] == "log_chunk" and ev["path"].endswith("/automas/debug/app.log"):
@@ -488,8 +531,13 @@ class World:
                         self.win.procs.end(c.pid, 0, t)
                     self.win.procs.end(alive[-1].pid, 0, t)
             elif op == "wmi_subscription_lost" and live:
-                self._winmgmt_restart(t)
-                self.fw.drop_wmi()
+                # The sink hears 0x800706BE (OnCompleted) with the WMI service already
+                # restarted, as the record has it: the drop line says 「远程过程调用失败，
+                # 0x800706BE」 (relay.log 10-06 16:16:59) and its diag the restart (#59 at
+                # 16:43:45: 「原因：WMI 服务自己重启过」). Restarting winmgmt first instead
+                # would end the wait on the old host's handle (「系统里发这项通知的服务停了」).
+                if not self.fw.drop_wmi(before=lambda t=t: self._winmgmt_restart(t)):
+                    self._winmgmt_restart(t)
         elif k == "mas_backend":
             op = ev.get("op")
             if op == "up":
@@ -685,6 +733,28 @@ class World:
             f.truncate()
         self.stamp(dst, t)
         self.changed(dst)
+        if "/ok-ww/working/logs/ok-script" in ev["path"]:
+            for m in OVERRIDES_LOADED.finditer(data):
+                self._overlay_report(datetime.strptime(m.group(1).decode(), "%Y-%m-%d %H:%M:%S")
+                                     .replace(tzinfo=BJ).timestamp())
+
+    def _overlay_report(self, at: float) -> None:
+        """What the relay's overrides write when OK-WW loads them (OVERRIDES_LOADED): every
+        override site applied. The record backs "all applied": the boot's patch push said
+        only that the file was installed (no 「没贴上」 / 「按新版适配」 line) and #26 read
+        find_nest 「装上」 on 10-06, 10-12 and 10-13."""
+        src = self.tree / "_sim" / "code" / "ark_relay" / "features" / "okww_patch" / "okww_files" / "ark_overrides.tasks.py"
+        try:
+            text = src.read_text(encoding="utf-8")
+        except OSError as exc:
+            self.error("overlay report not written", why=str(exc))
+            return
+        sites = list(dict.fromkeys(f"{c}.{n}" for c, n in re.findall(r'(?:@override|_farm_hook)\((\w+), "(\w+)"', text)))
+        dst = self.tree / "C" / "ProgramData" / "ark-okww-overlay.json"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_text(json.dumps({"applied": sites, "skipped": [], "adapted": [], "error": ""},
+                                  ensure_ascii=False, indent=1), encoding="utf-8")
+        self.stamp(dst, at)
 
     def _file(self, ev: dict, t: float) -> None:
         op = ev.get("op")
@@ -733,8 +803,26 @@ class World:
         self.note("schtasks /run: the World starts nothing the record does not show", task=name)
 
     def _spawn(self, exe, args, cwd, task) -> None:
+        if exe.replace("\\", "/").rsplit("/", 1)[-1].lower() == "ok-ww.exe":
+            self._okww_preupdate(exe, args)
+            return
         self.note("scheduled-task launch: the World starts nothing the record does not show",
                   exe=exe, args=args, task=task)
+
+    def _okww_preupdate(self, exe: str, args: str) -> None:
+        """The relay's pre-update launch of ok-ww.exe (preupdate_okww.run_okww), as the
+        record has it: OK-WW starts, rewrites app.json, finds nothing newer (10-12 08:46:17
+        launched, 08:47:02 「无需更新（v3.7.4）」; the same on 10-13). The relay ends it."""
+        now = self.sched.now()
+        self.win.procs.start("ok-ww.exe", f'"{exe}" {args}'.strip(), exe=exe, t=now)
+        app = self.tp("D:/ark/okww/data/apps/ok-ww/app.json")
+
+        def rewrite() -> None:
+            if app.is_file():
+                app.write_bytes(app.read_bytes())
+                self.changed(app)
+        self.sched.at(now + OKWW_APPJSON_REWRITE_S, rewrite, "okww-appjson")
+        self.note("ok-ww.exe launched for its update check: app.json rewritten, no newer version")
 
     def _power_off(self, t: float) -> None:
         b = self.boot
@@ -789,6 +877,75 @@ class World:
                 (self.cos_dir / urllib.parse.quote(key, safe="")).write_bytes(data)
 
 
+def recorded_stamina(corpus: Path, seed: dict, day: str) -> list[tuple[float, dict]]:
+    """The day's Endfield stamina as Skland gave it, from the record's #10 lines
+    (「上机核对 #10 过了：08:46:01 ...curStamina=228 maxStamina=360 maxTs=1791822985」)."""
+    ent = next((f for f in seed["files"] if f["path"].endswith("ark-relay/relay.log")), None)
+    if ent is None:
+        return []
+    out = []
+    pat = re.compile("^" + day[5:] + r" \S+ INFO +ark\.machinecheck +上机核对 #10 过了：(\d\d:\d\d:\d\d)"
+                     r".*?curStamina=(\d+) maxStamina=(\d+) maxTs=(\d+)", re.M)
+    try:
+        data = corpus_file(corpus, ent).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    for m in pat.finditer(data):
+        t = datetime.fromisoformat(f"{day}T{m.group(1)}+08:00").timestamp()
+        out.append((t, {"curStamina": int(m.group(2)), "maxStamina": int(m.group(3)), "maxTs": int(m.group(4))}))
+    return out
+
+
+def web_routes(now, stamina: list) -> dict:
+    """Skland as the relay's session code walks it (skland.get_did, login, refresh,
+    bindings, endfield_card) and as banners reads it (wiki char-pool, item/info), and
+    the Endfield sources banners reads once it has a Skland session (bulletin, version
+    briefing, the yituliu pool table). Answers are placeholders in the shapes skland.py
+    reads; the stamina is the record's (recorded_stamina); the banner sources are the
+    repo's recorded copies, as tests/test_banners.py reads them: endfield_pools.json
+    (the 「晨星于此闪耀」 pool, UP operator entry 1683 梨诺), ef_bulletin_full_2026-09-03.json
+    (on 10-13 the live list still carried the 09-02 version notes, banners/endfield.py),
+    ef-briefing-v1d6/ (the version briefing from 10-06 20:00) and
+    ef_pool_info_table_2026-10-01.json. No credential is real or kept."""
+    fx = RELAY / "tests" / "fixtures"
+    yituliu = "Arknights-yituliu/ef-frontend-v1"
+    pool_table = lambda c: json.loads((fx / "ef_pool_info_table_2026-10-01.json").read_text(encoding="utf-8"))  # noqa: E731
+
+    def card(_c):
+        t = now()
+        got = [s for at, s in stamina if at <= t] or [s for _at, s in stamina[:1]]
+        if not got:
+            return {"code": 0, "data": {"detail": {}}}
+        return {"code": 0, "data": {"detail": {"dungeon": dict(got[-1])}}}
+
+    zonai = "https://zonai.skland.com"
+    return {
+        "https://fp-it.portal101.cn/deviceprofile/v4": {"code": 1100, "detail": {"deviceId": "daysim"}},
+        "https://as.hypergryph.com/user/oauth2/v2/grant": {"status": 0, "data": {"code": "daysim"}},
+        zonai + "/api/v1/user/auth/generate_cred_by_code":
+            {"code": 0, "data": {"cred": "daysim", "token": "daysim", "userId": "0"}},
+        zonai + "/web/v1/auth/refresh": lambda c: {"code": 0, "data": {"token": "daysim"}, "timestamp": int(now())},
+        zonai + "/api/v1/game/player/binding": {"code": 0, "data": {"list": [
+            {"appCode": "arknights", "bindingList": [{"uid": "0"}]},
+            {"appCode": "endfield", "bindingList": [{"roles": [{"roleId": "0", "serverId": "1"}]}]}]}},
+        zonai + "/api/v1/game/endfield/card/detail": card,
+        zonai + "/web/v1/wiki/char-pool":
+            lambda c: {"code": 0, "data": {"list": json.loads((fx / "endfield_pools.json").read_text(encoding="utf-8"))}},
+        zonai + "/web/v1/wiki/item/info":
+            lambda c: {"code": 0, "data": {"item": {"name": {"1683": "梨诺"}.get(c.query.get("id", ""), "")}}},
+        "https://game-hub.hypergryph.com/bulletin/v2/aggregate":
+            lambda c: json.loads((fx / "ef_bulletin_full_2026-09-03.json").read_text(encoding="utf-8")),
+        "https://endfield.hypergryph.com/version_briefing/latest":
+            lambda c: (fx / "ef-briefing-v1d6" / "latest.html").read_text(encoding="utf-8"),
+        "https://web.hycdn.cn/endfield/webview/_version_briefing/":
+            lambda c: (fx / "ef-briefing-v1d6" / "bundle.js").read_text(encoding="utf-8"),
+        f"https://fastly.jsdelivr.net/gh/{yituliu}@": pool_table,
+        f"https://cdn.jsdelivr.net/gh/{yituliu}@": pool_table,
+        f"https://gh-proxy.com/https://raw.githubusercontent.com/{yituliu}/": pool_table,
+        f"https://raw.githubusercontent.com/{yituliu}/": pool_table,
+    }
+
+
 def _png_1x1() -> bytes:
     import struct  # noqa: PLC0415
     import zlib  # noqa: PLC0415
@@ -812,7 +969,6 @@ def phone_body(ev: dict) -> "dict | None":
     if a == "skip_shutdown":
         return {"action": "skip_shutdown"} if args.get("on", True) else {"action": "skip_shutdown", "off": True}
     if a == "echo_farm":
-        import re  # noqa: PLC0415
         m = re.search(r"开始刷(.+?)，刷到 (\d\d:\d\d) 为止", res)
         if not m:
             return None

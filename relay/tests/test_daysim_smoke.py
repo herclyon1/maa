@@ -133,6 +133,177 @@ except SystemExit:
     refused = True
 check("a boot without the network fakes refuses to start the relay", refused)
 
+# ---- the programs' own files and the outside services (triage 10-13)
+# Without them a replayed day was full of WARNINGs the machine never logged (none of
+# 「母本配置文件不在」, 「找不到 app.asar」, 「MAA 的关卡资料读不了」 is in the 10-06/12/13 record).
+import os  # noqa: E402
+
+import install  # noqa: E402
+
+man = install.load()
+paths = {f["path"] for f in man["files"]}
+check("install.json lists MaaEnd's interface, zh_cn locale, nodes.json and config",
+      {"D/ark/maaend/interface.json", "D/ark/maaend/locales/interface/zh_cn.json",
+       "D/ark/maaend/resource/pipeline/nodes.json", "D/ark/maaend/config/mxu-MaaEnd.json"} <= paths, True)
+check("install.json lists OK-WW's configs and app.json, MAA's gui.new.json and YW.json",
+      {"D/ark/okww/data/apps/ok-ww/working/configs/DailyTask.json", "D/ark/okww/data/apps/ok-ww/app.json",
+       "D/ark/maa/config/gui.new.json", "D/ark/maa/resource/tasks/Stages/YW.json"} <= paths, True)
+check("every install copy has a sha256 and a source", all(len(f["sha256"]) == 64 and f["src"] for f in man["files"]),
+      True)
+
+tree = tmpdir("daysim-install-")
+root = tmpdir("daysim-install-root-")
+T0 = W.epoch("2026-10-13T00:00:00+08:00")
+(tree / W.AUTOMAS_REL / "config").mkdir(parents=True)
+(tree / W.AUTOMAS_REL / "config" / "ScriptConfig.json").write_text(json.dumps({"instances": [
+    {"uid": "u-maa", "type": "MaaConfig"}, {"uid": "u-end", "type": "MaaEndConfig"},
+    {"uid": "u-okww", "type": "OkwwConfig"}]}), encoding="utf-8")
+mini = {"files": []}
+for rel, body, mt in (("D/ark/okww/data/apps/ok-ww/working/configs/DailyTask.json", '{"Which to Farm": "x"}',
+                       "2026-09-07T14:19:32"),
+                      ("D/ark/okww/data/apps/ok-ww/working/configs/NightmareNestTask.json", '{"_enabled": true}',
+                       "2026-09-09T14:22:25"),
+                      ("D/ark/maaend/config/mxu-MaaEnd.json", '{"instances": []}', "2026-10-13T09:59:15"),
+                      ("D/ark/maa/config/gui.new.json", '{"Current": "Default"}', "2026-10-11T08:46:15")):
+    (root / rel).parent.mkdir(parents=True, exist_ok=True)
+    (root / rel).write_text(body, encoding="utf-8")
+    mini["files"].append({"path": rel, "sha256": "0" * 64, "len": len(body.encode()), "mtime": mt, "src": "test"})
+(tree / "D/ark/maaend/config").mkdir(parents=True)
+(tree / "D/ark/maaend/config/mxu-MaaEnd.json").write_text('{"seed": 1}', encoding="utf-8")
+missing = install.plant(tree, T0, automas_rel=W.AUTOMAS_REL, clone=W.clone, nests="梦枢天罗,落渊南丘",
+                        root=root, man=mini)
+check("every copy planted", missing, [])
+sys.path.append(str(W.RELAY))      # appended: relay/run.py must not shadow daysim's run.py
+from ark_relay.core.config import master_config_dir  # noqa: E402
+from ark_relay.core.mastercfg_maa import maa_master  # noqa: E402
+am = tree / W.AUTOMAS_REL
+check("OK-WW's master dir is found by its marker (config.master_config_dir)",
+      master_config_dir(am, "DailyTask.json"), am / "data" / "u-okww" / "Default" / "ConfigFile")
+check("MaaEnd's master dir is found by mxu-MaaEnd.json",
+      master_config_dir(am, "mxu-MaaEnd.json"), am / "data" / "u-end" / "Default" / "ConfigFile")
+check("MAA's master gui.new.json is found (mastercfg_maa.maa_master)",
+      maa_master(am), am / "data" / "u-maa" / "Default" / "ConfigFile" / "gui.new.json")
+check("a file the seed carries is not overwritten",
+      (tree / "D/ark/maaend/config/mxu-MaaEnd.json").read_text(encoding="utf-8"), '{"seed": 1}')
+nest = json.loads((am / "data/u-okww/Default/ConfigFile/NightmareNestTask.json").read_text(encoding="utf-8"))
+check("the master's 「Only Farm These Nests」 is the day's", nest.get("Only Farm These Nests"), "梦枢天罗,落渊南丘")
+check("the script-side copy keeps OK-WW's own keys only",
+      "Only Farm These Nests" in (tree / "D/ark/okww/data/apps/ok-ww/working/configs/NightmareNestTask.json")
+      .read_text(encoding="utf-8"), False)
+check("a 10-13 09:59 copy is not newer than the day's start",
+      os.stat(am / "data/u-end/Default/ConfigFile/mxu-MaaEnd.json").st_mtime <= T0 - 1, True)
+check("an older copy keeps its machine mtime (2026-09-07 14:19:32 Beijing)",
+      os.stat(am / "data/u-okww/Default/ConfigFile/DailyTask.json").st_mtime,
+      W.epoch("2026-09-07T14:19:32+08:00"))
+check("ok-ww.exe, pythonw.exe and main.py exist (preupdate_okww / echofarm check for them)",
+      all((tree / x).is_file() for x in install.PLACEHOLDERS), True)
+(tree / W.DATA_REL / "state").mkdir(parents=True)
+(tree / W.DATA_REL / "state" / "asar-labels.json").write_text(
+    json.dumps({"stamp": "71537389-1791608162", "map": {}}), encoding="utf-8")
+check("app.asar: the stamp of the relay's own label cache", install.asar_stub(tree, W.AUTOMAS_REL, W.DATA_REL + "/state"),
+      "71537389-1791608162")
+st = os.stat(am / "resources" / "app.asar")
+check("app.asar has that size and mtime, so plan._asar_value_labels takes its cache",
+      f"{st.st_size}-{int(st.st_mtime)}", "71537389-1791608162")
+
+# Skland, from the record's #10 lines (the session handed to the phone, check #10).
+corp = tmpdir("daysim-sk-")
+rl = corp / "files" / "C" / "ProgramData" / "ark-relay" / "relay.log"
+rl.parent.mkdir(parents=True)
+rl.write_text("10-12 23:59:00 INFO    ark.machinecheck  上机核对 #10 过了：x curStamina=1 maxStamina=360 maxTs=5\n"
+              "10-13 08:46:02 INFO    ark.machinecheck  上机核对 #10 过了：08:46:00 森空岛会话交给手机（6 项都在）；"
+              "森空岛给的终末地体力：curStamina=188 maxStamina=360 maxTs=1791926664\n"
+              "10-13 11:03:56 INFO    ark.machinecheck  上机核对 #10 过了：11:03:54 森空岛会话交给手机（6 项都在）；"
+              "森空岛给的终末地体力：curStamina=48 maxStamina=360 maxTs=1791995418\n", encoding="utf-8")
+stam = W.recorded_stamina(corp, {"files": [{"path": "C:/ProgramData/ark-relay/relay.log"}]}, "2026-10-13")
+check("the day's #10 lines only, at the time each session was made",
+      [(W.iso(t), s["curStamina"]) for t, s in stam],
+      [("2026-10-13T08:46:00+08:00", 188), ("2026-10-13T11:03:54+08:00", 48)])
+clock = [W.epoch("2026-10-13T10:00:00+08:00")]
+routes = W.web_routes(lambda: clock[0], stam)
+
+
+class _Resp:
+    def __init__(self, body):
+        self.body = json.dumps(body).encode() if not isinstance(body, (bytes, str)) else (
+            body.encode() if isinstance(body, str) else body)
+        self.headers = {}
+
+    def read(self):
+        return self.body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def _urlopen(req, timeout=None, **kw):
+    import urllib.parse  # noqa: PLC0415
+    url = req.full_url if hasattr(req, "full_url") else str(req)
+    for prefix, answer in routes.items():
+        if url.startswith(prefix):
+            call = type("C", (), {"query": dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(url).query))})()
+            return _Resp(answer(call) if callable(answer) else answer)
+    raise AssertionError(f"unrouted {url}")
+
+
+import urllib.request  # noqa: E402
+from ark_relay.core import skland  # noqa: E402
+from ark_relay.features.phone import resources  # noqa: E402
+real_urlopen, urllib.request.urlopen = urllib.request.urlopen, _urlopen
+try:
+    sk = resources.skland_session(type("Cfg", (), {"skland_token": "daysim"})())
+    probe = resources.probe()
+finally:
+    urllib.request.urlopen = real_urlopen
+check("the session the phone gets has the six keys check #10 asks for",
+      [k for k in ("cred", "token", "dId", "uid", "efRole", "efServer") if not sk.get(k)], [])
+check("Skland's stamina at 10:00 is the record's 08:46 reading",
+      probe.get("dungeon"), {"curStamina": 188, "maxStamina": 360, "maxTs": 1791926664})
+
+# OK-WW's own doings the record shows: the overrides' report, and its update check.
+line = (b"2026-10-12 09:19:07,833 INFO MainThread task_manager:Found tasks: "
+        b"['D:\\\\ark\\\\okww\\\\data\\\\apps\\\\ok-ww\\\\working\\\\ok_tasks\\\\ark_overrides.py']\n")
+m = W.OVERRIDES_LOADED.search(b"2026-10-12 09:19:05,140 INFO MainThread DeviceManager:__init__ start\n" + line)
+check("the overrides' load line is found, with its second", m and m.group(1).decode(), "2026-10-12 09:19:07")
+otree = tmpdir("daysim-overlay-")
+src = otree / "_sim" / "code" / "ark_relay" / "features" / "okww_patch" / "okww_files"
+src.mkdir(parents=True)
+shutil_src = W.RELAY / "ark_relay" / "features" / "okww_patch" / "okww_files" / "ark_overrides.tasks.py"
+(src / "ark_overrides.tasks.py").write_bytes(shutil_src.read_bytes())
+host = type("H", (), {"tree": otree, "stamp": W.World.stamp, "error": lambda self, *a, **k: None})()
+at = W.epoch("2026-10-12T09:19:07+08:00")
+W.World._overlay_report(host, at)
+rep = otree / "C" / "ProgramData" / "ark-okww-overlay.json"
+got = json.loads(rep.read_text(encoding="utf-8")) if rep.is_file() else {}
+check("the report names find_nest applied, nothing skipped (the record's #26: 「装上」)",
+      ("NightmareNestTask.find_nest" in got.get("applied", []), got.get("skipped"), got.get("error")),
+      (True, [], ""))
+check("written at the load line's second", os.stat(rep).st_mtime if rep.is_file() else 0, at)
+
+ptree = tmpdir("daysim-okww-pre-")
+app = ptree / "D/ark/okww/data/apps/ok-ww/app.json"
+app.parent.mkdir(parents=True)
+app.write_text('{"current_version": "v3.7.4"}', encoding="utf-8")
+os.utime(app, (T0, T0))
+started, timers, changed = [], [], []
+procs_ = type("P", (), {"start": lambda self, image, *a, **k: started.append(image)})()
+host = type("H", (), {"tree": ptree, "tp": lambda self, p: W.tpath(ptree, p), "note": lambda self, *a, **k: None,
+                      "changed": lambda self, p: changed.append(p),
+                      "win": type("Win", (), {"procs": procs_})(),
+                      "sched": type("S", (), {"now": lambda self: T0 + 100,
+                                              "at": lambda self, t, fn, tag: timers.append((t, fn))})()})()
+W.World._okww_preupdate(host, r"D:\ark\okww\ok-ww.exe", "")
+check("ok-ww.exe starts for its update check", started, ["ok-ww.exe"])
+check("app.json is rewritten a few seconds after the launch",
+      [t - (T0 + 100) for t, _fn in timers], [W.OKWW_APPJSON_REWRITE_S])
+for _t, fn in timers:
+    fn()
+check("the rewrite moves app.json's mtime (preupdate_okww reads that as 「checked」)",
+      (os.stat(app).st_mtime > T0, changed), (True, [app]))
+
 # ---- the morning of 10-12, end to end
 corpus = W.CORPUS_ROOT / "2026-10-12"
 owner_mac = sys.platform == "darwin" and (Path.home() / "Claude" / "maa-automation").is_dir()
@@ -147,9 +318,14 @@ if (corpus / "manifest.json").exists():
         check(f"verdict {stem}: ok, no failed item", (row.get("ok"), row.get("failed_tasks")), (True, []))
     check("4 boots, each ended by its own stop", [b["exit"] for b in o["boots"]], ["returned"] * 4)
     check("no sim error", o["sim_errors"], [])
-    check("pushes captured as outputs (group and ntfy)",
-          {"group", "ntfy"} <= {p["ch"] for p in o["pushes"]}, True)
-    check("the morning stays within the day's budget", r["real_s"] < run.DAY_CAP_S, True)
+    check("pushes captured as outputs (ntfy: the boots' state and heartbeat)",
+          "ntfy" in {p["ch"] for p in o["pushes"]}, True)
+    # The record's only group push before 09:20 is 08:46:15 「中继自己报错了（预更新）」, R30,
+    # whose route 6bf43317 removed; with the programs' own files planted (install.py) the
+    # morning is otherwise as quiet as the machine's.
+    check("no group push in the morning", [(p["t"], p["title"]) for p in o["pushes"] if p["ch"] == "group"], [])
+    check("the morning stays within the day's budget (CPU seconds; this Mac is shared)",
+          r["cpu_s"] < run.DAY_CAP_S, True)
 elif owner_mac:
     check(f"10-12 corpus present on the owner's Mac ({corpus})", False)
 else:

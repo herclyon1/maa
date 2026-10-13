@@ -293,6 +293,56 @@ def main():
     check("the drop reads as done", got[0], "done")
     check("with the machine's words for 0x800706BE", "远程过程调用失败" in got[1][0], True)
     sub.cancel()
+    # The recorded drop (10-06 16:16:59): the sink hears 0x800706BE with the WMI service
+    # already restarted (world.py). `before` runs inside the listener's pump, ahead of
+    # OnCompleted, so a listener already waiting ends on the drop's own words; a restart
+    # done first ends it on the old host's handle (what the World did before).
+    ran = []
+
+    def restart() -> None:
+        ran.append(sched.now())
+        svc = win.services["winmgmt"]
+        pr.end(svc["pid"], 0, sched.now())
+        svc["pid"] = pr.start("svchost.exe", r"C:\WINDOWS\system32\svchost.exe -k netsvcs -p -s Winmgmt",
+                              session=0, t=sched.now()).pid
+
+    def drop_while_waiting(restart_inside: bool) -> dict:
+        box: dict = {}
+        up = threading.Event()
+
+        def listen() -> None:
+            sub = wmi_subscription._AsyncSubscription(sub_stop)   # its thread owns the sink
+            box["host"] = sub._host is not None
+            up.set()
+            box["got"] = sub.wait()
+            sub.cancel()
+        th = threading.Thread(target=listen, name="w2-wmi-listen", daemon=True)
+        th.start()
+        up.wait(5)
+        for _ in range(500):
+            if th.ident in sched.parked:
+                break
+            threading.Event().wait(0.01)
+        if restart_inside:
+            fw.drop_wmi(before=restart)
+        else:
+            restart()
+            fw.drop_wmi()
+        th.join(5)
+        return box
+
+    import inspect  # noqa: PLC0415
+    check("drop_wmi takes a `before` step", "before" in inspect.signature(fw.drop_wmi).parameters, True)
+    if "before" in inspect.signature(fw.drop_wmi).parameters:
+        got = drop_while_waiting(True)
+        check("the waiting listener held the WMI host's handle", got.get("host"), True)
+        check("the restart ran once, inside the pump", len(ran), 1)
+        check("the drop reads as OnCompleted's 0x800706BE",
+              ("远程过程调用失败" in str((got.get("got") or ("", ("",)))[1][0])), True)
+    ran.clear()
+    got = drop_while_waiting(False)
+    check("restart first: the wait ends on the old host's handle",
+          (got.get("got") or ("", ("",)))[1][0], "系统里发这项通知的服务停了")
     win.wmi_ok = False
     rows, why = procs._query_once()
     check("WMI down: the query fails with its code", (rows, why), (None, "错误码 0x80041003"))
