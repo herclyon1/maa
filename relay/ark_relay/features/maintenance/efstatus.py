@@ -13,6 +13,7 @@ import urllib.request
 from datetime import datetime
 
 from ark_relay.core.config import SERVER_TZ
+from ark_relay.features.selfcheck import tape
 
 _URL = ("https://game-hub.hypergryph.com/bulletin/v2/aggregate"
         "?lang=zh-cn&platform=Windows&channel=1&type=0"
@@ -38,11 +39,14 @@ def update_hint(now: datetime | None = None, fetch=None, strict: bool = False) -
     returning "" - the boot check needs to tell "unreadable" from "no update today".
     """
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    raw = None
     try:
         if fetch is None:
             req = urllib.request.Request(_URL, headers={"User-Agent": _UA})
             with urllib.request.urlopen(req, timeout=8) as r:
-                data = json.loads(r.read().decode("utf-8"))
+                raw = r.read()
+            tape.answer("web", _URL, body=raw, resp=r)     # the day's tape (selfcheck/tape.py)
+            data = json.loads(raw.decode("utf-8"))
         else:
             data = fetch()
         items: list = []
@@ -57,7 +61,9 @@ def update_hint(now: datetime | None = None, fetch=None, strict: bool = False) -
             m = re.search(r"「([^」]+)」", head)
             name = f"「{m.group(1)}」" if m else ""
             return f"官方公告：今天 {at:%H:%M} {name}版本更新"
-    except Exception:  # re-raised when strict
+    except Exception as exc:  # re-raised when strict
+        if fetch is None and raw is None:
+            tape.answer("web", _URL, error=exc)
         if strict:
             raise
         return ""

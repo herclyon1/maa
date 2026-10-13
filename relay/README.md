@@ -75,6 +75,7 @@ Shared parts are in `ark_relay/core/`, each feature in `ark_relay/features/<name
 | `shiftcheck.py` | 收工体检：每趟早班/晚班跑完查一次手跑体检里中继原来没查的四项（剿灭开关、「下次跑完不关机」标记、调试模式、测试窗口），结果一行记中继日志、进日报「中继体检」，不报群 |
 | `procs.py` | 用系统 WMI 读 python.exe 的进程号和命令行（wmic 在 25H2 已删） |
 | `error_evidence.py` | 每次中继自己的报错推送前、以及关机令之前，把当天整份 relay.log 和 AUTO-MAS app.log 各传一个带日期的 COS 对象（同一天覆盖同一份，一次上传最多等 60 秒）；报错推送末尾带「日志：<链接>」，机器关着也能取（scripts/mac/evidence.sh daily） |
+| `tape.py` | The day tape for the day replay (relay/tests/daysim): what AUTO-MAS, the System log and the information sources answered, and AUTO-MAS's config when a day begins, in state/tape/<Beijing YYYYMMDD>.jsonl; secrets masked, 4 MB a day at most, 14 days kept; never pushes, never read by any decision |
 | `replay.py` | 发版前回放闸（deploy-relay.sh 的 0.75 步）：把检入的真日志片段用这一版代码离线跑一遍，会往群里推一条就拒绝部署 |
 | `evidence.py` + `bundles.py` / `sources.py` / `stores.py` / `logslice.py` | 按三家上游导出按钮的规则打证据包（永远按时间窗取，截图去重封顶）、钉住其源码、只传腾讯云 COS |
 | `maintenance.py` | 三个游戏官方停服维护公告的机器可读来源 |

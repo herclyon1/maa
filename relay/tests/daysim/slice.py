@@ -48,7 +48,9 @@ UTC4 = timezone(timedelta(hours=4))        # AUTO-MAS history names (collector.A
 # The contract (design.md section 2, "Interfaces fixed now").
 KINDS = ("power_on", "power_off", "relay_start", "relay_stop", "run", "file", "log_chunk",
          "log_rotate", "proc", "mas_backend", "mas_config", "phone_order", "inbox",
-         "net_fault", "web", "desktop")
+         "net_fault", "web", "desktop",
+         # From the relay's tape (do_tape); the World does not apply these two yet.
+         "mas_answer", "syslog")
 
 # Log lines are appended in chunks of this many seconds of their own stamps.
 # collect_watch tails maafw.log live and judges "no new line for N minutes"; a minute
@@ -68,25 +70,32 @@ RELAY_HOME = "C/ProgramData/ark-relay"
 STATE = f"{RELAY_HOME}/state"
 RELAY_LOG = f"{RELAY_HOME}/relay.log"
 MAS_CONFIG = "D/ark/automas/config"
+TAPE = f"{STATE}/tape"                      # relay/ark_relay/features/selfcheck/tape.py
 # Recorded but never read by the relay, and big: not copied (MANIFEST "d3" archive).
 SKIP_PREFIXES = ("D/ark/maaend/debug/cpp-algo/", "D/ark/automas/debug/frontend.log",
                  "D/ark/automas/logs/", "_pull/")
 
+
+
+def _relay_tape():
+    """The relay's tape module (ark_relay/features/selfcheck/tape.py), loaded from its file
+    under a name of its own: it is stdlib-only, and importing the ark_relay package here
+    could shadow the code under test in a process that also runs the relay."""
+    import importlib.util  # noqa: PLC0415
+    path = REPO / "relay" / "ark_relay" / "features" / "selfcheck" / "tape.py"
+    spec = importlib.util.spec_from_file_location("daysim_relay_tape", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+relay_tape = _relay_tape()
 # Secret shapes masked on the way into the corpus and refused anywhere under relay/
-# (test_daysim_slice.py). (name, pattern, replacement); the lookahead keeps an already
-# masked value from matching again; values are token characters only, so a code
-# placeholder like {self.cfg.wecom_secret} is not one.
-SECRET_PATTERNS = (
-    ("cos-akid", rb"AKID(?!REDACTED)[0-9A-Za-z]{12,}", rb"AKIDREDACTED"),
-    ("cos-signature", rb"(q-signature=)(?!REDACTED)[0-9a-fA-F]{16,}", rb"\1REDACTED"),
-    ("wecom-webhook-key", rb"(webhook/send\?key=)(?!REDACTED)[0-9A-Za-z-]{16,}", rb"\1REDACTED"),
-    ("wecom-corpsecret", rb"(corpsecret=)(?!REDACTED)[0-9A-Za-z_-]{16,}", rb"\1REDACTED"),
-    ("access-token", rb"(access_token=)(?!REDACTED)[0-9A-Za-z_-]{16,}", rb"\1REDACTED"),
-    ("serverchan-key", rb"\bSCT(?!REDACTED)[0-9A-Za-z]{16,}", rb"SCTREDACTED"),
-    ("github-token", rb"\bgh[pousr]_[0-9A-Za-z]{30,}", rb"ghx_REDACTED"),
-    ("api-key", rb"\bsk-(?!REDACTED)[0-9A-Za-z_-]{30,}", rb"sk-REDACTED"),
-    ("cdk", rb"(?i)(cdk[\"']?\s*[:=]\s*[\"']?)(?!REDACTED)[0-9A-Za-z]{16,}", rb"\1REDACTED"),
-)
+# (test_daysim_slice.py): the relay's tape masks the same ones, and owns the list.
+# (name, pattern, replacement); the lookahead keeps an already masked value from
+# matching again; values are token characters only, so a code placeholder like
+# {self.cfg.wecom_secret} is not one.
+SECRET_PATTERNS = relay_tape.SECRET_PATTERNS
 _SECRET_RES = [(n, re.compile(p), r) for n, p, r in SECRET_PATTERNS]
 # A COS signature is masked too, but alone it opens nothing: the repo's rule is that the
 # key id goes (q-ak=AKIDREDACTED, worker rules 10-13) and committed fixtures keep the
@@ -867,9 +876,10 @@ def app_line(ctx: Day, p: Part, out_path: Path, off: int, length: int) -> None:
 
 
 # ------------------------------------------------------------------ AUTO-MAS config, desktop, test windows, other files
-def do_mas_config(ctx: Day) -> dict:
+def do_mas_config(ctx: Day, taped: "set[str]" = frozenset()) -> dict:
     """The config tree at t0 is today's pull (only the pull exists), marked reconstructed;
-    a file whose mtime falls inside the day is also written at that moment."""
+    a file whose mtime falls inside the day is also written at that moment. A file the
+    day's tape holds as of t0 (`taped`, do_tape) gets no reconstructed t0 event."""
     cfg = {}
     base = ctx.dd / MAS_CONFIG
     try:
@@ -889,9 +899,10 @@ def do_mas_config(ctx: Day) -> dict:
         cfg[rel] = ref
         if n in backups:
             continue
-        ctx.emit(ctx.t0, "mas_config", f"{rel}:1", path=machine(rel), reconstructed=True,
-                 as_of=ref["mtime"], **ref, **({"mtime_is_pull": True} if rel in rewritten else {}),
-                 **({"backups": [machine(f"{MAS_CONFIG}/{b}") for b in backups]} if n == "QueueConfig.json" else {}))
+        if n not in taped:
+            ctx.emit(ctx.t0, "mas_config", f"{rel}:1", path=machine(rel), reconstructed=True,
+                     as_of=ref["mtime"], **ref, **({"mtime_is_pull": True} if rel in rewritten else {}),
+                     **({"backups": [machine(f"{MAS_CONFIG}/{b}") for b in backups]} if n == "QueueConfig.json" else {}))
         mt = (ctx.dd / rel).stat().st_mtime
         if ctx.within(mt) and rel not in rewritten:
             ctx.emit(mt, "mas_config", f"{rel}:1", path=machine(rel), op="written", **ref)
@@ -936,6 +947,137 @@ def do_test_windows(ctx: Day) -> None:
             if ctx.within(t):
                 entry = dict(w) if op == "test_window_close" else {**w, "until": None}
                 ctx.emit(t, "file", f"{rel}:1", path=machine(rel), op=op, entry=entry)
+
+
+# ------------------------------------------------------------------ the relay's tape
+_EVT_NS = "{http://schemas.microsoft.com/win/2004/08/events/event}"
+
+
+def read_tape(dd: Path, day: str) -> "tuple[str, list[tuple[int, dict]]]":
+    """The day's tape (relay/ark_relay/features/selfcheck/tape.py) in the pull: its daydata
+    path and (line number, record) pairs; no file -> ("", [])."""
+    rel = f"{TAPE}/{day.replace('-', '')}.jsonl"
+    try:
+        text = (dd / rel).read_text(encoding="utf-8")
+    except OSError:
+        return "", []
+    out = []
+    for n, ln in enumerate(text.splitlines(), 1):
+        try:
+            out.append((n, json.loads(ln)))
+        except ValueError:
+            continue                    # a line cut by a power-off
+    return rel, out
+
+
+def tape_answer(rec: dict):
+    """What the relay received, as a `web` answer / `mas_answer`; None when the tape kept
+    only an excerpt (`cut`) or recorded a failure."""
+    if "error" in rec or rec.get("cut"):
+        return None
+    return rec["json"] if "json" in rec else rec.get("text", "")
+
+
+def syslog_event(xml: str) -> "dict | None":
+    """One System log event's XML as fake_proc.WinState.log_event takes it."""
+    import xml.etree.ElementTree as ET  # noqa: PLC0415
+    try:
+        ev = ET.fromstring(xml)
+    except ET.ParseError:
+        return None
+    sysn = ev.find(f"{_EVT_NS}System")
+    if sysn is None:
+        return None
+    stamp = sysn.find(f"{_EVT_NS}TimeCreated")
+    prov = sysn.find(f"{_EVT_NS}Provider")
+    try:
+        when = datetime.fromisoformat((stamp.get("SystemTime") or "").rstrip("Z").split(".")[0]).replace(
+            tzinfo=timezone.utc).timestamp()
+        eid = int((sysn.findtext(f"{_EVT_NS}EventID") or "").strip())
+    except (AttributeError, ValueError):
+        return None
+    data = {d.get("Name") or str(k): (d.text or "") for k, d in enumerate(ev.iter(f"{_EVT_NS}Data"))}
+    binary = (ev.findtext(f".//{_EVT_NS}Binary") or "").strip()
+    return {"t": when, "event_id": eid, "provider": prov.get("Name", "") if prov is not None else "",
+            "data": data, **({"binary_hex": binary} if binary else {})}
+
+
+def do_tape(ctx: Day) -> "set[str]":
+    """The relay's own tape of the inputs nothing else records (design.md section 4, W8):
+
+    * web: an information source's answer, from the moment it can first have been
+      there: t0 for the day's first answer to a URL (the hand-written outside.jsonl rule,
+      "listed from 00:00"), else halfway between the last fetch that still got the old
+      answer (`prev_seen`) and the fetch that got the new one, so the replayed relay's
+      fetches, a little earlier or later than the recorded ones, get the same answers;
+    * config: AUTO-MAS's config as the relay found it when the day's tape began; with
+      an mtime before t0 it is the config at t0 (no reconstructed event then), else
+      it was written at its mtime;
+    * mas_answer, syslog: what AUTO-MAS answered and the System log events the relay
+      read, at their times (the World does not apply them yet).
+
+    Answers with a request body (a POST) and cut or failed answers are not replayable
+    by URL prefix and are only counted in the notes. Returns the config files covered at t0."""
+    rel, recs = read_tape(ctx.dd, ctx.day)
+    if not rel:
+        return set()
+    ctx.claimed.add(rel)
+    taped: set[str] = set()
+    seen_url: set[str] = set()
+    seen_cfg: set[str] = set()
+    skipped = {"web with a request body": 0, "cut or failed web answer": 0, "truncated": 0}
+    for n, rec in recs:
+        kind, src = rec.get("kind"), f"{rel}:{n}"
+        try:
+            t = datetime.fromisoformat(rec["t"]).timestamp()
+        except (KeyError, ValueError):
+            continue
+        if kind == "truncated":
+            skipped["truncated"] += 1
+        elif kind == "web":
+            ans = tape_answer(rec)
+            if rec.get("req"):
+                skipped["web with a request body"] += 1
+            elif ans is None:
+                skipped["cut or failed web answer"] += 1
+            else:
+                url = rec["url"]
+                if url not in seen_url:
+                    at = ctx.t0
+                elif rec.get("prev_seen"):
+                    at = (datetime.fromisoformat(rec["prev_seen"]).timestamp() + t) / 2
+                else:
+                    at = t
+                seen_url.add(url)
+                if ctx.within(at):
+                    ctx.emit(at, "web", src, prefix=url, answer=ans)
+        elif kind == "mas" and ctx.within(t):
+            ans = tape_answer(rec)
+            ctx.emit(t, "mas_answer", src, path=rec.get("path"), **({"req": rec["req"]} if rec.get("req") else {}),
+                     **({"status": rec["status"]} if "status" in rec else {}),
+                     **({"answer": ans} if ans is not None else {"error": rec.get("error", "cut")}))
+        elif kind == "syslog":
+            for x in rec.get("events") or []:
+                ev = syslog_event(x)
+                if ev and ctx.within(ev["t"]):
+                    at = ev.pop("t")
+                    ctx.emit(at, "syslog", src, read_at=rec["t"], **ev)
+        elif kind == "config" and "json" in rec and rec.get("file") not in seen_cfg:
+            name = rec["file"]
+            seen_cfg.add(name)
+            mt = datetime.fromisoformat(rec["mtime"]).timestamp()
+            data = (json.dumps(rec["json"], ensure_ascii=False, indent=1) + "\n").encode("utf-8")
+            ref = ctx.write(f"files/{TAPE}/{ctx.day}/{name}", data, mt, src, "tape")
+            path = machine(f"{MAS_CONFIG}/{name}")
+            if mt < ctx.t0:
+                taped.add(name)
+                ctx.emit(ctx.t0, "mas_config", src, path=path, from_tape=True, as_of=rec["t"], **ref)
+            elif ctx.within(mt):
+                ctx.emit(mt, "mas_config", src, path=path, op="written", from_tape=True, **ref)
+    for what, k in skipped.items():
+        if k:
+            ctx.notes.append(f"tape: {k} {what} line(s) not replayed")
+    return taped
 
 
 def do_other_files(ctx: Day, seed_files: list) -> None:
@@ -1004,7 +1146,8 @@ def build(day: str, dd: Path, corpus_root: Path, days_dir: Path, until: "str | N
     do_orders(ctx)
     do_net(ctx)
     do_logs(ctx)
-    cfg = do_mas_config(ctx)
+    taped = do_tape(ctx)
+    cfg = do_mas_config(ctx, taped)
     do_desktop(ctx)
     do_test_windows(ctx)
     other: list = []

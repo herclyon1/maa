@@ -246,6 +246,8 @@ def state_files(ctx, out: list, info: dict) -> None:
         rel = f"{sl.STATE}/{sub}"
         if sub.startswith("desktop/"):
             continue                                   # slice.do_desktop / fake_desktop
+        if sub.startswith("tape/"):
+            continue                                   # slice.do_tape; the relay never reads it
         mt = p.stat().st_mtime
         if sub in REBUILT:
             continue

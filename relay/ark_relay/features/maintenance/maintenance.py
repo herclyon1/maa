@@ -29,6 +29,7 @@ import urllib.request
 from datetime import datetime
 
 from ark_relay.core.config import SERVER_TZ
+from ark_relay.features.selfcheck import tape
 
 log = logging.getLogger("ark.maintenance")
 _UA = "Mozilla/5.0"
@@ -77,6 +78,7 @@ def _limit(timeout: float) -> float:
 def _read_whole(req, end: float, limit: float) -> str:
     """One request, read to the end unless time.monotonic() passes `end` first."""
     with urllib.request.urlopen(req, timeout=limit) as r:
+        req.status = getattr(r, "status", None)     # for the day's tape (_get)
         read1 = getattr(r, "read1", None)
         if read1 is None:                      # a plain file-like answer
             return r.read().decode("utf-8", "replace")
@@ -126,11 +128,13 @@ def _get(url: str, timeout: "float | None" = None) -> str:
     for i in range(GET_ATTEMPTS):
         try:
             page = _try(req, _limit(timeout))
-        except urllib.error.HTTPError:
+        except urllib.error.HTTPError as exc:
+            tape.answer("web", url, error=exc)        # the day's tape (selfcheck/tape.py)
             raise
         except Exception as exc:  # timeout, reset, DNS (the last try re-raises)
             until = _UNTIL.get()
             if i + 1 >= GET_ATTEMPTS or (until is not None and until - time.monotonic() <= GET_PAUSE):
+                tape.answer("web", url, error=exc)
                 raise
             first = first or f"{type(exc).__name__}: {exc}"
             log.info("维护公告：%s 没响应（%s），%.0f 秒后再试一次", url, exc, GET_PAUSE)
@@ -140,6 +144,7 @@ def _get(url: str, timeout: "float | None" = None) -> str:
             from ark_relay.features.alarm import errwatch  # noqa: PLC0415
             log.warning("停服维护公告的官网第一次没响应，%.0f 秒后再取一次，取到了\n%s 第一次：%s",
                         GET_PAUSE * i, url, first, extra=errwatch.recovered())
+        tape.answer("web", url, body=page, resp=req)
         return page
     raise RuntimeError("unreachable")
 

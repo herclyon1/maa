@@ -621,7 +621,7 @@ _RELAY_PARTS = {
     "ark.okww_overlay": "鸣潮补丁", "ark.mastercfg": "脚本设置",
     "ark.maaend": "终末地设置", "ark.queues": "队列设置", "ark.modes": "跳过开关", "ark.plan": "排期",
     "ark.sanity_plan": "理智安排", "ark.summary": "文字撰写", "ark.watch": "盯运行记录目录",
-    "ark.procs": "程序列表",
+    "ark.procs": "程序列表", "ark.tape": "回放用的输入记录",
     # Named 2026-10-13 (review s1 #8): each of these logs WARNINGs that errwatch pushes,
     # and read 「一个不常见的部分」 until then. test_texts_gate checks every ark… logger name.
     "ark": "主程序", "ark.errwatch": "报错转发", "ark.error_evidence": "当天日志外送",

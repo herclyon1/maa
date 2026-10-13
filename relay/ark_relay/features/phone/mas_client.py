@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import urllib.request
 
+from ark_relay.features.selfcheck import tape
+
 
 # The address has exactly one source; see config.mas_base()
 def _mas_api() -> str:
@@ -24,8 +26,14 @@ def mas_post(path: str, body: "dict | None" = None, timeout: int = 20) -> dict:
     req = urllib.request.Request(
         _mas_api() + path, data=json.dumps(body or {}).encode(),
         headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read()
+    except Exception as exc:
+        tape.answer("mas", path, req=body, error=exc)
+        raise
+    tape.answer("mas", path, req=body, body=raw, resp=r)
+    return json.loads(raw.decode())
 
 
 def _mas(path: str, body: "dict | None" = None, timeout: int = 20) -> dict:

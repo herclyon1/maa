@@ -20,6 +20,7 @@ from pathlib import Path
 from ark_relay.core import config, texts
 from ark_relay.features.alarm import handle, missed
 from ark_relay.features.modes import modes
+from ark_relay.features.selfcheck import tape
 from ark_relay.core import plan
 from ark_relay.features.report import report
 from ark_relay.features.shutdown import shutdown
@@ -98,8 +99,14 @@ def _automas_snapshot():
     from ark_relay.core.config import mas_base  # noqa: PLC0415
     try:
         with urllib.request.urlopen(mas_base() + _RUNTIME_PATH, timeout=3) as r:
-            return json.loads(r.read().decode("utf-8"))
-    except Exception:  # noqa: BLE001 - no endpoint -> fall back to the process check
+            raw = r.read()
+    except Exception as exc:  # noqa: BLE001 - no endpoint -> fall back to the process check
+        tape.answer("mas", _RUNTIME_PATH, error=exc)
+        return None
+    tape.answer("mas", _RUNTIME_PATH, body=raw, resp=r)
+    try:
+        return json.loads(raw.decode("utf-8"))
+    except Exception:  # noqa: BLE001 - an unreadable answer is no answer, as before
         return None
 
 

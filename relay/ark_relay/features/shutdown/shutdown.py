@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from ark_relay.features.modes import modes
 from ark_relay.core import texts, plan
 from ark_relay.features.schedule import stagegate
+from ark_relay.features.selfcheck import tape
 from ark_relay.core.config import SERVER_TZ
 
 log = logging.getLogger("ark.shutdown")
@@ -246,10 +247,13 @@ def shutdown_event_xml(window_s: int, ids: "tuple[int, ...]" = (1074, 1075)) -> 
         while True:
             got = win32evtlog.EvtNext(q, 10)
             if not got:
-                return out
+                break
             out += [win32evtlog.EvtRender(e, win32evtlog.EvtRenderEventXml) for e in got]
-    except Exception:  # noqa: BLE001 - unknown, not "no event"; the caller says so
+    except Exception as exc:  # noqa: BLE001 - unknown, not "no event"; the caller says so
+        tape.syslog(ids, window_s, None, error=exc)
         return None
+    tape.syslog(ids, window_s, out)
+    return out
 
 
 def _stamp(ev) -> "datetime | None":

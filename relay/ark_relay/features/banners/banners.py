@@ -54,6 +54,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.core.config import SERVER_TZ, atomic_write_text  # tests read banners.SERVER_TZ
+from ark_relay.features.selfcheck import tape
 
 
 log = logging.getLogger("ark.banners")
@@ -358,14 +359,24 @@ def _json(url: str, ua: str, data: "bytes | None" = None,
     if headers:
         h.update(headers)
     req = urllib.request.Request(url, data=data, headers=h)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read())
+    return json.loads(_read(req, url, data, timeout))
 
 
 def _text(url: str, ua: str, timeout: int = 20) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": ua})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read().decode("utf-8", "replace")
+    return _read(req, url, None, timeout).decode("utf-8", "replace")
+
+
+def _read(req, url: str, data: "bytes | None", timeout: int) -> bytes:
+    """The whole answer to `req`, recorded on the day's tape (selfcheck/tape.py)."""
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            raw = r.read()
+    except Exception as exc:
+        tape.answer("web", url, req=data, error=exc)
+        raise
+    tape.answer("web", url, req=data, body=raw, resp=r)
+    return raw
 
 
 def _first(urls: list[str], ua: str, timeout: int = 12) -> str:

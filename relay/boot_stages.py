@@ -316,6 +316,10 @@ def _stage_bootstrap():
 
     log = logging.getLogger("ark.service")
     cfg = Config()
+    # The day's tape of what AUTO-MAS, the System log and the information sources
+    # answer (selfcheck/tape.py), for the day replay; it never stops or changes the relay.
+    from ark_relay.features.selfcheck import tape  # noqa: PLC0415
+    tape.install(cfg.state_dir, cfg.automas_dir)
     # From here on every WARNING / ERROR any module logs reaches the group (see
     # errwatch). Installed before the config check: it needs only the notifier and the
     # state folder, and until 10-13 the check's 「配置提醒」 warnings and the reasons of a
