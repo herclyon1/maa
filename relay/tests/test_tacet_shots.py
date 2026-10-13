@@ -76,6 +76,16 @@ check("也不发说明", e2.notifier.groups, [])
 png(shots / "12-30-00.000_tacet_drops_original.png")
 check("新拍的那张会发", report._attach_tacet_shots(e2, day), ["12-30-00.000_tacet_drops_original.png"])
 
+print("[说明没送到：图也不发、不记已发，下一次两样一起再发]")
+png(shots / "13-00-00.000_tacet_drops_original.png")
+e6 = Eng()
+e6.notifier.send_group = lambda title, body: (e6.notifier.groups.append((title, body)), ["群机器人: 假装挂了"])[1]
+check("说明失败时不发图", report._attach_tacet_shots(e6, day), [])
+check("图一张没发", e6.notifier.images, [])
+e7 = Eng()
+check("下一次说明和图一起发", report._attach_tacet_shots(e7, day), ["13-00-00.000_tacet_drops_original.png"])
+check("下一次先发了说明", [t for t, _ in e7.notifier.groups], ["🖼️ 无音区产出"])
+
 print("[没配 OK-WW 目录：安静]")
 e3 = Eng(); e3.cfg.okww_dir = None
 check("不发", report._attach_tacet_shots(e3, day), [])

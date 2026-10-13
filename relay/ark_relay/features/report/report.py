@@ -560,7 +560,10 @@ def _attach_tacet_shots(eng, day: str) -> list[str]:
     if not cands:
         return []
     pick = max(cands, key=lambda p: p.stat().st_mtime)
-    eng.notifier.send_group(texts.TACET_DROPS, f"{_tacet_caption(eng, day)}。下面是刷完的结算页。")
+    # The caption says what the picture is; without it the picture is not sent
+    # either, and nothing is marked, so a later send of the day tries both again.
+    if eng.notifier.send_group(texts.TACET_DROPS, f"{_tacet_caption(eng, day)}。下面是刷完的结算页。"):
+        return []
     done = [] if eng.notifier.send_group_image(pick) else [pick.name]
     if done:
         # Mark the earlier captures as handled too: the next report only sends
