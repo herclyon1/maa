@@ -3,21 +3,13 @@
 The list itself is relay/handover/legacy-items.json (網页-检查, 10-11: every item with
 its source line or commit). This file only carries it out:
 
-    takeover()  at install: stop the old relay so two never run at once (both would
-                push and power off). Its service and launcher are disabled, not
-                deleted: until the uninstall, `switch.py revert` switches it back
-                on (undo_takeover) - as each was before the first takeover, which
-                is recorded in state\\legacy-takeover.json (the launcher task was
-                already disabled on the machine, 2026-10-11 03:41; enabling it
-                would start a second old relay at logon next to the service).
-    remove()    at uninstall: delete every item marked `remove` or `takeover` - the
-                uninstall removes the old relay too; the way back to it is
-                `switch.py revert`, not the uninstaller.
+    old_relay_present()  whether the old relay's service still exists; switch.py install
+                         refuses while it does (two relays would both push and power off)
+    remove()             at uninstall: delete every item marked `remove` or `takeover`
 
-Once scripts/windows/retire_legacy.py has retired the old relay (its service deleted, its
-code moved to RETIRED), there is nothing to switch back to: old_relay_present() is
-False, takeover() and undo_takeover() do nothing, remove() skips what is already gone
-and switch.py revert says so instead of stopping the new relay first.
+scripts/windows/retire_legacy.py retired the old relay on 2026-10-11 (its service deleted,
+its code moved to C:\\ProgramData\\ark-relay-retired-1011), so nothing here switches it on
+or off any more; remove() skips what is already gone.
 
 Data the user may want kept is never deleted here: in C:\\ProgramData\\ark-relay only the
 old relay's code files go; .env, state\\ and the logs stay, and the uninstaller asks
@@ -39,13 +31,12 @@ DATA = Path(r"C:\ProgramData\ark-relay")
 OLD_CODE = ["ark_relay", "run.py", "service.py", "boot_stages.py", "app_main.py",
             "pkg_layout.py", "manifest.json", "RELEASE-NOTES.md", "requirements.txt",
             "make-manifest.py", "USER-SWITCHES.txt", "README.md", "ark-relay.ps1"]
-# What starts the old relay: switched off at install.
+# The old relay's service; switch.py install refuses while it exists.
 OLD_SERVICE = "ark-relay"
-OLD_LAUNCHER_TASK = "ark-relay"
-# The launcher task's state before the first takeover (see takeover / undo_takeover).
+# Written at install by packages from before the old relay's retirement (it recorded the
+# launcher task's state for a way back that no longer exists); kept by retire_legacy.py,
+# deleted at uninstall.
 TAKEOVER_RECORD = DATA / "state" / "legacy-takeover.json"
-# Where scripts/windows/retire_legacy.py moved the old relay's files (kept 30 days).
-RETIRED = Path(r"C:\ProgramData\ark-relay-retired-1011")
 ERROR_SERVICE_DOES_NOT_EXIST = 1060
 
 
@@ -76,57 +67,6 @@ def _task_names() -> list[str]:
     out = subprocess.run(["schtasks", "/query", "/fo", "csv", "/nh"], capture_output=True,
                          creationflags=subprocess.CREATE_NO_WINDOW).stdout.decode("mbcs", "replace")
     return sorted({line.split('","')[0].strip('"').lstrip("\\") for line in out.splitlines() if line})
-
-
-def _launcher_enabled() -> "bool | None":
-    """Whether the old launcher task is enabled; None when there is none. Through the
-    Task Scheduler's COM interface: schtasks prints its status in the system's language."""
-    import pywintypes  # noqa: PLC0415
-    import win32com.client  # noqa: PLC0415
-    try:
-        sched = win32com.client.Dispatch("Schedule.Service")
-        sched.Connect()
-        return bool(sched.GetFolder("\\").GetTask(OLD_LAUNCHER_TASK).Enabled)
-    except pywintypes.com_error:
-        return None
-
-
-def takeover() -> None:
-    if not old_relay_present():
-        print(f"old relay retired (no service {OLD_SERVICE}): nothing to stop")
-        return
-    # What to put back on `revert`. Only before the first takeover: on an upgrade over
-    # an earlier install both are already switched off by us.
-    if not TAKEOVER_RECORD.exists():
-        TAKEOVER_RECORD.parent.mkdir(parents=True, exist_ok=True)
-        TAKEOVER_RECORD.write_text(json.dumps({"launcher_task_enabled": _launcher_enabled()}),
-                                   encoding="utf-8")
-    _run("sc", "stop", OLD_SERVICE)
-    _run("sc", "config", OLD_SERVICE, "start=", "disabled")
-    _run("schtasks", "/end", "/tn", OLD_LAUNCHER_TASK)
-    _run("schtasks", "/change", "/tn", OLD_LAUNCHER_TASK, "/disable")
-
-
-def undo_takeover() -> int:
-    """Back to the old relay (switch.py revert, or a switch-over that failed): its
-    service on automatic start and started, the launcher task as it was before the
-    takeover (left disabled when that is unknown). 0 = the service is running (1056:
-    it already was; 1060: there is no old relay any more)."""
-    if not old_relay_present():
-        print(f"old relay retired (no service {OLD_SERVICE}, files in {RETIRED}): not switched on")
-        return ERROR_SERVICE_DOES_NOT_EXIST
-    try:
-        was = json.loads(TAKEOVER_RECORD.read_text(encoding="utf-8")).get("launcher_task_enabled")
-    except (OSError, ValueError, AttributeError):
-        was = None
-    _run("sc", "config", OLD_SERVICE, "start=", "auto")
-    if was:
-        _run("schtasks", "/change", "/tn", OLD_LAUNCHER_TASK, "/enable")
-    rc = _run("sc", "start", OLD_SERVICE)
-    if rc in (0, 1056):
-        TAKEOVER_RECORD.unlink(missing_ok=True)   # the next install records afresh
-        return 0
-    return rc
 
 
 def _delete_path(p: Path) -> None:
@@ -167,9 +107,9 @@ def remove() -> None:
                 continue
             for p in (glob.glob(path) if kind == "glob" else [path]):
                 _delete_path(Path(p))
-    TAKEOVER_RECORD.unlink(missing_ok=True)   # nothing left to switch back to
+    TAKEOVER_RECORD.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
     import sys
-    {"takeover": takeover, "undo-takeover": undo_takeover, "remove": remove}[sys.argv[1]]()
+    {"remove": remove}[sys.argv[1]]()

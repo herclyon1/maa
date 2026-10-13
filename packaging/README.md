@@ -35,11 +35,13 @@ regenerate it (`relay/make-manifest.py`) after adding or moving files.
 The installer copies files and calls `switch.py`; the order of everything else is in
 that one file:
 
-The rule: whichever step fails, the machine is left with a relay that runs - the new
-one or the old one.
+The rule: whichever step fails, the machine is left with a relay that runs. The old
+relay (service `ark-relay`) was retired on 2026-10-11 (`scripts/windows/retire_legacy.py`),
+so nothing here switches it on or off any more.
 
 - `switch.py install`:
-  1. Stop and disable the old relay (`legacy.py takeover`).
+  1. Refuse (exit 8, nothing changed, the new relay not started) while the old relay's
+     service still exists: two relays would both push and power off.
   2. Hand AUTO-MAS the jobs it already does (`handover/automas_handover.py`: `plan`
      must pass, then `apply`; skipped on an upgrade, when the handover's backup exists).
   3. Register `\ArkRelay\main`.
@@ -48,24 +50,18 @@ one or the old one.
      mutex) within 60 s and still 15 s later, or this step fails. With nobody there the task cannot run
      yet; that is not a failure, and the watchdog starts it at logon.
 
-  If any step fails, everything is reverted as `switch.py revert` does and the old relay
-  runs again; the installer shows why (a silent one exits 1). `/SKIPHANDOVER=1` on the
+  If any step after 1 fails, the new relay is switched on again as it is (the watchdog
+  retries it and alerts) and AUTO-MAS's settings stay handed over; the way back to the
+  version before is `launch.py rollback`. The installer shows why (a silent one exits 1). `/SKIPHANDOVER=1` on the
   setup command line skips step 2 (for the cloud test machine, which has no AUTO-MAS).
-- `switch.py revert` (by hand): back to the old relay without uninstalling. AUTO-MAS's
-  settings are put back first; then the new relay is stopped and switched off (files
-  stay) and the old relay is switched on. If the settings cannot be put back, nothing
-  changes and the new relay keeps running (exit 4), so the two never do the same jobs
-  at once; if the old relay does not start, the new one comes back (exit 5). Running
-  the installer again switches over again. Once `scripts/windows/retire_legacy.py --go`
-  has retired the old relay, revert changes nothing and exits 6: the way back is then
-  the previous version folder (`launch.py rollback`), and a failed upgrade switches the
-  new relay on again instead of the old one.
+- `switch.py revert` (by hand): changes nothing and exits 6; it says the way back is the
+  previous version folder (`launch.py rollback`). It switched back to the old relay
+  before that was retired.
 - `switch.py resume --current=<name>` (from the installer): an upgrade stops the
   installed relay before it copies files (`switch.py stop`). When Setup ends before the
   switch-over - Cancel, or a file it cannot replace - its `DeinitializeSetup` runs this:
   `current.txt` goes back to the folder it named before (Setup's rollback keeps files it
-  already replaced), then the watchdog and the task start. A watchdog a revert disabled
-  stays off. `switch.py` and `legacy.py` are the first files copied, so this is the new
+  already replaced), then the watchdog and the task start. `switch.py` and `legacy.py` are the first files copied, so this is the new
   code whenever Setup got past them.
 - `switch.py uninstall`:
   1. Stop the watchdog and the relay.
@@ -74,9 +70,9 @@ one or the old one.
      uninstaller says so and ends without deleting a file.
   3. Remove the version folders' `state` junctions.
   4. Unregister the service and the task.
-  5. Remove the old relay and what it left (`legacy.py remove`, from
+  5. Remove what the old relay left (`legacy.py remove`, from
      `handover/legacy-items.json`). The uninstall removes everything except his data
-     and his settings backups; the way back to the old relay is `revert`, not this.
+     and his settings backups.
 
 ## How it runs
 
@@ -95,8 +91,8 @@ one or the old one.
 - The relay guards the watchdog in turn (`relay/watchdog_guard.py`): 60 s after it starts
   and every 3 minutes, a watchdog that is stopped, on automatic start, and not stopped on
   purpose is started again; 3 failed starts in a row log one ERROR, which errwatch pushes
-  to the group. Stopped on purpose = disabled (revert) or `C:\ProgramData\ark-relay\watchdog-stopped.txt`
-  written since the last boot (by `switch.py stop` / revert / uninstall and `estop.sh`,
+  to the group. Stopped on purpose = disabled or `C:\ProgramData\ark-relay\watchdog-stopped.txt`
+  written since the last boot (by `switch.py stop` / uninstall and `estop.sh`,
   deleted by every start of the watchdog there).
 
 ## Updates and rollback

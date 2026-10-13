@@ -11,9 +11,13 @@ checks pin that it
   * does nothing at all when the new relay is not running;
   * changes nothing in a dry run;
   * saves the service, its event-log key and the task before deleting them;
-and that once the old relay is gone, `switch.py revert` changes nothing (before, it handed
+and that with the old relay retired, `switch.py revert` changes nothing (before, it handed
 AUTO-MAS's jobs back and stopped the new relay, then found no old relay to start), a
-failed upgrade switches the new relay on again, and the uninstall skips what is gone.
+failed upgrade switches the new relay on again, the uninstall skips what is gone, and
+install refuses while the old relay's service still exists (exit 8, nothing run): the
+code that stopped and disabled it (legacy.takeover) and that switched back to it
+(legacy.undo_takeover, switch._switch_off_new) was removed on 2026-10-13, as no old relay
+is left to run it.
 Run on a temporary folder with a fake machine; no Windows needed.
 """
 import contextlib
@@ -325,30 +329,57 @@ with tempfile.TemporaryDirectory() as t:
     check("second --go exit 0", run_main(["--go"], m2, pd, pkg), 0)
     check("second --go deletes nothing", [c for c in m2.calls if "delete" in c], [])
 
-print("\n[switch.py revert with the old relay retired: nothing changes, exit 6]")
+print("\n[switch.py revert: nothing changes, exit 6, old relay present or not]")
 steps = []
-saved = (legacy.old_relay_present, switch._handover_rollback, switch._switch_off_new,
-         switch._switch_on_new, legacy.undo_takeover, switch.run)
-legacy.old_relay_present = lambda: False
+
+
+def quiet(fn, *args, **kw):
+    """fn's result with its prints swallowed; an exception becomes its name (a failed check,
+    not a crash: the code before 2026-10-13 needs pywin32 on these paths)."""
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            return fn(*args, **kw), out.getvalue()
+    except Exception as exc:  # noqa: BLE001
+        return f"raised {type(exc).__name__}", out.getvalue()
+
+
+saved = (legacy.old_relay_present, switch._handover_rollback, switch._switch_on_new, switch.run,
+         switch.start_watchdog, switch.register_task)
 switch._handover_rollback = lambda: steps.append("handover rollback") or 0
-switch._switch_off_new = lambda: steps.append("switch off new")
 switch._switch_on_new = lambda: steps.append("switch on new")
-legacy.undo_takeover = lambda: steps.append("undo takeover") or 0
 switch.run = lambda *cmd: steps.append("run " + " ".join(map(str, cmd))) or 0
+switch.start_watchdog = lambda: steps.append("start watchdog") or 0
+switch.register_task = lambda user: steps.append("register task") or 0
 try:
-    check("revert exit", switch.revert(), 6)
-    check("revert touched nothing", steps, [])
+    for present in (False, True):
+        legacy.old_relay_present = lambda present=present: present
+        steps.clear()
+        rc, out = quiet(switch.revert)
+        check(f"revert exit (old relay present: {present})", rc, 6)
+        check(f"revert touched nothing (old relay present: {present})", steps, [])
+        check("revert names launch.py rollback", "launch.py" in out and "rollback" in out, True)
+    steps.clear()
+    legacy.old_relay_present = lambda: False
     switch._back_to_old_after_failed_install()
     check("a failed upgrade switches the new relay on again, nothing else", steps,
           ["switch on new"])
+
+    print("  (install with the old relay still there: refused before anything runs)")
     steps.clear()
     legacy.old_relay_present = lambda: True
-    switch._back_to_old_after_failed_install()
-    check("with the old relay present: back to it as before", steps,
-          ["switch off new", "handover rollback", "undo takeover"])
+    rc, _ = quiet(switch.install, "ME\\him", skip_handover=False)
+    check("install exit 8 while the old relay is present", rc, 8)
+    check("install ran nothing", steps, [])
 finally:
-    (legacy.old_relay_present, switch._handover_rollback, switch._switch_off_new,
-     switch._switch_on_new, legacy.undo_takeover, switch.run) = saved
+    (legacy.old_relay_present, switch._handover_rollback, switch._switch_on_new, switch.run,
+     switch.start_watchdog, switch.register_task) = saved
+
+print("\n[the old relay's switch-on / switch-off code is gone with it]")
+check("legacy.takeover / undo_takeover / _launcher_enabled removed",
+      [n for n in ("takeover", "undo_takeover", "_launcher_enabled") if hasattr(legacy, n)], [])
+check("switch._switch_off_new / _watchdog_disabled removed",
+      [n for n in ("_switch_off_new", "_watchdog_disabled") if hasattr(switch, n)], [])
 
 print("\n[legacy.py with the old service gone]")
 runs = []
@@ -360,15 +391,13 @@ legacy._run = lambda *cmd: runs.append(" ".join(cmd)) or 0
 legacy._task_names = lambda: []
 with tempfile.TemporaryDirectory() as t:
     legacy.TAKEOVER_RECORD = Path(t) / "legacy-takeover.json"
+    legacy.TAKEOVER_RECORD.write_text("{}", encoding="utf-8")
     try:
-        legacy.takeover()
-        check("takeover runs nothing", runs, [])
-        check("takeover writes no record", legacy.TAKEOVER_RECORD.exists(), False)
-        check("undo_takeover says 1060", legacy.undo_takeover(), 1060)
-        check("undo_takeover runs nothing", runs, [])
         legacy.remove()
         check("remove skips the gone service (no sc stop / delete)",
               [r for r in runs if r.startswith("sc ")], [])
+        check("remove deletes the takeover record an earlier package wrote",
+              legacy.TAKEOVER_RECORD.exists(), False)
     finally:
         (legacy.service_exists, legacy._run, legacy._task_names, legacy.TAKEOVER_RECORD,
          legacy.ITEMS) = saved

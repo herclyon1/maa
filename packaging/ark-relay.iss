@@ -12,9 +12,11 @@
 ;                             (highest privileges, no time limit, normal priority)
 ;   C:\ProgramData\ark-relay  data (.env, state, logs): created here, kept on uninstall
 ;                             unless the user says otherwise
-;   the old relay             stopped and disabled at install (packaging/legacy.py
-;                             takeover), deleted at uninstall (legacy.py remove,
-;                             the list is relay/handover/legacy-items.json)
+;   the old relay             retired 2026-10-11 (scripts/windows/retire_legacy.py):
+;                             install refuses while its service still exists (two
+;                             relays would both push and power off); what it left is
+;                             deleted at uninstall (packaging/legacy.py remove, the
+;                             list is relay/handover/legacy-items.json)
 ;   AUTO-MAS settings         the jobs it already does handed to it at install,
 ;                             put back at uninstall (relay/handover/automas_handover.py)
 ; The order of all of that is in packaging/switch.py; this file only copies files and
@@ -133,6 +135,7 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Args: String;
+  Rc: Integer;
 begin
   if CurStep <> ssPostInstall then
     exit;
@@ -148,10 +151,17 @@ begin
   if ExpandConstant('{param:SKIPHANDOVER|0}') = '1' then
     Args := Args + ' --skip-handover';
   // switch.py has already gone back to the old relay when it fails (switch.py revert).
-  SwitchFailed := RunSwitch(Args) <> 0;
+  Rc := RunSwitch(Args);
+  SwitchFailed := Rc <> 0;
   if SwitchFailed and not WizardSilent() then
-    MsgBox('新中继没有切换成功，已经退回老中继继续跑。原因写在安装日志里。',
-           mbError, MB_OK);
+    // 8: the old relay is still installed (switch.py install refuses; nothing started).
+    if Rc = 8 then
+      MsgBox('没有装上：老中继还在这台电脑上，两个中继不能同时跑，新中继没有打开。' +
+             '先撤掉老中继再装。原因写在 C:\ProgramData\ark-relay\switch.log 里。',
+             mbError, MB_OK)
+    else
+      MsgBox('新中继没有切换成功，已经退回老中继继续跑。原因写在安装日志里。',
+             mbError, MB_OK);
 end;
 
 // A silent install (the updater, the cloud test) sees the failure in the exit code.

@@ -6,8 +6,7 @@ ssPostInstall - Cancel, or a file that could not be replaced (Abort) - nothing s
 the relay again until the next logon. Now DeinitializeSetup runs `switch.py resume
 --current=<the name current.txt held before>`: current.txt goes back to that folder when
 the rollback left it on another one (Inno Setup keeps files it already replaced), then
-the watchdog and the task start as uninstall's way back does (switch.start). A watchdog
-a revert disabled stays off: the old relay is the one on then.
+the watchdog and the task start as uninstall's way back does (switch.start).
 """
 import re
 import sys
@@ -30,18 +29,17 @@ def check(label, got, want):
         fails.append(label)
 
 
-def resume_in(app: Path, current: str, *, disabled=False, watchdog_rc=0):
+def resume_in(app: Path, current: str, *, watchdog_rc=0):
     """switch.resume(current) with APP = app and nothing run; the steps taken and its code."""
     steps = []
-    saved = switch.APP, switch.run, switch.start_watchdog, switch._watchdog_disabled
+    saved = switch.APP, switch.run, switch.start_watchdog
     switch.APP = app
     switch.run = lambda *cmd: steps.append(" ".join(map(str, cmd))) or 0
     switch.start_watchdog = lambda: steps.append("start_watchdog") or watchdog_rc
-    switch._watchdog_disabled = lambda: disabled
     try:
         rc = switch.resume(current)
     finally:
-        switch.APP, switch.run, switch.start_watchdog, switch._watchdog_disabled = saved
+        switch.APP, switch.run, switch.start_watchdog = saved
     return steps, rc
 
 
@@ -102,12 +100,6 @@ with tempfile.TemporaryDirectory() as tmp:
     steps, rc = resume_in(app, "1300", watchdog_rc=1)
     check("task run anyway", steps, ["start_watchdog", TASK_RUN])
     check("exit 1", rc, 1)
-
-    print("[after a revert (watchdog disabled): nothing started]")
-    app = make_app(tmp / "g", "1300", ["1300"])
-    steps, rc = resume_in(app, "1300", disabled=True)
-    check("nothing run", steps, [])
-    check("exit 0 (the old relay is the one on)", rc, 0)
 
 print("[uninstall's way back is the same start()]")
 src = (ROOT / "packaging" / "switch.py").read_text(encoding="utf-8")
