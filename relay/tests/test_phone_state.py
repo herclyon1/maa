@@ -676,6 +676,31 @@ with pusher.held():
     pass
 check("积压里没有要发的：一份都不多发", pushed, [])
 
+print("\n[停止前 / 关机前 never wait inside a held batch (status-channel audit A1)]")
+# SvcStop runs on its own thread while the engine's drain or the late backlog holds;
+# folded in, the stop push lost its exact label and went out after the kill timer.
+import threading  # noqa: E402
+pushed.clear()
+inside, release = threading.Event(), threading.Event()
+
+
+def _holder():
+    with pusher.held():
+        pusher("改完配置")
+        inside.set()
+        release.wait(5)
+
+
+th = threading.Thread(target=_holder)
+th.start()
+inside.wait(5)
+check("停止前 sent at once while another thread holds", pusher(phone.STOP_WHY), True)
+check("关机前 sent at once while another thread holds", pusher("关机前"), True)
+check("both went out under their own label", pushed, [phone.STOP_WHY, "关机前"])
+release.set()
+th.join(5)
+check("the held batch keeps only its own push", pushed, [phone.STOP_WHY, "关机前", "改完配置"])
+
 # ---------------------------------------------------------------- what the mailbox could not read
 
 print("\n[关机超过 ntfy 的 12 小时：读不到的那一段要记下来、带进状态，不能悄悄丢]")

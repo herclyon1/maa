@@ -189,9 +189,15 @@ class StatePusher:
             return True
         return False
 
+    # Never put off: the last state before a stop or a power-off. Folded into a held
+    # batch it lost its exact label (the stop marker, machinecheck #11 and the
+    # watchdog's 关机前 test match it) and went out later on the holding thread,
+    # inside SvcStop's 15 s kill timer (audit status-channel A1).
+    NEVER_HELD = ("停止前", "关机前")
+
     def __call__(self, why: str) -> bool:
         with self._lock:
-            if self._held:
+            if self._held and why not in self.NEVER_HELD:
                 self._pending.append(why)
                 return False
         ok = bool(self._publish(why))
