@@ -423,6 +423,44 @@ def check_round_trip() -> None:
           {"QueueConfig": {"Name": "q"}, "SecretKey": tape.MASK})
 
 
+def check_cut_line_and_restart_times() -> None:
+    print("\n[a line cut by a power-off; a change first seen after a restart]")
+    import slice as sl  # noqa: PLC0415
+    st = tmpdir()
+    (st / "tape").mkdir()
+    cut = '{"t":"2026-10-12T21:40:00.000+08:00","kind":"web","url":"https://x.invalid/a","status":200,"len":2,"sha'
+    (st / "tape" / "20261012.jsonl").write_text(
+        '{"t":"2026-10-12T08:00:00.000+08:00","kind":"boot","pid":1}\n' + cut, encoding="utf-8")
+    Clock.at = bj(2026, 10, 12, 21, 45)
+    tape.install(st)
+    check("no tape in a pull without one", sl.read_tape(tmpdir(), "2026-10-12"), ("", []))
+    text = (st / "tape" / "20261012.jsonl").read_text(encoding="utf-8")
+    check("the cut line is ended where it was cut", text.splitlines()[1], cut)
+    dd = tmpdir()
+    (dd / sl.TAPE).mkdir(parents=True)
+    (dd / sl.TAPE / "20261012.jsonl").write_text(text, encoding="utf-8")
+    check("slice skips the cut line and reads the next boot", [(n, r["kind"]) for n, r in sl.read_tape(dd, "2026-10-12")[1]],
+          [(1, "boot"), (3, "boot")])
+
+    dd = tmpdir()
+    (dd / sl.TAPE).mkdir(parents=True)
+    rows = [{"t": "2026-10-12T08:00:00.000+08:00", "kind": "boot", "pid": 1},
+            {"t": "2026-10-12T08:01:00.000+08:00", "kind": "web", "url": "https://x.invalid/n", "status": 200,
+             "len": 1, "sha256": "a", "json": 1},
+            {"t": "2026-10-12T12:00:00.000+08:00", "kind": "boot", "pid": 2},
+            {"t": "2026-10-12T12:01:00.000+08:00", "kind": "web", "url": "https://x.invalid/n", "status": 200,
+             "len": 1, "sha256": "b", "json": 2, "prev_seen": "2026-10-12T08:01:00.000+08:00", "repeats": 0},
+            {"t": "2026-10-12T12:31:00.000+08:00", "kind": "web", "url": "https://x.invalid/n", "status": 200,
+             "len": 1, "sha256": "c", "json": 3, "prev_seen": "2026-10-12T12:21:00.000+08:00", "repeats": 20}]
+    (dd / sl.TAPE / "20261012.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    t0 = sl.day_start("2026-10-12")
+    ctx = sl.Day("2026-10-12", t0, t0 + 86400, dd, tmpdir())
+    sl.do_tape(ctx)
+    check("first answer from 00:00; after a restart from the boot; else halfway",
+          [(e["t"], e["answer"]) for _t, _s, e in sorted(ctx.events, key=lambda e: e[0]) if e["kind"] == "web"],
+          [("2026-10-12T00:00:00+08:00", 1), ("2026-10-12T12:00:00+08:00", 2), ("2026-10-12T12:26:00+08:00", 3)])
+
+
 def check_syslog_slice() -> None:
     print("\n[a System log event on the tape becomes a syslog event at its own time]")
     import slice as sl  # noqa: PLC0415
@@ -453,6 +491,7 @@ else:
     check_cap_and_prune()
     check_day_boundary_and_repeats()
     check_round_trip()
+    check_cut_line_and_restart_times()
     check_syslog_slice()
     tape.uninstall()
     require("no thread left behind", threading.active_count() <= 2, threading.enumerate())

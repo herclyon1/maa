@@ -1009,7 +1009,10 @@ def do_tape(ctx: Day) -> "set[str]":
       there: t0 for the day's first answer to a URL (the hand-written outside.jsonl rule,
       "listed from 00:00"), else halfway between the last fetch that still got the old
       answer (`prev_seen`) and the fetch that got the new one, so the replayed relay's
-      fetches, a little earlier or later than the recorded ones, get the same answers;
+      fetches, a little earlier or later than the recorded ones, get the same answers.
+      When a boot lies between the two, the old process's later repeats were never
+      written (tape.py writes a repeat only as the next change's `prev_seen`), so the
+      change is put no earlier than that boot;
     * config: AUTO-MAS's config as the relay found it when the day's tape began; with
       an mtime before t0 it is the config at t0 (no reconstructed event then), else
       it was written at its mtime;
@@ -1026,13 +1029,16 @@ def do_tape(ctx: Day) -> "set[str]":
     seen_url: set[str] = set()
     seen_cfg: set[str] = set()
     skipped = {"web with a request body": 0, "cut or failed web answer": 0, "truncated": 0}
+    boot_at = None                      # the latest `boot` line so far
     for n, rec in recs:
         kind, src = rec.get("kind"), f"{rel}:{n}"
         try:
             t = datetime.fromisoformat(rec["t"]).timestamp()
         except (KeyError, ValueError):
             continue
-        if kind == "truncated":
+        if kind == "boot":
+            boot_at = t
+        elif kind == "truncated":
             skipped["truncated"] += 1
         elif kind == "web":
             ans = tape_answer(rec)
@@ -1045,7 +1051,10 @@ def do_tape(ctx: Day) -> "set[str]":
                 if url not in seen_url:
                     at = ctx.t0
                 elif rec.get("prev_seen"):
-                    at = (datetime.fromisoformat(rec["prev_seen"]).timestamp() + t) / 2
+                    before = datetime.fromisoformat(rec["prev_seen"]).timestamp()
+                    at = (before + t) / 2
+                    if boot_at is not None and before < boot_at <= t:
+                        at = max(at, boot_at)
                 else:
                     at = t
                 seen_url.add(url)

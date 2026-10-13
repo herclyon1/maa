@@ -178,6 +178,11 @@ def _open_day(day: str, t: datetime) -> None:
     size, full, has_config, last, events = 0, False, False, {}, set()
     if p.exists():
         data = p.read_bytes()
+        if data and not data.endswith(b"\n"):
+            # A line cut by a power-off: end it, so the next line starts a line of its own.
+            with open(p, "ab") as f:
+                f.write(b"\n")
+            data += b"\n"
         size = len(data)
         full = b'"kind":"truncated"' in data[-200:]
         has_config = b'"kind":"config"' in data
