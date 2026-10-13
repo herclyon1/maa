@@ -421,6 +421,15 @@ class Screen:
         return " / ".join(ln.text for ln in self.lines[:limit])
 
 
+def _drop(*files: Path) -> None:
+    """Delete the agent's working files; one held open or already gone is left for the next prune."""
+    for f in files:
+        try:
+            f.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def _focus_missing(data: dict) -> bool:
     """The agent could not bring the requested window to the front."""
     return bool(data.get("focus_missing")) or any(
@@ -503,8 +512,27 @@ class Desktop:
             log.debug("桌面助手这一次没记进核对用的记录", exc_info=True)
         return data
 
+    # The agent's working files (req-/res-<id>.json, shot-<id>.png and its -x2 copy)
+    # are kept this long: a screenshot's path is quoted in problem notes and in the
+    # trace the machine checks read (gameupdate_games), so it is not deleted at once.
+    # Until 2026-10-13 nothing removed any of them (review, s5 #7).
+    WORK_KEEP_SECONDS = 7 * 24 * 3600
+    _WORK_GLOBS = ("req-*.json", "res-*.json", "shot-*.png")
+
+    def _prune_work(self) -> None:
+        cutoff = time.time() - self.WORK_KEEP_SECONDS
+        for pattern in self._WORK_GLOBS:
+            for f in self.dir.glob(pattern):
+                try:
+                    old = f.stat().st_mtime < cutoff
+                except OSError:
+                    continue
+                if old:
+                    _drop(f)
+
     def _run(self, actions: list[dict], focus: str | None, timeout: float | None) -> dict:
         self._ensure_agent()
+        self._prune_work()
         rid = uuid.uuid4().hex[:8]
         req = self.dir / f"req-{rid}.json"
         res = self.dir / f"res-{rid}.json"
@@ -522,6 +550,7 @@ class Desktop:
                     str(self.agent), str(req), str(res)))
         if not ok:
             log.warning("桌面助手没能在交互会话里起来")
+            _drop(req)
             return {"ok": False, "log": ["没能起来"], "ocr": [], "shot": str(shot)}
         deadline = time.monotonic() + (timeout or self.timeout)
         while time.monotonic() < deadline:
@@ -529,10 +558,13 @@ class Desktop:
                 try:
                     data = json.loads(res.read_text(encoding="utf-8-sig"))
                     data["shot"] = str(shot)
-                    return data
                 except (OSError, ValueError):
                     time.sleep(0.5)
                     continue
+                # The answer is in `data` now; the request and the result file are
+                # not read again. The screenshot stays (WORK_KEEP_SECONDS).
+                _drop(req, res)
+                return data
             time.sleep(1)
         log.warning("桌面助手 %s 超时没有结果", rid)
         return {"ok": False, "log": ["超时"], "ocr": [], "shot": str(shot)}
