@@ -32,8 +32,15 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
         text = ""
         if rec.log_path and rec.log_path.exists():
             text = rec.log_path.read_text(encoding="utf-8", errors="replace")
-        if not text:
-            return None                     # no log means nothing to check against; do not report blindly
+        if not text and rec.script in ("OK-WW", "MaaEnd"):
+            # AUTO-MAS said 「正常退出」 but left no log (collector sets log_path None
+            # when the .log is absent) or an empty one: nothing was verified, which
+            # is not 「everything done」 (audit 2026-10-13 s8 #4; None here was a false
+            # green). MAA goes on: it is judged from its own asst.log alone.
+            return _judged(rec, [outcome.Check(
+                "能读到 AUTO-MAS 这一轮的运行日志", False,
+                f"{rec.log_path or '没有 .log 文件'}：AUTO-MAS 只留下了「正常退出」的记录，"
+                "没有这一轮的日志，做没做成核对不了")], rec.script)
         if rec.script == "OK-WW":
             expect_nest = _okww_nest_expected(eng.cfg.automas_dir)
             if expect_nest is None:
