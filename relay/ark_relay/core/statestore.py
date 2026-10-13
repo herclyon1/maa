@@ -45,7 +45,7 @@ FIELDS: dict[str, dict[str, str]] = {
     },
     "modes": {
         "skip_next_shutdown": "「下次跑完不关机」标记还没用上（一次性，人按的；下一趟早班/晚班跑完时用掉）",
-        "shutdown_skipped": "哪一次关机机会已经跳过（机会标识；调试模式或用掉的「下次跑完不关机」写的，手动关调试模式会清掉）",
+        "shutdown_skipped": "哪一次关机机会已经跳过（机会标识；调试模式、倒计时里按的或用掉的「下次跑完不关机」写的；手动关调试模式只清调试模式自己写的那条，其余的留着）",
         "debug_until": "调试模式到什么时候（YYYY-MM-DD HH:MM）",
     },
     "versions": {
