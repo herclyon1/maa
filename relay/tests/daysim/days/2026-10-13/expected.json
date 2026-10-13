@@ -1,0 +1,26 @@
+{
+ "day": "2026-10-13",
+ "scope": {"from": "00:00", "to": "15:26"},
+ "notes": "00:00 to 15:26, the pull time. R36: our --test OK-WW run at 11:05 and the 11:13:55 power-off.",
+ "guards": [
+  {"from": "11:05:49", "to": "11:57:41", "what": "test window OK-WW", "src": "test-windows.json"},
+  {"from": "11:24:43", "to": "11:57:58", "what": "debug mode", "src": "relay.log 10-13 11:24:43; relay.log 10-13 11:57:58"},
+  {"from": "11:07:05", "to": "11:09:06", "what": "hand-started run 2026-10-13/wuwa/OK-WW-07-05-49", "src": "ledger-2026-10-13.jsonl:4"}
+ ],
+ "items": [
+  {"id": "1013-01", "kind": "verdict", "rule": "must", "run": "2026-10-13/arknights/MAA-05-00-23", "status": "ok", "review": "reviewed", "why": "Morning MAA.", "src": "ledger-2026-10-13.jsonl:1"},
+  {"id": "1013-02", "kind": "verdict", "rule": "must", "run": "2026-10-13/wuwa/OK-WW-05-20-44", "status": "ok", "review": "reviewed", "why": "Morning OK-WW.", "src": "ledger-2026-10-13.jsonl:2"},
+  {"id": "1013-03", "kind": "push", "rule": "must_not", "ch": "group", "at": "09:37", "tol_min": 10, "title_has": "中继自己报错了", "review": "reviewed", "why": "09:36:59 OK-WW's own recovered errors (3 kinds) are one WARNING marked recovered, not a push.", "src": "USER-SWITCHES.txt:75; relay.log 10-13 09:36:59"},
+  {"id": "1013-04", "kind": "verdict", "rule": "must", "run": "2026-10-13/endfield/MaaEnd-05-36-57", "status": "ok", "review": "reviewed", "why": "Morning MaaEnd.", "src": "ledger-2026-10-13.jsonl:3"},
+  {"id": "1013-05", "kind": "ledger", "rule": "must_not", "run": "2026-10-13/endfield/MaaEnd-05-59-12", "review": "reviewed", "why": "AUTO-MAS's 09:59 MaaEnd update step is not a run (the machine already left it out).", "src": "errors R34; d9f3fd12; history/2026-10-13/endfield/MaaEnd-05-59-12.json"},
+  {"id": "1013-06", "kind": "push", "rule": "may", "ch": "group", "title_has": "无音区产出", "review": "reviewed", "why": "Tacet screenshot: OK-WW's screenshot folder is not recorded.", "src": "alerts/20261013.jsonl:1; report.py:_attach_tacet_shots"},
+  {"id": "1013-07", "kind": "push", "rule": "must", "ch": "serverchan", "at": "10:00", "tol_min": 10, "title_has": "（临时查看）", "review": "reviewed", "why": "Interim summary once the morning round is done.", "src": "relay.log 10-13 10:00:31; report.py:_maybe_interim_report"},
+  {"id": "1013-08", "kind": "log", "rule": "must", "at": "10:00", "tol_min": 10, "logger": "ark.shutdown", "line_has": "用掉了", "review": "reviewed", "why": "The phone's 「下次跑完不关机」 (08:46:38) is spent at the morning shift's power-off moment.", "src": "USER-SWITCHES.txt:73; modes.py:take_skip; relay.log 10-13 10:00:36"},
+  {"id": "1013-09", "kind": "power", "rule": "must_not", "window": ["09:00", "10:30"], "review": "reviewed", "why": "The skip mark keeps the machine on after the morning shift.", "src": "USER-SWITCHES.txt:73; relay.log 10-13 10:00:36"},
+  {"id": "1013-10", "kind": "verdict", "rule": "must", "run": "2026-10-13/wuwa/OK-WW-07-05-49", "status": "ok", "review": "reviewed", "why": "Our --test OK-WW run 11:07 (hand-started, test window).", "src": "ledger-2026-10-13.jsonl:4"},
+  {"id": "1013-11", "kind": "push", "rule": "must_not", "ch": "serverchan", "at": "11:09", "tol_min": 10, "title_has": "🔎", "review": "reviewed", "why": "11:09 round made only of our test run: no interim summary.", "src": "errors R35; 8705ab8f; relay.log 10-13 11:09:13; test-windows.json"},
+  {"id": "1013-12", "kind": "power", "rule": "must_not", "window": ["11:05", "11:58"], "review": "reviewed", "why": "11:13:55 「本轮已处理完毕，60 秒后关机」 while our --test run's window was open: the test run joined the morning round, got a new key past the spent skip, and the PC went off; the owner had to switch it on himself. His words: 待核.", "src": "errors R36; 25ebc227; 374ae55b; 5ef29e66; 被指出.txt:73 10-13 12:1x; relay.log 10-13 11:13:55"},
+  {"id": "1013-13", "kind": "power", "rule": "must_not", "window": ["11:58", "15:26"], "review": "reviewed", "why": "Rest of the pulled day: boot by hand 11:23 and no shift due before 15:26 (not-shift).", "src": "USER-SWITCHES.txt:73; relay.log 10-13 11:26:00"},
+  {"id": "1013-14", "kind": "push", "rule": "must_not", "ch": "group", "title_has": "今晚不关机", "review": "reviewed", "why": "「🌙 今晚不关机」 is gone (R21).", "src": "errors R21; 192dfefa; USER-SWITCHES.txt:73"}
+ ]
+}
