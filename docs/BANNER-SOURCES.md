@@ -150,7 +150,7 @@ the maintenance window in the 「版本预下载与更新预告」 / 「版本�
   no banner name), and parsing it always yields 0 entries; besides, every operator in it —
   提丰, 引星棘刺, 逻各斯, 鸿雪, 衡沙 — can be traced back to an earlier debut in the
   limited-time banners. A rotation banner never carries a new operator.
-- Next banner: the official site's 「…寻访即将开启」 post (`arknights_next_from_news`), then a
+- Next banner: the official site's 「…寻访即将开启」 post (`arknights_banner_posts`), then a
   PRTS row with a future start (time only). **Far-off projection only** (never presented as
   the next banner, 2026-09-12): `src/utils/gachaScheduleOptions.js` in the
   `Arknights-yituliu/frontend-v2-plus` repository.
