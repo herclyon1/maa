@@ -350,6 +350,27 @@ finally:
     (legacy.old_relay_present, switch._handover_rollback, switch._switch_off_new,
      switch._switch_on_new, legacy.undo_takeover, switch.run) = saved
 
+print("\n[uninstall with the old relay retired: the handover rollback leaves its jobs with AUTO-MAS]")
+# s26 audit 2026-10-13: automas_handover.py rollback put back the old relay's Close and its
+# update switches off although there was no old relay any more to do those jobs.
+ran = []
+saved = (legacy.old_relay_present, switch.run, switch.STATE)
+with tempfile.TemporaryDirectory() as t:
+    switch.STATE = Path(t)
+    (switch.STATE / "automas-handover.json").write_text("{}", encoding="utf-8")
+    switch.run = lambda *cmd: ran.append([str(c) for c in cmd]) or 0
+    try:
+        legacy.old_relay_present = lambda: False
+        switch._handover_rollback()
+        check("old relay gone: rollback --old-relay-gone",
+              [c[2:] for c in ran], [["rollback", "--state-dir", t, "--old-relay-gone"]])
+        ran.clear()
+        legacy.old_relay_present = lambda: True
+        switch._handover_rollback()
+        check("old relay there: everything back as before", [c[2:] for c in ran], [["rollback", "--state-dir", t]])
+    finally:
+        legacy.old_relay_present, switch.run, switch.STATE = saved
+
 print("\n[legacy.py with the old service gone]")
 runs = []
 saved = (legacy.service_exists, legacy._run, legacy._task_names, legacy.TAKEOVER_RECORD,

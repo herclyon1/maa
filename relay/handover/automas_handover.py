@@ -6,12 +6,15 @@ ark_relay, whose layout is being moved while this file is written.
 
     python automas_handover.py plan      [--state-dir DIR] [--okww-dir DIR] [--with-wuwa-update] [--only STEP ...]
     python automas_handover.py apply     [same options]
-    python automas_handover.py rollback  [--state-dir DIR]
+    python automas_handover.py rollback  [--state-dir DIR] [--old-relay-gone]
 
 `plan` reads only. `apply` changes AUTO-MAS settings through its own backend
 (POST http://127.0.0.1:<ARK_MAS_PORT or 36163>/api/...) and reads every value
 back; the values it replaced are saved to <state-dir>/automas-handover.json
-first, and `rollback` puts exactly those back. Exit code 0 = every step done
+first, and `rollback` puts exactly those back - except, with --old-relay-gone (switch.py
+passes it once packaging/legacy.py old_relay_present() is False), the settings of steps
+13, 10a and 10b (KEPT_WITHOUT_OLD_RELAY): they were the old relay's jobs, and with no
+old relay to take them back AUTO-MAS keeps doing them. Exit code 0 = every step done
 (or already in place), 1 = a step was refused or could not be read back,
 2 = the backend could not be reached at all.
 `--only STEP` (repeatable: --only 13 --only 10a) does just those steps, ids as in
@@ -40,8 +43,9 @@ v5.7.0-beta.1 source and the machine's config on 2026-10-11):
   10a Arknights client     MAA script Run.IfCheckGameUpdate and
                            Run.IfAutoInstallGameApk -> true (Official server
                            only; Info.Server is checked).
-  10b WuWa client          OK-WW script Game.Enabled -> true and Game.Path ->
-                           the Kuro launcher. Only with --with-wuwa-update: it
+  10b WuWa client          OK-WW script Game.Path -> the Kuro launcher, then
+                           Game.IfAutoUpdate -> true and Game.Enabled -> true
+                           (only once the path is set). Only with --with-wuwa-update: it
                            hands the game's start and stop to AUTO-MAS and the
                            patch download counts against the 120-minute hard
                            limit, so it needs one trial run on an update day.
@@ -294,6 +298,20 @@ def _backup_path(state_dir: Path) -> Path:
 
 
 STEP_IDS = ("13", "10a", "10b", "20")
+# The settings of steps 13, 10a and 10b (steps() above): the jobs the old relay did and
+# AUTO-MAS does after the handover. `rollback --old-relay-gone` leaves them as they are -
+# putting back the old relay's Close and update switches off would leave nobody running
+# annihilation or updating either client (s26 audit, 2026-10-13). 20 is not the old
+# relay's job and is still put back.
+KEPT_WITHOUT_OLD_RELAY = (
+    "user:MAA:Data.AnnihilationCompletedWeek",
+    "user:MAA:Info.Annihilation",
+    "script:MAA:Run.IfCheckGameUpdate",
+    "script:MAA:Run.IfAutoInstallGameApk",
+    "script:OK-WW:Game.Path",
+    "script:OK-WW:Game.IfAutoUpdate",
+    "script:OK-WW:Game.Enabled",
+)
 
 
 def plan(state_dir: Path, okww_dir: Path, with_wuwa: bool, do_apply: bool,
@@ -357,7 +375,7 @@ def plan(state_dir: Path, okww_dir: Path, with_wuwa: bool, do_apply: bool,
     return 1 if bad else 0
 
 
-def rollback(state_dir: Path) -> int:
+def rollback(state_dir: Path, old_relay_gone: bool = False) -> int:
     p = _backup_path(state_dir)
     if not p.exists():
         print("nothing to roll back: no " + BACKUP_FILE)
@@ -365,6 +383,9 @@ def rollback(state_dir: Path) -> int:
     old = json.loads(p.read_text(encoding="utf-8")).get("old") or {}
     bad = 0
     for key, value in old.items():
+        if old_relay_gone and key in KEPT_WITHOUT_OLD_RELAY:
+            print(f"left with AUTO-MAS: {key} (no old relay to take it back; was {value!r})")
+            continue
         kind, script, path = key.split(":", 2)
         try:
             Target(kind, script, path).write(value)
@@ -383,12 +404,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--state-dir", type=Path, default=DEFAULT_STATE_DIR)
     ap.add_argument("--okww-dir", type=Path, default=DEFAULT_OKWW_DIR)
     ap.add_argument("--with-wuwa-update", action="store_true")
+    ap.add_argument("--old-relay-gone", action="store_true",
+                    help="rollback: leave steps 13, 10a and 10b with AUTO-MAS")
     ap.add_argument("--only", action="append", choices=STEP_IDS, metavar="STEP",
                     help="do only this step (repeatable): " + ", ".join(STEP_IDS))
     a = ap.parse_args(argv)
     try:
         if a.action == "rollback":
-            return rollback(a.state_dir)
+            return rollback(a.state_dir, a.old_relay_gone)
         return plan(a.state_dir, a.okww_dir, a.with_wuwa_update, a.action == "apply", a.only)
     except Unreachable as exc:
         print(f"AUTO-MAS backend not reachable: {exc}")

@@ -331,6 +331,45 @@ try:
             sys.stderr = err
         check("argparse exit 2", code, 2)
         check("no call made", be.calls, [])
+    with nullcontext(tmpdir()) as d:   # tmpdir() is a plain Path, removed at exit
+        state = Path(d)
+        sd = ["--state-dir", str(state), "--okww-dir", str(Path(d) / "okww")]
+        print("uninstall with the old relay gone: 13, 10a, 10b stay with AUTO-MAS, the rest goes back")
+        # s26 audit 2026-10-13: the old relay was retired 10-11 22:33; putting back its
+        # Close and the update switches it owned would leave nobody doing those jobs.
+        (state / "state.json").write_text(json.dumps(
+            {"weekly": {"annihilation": {"done_week": "2026-W41", "restore_to": "Chernobog@Annihilation"}}}),
+            encoding="utf-8")
+        launcher = Path(d) / "Wuthering Waves" / "launcher.exe"
+        real_launcher, H.wuwa_launcher = H.wuwa_launcher, lambda okww_dir: launcher
+        try:
+            be = Backend(selfstart=False)
+            be.users[MAA][UID]["Data"]["AnnihilationCompletedWeek"] = "2026-W40"
+            be.scripts[OKWW]["Game"]["IfAutoUpdate"] = False
+            code, _ = run(be, "apply", "--with-wuwa-update", *sd)
+            check("apply exit 0", code, 0)
+            saved = json.loads((state / H.BACKUP_FILE).read_text(encoding="utf-8"))["old"]
+            handed = {st["target"].key for st in H.steps(state, Path(d), True) if st["id"] in ("13", "10a", "10b")}
+            check("every 13 / 10a / 10b setting the handover changes is kept with AUTO-MAS",
+                  sorted(handed - set(getattr(H, "KEPT_WITHOUT_OLD_RELAY", ()))), [])
+            check("the backup holds all of them and 20", sorted(saved), sorted(handed | {"setting::Start.IfSelfStart"}))
+            try:
+                code, out = run(be, "rollback", "--old-relay-gone", "--state-dir", str(state))
+            except SystemExit as exc:      # the old argparse: no such option
+                code, out = exc.code, ""
+            check("rollback exit 0", code, 0)
+            check("annihilation stays open", be.users[MAA][UID]["Info"]["Annihilation"], "Chernobog@Annihilation")
+            check("this week's record stays", be.users[MAA][UID]["Data"]["AnnihilationCompletedWeek"], "2026-W41")
+            check("arknights client update stays on",
+                  (be.scripts[MAA]["Run"]["IfCheckGameUpdate"], be.scripts[MAA]["Run"]["IfAutoInstallGameApk"]),
+                  (True, True))
+            check("wuwa update stays on", be.scripts[OKWW]["Game"],
+                  {"Enabled": True, "Path": str(launcher), "IfAutoUpdate": True})
+            check("20 (not the old relay's job) is put back", be.setting["Start"]["IfSelfStart"], False)
+            check("says what it left", out.count("left with AUTO-MAS"), 7)
+            check("backup removed", (state / H.BACKUP_FILE).exists(), False)
+        finally:
+            H.wuwa_launcher = real_launcher
 finally:
     urllib.request.urlopen = _real
 

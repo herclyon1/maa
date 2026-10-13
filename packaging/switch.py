@@ -41,8 +41,9 @@ an install. A watchdog a revert disabled stays off: the old relay is the one on 
 uninstall: removes everything - the new relay, the old relay and what it left
 (legacy.py remove, relay/handover/legacy-items.json); only his data
 (C:\\ProgramData\\ark-relay: .env, state, logs) and his settings backups stay.
-First the watchdog and the relay stop and AUTO-MAS's settings are put back. If that
-cannot be done (AUTO-MAS busy or not answering), nothing is removed: the relay is started
+First the watchdog and the relay stop and AUTO-MAS's settings are put back - with the old
+relay retired, all but the jobs it did (handover steps 13, 10a, 10b), which then stay with
+AUTO-MAS (_handover_rollback). If that cannot be done (AUTO-MAS busy or not answering), nothing is removed: the relay is started
 again, exit code 3, and the uninstaller stops before deleting anything and says why.
 """
 from __future__ import annotations
@@ -309,10 +310,16 @@ def resume(current: str) -> int:
 
 
 def _handover_rollback() -> int:
-    """Put back the AUTO-MAS settings the handover changed. 0 = done or nothing to do."""
+    """Put back the AUTO-MAS settings the handover changed. 0 = done or nothing to do.
+    With the old relay retired, the jobs it did (handover steps 13, 10a, 10b) stay with
+    AUTO-MAS: nobody else would run annihilation or update the clients (uninstall is the
+    one caller that gets here then; revert and a failed install stop earlier)."""
     if not (STATE / "automas-handover.json").exists():
         return 0
-    rc = run(PY, HANDOVER, "rollback", "--state-dir", STATE)
+    args = [PY, HANDOVER, "rollback", "--state-dir", STATE]
+    if not legacy.old_relay_present():
+        args.append("--old-relay-gone")
+    rc = run(*args)
     if rc != 0:
         print("AUTO-MAS settings NOT put back (exit %d): state/automas-handover.json still "
               "holds the old values; run `switch.py revert` or `uninstall` again once "
