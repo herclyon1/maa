@@ -28,40 +28,54 @@ OKWW_MIN_WAIT_SECONDS = 45
 
 
 # OK-WW's own python processes: python.exe or pythonw.exe (the echo farm launches
-# pythonw so no console covers the game) whose command line names ok-ww or runs
-# `-m ok`. One filter for stopping them and for looking for them.
+# pythonw so no console covers the game) whose command line holds OK-WW's install
+# folder. One filter for stopping them and for looking for them.
+# The folder, not a bare "ok-ww" or `-m ok`: -like ignores case, so any python with
+# "OK-WW" among its arguments matched - `dispatch_guard.py start OK-WW` saw itself
+# (scripts/windows/dispatch_guard.py). A path fragment carries separators no
+# argument has. OK-WW's real line (ok-script.2026-10-12.log, 15:23:30):
+# D:\ark\okww\data\apps\ok-ww\working\main.py -t 2 -e, run by the pythonw.exe under
+# data\apps\ok-ww\python (echofarm._launch).
 _OKWW_PY = ("Get-CimInstance Win32_Process -Filter "
             "\"Name='python.exe' OR Name='pythonw.exe'\" | "
-            "Where-Object { $_.CommandLine -like '*ok-ww*' -or "
-            "$_.CommandLine -like '*-m ok *' }")
+            r"Where-Object { $_.CommandLine -like '*\ok-ww\*' }")
 
 
-def _okww_py(tail: str):
+def _okww_py(tail: str, timeout: "float | None" = None):
     """Run `_OKWW_PY | tail` in PowerShell 7; the CompletedProcess, or None when it
-    could not run."""
+    could not run (or ran past `timeout` seconds)."""
     ps = _OKWW_PY + " | " + tail
     # 60 s: the hang guard _okww_quiesce has had on this same call since 2026-08-28
     # (bc3b709d), moved here unchanged. Its duration on the machine has no record.
     try:
         return subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
-                       capture_output=True, timeout=60)
+                       capture_output=True, timeout=60 if timeout is None else timeout)
     except (OSError, subprocess.SubprocessError):
         return None
 
 
-def _stop_okww_python() -> None:
+def _stop_okww_python(timeout: "float | None" = None) -> None:
     """Stop OK-WW's python processes (only those, see _OKWW_PY); the game is left alone.
     The result is not checked: a caller that must know uses okww_python_pids."""
-    _okww_py("ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
+    _okww_py("ForEach-Object { Stop-Process -Id $_.ProcessId -Force }", timeout)
 
 
-def okww_python_pids() -> "list[int] | None":
+def okww_python_pids(timeout: "float | None" = None) -> "list[int] | None":
     """PIDs of OK-WW's running python processes (_OKWW_PY); None when the process
-    list could not be read."""
-    r = _okww_py("Select-Object ProcessId | ConvertTo-Json -Compress")
+    list could not be read.
+
+    No process gives empty output with exit 0 and nothing on stderr. A query that
+    failed inside pwsh also prints nothing on stdout, so a nonzero exit, or empty
+    output with an error on stderr, is "could not read", never "none left"."""
+    r = _okww_py("Select-Object ProcessId | ConvertTo-Json -Compress", timeout)
+    if r is None or r.returncode != 0:
+        return None
+    text = (r.stdout or b"").decode("utf-8", "replace").strip()
+    if not text and (r.stderr or b"").strip():
+        return None
     try:
-        data = json.loads((r.stdout or b"").decode("utf-8", "replace").strip() or "null")
-    except (AttributeError, ValueError):
+        data = json.loads(text or "null")
+    except ValueError:
         return None
     out = []
     for proc in [data] if isinstance(data, dict) else (data or []):
