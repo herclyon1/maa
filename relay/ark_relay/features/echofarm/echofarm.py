@@ -53,12 +53,13 @@ RESTART_QUIET_MINUTES = 5
 # Enough to cover a night, few enough that something genuinely broken still gives up
 # and says so instead of relaunching into a wall until morning.
 MAX_RESTARTS = 40
-# The lowest level OK-WW offers. A boss's level does not change whether it drops an
-# echo or what class the echo is - that is set by the data bank level - so a higher
-# level only makes the fight harder. OK-WW's own description of the field says as
-# much: "Choose the Lowest that Drop a Echo". The original value is restored when the
+# The lowest boss level that drops an echo. OK-WW's own description of the field is
+# "Choose the Lowest that Drop a Echo" (FarmEchoTask.py:38, v3.7.4), i.e. some lower
+# levels drop none, and its default for the field is "80" (:24). The user, 2026-10-13:
+# 「刷声骸确实是80级才能刷，50级不可能刷」. The earlier "50" (868d09f5) had no source and
+# would have farmed all night for nothing. The original value is restored when the
 # farm ends.
-FARM_LEVEL = "50"
+FARM_LEVEL = "80"
 
 
 # OK-WW's live config lives under its pyappify working directory, not at the
