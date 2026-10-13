@@ -80,6 +80,14 @@ LANES = {
     # P1 green: the fix (find_nest pinned to v3.7.3's body 12d040afa102) on the same OK-WW.
     "p1-green-f6b5f432": {"tag": "v3.7.3", "overlay": "f6b5f432", "tests": "test_overlay_loads.py",
                           "expect": "green"},
+    # P2 red: the same pair, on the 2026-10-07 nest list with the 落渊南丘 order. find_nest is
+    # skipped (the report the relay read on 10-04), so upstream's picks the first 0 (0/48) and
+    # the click misses the 落渊南丘 row: the case must fail at an assertion.
+    "p2-red-f6b5f432": {"tag": "v3.7.3", "overlay": "f6b5f432~1", "tests": "test_p2_find_nest.py",
+                        "expect": "red", "relay_line": MACHINE_2026_10_04},
+    # P2 green: f6b5f432's find_nest on the same OK-WW chooses and clicks 落渊南丘 0/41.
+    "p2-green-f6b5f432": {"tag": "v3.7.3", "overlay": "f6b5f432", "tests": "test_p2_find_nest.py",
+                          "expect": "green"},
 }
 
 
@@ -161,7 +169,10 @@ def prepare(lane: str, root: Path) -> None:
         shutil.copyfile(t, work / "tests" / f"{TEST_PREFIX}{t.name}")
     ctx = {"lane": lane, "okww_tag": spec["tag"], "okww_commit": head, "overlay": label,
            "overlay_sha256": sha256(src.read_bytes()), "report": str(okww_overlay.REPORT),
-           "expected_applied": expected, "tests": [t.name for t in tests]}
+           "expected_applied": expected, "tests": [t.name for t in tests],
+           # The harness (harness.py, scenario.py, scenarios/) and the frame library stay in
+           # this checkout; the copied tests import them from here.
+           "gamesim_okww": str(HERE)}
     (work / CONTEXT).write_text(json.dumps(ctx, ensure_ascii=False, indent=1), encoding="utf-8")
     # pip input: OK-WW's pinned requirements from the fetched copy, plus the one range it
     # leaves open, at what the PC has (versions.json: onnxocr-ppocrv5 ">=0.0.20 (installed 0.0.20)").
