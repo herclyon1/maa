@@ -1781,18 +1781,23 @@ def _sf_rarity() -> None:
     try:
         first = _b.ak_rarity("某六星", flaky)
         second = _b.ak_rarity("某六星", flaky)
-        _b._ak_prts_rows, _b._json, _b._text = (lambda tr: [row]), offline, offline
-        with _logs() as recs:
-            debut, _ = _b._arknights(now, trace=_b.Trace.new())
     finally:
-        _b._ak_prts_rows, _b._json, _b._text = real
         _b._rarity_cache.clear()
         _b._rarity_cache.update(saved)
     check("silent 798: a failed lookup is -1 this time", first, -1)
     check("silent 798: a failed lookup is not cached, the next one asks again", (second, len(calls)), (5, 2))
-    check("silent 798: unknown rarity is still dropped, never faked", [b.chars for b in debut], [])
-    check("silent 798: one WARNING names both operators", _warned(recs, "甲、乙"), 1)
-    check("silent 798: and only one about rarity", _warned(recs, "稀有度"), 1)
+    # s20 #2: a running banner whose rarity is unknown is never faked and never
+    # dropped in silence - the game reads as not read (collect puts it in `failed`).
+    out, _tr, _recs = _ak_offline(now, [row])
+    check("silent 798: unknown rarity is a failed read, not an empty one",
+          (type(out).__name__, "甲、乙" in str(out)), ("RuntimeError", True))
+    rows, _nxt, failed, text, recs = _collect_offline(now, [row])
+    check("silent 798: collect lists 明日方舟 as not read", [f for f in failed if f.startswith("明日方舟")], ["明日方舟"])
+    block = _block(text, "明日方舟")
+    check("silent 798: the report says not read, never 「当期无新角色卡池」",
+          ("这次没读到" in block, "当期无新角色卡池" in block), (True, False))
+    check("silent 798: one WARNING names both operators, with the cause", _warned_exc(recs, "甲、乙"), 1)
+    check("silent 798: and only one about rarity", _warned_exc(recs, "稀有度"), 1)
 
     # The announced next banner (PRTS has registered it, not open yet): a failed
     # lookup dropped it and the line fell to 「官方未公告」 in silence.
@@ -1841,6 +1846,59 @@ def _ak_offline(now, prts_rows, get=None, rarity=None):
         _b._rarity_cache.clear()
         _b._rarity_cache.update(saved)
     return out, tr, recs
+
+
+def _warned_exc(recs: list, part: str) -> int:
+    """Like _warned, counting the exception text too: errwatch puts
+    「ExcType: message」 after the line in the group message."""
+    return sum(1 for r in recs if r.levelno == logging.WARNING
+               and (part in r.getMessage() or (r.exc_info and part in str(r.exc_info[1]))))
+
+
+def _block(text: str, game: str) -> str:
+    """One game's lines of the rendered section, its name line first."""
+    out: list[str] = []
+    for line in text.split("\n"):
+        if line in ("明日方舟", "鸣潮", "终末地"):
+            if out:
+                break
+            if line == game:
+                out.append(line)
+        elif out:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _collect_offline(now, prts_rows, rarity=None, sk_get=None, ef_bulletin=None):
+    """collect + render with every web source stubbed: Arknights as _ak_offline
+    (official site offline), Endfield through `sk_get` (None: no Skland token),
+    its version bulletin list is `ef_bulletin` (None = unreachable), Wuthering
+    Waves reads nothing. Returns (rows, next, failed, rendered text, log records)."""
+    real = (_b._ak_prts_rows, _b._json, _b._text, _b._wuwa, _b.endfield_next_from_news)
+    saved = dict(_b._rarity_cache)
+
+    def offline(url, *a, **k):
+        raise OSError(f"offline: {url}")
+
+    def js(url, *a, **k):
+        if url == _b._EF_BULLETIN and ef_bulletin is not None:
+            return ef_bulletin
+        raise OSError(f"offline: {url}")
+    _b._ak_prts_rows, _b._json, _b._text = (lambda tr: list(prts_rows)), js, offline
+    _b._wuwa, _b.endfield_next_from_news = (lambda *a, **k: ([], None)), (lambda now: None)
+    _b._rarity_cache.clear()
+    _b._rarity_cache.update(rarity or {})
+    failed: list[str] = []
+    tr = _b.Trace.new()
+    try:
+        with _logs() as recs:
+            rows, nxt = _b.collect(now, sk_get=sk_get, failed=failed, trace=tr)
+            text = render(rows, now, nxt, {}, tr, failed, {})
+    finally:
+        _b._ak_prts_rows, _b._json, _b._text, _b._wuwa, _b.endfield_next_from_news = real
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update(saved)
+    return rows, nxt, failed, text, recs
 
 
 def _ak_site_1006():
@@ -1910,9 +1968,17 @@ def _sf_ef_names() -> None:
             return {"data": {"list": two}}
         raise OSError("Skland 502")
     out, recs = _ef_offline(sk, datetime(2026, 8, 20))
-    check("silent 1349: still no name faked", out[0] if isinstance(out, tuple) else out, [])
-    check("silent 1349: one WARNING names both lookups", _warned(recs, "1683、1700"), 1)
-    check("silent 1349: only one about the names", _warned(recs, "名字"), 1)
+    # s20 #2: no name faked, and no banner dropped in silence either: the game
+    # reads as not read (collect puts it in `failed`).
+    check("silent 1349: a lookup that failed is a failed read, not an empty one",
+          (type(out).__name__, "1683、1700" in str(out)), ("RuntimeError", True))
+    _rows, _nxt, failed, text, recs = _collect_offline(datetime(2026, 8, 20), [], sk_get=sk)
+    check("silent 1349: collect lists 终末地 as not read", [f for f in failed if f.startswith("终末地")], ["终末地"])
+    block = _block(text, "终末地")
+    check("silent 1349: the report says not read, never 「当期无新角色卡池」",
+          ("这次没读到" in block, "当期无新角色卡池" in block), (True, False))
+    check("silent 1349: one WARNING names both lookups, with the cause", _warned_exc(recs, "1683、1700"), 1)
+    check("silent 1349: only one about the names", _warned_exc(recs, "名字"), 1)
 
 
 def _sf_ef_pool_ends() -> None:

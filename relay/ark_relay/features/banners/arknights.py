@@ -586,8 +586,10 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
     lost: list[str] = []
     debut = [six_star_only(b, failed=lost) if b.start <= now <= b.end else b for b in debut]
     if lost:
-        log.warning("方舟：在开的卡池里 %s 在 PRTS 查不到稀有度，分不出是不是六星，这次没报",
-                    "、".join(lost))
+        # Raised, not logged and dropped: a running banner left out reads as
+        # 「当期无新角色卡池」, which is false. `collect` lists the game as not read
+        # and logs this once, message included.
+        raise RuntimeError(f"在开的卡池里 {'、'.join(lost)} 在 PRTS 查不到稀有度，分不出是不是六星")
     debut = [b for b in debut if b.chars]
     for b in debut:
         if b.start <= now <= b.end:

@@ -207,9 +207,9 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
     live = parse_endfield(pools, name_of)
     if unnamed:
         # A banner without its operator's name is dropped (never shown nameless),
-        # so the report would read 「当期无新角色卡池」 for it.
-        log.warning("终末地：森空岛条目 %s 查不到名字，这几个卡池这次没报\n%s",
-                    "、".join(unnamed), why[-1][:200])
+        # and dropped in silence the report would read 「当期无新角色卡池」. Raised
+        # so `collect` lists the game as not read and logs this once.
+        raise RuntimeError(f"森空岛条目 {'、'.join(unnamed)} 查不到名字（{why[-1][:200]}）")
 
     # Official bulletin: which new operators this version has, and on which banner
     html = ""
