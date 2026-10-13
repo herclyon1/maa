@@ -323,9 +323,10 @@ def _install_claim():
             # Not enough waveplates: the game's top-up dialog, answered with the clicks
             # upstream's BaseWWTask.use_stamina makes on it (:445-450). The click at
             # (0.70, 0.71) confirms whatever the dialog has selected. With backup
-            # waveplates that is the backup (09-14 walk-through: 「默认选中备用体力」;
-            # the user, 09-14: 「体力不够刷一次周本就用备用体力，备用体力有」). With none it
-            # offers crystal solute and astrite (10-12 11:45:02 screen: 「请选择补充方式」,
+            # waveplates that is the backup (09-14 walk-through: 「默认选中备用体力」),
+            # which is what the user asked for on 09-14, in his own words
+            # 「体力不够刷一次周本就用备用体力，备用体力有」 (short for the weekly boss: use the backup).
+            # With none it offers crystal solute and astrite (10-12 11:45:02: 「请选择补充方式」,
             # 19 solute, 15652 astrite), and 10-12 15:29 and 15:31 paid that way: backup
             # 0, the clicks went through, both claims were taken (ok-script.2026-10-12
             # .log:2793-2821, :2874-2902). So this is reached only with both bar values
