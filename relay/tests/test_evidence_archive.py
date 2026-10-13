@@ -18,28 +18,64 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 fails = []
 
 
-def _run_id_stamp(run_id):
-    """复刻 _warn_if_evidence_stale 里解析 run_id 末段时刻的那几行。"""
-    stamp = run_id.rsplit("-", 3)[-3:]
-    if len(stamp) != 3 or not all(x.isdigit() for x in stamp):
-        return None
-    hh, mm, ss = (int(x) for x in stamp)
-    return hh * 3600 + mm * 60 + ss
+import logging  # noqa: E402
+import os  # noqa: E402
+import tempfile  # noqa: E402
+from datetime import datetime, timedelta  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
+from ark_relay.features.alarm import handle  # noqa: E402
 
 
-# run_id 的末段就是这一轮的开始时刻，解析不能错
-got = _run_id_stamp("2026-09-05/endfield/MaaEnd-05-27-42")
-if got != 5 * 3600 + 27 * 60 + 42:
-    fails.append(f"run_id 时刻解析错了：{got}")
+class _Grab(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.lines = []
 
-# 用户名或脚本名里带横杠也不能把解析带偏
-got2 = _run_id_stamp("2026-09-05/end-field/Maa-End-09-57-01")
-if got2 != 9 * 3600 + 57 * 60 + 1:
-    fails.append(f"带横杠的 run_id 解析错了：{got2}")
+    def emit(self, record):
+        self.lines.append(record.getMessage())
 
-# 形状不对时要安静地放弃，不能抛
-if _run_id_stamp("2026-09-05/endfield/MaaEnd") is not None:
-    fails.append("形状不对的 run_id 应该返回 None")
+
+def _stale_warnings(started, mtime, name="2026-10-12-3.log"):
+    """Warnings _warn_if_evidence_stale gives for one debug log last written at `mtime`."""
+    d = pathlib.Path(tempfile.mkdtemp(prefix="arktest-stale-"))
+    f = d / name
+    f.write_text("x", encoding="utf-8")
+    os.utime(f, (mtime.timestamp(), mtime.timestamp()))
+    grab = _Grab()
+    handle.log.addHandler(grab)
+    try:
+        rec = SimpleNamespace(run_id="2026-10-12/endfield/MaaEnd-06-58-38", started=started)
+        handle._warn_if_evidence_stale(None, rec, d)
+    finally:
+        handle.log.removeHandler(grab)
+        f.unlink()
+        d.rmdir()
+    return grab.lines
+
+
+# The run_id stem is AUTO-MAS's clock (UTC+4: collector.AUTOMAS_NAME_TZ), not the
+# server's: MaaEnd-06-58-38 started 2026-10-12 10:59:40 Beijing (ledger-2026-10-12).
+# A debug log last written 10:58:09 - the round before - must be flagged. Until
+# 2026-10-13 the check compared the stem's 06:58:38 with 10:58:09 and said nothing
+# (audit s7 #3).
+START = datetime(2026, 10, 12, 10, 59, 40, tzinfo=SERVER_TZ)
+got = _stale_warnings(START, datetime(2026, 10, 12, 10, 58, 9, tzinfo=SERVER_TZ))
+if not any("别的轮次" in x for x in got):
+    fails.append(f"上一轮写的 debug 日志没被标出来：{got}")
+# Written during the round: no warning.
+got = _stale_warnings(START, START + timedelta(minutes=3))
+if got:
+    fails.append(f"这一轮写的 debug 日志被误标：{got}")
+# The previous day's log, written later in the day than this round's start: flagged.
+got = _stale_warnings(START, datetime(2026, 10, 11, 21, 0, tzinfo=SERVER_TZ))
+if not any("别的轮次" in x for x in got):
+    fails.append(f"前一天的 debug 日志没被标出来：{got}")
+# AUTO-MAS's own copy is taken by run_id: never flagged.
+got = _stale_warnings(START, datetime(2026, 10, 12, 10, 58, 9, tzinfo=SERVER_TZ), "automas-MaaEnd-06-58-38.log")
+if got:
+    fails.append(f"按 run_id 取的 AUTO-MAS 日志被误标：{got}")
 
 # 存档函数必须把 history 的两个后缀都带上
 src = (pathlib.Path(__file__).resolve().parents[1]

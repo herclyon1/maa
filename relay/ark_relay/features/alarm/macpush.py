@@ -6,12 +6,12 @@ The decision (BOARD/DECISIONS.md, the amended 「D-1011-报警交到手上」): 
 the relay pushes.
 
 What is sent. The very row alertlog.py writes to COS alerts/<day>.jsonl (its
-FIELDS: ts, game, title, text, version, evidence_run - nothing added), one JSON
+FIELDS: ts, game, title, text, version, evidence_run, channel - nothing added), one JSON
 object per request:
 
     POST <Config.alert_push_url>          default http://100.110.87.36:8931/alert
     Content-Type: application/json; charset=utf-8
-    body: {"ts": ..., "game": ..., "title": ..., "text": ..., "version": ..., "evidence_run": ...}
+    body: {"ts": ..., "game": ..., "title": ..., "text": ..., "version": ..., "evidence_run": ..., "channel": ...}
 
 A 2xx answer is delivered. No proxy is used (the address is the Mac's Tailscale
 address). ARK_ALERT_PUSH_URL in .env overrides the address; empty turns this off.

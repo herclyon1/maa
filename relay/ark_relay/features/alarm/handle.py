@@ -108,21 +108,21 @@ def _warn_if_evidence_stale(eng, rec: RunRecord, dst: Path) -> None:
     来龙去脉见 docs/CODE-HISTORY.md「handle.py:_warn_if_evidence_stale」。
     """
     try:
-        stamp = rec.run_id.rsplit("-", 3)[-3:]
-        if len(stamp) != 3 or not all(x.isdigit() for x in stamp):
-            return
-        hh, mm, ss = (int(x) for x in stamp)
-        started = hh * 3600 + mm * 60 + ss
+        # Compare instants, not clock readings: the run_id stem is AUTO-MAS's
+        # clock (UTC+4, collector.AUTOMAS_NAME_TZ) and carries no date, so the
+        # stem against a Beijing mtime missed exactly the previous round's log
+        # (audit 2026-10-13 s7 #3).
+        cut = rec.started.timestamp()
+        began = rec.started.astimezone(SERVER_TZ)
         for f in dst.glob("*.log"):
             if f.name.startswith("automas-"):
                 continue          # this one was taken by run_id, so it always lines up
-            mt = datetime.fromtimestamp(f.stat().st_mtime, tz=SERVER_TZ)
-            ended = mt.hour * 3600 + mt.minute * 60 + mt.second
-            if ended < started:
+            mtime = f.stat().st_mtime
+            if mtime < cut:
+                mt = datetime.fromtimestamp(mtime, tz=SERVER_TZ)
                 log.warning("⚠️ 证据里的 %s 最后写于 %s，早于这一轮开始的 %s，"
                             "多半是**别的轮次**的日志，别拿它当这次失败的依据",
-                            f.name, mt.strftime("%H:%M:%S"),
-                            f"{hh:02d}:{mm:02d}:{ss:02d}")
+                            f.name, mt.strftime("%m-%d %H:%M:%S"), began.strftime("%m-%d %H:%M:%S"))
     except Exception:  # the booking goes on; the group hears the check broke
         log.warning("证据时间范围检查失败（这一份证据没核是不是这一轮的）", exc_info=True)
 
@@ -244,21 +244,40 @@ def _archive_maaend_evidence(eng, rec: RunRecord) -> None:
         eng._warn_if_evidence_stale(rec, dst)
     except Exception:
         log.exception("MaaEnd 证据存档失败（不影响记账）")
-    # Never entering the game at all is the signal that the client needs an
-    # update: register it, and after the queue finishes update and re-run
-    if (rec.raw or {}).get("maaend_unreachable"):
+
+
+def _mark_downtime(eng, rec: RunRecord) -> None:
+    """A failure that could not get into the game: register the game for the update
+    and re-run after the queue (gameupdate.mark_pending -> run_deferred), and mark a
+    failure inside an official maintenance window on the record and its ledger line.
+
+    For every script (audit 2026-10-13 s7 #1 / s1 #2): this sat in
+    _archive_maaend_evidence, so MAA and OK-WW never got the mark, and even
+    MaaEnd's stayed off the ledger - the daily report booked a plain failure and
+    gameupdate.needs_rerun (it reads the ledger) never re-ran what the alarm
+    promised to re-run. Only for a scheduled run being held (_hold_for_retry, the
+    MaaEnd update-restart hold): a run pushed at once is not re-run by the relay.
+    Never raises: the booking goes on."""
+    try:
         from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
-        gameupdate.mark_pending(eng.cfg.state_dir, "终末地", "今天 MaaEnd 进不了游戏（客户端待更新）")
-    if rec.script == "OK-WW" and not rec.ok and (rec.raw or {}).get("okww_unreachable"):
-        from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
-        gameupdate.mark_pending(eng.cfg.state_dir, "鸣潮", "今天 OK-WW 等不到游戏窗口（客户端待更新）")
-    if not rec.ok:
-        # A failure that ran into official downtime: mark it, draw ⏸ in the daily
-        # report, raise no alert, and after the queue wait for the servers to come
-        # back and make the run up
-        from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
+        from ark_relay.features.maintenance import maintenance  # noqa: PLC0415
+        raw = rec.raw
+        # Never entering the game at all is the signal that the client needs an update.
+        if rec.script == "MaaEnd" and raw.get("maaend_unreachable"):
+            gameupdate.mark_pending(eng.cfg.state_dir, "终末地", "今天 MaaEnd 进不了游戏（客户端待更新）")
+        if rec.script == "OK-WW" and raw.get("okww_unreachable"):
+            gameupdate.mark_pending(eng.cfg.state_dir, "鸣潮", "今天 OK-WW 等不到游戏窗口（客户端待更新）")
+        # A failure that ran into official downtime: ⏸ in the daily report, the
+        # 「进不了游戏」 alarm instead of a failure, no make-up, and a re-run once
+        # the servers are back.
         if why := gameupdate.in_maintenance(eng.cfg.state_dir, rec.script, rec.started):
-            rec.raw["maintenance"] = why
+            raw["maintenance"] = why
+            _mark_raw_on_ledger(eng, rec, "maintenance", why)
+            game = next((g for g, s in maintenance.SCRIPT_OF.items() if s == rec.script), "")
+            if game:
+                gameupdate.mark_pending(eng.cfg.state_dir, game, f"今天 {rec.script} 撞上官方维护（{why}）")
+    except Exception:  # not knowing leaves it an ordinary failure
+        log.warning("没查成 %s 是不是撞上维护 / 进不了游戏，按普通失败处理", rec.run_id, exc_info=True)
 
 
 def _weekly_gates(eng, rec: RunRecord) -> None:
@@ -321,15 +340,20 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
         # Bundle first, so the alarm carries the link (the round is over: this
         # alarm is the final word on it, and the daily row gets the link too).
         page = _ship_evidence(eng, rec)
+        full = msg + (f"\n\n证据包：{page}" if page else "")
         if rec.script in ("MAA", "MaaEnd"):
             title, errs = _push_undone(eng, rec, msg, page)
         else:
             title = texts.ROUND_INCOMPLETE
-            errs = eng.notifier.send(title, msg + (f"\n\n证据包：{page}" if page else ""), alert=True)
+            errs = eng.notifier.send(title, full, alert=True)
         # Logged after the push: errwatch pushes this line unless the alarm above
-        # really went to the group (no second copy of the same thing).
+        # really went to the group (no second copy of the same thing). When the send
+        # failed, errwatch pushes the whole message under the alarm's own title:
+        # its default is the first line only, which ends at 「有项目没干成：」 and loses
+        # every undone item (audit 2026-10-13 s7 #6; relay.log 10-11 09:30:45).
+        ew = _errwatch()
         log.warning("⚠️ %s %s 有项目没干成：\n%s", rec.script, rec.run_id, msg,
-                    extra=_errwatch().group_pushed(title, errs, eng.notifier))
+                    extra=ew.alarm(title, full) if errs else ew.group_pushed(title, errs, eng.notifier))
         return
     if after_done:
         eng._pending.pop(key, None)
@@ -419,6 +443,7 @@ def _hold_for_retry(eng, rec: RunRecord, key: tuple) -> None:
     judging and just cleans up, and because every step of it has to be finished
     before the next thing can go wrong - the order must not be changed.
     """
+    _mark_downtime(eng, rec)   # before the hold is persisted: the mark survives a restart
     # Hold it. Only alert once the script has stopped retrying entirely.
     if not _keeps_rejected(eng._pending.get(key), rec):
         eng._pending[key] = rec   # else the held refusal stays: the alarm is about it
@@ -472,14 +497,17 @@ def _ship_evidence(eng, rec: RunRecord) -> str:
         res = evidence.save_and_upload(eng.cfg, rec.script, rec.run_id, extra, window=window,
                                        relay_until=time.time())
         if res.get("page"):
-            log.info("🗂️ %s 证据包已上传（%d 个文件）→ %s", rec.run_id, len(res["uploaded"]), res["page"])
+            # One archive goes up (evidence.pack_one), so "uploaded" holds one link;
+            # the count that means something is the files inside it.
+            n = len(res.get("files") or [])
+            log.info("🗂️ %s 证据包已上传（%d 个文件）→ %s", rec.run_id, n, res["page"])
             rec.raw["evidence_page"] = res["page"]     # the failure alarm and the daily row carry it
             day = run_day(rec)
             if not eng.state.mark_evidence(day, rec.run_id, res["page"]):
                 log.warning("没能把证据链接写回 %s 的账本，日报那一行会没有链接", rec.run_id)
             eng.notifier.send(texts.EVIDENCE_SAVED,
                               texts.evidence_saved_body(rec.script, rec.started.astimezone(SERVER_TZ).strftime("%m-%d %H:%M"),
-                                                        len(res["uploaded"]), res["page"]))
+                                                        n, res["page"]))
         else:
             log.warning("🗂️ %s 证据包没传上去：%s", rec.run_id, "；".join(res.get("errors") or ["没有文件"]))
         return res.get("page") or ""
@@ -517,10 +545,20 @@ def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str
     kind = "手动"          # unresolved.send keys it with rec.run_id
     if rec.ok:
         # The held failure is done with, but not as 「重试后成功」: nobody's retry healed
-        # it, a person did (same as the manual_stop branch).
-        if eng._pending.pop(key, None) is not None:
+        # it, a person did. A person fixing it is not "fixed itself", so it is pushed
+        # now with a line saying so, as the manual_stop branch pushes its held failure
+        # (audit 2026-10-13 s7 #2: it was dropped with one INFO line).
+        # Only a failure from before this run: one held from a later round was not
+        # got past by it and stays held.
+        held = eng._pending.get(key)
+        if held is not None and held.started < rec.started:
+            eng._pending.pop(key, None)
             eng._persist_pending()
-            log.info("🖐 %s 之前压着的失败，有人手动跑成了，不再推最终报警", rec.script)
+            hhmm = rec.started.astimezone(SERVER_TZ).strftime("%H:%M")
+            title, body = _failure_alarm(eng, held, texts.hand_fixed_note(hhmm), held=True)
+            errs = _push_now(eng, run_day(held), "手动跑成前", held.run_id, title, body)
+            log.info("🖐 %s 之前压着的失败 %s，后来有人手动跑成了，%s", rec.script, held.run_id,
+                     "没推出去，下一轮再推" if errs else "照报进群")
         _weekly_gates(eng, rec)
         _push_unverified(eng, rec)
         if msg := eng._verify_outcome(rec):
@@ -534,17 +572,36 @@ def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str
     return day, kind, title, body
 
 
-def _failure_alarm(eng, rec: RunRecord, note: str) -> tuple[str, str]:
+def _failure_alarm(eng, rec: RunRecord, note: str, held: bool = False) -> tuple[str, str]:
     """(title, body) of the final-failure alarm about `rec` when it is pushed now
     rather than held (no make-up is run for it): the usual failure text with `note`
-    on top and the evidence link. Rescues and ships the evidence first."""
-    if rec.script == "MaaEnd":
+    on top and the evidence link. Rescues and ships the evidence first.
+
+    `held`: `rec` was held, and _hold_for_retry captured its evidence when it was
+    recorded. Nothing is captured again: by now the screen, the log tail and
+    MaaEnd's debug folder belong to a later run (a person's, or the one 停一切
+    cut), and copying them would overwrite the held run's own evidence (audit
+    2026-10-13 review of s7 #2).
+
+    No _mark_downtime here: the mark (⏸, mark_pending, the relay's re-run) is for
+    a scheduled run being held. A hand-started failure is a person's run, and an
+    update-day MAA failure is pushed saying the evening shift runs it again; a held
+    `rec` got its mark when it was held."""
+    if not held and rec.script == "MaaEnd":
         eng._archive_maaend_evidence(rec)
-    elif rec.script == "OK-WW":
+    elif not held and rec.script == "OK-WW":
         _archive_okww_evidence(eng, rec)
     ev = _evidence_note(eng, rec)      # ships the bundle first when the record has none
     title, body = core.format_failure(rec, _diagnosis(eng, rec))
-    return title, note + "\n" + body + (f"\n{ev}" if ev else "")
+    body = note + "\n" + body + (f"\n{ev}" if ev else "")
+    # The 「像没进游戏」 shape with no official notice behind it: said here as
+    # pushes._push_unresolved says it on the held final alarm, since
+    # _confirm_unreachable logs it at INFO only (review of s7 #5).
+    raw = rec.raw or {}
+    if raw.get("maaend_unreachable_shape") and not raw.get("maaend_unreachable"):
+        body += "\n" + (texts.UNREACHABLE_UNREAD_NOTE if raw.get("maaend_unreachable_unread")
+                        else texts.UNREACHABLE_SHAPE_NOTE)
+    return title, body
 
 
 def _handle(eng, rec: RunRecord) -> None:
@@ -640,6 +697,7 @@ def _book(eng, rec: RunRecord) -> None:
         # failure held already stays held instead (as _hold_restart keeps it): it is
         # what a later success heals or the final alarm names - replaced, its failed
         # tasks were lost (relay.log 10-12: 06-04-00's 协议空间 under 06-58-11).
+        _mark_downtime(eng, rec)   # held like _hold_for_retry: marked before it is persisted
         if key not in eng._pending or (eng._pending[key].raw or {}).get("maaend_update_restart"):
             eng._pending[key] = rec
         eng._persist_pending()
@@ -760,7 +818,7 @@ def _flush_pending(eng) -> None:
         day = run_day(rec)
         attempts = _attempts(eng, rec, day)
         # Could not get into the game, with an official maintenance window or update
-        # notice behind it (handle._archive_maaend_evidence, _confirm_unreachable):
+        # notice behind it (handle._mark_downtime, _confirm_unreachable):
         # every such record goes to the group, with that notice in the text; no
         # make-up (gameupdate re-runs it after the queue).
         raw = rec.raw or {}
@@ -769,7 +827,9 @@ def _flush_pending(eng) -> None:
             hint = maint or raw.get("maaend_unreachable_why") or efstatus.update_hint()
             note = _evidence_note(eng, rec)      # ships the bundle first when the record has none
             page = raw.get("evidence_page") or ""
-            body = (texts.cant_enter_body(rec.script, attempts, bool(maint), str(hint or ""))
+            from ark_relay.features.verify.collector_maaend import _UNREACHABLE_QUICK_SEC  # noqa: PLC0415
+            body = (texts.cant_enter_body(rec.script, attempts, bool(maint), str(hint or ""),
+                                          _UNREACHABLE_QUICK_SEC)
                     + (f"\n证据包：{page}" if page else f"\n{note}" if note else ""))
             if eng.notifier.send(texts.cant_enter(rec.script), body, alert=True):
                 return  # if it cannot be sent, come back next tick

@@ -452,11 +452,16 @@ def section_10():
         ban.warning("官方图转 PNG 失败，原样交给系统 OCR", exc_info=True)   # relay3.log:27778-27785
     _wait(n, 3)
     check("复发的 WARNING 也报，三条三推", len(n.sent), 3)
-    check("复发有自己的标题，带修好的版本", {t for t, _, _ in n.sent}, {texts.relay_error_recurred("20261005151027")})
+    # The 库街区 keys left the registry once that message became log.info
+    # (audit s8 #5, tests/test_known_fixed_live.py): logged as a WARNING anyway,
+    # it is an ordinary relay error.
+    check("没登记的照普通报错推", [t for t, _, _ in n.sent[:2]], [texts.RELAY_ERROR] * 2)
+    check("复发有自己的标题，带修好的版本", n.sent[2][0] if len(n.sent) > 2 else None,
+          texts.relay_error_recurred("20261005151027"))
     check("复发标题照样进群", route_of(texts.relay_error_recurred("20261005151027"), alert=True), "group")
-    check("复发正文说当时修的是什么", "库街区官方资讯翻得不够多页" in n.sent[0][1])
+    check("复发正文说当时修的是什么", len(n.sent) > 2 and "游戏机缺读图组件" in n.sent[2][1])
     check("日报写「复发：v… 修过的又出现了」",
-          errwatch.daily_section(C, TODAY).count("复发：v20261005151027 修过的又出现了"), 3)
+          errwatch.daily_section(C, TODAY).count("复发：v20261005151027 修过的又出现了"), 1)
     drop(h)
     KNOWN_ERR = {errwatch.signature("ark.engine", "处理运行记录失败: <path>"): {"fixed_in": "20261006000000",
                                                                            "what": "运行记录读到一半就处理"}}

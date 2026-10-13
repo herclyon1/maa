@@ -337,11 +337,24 @@ MAAEND_UPDATE_AFTER_DONE = "⚠️ 终末地装新版重启了这一趟（前面
 # (handle._confirm_unreachable): it is alarmed on as a fault.
 UNREACHABLE_SHAPE_NOTE = ("每个任务都在 30 秒内失败、一个没完成，看着像没进游戏；"
                           "但今天没有官方维护或更新公告，所以按故障报，已交给我们这边去查游戏窗口、分辨率、游戏有没有闪退。")
+# The same shape when the maintenance windows or the update notice could not be
+# read (records._confirm_unreachable: raw maaend_unreachable_unread).
+UNREACHABLE_UNREAD_NOTE = ("每个任务都在 30 秒内失败、一个没完成，看着像没进游戏；"
+                           "官方维护和更新公告这次没读到，分不清是不是在维护，所以按故障报，"
+                           "已交给我们这边去查游戏窗口、分辨率、游戏有没有闪退。")
 
 
 # A run a person started at AUTO-MAS itself (trigger.py): alarmed like any
 # other, with this line so the reader knows whose run it was.
 HAND_STARTED_NOTE = "这一趟是有人在 AUTO-MAS 上手动开的，不是定时开的。"
+
+
+def hand_fixed_note(hhmm: str) -> str:
+    """On a held failure a person's own run got past: not 「自己好了」, so it is still
+    reported (handle._hand_started_alarm)."""
+    return f"后来 {hhmm} 有人在 AUTO-MAS 上手动开了一趟，跑成了；这次失败不是自己好的，照报。"
+
+
 # A MAA failure on a day with a registered Arknights version update.
 UPDATE_DAY_NOTE = "今天登记了明日方舟的版本更新。"
 
@@ -806,9 +819,10 @@ def preupdate_unconfirmed_tail() -> str:
     return "\n\n这次没确认到有没有更新。队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查；AUTO-MAS 留到下次开机再查。"
 
 
-def cant_enter_body(script: str, attempts: int, maint: bool, hint: str) -> str:
-    """A run that never got into the game, with the official notice it was matched to (`hint`)."""
-    why = "官方停服维护中" if maint else "每个任务 20 秒内失败、一个没完成"
+def cant_enter_body(script: str, attempts: int, maint: bool, hint: str, quick_sec: int) -> str:
+    """A run that never got into the game, with the official notice it was matched to (`hint`).
+    `quick_sec`: the shape's threshold (collector_maaend._UNREACHABLE_QUICK_SEC)."""
+    why = "官方停服维护中" if maint else f"每个任务 {quick_sec} 秒内失败、一个没完成"
     return (f"{script} 连试 {attempts} 次都没进游戏（{why}）。\n"
             + (f"官方依据：{hint}\n" if hint else "官方依据：这次没读到官方公告\n")
             + "队列跑完后中继会等开服、更新客户端、再单独补跑它。")
@@ -989,7 +1003,7 @@ def samples() -> list[str]:
         shift_no_result_body("早班", t0, _dt(2026, 10, 1, 12, 31), "MaaEnd", 180, 30),
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 12, 31), 180, 30, "", "", 0),
         shift_no_result_body("早班", t0, _dt(2026, 10, 1, 12, 31), "MaaEnd", 180, 30, 0),
-        UNREACHABLE_SHAPE_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, ANNIHILATION_OFF,
+        UNREACHABLE_SHAPE_NOTE, UNREACHABLE_UNREAD_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, ANNIHILATION_OFF,
         annihilation_off_body("明日方舟 · 剿灭"), SKIP_MODE, ESTOP,
         ESTOP_FAILED, SHUTDOWN_CANCELLED, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ECHO_FARM, ECHO_FARM_DONE, ECHO_FARM_TROUBLE,
         CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
@@ -1026,7 +1040,7 @@ def samples() -> list[str]:
                                "pushed": 1},
                               {"where": "ark.notify", "line": "x", "count": 1, "level": "ERROR"}]),
         RELAY_ERROR_TAIL, relay_errors_merged(RELAY_ERROR, 3), *_RELAY_PARTS.values(),
-        SKLAND_MULTI_ROLE, HAND_STARTED_NOTE, UPDATE_DAY_NOTE,
+        SKLAND_MULTI_ROLE, HAND_STARTED_NOTE, hand_fixed_note("12:05"), UPDATE_DAY_NOTE,
         skland_multi_role_body(["1234567", "7654321"]),
         relay_error_line("ark.report", "日报没发出去", "21:21:05 起共 3 次，最后一次 21:25:10"),
         relay_error_line("ark.banners", "官方图转 PNG 失败，原样交给系统 OCR", "21:47:01", "20261005151027",
@@ -1069,10 +1083,10 @@ def samples() -> list[str]:
         makeup_config_rejected(maa_config_rejected("", "添加任务失败", "")),
         makeup_no_fight("基建换班"), makeup_unsure("MAA 在完成任务前中止"),
         MAAEND_UPDATE_AFTER_DONE,
-        cant_enter_body("MaaEnd", 3, False, "官方公告：今天 10:00「雪凇幽梦」版本更新"),
+        cant_enter_body("MaaEnd", 3, False, "官方公告：今天 10:00「雪凇幽梦」版本更新", 30),
         failed_body_head(3),
         rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4), automas_boot_down_body(),
-        preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, ""),
+        preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, "", 30),
         missed_queue_body(30), missed_item_body(["MAA"], "OK-WW", 75),
         attempt_timeout("鸣潮", "OK-WW"), shift_overrun("早班"), shift_no_result("早班"),
         MAAEND_STUCK_KILLED, MAAEND_STUCK_KILL_FAILED, MAAEND_WATCH_BLIND, maaend_watch_blind_body(10),

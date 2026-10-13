@@ -7,8 +7,10 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
+
+from ark_relay.core.config import SERVER_TZ
 
 # Same logger as handle.py: relay.log names these lines "ark.handle".
 log = logging.getLogger("ark.handle")
@@ -83,9 +85,42 @@ MAAEND_NOTHING_TO_RUN_LOG = "MaaEnd 没有可执行任务，请检查任务配�
 MAAEND_NOTHING_TO_RUN = "没有可执行任务"
 
 
+# MaaEnd's app-log line stamp: 「2026-10-10 09:14:22 INFO  [App] ...」 (MXU) or
+# 「[2026-09-01 11:06:21.834] ...」.
+_MAAEND_TS = re.compile(r"^\[?(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
+
+
+def _in_window(text: str, started: datetime, until: datetime) -> str:
+    """The lines of `text` stamped inside [started - WINDOW_SLACK, until] (Beijing,
+    the machine's clock), unstamped lines following the line before them; `text` as
+    it is when no line carries a stamp (a format this does not know is not cut away).
+
+    The slack before the start (evidence.WINDOW_SLACK): MaaEnd loads its config,
+    and says a dropped option, before AUTO-MAS's record starts (10-10: 09:14:22
+    against 09:14:25, tests/replay/2026-10-10)."""
+    from ark_relay.features.evidence.evidence import WINDOW_SLACK  # noqa: PLC0415
+    cut = (started - timedelta(seconds=WINDOW_SLACK)).astimezone(SERVER_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    top = until.astimezone(SERVER_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    out: list[str] = []
+    keep, stamped = False, False
+    for line in text.splitlines():
+        if m := _MAAEND_TS.match(line):
+            stamped = True
+            keep = cut <= m.group(1) <= top     # fixed width: lexical order is time order
+        if keep:
+            out.append(line)
+    return "\n".join(out) if stamped else text
+
+
 def _maaend_app_log(maaend_dir: "str | Path | None",
-                    started: datetime) -> str:
+                    started: datetime, until: "datetime | None" = None) -> str:
     """The app log MaaEnd wrote **itself** for this round.
+
+    `until` (the run's finish + 5 min when its times are known, as for
+    _maa_app_log) bounds it from above, and the lines are then cut by their own
+    stamps (_in_window): one dated file holds several rounds, and a round judged late (after
+    a restart, a backlog at boot) read the later rounds' lines as its own (audit
+    2026-10-13 s8 #2). Without `until` the files are taken whole, as before.
 
     来龙去脉见 docs/CODE-HISTORY.md「handle.py:_maaend_app_log」。
     """
@@ -102,9 +137,13 @@ def _maaend_app_log(maaend_dir: "str | Path | None",
         try:
             if f.stat().st_mtime < cut:
                 continue
-            out.append(f.read_text(encoding="utf-8", errors="replace")[-200_000:])
+            text = f.read_text(encoding="utf-8", errors="replace")[-200_000:]
         except OSError:
             continue
+        if until is not None:
+            text = _in_window(text, started, until)
+        if text:
+            out.append(text)
     return "\n".join(out)
 
 
@@ -158,11 +197,14 @@ def _maa_app_log(maa_dir: "str | Path | None", started: datetime,
 
 
 def _maaend_new_shots(maaend_dir: str | Path | None,
-                      started: datetime) -> list[str]:
+                      started: datetime, until: "datetime | None" = None) -> list[str]:
     """The on_error screenshot filenames that appeared during this round.
 
     MaaEnd does not report an error when it gets stuck, but a failed
     universal-navigation step saves an image - that image is the only evidence.
+    `until` (finish + 5 min, as for _maaend_app_log) leaves out the later
+    rounds' pictures: 10-01's 15:24 round was judged at 17:27 and blamed for a
+    16:44 picture of the 16:12 round (relay.log 24567; audit 2026-10-13 s8 #2).
     """
     if not maaend_dir:
         return []
@@ -170,8 +212,9 @@ def _maaend_new_shots(maaend_dir: str | Path | None,
     if not d.is_dir():
         return []
     cut = started.timestamp()
+    top = until.timestamp() if until is not None else float("inf")
     return sorted(p.name for p in d.glob("*.png")
-                  if p.stat().st_mtime >= cut)
+                  if cut <= p.stat().st_mtime <= top)
 
 
 def _okww_log_file(okww_dir: "str | Path | None") -> "Path | None":

@@ -198,19 +198,35 @@ def _confirm_unreachable(eng, rec: RunRecord) -> None:
         return
     raw["maaend_unreachable_shape"] = True
     why = ""
+    # Unknown is not evidence, but it is not "no notice" either (audit 2026-10-13
+    # s1 #3): `maaend_unreachable_unread` lets the alarm say the notices could not
+    # be read (texts.UNREACHABLE_UNREAD_NOTE) instead of 「今天没有官方…公告」.
+    unread = False
     try:
         from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
         why = gameupdate.in_maintenance(eng.cfg.state_dir, rec.script, rec.started)
-    except Exception:  # unknown is not evidence; logged with the traceback
+    except Exception:  # logged with the traceback
         log.warning("查不了维护窗口，%s 按普通失败处理", rec.run_id, exc_info=True)
-    why = why or efstatus.update_hint(rec.started)
+        unread = True
+    if not why:
+        try:
+            why = efstatus.update_hint(rec.started, strict=True)
+        except Exception:  # the alarm says the notice was not read
+            log.info("终末地更新公告没读到，%s 按普通失败处理", rec.run_id, exc_info=True)
+            unread = True
+    if unread and not why:
+        raw["maaend_unreachable_unread"] = True
     if why:
         raw["maaend_unreachable"] = True
         raw["maaend_unreachable_why"] = why
         log.info("⏸ MaaEnd %s 每个任务秒败、零完成，且有官方依据（%s）：按进不了游戏处理", rec.run_id, why)
     else:
-        log.warning("❌ MaaEnd %s 每个任务秒败、零完成，像没进游戏，但没有官方维护或更新公告："
-                    "按普通失败处理（报警、补跑）", rec.run_id)
+        # INFO, not WARNING (audit 2026-10-13 s7 #5): errwatch pushed the WARNING at
+        # once as 「中继自己报错了」 while the failure was still held for its retry - a
+        # game failure under the relay-error title, before a retry that may heal it.
+        # The held final alarm says it (pushes._push_unresolved: UNREACHABLE_SHAPE_NOTE).
+        log.info("❌ MaaEnd %s 每个任务秒败、零完成，像没进游戏，但没有官方维护或更新公告："
+                 "按普通失败处理（报警、补跑）", rec.run_id)
 
 
 def _mark_raw_on_ledger(eng, rec: RunRecord, key: str, value) -> None:
@@ -221,13 +237,56 @@ def _mark_raw_on_ledger(eng, rec: RunRecord, key: str, value) -> None:
 
 
 def _attempts(eng, rec: RunRecord, day: str) -> int:
-    """How many times this script really ran today: stubs AUTO-MAS wrote for an
-    attempt that never ran (transitional, e.g. 「未捕获到日志」) are not attempts."""
-    # An attempt MaaEnd spent installing its own update did run and did use up
-    # one of AUTO-MAS's tries, so it counts.
-    return sum(1 for e in eng.state.read_ledger(day)
-               if e["script"] == rec.script and e["user"] == rec.user
-               and (not e.get("transitional") or (e.get("raw") or {}).get("maaend_update_restart")))
+    """How many tries the failed streak `rec` belongs to took: the failed rows of the
+    same script and user in `rec`'s shift since the last row that exited normally,
+    plus the success that healed it when there is one (「跑了 N 次」).
+
+    Not the whole day (audit 2026-10-13 s7 #4 / s1 #1): the morning's successes,
+    the other shift and a person's own runs inflated 「重试 N 次全部失败」 (10-10's
+    rows gave 5 for an evening failure). Rows a person started (hand_started) or
+    the red button cut short (manual_stop) are not this streak's tries; stubs
+    AUTO-MAS wrote for an attempt that never ran (transitional, e.g. 「未捕获到日志」)
+    are not tries either, while an attempt MaaEnd spent installing its own update
+    did use up one of AUTO-MAS's tries, so it counts. Without a readable shift the
+    streak alone bounds it."""
+    from ark_relay.features.alarm import unresolved  # noqa: PLC0415
+    try:
+        shift = unresolved.where(eng, rec)
+    except Exception:  # noqa: BLE001 - no shift known: the streak alone bounds the count
+        shift = None
+    rows = []
+    for d in dict.fromkeys((day, shift[0] if shift else day)):
+        rows += [e for e in eng.state.read_ledger(d)
+                 if e.get("script") == rec.script and e.get("user") == rec.user
+                 and _row_started(e) is not None]
+    rows.sort(key=_row_started)
+    n = 0
+    for e in rows:
+        raw = e.get("raw") or {}
+        if raw.get("hand_started") or core.manual_stop(e):
+            continue
+        if shift is not None and e.get("run_id") != rec.run_id:
+            try:
+                if unresolved.where(eng, unresolved._row_rec(e)) != shift:
+                    continue
+            except Exception:  # noqa: BLE001 - unknown shift: judged by the streak alone
+                pass
+        if e.get("ok"):
+            if _row_started(e) >= rec.started:
+                return n + 1   # the success that healed it is the streak's last try
+            n = 0              # a success before it ends the streak before it
+        elif not e.get("transitional") or raw.get("maaend_update_restart"):
+            n += 1
+    return n
+
+
+def _row_started(e: dict) -> datetime | None:
+    """A ledger row's start as an aware time; None when unreadable or naive."""
+    try:
+        t = datetime.fromisoformat(str(e.get("started")))
+    except (TypeError, ValueError):
+        return None
+    return t if t.tzinfo else None
 
 
 def _diagnosis(eng, rec: RunRecord) -> str:

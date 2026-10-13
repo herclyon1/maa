@@ -773,12 +773,43 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
         return False
     eng._shutdown_issued = True
     eng._shutdown_issued_at = now      # decide: still up ISSUED_STUCK_MIN later is 「not-down」
+    _record_poweroff(eng, now)
     _ISSUED[0] = eng                   # abort_countdown: a phone order can still cancel it
     # From here the machine is going down: services and COM links drop as Windows
     # tears them down, and the errors that follow are not faults (errwatch is told).
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     errwatch.mark_stopping()
     return True
+
+
+def _record_poweroff(eng, at: datetime | None) -> None:
+    """Keep the moment the relay issued its own power-off in state.json (None: the
+    countdown was cancelled). eng._shutdown_issued_at lives in this process only;
+    `app_main.py stop-push` runs in the watchdog's process at the same power-off and
+    reads this (relay_poweroff_recorded). Never raises: the power-off goes on."""
+    try:
+        if at is None:
+            eng.state.store.pop("marks", "relay_poweroff")
+        else:
+            eng.state.store.set("marks", "relay_poweroff", at.isoformat())
+    except Exception:  # the relay's own probe (boot_stages._relay_poweroff_live) still answers
+        log.warning("没能把中继自己发出的关机记进 state.json，看门服务代发时认不出是中继关的机", exc_info=True)
+
+
+def relay_poweroff_recorded(state_dir, now: datetime | None = None) -> bool:
+    """boot_stages._relay_poweroff_live for a process without the engine: the relay
+    issued its own power-off less than ISSUED_STUCK_MIN ago (state.json, _record_poweroff).
+    False when nothing is recorded or the record cannot be read."""
+    try:
+        from ark_relay.core.statestore import StateStore  # noqa: PLC0415
+        at = StateStore(state_dir).get("marks", "relay_poweroff")
+        if not at:
+            return False
+        at = datetime.fromisoformat(str(at))
+    except Exception:  # unreadable answers "not ours", as errwatch.relay_shutdown_issued does
+        return False
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    return timedelta(0) <= now - at < timedelta(minutes=ISSUED_STUCK_MIN)
 
 
 # ---------- 「下次跑完不关机」 pressed while the 60-second countdown is already running ----------
@@ -816,6 +847,7 @@ def abort_countdown(now: datetime | None = None) -> tuple[str, str]:
     key = eng._shutdown_key(getattr(eng, "_shutdown_issued_at", None) or now)
     eng._shutdown_issued = False
     eng._shutdown_issued_at = None
+    _record_poweroff(eng, None)
     _ISSUED[0] = None
     modes.mark_shutdown_skipped(eng.state.dir, key)
     errwatch.clear_stopping()

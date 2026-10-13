@@ -12,6 +12,9 @@ One JSON object per line, exactly these fields (empty string when unknown):
     title, text   what was pushed, verbatim
     version       the relay code version that sent it (StateStore versions/code)
     evidence_run  the run id (<date>/<user>/<stem>) the alarm names, else ""
+    channel       the channel(s) that took it, as notify names them (企业微信机器人 /
+                  Server酱 / 企业微信, joined by 、), else "". Rows written before
+                  2026-10-13 have no such field; read it with .get("channel", "")
 
 How it gets there. The line is first appended to state/alerts/<day>.jsonl on
 the caller's thread (a local write, so nothing is lost when the process dies
@@ -47,7 +50,7 @@ log = logging.getLogger("ark.alertlog")
 
 BEIJING = timezone(timedelta(hours=8))
 PREFIX = "alerts"
-FIELDS = ("ts", "game", "title", "text", "version", "evidence_run")
+FIELDS = ("ts", "game", "title", "text", "version", "evidence_run", "channel")
 TIMEOUT = 15
 KEEP_DAYS = 7          # local day files kept once they are on COS
 _DAY = re.compile(r"^\d{8}$")
@@ -97,13 +100,15 @@ def run_of(title: str, text: str) -> str:
     return "/".join(m.groups()) if m else ""
 
 
-def row(title: str, text: str, version: str = "", now: "datetime | None" = None) -> dict:
+def row(title: str, text: str, version: str = "", now: "datetime | None" = None,
+        channel: str = "") -> dict:
     return {"ts": beijing(now).strftime("%Y-%m-%d %H:%M:%S"),
             "game": game_of(title, text),
             "title": str(title or ""),
             "text": str(text or ""),
             "version": str(version or ""),
-            "evidence_run": run_of(title, text)}
+            "evidence_run": run_of(title, text),
+            "channel": str(channel or "")}
 
 
 class AlertLog:
@@ -117,8 +122,16 @@ class AlertLog:
     def __init__(self, state_dir, put=None, get=None):
         self.dir = Path(state_dir) / "alerts"
         self._put, self._get = put, get
+        # _lock guards the local files and marks only, never a COS call: record()
+        # takes it on the alarm caller's thread (errwatch's push thread,
+        # _flush_pending), which a slow COS (15 s per GET / PUT) must not stall
+        # (audit 2026-10-13 s7 #8). _sync_lock keeps two syncs from interleaving.
         self._lock = threading.Lock()
-        self._ok = True              # last sync worked; a failure is said once per change
+        self._sync_lock = threading.Lock()
+        # Whether the last sync worked, kept apart for the push path: errwatch drops
+        # a WARNING logged on its own push threads, so a failure first met there
+        # was never said, yet it silenced every later one (keyed by in_push_path()).
+        self._ok = {False: True, True: True}
 
     # ---------- local ----------
 
@@ -139,9 +152,10 @@ class AlertLog:
         from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
         atomic_write_text(self._mark_path(day), json.dumps(mark))
 
-    def record(self, title: str, text: str, version: str = "", now: "datetime | None" = None) -> str:
+    def record(self, title: str, text: str, version: str = "", now: "datetime | None" = None,
+               channel: str = "") -> str:
         """Append one line to the day file; returns the Beijing day 'YYYYMMDD'."""
-        entry = row(title, text, version, now)
+        entry = row(title, text, version, now, channel)
         day = entry["ts"][:10].replace("-", "")
         line = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
         with self._lock:
@@ -168,40 +182,54 @@ class AlertLog:
         if self._put is None:
             return []
         problems: list[str] = []
-        with self._lock:
+        with self._sync_lock:
             for day in self._days()[-KEEP_DAYS:]:
-                f = self._file(day)
-                mark = self._mark(day)
-                try:
-                    data = f.read_bytes()
-                except OSError as exc:
-                    problems.append(f"{day}: {exc}")
-                    continue
-                if mark.get("seeded") and mark.get("synced") == len(data):
-                    continue
-                if not mark.get("seeded"):
-                    old, why = self._get(key_for(day)) if self._get else (None, "")
-                    if why:
-                        problems.append(f"{key_for(day)} 读不回来（{why}），先不写，免得盖掉")
-                        continue
-                    if old:
-                        data = old + (b"" if old.endswith(b"\n") else b"\n") + data
-                        from ark_relay.core.config import atomic_write_bytes  # noqa: PLC0415
-                        atomic_write_bytes(f, data)
-                    mark = {"seeded": True, "synced": -1}
-                    self._set_mark(day, mark)
-                why = self._put(key_for(day), data)
-                if why:
-                    problems.append(f"{key_for(day)}：{why}")
-                    continue
-                self._set_mark(day, {"seeded": True, "synced": len(data)})
-            self._prune()
-        if problems and self._ok:
+                if why := self._sync_day(day):
+                    problems.append(why)
+            with self._lock:
+                self._prune()
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        push = errwatch.in_push_path()
+        if problems and self._ok[push]:
             log.warning("报警抄到腾讯云 COS 没成，下一条报警或下次开机再补：%s", "；".join(problems))
-        elif not problems and not self._ok:
+        elif not problems and not self._ok[push]:
             log.info("报警抄到腾讯云 COS 又成了")
-        self._ok = not problems
+        self._ok[push] = not problems
         return problems
+
+    def _sync_day(self, day: str) -> str:
+        """Bring one day's COS object up to the local file. -> the problem, '' when done.
+        The GET and the PUT run without _lock; lines record() appends meanwhile
+        are kept (the merge re-reads the file) and go up on the next sync."""
+        f = self._file(day)
+        with self._lock:
+            mark = self._mark(day)
+            try:
+                data = f.read_bytes()
+            except OSError as exc:
+                return f"{day}: {exc}"
+        if mark.get("seeded") and mark.get("synced") == len(data):
+            return ""
+        if not mark.get("seeded"):
+            old, why = self._get(key_for(day)) if self._get else (None, "")
+            if why:
+                return f"{key_for(day)} 读不回来（{why}），先不写，免得盖掉"
+            with self._lock:
+                try:
+                    data = f.read_bytes()      # with whatever was recorded during the GET
+                except OSError as exc:
+                    return f"{day}: {exc}"
+                if old:
+                    data = old + (b"" if old.endswith(b"\n") else b"\n") + data
+                    from ark_relay.core.config import atomic_write_bytes  # noqa: PLC0415
+                    atomic_write_bytes(f, data)
+                self._set_mark(day, {"seeded": True, "synced": -1})
+        why = self._put(key_for(day), data)
+        if why:
+            return f"{key_for(day)}：{why}"
+        with self._lock:
+            self._set_mark(day, {"seeded": True, "synced": len(data)})
+        return ""
 
     def _prune(self) -> None:
         cutoff = (beijing() - timedelta(days=KEEP_DAYS)).strftime("%Y%m%d")
@@ -233,9 +261,10 @@ class AlertLog:
         t.start()
         return t
 
-    def copy(self, title: str, text: str, version: str = "", now: "datetime | None" = None):
+    def copy(self, title: str, text: str, version: str = "", now: "datetime | None" = None,
+             channel: str = ""):
         """Keep the line, then send the day to COS on a thread. -> that thread or None."""
-        self.record(title, text, version, now)
+        self.record(title, text, version, now, channel)
         return self.flush_async()
 
 

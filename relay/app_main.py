@@ -394,13 +394,52 @@ def stop_push(wait_s: float = STOP_PUSH_WAIT_S) -> int:
     state = _relay_env()
     from ark_relay.__main__ import _setup_logging  # noqa: PLC0415
     _setup_logging(verbose=False)
+    from ark_relay.core.config import Config  # noqa: PLC0415
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    cfg = Config()
+    _stop_push_errwatch(cfg)
+    try:
+        return _stop_push_send(state, cfg, wait_s)
+    finally:
+        # A WARNING still going out gets errwatch.drain's own default moment, inside
+        # the watchdog's PUSH_TIMEOUT_S - STOP_PUSH_WAIT_S margin; one that does not
+        # get out stays in the queue file and goes out at the next boot.
+        errwatch.drain()
+
+
+def _stop_push_errwatch(cfg) -> None:
+    """errwatch on this process, as the relay installs it (boot_stages._stage_bootstrap):
+    stop-push is a process of its own, so without it its WARNINGs (「状态没能上报到手机
+    （停止前）」 and the snapshot's) reached relay.log only and never the group (relay.log
+    10-12 32131 / 32165 / 32200; audit 2026-10-13 s5).
+
+    With the relay's power-off probe, read from state.json (shutdown.relay_poweroff_recorded):
+    the engine that knows it lives in the relay's process, and without it
+    errwatch.relay_shutdown_issued() was always false here: code that asks it to keep
+    quiet at the relay's own nightly power-off would push from this process. (Today's
+    callers reached from here also ask errwatch.os_shutdown(), which _stop_push_limits
+    sets; a WARNING about the push itself failing is a real failure and still goes.)"""
+    try:
+        from ark_relay.core.notify import Notifier  # noqa: PLC0415
+        from ark_relay.core.statestore import StateStore  # noqa: PLC0415
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        from ark_relay.features.shutdown import shutdown  # noqa: PLC0415
+        if errwatch._handler[0] is not None:
+            return          # one handler per process: a second one would push each line twice
+        errwatch.install(Notifier(cfg), lambda: shutdown.relay_poweroff_recorded(cfg.state_dir),
+                         state_dir=cfg.state_dir,
+                         version=lambda: StateStore(cfg.state_dir).get("versions", "code"))
+    except Exception:  # the push goes on; relay.log keeps the reason
+        logging.getLogger("ark.app.stop_push").exception("看门服务代发时报错转群没装上")
+
+
+def _stop_push_send(state, cfg, wait_s: float) -> int:
+    """stop_push's send (its docstring); errwatch is installed around it."""
     log = logging.getLogger("ark.app.stop_push")
     from ark_relay.features.phone import phone  # noqa: PLC0415
     if phone.stop_pushed(state):
         log.info(STOP_PUSH_SKIP)
         return 2
-    from ark_relay.core.config import Config  # noqa: PLC0415
-    cfg = Config()
     box = phone.Mailbox(cfg.phone_topic, cfg.phone_pin, cfg.state_dir, cos=phone.state_cos(cfg))
     if not box.enabled:
         return 2

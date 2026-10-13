@@ -122,6 +122,10 @@ def run(wait_s, limits=True):
         calls[k] = 0
     before = LOG.read_text(encoding="utf-8") if LOG.exists() else ""
     real_limits = app_main._stop_push_limits
+    # The send's own time only: the errwatch drain after it is a bounded step of its
+    # own (errwatch.drain, inside the watchdog's margin).
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    errwatch.drain = lambda timeout=0: None
     if not limits:
         app_main._stop_push_limits = lambda box: None
     t0 = time.monotonic()
