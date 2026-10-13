@@ -312,12 +312,19 @@ def endfield_role(cred: Cred, role_id: str = "") -> tuple[str, str]:
     raise SklandError("这个账号下没找到终末地的角色绑定")
 
 
+def _synced_cred(cred: Cred) -> Cred:
+    """`cred`, refreshed first when this process has not aligned clocks yet.
+
+    Forgetting to align clocks yields an "expired" timestamp and a 10003. Rather
+    than rely on the caller remembering, every business call does it here; get()
+    and bindings() lacked it until 2026-10-13 (audit s6 #3: banners.py calls
+    login() then get() with no refresh())."""
+    return cred if _synced else refresh(cred)
+
+
 def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:
     """Endfield personal detail. Progression lives in `data.detail`."""
-    if not _synced:
-        # Forgetting to align clocks yields an "expired" timestamp and a 10003.
-        # Rather than rely on the caller remembering, do it for them here.
-        cred = refresh(cred)
+    cred = _synced_cred(cred)
     if not role_id or not server_id:
         # A role given without its server is looked up, never swapped for another.
         role_id, server_id = endfield_role(cred, role_id)
@@ -331,11 +338,13 @@ def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:
 def get(cred: Cred, path: str) -> dict:
     """GET a zonai path following the signing rules. Used by banners.py so it need not rebuild the signing chain."""
     url = ZONAI + path if path.startswith("/") else path
+    cred = _synced_cred(cred)
     return _get(url, sign_headers(cred, url))
 
 
 def bindings(cred: Cred) -> list[dict]:
     """The list of bound game accounts (Endfield included)."""
+    cred = _synced_cred(cred)
     r = _get(BINDING_URL, sign_headers(cred, BINDING_URL))
     if r.get("code") not in (0, None):
         raise SklandError(f"取绑定角色失败：{r.get('message')}")
