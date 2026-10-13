@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import zipfile
 from datetime import datetime
 from pathlib import Path
+
+from ark_relay.features.evidence.logslice import first_ts, slice_log
 
 
 def require_window(window) -> None:
@@ -59,6 +62,38 @@ def _in_window(p: Path, window: "tuple[float, float] | None") -> bool:
         return False
 
 
+def _log_in_window(p: Path, window: "tuple[float, float]") -> bool:
+    """A MaaEnd .log that holds part of the window.
+
+    Modified before t0: no. Modified inside the window: yes. Modified after t1
+    (still written then - a retry carries on in the same files): yes when it
+    was already being written by t1, i.e. its first stamped line is not after
+    t1, or that line cannot be read. Of a rotated family (maafw.log ->
+    maafw.bak.<time>.log) that keeps the file that was open at t1 and drops the
+    later ones, which hold only what came after (audit s17 F1, 2026-10-12)."""
+    try:
+        mtime = p.stat().st_mtime
+    except OSError:
+        return False
+    if mtime < window[0]:
+        return False
+    if mtime <= window[1]:
+        return True
+    head = first_ts(p, more=True)
+    return head is None or head <= window[1]
+
+
+def _crosses_window(p: Path, window: "tuple[float, float]") -> bool:
+    """A log that also holds lines outside the window: worth cutting to it."""
+    try:
+        if p.stat().st_mtime > window[1]:
+            return True
+    except OSError:
+        return False
+    head = first_ts(p, more=True)
+    return head is not None and head < window[0]
+
+
 def _walk_sorted(dir_: Path, prefix: str) -> list[tuple[Path, str]]:
     if not dir_.is_dir():
         return []
@@ -87,12 +122,32 @@ def _dedup(paths: list[Path]) -> list[Path]:
     return out
 
 
+def _maaend_keep(p: Path, window: "tuple[float, float]") -> bool:
+    return _log_in_window(p, window) if p.suffix.lower() == ".log" else _in_window(p, window)
+
+
+def _cut_to_window(entries: list[tuple[Path, str]], window: "tuple[float, float]",
+                   slice_dir: Path) -> list[tuple[Path, str]]:
+    """Each .log that runs past either end of the window replaced by its lines
+    inside it (slice_log, written under `slice_dir`); a log whose stamps cannot
+    be read, or that has none inside, goes in whole."""
+    out = []
+    for p, name in entries:
+        if p.suffix.lower() == ".log" and _crosses_window(p, window):
+            if cut := slice_log(p, window, slice_dir / name, tail_bytes=None, more=True):
+                out.append((cut, name))
+                continue
+        out.append((p, name))
+    return out
+
+
 def maaend_entries(maaend_dir: Path, window: "tuple[float, float]",
                    max_images: "int | None" = MAAEND_MAX_IMAGES) -> list[tuple[Path, str]]:
     """The export's file list in MXU's order, limited to `window` (epoch seconds).
 
-    Only files modified inside the window are taken - the config always - and
-    the screenshots are capped at `max_images` after dropping duplicates. The
+    Only files modified inside the window are taken - the config always, and
+    a .log that was still being written at t1 (_log_in_window) - and the
+    screenshots are capped at `max_images` after dropping duplicates. The
     order and the volume rules are MXU's; the selection is ours. A test checks
     the order against a real export with a window covering the whole tree.
     """
@@ -102,12 +157,12 @@ def maaend_entries(maaend_dir: Path, window: "tuple[float, float]",
         return []
     regular: list[tuple[Path, str]] = []
     for p in sorted(debug.glob("*"), key=lambda q: q.name):
-        if p.is_file() and p.suffix.lower() in (".log", ".dmp") and _in_window(p, window):
+        if p.is_file() and p.suffix.lower() in (".log", ".dmp") and _maaend_keep(p, window):
             regular.append((p, p.name))
     regular += _walk_sorted(maaend_dir / "config", "config")
     for sub in sorted(q for q in debug.iterdir() if q.is_dir()):
         regular += [(p, n) for p, n in _walk_sorted(sub, sub.name)
-                    if p.suffix.lower() in (".log", ".json", ".dmp") and _in_window(p, window)]
+                    if p.suffix.lower() in (".log", ".json", ".dmp") and _maaend_keep(p, window)]
     images: list[tuple[Path, str]] = []
     for name in ("on_error", "vision"):
         d = debug / name
@@ -195,9 +250,15 @@ def bundle_maaend(maaend_dir: Path, out_dir: Path, version: str, window: "tuple[
     base = f"MaaEnd-logs-{version}-{stamp.strftime('%Y%m%d-%H%M%S')}"
     width = 3 if len(entries) >= 100 else 2
     out_dir.mkdir(parents=True, exist_ok=True)
-    paths = []
-    for i, vol in enumerate(_volumes(entries, MAAEND_MAX_VOLUME), 1):
-        paths.append(_write_zip(out_dir / f"{base}-part{i:0{width}d}.zip", vol))
+    # The cut copies live only until the volumes are written.
+    slice_dir = out_dir / f"{base}-slices"
+    try:
+        entries = _cut_to_window(entries, window, slice_dir)
+        paths = []
+        for i, vol in enumerate(_volumes(entries, MAAEND_MAX_VOLUME), 1):
+            paths.append(_write_zip(out_dir / f"{base}-part{i:0{width}d}.zip", vol))
+    finally:
+        shutil.rmtree(slice_dir, ignore_errors=True)
     return paths
 
 
