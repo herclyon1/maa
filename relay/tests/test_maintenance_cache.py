@@ -189,6 +189,7 @@ try:
     check("……不再多记 WARNING（10-02 晚每推一次状态就是一条）", logs.warnings(), [])
     # the failure has aged past FAIL_TTL, the good reads have not
     for k in ("明日方舟",):
+        k = (k, NOW.astimezone(SERVER_TZ).date())
         at, got = M._CACHE[k]
         M._CACHE[k] = (at - M.FAIL_TTL - 1, got)
     logs.recs.clear()
@@ -197,6 +198,7 @@ try:
           asked, {"明日方舟": 2, "终末地": 1, "鸣潮": 1})
     check("……这次又是真失败：一条 WARNING", len(logs.warnings()), 1)
     for k in ("终末地", "鸣潮"):
+        k = (k, NOW.astimezone(SERVER_TZ).date())
         at, got = M._CACHE[k]
         M._CACHE[k] = (at - M.OK_TTL - 1, got)
     M.today(NOW)
@@ -212,6 +214,25 @@ except Exception as exc:  # noqa: BLE001
 finally:
     M.SOURCES.clear()
     M.SOURCES.update(saved)
+
+print("\n[缓存按问的是哪一天分开：先问明天（开机推手机状态）再问今天（开机查更新），今天的鸣潮维护照样看得到]")
+# 10-10: 「08:45:57 📱 已上报状态到手机（开机）」 (the plan asks about tomorrow), then
+# 「08:47:42 游戏更新：维护公告」 (gameupdate.boot_check asks about today). 鸣潮's answer
+# depends on the day asked (wuwa_window); one cache entry per game answered both (s16 #3).
+from datetime import timedelta  # noqa: E402
+TODAY = datetime(2026, 9, 30, 8, 45, tzinfo=SERVER_TZ)
+WIN = (datetime(2026, 9, 30, 4, 0, tzinfo=SERVER_TZ), datetime(2026, 9, 30, 11, 0, tzinfo=SERVER_TZ))
+saved = dict(M.SOURCES)
+M.SOURCES.clear()
+M.SOURCES["鸣潮"] = lambda now: WIN if WIN[1] >= now else None
+M._CACHE.clear()
+try:
+    check("问明天：没有", M.today(TODAY + timedelta(days=1)), {})
+    check("接着问今天：今天 04:00–11:00 停服维护", M.today(TODAY), {"鸣潮": WIN})
+finally:
+    M.SOURCES.clear()
+    M.SOURCES.update(saved)
+    M._CACHE.clear()
 
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
