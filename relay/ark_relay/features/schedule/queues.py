@@ -106,6 +106,11 @@ def _scripts_via_backend(state_dir: Path | None, name: str, scripts: list[str]) 
         try:
             recs = commands.skip_script_all_items(name, script)
         except Exception as exc:  # noqa: BLE001
+            # Items whose run days may already be trimmed: keep their undo
+            # records, or the weekday stays removed for good.
+            for rec in getattr(exc, "recs", []):
+                rec["source"] = "queue"
+                gameupdate._add_skip(state_dir, rec)
             return False, f"队列「{name}」：今天跳过 {script} 失败（{exc}）"
         for rec in recs:
             rec["source"] = "queue"
