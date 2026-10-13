@@ -116,7 +116,9 @@ jobs:
         #   test_deploy_pkg_bash32   - deploy-pkg.sh under macOS /bin/bash 3.2 (none here);
         #   test_techlog_tool        - scripts/mac/techlog.py (shlex-splits its winrun
         #                              command) and scripts/mac/winrun.sh;
-        #   test_tool_refs           - the lint tools under scripts/mac/lib/ and ff-toplevel.sh.
+        #   test_tool_refs           - the lint tools under scripts/mac/lib/ and ff-toplevel.sh;
+        #   test_disk_tidy           - scripts/mac/disk-tidy.py (fcntl, lsof, launchd; run
+        #                              38415311583: ModuleNotFoundError: No module named 'fcntl').
         run: >-
           scripts/ci/relay-tests.sh
           --exclude test_need_table.py
@@ -127,6 +129,7 @@ jobs:
           --exclude test_deploy_pkg_bash32.py
           --exclude test_techlog_tool.py
           --exclude test_tool_refs.py
+          --exclude test_disk_tidy.py
 
   # The day replay (relay/tests/daysim, design.md section 5) on a Linux runner: the World
   # stands in for the game machine on a POSIX host (world.py module docstring: a Windows

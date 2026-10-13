@@ -159,11 +159,14 @@ check("AUTO-MAS not asked even without stop-push's limits", calls["mas"], 0)
 check("the timing line says the send did not finish", "还没发完" in new.split("看门服务代发用时：", 1)[-1], True)
 
 print("[2. stop-push's limits: the same wire -> sent well inside the budget]")
-code, took, new, marker = run(BUDGET)
+# The wall budget gets REAL_WORK_S on top: only the waits are scaled, the real work
+# (state_payload, gzip, logging) is not, and on a loaded Windows runner it alone went past
+# the scaled 1.75 s (relay-windows 38411893227, 2026-10-13: exit code 1, no success line).
+# How far inside the budget the push ends is judged on the waits alone, unscaled
+# (the 15:42 limits wait 20 s for Skland and 2 x 20 s + 3 s for ntfy).
+REAL_WORK_S = 10.0
+code, took, new, marker = run(BUDGET + REAL_WORK_S)
 check("sent: exit code 0", code, 0)
-# Sent at all (exit code 0) = done inside the real, scaled budget: stop_push's own join.
-# How far inside is judged on the waits alone, unscaled, so a slow runner's real work
-# cannot tip it (the 15:42 limits wait 20 s for Skland and 2 x 20 s + 3 s for ntfy).
 check(f"its waits add up to {sum(waited):g} s ({waited}), under half the {app_main.STOP_PUSH_WAIT_S} s "
       f"(wall clock {took:.2f} s, real work included)", sum(waited) < app_main.STOP_PUSH_WAIT_S / 2, True)
 check("the success line #11 reads", "📱 已上报状态到手机（停止前；" in new, True)
