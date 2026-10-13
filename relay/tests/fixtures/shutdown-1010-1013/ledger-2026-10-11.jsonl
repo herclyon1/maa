@@ -1,0 +1,5 @@
+{"run_id": "2026-10-11/arknights/MAA-05-00-02", "script": "MAA", "user": "arknights", "started": "2026-10-11T09:00:53+08:00", "finished": "2026-10-11T09:19:03+08:00", "ok": true, "failed_tasks": []}
+{"run_id": "2026-10-11/wuwa/OK-WW-05-19-13", "script": "OK-WW", "user": "wuwa", "started": "2026-10-11T09:19:29+08:00", "finished": "2026-10-11T09:30:30+08:00", "ok": true, "failed_tasks": [], "raw": {"general_result": "Success!"}}
+{"run_id": "2026-10-11/endfield/MaaEnd-05-30-34", "script": "MaaEnd", "user": "endfield", "started": "2026-10-11T09:31:39+08:00", "finished": "2026-10-11T09:54:44+08:00", "ok": false, "failed_tasks": ["转交委托"]}
+{"run_id": "2026-10-11/endfield/MaaEnd-05-54-46", "script": "MaaEnd", "user": "endfield", "started": "2026-10-11T09:55:50+08:00", "finished": "2026-10-11T09:58:19+08:00", "ok": true, "failed_tasks": []}
+{"run_id": "2026-10-11/arknights/MAA-17-30-21", "script": "MAA", "user": "arknights", "started": "2026-10-11T21:30:23+08:00", "finished": "2026-10-11T21:44:49+08:00", "ok": true, "failed_tasks": []}

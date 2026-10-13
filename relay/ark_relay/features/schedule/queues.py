@@ -52,7 +52,22 @@ def _apply_enabled(target: dict, enabled: bool, changes: list[str]) -> str | Non
 
 
 def _scripts_via_backend(state_dir: Path | None, name: str, scripts: list[str]) -> tuple[bool, str]:
+    """_apply_scripts, with a failure's receipt also naming what it had already changed.
+
+    A restore or skip that landed before a later step failed is real (AUTO-MAS was
+    changed, updates.queue_skips holds it); a receipt with only the failing step
+    would read as "nothing changed"."""
+    done: list[str] = []
+    ok, text = _apply_scripts(state_dir, name, scripts, done)
+    if not ok and done:
+        text += f"；这之前已经改了：{'；'.join(dict.fromkeys(done))}"
+    return ok, text
+
+
+def _apply_scripts(state_dir: Path | None, name: str, scripts: list[str],
+                   changes: list[str]) -> tuple[bool, str]:
     """Run only `scripts` in queue `name` today: skip the rest, put back listed ones we skipped.
+    Each change that landed is appended to `changes` as it happens.
 
     Backend only: a Schedule.Days edit in the file is overwritten from AUTO-MAS's
     memory while it runs, and on a powered-off machine there is no "today" to
@@ -87,7 +102,6 @@ def _scripts_via_backend(state_dir: Path | None, name: str, scripts: list[str]) 
     back = {sid: n for n, sid in known.items()}
     in_queue = [((((items.get("data") or {}).get(i["uid"])) or {}).get("Info") or {}).get("ScriptId")
                 for i in items.get("index") or []]
-    changes: list[str] = []
     today = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
     for rec in [r for r in gameupdate.skips(state_dir) if r.get("queueId") == qid and r.get("scriptId") in want]:
         if gameupdate._sources(rec) != {"queue"}:

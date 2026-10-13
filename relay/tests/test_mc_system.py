@@ -470,7 +470,7 @@ e.cfg.automas_dir = automas
 q = {"name": "晚班", "uid": "q-evening"}
 saved = runwatch.overrun_moments
 runwatch.overrun_moments = lambda eng, now: iter([(q, "21:30", "q-evening", datetime(2026, 10, 2, 21, 30, tzinfo=SERVER_TZ),
-                                                   19, datetime(2026, 10, 2, 22, 19, tzinfo=SERVER_TZ))])
+                                                   19, datetime(2026, 10, 2, 22, 19, tzinfo=SERVER_TZ), 7)])
 try:
     runwatch.check_overrun(e, datetime(2026, 10, 3, 0, 43, tzinfo=SERVER_TZ), {"tasks": [
         {"taskId": "68b6e221-419d-444b-aff7-8643822c64ce", "queueId": "q-evening", "mode": "AutoProxy",

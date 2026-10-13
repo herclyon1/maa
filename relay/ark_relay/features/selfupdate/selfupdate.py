@@ -54,8 +54,9 @@ log = logging.getLogger("ark.selfupdate")
 
 DEFAULT_BASE = "https://raw.githubusercontent.com/herclyon1/maa/main/relay/"
 MANIFEST = "manifest.json"
-# Wall-clock budget for one whole round. The relay boots 8 minutes before the
-# evening queue (21:22 / 21:30) and 13 before the morning one (08:47 / 09:00).
+# Wall-clock budget for one whole round. The relay is up about 10 minutes before the
+# evening queue (21:20 / 21:30) and 15 before the morning one (08:45 / 09:00); relay.log
+# shows its first update check at 21:20:2x and 08:45:3x.
 # When the budget runs out the round gives up; the next boot tries again.
 BUDGET_SECONDS = 240
 # Per-attempt timeout for raw.githubusercontent, the only door with no CDN cache.

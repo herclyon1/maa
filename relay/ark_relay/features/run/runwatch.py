@@ -60,6 +60,7 @@ class Timeout:
     attempt: int = 0           # 0 when no attempt line was seen before it
     of: int = 0
     began: datetime | None = None
+    unsent: bool = False       # check_timeouts failed to push it and handed it back
 
 
 def _when(s: str) -> datetime:
@@ -130,6 +131,10 @@ def check_timeouts(eng, events: list[Timeout], now: datetime) -> list[Timeout]:
     tasks = None
     for ev in events:
         if now - ev.at > timedelta(minutes=FRESH_MINUTES):
+            if ev.unsent:
+                # Handed back after failed sends until it went stale: said once, not dropped silently.
+                log.warning("⏱️ %s %s 的超时告警 %d 分钟都没推出去，不再重试（第 %s 次%s）", ev.script,
+                            ev.at.strftime("%H:%M"), FRESH_MINUTES, ev.attempt or "?", ev.what)
             continue
         day = ev.at.strftime("%Y-%m-%d")
         key = f"超时|{ev.script}|{ev.at:%H:%M:%S}"      # this one line, not the script
@@ -144,6 +149,7 @@ def check_timeouts(eng, events: list[Timeout], now: datetime) -> list[Timeout]:
             body = texts.HAND_STARTED_NOTE + "\n" + body
         if errs := eng.notifier.send(title, body, alert=True):
             log.error("超时告警没推出去，下一轮再试：%s", ev.script)
+            ev.unsent = True
             unsent.append(ev)
             continue
         handle._mark_alerted(eng, day, key)
@@ -169,22 +175,31 @@ def _timed_out(e: dict) -> bool:
 
 def _chain(entries: list[dict], due: datetime) -> tuple[int | None, bool, bool]:
     """For the run that started at `due`: (minutes from `due` to its end,
-    every record ok, any record a timeout)."""
-    runs = sorted(((s, f, e.get("ok") is not False, _timed_out(e)) for e in entries
-                   if (s := _parse(e.get("started"))) and (f := _parse(e.get("finished")) or s)),
+    every script's last record ok, any record a timeout).
+
+    Clean is judged per script by its last record in the chain: AUTO-MAS retries a
+    failed script, and a retry that succeeds is a clean run (10-01..10-13 the 09:00
+    run was clean on 2 of 13 days when any failed attempt counted - one MaaEnd attempt
+    failing and its retry succeeding - so the limit fell back to the longest day)."""
+    # A run a person started at AUTO-MAS (raw.hand_started, handle._book) is not the
+    # shift's, so it neither lengthens nor dirties the chain (10-12: OK-WW 11:41-11:49).
+    runs = sorted(((s, f, e.get("ok") is not False, _timed_out(e), str(e.get("script") or "")) for e in entries
+                   if not (e.get("raw") or {}).get("hand_started")
+                   and (s := _parse(e.get("started"))) and (f := _parse(e.get("finished")) or s)),
                   key=lambda x: x[0])
-    end, clean, timeout = None, True, False
-    for s, f, ok, to in runs:
+    end, timeout, last_ok = None, False, {}
+    for s, f, ok, to, script in runs:
         if end is None:
             if due - timedelta(minutes=5) <= s <= due + timedelta(minutes=CHAIN_START_MIN):
-                end, clean, timeout = f, ok, to
+                end, timeout, last_ok = f, to, {script: ok}
             continue
         if s > end + timedelta(minutes=CHAIN_GAP_MIN):
             break
-        end, clean, timeout = max(end, f), clean and ok, timeout or to
+        end, timeout = max(end, f), timeout or to
+        last_ok[script] = ok
     if end is None:
         return None, True, False
-    return max(0, int((end - due).total_seconds() // 60)), clean, timeout
+    return max(0, int((end - due).total_seconds() // 60)), all(last_ok.values()), timeout
 
 
 def run_minutes(entries: list[dict], due: datetime) -> int | None:
@@ -195,9 +210,9 @@ def run_minutes(entries: list[dict], due: datetime) -> int | None:
 def planned_minutes(eng, hh: int, mm: int, today: datetime) -> tuple[int, int]:
     """(planned minutes for the queue at hh:mm, days it was taken from).
 
-    The longest finish among the last HISTORY_DAYS days that were clean (no failed
-    record). A day that timed out or raised an overrun alarm never counts, so one
-    overlong day does not raise the limit for a week. With fewer than
+    The longest finish among the last HISTORY_DAYS days that were clean (each
+    script's last record ok, _chain). A day that timed out or raised an overrun
+    alarm never counts, so one overlong day does not raise the limit for a week. With fewer than
     MIN_CLEAN_DAYS clean days, the longest of every day that did not time out is
     used instead. FALLBACK_LIMIT_MIN only when there is no usable day at all.
     """
@@ -227,7 +242,8 @@ def planned_minutes(eng, hh: int, mm: int, today: datetime) -> tuple[int, int]:
 
 
 def overrun_moments(eng, now: datetime):
-    """(queue, hhmm, uid, due, limit, deadline) for the latest due of every timed queue."""
+    """(queue, hhmm, uid, due, limit, deadline, days) for the latest due of every timed
+    queue; `days` is planned_minutes' day count (0: the fallback, no history)."""
     for q in plan.schedule(eng.cfg.automas_dir):
         for hhmm in q.get("times", []):
             try:
@@ -237,9 +253,9 @@ def overrun_moments(eng, now: datetime):
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
             if due > now:
                 due -= timedelta(days=1)
-            limit, _ = planned_minutes(eng, hh, mm, due)
+            limit, days = planned_minutes(eng, hh, mm, due)
             yield (q, hhmm, q.get("uid"), due, limit,
-                   due + timedelta(minutes=limit + OVERRUN_SLACK_MIN))
+                   due + timedelta(minutes=limit + OVERRUN_SLACK_MIN), days)
 
 
 def _queue_task(snap, uid):
@@ -289,7 +305,7 @@ def check_overrun(eng, now: datetime, snap) -> None:
     from ark_relay.features.shutdown import shutdown  # noqa: PLC0415
     if snap is None:
         return       # AUTO-MAS cannot be asked; the timeout check still works
-    for q, hhmm, uid, due, limit, deadline in overrun_moments(eng, now):
+    for q, hhmm, uid, due, limit, deadline, days in overrun_moments(eng, now):
         if now < deadline:
             continue
         day = due.strftime("%Y-%m-%d")
@@ -312,7 +328,7 @@ def check_overrun(eng, now: datetime, snap) -> None:
         states = "、".join(f"{i.get('name')} {i.get('status')}"
                           for i in task.get("task_info") or [])
         body = texts.shift_overrun_body(q["name"], due, now, limit, OVERRUN_SLACK_MIN,
-                                        states, str(task.get("log") or ""))
+                                        states, str(task.get("log") or ""), days)
         if errs := eng.notifier.send(texts.shift_overrun(q["name"]), body, alert=True):
             log.error("队列超时告警没推出去，下一轮再试：%s", q["name"])
             continue

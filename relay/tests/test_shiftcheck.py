@@ -52,10 +52,12 @@ red = shiftcheck.judge(texts.annihilation_off_body("明日方舟 · 剿灭"), Tr
 check("annihilation Close, week not done -> red with the boot alarm's words",
       (by_name(red, texts.SHIFTCHECK_ANNIHILATION).ok, by_name(red, texts.SHIFTCHECK_ANNIHILATION).detail),
       (False, texts.annihilation_off_body("明日方舟 · 剿灭")))
-check("「下次跑完不关机」 armed -> red", by_name(red, texts.SHIFTCHECK_SKIP).ok, False)
-check("debug mode on -> red, says until when",
+# Audit s13 #2 (10-13 10:00:31 「4 项里 1 项不对…「下次跑完不关机」」): his own switches are notes.
+check("「下次跑完不关机」 armed -> holds, with a note", by_name(red, texts.SHIFTCHECK_SKIP).ok, True)
+check("debug mode on -> holds, the note says until when",
       (by_name(red, texts.SHIFTCHECK_DEBUG).ok, "2026-10-11 20:50" in by_name(red, texts.SHIFTCHECK_DEBUG).detail),
-      (False, True))
+      (True, True))
+check("switches off -> no note", [c.detail for c in green], [""] * 4)
 check("a test window still open -> red, names the open one (not the closed one)",
       (by_name(red, texts.SHIFTCHECK_TEST_WINDOW).ok, "10:00:00" in by_name(red, texts.SHIFTCHECK_TEST_WINDOW).detail),
       (False, True))
@@ -63,7 +65,13 @@ check("closed test windows only -> green",
       by_name(shiftcheck.judge("", False, False, "", [{"since": "a", "until": "b"}]),
               texts.SHIFTCHECK_TEST_WINDOW).ok, True)
 line = shiftcheck.summary("早班", red)
-check("red line counts four not held", line.startswith("收工体检（早班）4 项里 4 项不对、0 项判不了："), True)
+check("red line counts two not held", line.startswith("收工体检（早班）4 项里 2 项不对、0 项判不了："), True)
+check("his switches follow as a note, not among 不对",
+      line.split("；你自己开着的：")[1:], [f"{texts.SHIFTCHECK_SKIP}：{texts.SHIFTCHECK_SKIP_ON}；"
+                                        f"{texts.SHIFTCHECK_DEBUG}：{texts.shiftcheck_debug_on('2026-10-11 20:50')}"])
+skip_only = shiftcheck.summary("早班", shiftcheck.judge("", True, False, "", []))
+check("only the skip mark armed -> 都对 plus the note (10-13 10:00:31 said 1 项不对)",
+      skip_only, f"收工体检（早班）4 项都对；你自己开着的：{texts.SHIFTCHECK_SKIP}：{texts.SHIFTCHECK_SKIP_ON}")
 check("red line is plain language", texts.plain(line), [])
 check("red line is one line (the daily report reads relay.log line by line)", "\n" in line, False)
 
@@ -138,10 +146,12 @@ with tempfile.TemporaryDirectory() as td:
                                               encoding="utf-8")
         rec.records.clear()
         got = shiftcheck.maybe_run(eng, due2 + timedelta(hours=2))
-        check("next shift, every item red, read from the state files", got and [c.ok for c in got], [False] * 4)
+        check("next shift, faults red and switches noted, read from the state files", got and [c.ok for c in got],
+              [False, True, True, False])
+        check("switch notes read from the state files", got and [bool(c.detail) for c in got][1:3], [True, True])
         check("red still INFO only (WARNING would reach the group through errwatch)",
               [r.levelno for r in rec.records], [logging.INFO])
-        check("red line names the morning shift", rec.records[0].getMessage().startswith("收工体检（早班）4 项里 4 项不对"),
+        check("red line names the morning shift", rec.records[0].getMessage().startswith("收工体检（早班）4 项里 2 项不对"),
               True)
 
         # Not finished / not a scheduled shift: nothing.
@@ -151,10 +161,23 @@ with tempfile.TemporaryDirectory() as td:
         eng._recent_entries = lambda now: [{"script": "MAA", "started": (due3 + timedelta(minutes=1)).isoformat()}]
         check("a script of the shift not recorded yet -> not checked", shiftcheck.maybe_run(eng, due3 + timedelta(hours=1)),
               None)
+        check("still running -> no line (it may yet finish)", rec.records[-1:] and rec.records[-1].getMessage().startswith(
+            "收工体检（早班）"), True)
+        rec.records.clear()
         eng._recent_entries = lambda now: [{"script": k, "started": (due3 + timedelta(minutes=1)).isoformat()}
                                            for k in ("MAA", "OK-WW")]
         eng._last_round_manual = lambda now, entries: True
         check("last round started by hand -> not checked", shiftcheck.maybe_run(eng, due3 + timedelta(hours=1)), None)
+        # Audit s13 #1 (10-12 21:45): the evening shift went unchecked and nothing said so.
+        check("a due shift not judged says so once at INFO, in words the daily report quotes",
+              [(r.levelno, r.getMessage()) for r in rec.records],
+              [(logging.INFO, "收工体检（晚班）这班没查：最近一轮是手动触发的")])
+        shiftcheck.maybe_run(eng, due3 + timedelta(hours=1, minutes=1))
+        check("not repeated on the next tick", len(rec.records), 1)
+        check("the daily report quotes it",
+              selfcheck.daily_lines("2026-10-12", "10-12 22:31:05 INFO    ark.shiftcheck  " + rec.records[0].getMessage()
+                                    + "\n")[2:], ["· 收工体检（晚班）这班没查：最近一轮是手动触发的"])
+        rec.records.clear()
         eng._last_round_manual = lambda now, entries: False
         eng._handled_any = False
         check("records never seen landing on this boot (relay restarted after the shift) -> not checked",

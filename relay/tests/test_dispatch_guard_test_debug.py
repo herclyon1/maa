@@ -10,6 +10,7 @@ records in the test window that it did, refuses the dispatch when it cannot, and
 test_off turns it off again only if this window turned it on.
 """
 import contextlib
+import inspect
 import io
 import json
 import sys
@@ -71,6 +72,25 @@ rc, out = run(g.test_off)
 check("test-off: window closed", windows()[-1]["until"] is not None, True)
 check("test-off: debug mode off again", (rc, modes.debug_active(state)), (0, False))
 
+print("\n[10-13: the morning shift spent 「下次跑完不关机」 (key :3), then a test -> test-off keeps that skip]")
+state = setup()
+modes.mark_shutdown_skipped(state, "2026-10-13:3")       # what take_skip's caller writes
+run(g.start, "OK-WW", test=True)
+rc, out = run(g.test_off)
+check("test-off: debug mode off", (rc, modes.debug_active(state)), (0, False))
+check("test-off: the spent mark's skipped occasion is still there (no power-off after the test)",
+      modes.shutdown_skipped(state), "2026-10-13:3")
+
+print("\n[a skip debug mode itself recorded during the window -> test-off releases it]")
+state = setup()
+run(g.start, "OK-WW", test=True)
+can_tag = "by_debug" in inspect.signature(modes.mark_shutdown_skipped).parameters
+check("debug mode's own skip is told apart from the mark's", can_tag, True)
+if can_tag:
+    modes.mark_shutdown_skipped(state, "2026-10-13:4", by_debug=True)   # shutdown._maybe_shutdown, verdict "debug"
+    run(g.test_off)
+    check("test-off: debug mode's own skip is cleared", modes.shutdown_skipped(state), "")
+
 print("\n[debug already on -> left on, and not turned off at test-off]")
 state = setup()
 modes.set_debug(state, 2)
@@ -111,6 +131,20 @@ check("refused, non-zero", rc, 6)
 check("nothing dispatched", dispatched, [])
 check("says why", "调试模式开不了" in out and "Access is denied" in out, True)
 check("no test window opened", Path(g.TEST_WINDOWS).exists(), False)
+
+print("\n[test-windows.json unreadable -> refused before debug mode is switched on]")
+state = setup()
+g._modes = lambda: modes
+Path(g.TEST_WINDOWS).write_text("{not json", encoding="utf-8")
+dispatched.clear()
+try:
+    rc, out = run(g.start, "OK-WW", test=True)
+except SystemExit as exc:
+    rc = exc.code
+check("refused with exit 5", rc, 5)
+check("debug mode left off (nothing would ever turn it off again)", modes.debug_active(state), False)
+check("nothing dispatched", dispatched, [])
+check("the window file is left as it was", Path(g.TEST_WINDOWS).read_text(encoding="utf-8"), "{not json")
 
 print("\n[a normal (non-test) dispatch does not touch debug mode]")
 state = setup()

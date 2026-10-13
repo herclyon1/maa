@@ -66,7 +66,8 @@ different plans (around 04:00), "unknown". Several users: "no" only when all are
    updates.stagegate_dues), so a relay restart does not check or alarm twice. And
    once at boot, right after AUTO-MAS answers and before the pre-update
    (boot_stages._stage_stagegate), with BOOT_LEAD_MIN: the machine is powered on at
-   08:40 / 21:20 for the 09:00 / 21:30 queues (docs/CONFIG.md ARK_BOOT_TIMES), and the
+   08:45 / 21:20 for the 09:00 / 21:30 queues (docs/OPERATIONS.md; relay.log shows the
+   relay up at 08:45:2x / 21:20:2x), and the
    boot stages (the morning pre-update is budgeted up to 90 s before the queue) can
    eat the whole last 10 minutes before the loop's first tick. A boot-time "yes" /
    "unknown" is not final (row `final: False`), so the tick checks again. A "no"
@@ -117,7 +118,7 @@ YES, NO, UNKNOWN = "yes", "no", "unknown"
 # the user's own words (tests/test_user_switches.py SWITCHED_PULLS fails without it).
 PULL_FROM_QUEUE = False
 LEAD_MIN = 10            # check this many minutes before a due
-BOOT_LEAD_MIN = 60       # the boot pass: the machine boots 20 min before a due (ARK_BOOT_TIMES)
+BOOT_LEAD_MIN = 60       # the boot pass: the machine boots 15 / 10 min before the 09:00 / 21:30 due
 RESTORE_AFTER_MIN = 5    # put MAA back no earlier than this after the due
 RETRY_MIN = 10           # between two failed put-backs
 KEEP_DAYS = 3            # verdicts kept for the report / missed checks

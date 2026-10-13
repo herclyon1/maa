@@ -84,7 +84,7 @@ def _unfinished_queues(eng, now: datetime, entries: list[dict]) -> list[str]:
 
 
 # How far ahead a scheduled queue still counts as the one this boot was woken for
-# (the machine wakes about 15 minutes before the shift).
+# (the machine wakes 15 minutes before the morning shift, 10 before the evening one).
 SHIFT_AHEAD_MIN = 60
 
 
@@ -164,19 +164,13 @@ def _seen_landing(eng, booted: datetime, shift: list[dict]) -> bool:
     return abs((boot - booted).total_seconds()) <= BOOT_SLACK_S and at >= max(q["due"] for q in shift)
 
 
-def _round_is_manual(eng, new_entries: list[dict]) -> bool:
-    """Whether this round was triggered by hand rather than by the schedule.
+def _schedule_times(eng) -> list[str]:
+    """The scheduled queue times ("HH:MM") from AUTO-MAS's own queue config."""
+    return [t for q in plan.schedule(eng.cfg.automas_dir) for t in q.get("times", [])]
 
-    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_round_is_manual」。
-    """
-    times = [t for q in plan.schedule(eng.cfg.automas_dir)
-             for t in q.get("times", [])]
-    if not times or not new_entries:
-        return False
-    try:
-        first = min(_entry_time(e) for e in new_entries)
-    except (KeyError, ValueError):
-        return False
+
+def _near_due(first: datetime, times: list[str]) -> bool:
+    """`first` is within MANUAL_WINDOW_MIN of one of the scheduled times that day."""
     for hhmm in times:
         try:
             hh, mm = (int(x) for x in hhmm.split(":"))
@@ -184,8 +178,23 @@ def _round_is_manual(eng, new_entries: list[dict]) -> bool:
             continue
         due = first.replace(hour=hh, minute=mm, second=0, microsecond=0)
         if abs((first - due).total_seconds()) <= MANUAL_WINDOW_MIN * 60:
-            return False
-    return True
+            return True
+    return False
+
+
+def _round_is_manual(eng, new_entries: list[dict]) -> bool:
+    """Whether this round was triggered by hand rather than by the schedule.
+
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_round_is_manual」。
+    """
+    times = _schedule_times(eng)
+    if not times or not new_entries:
+        return False
+    try:
+        first = min(_entry_time(e) for e in new_entries)
+    except (KeyError, ValueError):
+        return False
+    return not _near_due(first, times)
 
 
 # How far apart two consecutive records may be and still belong to one round:
@@ -300,53 +309,130 @@ def _round_of_newest(entries: list[dict]) -> list[dict]:
     ordered = sorted(entries, key=_entry_time)
     group = [ordered[-1]]
     for prev in reversed(ordered[:-1]):
-        cur = group[0]
-        cur_start = _entry_time(cur)
-        prev_end = _entry_time(prev, "finished") if prev.get("finished") else _entry_time(prev)
-        gap = cur_start - prev_end
-        same_script = (prev.get("script") == cur.get("script")
-                       and prev.get("user") == cur.get("user"))
-        retry = same_script and not prev.get("ok") and gap <= timedelta(hours=RETRY_LINK_H)
-        # A timed-out record's "finished" can be its log's last line, not the
-        # moment AUTO-MAS killed it, so the gap after it can look longer than
-        # ROUND_GAP_H. What starts before AUTO-MAS's own limit for that script
-        # could have run out (+ TIMEOUT_SLACK_MIN) is the same round; anything
-        # later (a hand-started re-run) is not.
-        timed_out = not prev.get("ok") and any(
-            "超时" in str(w) for w in list(prev.get("failed_tasks") or [])
-            + [str((prev.get("raw") or {}).get("general_result") or "")])
-        moved_on = False
-        if timed_out and (limit := TIMEOUT_LIMIT_MIN.get(str(prev.get("script")))):
-            # OK-WW's and MAA's limits run from the start; MaaEnd's from its last
-            # log line.
-            anchor = prev_end if prev.get("script") == "MaaEnd" else _entry_time(prev)
-            moved_on = cur_start <= anchor + timedelta(minutes=limit + TIMEOUT_SLACK_MIN)
-        if gap <= timedelta(hours=ROUND_GAP_H) or retry or moved_on:
+        if _linked(prev, group[0]):
             group.insert(0, prev)
         else:
             break
     return group
 
 
+def _linked(prev: dict, cur: dict) -> bool:
+    """`cur` continues the round `prev` is part of (the rules of _round_of_newest)."""
+    cur_start = _entry_time(cur)
+    prev_end = _entry_time(prev, "finished") if prev.get("finished") else _entry_time(prev)
+    gap = cur_start - prev_end
+    same_script = (prev.get("script") == cur.get("script")
+                   and prev.get("user") == cur.get("user"))
+    retry = same_script and not prev.get("ok") and gap <= timedelta(hours=RETRY_LINK_H)
+    # A timed-out record's "finished" can be its log's last line, not the
+    # moment AUTO-MAS killed it, so the gap after it can look longer than
+    # ROUND_GAP_H. What starts before AUTO-MAS's own limit for that script
+    # could have run out (+ TIMEOUT_SLACK_MIN) is the same round; anything
+    # later (a hand-started re-run) is not.
+    timed_out = not prev.get("ok") and any(
+        "超时" in str(w) for w in list(prev.get("failed_tasks") or [])
+        + [str((prev.get("raw") or {}).get("general_result") or "")])
+    moved_on = False
+    if timed_out and (limit := TIMEOUT_LIMIT_MIN.get(str(prev.get("script")))):
+        # OK-WW's and MAA's limits run from the start; MaaEnd's from its last
+        # log line.
+        anchor = prev_end if prev.get("script") == "MaaEnd" else _entry_time(prev)
+        moved_on = cur_start <= anchor + timedelta(minutes=limit + TIMEOUT_SLACK_MIN)
+    return gap <= timedelta(hours=ROUND_GAP_H) or retry or moved_on
+
+
+# A test window run-one.sh opened and nobody closed (no "until") is taken to end
+# this long after it opened: a --test run is one script, and the longest
+# AUTO-MAS limit is OK-WW's 120 minutes (TIMEOUT_LIMIT_MIN) plus start-up.
+# Without it a forgotten test-off made every later record a test run, and the
+# machine never powered off again (review of 25ebc227, 10-13).
+OPEN_WINDOW_MAX_H = 3
+
+
+def _test_spans(eng) -> list[tuple[datetime, datetime]]:
+    """The test windows run-one.sh marked (report.test_windows) as (since, until);
+    an open one ends OPEN_WINDOW_MAX_H after it opened. [] when none or no state dir."""
+    from ark_relay.features.report import report  # noqa: PLC0415 - avoids an import cycle
+    spans = []
+    for w in report.test_windows(getattr(getattr(eng, "cfg", None), "state_dir", None)):
+        try:
+            since = datetime.fromisoformat(w["since"]).astimezone(SERVER_TZ)
+            until = (datetime.fromisoformat(w["until"]).astimezone(SERVER_TZ) if w.get("until")
+                     else since + timedelta(hours=OPEN_WINDOW_MAX_H))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+        spans.append((since, until))
+    return spans
+
+
+def _off_shift(eng, entries: list[dict]) -> set[int]:
+    """id() of every record in `entries` that is no part of a 早班/晚班.
+
+    Such a record never joins a scheduled round and never moves the skip key: on
+    10-12 two test-window MaaEnd runs (18:26, 20:04) chained into the 21:30 evening
+    shift and made it read as started by hand (no power-off, 21:45:34), and on 10-13
+    the hand-started OK-WW at 11:07 chained into the morning shift and gave it a new
+    key, so the spent 「下次跑完不关机」 no longer matched and the machine powered off
+    at 11:13:55. The user's rule, 2026-10-10 18:31 (quoted in USER-SWITCHES.txt):
+    the relay powers off only after a 早班/晚班 has finished.
+
+    Off-shift is a run a person started at AUTO-MAS (raw.hand_started, written by
+    handle._book), or one inside a marked test window that is not a scheduled run.
+    A window can never swallow a shift: an in-window record still belongs to a
+    shift when it starts within MANUAL_WINDOW_MIN of a scheduled time, or continues
+    (_linked) the shift record before it with no window opened in between -
+    run-one.sh's busy gate dispatches a test only on an idle queue, so a window
+    opened after the previous record ended marks the next start as the test's.
+    """
+    spans = _test_spans(eng)
+    times = _schedule_times(eng) if spans else []
+    try:
+        ordered = sorted(entries, key=_entry_time)
+    except (KeyError, ValueError, TypeError):
+        return {id(e) for e in entries if (e.get("raw") or {}).get("hand_started")}
+    off: set[int] = set()
+    prev = None
+    for e in ordered:
+        if (e.get("raw") or {}).get("hand_started"):
+            off.add(id(e))
+            continue
+        start = _entry_time(e)
+        if any(since <= start <= until for since, until in spans):
+            shift = _near_due(start, times)
+            if not shift and prev is not None and _linked(prev, e):
+                prev_end = _entry_time(prev, "finished") if prev.get("finished") else _entry_time(prev)
+                shift = not any(prev_end <= since <= start for since, _ in spans)
+            if not shift:
+                off.add(id(e))
+                continue
+        prev = e
+    return off
+
+
 def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
     """True when the day's most recent round was triggered by hand.
 
+    The newest record being hand-started or a test run (_off_shift) makes it manual;
+    otherwise the round is built from the scheduled records only.
     来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_last_round_manual」。
     """
     if not entries:
         return False
     try:
-        starts = [_entry_time(e) for e in entries]
+        newest_entry = max(entries, key=_entry_time)
     except (KeyError, ValueError):
         return False
-    newest = max(starts)
+    newest = _entry_time(newest_entry)
+    off = _off_shift(eng, entries)
+    if id(newest_entry) in off:
+        return True
     # A catch-up run the relay itself dispatched after a client update is not a
     # hand-started run; when it finishes, the machine may power off.
     since = getattr(eng, "_gu_rerun_at", None)
     if since is not None and newest >= since:
         return False
     try:
-        group = _round_of_newest(entries)
+        group = _round_of_newest([e for e in entries if id(e) not in off])
     except (KeyError, ValueError, TypeError):
         return False
     if _relay_dispatched(eng, group):
@@ -386,14 +472,20 @@ def _relay_dispatched(eng, group: list[dict]) -> bool:
 def _shutdown_key(eng, now: datetime) -> str:
     """Identifier for this one "time to power off" opportunity.
 
-    It is the number of ledger entries for the day: the count grows every time a queue
-    finishes, so "the one after the evening shift" and "the one after the morning
-    shift" are two different opportunities. Debug mode, or the spent 「下次跑完不关机」
-    mark, skips one of them (modes.shutdown_skipped); neither stops the machine
-    powering off from the next one on.
+    It is the number of the day's ledger entries that belong to a 早班/晚班 (not
+    _off_shift): the count grows every time a scheduled queue's script records, so
+    "the one after the evening shift" and "the one after the morning shift" are two
+    different opportunities, while a hand-started or test run in between leaves the
+    key - and a skip recorded on it - as it was. Debug mode, or the spent
+    「下次跑完不关机」 mark, skips one of them (modes.shutdown_skipped); neither stops
+    the machine powering off from the next one on.
     """
     day = now.strftime("%Y-%m-%d")
-    return f"{day}:{len(eng.state.read_ledger(day))}"
+    today = eng.state.read_ledger(day)
+    # Yesterday's records too, so an evening shift that ran past midnight still
+    # links the records it left in today's file.
+    off = _off_shift(eng, today + eng.state.read_ledger((now - timedelta(days=1)).strftime("%Y-%m-%d")))
+    return f"{day}:{sum(1 for e in today if id(e) not in off)}"
 
 
 @dataclass(frozen=True)
@@ -532,7 +624,7 @@ def _say_if_moment_passed(eng, now: datetime, v) -> None:
 
 
 def _shift_overdue(eng, now: datetime):
-    """(queue, due, missing scripts, limit, deadline) for each shift queue of this boot that
+    """(queue, due, missing scripts, limit, deadline, days) for each shift queue of this boot that
     still lacks a record, and whose run check_overrun has not alarmed on. The limit is
     check_overrun's: runwatch.planned_minutes + OVERRUN_SLACK_MIN from the queue's time."""
     from ark_relay.features.alarm import handle  # noqa: PLC0415
@@ -550,8 +642,8 @@ def _shift_overdue(eng, now: datetime):
         if (handle._already_alerted(eng, day, f"{OVERDUE_KEY}|{q['name']}|{hhmm}")
                 or handle._already_alerted(eng, day, f"队列超时|{q['name']}|{hhmm}")):
             continue
-        limit, _ = runwatch.planned_minutes(eng, due.hour, due.minute, due)
-        yield q, due, missing, limit, due + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN)
+        limit, days = runwatch.planned_minutes(eng, due.hour, due.minute, due)
+        yield q, due, missing, limit, due + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN), days
 
 
 OVERDUE_KEY = "班次无结果"
@@ -564,7 +656,7 @@ def overdue_moments(eng, now: datetime) -> list[tuple[datetime, str]]:
     if eng._shutdown_issued:
         return []
     return [(deadline, f"核对「{q['name']}」{due:%H:%M} 那趟有没有跑完")
-            for q, due, _, _, deadline in _shift_overdue(eng, now) if deadline > now]
+            for q, due, _, _, deadline, _ in _shift_overdue(eng, now) if deadline > now]
 
 
 def _alarm_shift_overdue(eng, now: datetime) -> None:
@@ -581,12 +673,12 @@ def _alarm_shift_overdue(eng, now: datetime) -> None:
     """
     from ark_relay.features.alarm import errwatch, handle  # noqa: PLC0415
     from ark_relay.features.run import runwatch  # noqa: PLC0415
-    for q, due, missing, limit, deadline in list(_shift_overdue(eng, now)):
+    for q, due, missing, limit, deadline, days in list(_shift_overdue(eng, now)):
         if now < deadline:
             continue
         title = texts.shift_no_result(q["name"])
         body = texts.shift_no_result_body(q["name"], due, now, "、".join(missing),
-                                          limit, runwatch.OVERRUN_SLACK_MIN)
+                                          limit, runwatch.OVERRUN_SLACK_MIN, days)
         if errs := eng.notifier.send(title, body, alert=True):
             log.error("班次没出结果的告警没推出去，下一轮再试：%s", q["name"])
             continue
@@ -604,7 +696,7 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
         # Debug mode skips this one opportunity (see decide): record its key.
         key = eng._shutdown_key(now)
         if modes.shutdown_skipped(eng.state.dir) != key:
-            modes.mark_shutdown_skipped(eng.state.dir, key)
+            modes.mark_shutdown_skipped(eng.state.dir, key, by_debug=True)
             log.info("🔧 调试模式：这一次关机已跳过（%s）；"
                      "到期后不会补关，等下一趟队列跑完再判", key)
     if not v.go:

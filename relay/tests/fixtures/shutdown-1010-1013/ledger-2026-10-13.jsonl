@@ -1,0 +1,4 @@
+{"run_id": "2026-10-13/arknights/MAA-05-00-23", "script": "MAA", "user": "arknights", "started": "2026-10-13T09:00:26+08:00", "finished": "2026-10-13T09:20:38+08:00", "ok": true, "failed_tasks": []}
+{"run_id": "2026-10-13/wuwa/OK-WW-05-20-44", "script": "OK-WW", "user": "wuwa", "started": "2026-10-13T09:22:05+08:00", "finished": "2026-10-13T09:36:52+08:00", "ok": true, "failed_tasks": [], "raw": {"general_result": "Success!"}}
+{"run_id": "2026-10-13/endfield/MaaEnd-05-36-57", "script": "MaaEnd", "user": "endfield", "started": "2026-10-13T09:38:02+08:00", "finished": "2026-10-13T09:59:10+08:00", "ok": true, "failed_tasks": []}
+{"run_id": "2026-10-13/wuwa/OK-WW-07-05-49", "script": "OK-WW", "user": "wuwa", "started": "2026-10-13T11:07:05+08:00", "finished": "2026-10-13T11:09:06+08:00", "ok": true, "failed_tasks": [], "raw": {"hand_started": "a9632e09-b0c3-4d67-897f-387d9e6a9a00", "general_result": "Success!"}}
