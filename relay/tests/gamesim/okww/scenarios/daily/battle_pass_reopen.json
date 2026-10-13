@@ -1,0 +1,162 @@
+{
+ "case": "battle_pass_reopen",
+ "about": "T14, 0188b2c1. 08-26 21:13 and 09-29 09:28 the podcast (battle pass) page did not open; upstream logged 「can not battle pass, maybe ended」 and the run still ended 「Daily Task Completed」, the points lost for the day (the owner, 10-11 17:36, quoted in 0188b2c1). The page must be opened once more in the same run. Provisional: the page and the screen behind it were never recorded. Red at 0188b2c1~1: one try, the error line, done.",
+ "task": [
+  "src.task.DailyTask",
+  "DailyTask"
+ ],
+ "start": "world",
+ "states": {
+  "world": {
+   "provisional_ocr": [
+    {
+     "text": "未录画面",
+     "box": [
+      0.45,
+      0.45,
+      0.55,
+      0.5
+     ],
+     "evidence": "stand-in text, not a read: the screen around the podcast icon was never recorded (frames.json unrecorded battle_pass_page); all that is known is that nothing in the level box (0.2, 0.13, 0.32, 0.22) read as a number, so the text sits outside it"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "alt",
+     "evidence": "claim_battle_pass holds Alt for the click on the podcast icon (upstream DailyTask.py:205-208; the overlay's _battle_pass_open is the same four lines)",
+     "to": "world"
+    },
+    {
+     "click": [
+      0.85,
+      0.035,
+      0.87,
+      0.065
+     ],
+     "to": "page_not_open",
+     "evidence": "the podcast icon at (0.86, 0.05) (DailyTask.py:207); 2026-09-29 OK-WW-05-20-18.log:476-478 (AUTO-MAS history): 'battle pass', a 10 s wait_ocr timeout, 'can not battle pass, maybe ended': the click on the podcast icon left no level number on screen"
+    }
+   ]
+  },
+  "page_not_open": {
+   "provisional_ocr": [
+    {
+     "text": "未录画面",
+     "box": [
+      0.45,
+      0.45,
+      0.55,
+      0.5
+     ],
+     "evidence": "stand-in text, not a read: the screen around the podcast icon was never recorded (frames.json unrecorded battle_pass_page); all that is known is that nothing in the level box (0.2, 0.13, 0.32, 0.22) read as a number, so the text sits outside it"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "alt",
+     "evidence": "claim_battle_pass holds Alt for the click on the podcast icon (upstream DailyTask.py:205-208; the overlay's _battle_pass_open is the same four lines)",
+     "to": "page_not_open"
+    },
+    {
+     "click": [
+      0.85,
+      0.035,
+      0.87,
+      0.065
+     ],
+     "to": "page",
+     "evidence": "a second press opens it: on every run since 10-12 the page opened and read a level (ok-script.2026-10-12.log 10:03:46 '战令：页面打开了，点了领取（等级 300/1000）')"
+    }
+   ]
+  },
+  "page": {
+   "provisional_ocr": [
+    {
+     "text": "300/1000",
+     "box": [
+      0.21,
+      0.15,
+      0.31,
+      0.2
+     ],
+     "evidence": "ok-script.2026-10-12.log 10:03:46 '战令：页面打开了，点了领取（等级 300/1000）': the level read in BATTLE_PASS_LEVEL_BOX (0.2, 0.13, 0.32, 0.22)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.03,
+      0.29,
+      0.05,
+      0.31
+     ],
+     "to": "page",
+     "evidence": "upstream claim_battle_pass's clicks on the open page, DailyTask.py:212 (no recording of the page; the overlay runs them unchanged)"
+    },
+    {
+     "click": [
+      0.67,
+      0.9,
+      0.69,
+      0.92
+     ],
+     "to": "page",
+     "evidence": "upstream claim_battle_pass's clicks on the open page, DailyTask.py:213/215 (no recording of the page; the overlay runs them unchanged)"
+    },
+    {
+     "click": [
+      0.03,
+      0.16,
+      0.05,
+      0.18
+     ],
+     "to": "page",
+     "evidence": "upstream claim_battle_pass's clicks on the open page, DailyTask.py:214 (no recording of the page; the overlay runs them unchanged)"
+    }
+   ]
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "state": "page_not_open",
+    "evidence": "2026-09-29 OK-WW-05-20-18.log:476-478 (AUTO-MAS history): 'battle pass', a 10 s wait_ocr timeout, 'can not battle pass, maybe ended': the click on the podcast icon left no level number on screen"
+   },
+   {
+    "state": "page",
+    "evidence": "the owner, 10-11 17:36 (0188b2c1): unclaimed podcast points are lost for the day, so a page that did not open is opened again"
+   }
+  ],
+  "end": null,
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "战令：页面打开了，点了领取（等级 300/1000）",
+    "evidence": "the line the relay reads as claimed (outcome.battle_pass_checks), as ok-script.2026-10-12.log 10:03:46 has it"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "can not battle pass, maybe ended",
+    "evidence": "09-29 09:28:53 this line ended the claim with nothing claimed; the 3.6 podcast period ran to 09-30 03:59 (0188b2c1), so 'maybe ended' was not it"
+   }
+  ],
+  "verdict": {
+    "evidence": "0188b2c1: the battle-pass page that did not open the first time (08-26, 09-29) is opened once more; here it opens and the claim is clicked, so the relay counts the battle pass as done and has no battle-pass failure (the owner 10-11 17:36, quoted in 0188b2c1: the points were lost those days)",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "done_has": [
+      "战令"
+    ],
+    "lacks": [
+      "战令"
+    ]
+  }
+ }
+}

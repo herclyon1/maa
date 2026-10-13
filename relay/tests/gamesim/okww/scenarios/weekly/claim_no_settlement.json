@@ -1,0 +1,307 @@
+{
+ "case": "claim_no_settlement",
+ "about": "确认 with enough read, and no 挑战成功 page follows: the screen the machine had at 11:45:02 (ok-script.2026-10-12.log:2008, its text only - the top-up template was not found then: no 「结晶波片不足」 line between 11:44:48 and :52). Stop with a picture, press nothing (10-05 10:34:50: upstream's next lap pressed ESC on such a screen and timed out into farm 4c error). Red at 022adf68~1, which handed the screen back to upstream.",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "crystal",
+ "max_s": 1200,
+ "config": {
+  "evidence": "the game PC's working/configs/FarmEchoTask.json (read 2026-10-13, gamesim u0 redacted copy): Teleport to Boss Weekly Challenge, Boss Level 90, Which Weekly Boss to Teleport 1, Repeat Farm Count 3",
+  "task": {
+   "Teleport to Boss": "Weekly Challenge",
+   "Boss Level": "90",
+   "Which Weekly Boss to Teleport": 1,
+   "Repeat Farm Count": 3
+  }
+ },
+ "states": {
+  "crystal": {
+   "about": "at the crystal after the fight, the F prompt up (frames.json unrecorded weekly_crystal_f; the walk is not driven)",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "illusive_realm_exit",
+     "box": [
+      0.0076,
+      0.0292,
+      0.0279,
+      0.069
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json illusive_realm_exit box (halved): inside a realm"
+    },
+    {
+     "name": "pick_up_f_hcenter_vcenter",
+     "box": [
+      0.6365,
+      0.5074,
+      0.6469,
+      0.5259
+     ],
+     "evidence": "ok-script.2026-10-12.log:2702 'do_walk_to_box ended Box(name='Labels.pick_up_f_hcenter_vcenter', x=1222, y=548, width=20, height=20)' (15:27:29, at the crystal)"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f",
+     "to": "claim",
+     "evidence": "pick_f presses F on the prompt; ok-script.2026-10-12.log:2705 the claim dialog read 3 s after the walk ended"
+    }
+   ]
+  },
+  "claim": {
+   "about": "the claim dialog (provisional: frames.json unrecorded weekly_claim_dialog)",
+   "provisional_ocr": [
+    {
+     "text": "领取奖励需消耗60点结晶波片，请确认是否领取？",
+     "box": [
+      0.2917,
+      0.463,
+      0.7083,
+      0.5
+     ],
+     "evidence": "docs/OKWW-WEEKLY-BOSS.md:53, the dialog's text read word for word by full-screen OCR on 2026-09-01 05:09; the box is the dialog's centre line (as 确认离开 on upstream tests/images/confirm_highlight.png)"
+    },
+    {
+     "text": "0",
+     "box": [
+      0.6385,
+      0.0444,
+      0.6594,
+      0.0769
+     ],
+     "evidence": "ok-script.2026-10-12.log:2705 (15:27:32, the claim dialog) first top-bar box Box(name='0', x=1226, y=48, width=40, height=35)"
+    },
+    {
+     "text": "78/240",
+     "box": [
+      0.6794,
+      0.0463,
+      0.7344,
+      0.079
+     ],
+     "evidence": "78 = 18 on frame boss_level_page/2026-10-12_152814_2of3.png (15:28:14, right after this claim) + the 60 the claim cost (docs/OKWW-WEEKLY-BOSS.md:53); no top-up came ({L12}:2709 the 3 s wait for gem_add_stamina timed out); placed right of the backup, the bar's order on frame waveplate_topup/2026-10-12_114452.png (0, 41/240, 15652 left to right)"
+    },
+    {
+     "text": "15652",
+     "box": [
+      0.7474,
+      0.0448,
+      0.8049,
+      0.0792
+     ],
+     "evidence": "frame waveplate_topup/2026-10-12_114452.png truth 15652 (astrite)"
+    }
+   ],
+   "provisional_features": [
+    {
+     "name": "claim_cancel_button_hcenter_vcenter",
+     "box": [
+      0.2365,
+      0.5769,
+      0.2583,
+      0.6731
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json claim_cancel_button_hcenter_vcenter box (has_claim's template); ok-script.log (2026-10-13):1352 'left_click claim_cancel_button_hcenter_vcenter (538, 675)' (relative_x=2 of that box)"
+    },
+    {
+     "name": "cancel_button_hcenter_vcenter",
+     "box": [
+      0.237,
+      0.5963,
+      0.2583,
+      0.6611
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json cancel_button_hcenter_vcenter box; the machine clicked a two-button dialog's left button there: ok-script.2026-10-10.log:555 'left_click Labels.cancel_button_hcenter_vcenter (476, 679)'"
+    },
+    {
+     "name": "confirm_btn_hcenter_vcenter",
+     "box": [
+      0.724,
+      0.5917,
+      0.7536,
+      0.663
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json confirm_btn_hcenter_vcenter box; its centre is where the machine clicked the dialog's right button: ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)'"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.69,
+      0.59,
+      0.79,
+      0.67
+     ],
+     "to": "after_confirm",
+     "evidence": "ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)' (the claim's 确认)"
+    },
+    {
+     "click": [
+      0.22,
+      0.56,
+      0.3,
+      0.68
+     ],
+     "to": "claim_cancelled",
+     "evidence": "the dialog's left button: upstream v3.7.4 assets/coco_annotations.json cancel_button / claim_cancel_button boxes (455-496 x 623-727)"
+    }
+   ]
+  },
+  "claim_cancelled": {
+   "end": true
+  },
+  "after_confirm": {
+   "about": "not the settlement page",
+   "provisional_ocr": [
+    {
+     "text": "0",
+     "box": [
+      0.4865,
+      0.046,
+      0.5035,
+      0.0745
+     ],
+     "evidence": "ok-script.2026-10-12.log:2008 full-screen read at 11:45:02 '0_1.00'; box from frame waveplate_topup/2026-10-12_114502.png truth"
+    },
+    {
+     "text": "41/240",
+     "box": [
+      0.5904,
+      0.0474,
+      0.6552,
+      0.0818
+     ],
+     "evidence": "ok-script.2026-10-12.log:2008 '41/240_1.00'; frame 114502 truth"
+    },
+    {
+     "text": "补充结晶波片",
+     "box": [
+      0.182,
+      0.1767,
+      0.2831,
+      0.216
+     ],
+     "evidence": "ok-script.2026-10-12.log:2008 '补充结晶波片_1.00'; frame 114502 truth"
+    },
+    {
+     "text": "请选择补充方式",
+     "box": [
+      0.4379,
+      0.2617,
+      0.5549,
+      0.3012
+     ],
+     "evidence": "ok-script.2026-10-12.log:2008 '请选择补充方式_1.00'; frame 114502 truth"
+    },
+    {
+     "text": "取消",
+     "box": [
+      0.2794,
+      0.704,
+      0.3209,
+      0.743
+     ],
+     "evidence": "ok-script.2026-10-12.log:2008 '取消_1.00'; frame 114502 truth"
+    },
+    {
+     "text": "确认",
+     "box": [
+      0.6733,
+      0.704,
+      0.7148,
+      0.743
+     ],
+     "evidence": "ok-script.2026-10-12.log:2008 '确认_1.00'; frame 114502 truth"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "esc",
+     "to": "after_pressed",
+     "evidence": "anything pressed on an unknown screen"
+    }
+   ]
+  },
+  "after_pressed": {
+   "end": true
+  }
+ },
+ "expect": {
+  "sequence": [],
+  "end": null,
+  "never_states": [
+   "after_pressed"
+  ],
+  "shots": [
+   {
+    "name": "weekly_no_settlement",
+    "evidence": "design 1: an unknown screen stops with a picture"
+   }
+  ],
+  "raises": {
+   "name": "TaskDisabledException",
+   "evidence": "the overlay's stop (_ArkStop), passed through untouched by upstream (FarmEchoTask.py:207-208)"
+  },
+  "log": [
+   {
+    "re": "^ERROR .*结算页",
+    "evidence": "ok-script.2026-10-12.log:2008, the machine's own stop line at 11:45:02 (pushed)"
+   }
+  ],
+  "log_never": [],
+  "verdict": {
+    "evidence": "ledger 718-721 (BOARD/报错台账.txt, 10-12 12:05): the 11:45:02 stop 「点了确认后没等到结算页」 was booked silently and must be red (f912c1f0); the confirm was clicked once and not verified (ok-script.2026-10-12.log:2007-2008)",
+    "context": [
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1839 (11:42:42), the line upstream's FarmEchoTask.run logs before it opens the book; this scenario starts after it"
+      },
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1875 (11:43:28), logged when the run lands in the realm (FarmEchoTask.py:271); this scenario starts after the fight"
+      },
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:enter combat None",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1935 (11:43:30), upstream's fight line (CombatCheck.py:181) before the claim; the scenario elides the fight"
+      }
+    ],
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": false,
+    "has": [
+      "周本",
+      "确认 1 次"
+    ],
+    "done_lacks": [
+      "周本"
+    ],
+    "unregistered": [
+      "周本领奖：点了确认后没等到结算页"
+    ]
+  }
+ }
+}

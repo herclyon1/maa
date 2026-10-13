@@ -156,6 +156,60 @@ finally:
 check("an unreadable list is one failure, not an exception",
       isinstance(out, list) and len(out) == 1 and "bad json" in out[0], True)
 
+print("[uninstall removes the OK-WW overlay file, and nothing else in OK-WW]")
+# gamesim U9 reported that no code removes ok_tasks/ark_overrides.py (its install cycle
+# deleted the file itself). It is removed: legacy-items.json lists it as a `file` item with
+# action `takeover`, and legacy.remove() deletes every remove/takeover item. Pinned here with
+# the real list, the real remove() and the real _delete_path.
+sys.path.insert(0, str(RELAY))
+from pathlib import PureWindowsPath  # noqa: E402
+from ark_relay.features.okww_patch import okww_overlay  # noqa: E402
+
+OKWW_ROOT = PureWindowsPath(r"D:\ark\okww")     # the machine's OK-WW folder (legacy-items.json)
+want = PureWindowsPath(*okww_overlay._WORKING, okww_overlay.TASKS_DIR, okww_overlay.FILE_NAME)
+saved_items_file = legacy.ITEMS
+legacy.ITEMS = RELAY / "handover" / "legacy-items.json"     # handover\ next to legacy.py when packaged
+real_items = legacy.items()
+ours = [it for it in real_items if it.get("kind") == "file"
+        and PureWindowsPath(it["path"]).name == okww_overlay.FILE_NAME]
+check("legacy-items.json lists the overlay file once, as removed at uninstall",
+      [(it["action"] in ("remove", "takeover"), PureWindowsPath(it["path"]) == OKWW_ROOT / want) for it in ours],
+      [(True, True)])
+asked = []
+saved = (legacy.items, legacy._delete_path, legacy._run, legacy._task_names,
+         legacy.service_exists, legacy.TAKEOVER_RECORD)
+legacy._delete_path = lambda p: asked.append(PureWindowsPath(str(p))) or []
+legacy._run = lambda *cmd: 0
+legacy._task_names = lambda: []
+legacy.service_exists = lambda name: False
+with tempfile.TemporaryDirectory() as t:
+    legacy.TAKEOVER_RECORD = Path(t) / "legacy-takeover.json"
+    try:
+        quiet(legacy.remove)
+    finally:
+        (legacy.items, legacy._delete_path, legacy._run, legacy._task_names,
+         legacy.service_exists, legacy.TAKEOVER_RECORD) = saved
+        legacy.ITEMS = saved_items_file
+check("remove() with the real list deletes the overlay file", OKWW_ROOT / want in asked, True)
+check("and nothing else under OK-WW's folder",
+      [str(p) for p in asked if str(p).lower().startswith(str(OKWW_ROOT).lower() + "\\")
+       and not (p.match("*.py.bak-*") and p.parent.name == "task")], [str(OKWW_ROOT / want)])
+with tempfile.TemporaryDirectory() as t:
+    root = Path(t) / "okww"
+    dest = okww_overlay.target(root)
+    dest.parent.mkdir(parents=True)
+    dest.write_text("# ours\n", encoding="utf-8")
+    theirs = dest.parent / "user_task.py"           # a task the owner put there himself
+    theirs.write_text("# his\n", encoding="utf-8")
+    upstream = root.joinpath(*okww_overlay._WORKING, "src", "task", "DailyTask.py")
+    upstream.parent.mkdir(parents=True)
+    upstream.write_text("# upstream\n", encoding="utf-8")
+    local = {**ours[0], "path": str(root.joinpath(*PureWindowsPath(ours[0]["path"]).relative_to(OKWW_ROOT).parts))} \
+        if ours else {}
+    failed, _ = quiet(legacy._remove_one, local, None) if ours else ([], None)
+    check("the real removal of that item: our file gone, his task and upstream's file kept",
+          (failed, dest.exists(), theirs.exists(), upstream.exists()), ([], False, True, True))
+
 print("[the uninstaller: 「中继已经重新开起来，什么都没删」 only for exit 3]")
 iss = (ROOT / "packaging" / "ark-relay.iss").read_text(encoding="utf-8-sig")
 m = re.search(r"\nprocedure CurUninstallStepChanged\b.*?\nend;", iss, re.S)

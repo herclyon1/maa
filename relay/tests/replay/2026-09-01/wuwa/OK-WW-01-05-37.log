@@ -313,7 +313,7 @@
 2026-09-01 05:09:39,182 INFO TaskExecutor BaseWWTask:do_walk_to_box ended Box(name='Labels.pick_up_f_hcenter_vcenter', x=1222, y=548, width=20, height=20, confidence=68)
 2026-09-01 05:09:39,203 INFO TaskExecutor BaseWWTask:walk_until_f direction w target_text: None
 2026-09-01 05:09:43,278 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
-2026-09-01 05:09:43,589 INFO TaskExecutor FarmEchoTask:周本领奖：没认出，整屏读到 [34_1.00, 29/240_1.00, +_0.93, 领取奖励_1.00, 领取奖励需消耗60点结晶波片，请确认是否领取？_0.99, 取消_1.00, 确认_1.00, 特征码：119403610_0.98]
+2026-09-01 05:09:43,589 INFO TaskExecutor FarmEchoTask:周本领奖：没认出，整屏读到 [34_1.00, 29/240_1.00, +_0.93, 领取奖励_1.00, 领取奖励需消耗60点结晶波片，请确认是否领取？_0.99, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.98]
 2026-09-01 05:09:43,589 INFO TaskExecutor FarmEchoTask:周本领奖：没认出花体力界面，不领，按原样退出
 2026-09-01 05:09:44,131 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
 2026-09-01 05:09:46,603 INFO TaskExecutor FarmEchoTask:left_click claim_cancel_button_hcenter_vcenter (538, 675) after_sleep 0
@@ -364,7 +364,7 @@
 2026-09-01 05:10:49,106 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
 2026-09-01 05:10:53,724 INFO TaskExecutor BaseWWTask:do_walk_to_box ended Box(name='Labels.pick_up_f_hcenter_vcenter', x=1222, y=548, width=20, height=20, confidence=52)
 2026-09-01 05:10:53,742 INFO TaskExecutor BaseWWTask:walk_until_f direction w target_text: None
-2026-09-01 05:10:58,113 INFO TaskExecutor FarmEchoTask:周本领奖：没认出，整屏读到 [34_1.00, 29/240_1.00, +_0.94, 领取奖励_1.00, 领取奖励需消耗60点结晶波片，请确认是否领取？_0.99, 取消_1.00, 确认_1.00, 特征码：119403610_0.98]
+2026-09-01 05:10:58,113 INFO TaskExecutor FarmEchoTask:周本领奖：没认出，整屏读到 [34_1.00, 29/240_1.00, +_0.94, 领取奖励_1.00, 领取奖励需消耗60点结晶波片，请确认是否领取？_0.99, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.98]
 2026-09-01 05:10:58,114 INFO TaskExecutor FarmEchoTask:周本领奖：没认出花体力界面，不领，按原样退出
 2026-09-01 05:11:01,108 INFO TaskExecutor FarmEchoTask:left_click claim_cancel_button_hcenter_vcenter (538, 675) after_sleep 0
 2026-09-01 05:11:05,054 INFO TaskExecutor FarmEchoTask:start wait in combat

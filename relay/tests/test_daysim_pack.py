@@ -6,7 +6,7 @@ What is pinned here:
   first / last lines whole, keeps a chatter line's time stamp, blanks a line stamped
   more than OLD_LINE_H before the day entirely;
 - a big picture becomes zeros of the same length; a small file and a non-log stay as
-  recorded;
+  recorded; the owner's game UID in an OCR dump becomes UIDREDACT, same length;
 - each committed pack is at most 5 MiB, reads with tarfile 'r:zst', lists its members in
   pack.json, and holds every corpus file its day's events name plus every install copy.
 """
@@ -58,6 +58,16 @@ check("a big picture becomes zeros", pack.lighten("files/D/ark/maaend/debug/on_e
       (bytes(len(big)), "image zeroed"))
 check("a small picture stays", pack.lighten("files/a.png", b"png")[1], "as recorded")
 check("a big JSON stays", pack.lighten("derived/x/ak-posts.json", b"{}" * pack.LOG_BLANK_MIN)[1], "as recorded")
+# The owner's game UID as OK-WW's OCR dump logs it (2026-10-12 ok-script log, top bar of the
+# claim dialog); digits built here so this file holds no UID shape.
+ocr = "确认_1.00, " + "特征码" + "：" + "".join(str(i % 10) for i in range(1, 10)) + "_0.98]\n"
+small = ("x " + ocr + "y " + ocr.replace("：", ":")).encode()
+masked, how = pack.lighten("files/D/ark/automas/history/2026-10-12/wuwa/OK-WW-07-41-07.log", small)
+check("a UID in an OCR dump is masked", (how, masked.count(b"UIDREDACT")), ("UID masked", 2))
+check("masking keeps the length and every line", [len(x) for x in masked.split(b"\n")],
+      [len(x) for x in small.split(b"\n")])
+check("nothing left for lint-repo item 12", bool(pack.identity_pattern().search(masked)), False)
+check("the unmasked text is what item 12 refuses", bool(pack.identity_pattern().search(small)), True)
 
 print("\n[the committed packs]")
 packs = sorted(pack.DAYS.glob("*/pack.tar.zst"))
@@ -68,8 +78,11 @@ for p in packs:
     with tarfile.open(p, "r:zst") as tf:
         names = tf.getnames()
         index = json.loads(tf.extractfile("pack.json").read())
+        ident = pack.identity_pattern()
+        carriers = sorted(m.name for m in tf.getmembers() if m.isfile() and ident.search(tf.extractfile(m).read()))
     check(f"{day}: pack.json lists every member", sorted(m["path"] for m in index["members"]),
           sorted(n for n in names if n != "pack.json"))
+    check(f"{day}: no member carries a UID or other identity (lint-repo item 12)", carriers, [])
     refs = set()
     for ln in (pack.DAYS / day / "events.jsonl").read_text(encoding="utf-8").splitlines():
         ev = json.loads(ln)

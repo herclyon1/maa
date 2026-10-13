@@ -1,8 +1,9 @@
 """The overlay's contract with the OK-WW the game PC runs, checked on upstream's own source (gamesim P0, T1).
 
 ark_overrides.tasks.py rebinds 26 methods on OK-WW's classes. Until now its tests ran it
-against stand-in classes written from memory, and okww-pristine-methods.json kept the
-pre-v3.7.4 `run()` green for 7 days (10-06..10-13) while the machine ran v3.7.4. This
+against stand-in classes written from memory, and okww-pristine-methods.json (no reader
+left; deleted 10-13, gamesim U16) kept the pre-v3.7.4 `run()` green for 7 days (10-06..10-13)
+while the machine ran v3.7.4. This
 test reads the real source of the installed tag instead - the copy
 relay/tests/gamesim/tools/fetch_upstream.py fetched from GitHub - and checks, for every
 rebind the overlay makes:

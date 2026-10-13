@@ -1,0 +1,232 @@
+{
+ "case": "claim_bar_240_plus",
+ "about": "The top bar reads 「240/240+」 when waveplates are full (fixtures/m6-okww/0921-weekly.log:18 '55_1.00, 240/240+_0.99'): that is 240, enough, so 确认. Red at afd0ffa6~1, whose pattern rejected 「240/240+」 (the claim went on unread).",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "crystal",
+ "max_s": 1200,
+ "config": {
+  "evidence": "the game PC's working/configs/FarmEchoTask.json (read 2026-10-13, gamesim u0 redacted copy): Teleport to Boss Weekly Challenge, Boss Level 90, Which Weekly Boss to Teleport 1, Repeat Farm Count 3",
+  "task": {
+   "Teleport to Boss": "Weekly Challenge",
+   "Boss Level": "90",
+   "Which Weekly Boss to Teleport": 1,
+   "Repeat Farm Count": 3
+  }
+ },
+ "states": {
+  "crystal": {
+   "about": "at the crystal after the fight, the F prompt up (frames.json unrecorded weekly_crystal_f; the walk is not driven)",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "illusive_realm_exit",
+     "box": [
+      0.0076,
+      0.0292,
+      0.0279,
+      0.069
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json illusive_realm_exit box (halved): inside a realm"
+    },
+    {
+     "name": "pick_up_f_hcenter_vcenter",
+     "box": [
+      0.6365,
+      0.5074,
+      0.6469,
+      0.5259
+     ],
+     "evidence": "ok-script.2026-10-12.log:2702 'do_walk_to_box ended Box(name='Labels.pick_up_f_hcenter_vcenter', x=1222, y=548, width=20, height=20)' (15:27:29, at the crystal)"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f",
+     "to": "claim",
+     "evidence": "pick_f presses F on the prompt; ok-script.2026-10-12.log:2705 the claim dialog read 3 s after the walk ended"
+    }
+   ]
+  },
+  "claim": {
+   "about": "the claim dialog (provisional: frames.json unrecorded weekly_claim_dialog)",
+   "provisional_ocr": [
+    {
+     "text": "领取奖励需消耗60点结晶波片，请确认是否领取？",
+     "box": [
+      0.2917,
+      0.463,
+      0.7083,
+      0.5
+     ],
+     "evidence": "docs/OKWW-WEEKLY-BOSS.md:53, the dialog's text read word for word by full-screen OCR on 2026-09-01 05:09; the box is the dialog's centre line (as 确认离开 on upstream tests/images/confirm_highlight.png)"
+    },
+    {
+     "text": "55",
+     "box": [
+      0.6292,
+      0.0463,
+      0.6531,
+      0.075
+     ],
+     "evidence": "fixtures/m6-okww/0921-weekly.log:18 '55_1.00' (the backup next to 240/240+; frame boss_level_page/2026-09-21_102043_qiankui.png truth 55); box as ok-script.2026-10-12.log:2001 (11:44:41, the claim dialog) first top-bar box Box(name='24', x=1208, y=50, width=46, height=31)"
+    },
+    {
+     "text": "240/240+",
+     "box": [
+      0.6731,
+      0.0463,
+      0.7281,
+      0.079
+     ],
+     "evidence": "fixtures/m6-okww/0921-weekly.log:18 '240/240+_0.99'; placed right of the backup, the bar's order on frame waveplate_topup/2026-10-12_114452.png (0, 41/240, 15652 left to right)"
+    },
+    {
+     "text": "15652",
+     "box": [
+      0.7474,
+      0.0448,
+      0.8049,
+      0.0792
+     ],
+     "evidence": "frame waveplate_topup/2026-10-12_114452.png truth 15652 (astrite)"
+    }
+   ],
+   "provisional_features": [
+    {
+     "name": "claim_cancel_button_hcenter_vcenter",
+     "box": [
+      0.2365,
+      0.5769,
+      0.2583,
+      0.6731
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json claim_cancel_button_hcenter_vcenter box (has_claim's template); ok-script.log (2026-10-13):1352 'left_click claim_cancel_button_hcenter_vcenter (538, 675)' (relative_x=2 of that box)"
+    },
+    {
+     "name": "cancel_button_hcenter_vcenter",
+     "box": [
+      0.237,
+      0.5963,
+      0.2583,
+      0.6611
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json cancel_button_hcenter_vcenter box; the machine clicked a two-button dialog's left button there: ok-script.2026-10-10.log:555 'left_click Labels.cancel_button_hcenter_vcenter (476, 679)'"
+    },
+    {
+     "name": "confirm_btn_hcenter_vcenter",
+     "box": [
+      0.724,
+      0.5917,
+      0.7536,
+      0.663
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json confirm_btn_hcenter_vcenter box; its centre is where the machine clicked the dialog's right button: ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)'"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.69,
+      0.59,
+      0.79,
+      0.67
+     ],
+     "to": "claim_confirmed",
+     "evidence": "ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)' (the claim's 确认)"
+    },
+    {
+     "click": [
+      0.22,
+      0.56,
+      0.3,
+      0.68
+     ],
+     "to": "claim_cancelled",
+     "evidence": "the dialog's left button: upstream v3.7.4 assets/coco_annotations.json cancel_button / claim_cancel_button boxes (455-496 x 623-727)"
+    }
+   ]
+  },
+  "claim_cancelled": {
+   "end": true
+  },
+  "claim_confirmed": {
+   "end": true
+  }
+ },
+ "expect": {
+  "sequence": [],
+  "end": "claim_confirmed",
+  "never_states": [
+   "claim_cancelled"
+  ],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "顶栏读到波片 240/240，备用 55",
+    "evidence": "240/240+ is 240 waveplates (0921-weekly.log:18 on a full bar); the bar line the relay reads (design 3, 「顶栏读到波片」)"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "^ERROR ",
+    "evidence": "every expected outcome of this case is a decision, not an error (the relay pushes ERROR lines)"
+   }
+  ],
+  "verdict": {
+    "evidence": "「240/240+」 is 240 (fixtures/m6-okww/0921-weekly.log:18): the claim is confirmed with no top-up, so no backup stamina is booked spent; the scenario ends at 确认, before any read-back, and a 确认 alone is not a claim (10-12 11:44: confirmed, no reward, ledger 724)",
+    "context": [
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1839 (11:42:42), the line upstream's FarmEchoTask.run logs before it opens the book; this scenario starts after it"
+      },
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1875 (11:43:28), logged when the run lands in the realm (FarmEchoTask.py:271); this scenario starts after the fight"
+      },
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:enter combat None",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1935 (11:43:30), upstream's fight line (CombatCheck.py:181) before the claim; the scenario elides the fight"
+      }
+    ],
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": false,
+    "has": [
+      "周本"
+    ],
+    "done_lacks": [
+      "周本"
+    ],
+    "raw": {
+      "okww_backup_spent": null
+    },
+    "unregistered": []
+  }
+ }
+}

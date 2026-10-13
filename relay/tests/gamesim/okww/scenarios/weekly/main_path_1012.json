@@ -1,0 +1,783 @@
+{
+ "case": "main_path_1012",
+ "about": "Weekly main path (design 1 Weekly), the 2026-10-12 15:25-15:28 run: upstream's way in (book, 前往, spoiler, level page 3/3, Lv.90, 单人挑战, 开启挑战), the fight elided, the crystal's F, the claim dialog with enough waveplates -> 确认, 挑战成功 -> 退出副本, then back in the same way and the level page reads 2/3: the claim is read back, and the next round starts (单人挑战). T3: red at 82a238ae~1, where a claim made on upstream's own pickup was never read back.",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "main",
+ "max_s": 1200,
+ "config": {
+  "evidence": "the game PC's working/configs/FarmEchoTask.json (read 2026-10-13, gamesim u0 redacted copy): Teleport to Boss Weekly Challenge, Boss Level 90, Which Weekly Boss to Teleport 1, Repeat Farm Count 3",
+  "task": {
+   "Teleport to Boss": "Weekly Challenge",
+   "Boss Level": "90",
+   "Which Weekly Boss to Teleport": 1,
+   "Repeat Farm Count": 3
+  }
+ },
+ "states": {
+  "main": {
+   "about": "the open world, in team (ensure_main / openF2Book see in_team_and_world)",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "world_earth_icon",
+     "box": [
+      0.0068,
+      0.0449,
+      0.0258,
+      0.0639
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json world_earth_icon box (3840x2160 annotation, halved): the open world"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f2",
+     "to": "book",
+     "evidence": "ok-script.2026-10-12.log:2719-2720 'click f2 to open the book' / 'send f2 key to open' (15:27:46-50)"
+    }
+   ]
+  },
+  "book": {
+   "about": "the F2 book, boss tab icon in its left column",
+   "provisional_features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.2026-10-12.log:2721 'found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=84)' (15:27:51)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.024,
+      0.2741,
+      0.0552,
+      0.3204
+     ],
+     "to": "book_boss",
+     "evidence": "ok-script.2026-10-12.log:2722 'left_click gray_book_boss (76, 321)' (15:27:54)"
+    }
+   ]
+  },
+  "book_boss": {
+   "about": "the book's boss page; open_boss_book clicks the category by position",
+   "provisional_features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.2026-10-12.log:2721 'found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=84)' (15:27:51)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.224,
+      0.5861,
+      0.2552,
+      0.6324
+     ],
+     "to": "list",
+     "evidence": "ok-script.2026-10-12.log:2724 'left_click zhange (460, 658)' (open_boss_book zhange, 15:27:56)"
+    }
+   ]
+  },
+  "list": {
+   "about": "the category list; click_on_book_target clicks row 1's 前往",
+   "provisional_features": [
+    {
+     "name": "boss_proceed",
+     "box": [
+      0.9411,
+      0.3574,
+      0.9583,
+      0.413
+     ],
+     "evidence": "ok-script.2026-10-12.log:2725 'left_click boss_proceed (1824, 416)' (15:27:59); size of upstream v3.7.4 assets/coco_annotations.json boss_proceed box (33x60)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.9344,
+      0.362,
+      0.9656,
+      0.4083
+     ],
+     "to": "spoiler",
+     "evidence": "ok-script.2026-10-12.log:2725 'left_click boss_proceed (1824, 416)' (15:27:59)"
+    }
+   ]
+  },
+  "spoiler": {
+   "about": "the 限时提前开放 spoiler dialog after 前往 (none of upstream's four book screens for 10 s)",
+   "provisional_ocr": [
+    {
+     "text": "提前到达目标位置可能影响剧情体验，是否确认前往？",
+     "box": [
+      0.3125,
+      0.4648,
+      0.6734,
+      0.4954
+     ],
+     "evidence": "ok-script.2026-10-12.log:2727 '限时提前开放的剧情提示框，点确认前往。框里读到：Box(name='提前到达目标位置可能影响剧情体验，是否确认前往？', x=600, y=502, width=693, height=33, confidence=99)' (15:28:10)"
+    }
+   ],
+   "provisional_features": [
+    {
+     "name": "confirm_btn_hcenter_vcenter",
+     "box": [
+      0.724,
+      0.5917,
+      0.7536,
+      0.663
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json confirm_btn_hcenter_vcenter box; its centre is where the machine clicked the dialog's right button: ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)'"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.7234,
+      0.6046,
+      0.7547,
+      0.6509
+     ],
+     "to": "level3",
+     "evidence": "ok-script.2026-10-12.log:2729 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)' (15:28:10)"
+    }
+   ]
+  },
+  "level3": {
+   "about": "weekly level page 3/3 (ok-script.2026-10-12.log:2567 read 3/3 at 15:25:47 on this screen; the frame is the 09:51:16 shot of the same page)",
+   "frame": "boss_level_page/2026-10-12_095116_3of3.png",
+   "transitions": [
+    {
+     "click": [
+      0.07,
+      0.53,
+      0.21,
+      0.6
+     ],
+     "to": "level3_picked",
+     "evidence": "ok-script.2026-10-12.log:1864 'left_click 推荐等级90 (280, 609)' (11:43:12; Boss Level 90 in the PC's FarmEchoTask.json)"
+    }
+   ]
+  },
+  "level3_picked": {
+   "about": "the same page after the level click",
+   "frame": "boss_level_page/2026-10-12_095116_3of3.png",
+   "transitions": [
+    {
+     "click": [
+      0.86,
+      0.89,
+      0.9,
+      0.93
+     ],
+     "to": "team",
+     "evidence": "upstream click_solo_challenge clicks (0.880, 0.911) (FarmEchoTask.py:375 v3.7.4); the frame's 单人挑战 truth box is 0.7648-0.8369 x 0.8896-0.9295, the button around it"
+    }
+   ]
+  },
+  "team": {
+   "about": "the team screen after 单人挑战 (no frame recorded: frames.json unrecorded team_screen)",
+   "provisional_features": [
+    {
+     "name": "team_start_challenge",
+     "box": [
+      0.9135,
+      0.8796,
+      0.9521,
+      0.9602
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json team_start_challenge box; ok-script.2026-10-12.log:1870 'left_click team_start_challenge (1791, 994)' (11:43:19)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.9172,
+      0.8972,
+      0.9484,
+      0.9435
+     ],
+     "to": "arena",
+     "evidence": "ok-script.2026-10-12.log:1870 'left_click team_start_challenge (1791, 994)'"
+    }
+   ]
+  },
+  "arena": {
+   "about": "inside the boss realm, in team, no dialog (开启挑战后读到（第 1 次）: [] on every 10-12 entry)",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "illusive_realm_exit",
+     "box": [
+      0.0076,
+      0.0292,
+      0.0279,
+      0.069
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json illusive_realm_exit box (halved): inside a realm"
+    }
+   ],
+   "transitions": [
+    {
+     "after_s": 80,
+     "to": "crystal",
+     "evidence": "the fight is elided (combat is U7's scripted state): 83 virtual seconds, ok-script.2026-10-12.log:2572 15:25:55 开启挑战 -> :2700 15:27:18 打完了"
+    }
+   ]
+  },
+  "crystal": {
+   "about": "at the crystal after the fight, the F prompt up (frames.json unrecorded weekly_crystal_f; the walk is not driven)",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "illusive_realm_exit",
+     "box": [
+      0.0076,
+      0.0292,
+      0.0279,
+      0.069
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json illusive_realm_exit box (halved): inside a realm"
+    },
+    {
+     "name": "pick_up_f_hcenter_vcenter",
+     "box": [
+      0.6365,
+      0.5074,
+      0.6469,
+      0.5259
+     ],
+     "evidence": "ok-script.2026-10-12.log:2702 'do_walk_to_box ended Box(name='Labels.pick_up_f_hcenter_vcenter', x=1222, y=548, width=20, height=20)' (15:27:29, at the crystal)"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f",
+     "to": "claim",
+     "evidence": "pick_f presses F on the prompt; ok-script.2026-10-12.log:2705 the claim dialog read 3 s after the walk ended"
+    }
+   ]
+  },
+  "claim": {
+   "about": "the claim dialog 15:27:32 (provisional: frames.json unrecorded weekly_claim_dialog)",
+   "provisional_ocr": [
+    {
+     "text": "领取奖励需消耗60点结晶波片，请确认是否领取？",
+     "box": [
+      0.2917,
+      0.463,
+      0.7083,
+      0.5
+     ],
+     "evidence": "docs/OKWW-WEEKLY-BOSS.md:53, the dialog's text read word for word by full-screen OCR on 2026-09-01 05:09; the box is the dialog's centre line (as 确认离开 on upstream tests/images/confirm_highlight.png)"
+    },
+    {
+     "text": "0",
+     "box": [
+      0.6385,
+      0.0444,
+      0.6594,
+      0.0769
+     ],
+     "evidence": "ok-script.2026-10-12.log:2705 (15:27:32, the claim dialog) first top-bar box Box(name='0', x=1226, y=48, width=40, height=35)"
+    },
+    {
+     "text": "78/240",
+     "box": [
+      0.6794,
+      0.0463,
+      0.7344,
+      0.079
+     ],
+     "evidence": "78 = 18 on frame boss_level_page/2026-10-12_152814_2of3.png (15:28:14, right after this claim) + the 60 the claim cost (docs/OKWW-WEEKLY-BOSS.md:53); no top-up came ({L12}:2709 the 3 s wait for gem_add_stamina timed out); placed right of the backup, the bar's order on frame waveplate_topup/2026-10-12_114452.png (0, 41/240, 15652 left to right)"
+    },
+    {
+     "text": "15652",
+     "box": [
+      0.7474,
+      0.0448,
+      0.8049,
+      0.0792
+     ],
+     "evidence": "frame waveplate_topup/2026-10-12_114452.png truth 15652 (astrite)"
+    }
+   ],
+   "provisional_features": [
+    {
+     "name": "claim_cancel_button_hcenter_vcenter",
+     "box": [
+      0.2365,
+      0.5769,
+      0.2583,
+      0.6731
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json claim_cancel_button_hcenter_vcenter box (has_claim's template); ok-script.log (2026-10-13):1352 'left_click claim_cancel_button_hcenter_vcenter (538, 675)' (relative_x=2 of that box)"
+    },
+    {
+     "name": "cancel_button_hcenter_vcenter",
+     "box": [
+      0.237,
+      0.5963,
+      0.2583,
+      0.6611
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json cancel_button_hcenter_vcenter box; the machine clicked a two-button dialog's left button there: ok-script.2026-10-10.log:555 'left_click Labels.cancel_button_hcenter_vcenter (476, 679)'"
+    },
+    {
+     "name": "confirm_btn_hcenter_vcenter",
+     "box": [
+      0.724,
+      0.5917,
+      0.7536,
+      0.663
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json confirm_btn_hcenter_vcenter box; its centre is where the machine clicked the dialog's right button: ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)'"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.69,
+      0.59,
+      0.79,
+      0.67
+     ],
+     "to": "settle",
+     "evidence": "ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)' (the claim's 确认)"
+    },
+    {
+     "click": [
+      0.22,
+      0.56,
+      0.3,
+      0.68
+     ],
+     "to": "claim_cancelled",
+     "evidence": "the dialog's left button: upstream v3.7.4 assets/coco_annotations.json cancel_button / claim_cancel_button boxes (455-496 x 623-727)"
+    }
+   ]
+  },
+  "claim_cancelled": {
+   "end": true
+  },
+  "settle": {
+   "about": "挑战成功 after the claim: 退出副本 / 重新挑战",
+   "frame": "challenge_success/2026-10-12_152737_weekly.png",
+   "transitions": [
+    {
+     "click": [
+      0.32,
+      0.82,
+      0.42,
+      0.89
+     ],
+     "to": "back_main",
+     "evidence": "ok-script.2026-10-12.log:2711 'left_click 退出副本 (707, 920)' (15:27:38)"
+    }
+   ]
+  },
+  "back_main": {
+   "about": "the open world, in team (ensure_main / openF2Book see in_team_and_world)",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "world_earth_icon",
+     "box": [
+      0.0068,
+      0.0449,
+      0.0258,
+      0.0639
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json world_earth_icon box (3840x2160 annotation, halved): the open world"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f2",
+     "to": "back_book",
+     "evidence": "ok-script.2026-10-12.log:2719-2720 'click f2 to open the book' / 'send f2 key to open' (15:27:46-50)"
+    }
+   ]
+  },
+  "back_book": {
+   "about": "the F2 book, boss tab icon in its left column",
+   "provisional_features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.2026-10-12.log:2721 'found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=84)' (15:27:51)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.024,
+      0.2741,
+      0.0552,
+      0.3204
+     ],
+     "to": "back_book_boss",
+     "evidence": "ok-script.2026-10-12.log:2722 'left_click gray_book_boss (76, 321)' (15:27:54)"
+    }
+   ]
+  },
+  "back_book_boss": {
+   "about": "the book's boss page; open_boss_book clicks the category by position",
+   "provisional_features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.2026-10-12.log:2721 'found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=84)' (15:27:51)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.224,
+      0.5861,
+      0.2552,
+      0.6324
+     ],
+     "to": "back_list",
+     "evidence": "ok-script.2026-10-12.log:2724 'left_click zhange (460, 658)' (open_boss_book zhange, 15:27:56)"
+    }
+   ]
+  },
+  "back_list": {
+   "about": "the category list; click_on_book_target clicks row 1's 前往",
+   "provisional_features": [
+    {
+     "name": "boss_proceed",
+     "box": [
+      0.9411,
+      0.3574,
+      0.9583,
+      0.413
+     ],
+     "evidence": "ok-script.2026-10-12.log:2725 'left_click boss_proceed (1824, 416)' (15:27:59); size of upstream v3.7.4 assets/coco_annotations.json boss_proceed box (33x60)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.9344,
+      0.362,
+      0.9656,
+      0.4083
+     ],
+     "to": "back_spoiler",
+     "evidence": "ok-script.2026-10-12.log:2725 'left_click boss_proceed (1824, 416)' (15:27:59)"
+    }
+   ]
+  },
+  "back_spoiler": {
+   "about": "the 限时提前开放 spoiler dialog after 前往 (none of upstream's four book screens for 10 s)",
+   "provisional_ocr": [
+    {
+     "text": "提前到达目标位置可能影响剧情体验，是否确认前往？",
+     "box": [
+      0.3125,
+      0.4648,
+      0.6734,
+      0.4954
+     ],
+     "evidence": "ok-script.2026-10-12.log:2727 '限时提前开放的剧情提示框，点确认前往。框里读到：Box(name='提前到达目标位置可能影响剧情体验，是否确认前往？', x=600, y=502, width=693, height=33, confidence=99)' (15:28:10)"
+    }
+   ],
+   "provisional_features": [
+    {
+     "name": "confirm_btn_hcenter_vcenter",
+     "box": [
+      0.724,
+      0.5917,
+      0.7536,
+      0.663
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json confirm_btn_hcenter_vcenter box; its centre is where the machine clicked the dialog's right button: ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)'"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.7234,
+      0.6046,
+      0.7547,
+      0.6509
+     ],
+     "to": "level2",
+     "evidence": "ok-script.2026-10-12.log:2729 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)' (15:28:10)"
+    }
+   ]
+  },
+  "level2": {
+   "about": "the read-back: the level page 2/3 at 15:28:14 (ok-script.2026-10-12.log:2731)",
+   "frame": "boss_level_page/2026-10-12_152814_2of3.png",
+   "transitions": [
+    {
+     "click": [
+      0.07,
+      0.53,
+      0.21,
+      0.6
+     ],
+     "to": "level2_picked",
+     "evidence": "ok-script.2026-10-12.log:1864 'left_click 推荐等级90 (280, 609)' (11:43:12; Boss Level 90 in the PC's FarmEchoTask.json)"
+    }
+   ]
+  },
+  "level2_picked": {
+   "about": "the same page after the level click",
+   "frame": "boss_level_page/2026-10-12_152814_2of3.png",
+   "transitions": [
+    {
+     "click": [
+      0.86,
+      0.89,
+      0.9,
+      0.93
+     ],
+     "to": "next_round",
+     "evidence": "upstream click_solo_challenge clicks (0.880, 0.911) (FarmEchoTask.py:375 v3.7.4); the frame's 单人挑战 truth box is 0.7648-0.8369 x 0.8896-0.9295, the button around it"
+    }
+   ]
+  },
+  "next_round": {
+   "end": true
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "click": [
+     1419,
+     678
+    ],
+    "evidence": "ok-script.2026-10-12.log:2729 the spoiler's 确认 (same at 11:43:07, :1860)",
+    "within": 20
+   },
+   {
+    "state": "level3",
+    "evidence": "ok-script.2026-10-12.log:2730-2731 the level page after 确认前往"
+   },
+   {
+    "click": [
+     280,
+     609
+    ],
+    "evidence": "ok-script.2026-10-12.log:1864 'left_click 推荐等级90 (280, 609)' (11:43:12; Boss Level 90 in the PC's FarmEchoTask.json)",
+    "within": 25
+   },
+   {
+    "click": [
+     1791,
+     994
+    ],
+    "evidence": "ok-script.2026-10-12.log:1870 'left_click team_start_challenge (1791, 994)'",
+    "within": 20
+   },
+   {
+    "state": "claim",
+    "evidence": "ok-script.2026-10-12.log:2705 the claim dialog after the F"
+   },
+   {
+    "click": [
+     1419,
+     678
+    ],
+    "evidence": "ok-script.2026-10-12.log:2707 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)' (15:27:32, the claim)",
+    "within": 20
+   },
+   {
+    "shot": "weekly_claimed",
+    "evidence": "frame challenge_success/2026-10-12_152737_weekly.png is the machine's weekly_claimed shot of 15:27:37"
+   },
+   {
+    "click": [
+     707,
+     920
+    ],
+    "evidence": "ok-script.2026-10-12.log:2711 'left_click 退出副本 (707, 920)'",
+    "within": 20
+   },
+   {
+    "click": [
+     76,
+     321
+    ],
+    "evidence": "ok-script.2026-10-12.log:2722 'left_click gray_book_boss (76, 321)' (15:27:54, the way back in)",
+    "within": 20
+   },
+   {
+    "click": [
+     1824,
+     416
+    ],
+    "evidence": "ok-script.2026-10-12.log:2725 'left_click boss_proceed (1824, 416)'",
+    "within": 20
+   },
+   {
+    "state": "level2",
+    "evidence": "ok-script.2026-10-12.log:2731 the level page read 2/3 at 15:28:14"
+   },
+   {
+    "click": [
+     280,
+     609
+    ],
+    "evidence": "ok-script.2026-10-12.log:2734 the next round's level click (Boss Level 90)",
+    "within": 25
+   },
+   {
+    "state": "next_round",
+    "evidence": "ok-script.2026-10-12.log:2741 15:28:23 the next round entered (开启挑战后读到)"
+   }
+  ],
+  "end": "next_round",
+  "never_states": [
+   "claim_cancelled"
+  ],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "周本领奖：回读确认领到，本周剩余 3/3→2/3",
+    "evidence": "ok-script.2026-10-12.log:2732 (15:28:14), the machine's read-back of this claim"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "^ERROR ",
+    "evidence": "every expected outcome of this case is a decision, not an error (the relay pushes ERROR lines)"
+   },
+   {
+    "re": "farm 4c error",
+    "evidence": "04126e3b / ddf68376: a deliberate stop must not go through upstream's retry (FarmEchoTask.py:119-125)"
+   }
+  ],
+  "verdict": {
+    "evidence": "machine-okww-logs ok-script.2026-10-12.log:2712-2732 (15:27-15:28): claimed, 退出副本, back in, the level page read 2/3 - 「回读确认领到，本周剩余 3/3→2/3」; one claim of 60 waveplates, 2 left",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "done_has": [
+      "周本"
+    ],
+    "weekly_left": 2,
+    "raw": {
+      "okww_stamina_spent": 60
+    },
+    "raw_has": {
+      "okww_steps": [
+        "领了 1 次",
+        "还剩 2 次"
+      ]
+    }
+  }
+ }
+}

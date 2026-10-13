@@ -16,7 +16,8 @@ byte (design.md section 5, "maafw trimmed"):
   rest becomes spaces, an old line becomes all spaces. Offsets, lengths and line counts
   stay as recorded, so the events' log_chunk slices still fit;
 * an image over IMAGE_BLANK_MIN bytes (MaaEnd's on_error shots, MAA failure shots)
-  becomes zeros of the same length.
+  becomes zeros of the same length;
+* the owner's game UID in OK-WW's OCR dumps becomes UIDREDACT, same length (mask_uid).
 
 A pack is only as good as `compare`: the day replayed from it must give the same
 failure lines, pushes, power commands and ledger verdicts as from the full corpus.
@@ -61,6 +62,8 @@ CHATTER = re.compile(rb"^\[\d{4}-\d\d-\d\d [\d:.]+\]\[(DBG|TRC)\]")
 OLD_LINE_H = 12
 STAMP = re.compile(rb"^\[?(\d{4}-\d\d-\d\d[ T]\d\d:\d\d:\d\d)")
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".bmp")
+UID_LABEL = "特征码".encode()
+UID = re.compile(rb"(" + UID_LABEL + rb"(?::|\xef\xbc\x9a) *)([0-9]+)")
 LINT = HERE.parents[2] / "scripts" / "mac" / "lint-repo.sh"
 
 
@@ -68,7 +71,7 @@ def identity_pattern() -> "re.Pattern[bytes]":
     """lint-repo.sh item 12's pattern (other people's identity / login details never reach
     the public repo), read from there so there is one copy and this file does not hold it."""
     text = LINT.read_text(encoding="utf-8")
-    m = re.search(r"公开仓库里不许有他人身份信息\"\n.*?grep -rnE '([^']+)'", text, re.S)
+    m = re.search(r"公开仓库里不许有他人身份信息\"\n.*?^ID_RE='([^']+)'", text, re.S | re.M)
     if not m:
         raise SystemExit(f"cannot find item 12's pattern in {LINT}")
     return re.compile(m.group(1).encode())
@@ -119,17 +122,35 @@ def blank_log(data: bytes, before: bytes = b"") -> bytes:
     return res
 
 
+def mask_uid(data: bytes) -> bytes:
+    """The owner's game UID, as OK-WW's OCR dumps read it off the screen (the label, a colon,
+    the digits), becomes UIDREDACT cut to the digits' length: the repo is public, and the same
+    length keeps every offset the events' log_chunk slices use. The local corpus keeps the
+    recorded bytes (pack.json lists their sha256); lint-repo.sh item 12 refuses a UID in the
+    tree, build() refuses a member that still has one."""
+    if UID_LABEL not in data:
+        return data
+
+    def one(m: "re.Match[bytes]") -> bytes:
+        return m.group(1) + (b"UIDREDACT" * 4)[:len(m.group(2))]
+    return UID.sub(one, data)
+
+
 def lighten(rel: str, data: bytes, day: str = "") -> tuple[bytes, str]:
     low = rel.lower()
     if low.endswith(IMAGE_SUFFIXES) and len(data) > IMAGE_BLANK_MIN:
         return bytes(len(data)), "image zeroed"
+    how = "as recorded"
     if len(data) > LOG_BLANK_MIN and (low.endswith(".log") or "/debug/" in low):
         before = b""
         if day:
             cut = datetime.fromisoformat(day) - timedelta(hours=OLD_LINE_H)
             before = cut.strftime("%Y-%m-%d %H:%M:%S").encode()
-        return blank_log(data, before), "chatter and old lines blanked"
-    return data, "as recorded"
+        data, how = blank_log(data, before), "chatter and old lines blanked"
+    masked = mask_uid(data)
+    if masked != data:
+        data, how = masked, ("UID masked" if how == "as recorded" else f"{how}; UID masked")
+    return data, how
 
 
 def build(day: str, corpus_root: Path = CORPUS_ROOT, out: "Path | None" = None) -> Path:

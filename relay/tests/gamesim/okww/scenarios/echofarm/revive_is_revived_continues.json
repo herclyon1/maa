@@ -1,0 +1,127 @@
+{
+ "case": "revive_is_revived_continues",
+ "about": "A revive that put us back at the boss (is_revived, upstream's overworld revive) is not the end of the run: the overlay's combat_once swallows it (ark_overrides.tasks.py combat_once) and do_run's `if self.is_revived: continue` (FarmEchoTask.py:184-185) takes the next lap where we stand. Red at 034a555d~1 (86bc0960, OK-WW v3.7.3): it swallowed only its own in-place realm revive, so this one went up to do_run, which with no teleport re-raises it and the run ends. Constructed: no pulled log has a revive in an echo farm, and the relay's echo farm always teleports (Boss Challenge); this is upstream's 'Teleport to Boss: No' use.",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "boss",
+ "config": {
+  "evidence": "Teleport to Boss 'No' (upstream's default, FarmEchoTask.py:23); the rest as the relay's echo farm writes it (echofarm.py:527-530) and the no-claim marker (echofarm.py:171)",
+  "task": {
+   "Teleport to Boss": "No",
+   "Boss Level": "80",
+   "Repeat Farm Count": 100000,
+   "Boss": "Other",
+   "Combat Wait Time": 0,
+   "Echo Pickup Method": "Walk"
+  },
+  "flags": {
+   "no_claim": true
+  }
+ },
+ "states": {
+  "boss": {
+   "about": "at an overworld boss, in combat (Teleport to Boss 'No': upstream's own default use of the task)",
+   "features": [
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "in team while fighting in the open world; BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    },
+    {
+     "name": "char_3_text",
+     "box": [
+      0.9047,
+      0.4417,
+      0.913,
+      0.4583
+     ],
+     "evidence": "in team while fighting in the open world; BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    }
+   ],
+   "fight": {
+    "outcome": "revived",
+    "to": "back_at_boss",
+    "evidence": "a death outside a realm: BaseCombatTask.raise_not_in_combat (:310-333) calls the task's revive_action, and FarmEchoTask.revive_action outside a realm (:98-106) heals at a tower, teleports to the nearest boss, walks to it and sets is_revived = True; then CharRevivedException. Upstream's own tests/TestDeathReentry.py fakes the fight the same way (combat_once raising CharRevivedException('char dead'))"
+   }
+  },
+  "back_at_boss": {
+   "about": "back at the boss after the revive (FarmEchoTask.revive_action :100-104 runs until in combat)",
+   "features": [
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "revive_action's run_until(in_combat or treasure) (:102-103) put us back in the fight; BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    },
+    {
+     "name": "char_3_text",
+     "box": [
+      0.9047,
+      0.4417,
+      0.913,
+      0.4583
+     ],
+     "evidence": "revive_action's run_until(in_combat or treasure) (:102-103) put us back in the fight; BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    }
+   ],
+   "fight": {
+    "outcome": "returns",
+    "to": "stopped",
+    "evidence": "the next lap's fight; the farm goes on in place (FarmEchoTask.do_run :184-185 `if self.is_revived: continue`, then :145-148 clears it)"
+   }
+  },
+  "stopped": {
+   "end": true,
+   "about": "the lap after the revive was fought: the farm went on"
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "state": "back_at_boss",
+    "evidence": "the revive's outcome (FarmEchoTask.revive_action :98-106)"
+   },
+   {
+    "state": "stopped",
+    "evidence": "FarmEchoTask.do_run :184-185 continues the loop after a revive that set is_revived"
+   }
+  ],
+  "end": "stopped",
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "刷声骸模式：复活成功，接着刷下一趟",
+    "evidence": "the overlay's line for a swallowed revive (combat_once, since 86bc0960); its comment: 'A revive that already put us back at the boss sets is_revived ... for that the exception stops here'"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "farm 4c error",
+    "evidence": "a revive that put us back at the boss is not an error (034a555d: 'a regression for an overnight farm')"
+   }
+  ],
+  "verdict": {
+    "evidence": "034a555d: a revive at the boss is farming on; its line is the only sign of life the watchdog gets between laps (echofarm.PROGRESS lists it since 5538a9a2's rule: a line that says something happened)",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "progress_min": 1
+  }
+ }
+}

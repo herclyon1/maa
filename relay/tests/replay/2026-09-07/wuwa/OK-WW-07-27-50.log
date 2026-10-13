@@ -291,7 +291,7 @@
 2026-09-07 11:31:00,588 INFO TaskExecutor BaseWWTask:do_walk_to_box ended Box(name='Labels.pick_up_f_hcenter_vcenter', x=1222, y=548, width=20, height=20, confidence=68)
 2026-09-07 11:31:00,594 INFO TaskExecutor BaseWWTask:walk_until_f direction w target_text: None
 2026-09-07 11:31:01,809 INFO ok.task.task MouseResetTask:move mouse back (1658, 336)
-2026-09-07 11:31:04,847 INFO TaskExecutor FarmEchoTask:周本领奖：没认出领奖弹窗，整屏读到 [提示_1.00, 收取物资次数已达到上限，是否退出副本？_0.99, 退出副本_1.00, 重新挑战_1.00, 特征码：119403610_0.98]
+2026-09-07 11:31:04,847 INFO TaskExecutor FarmEchoTask:周本领奖：没认出领奖弹窗，整屏读到 [提示_1.00, 收取物资次数已达到上限，是否退出副本？_0.99, 退出副本_1.00, 重新挑战_1.00, 特征码：UIDREDACT_0.98]
 2026-09-07 11:31:05,389 INFO TaskExecutor FeatureSet:read_from_json D:\ark\okww\data\apps\ok-ww\working\assets D:\ark\okww\data\apps\ok-ww\working\assets\coco_annotations.json
 2026-09-07 11:31:05,437 INFO ok.task.task MouseResetTask:move mouse back (1658, 336)
 2026-09-07 11:31:07,910 INFO TaskExecutor FarmEchoTask:left_click claim_cancel_button_hcenter_vcenter (538, 675) after_sleep 0
@@ -345,7 +345,7 @@
 2026-09-07 11:32:24,896 INFO TaskExecutor BaseWWTask:do_walk_to_box ended Box(name='Labels.pick_up_f_hcenter_vcenter', x=1222, y=548, width=20, height=20, confidence=56)
 2026-09-07 11:32:24,900 INFO TaskExecutor BaseWWTask:walk_until_f direction w target_text: None
 2026-09-07 11:32:26,123 INFO ok.task.task MouseResetTask:move mouse back (1658, 336)
-2026-09-07 11:32:29,116 INFO TaskExecutor FarmEchoTask:周本领奖：没认出领奖弹窗，整屏读到 [提示_1.00, 收取物资次数已达到上限，是否退出副本？_0.99, 退出副本_1.00, 重新挑战_1.00, 特征码:119403610_0.96]
+2026-09-07 11:32:29,116 INFO TaskExecutor FarmEchoTask:周本领奖：没认出领奖弹窗，整屏读到 [提示_1.00, 收取物资次数已达到上限，是否退出副本？_0.99, 退出副本_1.00, 重新挑战_1.00, 特征码:UIDREDACT_0.96]
 2026-09-07 11:32:29,672 INFO ok.task.task MouseResetTask:move mouse back (1658, 336)
 2026-09-07 11:32:32,102 INFO TaskExecutor FarmEchoTask:left_click claim_cancel_button_hcenter_vcenter (538, 675) after_sleep 0
 2026-09-07 11:32:32,872 INFO ok.task.task MouseResetTask:move mouse back (1658, 336)

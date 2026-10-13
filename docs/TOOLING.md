@@ -147,6 +147,22 @@ window) and its day must go red. `scripts/mac/deploy-relay.sh --dry-run` runs ga
 the way to try a branch. lint-repo item 25 checks every `expected.json` and replays 10-13.
 `relay/tests/daysim/pack.py` builds the light packs the Windows CI replays (`days/<D>/pack.tar.zst`).
 
+**The game-layer gate.** `scripts/mac/lib/ci_green.py` (deploy-relay.sh step 0.9, the first
+gate after the dry-run exit; it needs the network) requires a green run of
+`.github/workflows/gamesim-windows.yml` - the OK-WW overlay inside the real OK-WW and
+ok-script on windows-latest: frame truth, the scenarios, the install cycle and the relay's
+verdicts on the overlay's own log lines (`relay/tests/gamesim/`). The workflow runs on every
+push to `main`, `relay-*` and `gamesim-ci-*`. The deploy passes when the commit being deployed
+has a green run (a rollback to an already-green commit passes the same way), or when a green
+run's commit has the same game-layer files (`relay/` without `manifest.json`,
+`RELEASE-NOTES.md` and `state/`, `packaging/`, the workflow file; `GAME_LAYER`). It stops,
+with exit 16, when the commit's runs are all finished and none is green (each run's URL is
+printed; a lane that crashed with 0xC000001D on some runners is a runner fault:
+`gh run rerun <id> --failed`), when the commit is on no remote branch the workflow runs on
+(push it first: `git push origin HEAD:refs/heads/main` or `:refs/heads/relay-<name>`), when
+GitHub does not answer, and when the run is still not done after 15 minutes (the 58-job runs
+on 10-13 took 7.3 and 9.6 min). Alone: `python3 scripts/mac/lib/ci_green.py [--sha REV]`.
+
 ---
 
 ## Local command line

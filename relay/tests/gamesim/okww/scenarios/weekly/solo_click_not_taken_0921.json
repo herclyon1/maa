@@ -1,0 +1,148 @@
+{
+ "case": "solo_click_not_taken_0921",
+ "about": "2026-09-21 10:20:43-58: 单人挑战 was clicked, the game did not take it and the page stayed (frame boss_level_page/2026-09-21_102058_qiankui.png is the machine's no_start_btn shot); the run died on 「找不到开启挑战」 (fixtures/m6-okww/0921-weekly.log:18). Click 单人挑战 again where it is, then 开启挑战. Red at a549c57e~1 (run on v3.7.4: the machine had v3.6.7, whose ok-script 2.0.4 the harness does not run).",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "page",
+ "max_s": 1200,
+ "config": {
+  "evidence": "the game PC's working/configs/FarmEchoTask.json (read 2026-10-13, gamesim u0 redacted copy): Teleport to Boss Weekly Challenge, Boss Level 90, Which Weekly Boss to Teleport 1, Repeat Farm Count 3",
+  "task": {
+   "Teleport to Boss": "Weekly Challenge",
+   "Boss Level": "90",
+   "Which Weekly Boss to Teleport": 1,
+   "Repeat Farm Count": 3
+  }
+ },
+ "states": {
+  "page": {
+   "about": "the level page, 单人挑战 not taken",
+   "frame": "boss_level_page/2026-09-21_102058_qiankui.png",
+   "transitions": [
+    {
+     "click": [
+      0.74,
+      0.87,
+      0.86,
+      0.95
+     ],
+     "to": "team",
+     "evidence": "the frame's 单人挑战 truth box (0.7648-0.8369 x 0.8896-0.9295), clicked again"
+    }
+   ]
+  },
+  "team": {
+   "about": "the team screen after 单人挑战 (no frame recorded: frames.json unrecorded team_screen)",
+   "provisional_features": [
+    {
+     "name": "team_start_challenge",
+     "box": [
+      0.9135,
+      0.8796,
+      0.9521,
+      0.9602
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json team_start_challenge box; ok-script.2026-10-12.log:1870 'left_click team_start_challenge (1791, 994)' (11:43:19)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.9172,
+      0.8972,
+      0.9484,
+      0.9435
+     ],
+     "to": "arena",
+     "evidence": "ok-script.2026-10-12.log:1870 'left_click team_start_challenge (1791, 994)'"
+    }
+   ]
+  },
+  "arena": {
+   "about": "inside the boss realm, in team, no dialog (开启挑战后读到（第 1 次）: [] on every 10-12 entry)",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "illusive_realm_exit",
+     "box": [
+      0.0076,
+      0.0292,
+      0.0279,
+      0.069
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json illusive_realm_exit box (halved): inside a realm"
+    }
+   ]
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "click": [
+     1538,
+     983
+    ],
+    "evidence": "the centre of the frame's 单人挑战 truth box",
+    "within": 60
+   },
+   {
+    "click": [
+     1791,
+     994
+    ],
+    "evidence": "ok-script.2026-10-12.log:1870 开启挑战",
+    "within": 20
+   },
+   {
+    "state": "arena",
+    "evidence": "in the realm"
+   }
+  ],
+  "end": null,
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [],
+  "log_never": [
+   {
+    "re": "^ERROR ",
+    "evidence": "every expected outcome of this case is a decision, not an error (the relay pushes ERROR lines)"
+   },
+   {
+    "re": "找不到开启挑战",
+    "evidence": "0921-weekly.log:18, the machine's failure line"
+   }
+  ],
+  "verdict": {
+    "evidence": "2026-09-21 10:20:43-58 the level page read 3/3 (fixtures/m6-okww/0921-weekly.log, '本周剩余可收取次数：3/3'); the second click is taken and nothing is an ERROR (the run died on 「找不到开启挑战」 then)",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "weekly_left": 3,
+    "unregistered": []
+  }
+ }
+}

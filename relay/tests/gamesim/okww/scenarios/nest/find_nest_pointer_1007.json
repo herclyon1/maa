@@ -1,0 +1,64 @@
+{
+ "case": "find_nest_pointer_1007",
+ "about": "P2 (gamesim design 5). With the standing order 「只刷 落渊南丘」 the nest list of 2026-10-07 must send the run to 落渊南丘 (0/41), not to the first nest that reads 0 (梦枢天罗 0/48). Red at f6b5f432~1: its find_nest copy was pinned to the pre-v3.7.3 body, so OK-WW v3.7.3 skipped it and upstream's own find_nest picked the first 0 (relay.log 2026-10-04 21:20:19; 10-05 10:35 clicked a 0/48 nest).",
+ "task": ["src.task.NightmareNestTask", "NightmareNestTask"],
+ "start": "nest_list",
+ "config": {
+  "evidence": "Which to Farm: the game PC's working/configs/NightmareNestTask.json (read 2026-10-13, gamesim u0 redacted copy) is [\"Tacet Discord Nest\"], and the 10-07 key go_nest:41:25 starts with go_nest. Only Farm These Nests: ok-script.2026-10-07.log:242 'NightmareNestTask:nightmare nest: 只刷 ['落渊南丘']（设置来自母本）' - read from the master directory MASTER_POINTER names.",
+  "task": {"Which to Farm": ["Tacet Discord Nest"]},
+  "master": {"NightmareNestTask.json": {"Only Farm These Nests": "落渊南丘"}}
+ },
+ "states": {
+  "nest_list": {
+   "frame": "nest_list/2026-10-07_092052.png",
+   "transitions": [
+    {"click": [0.835, 0.445, 0.955, 0.495], "to": "map_nest_detail",
+     "evidence": "ok-script.2026-10-07.log:245 'left_click 已击败残象：0/41 (1729, 500)' (the 前往 button of the 落渊南丘 row on this frame); the next screenshot, 09:20:55.143, is the map on 落渊南丘残象聚落 (frames map_nest_detail/2026-10-07_092055.png)"}
+   ]
+  },
+  "map_nest_detail": {
+   "frame": "map_nest_detail/2026-10-07_092055.png",
+   "transitions": [
+    {"feature": "gray_teleport", "threshold": 0.7, "to": "teleporting",
+     "evidence": "ok-script.2026-10-07.log:249 'left_click gray_teleport (1351, 1007)' on this screen; 0.7 is the threshold upstream's _find_travel_button looks for it with (NightmareNestTask.py v3.7.4 line 184)"}
+   ]
+  },
+  "teleporting": {"end": true}
+ },
+ "expect": {
+  "sequence": [
+   {"decision": "find_nest", "value": "go_nest:41:25",
+    "evidence": "ok-script.2026-10-07.log:244 'nightmare nest: 点进点位 go_nest:41:25（截图 nest_go）'"},
+   {"click": [1729, 500], "within": 20,
+    "evidence": "ok-script.2026-10-07.log:245 'left_click 已击败残象：0/41 (1729, 500)'; 20 px is well inside the 152 px between the 0/48 and 0/41 count rows on this frame (frames.json truth boxes)"},
+   {"state": "map_nest_detail", "evidence": "screenshot 09:20:55.143 after the click"},
+   {"click": [1351, 1007], "within": 20,
+    "evidence": "ok-script.2026-10-07.log:249 'left_click gray_teleport (1351, 1007)'"}
+  ],
+  "end": "teleporting",
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {"re": "nightmare nest: 只刷 \\['落渊南丘'\\]（设置来自母本）", "evidence": "ok-script.2026-10-07.log:242"},
+   {"re": "已击败残象：0/41.*is not complete", "evidence": "ok-script.2026-10-07.log:243 \"Box(name='已击败残象：0/41', x=890, y=527, width=195, height=31, confidence=100) is not complete\""}
+  ],
+  "log_never": [],
+  "verdict": {
+    "evidence": "the standing order 「只刷 落渊南丘」 (master NightmareNestTask.json, the scenario's config): the filter line is read as in effect. (The scenario stops at the teleport, so the nest's fight is not judged here.)",
+    "args": {
+      "expect_nest": true,
+      "expect_daily": false,
+      "expect_stamina": false,
+      "only_nest": "落渊南丘"
+    },
+    "done_has": [
+      "只刷指定点位"
+    ],
+    "lacks": [
+      "过滤",
+      "别的点位"
+    ]
+  }
+ }
+}
