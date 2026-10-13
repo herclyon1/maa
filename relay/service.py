@@ -333,14 +333,3 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             return
         boot_stages._stage_machinecheck(cfg, notifier, log)
         _loop(self, cfg, engine, notifier, inbox, collect, deferred, log)
-
-
-# Not run by the installed relay; scripts/ci/package_switch_smoke.py runs `service.py install` to stage the old service.
-if __name__ == "__main__":
-    if len(sys.argv) == 1:
-        # Launched by the SCM rather than from a shell.
-        servicemanager.Initialize()
-        servicemanager.PrepareToHostSingle(ArkRelayService)
-        servicemanager.StartServiceCtrlDispatcher()
-    else:
-        win32serviceutil.HandleCommandLine(ArkRelayService)
