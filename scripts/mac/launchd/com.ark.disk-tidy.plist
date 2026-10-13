@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- NOT INSTALLED. To install: copy to ~/Library/LaunchAgents/com.ark.disk-tidy.plist, then
+     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ark.disk-tidy.plist
+     Hourly scripts/mac/disk-tidy.py --apply from the top-level checkout (deploy-relay.sh
+     fast-forwards it to origin/main). Background priority: nice 10, throttled disk I/O.
+     PATH carries Homebrew (brew, go), ~/.local/bin (uv) and ~/.swiftly/bin (swiftly); launchd's
+     default PATH has none of them, and a missing tool only skips its rule.
+     Every removal: ~/Library/Logs/disk-tidy.log; the run's full output: disk-tidy.out. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.ark.disk-tidy</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/herclyon/.local/bin/python3.14</string>
+    <string>/Users/herclyon/Claude/maa-automation/scripts/mac/disk-tidy.py</string>
+    <string>--apply</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/Users/herclyon/.local/bin:/Users/herclyon/.swiftly/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StartInterval</key><integer>3600</integer>
+  <key>RunAtLoad</key><false/>
+  <key>ProcessType</key><string>Background</string>
+  <key>Nice</key><integer>10</integer>
+  <key>LowPriorityIO</key><true/>
+  <key>StandardOutPath</key><string>/Users/herclyon/Library/Logs/disk-tidy.out</string>
+  <key>StandardErrorPath</key><string>/Users/herclyon/Library/Logs/disk-tidy.out</string>
+</dict>
+</plist>
