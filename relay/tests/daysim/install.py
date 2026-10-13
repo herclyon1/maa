@@ -138,9 +138,11 @@ def script_uids(tree: Path, automas_rel: str) -> dict:
 
 
 def plant(tree: Path, t0: float, *, automas_rel: str, clone, nests: str = "",
-          root: Path = ROOT, man: "dict | None" = None) -> list[str]:
+          root: Path = ROOT, man: "dict | None" = None, maaend_tasks_before: "Path | None" = None) -> list[str]:
     """Put every install copy into the sim tree (where the seed has no file of its own)
-    and the master copies under data/<uid>/. Returns what could not be planted."""
+    and the master copies under data/<uid>/. Returns what could not be planted.
+    `maaend_tasks_before`: a master holding tasks in an older shape; each of its tasks
+    replaces the same task's options in the planted MaaEnd master (set_tasks_before)."""
     missing = []
     man = man if man is not None else load()
     uids = script_uids(tree, automas_rel)
@@ -161,6 +163,9 @@ def plant(tree: Path, t0: float, *, automas_rel: str, clone, nests: str = "",
                 continue
             clone(src, dst)
             os.utime(dst, (t, t))
+    if maaend_tasks_before is not None and "maaend" in uids:
+        set_tasks_before(tree / automas_rel / "data" / uids["maaend"] / "Default" / "ConfigFile" / "mxu-MaaEnd.json",
+                         maaend_tasks_before)
     if nests and "okww" in uids:
         set_nests(tree / automas_rel / "data" / uids["okww"] / "Default" / "ConfigFile" / "NightmareNestTask.json",
                   nests, t0)
@@ -177,6 +182,26 @@ def plant(tree: Path, t0: float, *, automas_rel: str, clone, nests: str = "",
             f.write_bytes(b"")
             os.utime(f, (t0 - 1, t0 - 1))
     return missing
+
+
+def set_tasks_before(master: Path, before: Path) -> None:
+    """The MaaEnd master as it was before the relay rewrote a task's options into a new
+    MaaEnd's shape: the options of every task `before` holds, put back by task id. The
+    10-13 copy u0 read is migrated (76df1839: 自动囤货's buy lists as switch + Items);
+    the machine ran migrate_maaend_options first at 10-10 22:32:42 (relay.log 「开机：MaaEnd
+    换了版本后旧设置的写法它不认了，母本已按原意改写」), so a day before that starts with the
+    checkbox shape the test fixture keeps (fixtures/maaend-2026-10-10/master-before.json,
+    the real 10-10 master's AutoStockStaple and DailyRewards). The other tasks stay as of
+    10-13: nothing older is recorded."""
+    doc = json.loads(master.read_text(encoding="utf-8-sig"))
+    old = {t["id"]: t for i in json.loads(before.read_text(encoding="utf-8"))["instances"] for t in i["tasks"]}
+    for inst in doc["instances"]:
+        for t in inst["tasks"]:
+            if t.get("id") in old:
+                t["optionValues"] = old[t["id"]]["optionValues"]
+    mt = master.stat().st_mtime
+    master.write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.utime(master, (mt, mt))
 
 
 def set_nests(f: Path, nests: str, t0: float) -> None:

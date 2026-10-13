@@ -193,6 +193,38 @@ check("the script-side copy keeps OK-WW's own keys only",
       .read_text(encoding="utf-8"), False)
 check("a 10-13 09:59 copy is not newer than the day's start",
       os.stat(am / "data/u-end/Default/ConfigFile/mxu-MaaEnd.json").st_mtime <= T0 - 1, True)
+
+# A day before the machine's first master migration (10-10 22:32:42) starts with the
+# checkbox shape of 自动囤货's buy lists (76df1839), the real 10-10 master's.
+before = W.RELAY / "tests" / "fixtures" / "maaend-2026-10-10" / "master-before.json"
+task_id = json.loads(before.read_text(encoding="utf-8"))["instances"][0]["tasks"][0]["id"]
+migrated = {"instances": [{"id": "automas", "tasks": [
+    {"id": task_id, "taskName": "AutoStockStaple", "optionValues": {
+        "AutoStockBuyDailyGoodsValleyIV": {"type": "switch", "value": True},
+        "AutoStockBuyDailyGoodsValleyIVItems": {"type": "checkbox", "caseNames": []}}},
+    {"id": "other", "taskName": "ProtocolSpace", "optionValues": {"x": {"type": "switch", "value": True}}}]}]}
+root2, tree2 = tmpdir("daysim-install-src2-"), tmpdir("daysim-install-tree2-")
+(root2 / install.MAAEND_CONFIG).parent.mkdir(parents=True)
+(root2 / install.MAAEND_CONFIG).write_text(json.dumps(migrated), encoding="utf-8")
+(tree2 / W.AUTOMAS_REL / "config").mkdir(parents=True)
+(tree2 / W.AUTOMAS_REL / "config" / "ScriptConfig.json").write_text(json.dumps({"instances": [
+    {"uid": "u-end", "type": "MaaEndConfig"}]}), encoding="utf-8")
+man2 = {"files": [{"path": install.MAAEND_CONFIG, "sha256": "0" * 64, "len": len(json.dumps(migrated).encode()),
+                   "mtime": "2026-10-13T09:59:15", "src": "test"}]}
+T1007 = W.epoch("2026-10-07T00:00:00+08:00")
+try:
+    install.plant(tree2, T1007, automas_rel=W.AUTOMAS_REL, clone=W.clone, root=root2, man=man2,
+                  maaend_tasks_before=before)
+except TypeError as exc:
+    check("plant takes the MaaEnd tasks of before the migration", str(exc), "")
+m2 = json.loads((tree2 / W.AUTOMAS_REL / "data/u-end/Default/ConfigFile/mxu-MaaEnd.json").read_text(encoding="utf-8"))
+tasks2 = {t["id"]: t for t in m2["instances"][0]["tasks"]}
+check("10-07: the master's 自动囤货 buy list is the checkbox of before the migration",
+      tasks2[task_id]["optionValues"].get("AutoStockBuyDailyGoodsValleyIV", {}).get("type"), "checkbox")
+check("the other tasks stay as planted", tasks2["other"]["optionValues"], {"x": {"type": "switch", "value": True}})
+cut = W.epoch(getattr(W, "MAAEND_MIGRATED_AT", "2000-01-01T00:00:00+08:00"))
+check("days 10-06..10-09 start before the machine's first migration, 10-11 after it",
+      [W.epoch(f"{d}T00:00:00+08:00") < cut for d in ("2026-10-06", "2026-10-09", "2026-10-11")], [True, True, False])
 check("an older copy keeps its machine mtime (2026-09-07 14:19:32 Beijing)",
       os.stat(am / "data/u-okww/Default/ConfigFile/DailyTask.json").st_mtime,
       W.epoch("2026-09-07T14:19:32+08:00"))

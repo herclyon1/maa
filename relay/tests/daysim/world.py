@@ -153,6 +153,11 @@ MASTER_NESTS = {
 # preupdate_okww.OKWW_MIN_WAIT_SECONDS (45) anyway: the record has the launch
 # (10-12 08:46:17) and 「无需更新（v3.7.4）」 45 s later (08:47:02).
 OKWW_APPJSON_REWRITE_S = 38
+# The machine's relay first rewrote the MaaEnd master's 自动囤货 buy lists into the new
+# MaaEnd's switch + Items shape at this boot (relay.log 10-10 22:32:42, 76df1839); a
+# day before it starts with the checkbox shape (install.set_tasks_before).
+MAAEND_MIGRATED_AT = "2026-10-10T22:32:42+08:00"
+MAAEND_TASKS_BEFORE = RELAY / "tests" / "fixtures" / "maaend-2026-10-10" / "master-before.json"
 # mailbox.Mailbox.POST_TIMEOUT: an ntfy publish that timed out began this long before
 # its 「发到信箱没成」 line.
 NTFY_POST_TIMEOUT_S = 20
@@ -364,7 +369,8 @@ def materialize(day: str, tree: Path, corpus: Path, code_src: Path) -> dict:
         with open(log, "ab") as f:
             f.write(lines.encode("utf-8"))
         os.utime(log, (t0, t0))
-    missing = install.plant(tree, t0, automas_rel=AUTOMAS_REL, clone=clone, nests=MASTER_NESTS.get(day, ("", ""))[0])
+    missing = install.plant(tree, t0, automas_rel=AUTOMAS_REL, clone=clone, nests=MASTER_NESTS.get(day, ("", ""))[0],
+                            maaend_tasks_before=MAAEND_TASKS_BEFORE if t0 < epoch(MAAEND_MIGRATED_AT) else None)
     if missing:
         raise SystemExit(f"daysim: {len(missing)} install copies missing under {install.ROOT} "
                          f"(install.py build), e.g. {missing[0]}")
