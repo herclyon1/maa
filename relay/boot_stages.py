@@ -662,7 +662,11 @@ def _make_collect(inbox, engine, notifier, log, deferred_inbox):
         if messages:
             for m in messages:
                 log.info("待办: %s", m)
-            notifier.send(messages[0], "\n".join(messages[1:]).strip())
+            # A failed batch (inbox.receipt_failed: its title is texts.CONFIG_FAILED)
+            # goes to the group like a failed phone order; one that went through is
+            # log only by its title (notify._LOG_ONLY_PREFIXES).
+            notifier.send(messages[0], "\n".join(messages[1:]).strip(),
+                          alert=messages[0].startswith(texts.CONFIG_FAILED))
         else:
             log.debug("待办检查（%s）：无新配置（当前 v%s）", reason, version)
 

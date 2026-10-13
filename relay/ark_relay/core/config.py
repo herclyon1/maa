@@ -10,12 +10,37 @@ import os
 import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 # The monitored machine runs on Asia/Shanghai; the operator lives in Asia/Tokyo.
 # Every human-facing timestamp must say which clock it is on, so keep both.
 SERVER_TZ = timezone(timedelta(hours=8), "服务器")
 USER_TZ = timezone(timedelta(hours=9), "东京")
+
+# Is this the game machine? The one platform question the relay asks; every gate
+# reads `config.IS_WINDOWS` at call time (never `from ... import IS_WINDOWS`), so the
+# day simulator can set it True on a Mac and run the Windows-only branches.
+# Asked of the real host instead: pkg_layout.py and app_main.py (filesystem and
+# console facts), and the OK-WW override, which runs in OK-WW's own Python
+# (tests/test_daysim_gates.py keeps that list).
+IS_WINDOWS = os.name == "nt"
+
+# Windows' ProgramData folder: the fixed hand-off files shared with OK-WW and the
+# scheduled tasks (flags, .bat files, reports) live in it. ARK_PROGRAMDATA moves it;
+# only the day simulator sets it, to keep those files inside its own tree.
+PROGRAMDATA = Path(os.environ.get("ARK_PROGRAMDATA", r"C:\ProgramData"))
+
+
+def programdata_path(*parts: str) -> str:
+    """A file under PROGRAMDATA, as a string.
+
+    While PROGRAMDATA is the machine's own folder the result is spelt with
+    backslashes on every host: those are the exact strings the OK-WW override
+    hard-codes (test_nofarm_visible), and off Windows a Path would join
+    r"C:\\ProgramData" with "/".
+    """
+    machine = str(PROGRAMDATA) == r"C:\ProgramData"
+    return str((PureWindowsPath(PROGRAMDATA) if machine else PROGRAMDATA).joinpath(*parts))
 
 
 def both_clocks(dt: datetime) -> str:
@@ -391,7 +416,19 @@ PYTHON_HOSTS: tuple[str, ...] = ("pythonw.exe", "python.exe")
 # The patched OK-WW checks for this file and skips stamina farming entirely while
 # it is there. It is set by hand (weekly boss tests) and must be deleted afterwards;
 # while it exists, tomorrow's plan says stamina is not farmed (plan._okww_farm_bit).
-NO_STAMINA_FARM_FLAG = r"C:\ProgramData\ark-relay\state\no-stamina-farm.flag"
+NO_STAMINA_FARM_FLAG = programdata_path("ark-relay", "state", "no-stamina-farm.flag")
+
+
+# OK-WW's install root when ARK_OKWW_DIR is not set: where it is on the machine.
+OKWW_DIR_DEFAULT = r"D:\ark\okww"
+
+
+def okww_root() -> Path:
+    """OK-WW's install root: Config.okww_dir (ARK_OKWW_DIR), else OKWW_DIR_DEFAULT.
+
+    For the callers that have no Config at hand; read at call time.
+    """
+    return _env_path("ARK_OKWW_DIR") or Path(OKWW_DIR_DEFAULT)
 
 
 def no_stamina_farm() -> bool:
@@ -401,7 +438,8 @@ def no_stamina_farm() -> bool:
     obeys that fixed path and reads no environment variable (ark_overrides.tasks.py
     NO_STAMINA_FLAG, the same string - test_nofarm_visible), so the relay and OK-WW
     look at one file by construction. Until 2026-10-13 this followed ARK_STATE_DIR,
-    and a .env pointing it elsewhere would have read a different file.
+    and a .env pointing it elsewhere would have read a different file. Only
+    ARK_PROGRAMDATA moves it, and only the day simulator sets that.
     """
     from pathlib import Path as _P  # noqa: PLC0415
     return _P(NO_STAMINA_FARM_FLAG).exists()

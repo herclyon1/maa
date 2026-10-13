@@ -283,12 +283,12 @@ _ur.urlopen = real_urlopen
 
 print("\n[查活着谁：认名字不分大小写，一个不落]")
 import subprocess as _sp                                          # noqa: E402
-import os as _os                                                  # noqa: E402
-from ark_relay.features.okww_patch import okww_overlay as _ov  # noqa: E402 - before os.name is faked
+from ark_relay.core import config as _config                       # noqa: E402
+from ark_relay.features.okww_patch import okww_overlay as _ov  # noqa: E402
 from ark_relay.features.phone import snapshot as _snap  # noqa: E402
 real_okww_running = _ov.okww_running
-real_run, real_name = _sp.run, _os.name
-_os.name = "nt"
+real_run, real_win = _sp.run, _config.IS_WINDOWS
+_config.IS_WINDOWS = True     # the machine: the red button lists processes
 
 
 class Out:
@@ -338,7 +338,7 @@ _ov.okww_running = real_okww_running
 
 _sp.run = _boom
 check("读不到时不许返回空", redbutton._estop_alive(), ["读不到正在运行的程序列表"])
-_sp.run, _os.name = real_run, real_name
+_sp.run, _config.IS_WINDOWS = real_run, real_win
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

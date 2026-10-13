@@ -505,11 +505,10 @@ def image_reader(state_dir):
     (desktop.py), cached per URL so the daily report does not spawn it again.
     None off Windows, where there is no agent."""
     import hashlib  # noqa: PLC0415
-    import os  # noqa: PLC0415
 
-    from ark_relay.core import desktop  # noqa: PLC0415
+    from ark_relay.core import config, desktop  # noqa: PLC0415
     from ark_relay.core.config import atomic_write_bytes, atomic_write_text  # noqa: PLC0415
-    if os.name != "nt":
+    if not config.IS_WINDOWS:
         return None
     d = Path(state_dir) / "desktop"
     cache_f = d / "image-ocr.json"

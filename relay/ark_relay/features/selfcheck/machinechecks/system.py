@@ -382,8 +382,16 @@ HYPOTHESIS_ZH = {"H1": "WMI 服务自己重启过", "H2": "WMI 的提供程序�
                  "H3": "WMI 服务和提供程序宿主都没变（另有原因）"}
 
 
-@mc.check("#59", "系统的程序启动通知断了又自己订上的，只进日报不进群，并写明是哪种原因", "B", "boot")
+@mc.check("#59", "系统的程序启动通知断了又自己订上的，报群一次，并写明是哪种原因", "B", "boot")
 def _wmi_recovered(ctx):
+    """What procwatch._subscribed does since 324b640b (2026-10-10): a drop of unknown cause
+    that came back by itself is pushed to the group once (a plain WARNING, errwatch's
+    🩺 push quotes its line and time); an outage already pushed meanwhile (long, or at a
+    stop) ends with a line tagged errwatch.recovered() - its errkinds row says
+    `recovered`, and that line is not pushed again. Either way the diag line names
+    the case (H1/H2/H3, wmi_diag._wmi_hypothesis). Until 2026-10-13 this check still
+    wanted the 10-05 rule (daily report only, never the group) and failed on every
+    such drop - a second push per drop (day replay 2026-10-06, BACKLOG daysim-R1)."""
     s = _prev(ctx)
     if s is None:
         return None
@@ -395,17 +403,26 @@ def _wmi_recovered(ctx):
     for r in back:
         day = _day_of(r.md, now)
         rows = [x for _sig, x in mc.errkind_rows(ctx.get("state_dir"), day)]
-        if not any(x.get("line") == r.msg.strip()[:200] and x.get("recovered") for x in rows):
-            return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：日报的报错记录里没记成「自己好了」"))
+        held = any(x.get("line") == r.msg.strip()[:200] and x.get("recovered") for x in rows)
         needle = r.msg.strip()[:60]      # errwatch's push quotes the line cut at 160
-        if any(needle in str(x.get("text") or "") for x in mc.alert_rows(ctx.get("state_dir"), day.replace("-", ""))):
-            return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：自己好了的，却进了群"))
+        # The push names the record's time (texts.relay_error_body / relay_error_line):
+        # two drops with the same words on one day (10-06 16:16:59 and 18:08:22) are
+        # two pushes, one each.
+        n = sum(1 for x in mc.alert_rows(ctx.get("state_dir"), day.replace("-", ""))
+                if needle in str(x.get("text") or "") and r.hms in str(x.get("text") or ""))
+        if held and n:
+            return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：期间已经报过群，结束这一行却又进了群"))
+        if not held and n == 0:
+            return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：没进群，日报的报错记录里也没记成「期间报过群、自己好了」"))
+        if n > 1:
+            return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：同一次断开进了群 {n} 次"))
         diag = next((m for x in r.more if (m := _HYPOTHESIS.search(x))), None)
         if diag is None:
             raw = next((x.strip() for x in r.more if x.strip().startswith("diag:")), "（没有 diag 行）")
             raw = raw[raw.find("WMI hosts"):] if "WMI hosts" in raw else raw    # the part that tells them apart
             return _once(ctx, "#59", mc.Result(mc.FAIL, f"{r.show()}：说不出是哪种原因：{raw[:160]}"))
-        good = f"{r.show()}；只进了日报；原因：{HYPOTHESIS_ZH[diag.group(1)]}"
+        how = "期间已报过群，这一行只进日报" if held else "报了一次群"
+        good = f"{r.show()}；{how}；原因：{HYPOTHESIS_ZH[diag.group(1)]}"
     return _once(ctx, "#59", mc.Result(mc.PASS, good))
 
 

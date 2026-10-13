@@ -45,12 +45,19 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ, both_clocks
 from ark_relay.features.schedule import queues
 from ark_relay.features.weekly import sanity_plan
 from ark_relay.features.phone.commands import apply_command
 
 log = logging.getLogger("ark.inbox")
+
+
+def receipt_failed(lines: "list[str]") -> bool:
+    """True when a command line of a batch's receipt (Inbox._apply, or the mid-batch
+    error line) failed: each failed command's line starts with 「✗」."""
+    return any(str(m).startswith("✗") for m in lines)
 
 
 def label_version(version: int) -> str:
@@ -372,8 +379,13 @@ class Inbox:
         # version - which is also how the operator learns it did not land.
         self._remember(version)
         # Item 0 of the return value is the push title, the rest is the body;
-        # the operator's note goes in the body so it is shown.
-        title = f"⚙️ 配置已更新：{name}" if name else "⚙️ 配置已更新"
+        # the operator's note goes in the body so it is shown. A batch that went
+        # through is our own order.sh order and stays out of his sight (CLAUDE.md
+        # 「测试不进他眼」): its title is on notify's log-only list. Any ✗ line is a
+        # failure and takes the phone's failure title, which boot_stages' collect
+        # sends to the group (docs/NOTIFICATIONS.md, the 「📱 配置没改成」 row).
+        head = texts.CONFIG_FAILED if receipt_failed(messages) else texts.INBOX_APPLIED
+        title = f"{head}：{name}" if name else head
         body = [f"{both_clocks(datetime.now(tz=SERVER_TZ))} · {label_version(version)}"]
         if note:
             body += ["", note]

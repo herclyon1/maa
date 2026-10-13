@@ -127,3 +127,36 @@ jobs:
           --exclude test_deploy_pkg_bash32.py
           --exclude test_techlog_tool.py
           --exclude test_tool_refs.py
+
+  # The day replay (relay/tests/daysim, design.md section 5) from the Windows Python: the
+  # deploy's step 0.8 runs it on the Mac from the full corpus; here it runs on the committed
+  # light packs (days/<D>/pack.tar.zst, under 5 MB each; pack.py compare showed each replays
+  # exactly as its full corpus on 2026-10-13). Days without a pack (10-12: 11 MB lightened)
+  # are left out by --available. Same pass rule as the deploy: no new red (known-red.json),
+  # and the R36 bad patch must turn 2026-10-13 red.
+  day-replay:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - name: Check out files as they are in the repo (LF)
+        run: git config --global core.autocrlf false
+      # oracle.py checks that every commit an expected.json entry cites exists here.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14.8'   # what the game machine runs; compression.zstd needs 3.14
+      # The relay reads pictures with Pillow (the package bundles it on the machine).
+      - name: Install Pillow
+        run: python -m pip install --disable-pip-version-check pillow
+      # RUNNER_TEMP is a Windows path (D:\a\_temp); Windows Python takes it with a / after it.
+      - name: Unpack the light packs
+        run: python -I relay/tests/daysim/pack.py unpack "$RUNNER_TEMP/daysim-corpus"
+      - name: Day gate on the packed days
+        run: DAYSIM_CORPUS="$RUNNER_TEMP/daysim-corpus" python -I relay/tests/daysim/gate.py --available

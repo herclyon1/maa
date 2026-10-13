@@ -284,9 +284,9 @@ for d in (24, 25, 26, 27, 29, 30):
 check("only when every day timed out -> 180", runwatch.planned_minutes(e9, 9, 0, at(9, 0)), (180, 0))
 
 print("\n[10-01: still running at 13:10 (09:00 + 220 + 30) -> one alarm]")
-real_os, real_snap = eng.os, eng._automas_snapshot
+real_win, real_snap = eng.config.IS_WINDOWS, eng._automas_snapshot
 try:
-    eng.os = types.SimpleNamespace(name="nt")
+    eng.config.IS_WINDOWS = True
     write_log(0)
     eng._automas_snapshot = lambda: snap("运行", "等待")
     run_watch(e5, at(13, 9))
@@ -332,7 +332,7 @@ try:
           bool(got) and "没有可参考的记录，按 180 分钟算" in got[0][1] and "近 7 天" not in got[0][1], True)
     check("with history: still quotes the 7 days", "近 7 天最长 220 分钟跑完" in alarms(e5)[0][1], True)
 finally:
-    eng.os, eng._automas_snapshot = real_os, real_snap
+    eng.config.IS_WINDOWS, eng._automas_snapshot = real_win, real_snap
 
 print("\n[the loop comes back every minute while something runs, never when idle]")
 e8 = build()

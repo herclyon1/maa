@@ -1,0 +1,4 @@
+{
+ "_doc": "Days red only because of reported relay bugs; rules in knownred.py. Must shrink to empty: an entry whose report is closed, that expired, or that no longer matches exactly `count` lines stops the day gate.",
+ "entries": []
+}

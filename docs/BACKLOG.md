@@ -187,6 +187,16 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
 
 ## Done (kept around for a while so the same question is not asked twice)
 
+- [x] **daysim-R2: 「⚙️ 配置已更新：…」 had no row in docs/NOTIFICATIONS.md** (found 2026-10-13 by the day
+      replays of 2026-10-12 / 10-13; decided by 验收 and fixed 2026-10-13): the receipt of our own order.sh batch
+      that went through is log only (`notify._LOG_ONLY_PREFIXES`, texts.INBOX_APPLIED); one with a ✗ line is
+      「📱 配置没改成：<name>」 to the group, like a failed phone order (`inbox.receipt_failed`,
+      `boot_stages._make_collect`, `relay/tests/test_inbox_poll.py`). Rows in NOTIFICATIONS.md; known-red entries gone.
+- [x] **daysim-R1: machine check #59 contradicted the 10-10 WMI routing rule** (found 2026-10-13 by the day
+      replay of 2026-10-06; fixed 2026-10-13): #59 now checks what procwatch does since 324b640b - a drop that
+      came back by itself is pushed to the group once (or, when the outage was already pushed, its end line is
+      tagged recovered and not pushed again), and its diag names H1/H2/H3 (`machinechecks/system.py`
+      `_wmi_recovered`, `relay/tests/test_mc_system.py`). Its known-red entry is gone.
 - [x] All four OK-WW patches submitted upstream (2026-08-27):
       [#1625](https://github.com/ok-oldking/ok-wuthering-waves/pull/1625) a failed instance no longer
       drags down the dailies,

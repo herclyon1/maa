@@ -7,18 +7,22 @@
 # 手动部署必须自带验证，否则"我以为部署了"比没部署更危险。
 #
 #   ARK_HOST=100.65.39.119 scripts/mac/deploy-relay.sh
+#   scripts/mac/deploy-relay.sh --dry-run   # local gates 0-0.8 only, then stop: no network, no game PC
 #
 set -euo pipefail
 
 REDEPLOY=0
+DRY_RUN=0
 for a in "$@"; do
   case "$a" in
     --redeploy) REDEPLOY=1 ;;
+    --dry-run) DRY_RUN=1 ;;
     *) echo "不认识的参数: $a" >&2; exit 2 ;;
   esac
 done
 
-HOST="${ARK_HOST:?请先 export ARK_HOST=<游戏机 Tailscale IP>}"
+# A dry run stops before step 1, the first step that reaches the machine, so it needs no host.
+if [ "$DRY_RUN" = 1 ]; then HOST="${ARK_HOST:-dry-run}"; else HOST="${ARK_HOST:?请先 export ARK_HOST=<游戏机 Tailscale IP>}"; fi
 USER_AT="Administrator@${HOST}"
 # 跨境到乌鲁木齐，每次 ssh/scp 都要重新握手一次；这个脚本要跑四十多次，
 # 光握手就占掉大半时间。开连接复用：第一次连上之后所有后续调用走同一条
@@ -34,12 +38,15 @@ PY='D:\ark\automas\environment\python\python.exe'
 # "$(dirname "${BASH_SOURCE[0]}")"，相对路径当场失效，取日志那步静静失败了。
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../relay" && pwd)"
 
+# A dry run skips the next two: the second asks the game machine (winps.sh) and writes its log.
+if [ "$DRY_RUN" != 1 ]; then
 # Our own parts (bundled Python, Pillow, pywin32) against the newest patch of their line.
 # Printed for us only and never blocks: it needs the network (BOARD/DECISIONS.md D-1011, tools current).
 python3 "$HERE/../scripts/mac/lib/parts_latest.py" || true
 # Every other tool we run on the Mac and the game machine, same rule; behind ones go to the
 # machine's technical log as red items (user 10-12 08:34, scripts/mac/lib/tools_latest.py).
 python3 "$HERE/../scripts/mac/lib/tools_latest.py" || true
+fi
 
 cd "$HERE"
 
@@ -258,7 +265,11 @@ lap
 NOTES="$HERE/RELEASE-NOTES.md"
 NOTES_STAMP="$HERE/state/last-deployed-notes.sha1"
 mkdir -p "$HERE/state"
-if [ ! -s "$NOTES" ]; then
+# A dry run announces nothing, so it reports this gate and goes on.
+if [ "$DRY_RUN" = 1 ]; then
+  if [ -s "$NOTES" ]; then echo "    （dry run）更新说明有 $(wc -l <"$NOTES" | tr -d ' ') 行"
+  else echo "    （dry run）更新说明是空的：真部署会在这里停（exit 7）"; fi
+elif [ ! -s "$NOTES" ]; then
   echo "  ✋ relay/RELEASE-NOTES.md 是空的（上次部署后自动清空的，不是丢了）。" >&2
   echo "     用人话写清楚**这次**改了什么——只写新增的，不要重复上次播报过的。" >&2
   echo "     写完再部署。这段文字就是用户会收到的那条通知。" >&2
@@ -266,7 +277,7 @@ if [ ! -s "$NOTES" ]; then
 fi
 NOTES_SHA=$(shasum -a 1 "$NOTES" | awk '{print $1}')
 LAST_SHA=$(cat "$NOTES_STAMP" 2>/dev/null || echo "")
-if [ "$NOTES_SHA" = "$LAST_SHA" ] && [ "$REDEPLOY" != "1" ]; then
+if [ "$NOTES_SHA" = "$LAST_SHA" ] && [ "$REDEPLOY" != "1" ] && [ "$DRY_RUN" != 1 ]; then
   echo "  ✋ RELEASE-NOTES.md 和上次部署的一字不差。" >&2
   echo "     这次改了什么？写进 relay/RELEASE-NOTES.md，用人话。" >&2
   echo "     确实是重推同一份改动的话：$0 --redeploy" >&2
@@ -283,6 +294,9 @@ lap
 echo "▶ 0.6/5 分支上没进 main 的中继修改（每条要么合进 main，要么在 docs/UNMERGED-REVIEWED.txt 登记过）"
 if UNMERGED_OUT=$(python3 "$HERE/../scripts/mac/lib/unmerged_fixes.py" 2>&1); then
   echo "    $(tail -1 <<<"$UNMERGED_OUT")"
+elif [ "$DRY_RUN" = 1 ]; then
+  # A dry run checks this branch's code, not what main is missing from other branches.
+  echo "    （dry run）$(grep -c . <<<"$UNMERGED_OUT") 行没进 main 的中继修改：真部署会在这里停（exit 1）"
 else
   echo "  ✋ 还有做好却没装上的中继修改（分支 · 提交 · 标题）：" >&2
   printf '%s\n' "$UNMERGED_OUT" | sed 's/^/    /' >&2
@@ -318,6 +332,26 @@ else
 fi
 
 lap
+# ── 0.8 gate: day replay (design: relay/tests/daysim, design.md section 5) ──
+# Every recorded day (relay/tests/daysim/days/) replayed through this version, boot by
+# boot, on fake Windows / network / AUTO-MAS answering from the machine's records, and
+# judged against the reviewed expected.json. Any failure line known-red.json does not
+# list stops the deploy, as does a stale or expired known-red entry; then each
+# badfix/*.patch puts a fixed bug back into a copy of the code and its day must go red,
+# or the gate itself is broken. Too slow for the per-file test limits of gate 0, so it
+# is its own step. Alone: ~/.local/bin/python3.14 -I relay/tests/daysim/gate.py
+echo "▶ 0.8/5 整天回放（每个录下来的日子用这一版从头跑一遍，有新的不对就拒绝）"
+if ! "$RELAY_PY" -I tests/daysim/gate.py 2>&1 | sed 's/^/    /'; then
+  echo "  ✋ 整天回放不通过（见上）：要么修中继，要么这一天的 expected.json 经审过、带出处地改。" >&2
+  echo "     部署已取消。" >&2
+  exit 15
+fi
+
+lap
+if [ "$DRY_RUN" = 1 ]; then
+  echo "✅ dry run: local gates 0-0.8 passed; stopping before step 1 (nothing sent to the machine or COS)"
+  exit 0
+fi
 echo "▶ 1/5 重建 manifest"
 python3 make-manifest.py
 

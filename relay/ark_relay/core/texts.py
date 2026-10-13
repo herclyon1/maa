@@ -98,6 +98,9 @@ ESTOP_FAILED = "🛑 没能停干净"
 SHUTDOWN_CANCELLED = "🌙 关机被取消"
 CONFIG_CHANGED = "📱 配置已修改"
 CONFIG_FAILED = "📱 配置没改成"
+# The receipt of a batch from the repo inbox (scripts/mac/order.sh, inbox.Inbox.poll) that
+# went through: log only (notify._LOG_ONLY_PREFIXES). One with a ✗ line is CONFIG_FAILED.
+INBOX_APPLIED = "⚙️ 配置已更新"
 SELFUPDATE_FAILED = "⚠️ 中继自更新没成功"
 WATCH_LOST = "⚠️ 中继暂时不能在脚本跑完时马上处理结果"
 RELAY_ERROR = "🩺 中继自己报错了"
@@ -1006,7 +1009,7 @@ def samples() -> list[str]:
         UNREACHABLE_SHAPE_NOTE, UNREACHABLE_UNREAD_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, ANNIHILATION_OFF,
         annihilation_off_body("明日方舟 · 剿灭"), SKIP_MODE, ESTOP,
         ESTOP_FAILED, SHUTDOWN_CANCELLED, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ECHO_FARM, ECHO_FARM_DONE, ECHO_FARM_TROUBLE,
-        CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
+        CONFIG_CHANGED, CONFIG_FAILED, INBOX_APPLIED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, SPMED_UNRECOGNISED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
         *(spmed_unrecognised_body(k) for k in ("broken", "unknown", "missing", "unreadable")),
         CLAIM_LINES_RUN, CLAIM_LINES_FW, claim_lines_fw_none("框架日志的文件夹不在"), claim_lines_head("基质刷取"),

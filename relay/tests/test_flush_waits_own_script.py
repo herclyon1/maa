@@ -13,7 +13,6 @@ Before the fix nothing is pushed; after it, exactly one alarm.
 import json
 import os
 import sys
-import types
 from datetime import datetime
 from pathlib import Path
 
@@ -98,9 +97,9 @@ def build(snapshot):
     return e
 
 
-real_os, real_snapshot = eng.os, getattr(eng, "_automas_snapshot", None)
+real_win, real_snapshot = eng.config.IS_WINDOWS, getattr(eng, "_automas_snapshot", None)
 try:
-    eng.os = types.SimpleNamespace(name="nt")
+    eng.config.IS_WINDOWS = True
 
     print("[10-01 回放：OK-WW 已「异常」、MaaEnd 还在跑 → OK-WW 的告警现在就推]")
     e = build(TODAY)
@@ -134,7 +133,7 @@ try:
     check("刚派下去没状态 → 当作在跑", eng._script_unfinished({"tasks": [{"task_info": []}]}, "OK-WW"), True)
     check("没有任务 → 不在跑", eng._script_unfinished({"tasks": []}, "OK-WW"), False)
 finally:
-    eng.os, eng._automas_snapshot = real_os, real_snapshot
+    eng.config.IS_WINDOWS, eng._automas_snapshot = real_win, real_snapshot
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

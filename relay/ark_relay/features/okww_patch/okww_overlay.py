@@ -19,7 +19,7 @@ import logging
 import re
 from pathlib import Path
 
-from ark_relay.core.config import atomic_write_text, master_config_dir
+from ark_relay.core.config import atomic_write_text, master_config_dir, programdata_path
 
 log = logging.getLogger("ark.okww_overlay")
 
@@ -28,11 +28,11 @@ log = logging.getLogger("ark.okww_overlay")
 _WORKING = ("data", "apps", "ok-ww", "working")
 TASKS_DIR = "ok_tasks"
 FILE_NAME = "ark_overrides.py"
-REPORT = Path(r"C:\ProgramData\ark-okww-overlay.json")
+REPORT = Path(programdata_path("ark-okww-overlay.json"))
 # Where the overrides read the master ConfigFile directory from. Needed because
 # ok-script's Config drops unknown keys and rewrites configs/ at load, before the
 # extension runs - so 「Only Farm These Nests」 is only ever readable from the master.
-MASTER_POINTER = Path(r"C:\ProgramData\ark-okww-master.txt")
+MASTER_POINTER = Path(programdata_path("ark-okww-master.txt"))
 
 _SOURCE = Path(__file__).with_name("okww_files") / "ark_overrides.tasks.py"
 
@@ -131,11 +131,10 @@ def okww_running() -> "bool | None":
     install() writes on None: at boot OK-WW is normally not running, and a stale
     overlay left in place silently is the worse outcome.
     """
-    import os  # noqa: PLC0415
+    from ark_relay.core import config, procs  # noqa: PLC0415
 
-    if os.name != "nt":
+    if not config.IS_WINDOWS:
         return None
-    from ark_relay.core import procs  # noqa: PLC0415
     from ark_relay.core.config import OKWW_CMDLINE, PYTHON_HOSTS  # noqa: PLC0415
     # warn=False: an unreadable process list is not this step's to alarm on; the boot
     # self-check (later in the same boot) pushes the one alarm for that outage.
