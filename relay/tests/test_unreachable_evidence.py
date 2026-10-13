@@ -163,6 +163,18 @@ check("进群一条「进不了游戏」", [t for t, _b, a in e.notifier.sent if
 check("…写着那条官方公告", any("官方依据：官方公告：今天 10:00 「雪凇幽梦」版本更新" in b
                           for t, b, a in e.notifier.sent if a), True)
 
+print("[形状有、公告没读到 → 报警用「没读到公告」那句，不说今天没有公告]")
+UNREAD = "（测试）官方公告没读到"
+texts.UNREACHABLE_UNREAD_NOTE = UNREAD
+e = build()
+r = rec_from_fixture()
+r.raw["maaend_unreachable_shape"] = True
+r.raw["maaend_unreachable_unread"] = True
+handle._push_unresolved(e, r, "补跑也没成", 1)
+body = e.notifier.sent[-1][1] if e.notifier.sent else ""
+check("用了没读到公告那句", UNREAD in body, True)
+check("没说今天没有公告", texts.UNREACHABLE_SHAPE_NOTE in body, False)
+
 if fails:
     print(f"\n✗ {len(fails)} 项失败")
     sys.exit(1)
