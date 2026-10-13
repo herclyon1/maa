@@ -392,20 +392,23 @@ def _install_claim():
         if not getattr(self, "_in_realm", False) or self.in_world():
             return
         # Upstream's own test for a treasure to walk to (walk_to_treasure_and_restart,
-        # and the 5 s wait for it in do_run). No crystal - the boss still up, or no
-        # fight - is not an error: the lap goes back to upstream as it is.
+        # and the 5 s wait for it in do_run). No crystal, or a walk that does not get
+        # there, used to go back to upstream (a8cc86b6, after 10-12 09:52:20). Its
+        # next lap in the realm presses ESC and leaves (FarmEchoTask.py:151-157), so
+        # the reward was left behind without a word. Both are screens this code does
+        # not understand, and the file's rule for those is a picture and a stop (_stop).
         if not self.wait_until(self.find_treasure_icon, time_out=5, raise_if_not_found=False):
-            self.log_info("周本领奖：没看到结晶，这一圈不去领，交回上游")
-            return
+            _stop(self, "weekly_no_crystal",
+                  f"周本领奖：这一圈打完没看到结晶，不领就会被上游按 ESC 退本，停下。整屏读到 {_screen_text(self)[:400]}")
         self.log_info("周本领奖：打完了，去结晶按 F")
         self._ark_claimed = False
         try:
             self.walk_to_treasure()
         except TaskDisabledException:
             raise
-        except Exception as exc:  # noqa: BLE001 - upstream's next lap takes it from here
-            self.log_info(f"周本领奖：没走到结晶 {exc!r}，交回上游")
-            return
+        except Exception as exc:  # noqa: BLE001 - reported and stopped on
+            _stop(self, "weekly_walk_failed",
+                  f"周本领奖：没走到结晶 {exc!r}，不领就会被上游按 ESC 退本，停下。整屏读到 {_screen_text(self)[:400]}")
         self.pick_f()
         if getattr(self, "_ark_claimed", False):
             self._ark_claimed = False

@@ -407,9 +407,10 @@ check("no ESC, no back", [e for e in t.events if e in ("key:esc", "back")], [])
 check("no re-entry", t.entries, 0)
 check("ends as failed", "没等到结算页" in (getattr(t, "_ark_failed", None) or ""))
 
-print("\n[今早 09:51:50 那种：战斗判定先断、走去结晶 30 秒没走到（WaitFailedException）：不停，交回上游]")
+print("\n[10-12 09:51:50: the fight check broke first and the walk to the crystal failed (WaitFailedException): picture, phone, stop]")
 # ev OK-WW-05-18-47.log:1102-1109 - 「farm echo walk_find_echo None」, 「去结晶按 F」,
-# walk_to_treasure, 09:52:20 WaitFailedException, then 「这一趟按失败结束」 and the run gone.
+# walk_to_treasure, 09:52:20 WaitFailedException. Handing it back (a8cc86b6) let
+# upstream's next lap ESC out of the realm with the reward not taken.
 
 
 class WaitFailedException(Exception):
@@ -417,19 +418,20 @@ class WaitFailedException(Exception):
 
 
 t = task(left=3, walk_error=WaitFailedException())
-check("没停", lap(t), "on")
-check("走了一趟结晶，没按 F", [e for e in t.events if e in ("walk", "key:f")], ["walk"])
-check("说了没走到、交回上游", any("没走到结晶" in m and "WaitFailedException" in m for m in t.logs))
-check("没留失败原因（不再按失败结束）", getattr(t, "_ark_failed", None), None)
-check("没报错、没截停下的图", (t.errors, t.shots), ([], []))
-check("没点任何确认、没 ESC", [e for e in t.events if e in ("confirm", "cancel", "key:esc")], [])
+check("stopped", lap(t), "stop")
+check("walked once, no F", [e for e in t.events if e in ("walk", "key:f")], ["walk"])
+check("pushed with the reason", len(t.errors) == 1 and t.errors[0][1]
+      and "没走到结晶" in t.errors[0][0] and "WaitFailedException" in t.errors[0][0])
+check("picture", t.shots, ["weekly_walk_failed"])
+check("ends as failed", "没走到结晶" in (getattr(t, "_ark_failed", None) or ""))
+check("nothing confirmed, no ESC", [e for e in t.events if e in ("confirm", "cancel", "key:esc")], [])
 
-print("\n[没看到结晶（Boss 还在 / 这一圈没打起来）：不走、不停，交回上游]")
+print("\n[no crystal after the lap: picture, phone, stop - no walk]")
 t = task(left=3, crystal=False)
-check("没停", lap(t), "on")
-check("没走去结晶、没按 F", [e for e in t.events if e in ("walk", "key:f")], [])
-check("说了为什么", any("没看到结晶" in m for m in t.logs))
-check("没报错", t.errors, [])
+check("stopped", lap(t), "stop")
+check("no walk, no F", [e for e in t.events if e in ("walk", "key:f")], [])
+check("pushed with the reason", len(t.errors) == 1 and t.errors[0][1] and "没看到结晶" in t.errors[0][0])
+check("picture", t.shots, ["weekly_no_crystal"])
 
 print("\n[领奖钩子遇到的不是领奖弹窗（退出副本的确认框也是这个取消按钮）：照上游按 ESC，不点确认]")
 t = task(screens=[["是否退出副本？", "取消", "确认"]])
