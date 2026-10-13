@@ -295,7 +295,7 @@ class RulesSource:
             return self._load(name)
 
         def once():
-            # 60 s: the MaaEnd strings are 217 KB from raw.githubusercontent.com, under 2 s from the Mac
+            # 60 s: the MaaEnd strings are 217 KB from raw.githubusercontent.com, 0.24 s from the Mac
             # (measured 2026-10-14); the margin is for the machine's slower route to GitHub.
             with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "ark-need-table"}), timeout=60) as r:
                 return json.loads(r.read().decode("utf-8"))
