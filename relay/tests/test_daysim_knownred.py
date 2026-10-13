@@ -7,10 +7,11 @@ What is pinned here:
   `count` is stale, one past `expires` (at most 7 days after `added`) is refused,
   one whose report has no open todo `- [ ] **<bug>:` is refused (a closed report =
   a fixed bug), as is an unknown field or a bad regex;
-- the committed known-red.json loads today and is empty: the red the replay produced on
-  2026-10-13 19:27 (run.py --all: 10-06 two #59 pushes, daysim-R1; 10-12 / 10-13 two
-  Server酱 「⚙️ 配置已更新」 receipts each, daysim-R2; both fixed 2026-10-13) would now
-  be new red;
+- the committed known-red.json loads today and holds exactly daysim-R3 (machine check
+  #20, docs/BACKLOG.md): one line each on 10-07, 10-08 and 10-11, as the gate run of
+  2026-10-13 22:0x measured them; anything else those days produce is new red. The red
+  of 2026-10-13 19:27 (10-06 two #59 pushes, daysim-R1; 10-12 / 10-13 two Server酱
+  「⚙️ 配置已更新」 receipts each, daysim-R2; both fixed 2026-10-13) would now be new red;
 - badfix/R36.patch names one day and the lines that must go red, and still applies
   to the code (git apply --check on a copy of shutdown.py).
 """
@@ -99,7 +100,23 @@ check("count 0: refused", len(problems(entry(count=0))), 1)
 print("\n[the committed list]")
 entries = knownred.load()
 check("known-red.json loads today", isinstance(entries, list), True)
-check("it is empty (daysim-R1 and -R2 fixed 2026-10-13)", entries, [])
+check("it holds daysim-R3 only, one line on each of 10-07, 10-08, 10-11 (daysim-R1 and -R2 fixed 2026-10-13)",
+      sorted((e["day"], e["bug"], e["count"]) for e in entries),
+      [("2026-10-07", "daysim-R3", 1), ("2026-10-08", "daysim-R3", 1), ("2026-10-11", "daysim-R3", 1)])
+r3 = {   # gate.py, 2026-10-13 (daysim-days2): each day's one #20 line
+    "2026-10-07": "1007-18 must_not, happened: kind='push' ch='group' title_has='上机核对没过：#20'",
+    "2026-10-08": "1008-22 must_not, happened: kind='push' ch='group' window=['10:30', '11:30'] "
+                  "title_has='上机核对没过：#20'",
+    "2026-10-11": "1011-18 must_not, happened: kind='push' ch='group' window=['09:54', '10:30'] "
+                  "title_has='上机核对没过：#20'",
+}
+for day, line in r3.items():
+    sp = knownred.split(day, [line], entries)
+    check(f"{day}: the #20 line is known red, the day passes", (sp.new, sp.stale, sp.ok), ([], [], True))
+    sp = knownred.split(day, [line, R36], entries)
+    check(f"{day}: anything else is still new red", sp.new, [R36])
+    check(f"{day}: #20 fixed (no line) leaves the entry stale, which stops the gate",
+          bool(knownred.split(day, [], entries).stale), True)
 measured = {   # run.py --all, 2026-10-13 19:27 (scratchpad base.txt), the strict lines of each day
     "2026-10-06": ["strict: no entry expects push group 2026-10-06T16:43:29+08:00 '🔬 上机核对没过：#59 "
                    "系统的程序启动通知断了又自己订上的，只进日报不进群，并写明是哪种原因'",

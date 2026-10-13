@@ -10,6 +10,18 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
 `NEXT-BOOT.md` keeps only "the first thing to do at the next boot".
 
 ## Todo
+- [ ] **daysim-R3: machine check #20 calls the collector's correct MaaEnd sanity wrong (found 2026-10-13 by the day
+      replays of 2026-10-07, 10-08 and 10-11; known red there until 2026-10-20).** `runs.py:_c20` (lines 543-562)
+      takes one claim as the largest drop between readings and wants `max(0, last reading - max(steps))` = 0, while
+      the collector's per-claim rule (4efee4f2, `collector_maaend.py:_claim_costs` / `_sanity_fields`: a half claim
+      costs half) books 37 / 78 / 37 left. Inputs: history/2026-10-07/endfield/MaaEnd-05-29-05.log (277 -> 117 after
+      a double claim, then a half claim; the next day's first reading 237 fits 37 + 200 regenerated, not 0),
+      2026-10-08 MaaEnd-05-29-15 (`relay/tests/fixtures/maaend-sanity-1013/2026-10-08_MaaEnd-05-29-15.log`, last
+      reading 118, a claim after it: 78), 2026-10-11 MaaEnd-05-30-34 (log lines 312-401, as 10-07). The fix has to
+      pick between narrowing #20 on purpose (drop the `elif steps:` estimate) and checking the last claim against an
+      independent figure (the claim's cost read from the run log); calling the collector's own helper would make
+      #20 compare the collector with itself. Test: those logs through `_c20` - PASS with 37 / 78, FAIL with 0. When
+      fixed, remove the three daysim-R3 entries from `relay/tests/daysim/known-red.json`.
 - [ ] **Endfield version-briefing parser has only one sample (added 2026-10-08, due 2026-11-05).**
       `banners.ef_briefing_banners` reads the official version briefing (bulletin cid 2183 ->
       endfield.hypergryph.com/version_briefing/latest -> content script, JSON.parse blocks). Only the v1d6 page
