@@ -636,7 +636,7 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
         # Debug mode skips this one opportunity (see decide): record its key.
         key = eng._shutdown_key(now)
         if modes.shutdown_skipped(eng.state.dir) != key:
-            modes.mark_shutdown_skipped(eng.state.dir, key)
+            modes.mark_shutdown_skipped(eng.state.dir, key, by_debug=True)
             log.info("🔧 调试模式：这一次关机已跳过（%s）；"
                      "到期后不会补关，等下一趟队列跑完再判", key)
     if not v.go:

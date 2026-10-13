@@ -169,18 +169,27 @@ def shutdown_skipped(state_dir: Path) -> str:
     queue run gives a new key and normal shutdown resumes.
 
     One thing clears it: turning debug mode off by hand (set_debug off=True),
-    which means "maintenance is over, back to normal". That also releases an
-    occasion skipped by the 「下次跑完不关机」 mark, so the next re-check may power
-    off; a natural debug expiry clears nothing.
+    which means "maintenance is over, back to normal" - and only a skip debug mode
+    wrote itself (stored with DEBUG_SKIP_TAG). An occasion skipped by the
+    「下次跑完不关机」 mark or by a press inside the countdown stays skipped: the
+    mark promised the machine stays on until the next shift has finished, and
+    dispatch_guard's test-off turns debug mode off right after a test (10-13: the
+    test after a spent mark would otherwise end in a power-off). A natural debug
+    expiry clears nothing.
 
     The user, 2026-08-31: 「我开了调试模式是指把一次队列的中继关机指令跳过，
     而不是中继一直尝试关机，要不然人类没办法使用这个电脑。」
     """
-    return str(_store(state_dir).get("modes", "shutdown_skipped") or "")
+    return str(_store(state_dir).get("modes", "shutdown_skipped") or "").split(DEBUG_SKIP_TAG)[0]
 
 
-def mark_shutdown_skipped(state_dir: Path, key: str) -> None:
-    _store(state_dir).set("modes", "shutdown_skipped", key)
+# Appended to the stored key when debug mode wrote the skip (set_debug off clears only those).
+# A value without it - the mark, a press inside the countdown, or any older build - is kept.
+DEBUG_SKIP_TAG = "|debug"
+
+
+def mark_shutdown_skipped(state_dir: Path, key: str, by_debug: bool = False) -> None:
+    _store(state_dir).set("modes", "shutdown_skipped", key + (DEBUG_SKIP_TAG if by_debug else ""))
 
 
 
@@ -228,14 +237,13 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
     if off:
         store.pop("modes", "debug_until")
         # Turning it off by hand means "maintenance is over, back to normal", so
-        # the swallowed shutdown opportunity is cleared along with it; otherwise
+        # the opportunity debug mode swallowed is cleared along with it; otherwise
         # the machine idles powered on until the next queue finishes. **A
         # natural expiry does not clear it**: that is the "skip this one time"
-        # in shutdown_skipped. Only an explicit "turn it off" restores normal
-        # shutdown. The key is shared: an occasion skipped by a spent
-        # 「下次跑完不关机」 mark is released here too, so the next re-check may
-        # power off (see shutdown_skipped).
-        store.pop("modes", "shutdown_skipped")
+        # in shutdown_skipped. Only debug mode's own skip is released: one the
+        # spent 「下次跑完不关机」 mark recorded stays (see shutdown_skipped).
+        if str(store.get("modes", "shutdown_skipped") or "").endswith(DEBUG_SKIP_TAG):
+            store.pop("modes", "shutdown_skipped")
         return True, "调试模式已关闭，恢复正常运行（队列若被停用需另行恢复）"
     try:
         cycles = max(1, int(cycles))

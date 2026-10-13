@@ -10,6 +10,7 @@ records in the test window that it did, refuses the dispatch when it cannot, and
 test_off turns it off again only if this window turned it on.
 """
 import contextlib
+import inspect
 import io
 import json
 import sys
@@ -70,6 +71,25 @@ check("test-status says this window turned it on", "调试模式是这个窗口�
 rc, out = run(g.test_off)
 check("test-off: window closed", windows()[-1]["until"] is not None, True)
 check("test-off: debug mode off again", (rc, modes.debug_active(state)), (0, False))
+
+print("\n[10-13: the morning shift spent 「下次跑完不关机」 (key :3), then a test -> test-off keeps that skip]")
+state = setup()
+modes.mark_shutdown_skipped(state, "2026-10-13:3")       # what take_skip's caller writes
+run(g.start, "OK-WW", test=True)
+rc, out = run(g.test_off)
+check("test-off: debug mode off", (rc, modes.debug_active(state)), (0, False))
+check("test-off: the spent mark's skipped occasion is still there (no power-off after the test)",
+      modes.shutdown_skipped(state), "2026-10-13:3")
+
+print("\n[a skip debug mode itself recorded during the window -> test-off releases it]")
+state = setup()
+run(g.start, "OK-WW", test=True)
+can_tag = "by_debug" in inspect.signature(modes.mark_shutdown_skipped).parameters
+check("debug mode's own skip is told apart from the mark's", can_tag, True)
+if can_tag:
+    modes.mark_shutdown_skipped(state, "2026-10-13:4", by_debug=True)   # shutdown._maybe_shutdown, verdict "debug"
+    run(g.test_off)
+    check("test-off: debug mode's own skip is cleared", modes.shutdown_skipped(state), "")
 
 print("\n[debug already on -> left on, and not turned off at test-off]")
 state = setup()

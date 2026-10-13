@@ -158,8 +158,8 @@ dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
 E._shutdown_issued = False; issued.clear()
 check("调试模式生效中：不关机", E._maybe_shutdown(at(23, 0)), False)
 check("生效中没有发出关机命令", len(issued), 0)
-check("并且把这一次机会记下来了",
-      store.get("modes", "shutdown_skipped"), "2026-08-21:1")
+check("并且把这一次机会记下来了（标明是调试模式记的）",
+      store.get("modes", "shutdown_skipped"), "2026-08-21:1|debug")
 
 dbg_set(f"{real - timedelta(hours=1):%Y-%m-%d %H:%M}")
 E._shutdown_issued = False; issued.clear()
@@ -252,14 +252,19 @@ check("the run after that powers off as usual", E._maybe_shutdown(at(23, 50)), T
 check("…with exactly one power-off command", len(issued), 1)
 skipped_clear()
 
-print("\n[one-shot mark] debug mode turned off by hand releases an occasion the mark skipped")
+print("\n[one-shot mark] turning debug mode off keeps an occasion the mark skipped")
+# 2026-10-13: the mark was spent at 10:00:36; a test turned debug mode on and its
+# test-off turned it off again, which used to release the mark's skip and power the
+# machine off right after the test. The mark promised: on until the next shift ends.
 ledger(run)
 modes.set_skip_shutdown(STATE, True)
 E._shutdown_issued = False; issued.clear()
 check("debug-off: the mark is spent at K", E._maybe_shutdown(at(23, 0)), False)
+modes.set_debug(STATE, 1)
 modes.set_debug(STATE, off=True)
-check("debug-off: the skipped occasion is cleared", modes.shutdown_skipped(STATE), "")
-check("debug-off: the next re-check powers off", E._maybe_shutdown(at(23, 5)), True)
+check("debug-off: the mark's skipped occasion is kept", modes.shutdown_skipped(STATE), K)
+check("debug-off: the next re-check stays on", E._maybe_shutdown(at(23, 5)), False)
+check("debug-off: nothing issued", len(issued), 0)
 E._shutdown_issued = False; skipped_clear()
 
 print("\n[手机开关] 待办指令 skip_shutdown：手机上改仓库里那个文件")
