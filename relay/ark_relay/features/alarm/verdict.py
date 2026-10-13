@@ -79,11 +79,14 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
             if MAAEND_NOTHING_TO_RUN in text:
                 log.info("%s 是 AUTO-MAS 的收尾记录（没有可执行任务），不是一趟运行，不核对", rec.run_id)
                 return None
-            shots = _maaend_new_shots(eng.cfg.maaend_dir, rec.started)
+            # Bounded above like MAA's log: a round judged late must not take the
+            # later rounds' pictures and lines as its own.
+            until = rec.finished + timedelta(minutes=5) if rec.duration_known else None
+            shots = _maaend_new_shots(eng.cfg.maaend_dir, rec.started, until)
             # Read AUTO-MAS's history log together with MaaEnd's own app log:
             # the wrap-up marker only exists in the latter and task start/finish
             # only in the former, so missing either one misjudges the round.
-            app = _maaend_app_log(eng.cfg.maaend_dir, rec.started)
+            app = _maaend_app_log(eng.cfg.maaend_dir, rec.started, until)
             both = text + "\n" + app
             # Only with MaaEnd's own log in hand: the wrap-up line lives there, and
             # without it every run would look like one that did not exit.
