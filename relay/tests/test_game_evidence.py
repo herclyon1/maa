@@ -140,9 +140,9 @@ failed = ent("2026-10-05/endfield/MaaEnd-0", "MaaEnd", 8, 0, 4, ok=False, failed
 retry_bare = ent("2026-10-05/endfield/MaaEnd-3", "MaaEnd", 8, 10, 2,
                  raw={"tasks_done": ["转交委托"], "tasks_evidence": {"转交委托": ""}})
 check("重试只有「任务完成」：不说做成了", core.retried_notes([failed, retry_bare])[failed["run_id"]],
-      "转交委托　后来在 08:12 那趟重试里程序说做完了，但没证据，不算完成")
+      "转交委托　后来在 08:10（东京 09:10）开始的那趟重试里程序说做完了，但没证据，不算完成")
 retry_ev = dict(retry_bare, raw={"tasks_done": ["转交委托"], "tasks_evidence": {"转交委托": "获得 信用 ×100"}})
-check("重试有读数：做成了", core.retried_notes([failed, retry_ev])[failed["run_id"]], "转交委托　后来在 08:12 那趟重试里做成了")
+check("重试有读数：做成了", core.retried_notes([failed, retry_ev])[failed["run_id"]], "转交委托　后来在 08:10（东京 09:10）开始的那趟重试里做成了")
 
 print("\n[明日方舟剿灭：没读到「剿灭模式 x/y」不算打满]")
 anni = ent("2026-10-05/arknights/MAA-1", "MAA", 21, 30, 20, raw={"annihilation": True, "annihilation_done": True})

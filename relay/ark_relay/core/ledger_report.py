@@ -237,13 +237,15 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
             # Every task the record does name still has to be in that success.
             named = {t for t in want if "超时" not in t}
             if (named != want and named <= done) or want <= done:
-                when = str(later.get("finished") or "")[11:16]
+                # By start time on both clocks, the way the run's own line is labelled.
+                st = datetime.fromisoformat(later["started"])
+                when = f"{_hm(st)}（东京 {st.astimezone(USER_TZ):%H:%M}）开始的"
                 # A MaaEnd retry's 「任务完成」 with nothing from the game is not
                 # 「做成了」; the day's title counts it as unverified.
                 bare = named & set(maaend_unverified(later.get("raw") or {})) if later.get("script") == "MaaEnd" else set()
                 got = "程序说做完了，但没证据，不算完成" if bare else "做成了"
                 out[e["run_id"]] = ("、".join(sorted(want))
-                                    + f"　后来在 {when} 那趟重试里{got}")
+                                    + f"　后来在 {when}那趟重试里{got}")
                 break
     return out
 

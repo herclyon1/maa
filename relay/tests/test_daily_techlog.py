@@ -288,7 +288,7 @@ retry = [run("r1", "MaaEnd", "09:20", 10, False, failed=["转交委托"], tasks_
              tasks_shot=["赠送干员礼物"]),
          run("r2", "MaaEnd", "09:40", 10, True, tasks_done=["转交委托"], tasks_shot=["转交委托"])]
 t_r, b_r = core.format_daily(TODAY, retry)
-check("正文写后来在哪一趟重试里做成了", "转交委托　后来在 09:50 那趟重试里做成了" in b_r, True)
+check("正文写后来在哪一趟重试里做成了", "转交委托　后来在 09:40（东京 10:40）开始的那趟重试里做成了" in b_r, True)
 check("标题写有项目重试后成功", t_r.endswith("全绿 ✅（有项目重试后成功）"), True)
 
 print("\n[红项的格式：读取工具按这个认（ac38f466 的格式）]")
