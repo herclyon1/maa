@@ -8,8 +8,9 @@ No deploy gate looked for this.
 
 What it checks. For every local branch and every origin/* ref (main and HEAD excluded),
 take the commits that `git cherry origin/main <ref>` would mark "+" - not merged, and no
-commit with the same patch in main - whose diff touches relay/ or scripts/windows/ (the
-code that ships to the machine). Each one must be listed in docs/UNMERGED-REVIEWED.txt:
+commit with the same patch in main - whose diff touches a file that ships to the machine
+(PATHS: what relay/make-manifest.py puts in the manifest, and scripts/windows/). Each one
+must be listed in docs/UNMERGED-REVIEWED.txt:
 
     <hash8> <a|b|declined> <one-line reason>
 
@@ -44,7 +45,14 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-PATHS = ("relay", "scripts/windows")
+# The files that reach the machine. relay/make-manifest.py lists ark_relay/** (.py and .txt),
+# the top-level relay/*.py except itself, and RELEASE-NOTES.md; scripts/windows/ is copied to
+# the machine as well. A commit touching only relay/tests/ (or the manifest tool) never ships,
+# so it is not an unmerged relay fix: until 2026-10-13 all of relay/ was the pathspec, and the
+# day-replay test commits under relay/tests/daysim/ were counted. `glob` magic, so `*` stops at
+# a `/` (a plain pathspec's `relay/*.py` also matches relay/tests/x.py).
+PATHS = (":(glob)relay/ark_relay/**/*.py", ":(glob)relay/ark_relay/**/*.txt", ":(glob)relay/*.py",
+         ":(exclude)relay/make-manifest.py", "relay/RELEASE-NOTES.md", "scripts/windows")
 BASE_REFS = ("origin/main", "HEAD")
 SKIP_REFS = {"refs/heads/main", "refs/remotes/origin/main", "refs/remotes/origin/HEAD"}
 LINE = re.compile(r"^([0-9a-f]{8})\s+(a|b|declined)\s+(\S.*)$")
@@ -95,7 +103,7 @@ def read_reviewed(path: pathlib.Path) -> "tuple[dict[str, str], list[str]]":
 
 
 def candidates(root: pathlib.Path) -> "list[tuple[str, str, str]]":
-    """(commit, ref, subject) for each commit not in the base that touches PATHS."""
+    """(commit, ref, subject) for each commit not in the base that touches a file in PATHS."""
     refs = [r for r in git(root, "for-each-ref", "--format=%(refname)",
                            "refs/heads", "refs/remotes/origin").split()
             if r not in SKIP_REFS]

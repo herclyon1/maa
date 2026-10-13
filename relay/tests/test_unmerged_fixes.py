@@ -6,7 +6,10 @@ origin/main is the baseline commit:
   - a branch commit touching relay/ that is not in main and not listed blocks (exit 1),
     and the output names its branch, hash and subject;
   - the same commit listed in the review file passes;
-  - a docs-only commit on a branch is ignored;
+  - a docs-only commit on a branch is ignored, and so is one that touches only files
+    that never reach the machine: relay/tests/ and relay/make-manifest.py (make-manifest.py
+    ships relay/ark_relay/**/*.py|*.txt, relay/*.py and RELEASE-NOTES.md); a top-level
+    relay/*.py commit still blocks (2026-10-13: the daysim test commits were counted);
   - a commit whose patch is already in main (cherry-picked: `git cherry` says "-") is
     ignored, and so is a commit on HEAD (the deploy pushes HEAD to main);
   - a malformed review line (unknown verdict) fails closed;
@@ -85,6 +88,11 @@ with tempfile.TemporaryDirectory() as d:
     fix = commit(base, "relay/ark_relay/x.py", "A = 2\n", "relay: the fix nobody merged")
     git("checkout", "-qb", "docs-branch", "main", cwd=base)
     commit(base, "docs/NOTE.md", "note\n", "docs only")
+    git("checkout", "-qb", "tests-branch", "main", cwd=base)
+    commit(base, "relay/tests/daysim/test_day.py", "T = 1\n", "tests only")
+    commit(base, "relay/make-manifest.py", "M = 1\n", "manifest tool only")
+    git("checkout", "-qb", "top-branch", "main", cwd=base)
+    top = commit(base, "relay/boot_x.py", "D = 1\n", "relay: a top-level module fix")
     git("checkout", "-qb", "picked-branch", "main", cwd=base)
     picked = commit(base, "scripts/windows/w.py", "B = 1\n", "windows: picked into main")
     git("checkout", "-q", "main", cwd=base)
@@ -101,10 +109,14 @@ with tempfile.TemporaryDirectory() as d:
     check("the output names branch, hash and subject",
           f"fix-branch  {fix[:8]}  relay: the fix nobody merged" in out, True)
     check("the docs-only commit is not listed", "docs only" in out, False)
+    check("commits touching only relay/tests/ or make-manifest.py are not listed",
+          ("tests only" in out, "manifest tool only" in out), (False, False))
+    check("a top-level relay/*.py commit is listed", f"top-branch  {top[:8]}" in out, True)
     check("the cherry-equivalent commit is not listed", picked[:8] in out, False)
-    check("exactly one commit blocks", "1 relay commit(s)" in out, True)
+    check("exactly two commits block", "2 relay commit(s)" in out, True)
 
-    rc, out = run(base, f"# reviewed\n{fix[:8]} declined DECISIONS D-1011 test\n")
+    rc, out = run(base, f"# reviewed\n{fix[:8]} declined DECISIONS D-1011 test\n"
+                        f"{top[:8]} declined DECISIONS D-1011 test\n")
     check("the same commit, listed, passes", rc, 0)
 
     rc, out = run(base, f"{fix[:8]} maybe not sure\n")
@@ -113,7 +125,7 @@ with tempfile.TemporaryDirectory() as d:
     check("a verdict without a reason fails closed", rc, 1)
 
     git("checkout", "-q", "fix-branch", cwd=base)
-    rc, out = run(base, "")
+    rc, out = run(base, f"{top[:8]} declined DECISIONS D-1011 test\n")
     check("a commit on HEAD (pushed to main by this deploy) does not block", rc, 0)
 
 deploy = (ROOT / "scripts/mac/deploy-relay.sh").read_text(encoding="utf-8")
