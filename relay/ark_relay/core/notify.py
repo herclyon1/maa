@@ -361,6 +361,7 @@ _LOG_ONLY_PREFIXES = (
     "⏭️ 跳过模式",              # acknowledgement of a phone order
     "🛑 已停一切",              # acknowledgement of the phone's estop
     "📱 配置已修改",             # acknowledgement of a phone order
+    "⚙️ 配置已更新",             # texts.INBOX_APPLIED: our own order.sh batch, all through (a ✗ is 📱 配置没改成)
     "🗂️ 证据包已送出机器",       # bookkeeping behind a failure the alarm already reported
     "✅ 自动采集：补跑后全部走完",
     # Failures are never on this list. texts.COLLECT_RETRY_START is not sent at

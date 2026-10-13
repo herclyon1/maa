@@ -10,15 +10,6 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
 `NEXT-BOOT.md` keeps only "the first thing to do at the next boot".
 
 ## Todo
-- [ ] **daysim-R2: 「⚙️ 配置已更新：…」 has no row in docs/NOTIFICATIONS.md (added 2026-10-13, due 2026-10-20).**
-      Day replays 2026-10-12 (`events.jsonl` lines 15, 461) and 2026-10-13 (lines 245, 278): the inbox receipt
-      (`phone/inbox.py`, sent from `boot_stages.py`) is routed `info` (Server酱) by `notify.route_of`, as the machine
-      did, but the title is missing from the title -> route table, and NOTIFICATIONS.md lines 77/97 (de038830,
-      docs-only) describe these receipts as log-only. Decision owed: should our own `order.sh` orders reach his
-      Server酱 (「测试不进他眼」)? Yes -> add the table row `⚙️ 配置已更新 | info` and fix line 77, then add the
-      pushes to the two days' expected.json (reviewed, sourced); no -> add the title to `_LOG_ONLY_PREFIXES`
-      (`notify.py`). Either way a batch with `✗` lines must still be pushed. Listed in
-      `relay/tests/daysim/known-red.json`; remove those entries with the fix.
 - [ ] **Endfield version-briefing parser has only one sample (added 2026-10-08, due 2026-11-05).**
       `banners.ef_briefing_banners` reads the official version briefing (bulletin cid 2183 ->
       endfield.hypergryph.com/version_briefing/latest -> content script, JSON.parse blocks). Only the v1d6 page
@@ -196,6 +187,11 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
 
 ## Done (kept around for a while so the same question is not asked twice)
 
+- [x] **daysim-R2: 「⚙️ 配置已更新：…」 had no row in docs/NOTIFICATIONS.md** (found 2026-10-13 by the day
+      replays of 2026-10-12 / 10-13; decided by 验收 and fixed 2026-10-13): the receipt of our own order.sh batch
+      that went through is log only (`notify._LOG_ONLY_PREFIXES`, texts.INBOX_APPLIED); one with a ✗ line is
+      「📱 配置没改成：<name>」 to the group, like a failed phone order (`inbox.receipt_failed`,
+      `boot_stages._make_collect`, `relay/tests/test_inbox_poll.py`). Rows in NOTIFICATIONS.md; known-red entries gone.
 - [x] **daysim-R1: machine check #59 contradicted the 10-10 WMI routing rule** (found 2026-10-13 by the day
       replay of 2026-10-06; fixed 2026-10-13): #59 now checks what procwatch does since 324b640b - a drop that
       came back by itself is pushed to the group once (or, when the outage was already pushed, its end line is

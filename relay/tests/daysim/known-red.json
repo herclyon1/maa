@@ -1,25 +1,4 @@
 {
  "_doc": "Days red only because of reported relay bugs; rules in knownred.py. Must shrink to empty: an entry whose report is closed, that expired, or that no longer matches exactly `count` lines stops the day gate.",
- "entries": [
-  {
-   "day": "2026-10-12",
-   "bug": "daysim-R2",
-   "report": "docs/BACKLOG.md",
-   "added": "2026-10-13",
-   "expires": "2026-10-20",
-   "count": 2,
-   "excuses": ["^strict: no entry expects push serverchan \\S+ '⚙️ 配置已更新："],
-   "why": "inbox receipts at 08:45 and 14:23 go to Server酱; no NOTIFICATIONS.md row decides whether they should"
-  },
-  {
-   "day": "2026-10-13",
-   "bug": "daysim-R2",
-   "report": "docs/BACKLOG.md",
-   "added": "2026-10-13",
-   "expires": "2026-10-20",
-   "count": 2,
-   "excuses": ["^strict: no entry expects push serverchan \\S+ '⚙️ 配置已更新："],
-   "why": "inbox receipts at 11:24 and 11:53 go to Server酱; no NOTIFICATIONS.md row decides whether they should"
-  }
- ]
+ "entries": []
 }

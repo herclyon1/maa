@@ -337,5 +337,75 @@ finally:
     inbox.urllib.request.urlopen = _real_urlopen
     inbox.log.removeHandler(_lines)
 
+print("\n[the receipt of an order.sh batch: all through -> log only; any ✗ -> the group, with the ✗ lines]")
+# CLAUDE.md 「测试不进他眼」 and docs/NOTIFICATIONS.md (the 「Config command applied」 row, de038830):
+# our own order.sh orders are not his business when they went through. Until 2026-10-13 every
+# receipt went to his Server酱 (route info; day replay 2026-10-12 / 10-13, BACKLOG daysim-R2).
+# A failed one takes the phone's failure route (texts.CONFIG_FAILED, alert=True, the group),
+# never the log list's 「⚙️ 配置已更新」 title, which route_of would keep out of the group.
+import types as _types  # noqa: E402
+
+
+class _Stub(_types.ModuleType):
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return lambda *a, **k: None
+
+
+for _name in ("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
+              "servicemanager", "win32process", "pythoncom"):
+    sys.modules.setdefault(_name, _Stub(_name))
+import logging  # noqa: E402
+
+import boot_stages  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.core.notify import route_of  # noqa: E402
+
+
+class _Note:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body="", alert=False, **_k):
+        self.sent.append((title, body, alert))
+        return []
+
+
+def collected(payload, lines):
+    """One collect('boot') over a batch whose commands answer `lines` (None: _apply raises)."""
+    b = box(payload)
+    if lines is None:
+        b._apply = lambda cmds: (_ for _ in ()).throw(OSError("盘满了"))
+    else:
+        b._apply = lambda cmds: list(lines)
+    n = _Note()
+    engine = _types.SimpleNamespace(scripts_running=lambda: False)
+    boot_stages._make_collect(b, engine, n, logging.getLogger("ark.test_inbox_poll"), [False])("boot")
+    check("one send", len(n.sent), 1)
+    return n.sent[0] if n.sent else ("", "", False)
+
+
+# relay.log 10-12 08:46 (day replay 2026-10-12 events.jsonl line 15): the debug-mode order, through.
+DEBUG_OK = ("✅ 🔧 调试模式已开启，至 10-12 21:10（下次预定开机 10-12 21:20 前 10 分钟）：不关机。"
+            "注意：要让机器什么都不刷，还需停用相应队列。")
+title, body, alert = collected({"version": 2026101201, "name": "调试模式", "note": "从电脑发来的指令：调试模式",
+                                "commands": [{"action": "debug_mode"}]}, [DEBUG_OK])
+check("all through: the title is the receipt", title, "⚙️ 配置已更新：调试模式")
+check("all through: log only, not his Server酱", route_of(title, alert=alert), "log")
+# relay.log 10-12 12:10 (events.jsonl line 461): an empty batch, the safe state.
+title, body, alert = collected({"version": 2026101202, "name": "空（安全状态）", "commands": []}, [])
+check("an empty batch: log only", route_of(title, alert=alert), "log")
+FAILED = "✗ set_stage: 「YW-4」MAA 走不到，修改失败"
+title, body, alert = collected({"version": 2026101203, "name": "改关卡", "commands": [{}, {}]}, [DEBUG_OK, FAILED])
+check("a ✗ line: the phone's failure title, with the batch name", title, f"{texts.CONFIG_FAILED}：改关卡")
+check("a ✗ line: the group", route_of(title, alert=alert), "group")
+check("the push carries the failed line", FAILED in body, True)
+title, body, alert = collected({"version": 2026101204, "name": "会炸的一批", "commands": [{}]}, None)
+check("broken mid-batch: the group", route_of(title, alert=alert), "group")
+check("broken mid-batch: says so", "应用中途出错" in body, True)
+check("the receipt title is log only even with alert=True, so a failure must not use it",
+      route_of("⚙️ 配置已更新：x", alert=True), "log")
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
