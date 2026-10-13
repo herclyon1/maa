@@ -622,11 +622,28 @@ class Desktop:
         return bool(data.get("ok"))
 
 
-def kill(*names: str) -> None:
-    """taskkill a few process names; not being there is not an error."""
+# taskkill's exit code when no process has that image name: not being there is not
+# an error here. Any other non-zero code (1 = access denied) is a kill that failed.
+_TASKKILL_NOT_FOUND = 128
+
+
+def kill(*names: str) -> bool:
+    """taskkill a few process names; not being there is not an error.
+
+    False when any of them could not be ended; each such one is a WARNING with
+    taskkill's own words. Until 2026-10-13 every result was dropped, so an
+    「access denied」 read like a kill that worked (review, s5 #8)."""
+    ok = True
     for name in names:
         try:
-            subprocess.run(["taskkill", "/F", "/IM", name],
-                           capture_output=True, timeout=30)
-        except (OSError, subprocess.SubprocessError):
-            pass
+            r = subprocess.run(["taskkill", "/F", "/IM", name],
+                               capture_output=True, timeout=30)
+        except (OSError, subprocess.SubprocessError) as exc:
+            log.warning("结束 %s 的命令没能运行：%s", name, exc)
+            ok = False
+            continue
+        if r.returncode not in (0, _TASKKILL_NOT_FOUND):
+            out = ((r.stdout or b"") + (r.stderr or b"")).decode("gbk", "replace").strip()
+            log.warning("结束 %s 没成功（退出码 %s）：%s", name, r.returncode, out)
+            ok = False
+    return ok
