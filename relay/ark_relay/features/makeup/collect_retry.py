@@ -35,7 +35,7 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 log = logging.getLogger("ark.collect_retry")
@@ -50,6 +50,9 @@ _TAG = re.compile(r"<[^>]+>")
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 # Consecutive days a route has to fail its retry to count as recurrent.
 RECURRENT_DAYS = 2
+# A retry stamp without `finished` older than this was cut off mid-retry: run_retry's
+# own timeout (1200 s) plus its start-up waits (about 12 min) plus an hour's margin.
+STAMP_STALE = timedelta(minutes=1200 // 60 + 12 + 60)
 
 
 # ----------------------------------------------------------------- parsing
@@ -354,7 +357,18 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
     if not parts:
         return {r: None for r in routes}, "MaaEnd 的日志里找不到上一趟采集的参数，不敢自己编，这次不补跑"
     override = build_override(parts, routes, weekday)
+    try:
+        return _bring_up_and_run(maaend_dir, routes, override, spawn=spawn, timeout=timeout, evidence=evidence)
+    finally:
+        # Every way out, the early "gave up" returns and a raise included, closes
+        # what this started (s16 #2): nothing else runs MaaEnd after the queue.
+        _kill("MaaEnd.exe")
+        _kill("Endfield.exe")
 
+
+def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, spawn, timeout: int,
+                      evidence: "dict | None") -> tuple[dict[str, bool | None], str]:
+    debug = maaend_dir / "debug"
     global MXU  # noqa: PLW0603 - the port is discovered per launch
     if "MaaEnd.exe" in _running(("MaaEnd.exe",)):
         MXU = f"http://127.0.0.1:{mxu_port(maaend_dir)}/api"
@@ -417,8 +431,6 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
     verdict = judge(text, routes, since)
     if evidence is not None:
         evidence["nodes"] = node_lines(text, routes, since)
-    _kill("MaaEnd.exe")
-    _kill("Endfield.exe")
     return verdict, ("补跑超时，已停掉" if not done else "")
 
 
@@ -484,9 +496,29 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     stamp = state_dir / "collect-retry" / f"{day}.json"
     if back := restore_master(cfg):
         log.info("自动采集补跑：%s", back)
+    cut_off = ""
     if stamp.exists():
-        log.info("自动采集补跑：%s 已经跑过（%s）", day, stamp)
-        return False
+        try:
+            prev = json.loads(stamp.read_text(encoding="utf-8"))
+            begun = datetime.fromisoformat(prev["started"])
+        except (OSError, ValueError, TypeError, KeyError):
+            prev, begun = {"finished": "?"}, now
+        # The stamp is written before the retry runs. One without `finished` long past
+        # any retry's length means the relay stopped mid-retry (s16 #2): MaaEnd and
+        # the game were left up and no verdict was ever given. Run it once more.
+        if "finished" in prev or now - begun < STAMP_STALE:
+            log.info("自动采集补跑：%s 已经跑过（%s）", day, stamp)
+            return False
+        if prev.get("cut_off"):
+            atomic_write_text(stamp, json.dumps(dict(prev, finished=now.isoformat(),
+                                                     note="补跑两次都没跑完"), ensure_ascii=False))
+            log.warning("自动采集补跑：%s 开始的补跑又没跑完（中继中途停了），今天不再补；没走通的路线：%s",
+                        prev.get("started"), "、".join(prev.get("routes") or []))
+            return False
+        cut_off = str(prev.get("started"))
+        log.warning("自动采集补跑：%s 开始的补跑没跑完（中继中途停了），关掉留下的 MaaEnd 和游戏，再补一次", cut_off)
+        _kill("MaaEnd.exe")
+        _kill("Endfield.exe")
     if not cfg.maaend_dir or not cfg.history_dir:
         log.info("自动采集补跑：没配 MaaEnd 目录或历史目录，不跑")
         return False
@@ -514,7 +546,7 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
         return False
     stamp.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(stamp, json.dumps({"run_id": last["run_id"], "routes": routes,
-                                         "started": now.isoformat()}))
+                                         "started": now.isoformat(), "cut_off": cut_off}))
     names = "、".join(route_label(r, zh) for r in routes)
     # The start is logged, not pushed (USER-SWITCHES.txt, collect_retry.py:maybe_run):
     # routes still failing after the retry go to the group below; all walked goes to
