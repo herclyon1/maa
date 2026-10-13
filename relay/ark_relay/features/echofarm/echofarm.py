@@ -208,8 +208,8 @@ def quiet_minutes(now: datetime | None = None, since: "datetime | None" = None) 
     the file's mtime: a stuck game is noisy, and noise is not progress.
 
     `since` is when this launch began (the run record's `restarted`, else `started`).
-    When the tail holds no progress line at all, the farm has got nowhere since at
-    least then, so the quiet time is measured from it. The file's mtime cannot stand
+    When the tail holds no progress line since then, the farm has got nowhere since
+    at least then, so the quiet time is measured from it. The file's mtime cannot stand
     in: a game stuck in a retry loop logs 20-39 KB a minute, so the 300 KB tail spans
     only 8-35 minutes and the file is always fresh - quiet read about 0 and neither
     the restart nor the stall stop ever fired. Without `since`, the first timestamp
@@ -243,6 +243,12 @@ def quiet_minutes(now: datetime | None = None, since: "datetime | None" = None) 
         last = since or first
         if last is None:
             return None
+    elif since is not None and last < since:
+        # Progress from an earlier session in the same day's file says nothing about
+        # this launch. 10-12: farm started 15:23 after a morning run; its log, cut
+        # at 15:25:32 and read with a 15:28 restart at 15:33:30, gave 225.6 minutes
+        # from an 11:47 line instead of 5.5 from the restart.
+        last = since
     return (now - last).total_seconds() / 60.0
 
 

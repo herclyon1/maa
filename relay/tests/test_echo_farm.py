@@ -416,6 +416,28 @@ try:
 finally:
     _wb2._okww_log = _real2
 
+print("\n[an earlier session's progress in the same file does not count for this launch]")
+# 2026-10-13 review replay: the machine's real ok-script.2026-10-12.log, cut at
+# 15:25:32 (the farm launched 15:23 after a morning run whose last progress line is
+# 11:47:53). Read with a 15:28 restart at 15:33:30, quiet was 225.6 minutes - past
+# STALL_MINUTES, a failed stop for a farm 10 minutes old.
+import gzip as _gz                                                                 # noqa: E402
+_day = tmpdir() / "ok-script.2026-10-12.log"
+_day.write_bytes(_gz.decompress((Path(__file__).resolve().parent / "fixtures"
+                                 / "ok-script-2026-10-12-cut-152532.log.gz").read_bytes()))
+_real4 = _wbw._okww_log
+_wbw._okww_log = lambda: _day
+try:
+    _q = echofarm.quiet_minutes(datetime(2026, 10, 12, 15, 33, 30, tzinfo=SERVER_TZ),
+                                datetime(2026, 10, 12, 15, 28, tzinfo=SERVER_TZ))
+    check("measured from the 15:28 restart, not the 11:47 line", round(_q, 1), 5.5)
+    check("…so below the stall stop", _q < echofarm.STALL_MINUTES, True)
+    _q0 = echofarm.quiet_minutes(datetime(2026, 10, 12, 15, 25, 40, tzinfo=SERVER_TZ),
+                                 datetime(2026, 10, 12, 15, 23, tzinfo=SERVER_TZ))
+    check("two minutes into the launch reads two minutes", round(_q0, 1), 2.7)
+finally:
+    _wbw._okww_log = _real4
+
 print("\n[进度关键词：只认今天真的会写出来的句子]")
 # Real lines: OK-WW v3.7.3's from tests/replay/2026-09-07/wuwa/OK-WW-06-00-55.log
 # (lines 168, 226, 275), the overrides' copied from their log_info calls.
