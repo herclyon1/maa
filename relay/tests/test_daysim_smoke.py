@@ -115,7 +115,7 @@ check("a boot without the network fakes refuses to start the relay", refused)
 corpus = W.CORPUS_ROOT / "2026-10-12"
 owner_mac = sys.platform == "darwin" and (Path.home() / "Claude" / "maa-automation").is_dir()
 if (corpus / "manifest.json").exists():
-    import run  # noqa: E402
+    import run
     out = tmpdir("daysim-smoke-")
     r = run.run_day("2026-10-12", code=W.RELAY, until="09:20", out_root=out)
     o = json.loads((out / "2026-10-12" / "outputs.json").read_text(encoding="utf-8"))

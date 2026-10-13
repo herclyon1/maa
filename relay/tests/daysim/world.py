@@ -170,7 +170,7 @@ def _order(it: dict) -> int:
 
 def plan_boots(events: list[dict], seed: dict, until: "float | None" = None) -> list[dict]:
     """The relay's lives this day: each relay_start up to its relay_stop."""
-    t0, t1 = epoch(seed["t0"]), epoch(seed["t1"])
+    t1 = epoch(seed["t1"])
     end_of_day = min(t1, until) if until else t1
     starts = sorted((e for e in events if e["kind"] == "relay_start"), key=lambda e: epoch(e["t"]))
     stops = sorted((e for e in events if e["kind"] == "relay_stop"), key=lambda e: epoch(e["t"]))
@@ -207,18 +207,17 @@ def tpath(tree: Path, machine_path: str) -> Path:
     return tree / drive.upper() / rest.lstrip("/")
 
 
-_libc = None
+_LIBC: list = []
 
 
 def clone(src: Path, dst: Path) -> None:
     """APFS clonefile (no data copied: the disk is nearly full); a plain copy elsewhere."""
-    global _libc
     dst.parent.mkdir(parents=True, exist_ok=True)
     if dst.exists() or dst.is_symlink():
         dst.unlink()
-    if _libc is None:
-        _libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
-    fn = getattr(_libc, "clonefile", None)
+    if not _LIBC:
+        _LIBC.append(ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True))
+    fn = getattr(_LIBC[0], "clonefile", None)
     if fn is None or fn(os.fsencode(src), os.fsencode(dst), 0) != 0:
         shutil.copyfile(src, dst)
 
@@ -371,6 +370,9 @@ class World:
         self.cos_dir = tree / "_sim" / "cos"
         for f in self.cos_dir.glob("*") if self.cos_dir.is_dir() else []:
             self.net.cos[urllib.parse.unquote(f.name)] = f.read_bytes()
+        # FakeNet numbers ids from 1 in every process; the relay keeps the ids it has
+        # handled across boots and days, so each boot process starts its own range.
+        self.net._ids = int(boot["start"]) % 10**8 * 10
         self.tasks: list[dict] = []
         self.host = None
         self.stopping = False
@@ -607,7 +609,14 @@ class World:
             self.note("phone order not rebuilt", action=ev.get("action"), src=ev.get("src"))
             return
         sent = int(epoch(ev.get("sent") or ev["t"]))
-        self.net.phone_order(epoch(ev["t"]), body, PHONE_PIN, PHONE_TOPIC, ts=sent)
+        # The recorded ntfy id: the same message in every boot process and across days,
+        # as on ntfy, so the relay's own seen-list (mailbox.py) recognises it.
+        if ev.get("id"):
+            self.net.next_id = lambda: str(ev["id"])
+        try:
+            self.net.phone_order(epoch(ev["t"]), body, PHONE_PIN, PHONE_TOPIC, ts=sent)
+        finally:
+            self.net.__dict__.pop("next_id", None)
 
     def _inbox(self, ev: dict, live: bool) -> None:
         doc = inbox_doc(ev)
