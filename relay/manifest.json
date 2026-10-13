@@ -1,8 +1,8 @@
 {
- "version": 20261013135308,
- "ref": "relay-20261013135308",
+ "version": 20261013143839,
+ "ref": "relay-20261013143839",
  "files": {
-  "RELEASE-NOTES.md": "54750c5679634b74a99d0cae96e565706356c3a8",
+  "RELEASE-NOTES.md": "bf011416df019f14e85b562db1aed440bc9a89cd",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "efbdc0039c54560cd1e564414bb64eb3a3df7422",
@@ -138,7 +138,7 @@
   "ark_relay/features/selfupdate/__init__.py": "de7e7c29c70a617c5ec13c10abf9feba04c8c5b3",
   "ark_relay/features/selfupdate/selfupdate.py": "076c817e27dc23baba1c807c44b61ee17973c8d7",
   "ark_relay/features/shutdown/__init__.py": "f4c05acefb01bba2f653dfd0b19393c92980235d",
-  "ark_relay/features/shutdown/shutdown.py": "a926b972797ad7d2dca042b3f5cb6adfc40f7878",
+  "ark_relay/features/shutdown/shutdown.py": "9fca4b5acb8e5285b1866afeb56af5b34095425e",
   "ark_relay/features/verify/__init__.py": "8f81e56cb6b307048cca4c0b979e29cbc1e68ae5",
   "ark_relay/features/verify/collector_maa.py": "48835a320ed01b8a7104610d57f686a97feec3a5",
   "ark_relay/features/verify/collector_maaend.py": "3a463f086d50fcbe5c86154da80e0b04ba67e16e",
@@ -160,7 +160,7 @@
   "watchdog_guard.py": "cc505fe57c4c2923be2003c8fe5a4f0a47b0d887"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "e110226a0a7bd0f19a8e7ca4f7bde7d8656ba7e54c91632495b5a25f0f9e5534",
+  "RELEASE-NOTES.md": "7c72e853049e421770ef9a4245c40b9338d17dba8b58328d9f4cbc7b0c9f5e6f",
   "app_main.py": "9a2bad4ee77f639044a37a362cd0630827e0ff1b87978e4caeb7898972cdc682",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "2b70cedda9a2b285439a76b3e17c5f50a728d313f1c580460e15f0b7d84cd318",
@@ -296,7 +296,7 @@
   "ark_relay/features/selfupdate/__init__.py": "5ab717977864113819e9c55a24f077182d90e83b15851cdccaf74984e496d118",
   "ark_relay/features/selfupdate/selfupdate.py": "5b9b9671719b4cd4a4c262472c6bc4ffc99ecfa452f882df0e8262076dc770d2",
   "ark_relay/features/shutdown/__init__.py": "9e83cbd3c92b7e4898f3c353e9152d134efb0987577af8e83fac3e98fcd3b6cd",
-  "ark_relay/features/shutdown/shutdown.py": "8ed973b63c00ccf4543eb5c888fc7d26c6b511525bea53c164e5b10acf0243f7",
+  "ark_relay/features/shutdown/shutdown.py": "168b01f25b9d96233520e7a69a2d6546c12d1575217bfb71abba0e39a2eab13c",
   "ark_relay/features/verify/__init__.py": "65ab89a26e72a29cdcf81d1302b904fa588665a51d2e744c2dd0c79561f8d5cb",
   "ark_relay/features/verify/collector_maa.py": "df235c8f73faf7cb95612424947ff11945156625fd02f40e67601082316c83de",
   "ark_relay/features/verify/collector_maaend.py": "9aab6278e2549f3f1e9271c9e780f050769952e90cecee52e33d3e7b29026456",
