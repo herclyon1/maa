@@ -342,15 +342,30 @@ def forever():
         ended.append("stopped")
 
 
+hooked = []
+threading.excepthook = lambda args: hooked.append(args.exc_type.__name__)   # the relay's own hook
+cv2 = threading.Condition()
+
+
+def cv_forever():
+    with cv2:
+        cv2.wait()                     # no try: SimStopped unwinds through `with`
+
+
+def parked(name):
+    return any(r.state == "park" for r in simclock._st.recs.values() if r.name == name) or None
+
+
 t = spawn("forever", forever)
-simclock.park(None, lambda: any(r.state == "park" for r in simclock._st.recs.values()
-                                 if r.name == "forever") or None)
+t2 = spawn("cv-forever", cv_forever)
+simclock.park(None, lambda: parked("forever") and parked("cv-forever"))
 simclock.stop()
 for _ in range(300):
-    if not t.is_alive():
+    if not (t.is_alive() or t2.is_alive()):
         break
     R.sleep(0.01)
-check("the parked helper got SimStopped and ended", (ended, t.is_alive()), (["stopped"], False))
+check("the parked helpers got SimStopped and ended", (ended, t.is_alive(), t2.is_alive()), (["stopped"], False, False))
+check("their exit reached no excepthook (nor a relay alarm)", hooked, [])
 before = simclock.now()
 time.sleep(100)
 check("a main-thread wait after stop() moves nothing", simclock.now(), before)

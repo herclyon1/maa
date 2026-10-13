@@ -89,7 +89,8 @@ class SimError(RuntimeError):
 
 
 class SimStopped(SystemExit):
-    """Raised in a helper's sim wait after stop(); threading drops SystemExit silently."""
+    """Raised in a helper's sim wait after stop(). stop() makes threading.excepthook skip
+    it (the default hook only skips SystemExit itself, not subclasses)."""
 
 
 class _Rec:
@@ -156,11 +157,13 @@ def park(timeout: float | None = None, ready=None, *, on=None):
     """Sim wait for the calling thread.
 
     Returns the first value of `ready()` that is not None / False, or False when
-    `timeout` sim seconds pass (None = no deadline). `ready` must be cheap and must
-    not block: the scheduler calls it under its own lock, from any thread, and the
-    value it returns is handed to the waiter exactly once (an auto-reset handle may
-    reset itself inside it). On the main thread this drives the clock; on a helper
-    it parks. `on` names the object waited on, for poke(on).
+    `timeout` sim seconds pass (None = no deadline); 0 counts as a value. `ready` is
+    called under the scheduler's own (non-reentrant) lock, from whichever thread
+    evaluates it (the driver, a notifier, a lock releaser), and the value it returns
+    is handed to the waiter exactly once (an auto-reset handle may reset itself
+    inside it). So it must be cheap, must not block, must not raise, and must not
+    take a threading lock, log, notify or call poke(). On the main thread this drives
+    the clock; on a helper it parks. `on` names the object waited on, for poke(on).
     """
     if not _st.installed:
         raise RuntimeError("simclock.install() has not run")
@@ -231,7 +234,15 @@ def to_sim(real_ns: int) -> int | None:
 
 def stop() -> None:
     """End of the run: every parked helper is released with SimStopped, later helper
-    waits raise it, main-thread waits return at once without moving time."""
+    waits raise it, main-thread waits return at once without moving time. Lock waits
+    become real waits, so `with` blocks and finally clauses unwind cleanly."""
+    prev = threading.excepthook        # the hook in place now, the relay's own if it set one
+
+    def hook(args):
+        if not issubclass(args.exc_type, SimStopped):
+            prev(args)
+
+    threading.excepthook = hook
     with _st.lock:
         _st.stopped = True
         for rec in list(_st.recs.values()):
@@ -572,6 +583,8 @@ class SimLock:
             return False
         if timeout < 0 and timeout != -1:
             raise ValueError("timeout value must be a non-negative number")
+        if _st.stopped:
+            return self._lock.acquire(True, timeout)
         with _st.lock:
             self._nwait += 1
         try:
