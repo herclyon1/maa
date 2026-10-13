@@ -152,7 +152,7 @@ def run_boot(spec: dict, spec_path: Path, log_path: Path) -> dict:
     env = {k: v for k, v in os.environ.items() if not k.startswith(("ARK_", "WECOM_", "COS_", "SERVERCHAN"))}
     env.update(W.env_for(Path(spec["tree"])))
     with open(log_path, "wb") as lf:
-        rc = subprocess.run([PY, "-I", str(HERE / "boot.py"), str(spec_path)], stdout=lf, stderr=subprocess.STDOUT,
+        rc = subprocess.run([PY, "-I", "-X", "utf8", str(HERE / "boot.py"), str(spec_path)], stdout=lf, stderr=subprocess.STDOUT,
                             env=env, cwd=str(spec["tree"]), check=False).returncode
     out = Path(spec["out"])
     if not out.exists():

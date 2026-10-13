@@ -157,6 +157,6 @@ jobs:
         run: python -m pip install --disable-pip-version-check pillow
       # RUNNER_TEMP is a Windows path (D:\a\_temp); Windows Python takes it with a / after it.
       - name: Unpack the light packs
-        run: python -I relay/tests/daysim/pack.py unpack "$RUNNER_TEMP/daysim-corpus"
+        run: python -I -X utf8 relay/tests/daysim/pack.py unpack "$RUNNER_TEMP/daysim-corpus"
       - name: Day gate on the packed days
-        run: DAYSIM_CORPUS="$RUNNER_TEMP/daysim-corpus" python -I relay/tests/daysim/gate.py --available
+        run: DAYSIM_CORPUS="$RUNNER_TEMP/daysim-corpus" python -I -X utf8 relay/tests/daysim/gate.py --available

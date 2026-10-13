@@ -40,7 +40,7 @@ MIN_FREE_GIB = 1.0
 def run(argv: list[str], log: Path) -> tuple[int, str]:
     """A run.py process; its output is echoed and returned."""
     t = time.perf_counter()
-    p = subprocess.run([PY, "-I", str(HERE / "run.py"), *argv], capture_output=True, text=True,
+    p = subprocess.run([PY, "-I", "-X", "utf8", str(HERE / "run.py"), *argv], capture_output=True, text=True,
                        encoding="utf-8", errors="replace", check=False)
     out = p.stdout + p.stderr
     log.write_text(out, encoding="utf-8")
