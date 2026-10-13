@@ -218,6 +218,14 @@ got = redbutton._estop_stop_via_mas()
 check("读不到在跑的任务：不谎称停到了什么", got, [])
 check("读不到时退回按脚本 / 队列编号发（无害）", [b for p, b in calls if p == "/api/dispatch/stop"],
       [{"taskId": "script-uuid"}, {"taskId": "queue-uuid"}])
+
+# Audit 11 #6: AUTO-MAS answers a stop it could not do with code 500 (app/api/
+# dispatch.py stop_task), not an HTTP error; that task was listed as stopped.
+redbutton._mas = lambda path, body=None, timeout=20: (
+    {"code": 500, "status": "error", "message": "KeyError: 'dispatch-abc'"}
+    if body == {"taskId": "dispatch-abc"} else {"code": 200, "status": "success", "message": "操作成功"})
+redbutton._estop_live_tasks = lambda: [("dispatch-abc", "MaaEnd"), ("dispatch-def", "早班")]
+check("a refused stop (code 500) is not listed as stopped", redbutton._estop_stop_via_mas(), ["早班"])
 redbutton._mas, redbutton._estop_live_tasks = real[4], real[3]
 
 print("\n[读 AUTO-MAS 在跑的任务：用 GET 读 runtime-snapshot，只收没结束的，口径和 engine 同一个]")

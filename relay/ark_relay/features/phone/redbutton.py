@@ -149,7 +149,14 @@ def _estop_stop_via_mas() -> list[str]:
             continue
         try:
             r = _mas("/api/dispatch/stop", {"taskId": tid})
-            log.info("红按钮：停「%s」(%s)：%s", label, tid[:8], (r or {}).get("message", r))
+            # AUTO-MAS answers a stop it could not do with code 500 and the reason
+            # (app/api/dispatch.py stop_task -> OutBase(code=500, status="error")),
+            # not an HTTP error: only code 200 is a stop (audit 11 #6).
+            if not isinstance(r, dict) or r.get("code") != 200:
+                log.warning("红按钮：停「%s」(%s) AUTO-MAS 没停：%s", label, tid[:8],
+                            r.get("message", r) if isinstance(r, dict) else r)
+                continue
+            log.info("红按钮：停「%s」(%s)：%s", label, tid[:8], r.get("message", r))
             stopped.append(label)
         except Exception as exc:  # noqa: BLE001
             log.warning("红按钮：停「%s」(%s) 失败：%s", label, tid[:8], exc)
