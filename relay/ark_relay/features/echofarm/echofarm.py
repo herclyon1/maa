@@ -309,6 +309,15 @@ def game_alive() -> "list[str]":
     return [n for n in GAME_PROCS if n.lower() in low] + script
 
 
+def stop_okww_script(sleep=time.sleep) -> None:
+    """Stop only OK-WW's python (the script), leaving the game up, and give it two
+    seconds to exit. Before a relaunch: `_launch` starts a new `pythonw main.py -t 2
+    -e`, and an old one still alive would drive the same game alongside it."""
+    from ark_relay.features.preupdate.preupdate_okww import _stop_okww_python  # noqa: PLC0415
+    _stop_okww_python()
+    sleep(2)
+
+
 def _kill_on_desktop(pids=()) -> None:
     """Kill the game from the interactive desktop instead of from session 0.
 
@@ -567,6 +576,10 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
     if tries >= 1:
         log.warning("刷声骸：重开脚本没用，连游戏一起重启（第 %d 次）", tries + 1)
         stop_okww()
+    else:
+        # The game stays up on the first try, but the old OK-WW must not: a second
+        # `pythonw main.py -t 2 -e` next to a live one has two scripts driving one game.
+        stop_okww_script()
     ok, why = _launch()
     rec["restarts"] = tries + 1
     rec["restarted"] = now.strftime("%Y-%m-%d %H:%M")

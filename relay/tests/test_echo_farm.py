@@ -57,6 +57,7 @@ def cfg_now(c):
 launched = []
 echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
 echofarm.stop_okww = lambda: launched.append("stop")
+echofarm.stop_okww_script = lambda: launched.append("script")
 # The marker file lives in C:\ProgramData on the machine. Point it at a temp path so
 # the tests never write into the repo (and never into a real machine path either).
 echofarm.NO_CLAIM = str(tmpdir() / "no-claim")
@@ -321,6 +322,10 @@ try:
     check("刚重开完不重复开", echofarm.tick(c, datetime(2026, 9, 9, 4, 38, tzinfo=SERVER_TZ)), "")
     check("还是只开过一次", launched[_before:].count(1), 1)
     check("第一次只重开脚本，不动游戏", "stop" in launched[_before:], False)
+    # 2026-10-13 audit: nothing was stopped before the first relaunch, so a live
+    # OK-WW and a new `pythonw main.py -t 2 -e` could both drive one game.
+    check("first relaunch: the old OK-WW script is stopped before the new one starts",
+          launched[_before:], ["script", 1])
 
     # 2026-09-09: the game itself wedged on a loading screen and restarting the
     # script against it did nothing, twice, while the farm stood still.
