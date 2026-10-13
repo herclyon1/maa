@@ -101,6 +101,8 @@ class FarmEchoTask(BaseWWTask):
 
     def click_configured_boss_level(self):
         # Upstream's level click; the overlay reads the claims left before it.
+        if getattr(self, "level_missing", False):
+            raise RuntimeError("Can not find boss level 80")   # upstream's own raise (:370)
         self.events.append("level")
 
     # Upstream v3.7.4 FarmEchoTask.py:374-378, verbatim.
@@ -445,6 +447,62 @@ except Exception as exc:  # noqa: BLE001 - the 10-13 bug: weekly_left_unread on 
 check("not stopped", got, "on")
 check("upstream's level click ran", t.events, ["level"])
 check("no weekly screenshot, no weekly read", (t.shots, any("周本本周剩余次数原文" in m for m in t.logs)), ([], False))
+
+print("\n[echo farm (Boss Challenge) through the book onto the level page -> Boss Level picked, 单人挑战, then 开启挑战]")
+LEVEL_PAGE = ["Box(name='推荐等级80', x=206, y=169)", "Box(name='推荐等级90', x=206, y=609)", "Box(name='单人挑战', x=1650, y=980)"]
+
+
+def boss_challenge(screen, start_btn=False, missing=False):
+    t = task(book="team")
+    t.config = {"Teleport to Boss": "Boss Challenge", "Boss Level": "80"}
+    base = t.ocr
+
+    def ocr(box=None, **kw):
+        if box == (0.0, 0.0):
+            return list(screen)
+        if box == (0.030, 0.113):
+            return [b for b in screen if "推荐等级" in b]
+        return base(box=box, **kw)
+    t.ocr = ocr
+    t.find_one = lambda feature, **kw: "start-btn" if start_btn and feature == "team_start_challenge" else None
+    t.level_missing = missing
+    t.wait_click_skip_dialog_confirm = lambda **kw: t.events.append("skip-confirm")
+    return t
+
+
+t = boss_challenge(LEVEL_PAGE)
+check("went in", stopped(t), "in")
+check("level, then upstream's 单人挑战 (click and confirm-and-tick), then 开启挑战",
+      ([e for e in t.events if e in ("level", "skip-confirm", "start")], (0.880, 0.911) in t.clicks),
+      (["level", "skip-confirm", "start"], True))
+check("logged the level clicked and what the page listed",
+      any(m.startswith("刷声骸选等级：选等级页点了 Lv.80。读到 ") and "推荐等级90" in m for m in t.logs))
+
+print("\n[echo farm (Boss Challenge) through the book onto a team screen with no level list -> logged once, on as upstream]")
+t = boss_challenge(["Box(name='开启挑战', x=1750, y=980)"], start_btn=True)
+check("went in", stopped(t), "in")
+check("no level click, no 单人挑战; 开启挑战", ([e for e in t.events if e in ("level", "skip-confirm", "start")],
+                                          (0.880, 0.911) in t.clicks), (["start"], False))
+check("one line, with the screen", [m for m in t.logs if m.startswith("刷声骸选等级：")],
+      ["刷声骸选等级：前往后是队伍界面（没有选等级页），不选等级，按游戏记住的等级进（设置 Lv.80）。"
+       "整屏读到 Box(name='开启挑战', x=1750, y=980)"])
+
+print("\n[the level page without the configured level -> no raise: logged, 单人挑战, 开启挑战]")
+t = boss_challenge(LEVEL_PAGE, missing=True)
+check("went in", stopped(t), "in")
+check("单人挑战 and 开启挑战 still", [e for e in t.events if e in ("level", "skip-confirm", "start")], ["skip-confirm", "start"])
+check("said the level was not found", any("选等级页上没找到 Lv.80" in m for m in t.logs))
+
+print("\n[nothing known after 前往 -> logged once, on as upstream (no raise from here)]")
+t = boss_challenge(["Box(name='加载中', x=1, y=1)"])
+check("went in", stopped(t), "in")
+check("one 「认不出的画面」 line", sum(m.startswith("刷声骸选等级：前往后是认不出的画面") for m in t.logs), 1)
+
+print("\n[the weekly boss keeps upstream's own level and 单人挑战 calls: no second level pick]")
+t = solo_dialog(task(book="team", left=LEFT_2), 0, 0)
+t.find_one = lambda *a, **kw: None
+stopped(t)
+check("no 刷声骸选等级 line on the weekly path", any(m.startswith("刷声骸选等级") for m in t.logs), False)
 
 print("\n[周本的复活交给上游 do_run 重新传送]")
 # The weekly boss is not the echo farm, so the revive is upstream's tower revive and
