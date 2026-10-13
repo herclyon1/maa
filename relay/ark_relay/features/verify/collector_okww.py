@@ -704,6 +704,8 @@ def _okww_steps(text: str, entries: int) -> list[str]:
         # Ran, but no 「乐园任务完成」: the counter read alone does not show it done
         # (core.UNVERIFIED_STEP; the daily title counts it as unverified).
         steps.append("周常乐园（没读到做完，不算完成）")
-    if "check discarded echo" in text:
-        steps.append("声骸五合一")
+    # No 「声骸五合一」 step: the only line there was to read is 「check discarded
+    # echo」, logged before the merge; a merge that then failed (upstream logs
+    # 「… Failed」 and carries on) was listed as done next to its own alarm
+    # (gamelog_errors.check_round). Removed 2026-10-13 (audit item 16).
     return steps
