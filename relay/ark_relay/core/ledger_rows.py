@@ -9,6 +9,7 @@ import re
 from datetime import datetime
 
 from ark_relay.core.config import SERVER_TZ, USER_TZ
+from ark_relay.features.verify.collector_maaend import _END_CLOSING_TASKS, _END_STOP_MARK
 
 
 def _fmt_items(d: dict, limit: int | None = None) -> str:
@@ -165,12 +166,13 @@ def _block_okww(raw: dict, finished: datetime) -> tuple[list[str], ...]:
     return did, cost, out, left, notes
 
 
-def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ...]:
+def _block_maaend(e: dict, raw: dict, finished: datetime,
+                  footnote: "list[str] | None" = None) -> tuple[list[str], ...]:
     """The five rows for one Endfield (MaaEnd) run: 做了 / 消耗 / 产出 / 剩余 / 备注.
 
     Sanity has a cap and can overflow (warned), and a long daily list is
     collapsed into 「日常 1-N 项完成」 with the names in the footnote
-    (ledger_report.daily_footnote).
+    (ledger_report.daily_footnote; `footnote` is its list of names).
     The five returned lists are ordered per _LABELS; _block assembles them into
     the five rows.
     """
@@ -184,9 +186,16 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
     if farm:
         place = raw.get("maaend_farm_place")
         did.append(f"刷 {farm}" + (f"·{place}" if place else "") + f" ×{runs}")
-    if raw.get("maaend_sanity_spent") or raw.get("maaend_medicine"):
+    if raw.get("maaend_sanity_unfit"):
+        # The log's readings do not fit the per-claim rule
+        # (collector_maaend._claims_fit): no sanity figure.
+        cost.append("理智消耗没读到" + (f"，加强剂 {raw['maaend_medicine']}" if raw.get("maaend_medicine") else ""))
+    elif raw.get("maaend_sanity_spent") or raw.get("maaend_medicine"):
         cost.append(f"理智 {raw.get('maaend_sanity_spent') or 0}，"
                     f"加强剂 {raw.get('maaend_medicine') or 0}")
+    elif farm and runs:
+        # It ran but no figure was read: never say it did not run.
+        cost.append("理智消耗没读到")
     elif farm and raw.get("sanity_exhausted"):
         cost.append("理智不足，一次没开成")
     if drops := _fmt_items(raw.get("maaend_farm_drops") or {}):
@@ -211,10 +220,11 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
     failed = raw.get("tasks_failed") or []
     if done or failed or unverified:
         # More than three: 「日常 1-N 项完成」, names in the footnote
-        # (daily_footnote). Three or fewer are named here.
+        # (daily_footnote). Three or fewer are named here, and so is a list the
+        # footnote's 1-N would not name (another run's longer list is the key).
         if not done:
             n = "日常 0 项"
-        elif len(done) <= 3:
+        elif len(done) <= 3 or (footnote is not None and footnote[:len(done)] != done):
             n = "做了 " + "、".join(done)
         else:
             n = f"日常 1-{len(done)} 项完成"
@@ -243,8 +253,9 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
     return did, cost, out, left, notes
 
 
-def _rows_for(e: dict, finished: datetime) -> tuple[list[str], ...]:
-    """The five lists for one run, before they are turned into rows."""
+def _rows_for(e: dict, finished: datetime, footnote: "list[str] | None" = None) -> tuple[list[str], ...]:
+    """The five lists for one run, before they are turned into rows; `footnote`
+    is the day's Endfield daily key (ledger_report.footnote_tasks)."""
     raw = e.get("raw") or {}
     script = e.get("script")
     rows: tuple[list[str], ...] = ([], [], [], [], [])
@@ -254,7 +265,7 @@ def _rows_for(e: dict, finished: datetime) -> tuple[list[str], ...]:
     elif script == "OK-WW":
         rows = _block_okww(raw, finished)
     elif script == "MaaEnd":
-        rows = _block_maaend(e, raw, finished)
+        rows = _block_maaend(e, raw, finished, footnote)
     return rows
 
 
@@ -263,9 +274,11 @@ def _block(e: dict, finished: datetime) -> list[str]:
 
 
 # Farming is already stated in 做了, so it is not repeated in the daily list, and
-# wrap-up steps (「结束进程」, and 「停止任务」: MaaEnd stopping its own tasker)
-# are not in-game tasks.
-_END_FARM_NOTE_SKIP = ("基质刷取", "协议空间", "结束进程", "停止任务")
+# wrap-up steps (the closing tasks 「关闭游戏（PC）」 / 「结束进程」, and 「停止任务」:
+# MaaEnd stopping its own tasker) are not in-game tasks. The collector's own
+# tuples, so the report and the round-closed check agree on what a wrap-up is.
+_END_WRAPUP = (*_END_CLOSING_TASKS, _END_STOP_MARK)
+_END_FARM_NOTE_SKIP = ("基质刷取", "协议空间", *_END_WRAPUP)
 
 
 # A task the program called finished with nothing from the game to show for it:

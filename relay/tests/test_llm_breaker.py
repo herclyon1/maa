@@ -46,8 +46,8 @@ print("\n[the report still renders without it]")
 entry = {"run_id": "x", "script": "MAA", "user": "arknights",
          "started": "2026-08-21T21:30:00+08:00",
          "finished": "2026-08-21T22:15:00+08:00", "ok": True}
-check("daily_report returns empty, caller falls back",
-      summary.daily_report(Cfg(), [entry]), "")
+check("diagnose returns empty, caller falls back",
+      summary.diagnose(Cfg(), entry["script"], ["x"], "log tail"), "")
 
 print("\n[an explicit check must really ask again]")
 try:

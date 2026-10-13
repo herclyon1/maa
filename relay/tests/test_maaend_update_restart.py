@@ -158,7 +158,7 @@ kinds = core.episode_kinds(entries)
 check("16:11 update restart is the episode", kinds.get("2026-10-01/endfield/MaaEnd-12-10-02"), "update")
 check("15:24 crash is not folded into it", kinds.get("2026-10-01/endfield/MaaEnd-11-23-07"), None)
 check("15:24 reads as failed then retried", core.retried_notes(entries).get("2026-10-01/endfield/MaaEnd-11-23-07"),
-      "MaaEnd 进程超时　后来在 16:58 那趟重试里做成了")
+      "MaaEnd 进程超时　后来在 16:12（东京 17:12）开始的那趟重试里做成了")
 tech: list = []
 title, body = core.format_daily("2026-10-01", entries, tech=tech)
 print("    " + title)

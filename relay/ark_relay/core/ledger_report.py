@@ -1,13 +1,15 @@
 """Message text built from ledger entries: the failure message, the daily report, the missing-run message."""
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from ark_relay.core import texts
 from ark_relay.core.config import RunRecord, SERVER_TZ, USER_TZ, both_clocks
 from ark_relay.core.ledger_rows import (
-    UNVERIFIED_STEP, _END_FARM_NOTE_SKIP, _LABELS, _maaend_listed, _row, _rows_for, _with_causes,
+    UNVERIFIED_STEP, _END_WRAPUP, _LABELS, _maaend_listed, _row, _rows_for, _with_causes,
     maaend_unverified,
 )
 from ark_relay.core.names import GAME_ZH
@@ -203,7 +205,7 @@ def _skipped_gathering_only(e: dict, raw: dict) -> bool:
     """A clean record whose only content is the gathering task skipped by weekday."""
     if not e.get("ok") or e.get("incomplete") or not raw.get("maaend_collect_skipped"):
         return False
-    done = [t for t in (raw.get("tasks_done") or []) if t not in ("自动采集", "结束进程")]
+    done = [t for t in (raw.get("tasks_done") or []) if not any(k in t for k in ("自动采集", *_END_WRAPUP))]
     return not done and not raw.get("tasks_failed") and not raw.get("maaend_collect_total")
 
 
@@ -237,34 +239,41 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
             # Every task the record does name still has to be in that success.
             named = {t for t in want if "超时" not in t}
             if (named != want and named <= done) or want <= done:
-                when = str(later.get("finished") or "")[11:16]
+                # By start time on both clocks, the way the run's own line is labelled.
+                st = datetime.fromisoformat(later["started"])
+                when = f"{_hm(st)}（东京 {st.astimezone(USER_TZ):%H:%M}）开始的"
                 # A MaaEnd retry's 「任务完成」 with nothing from the game is not
                 # 「做成了」; the day's title counts it as unverified.
                 bare = named & set(maaend_unverified(later.get("raw") or {})) if later.get("script") == "MaaEnd" else set()
                 got = "程序说做完了，但没证据，不算完成" if bare else "做成了"
                 out[e["run_id"]] = ("、".join(sorted(want))
-                                    + f"　后来在 {when} 那趟重试里{got}")
+                                    + f"　后来在 {when}那趟重试里{got}")
                 break
     return out
 
 
-def daily_footnote(entries: list[dict]) -> str:
-    """The footnote at the end of the notification: the numbered key to Endfield's
-    daily list. The number in 「日常 1-16 项完成」 is the index here. Uses the
-    longest list of done tasks among the day's MaaEnd runs (failed runs included);
-    returns an empty string if there is none."""
+def footnote_tasks(entries: list[dict]) -> list[str]:
+    """The names in daily_footnote, in order: the longest list of done tasks among
+    the day's MaaEnd runs (failed runs included)."""
     best: list[str] = []
     for e in entries:
         if e.get("script") != "MaaEnd":
             continue
         raw = e.get("raw") or {}
         unverified = maaend_unverified(raw)
-        done = [t for t in (raw.get("tasks_done") or [])
-                if not any(k in t for k in _END_FARM_NOTE_SKIP) and t not in unverified]
+        # The same list the run's row counts (ledger_rows._block_maaend).
+        done = [t for t in _maaend_listed(raw) if t not in unverified]
         # The longest list of the day, whether or not that run was marked failed.
         if len(done) > len(best):
             best = done
-    if best:
+    return best
+
+
+def daily_footnote(entries: list[dict]) -> str:
+    """The footnote at the end of the notification: the numbered key to Endfield's
+    daily list. The number in 「日常 1-16 项完成」 is the index here; returns an
+    empty string if there is no list."""
+    if best := footnote_tasks(entries):
         return "———————\n日常：" + " ".join(f"{i}.{n}" for i, n in enumerate(best, 1))
     return ""
 
@@ -563,6 +572,18 @@ def _launch_miss(e: dict) -> bool:
             and any("模拟器启动失败" in str(t) for t in (e.get("failed_tasks") or [])))
 
 
+def test_windows(state_dir) -> list[dict]:
+    """The test windows run-one.sh marked (state/test-windows.json); [] when none."""
+    if not state_dir:
+        return []
+    p = Path(state_dir) / "test-windows.json"
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
 def split_test(entries: list[dict], windows: list[dict]) -> tuple[list[dict], list[dict]]:
     """(real records, records inside a marked test window).
 
@@ -652,6 +673,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     bare = _bare_failure_groups(entries, failed, shifts)
     title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds, None, day_unverified(entries), bare)}"
 
+    foot = footnote_tasks(entries)
     lines: list[str] = []
     for e, attempts in _collapse_retries(entries, kinds):
         started = datetime.fromisoformat(e["started"])
@@ -709,7 +731,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
         if not e["ok"]:
             # A failed run still shows what it did: the rows, with the failure
             # (or the retry that fixed it) as the first note.
-            did, cost, out, left, notes = _rows_for(e, finished)
+            did, cost, out, left, notes = _rows_for(e, finished, foot)
             notes.insert(0, retried.get(e["run_id"])
                          or _fmt_failed(e.get("failed_tasks") or [],
                                         causes=(e.get("raw") or {}).get("maaend_fail_causes")))
@@ -732,7 +754,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
                 note = "没读到剿灭进度，本周按没打满算，下一轮再打"
             lines += [_row("备注", [note]), ""]
             continue
-        did, cost, out, left, notes = _rows_for(e, finished)
+        did, cost, out, left, notes = _rows_for(e, finished, foot)
         if e.get("incomplete"):
             notes.insert(0, _incomplete_note(str(e["incomplete"])))
         if notes and not (did or cost or out or left):

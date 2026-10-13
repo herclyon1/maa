@@ -765,10 +765,10 @@ def _dropped_checks(dropped: list[str]) -> list[Check]:
 
 # What a task leaves in the AUTO-MAS log when it actually does its job. The
 # task name is matched as a substring of the 「任务开始」 line (it carries an
-# emoji prefix). Wording from real logs: routes 2026-09-01, essence and
-# protocol 2026-08-25.
+# emoji prefix). Wording from real logs: routes 2026-09-01 (MaaEnd spells routes
+# 1-3 「线路N：」, 2026-10-12), essence and protocol 2026-08-25.
 _MAAEND_WORK = (
-    ("自动采集", re.compile(r"路线\d+[：:]"), "走了路线"),
+    ("自动采集", re.compile(r"(?:路线|线路)\d+[：:]"), "走了路线"),
     ("基质刷取", re.compile(r"已完成一次基质刷取|理智不足"), "刷了"),
     ("协议空间", re.compile(r"进入协议空间成功|理智不足"), "进了"),
 )

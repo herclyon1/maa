@@ -25,7 +25,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ark_relay.features.verify.collector_maa import parse_maa_log
-from ark_relay.features.verify.collector_maaend import CLAIM_UNCONFIRMED, maaend_unreachable, parse_maaend_log, _maaend_all_done, _split_failed
+from ark_relay.features.verify.collector_maaend import _END_SANITY_SEC_PER_POINT, CLAIM_UNCONFIRMED, maaend_unreachable, parse_maaend_log, _maaend_all_done, _split_failed
 from ark_relay.features.verify.collector_okww import okww_info, parse_okww_log
 from ark_relay.core.config import SERVER_TZ, RunRecord
 
@@ -133,9 +133,10 @@ def _is_transitional(result: str) -> bool:
 def _log_span(log_path: Path) -> tuple[datetime, datetime] | None:
     """First and last timestamp inside a run log: the run's real span.
 
-    The record's filename is hours off on this install and its mtime is when the
-    whole queue finished, so neither is used for the duration when the log has
-    timestamps.
+    The record's filename is hours off on this install (AUTOMAS_NAME_TZ) and its
+    mtime is when AUTO-MAS wrote the record after the attempt ended (about 20 s
+    later, relay.log 10-02 23:41:33), so neither is used for the duration when the
+    log has timestamps.
     """
     try:
         text = log_path.read_text(encoding="utf-8", errors="replace")
@@ -188,9 +189,8 @@ def flatten_drops(raw: dict) -> dict:
 
 # Recovery rates, used to work out "full at what time" for the two games whose
 # result JSON does not carry it (MAA writes it itself):
-#   Endfield: 1 point every 7m12s, 200 points per 24 hours (official figure).
+#   Endfield: collector_maaend._END_SANITY_SEC_PER_POINT.
 #   Wuthering Waves: 1 point every 6 minutes, cap 240, empty to full in 24 hours.
-_END_SANITY_SEC_PER_POINT = 432
 _OKWW_STAMINA_CAP = 240
 _OKWW_SEC_PER_POINT = 360
 
@@ -233,6 +233,10 @@ def refresh_raw(entry: dict, history_root: Path | None, maaend_dir: Path | None 
     out["raw"] = raw
     if parsed.get("sanity") is not None and out.get("sanity") is None:
         out["sanity"] = parsed["sanity"]
+    # The same never-read rule bookkeeping applies (_enrich_record), so an entry
+    # booked before it reads as unread rather than 0.
+    if _mark_sanity_unread(raw, str(script)) and out.get("sanity") == 0 and not out.get("sanity_full_at"):
+        out["sanity"] = None
     # Re-judge with today's rules, in one direction only: an entry marked failed
     # is overwritten when parse_record now says ok; an entry parse_record says
     # is not ok is left as it was booked.
@@ -458,6 +462,8 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
                 text = ""
             if text and _maaend_all_done(text):
                 ok, failed = True, []
+                # A ledger trace of which branch booked it (tests tell the two
+                # timeout paths apart by it); no report reads it.
                 raw["maaend_done_then_hung"] = True
         if not ok and not failed:
             failed = [result or "未知错误"]
@@ -487,6 +493,19 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
     return script, result, ok, failed
 
 
+def _mark_sanity_unread(raw: dict, script: str) -> bool:
+    """MAA writes `"sanity": 0` and an empty `sanity_full_at` when it never read
+    sanity that round (fixtures: tests/fixtures/maa-2026-10-10/MAA-05-02-18.json,
+    tests/replay/2026-09-04/arknights/MAA-08-40-31.json). A round that really
+    ends on 0 carries MAA's refill sentence. Unread is stored as None plus
+    `sanity_unread`, not 0. True when it marked `raw`."""
+    if script == "MAA" and type(raw.get("sanity")) is int and raw["sanity"] == 0 and not raw.get("sanity_full_at"):
+        raw["sanity"] = None
+        raw["sanity_unread"] = True
+        return True
+    return False
+
+
 def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: list, finished,
                    maaend_dir: Path | None = None) -> list:
     """Merge the fields parsed from the log into raw (only keys raw lacks or has
@@ -509,21 +528,28 @@ def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: lis
             failed = [raw["okww_error"]]
     if flat := flatten_drops(raw):
         raw["drop_statistics"] = flat
-    # MAA writes `"sanity": 0` and an empty `sanity_full_at` when it never read
-    # sanity that round (fixtures: tests/fixtures/maa-2026-10-10/MAA-05-02-18.json,
-    # tests/replay/2026-09-04/arknights/MAA-08-40-31.json). A round that really
-    # ends on 0 carries MAA's refill sentence. Unread is stored as None plus
-    # `sanity_unread`, not 0.
-    if script == "MAA" and type(raw.get("sanity")) is int and raw["sanity"] == 0 and not raw.get("sanity_full_at"):
-        raw["sanity"] = None
-        raw["sanity_unread"] = True
-    # Full-again time: MAA writes it itself; for the other two it is computed
-    # from this record's finish time, when the last reading was taken.
+    _mark_sanity_unread(raw, script)
+    # Full-again time: MAA writes it itself; for the other two it is computed.
+    # MaaEnd's counts from the log time of its last 「当前理智」 reading
+    # (sanity_read_at), else the record's finish. A 0 the parser floored from a
+    # negative result (sanity_floored) is a lower bound, not a reading: no time
+    # is given for it. An exact 0 from the per-claim rule is a reading and gets
+    # one. A record without the flag falls back to 0 after 「理智不足，结束任务」.
     if not raw.get("sanity_full_at"):
         if script == "MaaEnd" and raw.get("sanity") is not None:
-            raw["sanity_full_at"] = _full_at_sentence(
-                int(raw["sanity"]), int(raw.get("sanity_cap") or 360),
-                _END_SANITY_SEC_PER_POINT, finished)
+            floored = raw.get("sanity_floored")
+            if floored is None:
+                floored = bool(raw.get("sanity_exhausted")) and int(raw["sanity"]) == 0
+            if not floored:
+                ref = finished
+                try:
+                    if at := raw.get("sanity_read_at"):
+                        ref = datetime.strptime(str(at), "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
+                except ValueError:
+                    pass
+                raw["sanity_full_at"] = _full_at_sentence(
+                    int(raw["sanity"]), int(raw.get("sanity_cap") or 360),
+                    _END_SANITY_SEC_PER_POINT, ref)
         elif raw.get("okww_stamina_left") is not None:
             raw["sanity_full_at"] = _full_at_sentence(
                 int(raw["okww_stamina_left"]), _OKWW_STAMINA_CAP,
@@ -544,12 +570,14 @@ def scan(history_root: Path, seen: set[str], maaend_dir: Path | None = None) -> 
             age = now - path.stat().st_mtime
         except OSError:
             continue
-        # Skip a .json younger than 120s whose .log is not there yet: AUTO-MAS
-        # writes the .json first and the .log moments later, and the .log's
-        # write fires the next directory event. A record parsed without its log
-        # would be booked with filename/mtime times and no drops, and never
-        # re-parsed once seen. Past 120s the run is taken to have no log.
-        # Negative age (mtime in the future, clock skew) is never skipped.
+        # Skip a .json younger than 120s whose .log is not there: a record parsed
+        # without its log would be booked with filename/mtime times and no drops,
+        # and never re-parsed once seen. AUTO-MAS writes the .log before the .json
+        # (amas-src app/task/MAA/tools/log_statistics.py:246-248, app/core/config.py
+        # 4302-4303), so this is only a margin; a half-written .json fails
+        # json.loads, is skipped, and comes back on its next write event
+        # (dirwatch subscribes to LAST_WRITE). Past 120s the run is taken to have
+        # no log. Negative age (mtime in the future, clock skew) is never skipped.
         if 0 <= age < 120 and not path.with_suffix(".log").exists():
             continue
         # Skip records already processed by run_id from the path, before parsing.

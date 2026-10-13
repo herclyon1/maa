@@ -2,7 +2,8 @@
 
 `record` is called from append_ledger (core/ledger.py), which every finished run
 passes through, and counts the run against the code version running at the time
-(runs the red button cut short are not counted). A run counts as failed only when
+(runs the red button cut short are not counted, nor runs inside a test window,
+like the daily report's rows: ledger_report.split_test). A run counts as failed only when
 it failed and was not superseded by a retry (`transitional`): a round fixed by a
 retry is not a failure of the code.
 
@@ -12,7 +13,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ark_relay.core.config import SERVER_TZ, USER_TZ
+from ark_relay.core.config import SERVER_TZ
+from ark_relay.core.ledger_report import split_test, test_windows
 
 # One version's scoreboard: {"runs": total runs, "failed": failed runs not
 # superseded by a retry, "since": timestamp of the first run}.
@@ -20,10 +22,17 @@ from ark_relay.core.config import SERVER_TZ, USER_TZ
 KEEP_VERSIONS = 8
 
 
-def record(store, code_version: str, ok: bool, transitional: bool = False) -> None:
-    """Count one finished run against the code version that ran it."""
+def record(store, code_version: str, ok: bool, transitional: bool = False,
+           started: "datetime | None" = None) -> None:
+    """Count one finished run against the code version that ran it.
+
+    A run inside a test window (state/test-windows.json, by `started`, else by
+    now: the run is booked while its window is still open) is not counted."""
     if not code_version:
         return                     # no version, no record: an empty key is never written
+    at = started or datetime.now(tz=SERVER_TZ)
+    if split_test([{"started": at.isoformat()}], test_windows(getattr(store, "dir", None)))[1]:
+        return
     board = dict(store.get("versions", "scoreboard") or {})
     row = dict(board.get(code_version) or {})
     row["runs"] = int(row.get("runs") or 0) + 1
@@ -47,7 +56,8 @@ def line(store, code_version: str) -> str:
     since = ""
     try:
         t = datetime.fromisoformat(str(row.get("since") or ""))
-        since = f"（自 {t.astimezone(USER_TZ):%m-%d %H:%M} 起）"
+        # Machine time, like every other line of relay.log.
+        since = f"（自 {t.astimezone(SERVER_TZ):%m-%d %H:%M} 起）"
     except ValueError:
         pass
     if failed:

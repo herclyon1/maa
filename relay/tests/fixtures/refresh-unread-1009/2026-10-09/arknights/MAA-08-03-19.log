@@ -1,0 +1,13 @@
+[2026-10-09 12:04:04.475][INF][Bootstrapper]           <2> ===================================
+[2026-10-09 12:04:04.501][INF][Bootstrapper]           <2> MaaAssistantArknights GUI started
+[2026-10-09 12:04:04.502][INF][Bootstrapper]           <2> Version v6.19.0-beta.1
+[2026-10-09 12:04:04.502][INF][Bootstrapper]           <2> Built at 2026-10-02T05:37:57.4279344+08:00
+[2026-10-09 12:04:04.503][INF][Bootstrapper]           <2> Maa ENV: Production
+[2026-10-09 12:04:04.503][INF][Bootstrapper]           <2> Command Line: D:\ark\maa\MAA.dll
+[2026-10-09 12:04:04.503][INF][Bootstrapper]           <2> User Dir D:\ark\maa\
+[2026-10-09 12:04:04.546][INF][Bootstrapper]           <2> Run as Administrator
+[2026-10-09 12:17:45.775][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `["1-7"]` -> `[""]`, save scheduled
+[2026-10-09 12:17:45.789][INF][ConfigurationHelper]    <2> Configuration Root.Configurations.Default.[1]理智作战(FightTask).StagePlan has been set: `[""]` -> `["1-7"]`, save scheduled
+[2026-10-09 12:17:45.802][INF][RunningState]           <2> Idle: false to true (called from ProcTaskChainMsg)
+[2026-10-09 12:17:45.810][INF][TaskQueueViewModel]     <2> 任务已全部完成！
+(用时 0h 13m 20s)

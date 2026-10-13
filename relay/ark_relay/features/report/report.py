@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 from ark_relay.core import texts
 from ark_relay.features.banners import banners
-from ark_relay.core import collector, ledger as core, ledger_report, plan, summary
+from ark_relay.core import collector, ledger as core, ledger_report, plan
 from ark_relay.features.report import scoreboard
 from ark_relay.core.config import SERVER_TZ, atomic_write_text
 
@@ -159,8 +159,9 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
 
 
 def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
-    """Model writes the report from the raw records; code only decides the
-    headline (green / how many failed), which must never be a guess."""
+    """The daily report: the structured template (core.format_daily) over the
+    day's real records, plus the countdowns and the deploy / retry / make-up /
+    stage-gate lines. Every word and number comes from code."""
     # `raw` in the ledger is what the parser produced at bookkeeping time; after
     # a parser change older entries miss fields, so recompute from the history
     # logs before reporting.
@@ -168,12 +169,6 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
                for e in entries]
     _fill_single_run_sanity(entries)
     tomorrow = plan.next_plan(eng.cfg.automas_dir)
-    # A run the red button (停一切) cut short is neither green nor red
-    # (core.manual_stop; core.episode_kinds "manual" does the same for the template).
-    failed = [e for e in entries if (not e["ok"] or e.get("incomplete"))
-              and not core.manual_stop(e)]
-    head = "全绿 ✅" if not failed else f"{len(failed)} 项出错 ⚠️"
-    title = f"📋 {day[5:]} · {head}"
     # The event countdown goes on every daily report, not only on the last day.
     # 来龙去脉见 docs/CODE-HISTORY.md「report.py:_compose_daily」
     act = plan.activity_countdown(eng.cfg.automas_dir)
@@ -204,14 +199,8 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # computed and logged here; it is not put into the message.
     log.info("记分：%s", scoreboard.line(eng.state.store, str(eng.state.store.get("versions", "code") or "")))
     tail = "".join(f"\n\n{x}" for x in (act, pool) if x)
-    written = summary.daily_report(eng.cfg, entries, tomorrow)
-    if written:
-        log.info("📋 日报由模型撰写（%d 条记录）", len(entries))
-        foot = core.daily_footnote(entries)
-        return (ledger_report.plain_words(title),
-                ledger_report.plain_words(written + tail + (f"\n\n{foot}" if foot else "")))
-    # The structured template is the normal path (the model-written report is
-    # not used), so this is INFO, not WARNING.
+    # The structured template is the only path (the model-written report was
+    # retired on 08-30 and removed), so this is INFO, not WARNING.
     log.info("日报用结构化模板（模型撰写已废弃，这是正常路径）")
     entries, tests = core.split_test(entries, test_windows(eng.cfg.state_dir))
     shifts = _shifts(eng)
@@ -541,16 +530,8 @@ def makeup_line(state_dir, day: str, entries: "list[dict] | None" = None,
     return "\n".join(lines)
 
 
-def test_windows(state_dir) -> list[dict]:
-    """The test windows run-one.sh marked (state/test-windows.json); [] when none."""
-    if not state_dir:
-        return []
-    p = Path(state_dir) / "test-windows.json"
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except (OSError, ValueError):
-        return []
+# The test windows run-one.sh marked; kept under this name for its callers.
+test_windows = ledger_report.test_windows
 
 
 def _attach_tacet_shots(eng, day: str) -> list[str]:
@@ -579,7 +560,10 @@ def _attach_tacet_shots(eng, day: str) -> list[str]:
     if not cands:
         return []
     pick = max(cands, key=lambda p: p.stat().st_mtime)
-    eng.notifier.send_group(texts.TACET_DROPS, f"{_tacet_caption(eng, day)}。下面是刷完的结算页。")
+    # The caption says what the picture is; without it the picture is not sent
+    # either, and nothing is marked, so a later send of the day tries both again.
+    if eng.notifier.send_group(texts.TACET_DROPS, f"{_tacet_caption(eng, day)}。下面是刷完的结算页。"):
+        return []
     done = [] if eng.notifier.send_group_image(pick) else [pick.name]
     if done:
         # Mark the earlier captures as handled too: the next report only sends
