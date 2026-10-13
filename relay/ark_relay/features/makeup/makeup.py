@@ -626,6 +626,15 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
     _restore_at_top(eng, now, day, marker)
     # A MAA round that already worked gets no make-up (a second whole run uses
     # potions again). Spent at once, not when the queue goes idle, so it is not held.
+    # MaaEnd needs no such guard (audit s16 #4, settled from its option definitions,
+    # tests/fixtures/maaend-2026-09-10/tasks/AutoEssence/AutoEssence.json and
+    # maaend-v2.30.0-beta.4-spmed/resource/pipeline/nodes.json): AutoUseSpMedication
+    # =UseMedication only uses an emergency sanity booster whose remaining time OCRs
+    # inside AutoEssenceSpMedicationExpireWithinDays, once per low-sanity prompt, with
+    # no count kept across launches. A run that fought to the end has used every
+    # booster in the window, so a whole re-run finds none (AUTO-MAS's own re-runs:
+    # 10-08 MaaEnd-06-34-21 and 10-12 06-58-38 read 「理智不足，结束任务」 and refilled
+    # nothing); one cut short uses what the full run would have used anyway.
     for r in candidates(eng, now):
         if r.script == "MAA" and (why := maa_work_done(eng, r)):
             log.info("补跑：明日方舟这次不补（%s），失败照常进群", why)
