@@ -489,7 +489,7 @@ print("\n[stopping only the old script: bounded in time, confirmed gone, or the 
 # ten times with each PowerShell call free to run to its 60 s guard, and an
 # unreadable list closed the game at once. Now the step has STOP_SCRIPT_SECONDS in
 # all, an unreadable list is asked again once, and the caller is told why.
-import ark_relay.features.preupdate.preupdate_okww as _pk  # noqa: E402
+import ark_relay.features.preupdate.preupdate_okww as _pko  # noqa: E402
 import logging as _lg  # noqa: E402
 
 
@@ -524,8 +524,8 @@ def _stop_run(answers, pwsh_secs=0.5):
     def nap(n):
         naps.append(n)
         clk.t += n
-    real = _pk._stop_okww_python, _pk.okww_python_pids
-    _pk._stop_okww_python, _pk.okww_python_pids = stop, pids
+    real = _pko._stop_okww_python, _pko.okww_python_pids
+    _pko._stop_okww_python, _pko.okww_python_pids = stop, pids
     try:
         t0 = clk.t
         try:
@@ -534,7 +534,7 @@ def _stop_run(answers, pwsh_secs=0.5):
             res = f"crashed: {type(e).__name__}"
         return res, clk.t - t0, timeouts, naps
     finally:
-        _pk._stop_okww_python, _pk.okww_python_pids = real
+        _pko._stop_okww_python, _pko.okww_python_pids = real
 
 
 # None before this bound existed, so the checks below fail rather than crash.
