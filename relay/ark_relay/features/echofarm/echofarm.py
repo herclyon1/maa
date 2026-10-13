@@ -279,8 +279,23 @@ STOP_TASK = "ark-okww-stop"
 UNREADABLE = "鸣潮（读不到正在运行的程序列表，查不到它还开没开着）"
 
 
+# What game_alive names when OK-WW's python processes cannot be listed.
+UNREADABLE_SCRIPT = "OK-WW 脚本（读不到 pythonw 进程列表，查不到它还开没开着）"
+
+
+def okww_script_name(pid: int) -> str:
+    return f"OK-WW 脚本（pythonw.exe，PID {pid}）"
+
+
 def game_alive() -> "list[str]":
-    """Which of the game's processes are still up. [] only when the desktop is clean."""
+    """Which of the game's processes are still up, OK-WW's own python included.
+    [] only when the desktop is clean.
+
+    OK-WW runs as pythonw.exe, a name tasklist cannot tell from any other python,
+    so it is looked for by command line (preupdate_okww.okww_python_pids). Left
+    out, a stop could report clean while OK-WW lived on and later wrote its
+    in-memory config over the restored FarmEchoTask.json.
+    """
     try:
         out = subprocess.run(["tasklist"], capture_output=True, timeout=30).stdout
         low = (out or b"").decode("utf-8", "replace").lower()
@@ -288,7 +303,10 @@ def game_alive() -> "list[str]":
         log.info("读不到正在运行的程序列表（%s: %s），游戏算作没确认关掉",
                  type(exc).__name__, exc)
         return [UNREADABLE]
-    return [n for n in GAME_PROCS if n.lower() in low]
+    from ark_relay.features.preupdate.preupdate_okww import okww_python_pids  # noqa: PLC0415 - preupdate_okww imports this module
+    pids = okww_python_pids()
+    script = [UNREADABLE_SCRIPT] if pids is None else [okww_script_name(p) for p in pids]
+    return [n for n in GAME_PROCS if n.lower() in low] + script
 
 
 def _kill_on_desktop(pids=()) -> None:
@@ -328,7 +346,8 @@ def stop_okww(sleep=time.sleep) -> str:
     _okww_quiesce()
     if not game_alive():
         return ""
-    _kill_on_desktop()
+    from ark_relay.features.preupdate.preupdate_okww import okww_python_pids  # noqa: PLC0415
+    _kill_on_desktop(pids=okww_python_pids() or ())
     for _ in range(10):
         left = game_alive()
         if not left:

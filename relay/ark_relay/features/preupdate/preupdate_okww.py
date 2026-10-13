@@ -27,6 +27,45 @@ OKWW_BUDGET_SECONDS = 240
 OKWW_MIN_WAIT_SECONDS = 45
 
 
+# OK-WW's own python processes: python.exe or pythonw.exe (the echo farm launches
+# pythonw so no console covers the game) whose command line names ok-ww or runs
+# `-m ok`. One filter for stopping them and for looking for them.
+_OKWW_PY = ("Get-CimInstance Win32_Process -Filter "
+            "\"Name='python.exe' OR Name='pythonw.exe'\" | "
+            "Where-Object { $_.CommandLine -like '*ok-ww*' -or "
+            "$_.CommandLine -like '*-m ok *' }")
+
+
+def _stop_okww_python() -> None:
+    """Stop OK-WW's python processes (only those, see _OKWW_PY); the game is left alone.
+    The result is not checked: a caller that must know uses okww_python_pids."""
+    try:
+        subprocess.run([_pwsh(), "-NoProfile", "-Command",
+                        _OKWW_PY + " | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"],
+                       capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def okww_python_pids() -> "list[int] | None":
+    """PIDs of OK-WW's running python processes (_OKWW_PY); None when the process
+    list could not be read."""
+    try:
+        r = subprocess.run([_pwsh(), "-NoProfile", "-Command",
+                            _OKWW_PY + " | Select-Object ProcessId | ConvertTo-Json -Compress"],
+                           capture_output=True, timeout=60)
+        data = json.loads((r.stdout or b"").decode("utf-8", "replace").strip() or "null")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    out = []
+    for proc in [data] if isinstance(data, dict) else (data or []):
+        try:
+            out.append(int(proc.get("ProcessId")))
+        except (AttributeError, TypeError, ValueError):
+            continue
+    return out
+
+
 def _okww_quiesce(sleep=time.sleep, launcher_root: Path | None = None) -> None:
     """Stop OK-WW, the game and the Kuro launcher, so nothing rewrites OK-WW's
     config from memory.
@@ -39,16 +78,7 @@ def _okww_quiesce(sleep=time.sleep, launcher_root: Path | None = None) -> None:
     taskkill runs from the service's session and its result is not checked; a
     caller that must know the machine is clean uses _okww_close.
     """
-    ps = ("Get-CimInstance Win32_Process -Filter "
-          "\"Name='python.exe' OR Name='pythonw.exe'\" | "
-          "Where-Object { $_.CommandLine -like '*ok-ww*' -or "
-          "$_.CommandLine -like '*-m ok *' } | "
-          "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
-    try:
-        subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
-                       capture_output=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
-        pass
+    _stop_okww_python()
     for name in ("ok-ww.exe", "Wuthering Waves.exe",
                  "Client-Win64-Shipping.exe", "KRSDKExternal.exe"):
         try:
@@ -84,16 +114,19 @@ def _okww_close(sleep=time.sleep, launcher_root: Path | None = None) -> list[str
 
 
 def _okww_left(launcher_root: Path | None = None) -> tuple[list[str], list[int]]:
-    """(names still up, launcher PIDs still up): the game's processes plus the Kuro
-    launcher at its path. An unreadable launcher list is named, not taken as gone."""
+    """(names still up, PIDs to kill by number): the game's processes, OK-WW's own
+    python (game_alive) and the Kuro launcher at its path; the PIDs are the
+    launcher's and OK-WW's python's, whose names are too common to kill by name.
+    An unreadable launcher list is named, not taken as gone."""
     from ark_relay.features.echofarm.echofarm import game_alive  # noqa: PLC0415 - echofarm imports this module
     left = list(game_alive())
+    py = (okww_python_pids() or []) if left else []
     procs = _wuwa_launcher_procs(launcher_root)
     if procs is None:
         left.append("鸣潮启动器（查不到它还开没开着）")
-        return left, []
+        return left, py
     left += [Path(path.replace("\\", "/")).name for _pid, path in procs]
-    return left, [pid for pid, _path in procs]
+    return left, [pid for pid, _path in procs] + py
 
 
 # The Kuro launcher: launcher.exe is the entry shell; while it runs the process is

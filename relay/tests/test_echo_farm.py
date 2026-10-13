@@ -316,10 +316,10 @@ try:
     check("刚开跑一分钟不算停", echofarm.tick(c, datetime(2026, 9, 9, 4, 1, tzinfo=SERVER_TZ)), "")
     _before = len(launched)
     check("五分钟没刷到东西就自己重开", echofarm.tick(c, datetime(2026, 9, 9, 4, 36, tzinfo=SERVER_TZ)), "")
-    check("真的重开了一次", len(launched) - _before, 1)
+    check("真的重开了一次", launched[_before:].count(1), 1)
     check("重开次数记下来了", echofarm.current(c.state_dir)["restarts"], 1)
     check("刚重开完不重复开", echofarm.tick(c, datetime(2026, 9, 9, 4, 38, tzinfo=SERVER_TZ)), "")
-    check("还是只开过一次", len(launched) - _before, 1)
+    check("还是只开过一次", launched[_before:].count(1), 1)
     check("第一次只重开脚本，不动游戏", "stop" in launched[_before:], False)
 
     # 2026-09-09: the game itself wedged on a loading screen and restarting the
@@ -505,6 +505,26 @@ try:
         if a and a[0] and a[0][0] != "tasklist" else (_ for _ in ()).throw(OSError("tasklist missing"))
     _note = _mod.stop_okww(sleep=lambda _s: None)
     check("stop does not say 收工 cleanly", _note != "" and "程序列表" in _note, True)
+
+    # 2026-10-13 audit: game_alive looked only at the game's process names, so a
+    # stop could say clean while OK-WW (pythonw.exe) lived on and later wrote its
+    # in-memory config over the restored FarmEchoTask.json.
+    print("\n[OK-WW's own pythonw counts as still up]")
+    class _Py(_Done):
+        stdout = b'[{"ProcessId": 777}]'
+    _ran.clear()
+    _sp.run = lambda *a, **k: (_ran.append(list(a[0]) if a else []),
+                               _Py() if a and any("pythonw.exe" in str(x) for x in a[0]) else _Done())[1]
+    check("a live OK-WW script is named", _mod.game_alive(), [_mod.okww_script_name(777)])
+    _note = _mod.stop_okww(sleep=lambda _s: None)
+    check("stop does not report clean while it lives", "PID 777" in _note, True)
+    check("the desktop kill takes it by PID",
+          "taskkill /F /PID 777" in Path(_mod.STOP_BAT).read_text(encoding="utf-8"), True)
+    _sp.run = lambda *a, **k: (_ for _ in ()).throw(OSError("no pwsh")) \
+        if a and any("pythonw.exe" in str(x) for x in a[0]) else _Done()
+    check("python list unreadable: not read as gone", _mod.game_alive(), [_mod.UNREADABLE_SCRIPT])
+    _sp.run = lambda *a, **k: _Done()
+    check("nothing up: clean", _mod.game_alive(), [])
 finally:
     _sp.run, _pk._okww_quiesce = _real_run, _real_q
 
