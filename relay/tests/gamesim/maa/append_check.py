@@ -150,13 +150,13 @@ def main() -> int:
     args = sys.argv[1:]
     if args[:1] == ["--child"]:        # one tree, in its own process
         jobs = json.loads(sys.stdin.read())
-        print(json.dumps(run_tree(Path(args[1]), jobs)))
+        print(json.dumps(run_tree(Path(args[1]).resolve(), jobs)))
         return 0
     try:
         if args[:1] == ["--fetch"]:
-            maa = fetch(Path(args[1]))
+            maa = fetch(Path(args[1]).resolve())
         elif args[:1] == ["--maa"]:
-            maa = Path(args[1])
+            maa = Path(args[1]).resolve()   # os.add_dll_directory takes absolute paths only
         else:
             print(__doc__)
             return 2
