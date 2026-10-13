@@ -46,7 +46,6 @@ import urllib.request
 from pathlib import Path
 
 from ark_relay.core.config import SERVER_TZ, both_clocks
-from ark_relay.features.phone import maaend
 from ark_relay.features.schedule import queues
 from ark_relay.features.weekly import sanity_plan
 from ark_relay.features.phone.commands import apply_command
@@ -294,11 +293,9 @@ def _fetch_once(url: str, timeout: int = 20,
 class Inbox:
     """Remembers which version has been applied; applies newer ones once."""
 
-    def __init__(self, state_dir: Path, url: str = "", maaend_dir: Path | None = None,
-                 automas_dir: Path | None = None):
+    def __init__(self, state_dir: Path, url: str = "", automas_dir: Path | None = None):
         self.url = url or DEFAULT_URL
         self.state_dir = Path(state_dir)
-        self.maaend_dir = maaend_dir
         self.automas_dir = automas_dir
         # Whether the last poll actually reached the queue file. "Could not
         # fetch" and "fetched, nothing new" both return quietly from poll();
@@ -398,24 +395,10 @@ class Inbox:
 
     def _apply(self, commands: list) -> list[str]:
         out: list[str] = []
-        # MaaEnd changes are batched so an interdependent set lands together.
-        maaend_batch = [c for c in commands
-                        if isinstance(c, dict) and c.get("action") == "maaend_option"]
-        others = [c for c in commands
-                  if isinstance(c, dict) and c.get("action") != "maaend_option"]
-
-        if maaend_batch:
-            if not self.maaend_dir:
-                out.append("✗ 终末地：找不到安装路径，跳过")
-            elif not self.automas_dir:
-                # The change lands in AUTO-MAS's master copy (MaaEnd's own
-                # config is overwritten from it before every run).
-                out.append("✗ 终末地：找不到 AUTO-MAS 目录，跳过")
-            else:
-                ok, detail = maaend.apply_changes(
-                    self.maaend_dir, maaend_batch, self.automas_dir,
-                    self.state_dir / "maaend-backups")
-                out.append(("✅ 终末地：" if ok else "✗ 终末地：") + detail)
+        # maaend_option (the MaaEnd option writer, maaend.apply_changes) is gone
+        # since 2026-10-13: nothing sends it (order.sh refuses an action outside
+        # commands.ALLOWED, the App never had it), so apply_command refuses it.
+        others = [c for c in commands if isinstance(c, dict)]
 
         for cmd in [c for c in others if c.get("action") == "queue"]:
             if not self.automas_dir:

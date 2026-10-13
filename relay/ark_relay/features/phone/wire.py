@@ -117,6 +117,23 @@ def unpack(pin: str, raw: str, *, now: "float | None" = None) -> "dict | None":
     return msg
 
 
+def stale_cmd(pin: str, raw: str, *, now: "float | None" = None) -> bool:
+    """A command for this PIN that unpack drops for its age. The mailbox marks
+    its id handled: the drop is final, and without the mark the same message is
+    re-read and re-logged at every boot and reconnect while ntfy keeps it
+    (relay.log 2026-10-05: two messages logged 11 times)."""
+    try:
+        msg = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return False
+    if not isinstance(msg, dict) or str(msg.get("pin") or "") != pin or msg.get("kind") != "cmd":
+        return False
+    ts = msg.get("ts")
+    if not isinstance(ts, int):
+        return False
+    return abs((now if now is not None else time.time()) - ts) > MAX_AGE
+
+
 def _bj(ts, fmt: str = "%m-%d %H:%M:%S") -> str:
     """A unix time as the server clock (Beijing) reads it; "?" when there is none."""
     from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415

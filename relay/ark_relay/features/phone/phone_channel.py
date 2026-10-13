@@ -37,12 +37,28 @@ log = logging.getLogger("ark.service")
 LIVE_ONLY_ACTIONS = ("estop",)
 
 
-def boot_backlog(cmds: list[dict], log) -> list[dict]:
-    """The boot-time mailbox backlog with the live-only presses dropped, each one logged."""
+def _before(body, started) -> bool:
+    """True unless ntfy received `body` at or after `started` (unix seconds).
+
+    The same filter also reads the late backlog (mailbox._late_backlog, after a
+    boot read that timed out), which can carry a press made while this process
+    was already up - that one is live and must run (status-channel audit A2).
+    No start time or no ntfy time: treated as before, as it always was."""
+    if started is None:
+        return True
+    try:
+        return float(((body or {}).get("_meta") or {}).get("ntfy_time")) < float(started)
+    except (TypeError, ValueError):
+        return True
+
+
+def boot_backlog(cmds: list[dict], log, started: float | None = None) -> list[dict]:
+    """The mailbox backlog with the live-only presses made before `started` (this
+    process's start, unix seconds) dropped, each one logged."""
     out: list[dict] = []
     for body in cmds:
         action = str((body or {}).get("action") or "")
-        if action in LIVE_ONLY_ACTIONS:
+        if action in LIVE_ONLY_ACTIONS and _before(body, started):
             log.warning("信箱里有一条关机期间按的「%s」，开机不执行（当时和现在都没有在跑的东西）", action)
             continue
         out.append(body)
@@ -414,11 +430,13 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
         # Not when the service is stopping: that False means "did not wait",
         # not "down", and the restarted process checks again.
         notifier.send(texts.AUTOMAS_DOWN, texts.automas_boot_down_body(), alert=True)
+    started = getattr(getattr(engine, "_started_at", None), "timestamp", lambda: None)()
+
     def run_backlog(cmds) -> None:
         # One state for the whole backlog, after it: each order used to push
         # its own (09-30 08:46: 5 orders + 11 refreshes = 64 messages).
         with push_state.held():
-            for body in boot_backlog(cmds, log):
+            for body in boot_backlog(cmds, log, started):
                 run_phone_cmd(body)
 
     push_state("开机")

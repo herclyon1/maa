@@ -193,13 +193,13 @@ cfg = types.SimpleNamespace(automas_dir=str(AUTOMAS),
 from ark_relay.core import plan  # noqa: E402
 from ark_relay.features.phone import snapshot  # noqa: E402
 
-saved_read, saved_plan = snapshot.read, plan.next_plan
-snapshot.read = lambda: dict(FULL)
+saved_read, saved_plan = snapshot.read_runtime, plan.next_plan
+snapshot.read_runtime = lambda: dict(FULL)
 plan.next_plan = lambda automas_dir: "明天：早班 MAA/MaaEnd/OK-WW"
 try:
     out = phone.state_payload(cfg, STATE)
 finally:
-    snapshot.read, plan.next_plan = saved_read, saved_plan
+    snapshot.read_runtime, plan.next_plan = saved_read, saved_plan
 
 for key in ("at", "config", "run", "queues", "relay", "options", "master", "plan"):
     check(f"有 {key} 这个键", key in out, True)
@@ -229,18 +229,18 @@ check("快照里没有队列那一段（关机前那一推）：名单照样从�
       [("早班", True, ["MAA", "MaaEnd", "OK-WW"]), ("晚班", True, ["MAA"])])
 # The real plan text, minus the maintenance notices it fetches from the web.
 saved_maint = plan.maintenance_lines
-snapshot.read, plan.maintenance_lines = (lambda: {}), (lambda day: [])
+snapshot.read_runtime, plan.maintenance_lines = (lambda: {}), (lambda day: [])
 try:
     both = phone.state_payload(cfg, STATE)
 finally:
-    snapshot.read, plan.maintenance_lines = saved_read, saved_maint
+    snapshot.read_runtime, plan.maintenance_lines = saved_read, saved_maint
 check("名单和排班文字说的是同一组班次（10-07 10:55 名单空、文字两班）",
       ["09:00" in both["plan"], "21:30" in both["plan"], [q["名"] for q in both["queues"]]],
       [True, True, ["早班", "晚班"]])
 
 from ark_relay.features.modes import modes as _modes  # noqa: E402
 _modes._store(STATE).set("modes", "debug_until", "2000-01-01 00:00")
-snapshot.read, plan.next_plan = (lambda: dict(FULL)), (lambda automas_dir: "")
+snapshot.read_runtime, plan.next_plan = (lambda: dict(FULL)), (lambda automas_dir: "")
 try:
     check("调试模式过了结束时间就发空串（手机上不再显示「开着」）",
           phone.state_payload(cfg, STATE)["relay"]["调试模式"], "")
@@ -248,7 +248,7 @@ try:
     check("调试模式还在期内照发结束时间",
           phone.state_payload(cfg, STATE)["relay"]["调试模式"], "2999-01-01 00:00")
 finally:
-    snapshot.read, plan.next_plan = saved_read, saved_plan
+    snapshot.read_runtime, plan.next_plan = saved_read, saved_plan
     _modes._store(STATE).pop("modes", "debug_until")
 
 for key in ("调试模式", "下次别关机", "周本", "周常"):
@@ -270,28 +270,44 @@ for game in ("MAA", "MaaEnd", "OK-WW"):
     check(f"master 里有 {game} 这一段", game in out["master"], True)
 
 print("\n[快照读不到时：明说读不到，其余照发——页面才能标「这是上次的」]")
-snapshot.read = lambda: (_ for _ in ()).throw(ConnectionError("AUTO-MAS 没开"))
+snapshot.read_runtime = lambda: (_ for _ in ()).throw(ConnectionError("AUTO-MAS 没开"))
 plan.next_plan = lambda automas_dir: (_ for _ in ()).throw(OSError("读不了"))
 try:
     broken = phone.state_payload(cfg, STATE)
 finally:
-    snapshot.read, plan.next_plan = saved_read, saved_plan
+    snapshot.read_runtime, plan.next_plan = saved_read, saved_plan
 
 check("AUTO-MAS 没开（关机那一推）：config 照样从配置文件读出",
       broken["config"]["MAA"]["关卡"], "AT-4")
 nofile = types.SimpleNamespace(automas_dir=str(tmpdir()), maaend_dir=cfg.maaend_dir,
                                okww_dir=cfg.okww_dir)
-snapshot.read = lambda: {}
+snapshot.read_runtime = lambda: {}
 try:
     blind = phone.state_payload(nofile, STATE)
 finally:
-    snapshot.read = saved_read
+    snapshot.read_runtime = saved_read
 check("配置文件读不到：config 里留一条 _错误，页面据此弹警告",
       list(blind["config"]), ["_错误"])
 check("_错误 里带上异常类型，不是干巴巴一句「出错」",
       blind["config"]["_错误"].startswith("FileNotFoundError:"), True)
 check("配置文件读不到：班次名单是空列表，不是缺键", blind["queues"], [])
 check("plan 读不到时给空串，不是缺键", broken["plan"], "")
+
+print("\n[queues / relay that cannot be built carry `_错误`, not [] / {} (status-channel audit A3)]")
+# [] read on the App as "every game in the shift", {} as switches off, weekly not
+# done, no month cards - as if real.
+from ark_relay.features.weekly import weeklyboss  # noqa: E402
+saved_rows, saved_wb = plan.queue_rows, weeklyboss.WeeklyBossGate.settings
+plan.queue_rows = lambda automas_dir: (_ for _ in ()).throw(OSError("ScriptConfig 读不了"))
+weeklyboss.WeeklyBossGate.settings = lambda self: (_ for _ in ()).throw(ValueError("坏了"))
+phone._last_error.pop("relay", None)
+try:
+    marked = phone.state_payload(cfg, STATE)
+finally:
+    plan.queue_rows, weeklyboss.WeeklyBossGate.settings = saved_rows, saved_wb
+check("queues: one row holding only _错误",
+      marked["queues"], [{"_错误": "OSError: ScriptConfig 读不了"}])
+check("relay: _错误 with the exception", marked["relay"], {"_错误": "ValueError: 坏了"})
 check("AUTO-MAS 没开：班次名单照样从配置文件读出",
       [q["名"] for q in broken["queues"]], ["早班", "晚班"])
 # 快照那一段全靠 AUTO-MAS，它没开着就什么都读不到；页面对 run/queues 缺失是
@@ -676,6 +692,31 @@ with pusher.held():
     pass
 check("积压里没有要发的：一份都不多发", pushed, [])
 
+print("\n[停止前 / 关机前 never wait inside a held batch (status-channel audit A1)]")
+# SvcStop runs on its own thread while the engine's drain or the late backlog holds;
+# folded in, the stop push lost its exact label and went out after the kill timer.
+import threading  # noqa: E402
+pushed.clear()
+inside, release = threading.Event(), threading.Event()
+
+
+def _holder():
+    with pusher.held():
+        pusher("改完配置")
+        inside.set()
+        release.wait(5)
+
+
+th = threading.Thread(target=_holder)
+th.start()
+inside.wait(5)
+check("停止前 sent at once while another thread holds", pusher(phone.STOP_WHY), True)
+check("关机前 sent at once while another thread holds", pusher("关机前"), True)
+check("both went out under their own label", pushed, [phone.STOP_WHY, "关机前"])
+release.set()
+th.join(5)
+check("the held batch keeps only its own push", pushed, [phone.STOP_WHY, "关机前", "改完配置"])
+
 # ---------------------------------------------------------------- what the mailbox could not read
 
 print("\n[关机超过 ntfy 的 12 小时：读不到的那一段要记下来、带进状态，不能悄悄丢]")
@@ -707,12 +748,12 @@ check("状态里带着这一段（从 / 到 / 开机，unix 秒）",
       [(g["从"], abs(g["到"] - (now - 12 * 3600)) <= 5, abs(g["开机"] - now) <= 5) for g in st],
       [(now - 13 * 3600, True, True)])
 check("机器核对也看得到（report 带 blind）", mb_gap.report()["blind"], mb_gap.blind)
-snapshot.read, plan.next_plan = (lambda: dict(FULL)), (lambda automas_dir: "")
+snapshot.read_runtime, plan.next_plan = (lambda: dict(FULL)), (lambda automas_dir: "")
 try:
     check("state_payload 的 relay 里有「信箱空窗」",
           phone.state_payload(cfg, B1)["relay"].get("信箱空窗"), st)
 finally:
-    snapshot.read, plan.next_plan = saved_read, saved_plan
+    snapshot.read_runtime, plan.next_plan = saved_read, saved_plan
 
 mb_gap._note_blind(now + 3600)
 kept = StateStore(B1).get("queues", "phone_blind")
@@ -803,6 +844,35 @@ push_state_sim()          # before shutdown
 total = day.quota.total()
 print(f"    （模拟：{states[0]} 份状态 × {PIECES} 片 + {day.quota.count('hb')} 跳 = {total} 条）")
 check("整天落在 250 以内，还留着至少 20 条余量", total <= phone.NTFY_DAILY_LIMIT - 20, True)
+
+print("\n[state folder not writable: the quota WARNING still goes once (status-channel audit A4)]")
+# _write swallows OSError, so the day's `full` flag never reached the disk and every
+# later 42908 sent another group WARNING.
+import logging  # noqa: E402
+_warns: list = []
+
+
+class _Count(logging.Handler):
+    def emit(self, record):
+        if record.levelno >= logging.WARNING:
+            _warns.append(record.getMessage())
+
+
+_qlog = logging.getLogger("ark.phone")
+_qh = _Count()
+_qlog.addHandler(_qh)
+try:
+    nowrite = tmpdir() / "file-not-folder"
+    nowrite.write_text("x", encoding="utf-8")       # mkdir under a file fails
+    qa, qb = phone.Quota(nowrite / "state"), phone.Quota(nowrite / "state")
+    first, second, other = qa.mark_full("a"), qa.mark_full("b"), qb.mark_full("c")
+finally:
+    _qlog.removeHandler(_qh)
+check("the first call notes it", first, True)
+check("a second call does not", second, False)
+check("nor the other Quota on the same folder (mailbox / heartbeat)", other, False)
+check("one WARNING", sum("额度用完" in m for m in _warns), 1)
+check("full() holds for the day", (qa.full(), qb.full(), qa.stops_beats()), (True, True, True))
 
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

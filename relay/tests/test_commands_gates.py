@@ -89,6 +89,7 @@ for bad in ("format_disk", "poweroff_now", "", "SET_STAGE", "set stage",
             "run_now; rm -rf", "set_config2", None, 123):
     ok, msg = commands.apply_command({"action": bad, "confirmed": True})
     check(f"拒绝 {bad!r}", (ok, "不在允许的清单里" in msg), (False, True))
+    check(f"拒绝 {bad!r} 的话里不带原样的输入", bool(bad) and isinstance(bad, str) and bad in msg, False)
 check("完全没有 action 字段也拒绝",
       commands.apply_command({"confirmed": True})[0], False)
 # Trimmed, not rejected: a name with stray whitespace is still that action.
@@ -146,6 +147,8 @@ for action in sorted(commands.MUTATING):
                                       "queue": "早班", "script": "MAA",
                                       "path": "Info.Stage", "game": "MAA"})
     check(f"{action} 未确认被拒", (ok, "人工确认" in msg), (False, True))
+    # alerts 20261010 04:16:13: 「📱 配置没改成」 reached the group as 「动作 set_master 需要人工确认…」.
+    check(f"{action} 拒绝的话里不带动作原名", action in msg, False)
     check(f"{action} 未确认时配置文件一个字节没动", cfg_raw(), before)
     check(f"{action} 未确认时不留备份", backups(), [])
 

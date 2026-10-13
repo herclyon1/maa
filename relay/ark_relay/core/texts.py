@@ -545,11 +545,25 @@ _ACTION_ZH = {
     "tacet_shots": "无音区结算截图",
     "monthcard": "登记月卡",
     "estop": "停止一切",
+    "refresh": "刷新状态",
+    "watch": "打开实时状态",
+    "queue": "改队列",
+    "sanity_plan": "改理智安排",
 }
 
 
 def action_name(action: str) -> str:
     return _ACTION_ZH.get(action, "这条设置")
+
+
+# commands.apply_command's two gate refusals; they reach the group as the body of
+# 「配置没改成」, so they name the action in words, never by its id.
+def action_not_allowed(action: str) -> str:
+    return f"「{action_name(action)}」不在允许的清单里，已拒绝"
+
+
+def action_needs_confirm(action: str) -> str:
+    return f"「{action_name(action)}」需要人工确认，未确认前不执行"
 
 
 # D207: the receipt written the moment an order is queued behind a running script.

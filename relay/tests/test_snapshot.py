@@ -135,6 +135,33 @@ grab.warned.clear()
 out = snapshot.read()
 check("没关机时读不到：照样 WARNING", len(grab.warned), 1)
 
+print("[a phone publish reads only the runtime section (audit 11 #2)]")
+# relay.log 10-06 / 10-10: every phone publish ran _mas / _queues / _okww, kept only
+# 「ark-relay」 and 「程序」 (from _runtime), and an AUTO-MAS hiccup reached the group.
+import types  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import tmpdir  # noqa: E402
+from ark_relay.features.phone import phone  # noqa: E402
+
+
+def runtime(out):
+    calls.append("_runtime")
+    out["ark-relay"], out["程序"] = "RUNNING", {"MAA": True}
+
+
+snapshot._runtime = runtime
+calls.clear()
+grab.warned.clear()
+pcfg = types.SimpleNamespace(automas_dir=str(tmpdir()), maaend_dir=str(tmpdir()), okww_dir=str(tmpdir()))
+st = phone.state_payload(pcfg, tmpdir())
+check("the publish calls only _runtime", calls, ["_runtime"])
+check("an AUTO-MAS that does not answer is not a WARNING from the publish", grab.warned, [])
+check("the phone still gets the runtime", st.get("run"), {"服务": "RUNNING", "在跑的": ["MAA"]})
+calls.clear()
+snapshot.read()
+check("config-check's full read still reads every section", calls, ["_queues", "_okww", "_runtime"])
+
 (snapshot._mas, snapshot._queues, snapshot._okww, snapshot._runtime,
  errwatch.relay_shutdown_issued, errwatch.os_shutdown) = saved
 snapshot.log.removeHandler(grab)
@@ -144,13 +171,14 @@ import urllib.error  # noqa: E402
 from unittest import mock  # noqa: E402
 
 item_err = {"exc": None}
+queue_info = {"q1": {"Info": {"Name": "早班", "TimeEnabled": True, "StartUpEnabled": False}}}
 
 
 def fake_post(path, body=None, timeout=15):
     if path == "/api/scripts/get":
         return {"data": {"s1": {"Info": {"Name": "MAA"}}}}
     if path == "/api/queue/get":
-        return {"data": {"q1": {"Info": {"Name": "早班", "TimeEnabled": True, "StartUpEnabled": False}}}}
+        return {"data": queue_info}
     if item_err["exc"] is not None:
         raise item_err["exc"]
     return {"data": {"i1": {"Info": {"ScriptId": "s1"}}}}
@@ -195,7 +223,38 @@ with mock.patch.object(snapshot, "_post", fake_post), \
     except Exception:  # noqa: BLE001
         raised = True
     check("backend gone (connection refused) -> the section fails as before", raised, True)
+    # AUTO-MAS v5.7 replaced the bool StartUpEnabled with StartUpMode (Never / Always /
+    # DailyFirst; app/models/config.py, tests/fixtures/automas-models/config.py.txt).
+    item_err["exc"] = None
+    got = {}
+    for mode in ("Never", "Always", "DailyFirst"):
+        queue_info["q1"]["Info"] = {"Name": "早班", "TimeEnabled": True, "StartUpMode": mode}
+        out = {}
+        snapshot._queues(out)
+        got[mode] = out["队列"]["早班"]["开机跑"]
+    check("v5.7 StartUpMode -> 开机跑", got, {"Never": False, "Always": True, "DailyFirst": True})
 snapshot.log.removeHandler(g2)
+
+print("\n[_mas: one script's user unreadable is marked, not dropped (audit 11 #5)]")
+
+
+def users_post(path, body=None, timeout=15):
+    if path == "/api/scripts/get":
+        return {"data": {"s1": {"Info": {"Name": "MAA"}}, "s2": {"Info": {"Name": "MaaEnd"}},
+                         "s3": {"Info": {"Name": "OK-WW"}}}}
+    if path == "/api/scripts/user/get" and body["scriptId"] == "s2":
+        raise TimeoutError("timed out")
+    if path == "/api/scripts/user/get" and body["scriptId"] == "s3":
+        raise urllib.error.URLError("refused")
+    return {"data": {"u1": {"Info": {"Stage": "1-7"}, "Task": {}}}}
+
+
+o = {}
+with mock.patch.object(snapshot, "_post", users_post):
+    snapshot._mas(o)
+check("the readable script is there", (o.get("MAA") or {}).get("关卡"), "1-7")
+check("MaaEnd's section says its user could not be read", o.get("MaaEnd"), {"用户读不到": "TimeoutError: timed out"})
+check("OK-WW's too, under its usual key", sorted(o.get("OK-WW(MAS侧)") or {}), ["用户读不到"])
 
 print("\n[the phone page's relay state looks for the mutex the packaged main program holds]")
 import re  # noqa: E402

@@ -42,8 +42,7 @@ from ark_relay.core.config import SERVER_TZ, atomic_write_text
 from ark_relay.features.phone.config_fields import _dig, _flatten, _humanize, _nest
 from ark_relay.features.phone.mas_client import _mas, mas_post
 from ark_relay.features.phone.redbutton import (
-    ESTOP_LAST, ESTOP_SEED, ESTOP_WINDOWS_FILE, estop, estop_label, estop_windows,
-    merge_estop_seed)
+    ESTOP_LAST, ESTOP_WINDOWS_FILE, estop, estop_label, estop_windows)
 
 log = logging.getLogger("ark.commands")
 
@@ -51,7 +50,6 @@ log = logging.getLogger("ark.commands")
 __all__ = [
     "ALLOWED",
     "ESTOP_LAST",
-    "ESTOP_SEED",
     "ESTOP_WINDOWS_FILE",
     "MUTATING",
     "REVERSIBLE",
@@ -61,9 +59,9 @@ __all__ = [
     "estop_windows",
     "mas_post",
     "mas_up",
-    "merge_estop_seed",
     "restore_script_in_queue",
     "run_script",
+    "SkipError",
     "skip_script_all_items",
     "skip_script_in_queue",
 ]
@@ -543,6 +541,20 @@ def _write_item_days(qid: str, uid: str, days: list[str]) -> None:
         raise RuntimeError(f"调度程序拒绝改运行日：{r.get('message')}")
 
 
+class SkipError(RuntimeError):
+    """A today-only skip that failed after a Schedule.Days write may have gone out.
+
+    `recs` are the undo records of the items that may have changed (those
+    already skipped, and the one that failed); the caller keeps them
+    (gameupdate._add_skip) so the weekday is put back like any other skip,
+    instead of staying removed for good. str() is the failure text alone.
+    """
+
+    def __init__(self, msg: str, recs: list[dict]):
+        super().__init__(msg)
+        self.recs = recs
+
+
 def skip_script_in_queue(queue: str, script: str, uid: str = "") -> dict | None:
     """Skip one script in a queue for today only; returns the record needed to undo it.
 
@@ -572,12 +584,19 @@ def skip_script_in_queue(queue: str, script: str, uid: str = "") -> dict | None:
         log.info("队列「%s」里的 %s 今天本来就不跑（运行日 %s），不用跳过", queue, script, "、".join(days) or "无")
         return None
     run_days = [d for d in days if d != today]
-    _write_item_days(qid, uid, run_days)
-    _, _, back = _queue_item(qid, uid=uid)
-    if today in _item_days(back):
-        raise RuntimeError(f"跳不掉：改了运行日之后读回来，{today} 还在里面")
+    # The record is made before the write: once the write is sent, a failure
+    # (a read-back that times out, a write whose reply is lost) may leave the
+    # weekday removed, and only this record puts it back. Restoring an item
+    # that did not change is a no-op (restore_script_in_queue compares first).
     rec = {"queue": queue, "queueId": qid, "queueItemId": uid, "script": script, "scriptId": sid,
            "position": pos, "day": now.strftime("%Y-%m-%d"), "days": days}
+    try:
+        _write_item_days(qid, uid, run_days)
+        _, _, back = _queue_item(qid, uid=uid)
+    except Exception as exc:  # noqa: BLE001 - re-raised with the record attached
+        raise SkipError(str(exc), [rec]) from exc
+    if today in _item_days(back):
+        raise SkipError(f"跳不掉：改了运行日之后读回来，{today} 还在里面", [rec])
     log.info("队列「%s」今天跳过 %s（第 %d 项，运行日去掉 %s）", queue, script, pos + 1, today)
     return rec
 
@@ -588,16 +607,22 @@ def skip_script_all_items(queue: str, script: str) -> list[dict]:
     A script can sit in a queue more than once (two items with the same
     ScriptId); skipping only the first would leave the others running today.
     Items that already leave today out are not touched and get no record, for
-    the reason given in skip_script_in_queue.
+    the reason given in skip_script_in_queue. A failure on any item raises
+    SkipError carrying the records of the items already changed and of the
+    failed one, so the caller can keep them.
     """
     qid, sid = _queue_id(queue), _script_id(script)
     items = _mas("/api/queue/item/get", {"queueId": qid})
     data = items.get("data") or {}
     uids = [i["uid"] for i in items.get("index") or []
             if ((data.get(i["uid"]) or {}).get("Info") or {}).get("ScriptId") == sid]
-    recs = []
+    recs: list[dict] = []
     for uid in uids:
-        if rec := skip_script_in_queue(queue, script, uid=uid):
+        try:
+            rec = skip_script_in_queue(queue, script, uid=uid)
+        except Exception as exc:  # noqa: BLE001 - re-raised with every record made so far
+            raise SkipError(str(exc), recs + list(getattr(exc, "recs", []))) from exc
+        if rec:
             recs.append(rec)
     return recs
 
@@ -662,8 +687,11 @@ def run_script(script: str) -> tuple[bool, str]:
     for sid, sc in scripts.items():
         if str((sc.get("Info") or {}).get("Name") or "").lower() != script.lower():
             continue
-        _note_dispatch(f"脚本 {script}")
         _overlay_before_start(f"单独开跑「{script}」前")
+        # Noted after the overlay step, which has no time limit: noted before it, a
+        # slow one put the dispatch outside trigger.MATCH_AFTER_S and the relay's
+        # own run was booked as hand-started.
+        _note_dispatch(f"脚本 {script}")
         try:
             r = _mas("/api/dispatch/start", {"taskId": sid, "mode": "AutoProxy"})
         except Exception as exc:  # noqa: BLE001
@@ -686,8 +714,8 @@ def _run_now(queue: str) -> tuple[bool, str]:
         name = str((q.get("Info") or {}).get("Name") or "")
         have.append(name)
         if name == queue:
-            _note_dispatch(f"队列 {queue}")
             _overlay_before_start(f"开跑队列「{queue}」前")
+            _note_dispatch(f"队列 {queue}")     # after the overlay step, as in run_script
             try:
                 # The only valid values for mode are AutoProxy / ScriptConfig /
                 # Update (TaskCreateIn in app/models/schema.py); anything else
@@ -734,11 +762,11 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
     """
     action = str(cmd.get("action") or "").strip()
     if action not in ALLOWED:
-        return False, f"这个动作不在允许的清单里，已拒绝: {action!r}"
+        return False, texts.action_not_allowed(action)
 
     # Gate ②: mutating actions must carry the operator's confirmation.
     if action in MUTATING and not cmd.get("confirmed"):
-        return False, f"动作 {action} 需要人工确认，未确认前不执行"
+        return False, texts.action_needs_confirm(action)
 
     try:
         if action == "set_stage":

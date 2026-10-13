@@ -189,9 +189,15 @@ class StatePusher:
             return True
         return False
 
+    # Never put off: the last state before a stop or a power-off. Folded into a held
+    # batch it lost its exact label (the stop marker, machinecheck #11 and the
+    # watchdog's 关机前 test match it) and went out later on the holding thread,
+    # inside SvcStop's 15 s kill timer (audit status-channel A1).
+    NEVER_HELD = ("停止前", "关机前")
+
     def __call__(self, why: str) -> bool:
         with self._lock:
-            if self._held:
+            if self._held and why not in self.NEVER_HELD:
                 self._pending.append(why)
                 return False
         ok = bool(self._publish(why))
@@ -246,7 +252,7 @@ def state_payload(cfg, state_dir: Path) -> dict:
     keep = {k.split(".", 1)[1] for k in SHOWN} | {"关卡", "理智药", "剿灭",
             "作战开关", "活动关优先", "活动关序号"}
     try:
-        full = snapshot.read()
+        full = snapshot.read_runtime()
         # The orchestrator is always up while the machine is; listing it made
         # 「现在没有脚本在跑」 impossible to ever show, and 「在跑：AUTO-MAS」 tells him
         # nothing. Only scripts and games count as running.
@@ -269,9 +275,11 @@ def state_payload(cfg, state_dir: Path) -> dict:
     # backend, which is gone at the service-stop push.
     try:
         out["queues"] = plan.queue_rows(getattr(cfg, "automas_dir", None))
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
         log.warning("班次名单读不到", exc_info=True)
-        out["queues"] = []
+        # [] read on the App as "no shift", i.e. every game in the shift - as if
+        # real. A row with only `_错误`, like config's marker (audit A3).
+        out["queues"] = [{"_错误": f"{type(exc).__name__}: {exc}"}]
     try:
         from ark_relay.features.weekly import annihilation, garden, weeklyboss  # noqa: PLC0415
         automas = getattr(cfg, "automas_dir", None)
@@ -308,12 +316,12 @@ def state_payload(cfg, state_dir: Path) -> dict:
         }
         _last_error.pop("relay", None)
     except Exception as exc:
-        # {} reads on the phone as switches off, weekly not done, no month
-        # cards - as if real.
+        # {} read on the phone as switches off, weekly not done, no month
+        # cards - as if real. `_错误` marks it, like config (audit A3).
         if _last_error.get("relay") != (key := f"{type(exc).__name__}: {exc}"):
             log.warning("手机状态里中继那一段读不到，App 上的开关、周常和月卡这次是空的", exc_info=True)
             _last_error["relay"] = key
-        out["relay"] = {}
+        out["relay"] = {"_错误": key}
     try:
         out["options"] = _options(cfg)
     except Exception:  # noqa: BLE001
@@ -387,8 +395,12 @@ def send_state(box, cfg, why: str, log=log) -> "tuple[bool, dict | None, str]":
     The day's count rides along: on 2026-10-02 nobody could see the 250 running out
     until it had (phone.Quota; ntfy's own count once synced)."""
     payload = None
+    from ark_relay.features.phone import snapshot  # noqa: PLC0415
+    # The last state before a stop / power-off must not wait on the process list.
+    quiet = snapshot.no_process_query() if why in StatePusher.NEVER_HELD else contextlib.nullcontext()
     try:
-        payload = state_payload(cfg, cfg.state_dir)
+        with quiet:
+            payload = state_payload(cfg, cfg.state_dir)
         ok = box.publish(payload)
     except Exception as exc:
         log.warning("状态没能上报到手机（%s）", why, exc_info=True)

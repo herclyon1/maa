@@ -46,7 +46,8 @@ HB_CRAWL_SEC = 1800      # interval once it passes HB_SLOW_UNTIL
 # Thresholds on the day's total (all kinds), not on beats alone. Up to 100 the
 # page gets its live 30 s beat; up to 180 one every 5 minutes; past that one
 # every 30 minutes, so the last 70 of the 250 stay for what the user asked for:
-# states (4 messages each), the shutdown state and bye. The page reads the
+# states (1 message each: the machine's ntfy-2026-10-13.json counts state 15
+# for 15 states), the shutdown state and bye. The page reads the
 # cadence from the beat itself ("hb 1800") and widens its window to match
 # (web/live.js hbWindowMs, ark-remote Live.swift hbWindowMs), so a slow beat
 # still reads 「开机中 · 每 30 分钟报一次」, not a false 「关机」.
@@ -102,6 +103,11 @@ class Quota:
     # replace itself is for a power cut mid-write: a half file reads as {} and
     # the day's count would start over at zero.
     _lock = threading.RLock()
+    # The day ntfy refused, per state folder, in memory: when the day's file cannot
+    # be written (_write swallows OSError) the flag never reached the disk, and
+    # every later 42908 sent the day's WARNING again (status-channel audit A4).
+    # Class-wide: the mailbox and the heartbeat each hold their own Quota.
+    _full_day: dict = {}
 
     def __init__(self, state_dir: Path):
         self.state_dir = Path(state_dir)
@@ -194,9 +200,10 @@ class Quota:
         the day's file, so neither the other thread nor a restart repeats it)."""
         with self._lock:
             data = self.read()
-            if data.get("full") is True:
+            if data.get("full") is True or self._full_day.get(str(self.state_dir)) == self.day():
                 return False
             data["full"] = True
+            self._full_day[str(self.state_dir)] = self.day()
             self._write(data)
             own = self._own(data)
         log.warning("ntfy 今天 %d 条的额度用完了（%s；中继这一天自己发了 %d 条）："
@@ -206,7 +213,8 @@ class Quota:
         return True
 
     def full(self) -> bool:
-        return self.read().get("full") is True
+        return (self.read().get("full") is True
+                or self._full_day.get(str(self.state_dir)) == self.day())
 
     def stops_beats(self) -> bool:
         """No beat on ntfy now: ntfy refused the day, or the day's total reached

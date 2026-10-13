@@ -141,7 +141,9 @@ print("[1. the 15:42 run: old limits, AUTO-MAS dead, ntfy never answers -> runs 
 code, took, new, _ = run(BUDGET, limits=False)
 check("not sent: exit code 1", code, 1)
 check("the 15:42:28 line", "状态没能上报到手机（停止前）：看门服务等了" in new, True)
-check("AUTO-MAS was asked (and refused)", calls["mas"] > 0, True)
+# Since audit 11 #2 (2026-10-13) a phone publish reads only snapshot.read_runtime, so
+# AUTO-MAS is not asked even without stop-push's limits; ntfy alone runs out the time.
+check("AUTO-MAS not asked even without stop-push's limits", calls["mas"], 0)
 check("the timing line says the send did not finish", "还没发完" in new.split("看门服务代发用时：", 1)[-1], True)
 
 print("[2. stop-push's limits: the same wire -> sent well inside the budget]")

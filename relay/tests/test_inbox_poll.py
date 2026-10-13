@@ -111,48 +111,32 @@ body = "\n".join(msgs)
 check("note 在正文里", "换成清波寨" in body, True)
 check("名字在标题里", "改基质地点" in msgs[0], True)
 
-print("\n[没有 maaend/automas 路径时，明说跳过而不是假装做了]")
+print("\n[没有 automas 路径时，明说跳过而不是假装做了]")
 b = box({"version": 41, "commands": [
-    {"action": "maaend_option", "task": "T", "option": "O", "value": True},
     {"action": "queue", "name": "早班", "enabled": True},
     {"action": "sanity_plan", "tab": "x"},
 ]})
 _, msgs = b.poll()
 body = "\n".join(msgs)
-check("终末地那条说了跳过", "✗ 终末地：找不到安装路径" in body, True)
 check("队列那条说了跳过", "✗ 队列：找不到 AUTO-MAS 目录" in body, True)
 check("理智方案那条说了跳过", "✗ 理智方案：找不到 AUTO-MAS 目录" in body, True)
 
-print("\n[终末地选项写 AUTO-MAS 母本：有安装路径没有 AUTO-MAS 目录也要明说跳过]")
-# 2026-09-30: MaaEnd's own config/mxu-MaaEnd.json is overwritten from the
-# master before every run, so the batch must go to the master or nowhere.
+print("\n[maaend_option is gone (audit 11 #8): refused, nothing written]")
+# Nothing sends it since 08-20 (order.sh refuses an action outside commands.ALLOWED,
+# the App never had it); maaend.apply_changes and its inbox branch are deleted.
 d = tmpdir()
-b = FakeInbox(d, maaend_dir=d / "maaend")
-b.payload = {"version": 42, "commands": [
-    {"action": "maaend_option", "task": "T", "option": "O", "value": True}]}
-_, msgs = b.poll()
-check("没有 AUTO-MAS 目录 → 终末地那条说了跳过",
-      "✗ 终末地：找不到 AUTO-MAS 目录" in "\n".join(msgs), True)
-
-d = tmpdir()
-mae = d / "maaend"
-(mae / "tasks").mkdir(parents=True)
-(mae / "config").mkdir()
-(mae / "config" / "mxu-MaaEnd.json").write_text('{"own": true}', encoding="utf-8")
 mfile = d / "automas" / "data" / "sid1" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"
 mfile.parent.mkdir(parents=True)
 mfile.write_text(json.dumps({"instances": [{"tasks": [{"taskName": "T", "optionValues": {
     "O": {"type": "switch", "value": False}}}]}]}), encoding="utf-8")
-b = FakeInbox(d / "state", maaend_dir=mae, automas_dir=d / "automas")
+before = mfile.read_text(encoding="utf-8")
+b = FakeInbox(d / "state", automas_dir=d / "automas")
 b.payload = {"version": 43, "commands": [
-    {"action": "maaend_option", "task": "T", "option": "O", "value": True}]}
+    {"action": "maaend_option", "task": "T", "option": "O", "value": "false"}]}
 _, msgs = b.poll()
-got = json.loads(mfile.read_text(encoding="utf-8"))["instances"][0]["tasks"][0]["optionValues"]["O"]
-check("改的是母本", got["value"], True)
-check("MaaEnd 自己那份没动",
-      (mae / "config" / "mxu-MaaEnd.json").read_text(encoding="utf-8"), '{"own": true}')
-check("备份放在中继自己的状态目录", len(list((d / "state" / "maaend-backups").glob("*.bak-*"))), 1)
-check("回报是成功", any(m.startswith("✅ 终末地：") for m in msgs), True)
+check("refused by the whitelist", any(m.startswith("✗ maaend_option") for m in msgs), True)
+check("the master copy is untouched", mfile.read_text(encoding="utf-8"), before)
+check("the writer module is gone", (Path(inbox.__file__).parent / "maaend.py").exists(), False)
 
 # ---- A stale configured address must fall back to the built-in one ----
 # 2026-09-08 I deleted inbox/todo.json while the machine's .env still pointed at

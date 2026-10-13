@@ -16,10 +16,13 @@ AUTO-MAS's reach, so that one can only be read from file.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 log = logging.getLogger("ark.snapshot")
@@ -28,6 +31,36 @@ log = logging.getLogger("ark.snapshot")
 # queue whose item list cannot be read is said once per condition (queue -> the
 # error last said, as WeeklyBossGate._last_error), forgotten once it reads again.
 _last_error: dict[str, str] = {}
+
+# OK-WW's python is found from the process command lines (redbutton._okww_python_alive),
+# and an unreadable list retries 3 x 3 s (procs.python_processes): asked on every
+# publish it stalled the 停止前 push inside SvcStop's 15 s timer. One answer serves
+# OKWW_ALIVE_TTL seconds; the stop / power-off pushes never ask and report the last one.
+OKWW_ALIVE_TTL = 30.0
+_okww_alive: dict = {"at": None, "alive": None}
+_no_query = threading.local()
+
+
+@contextlib.contextmanager
+def no_process_query():
+    """Inside it, _runtime does not ask for OK-WW's python (the 停止前 / 关机前 pushes)."""
+    _no_query.on = True
+    try:
+        yield
+    finally:
+        _no_query.on = False
+
+
+def _okww_python_cached() -> "bool | None":
+    """Whether OK-WW's python is up: cached for OKWW_ALIVE_TTL; inside no_process_query
+    the last answer of any age, None when there is none yet (not asked)."""
+    at = _okww_alive["at"]
+    if getattr(_no_query, "on", False):
+        return _okww_alive["alive"] if at is not None else None
+    if at is None or time.monotonic() - at >= OKWW_ALIVE_TTL:
+        from ark_relay.features.phone.redbutton import _okww_python_alive  # noqa: PLC0415
+        _okww_alive.update(alive=_okww_python_alive(), at=time.monotonic())
+    return _okww_alive["alive"]
 
 # Read the **master copy**, not OK-WW's own. Before every run AUTO-MAS copies the
 # master over wholesale (see the comment on config.master_config_dir), so the copy in
@@ -50,8 +83,11 @@ def _mas(out: dict) -> None:
         name = info.get("Name") or info.get("RootPath", uid)
         try:
             users = _post("/api/scripts/user/get", {"scriptId": uid}).get("data") or {}
-        except Exception:  # noqa: BLE001
-            users = {}
+        except Exception as exc:  # noqa: BLE001 - said in the section, as _queues does
+            # Without a mark the script's section just vanished, as if it had no
+            # user (audit 11 #5); _queues marks the same case 「脚本读不到」.
+            out[_section_of(name)] = {"用户读不到": f"{type(exc).__name__}: {exc}"}
+            continue
         for _, u in users.items():
             if name == "MAA":
                 out["MAA"] = maa_fields(u.get("Info", {}), u.get("Task", {}))
@@ -78,6 +114,13 @@ def _mas(out: dict) -> None:
                         "❌ 不生效：快速配置是关的，真正跑的是 OK-WW 自己的母本配置",
                     **(u.get("Task", {}) or {}),
                 }
+
+
+def _section_of(name) -> str:
+    """The snapshot key _mas writes a script's user under."""
+    if name in ("MAA", "MaaEnd"):
+        return str(name)
+    return "OK-WW(MAS侧)" if "ok-ww" in str(name).lower() else str(name)
 
 
 def maa_fields(i: dict, t: dict) -> dict:
@@ -124,9 +167,20 @@ def maa_from_files(automas_dir) -> dict:
     return found
 
 
+def _startup_runs(info: dict) -> "bool | None":
+    """Whether AUTO-MAS runs the queue when it starts. v5.7 stores StartUpMode
+    (Never / Always / DailyFirst, app/models/config.py) and migrates an older
+    config's bool StartUpEnabled to it (True -> Always). None when neither is there."""
+    mode = info.get("StartUpMode")
+    if isinstance(mode, str):
+        return mode != "Never"
+    old = info.get("StartUpEnabled")
+    return old if isinstance(old, bool) else None
+
+
 def _queues(out: dict) -> None:
     # Use .get: field names differ between AUTO-MAS versions, and one missing key
-    # (StartUpEnabled) would otherwise take out the whole queue section.
+    # would otherwise take out the whole queue section.
     # Which scripts each shift runs. The phone filters config by shift with this.
     # The user, 2026-09-04, show only the current shift: 「早班晚班切换的时候应该只显示
     # 当次班次的游戏，否则极容易和早班混淆。」 - or it is easily confused with the
@@ -156,7 +210,7 @@ def _queues(out: dict) -> None:
                 _last_error[str(qid)] = why
         row = {
             "定时": info.get("TimeEnabled"),
-            "开机跑": info.get("StartUpEnabled"),
+            "开机跑": _startup_runs(info),
             "脚本": [x for x in scripts if x],
         }
         if why:
@@ -246,7 +300,15 @@ def _runtime(out: dict) -> None:
         # own process and the emulator), shared with the rest of the relay.
         from ark_relay.core.config import BUSY_PROCS, ORCHESTRATOR_PROC  # noqa: PLC0415
         names = (ORCHESTRATOR_PROC,) + BUSY_PROCS
-        out["程序"] = {n[:-4] if n.endswith(".exe") else n: n in tl for n in names}
+        progs = {n[:-4] if n.endswith(".exe") else n: n in tl for n in names}
+        # OK-WW runs as pythonw.exe (config.py, "process names"), so the names above
+        # are blind to it: the red button's check asks the command lines, and an
+        # unread list counts as running there and here (audit 11 #3).
+        py = _okww_python_cached()
+        if py is None:
+            out["OK-WW python"] = "没查"
+        progs["ok-ww"] = progs.get("ok-ww", False) or bool(py)
+        out["程序"] = progs
     except Exception:  # noqa: BLE001
         pass
     # A hand-set one-shot switch with no display anywhere is a switch that gets
@@ -258,8 +320,21 @@ def _runtime(out: dict) -> None:
         out["⚠️ 不刷体力"] = "开着（一次性开关，关掉它才恢复）"
 
 
-def read() -> dict:
-    """Read one full snapshot. A section that fails records an error; the rest is unaffected.
+def read_runtime() -> dict:
+    """Only the runtime section (_runtime): the relay service's state and the running
+    programs, which is all of a snapshot the phone shows (phone.state_payload).
+
+    The phone's queues and config come from the files (plan.queue_rows,
+    maa_from_files), so a publish does not call the AUTO-MAS backend: every
+    publish used to run _mas / _queues / _okww and throw them away, and their
+    failures reached the group as 「快照的 _MAS错误 这一段读不到」 (audit 11 #2;
+    relay.log 10-06 and 10-10)."""
+    return read(only=("_运行时错误",))
+
+
+def read(only: "tuple[str, ...] | None" = None) -> dict:
+    """Read one full snapshot (config-check.py); `only` limits it to the sections
+    with those error labels. A section that fails records an error; the rest is unaffected.
 
     Once the machine is going down - the relay's own power-off, or Windows shutting down,
     whoever started it (annihilation._going_down) - the AUTO-MAS backend is being torn
@@ -275,6 +350,8 @@ def read() -> dict:
 
     for label, fn in (("_MAS错误", _mas), ("_队列错误", _queues),
                       ("_OKWW错误", _okww), ("_运行时错误", _runtime)):
+        if only is not None and label not in only:
+            continue
         if label in ("_MAS错误", "_队列错误") and down():
             continue
         try:

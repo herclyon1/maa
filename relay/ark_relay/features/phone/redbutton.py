@@ -1,7 +1,7 @@
 """The red button (estop): stop every script and game, and record when it was pressed.
 
 Split out of commands.py; commands.py re-exports the public names (estop,
-estop_windows, estop_label, ESTOP_SEED, merge_estop_seed, ESTOP_WINDOWS_FILE,
+estop_windows, estop_label, ESTOP_WINDOWS_FILE,
 ESTOP_LAST), so `commands.estop` and friends keep working. Tests that fake the
 stop steps patch this module (`redbutton._estop_alive`, `redbutton._mas`, ...),
 because estop() reads them from here. Logs go to the same "ark.commands" logger
@@ -41,10 +41,28 @@ _ESTOP_NAMES = {
     "KRSDKExternal.exe": "鸣潮的登录组件",
 }
 _ESTOP_EXES = tuple(_ESTOP_NAMES)
+# OK-WW itself runs as pythonw.exe with its path on the command line, which a
+# name-only tasklist check cannot see (config.py, "process names"); _estop_alive
+# reports it under this name, told as 鸣潮的脚本.
+_OKWW_PYTHON = "OK-WW (python)"
+_ESTOP_LABELS = {**_ESTOP_NAMES, _OKWW_PYTHON: "鸣潮的脚本"}
+
+
+def _okww_python_alive() -> bool:
+    """Whether OK-WW's python may still be up (okww_overlay.okww_running). None,
+    the process list unread, counts as alive: not knowing must never read as
+    "all clear" (audit 11 #3, 2026-10-13)."""
+    from ark_relay.features.okww_patch.okww_overlay import okww_running  # noqa: PLC0415
+    try:
+        return okww_running() is not False
+    except Exception:
+        log.info("红按钮：查不了 OK-WW 的 python 还在不在，按还活着算", exc_info=True)
+        return True
 
 
 def _estop_alive() -> list[str]:
-    """Which of those are still alive. Empty means nothing is left.
+    """Which of those are still alive, and OK-WW's python (_OKWW_PYTHON). Empty
+    means nothing is left.
 
     On a machine where the process list cannot be read, every name is reported as
     still alive: not knowing must never read as "all clear".
@@ -58,7 +76,10 @@ def _estop_alive() -> list[str]:
     except (OSError, subprocess.SubprocessError):
         return ["读不到正在运行的程序列表"]
     low = out.lower()
-    return [e for e in _ESTOP_EXES if e.lower() in low]
+    alive = [e for e in _ESTOP_EXES if e.lower() in low]
+    if _okww_python_alive():
+        alive.append(_OKWW_PYTHON)
+    return alive
 
 
 def _estop_live_tasks() -> "list[tuple[str, str]] | None":
@@ -128,7 +149,14 @@ def _estop_stop_via_mas() -> list[str]:
             continue
         try:
             r = _mas("/api/dispatch/stop", {"taskId": tid})
-            log.info("红按钮：停「%s」(%s)：%s", label, tid[:8], (r or {}).get("message", r))
+            # AUTO-MAS answers a stop it could not do with code 500 and the reason
+            # (app/api/dispatch.py stop_task -> OutBase(code=500, status="error")),
+            # not an HTTP error: only code 200 is a stop (audit 11 #6).
+            if not isinstance(r, dict) or r.get("code") != 200:
+                log.warning("红按钮：停「%s」(%s) AUTO-MAS 没停：%s", label, tid[:8],
+                            r.get("message", r) if isinstance(r, dict) else r)
+                continue
+            log.info("红按钮：停「%s」(%s)：%s", label, tid[:8], r.get("message", r))
             stopped.append(label)
         except Exception as exc:  # noqa: BLE001
             log.warning("红按钮：停「%s」(%s) 失败：%s", label, tid[:8], exc)
@@ -238,54 +266,6 @@ def estop_label(windows, started: datetime, finished: datetime) -> str:
     return ""
 
 
-# Presses that predate estop-windows.json, shipped with the code so the next boot
-# can book the runs they cut short. 2026-09-30 09:46:28-09:47:22: the red button
-# went through a one-off script before commands.estop recorded its window, so the
-# OK-WW run it stopped sat in the ledger as ok=True and the MaaEnd run as a
-# failure. Kept in a .py on purpose: make-manifest.py ships ark_relay/*.py by
-# glob and would leave a separate data file behind. An entry is merged only while
-# it is younger than ESTOP_SEED_DAYS, so this list goes inert by itself.
-ESTOP_SEED = (
-    {"start": "2026-09-30T09:46:28+08:00", "end": "2026-09-30T09:47:22+08:00"},
-)
-ESTOP_SEED_DAYS = 3
-
-
-def merge_estop_seed(state_dir, now: datetime | None = None) -> int:
-    """Add ESTOP_SEED presses missing from estop-windows.json. Returns how many were added.
-
-    Deduplicated on the start stamp, so it is a no-op from the second boot on;
-    written atomically (the machine is hard power-cut daily).
-    """
-    from datetime import timedelta  # noqa: PLC0415
-    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-    path = _estop_windows_path(state_dir)
-    rows = _estop_windows_raw(path)
-    have = {str(w.get("start")) for w in rows}
-    fresh = []
-    for w in ESTOP_SEED:
-        try:
-            end = datetime.fromisoformat(w["end"])
-        except (KeyError, ValueError):
-            continue
-        if now - end > timedelta(days=ESTOP_SEED_DAYS) or w["start"] in have:
-            continue
-        fresh.append(dict(w))
-    if not fresh:
-        return 0
-
-    def _key(w: dict) -> str:
-        try:
-            return datetime.fromisoformat(str(w.get("start"))).astimezone(SERVER_TZ).isoformat()
-        except ValueError:
-            return ""
-    rows = sorted([*rows, *fresh], key=_key)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(path, json.dumps(rows[-_ESTOP_WINDOWS_KEEP:], ensure_ascii=False, indent=1))
-    log.info("红按钮：随代码带来的 %d 条按下记录已并入 %s", len(fresh), path)
-    return len(fresh)
-
-
 # What the last red-button press saw in its final check, before it answered:
 # {"alive": [exe names], "live": [(taskId, label)] or None (AUTO-MAS could not be
 # asked), "rounds": 1 or 2, "at": ISO time}. The machine check #16 compares it
@@ -358,7 +338,7 @@ def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
     if alive or live is None or live:
         left = []
         if alive:
-            left.append("、".join(sorted({_ESTOP_NAMES.get(a, a) for a in alive})))
+            left.append("、".join(sorted({_ESTOP_LABELS.get(a, a) for a in alive})))
         if live is None:
             left.append("问不到 AUTO-MAS 还有没有任务在跑")
         elif live:

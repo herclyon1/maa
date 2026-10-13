@@ -15,6 +15,7 @@ import logging
 import sys
 import time
 import types
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -97,8 +98,20 @@ class FakeHb:
         pass
 
 
-saved = (phone.Mailbox, phone.Heartbeat, phone.state_payload, boot_stages.ensure_automas)
+ran: list = []
+
+
+def fake_make_phone_cmd(*a, **k):
+    def run(body):
+        ran.append(body)
+    run.drain = lambda: None
+    return run
+
+
+saved = (phone.Mailbox, phone.Heartbeat, phone.state_payload, boot_stages.ensure_automas,
+         phone_channel._make_phone_cmd)
 phone.Mailbox, phone.Heartbeat = FakeBox, FakeHb
+phone_channel._make_phone_cmd = fake_make_phone_cmd
 phone.state_payload = lambda cfg, state_dir: {"at": 1}
 boot_stages.ensure_automas = lambda *a, **k: True
 logs = Logs()
@@ -111,7 +124,8 @@ try:
     cfg = types.SimpleNamespace(phone_topic="topic-abc", phone_pin="8964", state_dir=sd,
                                 cos_secret_id="", cos_secret_key="", cos_bucket="", cos_region="")
     svc = types.SimpleNamespace(stop_event=None)
-    engine = types.SimpleNamespace(scripts_running=lambda: False)
+    started = datetime.now(timezone.utc)
+    engine = types.SimpleNamespace(scripts_running=lambda: False, _started_at=started)
     notifier = types.SimpleNamespace(send=lambda *a, **k: True)
     push_state = phone_channel._start_phone_channel(svc, cfg, engine, notifier, log)
     for _ in range(100):           # the listener thread records its call at once
@@ -133,11 +147,25 @@ try:
         on_backlog([{"action": "estop", "_meta": {"via": "backlog"}}])
     check("补读到的红按钮同样不执行（boot_backlog 的规矩）",
           any("开机不执行" in m for _, m in logs.recs), True)
+    check("……and is not run", ran, [])
+
+    print("\n[late backlog: a red button pressed after this process started runs (audit A2)]")
+    # The boot read timed out, the phone reached ntfy from another network while a
+    # queue ran; the press came back through the late backlog and was dropped.
+    logs.recs.clear()
+    t0 = started.timestamp()
+    if callable(on_backlog):
+        on_backlog([{"action": "estop", "_meta": {"via": "backlog", "ntfy_time": int(t0) - 60}},
+                    {"action": "estop", "_meta": {"via": "backlog", "ntfy_time": int(t0) + 60}}])
+    check("the press made while on is run", [b["_meta"]["ntfy_time"] for b in ran], [int(t0) + 60])
+    check("the press made before the start is still dropped",
+          sum("开机不执行" in m for _, m in logs.recs), 1)
 except Exception as exc:  # noqa: BLE001
     print(f"  ✗ {type(exc).__name__}: {exc}")
     fails.append(type(exc).__name__)
 finally:
-    phone.Mailbox, phone.Heartbeat, phone.state_payload, boot_stages.ensure_automas = saved
+    (phone.Mailbox, phone.Heartbeat, phone.state_payload, boot_stages.ensure_automas,
+     phone_channel._make_phone_cmd) = saved
 
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

@@ -285,6 +285,11 @@ def boot_check(cfg, *, budget_s: float, now: datetime | None = None,
                     try:
                         got = skipper(q["name"], script) if skipper else _skip_default(q["name"], script)
                     except Exception as exc:  # noqa: BLE001
+                        # Items whose run days may already be trimmed: keep their
+                        # undo records, or the weekday stays removed for good.
+                        for rec in getattr(exc, "recs", []):
+                            rec["why"] = why
+                            _add_skip(cfg.state_dir, rec)
                         problems.append(f"{game}：在队列「{q['name']}」里今天跳过 {script} 失败（{exc}）")
                         continue
                     # One record per queue item: a script may sit in the queue twice.

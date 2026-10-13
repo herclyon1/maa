@@ -124,7 +124,8 @@ print("\n[今天：从账目数]")
 
 class St:
     def read_ledger(self, day):
-        return [{"script": "MAA", "ok": True}, {"script": "OK-WW", "ok": False}, {"script": "MaaEnd", "ok": True}]
+        return [{"run_id": "a", "script": "MAA", "ok": True}, {"run_id": "b", "script": "OK-WW", "ok": False},
+                {"run_id": "c", "script": "MaaEnd", "ok": True}]
 
 
 check("跑了 3 失败 1 最近 MaaEnd", resources.today(St(), "2026-09-15"), {"跑了": 3, "失败": 1, "最近": "MaaEnd"})
@@ -134,13 +135,45 @@ class StStop:
     """2026-09-30: the 停一切 press stopped MaaEnd (ok=False) - not a failure."""
 
     def read_ledger(self, day):
-        return [{"script": "OK-WW", "ok": False, "raw": {"okww_error": "x"}},
-                {"script": "OK-WW", "ok": True, "raw": {"manual_stop": "09:46 停一切"}},
-                {"script": "MaaEnd", "ok": False, "raw": {"manual_stop": "09:46 停一切"}}]
+        return [{"run_id": "a", "script": "OK-WW", "ok": False, "raw": {"okww_error": "x"}},
+                {"run_id": "b", "script": "OK-WW", "ok": True, "raw": {"manual_stop": "09:46 停一切"}},
+                {"run_id": "c", "script": "MaaEnd", "ok": False, "raw": {"manual_stop": "09:46 停一切"}}]
 
 
 check("停一切停掉的不算失败（跑了 3 失败 1）", resources.today(StStop(), "2026-09-30"),
       {"跑了": 3, "失败": 1, "最近": "MaaEnd"})
+
+print("\n[today: failures by the daily headline's rule, on the machine's ledgers]")
+# Audit 11 (2026-10-13): the App showed 「失败 1 趟」 on 10-06 and 10-07 for a MaaEnd
+# self-update restart (transitional; episode_kinds 「update」) while the daily
+# report said all green. Ledgers copied from the machine's state/ on 10-13.
+import json  # noqa: E402
+import shutil  # noqa: E402
+
+from _tmp import tmpdir  # noqa: E402
+from ark_relay.core.ledger import State  # noqa: E402
+
+LEDGERS = Path(__file__).resolve().parent / "fixtures" / "phone-ledgers"
+real_dir = tmpdir()
+for f in LEDGERS.glob("ledger-*.jsonl"):
+    shutil.copy(f, real_dir / f.name)
+check("10-06: 5 runs, the update restart is not a failure",
+      resources.today(State(real_dir), "2026-10-06"), {"跑了": 5, "失败": 0, "最近": "MAA"})
+check("10-07: 5 runs, the update restart is not a failure",
+      resources.today(State(real_dir), "2026-10-07"), {"跑了": 5, "失败": 0, "最近": "MAA"})
+# A real failure on the same day is still counted.
+day06 = [json.loads(x) for x in (LEDGERS / "ledger-2026-10-06.jsonl").read_text(encoding="utf-8").splitlines()]
+bad = dict(day06[1], run_id="2026-10-06/wuwa/OK-WW-12-00-00", started="2026-10-06T12:00:00+08:00",
+           ok=False, failed_tasks=["每日任务"])
+(real_dir / "ledger-2026-10-06.jsonl").write_text(
+    "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in [*day06, bad]), encoding="utf-8")
+check("a real failure still counts", resources.today(State(real_dir), "2026-10-06")["失败"], 1)
+# The same failure inside a run-one.sh --test window is not the day's failure.
+(real_dir / "test-windows.json").write_text(json.dumps(
+    [{"since": "2026-10-06T11:55:00+08:00", "until": "2026-10-06T12:30:00+08:00", "what": "OK-WW"}]),
+    encoding="utf-8")
+check("a failure inside a test window does not count",
+      resources.today(State(real_dir), "2026-10-06")["失败"], 0)
 
 print("\n[开机推送和停止前推送同时要会话：#10 不会读到做了一半的体力]")
 # 2026-10-10 16:32:53 the stop notice came 7 s after boot: the boot state and the

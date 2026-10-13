@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 import time
 
-from ark_relay.core.ledger import manual_stop
+from ark_relay.core.ledger import _launch_miss, episode_kinds, manual_stop, retried_notes, split_test
 
 log = logging.getLogger("ark.resources")
 
@@ -116,6 +116,7 @@ def today(state, day: str) -> dict:
     """Today's run count and failure count, from the day's ledger (core.State.read_ledger)."""
     try:
         entries = state.read_ledger(day)
+        failed = _failed(entries, getattr(state, "dir", None))
     except Exception as exc:  # noqa: BLE001
         # No counts: the App would show 0 failures today as a fact.
         why = f"{type(exc).__name__}: {exc}"
@@ -124,9 +125,23 @@ def today(state, day: str) -> dict:
             _last_error["ledger"] = why
         return {"错误": f"账本读不到：{why}"[:120]}
     _last_error.pop("ledger", None)
-    # A run the red button (停一切) cut short is neither a success nor a failure
-    # (ledger.manual_stop), so it is counted as neither.
     return {"跑了": len(entries),
-            "失败": sum(1 for e in entries
-                      if not e.get("ok") and not manual_stop(e)),
+            "失败": failed,
             "最近": (entries[-1].get("script") if entries else "")}
+
+
+def _failed(entries: list[dict], state_dir) -> int:
+    """The day's failures by the daily headline's rule (ledger_report.format_daily,
+    after report._compose_daily drops the test windows), so the App never says
+    「失败 N 趟」 where the report says all green (audit 11, 2026-10-13: 10-06 and
+    10-07 each showed 失败 1 for a MaaEnd self-update restart). Not a failure:
+    a run in a test window (run-one.sh --test), a launch miss or a MaaEnd
+    update restart (_launch_miss), a run the red button cut short, a client
+    update / maintenance / sanity-short run (episode_kinds), a run whose failed
+    tasks a later run finished (retried_notes)."""
+    from ark_relay.features.report.report import test_windows  # noqa: PLC0415 - avoids an import cycle
+    real, _tests = split_test(entries, test_windows(state_dir))
+    real = [e for e in real if not _launch_miss(e)]
+    kinds, retried = episode_kinds(real), retried_notes(real)
+    return sum(1 for e in real if not e.get("ok") and not manual_stop(e)
+               and e.get("run_id") not in kinds and e.get("run_id") not in retried)
