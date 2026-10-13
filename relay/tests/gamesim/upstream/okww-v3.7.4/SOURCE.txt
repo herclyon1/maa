@@ -4,6 +4,7 @@ repo https://github.com/ok-oldking/ok-wuthering-waves
 tag v3.7.4
 commit 2243d465d58c74f52765b658174bff76165656ee
 d921c0e535a6533d63bd2f65513603ee1d09f523a7e6bb372190e08829f81ef6 config.py
+fb91ef0802b922c2184fdb5e72710a0aafa1a909f32c409140785f8c4c32b8b7 requirements.txt
 f8bf5dca92f24b95bbbd3864a46a76e307d80429be903ea096106a8627659d1e src/Labels.py
 1dc07a345b3aef311c1b2bdd93a6d5d012ae492aa99769bd184074a22493af08 src/__init__.py
 0f5c1982df39adde3b7d8d22a7d0550ef535b1840d122ef773bfa59e267b744e src/char/BaseChar.py

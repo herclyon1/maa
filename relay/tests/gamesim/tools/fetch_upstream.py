@@ -48,9 +48,11 @@ TOOLS = {
         "dir": "okww-{tag}",
         "roots": ("src", "config"),
         # The modules ark_overrides.tasks.py imports its classes from (its `from src...`
-        # lines), and the two files it cites for the game's launch argument (its closing
-        # comment: config.py:203 -> src/game_launcher.py).
+        # lines), the two files it cites for the game's launch argument (its closing
+        # comment: config.py:203 -> src/game_launcher.py), and requirements.txt, which
+        # pins the ok-script release this OK-WW runs on (v3.7.4: line 26).
         "seeds": (
+            "requirements.txt",
             "src/task/BaseCombatTask.py",
             "src/task/BaseWWTask.py",
             "src/task/DailyTask.py",
@@ -61,6 +63,19 @@ TOOLS = {
             "src/task/TacetTask.py",
             "config.py",
             "src/game_launcher.py",
+        ),
+    },
+    "okscript": {
+        "repo": "ok-oldking/ok-script",
+        "dir": "okscript-{ver}",
+        "roots": ("ok",),
+        # Config.verify_config, which keeps, drops or resets every key of a task's
+        # config file at load (PITFALLS 2026-09-10), and BaseTask, whose __init__ and
+        # add_exit_after_config start every task's default_config / config_type and
+        # whose load_config hands them to Config.
+        "seeds": (
+            "ok/util/config.py",
+            "ok/task/task.py",
         ),
     },
 }
@@ -179,8 +194,8 @@ def collect(tool: str, commit: str) -> "tuple[dict[str, bytes], list[str]]":
 
     absent = [s for s in spec["seeds"] if get(s) is None]
     seeds = [s for s in spec["seeds"] if s in files]
-    trees = {s: ast.parse(files[s].decode("utf-8")) for s in seeds}
-    for s in seeds:                       # one level of imports from the seeds
+    trees = {s: ast.parse(files[s].decode("utf-8")) for s in seeds if s.endswith(".py")}
+    for s in trees:                       # one level of imports from the seeds
         for module in set(_imports(trees[s], roots).values()):
             resolve(module)
     # Base classes, transitively: a method is looked up through them.
