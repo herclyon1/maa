@@ -537,8 +537,14 @@ def rollback() -> int:
     if prev is None:
         print("no earlier version folder")
         return 1
+    # current.txt is switched before the stop, so a watchdog restart while it stops
+    # already starts `prev`. A relay that did not stop runs on in the version rolled
+    # away from; `launch.py relaunch` would wait for its exit and give up (audit s24 F4).
+    if stop():
+        print(f"current.txt -> {prev}, but the relay did not stop: it still runs the "
+              f"version rolled away from; {prev} starts at the next restart")
+        return 1
     print(f"current -> {prev}")
-    stop()
     pkg_layout.restart_soon(app)
     return 0
 
