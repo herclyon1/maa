@@ -146,6 +146,13 @@ e4 = build()
 e4._shutdown_issued = True
 check("返回 None", e4.next_deadline(at(9, 0)), None)
 
+print("\n[关机令发出后只醒一次：到点核对关机有没有关下去（audit s2 F2）]")
+e4._shutdown_issued_at = at(9, 0)
+from ark_relay.features.shutdown.shutdown import ISSUED_STUCK_MIN  # noqa: E402
+got = e4.next_deadline(at(9, 1))
+check("醒在发令后 ISSUED_STUCK_MIN 分钟", got and got[0], at(9, 0) + timedelta(minutes=ISSUED_STUCK_MIN))
+check("那一刻过了就不再给过去的时刻", e4.next_deadline(at(9, 0) + timedelta(minutes=ISSUED_STUCK_MIN)), None)
+
 print("\n[队列时间改了，醒来的时刻跟着改（读的是 AUTO-MAS 自己那份）]")
 write_queues({"早班": ["07:15"], "晚班": ["21:30"]})
 e5 = build()

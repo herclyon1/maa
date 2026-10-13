@@ -71,17 +71,6 @@ check("timestamp 是字符串", h["timestamp"], str(FIXED))
 check("dId 带上了", h["dId"], "DID-1")
 check("User-Agent 还在", "Skland" in h["User-Agent"], True)
 
-print("\n[POST：签的是请求体，不是 URL 上的 query]")
-body = {"uid": "1", "gameId": 3}
-h2 = skland.sign_headers(CRED, "https://zonai.skland.com/api/v1/x?ignored=1",
-                         method="post", body=body)
-check("sign 用的是请求体", h2["sign"],
-      expect("/api/v1/x", json.dumps(body), FIXED, "DID-1"))
-
-print("\n[POST 但没有请求体时，退回用 URL 上的 query]")
-h3 = skland.sign_headers(CRED, "https://zonai.skland.com/api/v1/x?a=2", method="post")
-check("sign 用的是 query", h3["sign"], expect("/api/v1/x", "a=2", FIXED, "DID-1"))
-
 print("\n[时钟偏移会进签名——签的时刻和头里写的时刻必须是同一个]")
 skland._clock_skew = 60
 h4 = skland.sign_headers(CRED, url)
@@ -90,24 +79,17 @@ check("签的也是同一个时刻", h4["sign"],
       expect("/api/v1/game/player/binding", "uid=1", FIXED + 60, "DID-1"))
 skland._clock_skew = 0
 
-print("\n[凭据自带 dId 时不许去要一个新的：换一个设备指纹当场作废]")
+print("\n[只有 GET 一种签法：没人用的 POST 请求体、现取 dId 两个参数删掉了（audit s6 #4）]")
+import inspect  # noqa: E402
+check("参数只剩凭据和网址", list(inspect.signature(skland.sign_headers).parameters), ["cred", "url"])
+
+print("\n[凭据没有 dId 时不去现取一个：签进去的就是凭据自己的]")
 calls = []
 orig_get_did = skland.get_did
 skland.get_did = lambda: (calls.append(1), "DID-NEW")[1]
-h5 = skland.sign_headers(CRED, url, use_did=True)
-check("没去要新的", calls, [])
-check("签名和不带 use_did 时一样", h5["sign"], h["sign"])
-
-print("\n[凭据没有 dId 且要求带时，才去取一个，并且真的签进去]")
 bare = skland.Cred(cred="CRED-abc", token="TOKEN-xyz")
-h6 = skland.sign_headers(bare, url, use_did=True)
-check("取了一次", calls, [1])
-check("取到的指纹进了头", h6["dId"], "DID-NEW")
-check("也进了签名", h6["sign"],
-      expect("/api/v1/game/player/binding", "uid=1", FIXED, "DID-NEW"))
-
-print("\n[不要求带 dId 时，空就是空——老凭据这条链一直是这么用的]")
 h7 = skland.sign_headers(bare, url)
+check("没去要新的", calls, [])
 check("头里是空的", h7["dId"], "")
 check("签名里也是空的", h7["sign"],
       expect("/api/v1/game/player/binding", "uid=1", FIXED, ""))

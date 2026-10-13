@@ -15,6 +15,8 @@ import fnmatch
 import json
 import logging
 import shutil
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -23,6 +25,9 @@ from ark_relay.core.config import atomic_write_text
 log = logging.getLogger("ark.statestore")
 
 FILE = "state.json"
+# A state.json temp file (atomic_write_bytes) older than this was left by a write
+# that never finished (power cut); StateStore removes it once per process.
+STRAY_TMP_AGE_S = 24 * 3600
 SECTIONS = ("marks", "modes", "weekly", "versions", "updates", "queues")
 
 # The field table: section -> {key (may contain a * wildcard): description}.
@@ -83,6 +88,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "skip_restore": "跳过模式停用了哪个队列，用于过后恢复（一个队列存一条，两个以上存列表）",
         "skip_day:*": "某天要跳过哪个队列（值=队列名；两个以上是队列名列表）",
         "channels_down": "哪些推送渠道正挂着，避免每次重启都重报一遍",
+        "given_up": "连续处理失败、先不记账的运行记录：{运行标识: {code, at}}，代码版本变了（部署）再试一轮（engine.tick）",
     },
 }
 
@@ -161,6 +167,14 @@ _SWEPT: set = set()
 # like _SWEPT. Dropped once the file reads again.
 _CORRUPT_SAID: dict[str, float] = {}
 
+# Held around every load-modify-write of state.json. The phone listen thread
+# (queues.phone_seen, modes.* from live commands) and the engine thread write the
+# same file through StateStore instances of their own; without one lock for the
+# process, the slower writer overwrote the other's key with the copy it had read.
+# Re-entrant: _sweep_legacy runs inside __init__, which a caller may reach while
+# holding it.
+_WRITE_LOCK = threading.RLock()
+
 
 class StateStore:
     def __init__(self, state_dir: Path):
@@ -171,17 +185,36 @@ class StateStore:
         if str(self.dir) not in _SWEPT:
             _SWEPT.add(str(self.dir))
             try:
-                self._sweep_legacy()
+                with _WRITE_LOCK:
+                    self._sweep_legacy()
             except OSError:
                 log.warning("清扫旧状态文件时出错，下次进程启动再试", exc_info=True)
+            self._sweep_stray_tmp()
+
+    def _sweep_stray_tmp(self) -> None:
+        """Remove state.json.<random>.tmp (and the old fixed state.json.tmp) older
+        than STRAY_TMP_AGE_S. A write cut off between mkstemp and the replace leaves
+        one, and nothing else ever removes it. A live write's temp file is seconds
+        old, so the age keeps this off it."""
+        cut = time.time() - STRAY_TMP_AGE_S
+        for f in self.dir.glob(FILE + ".*tmp"):
+            try:
+                if f.is_file() and f.stat().st_mtime < cut:
+                    f.unlink()
+                    log.info("删掉了没写完的状态临时文件: %s", f.name)
+            except OSError:
+                log.warning("删不掉没写完的状态临时文件 %s，下次进程启动再试", f.name, exc_info=True)
 
     # ---------- read ----------
-    def _load(self) -> dict:
+    def _load(self, fresh: bool = False) -> dict:
+        """state.json as a dict. `fresh` rereads the file even when its mtime
+        matches the cached copy: a write must start from what is on disk, and
+        another instance may have written within the clock's resolution."""
         try:
             m = self.path.stat().st_mtime
         except OSError:
             m = -1.0
-        if self._data is not None and m == self._mtime:
+        if self._data is not None and m == self._mtime and not fresh:
             return self._data
         data: dict = {}
         if m >= 0:
@@ -226,15 +259,17 @@ class StateStore:
     def set(self, section: str, key: str, value) -> None:
         if not _registered(section, key):
             raise KeyError(f"state.{section}.{key} 没在字段表里登记，拒绝写入（见 docs/STATE-MODEL.md）")
-        data = self._load()
-        data[section][key] = value
-        self._flush(data)
+        with _WRITE_LOCK:
+            data = self._load(fresh=True)
+            data[section][key] = value
+            self._flush(data)
 
     def pop(self, section: str, key: str) -> None:
-        data = self._load()
-        if key in data.get(section, {}):
-            del data[section][key]
-            self._flush(data)
+        with _WRITE_LOCK:
+            data = self._load(fresh=True)
+            if key in data.get(section, {}):
+                del data[section][key]
+                self._flush(data)
 
     def _flush(self, data: dict) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)

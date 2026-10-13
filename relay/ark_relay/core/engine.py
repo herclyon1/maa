@@ -49,6 +49,11 @@ def forget_scripts_cache() -> None:
 _RUNTIME_PATH = "/api/dispatch/runtime-snapshot"   # the only confirmed GET endpoint
 # Terminal states AUTO-MAS marks on a script/user. Anything not listed here
 # (running, waiting, and anything we have never seen) counts as still running.
+# Settled from AUTO-MAS source (beta ff285a3, 2026-10-10; audit s2 F6): ScriptItem /
+# UserItem.status is a free str, only ever set to 等待, 运行 (MAA users: 「运行 - <mode>」),
+# 完成, 异常, 跳过 (core/task_manager.py, task/*/manager.py, task/*/AutoProxy.py).
+# The three terminal ones are here; 失败 / 中止 / 取消 are never set on these items and
+# stay only as a harmless margin.
 _SNAPSHOT_DONE = {"完成", "异常", "失败", "跳过", "中止", "取消"}
 
 
@@ -115,6 +120,10 @@ _BUSY_SEEN: dict = {"state_dir": None, "automas_dir": None}
 BUSY_FILE = "machinecheck-busy.json"      # read by machinechecks/system.py (#18)
 # An app.log task with no end line counts as open for this long after its start.
 OTHER_MODE_OPEN_MIN = 30
+# Ticks a record may make _handle raise before the relay gives up on it (tick).
+HANDLE_TRIES = 3
+# A given-up record (queues.given_up) is dropped from that list after this many days.
+GIVEN_UP_KEEP_DAYS = 30
 _APPLOG_TAIL = 512 * 1024
 
 
@@ -219,8 +228,9 @@ class Engine:
         # alarms that could not be sent yet (the log line is read only once).
         self._applog = None
         self._unsent_timeouts: list = []
-        # 「没干完」 alarms (unresolved.py) whose push failed: (day, key, title, body),
-        # tried again at the top of every _flush_pending.
+        # 「没干完」 alarms (unresolved.py) whose push failed: (day, kind, run_id, title,
+        # body), tried again at the top of every _flush_pending; kept on disk with
+        # _pending (_persist_pending).
         self._unsent_unresolved: list = []
         # Populated by the HTTP layer in server mode, where the log tail
         # arrives with the payload instead of being read off local disk.
@@ -234,6 +244,8 @@ class Engine:
         self._recovered: dict[tuple[str, str], RunRecord] = {}
         self._restore_pending()
         self._missed_alerted: set[str] = set()
+        # run_id -> how many ticks _handle raised on it (tick, HANDLE_TRIES).
+        self._handle_fails: dict[str, int] = {}
         self._started_at = datetime.now(tz=SERVER_TZ)
         self._handled_any = False   # nothing ran this session -> nothing to shut down for
         self._shutdown_issued = False  # a countdown is already running; never twice
@@ -327,18 +339,38 @@ class Engine:
                                    or "（认不出是哪条）")
                     continue
                 target[(rec.script, rec.user)] = rec
+                # payload_to_record drops the tail (log_path=None); without this the
+                # alarm sent after a restart carried no diagnosis (audit s2 F4).
+                if tail := item.get("log_tail"):
+                    self.log_tails[rec.run_id] = str(tail)
+        # 「没干完」 / 「没证据」 / 「停一切前」 alarms whose push failed (pushes._push_now):
+        # memory only until 2026-10-13, so a restart - the relay's own power-off
+        # included - lost them (audit s8 #1/#3). A copy already pushed is held back by
+        # the day marks in unresolved.send.
+        for item in data.get("unsent", []):
+            if isinstance(item, list) and len(item) == 5 and all(isinstance(x, str) for x in item):
+                self._unsent_unresolved.append(tuple(item))
+            else:
+                dropped.append(str(item)[:80])
         if dropped:
             log.warning("磁盘上有 %d 条未送达的告警恢复不出来，已丢弃：%s",
                         len(dropped), "；".join(dropped))
-        if self._pending or self._recovered:
+        if self._pending or self._recovered or self._unsent_unresolved:
             log.info("从磁盘恢复了 %d 条未送达的告警",
-                     len(self._pending) + len(self._recovered))
+                     len(self._pending) + len(self._recovered) + len(self._unsent_unresolved))
 
     def _persist_pending(self) -> None:
         from ark_relay.core.transport import record_to_payload  # noqa: PLC0415 - avoid cycle
+        def payload(r: RunRecord) -> dict:
+            p = record_to_payload(r)
+            # A record restored from disk has no log file to read: keep the tail it came with.
+            if not p.get("log_tail") and self.log_tails.get(r.run_id):
+                p["log_tail"] = self.log_tails[r.run_id]
+            return p
         self.state.save_pending({
-            "pending": [record_to_payload(r) for r in self._pending.values()],
-            "recovered": [record_to_payload(r) for r in self._recovered.values()],
+            "pending": [payload(r) for r in self._pending.values()],
+            "recovered": [payload(r) for r in self._recovered.values()],
+            "unsent": [list(x) for x in self._unsent_unresolved],
         })
 
     # ---------- first ever start ----------
@@ -382,8 +414,13 @@ class Engine:
             self._observe_modes()
         except Exception:
             log.exception("读模式开关出错，本轮按「没开任何模式」继续")
+        given_up = self._given_up()
+        code = self._code_version()
         try:
-            records = self.source.fetch(self.state.seen)
+            # A given-up record stays out until the code changes: a deploy (the fix
+            # for the alarm below) gets one more round of HANDLE_TRIES at it.
+            records = self.source.fetch(
+                self.state.seen | {k for k, v in given_up.items() if v.get("code") == code})
         except Exception:
             log.exception("读取运行记录失败，本轮按没有新记录处理")
             records = []
@@ -392,9 +429,29 @@ class Engine:
             try:
                 self._handle(rec)
             except Exception:
-                log.exception("处理运行记录失败: %s", rec.run_id)
+                # A record that always raises was retried on every tick with no end
+                # (09-08: 99 lines in half an hour), and never counted as landed for
+                # shutdown. A failed try is INFO (errwatch pushes WARNING and up, so
+                # the traceback stays in the log only); after HANDLE_TRIES one ERROR
+                # line is the one group alarm. The record is not marked seen but kept
+                # in queues.given_up with the code version, so the next deploy books
+                # it if the fix took. Audit s2 F3.
+                n = self._handle_fails[rec.run_id] = self._handle_fails.get(rec.run_id, 0) + 1
+                if n < HANDLE_TRIES:
+                    log.info("处理运行记录失败（第 %d 次，下一轮再试）: %s", n, rec.run_id, exc_info=True)
+                    continue
+                log.exception("运行记录连续 %d 次处理失败，不再重试，这一趟先不记进账，"
+                              "等修好部署后再补记一次: %s", n, rec.run_id)
+                self._handle_fails.pop(rec.run_id, None)
+                given_up[rec.run_id] = {"code": code, "at": datetime.now(tz=SERVER_TZ).isoformat()}
+                self._set_given_up(given_up)
+                self._handled_any = landed = True
                 continue
+            self._handle_fails.pop(rec.run_id, None)
             self.state.mark_seen(rec.run_id)
+            if given_up.pop(rec.run_id, None) is not None:
+                log.info("之前放弃的运行记录这次记进账了: %s", rec.run_id)
+                self._set_given_up(given_up)
             self._handled_any = landed = True
         if landed:
             # On disk too: a restart on the same boot (a deploy) still knows it saw them land.
@@ -626,6 +683,14 @@ class Engine:
         """
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         if self._shutdown_issued:
+            # Only one clock moment is left: ISSUED_STUCK_MIN after the command,
+            # shutdown.decide calls a machine still up 「not-down」 and the group
+            # hears 「关机被取消」. Sleeping to the hour backstop made that up to
+            # 50 minutes late (audit s2 F2).
+            from ark_relay.features.shutdown.shutdown import ISSUED_STUCK_MIN  # noqa: PLC0415
+            at = getattr(self, "_shutdown_issued_at", None)
+            if at is not None and (check := at + timedelta(minutes=ISSUED_STUCK_MIN)) > now:
+                return (check, "核对关机有没有关下去")
             return None
         cands: list[tuple[datetime, str]] = []
 
@@ -694,6 +759,39 @@ class Engine:
         return min(cands) if cands else None
 
     # ---------- bookkeeping and alerts (handle.py) ----------
+    def _code_version(self) -> str:
+        try:
+            return str(self.state.store.get("versions", "code") or "")
+        except Exception:  # noqa: BLE001 - no version only means no retry after a deploy
+            return ""
+
+    def _given_up(self) -> dict:
+        """queues.given_up: run_id -> {code, at} for records tick gave up on, minus
+        the ones older than GIVEN_UP_KEEP_DAYS."""
+        try:
+            raw = self.state.store.get("queues", "given_up") or {}
+        except Exception:
+            log.warning("读不出放弃过的运行记录，本轮按没有处理", exc_info=True)
+            return {}
+        cut = datetime.now(tz=SERVER_TZ) - timedelta(days=GIVEN_UP_KEEP_DAYS)
+        out = {}
+        for rid, v in raw.items() if isinstance(raw, dict) else ():
+            try:
+                if isinstance(v, dict) and datetime.fromisoformat(str(v.get("at"))) >= cut:
+                    out[str(rid)] = v
+            except ValueError:
+                continue
+        return out
+
+    def _set_given_up(self, given_up: dict) -> None:
+        try:
+            if given_up:
+                self.state.store.set("queues", "given_up", dict(given_up))
+            else:
+                self.state.store.pop("queues", "given_up")
+        except Exception:
+            log.warning("放弃过的运行记录没能存盘", exc_info=True)
+
     def _handle(self, rec: RunRecord) -> None:
         return handle._handle(self, rec)
 
@@ -722,7 +820,13 @@ class Engine:
         return handle._mark_alerted(self, day, key)
 
     def _flush_pending(self) -> None:
-        return handle._flush_pending(self)
+        unsent = len(self._unsent_unresolved)
+        try:
+            return handle._flush_pending(self)
+        finally:
+            # A retried 「没干完」 alarm that went out leaves the copy on disk too.
+            if len(self._unsent_unresolved) != unsent:
+                self._persist_pending()
 
     def _maybe_makeup(self, now: datetime | None = None) -> bool:
         from ark_relay.features.makeup import makeup  # noqa: PLC0415

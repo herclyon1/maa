@@ -22,6 +22,7 @@ import json
 import atexit
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -101,9 +102,28 @@ def _load_dotenv(path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        key, value = key.strip(), value.split("#")[0].strip().strip('"').strip("'")
+        key, value = key.strip(), _dotenv_value(value)
         if key and value and key not in os.environ:
             os.environ[key] = value
+
+
+def _dotenv_value(raw: str) -> str:
+    """One .env value, read the way python-dotenv reads it.
+
+    A quoted value is everything between its quotes, '#' included; an unquoted one
+    ends at a ' #' comment, and one that starts with '#' (`KEY=   # note`) is all
+    comment, so empty. A quote with no closing one is stripped, as before. Cutting
+    every value at the first '#' (as before 2026-10-13, audit s2 F7) truncated a
+    URL or key carrying one.
+    """
+    v = raw.strip()
+    if v[:1] in ('"', "'"):
+        if (end := v.find(v[0], 1)) > 0:
+            return v[1:end]
+        return v.strip('"').strip("'")
+    if v.startswith("#"):
+        return ""
+    return re.split(r"\s#", v, maxsplit=1)[0].strip()
 
 
 # ---------- commands ----------
@@ -133,6 +153,8 @@ def cmd_check(cfg: Config) -> int:
         print(f"措辞模型      {'✅' if ok else '✗'} {detail}")
     else:
         print("措辞模型      (未配置，将只发固定格式的内容——不影响告警和日报)")
+    for w in cfg.warnings():
+        print(f"  ⚠️ {w}")
     problems = cfg.validate()
     if problems:
         print("\n有问题：")
@@ -150,15 +172,17 @@ def cmd_test(cfg: Config) -> int:
         print("✗ 没有配置任何推送渠道")
         return 1
     now = datetime.now(tz=SERVER_TZ)
-    # The point of a self-check is to exercise every channel, so this sends to all
-    # of them explicitly.
-    errors = n.send("🔧 中继自检",
-                    f"这是一条测试消息。\n当前 {both_clocks(now)}", alert=True)
-    for e in errors:
-        print(f"  ✗ {e}")
-    if not errors:
-        print(f"✅ 已通过 {'、'.join(n.channels)} 发出")
-    return 1 if errors else 0
+    # The point of a self-check is to exercise every channel, so each one is tried
+    # on its own and named only if it took the message. Not through send(): that
+    # stops at the first channel that accepts, and files the message as a group
+    # alarm (alerts/ copy) - a test is neither (audit s5 #3).
+    delivered, failed = n._fan_out("🔧 中继自检", f"这是一条测试消息。\n当前 {both_clocks(now)}",
+                                   order=tuple(n.channels), stop_on_first=False)
+    for name, err in failed.items():
+        print(f"  ✗ {name}: {err}")
+    if delivered:
+        print(f"✅ 已通过 {'、'.join(delivered)} 发出")
+    return 1 if failed else 0
 
 
 def _build_local_engine(cfg: Config) -> Engine:

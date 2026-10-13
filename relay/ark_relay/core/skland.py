@@ -116,18 +116,33 @@ def _read(resp) -> dict:
     return json.loads(raw.decode("utf-8"))
 
 
+def _open(req: urllib.request.Request) -> dict:
+    """Send one request. A 4xx/5xx keeps Skland's own {"code", "message"} body: it is
+    the only clue to what went wrong (10001 / 10003 come back as 403 / 401), and
+    urllib's bare HTTPError dropped it, so the log and the phone tile said only
+    「HTTP Error 403」 (audit s6 #5)."""
+    try:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
+            return _read(r)
+    except urllib.error.HTTPError as e:
+        try:
+            body = _read(e)
+        except Exception:  # noqa: BLE001 - no readable body: the bare HTTP error is all there is
+            raise e from None
+        if not isinstance(body, dict):
+            raise
+        raise SklandError(f"森空岛拒绝了请求（HTTP {e.code}）：code={body.get('code')} "
+                          f"{body.get('message') or body.get('msg') or ''}".rstrip()) from e
+
+
 def _post(url: str, payload: dict, headers: dict | None = None) -> dict:
-    req = urllib.request.Request(
+    return _open(urllib.request.Request(
         url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={**_HEADERS, "Content-Type": "application/json", **(headers or {})})
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
-        return _read(r)
+        headers={**_HEADERS, "Content-Type": "application/json", **(headers or {})}))
 
 
 def _get(url: str, headers: dict) -> dict:
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
-        return _read(r)
+    return _open(urllib.request.Request(url, headers=headers))
 
 
 # ── Device fingerprint (dId) ───────────────────────────────────
@@ -215,24 +230,20 @@ def server_now() -> int:
     return int(time.time()) + _clock_skew
 
 
-def sign_headers(cred: Cred, url: str, method: str = "get",
-                 body: dict | None = None, use_did: bool = False) -> dict:
-    """Signed request headers. The algorithm is in the module docstring.
+def sign_headers(cred: Cred, url: str) -> dict:
+    """Signed GET headers. The algorithm is in the module docstring.
 
-    With `use_did=True` the device fingerprint is folded into the signature.
-    Older credentials (our own token -> code -> cred chain) can do without it; a
-    cred lifted out of a live Skland app session must carry the full smidV2 or
-    it fails with 10001 「设备信息无效」.
+    The device fingerprint signed is the cred's own: a cred lifted out of a live
+    Skland app session must carry the full smidV2 or it fails with 10001
+    「设备信息无效」. GET only: the POST-body branch and the fetch-a-new-dId switch
+    had no caller and the POST one was never checked against the real API (audit
+    s6 #4, removed 2026-10-13).
     """
     ts = server_now()
     parsed = urlparse(url)
-    query = json.dumps(body) if method == "post" and body is not None else parsed.query
-    keys = {**_SIGN_KEYS, "dId": cred.dId}
-    if use_did and not keys["dId"]:
-        keys["dId"] = get_did()
-    header_ca = {**keys, "timestamp": str(ts)}
+    header_ca = {**_SIGN_KEYS, "dId": cred.dId, "timestamp": str(ts)}
     ca_str = json.dumps(header_ca, separators=(",", ":"))
-    secret = f"{parsed.path}{query}{ts}{ca_str}"
+    secret = f"{parsed.path}{parsed.query}{ts}{ca_str}"
     hexed = hmac.new(cred.token.encode(), secret.encode(), hashlib.sha256).hexdigest()
     return {"cred": cred.cred, **_HEADERS,
             "sign": hashlib.md5(hexed.encode()).hexdigest(),
@@ -312,12 +323,19 @@ def endfield_role(cred: Cred, role_id: str = "") -> tuple[str, str]:
     raise SklandError("这个账号下没找到终末地的角色绑定")
 
 
+def _synced_cred(cred: Cred) -> Cred:
+    """`cred`, refreshed first when this process has not aligned clocks yet.
+
+    Forgetting to align clocks yields an "expired" timestamp and a 10003. Rather
+    than rely on the caller remembering, every business call does it here; get()
+    and bindings() lacked it until 2026-10-13 (audit s6 #3: banners.py calls
+    login() then get() with no refresh())."""
+    return cred if _synced else refresh(cred)
+
+
 def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:
     """Endfield personal detail. Progression lives in `data.detail`."""
-    if not _synced:
-        # Forgetting to align clocks yields an "expired" timestamp and a 10003.
-        # Rather than rely on the caller remembering, do it for them here.
-        cred = refresh(cred)
+    cred = _synced_cred(cred)
     if not role_id or not server_id:
         # A role given without its server is looked up, never swapped for another.
         role_id, server_id = endfield_role(cred, role_id)
@@ -331,11 +349,13 @@ def endfield_card(cred: Cred, role_id: str = "", server_id: str = "") -> dict:
 def get(cred: Cred, path: str) -> dict:
     """GET a zonai path following the signing rules. Used by banners.py so it need not rebuild the signing chain."""
     url = ZONAI + path if path.startswith("/") else path
+    cred = _synced_cred(cred)
     return _get(url, sign_headers(cred, url))
 
 
 def bindings(cred: Cred) -> list[dict]:
     """The list of bound game accounts (Endfield included)."""
+    cred = _synced_cred(cred)
     r = _get(BINDING_URL, sign_headers(cred, BINDING_URL))
     if r.get("code") not in (0, None):
         raise SklandError(f"取绑定角色失败：{r.get('message')}")

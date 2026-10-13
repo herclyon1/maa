@@ -47,18 +47,18 @@ def _check_missed_runs(eng, now: datetime | None = None,
                 continue  # not late yet
             key = f"{day}/{q['name']}/{hhmm}"
             # one fault, one push: one queue that did not run at its time (queue + due time today), checked every tick
-            if key in eng._missed_alerted:
+            if _settled(eng, day, key):
                 continue
             # The stage gate took MAA out of this run and nothing else was in it
             # (stagegate.py): nothing was meant to run; its alarm already went out.
             if stagegate.settled_alone(eng.cfg.state_dir, q["name"], due):
-                eng._missed_alerted.add(key)
+                _settle(eng, day, key)
                 continue
             # Anything recorded after the scheduled time counts as "it ran".
             ran = any(datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
                       >= due - timedelta(minutes=5) for e in entries)
             if ran:
-                eng._missed_alerted.add(key)   # settled, stop checking
+                _settle(eng, day, key)   # settled, stop checking
                 continue
             # Was this machine even awake when the queue was due? If it
             # was off, "nothing ran" is not something this relay can
@@ -74,7 +74,7 @@ def _check_missed_runs(eng, now: datetime | None = None,
             # already gone slowly enough to be worth knowing about.
             watching_since = eng._boot_time(now) or eng._started_at
             if watching_since > due:
-                eng._missed_alerted.add(key)
+                _settle(eng, day, key)
                 continue
             if eng._scripts_running():
                 # No record yet while a script process is alive (AUTO-MAS
@@ -86,7 +86,7 @@ def _check_missed_runs(eng, now: datetime | None = None,
             title, body = core.format_missing(texts.not_run(q['name']), due,
                                               texts.missed_queue_body(late))
             if not eng.notifier.send(title, body, alert=True):
-                eng._missed_alerted.add(key)
+                _settle(eng, day, key)
                 log.warning("🔌 %s 该跑没跑，已告警", q["name"])
     eng._check_partial_queues(now, day, entries)
 
@@ -133,7 +133,7 @@ def _check_partial_queues(eng, now: datetime, day: str,
                 continue
             key = f"{day}/{q['name']}/{due:%H:%M}/{kind}"
             # one fault, one push: one script missing from one queue run (its due time), checked every tick
-            if key in eng._missed_alerted:
+            if _settled(eng, day, key):
                 continue
             # Was the machine awake when this queue was due? Same test,
             # and the same reason, as in _check_missed_runs: uptime rather
@@ -142,11 +142,32 @@ def _check_partial_queues(eng, now: datetime, day: str,
             # never started.
             watching_since = eng._boot_time(now) or eng._started_at
             if watching_since > due:
-                eng._missed_alerted.add(key)
+                _settle(eng, day, key)
                 continue
             late = int((now - due).total_seconds() // 60)
             title, body = core.format_missing(texts.not_run_in(kind, q['name']), due,
                                               texts.missed_item_body(list(ran), kind, late))
             if not eng.notifier.send(title, body, alert=True):
-                eng._missed_alerted.add(key)
+                _settle(eng, day, key)
                 log.warning("🔌 %s 缺项：%s 没跑，已告警", q["name"], kind)
+
+
+# The settled keys also go into the day marks in state.json (marks.alerted:<day>), the
+# way unresolved.send keeps its own: the in-memory set alone was empty after every
+# relay restart, and machine uptime (the 「was it watching」 test) does not reset with
+# it, so the same missed queue rang the group again (09-17 21:55 and 23:00; audit s8 #1).
+_MARK = "漏跑|"
+
+
+def _settled(eng, day: str, key: str) -> bool:
+    if key in eng._missed_alerted:
+        return True
+    if eng._already_alerted(day, _MARK + key):
+        eng._missed_alerted.add(key)
+        return True
+    return False
+
+
+def _settle(eng, day: str, key: str) -> None:
+    eng._missed_alerted.add(key)
+    eng._mark_alerted(day, _MARK + key)

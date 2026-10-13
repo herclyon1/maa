@@ -90,6 +90,8 @@ def _push_now(eng, day: str, kind: str, run_id: str, title: str, body: str) -> l
     if unresolved.send(eng, day, kind, run_id, title, body):
         return []
     eng._unsent_unresolved.append((day, kind, run_id, title, body))
+    # On disk at once: a restart before the next tick must not lose it (audit s8 #3).
+    eng._persist_pending()
     return ["没推出去，下一轮再推"]
 
 
@@ -137,5 +139,9 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> 
     body = (texts.unresolved_head(game, shift, makeup_phrase, stuck, page) + (note + "\n" if note else "") + "\n"
             + texts.failed_body_head(attempts) + _restart_note(rec) + rest)
     if raw.get("maaend_unreachable_shape") and not raw.get("maaend_unreachable"):
-        body += "\n" + texts.UNREACHABLE_SHAPE_NOTE
+        # maaend_unreachable_unread: the official notices could not be read, so
+        # "no notice today" would be a guess (records._confirm_unreachable).
+        unread_note = getattr(texts, "UNREACHABLE_UNREAD_NOTE", None)
+        body += "\n" + (unread_note if raw.get("maaend_unreachable_unread") and unread_note
+                         else texts.UNREACHABLE_SHAPE_NOTE)
     return unresolved.send(eng, day, unresolved.UNRESOLVED_KIND, rec.run_id, texts.unresolved(game, shift), body)

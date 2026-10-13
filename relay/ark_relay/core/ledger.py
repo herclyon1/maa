@@ -7,8 +7,10 @@ Python; the model only phrases text (summary.py).
 """
 from __future__ import annotations
 
+import inspect
 import json
 import logging
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -99,6 +101,11 @@ _LEDGER_TORN_SAID: dict[str, frozenset] = {}
 # count again.
 _INTERIM_SAID: dict[str, str] = {}
 
+# Held by append_ledger and _rewrite_entry. A rewrite reads the day's file, edits
+# one line and replaces the whole file; an append landing between its read and its
+# replace was lost, which is a run missing from the day (audit s4 A6).
+_LEDGER_LOCK = threading.RLock()
+
 
 class State:
     """Which runs have been handled, and today's ledger.
@@ -156,19 +163,48 @@ class State:
             "recruits": rec.recruits,
         }
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
-        with self.ledger_path(day).open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        with _LEDGER_LOCK:
+            # One line per (day, run_id): a record handled again (a retry after
+            # handling raised past this point, or the post-deploy retry of a
+            # given-up record) keeps the line already there, with any marks written
+            # onto it since, and is not scored a second time.
+            if rec.run_id in self._ledger_run_ids(day):
+                log.info("记录 %s 已在 %s 的账上，不重记", rec.run_id, day)
+                return
+            with self.ledger_path(day).open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         # Score the current code version (scoreboard.py). Every finished run
         # passes through this line, so the daily report's text cannot change
         # the score.
         try:
             # A run the red button cut short says nothing about the code version.
             if not (rec.raw or {}).get("manual_stop"):
+                kw = {}
+                # Judge a test run by when it started (scoreboard.record takes
+                # `started` from relay-report on; older versions judge by now).
+                if "started" in inspect.signature(scoreboard.record).parameters:
+                    kw["started"] = rec.started
                 scoreboard.record(self.store, str(self.store.get("versions", "code") or ""),
-                                  rec.ok, rec.transitional)
+                                  rec.ok, rec.transitional, **kw)
         except Exception:
             # The scoreboard must never take the bookkeeping down with it.
             log.warning("记分牌没记上", exc_info=True)
+
+    def _ledger_run_ids(self, day: str) -> set:
+        """Every run_id on the day's ledger, read raw: a line read_ledger would skip
+        (missing key, bad time) still holds its run's place. Torn lines hold none."""
+        p = self.ledger_path(day)
+        if not p.exists():
+            return set()
+        ids = set()
+        for ln in p.read_text(encoding="utf-8").splitlines():
+            try:
+                entry = json.loads(ln)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(entry, dict) and "run_id" in entry:
+                ids.add(entry["run_id"])
+        return ids
 
     def mark_incomplete(self, day: str, run_id: str, why: str) -> bool:
         """Write a failed outcome check back onto the day's ledger line.
@@ -203,22 +239,23 @@ class State:
 
     def _rewrite_entry(self, day: str, run_id: str, edit) -> bool:
         p = self.ledger_path(day)
-        if not p.exists():
-            return False
-        lines = p.read_text(encoding="utf-8").splitlines()
-        hit = False
-        for i, ln in enumerate(lines):
-            try:
-                entry = json.loads(ln)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(entry, dict) and entry.get("run_id") == run_id:
-                edit(entry)
-                lines[i] = json.dumps(entry, ensure_ascii=False)
-                hit = True
-        if hit:
-            atomic_write_text(p, "\n".join(lines) + "\n")
-        return hit
+        with _LEDGER_LOCK:
+            if not p.exists():
+                return False
+            lines = p.read_text(encoding="utf-8").splitlines()
+            hit = False
+            for i, ln in enumerate(lines):
+                try:
+                    entry = json.loads(ln)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(entry, dict) and entry.get("run_id") == run_id:
+                    edit(entry)
+                    lines[i] = json.dumps(entry, ensure_ascii=False)
+                    hit = True
+            if hit:
+                atomic_write_text(p, "\n".join(lines) + "\n")
+            return hit
 
     # What every consumer of a ledger entry assumes is present; checked once here.
     # A missing key or a bad time would stop the daily report, and shutdown

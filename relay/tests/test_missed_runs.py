@@ -63,6 +63,7 @@ def check(label, got, want):
 def reset():
     sent.clear()
     E._missed_alerted.clear()
+    E.state.store.pop("marks", "alerted:2026-08-21")   # the settled keys on disk too
 
 print("[the swallowed alarm] selfupdate restarted the relay past the queue time")
 reset()
@@ -156,6 +157,32 @@ finally:
     import importlib as _il
     _il.reload(_modes)
 check("调试模式下漏跑也报群", len(sent), 1)
+
+print("\n[relay restarted after the alarm went out: no second push (09-17 21:55 / 23:00; audit s8 #1)]")
+reset()
+BOOT[0] = at(21, 20); E._started_at = at(21, 22)
+E._check_missed_runs(at(21, 56))
+check("first push", len(sent), 1)
+E_again = Engine(cfg, source=None, state=State(cfg.state_dir), notifier=FakeNotifier(cfg))
+E_again._boot_time = lambda now: at(21, 20)       # same boot: uptime did not reset
+E_again._started_at = at(22, 57)
+E_again._scripts_running = lambda: False
+E_again._check_missed_runs(at(23, 0))
+check("the restarted relay stays quiet", len(sent), 1)
+
+print("\n[same for a missing script in a queue that ran]")
+reset()
+(STATE / "ledger-2026-08-21.jsonl").write_text(json.dumps({
+    "script": "MAA", "started": at(21, 31).isoformat(),
+    "finished": at(21, 55).isoformat(), "ok": True, "run_id": "x"}), encoding="utf-8")
+_plan.recent_due_queues = lambda d, n, window_minutes=120: [
+    {"name": "Evening-MAA", "due": at(21, 30), "kinds": ["MAA", "MaaEnd"]}]
+for eng_ in (E, E_again):
+    eng_._script_running = lambda kind: False
+    eng_._check_partial_queues(at(23, 0), "2026-08-21", eng_.state.read_ledger("2026-08-21"))
+_plan.recent_due_queues = _orig
+(STATE / "ledger-2026-08-21.jsonl").unlink()
+check("one push across the restart", len(sent), 1)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

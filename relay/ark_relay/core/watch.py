@@ -50,6 +50,8 @@ def _windows(path: str, wake: threading.Event) -> bool:
     k.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
     k.FindNextChangeNotification.restype = ctypes.c_int
     k.FindNextChangeNotification.argtypes = [ctypes.c_void_p]
+    k.FindCloseChangeNotification.restype = ctypes.c_int
+    k.FindCloseChangeNotification.argtypes = [ctypes.c_void_p]
 
     file_name, last_write = 0x01, 0x10
 
@@ -74,6 +76,10 @@ def _windows(path: str, wake: threading.Event) -> bool:
                 wake.set()
                 if not k.FindNextChangeNotification(handle):
                     break
+            # Close the dropped handle before opening another: each rebuild leaked
+            # one kernel handle otherwise (audit s2 F5).
+            if handle is not None:
+                k.FindCloseChangeNotification(handle)
             handle = None
             wake.set()          # Make the caller run one backstop scan right away
             log.warning("目录监听掉了，%.0f 秒后重建；期间靠定时兜底", delay)
