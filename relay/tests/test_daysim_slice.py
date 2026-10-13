@@ -341,6 +341,29 @@ def check_updater() -> None:
            ("08:47:56", "mas_backend", "up", ""), ("08:47:56", "proc", "exit", "AUTO-MAS-Setup.exe")])
 
 
+def check_queue_wake() -> None:
+    print("\n[a timed AUTO-MAS task carries the queue its timer woke (runtime-snapshot queueId)]")
+    d = tmpdir("daysim-wake-")
+    log = d / "app.log"
+    log.write_text(   # app.log 2026-10-08 09:00 and 2026-10-09 12:03, verbatim
+        "2026-10-08 09:00:00.782 | INFO     | 主业务定时器 | 定时唤起任务：cc32e55a-55d0-408d-980d-642e66d111ae\n"
+        "2026-10-08 09:00:00.783 | INFO     | 业务调度 | 创建任务: 30fa5398-f0a3-4756-b74c-42f3411f0150, "
+        "模式: AutoProxy, 触发来源: scheduled_task\n"
+        "2026-10-08 12:03:18.027 | INFO     | 业务调度 | 创建任务: 17520895-718d-4b31-b995-9ebdcf9412ee, "
+        "模式: AutoProxy, 触发来源: manual_task\n", encoding="utf-8")
+    ctx = sl.Day("2026-10-08", ts("2026-10-08T00:00:00+08:00"), ts("2026-10-09T00:00:00+08:00"), d, d)
+    sl.app_line(ctx, sl.Part("D/ark/automas/debug/app.log", "D:/ark/automas/debug/app.log"), log, 0,
+                log.stat().st_size)
+    got = [(e["t"][11:19], e["trigger"], e.get("queue")) for _t, _s, e in ctx.events if e.get("op") == "task_start"]
+    check("09:00 timed task: queue cc32e55a (早班); the manual one names none", got,
+          [("09:00:00", "scheduled_task", "cc32e55a-55d0-408d-980d-642e66d111ae"),
+           ("12:03:18", "manual_task", None)])
+    starts = [e for e in events_of("2026-10-08") if e["kind"] == "mas_backend" and e["op"] == "task_start"]
+    check("the committed 10-08 events carry both shifts' queues",
+          [e.get("queue") for e in starts], ["cc32e55a-55d0-408d-980d-642e66d111ae",
+                                             "6f09a385-b0ae-4ff6-9890-50339bdaddeb"])
+
+
 def check_publish_fault() -> None:
     print("\n[network faults: an ntfy publish that failed once is an input]")
     ctx = sl.Day("2026-10-08", ts("2026-10-08T00:00:00+08:00"), ts("2026-10-09T00:00:00+08:00"), Path("."), Path("."))
@@ -382,6 +405,7 @@ check_tree()
 check_updater()
 check_power_on_clamp()
 check_publish_fault()
+check_queue_wake()
 days = sorted(p.name for p in DAYS.iterdir() if p.is_dir())
 check("committed days", days, ["2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-11",
                               "2026-10-12", "2026-10-13"])

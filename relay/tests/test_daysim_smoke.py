@@ -442,6 +442,19 @@ for it in W.timeline(evs09):
 check("10-09: the maintenance notice is served (list and post)", webs,
       ["https://ak.hypergryph.com/api/news?category=ANNOUNCEMENT",
        "https://web-news.hypergryph.com/api/bulletin/daysim-1009-maint"])
+# 10-08 09:00: the timed task names its queue in runtime-snapshot, so the relay's overrun watch
+# (runwatch._queue_task, by queueId) sees the 早班 still running; without it check_overrun
+# was blind on every replayed day and 10-08's chain run pushed 「一直没出结果」 instead.
+snaps = []
+w.mas = type("M", (), {"set_tasks": lambda self, t: snaps.append([dict(x) for x in t]), "run_started": lambda self: None})()
+w.tasks = []
+evs08, _seed = W.load_day("2026-10-08")
+first = next(it for it in W.timeline(evs08) if it["kind"] == "mas_backend" and it["ev"].get("op") == "task_start")
+w.state_effect(first, live=False)
+from ark_relay.features.run import runwatch  # noqa: E402
+check("10-08 09:00 task: runtime-snapshot carries queueId cc32e55a, found as the 早班's task",
+      ((runwatch._queue_task({"tasks": snaps[-1]}, "cc32e55a-55d0-408d-980d-642e66d111ae") or {}).get("taskId")),
+      "30fa5398-f0a3-4756-b74c-42f3411f0150")
 
 # ---- AUTO-MAS's version as its app.log has it at each moment (10-09: v5.6.2 until 08:47:54)
 vc = tmpdir("daysim-masver-")

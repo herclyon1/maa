@@ -627,7 +627,10 @@ class World:
             elif op == "down":
                 self._backend_down(t)
             elif op == "task_start":
-                self.tasks.append({"taskId": ev.get("task", ""), "mode": ev.get("mode", ""), "task_info": []})
+                task = {"taskId": ev.get("task", ""), "mode": ev.get("mode", ""), "task_info": []}
+                if ev.get("queue"):
+                    task["queueId"] = ev["queue"]     # the woken queue (slice.QUEUE_WAKE), as AUTO-MAS reports it
+                self.tasks.append(task)
                 self.mas.set_tasks(self.tasks)
                 if live:
                     self.mas.run_started()

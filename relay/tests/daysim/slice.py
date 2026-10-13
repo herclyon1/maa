@@ -207,6 +207,7 @@ class Day:
     recs: list = field(default_factory=list)
     relay_size: int = 0
     installer_src: str = ""                          # AUTO-MAS's own updater started, backend not back yet
+    wake_queue: str = ""                             # the queue AUTO-MAS's timer just woke (QUEUE_WAKE)
 
     @property
     def year(self) -> int:
@@ -797,6 +798,13 @@ BACKEND_UP = re.compile(r"^Uvicorn running on \S+:(\d+)")
 BACKEND_DOWN = re.compile(r"^Shutting down$")
 TASK_START = re.compile(r"^创建任务: (\S+), 模式: (\S+), 触发来源: (\S+)$")
 TASK_END = re.compile(r"^任务结束: (\S+)$")
+# A scheduled task is created right after its timer line names the queue it woke
+# (app.log 10-08 09:00:00.782 「定时唤起任务：cc32e55a-…」, 09:00:00.783 「创建任务: 30fa5398-…,
+# 触发来源: scheduled_task」). That uid is the QueueConfig.json instance (早班 cc32e55a, 晚班
+# 6f09a385) runtime-snapshot reports as the task's queueId (runwatch._queue_task), which
+# check_overrun needs to see a shift still running: on the machine it did (relay.log 10-02
+# 23:43:30 「⏰ 晚班 21:30 开跑，23:43 还没跑完」). A manual task has no such line and no queue.
+QUEUE_WAKE = re.compile(r"^定时唤起任务[:：]\s*(\S+)$")
 # AUTO-MAS installs its own update by unpacking UpdatePack_*.zip, starting AUTO-MAS-Setup.exe
 # and exiting (docs/OPERATIONS.md, the AUTO-MAS row); app.log has only the start (10-09
 # 08:47:13 「启动更新程序」, 10-11 08:47:23). The installer is taken to run until the backend
@@ -847,9 +855,13 @@ def app_line(ctx: Day, p: Part, out_path: Path, off: int, length: int) -> None:
                     ctx.installer_src = ""
             elif BACKEND_DOWN.match(msg):
                 ctx.emit(t, "mas_backend", src, op="down")
+            elif mm := QUEUE_WAKE.match(msg):
+                ctx.wake_queue = mm.group(1)
             elif mm := TASK_START.match(msg):
+                queue = {"queue": ctx.wake_queue} if ctx.wake_queue and mm.group(3) == "scheduled_task" else {}
+                ctx.wake_queue = ""
                 ctx.emit(t, "mas_backend", src, op="task_start", task=mm.group(1), mode=mm.group(2),
-                         trigger=mm.group(3))
+                         trigger=mm.group(3), **queue)
             elif mm := TASK_END.match(msg):
                 ctx.emit(t, "mas_backend", src, op="task_end", task=mm.group(1))
 
