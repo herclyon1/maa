@@ -364,6 +364,21 @@ for name in STEPS:
 check("三条都试过了", (e12.tick(), sorted(handled)), (3, ["r1", "r2", "r3"]))
 check("成功的两条记成已处理", sorted(e12.state.seen), ["r1", "r3"])
 
+print("\n[一条记录次次处理都出错：重试 HANDLE_TRIES 轮就记成已处理，报一次错（audit s2 F3）]")
+e13 = build(source=Src([rec("bad")]))
+e13._handle = lambda r: (_ for _ in ()).throw(RuntimeError("这条记录永远处理不了"))
+for name in STEPS:
+    setattr(e13, name, lambda *a, **k: None)
+gave_up = []
+_h = logging.Handler()
+_h.emit = lambda r: gave_up.append(r.getMessage()) if "不再重试" in r.getMessage() else None
+logging.getLogger("ark").addHandler(_h)
+for _ in range(6):                       # more ticks than the cap allows
+    e13.tick()
+logging.getLogger("ark").removeHandler(_h)
+check("最后记成已处理，不再无限重试", "bad" in e13.state.seen, True)
+check("放弃那一下只报一次", len(gave_up), 1)
+
 
 print("[读模式开关炸了，也不许带走整轮——日报和关机在最后]")
 eng2 = build()

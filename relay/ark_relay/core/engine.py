@@ -115,6 +115,8 @@ _BUSY_SEEN: dict = {"state_dir": None, "automas_dir": None}
 BUSY_FILE = "machinecheck-busy.json"      # read by machinechecks/system.py (#18)
 # An app.log task with no end line counts as open for this long after its start.
 OTHER_MODE_OPEN_MIN = 30
+# Ticks a record may make _handle raise before it is marked seen anyway (tick).
+HANDLE_TRIES = 3
 _APPLOG_TAIL = 512 * 1024
 
 
@@ -234,6 +236,8 @@ class Engine:
         self._recovered: dict[tuple[str, str], RunRecord] = {}
         self._restore_pending()
         self._missed_alerted: set[str] = set()
+        # run_id -> how many ticks _handle raised on it (tick, HANDLE_TRIES).
+        self._handle_fails: dict[str, int] = {}
         self._started_at = datetime.now(tz=SERVER_TZ)
         self._handled_any = False   # nothing ran this session -> nothing to shut down for
         self._shutdown_issued = False  # a countdown is already running; never twice
@@ -393,7 +397,15 @@ class Engine:
                 self._handle(rec)
             except Exception:
                 log.exception("处理运行记录失败: %s", rec.run_id)
-                continue
+                # A record that always raises was retried on every tick with no end
+                # (09-08: 99 lines in half an hour), and never counted as landed for
+                # shutdown. After HANDLE_TRIES it is marked seen; the ERROR line
+                # below is the one group alarm (errwatch). Audit s2 F3.
+                n = self._handle_fails[rec.run_id] = self._handle_fails.get(rec.run_id, 0) + 1
+                if n < HANDLE_TRIES:
+                    continue
+                log.error("运行记录连续 %d 次处理失败，不再重试，这一趟没记进账: %s", n, rec.run_id)
+            self._handle_fails.pop(rec.run_id, None)
             self.state.mark_seen(rec.run_id)
             self._handled_any = landed = True
         if landed:
