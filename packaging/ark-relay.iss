@@ -194,23 +194,76 @@ begin
              mbError, MB_OK);
 end;
 
+// The removal steps switch.py uninstall could not do (exit 7), one per line.
+function UninstallLeft(): String;
+var
+  Lines: TArrayOfString;
+  I: Integer;
+begin
+  Result := '';
+  if LoadStringsFromFile(ExpandConstant('{commonappdata}\ark-relay\uninstall-left.txt'), Lines) then
+    for I := 0 to GetArrayLength(Lines) - 1 do
+      if Trim(Lines[I]) <> '' then
+        Result := Result + '・' + Lines[I] + #13#10;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Rc, StartRc: Integer;
 begin
   // Before the files go: stop everything, put AUTO-MAS back, remove the old relay's
   // leftovers (switch.py uninstall).
   // An exception here stops the uninstall before any file is deleted (Inno Setup,
   // Setup.Uninstall.pas: CurUninstallStepChanged(usUninstall) runs before
-  // PerformUninstall and its exceptions are fatal). switch.py has started the relay
-  // again in that case.
+  // PerformUninstall and its exceptions are fatal).
   if CurUninstallStep = usUninstall then
-    if RunSwitch('uninstall') <> 0 then
+  begin
+    Rc := RunSwitch('uninstall');
+    if Rc = 3 then
     begin
+      // AUTO-MAS's settings not put back: switch.py removed nothing and started the
+      // relay again.
       if not UninstallSilent() then
         MsgBox('没有卸载：AUTO-MAS 的设置没能改回原样（它可能正在跑任务）。' +
                '中继已经重新开起来，什么都没删。等 AUTO-MAS 空下来再卸载一次。',
                mbError, MB_OK);
       RaiseException('AUTO-MAS settings could not be put back; nothing was removed');
+    end
+    else if Rc = 7 then
+    begin
+      // The relay is stopped and AUTO-MAS is as before; some removal steps failed, each
+      // tried on its own. The program files still go: stopping here would leave no relay,
+      // no watchdog and an installed entry.
+      if not UninstallSilent() then
+        MsgBox('卸载了：中继已经停掉，AUTO-MAS 的设置已经改回原样，程序文件接着删。' + #13#10 +
+               '但下面这些没删掉（详情在 C:\ProgramData\ark-relay\switch.log 里）：' + #13#10 +
+               UninstallLeft(), mbError, MB_OK);
+    end
+    else if Rc = -1 then
+    begin
+      // switch.py did not run at all (RunSwitch: Exec failed): nothing was touched.
+      if not UninstallSilent() then
+        MsgBox('没有卸载：卸载步骤没能运行，什么都没动，中继照常在跑。', mbError, MB_OK);
+      RaiseException('switch.py uninstall did not run; nothing was removed');
+    end
+    else if Rc <> 0 then
+    begin
+      // switch.py did not get past stopping the relay and putting AUTO-MAS back (it
+      // failed there, or did not run): nothing was removed. Start the relay again.
+      StartRc := RunSwitch('start');
+      if not UninstallSilent() then
+        if StartRc = 0 then
+          MsgBox('没有卸载：卸载中途出错（代码 ' + IntToStr(Rc) + '），程序文件一个没删。' +
+                 '中继已经重新开起来。原因写在 C:\ProgramData\ark-relay\switch.log 里。',
+                 mbError, MB_OK)
+        else
+          MsgBox('没有卸载：卸载中途出错（代码 ' + IntToStr(Rc) + '），程序文件一个没删。' +
+                 '中继没能马上重新开起来，重启电脑后它会自己开。原因写在 ' +
+                 'C:\ProgramData\ark-relay\switch.log 里。',
+                 mbError, MB_OK);
+      RaiseException('switch.py uninstall failed before removing anything; nothing was removed');
     end;
+  end;
   // The data folder holds his records (.env with the push keys, state, logs). Kept
   // unless he says to delete it; a silent uninstall keeps it.
   if (CurUninstallStep = usPostUninstall) and not UninstallSilent() then

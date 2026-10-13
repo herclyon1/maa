@@ -69,45 +69,73 @@ def _task_names() -> list[str]:
     return sorted({line.split('","')[0].strip('"').lstrip("\\") for line in out.splitlines() if line})
 
 
-def _delete_path(p: Path) -> None:
+def _delete_path(p: Path) -> "list[str]":
+    """Delete p (a file or a whole folder); what could not be deleted, as text."""
     if p == DATA:
+        failed = []
         for name in OLD_CODE:
-            _delete_path(DATA / name)
-        return
+            failed += _delete_path(DATA / name)
+        return failed
     if p.is_dir():
         shutil.rmtree(p, ignore_errors=True)
     elif p.exists():
         p.unlink(missing_ok=True)
     else:
-        return
+        return []
+    if p.exists():
+        return [f"{p}: still there"]
     print("deleted", p)
+    return []
 
 
-def remove() -> None:
+def _remove_one(it: dict, tasks: "list[str] | None") -> "tuple[list[str], list[str] | None]":
+    failed: "list[str]" = []
+    kind = it.get("kind")
+    if kind == "service":
+        if not service_exists(it["name"]):
+            print("skipped (already gone):", it["name"])
+            return failed, tasks
+        _run("sc", "stop", it["name"])
+        if _run("sc", "delete", it["name"]) != 0:
+            failed.append(f"service {it['name']}: sc delete failed")
+    elif kind in ("task", "task-prefix"):
+        tasks = tasks if tasks is not None else _task_names()
+        for t in tasks:
+            if t == it["name"] or (kind == "task-prefix" and t.startswith(it["name"])):
+                if _run("schtasks", "/delete", "/tn", t, "/f") != 0:
+                    failed.append(f"task {t}: schtasks /delete failed")
+    elif kind in ("dir", "file", "glob"):
+        path = os.path.expandvars(it["path"])
+        if "<" in path:
+            print("skipped (path known only on the machine):", path)
+            return failed, tasks
+        for p in (glob.glob(path) if kind == "glob" else [path]):
+            failed += _delete_path(Path(p))
+    return failed, tasks
+
+
+def remove() -> "list[str]":
+    """Delete every item marked `remove` or `takeover`, each on its own: one that fails
+    (or raises) does not stop the rest. Returns what was not deleted, as text."""
+    try:
+        todo = [it for it in items() if it.get("action") in ("remove", "takeover")]
+    except (OSError, ValueError, KeyError) as exc:
+        return [f"{ITEMS.name} not read: {exc}"]
+    failed: "list[str]" = []
     tasks = None
-    for it in items():
-        if it.get("action") not in ("remove", "takeover"):
-            continue
-        kind = it.get("kind")
-        if kind == "service":
-            if not service_exists(it["name"]):
-                print("skipped (already gone):", it["name"])
-                continue
-            _run("sc", "stop", it["name"])
-            _run("sc", "delete", it["name"])
-        elif kind in ("task", "task-prefix"):
-            tasks = tasks if tasks is not None else _task_names()
-            for t in tasks:
-                if t == it["name"] or (kind == "task-prefix" and t.startswith(it["name"])):
-                    _run("schtasks", "/delete", "/tn", t, "/f")
-        elif kind in ("dir", "file", "glob"):
-            path = os.path.expandvars(it["path"])
-            if "<" in path:
-                print("skipped (path known only on the machine):", path)
-                continue
-            for p in (glob.glob(path) if kind == "glob" else [path]):
-                _delete_path(Path(p))
-    TAKEOVER_RECORD.unlink(missing_ok=True)
+    for it in todo:
+        try:
+            more, tasks = _remove_one(it, tasks)
+            failed += more
+        except Exception as exc:  # noqa: BLE001 - one leftover must not stop the rest
+            failed.append(f"{it.get('name') or it.get('path')}: {type(exc).__name__}: {exc}")
+    try:
+        TAKEOVER_RECORD.unlink(missing_ok=True)
+    except OSError as exc:
+        failed.append(f"{TAKEOVER_RECORD}: {exc}")
+    for line in failed:
+        print("not removed:", line)
+    return failed
 
 
 if __name__ == "__main__":

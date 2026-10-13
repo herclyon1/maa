@@ -45,6 +45,9 @@ uninstall: removes everything - the new relay and what the old relay left
 First the watchdog and the relay stop and AUTO-MAS's settings are put back. If that
 cannot be done (AUTO-MAS busy or not answering), nothing is removed: the relay is started
 again, exit code 3, and the uninstaller stops before deleting anything and says why.
+After that point each removal step runs on its own: one that fails (or raises) does not
+stop the rest. Exit 7 = everything else removed; the steps that failed are in switch.log
+and in UNINSTALL_LEFT, which the uninstaller shows, then it goes on deleting the files.
 """
 from __future__ import annotations
 
@@ -82,6 +85,10 @@ WATCHDOG_MARKER = legacy.DATA / "watchdog-stopped.txt"
 # An update's restart helper (pkg_layout.restart_soon: pythonw.exe launch.py relaunch);
 # the same match as scripts/mac/estop.sh, in PowerShell -like wildcards.
 HELPER_LIKE = "*launch.py*relaunch*"
+# The removal steps of an uninstall that failed, one per line (UTF-8), for the
+# uninstaller's message box (ark-relay.iss reads it after exit 7).
+UNINSTALL_LEFT = legacy.DATA / "uninstall-left.txt"
+UNINSTALL_PARTIAL = 7
 
 
 def run(*cmd: "str | Path") -> int:
@@ -389,23 +396,65 @@ def install(user: str, skip_handover: bool) -> int:
     return 1
 
 
+def _remove_state_links() -> "list[str]":
+    """The version folders' state junctions; the link only, never the data it points to."""
+    failed = []
+    for v in (APP / "versions").iterdir() if (APP / "versions").is_dir() else []:
+        link = v / "state"
+        try:
+            if os.path.isjunction(link) or link.is_symlink():
+                os.rmdir(link)
+        except OSError as exc:
+            failed.append(f"{link}: {exc}")
+    return failed
+
+
 def uninstall() -> int:
+    """0 = everything removed; 3 = AUTO-MAS not put back, nothing removed, the relay
+    started again; 7 = removed except the steps listed in UNINSTALL_LEFT."""
+    try:
+        UNINSTALL_LEFT.unlink(missing_ok=True)
+    except OSError as exc:
+        print("uninstall-left.txt:", exc)
     stop()
     if _handover_rollback() != 0:
         # Removing now would leave AUTO-MAS with the handover's settings and nobody
         # holding the old ones: keep everything, start the relay again, say so.
         start()
         return 3
-    for v in (APP / "versions").iterdir() if (APP / "versions").is_dir() else []:
-        link = v / "state"
-        if os.path.isjunction(link) or link.is_symlink():
-            os.rmdir(link)        # removes the link only, never the data it points to
-    run(PY, APP / "watchdog" / "ark_watchdog.py", "remove")
-    _mark_watchdog_stopped(False)          # no watchdog left to keep down
-    run("schtasks.exe", "/delete", "/tn", TASK_PATH + TASK_NAME, "/f")
-    delete_task_folder()
-    legacy.remove()
-    return 0
+    # From here the relay is down for good and AUTO-MAS is as before: every step is
+    # tried, whatever an earlier one did.
+    left: "list[str]" = []
+
+    def step(name: str, fn) -> None:
+        try:
+            out = fn()
+        except Exception as exc:  # noqa: BLE001 - one failed step must not stop the rest
+            left.append(f"{name}: {type(exc).__name__}: {exc}")
+            return
+        if isinstance(out, list):
+            left.extend(f"{name}: {x}" for x in out)
+        elif isinstance(out, int) and not isinstance(out, bool) and out != 0:
+            left.append(f"{name}: exit {out}")
+
+    step("state links", _remove_state_links)
+    step("watchdog service ArkRelayWatchdog", lambda: run(PY, APP / "watchdog" / "ark_watchdog.py", "remove"))
+    step("watchdog stop marker", lambda: _mark_watchdog_stopped(False))   # no watchdog left to keep down
+    step(f"task {TASK_PATH}{TASK_NAME}",
+         lambda: run("schtasks.exe", "/delete", "/tn", TASK_PATH + TASK_NAME, "/f"))
+    step("task folder", delete_task_folder)          # never fails: says so itself
+    step("old relay leftovers", legacy.remove)
+    if not left:
+        return 0
+    print(f"uninstall: {len(left)} step(s) not done, everything else removed:")
+    for line in left:
+        print("  not removed:", line)
+    try:
+        UNINSTALL_LEFT.parent.mkdir(parents=True, exist_ok=True)
+        UNINSTALL_LEFT.write_text("\n".join(left) + "\n", encoding="utf-8")
+    except OSError as exc:
+        print("uninstall-left.txt not written:", exc)
+    return UNINSTALL_PARTIAL
 
 
 def delete_task_folder(connect=None) -> bool:
