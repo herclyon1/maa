@@ -133,9 +133,10 @@ def _is_transitional(result: str) -> bool:
 def _log_span(log_path: Path) -> tuple[datetime, datetime] | None:
     """First and last timestamp inside a run log: the run's real span.
 
-    The record's filename is hours off on this install and its mtime is when the
-    whole queue finished, so neither is used for the duration when the log has
-    timestamps.
+    The record's filename is hours off on this install (AUTOMAS_NAME_TZ) and its
+    mtime is when AUTO-MAS wrote the record after the attempt ended (about 20 s
+    later, relay.log 10-02 23:41:33), so neither is used for the duration when the
+    log has timestamps.
     """
     try:
         text = log_path.read_text(encoding="utf-8", errors="replace")
@@ -553,12 +554,14 @@ def scan(history_root: Path, seen: set[str], maaend_dir: Path | None = None) -> 
             age = now - path.stat().st_mtime
         except OSError:
             continue
-        # Skip a .json younger than 120s whose .log is not there yet: AUTO-MAS
-        # writes the .json first and the .log moments later, and the .log's
-        # write fires the next directory event. A record parsed without its log
-        # would be booked with filename/mtime times and no drops, and never
-        # re-parsed once seen. Past 120s the run is taken to have no log.
-        # Negative age (mtime in the future, clock skew) is never skipped.
+        # Skip a .json younger than 120s whose .log is not there: a record parsed
+        # without its log would be booked with filename/mtime times and no drops,
+        # and never re-parsed once seen. AUTO-MAS writes the .log before the .json
+        # (amas-src app/task/MAA/tools/log_statistics.py:246-248, app/core/config.py
+        # 4302-4303), so this is only a margin; a half-written .json fails
+        # json.loads, is skipped, and comes back on its next write event
+        # (dirwatch subscribes to LAST_WRITE). Past 120s the run is taken to have
+        # no log. Negative age (mtime in the future, clock skew) is never skipped.
         if 0 <= age < 120 and not path.with_suffix(".log").exists():
             continue
         # Skip records already processed by run_id from the path, before parsing.
