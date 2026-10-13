@@ -142,7 +142,12 @@ def read_okww(automas_dir, okww_dir) -> dict:
     return out
 
 
-def write_okww(automas_dir, path: str, value) -> tuple[bool, str]:
+def write_okww(automas_dir, path: str, value, okww_dir=None) -> tuple[bool, str]:
+    """Write one phone-editable OK-WW master value. A dropdown key (_LIST) only takes
+    one of the candidates read from OK-WW's own source (`okww_dir`): upstream sends
+    any 「Which to Farm」 that is not Tacet or Forgery to the simulation domain
+    (v3.7.4, DailyTask.py:125-127), so a stray string would farm the wrong thing
+    without a word. When the source cannot be read, nothing is checked, as before."""
     name, _, key = str(path).partition("/")
     if name in OKWW_READONLY and key in OKWW_READONLY[name]:
         return False, f"{key} 在手机上是只读的（死命令：残象聚落只刷梦枢天罗、落渊南丘）"
@@ -165,6 +170,9 @@ def write_okww(automas_dir, path: str, value) -> tuple[bool, str]:
             return False, f"「{key}」要一个整数，收到 {value!r}"
     else:
         new = str(value)
+        allowed = _okww_cases(okww_dir).get(key)
+        if allowed and new not in allowed:
+            return False, f"「{key}」只能是 {'、'.join(allowed)} 之一，收到 {new!r}，已拒绝"
     if before == new:
         return True, f"「{key}」本来就是 {before!r}，没有改动"
     doc[key] = new

@@ -155,6 +155,23 @@ def main() -> int:
     require("只读项→拒绝（死命令：只刷落渊南丘）", not ok, msg)
     ok, msg = mastercfg.write_okww(automas, "DailyTask.json/Not A Key", 1)
     require("不存在的键→拒绝", not ok, msg)
+    # 2026-10-13 audit: any string was written; upstream sends anything that is not
+    # Tacet or Forgery to the simulation domain (DailyTask.py:125-127).
+    okww = automas.parent / "okww"
+    src = okww / "data" / "apps" / "ok-ww" / "working" / "src" / "task"
+    src.mkdir(parents=True)
+    (src / "DailyTask.py").write_text(
+        "        self.support_tasks = ['Tacet Suppression', 'Forgery Challenge', 'Simulation Challenge']\n",
+        encoding="utf-8")
+    ok, msg = mastercfg.write_okww(automas, "DailyTask.json/Which to Farm", "Tacet Supression", okww)
+    now = mastercfg.read_okww(automas, None)["values"]
+    require("Which to Farm: a value OK-WW does not list -> refused, file unchanged",
+            not ok and now["DailyTask.json/Which to Farm"] == "Simulation Challenge", msg)
+    ok, msg = mastercfg.write_okww(automas, "DailyTask.json/Which to Farm", "Forgery Challenge", okww)
+    now = mastercfg.read_okww(automas, None)["values"]
+    require("Which to Farm: a listed value is written",
+            ok and now["DailyTask.json/Which to Farm"] == "Forgery Challenge", msg)
+    mastercfg.write_okww(automas, "DailyTask.json/Which to Farm", "Simulation Challenge", okww)
 
     print("\n=== 5. OK-WW: a config file that exists but cannot be read is said once ===")
     import logging  # noqa: PLC0415
