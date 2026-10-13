@@ -71,7 +71,7 @@ def main() -> int:
 
     print("\n=== 残象聚落进度 ===")
     out3 = _parse(NEST)
-    check("抓到 26/41", out3.get("okww_nest"), "26/41")
+    check("no okww_nest field (dropped 2026-10-13, read by nothing)", "okww_nest" in out3, False)
     check("抓到已打满", out3.get("okww_nest_full"), True)
 
     print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")

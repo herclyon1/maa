@@ -62,7 +62,7 @@ print("[从日志里还原出来的数字]")
 # 240→200→160→80→40→0，逐段下降相加 = 240。首尾相减在有储备回补时会算少。
 check("消耗波片按逐段下降累加", got.get("okww_stamina_spent"), 240)
 check("进本次数 = 每次消耗体力各一条", got.get("okww_runs"), 5)
-check("日常波片进度取最大值", got.get("okww_daily"), "180/180")
+check("no okww_daily field (dropped 2026-10-13, read by nothing)", "okww_daily" in got, False)
 check("活跃度带上限、满了要标出来", got.get("okww_points"), "100/100（已满）")
 # 2026-08-29 改口径：OK-WW 的 used all stamina 不是「剩 0」，是**剩下的不够
 # 再开一局**（凝素领域单次 40，剩 37 就进不去）。用户点名「用尽不是零吗？

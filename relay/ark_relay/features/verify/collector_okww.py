@@ -33,16 +33,10 @@ _OKWW_BACKUP = re.compile(r"info_set back_up_stamina (\d+)")
 # (「not enough to continue」, 「must_use completed, no need to use back_up」), so
 # only the first half is matched.
 _OKWW_STAMINA_END = re.compile(r"current stamina:\s*(\d+)")
-_OKWW_DAILY = re.compile(r"info_set current daily progress (\d+)")
 _OKWW_POINTS = outcome._DAILY_POINTS
 # One of these is logged per domain entry, so counting them counts the runs.
 _OKWW_ENTRY = re.compile(r"使用单倍体力|当前体力大于等于双倍|使用双倍")
-# Nightmare Nest progress 「已击败残象：N/M」, logged each time the list is opened;
-# the last one is reported. It is OCR (a leading digit can be lost), so it is
-# shown for reference only and never used to decide whether a nest was farmed.
-_OKWW_NEST = re.compile(r"已击败残象[：:]\s*(\d+)\s*/\s*(\d+)")
 _OKWW_NEST_FULL = re.compile(r"指定点位都已打满")
-_OKWW_DAILY_TARGET = 180
 # Full value of the daily activity meter; the reading can go above it.
 _OKWW_POINTS_TARGET = outcome._DAILY_POINTS_TARGET
 
@@ -576,13 +570,13 @@ def _okww_stamina_left(text: str, out: dict, readings: list) -> None:
 
 
 def _okww_progress(text: str, out: dict) -> None:
-    """Nightmare Nests, daily progress, daily points, and why it stopped."""
-    if nest := _OKWW_NEST.findall(text):
-        out["okww_nest"] = f"{nest[-1][0]}/{nest[-1][1]}"
+    """Nightmare Nests all full, daily points, and why it stopped.
+
+    okww_nest (the last 「已击败残象 N/M」, read before the fight) and okww_daily
+    (always 0/180 or 180/180) were dropped on 2026-10-13: nothing outside this
+    collector read them (audit item 15)."""
     if _OKWW_NEST_FULL.search(text):
         out["okww_nest_full"] = True
-    if daily := _OKWW_DAILY.findall(text):
-        out["okww_daily"] = f"{max(int(x) for x in daily)}/{_OKWW_DAILY_TARGET}"
     if points := _OKWW_POINTS.findall(text):
         top = max(int(x) for x in points)
         out["okww_points"] = f"{top}/{_OKWW_POINTS_TARGET}"
