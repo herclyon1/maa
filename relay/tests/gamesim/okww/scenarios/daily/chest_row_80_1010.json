@@ -1,0 +1,196 @@
+{
+ "case": "chest_row_80_1010",
+ "about": "T14, fe0797c7. 2026-10-10 OK-WW ended at 80 activity points with the 20-80 chests unclaimed and 'Daily Task Completed' logged: upstream's claim_daily clicks one fixed point, the 100 chest. The owner, 10-10 19:4x: 「鸣潮的每日为什么okww没有领，中继也不报错？」 Here every chest up to 80 must be clicked, and the 100 chest never (it has no transition). Provisional: no frame of the page at 80 exists (frames.json unrecorded daily_activity_80), so the screen is black and the claimed ticks cannot be scored; the clicks are tested, not the check's verdict. Red at fe0797c7~1: the one blind click at (0.930, 0.882) lands on the 100 chest.",
+ "task": [
+  "src.task.DailyTask",
+  "DailyTask"
+ ],
+ "start": "daily_page_80",
+ "config": {
+  "evidence": "the stamina farm had run before the claim (ok-script.2026-10-10.log:460 'TacetTask:enter combat', claim at :559); marked reached so no leftover farm starts"
+ },
+ "states": {
+  "daily_page_80": {
+   "provisional_ocr": [
+    {
+     "text": "20",
+     "box": [
+      0.3492,
+      0.8923,
+      0.3775,
+      0.9291
+     ],
+     "evidence": "tier label 20 of the activity row, at its place on daily_activity/2026-10-11_092951_140.png (frames.json truth); the row does not move with the points: the owner's 10-10 screenshot of it (relay/tests/fixtures/ww-daily-80-1010-row.png) has the same five labels"
+    },
+    {
+     "text": "40",
+     "box": [
+      0.4815,
+      0.8923,
+      0.5113,
+      0.9291
+     ],
+     "evidence": "tier label 40 of the activity row, at its place on daily_activity/2026-10-11_092951_140.png (frames.json truth); the row does not move with the points: the owner's 10-10 screenshot of it (relay/tests/fixtures/ww-daily-80-1010-row.png) has the same five labels"
+    },
+    {
+     "text": "60",
+     "box": [
+      0.6152,
+      0.8923,
+      0.6435,
+      0.9291
+     ],
+     "evidence": "tier label 60 of the activity row, at its place on daily_activity/2026-10-11_092951_140.png (frames.json truth); the row does not move with the points: the owner's 10-10 screenshot of it (relay/tests/fixtures/ww-daily-80-1010-row.png) has the same five labels"
+    },
+    {
+     "text": "80",
+     "box": [
+      0.7475,
+      0.8923,
+      0.7773,
+      0.9291
+     ],
+     "evidence": "tier label 80 of the activity row, at its place on daily_activity/2026-10-11_092951_140.png (frames.json truth); the row does not move with the points: the owner's 10-10 screenshot of it (relay/tests/fixtures/ww-daily-80-1010-row.png) has the same five labels"
+    },
+    {
+     "text": "100",
+     "box": [
+      0.8725,
+      0.8951,
+      0.9081,
+      0.9265
+     ],
+     "evidence": "tier label 100 of the activity row, at its place on daily_activity/2026-10-11_092951_140.png (frames.json truth); the row does not move with the points: the owner's 10-10 screenshot of it (relay/tests/fixtures/ww-daily-80-1010-row.png) has the same five labels"
+    },
+    {
+     "text": "80",
+     "box": [
+      0.1908,
+      0.8384,
+      0.2467,
+      0.8827
+     ],
+     "evidence": "the points: the owner's 10-10 screenshot (relay/tests/fixtures/ww-daily-80-1010-row.png) reads 80; fe0797c7 'OK-WW ended at 80 activity points with the 20-80 chests unclaimed'"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.87,
+      0.23,
+      0.9,
+      0.27
+     ],
+     "to": "daily_page_80",
+     "evidence": "ok-script.2026-10-11.log:666 'no_boss_proceed, click claim' (also ok-script.2026-10-10.log:566): claim_daily clicks (0.885, 0.250) when boss_proceed is not in (0.803, 0.189, 0.960, 0.312) (upstream DailyTask.py:252-255, kept by the overlay's _claim_daily_checked); the next lines on both days read this chest row"
+    },
+    {
+     "click": [
+      0.374,
+      0.8602,
+      0.4052,
+      0.9157
+     ],
+     "to": "daily_page_80",
+     "evidence": "ok-script.2026-10-11.log:668 '活跃奖励：点 20 档宝箱（748,959）' on this page; that chest shows its claimed tick on the 09:29:51 frame"
+    },
+    {
+     "click": [
+      0.5073,
+      0.8583,
+      0.5385,
+      0.9139
+     ],
+     "to": "daily_page_80",
+     "evidence": "ok-script.2026-10-11.log:669 '活跃奖励：点 40 档宝箱（1004,957）' on this page; that chest shows its claimed tick on the 09:29:51 frame"
+    },
+    {
+     "click": [
+      0.6401,
+      0.8593,
+      0.6714,
+      0.9148
+     ],
+     "to": "daily_page_80",
+     "evidence": "ok-script.2026-10-11.log:670 '活跃奖励：点 60 档宝箱（1259,958）' on this page; that chest shows its claimed tick on the 09:29:51 frame"
+    },
+    {
+     "click": [
+      0.7729,
+      0.8583,
+      0.8042,
+      0.9139
+     ],
+     "to": "daily_page_80",
+     "evidence": "ok-script.2026-10-11.log:671 '活跃奖励：点 80 档宝箱（1514,957）' on this page; that chest shows its claimed tick on the 09:29:51 frame"
+    },
+    {
+     "key": "esc",
+     "to": "closed",
+     "evidence": "ok-script.2026-10-11.log:675-676 'current task wait main esc=True' -> 'in main esc=True' right after the claim: ensure_main(time_out=10) leaves the book with Esc (BaseWWTask.is_main -> back)"
+    }
+   ]
+  },
+  "closed": {
+   "end": true,
+   "about": "the book closed; the claim is over"
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "decision": "openF2Book",
+    "value": "gray_book_quest",
+    "evidence": "claim_daily opens the quest book first: ok-script.2026-10-11.log:665 'left_click gray_book_quest (77, 190)'"
+   },
+   {
+    "click": [
+     748,
+     959
+    ],
+    "within": 20,
+    "evidence": "ok-script.2026-10-11.log:668 '活跃奖励：点 20 档宝箱（748,959）' on this page; that chest shows its claimed tick on the 09:29:51 frame; due at 80 points, unclaimed on 10-10 (fe0797c7, the owner's 19:4x question)"
+   },
+   {
+    "click": [
+     1004,
+     957
+    ],
+    "within": 20,
+    "evidence": "ok-script.2026-10-11.log:669 '活跃奖励：点 40 档宝箱（1004,957）' on this page; that chest shows its claimed tick on the 09:29:51 frame; due at 80 points, unclaimed on 10-10 (fe0797c7, the owner's 19:4x question)"
+   },
+   {
+    "click": [
+     1259,
+     958
+    ],
+    "within": 20,
+    "evidence": "ok-script.2026-10-11.log:670 '活跃奖励：点 60 档宝箱（1259,958）' on this page; that chest shows its claimed tick on the 09:29:51 frame; due at 80 points, unclaimed on 10-10 (fe0797c7, the owner's 19:4x question)"
+   },
+   {
+    "click": [
+     1514,
+     957
+    ],
+    "within": 20,
+    "evidence": "ok-script.2026-10-11.log:671 '活跃奖励：点 80 档宝箱（1514,957）' on this page; that chest shows its claimed tick on the 09:29:51 frame; due at 80 points, unclaimed on 10-10 (fe0797c7, the owner's 19:4x question)"
+   },
+   {
+    "state": "closed",
+    "evidence": "ok-script.2026-10-11.log:675-676 'current task wait main esc=True' -> 'in main esc=True' right after the claim: ensure_main(time_out=10) leaves the book with Esc (BaseWWTask.is_main -> back)"
+   }
+  ],
+  "end": "closed",
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "活跃奖励：活跃度 80",
+    "evidence": "the points: the owner's 10-10 screenshot (relay/tests/fixtures/ww-daily-80-1010-row.png) reads 80; fe0797c7 'OK-WW ended at 80 activity points with the 20-80 chests unclaimed'"
+   }
+  ],
+  "log_never": [],
+  "verdict": null
+ }
+}

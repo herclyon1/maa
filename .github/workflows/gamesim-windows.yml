@@ -11,12 +11,12 @@
 #   - 3.14.8 runs the relay side (okww_overlay.install, report_line): the relay's Python
 #     (relay-windows.yml).
 #
-# Lanes come from relay/tests/gamesim/okww/ci_prepare.py (LANES): the `lanes` job prints them and
-# the matrix is built from that list, and the tests in a lane are found by glob there, so neither
-# a new test file nor a new lane needs an edit here (design 4: later units never edit the YAML).
-# `installed` is the gate; the p1-*, p2-* and weekly-* lanes are red-before-green proofs (a red
-# lane passes only when its cases fail at an assertion, and, where the lane names one, the relay
-# says what it said on the machine).
+# Lanes come from relay/tests/gamesim/okww/ci_prepare.py (LANES, plus the GAMESIM_LANES a test
+# file declares), and the tests in a lane by glob there; the matrix is `ci_prepare.py lanes`
+# (job `lanes`), so neither a new test file nor a new lane needs an edit here.
+# `installed` is the gate; every other lane (p1-*, p2-*, weekly-*, t13-*, t14-*, u7-*) is a
+# red-before-green proof (a red lane passes only when its cases fail at an assertion, and, where
+# the lane names one, the relay says what it said on the machine).
 #
 # Cost: "GitHub Actions usage is free for ... public repositories that use standard
 # GitHub-hosted runners." (docs.github.com, about billing for GitHub Actions)
@@ -33,17 +33,22 @@ permissions:
 
 jobs:
   lanes:
+    name: lanes
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      lanes: ${{ steps.list.outputs.lanes }}
+      lanes: ${{ steps.lanes.outputs.lanes }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: '3.14.8'
-      - id: list
-        run: echo "lanes=$(python relay/tests/gamesim/okww/ci_prepare.py lanes)" >>"$GITHUB_OUTPUT"
+      - name: List the lanes
+        id: lanes
+        run: |
+          lanes=$(python relay/tests/gamesim/okww/ci_prepare.py lanes)
+          echo "$lanes"
+          echo "lanes=$lanes" >>"$GITHUB_OUTPUT"
 
   okww:
     name: okww (${{ matrix.lane }})

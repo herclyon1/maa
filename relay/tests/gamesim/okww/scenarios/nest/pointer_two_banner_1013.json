@@ -1,0 +1,99 @@
+{
+ "case": "pointer_two_banner_1013",
+ "about": "T13 guard (no fix behind it). 2026-10-13 09:29 with 只刷 ['梦枢天罗', '落渊南丘'] the list read 梦枢天罗 48/48 and 落渊南丘 0/41: the full nest is passed over, 落渊南丘 clicked, and on the map that opens with the banner 「目标位于落渊南丘，请先前往此场景」 the teleport is clicked anyway (the run then fought there).",
+ "task": [
+  "src.task.NightmareNestTask",
+  "NightmareNestTask"
+ ],
+ "start": "nest_list",
+ "config": {
+  "evidence": "Which to Farm: the game PC's working/configs/NightmareNestTask.json (read 2026-10-13, gamesim u0 redacted copy) is [\"Tacet Discord Nest\"]. Only Farm These Nests: from the master directory MASTER_POINTER names, as the run logged it: ok-script.log (2026-10-13):242 '只刷 ['梦枢天罗', '落渊南丘']（设置来自母本）'",
+  "task": {
+   "Which to Farm": [
+    "Tacet Discord Nest"
+   ]
+  },
+  "master": {
+   "NightmareNestTask.json": {
+    "Only Farm These Nests": "梦枢天罗,落渊南丘"
+   }
+  }
+ },
+ "states": {
+  "nest_list": {
+   "frame": "nest_list/2026-10-13_092932_48of48.png",
+   "transitions": [
+    {
+     "click": [
+      0.835,
+      0.445,
+      0.955,
+      0.495
+     ],
+     "to": "map_banner",
+     "evidence": "ok-script.log (2026-10-13):391 'left_click 已击败残象：0/41 (1729, 500)'; the next screenshot, 09:29:35.571, is map_nest_detail/2026-10-13_092935_banner.png"
+    }
+   ]
+  },
+  "map_banner": {
+   "frame": "map_nest_detail/2026-10-13_092935_banner.png",
+   "transitions": [
+    {
+     "feature": "gray_teleport",
+     "threshold": 0.7,
+     "to": "teleporting",
+     "evidence": "ok-script.log (2026-10-13):392 'left_click gray_teleport (1351, 1007)' on this screen"
+    }
+   ]
+  },
+  "teleporting": {
+   "end": true
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "decision": "find_nest",
+    "value": "go_nest:41:25",
+    "evidence": "ok-script.log (2026-10-13):390 'nightmare nest: 点进点位 go_nest:41:25（截图 nest_go）'"
+   },
+   {
+    "click": [
+     1729,
+     500
+    ],
+    "within": 20,
+    "evidence": "ok-script.log (2026-10-13):391"
+   },
+   {
+    "state": "map_banner",
+    "evidence": "screenshot 09:29:35.571 after the click"
+   },
+   {
+    "click": [
+     1351,
+     1007
+    ],
+    "within": 20,
+    "evidence": "ok-script.log (2026-10-13):392; the run fought there next (:394 '09:29:59 enter combat')"
+   }
+  ],
+  "end": "teleporting",
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "已击败残象：0/41.*is not complete",
+    "evidence": "ok-script.log (2026-10-13):389"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "已击败残象：48/48.*is not complete",
+    "evidence": "48/48 is full (frame truth)"
+   }
+  ],
+  "verdict": null
+ }
+}

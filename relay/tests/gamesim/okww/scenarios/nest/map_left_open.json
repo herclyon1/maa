@@ -1,0 +1,119 @@
+{
+ "case": "map_left_open",
+ "about": "T13, 92add28e. 2026-10-05 10:35 the travel to a 0/48 nest did not take ('nightmare nest unreachable'); upstream's one back() left the map open, F2 found no book, and the nest run died with 「can't find gray_book_boss」 (frame map_open/2026-10-05_103522.png). Inside the daily the nest task's ensure_main is a do-nothing lambda (DailyTask.py:98-99), so only an explicit Esc closes the map. Inputs: the 10-12 11:45 list and map of the same 0/48 nest, then the 10-05 open map. Red at 92add28e~1: the book is looked for on the open map.",
+ "task": [
+  "src.task.NightmareNestTask",
+  "NightmareNestTask"
+ ],
+ "start": "nest_list",
+ "config": {
+  "evidence": "Which to Farm: the game PC's working/configs/NightmareNestTask.json (read 2026-10-13, gamesim u0 redacted copy) is [\"Tacet Discord Nest\"]. Only Farm These Nests: from the master directory MASTER_POINTER names, as the run logged it: ok-script.2026-10-12.log:2055 '只刷 ['梦枢天罗', '落渊南丘']（设置来自母本）'",
+  "task": {
+   "Which to Farm": [
+    "Tacet Discord Nest"
+   ]
+  },
+  "master": {
+   "NightmareNestTask.json": {
+    "Only Farm These Nests": "梦枢天罗,落渊南丘"
+   }
+  }
+ },
+ "states": {
+  "nest_list": {
+   "frame": "nest_list/2026-10-12_114539_41of41.png",
+   "transitions": [
+    {
+     "click": [
+      0.835,
+      0.3,
+      0.955,
+      0.35
+     ],
+     "to": "map_detail",
+     "evidence": "ok-script.2026-10-12.log:2058 'left_click 已击败残象：0/48 (1729, 348)' (and COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-ww-log/logs/ok-script.log:1448, the same click on 10-05); the next screenshot is map_nest_detail/2026-10-12_114542_mengshu-banner.png"
+    }
+   ]
+  },
+  "map_detail": {
+   "frame": "map_nest_detail/2026-10-12_114542_mengshu-banner.png",
+   "transitions": [
+    {
+     "feature": "gray_teleport",
+     "threshold": 0.7,
+     "to": "map_detail",
+     "evidence": "the travel click does not take: COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-ww-log/logs/ok-script.log:1473-1474 'left_click fast_travel_custom (1632, 1007)' then, 1 s later, 'nightmare nest unreachable, skip this run: go_nest:48:18' (the button still on screen)"
+    },
+    {
+     "key": "esc",
+     "to": "map_open",
+     "evidence": "upstream _travel_to_nest_or_skip ends with one back() (NightmareNestTask.py:180); the screenshot at 10:35:22 (COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-ww-log/logs/ok-script.log:1476-1478) shows the map still open"
+    }
+   ]
+  },
+  "map_open": {
+   "frame": "map_open/2026-10-05_103522.png",
+   "transitions": [
+    {
+     "key": "esc",
+     "to": "world",
+     "evidence": "one more Esc closes the map: it is the map layer over the world (落渊南丘 探索度, 切换地图), opened from the world by the travel"
+    }
+   ]
+  },
+  "world": {
+   "end": true,
+   "about": "the map closed; the book can be opened again"
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "decision": "find_nest",
+    "value": "go_nest:48:18",
+    "evidence": "ok-script.2026-10-12.log:2057 '点进点位 go_nest:48:18（截图 nest_go）' (COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-ww-log/logs/ok-script.log:1474 the same key)"
+   },
+   {
+    "click": [
+     1729,
+     348
+    ],
+    "within": 20,
+    "evidence": "ok-script.2026-10-12.log:2058, COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-ww-log/logs/ok-script.log:1448"
+   },
+   {
+    "click": [
+     1351,
+     1007
+    ],
+    "within": 20,
+    "evidence": "ok-script.2026-10-12.log:2059 'left_click gray_teleport (1351, 1007)'"
+   },
+   {
+    "state": "map_open",
+    "evidence": "COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-ww-log/logs/ok-script.log:1474-1478 and the 10:35:22 screenshot"
+   },
+   {
+    "state": "world",
+    "evidence": "the map must be closed before the book is opened again: COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-ww-log/logs/ok-script.log:1476-1478 'can't find gray_book_boss' killed the run with the map open"
+   }
+  ],
+  "end": "world",
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "nightmare nest unreachable, skip this run: go_nest:48:18",
+    "evidence": "COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-ww-log/logs/ok-script.log:1474"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "can't find gray_book_boss",
+    "evidence": "COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-ww-log/logs/ok-script.log:1478, the failure"
+   }
+  ],
+  "verdict": null
+ }
+}

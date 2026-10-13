@@ -29,9 +29,11 @@ recorded (relay.log 2026-10-04 21:20:19, below).
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -61,6 +63,14 @@ TEST_PREFIX = "gamesim_"          # the copies in OK-WW's tests/ folder
 # OK-WW's own CI gives its whole test step 20 minutes (ok-wuthering-waves v3.7.4
 # .github/workflows/test.yml, "Run tests" timeout-minutes: 20); one file gets half that.
 TEST_TIMEOUT_S = 600
+# A test process that dies with STATUS_ILLEGAL_INSTRUCTION (ntstatus.h 0xC000001D) ran a CPU
+# instruction the runner refused. Seen at the first OCR call (OK-WW's onnxocr on openvino
+# 2026.3, CPU device) in 2 of 23 jobs of run 38394849158 and 1 of 23 of run 38398079467, and
+# in none of 23 jobs of runs 38394107694 and 38396198276: same image, same code. The CPU model
+# does not decide it either (Intel family 6 model 207 crashed in 38398079467 and passed twice
+# in 38396198276); the cause is not known. It is told apart from a failure, with the CPU
+# named, and the job is rerun.
+ILLEGAL_INSTRUCTION = 0xC000001D
 
 # The relay's report line for the one load failure the machine recorded. relay.log on the
 # game PC, 2026-10-04 21:20:19 (scratchpad machine-relay/relay.log line 27223), the boot
@@ -129,8 +139,63 @@ for _fix, (_tag, _cases) in _WEEKLY_PAIRS.items():
         LANES[f"weekly-{_expect}-{_fix}"] = {"tag": _tag, "overlay": _rev, "tests": "test_weekly.py",
                                              "select": _cases, "expect": _expect, "relay_line": None}
 
+# Echo farm (gamesim U7, test_echofarm.py): a red and a green lane per fix, each on the OK-WW the
+# game PC ran the code before the fix on - v3.7.3 through 2026-10-05 (COS bundles 2026-10-04 and
+# 10-05, ok-script.log 'ok-script init v3.7.3'), v3.7.4 from 10-06 09:19 (ok-script.2026-10-06.log
+# line 1 'ok-script init v3.7.4'). The test picks its cases by lane (test_echofarm.LANES), and
+# every red case must fail for its named reason. relay_line '': the old overlay loads clean on that
+# OK-WW, so the relay says nothing (okww_overlay.report_line).
+_U7 = {"35d6166b": "v3.7.4", "b24c48fc": "v3.7.4", "034a555d": "v3.7.3", "86bc0960": "v3.7.3",
+       "7b1099a1": "v3.7.3"}
+for _fix, _tag in _U7.items():
+    LANES[f"u7-red-{_fix}"] = {"tag": _tag, "overlay": f"{_fix}~1", "tests": "test_echofarm.py",
+                               "expect": "red", "relay_line": ""}
+    LANES[f"u7-green-{_fix}"] = {"tag": _tag, "overlay": _fix, "tests": "test_echofarm.py",
+                                 "expect": "green"}
 
 _NO_LINE = object()
+
+# A test file declares its own red/green lanes as a literal at module level, so a new case
+# needs no edit here or in the workflow (whose matrix is `ci_prepare.py lanes`):
+#
+#     GAMESIM_LANES = {"<lane>": {"tag": "v3.7.4", "overlay": "<rev>", "select": "<unittest -k>",
+#                                 "expect": "red" | "green", "relay_line": "<str>" | None}}
+#
+# `select` runs only the matching test methods of that file (unittest -k). `relay_line` is what
+# the relay must say about the load report: absent means '' for a green lane; None means not
+# checked (an old overlay on this OK-WW, where nobody recorded what the relay said).
+LANE_VAR = "GAMESIM_LANES"
+_LANE_KEYS = {"tag", "overlay", "select", "expect", "relay_line"}
+
+
+def file_lanes(folder: Path = HERE) -> dict:
+    """The lanes test files declare (LANE_VAR), read statically: the files import OK-WW at the top."""
+    out = {}
+    for path in sorted(folder.glob("test_*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            if not (isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == LANE_VAR
+                                                         for t in node.targets)):
+                continue
+            for name, spec in ast.literal_eval(node.value).items():
+                bad = sorted(set(spec) - _LANE_KEYS)
+                if bad or spec.get("expect") not in ("red", "green") or not spec.get("tag"):
+                    raise SystemExit(f"{path.name}: lane {name}: unknown keys {bad} or no tag / expect")
+                if spec["expect"] == "red" and "relay_line" not in spec:
+                    raise SystemExit(f"{path.name}: red lane {name} must say its relay_line (None = not checked)")
+                if name in out or name in LANES:
+                    raise SystemExit(f"{path.name}: lane {name} is declared twice")
+                out[name] = dict(spec, tests=path.name)
+    return out
+
+
+LANES.update(file_lanes())
+
+
+def _selects(spec: dict) -> "list[str]":
+    """A lane's unittest -k patterns: a list (ci_prepare's own lanes) or one string (file lanes)."""
+    sel = spec.get("select") or []
+    return [sel] if isinstance(sel, str) else list(sel)
 
 
 def sh(*cmd, cwd=None) -> str:
@@ -238,12 +303,14 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
     out_dir = out_dir / lane
     out_dir.mkdir(parents=True, exist_ok=True)
     results = []
+    cpu = platform.processor() or "unknown"      # on Windows: family, model, stepping, vendor
+    print(f"runner CPU: {cpu}", flush=True)
     for name in ctx["tests"]:
         if okww_overlay.REPORT.exists():
             okww_overlay.REPORT.unlink()     # a report left from before must not pass for this one
         t0 = time.monotonic()
         # `select`: unittest's own -k patterns, so a red lane runs only the cases its fix is about.
-        picks = [arg for k in spec.get("select", []) for arg in ("-k", k)]
+        picks = [arg for k in _selects(spec) for arg in ("-k", k)]
         p = subprocess.run([python, "-u", "run_test.py", *picks, f"tests/{TEST_PREFIX}{name}"], cwd=work,
                            capture_output=True, text=True, encoding="utf-8", errors="replace",
                            timeout=TEST_TIMEOUT_S)
@@ -252,6 +319,9 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
         (out_dir / f"{name}.log").write_text(text, encoding="utf-8")
         print(f"\n===== {name} (exit {p.returncode}, {took} s) =====\n{text}", flush=True)
         verdict, lines = _unittest_verdict(text, p.returncode)
+        if p.returncode == ILLEGAL_INSTRUCTION:
+            verdict, lines = "crash", [f"STATUS_ILLEGAL_INSTRUCTION on this runner's CPU ({cpu}): "
+                                       "a native library, not the test; rerun the job"]
         report = okww_overlay.last_report()
         if okww_overlay.REPORT.exists():
             shutil.copyfile(okww_overlay.REPORT, out_dir / f"{name}.report.json")
@@ -266,26 +336,29 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
     # default to none; a lane that sets it to None leaves it unchecked (an old overlay on an
     # OK-WW the machine never ran it with has no recorded line to match) - it is reported.
     want_line = spec.get("relay_line", "" if spec["expect"] == "green" else _NO_LINE)
+    if want_line is _NO_LINE:
+        problems.append(f"{lane}: a red lane needs `relay_line` (the machine's, or None)")
     for r in results:
         if spec["expect"] == "green":
             if r["verdict"] != "pass":
                 problems.append(f"{r['test']}: {r['verdict']} {r['unittest']}")
+            if want_line is not None and (r["relay_line"] or "") != want_line:
+                problems.append(f"{r['test']}: the relay would say {r['relay_line']!r}")
         else:
             if r["verdict"] != "fail":
                 problems.append(f"{r['test']}: must fail at an assertion, got {r['verdict']} {r['unittest']}")
-        if want_line is _NO_LINE:
-            problems.append(f"{lane}: a red lane needs `relay_line` (the machine's, or None)")
-        elif want_line is not None and (r["relay_line"] or "") != want_line:
-            problems.append(f"{r['test']}: relay line {r['relay_line']!r} != {want_line!r}")
+            if want_line not in (None, _NO_LINE) and (r["relay_line"] or "") != want_line:
+                problems.append(f"{r['test']}: relay line {r['relay_line']!r} != machine {want_line!r}")
         # Every selected case must have run and come out the lane's way, not just one of them.
-        for k in spec.get("select", []):
-            log = (out_dir / f"{r['test']}.log").read_text(encoding="utf-8")
+        log = (out_dir / f"{r['test']}.log").read_text(encoding="utf-8")
+        for k in _selects(spec):
             # unittest -v starts each case's line with its name; with no FAIL/ERROR it passed.
-            if spec["expect"] == "green" and not re.search(rf"^{re.escape(k)} \(", log, re.M):
+            # A pattern may be a name prefix (test_d1_), so the name may go on.
+            if spec["expect"] == "green" and not re.search(rf"^{re.escape(k)}\w* \(", log, re.M):
                 problems.append(f"{r['test']}: selected case {k} did not run")
             if spec["expect"] == "red" and not any(k in ln for ln in r["unittest"] if ln.startswith("FAIL: ")):
                 problems.append(f"{r['test']}: selected case {k} did not fail at an assertion")
-    summary = {"lane": lane, "expect": spec["expect"], "okww_tag": ctx["okww_tag"],
+    summary = {"lane": lane, "expect": spec["expect"], "okww_tag": ctx["okww_tag"], "cpu": cpu,
                "okww_commit": ctx["okww_commit"], "overlay": ctx["overlay"],
                "results": results, "problems": problems}
     (out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -296,8 +369,6 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
         with open(step_summary, "a", encoding="utf-8") as fh:
             fh.write(f"- {head}: **{tail}**\n" + "".join(f"  - {p}\n" for p in problems))
     print("\n" + head)
-    for r in results:
-        print(f"  relay line after {r['test']}: {r['relay_line'] or '(none)'}")
     for pr in problems:
         print(f"  ✗ {pr}")
     print(tail)
