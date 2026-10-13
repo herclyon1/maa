@@ -832,7 +832,11 @@ else
     echo "✋ git add 失败：manifest 没能提交，自更新会一直看到旧清单" >&2
     exit 9
   fi
-  STAMP=$(date -u +%Y%m%d%H%M%S)
+  # The manifest's own version, so the commit, its tag (relay-<version>) and what the
+  # machine logs (v<version>) name the same deploy: until 10-13 this was the clock at
+  # commit time, and "deploy: manifest 20261013135614" next to tag relay-20261013135308
+  # read as a second deploy three minutes after the first.
+  STAMP=$(python3 -c "import json;print(json.load(open('manifest.json'))['version'])")
   if ! git -C "$HERE/.." commit -q -m "deploy: manifest $STAMP"; then
     echo "✋ git commit 失败：manifest 没能提交，自更新会一直看到旧清单" >&2
     exit 9

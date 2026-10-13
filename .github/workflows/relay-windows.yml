@@ -128,18 +128,20 @@ jobs:
           --exclude test_techlog_tool.py
           --exclude test_tool_refs.py
 
-  # The day replay (relay/tests/daysim, design.md section 5) from the Windows Python: the
-  # deploy's step 0.8 runs it on the Mac from the full corpus; here it runs on the committed
-  # light packs (days/<D>/pack.tar.zst, under 5 MB each; pack.py compare showed each replays
-  # exactly as its full corpus on 2026-10-13). Days without a pack (10-12: 11 MB lightened)
-  # are left out by --available. Same pass rule as the deploy: no new red (known-red.json),
-  # and the R36 bad patch must turn 2026-10-13 red.
+  # The day replay (relay/tests/daysim, design.md section 5) on a Linux runner: the World
+  # stands in for the game machine on a POSIX host (world.py module docstring: a Windows
+  # path such as D:\endfield\...\Endfield.exe is a plain file name there and lands in the
+  # sim tree). On a Windows runner the same path is the runner's real D: drive (run
+  # 38405795514, 2026-10-13: FileNotFoundError on D:\endfield\...). The relay's own code
+  # on Windows is the tests job above. The deploy's step 0.8 runs the replay on the Mac
+  # from the full corpus; here it runs on the committed light packs (days/<D>/pack.tar.zst,
+  # under 5 MB each; pack.py compare showed each replays exactly as its full corpus on
+  # 2026-10-13). Days without a pack (10-12: 11 MB lightened) are left out by --available.
+  # Same pass rule as the deploy: no new red (known-red.json), and the R36 bad patch must
+  # turn 2026-10-13 red.
   day-replay:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 20
-    defaults:
-      run:
-        shell: bash
     env:
       PYTHONUTF8: '1'
     steps:
@@ -155,7 +157,6 @@ jobs:
       # The relay reads pictures with Pillow (the package bundles it on the machine).
       - name: Install Pillow
         run: python -m pip install --disable-pip-version-check pillow
-      # RUNNER_TEMP is a Windows path (D:\a\_temp); Windows Python takes it with a / after it.
       - name: Unpack the light packs
         run: python -I -X utf8 relay/tests/daysim/pack.py unpack "$RUNNER_TEMP/daysim-corpus"
       - name: Day gate on the packed days
