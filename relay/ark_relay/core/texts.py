@@ -610,7 +610,7 @@ _RELAY_PARTS = {
     "ark.shutdown": "关机判定", "ark.missed": "漏跑核对", "ark.preupdate": "预更新", "ark.gameupdate": "游戏更新",
     "ark.selfupdate": "自更新", "ark.phone": "手机通道", "ark.evidence": "证据外送", "ark.collect_watch": "采集看守",
     "ark.collect_retry": "采集补跑", "ark.inbox": "待办信箱", "ark.snapshot": "状态快照", "ark.notify": "推送",
-    "ark.banners": "卡池信息", "ark.desktop": "桌面读屏", "ark.alertlog": "报警抄送",
+    "ark.banners": "卡池信息", "ark.needtable": "库存需求表", "ark.desktop": "桌面读屏", "ark.alertlog": "报警抄送",
     # Every WARNING reaches the group (errwatch), so these are named too.
     "ark.annihilation": "剿灭开关", "ark.garden": "周常乐园开关", "ark.weeklyboss": "周本开关",
     "ark.unresolved": "没处理好的报警", "ark.runwatch": "在跑巡查", "ark.trigger": "认手动开的趟",

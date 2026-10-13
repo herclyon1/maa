@@ -604,7 +604,8 @@ class FakeNet:
             data = c.body if isinstance(c.body, bytes) else str(c.body or "").encode()
             with self._lock:
                 self.cos[key] = data
-            if key.startswith("state/") and not key.endswith(".hb.json"):     # cos_store.state_key, not hb_key
+            # cos_store.state_key, not hb_key nor needtable.need_key
+            if key.startswith("state/") and not key.endswith((".hb.json", ".need.json")):
                 self._state_out(key, data)
             return Resp(b"", url=c.url)
         if c.method == "GET":

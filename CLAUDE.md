@@ -32,8 +32,8 @@
 |---|---|
 | 核实鸣潮配置真的落地 | `scripts/mac/okww-check.sh`（底下是 `scripts/windows/okww-landed.py`） |
 | 给机器下指令 | 开着：`scripts/mac/order-now.sh '{"action":...}'`（几秒到）；关着：`scripts/mac/order.sh '{...}'`（开机 / 关机前才读，`--clear` 清空）。别手改 `queue/config.json` |
-| 发布手机页 | `scripts/mac/deploy-web.sh`（手机页已不维护；只在再改 `web/`，或要更新 App 读的 `web/data/need.json` 时跑） |
-| 重算「最新六星满练要多少」表 | `scripts/mac/build-need-tables.py`（新六星出现就跑，写 `web/data/need.json` 后 `deploy-web.sh`——手机页已不维护，但 App 仍从 `https://herclyon1.github.io/maa/data/need.json` 读这份表，所以照旧发布；`--rarity 5`、`--char/--weapon`；坑见 `docs/SKLAND-API.md` §8） |
+| 发布手机页 | `scripts/mac/deploy-web.sh`（手机页已不维护；只在再改 `web/` 时跑；App 的需求表已不靠它，见下一行） |
+| 重算「最新六星满练要多少」表 | 不用人跑：中继每个服务器日在游戏机上重算一次，放到 COS 上手机状态旁边（`state/<同一哈希>.need.json`，`relay/ark_relay/features/needtable/`），App 先读它、读不到才读 GitHub Pages 上的旧 `web/data/need.json`。要手动看结果：`scripts/mac/build-need-tables.py -o 文件`（`--offline`、`--rarity 5`、`--char/--weapon`；坑见 `docs/SKLAND-API.md` §8） |
 | 手机页验收（发布后跑；手机页已不维护，只在再改 `web/` 时用） | `scripts/mac/phone-accept.py`（模拟器 Safari 量 DOM 对 `docs/HIG-CHECKLIST.md`，浅深各一遍） |
 | 一键截图（刷声骸评分） | 按 `¥` 存到 `~/Pictures/EchoShots`；配置 `~/.hammerspoon/init.lua`，仓库存档 `scripts/mac/hammerspoon/init.lua` |
 | 查哪个共鸣者用哪套声骸 | `scripts/mac/kuro-echoes.py`（`--dump 文件`）：读 `~/.config/ark/.env` 的 `KUROBBS_TOKEN` + `KUROBBS_DID`，必须是手机 App 抓包那一对；只看得到已装备的 |

@@ -473,6 +473,7 @@ class Engine:
             ("推送积压告警", self._flush_pending),
             ("周常门", self._weekly_gates),
             ("月卡提醒", self._monthcard_notice),
+            ("需求表", self._need_table),
             # Before the missed-run check and the shutdown decision: both read what
             # the stage gate pulled (stagegate.excused / recent_pulled).
             ("关卡门", self._stage_gate),
@@ -516,6 +517,11 @@ class Engine:
         due = monthcard.due_notice(self.state.dir)
         if due and not self.notifier.send(*due):
             monthcard.mark_sent(self.state.dir)
+
+    def _need_table(self) -> None:
+        """Once a server day, on a thread of its own: the App's need table rebuilt and put on COS (needtable.py)."""
+        from ark_relay.features.needtable import needtable  # noqa: PLC0415
+        needtable.step(self.cfg)
 
     def _stage_gate(self, now: datetime | None = None, lead_min: int | None = None) -> None:
         """Before each MAA due: pull MAA from that queue run when its stage cannot be

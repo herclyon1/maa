@@ -1,8 +1,9 @@
-"""The need table behind the phone page's 库存 tab is the newest six-star's build
+"""The need table behind the App's 库存 page is the newest six-star's build
 with her signature weapon, it can be built before her banner opens, and the committed
 web/data/need.json still says the same.
 
-`scripts/mac/build-need-tables.py --offline` runs over the saved responses in
+The builder (relay/ark_relay/features/needtable/build.py, which the relay runs once a
+server day and `scripts/mac/build-need-tables.py` by hand) runs over the saved responses in
 fixtures/skland-endfield (pulled 2026-09-19 00:47 JST, judged as of 2026-09-18): the
 official wiki catalog, the wiki entries of every six- and five-star operator and
 every six-star weapon (上线时间 / 类型 / 主要获取方式), three wiki documents cut down to
@@ -19,8 +20,13 @@ Three things are pinned:
 * the future path (`--rarity 5`): 噗切娜 (上线 2026-09-24, 未实装) is chosen although her
   date is in the future, her wiki entry has no cards yet, so the numbers come from the
   preview table and say so; her weapon is 待定.
+
+And over fixtures/skland-endfield-1014 (pulled 2026-10-14 03:36 UTC+8): two unreleased
+six-stars (祀 10-15, 明河 11-05) and four six-star entries in the preview table. The
+builder used to give up there (「cannot pick hers」), so nobody's table was current;
+now 明河's entry is found by elimination and weapon type, her signature weapon by her
+wiki weapon tag, and the preview table's new material by the calculator's md5 ids.
 """
-import importlib.util
 import json
 import subprocess
 import sys
@@ -31,9 +37,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE.parent))
 
-spec = importlib.util.spec_from_file_location("build_need_tables", REPO / "scripts/mac/build-need-tables.py")
-bnt = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(bnt)
+from ark_relay.features.needtable import build as bnt  # noqa: E402
 
 fails = []
 
@@ -217,6 +221,50 @@ require("footnote 提醒预览表含天赋", g5["footnote"].endswith("（上线�
 check("她不用的写明", (rows5["快子遴捡晶格"]["need"], rows5["快子遴捡晶格"]["note"]), (0, "噗切娜 的满练不用它"))
 check("coverage 标出她未实装", (g5["coverage"]["status"], g5["coverage"]["weaponStatus"], g5["coverage"]["candidates"][0]),
       ("未实装", "待定", "噗切娜 2026-09-24（未实装）"))
+
+print("\n[10-14：两个未实装六星、预览表里四个六星条目，照样认出明河]")
+FIX14 = HERE / "fixtures" / "skland-endfield-1014"
+src14 = bnt.RulesSource(FIX14, None)
+ops14 = bnt.wiki_entries(src14, "干员", "6")
+top14, ranked14 = bnt.newest(ops14)
+check("最新六星是未实装的明河，武器类型取自百科标签", (top14["name"], top14["onlineDate"], top14.get("weaponType")),
+      ("明河", "2026-11-05", "单手剑"))
+check("其次是祀", (ranked14[1]["name"], ranked14[1]["onlineDate"], ranked14[1].get("weaponType")), ("祀", "2026-10-15", "双手剑"))
+try:
+    t14 = bnt.make(src14)
+    why14 = ""
+except Exception as exc:  # noqa: BLE001 - the old builder raised here; any exception is the failure checked below
+    t14, why14 = None, f"{type(exc).__name__}: {exc}"
+check("建得出来（旧代码在这里放弃：cannot pick hers）", why14, "")
+if t14 is not None:
+    g14, rows14 = rows_by_name(t14)
+    s14 = g14["standards"][0]
+    check("她、未实装、预览表里的条目", (s14["name"], s14["status"], s14["sources"]["need"], s14["sources"]["foresightCharId"]),
+          ("明河", "未实装", bnt.SRC_FORESIGHT, "chr_0037_minghe"))
+    check("专武按百科标签的单手剑找到唤月（数还没有，待定）", (s14["weapon"]["name"], s14["weapon"]["kind"], s14["weapon"]["status"]),
+          ("唤月", "单手剑", "待定"))
+    check("built 是拉取时刻，固定写法", t14["built"], "2026-10-14 03:36 UTC+8")
+    check("预览表的数", {n: rows14[n]["need"] for n in ("协议棱柱组", "协议棱柱", "象限拟合液", "三相纳米片", "红矛叶")},
+          {"协议棱柱组": 562, "协议棱柱": 461, "象限拟合液": 116, "三相纳米片": 20, "红矛叶": 84})
+fs14 = src14.get_url("client-foresight", "", None)
+mat14 = bnt.material_table(src14.get("material-list", "", ""))
+calc14 = {c["id"] for c in src14.get("search-chars", "", "")["chars"]}
+check("计算器已收录的条目（md5 代号）排除掉，剩两个", sorted(e["charId"] for e in fs14.values() if str(e["rarity"]) == "6"
+      and __import__("hashlib").md5(e["charId"].encode()).hexdigest() not in calc14), ["chr_0036_jsspsi", "chr_0037_minghe"])
+pick = getattr(bnt, "foresight_entry", None)
+check("有按淘汰和武器类型挑预览表条目的函数", pick is not None, True)
+if pick is not None:
+    check("剩下的按武器类型分开", (pick(fs14, "6", calc14, "单手剑", "明河")["charId"],
+          pick(fs14, "6", calc14, "双手剑", "祀")["charId"]), ("chr_0037_minghe", "chr_0036_jsspsi"))
+    try:
+        pick(fs14, "6", calc14, "", "某人")
+        gave_up = False
+    except RuntimeError:
+        gave_up = True
+    check("不知道武器类型时两个都像：不猜", gave_up, True)
+naming = getattr(bnt, "foresight_names", None)
+names14 = naming(fs14["chr_0037_minghe"], src14.get_url("client-item-names", "", None), mat14) if naming else {}
+check("预览表的新材料按计算器 id（md5）取名，MaaEnd 还没有它", names14.get("item_char_skill_specialize_6"), "跃迁浆体涂片")
 
 print("\n[三个坑]")
 lv = src.get("rules-char-9de117d5969945ecfdbd70dac3a632e6", "", "")

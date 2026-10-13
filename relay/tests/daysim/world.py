@@ -1032,8 +1032,14 @@ def web_routes(now, stamina: list) -> dict:
     (the 「晨星于此闪耀」 pool, UP operator entry 1683 梨诺), ef_bulletin_full_2026-09-03.json
     (on 10-13 the live list still carried the 09-02 version notes, banners/endfield.py),
     ef-briefing-v1d6/ (the version briefing from 10-06 20:00) and
-    ef_pool_info_table_2026-10-01.json. No credential is real or kept."""
+    ef_pool_info_table_2026-10-01.json. The need table the relay rebuilds once a server
+    day (needtable.py) reads a one-operator wiki: 提弗洛斯 (2116, 上线 2026年9月2日), no
+    six-star weapon and no 物品 entries, her calculator answers and the material list
+    from fixtures/skland-endfield (tests/test_need_table.py reads the same files), so the
+    build ends in a table the relay PUTs to COS. No credential is real or kept."""
     fx = RELAY / "tests" / "fixtures"
+    need = fx / "skland-endfield"
+    need_json = lambda name: json.loads((need / name).read_text(encoding="utf-8"))  # noqa: E731
     yituliu = "Arknights-yituliu/ef-frontend-v1"
     pool_table = lambda c: json.loads((fx / "ef_pool_info_table_2026-10-01.json").read_text(encoding="utf-8"))  # noqa: E731
 
@@ -1043,6 +1049,14 @@ def web_routes(now, stamina: list) -> dict:
         if not got:
             return {"code": 0, "data": {"detail": {}}}
         return {"code": 0, "data": {"detail": {"dungeon": dict(got[-1])}}}
+
+    def wiki_item(c):
+        # 1683: the banner's UP operator (banners reads its name); 2116: the need table's operator.
+        wid = c.query.get("id", "")
+        if wid == "2116":
+            return {"code": 0, "data": {"item": {"itemId": "2116", "name": "提弗洛斯", "document": {"attrs": [
+                {"label": "上线时间", "value": "2026年9月2日"}, {"label": "主要获取方式", "value": "干员寻访·特许寻访"}]}}}}
+        return {"code": 0, "data": {"item": {"name": {"1683": "梨诺"}.get(wid, "")}}}
 
     zonai = "https://zonai.skland.com"
     return {
@@ -1057,8 +1071,17 @@ def web_routes(now, stamina: list) -> dict:
         zonai + "/api/v1/game/endfield/card/detail": card,
         zonai + "/web/v1/wiki/char-pool":
             lambda c: {"code": 0, "data": {"list": json.loads((fx / "endfield_pools.json").read_text(encoding="utf-8"))}},
-        zonai + "/web/v1/wiki/item/info":
-            lambda c: {"code": 0, "data": {"item": {"name": {"1683": "梨诺"}.get(c.query.get("id", ""), "")}}},
+        zonai + "/web/v1/wiki/item/info": wiki_item,
+        zonai + "/web/v1/wiki/item/catalog": lambda c: {"code": 0, "data": {"catalog": [{"typeSub": [
+            {"name": "干员", "items": [{"itemId": "2116", "name": "提弗洛斯", "publishedAtTs": "1787314864",
+                                       "brief": {"dotType": "", "subTypeList": [{"subTypeId": "10000", "value": "10006"}]}}]},
+            {"name": "武器", "items": []}]}]}},
+        zonai + "/web/v1/game/endfield/calculate/material-list":
+            lambda c: {"code": 0, "data": need_json("material-list.json")},
+        zonai + "/web/v1/game/endfield/search-chars": lambda c: {"code": 0, "data": need_json("search-chars.json")},
+        zonai + "/web/v1/game/endfield/search-weapons": lambda c: {"code": 0, "data": need_json("search-weapons.json")},
+        zonai + "/web/v1/game/endfield/calculate/rules": lambda c: {"code": 0, "data": need_json(
+            f"rules-char-{c.query['charIds']}.json" if c.query.get("charIds") else f"rules-weapon-{c.query.get('weaponIds', '')}.json")},
         "https://game-hub.hypergryph.com/bulletin/v2/aggregate":
             lambda c: json.loads((fx / "ef_bulletin_full_2026-09-03.json").read_text(encoding="utf-8")),
         "https://endfield.hypergryph.com/version_briefing/latest":
