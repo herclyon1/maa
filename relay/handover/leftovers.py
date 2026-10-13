@@ -133,7 +133,7 @@ def legacy_present(item: dict) -> list[str]:
     if kind == "service":
         return [name] if service_exists(name) else []
     if kind == "task":
-        return [name] if " / " not in name and task_exists(name) else []
+        return [name] if task_exists(name) else []   # checkable() ruled out " / " lists
     if kind == "task-prefix":
         return tasks_with_prefix(name)
     if kind in ("file", "dir", "glob", "software"):
