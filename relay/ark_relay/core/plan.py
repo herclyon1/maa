@@ -130,7 +130,26 @@ def _hhmm(raw) -> "str | None":
     return f"{hh:02d}:{mm:02d}" if 0 <= hh < 24 and 0 <= mm < 60 else None
 
 
+# AUTO-MAS's weekday names (calendar.day_name under the C locale), the values of
+# TimeSet.Info.Days and QueueItem.Schedule.Days; both default to all seven.
+_WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+
+def _days(raw) -> tuple[str, ...]:
+    if not isinstance(raw, list):
+        return _WEEKDAYS
+    return tuple(d for d in _WEEKDAYS if d in {str(x) for x in raw})
+
+
 def _queues(cfg_dir: Path) -> list[dict]:
+    """The timed queues, as AUTO-MAS v5.7 schedules them (app/core/timer.py
+    _due_timed_slots, app/core/task_manager.py _queue_script_entries):
+
+    * a cycle queue (Info.CycleEnabled) ignores its timed settings: left out;
+    * each time fires only on its TimeSet's Info.Days ("days": {time: weekdays});
+    * an item runs only on its own Schedule.Days ("entries": [(script id,
+      weekdays)]); an item whose ScriptId is "-" (none picked) is not a script.
+    """
     data = _load(cfg_dir / "QueueConfig.json")
     out = []
     bad_now: set[str] = set()
@@ -139,6 +158,7 @@ def _queues(cfg_dir: Path) -> list[dict]:
         info = node.get("Info") or {}
         sub = node.get("SubConfigsInfo") or {}
         times = []
+        days: dict[str, tuple[str, ...]] = {}
         for tid, t in (sub.get("TimeSet") or {}).items():
             if tid == "instances" or not isinstance(t, dict):
                 continue
@@ -148,7 +168,9 @@ def _queues(cfg_dir: Path) -> list[dict]:
                 # don't-power-off-mid-queue guard, the plan) parses "HH:MM";
                 # a time that is not is skipped, and said once.
                 if (hhmm := _hhmm(ti["Time"])) is not None:
-                    times.append(hhmm)
+                    if hhmm not in days:
+                        times.append(hhmm)
+                    days[hhmm] = _days([*days.get(hhmm, ()), *_days(ti.get("Days"))])
                     continue
                 site = f"time:{info.get('Name') or inst.get('uid')}:{ti['Time']}"
                 bad_now.add(site)
@@ -156,25 +178,38 @@ def _queues(cfg_dir: Path) -> list[dict]:
                     log.warning("队列 %s 的定时「%s」认不出是几点几分，这个时刻不看超时、不防关机",
                                 info.get("Name") or "?", ti["Time"])
                     _last_error[site] = "unparsable"
-        items = []
+        entries = []
         for qid, q in (sub.get("QueueItem") or {}).items():
             if qid == "instances" or not isinstance(q, dict):
                 continue
-            sid = (q.get("Info") or {}).get("ScriptId")
-            if sid:
-                items.append(sid)
-        if info.get("TimeEnabled") and times:
+            sid = str((q.get("Info") or {}).get("ScriptId") or "").strip()
+            if sid and sid != "-":
+                entries.append((sid, _days((q.get("Schedule") or {}).get("Days"))))
+        if info.get("TimeEnabled") and times and not info.get("CycleEnabled"):
             out.append({
                 "uid": inst.get("uid"),    # runtime-snapshot's queueId
                 "name": info.get("Name") or "?",
                 "times": sorted(times),
+                "days": days,
                 "after": info.get("AfterAccomplish"),
-                "items": items,
+                "items": [sid for sid, _ in entries],
+                "entries": entries,
             })
     for site in [k for k in _last_error if k.startswith("time:") and k not in bad_now]:
         _last_error.pop(site, None)
     out.sort(key=lambda q: q["times"][0])
     return out
+
+
+def runs_at(q: dict, hhmm: str, when) -> list[str]:
+    """Script ids queue `q` (from schedule) runs when its time `hhmm` comes up on
+    `when`'s day (server clock): [] when that time does not fire that weekday or
+    every item sits that weekday out."""
+    day = _WEEKDAYS[when.weekday()]
+    if day not in (q.get("days") or {}).get(hhmm, _WEEKDAYS):
+        return []
+    return [sid for sid, d in q.get("entries", [(s, _WEEKDAYS) for s in q.get("items", [])])
+            if day in d]
 
 
 def queue_rows(automas_dir) -> list[dict]:
@@ -725,13 +760,16 @@ def recent_due_queues(automas_dir: Path | None, now, window_minutes: int = 120) 
             for day_shift in (0, -1):
                 cand = (now + timedelta(days=day_shift)).replace(
                     hour=hh, minute=mm, second=0, microsecond=0)
-                if cand <= now < cand + timedelta(minutes=window_minutes):
+                if cand <= now < cand + timedelta(minutes=window_minutes) and runs_at(q, hhmm, cand):
                     due = cand
                     break
             if due is None:
                 continue
             kinds = []
-            for uid in q.get("items", []):
+            # Only what AUTO-MAS runs at this time on this weekday: a time whose
+            # weekdays exclude it does not fire, an item skipped that day
+            # (the relay's own one-day skip writes Schedule.Days) is not waited for.
+            for uid in runs_at(q, hhmm, due):
                 kind = (scripts.get(uid) or {}).get("kind")
                 if kind and kind not in kinds:
                     kinds.append(kind)

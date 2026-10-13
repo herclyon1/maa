@@ -1,0 +1,226 @@
+{
+  "instances": [
+    {
+      "uid": "cc32e55a-55d0-408d-980d-642e66d111ae",
+      "type": "QueueConfig"
+    },
+    {
+      "uid": "6f09a385-b0ae-4ff6-9890-50339bdaddeb",
+      "type": "QueueConfig"
+    }
+  ],
+  "cc32e55a-55d0-408d-980d-642e66d111ae": {
+    "Data": {
+      "LastStartupTime": "2000-01-01",
+      "LastTimedStart": "2026-10-10 09:00"
+    },
+    "Info": {
+      "AfterAccomplish": "NoAction",
+      "AfterAccomplishDelay": 0,
+      "CycleEnabled": false,
+      "IfScriptAfterTask": false,
+      "IfScriptBeforeTask": false,
+      "Name": "早班",
+      "ScriptAfterTask": "",
+      "ScriptBeforeTask": "",
+      "StartUpMode": "Never",
+      "TimeEnabled": true
+    },
+    "SubConfigsInfo": {
+      "QueueItem": {
+        "instances": [
+          {
+            "uid": "724ff9ea-9fc9-40bf-972c-bda38cfcd1da",
+            "type": "QueueItem"
+          },
+          {
+            "uid": "0de24174-58ed-4418-9af9-4f325f81b0dd",
+            "type": "QueueItem"
+          },
+          {
+            "uid": "572b030a-6eb2-4122-954e-07b3010c8d88",
+            "type": "QueueItem"
+          }
+        ],
+        "724ff9ea-9fc9-40bf-972c-bda38cfcd1da": {
+          "Data": {
+            "LastCycleFinishedAt": "2000-01-01 00:00:00",
+            "LastCycleStartedAt": "2000-01-01 00:00:00"
+          },
+          "Info": {
+            "ScriptId": "754d129e-d587-435b-b75f-a0b91aac7020"
+          },
+          "Schedule": {
+            "Days": [
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday",
+              "Saturday",
+              "Sunday"
+            ],
+            "Enabled": true,
+            "IntervalAnchor": "start",
+            "IntervalMinutes": 480,
+            "Mode": "fixed_time",
+            "NextRunAt": "2000-01-01 00:00:00",
+            "Time": "00:00"
+          }
+        },
+        "0de24174-58ed-4418-9af9-4f325f81b0dd": {
+          "Data": {
+            "LastCycleFinishedAt": "2000-01-01 00:00:00",
+            "LastCycleStartedAt": "2000-01-01 00:00:00"
+          },
+          "Info": {
+            "ScriptId": "c5e96ddc-aae9-4a73-b6fe-1312a417382d"
+          },
+          "Schedule": {
+            "Days": [
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday",
+              "Saturday",
+              "Sunday"
+            ],
+            "Enabled": true,
+            "IntervalAnchor": "start",
+            "IntervalMinutes": 480,
+            "Mode": "fixed_time",
+            "NextRunAt": "2000-01-01 00:00:00",
+            "Time": "00:00"
+          }
+        },
+        "572b030a-6eb2-4122-954e-07b3010c8d88": {
+          "Data": {
+            "LastCycleFinishedAt": "2000-01-01 00:00:00",
+            "LastCycleStartedAt": "2000-01-01 00:00:00"
+          },
+          "Info": {
+            "ScriptId": "59da8762-8fa7-4260-8aee-10f9ca00097a"
+          },
+          "Schedule": {
+            "Days": [
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday",
+              "Saturday",
+              "Sunday"
+            ],
+            "Enabled": true,
+            "IntervalAnchor": "start",
+            "IntervalMinutes": 480,
+            "Mode": "fixed_time",
+            "NextRunAt": "2000-01-01 00:00:00",
+            "Time": "00:00"
+          }
+        }
+      },
+      "TimeSet": {
+        "instances": [
+          {
+            "uid": "e6f13fec-c2b2-4805-ae32-50f205dc0368",
+            "type": "TimeSet"
+          }
+        ],
+        "e6f13fec-c2b2-4805-ae32-50f205dc0368": {
+          "Info": {
+            "Days": [
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday",
+              "Saturday",
+              "Sunday"
+            ],
+            "Enabled": true,
+            "Time": "09:00"
+          }
+        }
+      }
+    }
+  },
+  "6f09a385-b0ae-4ff6-9890-50339bdaddeb": {
+    "Data": {
+      "LastStartupTime": "2000-01-01",
+      "LastTimedStart": "2026-10-10 21:30"
+    },
+    "Info": {
+      "AfterAccomplish": "NoAction",
+      "AfterAccomplishDelay": 0,
+      "CycleEnabled": false,
+      "IfScriptAfterTask": false,
+      "IfScriptBeforeTask": false,
+      "Name": "晚班",
+      "ScriptAfterTask": "",
+      "ScriptBeforeTask": "",
+      "StartUpMode": "Never",
+      "TimeEnabled": true
+    },
+    "SubConfigsInfo": {
+      "QueueItem": {
+        "instances": [
+          {
+            "uid": "277ffac4-dfde-4412-9aac-dcf4e550b3ab",
+            "type": "QueueItem"
+          }
+        ],
+        "277ffac4-dfde-4412-9aac-dcf4e550b3ab": {
+          "Data": {
+            "LastCycleFinishedAt": "2000-01-01 00:00:00",
+            "LastCycleStartedAt": "2000-01-01 00:00:00"
+          },
+          "Info": {
+            "ScriptId": "754d129e-d587-435b-b75f-a0b91aac7020"
+          },
+          "Schedule": {
+            "Days": [
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday",
+              "Saturday",
+              "Sunday"
+            ],
+            "Enabled": true,
+            "IntervalAnchor": "start",
+            "IntervalMinutes": 480,
+            "Mode": "fixed_time",
+            "NextRunAt": "2000-01-01 00:00:00",
+            "Time": "00:00"
+          }
+        }
+      },
+      "TimeSet": {
+        "instances": [
+          {
+            "uid": "35871380-f472-4918-a1bd-51d73c19105f",
+            "type": "TimeSet"
+          }
+        ],
+        "35871380-f472-4918-a1bd-51d73c19105f": {
+          "Info": {
+            "Days": [
+              "Monday",
+              "Tuesday",
+              "Wednesday",
+              "Thursday",
+              "Friday",
+              "Saturday",
+              "Sunday"
+            ],
+            "Enabled": true,
+            "Time": "21:30"
+          }
+        }
+      }
+    }
+  }
+}
