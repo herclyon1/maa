@@ -44,6 +44,21 @@
    {"re": "已击败残象：0/41.*is not complete", "evidence": "ok-script.2026-10-07.log:243 \"Box(name='已击败残象：0/41', x=890, y=527, width=195, height=31, confidence=100) is not complete\""}
   ],
   "log_never": [],
-  "verdict": null
+  "verdict": {
+    "evidence": "the standing order 「只刷 落渊南丘」 (master NightmareNestTask.json, the scenario's config): the filter line is read as in effect. (The scenario stops at the teleport, so the nest's fight is not judged here.)",
+    "args": {
+      "expect_nest": true,
+      "expect_daily": false,
+      "expect_stamina": false,
+      "only_nest": "落渊南丘"
+    },
+    "done_has": [
+      "只刷指定点位"
+    ],
+    "lacks": [
+      "过滤",
+      "别的点位"
+    ]
+  }
  }
 }

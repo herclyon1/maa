@@ -59,6 +59,18 @@
   "raises": null,
   "log": [],
   "log_never": [],
-  "verdict": null
+  "verdict": {
+    "evidence": "2026-09-21 10:25:49 the strip was 240/240 with 55 backup (fixtures/m6-okww/0921-weekly.log:18 '55_1.00, 240/240+_0.99'); the relay must book 240 left and 55 backup, not 0 and 240",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "raw": {
+      "okww_stamina_left": 240,
+      "okww_backup_stamina": 55
+    }
+  }
  }
 }

@@ -158,6 +158,26 @@
   "raises": null,
   "log": [],
   "log_never": [],
-  "verdict": null
+  "verdict": {
+    "evidence": "a reminder that contradicts the bar is cancelled, never confirmed (892f9973): nothing is claimed and no backup booked spent",
+    "context": [
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1839 (11:42:42), the line upstream's FarmEchoTask.run logs before it opens the book; this scenario starts after it"
+      }
+    ],
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": false,
+    "done_lacks": [
+      "周本"
+    ],
+    "raw": {
+      "okww_backup_spent": null
+    }
+  }
  }
 }

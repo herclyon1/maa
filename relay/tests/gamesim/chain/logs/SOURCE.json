@@ -1,0 +1,329 @@
+{
+ "source": "gamesim-windows run 38402480229, job okww (installed), commit 30c07554",
+ "logs": {
+  "battle_pass_reopen": {
+   "scenario": "daily/battle_pass_reopen.json",
+   "test": "tests.gamesim_test_daily.TestDaily.test_d3_battle_pass_opened_again",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 88
+  },
+  "chest_row_140_1011": {
+   "scenario": "daily/chest_row_140_1011.json",
+   "test": "tests.gamesim_test_daily.TestDaily.test_d1_chest_row_140_all_claimed",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 39
+  },
+  "chest_row_80_1010": {
+   "scenario": "daily/chest_row_80_1010.json",
+   "test": "tests.gamesim_test_daily.TestDaily.test_d2_chest_row_80_each_due_chest",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 25
+  },
+  "gate_180_leftover": {
+   "scenario": "daily/gate_180_leftover.json",
+   "test": "tests.gamesim_test_daily.TestDaily.test_d5_gate_shut_leftover_farmed",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 10
+  },
+  "no_stamina_flag": {
+   "scenario": "daily/no_stamina_flag.json",
+   "test": "tests.gamesim_test_daily.TestDaily.test_d6_no_stamina_flag_counted",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 10
+  },
+  "stamina_split_0921": {
+   "scenario": "daily/stamina_split_0921.json",
+   "test": "tests.gamesim_test_daily.TestDaily.test_d4_split_stamina_strip",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 5
+  },
+  "level_page_book_lv80": {
+   "scenario": "echofarm/level_page_book_lv80.json",
+   "test": "tests.gamesim_test_echofarm.TestEchoFarm.test_level_page_book_lv80",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 67
+  },
+  "main_book_team_1013": {
+   "scenario": "echofarm/main_book_team_1013.json",
+   "test": "tests.gamesim_test_echofarm.TestEchoFarm.test_main_book_team_1013",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 57
+  },
+  "realm_revive_reteleports": {
+   "scenario": "echofarm/realm_revive_reteleports.json",
+   "test": "tests.gamesim_test_echofarm.TestEchoFarm.test_realm_revive_reteleports",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 68
+  },
+  "retry_passes_retries": {
+   "scenario": "echofarm/retry_passes_retries.json",
+   "test": "tests.gamesim_test_echofarm.TestEchoFarm.test_retry_passes_retries",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 45
+  },
+  "revive_is_revived_continues": {
+   "scenario": "echofarm/revive_is_revived_continues.json",
+   "test": "tests.gamesim_test_echofarm.TestEchoFarm.test_revive_is_revived_continues",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 14
+  },
+  "three_failures_arkstopped": {
+   "scenario": "echofarm/three_failures_arkstopped.json",
+   "test": "tests.gamesim_test_echofarm.TestEchoFarm.test_three_failures_arkstopped",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 86
+  },
+  "all_full_1013": {
+   "scenario": "nest/all_full_1013.json",
+   "test": "tests.gamesim_test_nest.TestNest.test_n2_all_full_both_pages",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 13
+  },
+  "find_nest_pointer_1007": {
+   "scenario": "nest/find_nest_pointer_1007.json",
+   "test": "tests.gamesim_test_p2_find_nest.TestFindNestPointer.test_pointer_row_is_chosen_and_clicked",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 35
+  },
+  "map_left_open": {
+   "scenario": "nest/map_left_open.json",
+   "test": "tests.gamesim_test_nest.TestNest.test_n3_unreachable_nest_map_closed",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 24
+  },
+  "partial_6of41_1012": {
+   "scenario": "nest/partial_6of41_1012.json",
+   "test": "tests.gamesim_test_nest.TestNest.test_n4_started_nest_chosen",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 11
+  },
+  "pointer_two_banner_1013": {
+   "scenario": "nest/pointer_two_banner_1013.json",
+   "test": "tests.gamesim_test_nest.TestNest.test_n1_full_nest_passed_banner_map_travelled",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 35
+  },
+  "boss_challenge_team_page": {
+   "scenario": "weekly/boss_challenge_team_page.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_boss_challenge_team_page",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 32
+  },
+  "claim_bar_240_plus": {
+   "scenario": "weekly/claim_bar_240_plus.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_claim_bar_240_plus",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 7
+  },
+  "claim_bar_unread": {
+   "scenario": "weekly/claim_bar_unread.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_claim_bar_unread",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 3
+  },
+  "claim_no_settlement": {
+   "scenario": "weekly/claim_no_settlement.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_claim_no_settlement",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 199
+  },
+  "claim_short_17_24": {
+   "scenario": "weekly/claim_short_17_24.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_claim_short_17_24",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 4
+  },
+  "claim_short_18_0": {
+   "scenario": "weekly/claim_short_18_0.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_claim_short_18_0",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 4
+  },
+  "claim_topup_after_enough_read": {
+   "scenario": "weekly/claim_topup_after_enough_read.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_claim_topup_after_enough_read",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 9
+  },
+  "entry_map_stops": {
+   "scenario": "weekly/entry_map_stops.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_entry_map_stops",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 46
+  },
+  "entry_no_book_screen": {
+   "scenario": "weekly/entry_no_book_screen.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_entry_no_book_screen",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 22
+  },
+  "entry_open_world_stops": {
+   "scenario": "weekly/entry_open_world_stops.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_entry_open_world_stops",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 27
+  },
+  "entry_spoiler_arena": {
+   "scenario": "weekly/entry_spoiler_arena.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_entry_spoiler_arena",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 23
+  },
+  "entry_spoiler_level_page": {
+   "scenario": "weekly/entry_spoiler_level_page.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_entry_spoiler_level_page",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 44
+  },
+  "level_0of3_skip": {
+   "scenario": "weekly/level_0of3_skip.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_level_0of3_skip",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 15
+  },
+  "main_path_1012": {
+   "scenario": "weekly/main_path_1012.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_main_path_1012",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 104
+  },
+  "no_crystal_0952": {
+   "scenario": "weekly/no_crystal_0952.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_no_crystal_0952",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 8
+  },
+  "run_0of3_not_retried": {
+   "scenario": "weekly/run_0of3_not_retried.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_run_0of3_not_retried",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 31
+  },
+  "solo_click_not_taken_0921": {
+   "scenario": "weekly/solo_click_not_taken_0921.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_solo_click_not_taken_0921",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 11
+  },
+  "solo_reminder_contradicts": {
+   "scenario": "weekly/solo_reminder_contradicts.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_solo_reminder_contradicts",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 3
+  },
+  "solo_reminder_short": {
+   "scenario": "weekly/solo_reminder_short.json",
+   "test": "tests.gamesim_test_weekly.TestWeekly.test_solo_reminder_short",
+   "lane": "installed",
+   "okww_tag": "v3.7.4",
+   "overlay": "this checkout",
+   "overlay_sha256": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
+   "lines": 4
+  }
+ }
+}

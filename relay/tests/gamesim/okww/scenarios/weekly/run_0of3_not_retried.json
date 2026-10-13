@@ -284,6 +284,27 @@
     "evidence": "every expected outcome of this case is a decision, not an error (the relay pushes ERROR lines)"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "10-12 15:32:05-15:32:38: the week read 0/3 before entry; the run ends as skipped, which is done (not 'Teleport to boss failed', not farm 4c error)",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "weekly_left": 0,
+    "done_has": [
+      "周本"
+    ],
+    "lacks": [
+      "传送"
+    ],
+    "raw_has": {
+      "okww_steps": [
+        "0/3"
+      ]
+    },
+    "unregistered": []
+  }
  }
 }

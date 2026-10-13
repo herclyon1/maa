@@ -67,6 +67,21 @@
     "evidence": "ok-script.2026-10-11.log:674 said '100 档点了没领到' about this very screen, whose 100 chest shows the tick: the false alarm"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "frame daily_reward_unclaimed 2026-10-11 (all five chests ticked at 140 points); the relay pushed 「100 档点了没领到」 for it on 10-11 09:30:45 (state/alerts 20261011.jsonl), which b9ad39b4 fixed: nothing is unclaimed",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "done_has": [
+      "每日活跃奖励领到了"
+    ],
+    "lacks": [
+      "活跃",
+      "没领到"
+    ]
+  }
  }
 }

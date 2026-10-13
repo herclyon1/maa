@@ -94,6 +94,21 @@
     "evidence": "48/48 is full (frame truth)"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "2026-10-13 09:29 with 只刷 ['梦枢天罗', '落渊南丘'] the full 48/48 is passed over and 落渊南丘 clicked: the filter is in effect and no other nest was entered",
+    "args": {
+      "expect_nest": true,
+      "expect_daily": false,
+      "expect_stamina": false,
+      "only_nest": "梦枢天罗,落渊南丘"
+    },
+    "done_has": [
+      "只刷指定点位"
+    ],
+    "lacks": [
+      "过滤",
+      "别的点位"
+    ]
+  }
  }
 }

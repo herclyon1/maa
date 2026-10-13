@@ -266,6 +266,14 @@
     "evidence": "every expected outcome of this case is a decision, not an error (the relay pushes ERROR lines)"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "10-13 11:55:58 the Boss Challenge team page: going in at the remembered level is not an error (the overlay says so in an INFO line), so nothing reaches the group as an ERROR",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "unregistered": []
+  }
  }
 }

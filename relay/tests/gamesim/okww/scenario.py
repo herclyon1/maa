@@ -63,6 +63,9 @@ Shape (keys not listed here are refused, so a typo cannot silently drop an expec
         "verdict": {                      # what the relay makes of this scenario's log (design 3,
                                           # T7: relay/tests/gamesim/chain/test_log_contract.py)
           "evidence": "...",
+          "context": [{"text": "INFO TaskExecutor FarmEchoTask:info_set ...", "evidence": "..."}],
+                                          # lines the run logs before this part starts (a real
+                                          # machine line each), put first with the log's first time
           "args": {"expect_nest": false, "expect_daily": false, "expect_stamina": false,
                    "only_nest": ""},      # outcome.okww_checks' arguments for this part of a run
           "clean": bool,                  # outcome.summarize says nothing
@@ -107,7 +110,7 @@ FIGHT_OUTCOMES = ("returns", "revived", "realm_revive")
 _TRANSITION_KINDS = ("click", "feature", "key", "after_s")
 _TRANSITION = set(_TRANSITION_KINDS) | {"to", "evidence", "threshold"}
 _EXPECT = {"sequence", "end", "never_states", "shots", "raises", "log", "log_never", "verdict"}
-_VERDICT = {"evidence", "args", "clean", "has", "lacks", "done_has", "done_lacks", "raw", "raw_has",
+_VERDICT = {"evidence", "context", "args", "clean", "has", "lacks", "done_has", "done_lacks", "raw", "raw_has",
             "raw_lacks", "error_has", "error_lacks", "error_any_of", "unregistered", "weekly_left",
             "progress_min", "level"}
 _VERDICT_ARGS = {"expect_nest", "expect_daily", "expect_stamina", "only_nest"}
@@ -346,6 +349,11 @@ def _verdict(v):
     args = v.get("args")
     _need(isinstance(args, dict) and "expect_nest" in args and set(args) <= _VERDICT_ARGS, w,
           f"args: okww_checks' arguments ({sorted(_VERDICT_ARGS)}), expect_nest at least")
+    for i, c in enumerate(v.get("context", [])):
+        _keys(c, {"text", "evidence"}, f"{w}.context[{i}]")
+        _evidence(c, f"{w}.context[{i}]")
+        _need(isinstance(c.get("text"), str) and re.match(r"^[A-Z]+ \S+ \S", c["text"]), f"{w}.context[{i}]",
+              "text is an OK-WW log line without its time: 'LEVEL Thread Name:message'")
     for k in ("has", "lacks", "done_has", "done_lacks", "error_has", "error_lacks", "unregistered"):
         _need(all(isinstance(s, str) and s for s in v.get(k, [])), w, f"{k} is a list of strings")
     _need(all(isinstance(alts, list) and alts and all(isinstance(s, str) for s in alts)

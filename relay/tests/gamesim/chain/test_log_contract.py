@@ -117,6 +117,23 @@ MACHINE = [
     },
 ]
 
+# Relay fixes a scenario's verdict depends on: the scenario log (the overlay's real lines) is judged
+# wrong by the relay before the fix and right at it. `--prove` runs them like the machine cases.
+SCENARIO_PROOFS = [
+    {"case": "three_failures_arkstopped", "red_at": ["5fddd375~1"], "green_at": "5fddd375",
+     "why": "ledger 761 (BOARD/报错台账.txt): a log with 「这一趟按失败结束：」 was judged all done"},
+    {"case": "no_stamina_flag", "red_at": ["5ea2cc7f~1"], "green_at": "5ea2cc7f",
+     "why": "the 「不刷体力」 flag's refusal line was not read: the stamina item gave another reason"},
+    {"case": "main_path_1012", "red_at": ["f22fe3e7~1"], "green_at": "f22fe3e7",
+     "why": "a verified weekly claim's 60 waveplates were not counted spent (10-12 11:41: three claims, "
+            "nothing spent shown; audit 2026-10-13 item 12)"},
+    {"case": "main_book_team_1013", "red_at": ["e0448a66~1"], "green_at": "e0448a66",
+     "why": "the echo-farm wrap-up could not name the level the game showed (10-13: Lv.90 fought, 80 configured)"},
+    {"case": "revive_is_revived_continues", "red_at": ["2d2d45fc~1"], "green_at": "2d2d45fc",
+     "why": "5538a9a2's rule, progress not noise: the watchdog had no count of progress lines, so a revive "
+            "and farming on was not progress"},
+]
+
 # ------------------------------------------------------------------------------ the relay
 
 
@@ -242,6 +259,16 @@ def _read(path: Path) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+def with_context(text: str, context: "list[dict]") -> str:
+    """The scenario's log with the verdict's context lines first, stamped with its first time:
+    the lines upstream's run() logs before the part of the run a scenario starts at."""
+    if not context:
+        return text
+    m = _TS.search(text)
+    stamp = m.group(0).rstrip() if m else "1970-01-01 00:00:00,000"
+    return "".join(f"{stamp} {c['text']}\n" for c in context) + text
+
+
 def scenarios() -> "list[tuple[str, scn.Scenario]]":
     """(path under scenarios/, scenario) of every scenario file."""
     return [(p.relative_to(scn.SCENARIOS).as_posix(), scn.load(p)) for p in sorted(scn.SCENARIOS.rglob("*.json"))]
@@ -305,7 +332,7 @@ def check_scenarios(relay: Relay, tmp: Path, fresh: "Path | None", only: "str | 
                 continue
             runs = [committed]
         for src in runs:
-            text = _read(src)
+            text = with_context(_read(src), v.get("context", []))
             path = tmp / f"{sc.case}.log"
             path.write_text(text, encoding="utf-8")
             got = judge(relay, text, v["args"], path)
@@ -387,25 +414,29 @@ def check_coverage(fresh: Path) -> "list[str]":
 
 
 def prove(only: "str | None") -> int:
-    """Run the machine cases at each red_at / green_at commit (git archive of relay/)."""
+    """Run the machine cases and SCENARIO_PROOFS at each red_at / green_at commit (git archive of
+    relay/): red must be this case failing an expectation, never a harness error."""
     import tempfile  # noqa: PLC0415
     bad = 0
-    for c in MACHINE:
-        if only and c["id"] != only:
+    todo = [(c["id"], c["proof"], ["--machine-only"]) for c in MACHINE]
+    todo += [(s["case"], s, []) for s in SCENARIO_PROOFS]
+    for cid, proof, extra in todo:
+        if only and cid != only:
             continue
-        for rev, want in [*((r, 1) for r in c["proof"]["red_at"]), (c["proof"]["green_at"], 0)]:
+        for rev, want in [*((r, 1) for r in proof["red_at"]), (proof["green_at"], 0)]:
             with tempfile.TemporaryDirectory(prefix="t7-prove-") as d:
                 tar = subprocess.run(["git", "-C", str(REPO), "archive", rev, "relay"], check=True,
                                      capture_output=True).stdout
                 subprocess.run(["tar", "-x", "-C", d], input=tar, check=True)
-                p = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--machine-only",
-                                    "--relay-root", str(Path(d) / "relay"), "--case", c["id"]],
+                p = subprocess.run([sys.executable, str(Path(__file__).resolve()), *extra,
+                                    "--relay-root", str(Path(d) / "relay"), "--case", cid],
                                    capture_output=True, text=True)
             out = p.stdout + p.stderr
             harness = "HARNESS" in out or "Traceback" in out
-            ok = p.returncode == want and not harness and (want == 0 or f"✗ {c['id']}" in out)
+            mine = any(ln.startswith("  ✗ ") and (f"✗ {cid} " in ln or f"/{cid}.json" in ln) for ln in out.splitlines())
+            ok = p.returncode == want and not harness and (want == 0 or mine)
             first = next((ln.strip() for ln in out.splitlines() if ln.startswith("      ")), "")
-            print(f"  {'✓' if ok else '✗'} {c['id']} at {rev}: {'red' if p.returncode else 'green'}"
+            print(f"  {'✓' if ok else '✗'} {cid} at {rev}: {'red' if p.returncode else 'green'}"
                   f" (want {'red' if want else 'green'}) {first[:160]}")
             if not ok:
                 bad += 1

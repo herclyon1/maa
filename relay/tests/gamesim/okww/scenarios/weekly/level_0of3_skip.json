@@ -105,6 +105,29 @@
     "evidence": "every expected outcome of this case is a decision, not an error (the relay pushes ERROR lines)"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "10-12 15:32:33 the level page read 0/3 (frame boss_level_page/2026-10-12_153233_0of3.png): the week is full, which is done, not a failure (memory normal-state-not-an-alarm: 已领满)",
+    "context": [
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1839 (11:42:42), the line upstream's FarmEchoTask.run logs before it opens the book; this scenario starts after it"
+      }
+    ],
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "weekly_left": 0,
+    "done_has": [
+      "周本"
+    ],
+    "raw_has": {
+      "okww_steps": [
+        "0/3"
+      ]
+    }
+  }
  }
 }

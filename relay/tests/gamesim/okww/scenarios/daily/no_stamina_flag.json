@@ -71,6 +71,25 @@
     "evidence": "the farm was reached and refused: there is nothing left over to farm, and a second call only adds a second refusal (e4f49004: 'called the farm a second time (a second flag line)')"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "the owner's 「不刷体力」 switch (the flag file): the farm is refused and the run must say the flag is why no waveplate was spent (09-01 OK-WW-01-05-37.log:426 the same refusal); the daily chests at 140 are claimed (frame daily_reward_unclaimed 10-11)",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": true
+    },
+    "has": [
+      "刷体力",
+      "标记"
+    ],
+    "done_has": [
+      "每日活跃奖励领到了"
+    ],
+    "raw_has": {
+      "okww_stopped": [
+        "标记"
+      ]
+    }
+  }
  }
 }

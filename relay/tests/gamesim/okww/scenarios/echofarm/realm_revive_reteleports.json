@@ -540,6 +540,19 @@
     "evidence": "the overlay swallows only a revive that set is_revived (combat_once); this one did not"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "upstream re-teleports after a realm revive (FarmEchoTask.py:209-222): two landings, each one progress for the watchdog (5538a9a2), at the Lv.90 the realm showed",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "progress_min": 2,
+    "level": [
+      "90",
+      "天傀劫煞"
+    ]
+  }
  }
 }

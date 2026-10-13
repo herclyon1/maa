@@ -43,6 +43,37 @@
    }
   ],
   "log_never": [],
-  "verdict": null
+  "verdict": {
+    "evidence": "machine-okww-logs ok-script.2026-10-12.log:1182-1183 (09:52:20): no crystal after the fight, the run stopped; no reward this run and the stop is an ERROR that reaches the group (the owner 10-06: 「不论多少次什么错误都要发」 (every error goes to the group))",
+    "context": [
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1839 (11:42:42), the line upstream's FarmEchoTask.run logs before it opens the book; this scenario starts after it"
+      },
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1089 (09:51:34), the landing of that run"
+      },
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:enter combat None",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1149 (09:51:37), its fight"
+      }
+    ],
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": false,
+    "has": [
+      "周本"
+    ],
+    "done_lacks": [
+      "周本"
+    ],
+    "unregistered": [
+      "周本领奖：这一圈打完没看到结晶"
+    ]
+  }
  }
 }

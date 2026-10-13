@@ -241,6 +241,15 @@
     "evidence": "every expected outcome of this case is a decision, not an error (the relay pushes ERROR lines)"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "10-05 10:33:48 (OK-WW-05-39-25 bundle ok-script.log:1332) 「限时提前开放：确认后直接进场」 put the run in the arena: the echo-farm watchdog counts that sentence as progress (echofarm.PROGRESS); no ERROR reaches the group",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "progress_min": 1,
+    "unregistered": []
+  }
  }
 }

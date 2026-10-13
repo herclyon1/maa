@@ -220,6 +220,14 @@
     "evidence": "b24c48fc: the retry must not be a TypeError"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "b24c48fc: upstream's retry runs the body again after 'farm 4c error' (#1649); the run stops on the unrecognised screen, so no lap was made: nothing for the watchdog to count",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true
+  }
  }
 }

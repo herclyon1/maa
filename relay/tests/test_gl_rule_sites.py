@@ -21,7 +21,7 @@ a listed site that is now covered (delete it from GAPS), so the list stays the t
 The site inventory follows the coordinator's census (scratchpad gamesim/configs/tools/rules.py,
 2026-10-13: 269 sites in these 14 modules), read from the source, not from a copy.
 
-    relay-python tests/test_gl_rule_sites.py [--show]
+    relay-python tests/test_gl_rule_sites.py [--show] [--gaps]
 """
 from __future__ import annotations
 
@@ -71,8 +71,79 @@ RE_FUNCS = {"compile", "search", "match", "fullmatch", "findall", "finditer", "s
 # ---------------------------------------------------------------------------------------------
 # Sites with no line in a corpus or a scenario log, as of 2026-10-13 (gamesim U8). Key: (module,
 # pattern) - the pattern as written, or for a pattern built at run time the expression that
-# builds it. Value: where a line is found ("fixture": only a fixture; "none": nowhere).
-GAPS: "dict[tuple[str, str], str]" = {}
+# builds it. Value: (where a line is found - "fixture": only a fixture, "none": nowhere; why).
+_MAAEND = "no MaaEnd record in the corpora prints it (U13b's 17 cases; replay 10-10)"
+_OKWW_RARE = "no recorded OK-WW run (corpus okww 11 runs, replay 09-01..09-07) nor scenario prints it"
+_SCEN_STOPS = "its overlay line comes after the moment the scenario ends, or on a path no scenario plays"
+GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
+    ("features/verify/collector_maa.py", r"Cannot set stage\W*([A-Za-z0-9\-]+)"):
+        ("none", "design 3: cite MAA's producer line at the installed tag or delete the rule (not done)"),
+    ("features/verify/collector_maaend.py", r"^是(\S+?基质)\s*$"): ("none", _MAAEND),
+    ("features/verify/collector_maaend.py", r"(\d+)\s*条路线"):
+        ("none", "design 3: cite MaaEnd's producer line or delete the rule (not done); " + _MAAEND),
+    ("features/verify/collector_maaend.py", r"^获得以下物品[:：]\s*$"):
+        ("none", _MAAEND + "; the corpus has the stamped form, the rule reads the message part"),
+    ("features/verify/collector_maaend.py", r"^任务(开始|完成|失败)[:：]\s*(\S.+?)\s*$"):
+        ("none", "reads the message part of a stamped line (_LINE_STAMP strips the stamp first); "
+                 "the corpus lines carry the stamp"),
+    ("features/verify/collector_maaend.py", r"(?:路线|线路)(\d+)[：:][^\n]*采集失败"):
+        ("fixture", "only fixtures/collect-retry-2026-09-11 (real MXU lines, no SOURCE in the census)"),
+    ("features/verify/collector_maaend.py", r"((?:路线|线路)(\d+)[：:][^\n]*?)采集失败"):
+        ("fixture", "only fixtures/collect-retry-2026-09-11 (real MXU lines, no SOURCE in the census)"),
+    ("features/verify/collector_okww.py", r"info_set Teleport to Forgery Challenge (\d+)"):
+        ("none", "the machine farms Tacet; no Forgery run recorded"),
+    ("features/verify/collector_okww.py", "ForgeryTask:"): ("none", "the machine farms Tacet; no Forgery run recorded"),
+    ("features/verify/outcome.py", "_STAMINA_TASK + 'farm_(?:tacet|domain): exceeded recovery retries \\\\((\\\\d+)\\\\)'"):
+        ("none", "upstream TacetTask.py:79 / DomainTask.py:73; three deaths while farming never recorded"),
+    ("features/verify/outcome.py", r"DailyTask:补刷体力出错，照常领日常奖励: ([^\n]*)"): ("none", _OKWW_RARE),
+    ("features/verify/outcome.py", r"活跃奖励：没有核对，(.+)"): ("none", _OKWW_RARE),
+    ("features/verify/outcome.py", r"周本领奖：回读次数没变（(\d+)/3），这次没领到"):
+        ("none", _OKWW_RARE + "; no scenario claims without the count dropping"),
+    ("features/verify/outcome.py", "战令没领到："): ("none", _SCEN_STOPS + " (battle_pass_reopen opens it)"),
+    ("features/verify/outcome.py", "战令：没有重试，"): ("none", _SCEN_STOPS + " (battle_pass_reopen retries)"),
+    ("features/verify/outcome.py", "指定点位的名字读到了，计数没读到"): ("none", _OKWW_RARE),
+    ("features/verify/outcome.py", "只刷指定点位的改动没装上，这一轮不刷巢穴"):
+        ("none", "in none of 131 recorded runs (U13a); the overlay leaves find_nest bound on v3.5.28..v3.7.5 (U9)"),
+    ("features/verify/outcome.py", "列表里没找到指定的点位"): ("none", _OKWW_RARE),
+    ("core/collector.py", r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ \|[^|]*\| MaaEnd 自动代理 \| MaaEnd 队列已结束但进程未退出"):
+        ("none", "AUTO-MAS AutoProxy.py _wait_maaend_stage (MXU#371); no AUTO-MAS app.log with it in the corpora"),
+    ("core/collector.py", "未捕获"): ("fixture", "AUTO-MAS's 「未捕获到日志」 result; only fixtures"),
+    ("core/collector.py", "模拟器启动失败"):
+        ("fixture", "design 3: cite AUTO-MAS's producer line or delete the rule (not done); only fixtures"),
+    ("core/collector.py", "未捕获到日志"): ("fixture", "AUTO-MAS's result text; only fixtures"),
+    ("features/echofarm/echofarm.py", r"^L[Vv]\.?\s*(\d{1,3})\.?\s*(.*?)_\d+(?:\.\d+)?$"):
+        ("none", "reads one OCR box cut out of a boss_string line, not a line; the chain judges it "
+                 "(gamesim/chain test_log_contract.py, main_book_team_1013 level)"),
+    ("features/makeup/collect_retry.py", r"^\[[^\]]+\]\s*(.+?采集失败)\s*$"):
+        ("fixture", "only fixtures/collect-retry-2026-09-11 (real MXU lines, no SOURCE in the census)"),
+    ("features/makeup/collect_retry.py", r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(End|Failed)\""):
+        ("fixture", "only fixtures/collect-retry-2026-09-11 (real MXU lines, no SOURCE in the census)"),
+    ("features/makeup/collect_retry.py", r"Web server listening on http://127\.0\.0\.1:(\d+)"):
+        ("none", "MXU's own stdout at start; not kept in any record"),
+}
+# Sites that read something other than a game's log - a config, a stage name, a path, a locale
+# key, the registry file's own format - so no log line is owed. Key as in GAPS; value: what it reads.
+NOT_LOG: "dict[tuple[str, str], str]" = {
+    ("features/verify/outcome.py", "日常改动"): "a label of outcome._PATCH_EFFECTS, not a log line",
+    ("features/verify/collector_okww.py", "\\Saved\\"): "a changed client file's path (_client_change)",
+    ("features/verify/collector_okww.py", "/Saved/"): "a changed client file's path (_client_change)",
+    ("features/verify/collector_okww.py", ".quality"): "a changed client file's path (_client_change)",
+    ("features/verify/collector_okww.py", "AntiCheatExpert"): "a changed client file's path (_client_change)",
+    ("features/verify/gamelog_errors.py", r"^verdict:\s+(recovered|not-a-fault)\s+-\s+(\S.*)$"):
+        "the format of gamelog_errors.txt itself",
+    ("features/alarm/gamelogs.py", "Auto Farm all Nightmare Nest"): "OK-WW's DailyTask.json option list",
+    ("features/weekly/weeklyboss.py", "Teleport and Farm 4C Echo"): "OK-WW's DailyTask.json option list",
+    ("features/weekly/annihilation.py", "backend-error"): "the relay's own once-per-condition set",
+    ("features/makeup/makeup.py", ".label"): "MaaEnd locale keys (task.<name>.label)",
+    ("features/makeup/collect_retry.py", r"^(AutoCollect(?:Common)?Route\d+)(Start|Dispatch)$"): "MaaEnd pipeline node names",
+    ("features/makeup/collect_retry.py", r"^AutoCollect.*Routes$"): "MaaEnd option names",
+    ("features/makeup/collect_retry.py", r"option\.(AutoCollect(?:Common)?Route\d+)\.failed"): "MaaEnd locale keys",
+    ("features/makeup/collect_retry.py", "no-labels"): "the relay's own once-per-condition set",
+    ("features/schedule/stagegate.py", r"^([A-Za-z]{0,3})(\d{1,2})-(\d{1,2})(?:-?(\w+))*$"): "an MAA stage name",
+    ("features/schedule/stagegate.py", "SSReopen-"): "an MAA stage name",
+    ("features/schedule/stagegate.py", "IfFight"): "an MAA gui.new.json task entry",
+    ("features/schedule/stagegate.py", "final"): "the relay's own stage-gate row",
+}
 # ---------------------------------------------------------------------------------------------
 
 
@@ -309,7 +380,12 @@ def _literal(pat: str, flags: int) -> str:
 
 
 def _spans_lines(pat: str, flags: int) -> bool:
-    return "\\n" in pat or "\n" in pat or bool(flags & re.S)
+    """A rule over several lines: \\n in it, or DOTALL (passed or inline, `(?s)`)."""
+    try:
+        dotall = bool(re.compile(pat, flags).flags & re.S)
+    except re.error:
+        dotall = False
+    return "\\n" in pat or "\n" in pat or dotall
 
 
 def hit(rule: dict, lines: Lines) -> "str | None":
@@ -374,19 +450,24 @@ def problems(found: "list[dict]") -> "list[str]":
     covered = {r["key"] for r in found if r["where"] in ("corpus", "scenario")}
     keys = {r["key"] for r in found}
     for r in found:
-        if r["where"] in ("corpus", "scenario"):
+        if r["where"] in ("corpus", "scenario") or r["key"] in NOT_LOG:
             continue
         listed = GAPS.get(r["key"])
         if listed is None:
             bad.append(f"{r['module']}:{r['line']} {r['kind']} {r['pat']!r}: no real line "
                        f"({r['where']}); give it one, or list it in GAPS with why")
-        elif listed != r["where"]:
-            bad.append(f"{r['module']}:{r['line']} {r['pat']!r}: GAPS says {listed!r}, found {r['where']!r}")
+        elif listed[0] != r["where"]:
+            bad.append(f"{r['module']}:{r['line']} {r['pat']!r}: GAPS says {listed[0]!r}, found {r['where']!r}")
     for key in GAPS:
         if key in covered:
             bad.append(f"{key[0]} {key[1]!r} is covered now: delete it from GAPS")
         elif key not in keys:
             bad.append(f"{key[0]} {key[1]!r} is in GAPS but no longer a rule site: delete it")
+    for key in NOT_LOG:
+        if key not in keys:
+            bad.append(f"{key[0]} {key[1]!r} is in NOT_LOG but no longer a rule site: delete it")
+        if key in GAPS:
+            bad.append(f"{key[0]} {key[1]!r} is in both GAPS and NOT_LOG")
     return bad
 
 
@@ -401,11 +482,13 @@ def main(argv: "list[str]") -> int:
         for r in found:
             print(json.dumps({k: r.get(k) for k in ("module", "line", "kind", "pat", "where", "line_seen")},
                              ensure_ascii=False))
-    gaps = [r for r in found if r["where"] not in ("corpus", "scenario")]
-    if gaps:
-        print("\nSites without a real line (GAPS):")
+    gaps = [r for r in found if r["where"] not in ("corpus", "scenario") and r["key"] not in NOT_LOG]
+    print(f"{len(gaps)} log rule sites without a real line (GAPS), "
+          f"{sum(1 for r in found if r['key'] in NOT_LOG)} sites that read no log (NOT_LOG)")
+    if "--gaps" in argv:
         for r in gaps:
-            print(f"  {r['where']:8} {r['module']}:{r['line']} {r['kind']} {r['pat']!r}")
+            why = GAPS.get(r["key"], ("", "not listed"))[1]
+            print(f"  {r['where']:8} {r['module']}:{r['line']} {r['kind']} {r['pat']!r}: {why}")
     bad = problems(found)
     for b in bad:
         print(f"  ✗ {b}")

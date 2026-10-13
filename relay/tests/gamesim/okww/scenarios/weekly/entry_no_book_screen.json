@@ -161,6 +161,23 @@
   },
   "log": [],
   "log_never": [],
-  "verdict": null
+  "verdict": {
+    "evidence": "after 前往 no book screen came (19 runs in five days died on upstream's 10 s, 2026-09-09's pilot among them): the run stops before entering - not entered, not fought",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": false,
+    "has": [
+      "周本",
+      "没进本"
+    ],
+    "raw_has": {
+      "okww_steps": [
+        "没进本"
+      ]
+    }
+  }
  }
 }

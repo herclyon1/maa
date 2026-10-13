@@ -86,6 +86,19 @@
     "evidence": "every wanted count on both pages is full (frame truth)"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "2026-10-13 09:32 the wanted nests read 48/48 and 41/41: nothing to farm, which is the normal state (memory normal-state-not-an-alarm: 已领满 is not an alarm) and the filter was in effect",
+    "args": {
+      "expect_nest": true,
+      "expect_daily": false,
+      "expect_stamina": false,
+      "only_nest": "梦枢天罗,落渊南丘"
+    },
+    "clean": true,
+    "done_has": [
+      "已满",
+      "只刷指定点位"
+    ]
+  }
  }
 }

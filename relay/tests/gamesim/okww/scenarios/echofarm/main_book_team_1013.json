@@ -470,6 +470,19 @@
     "evidence": "the run went on to lap 2 (ok-script.log (game PC, 2026-10-13):2288 'start wait in combat')"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "2026-10-13 11:54-11:57 echo farm on the machine: landed in the realm, an echo picked up, lap 2, every lap at Lv.90 on 天傀劫煞 (boss_string lines '[Lv.90天傀劫煞_0.97]' / '[Lv.90.天傀劫煞_0.97]' quoted in echofarm.py); the watchdog must see the laps as progress (5538a9a2: progress lines, not log noise) and read Lv.90",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "progress_min": 2,
+    "level": [
+      "90",
+      "天傀劫煞"
+    ]
+  }
  }
 }

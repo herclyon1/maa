@@ -191,6 +191,17 @@
    }
   ],
   "log_never": [],
-  "verdict": null
+  "verdict": {
+    "evidence": "2026-10-10 the run ended at 80 activity points; the owner 10-10 19:4x: 「鸣潮的每日为什么okww没有领，中继也不报错？」 - a day under 100 points must be reported. (The chests' ticks are not judged: the screen is provisional and black, U6.)",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": false,
+    "has": [
+      "活跃 80"
+    ]
+  }
  }
 }

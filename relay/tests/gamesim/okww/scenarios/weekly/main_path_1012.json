@@ -757,6 +757,27 @@
     "evidence": "04126e3b / ddf68376: a deliberate stop must not go through upstream's retry (FarmEchoTask.py:119-125)"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "machine-okww-logs ok-script.2026-10-12.log:2712-2732 (15:27-15:28): claimed, 退出副本, back in, the level page read 2/3 - 「回读确认领到，本周剩余 3/3→2/3」; one claim of 60 waveplates, 2 left",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "done_has": [
+      "周本"
+    ],
+    "weekly_left": 2,
+    "raw": {
+      "okww_stamina_spent": 60
+    },
+    "raw_has": {
+      "okww_steps": [
+        "领了 1 次",
+        "还剩 2 次"
+      ]
+    }
+  }
  }
 }

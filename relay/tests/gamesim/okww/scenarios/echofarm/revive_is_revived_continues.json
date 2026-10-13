@@ -113,6 +113,15 @@
     "evidence": "a revive that put us back at the boss is not an error (034a555d: 'a regression for an overnight farm')"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "034a555d: a revive at the boss is farming on; its line is the only sign of life the watchdog gets between laps (echofarm.PROGRESS lists it since 5538a9a2's rule: a line that says something happened)",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "progress_min": 1
+  }
  }
 }

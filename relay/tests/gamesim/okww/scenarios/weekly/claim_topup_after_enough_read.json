@@ -285,6 +285,37 @@
   "raises": null,
   "log": [],
   "log_never": [],
-  "verdict": null
+  "verdict": {
+    "evidence": "the top-up dialog after an enough read is closed, never paid (10-12 15:29 and 15:31 paid with solute): no reward this run, so the weekly item is red and no backup is booked spent",
+    "context": [
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1839 (11:42:42), the line upstream's FarmEchoTask.run logs before it opens the book; this scenario starts after it"
+      },
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1875 (11:43:28), logged when the run lands in the realm (FarmEchoTask.py:271); this scenario starts after the fight"
+      },
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:enter combat None",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1935 (11:43:30), upstream's fight line (CombatCheck.py:181) before the claim; the scenario elides the fight"
+      }
+    ],
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": false,
+    "has": [
+      "周本"
+    ],
+    "done_lacks": [
+      "周本"
+    ],
+    "raw": {
+      "okww_backup_spent": null
+    }
+  }
  }
 }

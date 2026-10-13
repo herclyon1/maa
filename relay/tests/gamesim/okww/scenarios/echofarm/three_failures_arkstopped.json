@@ -219,6 +219,18 @@
    }
   ],
   "log_never": [],
-  "verdict": null
+  "verdict": {
+    "evidence": "7b1099a1: three failed bodies end the run as failed with 「这一趟按失败结束：」; ledger 761-763 (BOARD/报错台账.txt, 5fddd375): a log with that line is a failed item, whatever else it says",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": false,
+    "has": [
+      "这一趟按失败结束",
+      "连续 3 次失败"
+    ]
+  }
  }
 }

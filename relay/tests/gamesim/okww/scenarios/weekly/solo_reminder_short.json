@@ -168,6 +168,34 @@
     "evidence": "every expected outcome of this case is a decision, not an error (the relay pushes ERROR lines)"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "10-12 11:43:16 the 「无法获取奖励」 reminder with waveplates 17 + backup 24 < 60 (ok-script.2026-10-12.log:1865-1869): skipped for want of waveplates and said as a shortage",
+    "context": [
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1839 (11:42:42), the line upstream's FarmEchoTask.run logs before it opens the book; this scenario starts after it"
+      }
+    ],
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": false,
+    "has": [
+      "结晶波片不足"
+    ],
+    "lacks": [
+      "传送"
+    ],
+    "done_lacks": [
+      "周本"
+    ],
+    "raw_has": {
+      "okww_steps": [
+        "结晶波片不足"
+      ]
+    }
+  }
  }
 }

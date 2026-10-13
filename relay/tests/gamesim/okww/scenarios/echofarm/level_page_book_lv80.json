@@ -302,6 +302,14 @@
    }
   ],
   "log_never": [],
-  "verdict": null
+  "verdict": {
+    "evidence": "35d6166b: the Boss Challenge entry at Lv.80 lands in the realm without an error; nothing in it is a failure for the relay",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true
+  }
  }
 }

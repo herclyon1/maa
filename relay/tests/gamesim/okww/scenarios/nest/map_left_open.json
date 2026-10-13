@@ -114,6 +114,19 @@
     "evidence": "COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-ww-log/logs/ok-script.log:1478, the failure"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "2026-10-05 10:35 the travel to the nest did not take ('nightmare nest unreachable', frame map_open/2026-10-05_103522.png): the nest was not farmed and the relay must say it could not travel",
+    "args": {
+      "expect_nest": true,
+      "expect_daily": false,
+      "expect_stamina": false,
+      "only_nest": "梦枢天罗,落渊南丘"
+    },
+    "clean": false,
+    "has": [
+      "残象聚落",
+      "传送不过去"
+    ]
+  }
  }
 }

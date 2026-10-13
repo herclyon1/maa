@@ -324,6 +324,15 @@
     "evidence": "ok-script.2026-10-12.log:1876 the entry succeeded"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "10-12 11:43:06-11:43:20 the spoiler opened the level page reading 3/3 (frame boss_level_page 3/3): the claims left this week are 3",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "weekly_left": 3,
+    "unregistered": []
+  }
  }
 }

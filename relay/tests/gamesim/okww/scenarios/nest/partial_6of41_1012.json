@@ -85,6 +85,21 @@
    }
   ],
   "log_never": [],
-  "verdict": null
+  "verdict": {
+    "evidence": "2026-10-12 09:54 with 只刷 ['落渊南丘'] the filter is in effect and 6/41 is chosen; the scenario stops at the teleport, so only the filter is judged",
+    "args": {
+      "expect_nest": true,
+      "expect_daily": false,
+      "expect_stamina": false,
+      "only_nest": "落渊南丘"
+    },
+    "done_has": [
+      "只刷指定点位"
+    ],
+    "lacks": [
+      "过滤",
+      "别的点位"
+    ]
+  }
  }
 }

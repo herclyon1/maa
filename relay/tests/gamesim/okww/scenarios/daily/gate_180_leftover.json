@@ -91,6 +91,21 @@
   "raises": null,
   "log": [],
   "log_never": [],
-  "verdict": null
+  "verdict": {
+    "evidence": "2026-09-30 OK-WW-13-55-06.log read progress 0 and points 140 at open_daily (the scenario's own provisional state): the dailies were done before the run started",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "raw": {
+      "okww_daily_done_at_start": true
+    },
+    "raw_has": {
+      "okww_points": [
+        "140"
+      ]
+    }
+  }
  }
 }

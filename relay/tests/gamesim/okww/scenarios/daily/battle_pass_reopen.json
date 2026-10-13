@@ -143,6 +143,20 @@
     "evidence": "09-29 09:28:53 this line ended the claim with nothing claimed; the 3.6 podcast period ran to 09-30 03:59 (0188b2c1), so 'maybe ended' was not it"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "0188b2c1: the battle-pass page that did not open the first time (08-26, 09-29) is opened once more; here it opens and the claim is clicked, so the relay counts the battle pass as done and has no battle-pass failure (the owner 10-11 17:36, quoted in 0188b2c1: the points were lost those days)",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "done_has": [
+      "战令"
+    ],
+    "lacks": [
+      "战令"
+    ]
+  }
  }
 }

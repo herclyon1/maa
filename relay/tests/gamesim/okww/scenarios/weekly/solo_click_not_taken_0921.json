@@ -134,6 +134,15 @@
     "evidence": "0921-weekly.log:18, the machine's failure line"
    }
   ],
-  "verdict": null
+  "verdict": {
+    "evidence": "2026-09-21 10:20:43-58 the level page read 3/3 (fixtures/m6-okww/0921-weekly.log, '本周剩余可收取次数：3/3'); the second click is taken and nothing is an ERROR (the run died on 「找不到开启挑战」 then)",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "weekly_left": 3,
+    "unregistered": []
+  }
  }
 }
