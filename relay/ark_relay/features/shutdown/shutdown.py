@@ -328,25 +328,54 @@ def _round_of_newest(entries: list[dict]) -> list[dict]:
     return group
 
 
+def _test_windows(eng) -> list[dict]:
+    """The test windows run-one.sh marked (report.test_windows); [] when none or no state dir."""
+    from ark_relay.features.report import report  # noqa: PLC0415 - avoids an import cycle
+    return report.test_windows(getattr(getattr(eng, "cfg", None), "state_dir", None))
+
+
+def _off_shift(e: dict, windows: list[dict]) -> bool:
+    """A record that is no part of a 早班/晚班: a run a person started at AUTO-MAS
+    (raw.hand_started, written by handle._book) or one inside a marked test window
+    (ledger_report.split_test).
+
+    Such a record never joins a scheduled round and never moves the skip key: on
+    10-12 two test-window MaaEnd runs (18:26, 20:04) chained into the 21:30 evening
+    shift and made it read as started by hand (no power-off, 21:45:34), and on 10-13
+    the hand-started OK-WW at 11:07 chained into the morning shift and gave it a new
+    key, so the spent 「下次跑完不关机」 no longer matched and the machine powered off
+    at 11:13:55. The user's rule, 2026-10-10 18:31 (quoted in USER-SWITCHES.txt):
+    the relay powers off only after a 早班/晚班 has finished."""
+    from ark_relay.core import ledger_report  # noqa: PLC0415
+    if (e.get("raw") or {}).get("hand_started"):
+        return True
+    return bool(ledger_report.split_test([e], windows)[1])
+
+
 def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
     """True when the day's most recent round was triggered by hand.
 
+    The newest record being hand-started or a test run (_off_shift) makes it manual;
+    otherwise the round is built from the scheduled records only.
     来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_last_round_manual」。
     """
     if not entries:
         return False
     try:
-        starts = [_entry_time(e) for e in entries]
+        newest_entry = max(entries, key=_entry_time)
     except (KeyError, ValueError):
         return False
-    newest = max(starts)
+    newest = _entry_time(newest_entry)
+    windows = _test_windows(eng)
+    if _off_shift(newest_entry, windows):
+        return True
     # A catch-up run the relay itself dispatched after a client update is not a
     # hand-started run; when it finishes, the machine may power off.
     since = getattr(eng, "_gu_rerun_at", None)
     if since is not None and newest >= since:
         return False
     try:
-        group = _round_of_newest(entries)
+        group = _round_of_newest([e for e in entries if not _off_shift(e, windows)])
     except (KeyError, ValueError, TypeError):
         return False
     if _relay_dispatched(eng, group):
@@ -386,14 +415,17 @@ def _relay_dispatched(eng, group: list[dict]) -> bool:
 def _shutdown_key(eng, now: datetime) -> str:
     """Identifier for this one "time to power off" opportunity.
 
-    It is the number of ledger entries for the day: the count grows every time a queue
-    finishes, so "the one after the evening shift" and "the one after the morning
-    shift" are two different opportunities. Debug mode, or the spent 「下次跑完不关机」
-    mark, skips one of them (modes.shutdown_skipped); neither stops the machine
-    powering off from the next one on.
+    It is the number of the day's ledger entries that belong to a 早班/晚班 (not
+    _off_shift): the count grows every time a scheduled queue's script records, so
+    "the one after the evening shift" and "the one after the morning shift" are two
+    different opportunities, while a hand-started or test run in between leaves the
+    key - and a skip recorded on it - as it was. Debug mode, or the spent
+    「下次跑完不关机」 mark, skips one of them (modes.shutdown_skipped); neither stops
+    the machine powering off from the next one on.
     """
     day = now.strftime("%Y-%m-%d")
-    return f"{day}:{len(eng.state.read_ledger(day))}"
+    windows = _test_windows(eng)
+    return f"{day}:{sum(1 for e in eng.state.read_ledger(day) if not _off_shift(e, windows))}"
 
 
 @dataclass(frozen=True)

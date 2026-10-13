@@ -1,0 +1,7 @@
+{"run_id": "2026-10-10/arknights/MAA-05-00-01", "script": "MAA", "user": "arknights", "started": "2026-10-10T09:00:51+08:00", "finished": "2026-10-10T09:01:10+08:00", "ok": false, "failed_tasks": ["MAA 在完成任务前中止"]}
+{"run_id": "2026-10-10/arknights/MAA-05-01-15", "script": "MAA", "user": "arknights", "started": "2026-10-10T09:01:59+08:00", "finished": "2026-10-10T09:02:14+08:00", "ok": false, "failed_tasks": ["MAA 在完成任务前中止"]}
+{"run_id": "2026-10-10/arknights/MAA-05-02-18", "script": "MAA", "user": "arknights", "started": "2026-10-10T09:03:01+08:00", "finished": "2026-10-10T09:03:17+08:00", "ok": false, "failed_tasks": ["MAA 在完成任务前中止"]}
+{"run_id": "2026-10-10/wuwa/OK-WW-05-03-21", "script": "OK-WW", "user": "wuwa", "started": "2026-10-10T09:03:36+08:00", "finished": "2026-10-10T09:13:15+08:00", "ok": true, "failed_tasks": [], "raw": {"general_result": "Success!"}}
+{"run_id": "2026-10-10/endfield/MaaEnd-05-13-19", "script": "MaaEnd", "user": "endfield", "started": "2026-10-10T09:14:23+08:00", "finished": "2026-10-10T09:37:28+08:00", "ok": true, "failed_tasks": []}
+{"run_id": "2026-10-10/arknights/MAA-08-05-07", "script": "MAA", "user": "arknights", "started": "2026-10-10T12:05:54+08:00", "finished": "2026-10-10T12:24:26+08:00", "ok": true, "failed_tasks": [], "raw": {"hand_started": "9c685302-4a00-4c8d-b562-1ea7f82b7e42"}}
+{"run_id": "2026-10-10/arknights/MAA-17-30-02", "script": "MAA", "user": "arknights", "started": "2026-10-10T21:30:04+08:00", "finished": "2026-10-10T21:44:04+08:00", "ok": true, "failed_tasks": []}
