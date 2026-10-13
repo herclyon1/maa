@@ -78,8 +78,10 @@ dbg = root / "debug"
 
 
 def mk(rel: str, text: str, mtime: float) -> Path:
+    # Bytes, not write_text: in text mode Windows writes "\n" as "\r\n" (run 38363145659), and the
+    # bundle copies bytes, so the expected texts below would not match the archive there.
     p = root / rel
-    p.write_text(text, encoding="utf-8")
+    p.write_bytes(text.encode("utf-8"))
     os.utime(p, (mtime, mtime))
     return p
 
@@ -140,7 +142,7 @@ b0 = body.get("maafw.bak.2026.10.12-10.10.00.000.log", "")
 check("the bak holding t0 starts at t0", (loc("10:00:00") in b0, loc("10:01:00") in b0), (False, True))
 check("an in-window log goes in untouched",
       body.get("maafw.bak.2026.10.12-10.30.00.000.log"),
-      (dbg / "maafw.bak.2026.10.12-10.30.00.000.log").read_text(encoding="utf-8"))
+      (dbg / "maafw.bak.2026.10.12-10.30.00.000.log").read_bytes().decode("utf-8"))
 check("no slice files left beside the volumes", sorted(p.name for p in parts[0].parent.iterdir()),
       [parts[0].name])
 src_size = (dbg / "go-service.log").stat().st_size
