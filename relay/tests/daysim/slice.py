@@ -110,9 +110,19 @@ def redact_bytes(data: bytes) -> bytes:
     return data if out == data else out     # the same object when nothing was masked
 
 
+# A literal each pattern's match contains: `in` is a memchr-speed scan, so whole files
+# (hundreds of MB in a corpus) only meet a regex when the literal is there.
+_SECRET_GUARD = {"cos-akid": (b"AKID",), "cos-signature": (b"q-signature=",),
+                 "wecom-webhook-key": (b"webhook/send?key=",), "wecom-corpsecret": (b"corpsecret=",),
+                 "access-token": (b"access_token=",), "serverchan-key": (b"SCT",),
+                 "github-token": (b"ghp_", b"gho_", b"ghu_", b"ghs_", b"ghr_"), "api-key": (b"sk-",),
+                 "cdk": (b"cdk", b"CDK", b"Cdk")}
+
+
 def secret_hits(data: bytes) -> list[str]:
     """Names of the secret patterns found in `data` (the test runs this over relay/)."""
-    return [n for n, rx, _rep in _SECRET_RES if n not in NOT_SCANNED and rx.search(data)]
+    return [n for n, rx, _rep in _SECRET_RES
+            if n not in NOT_SCANNED and any(g in data for g in _SECRET_GUARD[n]) and rx.search(data)]
 
 
 def clone(src: Path, dst: Path) -> None:
