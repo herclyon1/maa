@@ -187,10 +187,13 @@ procedure DeinitializeSetup();
 begin
   if not StoppedForUpgrade then
     exit;
+  // A failed resume can leave the stop marker switch.py stop wrote (switch.py
+  // WATCHDOG_MARKER): the relay's guard leaves the watchdog down until the next boot,
+  // so only a restart brings both back, not a re-login.
   if RunSwitch('resume "--current=' + OldCurrent + '"') <> 0 then
     if not WizardSilent() then
       MsgBox('升级没有装完，原来的中继也没能重新开起来。原因写在 ' +
-             'C:\ProgramData\ark-relay\switch.log 里；重新登录或重启电脑后它会自己开。',
+             'C:\ProgramData\ark-relay\switch.log 里；重启电脑后它会自己开。',
              mbError, MB_OK);
 end;
 

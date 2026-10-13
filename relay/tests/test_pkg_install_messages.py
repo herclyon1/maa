@@ -6,6 +6,8 @@ service was deleted 2026-10-11 22:33), but the installer's message box still sai
 「已经退回老中继继续跑」 and switch.log said "reverting to the old relay". These checks
 read the installer script and switch.py as text: no message may promise the old relay,
 and the failed-install box names the way back that exists (launch.py rollback).
+Item 6 of the same audit: the box after a failed resume promised the relay back at the
+next re-login, which brings back the relay but not a watchdog whose stop marker remains.
 """
 import re
 import sys
@@ -53,6 +55,14 @@ check("the failed-switch box says the new relay was switched on again",
 check("the failed-switch box names launch.py rollback",
       "launch.py" in failed_box and "rollback" in failed_box, True)
 check("the failed-switch box points at switch.log", "switch.log" in failed_box, True)
+
+print("[a cancelled upgrade whose resume failed: a restart, not a re-login]")
+# switch.py stop writes the stop marker; a resume that fails before start_watchdog leaves
+# it, and the relay's guard leaves the watchdog down until the next boot (switch.py
+# WATCHDOG_MARKER), so a re-login brings back the relay but not its watchdog.
+resume_box = " ".join(boxes(proc("DeinitializeSetup")))
+check("the failed-resume box does not promise a re-login", "重新登录" in resume_box, False)
+check("the failed-resume box says a restart brings it back", "重启电脑" in resume_box, True)
 
 print("[switch.py's own lines say the same]")
 for phrase in ("reverting to the old relay", "the old relay back on", "退回老中继"):
