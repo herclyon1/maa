@@ -244,6 +244,12 @@ def _relay_poweroff_live(engine, now=None) -> bool:
     return (now or _dt.now(tz=SERVER_TZ)) - at < _td(minutes=_sd.ISSUED_STUCK_MIN)
 
 
+# How long a bad-config exit waits for its alarm to leave. Measured: the 21 🩺 pushes in
+# state/alerts 10-06..10-13 reached the group 0-7 s after their record was logged
+# (median 3 s, 7 s for the second of a burst); twice the slowest.
+BAD_CONFIG_PUSH_WAIT_S = 15.0
+
+
 def _say_log_file_problem(log) -> None:
     """relay.log that _setup_logging could not create, said now that errwatch
     listens: the relay then runs on stderr only, and the evidence slices, the
@@ -283,24 +289,34 @@ def _stage_bootstrap():
 
     log = logging.getLogger("ark.service")
     cfg = Config()
-    if problems := cfg.validate():
-        for p in problems:
-            log.error("配置有问题: %s", p)
-        return
-
+    # From here on every WARNING / ERROR any module logs reaches the group (see
+    # errwatch). Installed before the config check: it needs only the notifier and the
+    # state folder, and until 10-13 the check's 「配置提醒」 warnings and the reasons of a
+    # bad-config exit were logged before it and reached relay.log only (audit s23 F1).
     notifier = Notifier(cfg)
-    engine = Engine(cfg, LocalSource(cfg), State(cfg.state_dir), notifier)
-    # From here on each new kind of ERROR any module logs reaches the group once,
-    # and the self-recovered faults go to the daily report (see errwatch).
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     from ark_relay.core.statestore import StateStore  # noqa: PLC0415
-    errwatch.install(notifier, lambda: _relay_poweroff_live(engine),
+    built: list = []          # the engine, once there is one: the power-off probe reads it
+    errwatch.install(notifier, lambda: bool(built) and _relay_poweroff_live(built[0]),
                      version=lambda: StateStore(cfg.state_dir).get("versions", "code"))
     _say_log_file_problem(log)
     # Each relay-error push uploads today's relay.log first, so the push ends with
-    # 「日志：<链接>，出事时刻 HH:MM」 (error_evidence.py, fix bill L).
+    # 「日志：<链接>，出事时刻 HH:MM」 (error_evidence.py, fix bill L) - the bad-config
+    # push below too, whose details are in that log.
     from ark_relay.features.evidence import error_evidence  # noqa: PLC0415
     errwatch.set_evidence_uploader(lambda: error_evidence.upload_daily_logs(cfg))
+    if problems := cfg.validate():
+        # One record, so one group message. Its first line is what the push quotes,
+        # in plain words (texts.plain); the problems themselves name settings and go
+        # to relay.log on the lines below. Then wait for the push: the caller exits
+        # straight after (a push still queued goes out at the next start).
+        log.error("中继的设置有 %d 处不对，中继没有启动，哪一处写在中继日志里：\n%s",
+                  len(problems), "\n".join(f"· {p}" for p in problems))
+        errwatch.drain(BAD_CONFIG_PUSH_WAIT_S)
+        return
+
+    engine = Engine(cfg, LocalSource(cfg), State(cfg.state_dir), notifier)
+    built.append(engine)
     engine.bootstrap()
     log.info("服务模式启动，监视 %s（变更即处理，兜底 %d 秒）",
              cfg.history_dir, cfg.poll_seconds)
