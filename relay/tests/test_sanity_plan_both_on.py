@@ -72,7 +72,7 @@ check("each task in list order", [t["tab"] for t in r.get("tasks") or []],
       ["OperatorProgression", "Essence"])
 check("label names both, in order",
       r.get("label"),
-      "干员养成 → 干员经验，用完再 基质刷取 → 藏剑谷 → 清波寨（2 项都开着，按母本顺序先打前面的）")
+      "干员养成 → 干员经验 → 高级认知载体、初级认知载体，用完再 基质刷取 → 藏剑谷 → 清波寨（2 项都开着，按母本顺序先打前面的）")
 check("understood", r.get("understood"), True)
 
 print("\n[ProtocolSpace on with no tab chosen: say it is unreadable, no blank]")

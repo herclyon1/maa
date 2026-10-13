@@ -607,23 +607,25 @@ def _stage_bits(cfg_dir: Path, s: dict, when) -> list[str]:
     return out
 
 
-def _annihilation_done_tomorrow(automas_dir) -> bool:
+def _annihilation_done_tomorrow(automas_dir) -> "bool | None":
     """Whether AUTO-MAS will skip annihilation tomorrow: its record of the completed
     game-week (Data.AnnihilationCompletedWeek) is tomorrow's week. Since the
     2026-10-11 hand-over (item 13) that record, not a "Close" switch, is what
-    makes annihilation once a week. False when it cannot be read (logged once).
+    makes annihilation once a week. None when it cannot be read - settings()
+    says so with None, and raises on a ScriptConfig.json of the wrong shape (a
+    top-level list: AttributeError in annihilation._maa_users), which is logged
+    once here. The plan then writes 「本周打没打满读不到」, as for the weekly boss.
     """
     from ark_relay.features.weekly.annihilation import WeeklyGate  # noqa: PLC0415
     tomorrow_noon = _tomorrow().replace(hour=12, minute=0, second=0, microsecond=0)
     try:
         done = WeeklyGate(None, automas_dir).settings(tomorrow_noon)["本周已完成"]
     except Exception as exc:  # noqa: BLE001
-        # False makes the plan name the map, as if annihilation runs.
-        _say_once("annihilation", exc, "剿灭本周进度读不到，明日安排里剿灭只按开关现状写，看不出调度程序会不会跳过",
+        _say_once("annihilation", exc, "剿灭本周进度读不到，明日安排里剿灭写「本周打没打满读不到」",
                   exc_info=True)
-        return False
+        return None
     _last_error.pop("annihilation", None)
-    return bool(done)
+    return None if done is None else bool(done)
 
 
 def _collect_route_count(ov: dict) -> int:
@@ -777,7 +779,9 @@ def next_plan(automas_dir: Path | None) -> str:
                     pass
                 if anni == "Close":
                     bits.append("剿灭 关闭")
-                elif _annihilation_done_tomorrow(automas_dir):
+                elif (done := _annihilation_done_tomorrow(automas_dir)) is None:
+                    bits.append("剿灭 本周打没打满读不到")
+                elif done:
                     bits.append("剿灭 本周已打满，跳过")
                 else:
                     bits.append(f"剿灭 {zh.get(anni, anni)}")
@@ -785,8 +789,10 @@ def next_plan(automas_dir: Path | None) -> str:
                 # AUTO-MAS's SanityTaskType is only the tab; sanity_plan resolves
                 # which item the chain actually farms.
                 from ark_relay.features.weekly import sanity_plan  # noqa: PLC0415 - avoids a cycle
-                if label := sanity_plan.read(automas_dir).get("label"):
-                    bits.append(f"理智用于 {label}")
+                # Tomorrow's weekday ticks count, as _maaend_extra_bits does for AutoCollect.
+                sp = sanity_plan.read(automas_dir, when=_tomorrow(), maaend_dir=s.get("path"))
+                if label := sp.get("label"):
+                    bits.append(f"理智用于 {label}" if sp.get("enabled", True) else label)
                 bits += _maaend_extra_bits(automas_dir, s.get("path"), _tomorrow())
             elif s.get("sanity_use"):
                 bits.append(f"理智用于 {s['sanity_use']}")

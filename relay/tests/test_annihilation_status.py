@@ -211,12 +211,12 @@ try:
     A._READ_SAID.clear()
     CAP.lines.clear()
     g, be = world(user("2026-W40"), file_user=user("2026-W41"), mode="hung")
-    check("hung backend: not the file's stale week", g.settings(MON_0846), {"本周已完成": False, "当前": ""})
+    check("hung backend: not the file's stale week (unknown)", g.settings(MON_0846), {"本周已完成": None, "当前": ""})
     check("…and the line says it could not read", g.week_line(MON_0846), "明日方舟 · 剿灭：读不到调度程序记的本周进度")
     warns = [m for lv, m in CAP.lines if lv == "WARNING" and "读不出方舟账号的设置" in m]
     check("one WARNING for two reads", len(warns), 1)
     g, be = world(user("2026-W41"), mode="no_maa")
-    check("backend answers without MAA: not the file either", g.settings(MON_0846)["本周已完成"], False)
+    check("backend answers without MAA: not the file either", g.settings(MON_0846)["本周已完成"], None)
 
     print("\n[machine going down: the backend is not asked, the file is read, nothing warned]")
     # 10-11 21:46:43 (relay.log): SvcStop's last state push asked the backend while Windows
@@ -258,7 +258,7 @@ try:
     print("\n[no AUTO-MAS dir: nothing asked]")
     g = A.WeeklyGate(tmpdir(), None)
     urllib.request.urlopen = lambda *a, **k: (_ for _ in ()).throw(AssertionError("asked"))
-    check("not done, nothing read", g.settings(MON_0846), {"本周已完成": False, "当前": ""})
+    check("unknown, nothing read", g.settings(MON_0846), {"本周已完成": None, "当前": ""})
 finally:
     urllib.request.urlopen = _real_urlopen
 

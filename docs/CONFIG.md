@@ -316,16 +316,19 @@ the id was entered while explaining the feature as "automatic login", and the
 password could not be entered. **Never start this feature without the password.**
 Either both fields or neither.
 
-The Endfield sanity plan is three fields that must agree:
+The Endfield sanity plan is three of ProtocolSpace's options in MaaEnd's master
+copy (`mxu-MaaEnd.json`), which must agree; essence farming is the `AutoEssence`
+task instead:
 
-| Field | Meaning |
+| Option | Meaning |
 |---|---|
-| `Task.SanityTaskType` | which tab: `OperatorProgression` / `WeaponProgression` / `CrisisDrills` / `Essence` |
-| `Task.<that tab>` | which line, e.g. `OperatorProgression` → `OperatorEXP` |
-| `Task.RewardsSetOption` | set A or B - same line, different drops |
+| `ProtocolSpaceTab` | which tab: `OperatorProgression` / `WeaponProgression` / `CrisisDrills` |
+| `<that tab>` | which line, e.g. `OperatorProgression` → `OperatorEXP` |
+| `<line>RewardsSetOption` | which item, one MaaEnd case per line (e.g. `OperatorEXPRewardsSetOption`: `CognitiveCarriers` / `AdvancedCombatRecord`); AUTO-MAS's `RewardsSetA` / `RewardsSetB` are not values MaaEnd holds |
 
-`relay/ark_relay/sanity_plan.py` writes all three together, and the inbox applies
-that batch all-or-nothing, because half a plan farms something nobody asked for.
+`relay/ark_relay/features/weekly/sanity_plan.py` writes all three together and
+refuses a reward set MaaEnd does not define for that line, because half a plan
+farms something nobody asked for.
 
 **The emulator type must be `ldplayer` + `ldconsole.exe`.** AUTO-MAS's
 `EMULATOR_PATH_BOOK["ldplayer"]["executables"][0]` is that filename and the

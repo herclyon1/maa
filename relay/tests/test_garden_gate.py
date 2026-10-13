@@ -86,6 +86,11 @@ def test_gate(tmp: Path) -> None:
     nxt = now + timedelta(days=7)
     check("新的一周会把检查放回去", g.enforce(nxt), True)
     check("检查回来了", garden.TASK_NAME in _read(automas), True)
+    # The earlier week's booking is left for maybe_reopen at boot, so the new-week
+    # notice still sees the roll-over (audit 10-13, test_garden_rollover_after_tick.py).
+    check("过期记账留给开机清", json.loads((tmp / "state.json").read_text())["weekly"]["garden"].get("done_week"),
+          week_key(now))
+    check("开机清账并说新的一周", bool(g.maybe_reopen(nxt)), True)
     check("过期记账已清掉", json.loads((tmp / "state.json").read_text())["weekly"].get("garden") or {}, {})
 
     # 找不到母本时必须安静地不动手，而不是抛异常把中继带崩
