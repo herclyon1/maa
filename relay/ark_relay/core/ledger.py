@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -99,6 +100,11 @@ _LEDGER_TORN_SAID: dict[str, frozenset] = {}
 # count again.
 _INTERIM_SAID: dict[str, str] = {}
 
+# Held by append_ledger and _rewrite_entry. A rewrite reads the day's file, edits
+# one line and replaces the whole file; an append landing between its read and its
+# replace was lost, which is a run missing from the day (audit s4 A6).
+_LEDGER_LOCK = threading.RLock()
+
 
 class State:
     """Which runs have been handled, and today's ledger.
@@ -156,7 +162,7 @@ class State:
             "recruits": rec.recruits,
         }
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
-        with self.ledger_path(day).open("a", encoding="utf-8") as f:
+        with _LEDGER_LOCK, self.ledger_path(day).open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         # Score the current code version (scoreboard.py). Every finished run
         # passes through this line, so the daily report's text cannot change
@@ -203,22 +209,23 @@ class State:
 
     def _rewrite_entry(self, day: str, run_id: str, edit) -> bool:
         p = self.ledger_path(day)
-        if not p.exists():
-            return False
-        lines = p.read_text(encoding="utf-8").splitlines()
-        hit = False
-        for i, ln in enumerate(lines):
-            try:
-                entry = json.loads(ln)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(entry, dict) and entry.get("run_id") == run_id:
-                edit(entry)
-                lines[i] = json.dumps(entry, ensure_ascii=False)
-                hit = True
-        if hit:
-            atomic_write_text(p, "\n".join(lines) + "\n")
-        return hit
+        with _LEDGER_LOCK:
+            if not p.exists():
+                return False
+            lines = p.read_text(encoding="utf-8").splitlines()
+            hit = False
+            for i, ln in enumerate(lines):
+                try:
+                    entry = json.loads(ln)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(entry, dict) and entry.get("run_id") == run_id:
+                    edit(entry)
+                    lines[i] = json.dumps(entry, ensure_ascii=False)
+                    hit = True
+            if hit:
+                atomic_write_text(p, "\n".join(lines) + "\n")
+            return hit
 
     # What every consumer of a ledger entry assumes is present; checked once here.
     # A missing key or a bad time would stop the daily report, and shutdown
