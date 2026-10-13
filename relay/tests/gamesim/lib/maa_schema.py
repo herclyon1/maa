@@ -1,7 +1,10 @@
 """MAA and AUTO-MAS names, values and functions, read from the pinned upstream sources.
 
-The pin is relay/tests/gamesim/upstream/maa-v6.19.0-beta.1/ (SOURCE.txt lists every
-file with its repo, tag, commit, git blob sha1 and sha256). Nothing here restates an
+The pin is the MAA installed on the machine, relay/tests/gamesim/upstream/maa-v6.19.0/
+(since 2026-10-12 09:03, MAA gui.log line 7856 「Version v6.19.0」; written by
+gamesim/maa/fetch_pin.py). SOURCE.txt lists every file with its repo, tag, commit, git
+blob sha1 and sha256. maa-v6.19.0-beta.1/ (BETA1) stays for the cases that replay the
+tree the machine had on 2026-10-10 and 10-11 (U12's pin, with MAA dev's Stages/YW.json). Nothing here restates an
 upstream rule in our own words: names are parsed out of the upstream files, and where
 a rule is code (AUTO-MAS's validators, its week marker, its config copy, its task
 lookup) the upstream function itself is executed, cut out of the pinned file.
@@ -19,17 +22,20 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 
-PIN = Path(__file__).resolve().parents[1] / "upstream" / "maa-v6.19.0-beta.1"
+UPSTREAM = Path(__file__).resolve().parents[1] / "upstream"
+PIN = UPSTREAM / "maa-v6.19.0"
+BETA1 = UPSTREAM / "maa-v6.19.0-beta.1"
+PINS = (PIN, BETA1)
 MAA = PIN / "maa"
 AUTOMAS = PIN / "automas"
 
 
 # ---------- the pin itself ----------
 
-def pin_rows() -> list[dict]:
+def pin_rows(pin: Path = PIN) -> list[dict]:
     """SOURCE.txt rows: local, repo, tag, commit, path, blob, sha256."""
     rows = []
-    for line in (PIN / "SOURCE.txt").read_text(encoding="utf-8").splitlines():
+    for line in (pin / "SOURCE.txt").read_text(encoding="utf-8").splitlines():
         if not line or line.startswith("#"):
             continue
         local, repo, tag, commit, path, blob, sha = line.split("\t")
@@ -38,13 +44,13 @@ def pin_rows() -> list[dict]:
     return rows
 
 
-def pin_problems() -> list[str]:
+def pin_problems(pin: Path = PIN) -> list[str]:
     """Files that differ from SOURCE.txt (edited by hand), are missing, or are not listed."""
     out = []
     listed = set()
-    for r in pin_rows():
+    for r in pin_rows(pin):
         listed.add(r["local"])
-        f = PIN / r["local"]
+        f = pin / r["local"]
         if not f.is_file():
             out.append(f"missing: {r['local']}")
             continue
@@ -53,8 +59,8 @@ def pin_problems() -> list[str]:
             out.append(f"sha256 differs: {r['local']}")
         if hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest() != r["blob"]:
             out.append(f"git blob differs: {r['local']}")
-    for f in PIN.rglob("*"):
-        rel = f.relative_to(PIN).as_posix()
+    for f in pin.rglob("*"):
+        rel = f.relative_to(pin).as_posix()
         if f.is_file() and rel != "SOURCE.txt" and rel not in listed:
             out.append(f"not in SOURCE.txt: {rel}")
     return out
@@ -153,13 +159,14 @@ def core_reads(path: str) -> set[str]:
 # ---------- MAA's stage data ----------
 
 def make_maa_install(root: Path, yw: str | None = None) -> Path:
-    """A MAA folder holding the pinned resource/tasks tree; `yw` ("c09d3fe7" or
-    "cc780293") lays that dev commit's Stages/YW.json over it, as MAA's resource
-    update did on the machine. No cache/resource: no hot update."""
+    """A MAA folder holding the installed version's resource/tasks tree. `yw`
+    ("c09d3fe7" or "cc780293") gives instead the tree of 2026-10-10 / 10-11: the
+    v6.19.0-beta.1 tasks with that dev commit's Stages/YW.json laid over them, as MAA's
+    resource update did on the machine. No cache/resource: no hot update."""
     tasks = root / "resource" / "tasks"
-    shutil.copytree(MAA / "resource" / "tasks", tasks, dirs_exist_ok=True)
+    shutil.copytree((BETA1 if yw else PIN) / "maa" / "resource" / "tasks", tasks, dirs_exist_ok=True)
     if yw:
-        shutil.copyfile(PIN / f"maa-dev-{yw}" / "resource" / "tasks" / "Stages" / "YW.json",
+        shutil.copyfile(BETA1 / f"maa-dev-{yw}" / "resource" / "tasks" / "Stages" / "YW.json",
                         tasks / "Stages" / "YW.json")
     return root
 

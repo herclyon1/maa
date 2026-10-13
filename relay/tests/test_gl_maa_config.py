@@ -1,7 +1,8 @@
 """T12 for MAA: what our code writes into MAA's and AUTO-MAS's configs is what they read.
 
 Every expected verdict below comes from a machine record or from the pinned upstream
-sources (gamesim/upstream/maa-v6.19.0-beta.1, SOURCE.txt), never from the relay code
+sources (gamesim/upstream/maa-v6.19.0, the version installed since 10-12, SOURCE.txt;
+maa-v6.19.0-beta.1 for the 10-10 replay), never from the relay code
 under test. Upstream rules that are code are executed from the pinned files
 (gamesim/lib/maa_schema.py); the one fake, the AUTO-MAS backend, is pinned by the body
 hashes of the handlers it stands in for.
@@ -12,7 +13,7 @@ Cases (a name on the command line runs only those cases):
               the relay imitates (stagegate: FightTask::set_params,
               StageNavigationTask::set_stage_name) or this test fakes (the backend
               handlers, ConfigItem.setValue) still have the bodies they were checked
-              against.
+              against; MAA still prints drop lines the way collector_maa reads them.
   yw4         2026-10-10: the phone set the stage to YW-4 at 04:25 and MAA refused the
               Fight task at 09:01 (序列化失败), stopping the whole run. With MAA's task
               tree as on the machine that morning (v6.19.0-beta.1 resource/tasks plus
@@ -109,6 +110,18 @@ PINNED_BODIES = {
         "adf5b637f3accf6d28d60fab98035c35f57c2a6331f71a3cc373f3f40d56137d",
     ("automas", "app/models/ConfigBase.py", "ConfigItem.setValue"):
         "a95cd9a53c4841022301c48e3c42aab3441971da2820a170e7c5175229bc6d85",
+}
+
+# How MAA prints a drop line; collector_maa._DROP_ITEM / _maa_count read exactly this shape
+# ("龙门币 : 10.1k (+1440)"). A new pin that prints otherwise turns `pin` red.
+PRINTED = {
+    "src/MaaWpfGui/Main/AsstProxy.cs": [
+        'allDrops += $"{itemName} : {totalQuantity.FormatNumber(false)}";',
+        'allDrops += $" (+{addQuantity.FormatNumber(false)})";'],
+    "src/MaaWpfGui/Extensions/NumberExtensions.cs": [
+        '>= 1_000_000_000 => $"{n / 1_000_000_000.0:#.#}B",',
+        '>= 1_000_000 => $"{n / 1_000_000.0:#.#}M",',
+        '>= 10_000 => $"{n / 1_000.0:#.#}k",'],
 }
 
 EVIDENCE = {
@@ -288,10 +301,15 @@ def _quiet(fn, *a, **k):
 # ---------- cases ----------
 
 def case_pin() -> None:
-    check("pinned files match SOURCE.txt", S.pin_problems(), [])
+    for pin in S.PINS:
+        check(f"pinned files match SOURCE.txt: {pin.name}", S.pin_problems(pin), [])
     for (repo, path, fn), want in PINNED_BODIES.items():
         body = S.cpp_body(path, fn) if repo == "maa" else S.py_body(path, fn)
         check(f"upstream body unchanged: {path} {fn}", S.body_sha(body), want)
+    for path, lines in PRINTED.items():
+        text = S.maa_text(path)
+        check(f"MAA prints drop lines as collector_maa reads them: {path}",
+              [ln for ln in lines if ln not in text], [])
 
 
 def case_yw4() -> None:

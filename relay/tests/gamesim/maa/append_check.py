@@ -44,6 +44,8 @@ sys.path.insert(0, str(HERE.parents[2]))          # relay: ark_relay (stagegate)
 
 from gamesim.lib import maa_schema as S  # noqa: E402
 
+# The release whose own tree ("tag", no Stages/YW.json) the 10-10 / 10-11 refusals replay;
+# the machine has run v6.19.0 since 10-12 (maa_schema.PIN), whose release ships YW.json.
 TAG = "v6.19.0-beta.1"
 REPO = "MaaAssistantArknights/MaaAssistantArknights"
 ASSET = {"win32": f"MAA-{TAG}-win-x64.zip", "linux": f"MAA-{TAG}-linux-x86_64.tar.gz"}
@@ -132,14 +134,14 @@ def set_tree(maa: Path, tree: str) -> None:
     if tree == "tag":
         yw.unlink(missing_ok=True)
     else:
-        shutil.copyfile(S.PIN / f"maa-dev-{tree}" / "resource" / "tasks" / "Stages" / "YW.json", yw)
+        shutil.copyfile(S.BETA1 / f"maa-dev-{tree}" / "resource" / "tasks" / "Stages" / "YW.json", yw)
 
 
 def stage_names() -> list[str]:
     """Stage names to compare stagegate with the core on: every non-template key of the
     pinned Stages/*.json, and main-line chapter/episode pairs either side of what exists."""
     names = {""}
-    for f in sorted((S.MAA / "resource" / "tasks" / "Stages").glob("*.json")):
+    for f in sorted((S.BETA1 / "maa" / "resource" / "tasks" / "Stages").glob("*.json")):
         names |= {k for k in json.loads(f.read_text(encoding="utf-8")) if "@" not in k}
     names |= {f"{c}-{n}" for c in range(0, 17) for n in (1, 7, 20)}
     names |= {f"{c}-1-{d}" for c in (9, 10, 15) for d in ("Hard", "Normal")}

@@ -34,8 +34,9 @@ _STAGE_DROPS_WORD = "掉落统计"
 # "StageDrops", v6.19.0 :2285-2288; the same at v6.16.8 and v6.17.0-beta.6, the
 # versions of 08-14 and 08-26): from 10000 up a number is rounded to one decimal
 # with a unit, `{n / 1000.0:#.#}k` (Extensions/NumberExtensions.cs :25; M and B
-# above). Real LMD lines, 2026-08-26 15:19:37 and 2026-08-14 07:08:04
-# (gamesim/corpus/maa/history):
+# above). Both files are pinned in relay/tests/gamesim/upstream/maa-v6.19.0, and
+# test_gl_maa_config.py `pin` fails if a new pin prints otherwise. Real LMD lines,
+# 2026-08-26 15:19:37 and 2026-08-14 07:08:04 (gamesim/corpus/maa/history):
 #   <LMD> : 10.1k (+1440)
 #   <LMD> : 13k (+1440)
 _MAA_NUMBER = r"\d+(?:\.\d+)?[kMB]?"
