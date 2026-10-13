@@ -14,8 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay.features.alarm.gamelogs import _okww_nest_expected  # noqa: E402
-from _tmp import tmpdir  # noqa: E402
+from ark_relay.features.alarm.gamelogs import _okww_nest_expected
+from _tmp import tmpdir
 
 fails = []
 

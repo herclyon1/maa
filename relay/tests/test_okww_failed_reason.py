@@ -1,8 +1,8 @@
 """A run the overlay ended as failed is pushed with its reason once, without the OCR dump.
 
 Audit 2026-10-13 item 14, two real lines of 2026-10-12 (machine-okww-logs):
-* 09:52 「这一趟按失败结束：周本领奖：这一步没做成 …」 became 「周本：周本领奖：…」 -
-  the prefix check wanted 「周本：」 and the overlay wrote 「周本领奖：」;
+* 09:52 the overlay's reason started with the step 「周本领奖：」, but the prefix
+  check looked for 「周本：」 only, so the pushed reason named the step twice;
 * 11:45 the reason ended in 「整屏读到 [0_1.00, 41/240_1.00, …]」, a whole screen of
   OCR fragments, and that went into the alert and the verdict's detail. It stays in
   the log only.
@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.features.verify import collector_okww as co, outcome  # noqa: E402
+from ark_relay.features.verify import collector_okww as co, outcome
 
 fails = []
 
