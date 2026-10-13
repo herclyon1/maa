@@ -116,6 +116,7 @@ def override(cls, name, *, expect_sha=None, adapt=False):
     upstream's 「every nest with a 0」 - the opposite of the order. So a changed
     upstream body is applied anyway (the copy reads what it can from upstream at
     run time, see _upstream_nest_top) and listed under `adapted`, not `skipped`.
+    A changed call shape still skips it: bound, every call would be a TypeError.
     """
     def wrap(fn):
         label = f"{cls.__name__}.{name}"
@@ -1685,6 +1686,18 @@ def _install_nest():
         """Wanted name rows that have no 「x/y」 count beside them."""
         return [w for w in rows if not any(beside(c, w) for c in counts)]
 
+    def row_name(self, count_box, rows):
+        """The nest name OCR read on the row of `count_box` (for NEST_NAME_LINE), or None.
+
+        With the 只刷 filter wanted_rows already read the names; without it one more
+        read of the list, taken only for the row about to be clicked."""
+        if rows is not None:
+            named = getattr(self, "_ark_nest_named_rows", None) or []
+        else:
+            named = [((b.name or "").strip(), b.y + b.height / 2) for b in self.ocr(0.35, top, 1, 0.96)
+                     if re.search(r"[\u4e00-\u9fff]", b.name or "") and not re.search(self.count_re, b.name or "")]
+        return next((n for n, w in named if beside(count_box, w)), None)
+
     @override(NightmareNestTask, "find_nest", expect_sha=_NEST_FIND_SHA, adapt=True)
     @refuse(top_unread)
     def find_nest(self):
@@ -1727,8 +1740,7 @@ def _install_nest():
                 self._ark_nest_progress[cache_key] = numerator
                 if not hasattr(self, "_ark_nest_names"):
                     self._ark_nest_names = {}
-                self._ark_nest_names[cache_key] = next(
-                    (n for n, w in getattr(self, "_ark_nest_named_rows", None) or [] if beside(count_box, w)), None)
+                self._ark_nest_names[cache_key] = row_name(self, count_box, rows)
                 count_box.x = self.width_of_screen(0.9)
                 count_box.y -= count_box.height * 0.9
                 count_box.height = 1

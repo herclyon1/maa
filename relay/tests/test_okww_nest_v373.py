@@ -331,5 +331,18 @@ except Exception:  # noqa: BLE001
 check("a key with no name read: 「?」", [m for m in t.infos if m.startswith("nightmare nest: nest name: ")],
       ["nightmare nest: nest name: ?"])
 
+print("\n[without the 只刷 filter the name is read too (one more read of the list), not 「?」]")
+t = fake(Nest, [page1("10/41"), PAGE2], ns, only="")
+t.run()
+key = t.fought[0]
+t.screenshot = lambda name: None
+t.wait_feature = lambda *a, **kw: (_ for _ in ()).throw(Exception("wait_feature timeout"))
+try:
+    Nest.combat_nest(t, types.SimpleNamespace(cache_key=key))
+except Exception:  # noqa: BLE001
+    pass
+check("no filter: the first row's name, 「新区残象聚落」", [m for m in t.infos if m.startswith("nightmare nest: nest name: ")],
+      ["nightmare nest: nest name: 新区残象聚落"])
+
 print("\n" +("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)
