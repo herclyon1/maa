@@ -1,0 +1,44 @@
+MAA verdict corpus (T10, unit U13c of the offline game-layer harness).
+
+Pulled 2026-10-13 from the game PC, read-only; nothing here is hand-written except
+cases.json and the labels' evidence notes.
+
+history/<date>/<stem>.json, <stem>.log.gz
+  Every MAA record AUTO-MAS kept under D:\ark\automas\history\<date>\arknights\,
+  2026-08-14 .. 2026-10-13 (167 records). The .log is AUTO-MAS's copy of MAA's gui
+  log for that run, the .json AUTO-MAS's own result. gzip -9, mtime 0.
+
+asst/<MMDD>-<stem>.asst.log.gz
+  MAA's own debug\asst.log cut to the window the relay reads for that run
+  (features/alarm/verdict.py, handle.py): from the first timestamp of the run's
+  history log to its last timestamp + 5 minutes; a line without a timestamp follows
+  the line before it. Sources: the asst.bak.log / asst.log inside MAA's own report
+  zip in the evidence bundle 2026-09-22_arknights_MAA-17-30-02 (covering
+  2026-09-13 21:38 .. 2026-09-22 21:47). To keep the size down, [TRC] lines are
+  dropped except InfrastAbstractTask::on_run_fails (cited by T10-4); every
+  [INF] / [WRN] / [ERR] line, including MAA's whole callback stream
+  (TaskChain* / SubTask* / AllTasksCompleted), is kept in order.
+
+Redaction (public repo), applied to every log before gzip and asserted by
+test_gl_corpus_maa.py: scripts/mac/redact.py redact_text, then penguin-stats /
+yituliu ids (PenguinID N, "penguin_id", "yituliu_id", report "uuid") -> zeros,
+MAA's instance "uuid" -> zeros, X-Penguin-Idempotency-Key and download auth_key
+values -> <redacted>, COS q-ak key ids -> AKIDREDACTED. Parsing every redacted log gives the
+same collector_maa result as the original (checked when the corpus was built).
+
+Labels (history/<date>/expected.json), each with its evidence:
+  drop_statistics      MAA's last printed running total per stage and item, summed
+                       over stages; where MAA prints the total rounded ("12.1k
+                       (+576)") the last exact total plus the exact (+N) deltas
+                       after it. Cross-checked against AUTO-MAS's own
+                       drop_statistics: equal on every record where AUTO-MAS has
+                       one, except 2026-08-26 MAA-11-03-30 where AUTO-MAS reads
+                       MAA's "12.1k" as 12.
+  annihilation_*       MAA's own last "剿灭模式 : a / b" line. A pass with no such
+                       line is only labelled annihilation=true; whether the week
+                       was done is asserted only where a later run of the same
+                       week proves it (cases.json T10-7).
+  maa_config_rejected  null unless MAA's gui log has a 序列化失败 / 添加任务失败 line
+                       or an [ERR] "Cannot set stage" / "invalid params" line; then
+                       the task, MAA's word and the stage MAA last selected.
+  automas_result       AUTO-MAS's maa_result, for reference only.

@@ -1,0 +1,27 @@
+{
+ "MAA-05-00-00": {
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "代糖": 1,
+   "固源岩": 23,
+   "基础作战记录": 21,
+   "源岩": 4,
+   "破损装置": 2,
+   "赤金": 1,
+   "酯原料": 3,
+   "龙门币": 1368
+  },
+  "evidence": "drops: AUTO-MAS's own drop_statistics in the .json; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-17-30-01": {
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "固源岩": 4,
+   "基础作战记录": 3,
+   "龙门币": 216
+  },
+  "evidence": "drops: AUTO-MAS's own drop_statistics in the .json; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ }
+}
