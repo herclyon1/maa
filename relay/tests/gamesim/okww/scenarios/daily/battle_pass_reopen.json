@@ -97,7 +97,7 @@
      "click": [
       0.67,
       0.9,
-      0.6900000000000001,
+      0.69,
       0.92
      ],
      "to": "page",
@@ -108,7 +108,7 @@
       0.03,
       0.16,
       0.05,
-      0.18000000000000002
+      0.18
      ],
      "to": "page",
      "evidence": "upstream claim_battle_pass's clicks on the open page, DailyTask.py:214 (no recording of the page; the overlay runs them unchanged)"
