@@ -987,6 +987,7 @@ def _claim_tiers(task):
     due = [t for t in DAILY_TIERS if t <= points]
     labels, step, gray = bar
     scores = tier_scores(gray, labels, step)
+    clicked = []
     for _round in range(2):
         todo = [t for t in due if t in labels and scores.get(t, -1) < _CHECKED_MIN]
         if not todo:
@@ -995,16 +996,36 @@ def _claim_tiers(task):
             cx, cy = chest_at(labels, step, t)
             task.log_info(f"活跃奖励：点 {t} 档宝箱（{cx:.0f},{cy:.0f}）")
             task.click_relative(cx / gray.shape[1], cy / gray.shape[0], after_sleep=2)
+            clicked.append(t)
             again = _bar(task)
             if again is None:
-                break
+                # The frame in hand is from before this click: scoring it would call a
+                # chest the game just took 「not claimed」. Nothing on screen to check.
+                _shot(task, "daily_reward_row_lost")
+                task.log_info(f"{DAILY_FAILED}点了 {t} 档宝箱后那一排宝箱认不出来了，没法核对"
+                              f"（活跃度 {points}，点过 {'、'.join(map(str, clicked))}）")
+                return
             labels, step, gray = again
         scores = tier_scores(gray, labels, step)
     shown = "，".join(f"{t}:{scores.get(t, '无')}" for t in DAILY_TIERS)
     missing = [t for t in due if scores.get(t, -1) < _CHECKED_MIN]
-    if missing:
+    # A due tier whose label OCR never found was never clicked: say so, not 「点了没领到」.
+    unclicked = [t for t in missing if t not in clicked]
+    unclaimed = [t for t in missing if t in clicked]
+    # Chests cannot be claimed past the points, so a claimed tick above them means the
+    # points were read too low (e.g. 4 for 40) and `due` left chests out.
+    above = [t for t in DAILY_TIERS if t > points and scores.get(t, -1) >= _CHECKED_MIN]
+    said = []
+    if unclaimed:
+        said.append(f"{'、'.join(map(str, unclaimed))} 档点了没领到")
+    if unclicked:
+        said.append(f"{'、'.join(map(str, unclicked))} 档的数字没认出来，没点")
+    if above:
+        said.append(f"活跃度读成 {points}，可 {'、'.join(map(str, above))} 档已显示领过，分数读低了，"
+                    f"有没有漏点的核对不了")
+    if said:
         _shot(task, "daily_reward_unclaimed")
-        task.log_info(f"{DAILY_FAILED}{'、'.join(map(str, missing))} 档点了没领到（活跃度 {points}，各档对勾分 {shown}）")
+        task.log_info(f"{DAILY_FAILED}{'；'.join(said)}（活跃度 {points}，各档对勾分 {shown}）")
     else:
         task.log_info(f"{DAILY_OK}（活跃度 {points}，已领 {'、'.join(map(str, due)) or '无'}，各档对勾分 {shown}）")
 
