@@ -72,11 +72,13 @@ runs and the log says 「战令：没有重试，…」. The relay turns these l
 the item 「战令（先约电台）点了领取」 (`outcome.battle_pass_checks`, also in the 「dailies done before the run」
 branch); red goes to the group in 「⚠️ 这一轮没干完」. Test: `relay/tests/test_okww_battle_pass_claim.py`.
 
-**Tacet list groups (2026-09-30, WuWa 3.7):** `TacetTask.teleport_to_tacet` is wrapped so an instance still
+**Tacet list groups (2026-09-30, WuWa 3.7; removed 2026-10-13):** upstream v3.7.4 sets
+`structure = [4, 5, 5, 7]` itself (TacetTask.py:18), so the wrapper below never changed anything
+and was taken out with its patch-effect check and test. The 09-30 record: `TacetTask.teleport_to_tacet` was wrapped so an instance still
 carrying upstream's pre-3.7 `structure = [2, 5, 5, 7]` clicks by `[4, 5, 5, 7]` (沉心域 / 烬心域 added at
 the top of F2 「无音清剿」, read in game). Any other list - upstream's own fix, or the hand edit made on the
 machine that day - is left alone. Each call logs 「无音区分组：…」, checked by `outcome.patch_effect_checks`;
-`tests/test_okww_tacet_groups.py` runs upstream's real v3.6.9-beta.1 `TacetTask.py` against it.
+`tests/test_okww_tacet_groups.py` (removed with it) ran upstream's real v3.6.9-beta.1 `TacetTask.py` against it.
 
 **Game launch argument (2026-10-01, WuWa 3.7; removed 2026-10-13):** OK-WW v3.7.4 passes
 `-krqlv=<Game Package>` itself (config.py:203 -> src/game_launcher.py:4-7, appended by
