@@ -34,8 +34,8 @@ if not _CTX.is_file():
 _HERE = json.loads(_CTX.read_text(encoding="utf-8"))["gamesim_okww"]
 sys.path.insert(0, _HERE)
 try:
-    import harness  # noqa: E402
-    import scenario as scn  # noqa: E402
+    import harness
+    import scenario as scn
 except ImportError as exc:
     raise SystemExit(f"cannot import the harness from {_HERE}: {exc}") from None
 import numpy as np  # noqa: E402

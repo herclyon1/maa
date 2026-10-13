@@ -54,10 +54,13 @@ CTX = json.loads(CONTEXT.read_text(encoding="utf-8"))
 
 import cv2  # noqa: E402  OK-WW's own dependency (opencv-python in its requirements.txt)
 import numpy as np  # noqa: E402
+import ok.test as ok_test  # noqa: E402  init_ok keeps the OK it starts in ok.test.ok
+from config import config as OKWW_CONFIG  # noqa: E402  OK-WW's own config.py, as its tests import it
 from ok import og  # noqa: E402
 from ok.device.capture_methods.base import BaseCaptureMethod  # noqa: E402
 from ok.device.interaction_methods.base import BaseInteraction  # noqa: E402
 from ok.task.task import BaseTask  # noqa: E402
+from ok.util.logger import Logger as OkLogger  # noqa: E402
 from ok.test.TaskTestCase import TaskTestCase  # noqa: E402
 from ok.feature.Box import Box, find_boxes_by_name  # noqa: E402
 
@@ -388,11 +391,9 @@ class ScriptedCase(TaskTestCase):
     @classmethod
     def setUpClass(cls):
         if cls.config is None:
-            from config import config      # OK-WW's own config.py, as its tests import it
-            cls.config = config
+            cls.config = OKWW_CONFIG
         super().setUpClass()                 # OK(config): the overlay is executed here, or never
-        from ok.test import ok as started
-        dm = started.device_manager
+        dm = ok_test.ok.device_manager
         cls.capture = ScriptedCapture(dm.exit_event)
         cls.interaction = RecordingInteraction(cls.capture)
         dm.capture_method = cls.capture      # where init_ok put ImageCaptureMethod
@@ -517,7 +518,7 @@ class ScriptedCase(TaskTestCase):
         run = Run(sc, temp=tmp)
         task = self.task
         tap = _LogTap(run.log)
-        ok_logger = logging.getLogger("ok")
+        ok_logger = OkLogger.get_logger("gamesim").logger     # the `ok` logger every ok-script Logger writes to
         saved = self._redirect(sc, tmp)
         old_cfg = self._apply_task_config(sc)
         real_shot = task.screenshot

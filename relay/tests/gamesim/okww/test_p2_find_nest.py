@@ -23,7 +23,7 @@ if not _CTX.is_file():
 _HERE = json.loads(_CTX.read_text(encoding="utf-8"))["gamesim_okww"]
 sys.path.insert(0, _HERE)
 try:
-    from harness import ScriptedCase  # noqa: E402
+    from harness import ScriptedCase
 except ImportError as exc:
     raise SystemExit(f"cannot import the harness from {_HERE}: {exc}") from None
 from src.task.NightmareNestTask import NightmareNestTask  # noqa: E402
