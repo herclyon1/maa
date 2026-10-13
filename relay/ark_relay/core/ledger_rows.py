@@ -187,6 +187,9 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
     if raw.get("maaend_sanity_spent") or raw.get("maaend_medicine"):
         cost.append(f"理智 {raw.get('maaend_sanity_spent') or 0}，"
                     f"加强剂 {raw.get('maaend_medicine') or 0}")
+    elif farm and runs:
+        # It ran but no figure was read: never say it did not run.
+        cost.append("理智消耗没读到")
     elif farm and raw.get("sanity_exhausted"):
         cost.append("理智不足，一次没开成")
     if drops := _fmt_items(raw.get("maaend_farm_drops") or {}):
