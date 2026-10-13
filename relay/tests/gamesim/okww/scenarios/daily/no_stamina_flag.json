@@ -1,0 +1,76 @@
+{
+ "case": "no_stamina_flag",
+ "about": "T14, e4f49004. With the 「不刷体力」 flag file present the farm hook refuses the farm. Upstream's own call (gate open: progress 0, points 0 as on 2026-10-05 10:35:05) is refused once, and claim_daily must not take that for 「upstream did not farm」 and call the farm a second time. Red at e4f49004~1: the refusal was not counted, so 「上游这趟不刷体力…」 was logged and the farm called again.",
+ "task": [
+  "src.task.DailyTask",
+  "DailyTask"
+ ],
+ "start": "daily_page",
+ "config": {
+  "evidence": "the flag: the overlay's NO_STAMINA_FLAG file, as on 2026-09-01 (OK-WW-01-05-37.log:426, AUTO-MAS history, '本地补丁：刷体力已禁用（标记文件在），这一趟不花波片'). Which to Farm as on ok-script.2026-10-12.log:2160 (TacetTask)",
+  "task": {
+   "Which to Farm": "Tacet Suppression"
+  },
+  "flags": {
+   "no_stamina": true
+  }
+ },
+ "states": {
+  "daily_page": {
+   "frame": "daily_activity/2026-10-11_092951_140.png",
+   "transitions": [
+    {
+     "click": [
+      0.87,
+      0.23,
+      0.9,
+      0.27
+     ],
+     "to": "daily_page",
+     "evidence": "ok-script.2026-10-11.log:666 'no_boss_proceed, click claim' (also ok-script.2026-10-10.log:566): claim_daily clicks (0.885, 0.250) when boss_proceed is not in (0.803, 0.189, 0.960, 0.312) (upstream DailyTask.py:252-255, kept by the overlay's _claim_daily_checked); the next lines on both days read this chest row"
+    },
+    {
+     "key": "esc",
+     "to": "closed",
+     "evidence": "ok-script.2026-10-11.log:675-676 'current task wait main esc=True' -> 'in main esc=True' right after the claim: ensure_main(time_out=10) leaves the book with Esc (BaseWWTask.is_main -> back)"
+    }
+   ]
+  },
+  "closed": {
+   "end": true,
+   "about": "the book closed; the claim is over"
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "decision": "farm_tacet",
+    "value": {
+     "daily": true
+    },
+    "evidence": "upstream DailyTask.run's own call with the gate open (DailyTask.py:117-121); COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-ww-log/logs/ok-script.log:1439-1440 read progress 0, points 0"
+   },
+   {
+    "state": "closed",
+    "evidence": "ok-script.2026-10-11.log:675-676 'current task wait main esc=True' -> 'in main esc=True' right after the claim: ensure_main(time_out=10) leaves the book with Esc (BaseWWTask.is_main -> back)"
+   }
+  ],
+  "end": "closed",
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "刷体力已禁用（标记文件在），这一趟不花波片",
+    "evidence": "OK-WW-01-05-37.log:426 (2026-09-01): the flag stops the farm with this sentence; the relay keys on '刷体力已禁用（' (outcome._STAMINA_FLAGGED)"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "上游这趟不刷体力",
+    "evidence": "the farm was reached and refused: there is nothing left over to farm, and a second call only adds a second refusal (e4f49004: 'called the farm a second time (a second flag line)')"
+   }
+  ],
+  "verdict": null
+ }
+}

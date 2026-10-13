@@ -1,0 +1,64 @@
+{
+ "case": "stamina_split_0921",
+ "about": "T14, a549c57e. 2026-09-21 10:25:49 the waveplate strip read in two pieces at 240/240; upstream took the current as 0 (no whole 数/数) and the backup as 240, and a full 240 was spent as 60 ('current stamina: -60 must_use completed'). The split read must come back as 240 current, 55 backup. Provisional: the read is inferred from the logged result (see the state's evidence). Red at a549c57e~1: upstream's get_stamina returns 0 and 240 from it, as on the machine.",
+ "task": [
+  "src.task.DailyTask",
+  "DailyTask"
+ ],
+ "start": "reward_dialog",
+ "states": {
+  "reward_dialog": {
+   "provisional_ocr": [
+    {
+     "text": "55",
+     "box": [
+      0.6995,
+      0.0451,
+      0.7278,
+      0.079
+     ],
+     "evidence": "inferred, not logged (the raw read was never logged before a549c57e): in the tacet reward dialog of 2026-09-21 10:25:49 upstream get_stamina logged 'info_set current_stamina 0' and 'info_set back_up_stamina 240' (COS bundle 2026-09-21_wuwa_OK-WW-05-33-53 OK-WW-05-33-53.log:1524-1525). Its loop (BaseWWTask.py:409-424) sets the current only from a whole 数/数 block and lets each pure number overwrite the backup, so the strip it read ended in a pure 240 and held no whole 数/数: 240/240 came back as 240 and /240 (a549c57e: 'read 「0 / 240」 at 240/240'). Places: the strip of boss_level_page/2026-09-21_102043_qiankui.png that day (truth '55', '240/240')"
+    },
+    {
+     "text": "240",
+     "box": [
+      0.8055,
+      0.0447,
+      0.8392,
+      0.0793
+     ],
+     "evidence": "inferred, not logged (the raw read was never logged before a549c57e): in the tacet reward dialog of 2026-09-21 10:25:49 upstream get_stamina logged 'info_set current_stamina 0' and 'info_set back_up_stamina 240' (COS bundle 2026-09-21_wuwa_OK-WW-05-33-53 OK-WW-05-33-53.log:1524-1525). Its loop (BaseWWTask.py:409-424) sets the current only from a whole 数/数 block and lets each pure number overwrite the backup, so the strip it read ended in a pure 240 and held no whole 数/数: 240/240 came back as 240 and /240 (a549c57e: 'read 「0 / 240」 at 240/240'). Places: the strip of boss_level_page/2026-09-21_102043_qiankui.png that day (truth '55', '240/240')"
+    },
+    {
+     "text": "/240",
+     "box": [
+      0.8392,
+      0.0447,
+      0.879,
+      0.0793
+     ],
+     "evidence": "inferred, not logged (the raw read was never logged before a549c57e): in the tacet reward dialog of 2026-09-21 10:25:49 upstream get_stamina logged 'info_set current_stamina 0' and 'info_set back_up_stamina 240' (COS bundle 2026-09-21_wuwa_OK-WW-05-33-53 OK-WW-05-33-53.log:1524-1525). Its loop (BaseWWTask.py:409-424) sets the current only from a whole 数/数 block and lets each pure number overwrite the backup, so the strip it read ended in a pure 240 and held no whole 数/数: 240/240 came back as 240 and /240 (a549c57e: 'read 「0 / 240」 at 240/240'). Places: the strip of boss_level_page/2026-09-21_102043_qiankui.png that day (truth '55', '240/240')"
+    }
+   ]
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "decision": "get_stamina",
+    "value": [
+     240,
+     55
+    ],
+    "evidence": "the strip showed 240/240 with 55 in reserve at 10:20:43 (boss_level_page/2026-09-21_102043_qiankui.png truth) and nothing was spent before 10:25 (the weekly never started: no_start_btn 10:20:58); the settlement after the one 60 spend shows 剩余180 (challenge_success/2026-09-21_102553_tacet.png truth)"
+   }
+  ],
+  "end": null,
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [],
+  "log_never": [],
+  "verdict": null
+ }
+}
