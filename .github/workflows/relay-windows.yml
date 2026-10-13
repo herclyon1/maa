@@ -51,7 +51,13 @@ jobs:
       # hashes are of those. Set before the checkout, for this job only.
       - name: Check out files as they are in the repo (LF)
         run: git config --global core.autocrlf false
+      # The whole history, as the Mac gate has it: actions/checkout fetches one commit by
+      # default, and test_mute_verdicts checks that every `commit <sha>` cited in
+      # relay/USER-SWITCHES.txt exists here (run 38360295330: "cites commit 12edfb0b,
+      # which is not a commit here" in a depth-1 clone). Not a Windows matter.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v7
         with:
