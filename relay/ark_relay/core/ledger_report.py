@@ -1,8 +1,10 @@
 """Message text built from ledger entries: the failure message, the daily report, the missing-run message."""
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from ark_relay.core import texts
 from ark_relay.core.config import RunRecord, SERVER_TZ, USER_TZ, both_clocks
@@ -568,6 +570,18 @@ def _launch_miss(e: dict) -> bool:
         return True
     return (not e.get("ok")
             and any("模拟器启动失败" in str(t) for t in (e.get("failed_tasks") or [])))
+
+
+def test_windows(state_dir) -> list[dict]:
+    """The test windows run-one.sh marked (state/test-windows.json); [] when none."""
+    if not state_dir:
+        return []
+    p = Path(state_dir) / "test-windows.json"
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
 
 
 def split_test(entries: list[dict], windows: list[dict]) -> tuple[list[dict], list[dict]]:

@@ -541,16 +541,8 @@ def makeup_line(state_dir, day: str, entries: "list[dict] | None" = None,
     return "\n".join(lines)
 
 
-def test_windows(state_dir) -> list[dict]:
-    """The test windows run-one.sh marked (state/test-windows.json); [] when none."""
-    if not state_dir:
-        return []
-    p = Path(state_dir) / "test-windows.json"
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except (OSError, ValueError):
-        return []
+# The test windows run-one.sh marked; kept under this name for its callers.
+test_windows = ledger_report.test_windows
 
 
 def _attach_tacet_shots(eng, day: str) -> list[str]:
