@@ -1,0 +1,90 @@
+{
+    "task": [
+        {
+            "name": "SwitchTeam",
+            "label": "$task.SwitchTeam.label",
+            "entry": "SwitchTeamMain",
+            "group": [
+                "open_world"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "PlayCover",
+                "Win32-Front"
+            ],
+            "option": [
+                "SwitchTeamTeamChoose"
+            ]
+        }
+    ],
+    "option": {
+        "SwitchTeamTeamChoose": {
+            "type": "select",
+            "label": "$option.SwitchTeamTeamChoose.label",
+            "cases": [
+                {
+                    "name": "SwitchTeamTeamChoose01",
+                    "label": "01",
+                    "pipeline_override": {
+                        "SwitchTeamChooseTextRecognition": {
+                            "expected": [
+                                "01"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "SwitchTeamTeamChoose02",
+                    "label": "02",
+                    "pipeline_override": {
+                        "SwitchTeamChooseTextRecognition": {
+                            "expected": [
+                                "02"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "SwitchTeamTeamChoose03",
+                    "label": "03",
+                    "pipeline_override": {
+                        "SwitchTeamChooseTextRecognition": {
+                            "expected": [
+                                "03"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "SwitchTeamTeamChoose04",
+                    "label": "04",
+                    "pipeline_override": {
+                        "SwitchTeamChooseTextRecognition": {
+                            "expected": [
+                                "04"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "SwitchTeamTeamChoose05",
+                    "label": "05",
+                    "pipeline_override": {
+                        "SwitchTeamChooseTextRecognition": {
+                            "expected": [
+                                "05"
+                            ]
+                        }
+                    }
+                }
+            ],
+            "default_case": "SwitchTeamTeamChoose01"
+        }
+    }
+}

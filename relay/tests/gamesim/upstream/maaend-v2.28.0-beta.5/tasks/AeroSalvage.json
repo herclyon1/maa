@@ -1,0 +1,21 @@
+{
+    "task": [
+        {
+            "name": "AeroSalvage",
+            "label": "$task.AeroSalvage.label",
+            "entry": "AeroSalvageMain",
+            "description": "$task.AeroSalvage.description",
+            "controller": [
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "Win32-Front"
+            ],
+            "group": [
+                "open_world"
+            ]
+        }
+    ]
+}

@@ -1,0 +1,57 @@
+{
+    "task": [
+        {
+            "name": "ResourceRecycleStation",
+            "label": "$task.ResourceRecycleStation.label",
+            "entry": "ResourceRecycleStationStart",
+            "description": "$task.ResourceRecycleStation.description",
+            "group": [
+                "open_world"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "PlayCover",
+                "Win32-Front"
+            ],
+            "option": [
+                "ResourceRecycleStationRegion"
+            ]
+        }
+    ],
+    "option": {
+        "ResourceRecycleStationRegion": {
+            "type": "checkbox",
+            "label": "$option.ResourceRecycleStationRegion.label",
+            "cases": [
+                {
+                    "name": "Wuling",
+                    "label": "$option.ResourceRecycleStationWuling.label",
+                    "pipeline_override": {
+                        "ResourceRecycleStationWulingSub": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "ValleyIV",
+                    "label": "$option.ResourceRecycleStationValleyIV.label",
+                    "pipeline_override": {
+                        "ResourceRecycleStationValleyIVSub": {
+                            "enabled": true
+                        }
+                    }
+                }
+            ],
+            "default_case": [
+                "Wuling",
+                "ValleyIV"
+            ]
+        }
+    }
+}

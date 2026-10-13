@@ -1,0 +1,22 @@
+{
+    "task": [
+        {
+            "name": "EnvironmentMonitoring",
+            "label": "$task.EnvironmentMonitoring.label",
+            "entry": "EnvironmentMonitoringMain",
+            "description": "$task.EnvironmentMonitoring.description",
+            "group": [
+                "regional_development"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "PlayCover",
+                "Win32-Front"
+            ]
+        }
+    ]
+}

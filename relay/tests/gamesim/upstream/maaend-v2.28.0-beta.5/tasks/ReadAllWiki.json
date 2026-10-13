@@ -1,0 +1,24 @@
+{
+    "task": [
+        {
+            "name": "ReadAllWiki",
+            "label": "$task.ReadAllWiki.label",
+            "entry": "WikiReadAll",
+            "description": "$task.ReadAllWiki.description",
+            "controller": [
+                "ADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "PlayCover",
+                "Win32-Front"
+            ],
+            "group": [
+                "other_menu"
+            ]
+        }
+    ],
+    "option": {}
+}

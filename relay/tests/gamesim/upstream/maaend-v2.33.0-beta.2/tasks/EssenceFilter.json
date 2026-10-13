@@ -1,0 +1,563 @@
+{
+    "task": [
+        {
+            "name": "EssenceFilter",
+            "label": "$task.EssenceFilter.label",
+            "entry": "EssenceFilterMain",
+            "description": "$task.EssenceFilter.description",
+            "group": [
+                "valuables_vault"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "PlayCover",
+                "Win32-Front"
+            ],
+            "option": [
+                "ExportInventory"
+            ]
+        }
+    ],
+    "option": {
+        "ExportInventory": {
+            "type": "switch",
+            "label": "$option.ExportInventory.label",
+            "description": "$option.ExportInventory.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "export_inventory": true
+                            }
+                        },
+                        "EssenceFilterCheckItemOCRFallback": {
+                            "action": "StopTask"
+                        },
+                        "EssenceGridClickPending": {
+                            "on_error": [
+                                "EssenceFilterCheckItemOCRFallback"
+                            ]
+                        },
+                        "EssenceFilterMainFailed": {
+                            "action": "StopTask"
+                        },
+                        "EssenceFilterNavigateToInventory": {
+                            "action": "StopTask"
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "option": [
+                        "SelectWeaponRarity",
+                        "SelectEssence",
+                        "SelectExtraRules",
+                        "SkipThumbLock",
+                        "SkipThumbDiscard"
+                    ],
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "export_inventory": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "SelectWeaponRarity": {
+            "type": "switch",
+            "label": "$option.SelectWeaponRarity.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "Rarity6Weapon",
+                        "Rarity5Weapon",
+                        "Rarity4Weapon"
+                    ]
+                },
+                {
+                    "name": "No"
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "Rarity6Weapon": {
+            "type": "switch",
+            "label": "$option.Rarity6Weapon.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "rarity6_weapon": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "rarity6_weapon": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "Rarity5Weapon": {
+            "type": "switch",
+            "label": "$option.Rarity5Weapon.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "rarity5_weapon": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "rarity5_weapon": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "Rarity4Weapon": {
+            "type": "switch",
+            "label": "$option.Rarity4Weapon.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "rarity4_weapon": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "rarity4_weapon": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "SelectEssence": {
+            "type": "switch",
+            "label": "$option.SelectEssence.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "FlawlessEssence",
+                        "PureEssence"
+                    ]
+                },
+                {
+                    "name": "No"
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "FlawlessEssence": {
+            "type": "switch",
+            "label": "$option.FlawlessEssence.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "flawless_essence": true
+                            }
+                        },
+                        "EssenceGridAdvance": {
+                            "attach": {
+                                "flawless_essence": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "flawless_essence": false
+                            }
+                        },
+                        "EssenceGridAdvance": {
+                            "attach": {
+                                "flawless_essence": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "PureEssence": {
+            "type": "switch",
+            "label": "$option.PureEssence.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "pure_essence": true
+                            }
+                        },
+                        "EssenceGridAdvance": {
+                            "attach": {
+                                "pure_essence": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "pure_essence": false
+                            }
+                        },
+                        "EssenceGridAdvance": {
+                            "attach": {
+                                "pure_essence": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "SkipThumbLock": {
+            "type": "switch",
+            "label": "$option.SkipThumbLock.label",
+            "description": "$option.SkipThumbLock.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "EssenceGridAdvance": {
+                            "attach": {
+                                "skip_thumb_lock": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EssenceGridAdvance": {
+                            "attach": {
+                                "skip_thumb_lock": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "SkipThumbDiscard": {
+            "type": "switch",
+            "label": "$option.SkipThumbDiscard.label",
+            "description": "$option.SkipThumbDiscard.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "EssenceGridAdvance": {
+                            "attach": {
+                                "skip_thumb_discard": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EssenceGridAdvance": {
+                            "attach": {
+                                "skip_thumb_discard": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "SelectExtraRules": {
+            "type": "switch",
+            "label": "$option.SelectExtraRules.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "KeepFuturePromising",
+                        "KeepSlot3Level3Practical",
+                        "DiscardUnmatched",
+                        "ExportCalculatorScript"
+                    ]
+                },
+                {
+                    "name": "No"
+                }
+            ],
+            "default_case": "No"
+        },
+        "KeepFuturePromising": {
+            "type": "switch",
+            "label": "$option.KeepFuturePromising.label",
+            "description": "$option.KeepFuturePromising.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "FuturePromisingMinTotal",
+                        "LockFuturePromising"
+                    ],
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "keep_future_promising": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "keep_future_promising": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "LockFuturePromising": {
+            "type": "switch",
+            "label": "$option.LockFuturePromising.label",
+            "description": "$option.LockFuturePromising.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "lock_future_promising": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "lock_future_promising": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "FuturePromisingMinTotal": {
+            "type": "input",
+            "label": "$option.KeepFuturePromising.inputs.FuturePromisingMinTotal.label",
+            "description": "$option.KeepFuturePromising.inputs.FuturePromisingMinTotal.description",
+            "inputs": [
+                {
+                    "name": "FuturePromisingMinTotal",
+                    "label": "$option.KeepFuturePromising.inputs.FuturePromisingMinTotal.label",
+                    "description": "$option.KeepFuturePromising.inputs.FuturePromisingMinTotal.description",
+                    "default": "6",
+                    "pipeline_type": "int",
+                    "verify": "^[3-9]$|^1[0-5]$"
+                }
+            ],
+            "pipeline_override": {
+                "EssenceFilterInit": {
+                    "attach": {
+                        "future_promising_min_total": "{FuturePromisingMinTotal}"
+                    }
+                }
+            }
+        },
+        "KeepSlot3Level3Practical": {
+            "type": "switch",
+            "label": "$option.KeepSlot3Level3Practical.label",
+            "description": "$option.KeepSlot3Level3Practical.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "Slot3MinLevel",
+                        "LockSlot3Practical"
+                    ],
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "keep_slot3_level3_practical": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "keep_slot3_level3_practical": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "LockSlot3Practical": {
+            "type": "switch",
+            "label": "$option.LockSlot3Practical.label",
+            "description": "$option.LockSlot3Practical.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "lock_slot3_practical": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "lock_slot3_practical": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "Slot3MinLevel": {
+            "type": "input",
+            "label": "$option.KeepSlot3Level3Practical.inputs.Slot3MinLevel.label",
+            "description": "$option.KeepSlot3Level3Practical.inputs.Slot3MinLevel.description",
+            "inputs": [
+                {
+                    "name": "Slot3MinLevel",
+                    "label": "$option.KeepSlot3Level3Practical.inputs.Slot3MinLevel.label",
+                    "description": "$option.KeepSlot3Level3Practical.inputs.Slot3MinLevel.description",
+                    "default": "3",
+                    "pipeline_type": "int",
+                    "verify": "^[1-3]$"
+                }
+            ],
+            "pipeline_override": {
+                "EssenceFilterInit": {
+                    "attach": {
+                        "slot3_min_level": "{Slot3MinLevel}"
+                    }
+                }
+            }
+        },
+        "DiscardUnmatched": {
+            "type": "switch",
+            "label": "$option.DiscardUnmatched.label",
+            "description": "$option.DiscardUnmatched.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "discard_unmatched": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "discard_unmatched": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "ExportCalculatorScript": {
+            "type": "switch",
+            "label": "$option.ExportCalculatorScript.label",
+            "description": "$option.ExportCalculatorScript.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "export_calculator_script": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "EssenceFilterInit": {
+                            "attach": {
+                                "export_calculator_script": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        }
+    }
+}

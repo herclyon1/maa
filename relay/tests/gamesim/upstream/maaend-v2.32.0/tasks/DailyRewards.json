@@ -1,0 +1,287 @@
+{
+    "task": [
+        {
+            "name": "DailyRewards",
+            "label": "$task.DailyRewards.label",
+            "entry": "DailyRewardStart",
+            "description": "$task.DailyRewards.description",
+            "group": [
+                "other_menu"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "PlayCover",
+                "Win32-Front"
+            ],
+            "option": [
+                "DailyEmailRewards",
+                "DailyTaskRewards",
+                "DailyClaimDeliveryJobsRewards",
+                "DailyEventRewards",
+                "DailyProtocolPassRewards"
+            ]
+        }
+    ],
+    "option": {
+        "DailyEmailRewards": {
+            "type": "switch",
+            "label": "$option.DailyEmailRewards.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "DailyEmailRewardSub": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "DailyEmailRewardSub": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "DailyEventRewards": {
+            "type": "switch",
+            "label": "$option.DailyEventRewards.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "DailyEventRewardSub": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "DailyEventRewardSub": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "DailyTaskRewards": {
+            "type": "switch",
+            "label": "$option.DailyTaskRewards.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "DailyTaskUpgradeWeapon",
+                        "DailyTaskCreation",
+                        "DailyTaskAssemble",
+                        "DailyTaskLevelUpOperator"
+                    ],
+                    "pipeline_override": {
+                        "DailyTaskRewardSub": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "DailyTaskRewardSub": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "DailyClaimDeliveryJobsRewards": {
+            "type": "switch",
+            "label": "$option.DailyClaimDeliveryJobsRewards.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "DailyClaimDeliveryJobsRewardSub": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "DailyClaimDeliveryJobsRewardSub": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "DailyProtocolPassRewards": {
+            "type": "switch",
+            "label": "$option.DailyProtocolPassRewards.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "DailyProtocolPassRewardSub": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "DailyProtocolPassRewardSub": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "DailyTaskUpgradeWeapon": {
+            "type": "switch",
+            "label": "$option.DailyTaskUpgradeWeapon.label",
+            "description": "$option.DailyTaskUpgradeWeapon.desc",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "DailyTaskUpgradeWeapon": {
+                            "enabled": true
+                        },
+                        "DailyTaskCheckActivityStatus": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "DailyTaskUpgradeWeapon": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "DailyTaskAssemble": {
+            "type": "switch",
+            "label": "$option.DailyTaskAssemble.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "GearAssemblyType",
+                        "GearAssemblySortOrder"
+                    ],
+                    "pipeline_override": {
+                        "DailyTaskAssemble": {
+                            "enabled": true
+                        },
+                        "DailyTaskCheckActivityStatus": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "DailyTaskAssemble": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "DailyTaskLevelUpOperator": {
+            "type": "switch",
+            "label": "$option.DailyTaskLevelUpOperator.label",
+            "description": "$option.DailyTaskLevelUpOperator.desc",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "LevelUpOperatorMaxLevelThreshold"
+                    ],
+                    "pipeline_override": {
+                        "DailyTaskLevelUpOperator": {
+                            "enabled": true
+                        },
+                        "DailyTaskCheckActivityStatus": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "DailyTaskLevelUpOperator": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "LevelUpOperatorMaxLevelThreshold": {
+            "type": "input",
+            "label": "$option.LevelUpOperatorMaxLevelThreshold.label",
+            "inputs": [
+                {
+                    "name": "MaxLevelThreshold",
+                    "label": "$option.LevelUpOperatorMaxLevelThreshold.inputs.MaxLevelThreshold.label",
+                    "default": "80",
+                    "pipeline_type": "int",
+                    "verify": "(?<![-\\d])(?:0|[1-9]|[1-8][0-9]|90)(?!\\d)"
+                }
+            ],
+            "pipeline_override": {
+                "LevelUpOperatorLevelThresholdCheck": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{SelectedOperatorCurrentLevel}>={MaxLevelThreshold}"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "DailyTaskCreation": {
+            "type": "switch",
+            "label": "$option.DailyTaskCreation.label",
+            "description": "$option.DailyTaskCreation.desc",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "DailyTaskCreation": {
+                            "enabled": true
+                        },
+                        "DailyTaskCheckActivityStatus": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "DailyTaskCreation": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        }
+    }
+}
