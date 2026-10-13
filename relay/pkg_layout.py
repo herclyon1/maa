@@ -193,7 +193,10 @@ def _drop(folder: Path) -> None:
     """Delete a version folder without following its state junction into the data folder."""
     link = folder / "state"
     if _is_link(link):
-        os.rmdir(link)          # removes the junction only
+        if os.name == "nt":
+            os.rmdir(link)      # removes the junction only
+        else:
+            link.unlink()       # the tests' symlink, off Windows
     shutil.rmtree(folder, ignore_errors=True)
 
 
@@ -222,6 +225,9 @@ def update(here: Path, check) -> list[str]:
         raise
     if not changed:
         _drop(staging)
+        # check may have recorded the manifest's version even though nothing needed
+        # changing; no switch happened, so the record goes back to the folder in use.
+        record_running_version(here)
         return []
     from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415
     try:
