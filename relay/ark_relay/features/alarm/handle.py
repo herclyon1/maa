@@ -108,21 +108,21 @@ def _warn_if_evidence_stale(eng, rec: RunRecord, dst: Path) -> None:
     来龙去脉见 docs/CODE-HISTORY.md「handle.py:_warn_if_evidence_stale」。
     """
     try:
-        stamp = rec.run_id.rsplit("-", 3)[-3:]
-        if len(stamp) != 3 or not all(x.isdigit() for x in stamp):
-            return
-        hh, mm, ss = (int(x) for x in stamp)
-        started = hh * 3600 + mm * 60 + ss
+        # Compare instants, not clock readings: the run_id stem is AUTO-MAS's
+        # clock (UTC+4, collector.AUTOMAS_NAME_TZ) and carries no date, so the
+        # stem against a Beijing mtime missed exactly the previous round's log
+        # (audit 2026-10-13 s7 #3).
+        cut = rec.started.timestamp()
+        began = rec.started.astimezone(SERVER_TZ)
         for f in dst.glob("*.log"):
             if f.name.startswith("automas-"):
                 continue          # this one was taken by run_id, so it always lines up
-            mt = datetime.fromtimestamp(f.stat().st_mtime, tz=SERVER_TZ)
-            ended = mt.hour * 3600 + mt.minute * 60 + mt.second
-            if ended < started:
+            mtime = f.stat().st_mtime
+            if mtime < cut:
+                mt = datetime.fromtimestamp(mtime, tz=SERVER_TZ)
                 log.warning("⚠️ 证据里的 %s 最后写于 %s，早于这一轮开始的 %s，"
                             "多半是**别的轮次**的日志，别拿它当这次失败的依据",
-                            f.name, mt.strftime("%H:%M:%S"),
-                            f"{hh:02d}:{mm:02d}:{ss:02d}")
+                            f.name, mt.strftime("%m-%d %H:%M:%S"), began.strftime("%m-%d %H:%M:%S"))
     except Exception:  # the booking goes on; the group hears the check broke
         log.warning("证据时间范围检查失败（这一份证据没核是不是这一轮的）", exc_info=True)
 
