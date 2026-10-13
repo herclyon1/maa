@@ -80,7 +80,7 @@ class Banner:
     name: str
     chars: tuple[str, ...]
     start: "datetime | None"    # None only on a notice that opens 「X版本更新后」
-    end: datetime
+    end: "datetime | None"      # None only on a second source that prints no end (crosscheck)
     start_note: str = ""        # that wording, when start is None
 
 
@@ -95,8 +95,10 @@ class Trace:
     * provenance - every fetched value is recorded with its URL/field
       (`sources`), and the trace is written next to the state so a line can be
       traced back after the fact;
-    * cross-checks - each running banner is read from **two** official sources and
-      the section says whether they agree (`checks`);
+    * cross-checks - each running Arknights / Endfield banner is read from two
+      sources and whether they agree is written to `checks`. Only the trace file
+      carries them: the section's footer that listed them was dropped on
+      2026-09-14 at the user's request (see render);
     * the date gate in `render` - a next-banner line may only carry a date that an
       official source assigned to a *start* (`starts`: an opening time, or a
       maintenance window), or an end when the line says it ends. A line
@@ -444,19 +446,23 @@ def crosscheck(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None
 
     `b` is what the second source says about the banner `a` (None: it has no such
     banner). Compared: banner name, the characters (b's must be within a's), start
-    and end. A one-hour skew is tolerated only when one side gives a date without a
+    and end; a start or end that `b` does not print (None) is skipped and the line
+    says so, never filled from `a` (that compared a source with itself). A one-hour skew is tolerated only when one side gives a date without a
     clock (00:00).
     """
     if b is None:
         return f"{game}：{a_name} 有「{a.name}」，{b_name} 里找不到 ✗"
     diffs = []
-    if a.name and b.name and a.name != b.name:
+    # PRTS prefixes some names with the banner kind (【限定寻访·夏季】海渊巡游)
+    bare = lambda n: re.sub(r"^【[^】]*】", "", n)  # noqa: E731
+    if a.name and b.name and bare(a.name) != bare(b.name):
         diffs.append(f"池名 {a_name}「{a.name}」/ {b_name}「{b.name}」")
     if b.chars and not set(b.chars) <= set(a.chars):
         diffs.append(f"角色 {a_name} {'、'.join(a.chars)} / {b_name} {'、'.join(b.chars)}")
     for label, x, y in (("开始", a.start, b.start), ("结束", a.end, b.end)):
         if y is None:
-            # 「3.7版本更新后」: no clock to compare, the end is still checked
+            # 「3.7版本更新后」 or a bulletin that prints no closing clock: nothing
+            # to compare on that side, the footer says which one was skipped
             continue
         if (x.hour, x.minute) == (0, 0) or (y.hour, y.minute) == (0, 0):
             same = x.date() == y.date()
@@ -467,8 +473,12 @@ def crosscheck(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None
             diffs.append(f"{label} {a_name} {x:%m-%d %H:%M} / {b_name} {y:%m-%d %H:%M}")
     if diffs:
         return f"{game}：{a_name} 和 {b_name} 对不上 ✗（" + "；".join(diffs) + "）"
+    if b.start is None and b.end is None:
+        return f"{game}：{b_name}没写开始和结束时刻，只核了池名和角色 ✓"
     if b.start is None:
         return f"{game}：{a_name}={b_name} ✓（{b_name}开始写「{b.start_note}」，只核了结束）"
+    if b.end is None:
+        return f"{game}：{a_name}={b_name} ✓（{b_name}没写结束时刻，只核了开始）"
     return f"{game}：{a_name}={b_name} ✓"
 
 

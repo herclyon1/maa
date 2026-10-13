@@ -1934,7 +1934,7 @@ def _ef_no_token() -> None:
 
 
 def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None, pages=None,
-                bulletin_title="「x」版本更新说明"):
+                bulletin_title="「x」版本更新说明", trace=None):
     """_endfield with every web source stubbed: Skland is `sk_get`, the version
     bulletin is `bulletin_html` (None = unreachable) under `bulletin_title`, `pages`
     maps URLs read as text, the rest is offline. Returns ((got, next) or the
@@ -1956,7 +1956,7 @@ def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None, pages=None,
     try:
         with _logs() as recs:
             try:
-                out = _b._endfield(None, sk_get, now, trace=_b.Trace.new())
+                out = _b._endfield(None, sk_get, now, trace=trace if trace is not None else _b.Trace.new())
             except Exception as e:  # noqa: BLE001
                 out = e
     finally:
@@ -2032,6 +2032,44 @@ def _ef_no_version_notes() -> None:
     check("没有版本更新说明：在开的池子照旧来自森空岛",
           [b.chars for b in out[0]] if isinstance(out, tuple) else out, [("梨诺",)])
     check("没有版本更新说明：当作公告没读到，说一次", _warned(recs, "公告取不到"), 1)
+
+
+def _crosscheck_honest() -> None:
+    """s20 #6: the trace's cross-checks. Endfield filled a clock the bulletin does
+    not print with Skland's own value and then compared Skland with itself (✓ with
+    nothing checked); Arknights missed its post when PRTS prefixes the name and
+    writes 07:00 for the post's 12:00."""
+    ef = json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8"))
+    html = (FX / "endfield_notice.html").read_text(encoding="utf-8")
+
+    def sk(path):
+        if path == "/web/v1/wiki/char-pool":
+            return {"data": {"list": ef}}
+        return {"data": {"item": {"name": "梨诺"}}}
+    # 晨星于此闪耀: the bulletin gives 08-09 12:00 to open and no closing clock.
+    tr = _b.Trace.new()
+    _ef_offline(sk, datetime(2026, 8, 20), bulletin_html=html, trace=tr)
+    check("终末地：公告没写结束就不拿森空岛自己比", tr.checks, ["终末地：森空岛=公告 ✓（公告没写结束时刻，只核了开始）"])
+    # 临渊望北 (诀): the bulletin opens it 「版本更新后」 and closes it 08-09 11:59.
+    jue = json.loads(json.dumps(ef))
+    jue[0].update(name="临渊望北", poolStartAtTs="1784700000", poolEndAtTs="1786247999")
+
+    def sk2(path):
+        if path == "/web/v1/wiki/char-pool":
+            return {"data": {"list": jue}}
+        return {"data": {"item": {"name": "诀"}}}
+    tr = _b.Trace.new()
+    _ef_offline(sk2, datetime(2026, 8, 1), bulletin_html=html, trace=tr)
+    check("终末地：公告开始写版本更新后，只核结束",
+          tr.checks, ["终末地：森空岛=公告 ✓（公告开始写「版本更新后」，只核了结束）"])
+    # Arknights: PRTS 【限定寻访·夏季】 prefix and 07:00, the post 12:00 the same day.
+    row = _b.Banner("明日方舟", "【限定寻访·夏季】海渊巡游", ("克莱门莎",),
+                    datetime(2026, 10, 9, 7, 0), datetime(2026, 10, 23, 3, 59))
+    _out, tr, _recs = _ak_offline(datetime(2026, 10, 10, 12, 0), [row], _ak_site_1006(), {"克莱门莎": 5})
+    got = " ".join(tr.checks)
+    check("方舟：PRTS 名字带前缀、07:00 也对得上官网那帖",
+          ("找不到" in got, "池名" in got, "开始 PRTS 10-09 07:00 / 官网公告 10-09 12:00" in got),
+          (False, False, True))
 
 
 def _sf_ef_brief_time() -> None:
@@ -2148,6 +2186,7 @@ def main() -> int:
     _sf_ef_names()
     _ef_no_token()
     _ef_no_version_notes()
+    _crosscheck_honest()
     _sf_ef_pool_ends()
     _sf_ef_brief_time()
     _sf_ww_first_half_end()

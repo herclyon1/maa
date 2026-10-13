@@ -250,9 +250,13 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
             other = None
             for n, pname, w, _dbt in pools_n:
                 if pname == b.name or n in b.chars:
-                    en = ends_n.get((n, pname), b.end)
-                    other = Banner("终末地", pname, (n,), w or b.start, en)
-                    tr.src("终末地", "公告", _EF_BULLETIN, f"{pname} {n} 开 {w:%Y-%m-%d %H:%M} 止 {en:%Y-%m-%d %H:%M}" if w else f"{pname} {n} 版本更新后开 止 {en:%Y-%m-%d %H:%M}")
+                    # What the bulletin prints and nothing else: filling a missing
+                    # clock with Skland's own value compared Skland with itself.
+                    en = ends_n.get((n, pname))
+                    other = Banner("终末地", pname, (n,), w, en, "" if w else "版本更新后")
+                    tr.src("终末地", "公告", _EF_BULLETIN,
+                           f"{pname} {n} 开 {f'{w:%Y-%m-%d %H:%M}' if w else '版本更新后'}"
+                           f" 止 {f'{en:%Y-%m-%d %H:%M}' if en else '没写'}")
                     break
             tr.checks.append(crosscheck("终末地", "森空岛", b, "公告", other) if notice_ok
                              else "终末地：公告取不到，只有森空岛一个来源 ✗")

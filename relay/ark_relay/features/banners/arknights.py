@@ -618,7 +618,12 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
         other = None
         for st, who, _p, en, _c in posts:
             m = re.match(r"(.*)「([^」]+)」$", who)
-            if m and (m.group(2) == b.name or st == b.start):
+            # PRTS may prefix the name (【限定寻访·夏季】海渊巡游) and open at 07:00
+            # where the post says 12:00 the same day (cid 9605)
+            bare = re.sub(r"^【[^】]*】", "", b.name)
+            if m and (m.group(2) == bare or st == b.start
+                      or (b.start and st.date() == b.start.date()
+                          and set(x for x in m.group(1).split("、") if x) & set(b.chars))):
                 other = Banner("明日方舟", m.group(2), tuple(x for x in m.group(1).split("、") if x), st, en)
                 break
         tr.checks.append(crosscheck("明日方舟", "PRTS", b, "官网公告", other))
