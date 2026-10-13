@@ -208,6 +208,27 @@ def sh(*cmd, cwd=None) -> str:
                           text=True, encoding="utf-8", errors="replace").stdout
 
 
+# A fetch from github.com that fails on the runner is retried: run 38434766518 (2026-10-14)
+# lost one lane to `git fetch` of a pinned commit that the next attempt and a fetch from
+# the Mac both got. A commit that does not exist upstream still fails every attempt.
+FETCH_TRIES, FETCH_WAIT_S = 3, (10, 30)
+
+
+def fetch_pinned(work: Path, repo: str, commit: str, tries: int = FETCH_TRIES, wait=FETCH_WAIT_S,
+                   run=None, sleep=time.sleep) -> None:
+    run = run or sh
+    for n in range(1, tries + 1):
+        try:
+            run("git", "-C", work, "-c", "core.autocrlf=false", "fetch", "-q", "--depth", "1", repo, commit)
+            return
+        except subprocess.CalledProcessError as exc:
+            if n == tries:
+                raise
+            print(f"  git fetch failed (try {n} of {tries}, exit {exc.returncode}): {(exc.stderr or '').strip()[-300:]}",
+                  flush=True)
+            sleep(wait[min(n - 1, len(wait) - 1)])
+
+
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -245,8 +266,7 @@ def prepare(lane: str, root: Path) -> None:
     work.mkdir(parents=True)
     # The PC gets OK-WW's LF bytes; the hashes in SOURCE.txt are of those (same as relay-windows.yml).
     sh("git", "init", "-q", work)
-    sh("git", "-C", work, "-c", "core.autocrlf=false", "fetch", "-q", "--depth", "1",
-       pin["repo"], pin["commit"])
+    fetch_pinned(work, pin["repo"], pin["commit"])
     sh("git", "-C", work, "-c", "core.autocrlf=false", "checkout", "-q", "FETCH_HEAD")
     head = sh("git", "-C", work, "rev-parse", "HEAD").strip()
     if head != pin["commit"]:
