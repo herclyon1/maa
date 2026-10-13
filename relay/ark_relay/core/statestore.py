@@ -15,6 +15,7 @@ import fnmatch
 import json
 import logging
 import shutil
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -161,6 +162,14 @@ _SWEPT: set = set()
 # like _SWEPT. Dropped once the file reads again.
 _CORRUPT_SAID: dict[str, float] = {}
 
+# Held around every load-modify-write of state.json. The phone listen thread
+# (queues.phone_seen, modes.* from live commands) and the engine thread write the
+# same file through StateStore instances of their own; without one lock for the
+# process, the slower writer overwrote the other's key with the copy it had read.
+# Re-entrant: _sweep_legacy runs inside __init__, which a caller may reach while
+# holding it.
+_WRITE_LOCK = threading.RLock()
+
 
 class StateStore:
     def __init__(self, state_dir: Path):
@@ -171,17 +180,21 @@ class StateStore:
         if str(self.dir) not in _SWEPT:
             _SWEPT.add(str(self.dir))
             try:
-                self._sweep_legacy()
+                with _WRITE_LOCK:
+                    self._sweep_legacy()
             except OSError:
                 log.warning("清扫旧状态文件时出错，下次进程启动再试", exc_info=True)
 
     # ---------- read ----------
-    def _load(self) -> dict:
+    def _load(self, fresh: bool = False) -> dict:
+        """state.json as a dict. `fresh` rereads the file even when its mtime
+        matches the cached copy: a write must start from what is on disk, and
+        another instance may have written within the clock's resolution."""
         try:
             m = self.path.stat().st_mtime
         except OSError:
             m = -1.0
-        if self._data is not None and m == self._mtime:
+        if self._data is not None and m == self._mtime and not fresh:
             return self._data
         data: dict = {}
         if m >= 0:
@@ -226,15 +239,17 @@ class StateStore:
     def set(self, section: str, key: str, value) -> None:
         if not _registered(section, key):
             raise KeyError(f"state.{section}.{key} 没在字段表里登记，拒绝写入（见 docs/STATE-MODEL.md）")
-        data = self._load()
-        data[section][key] = value
-        self._flush(data)
+        with _WRITE_LOCK:
+            data = self._load(fresh=True)
+            data[section][key] = value
+            self._flush(data)
 
     def pop(self, section: str, key: str) -> None:
-        data = self._load()
-        if key in data.get(section, {}):
-            del data[section][key]
-            self._flush(data)
+        with _WRITE_LOCK:
+            data = self._load(fresh=True)
+            if key in data.get(section, {}):
+                del data[section][key]
+                self._flush(data)
 
     def _flush(self, data: dict) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)

@@ -6,6 +6,7 @@ so the same code runs unchanged on the Windows box and on a cloud server.
 from __future__ import annotations
 
 import os
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -49,10 +50,15 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
     The one implementation of "temp file + fsync + replace" in the relay
     (test_atomic_write.py checks no other copy exists). The temp file is
     removed when the write fails.
+
+    The temp name is unique per call (mkstemp in the same folder, so the replace
+    stays on one volume): two threads writing the same file used to share
+    `<name>.tmp`, and the second rename then failed with FileNotFoundError.
     """
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    fd, name = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    tmp = Path(name)
     try:
-        with tmp.open("wb") as f:
+        with os.fdopen(fd, "wb") as f:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
