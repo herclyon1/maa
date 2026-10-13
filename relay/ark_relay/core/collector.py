@@ -517,13 +517,22 @@ def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: lis
     if script == "MAA" and type(raw.get("sanity")) is int and raw["sanity"] == 0 and not raw.get("sanity_full_at"):
         raw["sanity"] = None
         raw["sanity_unread"] = True
-    # Full-again time: MAA writes it itself; for the other two it is computed
-    # from this record's finish time, when the last reading was taken.
+    # Full-again time: MAA writes it itself; for the other two it is computed.
+    # MaaEnd's counts from the log time of its last 「当前理智」 reading
+    # (sanity_read_at), else the record's finish. A 0 left after 「理智不足，结束任务」
+    # is the floor of a subtraction, not a reading: no time is given for it.
     if not raw.get("sanity_full_at"):
         if script == "MaaEnd" and raw.get("sanity") is not None:
-            raw["sanity_full_at"] = _full_at_sentence(
-                int(raw["sanity"]), int(raw.get("sanity_cap") or 360),
-                _END_SANITY_SEC_PER_POINT, finished)
+            if not (raw.get("sanity_exhausted") and int(raw["sanity"]) == 0):
+                ref = finished
+                try:
+                    if at := raw.get("sanity_read_at"):
+                        ref = datetime.strptime(str(at), "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
+                except ValueError:
+                    pass
+                raw["sanity_full_at"] = _full_at_sentence(
+                    int(raw["sanity"]), int(raw.get("sanity_cap") or 360),
+                    _END_SANITY_SEC_PER_POINT, ref)
         elif raw.get("okww_stamina_left") is not None:
             raw["sanity_full_at"] = _full_at_sentence(
                 int(raw["okww_stamina_left"]), _OKWW_STAMINA_CAP,

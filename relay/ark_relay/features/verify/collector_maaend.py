@@ -700,6 +700,11 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
         # fields from here.
         out["sanity"] = got
         out["sanity_cap"] = cap
+        # When the last reading was taken (machine clock): the full-again time
+        # counts from here, not from the record's finish (collector._enrich_record).
+        if at := next((m.group(1) for x in reversed(text.splitlines())
+                       if _END_SANITY.search(x) and (m := _LINE_STAMP.match(x))), ""):
+            out["sanity_read_at"] = at
         # Protocol Space alone: _farm_one's step estimate gives 0 for one run (its
         # two readings are equal) and charges a half last claim in full.
         farm = out.get("maaend_farm") or ""
