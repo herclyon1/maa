@@ -77,14 +77,22 @@ def _flush_tree(folder: Path) -> None:
     lost (audit s24 F2: copytree and check's writes were not flushed). The `state`
     junction and __pycache__ at the top are skipped: the data folder is not code.
 
-    Files are opened "r+b": Windows' FlushFileBuffers needs write access. Folders are
-    fsynced off Windows only: os.open cannot open a folder there."""
+    Files are opened "r+b": Windows' FlushFileBuffers needs write access; a file that
+    cannot be opened so is skipped with an INFO line. Folders are fsynced off Windows
+    only: os.open cannot open a folder there."""
     for top, dirs, files in os.walk(folder):
         if Path(top) == folder:
             dirs[:] = [d for d in dirs if d not in ("state", "__pycache__")]
         for name in files:
-            with open(os.path.join(top, name), "r+b") as f:
-                os.fsync(f.fileno())
+            path = os.path.join(top, name)
+            try:
+                with open(path, "r+b") as f:
+                    os.fsync(f.fileno())
+            except OSError as exc:
+                # Best effort: a file held by a scanner for a moment must not turn a
+                # good update into a failed one retried every boot; the copy itself
+                # succeeded, only its flush to disk is skipped.
+                log.info("新版本文件夹里 %s 没能刷到磁盘（%s），照常切换", path, exc)
         _fsync_dir(Path(top))
 
 

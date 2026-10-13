@@ -91,6 +91,32 @@ if os.name != "nt":
 check("the shared state behind the junction is not walked",
       (DATA / "state" / "shared.txt").stat().st_ino in at_switch, False)
 
+print("[a file that cannot be opened for the flush is skipped, the rest still flushed]")
+held = tmpdir() / "v"
+(held / "sub").mkdir(parents=True)
+(held / "a.py").write_text("a", encoding="utf-8")
+(held / "sub" / "b.py").write_text("b", encoding="utf-8")
+opened: list = []
+
+
+def picky_open(path, mode="r", *a, **k):
+    if Path(path).name == "a.py":
+        raise PermissionError(13, "held by a scanner")
+    opened.append(Path(path).name)
+    return open(path, mode, *a, **k)
+
+
+pkg_layout.open = picky_open
+try:
+    pkg_layout._flush_tree(held)
+    raised = False
+except OSError:
+    raised = True
+finally:
+    del pkg_layout.open
+check("one held file does not stop the flush (no error)", raised, False)
+check("the other file is still flushed", opened, ["b.py"])
+
 if fails:
     print("FAIL:", fails)
     sys.exit(1)
