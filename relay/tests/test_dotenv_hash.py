@@ -31,8 +31,11 @@ env.write_text("\n".join([
     "ARKT_BARE=abc#def",
     "ARKT_COMMENTED=plain # a note",
     "ARKT_PLAIN=value",
+    "ARKT_EMPTY=   # only a note",
+    'ARKT_UNCLOSED="abc',
 ]) + "\n", encoding="utf-8")
-for k in ("ARKT_QUOTED", "ARKT_SINGLE", "ARKT_BARE", "ARKT_COMMENTED", "ARKT_PLAIN"):
+for k in ("ARKT_QUOTED", "ARKT_SINGLE", "ARKT_BARE", "ARKT_COMMENTED", "ARKT_PLAIN",
+          "ARKT_EMPTY", "ARKT_UNCLOSED"):
     os.environ.pop(k, None)
 relay_main._load_dotenv(env)
 
@@ -42,6 +45,8 @@ check("single-quoted value keeps '#' and space", os.environ.get("ARKT_SINGLE"), 
 check("unquoted '#' with no space before it is part of the value", os.environ.get("ARKT_BARE"), "abc#def")
 check("unquoted ' #' starts a comment", os.environ.get("ARKT_COMMENTED"), "plain")
 check("plain value", os.environ.get("ARKT_PLAIN"), "value")
+check("a value that is only a ' #' comment loads as empty (not set)", os.environ.get("ARKT_EMPTY"), None)
+check("an unclosed quote is stripped, as before", os.environ.get("ARKT_UNCLOSED"), "abc")
 
 print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
 sys.exit(1 if fails else 0)

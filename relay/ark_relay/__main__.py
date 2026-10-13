@@ -111,12 +111,18 @@ def _dotenv_value(raw: str) -> str:
     """One .env value, read the way python-dotenv reads it.
 
     A quoted value is everything between its quotes, '#' included; an unquoted one
-    ends at a ' #' comment. Cutting every value at the first '#' (as before
-    2026-10-13, audit s2 F7) truncated a URL or key carrying one.
+    ends at a ' #' comment, and one that starts with '#' (`KEY=   # note`) is all
+    comment, so empty. A quote with no closing one is stripped, as before. Cutting
+    every value at the first '#' (as before 2026-10-13, audit s2 F7) truncated a
+    URL or key carrying one.
     """
     v = raw.strip()
-    if v[:1] in ('"', "'") and (end := v.find(v[0], 1)) > 0:
-        return v[1:end]
+    if v[:1] in ('"', "'"):
+        if (end := v.find(v[0], 1)) > 0:
+            return v[1:end]
+        return v.strip('"').strip("'")
+    if v.startswith("#"):
+        return ""
     return re.split(r"\s#", v, maxsplit=1)[0].strip()
 
 
