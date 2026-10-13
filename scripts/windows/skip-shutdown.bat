@@ -18,6 +18,10 @@ rem The installed relay's own Python, which its version folders are built for; n
 rem AUTO-MAS's (acceptance, 2026-10-11).
 set "PY=%APP%\runtime\python\python.exe"
 set "DATA=C:\ProgramData\ark-relay"
+rem Python's stderr of the status read, shown when the read gives nothing: until
+rem 2026-10-13 it went to nul and every failure (an import error after a version
+rem change, an unreadable state.json) read as 「中继没装好，或者 Python 路径不对」.
+set "ERRF=%TEMP%\ark-skip-shutdown-err.txt"
 set "CODE="
 if exist "%APP%\current.txt" for /f "usebackq delims=" %%v in ("%APP%\current.txt") do set "CODE=%APP%\versions\%%v"
 if defined CODE if not exist "%CODE%\ark_relay\__init__.py" set "CODE="
@@ -35,10 +39,16 @@ echo.
 rem `call` first: for /f runs the command through cmd /c, which drops the first and the
 rem last quote of a line that starts with one, and the Python path then no longer parses
 rem (the menu said 「读不出来」 every time; 2026-10-11 on the machine).
-for /f "delims=" %%s in ('call "%PY%" -c "import sys; sys.path.insert(0, r'%CODE%'); from ark_relay.features.modes.modes import skip_armed; from pathlib import Path; print('已记下，还没用上' if skip_armed(Path(r'%DATA%\state')) else '没记着')" 2^>nul') do set STATE=%%s
+set "STATE="
+if exist "%ERRF%" del "%ERRF%" >nul 2>&1
+for /f "delims=" %%s in ('call "%PY%" -c "import sys; sys.path.insert(0, r'%CODE%'); from ark_relay.features.modes.modes import skip_armed; from pathlib import Path; print('已记下，还没用上' if skip_armed(Path(r'%DATA%\state')) else '没记着')" 2^>"%ERRF%"') do set STATE=%%s
 if "%STATE%"=="" (
-  echo      当前：读不出来 —— 中继没装好，或者 Python 路径不对
-  echo      ^(应为 %PY%^)
+  echo      当前：读不出来，原因见下面几行（Python：%PY%）
+  if exist "%PY%" (
+    if exist "%ERRF%" type "%ERRF%"
+  ) else (
+    echo      这个 Python 不在：中继没装好
+  )
 ) else (
   echo      当前「下次跑完不关机」：%STATE%
 )
