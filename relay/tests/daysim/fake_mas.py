@@ -135,6 +135,7 @@ class FakeMas:
 
     def _mode(self) -> None:
         running = any(_unfinished(t) for t in self.tasks)
+        self.shadow.mkdir(parents=True, exist_ok=True)     # before the backend's first start too
         (self.shadow / "mode.txt").write_text("running" if running else "up", encoding="utf-8")
 
     def _running_names(self) -> "set[str]":

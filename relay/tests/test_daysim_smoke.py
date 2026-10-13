@@ -303,6 +303,60 @@ for _t, fn in timers:
 check("the rewrite moves app.json's mtime (preupdate_okww reads that as 「checked」)",
       (os.stat(app).st_mtime > T0, changed), (True, [app]))
 
+# ---- World.prepare: inputs of an earlier power cycle do not reach this one's processes
+import fake_proc  # noqa: E402
+
+
+class _Mas:
+    def __init__(self):
+        self.calls = []
+        self.shadow = Path("/nonexistent-daysim-shadow")
+
+    def stop(self):
+        self.calls.append("stop")
+
+    def start(self):
+        self.calls.append("start")
+
+    def set_tasks(self, tasks):
+        pass
+
+
+def bare_world(boot: dict, events: list, seed=None) -> "W.World":
+    """A World with its process table and the given inputs, no relay and no fakes beyond
+    the process table: enough for prepare()."""
+    w = W.World.__new__(W.World)
+    w.boot, w.events, w.seed = boot, events, seed or {"t0": W.iso(T0)}
+    w.items, w.applied, w.tasks = W.timeline(events), set(), []
+    w.win = fake_proc.WinState(None, power_on=boot["power_on"])
+    w.mas = _Mas()
+    w.notes = []
+    w.note = lambda what, **f: w.notes.append(what)
+    w.error = lambda what, **f: w.notes.append("ERROR " + what)
+    return w
+
+
+def ev(hhmmss: str, kind: str, **f) -> dict:
+    return {"t": f"2026-10-13T{hhmmss}+08:00", "kind": kind, "src": "test", **f}
+
+
+w = bare_world({"start": T0 + 8 * 3600 + 120, "power_on": T0 + 8 * 3600, "end": T0 + 9 * 3600},
+               [ev("03:00:00", "proc", op="start", image="MAA.exe", path=r"D:\ark\maa\MAA.exe"),
+                ev("04:08:17", "power_off", by="outside")])
+w.prepare()
+check("a power-off before this power-on leaves the AUTO-MAS window this power-on starts (10-11 08:45)",
+      [p.image for p in w.win.procs.named("AUTO-MAS.exe")], ["AUTO-MAS.exe"])
+w = bare_world({"start": T0 + 13 * 3600 + 60, "power_on": T0 + 13 * 3600, "end": T0 + 14 * 3600},
+               [ev("12:05:00", "proc", op="start", image="MAA.exe", path=r"D:\ark\maa\MAA.exe")])
+w.prepare()
+check("a program from before a relay power-off (no power_off input) is gone after the next power-on",
+      [p.image for p in w.win.procs.named("MAA.exe")], [])
+w = bare_world({"start": T0 + 13 * 3600 + 60, "power_on": T0 + 13 * 3600, "end": T0 + 14 * 3600},
+               [ev("13:00:30", "proc", op="start", image="MAA.exe", path=r"D:\ark\maa\MAA.exe")])
+w.prepare()
+check("a program started after this power-on is still running at the relay's start",
+      [p.image for p in w.win.procs.named("MAA.exe")], ["MAA.exe"])
+
 # ---- the morning of 10-12, end to end
 corpus = W.CORPUS_ROOT / "2026-10-12"
 owner_mac = sys.platform == "darwin" and (Path.home() / "Claude" / "maa-automation").is_dir()

@@ -451,17 +451,30 @@ class World:
     def prepare(self) -> None:
         """Power-on baseline, then every input up to the boot's start: state for all of
         them (process table, AUTO-MAS, ntfy), disk effects for those no earlier boot
-        process applied."""
+        process applied.
+
+        Inputs from before this boot's power-on are replayed first: they belong to an
+        earlier power cycle, and a recorded power-off among them would otherwise end
+        the AUTO-MAS window this power-on starts (10-11 08:45: the 04:08 shutdown left
+        the relay finding no AUTO-MAS.exe, where the machine said 「窗口已在、接口还没开」).
+        Whatever they left running is gone at power-on, also after a relay power-off
+        (an output, so no power_off input ends it)."""
         b = self.boot
+        past = [it for it in self.items if it["t"] <= b["start"]]
+        earlier = [it for it in past if it["t"] < b["power_on"]]
+        self._replay(earlier)
+        if earlier:
+            self._all_down(b["power_on"])
         self.win.add_baseline(b["power_on"])
         self._shell_up(b["power_on"])
         machine = self.seed.get("machine") or {}
         if machine.get("power") == "on" and b["start"] <= epoch(self.seed["t0"]) + 1:
             self._backend_up(b["power_on"], restore=False)
             self.note("machine on at 00:00: AUTO-MAS backend assumed up", src=machine.get("src", ""))
-        for it in self.items:
-            if it["t"] > b["start"]:
-                break
+        self._replay(past[len(earlier):])
+
+    def _replay(self, items: list) -> None:
+        for it in items:
             self.state_effect(it, live=False)
             if it["i"] not in self.applied:
                 self.disk_effect(it)
