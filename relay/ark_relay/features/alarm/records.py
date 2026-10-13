@@ -209,8 +209,12 @@ def _confirm_unreachable(eng, rec: RunRecord) -> None:
         raw["maaend_unreachable_why"] = why
         log.info("⏸ MaaEnd %s 每个任务秒败、零完成，且有官方依据（%s）：按进不了游戏处理", rec.run_id, why)
     else:
-        log.warning("❌ MaaEnd %s 每个任务秒败、零完成，像没进游戏，但没有官方维护或更新公告："
-                    "按普通失败处理（报警、补跑）", rec.run_id)
+        # INFO, not WARNING (audit 2026-10-13 s7 #5): errwatch pushed the WARNING at
+        # once as 「中继自己报错了」 while the failure was still held for its retry - a
+        # game failure under the relay-error title, before a retry that may heal it.
+        # The held final alarm says it (pushes._push_unresolved: UNREACHABLE_SHAPE_NOTE).
+        log.info("❌ MaaEnd %s 每个任务秒败、零完成，像没进游戏，但没有官方维护或更新公告："
+                 "按普通失败处理（报警、补跑）", rec.run_id)
 
 
 def _mark_raw_on_ledger(eng, rec: RunRecord, key: str, value) -> None:

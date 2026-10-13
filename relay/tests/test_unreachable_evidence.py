@@ -20,6 +20,7 @@ relay/tests has the shape at all (0 of 80), so this is the nearest real round.
 * shape + an official update notice for today -> the same, naming that notice.
 """
 import json
+import logging
 import os
 import sys
 from datetime import datetime, timedelta
@@ -119,7 +120,25 @@ print("[形状有、没有官方维护也没有更新公告 → 普通故障]")
 handle.efstatus.update_hint = lambda now=None, fetch=None: ""
 e = build()
 r = rec_from_fixture()
+
+
+class _Loud(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.lines = []
+
+    def emit(self, rec_):
+        self.lines.append(rec_.getMessage())
+
+
+loud = _Loud()
+logging.getLogger("ark.handle").addHandler(loud)
 handle._handle(e, r)
+logging.getLogger("ark.handle").removeHandler(loud)
+# Audit 2026-10-13 s7 #5: errwatch pushed this WARNING at once as a relay error
+# while the failure was still held for its retry; the final alarm says it.
+check("held failure: no 「像没进游戏」 WARNING (errwatch would push it now)",
+      [m for m in loud.lines if "像没进游戏" in m], [])
 check("压着等补跑", ("MaaEnd", "endfield") in e._pending)
 check("不记成进不了游戏", r.raw.get("maaend_unreachable"), None)
 check("账本上也不是进不了游戏", (ledger_raw(e, r) or {}).get("maaend_unreachable"), None)
