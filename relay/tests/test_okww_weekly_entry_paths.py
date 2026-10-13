@@ -390,12 +390,14 @@ check("the two values in the log", any("顶栏读到波片 17/240，备用 24" i
 check("picture", "nowave_dialog" in t.shots)
 check("no failed mark", any(ns["FAILED_MARK"] in m for m in t.logs), False)
 
-print("\n[the reminder with waveplates 41 + backup 24 >= 60 -> 确认 without the tick, then 开启挑战]")
+print("\n[the reminder with waveplates 41 + backup 24 >= 60 contradicts the game (it shows only when short) -> 取消, picture, stop]")
 t = solo_dialog(task(book="team"), 41, 24)
-check("went in", stopped(t), "in")
-check("确认, then 开启挑战", [e for e in t.events if e in ("cancel", "confirm", "start")], ["confirm", "start"])
+got = stopped(t)
+check("stopped as failed, saying the read and the game disagree", got.startswith("fail:") and "读数和游戏对不上" in got)
+check("取消 clicked, never 确认, 开启挑战 never clicked", [e for e in t.events if e in ("cancel", "confirm", "start")], ["cancel"])
 check("no tick (upstream's wait_click_skip_dialog_confirm not called)", "skip-confirm" in t.events, False)
-check("said it confirmed without the tick", any("不勾「本次登录不再提示」" in m for m in t.logs))
+check("picture of the dialog", "solo_dialog_contradicts" in t.shots)
+check("not the shortage line (not a skip)", any(m.startswith("结晶波片不足") for m in t.logs), False)
 
 print("\n[a dialog after 单人挑战 that is not the reminder -> picture, phone, stop; nothing clicked]")
 t = solo_dialog(task(book="team"), 41, 24, text="某个没见过的对话框")

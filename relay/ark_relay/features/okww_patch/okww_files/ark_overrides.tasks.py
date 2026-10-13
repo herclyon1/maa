@@ -1305,10 +1305,12 @@ def _install_hooks():
         # fight for no reward (10-12 11:43:16, ok-script.2026-10-12.log:1864-1870;
         # 15:28:19, :2735-2740), and the tick hid the reminder for the rest of that
         # login (:2877). Here: the same click; a dialog is read before anything is
-        # pressed. The reminder with waveplates + backup under one claim is a
-        # shortage: 取消, skipped. With enough, 确认 without the tick (the reward is
-        # paid at the crystal; the claim hook reads the bar again there). Any other
-        # dialog, or a bar that cannot be read, is a picture and a stop.
+        # pressed, and 确认 is never pressed on it. The reminder with waveplates +
+        # backup under one claim is a shortage: 取消, skipped. The reminder with
+        # enough read contradicts the game, which shows it only when waveplates
+        # backup included are short (upstream's comment, and both real cases above):
+        # our bar read is wrong, so 取消, a picture and a stop. Any other dialog, or
+        # a bar that cannot be read, is a picture and a stop.
         if not _weekly(self) or farming_echoes():
             return solo_challenge(self)
         self.click(0.880, 0.911, after_sleep=2)
@@ -1336,9 +1338,13 @@ def _install_hooks():
             self.click_dialog_left_button()
             self.sleep(1)
             _skip_short(self)
-        self.log_info(f"周本：波片 {wave} + 备用 {spare} 够领一次，提醒框点确认（不勾「本次登录不再提示」）")
-        self.click_dialog_right_button()
-        return None
+        why = (f"周本：点单人挑战后游戏提醒「无法获取奖励」（波片连备用都不够才会提醒），顶栏却读到波片 {wave} + "
+               f"备用 {spare} 够领一次，读数和游戏对不上，不点确认，取消并停下。整屏读到 {text[:400]}")
+        _shot(self, "solo_dialog_contradicts")    # the dialog itself, before the cancel
+        self.click_dialog_left_button()
+        self.sleep(1)
+        self.log_error(why, notify=True)
+        _end_failed(self, why)
 
     # -- every boss entry: 单人挑战 taken, then 开启挑战; an unknown dialog stops --
     @override(FarmEchoTask, "click_team_challenge", expect_sha=_TEAM_CHALLENGE_SHA)
