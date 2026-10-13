@@ -94,7 +94,7 @@ check("main() stops a deploy whose snapshot fix is gone", (
     replay.main([str(FIX / "relay-1006-false-alarms.log")]),
     setattr(_ann, "_going_down", _down))[1], 1)
 check("the replay leaves no handler on the ark logger",
-      [type(h).__name__ for h in __import__("logging").getLogger("ark").handlers], [])
+      [type(h).__name__ for h in __import__("logging").getLogger(__import__("ark_relay.features.alarm.errwatch", fromlist=["ARK"]).ARK).handlers], [])
 
 print("[a genuine ERROR still pushes; INFO / diag / traceback lines do not]")
 check("a real ERROR line pushes",

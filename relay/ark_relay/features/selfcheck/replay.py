@@ -183,7 +183,8 @@ def errwatch_pushes(text: str) -> list[dict]:
     if snap_at:
         runs.append((snap_at, lambda: _replay_snapshot(snap)))
     if runs:
-        ark = logging.getLogger("ark")
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        ark = logging.getLogger(errwatch.ARK)   # where boot_stages installs the handler
         with tempfile.TemporaryDirectory() as td:
             h, taken = _handler(Path(td) / "state")
             ark.addHandler(h)

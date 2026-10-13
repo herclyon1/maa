@@ -54,7 +54,7 @@ def pushes(notifier):
         h = errwatch.ErrorKindAlert(_Notifier(), state_dir=Path(td) / "state", known={})
         taken = []
         h._take = taken.append
-        ark = logging.getLogger("ark")
+        ark = logging.getLogger(errwatch.ARK)
         ark.addHandler(h)
         try:
             selfcheck.report(None, notifier)
