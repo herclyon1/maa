@@ -661,8 +661,10 @@ OKWW_BATTLE_PASS_RETRIED = "第一次没打开，同一趟里重开一次领了"
 OKWW_BATTLE_PASS_UNCHECKED = "OK-WW 领战令的写法变了，这次照它原样领，没打开时不会重试"
 
 
-# The last line of every 「🩺 中继自己报错了」 push (errwatch.py).
-RELAY_ERROR_TAIL = "这不代表脚本没跑，是中继自己有一处出了错，已交给我们这边去修。"
+# The last line of every 「🩺 中继自己报错了」 push (errwatch.py). Since 10-06 every
+# WARNING is pushed, game and scheduler states included (AUTO-MAS backend down = the
+# shift does not run), so it no longer says the scripts were unaffected.
+RELAY_ERROR_TAIL = "已交给我们这边去修。"
 
 
 def relay_error_body(where: str, what: str, at: str = "") -> str:

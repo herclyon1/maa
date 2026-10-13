@@ -35,5 +35,12 @@ check("说了之后翻倍", "翻倍" in body, True)
 check("不再说每 3 分钟", "每 3 分钟" in body, False)
 check("连拉几次再报，和代码一致", f"连拉 {KEEPER["REVIVE_ALERT_AFTER"]} 次" in body, True)
 
+print("\n[中继报错推送的结尾不再说「这不代表脚本没跑」（s1 #10）]")
+# relay.log 2026-10-10 16:14:14: the push for 「开机自检 ✗ 调度程序的后台程序在跑」 (AUTO-MAS
+# backend down, so the shift cannot run) ended with 「这不代表脚本没跑…」.
+body = texts.relay_error_body("ark.selfcheck", "开机自检 ✗ 调度程序的后台程序在跑", "16:14")
+check("结尾不打包票说脚本照跑", "不代表脚本没跑" in body, False)
+check("仍说交给我们修", body.endswith("已交给我们这边去修。"), True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
