@@ -34,7 +34,7 @@ class TestInstallCycle(unittest.TestCase):
     def test_install_cycle(self):
         relay_py = os.environ.get("RELAY_PY")
         self.assertTrue(relay_py, "RELAY_PY is not set: the workflow's Interpreters step writes it to GITHUB_ENV")
-        root = Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir()) / "ark-install-cycle"
+        root = Path(tempfile.gettempdir()) / "ark-install-cycle"
         try:
             p = subprocess.run([relay_py, "-u", str(CYCLE), "--okww-python", sys.executable, "--root", str(root)],
                                capture_output=True, text=True, encoding="utf-8", errors="replace",

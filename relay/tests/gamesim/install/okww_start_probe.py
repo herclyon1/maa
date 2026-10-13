@@ -8,17 +8,16 @@ overlay is executed here exactly as at OK-WW's start on the game PC, or not at a
 
 It asserts nothing about the overlay: the relay side reads the overlay's own report back
 (okww_overlay.last_report, the file the relay reads at boot) and this file's answer, and
-judges. Written to the path in ARK_INSTALL_PROBE_OUT.
+judges. Written to OUT, next to OK-WW's main.py (the folder run_test.py runs in).
 
 Windows only: ok-script imports pywin32 at module top (ok/util/window.py).
 """
 import json
-import os
 import sys
 import unittest
 from pathlib import Path
 
-OUT = Path(os.environ["ARK_INSTALL_PROBE_OUT"])
+OUT = Path("ark_install_probe.json")
 
 from config import config  # noqa: E402  OK-WW's own config.py, as its tests import it
 from ok import og  # noqa: E402

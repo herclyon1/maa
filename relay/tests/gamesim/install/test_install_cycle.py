@@ -68,6 +68,7 @@ import fetch_upstream as fu  # noqa: E402
 OVERLAY_NAME = "okww_files/ark_overrides.tasks.py"
 PROBE = HERE / "okww_start_probe.py"
 PROBE_IN_TREE = "tests/ark_install_probe.py"
+PROBE_ANSWER = "ark_install_probe.json"     # okww_start_probe.OUT, relative to working/
 # The same start in test_overlay_loads.py took 1.0 s and test_harness_self.py's 4.5 s on
 # windows-latest (gamesim-windows run 38389995838, installed lane); 100 s is a hang guard,
 # and five of them fit the 570 s test_install_lane.py gives the whole cycle.
@@ -223,15 +224,16 @@ def py_set(paths) -> set:
 
 
 # ── one OK-WW start ─────────────────────────────────────────────────────────────
-def okww_start(ov, tree: Tree, python: str, out_dir: Path) -> "tuple[dict, dict, bool]":
+def okww_start(ov, tree: Tree, python: str) -> "tuple[dict, dict, bool]":
     """(probe answer, the overlay's report as the relay reads it, report written by this start)."""
     if ov.REPORT.exists():
         ov.REPORT.unlink()           # a report from before must not pass for this start's
     shutil.copyfile(PROBE, tree.work / PROBE_IN_TREE)
-    answer = out_dir / f"probe-{tree.tag}-{time.time_ns()}.json"
+    answer = tree.work / PROBE_ANSWER
+    if answer.exists():
+        answer.unlink()
     started = time.time()
     p = subprocess.run([python, "-u", "run_test.py", PROBE_IN_TREE], cwd=tree.work,
-                       env={**os.environ, "ARK_INSTALL_PROBE_OUT": str(answer)},
                        capture_output=True, text=True, encoding="utf-8", errors="replace",
                        timeout=START_TIMEOUT_S)
     (tree.work / PROBE_IN_TREE).unlink()
@@ -241,6 +243,7 @@ def okww_start(ov, tree: Tree, python: str, out_dir: Path) -> "tuple[dict, dict,
         print(text[-4000:])
         raise SystemExit(f"OK-WW did not start on {tree.tag} (exit {p.returncode})")
     probe = json.loads(answer.read_text(encoding="utf-8"))
+    answer.unlink()
     fresh = ov.REPORT.is_file() and ov.REPORT.stat().st_mtime >= started - 1
     report = ov.last_report()
     print(f"  probe: {json.dumps(probe, ensure_ascii=False)}\n  report: {json.dumps(report, ensure_ascii=False)}")
@@ -285,7 +288,7 @@ def run_cycle(ov, tree: Tree, python: "str | None", scratch: Path) -> None:
           "relay.log: no skipped-override line at the boots 10-03 12:54:28 and 21:20:21, after OK-WW "
           "ran on v3.7.2 at 09:18 and 09:20 (ledger-2026-10-03 lines 6-7)")
     if python:
-        probe, report, fresh = okww_start(ov, tree, python, scratch)
+        probe, report, fresh = okww_start(ov, tree, python)
         check("OK-WW's start executed the overlay and wrote its report", (probe["overlay_executed"], fresh), (True, True),
               "relay.log 10-04 21:20:19: the relay read a report written by OK-WW's start")
         check("nothing skipped, no error", (report.get("skipped"), report.get("error")), ([], ""), "same boots as above")
@@ -315,7 +318,7 @@ def run_cycle(ov, tree: Tree, python: "str | None", scratch: Path) -> None:
           "the owner 2026-10-06: 「不论多少次什么错误都要发」 (e8e90be2); relay.log said the skip at all six boots "
           "10-04 21:20:19 .. 10-05 22:00:55")
     if python:
-        probe, report, fresh = okww_start(ov, tree, python, scratch)
+        probe, report, fresh = okww_start(ov, tree, python)
         check("OK-WW's start wrote the report", (probe["overlay_executed"], fresh), (True, True), "relay.log 10-04 21:20:19")
         check("the relay says what it said on the machine", ov.report_line(), MACHINE_2026_10_04,
               "relay.log 10-04 21:20:19 (line 27223)")
@@ -328,7 +331,7 @@ def run_cycle(ov, tree: Tree, python: "str | None", scratch: Path) -> None:
     check("the pre-run drift check finds nothing", ov.drift(tree.root), [],
           "relay.log: no skipped-override line from the boot 10-05 22:10:57 on")
     if python:
-        probe, report, fresh = okww_start(ov, tree, python, scratch)
+        probe, report, fresh = okww_start(ov, tree, python)
         check("OK-WW's start applied everything", (fresh, report.get("skipped"), report.get("adapted") or [],
               report.get("error")), (True, [], [], ""), "relay.log: no skipped-override line from 10-05 22:10:57 on")
         check("the relay says nothing at boot", ov.report_line(), "", "same boots")
@@ -350,7 +353,7 @@ def run_cycle(ov, tree: Tree, python: "str | None", scratch: Path) -> None:
     check("the pre-run drift check finds nothing on v3.7.4", ov.drift(tree.root), [],
           "relay.log: no skipped-override line after 10-06 06:11:04")
     if python:
-        probe, report, fresh = okww_start(ov, tree, python, scratch)
+        probe, report, fresh = okww_start(ov, tree, python)
         applied = report.get("applied") or []
         check("OK-WW's start applied everything, each override once",
               (fresh, report.get("skipped"), report.get("adapted") or [], report.get("error"),
@@ -366,7 +369,7 @@ def run_cycle(ov, tree: Tree, python: "str | None", scratch: Path) -> None:
     check("every upstream file is as the tag has it, nothing of ours is left", tree.pristine(), [],
           f"upstream/okww-{tree.tag}/SOURCE.txt; legacy-items.json: the uninstaller deletes ark_overrides.py")
     if python:
-        probe, report, fresh = okww_start(ov, tree, python, scratch)
+        probe, report, fresh = okww_start(ov, tree, python)
         check("OK-WW starts without our code and no report is written", (probe["overlay_executed"], fresh, report),
               (False, False, {}), "upstream OK-WW has no ok_tasks/ (git status above)")
         check("the relay says nothing", ov.report_line(), "", "no report on disk")
