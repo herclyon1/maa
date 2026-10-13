@@ -15,10 +15,17 @@ from pathlib import Path
 log = logging.getLogger("ark.phone")   # same logger as phone.py: log lines keep their module name
 
 
-_CFG_ITEM = re.compile(
-    r'##\s*(?P<label>[^\n]+)\n\s*self\.\w+\s*=\s*ConfigItem\(\s*'
-    r'"(?P<sec>\w+)"\s*,\s*"(?P<key>\w+)"\s*,(?P<rest>.*?)\n\s*\)',
-    re.S)
+# The start of one labelled field: a `## 中文名` line, then `self.X = ConfigItem(` in a
+# class body or `config.X = ConfigItem(` in a module-level helper the class calls
+# with itself (init_maaend_task_config(self): the MaaEnd sanity-task fields). The
+# call's arguments are cut out with balanced parentheses (_call_args): a one-line
+# ConfigItem(...) has no `\n)` of its own, and a lazy match up to one swallowed
+# the next field (audit 11 #4, 2026-10-13: 7 of the 19 SHOWN fields unlabelled).
+_ITEM_HEAD = re.compile(r"##\s*(?P<label>[^\n]+)\n\s*(?:self|config)\.\w+\s*=\s*ConfigItem\(")
+_SEC_KEY = re.compile(r'\s*"(?P<sec>\w+)"\s*,\s*"(?P<key>\w+)"\s*(?:,|$)')
+_DEF = re.compile(r"^def\s+(\w+)\s*\(", re.M)
+# A line at column 0 that is not a comment or the close of a wrapped signature.
+_TOP_LEVEL = re.compile(r"^(?=[^\s#)\]])", re.M)
 _OPTS = re.compile(r"OptionsValidator\(\s*\[(.*?)\]", re.S)
 _QUOTED = re.compile(r"""["']([^"']+)["']""")
 
@@ -46,17 +53,72 @@ def _mas_labels(automas_dir) -> dict:
         except OSError:
             continue
         marks = list(_CLASS.finditer(text))
+        helpers = _helpers(text)
         for i, cm in enumerate(marks):
             game = _CLASS_OF.get(cm.group(1))
             if not game:
                 continue
             end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
-            for m in _CFG_ITEM.finditer(text[cm.end():end]):
-                o = _OPTS.search(m.group("rest"))
-                out[game][f'{m.group("sec")}.{m.group("key")}'] = {
-                    "label": m.group("label").strip(),
-                    "options": _QUOTED.findall(o.group(1)) if o else None,
-                }
+            body = text[cm.end():end]
+            found = _items(body)
+            # Module-level helpers the class calls with itself declare fields too.
+            for name in dict.fromkeys(re.findall(r"\b(\w+)\(self\)", body)):
+                for path, info in _items(helpers.get(name, "")).items():
+                    found.setdefault(path, info)
+            out[game].update(found)
+    return out
+
+
+def _helpers(text: str) -> dict[str, str]:
+    """Module-level functions: name -> source, up to the next top-level line."""
+    out = {}
+    for m in _DEF.finditer(text):
+        line_end = text.find("\n", m.end())
+        nxt = _TOP_LEVEL.search(text, line_end + 1) if line_end >= 0 else None
+        out[m.group(1)] = text[m.start():nxt.start() if nxt else len(text)]
+    return out
+
+
+def _call_args(text: str, start: int) -> "str | None":
+    """The arguments of the call whose `(` ends just before `start`, up to its
+    matching `)`; quotes and comments are skipped. None when it never closes."""
+    depth, i, quote = 1, start, ""
+    while i < len(text):
+        c = text[i]
+        if quote:
+            if c == "\\":
+                i += 1
+            elif c == quote:
+                quote = ""
+        elif c in "\"'":
+            quote = c
+        elif c == "#":
+            j = text.find("\n", i)
+            i = len(text) if j < 0 else j
+            continue
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return text[start:i]
+        i += 1
+    return None
+
+
+def _items(text: str) -> dict:
+    """Every labelled ConfigItem("Section", "Key", ...) in `text`: {"Section.Key": {label, options}}."""
+    out: dict = {}
+    for m in _ITEM_HEAD.finditer(text):
+        args = _call_args(text, m.end())
+        sk = _SEC_KEY.match(args) if args is not None else None
+        if not sk:
+            continue
+        o = _OPTS.search(args)
+        out[f'{sk.group("sec")}.{sk.group("key")}'] = {
+            "label": m.group("label").strip(),
+            "options": _QUOTED.findall(o.group(1)) if o else None,
+        }
     return out
 
 
