@@ -522,7 +522,7 @@ try:
                                _Py() if a and any("pythonw.exe" in str(x) for x in a[0]) else _Done())[1]
     check("a live OK-WW script is named", _mod.game_alive(), [_mod.okww_script_name(777)])
     _note = _mod.stop_okww(sleep=lambda _s: None)
-    check("stop does not report clean while it lives", "PID 777" in _note, True)
+    check("stop does not report clean while it lives", "编号 777" in _note, True)
     check("the desktop kill takes it by PID",
           "taskkill /F /PID 777" in Path(_mod.STOP_BAT).read_text(encoding="utf-8"), True)
     _sp.run = lambda *a, **k: (_ for _ in ()).throw(OSError("no pwsh")) \

@@ -280,11 +280,11 @@ UNREADABLE = "鸣潮（读不到正在运行的程序列表，查不到它还开
 
 
 # What game_alive names when OK-WW's python processes cannot be listed.
-UNREADABLE_SCRIPT = "OK-WW 脚本（读不到 pythonw 进程列表，查不到它还开没开着）"
+UNREADABLE_SCRIPT = "OK-WW 脚本（查不到它还开没开着）"
 
 
 def okww_script_name(pid: int) -> str:
-    return f"OK-WW 脚本（pythonw.exe，PID {pid}）"
+    return f"OK-WW 脚本（pythonw.exe，编号 {pid}）"
 
 
 def game_alive() -> "list[str]":
