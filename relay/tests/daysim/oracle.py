@@ -151,11 +151,11 @@ def _hhmm_ok(v) -> bool:
     return bool(m) and int(m[1]) < 24 and int(m[2]) < 60 and int(m[3] or 0) < 60
 
 
-def _switch_lines() -> int:
+def _switch_lines() -> list[str]:
     try:
-        return len(USER_SWITCHES.read_text(encoding="utf-8").splitlines())
+        return USER_SWITCHES.read_text(encoding="utf-8").splitlines()
     except OSError:
-        return 0
+        return []
 
 
 def _missing_commits(shas: set[str]) -> set[str]:
@@ -171,7 +171,7 @@ def _missing_commits(shas: set[str]) -> set[str]:
     return {line.split()[0] for line in out.splitlines() if line.endswith(" missing")}
 
 
-def _item_problems(it, seen: set[str], nswitch: int, shas: set[str]) -> list[str]:
+def _item_problems(it, seen: set[str], switches: list[str], shas: set[str]) -> list[str]:
     if not isinstance(it, dict):
         return [f"entry is not an object: {it!r}"[:120]]
     iid = it.get("id")
@@ -203,8 +203,13 @@ def _item_problems(it, seen: set[str], nswitch: int, shas: set[str]) -> list[str
         bad.append(f"{who}: a must_not cites the fix (error row / ERROR-LEDGER kind / commit) "
                    "or the USER-SWITCHES.txt line that makes it normal")
     for m in _SWITCH.finditer(src):
-        if not 1 <= int(m[1]) <= nswitch:
-            bad.append(f"{who}: USER-SWITCHES.txt has no line {m[1]}")
+        # A line shifted by an insertion above it would point at another rule, or
+        # at the header: the cited line must still be an entry (file | what | ...).
+        n = int(m[1])
+        if not 1 <= n <= len(switches):
+            bad.append(f"{who}: USER-SWITCHES.txt has no line {n}")
+        elif " | " not in switches[n - 1] or switches[n - 1].startswith("#"):
+            bad.append(f"{who}: USER-SWITCHES.txt:{n} is not an entry line (did the file shift?)")
     shas.update(_SHA.findall(src))
     if "was" in it or rule == "dropped":
         was = it.get("was")
@@ -254,7 +259,7 @@ def validate(doc) -> list[str]:
     scope = doc.get("scope", {"from": "00:00", "to": "24:00"})
     if not (isinstance(scope, dict) and _hhmm_ok(scope.get("from")) and _hhmm_ok(scope.get("to"))):
         bad.append("scope must be {from, to} HH:MM")
-    nswitch, shas, seen = _switch_lines(), set(), set()
+    switches, shas, seen = _switch_lines(), set(), set()
     for g in doc.get("guards", []):
         if not (isinstance(g, dict) and _hhmm_ok(g.get("from")) and _hhmm_ok(g.get("to"))
                 and str(g.get("what") or "").strip() and _checkable(str(g.get("src") or ""))):
@@ -264,7 +269,7 @@ def validate(doc) -> list[str]:
         bad.append("no items")
         items = []
     for it in items:
-        bad += _item_problems(it, seen, nswitch, shas)
+        bad += _item_problems(it, seen, switches, shas)
     bad += [f"commit {s} cited in a src is not in this repository" for s in sorted(_missing_commits(shas))]
     return bad
 

@@ -108,6 +108,8 @@ refused("must_not citing only a log line", entry(rule="must_not", src="relay.log
 refused("commit not in the repo", entry(src="errors R32; 0123abcd9"), "not in this repository")
 refused("USER-SWITCHES line past the end", entry(rule="must_not", src="USER-SWITCHES.txt:99999"),
         "has no line 99999")
+refused("USER-SWITCHES line that is a header comment", entry(rule="must_not", src="USER-SWITCHES.txt:3"),
+        "is not an entry line")
 refused("no why", entry(why=""), "no why")
 refused("unknown field (typo)", entry(text_hass=["周本"]), "unknown field")
 refused("dropped without was", entry(rule="dropped"), "`was` must be")
