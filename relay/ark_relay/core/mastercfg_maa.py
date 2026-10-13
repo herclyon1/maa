@@ -16,6 +16,16 @@ from ark_relay.core.config import atomic_write_text
 
 log = logging.getLogger("ark.mastercfg")
 
+# read_maa runs on every phone publish and a WARNING is a group message
+# (errwatch): each condition is said once and forgotten once it clears.
+_said: dict[str, str] = {}
+
+
+def _warn_once(site: str, why: str, msg: str, *args, exc_info: bool = False) -> None:
+    if _said.get(site) != why:
+        log.warning(msg, *args, exc_info=exc_info)
+        _said[site] = why
+
 # Drone targets: keys and Chinese names from MAA's
 # InfrastSettingsUserControlModel.UsesOfDronesList and docs/protocol/integration.md
 # (checked 2026-09-07, v6.17).
@@ -75,13 +85,15 @@ def read_maa(automas_dir) -> dict:
     f = maa_master(automas_dir)
     if not f or not f.is_file():
         # Said, so the phone page's missing section has a cause in the log.
-        log.warning("母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
+        _warn_once("master", f"missing: {f}", "母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
         return out
     try:
         doc = json.loads(f.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        log.warning("母本 gui.new.json 读不出来", exc_info=True)
+    except (OSError, ValueError) as exc:
+        _warn_once("master", f"unreadable: {type(exc).__name__}: {exc}", "母本 gui.new.json 读不出来",
+                   exc_info=True)
         return out
+    _said.pop("master", None)
     task = _maa_infrast(doc)
     if task is not None:
         out["values"][MAA_DRONES_PATH] = str(task.get("UsesOfDrones") or "")

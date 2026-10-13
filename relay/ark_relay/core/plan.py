@@ -26,8 +26,8 @@ log = logging.getLogger("ark.plan")
 _last_error: dict[str, str] = {}
 
 
-def _say_once(site: str, exc: BaseException, msg: str, *args, exc_info: bool = False) -> None:
-    key = f"{type(exc).__name__}: {exc}"
+def _say_once(site: str, exc: "BaseException | str", msg: str, *args, exc_info: bool = False) -> None:
+    key = exc if isinstance(exc, str) else f"{type(exc).__name__}: {exc}"
     if _last_error.get(site) != key:
         log.warning(msg, *args, exc_info=exc_info)
         _last_error[site] = key
@@ -58,10 +58,13 @@ def _tokyo(hhmm: str) -> str:
 
 def _load(path: Path) -> dict:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        doc = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        log.warning("读取 %s 失败: %s", path.name, exc)
+        # Read on every engine tick (schedule) and every phone publish (next_plan).
+        _say_once(f"load:{path}", exc, "读取 %s 失败: %s", path.name, exc)
         return {}
+    _last_error.pop(f"load:{path}", None)
+    return doc
 
 
 def _script_kind(path: str) -> str:
@@ -624,9 +627,10 @@ def _asar_value_labels(automas_dir, state_dir) -> dict:
     asar = Path(automas_dir) / "resources" / "app.asar"
     try:
         st = asar.stat()
-    except OSError:
-        log.warning("找不到 app.asar，剿灭那一项会留下英文取值")
+    except OSError as exc:
+        _say_once("asar", exc, "找不到 app.asar，剿灭那一项会留下英文取值")
         return {}
+    _last_error.pop("asar", None)
     stamp = f"{st.st_size}-{int(st.st_mtime)}"
     # A cache of derived data, rebuilt when lost; a file of its own, not state.json.
     cache = Path(state_dir) / "asar-labels.json"
@@ -638,9 +642,10 @@ def _asar_value_labels(automas_dir, state_dir) -> dict:
         pass
     try:
         text = asar.read_bytes().decode("utf-8", "replace")
-    except OSError:
-        log.warning("读不了 app.asar", exc_info=True)
+    except OSError as exc:
+        _say_once("asar_read", exc, "读不了 app.asar", exc_info=True)
         return {}
+    _last_error.pop("asar_read", None)
     out: dict = {}
     for label, value in _LABEL_PAIR.findall(text):
         if any("\u4e00" <= ch <= "\u9fff" for ch in label):
@@ -659,8 +664,9 @@ def next_plan(automas_dir: Path | None) -> str:
         return ""
     cfg_dir = Path(automas_dir) / "config"
     if not cfg_dir.is_dir():
-        log.warning("找不到 AUTO-MAS 配置目录: %s", cfg_dir)
+        _say_once("cfg_dir", str(cfg_dir), "找不到 AUTO-MAS 配置目录: %s", cfg_dir)
         return ""
+    _last_error.pop("cfg_dir", None)
 
     scripts, queues = _scripts(cfg_dir), _queues(cfg_dir)
     if not queues:

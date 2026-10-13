@@ -83,6 +83,21 @@ __all__ = [
 
 log = logging.getLogger("ark.mastercfg")
 
+# A WARNING is a group message (errwatch), and read_maaend runs on every phone
+# publish: each condition is said once (site -> what was said) and forgotten
+# once it clears, so it is said again if it comes back.
+_said: dict[str, str] = {}
+
+
+def _warn_once(site: str, why: str, msg: str, *args, exc_info: bool = False) -> None:
+    if _said.get(site) != why:
+        log.warning(msg, *args, exc_info=exc_info)
+        _said[site] = why
+
+
+def _cleared(site: str) -> None:
+    _said.pop(site, None)
+
 
 # The items that show up on the phone for tasks that list them by hand.
 MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
@@ -198,8 +213,10 @@ class _Locale:
         f = Path(maaend_dir) / "locales" / "interface" / "zh_cn.json"
         try:
             self.table = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            log.warning("读不到 MaaEnd 的中文语言包，手机上只能显示英文键名")
+        except (OSError, ValueError) as exc:
+            _warn_once("locale", f"{f}: {type(exc).__name__}", "读不到 MaaEnd 的中文语言包，手机上只能显示英文键名")
+            return
+        _cleared("locale")
 
     def __call__(self, ref: object) -> str:
         s = str(ref or "")
@@ -249,8 +266,10 @@ def _read_maaend_defs(maaend_dir) -> "tuple[dict, dict, list[tuple[Path, str | N
     try:
         iface = _jsonc(root / "interface.json")
         files = [root / rel for rel in (iface.get("import") or []) if isinstance(rel, str)]
-    except (OSError, ValueError, TypeError):
-        log.warning("读不到 MaaEnd 的 interface.json，退回按文件名找定义")
+    except (OSError, ValueError, TypeError) as exc:
+        _warn_once("interface", f"{root}: {type(exc).__name__}", "读不到 MaaEnd 的 interface.json，退回按文件名找定义")
+    else:
+        _cleared("interface")
     listed = bool(files)
     if not files:
         files = sorted((root / "tasks").glob("**/*.json"))
@@ -373,13 +392,15 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
     f = maaend_master(automas_dir)
     if not f or not f.is_file():
         # Said, so the phone page's missing section has a cause in the log.
-        log.warning("母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
+        _warn_once("master", f"missing: {f}", "母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
         return out
     try:
         doc = json.loads(f.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        log.warning("母本 mxu-MaaEnd.json 读不出来", exc_info=True)
+    except (OSError, ValueError) as exc:
+        _warn_once("master", f"unreadable: {type(exc).__name__}: {exc}", "母本 mxu-MaaEnd.json 读不出来",
+                   exc_info=True)
         return out
+    _cleared("master")
     zh = _Locale(Path(maaend_dir) if maaend_dir else None)
     all_opts, all_tasks = _maaend_defs(maaend_dir)
     # A task the config still carries but no definition file declares any more.
@@ -440,8 +461,11 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
             label = zh(d.get("label"))
             if not label or label == d.get("label", "").lstrip("$") or not _HAN.search(label):
                 out["untranslated"].append(key)
-                log.warning("MaaEnd 选项 %s 没有中文名（定义%s），手机页会标成没翻译",
-                            key, "找到了" if d else "找不到")
+                _warn_once(f"untranslated:{key}", "found" if d else "missing",
+                           "MaaEnd 选项 %s 没有中文名（定义%s），手机页会标成没翻译",
+                           key, "找到了" if d else "找不到")
+            else:
+                _cleared(f"untranslated:{key}")
             out["labels"][key] = _plain(label) or opt
             kind = str(cur.get("type") or d.get("type") or "")
             if kind in ("switch", "select", "checkbox", "input"):
@@ -455,10 +479,12 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
                          for c in (d.get("cases") or []) if c.get("name")]
                 if cases:
                     out["options"][key] = cases
+                    _cleared(f"no_cases:{key}")
                 else:
                     if key not in out["untranslated"]:
                         out["untranslated"].append(key)
-                    log.warning("MaaEnd 选项 %s 是选择项但没有可选值，手机页只能给个文本框", key)
+                    _warn_once(f"no_cases:{key}", "no cases",
+                               "MaaEnd 选项 %s 是选择项但没有可选值，手机页只能给个文本框", key)
     return out
 
 
