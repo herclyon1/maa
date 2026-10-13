@@ -96,6 +96,7 @@ try:
                                      r"D:\ark\okww\data\apps\ok-ww\working\main.py -t 1 -e")])
     check("OK-WW up", ov.okww_running(), True)
     check("asks for python.exe and pythonw.exe", seen.get("hosts"), C.PYTHON_HOSTS)
+    check("leaves the outage alarm to the boot self-check", seen.get("warn"), False)
     procs.python_processes = pp([(1, r"D:\ark\automas\runtime\environment\venv\Scripts\python.exe main.py")])
     check("only AUTO-MAS: not up", ov.okww_running(), False)
     procs.python_processes = pp(None)

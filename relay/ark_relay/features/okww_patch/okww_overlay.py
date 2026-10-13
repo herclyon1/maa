@@ -100,7 +100,9 @@ def okww_running() -> "bool | None":
         return None
     from ark_relay.core import procs  # noqa: PLC0415
     from ark_relay.core.config import OKWW_CMDLINE, PYTHON_HOSTS  # noqa: PLC0415
-    rows = procs.python_processes(hosts=PYTHON_HOSTS)
+    # warn=False: an unreadable process list is not this step's to alarm on; the boot
+    # self-check (later in the same boot) pushes the one alarm for that outage.
+    rows = procs.python_processes(hosts=PYTHON_HOSTS, warn=False)
     if rows is None:
         log.info("程序列表读不到，不知道 OK-WW 开没开着，照常装中继的改动文件")
         return None
