@@ -1621,19 +1621,23 @@ def _install_nest():
 
     @override(NightmareNestTask, "get_nest_to_go")
     def get_nest_to_go(self):
-        # Back to the open world before opening the book again. Upstream goes straight
-        # to openF2Book, and after 「nightmare nest unreachable」 its single back()
-        # leaves the map open: F2 then finds no book and the whole task dies with
-        # 「can't find gray_book_boss」 (10-05 10:35:22). A person would close the map
-        # first. ensure_main is upstream's own way back, with the same 30 s cap its run uses.
-        if getattr(self, "_ark_nest_calls", 0):
-            try:
-                self.ensure_main(time_out=30)
-            except TaskDisabledException:
-                raise
-            except Exception:  # noqa: BLE001 - openF2Book below says it if this did not help
-                pass
-        self._ark_nest_calls = getattr(self, "_ark_nest_calls", 0) + 1
+        # Close the map left open by 「nightmare nest unreachable」 before the book is
+        # opened again. Upstream's _travel_to_nest_or_skip (NightmareNestTask.py:163-180)
+        # ends with a single back(), which can leave the map open; openF2Book then
+        # finds no book and the task dies with 「can't find gray_book_boss」 (10-05
+        # 10:35:22). openF2Book's own ensure_main (BaseWWTask.py:1019) would close it,
+        # but inside the daily that ensure_main is a do-nothing lambda on purpose
+        # (DailyTask.py:98-99, so the nest run keeps the book open), so it cannot.
+        # One more back, only when the world is not already on screen (a back in the
+        # world opens the game menu), then a short wait for the world.
+        if getattr(self, "_ark_close_map", False):
+            self._ark_close_map = False
+            if not self.in_team_and_world():
+                self.back(after_sleep=1)
+                if not self.wait_until(self.in_team_and_world, time_out=5, raise_if_not_found=False):
+                    _shot(self, "nest_map_still_open")
+                    self.log_info("nightmare nest: 传送不过去之后关了一次地图，还是没回到大世界"
+                                  f"（截图 nest_map_still_open）。整屏读到 {_screen_text(self)[:300]}")
         # find_nest keeps picking any nest that is not full, so a nest the team
         # cannot beat is chosen again every lap - the game's 「挑战失败」 screen is not
         # one OK-WW knows, so it re-entered every two minutes for ever. Judge by the
@@ -1676,6 +1680,7 @@ def _install_nest():
         _shot(self, "nest_travel")
         went = travel(self, nest)
         if not went:
+            self._ark_close_map = True     # get_nest_to_go closes the map before the book
             _shot(self, "nest_unreachable")
             self.log_info(f"nightmare nest: 传送不过去 {getattr(nest, 'cache_key', '')}（截图 nest_travel / nest_unreachable）")
         return went
@@ -1690,7 +1695,7 @@ def _install_nest():
         self._ark_nest_tried = set()
         self._ark_nest_progress = {}
         self._ark_only_logged = None      # log the filter's source once per run
-        self._ark_nest_calls = 0
+        self._ark_close_map = False
         self._ark_nest_seen = False
         self._ark_nest_missed = None
         self._ark_nest_raw = None

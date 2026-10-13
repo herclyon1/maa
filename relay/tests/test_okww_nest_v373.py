@@ -12,7 +12,9 @@ the override:
 * the pin matches v3.7.3, and a changed body is adapted to, not skipped;
 * the box top is read from upstream (0.25), not hard-coded;
 * a page without 南丘 is not an error - only 「no page had it」 is, once, at the end;
-* after the first lap the book is reopened from the open world (ensure_main first).
+* after 「nightmare nest unreachable」 the map is closed once before the book is opened
+  again - also inside the daily, where upstream replaces the nest task's ensure_main
+  with a do-nothing lambda (v3.7.4 DailyTask.py:98-99), so ensure_main cannot do it.
 """
 import re
 import sys
@@ -136,7 +138,7 @@ t.run()
 check("打了一局", len(t.fought), 1)
 check("进的是 /41 那一行（南丘）", ":41:" in (t.fought or [""])[0])
 check("识字区一律用 0.25", set(t.tops), {0.25})
-check("第二次开书之前先回大世界", t.events[:4], ["main", "book", "main", "book"])
+check("no extra ensure_main between the books when nothing was unreachable", t.events[:3], ["main", "book", "book"])
 check("计数没涨就不再进", any("no progress after an attempt" in m for m in t.infos))
 check("没报错", t.errors, [])
 
@@ -247,6 +249,64 @@ for label, text in (("正则对不上", unreadable), ("读到的值不像样（0
     check(f"{label}：开机推送里有 find_nest 没贴上",
           "没贴上" in line and "NightmareNestTask.find_nest" in line and "上沿" in line)
     check(f"{label}：推送标题是没贴上", texts.patches(1, [line]), "⚠️ OK-WW 补丁有 1 条没贴上（共 1 条）")
+
+print("\n[daily: ensure_main is upstream's no-op lambda; an unreachable nest leaves the map open -> one back before the book]")
+ns5 = overlay()
+ns5["_install_nest"]()
+t = fake(Nest, [page1("10/41"), PAGE2], ns5)
+t.ensure_main = lambda *a, **kw: None            # DailyTask.py:99, verbatim shape
+t.world, t.shots = False, []
+t.in_team_and_world = lambda: t.world
+
+
+def _back(after_sleep=0):
+    t.events.append("back")
+    t.world = len([e for e in t.events if e == "back"]) >= 2   # upstream's back, then ours
+
+
+t.back = _back
+t.screenshot = lambda name: t.shots.append(name)
+t.find_one = lambda *a, **kw: None
+t._find_travel_button = lambda: None
+t.wait_until = lambda cond, **kw: None if cond == t._find_travel_button else cond()
+nest = types.SimpleNamespace(cache_key="落渊南丘:41:450")
+check("travel fails as upstream's does", Nest._travel_to_nest_or_skip(t, nest), False)
+check("upstream's own back ran, the map is still open", (t.events, t.world), (["back"], False))
+Nest.get_nest_to_go(t)
+check("one more back, then the book", t.events[:3], ["back", "back", "book"])
+check("no picture of a stuck map", "nest_map_still_open" in t.shots, False)
+
+print("\n[the world is already on screen after the unreachable nest -> no back (it would open the game menu)]")
+t = fake(Nest, [page1("10/41"), PAGE2], ns5)
+t.ensure_main = lambda *a, **kw: None
+t.in_team_and_world = lambda: True
+t.back = lambda after_sleep=0: t.events.append("back")
+t._ark_close_map = True
+Nest.get_nest_to_go(t)
+check("straight to the book", t.events[:1], ["book"])
+
+print("\n[the back did not bring the world back -> picture and a log line, the book is tried anyway]")
+t = fake(Nest, [page1("10/41"), PAGE2], ns5)
+t.ensure_main = lambda *a, **kw: None
+t.in_team_and_world = lambda: False
+t.back = lambda after_sleep=0: t.events.append("back")
+t.wait_until = lambda cond, **kw: cond()
+t.shots = []
+t.screenshot = lambda name: t.shots.append(name)
+t.box_of_screen = lambda *a: a
+t.ocr = lambda *a, **kw: []
+t._ark_close_map = True
+Nest.get_nest_to_go(t)
+check("one back, then the book", t.events[:2], ["back", "book"])
+check("picture of the stuck map", t.shots, ["nest_map_still_open"])
+check("said so in the log", any("关了一次地图，还是没回到大世界" in m for m in t.infos))
+
+print("\n[nothing unreachable -> get_nest_to_go never presses back]")
+t = fake(Nest, [page1("10/41"), PAGE2], ns5)
+t.in_team_and_world = lambda: False
+t.back = lambda after_sleep=0: t.events.append("back")
+Nest.get_nest_to_go(t)
+check("no back", "back" in t.events, False)
 
 print("\n" +("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)
