@@ -485,46 +485,93 @@ def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
     tail = [int(x) for x in _OKWW_STAMINA_END.findall(text)]
     series = readings + tail[-1:]
     spent = sum(a - b for a, b in zip(series, series[1:], strict=False) if a > b)
-    spent += _weekly_waveplates(text, [m.start() for m in marks] + [len(text)] * len(tail[-1:]), series)
+    costs = _weekly_claim_costs(text)
+    spent += _not_yet_shown(text, [m.start() for m in marks] + [len(text)] * len(tail[-1:]), series,
+                            [(at, w) for at, w, _b in costs if w])
     if spent:
         out["okww_stamina_spent"] = spent
     entries = len(_OKWW_ENTRY.findall(text))
     if entries:
         out["okww_runs"] = entries
-    if back := _OKWW_BACKUP.findall(text):
-        out["okww_backup_stamina"] = int(back[-1])
-        backs = [int(x) for x in back]
-        if used := sum(a - b for a, b in zip(backs, backs[1:], strict=False) if a > b):
-            out["okww_backup_spent"] = used
+    back_marks = list(_OKWW_BACKUP.finditer(text))
+    backs = [int(m.group(1)) for m in back_marks]
+    if backs:
+        out["okww_backup_stamina"] = backs[-1]
+    used = sum(a - b for a, b in zip(backs, backs[1:], strict=False) if a > b)
+    used += _not_yet_shown(text, [m.start() for m in back_marks], backs, [(at, b) for at, _w, b in costs if b])
+    if used:
+        out["okww_backup_spent"] = used
+    if unread := sum(1 for _at, w, _b in costs if w is None):
+        out["okww_weekly_topup_unread"] = unread
     return readings, entries
 
 
 # Waveplates one weekly-boss reward claim costs (the game's own price; the overlay's
 # claim code checks for the same 60 before it confirms).
 _WEEKLY_CLAIM_WAVEPLATES = 60
+# The overlay's claim lines: the game's 「用备用体力补足」 dialog was answered, and (from
+# okww-fix-a on) the top bar it read before confirming.
+_WEEKLY_TOPUP = "周本领奖：波片不够，动用备用体力"
+_WEEKLY_TOPBAR = re.compile(r"周本领奖：顶栏读到波片 (\d+)/240，备用 (\d+)")
+# Waveplates come back one per 6 minutes, so a drop between two readings can be up
+# to (minutes / 6) short of what was spent between them.
+_REGEN_SECONDS = 360
 
 
-def _weekly_waveplates(text: str, pos: "list[int]", series: "list[int]") -> int:
-    """Waveplates spent on verified weekly claims that the readings do not already show.
+def _weekly_claim_costs(text: str) -> "list[tuple[int, int | None, int | None]]":
+    """(position, waveplates, backup) for each verified weekly claim.
 
-    The stamina readings come from get_stamina, which the weekly claim does not
-    call, so a claim usually falls in no drop at all and 「消耗 波片」 left it out
-    (audit 2026-10-13 item 12; 10-12 11:41, three claims read back 3->2->1->0, spent
-    nothing). A claim between two readings whose drop already covers it is not
-    counted twice.
+    Without a top-up the claim is 60 waveplates. With one, the backup made up the
+    shortfall (upstream BaseWWTask.use_stamina counts it that way: total -= used):
+    60 - W waveplates' worth of backup, W read off the top bar before confirming.
+    Logs from before the overlay logged the top bar: (position, None, None) - the
+    split is not in the log (10-12 15:29 and 15:31, audit 2026-10-13 item 18).
     """
-    claims = [m.start() for m in outcome.WEEKLY_CLAIM_OK.finditer(text)]
+    out: list = []
+    prev = 0
+    for m in outcome.WEEKLY_CLAIM_OK.finditer(text):
+        seg, prev = text[prev:m.start()], m.end()
+        if _WEEKLY_TOPUP not in seg:
+            out.append((m.start(), _WEEKLY_CLAIM_WAVEPLATES, 0))
+        elif bars := _WEEKLY_TOPBAR.findall(seg):
+            wave, spare = (int(x) for x in bars[-1])
+            backup = min(spare, max(0, _WEEKLY_CLAIM_WAVEPLATES - wave))
+            out.append((m.start(), _WEEKLY_CLAIM_WAVEPLATES - backup, backup))
+        else:
+            out.append((m.start(), None, None))
+    return out
+
+
+def _not_yet_shown(text: str, pos: "list[int]", series: "list[int]", items: "list[tuple[int, int]]") -> int:
+    """The part of `items` ((position, amount) spent between readings) the readings do not show.
+
+    The stamina readings come from get_stamina, which the weekly claim does not call,
+    so a claim usually falls in no drop at all and was left out of 「消耗」 (audit
+    2026-10-13 item 12; 10-12 11:41, three claims, nothing spent shown). Claims between
+    two readings whose drop already covers them, give or take the regeneration over
+    that gap, are not counted again (item 18: 100 -> claim -> 42 is the claim).
+    """
     per_gap: dict = {}
-    for c in claims:
-        i = bisect.bisect_right(pos, c)
-        per_gap[i] = per_gap.get(i, 0) + 1
+    for at, amount in items:
+        i = bisect.bisect_right(pos, at)
+        per_gap[i] = per_gap.get(i, 0) + amount
     extra = 0
-    for i, n in per_gap.items():
-        shown = 0
+    for i, need in per_gap.items():
         if 0 < i < len(series):
-            shown = min(n, max(0, series[i - 1] - series[i]) // _WEEKLY_CLAIM_WAVEPLATES)
-        extra += _WEEKLY_CLAIM_WAVEPLATES * (n - shown)
+            a, b = _pos_time(text, pos[i - 1]), _pos_time(text, pos[i])
+            margin = int((b - a) // _REGEN_SECONDS) + 1 if a is not None and b is not None and b >= a else 10
+            if series[i - 1] - series[i] + margin >= need:
+                continue
+        extra += need
     return extra
+
+
+def _pos_time(text: str, pos: int) -> "float | None":
+    """The timestamp of the line holding `pos`; None past the end or without one."""
+    if pos >= len(text):
+        return None
+    t = _HEAD_TS.match(text, text.rfind("\n", 0, pos) + 1)
+    return _ts(t.group(1), t.group(2)) if t else None
 
 
 def _okww_health(text: str, out: dict, entries: int) -> None:
