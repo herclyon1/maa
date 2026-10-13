@@ -39,6 +39,7 @@ try:
 except ImportError as exc:
     raise SystemExit(f"cannot import the harness from {_HERE}: {exc}") from None
 import numpy as np  # noqa: E402
+from src.Labels import Labels  # noqa: E402
 from src.task.NightmareNestTask import NightmareNestTask  # noqa: E402
 
 LIST = "nest_list/2026-10-07_092052.png"
@@ -247,6 +248,34 @@ class TestHarness(harness.ScriptedCase):
         self.assertEqual(got["all"], sorted([count, "落渊南丘残象聚落"]))
         self.assertEqual(got["outside"], [])
         self.assertEqual(got["box"], [(890, 527)])
+
+    def test_provisional_features(self):
+        # A screen never recorded answers template lookups with the templates its log showed:
+        # ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)'.
+        confirm = [0.724, 0.5917, 0.7536, 0.663]
+        sc = scenario({"dialog": {"provisional_features": [
+            {"name": "confirm_btn_hcenter_vcenter", "box": confirm, "evidence": EV}],
+            "transitions": [go("done", feature="confirm_btn_hcenter_vcenter")]},
+            "done": {"end": True}}, "dialog")
+        self.assertEqual(sc.provisional, ["dialog"])
+
+        def body(task):
+            # upstream's own lookups: a list of Labels members, a box, an absent name, no OCR text
+            b = task.find_one([Labels.confirm_btn_hcenter_vcenter, Labels.confirm_btn_highlight_hcenter_vcenter])
+            self.decide("found", (b.name, b.x, b.y) if b else None)
+            self.decide("in_box", bool(task.find_one("confirm_btn_hcenter_vcenter", box=task.box_of_screen(0.5, 0.5, 1, 1))))
+            self.decide("out_box", bool(task.find_one("confirm_btn_hcenter_vcenter", box=task.box_of_screen(0, 0, 0.5, 0.5))))
+            self.decide("absent", task.find_one("team_close"))
+            self.decide("ocr", task.ocr(0, 0, 1, 1))
+            task.click(b)
+        run = self.run_scenario(sc, body)
+        self.assertTrue(run.ended, run.story())
+        got = {e.data["name"]: e.data["value"] for e in run.of("decision")}
+        self.assertEqual(got["found"], ("confirm_btn_hcenter_vcenter", 1390, 639))
+        self.assertTrue(got["in_box"])
+        self.assertFalse(got["out_box"])
+        self.assertIsNone(got["absent"])
+        self.assertEqual(got["ocr"], [])
 
     # -- the loader and the frames
     def test_loader_refuses_missing_evidence_and_bad_references(self):

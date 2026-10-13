@@ -25,6 +25,9 @@ uses (ok/test/__init__.py init_ok: `device_manager.capture_method = ImageCapture
                        BaseWWTask.game_lang); the overlay's REPORT, NO_CLAIM,
                        NO_STAMINA_FLAG and MASTER_POINTER point at per-case temp files;
                        task.screenshot is recorded, so _shot names can be asserted.
+  provisional states   a screen never recorded answers OCR with the text its log line shows
+                       (task.ocr_fun) and template lookups with the templates its log lines
+                       found or clicked (task.find_feature), on a black frame; see scenario.py.
 
 A test calls the task's own methods inside `play()`; expectations come from the scenario
 file (scenario.py), each with its evidence, never from the code under test.
@@ -478,13 +481,13 @@ class ScriptedCase(TaskTestCase):
         def pick(lib):
             fun = real(lib)
             script = case.capture.script
-            if script is None or script.state.provisional_ocr is None:
+            if script is None or script.state.frame is not None:
                 return fun
 
             def provisional(box, image, match, scale_factor, threshold, lib_name):
                 h, w = script.frame().shape[:2]
                 found = []
-                for item in script.state.provisional_ocr:
+                for item in script.state.provisional_ocr or []:
                     x0, y0, x1, y1 = item["box"]
                     b = Box(x0 * w, y0 * h, to_x=x1 * w, to_y=y1 * h, confidence=1.0, name=item["text"])
                     cx, cy = b.x + b.width / 2, b.y + b.height / 2
@@ -497,6 +500,38 @@ class ScriptedCase(TaskTestCase):
                 return found, ocr_boxes
             return provisional
         return pick
+
+    def _feature_fun(self, real):
+        """find_feature for provisional states: the state's logged templates, by name, inside the
+        asked box (centre test, as for OCR). Every ok-script template lookup - find_one,
+        wait_feature, wait_click_feature, and through them upstream's in_team, has_claim,
+        click_dialog_*_button - goes through task.find_feature (ok/task/task.py FindFeature).
+        A state with a recorded frame gets the real template matching."""
+        case = self
+
+        def names_of(feature_name):
+            items = feature_name if isinstance(feature_name, (list, tuple, set)) else [feature_name]
+            return {str(getattr(n, "value", n)) for n in items if n is not None}
+
+        def find_feature(feature_name=None, *args, box=None, **kwargs):
+            script = case.capture.script
+            if script is None or script.state.frame is not None:
+                return real(feature_name, *args, box=box, **kwargs)
+            h, w = script.frame().shape[:2]
+            if isinstance(box, str):
+                box = case.task.get_box_by_name(box)
+            wanted = names_of(feature_name)
+            found = []
+            for item in script.state.provisional_features or []:
+                if item["name"] not in wanted:
+                    continue
+                x0, y0, x1, y1 = item["box"]
+                b = Box(x0 * w, y0 * h, to_x=x1 * w, to_y=y1 * h, confidence=1.0, name=item["name"])
+                cx, cy = b.x + b.width / 2, b.y + b.height / 2
+                if box is None or (box.x <= cx <= box.x + box.width and box.y <= cy <= box.y + box.height):
+                    found.append(b)
+            return found
+        return find_feature
 
     # -- running
     def decide(self, name: str, value) -> None:
@@ -523,6 +558,7 @@ class ScriptedCase(TaskTestCase):
         old_cfg = self._apply_task_config(sc)
         real_shot = task.screenshot
         real_ocr_fun = task.ocr_fun
+        real_find_feature = task.find_feature
 
         def shot(name=None, frame=None, show_box=False, frame_box=None):
             if self.capture.script is not None:
@@ -537,6 +573,7 @@ class ScriptedCase(TaskTestCase):
         ok_logger.addHandler(tap)
         task.screenshot = shot
         task.ocr_fun = self._ocr_fun(real_ocr_fun)
+        task.find_feature = self._feature_fun(real_find_feature)
         self.capture.script = script
         self.interaction.script = script
         task.executor.reset_scene()           # the next look takes the start state's frame
@@ -554,7 +591,7 @@ class ScriptedCase(TaskTestCase):
         finally:
             self.capture.script = None
             self.interaction.script = None
-            for attr in ("screenshot", "ocr_fun"):
+            for attr in ("screenshot", "ocr_fun", "find_feature"):
                 task.__dict__.pop(attr, None)
             ok_logger.removeHandler(tap)
             self._restore_task_config(old_cfg)

@@ -24,7 +24,9 @@ Shape (keys not listed here are refused, so a typo cannot silently drop an expec
       "states": {
         "<name>": {
           "frame": "<screen-id>/<date>_<time>.png"        # under frames/okww/, sha256 in frames.json
-            | "provisional_ocr": [{"text": "...", "box": [x0, y0, x1, y1], "evidence": "..."}],
+            | "provisional_ocr": [{"text": "...", "box": [x0, y0, x1, y1], "evidence": "..."}]
+              and/or "provisional_features": [{"name": "<OK-WW feature>", "box": [x0, y0, x1, y1],
+                                               "evidence": "..."}],
           "transitions": [
             {"click": [x0, y0, x1, y1], "to": "<state>", "evidence": "..."},   # relative rectangle
             {"feature": "<name>", "threshold": 0.7, "to": ..., "evidence": ...}, # click in find_one's box
@@ -74,7 +76,8 @@ MAX_S = 1200
 _TOP = {"case", "about", "task", "start", "max_s", "config", "states", "expect"}
 _CONFIG = {"evidence", "task", "master", "flags"}
 _FLAGS = {"no_claim", "no_stamina"}
-_STATE = {"frame", "provisional_ocr", "transitions", "ignore_inputs", "end", "about", "fight"}
+_STATE = {"frame", "provisional_ocr", "provisional_features", "transitions", "ignore_inputs", "end",
+          "about", "fight"}
 _TRANSITION_KINDS = ("click", "feature", "key", "after_s")
 _TRANSITION = set(_TRANSITION_KINDS) | {"to", "evidence", "threshold"}
 _EXPECT = {"sequence", "end", "never_states", "shots", "raises", "log", "log_never", "verdict"}
@@ -103,6 +106,9 @@ class State:
     transitions: "list[Transition]"
     ignore_inputs: bool = False
     end: bool = False
+    # Templates the logged screen showed (each with the log line that found or clicked it),
+    # answered instead of template matching on a frame that was never recorded.
+    provisional_features: "list[dict] | None" = None
 
 
 @dataclass
@@ -120,8 +126,9 @@ class Scenario:
 
     @property
     def provisional(self) -> "list[str]":
-        """States that run on OCR text from logs instead of a recorded frame (design 6.1)."""
-        return [s.name for s in self.states.values() if s.provisional_ocr is not None]
+        """States that run on OCR text and features from logs instead of a recorded frame (design 6.1)."""
+        return [s.name for s in self.states.values()
+                if s.provisional_ocr is not None or s.provisional_features is not None]
 
 
 def _need(cond, where, why):
@@ -196,24 +203,31 @@ def _state(name, s, index, names):
     # Combat is a scripted state whose fake is pinned by the upstream body hash (design 1,
     # rule 2); the echo-farm unit (U7) brings it with its first case.
     _need("fight" not in s, where, "fight states are not supported yet (gamesim U7)")
-    has_frame, has_ocr = "frame" in s, "provisional_ocr" in s
+    has_frame = "frame" in s
+    has_prov = "provisional_ocr" in s or "provisional_features" in s
     end = bool(s.get("end", False))
-    _need(has_frame + has_ocr == 1 or (end and not has_frame and not has_ocr), where,
-          "needs exactly one of `frame` or `provisional_ocr` (an end state may have neither)")
+    _need(has_frame + has_prov == 1 or (end and not has_frame and not has_prov), where,
+          "needs either `frame` or provisional_ocr / provisional_features (an end state may have neither)")
     frame = _frame(s["frame"], where, index) if has_frame else None
-    ocr = None
-    if has_ocr:
-        _need(isinstance(s["provisional_ocr"], list) and s["provisional_ocr"], where,
-              "provisional_ocr is a non-empty list")
-        ocr = []
-        for i, b in enumerate(s["provisional_ocr"]):
-            w = f"{where} provisional_ocr[{i}]"
-            _keys(b, {"text", "box", "evidence"}, w)
-            _need(isinstance(b.get("text"), str) and b["text"], w, "text must be a string")
-            ocr.append({"text": b["text"], "box": _rect(b.get("box"), w), "evidence": _evidence(b, w)})
+    ocr = _provisional(s, "provisional_ocr", "text", where)
+    feats = _provisional(s, "provisional_features", "name", where)
     trans = [_transition(t, f"{where} transitions[{i}]", names) for i, t in enumerate(s.get("transitions", []))]
     _need(not (end and trans), where, "an end state has no transitions")
-    return State(name, frame, ocr, trans, bool(s.get("ignore_inputs", False)), end)
+    return State(name, frame, ocr, trans, bool(s.get("ignore_inputs", False)), end, feats)
+
+
+def _provisional(s, key, label, where):
+    """[{label, box, evidence}] of a provisional state, or None when the state has no `key`."""
+    if key not in s:
+        return None
+    _need(isinstance(s[key], list) and s[key], where, f"{key} is a non-empty list")
+    out = []
+    for i, b in enumerate(s[key]):
+        w = f"{where} {key}[{i}]"
+        _keys(b, {label, "box", "evidence"}, w)
+        _need(isinstance(b.get(label), str) and b[label], w, f"{label} must be a string")
+        out.append({label: b[label], "box": _rect(b.get("box"), w), "evidence": _evidence(b, w)})
+    return out
 
 
 def _expect(e, names):
