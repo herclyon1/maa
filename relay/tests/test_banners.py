@@ -1811,6 +1811,62 @@ def _sf_rarity() -> None:
     check("silent 798 next: and only one about rarity", _warned(recs, "稀有度"), 1)
 
 
+def _ak_offline(now, prts_rows, get=None, rarity=None):
+    """_arknights with every web source stubbed: PRTS rows are `prts_rows`, the
+    official site is `get` (an ak_site; None = offline), `rarity` seeds the PRTS
+    rarity cache, the rest is offline. Returns ((debut, next) or the exception,
+    the trace, log records)."""
+    real = (_b._ak_prts_rows, _b._json, _b._text)
+    saved = dict(_b._rarity_cache)
+
+    def offline(url, *a, **k):
+        raise OSError(f"offline: {url}")
+
+    def text(url, *a, **k):
+        if get is None:
+            raise OSError(f"offline: {url}")
+        return get(url)
+    _b._ak_prts_rows, _b._json, _b._text = (lambda tr: list(prts_rows)), offline, text
+    _b._rarity_cache.clear()
+    _b._rarity_cache.update(rarity or {})
+    tr = _b.Trace.new()
+    try:
+        with _logs() as recs:
+            try:
+                out = _b._arknights(now, trace=tr)
+            except Exception as e:  # noqa: BLE001
+                out = e
+    finally:
+        _b._ak_prts_rows, _b._json, _b._text = real
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update(saved)
+    return out, tr, recs
+
+
+def _ak_site_1006():
+    """The official site as of 2026-10-06: post 5101 announces 海渊巡游 for 10-09 12:00."""
+    fx = lambda n: (FX / n).read_text(encoding="utf-8")  # noqa: E731
+    return ak_site(ak_lists(fx("ak-history-news-2026-10-06.txt")), {"5101": ak_post_fx("5101")})
+
+
+def _ak_prts_clock() -> None:
+    """s20 #1: since 2025-12 PRTS writes 07:00 for banners the official posts open
+    at 12:00 (cid 9605). A PRTS row for the same banner counted as "ran before",
+    so the official post was dropped as a rerun and the next-banner line and the
+    group notice carried PRTS's 07:00."""
+    row = _b.Banner("明日方舟", "海渊巡游", ("克莱门莎",), datetime(2026, 10, 9, 7, 0), datetime(2026, 10, 23, 3, 59))
+    out, tr, _recs = _ak_offline(datetime(2026, 10, 8, 21, 45), [row], _ak_site_1006(), {"克莱门莎": 5})
+    nxt = out[1] if isinstance(out, tuple) else out
+    check("PRTS 07:00 那行不顶掉官网 12:00", nxt, (datetime(2026, 10, 9, 12, 0), "克莱门莎「海渊巡游」"))
+    check("官网的 12:00 进了来源闸", "10-09 12:00" in tr.starts, True)
+    due = opening_tomorrow(datetime(2026, 10, 8, 21, 45), {"明日方舟": nxt} if isinstance(nxt, tuple) else {})
+    check("群通知写官网的 12:00", group_notice(due)[1], "· 明日方舟　10-09 12:00 开　克莱门莎「海渊巡游」")
+    # A real rerun: an earlier row with the same six-star that has ended still marks it.
+    old = _b.Banner("明日方舟", "旧池", ("克莱门莎",), datetime(2026, 1, 1, 16, 0), datetime(2026, 1, 15, 3, 59))
+    out, _tr, _recs = _ak_offline(datetime(2026, 10, 8, 21, 45), [old], _ak_site_1006(), {"克莱门莎": 5})
+    check("真复刻（早先一行已经结束）照旧不当下一期", out[1] if isinstance(out, tuple) else out, None)
+
+
 def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None, pages=None):
     """_endfield with every web source stubbed: Skland is `sk_get`, the version
     bulletin is `bulletin_html` (None = unreachable), `pages` maps URLs read as
@@ -1994,6 +2050,7 @@ def main() -> int:
     _ak_history()
     _sf_pool_times()
     _sf_rarity()
+    _ak_prts_clock()
     _sf_ef_names()
     _sf_ef_pool_ends()
     _sf_ef_brief_time()

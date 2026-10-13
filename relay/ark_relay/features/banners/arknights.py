@@ -601,10 +601,12 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
     except Exception:
         log.warning("方舟官网寻访公告取不到", exc_info=True)
     # A heading without 「复刻」 is not proof of a debut on its own: a post whose
-    # six-stars all ran on an earlier PRTS row is a rerun.
+    # six-stars all ran on an earlier PRTS row is a rerun. Only a row that had
+    # ended by the post's opening counts: PRTS lists the same banner from 07:00
+    # where the post says 12:00 (cid 9605), and that row is not an earlier run.
     def _seen_before(st: datetime, who: str) -> bool:
         names = [x for x in who.split("「", 1)[0].split("、") if x]
-        old = {c for r in rows if r.start < st for c in r.chars}
+        old = {c for r in rows if r.end <= st for c in r.chars}
         return bool(names) and all(n in old for n in names)
     posts = [p for p in posts if not _seen_before(p[0], p[1])]
     for st, who, posted, en, cid in posts:
