@@ -104,7 +104,7 @@ class _Keep(logging.Handler):
 
 def exit_now():
     keep = _Keep()
-    log = logging.getLogger("test.exitwindow")
+    log = logging.getLogger("ark.test_exit_shutdown_window")
     log.handlers[:] = [keep]
     log.setLevel(logging.INFO)
     log.propagate = False

@@ -428,7 +428,7 @@ class Notifier:
         return getattr(self._busy, "announcing", False)
 
     @_announcing.setter
-    def _announcing(self, value: bool) -> None:
+    def _announcing(self, value: bool) -> None:  # deadcode: allow (property setter)
         self._busy.announcing = value
 
     def went_to_group(self) -> bool:

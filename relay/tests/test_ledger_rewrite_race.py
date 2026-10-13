@@ -15,11 +15,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.core import ledger  # noqa: E402
-from ark_relay.core.config import RunRecord, SERVER_TZ  # noqa: E402
+from ark_relay.core import ledger
+from ark_relay.core.config import RunRecord, SERVER_TZ
 
 fails = []
 

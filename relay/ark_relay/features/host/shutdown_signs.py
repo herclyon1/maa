@@ -31,6 +31,7 @@ GOING_DOWN_SETTLE_SECONDS = 15.0
 # missed `shutdown /s /t 300` and read its exit as unexpected (audit s15 #5), so this is
 # the same hour as SHUTDOWN_BEFORE_WINDOW_SECONDS. A 6005 (the Event Log service started:
 # a boot) newer than the 1074 ends it - a request from before this boot is over.
+# Measured (10-10, above): after a `/t 60` 1074 AUTO-MAS was gone 65 s later.
 SHUTDOWN_EVENT_WINDOW_SECONDS = 3600
 
 

@@ -11,13 +11,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 os.environ.update(ARK_STATE_DIR=str(tmpdir()), ARK_HISTORY_DIR=str(tmpdir()))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import __main__ as relay_main  # noqa: E402
-from ark_relay.core import notify  # noqa: E402
-from ark_relay.core.config import Config  # noqa: E402
+from ark_relay import __main__ as relay_main
+from ark_relay.core import notify
+from ark_relay.core.config import Config
 
 fails = []
 

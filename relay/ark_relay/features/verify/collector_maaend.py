@@ -647,6 +647,57 @@ def task_times(text: str) -> dict[str, tuple[datetime, datetime]]:
     return out
 
 
+def _sanity_fields(text: str, hits: list, out: dict) -> None:
+    """parse_maaend_log's sanity part: sanity, sanity_cap, sanity_read_at and the
+    Protocol Space spend, from the 「当前理智」 readings (`hits`, _END_SANITY.findall)."""
+    got, cap = (int(x) for x in hits[-1])
+    # 「当前理智」 is read on the settlement screen, before the claim that
+    # charges sanity; a claim after the last reading is taken off.
+    readings = [int(a) for a, _ in hits]
+    drops = [a - b for a, b in zip(readings, readings[1:], strict=False) if a > b]
+    blocks = _prints_item_blocks(text)
+    if blocks:
+        # Each claim is charged by one rule (_claim_cost): what is left is the
+        # last reading plus later potions minus the last claim, and spent is
+        # the sum of all claims, so the two always agree.
+        costs = _claim_costs(text)
+        fits = _claims_fit(text)
+        got += len(_END_POTION.findall(text[text.rfind("当前理智"):])) * _END_POTION_SANITY
+        got -= costs[-1]
+    else:
+        # Only the last settlement decides, read from the text after the last
+        # reading.
+        tail = text[text.rfind("当前理智"):]
+        if _END_SANITY_SPENT.search(tail) and not _END_SANITY_REFUSED.search(tail):
+            got -= max(drops) if drops else _END_PS_COST
+    # A negative result is floored to 0: a lower bound, not a reading
+    # (collector._enrich_record gives no full-again time for it). An exact 0
+    # is the rule's own figure, e.g. 160 read, one double claim.
+    out["sanity_floored"] = got < 0
+    got = max(0, got)
+    # AUTO-MAS records sanity as 0 for MaaEnd; parse_record fills empty raw
+    # fields from here.
+    out["sanity"] = got
+    out["sanity_cap"] = cap
+    # When the last reading was taken (machine clock): the full-again time
+    # counts from here, not from the record's finish (collector._enrich_record).
+    if at := next((m.group(1) for x in reversed(text.splitlines())
+                   if _END_SANITY.search(x) and (m := _LINE_STAMP.match(x))), ""):
+        out["sanity_read_at"] = at
+    # Protocol Space alone: _farm_one's step estimate gives 0 for one run (its
+    # two readings are equal) and charges a half last claim in full.
+    farm = out.get("maaend_farm") or ""
+    if blocks and "协议空间" in farm and "、" not in farm and out.get("maaend_farm_runs") and sum(costs):
+        out["maaend_sanity_spent"] = sum(costs)
+        out.pop("maaend_sanity_runs_only", None)
+    if blocks and not fits:
+        # The readings do not follow the rule: no figure, and none filled in
+        # from the day's other records either (report._fill_single_run_sanity).
+        out.pop("maaend_sanity_spent", None)
+        out.pop("maaend_sanity_runs_only", None)
+        out["maaend_sanity_unfit"] = True
+
+
 def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     """Recover items gained and tasks finished from a MaaEnd log. {} if unreadable.
 
@@ -722,52 +773,7 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
         out["maaend_collect_failed"] = list(dict.fromkeys(lbl.strip() for lbl, _ in failed_lines))
         out["maaend_collect_failed_ids"] = list(dict.fromkeys(f"Route{n}" for _, n in failed_lines))
     if hits := _END_SANITY.findall(text):
-        got, cap = (int(x) for x in hits[-1])
-        # 「当前理智」 is read on the settlement screen, before the claim that
-        # charges sanity; a claim after the last reading is taken off.
-        readings = [int(a) for a, _ in hits]
-        drops = [a - b for a, b in zip(readings, readings[1:], strict=False) if a > b]
-        blocks = _prints_item_blocks(text)
-        if blocks:
-            # Each claim is charged by one rule (_claim_cost): what is left is the
-            # last reading plus later potions minus the last claim, and spent is
-            # the sum of all claims, so the two always agree.
-            costs = _claim_costs(text)
-            fits = _claims_fit(text)
-            got += len(_END_POTION.findall(text[text.rfind("当前理智"):])) * _END_POTION_SANITY
-            got -= costs[-1]
-        else:
-            # Only the last settlement decides, read from the text after the last
-            # reading.
-            tail = text[text.rfind("当前理智"):]
-            if _END_SANITY_SPENT.search(tail) and not _END_SANITY_REFUSED.search(tail):
-                got -= max(drops) if drops else _END_PS_COST
-        # A negative result is floored to 0: a lower bound, not a reading
-        # (collector._enrich_record gives no full-again time for it). An exact 0
-        # is the rule's own figure, e.g. 160 read, one double claim.
-        out["sanity_floored"] = got < 0
-        got = max(0, got)
-        # AUTO-MAS records sanity as 0 for MaaEnd; parse_record fills empty raw
-        # fields from here.
-        out["sanity"] = got
-        out["sanity_cap"] = cap
-        # When the last reading was taken (machine clock): the full-again time
-        # counts from here, not from the record's finish (collector._enrich_record).
-        if at := next((m.group(1) for x in reversed(text.splitlines())
-                       if _END_SANITY.search(x) and (m := _LINE_STAMP.match(x))), ""):
-            out["sanity_read_at"] = at
-        # Protocol Space alone: _farm_one's step estimate gives 0 for one run (its
-        # two readings are equal) and charges a half last claim in full.
-        farm = out.get("maaend_farm") or ""
-        if blocks and "协议空间" in farm and "、" not in farm and out.get("maaend_farm_runs") and sum(costs):
-            out["maaend_sanity_spent"] = sum(costs)
-            out.pop("maaend_sanity_runs_only", None)
-        if blocks and not fits:
-            # The readings do not follow the rule: no figure, and none filled in
-            # from the day's other records either (report._fill_single_run_sanity).
-            out.pop("maaend_sanity_spent", None)
-            out.pop("maaend_sanity_runs_only", None)
-            out["maaend_sanity_unfit"] = True
+        _sanity_fields(text, hits, out)
     if _END_SANITY_OUT.search(text):
         out["sanity_exhausted"] = True
     out.update(out_flags)

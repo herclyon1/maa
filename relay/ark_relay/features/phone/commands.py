@@ -593,7 +593,7 @@ def skip_script_in_queue(queue: str, script: str, uid: str = "") -> dict | None:
     try:
         _write_item_days(qid, uid, run_days)
         _, _, back = _queue_item(qid, uid=uid)
-    except Exception as exc:  # noqa: BLE001 - re-raised with the record attached
+    except Exception as exc:  # re-raised with the record attached
         raise SkipError(str(exc), [rec]) from exc
     if today in _item_days(back):
         raise SkipError(f"跳不掉：改了运行日之后读回来，{today} 还在里面", [rec])
@@ -620,7 +620,7 @@ def skip_script_all_items(queue: str, script: str) -> list[dict]:
     for uid in uids:
         try:
             rec = skip_script_in_queue(queue, script, uid=uid)
-        except Exception as exc:  # noqa: BLE001 - re-raised with every record made so far
+        except Exception as exc:
             raise SkipError(str(exc), recs + list(getattr(exc, "recs", []))) from exc
         if rec:
             recs.append(rec)

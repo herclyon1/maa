@@ -70,7 +70,7 @@ class _Keep(logging.Handler):
 
 
 keep = _Keep()
-log = logging.getLogger("ark.service")
+log = automas_keeper.log
 log.addHandler(keep)
 log.setLevel(logging.INFO)
 

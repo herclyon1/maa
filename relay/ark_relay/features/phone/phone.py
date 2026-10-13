@@ -275,7 +275,7 @@ def state_payload(cfg, state_dir: Path) -> dict:
     # backend, which is gone at the service-stop push.
     try:
         out["queues"] = plan.queue_rows(getattr(cfg, "automas_dir", None))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         log.warning("班次名单读不到", exc_info=True)
         # [] read on the App as "no shift", i.e. every game in the shift - as if
         # real. A row with only `_错误`, like config's marker (audit A3).

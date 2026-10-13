@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 HIST = tmpdir()
 os.environ.update(ARK_HISTORY_DIR=str(HIST), WECOM_BOT_URL="", SERVERCHAN_KEY="SCT-test",
@@ -32,7 +32,8 @@ def check(label, got, want):
 said: list = []
 h = logging.Handler()
 h.emit = lambda r: said.append((r.levelname, r.getMessage()))
-logging.getLogger("ark").addHandler(h)
+ARK_ROOT = "ark"   # the parent of every relay logger
+logging.getLogger(ARK_ROOT).addHandler(h)
 
 print("[Server酱 only: starts, warns that alarms go to Server酱]")
 cfg = Config()

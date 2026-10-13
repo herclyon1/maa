@@ -12,6 +12,7 @@ Now: the wait doubles only after a real revival; a backend that is up but cannot
 be attached is checked every procwatch.AUTOMAS_CHECK_SECONDS, and that is said
 once at INFO.
 """
+import itertools
 import logging
 import sys
 import types
@@ -81,7 +82,7 @@ class _Keep(logging.Handler):
 
 
 keep = _Keep()
-log = logging.getLogger("ark.service")
+log = automas_keeper.log
 log.addHandler(keep)
 log.setLevel(logging.INFO)
 
@@ -106,7 +107,7 @@ while clock[0] - start < 2 * 3600:
     k.check(False, clock[0])
     if due is not None and clock[0] >= due:
         checks.append(clock[0])
-gaps = [round(b - a) for a, b in zip(checks, checks[1:])]
+gaps = [round(b - a) for a, b in itertools.pairwise(checks)]
 check("checks within the first two hours (>= 40, was 5)", len(checks) >= 40, True)
 check("no gap longer than the liveness interval", max(gaps) if gaps else None, procwatch.AUTOMAS_CHECK_SECONDS)
 check("nothing revived", revives, [])

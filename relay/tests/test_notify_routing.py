@@ -201,7 +201,8 @@ class _Grab(logging.Handler):
 
 
 _g = _Grab()
-_nlog = logging.getLogger("ark.notify")
+from ark_relay.core import notify as _notify_mod  # noqa: E402
+_nlog = _notify_mod.log
 _nlog.addHandler(_g)
 _lvl = _nlog.level
 _nlog.setLevel(logging.INFO)

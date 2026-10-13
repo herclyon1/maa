@@ -54,4 +54,4 @@ check("a written green receipt is still an acknowledgement", engine.skip_failed(
 if fails:
     print("FAIL:", fails)
     sys.exit(1)
-print("all ok")
+print("all checks passed")

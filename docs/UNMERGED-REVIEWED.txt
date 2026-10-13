@@ -60,3 +60,9 @@ a4be51cb a 5e6085de (ported to features/run/maaend_watchdog.py)
 222fe6a3 a c6a2c574 (release note and NOTIFICATIONS row)
 7bf5cbd6 declined skland port onto nonebot-plugin-skland: +13 lines, signing identical, never verified live; no benefit under the slimming goal (BOARD/DECISIONS.md 【现状 10-12 18:30】)
 35983a6e declined docstring follow-up of 7bf5cbd6, same reason
+# 10-13, the whole-relay batch: these three added test fixtures copied from machine records that
+# held a COS signed URL (its q-ak key id); main has the same commits with the key id replaced by
+# AKIDREDACTED (GitHub push protection refused the originals). Diffs otherwise identical.
+62d263e2 a same fix in main as b591704e
+f0058414 a same fix in main as 25a2b6c9
+7af04b61 a same fix in main as c4b1cd3e

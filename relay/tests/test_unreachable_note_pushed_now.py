@@ -107,5 +107,5 @@ body = (e.notifier.sent or [("", "")])[0][1]
 check("写了「没读到」", texts.UNREACHABLE_UNREAD_NOTE in body)
 check("不写「今天没有官方公告」", texts.UNREACHABLE_SHAPE_NOTE in body, False)
 
-print(f"\n{'全部通过' if not fails else f'失败 {len(fails)} 项：{fails}'}")
+print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

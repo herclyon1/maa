@@ -63,4 +63,4 @@ check("record names the folder in use, not v7", selfupdate._applied_version(here
 if fails:
     print("FAIL:", fails)
     sys.exit(1)
-print("all ok")
+print("all checks passed")

@@ -858,7 +858,7 @@ class _Count(logging.Handler):
             _warns.append(record.getMessage())
 
 
-_qlog = logging.getLogger("ark.phone")
+_qlog = phone.log
 _qh = _Count()
 _qlog.addHandler(_qh)
 try:

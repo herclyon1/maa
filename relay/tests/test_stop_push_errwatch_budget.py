@@ -42,6 +42,8 @@ from ark_relay.features.alarm import errwatch  # noqa: E402
 from ark_relay.features.phone import phone  # noqa: E402
 from ark_relay.features.shutdown import shutdown  # noqa: E402
 
+STOP_PUSH_LOG = "ark.app.stop_push"   # app_main's logger for the watchdog's stop push
+
 fails = []
 
 
@@ -94,7 +96,7 @@ class Hang:
 
 h = errwatch._handler[0]
 h._notifier = Hang()
-logging.getLogger("ark.app.stop_push").warning("a WARNING the group does not acknowledge")
+logging.getLogger(STOP_PUSH_LOG).warning("a WARNING the group does not acknowledge")
 phone.state_cos = lambda cfg: object()
 phone.send_state = lambda box, cfg, why, log: release.wait(120) or (False, "")   # the send hangs
 WAIT = 0.5

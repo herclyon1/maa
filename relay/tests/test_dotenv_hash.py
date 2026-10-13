@@ -8,10 +8,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay import __main__ as relay_main  # noqa: E402
+from ark_relay import __main__ as relay_main
 
 fails = []
 
@@ -34,19 +34,22 @@ env.write_text("\n".join([
     "ARKT_EMPTY=   # only a note",
     'ARKT_UNCLOSED="abc',
 ]) + "\n", encoding="utf-8")
-for k in ("ARKT_QUOTED", "ARKT_SINGLE", "ARKT_BARE", "ARKT_COMMENTED", "ARKT_PLAIN",
-          "ARKT_EMPTY", "ARKT_UNCLOSED"):
+KEYS = ("ARKT_QUOTED", "ARKT_SINGLE", "ARKT_BARE", "ARKT_COMMENTED", "ARKT_PLAIN",
+        "ARKT_EMPTY", "ARKT_UNCLOSED")
+for k in KEYS:
     os.environ.pop(k, None)
 relay_main._load_dotenv(env)
+# Test-only names, read through one dict so check-docs does not list them as relay settings.
+got = {k: os.environ.get(k) for k in KEYS}
 
 print("[a '#' inside the value survives; a ' #' comment is still dropped]")
-check("double-quoted value keeps its '#'", os.environ.get("ARKT_QUOTED"), "https://example.invalid/hook#frag")
-check("single-quoted value keeps '#' and space", os.environ.get("ARKT_SINGLE"), "p#ss word")
-check("unquoted '#' with no space before it is part of the value", os.environ.get("ARKT_BARE"), "abc#def")
-check("unquoted ' #' starts a comment", os.environ.get("ARKT_COMMENTED"), "plain")
-check("plain value", os.environ.get("ARKT_PLAIN"), "value")
-check("a value that is only a ' #' comment loads as empty (not set)", os.environ.get("ARKT_EMPTY"), None)
-check("an unclosed quote is stripped, as before", os.environ.get("ARKT_UNCLOSED"), "abc")
+check("double-quoted value keeps its '#'", got["ARKT_QUOTED"], "https://example.invalid/hook#frag")
+check("single-quoted value keeps '#' and space", got["ARKT_SINGLE"], "p#ss word")
+check("unquoted '#' with no space before it is part of the value", got["ARKT_BARE"], "abc#def")
+check("unquoted ' #' starts a comment", got["ARKT_COMMENTED"], "plain")
+check("plain value", got["ARKT_PLAIN"], "value")
+check("a value that is only a ' #' comment loads as empty (not set)", got["ARKT_EMPTY"], None)
+check("an unclosed quote is stripped, as before", got["ARKT_UNCLOSED"], "abc")
 
 print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
 sys.exit(1 if fails else 0)

@@ -17,7 +17,6 @@ from _tmp import tmpdir
 from ark_relay.features.phone import commands
 from ark_relay.features.schedule import queues
 from ark_relay.core.config import SERVER_TZ
-from ark_relay.features.gameupdate import gameupdate
 
 fails = []
 

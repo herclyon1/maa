@@ -45,4 +45,4 @@ check("10-05: MaaEnd's last record failed (a retry used up by its self-update) -
 if fails:
     print("FAIL:", fails)
     sys.exit(1)
-print("all ok")
+print("all checks passed")

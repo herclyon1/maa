@@ -182,11 +182,6 @@ def enabled(target, names):
     return {n: by.get(n) for n in names}
 
 
-def controllers(target, name):
-    j = json.loads(target.read_text(encoding="utf-8"))
-    return next((t.get("enabledByController") for t in j["instances"][0]["tasks"] if t.get("taskName") == name), None)
-
-
 def others(target, names):
     """Every task not named, as (name, enabled, controllers) - to prove nothing else moved."""
     j = json.loads(target.read_text(encoding="utf-8"))

@@ -7,7 +7,6 @@ a taskkill that could not run, is a WARNING and kill() returns False.
 No Windows here: subprocess.run is faked.
 """
 import logging
-import subprocess
 import sys
 import types
 from pathlib import Path

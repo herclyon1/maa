@@ -120,7 +120,10 @@ _BUSY_SEEN: dict = {"state_dir": None, "automas_dir": None}
 BUSY_FILE = "machinecheck-busy.json"      # read by machinechecks/system.py (#18)
 # An app.log task with no end line counts as open for this long after its start.
 OTHER_MODE_OPEN_MIN = 30
-# Ticks a record may make _handle raise before the relay gives up on it (tick).
+# Ticks a record may make _handle raise before the relay gives up on it (tick). Measured in
+# relay.log 08-15..10-13: 4 records made _handle raise; the one passing failure (08-26
+# 17:04:04) went through on the next tick 29 s later, the other three (09-08) failed 33
+# times each until the fix.
 HANDLE_TRIES = 3
 # A given-up record (queues.given_up) is dropped from that list after this many days.
 GIVEN_UP_KEEP_DAYS = 30

@@ -87,8 +87,8 @@ class Logs(logging.Handler):
 
 
 logs = Logs()
-logging.getLogger("ark.phone").addHandler(logs)
-logging.getLogger("ark.phone").setLevel(logging.INFO)
+phone.log.addHandler(logs)
+phone.log.setLevel(logging.INFO)
 
 now = int(time.time())
 OLD = cmd({"action": "refresh"}, now - phone.MAX_AGE - 3600)

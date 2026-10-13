@@ -515,7 +515,9 @@ class Desktop:
     # The agent's working files (req-/res-<id>.json, shot-<id>.png and its -x2 copy)
     # are kept this long: a screenshot's path is quoted in problem notes and in the
     # trace the machine checks read (gameupdate_games), so it is not deleted at once.
-    # Until 2026-10-13 nothing removed any of them (review, s5 #7).
+    # Until 2026-10-13 nothing removed any of them (review, s5 #7). Measured on the game PC
+    # 10-13: 1289 files / 679 MB had piled up since 09-02 (busiest day 09-30, 345 MB); the
+    # last 7 days held 87 MB.
     WORK_KEEP_SECONDS = 7 * 24 * 3600
     _WORK_GLOBS = ("req-*.json", "res-*.json", "shot-*.png")
 
@@ -629,6 +631,9 @@ def kill(*names: str) -> bool:
     「access denied」 read like a kill that worked (review, s5 #8)."""
     ok = True
     for name in names:
+        # Measured 10-13 on the game PC: taskkill /F returns in 0.04-0.05 s (5 runs on our
+        # own ping.exe), 0.04 s for a name that is not running; 30 s is the cap the other
+        # taskkill calls use (preupdate_okww, collect_retry).
         try:
             r = subprocess.run(["taskkill", "/F", "/IM", name],
                                capture_output=True, timeout=30)

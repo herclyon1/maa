@@ -18,11 +18,11 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir  # noqa: E402
+from _tmp import tmpdir
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.core import config, statestore  # noqa: E402
-from ark_relay.core.statestore import StateStore  # noqa: E402
+from ark_relay.core import config, statestore
+from ark_relay.core.statestore import StateStore
 
 fails = []
 

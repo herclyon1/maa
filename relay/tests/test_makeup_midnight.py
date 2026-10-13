@@ -11,7 +11,7 @@ on_record likewise tied only 10-03's failures to a successful make-up.
 import os
 import shutil
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -23,7 +23,7 @@ os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR=str(TMP 
                   WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.core.config import SERVER_TZ, RunRecord   # noqa: E402
+from ark_relay.core.config import RunRecord   # noqa: E402
 from ark_relay.core.ledger import State                   # noqa: E402
 from ark_relay.features.makeup import makeup              # noqa: E402
 
@@ -80,7 +80,12 @@ mk = rec("2026-10-03/arknights/MAA-makeup", "2026-10-03T01:41:00+08:00",
 makeup.on_record(e, mk)
 y = {x["run_id"]: x for x in e.state.read_ledger("2026-10-02")}
 t = {x["run_id"]: x for x in e.state.read_ledger("2026-10-03")}
-tied = lambda rows: [k for k, v in rows.items() if (v.get("raw") or {}).get("makeup_ok")]
+
+
+def tied(rows):
+    return [k for k, v in rows.items() if (v.get("raw") or {}).get("makeup_ok")]
+
+
 check("今天那 4 次都记上", len(tied(t)), 4)
 check("昨天 23:40 起那 6 次都记上", len(tied(y)), 6)
 check("昨天 21:30 走通那次不动", bool((y["2026-10-02/arknights/MAA-17-30-03"].get("raw") or {}).get("makeup_ok")), False)

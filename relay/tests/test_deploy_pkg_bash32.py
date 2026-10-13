@@ -82,5 +82,5 @@ for ln in lines:
     rc, out = bash(STUBS + ln + "\n")
     check(f"exit 0: {ln[:60]}", rc, 0)
 
-print("FAIL" if fails else "OK")
+print("FAIL" if fails else "all checks passed")
 sys.exit(1 if fails else 0)

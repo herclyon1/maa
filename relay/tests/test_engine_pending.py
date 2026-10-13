@@ -410,10 +410,11 @@ for name in STEPS:
     setattr(e13, name, lambda *a, **k: None)
 group = GroupCount(Notes(), state_dir=tmpdir())
 group.taken = []
-logging.getLogger("ark").addHandler(group)
+ARK_ROOT = "ark"   # the parent of every relay logger
+logging.getLogger(ARK_ROOT).addHandler(group)
 for _ in range(6):                       # more ticks than the cap allows
     e13.tick()
-logging.getLogger("ark").removeHandler(group)
+logging.getLogger(ARK_ROOT).removeHandler(group)
 check("群里只收到一条：最后那句「不再重试」", (len(group.taken), "不再重试" in "".join(group.taken)), (1, True))
 check("放弃后不再每轮重试", len(calls13), eng.HANDLE_TRIES)
 check("放弃的记录没混进「已处理」，记在放弃清单里带代码版本",

@@ -26,7 +26,9 @@ log = logging.getLogger("ark.statestore")
 
 FILE = "state.json"
 # A state.json temp file (atomic_write_bytes) older than this was left by a write
-# that never finished (power cut); StateStore removes it once per process.
+# that never finished (power cut); StateStore removes it once per process. Measured 10-13
+# on the game PC: writing the 39.5 KB state.json (write + fsync + replace) takes 2-12 ms
+# (10 runs), and no stray temp file was there; a day is far past any live write.
 STRAY_TMP_AGE_S = 24 * 3600
 SECTIONS = ("marks", "modes", "weekly", "versions", "updates", "queues")
 

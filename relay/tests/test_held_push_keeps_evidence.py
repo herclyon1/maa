@@ -106,5 +106,5 @@ for script, user in (("OK-WW", "wuthering"), ("MaaEnd", "endfield")):
     check("停一切那条报出去了", bool(e.notifier.sent))
     check("报的时候没再取证（还是 1 次）", captures[f"{script}-fail2"], 1)
 
-print("\n" + ("全部通过" if not fails else f"失败 {len(fails)} 项：{fails}"))
+print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

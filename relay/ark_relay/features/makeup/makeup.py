@@ -825,7 +825,7 @@ def on_record(eng, rec) -> None:
     if not any_ok:
         try:
             rows += _yesterday_tail(eng, rec.script, rec.user, day, first_start)
-        except Exception:  # noqa: BLE001
+        except Exception:
             log.warning("补跑：前一天的账本读不出来，跨午夜那几次没记上补跑做成", exc_info=True)
     for d, e in rows:
         if not e.get("ok"):

@@ -345,7 +345,9 @@ def _linked(prev: dict, cur: dict) -> bool:
 # this long after it opened: a --test run is one script, and the longest
 # AUTO-MAS limit is OK-WW's 120 minutes (TIMEOUT_LIMIT_MIN) plus start-up.
 # Without it a forgotten test-off made every later record a test run, and the
-# machine never powered off again (review of 25ebc227, 10-13).
+# machine never powered off again (review of 25ebc227, 10-13). Measured in the 10-01..10-13
+# ledgers (86 runs): the longest MAA run 67.9 min, MaaEnd 60.3, OK-WW 60.0; with OK-WW's
+# 120 + TIMEOUT_SLACK_MIN, 3 h leaves 50 min for the wait before the run starts.
 OPEN_WINDOW_MAX_H = 3
 
 
@@ -806,7 +808,7 @@ def relay_poweroff_recorded(state_dir, now: datetime | None = None) -> bool:
         if not at:
             return False
         at = datetime.fromisoformat(str(at))
-    except Exception:  # unreadable answers "not ours", as errwatch.relay_shutdown_issued does
+    except Exception:  # noqa: BLE001 - unreadable answers "not ours", as errwatch.relay_shutdown_issued does
         return False
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     return timedelta(0) <= now - at < timedelta(minutes=ISSUED_STUCK_MIN)

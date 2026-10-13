@@ -117,6 +117,9 @@ YES, NO, UNKNOWN = "yes", "no", "unknown"
 # the user's run off: turning this on needs a line in relay/USER-SWITCHES.txt with
 # the user's own words (tests/test_user_switches.py SWITCHED_PULLS fails without it).
 PULL_FROM_QUEUE = False
+# BOOT_LEAD_MIN, measured in relay.log 08-16..10-13: of 108 first starts before a due, 87
+# were 5-15 min before it (the 08:45 / 21:20 power-on); the other 21 were 20-119 min early
+# (hand starts), and the tick's own LEAD_MIN check still covers those dues.
 LEAD_MIN = 10            # check this many minutes before a due
 BOOT_LEAD_MIN = 60       # the boot pass: the machine boots 15 / 10 min before the 09:00 / 21:30 due
 RESTORE_AFTER_MIN = 5    # put MAA back no earlier than this after the due

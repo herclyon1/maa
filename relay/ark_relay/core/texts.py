@@ -620,7 +620,7 @@ _RELAY_PARTS = {
     "ark.sanity_plan": "理智安排", "ark.summary": "文字撰写", "ark.watch": "盯运行记录目录",
     "ark.procs": "程序列表",
     # Named 2026-10-13 (review s1 #8): each of these logs WARNINGs that errwatch pushes,
-    # and read 「一个不常见的部分」 until then. test_texts_gate checks every getLogger("ark…").
+    # and read 「一个不常见的部分」 until then. test_texts_gate checks every ark… logger name.
     "ark": "主程序", "ark.errwatch": "报错转发", "ark.error_evidence": "当天日志外送",
     "ark.gamelog_errors": "游戏日志报错核对", "ark.logfile": "中继日志文件", "ark.machinecheck": "机器上的核对",
     "ark.macpush": "报警直送", "ark.phone_banners": "手机通道和卡池核对", "ark.shiftcheck": "收工体检",

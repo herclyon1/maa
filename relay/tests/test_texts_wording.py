@@ -33,7 +33,7 @@ body = texts.automas_boot_down_body()
 check("第一次等 3 分钟（代码里也是 180 秒）", (KEEPER["REVIVE_FIRST_WAIT"], "3 分钟后" in body), (180, True))
 check("说了之后翻倍", "翻倍" in body, True)
 check("不再说每 3 分钟", "每 3 分钟" in body, False)
-check("连拉几次再报，和代码一致", f"连拉 {KEEPER["REVIVE_ALERT_AFTER"]} 次" in body, True)
+check("连拉几次再报，和代码一致", f"连拉 {KEEPER['REVIVE_ALERT_AFTER']} 次" in body, True)
 
 print("\n[中继报错推送的结尾不再说「这不代表脚本没跑」（s1 #10）]")
 # relay.log 2026-10-10 16:14:14: the push for 「开机自检 ✗ 调度程序的后台程序在跑」 (AUTO-MAS
