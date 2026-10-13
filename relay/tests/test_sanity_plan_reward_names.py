@@ -84,7 +84,7 @@ for key, opt in opts.items():
         line = key[: -len("RewardsSetOption")]
         for c in opt["cases"]:
             label = zh[c["label"][1:]]
-            want_table[(line, c["name"])] = label.split(".", 1)[1]   # "A.协议圆盘组" -> "协议圆盘组"
+            want_table[(line, c["name"])] = label.split(".", 1)[1]   # drop the "A." / "B." prefix
 check("REWARD == MaaEnd's cases and labels", sanity_plan.REWARD, want_table)
 
 print("\n[read(): the machine's master names the item that drops]")
