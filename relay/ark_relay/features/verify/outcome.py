@@ -451,10 +451,13 @@ def nest_state(text: str) -> str:
         return "not_found"
     if _NEST_COUNT_UNREAD in text and not engaged:
         return "count_unread"
-    if _NEST_ALL_FULL in text:
-        return "full"
+    # A fight first, then 「all full」: the run farmed the nest until it was full.
+    # That is 「fought」; 「full」 (skipped) is for a run that found it full before
+    # fighting at all (audit 2026-10-13 item 11).
     if engaged:
         return "fought"
+    if _NEST_ALL_FULL in text:
+        return "full"
     if _NEST_UNREACHABLE.search(text):
         return "unreachable"
     if "NightmareNestTask Failed" in text:
