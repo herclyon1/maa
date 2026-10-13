@@ -21,6 +21,10 @@ Once per shift: the shift's due time is kept in state.json marks. It runs before
 the daily report and the shutdown decision of that tick: the report then carries
 the line, and the 「下次跑完不关机」 mark is read before the shutdown step spends it.
 
+A due shift whose scripts all recorded but that _not_shift rules out (started by
+hand, records not seen landing) gets one INFO line 「收工体检（晚班）这班没查：<why>」
+instead, so the daily report says the shift went unchecked.
+
 Route: one relay.log INFO line per shift (texts.shiftcheck_summary), which
 selfcheck.daily_lines quotes in the daily report's relay section. Nothing is
 pushed. Items 2 and 3 are recorded normal states (USER-SWITCHES.txt,
@@ -42,6 +46,7 @@ log = logging.getLogger("ark.shiftcheck")
 
 MARK = "shiftcheck_shift"     # state.json marks: the due time of the last shift checked
 _last_failure = [""]          # the last reason maybe_run could not tell whether a shift finished
+_last_unjudged = [""]         # the last "<due> <why>" a due shift was said not to be judged
 
 
 def judge(annihilation_line: "str | None", skip_armed: bool, debug_on: bool, debug_until: str,
@@ -90,9 +95,25 @@ def finished_shift(eng, now: datetime) -> "dict | None":
     shift = shutdown._shift_queues(eng, now, booted)
     if not shift:
         return None
-    if shutdown._not_shift(eng, now, eng._recent_entries(now), booted, shift) is not None:
-        return None
-    return max(shift, key=lambda q: q["due"])
+    last = max(shift, key=lambda q: q["due"])
+    reason = shutdown._not_shift(eng, now, eng._recent_entries(now), booted, shift)
+    if reason is None:
+        return last
+    code, why = reason
+    if code == "not-shift":
+        # Due, every script recorded, yet not a shift that may be judged (started by
+        # hand, records not seen landing): one line per shift and reason, so the daily
+        # report shows the shift was skipped rather than nothing at all.
+        said = f"{last['due'].isoformat()} {why}"
+        if _last_unjudged[0] != said:
+            _last_unjudged[0] = said
+            log.info("%s%s）这班没查：%s", texts.SHIFTCHECK_HEAD, _shift_name(last), why)
+    return None
+
+
+def _shift_name(last: dict) -> str:
+    return names.canonical(str(last.get("name") or "")).strip("?") or (
+        names.MORNING if last["due"].hour < 12 else names.EVENING)   # plan gives "?" for no name
 
 
 def maybe_run(eng, now: datetime) -> "list[Check] | None":
@@ -108,8 +129,7 @@ def maybe_run(eng, now: datetime) -> "list[Check] | None":
             return None
         # Marked before judging: a check that crashes must not run again on every tick.
         store.set("marks", MARK, key)
-        shift = names.canonical(str(last.get("name") or "")).strip("?") or (
-            names.MORNING if last["due"].hour < 12 else names.EVENING)   # plan gives "?" for no name
+        shift = _shift_name(last)
     except Exception as exc:
         # Asked again on every tick: logged once per distinct failure, not once a tick.
         why = f"{type(exc).__name__}: {exc}"

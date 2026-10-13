@@ -151,10 +151,23 @@ with tempfile.TemporaryDirectory() as td:
         eng._recent_entries = lambda now: [{"script": "MAA", "started": (due3 + timedelta(minutes=1)).isoformat()}]
         check("a script of the shift not recorded yet -> not checked", shiftcheck.maybe_run(eng, due3 + timedelta(hours=1)),
               None)
+        check("still running -> no line (it may yet finish)", rec.records[-1:] and rec.records[-1].getMessage().startswith(
+            "收工体检（早班）"), True)
+        rec.records.clear()
         eng._recent_entries = lambda now: [{"script": k, "started": (due3 + timedelta(minutes=1)).isoformat()}
                                            for k in ("MAA", "OK-WW")]
         eng._last_round_manual = lambda now, entries: True
         check("last round started by hand -> not checked", shiftcheck.maybe_run(eng, due3 + timedelta(hours=1)), None)
+        # Audit s13 #1 (10-12 21:45): the evening shift went unchecked and nothing said so.
+        check("a due shift not judged says so once at INFO, in words the daily report quotes",
+              [(r.levelno, r.getMessage()) for r in rec.records],
+              [(logging.INFO, "收工体检（晚班）这班没查：最近一轮是手动触发的")])
+        shiftcheck.maybe_run(eng, due3 + timedelta(hours=1, minutes=1))
+        check("not repeated on the next tick", len(rec.records), 1)
+        check("the daily report quotes it",
+              selfcheck.daily_lines("2026-10-12", "10-12 22:31:05 INFO    ark.shiftcheck  " + rec.records[0].getMessage()
+                                    + "\n")[2:], ["· 收工体检（晚班）这班没查：最近一轮是手动触发的"])
+        rec.records.clear()
         eng._last_round_manual = lambda now, entries: False
         eng._handled_any = False
         check("records never seen landing on this boot (relay restarted after the shift) -> not checked",
