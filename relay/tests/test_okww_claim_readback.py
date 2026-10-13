@@ -386,13 +386,15 @@ check("停下", lap(t), "stop")
 check("报回读没读到", t.errors, [("周本领奖：回读没读到本周剩余次数", True)])
 check("回读的账清掉，下一趟不拿它比", t._ark_claim_before, None)
 
-print("\n[点了确认后没看到「退出副本」：说一句、交回上游，不停、不按 ESC、不重进]")
+print("\n[no 「退出副本」 after 确认 (10-05 10:34:50 farm 4c error): picture, phone, stop - no ESC, no re-entry]")
 t = task(left=3, screens=[FULL])
-check("没停", lap(t), "on")
-check("说了交回上游、带整屏的字", any("没看到「退出副本」" in m and "某个没见过的画面" in m for m in t.logs))
-check("没按 ESC、没返回", [e for e in t.events if e in ("key:esc", "back")], [])
-check("没重进", t.entries, 0)
-check("没报错", t.errors, [])
+check("stopped", lap(t), "stop")
+check("pushed with the screen's text",
+      len(t.errors) == 1 and t.errors[0][1] and "没等到结算页" in t.errors[0][0] and "某个没见过的画面" in t.errors[0][0])
+check("picture", "weekly_no_settlement" in t.shots)
+check("no ESC, no back", [e for e in t.events if e in ("key:esc", "back")], [])
+check("no re-entry", t.entries, 0)
+check("ends as failed", "没等到结算页" in (getattr(t, "_ark_failed", None) or ""))
 
 print("\n[今早 09:51:50 那种：战斗判定先断、走去结晶 30 秒没走到（WaitFailedException）：不停，交回上游]")
 # ev OK-WW-05-18-47.log:1102-1109 - 「farm echo walk_find_echo None」, 「去结晶按 F」,

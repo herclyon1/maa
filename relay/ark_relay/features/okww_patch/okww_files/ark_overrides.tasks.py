@@ -366,7 +366,13 @@ def _install_claim():
             self.wait_in_team_and_world(time_out=120)
             self._ark_claimed = True
         else:
-            self.log_info(f"周本领奖：点了确认后没看到「退出副本」，交回上游。整屏读到 {_screen_text(self)[:200]}")
+            # A screen we do not know after a confirmed claim. Handing it back let
+            # upstream's next lap press ESC and wait for an exit confirm on it
+            # (FarmEchoTask.py:151-157), which timed out into 「farm 4c error」 on
+            # 10-05 10:34:50. A stop presses nothing (restored from b93709e8).
+            _stop(self, "weekly_no_settlement",
+                  f"周本领奖：点了确认后没等到结算页（没有「退出副本」），停下不按 ESC。"
+                  f"整屏读到 {_screen_text(self)[:400]}")
         return True
 
     @override(FarmEchoTask, "incr_drop")
