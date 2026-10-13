@@ -132,6 +132,20 @@ check("nothing dispatched", dispatched, [])
 check("says why", "调试模式开不了" in out and "Access is denied" in out, True)
 check("no test window opened", Path(g.TEST_WINDOWS).exists(), False)
 
+print("\n[test-windows.json unreadable -> refused before debug mode is switched on]")
+state = setup()
+g._modes = lambda: modes
+Path(g.TEST_WINDOWS).write_text("{not json", encoding="utf-8")
+dispatched.clear()
+try:
+    rc, out = run(g.start, "OK-WW", test=True)
+except SystemExit as exc:
+    rc = exc.code
+check("refused with exit 5", rc, 5)
+check("debug mode left off (nothing would ever turn it off again)", modes.debug_active(state), False)
+check("nothing dispatched", dispatched, [])
+check("the window file is left as it was", Path(g.TEST_WINDOWS).read_text(encoding="utf-8"), "{not json")
+
 print("\n[a normal (non-test) dispatch does not touch debug mode]")
 state = setup()
 g._modes = lambda: modes

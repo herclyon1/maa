@@ -318,6 +318,10 @@ def start(name, test=False) -> int:
         print(f"❌ 没有叫「{name}」的脚本。有：{'、'.join(table)}")
         return 3
     if test:
+        # Read the window file first: a corrupt one exits here (SystemExit 5). Read
+        # after debug mode was switched on, it left debug on with no window holding
+        # debug_set, so test-off never turned it off again.
+        _windows()
         ok, debug_set, line = _debug_for_test()
         if not ok:
             print(f"❌ 拒绝测试派发：调试模式开不了（{line}）。不开它，跑完中继会照常关机，"
