@@ -24,11 +24,14 @@ design 6.1); every case prints which.
 Red before green (ci_prepare.py LANES, `select`): each case with a fix is run at <fix>~1 and at the
 fix on the OK-WW the machine ran then (v3.7.3 for the 10-05 entry fixes, v3.7.4 otherwise).
 """
+import hashlib
+import inspect
 import json
 import sys
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _CTX = Path("ark_gamesim.json")
 if not _CTX.is_file():
@@ -41,9 +44,22 @@ try:
 except ImportError as exc:
     raise SystemExit(f"cannot import the harness from {_HERE}: {exc}") from None
 from src.task.FarmEchoTask import FarmEchoTask  # noqa: E402
+from src.task.WWOneTimeTask import WWOneTimeTask  # noqa: E402
 
 # The fight, elided: 15:25:55 开启挑战 -> 15:27:18 打完了 (ok-script.2026-10-12.log:2572, :2700).
 FIGHT_S = 83
+# The one fake (design rule 2): WWOneTimeTask.run, the prelude FarmEchoTask.run calls first
+# (FarmEchoTask.py:113). It starts MouseResetTask, which a TaskTestCase does not register
+# (get_task_by_class returns None), and activates a PostMessage window. Nothing of it is under
+# test. Pinned by its body: sha1 of inspect.getsource, as the overlay pins (v3.7.3 and v3.7.4
+# WWOneTimeTask.py:7-12 are the same bytes), so an upstream change turns the case red first.
+_ONE_TIME_RUN_SHA = "74e7f46544c5"
+
+
+def _one_time_prelude(task):
+    """WWOneTimeTask.run without the mouse reset and the window activation (neither touches the
+    game screen): its 0.5 s wait."""
+    task.sleep(0.5)
 
 
 def _after_fight(task):
@@ -142,7 +158,10 @@ class TestWeekly(ScriptedCase):
 
     # -- T5: a deliberate skip ends the run once
     def test_run_0of3_not_retried(self):
-        self.run_case("run_0of3_not_retried", lambda task: task.run())
+        got = hashlib.sha1(inspect.getsource(WWOneTimeTask.run).encode("utf-8")).hexdigest()[:12]
+        self.assertEqual(got, _ONE_TIME_RUN_SHA, "upstream WWOneTimeTask.run changed: re-read it before faking it")
+        with mock.patch.object(WWOneTimeTask, "run", _one_time_prelude):
+            self.run_case("run_0of3_not_retried", lambda task: task.run())
 
 
 if __name__ == "__main__":
