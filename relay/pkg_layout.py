@@ -27,6 +27,7 @@ back is switching current.txt to the previous folder; the last KEEP_VERSIONS sta
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
@@ -100,13 +101,33 @@ def record_running_version(here: Path) -> None:
 
     After a rollback the record is the version rolled away from (PIN), not the running
     one: otherwise check would see the deployed version as new and update straight back
-    into it. The pin holds until a higher version is deployed (update clears it)."""
+    into it. The pin holds until a higher version is deployed (update clears it).
+
+    The "code was updated" note goes the same way when it names a version newer than the
+    folder in use: check wrote it into the shared state for a copy that never became
+    current (the switch raised, or power went before it), and announcing it would say
+    「中继已更新」 while the old code runs (audit s24 F1). A note for the folder in use is
+    the first boot after a real switch and stays."""
     from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415
     running = version_key(here.name)[0]
     want = max(running, _pinned(here))
     if want and selfupdate._applied_version(here) != want:
         log.info("记录的代码版本改成 %s（正在用的文件夹 %s）", want, here.name)
         selfupdate._remember_version(here, want)
+    note = _read_note(selfupdate._announce_path(here))
+    if running and note is not None and int(note.get("version") or 0) > running:
+        log.info("丢掉 v%s 的更新通知：正在用的文件夹是 %s，那一版没换上",
+                 note.get("version"), here.name)
+        selfupdate.take_announcement(here)
+
+
+def _read_note(path: Path) -> "dict | None":
+    """A JSON note's object without consuming it; None when missing or unreadable."""
+    try:
+        note = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return note if isinstance(note, dict) else None
 
 
 # A file of its own, not a state.json field: StateStore only writes registered fields
@@ -230,6 +251,7 @@ def update(here: Path, check) -> list[str]:
         record_running_version(here)
         return []
     from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415
+    version = "0"
     try:
         version = str(selfupdate._applied_version(staging) or 0)
         name, n = version, 0
@@ -242,8 +264,14 @@ def update(here: Path, check) -> list[str]:
         if _pinned(here):
             _pin(here, 0)            # a newer version than the one rolled away from
     except Exception:
-        # Not switched: the record must keep naming the folder in use.
+        # Not switched: the record must keep naming the folder in use, and check's
+        # 「已更新」 note goes with it (record_running_version). check cleared
+        # update-failed.json for a round that landed in the copy, so the owner hears
+        # 「更新没生效」 only if it is written again here (audit s24 F1).
         record_running_version(here)
+        selfupdate._record_failure(
+            here, "新版本的文件已经下载好，换到新版本文件夹那一步出错了（原因见日志）",
+            int(version), version_key(here.name)[0], changed)
         if staging.exists():
             _drop(staging)
         raise
