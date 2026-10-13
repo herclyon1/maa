@@ -845,5 +845,34 @@ total = day.quota.total()
 print(f"    （模拟：{states[0]} 份状态 × {PIECES} 片 + {day.quota.count('hb')} 跳 = {total} 条）")
 check("整天落在 250 以内，还留着至少 20 条余量", total <= phone.NTFY_DAILY_LIMIT - 20, True)
 
+print("\n[state folder not writable: the quota WARNING still goes once (status-channel audit A4)]")
+# _write swallows OSError, so the day's `full` flag never reached the disk and every
+# later 42908 sent another group WARNING.
+import logging  # noqa: E402
+_warns: list = []
+
+
+class _Count(logging.Handler):
+    def emit(self, record):
+        if record.levelno >= logging.WARNING:
+            _warns.append(record.getMessage())
+
+
+_qlog = logging.getLogger("ark.phone")
+_qh = _Count()
+_qlog.addHandler(_qh)
+try:
+    nowrite = tmpdir() / "file-not-folder"
+    nowrite.write_text("x", encoding="utf-8")       # mkdir under a file fails
+    qa, qb = phone.Quota(nowrite / "state"), phone.Quota(nowrite / "state")
+    first, second, other = qa.mark_full("a"), qa.mark_full("b"), qb.mark_full("c")
+finally:
+    _qlog.removeHandler(_qh)
+check("the first call notes it", first, True)
+check("a second call does not", second, False)
+check("nor the other Quota on the same folder (mailbox / heartbeat)", other, False)
+check("one WARNING", sum("额度用完" in m for m in _warns), 1)
+check("full() holds for the day", (qa.full(), qb.full(), qa.stops_beats()), (True, True, True))
+
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

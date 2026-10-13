@@ -102,6 +102,11 @@ class Quota:
     # replace itself is for a power cut mid-write: a half file reads as {} and
     # the day's count would start over at zero.
     _lock = threading.RLock()
+    # The day ntfy refused, per state folder, in memory: when the day's file cannot
+    # be written (_write swallows OSError) the flag never reached the disk, and
+    # every later 42908 sent the day's WARNING again (status-channel audit A4).
+    # Class-wide: the mailbox and the heartbeat each hold their own Quota.
+    _full_day: dict = {}
 
     def __init__(self, state_dir: Path):
         self.state_dir = Path(state_dir)
@@ -194,9 +199,10 @@ class Quota:
         the day's file, so neither the other thread nor a restart repeats it)."""
         with self._lock:
             data = self.read()
-            if data.get("full") is True:
+            if data.get("full") is True or self._full_day.get(str(self.state_dir)) == self.day():
                 return False
             data["full"] = True
+            self._full_day[str(self.state_dir)] = self.day()
             self._write(data)
             own = self._own(data)
         log.warning("ntfy 今天 %d 条的额度用完了（%s；中继这一天自己发了 %d 条）："
@@ -206,7 +212,8 @@ class Quota:
         return True
 
     def full(self) -> bool:
-        return self.read().get("full") is True
+        return (self.read().get("full") is True
+                or self._full_day.get(str(self.state_dir)) == self.day())
 
     def stops_beats(self) -> bool:
         """No beat on ntfy now: ntfy refused the day, or the day's total reached
