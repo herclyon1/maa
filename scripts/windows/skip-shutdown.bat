@@ -7,10 +7,10 @@ rem 2026-09-08：状态收口把「下次跑完不关机」从 skip-next-shutdow
 rem state.json，而这个 bat 还在写旧文件——按下去界面显示「不关机」，中继照常
 rem 关机，而且一声不吭。凡是中继会读的状态，只能由中继的代码写。
 rem The code is the installed relay's: {app}\versions\<current.txt> (relay/pkg_layout.py).
-rem C:\ProgramData\ark-relay keeps only the data (state\); the ark_relay copy there is
-rem the old relay's, frozen at the switch-over, and goes when the old relay is removed.
-rem Without an installed relay (still on the old service) the old folder is used and the
-rem menu says so.
+rem C:\ProgramData\ark-relay keeps only the data (state\). The old relay's ark_relay copy
+rem that was there went to C:\ProgramData\ark-relay-retired-1011 on 2026-10-11 22:33
+rem (retire_legacy.py, docs/TOOLING.md). Without an installed relay the data folder is
+rem still tried, so the read fails with an import error and the menu says why.
 rem CRLF line endings (.gitattributes): with LF only, cmd.exe loses its place in this
 rem file and runs fragments of lines as commands (2026-10-11 on the machine).
 set "APP=C:\Program Files\ArkRelay"
@@ -52,7 +52,7 @@ if "%STATE%"=="" (
 ) else (
   echo      当前「下次跑完不关机」：%STATE%
 )
-if defined OLDCODE echo      （没找到安装版中继 %APP%\current.txt，用的是旧中继 %DATA% 的代码）
+if defined OLDCODE echo      （没找到安装版中继 %APP%\current.txt；旧中继的代码 10-11 已经撤走，所以读不出来）
 echo.
 echo      [1]  下次跑完不关机（一次性：下一趟早班/晚班跑完不关，开到再下一趟跑完才关）
 echo      [2]  撤回还没用上的标记（下一趟跑完照常关机；用掉了就没什么可撤）
