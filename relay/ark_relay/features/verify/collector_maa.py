@@ -29,11 +29,47 @@ _STAGE_DROPS_WORD = "掉落统计"
 # Real drops always carry the "(+N)" delta; the block's trailing
 # "当前次数 : 6" (how many times the stage was run) does not. That suffix is
 # the only thing separating an item from the run counter, so it is required.
-_DROP_ITEM = re.compile(r"^\s*(\S[^:：]*?)\s*[:：]\s*(\d+)\s*\(\+\d+\)\s*$")
+#
+# MAA prints both numbers through FormatNumber(false) (MaaWpfGui AsstProxy.cs
+# "StageDrops", v6.19.0 :2285-2288; the same at v6.16.8 and v6.17.0-beta.6, the
+# versions of 08-14 and 08-26): from 10000 up a number is rounded to one decimal
+# with a unit, `{n / 1000.0:#.#}k` (Extensions/NumberExtensions.cs :25; M and B
+# above). Real LMD lines, 2026-08-26 15:19:37 and 2026-08-14 07:08:04
+# (gamesim/corpus/maa/history):
+#   <LMD> : 10.1k (+1440)
+#   <LMD> : 13k (+1440)
+_MAA_NUMBER = r"\d+(?:\.\d+)?[kMB]?"
+_DROP_ITEM = re.compile(rf"^\s*(\S[^:：]*?)\s*[:：]\s*({_MAA_NUMBER})\s*\(\+({_MAA_NUMBER})\)\s*$")
 _RUN_TIMES = re.compile(r"^\s*当前次数\s*[:：]\s*(\d+)\s*$")
 # An item whose running total did not move in this block: "酯原料 : 2" with no
 # "(+N)". It is still inside the block.
-_DROP_ITEM_UNCHANGED = re.compile(r"^\s*(\S[^:：]*?)\s*[:：]\s*(\d+)\s*$")
+_DROP_ITEM_UNCHANGED = re.compile(rf"^\s*(\S[^:：]*?)\s*[:：]\s*({_MAA_NUMBER})\s*$")
+_MAA_UNIT = {"k": 1_000, "M": 1_000_000, "B": 1_000_000_000}
+
+
+def _maa_count(text: str) -> "tuple[int, bool]":
+    """(value, exact) for a number as MAA prints it; a rounded "10.1k" gives (10100, False)."""
+    if text[-1] in _MAA_UNIT:
+        return round(float(text[:-1]) * _MAA_UNIT[text[-1]]), False
+    return int(text), True
+
+
+def _maa_total(previous: "int | None", total: str, delta: "str | None") -> int:
+    """An item's exact running total from one drop line.
+
+    MAA's total is the sum of its "(+N)" deltas (08-26 AT-4: 1440 x 8 + 576 = 12096,
+    printed 「12.1k (+576)」), so a rounded total is the previous total plus an exact
+    delta. A rounded delta, or no earlier total to add to, leaves only the rounded value.
+    """
+    value, exact = _maa_count(total)
+    if exact:
+        return value
+    if delta is None:
+        return previous if previous is not None else value
+    add, add_exact = _maa_count(delta)
+    if add_exact:
+        return (previous or 0) + add
+    return value
 # MAA's own statement of which runs a batch covers: "开始行动 11~19 次" /
 # "开始行动 21 次". Runs are numbered across the whole stage, so the highest
 # number seen is how many times the stage was started - the drop blocks'
@@ -105,11 +141,12 @@ def _maa_scan_lines(text: str) -> "tuple[dict[str, dict[str, int]], list[str], i
                 # Each drop block holds the running total for its stage
                 # ("龙门币 : 1440 (+1440)", then "龙门币 : 2448 (+1008)"), so the
                 # last block per stage is kept; stages are summed in parse_maa_log.
-                name, total = m.group(1), int(m.group(2))
-                per_stage.setdefault(current, {})[name] = total
+                items = per_stage.setdefault(current, {})
+                items[m.group(1)] = _maa_total(items.get(m.group(1)), m.group(2), m.group(3))
                 continue
             elif m := _DROP_ITEM_UNCHANGED.match(line):
-                per_stage.setdefault(current, {})[m.group(1)] = int(m.group(2))
+                items = per_stage.setdefault(current, {})
+                items[m.group(1)] = _maa_total(items.get(m.group(1)), m.group(2), None)
                 continue
             elif not line.strip():
                 continue

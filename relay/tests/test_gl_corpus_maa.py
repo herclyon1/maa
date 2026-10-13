@@ -6,9 +6,11 @@ carries that evidence next to it (cases.json, history/<date>/expected.json, SOUR
 What is asserted is what collector_maa.parse_maa_log and outcome.maa_checks / summarize /
 maa_sanity_short make of those runs.
 
-  cases.json   the eight T10 incidents; each case names the commit that fixed it and must
+  cases.json   the T10 incidents; each case names the commit that fixed it and must
                fail an assertion at red_at (<fix>~1) and at every also_red commit, and pass
-               at green_at (--prove re-runs that from git history).
+               at green_at (--prove re-runs that from git history). A fix committed with
+               its case cannot name its own hash and says "self": the commit that added
+               the case's id to cases.json (resolve).
   history/     all 167 MAA records AUTO-MAS kept 2026-08-14..10-13, labelled from MAA's
                printed totals / annihilation line / refusal line.
   live_bugs    verdicts the evidence says are wrong on today's code. They are expected to
@@ -37,7 +39,7 @@ HISTORY_FLOOR = 167
 T10_IDS = {"T10-1-config-refusal", "T10-2-annihilation-cap", "T10-3-drop-running-totals",
            "T10-4-infrast-recovery-is-not-failure", "T10-5-window-reaches-next-run",
            "T10-6-sanity-short", "T10-7-annihilation-no-progress",
-           "T10-8-stop-receipt-after-completion"}
+           "T10-8-stop-receipt-after-completion", "T10-9-rounded-drop-totals"}
 
 # The repo is public: what the redaction in SOURCE.txt removed must stay removed.
 PRIVATE = (
@@ -224,10 +226,23 @@ def run_privacy() -> None:
 
 # ---------------------------------------------------------------- red / green proof
 
+def resolve(rev: str, case_id: str) -> str:
+    """`rev` with a leading "self" replaced by the commit that added `case_id` to cases.json."""
+    if not rev.startswith("self"):
+        return rev
+    shas = subprocess.run(["git", "-C", str(REPO), "log", "--reverse", "--format=%H", f'-S"id": "{case_id}"',
+                           "--", str((CORPUS / "cases.json").relative_to(REPO))],
+                          capture_output=True, text=True, check=True).stdout.split()
+    if not shas:
+        raise SystemExit(f"{case_id}: 'self' case not committed yet")
+    return shas[0][:8] + rev[len("self"):]
+
+
 def prove(cases: list) -> None:
     """Each case on its red_at tree (must fail) and its green_at tree (must pass)."""
     for case in cases:
         revs = [(case["red_at"], False), (case["green_at"], True)] + [(r, False) for r in case.get("also_red", [])]
+        revs = [(resolve(r, case["id"]), want) for r, want in revs]
         for rev, want_pass in revs:
             with tempfile.TemporaryDirectory() as td:
                 arch = subprocess.run(["git", "-C", str(REPO), "archive", rev, "relay/ark_relay"],
@@ -258,7 +273,7 @@ def main() -> int:
             if args.case:
                 run_case(judge, next(c for c in cases if c["id"] == args.case))
             else:
-                check("the eight T10 cases are all here", {c["id"] for c in cases}, T10_IDS)
+                check("the T10 cases are all here", {c["id"] for c in cases}, T10_IDS)
                 for case in cases:
                     require(f"{case['id']} names its fix and red/green commits",
                             bool(case["fix"] and case["red_at"] and case["green_at"]))

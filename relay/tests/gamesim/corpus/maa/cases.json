@@ -117,19 +117,23 @@
     {"input": "asst/0922-MAA-17-30-02.asst.log", "verdict": "alarm", "want": false,
      "evidence": "MAA asst: TaskChainCompleted CloseDown 21:47:10.864, then TaskChainStopped {\"finished_tasks\":[7],\"taskchain\":\"CloseDown\"} 21:47:11.351; every chain StartUp..Award completed; AUTO-MAS 「Success!」. The relay's 21:47:18 alarm said 「CloseDown(被中止)」 (relay.log in the 09-22 evidence bundle)"}
    ]
-  }
- ],
- "live_bugs": [
+  },
   {
-   "id": "LB-maa-rounded-drop-total",
-   "what": "MAA prints a running total over 10000 rounded, 「龙门币 : 10.1k (+1440)」. collector_maa._DROP_ITEM needs digits, so that line also fails _DROP_ITEM_UNCHANGED, ends the block, and every item after it in that block and every later block keeps an old total (08-26: 龙门币 8640 instead of 12096, 艺人见面抽选券 720 instead of 1008).",
+   "id": "T10-9-rounded-drop-totals",
+   "incident": "08-14 TO-5 and 08-26 AT-4: MAA printed running totals of 10000 and up rounded (「10.1k (+1440)」, 「13k (+1440)」); that line ended the drop block, so every later total kept an old value (08-26: 龙门币 8640 instead of 12096, 艺人见面抽选券 720 instead of 1008)",
+   "fix": ["self"],
+   "red_at": "self~1",
+   "green_at": "self",
+   "note": "'self' is the commit that added this case (test_gl_corpus_maa.resolve). Labels are MAA's last exact total plus the exact (+N) deltas printed after it, the sum MAA's totals are (08-26: 1440 x 8 + 576 = 12096, printed 「12.1k (+576)」; 08-14: 17856, printed 「17.9k (+576)」).",
    "checks": [
     {"input": "history/2026-08-14/02-45-09", "field": "drop_statistics", "want": "bulk",
      "evidence": "history/2026-08-14/expected.json"},
     {"input": "history/2026-08-26/MAA-11-03-30", "field": "drop_statistics", "want": "bulk",
      "evidence": "history/2026-08-26/expected.json"}
    ]
-  },
+  }
+ ],
+ "live_bugs": [
   {
    "id": "LB-maa-sanity-short-window",
    "what": "outcome.maa_sanity_short reads the last 「Current Sanity」 in the window [start, end + 5 min], which on 09-14 holds the next attempt too (it is not cut at the next StartUp the way maa_checks is), so the first two attempts are reported as 18 / 25 although MAA read 17.",
