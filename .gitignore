@@ -34,3 +34,6 @@ data/upstream-templates/*/_lengths.json
 .claude/worktrees/
 /.venv-relaytest/
 /.venv-relaytest.lock/
+
+# gamesim corpora keep real logs (relay/tests/gamesim/**, added 10-13)
+!relay/tests/gamesim/**/*.log
