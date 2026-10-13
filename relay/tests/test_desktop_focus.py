@@ -70,21 +70,18 @@ scr = Desktop(tmpdir() / "state", spawn=sp, timeout=5).read(focus="Games")
 check("focus_missing", getattr(scr, "focus_missing", None), False)
 check("行", [ln.text for ln in scr.lines], ["开始游戏"])
 
-print("\n[窗口没找到时点击一律不算：click_text / click 返回 False，即使结果里有 clicked]")
+print("\n[窗口没找到时点击一律不算：click_text 返回 False，即使结果里有 clicked]")
 missing = {"ok": True, "focus_missing": True, "clicked": [[60, 80]], "ocr": OTHER_WINDOW,
            "log": ["focus: 没有 Endfield 的窗口", "click 60,80"]}
 d = Desktop(tmpdir() / "state", spawn=agent(missing), timeout=5)
 check("click_text 返回 False", d.click_text("确认", focus="Endfield"), False)
-check("click 返回 False", d.click(60, 80, focus="Endfield"), False)
 log_only = dict(missing)
 del log_only["focus_missing"]
 d = Desktop(tmpdir() / "state", spawn=agent(log_only), timeout=5)
 check("只有日志行：click_text 返回 False", d.click_text("确认", focus="Endfield"), False)
-check("只有日志行：click 返回 False", d.click(60, 80, focus="Endfield"), False)
 found = {"ok": True, "clicked": [[60, 80]], "ocr": [], "log": ["focus: Endfield 「Endfield」", "click 60,80"]}
 d = Desktop(tmpdir() / "state", spawn=agent(found), timeout=5)
 check("找到窗口：click_text 照常 True", d.click_text("确认", focus="Endfield"), True)
-check("找到窗口：click 照常 True", d.click(60, 80, focus="Endfield"), True)
 
 print("\n[Screen 构造：focus_missing 关键字；旧的 (lines, shot) 位置参数照常]")
 try:

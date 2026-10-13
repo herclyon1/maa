@@ -293,9 +293,13 @@ check("标题写有项目重试后成功", t_r.endswith("全绿 ✅（有项目�
 
 print("\n[红项的格式：读取工具按这个认（ac38f466 的格式）]")
 when = datetime(2026, 10, 11, 21, 45, tzinfo=SERVER_TZ)
-reds = techlog.red_items(TODAY, ["收工体检：补丁不在", "明早的队列读不到"], now=when)
-check("每条红项带自己的编号", reds, ["🔴 R-20261011-2145-1 收工体检：补丁不在",
-                                   "🔴 R-20261011-2145-2 明早的队列读不到"])
+d = tmpdir() / "state"
+check("每条红项带自己的编号", techlog.add_red(TODAY, "收工体检", ["收工体检：补丁不在", "明早的队列读不到"],
+                                         state_dir=d, now=when),
+      ["R-20261011-2145-1", "R-20261011-2145-2"])
+reds = [ln for ln in techlog.path_for(TODAY, d).read_text(encoding="utf-8").splitlines() if ln.startswith("🔴")]
+check("红项那一行的样子", reds, ["🔴 R-20261011-2145-1 收工体检：补丁不在",
+                              "🔴 R-20261011-2145-2 明早的队列读不到"])
 text = "\n".join(reds + [techlog.handled_line("R-20261011-2145-1", "abc1234")])
 check("已处理那一行的样子", techlog.handled_line("R-20261011-2145-1", "abc1234"),
       "✅ R-20261011-2145-1 已处理（abc1234）")

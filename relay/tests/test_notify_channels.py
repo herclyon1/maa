@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.core import notify                 # noqa: E402
 from ark_relay.core.config import Config          # noqa: E402
 from ark_relay.core.notify import (               # noqa: E402
-    Notifier, ServerChan, WeCom, WeComBot, _hint, _image_bytes_for_wecom,
+    Notifier, ServerChan, WeCom, WeComBot, _image_bytes_for_wecom,
 )
 
 fails = []
@@ -343,12 +343,6 @@ except RuntimeError as exc:
     check("说清是 gettoken 失败", "gettoken" in str(exc) and "40001" in str(exc), True)
 check("没有硬着头皮去发", urls("message/send"), [])
 
-print("\n[60020 要给出手机上照做就能修好的一句话，别的错误不瞎给建议]")
-tip = _hint("企业微信", "企业微信发送失败: 60020 not allow to access from your ip")
-check("指到企业可信IP", "企业可信IP" in tip, True)
-check("别的错误码不编建议", _hint("企业微信", "40014 invalid access_token"), "")
-check("别的通道不套用", _hint("Server酱", "60020 whatever"), "")
-
 # ------------------------------------------------------------ 群机器人
 print("\n[群机器人：errcode 非 0 抛出；它的字节上限比自建应用更严]")
 check("上限 1800", WeComBot._LIMIT, 1800)
@@ -412,8 +406,6 @@ check("说清是机器人没开", Notifier(cfg_nobot).send_group("📣 明天开
 check("绝不偷偷改走 Server酱", posted("sctapi.ftqq.com"), [])
 
 print("\n[发图出错要把原因返回，不许抛——它跑在日报发出之后，抛出去会把那一轮带走]")
-check("没配自建应用时说清楚", Notifier(cfg_nobot).send_image(Path("/nonexistent.png")),
-      ["企业微信未配置，无法发图"])
 check("没配机器人时说清楚",
       Notifier(cfg_nobot).send_group_image(Path("/nonexistent.png")),
       ["群机器人未配置"])

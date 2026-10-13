@@ -7,15 +7,12 @@ from __future__ import annotations
 
 import json
 import logging
-import mimetypes
 import random
-import re
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
 from pathlib import Path
 
 from ark_relay.core.config import Config
@@ -108,7 +105,7 @@ def _post_form(url: str, fields: dict) -> dict:
 
 
 class WeCom:
-    """企业微信自建应用. Plain text, no length games, supports images.
+    """企业微信自建应用. Plain text only (push.py --private).
 
     The caller's public IP must be in the app's trusted-IP list or every
     request comes back errcode=60020.
@@ -208,35 +205,6 @@ class WeCom:
             if i:
                 time.sleep(0.4)  # keep the parts in order on the client
             self._send_one(part)
-
-    def send_image(self, path: Path) -> None:
-        media_id = self._upload(path)
-        self._message("image", {"media_id": media_id}, "企业微信发图失败")
-
-    def _upload(self, path: Path) -> str:
-        """multipart/form-data upload; returns media_id (valid 3 days)."""
-        boundary = f"----ark{uuid.uuid4().hex}"
-        ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        body = b"".join([
-            f"--{boundary}\r\n".encode(),
-            f'Content-Disposition: form-data; name="media"; filename="{path.name}"\r\n'.encode(),
-            f"Content-Type: {ctype}\r\n\r\n".encode(),
-            path.read_bytes(),
-            f"\r\n--{boundary}--\r\n".encode(),
-        ])
-        url = (
-            "https://qyapi.weixin.qq.com/cgi-bin/media/upload"
-            f"?access_token={self._access_token()}&type=image"
-        )
-        req = urllib.request.Request(
-            url, data=body,
-            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-        )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        if data.get("errcode") != 0:
-            raise RuntimeError(f"媒体上传失败: {data.get('errcode')} {data.get('errmsg')}")
-        return data["media_id"]
 
 
 _WECOM_IMAGE_LIMIT = 1_800_000   # official cap is 2MB; leave room for the fields around the base64
@@ -365,16 +333,6 @@ class ServerChan:
                 return
             errors.append(f"{url.split('/')[2]}: {r}")
         raise RuntimeError("Server酱 发送失败 -> " + "；".join(errors))
-
-
-def _hint(name: str, err: str) -> str:
-    """Turn a channel's raw error into something actionable on a phone."""
-    if name == "企业微信" and "60020" in err:
-        m = re.search(r"from ip:\s*([\d.]+)", err)
-        ip = m.group(1) if m else "（错误里没带地址）"
-        return (f"机器现在的出口地址是 {ip}，不在企业微信应用的可信名单里。家宽拨号地址会变；"
-                "去企业微信管理后台「应用管理 → 这个应用 → 企业可信IP」把这个地址加进去，加了就恢复。")
-    return ""
 
 
 # Three channels, three jobs (docs/NOTIFICATIONS.md has the full title -> route table):
@@ -631,8 +589,6 @@ class Notifier:
         lines = []
         for name, err in failed.items():
             lines.append(f"· {name}：{err}")
-            if tip := _hint(name, err):
-                lines.append(f"  {tip}")
         lines += [
             "",
             f"刚才那条消息已通过 {'、'.join(delivered)} 送达，没有丢。",
@@ -667,12 +623,3 @@ class Notifier:
             return [str(exc)]
         _say_delivered("group", ["企业微信机器人"], f"图片 {Path(path).name}")
         return []
-
-    def send_image(self, path: Path) -> list[str]:
-        if not self.wecom.enabled:
-            return ["企业微信未配置，无法发图"]
-        try:
-            self.wecom.send_image(path)
-            return []
-        except Exception as exc:  # noqa: BLE001
-            return [f"企业微信发图: {exc}"]

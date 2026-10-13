@@ -73,24 +73,17 @@ def append(day: str, heading: str, text: str, *, state_dir=None, now: "datetime 
         return False
 
 
-def red_items(day: str, texts: "list[str]", *, now: "datetime | None" = None) -> list[str]:
-    """Lines for the red items of one check run, each with its own id."""
-    at = now or datetime.now(tz=SERVER_TZ)
-    stamp = at.strftime("%Y%m%d-%H%M")
-    return [f"{RED} R-{stamp}-{i} {t}" for i, t in enumerate(texts, 1)]
-
-
 _ids = threading.Lock()
 
 
 def add_red(day: str, heading: str, texts: "list[str]", *, state_dir=None,
             now: "datetime | None" = None) -> list[str]:
-    """Append one section of red items whose ids are not used yet in the day's file.
+    """Append one section of red items, each with an id not used yet.
 
-    red_items() numbers from 1 for every call, so two calls in the same minute
-    would write the same id twice and one `handled` would clear both; this one
-    continues after the highest number already written for that minute. Returns
-    the ids written ([] when nothing was written)."""
+    Numbering from 1 on every call would write the same id twice for two calls in
+    the same minute, and one `handled` would clear both; this continues after the
+    highest number already written for that minute. Returns the ids written ([]
+    when nothing was written)."""
     at = now or datetime.now(tz=SERVER_TZ)
     texts = [" ".join(str(t).split())[:400] for t in texts if str(t).strip()]
     if not texts:
