@@ -217,8 +217,26 @@ def _boot_stamp(now: datetime) -> str:
         return now.strftime("%Y%m%d%H")
 
 
+# _seconds_to_next_queue's three numbers. Their one reader that decides anything is
+# _once_more (a second pre-update try only when left >= its budget + 60); the game
+# update logs the figure and no longer uses it (gameupdate.boot_check).
+# The margin kept before the queue: the boot steps after the last pre-update item
+# (closing it, the remaining stages, the main loop hooked up) took 2-11 s on 85
+# mornings 08-25..10-13 and 33 s once (09-08), measured in relay.log from the OK-WW
+# verdict to 「已挂上目录变更通知」; 90 s is that worst case with room.
+QUEUE_MARGIN_S = 90.0
+# The floor and the no-queue-left figure are derived, not measured: any floor below
+# the smallest budget + 60 (preupdate.OKWW_BUDGET_SECONDS 240 -> 300) means "no
+# second try", and any figure above the largest (preupdate.MAS_BUDGET_SECONDS 600 ->
+# 660) means "time for one"; today has no queue left, so the next is hours away.
+QUEUE_FLOOR_S = 120.0
+NO_QUEUE_LEFT_S = 3600.0
+
+
 def _seconds_to_next_queue(automas_dir, now: datetime) -> float:
-    """Seconds until today's next queue; when today has none left, hand back the large evening budget."""
+    """Seconds until today's next queue, less QUEUE_MARGIN_S; when today has none left,
+    NO_QUEUE_LEFT_S. A time that runs nothing today (its weekdays, or every item
+    sitting the day out: plan.runs_at) is not a queue (232948ba missed this reader)."""
     from ark_relay.core import plan  # noqa: PLC0415
     best = None
     for q in plan.schedule(automas_dir):
@@ -228,11 +246,13 @@ def _seconds_to_next_queue(automas_dir, now: datetime) -> float:
             except ValueError:
                 continue
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            if not plan.runs_at(q, hhmm, due):
+                continue
             if due > now and (best is None or due < best):
                 best = due
     if best is None:
-        return 3600.0
-    return max(120.0, (best - now).total_seconds() - 90)
+        return NO_QUEUE_LEFT_S
+    return max(QUEUE_FLOOR_S, (best - now).total_seconds() - QUEUE_MARGIN_S)
 
 
 def _relay_poweroff_live(engine, now=None) -> bool:
