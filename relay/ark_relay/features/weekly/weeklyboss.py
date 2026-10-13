@@ -239,42 +239,52 @@ class WeeklyBossGate(WeekGate):
         has = TASK_NAME in tasks
         changed = False
 
-        if want_on and not has:
-            tasks.append(TASK_NAME)
-            changed = True
-        elif not want_on and has:
-            tasks.remove(TASK_NAME)
-            changed = True
-        if changed:
-            daily[KEY] = tasks
-            if not _write(daily_f, daily):
-                log.warning("周本开关写不进 %s", DAILY)
-                return False
-
-        # While the switch is on, also write the teleport target the task needs.
+        # The teleport target first, and the task listed only once it reads back.
+        # Upstream DailyTask.validate_additional_tasks (v3.7.4, DailyTask.py:140-147,
+        # called at :78) raises before login when the task is listed while
+        # FarmEchoTask's 「Teleport to Boss」 is 'No' - the whole daily fails, not just
+        # the weekly boss. So a target that cannot be written takes the task out
+        # rather than leave it listed with no target.
         farm_error = ""
+        farm_ok = True
         if want_on:
             farm_f = _file(self.automas_dir, FARM)
             farm = _read(farm_f)
+            want = {"Teleport to Boss": WEEKLY,
+                    "Which Weekly Boss to Teleport": int(s.get("index") or 1),
+                    "Repeat Farm Count": COUNT,
+                    "Boss Level": MAX_LEVEL}
             if farm is None:
+                farm_ok, farm_error = False, "no-farm"
                 # Logged once per condition: enforce runs every round.
-                farm_error = "no-farm"
                 if self._last_error != farm_error:
-                    log.warning("周本要挂上，但读不了 OK-WW 母本 %s，传送目标没写，周本会不知道去哪打", FARM)
-            else:
-                want = {"Teleport to Boss": WEEKLY,
-                        "Which Weekly Boss to Teleport": int(s.get("index") or 1),
-                        "Repeat Farm Count": COUNT,
-                        "Boss Level": MAX_LEVEL}
-                if any(farm.get(k) != v for k, v in want.items()):
-                    farm.update(want)
-                    if _write(farm_f, farm):
-                        changed = True
-                    else:
-                        log.warning("周本的传送设置写不进 %s", FARM)
+                    log.warning("周本要挂上，但读不了 OK-WW 母本 %s，传送目标没写；"
+                                "周本先不挂（挂着没目标，上游会让整个日常在登录前报错）", FARM)
+            elif any(farm.get(k) != v for k, v in want.items()):
+                farm.update(want)
+                back = _read(farm_f) if _write(farm_f, farm) else None
+                if back is not None and all(back.get(k) == v for k, v in want.items()):
+                    changed = True
+                else:
+                    farm_ok, farm_error = False, "farm-write"
+                    if self._last_error != farm_error:
+                        log.warning("周本的传送设置写不进 %s（或读回来不对），周本先不挂", FARM)
+
+        list_it = want_on and farm_ok
+        if list_it and not has:
+            tasks.append(TASK_NAME)
+        elif not list_it and has:
+            tasks.remove(TASK_NAME)
+        if list_it != has:
+            daily[KEY] = tasks
+            if not _write(daily_f, daily):
+                log.warning("周本开关写不进 %s", DAILY)
+                self._last_error = farm_error
+                return False
+            changed = True
 
         if changed:
             log.info("周本已%s（第 %s 个，打 %s 次）",
-                     "挂上" if want_on else "摘掉", s.get("index") or 1, COUNT)
+                     "挂上" if list_it else "摘掉", s.get("index") or 1, COUNT)
         self._last_error = farm_error
         return changed

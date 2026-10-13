@@ -109,13 +109,50 @@ g.enforce(MON)
 g.enforce(MON)
 farm_warn = lambda: [m for lv, m in _log.lines if lv == "WARNING" and W.FARM in m]  # noqa: E731
 check("one WARNING for two rounds (enforce runs every round)", len(farm_warn()), 1)
+# 2026-10-13 audit: the task stayed listed with no target, and upstream's
+# validate_additional_tasks then raises before login (the whole daily fails).
+check("no target: the weekly boss is not left listed", W.TASK_NAME in tasks(), False)
 (CFG / "FarmEchoTask.json").write_text(json.dumps({}), encoding="utf-8")
 g.enforce(MON)
 check("readable again: the target is written",
       json.loads((CFG / "FarmEchoTask.json").read_text(encoding="utf-8")).get("Teleport to Boss"), W.WEEKLY)
+check("readable again: listed again", W.TASK_NAME in tasks(), True)
+
 (CFG / "FarmEchoTask.json").write_text("{ torn", encoding="utf-8")
 g.enforce(MON)
 check("after it cleared, a new failure is said again", len(farm_warn()), 2)
+
+print("\n[the target is written before the task is listed; a failed write lists nothing]")
+(CFG / "DailyTask.json").write_text(json.dumps({W.KEY: []}), encoding="utf-8")
+(CFG / "FarmEchoTask.json").write_text(json.dumps({"Teleport to Boss": "No"}), encoding="utf-8")
+order = []
+_real_write = W._write
+
+
+def _spy(f, cfg):
+    order.append(Path(f).name)
+    return _real_write(f, cfg)
+
+
+W._write = _spy
+try:
+    g.enforce(MON)
+finally:
+    W._write = _real_write
+check("FarmEchoTask.json first, DailyTask.json after", order, [W.FARM, W.DAILY])
+check("…and listed", W.TASK_NAME in tasks(), True)
+(CFG / "DailyTask.json").write_text(json.dumps({W.KEY: []}), encoding="utf-8")
+(CFG / "FarmEchoTask.json").write_text(json.dumps({"Teleport to Boss": "No"}), encoding="utf-8")
+W._write = lambda f, cfg: False if Path(f).name == W.FARM else _real_write(f, cfg)
+try:
+    g.enforce(MON)
+finally:
+    W._write = _real_write
+check("target write failed: the task is not listed", W.TASK_NAME in tasks(), False)
+g.enforce(MON)
+check("next round with a writable target: listed", W.TASK_NAME in tasks(), True)
+(CFG / "FarmEchoTask.json").write_text(json.dumps({}), encoding="utf-8")
+g.enforce(MON)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
