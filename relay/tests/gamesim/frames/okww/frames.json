@@ -1,0 +1,126 @@
+{
+ "about": "Recorded OK-WW screens for the gamesim harness (design section 1, Frame library). Paths are relative to this folder; sha256 is of the committed file. The repository is public: every frame has OK-WW's UID strip blacked out.",
+ "frames": [
+  {
+   "path": "nest_list/2026-10-07_092052.png",
+   "screen_id": "nest_list",
+   "about": "F2 book, 素材获取 > 残象聚落, first page of the nest list (梦州 and 拉海洛 groups)",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/09-20-52.282_nest_go_original.png, taken by the overlay's combat_nest _shot('nest_go') (ok-script.2026-10-07.log:244 'nightmare nest: 点进点位 go_nest:41:25（截图 nest_go）'), original sha256 5bb002a6e827200ca370cf9ca6443c384611715f6c3e1040e8c6a13977547517",
+   "sha256": "9410d178c2051a3691b0ec550fbac33bf343c15b60138aed5255629c2ff69cb8",
+   "date": "2026-10-07 09:20:52.282 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py:121-124), every pixel 0; checked again at run time by harness.ScriptedCase.check_frames with the real config.blur_area",
+   "truth": [
+    {
+     "box": [
+      0.463,
+      0.283,
+      0.575,
+      0.311
+     ],
+     "text": "梦枢天罗残象聚落"
+    },
+    {
+     "box": [
+      0.463,
+      0.346,
+      0.564,
+      0.376
+     ],
+     "text": "已击败残象：0/48"
+    },
+    {
+     "box": [
+      0.463,
+      0.425,
+      0.575,
+      0.454
+     ],
+     "text": "落渊南丘残象聚落"
+    },
+    {
+     "box": [
+      0.4635,
+      0.488,
+      0.565,
+      0.517
+     ],
+     "text": "已击败残象：0/41"
+    }
+   ],
+   "truth_checked": "2026-10-13, by eye against crops of the frame; the 0/41 box is the machine's own OCR box (ok-script.2026-10-07.log:243, Box x=890 y=527 width=195 height=31)",
+   "features": [],
+   "cases_using": [
+    "nest/find_nest_pointer_1007",
+    "harness self-test"
+   ]
+  },
+  {
+   "path": "map_nest_detail/2026-10-07_092055.png",
+   "screen_id": "map_nest_detail",
+   "about": "map opened on 落渊南丘残象聚落 with its detail panel and the 快速旅行 button",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/09-20-55.143_nest_travel_original.png, taken by the overlay's _travel_to_nest_or_skip _shot('nest_travel') 228 ms before ok-script.2026-10-07.log:249 'left_click gray_teleport (1351, 1007)', original sha256 16647d7c4cd9f3ad5874635aa19a628786a4232a641c75ebd3551ed8bab60f44",
+   "sha256": "caff56bbf8c995d4fd691c5fa578ab09a6af064ee660dca7fb66cbb0696da10c",
+   "date": "2026-10-07 09:20:55.143 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py:121-124), every pixel 0; checked again at run time by harness.ScriptedCase.check_frames with the real config.blur_area",
+   "truth": [
+    {
+     "box": [
+      0.733,
+      0.03,
+      0.885,
+      0.08
+     ],
+     "text": "落渊南丘残象聚落"
+    },
+    {
+     "box": [
+      0.69,
+      0.32,
+      0.8,
+      0.35
+     ],
+     "text": "已击败残象"
+    },
+    {
+     "box": [
+      0.9,
+      0.32,
+      0.945,
+      0.35
+     ],
+     "text": "0/41"
+    },
+    {
+     "box": [
+      0.78,
+      0.905,
+      0.88,
+      0.955
+     ],
+     "text": "快速旅行"
+    }
+   ],
+   "truth_checked": "2026-10-13, by eye against crops of the frame",
+   "features": [
+    {
+     "name": "gray_teleport",
+     "evidence": "ok-script.2026-10-07.log:249 'NightmareNestTask:left_click gray_teleport (1351, 1007)', the click that followed this screenshot"
+    }
+   ],
+   "cases_using": [
+    "nest/find_nest_pointer_1007",
+    "harness self-test"
+   ]
+  }
+ ]
+}
