@@ -742,6 +742,10 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
             tail = text[text.rfind("当前理智"):]
             if _END_SANITY_SPENT.search(tail) and not _END_SANITY_REFUSED.search(tail):
                 got -= max(drops) if drops else _END_PS_COST
+        # A negative result is floored to 0: a lower bound, not a reading
+        # (collector._enrich_record gives no full-again time for it). An exact 0
+        # is the rule's own figure, e.g. 160 read, one double claim.
+        out["sanity_floored"] = got < 0
         got = max(0, got)
         # AUTO-MAS records sanity as 0 for MaaEnd; parse_record fills empty raw
         # fields from here.

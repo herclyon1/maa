@@ -531,11 +531,16 @@ def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: lis
     _mark_sanity_unread(raw, script)
     # Full-again time: MAA writes it itself; for the other two it is computed.
     # MaaEnd's counts from the log time of its last 「当前理智」 reading
-    # (sanity_read_at), else the record's finish. A 0 left after 「理智不足，结束任务」
-    # is the floor of a subtraction, not a reading: no time is given for it.
+    # (sanity_read_at), else the record's finish. A 0 the parser floored from a
+    # negative result (sanity_floored) is a lower bound, not a reading: no time
+    # is given for it. An exact 0 from the per-claim rule is a reading and gets
+    # one. A record without the flag falls back to 0 after 「理智不足，结束任务」.
     if not raw.get("sanity_full_at"):
         if script == "MaaEnd" and raw.get("sanity") is not None:
-            if not (raw.get("sanity_exhausted") and int(raw["sanity"]) == 0):
+            floored = raw.get("sanity_floored")
+            if floored is None:
+                floored = bool(raw.get("sanity_exhausted")) and int(raw["sanity"]) == 0
+            if not floored:
                 ref = finished
                 try:
                     if at := raw.get("sanity_read_at"):
