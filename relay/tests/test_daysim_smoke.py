@@ -17,6 +17,7 @@ the two MAA verdicts (both runs ok, handled after AUTO-MAS wrote their files at
 outputs, and that no sim error happened (no unrouted command, URL or socket).
 """
 import json
+from datetime import datetime
 import sys
 from pathlib import Path
 
@@ -364,6 +365,23 @@ at = W.epoch("2026-10-08T21:49:04+08:00")
 W.World._fault(host, {"channel": "ntfy_publish", "error": "TimeoutError: The read operation timed out"}, at)
 check("an ntfy publish timeout fails the next publish begun up to POST_TIMEOUT before its line",
       faults, [(f"ntfy.sh/{W.PHONE_TOPIC}", "timeout", {"method": "POST", "start": at - 21})])      # mailbox.Mailbox.POST_TIMEOUT 20 s, and one
+
+# ---- the relay running at 00:00: the sim's stop then reads as a stop to #11
+from ark_relay.features.selfcheck.machinechecks import system as sysmc  # noqa: E402
+
+seed11 = {"t0": "2026-10-11T00:00:00+08:00", "machine": {"power": "on", "relay": "running"}}
+logdir = tmpdir("daysim-t0stop-")
+prev = ("10-10 23:38:46 INFO    ark.service  服务模式启动，监视 D:\\ark\\automas\\history（变更即处理，兜底 30 秒）\n"
+        "10-10 23:38:46 INFO    ark.service  中继代码版本 v20261010143151\n"
+        "10-10 23:39:30 INFO    ark.service  📱 已上报状态到手机（开机；今天 ntfy 已用 30 条）\n")
+now = "10-11 00:00:00 INFO    ark.service  服务模式启动，监视 D:\\ark\\automas\\history（变更即处理，兜底 30 秒）\n"
+(logdir / "relay.log").write_text(prev + getattr(W, "t0_stop_lines", lambda s: "")(seed11) + now, encoding="utf-8")
+(logdir / "state").mkdir()
+res = sysmc._stop_push({"log_file": str(logdir / "relay.log"), "state_dir": str(logdir / "state"),
+                        "now": datetime.fromisoformat("2026-10-11T00:00:49+08:00")})
+check("relay running at 00:00: #11 reads the sim's stop as a stop with its push (10-11 00:00:49)",
+      getattr(res, "status", None), "PASS")
+check("relay off at 00:00: no stop lines", getattr(W, "t0_stop_lines", lambda s: "")({**seed11, "machine": {"relay": "stopped"}}), "")
 
 # ---- the morning of 10-12, end to end
 corpus = W.CORPUS_ROOT / "2026-10-12"

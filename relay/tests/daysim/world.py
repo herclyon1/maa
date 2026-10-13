@@ -330,6 +330,10 @@ def materialize(day: str, tree: Path, corpus: Path, code_src: Path) -> dict:
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_text(data, encoding="utf-8")
     t0 = epoch(seed["t0"])
+    if (lines := t0_stop_lines(seed)) and (log := tpath(tree, DATA_REL + "/relay.log")).is_file():
+        with open(log, "ab") as f:
+            f.write(lines.encode("utf-8"))
+        os.utime(log, (t0, t0))
     missing = install.plant(tree, t0, automas_rel=AUTOMAS_REL, clone=clone, nests=MASTER_NESTS.get(day, ("", ""))[0])
     if missing:
         raise SystemExit(f"daysim: {len(missing)} install copies missing under {install.ROOT} "
@@ -339,6 +343,22 @@ def materialize(day: str, tree: Path, corpus: Path, code_src: Path) -> dict:
     sim.mkdir(exist_ok=True)
     (sim / "world.json").write_text(json.dumps({"applied": []}), encoding="utf-8")
     return seed
+
+
+def t0_stop_lines(seed: dict) -> str:
+    """relay.log lines for the stop at 00:00 the sim makes when the relay was running
+    then: the sim cannot carry a process over midnight, so the day's first boot starts a
+    new one, and the one before it must end as a stop does (service.SvcStop's notice,
+    then the state push the stop sends, as relay.log 10-11 12:26:42 / :44 have them).
+    Chain mode gets the same from the previous day's own day_end SvcStop. Without them
+    #11 judges the session before as one that vanished with no stop notice (10-11
+    00:00:49: the record's relay ran from 10-10 23:38:46 to 04:08:17)."""
+    machine = seed.get("machine") or {}
+    if machine.get("relay") != "running":
+        return ""
+    at = datetime.fromisoformat(seed["t0"]).astimezone(BJ).strftime("%m-%d %H:%M:%S")
+    return (f"{at} INFO    ark.service  收到停止通知（停止中继）\n"
+            f"{at} INFO    ark.service  📱 已上报状态到手机（停止前；daysim 在 00:00 把中继停下再开）\n")
 
 
 def install_code(tree: Path, code_src: Path) -> Path:
