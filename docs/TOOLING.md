@@ -136,6 +136,17 @@ with their true mtimes) plus `relay/tests/daysim/days/<D>/events.jsonl` and `see
 repo, checked against the record by `relay/tests/test_daysim_slice.py` (`--full` reads every
 byte). `--from <pull dir>` re-slices an earlier pull without touching the machine.
 
+**The day gate.** `relay/tests/daysim/gate.py` (deploy-relay.sh step 0.8) replays every
+recorded day through the code under test (`run.py --all`) and stops on any failure line that
+`relay/tests/daysim/known-red.json` does not list; each entry there names an open
+`docs/BACKLOG.md` todo, expires within 7 days and must still match its exact line count, so a
+fixed or changed bug fails the gate until its entry goes. Then each `badfix/*.patch` puts a
+fixed bug back into a throwaway copy of the code (R36: 10-13's 11:13 power-off during a test
+window) and its day must go red. `scripts/mac/deploy-relay.sh --dry-run` runs gates 0-0.8 only
+(no network, no machine, no COS; gates 0.5 and 0.6 are reported instead of stopping) and is
+the way to try a branch. lint-repo item 25 checks every `expected.json` and replays 10-13.
+`relay/tests/daysim/pack.py` builds the light packs the Windows CI replays (`days/<D>/pack.tar.zst`).
+
 ---
 
 ## Local command line
