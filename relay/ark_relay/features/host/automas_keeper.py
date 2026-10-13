@@ -83,6 +83,9 @@ class _AutomasKeeper:
     immediately instead of at the next liveness check).
     """
 
+    # Class default as well as set in __init__: tests build a keeper with __new__.
+    hold_said = None
+
     def __init__(self, log, notifier):
         self.log, self.notifier = log, notifier
         self.handle = automas_procs._automas_handle()
@@ -110,6 +113,9 @@ class _AutomasKeeper:
         # The backend was seen up but its handle could not be taken: said once
         # (INFO), until a handle is held again (_adopted).
         self.unattached_noted = False
+        # The hold (installer / unreadable process list) last said, so a hold that
+        # outlasts many checks is said at WARNING once and at INFO after that.
+        self.hold_said = None
         # When the shell was first seen alive with no backend behind it.
         self.shell_only_since = None
         self.shell_grace_noted = False
@@ -157,6 +163,7 @@ class _AutomasKeeper:
         self.revive_failures = 0
         self.revive_alerted = False
         self.unattached_noted = False
+        self.hold_said = None
 
     def on_process_started(self) -> None:
         """A python.exe has started: if it is the backend, take the handle at once instead of waiting for the next liveness check."""
@@ -235,7 +242,8 @@ class _AutomasKeeper:
             self.revive_deadline = now + procwatch.AUTOMAS_CHECK_SECONDS
         else:
             # Held off (an installer on screen, the window's grace, an unreadable
-            # process list): no revival ran, so the wait is not doubled.
+            # process list): no revival ran, so the wait is not doubled. The hold
+            # is said at WARNING once (_revive, hold_said), not at every check.
             self.revive_deadline = now + self.revive_wait
 
     def _exited(self) -> None:
@@ -346,6 +354,13 @@ class _AutomasKeeper:
         pending = self.gone is not None and not self.gone["decided"]
         say = self.log.info if (after_exit or pending) else self.log.warning
         holding = ""     # why the relay does not revive it on this check, in words
+
+        def say_hold(reason: str, *args) -> None:
+            # The same hold at every REVIVE_FIRST_WAIT check went to the group
+            # through errwatch every 3 minutes (40 WARNINGs in 2 hours, review
+            # of bd80586d): said by `say` the first time, at INFO while it lasts.
+            (say if self.hold_said != reason else self.log.info)(*args)
+            self.hold_said = reason
         # Two gates before the force-kill, because reviving is not
         # free: it kills a window somebody may be looking at.
         installer = automas_procs._installer_running()
@@ -355,13 +370,13 @@ class _AutomasKeeper:
             # what it is. Same level rule as every step here (say); a hold that
             # outlasts REVIVE_ALERT_AFTER checks reaches the group below with
             # this `holding` as the reason.
-            say("AUTO-MAS 后端不在，但读不到正在运行的程序列表，"
-                "判断不了有没有安装程序开着——这次不动它，下次再查")
+            say_hold("unreadable", "AUTO-MAS 后端不在，但读不到正在运行的程序列表，"
+                     "判断不了有没有安装程序开着——这次不动它，下次再查")
             self.shell_only_since = None
             self.shell_grace_noted = False
             holding = "读不到正在运行的程序列表，判断不了有没有安装程序开着，中继不去动它"
         elif installer:
-            say("AUTO-MAS 后端不在，但安装程序正在运行——不动它")
+            say_hold("installer", "AUTO-MAS 后端不在，但安装程序正在运行——不动它")
             self.shell_only_since = None
             self.shell_grace_noted = False
             holding = "安装或卸载程序还开着，中继不去动它"
@@ -383,10 +398,12 @@ class _AutomasKeeper:
                 (self.log.info if pending else self.log.warning)(
                     "AUTO-MAS 窗口开着、后台已经 %d 分钟没在运行，中继正在关掉它重新打开（第 %d 次）",
                     int(waited // 60), self.revive_failures + 1)
+                self.hold_said = None
                 boot_stages._revive_automas()
                 self.revive_failures += 1
         else:
             # No shell at all: nothing to kill, so revive at once.
+            self.hold_said = None
             say("AUTO-MAS 没在运行，中继正在重新打开它（第 %d 次%s）", self.revive_failures + 1,
                 "，上一次打开后没起来" if self.revive_failures else "")
             boot_stages._revive_automas()
