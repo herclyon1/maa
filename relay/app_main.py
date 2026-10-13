@@ -401,14 +401,10 @@ def stop_push(wait_s: float = STOP_PUSH_WAIT_S) -> int:
     try:
         return _stop_push_send(state, cfg, wait_s)
     finally:
-        # A WARNING still going out gets a moment; one that does not stays in the
-        # queue file and goes out at the next boot.
-        errwatch.drain(STOP_PUSH_DRAIN_S)
-
-
-# How long stop-push lets errwatch deliver its WARNINGs before it exits: inside the
-# watchdog's PUSH_TIMEOUT_S - STOP_PUSH_WAIT_S margin, as service.py's errwatch.drain(2.0).
-STOP_PUSH_DRAIN_S = 2.0
+        # A WARNING still going out gets errwatch.drain's own default moment, inside
+        # the watchdog's PUSH_TIMEOUT_S - STOP_PUSH_WAIT_S margin; one that does not
+        # get out stays in the queue file and goes out at the next boot.
+        errwatch.drain()
 
 
 def _stop_push_errwatch(cfg) -> None:
@@ -424,7 +420,7 @@ def _stop_push_errwatch(cfg) -> None:
             return          # one handler per process: a second one would push each line twice
         errwatch.install(Notifier(cfg), state_dir=cfg.state_dir,
                          version=lambda: StateStore(cfg.state_dir).get("versions", "code"))
-    except Exception:  # noqa: BLE001 - the push goes on; relay.log keeps the reason
+    except Exception:  # the push goes on; relay.log keeps the reason
         logging.getLogger("ark.app.stop_push").exception("看门服务代发时报错转群没装上")
 
 

@@ -211,7 +211,7 @@ def _confirm_unreachable(eng, rec: RunRecord) -> None:
     if not why:
         try:
             why = efstatus.update_hint(rec.started, strict=True)
-        except Exception:  # noqa: BLE001 - the alarm says the notice was not read
+        except Exception:  # the alarm says the notice was not read
             log.info("终末地更新公告没读到，%s 按普通失败处理", rec.run_id, exc_info=True)
             unread = True
     if unread and not why:

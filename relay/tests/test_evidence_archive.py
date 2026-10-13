@@ -44,12 +44,12 @@ def _stale_warnings(started, mtime, name="2026-10-12-3.log"):
     f.write_text("x", encoding="utf-8")
     os.utime(f, (mtime.timestamp(), mtime.timestamp()))
     grab = _Grab()
-    logging.getLogger("ark.handle").addHandler(grab)
+    handle.log.addHandler(grab)
     try:
         rec = SimpleNamespace(run_id="2026-10-12/endfield/MaaEnd-06-58-38", started=started)
         handle._warn_if_evidence_stale(None, rec, d)
     finally:
-        logging.getLogger("ark.handle").removeHandler(grab)
+        handle.log.removeHandler(grab)
         f.unlink()
         d.rmdir()
     return grab.lines

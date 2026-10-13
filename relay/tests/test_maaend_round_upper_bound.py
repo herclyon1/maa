@@ -17,8 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.core.config import SERVER_TZ, RunRecord     # noqa: E402
-from ark_relay.features.alarm import gamelogs, verdict     # noqa: E402
+from ark_relay.core.config import SERVER_TZ, RunRecord
+from ark_relay.features.alarm import gamelogs, verdict
 
 fails = []
 

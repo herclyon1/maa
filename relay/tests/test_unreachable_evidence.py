@@ -132,9 +132,9 @@ class _Loud(logging.Handler):
 
 
 loud = _Loud()
-logging.getLogger("ark.handle").addHandler(loud)
+handle.log.addHandler(loud)
 handle._handle(e, r)
-logging.getLogger("ark.handle").removeHandler(loud)
+handle.log.removeHandler(loud)
 # Audit 2026-10-13 s7 #5: errwatch pushed this WARNING at once as a relay error
 # while the failure was still held for its retry; the final alarm says it.
 check("held failure: no 「像没进游戏」 WARNING (errwatch would push it now)",

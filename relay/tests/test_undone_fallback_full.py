@@ -78,11 +78,11 @@ def run(errs):
     rec = RunRecord(run_id="2026-10-11/wuwa/OK-WW-05-00-05", script="OK-WW", user="wuwa",
                     started=START, finished=START + timedelta(minutes=30), ok=True)
     grab = Grab()
-    logging.getLogger("ark.handle").addHandler(grab)
+    handle.log.addHandler(grab)
     try:
         handle._handle(e, rec)
     finally:
-        logging.getLogger("ark.handle").removeHandler(grab)
+        handle.log.removeHandler(grab)
     return [r for r in grab.records if "有项目没干成" in r.getMessage()]
 
 

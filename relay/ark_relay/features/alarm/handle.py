@@ -274,7 +274,7 @@ def _mark_downtime(eng, rec: RunRecord) -> None:
             game = next((g for g, s in maintenance.SCRIPT_OF.items() if s == rec.script), "")
             if game:
                 gameupdate.mark_pending(eng.cfg.state_dir, game, f"今天 {rec.script} 撞上官方维护（{why}）")
-    except Exception:  # noqa: BLE001 - not knowing leaves it an ordinary failure
+    except Exception:  # not knowing leaves it an ordinary failure
         log.warning("没查成 %s 是不是撞上维护 / 进不了游戏，按普通失败处理", rec.run_id, exc_info=True)
 
 

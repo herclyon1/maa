@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.features.alarm import alertlog, errwatch   # noqa: E402
+from ark_relay.features.alarm import alertlog, errwatch
 
 fails = []
 
