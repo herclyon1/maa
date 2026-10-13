@@ -325,15 +325,15 @@ started = []
 W.main_running = lambda: False
 W.someone_logged_on = lambda: True
 W.start_main = lambda: started.append(1) or True
-w = W.Watch(0.0)
+w = W.Watch()
 w.tick(30.0)
 check("relay gone, nothing going down: started", len(started), 1)
-w = W.Watch(0.0)
+w = W.Watch()
 w.shutting_down = True
 w.tick(30.0)
 check("after PRESHUTDOWN: not started", len(started), 1)
 W.SESSION_ENDING.write_text("x", encoding="utf-8")
-w = W.Watch(0.0)
+w = W.Watch()
 w.tick(30.0)
 check("the relay's session is ending (its marker): not started", len(started), 1)
 os.utime(W.SESSION_ENDING, (0, 0))

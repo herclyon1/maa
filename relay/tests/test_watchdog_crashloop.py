@@ -113,7 +113,7 @@ running = {"on": False}
 W.main_running = lambda: running["on"]
 W.someone_logged_on = lambda: True
 W.start_main = lambda: started.append(1) or True
-W.push = pushed.append
+W.push = lambda text: pushed.append(text) or True   # delivered
 W._log = lambda line: None
 NOW = time.time()
 
@@ -128,7 +128,7 @@ print("\n[never comes up: 「中继停了」 at the 3rd start, with the record's
 launch.record_start_error(["run"], code, 'Traceback (most recent call last):\n  File "app_main.py", line 1\n'
                           "ModuleNotFoundError: No module named 'win32event'")
 os.utime(DATA / launch.START_ERROR, (NOW + 30, NOW + 30))
-w = W.Watch(0.0)
+w = W.Watch()
 for m in (0, 0.5, 1):
     tick(w, m)
 check("one push", len(pushed), 1)
@@ -143,14 +143,14 @@ check("no crash-loop alarm on top of 「中继停了」 for the same stretch", l
 print("[a record from before this stretch is not shown]")
 os.utime(DATA / launch.START_ERROR, (NOW - 3600, NOW - 3600))
 pushed.clear()
-w = W.Watch(0.0)
+w = W.Watch()
 for m in (0, 0.5, 1):
     tick(w, m)
 check("「中继停了」 says there is no record", (W.REASON_HEAD in pushed[0], W.REASON_NONE in pushed[0]), (False, True))
 
 print("[comes up and dies again: 4 starts in 30 minutes quiet, the 5th rings once]")
 pushed.clear()
-w = W.Watch(0.0)
+w = W.Watch()
 for k in range(4):
     tick(w, 5 * k, up=True)
     tick(w, 5 * k + 0.5)                # gone again: the watchdog starts it
@@ -171,7 +171,7 @@ check("again after an hour while it still crashes", len(pushed), 2)
 
 print("[spread out: 5 starts over more than 30 minutes do not ring]")
 pushed.clear()
-w = W.Watch(0.0)
+w = W.Watch()
 for k in range(6):
     tick(w, 10 * k, up=True)
     tick(w, 10 * k + 0.5)
@@ -180,7 +180,7 @@ check("one start every 10 minutes: nothing", len(pushed), 0)
 print("[starts at a shutdown are not counted]")
 pushed.clear()
 started.clear()
-w = W.Watch(0.0)
+w = W.Watch()
 SHUTTING["on"] = 1
 for k in range(6):
     tick(w, k)
@@ -197,14 +197,14 @@ launch.record_start_error(["run"], code, "Traceback (most recent call last):\n" 
     "RuntimeError: " + "读不了配置文件" * 30 for _ in range(8)))
 os.utime(DATA / launch.START_ERROR, (NOW + 30, NOW + 30))
 pushed.clear()
-w = W.Watch(0.0)
+w = W.Watch()
 for m in (0, 0.5, 1):
     tick(w, m)
 check("Chinese tail: under 2048 bytes", len(pushed[0].encode("utf-8")) < 2048, True)
 
 print("[the crash-loop record: one written during the stretch is shown]")
 pushed.clear()
-w = W.Watch(0.0)
+w = W.Watch()
 os.utime(DATA / launch.START_ERROR, (NOW + 10 * 60, NOW + 10 * 60))
 for k in range(5):
     tick(w, 5 * k, up=True)

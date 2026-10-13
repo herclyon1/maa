@@ -13,7 +13,9 @@ the scheduled task \\ArkRelay\\main). This service only:
      that once per LOOP_QUIET_S: such a relay never reaches FAIL_LIMIT, because every
      look that finds it running resets the count (2026-10-10 16:28: 15 restarts, no
      alarm). Both carry the last lines of launch.py's START_ERROR when a start failed
-     with a Python error in that time;
+     with a Python error in that time. An alarm counts as sent only when the bot
+     answered errcode 0; one it did not take is tried again on the next looks, at most
+     PUSH_TRIES times (s26 audit, 2026-10-13: a refused or dropped push was lost);
   4. when Windows shuts down, sends the relay's last 「停止前」 state to the phone page
      unless the relay's own push already got out (last_push, below).
 It passes no business messages of its own and runs the relay's code only through
@@ -38,6 +40,7 @@ SvcOtherEx, so both are overridden below.
 """
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import subprocess
@@ -82,6 +85,13 @@ REASON_BYTES = 1200                 # UTF-8; the group bot cuts a message at 204
 LOOP_STARTS = 5
 LOOP_WINDOW_S = 30 * 60
 LOOP_QUIET_S = 60 * 60
+# An alarm push the group bot did not take (transport error, HTTP error, or errcode != 0
+# inside HTTP 200, the way relay/ark_relay/core/notify.py reads it) is tried again on the
+# next looks, at most PUSH_TRIES times per stretch, then given up in watchdog.log. 3 is
+# notify.py's _RETRIES (b4651189), from 企业微信's error-code page: retry at most 3 times
+# (developer.work.weixin.qq.com/document/path/90313). A rate limit (errcode 45009) that
+# lasts would otherwise be hit again every CHECK_S.
+PUSH_TRIES = 3
 LOG = DATA / "watchdog.log"
 APP = Path(__file__).resolve().parents[1]      # {app}: watchdog\ark_watchdog.py, launch.py
 # relay/app_main.py SESSION_ENDING: the relay writes it when its session ends (logoff or
@@ -216,33 +226,59 @@ def _test_no_logon() -> bool:
     return _env("ARK_WATCHDOG_TEST_NO_LOGON") == "1"
 
 
-def push(text: str) -> None:
+def push(text: str) -> bool:
+    """Send one line to the group bot. True only when it answered HTTP 200 with errcode 0."""
     url = _bot_url()
     if not url:
         _log("想进群但没有 WECOM_BOT_URL：" + text)
-        return
+        return False
     body = json.dumps({"msgtype": "text", "text": {"content": text}}).encode("utf-8")
     req = urllib.request.Request(url, body, {"Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
-            _log(f"进群：{text}（{resp.status}）")
-    except OSError as exc:
-        _log(f"进群失败（{exc}）：{text}")
+            status, raw = resp.status, resp.read()
+    except (OSError, http.client.HTTPException) as exc:   # HTTPError and timeouts are OSErrors
+        _log(f"进群失败（{exc!r}）：{text}")
+        return False
+    try:
+        reply = json.loads(raw.decode("utf-8"))
+    except ValueError:
+        reply = None
+    errcode = reply.get("errcode") if isinstance(reply, dict) else None
+    if status == 200 and errcode == 0:
+        _log(f"进群：{text}")
+        return True
+    errmsg = reply.get("errmsg", "") if isinstance(reply, dict) else raw[:200]
+    _log(f"进群失败（HTTP {status}，errcode {errcode} {errmsg}）：{text}")
+    return False
 
 
 class Watch:
     """The decisions, apart from the service plumbing."""
 
-    def __init__(self, now: float) -> None:
+    def __init__(self) -> None:
         self.fails = 0
-        self.alerted = False
+        self.alerted = False            # 「中继停了」 delivered, or given up (deliver)
         self.nobody_since: "float | None" = None
         self.nobody_alerted = False
-        self.started = now
+        self.tries: dict = {}           # alarm -> pushes not delivered in this stretch
         self.shutting_down = False      # set on SERVICE_CONTROL_PRESHUTDOWN
         self.streak_wall = 0.0          # wall time of the first start of the current streak
         self.starts: list = []          # (monotonic, wall) of each start within LOOP_WINDOW_S
         self.loop_alerted_at: "float | None" = None
+
+    def deliver(self, alarm: str, text: str) -> bool:
+        """Push `text`; True when this alarm is done with for the stretch: delivered, or
+        PUSH_TRIES pushes failed (given up, in watchdog.log). False: try again next look."""
+        if push(text):
+            self.tries.pop(alarm, None)
+            return True
+        n = self.tries[alarm] = self.tries.get(alarm, 0) + 1
+        if n < PUSH_TRIES:
+            return False
+        _log(f"进群 {n} 次都没送到，这一段不再重试：{text}")
+        self.tries.pop(alarm, None)
+        return True
 
     def tick(self, now: float, wall: "float | None" = None) -> None:
         wall = time.time() if wall is None else wall
@@ -256,30 +292,35 @@ class Watch:
                 _log("主程序又跑起来了")     # the group hears only what needs a person (CLAUDE.md)
             self.fails, self.alerted = 0, False
             self.nobody_since, self.nobody_alerted = None, False
+            # A crash-loop push keeps its count: that stretch has the relay up in between.
+            self.tries.pop("down", None)
+            self.tries.pop("nobody", None)
             return
         if not someone_logged_on() and not _test_no_logon():
             self.nobody_since = self.nobody_since or now
             if now - self.nobody_since >= NOBODY_LIMIT_S and not self.nobody_alerted:
-                push(ALERT_NOBODY)
-                self.nobody_alerted = True
+                self.nobody_alerted = self.deliver("nobody", ALERT_NOBODY)
             return
         self.nobody_since = None
+        self.tries.pop("nobody", None)
         ok = start_main()
         if self.fails == 0:
             self.streak_wall = wall
         self.fails += 1
         self.starts = [st for st in self.starts if now - st[0] < LOOP_WINDOW_S] + [(now, wall)]
+        if len(self.starts) < LOOP_STARTS:
+            self.tries.pop("loop", None)    # that crash loop is over
         _log(f"主程序不在，跑了一次计划任务（{'成功' if ok else '失败'}），连续第 {self.fails} 次，"
              f"{LOOP_WINDOW_S // 60} 分钟内第 {len(self.starts)} 次")
         # The relay may have died up to CHECK_S before the look that found it gone.
         if self.fails >= FAIL_LIMIT and not self.alerted:
-            push(with_reason(ALERT_DOWN.format(n=self.fails, s=CHECK_S), self.streak_wall - CHECK_S))
-            self.alerted = True
+            self.alerted = self.deliver(
+                "down", with_reason(ALERT_DOWN.format(n=self.fails, s=CHECK_S), self.streak_wall - CHECK_S))
         elif (not self.alerted and len(self.starts) >= LOOP_STARTS
               and (self.loop_alerted_at is None or now - self.loop_alerted_at >= LOOP_QUIET_S)):
-            push(with_reason(ALERT_CRASHLOOP.format(n=len(self.starts), m=LOOP_WINDOW_S // 60),
-                             self.starts[0][1] - CHECK_S))
-            self.loop_alerted_at = now
+            if self.deliver("loop", with_reason(ALERT_CRASHLOOP.format(n=len(self.starts), m=LOOP_WINDOW_S // 60),
+                                                self.starts[0][1] - CHECK_S)):
+                self.loop_alerted_at = now
 
 
 class WatchdogService(win32serviceutil.ServiceFramework):
@@ -290,7 +331,7 @@ class WatchdogService(win32serviceutil.ServiceFramework):
     def __init__(self, args) -> None:
         super().__init__(args)
         self.stop_event = win32event.CreateEvent(None, 1, 0, None)
-        self.watch = Watch(time.monotonic())
+        self.watch = Watch()
 
     def GetAcceptedControls(self) -> int:  # noqa: N802 - pywin32 hook
         """STOP and SHUTDOWN as pywin32 works them out, plus PRESHUTDOWN (module docstring)."""
