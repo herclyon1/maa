@@ -171,13 +171,14 @@ import urllib.error  # noqa: E402
 from unittest import mock  # noqa: E402
 
 item_err = {"exc": None}
+queue_info = {"q1": {"Info": {"Name": "早班", "TimeEnabled": True, "StartUpEnabled": False}}}
 
 
 def fake_post(path, body=None, timeout=15):
     if path == "/api/scripts/get":
         return {"data": {"s1": {"Info": {"Name": "MAA"}}}}
     if path == "/api/queue/get":
-        return {"data": {"q1": {"Info": {"Name": "早班", "TimeEnabled": True, "StartUpEnabled": False}}}}
+        return {"data": queue_info}
     if item_err["exc"] is not None:
         raise item_err["exc"]
     return {"data": {"i1": {"Info": {"ScriptId": "s1"}}}}
@@ -222,6 +223,16 @@ with mock.patch.object(snapshot, "_post", fake_post), \
     except Exception:  # noqa: BLE001
         raised = True
     check("backend gone (connection refused) -> the section fails as before", raised, True)
+    # AUTO-MAS v5.7 replaced the bool StartUpEnabled with StartUpMode (Never / Always /
+    # DailyFirst; app/models/config.py, tests/fixtures/automas-models/config.py.txt).
+    item_err["exc"] = None
+    got = {}
+    for mode in ("Never", "Always", "DailyFirst"):
+        queue_info["q1"]["Info"] = {"Name": "早班", "TimeEnabled": True, "StartUpMode": mode}
+        out = {}
+        snapshot._queues(out)
+        got[mode] = out["队列"]["早班"]["开机跑"]
+    check("v5.7 StartUpMode -> 开机跑", got, {"Never": False, "Always": True, "DailyFirst": True})
 snapshot.log.removeHandler(g2)
 
 print("\n[_mas: one script's user unreadable is marked, not dropped (audit 11 #5)]")

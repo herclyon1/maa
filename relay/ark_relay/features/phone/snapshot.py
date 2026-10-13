@@ -134,9 +134,20 @@ def maa_from_files(automas_dir) -> dict:
     return found
 
 
+def _startup_runs(info: dict) -> "bool | None":
+    """Whether AUTO-MAS runs the queue when it starts. v5.7 stores StartUpMode
+    (Never / Always / DailyFirst, app/models/config.py) and migrates an older
+    config's bool StartUpEnabled to it (True -> Always). None when neither is there."""
+    mode = info.get("StartUpMode")
+    if isinstance(mode, str):
+        return mode != "Never"
+    old = info.get("StartUpEnabled")
+    return old if isinstance(old, bool) else None
+
+
 def _queues(out: dict) -> None:
     # Use .get: field names differ between AUTO-MAS versions, and one missing key
-    # (StartUpEnabled) would otherwise take out the whole queue section.
+    # would otherwise take out the whole queue section.
     # Which scripts each shift runs. The phone filters config by shift with this.
     # The user, 2026-09-04, show only the current shift: 「早班晚班切换的时候应该只显示
     # 当次班次的游戏，否则极容易和早班混淆。」 - or it is easily confused with the
@@ -166,7 +177,7 @@ def _queues(out: dict) -> None:
                 _last_error[str(qid)] = why
         row = {
             "定时": info.get("TimeEnabled"),
-            "开机跑": info.get("StartUpEnabled"),
+            "开机跑": _startup_runs(info),
             "脚本": [x for x in scripts if x],
         }
         if why:
