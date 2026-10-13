@@ -1,0 +1,24 @@
+{
+ "failure": "08-23 V3: AUTO-MAS v5.4.0-beta.7 renamed its history records (MaaEnd-HH-MM-SS.json); none was read - empty ledger, no report, a missed-run alarm",
+ "fix": "ffd76617",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-08-23/endfield/MaaEnd-05-17-35.json",
+   "want": {
+    "script": "MaaEnd",
+    "ok": true,
+    "started": "2026-08-23T09:17:37+08:00"
+   },
+   "evidence": {
+    "script": "the record's own key: MaaEnd-05-17-35.json is {\"maaend_result\": \"Success!\"}",
+    "ok": "AUTO-MAS's result 「Success!」, and the log's last task line [2026-08-23 09:41:38.905] 任务完成: 📅日常奖励领取 with no 任务失败 line",
+    "started": "the log's first line [2026-08-23 09:17:37.590] 正在连接窗口... Endfield (the run's own clock wins over the file name)"
+   }
+  }
+ ],
+ "mtimes": {
+  "automas/history/2026-08-23/endfield/MaaEnd-05-17-35.json": 1787449302,
+  "automas/history/2026-08-23/endfield/MaaEnd-05-17-35.log": 1787449302
+ }
+}

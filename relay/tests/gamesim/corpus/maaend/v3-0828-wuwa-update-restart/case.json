@@ -1,0 +1,22 @@
+{
+ "failure": "08-28 V3: the WuWa client update record 「游戏更新成功，即将重启任务」 was counted as a failure (one of four failures in the daily report)",
+ "fix": "290906d0",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-08-28/wuwa/OK-WW-09-32-24.json",
+   "want": {
+    "transitional": true,
+    "failed_tasks": []
+   },
+   "evidence": {
+    "transitional": "OK-WW's own log, OK-WW-09-32-24.log:133 「2026-08-28 13:34:08,970 INFO TaskExecutor DailyTask:游戏更新成功, 游戏即将重启」; AUTO-MAS maps that line to this result and runs the user again (amas-src app/task/Okww/AutoProxy.py:100-104 _OKWW_GAME_UPDATED_LOG / _OKWW_GAME_UPDATED_MSG, comment 「游戏更新成功」是环境变更而非脚本错误，命中后至少保证再跑一轮); the retry OK-WW-09-34-19.json two minutes later is 「Success!」",
+    "failed_tasks": "same: a client update that AUTO-MAS restarts is not a failed task"
+   }
+  }
+ ],
+ "mtimes": {
+  "automas/history/2026-08-28/wuwa/OK-WW-09-32-24.json": 1787895908,
+  "automas/history/2026-08-28/wuwa/OK-WW-09-32-24.log": 1787895908
+ }
+}

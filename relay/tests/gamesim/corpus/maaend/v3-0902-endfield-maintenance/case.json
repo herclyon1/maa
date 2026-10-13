@@ -1,0 +1,37 @@
+{
+ "failure": "09-02 V3: Endfield server maintenance day - MaaEnd never entered the game, three attempts booked and alarmed as three failures",
+ "fix": "6c5a91fa",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-09-02/endfield/MaaEnd-05-41-29.json",
+   "want": {
+    "ok": false,
+    "raw.maaend_unreachable": true
+   },
+   "evidence": {
+    "ok": "AUTO-MAS's result 「MaaEnd 任务执行情况解析失败」 and every task in the log ends 「任务失败」 (09:43:11 赠送干员礼物 ... 09:48:15 日常奖励领取)",
+    "raw.maaend_unreachable": "the game was not there to play: the official Endfield bulletin (tests/fixtures/ef_bulletin_2026-09-02.json, cid 3029 「版本更新说明」, startAt 1788310800 = 2026-09-02 09:00 +08:00) is the version-update downtime; in the log every one of the 16 tasks fails about 20 s after it starts, none completes, and MaaFW logs 「GetWindowRect failed, error code:  1400」 (invalid window handle) from 09:42:50 on"
+   }
+  },
+  {
+   "probe": "episodes",
+   "records": [
+    "automas/history/2026-09-02/endfield/MaaEnd-05-41-29.json"
+   ],
+   "want": {
+    "kind:automas/history/2026-09-02/endfield/MaaEnd-05-41-29.json": "maintenance"
+   },
+   "evidence": {
+    "kind:automas/history/2026-09-02/endfield/MaaEnd-05-41-29.json": "same as raw.maaend_unreachable: a run that could not enter the game during the 09-02 version-update downtime is not a script fault"
+   }
+  }
+ ],
+ "trimmed": {
+  "automas/history/2026-09-02/endfield/MaaEnd-05-41-29.log": "457503 of 457574 lines dropped: MaaFW [ERR] lines past the first 3 of each distinct message; every other line kept (the machine's file is 87218266 bytes; this test gives the same output on it as on the trimmed copy at 6c5a91fa~1, 6c5a91fa and c54d9537)"
+ },
+ "mtimes": {
+  "automas/history/2026-09-02/endfield/MaaEnd-05-41-29.json": 1788314516,
+  "automas/history/2026-09-02/endfield/MaaEnd-05-41-29.log": 1788314516
+ }
+}
