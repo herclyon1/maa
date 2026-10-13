@@ -18,8 +18,8 @@ switches current.txt first, then `launch.py stop` and its own task run, so
 a helper start there only races that run (the task ignores the second, the mutex lets
 one relay through) and either one starts the folder just deployed (review round 9 #26).
 
-A start that dies with a Python error (an import error, a broken .env, anything before the
-relay's log is open) leaves its traceback in START_ERROR in the data folder: the task runs
+A start (`launch.py` or `launch.py run`) that dies with a Python error (an import error, a
+broken .env, anything before the relay's log is open) leaves its traceback in START_ERROR in the data folder: the task runs
 pythonw.exe, which has no console, so the error was printed nowhere and the watchdog's
 alarm after 3 failed starts (ALERT_DOWN) said nothing about why. It puts the file's last lines into
 that alarm (packaging/watchdog/ark_watchdog.py START_ERROR).
@@ -157,8 +157,11 @@ def main() -> None:
         sys.argv[0] = str(code / "app_main.py")
         runpy.run_path(str(code / "app_main.py"), run_name="__main__")
     except Exception:
-        # SystemExit (stop / rollback / stop-push return codes) is not an error.
-        record_start_error(args, code, traceback.format_exc())
+        # SystemExit (stop / rollback / stop-push return codes) is not an error. Only a
+        # start is recorded: the watchdog quotes this file as the reason a start failed,
+        # and a stop-push that died at shutdown is not one (s26 audit, 2026-10-13).
+        if args in ([], ["run"]):
+            record_start_error(args, code, traceback.format_exc())
         raise
 
 

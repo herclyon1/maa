@@ -100,6 +100,26 @@ finally:
     launch._code_folder = real_folder
 check("no record for SystemExit", (DATA / launch.START_ERROR).exists(), False)
 
+print("[launch.py: only a start leaves a record; a stop / stop-push / rollback that dies does not]")
+# s26 audit 2026-10-13: the watchdog quotes this file as 「最后一次起不来时留下的记录」,
+# so a stop-push that died at shutdown read as a failed start.
+(code / "app_main.py").write_text("raise RuntimeError('stop-push blew up')\n", encoding="utf-8")
+launch._code_folder = lambda: code
+for cmd in (["stop"], ["stop-push"], ["rollback"], [], ["run"]):
+    sys.argv = ["launch.py", *cmd]
+    try:
+        launch.main()
+    except RuntimeError:
+        pass
+    finally:
+        sys.argv = real_argv
+    there = (DATA / launch.START_ERROR).exists()
+    check(f"launch.py {' '.join(cmd) or '(no argument)'}: {'recorded' if cmd in ([], ['run']) else 'no record'}",
+          there, cmd in ([], ["run"]))
+    if there:
+        (DATA / launch.START_ERROR).unlink()
+launch._code_folder = real_folder
+
 print("[launch.py: the file keeps only the newest failures]")
 for i in range(400):
     launch.record_start_error(["run"], code, f"Traceback (most recent call last):\nboom number {i}\n" + "x" * 200)
