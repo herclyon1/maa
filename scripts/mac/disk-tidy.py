@@ -683,7 +683,10 @@ def gradle_in_use(env: Env, ctx: Ctx) -> set[str]:
     out = set()
     link = env.brew / "opt/gradle"
     if link.exists():
-        out.add(os.path.basename(os.path.realpath(link)))
+        # A Homebrew revision names the keg 9.8.1_1; Gradle's own dirs say 9.8.1.
+        m = re.match(r"\d+\.\d+(?:\.\d+)?", os.path.basename(os.path.realpath(link)))
+        if m:
+            out.add(m.group(0))
     for repo in ctx.repos:
         r = git(repo, "ls-files", "-z", "--", "*gradle-wrapper.properties")
         for f in (r.stdout.split("\0") if r is not None and r.returncode == 0 else []):

@@ -142,9 +142,9 @@ def build():
     write(dd / "Proj-old/Build/x")
     write(dd / "Proj-new/Build/x")
     write(dd / "ModuleCache.noindex/m")
-    write(BREW / "Cellar/gradle/9.8.1/bin/gradle")
+    write(BREW / "Cellar/gradle/9.8.1_1/bin/gradle")      # a Homebrew revision suffix
     (BREW / "opt").mkdir(parents=True)
-    os.symlink("../Cellar/gradle/9.8.1", BREW / "opt/gradle")
+    os.symlink("../Cellar/gradle/9.8.1_1", BREW / "opt/gradle")
     for d in ("caches/9.8.0", "caches/9.8.1", "caches/modules-2", "daemon/9.8.0"):
         write(HOME / ".gradle" / d / "f")
     write(HOME / ".swiftly/config.json", json.dumps({"inUse": "6.4.1", "installedToolchains": ["6.4.1", "6.4.0"]}))
