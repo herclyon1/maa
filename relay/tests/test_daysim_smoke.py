@@ -397,6 +397,31 @@ check("10-09: the maintenance notice is served (list and post)", webs,
       ["https://ak.hypergryph.com/api/news?category=ANNOUNCEMENT",
        "https://web-news.hypergryph.com/api/bulletin/daysim-1009-maint"])
 
+# ---- AUTO-MAS's version as its app.log has it at each moment (10-09: v5.6.2 until 08:47:54)
+vc = tmpdir("daysim-masver-")
+part = ("2026-10-09 08:46:40.813 | INFO     | 配置管理 | 版本号:  v5.6.2\n"
+        "2026-10-09 08:46:46.304 | INFO     | 主程序 | HTTP Request: GET https://mirrorchyan.com/api/resources/AUTO_MAS/latest"
+        "?os=win&current_version=v5.6.2&channel=beta \"HTTP/1.1 200 OK\"\n"
+        "2026-10-09 08:47:13.373 | INFO     | 更新服务 | 启动更新程序\n"
+        "2026-10-09 08:47:54.990 | INFO     | 配置管理 | 版本号:  v5.7.0-beta.1\n").encode("utf-8")
+(vc / "app.part").write_bytes(part)
+w = bare_world({"start": T0, "power_on": T0 - 60, "end": T0 + 3600},
+               [{"t": "2026-10-09T08:46:40+08:00", "kind": "log_chunk", "src": "x:1", "path": "D:/ark/automas/debug/app.log",
+                 "file": "app.part", "off": 0, "len": len(part)}])
+w.corpus, w.tree, w._versions = vc, vc, None
+
+
+def mas_version(hms: str) -> str:
+    at = W.epoch(f"2026-10-09T{hms}+08:00")
+    try:
+        return w.automas_version(at)
+    except TypeError:                     # a World that knows one version for the whole day
+        return w.automas_version()
+
+
+check("AUTO-MAS's version: v5.6.2 at the boot (08:45), still at 08:47:30, v5.7.0-beta.1 once back (08:48)",
+      [mas_version(x) for x in ("08:45:21", "08:47:30", "08:48:00")], ["v5.6.2", "v5.6.2", "v5.7.0-beta.1"])
+
 # ---- the relay running at 00:00: the sim's stop then reads as a stop to #11
 from ark_relay.features.selfcheck.machinechecks import system as sysmc  # noqa: E402
 

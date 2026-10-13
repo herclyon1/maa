@@ -92,7 +92,7 @@ def main() -> int:
     world = W.World(sched, day=day, tree=tree, corpus=corpus, boot=boot,
                     fakes=(win, fw, router, net, mas, desk))
     desk.spawn = world.desktop_spawn(desk.spawn)
-    mas.version = world.automas_version()
+    mas.version = world.automas_version(boot["start"])
     for ev in world.events:
         if ev["kind"] == "desktop":
             try:

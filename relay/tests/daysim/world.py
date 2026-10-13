@@ -461,6 +461,7 @@ class World:
         # handled across boots and days, so each boot process starts its own range.
         self.net._ids = int(boot["start"]) % 10**8 * 10
         self.tasks: list[dict] = []
+        self._versions: "list[tuple[float, str]] | None" = None
         self.host = None
         self.stopping = False
         self.powered_off = False
@@ -521,23 +522,27 @@ class World:
                 self.disk_effect(it)
                 self.applied.add(it["i"])
 
-    def automas_version(self) -> str:
-        """AUTO-MAS's own version, as its app.log names it (the update check's
-        current_version=...); "" when the day's log has none."""
-        got = ""
-        for ev in self.events:
-            if ev["kind"] == "log_chunk" and ev["path"].endswith("/automas/debug/app.log"):
-                with open(self.corpus / ev["file"], "rb") as f:
-                    f.seek(int(ev["off"]))
-                    data = f.read(int(ev["len"]))
-                for m in re.finditer(rb"current_version=(v[\w.-]+)", data):
-                    got = m.group(1).decode()
-        if not got:
-            app = self.tp("D:/ark/automas/debug/app.log")
-            if app.exists():
-                for m in re.finditer(rb"current_version=(v[\w.-]+)", app.read_bytes()[-(4 << 20):]):
-                    got = m.group(1).decode()
-        return got
+    def automas_version(self, at: float) -> str:
+        """AUTO-MAS's own version at `at`, as its app.log names it (the backend's start
+        banner 「版本号:  v5.6.2」, the update check's current_version=...): the last one
+        stamped by then; before the day's first, the seeded app.log's last, else the
+        day's first; "" when there is none. 10-09: v5.6.2 until AUTO-MAS installed
+        v5.7.0-beta.1 and its backend came back at 08:47:54."""
+        if self._versions is None:
+            self._versions = []
+            for ev in self.events:
+                if ev["kind"] == "log_chunk" and ev["path"].endswith("/automas/debug/app.log"):
+                    with open(self.corpus / ev["file"], "rb") as f:
+                        f.seek(int(ev["off"]))
+                        self._versions += _app_versions(f.read(int(ev["len"])))
+            self._versions.sort(key=lambda x: x[0])
+        got = [v for t, v in self._versions if t <= at]
+        if got:
+            return got[-1]
+        app = self.tp("D:/ark/automas/debug/app.log")
+        seeded = _app_versions(app.read_bytes()[-(4 << 20):]) if app.is_file() else []
+        seeded = [v for t, v in seeded if t <= at]
+        return seeded[-1] if seeded else self._versions[0][1] if self._versions else ""
 
     def desktop_spawn(self, orig):
         """FakeDesktop's agent start, plus the picture a "shot" request asks for. The
@@ -671,6 +676,7 @@ class World:
 
     def _backend_up(self, t: float, *, restore: bool) -> None:
         self._shell_up(t)
+        self.mas.version = self.automas_version(t) or self.mas.version
         if restore and (self.mas.shadow / "config" / "QueueConfig.json").is_file():
             # The backend started in an earlier boot process: its memory is the shadow tree.
             self.mas.up, self.mas.dead_at = True, None
@@ -961,6 +967,15 @@ class World:
         for key, data in list(self.net.cos.items()):
             if len(data) <= 1 << 20:
                 (self.cos_dir / urllib.parse.quote(key, safe="")).write_bytes(data)
+
+
+_APP_VERSION = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ \|[^\n]*?(?:版本号:\s+|current_version=)(v[\w.-]+)", re.M)
+
+
+def _app_versions(data: bytes) -> list[tuple[float, str]]:
+    """(time, version) of every app.log line that names AUTO-MAS's version."""
+    return [(datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").replace(tzinfo=BJ).timestamp(), m.group(2))
+            for m in _APP_VERSION.finditer(data.decode("utf-8", "replace"))]
 
 
 def recorded_stamina(corpus: Path, seed: dict, day: str) -> list[tuple[float, dict]]:
