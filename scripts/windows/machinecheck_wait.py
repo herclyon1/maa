@@ -14,10 +14,16 @@ has the boot batch judged, and was the group quiet?
 * state/alerts/<YYYYMMDD>.jsonl - the copy of every group push (alertlog.py),
   also carrying the version.
 
+Not every group push is an alarm: docs/NOTIFICATIONS.md routes a few titles the
+owner asked for (🖼️ 无音区产出, 🎴 明天开新卡池：<games>) as `group (report)`,
+"not a fault". The deploy copies that page next to this script and passes its
+path as the fourth argument; those titles print as INFO lines and do not fail
+the gate. Without the page every group push counts, as before.
+
 Exit codes:
 
-  0  the boot batch judged at this version and no group push of this version
-  1  a group push of this version went out (one ALARM line per push)
+  0  the boot batch judged at this version and no alarm push of this version
+  1  an alarm push of this version went out (one ALARM line per push)
   2  the boot batch never judged within the timeout (the relay is still booting),
      or an alerts file could not be read whole for the entire wait
 
@@ -26,7 +32,9 @@ queue or spends stamina.
 """
 from __future__ import annotations
 
+import contextlib
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -40,6 +48,34 @@ UNREADABLE: dict[str, str] = {}
 TORN_FRESH_S = 120.0
 # Old files with a torn last line already noted, so a 1 s poll prints each once.
 _noted_torn: set[str] = set()
+
+
+# A row of the routing table in docs/NOTIFICATIONS.md whose route is `group (report)`.
+_REPORT_ROW = re.compile(r"^\|\s*([^|]+?)\s*\|\s*group \(report\)\s*\|", re.M)
+
+
+def report_titles(doc_text: str) -> tuple[str, ...]:
+    """Title prefixes the routing table marks `group (report)`, cut at the first `<`
+    placeholder (「🎴 明天开新卡池：<games>」 -> 「🎴 明天开新卡池：」)."""
+    out = []
+    for m in _REPORT_ROW.finditer(doc_text):
+        head = m.group(1).split("<", 1)[0].strip()
+        if head:
+            out.append(head)
+    return tuple(out)
+
+
+def load_report_titles(doc_path: str) -> tuple[str, ...]:
+    """report_titles() of the page at doc_path; () with a NOTE when it cannot be read."""
+    try:
+        text = Path(doc_path).read_text(encoding="utf-8")
+    except OSError as e:
+        print(f"NOTE {doc_path} unreadable ({e}): every group push counts as an alarm")
+        return ()
+    titles = report_titles(text)
+    if not titles:
+        print(f"NOTE no `group (report)` row in {doc_path}: every group push counts as an alarm")
+    return titles
 
 
 class AlertsUnreadable(Exception):
@@ -97,8 +133,10 @@ def boot_judged(state_dir: str, version: str) -> bool:
                for r in read_rows(state_dir, "machinecheck.json").values())
 
 
-def verdict(state_dir: str, version: str) -> tuple[str, list[dict]]:
+def verdict(state_dir: str, version: str, info: tuple[str, ...] = ()) -> tuple[str, list[dict]]:
     """(state, alarms) for this instant: 'alarm', 'boot', or 'wait'.
+
+    Pushes whose title starts with one of `info` (report_titles) are not alarms.
 
     'alarm' wins over 'boot': a push during the window is a failure whether or
     not the boot batch has finished. Alerts that cannot be read whole are 'wait'
@@ -110,6 +148,7 @@ def verdict(state_dir: str, version: str) -> tuple[str, list[dict]]:
         UNREADABLE["why"] = str(e)
         return "wait", []
     UNREADABLE.clear()
+    alarms = [a for a in alarms if not str(a.get("title") or "").startswith(info)] if info else alarms
     if alarms:
         return "alarm", alarms
     if boot_judged(state_dir, version):
@@ -120,9 +159,10 @@ def verdict(state_dir: str, version: str) -> tuple[str, list[dict]]:
 def main(argv: list[str]) -> int:
     state_dir, version = argv[0], argv[1]
     timeout = float(argv[2]) if len(argv) > 2 else 180.0
+    info = load_report_titles(argv[3]) if len(argv) > 3 else ()
     deadline = time.monotonic() + timeout
     while True:
-        state, alarms = verdict(state_dir, version)
+        state, alarms = verdict(state_dir, version, info)
         if state == "alarm":
             for a in alarms:
                 print(f"ALARM {a.get('ts', '')} {a.get('game', '')} {a.get('title', '')} "
@@ -130,6 +170,9 @@ def main(argv: list[str]) -> int:
             print(f"MCWAIT_ALARM {len(alarms)}")
             return 1
         if state == "boot":
+            with contextlib.suppress(AlertsUnreadable):
+                for a in alerts_with_version(state_dir, version) if info else ():
+                    print(f"INFO {a.get('ts', '')} {a.get('title', '')} (report push, not an alarm)")
             print("MCWAIT_OK")
             return 0
         if time.monotonic() >= deadline:

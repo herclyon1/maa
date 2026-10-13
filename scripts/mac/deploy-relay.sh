@@ -721,15 +721,20 @@ fi
 # the restart both the boot checks and the alert copy (state/alerts/<day>.jsonl)
 # carry that version, so "this deploy" == version == $VER.
 echo "▶ 5.75/5 部署后核对（等开机那批核对判过、群推送 0）"
+# The routing table of docs/NOTIFICATIONS.md goes along: the titles it routes
+# `group (report)` (🖼️ 无音区产出, 🎴 明天开新卡池) are pushes the owner asked for, not
+# alarms, and machinecheck_wait reads them from that page (4th argument).
 if ! scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/machinecheck_wait.py" \
-       "${USER_AT}:C:/Users/Administrator/ark-mcwait.py" 2>/dev/null; then
+       "${USER_AT}:C:/Users/Administrator/ark-mcwait.py" 2>/dev/null \
+   || ! scp -q "${SSH_OPTS[@]}" "$HERE/../docs/NOTIFICATIONS.md" \
+       "${USER_AT}:C:/Users/Administrator/ark-mcwait-notifications.md" 2>/dev/null; then
   echo "    ⚠️ 机器关着，改在下次开机后核（E2 跳过，不算失败）"
 else
   MCWAIT_RC=0
   MCWAIT=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
-        "$SMOKE_PY -X utf8 C:\\Users\\Administrator\\ark-mcwait.py $MC_STATE_ARG $VER 180" \
+        "$SMOKE_PY -X utf8 C:\\Users\\Administrator\\ark-mcwait.py $MC_STATE_ARG $VER 180 C:\\Users\\Administrator\\ark-mcwait-notifications.md" \
         2>&1 | tr -d '\r') || MCWAIT_RC=$?
-  ssh "${SSH_OPTS[@]}" "$USER_AT" "del C:\\Users\\Administrator\\ark-mcwait.py" >/dev/null 2>&1 || true
+  ssh "${SSH_OPTS[@]}" "$USER_AT" "del C:\\Users\\Administrator\\ark-mcwait.py C:\\Users\\Administrator\\ark-mcwait-notifications.md" >/dev/null 2>&1 || true
   case "$MCWAIT_RC" in
     0)
       printf '%s\n' "$MCWAIT" | sed 's/^/    /'
