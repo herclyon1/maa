@@ -779,9 +779,10 @@ def preupdate_unconfirmed_tail() -> str:
     return "\n\n这次没确认到有没有更新。队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查；AUTO-MAS 留到下次开机再查。"
 
 
-def cant_enter_body(script: str, attempts: int, maint: bool, hint: str) -> str:
-    """A run that never got into the game, with the official notice it was matched to (`hint`)."""
-    why = "官方停服维护中" if maint else "每个任务 20 秒内失败、一个没完成"
+def cant_enter_body(script: str, attempts: int, maint: bool, hint: str, quick_sec: int) -> str:
+    """A run that never got into the game, with the official notice it was matched to (`hint`).
+    `quick_sec`: the shape's threshold (collector_maaend._UNREACHABLE_QUICK_SEC)."""
+    why = "官方停服维护中" if maint else f"每个任务 {quick_sec} 秒内失败、一个没完成"
     return (f"{script} 连试 {attempts} 次都没进游戏（{why}）。\n"
             + (f"官方依据：{hint}\n" if hint else "官方依据：这次没读到官方公告\n")
             + "队列跑完后中继会等开服、更新客户端、再单独补跑它。")
@@ -1030,10 +1031,10 @@ def samples() -> list[str]:
         makeup_config_rejected(maa_config_rejected("", "添加任务失败", "")),
         makeup_no_fight("基建换班"), makeup_unsure("MAA 在完成任务前中止"),
         MAAEND_UPDATE_AFTER_DONE,
-        cant_enter_body("MaaEnd", 3, False, "官方公告：今天 10:00「雪凇幽梦」版本更新"),
+        cant_enter_body("MaaEnd", 3, False, "官方公告：今天 10:00「雪凇幽梦」版本更新", 30),
         failed_body_head(3),
         rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4), automas_boot_down_body(),
-        preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, ""),
+        preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, "", 30),
         missed_queue_body(30), missed_item_body(["MAA"], "OK-WW", 75),
         attempt_timeout("鸣潮", "OK-WW"), shift_overrun("早班"), shift_no_result("早班"),
         MAAEND_STUCK_KILLED, MAAEND_STUCK_KILL_FAILED, MAAEND_WATCH_BLIND, maaend_watch_blind_body(10),

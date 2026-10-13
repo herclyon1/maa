@@ -244,21 +244,38 @@ def _archive_maaend_evidence(eng, rec: RunRecord) -> None:
         eng._warn_if_evidence_stale(rec, dst)
     except Exception:
         log.exception("MaaEnd 证据存档失败（不影响记账）")
-    # Never entering the game at all is the signal that the client needs an
-    # update: register it, and after the queue finishes update and re-run
-    if (rec.raw or {}).get("maaend_unreachable"):
+
+
+def _mark_downtime(eng, rec: RunRecord) -> None:
+    """A failure that could not get into the game: register the game for the update
+    and re-run after the queue (gameupdate.mark_pending -> run_deferred), and mark a
+    failure inside an official maintenance window on the record and its ledger line.
+
+    For every script (audit 2026-10-13 s7 #1 / s1 #2): this sat in
+    _archive_maaend_evidence, so MAA and OK-WW never got the mark, and even
+    MaaEnd's stayed off the ledger - the daily report booked a plain failure and
+    gameupdate.needs_rerun (it reads the ledger) never re-ran what the alarm
+    promised to re-run. Never raises: the booking goes on."""
+    try:
         from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
-        gameupdate.mark_pending(eng.cfg.state_dir, "终末地", "今天 MaaEnd 进不了游戏（客户端待更新）")
-    if rec.script == "OK-WW" and not rec.ok and (rec.raw or {}).get("okww_unreachable"):
-        from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
-        gameupdate.mark_pending(eng.cfg.state_dir, "鸣潮", "今天 OK-WW 等不到游戏窗口（客户端待更新）")
-    if not rec.ok:
-        # A failure that ran into official downtime: mark it, draw ⏸ in the daily
-        # report, raise no alert, and after the queue wait for the servers to come
-        # back and make the run up
-        from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
+        from ark_relay.features.maintenance import maintenance  # noqa: PLC0415
+        raw = rec.raw
+        # Never entering the game at all is the signal that the client needs an update.
+        if rec.script == "MaaEnd" and raw.get("maaend_unreachable"):
+            gameupdate.mark_pending(eng.cfg.state_dir, "终末地", "今天 MaaEnd 进不了游戏（客户端待更新）")
+        if rec.script == "OK-WW" and raw.get("okww_unreachable"):
+            gameupdate.mark_pending(eng.cfg.state_dir, "鸣潮", "今天 OK-WW 等不到游戏窗口（客户端待更新）")
+        # A failure that ran into official downtime: ⏸ in the daily report, the
+        # 「进不了游戏」 alarm instead of a failure, no make-up, and a re-run once
+        # the servers are back.
         if why := gameupdate.in_maintenance(eng.cfg.state_dir, rec.script, rec.started):
-            rec.raw["maintenance"] = why
+            raw["maintenance"] = why
+            _mark_raw_on_ledger(eng, rec, "maintenance", why)
+            game = next((g for g, s in maintenance.SCRIPT_OF.items() if s == rec.script), "")
+            if game:
+                gameupdate.mark_pending(eng.cfg.state_dir, game, f"今天 {rec.script} 撞上官方维护（{why}）")
+    except Exception:  # noqa: BLE001 - not knowing leaves it an ordinary failure
+        log.warning("没查成 %s 是不是撞上维护 / 进不了游戏，按普通失败处理", rec.run_id, exc_info=True)
 
 
 def _weekly_gates(eng, rec: RunRecord) -> None:
@@ -419,6 +436,7 @@ def _hold_for_retry(eng, rec: RunRecord, key: tuple) -> None:
     judging and just cleans up, and because every step of it has to be finished
     before the next thing can go wrong - the order must not be changed.
     """
+    _mark_downtime(eng, rec)   # before the hold is persisted: the mark survives a restart
     # Hold it. Only alert once the script has stopped retrying entirely.
     if not _keeps_rejected(eng._pending.get(key), rec):
         eng._pending[key] = rec   # else the held refusal stays: the alarm is about it
@@ -541,6 +559,7 @@ def _failure_alarm(eng, rec: RunRecord, note: str) -> tuple[str, str]:
     """(title, body) of the final-failure alarm about `rec` when it is pushed now
     rather than held (no make-up is run for it): the usual failure text with `note`
     on top and the evidence link. Rescues and ships the evidence first."""
+    _mark_downtime(eng, rec)
     if rec.script == "MaaEnd":
         eng._archive_maaend_evidence(rec)
     elif rec.script == "OK-WW":
@@ -763,7 +782,7 @@ def _flush_pending(eng) -> None:
         day = run_day(rec)
         attempts = _attempts(eng, rec, day)
         # Could not get into the game, with an official maintenance window or update
-        # notice behind it (handle._archive_maaend_evidence, _confirm_unreachable):
+        # notice behind it (handle._mark_downtime, _confirm_unreachable):
         # every such record goes to the group, with that notice in the text; no
         # make-up (gameupdate re-runs it after the queue).
         raw = rec.raw or {}
@@ -772,7 +791,9 @@ def _flush_pending(eng) -> None:
             hint = maint or raw.get("maaend_unreachable_why") or efstatus.update_hint()
             note = _evidence_note(eng, rec)      # ships the bundle first when the record has none
             page = raw.get("evidence_page") or ""
-            body = (texts.cant_enter_body(rec.script, attempts, bool(maint), str(hint or ""))
+            from ark_relay.features.verify.collector_maaend import _UNREACHABLE_QUICK_SEC  # noqa: PLC0415
+            body = (texts.cant_enter_body(rec.script, attempts, bool(maint), str(hint or ""),
+                                          _UNREACHABLE_QUICK_SEC)
                     + (f"\n证据包：{page}" if page else f"\n{note}" if note else ""))
             if eng.notifier.send(texts.cant_enter(rec.script), body, alert=True):
                 return  # if it cannot be sent, come back next tick
