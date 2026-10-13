@@ -1,0 +1,97 @@
+# Game-layer harness, OK-WW part: the real OK-WW and ok-script, our overlay installed by the
+# relay's own installer, on Windows (gamesim design section 1).
+#
+# Why Windows: ok-script imports pywin32 at module top (ok/util/window.py) and OK-WW's
+# src/combat/CombatCheck.py does too, so the framework does not import on macOS. OK-WW's own
+# CI runs its tests on windows-latest (ok-wuthering-waves .github/workflows/test.yml).
+#
+# Two interpreters, one per side, as on the game PC:
+#   - 3.12.10 runs OK-WW: the PC's OK-WW python.exe VersionInfo (scratchpad gamesim/u0/
+#     versions.json, read 2026-10-13); OK-WW's app.json says requires_python 3.12.
+#   - 3.14.8 runs the relay side (okww_overlay.install, report_line): the relay's Python
+#     (relay-windows.yml).
+#
+# Lanes come from relay/tests/gamesim/okww/ci_prepare.py (LANES), and the tests in a lane by
+# glob there, so a new test file or lane needs no edit here. `installed` is the gate; the
+# p1-* lanes are the red-before-green proof of test_overlay_loads.py (a red lane passes only
+# when the test fails at an assertion and the relay says what it said on the machine).
+#
+# Cost: "GitHub Actions usage is free for ... public repositories that use standard
+# GitHub-hosted runners." (docs.github.com, about billing for GitHub Actions)
+name: gamesim-windows
+
+on:
+  push:
+    branches:
+      - 'gamesim-ci-*'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  okww:
+    name: okww (${{ matrix.lane }})
+    runs-on: windows-latest
+    # OK-WW's release run 37291261628 took 3.5 min in all (pip install 55 s, 36 test
+    # modules 1 min 50 s; gamesim design section 1); 30 leaves room for a slow runner and
+    # the OK-WW fetch.
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [installed, p1-red-f6b5f432, p1-green-f6b5f432]
+    defaults:
+      run:
+        shell: bash
+    env:
+      # Tests print Chinese to a redirected stdout; before 3.15 Windows uses the locale code
+      # page for it (same reason as relay-windows.yml).
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: 'utf-8'
+    steps:
+      # The PC gets OK-WW's and our LF bytes; the pinned hashes are of those.
+      - name: Check out files as they are in the repo (LF)
+        run: git config --global core.autocrlf false
+      # Whole history: the p1 lanes read the overlay at old commits (git show).
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        id: okww
+        with:
+          python-version: '3.12.10'
+      - uses: actions/setup-python@v7
+        id: relay
+        with:
+          python-version: '3.14.8'
+
+      - name: Interpreters
+        run: |
+          echo "OKWW_PY=${{ steps.okww.outputs.python-path }}" >>"$GITHUB_ENV"
+          echo "RELAY_PY=${{ steps.relay.outputs.python-path }}" >>"$GITHUB_ENV"
+          "${{ steps.okww.outputs.python-path }}" -c 'import sys; v = sys.version_info[:3]; print(sys.executable, v); assert v == (3, 12, 10), v'
+          "${{ steps.relay.outputs.python-path }}" -c 'import sys; v = sys.version_info[:3]; print(sys.executable, v); assert v == (3, 14, 8), v'
+
+      - name: Fetch OK-WW at the pinned commit and install the overlay
+        run: |
+          "$RELAY_PY" relay/tests/gamesim/okww/ci_prepare.py prepare --lane "${{ matrix.lane }}" --root "$RUNNER_TEMP/okww"
+
+      # OK-WW's pinned requirements from the fetched upstream copy (ci_prepare.py copies them
+      # out of relay/tests/gamesim/upstream/okww-<tag>/), plus onnxocr at the PC's version.
+      - name: Install OK-WW's pinned requirements
+        run: |
+          "$OKWW_PY" -m pip install --disable-pip-version-check -r "$RUNNER_TEMP/okww/pip-requirements.txt" -c "$RUNNER_TEMP/okww/pip-constraints.txt"
+          "$OKWW_PY" -m pip show ok-script | head -2
+
+      - name: Run the lane
+        run: |
+          "$RELAY_PY" relay/tests/gamesim/okww/ci_prepare.py run --lane "${{ matrix.lane }}" --root "$RUNNER_TEMP/okww" --python "$OKWW_PY" --out "$RUNNER_TEMP/gamesim-results"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: gamesim-okww-${{ matrix.lane }}
+          path: ${{ runner.temp }}/gamesim-results
+          if-no-files-found: warn
