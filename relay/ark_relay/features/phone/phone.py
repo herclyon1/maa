@@ -275,9 +275,11 @@ def state_payload(cfg, state_dir: Path) -> dict:
     # backend, which is gone at the service-stop push.
     try:
         out["queues"] = plan.queue_rows(getattr(cfg, "automas_dir", None))
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
         log.warning("班次名单读不到", exc_info=True)
-        out["queues"] = []
+        # [] read on the App as "no shift", i.e. every game in the shift - as if
+        # real. A row with only `_错误`, like config's marker (audit A3).
+        out["queues"] = [{"_错误": f"{type(exc).__name__}: {exc}"}]
     try:
         from ark_relay.features.weekly import annihilation, garden, weeklyboss  # noqa: PLC0415
         automas = getattr(cfg, "automas_dir", None)
@@ -314,12 +316,12 @@ def state_payload(cfg, state_dir: Path) -> dict:
         }
         _last_error.pop("relay", None)
     except Exception as exc:
-        # {} reads on the phone as switches off, weekly not done, no month
-        # cards - as if real.
+        # {} read on the phone as switches off, weekly not done, no month
+        # cards - as if real. `_错误` marks it, like config (audit A3).
         if _last_error.get("relay") != (key := f"{type(exc).__name__}: {exc}"):
             log.warning("手机状态里中继那一段读不到，App 上的开关、周常和月卡这次是空的", exc_info=True)
             _last_error["relay"] = key
-        out["relay"] = {}
+        out["relay"] = {"_错误": key}
     try:
         out["options"] = _options(cfg)
     except Exception:  # noqa: BLE001

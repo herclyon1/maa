@@ -292,6 +292,22 @@ check("_错误 里带上异常类型，不是干巴巴一句「出错」",
       blind["config"]["_错误"].startswith("FileNotFoundError:"), True)
 check("配置文件读不到：班次名单是空列表，不是缺键", blind["queues"], [])
 check("plan 读不到时给空串，不是缺键", broken["plan"], "")
+
+print("\n[queues / relay that cannot be built carry `_错误`, not [] / {} (status-channel audit A3)]")
+# [] read on the App as "every game in the shift", {} as switches off, weekly not
+# done, no month cards - as if real.
+from ark_relay.features.weekly import weeklyboss  # noqa: E402
+saved_rows, saved_wb = plan.queue_rows, weeklyboss.WeeklyBossGate.settings
+plan.queue_rows = lambda automas_dir: (_ for _ in ()).throw(OSError("ScriptConfig 读不了"))
+weeklyboss.WeeklyBossGate.settings = lambda self: (_ for _ in ()).throw(ValueError("坏了"))
+phone._last_error.pop("relay", None)
+try:
+    marked = phone.state_payload(cfg, STATE)
+finally:
+    plan.queue_rows, weeklyboss.WeeklyBossGate.settings = saved_rows, saved_wb
+check("queues: one row holding only _错误",
+      marked["queues"], [{"_错误": "OSError: ScriptConfig 读不了"}])
+check("relay: _错误 with the exception", marked["relay"], {"_错误": "ValueError: 坏了"})
 check("AUTO-MAS 没开：班次名单照样从配置文件读出",
       [q["名"] for q in broken["queues"]], ["早班", "晚班"])
 # 快照那一段全靠 AUTO-MAS，它没开着就什么都读不到；页面对 run/queues 缺失是
