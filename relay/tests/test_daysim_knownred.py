@@ -123,9 +123,10 @@ check("one Day: line", [ln for ln in text.splitlines() if ln.startswith("Day: ")
 check("Expect: lines name 1013-12 and invariant 2",
       [ln.split()[1] for ln in text.splitlines() if ln.startswith("Expect: ")], ["^1013-12", "^invariant"])
 tmp = tmpdir()
-rel = Path("relay/ark_relay/features/shutdown/shutdown.py")
-(tmp / rel).parent.mkdir(parents=True)
-shutil.copy2(HERE.parent / "ark_relay/features/shutdown/shutdown.py", tmp / rel)
+src = HERE.parent / "ark_relay" / "features" / "shutdown" / "shutdown.py"
+dst = tmp / "relay" / src.relative_to(HERE.parent)
+dst.parent.mkdir(parents=True)
+shutil.copy2(src, dst)
 p = subprocess.run(["git", "apply", "--check", str(patch)], cwd=tmp, capture_output=True, text=True,
                    check=False)
 check("the patch still applies to the code", (p.returncode, p.stderr.strip()[:200]), (0, ""))
