@@ -1,0 +1,19 @@
+{
+ "05-00-00": {
+  "annihilation": true,
+  "automas_result": "Success!",
+  "evidence": "annihilation: no 剿灭模式 line and no 开始行动 line; done-for-the-week is not asserted here (only the 09-14 incident runs carry evidence for it, see cases.json); refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "05-02-25": {
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "沿途的点滴": 72,
+   "装置": 2,
+   "酮凝集": 4,
+   "龙门币": 864
+  },
+  "evidence": "drops: MAA's own last running totals in its 掉落统计 blocks (at 09:06:29); AUTO-MAS left drop_statistics empty; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ }
+}

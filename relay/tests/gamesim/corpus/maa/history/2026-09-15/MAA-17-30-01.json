@@ -1,0 +1,15 @@
+{
+    "recruit_statistics": {
+        "3★": 5
+    },
+    "drop_statistics": {
+        "1-7": {
+            "龙门币": 216,
+            "固源岩": 4,
+            "基础作战记录": 3
+        }
+    },
+    "sanity": 2,
+    "sanity_full_at": "理智将在 2026-09-16 18:22 回满。(20h 38m 后)",
+    "maa_result": "Success!"
+}

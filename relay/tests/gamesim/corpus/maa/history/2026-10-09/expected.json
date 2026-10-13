@@ -1,0 +1,12 @@
+{
+ "MAA-08-03-19": {
+  "automas_result": "Success!",
+  "evidence": "refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-17-30-03": {
+  "automas_result": "Success!",
+  "evidence": "refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ }
+}

@@ -1,0 +1,70 @@
+{
+ "MAA-05-00-00": {
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "固源岩": 8,
+   "艺人见面抽选券": 108,
+   "装置": 9,
+   "闲言碎语": 108,
+   "龙门币": 1296
+  },
+  "evidence": "drops: AUTO-MAS's own drop_statistics in the .json; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-05-16-47": {
+  "automas_result": "MAA 在完成任务前中止",
+  "evidence": "refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-05-20-47": {
+  "automas_result": "MAA 在完成任务前中止",
+  "evidence": "refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-05-22-37": {
+  "automas_result": "MAA 在完成任务前中止",
+  "evidence": "refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-11-03-30": {
+  "automas_result": "MAA 部分任务执行失败",
+  "drop_statistics": {
+   "固源岩": 74,
+   "家具": 5,
+   "艺人见面抽选券": 1008,
+   "装置": 58,
+   "闲言碎语": 1008,
+   "龙门币": 12096
+  },
+  "evidence": "drops: MAA's own last running totals in the 9 掉落统计 blocks (at 15:06:26, 15:08:38, 15:10:49, 15:13:00, 15:15:11, 15:17:22, 15:19:37, 15:21:47, 15:24:06); AUTO-MAS's figure {'龙门币': 12, '艺人见面抽选券': 1008, '闲言碎语': 1008, '固源岩': 74, '装置': 58, '家具': 5} misreads MAA's rounded '12.1k' totals; MAA printed a rounded running total ('10.1k (+1440)'); the total is MAA's last exact total plus the exact (+N) deltas printed after it; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-11-25-49": {
+  "automas_result": "Success!",
+  "evidence": "refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-17-30-01": {
+  "automas_result": "MAA 部分任务执行失败",
+  "drop_statistics": {
+   "固源岩": 5,
+   "家具": 1,
+   "艺人见面抽选券": 60,
+   "装置": 1,
+   "闲言碎语": 60,
+   "龙门币": 720
+  },
+  "evidence": "drops: AUTO-MAS's own drop_statistics in the .json; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-17-36-53": {
+  "automas_result": "MAA 进程超时",
+  "evidence": "refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-18-56-44": {
+  "automas_result": "Success!",
+  "evidence": "refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ }
+}
