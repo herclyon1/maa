@@ -58,7 +58,7 @@ def week_key(now: datetime) -> str:
     srv = now.astimezone(SERVER_TZ)
     shifted = srv - timedelta(hours=4)
     monday = shifted - timedelta(days=shifted.weekday())
-    return monday.strftime("%G-W%V") if hasattr(monday, "strftime") else str(monday.date())
+    return monday.strftime("%G-W%V")
 
 
 # _maa_user's failure currently said (at most one), so a lasting one is said once,
@@ -169,8 +169,11 @@ class WeeklyGate:
                 _field(user, "Info", "Annihilation"))
 
     def settings(self, now: datetime | None = None) -> dict:
+        """{"本周已完成": True / False, or None when AUTO-MAS could not be read, "当前": the switch}.
+
+        None is not "not done": callers say 读不到 for it (week_line, plan.py)."""
         done, current = self._status(now)
-        return {"本周已完成": bool(done), "当前": current}
+        return {"本周已完成": done, "当前": current}
 
     def week_line(self, now: datetime | None = None) -> str:
         done, current = self._status(now)

@@ -132,7 +132,8 @@ check("broken again after a good read -> WARNING again", len(grab.warnings()), 1
 print("[row 4: annihilation weekly status unreadable]")
 fresh()
 with mock.patch("ark_relay.features.weekly.annihilation.WeeklyGate.settings", side_effect=RuntimeError("gate broke")):
-    check("unreadable -> not reported as done", plan._annihilation_done_tomorrow(None), False)
+    check("unreadable -> unknown (None), not reported as done or as running",
+          plan._annihilation_done_tomorrow(None), None)
     w = grab.warnings()
     check("unreadable -> one WARNING with the traceback", (len(w), bool(w and w[0].exc_info)), (1, True))
     plan._annihilation_done_tomorrow(None)
