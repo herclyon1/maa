@@ -131,7 +131,8 @@ check("Cos.signed_get: same object URL plus a GET signature",
       link.split("?")[0] == "https://b-1.cos.ap-shanghai.myqcloud.com/daily/relay-x.log"
       and "q-signature=" in link and cos.authorization("GET", "daily/relay-x.log", ttl=60) in link)
 span = cos.signed_get("k").split("q-sign-time=")[1].split("&")[0].split(";")
-check("Cos.signed_get lasts a week by default", int(span[1]) - int(span[0]), 7 * 86400)
+check("Cos.signed_get lasts as long as the 30-day bucket keeps the object (s17 F3)",
+      int(span[1]) - int(span[0]) >= 30 * 86400, True)
 check("a log goes up as text (opens in the phone's browser)", Cos._content_type(Path("relay-x.log")),
       "text/plain; charset=utf-8")
 check("anything else stays octet-stream", Cos._content_type(Path("x.zip")), "application/octet-stream")

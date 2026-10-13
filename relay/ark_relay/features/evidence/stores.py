@@ -79,7 +79,12 @@ class Cos:
     answers 403 to anyone tapping it in a push.
     """
 
-    PAGE_TTL_S = 7 * 86400
+    # As long as the bucket keeps the object: the lifecycle rule
+    # expire-30d-not-relay deletes evidence after 30 days, counted in whole
+    # days, so one more day covers its lag. COS sets no maximum on a
+    # permanent key's signature (the SDK demo: 「过期时间请根据自身场景定义」;
+    # a 3650-day GET answered 206 on 2026-10-13). Audit s17 F3.
+    PAGE_TTL_S = 31 * 86400
 
     def __init__(self, secret_id: str, secret_key: str, bucket: str, region: str, prefix: str = ""):
         self.sid, self.skey, self.bucket, self.region = secret_id, secret_key, bucket, region
