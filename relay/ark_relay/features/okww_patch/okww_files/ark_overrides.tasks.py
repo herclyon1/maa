@@ -320,9 +320,26 @@ def _install_claim():
         btn = self.click_dialog_right_button()
         if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
                              time_out=3, settle_time=0.5):
-            # Not enough waveplates: 「用备用体力补足」, the game's own dialog, the
-            # clicks upstream's BaseWWTask.use_stamina makes on it (the user's order
-            # of 2026-09-14: short of waveplates for the weekly boss, use the backup).
+            # Not enough waveplates: the game's top-up dialog, answered with the clicks
+            # upstream's BaseWWTask.use_stamina makes on it (:445-450). The click at
+            # (0.70, 0.71) confirms whatever the dialog has selected. With backup
+            # waveplates that is the backup (09-14 walk-through: 「默认选中备用体力」;
+            # the user, 09-14: 「体力不够刷一次周本就用备用体力，备用体力有」). With none it
+            # offers crystal solute and astrite (10-12 11:45:02 screen: 「请选择补充方式」,
+            # 19 solute, 15652 astrite), and 10-12 15:29 and 15:31 paid that way: backup
+            # 0, the clicks went through, both claims were taken (ok-script.2026-10-12
+            # .log:2793-2821, :2874-2902). So this is reached only with both bar values
+            # read and wave < 60 <= wave + backup (the checks above), i.e. there is
+            # backup and it covers the gap. A top-up dialog after a bar that read 60 or
+            # more means the read was wrong: cancel and stop, never click it.
+            if wave >= _CLAIM_COST:
+                why = (f"周本领奖：顶栏读到波片 {wave}/240 够领，游戏却弹了补充波片的框，"
+                       f"不点补充（可能动结晶溶剂），取消并停下")
+                _shot(self, "weekly_topup_unexpected")    # the dialog itself, before the cancel
+                self.back(after_sleep=1)
+                self.click_dialog_left_button()
+                self.log_error(why, notify=True)
+                _end_failed(self, why)
             self.log_info("周本领奖：波片不够，动用备用体力")
             self.click_relative(0.70, 0.71, hcenter=True, after_sleep=1)
             self.click_relative(0.70, 0.71, hcenter=True, after_sleep=1)
@@ -331,10 +348,11 @@ def _install_claim():
             if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
                                  time_out=3, settle_time=0.5):
                 # Backup spent and still short: what is offered now is solute / astrite
-                # (10-12 11:44). WWA answers this follow-up with 取消; so do we.
+                # (10-12 11:44). WWA answers this follow-up with 取消; so do we, and the
+                # top-up clicks are never made on this one.
                 # Logged before the clicks: the relay reads it as a shortage, not an error.
                 _shot(self, "weekly_short_claim")
-                self.log_info("结晶波片不足，取消并跳过本次周本（备用体力用上了仍不够 60，不动结晶溶剂）")
+                self.log_info("结晶波片不足，取消并跳过本次周本（备用体力用上了仍不够 60，不点补充）")
                 self.back(after_sleep=1)
                 self.click_dialog_left_button()
                 _skip_short(self)
