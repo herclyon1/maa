@@ -12,7 +12,7 @@ app.log and MaaEnd's debug/ logs), laid out as on the machine:
 and a case.json:
 
     {"failure": "<date> <branch>: what went wrong on the machine",
-     "fix": "<commit that fixed it>",
+     "fix": "<commit that fixed it>" or a list of them ("self": the commit that added it),
      "mtimes": {"<path in the case>": <the file's mtime on the machine, epoch s>},
      "checks": [{"probe": "record" | "outcome" | ..., ...probe args...,
                  "want": {<field>: <value>},

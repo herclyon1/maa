@@ -7,6 +7,10 @@ The test file and the corpus always come from this checkout; only the code under
 test changes.
 
     prove.py [<case> ...]        (all cases when none is named)
+
+"fix" is one commit or a list (a case that regressed and was fixed again is red
+before and green at each). A fix committed together with its case cannot name its
+own hash, so it says "self": the first commit that added "self" to that case.json.
 """
 from __future__ import annotations
 
@@ -30,6 +34,23 @@ def tree_at(rev: str, into: Path) -> Path:
     return into / "relay"
 
 
+def fixes(name: str) -> list[str]:
+    """The case's fix commits, "self" resolved (see the module docstring)."""
+    path = HERE / name / "case.json"
+    fix = json.loads(path.read_text(encoding="utf-8"))["fix"]
+    out = []
+    for f in [fix] if isinstance(fix, str) else fix:
+        if f == "self":
+            shas = subprocess.run(["git", "-C", str(REPO), "log", "--reverse", "--format=%H", '-S"self"',
+                                   "--", str(path.relative_to(REPO))],
+                                  capture_output=True, text=True, check=True).stdout.split()
+            if not shas:
+                raise SystemExit(f"{name}: 'self' fix not committed yet")
+            f = shas[0][:8]
+        out.append(f)
+    return out
+
+
 def run(tree: Path, case: str) -> tuple[str, str]:
     """(GREEN | RED | ERROR, the test's output) for one case on one tree."""
     p = subprocess.run([sys.executable, str(TEST), "--tree", str(tree), "--case", case],
@@ -48,18 +69,18 @@ def main(argv: list[str]) -> int:
     bad = 0
     with tempfile.TemporaryDirectory() as tmp:
         for name in names:
-            fix = json.loads((HERE / name / "case.json").read_text(encoding="utf-8"))["fix"]
-            before, out_before = run(tree_at(f"{fix}~1", Path(tmp) / f"{fix}-before"), name)
-            after, out_after = run(tree_at(fix, Path(tmp) / f"{fix}-at"), name)
-            ok = before == "RED" and after == "GREEN"
-            bad += not ok
-            print(f"{'ok  ' if ok else 'FAIL'} {name}: {fix}~1 {before}, {fix} {after}")
-            for label, verdict, out in (("~1", before, out_before), ("fix", after, out_after)):
-                if verdict != "GREEN" or not ok:
-                    for line in out.splitlines():
-                        if line.lstrip().startswith(("✗", "want", "Traceback")) or ": want" in line \
-                                or line.startswith(("  File", "    ")) and verdict == "ERROR":
-                            print(f"    [{label}] {line.strip()}")
+            for fix in fixes(name):
+                before, out_before = run(tree_at(f"{fix}~1", Path(tmp) / f"{fix}-before"), name)
+                after, out_after = run(tree_at(fix, Path(tmp) / f"{fix}-at"), name)
+                ok = before == "RED" and after == "GREEN"
+                bad += not ok
+                print(f"{'ok  ' if ok else 'FAIL'} {name}: {fix}~1 {before}, {fix} {after}")
+                for label, verdict, out in (("~1", before, out_before), ("fix", after, out_after)):
+                    if verdict != "GREEN" or not ok:
+                        for line in out.splitlines():
+                            if line.lstrip().startswith(("✗", "want", "Traceback")) or ": want" in line \
+                                    or line.startswith(("  File", "    ")) and verdict == "ERROR":
+                                print(f"    [{label}] {line.strip()}")
     print(f"\n{len(names)} cases, " + (f"FAILED: {bad}" if bad else "all red before, green at fix"))
     return 1 if bad else 0
 

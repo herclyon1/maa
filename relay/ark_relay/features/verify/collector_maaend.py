@@ -50,21 +50,42 @@ __all__ = [
 _FAILED_LIST = re.compile(r"失败[:：]\s*(.+)$")
 
 
-def _maaend_all_done(text: str) -> bool:
+def _maaend_all_done(text: str, failed: "list[str] | None" = None) -> bool:
     """MaaEnd's own log shows the whole round finished: every 「任务开始」has a
     「任务完成」with the same name, there is no 「任务失败」at all, at least one
-    task ran, and the round reached its closing task (`_maaend_round_closed`).
+    task ran, and either the round reached its closing task (`_maaend_round_closed`)
+    or every task AUTO-MAS lists as failed (`failed`) is one it could not name.
 
-    The last condition is what tells "finished" from "stopped between tasks":
-    a MaaEnd that died or was killed right after one task's 「任务完成」 leaves a
-    log in which every started task also completed, while the tasks AUTO-MAS
-    lists as failed never started at all.
+    The closing task is what tells "finished" from "stopped between tasks": a
+    MaaEnd that died or was killed right after one task's 「任务完成」 leaves a log
+    in which every started task also completed, while the tasks AUTO-MAS lists as
+    failed never started at all (2026-10-08 06:31: 13 display names, none started).
+
+    Not every round has a closing task: the real 2026-09-06 05:40 run ended after
+    「任务完成: 📅日常奖励领取」 with no 关闭游戏 / 结束进程 line at all, 16 of 16 tasks
+    complete, and AUTO-MAS failed it only on 「SellProduct」. That is AUTO-MAS's
+    fallback for a task whose display name it could not look up (MaaEnd v2.28.0-beta.1
+    relabelled it 据点交易), a bare MaaEnd key that matches no 「任务开始」 whether the
+    task ran or not. When every listed name is such a key, the log's own verdict
+    stands without a closing task; a listed display name that never started still
+    needs one. Not covered: a rename AUTO-MAS lists under a stale Chinese name - no
+    record shows one.
     """
     started = [_strip_emoji(m.group(1)) for m in _END_TASK_START.finditer(text)]
     done = {_strip_emoji(m.group(1)) for m in _END_TASK_DONE.finditer(text)}
     if not started or _END_TASK_FAIL.search(text):
         return False
-    return all(s in done for s in started) and _maaend_round_closed(text)
+    if not all(s in done for s in started):
+        return False
+    if _maaend_round_closed(text):
+        return True
+    return bool(failed) and all(_AUTOMAS_KEY.fullmatch(n) for n in failed)
+
+
+# How AUTO-MAS names a MaaEnd task it found no display name for: the task's key
+# (2026-09-06 「MaaEnd 部分任务执行失败: SellProduct」). Display names are Chinese
+# with an emoji in front (「🛒据点交易」), stripped to 「据点交易」 by _split_failed.
+_AUTOMAS_KEY = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 
 
 # The tasks that end a round: AUTO-MAS appends MaaEnd's CloseGamePC
