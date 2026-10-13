@@ -18,6 +18,7 @@ W1's scheduler is not in the repo yet, so a stand-in with the same five calls
 """
 import heapq
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -53,8 +54,9 @@ def require(name, ok, detail=""):
 class StandIn:
     """W1's scheduler interface, just enough for these checks: sim seconds, one Condition.
 
-    advance() gives helpers up to 0.5 s of real time to react before it moves the clock
-    (W1 waits until every helper is parked instead)."""
+    advance() moves the clock only once every other live thread is parked with nothing
+    to do (its ready() false), as W1 does; it gives up waiting for that after 5 s of
+    real time (W1 calls that an unparked-thread sim error)."""
 
     def __init__(self, t0: float):
         self.t = t0
@@ -62,6 +64,7 @@ class StandIn:
         self.timers: list = []
         self.seq = 0
         self.outs: list = []
+        self.parked: dict = {}       # thread ident -> its ready()
 
     def now(self) -> float:
         return self.t
@@ -79,12 +82,24 @@ class StandIn:
 
     def park(self, timeout, ready):
         deadline = None if timeout is None else self.t + timeout
+        me = threading.get_ident()
         with self.cv:
-            while not ready():
-                if deadline is not None and self.t >= deadline:
-                    return False
-                self.cv.wait(0.05)
-            return True
+            self.parked[me] = ready
+            self.cv.notify_all()
+            try:
+                while not ready():
+                    if deadline is not None and self.t >= deadline:
+                        return False
+                    self.cv.wait(0.05)
+                return True
+            finally:
+                del self.parked[me]
+                self.cv.notify_all()
+
+    def _settled(self) -> bool:
+        main = threading.main_thread()
+        helpers = [t for t in threading.enumerate() if t is not main and t.is_alive()]
+        return all(t.ident in self.parked and not self.parked[t.ident]() for t in helpers)
 
     def advance(self, handles_ready, timeout_ms):
         deadline = float("inf") if timeout_ms is None else self.t + timeout_ms / 1000.0
@@ -94,7 +109,7 @@ class StandIn:
             if (i := handles_ready()) is not None:
                 return i
             with self.cv:
-                self.cv.wait_for(lambda: handles_ready() is not None, 0.5)
+                self.cv.wait_for(lambda: handles_ready() is not None or self._settled(), 5.0)
             if (i := handles_ready()) is not None:
                 return i
             nxt = min(deadline, self.timers[0][0] if self.timers else float("inf"))
@@ -310,6 +325,7 @@ def main():
     check("watch._windows starts its thread", watch._windows(str(hist), wake), True)
     fw.files_changed(hist / "app.log")
     check("its thread wakes the Event", wake.wait(5), True)
+    shutil.rmtree(hist, ignore_errors=True)
 
     print("\n[6] the relay's parsers over the router's answers")
     check("maaend_watchdog._tasklist sees MAA.exe", ("MAA.exe", maa.pid) in (maaend_watchdog._tasklist() or []), True)
