@@ -474,6 +474,17 @@ def _skip_receipt(state_dir: Path, action: str, ok: bool, text: str) -> None:
         add_receipt(state_dir, action, ok, text)
     except Exception:
         log.exception("跳过队列的回执没记下")
+        # engine.skip_failed tells a failure from an acknowledgement by its red
+        # receipt; a lost one must not turn a failed skip into a quiet 「已跳过」.
+        # Kept in memory, receipts() lists it for the rest of this process.
+        _UNWRITTEN.append((str(Path(state_dir)), {
+            "at": datetime.now(tz=SERVER_TZ).strftime("%m-%d %H:%M"), "action": action,
+            "ok": bool(ok), "text": str(text)[:200]}))
+        del _UNWRITTEN[:-RECEIPTS_KEEP]
+
+
+# Skip receipts add_receipt could not write: (state_dir, receipt), listed by receipts().
+_UNWRITTEN: list[tuple[str, dict]] = []
 
 
 def skipped_today_all(state_dir: Path, now: datetime | None = None) -> list[str]:
@@ -632,10 +643,13 @@ def add_receipt(state_dir, action: str, ok: bool, text: str, sent: "int | None" 
 
 
 def receipts(state_dir) -> list[dict]:
+    """The phone page's receipts, plus any skip receipt this process could not write."""
     import json  # noqa: PLC0415
     p = Path(state_dir) / _RECEIPTS
     try:
         data = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else []
-        return data if isinstance(data, list) else []
+        data = data if isinstance(data, list) else []
     except (OSError, ValueError):
-        return []
+        data = []
+    key = str(Path(state_dir))
+    return data + [r for d, r in _UNWRITTEN if d == key]
