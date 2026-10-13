@@ -321,7 +321,9 @@ def game_alive() -> "list[str]":
 
 # The whole stop-the-old-script step, PowerShell calls included: each list call may
 # otherwise run to its 60 s hang guard, and ten of them held a tick for ten minutes.
-# No timing behind it: the bound the 2026-10-13 review of this branch set ("about 15 s").
+# Measured on the game machine 2026-10-13 11:08 Beijing: okww_python_pids() took
+# 0.54, 0.39, 0.39, 0.41, 0.41 s (5 runs, OK-WW running, its real PID found), so
+# 15 s (the bound the review of this branch set) holds the stop and ~30 looks.
 STOP_SCRIPT_SECONDS = 15
 
 

@@ -45,8 +45,10 @@ def _okww_py(tail: str, timeout: "float | None" = None):
     """Run `_OKWW_PY | tail` in PowerShell 7; the CompletedProcess, or None when it
     could not run (or ran past `timeout` seconds)."""
     ps = _OKWW_PY + " | " + tail
-    # 60 s: the hang guard _okww_quiesce has had on this same call since 2026-08-28
-    # (bc3b709d), moved here unchanged. Its duration on the machine has no record.
+    # 60 s is a hang guard, not an expected duration (kept from _okww_quiesce,
+    # bc3b709d). Measured on the game machine 2026-10-13 11:08 Beijing: this call
+    # (okww_python_pids) took 0.54, 0.39, 0.39, 0.41, 0.41 s over 5 runs, so the
+    # guard fires only when pwsh or WMI hangs.
     try:
         return subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
                        capture_output=True, timeout=60 if timeout is None else timeout)
@@ -182,6 +184,9 @@ def _wuwa_launcher_procs(root: Path | None = None) -> list[tuple[int, str]] | No
     ps = ("Get-CimInstance Win32_Process -Filter "
           "\"Name='launcher.exe' OR Name='launcher_main.exe'\" | "
           "Select-Object ProcessId, ExecutablePath | ConvertTo-Json -Compress")
+    # 60 s is a hang guard. Not timed itself; the same pwsh + Get-CimInstance call
+    # for OK-WW's python was measured on the game machine 2026-10-13 11:08 Beijing
+    # at 0.39-0.54 s over 5 runs.
     try:
         r = subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
                            capture_output=True, timeout=60)
