@@ -189,11 +189,28 @@ PROGRESS = ("farm echo", "enter combat", "teleport_to_boss prepared as",
 _TAIL_BYTES = 300_000
 
 
-def quiet_minutes(now: datetime | None = None) -> "float | None":
-    """Minutes since the farm last got anywhere. None when there is no log to read.
+def _line_time(line: str) -> "datetime | None":
+    """The timestamp an OK-WW log line starts with (「2026-09-07 10:06:52,779 INFO …」)."""
+    try:
+        return datetime.strptime(line[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
+    except ValueError:
+        return None
+
+
+def quiet_minutes(now: datetime | None = None, since: "datetime | None" = None) -> "float | None":
+    """Minutes since the farm last got anywhere. None when there is no log to read,
+    or nothing to measure from.
 
     Measured from the newest line that says something actually happened, not from
     the file's mtime: a stuck game is noisy, and noise is not progress.
+
+    `since` is when this launch began (the run record's `restarted`, else `started`).
+    When the tail holds no progress line at all, the farm has got nowhere since at
+    least then, so the quiet time is measured from it. The file's mtime cannot stand
+    in: a game stuck in a retry loop logs 20-39 KB a minute, so the 300 KB tail spans
+    only 8-35 minutes and the file is always fresh - quiet read about 0 and neither
+    the restart nor the stall stop ever fired. Without `since`, the first timestamp
+    in the tail is the floor (no progress at least since then).
     """
     from ark_relay.features.weekly.weeklyboss import _okww_log  # noqa: PLC0415 - avoids an import cycle
     f = _okww_log()
@@ -207,25 +224,46 @@ def quiet_minutes(now: datetime | None = None) -> "float | None":
             tail = fh.read().decode("utf-8", "replace")
     except OSError:
         return None
-    stamp = ""
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    last = None
+    first = None
     for line in tail.splitlines():
+        at = _line_time(line)
+        if at is None:
+            continue
+        first = first or at
         if any(k in line for k in PROGRESS):
-            stamp = line[:19]
-    if not stamp:
+            last = at
+    if last is None:
         # Nothing in the whole tail: either the run just started (tick already skips
         # a run that young) or it has been stuck for longer than the tail covers.
-        try:
-            touched = datetime.fromtimestamp(f.stat().st_mtime, tz=SERVER_TZ)
-        except OSError:
+        last = since or first
+        if last is None:
             return None
-        now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-        return (now - touched).total_seconds() / 60.0
-    try:
-        last = datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
-    except ValueError:
-        return None
-    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     return (now - last).total_seconds() / 60.0
+
+
+def progress_since(started: "datetime | None") -> "int | None":
+    """How many progress lines (PROGRESS) OK-WW logged since `started`; None when
+    that cannot be told (no start time, no log, unreadable). Every log file in the
+    folder written since the start is read, so a night that crosses OK-WW's log
+    rotation is counted whole."""
+    from ark_relay.features.weekly.weeklyboss import _okww_log  # noqa: PLC0415 - avoids an import cycle
+    f = _okww_log()
+    if started is None or not f:
+        return None
+    try:
+        files = {f} | {q for q in f.parent.glob("*.log*")
+                       if q.is_file() and q.stat().st_mtime >= started.timestamp()}
+        n = 0
+        for q in files:
+            for line in q.read_text(encoding="utf-8", errors="replace").splitlines():
+                at = _line_time(line)
+                if at is not None and at >= started and any(k in line for k in PROGRESS):
+                    n += 1
+        return n
+    except OSError:
+        return None
 
 
 # What 「收工」 has to leave behind: nothing of OK-WW's and nothing of the game's.
@@ -432,13 +470,19 @@ def push_manual_trouble(notifier) -> None:
         push_wrapup(notifier, MANUAL_TROUBLE.pop(0), True)
 
 
-def _finish(cfg, why: str, failed: bool = False) -> "tuple[str, bool]":
+def _finish(cfg, why: str, failed: bool = False, judge_progress: bool = False) -> "tuple[str, bool]":
     """finish(), and whether its line says something went wrong: `failed` (the farm was
     stopped by a fault: the caller says so), the game left open, the no-claim marker left,
-    the boss setting not put back, the config not found."""
+    the boss setting not put back, the config not found.
+
+    The line says how many progress lines OK-WW logged since the start.
+    `judge_progress` (the deadline): none, or a count that cannot be read, is a
+    failure too - a night that farmed nothing used to end as a clean 「到点了」.
+    A stop by hand is not judged on it: it may come minutes after the start."""
     rec = current(cfg.state_dir)
     if not rec:
         return "", False
+    laps = progress_since(_started_at(rec))
     note = stop_okww() or ""
     _set_no_claim(False)
     note += "" if not no_claim_on() else texts.echo_farm_no_claim_left(NO_CLAIM)
@@ -458,7 +502,10 @@ def _finish(cfg, why: str, failed: bool = False) -> "tuple[str, bool]":
     started = rec.get("started") or "?"
     tries = int(rec.get("restarts") or 0)
     again = f"，中途角色阵亡重开了 {tries} 次" if tries else ""
-    return f"刷{rec.get('name') or ''}结束（{why}）。{started} 开始{again}，配置已还原{note}", failed or bool(note)
+    if judge_progress and not laps:
+        failed = True
+    return (f"刷{rec.get('name') or ''}结束（{why}）。{started} 开始{again}，{texts.echo_farm_progress(laps)}，"
+            f"配置已还原{note}", failed or bool(note))
 
 
 def tick(cfg, now: datetime | None = None) -> str:
@@ -477,8 +524,8 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
         return _finish(cfg, "结束时刻读不出来，为安全起见停掉", failed=True)
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     if now >= until:
-        return _finish(cfg, f"到点了（{until:%H:%M}）")
-    quiet = quiet_minutes(now)
+        return _finish(cfg, f"到点了（{until:%H:%M}）", judge_progress=True)
+    quiet = quiet_minutes(now, _stamp(rec.get("restarted")) or _started_at(rec))
     if quiet is None or quiet < RESTART_QUIET_MINUTES:
         return "", False
     # Do not judge a run that only just started, and leave a relaunch time to write

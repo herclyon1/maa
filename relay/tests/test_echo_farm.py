@@ -173,11 +173,39 @@ def _farm(**fields):
     return c
 
 
-check("on time, all put back: one info wrap-up", _wrapup(_farm()), [("info", True)])
+import ark_relay.features.weekly.weeklyboss as _wbw                               # noqa: E402
+_wrap_log = tmpdir() / "wrap.log"
+_wrap_real = _wbw._okww_log
+_wbw._okww_log = lambda: _wrap_log
+_wrap_log.write_text("2026-09-09 04:01:00,000 INFO TaskExecutor FarmEchoTask:enter combat None\n"
+                     "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n",
+                     encoding="utf-8")
+check("on time, all put back, OK-WW farmed: one info wrap-up", _wrapup(_farm()), [("info", True)])
+# 2026-10-13 audit: a night that farmed nothing ended as a clean 「到点了」.
+_wrap_log.write_text("2026-09-09 03:00:00,000 INFO TaskExecutor FarmEchoTask:farm echo before the start\n"
+                     + "".join(f"2026-09-09 04:{m:02d}:00,000 INFO hwnd_window changed\n" for m in range(1, 50)),
+                     encoding="utf-8")
+check("on time but nothing farmed since the start: the group", _wrapup(_farm()), [("group", True)])
+_c0 = _farm()
+_note0, _bad0 = echofarm.tick_result(_c0)
+check("…and the line says nothing was farmed", ("一次都没刷到" in _note0, _bad0), (True, True))
+_wrap_log.write_text("2026-09-09 04:01:00,000 INFO TaskExecutor FarmEchoTask:enter combat None\n"
+                     "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n",
+                     encoding="utf-8")
+_c1 = _farm()
+_note1, _bad1 = echofarm.tick_result(_c1)
+check("a farmed night's line gives the count", ("记到 2 次进展" in _note1, _bad1), (True, False))
+_wbw._okww_log = lambda: None
+check("on time, OK-WW log unreadable: the group (unknown is not fine)", _wrapup(_farm()), [("group", True)])
+_c2 = fresh()
+echofarm.start(_c2, 1, "08:30", "天傀劫煞", now=NOW)
+_note2, _bad2 = echofarm._finish(_c2, "手动停止")
+check("a stop by hand is not judged on progress", _bad2, False)
+_wbw._okww_log = lambda: _wrap_log
 check("end time unreadable, farm stopped: the group", _wrapup(_farm(until="坏的")), [("group", True)])
 _launch_was, _quiet_was = echofarm._launch, echofarm.quiet_minutes
 echofarm._launch = lambda: (False, "启动计划任务失败")
-echofarm.quiet_minutes = lambda now=None: 30.0
+echofarm.quiet_minutes = lambda now=None, since=None: 30.0
 try:
     tomorrow = (datetime.now(tz=SERVER_TZ) + timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
     got = _wrapup(_farm(until=tomorrow, started="2026-09-09 04:00"))
@@ -191,6 +219,7 @@ try:
 finally:
     echofarm.stop_okww = _stop_was
 check("on time but the game left open: the group", got, [("group", True)])
+_wbw._okww_log = _wrap_real
 
 # docs/SILENT-FAILURES-AUDIT.md echofarm.py:423 - a failed restore used to replace
 # the note, so 「游戏没关掉」 from stop_okww never reached the receipt.
@@ -346,6 +375,38 @@ try:
     check("刚刷到东西就不算卡住", round(fresh_), 1)
     check("阈值给到五分钟（一趟约一分钟，死一次约两分钟）",
           echofarm.RESTART_QUIET_MINUTES, 5)
+
+    # 2026-10-13 audit: a game in a retry loop logs 20-39 KB a minute, so the last
+    # progress line falls out of the 300 KB tail. The fallback was the file's mtime -
+    # "now" for a log that keeps growing - so quiet read 0 and nothing ever fired.
+    import os as _os2
+    _noise = "".join(f"2026-09-09 05:{m // 60:02d}:{m % 60:02d},000 INFO TaskExecutor retry loop "
+                     + "x" * 200 + "\n" for m in range(0, 3000))
+    _noisy.write_text("2026-09-09 04:00:00,000 INFO FarmEchoTask:farm echo on the face\n" + _noise,
+                      encoding="utf-8")
+    check("fixture: the progress line is beyond the 300 KB tail",
+          _noisy.stat().st_size - len("2026-09-09 04:00:00,000 INFO FarmEchoTask:farm echo on the face\n")
+          > echofarm._TAIL_BYTES, True)
+    _t = datetime(2026, 9, 9, 5, 50, tzinfo=SERVER_TZ)
+    _os2.utime(_noisy, (_t.timestamp(), _t.timestamp()))
+    check("no progress in the tail: measured from the launch, not the fresh mtime",
+          round(echofarm.quiet_minutes(_t, datetime(2026, 9, 9, 5, 20, tzinfo=SERVER_TZ))), 30)
+    check("no launch time: measured from the tail's first line (a floor)",
+          echofarm.quiet_minutes(_t) >= 5, True)
+    _c3 = fresh()
+    echofarm.start(_c3, 1, "08:30", "天傀劫煞", now=NOW)
+    _r3 = echofarm.current(_c3.state_dir)
+    _r3["started"] = "2026-09-09 05:20"
+    echofarm._store(_c3.state_dir).set("queues", "echo_farm", _r3)
+    _was3 = echofarm._launch
+    _l3 = []
+    echofarm._launch = lambda: (_l3.append(1), (True, ""))[1]
+    try:
+        echofarm.tick(_c3, _t)
+    finally:
+        echofarm._launch = _was3
+    check("a noisy stuck farm gets its restart", (len(_l3), echofarm.current(_c3.state_dir).get("restarts")), (1, 1))
+    echofarm.finish(_c3, "收尾")
 finally:
     _wb2._okww_log = _real2
 

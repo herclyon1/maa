@@ -863,6 +863,16 @@ def echo_farm_game_left(names: list[str]) -> str:
     return "；**游戏没关掉（" + "、".join(names) + "），已交给我们这边去关**"
 
 
+def echo_farm_progress(n: "int | None") -> str:
+    """echofarm._finish: how many progress lines (a fight, an echo picked up, back in
+    the realm) OK-WW logged during the farm; None when the log could not be read."""
+    if n is None:
+        return "**读不到 OK-WW 的日志，刷到没有不知道**"
+    if n == 0:
+        return "**OK-WW 日志里一次都没刷到（没打怪、没捡到声骸）**"
+    return f"OK-WW 日志里记到 {n} 次进展（打怪、捡声骸、回到副本）"
+
+
 def echo_farm_no_claim_left(path: str) -> str:
     """echofarm.finish: the no-claim marker of the farm could not be deleted."""
     return f"；**不领奖标记没删掉，周本会不领奖，已交给我们这边去删 {path}**"
