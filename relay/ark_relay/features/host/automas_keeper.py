@@ -27,6 +27,12 @@ log = logging.getLogger("ark.service")
 # When AUTO-MAS is missing, how long to give it (or our own revival of it)
 # before trying again. Doubles on each failed revival - this is failure
 # backoff, not an interval; it resets the moment a backend handle is held.
+# A check that revived nothing (an installer or the window's grace held it off)
+# re-arms with the wait as it stands; one that found the backend up but could
+# not attach to it re-arms with procwatch.AUTOMAS_CHECK_SECONDS. Until 2026-10-13
+# every handle-less check doubled it: 10-10 16:14-17:21 the process list was
+# unreadable while the API answered, nothing was revived, and the checks drifted
+# out to every 30 minutes without a line in the log (audit s15 #1).
 REVIVE_FIRST_WAIT = 180
 
 
@@ -97,6 +103,9 @@ class _AutomasKeeper:
         self.revive_deadline = (time.monotonic() + self.revive_wait) if not self.handle else None
         self.revive_failures = 0
         self.revive_alerted = False
+        # The backend was seen up but its handle could not be taken: said once
+        # (INFO), until a handle is held again (_adopted).
+        self.unattached_noted = False
         # When the shell was first seen alive with no backend behind it.
         self.shell_only_since = None
         self.shell_grace_noted = False
@@ -143,6 +152,7 @@ class _AutomasKeeper:
         self.revive_wait = float(REVIVE_FIRST_WAIT)
         self.revive_failures = 0
         self.revive_alerted = False
+        self.unattached_noted = False
 
     def on_process_started(self) -> None:
         """A python.exe has started: if it is the backend, take the handle at once instead of waiting for the next liveness check."""
@@ -192,8 +202,11 @@ class _AutomasKeeper:
         if not (died or due_check):
             return
         self.next_check = now + procwatch.AUTOMAS_CHECK_SECONDS
-        if not automas_procs._automas_running():
+        running = automas_procs._automas_running()
+        revived_before = self.revive_failures
+        if not running:
             self._revive(now, after_exit=died)
+        revived = self.revive_failures > revived_before
         # Adopt whichever backend now exists - our revival, or one that
         # was there all along. A revived backend is a new process, so
         # the old handle (already closed above) never signals again.
@@ -201,12 +214,25 @@ class _AutomasKeeper:
         if self.handle:
             self.log.info("AUTO-MAS 进程句柄已挂上")
             self._adopted()
-        else:
+        elif revived:
             # Arm with the CURRENT wait, then double for the next
             # failure - doubling first made the very first retry gap
             # 360s instead of the documented 180s.
             self.revive_deadline = now + self.revive_wait
             self.revive_wait = min(self.revive_wait * 2, float(REVIVE_MAX_WAIT))
+        elif running:
+            # Up (by the process list or, when that cannot be read, by its API)
+            # but not attachable: nothing failed to revive, so no backoff - the
+            # liveness check keeps its own beat until the handle can be taken.
+            if not self.unattached_noted:
+                self.unattached_noted = True
+                self.log.info("AUTO-MAS 后台在运行，但挂不上它的进程句柄（进程列表读不到或打不开进程），"
+                              "改为每 %d 秒查一次它在不在", procwatch.AUTOMAS_CHECK_SECONDS)
+            self.revive_deadline = now + procwatch.AUTOMAS_CHECK_SECONDS
+        else:
+            # Held off (an installer on screen, the window's grace, an unreadable
+            # process list): no revival ran, so the wait is not doubled.
+            self.revive_deadline = now + self.revive_wait
 
     def _exited(self) -> None:
         """The backend's handle signalled: say why it went, as far as the relay can know, and let go of the handle.
