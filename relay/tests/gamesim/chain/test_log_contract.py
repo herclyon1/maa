@@ -327,8 +327,9 @@ def check_scenarios(relay: Relay, tmp: Path, fresh: "Path | None", only: "str | 
         else:
             committed = LOGS / f"{sc.case}.log.gz"
             if not committed.is_file():
-                fails.append(f"{rel}: no committed log {committed.relative_to(TESTS)} (--save from a Windows run)")
-                print(f"  ✗ {rel}: no committed log")
+                # A new scenario has no log until a Windows run prints one: the Windows job (the
+                # deploy gate) judges it and fails without it; here it is only named.
+                print(f"  ⏭ {rel}: no committed log yet (--save from a Windows run)")
                 continue
             runs = [committed]
         for src in runs:
