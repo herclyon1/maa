@@ -20,4 +20,5 @@ for label, ok in (("summary.daily_report removed", not hasattr(summary, "daily_r
     print(("  ✓ " if ok else "  ✗ ") + label)
     if not ok:
         fails.append(label)
+print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

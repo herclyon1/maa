@@ -18,4 +18,5 @@ notes = core.retried_notes(es)
 got = notes.get("2026-10-08/endfield/MaaEnd-05-29-15", "")
 ok = got == "自动采集　后来在 10:35（东京 11:35）开始的那趟重试里做成了"
 print(("  ✓ " if ok else "  ✗ ") + got)
+print("\n" + ("all checks passed" if ok else "FAILED"))
 sys.exit(0 if ok else 1)

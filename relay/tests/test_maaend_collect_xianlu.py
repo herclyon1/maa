@@ -15,4 +15,5 @@ text = (Path(__file__).parent / "fixtures" / "maaend-collect-xianlu-1012.log").r
 got = {c.label: c.ok for c in maaend_checks(text, []) if "自动采集" in c.label}
 ok = got.get("自动采集 真的走了路线") is True
 print(("  ✓ " if ok else "  ✗ ") + f"线路1-3 count as walked routes: {got}")
+print("\n" + ("all checks passed" if ok else "FAILED"))
 sys.exit(0 if ok else 1)
