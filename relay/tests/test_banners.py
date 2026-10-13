@@ -1279,16 +1279,19 @@ def _ww_gacha_notice() -> None:
     check("往期：1.0 第二期到 3.6 第二期共 42 段", len(hist), 42)
     by = {(h["ver"], h["part"], h["pools"][0] if h["pools"] else ""): h for h in hist}
     h36 = by[("3.6", "第二期", "身赴三途")]
-    check("3.6 第二期：09-10 10:00～09-29 11:59，景燃，千般渡",
-          (h36["start"], h36["end"], h36["ups"], h36["weapons"]),
-          (datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59), ["景燃"], ["千般渡"]))
+    check("3.6 第二期：09-10 10:00～09-29 11:59，千般渡",
+          (h36["start"], h36["end"], h36["weapons"]),
+          (datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59), ["千般渡"]))
+    # 2026-10-13: `ups` mixed weapon names into the featured characters
+    # (1.1 gave ["今汐", "时和岁稔"]) and nothing read it; it is gone.
+    check("往期记录里没有 ups 这一项", any("ups" in h for h in hist), False)
     h36a = by[("3.6", "第一期", "仙风玉影水天清")]
     check("3.6 第一期：开 = 维护结束 08-20 11:00，09-10 09:59 结束",
           (h36a["start"], h36a["end"], h36a["start_how"].startswith("3.6版本更新维护 08-20 04:00～11:00")),
           (datetime(2026, 8, 20, 11, 0), datetime(2026, 9, 10, 9, 59), True))
     h11 = by[("1.1", "第一期", "寒尽觉春生")]
-    check("1.1（2024 年，标题写法 <名>…——「角色」概率UP）：06-28 13:00～07-22 09:59，今汐",
-          (h11["start"], h11["end"], h11["ups"]), (datetime(2024, 6, 28, 13, 0), datetime(2024, 7, 22, 9, 59), ["今汐", "时和岁稔"]))
+    check("1.1（2024 年，标题写法 <名>…——「角色」概率UP）：06-28 13:00～07-22 09:59",
+          (h11["start"], h11["end"]), (datetime(2024, 6, 28, 13, 0), datetime(2024, 7, 22, 9, 59)))
     check("2.x 的写法也读到：2.3 第二期 诗与乐的交响 05-22 10:00～06-11 11:59",
           (by[("2.3", "第二期", "诗与乐的交响")]["start"], by[("2.3", "第二期", "诗与乐的交响")]["end"]),
           (datetime(2025, 5, 22, 10, 0), datetime(2025, 6, 11, 11, 59)))
