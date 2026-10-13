@@ -459,6 +459,8 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
                 text = ""
             if text and _maaend_all_done(text):
                 ok, failed = True, []
+                # A ledger trace of which branch booked it (tests tell the two
+                # timeout paths apart by it); no report reads it.
                 raw["maaend_done_then_hung"] = True
         if not ok and not failed:
             failed = [result or "未知错误"]
