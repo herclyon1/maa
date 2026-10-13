@@ -102,10 +102,9 @@ def run(restore_master, try_restore):
     return rec, pushes, state
 
 
-saved = (gameupdate.maaend_reenable_records, gameupdate.spmed_check, mastercfg.prune_maaend_orphans,
+saved = (gameupdate.spmed_check, mastercfg.prune_maaend_orphans,
          mastercfg.migrate_maaend_options, collect_retry.restore_master, makeup.maaend_still_running,
          makeup.try_restore)
-gameupdate.maaend_reenable_records = lambda cfg: None
 gameupdate.spmed_check = lambda cfg: None
 mastercfg.prune_maaend_orphans = lambda a, m: ([], "")
 mastercfg.migrate_maaend_options = lambda a, m: (False, "")
@@ -132,7 +131,7 @@ try:
     rec, pushes, state = run(lambda cfg: "", lambda cfg, notifier=None: ("", ""))
     check("no WARNING", rec.warnings(), [])
 finally:
-    (gameupdate.maaend_reenable_records, gameupdate.spmed_check, mastercfg.prune_maaend_orphans,
+    (gameupdate.spmed_check, mastercfg.prune_maaend_orphans,
      mastercfg.migrate_maaend_options, collect_retry.restore_master, makeup.maaend_still_running,
      makeup.try_restore) = saved
 

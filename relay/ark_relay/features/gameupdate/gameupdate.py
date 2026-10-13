@@ -40,14 +40,13 @@ from ark_relay.core.desktop import Desktop, kill
 # private names imported here are used by this module (_store) or by callers
 # (_OFF_RECORDS: machinechecks/system.py).
 from ark_relay.features.gameupdate.gameupdate_games import READY_WORDS, _store, endfield_paths, update_endfield
-from ark_relay.features.gameupdate.gameupdate_maaend import SPMED_NODE, SPMED_NODE_V232, SPMED_NODES, _OFF_RECORDS, _TASK_ZH, maaend_enable, maaend_reenable_records, spmed_check, spmed_shape
+from ark_relay.features.gameupdate.gameupdate_maaend import SPMED_NODE, SPMED_NODE_V232, SPMED_NODES, _OFF_RECORDS, spmed_check, spmed_shape
 
 log = logging.getLogger("ark.gameupdate")
 
 __all__ = [
     "READY_WORDS",
     "_OFF_RECORDS",
-    "_TASK_ZH",
     "SPMED_NODE",
     "SPMED_NODES",
     "SPMED_NODE_V232",
@@ -58,8 +57,6 @@ __all__ = [
     "last_run_ok",
     "last_trace",
     "log",
-    "maaend_enable",
-    "maaend_reenable_records",
     "mark_pending",
     "mark_run",
     "needs_rerun",

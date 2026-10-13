@@ -1,10 +1,7 @@
-"""MaaEnd tasks the relay switched off in the past, and the sanity-booster step check.
+"""The sanity-booster step check, and the names of the old switch-off records.
 
-maaend_reenable_records runs at boot: every task a leftover switch-off record
-names is switched back on in AUTO-MAS's master mxu-MaaEnd.json, whatever the
-MaaEnd version, and the record is dropped. spmed_check reports when the
-sanity-booster step in MaaEnd's nodes.json has a shape this module does not
-recognise; it changes nothing.
+spmed_check reports when the sanity-booster step in MaaEnd's nodes.json has a
+shape this module does not recognise; it changes nothing.
 
 Re-exported from gameupdate, so callers write gameupdate.xxx.
 """
@@ -14,115 +11,15 @@ import json
 import logging
 from pathlib import Path
 
-from ark_relay.core.config import atomic_write_text
-from ark_relay.features.gameupdate.gameupdate_games import _store
 
 log = logging.getLogger("ark.gameupdate")
 
 
-# state.json records (section "updates") that name MaaEnd tasks switched off in
-# the past. The task names sit under "disabled" (the hand-written 1.5.3 record)
-# or "tasks" (the shape statestore.py documents).
+# state.json records (section "updates") that once named MaaEnd tasks the relay
+# switched off. Nothing writes them any more and the machine holds none (audit s18
+# F5), so the boot step that switched their tasks back on is gone; machine check
+# #63 (machinechecks/system.py) still confirms none is left.
 _OFF_RECORDS = ("maaend_disabled_1_5_3", "maaend_reenable_next_boot", "maaend_disabled_spmed")
-_TASK_ZH = {"GiftOperator": "赠送干员礼物", "GearAssembly": "装备制造", "DeliveryJobs": "转交委托",
-            "EnvironmentMonitoring": "环境监测", "AutoCollect": "自动采集",
-            "AutoUseSpMedication": "应急理智加强剂"}
-
-
-def maaend_enable(cfg, names: set) -> tuple[list[str], list[str], str]:
-    """Switch the named tasks on in AUTO-MAS's master mxu-MaaEnd.json: `enabled` and
-    every per-controller copy of it. This function only switches tasks on.
-
-    Returns (switched on now, named but not in the master at all, why it could not
-    be done - '' when it was). "Already on" is in neither list."""
-    root = Path(cfg.automas_dir) / "data" if cfg.automas_dir else None
-    target = next((f for f in (root.glob("*/Default/ConfigFile/mxu-MaaEnd.json") if root else [])), None)
-    if not target:
-        return [], [], "找不到终末地的母本"
-    try:
-        j = json.loads(target.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return [], [], f"终末地的母本读不出来（{type(exc).__name__}）"
-    changed: list[str] = []
-    seen: set[str] = set()
-    for inst in j.get("instances") or []:
-        for t in inst.get("tasks") or []:
-            name = t.get("taskName")
-            if name not in names:
-                continue
-            seen.add(name)
-            ctl = t.get("enabledByController")
-            ctl_off = (isinstance(ctl, dict) and not all(ctl.values())) or ctl is False
-            if not t.get("enabled") or ctl_off:
-                t["enabled"] = True
-                if isinstance(ctl, dict):
-                    for k in ctl:
-                        ctl[k] = True
-                elif isinstance(ctl, bool):
-                    t["enabledByController"] = True
-                if name not in changed:
-                    changed.append(name)
-    gone = sorted(set(names) - seen)
-    if not changed:
-        return [], gone, ""
-    try:
-        atomic_write_text(target, json.dumps(j, ensure_ascii=False, indent=2))
-        back = json.loads(target.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return [], gone, f"终末地的母本写不进去（{type(exc).__name__}）"
-    off = sorted({str(t.get("taskName")) for inst in back.get("instances") or []
-                  for t in inst.get("tasks") or [] if t.get("taskName") in changed and not t.get("enabled")})
-    if off:
-        return [], gone, "写进终末地的母本之后再读，这几项还是关着：" + "、".join(off)
-    return changed, gone, ""
-
-
-def maaend_reenable_records(cfg) -> list[str]:
-    """Boot: switch every task a leftover switch-off record names back on, once, and
-    drop the record. Returns the log lines (already logged).
-
-    Switched on (or already on): INFO, record dropped. The master cannot be found or
-    read: WARNING (a relay WARNING reaches the group), record kept for the next boot.
-    A record naming no task, or tasks the master no longer has: WARNING with the
-    record, record dropped (nothing is left to switch on)."""
-    store = _store(cfg.state_dir)
-    said: list[str] = []
-    for key in _OFF_RECORDS:
-        rec = store.get("updates", key)
-        if rec is None:
-            continue
-        rec_d = rec if isinstance(rec, dict) else {}
-        names = {str(n) for n in (rec_d.get("disabled") or rec_d.get("tasks") or []) if n}
-        if not names:
-            line = f"开机：中继以前关掉终末地任务的记录 {key} 里没有任务名（{rec!r}），没法开回，记录已删"
-            log.warning(line)
-            store.pop("updates", key)
-            said.append(line)
-            continue
-        zh = "、".join(_TASK_ZH.get(n, n) for n in sorted(names))
-        on, gone, err = maaend_enable(cfg, names)
-        if err:
-            line = f"开机：中继以前关掉的终末地任务 {zh} 没能开回（{err}），记录留着，下次开机再试"
-            log.warning(line)
-            said.append(line)
-            continue
-        store.pop("updates", key)
-        if gone:
-            line = (f"开机：中继以前关掉的终末地任务里，{'、'.join(_TASK_ZH.get(n, n) for n in gone)}"
-                    f" 母本里已经没有了，没法开回（记录 {key} 已删）")
-            log.warning(line)
-            said.append(line)
-        if on:
-            line = (f"开机：中继以前关掉的终末地任务已开回：{'、'.join(_TASK_ZH.get(n, n) for n in on)}"
-                    f"（记录 {key} 已删）")
-        elif len(gone) < len(names):
-            line = (f"开机：中继以前关掉的终末地任务 {'、'.join(_TASK_ZH.get(n, n) for n in sorted(names - set(gone)))}"
-                    f" 已经开着（记录 {key} 已删）")
-        else:
-            continue
-        log.info(line)
-        said.append(line)
-    return said
 
 
 # The sanity-booster (应急理智加强剂) step in MaaEnd's resource/pipeline/nodes.json

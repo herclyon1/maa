@@ -410,8 +410,8 @@ _ledger_rows[0]["raw"] = {"maa_error": "关卡失败"}
 (A / "ledger-2026-09-30.jsonl").write_text("".join(json.dumps(r) + "\n" for r in _ledger_rows), encoding="utf-8")
 check("MAA 普通失败 → 不重跑", gu.needs_rerun(A, n930, "MAA"), False)
 # 4. spmed. The user, 2026-10-06, on the sanity booster: 「那个要一直开着，如果上游maaend改了导致没生效就要报警」
-#    and 「我开的任务是谁说要关的」. A leftover switch-off record turns the booster back on at the
-#    next boot whatever the node looks like; the node shape only decides the group alarm.
+#    and 「我开的任务是谁说要关的」. The node shape only decides the group alarm; the task is
+#    never switched (the leftover-record re-enable went with s18 F5).
 E = A / "maaend"; (E / "resource" / "pipeline").mkdir(parents=True)
 (E / "interface.json").write_text(json.dumps({"version": "v2.28.0-beta.4"}), encoding="utf-8")
 master = A / "data" / "u1" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"; master.parent.mkdir(parents=True)
@@ -433,14 +433,9 @@ for _label, _node, _shape in (
          {"recognition": {"param": {"all_of": ["YellowConfirmButtonType2", {"recognition": {"param": {}, "type": "OCR"}}]}}},
          "")):
     _nodes(_node)
-    _master(False); gu._store(A).set("updates", "maaend_disabled_spmed", dict(_rec))
-    gu.maaend_reenable_records(acfg)
-    check(f"{_label}，同一版本 → 开机就开回", _sp_on(), True)
-    check(f"{_label} → 记录删了", gu._store(A).get("updates", "maaend_disabled_spmed"), None)
-    check(f"{_label} → 每次开机都查，要报的就报", (gu.spmed_check(acfg), gu.spmed_check(acfg)), (_shape, _shape))
     _master(True)
-    gu.maaend_reenable_records(acfg)
-    check(f"{_label} → 没有记录时任务开着就不动", _sp_on(), True)
+    check(f"{_label} → 每次开机都查，要报的就报", (gu.spmed_check(acfg), gu.spmed_check(acfg)), (_shape, _shape))
+    check(f"{_label} → 任务开着就不动", _sp_on(), True)
 gu.log.removeHandler(keep)
 
 print("[终末地：更新后说客户端过时，下一轮启动器「开始游戏」不能算就绪]")

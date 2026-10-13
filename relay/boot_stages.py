@@ -774,17 +774,9 @@ def _stage_preupdate(cfg, notifier, log) -> None:
 
 
 def _stage_reenable_maaend(cfg, notifier, log) -> None:
-    """Switch back on every MaaEnd task the relay once switched off, and check the
-    sanity-booster step."""
-    # Every boot, outside the pre-update block: on the morning of 09-03 the
-    # pre-update was skipped (it had already run overnight) and a step inside it
-    # was skipped along with it. gameupdate.maaend_reenable_records logs what it
-    # did itself (INFO when switched on, WARNING when it could not).
-    try:
-        from ark_relay.features.gameupdate import gameupdate as _gu2  # noqa: PLC0415
-        _gu2.maaend_reenable_records(cfg)
-    except Exception:
-        log.exception("开回 MaaEnd 任务出错")
+    """Check the sanity-booster step and prune master entries for tasks MaaEnd no
+    longer has. (Switching back on tasks the relay once switched off went with
+    the last such record, audit s18 F5.)"""
     # The sanity booster (应急理智加强剂) stays on; a booster step the relay does not
     # know rings the group at every boot that sees it. The user, 2026-10-06, on it:
     # 「那个要一直开着，如果上游maaend改了导致没生效就要报警」 - every time it is seen, he wants the alarm.

@@ -75,8 +75,7 @@ class Log:
 
 def boot_alarms(maaend_dir) -> list:
     """What the boot stage pushes about the booster for this MaaEnd folder."""
-    real = gameupdate.maaend_reenable_records, mastercfg.prune_maaend_orphans
-    gameupdate.maaend_reenable_records = lambda cfg: None
+    real = mastercfg.prune_maaend_orphans
     mastercfg.prune_maaend_orphans = lambda *a: ([], "")
     try:
         n = N()
@@ -84,7 +83,7 @@ def boot_alarms(maaend_dir) -> list:
         boot_stages._stage_reenable_maaend(cfg, n, Log())
         return [t for t, a in n.sent if t == texts.SPMED_UNRECOGNISED and a]
     finally:
-        gameupdate.maaend_reenable_records, mastercfg.prune_maaend_orphans = real
+        mastercfg.prune_maaend_orphans = real
 
 
 print("[v2.32 的真实节点（机器上的 nodes.json）：认得是修好的写法，不报群]")
