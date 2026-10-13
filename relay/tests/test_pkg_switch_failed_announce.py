@@ -114,6 +114,8 @@ check("note for v200 announced by v200", (note.get("version"), note.get("files")
 print("restart_soon raises after current.txt was switched")
 import app_main  # noqa: E402
 
+LOG = logging.getLogger("ark.test_pkg_switch_failed_announce")
+
 real = pkg_layout.update, pkg_layout.restart_soon, pkg_layout.app_root
 
 
@@ -125,7 +127,7 @@ pkg_layout.update = lambda _here, _check: ["x.py"]
 pkg_layout.restart_soon = no_restart
 pkg_layout.app_root = lambda _here: app
 try:
-    got = app_main._packaged_selfupdate(logging.getLogger("ark.test"))
+    got = app_main._packaged_selfupdate(LOG)
 finally:
     pkg_layout.update, pkg_layout.restart_soon, pkg_layout.app_root = real
 check("process exits so the watchdog starts the switched folder", got, True)
@@ -133,7 +135,7 @@ check("process exits so the watchdog starts the switched folder", got, True)
 print("an update that changes nothing still continues the boot")
 pkg_layout.update = lambda _here, _check: []
 try:
-    got = app_main._packaged_selfupdate(logging.getLogger("ark.test"))
+    got = app_main._packaged_selfupdate(LOG)
 finally:
     pkg_layout.update = real[0]
 check("nothing changed: boot continues", got, False)
