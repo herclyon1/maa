@@ -56,18 +56,67 @@ def _src_sha(fn) -> str:
         return ""
 
 
+def _sig_mismatch(old, fn) -> str:
+    """Why `fn` cannot stand in for upstream's `old` by call shape, or '' when it can.
+
+    Upstream's callers call with upstream's parameters (v3.7.4 FarmEchoTask.run
+    retries with self.run(retries - 1)); a copy that does not take them turns
+    every such call into a TypeError. So every parameter upstream names must be
+    taken by ours (by position and by name), and ours may not require one that
+    upstream leaves optional or does not have. Upstream's own *args / **kwargs
+    say nothing about what callers pass, so they constrain nothing; ours may be a
+    (self, *a, **kw) wrapper. A signature that cannot be read is not checked.
+    """
+    try:
+        up = list(inspect.signature(old).parameters.values())
+        ours = list(inspect.signature(fn).parameters.values())
+    except (TypeError, ValueError):
+        return ""
+    P = inspect.Parameter
+    positional = (P.POSITIONAL_ONLY, P.POSITIONAL_OR_KEYWORD)
+    ours_pos = [q for q in ours if q.kind in positional]
+    ours_names = {q.name for q in ours if q.kind in (P.POSITIONAL_OR_KEYWORD, P.KEYWORD_ONLY)}
+    ours_star = any(q.kind == P.VAR_POSITIONAL for q in ours)
+    ours_kw = any(q.kind == P.VAR_KEYWORD for q in ours)
+    up_pos = [q for q in up if q.kind in positional]
+    up_star = any(q.kind == P.VAR_POSITIONAL for q in up)
+    up_kw = any(q.kind == P.VAR_KEYWORD for q in up)
+    gaps = []
+    for i, q in enumerate(up_pos):
+        if i >= len(ours_pos) and not ours_star:
+            gaps.append(f"不收第 {i + 1} 个参数 {q.name}")
+        elif q.kind == P.POSITIONAL_OR_KEYWORD and q.name not in ours_names and not ours_kw:
+            gaps.append(f"不收按名字传的 {q.name}")
+    for q in up:
+        if q.kind == P.KEYWORD_ONLY and q.name not in ours_names and not ours_kw:
+            gaps.append(f"不收按名字传的 {q.name}")
+    for i, q in enumerate(ours_pos):
+        if q.default is P.empty and not up_star and (i >= len(up_pos) or up_pos[i].default is not P.empty):
+            gaps.append(f"要求上游可不传的 {q.name}")
+    up_names = {q.name: q for q in up}
+    for q in ours:
+        if q.kind == P.KEYWORD_ONLY and q.default is P.empty and not up_kw and (
+                q.name not in up_names or up_names[q.name].default is not P.empty):
+            gaps.append(f"要求上游可不传的 {q.name}")
+    if not gaps:
+        return ""
+    return f"上游参数变了（上游 {inspect.signature(old)}，我们 {inspect.signature(fn)}：{'；'.join(gaps)}）"
+
+
 def override(cls, name, *, expect_sha=None, adapt=False):
     """Rebind `cls.name`, but only when upstream still looks the way we think.
 
     `expect_sha` is for a method we copied wholesale: when upstream's own source
     changes, our copy is stale by definition and applying it would quietly undo
-    their fix. Without it, the check is just that the attribute exists.
+    their fix. Without it, the check is that the attribute exists and that ours
+    takes the parameters upstream's callers pass (_sig_mismatch).
 
     `adapt=True` is for the one copy whose job is a standing order rather than a
     fix: find_nest carries 「only 落渊南丘」, and skipping it hands the run to
     upstream's 「every nest with a 0」 - the opposite of the order. So a changed
     upstream body is applied anyway (the copy reads what it can from upstream at
     run time, see _upstream_nest_top) and listed under `adapted`, not `skipped`.
+    A changed call shape still skips it: bound, every call would be a TypeError.
     """
     def wrap(fn):
         label = f"{cls.__name__}.{name}"
@@ -77,6 +126,10 @@ def override(cls, name, *, expect_sha=None, adapt=False):
             return fn
         if why := getattr(fn, "_ark_refused", ""):
             # The copy itself said it cannot work against this upstream (see refuse()).
+            _skipped.append({"what": label, "why": why})
+            return fn
+        if why := _sig_mismatch(old, fn):
+            # Bound, every upstream call with its own parameters would be a TypeError.
             _skipped.append({"what": label, "why": why})
             return fn
         if expect_sha:
@@ -249,49 +302,6 @@ class _Marker:
     """ok-script only executes a file that defines a class. This is that class."""
 
 
-def _install():
-    from src.task.FarmEchoTask import FarmEchoTask
-
-    revive = FarmEchoTask.revive_action
-
-    @override(FarmEchoTask, "revive_action")
-    def revive_action(self):
-        # Inside a realm upstream gives up on reviving - there is no teleport tower
-        # to run back to - so one death stops the whole task. For an overnight farm
-        # that means standing still until morning. The death dialog is on screen and
-        # OK-WW already recognises it, so find the confirm button by its own text and
-        # take the next lap. **By text, not by position**: the dialog is titled
-        # 「选择复苏物品」, and matching 复苏 clicked the title itself on 2026-09-09.
-        # Only the one case upstream refuses is ours: inside a realm it returns
-        # False, because there is no teleport tower to run back to. Everything else
-        # is theirs and still runs, so their improvements to it flow through.
-        if not (self._in_realm and farming_echoes()):
-            return revive(self)
-        try:
-            found = self.ocr(box=self.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
-            text = ' '.join(str(b) for b in found)
-            if '复苏物品' not in text and '复活' not in text:
-                self.log_info(f'刷声骸模式：这不像死亡弹窗，不乱点。整屏读到 {found}')
-                return False
-            button = None
-            for b in found:
-                name = str(getattr(b, 'name', '') or '').strip()
-                if '确认' in name and len(name) <= 6:
-                    button = b
-                    break
-            if button is None:
-                self.log_info(f'刷声骸模式：死亡弹窗上没找到「确认」，整屏读到 {found}')
-                return False
-            self.log_info(f'刷声骸模式：角色阵亡，用一个复苏物品点「{button}」，接着刷')
-            self.click(button, after_sleep=3)
-            self.wait_in_team_and_world(time_out=120)
-            self.is_revived = True
-            return True
-        except Exception as e:  # noqa: BLE001 - a failed revive must not kill the run
-            self.log_info(f'刷声骸模式：复活这一步没做成 {e!r}')
-            return False
-
-
 def _weekly(task) -> bool:
     return str(task.config.get("Teleport to Boss") or "") == "Weekly Challenge"
 
@@ -342,26 +352,48 @@ def _install_claim():
         # 10-12 11:44 the claim was confirmed with 17 waveplates and 24 backup: the
         # backup became waveplates, 41 was still short of 60, and the reward was not
         # taken. Read the top bar first (WWA does the same on this dialog and does not
-        # confirm below 60); when both are read and together cannot pay, cancel and
-        # skip as short, leaving the backup untouched. Logged before the click, which
-        # can raise (f40d0b19).
+        # confirm below 60); when together they cannot pay, cancel and skip as short,
+        # leaving the backup untouched. A bar that is not read is not confirmed blind:
+        # that is how 10-12 11:44 spent the backup for nothing. It stops with a picture.
+        # Logged before the click, which can raise (f40d0b19).
         wave, spare = _waveplates(self, found)
         if wave is None or spare is None:
-            self.log_info(f"周本领奖：顶栏没读全（波片 {wave}，备用 {spare}），照旧确认")
-        elif wave + spare < _CLAIM_COST:
+            _stop(self, "weekly_claim_bar_unread",
+                  f"周本领奖：领奖框上顶栏的波片没读全（波片 {wave}，备用 {spare}），不点确认，停下。"
+                  f"整屏读到 {text[:400]}")
+        self.log_info(f"周本领奖：顶栏读到波片 {wave}/240，备用 {spare}")
+        if wave + spare < _CLAIM_COST:
             self.log_info(f"结晶波片不足，取消并跳过本次周本（波片 {wave} + 备用 {spare}，"
                           f"不够领一次的 {_CLAIM_COST}，不动备用体力）")
             _shot(self, "weekly_short_claim")
             self.click_dialog_left_button()
             self.sleep(1)
             _skip_short(self)
-        self.log_info(f"周本领奖：认出弹窗，点确认。读到 {text[:70]}")
+        self.log_info(f"周本领奖：认出弹窗，点确认。读到 {text[:400]}")
         btn = self.click_dialog_right_button()
         if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
                              time_out=3, settle_time=0.5):
-            # Not enough waveplates: 「用备用体力补足」, the game's own dialog, the
-            # clicks upstream's BaseWWTask.use_stamina makes on it (the user's order
-            # of 2026-09-14: short of waveplates for the weekly boss, use the backup).
+            # Not enough waveplates: the game's top-up dialog, answered with the clicks
+            # upstream's BaseWWTask.use_stamina makes on it (:445-450). The click at
+            # (0.70, 0.71) confirms whatever the dialog has selected. With backup
+            # waveplates that is the backup (09-14 walk-through: 「默认选中备用体力」),
+            # which is what the user asked for on 09-14, in his own words
+            # 「体力不够刷一次周本就用备用体力，备用体力有」 (short for the weekly boss: use the backup).
+            # With none it offers crystal solute and astrite (10-12 11:45:02: 「请选择补充方式」,
+            # 19 solute, 15652 astrite), and 10-12 15:29 and 15:31 paid that way: backup
+            # 0, the clicks went through, both claims were taken (ok-script.2026-10-12
+            # .log:2793-2821, :2874-2902). So this is reached only with both bar values
+            # read and wave < 60 <= wave + backup (the checks above), i.e. there is
+            # backup and it covers the gap. A top-up dialog after a bar that read 60 or
+            # more means the read was wrong: cancel and stop, never click it.
+            if wave >= _CLAIM_COST:
+                why = (f"周本领奖：顶栏读到波片 {wave}/240 够领，游戏却弹了补充波片的框，"
+                       f"不点补充（可能动结晶溶剂），取消并停下")
+                _shot(self, "weekly_topup_unexpected")    # the dialog itself, before the cancel
+                self.back(after_sleep=1)
+                self.click_dialog_left_button()
+                self.log_error(why, notify=True)
+                _end_failed(self, why)
             self.log_info("周本领奖：波片不够，动用备用体力")
             self.click_relative(0.70, 0.71, hcenter=True, after_sleep=1)
             self.click_relative(0.70, 0.71, hcenter=True, after_sleep=1)
@@ -370,10 +402,11 @@ def _install_claim():
             if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
                                  time_out=3, settle_time=0.5):
                 # Backup spent and still short: what is offered now is solute / astrite
-                # (10-12 11:44). WWA answers this follow-up with 取消; so do we.
+                # (10-12 11:44). WWA answers this follow-up with 取消; so do we, and the
+                # top-up clicks are never made on this one.
                 # Logged before the clicks: the relay reads it as a shortage, not an error.
                 _shot(self, "weekly_short_claim")
-                self.log_info("结晶波片不足，取消并跳过本次周本（备用体力用上了仍不够 60，不动结晶溶剂）")
+                self.log_info("结晶波片不足，取消并跳过本次周本（备用体力用上了仍不够 60，不点补充）")
                 self.back(after_sleep=1)
                 self.click_dialog_left_button()
                 _skip_short(self)
@@ -387,29 +420,49 @@ def _install_claim():
             self.wait_in_team_and_world(time_out=120)
             self._ark_claimed = True
         else:
-            self.log_info(f"周本领奖：点了确认后没看到「退出副本」，交回上游。整屏读到 {_screen_text(self)[:200]}")
+            # A screen we do not know after a confirmed claim. Handing it back let
+            # upstream's next lap press ESC and wait for an exit confirm on it
+            # (FarmEchoTask.py:151-157), which timed out into 「farm 4c error」 on
+            # 10-05 10:34:50. A stop presses nothing (restored from b93709e8).
+            _stop(self, "weekly_no_settlement",
+                  f"周本领奖：点了确认后没等到结算页（没有「退出副本」），停下不按 ESC。"
+                  f"整屏读到 {_screen_text(self)[:400]}")
         return True
 
     @override(FarmEchoTask, "incr_drop")
     def incr_drop(self, dropped):
         upstream_incr(self, dropped)
-        if not _weekly(self) or farming_echoes() or not getattr(self, "_in_realm", False) or self.in_world():
+        if not _weekly(self) or farming_echoes():
+            return
+        # A claim already made this lap through upstream's own pickup (pick_echo /
+        # walk_find_echo -> pick_f -> handle_claim_button, BaseWWTask.py:577-591,
+        # FarmEchoTask.py:187-199) has clicked 「退出副本」 and left us in the open
+        # world, where the check below returns. The read-back and the way back in
+        # still have to happen, here as after our own walk to the crystal.
+        if getattr(self, "_ark_claimed", False):
+            self._ark_claimed = False
+            _after_claim(self)
+            return
+        if not getattr(self, "_in_realm", False) or self.in_world():
             return
         # Upstream's own test for a treasure to walk to (walk_to_treasure_and_restart,
-        # and the 5 s wait for it in do_run). No crystal - the boss still up, or no
-        # fight - is not an error: the lap goes back to upstream as it is.
+        # and the 5 s wait for it in do_run). No crystal, or a walk that does not get
+        # there, used to go back to upstream (a8cc86b6, after 10-12 09:52:20). Its
+        # next lap in the realm presses ESC and leaves (FarmEchoTask.py:151-157), so
+        # the reward was left behind without a word. Both are screens this code does
+        # not understand, and the file's rule for those is a picture and a stop (_stop).
         if not self.wait_until(self.find_treasure_icon, time_out=5, raise_if_not_found=False):
-            self.log_info("周本领奖：没看到结晶，这一圈不去领，交回上游")
-            return
+            _stop(self, "weekly_no_crystal",
+                  f"周本领奖：这一圈打完没看到结晶，不领就会被上游按 ESC 退本，停下。整屏读到 {_screen_text(self)[:400]}")
         self.log_info("周本领奖：打完了，去结晶按 F")
         self._ark_claimed = False
         try:
             self.walk_to_treasure()
         except TaskDisabledException:
             raise
-        except Exception as exc:  # noqa: BLE001 - upstream's next lap takes it from here
-            self.log_info(f"周本领奖：没走到结晶 {exc!r}，交回上游")
-            return
+        except Exception as exc:  # noqa: BLE001 - reported and stopped on
+            _stop(self, "weekly_walk_failed",
+                  f"周本领奖：没走到结晶 {exc!r}，不领就会被上游按 ESC 退本，停下。整屏读到 {_screen_text(self)[:400]}")
         self.pick_f()
         if getattr(self, "_ark_claimed", False):
             self._ark_claimed = False
@@ -439,7 +492,9 @@ def _screen_text(task) -> str:
 
 
 _CLAIM_COST = 60       # the claim dialog asks for 60 crystal waveplates
-_WAVE_READ = re.compile(r"(\d{1,3})\s*/\s*240")
+# 「41/240」, and 「240/240+」 when the waveplates are full (0921-weekly.log:18; the level
+# page 10-05 22:17:31 read 「0/240+」).
+_WAVE_READ = re.compile(r"(\d{1,3})\s*/\s*240\+?")
 _DIGITS = re.compile(r"\d{1,3}")
 
 
@@ -458,7 +513,7 @@ def _waveplates(task, found):
             return None, None
         left = [(b.x, int(n)) for n, b in strip if b.x < cur[0].x and _DIGITS.fullmatch(n)]
         return cur[1], (max(left)[1] if left else None)
-    except Exception:  # noqa: BLE001 - plain strings or no frame: unread, the claim goes as before
+    except Exception:  # noqa: BLE001 - plain strings or no frame: unread, and the caller stops
         return None, None
 
 
@@ -582,18 +637,29 @@ def _install_teleport():
             try:
                 return _after_confirm(self)
             except _EarlyOpen:
-                raise _EarlyOpen from None
+                # Only FarmEchoTask.teleport_to_configured_boss (below) catches this.
+                # The binding is on BaseWWTask, so TacetTask.teleport_to_tacet
+                # (TacetTask.py:113) and ForgeryTask.teleport_into_domain (:65) come
+                # through here too, and for them it would be an exception nobody
+                # expects. They get upstream's own 「team screen」 answer, True, and
+                # their next step (click_team_challenge) runs as upstream's would.
+                if getattr(self, "_ark_boss_teleport", False):
+                    raise _EarlyOpen from None
+                return True
 
     outer = FarmEchoTask.teleport_to_configured_boss
 
     @override(FarmEchoTask, "teleport_to_configured_boss")
     def teleport_to_configured_boss(self):
+        self._ark_boss_teleport = True     # click_on_book_target may raise _EarlyOpen
         try:
             return outer(self)
         except _EarlyOpen:
             # True means 「already in the realm」, which is what being dropped into
             # the arena amounts to; upstream's level and team clicks are skipped.
             return True
+        finally:
+            self._ark_boss_teleport = False
 
     prepare = FarmEchoTask.teleport_to_configured_boss_and_prepare
 
@@ -618,9 +684,17 @@ def _install_teleport():
 # touched that method - loudly, thanks to the hash pin, but the change would still
 # have stopped happening. Hooking one call deeper removes that exposure entirely.
 #
-# Two things still replace a method outright, because upstream's own body is what
-# has to go: revive_action (its realm branch is a bare `return False`) and
-# click_team_challenge (the whole point is to split it in two). Both are pinned.
+# A few still replace a method outright, because upstream's own body is what has
+# to go: click_team_challenge (the whole point is to split it in two), get_stamina
+# (its body is the bug) and find_nest (the nest filter). Each is pinned to
+# upstream's hash. revive_action was one until 2026-10-13. It is gone because
+# v3.7.4 FarmEchoTask.revive_action (:92-106) hands a realm death to
+# BaseCombatTask.revive_action (:227-240) whenever Teleport to Boss is on. That
+# cancels the revive popup (close_revive_popup, :202-224), leaves the realm to heal,
+# and do_run teleports back (FarmEchoTask.py:216-229), at most 3 times per run; after
+# that do_run returns and the relay's echo farm relaunches OK-WW after 5 quiet
+# minutes (echofarm.RESTART_QUIET_MINUTES). Ours clicked 确认 and spent a revive
+# item on every death to carry on in place.
 # ---------------------------------------------------------------------------
 
 # Upstream's click_team_challenge is three lines and this replaces all of them,
@@ -636,7 +710,12 @@ _MAX_FARM_RETRIES = 3
 SOLO_BOX = (0.60, 0.84, 0.98, 0.96)
 _SOLO_WAIT = 5          # seconds for 开启挑战 after each click
 _SOLO_RETRIES = 3       # extra clicks on 单人挑战 before the old error path runs
-_CHALLENGE_LOOKS = 6    # reads 1 s apart after 开启挑战 (~5 s) for the waveplate dialog
+_CHALLENGE_LOOKS = 6    # reads 1 s apart after 开启挑战 (~5 s) for an unknown dialog
+# Seconds to wait for the 「无法获取奖励」 reminder after 单人挑战. Upstream waits 1 s
+# (FarmEchoTask.py:374-378); on 10-12 11:43:16 and 15:28:19 it was found within
+# 0.3 s of that window opening. 2 s leaves room for a slower frame.
+_SOLO_DIALOG_WAIT = 2
+_CONFIRM_BTNS = ['confirm_btn_hcenter_vcenter', 'confirm_btn_highlight_hcenter_vcenter']
 
 # Stamina: upstream's own read box (BaseWWTask.get_stamina) and pattern. get_stamina
 # is replaced outright (its body is the bug), so it is pinned: hash of the game
@@ -650,14 +729,15 @@ _STAMINA_DIALOG_READS = 5   # reads, 1 s apart, inside use_stamina's reward dial
 def _confirm_solo(task):
     """Make sure the click on 「单人挑战」 was taken; returns how many extra clicks it took.
 
-    Upstream's teleport_to_configured_boss picks the level, clicks (0.880, 0.911)
-    once and never looks at the result (FarmEchoTask.py:262-264). On 2026-09-21 the
-    click landed inside the button and the game did not take it: the screen stayed
-    on 单人挑战 and the run died ten seconds later on 「no 开启挑战」. This waits for
-    开启挑战; while it is missing and 单人挑战 is still on screen, it takes a screenshot,
-    logs a line and clicks the button where OCR actually found it, up to
-    _SOLO_RETRIES times. Anything else on screen (the waveplate dialog, some other
-    screen) is left to click_team_challenge's own handling below.
+    The click on 单人挑战 is one click at (0.880, 0.911) (v3.7.4 click_solo_challenge,
+    FarmEchoTask.py:374-378, and ours for the weekly boss), and nothing checks that
+    the game took it. On 2026-09-21 the click landed inside the button and the game
+    did not take it: the screen stayed on 单人挑战 and the run died ten seconds later
+    on 「no 开启挑战」. This waits for 开启挑战; while it is missing and 单人挑战 is
+    still on screen, it takes a screenshot, logs a line and clicks the button where
+    OCR actually found it, up to _SOLO_RETRIES times. Anything else on screen is
+    left to click_team_challenge's own handling below. The 「无法获取奖励」 reminder is
+    answered before this, in click_solo_challenge.
     """
     for n in range(_SOLO_RETRIES + 1):
         if task.wait_feature("team_start_challenge", time_out=_SOLO_WAIT, raise_if_not_found=False):
@@ -668,8 +748,6 @@ def _confirm_solo(task):
             break
         seen = task.ocr(box=task.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
         text = " ".join(str(getattr(b, "name", b)) for b in seen)
-        if "结晶波片不足" in text or "无法获取奖励" in text:
-            return n
         solo = [b for b in (task.ocr(box=task.box_of_screen(*SOLO_BOX)) or [])
                 if "单人挑战" in str(getattr(b, "name", ""))]
         if not solo:
@@ -910,6 +988,7 @@ def _claim_tiers(task):
     due = [t for t in DAILY_TIERS if t <= points]
     labels, step, gray = bar
     scores = tier_scores(gray, labels, step)
+    clicked = []
     for _round in range(2):
         todo = [t for t in due if t in labels and scores.get(t, -1) < _CHECKED_MIN]
         if not todo:
@@ -918,16 +997,36 @@ def _claim_tiers(task):
             cx, cy = chest_at(labels, step, t)
             task.log_info(f"活跃奖励：点 {t} 档宝箱（{cx:.0f},{cy:.0f}）")
             task.click_relative(cx / gray.shape[1], cy / gray.shape[0], after_sleep=2)
+            clicked.append(t)
             again = _bar(task)
             if again is None:
-                break
+                # The frame in hand is from before this click: scoring it would call a
+                # chest the game just took 「not claimed」. Nothing on screen to check.
+                _shot(task, "daily_reward_row_lost")
+                task.log_info(f"{DAILY_FAILED}点了 {t} 档宝箱后那一排宝箱认不出来了，没法核对"
+                              f"（活跃度 {points}，点过 {'、'.join(map(str, clicked))}）")
+                return
             labels, step, gray = again
         scores = tier_scores(gray, labels, step)
     shown = "，".join(f"{t}:{scores.get(t, '无')}" for t in DAILY_TIERS)
     missing = [t for t in due if scores.get(t, -1) < _CHECKED_MIN]
-    if missing:
+    # A due tier whose label OCR never found was never clicked: say so, not 「点了没领到」.
+    unclicked = [t for t in missing if t not in clicked]
+    unclaimed = [t for t in missing if t in clicked]
+    # Chests cannot be claimed past the points, so a claimed tick above them means the
+    # points were read too low (e.g. 4 for 40) and `due` left chests out.
+    above = [t for t in DAILY_TIERS if t > points and scores.get(t, -1) >= _CHECKED_MIN]
+    said = []
+    if unclaimed:
+        said.append(f"{'、'.join(map(str, unclaimed))} 档点了没领到")
+    if unclicked:
+        said.append(f"{'、'.join(map(str, unclicked))} 档的数字没认出来，没点")
+    if above:
+        said.append(f"活跃度读成 {points}，可 {'、'.join(map(str, above))} 档已显示领过，分数读低了，"
+                    f"有没有漏点的核对不了")
+    if said:
         _shot(task, "daily_reward_unclaimed")
-        task.log_info(f"{DAILY_FAILED}{'、'.join(map(str, missing))} 档点了没领到（活跃度 {points}，各档对勾分 {shown}）")
+        task.log_info(f"{DAILY_FAILED}{'；'.join(said)}（活跃度 {points}，各档对勾分 {shown}）")
     else:
         task.log_info(f"{DAILY_OK}（活跃度 {points}，已领 {'、'.join(map(str, due)) or '无'}，各档对勾分 {shown}）")
 
@@ -1102,19 +1201,19 @@ def _install_hooks():
 
     @override(FarmEchoTask, "combat_once")
     def combat_once(self, *a, **kw):
-        # A revive raises CharRevivedException. Upstream v3.7.3 catches it in
-        # do_run (FarmEchoTask.py:204-216) with a fresh teleport to the boss, at
+        # A revive raises CharRevivedException. Upstream v3.7.4 catches it in
+        # do_run (FarmEchoTask.py:216-229) with a fresh teleport to the boss, at
         # most 3 times per run. A revive that already put us back at the boss sets
-        # is_revived - our in-place one above, and upstream's own overworld one
-        # (FarmEchoTask.py:97-105) - and for those the exception stops here, so the
-        # loop takes its `if self.is_revived: continue` (FarmEchoTask.py:179)
-        # without a second trip and without the cap: an overnight farm would
-        # otherwise stop after its third death. A revive that leaves us elsewhere
-        # does not set it - the weekly boss's tower revive (BaseCombatTask.py:
-        # 227-240) - and goes up untouched to that re-teleport; swallowing it sent
-        # the loop looking for an echo at the tower. do_run clears is_revived at
-        # the top of every lap (FarmEchoTask.py:140-143), so it is False here
-        # unless this fight's revive set it.
+        # is_revived - upstream's own overworld one (FarmEchoTask.py:98-106) - and
+        # for that the exception stops here, so the loop takes its
+        # `if self.is_revived: continue` (FarmEchoTask.py:182-183) without a
+        # second trip and without the cap. A revive inside a realm does not set it
+        # - BaseCombatTask.revive_action (:227-240) cancels the popup and leaves
+        # the realm, for the weekly boss and the echo farm alike - and goes up
+        # untouched to that re-teleport; swallowing it sent the loop looking for
+        # an echo at the tower. do_run clears is_revived at the top of every lap
+        # (FarmEchoTask.py:144-147), so it is False here unless this fight's
+        # revive set it.
         #
         # Why not the whole lap, as the text patch did (okww_patches/revive.py:
         # 139-148)? Upstream had no handler then, and a revive anywhere in the lap
@@ -1141,6 +1240,12 @@ def _install_hooks():
 
     @override(FarmEchoTask, "click_configured_boss_level")
     def click_configured_boss_level(self):
+        # Weekly boss only. Upstream calls this for the echo farm too (Teleport to
+        # Boss = 「Boss Challenge」, which echofarm.py writes; FarmEchoTask.py:351 via
+        # :316-317 and :383-384), and a 4C boss's level page has no 「本周剩余可收取
+        # 次数」: the unread-count stop below would end the farm at its first boss.
+        if not _weekly(self) or farming_echoes():
+            return pick_level(self)
         _shot(self, "weekly_remaining")
         left = raw = None
         try:
@@ -1181,13 +1286,59 @@ def _install_hooks():
             pass
         return pick_level(self)
 
-    # -- weekly boss: short on waveplates means no fight for nothing; the run is skipped --
+    # -- weekly boss: the 「无法获取奖励」 reminder after 单人挑战 ------------------
+    solo_challenge = getattr(FarmEchoTask, "click_solo_challenge", None)
+
+    @override(FarmEchoTask, "click_solo_challenge")
+    def click_solo_challenge(self):
+        # v3.7.4 clicks 单人挑战 and, within 1 s, confirms any dialog and ticks
+        # 「本次登录不再提示」 (FarmEchoTask.py:374-378, BaseWWTask.py:1069-1113). Its
+        # comment: when waveplates (backup included) are short, 「无法获取奖励，是否继续
+        # 进入」 comes up before the team screen. For the echo farm that is right (no
+        # reward wanted) and stays upstream's. For the weekly boss it confirmed a
+        # fight for no reward (10-12 11:43:16, ok-script.2026-10-12.log:1864-1870;
+        # 15:28:19, :2735-2740), and the tick hid the reminder for the rest of that
+        # login (:2877). Here: the same click; a dialog is read before anything is
+        # pressed. The reminder with waveplates + backup under one claim is a
+        # shortage: 取消, skipped. With enough, 确认 without the tick (the reward is
+        # paid at the crystal; the claim hook reads the bar again there). Any other
+        # dialog, or a bar that cannot be read, is a picture and a stop.
+        if not _weekly(self) or farming_echoes():
+            return solo_challenge(self)
+        self.click(0.880, 0.911, after_sleep=2)
+        up = self.wait_until(lambda: self.find_one(_CONFIRM_BTNS, horizontal_variance=0.1,
+                                                   vertical_variance=0.1),
+                             time_out=_SOLO_DIALOG_WAIT, raise_if_not_found=False)
+        if not up:
+            return None
+        found, text = _screen_read(self)
+        if "结晶波片不足" not in text and "无法获取奖励" not in text:
+            _stop(self, "solo_dialog_unknown",
+                  f"周本：点单人挑战后弹出认不出的对话框，不点确认，停下。整屏读到 {text[:600]}")
+        wave, spare = _waveplates(self, found)
+        if wave is None or spare is None:
+            _stop(self, "solo_dialog_bar_unread",
+                  f"周本：点单人挑战后弹出「无法获取奖励」，顶栏的波片没读全（波片 {wave}，备用 {spare}），"
+                  f"不点确认，停下。整屏读到 {text[:400]}")
+        self.log_info(f"周本：点单人挑战后弹出「无法获取奖励」，顶栏读到波片 {wave}/240，备用 {spare}")
+        if wave + spare < _CLAIM_COST:
+            # Logged before the click, which can raise: the relay reads this line as a
+            # shortage (outcome.WEEKLY_SHORT), an item undone, not an error.
+            self.log_info(f"结晶波片不足，取消并跳过本次周本（单人挑战后的提醒框：波片 {wave} + 备用 {spare}，"
+                          f"不够领一次的 {_CLAIM_COST}）")
+            _shot(self, "nowave_dialog")
+            self.click_dialog_left_button()
+            self.sleep(1)
+            _skip_short(self)
+        self.log_info(f"周本：波片 {wave} + 备用 {spare} 够领一次，提醒框点确认（不勾「本次登录不再提示」）")
+        self.click_dialog_right_button()
+        return None
+
+    # -- every boss entry: 单人挑战 taken, then 开启挑战; an unknown dialog stops --
     @override(FarmEchoTask, "click_team_challenge", expect_sha=_TEAM_CHALLENGE_SHA)
     def click_team_challenge(self):
         # Upstream clicks the challenge button and confirms whatever dialog follows
-        # in one go. That dialog can be the one saying there are not enough
-        # waveplates to collect a reward, and confirming it fights the boss for
-        # nothing. Split in two so the dialog is read before anything is confirmed.
+        # in one go. Split in two so a dialog is read before anything is confirmed.
         _confirm_solo(self)
         try:
             self.wait_click_feature("team_start_challenge", raise_if_not_found=True,
@@ -1198,32 +1349,19 @@ def _install_hooks():
                 seen = self.ocr(box=self.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
             except Exception:
                 pass
-            text = " ".join(str(b) for b in seen)
-            if "结晶波片不足" in text or "无法获取奖励" in text:
-                self.log_info("波片不足挡住开启挑战，点取消跳过本次周本")
-                try:
-                    self.click_dialog_left_button()
-                    self.sleep(1)
-                except Exception:
-                    pass
-                # Not fighting for no reward is right: the run ends as skipped (no
-                # AUTO-MAS retry), and the relay pushes the shortage as an item
-                # undone, see _skip_short.
-                _skip_short(self)
             try:
                 self.screenshot("no_start_btn")
                 self.log_info(f"找不到开启挑战，整屏读到: {seen}")
             except Exception:
                 pass
             raise
-        # The dialog is looked for again and again, not once. One read 1 s after
-        # 开启挑战 missed it on 2026-08-31, upstream's confirm then took the
-        # 「无法获取奖励」 dialog, and the boss was fought for no reward. Nothing is
-        # confirmed here any more: the one dialog known to follow is that one, and
-        # its answer is 取消. A dialog that is up (upstream's own confirm-button
-        # template, the one its wait_click_skip_dialog_confirm looks for) but whose
-        # text is not that one is unknown: picture, report, stop. Reaching the
-        # arena, or the whole window with no dialog, means there is nothing to answer.
+        # Nothing is confirmed after 开启挑战. Under v3.7.4 the 「无法获取奖励」 reminder
+        # comes after 单人挑战, before the team screen (click_solo_challenge above);
+        # every 「开启挑战后读到」 line on the machine since 10-06 is []. A dialog
+        # that is up here (upstream's own confirm-button template, the one its
+        # wait_click_skip_dialog_confirm looks for) is unknown: picture, report,
+        # stop. Reaching the arena, or the whole window with no dialog, means there
+        # is nothing to answer.
         dialog = None
         for n in range(_CHALLENGE_LOOKS):
             if n:
@@ -1231,14 +1369,7 @@ def _install_hooks():
             after = self.ocr(box=self.box_of_screen(0.20, 0.35, 0.80, 0.60)) or []
             if after or not n:
                 self.log_info(f"开启挑战后读到（第 {n + 1} 次）: {after}")
-            if any("结晶波片" in str(b) or "无法获取奖励" in str(b) for b in after):
-                self.log_info("结晶波片不足，取消并跳过本次周本")
-                _shot(self, "nowave_dialog")
-                self.click_dialog_left_button()
-                self.sleep(1)
-                _skip_short(self)
-            dialog = self.find_one(['confirm_btn_hcenter_vcenter', 'confirm_btn_highlight_hcenter_vcenter'],
-                                   horizontal_variance=0.1, vertical_variance=0.1)
+            dialog = self.find_one(_CONFIRM_BTNS, horizontal_variance=0.1, vertical_variance=0.1)
             if dialog is None and self.in_team_and_world():
                 break
         if dialog is not None:
@@ -1300,6 +1431,13 @@ def _install_hooks():
         if not getattr(self, "_ark_additional_ran", False):
             try:
                 self.run_additional_tasks()
+            except TaskDisabledException:
+                # OK-WW's stop / skip signal (the task disabled, a stop from AUTO-MAS):
+                # it ends the daily, as it does everywhere upstream
+                # (DailyTask.check_weekly_garden / check_discarded_echo re-raise it).
+                # Our own weekly stops never get here: FarmEchoTask.run turns them
+                # into ArkStopped or a plain return.
+                raise
             except Exception as exc:  # noqa: BLE001
                 self.log_error(f"附加任务出错，不拖垮当趟日常: {exc}", exception=exc)
                 try:
@@ -1332,6 +1470,10 @@ def _install_hooks():
 
         def hooked(self, *a, **kw):
             if os.path.exists(NO_STAMINA_FLAG):
+                # Counted as called: the farm was reached and said why it did not run.
+                # Left unset, claim_daily_after_farm took it for 「upstream did not farm」,
+                # logged 「按刷到空…」 and called the farm a second time.
+                farm_called["ran"] = True
                 self.log_info("刷体力已禁用（标记文件在），这一趟不花波片")
                 return None
             farm_called["ran"] = True
@@ -1400,48 +1542,6 @@ def _install_hooks():
 
 
 # ---------------------------------------------------------------------------
-# Tacet field list groups. WuWa 3.7 (2026-09-30) put 沉心域 and 烬心域 at the top
-# of F2 「素材获取 → 无音清剿」, so the groups went from [2, 5, 5, 7] to
-# [4, 5, 5, 7] (read in game, BOARD/evidence/鸣潮3.7-选项-0930/README.md).
-# Upstream (v3.6.9-beta.1) still sets [2, 5, 5, 7] in TacetTask.__init__, and
-# click_on_book_target scrolls by that list, so from the fifth field down every
-# click lands on the wrong row. Only that exact stale list is replaced: once
-# upstream ships its own list, or the instance carries anything else (the
-# 2026-09-30 hand edit on the machine says [4, 5, 5, 7]), theirs stands.
-# The instances exist before this file runs, so the list is fixed at call time
-# rather than in __init__. door_walk_method is left alone: upstream defines it
-# but nothing reads it.
-# ---------------------------------------------------------------------------
-_TACET_GROUPS_OLD = [2, 5, 5, 7]
-_TACET_GROUPS_37 = [4, 5, 5, 7]
-
-
-def _tacet_groups(task):
-    """Swap upstream's pre-3.7 group list for the 3.7 one on this task; return the log line."""
-    have = list(getattr(task, "structure", None) or [])
-    if have == _TACET_GROUPS_OLD:
-        task.structure = list(_TACET_GROUPS_37)
-        task.total_number = sum(task.structure)
-        return (f"无音区分组：上游还是 {have}，按鸣潮 3.7 改成 {task.structure}"
-                f"（共 {task.total_number} 个）")
-    return (f"无音区分组：{have}（共 {getattr(task, 'total_number', '?')} 个），"
-            f"不是 3.7 之前的旧分组，照这份点")
-
-
-def _install_tacet_groups():
-    from src.task.TacetTask import TacetTask
-
-    # getattr, not attribute access: a rename upstream must end up in the skipped
-    # list below, not raise here and take every install after this one with it.
-    teleport = getattr(TacetTask, "teleport_to_tacet", None)
-
-    @override(TacetTask, "teleport_to_tacet")
-    def teleport_to_tacet(self, index):
-        self.log_info(_tacet_groups(self))
-        return teleport(self, index)
-
-
-# ---------------------------------------------------------------------------
 # Nightmare nests. This used to be the last thing replacing a whole upstream file
 # (391 lines over their 255). Two of the three changes are wrappers; only find_nest
 # is replaced, and upstream's is 17 lines.
@@ -1473,6 +1573,8 @@ _NEST_FIND_SHA = "12d040afa102"
 # The two nest sentences the relay's log reader keys on (collector_okww, outcome).
 NEST_COUNT_UNREAD = "指定点位的名字读到了，计数没读到"
 NEST_ADAPTED = "只刷指定点位的过滤是按 OK-WW 新版适配装上的"
+# Logged by combat_nest for the nest clicked: 「nightmare nest: nest name: <name as OCR read it>」.
+NEST_NAME_LINE = "nightmare nest: nest name: "
 _NEST_TOP_RE = re.compile(r"self\.ocr\(\s*0\.35\s*,\s*(0?\.\d+)\s*,\s*1\s*,\s*0\.96")
 
 
@@ -1560,6 +1662,10 @@ def _install_nest():
         self._ark_nest_raw = [(b.name, round(b.y)) for b in boxes]
         rows = [b.y + b.height / 2 for name in names for b in boxes
                 if name in (b.name or "")]
+        # The wanted names as OCR read them, with their rows: combat_nest logs the
+        # one it clicks (NEST_NAME_LINE), so the relay can compare names, not keys.
+        self._ark_nest_named_rows = [((b.name or "").strip(), b.y + b.height / 2)
+                                     for name in names for b in boxes if name in (b.name or "")]
         # Substring, not equality: OCR reads 「落渊南丘残象聚落」 while the setting says
         # 「落渊南丘」, and exact matching found nothing.
         if rows:
@@ -1579,6 +1685,18 @@ def _install_nest():
     def uncounted(rows, counts):
         """Wanted name rows that have no 「x/y」 count beside them."""
         return [w for w in rows if not any(beside(c, w) for c in counts)]
+
+    def row_name(self, count_box, rows):
+        """The nest name OCR read on the row of `count_box` (for NEST_NAME_LINE), or None.
+
+        With the 只刷 filter wanted_rows already read the names; without it one more
+        read of the list, taken only for the row about to be clicked."""
+        if rows is not None:
+            named = getattr(self, "_ark_nest_named_rows", None) or []
+        else:
+            named = [((b.name or "").strip(), b.y + b.height / 2) for b in self.ocr(0.35, top, 1, 0.96)
+                     if re.search(r"[\u4e00-\u9fff]", b.name or "") and not re.search(self.count_re, b.name or "")]
+        return next((n for n, w in named if beside(count_box, w)), None)
 
     @override(NightmareNestTask, "find_nest", expect_sha=_NEST_FIND_SHA, adapt=True)
     @refuse(top_unread)
@@ -1620,6 +1738,9 @@ def _install_nest():
                 if not hasattr(self, "_ark_nest_progress"):
                     self._ark_nest_progress = {}
                 self._ark_nest_progress[cache_key] = numerator
+                if not hasattr(self, "_ark_nest_names"):
+                    self._ark_nest_names = {}
+                self._ark_nest_names[cache_key] = row_name(self, count_box, rows)
                 count_box.x = self.width_of_screen(0.9)
                 count_box.y -= count_box.height * 0.9
                 count_box.height = 1
@@ -1656,19 +1777,23 @@ def _install_nest():
 
     @override(NightmareNestTask, "get_nest_to_go")
     def get_nest_to_go(self):
-        # Back to the open world before opening the book again. Upstream goes straight
-        # to openF2Book, and after 「nightmare nest unreachable」 its single back()
-        # leaves the map open: F2 then finds no book and the whole task dies with
-        # 「can't find gray_book_boss」 (10-05 10:35:22). A person would close the map
-        # first. ensure_main is upstream's own way back, with the same 30 s cap its run uses.
-        if getattr(self, "_ark_nest_calls", 0):
-            try:
-                self.ensure_main(time_out=30)
-            except TaskDisabledException:
-                raise
-            except Exception:  # noqa: BLE001 - openF2Book below says it if this did not help
-                pass
-        self._ark_nest_calls = getattr(self, "_ark_nest_calls", 0) + 1
+        # Close the map left open by 「nightmare nest unreachable」 before the book is
+        # opened again. Upstream's _travel_to_nest_or_skip (NightmareNestTask.py:163-180)
+        # ends with a single back(), which can leave the map open; openF2Book then
+        # finds no book and the task dies with 「can't find gray_book_boss」 (10-05
+        # 10:35:22). openF2Book's own ensure_main (BaseWWTask.py:1019) would close it,
+        # but inside the daily that ensure_main is a do-nothing lambda on purpose
+        # (DailyTask.py:98-99, so the nest run keeps the book open), so it cannot.
+        # One more back, only when the world is not already on screen (a back in the
+        # world opens the game menu), then a short wait for the world.
+        if getattr(self, "_ark_close_map", False):
+            self._ark_close_map = False
+            if not self.in_team_and_world():
+                self.back(after_sleep=1)
+                if not self.wait_until(self.in_team_and_world, time_out=5, raise_if_not_found=False):
+                    _shot(self, "nest_map_still_open")
+                    self.log_info("nightmare nest: 传送不过去之后关了一次地图，还是没回到大世界"
+                                  f"（截图 nest_map_still_open）。整屏读到 {_screen_text(self)[:300]}")
         # find_nest keeps picking any nest that is not full, so a nest the team
         # cannot beat is chosen again every lap - the game's 「挑战失败」 screen is not
         # one OK-WW knows, so it re-entered every two minutes for ever. Judge by the
@@ -1701,7 +1826,12 @@ def _install_nest():
     @override(NightmareNestTask, "combat_nest")
     def combat_nest(self, nest):
         _shot(self, "nest_go")
-        self.log_info(f"nightmare nest: 点进点位 {getattr(nest, 'cache_key', '')}（截图 nest_go）")
+        key = getattr(nest, "cache_key", "")
+        self.log_info(f"nightmare nest: 点进点位 {key}（截图 nest_go）")
+        # The name of the nest clicked, as OCR read it beside its count; 「?」 when it
+        # was not read (no 「Only Farm These Nests」 filter, so no names were read).
+        name = (getattr(self, "_ark_nest_names", None) or {}).get(key) or "?"
+        self.log_info(f"{NEST_NAME_LINE}{name}")
         return go(self, nest)
 
     travel = getattr(NightmareNestTask, "_travel_to_nest_or_skip", None)
@@ -1711,6 +1841,7 @@ def _install_nest():
         _shot(self, "nest_travel")
         went = travel(self, nest)
         if not went:
+            self._ark_close_map = True     # get_nest_to_go closes the map before the book
             _shot(self, "nest_unreachable")
             self.log_info(f"nightmare nest: 传送不过去 {getattr(nest, 'cache_key', '')}（截图 nest_travel / nest_unreachable）")
         return went
@@ -1725,7 +1856,9 @@ def _install_nest():
         self._ark_nest_tried = set()
         self._ark_nest_progress = {}
         self._ark_only_logged = None      # log the filter's source once per run
-        self._ark_nest_calls = 0
+        self._ark_close_map = False
+        self._ark_nest_names = {}
+        self._ark_nest_named_rows = []
         self._ark_nest_seen = False
         self._ark_nest_missed = None
         self._ark_nest_raw = None
@@ -1763,36 +1896,6 @@ def _install_nest():
         return nest_entry(self, lambda: capture_run(self))
 
 
-# What the official launcher passes to Wuthering Waves.exe, read from Win32_Process
-# on 2026-10-01 while the launcher had the game up: `"Wuthering Waves.exe" -krqlv=hd
-# -krqlv=hd`, nothing else.
-LAUNCH_ARG = "-krqlv=hd"
-
-
-def _install_launch():
-    # Since the 3.7 client (installed 2026-09-30) a bare start of Wuthering Waves.exe
-    # dies about ten seconds in with "Fatal error: [File:Unknown] [Line: 54] / kuro:
-    # Use launcher to start game!", and the dialog holds the process open. OK-WW
-    # starts it bare - start_controller.start_device passes no arguments unless
-    # "Launch with DX11" is on, and there is no setting for any other - so it waited
-    # for a window that never came until AUTO-MAS's 120-minute limit, three times
-    # running on 10-01. With -krqlv=hd added the same exe reaches the login screen.
-    #
-    # start_controller imports `execute` into its own namespace and calls it by bare
-    # name, so rebinding it there reaches start_device without copying that method.
-    import ok.core.start_controller as start_controller
-
-    start_execute = start_controller.execute
-
-    @override(start_controller, "execute")
-    def execute(game_cmd, arguments=None, *args, **kwargs):
-        if (isinstance(game_cmd, str)
-                and game_cmd.strip().strip('"').casefold().endswith("wuthering waves.exe")
-                and "-krqlv" not in (arguments or "")):
-            arguments = f"{arguments} {LAUNCH_ARG}" if arguments else LAUNCH_ARG
-        return start_execute(game_cmd, arguments, *args, **kwargs)
-
-
 def _write_report(error=""):
     if os.name != "nt":
         return          # the relay's tests exec this file on a Mac; no report there
@@ -1804,21 +1907,15 @@ def _write_report(error=""):
         pass
 
 
-# On its own, ahead of the rest: without it the game never starts, so nothing else
-# here matters - and a failure in the block below must not take it down too.
-try:
-    _install_launch()
-except Exception:  # noqa: BLE001 - never stop OK-WW from starting
-    _skipped.append({"what": "ok.core.start_controller.execute",
-                     "why": "启动参数没挂上：" + traceback.format_exc()[-300:]})
-
+# The launch-argument hook (-krqlv=hd, 2026-10-01) is gone: OK-WW v3.7.4 passes
+# `-krqlv=<Game Package>` itself (config.py:203 -> src/game_launcher.py:4-7, appended
+# by ok-script's start_controller.start_device), and the machine log of 10-06 09:19:34
+# reads `try execute D:\Wuthering Waves Game\Wuthering Waves.exe -krqlv=hd with start`.
 try:
     _install_hooks()
-    _install()
     _install_teleport()
     _install_nest()
     _install_claim()
-    _install_tacet_groups()
     _install_battle_pass()
 except Exception:  # noqa: BLE001 - never stop OK-WW from starting
     _write_report(traceback.format_exc()[-800:])

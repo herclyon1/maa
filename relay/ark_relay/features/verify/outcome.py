@@ -88,6 +88,12 @@ _STAMINA_DIED = re.compile(_STAMINA_TASK + r"farm_(?:tacet|domain): exceeded rec
 # A real reading is logged by info_set (BaseWWTask.py:422; -1 does not match).
 _STAMINA_READ = re.compile(_STAMINA_TASK + r"(?:[^\n]*(按没读到处理（-1）)|info_set current_stamina \d)")
 STAMINA_UNREAD_SAY = "体力读不出来，没刷"
+# The 「不刷体力」 flag file was there: the overlay's farm hook logs this line and
+# returns without farming (okww_files/ark_overrides.tasks.py, _farm_hook). Only the
+# line's start is matched: the rest names the file, a word the texts gate keeps out
+# of the relay's literals; no other overlay line starts this way.
+_STAMINA_FLAGGED = re.compile(_STAMINA_TASK + r"刷体力已禁用（")
+STAMINA_FLAG_SAY = "不刷体力的标记还在"
 
 
 # The activity points read after open_daily opens the dailies page. A first reading
@@ -256,10 +262,6 @@ _PATCH_EFFECTS = (
      r"DailyTask:info_set current daily progress 180\b", r"上游这趟不刷体力", "日常读到已用 180/180"),
     ("体力读数改动在跑（读字原文进日志）",
      r"(Tacet|Forgery|Simulation)Task:info_set current_stamina", r"体力读字原文", "读了体力"),
-    ("无音区分组改动在跑（鸣潮 3.7 新增两个）",
-     r"TacetTask:info_set Teleport to Tacet Suppression", r"无音区分组：", "传送去了无音区"),
-    ("鸣潮启动参数在跑（3.7 起要带启动器同款参数）",
-     r"try execute .*Wuthering Waves\.exe", r"try execute .*Wuthering Waves\.exe .*-krqlv=hd", "OK-WW 打开了鸣潮"),
     # Upstream's own first line of claim_battle_pass, which our copy keeps; the
     # effect is our line after the page opened (its retry included).
     ("战令改动在跑（没打开时同一趟再开一次）",
@@ -286,8 +288,6 @@ PATCH_COVERAGE = {
     "DailyTask.claim_daily": "刷到空改动在跑（上游不刷时补刷体力）",
     "TacetTask.use_stamina": "无音区改动在跑（结算页留图）",
     "BaseWWTask.get_stamina": "体力读数改动在跑（读字原文进日志）",
-    "TacetTask.teleport_to_tacet": "无音区分组改动在跑（鸣潮 3.7 新增两个）",
-    "start_controller.execute": "鸣潮启动参数在跑（3.7 起要带启动器同款参数）",
     "DailyTask.claim_battle_pass": "战令改动在跑（没打开时同一趟再开一次）",
 }
 # Overrides whose path has no upstream line to check against in a run log (a death
@@ -297,10 +297,10 @@ PATCH_COVERAGE = {
 BEHAVIOUR_TESTS = {
     "FarmEchoTask.combat_once": "test_okww_weekly_entry_paths.py",
     "FarmEchoTask.click_team_challenge": "test_okww_weekly_entry_paths.py",
+    "FarmEchoTask.click_solo_challenge": "test_okww_weekly_entry_paths.py",
     "BaseWWTask.click_on_book_target": "test_okww_weekly_entry_paths.py",
     "FarmEchoTask.teleport_to_configured_boss": "test_okww_weekly_entry_paths.py",
     "FarmEchoTask.teleport_to_configured_boss_and_prepare": "test_okww_weekly_entry_paths.py",
-    "FarmEchoTask.revive_action": "test_okww_revive_and_retry.py",
     "FarmEchoTask.run": "test_okww_revive_and_retry.py",
     "TacetTask.farm_tacet": "test_okww_farm_hook.py",
     "ForgeryTask.farm_forgery": "test_okww_farm_hook.py",
@@ -468,7 +468,8 @@ def stamina_failure(text: str) -> str:
     """Why stamina farming failed in one OK-WW run log, or "" when no known failure.
 
     Read by okww_checks (the 刷体力 item) and collector_okww._okww_progress (why it
-    stopped), so the two say the same. Two failures:
+    stopped), so the two say the same. Three failures:
+      - the 「不刷体力」 flag file was there and nothing was farmed (_STAMINA_FLAGGED);
       - upstream gave up after three revives (_STAMINA_DIED);
       - the stamina task stopped right after a reading our override could not make
         (-1), with no stamina fight at all: its 「used all stamina」 / 「not enough
@@ -476,6 +477,8 @@ def stamina_failure(text: str) -> str:
         click and second read, TacetTask.py:63-64) is a real reading.
     """
     text = _task_lines(text)
+    if _STAMINA_FLAGGED.search(text):
+        return STAMINA_FLAG_SAY
     if m := _STAMINA_DIED.search(text):
         return f"刷体力时角色死了 {m.group(1)} 次，OK-WW 停止刷体力，体力没刷完"
     if _STAMINA_SPENT.search(text):

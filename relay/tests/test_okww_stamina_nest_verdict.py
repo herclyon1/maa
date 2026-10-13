@@ -73,6 +73,16 @@ check("a SimulationTask walk to the treasure passes", ok, True)
 ok, why = stamina(weekly_only + line("05:00", "ForgeryTask", "not enough stamina"))
 check("ForgeryTask 「not enough stamina」 with no fight: passed as a shortage", (ok, why), (True, "体力不足，本来就没得刷"))
 
+print("\n[stamina (d): the 「不刷体力」 flag file was there - not farmed, and said why]")
+flagged = (weekly_only
+           + line("04:00", "TacetTask", "刷体力已禁用（标记文件在），这一趟不花波片")
+           + line("06:00", "DailyTask", "Daily Task Completed"))
+ok, why = stamina(flagged)
+check("the flag line: 刷体力 not passed, with the flag as the reason", (ok, why), (False, "不刷体力的标记还在"))
+check("the daily report's stop reason says the same", stopped(flagged), "不刷体力的标记还在")
+ok, why = stamina(weekly_only + line("04:00", "ForgeryTask", "刷体力已禁用（标记文件在），这一趟不花波片"))
+check("ForgeryTask prefix too", (ok, why), (False, "不刷体力的标记还在"))
+
 print("\n[stamina (b): three revives and upstream stops farming - a failure]")
 died = (line("05:00", "TacetTask", "info_set current_stamina 180")
         + line("05:10", "TacetTask", "enter combat None")

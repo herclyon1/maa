@@ -72,7 +72,7 @@ check("覆盖文件在位且和仓库一致",
 _rep = okww_overlay.last_report()
 _need = {"DailyTask.run", "DailyTask.run_additional_tasks", "NightmareNestTask.find_nest",
          "NightmareNestTask.get_nest_to_go", "NightmareNestTask.run",
-         "FarmEchoTask.revive_action", "BaseWWTask.click_on_book_target"}
+         "BaseWWTask.click_on_book_target"}
 _applied = set(_rep.get("applied") or [])
 check("上次启动时全部绑定成功（没有跳过、没有报错）",
       bool(_rep) and not _rep.get("skipped") and not _rep.get("error") and _need <= _applied,

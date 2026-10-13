@@ -265,10 +265,16 @@ check("留了图", d.shots, ["additional_tasks_error"])
 check("日常照跑：刷体力、领日常都在", farm_calls() != [] and "claim_daily" in EV)
 check("尾巴上没有再跑一次", EV.count("additional"), 1)
 
-print("\n[附加任务里主动停（TaskDisabledException）也只记一笔，日常照跑]")
+print("\n[a TaskDisabledException (OK-WW's stop) from the additional tasks ends the daily, as upstream does]")
 d = daily(USED_PART, additional_error=Disabled())
-d.run()
-check("日常照跑", "claim_daily" in EV)
+try:
+    d.run()
+    got = "ran on"
+except Disabled:
+    got = "stopped"
+check("goes up, not swallowed", got, "stopped")
+check("not logged as an additional-task error", any("附加任务出错" in m for m in d.logs), False)
+check("the daily did not carry on", "claim_daily" in EV, False)
 
 # ---------------------------------------------------------------------------
 print(f"\n[周本花掉 {USED_FULL}：上游的闸门关了，剩下的 {CURRENT} + {BACK_UP} 照样刷掉]")
@@ -324,6 +330,11 @@ for used in (USED_PART, USED_FULL):
     farm = d.farms[TacetTask]
     check(f"已用 {used}：一次都没进本", farm_calls(), [])
     check(f"已用 {used}：说了刷体力已禁用", any("刷体力已禁用（标记文件在）" in m for m in farm.logs))
+    check(f"used {used}: the flag line once, not again from claim_daily",
+          sum("刷体力已禁用" in m for m in farm.logs), 1)
+    if used == USED_PART:
+        check(f"used {used}: upstream reached the farm, so no 「按刷到空」 top-up line",
+              any("上游这趟不刷体力" in m for m in d.logs), False)
 check("补刷那条没有重复禁用的话", sum("刷体力已禁用" in m for m in d.farms[TacetTask].logs), 1)
 for cls, name in ((ForgeryTask, "farm_forgery"), (SimulationTask, "farm_simulation")):
     EV.clear()

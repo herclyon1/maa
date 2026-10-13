@@ -60,8 +60,8 @@ check("多等那次不许自己抛，找不到才抛", "raise_if_not_found=False
 whole = [l for l in src.splitlines() if "@override(" in l]
 pinned = [l for l in whole if "expect_sha=" in l]
 check("整段替换的都钉住了上游哈希", len(pinned) >= 1)
-# revive_action stopped being a replacement on 2026-09-09: only the case upstream
-# refuses (inside a realm) is ours now, and their body still runs for the rest.
+# revive_action is no longer overridden at all (2026-10-13, upstream v3.7.4 handles
+# the realm death); the whole-method replacements are the pinned ones below.
 check("被替换的是那两个小方法", any("click_team_challenge" in l or "find_nest" in l
                                     for l in pinned))
 
@@ -146,6 +146,47 @@ def _fresh(self):
 
 check("正文对得上就照贴", Upstream().still_here(), "对得上就贴")
 check("没有被跳过的", ns["_skipped"], [])
+
+print("\n[the gate compares call shapes: a copy that does not take upstream's parameters is not bound]")
+
+
+class Up2:
+    def run(self, retries=3):
+        return f"upstream {retries}"
+
+    def pick(self, box, *, near=None):
+        return "upstream pick"
+
+    def free(self, *a, **kw):  # how the test fakes look: no constraint from upstream
+        return "upstream free"
+
+
+def gate(name, fn):
+    ns["_applied"].clear()
+    ns["_skipped"].clear()
+    ns["override"](Up2, name)(fn)
+    return list(ns["_applied"]), [x["why"] for x in ns["_skipped"]]
+
+
+# The 10-13 case: v3.7.4 retries with self.run(retries - 1); a run(self) copy made that a TypeError.
+applied, why = gate("run", lambda self: "ours")
+check("ours run(self) vs upstream run(self, retries=3): not bound", applied, [])
+check("listed as skipped, naming the parameter", len(why) == 1 and "参数变了" in why[0] and "retries" in why[0], True)
+check("upstream's own run left in place", Up2().run(2), "upstream 2")
+applied, _ = gate("run", lambda self, *a, **kw: "wrapper")
+check("a (self, *a, **kw) wrapper is bound", applied, ["Up2.run"])
+applied, _ = gate("run", lambda self, retries=3: "same")
+check("the same shape is bound", applied, ["Up2.run"])
+applied, why = gate("pick", lambda self, b, *, near=None: "renamed")
+check("a renamed parameter (box -> b) is not bound: callers may pass box=", applied, [])
+applied, why = gate("pick", lambda self, box: "no near")
+check("a dropped keyword-only parameter is not bound", applied, [])
+applied, why = gate("pick", lambda self, box, extra, *, near=None: "needs more")
+check("ours requiring a parameter upstream lacks is not bound", applied, [])
+applied, _ = gate("run", lambda self, retries: "required")
+check("ours requiring what upstream leaves optional is not bound", applied, [])
+applied, _ = gate("free", lambda self: "plain")
+check("upstream *a/**kw constrains nothing (the fakes' shape)", applied, ["Up2.free"])
 
 print("\n[体力读数：数/数 没读到是「没读到」，不是 0]")
 parse = ns["_parse_stamina"]
@@ -259,40 +300,10 @@ got = outcome.latest_okww_run_log(hist)
 check("取到最新那趟", got[0].name if got else None, "OK-WW-05-19-22.log")
 check("连正文一起给", got[1] if got else None, "new NightmareNestTask\n")
 
-print("\n[鸣潮 3.7 起要带启动器的参数，不然一启动就崩]")
-# A stand-in for ok.core.start_controller: records what execute() was handed.
-import types  # noqa: E402
-calls = []
-fake_sc = types.ModuleType("ok.core.start_controller")
-fake_sc.execute = lambda game_cmd, arguments=None, start_method="start": calls.append(
-    (game_cmd, arguments, start_method)) or True
-saved = {k: sys.modules.get(k) for k in ("ok", "ok.core", "ok.core.start_controller")}
-sys.modules["ok"] = types.ModuleType("ok")
-sys.modules["ok.core"] = types.ModuleType("ok.core")
-sys.modules["ok.core.start_controller"] = fake_sc
-sys.modules["ok"].core = sys.modules["ok.core"]
-sys.modules["ok.core"].start_controller = fake_sc
-try:
-    ns["_applied"].clear()
-    ns["_skipped"].clear()
-    ns["_install_launch"]()
-    check("挂上了并记下来", ns["_applied"], ["ok.core.start_controller.execute"])
-    wuwa = r"D:\Wuthering Waves Game\Wuthering Waves.exe"
-    check("鸣潮不带参数时补上", fake_sc.execute(wuwa, None, start_method="start"), True)
-    check("补的是启动器同款参数", calls[-1], (wuwa, "-krqlv=hd", "start"))
-    fake_sc.execute(wuwa, arguments="-dx11 -d3d11 -force-d3d11")
-    check("DX11 开着也一起带", calls[-1][1], "-dx11 -d3d11 -force-d3d11 -krqlv=hd")
-    fake_sc.execute(wuwa, "-krqlv=hd")
-    check("已经带了就不重复加", calls[-1][1], "-krqlv=hd")
-    fake_sc.execute(r"D:\other\Game.exe", None)
-    check("别的程序原样不动", calls[-1][1], None)
-finally:
-    for k, v in saved.items():
-        if v is None:
-            sys.modules.pop(k, None)
-        else:
-            sys.modules[k] = v
-check("文件末尾真的会调它", "_install_launch()" in okww_overlay.source_text())
+print("\n[the launch argument is OK-WW's own since v3.7.4: no hook on start_controller.execute]")
+src_now = okww_overlay.source_text()
+check("no execute override", "start_controller" in src_now.split("# The launch-argument hook")[0], False)
+check("no _install_launch", "_install_launch" in src_now, False)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

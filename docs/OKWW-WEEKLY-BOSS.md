@@ -198,6 +198,17 @@ inference are withdrawn. In order:
 
 ### 1. The reward is charged on entry, and the dialog comes **after** 「开启挑战」
 
+> **2026-10-13: both halves of this heading are superseded.** The dialog is a reminder,
+> not a charge: the 60 waveplates are paid at the crystal, on the claim dialog. And under
+> OK-WW v3.7.4 the reminder comes after 「单人挑战」, before the team screen: upstream's
+> `click_solo_challenge` (FarmEchoTask.py:374-378) confirms it within 1 s and ticks
+> 「本次登录不再提示」 (BaseWWTask.py:1069-1113); the machine log shows exactly that on
+> 10-12 11:43:16 and 15:28:19 (ok-script.2026-10-12.log:1864-1870, :2735-2740), and no
+> dialog was ever read after 「开启挑战」. The overlay now overrides `click_solo_challenge`
+> for the weekly boss: it reads the top bar, cancels and skips when waveplates + backup
+> are under 60, confirms without the tick otherwise, and stops on any other dialog. The
+> account below is kept as the 08-31 record.
+
 The order is: team screen → (click 「开启挑战」) → the dialog
 「结晶波片不足，无法获取奖励，请确认是否继续进入？」 → [取消] [确认].
 

@@ -181,6 +181,8 @@ took the next lap. Each revive spends one 复苏物品. v1 clicked the dialog's 
 (「选择复苏物品」 contains 复苏) and did nothing; v2 clicks a short 确认 instead, and
 only when the dialog is actually on screen. If the log ever carries
 「死亡弹窗上没找到「确认」」 it also prints everything it read off the screen.
+(Removed 2026-10-13: OK-WW v3.7.4 handles the realm death itself - cancel the popup,
+heal, re-teleport, at most 3 times per run - see docs/OKWW-PATCHES.md.)
 
 The relay still relaunches the farm as a backstop after three minutes of log silence,
 and the count of relaunches is in the message it pushes when the farm ends. The farm's

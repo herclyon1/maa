@@ -113,12 +113,6 @@ def main() -> int:
     # An empty read proves the override ran, not that it read the count.
     wk_empty = wk.replace("[本周剩余可收取次数：2/3_1.00, x60_0.79]", "[]")
     check("读到空列表不算痕迹", "周本改动在跑（进本前读剩余次数）" in bad_labels(patch_effect_checks(wk_empty)), True)
-    # The real line from 10-01 13:21, the third of the three runs that never got a window.
-    bare = ("2026-10-01 13:21:38,841 INFO ok.core.start_controller process:try execute "
-            "D:\\Wuthering Waves Game\\Wuthering Waves.exe None with start\n")
-    check("鸣潮不带参数拉起＝启动参数改动没跑到",
-          "鸣潮启动参数在跑（3.7 起要带启动器同款参数）" in bad_labels(patch_effect_checks(bare)), True)
-    check("带了 -krqlv=hd 就过", bad_labels(patch_effect_checks(bare.replace(" None ", " -krqlv=hd "))), [])
     day = ("2026-09-13 09:21:58,916 INFO TaskExecutor NightmareNestTask:opened gray_book_boss\n"
            "2026-09-13 12:45:52,773 INFO TaskExecutor NightmareNestTask:nightmare nest: 只刷 ['落渊南丘']（设置来自母本）\n"
            "2026-09-13 09:33:01,760 INFO TaskExecutor TacetTask:info_set current_stamina 239\n")

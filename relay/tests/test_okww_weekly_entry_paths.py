@@ -69,13 +69,13 @@ class BaseWWTask(metaclass=_Any):
 
 class FarmEchoTask(BaseWWTask):
     def teleport_to_configured_boss(self):
-        # Upstream v3.7.3 FarmEchoTask.py:268-304, reduced to the steps after the book.
+        # Upstream v3.7.4 FarmEchoTask.py:273-308, reduced to the steps after the book.
         is_team = self.click_on_book_target(1, 4)
         self.events.append("after-book")
         if is_team:
             if self.config.get('Teleport to Boss', 'No') == 'Weekly Challenge':
                 self.click_configured_boss_level()
-                self.click(0.880, 0.911, after_sleep=2)
+                self.click_solo_challenge()
             self.click_team_challenge()
         else:
             self.realm_entry_at_heal_point = False
@@ -102,6 +102,11 @@ class FarmEchoTask(BaseWWTask):
     def click_configured_boss_level(self):
         # Upstream's level click; the overlay reads the claims left before it.
         self.events.append("level")
+
+    # Upstream v3.7.4 FarmEchoTask.py:374-378, verbatim.
+    def click_solo_challenge(self):
+        self.click(0.880, 0.911, after_sleep=2)
+        self.wait_click_skip_dialog_confirm(time_out=1)
 
     def combat_once(self, wait_combat_time=200, raise_if_not_found=True, target=False):
         if self.revive:
@@ -207,7 +212,8 @@ def task(book="dialog", looks=(LOADING,), left=LEFT_1, start=True, after=(), lat
             raise Exception("no team_start_challenge")
         t.events.append("start")
     t.wait_click_feature = wait_click_feature
-    t.wait_click_skip_dialog_confirm = lambda: t.events.append("skip-confirm")
+    t.wait_click_skip_dialog_confirm = lambda **kw: t.events.append("skip-confirm")
+    t.wait_until = lambda cond, **kw: cond()
     t.walk_to_treasure = lambda: t.events.append("treasure")
     t.pick_f = lambda handle_claim=True: t.events.append("f")
     t.sleep = lambda s: None
@@ -253,6 +259,16 @@ check("只点了确认", entered(t), ["confirm"])
 check("当成已进本", t.prepared, "realm")
 check("截了落地图", "early_open_landed" in t.shots)
 check("说了直接进场", any("直接进场" in m for m in t.logs))
+
+print("\n[the same arena drop reached from TacetTask / ForgeryTask (click_on_book_target is bound on BaseWWTask): no _EarlyOpen]")
+t = task(looks=[LOADING, LOADING, ARENA])
+t.config = {"Which Tacet Suppression to Farm": 1}
+try:
+    got = t.click_on_book_target(1, 21, [4, 5, 5, 7])
+except ns["_EarlyOpen"]:
+    got = "raised _EarlyOpen"
+check("returns upstream's team-screen answer, True", got, True)
+check("the boss teleport flag is not left set", getattr(t, "_ark_boss_teleport", False), False)
 
 print("\n[(c) 没有框（09-07 正常进本）：上游原路，选等级→单人挑战→开启挑战]")
 t = task(book="team", left=LEFT_2)
@@ -320,21 +336,113 @@ check("没点开启挑战", "start" in t.events, False)
 check("退回主界面", "main" in t.events)
 check("说了已领满", any("已领满（0/3）" in m for m in t.logs))
 
-print("\n[波片不足挡住开启挑战：点取消，不白打——正常状态，按跳过结束，不按失败]")
-t = task(book="team", start=None, looks=[("结晶波片不足，无法获取奖励", False, False)])
-check("按跳过结束", stopped(t), "skip")
-check("没留失败原因", getattr(t, "_ark_failed", None), None)
-check("点了取消", "cancel" in t.events)
-check("说了波片不足", any("波片不足挡住开启挑战" in m for m in t.logs))
-check("没写按失败结束", any(ns["FAILED_MARK"] in m for m in t.logs), False)
+class _At:
+    """An OCR box with a place on the 1920x1080 screen."""
+    def __init__(self, name, x, y):
+        self.name, self.x, self.y, self.width, self.height = name, x, y, 40, 30
 
-print("\n[开启挑战后弹出波片不足：点取消，不白打——按跳过结束]")
-t = task(book="team", after=["结晶波片不足"])
-check("按跳过结束", stopped(t), "skip")
-check("没留失败原因", getattr(t, "_ark_failed", None), None)
-check("点开启挑战后点了取消", [e for e in t.events if e in ("start", "cancel")], ["start", "cancel"])
-check("没写按失败结束", any(ns["FAILED_MARK"] in m for m in t.logs), False)
-check("留了图", "nowave_dialog" in t.shots)
+    def __str__(self):
+        return f"Box(name='{self.name}', x={self.x}, y={self.y}, width=40, height=30, confidence=100)"
+
+
+# The reminder after 单人挑战 (v3.7.4 FarmEchoTask.py:375-376: 「无法获取奖励, 是否继续进入」;
+# the game's wording, docs/OKWW-WEEKLY-BOSS.md), over the top bar (backup, waveplates/240).
+REMINDER = "结晶波片不足，无法获取奖励，请确认是否继续进入？"
+
+
+def solo_dialog(t, wave, spare, text=REMINDER):
+    """After the click on 单人挑战 a dialog is up, until 取消 or 确认 is clicked."""
+    t.height_of_screen = lambda r: r * 1080
+    t.dialog_up = False
+    bar = ([_At(str(spare), 1208, 50)] if spare is not None else []) + \
+          ([_At(f"{wave}/240", 1480, 50)] if wave is not None else [])
+    screen = bar + [_At(text, 700, 500), _At("取消", 640, 700), _At("确认", 1280, 700)]
+    base_ocr, base_click = t.ocr, t.click
+
+    def ocr(box=None, **kw):
+        if box == (0.0, 0.0) and t.dialog_up:
+            return list(screen)
+        return base_ocr(box=box, **kw)
+
+    def click(*a, **kw):
+        base_click(*a, **kw)
+        if a[:2] == (0.880, 0.911):
+            t.dialog_up = True
+
+    def answer(name):
+        t.events.append(name)
+        t.dialog_up = False
+    t.ocr, t.click = ocr, click
+    t.find_one = lambda *a, **kw: "confirm-btn" if t.dialog_up else None
+    t.click_dialog_left_button = lambda: answer("cancel")
+    t.click_dialog_right_button = lambda: answer("confirm")
+    return t
+
+
+print("\n[v3.7.4: after 单人挑战 the 「无法获取奖励」 reminder, waveplates 17 + backup 24 < 60 -> 取消, skipped as short]")
+t = solo_dialog(task(book="team"), 17, 24)
+check("skipped", stopped(t), "skip")
+check("no reason kept (a shortage, not a failure)", getattr(t, "_ark_failed", None), None)
+check("取消 clicked, never 确认, 开启挑战 never clicked", [e for e in t.events if e in ("cancel", "confirm", "start")], ["cancel"])
+check("upstream's confirm-and-tick never ran", "skip-confirm" in t.events, False)
+check("the shortage line the relay reads", any(m.startswith("结晶波片不足，取消并跳过本次周本") for m in t.logs))
+check("the two values in the log", any("顶栏读到波片 17/240，备用 24" in m for m in t.logs))
+check("picture", "nowave_dialog" in t.shots)
+check("no failed mark", any(ns["FAILED_MARK"] in m for m in t.logs), False)
+
+print("\n[the reminder with waveplates 41 + backup 24 >= 60 -> 确认 without the tick, then 开启挑战]")
+t = solo_dialog(task(book="team"), 41, 24)
+check("went in", stopped(t), "in")
+check("确认, then 开启挑战", [e for e in t.events if e in ("cancel", "confirm", "start")], ["confirm", "start"])
+check("no tick (upstream's wait_click_skip_dialog_confirm not called)", "skip-confirm" in t.events, False)
+check("said it confirmed without the tick", any("不勾「本次登录不再提示」" in m for m in t.logs))
+
+print("\n[a dialog after 单人挑战 that is not the reminder -> picture, phone, stop; nothing clicked]")
+t = solo_dialog(task(book="team"), 41, 24, text="某个没见过的对话框")
+got = stopped(t)
+check("stopped as failed", got.startswith("fail:") and "认不出的对话框" in got)
+check("nothing answered, 开启挑战 not clicked", [e for e in t.events if e in ("cancel", "confirm", "start")], [])
+check("picture", "solo_dialog_unknown" in t.shots)
+
+print("\n[the reminder but the top bar is not read -> no blind 确认: picture, stop]")
+t = solo_dialog(task(book="team"), None, None)
+got = stopped(t)
+check("stopped as failed", got.startswith("fail:") and "顶栏的波片没读全" in got)
+check("nothing answered", [e for e in t.events if e in ("cancel", "confirm", "start")], [])
+check("picture", "solo_dialog_bar_unread" in t.shots)
+
+print("\n[no dialog after 单人挑战 -> straight on to 开启挑战, nothing answered]")
+t = task(book="team", left=LEFT_2)
+check("went in", stopped(t), "in")
+check("level, 开启挑战; no 确认/取消", entered(t), ["level", "start"])
+
+print("\n[echo farm on the weekly config (no-claim flag): upstream's click_solo_challenge runs, tick and all]")
+import tempfile  # noqa: E402
+flag = Path(tempfile.mkdtemp(prefix="ark-entry-")) / "ark-okww-farm.no-claim"
+flag.write_text("")
+real_flag, ns["NO_CLAIM"] = ns["NO_CLAIM"], str(flag)
+try:
+    t = solo_dialog(task(book="team"), 17, 24)
+    t.wait_click_skip_dialog_confirm = lambda **kw: t.events.append(f"skip-confirm {kw}")
+    t.click_solo_challenge()
+finally:
+    flag.unlink()
+    flag.parent.rmdir()
+    ns["NO_CLAIM"] = real_flag
+check("upstream's own: the click, then confirm-and-tick within 1 s",
+      (t.clicks, [e for e in t.events if e.startswith("skip-confirm")]), ([(0.880, 0.911)], ["skip-confirm {'time_out': 1}"]))
+
+print("\n[echo farm (Boss Challenge): a 4C boss's level page has no weekly counter -> upstream's level click, no stop]")
+t = task(left=["Box(name='推荐等级50', x=206, y=169)"])
+t.config = {"Teleport to Boss": "Boss Challenge"}
+got = "on"
+try:
+    t.click_configured_boss_level()
+except Exception as exc:  # noqa: BLE001 - the 10-13 bug: weekly_left_unread on the first realm boss
+    got = f"stop: {exc!r} {getattr(t, '_ark_failed', None)}"
+check("not stopped", got, "on")
+check("upstream's level click ran", t.events, ["level"])
+check("no weekly screenshot, no weekly read", (t.shots, any("周本本周剩余次数原文" in m for m in t.logs)), ([], False))
 
 print("\n[周本的复活交给上游 do_run 重新传送]")
 # The weekly boss is not the echo farm, so the revive is upstream's tower revive and

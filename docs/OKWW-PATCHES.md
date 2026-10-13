@@ -30,9 +30,12 @@ method - the pin would have said so, but the change would have stopped happening
 Hooking one call deeper removes the exposure: 「skip the weekly boss when waveplates
 are short」 used to copy a 28-line teleport method and now replaces the three-line
 challenge button it calls. Most bindings are wrappers that run upstream's own body
-inside them; only `revive_action`, `click_team_challenge` and `get_stamina` (M7,
-2026-09-23: an unread 数/数 became 「0 current」) replace it, and each is pinned to
-its hash.
+inside them; only `click_team_challenge`, `get_stamina` (M7, 2026-09-23: an unread
+数/数 became 「0 current」) and `find_nest` replace it, and each is pinned to its hash.
+The `revive_action` override was removed on 2026-10-13: v3.7.4 handles a realm death
+itself (FarmEchoTask.revive_action :92-106 -> BaseCombatTask.revive_action :227-240:
+cancel the revive popup, leave the realm to heal, do_run re-teleports, at most 3 times
+per run), where ours confirmed the popup and spent a revive item on every death.
 
 **Daily activity chests (2026-10-10)**: the user, 10-10 19:4x (relayed by 网页-验收):
 「鸣潮的每日为什么okww没有领，中继也不报错？」 `DailyTask.claim_daily` is wrapped by
@@ -69,13 +72,19 @@ runs and the log says 「战令：没有重试，…」. The relay turns these l
 the item 「战令（先约电台）点了领取」 (`outcome.battle_pass_checks`, also in the 「dailies done before the run」
 branch); red goes to the group in 「⚠️ 这一轮没干完」. Test: `relay/tests/test_okww_battle_pass_claim.py`.
 
-**Tacet list groups (2026-09-30, WuWa 3.7):** `TacetTask.teleport_to_tacet` is wrapped so an instance still
+**Tacet list groups (2026-09-30, WuWa 3.7; removed 2026-10-13):** upstream v3.7.4 sets
+`structure = [4, 5, 5, 7]` itself (TacetTask.py:18), so the wrapper below never changed anything
+and was taken out with its patch-effect check and test. The 09-30 record: `TacetTask.teleport_to_tacet` was wrapped so an instance still
 carrying upstream's pre-3.7 `structure = [2, 5, 5, 7]` clicks by `[4, 5, 5, 7]` (沉心域 / 烬心域 added at
 the top of F2 「无音清剿」, read in game). Any other list - upstream's own fix, or the hand edit made on the
 machine that day - is left alone. Each call logs 「无音区分组：…」, checked by `outcome.patch_effect_checks`;
-`tests/test_okww_tacet_groups.py` runs upstream's real v3.6.9-beta.1 `TacetTask.py` against it.
+`tests/test_okww_tacet_groups.py` (removed with it) ran upstream's real v3.6.9-beta.1 `TacetTask.py` against it.
 
-**Game launch argument (2026-10-01, WuWa 3.7):** since the 3.7 client, a bare start of
+**Game launch argument (2026-10-01, WuWa 3.7; removed 2026-10-13):** OK-WW v3.7.4 passes
+`-krqlv=<Game Package>` itself (config.py:203 -> src/game_launcher.py:4-7, appended by
+ok-script's `start_controller.start_device`), so the hook below was taken out; the 10-06
+machine log already reads `... Wuthering Waves.exe -krqlv=hd with start`. The 10-01 record:
+since the 3.7 client, a bare start of
 `Wuthering Waves.exe` asserts about ten seconds in ("kuro: Use launcher to start game!") and
 the dialog keeps the process open, so OK-WW waited for a window until AUTO-MAS's 120-minute
 limit - three times on 10-01. `ok.core.start_controller.execute` is wrapped to append

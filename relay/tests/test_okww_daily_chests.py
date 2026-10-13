@@ -203,6 +203,43 @@ check("nothing clicked", g.clicks, [])
 check("checked: 领完核对通过", any(m.startswith("活跃奖励：领完核对通过") for m in g.logs), True)
 check("no 「没领到」", any(m.startswith("活跃奖励没领到") for m in g.logs), False)
 
+print("\n[the row is not found again after a click -> its own failure, no verdict from the frame before the click]")
+
+
+class LostRow(Game):
+    def ocr(self, *a, match=None, **k):
+        if match is not None and "100" in match.pattern and self.clicks:
+            return []
+        return super().ocr(*a, match=match, **k)
+
+
+g = LostRow(morning())
+ns["_claim_tiers"](g)
+check("stopped after the first click", g.clicks, [20])
+failed = [m for m in g.logs if m.startswith("活跃奖励没领到：")]
+check("one line: the row was lost after clicking 20", len(failed) == 1 and "点了 20 档宝箱后那一排宝箱认不出来了" in failed[0], True)
+check("not 「点了没领到」 for chests the game may have taken", any("点了没领到" in m for m in g.logs), False)
+check("screenshot daily_reward_row_lost", "[shot daily_reward_row_lost]" in g.logs, True)
+
+print("\n[a due tier whose label OCR missed was never clicked -> 「没点」, not 「点了没领到」]")
+g = Game(morning(), ocr_labels=[b for b in LABELS if b.name != "40"] + DECOYS)
+ns["_claim_tiers"](g)
+check("20, 60, 80 clicked; 40 not", g.clicks, [20, 60, 80])
+failed = [m for m in g.logs if m.startswith("活跃奖励没领到：")]
+check("40 said as not clicked", len(failed) == 1 and "40 档的数字没认出来，没点" in failed[0], True)
+check("40 not said as clicked", "40 档点了没领到" in failed[0] if failed else True, False)
+
+print("\n[points read too low: a claimed tick above them -> failure, not 「领完核对通过」]")
+g = Game(ROW.copy(), points="40")
+ns["_claim_tiers"](g)
+check("nothing clicked (20 and 40 already claimed)", g.clicks, [])
+failed = [m for m in g.logs if m.startswith("活跃奖励没领到：")]
+check("said: 60 and 80 claimed above 40", len(failed) == 1 and "活跃度读成 40，可 60、80 档已显示领过" in failed[0], True)
+check("no 「领完核对通过」", any(m.startswith("活跃奖励：领完核对通过") for m in g.logs), False)
+g = Game(ROW.copy(), points="80")
+ns["_claim_tiers"](g)
+check("the tier at the points read, claimed, is fine", any(m.startswith("活跃奖励：领完核对通过") for m in g.logs), True)
+
 print("\n[the relay: the overlay's lines -> items undone (pushed as 「这一轮没干完」)]")
 LOG_OK = "活跃奖励：活跃度 80\n活跃奖励：领完核对通过（活跃度 80，已领 20、40、60、80）\nDaily Task Completed"
 got = {c.label: (c.ok, c.detail) for c in outcome.daily_reward_checks(LOG_OK)}

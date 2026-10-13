@@ -1,22 +1,25 @@
-"""Echo farm: revive in place inside a realm, and stop retrying after three failures.
+"""Echo farm and weekly boss: deaths go to upstream, and retries stop after three failures.
 
-Runs the real overlay against stand-ins for upstream v3.7.3 (FarmEchoTask.py:91-105,
-:174-179, :204-216) and v3.7.4 (FarmEchoTask.py:108-125, run) and checks four things:
+Runs the real overlay against stand-ins for upstream v3.7.4 (FarmEchoTask.py:92-106
+revive_action, :108-125 run, :182-183 the is_revived continue, :216-229 the do_run
+re-teleport) and checks:
 
-  revive_action   inside a realm while farming echoes it clicks the dialog's own
-                  「确认」 - never the 「选择复苏物品」 title (2026-09-09) - and says
-                  it revived; everywhere else upstream's own revive runs
-  combat_once     swallows CharRevivedException when the revive put us back at the
-                  boss (is_revived: ours in a realm, upstream's in the overworld), so
-                  the loop takes its `if self.is_revived: continue`; the weekly boss's
-                  tower revive goes up to upstream's do_run handler, which re-teleports
+  revive_action   not overridden any more (2026-10-13). Ours confirmed the revive
+                  popup inside a realm while farming echoes and spent a revive item
+                  per death; v3.7.4 hands a realm death to BaseCombatTask.revive_action
+                  (:227-240), which cancels the popup and leaves the realm to heal,
+                  and do_run re-teleports (at most 3 times per run)
+  combat_once     swallows CharRevivedException only when the revive put us back at
+                  the boss (is_revived: upstream's overworld revive), so the loop takes
+                  its `if self.is_revived: continue`; a realm death (echo farm or
+                  weekly boss) goes up to upstream's do_run handler, which re-teleports
   FarmEchoTask.run  upstream v3.7.4 retries by calling self.run(retries - 1) from its
                   own except (FarmEchoTask.py:122-123), so the wrapper must take and
                   pass on `retries` (10-13: it took none, and the retry was a
                   TypeError); it stops at _MAX_FARM_RETRIES and leaves the depth
                   counter at 0 for the next run
   scope           the one realm death on record (tests/replay/2026-09-01) was raised
-                  from inside combat_once, which is where the overlay catches it
+                  from inside combat_once, which is where the overlay looks at it
 """
 import os
 import re
@@ -75,12 +78,15 @@ class BaseWWTask(metaclass=_Any):
 
 class FarmEchoTask(BaseWWTask):
     def revive_action(self):
-        # Upstream v3.7.3 FarmEchoTask.py:91-105, reduced: in a realm it hands over to
-        # BaseCombatTask.revive_action (tower revive, returns True, is_revived
-        # untouched); in the overworld it walks back to the boss and sets is_revived.
-        self.events.append("upstream-revive")
+        # Upstream v3.7.4 FarmEchoTask.py:92-106, reduced: in a realm it hands over to
+        # BaseCombatTask.revive_action (:227-240: close_revive_popup cancels the popup,
+        # then leave and heal; returns True, is_revived untouched); in the overworld it
+        # walks back to the boss and sets is_revived.
         if not self._in_realm:
+            self.events.append("upstream-revive")
             self.is_revived = True
+            return True
+        self.events.append("cancel-popup")
         return True
 
     def run(self, retries=3):
@@ -138,31 +144,28 @@ sys.modules.update(mods)
 ns = {}
 exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
 print("[绑定都换上了]")
-for b in ("FarmEchoTask.revive_action", "FarmEchoTask.combat_once", "FarmEchoTask.run"):
+for b in ("FarmEchoTask.combat_once", "FarmEchoTask.run"):
     check(f"{b} 已换上", b in ns["_applied"])
+print("[revive_action is upstream's own again]")
+check("revive_action not in the applied list", "FarmEchoTask.revive_action" in ns["_applied"], False)
+check("FarmEchoTask.revive_action is still upstream's function",
+      FarmEchoTask.__dict__["revive_action"].__qualname__, "FarmEchoTask.revive_action")
+check("the overlay source has no revive_action override",
+      '@override(FarmEchoTask, "revive_action")' in okww_overlay.source_text(), False)
 
 # farming_echoes() is 「the no-claim flag file exists」; point it at a temp file.
 tmp = str(tmpdir("ark-revive-"))
 flag = os.path.join(tmp, "ark-okww-farm.no-claim")
 ns["NO_CLAIM"] = flag
 
-TITLE = Box("选择复苏物品", 820, 300, 280, 40)
-CONFIRM = Box("确认", 1100, 760, 60, 30)
-CANCEL = Box("取消", 760, 760, 60, 30)
-ITEM = Box("复苏药剂x9", 900, 500, 120, 30)
-
-
-def task(screen=(TITLE, ITEM, CANCEL, CONFIRM), in_realm=True):
+def task(in_realm=True):
     t = object.__new__(FarmEchoTask)
     t.events, t.logs, t.clicks, t.waits = [], [], [], []
-    t.screen = list(screen)
     t._in_realm = in_realm
     t.is_revived = False
     t.dies = False
     t.bodies, t.failures, t.claim_button = 0, 0, True
     t.retries_seen = []
-    t.ocr = lambda box=None, **kw: list(t.screen)
-    t.box_of_screen = lambda *a: a
     t.log_info = lambda msg, notify=False: t.logs.append(msg)
     t.log_error = lambda msg, notify=False, **kw: t.logs.append(msg)
     t.click = lambda target, after_sleep=0: t.clicks.append(str(getattr(target, "name", target)))
@@ -171,56 +174,30 @@ def task(screen=(TITLE, ITEM, CANCEL, CONFIRM), in_realm=True):
 
 
 # ---------------------------------------------------------------------------
-print("\n[revive_action：刷声骸、在副本里，点弹窗自己的「确认」，不点标题]")
+print("\n[revive_action: a realm death while farming echoes runs upstream's revive (cancel the popup), no revive item]")
 Path(flag).write_text("")
 t = task()
-check("返回 True", t.revive_action(), True)
-check("点的是「确认」，不是「选择复苏物品」标题", t.clicks, ["确认"])
-check("等回到队伍画面（120 秒）", t.waits, [120])
-check("is_revived 置上", t.is_revived, True)
-check("没走上游那份", "upstream-revive" in t.events, False)
-check("日志说了用复苏物品", any("角色阵亡，用一个复苏物品点「" in m for m in t.logs))
-
-print("\n[revive_action：屏上只有标题、没有短的「确认」——不乱点]")
-t = task(screen=(TITLE, ITEM, Box("确认使用复苏物品后恢复全队生命值", 0, 0)))
-check("返回 False", t.revive_action(), False)
-check("一下都没点", t.clicks, [])
-check("日志说了没找到确认", any("没找到「确认」" in m for m in t.logs))
-
-print("\n[revive_action：屏上不是死亡弹窗——不乱点]")
-t = task(screen=(Box("挑战成功"), Box("退出副本"), CONFIRM))
-check("返回 False", t.revive_action(), False)
-check("一下都没点", t.clicks, [])
-check("日志说了不像死亡弹窗", any("这不像死亡弹窗" in m for m in t.logs))
-
-print("\n[revive_action：OCR 出错也不把这一趟拖垮]")
-t = task()
-t.ocr = lambda **kw: (_ for _ in ()).throw(RuntimeError("capture lost"))
-check("返回 False", t.revive_action(), False)
-check("日志说了复活没做成", any("复活这一步没做成" in m for m in t.logs))
-
-print("\n[revive_action：不在副本 / 不在刷声骸——上游那份照跑]")
-t = task(in_realm=False)
-check("大世界：返回上游的结果", t.revive_action(), True)
-check("大世界：走的是上游", t.events, ["upstream-revive"])
-check("大世界：没点弹窗", t.clicks, [])
+check("returns upstream's result", t.revive_action(), True)
+check("upstream cancelled the popup", t.events, ["cancel-popup"])
+check("nothing clicked by the overlay (no 「确认」, no revive item)", t.clicks, [])
+check("is_revived not set (do_run re-teleports)", t.is_revived, False)
 os.remove(flag)
-t = task()
-t.revive_action()
-check("周本（没在刷声骸）：走的是上游", t.events, ["upstream-revive"])
-check("周本：is_revived 没置上（塔边复活）", t.is_revived, False)
 
 # ---------------------------------------------------------------------------
-print("\n[combat_once：原地复活后吞掉复活异常，接着刷下一趟]")
+print("\n[combat_once: a realm death while farming echoes goes up to upstream's do_run re-teleport]")
 Path(flag).write_text("")
 t = task()
 t.dies = True
-check("返回 None，不往上抛", t.combat_once(wait_combat_time=5, raise_if_not_found=False), None)
-check("is_revived 留着给上游的 continue（FarmEchoTask.py:179）", t.is_revived, True)
-check("日志：复活成功，接着刷", any("复活成功，接着刷下一趟" in m for m in t.logs))
+try:
+    t.combat_once(wait_combat_time=5, raise_if_not_found=False)
+    raised = False
+except Revived:
+    raised = True
+check("CharRevivedException goes up (do_run: re-teleport, cap 3)", raised)
+check("did not say it carries on in place", any("复活成功" in m for m in t.logs), False)
+os.remove(flag)
 
 print("\n[combat_once：上游的复活（周本）照样往上抛，交给 do_run 重新传送]")
-os.remove(flag)
 t = task()
 t.dies = True
 try:
