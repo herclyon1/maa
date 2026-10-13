@@ -232,6 +232,11 @@ check("not sent: exit code 1", app_main.stop_push(), 1)
 check("no marker after a failed push", phone.stop_pushed(DATA / "state"), False)
 check("the failure line #11 reads",
       "状态没能上报到手机（停止前）：COS 403" in LOG.read_text(encoding="utf-8"), True)
+# Audit 2026-10-13 s5: stop-push had no errwatch, so this WARNING never reached the group.
+from ark_relay.features.alarm import errwatch  # noqa: E402
+_today = datetime.now(tz=__import__("ark_relay.core.config", fromlist=["SERVER_TZ"]).SERVER_TZ).strftime("%Y-%m-%d")
+check("errwatch took the failure line (it goes to the group)",
+      any("状态没能上报到手机" in str(r.get("line")) for r in errwatch.day_faults(DATA / "state", _today)), True)
 FakeBox.ok = True
 
 print("[b. a send that hangs: stop_push gives up after its time and says so]")
