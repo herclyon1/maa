@@ -292,8 +292,9 @@ UNREADABLE = "鸣潮（读不到正在运行的程序列表，查不到它还开
 UNREADABLE_SCRIPT = "OK-WW 脚本（查不到它还开没开着）"
 
 
-def okww_script_name(pid: int) -> str:
-    return f"OK-WW 脚本（pythonw.exe，编号 {pid}）"
+# What game_alive names for OK-WW's python while it runs - once, however many there
+# are; the owner reads this, so no program file name and no process number.
+OKWW_SCRIPT = "OK-WW 脚本"
 
 
 def game_alive() -> "list[str]":
@@ -314,7 +315,7 @@ def game_alive() -> "list[str]":
         return [UNREADABLE]
     from ark_relay.features.preupdate.preupdate_okww import okww_python_pids  # noqa: PLC0415 - preupdate_okww imports this module
     pids = okww_python_pids()
-    script = [UNREADABLE_SCRIPT] if pids is None else [okww_script_name(p) for p in pids]
+    script = [UNREADABLE_SCRIPT] if pids is None else [OKWW_SCRIPT] if pids else []
     return [n for n in GAME_PROCS if n.lower() in low] + script
 
 

@@ -650,9 +650,17 @@ try:
     _ran.clear()
     _sp.run = lambda *a, **k: (_ran.append(list(a[0]) if a else []),
                                _Py() if a and any("pythonw.exe" in str(x) for x in a[0]) else _Done())[1]
-    check("a live OK-WW script is named", _mod.game_alive(), [_mod.okww_script_name(777)])
+    check("a live OK-WW script is named, in plain words", _mod.game_alive(), ["OK-WW 脚本"])
     _note = _mod.stop_okww(sleep=lambda _s: None)
-    check("stop does not report clean while it lives", "编号 777" in _note, True)
+    check("stop does not report clean while it lives", "OK-WW 脚本" in _note, True)
+    # 2026-10-13 review: the owner read 「OK-WW 脚本（pythonw.exe，编号 777）」.
+    check("…without the program file or its number", ("pythonw" in _note, "777" in _note, "编号" in _note),
+          (False, False, False))
+    class _Py2(_Done):
+        stdout = b'[{"ProcessId": 777}, {"ProcessId": 778}]'
+    _sp.run = lambda *a, **k: (_ran.append(list(a[0]) if a else []),
+                               _Py2() if a and any("pythonw.exe" in str(x) for x in a[0]) else _Done())[1]
+    check("two of them are still named once", _mod.game_alive(), ["OK-WW 脚本"])
     check("the desktop kill takes it by PID",
           "taskkill /F /PID 777" in Path(_mod.STOP_BAT).read_text(encoding="utf-8"), True)
     _sp.run = lambda *a, **k: (_ for _ in ()).throw(OSError("no pwsh")) \
