@@ -46,7 +46,8 @@ HB_CRAWL_SEC = 1800      # interval once it passes HB_SLOW_UNTIL
 # Thresholds on the day's total (all kinds), not on beats alone. Up to 100 the
 # page gets its live 30 s beat; up to 180 one every 5 minutes; past that one
 # every 30 minutes, so the last 70 of the 250 stay for what the user asked for:
-# states (4 messages each), the shutdown state and bye. The page reads the
+# states (1 message each: the machine's ntfy-2026-10-13.json counts state 15
+# for 15 states), the shutdown state and bye. The page reads the
 # cadence from the beat itself ("hb 1800") and widens its window to match
 # (web/live.js hbWindowMs, ark-remote Live.swift hbWindowMs), so a slow beat
 # still reads 「开机中 · 每 30 分钟报一次」, not a false 「关机」.
