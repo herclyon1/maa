@@ -92,8 +92,13 @@ UNINSTALL_PARTIAL = 7
 
 
 def run(*cmd: "str | Path") -> int:
+    """Run cmd, print its exit code and output. sc.exe, schtasks and PowerShell write to
+    a pipe in the console's code page, not UTF-8 (switch.log of 2026-10-11 showed
+    `[SC] ChangeServiceConfig 成功` as mojibake): decoded as "oem", the codec of that code
+    page (docs.python.org/3/library/codecs.html, Windows only; legacy.py reads schtasks
+    as "mbcs", the same 936 on his machine)."""
     r = subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW)
+                       encoding="oem", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW)
     print(" ".join(map(str, cmd)), "->", r.returncode)
     for out in (r.stdout, r.stderr):
         if out.strip():
