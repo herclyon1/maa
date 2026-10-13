@@ -1,0 +1,194 @@
+{
+ "case": "claim_bar_unread",
+ "about": "A claim dialog whose top bar has no N/240 (frames.json unrecorded top_bar_unreadable; never recorded): never 确认 blind - 10-12 11:44 is what a blind 确认 costs (backup spent, no reward). A picture and a stop. Red at afd0ffa6~1, which confirmed with an unread bar.",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "crystal",
+ "max_s": 1200,
+ "config": {
+  "evidence": "the game PC's working/configs/FarmEchoTask.json (read 2026-10-13, gamesim u0 redacted copy): Teleport to Boss Weekly Challenge, Boss Level 90, Which Weekly Boss to Teleport 1, Repeat Farm Count 3",
+  "task": {
+   "Teleport to Boss": "Weekly Challenge",
+   "Boss Level": "90",
+   "Which Weekly Boss to Teleport": 1,
+   "Repeat Farm Count": 3
+  }
+ },
+ "states": {
+  "crystal": {
+   "about": "at the crystal after the fight, the F prompt up (frames.json unrecorded weekly_crystal_f; the walk is not driven)",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "illusive_realm_exit",
+     "box": [
+      0.0076,
+      0.0292,
+      0.0279,
+      0.069
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json illusive_realm_exit box (halved): inside a realm"
+    },
+    {
+     "name": "pick_up_f_hcenter_vcenter",
+     "box": [
+      0.6365,
+      0.5074,
+      0.6469,
+      0.5259
+     ],
+     "evidence": "ok-script.2026-10-12.log:2702 'do_walk_to_box ended Box(name='Labels.pick_up_f_hcenter_vcenter', x=1222, y=548, width=20, height=20)' (15:27:29, at the crystal)"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f",
+     "to": "claim",
+     "evidence": "pick_f presses F on the prompt; ok-script.2026-10-12.log:2705 the claim dialog read 3 s after the walk ended"
+    }
+   ]
+  },
+  "claim": {
+   "about": "the claim dialog (provisional: frames.json unrecorded weekly_claim_dialog)",
+   "provisional_ocr": [
+    {
+     "text": "领取奖励需消耗60点结晶波片，请确认是否领取？",
+     "box": [
+      0.2917,
+      0.463,
+      0.7083,
+      0.5
+     ],
+     "evidence": "docs/OKWW-WEEKLY-BOSS.md:53, the dialog's text read word for word by full-screen OCR on 2026-09-01 05:09; the box is the dialog's centre line (as 确认离开 on upstream tests/images/confirm_highlight.png)"
+    },
+    {
+     "text": "24",
+     "box": [
+      0.6292,
+      0.0463,
+      0.6531,
+      0.075
+     ],
+     "evidence": "ok-script.2026-10-12.log:2001 (11:44:41, the claim dialog) first top-bar box Box(name='24', x=1208, y=50, width=46, height=31)"
+    },
+    {
+     "text": "15652",
+     "box": [
+      0.7474,
+      0.0448,
+      0.8049,
+      0.0792
+     ],
+     "evidence": "frame waveplate_topup/2026-10-12_114452.png truth 15652 (astrite)"
+    }
+   ],
+   "provisional_features": [
+    {
+     "name": "claim_cancel_button_hcenter_vcenter",
+     "box": [
+      0.2365,
+      0.5769,
+      0.2583,
+      0.6731
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json claim_cancel_button_hcenter_vcenter box (has_claim's template); ok-script.log (2026-10-13):1352 'left_click claim_cancel_button_hcenter_vcenter (538, 675)' (relative_x=2 of that box)"
+    },
+    {
+     "name": "cancel_button_hcenter_vcenter",
+     "box": [
+      0.237,
+      0.5963,
+      0.2583,
+      0.6611
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json cancel_button_hcenter_vcenter box; the machine clicked a two-button dialog's left button there: ok-script.2026-10-10.log:555 'left_click Labels.cancel_button_hcenter_vcenter (476, 679)'"
+    },
+    {
+     "name": "confirm_btn_hcenter_vcenter",
+     "box": [
+      0.724,
+      0.5917,
+      0.7536,
+      0.663
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json confirm_btn_hcenter_vcenter box; its centre is where the machine clicked the dialog's right button: ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)'"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.69,
+      0.59,
+      0.79,
+      0.67
+     ],
+     "to": "claim_confirmed",
+     "evidence": "ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)' (the claim's 确认)"
+    },
+    {
+     "click": [
+      0.22,
+      0.56,
+      0.3,
+      0.68
+     ],
+     "to": "claim_cancelled",
+     "evidence": "the dialog's left button: upstream v3.7.4 assets/coco_annotations.json cancel_button / claim_cancel_button boxes (455-496 x 623-727)"
+    }
+   ]
+  },
+  "claim_cancelled": {
+   "end": true
+  },
+  "claim_confirmed": {
+   "end": true
+  }
+ },
+ "expect": {
+  "sequence": [],
+  "end": null,
+  "never_states": [
+   "claim_confirmed",
+   "claim_cancelled"
+  ],
+  "shots": [
+   {
+    "name": "weekly_claim_bar_unread",
+    "evidence": "design 1: an unknown screen or number stops with a picture"
+   }
+  ],
+  "raises": {
+   "name": "TaskDisabledException",
+   "evidence": "the overlay's stop is OK-WW's own TaskDisabledException (_ArkStop), which upstream lets through untouched (FarmEchoTask.py:117-118, :207-208)"
+  },
+  "log": [
+   {
+    "re": "^ERROR .*周本领奖",
+    "evidence": "a stop is pushed (the owner, 2026-10-06: 「只要是报错…不论多少次什么错误都要发」)"
+   }
+  ],
+  "log_never": [],
+  "verdict": null
+ }
+}

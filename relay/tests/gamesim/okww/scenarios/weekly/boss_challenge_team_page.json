@@ -1,0 +1,271 @@
+{
+ "case": "boss_challenge_team_page",
+ "about": "Boss Challenge: 前往 opens the team screen, no level page (10-13 11:55:58-11:56:02): the level cannot be picked there; say so and go in at the game's remembered level, 开启挑战 as upstream. Red at 35d6166b~1 (the line was missing: 11:31-11:45 ran Lv.90 every lap with nothing said).",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "main",
+ "max_s": 1200,
+ "config": {
+  "evidence": "ok-script.log (2026-10-13):2117 'info_set Teleport to Boss Boss Challenge 0' (Which Boss Challenge 1); :2132 '设置 Lv.80' (Boss Level 80); the echo farm writes the no-claim flag (relay echofarm.py, NO_CLAIM)",
+  "task": {
+   "Teleport to Boss": "Boss Challenge",
+   "Which Boss Challenge to Teleport": 1,
+   "Boss Level": "80"
+  },
+  "flags": {
+   "no_claim": true
+  }
+ },
+ "states": {
+  "main": {
+   "about": "the open world, in team (ensure_main / openF2Book see in_team_and_world)",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "world_earth_icon",
+     "box": [
+      0.0068,
+      0.0449,
+      0.0258,
+      0.0639
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json world_earth_icon box (3840x2160 annotation, halved): the open world"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f2",
+     "to": "book",
+     "evidence": "ok-script.2026-10-12.log:2719-2720 'click f2 to open the book' / 'send f2 key to open' (15:27:46-50)"
+    }
+   ]
+  },
+  "book": {
+   "about": "the F2 book, boss tab icon in its left column",
+   "provisional_features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.2026-10-12.log:2721 'found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=84)' (15:27:51)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.024,
+      0.2741,
+      0.0552,
+      0.3204
+     ],
+     "to": "book_boss",
+     "evidence": "ok-script.2026-10-12.log:2722 'left_click gray_book_boss (76, 321)' (15:27:54)"
+    }
+   ]
+  },
+  "book_boss": {
+   "about": "the book's boss page; open_boss_book clicks the category by position",
+   "provisional_features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.2026-10-12.log:2721 'found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=84)' (15:27:51)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.224,
+      0.4667,
+      0.2552,
+      0.513
+     ],
+     "to": "list",
+     "evidence": "ok-script.log (2026-10-13):2126 'left_click qiangdi (460, 529)' (open_boss_book qiangdi, 11:55:56)"
+    }
+   ]
+  },
+  "list": {
+   "about": "the category list; click_on_book_target clicks row 1's 前往",
+   "provisional_features": [
+    {
+     "name": "boss_proceed",
+     "box": [
+      0.9411,
+      0.3028,
+      0.9583,
+      0.3583
+     ],
+     "evidence": "ok-script.log (2026-10-13):2128 'left_click boss_proceed (1824, 357)' (11:55:58); size of upstream v3.7.4 assets/coco_annotations.json boss_proceed box (33x60)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.9344,
+      0.3074,
+      0.9656,
+      0.3537
+     ],
+     "to": "bc_team",
+     "evidence": "ok-script.log (2026-10-13):2128 'left_click boss_proceed (1824, 357)' (11:55:58)"
+    }
+   ]
+  },
+  "bc_team": {
+   "about": "the Boss Challenge team screen",
+   "provisional_ocr": [
+    {
+     "text": "队伍5",
+     "box": [
+      0.051,
+      0.0444,
+      0.0958,
+      0.0824
+     ],
+     "evidence": "ok-script.log (2026-10-13):2132 Box(name='队伍5', x=98, y=48, width=86, height=41)"
+    }
+   ],
+   "provisional_features": [
+    {
+     "name": "team_close",
+     "box": [
+      0.9271,
+      0.0278,
+      0.9615,
+      0.0861
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json team_close box: upstream click_on_book_target's 'team screen' answer"
+    },
+    {
+     "name": "team_start_challenge",
+     "box": [
+      0.9135,
+      0.8796,
+      0.9521,
+      0.9602
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json team_start_challenge box; ok-script.2026-10-12.log:1870 'left_click team_start_challenge (1791, 994)' (11:43:19)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.9172,
+      0.8972,
+      0.9484,
+      0.9435
+     ],
+     "to": "arena",
+     "evidence": "ok-script.log (2026-10-13):2133 'left_click team_start_challenge (1791, 994)'"
+    }
+   ]
+  },
+  "arena": {
+   "about": "inside the boss realm, in team, no dialog (开启挑战后读到（第 1 次）: [] on every 10-12 entry)",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "illusive_realm_exit",
+     "box": [
+      0.0076,
+      0.0292,
+      0.0279,
+      0.069
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json illusive_realm_exit box (halved): inside a realm"
+    }
+   ]
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "click": [
+     1824,
+     357
+    ],
+    "evidence": "ok-script.log (2026-10-13):2128",
+    "within": 20
+   },
+   {
+    "click": [
+     1791,
+     994
+    ],
+    "evidence": "ok-script.log (2026-10-13):2133",
+    "within": 20
+   },
+   {
+    "state": "arena",
+    "evidence": "ok-script.log (2026-10-13):2135 'teleport_to_boss prepared as realm'"
+   }
+  ],
+  "end": null,
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "刷声骸选等级：前往后是队伍界面（没有选等级页）",
+    "evidence": "ok-script.log (2026-10-13):2132 (11:56:01)"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "^ERROR ",
+    "evidence": "every expected outcome of this case is a decision, not an error (the relay pushes ERROR lines)"
+   }
+  ],
+  "verdict": null
+ }
+}

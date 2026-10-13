@@ -1,0 +1,163 @@
+{
+ "case": "solo_reminder_contradicts",
+ "about": "The reminder with a bar that reads enough (240/240 + 23): the game shows it only when waveplates and backup are short (upstream FarmEchoTask.py:375-376; both real cases were short), so the read is wrong: 取消 and a picture, never 确认. Red at 892f9973~1, which confirmed.",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "level",
+ "max_s": 1200,
+ "config": {
+  "evidence": "the game PC's working/configs/FarmEchoTask.json (read 2026-10-13, gamesim u0 redacted copy): Teleport to Boss Weekly Challenge, Boss Level 90, Which Weekly Boss to Teleport 1, Repeat Farm Count 3",
+  "task": {
+   "Teleport to Boss": "Weekly Challenge",
+   "Boss Level": "90",
+   "Which Weekly Boss to Teleport": 1,
+   "Repeat Farm Count": 3
+  }
+ },
+ "states": {
+  "level": {
+   "about": "the 3/3 level page after the Lv.90 click",
+   "frame": "boss_level_page/2026-10-12_095116_3of3.png",
+   "transitions": [
+    {
+     "click": [
+      0.86,
+      0.89,
+      0.9,
+      0.93
+     ],
+     "to": "reminder",
+     "evidence": "upstream click_solo_challenge clicks (0.880, 0.911) (FarmEchoTask.py:375 v3.7.4); the frame's 单人挑战 truth box is 0.7648-0.8369 x 0.8896-0.9295, the button around it"
+    }
+   ]
+  },
+  "reminder": {
+   "about": "the 「无法获取奖励」 reminder after 单人挑战 (10-12 11:43:16 and 15:28:19, upstream confirmed it unread)",
+   "provisional_ocr": [
+    {
+     "text": "无法获取奖励，是否继续进入",
+     "box": [
+      0.3125,
+      0.4648,
+      0.6875,
+      0.4954
+     ],
+     "evidence": "upstream v3.7.4 FarmEchoTask.py:376 (the reminder's words in upstream's comment); no machine log read it (frames.json unrecorded no_reward_reminder); box as the spoiler dialog's text line"
+    },
+    {
+     "text": "23",
+     "box": [
+      0.6995,
+      0.0423,
+      0.7293,
+      0.079
+     ],
+     "evidence": "frame boss_level_page/2026-10-12_095116_3of3.png truth 23"
+    },
+    {
+     "text": "240/240",
+     "box": [
+      0.8055,
+      0.0446,
+      0.8791,
+      0.0794
+     ],
+     "evidence": "frame 095116 truth 240/240"
+    }
+   ],
+   "provisional_features": [
+    {
+     "name": "confirm_btn_hcenter_vcenter",
+     "box": [
+      0.724,
+      0.5917,
+      0.7536,
+      0.663
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json confirm_btn_hcenter_vcenter box; its centre is where the machine clicked the dialog's right button: ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)'"
+    },
+    {
+     "name": "cancel_button_hcenter_vcenter",
+     "box": [
+      0.237,
+      0.5963,
+      0.2583,
+      0.6611
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json cancel_button_hcenter_vcenter box; the machine clicked a two-button dialog's left button there: ok-script.2026-10-10.log:555 'left_click Labels.cancel_button_hcenter_vcenter (476, 679)'"
+    },
+    {
+     "name": "skip_dialog_check",
+     "box": [
+      0.4323,
+      0.5278,
+      0.4552,
+      0.5815
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json skip_dialog_check box; ok-script.2026-10-12.log:1868 'left_click skip_dialog_check (852, 599)' on the 11:43:16 reminder"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.22,
+      0.56,
+      0.3,
+      0.68
+     ],
+     "to": "reminder_cancelled",
+     "evidence": "the dialog's left button (cancel box)"
+    },
+    {
+     "click": [
+      0.4307,
+      0.5269,
+      0.4568,
+      0.5824
+     ],
+     "to": "reminder_ticked",
+     "evidence": "ok-script.2026-10-12.log:1868 the tick upstream clicked"
+    },
+    {
+     "click": [
+      0.69,
+      0.59,
+      0.79,
+      0.67
+     ],
+     "to": "reminder_confirmed",
+     "evidence": "ok-script.2026-10-12.log:1869 the 确认 upstream clicked"
+    }
+   ]
+  },
+  "reminder_cancelled": {
+   "end": true
+  },
+  "reminder_ticked": {
+   "end": true
+  },
+  "reminder_confirmed": {
+   "end": true
+  }
+ },
+ "expect": {
+  "sequence": [],
+  "end": "reminder_cancelled",
+  "never_states": [
+   "reminder_ticked",
+   "reminder_confirmed"
+  ],
+  "shots": [
+   {
+    "name": "solo_dialog_contradicts",
+    "evidence": "design 1: an unknown screen stops with a picture"
+   }
+  ],
+  "raises": null,
+  "log": [],
+  "log_never": [],
+  "verdict": null
+ }
+}
