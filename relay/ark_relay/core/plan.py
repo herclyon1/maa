@@ -216,6 +216,18 @@ def runs_at(q: dict, hhmm: str, when) -> list[str]:
             if day in d]
 
 
+def _startup_runs(info: dict) -> "bool | None":
+    """Whether AUTO-MAS runs the queue when it starts. v5.7 stores StartUpMode
+    (Never / Always / DailyFirst, models/config.py); an older config's bool
+    StartUpEnabled is migrated to it the same way (config.py: True -> Always).
+    None when neither is there."""
+    mode = info.get("StartUpMode")
+    if isinstance(mode, str):
+        return mode != "Never"
+    old = info.get("StartUpEnabled")
+    return old if isinstance(old, bool) else None
+
+
 def queue_rows(automas_dir) -> list[dict]:
     """Every queue as the phone state lists it: {"名", "定时", "开机跑", "脚本"}.
 
@@ -236,7 +248,7 @@ def queue_rows(automas_dir) -> list[dict]:
                 if k != "instances" and isinstance(q, dict)]
         out.append({"名": str(info.get("Name") or "?"),
                     "定时": info.get("TimeEnabled"),
-                    "开机跑": info.get("StartUpEnabled"),
+                    "开机跑": _startup_runs(info),
                     "脚本": [names[s] for s in sids if s in names]})
     return out
 
