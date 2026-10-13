@@ -114,6 +114,8 @@ _RECORD = re.compile(
     r"|ledger-\d{4}-\d\d-\d\d\.jsonl(?:\.bak[\w.-]*)?(?::\d+)?"
     r"|relay\.log \d\d-\d\d \d\d:\d\d(?::\d\d)?"
     r"|(?:报错台账|被指出)\.txt(?::\d+)? \d\d-\d\d \d\d:[\dx]{2}"
+    # The BOARD's session records (styl-work/BOARD): a line, or the entry's time.
+    r"|(?:BOARD/)?(?:game-write|status-[^\s:;]+?|被指出-[^\s:;]+?)\.(?:txt|md)(?::\d+| \d\d-\d\d \d\d:\d\d)"
     r"|test-windows\.json"
     r"|history/\d{4}-\d\d-\d\d/\w+/[\w.-]+\.json"
     r"|docs/[\w./-]+\.md"

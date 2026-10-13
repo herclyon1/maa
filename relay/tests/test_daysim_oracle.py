@@ -102,6 +102,9 @@ refused("unreviewed", entry(review="unreviewed"), "not 'reviewed'")
 refused("no review field", {k: v for k, v in entry().items() if k != "review"}, "not 'reviewed'")
 refused("no src", entry(src=""), "no src")
 refused("src 待核 alone", entry(src="待核"), "names nothing checkable")
+for board in ("game-write.txt 10-09 22:48 大阪", "BOARD/status-中继一.md:68", "status-网页-验收-历史-1010.md:2049"):
+    check(f"a BOARD record is a checkable source: {board}", oracle.validate(doc(entry(src=board))), [])
+refused("a BOARD file named without a line or a time", entry(src="game-write.txt"), "names nothing checkable")
 refused("src prose", entry(src="the owner said so"), "names nothing checkable")
 refused("must_not citing only a log line", entry(rule="must_not", src="relay.log 10-12 18:29:17"),
         "must_not cites the fix")
