@@ -290,8 +290,8 @@ master config does not take effect, measured.
 
 ### Not yet proven
 
-The moment all three rewards actually land. The reward costs 60 waveplates on entry, 180
-for three; on the evening of 2026-08-31 Shell Credit farming had eaten the waveplates down
+The moment all three rewards actually land. The reward costs 60 waveplates when it is claimed
+(entering only shows the 无法获取奖励 reminder), 180 for three; on the evening of 2026-08-31 Shell Credit farming had eaten the waveplates down
 to 1 and there was no making it up that day. Under the new "finished ≠ all claimed"
 accounting the switch stays on, claiming one whenever there is enough, filling up over the
 course of the week.
