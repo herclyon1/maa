@@ -447,8 +447,9 @@ def main():
                                                                ("-t", "2")), True)
     check("... a World process started", len(pr.named("ok-ww.exe")), n_before + 1)
     check("... with its arguments", pr.named("ok-ww.exe")[-1].cmdline, '"D:\\ark\\okww\\ok-ww.exe" -t 2')
-    require("the Mac lacks C:\\Program Files\\PowerShell\\7\\pwsh.exe: _pwsh() logs an ERROR (W5/W0 to settle)",
-            bool(log_errors), "no ERROR seen")
+    if os.name != "nt":   # on a Windows host the real pwsh.exe exists and nothing is logged
+        require("the Mac lacks C:\\Program Files\\PowerShell\\7\\pwsh.exe: _pwsh() logs an ERROR (W5/W0 to settle)",
+                bool(log_errors), "no ERROR seen")
 
     print("\n[8] kernel objects")
     m1 = win32event.CreateMutex(None, False, "Global\\X")
