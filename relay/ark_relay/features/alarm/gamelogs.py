@@ -46,16 +46,23 @@ def _okww_nest_expected(automas_dir: str | Path | None) -> bool | None:
 
     来龙去脉见 docs/CODE-HISTORY.md「handle.py:_okww_nest_expected」。
     """
-    nest = _okww_master_config(automas_dir, "NightmareNestTask")
+    # Upstream's own condition (OK-WW v3.7.4 DailyTask.py:84-93, defaults at :32-38),
+    # which the overrides leave as it is: nests run when 「Auto Farm all Nightmare
+    # Nest」 is an additional task, or when 「Farm Nightmare Nest for Daily Echo」
+    # (default on) is set, the farm target is not Tacet Suppression (the default),
+    # and the daily reward is not ready yet. That last part is the log's to tell
+    # (outcome.okww_checks: dailies done at start -> the nest is judged only if its
+    # task ran). The nest filter 「Only Farm These Nests」 only narrows a run that
+    # happens; until 2026-10-13 a leftover filter, or the echo flag on its own,
+    # made every daily expect nests (audit 2026-10-13 item 9).
     daily = _okww_master_config(automas_dir, "DailyTask")
-    if not nest and not daily:
+    if not daily:
         return None
-    if (nest.get("Only Farm These Nests") or "").strip():
-        return True
-    if daily.get("Farm Nightmare Nest for Daily Echo"):
-        return True
     adds = daily.get("Additional Tasks to Run After Daily Task") or []
-    return "Auto Farm all Nightmare Nest" in adds
+    if "Auto Farm all Nightmare Nest" in adds:
+        return True
+    return bool(daily.get("Farm Nightmare Nest for Daily Echo", True)
+                and daily.get("Which to Farm", "Tacet Suppression") != "Tacet Suppression")
 
 
 # MAA's line-leading timestamp: [2026-08-30 09:09:41.495][INF]...
