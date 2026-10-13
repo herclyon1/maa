@@ -83,6 +83,21 @@ __all__ = [
 
 log = logging.getLogger("ark.mastercfg")
 
+# A WARNING is a group message (errwatch), and read_maaend runs on every phone
+# publish: each condition is said once (site -> what was said) and forgotten
+# once it clears, so it is said again if it comes back.
+_said: dict[str, str] = {}
+
+
+def _warn_once(site: str, why: str, msg: str, *args, exc_info: bool = False) -> None:
+    if _said.get(site) != why:
+        log.warning(msg, *args, exc_info=exc_info)
+        _said[site] = why
+
+
+def _cleared(site: str) -> None:
+    _said.pop(site, None)
+
 
 # The items that show up on the phone for tasks that list them by hand.
 MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
@@ -123,7 +138,14 @@ def _strip_jsonc(text: str) -> str:
     PuzzleSolver.json failed to parse on that, so the tasks they declare
     (CreditShoppingN2) were reported as orphans. A regex that removes `//.*`
     anywhere would eat "https://" inside strings, so this walks the text.
+    Trailing commas are dropped by a second walk for the same reason: a regex
+    over the whole text also turned the `\\d{6,}` inside AutoStockStaple.json's
+    verify rules into `\\d{6}`.
     """
+    return _strip_trailing_commas(_strip_comments(text))
+
+
+def _strip_comments(text: str) -> str:
     out = []
     i, n = 0, len(text)
     in_str = False
@@ -147,8 +169,33 @@ def _strip_jsonc(text: str) -> str:
             i = n if j == -1 else j + 2
             continue
         out.append(c); i += 1
-    cleaned = "".join(out)
-    return re.sub(r",(\s*[}\]])", r"\1", cleaned)
+    return "".join(out)
+
+
+def _strip_trailing_commas(text: str) -> str:
+    """Drop a comma outside strings whose next non-space character is } or ]."""
+    out = []
+    i, n = 0, len(text)
+    in_str = False
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1]); i += 2; continue
+            if c == '"':
+                in_str = False
+            i += 1; continue
+        if c == '"':
+            in_str = True
+        elif c == ",":
+            j = i + 1
+            while j < n and text[j] in " \t\r\n":
+                j += 1
+            if j < n and text[j] in "}]":
+                i += 1; continue
+        out.append(c); i += 1
+    return "".join(out)
 
 
 def _jsonc(path: Path) -> dict:
@@ -166,8 +213,10 @@ class _Locale:
         f = Path(maaend_dir) / "locales" / "interface" / "zh_cn.json"
         try:
             self.table = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            log.warning("读不到 MaaEnd 的中文语言包，手机上只能显示英文键名")
+        except (OSError, ValueError) as exc:
+            _warn_once("locale", f"{f}: {type(exc).__name__}", "读不到 MaaEnd 的中文语言包，手机上只能显示英文键名")
+            return
+        _cleared("locale")
 
     def __call__(self, ref: object) -> str:
         s = str(ref or "")
@@ -217,8 +266,10 @@ def _read_maaend_defs(maaend_dir) -> "tuple[dict, dict, list[tuple[Path, str | N
     try:
         iface = _jsonc(root / "interface.json")
         files = [root / rel for rel in (iface.get("import") or []) if isinstance(rel, str)]
-    except (OSError, ValueError, TypeError):
-        log.warning("读不到 MaaEnd 的 interface.json，退回按文件名找定义")
+    except (OSError, ValueError, TypeError) as exc:
+        _warn_once("interface", f"{root}: {type(exc).__name__}", "读不到 MaaEnd 的 interface.json，退回按文件名找定义")
+    else:
+        _cleared("interface")
     listed = bool(files)
     if not files:
         files = sorted((root / "tasks").glob("**/*.json"))
@@ -341,13 +392,15 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
     f = maaend_master(automas_dir)
     if not f or not f.is_file():
         # Said, so the phone page's missing section has a cause in the log.
-        log.warning("母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
+        _warn_once("master", f"missing: {f}", "母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
         return out
     try:
         doc = json.loads(f.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        log.warning("母本 mxu-MaaEnd.json 读不出来", exc_info=True)
+    except (OSError, ValueError) as exc:
+        _warn_once("master", f"unreadable: {type(exc).__name__}: {exc}", "母本 mxu-MaaEnd.json 读不出来",
+                   exc_info=True)
         return out
+    _cleared("master")
     zh = _Locale(Path(maaend_dir) if maaend_dir else None)
     all_opts, all_tasks = _maaend_defs(maaend_dir)
     # A task the config still carries but no definition file declares any more.
@@ -408,8 +461,11 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
             label = zh(d.get("label"))
             if not label or label == d.get("label", "").lstrip("$") or not _HAN.search(label):
                 out["untranslated"].append(key)
-                log.warning("MaaEnd 选项 %s 没有中文名（定义%s），手机页会标成没翻译",
-                            key, "找到了" if d else "找不到")
+                _warn_once(f"untranslated:{key}", "found" if d else "missing",
+                           "MaaEnd 选项 %s 没有中文名（定义%s），手机页会标成没翻译",
+                           key, "找到了" if d else "找不到")
+            else:
+                _cleared(f"untranslated:{key}")
             out["labels"][key] = _plain(label) or opt
             kind = str(cur.get("type") or d.get("type") or "")
             if kind in ("switch", "select", "checkbox", "input"):
@@ -423,10 +479,12 @@ def read_maaend(automas_dir, maaend_dir) -> dict:
                          for c in (d.get("cases") or []) if c.get("name")]
                 if cases:
                     out["options"][key] = cases
+                    _cleared(f"no_cases:{key}")
                 else:
                     if key not in out["untranslated"]:
                         out["untranslated"].append(key)
-                    log.warning("MaaEnd 选项 %s 是选择项但没有可选值，手机页只能给个文本框", key)
+                    _warn_once(f"no_cases:{key}", "no cases",
+                               "MaaEnd 选项 %s 是选择项但没有可选值，手机页只能给个文本框", key)
     return out
 
 
@@ -515,10 +573,37 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
             return False, f"{opt} 是没见过的类型 {kind!r}，不敢动"
         label = f"{task_name} 的 {opt}"
     atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
-    back = json.loads(f.read_text(encoding="utf-8"))
-    now = read_maaend(automas_dir, maaend_dir)["values"].get(path)
     if opt == "@enabled":
-        now = bool((_maaend_task(back, task_name) or {}).get("enabled"))
+        return _maaend_readback(f, task_name, opt, label, task["enabled"], "@enabled", before, None)
+    return _maaend_readback(f, task_name, opt, label, cur, kind, before,
+                            next(iter(want)) if kind == "input" else None)
+
+
+def _maaend_readback(f: Path, task_name: str, opt: str, label: str, wrote, kind: str,
+                     before, box: "str | None") -> tuple[bool, str]:
+    """Read back the item write_maaend just wrote, from the file, and compare it
+    with what was written (read_maaend covers only the items the phone shows).
+    `wrote` is the enabled flag or the option's whole value; `box` is the one
+    input box changed when a single box was written."""
+    back_task = _maaend_task(json.loads(f.read_text(encoding="utf-8")), task_name) or {}
+    if kind == "@enabled":
+        now = back_task.get("enabled")
+        if now is not wrote:
+            return False, f"{task_name} 的开关写进去之后读出来和写的不一样，没改成"
+        return True, f"{label}：{before!r} → {now!r}"
+    back = (back_task.get("optionValues") or {}).get(opt)
+    if back != wrote:
+        return False, f"{label} 写进去之后读出来和写的不一样，没改成"
+    if kind == "switch":
+        now = back.get("value")
+    elif kind == "select":
+        now = back.get("caseName")
+    elif kind == "checkbox":
+        now = back.get("caseNames")
+    elif isinstance(before, dict):
+        now = back.get("values")
+    else:
+        now = (back.get("values") or {}).get(box)
     return True, f"{label}：{before!r} → {now!r}"
 
 
@@ -669,21 +754,61 @@ def _prune_recently_closed(doc: dict, opts: dict, tasks: dict) -> int:
     return len(before) - len(kept)
 
 
+def _migrate_blind(opts, tasks, unread, listed) -> "str | None":
+    """migrate_maaend_options' refusal when it cannot see every definition."""
+    if not opts or not tasks:
+        return "读不到 MaaEnd 的选项定义，不动配置"
+    if not listed:
+        return "读不到 MaaEnd 的定义文件清单（interface.json），不知道定义全不全，不动配置"
+    if blind := [x.name for x, text in unread if text is None]:
+        return f"MaaEnd 的定义文件打不开（{'、'.join(blind)}），不知道里面有哪些选项，不动配置"
+    return None
+
+
+def _named_in_unread(keys, unread) -> "str | None":
+    """The refusal when a key about to be dropped is named in a file that did not parse."""
+    for k in keys:
+        if seen := [x.name for x, text in unread if f'"{k}"' in (text or "")]:
+            return (f"MaaEnd 的「{k}」不在读得出的选项定义里，但读不了的定义文件"
+                    f"（{'、'.join(seen)}）里提到它；定义看不全，就不动配置")
+    return None
+
+
+def _migrate_left_over(back: dict, opts, tasks, switched) -> "str | None":
+    """What the migration should have rewritten but the read-back still has."""
+    for inst in back.get("instances") or []:
+        for task in inst.get("tasks") or []:
+            ov = task.get("optionValues") or {}
+            if str(task.get("taskName") or "") in tasks and any(k not in opts for k in ov):
+                return "旧写法的项还在"
+            if any((ov.get(k) or {}).get("type") == "checkbox" for k in switched):
+                return "改成开关的项还是多选"
+    if any(_stale_entry(e, opts, tasks) for e in back.get("recentlyClosed") or []):
+        return "「最近关闭」里旧写法的项还在"
+    return None
+
+
 def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
     """Rewrite option values in the master that this MaaEnd no longer understands.
 
     Returns (changes, note). A key is dead only when its task's definition file
     was read successfully **and** the key is absent from the whole install's
-    option index - a definition file that fails to parse (CreditShopping.json
-    does) must not make its options look dead. MXU's own `__*` tasks are never
-    touched. The file is backed up first and read back after.
+    option index - a definition file that fails to parse must not make its
+    options look dead (9 of MaaEnd v2.32's tasks take options from other files,
+    e.g. StashBackpack.json, Location/*.json). So, as prune_maaend_orphans does,
+    it refuses outright - ([], reason) - when it cannot see every definition:
+    interface.json unreadable (the file list is a guess), a listed file that
+    cannot be opened, or a key it would drop named in a file that does not parse.
+    MXU's own `__*` tasks are never touched. The file is backed up first and
+    read back after.
     """
     f = maaend_master(automas_dir)
     if not f or not f.is_file():
         return [], "找不到 MaaEnd 的母本"
-    opts, tasks = _maaend_defs(maaend_dir)
-    if not opts or not tasks:
-        return [], "读不到 MaaEnd 的选项定义，不动配置"
+    opts, tasks, unread, listed = _read_maaend_defs(maaend_dir)
+    if why := _migrate_blind(opts, tasks, unread, listed):
+        return [], why
+
     zh = _Locale(Path(maaend_dir))
     doc = json.loads(f.read_text(encoding="utf-8"))
     changes: list[str] = []
@@ -726,10 +851,15 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
                     changes.append(line)
                     switched.append(k)
             dead = [k for k in list(ov) if k not in opts]
+            if why := _named_in_unread(dead, unread):
+                return [], why
             for k in dead:
                 del ov[k]
             if dead:
                 changes.append(f"{name} 去掉新版本没有的 {len(dead)} 项：{'、'.join(dead)}")
+    if why := _named_in_unread((k for e in doc.get("recentlyClosed") or [] for t in e.get("tasks") or []
+                                for k in (t.get("optionValues") or {}) if k not in opts), unread):
+        return [], why
     if dropped := _prune_recently_closed(doc, opts, tasks):
         changes.append(f"清掉界面里 {dropped} 条「最近关闭」的旧记录（全是旧格式的设置）")
     if not changes:
@@ -737,16 +867,8 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
     bak = f.with_name(f.name + f".bak-migrate-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
     bak.write_bytes(f.read_bytes())
     atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
-    back = json.loads(f.read_text(encoding="utf-8"))
-    for inst in back.get("instances") or []:
-        for task in inst.get("tasks") or []:
-            ov = task.get("optionValues") or {}
-            if str(task.get("taskName") or "") in tasks and any(k not in opts for k in ov):
-                return [], f"写进去之后再读，旧写法的项还在，{bak.name} 是原样"
-            if any((ov.get(k) or {}).get("type") == "checkbox" for k in switched):
-                return [], f"写进去之后再读，改成开关的项还是多选，{bak.name} 是原样"
-    if any(_stale_entry(e, opts, tasks) for e in back.get("recentlyClosed") or []):
-        return [], f"写进去之后再读，「最近关闭」里旧写法的项还在，{bak.name} 是原样"
+    if what := _migrate_left_over(json.loads(f.read_text(encoding="utf-8")), opts, tasks, switched):
+        return [], f"写进去之后再读，{what}，{bak.name} 是原样"
     return changes, ("MaaEnd 换了版本后旧设置的写法它不认了，母本已按原意改写：\n"
                      + "\n".join(f"· {c}" for c in changes)
                      + f"\n（原文件备份为 {bak.name}）")

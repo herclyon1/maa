@@ -1,0 +1,98 @@
+{
+    "instances": [
+        {
+            "uid": "754d129e-d587-435b-b75f-a0b91aac7020",
+            "type": "MaaConfig"
+        },
+        {
+            "uid": "59da8762-8fa7-4260-8aee-10f9ca00097a",
+            "type": "MaaEndConfig"
+        },
+        {
+            "uid": "c5e96ddc-aae9-4a73-b6fe-1312a417382d",
+            "type": "OkwwConfig"
+        }
+    ],
+    "754d129e-d587-435b-b75f-a0b91aac7020": {
+        "Info": {
+            "Name": "MAA",
+            "Path": "D:\\ark\\maa"
+        },
+        "SubConfigsInfo": {
+            "UserData": {
+                "instances": [
+                    {
+                        "uid": "12eaa794-6946-4b07-8d6c-22b01d8160bc",
+                        "type": "MaaUserConfig"
+                    }
+                ],
+                "12eaa794-6946-4b07-8d6c-22b01d8160bc": {
+                    "Info": {
+                        "Name": "arknights",
+                        "Stage": "YW-4",
+                        "Stage_1": "-",
+                        "Stage_2": "-",
+                        "Stage_3": "-",
+                        "StageMode": "Fixed",
+                        "MedicineNumb": 999,
+                        "SeriesNumb": "0",
+                        "Annihilation": "Close",
+                        "IfQuickConfig": true,
+                        "Server": "Official"
+                    },
+                    "Task": {
+                        "IfFight": true
+                    }
+                }
+            }
+        }
+    },
+    "59da8762-8fa7-4260-8aee-10f9ca00097a": {
+        "Info": {
+            "Name": "MaaEnd",
+            "Path": "D:\\ark\\maaend"
+        },
+        "SubConfigsInfo": {
+            "UserData": {
+                "instances": [
+                    {
+                        "uid": "cb329eaf-c4c0-4e12-9dd4-961e5b2cc7f1",
+                        "type": "MaaEndUserConfig"
+                    }
+                ],
+                "cb329eaf-c4c0-4e12-9dd4-961e5b2cc7f1": {
+                    "Info": {
+                        "Name": "endfield",
+                        "IfQuickConfig": false
+                    },
+                    "Task": {
+                        "SanityTaskType": "Essence"
+                    }
+                }
+            }
+        }
+    },
+    "c5e96ddc-aae9-4a73-b6fe-1312a417382d": {
+        "Info": {
+            "Name": "OK-WW",
+            "RootPath": "D:\\ark\\okww"
+        },
+        "SubConfigsInfo": {
+            "UserData": {
+                "instances": [
+                    {
+                        "uid": "50ca12aa-0288-4592-982e-60f0bd6dc74e",
+                        "type": "OkwwUserConfig"
+                    }
+                ],
+                "50ca12aa-0288-4592-982e-60f0bd6dc74e": {
+                    "Info": {
+                        "Name": "wuwa",
+                        "IfQuickConfig": false
+                    },
+                    "Task": {}
+                }
+            }
+        }
+    }
+}

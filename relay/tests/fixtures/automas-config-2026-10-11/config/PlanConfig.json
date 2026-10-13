@@ -1,0 +1,78 @@
+{
+  "instances": [
+    {
+      "uid": "c88cfe9e-6617-4fb8-9225-183ca571e3ae",
+      "type": "MaaPlanConfig"
+    }
+  ],
+  "c88cfe9e-6617-4fb8-9225-183ca571e3ae": {
+    "ALL": {
+      "MedicineNumb": 0,
+      "SeriesNumb": "0",
+      "Stage": "-",
+      "Stage_1": "-",
+      "Stage_2": "-",
+      "Stage_3": "-"
+    },
+    "Friday": {
+      "MedicineNumb": 0,
+      "SeriesNumb": "0",
+      "Stage": "-",
+      "Stage_1": "-",
+      "Stage_2": "-",
+      "Stage_3": "-"
+    },
+    "Info": {
+      "Mode": "ALL",
+      "Name": "新 MAA 计划表"
+    },
+    "Monday": {
+      "MedicineNumb": 0,
+      "SeriesNumb": "0",
+      "Stage": "-",
+      "Stage_1": "-",
+      "Stage_2": "-",
+      "Stage_3": "-"
+    },
+    "Saturday": {
+      "MedicineNumb": 0,
+      "SeriesNumb": "0",
+      "Stage": "-",
+      "Stage_1": "-",
+      "Stage_2": "-",
+      "Stage_3": "-"
+    },
+    "Sunday": {
+      "MedicineNumb": 0,
+      "SeriesNumb": "0",
+      "Stage": "-",
+      "Stage_1": "-",
+      "Stage_2": "-",
+      "Stage_3": "-"
+    },
+    "Thursday": {
+      "MedicineNumb": 0,
+      "SeriesNumb": "0",
+      "Stage": "-",
+      "Stage_1": "-",
+      "Stage_2": "-",
+      "Stage_3": "-"
+    },
+    "Tuesday": {
+      "MedicineNumb": 0,
+      "SeriesNumb": "0",
+      "Stage": "-",
+      "Stage_1": "-",
+      "Stage_2": "-",
+      "Stage_3": "-"
+    },
+    "Wednesday": {
+      "MedicineNumb": 0,
+      "SeriesNumb": "0",
+      "Stage": "-",
+      "Stage_1": "-",
+      "Stage_2": "-",
+      "Stage_3": "-"
+    }
+  }
+}

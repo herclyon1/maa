@@ -1,0 +1,3 @@
+AUTO-MAS v5.7.0-beta.2 config/ from the game machine, copied 2026-10-11 (audit copy s3/fa).
+QueueConfig.json and PlanConfig.json verbatim; ScriptConfig.json cut down to each script's
+Name/Path and the user fields plan.py reads (Stage*, StageMode, MedicineNumb, Annihilation, IfFight, ...).

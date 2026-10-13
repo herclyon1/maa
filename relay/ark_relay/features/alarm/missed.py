@@ -43,6 +43,8 @@ def _check_missed_runs(eng, now: datetime | None = None,
             except ValueError:
                 continue
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            if not plan.runs_at(q, hhmm, due):
+                continue  # not a run day for this time, or every item sits today out
             if now < due + timedelta(minutes=grace_min):
                 continue  # not late yet
             key = f"{day}/{q['name']}/{hhmm}"

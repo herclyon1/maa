@@ -16,6 +16,16 @@ from ark_relay.core.config import atomic_write_text
 
 log = logging.getLogger("ark.mastercfg")
 
+# read_maa runs on every phone publish and a WARNING is a group message
+# (errwatch): each condition is said once and forgotten once it clears.
+_said: dict[str, str] = {}
+
+
+def _warn_once(site: str, why: str, msg: str, *args, exc_info: bool = False) -> None:
+    if _said.get(site) != why:
+        log.warning(msg, *args, exc_info=exc_info)
+        _said[site] = why
+
 # Drone targets: keys and Chinese names from MAA's
 # InfrastSettingsUserControlModel.UsesOfDronesList and docs/protocol/integration.md
 # (checked 2026-09-07, v6.17).
@@ -75,13 +85,15 @@ def read_maa(automas_dir) -> dict:
     f = maa_master(automas_dir)
     if not f or not f.is_file():
         # Said, so the phone page's missing section has a cause in the log.
-        log.warning("母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
+        _warn_once("master", f"missing: {f}", "母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
         return out
     try:
         doc = json.loads(f.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        log.warning("母本 gui.new.json 读不出来", exc_info=True)
+    except (OSError, ValueError) as exc:
+        _warn_once("master", f"unreadable: {type(exc).__name__}: {exc}", "母本 gui.new.json 读不出来",
+                   exc_info=True)
         return out
+    _said.pop("master", None)
     task = _maa_infrast(doc)
     if task is not None:
         out["values"][MAA_DRONES_PATH] = str(task.get("UsesOfDrones") or "")
@@ -139,30 +151,46 @@ def _write_maa_copies(automas_dir, maa_dir, find, key: str, value, no_task: str,
                       read_before) -> "tuple[str, object, list[str]]":
     """Set find(doc)[key] = value in the master gui.new.json and in MAA's own copy.
 
-    Each file is written atomically and read back. `read_before(task)` gives the
-    old value; it is taken from the first file where it is not None. Returns
-    (error, old value, names of the files written); error is "" on success.
+    The master copy is the one that counts: AUTO-MAS copies
+    data/<script>/<user>/ConfigFile over MAA's config dir before each run
+    (task/MAA/AutoProxy.py _copy_source_config), so without it nothing is
+    written. Both files are parsed and checked before either is written, so a
+    refusal leaves both untouched. Each file is written atomically and read
+    back. `read_before(task)` gives the old value, from the master copy.
+    Returns (error, old value, names of the files written); error is "" on
+    success and, when it is not, names the files already written.
     """
-    targets = [maa_master(automas_dir)]
-    if maa_dir:
-        targets.append(Path(maa_dir) / "config" / "gui.new.json")
-    before = None
-    written: list[str] = []
+    master = maa_master(automas_dir)
+    if not master or not master.is_file():
+        return ("找不到 AUTO-MAS 里 MAA 的母本配置，没改（只改 MAA 自己那份，"
+                "下次开跑前会被母本盖掉）"), None, []
+    targets = [master]
+    if maa_dir and (own := Path(maa_dir) / "config" / "gui.new.json").is_file():
+        targets.append(own)
+    docs = []
     for f in targets:
-        if not f or not f.is_file():
-            continue
-        doc = json.loads(f.read_text(encoding="utf-8"))
-        task = find(doc)
-        if task is None:
-            return f"{f.name} {no_task}", before, written
-        if before is None:
-            before = read_before(task)
-        task[key] = value
-        atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=4))
-        back = find(json.loads(f.read_text(encoding="utf-8")))
+        try:
+            doc = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return f"{f} 读不出来（{type(exc).__name__}），两份都没改", None, []
+        if find(doc) is None:
+            return f"{f.name} {no_task}（两份都没改）", None, []
+        docs.append(doc)
+    before = read_before(find(docs[0]))
+    written: list[str] = []
+    for f, doc in zip(targets, docs, strict=True):
+        find(doc)[key] = value
+        try:
+            atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=4))
+            back = find(json.loads(f.read_text(encoding="utf-8")))
+        except (OSError, ValueError) as exc:
+            back, problem = None, f"写的时候出错（{type(exc).__name__}）"
+        else:
+            problem = "写进去之后读出来和写的不一样"
         if not back or back.get(key) != value:
-            return f"{f} 写进去之后读出来和写的不一样", before, written
-        written.append(f.name)
-    if not written:
-        return "找不到 MAA 的母本配置", before, written
-    return "", before, written
+            # Only the master can come before: it is already changed, and
+            # AUTO-MAS copies it over MAA's own file before the next run.
+            done = "；母本已经改好，下次开跑会照它覆盖 MAA 自己那份" if written else ""
+            return f"{f} {problem}{done}", before, written
+        written.append(f)
+    return "", before, [w.name for w in written]

@@ -14,6 +14,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from ark_relay.core import mastercfg
 from ark_relay.core.config import SERVER_TZ, USER_TZ, atomic_write_text
 from ark_relay.core.names import GAME_ZH
 
@@ -26,8 +27,8 @@ log = logging.getLogger("ark.plan")
 _last_error: dict[str, str] = {}
 
 
-def _say_once(site: str, exc: BaseException, msg: str, *args, exc_info: bool = False) -> None:
-    key = f"{type(exc).__name__}: {exc}"
+def _say_once(site: str, exc: "BaseException | str", msg: str, *args, exc_info: bool = False) -> None:
+    key = exc if isinstance(exc, str) else f"{type(exc).__name__}: {exc}"
     if _last_error.get(site) != key:
         log.warning(msg, *args, exc_info=exc_info)
         _last_error[site] = key
@@ -58,10 +59,13 @@ def _tokyo(hhmm: str) -> str:
 
 def _load(path: Path) -> dict:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        doc = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        log.warning("读取 %s 失败: %s", path.name, exc)
+        # Read on every engine tick (schedule) and every phone publish (next_plan).
+        _say_once(f"load:{path}", exc, "读取 %s 失败: %s", path.name, exc)
         return {}
+    _last_error.pop(f"load:{path}", None)
+    return doc
 
 
 def _script_kind(path: str) -> str:
@@ -82,8 +86,12 @@ def _script_kind(path: str) -> str:
     return ""
 
 
+# AUTO-MAS v5.7 task/MAA/AutoProxy.py builds MAA's StagePlan from these, in order.
+_STAGE_KEYS = ("Stage", "Stage_1", "Stage_2", "Stage_3", "MedicineNumb")
+
+
 def _scripts(cfg_dir: Path) -> dict[str, dict]:
-    """{script_uid: {name, kind, path, fight, stage, stage_mode, medicine, annihilation, sanity_use}}
+    """{script_uid: {name, kind, path, fight, stage_mode, stage_info, annihilation, sanity_use}}
 
     Scripts and users are found by walking ScriptConfig.json's instances (opaque
     uids), not by hard-coded ids.
@@ -106,10 +114,11 @@ def _scripts(cfg_dir: Path) -> dict[str, dict]:
             # The combat switch: off means no stage is farmed, and the plan says so.
             if "IfFight" in task:
                 entry["fight"] = bool(task.get("IfFight"))
-            if info.get("Stage"):
-                entry["stage"] = info["Stage"]
-                entry["stage_mode"] = info.get("StageMode", "")
-                entry["medicine"] = info.get("MedicineNumb")
+            if info.get("StageMode"):
+                # Fixed: the stages are these; otherwise StageMode is a
+                # PlanConfig uid and the plan table supplies them (_stage_bits).
+                entry["stage_mode"] = info["StageMode"]
+                entry["stage_info"] = {k: info.get(k) for k in _STAGE_KEYS}
             if info.get("Annihilation"):
                 entry["annihilation"] = info["Annihilation"]
             if task.get("SanityTaskType"):
@@ -130,7 +139,26 @@ def _hhmm(raw) -> "str | None":
     return f"{hh:02d}:{mm:02d}" if 0 <= hh < 24 and 0 <= mm < 60 else None
 
 
+# AUTO-MAS's weekday names (calendar.day_name under the C locale), the values of
+# TimeSet.Info.Days and QueueItem.Schedule.Days; both default to all seven.
+_WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+
+def _days(raw) -> tuple[str, ...]:
+    if not isinstance(raw, list):
+        return _WEEKDAYS
+    return tuple(d for d in _WEEKDAYS if d in {str(x) for x in raw})
+
+
 def _queues(cfg_dir: Path) -> list[dict]:
+    """The timed queues, as AUTO-MAS v5.7 schedules them (app/core/timer.py
+    _due_timed_slots, app/core/task_manager.py _queue_script_entries):
+
+    * a cycle queue (Info.CycleEnabled) ignores its timed settings: left out;
+    * each time fires only on its TimeSet's Info.Days ("days": {time: weekdays});
+    * an item runs only on its own Schedule.Days ("entries": [(script id,
+      weekdays)]); an item whose ScriptId is "-" (none picked) is not a script.
+    """
     data = _load(cfg_dir / "QueueConfig.json")
     out = []
     bad_now: set[str] = set()
@@ -139,6 +167,7 @@ def _queues(cfg_dir: Path) -> list[dict]:
         info = node.get("Info") or {}
         sub = node.get("SubConfigsInfo") or {}
         times = []
+        days: dict[str, tuple[str, ...]] = {}
         for tid, t in (sub.get("TimeSet") or {}).items():
             if tid == "instances" or not isinstance(t, dict):
                 continue
@@ -148,7 +177,9 @@ def _queues(cfg_dir: Path) -> list[dict]:
                 # don't-power-off-mid-queue guard, the plan) parses "HH:MM";
                 # a time that is not is skipped, and said once.
                 if (hhmm := _hhmm(ti["Time"])) is not None:
-                    times.append(hhmm)
+                    if hhmm not in days:
+                        times.append(hhmm)
+                    days[hhmm] = _days([*days.get(hhmm, ()), *_days(ti.get("Days"))])
                     continue
                 site = f"time:{info.get('Name') or inst.get('uid')}:{ti['Time']}"
                 bad_now.add(site)
@@ -156,25 +187,50 @@ def _queues(cfg_dir: Path) -> list[dict]:
                     log.warning("队列 %s 的定时「%s」认不出是几点几分，这个时刻不看超时、不防关机",
                                 info.get("Name") or "?", ti["Time"])
                     _last_error[site] = "unparsable"
-        items = []
+        entries = []
         for qid, q in (sub.get("QueueItem") or {}).items():
             if qid == "instances" or not isinstance(q, dict):
                 continue
-            sid = (q.get("Info") or {}).get("ScriptId")
-            if sid:
-                items.append(sid)
-        if info.get("TimeEnabled") and times:
+            sid = str((q.get("Info") or {}).get("ScriptId") or "").strip()
+            if sid and sid != "-":
+                entries.append((sid, _days((q.get("Schedule") or {}).get("Days"))))
+        if info.get("TimeEnabled") and times and not info.get("CycleEnabled"):
             out.append({
                 "uid": inst.get("uid"),    # runtime-snapshot's queueId
                 "name": info.get("Name") or "?",
                 "times": sorted(times),
+                "days": days,
                 "after": info.get("AfterAccomplish"),
-                "items": items,
+                "items": [sid for sid, _ in entries],
+                "entries": entries,
             })
     for site in [k for k in _last_error if k.startswith("time:") and k not in bad_now]:
         _last_error.pop(site, None)
     out.sort(key=lambda q: q["times"][0])
     return out
+
+
+def runs_at(q: dict, hhmm: str, when) -> list[str]:
+    """Script ids queue `q` (from schedule) runs when its time `hhmm` comes up on
+    `when`'s day (server clock): [] when that time does not fire that weekday or
+    every item sits that weekday out."""
+    day = _WEEKDAYS[when.weekday()]
+    if day not in (q.get("days") or {}).get(hhmm, _WEEKDAYS):
+        return []
+    return [sid for sid, d in q.get("entries", [(s, _WEEKDAYS) for s in q.get("items", [])])
+            if day in d]
+
+
+def _startup_runs(info: dict) -> "bool | None":
+    """Whether AUTO-MAS runs the queue when it starts. v5.7 stores StartUpMode
+    (Never / Always / DailyFirst, models/config.py); an older config's bool
+    StartUpEnabled is migrated to it the same way (config.py: True -> Always).
+    None when neither is there."""
+    mode = info.get("StartUpMode")
+    if isinstance(mode, str):
+        return mode != "Never"
+    old = info.get("StartUpEnabled")
+    return old if isinstance(old, bool) else None
 
 
 def queue_rows(automas_dir) -> list[dict]:
@@ -197,7 +253,7 @@ def queue_rows(automas_dir) -> list[dict]:
                 if k != "instances" and isinstance(q, dict)]
         out.append({"名": str(info.get("Name") or "?"),
                     "定时": info.get("TimeEnabled"),
-                    "开机跑": info.get("StartUpEnabled"),
+                    "开机跑": _startup_runs(info),
                     "脚本": [names[s] for s in sids if s in names]})
     return out
 
@@ -469,16 +525,17 @@ def _okww_quick_overrides(automas_dir: Path | None) -> "dict | None | object":
     return None
 
 
-def _maaend_extra_bits(maaend_dir: Path | None, when) -> list[str]:
+def _maaend_extra_bits(automas_dir, maaend_dir: Path | None, when) -> list[str]:
     """What the MaaEnd round runs besides the dailies - for now, only AutoCollect.
 
     AutoCollect runs only on its selected weekdays and takes about half an hour,
-    so the plan says whether tomorrow is one of them.
+    so the plan says whether tomorrow is one of them. Read from the master copy:
+    phone edits land there, and AUTO-MAS copies it over MaaEnd's own file before
+    each run, so MaaEnd's file lags one run behind. With no AutoCollectSchedule
+    saved, MaaEnd uses the option's default_case from its definition.
     """
-    if not maaend_dir:
-        return []
-    f = Path(maaend_dir) / "config" / "mxu-MaaEnd.json"
-    if not f.is_file():
+    f = mastercfg.maaend_master(automas_dir) if automas_dir else None
+    if not f or not f.is_file():
         return []
     try:
         d = json.loads(f.read_text(encoding="utf-8", errors="replace"))
@@ -493,8 +550,12 @@ def _maaend_extra_bits(maaend_dir: Path | None, when) -> list[str]:
         for t in inst.get("tasks") or []:
             if t.get("taskName") != "AutoCollect" or not t.get("enabled"):
                 continue
-            opts = (t.get("optionValues") or {}).get("AutoCollectSchedule") or {}
-            names = opts.get("caseNames") or []
+            opts = (t.get("optionValues") or {}).get("AutoCollectSchedule")
+            if opts is None:
+                defs = mastercfg._maaend_defs(maaend_dir)[0] if maaend_dir else {}
+                names = (defs.get("AutoCollectSchedule") or {}).get("default_case") or []
+            else:
+                names = opts.get("caseNames") or []
             picked = sorted(days[n.replace("AutoCollectSchedule", "")]
                             for n in names
                             if n.replace("AutoCollectSchedule", "") in days)
@@ -506,6 +567,44 @@ def _maaend_extra_bits(maaend_dir: Path | None, when) -> list[str]:
                 return [f"⏳ 先跑自动采集（{routes} 条路线，上次实测 33 分钟）"]
             return [f"自动采集仅 {label} 跑"]
     return []
+
+
+def _stage_bits(cfg_dir: Path, s: dict, when) -> list[str]:
+    """The stage and sanity-potion lines for one MAA script, the way AUTO-MAS
+    v5.7 hands them to MAA (task/MAA/AutoProxy.py): StageMode "Fixed" takes
+    Stage/Stage_1..3/MedicineNumb from the user's own settings; any other value
+    is a PlanConfig uid whose table supplies them - its "ALL" row, or with Mode
+    "Weekly" the row for that weekday (models/config.py get_current_info).
+    "-" is an empty slot and is left out; "*" is passed to MAA as "", which MAA
+    takes as the current / last stage (MAA docs protocol/integration.md, Fight
+    "stage"). MAA tries the stages in order."""
+    mode, info = s.get("stage_mode"), s.get("stage_info") or {}
+    how = "固定"
+    if mode != "Fixed":
+        node = _load(cfg_dir / "PlanConfig.json").get(mode)
+        if not isinstance(node, dict):
+            _say_once("plan_table", mode, "MAA 计划表 %s 在 PlanConfig.json 里找不到", mode)
+            return [f"理智 读不到计划表（{mode}）"]
+        _last_error.pop("plan_table", None)
+        pinfo = node.get("Info") or {}
+        day = when.strftime("%A") if pinfo.get("Mode") == "Weekly" else "ALL"
+        info = node.get(day) or node.get("ALL") or {}
+        how = f"计划表「{pinfo.get('Name') or '?'}」"
+    stages = ["当前/上次关卡" if v == "*" else str(v)
+              for v in (info.get(k, "-") for k in _STAGE_KEYS[:4])
+              if v not in ("-", None, "")]
+    out = []
+    if stages:
+        line = f"理智 {stages[0]}（{how}）"
+        if len(stages) > 1:
+            line += "，打不了依次换 " + "、".join(stages[1:])
+        out.append(line)
+    else:
+        out.append(f"理智 没设关卡（{how}）")
+    med = info.get("MedicineNumb")
+    if med is not None:
+        out.append("不吃理智药" if int(med) <= 0 else f"理智药最多 {med} 个")
+    return out
 
 
 def _annihilation_done_tomorrow(automas_dir) -> bool:
@@ -589,9 +688,10 @@ def _asar_value_labels(automas_dir, state_dir) -> dict:
     asar = Path(automas_dir) / "resources" / "app.asar"
     try:
         st = asar.stat()
-    except OSError:
-        log.warning("找不到 app.asar，剿灭那一项会留下英文取值")
+    except OSError as exc:
+        _say_once("asar", exc, "找不到 app.asar，剿灭那一项会留下英文取值")
         return {}
+    _last_error.pop("asar", None)
     stamp = f"{st.st_size}-{int(st.st_mtime)}"
     # A cache of derived data, rebuilt when lost; a file of its own, not state.json.
     cache = Path(state_dir) / "asar-labels.json"
@@ -603,9 +703,10 @@ def _asar_value_labels(automas_dir, state_dir) -> dict:
         pass
     try:
         text = asar.read_bytes().decode("utf-8", "replace")
-    except OSError:
-        log.warning("读不了 app.asar", exc_info=True)
+    except OSError as exc:
+        _say_once("asar_read", exc, "读不了 app.asar", exc_info=True)
         return {}
+    _last_error.pop("asar_read", None)
     out: dict = {}
     for label, value in _LABEL_PAIR.findall(text):
         if any("\u4e00" <= ch <= "\u9fff" for ch in label):
@@ -618,14 +719,22 @@ def _asar_value_labels(automas_dir, state_dir) -> dict:
     return out
 
 
+# QueueConfig Info.AfterAccomplish (AUTO-MAS v5.7 models/config.py), labels from
+# its frontend i18n/locales/zh-CN.ts queue.action. NoAction says nothing.
+_AFTER_ZH = {"Shutdown": "关机", "ShutdownForce": "强制关机", "Reboot": "重启",
+             "Hibernate": "休眠", "Sleep": "睡眠", "KillSelf": "退出 AUTO-MAS",
+             "Logoff": "注销"}
+
+
 def next_plan(automas_dir: Path | None) -> str:
     """Human-readable summary of what will run next. '' if it cannot be read."""
     if not automas_dir:
         return ""
     cfg_dir = Path(automas_dir) / "config"
     if not cfg_dir.is_dir():
-        log.warning("找不到 AUTO-MAS 配置目录: %s", cfg_dir)
+        _say_once("cfg_dir", str(cfg_dir), "找不到 AUTO-MAS 配置目录: %s", cfg_dir)
         return ""
+    _last_error.pop("cfg_dir", None)
 
     scripts, queues = _scripts(cfg_dir), _queues(cfg_dir)
     if not queues:
@@ -644,9 +753,8 @@ def next_plan(automas_dir: Path | None) -> str:
             if s.get("fight") is False:
                 # Combat off: no stage is farmed tomorrow.
                 bits.append("不刷关卡（只做日常）")
-            elif s.get("stage"):
-                mode = "固定" if s.get("stage_mode") == "Fixed" else s.get("stage_mode", "")
-                bits.append(f"理智 {s['stage']}" + (f"（{mode}）" if mode else ""))
+            elif s.get("stage_mode"):
+                bits += _stage_bits(cfg_dir, s, _tomorrow())
             if (anni := s.get("annihilation")):
                 # "Close" is a switch closed by hand: nothing reopens it since the
                 # relay stopped closing it weekly (hand-over item 13). Otherwise
@@ -665,17 +773,13 @@ def next_plan(automas_dir: Path | None) -> str:
                     bits.append("剿灭 本周已打满，跳过")
                 else:
                     bits.append(f"剿灭 {zh.get(anni, anni)}")
-            if (med := s.get("medicine")) is not None:
-                # AUTO-MAS stores "use as many as you have" as 999.
-                bits.append("理智药不限" if int(med) >= 999
-                            else ("不吃理智药" if int(med) <= 0 else f"理智药 {med} 个"))
             if s.get("kind") == "MaaEnd":
                 # AUTO-MAS's SanityTaskType is only the tab; sanity_plan resolves
                 # which item the chain actually farms.
                 from ark_relay.features.weekly import sanity_plan  # noqa: PLC0415 - avoids a cycle
                 if label := sanity_plan.read(automas_dir).get("label"):
                     bits.append(f"理智用于 {label}")
-                bits += _maaend_extra_bits(s.get("path"), _tomorrow())
+                bits += _maaend_extra_bits(automas_dir, s.get("path"), _tomorrow())
             elif s.get("sanity_use"):
                 bits.append(f"理智用于 {s['sanity_use']}")
             if s.get("kind") == "OK-WW":
@@ -685,8 +789,8 @@ def next_plan(automas_dir: Path | None) -> str:
             game = _GAME_OF.get(str(s.get("kind") or ""), "")
             lines.append(f"▸ {game}" if game else f"▸ {label}")
             lines += [f"　{b}" for b in bits]
-        if q["after"] == "Shutdown":
-            lines.append("⏻ 跑完自动关机")
+        if (act := _AFTER_ZH.get(q["after"] or "")):
+            lines.append(f"⏻ 跑完自动{act}")
         lines.append("")
     return "\n".join(lines)
 
@@ -725,13 +829,16 @@ def recent_due_queues(automas_dir: Path | None, now, window_minutes: int = 120) 
             for day_shift in (0, -1):
                 cand = (now + timedelta(days=day_shift)).replace(
                     hour=hh, minute=mm, second=0, microsecond=0)
-                if cand <= now < cand + timedelta(minutes=window_minutes):
+                if cand <= now < cand + timedelta(minutes=window_minutes) and runs_at(q, hhmm, cand):
                     due = cand
                     break
             if due is None:
                 continue
             kinds = []
-            for uid in q.get("items", []):
+            # Only what AUTO-MAS runs at this time on this weekday: a time whose
+            # weekdays exclude it does not fire, an item skipped that day
+            # (the relay's own one-day skip writes Schedule.Days) is not waited for.
+            for uid in runs_at(q, hhmm, due):
                 kind = (scripts.get(uid) or {}).get("kind")
                 if kind and kind not in kinds:
                     kinds.append(kind)

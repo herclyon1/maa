@@ -1,0 +1,6 @@
+{
+    "import": [
+        // group: regional_development
+        "tasks/AutoStockStaple.json",
+    ],
+}
