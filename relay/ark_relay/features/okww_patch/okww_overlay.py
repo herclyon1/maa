@@ -47,11 +47,24 @@ def target(okww_dir) -> "Path | None":
     return Path(okww_dir).joinpath(*_WORKING, TASKS_DIR, FILE_NAME)
 
 
+class OverlayTrouble(Exception):
+    """install() or write_master_pointer() could not do its job; str(exc) is the plain line.
+
+    Raised, not returned as a line, so the caller cannot mistake it for a healthy
+    note: until 2026-10-13 these were plain strings, and the push title was chosen
+    by matching words (texts._PATCH_TROUBLE) that none of them contained - OK-WW ran
+    as plain upstream while every report said 🩹 (log only).
+    """
+
+
 def install(okww_dir) -> str:
-    """Copy the overrides into place. Returns a line to log, '' when unchanged."""
+    """Copy the overrides into place. Returns a line to log, '' when unchanged.
+
+    Raises OverlayTrouble when they are not in place afterwards.
+    """
     dest = target(okww_dir)
     if dest is None:
-        return "找不到 OK-WW 目录，中继的改动文件没装上"
+        raise OverlayTrouble("找不到 OK-WW 目录，中继的改动文件没装上，OK-WW 会按原版跑")
     want = source_text()
     try:
         if dest.is_file() and dest.read_text(encoding="utf-8") == want:
@@ -59,23 +72,28 @@ def install(okww_dir) -> str:
         dest.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(dest, want)
         if dest.read_text(encoding="utf-8") != want:
-            return "**中继的改动文件写下去了，但读出来和写的不一样**，OK-WW 会按原版跑"
+            raise OverlayTrouble("**中继的改动文件写下去了，但读出来和写的不一样**，OK-WW 会按原版跑")
     except OSError as exc:
-        return f"**中继的改动文件装不上（{exc}）**，OK-WW 会按原版跑"
+        raise OverlayTrouble(f"**中继的改动文件装不上（{exc}）**，OK-WW 会按原版跑") from exc
     return f"中继给 OK-WW 的改动文件已装到 {dest}"
 
 
 def write_master_pointer(automas_dir) -> str:
-    """Tell the overrides where AUTO-MAS's OK-WW master directory is. '' when written, else why not."""
+    """Tell the overrides where AUTO-MAS's OK-WW master directory is. '' when written or already right.
+
+    Raises OverlayTrouble when the pointer cannot be written.
+    """
     d = master_config_dir(automas_dir, "DailyTask.json")
     if d is None:
-        return "找不到 OK-WW 的母本目录，「只刷指定残象聚落」这项设置 OK-WW 跑的时候读不到"
+        raise OverlayTrouble("找不到 OK-WW 的母本目录，「只刷指定残象聚落」这项设置 OK-WW 跑的时候读不到")
     try:
         if MASTER_POINTER.is_file() and MASTER_POINTER.read_text(encoding="utf-8").strip() == str(d):
             return ""
         atomic_write_text(MASTER_POINTER, str(d))
+        if MASTER_POINTER.read_text(encoding="utf-8").strip() != str(d):
+            raise OverlayTrouble("母本目录的指路文件写下去了，但读出来和写的不一样，「只刷指定残象聚落」这项设置 OK-WW 跑的时候读不到")
     except OSError as exc:
-        return f"母本目录的指路文件写不了（{exc}），「只刷指定残象聚落」这项设置 OK-WW 跑的时候读不到"
+        raise OverlayTrouble(f"母本目录的指路文件写不了（{exc}），「只刷指定残象聚落」这项设置 OK-WW 跑的时候读不到") from exc
     return ""
 
 

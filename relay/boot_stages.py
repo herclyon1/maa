@@ -338,6 +338,7 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
         okww_at_boot = cfg.okww_dir or (
             Path(cfg.automas_dir).parent / "okww" if cfg.automas_dir else None)
         notes: list[str] = []
+        faults: list[str] = []
         # The overrides live in OK-WW's own ok_tasks/ folder; nothing edits its
         # source files (the last source patches and the code that restored them
         # were removed 2026-10-12). Installed here so a deploy leaves the machine in
@@ -345,10 +346,17 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
         # Local import: a module-level one would be evaluated during service
         # installation, when ark_relay may not be on sys.path yet.
         from ark_relay.features.okww_patch import okww_overlay as _overlay  # noqa: PLC0415
-        if line := _overlay.install(okww_at_boot):
-            notes.append(line)
-        if line := _overlay.write_master_pointer(cfg.automas_dir):
-            notes.append(line)
+        # Each step on its own: one that cannot do its job raises OverlayTrouble,
+        # which is a failure by construction (the ⚠️ title, the group), whatever its
+        # words - and must not skip the steps after it or the push.
+        for step, arg in ((_overlay.install, okww_at_boot),
+                          (_overlay.write_master_pointer, cfg.automas_dir)):
+            try:
+                if line := step(arg):
+                    notes.append(line)
+            except _overlay.OverlayTrouble as exc:
+                notes.append(str(exc))
+                faults.append(str(exc))
         if line := _overlay.report_line():
             notes.append(line)
         if line := _overlay.drift_line(okww_at_boot, cfg.state_dir):
@@ -361,7 +369,7 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
         # did not bind goes to the group, each time (until 2026-10-06 Server酱 only);
         # the healthy 「🩹 OK-WW 补丁」 stays log-only (notify.route_of).
         if notes:
-            notifier.send(texts.patches(len(notes), notes), "\n".join(f"· {n}" for n in notes), alert=True)
+            notifier.send(texts.patches(len(notes), notes, faults), "\n".join(f"· {n}" for n in notes), alert=True)
     except Exception:
         log.exception("启动时贴 OK-WW 补丁失败，服务照常继续")
 

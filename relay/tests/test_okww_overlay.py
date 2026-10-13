@@ -38,7 +38,11 @@ check("装上了", dest.is_file())
 check("说了装到哪", "ok_tasks" in line)
 check("内容一字不差", dest.read_text(encoding="utf-8"), okww_overlay.source_text())
 check("再装一次什么都不做", okww_overlay.install(root), "")
-check("目录是 None 时直说", "找不到" in okww_overlay.install(None))
+try:
+    okww_overlay.install(None)
+    check("目录是 None 时直说", False)
+except okww_overlay.OverlayTrouble as exc:     # a failure by construction (test_okww_overlay_faults)
+    check("目录是 None 时直说", "找不到" in str(exc))
 
 print("[没有目录也要自己建，不能因为缺个文件夹就装不上]")
 root2 = tmpdir()
@@ -237,7 +241,11 @@ mdir.mkdir(parents=True)
 (mdir / "DailyTask.json").write_text("{}", encoding="utf-8")
 pointer = tmpdir() / "ark-okww-master.txt"
 okww_overlay.MASTER_POINTER = pointer
-check("母本找不到就说清楚", "找不到" in okww_overlay.write_master_pointer(tmpdir()))
+try:
+    okww_overlay.write_master_pointer(tmpdir())
+    check("母本找不到就说清楚", False)
+except okww_overlay.OverlayTrouble as exc:     # a failure by construction (test_okww_overlay_faults)
+    check("母本找不到就说清楚", "找不到" in str(exc))
 check("写好了不吭声", okww_overlay.write_master_pointer(automas), "")
 check("指向母本目录", pointer.read_text(encoding="utf-8"), str(mdir))
 check("已是这个值就不重写", okww_overlay.write_master_pointer(automas), "")
