@@ -162,8 +162,16 @@ class State:
             "recruits": rec.recruits,
         }
         day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
-        with _LEDGER_LOCK, self.ledger_path(day).open("a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        with _LEDGER_LOCK:
+            # One line per (day, run_id): a record handled again (a retry after
+            # handling raised past this point, or the post-deploy retry of a
+            # given-up record) keeps the line already there, with any marks written
+            # onto it since, and is not scored a second time.
+            if rec.run_id in self._ledger_run_ids(day):
+                log.info("记录 %s 已在 %s 的账上，不重记", rec.run_id, day)
+                return
+            with self.ledger_path(day).open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         # Score the current code version (scoreboard.py). Every finished run
         # passes through this line, so the daily report's text cannot change
         # the score.
@@ -175,6 +183,22 @@ class State:
         except Exception:
             # The scoreboard must never take the bookkeeping down with it.
             log.warning("记分牌没记上", exc_info=True)
+
+    def _ledger_run_ids(self, day: str) -> set:
+        """Every run_id on the day's ledger, read raw: a line read_ledger would skip
+        (missing key, bad time) still holds its run's place. Torn lines hold none."""
+        p = self.ledger_path(day)
+        if not p.exists():
+            return set()
+        ids = set()
+        for ln in p.read_text(encoding="utf-8").splitlines():
+            try:
+                entry = json.loads(ln)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(entry, dict) and "run_id" in entry:
+                ids.add(entry["run_id"])
+        return ids
 
     def mark_incomplete(self, day: str, run_id: str, why: str) -> bool:
         """Write a failed outcome check back onto the day's ledger line.
