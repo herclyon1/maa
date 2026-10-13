@@ -164,19 +164,13 @@ def _seen_landing(eng, booted: datetime, shift: list[dict]) -> bool:
     return abs((boot - booted).total_seconds()) <= BOOT_SLACK_S and at >= max(q["due"] for q in shift)
 
 
-def _round_is_manual(eng, new_entries: list[dict]) -> bool:
-    """Whether this round was triggered by hand rather than by the schedule.
+def _schedule_times(eng) -> list[str]:
+    """The scheduled queue times ("HH:MM") from AUTO-MAS's own queue config."""
+    return [t for q in plan.schedule(eng.cfg.automas_dir) for t in q.get("times", [])]
 
-    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_round_is_manual」。
-    """
-    times = [t for q in plan.schedule(eng.cfg.automas_dir)
-             for t in q.get("times", [])]
-    if not times or not new_entries:
-        return False
-    try:
-        first = min(_entry_time(e) for e in new_entries)
-    except (KeyError, ValueError):
-        return False
+
+def _near_due(first: datetime, times: list[str]) -> bool:
+    """`first` is within MANUAL_WINDOW_MIN of one of the scheduled times that day."""
     for hhmm in times:
         try:
             hh, mm = (int(x) for x in hhmm.split(":"))
@@ -184,8 +178,23 @@ def _round_is_manual(eng, new_entries: list[dict]) -> bool:
             continue
         due = first.replace(hour=hh, minute=mm, second=0, microsecond=0)
         if abs((first - due).total_seconds()) <= MANUAL_WINDOW_MIN * 60:
-            return False
-    return True
+            return True
+    return False
+
+
+def _round_is_manual(eng, new_entries: list[dict]) -> bool:
+    """Whether this round was triggered by hand rather than by the schedule.
+
+    来龙去脉见 docs/CODE-HISTORY.md「shutdown.py:_round_is_manual」。
+    """
+    times = _schedule_times(eng)
+    if not times or not new_entries:
+        return False
+    try:
+        first = min(_entry_time(e) for e in new_entries)
+    except (KeyError, ValueError):
+        return False
+    return not _near_due(first, times)
 
 
 # How far apart two consecutive records may be and still belong to one round:
@@ -300,44 +309,64 @@ def _round_of_newest(entries: list[dict]) -> list[dict]:
     ordered = sorted(entries, key=_entry_time)
     group = [ordered[-1]]
     for prev in reversed(ordered[:-1]):
-        cur = group[0]
-        cur_start = _entry_time(cur)
-        prev_end = _entry_time(prev, "finished") if prev.get("finished") else _entry_time(prev)
-        gap = cur_start - prev_end
-        same_script = (prev.get("script") == cur.get("script")
-                       and prev.get("user") == cur.get("user"))
-        retry = same_script and not prev.get("ok") and gap <= timedelta(hours=RETRY_LINK_H)
-        # A timed-out record's "finished" can be its log's last line, not the
-        # moment AUTO-MAS killed it, so the gap after it can look longer than
-        # ROUND_GAP_H. What starts before AUTO-MAS's own limit for that script
-        # could have run out (+ TIMEOUT_SLACK_MIN) is the same round; anything
-        # later (a hand-started re-run) is not.
-        timed_out = not prev.get("ok") and any(
-            "超时" in str(w) for w in list(prev.get("failed_tasks") or [])
-            + [str((prev.get("raw") or {}).get("general_result") or "")])
-        moved_on = False
-        if timed_out and (limit := TIMEOUT_LIMIT_MIN.get(str(prev.get("script")))):
-            # OK-WW's and MAA's limits run from the start; MaaEnd's from its last
-            # log line.
-            anchor = prev_end if prev.get("script") == "MaaEnd" else _entry_time(prev)
-            moved_on = cur_start <= anchor + timedelta(minutes=limit + TIMEOUT_SLACK_MIN)
-        if gap <= timedelta(hours=ROUND_GAP_H) or retry or moved_on:
+        if _linked(prev, group[0]):
             group.insert(0, prev)
         else:
             break
     return group
 
 
-def _test_windows(eng) -> list[dict]:
-    """The test windows run-one.sh marked (report.test_windows); [] when none or no state dir."""
+def _linked(prev: dict, cur: dict) -> bool:
+    """`cur` continues the round `prev` is part of (the rules of _round_of_newest)."""
+    cur_start = _entry_time(cur)
+    prev_end = _entry_time(prev, "finished") if prev.get("finished") else _entry_time(prev)
+    gap = cur_start - prev_end
+    same_script = (prev.get("script") == cur.get("script")
+                   and prev.get("user") == cur.get("user"))
+    retry = same_script and not prev.get("ok") and gap <= timedelta(hours=RETRY_LINK_H)
+    # A timed-out record's "finished" can be its log's last line, not the
+    # moment AUTO-MAS killed it, so the gap after it can look longer than
+    # ROUND_GAP_H. What starts before AUTO-MAS's own limit for that script
+    # could have run out (+ TIMEOUT_SLACK_MIN) is the same round; anything
+    # later (a hand-started re-run) is not.
+    timed_out = not prev.get("ok") and any(
+        "超时" in str(w) for w in list(prev.get("failed_tasks") or [])
+        + [str((prev.get("raw") or {}).get("general_result") or "")])
+    moved_on = False
+    if timed_out and (limit := TIMEOUT_LIMIT_MIN.get(str(prev.get("script")))):
+        # OK-WW's and MAA's limits run from the start; MaaEnd's from its last
+        # log line.
+        anchor = prev_end if prev.get("script") == "MaaEnd" else _entry_time(prev)
+        moved_on = cur_start <= anchor + timedelta(minutes=limit + TIMEOUT_SLACK_MIN)
+    return gap <= timedelta(hours=ROUND_GAP_H) or retry or moved_on
+
+
+# A test window run-one.sh opened and nobody closed (no "until") is taken to end
+# this long after it opened: a --test run is one script, and the longest
+# AUTO-MAS limit is OK-WW's 120 minutes (TIMEOUT_LIMIT_MIN) plus start-up.
+# Without it a forgotten test-off made every later record a test run, and the
+# machine never powered off again (review of 25ebc227, 10-13).
+OPEN_WINDOW_MAX_H = 3
+
+
+def _test_spans(eng) -> list[tuple[datetime, datetime]]:
+    """The test windows run-one.sh marked (report.test_windows) as (since, until);
+    an open one ends OPEN_WINDOW_MAX_H after it opened. [] when none or no state dir."""
     from ark_relay.features.report import report  # noqa: PLC0415 - avoids an import cycle
-    return report.test_windows(getattr(getattr(eng, "cfg", None), "state_dir", None))
+    spans = []
+    for w in report.test_windows(getattr(getattr(eng, "cfg", None), "state_dir", None)):
+        try:
+            since = datetime.fromisoformat(w["since"]).astimezone(SERVER_TZ)
+            until = (datetime.fromisoformat(w["until"]).astimezone(SERVER_TZ) if w.get("until")
+                     else since + timedelta(hours=OPEN_WINDOW_MAX_H))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+        spans.append((since, until))
+    return spans
 
 
-def _off_shift(e: dict, windows: list[dict]) -> bool:
-    """A record that is no part of a 早班/晚班: a run a person started at AUTO-MAS
-    (raw.hand_started, written by handle._book) or one inside a marked test window
-    (ledger_report.split_test).
+def _off_shift(eng, entries: list[dict]) -> set[int]:
+    """id() of every record in `entries` that is no part of a 早班/晚班.
 
     Such a record never joins a scheduled round and never moves the skip key: on
     10-12 two test-window MaaEnd runs (18:26, 20:04) chained into the 21:30 evening
@@ -345,11 +374,39 @@ def _off_shift(e: dict, windows: list[dict]) -> bool:
     the hand-started OK-WW at 11:07 chained into the morning shift and gave it a new
     key, so the spent 「下次跑完不关机」 no longer matched and the machine powered off
     at 11:13:55. The user's rule, 2026-10-10 18:31 (quoted in USER-SWITCHES.txt):
-    the relay powers off only after a 早班/晚班 has finished."""
-    from ark_relay.core import ledger_report  # noqa: PLC0415
-    if (e.get("raw") or {}).get("hand_started"):
-        return True
-    return bool(ledger_report.split_test([e], windows)[1])
+    the relay powers off only after a 早班/晚班 has finished.
+
+    Off-shift is a run a person started at AUTO-MAS (raw.hand_started, written by
+    handle._book), or one inside a marked test window that is not a scheduled run.
+    A window can never swallow a shift: an in-window record still belongs to a
+    shift when it starts within MANUAL_WINDOW_MIN of a scheduled time, or continues
+    (_linked) the shift record before it with no window opened in between -
+    run-one.sh's busy gate dispatches a test only on an idle queue, so a window
+    opened after the previous record ended marks the next start as the test's.
+    """
+    spans = _test_spans(eng)
+    times = _schedule_times(eng) if spans else []
+    try:
+        ordered = sorted(entries, key=_entry_time)
+    except (KeyError, ValueError, TypeError):
+        return {id(e) for e in entries if (e.get("raw") or {}).get("hand_started")}
+    off: set[int] = set()
+    prev = None
+    for e in ordered:
+        if (e.get("raw") or {}).get("hand_started"):
+            off.add(id(e))
+            continue
+        start = _entry_time(e)
+        if any(since <= start <= until for since, until in spans):
+            shift = _near_due(start, times)
+            if not shift and prev is not None and _linked(prev, e):
+                prev_end = _entry_time(prev, "finished") if prev.get("finished") else _entry_time(prev)
+                shift = not any(prev_end <= since <= start for since, _ in spans)
+            if not shift:
+                off.add(id(e))
+                continue
+        prev = e
+    return off
 
 
 def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
@@ -366,8 +423,8 @@ def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
     except (KeyError, ValueError):
         return False
     newest = _entry_time(newest_entry)
-    windows = _test_windows(eng)
-    if _off_shift(newest_entry, windows):
+    off = _off_shift(eng, entries)
+    if id(newest_entry) in off:
         return True
     # A catch-up run the relay itself dispatched after a client update is not a
     # hand-started run; when it finishes, the machine may power off.
@@ -375,7 +432,7 @@ def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
     if since is not None and newest >= since:
         return False
     try:
-        group = _round_of_newest([e for e in entries if not _off_shift(e, windows)])
+        group = _round_of_newest([e for e in entries if id(e) not in off])
     except (KeyError, ValueError, TypeError):
         return False
     if _relay_dispatched(eng, group):
@@ -424,8 +481,11 @@ def _shutdown_key(eng, now: datetime) -> str:
     the machine powering off from the next one on.
     """
     day = now.strftime("%Y-%m-%d")
-    windows = _test_windows(eng)
-    return f"{day}:{sum(1 for e in eng.state.read_ledger(day) if not _off_shift(e, windows))}"
+    today = eng.state.read_ledger(day)
+    # Yesterday's records too, so an evening shift that ran past midnight still
+    # links the records it left in today's file.
+    off = _off_shift(eng, today + eng.state.read_ledger((now - timedelta(days=1)).strftime("%Y-%m-%d")))
+    return f"{day}:{sum(1 for e in today if id(e) not in off)}"
 
 
 @dataclass(frozen=True)
