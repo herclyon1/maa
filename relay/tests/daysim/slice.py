@@ -206,6 +206,7 @@ class Day:
     runs: list = field(default_factory=list)
     recs: list = field(default_factory=list)
     relay_size: int = 0
+    installer_src: str = ""                          # AUTO-MAS's own updater started, backend not back yet
 
     @property
     def year(self) -> int:
@@ -786,6 +787,12 @@ BACKEND_UP = re.compile(r"^Uvicorn running on \S+:(\d+)")
 BACKEND_DOWN = re.compile(r"^Shutting down$")
 TASK_START = re.compile(r"^创建任务: (\S+), 模式: (\S+), 触发来源: (\S+)$")
 TASK_END = re.compile(r"^任务结束: (\S+)$")
+# AUTO-MAS installs its own update by unpacking UpdatePack_*.zip, starting AUTO-MAS-Setup.exe
+# and exiting (docs/OPERATIONS.md, the AUTO-MAS row); app.log has only the start (10-09
+# 08:47:13 「启动更新程序」, 10-11 08:47:23). The installer is taken to run until the backend
+# is back (10-09 08:47:56): what the relay's tasklist sees meanwhile (INSTALLER_HINTS).
+UPDATER_START = re.compile(r"^启动更新程序$")
+UPDATER_EXE = r"D:\ark\automas\AUTO-MAS-Setup.exe"
 
 
 def app_line(ctx: Day, p: Part, out_path: Path, off: int, length: int) -> None:
@@ -818,8 +825,16 @@ def app_line(ctx: Day, p: Part, out_path: Path, off: int, length: int) -> None:
                 ctx.emit(t, "proc", src, op="start", image="dnplayer.exe", emulator=mm.group(1), by="automas")
             elif mm := EMU_STOP.match(msg):
                 ctx.emit(t, "proc", src, op="exit", image="dnplayer.exe", emulator=mm.group(2), by="automas")
+            elif UPDATER_START.match(msg):
+                ctx.emit(t, "proc", src, op="start", image=UPDATER_EXE.rsplit("\\", 1)[-1], path=UPDATER_EXE,
+                         by="automas")
+                ctx.installer_src = src
             elif mm := BACKEND_UP.match(msg):
                 ctx.emit(t, "mas_backend", src, op="up", port=int(mm.group(1)))
+                if ctx.installer_src:
+                    ctx.emit(t, "proc", src, op="exit", image=UPDATER_EXE.rsplit("\\", 1)[-1], path=UPDATER_EXE,
+                             by="automas", started=ctx.installer_src)
+                    ctx.installer_src = ""
             elif BACKEND_DOWN.match(msg):
                 ctx.emit(t, "mas_backend", src, op="down")
             elif mm := TASK_START.match(msg):

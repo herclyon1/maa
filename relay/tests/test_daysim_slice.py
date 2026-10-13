@@ -322,6 +322,25 @@ def check_power_on_clamp() -> None:
     check("the first boot keeps the boot line", (how, t), ("boot_line", ts("2026-10-11T14:25:00+08:00")))
 
 
+def check_updater() -> None:
+    print("\n[AUTO-MAS's own update: its installer runs until the backend is back]")
+    d = tmpdir("daysim-updater-")
+    log = d / "app.log"
+    log.write_text("2026-10-09 08:47:13.373 | INFO     | 更新服务 | 启动更新程序\n"
+                   "2026-10-09 08:47:15.696 | INFO     | 主程序 | Shutting down\n"
+                   "2026-10-09 08:47:56.903 | INFO     | 主程序 | Uvicorn running on http://0.0.0.0:36163 (Press CTRL+C to quit)\n",
+                   encoding="utf-8")
+    ctx = sl.Day("2026-10-09", ts("2026-10-09T00:00:00+08:00"), ts("2026-10-10T00:00:00+08:00"), d, d)
+    part = sl.Part("D/ark/automas/debug/app.log", "D:/ark/automas/debug/app.log")
+    cut = log.read_bytes().index(b"\n") + 1           # two chunks: the installer's start, then the rest
+    sl.app_line(ctx, part, log, 0, cut)
+    sl.app_line(ctx, part, log, cut, log.stat().st_size - cut)
+    got = [(e["t"][11:19], e["kind"], e.get("op"), e.get("image", "")) for _t, _s, e in ctx.events]
+    check("10-09: AUTO-MAS-Setup.exe from 08:47:13 to the backend's return 08:47:56", got,
+          [("08:47:13", "proc", "start", "AUTO-MAS-Setup.exe"), ("08:47:15", "mas_backend", "down", ""),
+           ("08:47:56", "mas_backend", "up", ""), ("08:47:56", "proc", "exit", "AUTO-MAS-Setup.exe")])
+
+
 def check_publish_fault() -> None:
     print("\n[network faults: an ntfy publish that failed once is an input]")
     ctx = sl.Day("2026-10-08", ts("2026-10-08T00:00:00+08:00"), ts("2026-10-09T00:00:00+08:00"), Path("."), Path("."))
@@ -358,6 +377,7 @@ def check_outside(day: str, seed: dict) -> None:
 
 check_redaction()
 check_tree()
+check_updater()
 check_power_on_clamp()
 check_publish_fault()
 days = sorted(p.name for p in DAYS.iterdir() if p.is_dir())
