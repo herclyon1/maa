@@ -1,0 +1,87 @@
+{
+ "case": "chest_row_140_1011",
+ "about": "T14, b9ad39b4. 2026-10-11 09:29 all five activity chests were claimed at 140 points and the overlay still said 「100 档点了没领到」: it looked for the 100 chest from the label's box centre, 14 px left of its tick. On the frame taken at that moment the row must check as claimed, with no chest clicked (the state has no chest transition, so any chest click is off script). Red at b9ad39b4~1: the 100 chest scores low there and is clicked.",
+ "task": [
+  "src.task.DailyTask",
+  "DailyTask"
+ ],
+ "start": "daily_page",
+ "config": {
+  "evidence": "the stamina farm had already run in this run (ok-script.2026-10-11.log:480 and :542 'TacetTask:enter combat' before the claim at :659); the test marks it reached, so claim_daily does not start a leftover farm"
+ },
+ "states": {
+  "daily_page": {
+   "frame": "daily_activity/2026-10-11_092951_140.png",
+   "transitions": [
+    {
+     "click": [
+      0.87,
+      0.23,
+      0.9,
+      0.27
+     ],
+     "to": "daily_page",
+     "evidence": "ok-script.2026-10-11.log:666 'no_boss_proceed, click claim' (also ok-script.2026-10-10.log:566): claim_daily clicks (0.885, 0.250) when boss_proceed is not in (0.803, 0.189, 0.960, 0.312) (upstream DailyTask.py:252-255, kept by the overlay's _claim_daily_checked); the next lines on both days read this chest row"
+    },
+    {
+     "key": "esc",
+     "to": "closed",
+     "evidence": "ok-script.2026-10-11.log:675-676 'current task wait main esc=True' -> 'in main esc=True' right after the claim: ensure_main(time_out=10) leaves the book with Esc (BaseWWTask.is_main -> back)"
+    }
+   ]
+  },
+  "closed": {
+   "end": true,
+   "about": "the book closed; the claim is over"
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "decision": "openF2Book",
+    "value": "gray_book_quest",
+    "evidence": "claim_daily opens the quest book first: ok-script.2026-10-11.log:665 'left_click gray_book_quest (77, 190)'"
+   },
+   {
+    "state": "closed",
+    "evidence": "ok-script.2026-10-11.log:675-676 'current task wait main esc=True' -> 'in main esc=True' right after the claim: ensure_main(time_out=10) leaves the book with Esc (BaseWWTask.is_main -> back)"
+   }
+  ],
+  "end": "closed",
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "活跃奖励：活跃度 140",
+    "evidence": "frames.json truth daily_points '140'; ok-script.2026-10-11.log:667"
+   },
+   {
+    "re": "活跃奖励：领完核对通过（活跃度 140，已领 20、40、60、80、100",
+    "evidence": "the frame, saved 09:29:51.440 as the run's verdict was logged: all five chests 20-100 show the white claimed tick (read by eye at full size; the 100 tick sits under the reward popup). The relay counts this sentence as claimed (outcome.daily_reward_checks)"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "活跃奖励没领到",
+    "evidence": "ok-script.2026-10-11.log:674 said '100 档点了没领到' about this very screen, whose 100 chest shows the tick: the false alarm"
+   }
+  ],
+  "verdict": {
+    "evidence": "frame daily_reward_unclaimed 2026-10-11 (all five chests ticked at 140 points); the relay pushed 「100 档点了没领到」 for it on 10-11 09:30:45 (state/alerts 20261011.jsonl), which b9ad39b4 fixed: nothing is unclaimed",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "done_has": [
+      "每日活跃奖励领到了"
+    ],
+    "lacks": [
+      "活跃",
+      "没领到"
+    ]
+  }
+ }
+}

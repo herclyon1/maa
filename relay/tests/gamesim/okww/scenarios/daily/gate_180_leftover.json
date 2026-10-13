@@ -1,0 +1,111 @@
+{
+ "case": "gate_180_leftover",
+ "about": "T14, 86bc0960. Upstream farms only when `not daily_reward_ready and used_stamina < 180` (DailyTask.py:89). With the points at 140 the gate is shut and every waveplate sat unused: 2026-09-30 OK-WW-13-55-06.log read progress 0 / points 140 and ended 'Daily Task Completed' with no stamina fight (09-23 and 09-27 the same). The standing order is to farm to empty: claim_daily must start the configured farm with no daily cap. The case stops at the farm's door (the farm itself has its own screens). Red at 86bc0960~1: claim_daily goes straight to the chests.",
+ "task": [
+  "src.task.DailyTask",
+  "DailyTask"
+ ],
+ "start": "daily_page",
+ "config": {
+  "evidence": "Which to Farm: the leftover farm of ok-script.2026-10-12.log:2159 ran TacetTask (:2160-2164). Additional tasks off: the case starts after them (the gate reads after the weekly boss on the machine, 86bc0960)",
+  "task": {
+   "Which to Farm": "Tacet Suppression",
+   "Additional Tasks to Run After Daily Task": []
+  }
+ },
+ "states": {
+  "daily_page": {
+   "frame": "daily_activity/2026-10-11_092951_140.png",
+   "transitions": [
+    {
+     "click": [
+      0.16,
+      0.11,
+      0.18,
+      0.13
+     ],
+     "to": "daily_page",
+     "evidence": "open_daily's click on the activity tab at (0.17, 0.12) (upstream DailyTask.py:224), taken on ok-script.2026-10-12.log 11:45:26-30 before the reads at :2047-2048"
+    },
+    {
+     "click": [
+      0.965,
+      0.59,
+      0.985,
+      0.61
+     ],
+     "to": "daily_page",
+     "evidence": "open_daily's second look at (0.974, 0.6) when no x/180 row is read (DailyTask.py:226-228); ok-script.2026-10-12.log:2047 read 'current daily progress 0'"
+    },
+    {
+     "click": [
+      0.87,
+      0.23,
+      0.9,
+      0.27
+     ],
+     "to": "daily_page",
+     "evidence": "ok-script.2026-10-11.log:666 'no_boss_proceed, click claim' (also ok-script.2026-10-10.log:566): claim_daily clicks (0.885, 0.250) when boss_proceed is not in (0.803, 0.189, 0.960, 0.312) (upstream DailyTask.py:252-255, kept by the overlay's _claim_daily_checked); the next lines on both days read this chest row"
+    },
+    {
+     "key": "esc",
+     "to": "closed",
+     "evidence": "ok-script.2026-10-11.log:675-676 'current task wait main esc=True' -> 'in main esc=True' right after the claim: ensure_main(time_out=10) leaves the book with Esc (BaseWWTask.is_main -> back)"
+    }
+   ]
+  },
+  "farming": {
+   "end": true,
+   "about": "TacetTask.farm_tacet was called (the test's spy enters this state)"
+  },
+  "closed": {
+   "end": true,
+   "about": "the book closed; the claim is over"
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "decision": "open_daily",
+    "value": [
+     0,
+     true
+    ],
+    "evidence": "ok-script.2026-10-12.log:2047-2048 'info_set current daily progress 0' / 'info_set total daily points 140' (also 2026-09-30 OK-WW-13-55-06.log:145-146, AUTO-MAS history); this page reads the same: no x/180 row, 140 points"
+   },
+   {
+    "decision": "farm_tacet",
+    "value": {
+     "daily": false
+    },
+    "evidence": "ok-script.2026-10-12.log:2159 '上游这趟不刷体力（已用 0/180，活跃度满 True），按「刷到空」把剩下的体力刷掉' and the TacetTask farm after it (:2160-2164): farm to empty, no daily cap"
+   },
+   {
+    "state": "farming",
+    "evidence": "the farm was entered"
+   }
+  ],
+  "end": "farming",
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [],
+  "log_never": [],
+  "verdict": {
+    "evidence": "2026-09-30 OK-WW-13-55-06.log read progress 0 and points 140 at open_daily (the scenario's own provisional state): the dailies were done before the run started",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "raw": {
+      "okww_daily_done_at_start": true
+    },
+    "raw_has": {
+      "okww_points": [
+        "140"
+      ]
+    }
+  }
+ }
+}

@@ -1,0 +1,253 @@
+{
+ "case": "entry_open_world_stops",
+ "about": "确认前往 and then the open world (10-05 22:05: the run walked on a guess and failed 20 s later). A weekly boss is entered from its level page, never walked to: stop with a picture, no walking. Red at f786bec1~1.",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "main",
+ "max_s": 1200,
+ "config": {
+  "evidence": "the game PC's working/configs/FarmEchoTask.json (read 2026-10-13, gamesim u0 redacted copy): Teleport to Boss Weekly Challenge, Boss Level 90, Which Weekly Boss to Teleport 1, Repeat Farm Count 3",
+  "task": {
+   "Teleport to Boss": "Weekly Challenge",
+   "Boss Level": "90",
+   "Which Weekly Boss to Teleport": 1,
+   "Repeat Farm Count": 3
+  }
+ },
+ "states": {
+  "main": {
+   "about": "the open world, in team (ensure_main / openF2Book see in_team_and_world)",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "world_earth_icon",
+     "box": [
+      0.0068,
+      0.0449,
+      0.0258,
+      0.0639
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json world_earth_icon box (3840x2160 annotation, halved): the open world"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f2",
+     "to": "book",
+     "evidence": "ok-script.2026-10-12.log:2719-2720 'click f2 to open the book' / 'send f2 key to open' (15:27:46-50)"
+    }
+   ]
+  },
+  "book": {
+   "about": "the F2 book, boss tab icon in its left column",
+   "provisional_features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.2026-10-12.log:2721 'found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=84)' (15:27:51)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.024,
+      0.2741,
+      0.0552,
+      0.3204
+     ],
+     "to": "book_boss",
+     "evidence": "ok-script.2026-10-12.log:2722 'left_click gray_book_boss (76, 321)' (15:27:54)"
+    }
+   ]
+  },
+  "book_boss": {
+   "about": "the book's boss page; open_boss_book clicks the category by position",
+   "provisional_features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.2026-10-12.log:2721 'found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=84)' (15:27:51)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.224,
+      0.5861,
+      0.2552,
+      0.6324
+     ],
+     "to": "list",
+     "evidence": "ok-script.2026-10-12.log:2724 'left_click zhange (460, 658)' (open_boss_book zhange, 15:27:56)"
+    }
+   ]
+  },
+  "list": {
+   "about": "the category list; click_on_book_target clicks row 1's 前往",
+   "provisional_features": [
+    {
+     "name": "boss_proceed",
+     "box": [
+      0.9411,
+      0.3574,
+      0.9583,
+      0.413
+     ],
+     "evidence": "ok-script.2026-10-12.log:2725 'left_click boss_proceed (1824, 416)' (15:27:59); size of upstream v3.7.4 assets/coco_annotations.json boss_proceed box (33x60)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.9344,
+      0.362,
+      0.9656,
+      0.4083
+     ],
+     "to": "spoiler",
+     "evidence": "ok-script.2026-10-12.log:2725 'left_click boss_proceed (1824, 416)' (15:27:59)"
+    }
+   ]
+  },
+  "spoiler": {
+   "about": "the 限时提前开放 spoiler dialog after 前往 (none of upstream's four book screens for 10 s)",
+   "provisional_ocr": [
+    {
+     "text": "提前到达目标位置可能影响剧情体验，是否确认前往？",
+     "box": [
+      0.3125,
+      0.4648,
+      0.6734,
+      0.4954
+     ],
+     "evidence": "ok-script.2026-10-12.log:2727 '限时提前开放的剧情提示框，点确认前往。框里读到：Box(name='提前到达目标位置可能影响剧情体验，是否确认前往？', x=600, y=502, width=693, height=33, confidence=99)' (15:28:10)"
+    }
+   ],
+   "provisional_features": [
+    {
+     "name": "confirm_btn_hcenter_vcenter",
+     "box": [
+      0.724,
+      0.5917,
+      0.7536,
+      0.663
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json confirm_btn_hcenter_vcenter box; its centre is where the machine clicked the dialog's right button: ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)'"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.7234,
+      0.6046,
+      0.7547,
+      0.6509
+     ],
+     "to": "world",
+     "evidence": "ok-script.2026-10-12.log:2729 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)' (15:28:10)"
+    }
+   ]
+  },
+  "world": {
+   "about": "the open world after 确认前往",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "world_earth_icon",
+     "box": [
+      0.0068,
+      0.0449,
+      0.0258,
+      0.0639
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json world_earth_icon box (3840x2160 annotation, halved): the open world"
+    }
+   ]
+  }
+ },
+ "expect": {
+  "sequence": [],
+  "end": null,
+  "never_states": [],
+  "shots": [
+   {
+    "name": "weekly_entry_unknown",
+    "evidence": "design 1 Entry screens: an unknown screen -> screenshot and stop, never a walk"
+   }
+  ],
+  "raises": {
+   "name": "Exception",
+   "evidence": "the entry fails (upstream's 'Teleport to boss failed' path), it does not walk"
+  },
+  "log": [],
+  "log_never": [],
+  "verdict": {
+    "evidence": "10-05 22:05 the run walked the open world on a guess; now it stops with a picture before entering (f786bec1): the weekly boss was not entered",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": false,
+    "has": [
+      "周本",
+      "没进本"
+    ],
+    "raw_has": {
+      "okww_steps": [
+        "没进本"
+      ]
+    }
+  }
+ }
+}

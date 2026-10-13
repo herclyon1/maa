@@ -1,0 +1,104 @@
+{
+ "case": "all_full_1013",
+ "about": "T13, 2ae8d291. 2026-10-13 09:32 the wanted nests read 48/48 and 41/41 on the first page and 41/41 on the scrolled page (陷足流川 0/24 is not wanted): nothing is farmed, the log says all full, and each page is kept as a screenshot - the list is the only proof of 「full」 (10-12 11:48:10 left the log line alone). The book is already open (openF2Book is a pinned stand-in). Red at 2ae8d291~1: no screenshot.",
+ "task": [
+  "src.task.NightmareNestTask",
+  "NightmareNestTask"
+ ],
+ "start": "page_1",
+ "config": {
+  "evidence": "Which to Farm: the game PC's working/configs/NightmareNestTask.json (read 2026-10-13, gamesim u0 redacted copy) is [\"Tacet Discord Nest\"]. Only Farm These Nests: from the master directory MASTER_POINTER names, as the run logged it: ok-script.log (2026-10-13):242 (the same run) '只刷 ['梦枢天罗', '落渊南丘']（设置来自母本）'",
+  "task": {
+   "Which to Farm": [
+    "Tacet Discord Nest"
+   ]
+  },
+  "master": {
+   "NightmareNestTask.json": {
+    "Only Farm These Nests": "梦枢天罗,落渊南丘"
+   }
+  }
+ },
+ "states": {
+  "page_1": {
+   "frame": "nest_list/2026-10-13_093216_allfull.png",
+   "transitions": [
+    {
+     "click": [
+      0.23,
+      0.82,
+      0.25,
+      0.84
+     ],
+     "to": "page_1",
+     "evidence": "ok-script.log (2026-10-13):506 and :509 'left_click canxiang (460, 896)' on the open book"
+    },
+    {
+     "click": [
+      0.965,
+      0.87,
+      0.98,
+      0.89
+     ],
+     "to": "page_2",
+     "evidence": "go_nest_scroll's click at (0.9730, 0.8806) (upstream NightmareNestTask.py:224-226) after ok-script.log (2026-10-13):509; the next screenshot, 09:32:21.413, is the scrolled page"
+    }
+   ]
+  },
+  "page_2": {
+   "frame": "nest_list/2026-10-13_093221_allfull-scrolled.png",
+   "transitions": []
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "shot": "nest_all_full",
+    "evidence": "ok-script.log (2026-10-13):507 (screenshot 09-32-16.560_nest_all_full)"
+   },
+   {
+    "state": "page_2",
+    "evidence": "screenshot 09:32:21.413"
+   },
+   {
+    "shot": "nest_all_full",
+    "evidence": "ok-script.log (2026-10-13):510 (screenshot 09-32-21.413_nest_all_full)"
+   },
+   {
+    "decision": "get_nest_to_go",
+    "value": null,
+    "evidence": "no nest lap followed: the run's next nest line is the next run's (ok-script.log (2026-10-13):804, 11:07:59)"
+   }
+  ],
+  "end": null,
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "nightmare nest: 指定点位都已打满，跳过（截图 nest_all_full）",
+    "evidence": "ok-script.log (2026-10-13):507, :510"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "is not complete",
+    "evidence": "every wanted count on both pages is full (frame truth)"
+   }
+  ],
+  "verdict": {
+    "evidence": "2026-10-13 09:32 the wanted nests read 48/48 and 41/41: nothing to farm, which is the normal state (memory normal-state-not-an-alarm: 已领满 is not an alarm) and the filter was in effect",
+    "args": {
+      "expect_nest": true,
+      "expect_daily": false,
+      "expect_stamina": false,
+      "only_nest": "梦枢天罗,落渊南丘"
+    },
+    "clean": true,
+    "done_has": [
+      "已满",
+      "只刷指定点位"
+    ]
+  }
+ }
+}

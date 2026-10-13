@@ -1,0 +1,321 @@
+{
+ "case": "claim_topup_after_enough_read",
+ "about": "The bar reads 240/240 + 23, enough, but the game answers 确认 with the top-up dialog defaulting to 结晶溶剂 (frame waveplate_topup/2026-10-12_114452.png): the read was wrong; ESC, 取消, stop - never the top-up clicks at (0.70, 0.71) that paid with solute on 10-12 15:29 and 15:31 (ok-script.2026-10-12.log:2793-2821, :2874-2902). Red at efc7fb6b~1.",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "crystal",
+ "max_s": 1200,
+ "config": {
+  "evidence": "the game PC's working/configs/FarmEchoTask.json (read 2026-10-13, gamesim u0 redacted copy): Teleport to Boss Weekly Challenge, Boss Level 90, Which Weekly Boss to Teleport 1, Repeat Farm Count 3",
+  "task": {
+   "Teleport to Boss": "Weekly Challenge",
+   "Boss Level": "90",
+   "Which Weekly Boss to Teleport": 1,
+   "Repeat Farm Count": 3
+  }
+ },
+ "states": {
+  "crystal": {
+   "about": "at the crystal after the fight, the F prompt up (frames.json unrecorded weekly_crystal_f; the walk is not driven)",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "illusive_realm_exit",
+     "box": [
+      0.0076,
+      0.0292,
+      0.0279,
+      0.069
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json illusive_realm_exit box (halved): inside a realm"
+    },
+    {
+     "name": "pick_up_f_hcenter_vcenter",
+     "box": [
+      0.6365,
+      0.5074,
+      0.6469,
+      0.5259
+     ],
+     "evidence": "ok-script.2026-10-12.log:2702 'do_walk_to_box ended Box(name='Labels.pick_up_f_hcenter_vcenter', x=1222, y=548, width=20, height=20)' (15:27:29, at the crystal)"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f",
+     "to": "claim",
+     "evidence": "pick_f presses F on the prompt; ok-script.2026-10-12.log:2705 the claim dialog read 3 s after the walk ended"
+    }
+   ]
+  },
+  "claim": {
+   "about": "the claim dialog (provisional: frames.json unrecorded weekly_claim_dialog)",
+   "provisional_ocr": [
+    {
+     "text": "领取奖励需消耗60点结晶波片，请确认是否领取？",
+     "box": [
+      0.2917,
+      0.463,
+      0.7083,
+      0.5
+     ],
+     "evidence": "docs/OKWW-WEEKLY-BOSS.md:53, the dialog's text read word for word by full-screen OCR on 2026-09-01 05:09; the box is the dialog's centre line (as 确认离开 on upstream tests/images/confirm_highlight.png)"
+    },
+    {
+     "text": "23",
+     "box": [
+      0.6292,
+      0.0463,
+      0.6531,
+      0.075
+     ],
+     "evidence": "frame boss_level_page/2026-10-12_095116_3of3.png truth 23 (backup); box as ok-script.2026-10-12.log:2001 (11:44:41, the claim dialog) first top-bar box Box(name='24', x=1208, y=50, width=46, height=31)"
+    },
+    {
+     "text": "240/240",
+     "box": [
+      0.6731,
+      0.0463,
+      0.7281,
+      0.079
+     ],
+     "evidence": "frame boss_level_page/2026-10-12_095116_3of3.png truth 240/240; placed right of the backup, the bar's order on frame waveplate_topup/2026-10-12_114452.png (0, 41/240, 15652 left to right)"
+    },
+    {
+     "text": "15652",
+     "box": [
+      0.7474,
+      0.0448,
+      0.8049,
+      0.0792
+     ],
+     "evidence": "frame waveplate_topup/2026-10-12_114452.png truth 15652 (astrite)"
+    }
+   ],
+   "provisional_features": [
+    {
+     "name": "claim_cancel_button_hcenter_vcenter",
+     "box": [
+      0.2365,
+      0.5769,
+      0.2583,
+      0.6731
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json claim_cancel_button_hcenter_vcenter box (has_claim's template); ok-script.log (2026-10-13):1352 'left_click claim_cancel_button_hcenter_vcenter (538, 675)' (relative_x=2 of that box)"
+    },
+    {
+     "name": "cancel_button_hcenter_vcenter",
+     "box": [
+      0.237,
+      0.5963,
+      0.2583,
+      0.6611
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json cancel_button_hcenter_vcenter box; the machine clicked a two-button dialog's left button there: ok-script.2026-10-10.log:555 'left_click Labels.cancel_button_hcenter_vcenter (476, 679)'"
+    },
+    {
+     "name": "confirm_btn_hcenter_vcenter",
+     "box": [
+      0.724,
+      0.5917,
+      0.7536,
+      0.663
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json confirm_btn_hcenter_vcenter box; its centre is where the machine clicked the dialog's right button: ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)'"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.69,
+      0.59,
+      0.79,
+      0.67
+     ],
+     "to": "topup",
+     "evidence": "ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)' (the claim's 确认)"
+    },
+    {
+     "click": [
+      0.22,
+      0.56,
+      0.3,
+      0.68
+     ],
+     "to": "claim_cancelled",
+     "evidence": "the dialog's left button: upstream v3.7.4 assets/coco_annotations.json cancel_button / claim_cancel_button boxes (455-496 x 623-727)"
+    }
+   ]
+  },
+  "claim_cancelled": {
+   "end": true
+  },
+  "topup": {
+   "about": "the top-up dialog defaulting to solute",
+   "frame": "waveplate_topup/2026-10-12_114452.png",
+   "transitions": [
+    {
+     "click": [
+      0.64,
+      0.66,
+      0.76,
+      0.76
+     ],
+     "to": "topup_paid",
+     "evidence": "upstream use_stamina's top-up click (0.70, 0.71) (BaseWWTask.py:445-450); ok-script.2026-10-12.log:2005-2006 the machine clicked it at 11:44:44-48"
+    },
+    {
+     "key": "esc",
+     "to": "claim_again",
+     "evidence": "ESC closes the top-up dialog"
+    }
+   ]
+  },
+  "claim_again": {
+   "about": "the claim dialog again after ESC",
+   "provisional_ocr": [
+    {
+     "text": "领取奖励需消耗60点结晶波片，请确认是否领取？",
+     "box": [
+      0.2917,
+      0.463,
+      0.7083,
+      0.5
+     ],
+     "evidence": "docs/OKWW-WEEKLY-BOSS.md:53, the dialog's text read word for word by full-screen OCR on 2026-09-01 05:09; the box is the dialog's centre line (as 确认离开 on upstream tests/images/confirm_highlight.png)"
+    }
+   ],
+   "provisional_features": [
+    {
+     "name": "claim_cancel_button_hcenter_vcenter",
+     "box": [
+      0.2365,
+      0.5769,
+      0.2583,
+      0.6731
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json claim_cancel_button_hcenter_vcenter box (has_claim's template); ok-script.log (2026-10-13):1352 'left_click claim_cancel_button_hcenter_vcenter (538, 675)' (relative_x=2 of that box)"
+    },
+    {
+     "name": "cancel_button_hcenter_vcenter",
+     "box": [
+      0.237,
+      0.5963,
+      0.2583,
+      0.6611
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json cancel_button_hcenter_vcenter box; the machine clicked a two-button dialog's left button there: ok-script.2026-10-10.log:555 'left_click Labels.cancel_button_hcenter_vcenter (476, 679)'"
+    },
+    {
+     "name": "confirm_btn_hcenter_vcenter",
+     "box": [
+      0.724,
+      0.5917,
+      0.7536,
+      0.663
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json confirm_btn_hcenter_vcenter box; its centre is where the machine clicked the dialog's right button: ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)'"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.22,
+      0.56,
+      0.3,
+      0.68
+     ],
+     "to": "claim_cancelled",
+     "evidence": "the dialog's left button (cancel box)"
+    },
+    {
+     "click": [
+      0.69,
+      0.59,
+      0.79,
+      0.67
+     ],
+     "to": "topup_paid",
+     "evidence": "确认 again would pay"
+    }
+   ]
+  },
+  "topup_paid": {
+   "end": true
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "key": "esc",
+    "evidence": "the top-up dialog is closed, not answered (efc7fb6b: never click the top-up)"
+   }
+  ],
+  "end": "claim_cancelled",
+  "never_states": [
+   "topup_paid"
+  ],
+  "shots": [
+   {
+    "name": "weekly_topup_unexpected",
+    "evidence": "design 1: an unknown screen stops with a picture"
+   }
+  ],
+  "raises": null,
+  "log": [],
+  "log_never": [],
+  "verdict": {
+    "evidence": "the top-up dialog after an enough read is closed, never paid (10-12 15:29 and 15:31 paid with solute): no reward this run, so the weekly item is red and no backup is booked spent",
+    "context": [
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1839 (11:42:42), the line upstream's FarmEchoTask.run logs before it opens the book; this scenario starts after it"
+      },
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1875 (11:43:28), logged when the run lands in the realm (FarmEchoTask.py:271); this scenario starts after the fight"
+      },
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:enter combat None",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1935 (11:43:30), upstream's fight line (CombatCheck.py:181) before the claim; the scenario elides the fight"
+      }
+    ],
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": false,
+    "has": [
+      "周本"
+    ],
+    "done_lacks": [
+      "周本"
+    ],
+    "raw": {
+      "okww_backup_spent": null
+    }
+  }
+ }
+}

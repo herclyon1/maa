@@ -1,0 +1,310 @@
+{
+ "case": "run_0of3_not_retried",
+ "about": "The whole FarmEchoTask.run with the week used up (10-12 15:32:05-15:32:38): the 0/3 skip is OK-WW's TaskDisabledException and must end the run as skipped - not be wrapped into 'Teleport to boss failed', counted as farm 4c error and retried (08-31: three times; 04126e3b), nor retried without bound (09-01: 81 laps; ddf68376).",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "main",
+ "max_s": 1200,
+ "config": {
+  "evidence": "the game PC's working/configs/FarmEchoTask.json (read 2026-10-13, gamesim u0 redacted copy): Teleport to Boss Weekly Challenge, Boss Level 90, Which Weekly Boss to Teleport 1, Repeat Farm Count 3",
+  "task": {
+   "Teleport to Boss": "Weekly Challenge",
+   "Boss Level": "90",
+   "Which Weekly Boss to Teleport": 1,
+   "Repeat Farm Count": 3
+  }
+ },
+ "states": {
+  "main": {
+   "about": "the open world, in team (ensure_main / openF2Book see in_team_and_world)",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "world_earth_icon",
+     "box": [
+      0.0068,
+      0.0449,
+      0.0258,
+      0.0639
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json world_earth_icon box (3840x2160 annotation, halved): the open world"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f2",
+     "to": "book",
+     "evidence": "ok-script.2026-10-12.log:2719-2720 'click f2 to open the book' / 'send f2 key to open' (15:27:46-50)"
+    }
+   ],
+   "ignore_inputs": true
+  },
+  "book": {
+   "about": "the F2 book, boss tab icon in its left column",
+   "provisional_features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.2026-10-12.log:2721 'found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=84)' (15:27:51)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.024,
+      0.2741,
+      0.0552,
+      0.3204
+     ],
+     "to": "book_boss",
+     "evidence": "ok-script.2026-10-12.log:2722 'left_click gray_book_boss (76, 321)' (15:27:54)"
+    }
+   ]
+  },
+  "book_boss": {
+   "about": "the book's boss page; open_boss_book clicks the category by position",
+   "provisional_features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.2026-10-12.log:2721 'found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=84)' (15:27:51)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.224,
+      0.5861,
+      0.2552,
+      0.6324
+     ],
+     "to": "list",
+     "evidence": "ok-script.2026-10-12.log:2724 'left_click zhange (460, 658)' (open_boss_book zhange, 15:27:56)"
+    }
+   ]
+  },
+  "list": {
+   "about": "the category list; click_on_book_target clicks row 1's 前往",
+   "provisional_features": [
+    {
+     "name": "boss_proceed",
+     "box": [
+      0.9411,
+      0.3574,
+      0.9583,
+      0.413
+     ],
+     "evidence": "ok-script.2026-10-12.log:2725 'left_click boss_proceed (1824, 416)' (15:27:59); size of upstream v3.7.4 assets/coco_annotations.json boss_proceed box (33x60)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.9344,
+      0.362,
+      0.9656,
+      0.4083
+     ],
+     "to": "spoiler",
+     "evidence": "ok-script.2026-10-12.log:2725 'left_click boss_proceed (1824, 416)' (15:27:59)"
+    }
+   ]
+  },
+  "spoiler": {
+   "about": "the 限时提前开放 spoiler dialog after 前往 (none of upstream's four book screens for 10 s)",
+   "provisional_ocr": [
+    {
+     "text": "提前到达目标位置可能影响剧情体验，是否确认前往？",
+     "box": [
+      0.3125,
+      0.4648,
+      0.6734,
+      0.4954
+     ],
+     "evidence": "ok-script.2026-10-12.log:2727 '限时提前开放的剧情提示框，点确认前往。框里读到：Box(name='提前到达目标位置可能影响剧情体验，是否确认前往？', x=600, y=502, width=693, height=33, confidence=99)' (15:28:10)"
+    }
+   ],
+   "provisional_features": [
+    {
+     "name": "confirm_btn_hcenter_vcenter",
+     "box": [
+      0.724,
+      0.5917,
+      0.7536,
+      0.663
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json confirm_btn_hcenter_vcenter box; its centre is where the machine clicked the dialog's right button: ok-script.2026-10-12.log:2003 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)'"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.7234,
+      0.6046,
+      0.7547,
+      0.6509
+     ],
+     "to": "level0",
+     "evidence": "ok-script.2026-10-12.log:2729 'left_click Labels.confirm_btn_hcenter_vcenter (1419, 678)' (15:28:10)"
+    }
+   ]
+  },
+  "level0": {
+   "about": "level page 0/3",
+   "frame": "boss_level_page/2026-10-12_153233_0of3.png",
+   "transitions": [
+    {
+     "key": "esc",
+     "to": "main2",
+     "evidence": "ok-script.2026-10-12.log:2904-2905 ensure_main's ESC back to the main screen"
+    },
+    {
+     "click": [
+      0.86,
+      0.89,
+      0.9,
+      0.93
+     ],
+     "to": "solo_clicked",
+     "evidence": "upstream click_solo_challenge clicks (0.880, 0.911) (FarmEchoTask.py:375 v3.7.4); the frame's 单人挑战 truth box is 0.7648-0.8369 x 0.8896-0.9295, the button around it"
+    }
+   ]
+  },
+  "main2": {
+   "about": "the open world again",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "world_earth_icon",
+     "box": [
+      0.0068,
+      0.0449,
+      0.0258,
+      0.0639
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json world_earth_icon box (3840x2160 annotation, halved): the open world"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f2",
+     "to": "book_again",
+     "evidence": "a second way in (the retry 04126e3b stopped)"
+    }
+   ]
+  },
+  "solo_clicked": {
+   "end": true
+  },
+  "book_again": {
+   "end": true
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "state": "level0",
+    "evidence": "ok-script.2026-10-12.log:2901"
+   },
+   {
+    "key": "esc",
+    "evidence": "ok-script.2026-10-12.log:2904-2905"
+   }
+  ],
+  "end": null,
+  "never_states": [
+   "solo_clicked",
+   "book_again"
+  ],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "本周周本次数已领满",
+    "evidence": "ok-script.2026-10-12.log:2903"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "farm 4c error",
+    "evidence": "04126e3b / ddf68376: a deliberate stop must not go through upstream's retry (FarmEchoTask.py:119-125)"
+   },
+   {
+    "re": "^ERROR ",
+    "evidence": "every expected outcome of this case is a decision, not an error (the relay pushes ERROR lines)"
+   }
+  ],
+  "verdict": {
+    "evidence": "10-12 15:32:05-15:32:38: the week read 0/3 before entry; the run ends as skipped, which is done (not 'Teleport to boss failed', not farm 4c error)",
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "weekly_left": 0,
+    "done_has": [
+      "周本"
+    ],
+    "lacks": [
+      "传送"
+    ],
+    "raw_has": {
+      "okww_steps": [
+        "0/3"
+      ]
+    },
+    "unregistered": []
+  }
+ }
+}

@@ -1,0 +1,133 @@
+{
+ "case": "level_0of3_skip",
+ "about": "The level page reads 0/3 (10-12 15:32:33, the same screen as frame boss_level_page/2026-10-12_153233_0of3.png): nothing left this week, so no 单人挑战; back to the main screen and end as skipped.",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "level0",
+ "max_s": 1200,
+ "config": {
+  "evidence": "the game PC's working/configs/FarmEchoTask.json (read 2026-10-13, gamesim u0 redacted copy): Teleport to Boss Weekly Challenge, Boss Level 90, Which Weekly Boss to Teleport 1, Repeat Farm Count 3",
+  "task": {
+   "Teleport to Boss": "Weekly Challenge",
+   "Boss Level": "90",
+   "Which Weekly Boss to Teleport": 1,
+   "Repeat Farm Count": 3
+  }
+ },
+ "states": {
+  "level0": {
+   "about": "level page 0/3",
+   "frame": "boss_level_page/2026-10-12_153233_0of3.png",
+   "transitions": [
+    {
+     "key": "esc",
+     "to": "main",
+     "evidence": "ok-script.2026-10-12.log:2904-2905 'wait main' 15:32:33.985 -> 'in main' 15:32:38.586: ensure_main's ESC"
+    },
+    {
+     "click": [
+      0.86,
+      0.89,
+      0.9,
+      0.93
+     ],
+     "to": "solo_clicked",
+     "evidence": "upstream click_solo_challenge clicks (0.880, 0.911) (FarmEchoTask.py:375 v3.7.4); the frame's 单人挑战 truth box is 0.7648-0.8369 x 0.8896-0.9295, the button around it"
+    }
+   ]
+  },
+  "main": {
+   "about": "the open world",
+   "provisional_features": [
+    {
+     "name": "char_1_text",
+     "box": [
+      0.9052,
+      0.1981,
+      0.9125,
+      0.213
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_1_text box; in_team() needs two of char_1/2/3_text (BaseWWTask.in_team v3.7.4)"
+    },
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json char_2_text box"
+    },
+    {
+     "name": "world_earth_icon",
+     "box": [
+      0.0068,
+      0.0449,
+      0.0258,
+      0.0639
+     ],
+     "evidence": "upstream v3.7.4 assets/coco_annotations.json world_earth_icon box (3840x2160 annotation, halved): the open world"
+    }
+   ]
+  },
+  "solo_clicked": {
+   "end": true
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "key": "esc",
+    "evidence": "ok-script.2026-10-12.log:2904-2905 back to the main screen"
+   }
+  ],
+  "end": null,
+  "never_states": [
+   "solo_clicked"
+  ],
+  "shots": [],
+  "raises": {
+   "name": "TaskDisabledException",
+   "evidence": "ok-script.2026-10-12.log:2903-2906: skipped, then 'Successfully Executed Task' (OK-WW's skip is TaskDisabledException)"
+  },
+  "log": [
+   {
+    "re": "本周周本次数已领满",
+    "evidence": "ok-script.2026-10-12.log:2903; the relay reads it as capped (machinechecks/runs.py:104 _WEEKLY_CAPPED)"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "^ERROR ",
+    "evidence": "every expected outcome of this case is a decision, not an error (the relay pushes ERROR lines)"
+   }
+  ],
+  "verdict": {
+    "evidence": "10-12 15:32:33 the level page read 0/3 (frame boss_level_page/2026-10-12_153233_0of3.png): the week is full, which is done, not a failure (memory normal-state-not-an-alarm: 已领满)",
+    "context": [
+      {
+        "text": "INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0",
+        "evidence": "machine-okww-logs ok-script.2026-10-12.log:1839 (11:42:42), the line upstream's FarmEchoTask.run logs before it opens the book; this scenario starts after it"
+      }
+    ],
+    "args": {
+      "expect_nest": false,
+      "expect_daily": false,
+      "expect_stamina": false
+    },
+    "clean": true,
+    "weekly_left": 0,
+    "done_has": [
+      "周本"
+    ],
+    "raw_has": {
+      "okww_steps": [
+        "0/3"
+      ]
+    }
+  }
+ }
+}
