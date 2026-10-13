@@ -361,7 +361,7 @@ lap
 # interpreter and arguments, the state dir): the installed relay's own, or the old service's.
 SMOKE_PY="\"$PY\""; SMOKE_ARGS=""; MC_STATE_ARG='"C:\ProgramData\ark-relay\state"'
 # Set by the installed relay's watchdog step (lib/deploy-pkg.sh 5.3) when the watchdog
-# service's file could not be updated; read after COS and the smoke (exit 14). Set here
+# service's file could not be updated; read after the smoke and COS (exit 14). Set here
 # for both layouts: under `set -u` an unset one would kill the old layout's deploy.
 WATCHDOG_FAIL_WHY=""
 if [ "$LAYOUT" = pkg ]; then
