@@ -3492,14 +3492,6 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
-"test_okww_tacet_groups.py": [
-"__init__",
-"config",
-"names",
-"okww_overlay",
-"outcome",
-"texts"
-],
 "test_okww_weekly_boss_step.py": [
 "__init__",
 "annihilation",
