@@ -69,7 +69,14 @@ STOP_NOTICE = "收到停止通知"
 
 
 def _wait_for_network(log, timeout: float = 90.0) -> bool:
-    """Block until DNS answers, or give up. True if the network came up.
+    """Block until DNS answers, or give up. True if the network came up; False when it
+    did not within `timeout`, or at once when the service is stopping.
+
+    The caller runs the self-update either way: a fetch that finds no network fails on
+    its own and is tried again next boot, and DNS may come up a second after the wait.
+    The wait hears a stop (boot_stages._stop_requested) between one-second sleeps: up
+    to 90 s of deaf sleeps was the hang boot_stages._stop_requested describes, ending
+    in SvcStop's 15 s hard exit (audit s23 F5).
 
     来龙去脉见 docs/CODE-HISTORY.md「service.py:_wait_for_network」。
     """
@@ -86,13 +93,18 @@ def _wait_for_network(log, timeout: float = 90.0) -> bool:
         except OSError as exc:
             left = deadline - time.monotonic()
             if left <= 0:
-                log.warning("等了 %.0f 秒 DNS 仍不通（%s），本次跳过取件；"
-                            "下次开机重试", timeout, exc)
+                log.warning("等了 %.0f 秒 DNS 仍不通（%s），照样试一次取件，取不到就下次开机再取",
+                            timeout, exc)
                 return False
             if not waited:
                 log.info("刚开机，DNS 还没起来，最多等 %.0f 秒", timeout)
                 waited = True
-            time.sleep(min(delay, left))
+            until = time.monotonic() + min(delay, left)
+            while (rest := until - time.monotonic()) > 0:
+                if boot_stages._stop_requested():
+                    log.info("服务正在停止，不再等网络")
+                    return False
+                time.sleep(min(1.0, rest))
             delay = min(delay * 2, 15.0)
 
 
@@ -207,6 +219,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         logging.getLogger("ark.service").warning(
             "停止前那份状态 %.0f 秒还没发完，中继不再等，手机上可能还是上一份状态", STOP_PUSH_WAIT_S)
 
+    # Not run by the installed relay (app_main.py hosts main and does this ending itself); called by tests/test_mc_system_fixes.py and tests/test_stop_push_watchdog.py.
     def SvcDoRun(self):  # noqa: N802 - name required by the framework
         servicemanager.LogMsg(
             servicemanager.EVENTLOG_INFORMATION_TYPE,
@@ -267,7 +280,6 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         if booted is None:
             return
         log, cfg, notifier, engine = booted
-        boot_stages._stage_patch_okww(cfg, notifier, log)
         # The self-update has to come before anything uses the new code, and
         # the network wait has to come before the self-update (a cold boot has
         # no DNS yet). The order of these two lines is itself the rule: do not
@@ -275,6 +287,14 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # 来龙去脉见 docs/CODE-HISTORY.md「service.py:main」
         _wait_for_network(log)
         if self._stop_in_boot(log) or boot_stages._stage_selfupdate(log):
+            return
+        if self._stop_in_boot(log):         # a stop that came while it fetched
+            return
+        # Only in the process that stays: on a self-update boot the outgoing one used
+        # to run these too, and the 🩹 note went out twice (audit s23 F3).
+        boot_stages._stage_flush_copies(notifier, log)
+        boot_stages._stage_patch_okww(cfg, notifier, log)
+        if self._stop_in_boot(log):
             return
         boot_stages._stage_backfill_manual_stops(engine, log)
         if self._stop_in_boot(log):
@@ -315,6 +335,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         _loop(self, cfg, engine, notifier, inbox, collect, deferred, log)
 
 
+# Not run by the installed relay; scripts/ci/package_switch_smoke.py runs `service.py install` to stage the old service.
 if __name__ == "__main__":
     if len(sys.argv) == 1:
         # Launched by the SCM rather than from a shell.

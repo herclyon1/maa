@@ -136,7 +136,7 @@ def _wait_for_api(deadline: float) -> "float | None":
     return None
 
 
-def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE) -> bool:
+def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE, notifier=None) -> bool:
     """Start AUTO-MAS if its API is not answering, then wait for it to come up.
 
     The user, 2026-09-03: 「MAS 不在的时候你要拉起他，
@@ -151,8 +151,11 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE) -> 
     AUTO-MAS not answering is INFO when found, and decided by the restart: up
     again -> one WARNING, pushed since 2026-10-10 (why it was not answering is not
     known; daily report only before);
-    still not answering after `timeout` -> ERROR, pushed (the callers that need it
-    push their own alarm too, e.g. 「🔌 AUTO-MAS 启动不起来」 at boot).
+    still not answering after `timeout` -> ERROR, pushed. Given `notifier` (the boot
+    caller, phone_channel._start_phone_channel), that ERROR is 「🔌 AUTO-MAS 启动不起来」
+    instead: the alarm goes first and the ERROR line is marked as already in the group
+    (errwatch.group_pushed), so one fault is one message - until 10-13 it was the 🩺
+    push of this line plus the caller's own 🔌 (audit s23 F2).
     selfcheck.daily_lines reads these lines back for the daily report by their
     words: keep 「杀掉重」, 「AUTO-MAS 已…秒）」 and 「秒内…仍不通」.
     """
@@ -195,7 +198,11 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE) -> 
         else:
             log.warning("AUTO-MAS 没在运行（%s），中继打开它之后服务就停了，没等到它起来", why)
         return False
-    log.error("AUTO-MAS 拉起后 %.0f 秒内接口仍不通", timeout)
+    pushed: dict = {}
+    if notifier is not None:
+        errs = notifier.send(texts.AUTOMAS_DOWN, texts.automas_boot_down_body(), alert=True)
+        pushed = errwatch.group_pushed(texts.AUTOMAS_DOWN, errs, notifier)
+    log.error("AUTO-MAS 拉起后 %.0f 秒内接口仍不通", timeout, extra=pushed)
     return False
 
 
@@ -210,8 +217,26 @@ def _boot_stamp(now: datetime) -> str:
         return now.strftime("%Y%m%d%H")
 
 
+# _seconds_to_next_queue's three numbers. Their one reader that decides anything is
+# _once_more (a second pre-update try only when left >= its budget + 60); the game
+# update logs the figure and no longer uses it (gameupdate.boot_check).
+# The margin kept before the queue: the boot steps after the last pre-update item
+# (closing it, the remaining stages, the main loop hooked up) took 2-11 s on 85
+# mornings 08-25..10-13 and 33 s once (09-08), measured in relay.log from the OK-WW
+# verdict to 「已挂上目录变更通知」; 90 s is that worst case with room.
+QUEUE_MARGIN_S = 90.0
+# The floor and the no-queue-left figure are derived, not measured: any floor below
+# the smallest budget + 60 (preupdate.OKWW_BUDGET_SECONDS 240 -> 300) means "no
+# second try", and any figure above the largest (preupdate.MAS_BUDGET_SECONDS 600 ->
+# 660) means "time for one"; today has no queue left, so the next is hours away.
+QUEUE_FLOOR_S = 120.0
+NO_QUEUE_LEFT_S = 3600.0
+
+
 def _seconds_to_next_queue(automas_dir, now: datetime) -> float:
-    """Seconds until today's next queue; when today has none left, hand back the large evening budget."""
+    """Seconds until today's next queue, less QUEUE_MARGIN_S; when today has none left,
+    NO_QUEUE_LEFT_S. A time that runs nothing today (its weekdays, or every item
+    sitting the day out: plan.runs_at) is not a queue (232948ba missed this reader)."""
     from ark_relay.core import plan  # noqa: PLC0415
     best = None
     for q in plan.schedule(automas_dir):
@@ -221,11 +246,13 @@ def _seconds_to_next_queue(automas_dir, now: datetime) -> float:
             except ValueError:
                 continue
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            if not plan.runs_at(q, hhmm, due):
+                continue
             if due > now and (best is None or due < best):
                 best = due
     if best is None:
-        return 3600.0
-    return max(120.0, (best - now).total_seconds() - 90)
+        return NO_QUEUE_LEFT_S
+    return max(QUEUE_FLOOR_S, (best - now).total_seconds() - QUEUE_MARGIN_S)
 
 
 def _relay_poweroff_live(engine, now=None) -> bool:
@@ -242,6 +269,12 @@ def _relay_poweroff_live(engine, now=None) -> bool:
     from ark_relay.features.shutdown import shutdown as _sd  # noqa: PLC0415
     from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
     return (now or _dt.now(tz=SERVER_TZ)) - at < _td(minutes=_sd.ISSUED_STUCK_MIN)
+
+
+# How long a bad-config exit waits for its alarm to leave. Measured: the 21 🩺 pushes in
+# state/alerts 10-06..10-13 reached the group 0-7 s after their record was logged
+# (median 3 s, 7 s for the second of a burst); twice the slowest.
+BAD_CONFIG_PUSH_WAIT_S = 15.0
 
 
 def _say_log_file_problem(log) -> None:
@@ -283,34 +316,34 @@ def _stage_bootstrap():
 
     log = logging.getLogger("ark.service")
     cfg = Config()
-    if problems := cfg.validate():
-        for p in problems:
-            log.error("配置有问题: %s", p)
-        return
-
+    # From here on every WARNING / ERROR any module logs reaches the group (see
+    # errwatch). Installed before the config check: it needs only the notifier and the
+    # state folder, and until 10-13 the check's 「配置提醒」 warnings and the reasons of a
+    # bad-config exit were logged before it and reached relay.log only (audit s23 F1).
     notifier = Notifier(cfg)
-    engine = Engine(cfg, LocalSource(cfg), State(cfg.state_dir), notifier)
-    # From here on each new kind of ERROR any module logs reaches the group once,
-    # and the self-recovered faults go to the daily report (see errwatch).
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     from ark_relay.core.statestore import StateStore  # noqa: PLC0415
-    errwatch.install(notifier, lambda: _relay_poweroff_live(engine),
+    built: list = []          # the engine, once there is one: the power-off probe reads it
+    errwatch.install(notifier, lambda: bool(built) and _relay_poweroff_live(built[0]),
                      version=lambda: StateStore(cfg.state_dir).get("versions", "code"))
     _say_log_file_problem(log)
     # Each relay-error push uploads today's relay.log first, so the push ends with
-    # 「日志：<链接>，出事时刻 HH:MM」 (error_evidence.py, fix bill L).
+    # 「日志：<链接>，出事时刻 HH:MM」 (error_evidence.py, fix bill L) - the bad-config
+    # push below too, whose details are in that log.
     from ark_relay.features.evidence import error_evidence  # noqa: PLC0415
     errwatch.set_evidence_uploader(lambda: error_evidence.upload_daily_logs(cfg))
-    # Alarm copies a shutdown cut off before they reached COS go up now (alertlog.py),
-    # and the ones the Mac did not take are POSTed to it again (macpush.py).
-    try:
-        notifier.alert_log().flush_async()
-    except Exception:   # the copy never stops the boot
-        log.warning("报警抄送补传没能开始", exc_info=True)
-    try:
-        notifier.mac_push().flush_async()
-    except Exception:   # nor does the push to the Mac
-        log.warning("报警直送 Mac 补发没能开始", exc_info=True)
+    if problems := cfg.validate():
+        # One record, so one group message. Its first line is what the push quotes,
+        # in plain words (texts.plain); the problems themselves name settings and go
+        # to relay.log on the lines below. Then wait for the push: the caller exits
+        # straight after (a push still queued goes out at the next start).
+        log.error("中继的设置有 %d 处不对，中继没有启动，哪一处写在中继日志里：\n%s",
+                  len(problems), "\n".join(f"· {p}" for p in problems))
+        errwatch.drain(BAD_CONFIG_PUSH_WAIT_S)
+        return
+
+    engine = Engine(cfg, LocalSource(cfg), State(cfg.state_dir), notifier)
+    built.append(engine)
     engine.bootstrap()
     log.info("服务模式启动，监视 %s（变更即处理，兜底 %d 秒）",
              cfg.history_dir, cfg.poll_seconds)
@@ -321,8 +354,29 @@ def _stage_bootstrap():
     return log, cfg, notifier, engine
 
 
+def _stage_flush_copies(notifier, log) -> None:
+    """Alarm copies a shutdown cut off before they reached COS go up now (alertlog.py),
+    and the ones the Mac did not take are POSTed to it again (macpush.py).
+
+    After the self-update, not in _stage_bootstrap: on a self-update boot the outgoing
+    process ran both, then the new one ran them again (relay.log 10-05 21:20:19 /
+    21:20:27, audit s23 F3)."""
+    try:
+        notifier.alert_log().flush_async()
+    except Exception:   # the copy never stops the boot
+        log.warning("报警抄送补传没能开始", exc_info=True)
+    try:
+        notifier.mac_push().flush_async()
+    except Exception:   # nor does the push to the Mac
+        log.warning("报警直送 Mac 补发没能开始", exc_info=True)
+
+
 def _stage_patch_okww(cfg, notifier, log) -> None:
-    """Install the OK-WW overrides once per startup (idempotent)."""
+    """Install the OK-WW overrides once per startup (idempotent).
+
+    Runs after the self-update, in the process that stays: before it, a self-update
+    boot sent the same 🩹 note twice, 8 s apart, from the outgoing and the new process
+    (relay.log 10-05 21:20:19 / 21:20:27; audit s23 F3)."""
     # Idempotent: it writes nothing at all when they are already in place.
     # Here, not only in the boot pre-update block: after a deploy the machine
     # should already be in its final state, with no "takes effect next boot"
@@ -368,6 +422,7 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
         log.exception("启动时贴 OK-WW 补丁失败，服务照常继续")
 
 
+# The installed relay runs app_main._packaged_selfupdate instead (app_main.py swaps it in); this body runs in tests/test_selfupdate_exit.py.
 def _stage_selfupdate(log) -> bool:
     """Pull new code; when something really updated, trigger a restart and return True so the caller exits at once."""
     try:
@@ -553,16 +608,24 @@ def _stage_announce_update(notifier, log) -> None:
             # log-only (docs/NOTIFICATIONS.md), so they go into the day's report
             # instead (「今天中继改了」 at the end of the daily). Appended per
             # deploy; the report reads the day's file.
+            recorded = False
             if notes:
                 try:
                     from ark_relay.features.report import report as _rp  # noqa: PLC0415
                     _rp.remember_change(HERE / "state", notes, str(note.get("version") or ""))
+                    recorded = True
                 except Exception:
                     log.exception("更新说明没记进当天的日报")
-            if errors := notifier.send(title, body):
-                log.error("更新通知没发出去: %s", "；".join(errors))
-            else:
+            # 🔄 is log-only (notify.route_of): this writes the 「不推送」 line and returns
+            # no errors, so there is no failed-send branch to take any more.
+            notifier.send(title, body)
+            if recorded:
                 log.info("更新说明已记入当天日报（v%s）", note.get("version") or "?")
+            elif not notes:
+                # Said only when it happened: until 10-13 the line above was logged with
+                # no notes and nothing recorded (audit s23 F6).
+                log.info("中继已更新到 v%s，这次没有更新说明，当天日报里不记", note.get("version") or "?")
+            if notes:
                 _st.set("versions", "announced_notes", notes)
     except Exception:
         log.exception("推送更新通知出错，跳过")
@@ -733,7 +796,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
         _pre_now = datetime.now(tz=SERVER_TZ)
         if (preupdate.wanted_today(cfg.automas_dir)
                 and preupdate.should_run(cfg.state_dir, _pre_now)):
-            ensure_automas()          # 09-03 01:08: AUTO-MAS was shut down and the pre-update asked for 180s
+            from ark_relay.features.phone import commands  # noqa: PLC0415
             # Every update that lands is pushed, per the standing order: when an
             # auto-update takes effect, say so at once.
             # Everything that could not be confirmed goes into this basket and
@@ -742,10 +805,18 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             # reported as normal.
             # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
             problems: list[str] = []
-            # AUTO-MAS is asked, not launched - it is already running.
-            if note := _once_more(cfg, log, "AUTO-MAS", preupdate.MAS_BUDGET_SECONDS, problems,
-                                  lambda problems: preupdate.run_automas(cfg.automas_dir,
-                                                                         problems=problems)):
+            # AUTO-MAS is asked, not launched: the phone-channel step just before
+            # (_stage_inbox_and_phone) has brought it up, or said in the group that it
+            # could not. A second ensure_automas() here (09-03 01:08: AUTO-MAS was shut
+            # down and the pre-update asked it for 180 s) waited 150 + 120 s again and
+            # pushed the same ERROR a second time (audit s23 F2); the item is skipped
+            # with one line instead. OK-WW's pre-update does not go through AUTO-MAS.
+            if not commands.mas_up():
+                log.info("预更新：AUTO-MAS 没有应答，不再等它，它的更新这次不查")
+                _note(problems, "AUTO-MAS 没有应答（开机时已经拉过它），它的更新这次没查")
+            elif note := _once_more(cfg, log, "AUTO-MAS", preupdate.MAS_BUDGET_SECONDS, problems,
+                                    lambda problems: preupdate.run_automas(cfg.automas_dir,
+                                                                           problems=problems)):
                 notifier.send(texts.PREUPDATE, note)
             _preupdate_okww(cfg, notifier, log, problems)
             preupdate.mark_run(cfg.state_dir, _pre_now,

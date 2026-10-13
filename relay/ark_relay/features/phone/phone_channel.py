@@ -423,13 +423,13 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     # that finds nothing running - before that tick's shutdown decision.
     engine._phone_drain = run_phone_cmd.drain
 
-    if not boot_stages.ensure_automas() and not boot_stages._stop_requested():
-        # Say it now, to the group: with no backend the next queue will not run,
-        # and the keeper's own alarm only fires after its third failed revival
-        # (2026-09-17: 45 s of silence in the log, then nothing until 21:55).
-        # Not when the service is stopping: that False means "did not wait",
-        # not "down", and the restarted process checks again.
-        notifier.send(texts.AUTOMAS_DOWN, texts.automas_boot_down_body(), alert=True)
+    # Not up after the revival: 「🔌 AUTO-MAS 启动不起来」 to the group now, from inside
+    # ensure_automas, which then marks its own ERROR line as already pushed (one fault,
+    # one message; audit s23 F2). With no backend the next queue will not run, and the
+    # keeper's own alarm only fires after its third failed revival (2026-09-17: 45 s of
+    # silence in the log, then nothing until 21:55). Not when the service is stopping:
+    # that False means "did not wait", not "down", and the restarted process checks again.
+    boot_stages.ensure_automas(notifier=notifier)
     started = getattr(getattr(engine, "_started_at", None), "timestamp", lambda: None)()
 
     def run_backlog(cmds) -> None:
