@@ -298,8 +298,31 @@ def check_tree() -> None:
     require("relay/ holds no webhook key, COS key id, token or API key", not hits, hits[:5])
 
 
+def check_power_on_clamp() -> None:
+    """The power-on before a boot is never earlier than the previous boot's end."""
+    print("\n[power-on: never before the previous boot's recorded end]")
+
+    def rec(n: int, hms: str, logger: str, msg: str) -> "sl.Rec":
+        return sl.Rec(n, 0, ts(f"2026-10-11T{hms}+08:00"), "INFO", logger, msg)
+    recs = [rec(1, "12:26:46", "ark.service", "服务模式启动，监视 D:\\ark\\automas\\history"),
+            rec(2, "14:25:10", "ark.service", "收到停止通知（Windows 关机）"),
+            rec(3, "14:26:04", "ark.service", "服务模式启动，监视 D:\\ark\\automas\\history"),
+            rec(4, "14:26:05", "ark.service", "刚开机，DNS 还没起来")]
+    boots = sl.boots_of(recs, 2026)
+    t, how = sl.power_on_time(boots, 1)
+    check("10-11 14:26:04 after the 14:25:10 shutdown: powered on after it, not at 14:25:04",
+          (how, t > ts("2026-10-11T14:25:10+08:00")), ("estimated", True))
+    recs.insert(3, rec(5, "14:26:06", "ark.shutdown", "这次是 10-11 14:25 开的机"))
+    t, how = sl.power_on_time(sl.boots_of(recs, 2026), 1)
+    check("a whole-minute boot line (14:25) before that shutdown is clamped too",
+          (how, t > ts("2026-10-11T14:25:10+08:00")), ("boot_line", True))
+    t, how = sl.power_on_time(sl.boots_of(recs[2:], 2026), 0)
+    check("the first boot keeps the boot line", (how, t), ("boot_line", ts("2026-10-11T14:25:00+08:00")))
+
+
 check_redaction()
 check_tree()
+check_power_on_clamp()
 days = sorted(p.name for p in DAYS.iterdir() if p.is_dir())
 check("committed days", days, ["2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09", "2026-10-11",
                               "2026-10-12", "2026-10-13"])

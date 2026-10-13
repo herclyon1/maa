@@ -413,12 +413,17 @@ def power_on_time(boots: list[Boot], i: int) -> "tuple[float, str]":
     (「这次是 MM-DD HH:MM 开的机」, from GetTickCount64) in this or a later boot of the
     same power-on, else a minute before the relay started."""
     b = boots[i]
+    # Never before the previous boot's recorded end: the machine was still going down
+    # then (10-11: Windows stopped the relay at 14:25:10, the next start was 14:26:04,
+    # so "a minute before" landed six seconds before the shutdown). The boot line is
+    # whole minutes, so it can fall before that end too.
+    floor = boots[i - 1].stop.t + 1 if i > 0 and boots[i - 1].stop is not None else float("-inf")
     for later in boots[i:]:
         if later is not b and later.after == "windows_shutdown":
             break
         if later.boot_line is not None and later.boot_line <= b.start.t:
-            return later.boot_line, "boot_line"
-    return b.start.t - 60, "estimated"
+            return max(later.boot_line, floor), "boot_line"
+    return max(b.start.t - 60, floor), "estimated"
 
 
 def do_power(ctx: Day) -> list[Boot]:
