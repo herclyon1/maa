@@ -52,6 +52,10 @@ _NEST_ALL_FULL = "指定点位都已打满，跳过"
 #   NightmareNestTask:left_click 已击败残象：0/41 (1729, 347) after_sleep 2
 _NEST_FILTER_LINE = re.compile(r"nightmare nest: 只刷 \[")
 _NEST_CLICK = re.compile(r"left_click 已击败残象[：:]\s*\d+/(\d+)")
+# The overlay's combat_nest names the nest it clicks, as OCR read it beside the count
+# (ark_overrides NEST_NAME_LINE; 「?」 when no name was read):
+#   NightmareNestTask:nightmare nest: nest name: 落渊南丘残象聚落
+_NEST_NAME = re.compile(r"nightmare nest: nest name: ([^\n]*)")
 _NEST_NOT_FOUND = "列表里没找到指定的点位"
 # Upstream's line when travel to a nest did not happen (NightmareNestTask
 # _travel_to_nest_or_skip), e.g. 「nightmare nest unreachable, skip this run: go_nest:48:18」.
@@ -361,8 +365,10 @@ def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
 
     Two facts, both from lines the run itself writes: the overrides announce the
     filter they loaded (no announcement = the filter code never had a name to work
-    with), and each nest entered is clicked through its 「已击败残象 N/D」 box, so
-    two different denominators in one run mean two different nests.
+    with), and each nest entered is named by the overlay (「nightmare nest: nest
+    name: …」), compared with the setting. Logs from before that line: each nest is
+    clicked through its 「已击败残象 N/D」 box, so more different denominators than
+    names asked for mean a nest outside the setting (blind to nests sharing a cap).
     """
     text = _task_lines(text)
     if not (only_nest or "").strip() or "NightmareNestTask" not in text:
@@ -380,9 +386,22 @@ def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
             entered = f"点了 {len(denoms)} 个点位，都没传送过去，一个都没刷"
         why = f"日志里没有「nightmare nest: 只刷 […]」这一行，只刷{only_nest}的过滤没生效；这一趟{entered}"
     out.append(Check("残象聚落只刷指定点位（过滤生效）", announced, why))
-    # One denominator per nest asked for (user 10-12 11:2x: the first two nests);
-    # more different ones than names means a nest outside the setting was entered.
-    wanted = max(1, len([n for n in re.split(r"[,，]", only_nest) if n.strip()]))
+    names = [n.strip() for n in re.split(r"[,，]", only_nest) if n.strip()]
+    # The nests entered by name when the overlay logged them (audit 2026-10-13 item
+    # 10: three nests share the cap 48, so a denominator alone cannot tell them apart).
+    # OCR reads 「落渊南丘残象聚落」 for the setting 「落渊南丘」: a substring match.
+    seen = list(dict.fromkeys(n.strip() for n in _NEST_NAME.findall(text) if n.strip() not in ("", "?")))
+    if seen:
+        outside = [n for n in seen if not any(w in n for w in names)]
+        if len(seen) <= 1 and not outside and not _NEST_ENGAGED.search(text):
+            return out
+        out.append(Check("残象聚落没进别的点位", not outside,
+                         "" if not outside else f"这一趟进了设置以外的点位：{'、'.join(outside)}，设置是只刷{only_nest}"))
+        return out
+    # Older logs, without the name line: one denominator per nest asked for (user
+    # 10-12 11:2x: the first two nests); more different ones than names means a nest
+    # outside the setting was entered.
+    wanted = max(1, len(names))
     in_scope = len(denoms) <= wanted
     if len(denoms) <= 1 and not _NEST_ENGAGED.search(text):
         return out      # nothing was fought, so 「没进别的点位」 says nothing worth a green line
