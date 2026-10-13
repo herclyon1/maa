@@ -547,10 +547,27 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
             return False, f"{opt} 是没见过的类型 {kind!r}，不敢动"
         label = f"{task_name} 的 {opt}"
     atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
-    back = json.loads(f.read_text(encoding="utf-8"))
-    now = read_maaend(automas_dir, maaend_dir)["values"].get(path)
+    # Read back the item just written, from the file, and compare it with what
+    # was written (read_maaend covers only the items the phone shows).
+    back_task = _maaend_task(json.loads(f.read_text(encoding="utf-8")), task_name) or {}
     if opt == "@enabled":
-        now = bool((_maaend_task(back, task_name) or {}).get("enabled"))
+        now = back_task.get("enabled")
+        if now is not task["enabled"]:
+            return False, f"{task_name} 的开关写进去之后读出来和写的不一样，没改成"
+        return True, f"{label}：{before!r} → {now!r}"
+    back = (back_task.get("optionValues") or {}).get(opt)
+    if back != cur:
+        return False, f"{label} 写进去之后读出来和写的不一样，没改成"
+    if kind == "switch":
+        now = back.get("value")
+    elif kind == "select":
+        now = back.get("caseName")
+    elif kind == "checkbox":
+        now = back.get("caseNames")
+    elif isinstance(before, dict):
+        now = back.get("values")
+    else:
+        now = (back.get("values") or {}).get(next(iter(want)))
     return True, f"{label}：{before!r} → {now!r}"
 
 
