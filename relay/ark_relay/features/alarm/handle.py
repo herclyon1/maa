@@ -338,15 +338,20 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
         # Bundle first, so the alarm carries the link (the round is over: this
         # alarm is the final word on it, and the daily row gets the link too).
         page = _ship_evidence(eng, rec)
+        full = msg + (f"\n\n证据包：{page}" if page else "")
         if rec.script in ("MAA", "MaaEnd"):
             title, errs = _push_undone(eng, rec, msg, page)
         else:
             title = texts.ROUND_INCOMPLETE
-            errs = eng.notifier.send(title, msg + (f"\n\n证据包：{page}" if page else ""), alert=True)
+            errs = eng.notifier.send(title, full, alert=True)
         # Logged after the push: errwatch pushes this line unless the alarm above
-        # really went to the group (no second copy of the same thing).
+        # really went to the group (no second copy of the same thing). When the send
+        # failed, errwatch pushes the whole message under the alarm's own title:
+        # its default is the first line only, which ends at 「有项目没干成：」 and loses
+        # every undone item (audit 2026-10-13 s7 #6; relay.log 10-11 09:30:45).
+        ew = _errwatch()
         log.warning("⚠️ %s %s 有项目没干成：\n%s", rec.script, rec.run_id, msg,
-                    extra=_errwatch().group_pushed(title, errs, eng.notifier))
+                    extra=ew.alarm(title, full) if errs else ew.group_pushed(title, errs, eng.notifier))
         return
     if after_done:
         eng._pending.pop(key, None)
