@@ -637,6 +637,17 @@ def _note_dispatch(what: str) -> None:
     trigger.note_dispatch(Path(os.environ.get("ARK_STATE_DIR", "./ark-state")), what)
 
 
+def _overlay_before_start(where: str) -> None:
+    """Put a skipped OK-WW overlay in place before the relay itself starts a run
+    (okww_overlay.retry_pending; a no-op unless an install is waiting). Never stops
+    the dispatch."""
+    try:
+        from ark_relay.features.okww_patch import okww_overlay  # noqa: PLC0415
+        okww_overlay.retry_pending(where)
+    except Exception:      # the dispatch goes ahead regardless
+        log.exception("%s：重装 OK-WW 改动文件这一步自己出错", where)
+
+
 def run_script(script: str) -> tuple[bool, str]:
     """Dispatch a single script (not a whole queue) through the AUTO-MAS dispatch API.
 
@@ -651,6 +662,7 @@ def run_script(script: str) -> tuple[bool, str]:
         if str((sc.get("Info") or {}).get("Name") or "").lower() != script.lower():
             continue
         _note_dispatch(f"脚本 {script}")
+        _overlay_before_start(f"单独开跑「{script}」前")
         try:
             r = _mas("/api/dispatch/start", {"taskId": sid, "mode": "AutoProxy"})
         except Exception as exc:  # noqa: BLE001
@@ -674,6 +686,7 @@ def _run_now(queue: str) -> tuple[bool, str]:
         have.append(name)
         if name == queue:
             _note_dispatch(f"队列 {queue}")
+            _overlay_before_start(f"开跑队列「{queue}」前")
             try:
                 # The only valid values for mode are AutoProxy / ScriptConfig /
                 # Update (TaskCreateIn in app/models/schema.py); anything else

@@ -692,10 +692,13 @@ def _preupdate_okww(cfg, notifier, log, problems) -> None:
         log.info("预更新：%s", note)
         notifier.send(texts.PREUPDATE, note)
     patch_notes: list[str] = []
+    # The pre-update closed OK-WW: put a skipped overlay in place now (a relay
+    # restart mid-run left it pending; a WARNING when it still cannot be).
+    from ark_relay.features.okww_patch import okww_overlay  # noqa: PLC0415
+    okww_overlay.retry_pending("预更新后")
     # Right after the update and before any queue: does each pinned copy still match
     # the source now on disk? Until 10-05 the first to notice was the result check,
     # after the run, as a group alarm (okww_overlay.drift).
-    from ark_relay.features.okww_patch import okww_overlay  # noqa: PLC0415
     if line := okww_overlay.drift_line(okww, cfg.state_dir):
         patch_notes.append(line)
     for note in patch_notes:
