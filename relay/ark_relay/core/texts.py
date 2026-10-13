@@ -187,12 +187,9 @@ def collect_recurrent_body(names: list[str]) -> str:
 
 
 def evidence_saved_body(script: str, started: str, files: int, page: str) -> str:
-    """`started` is the run's start as 「09-11 10:18」, not its run_id (that is a path)."""
+    """`started` is the run's start as 「09-11 10:18」, not its run_id (that is a path).
+    `page` is the COS link: handle.py uploads through evidence.uploaders(), COS only."""
     head = f"{GAME_ZH.get(script, script)} {started} 那趟：一个压缩包，里面 {files} 个文件"
-    if page == "企业微信":
-        return head + "\n已作为文件发到你的企业微信（上面那条就是）。"
-    if page == "企业微信群":
-        return head + "\n已作为文件发到企业微信群（上面那条就是）。"
     return head + f"\n下载页：{page}"
 
 
@@ -1019,8 +1016,7 @@ def samples() -> list[str]:
         gamelog_unknown_errors("鸣潮"), gamelog_unknown_errors_body("鸣潮", "09:12", 2),
         gamelog_unknown_errors_body("终末地", "", 1),
         collect_retry_body(["路线16"], ["路线15"], [], ""),
-        collect_recurrent_body(["路线15：红矛叶"]), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://gofile.io/d/xxxx"),
-        evidence_saved_body("MaaEnd", "09-11 10:18", 3, "企业微信"), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "企业微信群"),
+        collect_recurrent_body(["路线15：红矛叶"]), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://example.cos.ap-shanghai.myqcloud.com/x/index.html"),
         evidence_source_changed_body(["MaaEnd 导出"]),
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),
         cant_enter("MaaEnd"), missing(not_run("早班")), missing(not_run_in("OK-WW", "早班")),

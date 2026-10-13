@@ -54,5 +54,12 @@ check("点名没结束的插件", "agent\\go-service.exe" in body and "没结束
 body = texts.maaend_stuck_body(texts.maaend_plugin_gone_reason(60), True, "")
 check("全结束时照旧", "已结束 MaaEnd 和它还开着的插件" in body, True)
 
+print("\n[证据包推送：只剩 COS 下载页一种写法（s1 cosmetic）]")
+# evidence.uploaders() returns COS alone and handle.py passes no other uploader, so the
+# 「已作为文件发到企业微信」 branches could never be reached.
+src = Path(texts.__file__).read_text(encoding="utf-8")
+check("没有发到企业微信的死分支", "已作为文件发到" in src, False)
+check("下载页照写", texts.evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://x/i.html").endswith("下载页：https://x/i.html"), True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
