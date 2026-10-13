@@ -84,6 +84,8 @@ gained `channels_down`. When moving these three, both the read side and the
 write side must change together - the sweep renames the old file to `.migrated`,
 so adding a migration without changing the read means the record can never be
 read again and those daily items stay switched off with nobody knowing.
+Since 2026-10-13 (840c3f4c) nothing writes these three records and the boot no
+longer switches their tasks back on; only machine check #63 still reads them.
 
 **Deliberately left as files**: `ledger-*.jsonl` (append-only), `seen.txt`
 (append-only and grows large), `evidence/`, `apk/`, `desktop/`, `shot-*.png`,

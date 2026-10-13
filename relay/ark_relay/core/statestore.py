@@ -67,8 +67,8 @@ FIELDS: dict[str, dict[str, str]] = {
         "maintenance_windows": "今天各游戏的停服维护时段：{游戏: {start,end,why}}",
         "stagegate_skips": "关卡门为 MAA 走不到的关卡从队列里拿掉、还没放回的记录，列表（stagegate.py）",
         "stagegate_dues": "关卡门最近几天每一班查过的结论：{日期: {队列/HH:MM: {verdict, stage, why, pulled, others}}}",
-        # Leftovers only: nothing writes these any more. gameupdate.maaend_reenable_records
-        # switches the tasks they name back on at the next boot and drops them.
+        # Leftovers only: nothing writes these any more, and since 840c3f4c nothing
+        # switches their tasks back on or drops them either (machine check #63 reads them).
         "maaend_disabled_1_5_3": "旧记录：9 月初为 1.5.3 关掉的 MaaEnd 任务 {disabled 或 tasks, since}，开机开回后删掉",
         "maaend_reenable_next_boot": "旧记录：补跑时关掉的 MaaEnd 任务 {tasks}，开机开回后删掉",
         "maaend_disabled_spmed": "旧记录：9 月初关掉的应急理智加强剂 {tasks, since}，开机开回后删掉",
