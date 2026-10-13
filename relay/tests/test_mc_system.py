@@ -137,6 +137,19 @@ got, n, _, _ = at_boot(bad)
 check("#11 没过", got["#11"].status, mc.FAIL)
 check("推了一条，带原因", any("COS 403" in b for b in n.fails("#11")), True)
 
+print("[#11 关机前那份已送到，看门服务代发的停止前那份没发完 → 照样没过（发失败本身就是要看的毛病）]")
+# The watchdog's own failure line, verbatim from relay.log 10-11 15:42:28. The page holds
+# the 关机前 state, but a stop push that failed is a fault of the push path the next
+# shutdown needs, so it is not covered by the 关机前 fallback (only a stop push that
+# left no line at all is: the case below). No such session is on record (10-11 15:42
+# had no 关机前 push); this pins the order of the checks in _stop_push.
+dog = [x if "停止前；" not in x else logline(
+           "10-06 21:59:40", "状态没能上报到手机（停止前）：看门服务等了 35 秒还没发完，Windows 要关机了不再等；手机上留着上一份状态",
+           level="WARNING", name="ark.app.stop_push") for x in EVENING]
+got, n, _, _ = at_boot(dog)
+check("#11 没过", got["#11"].status, mc.FAIL)
+check("依据是看门服务那一行", "看门服务等了 35 秒还没发完" in got["#11"].evidence, True)
+
 print("[#11 中继自己关机时停止前那份没来得及，关机前那份已送到 → 过，写明]")
 cut = [x for x in EVENING if "停止前；" not in x and "主流程已返回" not in x]
 got, n, _, _ = at_boot(cut)
