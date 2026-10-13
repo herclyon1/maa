@@ -106,7 +106,7 @@ def wuwa_teased(records: list, now: datetime) -> list[str]:
             b = datetime.strptime(str(rng[1])[:19], "%Y-%m-%d %H:%M:%S")
         except (ValueError, TypeError, IndexError):
             continue
-        name = str(r.get("name") or "").strip()
+        name = _one_dot(str(r.get("name") or "").strip())
         if name and a <= now <= b:
             out.append(name)
     return out
@@ -594,7 +594,12 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
     try:
         page = post("/wiki/core/catalogue/item/getPage",
                     {"catalogueId": _WW_CHAR_CATALOGUE, "page": 1, "limit": 100})
-        teased = wuwa_teased((((page.get("data") or {}).get("results") or {}).get("records")) or [], now)
+        # A previewed badge can stay on long after the character is out (锁暝: badge 2
+        # with a year-long window while its own banner ran, 2026-10-22), so names that
+        # are running now or are this version's debuts are not 「the next version's」.
+        current = live | {w for w, _ in debut}
+        teased = [t for t in wuwa_teased((((page.get("data") or {}).get("results") or {}).get("records")) or [], now)
+                  if t not in current]
         tr.src("鸣潮", "预告角色", _KURO + f"/wiki/core/catalogue/item/getPage catalogueId={_WW_CHAR_CATALOGUE}", "预告角标：" + ("、".join(teased) or "无"))
     except Exception:
         log.warning("库街区角色图鉴取不到，预告角色这一项不出", exc_info=True)

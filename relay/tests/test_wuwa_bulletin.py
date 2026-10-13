@@ -4,6 +4,9 @@
   「角色活动唤取」; the pool-name and notice-title patterns took only 活动.
 * A bulletin that yields no debut (title or 「全新角色」 format changed) dropped every
   running pool without a log line; it now warns and reports them all.
+* Once both halves are out, the 「下期」 line listed every wiki entry with the
+  previewed badge, including a character whose own banner was running (锁暝,
+  2026-10-22 audit run5.py); running and current-debut names are now left out.
 """
 import logging
 import sys
@@ -101,6 +104,26 @@ fine = {"game": [{"tabTitle": "3.7版本内容说明",
 got, _n, _notes, warns = run_wuwa(NOW, page, fine, {"1": "某人"})
 check("a readable debut list still drops a rerun", [b.name for b in got], [])
 check("…without that WARNING", [m for m in warns if "读不出这一版的新角色" in m], [])
+
+print("[the next version's previewed characters leave out who is running now]")
+LATE = datetime(2026, 10, 22, 21, 30)
+both = {"game": [{"tabTitle": "3.7版本内容说明",
+                  "content": "<p>全新角色</p><p>5星共鸣者「心」</p><p>※可通过[但愿长圆如此夜]角色活动唤取获得</p>"
+                             "<p>5星共鸣者「锁暝」</p><p>※可通过[余心所向九死未悔]角色活动唤取获得</p><p>全新武器</p>"}]}
+second = home(("余心所向九死未悔", "S", "2026-10-22 10:00", "2026-11-11 11:59"))
+
+
+def badge(name, a, z):
+    return {"name": name, "content": {"showTeaserIcon": True, "showTeaserIconNum": 2,
+                                      "teaserDateRange": [a, z]}}
+
+
+cat = [badge("锁暝", "2026-09-03 00:00:00", "2027-09-03 00:00:00"),
+       badge("新来的", "2026-10-20 00:00:00", "2026-11-12 00:00:00")]
+got, _n, notes, _w = run_wuwa(LATE, second, both, {"S": "锁暝"}, cat)
+check("the running debut is reported", [b.name for b in got], ["余心所向九死未悔"])
+check("the 下期 note names only the one not out yet",
+      notes.get("鸣潮", ""), "官方已预告下一版新角色：新来的")
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
