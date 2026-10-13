@@ -18,7 +18,7 @@ from ark_relay.features.alarm import errwatch
 from ark_relay.features.phone.cos_store import cos_put, state_key
 from ark_relay.features.phone.quota import NOTICE_STOP_AT, Quota, _idle_timeout, _ntfy_code, _retry_after, _why
 from ark_relay.features.phone.wire import (
-    BLIND_KEEP, MARK_SAVE_SEC, NTFY, NTFY_CACHE_SEC, SEEN_KEEP, _UA, _bj, pack, pack_chunks, stamp, unpack,
+    BLIND_KEEP, MARK_SAVE_SEC, NTFY, NTFY_CACHE_SEC, SEEN_KEEP, _UA, _bj, pack, pack_chunks, stale_cmd, stamp, unpack,
 )
 
 log = logging.getLogger("ark.phone")   # same logger as phone.py: log lines keep their name
@@ -423,11 +423,14 @@ class Mailbox:
             mid = str(env.get("id") or "")
             if mid and mid in seen:
                 continue          # already executed on a previous boot
-            msg = unpack(self.pin, str(env.get("message") or ""))
+            raw_msg = str(env.get("message") or "")
+            msg = unpack(self.pin, raw_msg)
             if msg and msg.get("kind") == "cmd":
                 out.append(stamp(msg, env, "backlog"))
                 if mid:
                     fresh.append(mid)      # commands only - see SEEN_KEEP
+            elif mid and stale_cmd(self.pin, raw_msg):
+                fresh.append(mid)          # dropped for its age: handled for good
         if fresh:
             self._seen = [*self._seen, *fresh]
             self._save_seen()
@@ -617,8 +620,13 @@ class Mailbox:
                         mid = str(env.get("id") or "")
                         if mid and mid in set(self._seen):
                             continue
-                        msg = unpack(self.pin, str(env.get("message") or ""))
+                        raw_msg = str(env.get("message") or "")
+                        msg = unpack(self.pin, raw_msg)
                         if not msg or msg.get("kind") != "cmd":
+                            if mid and stale_cmd(self.pin, raw_msg):
+                                # Dropped for its age: handled for good.
+                                self._seen = [*self._seen, mid]
+                                self._save_seen()
                             continue
                         if mid:
                             self._seen = [*self._seen, mid]
