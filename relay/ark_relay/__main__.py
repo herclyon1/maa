@@ -22,6 +22,7 @@ import json
 import atexit
 import logging
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -101,9 +102,22 @@ def _load_dotenv(path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        key, value = key.strip(), value.split("#")[0].strip().strip('"').strip("'")
+        key, value = key.strip(), _dotenv_value(value)
         if key and value and key not in os.environ:
             os.environ[key] = value
+
+
+def _dotenv_value(raw: str) -> str:
+    """One .env value, read the way python-dotenv reads it.
+
+    A quoted value is everything between its quotes, '#' included; an unquoted one
+    ends at a ' #' comment. Cutting every value at the first '#' (as before
+    2026-10-13, audit s2 F7) truncated a URL or key carrying one.
+    """
+    v = raw.strip()
+    if v[:1] in ('"', "'") and (end := v.find(v[0], 1)) > 0:
+        return v[1:end]
+    return re.split(r"\s#", v, maxsplit=1)[0].strip()
 
 
 # ---------- commands ----------
