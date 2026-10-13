@@ -1,0 +1,57 @@
+{
+    "instances": [
+        {
+            "uid": "754d129e-d587-435b-b75f-a0b91aac7020",
+            "type": "MaaConfig"
+        }
+    ],
+    "754d129e-d587-435b-b75f-a0b91aac7020": {
+        "Info": {
+            "Name": "MAA",
+            "Path": "D:\\ark\\maa"
+        },
+        "Run": {
+            "IfCheckGameUpdate": true,
+            "IfAutoInstallGameApk": true,
+            "HardTimeLimit": 120
+        },
+        "SubConfigsInfo": {
+            "UserData": {
+                "instances": [
+                    {
+                        "uid": "12eaa794-6946-4b07-8d6c-22b01d8160bc",
+                        "type": "MaaUserConfig"
+                    }
+                ],
+                "12eaa794-6946-4b07-8d6c-22b01d8160bc": {
+                    "Info": {
+                        "Name": "arknights",
+                        "Mode": "脚本",
+                        "IfQuickConfig": true,
+                        "StageMode": "Fixed",
+                        "Server": "Official",
+                        "Status": true,
+                        "Annihilation": "Annihilation",
+                        "AnnihilationStartWeekday": "Monday",
+                        "InfrastMode": "Normal",
+                        "MedicineNumb": 999,
+                        "SeriesNumb": "0",
+                        "Stage": "YW-4",
+                        "Stage_1": "-",
+                        "Stage_2": "-",
+                        "Stage_3": "-"
+                    },
+                    "Data": {
+                        "AnnihilationCompletedWeek": "2026-W42"
+                    },
+                    "Task": {
+                        "IfFight": true,
+                        "IfInfrast": true,
+                        "IfAward": true,
+                        "IfActivityFirst": false
+                    }
+                }
+            }
+        }
+    }
+}
