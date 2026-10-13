@@ -318,6 +318,33 @@ r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
 r.step(60)
 check("paths unreadable -> plugins not ended", r.killed, [MAAEND_PID])
 
+print("\n[plugins left running are named in the alarm body (left=)]")
+_real_body = texts.maaend_stuck_body
+_body_calls = []
+texts.maaend_stuck_body = lambda *a, **kw: _body_calls.append((a, kw)) or "正文"
+try:
+    r = Rig(paths={21932: "C:\\other\\go-service.exe"})    # cpp-algo's path unreadable
+    r.run_for(240, new_lines=40)
+    r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
+    r.step(60)
+    check("skipped plugins passed as left", _body_calls[-1][1].get("left"),
+          ["C:\\other\\go-service.exe", "agent\\cpp-algo.exe"])
+    r = Rig()
+    r._kill = lambda pid, image: (r.killed.append(pid), (True, "") if image == "MaaEnd.exe" else (False, "退出码 128"))[1]
+    r.dog.kill = r._kill
+    r.run_for(240, new_lines=40)
+    r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
+    r.step(60)
+    check("plugins whose kill failed passed as left", _body_calls[-1][1].get("left"),
+          ["agent\\go-service.exe", "agent\\cpp-algo.exe"])
+    r = Rig()
+    r.run_for(240, new_lines=40)
+    r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
+    r.step(60)
+    check("all plugins ended -> nothing left", _body_calls[-1][1].get("left", []), [])
+finally:
+    texts.maaend_stuck_body = _real_body
+
 print("\n[not one maafw.log line read for this MaaEnd: report once, never kill]")
 from ark_relay.features.alarm import errwatch  # noqa: E402
 

@@ -257,6 +257,9 @@ class Watchdog:
     def _end(self, pid: int, procs, reason: str, now: float) -> str:
         self._handled.add(pid)
         ok, why = self.kill(pid, "MaaEnd.exe")
+        # Plugins left running (skipped or kill failed), in path form: the texts gate
+        # refuses a bare English name or a PID.
+        left = []
         if ok:
             paths = self.plugin_paths()
             for name, p in procs:
@@ -264,13 +267,20 @@ class Watchdog:
                     continue
                 if not str(paths.get(p, "")).lower().startswith(self.agent_dir):
                     log.warning("%s（%s）不在 MaaEnd 的 agent 目录下（%s），不结束", name, p, paths.get(p, "读不到路径"))
+                    left.append(paths.get(p) or "agent\\" + name)
                     continue
                 done, w = self.kill(p, name)
                 if not done:
                     log.warning("MaaEnd 的插件 %s（%s）没结束掉：%s", name, p, w)
+                    left.append("agent\\" + name)
         self._crash, self._gone_since, self._progress_at = "", None, now
         title = texts.MAAEND_STUCK_KILLED if ok else texts.MAAEND_STUCK_KILL_FAILED
-        body = texts.maaend_stuck_body(reason, ok, why)
+        try:
+            body = texts.maaend_stuck_body(reason, ok, why, left=left)
+        except TypeError:
+            # texts without the left= parameter (it arrives with 67e0873f): the alarm
+            # still goes out, without the plugin names. Drop once that is on main.
+            body = texts.maaend_stuck_body(reason, ok, why)
         # One hang, one group push: the ⚠️ group alarm, and the WARNING that follows
         # repeats it. errwatch.group_pushed keeps that WARNING out of the group only
         # when the ⚠️ send really reached the group robot, so the fault still reaches
