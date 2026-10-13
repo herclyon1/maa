@@ -732,9 +732,12 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     # Never power off silently: if the day's real report has not gone out yet (the
     # case after the morning shift), send an interim view first. A scheduled task
     # cannot do this - it would have to land between "finished" and "power off", and
-    # that gap moves.
+    # that gap moves. Not for a day nothing has run on yet (the same reading as
+    # decide()'s report gate): an evening shift's skipped occasion ends at 00:00,
+    # where the new day's key powers off, and its interim would be an empty
+    # 「🔎 临时查看」 pushed at midnight.
     if (eng.cfg.report_before_shutdown and not eng.state.report_sent(day)
-            and not eng.state.interim_sent(day)):
+            and not eng.state.interim_sent(day) and eng.state.read_ledger(day)):
         log.info("关机前补发一份当前进度")
         if eng.send_daily_now(mark=False):
             eng.state.mark_interim_sent(

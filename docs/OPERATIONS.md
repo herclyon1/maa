@@ -42,8 +42,13 @@ mark). It is a one-time mark, not a state, and it has no expiry:
   means something before it is spent.
 * Arming it again while the current occasion is already skipped carries it to the next queue
   run, so that run does not shut down either.
-* Turning debug mode off by hand releases a skipped occasion, whichever of the two skipped it,
-  so the next re-check may power off.
+* Turning debug mode off by hand releases only an occasion debug mode itself skipped
+  (modes.shutdown_skipped, since 8bc5e2f6 on 2026-10-13): one the spent mark recorded stays,
+  so test-off after a test does not power the machine off.
+* The occasion is keyed by the day plus its shift records (shutdown._shutdown_key), so an
+  occasion skipped after the evening shift ends at 00:00 Beijing: the main loop wakes at
+  midnight (day roll), the new day's key differs and the relay powers off then, well before
+  the 08:40 plug cut. No interim report goes out for that new day: nothing ran on it.
 
 It calls the relay's own `ark_relay.features.modes.modes.set_skip_shutdown`;
 **it must not be changed to write the state file directly**: after the 2026-09-08 state

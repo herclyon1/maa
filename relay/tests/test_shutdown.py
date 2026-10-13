@@ -487,5 +487,28 @@ ledgers({21: [morning, run, dict(run, run_id="y")]})
 check("(d) the next shift end powers off", E._maybe_shutdown(day_at(21, 23, 40)), True)
 E._shutdown_issued = False; sd._ISSUED[0] = None; skipped_clear(); dbg_clear()
 
+# (e) 2026-10-13: the mark spent at the evening shift's end. The key is the day plus its
+# shift records, so at the midnight wake (mainloop's day roll) the new day's key differs
+# from the skipped one and the decision is "go": the relay powers off at 00:00, before
+# the 08:40 plug cut. The new day has no records yet, so no interim report goes out
+# (it would be an empty 「🔎 临时查看」 at midnight). The evening's own report went out
+# before (relay.log 10-13 21:47:56), as here.
+interims = []
+E.send_daily_now = lambda mark=True, label="临时查看": interims.append(mark) or True
+E.state.report_sent = lambda d: d == "2026-08-21"
+skipped_clear(); dbg_clear()
+ledgers({21: [run]})
+fresh(day_at(21, 21, 20))
+modes.set_skip_shutdown(STATE, True)
+check("(e) the evening shift ends: stays on", E._maybe_shutdown(day_at(21, 22, 25)), False)
+check("(e) 23:59: still skipped", verdict(day_at(21, 23, 59)), "skipped")
+interims.clear()
+check("(e) 00:00 the next day: powers off", E._maybe_shutdown(day_at(22, 0, 0)), True)
+check("(e) one power-off command", len(power_offs()), 1)
+check("(e) no interim for the new day, nothing ran on it", interims, [])
+E._shutdown_issued = False; sd._ISSUED[0] = None; skipped_clear(); dbg_clear()
+E.state.report_sent = lambda d: True
+del E.send_daily_now
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
