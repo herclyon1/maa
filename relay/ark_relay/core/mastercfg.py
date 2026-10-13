@@ -573,16 +573,26 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
             return False, f"{opt} 是没见过的类型 {kind!r}，不敢动"
         label = f"{task_name} 的 {opt}"
     atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
-    # Read back the item just written, from the file, and compare it with what
-    # was written (read_maaend covers only the items the phone shows).
-    back_task = _maaend_task(json.loads(f.read_text(encoding="utf-8")), task_name) or {}
     if opt == "@enabled":
+        return _maaend_readback(f, task_name, opt, label, task["enabled"], "@enabled", before, None)
+    return _maaend_readback(f, task_name, opt, label, cur, kind, before,
+                            next(iter(want)) if kind == "input" else None)
+
+
+def _maaend_readback(f: Path, task_name: str, opt: str, label: str, wrote, kind: str,
+                     before, box: "str | None") -> tuple[bool, str]:
+    """Read back the item write_maaend just wrote, from the file, and compare it
+    with what was written (read_maaend covers only the items the phone shows).
+    `wrote` is the enabled flag or the option's whole value; `box` is the one
+    input box changed when a single box was written."""
+    back_task = _maaend_task(json.loads(f.read_text(encoding="utf-8")), task_name) or {}
+    if kind == "@enabled":
         now = back_task.get("enabled")
-        if now is not task["enabled"]:
+        if now is not wrote:
             return False, f"{task_name} 的开关写进去之后读出来和写的不一样，没改成"
         return True, f"{label}：{before!r} → {now!r}"
     back = (back_task.get("optionValues") or {}).get(opt)
-    if back != cur:
+    if back != wrote:
         return False, f"{label} 写进去之后读出来和写的不一样，没改成"
     if kind == "switch":
         now = back.get("value")
@@ -593,7 +603,7 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
     elif isinstance(before, dict):
         now = back.get("values")
     else:
-        now = (back.get("values") or {}).get(next(iter(want)))
+        now = (back.get("values") or {}).get(box)
     return True, f"{label}：{before!r} → {now!r}"
 
 
@@ -744,6 +754,40 @@ def _prune_recently_closed(doc: dict, opts: dict, tasks: dict) -> int:
     return len(before) - len(kept)
 
 
+def _migrate_blind(opts, tasks, unread, listed) -> "str | None":
+    """migrate_maaend_options' refusal when it cannot see every definition."""
+    if not opts or not tasks:
+        return "读不到 MaaEnd 的选项定义，不动配置"
+    if not listed:
+        return "读不到 MaaEnd 的定义文件清单（interface.json），不知道定义全不全，不动配置"
+    if blind := [x.name for x, text in unread if text is None]:
+        return f"MaaEnd 的定义文件打不开（{'、'.join(blind)}），不知道里面有哪些选项，不动配置"
+    return None
+
+
+def _named_in_unread(keys, unread) -> "str | None":
+    """The refusal when a key about to be dropped is named in a file that did not parse."""
+    for k in keys:
+        if seen := [x.name for x, text in unread if f'"{k}"' in (text or "")]:
+            return (f"MaaEnd 的「{k}」不在读得出的选项定义里，但读不了的定义文件"
+                    f"（{'、'.join(seen)}）里提到它；定义看不全，就不动配置")
+    return None
+
+
+def _migrate_left_over(back: dict, opts, tasks, switched) -> "str | None":
+    """What the migration should have rewritten but the read-back still has."""
+    for inst in back.get("instances") or []:
+        for task in inst.get("tasks") or []:
+            ov = task.get("optionValues") or {}
+            if str(task.get("taskName") or "") in tasks and any(k not in opts for k in ov):
+                return "旧写法的项还在"
+            if any((ov.get(k) or {}).get("type") == "checkbox" for k in switched):
+                return "改成开关的项还是多选"
+    if any(_stale_entry(e, opts, tasks) for e in back.get("recentlyClosed") or []):
+        return "「最近关闭」里旧写法的项还在"
+    return None
+
+
 def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
     """Rewrite option values in the master that this MaaEnd no longer understands.
 
@@ -762,20 +806,8 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
     if not f or not f.is_file():
         return [], "找不到 MaaEnd 的母本"
     opts, tasks, unread, listed = _read_maaend_defs(maaend_dir)
-    if not opts or not tasks:
-        return [], "读不到 MaaEnd 的选项定义，不动配置"
-    if not listed:
-        return [], "读不到 MaaEnd 的定义文件清单（interface.json），不知道定义全不全，不动配置"
-    if blind := [x.name for x, text in unread if text is None]:
-        return [], f"MaaEnd 的定义文件打不开（{'、'.join(blind)}），不知道里面有哪些选项，不动配置"
-
-    def unseen(keys) -> "str | None":
-        """The refusal when a key about to be dropped is named in a file that did not parse."""
-        for k in keys:
-            if seen := [x.name for x, text in unread if f'"{k}"' in (text or "")]:
-                return (f"MaaEnd 的「{k}」不在读得出的选项定义里，但读不了的定义文件"
-                        f"（{'、'.join(seen)}）里提到它；定义看不全，就不动配置")
-        return None
+    if why := _migrate_blind(opts, tasks, unread, listed):
+        return [], why
 
     zh = _Locale(Path(maaend_dir))
     doc = json.loads(f.read_text(encoding="utf-8"))
@@ -819,14 +851,14 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
                     changes.append(line)
                     switched.append(k)
             dead = [k for k in list(ov) if k not in opts]
-            if why := unseen(dead):
+            if why := _named_in_unread(dead, unread):
                 return [], why
             for k in dead:
                 del ov[k]
             if dead:
                 changes.append(f"{name} 去掉新版本没有的 {len(dead)} 项：{'、'.join(dead)}")
-    if why := unseen(k for e in doc.get("recentlyClosed") or [] for t in e.get("tasks") or []
-                     for k in (t.get("optionValues") or {}) if k not in opts):
+    if why := _named_in_unread((k for e in doc.get("recentlyClosed") or [] for t in e.get("tasks") or []
+                                for k in (t.get("optionValues") or {}) if k not in opts), unread):
         return [], why
     if dropped := _prune_recently_closed(doc, opts, tasks):
         changes.append(f"清掉界面里 {dropped} 条「最近关闭」的旧记录（全是旧格式的设置）")
@@ -835,16 +867,8 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
     bak = f.with_name(f.name + f".bak-migrate-{datetime.now().strftime('%Y%m%d-%H%M%S')}")
     bak.write_bytes(f.read_bytes())
     atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
-    back = json.loads(f.read_text(encoding="utf-8"))
-    for inst in back.get("instances") or []:
-        for task in inst.get("tasks") or []:
-            ov = task.get("optionValues") or {}
-            if str(task.get("taskName") or "") in tasks and any(k not in opts for k in ov):
-                return [], f"写进去之后再读，旧写法的项还在，{bak.name} 是原样"
-            if any((ov.get(k) or {}).get("type") == "checkbox" for k in switched):
-                return [], f"写进去之后再读，改成开关的项还是多选，{bak.name} 是原样"
-    if any(_stale_entry(e, opts, tasks) for e in back.get("recentlyClosed") or []):
-        return [], f"写进去之后再读，「最近关闭」里旧写法的项还在，{bak.name} 是原样"
+    if what := _migrate_left_over(json.loads(f.read_text(encoding="utf-8")), opts, tasks, switched):
+        return [], f"写进去之后再读，{what}，{bak.name} 是原样"
     return changes, ("MaaEnd 换了版本后旧设置的写法它不认了，母本已按原意改写：\n"
                      + "\n".join(f"· {c}" for c in changes)
                      + f"\n（原文件备份为 {bak.name}）")
