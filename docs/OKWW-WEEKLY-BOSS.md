@@ -206,7 +206,9 @@ inference are withdrawn. In order:
 > 10-12 11:43:16 and 15:28:19 (ok-script.2026-10-12.log:1864-1870, :2735-2740), and no
 > dialog was ever read after 「开启挑战」. The overlay now overrides `click_solo_challenge`
 > for the weekly boss: it reads the top bar, cancels and skips when waveplates + backup
-> are under 60, confirms without the tick otherwise, and stops on any other dialog. The
+> are under 60, and otherwise cancels and stops: the game shows the reminder only when
+> waveplates backup included are short, so 「enough」 means the bar read is wrong. It
+> never confirms the reminder or ticks the box, and stops on any other dialog. The
 > account below is kept as the 08-31 record.
 
 The order is: team screen → (click 「开启挑战」) → the dialog

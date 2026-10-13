@@ -382,10 +382,12 @@ def _install_claim():
             # With none it offers crystal solute and astrite (10-12 11:45:02: 「请选择补充方式」,
             # 19 solute, 15652 astrite), and 10-12 15:29 and 15:31 paid that way: backup
             # 0, the clicks went through, both claims were taken (ok-script.2026-10-12
-            # .log:2793-2821, :2874-2902). So this is reached only with both bar values
-            # read and wave < 60 <= wave + backup (the checks above), i.e. there is
-            # backup and it covers the gap. A top-up dialog after a bar that read 60 or
-            # more means the read was wrong: cancel and stop, never click it.
+            # .log:2793-2821, :2874-2902). What the code guarantees: the top-up clicks
+            # below are made only with both bar values read and wave < 60 <= wave +
+            # backup (the checks above). That rests on the bar read being right; it
+            # does not prove the dialog has the backup selected. A top-up dialog after
+            # a bar that read 60 or more means the read was wrong: cancel and stop,
+            # never click it.
             if wave >= _CLAIM_COST:
                 why = (f"周本领奖：顶栏读到波片 {wave}/240 够领，游戏却弹了补充波片的框，"
                        f"不点补充（可能动结晶溶剂），取消并停下")
@@ -401,9 +403,13 @@ def _install_claim():
             self.click(btn, after_sleep=1)
             if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
                                  time_out=3, settle_time=0.5):
-                # Backup spent and still short: what is offered now is solute / astrite
-                # (10-12 11:44). WWA answers this follow-up with 取消; so do we, and the
-                # top-up clicks are never made on this one.
+                # A second top-up dialog right after the first: backup spent and still
+                # short, and what it offers is solute / astrite. WWA answers it with 取消;
+                # so do we. This 3 s wait only catches one that shows within 3 s. On
+                # 10-12 11:44 the 「请选择补充方式」 dialog came about 10 s after the
+                # clicks, inside the wait for 退出副本 below, and what kept it from being
+                # answered was the no-settlement stop there, which neither clicks nor
+                # presses ESC (ok-script.2026-10-12.log:2005-2008).
                 # Logged before the clicks: the relay reads it as a shortage, not an error.
                 _shot(self, "weekly_short_claim")
                 self.log_info("结晶波片不足，取消并跳过本次周本（备用体力用上了仍不够 60，不点补充）")
@@ -1225,8 +1231,8 @@ def _install_hooks():
         # Those go to upstream's do_run handler (re-teleport, cap 3); Teleport to
         # Boss is on in both of our modes (echofarm.py writes Boss Challenge, the
         # weekly boss Weekly Challenge), which is that handler's condition. Not yet
-        # seen in a log: that re-teleport starting from inside a realm after our
-        # in-place revive.
+        # seen in a log: that re-teleport after upstream's revive_action has left a
+        # realm.
         try:
             return farm_combat(self, *a, **kw)
         except CharRevivedException:
@@ -1299,10 +1305,12 @@ def _install_hooks():
         # fight for no reward (10-12 11:43:16, ok-script.2026-10-12.log:1864-1870;
         # 15:28:19, :2735-2740), and the tick hid the reminder for the rest of that
         # login (:2877). Here: the same click; a dialog is read before anything is
-        # pressed. The reminder with waveplates + backup under one claim is a
-        # shortage: 取消, skipped. With enough, 确认 without the tick (the reward is
-        # paid at the crystal; the claim hook reads the bar again there). Any other
-        # dialog, or a bar that cannot be read, is a picture and a stop.
+        # pressed, and 确认 is never pressed on it. The reminder with waveplates +
+        # backup under one claim is a shortage: 取消, skipped. The reminder with
+        # enough read contradicts the game, which shows it only when waveplates
+        # backup included are short (upstream's comment, and both real cases above):
+        # our bar read is wrong, so 取消, a picture and a stop. Any other dialog, or
+        # a bar that cannot be read, is a picture and a stop.
         if not _weekly(self) or farming_echoes():
             return solo_challenge(self)
         self.click(0.880, 0.911, after_sleep=2)
@@ -1330,9 +1338,13 @@ def _install_hooks():
             self.click_dialog_left_button()
             self.sleep(1)
             _skip_short(self)
-        self.log_info(f"周本：波片 {wave} + 备用 {spare} 够领一次，提醒框点确认（不勾「本次登录不再提示」）")
-        self.click_dialog_right_button()
-        return None
+        why = (f"周本：点单人挑战后游戏提醒「无法获取奖励」（波片连备用都不够才会提醒），顶栏却读到波片 {wave} + "
+               f"备用 {spare} 够领一次，读数和游戏对不上，不点确认，取消并停下。整屏读到 {text[:400]}")
+        _shot(self, "solo_dialog_contradicts")    # the dialog itself, before the cancel
+        self.click_dialog_left_button()
+        self.sleep(1)
+        self.log_error(why, notify=True)
+        _end_failed(self, why)
 
     # -- every boss entry: 单人挑战 taken, then 开启挑战; an unknown dialog stops --
     @override(FarmEchoTask, "click_team_challenge", expect_sha=_TEAM_CHALLENGE_SHA)
