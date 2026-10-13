@@ -1,0 +1,60 @@
+{
+  "id": "L2",
+  "date": "2026-09-30",
+  "failure": "After the WuWa client update through the Kuro launcher, the launcher was left open: closing OK-WW and the game did not reach it.",
+  "incident": "gamesim/failures/incidents.csv row '09-30,W16,Kuro launcher left open after the WuWa update (path match)'",
+  "fixes": ["cc32c84f", "98f37ac7"],
+  "entry": "preupdate_okww._okww_quiesce",
+  "launcher_root": "D:\\Wuthering Waves",
+  "launcher_root_evidence": [
+    {"source": "commit cc32c84f message", "quote": "Since update_wuwa starts D:\\Wuthering Waves\\launcher.exe (previous commit), _okww_quiesce left it running"}
+  ],
+  "machine": {
+    "relay_session": 0,
+    "session0_kill_refused": [],
+    "evidence": [
+      {"source": "not recorded", "quote": "No record says a session-0 taskkill of the launcher failed, so none is refused here."}
+    ]
+  },
+  "processes": [
+    {
+      "role": "kuro_launcher",
+      "pid": 50101,
+      "name": "launcher_main.exe",
+      "path": "D:\\Wuthering Waves\\2.6.5.0\\launcher_main.exe",
+      "cmdline": "\"D:\\Wuthering Waves\\2.6.5.0\\launcher_main.exe\"",
+      "session": 1,
+      "evidence": [
+        {"source": "commit 98f37ac7, relay/tests/test_wuwa_update_close.py docstring (measured on the machine 2026-09-30 16:58)", "quote": "The launcher then runs as launcher_main.exe in a version folder (D:\\\\Wuthering Waves\\\\2.6.5.0\\\\launcher_main.exe), which the old full-path match on …\\\\Wuthering Waves\\\\launcher.exe missed."},
+        {"source": "commit 98f37ac7, relay/ark_relay/preupdate_okww.py comment", "quote": "launcher.exe is only the entry shell; while it runs, the process is D:\\Wuthering Waves\\2.6.5.0\\launcher_main.exe (the version folder changes)."}
+      ],
+      "not_recorded": "The raw process list was not saved (branches.md W16: launcher process lists missing); the path is the one measured and quoted above, the pid is synthetic. Whether the entry shell launcher.exe was still running beside it is not recorded, so it is left out."
+    },
+    {
+      "role": "game",
+      "pid": 50001,
+      "name": "Client-Win64-Shipping.exe",
+      "path": "D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe",
+      "cmdline": "\"D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe\"",
+      "session": 1,
+      "evidence": [
+        {"source": "D:\\ark\\okww\\logs\\app.2026-09-30:533 (the game's path, beside the launcher's folder: a path test must tell them apart)", "line": "2026-09-30 09:30:37,390 INFO MainThread hwnd_window:do_update_window_size hwnd changed from 0 to 4391898 top 4391898 D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080"}
+      ],
+      "not_recorded": "pid synthetic."
+    }
+  ],
+  "expect": [
+    {
+      "id": "L2.launcher_closed",
+      "kind": "none_alive",
+      "roles": ["kuro_launcher"],
+      "rule": "After OK-WW and the game are closed, no Kuro launcher process under D:\\Wuthering Waves is running.",
+      "evidence": [
+        {"source": "commit cc32c84f message", "quote": "_okww_quiesce left it running: its kill list only named the game body's starter."},
+        {"source": "commit 98f37ac7 message", "quote": "preupdate_okww: the Kuro launcher is stopped by path under the folder wuwa_launcher found (launcher.exe and launcher_main.exe, subfolders included)"}
+      ],
+      "red_at": ["cc32c84f~1", "98f37ac7~1"],
+      "green_at": ["98f37ac7", "HEAD"]
+    }
+  ]
+}

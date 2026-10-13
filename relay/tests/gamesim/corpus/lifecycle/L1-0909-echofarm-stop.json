@@ -1,0 +1,73 @@
+{
+  "id": "L1",
+  "date": "2026-09-09",
+  "failure": "Echo farm stopped from the phone: the relay reported it stopped and restored the config, and the game was still on screen (three stops, 08:09, 08:18, 08:19 machine time).",
+  "incident": "gamesim/failures/incidents.csv row '09-09,W15,stop did not kill the script before the game / game stayed open'",
+  "fixes": ["93ec907b", "bd3f304f"],
+  "entry": "echofarm.stop_okww",
+  "machine": {
+    "relay_session": 0,
+    "session0_kill_refused": ["Client-Win64-Shipping.exe"],
+    "evidence": [
+      {"source": "commit bd3f304f message", "quote": "taskkill from session 0 does not reach the game, and the return code was never checked."},
+      {"source": "commit 93ec907b message", "quote": "the process filter matched only python.exe while the echo farm runs under pythonw.exe"},
+      {"source": "commit 93ec907b message (why schtasks /end does not count as stopping OK-WW)", "quote": "the game was killed first, so a still-live OK-WW started it again"}
+    ]
+  },
+  "processes": [
+    {
+      "role": "okww_script",
+      "pid": 23532,
+      "name": "pythonw.exe",
+      "path": "D:\\ark\\okww\\data\\apps\\ok-ww\\python\\pythonw.exe",
+      "cmdline": "\"D:\\ark\\okww\\data\\apps\\ok-ww\\python\\pythonw.exe\" D:\\ark\\okww\\data\\apps\\ok-ww\\working\\main.py -t 2 -e",
+      "session": 1,
+      "evidence": [
+        {"source": "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\logs\\ok-script.2026-10-12.log:2396 (an echo-farm launch; first 190 characters)", "line": "2026-10-12 15:23:30,609 INFO MainThread ok:ok-script init v3.7.4, ['D:\\\\ark\\\\okww\\\\data\\\\apps\\\\ok-ww\\\\working\\\\main.py', '-t', '2', '-e'], pid=23532"},
+        {"source": "C:\\ProgramData\\ark-relay\\state\\evidence\\2026-09-30_wuwa_OK-WW-05-30-24\\bundle\\automas-app.log:18", "line": "2026-09-30 09:30:14.212 | INFO     | 系统服务 | 开始中止进程: D:\\ark\\okww\\data\\apps\\ok-ww\\python\\pythonw.exe"}
+      ],
+      "not_recorded": "No process list was ever saved on the machine (branches.md W15: MISSING process-list samples). The pid and arguments are the 10-12 echo-farm launch; the exact quoting of Win32_Process.CommandLine is not recorded (every filter judged here matches either form)."
+    },
+    {
+      "role": "game",
+      "pid": 50001,
+      "name": "Client-Win64-Shipping.exe",
+      "path": "D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe",
+      "cmdline": "\"D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe\"",
+      "session": 1,
+      "evidence": [
+        {"source": "D:\\ark\\okww\\logs\\app.2026-09-30:533 (OK-WW's window line: the game's path)", "line": "2026-09-30 09:30:37,390 INFO MainThread hwnd_window:do_update_window_size hwnd changed from 0 to 4391898 top 4391898 D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080"}
+      ],
+      "not_recorded": "The game's pid was never recorded; 50001 is synthetic."
+    }
+  ],
+  "expect": [
+    {
+      "id": "L1.closed",
+      "kind": "none_alive",
+      "roles": ["okww_script", "game"],
+      "rule": "After the stop, neither the game nor OK-WW's script is running.",
+      "evidence": [
+        {"source": "C:\\ProgramData\\ark-relay\\relay.log:15462", "line": "09-09 08:09:18 INFO    ark.service  📱 手机指令 echo_farm_stop：刷天傀劫煞结束（手动停止）。2026-09-09 07:21 开始，中途角色阵亡重开了 1 次，配置已还原"},
+        {"source": "C:\\ProgramData\\ark-relay\\relay.log:15483 (after 93ec907b was deployed)", "line": "09-09 08:18:38 INFO    ark.service  📱 手机指令 echo_farm_stop：刷天傀劫煞结束（手动停止）。2026-09-09 08:17 开始，配置已还原"},
+        {"source": "C:\\ProgramData\\ark-relay\\relay.log:15502 (after 93ec907b was deployed)", "line": "09-09 08:19:57 INFO    ark.service  📱 手机指令 echo_farm_stop：刷天傀劫煞结束（手动停止）。2026-09-09 08:19 开始，配置已还原"},
+        {"source": "commit 93ec907b message", "quote": "The user stopped the farm from his phone, the relay reported it stopped and restored the config, and 鸣潮 was still on screen."},
+        {"source": "commit bd3f304f message", "quote": "收工 reported success twice while 鸣潮 was still on screen."}
+      ],
+      "red_at": ["93ec907b~1", "bd3f304f~1"],
+      "green_at": ["bd3f304f", "HEAD"]
+    },
+    {
+      "id": "L1.script_first",
+      "kind": "no_kill_while_alive",
+      "target_role": "game",
+      "alive_role": "okww_script",
+      "rule": "No kill aimed at the game is issued while OK-WW's script is still running.",
+      "evidence": [
+        {"source": "commit 93ec907b message", "quote": "the game was killed first, so a still-live OK-WW started it again"}
+      ],
+      "red_at": ["93ec907b~1"],
+      "green_at": ["93ec907b", "bd3f304f", "HEAD"]
+    }
+  ]
+}
