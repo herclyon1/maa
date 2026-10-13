@@ -76,17 +76,6 @@ SERIAL_LIMIT = {
 # sub_configs (FarmEchoTask.py:44-50: Boss Level and the serial under each teleport target).
 MODE_KEY = {"FarmEchoTask": "Teleport to Boss"}
 
-# Known violations not fixed yet, each with where the fix belongs. The check below passes
-# only while the violations found are exactly these: a new one, or one of these fixed,
-# fails until this table is updated.
-OPEN = {
-    "echofarm.start: FarmEchoTask/Which Boss Challenge to Teleport accepts 21..30, upstream "
-    "lists 20 (FarmEchoTask.py:64 total_boss_number = 20)":
-        "echofarm.start bounds the boss to 1..30 (echofarm.py, `if not 1 <= boss <= 30`); "
-        "the bound should be upstream's total_boss_number - an edit to an existing file, "
-        "reported to the main session by gamesim U10 (2026-10-13)",
-}
-
 
 def _mod(*names):
     """The first of these modules that imports (the relay was split into packages on 10-10)."""
@@ -354,23 +343,16 @@ def case_echofarm():
             problems += judge("FarmEchoTask", farm, values, "echofarm.start")
     E._write_cfg = real_write
     check("start farms boss 1 in a machine-shaped tree", 1 in accepted, True)
+    # 0..31 offered; upstream clicks through total_boss_number rows (FarmEchoTask.py:64,
+    # :284, :298), so a position past it cannot be farmed (start accepted 1..30 before).
+    check("start takes exactly upstream's Boss Challenge list (1..total_boss_number)",
+          accepted, list(range(1, FARM.attrs["total_boss_number"] + 1)))
     found = sorted(set(problems))
-    over = [p for p in found if "Which Boss Challenge to Teleport accepts" in p]
     unread = [p for p in found if "nothing reads it when" in p]
-    rest = [p for p in found if p not in over and p not in unread]
-    nums = sorted(int(p.split("accepts ")[1].split(",")[0]) for p in over)
-    if nums:
-        found_open = [f"echofarm.start: FarmEchoTask/Which Boss Challenge to Teleport accepts "
-                      f"{nums[0]}..{nums[-1]}, upstream lists {FARM.attrs['total_boss_number']} "
-                      "(FarmEchoTask.py:64 total_boss_number = 20)"]
-    else:
-        found_open = []
-    for p in found_open:
-        print(f"  ! OPEN {p}\n         fix: {OPEN.get(p, 'not in the OPEN table')}")
+    rest = [p for p in found if p not in unread]
     check("every setting start writes for its teleport target is read on that target's path (35d6166b)",
           unread, [])
     check("every other value start writes is one upstream keeps, lists and reads", rest, [])
-    check("the known open violations are exactly OPEN", sorted(found_open), sorted(OPEN))
 
 
 def case_overlay():
