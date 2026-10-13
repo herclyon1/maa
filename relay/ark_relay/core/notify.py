@@ -454,11 +454,24 @@ class Notifier:
         self.wecom_bot = WeComBot(cfg)
         self.serverchan = ServerChan(cfg)
         self._state_dir = Path(cfg.state_dir)
-        self._announcing = False  # the outage alert itself goes out via _fan_out
+        self._busy = threading.local()   # _announcing, per thread (see the property)
         self._cfg = cfg
         self._alerts = None       # alertlog.AlertLog, made on first use
         self._mac = None          # macpush.MacPush, made on first use
         self._last = threading.local()   # what the last send on this thread reached
+
+    @property
+    def _announcing(self) -> bool:
+        """This thread is sending an outage notice (its own sends must not announce again).
+
+        Per thread: shared, it made a channel refusal on another thread - errwatch's
+        push thread, the main loop - during an announcement only a WARNING, and
+        breaks the 🔌 row's 「every send it refused」 (review 2026-10-13, s5 #5)."""
+        return getattr(self._busy, "announcing", False)
+
+    @_announcing.setter
+    def _announcing(self, value: bool) -> None:
+        self._busy.announcing = value
 
     def went_to_group(self) -> bool:
         """Whether the last send / send_group on this thread was taken by the group robot.

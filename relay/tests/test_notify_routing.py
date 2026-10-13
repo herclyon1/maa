@@ -224,6 +224,32 @@ check("其余通知：info 路、Server酱", any("info" in m and "Server酱" in 
 check("只发群的：group 路、群机器人", any("group" in m and "企业微信机器人" in m and "🎴" in m for m in _info), True)
 check("一条送到的推送只记一行", len(_info), 4)
 
+print("\n[一个线程正在报通道故障时，另一个线程的被拒照样报（审查 10-13 s5 #5）]")
+# The flag was one per Notifier: while errwatch's push thread announced an outage,
+# a refusal on the main loop was only a WARNING line.
+import threading  # noqa: E402
+n, log = build(broken=("企业微信机器人",))
+inside, release = threading.Event(), threading.Event()
+_sc_send = n.serverchan.send_text
+
+
+def _slow(title, body=""):
+    if title.startswith("🔌") and not inside.is_set():
+        inside.set()                     # thread A is now inside its announcement
+        release.wait(5)
+    return _sc_send(title, body)
+
+
+n.serverchan.send_text = _slow
+ta = threading.Thread(target=lambda: n.send("⚠️ 甲线程的报警", "正文", alert=True))
+ta.start()
+check("甲线程进了通道故障通知", inside.wait(5), True)
+n.send("⚠️ 乙线程的报警", "正文", alert=True)
+release.set()
+ta.join(5)
+check("两条报警各报了一次通道故障（Server酱 收到两条 🔌）",
+      len([t for c, t in log if c == "Server酱" and t.startswith("🔌")]), 2)
+
 print("\n[默认就是日常，不是报警]")
 n, log = build()
 n.send("🆕 预更新", "")
