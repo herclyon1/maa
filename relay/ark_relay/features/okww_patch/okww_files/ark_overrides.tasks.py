@@ -1225,8 +1225,8 @@ def _install_hooks():
         # Those go to upstream's do_run handler (re-teleport, cap 3); Teleport to
         # Boss is on in both of our modes (echofarm.py writes Boss Challenge, the
         # weekly boss Weekly Challenge), which is that handler's condition. Not yet
-        # seen in a log: that re-teleport starting from inside a realm after our
-        # in-place revive.
+        # seen in a log: that re-teleport after upstream's revive_action has left a
+        # realm.
         try:
             return farm_combat(self, *a, **kw)
         except CharRevivedException:
