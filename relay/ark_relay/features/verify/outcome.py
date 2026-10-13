@@ -133,6 +133,15 @@ WEEKLY_READ = re.compile(r"本周剩余可收取次数[：:]\s*(\d+)\s*[/／]\s*
 # and the line it starts.
 FAILED_MARK = "这一趟按失败结束："
 _WEEKLY_FAILED = re.compile(FAILED_MARK + r"(.+)")
+# The overlay appends what it read off the screen (「整屏读到 [0_1.00, 41/240_1.00, …]」)
+# to a stop reason. That OCR dump is for the log; a reason pushed to the phone ends
+# before it (audit 2026-10-13 item 14).
+_SCREEN_DUMP = re.compile(r"[。，,；;\s]*整屏读到.*$", re.S)
+
+
+def without_screen_dump(reason: str) -> str:
+    """`reason` without the overlay's trailing 「整屏读到 …」 OCR dump."""
+    return _SCREEN_DUMP.sub("", reason).strip()
 # The overlay's waveplate-shortage skip lines (current and old wording); both
 # overlay paths log one before ending the run. Also read by
 # collector_okww._okww_steps.
@@ -561,7 +570,7 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
             out.append(Check(label, False, WEEKLY_SHORT_SAY))
         elif stopped:
             got = f"（这一趟领到了 {c['verified']} 次）" if c["verified"] else ""
-            out.append(Check("周本领到了奖励", False, stopped.group(1).strip() + got))
+            out.append(Check("周本领到了奖励", False, without_screen_dump(stopped.group(1)) + got))
         elif c["attempted"]:
             out.append(Check("周本领到了奖励", False,
                              weekly_unverified(c)))
@@ -605,9 +614,9 @@ def _ended_failed_checks(text: str, out: list[Check]) -> list[Check]:
     """
     found: list[tuple[str, str]] = []
     for m in _WEEKLY_FAILED.finditer(text):
-        found.append(("这一趟按失败结束", _TRACEBACK_TAIL.sub("", m.group(1)).strip()))
+        found.append(("这一趟按失败结束", without_screen_dump(_TRACEBACK_TAIL.sub("", m.group(1)))))
     for m in _ADDITIONAL_FAILED.finditer(text):
-        found.append(("附加任务出错", _TRACEBACK_TAIL.sub("", m.group(1)).strip()))
+        found.append(("附加任务出错", without_screen_dump(_TRACEBACK_TAIL.sub("", m.group(1)))))
     weekly_red = any(c.label.startswith("周本") and not c.ok for c in out)
     extra: list[Check] = []
     for label, why in found:

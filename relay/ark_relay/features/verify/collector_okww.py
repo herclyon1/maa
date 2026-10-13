@@ -315,9 +315,11 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
     task_zh = _OKWW_TASK_ZH.get(task)
     if _OKWW_ENDED_FAILED in msg:
         # The overlay ended the run as failed and logged why in Chinese.
-        why = msg.split(_OKWW_ENDED_FAILED, 1)[1].strip()
+        why = outcome.without_screen_dump(msg.split(_OKWW_ENDED_FAILED, 1)[1])
         who = task_zh or "某个任务"
-        return why if why.startswith(who + "：") else f"{who}：{why}"
+        # The overlay already names the step: 「周本：…」 and also 「周本领奖：…」,
+        # which became 「周本：周本领奖：…」 (audit 2026-10-13 item 14).
+        return why if why.startswith(who) else f"{who}：{why}"
     msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
     exc_zh = _OKWW_EXC_ZH.get(exc)
     if task_zh is not None and not (msg_zh or exc_zh) and _OKWW_WRAPPER in msg:
