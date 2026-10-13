@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ark_relay.core.config import SERVER_TZ, USER_TZ
+from ark_relay.core.config import SERVER_TZ
 
 # One version's scoreboard: {"runs": total runs, "failed": failed runs not
 # superseded by a retry, "since": timestamp of the first run}.
@@ -47,7 +47,8 @@ def line(store, code_version: str) -> str:
     since = ""
     try:
         t = datetime.fromisoformat(str(row.get("since") or ""))
-        since = f"（自 {t.astimezone(USER_TZ):%m-%d %H:%M} 起）"
+        # Machine time, like every other line of relay.log.
+        since = f"（自 {t.astimezone(SERVER_TZ):%m-%d %H:%M} 起）"
     except ValueError:
         pass
     if failed:
