@@ -86,8 +86,12 @@ def _script_kind(path: str) -> str:
     return ""
 
 
+# AUTO-MAS v5.7 task/MAA/AutoProxy.py builds MAA's StagePlan from these, in order.
+_STAGE_KEYS = ("Stage", "Stage_1", "Stage_2", "Stage_3", "MedicineNumb")
+
+
 def _scripts(cfg_dir: Path) -> dict[str, dict]:
-    """{script_uid: {name, kind, path, fight, stage, stage_mode, medicine, annihilation, sanity_use}}
+    """{script_uid: {name, kind, path, fight, stage_mode, stage_info, annihilation, sanity_use}}
 
     Scripts and users are found by walking ScriptConfig.json's instances (opaque
     uids), not by hard-coded ids.
@@ -110,10 +114,11 @@ def _scripts(cfg_dir: Path) -> dict[str, dict]:
             # The combat switch: off means no stage is farmed, and the plan says so.
             if "IfFight" in task:
                 entry["fight"] = bool(task.get("IfFight"))
-            if info.get("Stage"):
-                entry["stage"] = info["Stage"]
-                entry["stage_mode"] = info.get("StageMode", "")
-                entry["medicine"] = info.get("MedicineNumb")
+            if info.get("StageMode"):
+                # Fixed: the stages are these; otherwise StageMode is a
+                # PlanConfig uid and the plan table supplies them (_stage_bits).
+                entry["stage_mode"] = info["StageMode"]
+                entry["stage_info"] = {k: info.get(k) for k in _STAGE_KEYS}
             if info.get("Annihilation"):
                 entry["annihilation"] = info["Annihilation"]
             if task.get("SanityTaskType"):
@@ -564,6 +569,44 @@ def _maaend_extra_bits(automas_dir, maaend_dir: Path | None, when) -> list[str]:
     return []
 
 
+def _stage_bits(cfg_dir: Path, s: dict, when) -> list[str]:
+    """The stage and sanity-potion lines for one MAA script, the way AUTO-MAS
+    v5.7 hands them to MAA (task/MAA/AutoProxy.py): StageMode "Fixed" takes
+    Stage/Stage_1..3/MedicineNumb from the user's own settings; any other value
+    is a PlanConfig uid whose table supplies them - its "ALL" row, or with Mode
+    "Weekly" the row for that weekday (models/config.py get_current_info).
+    "-" is an empty slot and is left out; "*" is passed to MAA as "", which MAA
+    takes as the current / last stage (MAA docs protocol/integration.md, Fight
+    "stage"). MAA tries the stages in order."""
+    mode, info = s.get("stage_mode"), s.get("stage_info") or {}
+    how = "固定"
+    if mode != "Fixed":
+        node = _load(cfg_dir / "PlanConfig.json").get(mode)
+        if not isinstance(node, dict):
+            _say_once("plan_table", mode, "MAA 计划表 %s 在 PlanConfig.json 里找不到", mode)
+            return [f"理智 读不到计划表（{mode}）"]
+        _last_error.pop("plan_table", None)
+        pinfo = node.get("Info") or {}
+        day = when.strftime("%A") if pinfo.get("Mode") == "Weekly" else "ALL"
+        info = node.get(day) or node.get("ALL") or {}
+        how = f"计划表「{pinfo.get('Name') or '?'}」"
+    stages = ["当前/上次关卡" if v == "*" else str(v)
+              for v in (info.get(k, "-") for k in _STAGE_KEYS[:4])
+              if v not in ("-", None, "")]
+    out = []
+    if stages:
+        line = f"理智 {stages[0]}（{how}）"
+        if len(stages) > 1:
+            line += "，打不了依次换 " + "、".join(stages[1:])
+        out.append(line)
+    else:
+        out.append(f"理智 没设关卡（{how}）")
+    med = info.get("MedicineNumb")
+    if med is not None:
+        out.append("不吃理智药" if int(med) <= 0 else f"理智药最多 {med} 个")
+    return out
+
+
 def _annihilation_done_tomorrow(automas_dir) -> bool:
     """Whether AUTO-MAS will skip annihilation tomorrow: its record of the completed
     game-week (Data.AnnihilationCompletedWeek) is tomorrow's week. Since the
@@ -703,9 +746,8 @@ def next_plan(automas_dir: Path | None) -> str:
             if s.get("fight") is False:
                 # Combat off: no stage is farmed tomorrow.
                 bits.append("不刷关卡（只做日常）")
-            elif s.get("stage"):
-                mode = "固定" if s.get("stage_mode") == "Fixed" else s.get("stage_mode", "")
-                bits.append(f"理智 {s['stage']}" + (f"（{mode}）" if mode else ""))
+            elif s.get("stage_mode"):
+                bits += _stage_bits(cfg_dir, s, _tomorrow())
             if (anni := s.get("annihilation")):
                 # "Close" is a switch closed by hand: nothing reopens it since the
                 # relay stopped closing it weekly (hand-over item 13). Otherwise
@@ -724,10 +766,6 @@ def next_plan(automas_dir: Path | None) -> str:
                     bits.append("剿灭 本周已打满，跳过")
                 else:
                     bits.append(f"剿灭 {zh.get(anni, anni)}")
-            if (med := s.get("medicine")) is not None:
-                # AUTO-MAS stores "use as many as you have" as 999.
-                bits.append("理智药不限" if int(med) >= 999
-                            else ("不吃理智药" if int(med) <= 0 else f"理智药 {med} 个"))
             if s.get("kind") == "MaaEnd":
                 # AUTO-MAS's SanityTaskType is only the tab; sanity_plan resolves
                 # which item the chain actually farms.
