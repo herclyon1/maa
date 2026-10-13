@@ -224,9 +224,10 @@ if hits=$( { grep -rnE "$ID_RE" \
           --include='*.csv' --include='*.tsv' --include='*.yml' --include='*.yaml' --include='*.html' \
           . 2>/dev/null | grep -v '^\./\.git/' | grep -v 'lint-repo.sh'
         git ls-files '*.gz' '*.zst' | while IFS= read -r f; do
+          # (pattern) with both parens: bash 3.2 (macOS /bin/bash) misreads a lone `)` inside $( ).
           case "$f" in
-            *.gz) gzip -dc "$f" ;;
-            *.zst) zstd -qdc "$f" ;;
+            (*.gz) gzip -dc "$f" ;;
+            (*.zst) zstd -qdc "$f" ;;
           esac 2>/dev/null | LC_ALL=C grep -aqE "$ID_RE" && echo "$f (decompressed)"
         done
         command -v zstd >/dev/null || echo "zstd missing: the .zst files were not scanned (brew install zstd)"
