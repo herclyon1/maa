@@ -33,8 +33,9 @@ log = logging.getLogger("ark.weeklyboss")
 
 TASK_NAME = "Teleport and Farm 4C Echo"     # 「传送并刷取4C声骸」
 # Boss Level: the weekly boss's level sets the reward tier, so it is pinned to the
-# highest. Our FarmEchoTask.json is used only by the weekly boss (echo farming goes
-# through the tacet nests), so this does not affect anything else.
+# highest. FarmEchoTask.json is shared: the echo farm (echofarm.start) points it at
+# an overworld boss for the night and puts the master's copy back when it ends
+# (echofarm._finish / _truth), so the weekly settings written here must survive that.
 LEVELS = ("50", "60", "70", "80", "90")
 MAX_LEVEL = LEVELS[-1]
 COUNT = 3                                   # game rule: only 3 reward claims per week

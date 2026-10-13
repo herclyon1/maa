@@ -45,7 +45,10 @@ NO_CLAIM = r"C:\ProgramData\ark-okww-farm.no-claim"
 # restart the game is killed too, so half an hour with no lap at all means neither
 # the script nor a fresh client can get anywhere - worth stopping and saying so.
 STALL_MINUTES = 30
-# OK-WW stops the whole task when the character dies, so an unattended farm has to
+# OK-WW v3.7.4 gets back up after a death by itself only up to 3 times, and only
+# with teleport-to-boss on (FarmEchoTask.do_run, max_recovery_retries=3,
+# FarmEchoTask.py:209-222); after that it logs 「exceeded recovery retries」 and
+# stops, and any other failure ends the task. So an unattended farm still has to
 # get back up on its own: silence this long relaunches it. A lap takes about a
 # minute; a death plus a revive about two. Five minutes without a single lap means
 # it is stuck, however busy the log looks.
@@ -176,10 +179,10 @@ def no_claim_on() -> bool:
 # log lines - window-size changes, update checks, feature loads - so 「the log is
 # moving」 is not the same as 「the farm is moving」: a game hung on a loading screen
 # keeps the log scrolling.
-# Each entry is a sentence OK-WW v3.7.3 or the overrides write today:
-#   farm echo / enter combat       a lap picked up / fought (FarmEchoTask.py:183-195,
-#                                  CombatCheck.py:181)
-#   teleport_to_boss prepared as   back in the realm (FarmEchoTask.py:266)
+# Each entry is a sentence OK-WW v3.7.4 or the overrides write today:
+#   farm echo / enter combat       a lap picked up / fought (FarmEchoTask.py:188-200,
+#                                  combat/CombatCheck.py:181)
+#   teleport_to_boss prepared as   back in the realm (FarmEchoTask.py:271)
 #   限时提前开放：确认后直接进场       the early-open entry put us in the arena (overrides)
 #   刷声骸模式：复活成功               revived and farming on (overrides)
 # Not the bare 「刷声骸模式」 prefix: its other sentences are 「not recognised, not
