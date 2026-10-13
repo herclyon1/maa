@@ -76,15 +76,20 @@ def last_failure() -> str:
     return _state["why"]
 
 
-def python_processes(*, warn: bool = True) -> "list[tuple[int, str]] | None":
+def python_processes(*, warn: bool = True,
+                     hosts: "tuple[str, ...]" = ("python.exe",)) -> "list[tuple[int, str]] | None":
     """(pid, command line) of every python.exe, or None when every try of the query failed.
 
+    `hosts` widens the image names (OK-WW runs as pythonw.exe: config.PYTHON_HOSTS).
     `warn=False` is for a caller that reports the failure itself (the boot self-check
     pushes one alarm naming it); that report counts as this outage's one, so a later
     caller does not push the same cause again."""
+    query = _QUERY if tuple(hosts) == ("python.exe",) else (
+        "SELECT ProcessId, CommandLine FROM Win32_Process WHERE "
+        + " OR ".join(f"Name='{h}'" for h in hosts))
     whys = []
     for i in range(ATTEMPTS):
-        rows, why = _query_once()
+        rows, why = _query_once(query)
         if rows is not None:
             if whys:
                 # Read on a retry: fixed itself, so not pushed, but one 「自愈待查」 red

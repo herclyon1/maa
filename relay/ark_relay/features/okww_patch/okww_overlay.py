@@ -66,16 +66,45 @@ def install(okww_dir) -> str:
     if dest is None:
         raise OverlayTrouble("找不到 OK-WW 目录，中继的改动文件没装上，OK-WW 会按原版跑")
     want = source_text()
+    data = want.encode("utf-8")          # atomic_write_text writes exactly these bytes
     try:
-        if dest.is_file() and dest.read_text(encoding="utf-8") == want:
+        # Bytes, so the file is left alone (not even its mtime touched) when it is
+        # already right. ok-script watches ok_tasks/ while OK-WW runs and executes
+        # again any .py there that changes (ok-script task_manager.py
+        # _on_debug_dir_changed): a second execution wraps our wrappers again.
+        if dest.is_file() and dest.read_bytes() == data:
             return ""
+        if okww_running():
+            return ("OK-WW 正在运行，中继的改动文件这次先不换（换了它会把新文件再执行一遍，改动套两层），"
+                    "下次中继启动时再装")
         dest.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(dest, want)
-        if dest.read_text(encoding="utf-8") != want:
+        if dest.read_bytes() != data:
             raise OverlayTrouble("**中继的改动文件写下去了，但读出来和写的不一样**，OK-WW 会按原版跑")
     except OSError as exc:
         raise OverlayTrouble(f"**中继的改动文件装不上（{exc}）**，OK-WW 会按原版跑") from exc
     return f"中继给 OK-WW 的改动文件已装到 {dest}"
+
+
+def okww_running() -> "bool | None":
+    """Is OK-WW itself up: a python.exe / pythonw.exe with config.OKWW_CMDLINE on its
+    command line? None when it cannot be told (not Windows, or the process list
+    could not be read).
+
+    install() writes on None: at boot OK-WW is normally not running, and a stale
+    overlay left in place silently is the worse outcome.
+    """
+    import os  # noqa: PLC0415
+
+    if os.name != "nt":
+        return None
+    from ark_relay.core import procs  # noqa: PLC0415
+    from ark_relay.core.config import OKWW_CMDLINE, PYTHON_HOSTS  # noqa: PLC0415
+    rows = procs.python_processes(hosts=PYTHON_HOSTS)
+    if rows is None:
+        log.info("程序列表读不到，不知道 OK-WW 开没开着，照常装中继的改动文件")
+        return None
+    return any(OKWW_CMDLINE in cmd.lower() for _pid, cmd in rows)
 
 
 def write_master_pointer(automas_dir) -> str:
