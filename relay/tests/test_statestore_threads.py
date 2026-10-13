@@ -11,6 +11,7 @@ says 「已记下」 and the machine powers off anyway.
 Both halves are made deterministic here: the first writer is held between its read
 and its write while the second writer runs.
 """
+import os
 import sys
 import threading
 import time
@@ -121,6 +122,24 @@ check("the inner write did not fail", inner_err, [])
 check("the outer write did not fail", repr(outer_err) if outer_err else None, None)
 check("the last write wins, whole", target.read_bytes(), b'{"a": 1}')
 check("no temp file left behind", sorted(p.name for p in d2.iterdir()), ["state.json"])
+
+print("\n[a temp file a power cut left behind is removed at the next start once it is a day old]")
+d3 = tmpdir()
+(d3 / "state.json").write_text("{}", encoding="utf-8")
+old_tmp = d3 / "state.json.abc123.tmp"
+fresh_tmp = d3 / "state.json.def456.tmp"
+legacy_tmp = d3 / "state.json.tmp"
+other_tmp = d3 / "ledger-2026-10-13.jsonl.xyz.tmp"
+for f in (old_tmp, fresh_tmp, legacy_tmp, other_tmp):
+    f.write_text("{", encoding="utf-8")
+two_days_ago = time.time() - 2 * 86400
+for f in (old_tmp, legacy_tmp, other_tmp):
+    os.utime(f, (two_days_ago, two_days_ago))
+statestore._SWEPT.discard(str(d3))
+statestore.StateStore(d3)
+check("old state.json temp files are gone, a fresh one (a live write) and other files stay",
+      sorted(p.name for p in d3.iterdir()),
+      sorted(["state.json", fresh_tmp.name, other_tmp.name]))
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
