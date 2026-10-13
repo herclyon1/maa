@@ -38,7 +38,11 @@ check("装上了", dest.is_file())
 check("说了装到哪", "ok_tasks" in line)
 check("内容一字不差", dest.read_text(encoding="utf-8"), okww_overlay.source_text())
 check("再装一次什么都不做", okww_overlay.install(root), "")
-check("目录是 None 时直说", "找不到" in okww_overlay.install(None))
+try:
+    okww_overlay.install(None)
+    check("目录是 None 时直说", False)
+except okww_overlay.OverlayTrouble as exc:     # a failure by construction (test_okww_overlay_faults)
+    check("目录是 None 时直说", "找不到" in str(exc))
 
 print("[没有目录也要自己建，不能因为缺个文件夹就装不上]")
 root2 = tmpdir()
@@ -83,6 +87,18 @@ try:
     okww_overlay.REPORT.write_text(json.dumps({"error": "Traceback ... ImportError"}),
                                    encoding="utf-8")
     check("整个文件炸了也要说", "一条都没生效" in okww_overlay.report_line())
+    # Raised part-way (audit 2026-10-13, A5): the overrides are applied one by
+    # one, so the ones before the error are live - say which.
+    okww_overlay.REPORT.write_text(json.dumps(
+        {"applied": ["FarmEchoTask.revive_action", "FarmEchoTask.handle_claim_button"],
+         "skipped": [], "error": "Traceback ... KeyError"}), encoding="utf-8")
+    line = okww_overlay.report_line()
+    check("part-way: not 「一条都没生效」", "一条都没生效" in line, False)
+    check("part-way: names what applied", "已生效 2 条" in line and "handle_claim_button" in line, True)
+    check("part-way: names what did not", "没生效" in line and "NightmareNestTask.find_nest" in line, True)
+    check("part-way: an applied one is not listed as not applied",
+          "revive_action" not in line.split("没生效")[1], True)
+    check("part-way: still the error and its trouble words", "KeyError" in line and "自己报错了" in line, True)
 finally:
     okww_overlay.REPORT = real
 
@@ -278,7 +294,11 @@ mdir.mkdir(parents=True)
 (mdir / "DailyTask.json").write_text("{}", encoding="utf-8")
 pointer = tmpdir() / "ark-okww-master.txt"
 okww_overlay.MASTER_POINTER = pointer
-check("母本找不到就说清楚", "找不到" in okww_overlay.write_master_pointer(tmpdir()))
+try:
+    okww_overlay.write_master_pointer(tmpdir())
+    check("母本找不到就说清楚", False)
+except okww_overlay.OverlayTrouble as exc:     # a failure by construction (test_okww_overlay_faults)
+    check("母本找不到就说清楚", "找不到" in str(exc))
 check("写好了不吭声", okww_overlay.write_master_pointer(automas), "")
 check("指向母本目录", pointer.read_text(encoding="utf-8"), str(mdir))
 check("已是这个值就不重写", okww_overlay.write_master_pointer(automas), "")

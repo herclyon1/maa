@@ -206,8 +206,15 @@ TACET_DROPS = "🖼️ 无音区产出"
 _PATCH_TROUBLE = ("贴不上", "没贴上", "写不进", "叠了", "没能检查", "对不上", "自己报错了")
 
 
-def patches(n: int, notes: "list[str] | None" = None) -> str:
-    bad = sum(1 for x in (notes or []) if any(k in x for k in _PATCH_TROUBLE))
+def patches(n: int, notes: "list[str] | None" = None, faults: "list[str] | tuple" = ()) -> str:
+    """The title of one round of OK-WW patch notes.
+
+    `faults` are notes the caller already knows are failures (okww_overlay.OverlayTrouble:
+    the overrides or their master pointer are not in place); they count as such
+    whatever their words. The other notes are judged by _PATCH_TROUBLE.
+    """
+    bad = len(faults) + sum(1 for x in (notes or [])
+                            if x not in faults and any(k in x for k in _PATCH_TROUBLE))
     if bad:
         return f"⚠️ OK-WW 补丁有 {bad} 条没贴上（共 {n} 条）"
     return f"🩹 OK-WW 补丁（{n} 条）"

@@ -52,6 +52,10 @@ _NEST_ALL_FULL = "指定点位都已打满，跳过"
 #   NightmareNestTask:left_click 已击败残象：0/41 (1729, 347) after_sleep 2
 _NEST_FILTER_LINE = re.compile(r"nightmare nest: 只刷 \[")
 _NEST_CLICK = re.compile(r"left_click 已击败残象[：:]\s*\d+/(\d+)")
+# The overlay's combat_nest names the nest it clicks, as OCR read it beside the count
+# (ark_overrides NEST_NAME_LINE; 「?」 when no name was read):
+#   NightmareNestTask:nightmare nest: nest name: 落渊南丘残象聚落
+_NEST_NAME = re.compile(r"nightmare nest: nest name: ([^\n]*)")
 _NEST_NOT_FOUND = "列表里没找到指定的点位"
 # Upstream's line when travel to a nest did not happen (NightmareNestTask
 # _travel_to_nest_or_skip), e.g. 「nightmare nest unreachable, skip this run: go_nest:48:18」.
@@ -139,6 +143,15 @@ WEEKLY_READ = re.compile(r"本周剩余可收取次数[：:]\s*(\d+)\s*[/／]\s*
 # and the line it starts.
 FAILED_MARK = "这一趟按失败结束："
 _WEEKLY_FAILED = re.compile(FAILED_MARK + r"(.+)")
+# The overlay appends what it read off the screen (「整屏读到 [0_1.00, 41/240_1.00, …]」)
+# to a stop reason. That OCR dump is for the log; a reason pushed to the phone ends
+# before it (audit 2026-10-13 item 14).
+_SCREEN_DUMP = re.compile(r"[。，,；;\s]*整屏读到.*$", re.S)
+
+
+def without_screen_dump(reason: str) -> str:
+    """`reason` without the overlay's trailing 「整屏读到 …」 OCR dump."""
+    return _SCREEN_DUMP.sub("", reason).strip()
 # The overlay's waveplate-shortage skip lines (current and old wording); both
 # overlay paths log one before ending the run. Also read by
 # collector_okww._okww_steps.
@@ -352,8 +365,10 @@ def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
 
     Two facts, both from lines the run itself writes: the overrides announce the
     filter they loaded (no announcement = the filter code never had a name to work
-    with), and each nest entered is clicked through its 「已击败残象 N/D」 box, so
-    two different denominators in one run mean two different nests.
+    with), and each nest entered is named by the overlay (「nightmare nest: nest
+    name: …」), compared with the setting. Logs from before that line: each nest is
+    clicked through its 「已击败残象 N/D」 box, so more different denominators than
+    names asked for mean a nest outside the setting (blind to nests sharing a cap).
     """
     text = _task_lines(text)
     if not (only_nest or "").strip() or "NightmareNestTask" not in text:
@@ -371,9 +386,22 @@ def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
             entered = f"点了 {len(denoms)} 个点位，都没传送过去，一个都没刷"
         why = f"日志里没有「nightmare nest: 只刷 […]」这一行，只刷{only_nest}的过滤没生效；这一趟{entered}"
     out.append(Check("残象聚落只刷指定点位（过滤生效）", announced, why))
-    # One denominator per nest asked for (user 10-12 11:2x: the first two nests);
-    # more different ones than names means a nest outside the setting was entered.
-    wanted = max(1, len([n for n in re.split(r"[,，]", only_nest) if n.strip()]))
+    names = [n.strip() for n in re.split(r"[,，]", only_nest) if n.strip()]
+    # The nests entered by name when the overlay logged them (audit 2026-10-13 item
+    # 10: three nests share the cap 48, so a denominator alone cannot tell them apart).
+    # OCR reads 「落渊南丘残象聚落」 for the setting 「落渊南丘」: a substring match.
+    seen = list(dict.fromkeys(n.strip() for n in _NEST_NAME.findall(text) if n.strip() not in ("", "?")))
+    if seen:
+        outside = [n for n in seen if not any(w in n for w in names)]
+        if len(seen) <= 1 and not outside and not _NEST_ENGAGED.search(text):
+            return out
+        out.append(Check("残象聚落没进别的点位", not outside,
+                         "" if not outside else f"这一趟进了设置以外的点位：{'、'.join(outside)}，设置是只刷{only_nest}"))
+        return out
+    # Older logs, without the name line: one denominator per nest asked for (user
+    # 10-12 11:2x: the first two nests); more different ones than names means a nest
+    # outside the setting was entered.
+    wanted = max(1, len(names))
     in_scope = len(denoms) <= wanted
     if len(denoms) <= 1 and not _NEST_ENGAGED.search(text):
         return out      # nothing was fought, so 「没进别的点位」 says nothing worth a green line
@@ -451,10 +479,13 @@ def nest_state(text: str) -> str:
         return "not_found"
     if _NEST_COUNT_UNREAD in text and not engaged:
         return "count_unread"
-    if _NEST_ALL_FULL in text:
-        return "full"
+    # A fight first, then 「all full」: the run farmed the nest until it was full.
+    # That is 「fought」; 「full」 (skipped) is for a run that found it full before
+    # fighting at all (audit 2026-10-13 item 11).
     if engaged:
         return "fought"
+    if _NEST_ALL_FULL in text:
+        return "full"
     if _NEST_UNREACHABLE.search(text):
         return "unreachable"
     if "NightmareNestTask Failed" in text:
@@ -561,7 +592,7 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
             out.append(Check(label, False, WEEKLY_SHORT_SAY))
         elif stopped:
             got = f"（这一趟领到了 {c['verified']} 次）" if c["verified"] else ""
-            out.append(Check("周本领到了奖励", False, stopped.group(1).strip() + got))
+            out.append(Check("周本领到了奖励", False, without_screen_dump(stopped.group(1)) + got))
         elif c["attempted"]:
             out.append(Check("周本领到了奖励", False,
                              weekly_unverified(c)))
@@ -605,9 +636,9 @@ def _ended_failed_checks(text: str, out: list[Check]) -> list[Check]:
     """
     found: list[tuple[str, str]] = []
     for m in _WEEKLY_FAILED.finditer(text):
-        found.append(("这一趟按失败结束", _TRACEBACK_TAIL.sub("", m.group(1)).strip()))
+        found.append(("这一趟按失败结束", without_screen_dump(_TRACEBACK_TAIL.sub("", m.group(1)))))
     for m in _ADDITIONAL_FAILED.finditer(text):
-        found.append(("附加任务出错", _TRACEBACK_TAIL.sub("", m.group(1)).strip()))
+        found.append(("附加任务出错", without_screen_dump(_TRACEBACK_TAIL.sub("", m.group(1)))))
     weekly_red = any(c.label.startswith("周本") and not c.ok for c in out)
     extra: list[Check] = []
     for label, why in found:

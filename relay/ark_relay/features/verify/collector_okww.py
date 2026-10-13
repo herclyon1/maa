@@ -33,16 +33,10 @@ _OKWW_BACKUP = re.compile(r"info_set back_up_stamina (\d+)")
 # (「not enough to continue」, 「must_use completed, no need to use back_up」), so
 # only the first half is matched.
 _OKWW_STAMINA_END = re.compile(r"current stamina:\s*(\d+)")
-_OKWW_DAILY = re.compile(r"info_set current daily progress (\d+)")
 _OKWW_POINTS = outcome._DAILY_POINTS
 # One of these is logged per domain entry, so counting them counts the runs.
 _OKWW_ENTRY = re.compile(r"使用单倍体力|当前体力大于等于双倍|使用双倍")
-# Nightmare Nest progress 「已击败残象：N/M」, logged each time the list is opened;
-# the last one is reported. It is OCR (a leading digit can be lost), so it is
-# shown for reference only and never used to decide whether a nest was farmed.
-_OKWW_NEST = re.compile(r"已击败残象[：:]\s*(\d+)\s*/\s*(\d+)")
 _OKWW_NEST_FULL = re.compile(r"指定点位都已打满")
-_OKWW_DAILY_TARGET = 180
 # Full value of the daily activity meter; the reading can go above it.
 _OKWW_POINTS_TARGET = outcome._DAILY_POINTS_TARGET
 
@@ -227,8 +221,7 @@ def _okww_error(text: str) -> str:
             step = info["tasks"][-1].split()[0]
             return _okww_say(_OKWW_TASK_BY_STEP.get(step, step), info["error"], "")
         return ""
-    last = heads[-1]
-    cluster = [m for m in heads if last.start() - m.start() < 6000]
+    cluster = _last_event(text, heads)
     inner = [m for m in cluster if m.group(1) not in ("DailyTask", "TaskExecutor")]
     head = (inner or cluster)[0]
     task, msg = head.group(1), head.group(2).strip()
@@ -264,6 +257,40 @@ def _okww_error(text: str) -> str:
     return _okww_say(task, msg, exc, text, head.start())
 
 
+# One raise prints its tracebacks within about a second (on 2026-09-01 06:35:
+# 10:50:13.348 / 14.879 / 15.017); two events are minutes apart.
+_EVENT_GAP_SECONDS = 2.0
+_HEAD_TS = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),(\d{1,6})")
+
+
+def _head_time(text: str, m: re.Match) -> "float | None":
+    """The timestamp (seconds) at the start of the line holding traceback header `m`."""
+    line = text.rfind("\n", 0, m.start()) + 1
+    t = _HEAD_TS.match(text, line)
+    return _ts(t.group(1), t.group(2)) if t else None
+
+
+def _last_event(text: str, heads: list) -> list:
+    """The traceback headers of the last event: walking back from the last header,
+    each one within _EVENT_GAP_SECONDS of the next.
+
+    Grouped by time, not by distance in the text: a long stack between the headers
+    put one event's headers 36352 / 36937 characters apart (2026-09-01 06:35), past
+    the 6000 characters this used, and the task's own header fell out. A header line
+    without a timestamp falls back to that distance.
+    """
+    cluster = [heads[-1]]
+    for m in reversed(heads[:-1]):
+        nxt = cluster[0]
+        a, b = _head_time(text, m), _head_time(text, nxt)
+        near = (b - a <= _EVENT_GAP_SECONDS) if a is not None and b is not None \
+            else nxt.start() - m.start() < 6000
+        if not near:
+            break
+        cluster.insert(0, m)
+    return cluster
+
+
 _OKWW_TASK_BY_STEP = {
     "garden_start_game": "GardenTask", "garden": "GardenTask",
     "check": "GardenTask", "claim": "DailyTask", "farm": "FarmEchoTask",
@@ -282,9 +309,11 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
     task_zh = _OKWW_TASK_ZH.get(task)
     if _OKWW_ENDED_FAILED in msg:
         # The overlay ended the run as failed and logged why in Chinese.
-        why = msg.split(_OKWW_ENDED_FAILED, 1)[1].strip()
+        why = outcome.without_screen_dump(msg.split(_OKWW_ENDED_FAILED, 1)[1])
         who = task_zh or "某个任务"
-        return why if why.startswith(who + "：") else f"{who}：{why}"
+        # The overlay already names the step: 「周本：…」 and also 「周本领奖：…」,
+        # which became 「周本：周本领奖：…」 (audit 2026-10-13 item 14).
+        return why if why.startswith(who) else f"{who}：{why}"
     msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
     exc_zh = _OKWW_EXC_ZH.get(exc)
     if task_zh is not None and not (msg_zh or exc_zh) and _OKWW_WRAPPER in msg:
@@ -314,11 +343,46 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
         what = "选了等级后没等到「开启挑战」，没进本，一次没打"
     # The 「wait_until timeout … N seconds」 line right before the traceback says
     # how long it waited.
-    before = text[max(0, at - 600):at] if text else ""
-    if (w := _OKWW_WAIT_SEC.findall(before)) and "等" in what:
-        sec = w[-1][:-2] if w[-1].endswith(".0") else w[-1]
+    if (w := _wait_before(text, at)) and "等" in what:
+        sec = w[:-2] if w.endswith(".0") else w
         what += f"（等了 {sec} 秒）"
     return f"{task_zh}：{what}"
+
+
+_OKWW_WAIT_LINE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),(\d{1,6}) [^\n]*?"
+                             r"wait_until timeout [^\n]*? (\d+(?:\.\d+)?) seconds", re.M)
+
+
+def _wait_before(text: str, at: int) -> str:
+    """Seconds of the 「wait_until timeout」 that raised the traceback at `at`; '' when none.
+
+    Anchored on time: the timeout line of the same raise is logged within a second
+    of the header (at most 0.62 s over every real log, 2026-10-13), while the
+    stack text in between reached 2558 characters - past the 600 this used to look
+    back, so the seconds were dropped. A header line without a timestamp falls back
+    to a character window that covers that measured maximum.
+    """
+    if not text:
+        return ""
+    line = text.rfind("\n", 0, at) + 1
+    hm = _HEAD_TS.match(text, line)
+    if hm is None:
+        got = _OKWW_WAIT_SEC.findall(text[max(0, at - 4000):at])
+        return got[-1] if got else ""
+    head_t = _ts(hm.group(1), hm.group(2))
+    best = ""
+    for m in _OKWW_WAIT_LINE.finditer(text, max(0, at - 200_000), at):
+        t = _ts(m.group(1), m.group(2))
+        if t is not None and head_t is not None and 0 <= head_t - t <= _EVENT_GAP_SECONDS:
+            best = m.group(3)
+    return best
+
+
+def _ts(stamp: str, frac: str) -> "float | None":
+    try:
+        return datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S").timestamp() + float("0." + frac)
+    except ValueError:
+        return None
 
 
 def parse_okww_log(log_path: Path) -> dict:
@@ -414,18 +478,14 @@ def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
     """Waveplates spent, domain entries, reserve stamina. Returns
     (the series of readings, the entry count) for the checks that follow.
     """
-    readings = [int(m.group(1)) for m in _OKWW_STAMINA.finditer(text)]
-    fixes = _okww_settled(text)
-    if wrong := [(readings[i], v) for i, v in sorted(fixes.items()) if readings[i] != v]:
-        out["okww_stamina_mismatch"] = wrong[-1]
-    readings = [fixes.get(i, r) for i, r in enumerate(readings)]
+    marks = list(_OKWW_STAMINA.finditer(text))
+    readings = [int(m.group(1)) for m in marks]
     # The wrap-up line 「current stamina: 8 not enough to continue」 is the last
     # reading and holds the final run's cost.
     tail = [int(x) for x in _OKWW_STAMINA_END.findall(text)]
-    if readings and len(readings) - 1 in fixes:
-        tail = []      # the wrap-up line repeats the reading the dialog corrected
     series = readings + tail[-1:]
     spent = sum(a - b for a, b in zip(series, series[1:], strict=False) if a > b)
+    spent += _weekly_waveplates(text, [m.start() for m in marks] + [len(text)] * len(tail[-1:]), series)
     if spent:
         out["okww_stamina_spent"] = spent
     entries = len(_OKWW_ENTRY.findall(text))
@@ -437,6 +497,34 @@ def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
         if used := sum(a - b for a, b in zip(backs, backs[1:], strict=False) if a > b):
             out["okww_backup_spent"] = used
     return readings, entries
+
+
+# Waveplates one weekly-boss reward claim costs (the game's own price; the overlay's
+# claim code checks for the same 60 before it confirms).
+_WEEKLY_CLAIM_WAVEPLATES = 60
+
+
+def _weekly_waveplates(text: str, pos: "list[int]", series: "list[int]") -> int:
+    """Waveplates spent on verified weekly claims that the readings do not already show.
+
+    The stamina readings come from get_stamina, which the weekly claim does not
+    call, so a claim usually falls in no drop at all and 「消耗 波片」 left it out
+    (audit 2026-10-13 item 12; 10-12 11:41, three claims read back 3->2->1->0, spent
+    nothing). A claim between two readings whose drop already covers it is not
+    counted twice.
+    """
+    claims = [m.start() for m in outcome.WEEKLY_CLAIM_OK.finditer(text)]
+    per_gap: dict = {}
+    for c in claims:
+        i = bisect.bisect_right(pos, c)
+        per_gap[i] = per_gap.get(i, 0) + 1
+    extra = 0
+    for i, n in per_gap.items():
+        shown = 0
+        if 0 < i < len(series):
+            shown = min(n, max(0, series[i - 1] - series[i]) // _WEEKLY_CLAIM_WAVEPLATES)
+        extra += _WEEKLY_CLAIM_WAVEPLATES * (n - shown)
+    return extra
 
 
 def _okww_health(text: str, out: dict, entries: int) -> None:
@@ -471,30 +559,8 @@ def _okww_farm_fields(text: str, out: dict) -> None:
             out["okww_farm_drops"] = {reward: per * (2 * double + single)}
 
 
-_OKWW_SETTLE_LEFT = re.compile(r"体力读字原文领奖框（第 \d+ 次）: [^\n]*?剩余\s*[:：]?\s*(\d+)")
-
-
-def _okww_settled(text: str) -> dict:
-    """{index of an `info_set current_stamina` reading: 剩余 N on the same dialog}.
-
-    OK-WW can misread the bar on the settlement dialog. The get_stamina override
-    logs the dialog's raw text before OK-WW stores its reading, so the dialog's
-    own 剩余 is paired with the reading that follows it and replaces it.
-    """
-    starts = [m.start() for m in _OKWW_STAMINA.finditer(text)]
-    fixes = {}
-    for m in _OKWW_SETTLE_LEFT.finditer(text):
-        i = bisect.bisect_left(starts, m.end())
-        if i < len(starts):
-            fixes[i] = int(m.group(1))
-    return fixes
-
-
 def _okww_stamina_left(text: str, out: dict, readings: list) -> None:
-    if readings and len(readings) - 1 in _okww_settled(text):
-        out["okww_stamina_left"] = readings[-1]
-        out["okww_stamina_left_exact"] = True
-    elif end := _OKWW_STAMINA_END.findall(text):
+    if end := _OKWW_STAMINA_END.findall(text):
         out["okww_stamina_left"] = int(end[-1])
         out["okww_stamina_left_exact"] = True
     elif readings:
@@ -504,13 +570,13 @@ def _okww_stamina_left(text: str, out: dict, readings: list) -> None:
 
 
 def _okww_progress(text: str, out: dict) -> None:
-    """Nightmare Nests, daily progress, daily points, and why it stopped."""
-    if nest := _OKWW_NEST.findall(text):
-        out["okww_nest"] = f"{nest[-1][0]}/{nest[-1][1]}"
+    """Nightmare Nests all full, daily points, and why it stopped.
+
+    okww_nest (the last 「已击败残象 N/M」, read before the fight) and okww_daily
+    (always 0/180 or 180/180) were dropped on 2026-10-13: nothing outside this
+    collector read them (audit item 15)."""
     if _OKWW_NEST_FULL.search(text):
         out["okww_nest_full"] = True
-    if daily := _OKWW_DAILY.findall(text):
-        out["okww_daily"] = f"{max(int(x) for x in daily)}/{_OKWW_DAILY_TARGET}"
     if points := _OKWW_POINTS.findall(text):
         top = max(int(x) for x in points)
         out["okww_points"] = f"{top}/{_OKWW_POINTS_TARGET}"
@@ -638,6 +704,8 @@ def _okww_steps(text: str, entries: int) -> list[str]:
         # Ran, but no 「乐园任务完成」: the counter read alone does not show it done
         # (core.UNVERIFIED_STEP; the daily title counts it as unverified).
         steps.append("周常乐园（没读到做完，不算完成）")
-    if "check discarded echo" in text:
-        steps.append("声骸五合一")
+    # No 「声骸五合一」 step: the only line there was to read is 「check discarded
+    # echo」, logged before the merge; a merge that then failed (upstream logs
+    # 「… Failed」 and carries on) was listed as done next to its own alarm
+    # (gamelog_errors.check_round). Removed 2026-10-13 (audit item 16).
     return steps

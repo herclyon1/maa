@@ -47,35 +47,84 @@ def target(okww_dir) -> "Path | None":
     return Path(okww_dir).joinpath(*_WORKING, TASKS_DIR, FILE_NAME)
 
 
+class OverlayTrouble(Exception):
+    """install() or write_master_pointer() could not do its job; str(exc) is the plain line.
+
+    Raised, not returned as a line, so the caller cannot mistake it for a healthy
+    note: until 2026-10-13 these were plain strings, and the push title was chosen
+    by matching words (texts._PATCH_TROUBLE) that none of them contained - OK-WW ran
+    as plain upstream while every report said 🩹 (log only).
+    """
+
+
 def install(okww_dir) -> str:
-    """Copy the overrides into place. Returns a line to log, '' when unchanged."""
+    """Copy the overrides into place. Returns a line to log, '' when unchanged.
+
+    Raises OverlayTrouble when they are not in place afterwards.
+    """
     dest = target(okww_dir)
     if dest is None:
-        return "找不到 OK-WW 目录，中继的改动文件没装上"
+        raise OverlayTrouble("找不到 OK-WW 目录，中继的改动文件没装上，OK-WW 会按原版跑")
     want = source_text()
+    data = want.encode("utf-8")          # atomic_write_text writes exactly these bytes
     try:
-        if dest.is_file() and dest.read_text(encoding="utf-8") == want:
+        # Bytes, so the file is left alone (not even its mtime touched) when it is
+        # already right. ok-script watches ok_tasks/ while OK-WW runs and executes
+        # again any .py there that changes (ok-script task_manager.py
+        # _on_debug_dir_changed): a second execution wraps our wrappers again.
+        if dest.is_file() and dest.read_bytes() == data:
             return ""
+        if okww_running():
+            return ("OK-WW 正在运行，中继的改动文件这次先不换（换了它会把新文件再执行一遍，改动套两层），"
+                    "下次中继启动时再装")
         dest.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(dest, want)
-        if dest.read_text(encoding="utf-8") != want:
-            return "**中继的改动文件写下去了，但读出来和写的不一样**，OK-WW 会按原版跑"
+        if dest.read_bytes() != data:
+            raise OverlayTrouble("**中继的改动文件写下去了，但读出来和写的不一样**，OK-WW 会按原版跑")
     except OSError as exc:
-        return f"**中继的改动文件装不上（{exc}）**，OK-WW 会按原版跑"
+        raise OverlayTrouble(f"**中继的改动文件装不上（{exc}）**，OK-WW 会按原版跑") from exc
     return f"中继给 OK-WW 的改动文件已装到 {dest}"
 
 
+def okww_running() -> "bool | None":
+    """Is OK-WW itself up: a python.exe / pythonw.exe with config.OKWW_CMDLINE on its
+    command line? None when it cannot be told (not Windows, or the process list
+    could not be read).
+
+    install() writes on None: at boot OK-WW is normally not running, and a stale
+    overlay left in place silently is the worse outcome.
+    """
+    import os  # noqa: PLC0415
+
+    if os.name != "nt":
+        return None
+    from ark_relay.core import procs  # noqa: PLC0415
+    from ark_relay.core.config import OKWW_CMDLINE, PYTHON_HOSTS  # noqa: PLC0415
+    # warn=False: an unreadable process list is not this step's to alarm on; the boot
+    # self-check (later in the same boot) pushes the one alarm for that outage.
+    rows = procs.python_processes(hosts=PYTHON_HOSTS, warn=False)
+    if rows is None:
+        log.info("程序列表读不到，不知道 OK-WW 开没开着，照常装中继的改动文件")
+        return None
+    return any(OKWW_CMDLINE in cmd.lower() for _pid, cmd in rows)
+
+
 def write_master_pointer(automas_dir) -> str:
-    """Tell the overrides where AUTO-MAS's OK-WW master directory is. '' when written, else why not."""
+    """Tell the overrides where AUTO-MAS's OK-WW master directory is. '' when written or already right.
+
+    Raises OverlayTrouble when the pointer cannot be written.
+    """
     d = master_config_dir(automas_dir, "DailyTask.json")
     if d is None:
-        return "找不到 OK-WW 的母本目录，「只刷指定残象聚落」这项设置 OK-WW 跑的时候读不到"
+        raise OverlayTrouble("找不到 OK-WW 的母本目录，「只刷指定残象聚落」这项设置 OK-WW 跑的时候读不到")
     try:
         if MASTER_POINTER.is_file() and MASTER_POINTER.read_text(encoding="utf-8").strip() == str(d):
             return ""
         atomic_write_text(MASTER_POINTER, str(d))
+        if MASTER_POINTER.read_text(encoding="utf-8").strip() != str(d):
+            raise OverlayTrouble("母本目录的指路文件写下去了，但读出来和写的不一样，「只刷指定残象聚落」这项设置 OK-WW 跑的时候读不到")
     except OSError as exc:
-        return f"母本目录的指路文件写不了（{exc}），「只刷指定残象聚落」这项设置 OK-WW 跑的时候读不到"
+        raise OverlayTrouble(f"母本目录的指路文件写不了（{exc}），「只刷指定残象聚落」这项设置 OK-WW 跑的时候读不到") from exc
     return ""
 
 
@@ -118,7 +167,7 @@ def report_line() -> str:
     if not got:
         return ""
     if err := got.get("error"):
-        return "中继给 OK-WW 的改动文件自己报错了，改动一条都没生效：" + str(err)[-300:]
+        return _error_line(got, str(err))
     skipped = got.get("skipped") or []
     adapted = got.get("adapted") or []
     parts = []
@@ -129,6 +178,34 @@ def report_line() -> str:
         parts.append("OK-WW 升级改了这几处，中继已按新版适配：" +
                      "、".join(str(a.get("what")) for a in adapted))
     return "\n".join(parts)
+
+
+# Every override site in the overrides file: `@override(Cls, "name"...)` and the
+# stamina hooks bound through `_farm_hook(Cls, "name")`.
+_SITE = re.compile(r'(?:@override|_farm_hook)\((\w+), "(\w+)"')
+
+
+def _error_line(got: dict, err: str) -> str:
+    """The report says the overrides file raised part-way: which overrides are live, which are not.
+
+    The overrides are applied one by one and the report is written from the except
+    (ark_overrides.py, the block at the end), so `applied` is exactly what landed
+    before the error; the sites that are neither applied nor skipped did not.
+    """
+    applied = [str(a) for a in (got.get("applied") or [])]
+    if not applied:
+        return "中继给 OK-WW 的改动文件自己报错了，改动一条都没生效：" + err[-300:]
+    done = applied + [str(s.get("what", "")).split("（")[0] for s in (got.get("skipped") or [])
+                      if isinstance(s, dict)]
+    try:
+        sites = [f"{c}.{m}" for c, m in _SITE.findall(source_text())]
+    except OSError:
+        sites = []
+    missing = [t for t in dict.fromkeys(sites)
+               if not any(a == t or a.endswith("." + t) for a in done)]
+    line = (f"中继给 OK-WW 的改动文件自己报错了，停在半路：已生效 {len(applied)} 条（{'、'.join(applied)}）"
+            + (f"；没生效 {len(missing)} 条（{'、'.join(missing)}）" if missing else "；之后的没装上"))
+    return line + "。报错：" + err[-300:]
 
 
 def nest_patch_present(okww_dir) -> bool | None:
@@ -143,11 +220,13 @@ def nest_patch_present(okww_dir) -> bool | None:
         return None
     got = last_report()
     if got:
-        if got.get("error"):
-            return False
+        # Applied first: the overrides are applied one by one, so a file that raised
+        # later on (`error`) can still have bound find_nest before it.
         bound = got.get("applied") or []
         if any(b.endswith(".find_nest") for b in bound):
             return True
+        if got.get("error"):
+            return False
         if any(s.get("what", "").endswith(".find_nest") for s in (got.get("skipped") or [])):
             return False
     # No report yet: OK-WW has not started since the overlay was installed. Say
@@ -196,15 +275,26 @@ def nest_source_pristine(okww_dir) -> "tuple[bool, str]":
 # anything runs.
 _PIN = re.compile(r'@override\((\w+), "(\w+)", expect_sha=(_\w+)(, adapt=True)?\)')
 _SHA_CONST = re.compile(r'^(_\w+) = "([0-9a-f]{12})"', re.M)
+# The copies that check their fingerprint themselves instead of through expect_sha
+# (claim_daily, claim_battle_pass: on a mismatch they hand the call to upstream's
+# body), written as
+#     claim = DailyTask.claim_battle_pass
+#     sha = _src_sha(claim)
+#     if sha != _BATTLE_PASS_SHA:
+# Without this the pre-run drift check missed them (audit 2026-10-13, A3).
+_SELF_PIN = re.compile(r'^\s*(\w+) = (\w+)\.(\w+)\s*\n\s*(\w+) = _src_sha\(\1\)\s*\n\s*if \4 != (_\w+):', re.M)
 # All of src/: the bases are spread over it (CombatCheck lives in src/combat/).
 _SRC = ("data", "apps", "ok-ww", "working", "src")
 
 
 def pins(text: str | None = None) -> list[tuple[str, str, str, bool]]:
-    """(class, method, pinned sha, adapts) for every pinned override in the overrides file."""
+    """(class, method, pinned sha, adapts) for every pinned override in the overrides file:
+    the expect_sha= ones, then the ones that check their own fingerprint (never adapted)."""
     text = source_text() if text is None else text
     consts = dict(_SHA_CONST.findall(text))
-    return [(c, m, consts.get(k, ""), bool(a)) for c, m, k, a in _PIN.findall(text)]
+    out = [(c, m, consts.get(k, ""), bool(a)) for c, m, k, a in _PIN.findall(text)]
+    out += [(c, m, consts.get(k, ""), False) for _v, c, m, _s, k in _SELF_PIN.findall(text)]
+    return out
 
 
 def _classes(src_dir: Path) -> dict:
@@ -288,11 +378,15 @@ def drift_line(okww_dir, state_dir=None) -> str:
             atomic_write_text(mark, sig)
     except OSError:
         pass
-    parts = []
-    if adapted:
-        # Adapting can still refuse at OK-WW start (find_nest: box top unreadable);
-        # that start's report then lists it as skipped, said at the next boot.
-        parts.append(f"{'、'.join(adapted)} 中继会按新版适配后换上，适配不了就不换，并另外报出来")
-    if skipped:
-        parts.append(f"{'、'.join(skipped)} 这一处先按 OK-WW 新版跑，等我们重抄")
-    return "OK-WW 升级后，中继的改动有 %d 处和新版对不上：%s" % (len(found), "；".join(parts))
+    # Adapting can still refuse at OK-WW start (find_nest: box top unreadable);
+    # that start's report then lists it as skipped, said at the next boot. Until
+    # then an adapted copy is not a fault, so its sentence carries none of the
+    # words texts._PATCH_TROUBLE turns into the ⚠️ title (audit 2026-10-13, A5):
+    # it stays a logged line.
+    adapt_part = (f"OK-WW 升级改了 {'、'.join(adapted)}，中继会按新版适配后换上，适配不了就不换，并另外报出来"
+                  if adapted else "")
+    if not skipped:
+        return adapt_part
+    line = (f"OK-WW 升级后，中继的改动有 {len(skipped)} 处和新版对不上："
+            f"{'、'.join(skipped)} 这一处先按 OK-WW 新版跑，等我们重抄")
+    return line + (f"；另外 {adapt_part}" if adapt_part else "")
