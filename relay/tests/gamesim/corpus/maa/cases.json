@@ -131,18 +131,23 @@
     {"input": "history/2026-08-26/MAA-11-03-30", "field": "drop_statistics", "want": "bulk",
      "evidence": "history/2026-08-26/expected.json"}
    ]
-  }
- ],
- "live_bugs": [
+  },
   {
-   "id": "LB-maa-sanity-short-window",
-   "what": "outcome.maa_sanity_short reads the last 「Current Sanity」 in the window [start, end + 5 min], which on 09-14 holds the next attempt too (it is not cut at the next StartUp the way maa_checks is), so the first two attempts are reported as 18 / 25 although MAA read 17.",
+   "id": "T10-10-sanity-short-this-run",
+   "incident": "09-14 09:02 and 09:04: two attempts that read 17 sanity were reported as 18 / 25, the third attempt's reading, because maa_sanity_short read the window past the next run's StartUp",
+   "fix": ["self"],
+   "red_at": "self~1",
+   "green_at": "self",
+   "note": "'self' is the commit that added this case (test_gl_corpus_maa.resolve). T10-6 checks that the verdict exists; this case checks it reads its own run.",
    "checks": [
     {"input": "asst/0914-MAA-05-00-01.asst.log", "verdict": "sanity_short", "subset": {"have": 17},
      "evidence": "MAA asst 09:02:18/21/25 「Current Sanity: 17」 (this run); 「Current Sanity: 18」 is the third attempt at 09:06:45; AUTO-MAS sanity 17"},
     {"input": "asst/0914-MAA-05-02-33.asst.log", "verdict": "sanity_short", "subset": {"have": 17},
-     "evidence": "MAA asst 09:04:35/38/42 「Current Sanity: 17」; AUTO-MAS sanity 17"}
+     "evidence": "MAA asst 09:04:35/38/42 「Current Sanity: 17」; AUTO-MAS sanity 17"},
+    {"input": "asst/0914-MAA-05-04-50.asst.log", "verdict": "sanity_short", "subset": {"have": 18},
+     "evidence": "MAA asst 09:06:45 Current Sanity: 18 (the third attempt reads its own 18); AUTO-MAS sanity 18"}
    ]
   }
- ]
+ ],
+ "live_bugs": []
 }

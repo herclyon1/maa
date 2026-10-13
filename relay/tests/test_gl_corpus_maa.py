@@ -39,7 +39,8 @@ HISTORY_FLOOR = 167
 T10_IDS = {"T10-1-config-refusal", "T10-2-annihilation-cap", "T10-3-drop-running-totals",
            "T10-4-infrast-recovery-is-not-failure", "T10-5-window-reaches-next-run",
            "T10-6-sanity-short", "T10-7-annihilation-no-progress",
-           "T10-8-stop-receipt-after-completion", "T10-9-rounded-drop-totals"}
+           "T10-8-stop-receipt-after-completion", "T10-9-rounded-drop-totals",
+           "T10-10-sanity-short-this-run"}
 
 # The repo is public: what the redaction in SOURCE.txt removed must stay removed.
 PRIVATE = (
