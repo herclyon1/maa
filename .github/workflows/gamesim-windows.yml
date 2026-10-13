@@ -83,11 +83,13 @@ jobs:
       - name: Install OK-WW's pinned requirements
         run: |
           "$OKWW_PY" -m pip install --disable-pip-version-check -r "$RUNNER_TEMP/okww/pip-requirements.txt" -c "$RUNNER_TEMP/okww/pip-constraints.txt"
-          "$OKWW_PY" -m pip show ok-script | head -2
+          # No pipe here: the step's bash runs with pipefail, and `| head` broke pip's stdout
+          # (run 38377925360, p1-red lane: "ERROR: Pipe to stdout was broken", exit 120).
+          "$OKWW_PY" -m pip show ok-script
 
       - name: Run the lane
         run: |
-          "$RELAY_PY" relay/tests/gamesim/okww/ci_prepare.py run --lane "${{ matrix.lane }}" --root "$RUNNER_TEMP/okww" --python "$OKWW_PY" --out "$RUNNER_TEMP/gamesim-results"
+          "$RELAY_PY" relay/tests/gamesim/okww/ci_prepare.py run --lane "${{ matrix.lane }}" --root "$RUNNER_TEMP/okww" --python "$OKWW_PY" --out "$RUNNER_TEMP/gamesim-results" --summary "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v7
         if: always()

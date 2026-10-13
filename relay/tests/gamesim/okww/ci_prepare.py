@@ -24,7 +24,7 @@ recorded (relay.log 2026-10-04 21:20:19, below).
 
     ci_prepare.py lanes
     ci_prepare.py prepare --lane installed --root DIR
-    ci_prepare.py run --lane installed --root DIR --python OKWW_PYTHON --out RESULTS
+    ci_prepare.py run --lane installed --root DIR --python OKWW_PYTHON --out RESULTS [--summary FILE]
 """
 from __future__ import annotations
 
@@ -98,7 +98,7 @@ def working(root: Path) -> Path:
     return okww_overlay.target(root).parent.parent
 
 
-def overlay_source(rev: "str | None") -> "tuple[Path, str]":
+def overlay_source(rev: "str | None", scratch: Path) -> "tuple[Path, str]":
     """(file holding the overlay of `rev`, label). None = this checkout's file.
 
     The file moved with 2c3290c8 (relay/ark_relay/okww_files -> features/okww_patch), so the
@@ -111,7 +111,7 @@ def overlay_source(rev: "str | None") -> "tuple[Path, str]":
         raise SystemExit(f"{rev}: expected one {OVERLAY_NAME} in relay/, found {hits}")
     data = subprocess.run(["git", "-C", str(REPO), "show", f"{rev}:{hits[0]}"],
                           check=True, capture_output=True).stdout
-    out = Path(os.environ.get("RUNNER_TEMP") or REPO.parent) / f"ark_overrides@{rev.replace('~', '_')}.py"
+    out = scratch / f"ark_overrides@{rev.replace('~', '_')}.py"
     out.write_bytes(data)
     return out, f"{rev}:{hits[0]}"
 
@@ -138,7 +138,7 @@ def prepare(lane: str, root: Path) -> None:
         raise SystemExit(f"OK-WW {spec['tag']} at {head[:12]} differs from {copy.name}: {bad}")
     print(f"OK-WW {spec['tag']} at {head[:12]}: the {len(pin['files'])} files of {copy.name} are byte-equal")
 
-    src, label = overlay_source(spec["overlay"])
+    src, label = overlay_source(spec["overlay"], root)
     text = src.read_text(encoding="utf-8")
     okww_overlay._SOURCE = src            # install() copies source_text(); point it at the lane's
     line = okww_overlay.install(root)
@@ -178,7 +178,7 @@ def _unittest_verdict(out: str, code: int) -> "tuple[str, list[str]]":
     return ("fail" if code != 0 else "pass"), lines
 
 
-def run(lane: str, root: Path, python: str, out_dir: Path) -> int:
+def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | None" = None) -> int:
     spec = LANES[lane]
     work = working(root)
     ctx = json.loads((work / CONTEXT).read_text(encoding="utf-8"))
@@ -225,7 +225,7 @@ def run(lane: str, root: Path, python: str, out_dir: Path) -> int:
     head = (f"lane {lane} (OK-WW {ctx['okww_tag']}, overlay {ctx['overlay']}, expect {spec['expect']}): "
             + ", ".join(f"{r['test']} {r['verdict']} in {r['seconds']} s" for r in results))
     tail = "all checks passed" if not problems else f"{len(problems)} problem(s)"
-    if step_summary := os.environ.get("GITHUB_STEP_SUMMARY"):
+    if step_summary:
         with open(step_summary, "a", encoding="utf-8") as fh:
             fh.write(f"- {head}: **{tail}**\n" + "".join(f"  - {p}\n" for p in problems))
     print("\n" + head)
@@ -242,6 +242,7 @@ def main(argv: "list[str] | None" = None) -> int:
     ap.add_argument("--root", type=Path)
     ap.add_argument("--python", help="OK-WW's interpreter (run)")
     ap.add_argument("--out", type=Path, help="results folder (run)")
+    ap.add_argument("--summary", help="file to append a Markdown line per lane to (run; the job's step summary)")
     a = ap.parse_args(argv)
     if a.action == "lanes":
         print(json.dumps(sorted(LANES)))
@@ -255,7 +256,7 @@ def main(argv: "list[str] | None" = None) -> int:
         return 0
     if not (a.python and a.out):
         ap.error("run needs --python and --out")
-    return run(a.lane, a.root.resolve(), a.python, a.out.resolve())
+    return run(a.lane, a.root.resolve(), a.python, a.out.resolve(), a.summary)
 
 
 if __name__ == "__main__":
