@@ -40,7 +40,7 @@ Shared parts are in `ark_relay/core/`, each feature in `ark_relay/features/<name
 | `logfile.py` | relay.log size rotation (16 MB × 3 backups) that never stops the relay when Windows refuses the rename; `tail_bytes` reads across the rotated files |
 | `selfupdate.py` | fetch and apply `relay/manifest.json` |
 | `commands.py` + `redbutton.py` / `mas_client.py` / `config_fields.py` | the command whitelist and its gates / the red button (estop) and its press windows / the AUTO-MAS API client / config field helpers (flatten, dig, nest, plain-words change) |
-| `queues.py` / `modes.py` / `sanity_plan.py` / `maaend.py` / `mastercfg.py` (MaaEnd) + `mastercfg_maa.py` / `mastercfg_okww.py` | config writers |
+| `queues.py` / `modes.py` / `sanity_plan.py` / `mastercfg.py` (MaaEnd) + `mastercfg_maa.py` / `mastercfg_okww.py` | config writers |
 | `statestore.py` | 唯一的状态档案 `state/state.json`：六段、字段表登记过才能写、旧文件自动迁入 |
 | `texts.py` | 所有通知文案。标题不许写死在别处，闸门盯着 |
 | `techlog.py` | the technical log `<state>/../tech/<day>.md`: what the daily report leaves out (D-1010), one `## HH:MM <heading>` section each, red items with ids |
