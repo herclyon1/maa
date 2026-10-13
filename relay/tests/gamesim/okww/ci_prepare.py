@@ -61,6 +61,12 @@ TEST_PREFIX = "gamesim_"          # the copies in OK-WW's tests/ folder
 # OK-WW's own CI gives its whole test step 20 minutes (ok-wuthering-waves v3.7.4
 # .github/workflows/test.yml, "Run tests" timeout-minutes: 20); one file gets half that.
 TEST_TIMEOUT_S = 600
+# A test process that dies with STATUS_ILLEGAL_INSTRUCTION (ntstatus.h 0xC000001D) hit a CPU
+# instruction its runner does not have. Seen at the first OCR call (OK-WW's onnxocr on
+# openvino 2026.3, CPU device) in 2 of 23 jobs of run 38394849158 and in none of 23 jobs of
+# run 38394107694, on the same image: it follows the runner's CPU, not the code, so it is told
+# apart from a failure (with the CPU named) and the job is rerun on another runner.
+ILLEGAL_INSTRUCTION = 0xC000001D
 
 # The relay's report line for the one load failure the machine recorded. relay.log on the
 # game PC, 2026-10-04 21:20:19 (scratchpad machine-relay/relay.log line 27223), the boot
@@ -233,6 +239,8 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
     out_dir = out_dir / lane
     out_dir.mkdir(parents=True, exist_ok=True)
     results = []
+    cpu = os.environ.get("PROCESSOR_IDENTIFIER", "") or "unknown"
+    print(f"runner CPU: {cpu}", flush=True)
     for name in ctx["tests"]:
         if okww_overlay.REPORT.exists():
             okww_overlay.REPORT.unlink()     # a report left from before must not pass for this one
@@ -246,6 +254,9 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
         (out_dir / f"{name}.log").write_text(text, encoding="utf-8")
         print(f"\n===== {name} (exit {p.returncode}, {took} s) =====\n{text}", flush=True)
         verdict, lines = _unittest_verdict(text, p.returncode)
+        if p.returncode == ILLEGAL_INSTRUCTION:
+            verdict, lines = "crash", [f"STATUS_ILLEGAL_INSTRUCTION on this runner's CPU ({cpu}): "
+                                       "a native library, not the test; rerun the job"]
         report = okww_overlay.last_report()
         if okww_overlay.REPORT.exists():
             shutil.copyfile(okww_overlay.REPORT, out_dir / f"{name}.report.json")
@@ -268,7 +279,7 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
                 problems.append(f"{r['test']}: must fail at an assertion, got {r['verdict']} {r['unittest']}")
             if want_line is not None and r["relay_line"] != want_line:
                 problems.append(f"{r['test']}: relay line {r['relay_line']!r} != machine {want_line!r}")
-    summary = {"lane": lane, "expect": spec["expect"], "okww_tag": ctx["okww_tag"],
+    summary = {"lane": lane, "expect": spec["expect"], "okww_tag": ctx["okww_tag"], "cpu": cpu,
                "okww_commit": ctx["okww_commit"], "overlay": ctx["overlay"],
                "results": results, "problems": problems}
     (out_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=1), encoding="utf-8")
