@@ -162,7 +162,7 @@ begin
              '先撤掉老中继再装。原因写在 C:\ProgramData\ark-relay\switch.log 里。',
              mbError, MB_OK)
     else
-      MsgBox('新中继没有装好，已经把它按原样重新打开（看门服务会接着重试，起不来会在群里报）。' +
+      MsgBox('新中继没有装好，已经把它按原样重新打开。' +
              '要退回上一个版本，运行：' + #13#10 + '"' + ExpandConstant('{#Py}') + '" "' +
              ExpandConstant('{app}\launch.py') + '" rollback' + #13#10 +
              '原因写在 C:\ProgramData\ark-relay\switch.log 里。',
