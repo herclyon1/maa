@@ -43,7 +43,7 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
                 checks.append(outcome.Check(
                     "能读到 OK-WW 生效中的配置", False,
                     f"{eng.cfg.automas_dir}/data/*/Default/ConfigFile/ "
-                    "下没读到 NightmareNestTask.json 和 DailyTask.json，"
+                    "下没读到 DailyTask.json（该不该打残象聚落只看它），"
                     "所以这一轮该不该打残象聚落无从判断"))
             else:
                 only = (_okww_master_config(eng.cfg.automas_dir, "NightmareNestTask")

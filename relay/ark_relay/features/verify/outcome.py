@@ -556,8 +556,10 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
                 expect_stamina: bool = True, only_nest: str = "") -> list[Check]:
     """Verify one OK-WW run. `text` is the full log of that run.
 
-    `expect_nest` comes from the config (a configured 「只刷指定点位」 nest filter or
-    the daily echo option enabled means nests should have been farmed).
+    `expect_nest` comes from DailyTask.json by upstream's own rule
+    (gamelogs._okww_nest_expected: 「Auto Farm all Nightmare Nest」 ticked, or the
+    daily-echo option on with a farm target other than Tacet Suppression); the
+    nest filter only narrows a run that happens.
     `only_nest` is the configured 「Only Farm These Nests」 value; when set, the run
     must show the filter was active and must not have walked into other nests.
     """

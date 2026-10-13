@@ -63,5 +63,25 @@ check("no automas dir", _okww_nest_expected(None), None)
 check("no DailyTask.json (only the nest config)",
       _okww_nest_expected(automas(None, {"Only Farm These Nests": "落渊南丘"})), None)
 
+print("\n[the verdict's 「cannot read the config」 item names the file that decides (item 19)]")
+import types  # noqa: E402
+
+from ark_relay.features.alarm import verdict  # noqa: E402
+
+seen = {}
+real_judged = verdict._judged
+verdict._judged = lambda rec, checks, *a, **k: seen.setdefault("checks", checks)
+try:
+    log = tmpdir() / "OK-WW.log"
+    log.write_text("Daily Task Completed\n", encoding="utf-8")
+    rec = types.SimpleNamespace(script="OK-WW", log_path=log)
+    eng = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=automas(None, {"Only Farm These Nests": "x"})))
+    verdict._verify_outcome(eng, rec)
+finally:
+    verdict._judged = real_judged
+detail = next((c.detail for c in seen.get("checks", []) if c.label == "能读到 OK-WW 生效中的配置"), "")
+check("names DailyTask.json", "DailyTask.json" in detail, True)
+check("no longer names NightmareNestTask.json", "NightmareNestTask.json" in detail, False)
+
 print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)
