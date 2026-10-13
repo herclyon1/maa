@@ -1,8 +1,8 @@
 {
- "version": 20261013062857,
- "ref": "relay-20261013062857",
+ "version": 20261013062950,
+ "ref": "relay-20261013062950",
  "files": {
-  "RELEASE-NOTES.md": "f62e26854fbcf9f02101e42a87d1f782d51d4c88",
+  "RELEASE-NOTES.md": "f7584fe3e184165192a446e026f74a6b38c5d86d",
   "app_main.py": "5276cdc67db98ce24aeaa8db492c9526c584628f",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "7acc3852c4e20b7f7818a98749c5494b843394f7",
@@ -157,10 +157,10 @@
   "pkg_layout.py": "8ece4a912c54ee48793223788c0bd092b0b3a9d7",
   "run.py": "758b96cfb085a33ffc15152b86761357bde2aab2",
   "service.py": "820574ef26eb8fad6adf2949731fe6f17708b6c0",
-  "watchdog_guard.py": "f195218a71e26b4555bec1459fb94aebb598bd01"
+  "watchdog_guard.py": "cc505fe57c4c2923be2003c8fe5a4f0a47b0d887"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "554e4f7c881987e4489114a5f3fd94ae8e50e1813abd7c7801cd388864ddf2f7",
+  "RELEASE-NOTES.md": "252c2faf54b5ba40a368b24ef39065f92ad77592a057b5212fd65e64ddaa5a91",
   "app_main.py": "edfc33d20277f8a8b39eb1c207f57990bcd1c4b9b109f665b98de6523da049ec",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "cae17a100ad28b94bd8d40b48fdfdbb7b93af0b1fb1910b69012737b598d09b8",
@@ -315,6 +315,6 @@
   "pkg_layout.py": "513efc317413bfed8f93f3384266c25da37fc520b6e56e055ab195dee821ed24",
   "run.py": "bf247ffd725365af6c76b061da886fdf06b1856d627a030b8672a2b722f685b6",
   "service.py": "78c61a4c6bca9799dc25063c9c19ba0f2b08d1c19e37e22e6788bdb2f8c6b6bb",
-  "watchdog_guard.py": "1a016fddd4b02075b30cc441463204a72a91d6ea994933cdf68d5eef659a9608"
+  "watchdog_guard.py": "f1fc7c03026edad222df4897f1d62968fbc092d00499be5c7b87338290d90b9c"
  }
 }

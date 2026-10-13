@@ -11,7 +11,11 @@ only) looks FIRST_S after it starts and every EVERY_S after that:
   STOPPED, start type automatic, no stop marker from this boot ... start it;
   start type disabled (switch.py revert, a failed switch-over) ... stopped on purpose;
   a stop marker written this boot ... stopped on purpose (below);
-  not installed (a machine on the old relay, a dev run) ... nothing to do.
+  not installed (a machine on the old relay, a dev run) ... nothing to do;
+  not installed, but an earlier look found it installed, no stop marker this boot ...
+      one WARNING (MISSING_AFTER_SEEN, pushed by errwatch) until it is seen again:
+      deleted, nothing starts the relay again (audit s24 F3). switch.py uninstall
+      stops it with the marker before removing it, so that one stays quiet.
 
 Stopped on purpose: switch.py stop_watchdog (the installer before it replaces files,
 uninstall, revert) and scripts/mac/estop.sh write MARKER into the data folder before
@@ -56,6 +60,9 @@ ALERT_CANNOT_LOOK = ("中继连着 %d 次查不了看门服务在不在跑（%s�
                      "已交给我们这边去查为什么查不了。")
 # The WARNING errwatch pushes when a look finds it stopped and nobody stopped it.
 STOPPED_UNASKED = "看门服务停了，不是有人停的，为什么停还不知道；%s。已交给我们这边去查它为什么停。"
+# The WARNING errwatch pushes when the service is gone after a look found it installed.
+MISSING_AFTER_SEEN = ("看门服务不见了：之前查到它装着，这次查不到这个服务，也不是有人卸载的。它不在的时候，"
+                      "中继自己停了就没人重开。已交给我们这边去查它为什么没了、把它装回去。")
 
 log = logging.getLogger("ark.watchdog_guard")
 
@@ -72,6 +79,8 @@ class Guard:
         self.alerted = False
         self.just_started = False        # the last look started it, and that start worked
         self.stop_pushed = False         # STOPPED_UNASKED logged since the last look found it running
+        self.seen_installed = False      # some look found the service (any state but MISSING)
+        self.missing_pushed = False      # MISSING_AFTER_SEEN logged since it was last seen
 
     def tick(self) -> str:
         """One look; returns what it did, for the log and the tests."""
@@ -79,6 +88,12 @@ class Guard:
         # Only the look right before this one counts as "the last start": any other look
         # in between (on purpose, pending, disabled) clears it.
         stayed_down, self.just_started = self.just_started, False
+        if state == "MISSING":
+            if self.seen_installed and not self.missing_pushed and not self.marker_this_boot():
+                self.missing_pushed = True
+                log.warning(MISSING_AFTER_SEEN)
+            return "missing"
+        self.seen_installed, self.missing_pushed = True, False
         if state == "RUNNING":
             if self.fails and not self.alerted and not self.stop_pushed:
                 # Only looks that raised, and this one worked: fixed itself, not
@@ -91,7 +106,7 @@ class Guard:
             self.fails, self.alerted, self.stop_pushed = 0, False, False
             return "running"
         if state != "STOPPED":
-            return state.lower()                 # missing, or on its way up / down
+            return state.lower()                 # on its way up / down
         if start_type != "AUTO":
             return "disabled"
         if self.marker_this_boot():
