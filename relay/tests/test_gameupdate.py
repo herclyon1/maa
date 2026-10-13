@@ -162,11 +162,14 @@ gu.save_windows(ST, {"终末地": (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _
 (ST / "ledger-2026-09-04.jsonl").write_text(json.dumps({"script": "MaaEnd", "ok": False, "raw": {"maintenance": "官方公告"}}) + "\n", encoding="utf-8")
 gu.mark_pending(ST, "终末地", "官方公告")
 slept.clear(); dispatched.clear()
+killed = []
+gu.kill = lambda *names: killed.append(names)
 ticks1 = [_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ)]
 def clk1():
     ticks1.append(ticks1[-1] + _td(minutes=1)); return ticks1[-1]
 notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=lambda s: slept.append(s), clock=clk1)
 check("先准备好再等开服：一分钟一分钟等，开服后缓 2 分钟，然后补跑", (slept.count(60) >= 1, 120 in slept, reran), (True, True, ["MaaEnd"]))
+check("离开服还远：只关终末地，不碰鸣潮（s18 F2）", killed, [("Endfield.exe",)])
 gu.save_windows(ST, {})
 gu.clear_pending(ST, "明日方舟")
 
@@ -194,6 +197,8 @@ def clk2():
 gu.save_windows(ST, {"明日方舟": (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 06:00–12:00")})
 notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["x"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=lambda s: None, clock=clk2)
 check("明日方舟：等到开服再补跑被摘掉的 MAA（客户端交给 AUTO-MAS）", (reran, dispatched, probs), (["MAA"], ["MAA"], []))
+check("明日方舟等开服：什么游戏都不关（终末地、鸣潮可能是他自己开的，s18 F2）", killed, [("Endfield.exe",)])
+gu.kill = lambda *names: None
 gu.save_windows(ST, {})
 gu.clear_pending(ST, "明日方舟")
 import ark_relay.features.gameupdate.gameupdate as _gu2  # noqa: E402
@@ -405,8 +410,8 @@ _ledger_rows[0]["raw"] = {"maa_error": "关卡失败"}
 (A / "ledger-2026-09-30.jsonl").write_text("".join(json.dumps(r) + "\n" for r in _ledger_rows), encoding="utf-8")
 check("MAA 普通失败 → 不重跑", gu.needs_rerun(A, n930, "MAA"), False)
 # 4. spmed. The user, 2026-10-06, on the sanity booster: 「那个要一直开着，如果上游maaend改了导致没生效就要报警」
-#    and 「我开的任务是谁说要关的」. A leftover switch-off record turns the booster back on at the
-#    next boot whatever the node looks like; the node shape only decides the group alarm.
+#    and 「我开的任务是谁说要关的」. The node shape only decides the group alarm; the task is
+#    never switched (the leftover-record re-enable went with s18 F5).
 E = A / "maaend"; (E / "resource" / "pipeline").mkdir(parents=True)
 (E / "interface.json").write_text(json.dumps({"version": "v2.28.0-beta.4"}), encoding="utf-8")
 master = A / "data" / "u1" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"; master.parent.mkdir(parents=True)
@@ -428,14 +433,9 @@ for _label, _node, _shape in (
          {"recognition": {"param": {"all_of": ["YellowConfirmButtonType2", {"recognition": {"param": {}, "type": "OCR"}}]}}},
          "")):
     _nodes(_node)
-    _master(False); gu._store(A).set("updates", "maaend_disabled_spmed", dict(_rec))
-    gu.maaend_reenable_records(acfg)
-    check(f"{_label}，同一版本 → 开机就开回", _sp_on(), True)
-    check(f"{_label} → 记录删了", gu._store(A).get("updates", "maaend_disabled_spmed"), None)
-    check(f"{_label} → 每次开机都查，要报的就报", (gu.spmed_check(acfg), gu.spmed_check(acfg)), (_shape, _shape))
     _master(True)
-    gu.maaend_reenable_records(acfg)
-    check(f"{_label} → 没有记录时任务开着就不动", _sp_on(), True)
+    check(f"{_label} → 每次开机都查，要报的就报", (gu.spmed_check(acfg), gu.spmed_check(acfg)), (_shape, _shape))
+    check(f"{_label} → 任务开着就不动", _sp_on(), True)
 gu.log.removeHandler(keep)
 
 print("[终末地：更新后说客户端过时，下一轮启动器「开始游戏」不能算就绪]")
@@ -453,7 +453,7 @@ _ticks = iter(range(100))
 from datetime import datetime as _dt, timedelta as _tdl  # noqa: E402
 _t0 = _dt(2026, 10, 6, 9, 0)
 _pr: list = []
-_ready, _note = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=15),
+_ready, _note = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=25),
                                         clock=lambda: _t0 + _tdl(minutes=10 * next(_ticks)),
                                         sleep=lambda s: None, problems=_pr)
 gu._prepare_client = _orig_prep
@@ -481,15 +481,17 @@ class _AllRecords(logging.Handler):
 
 def _retry(rounds, minutes=60):
     it = iter(rounds)
-    ticks = iter(range(100))
-    gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: next(it)(problems)
+    t = [_t0]                # each round takes 10 minutes; the clock reads, never advances
+    def _round(problems):
+        t[0] += _tdl(minutes=10)
+        return next(it, lambda pr: (False, ""))(problems)
+    gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: _round(problems)
     keep = _AllRecords()
     gu.log.addHandler(keep)
     pr: list = []
     try:
         ready, _ = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=minutes),
-                                           clock=lambda: _t0 + _tdl(minutes=10 * next(ticks)),
-                                           sleep=lambda s: None, problems=pr)
+                                           clock=lambda: t[0], sleep=lambda s: None, problems=pr)
     finally:
         gu.log.removeHandler(keep)
         gu._prepare_client = _orig_prep
@@ -510,9 +512,50 @@ _ready, _pr, _healed = _retry([lambda pr: (pr.append("终末地：更新后游�
 check("package not out yet, then updated: no red item (the expected wait)", (_ready, _pr, _healed), (True, [], []))
 _SHOT = "终末地：启动器画面没读到按钮（截图 x）：…"
 _ready, _pr, _healed = _retry([lambda pr: (pr.append(_CLICK), (False, ""))[1],
-                               lambda pr: (pr.append(_SHOT), (False, ""))[1]], minutes=5)
+                               lambda pr: (pr.append(_SHOT), (False, ""))[1]], minutes=25)
 check("not ready by the deadline: the earlier round's problem is reported too",
       (_ready, any(_CLICK in x for x in _pr), any(_SHOT in x for x in _pr), _healed), (False, True, True, []))
+
+print("[终末地：一轮更新等下载的时间不超过离截止还剩的时间（s18 F6）]")
+_budgets = []
+_saved_f6 = (gu.endfield_paths, gu.update_endfield)
+gu.endfield_paths = lambda d: (Path("Endfield.exe"), Path("Launcher.exe"))
+gu.update_endfield = lambda desk, g, l, budget_s=2400, problems=None, sleep=None: _budgets.append(budget_s) or ""
+try:
+    _t0 = _dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ)
+    _ready, _ = gu._prepare_until_ready(cfg, FakeDesk([["x"]]), "终末地", deadline=_t0 + _td(minutes=25),
+                                        clock=lambda: _t0, sleep=nosleep, problems=[])
+    check("离截止还剩 25 分钟：这一轮最多等 25 分钟", _budgets, [1500.0])
+    _budgets.clear()
+    gu._prepare_until_ready(cfg, FakeDesk([["x"]]), "终末地", deadline=_t0 + _td(hours=3),
+                            clock=lambda: _t0, sleep=nosleep, problems=[])
+    check("还剩 3 小时：照旧最多 40 分钟", _budgets, [2400.0])
+finally:
+    gu.endfield_paths, gu.update_endfield = _saved_f6
+
+print("[终末地：等 10 分钟后已过截止，就不再跑一轮 0 预算的更新]")
+# Review of 838eb436: round 1 ends 10 minutes in with a 15-minute deadline; the old loop
+# slept 600 s and ran round 2 with budget 0, which wrote a bogus 「0 分钟内没等到」.
+_rb = []
+_t = [_t0]
+
+
+def _round_f6(cfg, desk, game, problems, sleep, budget_s=2400.0):
+    _rb.append(budget_s)
+    _t[0] += _tdl(minutes=10)
+    problems.append(f"终末地：{budget_s / 60:.0f} 分钟内没等到下载完")
+    return False, ""
+
+
+gu._prepare_client = _round_f6
+try:
+    _pr = []
+    _ready, _ = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=15),
+                                        clock=lambda: _t[0], sleep=lambda s: None, problems=_pr)
+finally:
+    gu._prepare_client = _orig_prep
+check("只跑一轮（15 分钟预算），没有 0 预算的第二轮", _rb, [900.0])
+check("报的是那一轮的问题，不是「0 分钟内没等到」", _pr, ["终末地：15 分钟内没等到下载完"])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

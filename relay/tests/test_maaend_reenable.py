@@ -1,4 +1,4 @@
-"""MaaEnd tasks the relay once switched off come back on at boot; nothing keeps them off.
+"""Boot: the booster step is read and rings the group when unknown; no task is switched off or on.
 
 The user, 2026-10-06, on the sanity booster: 「那个要一直开着，如果上游maaend改了导致没生效就要报警」,
 and on who switched it off: 「我开的任务是谁说要关的」. Until then three boot-time functions in gameupdate.py
@@ -9,6 +9,10 @@ maaend_disabled_spmed) has its tasks switched on at the next boot, whatever the
 version or the node shape, and is dropped; switching on is logged at INFO and not
 pushed. The booster step is still read at every boot, and a shape the relay does not
 know to work rings the group each time (texts.SPMED_UNRECOGNISED).
+
+Since 10-13 (audit s18 F5) that re-enable step is gone: nothing writes those records
+any more and the machine's state.json holds none of them (machine check #63 keeps
+watching). A record found now is left alone and the master is not touched.
 
 Run through boot_stages._stage_reenable_maaend, the entry the service calls at boot.
 
@@ -128,7 +132,7 @@ class Log:
     info = warning = error = debug = exception = _rec
 
 
-# Only the re-enable and the booster check are under test: the later steps of the
+# Only the booster check is under test: the later steps of the
 # stage (dead entries, option migration, route restore) are stubbed.
 mastercfg.prune_maaend_orphans = lambda *a: ([], "")
 mastercfg.migrate_maaend_options = lambda *a: ([], "")
@@ -214,46 +218,24 @@ check("fixture versions are what the names say",
 check("the real v2.30.0-beta.4 nodes.json has no AutoUseSpMedicationQuickUse",
       "AutoUseSpMedicationQuickUse" in json.loads(NODES_230.read_text(encoding="utf-8")), False)
 
-print("\n[booster record, MaaEnd v2.30 with the step under neither name, same version as the record: on at once, group told]")
-cfg, target, store = machine(version=V_230 / "interface.json", nodes=NODES_GONE, extra_tasks=[SPMED],
-                             record={"maaend_disabled_spmed": {"tasks": [SP], "since": "v2.30.0-beta.4"}})
+print("\n[booster task on, MaaEnd v2.30 with the step under neither name: the group is told, every boot]")
+on_sp = dict(SPMED, enabled=True, enabledByController={"Win32-Front": True})
+cfg, target, store = machine(version=V_230 / "interface.json", nodes=NODES_GONE, extra_tasks=[on_sp])
 sent, lines = boot(cfg)
-check("应急理智加强剂 on", enabled(target, [SP]), {SP: True})
-check("its per-controller switch on too", controllers(target, SP), {"Win32-Front": True})
-check("record dropped", "maaend_disabled_spmed" in updates(store), False)
-check("switching on is an INFO line", [lv for lv, m in lines if "已开回" in m and "应急理智加强剂" in m], ["INFO"])
-check("switching on is not pushed", [t for t, b, _a in sent if "开回" in t or "开回" in b], [])
 check("the unknown booster step rings the group", spmed_pushes(sent), [(TITLE, True)])
 check("that title routes to the group", notify.route_of(TITLE, alert=True), "group")
 body = next((b for t, b, _a in sent if t == TITLE), "")
 check("the text says the task stays on and why it rings", ("一直开着" in body, "找不到" in body), (True, True))
 check("the text is plain Chinese", texts.plain(body), [])
-check("no other task moved", others(target, FOUR + [SP]), others(MASTER, FOUR + [SP]))
 sent2, _ = boot(cfg)
 check("next boot: rings again (each time it is seen)", len(spmed_pushes(sent2)), 1)
-check("next boot: still on", enabled(target, [SP]), {SP: True})
 
-print("\n[booster record, MaaEnd changed version, node with no recognition block: on, group told]")
-cfg, target, store = machine(version=V_BETA5, nodes=NO_RECOGNITION, extra_tasks=[SPMED], record=RSP)
-sent, _ = boot(cfg)
-check("on", enabled(target, [SP]), {SP: True})
-check("record dropped", "maaend_disabled_spmed" in updates(store), False)
-check("group told", len(spmed_pushes(sent)), 1)
-check("not the old 「游戏更新没能确认」 info push", [t for t, _b, _a in sent if "没能确认" in t], [])
-
-print("\n[booster record, the 09-03 broken shape: on anyway, group told]")
-cfg, target, store = machine(version=V_BETA5, nodes=BROKEN, extra_tasks=[SPMED], record=RSP)
-sent, _ = boot(cfg)
-check("on", enabled(target, [SP]), {SP: True})
-check("record dropped", "maaend_disabled_spmed" in updates(store), False)
-check("group told", len(spmed_pushes(sent)), 1)
-
-print("\n[booster record, fixed shape: on, nothing pushed at all]")
-cfg, target, store = machine(version=V_BETA5, nodes=FIXED, extra_tasks=[SPMED], record=RSP)
-sent, lines = boot(cfg)
-check("on", enabled(target, [SP]), {SP: True})
-check("record dropped", "maaend_disabled_spmed" in updates(store), False)
-check("no push (switching on is only logged)", sent, [])
+for label, nodes in (("node with no recognition block", NO_RECOGNITION), ("the 09-03 broken shape", BROKEN)):
+    print(f"\n[{label}: group told]")
+    cfg, target, store = machine(version=V_BETA5, nodes=nodes, extra_tasks=[on_sp])
+    sent, _ = boot(cfg)
+    check("group told", len(spmed_pushes(sent)), 1)
+    check("not the old 「游戏更新没能确认」 info push", [t for t, _b, _a in sent if "没能确认" in t], [])
 
 print("\n[booster task on, no record, booster step unknown: the task is not touched, group told]")
 on_sp = dict(SPMED, enabled=True, enabledByController={"Win32-Front": True})
@@ -270,106 +252,19 @@ sent, _ = boot(cfg)
 check("master not rewritten", target.read_bytes(), before)
 check("no push", sent, [])
 
-print("\n[1.5.3 record (hand-written {disabled, since}), MaaEnd still on that version: on at once]")
-cfg, target, store = machine(version=V_BETA4, nodes=FIXED, off=FOUR,
-                             record={"maaend_disabled_1_5_3": {"disabled": FOUR, "since": "v2.28.0-beta.4"}})
-sent, lines = boot(cfg)
-check("all four on", enabled(target, FOUR), {n: True for n in FOUR})
-check("no other task moved", others(target, FOUR), ORIG_OTHERS)
-check("record dropped", "maaend_disabled_1_5_3" in updates(store), False)
-check("INFO line names the four", [m for lv, m in lines if lv == "INFO" and "已开回" in m],
-      ["开机：中继以前关掉的终末地任务已开回：赠送干员礼物、装备制造、转交委托、环境监测（记录 maaend_disabled_1_5_3 已删）"])
-check("no push", sent, [])
-
-print("\n[1.5.3 record in the documented shape ({tasks, since}), MaaEnd version unreadable: on]")
-cfg, target, store = machine(version=None, nodes=FIXED, off=FOUR,
-                             record={"maaend_disabled_1_5_3": {"tasks": FOUR, "since": "v2.28.0-beta.4"}})
-boot(cfg)
-check("all four on", enabled(target, FOUR), {n: True for n in FOUR})
-check("record dropped", "maaend_disabled_1_5_3" in updates(store), False)
-
-print("\n[make-up record ({tasks}): 自动采集 on, nothing pushed]")
-cfg, target, store = machine(version=V_BETA5, nodes=FIXED, off=["AutoCollect"],
-                             record={"maaend_reenable_next_boot": {"tasks": ["AutoCollect"]}})
-sent, _ = boot(cfg)
-check("自动采集 on", enabled(target, ["AutoCollect"]), {"AutoCollect": True})
-check("no other task moved", others(target, ["AutoCollect"]), others(MASTER, ["AutoCollect"]))
-check("record dropped", "maaend_reenable_next_boot" in updates(store), False)
-check("no push", sent, [])
-
-print("\n[already on: record dropped, master not rewritten]")
-cfg, target, store = machine(version=V_BETA5, nodes=FIXED, off=(),
-                             record={"maaend_reenable_next_boot": {"tasks": ["AutoCollect"]}})
-before = target.read_bytes()
-sent, lines = boot(cfg)
-check("master not rewritten", target.read_bytes(), before)
-check("record dropped", "maaend_reenable_next_boot" in updates(store), False)
-check("said at INFO", [lv for lv, m in lines if "已经开着" in m], ["INFO"])
-
-print("\n[master missing: WARNING (a relay WARNING reaches the group), record kept for the next boot]")
-cfg, target, store = machine(version=V_BETA5, nodes=FIXED, master=False, record=RSP)
-sent, lines = boot(cfg)
-check("record kept", "maaend_disabled_spmed" in updates(store), True)
-check("one WARNING naming the task and the reason",
-      [m for lv, m in lines if lv == "WARNING"],
-      ["开机：中继以前关掉的终末地任务 应急理智加强剂 没能开回（找不到终末地的母本），记录留着，下次开机再试"])
-
-print("\n[master unreadable: WARNING, record kept, the stage does not fall over]")
-cfg, target, store = machine(version=V_BETA5, nodes=FIXED, off=FOUR,
-                             record={"maaend_disabled_1_5_3": {"disabled": FOUR}})
-target.write_text("{ truncated", encoding="utf-8")
-sent, lines = boot(cfg)
-check("record kept", "maaend_disabled_1_5_3" in updates(store), True)
-check("WARNING says it could not be read", any(lv == "WARNING" and "读不出来" in m for lv, m in lines), True)
-
-print("\n[record naming no task: WARNING with the record, dropped]")
-cfg, target, store = machine(version=V_BETA5, nodes=FIXED, off=FOUR,
-                             record={"maaend_disabled_1_5_3": {"since": "v2.28.0-beta.4"}})
-before = target.read_bytes()
-sent, lines = boot(cfg)
-check("master untouched", target.read_bytes(), before)
-check("record dropped", "maaend_disabled_1_5_3" in updates(store), False)
-check("warned", any(lv == "WARNING" and "没有任务名" in m for lv, m in lines), True)
-
-print("\n[record naming a task the master no longer has (the booster task is gone since v2.28): WARNING, dropped]")
-cfg, target, store = machine(version=V_230 / "interface.json", nodes=NODES_230, record=RSP)
-before = target.read_bytes()
-sent, lines = boot(cfg)
-check("master untouched", target.read_bytes(), before)
-check("record dropped", "maaend_disabled_spmed" in updates(store), False)
-check("warned, naming it", [m for lv, m in lines if lv == "WARNING"],
-      ["开机：中继以前关掉的终末地任务里，应急理智加强剂 母本里已经没有了，没法开回（记录 maaend_disabled_spmed 已删）"])
-
-print("\n[all three records at once: every task on, every record gone]")
+print("\n[a leftover switch-off record: left alone, the master is not touched (s18 F5)]")
 cfg, target, store = machine(version=V_BETA5, nodes=FIXED, off=FOUR + ["AutoCollect"], extra_tasks=[SPMED],
                              record={"maaend_disabled_1_5_3": {"disabled": FOUR},
                                      "maaend_reenable_next_boot": {"tasks": ["AutoCollect"]},
                                      **RSP})
-boot(cfg)
-check("all on", set(enabled(target, FOUR + ["AutoCollect", SP]).values()), {True})
-check("no record left", [k for k in ("maaend_disabled_1_5_3", "maaend_reenable_next_boot", "maaend_disabled_spmed")
-                         if k in updates(store)], [])
-check("no other task moved", others(target, FOUR + ["AutoCollect", SP]), others(MASTER, FOUR + ["AutoCollect", SP]))
-
-print("\n[the writer itself: only ever switches on]")
-fn = getattr(gameupdate, "maaend_enable", None)
-cfg, target, store = machine(off=["AutoCollect"])
-check("maaend_enable exists", callable(fn), True)
-if callable(fn):
-    check("switches on, names what it changed and what the master lacks",
-          fn(cfg, {"AutoCollect", "NoSuchTask"}), (["AutoCollect"], ["NoSuchTask"], ""))
-    before = target.read_bytes()
-    check("already on: no change, no write", (fn(cfg, {"AutoCollect"}), target.read_bytes() == before),
-          (([], [], ""), True))
-    try:
-        fn(cfg, {"AutoCollect"}, False)
-        took_off = True
-    except TypeError:
-        took_off = False
-    check("there is no way to ask it to switch off", (took_off, enabled(target, ["AutoCollect"])),
-          (False, {"AutoCollect": True}))
-    check("master missing: says so", fn(machine(master=False)[0], {"AutoCollect"}), ([], [], "找不到终末地的母本"))
-check("the old on/off writer is gone", hasattr(gameupdate, "maaend_set_enabled"), False)
+before = target.read_bytes()
+sent, lines = boot(cfg)
+check("master not rewritten", target.read_bytes(), before)
+check("records left as they were", sorted(k for k in updates(store) if k.startswith("maaend_")),
+      ["maaend_disabled_1_5_3", "maaend_disabled_spmed", "maaend_reenable_next_boot"])
+check("nothing pushed, nothing logged about them", (sent, [m for _lv, m in lines if "开回" in m]), ([], []))
+check("the re-enable functions are gone",
+      [n for n in ("maaend_enable", "maaend_reenable_records", "maaend_set_enabled") if hasattr(gameupdate, n)], [])
 
 print("\n[the booster step's shape, read from nodes.json]")
 shape = getattr(gameupdate, "spmed_shape", None)

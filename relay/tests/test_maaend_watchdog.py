@@ -318,12 +318,57 @@ r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
 r.step(60)
 check("paths unreadable -> plugins not ended", r.killed, [MAAEND_PID])
 
+print("\n[plugins left running are named in the alarm body (left=)]")
+_real_body = texts.maaend_stuck_body
+_body_calls = []
+texts.maaend_stuck_body = lambda *a, **kw: _body_calls.append((a, kw)) or "正文"
+try:
+    r = Rig(paths={21932: "C:\\other\\go-service.exe"})    # cpp-algo's path unreadable
+    r.run_for(240, new_lines=40)
+    r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
+    r.step(60)
+    check("skipped plugins passed as left", _body_calls[-1][1].get("left"),
+          ["C:\\other\\go-service.exe", "agent\\cpp-algo.exe"])
+    r = Rig()
+    r._kill = lambda pid, image: (r.killed.append(pid), (True, "") if image == "MaaEnd.exe" else (False, "退出码 128"))[1]
+    r.dog.kill = r._kill
+    r.run_for(240, new_lines=40)
+    r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
+    r.step(60)
+    check("plugins whose kill failed passed as left", _body_calls[-1][1].get("left"),
+          ["agent\\go-service.exe", "agent\\cpp-algo.exe"])
+    r = Rig()
+    r.run_for(240, new_lines=40)
+    r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
+    r.step(60)
+    check("all plugins ended -> nothing left", _body_calls[-1][1].get("left", []), [])
+finally:
+    texts.maaend_stuck_body = _real_body
+
 print("\n[not one maafw.log line read for this MaaEnd: report once, never kill]")
+from ark_relay.features.alarm import errwatch  # noqa: E402
+
+
+class _Warns(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.recs = []
+
+    def emit(self, record):
+        self.recs.append(record)
+
+
+_warns = _Warns()
+maaend_watchdog.log.addHandler(_warns)
 r = Rig()
 out = r.run_for(1200)                              # 20 minutes, no line at all
+maaend_watchdog.log.removeHandler(_warns)
 check("nothing ended", r.killed, [])
 check("one alarm, the blind one", [t for t, _, _ in r.notes.sent], [texts.MAAEND_WATCH_BLIND])
 check("it is a group alarm", route_of(texts.MAAEND_WATCH_BLIND, alert=True), "group")
+# s1: the WARNING repeating it was a second group push (every WARNING goes to the group).
+check("the WARNING repeating it is marked as already in the group, not pushed again",
+      [bool(getattr(x, errwatch.PUSHED, False)) for x in _warns.recs if "读不到 maafw.log" in x.getMessage()], [True])
 # One fault, one push - per MaaEnd, not per PID number for ever: once MaaEnd is gone,
 # a later one that drew the same PID (Windows reuses them) and cannot be read either
 # is a second fault and rings again (until 2026-10-06 the blind mark was never

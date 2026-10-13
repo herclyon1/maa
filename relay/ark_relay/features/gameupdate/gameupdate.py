@@ -40,14 +40,13 @@ from ark_relay.core.desktop import Desktop, kill
 # private names imported here are used by this module (_store) or by callers
 # (_OFF_RECORDS: machinechecks/system.py).
 from ark_relay.features.gameupdate.gameupdate_games import READY_WORDS, _store, endfield_paths, update_endfield
-from ark_relay.features.gameupdate.gameupdate_maaend import SPMED_NODE, SPMED_NODE_V232, SPMED_NODES, _OFF_RECORDS, _TASK_ZH, maaend_enable, maaend_reenable_records, spmed_check, spmed_shape
+from ark_relay.features.gameupdate.gameupdate_maaend import SPMED_NODE, SPMED_NODE_V232, SPMED_NODES, _OFF_RECORDS, spmed_check, spmed_shape
 
 log = logging.getLogger("ark.gameupdate")
 
 __all__ = [
     "READY_WORDS",
     "_OFF_RECORDS",
-    "_TASK_ZH",
     "SPMED_NODE",
     "SPMED_NODES",
     "SPMED_NODE_V232",
@@ -58,8 +57,6 @@ __all__ = [
     "last_run_ok",
     "last_trace",
     "log",
-    "maaend_enable",
-    "maaend_reenable_records",
     "mark_pending",
     "mark_run",
     "needs_rerun",
@@ -517,15 +514,17 @@ def in_maintenance(state_dir: Path, script: str, at: datetime) -> str:
 
 # ─────────────── after the queue finishes: update + re-run ───────────────
 
-def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep) -> tuple[bool, str]:
+def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep,
+                    budget_s: float = 2400) -> tuple[bool, str]:
     """Update one game's client through to the login screen. Returns (ready,
-    notification sentence); when not ready, the reason is in problems."""
+    notification sentence); when not ready, the reason is in problems. `budget_s`
+    caps the wait for the launcher's download."""
     before = len(problems)
     if game == "终末地":
         g, launcher = endfield_paths(cfg.maaend_dir)
         if not (g and launcher):
             problems.append("终末地：找不到启动器"); return False, ""
-        n = update_endfield(desk, g, launcher, budget_s=2400, problems=problems, sleep=sleep)
+        n = update_endfield(desk, g, launcher, budget_s=budget_s, problems=problems, sleep=sleep)
     else:
         # 明日方舟 and 鸣潮: nothing to prepare. AUTO-MAS checks and installs the
         # client before the MAA / OK-WW re-run (MAA Run.IfCheckGameUpdate /
@@ -557,9 +556,13 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
     outdated = False
     said: list[str] = []     # every round's sentence, so an earlier round's 「已更新」 is kept
     earlier: list[str] = []  # problems of rounds that were not ready, other than NOT_OUT_YET
+    start = clock()          # when the next round starts
     while True:
         mark = len(problems)
-        ready, note = _prepare_client(cfg, desk, game, problems, sleep)
+        # One round's download wait ends by the deadline, not 40 minutes past it
+        # (s18 F6): the deadline is otherwise checked only between rounds.
+        left = max(0.0, (deadline - start).total_seconds())
+        ready, note = _prepare_client(cfg, desk, game, problems, sleep, budget_s=min(2400.0, left))
         if note and note not in said:
             said.append(note)
         if outdated and ready and not note:
@@ -567,7 +570,10 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
             # needed" from the launcher is the same client, not a ready one.
             ready = False
             problems.append(f"{game}：更新后游戏说客户端已过时，启动器却显示无需更新，客户端没准备好")
-        if ready or clock() >= deadline:
+        at = clock()
+        # No round after the 10-minute wait when it would start at or past the
+        # deadline: it would run with no budget and report a bogus 「0 分钟内没等到」.
+        if ready or at + timedelta(seconds=600) >= deadline:
             break
         # Not ready (often the update package is not out yet): take out every problem
         # this round wrote - one round can write several - and retry in 10 minutes.
@@ -576,6 +582,7 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
         earlier += [p for p in problems[mark:] if NOT_OUT_YET not in p and p not in earlier]
         del problems[mark:]
         sleep(600)
+        start = at + timedelta(seconds=600)
     if ready and earlier:
         from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         log.warning("游戏更新：%s 前面几轮没准备好，后来一轮准备好了\n%s", game, "；".join(earlier),
@@ -666,8 +673,10 @@ def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems
         # Ready. Servers still down: close the game when they are more than 10
         # minutes away, wait for them, then re-run.
         if end and clock() < end:
-            if end - clock() > timedelta(minutes=10):
-                kill("Endfield.exe", "Client-Win64-Shipping.exe")
+            # Only Endfield is opened here (_prepare_client): 明日方舟 and 鸣潮 open
+            # nothing, so any client of theirs is one the owner opened (s18 F2).
+            if game == "终末地" and end - clock() > timedelta(minutes=10):
+                kill("Endfield.exe")
             log.info("游戏更新：%s 客户端已就绪，等 %s 开服再补跑", game, end.strftime("%H:%M"))
             while clock() < end:
                 sleep(60)

@@ -241,16 +241,25 @@ class Watchdog:
         if pid in self._blind:
             return None
         self._blind.add(pid)
-        log.warning("看门狗读不到 maafw.log：MaaEnd（PID %s）运行 %d 分钟，一行都没读到，不判卡死", pid, minutes)
+        # The group alarm first; the WARNING repeating it stays out of the group only
+        # when that alarm really reached it (errwatch.group_pushed), as in _end.
+        pushed = {}
         try:
-            self.notifier.send(texts.MAAEND_WATCH_BLIND, texts.maaend_watch_blind_body(minutes), alert=True)
+            errs = self.notifier.send(texts.MAAEND_WATCH_BLIND, texts.maaend_watch_blind_body(minutes), alert=True)
+            from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+            pushed = errwatch.group_pushed(texts.MAAEND_WATCH_BLIND, errs, self.notifier)
         except Exception:
             log.exception("看门狗读不到日志的报警没发出去")
+        log.warning("看门狗读不到 maafw.log：MaaEnd（PID %s）运行 %d 分钟，一行都没读到，不判卡死", pid, minutes,
+                    extra=pushed)
         return texts.MAAEND_WATCH_BLIND
 
     def _end(self, pid: int, procs, reason: str, now: float) -> str:
         self._handled.add(pid)
         ok, why = self.kill(pid, "MaaEnd.exe")
+        # Plugins left running (skipped or kill failed), in path form: the texts gate
+        # refuses a bare English name or a PID.
+        left = []
         if ok:
             paths = self.plugin_paths()
             for name, p in procs:
@@ -258,13 +267,20 @@ class Watchdog:
                     continue
                 if not str(paths.get(p, "")).lower().startswith(self.agent_dir):
                     log.warning("%s（%s）不在 MaaEnd 的 agent 目录下（%s），不结束", name, p, paths.get(p, "读不到路径"))
+                    left.append(paths.get(p) or "agent\\" + name)
                     continue
                 done, w = self.kill(p, name)
                 if not done:
                     log.warning("MaaEnd 的插件 %s（%s）没结束掉：%s", name, p, w)
+                    left.append("agent\\" + name)
         self._crash, self._gone_since, self._progress_at = "", None, now
         title = texts.MAAEND_STUCK_KILLED if ok else texts.MAAEND_STUCK_KILL_FAILED
-        body = texts.maaend_stuck_body(reason, ok, why)
+        try:
+            body = texts.maaend_stuck_body(reason, ok, why, left=left)
+        except TypeError:
+            # texts without the left= parameter (it arrives with 67e0873f): the alarm
+            # still goes out, without the plugin names. Drop once that is on main.
+            body = texts.maaend_stuck_body(reason, ok, why)
         # One hang, one group push: the ⚠️ group alarm, and the WARNING that follows
         # repeats it. errwatch.group_pushed keeps that WARNING out of the group only
         # when the ⚠️ send really reached the group robot, so the fault still reaches

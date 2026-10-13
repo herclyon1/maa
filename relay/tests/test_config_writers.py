@@ -1,4 +1,4 @@
-"""The three writers that touch production config, and the reader of the
+"""The writers that touch production config, and the reader of the
 sanity-booster step.
 
 This is the 826 class of code: it edits the files the scripts actually run
@@ -10,9 +10,6 @@ burnt sanity potions. Nothing here had a test.
   declares, must write **both** copies (the master and MAA's own, which the
   master overwrites at launch), and must read back what it wrote before
   reporting success. 「写完就说设好了」 is forbidden.
-* `gameupdate.maaend_enable` switches whole tasks back on - and only on (the
-  user, 2026-10-06: 「我开的任务是谁说要关的」). Reporting a change that did not
-  happen means the morning queue silently runs the wrong set of tasks.
 * `gameupdate.spmed_shape` reads the sanity-booster's confirm node. It no longer
   decides whether the task may run (it always runs); a shape other than the
   fixed one rings the group at boot. It looks at the shape, not at a version
@@ -119,50 +116,6 @@ print("\n[找不到母本时不许说成功]")
 ok, msg = mastercfg.write_maa(tmpdir(), None, "Infrast/UsesOfDrones", "Money")
 check("拒绝", ok, False)
 check("说清是找不到母本", "找不到" in msg, True)
-
-# ------------------------------------------------- MaaEnd：开关任务
-
-class Cfg:
-    def __init__(self, automas_dir):
-        self.automas_dir = automas_dir
-
-
-def maaend_master(tasks):
-    root = tmpdir()
-    d = root / "data" / "xyz" / "Default" / "ConfigFile"
-    d.mkdir(parents=True)
-    doc = {"instances": [{"tasks": tasks}]}
-    (d / "mxu-MaaEnd.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-    return root, d / "mxu-MaaEnd.json"
-
-
-print("\n[MaaEnd 开回任务：只报真的改了的那些，没有关的路]")
-root, path = maaend_master([{"taskName": "自动吃药", "enabled": False},
-                            {"taskName": "基质筛选", "enabled": True}])
-changed = gameupdate.maaend_enable(Cfg(root), {"自动吃药", "基质筛选"})
-check("只有原来是关的那个算改了", changed, (["自动吃药"], [], ""))
-after = json.loads(path.read_text(encoding="utf-8"))["instances"][0]["tasks"]
-check("盘上两个都是开的", [t["enabled"] for t in after], [True, True])
-try:
-    gameupdate.maaend_enable(Cfg(root), {"自动吃药"}, False)
-    can_off = True
-except TypeError:
-    can_off = False
-check("没有「关」这个参数", can_off, False)
-check("以前那个能开能关的函数没了", hasattr(gameupdate, "maaend_set_enabled"), False)
-
-print("\n[没有一个需要改时，一个字节都不许写]")
-before = path.read_bytes()
-check("返回空", gameupdate.maaend_enable(Cfg(root), {"自动吃药"}), ([], [], ""))
-check("文件没动", path.read_bytes(), before)
-
-print("\n[点名的任务不存在：不许连累别的任务，单列出来]")
-check("单列", gameupdate.maaend_enable(Cfg(root), {"不存在的任务"}), ([], ["不存在的任务"], ""))
-check("文件还是没动", path.read_bytes(), before)
-
-print("\n[找不到母本时说出来，和「本来就开着」分得开——否则调用方会把记录删掉]")
-check("空目录", gameupdate.maaend_enable(Cfg(tmpdir()), {"自动吃药"}), ([], [], "找不到终末地的母本"))
-check("automas_dir 是 None", gameupdate.maaend_enable(Cfg(None), {"自动吃药"}), ([], [], "找不到终末地的母本"))
 
 # ------------------------------------------------- MaaEnd：理智药那个确认节点长什么样
 

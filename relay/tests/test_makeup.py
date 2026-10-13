@@ -655,9 +655,8 @@ import boot_stages                                    # noqa: E402
 from ark_relay.features.makeup import collect_retry   # noqa: E402
 from ark_relay.features.gameupdate import gameupdate   # noqa: E402
 from ark_relay.core import mastercfg   # noqa: E402
-saved_fns = (gameupdate.maaend_reenable_records, gameupdate.spmed_check, mastercfg.prune_maaend_orphans,
+saved_fns = (gameupdate.spmed_check, mastercfg.prune_maaend_orphans,
              mastercfg.migrate_maaend_options, collect_retry.restore_master, eng_mod._automas_snapshot)
-gameupdate.maaend_reenable_records = lambda cfg: []
 gameupdate.spmed_check = lambda cfg: ""
 mastercfg.prune_maaend_orphans = mastercfg.migrate_maaend_options = lambda a, b: (0, "")
 collect_retry.restore_master = lambda cfg: ""
@@ -681,7 +680,7 @@ try:
         boot_stages._stage_reenable_maaend(cfg7, Notes(), Log())
         check(label, master_of(root7) == MSTASH, restored)
 finally:
-    (gameupdate.maaend_reenable_records, gameupdate.spmed_check, mastercfg.prune_maaend_orphans,
+    (gameupdate.spmed_check, mastercfg.prune_maaend_orphans,
      mastercfg.migrate_maaend_options, collect_retry.restore_master, eng_mod._automas_snapshot) = saved_fns
 
 print("\n[补跑算中继自己派的：commands.run_script 记下「脚本 MaaEnd」，关机判断读它，不靠更新重跑的时刻]")

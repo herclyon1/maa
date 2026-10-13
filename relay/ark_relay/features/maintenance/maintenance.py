@@ -172,7 +172,7 @@ SOURCES = {"明日方舟": arknights_window, "终末地": endfield_window, "鸣�
 # FAIL_TTL seconds, and that repeat is logged at INFO, not as a new fault.
 OK_TTL = 3600
 FAIL_TTL = 300
-_CACHE: "dict[str, tuple[float, object]]" = {}     # game -> (when, window or None or exception)
+_CACHE: "dict[tuple[str, object], tuple[float, object]]" = {}  # (game, day asked) -> (when, window or None or exception)
 _CACHE_LOCK = threading.Lock()
 _SITE = {"明日方舟": "ak.hypergryph.com / web-news.hypergryph.com", "终末地": "web-news.hypergryph.com",
          "鸣潮": "鸣潮官网 kurogame.com / aki-game.com 的游戏内公告"}
@@ -208,10 +208,13 @@ class _Cached(Exception):
 
 def _read(game: str, fn, now: datetime):
     """fn(now) through the cache. Raises what fn raised, or _Cached while that
-    failure is younger than FAIL_TTL."""
+    failure is younger than FAIL_TTL. Keyed by the server day `now` falls on: the
+    plan asks about tomorrow and the boot check about today, and 鸣潮's answer
+    depends on the day (s16 #3)."""
     t = time.time()
+    key = (game, now.astimezone(SERVER_TZ).date())
     with _CACHE_LOCK:
-        hit = _CACHE.get(game)
+        hit = _CACHE.get(key)
     if hit is not None:
         at, got = hit
         if isinstance(got, Exception):
@@ -223,11 +226,11 @@ def _read(game: str, fn, now: datetime):
         got = fn(now)
     except Exception as exc:
         with _CACHE_LOCK:
-            _CACHE[game] = (t, exc)
+            _CACHE[key] = (t, exc)
         _count(game, t, f"{type(exc).__name__}: {exc}"[:200])
         raise
     with _CACHE_LOCK:
-        _CACHE[game] = (t, got)
+        _CACHE[key] = (t, got)
     _count(game, t, None)
     return got
 
