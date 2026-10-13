@@ -30,7 +30,7 @@ import logging
 import os
 import re
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.core.config import SERVER_TZ
@@ -97,10 +97,19 @@ def add_red(day: str, heading: str, texts: "list[str]", *, state_dir=None,
         return []
     stamp = at.strftime("%Y%m%d-%H%M")
     with _ids:
-        try:
-            old = path_for(day, state_dir).read_text(encoding="utf-8")
-        except OSError:
-            old = ""
+        # The stamp comes from `at` but the item goes into `day`'s file, and the two
+        # differ for a round that started before midnight and is handled after it
+        # (gamelog_errors passes the round's start day). scripts/mac/techlog.py joins
+        # every day's file by id, so the numbers already used for this stamp are read
+        # from `day`, `at`'s own day and the day before it (review 2026-10-13, s5 #2).
+        old = ""
+        at_day = at.strftime("%Y-%m-%d")
+        prev_day = (at - timedelta(days=1)).strftime("%Y-%m-%d")
+        for d in dict.fromkeys((day, at_day, prev_day)):
+            try:
+                old += path_for(d, state_dir).read_text(encoding="utf-8") + "\n"
+            except OSError:
+                pass
         used = [int(m.group(1)) for m in re.finditer(rf"^{RED} R-{stamp}-(\d+) ", old, re.M)]
         start = max(used, default=0)
         lines = [f"{RED} R-{stamp}-{start + i} {t}" for i, t in enumerate(texts, 1)]

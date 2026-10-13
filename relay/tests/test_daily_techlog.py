@@ -308,6 +308,19 @@ check("一段写成 ## HH:MM 标题",
        techlog.path_for(TODAY, d).read_text(encoding="utf-8")),
       (True, "\n## 21:45 收工体检\n" + "\n".join(reds) + "\n"))
 
+print("\n[跨零点：记进前一天文件的红项和今天的自愈红项编号不撞（审查 10-13 s5 #2）]")
+# gamelog_errors writes into the round's start day with the current time as the
+# stamp; self_heal in the same minute writes into today's file. The Mac tool joins
+# all days by id, so a shared id hid one of the two.
+d = tmpdir() / "state"
+after_midnight = datetime(2026, 10, 13, 0, 20, tzinfo=SERVER_TZ)
+a = techlog.add_red("2026-10-12", "游戏日志里没登记的报错", ["23:50 开始的那一趟"], state_dir=d, now=after_midnight)
+b = techlog.self_heal("ark.gamelog_errors", "自己好了", state_dir=d, now=after_midnight)
+c = techlog.add_red("2026-10-12", "游戏日志里没登记的报错", ["又一趟"], state_dir=d, now=after_midnight)
+check("三条红项三个编号", len(set(a + b + c)), 3)
+joined = "".join(techlog.path_for(x, d).read_text(encoding="utf-8") for x in ("2026-10-12", "2026-10-13"))
+check("两天的文件合起来三条都还在", len(techlog.unhandled(joined)), 3)
+
 if fails:
     print(f"\nFAILED: {fails}")
     sys.exit(1)
