@@ -109,9 +109,9 @@ class GardenGate(WeekGate):
             return False
         tasks = list(cfg.get(KEY) or [])
         has = TASK_NAME in tasks
+        # An earlier week's booking is left for WeekGate.maybe_reopen at boot: clearing it
+        # here hid the roll-over from the new-week notice (audit 10-13: the 10-05 04:43 tick).
         if want_on == has:
-            if state.get("done_week") and state["done_week"] != week:
-                state.pop("done_week", None); self._save(state)   # booking from an earlier week
             return False
         if want_on:
             tasks.append(TASK_NAME)
@@ -129,8 +129,6 @@ class GardenGate(WeekGate):
             return False
         self._last_write_error = ""
         if want_on:
-            if state.get("done_week") and state["done_week"] != week:
-                state.pop("done_week", None); self._save(state)
             log.info("周常乐园检查已恢复")
         else:
             log.info("已关闭周常乐园检查（周一 04:00 后自动恢复）")
