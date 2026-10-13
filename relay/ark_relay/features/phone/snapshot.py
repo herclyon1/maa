@@ -246,7 +246,13 @@ def _runtime(out: dict) -> None:
         # own process and the emulator), shared with the rest of the relay.
         from ark_relay.core.config import BUSY_PROCS, ORCHESTRATOR_PROC  # noqa: PLC0415
         names = (ORCHESTRATOR_PROC,) + BUSY_PROCS
-        out["程序"] = {n[:-4] if n.endswith(".exe") else n: n in tl for n in names}
+        progs = {n[:-4] if n.endswith(".exe") else n: n in tl for n in names}
+        # OK-WW runs as pythonw.exe (config.py, "process names"), so the names above
+        # are blind to it: the red button's check asks the command lines, and an
+        # unread list counts as running there and here (audit 11 #3).
+        from ark_relay.features.phone.redbutton import _okww_python_alive  # noqa: PLC0415
+        progs["ok-ww"] = progs.get("ok-ww", False) or _okww_python_alive()
+        out["程序"] = progs
     except Exception:  # noqa: BLE001
         pass
     # A hand-set one-shot switch with no display anywhere is a switch that gets

@@ -41,10 +41,28 @@ _ESTOP_NAMES = {
     "KRSDKExternal.exe": "鸣潮的登录组件",
 }
 _ESTOP_EXES = tuple(_ESTOP_NAMES)
+# OK-WW itself runs as pythonw.exe with its path on the command line, which a
+# name-only tasklist check cannot see (config.py, "process names"); _estop_alive
+# reports it under this name, told as 鸣潮的脚本.
+_OKWW_PYTHON = "OK-WW (python)"
+_ESTOP_LABELS = {**_ESTOP_NAMES, _OKWW_PYTHON: "鸣潮的脚本"}
+
+
+def _okww_python_alive() -> bool:
+    """Whether OK-WW's python may still be up (okww_overlay.okww_running). None,
+    the process list unread, counts as alive: not knowing must never read as
+    "all clear" (audit 11 #3, 2026-10-13)."""
+    from ark_relay.features.okww_patch.okww_overlay import okww_running  # noqa: PLC0415
+    try:
+        return okww_running() is not False
+    except Exception:
+        log.info("红按钮：查不了 OK-WW 的 python 还在不在，按还活着算", exc_info=True)
+        return True
 
 
 def _estop_alive() -> list[str]:
-    """Which of those are still alive. Empty means nothing is left.
+    """Which of those are still alive, and OK-WW's python (_OKWW_PYTHON). Empty
+    means nothing is left.
 
     On a machine where the process list cannot be read, every name is reported as
     still alive: not knowing must never read as "all clear".
@@ -58,7 +76,10 @@ def _estop_alive() -> list[str]:
     except (OSError, subprocess.SubprocessError):
         return ["读不到正在运行的程序列表"]
     low = out.lower()
-    return [e for e in _ESTOP_EXES if e.lower() in low]
+    alive = [e for e in _ESTOP_EXES if e.lower() in low]
+    if _okww_python_alive():
+        alive.append(_OKWW_PYTHON)
+    return alive
 
 
 def _estop_live_tasks() -> "list[tuple[str, str]] | None":
@@ -358,7 +379,7 @@ def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
     if alive or live is None or live:
         left = []
         if alive:
-            left.append("、".join(sorted({_ESTOP_NAMES.get(a, a) for a in alive})))
+            left.append("、".join(sorted({_ESTOP_LABELS.get(a, a) for a in alive})))
         if live is None:
             left.append("问不到 AUTO-MAS 还有没有任务在跑")
         elif live:

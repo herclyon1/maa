@@ -276,6 +276,9 @@ _ur.urlopen = real_urlopen
 print("\n[查活着谁：认名字不分大小写，一个不落]")
 import subprocess as _sp                                          # noqa: E402
 import os as _os                                                  # noqa: E402
+from ark_relay.features.okww_patch import okww_overlay as _ov  # noqa: E402 - before os.name is faked
+from ark_relay.features.phone import snapshot as _snap  # noqa: E402
+real_okww_running = _ov.okww_running
 real_run, real_name = _sp.run, _os.name
 _os.name = "nt"
 
@@ -285,6 +288,7 @@ class Out:
         self.stdout = text.encode("utf-8")
 
 
+_ov.okww_running = lambda: False
 _sp.run = lambda *a, **k: Out('"MAA.exe","1","Console"\n"client-win64-shipping.exe","2","C"\n')
 check("大小写不同也认得出", set(redbutton._estop_alive()),
       {"MAA.exe", "Client-Win64-Shipping.exe"})
@@ -295,6 +299,33 @@ check("干净时是空的", redbutton._estop_alive(), [])
 def _boom(*a, **k):
     raise OSError("tasklist 挂了")
 
+
+print("\n[OK-WW's python: invisible to tasklist names, seen by its command line (audit 11 #3)]")
+# OK-WW runs as pythonw.exe (config.py "process names"); a press while it ran could
+# answer 「确认没了」 with OK-WW still up.
+_sp.run = lambda *a, **k: Out('"pythonw.exe","1","Console"\n')
+_ov.okww_running = lambda: True
+check("OK-WW's python alive -> not clear", len(redbutton._estop_alive()), 1)
+_ov.okww_running = lambda: None
+check("its process list unread -> counted alive", len(redbutton._estop_alive()), 1)
+_ov.okww_running = lambda: False
+check("gone -> clear", redbutton._estop_alive(), [])
+_ov.okww_running = lambda: True
+check("told as 鸣潮的脚本", [getattr(redbutton, "_ESTOP_LABELS", {}).get(a) for a in redbutton._estop_alive()],
+      ["鸣潮的脚本"])
+
+class Txt:
+    def __init__(self, text):
+        self.stdout = text
+
+
+_sp.run = lambda *a, **k: Txt("AUTO-MAS.exe 1 Console\npythonw.exe 2 Console\n")
+for got_ww, want in ((True, True), (None, True), (False, False)):
+    _ov.okww_running = lambda v=got_ww: v
+    o = {}
+    _snap._runtime(o)
+    check(f"the App's running list: okww_running {got_ww} -> ok-ww {want}", o.get("程序", {}).get("ok-ww"), want)
+_ov.okww_running = real_okww_running
 
 _sp.run = _boom
 check("读不到时不许返回空", redbutton._estop_alive(), ["读不到正在运行的程序列表"])
