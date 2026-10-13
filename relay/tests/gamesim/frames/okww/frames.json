@@ -1,5 +1,5 @@
 {
- "about": "Recorded OK-WW screens for the gamesim harness (design section 1, Frame library). Paths are relative to this folder; sha256 is of the committed file. The repository is public: every frame has OK-WW's UID strip blacked out.",
+ "about": "Recorded OK-WW screens for the gamesim harness (design section 1, Frame library). Paths are relative to this folder; sha256 is of the committed file. The repository is public: every frame has OK-WW's UID strip (config.blur_area) blacked out. Frames are added with relay/tests/gamesim/tools/add_frame.py. Each truth item is text a person read on the frame, at `box` (relative x0, y0, x1, y1), inside one of `regions` - the boxes our overlay (or the upstream line it follows) OCRs; okww/test_frame_truth.py runs the real OCR in that region on Windows and requires the text there. `unrecorded` lists the screens the scenarios need that have no frame yet.",
  "frames": [
   {
    "path": "nest_list/2026-10-07_092052.png",
@@ -16,47 +16,73 @@
    "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py:121-124), every pixel 0; checked again at run time by harness.ScriptedCase.check_frames with the real config.blur_area",
    "truth": [
     {
+     "region": "nest_list",
+     "text": "梦枢天罗残象聚落",
      "box": [
-      0.463,
-      0.283,
-      0.575,
-      0.311
-     ],
-     "text": "梦枢天罗残象聚落"
+      0.4582,
+      0.2775,
+      0.5796,
+      0.3142
+     ]
     },
     {
+     "region": "nest_list",
+     "text": "已击败残象：0/48",
      "box": [
-      0.463,
-      0.346,
-      0.564,
-      0.376
-     ],
-     "text": "已击败残象：0/48"
+      0.4597,
+      0.3474,
+      0.5694,
+      0.379
+     ]
     },
     {
+     "region": "nest_list",
+     "text": "落渊南丘残象聚落",
      "box": [
-      0.463,
-      0.425,
-      0.575,
-      0.454
-     ],
-     "text": "落渊南丘残象聚落"
+      0.4582,
+      0.4198,
+      0.5796,
+      0.4562
+     ]
     },
     {
+     "region": "nest_list",
+     "text": "已击败残象：0/41",
      "box": [
-      0.4635,
-      0.488,
-      0.565,
-      0.517
+      0.4597,
+      0.4895,
+      0.568,
+      0.5208
      ],
-     "text": "已击败残象：0/41"
+     "evidence": "ok-script.2026-10-07.log:243 Box(name='已击败残象：0/41', x=890, y=527, width=195, height=31)"
+    },
+    {
+     "region": "stamina",
+     "text": "240/240",
+     "box": [
+      0.6806,
+      0.0451,
+      0.7555,
+      0.079
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "102",
+     "box": [
+      0.5658,
+      0.0451,
+      0.6043,
+      0.079
+     ]
     }
    ],
-   "truth_checked": "2026-10-13, by eye against crops of the frame; the 0/41 box is the machine's own OCR box (ok-script.2026-10-07.log:243, Box x=890 y=527 width=195 height=31)",
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
    "features": [],
    "cases_using": [
     "nest/find_nest_pointer_1007",
-    "harness self-test"
+    "harness self-test",
+    "okww/test_frame_truth.py"
    ]
   },
   {
@@ -74,43 +100,48 @@
    "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py:121-124), every pixel 0; checked again at run time by harness.ScriptedCase.check_frames with the real config.blur_area",
    "truth": [
     {
+     "region": "full",
+     "text": "落渊南丘残象聚落",
      "box": [
-      0.733,
-      0.03,
-      0.885,
-      0.08
-     ],
-     "text": "落渊南丘残象聚落"
+      0.73,
+      0.0348,
+      0.8863,
+      0.079
+     ]
     },
     {
+     "region": "full",
+     "text": "已击败残象",
      "box": [
-      0.69,
-      0.32,
-      0.8,
-      0.35
-     ],
-     "text": "已击败残象"
+      0.6922,
+      0.3164,
+      0.77,
+      0.3531
+     ]
     },
     {
+     "region": "full",
+     "text": "0/41",
      "box": [
-      0.9,
-      0.32,
-      0.945,
-      0.35
-     ],
-     "text": "0/41"
+      0.9044,
+      0.3216,
+      0.9444,
+      0.3531
+     ]
     },
     {
+     "region": "full",
+     "text": "快速旅行",
      "box": [
-      0.78,
-      0.905,
-      0.88,
-      0.955
+      0.7969,
+      0.9107,
+      0.8688,
+      0.9497
      ],
-     "text": "快速旅行"
+     "evidence": "the gray_teleport click that followed this screen (see the frame's evidence)"
     }
    ],
-   "truth_checked": "2026-10-13, by eye against crops of the frame",
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
    "features": [
     {
      "name": "gray_teleport",
@@ -119,8 +150,2817 @@
    ],
    "cases_using": [
     "nest/find_nest_pointer_1007",
-    "harness self-test"
+    "harness self-test",
+    "okww/test_frame_truth.py"
    ]
+  },
+  {
+   "path": "nest_list/2026-10-06_092216.png",
+   "screen_id": "nest_list",
+   "about": "F2 book, 素材获取 > 残象聚落, first page of the nest list: 梦枢天罗 0/48, 落渊南丘 0/41",
+   "shot": "nest_go",
+   "source": "COS evidence bundle 2026-10-06_wuwa_OK-WW-05-19-08, ok-ww-log/screenshots/09-22-16.956_nest_go_original.png (OK-WW working/screenshots on the game PC), original sha256 8d02248aecbd24dd1009db2ad320f94bf2643b52a75d641e4499990d8a7f22d8",
+   "evidence": "ok-script.2026-10-06.log:195-197 'Box(name='已击败残象：0/41', x=890, y=527 ...) is not complete' / '点进点位 go_nest:41:25（截图 nest_go）' / 'left_click 已击败残象：0/41 (1729, 500)'",
+   "sha256": "cf1b4a8e4a482913859050a26a73fd913e21146dfe1b61172aae309e8625d12d",
+   "date": "2026-10-06 09:22:16.956 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "nest_list",
+     "text": "梦枢天罗残象聚落",
+     "box": [
+      0.4582,
+      0.2775,
+      0.5796,
+      0.3142
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：0/48",
+     "box": [
+      0.4597,
+      0.3474,
+      0.5694,
+      0.379
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "落渊南丘残象聚落",
+     "box": [
+      0.4582,
+      0.4198,
+      0.5796,
+      0.4562
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：0/41",
+     "box": [
+      0.4597,
+      0.4895,
+      0.568,
+      0.5208
+     ],
+     "evidence": "ok-script.2026-10-06.log:195 Box(name='已击败残象：0/41', x=890, y=527, width=194, height=31)"
+    },
+    {
+     "region": "nest_list",
+     "text": "复生丘原残象聚落",
+     "box": [
+      0.4597,
+      0.766,
+      0.5796,
+      0.8024
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "110/240",
+     "box": [
+      0.6805,
+      0.0445,
+      0.7541,
+      0.0795
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "77",
+     "box": [
+      0.5759,
+      0.0423,
+      0.6057,
+      0.079
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "nest_list/2026-10-12_095452_6of41.png",
+   "screen_id": "nest_list",
+   "about": "nest list, first page: 梦枢天罗 0/48, 落渊南丘 6/41",
+   "shot": "nest_go",
+   "source": "COS evidence bundle 2026-10-12_wuwa_OK-WW-05-18-47, ok-ww-log/screenshots/09-54-52.354_nest_go_original.png (OK-WW working/screenshots on the game PC), original sha256 8319f3d5590d3fe778237c00d1bf5cd1c78ac5b1f43954f9391d85f14af058bd",
+   "evidence": "ok-script.2026-10-12.log:1320-1322 'Box(name='已击败残象：6/41', x=890, y=527 ...)' / '点进点位 go_nest:41:25（截图 nest_go）'",
+   "sha256": "81ca01e0ebfcd0f3d0f6441f8a91f330501549b32b3c4d56d315d42312a5d465",
+   "date": "2026-10-12 09:54:52.354 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "nest_list",
+     "text": "梦枢天罗残象聚落",
+     "box": [
+      0.4582,
+      0.2775,
+      0.5796,
+      0.3142
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：0/48",
+     "box": [
+      0.4597,
+      0.3474,
+      0.5694,
+      0.379
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "落渊南丘残象聚落",
+     "box": [
+      0.4582,
+      0.4198,
+      0.5796,
+      0.4562
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：6/41",
+     "box": [
+      0.4597,
+      0.4895,
+      0.568,
+      0.5208
+     ],
+     "evidence": "ok-script.2026-10-12.log:1320 Box(name='已击败残象：6/41', x=890, y=527, width=194, height=31)"
+    },
+    {
+     "region": "stamina",
+     "text": "240/240",
+     "box": [
+      0.6806,
+      0.0449,
+      0.754,
+      0.0791
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "24",
+     "box": [
+      0.5759,
+      0.0451,
+      0.6043,
+      0.079
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "nest_list/2026-10-12_114539_41of41.png",
+   "screen_id": "nest_list",
+   "about": "nest list, first page: 梦枢天罗 0/48, 落渊南丘 41/41, the left menu's 模拟领域 highlighted by the cursor",
+   "shot": "nest_go",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/11-45-39.934_nest_go_original.png, original sha256 f547683b90f61e685f16f1df63fa419ce2206c7ee35a5fcb72f3d8d60b5311d6",
+   "evidence": "ok-script.2026-10-12.log:2055-2058 '只刷 ['梦枢天罗', '落渊南丘']' / 'Box(name='已击败残象：0/48', x=889, y=374 ...)' / '点进点位 go_nest:48:18（截图 nest_go）'",
+   "sha256": "44a6972e766e765c82bf6b878cfaf853f562b92ef928b41dcf059b542cee2f94",
+   "date": "2026-10-12 11:45:39.934 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "nest_list",
+     "text": "梦枢天罗残象聚落",
+     "box": [
+      0.4582,
+      0.2775,
+      0.5796,
+      0.3142
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：0/48",
+     "box": [
+      0.4597,
+      0.3474,
+      0.5694,
+      0.3813
+     ],
+     "evidence": "ok-script.2026-10-12.log:2056 Box(name='已击败残象：0/48', x=889, y=374, width=198, height=30)"
+    },
+    {
+     "region": "nest_list",
+     "text": "落渊南丘残象聚落",
+     "box": [
+      0.4582,
+      0.4198,
+      0.5796,
+      0.4562
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：41/41",
+     "box": [
+      0.4597,
+      0.4895,
+      0.5752,
+      0.5208
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "41/240",
+     "box": [
+      0.6906,
+      0.0442,
+      0.7541,
+      0.0799
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "nest_list/2026-10-13_092932_48of48.png",
+   "screen_id": "nest_list",
+   "about": "nest list, first page: 梦枢天罗 48/48, 落渊南丘 0/41",
+   "shot": "nest_go",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/09-29-32.838_nest_go_original.png, original sha256 609a0fd24c1cdfef3950c4c729103bf9972ab69aebda65c8061dc0570ccd7f79",
+   "evidence": "ok-script.log (2026-10-13):389-391 'Box(name='已击败残象：0/41', x=890, y=527 ...)' / '点进点位 go_nest:41:25（截图 nest_go）'",
+   "sha256": "ad853c390f8a562c25c65329c8e0de920485da8c2643ab4600c9466acc4a2abb",
+   "date": "2026-10-13 09:29:32.838 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "nest_list",
+     "text": "梦枢天罗残象聚落",
+     "box": [
+      0.4582,
+      0.2775,
+      0.5796,
+      0.3142
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：48/48",
+     "box": [
+      0.4597,
+      0.3474,
+      0.5767,
+      0.379
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "落渊南丘残象聚落",
+     "box": [
+      0.4582,
+      0.4198,
+      0.5796,
+      0.4562
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：0/41",
+     "box": [
+      0.4597,
+      0.4895,
+      0.568,
+      0.5208
+     ],
+     "evidence": "ok-script.log (2026-10-13):389 Box(name='已击败残象：0/41', x=890, y=527, width=195, height=31)"
+    },
+    {
+     "region": "stamina",
+     "text": "198/240",
+     "box": [
+      0.6805,
+      0.0445,
+      0.7541,
+      0.0795
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "nest_list/2026-10-13_093216_allfull.png",
+   "screen_id": "nest_list",
+   "about": "nest list, first page: 梦枢天罗 48/48, 落渊南丘 41/41 (both wanted nests full)",
+   "shot": "nest_all_full",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/09-32-16.560_nest_all_full_original.png, original sha256 ba832c5a11dc6301424eb6a3088fe5c641ee2ef644e911f85ac098060594e068",
+   "evidence": "ok-script.log (2026-10-13):507 'nightmare nest: 指定点位都已打满，跳过（截图 nest_all_full）'",
+   "sha256": "f00f860255fbcabcdfa738ccb25595823ef7a7db26611ed38d75b4b532665206",
+   "date": "2026-10-13 09:32:16.560 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "nest_list",
+     "text": "梦枢天罗残象聚落",
+     "box": [
+      0.4582,
+      0.2775,
+      0.5796,
+      0.3142
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：48/48",
+     "box": [
+      0.4597,
+      0.3474,
+      0.5767,
+      0.379
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "落渊南丘残象聚落",
+     "box": [
+      0.4582,
+      0.4198,
+      0.5796,
+      0.4562
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：41/41",
+     "box": [
+      0.4597,
+      0.4895,
+      0.5752,
+      0.5208
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "199/240",
+     "box": [
+      0.6805,
+      0.0442,
+      0.7541,
+      0.0798
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "nest_list/2026-10-13_093221_allfull-scrolled.png",
+   "screen_id": "nest_list",
+   "about": "nest list scrolled down: 梦枢天罗 48/48 (cut), 落渊南丘 41/41, 拉海洛 group 0/48 0/48, 陷足流川 0/24",
+   "shot": "nest_all_full",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/09-32-21.413_nest_all_full_original.png, original sha256 be4b1ff2cadcc4ade084e53a673bf616eccb3064e794ac035041639755be8b34",
+   "evidence": "ok-script.log (2026-10-13):510 'nightmare nest: 指定点位都已打满，跳过（截图 nest_all_full）'",
+   "sha256": "cf7f884991e769b44d537f4bb6b33b078043f6fc5485698fd0760dc722b63c87",
+   "date": "2026-10-13 09:32:21.413 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "nest_list",
+     "text": "落渊南丘残象聚落",
+     "box": [
+      0.4597,
+      0.2775,
+      0.5796,
+      0.317
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：41/41",
+     "box": [
+      0.4597,
+      0.3474,
+      0.5767,
+      0.3813
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "陷足流川残象聚落",
+     "box": [
+      0.4597,
+      0.766,
+      0.5796,
+      0.8024
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：0/24",
+     "box": [
+      0.4597,
+      0.8358,
+      0.5694,
+      0.867
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "199/240",
+     "box": [
+      0.682,
+      0.0444,
+      0.7555,
+      0.0797
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "nest_list/2026-10-12_115851_allfull-scrolled.png",
+   "screen_id": "nest_list",
+   "about": "nest list scrolled down, as 2026-10-13 09:32:21, the left menu's 模拟领域 highlighted",
+   "shot": "nest_all_full",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/11-58-51.996_nest_all_full_original.png, original sha256 119678f09aca7ee1af50a0c0aaee61ea6e94efd664df43a7ceecd9641c1e0150",
+   "evidence": "ok-script.2026-10-12.log:2375-2379 '只刷 ['梦枢天罗', '落渊南丘']' / '指定点位都已打满，跳过（截图 nest_all_full）'",
+   "sha256": "92e0a79d72750d94e3a55dc2c0d04e82b4b0657b6f5f6861d689fdb4e9be706a",
+   "date": "2026-10-12 11:58:51.996 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "nest_list",
+     "text": "落渊南丘残象聚落",
+     "box": [
+      0.4597,
+      0.2802,
+      0.5781,
+      0.317
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：41/41",
+     "box": [
+      0.4597,
+      0.3474,
+      0.5767,
+      0.3813
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "陷足流川残象聚落",
+     "box": [
+      0.4597,
+      0.766,
+      0.5796,
+      0.8024
+     ]
+    },
+    {
+     "region": "nest_list",
+     "text": "已击败残象：0/24",
+     "box": [
+      0.4597,
+      0.8358,
+      0.5694,
+      0.867
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "43/240",
+     "box": [
+      0.6907,
+      0.0445,
+      0.7541,
+      0.0795
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "map_nest_detail/2026-10-10_090543_banner.png",
+   "screen_id": "map_nest_detail",
+   "about": "map on 落渊南丘残象聚落 with the banner 「目标位于落渊南丘，请先前往此场景」, 0/41, 快速旅行",
+   "shot": "nest_travel",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/09-05-43.313_nest_travel_original.png, original sha256 b934ea184a9eb184fedc239b5f1dd179b4628cd35c69aada8faa479d2e7f5dd7",
+   "evidence": "ok-script.2026-10-10.log:237-241 'left_click 已击败残象：0/41 (1729, 500)' / 'left_click gray_teleport (1351, 1007)'",
+   "sha256": "111a6e67306040967074e817c2b83a962477afd2bec5d85f5aec2e8ba50d1a99",
+   "date": "2026-10-10 09:05:43.313 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "落渊南丘残象聚落",
+     "box": [
+      0.73,
+      0.0348,
+      0.8863,
+      0.079
+     ]
+    },
+    {
+     "region": "full",
+     "text": "已击败残象",
+     "box": [
+      0.6922,
+      0.3164,
+      0.77,
+      0.3531
+     ]
+    },
+    {
+     "region": "full",
+     "text": "0/41",
+     "box": [
+      0.9044,
+      0.3216,
+      0.9444,
+      0.3531
+     ]
+    },
+    {
+     "region": "full",
+     "text": "快速旅行",
+     "box": [
+      0.7969,
+      0.9107,
+      0.8688,
+      0.9497
+     ],
+     "evidence": "the gray_teleport click that followed this screen (see the frame's evidence)"
+    },
+    {
+     "region": "full",
+     "text": "目标位于落渊南丘，请先前往此场景",
+     "box": [
+      0.3739,
+      0.1793,
+      0.6363,
+      0.2236
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [
+    {
+     "name": "gray_teleport",
+     "evidence": "the frame's evidence: the 'left_click gray_teleport (1351, 1007)' that followed this screenshot"
+    }
+   ],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "map_nest_detail/2026-10-13_092935_banner.png",
+   "screen_id": "map_nest_detail",
+   "about": "map on 落渊南丘残象聚落 with the banner 「目标位于落渊南丘，请先前往此场景」, 0/41, 快速旅行",
+   "shot": "nest_travel",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/09-29-35.571_nest_travel_original.png, original sha256 f6ae4b8d9616efc11533c4a2cc7d4f6ef0501f9228866b1248864f70548a1ba5",
+   "evidence": "ok-script.log (2026-10-13):391-392 'left_click 已击败残象：0/41 (1729, 500)' / 'left_click gray_teleport (1351, 1007)'",
+   "sha256": "680390f3cf618754abc5d32404b51b5e072935e22b15d61fc5e2a6ed40e45ccc",
+   "date": "2026-10-13 09:29:35.571 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "落渊南丘残象聚落",
+     "box": [
+      0.73,
+      0.0348,
+      0.8863,
+      0.079
+     ]
+    },
+    {
+     "region": "full",
+     "text": "已击败残象",
+     "box": [
+      0.6922,
+      0.3164,
+      0.77,
+      0.3531
+     ]
+    },
+    {
+     "region": "full",
+     "text": "0/41",
+     "box": [
+      0.9044,
+      0.3216,
+      0.9444,
+      0.3531
+     ]
+    },
+    {
+     "region": "full",
+     "text": "快速旅行",
+     "box": [
+      0.7969,
+      0.9107,
+      0.8688,
+      0.9497
+     ],
+     "evidence": "the gray_teleport click that followed this screen (see the frame's evidence)"
+    },
+    {
+     "region": "full",
+     "text": "目标位于落渊南丘，请先前往此场景",
+     "box": [
+      0.3739,
+      0.1793,
+      0.6363,
+      0.2236
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [
+    {
+     "name": "gray_teleport",
+     "evidence": "the frame's evidence: the 'left_click gray_teleport (1351, 1007)' that followed this screenshot"
+    }
+   ],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "map_nest_detail/2026-10-10_090714_17of41.png",
+   "screen_id": "map_nest_detail",
+   "about": "map on 落渊南丘残象聚落, 距离刷新还有 18小时, 已击败残象 17/41",
+   "shot": "nest_travel",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/09-07-14.493_nest_travel_original.png, original sha256 11923226f5f68bdfd779ae24160371a8a5047e35cc7401b11c87265729f371c9",
+   "evidence": "ok-script.2026-10-10.log:353-354 'left_click 已击败残象：0/41 (1729, 500)' / 'left_click gray_teleport (1351, 1007)'",
+   "sha256": "5b80875d2b779c709cddf4eba0f8d5efe797d38b1d2345e285157167e18063c0",
+   "date": "2026-10-10 09:07:14.493 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "落渊南丘残象聚落",
+     "box": [
+      0.73,
+      0.0348,
+      0.8863,
+      0.079
+     ]
+    },
+    {
+     "region": "full",
+     "text": "已击败残象",
+     "box": [
+      0.6922,
+      0.3599,
+      0.77,
+      0.3968
+     ]
+    },
+    {
+     "region": "full",
+     "text": "17/41",
+     "box": [
+      0.8957,
+      0.3653,
+      0.943,
+      0.397
+     ]
+    },
+    {
+     "region": "full",
+     "text": "快速旅行",
+     "box": [
+      0.7968,
+      0.9101,
+      0.869,
+      0.9513
+     ],
+     "evidence": "the gray_teleport click that followed this screen (see the frame's evidence)"
+    },
+    {
+     "region": "full",
+     "text": "距离刷新还有",
+     "box": [
+      0.6908,
+      0.3163,
+      0.7831,
+      0.353
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [
+    {
+     "name": "gray_teleport",
+     "evidence": "the frame's evidence: the 'left_click gray_teleport (1351, 1007)' that followed this screenshot"
+    }
+   ],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "map_nest_detail/2026-10-08_092148_8of41.png",
+   "screen_id": "map_nest_detail",
+   "about": "map on 落渊南丘残象聚落, 距离刷新还有 18小时, 已击败残象 8/41",
+   "shot": "nest_travel",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/09-21-48.882_nest_travel_original.png, original sha256 1e644adfb785267a7440d2915190b3aa4cb3abb6c441e837c07649d27c271df6",
+   "evidence": "ok-script.2026-10-08.log:370-371 'left_click 已击败残象：0/41 (1729, 500)' / 'left_click gray_teleport (1351, 1007)'",
+   "sha256": "4ac160021748dbc07e5a023b191c7faa46eff7db920ade0f2a3f4fa2b805813f",
+   "date": "2026-10-08 09:21:48.882 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "落渊南丘残象聚落",
+     "box": [
+      0.73,
+      0.0348,
+      0.8863,
+      0.079
+     ]
+    },
+    {
+     "region": "full",
+     "text": "已击败残象",
+     "box": [
+      0.6922,
+      0.3599,
+      0.77,
+      0.3968
+     ]
+    },
+    {
+     "region": "full",
+     "text": "8/41",
+     "box": [
+      0.9043,
+      0.3651,
+      0.943,
+      0.3971
+     ]
+    },
+    {
+     "region": "full",
+     "text": "快速旅行",
+     "box": [
+      0.7968,
+      0.9101,
+      0.869,
+      0.9513
+     ],
+     "evidence": "the gray_teleport click that followed this screen (see the frame's evidence)"
+    },
+    {
+     "region": "full",
+     "text": "距离刷新还有",
+     "box": [
+      0.6908,
+      0.3163,
+      0.7831,
+      0.353
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [
+    {
+     "name": "gray_teleport",
+     "evidence": "the frame's evidence: the 'left_click gray_teleport (1351, 1007)' that followed this screenshot"
+    }
+   ],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "map_nest_detail/2026-10-12_095455_6of41.png",
+   "screen_id": "map_nest_detail",
+   "about": "map on 落渊南丘残象聚落, 距离刷新还有 18小时, 已击败残象 6/41",
+   "shot": "nest_travel",
+   "source": "COS evidence bundle 2026-10-12_wuwa_OK-WW-05-18-47, ok-ww-log/screenshots/09-54-55.088_nest_travel_original.png (OK-WW working/screenshots on the game PC), original sha256 8ffbabceb23952eb97f4a1f9c75b83a3abb80abeb3e435bbb6658fed6b64cdea",
+   "evidence": "ok-script.2026-10-12.log:1322-1323 'left_click 已击败残象：6/41 (1729, 500)' / 'left_click gray_teleport (1351, 1007)'",
+   "sha256": "354aca8e9357fd4de4d48733985084109e8533c6b2874172eaa0e696cb0c4cd7",
+   "date": "2026-10-12 09:54:55.088 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "落渊南丘残象聚落",
+     "box": [
+      0.73,
+      0.0348,
+      0.8863,
+      0.079
+     ]
+    },
+    {
+     "region": "full",
+     "text": "已击败残象",
+     "box": [
+      0.6922,
+      0.3599,
+      0.77,
+      0.3968
+     ]
+    },
+    {
+     "region": "full",
+     "text": "6/41",
+     "box": [
+      0.9044,
+      0.3654,
+      0.943,
+      0.3968
+     ]
+    },
+    {
+     "region": "full",
+     "text": "快速旅行",
+     "box": [
+      0.7968,
+      0.9101,
+      0.869,
+      0.9513
+     ],
+     "evidence": "the gray_teleport click that followed this screen (see the frame's evidence)"
+    },
+    {
+     "region": "full",
+     "text": "距离刷新还有",
+     "box": [
+      0.6908,
+      0.3164,
+      0.7831,
+      0.3531
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [
+    {
+     "name": "gray_teleport",
+     "evidence": "the frame's evidence: the 'left_click gray_teleport (1351, 1007)' that followed this screenshot"
+    }
+   ],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "map_nest_detail/2026-10-13_092737_mengshu.png",
+   "screen_id": "map_nest_detail",
+   "about": "map on 梦枢天罗残象聚落 (焜心域), 0/48, 快速旅行",
+   "shot": "nest_travel",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/09-27-37.359_nest_travel_original.png, original sha256 3c8b1d1f6f03700154d3825910b2d4d56515648882ffc3b55905a5be3aec863e",
+   "evidence": "ok-script.log (2026-10-13):244-246 '点进点位 go_nest:48:18（截图 nest_go）' / 'left_click gray_teleport (1351, 1007)'",
+   "sha256": "786009f63eff2c672d0e0b18b4e8cb25eae2e5da428922f3b5fea82cd793cdf9",
+   "date": "2026-10-13 09:27:37.359 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "梦枢天罗残象聚落",
+     "box": [
+      0.73,
+      0.0348,
+      0.8863,
+      0.079
+     ]
+    },
+    {
+     "region": "full",
+     "text": "已击败残象",
+     "box": [
+      0.6922,
+      0.3163,
+      0.77,
+      0.353
+     ]
+    },
+    {
+     "region": "full",
+     "text": "0/48",
+     "box": [
+      0.9044,
+      0.3216,
+      0.9444,
+      0.3531
+     ]
+    },
+    {
+     "region": "full",
+     "text": "快速旅行",
+     "box": [
+      0.7968,
+      0.9099,
+      0.869,
+      0.9515
+     ],
+     "evidence": "the gray_teleport click that followed this screen (see the frame's evidence)"
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [
+    {
+     "name": "gray_teleport",
+     "evidence": "the frame's evidence: the 'left_click gray_teleport (1351, 1007)' that followed this screenshot"
+    }
+   ],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "map_nest_detail/2026-10-12_114542_mengshu-banner.png",
+   "screen_id": "map_nest_detail",
+   "about": "map on 梦枢天罗残象聚落 with the banner 「目标位于梦枢天罗，请先前往此场景」, 0/48",
+   "shot": "nest_travel",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/11-45-42.651_nest_travel_original.png, original sha256 10965699307df6752907ff929f30ecfede3e15822b77d3f29c970cc6baf5616d",
+   "evidence": "ok-script.2026-10-12.log:2057-2059 '点进点位 go_nest:48:18（截图 nest_go）' / 'left_click gray_teleport (1351, 1007)'",
+   "sha256": "de354e0a5844c4cb2ee67a733d1bbd0584fe134a6f48880611b0be8d67079d91",
+   "date": "2026-10-12 11:45:42.651 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "梦枢天罗残象聚落",
+     "box": [
+      0.73,
+      0.0348,
+      0.8863,
+      0.079
+     ]
+    },
+    {
+     "region": "full",
+     "text": "已击败残象",
+     "box": [
+      0.6922,
+      0.3163,
+      0.77,
+      0.353
+     ]
+    },
+    {
+     "region": "full",
+     "text": "0/48",
+     "box": [
+      0.9044,
+      0.3216,
+      0.9444,
+      0.3531
+     ]
+    },
+    {
+     "region": "full",
+     "text": "快速旅行",
+     "box": [
+      0.7968,
+      0.9105,
+      0.8689,
+      0.9499
+     ],
+     "evidence": "the gray_teleport click that followed this screen (see the frame's evidence)"
+    },
+    {
+     "region": "full",
+     "text": "目标位于梦枢天罗，请先前往此场景",
+     "box": [
+      0.3739,
+      0.1793,
+      0.6275,
+      0.2236
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [
+    {
+     "name": "gray_teleport",
+     "evidence": "the frame's evidence: the 'left_click gray_teleport (1351, 1007)' that followed this screenshot"
+    }
+   ],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "challenge_success/2026-10-09_090850_tacet.png",
+   "screen_id": "challenge_success",
+   "about": "realm result 挑战成功 after a 无音清剿 (tacet) run, one row of drops, 退出副本 / 重新挑战",
+   "shot": "tacet_drops",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/09-08-50.702_tacet_drops_original.png, original sha256 6dd3458f05add21fef7894c3619689581ed6999431d02597106d10d74f60984b",
+   "evidence": "ok-script.2026-10-09.log:520 'BaseWWTask:current stamina: 57 must_use completed, no need to use back_up' (the shot tacet_drops at the same millisecond)",
+   "sha256": "b62b12a4406ae20e8094c443f942416c6709cae653513cb3960aee3ef4433ed1",
+   "date": "2026-10-09 09:08:50.702 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "挑战成功",
+     "box": [
+      0.4391,
+      0.2659,
+      0.5609,
+      0.3284
+     ]
+    },
+    {
+     "region": "full",
+     "text": "退出副本",
+     "box": [
+      0.333,
+      0.8345,
+      0.4054,
+      0.8761
+     ]
+    },
+    {
+     "region": "full",
+     "text": "重新挑战",
+     "box": [
+      0.5962,
+      0.8352,
+      0.6669,
+      0.8754
+     ]
+    },
+    {
+     "region": "full",
+     "text": "剩余57",
+     "box": [
+      0.589,
+      0.903,
+      0.6392,
+      0.9368
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "challenge_success/2026-09-21_102553_tacet.png",
+   "screen_id": "challenge_success",
+   "about": "realm result 挑战成功 after a tacet run, 剩余180",
+   "shot": "tacet_drops",
+   "source": "COS evidence bundle 2026-09-21_wuwa_OK-WW-05-33-53, ok-ww-log/screenshots/10-25-53.444_tacet_drops_original.png (OK-WW working/screenshots on the game PC), original sha256 23e6fc880c4f94334ce99bda98a27d76a4a4a7195dd0e858f5b968773f232fe4",
+   "evidence": "COS bundle 2026-09-21_wuwa_OK-WW-05-33-53 ok-ww-log/logs/ok-script.log:1603 'BaseWWTask:current stamina: -60 must_use completed, no need to use back_up'",
+   "sha256": "293125b31797b39f5c25c946efb57d726e65be7c536c1f86a62206af7b6de4a6",
+   "date": "2026-09-21 10:25:53.444 (game PC, UTC+8)",
+   "okww": "v3.6.7",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "挑战成功",
+     "box": [
+      0.4393,
+      0.2669,
+      0.5607,
+      0.3274
+     ]
+    },
+    {
+     "region": "full",
+     "text": "退出副本",
+     "box": [
+      0.333,
+      0.8345,
+      0.4054,
+      0.8761
+     ]
+    },
+    {
+     "region": "full",
+     "text": "重新挑战",
+     "box": [
+      0.5961,
+      0.8348,
+      0.6669,
+      0.8758
+     ]
+    },
+    {
+     "region": "full",
+     "text": "剩余180",
+     "box": [
+      0.586,
+      0.9025,
+      0.6436,
+      0.9373
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "challenge_success/2026-10-04_092525_tacet.png",
+   "screen_id": "challenge_success",
+   "about": "realm result 挑战成功 after a tacet run, one row of drops",
+   "shot": "tacet_drops",
+   "source": "COS evidence bundle 2026-10-04_wuwa_OK-WW-05-20-12, ok-ww-log/screenshots/09-25-25.532_tacet_drops_original.png (OK-WW working/screenshots on the game PC), original sha256 4b1b288c719ac88deaa245817ff7933430d3adde80a56aa800455b3703c5ca3e",
+   "evidence": "COS bundle 2026-10-04_wuwa_OK-WW-05-20-12 ok-ww-log/logs/ok-script.log:522 'BaseWWTask:current stamina: 59 must_use completed, no need to use back_up'",
+   "sha256": "5da385c67e81f10b90684682d888273216fad1be16a7dffcef500d8afd4c7832",
+   "date": "2026-10-04 09:25:25.532 (game PC, UTC+8)",
+   "okww": "v3.7.3",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "挑战成功",
+     "box": [
+      0.4393,
+      0.2673,
+      0.5607,
+      0.3271
+     ]
+    },
+    {
+     "region": "full",
+     "text": "退出副本",
+     "box": [
+      0.333,
+      0.8345,
+      0.4054,
+      0.8761
+     ]
+    },
+    {
+     "region": "full",
+     "text": "重新挑战",
+     "box": [
+      0.5963,
+      0.8355,
+      0.6668,
+      0.8751
+     ]
+    },
+    {
+     "region": "full",
+     "text": "剩余59",
+     "box": [
+      0.589,
+      0.903,
+      0.6421,
+      0.9368
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "challenge_success/2026-10-07_092750_tacet-double.png",
+   "screen_id": "challenge_success",
+   "about": "realm result 挑战成功 after a tacet run with 双倍 drops (two rows and more)",
+   "shot": "tacet_drops",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/09-27-50.690_tacet_drops_original.png, original sha256 0ee1e302f64b39ae6728ff73a46dae38eaa0cc8a76360d5e3d14081f09acedf4",
+   "evidence": "ok-script.2026-10-07.log:605 'BaseWWTask:current stamina: 0 must_use completed, no need to use back_up'",
+   "sha256": "cfd594d05009777d9323277e69a4c88c8c48acc7b421eb2b957b2f8503acb591",
+   "date": "2026-10-07 09:27:50.690 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "挑战成功",
+     "box": [
+      0.4393,
+      0.2671,
+      0.5607,
+      0.3272
+     ]
+    },
+    {
+     "region": "full",
+     "text": "退出副本",
+     "box": [
+      0.3331,
+      0.8328,
+      0.4052,
+      0.8752
+     ]
+    },
+    {
+     "region": "full",
+     "text": "重新挑战",
+     "box": [
+      0.5961,
+      0.8346,
+      0.667,
+      0.876
+     ]
+    },
+    {
+     "region": "full",
+     "text": "双倍",
+     "box": [
+      0.1966,
+      0.3729,
+      0.2322,
+      0.4071
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "challenge_success/2026-10-12_100232_tacet-double.png",
+   "screen_id": "challenge_success",
+   "about": "realm result 挑战成功 after a tacet run with 双倍 drops, 剩余0",
+   "shot": "tacet_drops",
+   "source": "COS evidence bundle 2026-10-12_wuwa_OK-WW-05-18-47, ok-ww-log/screenshots/10-02-32.363_tacet_drops_original.png (OK-WW working/screenshots on the game PC), original sha256 1fd783af4e0e4944dd441acf0072e53f22fc49c9c403f98f3d0af4a99db6387b",
+   "evidence": "ok-script.2026-10-12.log:1637 'BaseWWTask:current stamina: 0 not enough to continue'",
+   "sha256": "33782110cbc3e373dcf58d926b8afba0ac12d326c94b51764533f61ef91869c7",
+   "date": "2026-10-12 10:02:32.363 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "挑战成功",
+     "box": [
+      0.4407,
+      0.2671,
+      0.5607,
+      0.3272
+     ]
+    },
+    {
+     "region": "full",
+     "text": "退出副本",
+     "box": [
+      0.3331,
+      0.8353,
+      0.4052,
+      0.8752
+     ]
+    },
+    {
+     "region": "full",
+     "text": "重新挑战",
+     "box": [
+      0.5961,
+      0.8346,
+      0.667,
+      0.876
+     ]
+    },
+    {
+     "region": "full",
+     "text": "双倍",
+     "box": [
+      0.1966,
+      0.3729,
+      0.2322,
+      0.4071
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "challenge_success/2026-10-05_103831_tacet-double.png",
+   "screen_id": "challenge_success",
+   "about": "realm result 挑战成功 after a tacet run with 双倍 drops",
+   "shot": "tacet_drops",
+   "source": "COS evidence bundle 2026-10-05_wuwa_OK-WW-05-39-25, ok-ww-log/screenshots/10-38-31.989_tacet_drops_original.png (OK-WW working/screenshots on the game PC), original sha256 b72bc5e488e8792bdc98f95f1c30f75f9b8c3a02f483a4c4e5d65e8f7dd85cfd",
+   "evidence": "COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-ww-log/logs/ok-script.log:1687 'BaseWWTask:current stamina: 0 must_use completed, no need to use back_up'",
+   "sha256": "ecfe8732613ad15c4fbfbf6a7b28e525e22c22c99de5a7f25c2eb7ba62f4434e",
+   "date": "2026-10-05 10:38:31.989 (game PC, UTC+8)",
+   "okww": "v3.7.3",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "挑战成功",
+     "box": [
+      0.4391,
+      0.2654,
+      0.5609,
+      0.3289
+     ]
+    },
+    {
+     "region": "full",
+     "text": "退出副本",
+     "box": [
+      0.3331,
+      0.8328,
+      0.4052,
+      0.8752
+     ]
+    },
+    {
+     "region": "full",
+     "text": "重新挑战",
+     "box": [
+      0.5961,
+      0.8347,
+      0.667,
+      0.8759
+     ]
+    },
+    {
+     "region": "full",
+     "text": "双倍",
+     "box": [
+      0.1966,
+      0.3729,
+      0.2322,
+      0.4071
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "challenge_success/2026-10-12_152737_weekly.png",
+   "screen_id": "challenge_success",
+   "about": "realm result 挑战成功 after the weekly boss claim (x450 x180 x54000 x10 x3 x8), 退出副本 / 重新挑战",
+   "shot": "weekly_claimed",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/15-27-37.761_weekly_claimed_original.png, original sha256 75fd50fe67bbec6b501a9fc314ade9bb0bc9553634452f565ce4e24c9a3f4cd1",
+   "evidence": "ok-script.2026-10-12.log:2710-2712 '周本领奖：已点确认' / 'left_click 退出副本 (707, 920)' / '周本领奖：结算页点了「退出副本」'",
+   "sha256": "5bff0568494e8a3378371e90c6db98904fdb6526c5abbdb7953eb4a5caba6ca0",
+   "date": "2026-10-12 15:27:37.761 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "挑战成功",
+     "box": [
+      0.4391,
+      0.266,
+      0.5609,
+      0.3283
+     ]
+    },
+    {
+     "region": "full",
+     "text": "退出副本",
+     "box": [
+      0.3346,
+      0.8326,
+      0.4053,
+      0.8754
+     ],
+     "evidence": "ok-script.2026-10-12.log:2711 'left_click 退出副本 (707, 920)'"
+    },
+    {
+     "region": "full",
+     "text": "重新挑战",
+     "box": [
+      0.5962,
+      0.835,
+      0.6669,
+      0.8756
+     ]
+    },
+    {
+     "region": "full",
+     "text": "54000",
+     "box": [
+      0.432,
+      0.5538,
+      0.4939,
+      0.5858
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "challenge_success/2026-10-12_153157_weekly.png",
+   "screen_id": "challenge_success",
+   "about": "realm result 挑战成功 after the weekly boss claim, 退出副本 / 重新挑战",
+   "shot": "weekly_claimed",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/15-31-57.430_weekly_claimed_original.png, original sha256 7aecf87ae5b0ae63d74a5fab03cfacb4e442383860207492d1e5bba67e0e582f",
+   "evidence": "ok-script.2026-10-12.log:2880-2882 '周本领奖：已点确认' / 'left_click 退出副本 (707, 920)' / '周本领奖：结算页点了「退出副本」'",
+   "sha256": "2f8e6884a45e796626d44b522ef78dfeb2f90be507daf405aa86b18bd232a9b8",
+   "date": "2026-10-12 15:31:57.430 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "挑战成功",
+     "box": [
+      0.4392,
+      0.2662,
+      0.5608,
+      0.3281
+     ]
+    },
+    {
+     "region": "full",
+     "text": "退出副本",
+     "box": [
+      0.3346,
+      0.8326,
+      0.4053,
+      0.8754
+     ],
+     "evidence": "ok-script.2026-10-12.log:2881 'left_click 退出副本 (707, 920)'"
+    },
+    {
+     "region": "full",
+     "text": "重新挑战",
+     "box": [
+      0.5962,
+      0.8354,
+      0.6669,
+      0.8752
+     ]
+    },
+    {
+     "region": "full",
+     "text": "54000",
+     "box": [
+      0.432,
+      0.5538,
+      0.4939,
+      0.5858
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "boss_level_page/2026-10-12_095116_3of3.png",
+   "screen_id": "boss_level_page",
+   "about": "weekly boss 天演溯心 level page (定序诸理之律): 推荐等级40-90, 本周剩余可收取次数：3/3, 单人挑战",
+   "shot": "early_open_team",
+   "source": "COS evidence bundle 2026-10-12_wuwa_OK-WW-05-18-47, ok-ww-log/screenshots/09-51-16.594_early_open_team_original.png (OK-WW working/screenshots on the game PC), original sha256 bb48fefffe607734dfecfe82a22793fb7898a4e85f28317a062433e5e4355f06",
+   "evidence": "ok-script.2026-10-12.log:1083-1085 '周本本周剩余次数原文: [本周剩余可收取次数：3/3_1.00, x60_0.79]' / '周本名称原文: [天演溯心_1.00]' / 'left_click 推荐等级90 (280, 609)'",
+   "sha256": "a8a0c139609fe467eaacaf1c35001b9413ce583e81deeab20aba99db4025fe32",
+   "date": "2026-10-12 09:51:16.594 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "weekly_left",
+     "text": "本周剩余可收取次数：3/3",
+     "box": [
+      0.6384,
+      0.833,
+      0.8063,
+      0.867
+     ],
+     "evidence": "ok-script.2026-10-12.log:1083-1084"
+    },
+    {
+     "region": "boss_name",
+     "text": "天演溯心",
+     "box": [
+      0.6326,
+      0.1404,
+      0.7162,
+      0.1827
+     ],
+     "evidence": "ok-script.2026-10-12.log:1083-1084"
+    },
+    {
+     "region": "solo",
+     "text": "单人挑战",
+     "box": [
+      0.7648,
+      0.8896,
+      0.8369,
+      0.9295
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级90",
+     "box": [
+      0.0977,
+      0.5488,
+      0.1871,
+      0.5855
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级40",
+     "box": [
+      0.105,
+      0.1588,
+      0.19,
+      0.1957
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "240/240",
+     "box": [
+      0.8055,
+      0.0446,
+      0.8791,
+      0.0794
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "23",
+     "box": [
+      0.6995,
+      0.0423,
+      0.7293,
+      0.079
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "boss_level_page/2026-10-12_152814_2of3.png",
+   "screen_id": "boss_level_page",
+   "about": "weekly boss 天演溯心 level page, 本周剩余可收取次数：2/3",
+   "shot": "early_open_team",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/15-28-14.455_early_open_team_original.png, original sha256 a69f031c80d6720655c2fc832f6e2048b16f4400a17feb4548933faaf2706bbe",
+   "evidence": "ok-script.2026-10-12.log:2731-2734 '周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]' / '回读确认领到，本周剩余 3/3→2/3' / '周本名称原文: [天演溯心_1.00]'",
+   "sha256": "d7458a6742ca1c809fa7163e2bfb43d87c9c7d8b7cff3ca0dddb76b90a26f509",
+   "date": "2026-10-12 15:28:14.455 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "weekly_left",
+     "text": "本周剩余可收取次数：2/3",
+     "box": [
+      0.6384,
+      0.833,
+      0.8063,
+      0.867
+     ],
+     "evidence": "ok-script.2026-10-12.log:2731-2733"
+    },
+    {
+     "region": "boss_name",
+     "text": "天演溯心",
+     "box": [
+      0.6326,
+      0.1405,
+      0.7177,
+      0.1825
+     ],
+     "evidence": "ok-script.2026-10-12.log:2731-2733"
+    },
+    {
+     "region": "solo",
+     "text": "单人挑战",
+     "box": [
+      0.7648,
+      0.8897,
+      0.8369,
+      0.9294
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级90",
+     "box": [
+      0.0963,
+      0.5488,
+      0.1871,
+      0.5855
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级40",
+     "box": [
+      0.105,
+      0.1588,
+      0.19,
+      0.1957
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "18/240",
+     "box": [
+      0.8143,
+      0.0449,
+      0.879,
+      0.0792
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "boss_level_page/2026-10-12_153032_1of3.png",
+   "screen_id": "boss_level_page",
+   "about": "weekly boss 天演溯心 level page, 本周剩余可收取次数：1/3",
+   "shot": "early_open_team",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/15-30-32.202_early_open_team_original.png, original sha256 97d2cb29da0a48e29622f56c6c3ed01f28ce9b2487bdd6c4862a881de1fc2c1d",
+   "evidence": "ok-script.2026-10-12.log:2820-2822 '周本本周剩余次数原文: [本周剩余可收取次数：1/3_1.00, x60_0.79]' / '回读确认领到，本周剩余 2/3→1/3' / '周本名称原文: [天演溯心_1.00]'",
+   "sha256": "8f63d5bfdbf77dbc2c1628f7fc9a509cc96606c0030a8fd39ac7410b4c244a65",
+   "date": "2026-10-12 15:30:32.202 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "weekly_left",
+     "text": "本周剩余可收取次数：1/3",
+     "box": [
+      0.6384,
+      0.833,
+      0.8063,
+      0.867
+     ],
+     "evidence": "ok-script.2026-10-12.log:2820-2822"
+    },
+    {
+     "region": "boss_name",
+     "text": "天演溯心",
+     "box": [
+      0.6326,
+      0.1405,
+      0.7177,
+      0.1825
+     ],
+     "evidence": "ok-script.2026-10-12.log:2820-2822"
+    },
+    {
+     "region": "solo",
+     "text": "单人挑战",
+     "box": [
+      0.7648,
+      0.8897,
+      0.8369,
+      0.9294
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级90",
+     "box": [
+      0.0963,
+      0.5488,
+      0.1871,
+      0.5855
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级40",
+     "box": [
+      0.105,
+      0.1588,
+      0.19,
+      0.1957
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "18/240",
+     "box": [
+      0.8143,
+      0.0449,
+      0.879,
+      0.0792
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "boss_level_page/2026-10-12_153233_0of3.png",
+   "screen_id": "boss_level_page",
+   "about": "weekly boss 天演溯心 level page, 本周剩余可收取次数：0/3 (the skip)",
+   "shot": "early_open_team",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/15-32-33.934_early_open_team_original.png, original sha256 04c5bc773947db38a0d8c0c96805eac2ab4d3db27e7f373eaf210d3824819bd4",
+   "evidence": "ok-script.2026-10-12.log:2901-2903 '周本本周剩余次数原文: [本周剩余可收取次数：0/3_0.99, x60_0.79]' / '回读确认领到，本周剩余 1/3→0/3' / '本周周本次数已领满（0/3），不进本，跳过'",
+   "sha256": "2976ef3180b629a226a84508b7a5e8eb232b85617ff71b8501f84dbe4781d3db",
+   "date": "2026-10-12 15:32:33.934 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "weekly_left",
+     "text": "本周剩余可收取次数：0/3",
+     "box": [
+      0.6384,
+      0.833,
+      0.8063,
+      0.867
+     ],
+     "evidence": "ok-script.2026-10-12.log:2901"
+    },
+    {
+     "region": "boss_name",
+     "text": "天演溯心",
+     "box": [
+      0.6326,
+      0.1405,
+      0.7177,
+      0.1825
+     ],
+     "evidence": "ok-script.2026-10-12.log:2901"
+    },
+    {
+     "region": "solo",
+     "text": "单人挑战",
+     "box": [
+      0.7648,
+      0.8896,
+      0.8369,
+      0.9295
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级90",
+     "box": [
+      0.0963,
+      0.5488,
+      0.1871,
+      0.5855
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级40",
+     "box": [
+      0.105,
+      0.1588,
+      0.19,
+      0.1957
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "19/240",
+     "box": [
+      0.8157,
+      0.0449,
+      0.879,
+      0.0791
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "boss_level_page/2026-10-06_092152_0of3.png",
+   "screen_id": "boss_level_page",
+   "about": "weekly boss 天演溯心 level page, 本周剩余可收取次数：0/3 (the skip)",
+   "shot": "early_open_team",
+   "source": "COS evidence bundle 2026-10-06_wuwa_OK-WW-05-19-08, ok-ww-log/screenshots/09-21-52.133_early_open_team_original.png (OK-WW working/screenshots on the game PC), original sha256 dbfd9bab495849d0bef1d51f78277bc7a176d853187f967d04d4002972203cb3",
+   "evidence": "ok-script.2026-10-06.log:175-176 '周本本周剩余次数原文: [本周剩余可收取次数：0/3_0.99, x60_0.79]' / '本周周本次数已领满（0/3），不进本，跳过'",
+   "sha256": "9baa7beba661d3bddec993694eea03dd57f3fa06005ea9a7fd61048c57e94c20",
+   "date": "2026-10-06 09:21:52.133 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "weekly_left",
+     "text": "本周剩余可收取次数：0/3",
+     "box": [
+      0.6384,
+      0.833,
+      0.8063,
+      0.867
+     ],
+     "evidence": "ok-script.2026-10-06.log:175"
+    },
+    {
+     "region": "boss_name",
+     "text": "天演溯心",
+     "box": [
+      0.6326,
+      0.1404,
+      0.7177,
+      0.1827
+     ],
+     "evidence": "ok-script.2026-10-06.log:175"
+    },
+    {
+     "region": "solo",
+     "text": "单人挑战",
+     "box": [
+      0.7648,
+      0.8896,
+      0.8369,
+      0.9295
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级90",
+     "box": [
+      0.0963,
+      0.5488,
+      0.1871,
+      0.5855
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级40",
+     "box": [
+      0.105,
+      0.1588,
+      0.19,
+      0.1957
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "110/240",
+     "box": [
+      0.8055,
+      0.0446,
+      0.8791,
+      0.0794
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "77",
+     "box": [
+      0.6995,
+      0.0423,
+      0.7293,
+      0.079
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "boss_level_page/2026-09-21_102043_qiankui.png",
+   "screen_id": "boss_level_page",
+   "about": "weekly boss 千傀重楼 level page (失坠困咎之庭): 推荐等级40-90, 本周剩余可收取次数：3/3, 单人挑战",
+   "shot": "weekly_remaining",
+   "source": "COS evidence bundle 2026-09-21_wuwa_OK-WW-05-33-53, ok-ww-log/screenshots/10-20-43.029_weekly_remaining_original.png (OK-WW working/screenshots on the game PC), original sha256 3a76a7fc90fe7acf476720788f21ffcdace3154fac33807208480d6956f74716",
+   "evidence": "COS bundle 2026-09-21_wuwa_OK-WW-05-33-53 ok-ww-log/logs/ok-script.log:1239-1241 '周本本周剩余次数原文: [本周剩余可收取次数：3/3_0.99, x60_0.79]' / '周本名称原文: [千傀重楼_1.00]' / 'left_click 推荐等级90 (281, 609)'",
+   "sha256": "1d552a2415210b113c75ef1f2fdb3c7063180e5d72363320b6cdb6ba49044697",
+   "date": "2026-09-21 10:20:43.029 (game PC, UTC+8)",
+   "okww": "v3.6.7",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "weekly_left",
+     "text": "本周剩余可收取次数：3/3",
+     "box": [
+      0.6384,
+      0.833,
+      0.8063,
+      0.8697
+     ],
+     "evidence": "COS bundle 2026-09-21_wuwa_OK-WW-05-33-53 ok-ww-log/logs/ok-script.log:1239-1240"
+    },
+    {
+     "region": "boss_name",
+     "text": "千傀重楼",
+     "box": [
+      0.6335,
+      0.1367,
+      0.7165,
+      0.1892
+     ],
+     "evidence": "COS bundle 2026-09-21_wuwa_OK-WW-05-33-53 ok-ww-log/logs/ok-script.log:1239-1240"
+    },
+    {
+     "region": "solo",
+     "text": "单人挑战",
+     "box": [
+      0.7648,
+      0.8896,
+      0.8369,
+      0.9295
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级90",
+     "box": [
+      0.0977,
+      0.5484,
+      0.1872,
+      0.5859
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级40",
+     "box": [
+      0.1049,
+      0.1575,
+      0.1887,
+      0.1965
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "240/240",
+     "box": [
+      0.8055,
+      0.0447,
+      0.879,
+      0.0793
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "55",
+     "box": [
+      0.6995,
+      0.0451,
+      0.7278,
+      0.079
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "boss_level_page/2026-09-21_102058_qiankui.png",
+   "screen_id": "boss_level_page",
+   "about": "weekly boss 千傀重楼 level page, 单人挑战 still on screen 10 s after the click (the 「no 开启挑战」 case)",
+   "shot": "no_start_btn",
+   "source": "COS evidence bundle 2026-09-21_wuwa_OK-WW-05-33-53, ok-ww-log/screenshots/10-20-58.624_no_start_btn_original.png (OK-WW working/screenshots on the game PC), original sha256 846b9cac9cf6524e3da69f0548110d0a01e3d71208b944bb1c7d93d229e0b1ea",
+   "evidence": "COS bundle 2026-09-21_wuwa_OK-WW-05-33-53 ok-ww-log/logs/ok-script.log:1243 '找不到开启挑战，整屏读到: [失坠困咎之庭_1.00, 55_1.00, 240/240+_0.99, 推荐等级40_1.00, 千傀重楼_1.00, ... 本周剩余可收取次数：3/3_1.00, ×60_0.87, 单人挑战_1.00, ...]'",
+   "sha256": "1d5dce458fa3a369d792125008e3be0d61620df21ae373a3a72975623c05617a",
+   "date": "2026-09-21 10:20:58.624 (game PC, UTC+8)",
+   "okww": "v3.6.7",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "weekly_left",
+     "text": "本周剩余可收取次数：3/3",
+     "box": [
+      0.6384,
+      0.833,
+      0.8063,
+      0.8697
+     ],
+     "evidence": "COS bundle 2026-09-21_wuwa_OK-WW-05-33-53 ok-ww-log/logs/ok-script.log:1243 (full-screen read)"
+    },
+    {
+     "region": "boss_name",
+     "text": "千傀重楼",
+     "box": [
+      0.6335,
+      0.1367,
+      0.7165,
+      0.1892
+     ],
+     "evidence": "COS bundle 2026-09-21_wuwa_OK-WW-05-33-53 ok-ww-log/logs/ok-script.log:1243 (full-screen read)"
+    },
+    {
+     "region": "solo",
+     "text": "单人挑战",
+     "box": [
+      0.7648,
+      0.8896,
+      0.8369,
+      0.9295
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级90",
+     "box": [
+      0.0977,
+      0.5484,
+      0.1872,
+      0.5859
+     ]
+    },
+    {
+     "region": "level_list",
+     "text": "推荐等级40",
+     "box": [
+      0.1049,
+      0.1575,
+      0.1887,
+      0.1965
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "240/240",
+     "box": [
+      0.8055,
+      0.0447,
+      0.879,
+      0.0793
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "55",
+     "box": [
+      0.6995,
+      0.0451,
+      0.7278,
+      0.079
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "waveplate_topup/2026-10-12_114452.png",
+   "screen_id": "waveplate_topup",
+   "about": "top-up dialog 补充结晶波片 「请选择补充方式」 over the weekly realm, top bar 0 / 41/240 / 15652; the shot is named weekly_claimed because it was taken right after the 确认 click",
+   "shot": "weekly_claimed",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/11-44-52.609_weekly_claimed_original.png, original sha256 a90ab1d835d265c91934e5034c5c774156eddf0284876f2d896e90470a86e78e",
+   "evidence": "ok-script.2026-10-12.log:2007 '周本领奖：已点确认' (the shot weekly_claimed at the same millisecond)",
+   "sha256": "1f46195200350611c0d1b2a6cc66c02b26c2dfb5db91297da02573beaecc3d4b",
+   "date": "2026-10-12 11:44:52.609 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "0",
+     "box": [
+      0.4865,
+      0.046,
+      0.5035,
+      0.0745
+     ]
+    },
+    {
+     "region": "full",
+     "text": "41/240",
+     "box": [
+      0.5904,
+      0.0474,
+      0.6552,
+      0.0818
+     ]
+    },
+    {
+     "region": "full",
+     "text": "15652",
+     "box": [
+      0.7474,
+      0.0448,
+      0.8049,
+      0.0792
+     ]
+    },
+    {
+     "region": "full",
+     "text": "补充结晶波片",
+     "box": [
+      0.182,
+      0.1766,
+      0.2831,
+      0.216
+     ]
+    },
+    {
+     "region": "full",
+     "text": "请选择补充方式",
+     "box": [
+      0.4393,
+      0.2617,
+      0.5549,
+      0.3012
+     ]
+    },
+    {
+     "region": "full",
+     "text": "取消",
+     "box": [
+      0.2794,
+      0.704,
+      0.3209,
+      0.743
+     ]
+    },
+    {
+     "region": "full",
+     "text": "确认",
+     "box": [
+      0.6733,
+      0.704,
+      0.7148,
+      0.743
+     ]
+    },
+    {
+     "region": "stamina",
+     "text": "41/240",
+     "box": [
+      0.5904,
+      0.0474,
+      0.6552,
+      0.0818
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "waveplate_topup/2026-10-12_114502.png",
+   "screen_id": "waveplate_topup",
+   "about": "top-up dialog 补充结晶波片 「请选择补充方式」, top bar 0 / 41/240 / 15652, 取消 / 确认",
+   "shot": "weekly_no_settlement",
+   "source": "game PC D:/ark/okww/data/apps/ok-ww/working/screenshots/11-45-02.499_weekly_no_settlement_original.png, original sha256 7f291fe710ae152542a46f901323bbde6ae901446a6a1016dbf8cc4f4c420555",
+   "evidence": "ok-script.2026-10-12.log:2008 '周本领奖：点了确认后没等到结算页（没有「退出副本」），停下不按 ESC。整屏读到 [0_1.00, 41/240_1.00, 🌟_0.53, 15652_1.00, +_0.76, 补充结晶波片_1.00, 请选择补充方式_1.00, 19_0.99, 15652_1.00, 提取等量结晶单质_1.00, 下次恢复：03:31_0.99, 全部恢复：19:51:31_0.99, 取消_1.00, 确认_1.00, ...]'",
+   "sha256": "3339ba774b5e92913fba93f6248f8c67843eae115562ca8f0fb025105061c1e2",
+   "date": "2026-10-12 11:45:02.499 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "0",
+     "box": [
+      0.4865,
+      0.046,
+      0.5035,
+      0.0745
+     ],
+     "evidence": "ok-script.2026-10-12.log:2008 (full-screen read: 0, 41/240, 15652, 补充结晶波片, 请选择补充方式, ..., 取消, 确认)"
+    },
+    {
+     "region": "full",
+     "text": "41/240",
+     "box": [
+      0.5904,
+      0.0474,
+      0.6552,
+      0.0818
+     ],
+     "evidence": "ok-script.2026-10-12.log:2008 (full-screen read: 0, 41/240, 15652, 补充结晶波片, 请选择补充方式, ..., 取消, 确认)"
+    },
+    {
+     "region": "full",
+     "text": "15652",
+     "box": [
+      0.7474,
+      0.0448,
+      0.8049,
+      0.0792
+     ],
+     "evidence": "ok-script.2026-10-12.log:2008 (full-screen read: 0, 41/240, 15652, 补充结晶波片, 请选择补充方式, ..., 取消, 确认)"
+    },
+    {
+     "region": "full",
+     "text": "补充结晶波片",
+     "box": [
+      0.182,
+      0.1767,
+      0.2831,
+      0.216
+     ],
+     "evidence": "ok-script.2026-10-12.log:2008 (full-screen read: 0, 41/240, 15652, 补充结晶波片, 请选择补充方式, ..., 取消, 确认)"
+    },
+    {
+     "region": "full",
+     "text": "请选择补充方式",
+     "box": [
+      0.4379,
+      0.2617,
+      0.5549,
+      0.3012
+     ],
+     "evidence": "ok-script.2026-10-12.log:2008 (full-screen read: 0, 41/240, 15652, 补充结晶波片, 请选择补充方式, ..., 取消, 确认)"
+    },
+    {
+     "region": "full",
+     "text": "取消",
+     "box": [
+      0.2794,
+      0.704,
+      0.3209,
+      0.743
+     ],
+     "evidence": "ok-script.2026-10-12.log:2008 (full-screen read: 0, 41/240, 15652, 补充结晶波片, 请选择补充方式, ..., 取消, 确认)"
+    },
+    {
+     "region": "full",
+     "text": "确认",
+     "box": [
+      0.6733,
+      0.704,
+      0.7148,
+      0.743
+     ],
+     "evidence": "ok-script.2026-10-12.log:2008 (full-screen read: 0, 41/240, 15652, 补充结晶波片, 请选择补充方式, ..., 取消, 确认)"
+    },
+    {
+     "region": "stamina",
+     "text": "41/240",
+     "box": [
+      0.5904,
+      0.0474,
+      0.6552,
+      0.0818
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "weekly_boss_fight/2026-10-12_095220.png",
+   "screen_id": "weekly_boss_fight",
+   "about": "inside the weekly realm, boss bar up: 「Lv. 90 天演溯心·衍律化形」, task 击败敌人",
+   "shot": "weekly_claim_error",
+   "source": "COS evidence bundle 2026-10-12_wuwa_OK-WW-05-18-47, ok-ww-log/screenshots/09-52-20.803_weekly_claim_error_original.png (OK-WW working/screenshots on the game PC), original sha256 50a45f0214ca4b83a70cb701dcfcd200791911141c822d459bf4542ae5bccd77",
+   "evidence": "ok-script.2026-10-12.log:1181-1182 'wait_until timeout <function BaseWWTask.do_walk_to_box...> 30.0 seconds' / '周本领奖：这一步没做成 WaitFailedException()，停下不乱点'",
+   "sha256": "f934b8ee050e7d3bd127b7c46f2a63d72c23b0b2970ccd0e43b2906e2f4bab5b",
+   "date": "2026-10-12 09:52:20.803 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "天演溯心",
+     "box": [
+      0.4102,
+      0.0141,
+      0.5912,
+      0.0505
+     ]
+    },
+    {
+     "region": "full",
+     "text": "击败敌人",
+     "box": [
+      0.0047,
+      0.2466,
+      0.0796,
+      0.2831
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "daily_activity/2026-10-11_092951_140.png",
+   "screen_id": "daily_activity",
+   "about": "F2 book 活跃行迹 > 活跃度: 140 points, chest row 20-100 (20-80 ticked, 100 not)",
+   "shot": "daily_reward_unclaimed",
+   "source": "COS evidence bundle 2026-10-11_wuwa_OK-WW-05-19-13, ok-ww-log/screenshots/09-29-51.440_daily_reward_unclaimed_original.png (OK-WW working/screenshots on the game PC), original sha256 c8526e30a1a7f2f9fd850aa606633572e83c8c44cc09e3cf4fb9ade771a35957",
+   "evidence": "ok-script.2026-10-11.log:670-674 '活跃奖励：点 60 档宝箱（1259,958）' ... '活跃奖励没领到：100 档点了没领到（活跃度 140，各档对勾分 20:0.94，40:0.93，60:0.98，80:0.95，100:0.35）'",
+   "sha256": "4617792c39c1adad06d7da065e71602bf0558ff7092821567e334d7eed2fc17a",
+   "date": "2026-10-11 09:29:51.440 (game PC, UTC+8)",
+   "okww": "v3.7.4",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "daily_tiers",
+     "text": "20",
+     "box": [
+      0.3492,
+      0.8923,
+      0.3775,
+      0.9291
+     ],
+     "evidence": "ok-script.2026-10-11.log:674 '各档对勾分 20:0.94，40:0.93，60:0.98，80:0.95，100:0.35'"
+    },
+    {
+     "region": "daily_tiers",
+     "text": "40",
+     "box": [
+      0.4815,
+      0.8923,
+      0.5113,
+      0.9291
+     ],
+     "evidence": "ok-script.2026-10-11.log:674 '各档对勾分 20:0.94，40:0.93，60:0.98，80:0.95，100:0.35'"
+    },
+    {
+     "region": "daily_tiers",
+     "text": "60",
+     "box": [
+      0.6152,
+      0.8923,
+      0.6435,
+      0.9291
+     ],
+     "evidence": "ok-script.2026-10-11.log:674 '各档对勾分 20:0.94，40:0.93，60:0.98，80:0.95，100:0.35'"
+    },
+    {
+     "region": "daily_tiers",
+     "text": "80",
+     "box": [
+      0.7475,
+      0.8923,
+      0.7773,
+      0.9291
+     ],
+     "evidence": "ok-script.2026-10-11.log:674 '各档对勾分 20:0.94，40:0.93，60:0.98，80:0.95，100:0.35'"
+    },
+    {
+     "region": "daily_tiers",
+     "text": "100",
+     "box": [
+      0.8725,
+      0.8951,
+      0.9081,
+      0.9265
+     ],
+     "evidence": "ok-script.2026-10-11.log:674 '各档对勾分 20:0.94，40:0.93，60:0.98，80:0.95，100:0.35'"
+    },
+    {
+     "region": "daily_points",
+     "text": "140",
+     "box": [
+      0.1908,
+      0.8384,
+      0.2467,
+      0.8827
+     ],
+     "evidence": "ok-script.2026-10-11.log:674 '活跃度 140'"
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "map_open/2026-10-05_103522.png",
+   "screen_id": "map_open",
+   "about": "the map left open over 落渊南丘 (探索度 100%), 万相空间 layer, 切换地图; F2 then found no book",
+   "shot": "NightmareNestTask",
+   "source": "COS evidence bundle 2026-10-05_wuwa_OK-WW-05-39-25, ok-ww-log/screenshots/10-35-22.373_NightmareNestTask_original.png (OK-WW working/screenshots on the game PC), original sha256 ec7c153cdf8b19d64429675d4b944da12a277e67c8937b207609da484ba57e3b",
+   "evidence": "COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-ww-log/logs/ok-script.log:1476-1478 'wait_until timeout <function BaseWWTask.wait_book...> 3 seconds' / 'found gray_book_boss None' / 'can't find gray_book_boss, make sure f2 is the hotkey for book'",
+   "sha256": "0db06bd7d74177484eeebf902e23529427599f4fc264aac630c8ff58de9be702",
+   "date": "2026-10-05 10:35:22.373 (game PC, UTC+8)",
+   "okww": "v3.7.3",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "落渊南丘",
+     "box": [
+      0.0411,
+      0.0606,
+      0.1101,
+      0.097
+     ]
+    },
+    {
+     "region": "full",
+     "text": "切换地图",
+     "box": [
+      0.7794,
+      0.9158,
+      0.8441,
+      0.9525
+     ]
+    },
+    {
+     "region": "full",
+     "text": "万相空间",
+     "box": [
+      0.8637,
+      0.7451,
+      0.9299,
+      0.782
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
+   "features": [],
+   "cases_using": [
+    "okww/test_frame_truth.py"
+   ]
+  }
+ ],
+ "regions": {
+  "full": {
+   "box": [
+    0.0,
+    0.0,
+    1.0,
+    1.0
+   ],
+   "file": "overlay",
+   "call": "task.ocr(box=task.box_of_screen(0.0, 0.0, 1.0, 1.0))",
+   "why": "AO _screen_read: the claim dialog, the top bar (_waveplates), the 单人挑战 reminder, every 「整屏读到」 line"
+  },
+  "nest_list": {
+   "box": [
+    0.35,
+    0.25,
+    1.0,
+    0.96
+   ],
+   "file": "upstream:src/task/NightmareNestTask.py",
+   "call": "self.ocr(0.35, 0.25, 1, 0.96",
+   "why": "upstream find_nest's list box (v3.7.4 NightmareNestTask.py:229); AO's find_nest reads the same box, its top taken from that line (_upstream_nest_top)"
+  },
+  "stamina": {
+   "box": [
+    0.49,
+    0.0,
+    0.92,
+    0.1
+   ],
+   "file": "overlay",
+   "call": "STAMINA_BOX = (0.49, 0.0, 0.92, 0.10)",
+   "why": "AO get_stamina / _read_stamina (upstream BaseWWTask.get_stamina's own box)"
+  },
+  "weekly_left": {
+   "box": [
+    0.58,
+    0.8,
+    0.98,
+    0.9
+   ],
+   "file": "overlay",
+   "call": "self.ocr(box=self.box_of_screen(0.58, 0.80, 0.98, 0.90))",
+   "why": "AO click_configured_boss_level: 本周剩余可收取次数 before entering, and the read-back after a claim"
+  },
+  "boss_name": {
+   "box": [
+    0.62,
+    0.13,
+    0.86,
+    0.2
+   ],
+   "file": "overlay",
+   "call": "self.ocr(box=self.box_of_screen(0.62, 0.13, 0.86, 0.20))",
+   "why": "AO click_configured_boss_level: 周本名称原文"
+  },
+  "solo": {
+   "box": [
+    0.6,
+    0.84,
+    0.98,
+    0.96
+   ],
+   "file": "overlay",
+   "call": "SOLO_BOX = (0.60, 0.84, 0.98, 0.96)",
+   "why": "AO _confirm_solo: where 单人挑战 is looked for before a re-click"
+  },
+  "level_list": {
+   "box": [
+    0.03,
+    0.113,
+    0.323,
+    0.66
+   ],
+   "file": "overlay",
+   "call": "self.ocr(box=self.box_of_screen(0.030, 0.113, 0.323, 0.660))",
+   "why": "AO boss_challenge_level: the 推荐等级 list on a level page"
+  },
+  "daily_tiers": {
+   "box": [
+    0.2,
+    0.75,
+    1.0,
+    1.0
+   ],
+   "file": "overlay",
+   "call": "task.ocr(0.2, 0.75, 1.0, 1.0, match=re.compile(r'^(20|40|60|80|100)$'))",
+   "why": "AO _bar: the chest tier labels of the daily activity row"
+  },
+  "daily_points": {
+   "box": [
+    0.19,
+    0.8,
+    0.3,
+    0.93
+   ],
+   "file": "overlay",
+   "call": "task.ocr(0.19, 0.8, 0.30, 0.93, match=re.compile(r'(\\d+)'))",
+   "why": "AO _read_points: the activity points"
+  }
+ },
+ "unrecorded": [
+  {
+   "screen_id": "weekly_claim_dialog",
+   "wanted_by": "design 1 Weekly (crystal F -> claim dialog), 6.1 「领取奖励需消耗60」",
+   "logged_ocr": "ok-script.2026-10-12.log:2001, :2705, :2793 '周本领奖：认出弹窗，点确认。读到 ...' - cut at 400 characters after the first top-bar box ('24', '0', '0'); the dialog's own text is in no log",
+   "provisional_text": "领取奖励 (the overlay's own test, handle_claim_button: \"领取奖励\" not in text -> upstream ESC)"
+  },
+  {
+   "screen_id": "no_reward_reminder",
+   "wanted_by": "design 1 Entry screens 「无法获取奖励」, 6.1; P3 click_solo_challenge",
+   "logged_ocr": "none: ok-script.2026-10-12.log:1866-1869 (11:43:16) and :2735-2740 (15:28:19) show upstream confirming it ('confirm dialog exists, click confirm', skip_dialog_check) without a read",
+   "provisional_text": "无法获取奖励，是否继续进入 (upstream v3.7.4 FarmEchoTask.py:374-378 comment); 结晶波片不足 (the overlay's click_solo_challenge test)"
+  },
+  {
+   "screen_id": "spoiler_dialog",
+   "wanted_by": "design 1 Entry screens (spoiler), 6.1",
+   "logged_ocr": "ok-script.2026-10-06.log:169 '限时提前开放的剧情提示框，点确认前往。框里读到：Box(name='提前到达目标位置可能影响剧情体验，是否确认前往？', x=600, y=502, width=693, height=33, confidence=99)' (the same text on 11 more days)",
+   "provisional_text": "提前到达目标位置可能影响剧情体验，是否确认前往？"
+  },
+  {
+   "screen_id": "team_screen",
+   "wanted_by": "design 1 Entry screens (team screen, Boss Challenge team page), Echo farm",
+   "logged_ocr": "ok-script.log (2026-10-13):2132 '刷声骸选等级：前往后是队伍界面（没有选等级页）... 整屏读到 Box(name='队伍5', x=98, y=48 ...) Box(name='影造圆庭・凝率', x=250, y=101 ...) Box(name='02' ...) Box(name='03' ...) Box(name='04' ...) Box(name='LV' ...' (cut at 400 characters)",
+   "provisional_text": "队伍5 / 影造圆庭・凝率 (team_start_challenge is a template, not text)"
+  },
+  {
+   "screen_id": "echo_boss_fight",
+   "wanted_by": "design 1 Echo farm (first boss fought, lap 2)",
+   "logged_ocr": "ok-script.log (2026-10-13):1282 'FarmEchoTask:boss_string is [Lv.90天傀劫煞_0.97]', :1355 '[Lv.90.天傀劫煞_0.86]', :1410 '[Lv.90._0.89]'",
+   "provisional_text": "Lv.90天傀劫煞 (combat itself is a scripted state, design 1)"
+  },
+  {
+   "screen_id": "echo_boss_level_page",
+   "wanted_by": "design 1 Echo farm (the Boss Challenge level is applied, 35d6166b)",
+   "logged_ocr": "none for the level page itself on 10-13 11:31-11:45; the 4C boss's page differs from the weekly page (no 本周剩余可收取次数, the overlay's click_configured_boss_level comment)",
+   "provisional_text": "推荐等级40 ... 推荐等级90 / 单人挑战 (as on boss_level_page frames)"
+  },
+  {
+   "screen_id": "battle_pass_page",
+   "wanted_by": "design 1 Daily (battle pass reopen), 6.1",
+   "logged_ocr": "ok-script.2026-10-12.log:1659 '战令：页面打开了，点了领取（等级 300/1000）', :2190 '（等级 600/1000）' (BATTLE_PASS_LEVEL_BOX read)",
+   "provisional_text": "300/1000"
+  },
+  {
+   "screen_id": "stamina_reward_dialog",
+   "wanted_by": "design 1 Daily (stamina -1, the 180 gate, NO_STAMINA_FLAG)",
+   "logged_ocr": "ok-script.2026-10-12.log:1541 'TacetTask:体力读字原文领奖框（第 1 次）: ['24', '240/240', '+']'; :1630 '['24', '120/240']'; COS bundle 2026-10-05_wuwa_OK-WW-05-39-25 ok-script.log:1636 '['140', '240/240']'",
+   "provisional_text": "the STAMINA_BOX read inside the dialog, as logged"
+  },
+  {
+   "screen_id": "revive_dialog",
+   "wanted_by": "design 1 Echo farm (revive with is_revived, realm revive), 6.1",
+   "logged_ocr": "none in any pulled ok-script log",
+   "provisional_text": "none; combat outcomes are scripted (BaseCombatTask.revive_action :227-240)"
+  },
+  {
+   "screen_id": "astrite_exchange",
+   "wanted_by": "design 6.1 兑换结晶波片",
+   "logged_ocr": "none",
+   "provisional_text": "none"
+  },
+  {
+   "screen_id": "weekly_crystal_f",
+   "wanted_by": "design 1 Weekly (crystal F)",
+   "logged_ocr": "none: ok-script.2026-10-12.log:1181 is the walk to it timing out ('do_walk_to_box ... 30.0 seconds'); weekly_boss_fight/2026-10-12_095220.png is the realm at that moment",
+   "provisional_text": "none (the pick is upstream's walk_to_treasure / pick_f, template based)"
+  },
+  {
+   "screen_id": "daily_activity_80",
+   "wanted_by": "design 1 Daily (chest row at 80 points)",
+   "logged_ocr": "only a crop of the row, not a frame: the owner's own screenshot BOARD/evidence/ww-daily-80-1010.png (2000x314)",
+   "provisional_text": "20 40 60 80 100 (tier labels, as daily_activity/2026-10-11_092951_140.png)"
+  },
+  {
+   "screen_id": "top_bar_unreadable",
+   "wanted_by": "design 1 Weekly (unreadable top bar -> never confirm)",
+   "logged_ocr": "none recorded",
+   "provisional_text": "a frame with no N/240 in the top strip"
   }
  ]
 }
