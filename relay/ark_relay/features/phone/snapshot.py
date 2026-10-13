@@ -167,17 +167,6 @@ def maa_from_files(automas_dir) -> dict:
     return found
 
 
-def _startup_runs(info: dict) -> "bool | None":
-    """Whether AUTO-MAS runs the queue when it starts. v5.7 stores StartUpMode
-    (Never / Always / DailyFirst, app/models/config.py) and migrates an older
-    config's bool StartUpEnabled to it (True -> Always). None when neither is there."""
-    mode = info.get("StartUpMode")
-    if isinstance(mode, str):
-        return mode != "Never"
-    old = info.get("StartUpEnabled")
-    return old if isinstance(old, bool) else None
-
-
 def _queues(out: dict) -> None:
     # Use .get: field names differ between AUTO-MAS versions, and one missing key
     # would otherwise take out the whole queue section.
@@ -188,6 +177,7 @@ def _queues(out: dict) -> None:
     names = {sid: str((v.get("Info") or {}).get("Name") or "")
              for sid, v in _post("/api/scripts/get")["data"].items()}
     from ark_relay.features.weekly.annihilation import _backend_unreachable, _going_down  # noqa: PLC0415
+    from ark_relay.core.plan import _startup_runs  # noqa: PLC0415 - the one reading of StartUpMode
     out["队列"] = {}
     for qid, c in _post("/api/queue/get")["data"].items():
         info = c.get("Info") or {}

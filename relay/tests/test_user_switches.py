@@ -186,9 +186,10 @@ service.py only; R7 one line of notify.py, checked against route_of):
      Without that restore it is an OFF-literal hit like any other.
   R6 re-enable only: a function that reads a record of tasks kept off only to
      switch them back ON - it calls at least one writer whose every switch write
-     is ON (gameupdate.maaend_enable), and neither it nor anything it calls
-     writes a switch OFF, a computed decision or a parameter (a setter) - is not
-     an OFF-keep hit (gameupdate.maaend_reenable_records).
+     is ON, and neither it nor anything it calls writes a switch OFF, a computed
+     decision or a parameter (a setter) - is not an OFF-keep hit. The relay's own
+     case (gameupdate.maaend_reenable_records) was removed 2026-10-13 (audit s18
+     F5); the self-test below keeps the rule exercised.
   R7 the log route of notify.py. The MUTE-log line 「不推送」 in Notifier.send
      (LOG_ROUTE_SITE) passes only when it sits in the body of `if route ==
      "log"`, `route` is bound once, to route_of(...) (LOG_ROUTER), and route_of

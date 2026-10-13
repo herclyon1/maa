@@ -275,12 +275,7 @@ class Watchdog:
                     left.append("agent\\" + name)
         self._crash, self._gone_since, self._progress_at = "", None, now
         title = texts.MAAEND_STUCK_KILLED if ok else texts.MAAEND_STUCK_KILL_FAILED
-        try:
-            body = texts.maaend_stuck_body(reason, ok, why, left=left)
-        except TypeError:
-            # texts without the left= parameter (it arrives with 67e0873f): the alarm
-            # still goes out, without the plugin names. Drop once that is on main.
-            body = texts.maaend_stuck_body(reason, ok, why)
+        body = texts.maaend_stuck_body(reason, ok, why, left=left)
         # One hang, one group push: the ⚠️ group alarm, and the WARNING that follows
         # repeats it. errwatch.group_pushed keeps that WARNING out of the group only
         # when the ⚠️ send really reached the group robot, so the fault still reaches

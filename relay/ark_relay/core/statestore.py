@@ -77,9 +77,9 @@ FIELDS: dict[str, dict[str, str]] = {
         "stagegate_dues": "关卡门最近几天每一班查过的结论：{日期: {队列/HH:MM: {verdict, stage, why, pulled, others}}}",
         # Leftovers only: nothing writes these any more, and since 840c3f4c nothing
         # switches their tasks back on or drops them either (machine check #63 reads them).
-        "maaend_disabled_1_5_3": "旧记录：9 月初为 1.5.3 关掉的 MaaEnd 任务 {disabled 或 tasks, since}，开机开回后删掉",
-        "maaend_reenable_next_boot": "旧记录：补跑时关掉的 MaaEnd 任务 {tasks}，开机开回后删掉",
-        "maaend_disabled_spmed": "旧记录：9 月初关掉的应急理智加强剂 {tasks, since}，开机开回后删掉",
+        "maaend_disabled_1_5_3": "旧记录：9 月初为 1.5.3 关掉的 MaaEnd 任务 {disabled 或 tasks, since}；开机开回那一步 10-13 已删，留下的不动",
+        "maaend_reenable_next_boot": "旧记录：补跑时关掉的 MaaEnd 任务 {tasks}；开机开回那一步 10-13 已删，留下的不动",
+        "maaend_disabled_spmed": "旧记录：9 月初关掉的应急理智加强剂 {tasks, since}；开机开回那一步 10-13 已删，留下的不动",
     },
     "queues": {
         "echo_farm": "正在刷的声骸 boss：{boss, name, until, started, saved}",

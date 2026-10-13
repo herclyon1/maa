@@ -82,7 +82,8 @@ registered in the `FIELDS` field table can be written. Already moved in:
 
 **Second batch, completed 2026-09-08**: the `updates` section gained three more
 records of MaaEnd tasks temporarily switched off (`maaend_disabled_1_5_3` /
-`maaend_reenable_next_boot` / `maaend_disabled_spmed`), and the `queues` section
+`maaend_reenable_next_boot` / `maaend_disabled_spmed`; since 2026-10-13 nothing switches them
+back on at boot, and a leftover record is left alone - audit s18 F5), and the `queues` section
 gained `channels_down`. When moving these three, both the read side and the
 write side must change together - the sweep renames the old file to `.migrated`,
 so adding a migration without changing the read means the record can never be
