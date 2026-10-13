@@ -80,9 +80,53 @@ class RelayLogHandler(logging.handlers.RotatingFileHandler):
             return False
         return bool(super().shouldRollover(record))
 
+    def _roll(self) -> None:
+        """RotatingFileHandler.doRollover with the steps reordered so a refused
+        rename of relay.log moves nothing.
+
+        The stdlib shifts .2 -> .3 and .1 -> .2 first and renames relay.log last.
+        When Windows refuses that last rename, every retry shifted the backups once
+        more and the oldest fell off: with .1/.2/.3 = A/B/C, two failed retries left
+        only .3 = A (review of 2026-10-13, s5 #1). Here relay.log is renamed first,
+        to HOLD; only then do the backups shift and HOLD become .1. A shift that
+        fails puts HOLD back as relay.log, so nothing has moved but the oldest
+        backup that a successful rotation drops anyway.
+        """
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+        if self.backupCount > 0:
+            base = self.baseFilename
+            hold = base + self.HOLD
+            if os.path.exists(hold):
+                # A rotation interrupted between its steps (the service killed):
+                # finish it before starting this one, so the held lines are kept.
+                self._shift_in(hold)
+            # self.rotate is the stdlib's hook for the rename (a test makes it refuse).
+            self.rotate(base, hold)
+            if os.path.exists(hold):
+                try:
+                    self._shift_in(hold)
+                except OSError:
+                    os.replace(hold, base)
+                    raise
+        if not self.delay:
+            self.stream = self._open()
+
+    HOLD = ".rotating"
+
+    def _shift_in(self, hold: str) -> None:
+        """.N-1 -> .N down to .1 -> .2, then `hold` -> .1."""
+        base = self.baseFilename
+        for i in range(self.backupCount - 1, 0, -1):
+            src, dst = f"{base}.{i}", f"{base}.{i + 1}"
+            if os.path.exists(src):
+                os.replace(src, dst)
+        os.replace(hold, f"{base}.1")
+
     def doRollover(self) -> None:  # noqa: N802 - logging's name
         try:
-            super().doRollover()
+            self._roll()
         except OSError as exc:
             self._retry_at = time.monotonic() + RETRY_SECONDS
             if self.stream is None:

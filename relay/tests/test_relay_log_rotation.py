@@ -113,6 +113,46 @@ else:
     lf.propagate = lf_prop
     h.close()
 
+    print("\n[改名被拒时旧的三份一份都不许挪、不许丢（审查 10-13 s5 #1）]")
+    # The stdlib shifted .2 -> .3 and .1 -> .2 before the refused rename of
+    # relay.log, so every retry pushed one more backup off the end.
+    d = tmpdir()
+    for i, c in ((1, "A"), (2, "B"), (3, "C")):
+        (d / f"relay.log.{i}").write_text(c * 10 + "\n", encoding="utf-8")
+    h = logfile.RelayLogHandler(d / "relay.log", max_bytes=200, backups=3)
+    lg.addHandler(h)
+    lf.propagate = False
+    lf.addHandler(h)
+    h.rotate = locked
+    for k in range(4):
+        h._retry_at = time.monotonic() - 1          # every write is a due retry
+        lg.warning("held %d %s", k, "z" * 250)
+
+    def backups():
+        return {i: (d / f"relay.log.{i}").read_text(encoding="utf-8")[:1]
+                if (d / f"relay.log.{i}").exists() else None for i in (1, 2, 3)}
+    check("四次改名被拒后 .1/.2/.3 还是 A/B/C", backups(), {1: "A", 2: "B", 3: "C"})
+    check("没留下转了一半的文件", (d / "relay.log.rotating").exists(), False)
+    h.rotate = real_rotate
+    h._retry_at = time.monotonic() - 1
+    lg.warning("free %s", "z" * 250)
+    check("放开后照常轮转：最老的 C 掉了，A/B 往后挪", {i: v for i, v in backups().items() if i > 1},
+          {2: "A", 3: "B"})
+    check("被拒期间写的行进了 relay.log.1", "held 3" in (d / "relay.log.1").read_text(encoding="utf-8"), True)
+    check("新行在 relay.log", "free" in (d / "relay.log").read_text(encoding="utf-8"), True)
+
+    print("\n[上一次轮转转了一半（服务被杀）：下次轮转先把它收尾，一行不丢]")
+    (d / "relay.log.rotating").write_text("HALF\n", encoding="utf-8")
+    h._retry_at = time.monotonic() - 1
+    lg.warning("after half %s", "z" * 250)
+    texts_ = [(d / f"relay.log.{i}").read_text(encoding="utf-8") for i in (1, 2, 3)]
+    check("转了一半的那份进了备份", any(t.startswith("HALF") for t in texts_), True)
+    check("没留下转了一半的文件", (d / "relay.log.rotating").exists(), False)
+    lg.removeHandler(h)
+    lf.removeHandler(h)
+    lf.propagate = lf_prop
+    h.close()
+
 print("\n[刚轮转过：读日志的五处都还读得到 relay.log.1 里的那一段]")
 # Midday stamps: relay.log has no zone and _line_ts reads it on this computer's
 # clock (Beijing on the machine, Tokyo here), so stamps near midnight would land
