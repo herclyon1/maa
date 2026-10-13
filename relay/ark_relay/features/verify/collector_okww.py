@@ -338,8 +338,7 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
         raw = " ".join((msg or "").split())[:110] or exc or "（连原文都没抓到）"
         return f"{who}：中继还不认识这条错，原文照抄——「{raw}」"
     what = msg_zh or exc_zh
-    if "Teleport to boss failed" in msg and text and re.search(
-            r"找不到开启挑战|都没进开启挑战", text[max(0, at - 3000):at]):
+    if "Teleport to boss failed" in msg and text and _said_before(text, at, _NO_CHALLENGE):
         what = "选了等级后没等到「开启挑战」，没进本，一次没打"
     # The 「wait_until timeout … N seconds」 line right before the traceback says
     # how long it waited.
@@ -376,6 +375,32 @@ def _wait_before(text: str, at: int) -> str:
         if t is not None and head_t is not None and 0 <= head_t - t <= _EVENT_GAP_SECONDS:
             best = m.group(3)
     return best
+
+
+# The overlay's lines when the boss level was chosen but 「开启挑战」 never came (the
+# teleport then fails with 「Teleport to boss failed」).
+_NO_CHALLENGE = re.compile(r"找不到开启挑战|都没进开启挑战")
+_LINE_TS = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),(\d{1,6}) ", re.M)
+
+
+def _said_before(text: str, at: int, what: "re.Pattern") -> bool:
+    """Is `what` on a line logged within _EVENT_GAP_SECONDS before the header at `at`?
+
+    By time, like _wait_before: on every real log with both (2026-09-01 05:43 and
+    06:35, 09-21 weekly) the 「找不到开启挑战」 line is 0.001-0.02 s before its
+    header, while a 3000-character window is a guess about stack lengths (audit
+    2026-10-13 item 24). A header line without a timestamp keeps that window.
+    """
+    hm = _HEAD_TS.match(text, text.rfind("\n", 0, at) + 1)
+    head_t = _ts(hm.group(1), hm.group(2)) if hm else None
+    if head_t is None:
+        return bool(what.search(text, max(0, at - 3000), at))
+    for m in what.finditer(text, max(0, at - 200_000), at):
+        lm = _LINE_TS.match(text, text.rfind("\n", 0, m.start()) + 1)
+        t = _ts(lm.group(1), lm.group(2)) if lm else None
+        if t is not None and 0 <= head_t - t <= _EVENT_GAP_SECONDS:
+            return True
+    return False
 
 
 def _ts(stamp: str, frac: str) -> "float | None":
