@@ -289,7 +289,19 @@ try:
     print("\n[the relay's power-off cancelled after the exit: the next check revives it and says so]")
     rec, rv, k = run_exit(0x40010004, down=relay_poweroff)   # run_exit puts the power-off back: cancelled
     check("a check is armed while the power-off is under way", k.revive_deadline is not None, True)
-    check("so the loop wakes for it", k.cap_wait(3600.0) < 3600.0, True)
+    # cap_wait reads time.monotonic(), so ask it on the virtual clock the deadline was set
+    # on (a fresh VClock reads the same 5000.0 run_exit's check got). On the real clock the
+    # answer depended on the machine's uptime: a Mac up for days read the deadline as long
+    # past (1 s), a Windows runner booted minutes before (monotonic counts from boot there)
+    # read it as over an hour away (3600 s, run 38360295330).
+    vt = VClock()
+    set_time(vt)
+    try:
+        check("so the loop wakes for it, no later than the deadline",
+              k.cap_wait(3600.0), max(1.0, (k.revive_deadline or 0) - vt.now))
+        check("which is well inside the hour", k.cap_wait(3600.0) < 3600.0, True)
+    finally:
+        set_time(orig[1])
     vt = VClock()
     set_time(vt)
     revived.clear()
