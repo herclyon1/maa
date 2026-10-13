@@ -607,10 +607,11 @@ def relay_part(where: str) -> str:
 
 
 def selfcheck_failed_body(total: int, bad: list) -> str:
-    """`bad` is [(name, detail)] of the checks that did not hold."""
+    """`bad` is [(name, detail)] of the checks that did not hold. Not every check stops
+    the shift (some only slow the watchdog down), so the consequence is given per weight."""
     lines = "\n".join(f"· {n}" + (f"：{d}" if d else "") for n, d in bad)
     return (f"开机自检 {total} 项里有 {len(bad)} 项不成立：\n{lines}\n"
-            "这些不成立的后果：这一班跑不了，或者跑了中继也看不见。已交给我们这边去修。")
+            "后果看是哪一项：重的会让这一班跑不了，轻的只是中继发现问题慢一些、或者看不见。已交给我们这边去修。")
 
 
 # ---------- after-shift check (selfcheck/shiftcheck.py) ----------

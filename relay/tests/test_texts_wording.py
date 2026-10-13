@@ -66,5 +66,10 @@ doc = (ROOT.parent / "docs" / "NOTIFICATIONS.md").read_text(encoding="utf-8")
 for name in ("MAAEND_MIGRATED", "MAAEND_WATCH_BLIND"):
     check(f"{name} 有一行", f"\n| {getattr(texts, name)} | " in doc, True)
 
+print("\n[开机自检报警不再一律说「这一班跑不了」（s1 cosmetic）]")
+body = texts.selfcheck_failed_body(11, [("调度程序的开机任务计划还在", "退出码 1")])
+check("不一口咬定这一班跑不了", "后果：这一班跑不了" in body, False)
+check("分轻重说", "重的" in body and "轻的" in body, True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
