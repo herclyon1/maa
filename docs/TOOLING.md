@@ -175,6 +175,45 @@ the way to try a branch. lint-repo item 25 checks every `expected.json` and repl
 
 ---
 
+## Disk tidy (what sessions leave on this Mac's disk)
+
+The disk filled to 100 % twice on 2026-10-13: worktrees, session scratch dirs, DerivedData, old
+Gradle / Swift versions and caches that no session ever removed. The owner (10-13 22:3x): we never
+clean what we create and he cannot watch us. `scripts/mac/disk-tidy.py` is the cleaner; its rules
+are the "safe" column of that evening's inventory (`/private/tmp/claude-501/disk-tidy/inventory.md`),
+re-checked live on every run.
+
+```
+~/.local/bin/python3.14 scripts/mac/disk-tidy.py            # dry run (default): what would go, sizes, why the rest stays
+~/.local/bin/python3.14 scripts/mac/disk-tidy.py --apply    # remove; one line per removal in ~/Library/Logs/disk-tidy.log
+```
+
+* **Normal rules** (always): merged + clean worktrees idle 24 h (`git worktree remove`, branch
+  kept), stale worktree registrations (`git worktree prune`), DerivedData project folders idle
+  24 h, `~/.gradle/{caches,daemon}/<version>` no Homebrew gradle or wrapper uses, swiftly
+  toolchains other than `inUse` (`swiftly uninstall`), `/private/tmp/claude-501/<project>/<session>`
+  of finished sessions, the one-off outputs `$TMPDIR/precheck-*`, `~/Claude/transit-app/build`,
+  `remote-ref/tools/bugexam/xcr-dd`, and the caches (`uv cache prune`, `brew cleanup --prune=all`,
+  `go clean -cache`, `~/.cache/pyright-python`), plus `xcrun simctl delete unavailable`.
+* **Floor rules** (free space under `--floor-gb`, default 30, or `--aggressive`): the same
+  worktree / DerivedData rules with a 2 h idle window, Xcode's shared caches while no build runs,
+  and git-ignored `.build` / `.swiftpm` / `.ruff_cache` inside idle unmerged or dirty worktrees
+  (the checkout and its changes stay).
+* **In use** means any of: a process has it open or as cwd (`lsof`; if lsof fails nothing is
+  removed), a file in it changed inside the idle window, a running session
+  (`~/.claude/sessions/*.json`) or the session it continues owns it, a workflow journal written in
+  the last 2 h names the worktree, or code in `~/.claude/hooks`, `remote-ref/tools` or a repo names
+  the path or session tmp dir (reused, e.g. the precheck tests read 5f3e1301's files).
+* **Never**: anything under `~/Money` or `~/Claude` that is not a session worktree or a listed
+  build output, the standing trees (`maa-automation-data/ui/ui2`, `transit-data/ui`,
+  `ds-relay-tree`), a worktree with uncommitted changes, `~/.claude`, CoreDevice, simulators,
+  app containers, anything no rule matches. `git worktree remove` never gets `--force`.
+* Scheduling: `scripts/mac/launchd/com.ark.disk-tidy.plist` (hourly `--apply`, nice 10, low-priority
+  I/O, output in `~/Library/Logs/disk-tidy.out`) is in the repo but **not installed**; installing
+  it is a separate decision. Tests: `relay/tests/test_disk_tidy.py`.
+
+---
+
 ## Fetching web pages
 
 * `WebFetch` **does not follow** cross-origin redirects; get the new URL and issue a second request
@@ -191,6 +230,7 @@ the way to try a branch. lint-repo item 25 checks every `expected.json` and repl
 |---|---|---|
 | `shellcheck` 0.11.0 | `~/.local/bin/shellcheck` | `estop.sh` is a safety-critical script, and `bash -n` checks syntax only, not logic |
 
-This Mac **has no Homebrew**. A single static binary can just come from the official release
+Homebrew is installed (`/opt/homebrew`, checked 2026-10-13; `disk-tidy.py` runs `brew cleanup`).
+A single static binary can still just come from the official release
 (`gh release download --repo <owner/repo> --pattern '<name>'`).
 `coreutils` / `pytest` were evaluated and judged not worth installing.
