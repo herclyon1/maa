@@ -312,13 +312,18 @@ def game_alive() -> "list[str]":
     return [n for n in GAME_PROCS if n.lower() in low] + script
 
 
-def stop_okww_script(sleep=time.sleep) -> None:
-    """Stop only OK-WW's python (the script), leaving the game up, and give it two
-    seconds to exit. Before a relaunch: `_launch` starts a new `pythonw main.py -t 2
-    -e`, and an old one still alive would drive the same game alongside it."""
-    from ark_relay.features.preupdate.preupdate_okww import _stop_okww_python  # noqa: PLC0415
+def stop_okww_script(sleep=time.sleep) -> bool:
+    """Stop only OK-WW's python (the script), leaving the game up; True once none is
+    left. Before a relaunch: `_launch` starts a new `pythonw main.py -t 2 -e`, and an
+    old one still alive would drive the same game alongside it. Looked at again for
+    up to ten seconds, as stop_okww does."""
+    from ark_relay.features.preupdate.preupdate_okww import _stop_okww_python, okww_python_pids  # noqa: PLC0415
     _stop_okww_python()
-    sleep(2)
+    for _ in range(10):
+        if okww_python_pids() == []:
+            return True
+        sleep(1)
+    return False
 
 
 def _kill_on_desktop(pids=()) -> None:
@@ -582,7 +587,10 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
     else:
         # The game stays up on the first try, but the old OK-WW must not: a second
         # `pythonw main.py -t 2 -e` next to a live one has two scripts driving one game.
-        stop_okww_script()
+        # A script that will not go (or cannot be seen) gets the full stop instead.
+        if not stop_okww_script():
+            log.warning("刷声骸：旧的 OK-WW 脚本停不掉，连游戏一起关了再重开")
+            stop_okww()
     ok, why = _launch()
     rec["restarts"] = tries + 1
     rec["restarted"] = now.strftime("%Y-%m-%d %H:%M")

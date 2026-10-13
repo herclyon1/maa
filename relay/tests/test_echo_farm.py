@@ -57,7 +57,8 @@ def cfg_now(c):
 launched = []
 echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
 echofarm.stop_okww = lambda: launched.append("stop")
-echofarm.stop_okww_script = lambda: launched.append("script")
+_real_stop_script = echofarm.stop_okww_script
+echofarm.stop_okww_script = lambda: launched.append("script") or True
 # The marker file lives in C:\ProgramData on the machine. Point it at a temp path so
 # the tests never write into the repo (and never into a real machine path either).
 echofarm.NO_CLAIM = str(tmpdir() / "no-claim")
@@ -460,6 +461,39 @@ finally:
 print("\n[开跑时刻读不出来也不当成卡死]")
 check("读不出开跑时刻返回 None", echofarm._started_at({"started": "不是时间"}), None)
 check("读得出就是那个时刻", echofarm._started_at({"started": "2026-09-09 04:00"}).hour, 4)
+
+print("\n[stopping only the old script: confirmed gone, or the full stop]")
+# 2026-10-13: the old script was given a blind two seconds; now it is looked for again.
+import ark_relay.features.preupdate.preupdate_okww as _pk  # noqa: E402
+_pk_real = _pk._stop_okww_python, _pk.okww_python_pids
+_seen = iter([[4242], [4242], []])
+_naps = []
+_pk._stop_okww_python = lambda: None
+_pk.okww_python_pids = lambda: next(_seen)
+try:
+    check("gone on the third look: True", _real_stop_script(sleep=_naps.append), True)
+    check("…after two one-second looks", _naps, [1, 1])
+    _pk.okww_python_pids = lambda: None
+    _naps.clear()
+    check("never readable: False", _real_stop_script(sleep=_naps.append), False)
+    check("…after ten looks", len(_naps), 10)
+finally:
+    _pk._stop_okww_python, _pk.okww_python_pids = _pk_real
+_c3 = fresh()
+echofarm.start(_c3, 1, "08:30", "天傀劫煞", now=NOW)
+_r3 = echofarm.current(_c3.state_dir)
+_r3["started"] = "2026-09-09 04:00"
+echofarm._store(_c3.state_dir).set("queues", "echo_farm", _r3)
+_wb._okww_log = lambda: _logfile
+echofarm.stop_okww_script = lambda: launched.append("script") and False
+try:
+    _b3 = len(launched)
+    echofarm.tick(_c3, datetime(2026, 9, 9, 4, 36, tzinfo=SERVER_TZ))
+    check("an old script that will not go: the full stop before the relaunch",
+          launched[_b3:], ["script", "stop", 1])
+finally:
+    echofarm.stop_okww_script = lambda: launched.append("script") or True
+    _wb._okww_log = _real_log
 
 print("\n[收工那一步本身：先停计划任务，再把 OK-WW 的进程停干净]")
 # The real function, not the stub - it is what actually ends the run on the machine.

@@ -36,26 +36,32 @@ _OKWW_PY = ("Get-CimInstance Win32_Process -Filter "
             "$_.CommandLine -like '*-m ok *' }")
 
 
+def _okww_py(tail: str):
+    """Run `_OKWW_PY | tail` in PowerShell 7; the CompletedProcess, or None when it
+    could not run."""
+    ps = _OKWW_PY + " | " + tail
+    # 60 s: the hang guard _okww_quiesce has had on this same call since 2026-08-28
+    # (bc3b709d), moved here unchanged. Its duration on the machine has no record.
+    try:
+        return subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
+                       capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
 def _stop_okww_python() -> None:
     """Stop OK-WW's python processes (only those, see _OKWW_PY); the game is left alone.
     The result is not checked: a caller that must know uses okww_python_pids."""
-    try:
-        subprocess.run([_pwsh(), "-NoProfile", "-Command",
-                        _OKWW_PY + " | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"],
-                       capture_output=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
-        pass
+    _okww_py("ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
 
 
 def okww_python_pids() -> "list[int] | None":
     """PIDs of OK-WW's running python processes (_OKWW_PY); None when the process
     list could not be read."""
+    r = _okww_py("Select-Object ProcessId | ConvertTo-Json -Compress")
     try:
-        r = subprocess.run([_pwsh(), "-NoProfile", "-Command",
-                            _OKWW_PY + " | Select-Object ProcessId | ConvertTo-Json -Compress"],
-                           capture_output=True, timeout=60)
         data = json.loads((r.stdout or b"").decode("utf-8", "replace").strip() or "null")
-    except (OSError, subprocess.SubprocessError, ValueError):
+    except (AttributeError, ValueError):
         return None
     out = []
     for proc in [data] if isinstance(data, dict) else (data or []):
