@@ -61,5 +61,18 @@ check("the script runs the overlay check at top level",
       any(isinstance(c, ast.Call) and getattr(c.func, "id", "") == "overlay_problems"
           for n in tree.body if not isinstance(n, ast.FunctionDef) for c in ast.walk(n)), True)
 
+print("[the no-stamina flag: the override's own fixed path]")
+# 2026-10-13 audit: the checker built the flag path from the data folder, so it could
+# read a different file from the one the OK-WW override obeys.
+check("no flag path built from the data folder", "no-stamina-farm.flag" in src, False)
+check("reads config.NO_STAMINA_FARM_FLAG",
+      any(isinstance(n, ast.ImportFrom) and n.module == "ark_relay.core.config"
+          and any(a.name == "NO_STAMINA_FARM_FLAG" for a in n.names) for n in ast.walk(tree)), True)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from ark_relay.core import config  # noqa: E402
+overrides = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "okww_patch" / "okww_files"
+             / "ark_overrides.tasks.py").read_text(encoding="utf-8")
+check("the same path the override obeys", f'NO_STAMINA_FLAG = r"{config.NO_STAMINA_FARM_FLAG}"' in overrides, True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

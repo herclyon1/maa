@@ -78,4 +78,7 @@ for f in UPSTREAM_TASKS:
 print("\n=== 3. 周本门状态 ===")
 print("  ", W.WeeklyBossGate(root/"state", A).settings(), "｜游戏报的剩余次数:", W.remaining_from_log())
 print("\n=== 4. 刷体力 ===")
-print("  禁用标记:", (root/"state"/"no-stamina-farm.flag").exists(), "（False＝已恢复刷体力）")
+# The one fixed path the OK-WW override obeys (ark_overrides.tasks.py NO_STAMINA_FLAG,
+# relay config.NO_STAMINA_FARM_FLAG); built from the data folder it could disagree.
+from ark_relay.core.config import NO_STAMINA_FARM_FLAG  # noqa: E402
+print("  禁用标记:", pathlib.Path(NO_STAMINA_FARM_FLAG).exists(), "（False＝已恢复刷体力）")
