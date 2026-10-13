@@ -215,24 +215,20 @@ def server_now() -> int:
     return int(time.time()) + _clock_skew
 
 
-def sign_headers(cred: Cred, url: str, method: str = "get",
-                 body: dict | None = None, use_did: bool = False) -> dict:
-    """Signed request headers. The algorithm is in the module docstring.
+def sign_headers(cred: Cred, url: str) -> dict:
+    """Signed GET headers. The algorithm is in the module docstring.
 
-    With `use_did=True` the device fingerprint is folded into the signature.
-    Older credentials (our own token -> code -> cred chain) can do without it; a
-    cred lifted out of a live Skland app session must carry the full smidV2 or
-    it fails with 10001 「设备信息无效」.
+    The device fingerprint signed is the cred's own: a cred lifted out of a live
+    Skland app session must carry the full smidV2 or it fails with 10001
+    「设备信息无效」. GET only: the POST-body branch and the fetch-a-new-dId switch
+    had no caller and the POST one was never checked against the real API (audit
+    s6 #4, removed 2026-10-13).
     """
     ts = server_now()
     parsed = urlparse(url)
-    query = json.dumps(body) if method == "post" and body is not None else parsed.query
-    keys = {**_SIGN_KEYS, "dId": cred.dId}
-    if use_did and not keys["dId"]:
-        keys["dId"] = get_did()
-    header_ca = {**keys, "timestamp": str(ts)}
+    header_ca = {**_SIGN_KEYS, "dId": cred.dId, "timestamp": str(ts)}
     ca_str = json.dumps(header_ca, separators=(",", ":"))
-    secret = f"{parsed.path}{query}{ts}{ca_str}"
+    secret = f"{parsed.path}{parsed.query}{ts}{ca_str}"
     hexed = hmac.new(cred.token.encode(), secret.encode(), hashlib.sha256).hexdigest()
     return {"cred": cred.cred, **_HEADERS,
             "sign": hashlib.md5(hexed.encode()).hexdigest(),
