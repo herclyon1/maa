@@ -1,0 +1,33 @@
+Gate self-check for daysim (design.md section 3, "Gate self-check"): this patch puts
+R36 back into a throwaway copy of the relay code, and day 2026-10-13 must then go red
+on it. If the day stays green with the patch, the day gate cannot see R36 and is broken.
+
+R36 (errors table; 被指出.txt:73): on 10-13 the hand-started / --test OK-WW run at 11:07
+chained into the morning shift, gave it a new shutdown key past the spent
+「下次跑完不关机」, and the relay powered the PC off at 11:13:55 while our test window
+was open. The fix is 25ebc227 (off-shift records never join a round nor move the key)
+refined by 374ae55b (a test window never swallows a scheduled shift; an open one ends
+after 3 h). Both live in shutdown._off_shift, which _last_round_manual and _shutdown_key
+use; before 25ebc227 no record was off-shift, so `return set()` restores the old
+behaviour of both callers exactly while leaving later, unrelated work in that file
+(232948ba's plan.runs_at in _near_due) in place. A byte revert of the two commits no
+longer applies for that reason.
+5ef29e66 has no relay code: it changes scripts/windows/dispatch_guard.py and run-one.sh,
+which write state/test-windows.json - a recorded input of the day, not code under test.
+
+Day: 2026-10-13
+Expect: ^1013-12 must_not, happened: kind='power'
+Expect: ^invariant 2: power 2026-10-13T11:1\d:\d\d\+08:00 'shutdown /s
+Applied by relay/tests/daysim/gate.py with `git apply` in a copy of relay/.
+
+--- a/relay/ark_relay/features/shutdown/shutdown.py
++++ b/relay/ark_relay/features/shutdown/shutdown.py
+@@ -390,6 +390,8 @@
+     run-one.sh's busy gate dispatches a test only on an idle queue, so a window
+     opened after the previous record ended marks the next start as the test's.
+     """
++    # R36 bad fix (daysim gate self-check): no record is off-shift, as before 25ebc227.
++    return set()
+     spans = _test_spans(eng)
+     times = _schedule_times(eng) if spans else []
+     try:
