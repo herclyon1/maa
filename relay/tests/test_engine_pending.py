@@ -115,6 +115,22 @@ check("run_id 对得上", e2._pending[("OK-WW", "wuwa")].run_id,
       "2026-09-08/wuwa/OK-WW-05-22-26")
 check("重启不算「已处理」", e2._pending[("OK-WW", "wuwa")].ok, False)
 
+print("\n[重启后压着的失败还带着日志尾巴，再重启一次也还在（audit s2 F4）]")
+sdir_t = tmpdir()
+logf = sdir_t / "OK-WW-05-22-26.log"
+logf.write_text("2026-09-08 05:30:01 任务执行：某个错\n", encoding="utf-8")
+et = build(sdir_t)
+held = rec("2026-09-08/wuwa/OK-WW-05-22-26")
+held.log_path = logf
+et._pending[("OK-WW", "wuwa")] = held
+et._persist_pending()
+logf.unlink()             # after the restart only the copy on disk is left
+et2 = build(sdir_t)
+check("重启后日志尾巴还在", "某个错" in et2.log_tails.get(held.run_id, ""), True)
+et2._persist_pending()
+et3 = build(sdir_t)
+check("再重启一次也还在", "某个错" in et3.log_tails.get(held.run_id, ""), True)
+
 print("\n[推出去之后要能清干净，否则下次开机又推一遍]")
 e2._pending.clear()
 e2._recovered.clear()

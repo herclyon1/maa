@@ -331,6 +331,10 @@ class Engine:
                                    or "（认不出是哪条）")
                     continue
                 target[(rec.script, rec.user)] = rec
+                # payload_to_record drops the tail (log_path=None); without this the
+                # alarm sent after a restart carried no diagnosis (audit s2 F4).
+                if tail := item.get("log_tail"):
+                    self.log_tails[rec.run_id] = str(tail)
         if dropped:
             log.warning("磁盘上有 %d 条未送达的告警恢复不出来，已丢弃：%s",
                         len(dropped), "；".join(dropped))
@@ -340,9 +344,15 @@ class Engine:
 
     def _persist_pending(self) -> None:
         from ark_relay.core.transport import record_to_payload  # noqa: PLC0415 - avoid cycle
+        def payload(r: RunRecord) -> dict:
+            p = record_to_payload(r)
+            # A record restored from disk has no log file to read: keep the tail it came with.
+            if not p.get("log_tail") and self.log_tails.get(r.run_id):
+                p["log_tail"] = self.log_tails[r.run_id]
+            return p
         self.state.save_pending({
-            "pending": [record_to_payload(r) for r in self._pending.values()],
-            "recovered": [record_to_payload(r) for r in self._recovered.values()],
+            "pending": [payload(r) for r in self._pending.values()],
+            "recovered": [payload(r) for r in self._recovered.values()],
         })
 
     # ---------- first ever start ----------
