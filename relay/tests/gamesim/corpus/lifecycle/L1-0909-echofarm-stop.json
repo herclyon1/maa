@@ -23,7 +23,7 @@
       "cmdline": "\"D:\\ark\\okww\\data\\apps\\ok-ww\\python\\pythonw.exe\" D:\\ark\\okww\\data\\apps\\ok-ww\\working\\main.py -t 2 -e",
       "session": 1,
       "evidence": [
-        {"source": "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\logs\\ok-script.2026-10-12.log:2396 (an echo-farm launch; first 190 characters)", "line": "2026-10-12 15:23:30,609 INFO MainThread ok:ok-script init v3.7.4, ['D:\\\\ark\\\\okww\\\\data\\\\apps\\\\ok-ww\\\\working\\\\main.py', '-t', '2', '-e'], pid=23532"},
+        {"source": "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\logs\\ok-script.2026-10-12.log:2396 (an echo-farm launch; cut after pid=23532)", "line": "2026-10-12 15:23:30,609 INFO MainThread ok:ok-script init v3.7.4, ['D:\\\\ark\\\\okww\\\\data\\\\apps\\\\ok-ww\\\\working\\\\main.py', '-t', '2', '-e'], pid=23532"},
         {"source": "C:\\ProgramData\\ark-relay\\state\\evidence\\2026-09-30_wuwa_OK-WW-05-30-24\\bundle\\automas-app.log:18", "line": "2026-09-30 09:30:14.212 | INFO     | 系统服务 | 开始中止进程: D:\\ark\\okww\\data\\apps\\ok-ww\\python\\pythonw.exe"}
       ],
       "not_recorded": "No process list was ever saved on the machine (branches.md W15: MISSING process-list samples). The pid and arguments are the 10-12 echo-farm launch; the exact quoting of Win32_Process.CommandLine is not recorded (every filter judged here matches either form)."
