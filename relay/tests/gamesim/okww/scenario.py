@@ -60,7 +60,20 @@ Shape (keys not listed here are refused, so a typo cannot silently drop an expec
         "raises": {"name": "_ArkStop", "evidence": "..."} | null,
         "log": [{"re": "...", "evidence": "..."}],
         "log_never": [{"re": "...", "evidence": "..."}],
-        "verdict": null                   # the relay's verdict (design section 3): U8
+        "verdict": {                      # what the relay makes of this scenario's log (design 3,
+                                          # T7: relay/tests/gamesim/chain/test_log_contract.py)
+          "evidence": "...",
+          "args": {"expect_nest": false, "expect_daily": false, "expect_stamina": false,
+                   "only_nest": ""},      # outcome.okww_checks' arguments for this part of a run
+          "clean": bool,                  # outcome.summarize says nothing
+          "has": [...], "lacks": [...],   # substrings of the failed items (「label：detail」)
+          "done_has": [...], "done_lacks": [...],   # substrings of the passed items' labels
+          "raw": {...}, "raw_has": {...}, "raw_lacks": {...},   # collector_okww.parse_okww_log
+          "error_has": [...], "error_lacks": [...], "error_any_of": [[...]],  # _okww_error
+          "unregistered": [...],          # gamelog_errors: ERROR lines that reach the group
+          "weekly_left": int | null,      # weeklyboss.left_after_claims
+          "progress_min": int, "level": ["90", "<name>"]   # the echo-farm watchdog
+        }
       }
     }
 """
@@ -94,6 +107,10 @@ FIGHT_OUTCOMES = ("returns", "revived", "realm_revive")
 _TRANSITION_KINDS = ("click", "feature", "key", "after_s")
 _TRANSITION = set(_TRANSITION_KINDS) | {"to", "evidence", "threshold"}
 _EXPECT = {"sequence", "end", "never_states", "shots", "raises", "log", "log_never", "verdict"}
+_VERDICT = {"evidence", "args", "clean", "has", "lacks", "done_has", "done_lacks", "raw", "raw_has",
+            "raw_lacks", "error_has", "error_lacks", "error_any_of", "unregistered", "weekly_left",
+            "progress_min", "level"}
+_VERDICT_ARGS = {"expect_nest", "expect_daily", "expect_stamina", "only_nest"}
 _STEP_KINDS = ("decision", "click", "key", "state", "shot")
 _STEP = set(_STEP_KINDS) | {"value", "within", "evidence"}
 
@@ -314,10 +331,32 @@ def _expect(e, names):
                 re.compile(r["re"])
             except (re.error, KeyError, TypeError) as exc:
                 raise ScenarioError(f"expect.{key}[{i}]: bad regex: {exc}") from None
-    # The verdict chain (design section 3) feeds the emitted log to the relay; U8 builds it.
-    _need(e.get("verdict") is None, "expect.verdict", "verdicts are not evaluated yet (gamesim U8)")
     return {"sequence": seq, "end": end, "never_states": never, "shots": e.get("shots", []),
-            "raises": raises, "log": e.get("log", []), "log_never": e.get("log_never", [])}
+            "raises": raises, "log": e.get("log", []), "log_never": e.get("log_never", []),
+            "verdict": _verdict(e.get("verdict"))}
+
+
+def _verdict(v):
+    """expect.verdict: what the relay must make of the log (judged by the T7 chain test)."""
+    if v is None:
+        return None
+    w = "expect.verdict"
+    _keys(v, _VERDICT, w)
+    _evidence(v, w)
+    args = v.get("args")
+    _need(isinstance(args, dict) and "expect_nest" in args and set(args) <= _VERDICT_ARGS, w,
+          f"args: okww_checks' arguments ({sorted(_VERDICT_ARGS)}), expect_nest at least")
+    for k in ("has", "lacks", "done_has", "done_lacks", "error_has", "error_lacks", "unregistered"):
+        _need(all(isinstance(s, str) and s for s in v.get(k, [])), w, f"{k} is a list of strings")
+    _need(all(isinstance(alts, list) and alts and all(isinstance(s, str) for s in alts)
+              for alts in v.get("error_any_of", [])), w, "error_any_of is a list of string lists")
+    for k in ("raw", "raw_has", "raw_lacks"):
+        _need(isinstance(v.get(k, {}), dict), w, f"{k} maps a field to a value / strings")
+    _need("clean" not in v or isinstance(v["clean"], bool), w, "clean is true or false")
+    _need("weekly_left" not in v or v["weekly_left"] is None or isinstance(v["weekly_left"], int), w,
+          "weekly_left is a number or null")
+    _need("progress_min" not in v or isinstance(v["progress_min"], int), w, "progress_min is a number")
+    return v
 
 
 def load_dict(d: dict, source: str = "<dict>") -> Scenario:

@@ -81,6 +81,7 @@ from ok.device.capture_methods.base import BaseCaptureMethod  # noqa: E402
 from ok.device.interaction_methods.base import BaseInteraction  # noqa: E402
 from ok.task.task import BaseTask  # noqa: E402
 from ok.util.logger import Logger as OkLogger  # noqa: E402
+from ok.util.logger import _ok_log_formatter as OK_LOG_FORMAT  # noqa: E402  the format of OK-WW's log file
 from ok.test.TaskTestCase import TaskTestCase  # noqa: E402
 from ok.feature.Box import Box, find_boxes_by_name  # noqa: E402
 from src.combat.CombatCheck import CombatCheck  # noqa: E402  OK-WW's own, faked only where a scenario has a fight
@@ -462,6 +463,41 @@ class _LogTap(logging.Handler):
             pass
 
 
+class _LogDump(logging.Handler):
+    """The scenario's own log lines as OK-WW's log file has them, for the verdict chain
+    (relay/tests/gamesim/chain/test_log_contract.py, gamesim design 3).
+
+    The line format is ok-script's own (ok/util/logger.py _ok_log_formatter, the formatter of
+    its file handler). Only records of the scenario's thread are kept: on the machine the task
+    runs on ok-script's executor thread, whose name the relay keys on (outcome._task_lines
+    keeps only 'TaskExecutor' lines), while the harness runs it on the test thread. So those
+    records carry the executor thread's real name (ok-script 2.0.8 TaskExecutor.py:400-401,
+    `threading.Thread(target=self.execute, name="TaskExecutor")`), read from the running
+    executor, not written here."""
+
+    def __init__(self, thread, thread_name: str):
+        super().__init__(logging.DEBUG)
+        self.thread = thread
+        self.thread_name = thread_name
+        self.lines: "list[str]" = []
+        self.setFormatter(OK_LOG_FORMAT)
+
+    def emit(self, record):
+        if record.thread != self.thread.ident:
+            return
+        try:
+            rec = logging.makeLogRecord(record.__dict__)
+            rec.threadName = self.thread_name
+            self.lines.append(self.format(rec))
+        except Exception:  # noqa: BLE001 - a log line that cannot format is not a test failure
+            pass
+
+
+# Where run_scenario leaves each scenario file's log for ci_prepare.py to collect: in OK-WW's
+# working directory (the test's cwd when it starts, where CONTEXT is read too).
+CHAIN_DIR = Path("gamesim-chain").resolve()
+
+
 # --------------------------------------------------------------------------- the case
 
 class ScriptedCase(TaskTestCase):
@@ -703,6 +739,11 @@ class ScriptedCase(TaskTestCase):
         run = Run(sc, temp=tmp)
         task = self.task
         tap = _LogTap(run.log)
+        executor_thread = getattr(task.executor, "thread", None)
+        if executor_thread is None:
+            raise AssertionError("ok-script's executor thread is not running; its name is the one "
+                                 "the machine's log lines carry")
+        dump = _LogDump(threading.current_thread(), executor_thread.name)
         ok_logger = OkLogger.get_logger("gamesim").logger     # the `ok` logger every ok-script Logger writes to
         saved = self._redirect(sc, tmp)
         old_cfg = self._apply_task_config(sc)
@@ -721,6 +762,7 @@ class ScriptedCase(TaskTestCase):
         script = Script(sc, run, task, clock)
         clock.on_advance = script.tick
         ok_logger.addHandler(tap)
+        ok_logger.addHandler(dump)
         task.screenshot = shot
         task.ocr_fun = self._ocr_fun(real_ocr_fun)
         task.find_feature = self._feature_fun(real_find_feature)
@@ -748,6 +790,8 @@ class ScriptedCase(TaskTestCase):
             for attr in ("screenshot", "ocr_fun", "find_feature"):
                 task.__dict__.pop(attr, None)
             ok_logger.removeHandler(tap)
+            ok_logger.removeHandler(dump)
+            self._dump_chain(sc, run, dump.lines)
             self._restore_task_config(old_cfg)
             self._restore(saved)
             task.executor.reset_scene()
@@ -757,6 +801,27 @@ class ScriptedCase(TaskTestCase):
         if run.trace:
             print(run.trace)
         return run
+
+    def _dump_chain(self, sc: scn.Scenario, run: Run, lines: "list[str]") -> None:
+        """<CHAIN_DIR>/<case>.log and .json for a scenario file (not a harness self-test dict)."""
+        src = Path(sc.source)
+        try:
+            rel = src.resolve().relative_to(scn.SCENARIOS.resolve()).as_posix()
+        except (OSError, ValueError):
+            return
+        CHAIN_DIR.mkdir(exist_ok=True)
+        stem = sc.case
+        n = 1
+        while (CHAIN_DIR / f"{stem}.json").exists():
+            n += 1
+            stem = f"{sc.case}#{n}"
+        (CHAIN_DIR / f"{stem}.log").write_text("\n".join(lines) + "\n", encoding="utf-8")
+        meta = {"case": sc.case, "scenario": rel, "test": self.id(), "lane": CTX.get("lane"),
+                "okww_tag": CTX.get("okww_tag"), "overlay": CTX.get("overlay"),
+                "overlay_sha256": CTX.get("overlay_sha256"), "state": run.state, "ended": run.ended,
+                "raised": type(run.raised).__name__ if run.raised is not None else None,
+                "off_script": run.off_script, "lines": len(lines)}
+        (CHAIN_DIR / f"{stem}.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
 
     def check_frames(self, paths) -> None:
         """Every frame in `paths` has OK-WW's UID strip blacked out (config.blur_area)."""

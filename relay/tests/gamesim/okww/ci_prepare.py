@@ -59,6 +59,8 @@ finally:
 
 OVERLAY_NAME = "okww_files/ark_overrides.tasks.py"
 CONTEXT = "ark_gamesim.json"      # read by the tests, next to OK-WW's main.py
+CHAIN = "gamesim-chain"            # harness.CHAIN_DIR: each scenario's log, for the T7 verdict chain
+CHAIN_TEST = HERE.parent / "chain" / "test_log_contract.py"
 TEST_PREFIX = "gamesim_"          # the copies in OK-WW's tests/ folder
 # OK-WW's own CI gives its whole test step 20 minutes (ok-wuthering-waves v3.7.4
 # .github/workflows/test.yml, "Run tests" timeout-minutes: 20); one file gets half that.
@@ -305,6 +307,8 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
     results = []
     cpu = platform.processor() or "unknown"      # on Windows: family, model, stepping, vendor
     print(f"runner CPU: {cpu}", flush=True)
+    if (work / CHAIN).exists():
+        shutil.rmtree(work / CHAIN)          # logs left from before must not be judged for this run
     for name in ctx["tests"]:
         if okww_overlay.REPORT.exists():
             okww_overlay.REPORT.unlink()     # a report left from before must not pass for this one
@@ -330,6 +334,10 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
                         "unittest": lines, "report": report, "relay_line": relay_line})
     if (work / "logs").is_dir():
         shutil.copytree(work / "logs", out_dir / "okww-logs", dirs_exist_ok=True)
+    chain = None
+    if (work / CHAIN).is_dir():
+        chain = out_dir / "chain"
+        shutil.copytree(work / CHAIN, chain, dirs_exist_ok=True)
 
     problems = []
     # relay_line: the line the relay must print for this overlay on this OK-WW. Green lanes
@@ -358,6 +366,24 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
                 problems.append(f"{r['test']}: selected case {k} did not run")
             if spec["expect"] == "red" and not any(k in ln for ln in r["unittest"] if ln.startswith("FAIL: ")):
                 problems.append(f"{r['test']}: selected case {k} did not fail at an assertion")
+    # T7, the verdict chain (gamesim design 3): the scenario logs this checkout's overlay printed,
+    # judged by the relay's own code on the relay's Python (this one). Only where the overlay is
+    # this checkout's: the verdicts are what today's relay must make of today's overlay.
+    if spec["overlay"] is None and spec["expect"] == "green":
+        if chain is None:
+            problems.append("no scenario logs for the T7 verdict chain (harness wrote no gamesim-chain/)")
+        else:
+            c = subprocess.run([sys.executable, "-u", str(CHAIN_TEST), "--logs", str(chain)],
+                               capture_output=True, text=True, encoding="utf-8", errors="replace",
+                               timeout=TEST_TIMEOUT_S)
+            (out_dir / "chain.log").write_text(c.stdout + c.stderr, encoding="utf-8")
+            print(f"\n===== T7 verdict chain (exit {c.returncode}) =====\n{c.stdout}{c.stderr}", flush=True)
+            last = (c.stdout.strip().splitlines() or [""])[-1]
+            results.append({"test": CHAIN_TEST.name, "exit": c.returncode, "seconds": None,
+                            "verdict": "pass" if c.returncode == 0 else "fail", "unittest": [last],
+                            "report": None, "relay_line": None})
+            if c.returncode != 0 or not last.endswith("all checks passed"):
+                problems.append(f"{CHAIN_TEST.name}: {last}")
     summary = {"lane": lane, "expect": spec["expect"], "okww_tag": ctx["okww_tag"], "cpu": cpu,
                "okww_commit": ctx["okww_commit"], "overlay": ctx["overlay"],
                "results": results, "problems": problems}
