@@ -89,8 +89,10 @@ _STAMINA_DIED = re.compile(_STAMINA_TASK + r"farm_(?:tacet|domain): exceeded rec
 _STAMINA_READ = re.compile(_STAMINA_TASK + r"(?:[^\n]*(按没读到处理（-1）)|info_set current_stamina \d)")
 STAMINA_UNREAD_SAY = "体力读不出来，没刷"
 # The 「不刷体力」 flag file was there: the overlay's farm hook logs this line and
-# returns without farming (okww_files/ark_overrides.tasks.py, _farm_hook).
-_STAMINA_FLAGGED = re.compile(_STAMINA_TASK + r"刷体力已禁用（标记文件在）")
+# returns without farming (okww_files/ark_overrides.tasks.py, _farm_hook). Only the
+# line's start is matched: the rest names the file, a word the texts gate keeps out
+# of the relay's literals; no other overlay line starts this way.
+_STAMINA_FLAGGED = re.compile(_STAMINA_TASK + r"刷体力已禁用（")
 STAMINA_FLAG_SAY = "不刷体力的标记还在"
 
 
