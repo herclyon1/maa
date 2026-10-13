@@ -275,6 +275,19 @@ try:
 except urllib.error.URLError:
     got = "refused"
 check("a POST-only fault passes the GET on the same URL and fails the publish (10-08 21:49)", got, "refused")
+try:
+    net.fault("ntfy.sh/simpub", "refused", method="POST", title="state")
+except TypeError as exc:
+    check("a fault can be limited to one ntfy Title", str(exc), "")
+got = []
+for title in ("hb", "state"):
+    try:
+        urllib.request.urlopen(urllib.request.Request("https://ntfy.sh/simpub", data=b"x", method="POST",
+                                                      headers={"Title": title}), timeout=5)
+        got.append("published")
+    except urllib.error.URLError:
+        got.append("refused")
+check("a state-only fault passes a heartbeat and fails the state publish", got, ["published", "refused"])
 
 # ---------------------------------------------------------------- COS, self-update, inbox, evidence
 print("COS bucket, self-update 'current', the inbox doors, evidence stores")

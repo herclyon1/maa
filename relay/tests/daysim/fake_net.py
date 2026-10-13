@@ -163,9 +163,10 @@ class _Call:
 
 
 class _Fault:
-    def __init__(self, match: str, kind: str, start: float, n: int, body, method: "str | None" = None):
+    def __init__(self, match: str, kind: str, start: float, n: int, body, method: "str | None" = None,
+                 title: "str | None" = None):
         self.match, self.kind, self.start, self.left, self.body = match, kind, start, n, body
-        self.method = method
+        self.method, self.title = method, title
 
 
 class NtfyStream:
@@ -363,16 +364,17 @@ class FakeNet:
         return mid
 
     def fault(self, match: str, kind: str, *, start: "float | None" = None, n: int = 1,
-              body=None, method: "str | None" = None) -> None:
+              body=None, method: "str | None" = None, title: "str | None" = None) -> None:
         """The next `n` calls whose URL contains `match`, from `start` on, fail:
         kind "timeout" (waits the call's timeout, then TimeoutError), "refused",
         "reset", "http:<code>" (with `body`, e.g. ntfy's 42908), or on an ntfy
         stream "drop" / "stall" (no line until the read timeout). `method` limits
         it to calls with that HTTP method (an ntfy publish POSTs to the URL the
-        stream GETs below)."""
+        stream GETs below); `title` to calls with that Title header (an ntfy publish's
+        kind: state, hb, bye)."""
         with self._lock:
             self._faults.append(_Fault(match, kind, self.now() if start is None else start, n, body,
-                                       method.upper() if method else None))
+                                       method.upper() if method else None, title))
 
     def set_web(self, prefix: str, answer) -> None:
         """Override an information source: every URL starting with `prefix` gets
@@ -400,7 +402,8 @@ class FakeNet:
         with self._lock:
             f = next((f for f in self._faults
                       if f.left > 0 and f.match in c.url and self.now() >= f.start
-                      and f.kind not in ("drop", "stall") and f.method in (None, c.method)), None)
+                      and f.kind not in ("drop", "stall") and f.method in (None, c.method)
+                      and f.title in (None, c.headers.get("title"))), None)
             if f is None:
                 return
             f.left -= 1

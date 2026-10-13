@@ -361,10 +361,24 @@ check("a program started after this power-on is still running at the relay's sta
 faults = []
 host = type("H", (), {"net": type("N", (), {"fault": lambda self, m, k, **f: faults.append((m, k, f))})(),
                       "note": lambda self, *a, **k: None})()
-at = W.epoch("2026-10-08T21:49:04+08:00")
-W.World._fault(host, {"channel": "ntfy_publish", "error": "TimeoutError: The read operation timed out"}, at)
-check("an ntfy publish timeout fails the next publish begun up to POST_TIMEOUT before its line",
-      faults, [(f"ntfy.sh/{W.PHONE_TOPIC}", "timeout", {"method": "POST", "start": at - 21})])      # mailbox.Mailbox.POST_TIMEOUT 20 s, and one
+fev = {"t": "2026-10-08T21:49:04+08:00", "kind": "net_fault", "src": "x:1", "channel": "ntfy_publish",
+       "error": "TimeoutError: The read operation timed out"}
+item = W.timeline([fev])[0]
+# mailbox.Mailbox.POST_TIMEOUT 20 s, and one: the fault is in place when that publish begins
+check("an ntfy publish timeout is applied when the publish began, not at its line",
+      item["t"], W.epoch(fev["t"]) - 21)
+W.World._fault(host, fev, item["t"])
+check("it fails the next POST to the phone topic from then on",
+      faults, [(f"ntfy.sh/{W.PHONE_TOPIC}", "timeout", {"method": "POST", "start": W.epoch(fev["t"]) - 21,
+                                                         "title": None})])
+sev = {**fev, "what": "state"}
+item = W.timeline([sev])[0]
+faults.clear()
+W.World._fault(host, sev, item["t"])
+check("a failed state publish: the next state publish from two minutes before the machine's (10-08: the sim's "
+      "关机前 state went out at 21:48:00, the machine's at 21:48:42)",
+      faults, [(f"ntfy.sh/{W.PHONE_TOPIC}", "timeout", {"method": "POST", "start": W.epoch(fev["t"]) - 21 - 120,
+                                                         "title": "state"})])
 
 # ---- outside inputs (days/<D>/outside.jsonl): state.json edits and web answers
 evs11, _seed = W.load_day("2026-10-11")

@@ -156,6 +156,10 @@ OKWW_APPJSON_REWRITE_S = 38
 # mailbox.Mailbox.POST_TIMEOUT: an ntfy publish that timed out began this long before
 # its 「发到信箱没成」 line.
 NTFY_POST_TIMEOUT_S = 20
+# How much sooner the sim's relay may reach a recorded publish: 10-08's 「关机前」 state
+# publish began 21:48:42 on the machine (its timeout line 21:49:04) and 21:48:00 in the
+# sim (2026-10-13 run of 10-08, outputs.json ntfy "state"); twice that, rounded up.
+NTFY_FAULT_LEAD_S = 120
 # OK-WW loads the relay's overrides at start (ok-script log 「task_manager:Found tasks:
 # [...ark_overrides.py]」) and they write C:\ProgramData\ark-okww-overlay.json then
 # (ark_overrides.tasks.py _write_report): 10-12 09:19:07.833 in the log, 「覆盖层报告
@@ -209,6 +213,14 @@ def timeline(events: list[dict]) -> list[dict]:
             # place INBOX_LEAD_S before the read, so the relay's own read finds it.
             t = min(epoch(ev["t"]), epoch(ev.get("received") or ev["t"])) - INBOX_LEAD_S
             items.append({"t": t, "n": n, "sub": 0, "kind": "inbox", "ev": ev})
+        elif ev["kind"] == "net_fault" and ev.get("channel") == "ntfy_publish" and _timed_out(ev):
+            # Logged when the call had failed: the publish began POST_TIMEOUT before the
+            # line, and the fault must be in place by then (10-08 21:49:04). A state
+            # publish is matched by its kind, from NTFY_FAULT_LEAD_S earlier still: the
+            # sim's relay reaches the same publish a little sooner than the machine did.
+            lead = NTFY_FAULT_LEAD_S if ev.get("what") else 0
+            items.append({"t": epoch(ev["t"]) - NTFY_POST_TIMEOUT_S - 1 - lead, "n": n, "sub": 0,
+                          "kind": "net_fault", "ev": ev})
         elif ev["kind"] not in ("relay_start", "relay_stop"):
             items.append({"t": epoch(ev["t"]), "n": n, "sub": 0, "kind": ev["kind"], "ev": ev})
     items.sort(key=lambda x: (x["t"], _order(x), x["n"], x["sub"]))
@@ -874,16 +886,15 @@ class World:
                   src=ev.get("src"))
 
     def _fault(self, ev: dict, t: float) -> None:
-        ch, err = ev.get("channel"), str(ev.get("error") or "")
-        kind = "timeout" if ("timed out" in err or "TimeoutError" in err) else "refused"
+        ch = ev.get("channel")
+        kind = "timeout" if _timed_out(ev) else "refused"
         match = {"mac": urllib.parse.urlsplit(ALERT_URL).netloc, "ntfy_backlog": "poll=1", "cos": ".myqcloud.com",
                  "wecom": "qyapi.weixin.qq.com", "serverchan": "ftqq.com"}.get(ch)
         if ch == "ntfy_stream":
             self.net.fault(PHONE_TOPIC, "stall", start=t)
         elif ch == "ntfy_publish":
-            # The line comes when the call has failed; a timeout began POST_TIMEOUT before it.
-            self.net.fault(f"ntfy.sh/{PHONE_TOPIC}", kind, method="POST",
-                           start=t - NTFY_POST_TIMEOUT_S - 1 if kind == "timeout" else t)
+            # t is the call's start (timeline): a timeout is logged POST_TIMEOUT after it.
+            self.net.fault(f"ntfy.sh/{PHONE_TOPIC}", kind, method="POST", start=t, title=ev.get("what"))
         elif match:
             self.net.fault(match, kind, start=t)
         else:
@@ -967,6 +978,11 @@ class World:
         for key, data in list(self.net.cos.items()):
             if len(data) <= 1 << 20:
                 (self.cos_dir / urllib.parse.quote(key, safe="")).write_bytes(data)
+
+
+def _timed_out(ev: dict) -> bool:
+    err = str(ev.get("error") or "")
+    return "timed out" in err or "TimeoutError" in err
 
 
 _APP_VERSION = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ \|[^\n]*?(?:版本号:\s+|current_version=)(v[\w.-]+)", re.M)

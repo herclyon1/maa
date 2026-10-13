@@ -344,15 +344,17 @@ def check_updater() -> None:
 def check_publish_fault() -> None:
     print("\n[network faults: an ntfy publish that failed once is an input]")
     ctx = sl.Day("2026-10-08", ts("2026-10-08T00:00:00+08:00"), ts("2026-10-09T00:00:00+08:00"), Path("."), Path("."))
-    ctx.recs = [sl.Rec(29887, 0, ts("2026-10-08T21:49:04+08:00"), "INFO", "ark.phone",
+    ctx.recs = [sl.Rec(29886, 0, ts("2026-10-08T21:48:42+08:00"), "INFO", "ark.phone",
+                       "状态 43858 字节，压缩到 13243 字节"),
+                sl.Rec(29887, 0, ts("2026-10-08T21:49:04+08:00"), "INFO", "ark.phone",
                        "发到信箱没成（TimeoutError: The read operation timed out），3 秒后再试一次"),
                 sl.Rec(29888, 0, ts("2026-10-08T21:49:08+08:00"), "WARNING", "ark.phone",
                        "发到手机信箱第一次没成，3 秒后再发一次，发出去了")]
     sl.do_net(ctx)
-    got = [(e["kind"], e["channel"], e["error"], e["src"]) for _t, _s, e in ctx.events]
-    check("10-08 21:49:04: one ntfy_publish timeout, from the INFO retry line only", got,
+    got = [(e["kind"], e["channel"], e["error"], e["src"], e.get("what")) for _t, _s, e in ctx.events]
+    check("10-08 21:49:04: one ntfy_publish timeout of a state publish, from the INFO retry line only", got,
           [("net_fault", "ntfy_publish", "TimeoutError: The read operation timed out",
-            f"{sl.RELAY_LOG}:29887")])
+            f"{sl.RELAY_LOG}:29887", "state")])
 
 
 OUTSIDE_SRC = re.compile(r"(?:[CD]/\S+|BOARD/\S+):\d+")

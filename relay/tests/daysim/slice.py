@@ -514,8 +514,12 @@ NET_CHANNEL_OF_LOGGER = {"ark.phone": "ntfy", "ark.notify": "wecom", "ark.alertl
 WMI_LOST = re.compile(r"^系统的程序启动通知断了（(.*?)）")
 
 
+# mailbox.Mailbox.publish_state logs the state's size just before it publishes it.
+STATE_SIZE = re.compile(r"^状态 \d+ 字节")
+
+
 def do_net(ctx: Day) -> None:
-    for r in ctx.recs:
+    for i, r in enumerate(ctx.recs):
         if not ctx.within(r.t):
             continue
         src = f"{RELAY_LOG}:{r.n}"
@@ -524,7 +528,13 @@ def do_net(ctx: Day) -> None:
             ctx.emit(r.t, "proc", src, op="wmi_subscription_lost", error=m.group(1)[:160])
             continue
         hit = next(((ch, m) for lg, rx, ch in NET_RULES if r.logger == lg and (m := rx.match(r.msg))), None)
-        if hit:
+        if hit and hit[0] == "ntfy_publish":
+            # Which publish failed: a state one when its size line came just before.
+            state = any(x.logger == "ark.phone" and STATE_SIZE.match(x.msg) and r.t - x.t <= 60
+                        for x in ctx.recs[max(0, i - 5):i])
+            ctx.emit(r.t, "net_fault", src, channel=hit[0], error=clean(hit[1].group(1)),
+                     **({"what": "state"} if state else {}))
+        elif hit:
             ctx.emit(r.t, "net_fault", src, channel=hit[0], error=clean(hit[1].group(1)))
         elif r.level in ("WARNING", "ERROR") and NET_ERR.search(r.msg):
             ch = NET_CHANNEL_OF_LOGGER.get(r.logger, "other")
