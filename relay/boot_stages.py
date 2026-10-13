@@ -301,16 +301,6 @@ def _stage_bootstrap():
     # 「日志：<链接>，出事时刻 HH:MM」 (error_evidence.py, fix bill L).
     from ark_relay.features.evidence import error_evidence  # noqa: PLC0415
     errwatch.set_evidence_uploader(lambda: error_evidence.upload_daily_logs(cfg))
-    # Alarm copies a shutdown cut off before they reached COS go up now (alertlog.py),
-    # and the ones the Mac did not take are POSTed to it again (macpush.py).
-    try:
-        notifier.alert_log().flush_async()
-    except Exception:   # the copy never stops the boot
-        log.warning("报警抄送补传没能开始", exc_info=True)
-    try:
-        notifier.mac_push().flush_async()
-    except Exception:   # nor does the push to the Mac
-        log.warning("报警直送 Mac 补发没能开始", exc_info=True)
     engine.bootstrap()
     log.info("服务模式启动，监视 %s（变更即处理，兜底 %d 秒）",
              cfg.history_dir, cfg.poll_seconds)
@@ -321,8 +311,29 @@ def _stage_bootstrap():
     return log, cfg, notifier, engine
 
 
+def _stage_flush_copies(notifier, log) -> None:
+    """Alarm copies a shutdown cut off before they reached COS go up now (alertlog.py),
+    and the ones the Mac did not take are POSTed to it again (macpush.py).
+
+    After the self-update, not in _stage_bootstrap: on a self-update boot the outgoing
+    process ran both, then the new one ran them again (relay.log 10-05 21:20:19 /
+    21:20:27, audit s23 F3)."""
+    try:
+        notifier.alert_log().flush_async()
+    except Exception:   # the copy never stops the boot
+        log.warning("报警抄送补传没能开始", exc_info=True)
+    try:
+        notifier.mac_push().flush_async()
+    except Exception:   # nor does the push to the Mac
+        log.warning("报警直送 Mac 补发没能开始", exc_info=True)
+
+
 def _stage_patch_okww(cfg, notifier, log) -> None:
-    """Install the OK-WW overrides once per startup (idempotent)."""
+    """Install the OK-WW overrides once per startup (idempotent).
+
+    Runs after the self-update, in the process that stays: before it, a self-update
+    boot sent the same 🩹 note twice, 8 s apart, from the outgoing and the new process
+    (relay.log 10-05 21:20:19 / 21:20:27; audit s23 F3)."""
     # Idempotent: it writes nothing at all when they are already in place.
     # Here, not only in the boot pre-update block: after a deploy the machine
     # should already be in its final state, with no "takes effect next boot"

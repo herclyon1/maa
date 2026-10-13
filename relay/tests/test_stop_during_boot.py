@@ -6,6 +6,8 @@ MainThread in http.client (boot pushes retrying against a refused port) with the
 errwatch push thread asleep in a 30 s retry backoff. Two fixes, one check each:
 1. service.main checks for a stop between boot steps and returns;
 2. the errwatch push thread's backoff wakes on close() instead of sleeping it out.
+Since audit s23 F3 (10-13) the alarm-copy flushes and the OK-WW overrides run after
+the self-update, so a self-update boot runs them once, in the process that stays.
 """
 from __future__ import annotations
 
@@ -52,14 +54,15 @@ def check(label, got, want):
         fails.append(label)
 
 
-STAGES = ("patch_okww", "selfupdate", "backfill_manual_stops", "announce_update",
+STAGES = ("selfupdate", "flush_copies", "patch_okww", "backfill_manual_stops", "announce_update",
           "evidence_sources", "inbox_and_phone", "stagegate", "selfcheck", "preupdate",
           "reenable_maaend", "collect_watch", "gameupdate", "annihilation", "machinecheck")
 
 
-def boot(stop_during: str | None) -> list[str]:
+def boot(stop_during: str | None, updated: bool = False) -> list[str]:
     """Run service.main with every boot step recorded; `stop_during` asks for a
-    stop while that step runs (as SvcStop does from another thread)."""
+    stop while that step runs (as SvcStop does from another thread); `updated`
+    makes the self-update find new code (the outgoing process returns)."""
     ran: list[str] = []
     svc = service.ArkRelayService.__new__(service.ArkRelayService)
     svc._stop_asked = threading.Event()
@@ -70,7 +73,7 @@ def boot(stop_during: str | None) -> list[str]:
             if name == stop_during:
                 svc._stop_asked.set()
             if name == "selfupdate":
-                return False
+                return updated
             if name == "inbox_and_phone":
                 return None, None, None
             return None
@@ -78,7 +81,7 @@ def boot(stop_during: str | None) -> list[str]:
 
     saved = {}
     for name in STAGES:
-        saved[name] = getattr(boot_stages, f"_stage_{name}")
+        saved[name] = getattr(boot_stages, f"_stage_{name}", None)
         setattr(boot_stages, f"_stage_{name}", step(name))
     real_bootstrap, real_net, real_loop = boot_stages._stage_bootstrap, service._wait_for_network, service._loop
     boot_stages._stage_bootstrap = lambda: (logging.getLogger("ark.test"), None, None, None)
@@ -88,7 +91,10 @@ def boot(stop_during: str | None) -> list[str]:
         svc.main()
     finally:
         for name, fn in saved.items():
-            setattr(boot_stages, f"_stage_{name}", fn)
+            if fn is None:
+                delattr(boot_stages, f"_stage_{name}")
+            else:
+                setattr(boot_stages, f"_stage_{name}", fn)
         boot_stages._stage_bootstrap, service._wait_for_network, service._loop = \
             real_bootstrap, real_net, real_loop
     return ran
@@ -100,8 +106,16 @@ check("steps", boot(None), list(STAGES) + ["loop"])
 print("[stop during the update announcement (the smoke's case): nothing after it]")
 check("steps", boot("announce_update"), list(STAGES[:STAGES.index("announce_update") + 1]))
 
-print("[stop during patch_okww: not even the self-update runs]")
-check("steps", boot("patch_okww"), ["patch_okww"])
+print("[stop during patch_okww: nothing after it]")
+check("steps", boot("patch_okww"), list(STAGES[:STAGES.index("patch_okww") + 1]))
+
+print("[stop during the self-update: not even the OK-WW overrides]")
+check("steps", boot("selfupdate"), ["selfupdate"])
+
+print("[self-update found new code: the outgoing process flushes and patches nothing]")
+# relay.log 10-05 21:20:19 / 21:20:27: the same 🩹 note from the outgoing and the
+# new process, 8 s apart (audit s23 F3).
+check("steps", boot(None, updated=True), ["selfupdate"])
 
 print("[stop during the inbox step: no stage gate, no pre-update, no loop]")
 check("steps", boot("inbox_and_phone"), list(STAGES[:STAGES.index("inbox_and_phone") + 1]))

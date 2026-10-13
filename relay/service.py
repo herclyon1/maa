@@ -267,7 +267,6 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         if booted is None:
             return
         log, cfg, notifier, engine = booted
-        boot_stages._stage_patch_okww(cfg, notifier, log)
         # The self-update has to come before anything uses the new code, and
         # the network wait has to come before the self-update (a cold boot has
         # no DNS yet). The order of these two lines is itself the rule: do not
@@ -275,6 +274,14 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # 来龙去脉见 docs/CODE-HISTORY.md「service.py:main」
         _wait_for_network(log)
         if self._stop_in_boot(log) or boot_stages._stage_selfupdate(log):
+            return
+        if self._stop_in_boot(log):         # a stop that came while it fetched
+            return
+        # Only in the process that stays: on a self-update boot the outgoing one used
+        # to run these too, and the 🩹 note went out twice (audit s23 F3).
+        boot_stages._stage_flush_copies(notifier, log)
+        boot_stages._stage_patch_okww(cfg, notifier, log)
+        if self._stop_in_boot(log):
             return
         boot_stages._stage_backfill_manual_stops(engine, log)
         if self._stop_in_boot(log):
