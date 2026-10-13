@@ -34,6 +34,11 @@ from ark_relay.core.config import SERVER_TZ
 from ark_relay.features.weekly import annihilation as A
 
 AUTOMAS_FX = Path(__file__).resolve().parent / "fixtures" / "automas-config-2026-10-11" / "config"
+# next_plan's maintenance notices come from the official sites; nothing here is about
+# them, and no relay test may reach the internet (run 38363145659 sat in those
+# fetches on Windows until the 180 s limit).
+plan.maintenance_lines = lambda day: []
+
 FAILED: list[str] = []
 
 

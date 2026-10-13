@@ -158,7 +158,11 @@ finally:
     locked.unlink()
 
 print("[machine unreachable: one fast line, exit 3, nothing else tried]")
-for label, probe in (("refused", CLOSED), ("no answer", "203.0.113.1:22")):
+# "No answer" without leaving the Mac (this test runs on the Mac only; relay-windows.yml
+# excludes it): macOS puts only 127.0.0.1 on lo0, so a SYN to 127.0.0.2 stays on lo0 and
+# is never answered - measured 2026-10-13: create_connection(("127.0.0.2", 22), timeout=1)
+# raised TimeoutError after 1.01 s. It was 203.0.113.1 (TEST-NET-3), out the default route.
+for label, probe in (("refused", CLOSED), ("no answer", "127.0.0.2:22")):
     log.write_text("")
     t0 = time.monotonic()
     rc, out, err = run("red", mode="hang", probe=probe)

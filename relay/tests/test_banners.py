@@ -1684,15 +1684,20 @@ def _ef_briefing() -> None:
             pass
 
     # Through _endfield: no banner notice yet, so the briefing gives the line, and
-    # its date passes the source gate.
-    real_text, real_news = _b._text, _b.endfield_next_from_news
-    _b._text, _b.endfield_next_from_news = (lambda url, *a, **k: get(url)), (lambda now: None)
+    # its date passes the source gate. The official bulletin (_json, game-hub.hypergryph.com)
+    # is offline: no relay test reaches the internet, and the line does not come from it.
+    real_text, real_news, real_json = _b._text, _b.endfield_next_from_news, _b._json
+
+    def no_api(url, *a, **k):
+        raise OSError("offline")
+
+    _b._text, _b.endfield_next_from_news, _b._json = (lambda url, *a, **k: get(url)), (lambda now: None), no_api
     try:
         tr, notes = _b.Trace.new(), {}
         got, nxt = _b._endfield(None, lambda path: {"data": {"list": []}}, datetime(2026, 10, 8, 12, 27),
                                 trace=tr, notes=notes)
     finally:
-        _b._text, _b.endfield_next_from_news = real_text, real_news
+        _b._text, _b.endfield_next_from_news, _b._json = real_text, real_news, real_json
     out = render(got, datetime(2026, 10, 8, 12, 27), {"终末地": nxt}, notes=notes, trace=tr)
     check("briefing: 10-08 report line",
           "· 下期：万物更新 · 祀 · 「丹青渡」版本更新后开（版本 10-15 开启）" in out, True)

@@ -25,6 +25,11 @@ from _tmp import tmpdir
 from ark_relay.core import plan
 from ark_relay.core.config import SERVER_TZ
 
+# next_plan's maintenance notices come from the official sites; nothing here is about
+# them, and no relay test may reach the internet (run 38363145659 sat in those
+# fetches on Windows until the 180 s limit).
+plan.maintenance_lines = lambda day: []
+
 FAILED: list[str] = []
 FIX = Path(__file__).resolve().parent / "fixtures" / "maaend-2026-09-10" / "tasks" / "AutoCollect.json"
 AUTOMAS_FX = Path(__file__).resolve().parent / "fixtures" / "automas-config-2026-10-11" / "config"

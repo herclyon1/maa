@@ -45,6 +45,11 @@ from ark_relay.features.preupdate import preupdate             # noqa: E402
 from ark_relay.features.run import runwatch                    # noqa: E402
 from ark_relay.features.shutdown import shutdown               # noqa: E402
 
+# next_plan's maintenance notices come from the official sites; nothing here is about
+# them, and no relay test may reach the internet (run 38363145659 sat in those
+# fetches on Windows until the 180 s limit).
+plan.maintenance_lines = lambda day: []
+
 QC = AUTOMAS / "config" / "QueueConfig.json"
 PRISTINE = QC.read_text(encoding="utf-8")
 MORNING = "cc32e55a-55d0-408d-980d-642e66d111ae"       # 早班 09:00: MAA, OK-WW, MaaEnd
