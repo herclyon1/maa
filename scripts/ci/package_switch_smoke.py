@@ -39,7 +39,8 @@ now changes nothing).
                  backend, one case each: this week's annihilation done by the relay,
                  done in an earlier week, never closed by the relay, a map he chose,
                  quick config off, AUTO-MAS busy, AUTO-MAS not answering
-  9 uninstall    unins000.exe: AUTO-MAS settings put back, everything of the package and
+  9 uninstall    unins000.exe: AUTO-MAS keeps annihilation and both client updates (no old
+                 relay to take them back), its start-with-Windows put back; everything of the package and
                  what the old relay left gone (leftovers.py uninstalled), his .env kept
 
 Each check prints [ok] / [FAIL] / [UNTESTED]; the run fails if any check failed.
@@ -361,14 +362,18 @@ def main() -> int:
     deploy(pkg)
     handover_cases(inst)
 
-    # 9 uninstall (the stand-in still answering: the uninstall puts AUTO-MAS back first)
+    # 9 uninstall (the stand-in still answering: the uninstall rolls AUTO-MAS back first)
     r = run([str(inst / "unins000.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
              f"/LOG={OUT / 'uninstall.log'}"])
     check("9 uninstall: exit 0", r.returncode == 0, f"exit {r.returncode}")
     gone = wait_until(lambda: not inst.exists(), 120, 3)
     check("9 uninstall: install folder gone", gone)
+    # With the old relay gone, steps 13 / 10a / 10b stay with AUTO-MAS (automas_handover
+    # KEPT_WITHOUT_OLD_RELAY, dfd67a8c); only step 20 (start with Windows) is put back.
     now = fake_values(FAKE)
-    check("9 uninstall: AUTO-MAS settings as before", now == before, f"{now}")
+    want = dict(HANDED, IfSelfStart=before["IfSelfStart"])
+    check("9 uninstall: AUTO-MAS keeps the old relay's jobs, start-up put back", now == want,
+          f"{now} (want {want})")
     check("9 uninstall: nothing of the package or of what the old relay left", P.leftovers("uninstalled"))
     left = [n for n in OLD_CODE if (data / n).exists()]
     check("9 uninstall: old relay code gone from the data folder", not left, ", ".join(left))

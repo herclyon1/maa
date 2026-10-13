@@ -63,17 +63,17 @@ jobs:
         run: |
           dir=$(cygpath -u "$pythonLocation")
           [ -e "$dir/python3.exe" ] || cp "$dir/python.exe" "$dir/python3.exe"
-          python3 -c 'import sys; v = sys.version_info[:3]; print(sys.executable, v); assert v == (3, 14, 7), v'
+          python3 -c 'import sys; v = sys.version_info[:3]; print(sys.executable, v); assert v == (3, 14, 8), v'
 
       # test_phone_mailbox_e2e.py runs the relay's mailbox against a real ntfy
       # server. ntfy ships one for Windows: "The ntfy server and CLI are fully
-      # supported on Windows." (https://docs.ntfy.sh/install/) - the same 2.28.0
+      # supported on Windows." (https://docs.ntfy.sh/install/) - the same 2.30.0
       # the Mac builds from source.
-      - name: Fetch the ntfy 2.28.0 server for Windows
+      - name: Fetch the ntfy 2.30.0 server for Windows
         run: |
           tmp=$(cygpath -u "$RUNNER_TEMP")
           curl -fsSL --retry 3 -o "$tmp/ntfy.zip" \
-            https://github.com/binwiederhier/ntfy/releases/download/v2.28.0/ntfy_2.28.0_windows_amd64.zip
+            https://github.com/binwiederhier/ntfy/releases/download/v2.30.0/ntfy_2.30.0_windows_amd64.zip
           python -m zipfile -e "$tmp/ntfy.zip" "$tmp/ntfy"
           exe=$(find "$tmp/ntfy" -iname ntfy.exe | head -1)
           [ -n "$exe" ] || { echo "no ntfy.exe in the zip"; find "$tmp/ntfy"; exit 1; }
