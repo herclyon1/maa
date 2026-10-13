@@ -318,18 +318,42 @@ def game_alive() -> "list[str]":
     return [n for n in GAME_PROCS if n.lower() in low] + script
 
 
-def stop_okww_script(sleep=time.sleep) -> bool:
-    """Stop only OK-WW's python (the script), leaving the game up; True once none is
-    left. Before a relaunch: `_launch` starts a new `pythonw main.py -t 2 -e`, and an
-    old one still alive would drive the same game alongside it. Looked at again for
-    up to ten seconds, as stop_okww does."""
+# The whole stop-the-old-script step, PowerShell calls included: each list call may
+# otherwise run to its 60 s hang guard, and ten of them held a tick for ten minutes.
+# No timing behind it: the bound the 2026-10-13 review of this branch set ("about 15 s").
+STOP_SCRIPT_SECONDS = 15
+
+
+def stop_okww_script(sleep=time.sleep, clock=time.monotonic) -> str:
+    """Stop only OK-WW's python (the script), leaving the game up. '' once none is
+    left; "running" when one is still listed at the end; "unreadable" when the list
+    could not be read twice in a row.
+
+    Before a relaunch: `_launch` starts a new `pythonw main.py -t 2 -e`, and an old
+    one still alive would drive the same game alongside it. Every PowerShell call
+    gets only the time left of STOP_SCRIPT_SECONDS (at least one second), so the
+    step ends in about that long whatever pwsh does."""
     from ark_relay.features.preupdate.preupdate_okww import _stop_okww_python, okww_python_pids  # noqa: PLC0415
-    _stop_okww_python()
-    for _ in range(10):
-        if okww_python_pids() == []:
-            return True
+    end = clock() + STOP_SCRIPT_SECONDS
+
+    def left() -> float:
+        return max(1.0, end - clock())
+
+    _stop_okww_python(timeout=left())
+    misses = 0
+    while True:
+        pids = okww_python_pids(timeout=left())
+        if pids == []:
+            return ""
+        if pids is None:
+            misses += 1
+            if misses >= 2:
+                return "unreadable"
+            continue            # an unreadable list is asked again at once, once
+        misses = 0
+        if clock() >= end:
+            return "running"
         sleep(1)
-    return False
 
 
 def _kill_on_desktop(pids=()) -> None:
@@ -593,9 +617,12 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
     else:
         # The game stays up on the first try, but the old OK-WW must not: a second
         # `pythonw main.py -t 2 -e` next to a live one has two scripts driving one game.
-        # A script that will not go (or cannot be seen) gets the full stop instead.
-        if not stop_okww_script():
-            log.warning("刷声骸：旧的 OK-WW 脚本停不掉，连游戏一起关了再重开")
+        # A script still listed at the end, or a list unreadable twice, gets the full
+        # stop instead: a relaunch next to a script nobody can see is the case above.
+        why = stop_okww_script()
+        if why:
+            log.warning("刷声骸：旧的 OK-WW 脚本%s，连游戏一起关了再重开",
+                        "停不掉" if why == "running" else "停没停查了两次都查不到")
             stop_okww()
     ok, why = _launch()
     rec["restarts"] = tries + 1

@@ -58,7 +58,7 @@ launched = []
 echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
 echofarm.stop_okww = lambda: launched.append("stop")
 _real_stop_script = echofarm.stop_okww_script
-echofarm.stop_okww_script = lambda: launched.append("script") or True
+echofarm.stop_okww_script = lambda: launched.append("script") or ""
 # The marker file lives in C:\ProgramData on the machine. Point it at a temp path so
 # the tests never write into the repo (and never into a real machine path either).
 echofarm.NO_CLAIM = str(tmpdir() / "no-claim")
@@ -484,38 +484,112 @@ print("\n[开跑时刻读不出来也不当成卡死]")
 check("读不出开跑时刻返回 None", echofarm._started_at({"started": "不是时间"}), None)
 check("读得出就是那个时刻", echofarm._started_at({"started": "2026-09-09 04:00"}).hour, 4)
 
-print("\n[stopping only the old script: confirmed gone, or the full stop]")
-# 2026-10-13: the old script was given a blind two seconds; now it is looked for again.
+print("\n[stopping only the old script: bounded in time, confirmed gone, or the full stop]")
+# 2026-10-13: the old script was given a blind two seconds; then it was looked for
+# ten times with each PowerShell call free to run to its 60 s guard, and an
+# unreadable list closed the game at once. Now the step has STOP_SCRIPT_SECONDS in
+# all, an unreadable list is asked again once, and the caller is told why.
 import ark_relay.features.preupdate.preupdate_okww as _pk  # noqa: E402
-_pk_real = _pk._stop_okww_python, _pk.okww_python_pids
-_seen = iter([[4242], [4242], []])
-_naps = []
-_pk._stop_okww_python = lambda: None
-_pk.okww_python_pids = lambda: next(_seen)
-try:
-    check("gone on the third look: True", _real_stop_script(sleep=_naps.append), True)
-    check("…after two one-second looks", _naps, [1, 1])
-    _pk.okww_python_pids = lambda: None
-    _naps.clear()
-    check("never readable: False", _real_stop_script(sleep=_naps.append), False)
-    check("…after ten looks", len(_naps), 10)
-finally:
-    _pk._stop_okww_python, _pk.okww_python_pids = _pk_real
-_c3 = fresh()
-echofarm.start(_c3, 1, "08:30", "天傀劫煞", now=NOW)
-_r3 = echofarm.current(_c3.state_dir)
-_r3["started"] = "2026-09-09 04:00"
-echofarm._store(_c3.state_dir).set("queues", "echo_farm", _r3)
-_wb._okww_log = lambda: _logfile
-echofarm.stop_okww_script = lambda: launched.append("script") and False
-try:
-    _b3 = len(launched)
-    echofarm.tick(_c3, datetime(2026, 9, 9, 4, 36, tzinfo=SERVER_TZ))
-    check("an old script that will not go: the full stop before the relaunch",
-          launched[_b3:], ["script", "stop", 1])
-finally:
-    echofarm.stop_okww_script = lambda: launched.append("script") or True
-    _wb._okww_log = _real_log
+import logging as _lg  # noqa: E402
+
+
+class _Clock:
+    """A monotonic clock that pwsh calls and sleeps move forward."""
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+
+def _stop_run(answers, pwsh_secs=0.5):
+    """Run the real stop_okww_script against fake pwsh: `answers` are what each
+    list call returns (a list, None, or "slow" for a call that runs to its timeout).
+    (result, seconds taken, timeouts handed to pwsh, naps)."""
+    clk, timeouts, naps, seq = _Clock(), [], [], iter(answers)
+
+    def stop(timeout=None):
+        timeouts.append(timeout)
+        clk.t += min(pwsh_secs, timeout)
+
+    def pids(timeout=None):
+        timeouts.append(timeout)
+        got = next(seq)
+        if got == "slow":
+            clk.t += timeout
+            return None
+        clk.t += min(pwsh_secs, timeout)
+        return got
+
+    def nap(n):
+        naps.append(n)
+        clk.t += n
+    real = _pk._stop_okww_python, _pk.okww_python_pids
+    _pk._stop_okww_python, _pk.okww_python_pids = stop, pids
+    try:
+        t0 = clk.t
+        try:
+            res = _real_stop_script(sleep=nap, clock=clk)
+        except (TypeError, StopIteration) as e:    # an older signature or an endless loop
+            res = f"crashed: {type(e).__name__}"
+        return res, clk.t - t0, timeouts, naps
+    finally:
+        _pk._stop_okww_python, _pk.okww_python_pids = real
+
+
+# None before this bound existed, so the checks below fail rather than crash.
+_BOUND = getattr(echofarm, "STOP_SCRIPT_SECONDS", None)
+_res, _took, _to, _naps = _stop_run([[4242], [4242], []])
+check("gone on the third look: ''", _res, "")
+check("…after two one-second naps", _naps, [1, 1])
+_res, _took, _to, _naps = _stop_run([[4242]] * 100)
+check("still listed at the end: 'running'", _res, "running")
+check("…within the step's time", _BOUND is not None and _took <= _BOUND + 1, True)
+_res, _took, _to, _naps = _stop_run([None, []])
+check("unreadable once, then empty: '' (asked again, not given up)", _res, "")
+check("…asked again at once, no nap", _naps, [])
+_res, _took, _to, _naps = _stop_run([None, None, []])
+check("unreadable twice in a row: 'unreadable'", _res, "unreadable")
+_res, _took, _to, _naps = _stop_run(["slow", "slow", []], pwsh_secs=0.5)
+check("a hung pwsh: 'unreadable'", _res, "unreadable")
+check("…and the step still ends in about STOP_SCRIPT_SECONDS",
+      _BOUND is not None and _took <= _BOUND + 2, True)
+check("…every pwsh call got only the time left, never its 60 s guard",
+      _BOUND is not None and all(x is not None and x <= _BOUND for x in _to), True)
+
+
+class _Warn(_lg.Handler):
+    def __init__(self):
+        super().__init__(_lg.WARNING)
+        self.msgs = []
+
+    def emit(self, record):
+        self.msgs.append(record.getMessage())
+
+
+for _why, _says, _want in (("running", "停不掉", ["script", "stop", 1]),
+                           ("unreadable", "查了两次都查不到", ["script", "stop", 1]),
+                           ("", None, ["script", 1])):
+    _c3 = fresh()
+    echofarm.start(_c3, 1, "08:30", "天傀劫煞", now=NOW)
+    _r3 = echofarm.current(_c3.state_dir)
+    _r3["started"] = "2026-09-09 04:00"
+    echofarm._store(_c3.state_dir).set("queues", "echo_farm", _r3)
+    _wb._okww_log = lambda: _logfile
+    echofarm.stop_okww_script = lambda w=_why: (launched.append("script"), w)[1]
+    _h = _Warn()
+    echofarm.log.addHandler(_h)
+    try:
+        _b3 = len(launched)
+        echofarm.tick(_c3, datetime(2026, 9, 9, 4, 36, tzinfo=SERVER_TZ))
+        check(f"first relaunch, old script {_why or 'gone'}: {_want}", launched[_b3:], _want)
+        check(f"…the warning says why ({_says})",
+              any("连游戏一起关了" in m and _says in m for m in _h.msgs) if _says
+              else not any("连游戏一起关了" in m for m in _h.msgs), True)
+    finally:
+        echofarm.log.removeHandler(_h)
+        echofarm.stop_okww_script = lambda: launched.append("script") or ""
+        _wb._okww_log = _real_log
 
 print("\n[收工那一步本身：先停计划任务，再把 OK-WW 的进程停干净]")
 # The real function, not the stub - it is what actually ends the run on the machine.

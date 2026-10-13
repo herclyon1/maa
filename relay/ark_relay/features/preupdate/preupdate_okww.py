@@ -41,33 +41,33 @@ _OKWW_PY = ("Get-CimInstance Win32_Process -Filter "
             r"Where-Object { $_.CommandLine -like '*\ok-ww\*' }")
 
 
-def _okww_py(tail: str):
+def _okww_py(tail: str, timeout: "float | None" = None):
     """Run `_OKWW_PY | tail` in PowerShell 7; the CompletedProcess, or None when it
-    could not run."""
+    could not run (or ran past `timeout` seconds)."""
     ps = _OKWW_PY + " | " + tail
     # 60 s: the hang guard _okww_quiesce has had on this same call since 2026-08-28
     # (bc3b709d), moved here unchanged. Its duration on the machine has no record.
     try:
         return subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
-                       capture_output=True, timeout=60)
+                       capture_output=True, timeout=60 if timeout is None else timeout)
     except (OSError, subprocess.SubprocessError):
         return None
 
 
-def _stop_okww_python() -> None:
+def _stop_okww_python(timeout: "float | None" = None) -> None:
     """Stop OK-WW's python processes (only those, see _OKWW_PY); the game is left alone.
     The result is not checked: a caller that must know uses okww_python_pids."""
-    _okww_py("ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
+    _okww_py("ForEach-Object { Stop-Process -Id $_.ProcessId -Force }", timeout)
 
 
-def okww_python_pids() -> "list[int] | None":
+def okww_python_pids(timeout: "float | None" = None) -> "list[int] | None":
     """PIDs of OK-WW's running python processes (_OKWW_PY); None when the process
     list could not be read.
 
     No process gives empty output with exit 0 and nothing on stderr. A query that
     failed inside pwsh also prints nothing on stdout, so a nonzero exit, or empty
     output with an error on stderr, is "could not read", never "none left"."""
-    r = _okww_py("Select-Object ProcessId | ConvertTo-Json -Compress")
+    r = _okww_py("Select-Object ProcessId | ConvertTo-Json -Compress", timeout)
     if r is None or r.returncode != 0:
         return None
     text = (r.stdout or b"").decode("utf-8", "replace").strip()

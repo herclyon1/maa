@@ -73,7 +73,7 @@ cases = [
 ]
 try:
     for label, done, want in cases:
-        P._okww_py = lambda tail, d=done: d
+        P._okww_py = lambda tail, timeout=None, d=done: d
         check(label, P.okww_python_pids(), want)
 finally:
     P._okww_py = real_py
