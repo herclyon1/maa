@@ -6,6 +6,9 @@ the ledger line was written and after its early returns - so the daily report
 booked a plain failure, gameupdate.needs_rerun (it reads the ledger) never re-ran
 what the 「进不了游戏」 alarm promised, and MAA / OK-WW never got the mark. The
 alarm text also said 「20 秒内」 while the threshold is 30 seconds.
+Review of 308e21b3: the mark is for a scheduled run being held (and the MaaEnd
+update-restart hold, which lost it); a run pushed at once (hand-started, the MAA
+update day) is not booked ⏸ nor re-run by the relay.
 """
 import os
 import sys
@@ -22,6 +25,7 @@ os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_HISTORY_DIR=str(TMP / "h
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay.core import engine as eng_mod                # noqa: E402
+from ark_relay.core import texts                          # noqa: E402
 from ark_relay.core.config import SERVER_TZ, Config, RunRecord  # noqa: E402
 from ark_relay.core.ledger import State                    # noqa: E402
 from ark_relay.features.alarm import handle                # noqa: E402
@@ -55,6 +59,7 @@ class Src:
 handle._ship_evidence = lambda eng, rec: ""
 handle._hand_started = lambda eng, rec: ""
 handle._weekly_gates = lambda eng, rec: None
+handle._archive_okww_evidence = lambda eng, rec: None
 collect_retry.restore_master = lambda cfg: ""
 
 
@@ -90,6 +95,8 @@ check("needs_rerun reads it from the ledger",
       gameupdate.needs_rerun(state, EVENING + timedelta(hours=2), "MaaEnd"), True)
 
 print("\n[MAA fails inside the maintenance window (pushed at once as the update day)]")
+# Review of 308e21b3: the alarm says the evening shift runs it again, so it is not
+# booked ⏸ nor re-run by the relay (the mark is for scheduled runs being held).
 state = TMP / "s2"
 state.mkdir()
 gameupdate.save_windows(state, {"明日方舟": (EVENING - timedelta(minutes=30), EVENING + timedelta(hours=1), "明日方舟停服维护")})
@@ -99,8 +106,43 @@ rec = RunRecord(run_id="2026-10-12/arknights/MAA-17-30-05", script="MAA", user="
                 failed_tasks=["MAA 在完成任务前中止"], raw={})
 handle._handle(e, rec)
 row = next(x for x in e.state.read_ledger("2026-10-12") if x["run_id"] == rec.run_id)
-check("MAA's ledger line carries the mark", (row.get("raw") or {}).get("maintenance"), "明日方舟停服维护")
-check("明日方舟 is registered for the re-run", "明日方舟" in gameupdate.pending(state), True)
+check("pushed as the update day", [t for t, _ in e.notifier.sent][-1:], [texts.failed("MAA")])
+check("MAA's ledger line has no maintenance mark", (row.get("raw") or {}).get("maintenance"), None)
+check("明日方舟 is not registered for a relay re-run", "明日方舟" in gameupdate.pending(state), False)
+check("needs_rerun stays false", gameupdate.needs_rerun(state, EVENING + timedelta(hours=2), "MAA"), False)
+
+print("\n[a hand-started MaaEnd failure inside the window: pushed, not marked, not re-run]")
+state = TMP / "s4"
+state.mkdir()
+gameupdate.save_windows(state, {"终末地": (EVENING - timedelta(minutes=30), EVENING + timedelta(hours=1, minutes=30), WHY)})
+e = build(state)
+rec = RunRecord(run_id="2026-10-12/endfield/MaaEnd-17-35-00", script="MaaEnd", user="endfield",
+                started=EVENING + timedelta(minutes=5), finished=EVENING + timedelta(minutes=8), ok=False,
+                failed_tasks=["协议空间"], raw={})
+handle._hand_started = lambda eng, r: "task-hand"
+handle._handle(e, rec)
+handle._hand_started = lambda eng, r: ""
+row = next(x for x in e.state.read_ledger("2026-10-12") if x["run_id"] == rec.run_id)
+check("pushed at once", len(e.notifier.sent), 1)
+check("no maintenance mark on its ledger line", (row.get("raw") or {}).get("maintenance"), None)
+check("终末地 is not registered for a relay re-run", "终末地" in gameupdate.pending(state), False)
+check("needs_rerun stays false", gameupdate.needs_rerun(state, EVENING + timedelta(hours=2), "MaaEnd"), False)
+
+print("\n[a MaaEnd update restart held inside the window keeps the mark]")
+state = TMP / "s5"
+state.mkdir()
+gameupdate.save_windows(state, {"终末地": (EVENING - timedelta(minutes=30), EVENING + timedelta(hours=1, minutes=30), WHY)})
+e = build(state)
+rec = RunRecord(run_id="2026-10-12/endfield/MaaEnd-17-40-00", script="MaaEnd", user="endfield",
+                started=EVENING + timedelta(minutes=10), finished=EVENING + timedelta(minutes=11), ok=False,
+                failed_tasks=["协议空间"], raw={"maaend_update_restart": "v1.2.3"})
+handle._handle(e, rec)
+row = next(x for x in e.state.read_ledger("2026-10-12") if x["run_id"] == rec.run_id)
+check("held", (rec.script, rec.user) in e._pending, True)
+check("the ledger line carries the mark", (row.get("raw") or {}).get("maintenance"), WHY)
+held = State(state).load_pending().get("pending") or []
+check("the persisted hold carries it", [(p.get("raw") or {}).get("maintenance") for p in held], [WHY])
+check("终末地 is registered for the re-run", "终末地" in gameupdate.pending(state), True)
 
 print("\n[the 「进不了游戏」 text states the real threshold]")
 state = TMP / "s3"

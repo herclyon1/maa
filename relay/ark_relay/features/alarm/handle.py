@@ -255,7 +255,9 @@ def _mark_downtime(eng, rec: RunRecord) -> None:
     _archive_maaend_evidence, so MAA and OK-WW never got the mark, and even
     MaaEnd's stayed off the ledger - the daily report booked a plain failure and
     gameupdate.needs_rerun (it reads the ledger) never re-ran what the alarm
-    promised to re-run. Never raises: the booking goes on."""
+    promised to re-run. Only for a scheduled run being held (_hold_for_retry, the
+    MaaEnd update-restart hold): a run pushed at once is not re-run by the relay.
+    Never raises: the booking goes on."""
     try:
         from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
         from ark_relay.features.maintenance import maintenance  # noqa: PLC0415
@@ -579,8 +581,12 @@ def _failure_alarm(eng, rec: RunRecord, note: str, held: bool = False) -> tuple[
     recorded. Nothing is captured again: by now the screen, the log tail and
     MaaEnd's debug folder belong to a later run (a person's, or the one 停一切
     cut), and copying them would overwrite the held run's own evidence (audit
-    2026-10-13 review of s7 #2)."""
-    _mark_downtime(eng, rec)
+    2026-10-13 review of s7 #2).
+
+    No _mark_downtime here: the mark (⏸, mark_pending, the relay's re-run) is for
+    a scheduled run being held. A hand-started failure is a person's run, and an
+    update-day MAA failure is pushed saying the evening shift runs it again; a held
+    `rec` got its mark when it was held."""
     if not held and rec.script == "MaaEnd":
         eng._archive_maaend_evidence(rec)
     elif not held and rec.script == "OK-WW":
@@ -683,6 +689,7 @@ def _book(eng, rec: RunRecord) -> None:
         # failure held already stays held instead (as _hold_restart keeps it): it is
         # what a later success heals or the final alarm names - replaced, its failed
         # tasks were lost (relay.log 10-12: 06-04-00's 协议空间 under 06-58-11).
+        _mark_downtime(eng, rec)   # held like _hold_for_retry: marked before it is persisted
         if key not in eng._pending or (eng._pending[key].raw or {}).get("maaend_update_restart"):
             eng._pending[key] = rec
         eng._persist_pending()
