@@ -61,7 +61,7 @@ function Get-Targets($re) {
   $extra = @()
   if ($re -match "ok.?ww") {
     $ids = @(Get-CimInstance Win32_Process -Filter "Name='pythonw.exe' or Name='python.exe'" |
-             Where-Object { $_.CommandLine -like "*ok-ww*" } |
+             Where-Object { $_.CommandLine -like "*\ok-ww\*" } |
              Select-Object -ExpandProperty ProcessId)
     foreach ($i in $ids) {
       if ($byName.Id -notcontains $i) {

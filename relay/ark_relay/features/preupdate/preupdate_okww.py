@@ -28,12 +28,17 @@ OKWW_MIN_WAIT_SECONDS = 45
 
 
 # OK-WW's own python processes: python.exe or pythonw.exe (the echo farm launches
-# pythonw so no console covers the game) whose command line names ok-ww or runs
-# `-m ok`. One filter for stopping them and for looking for them.
+# pythonw so no console covers the game) whose command line holds OK-WW's install
+# folder. One filter for stopping them and for looking for them.
+# The folder, not a bare "ok-ww" or `-m ok`: -like ignores case, so any python with
+# "OK-WW" among its arguments matched - `dispatch_guard.py start OK-WW` saw itself
+# (scripts/windows/dispatch_guard.py). A path fragment carries separators no
+# argument has. OK-WW's real line (ok-script.2026-10-12.log, 15:23:30):
+# D:\ark\okww\data\apps\ok-ww\working\main.py -t 2 -e, run by the pythonw.exe under
+# data\apps\ok-ww\python (echofarm._launch).
 _OKWW_PY = ("Get-CimInstance Win32_Process -Filter "
             "\"Name='python.exe' OR Name='pythonw.exe'\" | "
-            "Where-Object { $_.CommandLine -like '*ok-ww*' -or "
-            "$_.CommandLine -like '*-m ok *' }")
+            r"Where-Object { $_.CommandLine -like '*\ok-ww\*' }")
 
 
 def _okww_py(tail: str):
