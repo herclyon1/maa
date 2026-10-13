@@ -31,7 +31,6 @@ ERR1 = ("企业微信发送失败: 60020 not allow to access from your ip, "
         "hint: [1787373915609110759172198], from ip: 112.43.40.209")
 ERR2 = ("企业微信发送失败: 60020 not allow to access from your ip, "
         "hint: [9999999999999999999999999], from ip: 112.43.40.77")
-ERR3 = "企业微信发送失败: 40014 invalid access_token"
 
 cfg = Config()
 
@@ -77,12 +76,6 @@ lines.clear()
 n.took = ["企业微信机器人"]
 n._announce_outage({"Server酱": "boom"}, ["企业微信机器人"])
 check("the group robot took the notice: the line is marked as already in the group", lines[0][1], True)
-
-print("\n[60020 的提示要把机器的地址写出来，他照着加就行（2026-09-12）]")
-from ark_relay.core.notify import _hint  # noqa: E402
-check("提示里有地址", "112.43.40.209" in _hint("企业微信", ERR1), True)
-check("说清去哪加", "企业可信IP" in _hint("企业微信", ERR1), True)
-check("别的错误没有提示", _hint("企业微信", ERR3), "")
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

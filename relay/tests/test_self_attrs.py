@@ -24,6 +24,10 @@ INHERITED = {
         # win32serviceutil.ServiceFramework
         "ReportServiceStatus", "SvcStop", "SvcDoRun", "stop_event",
     },
+    "RelayLogHandler": {
+        # logging.handlers.RotatingFileHandler (logfile.py doRollover)
+        "stream", "_open", "backupCount", "baseFilename", "delay", "rotate",
+    },
 }
 
 
