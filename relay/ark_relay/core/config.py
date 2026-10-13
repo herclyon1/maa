@@ -373,10 +373,13 @@ NO_STAMINA_FARM_FLAG = r"C:\ProgramData\ark-relay\state\no-stamina-farm.flag"
 
 
 def no_stamina_farm() -> bool:
-    """Is the hand-set "do not spend any stamina" flag in place?"""
+    """Is the hand-set "do not spend any stamina" flag in place?
+
+    Always the fixed NO_STAMINA_FARM_FLAG, never ARK_STATE_DIR: the OK-WW override
+    obeys that fixed path and reads no environment variable (ark_overrides.tasks.py
+    NO_STAMINA_FLAG, the same string - test_nofarm_visible), so the relay and OK-WW
+    look at one file by construction. Until 2026-10-13 this followed ARK_STATE_DIR,
+    and a .env pointing it elsewhere would have read a different file.
+    """
     from pathlib import Path as _P  # noqa: PLC0415
-    import os as _os  # noqa: PLC0415
-    root = _os.environ.get("ARK_STATE_DIR")
-    if root:
-        return (_P(root) / "no-stamina-farm.flag").exists()
     return _P(NO_STAMINA_FARM_FLAG).exists()

@@ -21,10 +21,16 @@ from _tmp import tmpdir
 
 STATE = tmpdir()
 os.environ["ARK_STATE_DIR"] = str(STATE)
-FLAG = STATE / "no-stamina-farm.flag"
 
+from ark_relay.core import config                                  # noqa: E402
 from ark_relay.core import plan                                    # noqa: E402
 from ark_relay.core.config import no_stamina_farm                  # noqa: E402
+
+# The relay reads the fixed path the OK-WW override obeys, whatever ARK_STATE_DIR
+# says; the test points that one constant at a temp file.
+REAL_FLAG = config.NO_STAMINA_FARM_FLAG
+FLAG = tmpdir() / "no-stamina-farm.flag"
+config.NO_STAMINA_FARM_FLAG = str(FLAG)
 
 fails = []
 
@@ -59,11 +65,20 @@ check("读出来又是没挂", no_stamina_farm(), False)
 check("预告也回来了", plan._okww_farm_bit(DAILY, {"Simulation Domain": "模拟领域"}
                                           ).startswith("体力刷"), True)
 
+print("\n[ARK_STATE_DIR does not move the flag (audit 2026-10-13): OK-WW reads no env var]")
+(STATE / "no-stamina-farm.flag").touch()
+check("a flag under ARK_STATE_DIR is not the flag", no_stamina_farm(), False)
+(STATE / "no-stamina-farm.flag").unlink()
+config.NO_STAMINA_FARM_FLAG = REAL_FLAG
+
 print("\n[the path the OK-WW override reads is the one read here]")
+import re                                                            # noqa: E402
 from ark_relay.features.okww_patch import okww_overlay               # noqa: E402
-from ark_relay.core.config import NO_STAMINA_FARM_FLAG               # noqa: E402
-check("the override names this file", "no-stamina-farm.flag" in okww_overlay.source_text(), True)
-check("常量指的也是它", NO_STAMINA_FARM_FLAG.endswith("no-stamina-farm.flag"), True)
+got = re.findall(r'^NO_STAMINA_FLAG = r"([^"]+)"', okww_overlay.source_text(), re.M)
+check("the override's path string equals NO_STAMINA_FARM_FLAG", got, [config.NO_STAMINA_FARM_FLAG])
+ns = {}
+exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+check("and that is the value it runs with", ns.get("NO_STAMINA_FLAG"), config.NO_STAMINA_FARM_FLAG)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
