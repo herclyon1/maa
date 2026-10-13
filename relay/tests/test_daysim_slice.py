@@ -28,7 +28,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "daysim"))
+sys.path.insert(0, str(HERE))
 import slice as sl  # noqa: E402
+from _tmp import tmpdir  # noqa: E402
 
 DAYS = HERE / "daysim" / "days"
 CORPUS = Path.home() / "Claude" / "daysim-corpus"
@@ -334,6 +336,26 @@ def check_publish_fault() -> None:
             f"{sl.RELAY_LOG}:29887")])
 
 
+OUTSIDE_SRC = re.compile(r"(?:[CD]/\S+|BOARD/\S+):\d+")
+
+
+def check_outside(day: str, seed: dict) -> None:
+    """days/<D>/outside.jsonl: hand-written inputs the pull cannot show (world.py)."""
+    f = DAYS / day / "outside.jsonl"
+    if not f.is_file():
+        return
+    evs = [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines() if x.strip()]
+    t0, t1 = ts(seed["t0"]), ts(seed["t1"])
+    bad = [e for e in evs if e.get("kind") not in ("state_edit", "web") or not t0 <= ts(e["t"]) < t1
+           or not str(e.get("why") or "").strip()
+           or not all(OUTSIDE_SRC.fullmatch(s.strip()) for s in str(e.get("src") or "").split(";"))
+           or (e["kind"] == "state_edit" and not (e.get("section") in ("modes", "marks") and (e.get("set") or e.get("pop"))))
+           or (e["kind"] == "web" and not (str(e.get("prefix", "")).startswith("https://") and "answer" in e))]
+    require(f"{day} outside.jsonl: known kinds inside the day, each with a why and <file>:<line> sources",
+            not bad and bool(evs), bad[:2])
+    require(f"{day} outside.jsonl names no corpus file (it is not sliced)", not any("file" in e for e in evs))
+
+
 check_redaction()
 check_tree()
 check_power_on_clamp()
@@ -345,6 +367,7 @@ owner_mac = sys.platform == "darwin" and (Path.home() / "Claude" / "maa-automati
 for day in days:
     evs, seed = events_of(day), seed_of(day)
     check_shape(day, evs, seed)
+    check_outside(day, seed)
     corpus = CORPUS / day
     if (corpus / "manifest.json").exists():
         check_record(day, evs, seed, corpus)

@@ -366,6 +366,37 @@ W.World._fault(host, {"channel": "ntfy_publish", "error": "TimeoutError: The rea
 check("an ntfy publish timeout fails the next publish begun up to POST_TIMEOUT before its line",
       faults, [(f"ntfy.sh/{W.PHONE_TOPIC}", "timeout", {"method": "POST", "start": at - 21})])      # mailbox.Mailbox.POST_TIMEOUT 20 s, and one
 
+# ---- outside inputs (days/<D>/outside.jsonl): state.json edits and web answers
+evs11, _seed = W.load_day("2026-10-11")
+check("10-11: the four outside state.json edits are inputs (skip mark x2, its removal, debug mode)",
+      [(e["t"][11:19], sorted(e.get("set") or e.get("pop"))) for e in evs11 if e["kind"] == "state_edit"],
+      [("09:12:00", ["skip_next_shutdown"]), ("10:05:00", ["skip_next_shutdown"]), ("12:30:00", ["skip_next_shutdown"]),
+       ("14:24:50", ["debug_until"])])
+stree = tmpdir("daysim-state-edit-")
+st = stree / W.DATA_REL / "state" / "state.json"
+st.parent.mkdir(parents=True)
+st.write_text(json.dumps({"marks": {"a": 1}, "modes": {"shutdown_skipped": "x"}}), encoding="utf-8")
+w = bare_world({"start": T0, "power_on": T0 - 60, "end": T0 + 3600}, [])
+w.tree, w.fw = stree, type("FW", (), {"files_changed": lambda self, p: None})()
+edit = {"t": "2026-10-13T09:12:00+08:00", "kind": "state_edit", "section": "modes", "set": {"skip_next_shutdown": True},
+        "src": "BOARD/x.txt:1", "why": "w"}
+w.disk_effect({"kind": "state_edit", "ev": edit, "t": W.epoch(edit["t"])})
+got = json.loads(st.read_text(encoding="utf-8"))
+check("an outside edit sets its key and keeps the rest of state.json",
+      (got.get("modes"), got.get("marks")), ({"shutdown_skipped": "x", "skip_next_shutdown": True}, {"a": 1}))
+check("stamped at its time (StateStore rereads on a new mtime)", os.stat(st).st_mtime, W.epoch(edit["t"]))
+w.disk_effect({"kind": "state_edit", "ev": {**edit, "set": None, "pop": ["skip_next_shutdown"]}, "t": W.epoch(edit["t"]) + 60})
+check("a pop removes it", json.loads(st.read_text(encoding="utf-8")).get("modes"), {"shutdown_skipped": "x"})
+webs = []
+w.net = type("N", (), {"set_web": lambda self, p, a: webs.append(p)})()
+evs09, _seed = W.load_day("2026-10-09")
+for it in W.timeline(evs09):
+    if it["kind"] == "web":
+        w.state_effect(it, live=False)
+check("10-09: the maintenance notice is served (list and post)", webs,
+      ["https://ak.hypergryph.com/api/news?category=ANNOUNCEMENT",
+       "https://web-news.hypergryph.com/api/bulletin/daysim-1009-maint"])
+
 # ---- the relay running at 00:00: the sim's stop then reads as a stop to #11
 from ark_relay.features.selfcheck.machinechecks import system as sysmc  # noqa: E402
 

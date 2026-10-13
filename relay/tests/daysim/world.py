@@ -63,6 +63,12 @@ Design notes - where the units' interfaces meet, decided once here
   sources from the repo's recorded copies.
 * OK-WW's own doings the record shows: its pre-update launch rewrites app.json
   (_okww_preupdate) and its start writes the overrides' report (_overlay_report).
+* Inputs the pull cannot show (days/<D>/outside.jsonl, hand-written, each with a
+  checkable `src` and a `why`): `state_edit` - a person or a session changing the
+  relay's state.json directly (the 「下次跑完不关机」 mark or debug mode set with no
+  relay.log line); `web` - an official site's answer from `t` on (a maintenance
+  bulletin; design.md section 2: "hand-written per-day answers for known events").
+  load_day merges them into the day's events; the slicer never writes this file.
 * A recorded WMI drop is delivered as OnCompleted(0x800706BE) with the WMI service
   restarted inside the same pump (fake_win.drop_wmi `before`), the order the record's
   drop line and #59's diag show.
@@ -173,8 +179,20 @@ def iso(t: float) -> str:
 def load_day(day: str) -> tuple[list[dict], dict]:
     d = DAYS / day
     events = [json.loads(x) for x in (d / "events.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    events += load_outside(day)          # timeline() puts them in time order
     seed = json.loads((d / "seed.json").read_text(encoding="utf-8"))
     return events, seed
+
+
+OUTSIDE_KINDS = ("state_edit", "web")
+
+
+def load_outside(day: str) -> list[dict]:
+    """days/<D>/outside.jsonl: the inputs the pull cannot show (module docstring)."""
+    f = DAYS / day / "outside.jsonl"
+    if not f.is_file():
+        return []
+    return [json.loads(x) for x in f.read_text(encoding="utf-8").splitlines() if x.strip()]
 
 
 def timeline(events: list[dict]) -> list[dict]:
@@ -606,6 +624,8 @@ class World:
             pass        # boot.power_on already set GetTickCount64's origin
         elif k == "phone_order":
             self._phone(ev)
+        elif k == "web":
+            self.net.set_web(ev["prefix"], ev["answer"])
         elif k == "inbox":
             self._inbox(ev, live)
 
@@ -742,6 +762,8 @@ class World:
                     self._fault(ev, t)
             elif k == "desktop":
                 pass        # loaded into FakeDesktop at start
+            elif k == "state_edit":
+                self._state_edit(ev, t)
         except OSError as exc:
             self.error("input not applied", kind=k, src=ev.get("src"), why=f"{type(exc).__name__}: {exc}")
 
@@ -825,6 +847,25 @@ class World:
             self.changed(dst)
         else:
             self.note("file op not modelled", op=op, src=ev.get("src"))
+
+    def _state_edit(self, ev: dict, t: float) -> None:
+        """An outside edit of state.json (outside.jsonl): written the way StateStore
+        writes it (whole file, replaced), stamped at its time; StateStore rereads on
+        a new mtime and modes.py builds a fresh store per call."""
+        p = self.tp(DATA_REL + "/state/state.json")
+        data = json.loads(p.read_text(encoding="utf-8-sig")) if p.is_file() else {}
+        sec = data.setdefault(ev["section"], {})
+        sec.update(ev.get("set") or {})
+        for key in ev.get("pop") or []:
+            sec.pop(key, None)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_name(p.name + ".daysim-tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        os.replace(tmp, p)
+        self.stamp(p, t)
+        self.changed(p)
+        self.note("outside state.json edit", section=ev["section"], set=ev.get("set"), pop=ev.get("pop"),
+                  src=ev.get("src"))
 
     def _fault(self, ev: dict, t: float) -> None:
         ch, err = ev.get("channel"), str(ev.get("error") or "")
