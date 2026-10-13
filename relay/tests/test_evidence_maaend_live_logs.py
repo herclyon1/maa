@@ -19,8 +19,13 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 
-os.environ["TZ"] = "Asia/Shanghai"      # the machine's clock: MaaEnd stamps local Beijing time
-time.tzset()
+# The machine's clock where it can be set: MaaEnd stamps local Beijing time. time.tzset is
+# Unix only ("Availability: Unix", docs.python.org/3/library/time.html#time.tzset); every
+# stamp below is written through loc(), in the local time the relay reads it back in
+# (logslice._line_ts), so the test holds in any zone (the Windows runner: UTC).
+if hasattr(time, "tzset"):
+    os.environ["TZ"] = "Asia/Shanghai"
+    time.tzset()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -39,6 +44,21 @@ def check(label, got, want=True):
 
 def at(hms: str, day: str = "2026-10-12") -> float:
     return datetime.fromisoformat(f"{day}T{hms}+08:00").timestamp()
+
+
+def loc(hms: str, day: str = "2026-10-12", fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
+    """The Beijing moment day hms as the machine stamps it: in its local time."""
+    return datetime.fromtimestamp(at(hms, day)).strftime(fmt)
+
+
+def go_time(hms: str, day: str = "2026-10-12") -> str:
+    """go-service.log's "time": local time with the local offset (+08:00 on the machine)."""
+    return datetime.fromtimestamp(at(hms, day)).astimezone().isoformat(timespec="seconds")
+
+
+def tauri(hms: str, day: str = "2026-10-12") -> str:
+    """mxu-tauri.log's `[YYYY-MM-DD][HH:MM:SS]`, local time."""
+    return loc(hms, day, "[%Y-%m-%d][%H:%M:%S]")
 
 
 def maafw_lines(start: str, end: str, step_s: int = 60) -> str:
@@ -76,16 +96,16 @@ mk("debug/maafw.bak.2026.10.12-11.10.00.000.log", maafw_lines("10:30:00", "11:10
 mk("debug/maafw.bak.2026.10.12-11.25.00.000.log", maafw_lines("11:10:00", "11:25:00"), at("11:25:00"))  # retry only: out
 mk("debug/maafw.log", maafw_lines("11:25:00", "11:38:00"), at("11:38:12"))                               # retry only: out
 mk("debug/2026-10-12-3.log",
-   "2026-10-12 09:58:00 INFO  [App] start\n2026-10-12 10:40:00 INFO  [App] mid\n"
-   "2026-10-12 11:30:00 INFO  [App] retry\n", at("11:38:12"))                                          # still open: in
+   f"{loc('09:58:00')} INFO  [App] start\n{loc('10:40:00')} INFO  [App] mid\n"
+   f"{loc('11:30:00')} INFO  [App] retry\n", at("11:38:12"))                                          # still open: in
 mk("debug/go-service.log",
-   '{"level":"info","time":"2026-09-10T16:56:39+08:00","message":"MaaEnd Agent Service"}\n'
-   '{"level":"info","time":"2026-10-12T10:40:00+08:00","message":"in the run"}\n'
-   '{"level":"info","time":"2026-10-12T11:38:00+08:00","message":"Agent server shutdown"}\n',
+   f'{{"level":"info","time":"{go_time("16:56:39", "2026-09-10")}","message":"MaaEnd Agent Service"}}\n'
+   f'{{"level":"info","time":"{go_time("10:40:00")}","message":"in the run"}}\n'
+   f'{{"level":"info","time":"{go_time("11:38:00")}","message":"Agent server shutdown"}}\n',
    at("11:38:12"))                                                                                      # still open: in
 mk("debug/mxu-tauri.log",
-   "[2026-10-10][09:14:23][DEBUG][mxu_lib] old\n[2026-10-12][10:40:00][INFO][mxu_lib] in the run\n"
-   "[2026-10-12][11:38:00][INFO][mxu_lib] retry\n", at("11:38:12"))                                     # still open: in
+   f"{tauri('09:14:23', '2026-10-10')}[DEBUG][mxu_lib] old\n{tauri('10:40:00')}[INFO][mxu_lib] in the run\n"
+   f"{tauri('11:38:00')}[INFO][mxu_lib] retry\n", at("11:38:12"))                                     # still open: in
 mk("debug/odd.log", "no stamps at all\njust text\n", at("11:38:12"))                                   # unreadable stamps: whole
 mk("debug/cpp-algo/debug/maafw.log", maafw_lines("10:20:00", "11:38:00"), at("11:38:12"))               # subdir, still open: in
 mk("debug/on_error/e.png", "png", at("10:50:00"))
@@ -100,7 +120,7 @@ check("logs: the in-window bak, the bak holding t1, the open logs; not the retry
 check("config and the screenshot still in", ("config/mxu-MaaEnd.json" in got, "on_error/e.png" in got), (True, True))
 
 print("\n[the long ones are cut to the window when packed]")
-parts = ev.bundle_maaend(root, tmpdir() / "out", "v2.28.0", window, datetime(2026, 10, 12, 11, 38, 15))
+parts = ev.bundle_maaend(root, tmpdir() / "out", "v2.28.0", window, datetime.fromtimestamp(at("11:38:15")))
 check("one volume", len(parts), 1)
 with zipfile.ZipFile(parts[0]) as z:
     names = z.namelist()
@@ -113,11 +133,11 @@ check("go-service.log: the run's line kept, last month's and the retry's cut",
 tauri = body.get("mxu-tauri.log", "")
 check("mxu-tauri.log cut to the window", ("in the run" in tauri, "old" in tauri, "retry" in tauri), (True, False, False))
 bak = body.get("maafw.bak.2026.10.12-11.10.00.000.log", "")
-check("the bak holding t1 ends at t1", ("2026-10-12 11:03:00" in bak, "2026-10-12 11:04:00" in bak), (True, False))
-check("the bak holding t1 keeps the run's part", "2026-10-12 10:30:00" in bak)
+check("the bak holding t1 ends at t1", (loc("11:03:00") in bak, loc("11:04:00") in bak), (True, False))
+check("the bak holding t1 keeps the run's part", loc("10:30:00") in bak)
 check("a log with no readable stamps goes in whole", body.get("odd.log"), "no stamps at all\njust text\n")
 b0 = body.get("maafw.bak.2026.10.12-10.10.00.000.log", "")
-check("the bak holding t0 starts at t0", ("2026-10-12 10:00:00" in b0, "2026-10-12 10:01:00" in b0), (False, True))
+check("the bak holding t0 starts at t0", (loc("10:00:00") in b0, loc("10:01:00") in b0), (False, True))
 check("an in-window log goes in untouched",
       body.get("maafw.bak.2026.10.12-10.30.00.000.log"),
       (dbg / "maafw.bak.2026.10.12-10.30.00.000.log").read_text(encoding="utf-8"))
