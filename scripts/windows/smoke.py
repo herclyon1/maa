@@ -17,7 +17,6 @@ import importlib
 import pathlib
 import re
 import sys
-import time
 
 ROOT = DATA = pathlib.Path(r"C:\ProgramData\ark-relay")
 # The installed relay's code is a version folder ({app}\versions\<n>, relay/pkg_layout.py);
@@ -99,18 +98,19 @@ try:
 except Exception as e:       # noqa: BLE001 - 同上
     bad.append(f"通知文案表坏了：{type(e).__name__}: {e}")
 
-# 4. What the service itself wrote since it came back up.
+# 4. What the service itself wrote since it came back up: every line from the last
+#    start line on. Until 2026-10-13 only the last 60 lines were searched, so a boot
+#    that wrote more than 60 lines before the smoke ran had its first errors cut off
+#    (09-09 12:57:24: 16 error lines, 6 of them seen). Without a start line in the
+#    file (rotated right after it) the last 60 lines are checked, as before.
 log = DATA / "relay.log"
-since = time.time() - 180
 lines = []
 try:
-    for ln in log.read_text(encoding="utf-8", errors="replace").splitlines()[-400:]:
-        lines.append(ln)
+    lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
 except OSError as e:
     bad.append(f"读不到 relay.log：{e}")
-tail = lines[-60:]
-start = max((i for i, ln in enumerate(tail) if "服务模式启动" in ln), default=0)
-after = tail[start:]
+start = max((i for i, ln in enumerate(lines) if "服务模式启动" in ln), default=None)
+after = lines[start:] if start is not None else lines[-60:]
 hits = [ln for ln in after
         if re.search(r"\bERROR\b|Traceback|这一段出错|贴不上|叠了|写不进", ln)]
 if hits:

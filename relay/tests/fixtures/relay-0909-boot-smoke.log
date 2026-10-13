@@ -1,0 +1,130 @@
+09-09 12:57:20 ERROR   ark.engine  本轮「OK-WW 补丁」这一段出错，跳过它继续
+Traceback (most recent call last):
+  File "C:\ProgramData\ark-relay\ark_relay\engine.py", line 248, in tick
+    step()
+    ~~~~^^
+  File "C:\ProgramData\ark-relay\ark_relay\engine.py", line 269, in _patch_okww_if_updated
+    from . import okww_patch  # noqa: PLC0415
+    ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\ark-relay\ark_relay\okww_patch.py", line 242, in <module>
+    / "DailyTask.run.upstream.txt").read_text(encoding="utf-8")
+                                    ~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\pathlib\__init__.py", line 787, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\pathlib\__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\ProgramData\\ark-relay\\ark_relay\\okww_files\\DailyTask.run.upstream.txt'
+09-09 12:57:21 INFO    ark.service  收到停止信号，退出
+09-09 12:57:21 INFO    ark.service  主流程已返回，向 SCM 报告已停止；还活着的线程：MainThread、phone-mailbox、phone-heartbeat、proc-watch
+09-09 12:57:23 INFO    ark.phone  📱 已发下线心跳（bye）
+09-09 12:57:24 INFO    ark.service  服务模式启动，监视 D:\ark\automas\history（变更即处理，兜底 30 秒）
+09-09 12:57:24 ERROR   ark.service  启动时贴 OK-WW 补丁失败，服务照常继续
+Traceback (most recent call last):
+  File "C:\ProgramData\ark-relay\boot_stages.py", line 184, in _stage_patch_okww
+    from ark_relay import okww_patch as _okww_patch  # noqa: PLC0415
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\ark-relay\ark_relay\okww_patch.py", line 242, in <module>
+    / "DailyTask.run.upstream.txt").read_text(encoding="utf-8")
+                                    ~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\pathlib\__init__.py", line 787, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\pathlib\__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\ProgramData\\ark-relay\\ark_relay\\okww_files\\DailyTask.run.upstream.txt'
+09-09 12:57:27 WARNING ark.selfupdate  拿到的清单更旧（v20260909044508 < 本机 v20260909045653，0 表示没有版本号），多半是缓存未刷新，本次不更新
+09-09 12:57:27 INFO    ark.service  这次更新的说明和上一条一模一样，不再推一遍（v20260909045653）
+09-09 12:57:30 INFO    ark.phone  状态 6432 字节超线，压缩后 3355 字节，照发
+09-09 12:57:31 INFO    ark.service  📱 已上报状态到手机（开机）
+09-09 12:57:34 INFO    ark.phone  📱 手机通道已连上（长连接，不轮询）
+09-09 12:57:39 INFO    ark.service  已挂上目录变更通知，记录一落盘立即处理
+09-09 12:57:39 INFO    ark.service  已订阅进程启动事件（WMI 内核 trace），AUTO-MAS 一启动立即挂句柄
+09-09 12:57:39 INFO    ark.service  下一个闹钟 21:30 日报截止
+09-09 12:57:41 ERROR   ark.engine  本轮「OK-WW 补丁」这一段出错，跳过它继续
+Traceback (most recent call last):
+  File "C:\ProgramData\ark-relay\ark_relay\engine.py", line 248, in tick
+    step()
+    ~~~~^^
+  File "C:\ProgramData\ark-relay\ark_relay\engine.py", line 269, in _patch_okww_if_updated
+    from . import okww_patch  # noqa: PLC0415
+    ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\ark-relay\ark_relay\okww_patch.py", line 242, in <module>
+    / "DailyTask.run.upstream.txt").read_text(encoding="utf-8")
+                                    ~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\pathlib\__init__.py", line 787, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\pathlib\__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\ProgramData\\ark-relay\\ark_relay\\okww_files\\DailyTask.run.upstream.txt'
+09-09 12:57:41 INFO    ark.shutdown  不关机：本次开机还没有跑完任何队列
+09-09 12:57:42 ERROR   ark.engine  本轮「OK-WW 补丁」这一段出错，跳过它继续
+Traceback (most recent call last):
+  File "C:\ProgramData\ark-relay\ark_relay\engine.py", line 248, in tick
+    step()
+    ~~~~^^
+  File "C:\ProgramData\ark-relay\ark_relay\engine.py", line 269, in _patch_okww_if_updated
+    from . import okww_patch  # noqa: PLC0415
+    ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\ark-relay\ark_relay\okww_patch.py", line 242, in <module>
+    / "DailyTask.run.upstream.txt").read_text(encoding="utf-8")
+                                    ~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\pathlib\__init__.py", line 787, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\pathlib\__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\ProgramData\\ark-relay\\ark_relay\\okww_files\\DailyTask.run.upstream.txt'
+09-09 12:57:42 ERROR   ark.engine  本轮「OK-WW 补丁」这一段出错，跳过它继续
+Traceback (most recent call last):
+  File "C:\ProgramData\ark-relay\ark_relay\engine.py", line 248, in tick
+    step()
+    ~~~~^^
+  File "C:\ProgramData\ark-relay\ark_relay\engine.py", line 269, in _patch_okww_if_updated
+    from . import okww_patch  # noqa: PLC0415
+    ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\ark-relay\ark_relay\okww_patch.py", line 242, in <module>
+    / "DailyTask.run.upstream.txt").read_text(encoding="utf-8")
+                                    ~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\pathlib\__init__.py", line 787, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\pathlib\__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\ProgramData\\ark-relay\\ark_relay\\okww_files\\DailyTask.run.upstream.txt'
+09-09 12:57:55 ERROR   ark.engine  本轮「OK-WW 补丁」这一段出错，跳过它继续
+Traceback (most recent call last):
+  File "C:\ProgramData\ark-relay\ark_relay\engine.py", line 248, in tick
+    step()
+    ~~~~^^
+  File "C:\ProgramData\ark-relay\ark_relay\engine.py", line 269, in _patch_okww_if_updated
+    from . import okww_patch  # noqa: PLC0415
+    ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\ark-relay\ark_relay\okww_patch.py", line 242, in <module>
+    / "DailyTask.run.upstream.txt").read_text(encoding="utf-8")
+                                    ~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\pathlib\__init__.py", line 787, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\pathlib\__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'C:\\ProgramData\\ark-relay\\ark_relay\\okww_files\\DailyTask.run.upstream.txt'
+09-09 12:57:55 ERROR   ark.engine  本轮「OK-WW 补丁」这一段出错，跳过它继续
+Traceback (most recent call last):
+  File "C:\ProgramData\ark-relay\ark_relay\engine.py", line 248, in tick
+    step()
+    ~~~~^^
+  File "C:\ProgramData\ark-relay\ark_relay\engine.py", line 269, in _patch_okww_if_updated
+    from . import okww_patch  # noqa: PLC0415
+    ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\ark-relay\ark_relay\okww_patch.py", line 242, in <module>
+    / "DailyTask.run.upstream.txt").read_text(encoding="utf-8")
+                                    ~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\pathlib\__init__.py", line 787, in read_text
