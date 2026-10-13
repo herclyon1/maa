@@ -475,7 +475,8 @@ def _set_master(cmd: dict) -> tuple[bool, str]:
             return mastercfg.write_maaend(automas, Config().maaend_dir,
                                           path, cmd["value"])
         if game == "OK-WW":
-            return mastercfg.write_okww(automas, path, cmd["value"])
+            from ark_relay.core.config import Config  # noqa: PLC0415
+            return mastercfg.write_okww(automas, path, cmd["value"], Config().okww_dir)
         if game == "MAA":
             from ark_relay.core.config import Config  # noqa: PLC0415
             return mastercfg.write_maa(automas, Config().maa_dir, path, cmd["value"])

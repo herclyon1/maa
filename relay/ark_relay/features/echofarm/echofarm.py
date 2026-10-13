@@ -45,7 +45,10 @@ NO_CLAIM = r"C:\ProgramData\ark-okww-farm.no-claim"
 # restart the game is killed too, so half an hour with no lap at all means neither
 # the script nor a fresh client can get anywhere - worth stopping and saying so.
 STALL_MINUTES = 30
-# OK-WW stops the whole task when the character dies, so an unattended farm has to
+# OK-WW v3.7.4 gets back up after a death by itself only up to 3 times, and only
+# with teleport-to-boss on (FarmEchoTask.do_run, max_recovery_retries=3,
+# FarmEchoTask.py:209-222); after that it logs 「exceeded recovery retries」 and
+# stops, and any other failure ends the task. So an unattended farm still has to
 # get back up on its own: silence this long relaunches it. A lap takes about a
 # minute; a death plus a revive about two. Five minutes without a single lap means
 # it is stuck, however busy the log looks.
@@ -53,12 +56,13 @@ RESTART_QUIET_MINUTES = 5
 # Enough to cover a night, few enough that something genuinely broken still gives up
 # and says so instead of relaunching into a wall until morning.
 MAX_RESTARTS = 40
-# The lowest level OK-WW offers. A boss's level does not change whether it drops an
-# echo or what class the echo is - that is set by the data bank level - so a higher
-# level only makes the fight harder. OK-WW's own description of the field says as
-# much: "Choose the Lowest that Drop a Echo". The original value is restored when the
+# The lowest boss level that drops an echo. OK-WW's own description of the field is
+# "Choose the Lowest that Drop a Echo" (FarmEchoTask.py:38, v3.7.4), i.e. some lower
+# levels drop none, and its default for the field is "80" (:24). The user, 2026-10-13:
+# 「刷声骸确实是80级才能刷，50级不可能刷」. The earlier "50" (868d09f5) had no source and
+# would have farmed all night for nothing. The original value is restored when the
 # farm ends.
-FARM_LEVEL = "50"
+FARM_LEVEL = "80"
 
 
 # OK-WW's live config lives under its pyappify working directory, not at the
@@ -175,10 +179,10 @@ def no_claim_on() -> bool:
 # log lines - window-size changes, update checks, feature loads - so 「the log is
 # moving」 is not the same as 「the farm is moving」: a game hung on a loading screen
 # keeps the log scrolling.
-# Each entry is a sentence OK-WW v3.7.3 or the overrides write today:
-#   farm echo / enter combat       a lap picked up / fought (FarmEchoTask.py:183-195,
-#                                  CombatCheck.py:181)
-#   teleport_to_boss prepared as   back in the realm (FarmEchoTask.py:266)
+# Each entry is a sentence OK-WW v3.7.4 or the overrides write today:
+#   farm echo / enter combat       a lap picked up / fought (FarmEchoTask.py:188-200,
+#                                  combat/CombatCheck.py:181)
+#   teleport_to_boss prepared as   back in the realm (FarmEchoTask.py:271)
 #   限时提前开放：确认后直接进场       the early-open entry put us in the arena (overrides)
 #   刷声骸模式：复活成功               revived and farming on (overrides)
 # Not the bare 「刷声骸模式」 prefix: its other sentences are 「not recognised, not
@@ -188,11 +192,28 @@ PROGRESS = ("farm echo", "enter combat", "teleport_to_boss prepared as",
 _TAIL_BYTES = 300_000
 
 
-def quiet_minutes(now: datetime | None = None) -> "float | None":
-    """Minutes since the farm last got anywhere. None when there is no log to read.
+def _line_time(line: str) -> "datetime | None":
+    """The timestamp an OK-WW log line starts with (「2026-09-07 10:06:52,779 INFO …」)."""
+    try:
+        return datetime.strptime(line[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
+    except ValueError:
+        return None
+
+
+def quiet_minutes(now: datetime | None = None, since: "datetime | None" = None) -> "float | None":
+    """Minutes since the farm last got anywhere. None when there is no log to read,
+    or nothing to measure from.
 
     Measured from the newest line that says something actually happened, not from
     the file's mtime: a stuck game is noisy, and noise is not progress.
+
+    `since` is when this launch began (the run record's `restarted`, else `started`).
+    When the tail holds no progress line at all, the farm has got nowhere since at
+    least then, so the quiet time is measured from it. The file's mtime cannot stand
+    in: a game stuck in a retry loop logs 20-39 KB a minute, so the 300 KB tail spans
+    only 8-35 minutes and the file is always fresh - quiet read about 0 and neither
+    the restart nor the stall stop ever fired. Without `since`, the first timestamp
+    in the tail is the floor (no progress at least since then).
     """
     from ark_relay.features.weekly.weeklyboss import _okww_log  # noqa: PLC0415 - avoids an import cycle
     f = _okww_log()
@@ -206,25 +227,46 @@ def quiet_minutes(now: datetime | None = None) -> "float | None":
             tail = fh.read().decode("utf-8", "replace")
     except OSError:
         return None
-    stamp = ""
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    last = None
+    first = None
     for line in tail.splitlines():
+        at = _line_time(line)
+        if at is None:
+            continue
+        first = first or at
         if any(k in line for k in PROGRESS):
-            stamp = line[:19]
-    if not stamp:
+            last = at
+    if last is None:
         # Nothing in the whole tail: either the run just started (tick already skips
         # a run that young) or it has been stuck for longer than the tail covers.
-        try:
-            touched = datetime.fromtimestamp(f.stat().st_mtime, tz=SERVER_TZ)
-        except OSError:
+        last = since or first
+        if last is None:
             return None
-        now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-        return (now - touched).total_seconds() / 60.0
-    try:
-        last = datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
-    except ValueError:
-        return None
-    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     return (now - last).total_seconds() / 60.0
+
+
+def progress_since(started: "datetime | None") -> "int | None":
+    """How many progress lines (PROGRESS) OK-WW logged since `started`; None when
+    that cannot be told (no start time, no log, unreadable). Every log file in the
+    folder written since the start is read, so a night that crosses OK-WW's log
+    rotation is counted whole."""
+    from ark_relay.features.weekly.weeklyboss import _okww_log  # noqa: PLC0415 - avoids an import cycle
+    f = _okww_log()
+    if started is None or not f:
+        return None
+    try:
+        files = {f} | {q for q in f.parent.glob("*.log*")
+                       if q.is_file() and q.stat().st_mtime >= started.timestamp()}
+        n = 0
+        for q in files:
+            for line in q.read_text(encoding="utf-8", errors="replace").splitlines():
+                at = _line_time(line)
+                if at is not None and at >= started and any(k in line for k in PROGRESS):
+                    n += 1
+        return n
+    except OSError:
+        return None
 
 
 # What 「收工」 has to leave behind: nothing of OK-WW's and nothing of the game's.
@@ -240,8 +282,23 @@ STOP_TASK = "ark-okww-stop"
 UNREADABLE = "鸣潮（读不到正在运行的程序列表，查不到它还开没开着）"
 
 
+# What game_alive names when OK-WW's python processes cannot be listed.
+UNREADABLE_SCRIPT = "OK-WW 脚本（查不到它还开没开着）"
+
+
+def okww_script_name(pid: int) -> str:
+    return f"OK-WW 脚本（pythonw.exe，编号 {pid}）"
+
+
 def game_alive() -> "list[str]":
-    """Which of the game's processes are still up. [] only when the desktop is clean."""
+    """Which of the game's processes are still up, OK-WW's own python included.
+    [] only when the desktop is clean.
+
+    OK-WW runs as pythonw.exe, a name tasklist cannot tell from any other python,
+    so it is looked for by command line (preupdate_okww.okww_python_pids). Left
+    out, a stop could report clean while OK-WW lived on and later wrote its
+    in-memory config over the restored FarmEchoTask.json.
+    """
     try:
         out = subprocess.run(["tasklist"], capture_output=True, timeout=30).stdout
         low = (out or b"").decode("utf-8", "replace").lower()
@@ -249,7 +306,24 @@ def game_alive() -> "list[str]":
         log.info("读不到正在运行的程序列表（%s: %s），游戏算作没确认关掉",
                  type(exc).__name__, exc)
         return [UNREADABLE]
-    return [n for n in GAME_PROCS if n.lower() in low]
+    from ark_relay.features.preupdate.preupdate_okww import okww_python_pids  # noqa: PLC0415 - preupdate_okww imports this module
+    pids = okww_python_pids()
+    script = [UNREADABLE_SCRIPT] if pids is None else [okww_script_name(p) for p in pids]
+    return [n for n in GAME_PROCS if n.lower() in low] + script
+
+
+def stop_okww_script(sleep=time.sleep) -> bool:
+    """Stop only OK-WW's python (the script), leaving the game up; True once none is
+    left. Before a relaunch: `_launch` starts a new `pythonw main.py -t 2 -e`, and an
+    old one still alive would drive the same game alongside it. Looked at again for
+    up to ten seconds, as stop_okww does."""
+    from ark_relay.features.preupdate.preupdate_okww import _stop_okww_python, okww_python_pids  # noqa: PLC0415
+    _stop_okww_python()
+    for _ in range(10):
+        if okww_python_pids() == []:
+            return True
+        sleep(1)
+    return False
 
 
 def _kill_on_desktop(pids=()) -> None:
@@ -289,7 +363,8 @@ def stop_okww(sleep=time.sleep) -> str:
     _okww_quiesce()
     if not game_alive():
         return ""
-    _kill_on_desktop()
+    from ark_relay.features.preupdate.preupdate_okww import okww_python_pids  # noqa: PLC0415
+    _kill_on_desktop(pids=okww_python_pids() or ())
     for _ in range(10):
         left = game_alive()
         if not left:
@@ -431,13 +506,19 @@ def push_manual_trouble(notifier) -> None:
         push_wrapup(notifier, MANUAL_TROUBLE.pop(0), True)
 
 
-def _finish(cfg, why: str, failed: bool = False) -> "tuple[str, bool]":
+def _finish(cfg, why: str, failed: bool = False, judge_progress: bool = False) -> "tuple[str, bool]":
     """finish(), and whether its line says something went wrong: `failed` (the farm was
     stopped by a fault: the caller says so), the game left open, the no-claim marker left,
-    the boss setting not put back, the config not found."""
+    the boss setting not put back, the config not found.
+
+    The line says how many progress lines OK-WW logged since the start.
+    `judge_progress` (the deadline): none, or a count that cannot be read, is a
+    failure too - a night that farmed nothing used to end as a clean 「到点了」.
+    A stop by hand is not judged on it: it may come minutes after the start."""
     rec = current(cfg.state_dir)
     if not rec:
         return "", False
+    laps = progress_since(_started_at(rec))
     note = stop_okww() or ""
     _set_no_claim(False)
     note += "" if not no_claim_on() else texts.echo_farm_no_claim_left(NO_CLAIM)
@@ -457,7 +538,10 @@ def _finish(cfg, why: str, failed: bool = False) -> "tuple[str, bool]":
     started = rec.get("started") or "?"
     tries = int(rec.get("restarts") or 0)
     again = f"，中途角色阵亡重开了 {tries} 次" if tries else ""
-    return f"刷{rec.get('name') or ''}结束（{why}）。{started} 开始{again}，配置已还原{note}", failed or bool(note)
+    if judge_progress and not laps:
+        failed = True
+    return (f"刷{rec.get('name') or ''}结束（{why}）。{started} 开始{again}，{texts.echo_farm_progress(laps)}，"
+            f"配置已还原{note}", failed or bool(note))
 
 
 def tick(cfg, now: datetime | None = None) -> str:
@@ -476,8 +560,8 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
         return _finish(cfg, "结束时刻读不出来，为安全起见停掉", failed=True)
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     if now >= until:
-        return _finish(cfg, f"到点了（{until:%H:%M}）")
-    quiet = quiet_minutes(now)
+        return _finish(cfg, f"到点了（{until:%H:%M}）", judge_progress=True)
+    quiet = quiet_minutes(now, _stamp(rec.get("restarted")) or _started_at(rec))
     if quiet is None or quiet < RESTART_QUIET_MINUTES:
         return "", False
     # Do not judge a run that only just started, and leave a relaunch time to write
@@ -500,6 +584,13 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
     if tries >= 1:
         log.warning("刷声骸：重开脚本没用，连游戏一起重启（第 %d 次）", tries + 1)
         stop_okww()
+    else:
+        # The game stays up on the first try, but the old OK-WW must not: a second
+        # `pythonw main.py -t 2 -e` next to a live one has two scripts driving one game.
+        # A script that will not go (or cannot be seen) gets the full stop instead.
+        if not stop_okww_script():
+            log.warning("刷声骸：旧的 OK-WW 脚本停不掉，连游戏一起关了再重开")
+            stop_okww()
     ok, why = _launch()
     rec["restarts"] = tries + 1
     rec["restarted"] = now.strftime("%Y-%m-%d %H:%M")

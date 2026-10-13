@@ -85,6 +85,35 @@ def _okww_cases(okww_dir) -> dict[str, list[str]]:
     return out
 
 
+# The serial keys and the task file whose `self.structure = [...]` sums to the list
+# length; upstream raises IndexError past it (v3.7.4: TacetTask.py:18 [4, 5, 5, 7]
+# and :69 / :111-112, index = serial - 1 must be < 21; ForgeryTask.py:23
+# [5, 5, 5, 5] and :39 / :63-64, serial must be <= 20). The fallback is those sums,
+# used only when OK-WW's source cannot be read.
+_SERIAL = {
+    "Which Tacet Suppression to Farm": ("TacetTask.py", 21),
+    "Which Forgery Challenge to Farm": ("ForgeryTask.py", 20),
+}
+_STRUCTURE = re.compile(r"self\.structure\s*=\s*\[([\d,\s]+)\]")
+
+
+def _okww_serial_max(okww_dir, key: str) -> "int | None":
+    """How many entries OK-WW's list for `key` has, read from its own source; the
+    v3.7.4 fallback when that cannot be read; None for a key that is not a serial."""
+    if key not in _SERIAL:
+        return None
+    name, fallback = _SERIAL[key]
+    if okww_dir:
+        f = (Path(okww_dir) / "data" / "apps" / "ok-ww" / "working" / "src" / "task" / name)
+        try:
+            m = _STRUCTURE.search(f.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            m = None
+        if m:
+            return sum(int(x) for x in re.findall(r"\d+", m.group(1)))
+    return fallback
+
+
 def _okww_doc(f: Path) -> "dict | None":
     """One existing OK-WW config file, or None (said once) when it cannot be read:
     its rows would otherwise just vanish from the phone page."""
@@ -142,7 +171,12 @@ def read_okww(automas_dir, okww_dir) -> dict:
     return out
 
 
-def write_okww(automas_dir, path: str, value) -> tuple[bool, str]:
+def write_okww(automas_dir, path: str, value, okww_dir=None) -> tuple[bool, str]:
+    """Write one phone-editable OK-WW master value. A dropdown key (_LIST) only takes
+    one of the candidates read from OK-WW's own source (`okww_dir`): upstream sends
+    any 「Which to Farm」 that is not Tacet or Forgery to the simulation domain
+    (v3.7.4, DailyTask.py:125-127), so a stray string would farm the wrong thing
+    without a word. When the source cannot be read, nothing is checked, as before."""
     name, _, key = str(path).partition("/")
     if name in OKWW_READONLY and key in OKWW_READONLY[name]:
         return False, f"{key} 在手机上是只读的（死命令：残象聚落只刷梦枢天罗、落渊南丘）"
@@ -163,8 +197,14 @@ def write_okww(automas_dir, path: str, value) -> tuple[bool, str]:
             new = int(value)
         except (TypeError, ValueError):
             return False, f"「{key}」要一个整数，收到 {value!r}"
+        top = _okww_serial_max(okww_dir, key)
+        if top is not None and not 1 <= new <= top:
+            return False, f"「{key}」只能是 1 到 {top}（OK-WW 的列表就这么多个），收到 {new}，已拒绝"
     else:
         new = str(value)
+        allowed = _okww_cases(okww_dir).get(key)
+        if allowed and new not in allowed:
+            return False, f"「{key}」只能是 {'、'.join(allowed)} 之一，收到 {new!r}，已拒绝"
     if before == new:
         return True, f"「{key}」本来就是 {before!r}，没有改动"
     doc[key] = new

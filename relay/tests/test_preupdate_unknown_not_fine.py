@@ -80,8 +80,8 @@ try:
                "_okww_stamp": lambda root: 0.0,
                "_okww_quiesce": lambda *a, **k: None,
                "_okww_autostart": lambda root, value: True,
-               # (new version, checked, error, stuck) - preupdate_okww._okww_await_update
-               "_okww_await_update": lambda *a, **k: ("", False, "", ""),
+               # (new version, checked, error, stuck, latest list) - preupdate_okww._okww_await_update
+               "_okww_await_update": lambda *a, **k: ("", False, "", "", ()),
                "_okww_report": lambda *a, **k: None,
                "_close": lambda *a, **k: None}
     saved_o = {k: getattr(O, k) for k in patched}

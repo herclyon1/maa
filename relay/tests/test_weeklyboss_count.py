@@ -1,6 +1,6 @@
 """「任务跑完」不等于「三次领满」。
 
-周本奖励是**进本时扣 60 结晶波片**给的，波片不够就少领几次。
+The weekly reward is claimed after the fight, 60 waveplates per claim (entering is free), so short waveplates mean fewer claims.
 2026-08-31 实测：贝币刷取把波片吃到只剩 1 点，第二天早上只回到约 147，
 只够领两次。而 on_success 原来只要任务跑完就记「本周已打」并摘掉开关——
 第三次就永远丢了，而且不出声。
@@ -46,6 +46,14 @@ write("周本本周剩余次数原文: [Box(text='本周剩余可收取次数：
 check("取最后一条", W.remaining_from_log(), 1)
 write("什么都没有")
 check("读不到就是 None", W.remaining_from_log(), None)
+
+print("\n[weekly boss position: OK-WW lists 9 (total_weekly_number)]")
+(TMP / "sx").mkdir(); gx = W.WeeklyBossGate(TMP / "sx", None)
+check("9 is accepted", gx.configure(index=9)[0], True)
+check("10 is refused", gx.configure(index=10)[0], False)
+check("20 is refused", gx.configure(index=20)[0], False)
+check("0 is refused", gx.configure(index=0)[0], False)
+check("the refusal names the range", "1~9" in gx.configure(index=10)[1], True)
 
 print("\n[还剩就不许记账]")
 write("周本本周剩余次数原文: [Box(text='本周剩余可收取次数：2/3')]")

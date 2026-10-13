@@ -14,12 +14,24 @@ from ark_relay.features.banners.banners import (
     upcoming,
 )
 from ark_relay.features.banners.wuwa_posters import (
-    _KURO, _kuro_default, _kuro_gacha, _KURO_NEWS, _KURO_POST,
+    _KURO, _kuro_default, _kuro_gacha, _KURO_NEWS, _KURO_POST, kuro_checked,
     wuwa_first_half_notice_end, _wuwa_poster_span, _WW_GACHA_CHECKED,
 )
 from ark_relay.features.banners.wuwa_history import (
     wuwa_maintenance, _WW_SITE_ARTICLES,
 )
+
+
+# A character name with a middle dot is spelled with different dot characters by
+# different sources: the Kuro wiki writes 秧秧·玄翎 with U+00B7
+# (wuwa_catalogue_2026-09-12.json), the in-game notice 秧秧・玄翎 with U+30FB
+# (maint/ww_notice.json). Every parser below folds all the variants to U+00B7, so
+# the debut / running / notice comparisons in _wuwa compare like with like.
+_DOTS = str.maketrans({"\u30fb": "\u00b7", "\uff65": "\u00b7", "\u2022": "\u00b7", "\u2027": "\u00b7"})
+
+
+def _one_dot(name: str) -> str:
+    return name.translate(_DOTS)
 
 
 # ── Wuthering Waves: the Kuro BBS wiki homepage (no token) ─────
@@ -59,7 +71,7 @@ def parse_wuwa(home: dict, name_of) -> list[Banner]:
             eid = (imgs[0].get("linkConfig") or {}).get("entryId") if imgs else None
             # The wiki entry name can carry whitespace (a leading space on 2026-09-12);
             # a raw compare against the bulletin's spelling dropped the running banner.
-            who = (name_of(str(eid)) if eid else "").strip()
+            who = _one_dot((name_of(str(eid)) if eid else "").strip())
             if not who:
                 continue
             out.append(Banner("鸣潮", str(tab.get("name") or "").strip(), (who,), a, b))
@@ -94,7 +106,7 @@ def wuwa_teased(records: list, now: datetime) -> list[str]:
             b = datetime.strptime(str(rng[1])[:19], "%Y-%m-%d %H:%M:%S")
         except (ValueError, TypeError, IndexError):
             continue
-        name = str(r.get("name") or "").strip()
+        name = _one_dot(str(r.get("name") or "").strip())
         if name and a <= now <= b:
             out.append(name)
     return out
@@ -105,7 +117,10 @@ def wuwa_teased(records: list, now: datetime) -> list[str]:
 #     ...
 #     ※可通过[身赴三途]角色活动唤取获得。
 _WW_ROLE = re.compile(r"5星共鸣者[「\[]([^」\]]+)[」\]]")
-_WW_POOL = re.compile(r"可通过[\[「]([^\]」]+)[\]」]角色活动唤取")
+# 活动 is the usual word; collaboration and memory banners say 联动 / 忆旅 instead
+# (the 库街区 notice titles of the 怒 烬中重燃 and 忆旅回响 banners), the same three
+# words wuwa_history._WW_HIST_TITLE accepts.
+_WW_POOL = re.compile(r"可通过[\[「]([^\]」]+)[\]」]角色(?:活动|联动|忆旅)唤取")
 
 
 def parse_wuwa_preview(content: str) -> "list[tuple[str, str]]":
@@ -124,7 +139,7 @@ def parse_wuwa_preview(content: str) -> "list[tuple[str, str]]":
     for k, m in enumerate(hits):
         tail = seg[m.end():hits[k + 1].start() if k + 1 < len(hits) else len(seg)]
         pool = _WW_POOL.search(tail)
-        out.append((m.group(1), pool.group(1) if pool else ""))
+        out.append((_one_dot(m.group(1)), pool.group(1) if pool else ""))
     return out
 
 
@@ -158,7 +173,7 @@ _WW_NOTICE_UP = re.compile(r"5星角色「([^」]+)」")
 # first-half 3.7 banner post reads 「活动时间✦ 3.7版本更新后 ~ 2026年10月22日09:59」.
 _WW_NOTICE_SPAN = re.compile(r"活动时间[✦\s]*(?:(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2}):(\d{2})|(\d+\.\d+版本更新后))"
                              r"\s*[~～-]\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})")
-_WW_NOTICE_TITLE = re.compile(r"[\[「]([^\]」]+)[\]」]\s*角色活动唤取")
+_WW_NOTICE_TITLE = re.compile(r"[\[「]([^\]」]+)[\]」]\s*角色(?:活动|联动|忆旅)唤取")
 
 
 def parse_wuwa_notice_banners(notice: dict) -> list[Banner]:
@@ -182,7 +197,7 @@ def parse_wuwa_notice_banners(notice: dict) -> list[Banner]:
             continue
         g = sp.groups()
         start = datetime(*map(int, g[:5])) if g[0] else None
-        out.append(Banner("鸣潮", tm.group(1).strip(), (up.group(1).strip(),), start,
+        out.append(Banner("鸣潮", tm.group(1).strip(), (_one_dot(up.group(1).strip()),), start,
                           datetime(*map(int, g[6:]), 59), g[5] or ""))
     return out
 
@@ -400,10 +415,12 @@ def _wuwa_first_half_end(ver: str, now: datetime, read_image, tr: "Trace", kuro_
     get = kuro_get or _kuro_default
     failed: list[str] = []
     try:
-        events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 3, "pageSize": 100}).get("data") or {}).get("list")
+        events = (kuro_checked(get(_KURO_NEWS, {"gameId": 3, "eventType": 3, "pageSize": 100}), "唤取公告列表")
+                  .get("data") or {}).get("list")
 
         def detail_of(pid: str) -> dict:
-            return ((get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}).get("data") or {})
+            return ((kuro_checked(get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}),
+                                  f"帖子 {pid}").get("data") or {})
                     .get("postDetail") or {})
         hit = wuwa_first_half_notice_end(events or [], detail_of, ver, now)
     except Exception as e:
@@ -473,7 +490,7 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
         if payload is not None:
             h["Content-Type"] = "application/x-www-form-urlencoded"
             body = urllib.parse.urlencode(payload).encode()
-        return hub._json(_KURO + path, _UA_BROWSER, body, h)
+        return kuro_checked(hub._json(_KURO + path, _UA_BROWSER, body, h), path)
 
     cache: dict[str, str] = {}
 
@@ -494,6 +511,7 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
     debut: "list[tuple[str, str]]" = []
     notice_ok = True
     notice_banners: list[Banner] = []
+    body = ""
     try:
         notice = hub._json(_WW_NOTICE, _UA_BROWSER, timeout=25)
         body = newest_version([(str(n.get("tabTitle") or ""),
@@ -525,8 +543,20 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
     # If the bulletin cannot be fetched, better to report one extra rerun than to lose
     # the countdown entirely -- the banners within a version all end at the same time
     # anyway, and the value of this line is mostly in that moment.
+    # The same holds when the bulletin was fetched but no debut came out of it: its
+    # title no longer says 版本内容说明, or the 「全新角色」 section changed shape
+    # (_WW_ROLE). An empty debut list used to drop every running pool and the block
+    # read 「当期无新角色卡池」 with no log line.
     names = {w for w, _ in debut}
-    got = [b for b in pools if set(b.chars) & names] if notice_ok else pools
+    split = notice_ok
+    if notice_ok and pools and not debut:
+        split = False
+        why = ("没有标题含「版本内容说明」的公告" if not body
+               else "版本说明里没有「全新角色」一节" if "全新角色" not in body
+               else "「全新角色」一节里一个角色都没读出来（写法变了）")
+        # the first line is quoted in the daily report: no Latin letters
+        log.warning("鸣潮官方公告里读不出这一版的新角色（%s），分不出首发和复刻，在开的卡池全部照报", why)
+    got = [b for b in pools if set(b.chars) & names] if split else pools
     for b in got:
         if b.start <= now <= b.end:
             tr.ends |= _stamps(b.end)
@@ -564,7 +594,12 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
     try:
         page = post("/wiki/core/catalogue/item/getPage",
                     {"catalogueId": _WW_CHAR_CATALOGUE, "page": 1, "limit": 100})
-        teased = wuwa_teased((((page.get("data") or {}).get("results") or {}).get("records")) or [], now)
+        # A previewed badge can stay on long after the character is out (锁暝: badge 2
+        # with a year-long window while its own banner ran, 2026-10-22), so names that
+        # are running now or are this version's debuts are not 「the next version's」.
+        current = live | {w for w, _ in debut}
+        teased = [t for t in wuwa_teased((((page.get("data") or {}).get("results") or {}).get("records")) or [], now)
+                  if t not in current]
         tr.src("鸣潮", "预告角色", _KURO + f"/wiki/core/catalogue/item/getPage catalogueId={_WW_CHAR_CATALOGUE}", "预告角标：" + ("、".join(teased) or "无"))
     except Exception:
         log.warning("库街区角色图鉴取不到，预告角色这一项不出", exc_info=True)

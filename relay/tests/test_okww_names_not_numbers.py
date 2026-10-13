@@ -81,5 +81,21 @@ for i in (1, 5, 15):
     if "#" in line or "没登记" in line:
         fails.append(f"明日安排第 {i} 个凝素领域退化成序号：{line}")
 
+# All 20 forgery instances (in-game list re-read 2026-09-30; upstream ForgeryTask
+# structure [5, 5, 5, 5]): every index names its instance, and every region lists
+# the five weapon types in the same order.
+if sorted(wuwa_forgery.FORGERY) != list(range(1, 21)):
+    fails.append(f"凝素领域对照表应是 1..20，得到 {sorted(wuwa_forgery.FORGERY)}")
+for i in range(1, 21):
+    if "没登记" in wuwa_forgery.label(i):
+        fails.append(f"凝素领域第 {i} 个没有名字")
+_order = ["迅刀", "音感仪", "长刃", "臂铠", "佩枪"]
+for start in (1, 6, 11, 16):
+    rows = [wuwa_forgery.FORGERY.get(start + k) for k in range(5)]
+    if None in rows or [r[1] for r in rows] != _order or len({r[2] for r in rows}) != 1:
+        fails.append(f"凝素领域第 {start}..{start + 4} 个不是同一地区的 迅刀/音感仪/长刃/臂铠/佩枪：{rows}")
+if wuwa_forgery.label(16) != "凝素领域·熔毁废都（迅刀）":
+    fails.append(f"第 16 个：{wuwa_forgery.label(16)}")
+
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

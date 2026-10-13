@@ -155,6 +155,42 @@ def main() -> int:
     require("只读项→拒绝（死命令：只刷落渊南丘）", not ok, msg)
     ok, msg = mastercfg.write_okww(automas, "DailyTask.json/Not A Key", 1)
     require("不存在的键→拒绝", not ok, msg)
+    # 2026-10-13 audit: any string was written; upstream sends anything that is not
+    # Tacet or Forgery to the simulation domain (DailyTask.py:125-127).
+    okww = automas.parent / "okww"
+    src = okww / "data" / "apps" / "ok-ww" / "working" / "src" / "task"
+    src.mkdir(parents=True)
+    (src / "DailyTask.py").write_text(
+        "        self.support_tasks = ['Tacet Suppression', 'Forgery Challenge', 'Simulation Challenge']\n",
+        encoding="utf-8")
+    ok, msg = mastercfg.write_okww(automas, "DailyTask.json/Which to Farm", "Tacet Supression", okww)
+    now = mastercfg.read_okww(automas, None)["values"]
+    require("Which to Farm: a value OK-WW does not list -> refused, file unchanged",
+            not ok and now["DailyTask.json/Which to Farm"] == "Simulation Challenge", msg)
+    ok, msg = mastercfg.write_okww(automas, "DailyTask.json/Which to Farm", "Forgery Challenge", okww)
+    now = mastercfg.read_okww(automas, None)["values"]
+    require("Which to Farm: a listed value is written",
+            ok and now["DailyTask.json/Which to Farm"] == "Forgery Challenge", msg)
+    mastercfg.write_okww(automas, "DailyTask.json/Which to Farm", "Simulation Challenge", okww)
+    # 2026-10-13 audit: a serial past OK-WW's list was written and upstream raised
+    # IndexError on the day (TacetTask.py:111-112, ForgeryTask.py:63-64).
+    (src / "TacetTask.py").write_text("        self.structure = [4, 5, 5, 7]\n", encoding="utf-8")
+    (src / "ForgeryTask.py").write_text("        self.structure = [5, 5, 5, 5]\n", encoding="utf-8")
+    for key, bad, good in (("Which Tacet Suppression to Farm", (0, 22), (1, 21)),
+                           ("Which Forgery Challenge to Farm", (0, 21), (1, 20))):
+        for v in bad:
+            ok, msg = mastercfg.write_okww(automas, f"DailyTask.json/{key}", v, okww)
+            require(f"{key} = {v}: refused", not ok and "已拒绝" in msg, msg)
+        for v in good:
+            ok, msg = mastercfg.write_okww(automas, f"DailyTask.json/{key}", v, okww)
+            now = mastercfg.read_okww(automas, None)["values"]
+            require(f"{key} = {v}: written", ok and now[f"DailyTask.json/{key}"] == v, msg)
+    (src / "ForgeryTask.py").write_text("        self.structure = [5, 5, 5, 5, 5]\n", encoding="utf-8")
+    ok, msg = mastercfg.write_okww(automas, "DailyTask.json/Which Forgery Challenge to Farm", 25, okww)
+    require("the bound is read from OK-WW's own source (a fifth region: 25 accepted)", ok, msg)
+    ok, msg = mastercfg.write_okww(automas, "DailyTask.json/Which Forgery Challenge to Farm", 21)
+    require("source unreadable: the v3.7.4 bound (20) still refuses 21", not ok, msg)
+    mastercfg.write_okww(automas, "DailyTask.json/Which Forgery Challenge to Farm", 3, okww)
 
     print("\n=== 5. OK-WW: a config file that exists but cannot be read is said once ===")
     import logging  # noqa: PLC0415

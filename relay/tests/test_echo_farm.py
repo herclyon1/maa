@@ -57,6 +57,8 @@ def cfg_now(c):
 launched = []
 echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
 echofarm.stop_okww = lambda: launched.append("stop")
+_real_stop_script = echofarm.stop_okww_script
+echofarm.stop_okww_script = lambda: launched.append("script") or True
 # The marker file lives in C:\ProgramData on the machine. Point it at a temp path so
 # the tests never write into the repo (and never into a real machine path either).
 echofarm.NO_CLAIM = str(tmpdir() / "no-claim")
@@ -84,8 +86,9 @@ after = cfg_now(c)
 check("改成了打强敌", after["Teleport to Boss"], "Boss Challenge")
 check("第几个", after["Which Boss Challenge to Teleport"], 1)
 check("次数交给时钟，不再是 3", after["Repeat Farm Count"], echofarm.BIG_COUNT)
-check("等级压到最低档，不然打不过", after["Boss Level"], echofarm.FARM_LEVEL)
-check("最低档不是原来那个 90", echofarm.FARM_LEVEL != ORIGINAL["Boss Level"], True)
+check("等级是会掉声骸的最低一档 80（50 级不掉声骸）", after["Boss Level"], "80")
+check("配置里写的就是 FARM_LEVEL", after["Boss Level"], echofarm.FARM_LEVEL)
+check("不是原来那个 90", echofarm.FARM_LEVEL != ORIGINAL["Boss Level"], True)
 check("原配置一字不落地存着", echofarm.current(c.state_dir)["saved"], ORIGINAL)
 
 print("\n[正在刷的时候不许再开一趟]")
@@ -172,11 +175,39 @@ def _farm(**fields):
     return c
 
 
-check("on time, all put back: one info wrap-up", _wrapup(_farm()), [("info", True)])
+import ark_relay.features.weekly.weeklyboss as _wbw                               # noqa: E402
+_wrap_log = tmpdir() / "wrap.log"
+_wrap_real = _wbw._okww_log
+_wbw._okww_log = lambda: _wrap_log
+_wrap_log.write_text("2026-09-09 04:01:00,000 INFO TaskExecutor FarmEchoTask:enter combat None\n"
+                     "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n",
+                     encoding="utf-8")
+check("on time, all put back, OK-WW farmed: one info wrap-up", _wrapup(_farm()), [("info", True)])
+# 2026-10-13 audit: a night that farmed nothing ended as a clean 「到点了」.
+_wrap_log.write_text("2026-09-09 03:00:00,000 INFO TaskExecutor FarmEchoTask:farm echo before the start\n"
+                     + "".join(f"2026-09-09 04:{m:02d}:00,000 INFO hwnd_window changed\n" for m in range(1, 50)),
+                     encoding="utf-8")
+check("on time but nothing farmed since the start: the group", _wrapup(_farm()), [("group", True)])
+_c0 = _farm()
+_note0, _bad0 = echofarm.tick_result(_c0)
+check("…and the line says nothing was farmed", ("一次都没刷到" in _note0, _bad0), (True, True))
+_wrap_log.write_text("2026-09-09 04:01:00,000 INFO TaskExecutor FarmEchoTask:enter combat None\n"
+                     "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n",
+                     encoding="utf-8")
+_c1 = _farm()
+_note1, _bad1 = echofarm.tick_result(_c1)
+check("a farmed night's line gives the count", ("记到 2 次进展" in _note1, _bad1), (True, False))
+_wbw._okww_log = lambda: None
+check("on time, OK-WW log unreadable: the group (unknown is not fine)", _wrapup(_farm()), [("group", True)])
+_c2 = fresh()
+echofarm.start(_c2, 1, "08:30", "天傀劫煞", now=NOW)
+_note2, _bad2 = echofarm._finish(_c2, "手动停止")
+check("a stop by hand is not judged on progress", _bad2, False)
+_wbw._okww_log = lambda: _wrap_log
 check("end time unreadable, farm stopped: the group", _wrapup(_farm(until="坏的")), [("group", True)])
 _launch_was, _quiet_was = echofarm._launch, echofarm.quiet_minutes
 echofarm._launch = lambda: (False, "启动计划任务失败")
-echofarm.quiet_minutes = lambda now=None: 30.0
+echofarm.quiet_minutes = lambda now=None, since=None: 30.0
 try:
     tomorrow = (datetime.now(tz=SERVER_TZ) + timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
     got = _wrapup(_farm(until=tomorrow, started="2026-09-09 04:00"))
@@ -190,6 +221,7 @@ try:
 finally:
     echofarm.stop_okww = _stop_was
 check("on time but the game left open: the group", got, [("group", True)])
+_wbw._okww_log = _wrap_real
 
 # docs/SILENT-FAILURES-AUDIT.md echofarm.py:423 - a failed restore used to replace
 # the note, so 「游戏没关掉」 from stop_okww never reached the receipt.
@@ -286,11 +318,15 @@ try:
     check("刚开跑一分钟不算停", echofarm.tick(c, datetime(2026, 9, 9, 4, 1, tzinfo=SERVER_TZ)), "")
     _before = len(launched)
     check("五分钟没刷到东西就自己重开", echofarm.tick(c, datetime(2026, 9, 9, 4, 36, tzinfo=SERVER_TZ)), "")
-    check("真的重开了一次", len(launched) - _before, 1)
+    check("真的重开了一次", launched[_before:].count(1), 1)
     check("重开次数记下来了", echofarm.current(c.state_dir)["restarts"], 1)
     check("刚重开完不重复开", echofarm.tick(c, datetime(2026, 9, 9, 4, 38, tzinfo=SERVER_TZ)), "")
-    check("还是只开过一次", len(launched) - _before, 1)
+    check("还是只开过一次", launched[_before:].count(1), 1)
     check("第一次只重开脚本，不动游戏", "stop" in launched[_before:], False)
+    # 2026-10-13 audit: nothing was stopped before the first relaunch, so a live
+    # OK-WW and a new `pythonw main.py -t 2 -e` could both drive one game.
+    check("first relaunch: the old OK-WW script is stopped before the new one starts",
+          launched[_before:], ["script", 1])
 
     # 2026-09-09: the game itself wedged on a loading screen and restarting the
     # script against it did nothing, twice, while the farm stood still.
@@ -345,6 +381,38 @@ try:
     check("刚刷到东西就不算卡住", round(fresh_), 1)
     check("阈值给到五分钟（一趟约一分钟，死一次约两分钟）",
           echofarm.RESTART_QUIET_MINUTES, 5)
+
+    # 2026-10-13 audit: a game in a retry loop logs 20-39 KB a minute, so the last
+    # progress line falls out of the 300 KB tail. The fallback was the file's mtime -
+    # "now" for a log that keeps growing - so quiet read 0 and nothing ever fired.
+    import os as _os2
+    _noise = "".join(f"2026-09-09 05:{m // 60:02d}:{m % 60:02d},000 INFO TaskExecutor retry loop "
+                     + "x" * 200 + "\n" for m in range(0, 3000))
+    _noisy.write_text("2026-09-09 04:00:00,000 INFO FarmEchoTask:farm echo on the face\n" + _noise,
+                      encoding="utf-8")
+    check("fixture: the progress line is beyond the 300 KB tail",
+          _noisy.stat().st_size - len("2026-09-09 04:00:00,000 INFO FarmEchoTask:farm echo on the face\n")
+          > echofarm._TAIL_BYTES, True)
+    _t = datetime(2026, 9, 9, 5, 50, tzinfo=SERVER_TZ)
+    _os2.utime(_noisy, (_t.timestamp(), _t.timestamp()))
+    check("no progress in the tail: measured from the launch, not the fresh mtime",
+          round(echofarm.quiet_minutes(_t, datetime(2026, 9, 9, 5, 20, tzinfo=SERVER_TZ))), 30)
+    check("no launch time: measured from the tail's first line (a floor)",
+          echofarm.quiet_minutes(_t) >= 5, True)
+    _c3 = fresh()
+    echofarm.start(_c3, 1, "08:30", "天傀劫煞", now=NOW)
+    _r3 = echofarm.current(_c3.state_dir)
+    _r3["started"] = "2026-09-09 05:20"
+    echofarm._store(_c3.state_dir).set("queues", "echo_farm", _r3)
+    _was3 = echofarm._launch
+    _l3 = []
+    echofarm._launch = lambda: (_l3.append(1), (True, ""))[1]
+    try:
+        echofarm.tick(_c3, _t)
+    finally:
+        echofarm._launch = _was3
+    check("a noisy stuck farm gets its restart", (len(_l3), echofarm.current(_c3.state_dir).get("restarts")), (1, 1))
+    echofarm.finish(_c3, "收尾")
 finally:
     _wb2._okww_log = _real2
 
@@ -393,6 +461,39 @@ finally:
 print("\n[开跑时刻读不出来也不当成卡死]")
 check("读不出开跑时刻返回 None", echofarm._started_at({"started": "不是时间"}), None)
 check("读得出就是那个时刻", echofarm._started_at({"started": "2026-09-09 04:00"}).hour, 4)
+
+print("\n[stopping only the old script: confirmed gone, or the full stop]")
+# 2026-10-13: the old script was given a blind two seconds; now it is looked for again.
+import ark_relay.features.preupdate.preupdate_okww as _pk  # noqa: E402
+_pk_real = _pk._stop_okww_python, _pk.okww_python_pids
+_seen = iter([[4242], [4242], []])
+_naps = []
+_pk._stop_okww_python = lambda: None
+_pk.okww_python_pids = lambda: next(_seen)
+try:
+    check("gone on the third look: True", _real_stop_script(sleep=_naps.append), True)
+    check("…after two one-second looks", _naps, [1, 1])
+    _pk.okww_python_pids = lambda: None
+    _naps.clear()
+    check("never readable: False", _real_stop_script(sleep=_naps.append), False)
+    check("…after ten looks", len(_naps), 10)
+finally:
+    _pk._stop_okww_python, _pk.okww_python_pids = _pk_real
+_c3 = fresh()
+echofarm.start(_c3, 1, "08:30", "天傀劫煞", now=NOW)
+_r3 = echofarm.current(_c3.state_dir)
+_r3["started"] = "2026-09-09 04:00"
+echofarm._store(_c3.state_dir).set("queues", "echo_farm", _r3)
+_wb._okww_log = lambda: _logfile
+echofarm.stop_okww_script = lambda: launched.append("script") and False
+try:
+    _b3 = len(launched)
+    echofarm.tick(_c3, datetime(2026, 9, 9, 4, 36, tzinfo=SERVER_TZ))
+    check("an old script that will not go: the full stop before the relaunch",
+          launched[_b3:], ["script", "stop", 1])
+finally:
+    echofarm.stop_okww_script = lambda: launched.append("script") or True
+    _wb._okww_log = _real_log
 
 print("\n[收工那一步本身：先停计划任务，再把 OK-WW 的进程停干净]")
 # The real function, not the stub - it is what actually ends the run on the machine.
@@ -443,6 +544,26 @@ try:
         if a and a[0] and a[0][0] != "tasklist" else (_ for _ in ()).throw(OSError("tasklist missing"))
     _note = _mod.stop_okww(sleep=lambda _s: None)
     check("stop does not say 收工 cleanly", _note != "" and "程序列表" in _note, True)
+
+    # 2026-10-13 audit: game_alive looked only at the game's process names, so a
+    # stop could say clean while OK-WW (pythonw.exe) lived on and later wrote its
+    # in-memory config over the restored FarmEchoTask.json.
+    print("\n[OK-WW's own pythonw counts as still up]")
+    class _Py(_Done):
+        stdout = b'[{"ProcessId": 777}]'
+    _ran.clear()
+    _sp.run = lambda *a, **k: (_ran.append(list(a[0]) if a else []),
+                               _Py() if a and any("pythonw.exe" in str(x) for x in a[0]) else _Done())[1]
+    check("a live OK-WW script is named", _mod.game_alive(), [_mod.okww_script_name(777)])
+    _note = _mod.stop_okww(sleep=lambda _s: None)
+    check("stop does not report clean while it lives", "编号 777" in _note, True)
+    check("the desktop kill takes it by PID",
+          "taskkill /F /PID 777" in Path(_mod.STOP_BAT).read_text(encoding="utf-8"), True)
+    _sp.run = lambda *a, **k: (_ for _ in ()).throw(OSError("no pwsh")) \
+        if a and any("pythonw.exe" in str(x) for x in a[0]) else _Done()
+    check("python list unreadable: not read as gone", _mod.game_alive(), [_mod.UNREADABLE_SCRIPT])
+    _sp.run = lambda *a, **k: _Done()
+    check("nothing up: clean", _mod.game_alive(), [])
 finally:
     _sp.run, _pk._okww_quiesce = _real_run, _real_q
 

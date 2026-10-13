@@ -5,9 +5,13 @@ counting from the top), and the logs carry only that index, so a report saying
 「凝素领域 ×3」 is readable by a machine and not by a person. The user, 2026-08-26:
 「他那个凝素领域第一个机器看得懂，人看不懂是什么啊」.
 
-This table is the **complete** list, read screen by screen in-game on 2026-09-04;
-source of record is docs/WUWA-TACET-INDEX.md, and the FORGE table in the phone
-page web/app.js comes from the same source.
+This table is the complete list: 20 instances, 4 regions x 5 in the order
+迅刀 / 音感仪 / 长刃 / 臂铠 / 佩枪, matching upstream ForgeryTask's structure
+[5, 5, 5, 5] (v3.7.4, ForgeryTask.py:23). Rows 1-15 were read screen by screen
+in-game on 2026-09-04 (source of record docs/WUWA-TACET-INDEX.md, which the
+FORGE table of the phone page also comes from); rows 16-20 (瑝珑·今州) were read
+on 2026-09-30, when the in-game list was re-read in full and ended at 20
+(BOARD/evidence/鸣潮3.7-选项-0930/README.md:78-79).
 Indices start at **1**, matching the position in the in-game list - callers must
 not apply an offset of their own.
 
@@ -40,6 +44,11 @@ FORGERY: dict[int, tuple[str, str, str]] = {
     13: ("赞颂庭园", "长刃", "黎那汐塔"),
     14: ("祝祭海渊", "臂铠", "黎那汐塔"),
     15: ("告解海渊", "佩枪", "黎那汐塔"),
+    16: ("熔毁废都", "迅刀", "瑝珑·今州"),
+    17: ("旋雾之森", "音感仪", "瑝珑·今州"),
+    18: ("侵蚀废都", "长刃", "瑝珑·今州"),
+    19: ("流月之森", "臂铠", "瑝珑·今州"),
+    20: ("欲燃之森", "佩枪", "瑝珑·今州"),
 }
 
 

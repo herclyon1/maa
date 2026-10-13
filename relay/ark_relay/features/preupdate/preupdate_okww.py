@@ -27,6 +27,51 @@ OKWW_BUDGET_SECONDS = 240
 OKWW_MIN_WAIT_SECONDS = 45
 
 
+# OK-WW's own python processes: python.exe or pythonw.exe (the echo farm launches
+# pythonw so no console covers the game) whose command line names ok-ww or runs
+# `-m ok`. One filter for stopping them and for looking for them.
+_OKWW_PY = ("Get-CimInstance Win32_Process -Filter "
+            "\"Name='python.exe' OR Name='pythonw.exe'\" | "
+            "Where-Object { $_.CommandLine -like '*ok-ww*' -or "
+            "$_.CommandLine -like '*-m ok *' }")
+
+
+def _okww_py(tail: str):
+    """Run `_OKWW_PY | tail` in PowerShell 7; the CompletedProcess, or None when it
+    could not run."""
+    ps = _OKWW_PY + " | " + tail
+    # 60 s: the hang guard _okww_quiesce has had on this same call since 2026-08-28
+    # (bc3b709d), moved here unchanged. Its duration on the machine has no record.
+    try:
+        return subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
+                       capture_output=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _stop_okww_python() -> None:
+    """Stop OK-WW's python processes (only those, see _OKWW_PY); the game is left alone.
+    The result is not checked: a caller that must know uses okww_python_pids."""
+    _okww_py("ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
+
+
+def okww_python_pids() -> "list[int] | None":
+    """PIDs of OK-WW's running python processes (_OKWW_PY); None when the process
+    list could not be read."""
+    r = _okww_py("Select-Object ProcessId | ConvertTo-Json -Compress")
+    try:
+        data = json.loads((r.stdout or b"").decode("utf-8", "replace").strip() or "null")
+    except (AttributeError, ValueError):
+        return None
+    out = []
+    for proc in [data] if isinstance(data, dict) else (data or []):
+        try:
+            out.append(int(proc.get("ProcessId")))
+        except (AttributeError, TypeError, ValueError):
+            continue
+    return out
+
+
 def _okww_quiesce(sleep=time.sleep, launcher_root: Path | None = None) -> None:
     """Stop OK-WW, the game and the Kuro launcher, so nothing rewrites OK-WW's
     config from memory.
@@ -39,16 +84,7 @@ def _okww_quiesce(sleep=time.sleep, launcher_root: Path | None = None) -> None:
     taskkill runs from the service's session and its result is not checked; a
     caller that must know the machine is clean uses _okww_close.
     """
-    ps = ("Get-CimInstance Win32_Process -Filter "
-          "\"Name='python.exe' OR Name='pythonw.exe'\" | "
-          "Where-Object { $_.CommandLine -like '*ok-ww*' -or "
-          "$_.CommandLine -like '*-m ok *' } | "
-          "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
-    try:
-        subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
-                       capture_output=True, timeout=60)
-    except (OSError, subprocess.SubprocessError):
-        pass
+    _stop_okww_python()
     for name in ("ok-ww.exe", "Wuthering Waves.exe",
                  "Client-Win64-Shipping.exe", "KRSDKExternal.exe"):
         try:
@@ -84,16 +120,19 @@ def _okww_close(sleep=time.sleep, launcher_root: Path | None = None) -> list[str
 
 
 def _okww_left(launcher_root: Path | None = None) -> tuple[list[str], list[int]]:
-    """(names still up, launcher PIDs still up): the game's processes plus the Kuro
-    launcher at its path. An unreadable launcher list is named, not taken as gone."""
+    """(names still up, PIDs to kill by number): the game's processes, OK-WW's own
+    python (game_alive) and the Kuro launcher at its path; the PIDs are the
+    launcher's and OK-WW's python's, whose names are too common to kill by name.
+    An unreadable launcher list is named, not taken as gone."""
     from ark_relay.features.echofarm.echofarm import game_alive  # noqa: PLC0415 - echofarm imports this module
     left = list(game_alive())
+    py = (okww_python_pids() or []) if left else []
     procs = _wuwa_launcher_procs(launcher_root)
     if procs is None:
         left.append("鸣潮启动器（查不到它还开没开着）")
-        return left, []
+        return left, py
     left += [Path(path.replace("\\", "/")).name for _pid, path in procs]
-    return left, [pid for pid, _path in procs]
+    return left, [pid for pid, _path in procs] + py
 
 
 # The Kuro launcher: launcher.exe is the entry shell; while it runs the process is
@@ -218,9 +257,10 @@ def _okww_stamp(okww_dir: Path) -> float:
 def _okww_await_update(root: Path, budget_s: float, before_version: str,
                        before_avail: tuple[str, ...],
                        before_stamp: float, sleep=time.sleep,
-                       clock=time.monotonic) -> tuple[str, bool, str, str]:
+                       clock=time.monotonic) -> tuple[str, bool, str, str, tuple[str, ...]]:
     """Watch app.json until OK-WW is done: returns (new version, did it check, error,
-    the state it was still in when the budget ran out - "" unless it timed out busy).
+    the state it was still in when the budget ran out - "" unless it timed out busy,
+    the last non-empty available_versions read - `before_avail` if none was read).
 
     "Did it check" is true when the version list changed, app.json was
     rewritten, the update state left idle, or the version changed. A
@@ -232,9 +272,13 @@ def _okww_await_update(root: Path, budget_s: float, before_version: str,
     checked = False           # saw it actually move: state / version list / version
     failed = ""
     state = ""
+    version, avail = before_version, before_avail
+    latest = before_avail     # the list the verdict reads: the newest one seen
     while clock() < deadline:
         sleep(3)
         version, state, err, avail = _okww_state(root)
+        if avail:
+            latest = avail
         if err:
             log.warning("预更新：OK-WW 更新报错 %s", err[:200])
             failed = err[:200]
@@ -260,19 +304,20 @@ def _okww_await_update(root: Path, budget_s: float, before_version: str,
             # Out of time while app.json still says it is downloading or installing.
             log.warning("预更新：OK-WW %.0f 秒到了还在「%s」，没更新完；app.json 最后读到 "
                         "版本 %s，可用版本 %s", budget_s, state, version or "未知", list(avail[:3]))
-            return settled, checked, failed, state
-    return settled, checked, failed, ""
+            return settled, checked, failed, state, latest
+    return settled, checked, failed, "", latest
 
 
 def _okww_report(problems: list[str] | None, budget_s: float,
-                 before_version: str, before_avail: tuple[str, ...],
+                 before_version: str, latest_avail: tuple[str, ...],
                  settled: str, checked: bool, failed: str, stuck: str = "",
                  shot: "Path | None" = None) -> None:
     """Log the result of _okww_await_update and note a problem where one is due.
 
     Branches: update error; updated; out of time while busy; no sign of a check
-    (not the same as "no update"); checked with nothing newer installed (noted
-    when available_versions lists a newer one).
+    (not the same as "no update"); checked with nothing newer installed - a
+    problem when `latest_avail` (the version list as last read during the wait,
+    newest first) lists a newer one, otherwise 「无需更新」.
     """
     if failed:
         _note(problems, f"OK-WW 预更新：更新报错 {failed}")
@@ -289,9 +334,10 @@ def _okww_report(problems: list[str] | None, budget_s: float,
               f"OK-WW 预更新：{budget_s:.0f} 秒内没有任何检查迹象，"
               f"**无法确认是否检查过更新**（当前 {before_version or '版本未知'}）")
     else:
-        newest = before_avail[0] if before_avail else ""
-        log.info("预更新：OK-WW 无需更新（%s）", before_version or "版本未知")
-        if newest and newest != before_version:
+        newest = latest_avail[0] if latest_avail else ""
+        if not newest or newest == before_version:
+            log.info("预更新：OK-WW 无需更新（%s）", before_version or "版本未知")
+        else:
             _note(problems,
                   f"OK-WW 预更新：查到有 {newest}，但没装上"
                   f"（仍是 {before_version or '版本未知'}）")
@@ -340,7 +386,7 @@ def run_okww(okww_dir: Path | None,
     # `finally` below.
     was = _okww_autostart(root, False)
     if was is None:
-        _note(problems, "OK-WW 预更新：改不动 app.json，没有检查更新")
+        _note(problems, "OK-WW 预更新：改不动 Basic Options.json 里的自动开游戏开关，没有检查更新")
         return ""
     launched = False
     try:
@@ -352,9 +398,9 @@ def run_okww(okww_dir: Path | None,
             return ""
         launched = True
         log.info("预更新：已启动 OK-WW（已临时关掉自动开游戏），最多 %.0f 秒", budget_s)
-        settled, checked, failed, stuck = _okww_await_update(
+        settled, checked, failed, stuck, latest_avail = _okww_await_update(
             root, budget_s, before_version, before_avail, before_stamp)
-        _okww_report(problems, budget_s, before_version, before_avail,
+        _okww_report(problems, budget_s, before_version, latest_avail,
                      settled, checked, failed, stuck, _okww_timeout_shot() if stuck else None)
         if not before_version:
             _note(problems, "OK-WW 预更新：启动前读不到 app.json 里的版本号，这次装没装上新版没法比对"
