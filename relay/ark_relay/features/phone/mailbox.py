@@ -8,12 +8,12 @@ from __future__ import annotations
 import json
 import logging
 import socket
-import sys
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
 
+from ark_relay.core import config
 from ark_relay.features.alarm import errwatch
 from ark_relay.features.phone.cos_store import cos_put, state_key
 from ark_relay.features.phone.quota import NOTICE_STOP_AT, Quota, _idle_timeout, _ntfy_code, _retry_after, _why
@@ -484,7 +484,7 @@ class Mailbox:
                     sock.shutdown(socket.SHUT_RDWR)
                 except OSError:
                     log.debug("手机通道的连接已经断了，不用再断", exc_info=True)
-                if sys.platform == "win32":
+                if config.IS_WINDOWS:
                     try:
                         socket.close(sock.detach())
                     except OSError:

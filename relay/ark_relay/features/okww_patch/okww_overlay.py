@@ -131,11 +131,10 @@ def okww_running() -> "bool | None":
     install() writes on None: at boot OK-WW is normally not running, and a stale
     overlay left in place silently is the worse outcome.
     """
-    import os  # noqa: PLC0415
+    from ark_relay.core import config, procs  # noqa: PLC0415
 
-    if os.name != "nt":
+    if not config.IS_WINDOWS:
         return None
-    from ark_relay.core import procs  # noqa: PLC0415
     from ark_relay.core.config import OKWW_CMDLINE, PYTHON_HOSTS  # noqa: PLC0415
     # warn=False: an unreadable process list is not this step's to alarm on; the boot
     # self-check (later in the same boot) pushes the one alarm for that outage.

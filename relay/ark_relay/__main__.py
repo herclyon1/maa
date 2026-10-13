@@ -29,7 +29,7 @@ import threading
 import time
 from pathlib import Path
 
-from ark_relay.core import watch
+from ark_relay.core import config, watch
 
 from ark_relay.core.config import SERVER_TZ, Config, both_clocks
 from ark_relay.core.ledger import State
@@ -339,7 +339,7 @@ def _acquire_singleton(cfg: Config) -> object | None:
 
 
 def _pid_alive(pid: int) -> bool:
-    if os.name == "nt":
+    if config.IS_WINDOWS:
         # tasklist prints in the console's ANSI codepage (GBK on this machine),
         # not UTF-8. Decoding it crashed the relay on every boot, so compare
         # raw bytes and never decode at all.

@@ -441,9 +441,9 @@ class Log:
 
 print("\n[补跑派下去之后，「有没有在跑」的三秒缓存作废：同一轮的关机判断重新问 AUTO-MAS]")
 asked = []
-real_os, real_busy, real_subp = eng_mod.os, eng_mod._automas_busy, eng_mod.subprocess
+real_win, real_busy, real_subp = eng_mod.config.IS_WINDOWS, eng_mod._automas_busy, eng_mod.subprocess
 try:
-    eng_mod.os = types.SimpleNamespace(name="nt")
+    eng_mod.config.IS_WINDOWS = True
     answer = {"v": False}
     eng_mod._automas_busy = lambda: (asked.append(1), answer["v"])[1]
     eng_mod.subprocess = types.SimpleNamespace(run=lambda *a, **k: types.SimpleNamespace(stdout=b""),
@@ -457,7 +457,7 @@ try:
     check("派下去了", (makeup.maybe_run(e, NOW), dispatched), (True, ["MAA"]))
     check("三秒内再问：不用旧的「没在跑」，重新问到「在跑」", (eng_mod.Engine._scripts_running(), len(asked)), (True, 2))
 finally:
-    eng_mod.os, eng_mod._automas_busy, eng_mod.subprocess = real_os, real_busy, real_subp
+    eng_mod.config.IS_WINDOWS, eng_mod._automas_busy, eng_mod.subprocess = real_win, real_busy, real_subp
     eng_mod._SCRIPTS_CACHE.update(at=-1e9, val=False)
 
 print("\n[调试模式开着：不补跑，失败马上进群，不是一直压着等（2026-10-06）]")

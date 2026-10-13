@@ -219,7 +219,7 @@ check("下次启动不再当第一次", e8.bootstrap(), 0)
 # ---------------------------------------------------------------- 在跑判断
 
 print("\n[scripts_running：三秒缓存——一轮里十几处都在问，只许问一次]")
-real_os, real_busy, real_sub = eng.os, eng._automas_busy, eng.subprocess
+real_win, real_busy, real_sub = eng.config.IS_WINDOWS, eng._automas_busy, eng.subprocess
 asked = []
 
 
@@ -229,7 +229,7 @@ def fake_busy():
 
 
 try:
-    eng.os = types.SimpleNamespace(name="nt")     # 只用到 os.name 这一处
+    eng.config.IS_WINDOWS = True     # the machine: the busy check asks AUTO-MAS
     eng._automas_busy = fake_busy
 
     fake_busy.answer = True
@@ -279,7 +279,7 @@ try:
         eng._SCRIPTS_CACHE.update(at=-1e9, val=False)
         check(f"进程表里只有 {name.decode()}", eng.Engine._scripts_running(), want)
 finally:
-    eng.os, eng._automas_busy, eng.subprocess = real_os, real_busy, real_sub
+    eng.config.IS_WINDOWS, eng._automas_busy, eng.subprocess = real_win, real_busy, real_sub
     eng._SCRIPTS_CACHE.update(at=-1e9, val=False)
 
 

@@ -12,13 +12,12 @@ after the verdict is already fixed.
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from ark_relay.core import texts
+from ark_relay.core import config, texts
 from ark_relay.features.alarm import handle, missed
 from ark_relay.features.modes import modes
 from ark_relay.core import plan
@@ -627,7 +626,7 @@ class Engine:
         asked, falls back to the queue-wide `_scripts_running` - waiting too long
         beats alarming on a script that is still retrying.
         """
-        if os.name != "nt":
+        if not config.IS_WINDOWS:
             return False
         snap = _automas_snapshot()
         if snap is None:
@@ -644,7 +643,7 @@ class Engine:
         AUTO-MAS writes a record only once the whole script ends. A failure is
         reported only once nothing is still trying.
         """
-        if os.name != "nt":
+        if not config.IS_WINDOWS:
             return False
         # One tick asks this many times (skip mode, held-back alerts, missed runs,
         # reports, shutdown); an answer less than _SCRIPTS_TTL seconds old is reused.
@@ -845,7 +844,7 @@ class Engine:
             self._applog = runwatch.AppLog(runwatch.applog_path(self.cfg.automas_dir))
         events = self._unsent_timeouts + self._applog.poll()
         self._unsent_timeouts = runwatch.check_timeouts(self, events, now)
-        if os.name == "nt":
+        if config.IS_WINDOWS:
             runwatch.check_overrun(self, now, _automas_snapshot())
 
     # ---------- missed runs and missing items (missed.py) ----------

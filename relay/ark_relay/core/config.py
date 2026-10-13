@@ -17,6 +17,14 @@ from pathlib import Path
 SERVER_TZ = timezone(timedelta(hours=8), "服务器")
 USER_TZ = timezone(timedelta(hours=9), "东京")
 
+# Is this the game machine? The one platform question the relay asks; every gate
+# reads `config.IS_WINDOWS` at call time (never `from ... import IS_WINDOWS`), so the
+# day simulator can set it True on a Mac and run the Windows-only branches.
+# Asked of the real host instead: pkg_layout.py and app_main.py (filesystem and
+# console facts), and the OK-WW override, which runs in OK-WW's own Python
+# (tests/test_daysim_gates.py keeps that list).
+IS_WINDOWS = os.name == "nt"
+
 
 def both_clocks(dt: datetime) -> str:
     """Render one instant on both clocks, always dated.

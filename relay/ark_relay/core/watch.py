@@ -21,9 +21,10 @@ import ctypes
 import logging
 import os
 import select
-import sys
 import threading
 import time
+
+from ark_relay.core import config
 
 log = logging.getLogger("ark.watch")
 
@@ -31,7 +32,7 @@ log = logging.getLogger("ark.watch")
 def start(path, wake: threading.Event) -> bool:
     """Set `wake` whenever `path` changes. True when a watcher is live."""
     try:
-        if sys.platform == "win32":
+        if config.IS_WINDOWS:
             return _windows(str(path), wake)
         if hasattr(select, "kqueue"):
             return _kqueue(str(path), wake)

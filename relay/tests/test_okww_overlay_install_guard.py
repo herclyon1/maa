@@ -78,7 +78,7 @@ finally:
     ov.okww_running = REAL_RUNNING
 
 print("\n[okww_running: pythonw.exe with ok-ww on its command line is OK-WW]")
-real_pp, real_name = procs.python_processes, os.name
+real_pp, real_win = procs.python_processes, C.IS_WINDOWS
 seen = {}
 
 
@@ -90,7 +90,7 @@ def pp(rows):
 
 
 try:
-    os.name = "nt"
+    C.IS_WINDOWS = True
     procs.python_processes = pp([(1, r"D:\ark\automas\runtime\environment\venv\Scripts\python.exe main.py"),
                                  (2, r"D:\ark\okww\data\apps\ok-ww\python\pythonw.exe "
                                      r"D:\ark\okww\data\apps\ok-ww\working\main.py -t 1 -e")])
@@ -102,7 +102,7 @@ try:
     procs.python_processes = pp(None)
     check("list unreadable: cannot tell", ov.okww_running(), None)
 finally:
-    os.name = real_name
+    C.IS_WINDOWS = real_win
     procs.python_processes = real_pp
 check("not Windows: cannot tell", ov.okww_running(), None)
 

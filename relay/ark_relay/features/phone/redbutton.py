@@ -11,12 +11,11 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-from ark_relay.core import texts
+from ark_relay.core import config, texts
 from ark_relay.core.config import SERVER_TZ, atomic_write_text
 from ark_relay.features.phone.mas_client import _mas
 
@@ -68,7 +67,7 @@ def _estop_alive() -> list[str]:
     still alive: not knowing must never read as "all clear".
     """
     import subprocess  # noqa: PLC0415
-    if os.name != "nt":
+    if not config.IS_WINDOWS:
         return []
     try:
         out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"],

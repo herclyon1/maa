@@ -42,7 +42,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from ark_relay.core import texts
+from ark_relay.core import config, texts
 
 log = logging.getLogger("ark.maaend_watchdog")
 
@@ -151,7 +151,7 @@ class Watchdog:
         self.agent_dir = str(Path(debug_dir).parent / "agent").lower() + os.sep
         self.clock, self.snapshot, self.processes, self.kill = clock, snapshot, processes, kill
         self.plugin_paths = plugin_paths
-        self.active = (os.name == "nt") if active is None else active
+        self.active = config.IS_WINDOWS if active is None else active
         now = clock()
         self._lines: "int | None" = None
         self._progress_at = now         # last time maafw.log gained a line (or MaaEnd was not running)

@@ -207,8 +207,8 @@ class Shooter:
 
 def start(cfg) -> "Shooter | None":
     """The picture thread, fed by collect_watch. None off Windows (no desktop to take)."""
-    import os  # noqa: PLC0415
-    if os.name != "nt":
+    from ark_relay.core import config  # noqa: PLC0415
+    if not config.IS_WINDOWS:
         return None
     from ark_relay.features.evidence import evidence  # noqa: PLC0415
 
