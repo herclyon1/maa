@@ -125,9 +125,12 @@ _BILI_MIX = (46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43
              36, 20, 34, 44, 52)
 # The account posts about five dynamics a day, 12-13 per page: on 2026-10-05 the
 # 3.7 post (09-28) was on page 3, so four pages lost it about two weeks before
-# the second half it times (10-22). Paging stops at the first page whose oldest
+# the second half it times (10-22). Paging stops at the first page whose NEWEST
 # item is older than _BILI_OLDEST (a version runs about 40 days and its post
-# comes out two days before it), or at _BILI_PAGES, whichever is first.
+# comes out two days before it), or at _BILI_PAGES, whichever is first. Newest,
+# not oldest: a pinned post sits on page 1 whatever its age (the 09-19 item above
+# 10-04/10-05 in ww-bili-feed-2026-10-05.json), and once it passed the cutoff the
+# oldest-item rule stopped at page 1 every time.
 _BILI_PAGES = 12
 _BILI_OLDEST = timedelta(days=50)
 _BILI_TRIES = 5
@@ -254,10 +257,10 @@ def _bili_poster(ver: "str | None", now: datetime, get=None, sleep=None, clock=N
         if hit:
             return _BILI_POST_URL.format(id=hit[0]), hit[1], hit[2]
         offset = str(data.get("offset") or "")
-        if min(dated) < now - _BILI_OLDEST:
+        if max(dated) < now - _BILI_OLDEST:
             # a door's miss, INFO: _wuwa_poster_span warns once when no door has it
-            log.info("Bilibili feed: no %s version-news post back to %s (page %d)",
-                        ver or "current", f"{min(dated):%Y-%m-%d}", page + 1)
+            log.info("Bilibili feed: no %s version-news post; page %d's newest item is %s, past the cutoff",
+                     ver or "current", page + 1, f"{max(dated):%Y-%m-%d}")
             return None
         if not data.get("has_more") or not offset:
             log.info("Bilibili feed: no %s version-news post, the feed ends at page %d",
