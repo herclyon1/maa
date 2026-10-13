@@ -300,11 +300,15 @@ from ark_relay.features.weekly import weeklyboss  # noqa: E402
 saved_rows, saved_wb = plan.queue_rows, weeklyboss.WeeklyBossGate.settings
 plan.queue_rows = lambda automas_dir: (_ for _ in ()).throw(OSError("ScriptConfig 读不了"))
 weeklyboss.WeeklyBossGate.settings = lambda self: (_ for _ in ()).throw(ValueError("坏了"))
+# The real plan runs here too: keep its maintenance notices off the web, as above. Run
+# 38363145659 (Windows) sat in those official-site fetches until the 180 s limit.
+plan.maintenance_lines = lambda day: []
 phone._last_error.pop("relay", None)
 try:
     marked = phone.state_payload(cfg, STATE)
 finally:
     plan.queue_rows, weeklyboss.WeeklyBossGate.settings = saved_rows, saved_wb
+    plan.maintenance_lines = saved_maint
 check("queues: one row holding only _错误",
       marked["queues"], [{"_错误": "OSError: ScriptConfig 读不了"}])
 check("relay: _错误 with the exception", marked["relay"], {"_错误": "ValueError: 坏了"})
