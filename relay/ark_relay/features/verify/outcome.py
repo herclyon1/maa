@@ -363,12 +363,14 @@ def maa_sanity_short(text: str) -> "dict | None":
 def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
     """Did the run honour 「only these nests」? Empty when no filter is configured.
 
-    Two facts, both from lines the run itself writes: the overrides announce the
-    filter they loaded (no announcement = the filter code never had a name to work
-    with), and each nest entered is named by the overlay (「nightmare nest: nest
-    name: …」), compared with the setting. Logs from before that line: each nest is
-    clicked through its 「已击败残象 N/D」 box, so more different denominators than
-    names asked for mean a nest outside the setting (blind to nests sharing a cap).
+    Facts from lines the run itself writes: the overrides announce the filter they
+    loaded (no announcement = the filter code never had a name to work with); each
+    nest entered is clicked through its 「已击败残象 N/D」 box, so more different
+    denominators than names asked for mean a nest outside the setting; and the
+    overlay names each nest it enters (「nightmare nest: nest name: …」, 「?」 when
+    unread). Both rules must pass. The names alone cannot go red while the filter
+    works - the overlay only clicks a row next to a wanted name and logs that name -
+    so the cap rule stays: it is what catches a click on the neighbouring row.
     """
     text = _task_lines(text)
     if not (only_nest or "").strip() or "NightmareNestTask" not in text:
@@ -386,28 +388,59 @@ def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
             entered = f"点了 {len(denoms)} 个点位，都没传送过去，一个都没刷"
         why = f"日志里没有「nightmare nest: 只刷 […]」这一行，只刷{only_nest}的过滤没生效；这一趟{entered}"
     out.append(Check("残象聚落只刷指定点位（过滤生效）", announced, why))
-    names = [n.strip() for n in re.split(r"[,，]", only_nest) if n.strip()]
-    # The nests entered by name when the overlay logged them (audit 2026-10-13 item
-    # 10: three nests share the cap 48, so a denominator alone cannot tell them apart).
-    # OCR reads 「落渊南丘残象聚落」 for the setting 「落渊南丘」: a substring match.
-    seen = list(dict.fromkeys(n.strip() for n in _NEST_NAME.findall(text) if n.strip() not in ("", "?")))
-    if seen:
-        outside = [n for n in seen if not any(w in n for w in names)]
-        if len(seen) <= 1 and not outside and not _NEST_ENGAGED.search(text):
-            return out
-        out.append(Check("残象聚落没进别的点位", not outside,
-                         "" if not outside else f"这一趟进了设置以外的点位：{'、'.join(outside)}，设置是只刷{only_nest}"))
-        return out
-    # Older logs, without the name line: one denominator per nest asked for (user
-    # 10-12 11:2x: the first two nests); more different ones than names means a nest
-    # outside the setting was entered.
-    wanted = max(1, len(names))
-    in_scope = len(denoms) <= wanted
     if len(denoms) <= 1 and not _NEST_ENGAGED.search(text):
         return out      # nothing was fought, so 「没进别的点位」 says nothing worth a green line
-    out.append(Check("残象聚落没进别的点位", in_scope,
-                     "" if in_scope else f"这一趟进了 {len(denoms)} 个不同的点位（计数上限 {'、'.join(denoms)}），设置是只刷{only_nest}"))
+    names = [n.strip() for n in re.split(r"[,，]", only_nest) if n.strip()]
+    problems = []
+    # The cap rule, over every click whether named or not (user 10-12 11:2x: the
+    # first two nests): more different denominators than names asked for.
+    if len(denoms) > max(1, len(names)):
+        problems.append(f"这一趟进了 {len(denoms)} 个不同的点位（计数上限 {'、'.join(denoms)}）")
+    # The names, per click (audit 2026-10-13 items 10, 17). OCR reads
+    # 「落渊南丘残象聚落」 for the setting 「落渊南丘」: containment, not equality.
+    clicks = _nest_clicks(text)
+    outside = list(dict.fromkeys(n for _d, n in clicks if n and not any(w in n for w in names)))
+    if outside:
+        problems.append(f"进了设置以外的点位：{'、'.join(outside)}")
+    # One wanted name read beside two different caps: one of those clicks was on
+    # another row (nests sharing a cap cannot be told apart by the cap alone).
+    for w in names:
+        caps = list(dict.fromkeys(d for d, n in clicks if n and w in n))
+        if len(caps) > 1:
+            problems.append(f"「{w}」这个名字点进了 {len(caps)} 个计数上限不同的点位（{'、'.join(caps)}），有一次点到了别的行")
+    out.append(Check("残象聚落没进别的点位", not problems,
+                     "" if not problems else "；".join(problems) + f"，设置是只刷{only_nest}"))
     return out
+
+
+def _nest_clicks(text: str) -> "list[tuple[str, str]]":
+    """(denominator, name or '') for each nest click, in order.
+
+    The overlay logs the name in combat_nest just before upstream clicks the count
+    box (10-13 log: 「点进点位 go_nest:48:18」 then the left_click 0.2 s later), so a
+    name line goes with the click right after it; a name line with no click after it
+    goes with an unnamed click right before it. 「?」 is no name.
+    """
+    events = sorted([(m.start(), "click", m.group(1)) for m in _NEST_CLICK.finditer(text)]
+                    + [(m.start(), "name", m.group(1).strip()) for m in _NEST_NAME.finditer(text)])
+    clicks: list = []        # [denominator, name]
+    pending = ""
+    for _pos, kind, val in events:
+        if kind == "click":
+            clicks.append([val, pending])
+            pending = ""
+            continue
+        name = "" if val in ("", "?") else val
+        if pending == "" and clicks and clicks[-1][1] == "" and _next_is_not_click(events, _pos):
+            clicks[-1][1] = name
+        else:
+            pending = name
+    return [(d, n) for d, n in clicks]
+
+
+def _next_is_not_click(events: list, pos: int) -> bool:
+    later = [k for p, k, _v in events if p > pos]
+    return not later or later[0] != "click"
 
 
 def daily_reward_checks(text: str) -> list[Check]:
