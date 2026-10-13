@@ -29,6 +29,7 @@ import ast
 import gzip
 import importlib
 import json
+import os
 import re
 import sys
 import time
@@ -41,7 +42,8 @@ RELAY = HERE.parent
 PKG = RELAY / "ark_relay"
 sys.path.insert(0, str(RELAY))
 sys.path.insert(0, str(HERE))
-import _tmp  # noqa: E402,F401  sets ARK_ALERT_PUSH_URL='' before any relay module loads
+# A relay module may read the alarm URL at import: never the real Mac's (as relay/tests/_tmp.py does).
+os.environ.setdefault("ARK_ALERT_PUSH_URL", "")
 
 # The modules that judge game logs (rules.py MODULES).
 MODULES = (
@@ -151,7 +153,7 @@ def _flags(node) -> int:
     if node is None:
         return 0
     try:
-        return int(eval(compile(ast.Expression(node), "<flags>", "eval"), {"re": re}))  # noqa: S307 - re.X | re.Y only
+        return int(eval(compile(ast.Expression(node), "<flags>", "eval"), {"re": re}))  # re.X | re.Y only
     except Exception:  # noqa: BLE001 - a flag expression that is not re.* is no flag we can read
         return 0
 
@@ -270,7 +272,7 @@ def _resolve_dynamic(rel: str, rules: "list[dict]") -> None:
     mod = importlib.import_module("ark_relay." + rel[:-3].replace("/", "."))
     for r in dyn:
         try:
-            val = eval(r["pat"], dict(vars(mod)))  # noqa: S307 - the module's own expression, its own names
+            val = eval(r["pat"], dict(vars(mod)))  # the module's own expression
         except Exception:  # noqa: BLE001 - a local name: not resolvable statically
             continue
         if isinstance(val, re.Pattern):
