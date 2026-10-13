@@ -5,6 +5,4 @@
 __main__.cmd_check
 __main__.cmd_local
 __main__.cmd_report
-banners.collect
 commands.mas_up
-desktop.kill
