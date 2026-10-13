@@ -66,6 +66,9 @@ def boot(env: dict) -> tuple[object, list, list]:
     real_notifier, real_upload = notify.Notifier, error_evidence.upload_daily_logs
     ark = logging.getLogger(errwatch.ARK)
     before = list(ark.handlers)
+    # errwatch globals _stage_bootstrap sets: put back, so a later test in the same
+    # process (the deploy gate runs them in one) does not push through this one's cfg.
+    saved_errwatch = (errwatch._handler[0], errwatch._relay_poweroff[0], errwatch._evidence_uploader[0])
     Recorder.made.clear()
     for k in keys:
         os.environ.pop(k, None)
@@ -80,7 +83,7 @@ def boot(env: dict) -> tuple[object, list, list]:
         for h in [h for h in ark.handlers if h not in before]:
             ark.removeHandler(h)
             h.close()
-        errwatch._handler[0] = None
+        errwatch._handler[0], errwatch._relay_poweroff[0], errwatch._evidence_uploader[0] = saved_errwatch
         notify.Notifier, error_evidence.upload_daily_logs = real_notifier, real_upload
         for k, v in saved_env.items():
             if v is None:

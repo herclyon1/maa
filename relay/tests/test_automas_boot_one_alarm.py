@@ -94,6 +94,7 @@ class Notes:
 REC = Records()
 ARK = logging.getLogger(errwatch.ARK)
 ARK.addHandler(REC)
+ARK_LEVEL = ARK.level
 ARK.setLevel(logging.DEBUG)
 
 # AUTO-MAS never answers; a fake clock so the 120 s wait costs nothing.
@@ -216,6 +217,7 @@ finally:
      boot_stages._stop_requested, phone.Mailbox, phone.Heartbeat, phone.state_payload,
      phone_channel._make_phone_cmd) = saved
     ARK.removeHandler(REC)
+    ARK.setLevel(ARK_LEVEL)
 
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
