@@ -166,9 +166,14 @@ def maaend_watch_blind_body(minutes: int) -> str:
             "读不到日志说明不了 MaaEnd 卡没卡，所以这次不结束它；已交给我们这边去查这个日志还在不在原处。")
 
 
-def maaend_stuck_body(reason: str, killed: bool, why: str) -> str:
+def maaend_stuck_body(reason: str, killed: bool, why: str, left: "list[str] | tuple" = ()) -> str:
+    """`left` names the plugins maaend_watchdog._end did not end (outside the agent
+    directory, or taskkill failed), e.g. 「agent\\go-service.exe」
+    (a path: the texts gate passes it; a bare name or PID it refuses)."""
     if killed:
-        return (reason + "\n已结束 MaaEnd 和它还开着的插件，游戏本身没动。"
+        ended = ("已结束 MaaEnd，游戏本身没动；它的插件 " + "、".join(left) + " 没结束掉，还开着。" if left
+                 else "已结束 MaaEnd 和它还开着的插件，游戏本身没动。")
+        return (reason + "\n" + ended +
                 "AUTO-MAS 接着按 MaaEnd 的日志判这一趟：没干完的、还有重试次数就马上重跑，"
                 "已经干完的直接收尾——不用再等它的时限（MaaEnd 日志 40 分钟不动才结束）。")
     return (reason + f"\n结束 MaaEnd 没成功（{why}），它还卡着，"
@@ -1048,6 +1053,7 @@ def samples() -> list[str]:
         maaend_stuck_body(maaend_crash_reason("0xc0000005"), True, ""),
         maaend_stuck_body(maaend_crash_reason(""), False, "退出码 128"),
         maaend_stuck_body(maaend_plugin_gone_reason(60), True, ""),
+        maaend_stuck_body(maaend_plugin_gone_reason(60), True, "", ["agent\\go-service.exe"]),
         maaend_stuck_body(maaend_stall_reason(10, "15:30:03"), False, "结束命令 30 秒没返回"),
         machinecheck_failed("#4", "周本领奖"), machinecheck_failed_body("周本领奖", "领完奖再看选等级页，本周剩余次数没读到"),
         machinecheck_section([("#4", "周本领奖", "A", "PASS", "领完奖本周剩余 3/3→2/3", "2026-10-06 21:40:00"),

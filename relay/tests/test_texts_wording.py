@@ -42,5 +42,17 @@ body = texts.relay_error_body("ark.selfcheck", "开机自检 ✗ 调度程序的
 check("结尾不打包票说脚本照跑", "不代表脚本没跑" in body, False)
 check("仍说交给我们修", body.endswith("已交给我们这边去修。"), True)
 
+print("\n[MaaEnd 卡死：有插件没结束掉时不说「插件都结束了」（s1 #11）]")
+# maaend_watchdog._end skips a plugin outside the agent directory and only logs a
+# WARNING when its taskkill fails; the push must name what is still running.
+try:
+    body = texts.maaend_stuck_body(texts.maaend_plugin_gone_reason(60), True, "", ["agent\\go-service.exe"])
+except TypeError as e:
+    body = f"TypeError: {e}"
+check("不说插件都结束了", "和它还开着的插件" in body, False)
+check("点名没结束的插件", "agent\\go-service.exe" in body and "没结束掉" in body, True)
+body = texts.maaend_stuck_body(texts.maaend_plugin_gone_reason(60), True, "")
+check("全结束时照旧", "已结束 MaaEnd 和它还开着的插件" in body, True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
