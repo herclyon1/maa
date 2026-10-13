@@ -1798,6 +1798,16 @@ def _sf_rarity() -> None:
           ("这次没读到" in block, "当期无新角色卡池" in block), (True, False))
     check("silent 798: one WARNING names both operators, with the cause", _warned_exc(recs, "甲、乙"), 1)
     check("silent 798: and only one about rarity", _warned_exc(recs, "稀有度"), 1)
+    # Review of 7fa60c96: the partial failure raised out of _arknights, so the
+    # next banner was never worked out and the group's 「明天开」 notice was lost.
+    soon = _b.Banner("明日方舟", "下一池", ("丙",), datetime(2026, 9, 11, 16, 0), datetime(2026, 9, 25, 3, 59))
+    rows, nxt, failed, text, _recs = _collect_offline(now, [row, soon], rarity={"丙": 5})
+    check("review 7fa60c96: one rarity lookup failing still lists 明日方舟 as not read",
+          [f for f in failed if f.startswith("明日方舟")], ["明日方舟"])
+    check("review 7fa60c96: and the next banner is still worked out",
+          nxt.get("明日方舟"), (datetime(2026, 9, 11, 16, 0), "丙「下一池」"))
+    check("review 7fa60c96: so the group still hears it opens tomorrow",
+          [(g, who) for g, _w, who in _b.opening_tomorrow(now, nxt)], [("明日方舟", "丙「下一池」")])
 
     # The announced next banner (PRTS has registered it, not open yet): a failed
     # lookup dropped it and the line fell to 「官方未公告」 in silence.

@@ -577,7 +577,7 @@ def collect(now: datetime, *, skland_token: str = "",
     rows: list[Banner] = []
     nxt: "dict[str, tuple[datetime | None, str]]" = {}
     try:
-        ak, ak_next = _arknights(now, trace, leads)
+        ak, ak_next = _arknights(now, trace, leads, failed)
         rows += ak
         if ak_next:
             nxt["明日方舟"] = ak_next      # _arknights already returns (time, who)
@@ -586,7 +586,7 @@ def collect(now: datetime, *, skland_token: str = "",
         failed.append("明日方舟")
     if sk_get is not None:
         try:
-            ef, ef_next = _endfield(cred, sk_get, now, trace, notes)
+            ef, ef_next = _endfield(cred, sk_get, now, trace, notes, failed)
             rows += ef
             if ef_next:
                 nxt["终末地"] = ef_next

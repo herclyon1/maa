@@ -556,7 +556,8 @@ def _ak_prts_rows(tr: "Trace") -> "list[Banner]":
 
 
 def _arknights(now: datetime, trace: "Trace | None" = None,
-               leads: "dict[str, str] | None" = None
+               leads: "dict[str, str] | None" = None,
+               failed: "list[str] | None" = None
                ) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     """Both PRTS pages combined to decide debuts; the next debut banner from the
     official site's post, or from a PRTS row once PRTS has registered it. None
@@ -570,10 +571,15 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
     lost: list[str] = []
     debut = [six_star_only(b, failed=lost) if b.start <= now <= b.end else b for b in debut]
     if lost:
-        # Raised, not logged and dropped: a running banner left out reads as
-        # 「当期无新角色卡池」, which is false. `collect` lists the game as not read
-        # and logs this once, message included.
-        raise RuntimeError(f"在开的卡池里 {'、'.join(lost)} 在 PRTS 查不到稀有度，分不出是不是六星")
+        # Never dropped in silence: a running banner left out reads as
+        # 「当期无新角色卡池」, which is false. With `failed` (collect) the game is
+        # listed as not read and the next banner is still worked out - the group's
+        # 「明天开」 notice is built from it. Without `failed`, raised.
+        why = f"在开的卡池里 {'、'.join(lost)} 在 PRTS 查不到稀有度，分不出是不是六星"
+        if failed is None:
+            raise RuntimeError(why)
+        log.warning("方舟：%s，当期这次按没读到报", why)
+        failed.append("明日方舟")
     debut = [b for b in debut if b.chars]
     for b in debut:
         if b.start <= now <= b.end:

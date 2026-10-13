@@ -180,7 +180,8 @@ _EF_BULLETIN = ("https://game-hub.hypergryph.com/bulletin/v2/aggregate"
 
 
 def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
-              notes: "dict[str, str] | None" = None
+              notes: "dict[str, str] | None" = None,
+              failed: "list[str] | None" = None
               ) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     """Running banners come from Skland (authoritative on timing); debuts and
     previews come from the official version bulletin.
@@ -207,9 +208,14 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
     live = parse_endfield(pools, name_of)
     if unnamed:
         # A banner without its operator's name is dropped (never shown nameless),
-        # and dropped in silence the report would read 「当期无新角色卡池」. Raised
-        # so `collect` lists the game as not read and logs this once.
-        raise RuntimeError(f"森空岛条目 {'、'.join(unnamed)} 查不到名字（{why[-1][:200]}）")
+        # and dropped in silence the report would read 「当期无新角色卡池」. With
+        # `failed` (collect) the game is listed as not read and the next banner is
+        # still worked out for the group's 「明天开」 notice; without it, raised.
+        msg = f"森空岛条目 {'、'.join(unnamed)} 查不到名字（{why[-1][:200]}）"
+        if failed is None:
+            raise RuntimeError(msg)
+        log.warning("终末地：%s，当期这次按没读到报", msg)
+        failed.append("终末地")
 
     # Official bulletin: which new operators this version has, and on which banner
     html = ""
