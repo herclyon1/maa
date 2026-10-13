@@ -35,7 +35,7 @@ having no report.
 ## Files
 
 This module holds what the three games share (Banner, Trace, render, the fetch
-helpers, the Yituliu tables, the history ledger, collect / section /
+helpers, the Yituliu tables, the history ledger, collect /
 opening_tomorrow) and re-exports the game modules' names, so `ark_relay.features.banners.banners.X`
 works for all of them: arknights.py, endfield.py, wuwa.py (banners and the two halves
 of a version), wuwa_posters.py (version-news posters, OCR, gacha notices) and
@@ -80,7 +80,7 @@ class Banner:
     name: str
     chars: tuple[str, ...]
     start: "datetime | None"    # None only on a notice that opens 「X版本更新后」
-    end: datetime
+    end: "datetime | None"      # None only on a second source that prints no end (crosscheck)
     start_note: str = ""        # that wording, when start is None
 
 
@@ -95,8 +95,10 @@ class Trace:
     * provenance - every fetched value is recorded with its URL/field
       (`sources`), and the trace is written next to the state so a line can be
       traced back after the fact;
-    * cross-checks - each running banner is read from **two** official sources and
-      the section says whether they agree (`checks`);
+    * cross-checks - each running Arknights / Endfield banner is read from two
+      sources and whether they agree is written to `checks`. Only the trace file
+      carries them: the section's footer that listed them was dropped on
+      2026-09-14 at the user's request (see render);
     * the date gate in `render` - a next-banner line may only carry a date that an
       official source assigned to a *start* (`starts`: an opening time, or a
       maintenance window), or an end when the line says it ends. A line
@@ -444,19 +446,23 @@ def crosscheck(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None
 
     `b` is what the second source says about the banner `a` (None: it has no such
     banner). Compared: banner name, the characters (b's must be within a's), start
-    and end. A one-hour skew is tolerated only when one side gives a date without a
+    and end; a start or end that `b` does not print (None) is skipped and the line
+    says so, never filled from `a` (that compared a source with itself). A one-hour skew is tolerated only when one side gives a date without a
     clock (00:00).
     """
     if b is None:
         return f"{game}：{a_name} 有「{a.name}」，{b_name} 里找不到 ✗"
     diffs = []
-    if a.name and b.name and a.name != b.name:
+    # PRTS prefixes some names with the banner kind (【限定寻访·夏季】海渊巡游)
+    bare = lambda n: re.sub(r"^【[^】]*】", "", n)  # noqa: E731
+    if a.name and b.name and bare(a.name) != bare(b.name):
         diffs.append(f"池名 {a_name}「{a.name}」/ {b_name}「{b.name}」")
     if b.chars and not set(b.chars) <= set(a.chars):
         diffs.append(f"角色 {a_name} {'、'.join(a.chars)} / {b_name} {'、'.join(b.chars)}")
     for label, x, y in (("开始", a.start, b.start), ("结束", a.end, b.end)):
         if y is None:
-            # 「3.7版本更新后」: no clock to compare, the end is still checked
+            # 「3.7版本更新后」 or a bulletin that prints no closing clock: nothing
+            # to compare on that side, the footer says which one was skipped
             continue
         if (x.hour, x.minute) == (0, 0) or (y.hour, y.minute) == (0, 0):
             same = x.date() == y.date()
@@ -467,8 +473,12 @@ def crosscheck(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None
             diffs.append(f"{label} {a_name} {x:%m-%d %H:%M} / {b_name} {y:%m-%d %H:%M}")
     if diffs:
         return f"{game}：{a_name} 和 {b_name} 对不上 ✗（" + "；".join(diffs) + "）"
+    if b.start is None and b.end is None:
+        return f"{game}：{b_name}没写开始和结束时刻，只核了池名和角色 ✓"
     if b.start is None:
         return f"{game}：{a_name}={b_name} ✓（{b_name}开始写「{b.start_note}」，只核了结束）"
+    if b.end is None:
+        return f"{game}：{a_name}={b_name} ✓（{b_name}没写结束时刻，只核了开始）"
     return f"{game}：{a_name}={b_name} ✓"
 
 
@@ -561,10 +571,13 @@ def collect(now: datetime, *, skland_token: str = "",
             log.warning("森空岛登录失败，终末地卡池这一行不出", exc_info=True)
             sk_get = None
             failed.append("终末地（森空岛登录失败）")
+    elif sk_get is None:
+        # No token: Endfield is not read, and must not read as "no banner".
+        failed.append("终末地（没有森空岛令牌）")
     rows: list[Banner] = []
     nxt: "dict[str, tuple[datetime | None, str]]" = {}
     try:
-        ak, ak_next = _arknights(now, trace, leads)
+        ak, ak_next = _arknights(now, trace, leads, failed)
         rows += ak
         if ak_next:
             nxt["明日方舟"] = ak_next      # _arknights already returns (time, who)
@@ -573,7 +586,7 @@ def collect(now: datetime, *, skland_token: str = "",
         failed.append("明日方舟")
     if sk_get is not None:
         try:
-            ef, ef_next = _endfield(cred, sk_get, now, trace, notes)
+            ef, ef_next = _endfield(cred, sk_get, now, trace, notes, failed)
             rows += ef
             if ef_next:
                 nxt["终末地"] = ef_next
@@ -618,16 +631,6 @@ def save_trace(state_dir, now: datetime, text: str, tr: "Trace", notifier=None) 
         phone_banners.fire(state_dir, "banners", {"trace": tr, "text": text, "now": now}, notifier)
     except Exception:
         log.exception("卡池那一段的上机核对没能做")
-
-
-def section(now: datetime, **kw) -> str:
-    """The section at the end of the daily report."""
-    notes: dict[str, str] = {}
-    tr = Trace.new()
-    failed: list[str] = []
-    leads: dict[str, str] = {}
-    rows, nxt = collect(now, notes=notes, trace=tr, failed=failed, leads=leads, **kw)
-    return render(rows, now, nxt, notes, tr, failed, leads)
 
 
 def opening_tomorrow(now: datetime,
@@ -678,7 +681,7 @@ from ark_relay.features.banners.arknights import (  # noqa: E402
     _AK_NEWS, _AK_NEWS_API, ak_news_pages, _AK_PAGES, _AK_POST, ak_post_text,
     _ak_posted, _ak_prts_rows, ak_rarity, AkPast, AkSection, _arknights,
     arknights_banner_posts, arknights_comm_lead, arknights_history,
-    arknights_next_from_news, parse_ak_post, parse_arknights, parse_arknights_html,
+    parse_ak_post, parse_arknights, parse_arknights_html,
     _PRTS, _PRTS_PAGE, _rarity_cache, six_star_only, update_arknights_history,
 )
 from ark_relay.features.banners.endfield import (  # noqa: E402
@@ -707,7 +710,7 @@ from ark_relay.features.banners.wuwa_history import (  # noqa: E402
 __all__ = [
     "AkPast", "AkSection", "Banner", "BiliFeedProblem", "KuroListProblem", "SERVER_TZ", "Trace",
     "ak_news_pages", "ak_post_text", "ak_rarity", "arknights_banner_posts",
-    "arknights_comm_lead", "arknights_history", "arknights_next_from_news",
+    "arknights_comm_lead", "arknights_history",
     "bili_shape", "bili_sign", "bili_wbi_keys", "collect", "crosscheck", "debut_only",
     "ef_banner_posts", "ef_briefing_banners", "ef_cms_posts", "ef_next_banner",
     "endfield_history", "endfield_next_from_briefing", "endfield_next_from_news",
@@ -717,7 +720,7 @@ __all__ = [
     "parse_arknights_html", "parse_ef_yituliu", "parse_endfield",
     "parse_endfield_notice", "parse_wuwa", "parse_wuwa_calendar",
     "parse_wuwa_notice_banners", "parse_wuwa_poster", "parse_wuwa_poster_first_end",
-    "parse_wuwa_preview", "record_history", "render", "save_trace", "section",
+    "parse_wuwa_preview", "record_history", "render", "save_trace",
     "six_star_only", "strip_plan", "upcoming", "update_arknights_history",
     "update_endfield_history", "update_history", "update_wuwa_history",
     "wuwa_bili_post", "wuwa_calendar_image", "wuwa_first_half_notice_end",

@@ -180,7 +180,8 @@ _EF_BULLETIN = ("https://game-hub.hypergryph.com/bulletin/v2/aggregate"
 
 
 def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
-              notes: "dict[str, str] | None" = None
+              notes: "dict[str, str] | None" = None,
+              failed: "list[str] | None" = None
               ) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     """Running banners come from Skland (authoritative on timing); debuts and
     previews come from the official version bulletin.
@@ -207,9 +208,14 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
     live = parse_endfield(pools, name_of)
     if unnamed:
         # A banner without its operator's name is dropped (never shown nameless),
-        # so the report would read 「当期无新角色卡池」 for it.
-        log.warning("终末地：森空岛条目 %s 查不到名字，这几个卡池这次没报\n%s",
-                    "、".join(unnamed), why[-1][:200])
+        # and dropped in silence the report would read 「当期无新角色卡池」. With
+        # `failed` (collect) the game is listed as not read and the next banner is
+        # still worked out for the group's 「明天开」 notice; without it, raised.
+        msg = f"森空岛条目 {'、'.join(unnamed)} 查不到名字（{why[-1][:200]}）"
+        if failed is None:
+            raise RuntimeError(msg)
+        log.warning("终末地：%s，当期这次按没读到报", msg)
+        failed.append("终末地")
 
     # Official bulletin: which new operators this version has, and on which banner
     html = ""
@@ -222,6 +228,12 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
              str(((n.get("data") or {}).get("html")) or ""))
             for n in ((d.get("data") or {}).get("list") or [])
             if "版本更新说明" in str(n.get("title") or "")])
+        if not html:
+            # No version notes in the list: no debuts can be told apart, which is
+            # "not read", not "no new banner". On 2026-10-13 the list still had the
+            # notes of 09-02 beside 10-13's pre-download notice, so the entry stays
+            # up all version; this guards a list that drops it.
+            raise ValueError("公告列表里没有「版本更新说明」")
         debut = parse_endfield_notice(html)
     except Exception:
         notice_ok = False
@@ -244,9 +256,13 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
             other = None
             for n, pname, w, _dbt in pools_n:
                 if pname == b.name or n in b.chars:
-                    en = ends_n.get((n, pname), b.end)
-                    other = Banner("终末地", pname, (n,), w or b.start, en)
-                    tr.src("终末地", "公告", _EF_BULLETIN, f"{pname} {n} 开 {w:%Y-%m-%d %H:%M} 止 {en:%Y-%m-%d %H:%M}" if w else f"{pname} {n} 版本更新后开 止 {en:%Y-%m-%d %H:%M}")
+                    # What the bulletin prints and nothing else: filling a missing
+                    # clock with Skland's own value compared Skland with itself.
+                    en = ends_n.get((n, pname))
+                    other = Banner("终末地", pname, (n,), w, en, "" if w else "版本更新后")
+                    tr.src("终末地", "公告", _EF_BULLETIN,
+                           f"{pname} {n} 开 {f'{w:%Y-%m-%d %H:%M}' if w else '版本更新后'}"
+                           f" 止 {f'{en:%Y-%m-%d %H:%M}' if en else '没写'}")
                     break
             tr.checks.append(crosscheck("终末地", "森空岛", b, "公告", other) if notice_ok
                              else "终末地：公告取不到，只有森空岛一个来源 ✗")

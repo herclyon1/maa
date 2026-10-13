@@ -430,9 +430,9 @@ def _top_rarity_only() -> None:
           [("提弗洛斯", "冬猎", None, True), ("伊冯", "绚丽异彩", "09-24 12:00", False)])
     ak_list = (FX / "maint" / "ak_news.html").read_text(encoding="utf-8", errors="replace")
     ak_get = ak_site(ak_lists(ak_list), {"1457": ak_post_fx("1457")})
-    nxt = _b.arknights_next_from_news(datetime(2026, 9, 3, 0, 0), get=ak_get)
+    nxt = _ak_next(datetime(2026, 9, 3, 0, 0), get=ak_get)
     check("方舟下一期：09-04 12:00 结城理「石白深蓝之夜」", (nxt[0].strftime("%m-%d %H:%M"), nxt[1]) if nxt else None, ("09-04 12:00", "结城理「石白深蓝之夜」"))
-    check("已经开了就不当下一期", _b.arknights_next_from_news(datetime(2026, 9, 5, 0, 0), get=ak_get), None)
+    check("已经开了就不当下一期", _ak_next(datetime(2026, 9, 5, 0, 0), get=ak_get), None)
     fake_prts = lambda n: {"予愿安洁莉娜": "|稀有度=5", "珊比": "|稀有度=5", "嘉辛塔": "|稀有度=4"}.get(n, "")  # noqa: E731
     b6 = _b.Banner("明日方舟", "车辙与风的归所", ("予愿安洁莉娜", "珊比", "嘉辛塔"), datetime(2026, 8, 1), datetime(2026, 8, 15))
     check("方舟池只留六星（PRTS 稀有度 5=六星）", _b.six_star_only(b6, fake_prts).chars, ("予愿安洁莉娜", "珊比"))
@@ -755,15 +755,15 @@ def _ak_history() -> None:
     # The next banner on 2026-10-06: announced only inside the 「昨日海」 event post
     get = ak_site(ak_lists(fx("ak-history-news-2026-10-06.txt")), cms)
     check("10-06 的下期：克莱门莎「海渊巡游」10-09 12:00（只在活动预告里）",
-          _b.arknights_next_from_news(datetime(2026, 10, 6, 12, 0), get=get),
+          _ak_next(datetime(2026, 10, 6, 12, 0), get=get),
           (datetime(2026, 10, 9, 12, 0), "克莱门莎「海渊巡游」"))
     # Two banners in one post: after the first opens, the second is still next
     get19 = ak_site({"ACTIVITY": sorted(((it["cid"], it["title"], it["displayTime"]) for it in page_items[39]),
                                         key=lambda it: -it[2])}, cms)
     check("一帖两池：08-21 发帖后下期是深夏的守夜人",
-          _b.arknights_next_from_news(datetime(2019, 8, 22), get=get19), (datetime(2019, 8, 27, 16, 0), "黑「深夏的守夜人」"))
+          _ak_next(datetime(2019, 8, 22), get=get19), (datetime(2019, 8, 27, 16, 0), "黑「深夏的守夜人」"))
     check("一帖两池：第一池开了以后下期是久铸尘铁",
-          _b.arknights_next_from_news(datetime(2019, 9, 1), get=get19), (datetime(2019, 9, 10, 16, 0), "赫拉格「久铸尘铁」"))
+          _ak_next(datetime(2019, 9, 1), get=get19), (datetime(2019, 9, 10, 16, 0), "赫拉格「久铸尘铁」"))
 
     # The same through _arknights (PRTS of 08-31 has no row for it yet)
     wt = fx("prts_limited.wikitext")
@@ -1781,18 +1781,33 @@ def _sf_rarity() -> None:
     try:
         first = _b.ak_rarity("某六星", flaky)
         second = _b.ak_rarity("某六星", flaky)
-        _b._ak_prts_rows, _b._json, _b._text = (lambda tr: [row]), offline, offline
-        with _logs() as recs:
-            debut, _ = _b._arknights(now, trace=_b.Trace.new())
     finally:
-        _b._ak_prts_rows, _b._json, _b._text = real
         _b._rarity_cache.clear()
         _b._rarity_cache.update(saved)
     check("silent 798: a failed lookup is -1 this time", first, -1)
     check("silent 798: a failed lookup is not cached, the next one asks again", (second, len(calls)), (5, 2))
-    check("silent 798: unknown rarity is still dropped, never faked", [b.chars for b in debut], [])
-    check("silent 798: one WARNING names both operators", _warned(recs, "甲、乙"), 1)
-    check("silent 798: and only one about rarity", _warned(recs, "稀有度"), 1)
+    # s20 #2: a running banner whose rarity is unknown is never faked and never
+    # dropped in silence - the game reads as not read (collect puts it in `failed`).
+    out, _tr, _recs = _ak_offline(now, [row])
+    check("silent 798: unknown rarity is a failed read, not an empty one",
+          (type(out).__name__, "甲、乙" in str(out)), ("RuntimeError", True))
+    rows, _nxt, failed, text, recs = _collect_offline(now, [row])
+    check("silent 798: collect lists 明日方舟 as not read", [f for f in failed if f.startswith("明日方舟")], ["明日方舟"])
+    block = _block(text, "明日方舟")
+    check("silent 798: the report says not read, never 「当期无新角色卡池」",
+          ("这次没读到" in block, "当期无新角色卡池" in block), (True, False))
+    check("silent 798: one WARNING names both operators, with the cause", _warned_exc(recs, "甲、乙"), 1)
+    check("silent 798: and only one about rarity", _warned_exc(recs, "稀有度"), 1)
+    # Review of 7fa60c96: the partial failure raised out of _arknights, so the
+    # next banner was never worked out and the group's 「明天开」 notice was lost.
+    soon = _b.Banner("明日方舟", "下一池", ("丙",), datetime(2026, 9, 11, 16, 0), datetime(2026, 9, 25, 3, 59))
+    rows, nxt, failed, text, _recs = _collect_offline(now, [row, soon], rarity={"丙": 5})
+    check("review 7fa60c96: one rarity lookup failing still lists 明日方舟 as not read",
+          [f for f in failed if f.startswith("明日方舟")], ["明日方舟"])
+    check("review 7fa60c96: and the next banner is still worked out",
+          nxt.get("明日方舟"), (datetime(2026, 9, 11, 16, 0), "丙「下一池」"))
+    check("review 7fa60c96: so the group still hears it opens tomorrow",
+          [(g, who) for g, _w, who in _b.opening_tomorrow(now, nxt)], [("明日方舟", "丙「下一池」")])
 
     # The announced next banner (PRTS has registered it, not open yet): a failed
     # lookup dropped it and the line fell to 「官方未公告」 in silence.
@@ -1811,15 +1826,134 @@ def _sf_rarity() -> None:
     check("silent 798 next: and only one about rarity", _warned(recs, "稀有度"), 1)
 
 
-def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None, pages=None):
+def _ak_offline(now, prts_rows, get=None, rarity=None):
+    """_arknights with every web source stubbed: PRTS rows are `prts_rows`, the
+    official site is `get` (an ak_site; None = offline), `rarity` seeds the PRTS
+    rarity cache, the rest is offline. Returns ((debut, next) or the exception,
+    the trace, log records)."""
+    real = (_b._ak_prts_rows, _b._json, _b._text)
+    saved = dict(_b._rarity_cache)
+
+    def offline(url, *a, **k):
+        raise OSError(f"offline: {url}")
+
+    def text(url, *a, **k):
+        if get is None:
+            raise OSError(f"offline: {url}")
+        return get(url)
+    _b._ak_prts_rows, _b._json, _b._text = (lambda tr: list(prts_rows)), offline, text
+    _b._rarity_cache.clear()
+    _b._rarity_cache.update(rarity or {})
+    tr = _b.Trace.new()
+    try:
+        with _logs() as recs:
+            try:
+                out = _b._arknights(now, trace=tr)
+            except Exception as e:  # noqa: BLE001
+                out = e
+    finally:
+        _b._ak_prts_rows, _b._json, _b._text = real
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update(saved)
+    return out, tr, recs
+
+
+def _warned_exc(recs: list, part: str) -> int:
+    """Like _warned, counting the exception text too: errwatch puts
+    「ExcType: message」 after the line in the group message."""
+    return sum(1 for r in recs if r.levelno == logging.WARNING
+               and (part in r.getMessage() or (r.exc_info and part in str(r.exc_info[1]))))
+
+
+def _block(text: str, game: str) -> str:
+    """One game's lines of the rendered section, its name line first."""
+    out: list[str] = []
+    for line in text.split("\n"):
+        if line in ("明日方舟", "鸣潮", "终末地"):
+            if out:
+                break
+            if line == game:
+                out.append(line)
+        elif out:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _collect_offline(now, prts_rows, rarity=None, sk_get=None, ef_bulletin=None):
+    """collect + render with every web source stubbed: Arknights as _ak_offline
+    (official site offline), Endfield through `sk_get` (None: no Skland token),
+    its version bulletin list is `ef_bulletin` (None = unreachable), Wuthering
+    Waves reads nothing. Returns (rows, next, failed, rendered text, log records)."""
+    real = (_b._ak_prts_rows, _b._json, _b._text, _b._wuwa, _b.endfield_next_from_news)
+    saved = dict(_b._rarity_cache)
+
+    def offline(url, *a, **k):
+        raise OSError(f"offline: {url}")
+
+    def js(url, *a, **k):
+        if url == _b._EF_BULLETIN and ef_bulletin is not None:
+            return ef_bulletin
+        raise OSError(f"offline: {url}")
+    _b._ak_prts_rows, _b._json, _b._text = (lambda tr: list(prts_rows)), js, offline
+    _b._wuwa, _b.endfield_next_from_news = (lambda *a, **k: ([], None)), (lambda now: None)
+    _b._rarity_cache.clear()
+    _b._rarity_cache.update(rarity or {})
+    failed: list[str] = []
+    tr = _b.Trace.new()
+    try:
+        with _logs() as recs:
+            rows, nxt = _b.collect(now, sk_get=sk_get, failed=failed, trace=tr)
+            text = render(rows, now, nxt, {}, tr, failed, {})
+    finally:
+        _b._ak_prts_rows, _b._json, _b._text, _b._wuwa, _b.endfield_next_from_news = real
+        _b._rarity_cache.clear()
+        _b._rarity_cache.update(saved)
+    return rows, nxt, failed, text, recs
+
+
+def _ak_site_1006():
+    """The official site as of 2026-10-06: post 5101 announces 海渊巡游 for 10-09 12:00."""
+    fx = lambda n: (FX / n).read_text(encoding="utf-8")  # noqa: E731
+    return ak_site(ak_lists(fx("ak-history-news-2026-10-06.txt")), {"5101": ak_post_fx("5101")})
+
+
+def _ak_prts_clock() -> None:
+    """s20 #1: since 2025-12 PRTS writes 07:00 for banners the official posts open
+    at 12:00 (cid 9605). A PRTS row for the same banner counted as "ran before",
+    so the official post was dropped as a rerun and the next-banner line and the
+    group notice carried PRTS's 07:00."""
+    row = _b.Banner("明日方舟", "海渊巡游", ("克莱门莎",), datetime(2026, 10, 9, 7, 0), datetime(2026, 10, 23, 3, 59))
+    out, tr, _recs = _ak_offline(datetime(2026, 10, 8, 21, 45), [row], _ak_site_1006(), {"克莱门莎": 5})
+    nxt = out[1] if isinstance(out, tuple) else out
+    check("PRTS 07:00 那行不顶掉官网 12:00", nxt, (datetime(2026, 10, 9, 12, 0), "克莱门莎「海渊巡游」"))
+    check("官网的 12:00 进了来源闸", "10-09 12:00" in tr.starts, True)
+    due = opening_tomorrow(datetime(2026, 10, 8, 21, 45), {"明日方舟": nxt} if isinstance(nxt, tuple) else {})
+    check("群通知写官网的 12:00", group_notice(due)[1], "· 明日方舟　10-09 12:00 开　克莱门莎「海渊巡游」")
+    # A real rerun: an earlier row with the same six-star that has ended still marks it.
+    old = _b.Banner("明日方舟", "旧池", ("克莱门莎",), datetime(2026, 1, 1, 16, 0), datetime(2026, 1, 15, 3, 59))
+    out, _tr, _recs = _ak_offline(datetime(2026, 10, 8, 21, 45), [old], _ak_site_1006(), {"克莱门莎": 5})
+    check("真复刻（早先一行已经结束）照旧不当下一期", out[1] if isinstance(out, tuple) else out, None)
+
+
+def _ef_no_token() -> None:
+    """s20 #3: with no Skland token Endfield was skipped and not listed as not
+    read, so the report said 当期无新角色卡池 and 下期：官方未公告."""
+    _rows, _nxt, failed, text, _recs = _collect_offline(datetime(2026, 8, 20), [])
+    check("没有森空岛令牌：终末地记为没读到", [f for f in failed if f.startswith("终末地")], ["终末地（没有森空岛令牌）"])
+    check("没有森空岛令牌：日报写没读到", _block(text, "终末地"), "终末地\n· 这次没读到（没有森空岛令牌），不是没有卡池")
+
+
+def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None, pages=None,
+                bulletin_title="「x」版本更新说明", trace=None):
     """_endfield with every web source stubbed: Skland is `sk_get`, the version
-    bulletin is `bulletin_html` (None = unreachable), `pages` maps URLs read as
-    text, the rest is offline. Returns ((got, next) or the exception, log records)."""
+    bulletin is `bulletin_html` (None = unreachable) under `bulletin_title`, `pages`
+    maps URLs read as text, the rest is offline. Returns ((got, next) or the
+    exception, log records)."""
     real = (_b._json, _b._text, _b.endfield_next_from_news, _b.endfield_pool_ends)
 
     def js(url, *a, **k):
         if url == _b._EF_BULLETIN and bulletin_html is not None:
-            return {"data": {"list": [{"title": "「x」版本更新说明", "data": {"html": bulletin_html}}]}}
+            return {"data": {"list": [{"title": bulletin_title, "data": {"html": bulletin_html}}]}}
         raise OSError(f"offline: {url}")
 
     def offline(url, *a, **k):
@@ -1832,7 +1966,7 @@ def _ef_offline(sk_get, now, *, pool_ends=None, bulletin_html=None, pages=None):
     try:
         with _logs() as recs:
             try:
-                out = _b._endfield(None, sk_get, now, trace=_b.Trace.new())
+                out = _b._endfield(None, sk_get, now, trace=trace if trace is not None else _b.Trace.new())
             except Exception as e:  # noqa: BLE001
                 out = e
     finally:
@@ -1854,9 +1988,17 @@ def _sf_ef_names() -> None:
             return {"data": {"list": two}}
         raise OSError("Skland 502")
     out, recs = _ef_offline(sk, datetime(2026, 8, 20))
-    check("silent 1349: still no name faked", out[0] if isinstance(out, tuple) else out, [])
-    check("silent 1349: one WARNING names both lookups", _warned(recs, "1683、1700"), 1)
-    check("silent 1349: only one about the names", _warned(recs, "名字"), 1)
+    # s20 #2: no name faked, and no banner dropped in silence either: the game
+    # reads as not read (collect puts it in `failed`).
+    check("silent 1349: a lookup that failed is a failed read, not an empty one",
+          (type(out).__name__, "1683、1700" in str(out)), ("RuntimeError", True))
+    _rows, _nxt, failed, text, recs = _collect_offline(datetime(2026, 8, 20), [], sk_get=sk)
+    check("silent 1349: collect lists 终末地 as not read", [f for f in failed if f.startswith("终末地")], ["终末地"])
+    block = _block(text, "终末地")
+    check("silent 1349: the report says not read, never 「当期无新角色卡池」",
+          ("这次没读到" in block, "当期无新角色卡池" in block), (True, False))
+    check("silent 1349: one WARNING names both lookups, with the cause", _warned_exc(recs, "1683、1700"), 1)
+    check("silent 1349: only one about the names", _warned_exc(recs, "名字"), 1)
 
 
 def _sf_ef_pool_ends() -> None:
@@ -1882,6 +2024,75 @@ def _sf_ef_pool_ends() -> None:
           [True])
     out, recs = _ef_offline(sk, datetime(2026, 8, 20), bulletin_html=html)
     check("silent 1375: a readable bulletin says nothing about it", _warned(recs, "版本更新说明"), 0)
+
+
+def _ef_no_version_notes() -> None:
+    """s20 #4: a bulletin list with no 版本更新说明 entry gave no debuts and no
+    warning, so every running banner vanished and the report said
+    当期无新角色卡池. Read 2026-10-13 off the live list: the entry posted 09-02 09:00
+    is still there beside 10-13's 预下载与更新预告, so this has not happened yet."""
+    ef = json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8"))
+
+    def sk(path):
+        if path == "/web/v1/wiki/char-pool":
+            return {"data": {"list": ef}}
+        return {"data": {"item": {"name": "梨诺"}}}
+    out, recs = _ef_offline(sk, datetime(2026, 8, 20), bulletin_html="<p>预下载</p>",
+                            bulletin_title="预下载与\n更新预告")
+    check("没有版本更新说明：在开的池子照旧来自森空岛",
+          [b.chars for b in out[0]] if isinstance(out, tuple) else out, [("梨诺",)])
+    check("没有版本更新说明：当作公告没读到，说一次", _warned(recs, "公告取不到"), 1)
+
+
+def _ak_next(now, get):
+    """The next Arknights banner as _arknights picks it from the official posts:
+    the earliest one not yet open, whichever post announces it."""
+    fut = [(st, who) for st, who, _p, _en, _c in _b.arknights_banner_posts(now, get) if st > now]
+    return min(fut) if fut else None
+
+
+def _no_test_only_api() -> None:
+    """s20 #7: arknights_next_from_news and section() had callers only in tests
+    (the relay calls collect and render, and section() skipped save_trace)."""
+    check("只有测试在用的入口已删", [n for n in ("arknights_next_from_news", "section") if hasattr(_b, n)], [])
+
+
+def _crosscheck_honest() -> None:
+    """s20 #6: the trace's cross-checks. Endfield filled a clock the bulletin does
+    not print with Skland's own value and then compared Skland with itself (✓ with
+    nothing checked); Arknights missed its post when PRTS prefixes the name and
+    writes 07:00 for the post's 12:00."""
+    ef = json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8"))
+    html = (FX / "endfield_notice.html").read_text(encoding="utf-8")
+
+    def sk(path):
+        if path == "/web/v1/wiki/char-pool":
+            return {"data": {"list": ef}}
+        return {"data": {"item": {"name": "梨诺"}}}
+    # 晨星于此闪耀: the bulletin gives 08-09 12:00 to open and no closing clock.
+    tr = _b.Trace.new()
+    _ef_offline(sk, datetime(2026, 8, 20), bulletin_html=html, trace=tr)
+    check("终末地：公告没写结束就不拿森空岛自己比", tr.checks, ["终末地：森空岛=公告 ✓（公告没写结束时刻，只核了开始）"])
+    # 临渊望北 (诀): the bulletin opens it 「版本更新后」 and closes it 08-09 11:59.
+    jue = json.loads(json.dumps(ef))
+    jue[0].update(name="临渊望北", poolStartAtTs="1784700000", poolEndAtTs="1786247999")
+
+    def sk2(path):
+        if path == "/web/v1/wiki/char-pool":
+            return {"data": {"list": jue}}
+        return {"data": {"item": {"name": "诀"}}}
+    tr = _b.Trace.new()
+    _ef_offline(sk2, datetime(2026, 8, 1), bulletin_html=html, trace=tr)
+    check("终末地：公告开始写版本更新后，只核结束",
+          tr.checks, ["终末地：森空岛=公告 ✓（公告开始写「版本更新后」，只核了结束）"])
+    # Arknights: PRTS 【限定寻访·夏季】 prefix and 07:00, the post 12:00 the same day.
+    row = _b.Banner("明日方舟", "【限定寻访·夏季】海渊巡游", ("克莱门莎",),
+                    datetime(2026, 10, 9, 7, 0), datetime(2026, 10, 23, 3, 59))
+    _out, tr, _recs = _ak_offline(datetime(2026, 10, 10, 12, 0), [row], _ak_site_1006(), {"克莱门莎": 5})
+    got = " ".join(tr.checks)
+    check("方舟：PRTS 名字带前缀、07:00 也对得上官网那帖",
+          ("找不到" in got, "池名" in got, "开始 PRTS 10-09 07:00 / 官网公告 10-09 12:00" in got),
+          (False, False, True))
 
 
 def _sf_ef_brief_time() -> None:
@@ -1994,7 +2205,12 @@ def main() -> int:
     _ak_history()
     _sf_pool_times()
     _sf_rarity()
+    _ak_prts_clock()
     _sf_ef_names()
+    _ef_no_token()
+    _ef_no_version_notes()
+    _crosscheck_honest()
+    _no_test_only_api()
     _sf_ef_pool_ends()
     _sf_ef_brief_time()
     _sf_ww_first_half_end()

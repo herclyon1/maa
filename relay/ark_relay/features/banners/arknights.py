@@ -234,22 +234,6 @@ def ak_post_text(get, cid: str) -> str:
     return _ef_cms_text(str((d.get("data") or {}).get("data") or ""))
 
 
-def arknights_next_from_news(now: datetime, get=None) -> "tuple[datetime, str] | None":
-    """The earliest debut banner the newest official posts announce that has
-    not opened yet: (opening time, six-star「banner name」). None when there is
-    none. One post can announce two (cid 2019084798: 深夏的守夜人 08-27, then
-    久铸尘铁 09-10), so the first one having opened does not end the search.
-
-    The user, 2026-09-03: 「明日方舟官方早都公布角色了，中继完全没跟进」.
-    As recorded, bulletin 1457 of 08-29: 【石白深蓝之夜】限时寻访 09月04日 12:00 -
-    09月18日 03:59, ★★★★★★：结城理（占6★出率的50%）. The year is absent from the
-    bulletin and is taken from the post's own date (`_ak_year`).
-    """
-    fut = [(start, who) for start, who, _posted, _end, _cid in arknights_banner_posts(now, get)
-           if start > now]
-    return min(fut) if fut else None
-
-
 # A banner is announced in one of two places, both in the site's ACTIVITY tab:
 #  * a post of its own (cid 6247, title ending 【车辙与风的归所】限时寻访即将开启);
 #    only limited and collab banners get one;
@@ -572,7 +556,8 @@ def _ak_prts_rows(tr: "Trace") -> "list[Banner]":
 
 
 def _arknights(now: datetime, trace: "Trace | None" = None,
-               leads: "dict[str, str] | None" = None
+               leads: "dict[str, str] | None" = None,
+               failed: "list[str] | None" = None
                ) -> "tuple[list[Banner], tuple[datetime, str] | None]":
     """Both PRTS pages combined to decide debuts; the next debut banner from the
     official site's post, or from a PRTS row once PRTS has registered it. None
@@ -586,8 +571,15 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
     lost: list[str] = []
     debut = [six_star_only(b, failed=lost) if b.start <= now <= b.end else b for b in debut]
     if lost:
-        log.warning("方舟：在开的卡池里 %s 在 PRTS 查不到稀有度，分不出是不是六星，这次没报",
-                    "、".join(lost))
+        # Never dropped in silence: a running banner left out reads as
+        # 「当期无新角色卡池」, which is false. With `failed` (collect) the game is
+        # listed as not read and the next banner is still worked out - the group's
+        # 「明天开」 notice is built from it. Without `failed`, raised.
+        why = f"在开的卡池里 {'、'.join(lost)} 在 PRTS 查不到稀有度，分不出是不是六星"
+        if failed is None:
+            raise RuntimeError(why)
+        log.warning("方舟：%s，当期这次按没读到报", why)
+        failed.append("明日方舟")
     debut = [b for b in debut if b.chars]
     for b in debut:
         if b.start <= now <= b.end:
@@ -601,10 +593,12 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
     except Exception:
         log.warning("方舟官网寻访公告取不到", exc_info=True)
     # A heading without 「复刻」 is not proof of a debut on its own: a post whose
-    # six-stars all ran on an earlier PRTS row is a rerun.
+    # six-stars all ran on an earlier PRTS row is a rerun. Only a row that had
+    # ended by the post's opening counts: PRTS lists the same banner from 07:00
+    # where the post says 12:00 (cid 9605), and that row is not an earlier run.
     def _seen_before(st: datetime, who: str) -> bool:
         names = [x for x in who.split("「", 1)[0].split("、") if x]
-        old = {c for r in rows if r.start < st for c in r.chars}
+        old = {c for r in rows if r.end <= st for c in r.chars}
         return bool(names) and all(n in old for n in names)
     posts = [p for p in posts if not _seen_before(p[0], p[1])]
     for st, who, posted, en, cid in posts:
@@ -614,12 +608,17 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
         other = None
         for st, who, _p, en, _c in posts:
             m = re.match(r"(.*)「([^」]+)」$", who)
-            if m and (m.group(2) == b.name or st == b.start):
+            # PRTS may prefix the name (【限定寻访·夏季】海渊巡游) and open at 07:00
+            # where the post says 12:00 the same day (cid 9605)
+            bare = re.sub(r"^【[^】]*】", "", b.name)
+            if m and (m.group(2) == bare or st == b.start
+                      or (b.start and st.date() == b.start.date()
+                          and set(x for x in m.group(1).split("、") if x) & set(b.chars))):
                 other = Banner("明日方舟", m.group(2), tuple(x for x in m.group(1).split("、") if x), st, en)
                 break
         tr.checks.append(crosscheck("明日方舟", "PRTS", b, "官网公告", other))
-    # The earliest announced one not yet open, whichever post it is in (the
-    # same rule as arknights_next_from_news).
+    # The earliest announced one not yet open, whichever post it is in: one post
+    # can announce two (cid 2019084798: 深夏的守夜人 08-27, then 久铸尘铁 09-10).
     if fut := [(st, who, en) for st, who, _p, en, _c in posts if st > now]:
         st, who, en = min(fut)
         tr.starts |= _stamps(st)
