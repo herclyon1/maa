@@ -273,12 +273,7 @@ def _head_time(text: str, m: re.Match) -> "float | None":
     """The timestamp (seconds) at the start of the line holding traceback header `m`."""
     line = text.rfind("\n", 0, m.start()) + 1
     t = _HEAD_TS.match(text, line)
-    if not t:
-        return None
-    try:
-        return datetime.strptime(t.group(1), "%Y-%m-%d %H:%M:%S").timestamp() + float("0." + t.group(2))
-    except ValueError:
-        return None
+    return _ts(t.group(1), t.group(2)) if t else None
 
 
 def _last_event(text: str, heads: list) -> list:
@@ -352,11 +347,46 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
         what = "选了等级后没等到「开启挑战」，没进本，一次没打"
     # The 「wait_until timeout … N seconds」 line right before the traceback says
     # how long it waited.
-    before = text[max(0, at - 600):at] if text else ""
-    if (w := _OKWW_WAIT_SEC.findall(before)) and "等" in what:
-        sec = w[-1][:-2] if w[-1].endswith(".0") else w[-1]
+    if (w := _wait_before(text, at)) and "等" in what:
+        sec = w[:-2] if w.endswith(".0") else w
         what += f"（等了 {sec} 秒）"
     return f"{task_zh}：{what}"
+
+
+_OKWW_WAIT_LINE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),(\d{1,6}) [^\n]*?"
+                             r"wait_until timeout [^\n]*? (\d+(?:\.\d+)?) seconds", re.M)
+
+
+def _wait_before(text: str, at: int) -> str:
+    """Seconds of the 「wait_until timeout」 that raised the traceback at `at`; '' when none.
+
+    Anchored on time: the timeout line of the same raise is logged within a second
+    of the header (at most 0.62 s over every real log, 2026-10-13), while the
+    stack text in between reached 2558 characters - past the 600 this used to look
+    back, so the seconds were dropped. A header line without a timestamp falls back
+    to a character window that covers that measured maximum.
+    """
+    if not text:
+        return ""
+    line = text.rfind("\n", 0, at) + 1
+    hm = _HEAD_TS.match(text, line)
+    if hm is None:
+        got = _OKWW_WAIT_SEC.findall(text[max(0, at - 4000):at])
+        return got[-1] if got else ""
+    head_t = _ts(hm.group(1), hm.group(2))
+    best = ""
+    for m in _OKWW_WAIT_LINE.finditer(text, max(0, at - 200_000), at):
+        t = _ts(m.group(1), m.group(2))
+        if t is not None and head_t is not None and 0 <= head_t - t <= _EVENT_GAP_SECONDS:
+            best = m.group(3)
+    return best
+
+
+def _ts(stamp: str, frac: str) -> "float | None":
+    try:
+        return datetime.strptime(stamp, "%Y-%m-%d %H:%M:%S").timestamp() + float("0." + frac)
+    except ValueError:
+        return None
 
 
 def parse_okww_log(log_path: Path) -> dict:

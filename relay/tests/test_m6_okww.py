@@ -29,7 +29,9 @@ def check(label, got, want):
 
 r = c.parse_okww_log(FX / "0921-weekly.log")
 t = (FX / "0921-weekly.log").read_text(encoding="utf-8")
-check("09-21 失败原因不再说「没能退出副本」", r.get("okww_error"), "周本：选了等级后没等到「开启挑战」，没进本，一次没打")
+# 「等了 10 秒」: the timeout line is 0.6 s before the header but more than 600
+# characters back (collector_okww._wait_before, audit 2026-10-13 item 8).
+check("09-21 失败原因不再说「没能退出副本」", r.get("okww_error"), "周本：选了等级后没等到「开启挑战」，没进本，一次没打（等了 10 秒）")
 check("09-21 步骤：没进本", [s for s in r.get("okww_steps", []) if "周本" in s], ["周本（没进本，一次没打，原因见失败于）"])
 check("09-21 核对：没进本不说「打了」",
       [(k.label, k.ok, k.detail) for k in o.okww_checks(t, expect_nest=False) if "周本" in k.label],

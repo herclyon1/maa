@@ -62,5 +62,17 @@ text = (" ERROR TaskExecutor FarmEchoTask:x Traceback (most recent call last):\n
 check("near in the text: one event",
       len(co._last_event(text, list(co._OKWW_TB_HEAD.finditer(text)))), 2)
 
+print("\n[how long it waited: the timeout line of the same raise, found by time (item 8)]")
+# Measured over every real log on 2026-10-13: the timeout line is at most 0.62 s
+# before its header, but up to 2558 characters back; the old window was 600.
+real = (Path(__file__).resolve().parent / "fixtures" / "m6-okww" / "0921-weekly.log").read_text(encoding="utf-8")
+check("09-21: the 10 s wait is said", co._okww_error(real).endswith("（等了 10 秒）"), True)
+wait = "2026-09-01 10:50:13,335 INFO TaskExecutor TaskExecutor:wait_until timeout <f> 10 seconds\n"
+far = wait + STACK[:5000] + "\n" + head("10:50:13,900", "FarmEchoTask", "farm 4c error, try handle monthly card")
+check("5000 characters back, same second: found", co._wait_before(far, far.rindex(" ERROR")), "10")
+stale = ("2026-09-01 10:49:00,000 INFO TaskExecutor TaskExecutor:wait_until timeout <f> 7 seconds\n"
+         + head("10:50:13,900", "FarmEchoTask", "farm 4c error"))
+check("a wait a minute earlier is another event", co._wait_before(stale, stale.rindex(" ERROR")), "")
+
 print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)
