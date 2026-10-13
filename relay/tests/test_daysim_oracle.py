@@ -262,8 +262,10 @@ require("a sim error: red", any(x.startswith("invariant 5") for x in inv), inv)
 
 print("\n[the real record against the reviewed days: red on exactly the known bugs]")
 KNOWN = {
+    # 1006-23/24: the machine's code kept a self-recovered WMI drop out of the group;
+    # 324b640b (10-10) sends an unknown-cause one to the group, so the record lacks them.
     "2026-10-06": {"1006-01", "1006-02", "1006-03", "1006-04", "1006-05", "1006-06", "1006-09",
-                   "1006-14", "1006-18", "1006-19"},
+                   "1006-14", "1006-18", "1006-19", "1006-23", "1006-24"},
     "2026-10-12": {"1012-01", "1012-02", "1012-15", "1012-17", "1012-18", "1012-20"},
     "2026-10-13": {"1013-12", "invariant 2"},
 }
