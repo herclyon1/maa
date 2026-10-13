@@ -474,6 +474,31 @@ def never_started(eng, rec) -> None:
                         "written": bool((rec.raw or {}).get("maa_unreachable"))})
 
 
+def _yesterday_tail(eng, script: str, user: str, day: str, first_start: datetime) -> list[tuple[str, dict]]:
+    """(ledger day, row) for the failed attempts on the ledger of the day before `day`
+    that belong to a round still going at midnight: AUTO-MAS's retries chain on
+    (each starts within RETRY_CHAIN of the previous one's end) up to `first_start`,
+    the round's earliest attempt on `day`. The ledger files each record by its own
+    start day, so a round that crossed midnight is split over two files. Stops at
+    the first ok row or the first gap. Raises if the ledger cannot be read."""
+    yday = _day(datetime.fromisoformat(day).replace(tzinfo=SERVER_TZ) - timedelta(days=1))
+    rows = []
+    for e in eng.state.read_ledger(yday):
+        if e.get("script") != script or e.get("user") != user:
+            continue
+        started, finished = _at(e.get("started")), _at(e.get("finished"))
+        if started is None or started >= first_start:
+            continue
+        rows.append((started, finished, e))
+    out, nxt = [], first_start
+    for started, finished, e in sorted(rows, key=lambda x: x[0], reverse=True):
+        if e.get("ok") or (finished or started) + RETRY_CHAIN < nxt:
+            break
+        out.append((yday, e))
+        nxt = started
+    return out
+
+
 def maa_work_done(eng, rec) -> str:
     """Why a whole-MAA make-up would spend sanity a second time; '' when the failed
     round never got going (and the make-up may run).
@@ -495,10 +520,18 @@ def maa_work_done(eng, rec) -> str:
             return "账本里有一条没有开始时间，拿不准前面几次有没有打过仗"
         if started < rec.started:
             earlier.append((started, e))
-    for _, e in sorted(earlier, key=lambda x: x[0], reverse=True):
+    first_start = rec.started
+    for started, e in sorted(earlier, key=lambda x: x[0], reverse=True):
         if e.get("ok"):
             break                      # the round before this one; its spending was its own
         rows.append(e)
+        first_start = started
+    else:
+        # No ok row today: the round may have started before midnight (s16 #1).
+        try:
+            rows += [e for _, e in _yesterday_tail(eng, rec.script, rec.user, _day(rec.started), first_start)]
+        except Exception:  # noqa: BLE001
+            return "账本读不出来，拿不准前面几次有没有打过仗"
     from ark_relay.core import texts  # noqa: PLC0415
     for row in rows:
         failed = [str(x) for x in row.get("failed_tasks") or []]
@@ -768,16 +801,27 @@ def on_record(eng, rec) -> None:
         log.info("补跑：%s %s 没成（%s）", rec.script, rec.run_id, ent.get("note"))
         return
     when = rec.finished.astimezone(SERVER_TZ).strftime("%H:%M")
-    # The failures it makes up for sit on the dispatch day's ledger.
+    # The failures it makes up for sit on the dispatch day's ledger, and on the day
+    # before for a round that crossed midnight.
+    rows, first_start, any_ok = [], since - SLACK, False
     for e in eng.state.read_ledger(day):
         if e.get("script") != rec.script or e.get("user") != rec.user:
             continue
         started = _at(e.get("started"))
         if started is None or started >= since - SLACK:
             continue
+        rows.append((day, e))
+        first_start = min(first_start, started)
+        any_ok = any_ok or bool(e.get("ok"))
+    if not any_ok:
+        try:
+            rows += _yesterday_tail(eng, rec.script, rec.user, day, first_start)
+        except Exception:  # noqa: BLE001
+            log.warning("补跑：前一天的账本读不出来，跨午夜那几次没记上补跑做成", exc_info=True)
+    for d, e in rows:
         if not e.get("ok"):
-            eng.state.mark_raw(day, e["run_id"], "makeup_ok", when)
+            eng.state.mark_raw(d, e["run_id"], "makeup_ok", when)
         elif e.get("incomplete"):
             # The make-up ran the whole script again and it went through.
-            eng.state.mark_incomplete(day, e["run_id"], "")
+            eng.state.mark_incomplete(d, e["run_id"], "")
     log.info("✅ 补跑：%s %s 走通", rec.script, rec.run_id)
