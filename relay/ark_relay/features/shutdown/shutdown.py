@@ -564,7 +564,7 @@ def _say_if_moment_passed(eng, now: datetime, v) -> None:
 
 
 def _shift_overdue(eng, now: datetime):
-    """(queue, due, missing scripts, limit, deadline) for each shift queue of this boot that
+    """(queue, due, missing scripts, limit, deadline, days) for each shift queue of this boot that
     still lacks a record, and whose run check_overrun has not alarmed on. The limit is
     check_overrun's: runwatch.planned_minutes + OVERRUN_SLACK_MIN from the queue's time."""
     from ark_relay.features.alarm import handle  # noqa: PLC0415
@@ -582,8 +582,8 @@ def _shift_overdue(eng, now: datetime):
         if (handle._already_alerted(eng, day, f"{OVERDUE_KEY}|{q['name']}|{hhmm}")
                 or handle._already_alerted(eng, day, f"队列超时|{q['name']}|{hhmm}")):
             continue
-        limit, _ = runwatch.planned_minutes(eng, due.hour, due.minute, due)
-        yield q, due, missing, limit, due + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN)
+        limit, days = runwatch.planned_minutes(eng, due.hour, due.minute, due)
+        yield q, due, missing, limit, due + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN), days
 
 
 OVERDUE_KEY = "班次无结果"
@@ -596,7 +596,7 @@ def overdue_moments(eng, now: datetime) -> list[tuple[datetime, str]]:
     if eng._shutdown_issued:
         return []
     return [(deadline, f"核对「{q['name']}」{due:%H:%M} 那趟有没有跑完")
-            for q, due, _, _, deadline in _shift_overdue(eng, now) if deadline > now]
+            for q, due, _, _, deadline, _ in _shift_overdue(eng, now) if deadline > now]
 
 
 def _alarm_shift_overdue(eng, now: datetime) -> None:
@@ -613,12 +613,12 @@ def _alarm_shift_overdue(eng, now: datetime) -> None:
     """
     from ark_relay.features.alarm import errwatch, handle  # noqa: PLC0415
     from ark_relay.features.run import runwatch  # noqa: PLC0415
-    for q, due, missing, limit, deadline in list(_shift_overdue(eng, now)):
+    for q, due, missing, limit, deadline, days in list(_shift_overdue(eng, now)):
         if now < deadline:
             continue
         title = texts.shift_no_result(q["name"])
         body = texts.shift_no_result_body(q["name"], due, now, "、".join(missing),
-                                          limit, runwatch.OVERRUN_SLACK_MIN)
+                                          limit, runwatch.OVERRUN_SLACK_MIN, days)
         if errs := eng.notifier.send(title, body, alert=True):
             log.error("班次没出结果的告警没推出去，下一轮再试：%s", q["name"])
             continue

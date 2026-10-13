@@ -296,6 +296,16 @@ try:
     check("22:18: not yet", alarms(e7), [])
     run_watch(e7, at(22, 19))
     check("22:19: alarm", [x[0] for x in alarms(e7)], ["⏰ 晚班超时还没跑完"])
+
+    print("\n[no usable day: the body says the 180 is a default, not a 7-day record (audit s1 #4)]")
+    e10 = build()
+    eng._automas_snapshot = lambda: snap("运行", "等待")
+    run_watch(e10, at(12, 30))
+    got = alarms(e10)
+    check("no history: 09:00 + 180 + 30 -> alarm at 12:30", len(got), 1)
+    check("no history: says there is no record to go by",
+          bool(got) and "没有可参考的记录，按 180 分钟算" in got[0][1] and "近 7 天" not in got[0][1], True)
+    check("with history: still quotes the 7 days", "近 7 天最长 220 分钟跑完" in alarms(e5)[0][1], True)
 finally:
     eng.os, eng._automas_snapshot = real_os, real_snap
 
@@ -330,7 +340,7 @@ try:
     stub = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=odd))
     at = datetime(2026, 10, 10, 12, 0, tzinfo=SERVER_TZ)
     with mock.patch.object(_rw, "planned_minutes", lambda *a: (60, 0)):
-        got = [(hhmm, due.strftime("%H:%M")) for _, hhmm, _, due, _, _ in _rw.overrun_moments(stub, at)]
+        got = [(hhmm, due.strftime("%H:%M")) for _, hhmm, _, due, _, _, _ in _rw.overrun_moments(stub, at)]
         check("09:00:00 is watched as 09:00", got, [("09:00", "09:00")])
         check("an unparsable time is said, naming it", sum("nine" in w for w in warned), 1)
         list(_rw.overrun_moments(stub, at))

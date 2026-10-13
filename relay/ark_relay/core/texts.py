@@ -822,13 +822,22 @@ def shift_overrun(queue: str) -> str:
     return f"⏰ {queue}超时还没跑完"
 
 
+def _overrun_basis(limit_min: int, days: int) -> str:
+    """Where the planned minutes came from: runwatch.planned_minutes' day count, 0 when
+    no day was usable and the fixed fallback stands in for a history there is not."""
+    if not days:
+        return f"没有可参考的记录，按 {limit_min} 分钟算"
+    return f"近 7 天最长 {limit_min} 分钟跑完"
+
+
 def shift_overrun_body(queue: str, due, now, limit_min: int, slack_min: int,
-                       states: str, last_log: str) -> str:
-    """A queue still unfinished past its planned end (runwatch)."""
+                       states: str, last_log: str, days: int = 1) -> str:
+    """A queue still unfinished past its planned end (runwatch). `days`: how many past
+    days the limit was taken from (runwatch.planned_minutes)."""
     from datetime import timedelta as _td  # noqa: PLC0415
     ran = int((now - due).total_seconds() // 60)
     body = (f"{queue} {due:%H:%M} 开跑，到现在 {now:%H:%M} 还没跑完，已跑 {ran} 分钟。\n"
-            f"近 7 天最长 {limit_min} 分钟跑完，按 {limit_min} + {slack_min} 分钟算，"
+            f"{_overrun_basis(limit_min, days)}，按 {limit_min} + {slack_min} 分钟算，"
             f"该在 {due + _td(minutes=limit_min + slack_min):%H:%M} 前结束。")
     if states:
         body += f"\n现在各脚本：{states}"
@@ -841,12 +850,13 @@ def shift_no_result(queue: str) -> str:
     return f"⏰ {queue}有脚本一直没出结果"
 
 
-def shift_no_result_body(queue: str, due, now, missing: str, limit_min: int, slack_min: int) -> str:
+def shift_no_result_body(queue: str, due, now, missing: str, limit_min: int, slack_min: int,
+                         days: int = 1) -> str:
     """A shift script with no record past the shift's planned end, where AUTO-MAS did not show
     the shift still running (shutdown._alarm_shift_overdue)."""
     ran = int((now - due).total_seconds() // 60)
     return (f"{queue} {due:%H:%M} 开跑，到现在 {now:%H:%M}（{ran} 分钟）{missing} 还没有结果。\n"
-            f"近 7 天最长 {limit_min} 分钟跑完，按 {limit_min} + {slack_min} 分钟算早该跑完了。")
+            f"{_overrun_basis(limit_min, days)}，按 {limit_min} + {slack_min} 分钟算早该跑完了。")
 
 
 # ---- what a group alarm says when the relay could not finish the job itself ----
@@ -952,6 +962,8 @@ def samples() -> list[str]:
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 13, 10), 220, 30,
                            "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
         shift_no_result_body("早班", t0, _dt(2026, 10, 1, 12, 31), "MaaEnd", 180, 30),
+        shift_overrun_body("早班", t0, _dt(2026, 10, 1, 12, 31), 180, 30, "", "", 0),
+        shift_no_result_body("早班", t0, _dt(2026, 10, 1, 12, 31), "MaaEnd", 180, 30, 0),
         UNREACHABLE_SHAPE_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, ANNIHILATION_OFF,
         annihilation_off_body("明日方舟 · 剿灭"), SKIP_MODE, ESTOP,
         ESTOP_FAILED, SHUTDOWN_CANCELLED, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ECHO_FARM, ECHO_FARM_DONE, ECHO_FARM_TROUBLE,

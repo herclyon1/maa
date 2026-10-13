@@ -227,7 +227,8 @@ def planned_minutes(eng, hh: int, mm: int, today: datetime) -> tuple[int, int]:
 
 
 def overrun_moments(eng, now: datetime):
-    """(queue, hhmm, uid, due, limit, deadline) for the latest due of every timed queue."""
+    """(queue, hhmm, uid, due, limit, deadline, days) for the latest due of every timed
+    queue; `days` is planned_minutes' day count (0: the fallback, no history)."""
     for q in plan.schedule(eng.cfg.automas_dir):
         for hhmm in q.get("times", []):
             try:
@@ -237,9 +238,9 @@ def overrun_moments(eng, now: datetime):
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
             if due > now:
                 due -= timedelta(days=1)
-            limit, _ = planned_minutes(eng, hh, mm, due)
+            limit, days = planned_minutes(eng, hh, mm, due)
             yield (q, hhmm, q.get("uid"), due, limit,
-                   due + timedelta(minutes=limit + OVERRUN_SLACK_MIN))
+                   due + timedelta(minutes=limit + OVERRUN_SLACK_MIN), days)
 
 
 def _queue_task(snap, uid):
@@ -289,7 +290,7 @@ def check_overrun(eng, now: datetime, snap) -> None:
     from ark_relay.features.shutdown import shutdown  # noqa: PLC0415
     if snap is None:
         return       # AUTO-MAS cannot be asked; the timeout check still works
-    for q, hhmm, uid, due, limit, deadline in overrun_moments(eng, now):
+    for q, hhmm, uid, due, limit, deadline, days in overrun_moments(eng, now):
         if now < deadline:
             continue
         day = due.strftime("%Y-%m-%d")
@@ -312,7 +313,7 @@ def check_overrun(eng, now: datetime, snap) -> None:
         states = "、".join(f"{i.get('name')} {i.get('status')}"
                           for i in task.get("task_info") or [])
         body = texts.shift_overrun_body(q["name"], due, now, limit, OVERRUN_SLACK_MIN,
-                                        states, str(task.get("log") or ""))
+                                        states, str(task.get("log") or ""), days)
         if errs := eng.notifier.send(texts.shift_overrun(q["name"]), body, alert=True):
             log.error("队列超时告警没推出去，下一轮再试：%s", q["name"])
             continue
