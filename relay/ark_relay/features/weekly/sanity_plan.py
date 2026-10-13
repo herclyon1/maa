@@ -8,17 +8,23 @@ is what MaaEnd runs with. An edit made in MaaEnd's own UI is overwritten by that
 at the next run. The MAS user config's `Task.SanityTaskType` reaches MaaEnd only when
 `Info.IfQuickConfig` is on, so it is not used.
 
-Three fields decide everything, and the reward is derived rather than chosen:
+Three of ProtocolSpace's options decide what the sanity buys:
 
-    SanityTaskType   which tab      OperatorProgression / WeaponProgression /
-                                    CrisisDrills / Essence
-    <that tab>       which line     e.g. OperatorProgression -> OperatorEXP
-    RewardsSetOption A or B         A and B mean different items per line
+    ProtocolSpaceTab               which tab    OperatorProgression /
+                                                WeaponProgression / CrisisDrills
+    <that tab>                     which line   e.g. OperatorProgression -> OperatorEXP
+    <line>RewardsSetOption         which item   one case per line, MaaEnd's own names
 
-    OperatorEXP  + A -> 高级认知载体、初级认知载体   + B -> 高级作战记录
-    Promotions   + A -> 协议圆盘组                 + B -> 协议圆盘
-    SkillUp      + A -> 协议棱柱组                 + B -> 协议棱柱
-    WeaponTune   + A -> 重型强固模具               + B -> 强固模具
+    OperatorEXP  CognitiveCarriers -> 高级认知载体、初级认知载体
+                 AdvancedCombatRecord -> 高级作战记录
+    Promotions   Protoset -> 协议圆盘组        Protodisk -> 协议圆盘
+    SkillUp      Protohedron -> 协议棱柱组     Protoprism -> 协议棱柱
+    WeaponTune   HeavyCastDie -> 重型强固模具  CastDie -> 强固模具
+
+The case names and labels are MaaEnd's (tasks/ProtocolSpace.json and
+locales/interface/zh_cn.json; fixtures/maaend-protocolspace-v2.30.0-rc.1).
+AUTO-MAS's "RewardsSetA / RewardsSetB" belong to its quick-config field and are
+not values MaaEnd's master copy holds.
 """
 from __future__ import annotations
 
@@ -67,22 +73,40 @@ LINE_LABELS = {
     "AdvancedProgression5": "高阶培养Ⅴ（三相纳米片）",
 }
 
-# Mirrors AutoProxy.py's own branching, so the report says what will really
-# drop rather than which radio button is selected.
+# (line, MaaEnd's case of f"{line}RewardsSetOption") -> the item that drops, in
+# MaaEnd's own Chinese without its "A." / "B." prefix
+# (tests/test_sanity_plan_reward_names.py checks it against the v2.30.0-rc.1 files).
 REWARD = {
-    ("OperatorEXP", "RewardsSetA"): "高级认知载体、初级认知载体",
-    ("OperatorEXP", "RewardsSetB"): "高级作战记录",
-    ("Promotions", "RewardsSetA"): "协议圆盘组",
-    ("Promotions", "RewardsSetB"): "协议圆盘",
-    ("SkillUp", "RewardsSetA"): "协议棱柱组",
-    ("SkillUp", "RewardsSetB"): "协议棱柱",
-    ("WeaponTune", "RewardsSetA"): "重型强固模具",
-    ("WeaponTune", "RewardsSetB"): "强固模具",
+    ("OperatorEXP", "CognitiveCarriers"): "高级认知载体、初级认知载体",
+    ("OperatorEXP", "AdvancedCombatRecord"): "高级作战记录",
+    ("Promotions", "Protoset"): "协议圆盘组",
+    ("Promotions", "Protodisk"): "协议圆盘",
+    ("SkillUp", "Protohedron"): "协议棱柱组",
+    ("SkillUp", "Protoprism"): "协议棱柱",
+    ("WeaponTune", "HeavyCastDie"): "重型强固模具",
+    ("WeaponTune", "CastDie"): "强固模具",
 }
 
 
 MARKER = "mxu-MaaEnd.json"
 SANITY_TASKS = ("ProtocolSpace", "AutoEssence")
+
+
+def _maaend_dir(automas_dir) -> "Path | None":
+    """MaaEnd's install, where AUTO-MAS says it is (as config.py finds it)."""
+    from ark_relay.core import plan  # noqa: PLC0415 - plan imports this module
+    return plan.script_dir(automas_dir, "MaaEnd")
+
+
+def _reward_cases(maaend_dir, line: str) -> "tuple[str, ...] | None":
+    """The cases MaaEnd defines for f"{line}RewardsSetOption"; () when the line has
+    no reward set, None when MaaEnd's definitions cannot be read."""
+    from ark_relay.core import mastercfg  # noqa: PLC0415 - imported where used, as plan.py does
+    opts = mastercfg._maaend_defs(maaend_dir)[0] if maaend_dir else {}
+    if not opts:
+        return None
+    opt = opts.get(f"{line}RewardsSetOption") or {}
+    return tuple(str(c.get("name")) for c in opt.get("cases") or [] if c.get("name"))
 
 
 def _master(automas_dir) -> "Path | None":
@@ -126,7 +150,7 @@ def _describe(t: dict) -> dict:
                 "enabled": True, "understood": False,
                 "label": f"读不懂：ProtocolSpace {what}，不知道理智会用在哪"}
     line = _case(ov, tab)
-    rset = _case(ov, f"{line}RewardsSetOption") or _case(ov, "RewardsSetOption")
+    rset = _case(ov, f"{line}RewardsSetOption")
     item = REWARD.get((line, rset), "")
     parts = [TAB_LABELS[tab]]
     if line:
@@ -171,7 +195,8 @@ def read(automas_dir: "Path | None") -> dict:
     return out
 
 
-def _validate_plan(tab: str, line: str, rewards_set: str) -> str | None:
+def _validate_plan(tab: str, line: str, rewards_set: str,
+                   maaend_dir=None) -> str | None:
     """Check the three arguments first; return an error text, or None if all legal.
 
     This is a separate step because it does not touch the master copy at all -- it is
@@ -179,6 +204,9 @@ def _validate_plan(tab: str, line: str, rewards_set: str) -> str | None:
     before anything reads or writes the master copy: these three values decide where
     tomorrow's sanity goes, and letting an illegal value reach the write is already
     too late.
+    A reward set is legal only as a case MaaEnd defines for f"{line}RewardsSetOption"
+    (read from MaaEnd's install, as plan._maaend_extra_bits reads its defaults); when
+    those definitions cannot be read it is refused, not guessed.
     """
     if tab not in TAB_LABELS:
         return f"理智任务类型不合法: {tab!r}（可选 {'、'.join(TAB_LABELS)}）"
@@ -186,8 +214,17 @@ def _validate_plan(tab: str, line: str, rewards_set: str) -> str | None:
         legal = LINE_OPTIONS.get(tab, ())
         if legal and line not in legal:
             return f"{TAB_LABELS[tab]} 不接受 {line!r}（可选 {'、'.join(legal)}）"
-    if rewards_set and rewards_set not in ("RewardsSetA", "RewardsSetB"):
-        return f"奖励组不合法: {rewards_set!r}（只能 RewardsSetA / RewardsSetB）"
+    if rewards_set:
+        if tab == "Essence" or not line:
+            return f"奖励组 {rewards_set!r} 要和协议空间的线路一起给"
+        cases = _reward_cases(maaend_dir, line)
+        if cases is None:
+            return f"读不到 MaaEnd 的选项定义，确认不了奖励组 {rewards_set!r} 合不合法，没写"
+        if not cases:
+            return f"{LINE_LABELS.get(line, line)} 没有奖励组可选，不接受 {rewards_set!r}"
+        if rewards_set not in cases:
+            return (f"{LINE_LABELS.get(line, line)} 的奖励组不接受 {rewards_set!r}"
+                    f"（可选 {'、'.join(f'{c}（{REWARD.get((line, c), c)}）' for c in cases)}）")
     return None
 
 
@@ -246,7 +283,8 @@ def _write_options(ov: dict, want_task: str, tab: str, line: str,
 
 
 def set_plan(automas_dir: "Path | None", tab: str, line: str = "",
-             rewards_set: str = "", location: str = "") -> tuple[bool, str]:
+             rewards_set: str = "", location: str = "",
+             maaend_dir: "Path | None" = None) -> tuple[bool, str]:
     """Write the plan into the master copy.
 
     That is the copy AUTO-MAS hands to MaaEnd every run.
@@ -257,8 +295,12 @@ def set_plan(automas_dir: "Path | None", tab: str, line: str = "",
     **Only toggles tasks that already exist, never creates them**: with no
     `AutoEssence` in the master copy, essence farming is refused instead of being
     reported as set.
+    maaend_dir: MaaEnd's install, for its reward-set cases; by default where
+    AUTO-MAS says it is.
     """
-    if err := _validate_plan(tab, line, rewards_set):
+    if rewards_set and maaend_dir is None:
+        maaend_dir = _maaend_dir(automas_dir)
+    if err := _validate_plan(tab, line, rewards_set, maaend_dir):
         return False, err
 
     f = _master(automas_dir)
