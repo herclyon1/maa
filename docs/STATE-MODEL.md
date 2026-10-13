@@ -59,7 +59,10 @@ registered in the `FIELDS` field table can be written. Already moved in:
 * `weekly`: Annihilation, Weekly Garden, Weekly Boss
 * `marks`: daily report, interim report, banner announcements (per day / per
   banner, wildcard keys); the due time of the last shift the after-shift check
-  ran for (`shiftcheck_shift`, once per shift)
+  ran for (`shiftcheck_shift`, once per shift); when the relay issued its own
+  power-off (`relay_poweroff`, cleared when the countdown is cancelled), so
+  `app_main.py stop-push` - a process of its own - can tell it from any other
+  shutdown (`shutdown.relay_poweroff_recorded`)
 * `modes`: the one-shot 「下次跑完不关机」 mark while not yet spent, the key of the
   shutdown occasion that was skipped (by debug mode or by spending that mark),
   debug-mode expiry
