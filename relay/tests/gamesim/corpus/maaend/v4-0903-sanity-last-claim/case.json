@@ -1,0 +1,22 @@
+{
+ "failure": "09-03 V4: Endfield sanity spent missed the last claim - five claims 979 -> 659 booked as 320",
+ "fix": "9bd77b3f",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-09-03/endfield/MaaEnd-07-34-17.json",
+   "want": {
+    "raw.maaend_farm_runs": 5,
+    "raw.maaend_sanity_spent": 400
+   },
+   "evidence": {
+    "raw.maaend_farm_runs": "five 「✅已完成一次基质刷取」 lines in the log (lines 373, 450, 519, 581, 666)",
+    "raw.maaend_sanity_spent": "MaaEnd reads 「当前理智」 before each claim: lines 281/380/458/526/587 read 979, 899, 819, 739, 659 - 80 per claim - and the fifth claim (line 666, 12:03:01) comes after the last reading; five claims at 80 = 400"
+   }
+  }
+ ],
+ "mtimes": {
+  "automas/history/2026-09-03/endfield/MaaEnd-07-34-17.json": 1788408256,
+  "automas/history/2026-09-03/endfield/MaaEnd-07-34-17.log": 1788408256
+ }
+}

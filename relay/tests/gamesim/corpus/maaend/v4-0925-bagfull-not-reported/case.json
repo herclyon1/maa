@@ -1,0 +1,26 @@
+{
+ "failure": "09-25 V4: an essence claim that never landed because the bag was full was not reported as such (three 09-25 failures, each read only as 「任务失败: 基质刷取」)",
+ "fix": "6d911efc",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-09-25/endfield/MaaEnd-05-47-21.json",
+   "want": {
+    "raw.maaend_fail_causes": {
+     "基质刷取": "背包满了"
+    }
+   },
+   "evidence": {
+    "raw.maaend_fail_causes": "the game said so: MaaEnd's OCR of the mail it opened right after the failure reads 「因仓储空间已满，部分物品未能完全领取」 (maaend/debug/maafw.log:523, [2026-09-25 09:53:43.390] node DailyEmailConfirmTSA, score 0.999458), 5 s after 「[2026-09-25 09:53:38.147] 任务失败: 🎱基质刷取」 which followed 「09:53:13.162 👆点击确认领取按钮」 (record log lines 57-58); the owner ruled these 09-25 failures a full bag on 2026-09-26 16:30 (6d911efc message)"
+   }
+  }
+ ],
+ "excerpts": {
+  "maaend/debug/maafw.log": "lines 1-554 (2026-09-25 09:53:38.152 .. 09:53:44.4) of MaaEnd's maafw.log as the relay saved it in its evidence bundle C:/ProgramData/ark-relay/state/evidence/2026-09-25_endfield_MaaEnd-05-47-21/maafw.log (the file starts at 09:53:38, MaaFW rotated it there), verbatim; privacy: the OCR of a birthday mail on the same screen (its title, greeting and date) is replaced by [redacted ...] in every line, the storage-full text is untouched"
+ },
+ "mtimes": {
+  "automas/history/2026-09-25/endfield/MaaEnd-05-47-21.json": 1790301634,
+  "automas/history/2026-09-25/endfield/MaaEnd-05-47-21.log": 1790301634,
+  "maaend/debug/maafw.log": 1791879476
+ }
+}

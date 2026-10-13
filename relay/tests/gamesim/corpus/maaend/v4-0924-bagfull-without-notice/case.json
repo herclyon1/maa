@@ -1,0 +1,22 @@
+{
+ "failure": "09-24 V4: the 10:16:51 click-then-fail was labelled 「背包满了」 although no storage-full notice was ever seen",
+ "fix": "139e8807",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-09-24/endfield/MaaEnd-06-07-50.json",
+   "want": {
+    "ok": false,
+    "raw.maaend_fail_causes": "<absent>"
+   },
+   "evidence": {
+    "ok": "AUTO-MAS's result 「[日常] MaaEnd 部分任务执行失败: 🎱基质刷取」 and the log's 「[2026-09-24 10:16:51.883] 任务失败: 🎱基质刷取」 (line 212)",
+    "raw.maaend_fail_causes": "nothing shows why the claim failed: the mail opened right after was claimed normally (lines 214-219 「开始领取邮件奖励 ... 获取邮件奖励」 at 10:17:00) and nothing in the run reads the game's 「因仓储空间已满」 notice; MaaEnd's framework log for that minute is gone (the relay's evidence bundle 2026-09-24_endfield_MaaEnd-06-07-50/maafw.log starts at 10:50:55), so this case has no maaend/debug, as the relay had none for this minute. No evidence, no named cause"
+   }
+  }
+ ],
+ "mtimes": {
+  "automas/history/2026-09-24/endfield/MaaEnd-06-07-50.json": 1790218259,
+  "automas/history/2026-09-24/endfield/MaaEnd-06-07-50.log": 1790218259
+ }
+}

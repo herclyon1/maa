@@ -1,0 +1,22 @@
+{
+ "failure": "09-10 V5: a MaaEnd run that ended cleanly but did no work was green - 自动采集 「任务完成」 after 38 s with no route walked, AUTO-MAS Success, daily report 全绿",
+ "fix": "258d7847",
+ "checks": [
+  {
+   "probe": "outcome",
+   "log": "automas/history/2026-09-10/endfield/MaaEnd-06-08-39.log",
+   "on_error_names": [],
+   "want": {
+    "check:自动采集": false
+   },
+   "evidence": {
+    "check:自动采集": "the run walked nothing: 「[2026-09-10 10:08:56.190] 任务开始: 🧺自动采集」 then 「10:09:34.099 任务完成: 🧺自动采集」 (38 s) with no 「路线N：」 line and no weekday-skip line between them, where a working gathering run walks routes for minutes (2026-09-07 MaaEnd-06-16-18.log: 「10:41:45.978 任务开始: 🧺自动采集」, 「10:46:46.411 路线4：四号谷地-纯晶多齿叶」 ...); that morning's MaaEnd update had discarded the old route settings (258d7847 message: 36 「已丢弃保存值」 lines in MaaEnd's app log). The owner on such runs: 「明明没有完成任务，却按照完成任务的通知去报」 (quoted in 258d7847's outcome.py comment)"
+   }
+  }
+ ],
+ "mtimes": {
+  "automas/history/2026-09-10/endfield/MaaEnd-06-08-39.json": 1789006176,
+  "automas/history/2026-09-10/endfield/MaaEnd-06-08-39.log": 1789006176
+ },
+ "not_asserted": "fault (the run as a whole): the relay judged it on this log plus MaaEnd's own app log for the run (handle._verify_outcome: text + _maaend_app_log), which MaaEnd has since deleted; without it the 「MaaEnd 跑完」 check cannot be judged, so only the gathering check is asserted"
+}
