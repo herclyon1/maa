@@ -215,41 +215,77 @@ check("#38 依据是重开那一行", "中继正在重新打开它" in got["#38"
 got, _, _, _ = at_boot(manual)
 check("不是中继关的机：#37/#38 不判", ("#37" in got, "#38" in got), (False, False))
 
-print("\n[#59 系统的程序启动通知断了又自己订上：只进日报（errkinds 记成自己好了），diag 说出是哪种]")
-WMI = ("系统的程序启动通知断过 12 秒（远程过程调用失败，0x800706BE），已经自己重新订上")
+print("\n[#59 系统的程序启动通知断了又自己订上：报群一次（或期间已报过群、这一行记成自己好了），diag 说出是哪种]")
+# Since 324b640b (2026-10-10) a drop of unknown cause that came back by itself is pushed
+# to the group once (procwatch._subscribed: no errwatch.recovered() unless the outage was
+# already pushed meanwhile). The lines are the machine's: relay.log 10-06 16:16:59 and
+# 18:08:22 (the day replay's 2026-10-06 events.jsonl lines 215 and 288), two drops with
+# the same words on one day; the push text is errwatch's (texts.relay_error_body).
+WMI = "系统的程序启动通知断过 15 秒（远程过程调用失败，0x800706BE），已经自己重新订上"
 DIAG = ("diag: hresult 0x80020009, scode 0x800706BE, source SWbemEventSource, text 远程过程调用失败。; "
-        "subscription up 37.0 s, 0 events, last -; relay up 37 s; machine up 0:12:01; "
-        "WMI hosts at subscribe [winmgmt pid 1234; WmiPrvSE pids 5,6] now [winmgmt pid 1234; WmiPrvSE pids 6]; "
-        "hypothesis: H2 WMI provider host gone (WmiPrvSE pid 5)")
+        "subscription up 18.3 s, 0 events, last -; relay up 37 s; machine up 0:29:01; "
+        "WMI hosts at subscribe [winmgmt pid 3560; WmiPrvSE pids 3836] now [winmgmt pid 2596; WmiPrvSE pids 6280]; "
+        "hypothesis: H1 WMI service restarted (winmgmt pid 3560 -> 2596)")
+WMI_HELD = ("系统的程序启动通知断过 640 秒（远程过程调用失败，0x800706BE），已经自己重新订上（期间报过群）")
 wmi_session = EVENING[:3] + [logline("10-06 21:25:00", WMI, level="WARNING", more=[DIAG])] + EVENING[3:]
 
 
 def errkinds(sd, line, recovered=True):
     (sd / "errkinds").mkdir(parents=True, exist_ok=True)
     (sd / "errkinds" / "2026-10-06.json").write_text(json.dumps(
-        {"ark.service|x": {"first": "2026-10-06 21:25:00", "count": 1, "pushed": 0, "level": "WARNING",
-                           "where": "ark.service", "line": line, **({"recovered": True} if recovered else {})}},
+        {"ark.service|x": {"first": "2026-10-06 21:25:00", "count": 1, "pushed": 0 if recovered else 1,
+                           "level": "WARNING", "where": "ark.service", "line": line,
+                           **({"recovered": True} if recovered else {})}},
         ensure_ascii=False), encoding="utf-8")
 
 
+def pushed(sd, *hms):
+    (sd / "alerts").mkdir(exist_ok=True)
+    with (sd / "alerts" / "20261006.jsonl").open("a", encoding="utf-8") as f:
+        for at in hms:
+            f.write(json.dumps({"ts": f"2026-10-06 {at}", "title": "🩺 中继自己报错了",
+                                "text": f"中继自己报错了（{at}），出在「主程序」。它说：{WMI}\n已交给我们这边去修。"},
+                               ensure_ascii=False) + "\n")
+
+
 sd, f = write_log(wmi_session + BOOT_NOW)
-errkinds(sd, WMI)
+errkinds(sd, WMI, recovered=False)
+pushed(sd, "21:25:00")
 got, n = judge("boot", {"log_file": str(f), "now": NOW}, sd)
-check("#59 过了", got["#59"].status, mc.PASS)
-check("说出原因（H2）", got["#59"].evidence.endswith("原因：WMI 的提供程序宿主（WmiPrvSE）没了一个"), True)
+check("报群一次（324b640b 的做法）→ 过了", got["#59"].status, mc.PASS)
+check("说出原因（H1）", got["#59"].evidence.endswith("原因：WMI 服务自己重启过"), True)
+check("过了不再推 🔬", n.fails("#59"), [])
+sd, f = write_log(wmi_session + BOOT_NOW)
+errkinds(sd, WMI, recovered=False)
+pushed(sd, "16:16:59", "21:25:00")
+got, n = judge("boot", {"log_file": str(f), "now": NOW}, sd)
+check("同一天前一次同样的话报过群，不算这一次报了两次", got["#59"].status, mc.PASS)
+sd, f = write_log(wmi_session + BOOT_NOW)
+errkinds(sd, WMI, recovered=False)
+pushed(sd, "21:25:00", "21:25:00")
+got, n = judge("boot", {"log_file": str(f), "now": NOW}, sd)
+check("同一次报了两次群 → 没过", (got["#59"].status, "2 次" in got["#59"].evidence), (mc.FAIL, True))
 sd, f = write_log(wmi_session + BOOT_NOW)
 errkinds(sd, WMI, recovered=False)
 got, n = judge("boot", {"log_file": str(f), "now": NOW}, sd)
-check("errkinds 没记成自己好了 → 没过", got["#59"].status, mc.FAIL)
-sd, f = write_log(wmi_session + BOOT_NOW)
-errkinds(sd, WMI)
-(sd / "alerts").mkdir()
-(sd / "alerts" / "20261006.jsonl").write_text(json.dumps({"title": "🩺 中继自己报错", "text": "ark.service：" + WMI}, ensure_ascii=False) + "\n", encoding="utf-8")
+check("没报群也没记成自己好了 → 没过", (got["#59"].status, "没进群" in got["#59"].evidence), (mc.FAIL, True))
+held = EVENING[:3] + [logline("10-06 21:25:00", WMI_HELD, level="WARNING", more=[DIAG])] + EVENING[3:]
+sd, f = write_log(held + BOOT_NOW)
+errkinds(sd, WMI_HELD)
 got, n = judge("boot", {"log_file": str(f), "now": NOW}, sd)
-check("自己好了却进了群 → 没过", (got["#59"].status, "进了群" in got["#59"].evidence), (mc.FAIL, True))
+check("期间已报过群、这一行记成自己好了、不再报 → 过了", got["#59"].status, mc.PASS)
+sd, f = write_log(held + BOOT_NOW)
+errkinds(sd, WMI_HELD)
+(sd / "alerts").mkdir()
+(sd / "alerts" / "20261006.jsonl").write_text(json.dumps(
+    {"ts": "2026-10-06 21:25:01", "title": "🩺 中继自己报错了",
+     "text": f"中继自己报错了（21:25:00），出在「主程序」。它说：{WMI_HELD}"}, ensure_ascii=False) + "\n", encoding="utf-8")
+got, n = judge("boot", {"log_file": str(f), "now": NOW}, sd)
+check("记成自己好了却又进了群（一个故障两次）→ 没过", (got["#59"].status, "进了群" in got["#59"].evidence), (mc.FAIL, True))
 old_diag = DIAG.split("; hypothesis:")[0]
 sd, f = write_log(EVENING[:3] + [logline("10-06 21:25:00", WMI, level="WARNING", more=[old_diag])] + EVENING[3:] + BOOT_NOW)
-errkinds(sd, WMI)
+errkinds(sd, WMI, recovered=False)
+pushed(sd, "21:25:00")
 got, n = judge("boot", {"log_file": str(f), "now": NOW}, sd)
 check("diag 说不出是哪种 → 没过，原样带上 diag", (got["#59"].status, "WMI hosts at subscribe" in got["#59"].evidence),
       (mc.FAIL, True))

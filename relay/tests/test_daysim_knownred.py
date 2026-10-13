@@ -9,8 +9,8 @@ What is pinned here:
   a fixed bug), as is an unknown field or a bad regex;
 - the committed known-red.json loads today, every entry names an open docs/BACKLOG.md
   todo, and each committed day's list of known lines is what the replay produced on
-  2026-10-13 19:27 (run.py --all: 10-06 two #59 pushes, 10-12 / 10-13 two Server酱
-  「⚙️ 配置已更新」 receipts each);
+  2026-10-13 19:27 (run.py --all: 10-12 / 10-13 two Server酱 「⚙️ 配置已更新」 receipts
+  each); 10-06's two #59 pushes (daysim-R1, fixed 2026-10-13) are no longer excused;
 - badfix/R36.patch names one day and the lines that must go red, and still applies
   to the code (git apply --check on a copy of shutdown.py).
 """
@@ -100,12 +100,16 @@ print("\n[the committed list]")
 entries = knownred.load()
 check("known-red.json loads today", isinstance(entries, list), True)
 check("its days and bugs", sorted((e["day"], e["bug"], e["count"]) for e in entries),
-      [("2026-10-06", "daysim-R1", 2), ("2026-10-12", "daysim-R2", 2), ("2026-10-13", "daysim-R2", 2)])
+      [("2026-10-12", "daysim-R2", 2), ("2026-10-13", "daysim-R2", 2)])
+R1_LINES = [   # run.py --all, 2026-10-13 19:27: the #59 pushes daysim-R1 caused, fixed 2026-10-13
+    "strict: no entry expects push group 2026-10-06T16:43:29+08:00 '🔬 上机核对没过：#59 "
+    "系统的程序启动通知断了又自己订上的，只进日报不进群，并写明是哪种原因'",
+    "strict: no entry expects push group 2026-10-06T18:23:23+08:00 '🔬 上机核对没过：#59 "
+    "系统的程序启动通知断了又自己订上的，只进日报不进群，并写明是哪种原因'"]
+sp = knownred.split("2026-10-06", R1_LINES, entries)
+check("2026-10-06: R1's #59 pushes, should they come back, are new red", (sp.new, sp.ok), (R1_LINES, False))
+check("2026-10-06: a clean day passes", knownred.split("2026-10-06", [], entries).ok, True)
 measured = {   # run.py --all, 2026-10-13 19:27 (scratchpad base.txt), the strict lines of each day
-    "2026-10-06": ["strict: no entry expects push group 2026-10-06T16:43:29+08:00 '🔬 上机核对没过：#59 "
-                   "系统的程序启动通知断了又自己订上的，只进日报不进群，并写明是哪种原因'",
-                   "strict: no entry expects push group 2026-10-06T18:23:23+08:00 '🔬 上机核对没过：#59 "
-                   "系统的程序启动通知断了又自己订上的，只进日报不进群，并写明是哪种原因'"],
     "2026-10-12": ["strict: no entry expects push serverchan 2026-10-12T08:45:38+08:00 '⚙️ 配置已更新：调试模式'",
                    "strict: no entry expects push serverchan 2026-10-12T14:23:11+08:00 '⚙️ 配置已更新：空（安全状态）'"],
     "2026-10-13": [LINE_A, LINE_B],
