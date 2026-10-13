@@ -76,6 +76,14 @@ jobs:
       # page for it (same reason as relay-windows.yml).
       PYTHONUTF8: '1'
       PYTHONIOENCODING: 'utf-8'
+      # OCR runs on OpenVINO's CPU plugin here. Some windows-latest VMs (Emerald Rapids,
+      # family 6 model 207) report AMX in CPUID.7 and XCR0 but an empty palette in CPUID.1D
+      # (actions/runner-images#14483); OpenVINO 2026.3's oneDNN trusts the first two, runs
+      # TILEZERO and the test dies with 0xC000001D (openvinotoolkit/openvino#37076,
+      # uxlfoundation/oneDNN#5689). Capping oneDNN below AMX keeps AVX-512 FP16; OpenVINO
+      # 2026.3 builds oneDNN with DNNL_ENABLE_MAX_CPU_ISA ON, so the cap is honoured
+      # (src/plugins/intel_cpu/thirdparty/CMakeLists.txt:52). The game PC is not affected.
+      ONEDNN_MAX_CPU_ISA: AVX512_CORE_FP16
     steps:
       # The PC gets OK-WW's and our LF bytes; the pinned hashes are of those.
       - name: Check out files as they are in the repo (LF)

@@ -69,9 +69,11 @@ TEST_TIMEOUT_S = 600
 # instruction the runner refused. Seen at the first OCR call (OK-WW's onnxocr on openvino
 # 2026.3, CPU device) in 2 of 23 jobs of run 38394849158 and 1 of 23 of run 38398079467, and
 # in none of 23 jobs of runs 38394107694 and 38396198276: same image, same code. The CPU model
-# does not decide it either (Intel family 6 model 207 crashed in 38398079467 and passed twice
-# in 38396198276); the cause is not known. It is told apart from a failure, with the CPU
-# named, and the job is rerun.
+# alone does not decide it (Intel family 6 model 207 crashed in 38398079467 and passed twice
+# in 38396198276): some of those VMs advertise AMX without a tile palette and others do not
+# (actions/runner-images#14483, uxlfoundation/oneDNN#5689); gamesim-windows.yml caps oneDNN
+# below AMX (ONEDNN_MAX_CPU_ISA). Should it still happen, it is told apart from a failure,
+# with the CPU named, and the job is rerun.
 ILLEGAL_INSTRUCTION = 0xC000001D
 
 # The relay's report line for the one load failure the machine recorded. relay.log on the
