@@ -166,12 +166,13 @@ def _block_okww(raw: dict, finished: datetime) -> tuple[list[str], ...]:
     return did, cost, out, left, notes
 
 
-def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ...]:
+def _block_maaend(e: dict, raw: dict, finished: datetime,
+                  footnote: "list[str] | None" = None) -> tuple[list[str], ...]:
     """The five rows for one Endfield (MaaEnd) run: 做了 / 消耗 / 产出 / 剩余 / 备注.
 
     Sanity has a cap and can overflow (warned), and a long daily list is
     collapsed into 「日常 1-N 项完成」 with the names in the footnote
-    (ledger_report.daily_footnote).
+    (ledger_report.daily_footnote; `footnote` is its list of names).
     The five returned lists are ordered per _LABELS; _block assembles them into
     the five rows.
     """
@@ -215,10 +216,11 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
     failed = raw.get("tasks_failed") or []
     if done or failed or unverified:
         # More than three: 「日常 1-N 项完成」, names in the footnote
-        # (daily_footnote). Three or fewer are named here.
+        # (daily_footnote). Three or fewer are named here, and so is a list the
+        # footnote's 1-N would not name (another run's longer list is the key).
         if not done:
             n = "日常 0 项"
-        elif len(done) <= 3:
+        elif len(done) <= 3 or (footnote is not None and footnote[:len(done)] != done):
             n = "做了 " + "、".join(done)
         else:
             n = f"日常 1-{len(done)} 项完成"
@@ -247,8 +249,9 @@ def _block_maaend(e: dict, raw: dict, finished: datetime) -> tuple[list[str], ..
     return did, cost, out, left, notes
 
 
-def _rows_for(e: dict, finished: datetime) -> tuple[list[str], ...]:
-    """The five lists for one run, before they are turned into rows."""
+def _rows_for(e: dict, finished: datetime, footnote: "list[str] | None" = None) -> tuple[list[str], ...]:
+    """The five lists for one run, before they are turned into rows; `footnote`
+    is the day's Endfield daily key (ledger_report.footnote_tasks)."""
     raw = e.get("raw") or {}
     script = e.get("script")
     rows: tuple[list[str], ...] = ([], [], [], [], [])
@@ -258,7 +261,7 @@ def _rows_for(e: dict, finished: datetime) -> tuple[list[str], ...]:
     elif script == "OK-WW":
         rows = _block_okww(raw, finished)
     elif script == "MaaEnd":
-        rows = _block_maaend(e, raw, finished)
+        rows = _block_maaend(e, raw, finished, footnote)
     return rows
 
 
