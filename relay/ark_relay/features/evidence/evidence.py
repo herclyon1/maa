@@ -44,7 +44,7 @@ from ark_relay.features.evidence.bundles import (
 from ark_relay.features.evidence.logslice import (
     _CTX_TS, _line_ts, context_files, slice_log)
 from ark_relay.features.evidence.sources import (
-    JSDELIVR, LAST_SEEN, PINS, Pin, _HEADER, check_sources, pinned_text, region_text)
+    JSDELIVR, LAST_ERRORS, LAST_SEEN, PINS, Pin, _HEADER, check_sources, pinned_text, region_text)
 from ark_relay.features.evidence.stores import (
     GOFILE, Cos, Gofile, PermanentUploadError)
 
@@ -54,6 +54,7 @@ __all__ = [
     "GOFILE",
     "Gofile",
     "JSDELIVR",
+    "LAST_ERRORS",
     "LAST_SEEN",
     "MAAEND_MAX_IMAGES",
     "MAAEND_MAX_VOLUME",
@@ -360,14 +361,29 @@ def save_and_upload(cfg, script: str, run_id: str, extra: list[Path] = (), *,
 
 
 def prune(state_dir: Path, days: int = 30) -> int:
-    """Delete local evidence folders older than `days`. Returns how many went."""
+    """Delete local evidence folders older than `days`. Returns how many went.
+
+    `daily/` (error_evidence.py) gets new files every day, which keeps the
+    folder's own time fresh: its files are pruned one by one instead (audit
+    s17 F4)."""
     root = state_dir / "evidence"
     if not root.is_dir():
         return 0
     cutoff = time.time() - days * 86400
     n = 0
     for d in root.iterdir():
-        if d.is_dir() and d.stat().st_mtime < cutoff:
+        if d.is_dir() and d.name == "daily":
+            gone = 0
+            for f in d.iterdir():
+                try:
+                    if f.is_file() and f.stat().st_mtime < cutoff:
+                        f.unlink()
+                        gone += 1
+                except OSError:
+                    continue
+            if gone:
+                log.info("清掉 %d 个超过 %d 天的每日日志副本", gone, days)
+        elif d.is_dir() and d.stat().st_mtime < cutoff:
             shutil.rmtree(d, ignore_errors=True)
             n += 1
     return n
