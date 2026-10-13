@@ -749,16 +749,34 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
 
     Returns (changes, note). A key is dead only when its task's definition file
     was read successfully **and** the key is absent from the whole install's
-    option index - a definition file that fails to parse (CreditShopping.json
-    does) must not make its options look dead. MXU's own `__*` tasks are never
-    touched. The file is backed up first and read back after.
+    option index - a definition file that fails to parse must not make its
+    options look dead (9 of MaaEnd v2.32's tasks take options from other files,
+    e.g. StashBackpack.json, Location/*.json). So, as prune_maaend_orphans does,
+    it refuses outright - ([], reason) - when it cannot see every definition:
+    interface.json unreadable (the file list is a guess), a listed file that
+    cannot be opened, or a key it would drop named in a file that does not parse.
+    MXU's own `__*` tasks are never touched. The file is backed up first and
+    read back after.
     """
     f = maaend_master(automas_dir)
     if not f or not f.is_file():
         return [], "找不到 MaaEnd 的母本"
-    opts, tasks = _maaend_defs(maaend_dir)
+    opts, tasks, unread, listed = _read_maaend_defs(maaend_dir)
     if not opts or not tasks:
         return [], "读不到 MaaEnd 的选项定义，不动配置"
+    if not listed:
+        return [], "读不到 MaaEnd 的定义文件清单（interface.json），不知道定义全不全，不动配置"
+    if blind := [x.name for x, text in unread if text is None]:
+        return [], f"MaaEnd 的定义文件打不开（{'、'.join(blind)}），不知道里面有哪些选项，不动配置"
+
+    def unseen(keys) -> "str | None":
+        """The refusal when a key about to be dropped is named in a file that did not parse."""
+        for k in keys:
+            if seen := [x.name for x, text in unread if f'"{k}"' in (text or "")]:
+                return (f"MaaEnd 的「{k}」不在读得出的选项定义里，但读不了的定义文件"
+                        f"（{'、'.join(seen)}）里提到它；定义看不全，就不动配置")
+        return None
+
     zh = _Locale(Path(maaend_dir))
     doc = json.loads(f.read_text(encoding="utf-8"))
     changes: list[str] = []
@@ -801,10 +819,15 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
                     changes.append(line)
                     switched.append(k)
             dead = [k for k in list(ov) if k not in opts]
+            if why := unseen(dead):
+                return [], why
             for k in dead:
                 del ov[k]
             if dead:
                 changes.append(f"{name} 去掉新版本没有的 {len(dead)} 项：{'、'.join(dead)}")
+    if why := unseen(k for e in doc.get("recentlyClosed") or [] for t in e.get("tasks") or []
+                     for k in (t.get("optionValues") or {}) if k not in opts):
+        return [], why
     if dropped := _prune_recently_closed(doc, opts, tasks):
         changes.append(f"清掉界面里 {dropped} 条「最近关闭」的旧记录（全是旧格式的设置）")
     if not changes:
