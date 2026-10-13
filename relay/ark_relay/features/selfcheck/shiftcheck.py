@@ -9,9 +9,9 @@ settings - his 09-11 「管我刷什么干嘛」 - and the daily report is for h
 
 1. MAA's annihilation switch is not "Close" with this game-week not done
    (annihilation.WeeklyGate.switch_off_line - the same rule as the boot alarm);
-2. the one-shot 「下次跑完不关机」 mark is not armed when the shift ends (modes.skip_armed;
+2. (a note, not a fault) the one-shot 「下次跑完不关机」 mark is not armed when the shift ends (modes.skip_armed;
    armed, it skips this shift's power-off and the machine stays on until the next shift);
-3. debug mode is not on (modes.debug_active);
+3. (a note, not a fault) debug mode is not on (modes.debug_active);
 4. no test window run-one.sh opened is still open (report.test_windows).
 
 When: the first tick after a scheduled shift on this boot has every script
@@ -56,8 +56,10 @@ def judge(annihilation_line: "str | None", skip_armed: bool, debug_on: bool, deb
     out: list[Check] = []
     out.append(Check(texts.SHIFTCHECK_ANNIHILATION, None if annihilation_line is None else not annihilation_line,
                      texts.SHIFTCHECK_ANNIHILATION_UNREAD if annihilation_line is None else annihilation_line))
-    out.append(Check(texts.SHIFTCHECK_SKIP, not skip_armed, texts.SHIFTCHECK_SKIP_ON))
-    out.append(Check(texts.SHIFTCHECK_DEBUG, not debug_on, texts.shiftcheck_debug_on(debug_until)))
+    # Items 2 and 3 are switches the owner sets himself (USER-SWITCHES.txt): on, they
+    # hold (ok) and carry a detail, which summary prints as a note, never as 「不对」.
+    out.append(Check(texts.SHIFTCHECK_SKIP, True, texts.SHIFTCHECK_SKIP_ON if skip_armed else ""))
+    out.append(Check(texts.SHIFTCHECK_DEBUG, True, texts.shiftcheck_debug_on(debug_until) if debug_on else ""))
     still = [w for w in windows if isinstance(w, dict) and w.get("until") is None]
     out.append(Check(texts.SHIFTCHECK_TEST_WINDOW, not still,
                      texts.shiftcheck_test_window_on(str(still[0].get("since") or "")) if still else ""))
@@ -67,7 +69,8 @@ def judge(annihilation_line: "str | None", skip_armed: bool, debug_on: bool, deb
 def summary(shift: str, checks: list[Check]) -> str:
     bad = [(c.name, c.detail) for c in checks if c.ok is False]
     unread = [(c.name, c.detail) for c in checks if c.ok is None]
-    return texts.shiftcheck_summary(shift, len(checks), bad, unread)
+    notes = [(c.name, c.detail) for c in checks if c.ok is True and c.detail]
+    return texts.shiftcheck_summary(shift, len(checks), bad, unread, notes)
 
 
 def read(eng, now: datetime) -> list[Check]:

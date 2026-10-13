@@ -626,16 +626,18 @@ def shiftcheck_test_window_on(since: str) -> str:
     return f"{since or '时刻没记'} 起开着，这期间跑的记录不进日报正文"
 
 
-def shiftcheck_summary(shift: str, total: int, bad: list, unread: list) -> str:
+def shiftcheck_summary(shift: str, total: int, bad: list, unread: list, notes: list = ()) -> str:
     """The one line for a shift. `bad` / `unread` are [(item, what was found)] of the
-    items that did not hold / could not be judged."""
+    items that did not hold / could not be judged; `notes` the owner's own switches
+    found on (they hold, and are said as a note, not as 「不对」)."""
     head = f"{SHIFTCHECK_HEAD}{shift}）{total} 项"
+    tail = ("；你自己开着的：" + "；".join(f"{n}：{d.rstrip('。')}" for n, d in notes)) if notes else ""
     if not bad and not unread:
-        return head + "都对"
+        return head + "都对" + tail
     # The details are whole sentences elsewhere (annihilation_off_body); joined with 「；」 here.
     parts = [f"{n}：{d.rstrip('。')}" if d else n for n, d in bad]
     parts += [f"{n}：判不了，{d.rstrip('。')}" if d else f"{n}：判不了" for n, d in unread]
-    return head + f"里 {len(bad)} 项不对、{len(unread)} 项判不了：" + "；".join(parts)
+    return head + f"里 {len(bad)} 项不对、{len(unread)} 项判不了：" + "；".join(parts) + tail
 
 
 def shiftcheck_broken(shift: str) -> str:
@@ -995,10 +997,11 @@ def samples() -> list[str]:
         SELFCHECK_FAILED, selfcheck_failed_body(11, [("读得到每个程序是怎么启动的（系统自带的那条路）", "读不到"), ("调度程序的开机任务计划还在", "退出码 1")]),
         shiftcheck_summary("晚班", 4, [], []),
         shiftcheck_summary("早班", 4, [(SHIFTCHECK_ANNIHILATION, annihilation_off_body("明日方舟 · 剿灭")),
-                                     (SHIFTCHECK_SKIP, SHIFTCHECK_SKIP_ON),
-                                     (SHIFTCHECK_DEBUG, shiftcheck_debug_on("2026-10-11 20:50")),
                                      (SHIFTCHECK_TEST_WINDOW, shiftcheck_test_window_on("2026-10-11 09:12:00"))],
-                           [(SHIFTCHECK_ANNIHILATION, SHIFTCHECK_ANNIHILATION_UNREAD)]),
+                           [(SHIFTCHECK_ANNIHILATION, SHIFTCHECK_ANNIHILATION_UNREAD)],
+                           [(SHIFTCHECK_SKIP, SHIFTCHECK_SKIP_ON),
+                            (SHIFTCHECK_DEBUG, shiftcheck_debug_on("2026-10-11 20:50"))]),
+        shiftcheck_summary("晚班", 4, [], [], [(SHIFTCHECK_SKIP, SHIFTCHECK_SKIP_ON)]),
         shiftcheck_test_window_on(""), shiftcheck_broken("晚班"), OKWW_BATTLE_PASS_UNCLAIMED,
         OKWW_BATTLE_PASS_LABEL, OKWW_BATTLE_PASS_FAILED, OKWW_BATTLE_PASS_RETRIED, OKWW_BATTLE_PASS_UNCHECKED,
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
