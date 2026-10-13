@@ -7,8 +7,12 @@ sanity-task fields are declared as `config.X = ConfigItem` in the module-level
 init_maaend_task_config(config), which MaaEndUserConfig calls with itself, and
 were not read at all. Of the 19 SHOWN fields 7 had no label.
 
-The fixture is the AUTO-MAS app/models/config.py audit 11 ran on (copied
-2026-10-12, unchanged; fixtures/automas-models/config.py.txt). Of the 7, Task.TaskIndex (OK-WW) carries only a `#`
+The fixture is AUTO-MAS app/models/config.py at v5.7.0-beta.2 (ff285a39), the version
+the machine runs since 2026-10-11 08:48 (relay.log 「AUTO-MAS 已更新到 v5.7.0-beta.2」),
+byte-identical to gamesim/upstream/maa-v6.19.0/automas/app/models/config.py.txt. Audit 11
+ran on an older copy that lacked beta.2's Info_IfScriptBeforeTask / ScriptAfterTask,
+Update_*, Embedded_FollowSource and Run_LoopGuard; the labels below are the same on both.
+Of the 7, Task.TaskIndex (OK-WW) carries only a `#`
 comment and Task.IfSanity / Task.IfAutoUseSpMedication are no ConfigItem in
 this file (only schema.py Field descriptions): no `##` label exists for them.
 """

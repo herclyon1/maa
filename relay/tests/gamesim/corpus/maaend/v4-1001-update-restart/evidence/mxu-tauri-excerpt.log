@@ -1,0 +1,13 @@
+[2026-10-01][16:11:07][INFO][mxu_lib::commands::update] cleanup_extract_dir: D:/ark/maaend/cache/update_extract
+[2026-10-01][16:11:07][INFO][mxu_lib::commands::update] extract_zip called: D:/ark/maaend/cache\10697.zip -> D:/ark/maaend/cache/update_extract
+[2026-10-01][16:11:07][INFO][mxu_lib::commands::update] extract_zip success
+[2026-10-01][16:11:07][INFO][mxu_lib::commands::update] apply_incremental_update called
+[2026-10-01][16:11:07][INFO][mxu_lib::commands::update] extract_dir: D:/ark/maaend/cache/update_extract, target_dir: D:\ark\maaend
+[2026-10-01][16:11:07][INFO][mxu_lib::commands::update] deleted_files: []
+[2026-10-01][16:11:07][INFO][mxu_lib::commands::update] Moved to old: D:\ark\maaend\agent\cpp-algo.exe -> D:\ark\maaend\cache\old\cpp-algo.exe
+[2026-10-01][16:11:07][INFO][mxu_lib::commands::update] Moved to old: D:\ark\maaend\agent\go-service.exe -> D:\ark\maaend\cache\old\go-service.exe
+[2026-10-01][16:11:07][INFO][mxu_lib::commands::update] Moved to old: D:\ark\maaend\interface.json -> D:\ark\maaend\cache\old\interface.json
+[2026-10-01][16:11:07][INFO][mxu_lib::commands::update] Moved to old: D:\ark\maaend\README.md -> D:\ark\maaend\cache\old\README.md
+[2026-10-01][16:11:07][INFO][mxu_lib::commands::update] apply_incremental_update success
+[2026-10-01][16:11:07][INFO][mxu_lib::commands::update] cleanup_extract_dir: D:/ark/maaend/cache/update_extract
+[2026-10-01][16:11:07][INFO][mxu_lib::commands::update] Moved to old: D:/ark/maaend/cache\10697.zip -> D:\ark\maaend\cache\old\10697.zip

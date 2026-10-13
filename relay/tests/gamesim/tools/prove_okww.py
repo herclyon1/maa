@@ -11,6 +11,9 @@ moved on 10-10; the module that reads it did not keep the same functions across 
 
     relay-python relay/tests/gamesim/tools/prove_okww.py          # every case
     relay-python relay/tests/gamesim/tools/prove_okww.py 35d6166b # some, by fix commit
+
+A fix committed together with its case cannot name its own hash, so its row says "self":
+the fix is then the first commit that added the row's check label to this file.
 """
 from __future__ import annotations
 
@@ -46,11 +49,24 @@ CASES = [
      "every setting start writes for its teleport target is read on that target's path", None),
     ("85ca8649", "test_gl_okww_config.py", ["overlay"],
      "no overlay read depends on a key ok-script drops at load", None),
+    ("self", "test_gl_okww_config.py", ["echofarm"],
+     "start takes exactly upstream's Boss Challenge list (1..total_boss_number)", None),
 ]
 
 
 def git(*args: str) -> bytes:
     return subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, check=True).stdout
+
+
+def resolve(fix: str, label: str) -> str:
+    """A fix commit; "self" is the first commit that added `label` to this file."""
+    if fix != "self":
+        return fix
+    rel = str(Path(__file__).resolve().relative_to(REPO))
+    shas = git("log", "--reverse", "--format=%H", f"-S{label}", "--", rel).decode().split()
+    if not shas:
+        raise SystemExit(f"'self' row not committed yet: {label}")
+    return shas[0][:8]
 
 
 def tree(rev: str, test: str, overlay_from: "str | None") -> Path:
@@ -83,17 +99,22 @@ def verdict(rev: str, test: str, args: list, label: str, overlay_from: "str | No
 
 
 def main(argv: list[str]) -> int:
-    bad = 0
-    for fix, test, args, label, overlay_from in CASES:
-        if argv and fix not in argv:
+    bad = ran = 0
+    for row_fix, test, args, label, overlay_from in CASES:
+        fix = resolve(row_fix, label)
+        if argv and fix not in argv and row_fix not in argv:
             continue
+        ran += 1
         (before, why), (after, why_after) = (verdict(f"{fix}~1", test, args, label, overlay_from),
                                              verdict(fix, test, args, label, overlay_from))
         ok = before == "red" and after == "green"
         bad += not ok
         print(f"{'✓' if ok else '✗'} {fix}  {test} {' '.join(args)}  {fix}~1 {before}, {fix} {after}\n"
               f"    {fix}~1: {why[:300]}" + ("" if after == "green" else f"\n    {fix}: {why_after[:300]}"))
-    print("all cases red before green" if not bad else f"{bad} cases not red before green")
+    if not ran:
+        print(f"no case matches {argv}")
+        return 1
+    print(f"all {ran} cases red before green" if not bad else f"{bad} of {ran} cases not red before green")
     return 1 if bad else 0
 
 

@@ -1,0 +1,69 @@
+{
+ "05-00-00": {
+  "annihilation": true,
+  "automas_result": "MAA 未能正确登录 PRTS",
+  "evidence": "annihilation: no 剿灭模式 line and no 开始行动 line; done-for-the-week is not asserted here (only the 09-14 incident runs carry evidence for it, see cases.json); refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "05-02-47": {
+  "annihilation": true,
+  "automas_result": "MAA 未能正确登录 PRTS",
+  "evidence": "annihilation: no 剿灭模式 line and no 开始行动 line; done-for-the-week is not asserted here (only the 09-14 incident runs carry evidence for it, see cases.json); refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "05-05-07": {
+  "annihilation": true,
+  "automas_result": "MAA 未能正确登录 PRTS",
+  "evidence": "annihilation: no 剿灭模式 line and no 开始行动 line; done-for-the-week is not asserted here (only the 09-14 incident runs carry evidence for it, see cases.json); refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "05-07-24": {
+  "automas_result": "MAA 未能正确登录 PRTS",
+  "evidence": "refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "05-09-46": {
+  "automas_result": "MAA 未能正确登录 PRTS",
+  "evidence": "refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "05-12-07": {
+  "automas_result": "MAA 未能正确登录 PRTS",
+  "evidence": "refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "09-20-42": {
+  "annihilation": true,
+  "automas_result": "Success!",
+  "evidence": "annihilation: no 剿灭模式 line and no 开始行动 line; done-for-the-week is not asserted here (only the 09-14 incident runs carry evidence for it, see cases.json); refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "09-22-41": {
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "沿途的点滴": 204,
+   "装置": 10,
+   "酮凝集": 8,
+   "龙门币": 2448
+  },
+  "evidence": "drops: AUTO-MAS's own drop_statistics in the .json; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "17-30-00": {
+  "annihilation": true,
+  "automas_result": "Success!",
+  "evidence": "annihilation: no 剿灭模式 line and no 开始行动 line; done-for-the-week is not asserted here (only the 09-14 incident runs carry evidence for it, see cases.json); refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "17-32-17": {
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "沿途的点滴": 84,
+   "装置": 3,
+   "酮凝集": 5,
+   "龙门币": 1008
+  },
+  "evidence": "drops: AUTO-MAS's own drop_statistics in the .json; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ }
+}

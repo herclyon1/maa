@@ -1,0 +1,153 @@
+{
+ "about": "T10 MAA verdicts (design section 3, unit U13c). Every expected value cites evidence outside the relay's code: MAA's own lines (gui log in the AUTO-MAS history, asst.log), AUTO-MAS's own result JSON, or a later run of the same week. Inputs: history/<date>/<stem>.log.gz (AUTO-MAS's copy of MAA's gui log) and asst/<file>.gz (MAA's asst.log cut to the window the relay reads, see SOURCE.txt). Verdicts: a history field is what parse_maa_log returns; 'alarm' is summarize(maa_checks(text), 'MAA') is not None; 'sanity_short' is maa_sanity_short(text). red_at and every also_red commit must fail an assertion and green_at must pass (test_gl_corpus_maa.py --prove).",
+ "cases": [
+  {
+   "id": "T10-1-config-refusal",
+   "incident": "10-10 MAA refused a config field; nothing alarmed",
+   "fix": ["cf246b6f", "3a24b436"],
+   "red_at": "cf246b6f~1",
+   "green_at": "cf246b6f",
+   "note": "3a24b436 wires the alarm onto the field cf246b6f reads; the verdict itself is cf246b6f's.",
+   "checks": [
+    {"input": "history/2026-10-10/MAA-05-00-01", "field": "maa_config_rejected", "contains": ["理智作战", "序列化失败", "YW-4"],
+     "evidence": "MAA gui 09:01:10: [ERR][TaskQueueViewModel] 「理智作战: 理智作战 序列化失败」 then 「已停止」, after 「GetFightStage: from [\"YW-4\"], selected YW-4」; AUTO-MAS result 「MAA 在完成任务前中止」"},
+    {"input": "history/2026-10-10/MAA-05-01-15", "field": "maa_config_rejected", "contains": ["理智作战", "序列化失败", "YW-4"],
+     "evidence": "MAA gui 09:02:14: the same refusal line and 「已停止」; AUTO-MAS 「MAA 在完成任务前中止」"},
+    {"input": "history/2026-10-10/MAA-05-02-18", "field": "maa_config_rejected", "contains": ["理智作战", "序列化失败", "YW-4"],
+     "evidence": "MAA gui 09:03:17: the same refusal line and 「已停止」; AUTO-MAS 「MAA 在完成任务前中止」"}
+   ]
+  },
+  {
+   "id": "T10-2-annihilation-cap",
+   "incident": "08-17 剿灭 closed for the week on MAA's early Success! before the 1800 cap",
+   "fix": ["bf312ba2"],
+   "red_at": "bf312ba2~1",
+   "green_at": "bf312ba2",
+   "note": "Before bf312ba2 the parser said done = (no sanity spent) and the engine closed the week on any annihilation record; the parser verdict is what this case pins.",
+   "checks": [
+    {"input": "history/2026-08-17/05-00-00", "field": "annihilation_progress", "want": [1800, 1800],
+     "evidence": "MAA gui: last line 「剿灭模式 : 1800 / 1800」 after five 「开始行动」 sorties"},
+    {"input": "history/2026-08-17/05-00-00", "field": "annihilation_done", "want": true,
+     "evidence": "MAA gui: 「剿灭模式 : 1800 / 1800」, the weekly cap reached"},
+    {"input": "history/2026-08-24/MAA-05-00-01", "field": "annihilation_progress", "want": [1480, 1800],
+     "evidence": "MAA gui: last line 「剿灭模式 : 1480 / 1800」 after four sorties; AUTO-MAS 「Success!」"},
+    {"input": "history/2026-08-24/MAA-05-00-01", "field": "annihilation_done", "want": false,
+     "evidence": "MAA stopped at 1480 / 1800; the same day's 17:30 run (history/2026-08-24/MAA-17-30-00) fought one more sortie to 「1800 / 1800」, so the week was not done in the morning"},
+    {"input": "history/2026-09-21/MAA-05-00-02", "field": "annihilation_progress", "want": [1480, 1800],
+     "evidence": "MAA gui: last line 「剿灭模式 : 1480 / 1800」; AUTO-MAS 「Success!」"},
+    {"input": "history/2026-09-21/MAA-05-00-02", "field": "annihilation_done", "want": false,
+     "evidence": "the same day's 17:30 run (history/2026-09-21/MAA-17-30-02) fought one more sortie to 「1800 / 1800」"}
+   ]
+  },
+  {
+   "id": "T10-3-drop-running-totals",
+   "incident": "08-20 TO-5 running drop totals summed (3888 reported, 2448 dropped)",
+   "fix": ["35301350"],
+   "red_at": "35301350~1",
+   "green_at": "35301350",
+   "checks": [
+    {"input": "history/2026-08-20/09-22-41", "field": "drop_statistics", "want": {"龙门币": 2448, "沿途的点滴": 204, "装置": 10, "酮凝集": 8},
+     "evidence": "AUTO-MAS's own drop_statistics for TO-5 in 09-22-41.json; MAA gui 13:28:55 block 「龙门币 : 2448 (+1008)」 after 13:26:28 「龙门币 : 1440 (+1440)」 (running totals)"}
+   ]
+  },
+  {
+   "id": "T10-4-infrast-recovery-is-not-failure",
+   "incident": "08-29 infrast failure recorded all green two days running; 08-30 first fix misread on_run_fails",
+   "fix": ["ea143346", "2771a49e", "701a6216"],
+   "red_at": "701a6216~1",
+   "green_at": "701a6216",
+   "also_red": ["ea143346", "2771a49e"],
+   "note": "The incident's own conclusion (2771a49e) is that on_run_fails is a per-facility recovery, not a failure, so the right verdict on such a run is no alarm. ea143346 (first MAA check) and 2771a49e (reworded) still alarm on it; 701a6216 (judge by task-chain pairs) is the commit that turns it green. At ea143346~1 there was no MAA check at all, which also says no alarm, so ea143346~1 cannot be red on this input; no pulled asst.log holds a real chain failure under an AUTO-MAS 「Success!」 (searched 09-13..09-22 and 10-10..10-13: the only TaskChainError is a hand-run Copilot).",
+   "checks": [
+    {"input": "asst/0914-MAA-05-07-00.asst.log", "verdict": "alarm", "want": false,
+     "evidence": "MAA asst 09:14:19 「InfrastAbstractTask::on_run_fails | enter」, then TaskChainCompleted Infrast 09:16:28, Recruit, Mall, Award, AllTasksCompleted [1,2,3,4,5], CloseDown completed 09:18:58; AUTO-MAS 「Success!」"}
+   ]
+  },
+  {
+   "id": "T10-5-window-reaches-next-run",
+   "incident": "08-30 start marker with no end swept the next rounds (72810 lines); 08-31 the 5-minute slack reached the next run's Infrast start",
+   "fix": ["8fe05eba"],
+   "red_at": "8fe05eba~1",
+   "green_at": "8fe05eba",
+   "note": "MAA's asst.log of 08-30 / 08-31 is gone (the oldest pulled asst.log starts 09-13 21:38), so the input is the same shape on 09-14: two runs 2.5 min apart, the 5-minute slack reaching the next run's StartUp and Infrast start. The unbounded window of 08-30 (701a6216 added the upper bound in gamelogs._maa_app_log) is outside collector_maa / outcome; at outcome level the cut at the next StartUp covers it.",
+   "checks": [
+    {"input": "asst/0914-MAA-17-30-02.asst.log", "verdict": "alarm", "want": false,
+     "evidence": "this run's StartUp, Fight, CloseDown all TaskChainCompleted by 21:33:31 (AllTasksCompleted); the window ends 21:38:30 (last gui line 21:33:30 + 5 min) and holds the next run's StartUp 21:33:55 and Infrast start 21:37:02, whose TaskChainCompleted is at 21:44:15; AUTO-MAS 「Success!」 for both runs"},
+    {"input": "asst/0914-MAA-05-04-50.asst.log", "verdict": "alarm", "want": false,
+     "evidence": "this run's StartUp, Fight, CloseDown all TaskChainCompleted by 09:06:57; the window ends 09:11:56 and holds the next run's StartUp 09:07:58 and Infrast start 09:08:49, completed at 09:16:28"}
+   ]
+  },
+  {
+   "id": "T10-6-sanity-short",
+   "incident": "09-14 Monday re-arm: three 20 s attempts at 17/25 sanity each booked a failure + evidence bundle",
+   "fix": ["a0c23e1d"],
+   "red_at": "a0c23e1d~1",
+   "green_at": "a0c23e1d",
+   "checks": [
+    {"input": "asst/0914-MAA-05-00-01.asst.log", "verdict": "sanity_short", "subset": {"cost": 25},
+     "evidence": "MAA asst 09:02:18 「analyze_sanity_remain Current Sanity: 17 , Max Sanity: 210」 and SubTaskExtraInfo sanity_cost 25, times_finished 0; no 开始行动 in the gui log; AUTO-MAS 「MAA 部分任务执行失败」, sanity 17"},
+    {"input": "asst/0914-MAA-05-02-33.asst.log", "verdict": "sanity_short", "subset": {"cost": 25},
+     "evidence": "MAA asst 09:04:35 Current Sanity: 17, sanity_cost 25, times_finished 0; AUTO-MAS sanity 17"},
+    {"input": "asst/0914-MAA-05-04-50.asst.log", "verdict": "sanity_short", "subset": {"have": 18, "cost": 25},
+     "evidence": "MAA asst 09:06:45 Current Sanity: 18, sanity_cost 25, times_finished 0; AUTO-MAS sanity 18"}
+   ]
+  },
+  {
+   "id": "T10-7-annihilation-no-progress",
+   "incident": "09-14 three 17/25-sanity runs with no 剿灭 progress line booked annihilation_done",
+   "fix": ["b321aeca"],
+   "red_at": "b321aeca~1",
+   "green_at": "b321aeca",
+   "checks": [
+    {"input": "history/2026-09-14/MAA-05-00-01", "field": "annihilation_done", "want": false,
+     "evidence": "MAA gui: 剿灭作战 finished in 19 s with 「理智: 17/210」, no 开始行动 and no 剿灭模式 line; that evening history/2026-09-14/MAA-17-30-02 fought four sorties to 「1800 / 1800」, so the week was not done"},
+    {"input": "history/2026-09-14/MAA-05-02-33", "field": "annihilation_done", "want": false,
+     "evidence": "same as 05-00-01: no sortie, AUTO-MAS sanity 17; the evening run reached 1800 / 1800"},
+    {"input": "history/2026-09-14/MAA-05-04-50", "field": "annihilation_done", "want": false,
+     "evidence": "same: no sortie, AUTO-MAS sanity 18; the evening run reached 1800 / 1800"}
+   ]
+  },
+  {
+   "id": "T10-8-stop-receipt-after-completion",
+   "incident": "09-22 21:47 stop receipt after a completed chain reported as aborted",
+   "fix": ["ff002a7b"],
+   "red_at": "ff002a7b~1",
+   "green_at": "ff002a7b",
+   "checks": [
+    {"input": "asst/0922-MAA-17-30-02.asst.log", "verdict": "alarm", "want": false,
+     "evidence": "MAA asst: TaskChainCompleted CloseDown 21:47:10.864, then TaskChainStopped {\"finished_tasks\":[7],\"taskchain\":\"CloseDown\"} 21:47:11.351; every chain StartUp..Award completed; AUTO-MAS 「Success!」. The relay's 21:47:18 alarm said 「CloseDown(被中止)」 (relay.log in the 09-22 evidence bundle)"}
+   ]
+  },
+  {
+   "id": "T10-9-rounded-drop-totals",
+   "incident": "08-14 TO-5 and 08-26 AT-4: MAA printed running totals of 10000 and up rounded (「10.1k (+1440)」, 「13k (+1440)」); that line ended the drop block, so every later total kept an old value (08-26: 龙门币 8640 instead of 12096, 艺人见面抽选券 720 instead of 1008)",
+   "fix": ["self"],
+   "red_at": "self~1",
+   "green_at": "self",
+   "note": "'self' is the commit that added this case (test_gl_corpus_maa.resolve). Labels are MAA's last exact total plus the exact (+N) deltas printed after it, the sum MAA's totals are (08-26: 1440 x 8 + 576 = 12096, printed 「12.1k (+576)」; 08-14: 17856, printed 「17.9k (+576)」).",
+   "checks": [
+    {"input": "history/2026-08-14/02-45-09", "field": "drop_statistics", "want": "bulk",
+     "evidence": "history/2026-08-14/expected.json"},
+    {"input": "history/2026-08-26/MAA-11-03-30", "field": "drop_statistics", "want": "bulk",
+     "evidence": "history/2026-08-26/expected.json"}
+   ]
+  },
+  {
+   "id": "T10-10-sanity-short-this-run",
+   "incident": "09-14 09:02 and 09:04: two attempts that read 17 sanity were reported as 18 / 25, the third attempt's reading, because maa_sanity_short read the window past the next run's StartUp",
+   "fix": ["self"],
+   "red_at": "self~1",
+   "green_at": "self",
+   "note": "'self' is the commit that added this case (test_gl_corpus_maa.resolve). T10-6 checks that the verdict exists; this case checks it reads its own run.",
+   "checks": [
+    {"input": "asst/0914-MAA-05-00-01.asst.log", "verdict": "sanity_short", "subset": {"have": 17},
+     "evidence": "MAA asst 09:02:18/21/25 「Current Sanity: 17」 (this run); 「Current Sanity: 18」 is the third attempt at 09:06:45; AUTO-MAS sanity 17"},
+    {"input": "asst/0914-MAA-05-02-33.asst.log", "verdict": "sanity_short", "subset": {"have": 17},
+     "evidence": "MAA asst 09:04:35/38/42 「Current Sanity: 17」; AUTO-MAS sanity 17"},
+    {"input": "asst/0914-MAA-05-04-50.asst.log", "verdict": "sanity_short", "subset": {"have": 18},
+     "evidence": "MAA asst 09:06:45 Current Sanity: 18 (the third attempt reads its own 18); AUTO-MAS sanity 18"}
+   ]
+  }
+ ],
+ "live_bugs": []
+}

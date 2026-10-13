@@ -1,0 +1,17 @@
+{
+    "recruit_statistics": {
+        "4★": 2,
+        "3★": 2
+    },
+    "drop_statistics": {
+        "TO-5": {
+            "龙门币": 2448,
+            "沿途的点滴": 204,
+            "装置": 10,
+            "酮凝集": 8
+        }
+    },
+    "sanity": 6,
+    "sanity_full_at": "理智将在 2026-08-21 09:53 回满。(20h 13m 后)",
+    "maa_result": "Success!"
+}

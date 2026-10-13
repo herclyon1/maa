@@ -1,0 +1,22 @@
+{
+ "failure": "09-11 V5: the 10:01 gathering run skipped by its weekday schedule was judged 「没走路线」 (a false alarm on a correct quick finish)",
+ "fix": "a8e10d01",
+ "checks": [
+  {
+   "probe": "outcome",
+   "log": "automas/history/2026-09-11/endfield/MaaEnd-06-01-33.log",
+   "on_error_names": [],
+   "want": {
+    "check:自动采集": true
+   },
+   "evidence": {
+    "check:自动采集": "MaaEnd's own task said it was not due: 「[2026-09-11 10:01:51.482] 现在游戏时间是周五，根据执行周期跳过任务」 (line 14) between 自动采集's start and its 「任务完成」; the closing task 结束进程 completed (line 19). Nothing was left undone"
+   }
+  }
+ ],
+ "mtimes": {
+  "automas/history/2026-09-11/endfield/MaaEnd-06-01-33.json": 1789092114,
+  "automas/history/2026-09-11/endfield/MaaEnd-06-01-33.log": 1789092114
+ },
+ "not_asserted": "fault (the run as a whole): the relay judged it on this log plus MaaEnd's own app log for the run (handle._verify_outcome: text + _maaend_app_log), which MaaEnd has since deleted; without it the 「MaaEnd 跑完」 check cannot be judged, so only the gathering check is asserted"
+}

@@ -1,0 +1,23 @@
+{
+ "failure": "10-06 V3: a MaaEnd that stopped between tasks was booked as a finished round (every task that started had also completed, so AUTO-MAS's 「部分任务执行失败」 was overruled)",
+ "fix": "e539a57f",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-10-08/endfield/MaaEnd-06-31-06.json",
+   "want": {
+    "ok": false
+   },
+   "evidence": {
+    "ok": "MXU submitted 16 tasks (maaend/debug/2026-10-08-4.log:259-260 「实例 AUTO-MAS: 开始执行任务, 数量: 16」, the last one CloseGamePC) and closed itself after two of them (:285 「2026-10-08 10:34:16 INFO [App] 自动执行任务完成，关闭自身」); the record's log has only 赠送干员礼物 and 装备制造 completing, then 「任务开始: 停止任务」; the 13 tasks AUTO-MAS lists as failed (拜访好友 ... 日常奖励领取) never started"
+   }
+  }
+ ],
+ "note": "e539a57f was found by audit on 10-06 and its own test used prefixes of a real log; the machine's first real record of this shape is this 10-08 06:31 run, two days after the fix went in. At e539a57f~1 it would have been booked green.",
+ "mtimes": {
+  "automas/history/2026-10-08/endfield/MaaEnd-06-31-06.json": 1791429171,
+  "automas/history/2026-10-08/endfield/MaaEnd-06-31-06.log": 1791429171,
+  "maaend/debug/2026-10-08-4.log": 1791426856,
+  "maaend/debug/2026-10-08-3.log": 1791426642
+ }
+}

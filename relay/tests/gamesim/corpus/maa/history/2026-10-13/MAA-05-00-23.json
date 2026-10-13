@@ -1,0 +1,17 @@
+{
+    "recruit_statistics": {
+        "3★": 2,
+        "4★": 1
+    },
+    "drop_statistics": {
+        "YW-4": {
+            "龙门币": 3888,
+            "“未来瞻望镜”": 324,
+            "固源岩": 46,
+            "酮凝集": 14
+        }
+    },
+    "sanity": 3,
+    "sanity_full_at": "理智将在 2026-10-14 05:50 回满。(20h 30m 后)",
+    "maa_result": "Success!"
+}

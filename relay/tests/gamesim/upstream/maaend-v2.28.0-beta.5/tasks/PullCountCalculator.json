@@ -1,0 +1,23 @@
+{
+    "task": [
+        {
+            "name": "PullCountCalculator",
+            "label": "$task.PullCountCalculator.label",
+            "entry": "PullCountCalculatorMain",
+            "description": "$task.PullCountCalculator.description",
+            "controller": [
+                "ADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "PlayCover",
+                "Win32-Front"
+            ],
+            "group": [
+                "other_menu"
+            ]
+        }
+    ]
+}

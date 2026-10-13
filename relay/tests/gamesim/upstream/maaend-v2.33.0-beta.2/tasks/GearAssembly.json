@@ -1,0 +1,107 @@
+{
+    "task": [
+        {
+            "name": "GearAssembly",
+            "label": "$task.GearAssembly.label",
+            "entry": "GearAssemblyStart",
+            "description": "$task.GearAssembly.description",
+            "group": [
+                "valuables_vault"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "PlayCover",
+                "Win32-Front"
+            ],
+            "option": [
+                "GearAssemblyType",
+                "GearAssemblySortOrder"
+            ]
+        }
+    ],
+    "option": {
+        "GearAssemblySortOrder": {
+            "type": "select",
+            "label": "$task.GearAssembly.option.GearAssemblySortOrder.label",
+            "cases": [
+                {
+                    "name": "Lower",
+                    "label": "$task.GearAssembly.option.GearAssemblySortOrder.cases.Lower.label",
+                    "pipeline_override": {
+                        "GearAssemblySwitchAscending": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "Higher",
+                    "label": "$task.GearAssembly.option.GearAssemblySortOrder.cases.Higher.label",
+                    "pipeline_override": {
+                        "GearAssemblySwitchAscending": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "Lower"
+        },
+        "GearAssemblyType": {
+            "type": "select",
+            "label": "$task.GearAssembly.option.GearAssemblyType.label",
+            "cases": [
+                {
+                    "name": "BasicGear",
+                    "label": "$task.GearAssembly.option.GearAssemblyType.cases.BasicGear.label",
+                    "pipeline_override": {
+                        "GearAssemblyBasicGear": {
+                            "enabled": true
+                        },
+                        "GearAssemblySetGear": {
+                            "enabled": false
+                        },
+                        "GearAssemblyNonsetGear": {
+                            "enabled": false
+                        }
+                    }
+                },
+                {
+                    "name": "SetGear",
+                    "label": "$task.GearAssembly.option.GearAssemblyType.cases.SetGear.label",
+                    "pipeline_override": {
+                        "GearAssemblyBasicGear": {
+                            "enabled": false
+                        },
+                        "GearAssemblySetGear": {
+                            "enabled": true
+                        },
+                        "GearAssemblyNonsetGear": {
+                            "enabled": false
+                        }
+                    }
+                },
+                {
+                    "name": "NonsetGear",
+                    "label": "$task.GearAssembly.option.GearAssemblyType.cases.NonsetGear.label",
+                    "pipeline_override": {
+                        "GearAssemblyBasicGear": {
+                            "enabled": false
+                        },
+                        "GearAssemblySetGear": {
+                            "enabled": false
+                        },
+                        "GearAssemblyNonsetGear": {
+                            "enabled": true
+                        }
+                    }
+                }
+            ],
+            "default_case": "SetGear"
+        }
+    }
+}

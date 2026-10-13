@@ -358,7 +358,13 @@ _MAA_COST = re.compile(r'"sanity_cost":(\d+),"series":\d+,"times_finished":(\d+)
 
 
 def maa_sanity_short(text: str) -> "dict | None":
-    """{'have': 17, 'cost': 25} when the Fight chain never ran because sanity was below the cost; else None."""
+    """{'have': 17, 'cost': 25} when the Fight chain never ran because sanity was below the cost; else None.
+
+    Read from this run only (`_one_run_only`, as maa_checks): the caller's window reaches
+    5 minutes past the end, and on 2026-09-14 that held the next attempt's 「Current
+    Sanity: 18」, so the 09:02 and 09:04 attempts, which read 17, were reported as 18.
+    """
+    text = _one_run_only(text)
     have = [int(m.group(1)) for m in _MAA_SANITY.finditer(text)]
     costs = [(int(m.group(1)), int(m.group(2))) for m in _MAA_COST.finditer(text)]
     if not have or not costs:

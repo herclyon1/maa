@@ -1,0 +1,70 @@
+[2026-09-02 09:42:32.519] 正在连接窗口... Endfield
+[2026-09-02 09:42:32.761] 窗口连接成功: Endfield
+[2026-09-02 09:42:32.826] 已连接控制器 [电脑端-前台]
+[2026-09-02 09:42:32.826] 稳定性最好，需要游戏窗口保持在最前且不被遮挡，会完全抢占鼠标
+[2026-09-02 09:42:33.409] 检测到快捷键: （开始任务）
+[2026-09-02 09:42:33.504] 前置程序 Endfield.exe 已在运行，跳过执行
+[2026-09-02 09:42:33.537] 正在等待窗口「Endfield」就绪...
+[2026-09-02 09:42:33.546] 窗口已就绪
+[2026-09-02 09:42:39.068] 正在连接窗口... Endfield
+[2026-09-02 09:42:39.092] 窗口连接成功: Endfield
+[2026-09-02 09:42:39.162] 等待 5 秒后连接...
+[2026-09-02 09:42:44.646] 正在加载资源: 通用资源（目前仅简中支持较好）
+[2026-09-02 09:42:45.356] 资源加载成功: 通用资源（目前仅简中支持较好）
+[2026-09-02 09:42:46.533] 任务开始: 🎁赠送干员礼物
+[2026-09-02 09:42:50.804][ERR][Px18160][Tx1500][ScreenDCScreencap.cpp][L28][MaaNS::CtrlUnitNs::ScreenDCScreencap::screencap] GetWindowRect failed, error code:  1400 
+[2026-09-02 09:42:50.804][ERR][Px18160][Tx1500][Win32ControlUnitMgr.cpp][L291][MaaNS::CtrlUnitNs::Win32ControlUnitMgr::screencap] failed to screencap 
+[2026-09-02 09:42:50.804][ERR][Px18160][Tx1500][ControllerAgent.cpp][L800][MaaNS::ControllerNS::ControllerAgent::handle_screencap] controller screencap failed 
+[2026-09-02 09:42:51.817][ERR][Px18160][Tx1500][ScreenDCScreencap.cpp][L28][MaaNS::CtrlUnitNs::ScreenDCScreencap::screencap] GetWindowRect failed, error code:  1400 
+[2026-09-02 09:42:51.817][ERR][Px18160][Tx1500][Win32ControlUnitMgr.cpp][L291][MaaNS::CtrlUnitNs::Win32ControlUnitMgr::screencap] failed to screencap 
+[2026-09-02 09:42:51.817][ERR][Px18160][Tx1500][ControllerAgent.cpp][L800][MaaNS::ControllerNS::ControllerAgent::handle_screencap] controller screencap failed 
+[2026-09-02 09:42:52.822][ERR][Px18160][Tx1500][ScreenDCScreencap.cpp][L28][MaaNS::CtrlUnitNs::ScreenDCScreencap::screencap] GetWindowRect failed, error code:  1400 
+[2026-09-02 09:42:52.822][ERR][Px18160][Tx1500][Win32ControlUnitMgr.cpp][L291][MaaNS::CtrlUnitNs::Win32ControlUnitMgr::screencap] failed to screencap 
+[2026-09-02 09:42:52.822][ERR][Px18160][Tx1500][ControllerAgent.cpp][L800][MaaNS::ControllerNS::ControllerAgent::handle_screencap] controller screencap failed 
+[2026-09-02 09:43:11.335] 任务失败: 🎁赠送干员礼物
+[2026-09-02 09:43:11.360] 任务开始: 🔧装备制造
+[2026-09-02 09:43:11.390] 欢迎 点击这里 或在设置-关于-用户群进行反馈。
+[2026-09-02 09:43:12.871][ERR][Px18160][Tx1500][AgentClient.cpp][L2744][MaaNS::AgentNS::ClientNS::AgentClient::ctrl_event_sink] server is not alive [pthis->ipc_addr_=ipc://C:/Temp/maafw-agent-9696b59d-bbcb-417b-9818-c1e22e674423.sock] 
+[2026-09-02 09:43:12.871][ERR][Px18160][Tx1500][AgentClient.cpp][L2744][MaaNS::AgentNS::ClientNS::AgentClient::ctrl_event_sink] server is not alive [pthis->ipc_addr_=ipc://C:/Temp/maafw-agent-9696b59d-bbcb-417b-9818-c1e22e674423.sock] 
+[2026-09-02 09:43:12.871][ERR][Px18160][Tx1500][AgentClient.cpp][L2744][MaaNS::AgentNS::ClientNS::AgentClient::ctrl_event_sink] server is not alive [pthis->ipc_addr_=ipc://C:/Temp/maafw-agent-9696b59d-bbcb-417b-9818-c1e22e674423.sock] 
+[2026-09-02 09:43:31.441][ERR][Px18160][Tx504][AgentClient.cpp][L2810][MaaNS::AgentNS::ClientNS::AgentClient::ctx_event_sink] server is not alive [pthis->ipc_addr_=ipc://C:/Temp/maafw-agent-9696b59d-bbcb-417b-9818-c1e22e674423.sock] 
+[2026-09-02 09:43:31.441][ERR][Px18160][Tx504][AgentClient.cpp][L2810][MaaNS::AgentNS::ClientNS::AgentClient::ctx_event_sink] server is not alive [pthis->ipc_addr_=ipc://C:/Temp/maafw-agent-4de5b7cc-92ac-4791-b281-0f58f6966b72.sock] 
+[2026-09-02 09:43:31.489][ERR][Px18160][Tx504][AgentClient.cpp][L2777][MaaNS::AgentNS::ClientNS::AgentClient::tasker_event_sink] server is not alive [pthis->ipc_addr_=ipc://C:/Temp/maafw-agent-9696b59d-bbcb-417b-9818-c1e22e674423.sock] 
+[2026-09-02 09:43:31.489][ERR][Px18160][Tx504][AgentClient.cpp][L2777][MaaNS::AgentNS::ClientNS::AgentClient::tasker_event_sink] server is not alive [pthis->ipc_addr_=ipc://C:/Temp/maafw-agent-4de5b7cc-92ac-4791-b281-0f58f6966b72.sock] 
+[2026-09-02 09:43:31.492] 任务失败: 🔧装备制造
+[2026-09-02 09:43:31.540][ERR][Px18160][Tx504][AgentClient.cpp][L2777][MaaNS::AgentNS::ClientNS::AgentClient::tasker_event_sink] server is not alive [pthis->ipc_addr_=ipc://C:/Temp/maafw-agent-9696b59d-bbcb-417b-9818-c1e22e674423.sock] 
+[2026-09-02 09:43:31.541][ERR][Px18160][Tx504][AgentClient.cpp][L2810][MaaNS::AgentNS::ClientNS::AgentClient::ctx_event_sink] server is not alive [pthis->ipc_addr_=ipc://C:/Temp/maafw-agent-9696b59d-bbcb-417b-9818-c1e22e674423.sock] 
+[2026-09-02 09:43:31.542] 任务开始: 🤝拜访好友
+[2026-09-02 09:43:51.776] 任务失败: 🤝拜访好友
+[2026-09-02 09:43:51.804] 任务开始: 🎁基建任务
+[2026-09-02 09:44:11.897] 未识别到进入基建入口
+[2026-09-02 09:44:11.940] 任务失败: 🎁基建任务
+[2026-09-02 09:44:11.969] 任务开始: 🛍️信用点购物
+[2026-09-02 09:44:32.116] 任务失败: 🛍️信用点购物
+[2026-09-02 09:44:32.143] 任务开始: 🚚转交委托
+[2026-09-02 09:44:52.229] 任务失败: 🚚转交委托
+[2026-09-02 09:44:52.263] 任务开始: 🛒售卖产品
+[2026-09-02 09:45:12.648] 任务失败: 🛒售卖产品
+[2026-09-02 09:45:12.679] 任务开始: 🌿环境监测
+[2026-09-02 09:45:33.002] 任务失败: 🌿环境监测
+[2026-09-02 09:45:33.028] 任务开始: 📦自动囤货
+[2026-09-02 09:45:53.332] 任务失败: 📦自动囤货
+[2026-09-02 09:45:53.363] 任务开始: 💰售卖弹性物资
+[2026-09-02 09:46:14.135] 任务失败: 💰售卖弹性物资
+[2026-09-02 09:46:14.164] 任务开始: 🏪购买稳定物资
+[2026-09-02 09:46:34.309] 任务失败: 🏪购买稳定物资
+[2026-09-02 09:46:34.342] 任务开始: 💊应急理智加强剂
+[2026-09-02 09:46:54.451] 任务失败: 💊应急理智加强剂
+[2026-09-02 09:46:54.481] 任务开始: 🗡️选剑演武
+[2026-09-02 09:47:14.601] 任务失败: 🗡️选剑演武
+[2026-09-02 09:47:14.628] 任务开始: 🎱基质刷取
+[2026-09-02 09:47:34.787] 任务失败: 🎱基质刷取
+[2026-09-02 09:47:34.813] 任务开始: 🧺自动采集
+[2026-09-02 09:47:54.966] 任务失败: 🧺自动采集
+[2026-09-02 09:47:54.994] 任务开始: 📅日常奖励领取
+[2026-09-02 09:48:15.125] 任务失败: 📅日常奖励领取
+[2026-09-02 09:48:15.188] 正在连接窗口... Endfield
+[2026-09-02 09:48:15.214] 窗口连接成功: Endfield
+[2026-09-02 09:48:15.395] 任务开始: ⛔ 结束进程
+[2026-09-02 09:48:15.476] 已通过快捷键开始任务：
+[2026-09-02 09:48:15.907] 任务失败: ⛔ 结束进程

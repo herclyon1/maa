@@ -1,0 +1,46 @@
+{
+ "failure": "10-01 V4: the MaaEnd attempt spent installing MaaEnd's own update (16:11, v2.31.0-beta.5 -> beta.6) was booked as a failure of all 15 tasks",
+ "fix": "bf99d62d",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-10-01/endfield/MaaEnd-12-10-02.json",
+   "want": {
+    "transitional": true,
+    "raw.maaend_update_restart": "v2.31.0-beta.6"
+   },
+   "evidence": {
+    "transitional": "the 16:11 attempt was MaaEnd installing its update and exiting: mxu-tauri.log 「[2026-10-01][16:11:07] ... apply_incremental_update called」 .. 「apply_incremental_update success」 on cache\\10697.zip (evidence/mxu-tauri-excerpt.log), MXU's app log 「16:11:06 检测到待安装更新: v2.31.0-beta.6」 .. 「16:11:07 更新安装完成」, and AUTO-MAS's app.log 「2026-10-01 16:11:08.823 | MaaEnd 主进程已退出，退出码: 0」 two seconds after launch, before any task; the record's log is the four connect lines of 16:11:06 and nothing else; the next attempt (MaaEnd-12-11-12) is 「Success!」",
+    "raw.maaend_update_restart": "MXU's app log 「2026-10-01 16:11:06 INFO  [App] 检测到待安装更新: v2.31.0-beta.6」 then 「16:11:07 更新安装完成」 (maaend/debug/2026-10-01-4.log, see excerpts)"
+   }
+  },
+  {
+   "probe": "ledger",
+   "records": [
+    "automas/history/2026-10-01/endfield/MaaEnd-11-23-07.json",
+    "automas/history/2026-10-01/endfield/MaaEnd-12-10-02.json",
+    "automas/history/2026-10-01/endfield/MaaEnd-12-11-12.json"
+   ],
+   "want": {
+    "automas/history/2026-10-01/endfield/MaaEnd-12-10-02.json|kind": "update"
+   },
+   "evidence": {
+    "automas/history/2026-10-01/endfield/MaaEnd-12-10-02.json|kind": "the 16:11 attempt was MaaEnd installing its update and exiting: mxu-tauri.log 「[2026-10-01][16:11:07] ... apply_incremental_update called」 .. 「apply_incremental_update success」 on cache\\10697.zip (evidence/mxu-tauri-excerpt.log), MXU's app log 「16:11:06 检测到待安装更新: v2.31.0-beta.6」 .. 「16:11:07 更新安装完成」, and AUTO-MAS's app.log 「2026-10-01 16:11:08.823 | MaaEnd 主进程已退出，退出码: 0」 two seconds after launch, before any task; the record's log is the four connect lines of 16:11:06 and nothing else; the next attempt (MaaEnd-12-11-12) is 「Success!」"
+   }
+  }
+ ],
+ "excerpts": {
+  "maaend/debug/2026-10-01-3.log": "MXU's app log lines quoted verbatim from D:/ark/maaend/debug/2026-10-01-3.log in bf99d62d:relay/tests/test_maaend_update_restart.py (the file itself is gone: MaaEnd clears debug/ on restart, the pull starts at 10-07)",
+  "maaend/debug/2026-10-01-4.log": "same, from D:/ark/maaend/debug/2026-10-01-4.log; corroborated by evidence/mxu-tauri-excerpt.log",
+  "evidence/mxu-tauri-excerpt.log": "lines 3138-3150 of the mxu-tauri.log the relay saved in its evidence bundle 2026-10-01_endfield_MaaEnd-12-10-02, verbatim; not read by the relay, kept as evidence"
+ },
+ "mtimes": {
+  "automas/history/2026-10-01/endfield/MaaEnd-11-23-07.json": 1790846863,
+  "automas/history/2026-10-01/endfield/MaaEnd-11-23-07.log": 1790846863,
+  "automas/history/2026-10-01/endfield/MaaEnd-12-10-02.json": 1790846863,
+  "automas/history/2026-10-01/endfield/MaaEnd-12-10-02.log": 1790846863,
+  "automas/history/2026-10-01/endfield/MaaEnd-12-11-12.json": 1790846863,
+  "automas/history/2026-10-01/endfield/MaaEnd-12-11-12.log": 1790846863
+ },
+ "not_asserted": "MaaEnd-11-23-07 (the 15:24 timeout before it) is a real failure, not part of the update episode (the 15:24 attempt is a real failure: its log stops mid-task at 15:29:59 and AUTO-MAS killed it at 16:10:00 (「MaaEnd 进程超时」); MXU only downloaded the update during it (2026-10-01-3.log 「15:24:14 已保存待安装更新信息」), nothing was installed); bf99d62d itself still folded it into the episode, a later commit narrowed that, so it is not asserted in this case"
+}

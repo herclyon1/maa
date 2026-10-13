@@ -1,0 +1,231 @@
+{
+    "task": [
+        {
+            "name": "AutoSell",
+            "label": "$task.AutoSell.label",
+            "entry": "AutoSellMain",
+            "group": [
+                "regional_development"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "PlayCover",
+                "Win32-Front"
+            ],
+            "option": [
+                "AutoSellValleyIV",
+                "AutoSellWuling",
+                "AutoSellPriceType"
+            ]
+        }
+    ],
+    "option": {
+        "AutoSellValleyIV": {
+            "type": "switch",
+            "label": "$global.region.ValleyIV",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "AutoSellTicketOverflowValleyIV"
+                    ],
+                    "pipeline_override": {
+                        "AutoSellScanValleyIVMain": {
+                            "enabled": true
+                        },
+                        "AutoSellExecuteValleyIVMain": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoSellScanValleyIVMain": {
+                            "enabled": false
+                        },
+                        "AutoSellExecuteValleyIVMain": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoSellWuling": {
+            "type": "switch",
+            "label": "$global.region.Wuling",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "AutoSellTicketOverflowWuling"
+                    ],
+                    "pipeline_override": {
+                        "AutoSellScanWulingMain": {
+                            "enabled": true
+                        },
+                        "AutoSellExecuteWulingMain": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoSellScanWulingMain": {
+                            "enabled": false
+                        },
+                        "AutoSellExecuteWulingMain": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoSellPriceType": {
+            "type": "select",
+            "label": "$option.AutoSellPriceType.label",
+            "cases": [
+                {
+                    "name": "AutoSellPriceTypeGlobal",
+                    "label": "$option.AutoSellPriceTypeGlobal.label",
+                    "option": [
+                        "AutoSellPriceGlobal"
+                    ]
+                },
+                {
+                    "name": "AutoSellPriceTypePerCategory",
+                    "label": "$option.AutoSellPriceTypePerCategory.label",
+                    "option": [
+                        "AutoSellPricePerCategory"
+                    ]
+                }
+            ],
+            "default_case": "AutoSellPriceTypePerCategory"
+        },
+        "AutoSellTicketOverflowValleyIV": {
+            "type": "input",
+            "label": "$option.AutoSellTicketOverflow.label",
+            "inputs": [
+                {
+                    "name": "AutoSellTicketOverflowValleyIVValue",
+                    "label": "$option.inputs.AutoSellTicketOverflowValue.label",
+                    "default": "30000000",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$"
+                }
+            ],
+            "pipeline_override": {
+                "AutoSellTicketValleyIVOverflow": {
+                    "custom_recognition_param": {
+                        "expression": "{AutoSellTicketOverflowValleyIVValue} < {AutoSellOwnTicketCountRecognition}",
+                        "focus_matched_resolved_expression": true
+                    }
+                }
+            }
+        },
+        "AutoSellTicketOverflowWuling": {
+            "type": "input",
+            "label": "$option.AutoSellTicketOverflow.label",
+            "inputs": [
+                {
+                    "name": "AutoSellTicketOverflowWulingValue",
+                    "label": "$option.inputs.AutoSellTicketOverflowValue.label",
+                    "default": "30000000",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$"
+                }
+            ],
+            "pipeline_override": {
+                "AutoSellTicketWulingOverflow": {
+                    "custom_recognition_param": {
+                        "expression": "{AutoSellTicketOverflowWulingValue} < {AutoSellOwnTicketCountRecognition}",
+                        "focus_matched_resolved_expression": true
+                    }
+                }
+            }
+        },
+        "AutoSellPriceGlobal": {
+            "type": "input",
+            "label": "$option.AutoSellPriceGlobal.label",
+            "inputs": [
+                {
+                    "name": "AutoSellPriceGlobalValue",
+                    "label": "$option.AutoSellPriceGlobal.inputs.AutoSellPriceGlobalValue.label",
+                    "default": "4600",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$"
+                }
+            ],
+            "pipeline_override": {
+                "AutoSellExecuteValleyIVMain": {
+                    "custom_action_param": {
+                        "region": "ValleyIV",
+                        "moderate_price": "{AutoSellPriceGlobalValue}",
+                        "large_price": "{AutoSellPriceGlobalValue}",
+                        "massive_price": "{AutoSellPriceGlobalValue}"
+                    }
+                },
+                "AutoSellExecuteWulingMain": {
+                    "custom_action_param": {
+                        "region": "Wuling",
+                        "moderate_price": "{AutoSellPriceGlobalValue}",
+                        "large_price": "{AutoSellPriceGlobalValue}",
+                        "massive_price": "{AutoSellPriceGlobalValue}"
+                    }
+                }
+            }
+        },
+        "AutoSellPricePerCategory": {
+            "type": "input",
+            "label": "$option.AutoSellPricePerCategory.label",
+            "inputs": [
+                {
+                    "name": "AutoSellPricePerCategoryModeratePriceVolatilityValue",
+                    "label": "$option.AutoSellPricePerCategory.inputs.AutoSellPricePerCategoryModeratePriceVolatilityValue.label",
+                    "default": "4600",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$"
+                },
+                {
+                    "name": "AutoSellPricePerCategoryLargePriceVolatilityValue",
+                    "label": "$option.AutoSellPricePerCategory.inputs.AutoSellPricePerCategoryLargePriceVolatilityValue.label",
+                    "default": "5000",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$"
+                },
+                {
+                    "name": "AutoSellPricePerCategoryMassivePriceVolatilityValue",
+                    "label": "$option.AutoSellPricePerCategory.inputs.AutoSellPricePerCategoryMassivePriceVolatilityValue.label",
+                    "default": "5300",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$"
+                }
+            ],
+            "pipeline_override": {
+                "AutoSellExecuteValleyIVMain": {
+                    "custom_action_param": {
+                        "region": "ValleyIV",
+                        "moderate_price": "{AutoSellPricePerCategoryModeratePriceVolatilityValue}",
+                        "large_price": "{AutoSellPricePerCategoryLargePriceVolatilityValue}",
+                        "massive_price": "{AutoSellPricePerCategoryMassivePriceVolatilityValue}"
+                    }
+                },
+                "AutoSellExecuteWulingMain": {
+                    "custom_action_param": {
+                        "region": "Wuling",
+                        "moderate_price": "{AutoSellPricePerCategoryModeratePriceVolatilityValue}",
+                        "large_price": "{AutoSellPricePerCategoryLargePriceVolatilityValue}",
+                        "massive_price": "{AutoSellPricePerCategoryMassivePriceVolatilityValue}"
+                    }
+                }
+            }
+        }
+    }
+}

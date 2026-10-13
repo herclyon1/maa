@@ -1,0 +1,26 @@
+{
+ "failure": "08-17 V3: AUTO-MAS history file names are on UTC+4, read as machine time (the report said 05:17 登录失败 for a 09:17 failure)",
+ "fix": "625b239c",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-08-17/endfield/05-17-50.json",
+   "want": {
+    "script": "MaaEnd",
+    "ok": false,
+    "started": "2026-08-17T09:17:50+08:00",
+    "duration_known": false
+   },
+   "evidence": {
+    "script": "the record's own key: 05-17-50.json is {\"maaend_result\": ...}",
+    "ok": "the record's result is AUTO-MAS's 「「明日方舟：终末地」登录失败」 and its log is the one line 「...登录失败, 无日志记录」",
+    "started": "AUTO-MAS names history files on a UTC+4 clock (amas-src app/utils/constants.py:29 UTC4 = timezone(timedelta(hours=4)); app/task/general/AutoProxy.py:301 curdate = datetime.now(tz=UTC4)); the same day's records show it: 2026-08-17/endfield/05-33-23.log opens [2026-08-17 09:35:00.768] and 05-35-14.log opens [2026-08-17 09:36:44.642], 4 h after their names; the machine is on UTC+8 and was powered off until 08:45 that morning (625b239c message), so 05:17 machine time is impossible",
+    "duration_known": "the log holds no timestamp (「登录失败, 无日志记录」), so the start can only come from the file name"
+   }
+  }
+ ],
+ "mtimes": {
+  "automas/history/2026-08-17/endfield/05-17-50.json": 1786931887,
+  "automas/history/2026-08-17/endfield/05-17-50.log": 1786931887
+ }
+}

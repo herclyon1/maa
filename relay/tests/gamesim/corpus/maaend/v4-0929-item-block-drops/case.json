@@ -1,0 +1,25 @@
+{
+ "failure": "09-29 V4: MaaEnd's multi-line item blocks (「获得以下物品：」 + one 「<item> ×<n>」 line each) were not read as drops - since the switch to Protocol Space every farming row in the daily report was empty",
+ "fix": "30095a0f",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-09-27/endfield/MaaEnd-05-29-31.json",
+   "want": {
+    "raw.maaend_farm": "协议空间",
+    "raw.maaend_farm_drops": {
+     "折金票": 68000,
+     "行动资历": 960
+    }
+   },
+   "evidence": {
+    "raw.maaend_farm": "the farming task in the log: 「[2026-09-27 09:45:11.071] 任务开始: ⚔️协议空间」 (line 284) .. 「09:48:10.580 任务完成: ⚔️协议空间」 (line 354)",
+    "raw.maaend_farm_drops": "the only item block inside it, lines 320-322: 「[2026-09-27 09:46:37.319] 获得以下物品： / 折金票 ×68000 / 行动资历 ×960」; the second claim (line 352) got 「理智不足，结束任务」 and no block"
+   }
+  }
+ ],
+ "mtimes": {
+  "automas/history/2026-09-27/endfield/MaaEnd-05-29-31.json": 1790474039,
+  "automas/history/2026-09-27/endfield/MaaEnd-05-29-31.log": 1790474039
+ }
+}

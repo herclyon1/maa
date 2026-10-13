@@ -1,0 +1,29 @@
+{
+ "MAA-05-00-00": {
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "旧磁带": 192,
+   "糖": 12,
+   "装置": 10,
+   "龙门币": 2304
+  },
+  "evidence": "drops: AUTO-MAS's own drop_statistics in the .json; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-17-30-00": {
+  "automas_result": "MAA 部分任务执行失败",
+  "evidence": "refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-17-42-41": {
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "旧磁带": 132,
+   "糖": 8,
+   "装置": 9,
+   "龙门币": 1584
+  },
+  "evidence": "drops: AUTO-MAS's own drop_statistics in the .json; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ }
+}

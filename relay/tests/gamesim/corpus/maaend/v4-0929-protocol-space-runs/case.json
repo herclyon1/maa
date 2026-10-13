@@ -1,0 +1,24 @@
+{
+ "failure": "09-29 V4: Protocol Space runs were counted by entries, not by claims that landed - the 09-27 run booked 2 runs, 320 spent and 0 sanity left",
+ "fix": "4a509317",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-09-27/endfield/MaaEnd-05-29-31.json",
+   "want": {
+    "raw.maaend_farm_runs": 1,
+    "raw.maaend_sanity_spent": 160,
+    "raw.sanity": 117
+   },
+   "evidence": {
+    "raw.maaend_farm_runs": "two entries (「进入协议空间成功」 lines 297 and 324) but one landed claim: line 319 「确认领取奖励」 then the item block at 320-322; the second 「确认领取奖励」 (line 352) is answered 「[2026-09-27 09:47:47.214] 理智不足，结束任务」 (line 353) with no item block",
+    "raw.maaend_sanity_spent": "「当前理智 277/360」 (line 317) before the landed claim, 「当前理智 117/360」 (line 350) after it: 277 - 117 = 160, and the refused claim charged nothing",
+    "raw.sanity": "the last reading, 「[2026-09-27 09:47:41.749] 当前理智 117/360」 (line 350), and the claim after it was refused (line 353)"
+   }
+  }
+ ],
+ "mtimes": {
+  "automas/history/2026-09-27/endfield/MaaEnd-05-29-31.json": 1790474039,
+  "automas/history/2026-09-27/endfield/MaaEnd-05-29-31.log": 1790474039
+ }
+}

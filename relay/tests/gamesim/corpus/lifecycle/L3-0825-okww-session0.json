@@ -1,0 +1,64 @@
+{
+  "id": "L3",
+  "date": "2026-08-25",
+  "failure": "OK-WW's pre-update could not get the console token, launched OK-WW in session 0 anyway, its updater never ran, and the unchanged version was logged as 无需更新 while v3.6.5 had been out for fourteen hours.",
+  "incident": "gamesim/failures/incidents.csv row '08-25,W16,OK-WW launched in session 0, updater never ran'",
+  "fixes": ["bc3b709d"],
+  "fix_note": "bc3b709d is the first commit that contains run_okww at all; bc3b709d~1 (relay/ark_relay/preupdate.py, 203 lines) has no OK-WW pre-update. The code that ran on 08-25 was never committed, so red at <fix>~1 cannot be shown from git history.",
+  "entry": "preupdate_okww.run_okww",
+  "app_json": {
+    "current_version": "v3.6.4",
+    "update_state": "idle",
+    "update_error": null,
+    "available_versions": ["v3.6.4"],
+    "evidence": [
+      {"source": "C:\\ProgramData\\ark-relay\\relay.log:1347", "line": "08-25 08:49:40 INFO    ark.preupdate  预更新：OK-WW 无需更新（v3.6.4）"}
+    ],
+    "not_recorded": "app.json itself was never pulled. current_version is the logged one; update_state / available_versions are the idle state the relay reads (its keys), with the stale list the 08-25 run must have seen to print 无需更新."
+  },
+  "basic_options": {"Auto Start Game When App Starts": true},
+  "pywin32": {
+    "console_session": 1,
+    "CreateProcessAsUser_error": [740, "CreateProcessAsUser", "请求的操作需要提升。"],
+    "evidence": [
+      {"source": "C:\\ProgramData\\ark-relay\\relay.log:1338-1345", "line": "08-25 08:48:55 WARNING ark.preupdate  预更新：拿控制台令牌失败，退回普通启动 ... pywintypes.error: (740, 'CreateProcessAsUser', '请求的操作需要提升。')"},
+      {"source": "C:\\ProgramData\\ark-relay\\relay.log:1333 (another program reached the console session three minutes earlier)", "line": "08-25 08:45:26 INFO    ark.preupdate  预更新：已在会话 1 启动 MaaEnd.exe"}
+    ]
+  },
+  "variants": [
+    {
+      "id": "L3a",
+      "task_route": "fails",
+      "about": "No route puts OK-WW on the desktop: the token is refused (740, recorded) and the scheduled-task route, which did not exist on 08-25, fails too. The only launch left is session 0, the 08-25 launch."
+    },
+    {
+      "id": "L3b",
+      "task_route": "starts",
+      "about": "The relay believes OK-WW started, but its updater never runs: app.json is not touched for the whole wait (the 08-25 symptom: 'its updater never ran')."
+    }
+  ],
+  "expect": [
+    {
+      "id": "L3.not_no_update",
+      "kind": "no_log_containing",
+      "text": "OK-WW 无需更新",
+      "rule": "When OK-WW's update check cannot be shown to have run, the verdict is never 无需更新.",
+      "evidence": [
+        {"source": "docs/CODE-HISTORY.md, service.py:_stage_preupdate", "quote": "A pre-update that cannot tell whether an update exists must say so: on 2026-08-25 OK-WW was launched into session 0, its updater never ran, and the unchanged version file was reported as 无需更新 while v3.6.5 had been out for fourteen hours."},
+        {"source": "C:\\ProgramData\\ark-relay\\relay.log:1347", "line": "08-25 08:49:40 INFO    ark.preupdate  预更新：OK-WW 无需更新（v3.6.4）"}
+      ],
+      "red_at": [],
+      "green_at": ["bc3b709d", "HEAD"]
+    },
+    {
+      "id": "L3.problem_noted",
+      "kind": "problems_nonempty",
+      "rule": "The same run leaves a problem for the relay to report.",
+      "evidence": [
+        {"source": "commit bc3b709d, relay/ark_relay/preupdate.py run_okww docstring", "quote": "Appends to `problems` whenever the check could not be *proven* to have happened."}
+      ],
+      "red_at": [],
+      "green_at": ["bc3b709d", "HEAD"]
+    }
+  ]
+}
