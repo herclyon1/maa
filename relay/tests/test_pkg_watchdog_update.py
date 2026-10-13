@@ -239,6 +239,11 @@ with tempfile.TemporaryDirectory() as td:
                 sys.modules[k] = v
 
 print("[deploy-pkg.sh step 5.3, run in bash with scp and pkg_py stood in]")
+# deploy-pkg.sh runs on the Mac only. Its block run in bash on the Windows CI job
+# recorded no call at all (run 38360295330: IndexError on calls[0]) and would say
+# nothing about the Mac anyway: this part runs on the Mac (the deploy gate), the
+# Windows job runs the rest of this file (pkg_deploy.py, which runs on the machine).
+ON_MAC_LIKE = sys.platform != "win32"
 pkg_sh = (ROOT / "scripts/mac/lib/deploy-pkg.sh").read_text(encoding="utf-8")
 block = pkg_sh[pkg_sh.index("# >>> watchdog step"):pkg_sh.index("# <<< watchdog step")]
 sha_fn = next(x for x in pkg_sh.splitlines() if x.startswith("pkg_sha1() "))
@@ -274,34 +279,37 @@ echo "FAIL_WHY=$WATCHDOG_FAIL_WHY"
         return r.returncode, r.stdout.splitlines(), got
 
 
-rc, out, calls = bash_step(src_sha, "WATCHDOG=updated")
-check("unchanged: bash exit 0", rc, 0)
-check("unchanged: no scp, no machine command", calls, [])
-check("unchanged: one line, then no failure", (len(out), out[-1]), (2, "FAIL_WHY="))
-rc, out, calls = bash_step("0" * 40, "WATCHDOG_STEP copy\nWATCHDOG_STEP install\nWATCHDOG_STEP stop\n"
-                                     "WATCHDOG_STEP start\nWATCHDOG_STEP verify\nWATCHDOG=updated")
-check("changed: scp the file, then pkg_deploy.py watchdog with its sha1 and the staged path",
-      [c.split()[0] for c in calls], ["scp", "pkg_py"])
-check("changed: the scp sends packaging/watchdog/ark_watchdog.py",
-      "packaging/watchdog/ark_watchdog.py Administrator@host:C:/Users/Administrator/ark-watchdog-new.py" in calls[0], True)
-check("changed: machine command", calls[1],
-      f"pkg_py C:\\Users\\Administrator\\ark-pkg-deploy.py watchdog C:\\Program Files\\ArkRelay {src_sha} "
-      "C:\\Users\\Administrator\\ark-watchdog-new.py")
-check("changed: no failure", out[-1], "FAIL_WHY=")
-check("changed: steps shown", sum(x.strip().startswith("WATCHDOG_STEP") for x in out), 5)
-rc, out, calls = bash_step("0" * 40, "WATCHDOG_STEP copy\nWATCHDOG_FAIL start: stopped again during its start\n"
-                                     "WATCHDOG_RESTORED running on the previous file")
-check("machine failure: bash still exit 0 (the relay is live; deploy-relay.sh reports it)", rc, 0)
-check("machine failure: WATCHDOG_FAIL_WHY names it and the restore",
-      ("stopped again during its start" in out[-1], "running on the previous file" in out[-1]), (True, True))
-rc, out, calls = bash_step("0" * 40, "")
-check("no answer from the machine: a failure too", out[-1].startswith("FAIL_WHY=") and len(out[-1]) > len("FAIL_WHY="), True)
-rc, out, calls = bash_step("0" * 40, "WATCHDOG=updated", scp_rc=1)
-check("scp failed: no machine command, a failure", ([c.split()[0] for c in calls], len(out[-1]) > len("FAIL_WHY=")),
-      (["scp"], True))
-rc, out, calls = bash_step("", "WATCHDOG=updated")
-check("no WATCHDOG_SHA from info (old machine script): treated as changed", [c.split()[0] for c in calls],
-      ["scp", "pkg_py"])
+if ON_MAC_LIKE:
+    rc, out, calls = bash_step(src_sha, "WATCHDOG=updated")
+    check("unchanged: bash exit 0", rc, 0)
+    check("unchanged: no scp, no machine command", calls, [])
+    check("unchanged: one line, then no failure", (len(out), out[-1]), (2, "FAIL_WHY="))
+    rc, out, calls = bash_step("0" * 40, "WATCHDOG_STEP copy\nWATCHDOG_STEP install\nWATCHDOG_STEP stop\n"
+                                         "WATCHDOG_STEP start\nWATCHDOG_STEP verify\nWATCHDOG=updated")
+    check("changed: scp the file, then pkg_deploy.py watchdog with its sha1 and the staged path",
+          [c.split()[0] for c in calls], ["scp", "pkg_py"])
+    check("changed: the scp sends packaging/watchdog/ark_watchdog.py",
+          "packaging/watchdog/ark_watchdog.py Administrator@host:C:/Users/Administrator/ark-watchdog-new.py" in calls[0], True)
+    check("changed: machine command", calls[1],
+          f"pkg_py C:\\Users\\Administrator\\ark-pkg-deploy.py watchdog C:\\Program Files\\ArkRelay {src_sha} "
+          "C:\\Users\\Administrator\\ark-watchdog-new.py")
+    check("changed: no failure", out[-1], "FAIL_WHY=")
+    check("changed: steps shown", sum(x.strip().startswith("WATCHDOG_STEP") for x in out), 5)
+    rc, out, calls = bash_step("0" * 40, "WATCHDOG_STEP copy\nWATCHDOG_FAIL start: stopped again during its start\n"
+                                         "WATCHDOG_RESTORED running on the previous file")
+    check("machine failure: bash still exit 0 (the relay is live; deploy-relay.sh reports it)", rc, 0)
+    check("machine failure: WATCHDOG_FAIL_WHY names it and the restore",
+          ("stopped again during its start" in out[-1], "running on the previous file" in out[-1]), (True, True))
+    rc, out, calls = bash_step("0" * 40, "")
+    check("no answer from the machine: a failure too", out[-1].startswith("FAIL_WHY=") and len(out[-1]) > len("FAIL_WHY="), True)
+    rc, out, calls = bash_step("0" * 40, "WATCHDOG=updated", scp_rc=1)
+    check("scp failed: no machine command, a failure", ([c.split()[0] for c in calls], len(out[-1]) > len("FAIL_WHY=")),
+          (["scp"], True))
+    rc, out, calls = bash_step("", "WATCHDOG=updated")
+    check("no WATCHDOG_SHA from info (old machine script): treated as changed", [c.split()[0] for c in calls],
+          ["scp", "pkg_py"])
+else:
+    print('  (skipped on Windows: see above)')
 
 print("[where the step sits]")
 p = {k: pkg_sh.find(k) for k in ("WD_SHA=$(sed -n 's/^WATCHDOG_SHA=//p' <<<\"$INFO\")", "grep -q '^WATCH_OK' \"$WATCH_OUT\"",

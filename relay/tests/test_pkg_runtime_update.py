@@ -454,7 +454,10 @@ print("[deploy-pkg.sh 3.0p in bash: built, staged, sent, checked and run on a te
 GOOD_JSON = '{"py": "%s", "pkgs": {"Pillow": "12.3.0", "pywin32": "312"}}' % WANT_PY
 # The "python.exe" probed here is a shell script, which Windows cannot start, and the
 # block's tar takes macOS's --no-mac-metadata: this part runs on the Mac (the deploy
-# gate), where 3.0p itself runs; the Windows CI job runs the rest of this file.
+# gate), where 3.0p itself runs; the Windows CI job runs the rest of this file. The
+# same holds for the gate and 4.6p blocks below: deploy-pkg.sh runs on the Mac only,
+# and run in bash on the Windows CI job they printed nothing they were asked for
+# (run 38360295330: every check on their output red).
 ON_MAC_LIKE = sys.platform != "win32"
 if not ON_MAC_LIKE:
     print("  (skipped on Windows: see above)")
@@ -498,13 +501,16 @@ echo "SWAP=$RUNTIME_SWAP"
 
 
 same = f"RUNTIME_PY={WANT_PY}\nRUNTIME_PKG pillow==12.3.0\nRUNTIME_PKG pywin32==312\n"
-rc, out = bash_gate(same)
-check("the same: no prepare, no swap", (rc, out), (0, ["SWAP=0"]))
-rc, out = bash_gate(same.replace("pywin32==312", "pywin32==311").replace(WANT_PY, "3.14.7"))
-check("different: both gaps named, prepared, swap later", (rc, "PREPARE_CALLED" in out, out[-1], sum("->" in x for x in out)),
-      (0, True, "SWAP=1", 2))
-rc, out = bash_gate(same.replace(WANT_PY, "3.14.7"), prepare_ok=False)
-check("different, not ready: exit 5 before any code is pushed", (rc, "SWAP=1" in out), (5, False))
+if ON_MAC_LIKE:
+    rc, out = bash_gate(same)
+    check("the same: no prepare, no swap", (rc, out), (0, ["SWAP=0"]))
+    rc, out = bash_gate(same.replace("pywin32==312", "pywin32==311").replace(WANT_PY, "3.14.7"))
+    check("different: both gaps named, prepared, swap later", (rc, "PREPARE_CALLED" in out, out[-1], sum("->" in x for x in out)),
+          (0, True, "SWAP=1", 2))
+    rc, out = bash_gate(same.replace(WANT_PY, "3.14.7"), prepare_ok=False)
+    check("different, not ready: exit 5 before any code is pushed", (rc, "SWAP=1" in out), (5, False))
+else:
+    print('  (skipped on Windows: see the 3.0p part)')
 
 print("[deploy-pkg.sh 4.6p in bash: the machine's answer read]")
 
@@ -533,18 +539,21 @@ if pkg_runtime_swap; then echo "SWAPPED $RUNTIME_TOUCHED"; else echo "FAILED $RU
         return r.stdout.splitlines(), log.read_text(encoding="utf-8").splitlines() if log.exists() else []
 
 
-ok_answer = f"RUNTIME_STEP stop\nRUNTIME_STEP copy\nRUNTIME_STEP verify\nRUNTIME_STEP watchdog\nRUNTIME=swapped {WANT_PY}"
-out, calls = bash_swap(ok_answer, same)
-check("swapped and the same check passes on what now runs", out[-1], "SWAPPED 1")
-check("the swap runs on the new runtime's python.exe, with the wanted runtime; then info on runtime\\python",
-      calls, [f"pkg_py_at C:\\Program Files\\ArkRelay\\runtime\\.incoming\\python\\python.exe runtime C:\\Program Files\\ArkRelay {WANT_PY} {' '.join(PINS)}",
-              "pkg_py info"])
-out, calls = bash_swap(ok_answer, same.replace("pywin32==312", "pywin32==311"))
-check("swapped but the check does not pass: failed", out[-1].startswith("FAILED 1 换完再核对不上：pywin32 311 -> 312"), True)
-out, calls = bash_swap("RUNTIME_STEP stop\nRUNTIME_FAIL verify: pywin32 311 != 312\nRUNTIME_RESTORED the previous runtime is back", same)
-check("the machine reports a failure: failed with its reason, no info", (out[-1], len(calls)), ("FAILED 1 verify: pywin32 311 != 312", 1))
-out, calls = bash_swap("", same)
-check("no answer (connection lost): failed, touched (the way back runs runtime-back)", out[-1].startswith("FAILED 1 机器上没给结果"), True)
+if ON_MAC_LIKE:
+    ok_answer = f"RUNTIME_STEP stop\nRUNTIME_STEP copy\nRUNTIME_STEP verify\nRUNTIME_STEP watchdog\nRUNTIME=swapped {WANT_PY}"
+    out, calls = bash_swap(ok_answer, same)
+    check("swapped and the same check passes on what now runs", out[-1], "SWAPPED 1")
+    check("the swap runs on the new runtime's python.exe, with the wanted runtime; then info on runtime\\python",
+          calls, [f"pkg_py_at C:\\Program Files\\ArkRelay\\runtime\\.incoming\\python\\python.exe runtime C:\\Program Files\\ArkRelay {WANT_PY} {' '.join(PINS)}",
+                  "pkg_py info"])
+    out, calls = bash_swap(ok_answer, same.replace("pywin32==312", "pywin32==311"))
+    check("swapped but the check does not pass: failed", out[-1].startswith("FAILED 1 换完再核对不上：pywin32 311 -> 312"), True)
+    out, calls = bash_swap("RUNTIME_STEP stop\nRUNTIME_FAIL verify: pywin32 311 != 312\nRUNTIME_RESTORED the previous runtime is back", same)
+    check("the machine reports a failure: failed with its reason, no info", (out[-1], len(calls)), ("FAILED 1 verify: pywin32 311 != 312", 1))
+    out, calls = bash_swap("", same)
+    check("no answer (connection lost): failed, touched (the way back runs runtime-back)", out[-1].startswith("FAILED 1 机器上没给结果"), True)
+else:
+    print('  (skipped on Windows: see the 3.0p part)')
 
 print("[the order in deploy-pkg.sh]")
 anchors = ['info "$APP_WIN" $(cut -f1 <<<"$APPFILES_LIST")', '\n  if ! pkg_runtime_prepare; then', 'pkg_py "$PKG_DEPLOY" stage "$APP_WIN"',

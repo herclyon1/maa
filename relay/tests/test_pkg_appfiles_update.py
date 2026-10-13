@@ -172,6 +172,12 @@ with tempfile.TemporaryDirectory() as td:
           (app / "launch.py").read_text(encoding="utf-8"), "NEXT = 1\n")
 
 print("[deploy-pkg.sh 4.5p in bash: ssh and the package's Python run locally on a temp {app}]")
+# deploy-pkg.sh runs on the Mac only. Its block run in bash on the Windows CI job
+# printed nothing it was asked for (run 38360295330: every check on its output red)
+# and would say nothing about the Mac anyway: this part runs on the Mac (the deploy
+# gate), the Windows job runs the rest of this file (pkg_deploy.py, which runs on
+# the machine).
+ON_MAC_LIKE = sys.platform != "win32"
 pkg_sh = (ROOT / "scripts/mac/lib/deploy-pkg.sh").read_text(encoding="utf-8")
 block = pkg_sh[pkg_sh.index("# >>> appfiles step"):pkg_sh.index("# <<< appfiles step")]
 sha_fn = next(x for x in pkg_sh.splitlines() if x.startswith("pkg_sha1() "))
@@ -208,19 +214,22 @@ if [ -n "$APP_CHANGED" ]; then pkg_appfiles_step && echo STEP_OK || echo "STEP_F
         return changed, r.stdout.splitlines(), calls
 
 
-with tempfile.TemporaryDirectory() as td:
-    app = make_app(td, {})
-    changed, out, calls = bash_appfiles(app)
-    check("all the same: nothing in the list, no command to the machine", (changed, out, calls), ("", ["NOTHING"], []))
-with tempfile.TemporaryDirectory() as td:
-    app = make_app(td, {"launch.py": "OLD = 1\n", "handover/legacy-items.json": "[]\n"})
-    changed, out, calls = bash_appfiles(app)
-    check("two changed: the list", changed.split(), ["launch.py", "handover/legacy-items.json"])
-    check("stage, one tar stream, then appfiles", [c.split()[1] for c in calls], ["appfiles-stage", "tar", "appfiles"])
-    check("step OK, each file named", (out[-1], sum("APPFILE " in x for x in out)), ("STEP_OK", 2))
-    check("both now the repo's", (sha(app / "launch.py"), sha(app / "handover/legacy-items.json")),
-          (sha(FILES["launch.py"]), sha(FILES["handover/legacy-items.json"])))
-    check("nothing else touched", pa.changed(info_of(app), FILES), [])
+if ON_MAC_LIKE:
+    with tempfile.TemporaryDirectory() as td:
+        app = make_app(td, {})
+        changed, out, calls = bash_appfiles(app)
+        check("all the same: nothing in the list, no command to the machine", (changed, out, calls), ("", ["NOTHING"], []))
+    with tempfile.TemporaryDirectory() as td:
+        app = make_app(td, {"launch.py": "OLD = 1\n", "handover/legacy-items.json": "[]\n"})
+        changed, out, calls = bash_appfiles(app)
+        check("two changed: the list", changed.split(), ["launch.py", "handover/legacy-items.json"])
+        check("stage, one tar stream, then appfiles", [c.split()[1] for c in calls], ["appfiles-stage", "tar", "appfiles"])
+        check("step OK, each file named", (out[-1], sum("APPFILE " in x for x in out)), ("STEP_OK", 2))
+        check("both now the repo's", (sha(app / "launch.py"), sha(app / "handover/legacy-items.json")),
+              (sha(FILES["launch.py"]), sha(FILES["handover/legacy-items.json"])))
+        check("nothing else touched", pa.changed(info_of(app), FILES), [])
+else:
+    print('  (skipped on Windows: see above)')
 
 print("[the runtime: a gap when it is not what the repo builds]")
 req = (ROOT / "relay/requirements.txt").read_text(encoding="utf-8")
