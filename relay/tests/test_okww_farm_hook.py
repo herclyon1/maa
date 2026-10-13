@@ -265,10 +265,16 @@ check("留了图", d.shots, ["additional_tasks_error"])
 check("日常照跑：刷体力、领日常都在", farm_calls() != [] and "claim_daily" in EV)
 check("尾巴上没有再跑一次", EV.count("additional"), 1)
 
-print("\n[附加任务里主动停（TaskDisabledException）也只记一笔，日常照跑]")
+print("\n[a TaskDisabledException (OK-WW's stop) from the additional tasks ends the daily, as upstream does]")
 d = daily(USED_PART, additional_error=Disabled())
-d.run()
-check("日常照跑", "claim_daily" in EV)
+try:
+    d.run()
+    got = "ran on"
+except Disabled:
+    got = "stopped"
+check("goes up, not swallowed", got, "stopped")
+check("not logged as an additional-task error", any("附加任务出错" in m for m in d.logs), False)
+check("the daily did not carry on", "claim_daily" in EV, False)
 
 # ---------------------------------------------------------------------------
 print(f"\n[周本花掉 {USED_FULL}：上游的闸门关了，剩下的 {CURRENT} + {BACK_UP} 照样刷掉]")

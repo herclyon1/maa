@@ -1346,6 +1346,13 @@ def _install_hooks():
         if not getattr(self, "_ark_additional_ran", False):
             try:
                 self.run_additional_tasks()
+            except TaskDisabledException:
+                # OK-WW's stop / skip signal (the task disabled, a stop from AUTO-MAS):
+                # it ends the daily, as it does everywhere upstream
+                # (DailyTask.check_weekly_garden / check_discarded_echo re-raise it).
+                # Our own weekly stops never get here: FarmEchoTask.run turns them
+                # into ArkStopped or a plain return.
+                raise
             except Exception as exc:  # noqa: BLE001
                 self.log_error(f"附加任务出错，不拖垮当趟日常: {exc}", exception=exc)
                 try:
