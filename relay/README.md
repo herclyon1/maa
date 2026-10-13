@@ -135,7 +135,7 @@ JSON patch.
 | `set_config` | no, writes config | **yes** - 改 MAS 侧用户配置，**只改已存在的字段**，凭空造的会被拒 |
 | `set_master` | no, writes config | **yes** - 改脚本自己的母本配置（MaaEnd / OK-WW / MAA）。这两个脚本的快速配置是关的，MAS 侧改了不生效，所以手机页那两段走的是这条 |
 
-`sanity_plan`, `maaend_option` and `queue` are handled in `inbox.py` before the
+`sanity_plan` and `queue` are handled in `inbox.py` before the
 whitelist, as all-or-nothing batches, because their fields depend on each other.
 
 The confirmation gate exists for the model path. Commands arriving through the

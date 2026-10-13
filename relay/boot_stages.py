@@ -44,12 +44,6 @@ HERE = Path(__file__).resolve().parent
 AUTOMAS_TASK = "AUTO-MAS_AutoStart"
 
 
-def _maaend_dir(cfg):
-    """MaaEnd's install path, as AUTO-MAS records it."""
-    from ark_relay.core import plan  # noqa: PLC0415
-    return plan.script_dir(cfg.automas_dir, "MaaEnd")
-
-
 def shell_running() -> bool:
     """True if the Electron shell (AUTO-MAS.exe) is up, whatever the backend is doing.
 
@@ -615,8 +609,7 @@ def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
     from ark_relay.features.phone.inbox import Inbox  # noqa: PLC0415
     from ark_relay.features.phone import phone_channel  # noqa: PLC0415 - it imports boot_stages
 
-    inbox = Inbox(cfg.state_dir, cfg.inbox_url,
-                  cfg.maaend_dir or _maaend_dir(cfg), cfg.automas_dir)
+    inbox = Inbox(cfg.state_dir, cfg.inbox_url, automas_dir=cfg.automas_dir)
 
     # A config command that arrives while a queue is running waits here
     # until every script has stopped, then lands.
