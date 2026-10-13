@@ -342,7 +342,10 @@ def _update_restart_check(ctx, cid: str):
     since it started, and no relay WARNING / ERROR naming it in this handling.
 
     Judged once per restart, once it is settled - no longer held for a later push
-    (a held one is let go at the push step, handle._update_restart_done)."""
+    (a held one is let go at the push step, handle._update_restart_done). Every
+    restart of the batch is judged before the verdict: they are all marked seen
+    here, so one returned early on the first FAIL (until 2026-10-13) left the
+    others never judged."""
     if not _script(ctx, "MaaEnd"):
         return None
     state_dir = ctx.get("state_dir")
@@ -352,7 +355,7 @@ def _update_restart_check(ctx, cid: str):
     if not todo:
         return None
     _mark_seen(state_dir, cid, list(todo))
-    passed = []
+    passed, failed = [], []
     for rid, x in todo.items():
         stem, version = rid.rsplit("/", 1)[-1], str(x.get("version") or "")
         head = f"{stem} 装新版 {version} 后自己重启，同班 {str(x['done']).rsplit('/', 1)[-1]} 已经做完"
@@ -361,12 +364,16 @@ def _update_restart_check(ctx, cid: str):
         except ValueError:
             since = ctx["rec"].started
         if rows := [a for a in _day_alerts(state_dir, since) if _about_restart(a, rid, version)]:
-            return _r(FAIL, f"{head}，却进了群：{rows[0].get('ts')} 「{rows[0].get('title')}」")
+            failed.append(f"{head}，却进了群：{rows[0].get('ts')} 「{rows[0].get('title')}」")
+            continue
         noisy = [e for e in ctx.get("relay_errors") or []
                  if stem in e.get("msg", "") and not (e.get("pushed") or e.get("recovered"))]
         if noisy:
-            return _r(FAIL, f"{head}，中继却记了一条会进群的报错：{_cut(noisy[0]['msg'])}")
+            failed.append(f"{head}，中继却记了一条会进群的报错：{_cut(noisy[0]['msg'])}")
+            continue
         passed.append(head)
+    if failed:
+        return _r(FAIL, "；".join(failed))
     return _r(PASS, "；".join(passed) + "：放下了，报警抄送里没有它，也没记报错")
 
 
