@@ -10,6 +10,7 @@ data: `tests/test_texts_gate.py` checks their wording.
 """
 from __future__ import annotations
 
+import bisect
 import logging
 import os
 import re
@@ -481,12 +482,14 @@ def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
     """Waveplates spent, domain entries, reserve stamina. Returns
     (the series of readings, the entry count) for the checks that follow.
     """
-    readings = [int(m.group(1)) for m in _OKWW_STAMINA.finditer(text)]
+    marks = list(_OKWW_STAMINA.finditer(text))
+    readings = [int(m.group(1)) for m in marks]
     # The wrap-up line 「current stamina: 8 not enough to continue」 is the last
     # reading and holds the final run's cost.
     tail = [int(x) for x in _OKWW_STAMINA_END.findall(text)]
     series = readings + tail[-1:]
     spent = sum(a - b for a, b in zip(series, series[1:], strict=False) if a > b)
+    spent += _weekly_waveplates(text, [m.start() for m in marks] + [len(text)] * len(tail[-1:]), series)
     if spent:
         out["okww_stamina_spent"] = spent
     entries = len(_OKWW_ENTRY.findall(text))
@@ -498,6 +501,34 @@ def _okww_stamina_fields(text: str, out: dict) -> "tuple[list[int], int]":
         if used := sum(a - b for a, b in zip(backs, backs[1:], strict=False) if a > b):
             out["okww_backup_spent"] = used
     return readings, entries
+
+
+# Waveplates one weekly-boss reward claim costs (the game's own price; the overlay's
+# claim code checks for the same 60 before it confirms).
+_WEEKLY_CLAIM_WAVEPLATES = 60
+
+
+def _weekly_waveplates(text: str, pos: "list[int]", series: "list[int]") -> int:
+    """Waveplates spent on verified weekly claims that the readings do not already show.
+
+    The stamina readings come from get_stamina, which the weekly claim does not
+    call, so a claim usually falls in no drop at all and 「消耗 波片」 left it out
+    (audit 2026-10-13 item 12; 10-12 11:41, three claims read back 3->2->1->0, spent
+    nothing). A claim between two readings whose drop already covers it is not
+    counted twice.
+    """
+    claims = [m.start() for m in outcome.WEEKLY_CLAIM_OK.finditer(text)]
+    per_gap: dict = {}
+    for c in claims:
+        i = bisect.bisect_right(pos, c)
+        per_gap[i] = per_gap.get(i, 0) + 1
+    extra = 0
+    for i, n in per_gap.items():
+        shown = 0
+        if 0 < i < len(series):
+            shown = min(n, max(0, series[i - 1] - series[i]) // _WEEKLY_CLAIM_WAVEPLATES)
+        extra += _WEEKLY_CLAIM_WAVEPLATES * (n - shown)
+    return extra
 
 
 def _okww_health(text: str, out: dict, entries: int) -> None:
