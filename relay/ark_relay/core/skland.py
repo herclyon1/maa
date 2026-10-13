@@ -116,18 +116,33 @@ def _read(resp) -> dict:
     return json.loads(raw.decode("utf-8"))
 
 
+def _open(req: urllib.request.Request) -> dict:
+    """Send one request. A 4xx/5xx keeps Skland's own {"code", "message"} body: it is
+    the only clue to what went wrong (10001 / 10003 come back as 403 / 401), and
+    urllib's bare HTTPError dropped it, so the log and the phone tile said only
+    「HTTP Error 403」 (audit s6 #5)."""
+    try:
+        with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
+            return _read(r)
+    except urllib.error.HTTPError as e:
+        try:
+            body = _read(e)
+        except Exception:  # noqa: BLE001 - no readable body: the bare HTTP error is all there is
+            raise e from None
+        if not isinstance(body, dict):
+            raise
+        raise SklandError(f"森空岛拒绝了请求（HTTP {e.code}）：code={body.get('code')} "
+                          f"{body.get('message') or body.get('msg') or ''}".rstrip()) from e
+
+
 def _post(url: str, payload: dict, headers: dict | None = None) -> dict:
-    req = urllib.request.Request(
+    return _open(urllib.request.Request(
         url, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={**_HEADERS, "Content-Type": "application/json", **(headers or {})})
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
-        return _read(r)
+        headers={**_HEADERS, "Content-Type": "application/json", **(headers or {})}))
 
 
 def _get(url: str, headers: dict) -> dict:
-    req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=_TIMEOUT) as r:
-        return _read(r)
+    return _open(urllib.request.Request(url, headers=headers))
 
 
 # ── Device fingerprint (dId) ───────────────────────────────────
