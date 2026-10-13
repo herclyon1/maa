@@ -61,5 +61,10 @@ src = Path(texts.__file__).read_text(encoding="utf-8")
 check("没有发到企业微信的死分支", "已作为文件发到" in src, False)
 check("下载页照写", texts.evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://x/i.html").endswith("下载页：https://x/i.html"), True)
 
+print("\n[NOTIFICATIONS.md 每条终末地标题都有一行，写的是代码里的标题（s1 cosmetic）]")
+doc = (ROOT.parent / "docs" / "NOTIFICATIONS.md").read_text(encoding="utf-8")
+for name in ("MAAEND_MIGRATED", "MAAEND_WATCH_BLIND"):
+    check(f"{name} 有一行", f"\n| {getattr(texts, name)} | " in doc, True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
