@@ -1,8 +1,8 @@
 {
- "version": 20261013060030,
- "ref": "relay-20261013060030",
+ "version": 20261013063955,
+ "ref": "relay-20261013063955",
  "files": {
-  "RELEASE-NOTES.md": "7315601850af2fad0c5814bb8803fd187073ac51",
+  "RELEASE-NOTES.md": "fba3bf592beb2daefd24306dee5f5999545f8b45",
   "app_main.py": "05225497fdfdd7b14d9cb3492de7349e3b44ed39",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "7acc3852c4e20b7f7818a98749c5494b843394f7",
@@ -105,7 +105,7 @@
   "ark_relay/features/phone/mas_labels.py": "e06935896e4498722e303efc223f7a298d5ab085",
   "ark_relay/features/phone/monthcard.py": "4d09ed4424ad3ce4ded8b8317d786552ebbc547b",
   "ark_relay/features/phone/phone.py": "3780411304e4eeba84026965449fb6d714ee0f62",
-  "ark_relay/features/phone/phone_channel.py": "774ba4bc3f54b6295431f10da2c202e4369668f6",
+  "ark_relay/features/phone/phone_channel.py": "38b6a0688e44a8b97341b110f4b96c27930fa306",
   "ark_relay/features/phone/quota.py": "fc82aaf5f43a74419c3a9fd3f285fe3884c40208",
   "ark_relay/features/phone/redbutton.py": "8ef837d0b6a215a49c72fbebe33ebceda6d8c2c5",
   "ark_relay/features/phone/resources.py": "ff7626539ce23e66c1610d5c16c8ad582815ef4c",
@@ -153,14 +153,14 @@
   "ark_relay/features/weekly/sanity_plan.py": "88fe684ef61e84597713bf31a47e902734337037",
   "ark_relay/features/weekly/weekgate.py": "8cdfd2c5e3e9670d7a4a8e9f901d85c8ac66d360",
   "ark_relay/features/weekly/weeklyboss.py": "5648944e647b38ad2871c3adb3b7f1057f84c190",
-  "boot_stages.py": "b554fd47ccd84eb061856fcd40980f50cc51e520",
+  "boot_stages.py": "0ac15ac7868965058d3da2bd7d3e2e5f0ed88bab",
   "pkg_layout.py": "f0b48834396d75a98fcc0f9d1823e4989acf944d",
   "run.py": "758b96cfb085a33ffc15152b86761357bde2aab2",
-  "service.py": "820574ef26eb8fad6adf2949731fe6f17708b6c0",
+  "service.py": "257e0e40e23cdbd6c95eea41d30d7b887294eba9",
   "watchdog_guard.py": "f195218a71e26b4555bec1459fb94aebb598bd01"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "1094f7f4dde72420054177958b7080af499f0c6ff46d16168c740973132f4f42",
+  "RELEASE-NOTES.md": "f4cba753ed99d6c8271dbd8ef75462c29ca80647a3771581eb61e2a151903269",
   "app_main.py": "0d2bc708cb914bf30feb0ed0e164cba3f30de3125e5be6dd97df742d1d2b6f17",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "cae17a100ad28b94bd8d40b48fdfdbb7b93af0b1fb1910b69012737b598d09b8",
@@ -263,7 +263,7 @@
   "ark_relay/features/phone/mas_labels.py": "169b53fb08a920c8a5be78dd5a461d47f3613866910cf25f96fbea79936883b8",
   "ark_relay/features/phone/monthcard.py": "be5a19801b4beadbacb1ad114fdaf31ff70ec169ce581b138729aa4cd0ed0efe",
   "ark_relay/features/phone/phone.py": "1ad35aaf54d74bea99970d68a49c963279c26916d690b43d1a7c0656b97b05fd",
-  "ark_relay/features/phone/phone_channel.py": "160e11d674c4f4f1528bcc53eb4bf712cb178bd29f10716ecb43e5d3c7925620",
+  "ark_relay/features/phone/phone_channel.py": "de1237120994caa77c10df3bbaf997527b555ee3c16b386fb4bb917d690ecc45",
   "ark_relay/features/phone/quota.py": "96a911063936ee30e7bfa03a3d8faf36f74be3d548cb41825e4d26f5b9776a50",
   "ark_relay/features/phone/redbutton.py": "95d836b7d280645c6c4db72c5229704e0c39b0c135ba26b491dddb0a0b532aab",
   "ark_relay/features/phone/resources.py": "baa001c11dcf6e08db7441d62f4427023cff22aa3798daf6a454cf61e6a26b4c",
@@ -311,10 +311,10 @@
   "ark_relay/features/weekly/sanity_plan.py": "d99d06464b6c78cb1b260402331ae487f2848821bf3b45670296ae605dc79171",
   "ark_relay/features/weekly/weekgate.py": "b65b6c2243430adf58754182a88126ce0d3690b86d1dcf54318aa66be2200150",
   "ark_relay/features/weekly/weeklyboss.py": "2584b79c4a4e29efc690dd23548988c577c6d34171e9adad44645b30aebbef14",
-  "boot_stages.py": "f6bcd8141022536f44627b9fb4a10d4a2c7877625b337d71567f74418c084bb0",
+  "boot_stages.py": "cb9876cf55e4a1dcb4f146ee88abc584069d9ee4ec62e3eb065b161cdbc5fd76",
   "pkg_layout.py": "938573bcda8ac387010df93835dd70e6b67961dac64f4bc788e77d3bc1c19774",
   "run.py": "bf247ffd725365af6c76b061da886fdf06b1856d627a030b8672a2b722f685b6",
-  "service.py": "78c61a4c6bca9799dc25063c9c19ba0f2b08d1c19e37e22e6788bdb2f8c6b6bb",
+  "service.py": "e0ca1957f128716efc1956e5fc48351958b88fee6dc0b459874541897cbeafb3",
   "watchdog_guard.py": "1a016fddd4b02075b30cc441463204a72a91d6ea994933cdf68d5eef659a9608"
  }
 }
