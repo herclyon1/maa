@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import bisect
 import logging
-import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +19,7 @@ from pathlib import Path
 from ark_relay.features.verify import outcome
 from ark_relay.features.weekly import weeklyboss
 from ark_relay.core import texts, wuwa_forgery, wuwa_tacet
+from ark_relay.core.config import okww_root
 
 # The module logger, so tests can capture it as <module>.log (scripts/mac/lib/loggernames.py).
 log = logging.getLogger("ark.collector")
@@ -483,7 +483,7 @@ def _client_change(log_path: Path, text: str) -> "tuple[str, list[str]]":
 
 def wuwa_game_root(log_path: Path) -> "Path | None":
     """The game install root, from OK-WW's own devices.json (the exe it launches)."""
-    base = Path(os.environ.get("ARK_OKWW_DIR") or r"D:\ark\okww")
+    base = okww_root()
     dev = base / "data" / "apps" / "ok-ww" / "working" / "configs" / "devices.json"
     try:
         # JSON-escaped Windows path (D:\\Wuthering...) on the machine; a plain

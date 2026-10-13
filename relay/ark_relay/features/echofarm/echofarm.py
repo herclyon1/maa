@@ -28,12 +28,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.core import texts
-from ark_relay.core.config import SERVER_TZ, atomic_write_text
+from ark_relay.core.config import SERVER_TZ, atomic_write_text, okww_root, programdata_path
 
 log = logging.getLogger("ark.echofarm")
 
 TASK_NAME = "ark-okww-farm"
-BAT = r"C:\ProgramData\ark-okww-farm.bat"
+BAT = programdata_path("ark-okww-farm.bat")
 # FarmEchoTask is one-time task 2 in OK-WW's own list (okww-task.sh --list).
 OKWW_TASK_INDEX = 2
 # High enough that the clock always ends the run, low enough to be a real number.
@@ -41,7 +41,7 @@ BIG_COUNT = 100000
 # While this file exists the claim patch in FarmEchoTask refuses to claim the boss
 # reward. Farming 4-cost echoes is free; claiming costs 60 waveplates every time, and
 # an unattended overnight loop would empty both the waveplates and the reserve.
-NO_CLAIM = r"C:\ProgramData\ark-okww-farm.no-claim"
+NO_CLAIM = programdata_path("ark-okww-farm.no-claim")
 # Give up only after restarts have genuinely had their chance. From the second
 # restart the game is killed too, so half an hour with no lap at all means neither
 # the script nor a fresh client can get anywhere - worth stopping and saying so.
@@ -138,7 +138,7 @@ def _write_cfg(path: Path, values: dict) -> dict:
 
 def _launch() -> tuple[bool, str]:
     """Start OK-WW's FarmEchoTask on the interactive desktop."""
-    root = Path(os.environ.get("ARK_OKWW_DIR") or r"D:\ark\okww")
+    root = okww_root()
     py = root / "data" / "apps" / "ok-ww" / "python" / "pythonw.exe"
     main = root.joinpath(*_WORKING, "main.py")
     if not py.is_file() or not main.is_file():
@@ -320,7 +320,7 @@ def level_since(started: "datetime | None") -> "tuple[str, str] | None":
 # What 「收工」 has to leave behind: nothing of OK-WW's and nothing of the game's.
 GAME_PROCS = ("ok-ww.exe", "Wuthering Waves.exe",
               "Client-Win64-Shipping.exe", "KRSDKExternal.exe")
-STOP_BAT = r"C:\ProgramData\ark-okww-stop.bat"
+STOP_BAT = programdata_path("ark-okww-stop.bat")
 STOP_TASK = "ark-okww-stop"
 
 

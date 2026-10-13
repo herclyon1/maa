@@ -520,6 +520,7 @@ have no Mac copy; the next time the machine is up, copy them into push.env and t
 | `ARK_MAAEND_DIR` | MaaEnd root |
 | `ARK_MAA_DIR` | MAA root (asst.log, and the stage gate's `resource/tasks` + `cache/resource/tasks`). Unset, it is taken from AUTO-MAS's ScriptConfig.json (the MAA script's path) |
 | `ARK_OKWW_DIR` | OK-WW root (`D:\ark\okww`). The weekly boss master/copy configs and OK-WW's own logs are all derived from this |
+| `ARK_PROGRAMDATA` | never set on the machine: moves Windows' `C:\ProgramData` for the relay's fixed hand-off files (`no-stamina-farm.flag`, the echo-farm `.bat` files and no-claim mark, the OK-WW overlay report and master pointer; `config.PROGRAMDATA`). Only the day simulator sets it, to keep those files inside its own tree |
 | `ARK_OKWW_LOG` | names OK-WW's log file directly. Unset, it takes the newest file under `ARK_OKWW_DIR`'s `data/apps/ok-ww/working/logs` |
 | `ARK_KEEP_TMP` | affects tests only: set it to 1 and temporary directories are not cleaned up, so the scene is left intact for investigation |
 | `ESTOP_SH` / `FAKE_LOG` / `FAKE_LAYOUT` | affects tests only, read by `relay/tests/test_estop_layout.py`: another copy of `scripts/mac/estop.sh` to run (default the repo's; used to show the test fails on an older copy), and, for the fake ssh it puts on PATH, the file it records commands in and its answer to the relay-layout question (`pkg`, `legacy`, `timeout`, `garbage`) |

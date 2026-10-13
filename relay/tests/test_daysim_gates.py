@@ -16,6 +16,9 @@ Checked here:
   4. the read happens at call time: flipping the switch flips the gates' answers.
 """
 import ast
+import json
+import os
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -119,7 +122,7 @@ from ark_relay.features.evidence import task_shots                 # noqa: E402
 from ark_relay.features.okww_patch import okww_overlay as ov       # noqa: E402
 from ark_relay.features.run import maaend_watchdog as mw           # noqa: E402
 
-real_switch, real_pp = config.IS_WINDOWS, procs.python_processes
+real_switch, real_pp = getattr(config, "IS_WINDOWS", None), procs.python_processes
 procs.python_processes = lambda **kw: [(7, r"D:\ark\okww\data\apps\ok-ww\python\pythonw.exe main.py -t 1")]
 try:
     config.IS_WINDOWS = False
@@ -131,6 +134,70 @@ try:
     check("on: MaaEnd watchdog active", mw.Watchdog(None, "debug", clock=lambda: 0.0).active, True)
 finally:
     config.IS_WINDOWS, procs.python_processes = real_switch, real_pp
+
+print("\n[5. ProgramData hand-off files follow ARK_PROGRAMDATA (design E2)]")
+# Module constants are built at import, so each case is a fresh interpreter.
+PROBE = r"""
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from ark_relay.core import config
+from ark_relay.features.echofarm import echofarm
+from ark_relay.features.okww_patch import okww_overlay
+print(json.dumps({
+    "PROGRAMDATA": str(getattr(config, "PROGRAMDATA", None)),
+    "NO_STAMINA_FARM_FLAG": config.NO_STAMINA_FARM_FLAG,
+    "BAT": echofarm.BAT, "NO_CLAIM": echofarm.NO_CLAIM, "STOP_BAT": echofarm.STOP_BAT,
+    "REPORT": str(okww_overlay.REPORT), "MASTER_POINTER": str(okww_overlay.MASTER_POINTER),
+    "okww_root": str(config.okww_root()) if hasattr(config, "okww_root") else None,
+}))
+"""
+
+
+def probe(**env):
+    e = {k: v for k, v in os.environ.items() if k not in ("ARK_PROGRAMDATA", "ARK_OKWW_DIR")}
+    e.update(env)
+    r = subprocess.run([sys.executable, "-c", PROBE, str(RELAY)], env=e, cwd=str(RELAY),
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode:
+        print(r.stderr[-2000:])
+        return {}
+    return json.loads(r.stdout.strip().splitlines()[-1])
+
+
+# Unset (the machine): byte-identical to the literals the machine has always used,
+# on every host - the OK-WW override hard-codes the same strings (test_nofarm_visible).
+MACHINE = {
+    "PROGRAMDATA": r"C:\ProgramData",
+    "NO_STAMINA_FARM_FLAG": r"C:\ProgramData\ark-relay\state\no-stamina-farm.flag",
+    "BAT": r"C:\ProgramData\ark-okww-farm.bat",
+    "NO_CLAIM": r"C:\ProgramData\ark-okww-farm.no-claim",
+    "STOP_BAT": r"C:\ProgramData\ark-okww-stop.bat",
+    "REPORT": r"C:\ProgramData\ark-okww-overlay.json",
+    "MASTER_POINTER": r"C:\ProgramData\ark-okww-master.txt",
+    "okww_root": str(Path(r"D:\ark\okww")),
+}
+check("unset: the machine's own paths", probe(), MACHINE)
+
+SIM = RELAY / "tests" / "no-such-sim-tree"      # never created: only the names are compared
+moved = probe(ARK_PROGRAMDATA=str(SIM / "ProgramData"), ARK_OKWW_DIR=str(SIM / "okww"))
+pd = SIM / "ProgramData"
+check("set: every hand-off file is a real path in the given folder", moved, {
+    "PROGRAMDATA": str(pd),
+    "NO_STAMINA_FARM_FLAG": str(pd / "ark-relay" / "state" / "no-stamina-farm.flag"),
+    "BAT": str(pd / "ark-okww-farm.bat"),
+    "NO_CLAIM": str(pd / "ark-okww-farm.no-claim"),
+    "STOP_BAT": str(pd / "ark-okww-stop.bat"),
+    "REPORT": str(pd / "ark-okww-overlay.json"),
+    "MASTER_POINTER": str(pd / "ark-okww-master.txt"),
+    "okww_root": str(SIM / "okww"),
+})
+
+# OK-WW's install root comes from one place (config.okww_root, i.e. Config.okww_dir
+# with the machine's default), not from literals in each caller.
+okww_lit = {rel: [n.lineno for n in ast.walk(t) if isinstance(n, ast.Constant) and n.value == r"D:\ark\okww"]
+            for rel, t in trees.items() if rel.startswith("ark_relay/")}
+check("no D:\\ark\\okww literal outside config.py",
+      {rel: ls for rel, ls in okww_lit.items() if ls and rel != "ark_relay/core/config.py"}, {})
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
