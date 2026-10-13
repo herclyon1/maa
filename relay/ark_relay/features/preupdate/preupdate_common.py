@@ -53,6 +53,18 @@ def _task_name(stem: str) -> str:
     return "ark-preupdate-launch-" + "".join(c if c.isalnum() else "-" for c in stem)[:40]
 
 
+def _ps_literal(text: str) -> str:
+    """`text` as one single-quoted PowerShell string: nothing inside is expanded and
+    a double quote is an ordinary character; a single quote is written twice.
+
+    The arguments string holds double quotes whenever an argument has a space
+    (list2cmdline quotes it), and in a double-quoted PowerShell string the first of
+    them ends the string. The windowless route puts the program path among the
+    arguments, so from 2026-10-11 (07d90b11) the OK-WW failure screenshot, whose
+    program is C:\\Program Files\\PowerShell\\7\\pwsh.exe, could not build its task."""
+    return "'" + str(text).replace("'", "''") + "'"
+
+
 def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = (),
                     *, task: "str | None" = None, label: "str | None" = None) -> bool:
     """Start exe in the interactive desktop session via a one-shot scheduled task. True on success.
@@ -67,9 +79,9 @@ def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = (),
         f'$ErrorActionPreference="Stop";'
         f'Unregister-ScheduledTask -TaskName "{task}" -Confirm:$false '
         f'-ErrorAction SilentlyContinue;'
-        f'$a=New-ScheduledTaskAction -Execute "{exe}" '
-        + (f'-Argument "{quoted}" ' if quoted else "")
-        + f'-WorkingDirectory "{cwd}";'
+        f'$a=New-ScheduledTaskAction -Execute {_ps_literal(exe)} '
+        + (f'-Argument {_ps_literal(quoted)} ' if quoted else "")
+        + f'-WorkingDirectory {_ps_literal(cwd)};'
         f'$p=New-ScheduledTaskPrincipal -UserId "administrator" '
         f'-LogonType Interactive -RunLevel Highest;'
         f'Register-ScheduledTask -TaskName "{task}" -Action $a -Principal $p '

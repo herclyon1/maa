@@ -395,6 +395,21 @@ st, _, _ = judge("#6", {"rec": R4, "raw": {}, "update_restarts": {RID: dict(UR[R
 check("still held (the push step lets it go): not judged yet", st, None)
 st, _, _ = judge("#6", {"rec": R4, "raw": {}, "update_restarts": {RID: dict(UR[RID], done="")}}, state=tmpdir())
 check("no done round in the shift: not this case", st, None)
+# Two restarts settled in one batch: both are marked seen at once, so the verdict must
+# cover both (until 2026-10-13 the first FAIL returned and the second was never judged).
+RID2 = "2026-10-04/endfield/MaaEnd-06-40-02"
+UR2 = dict(UR, **{RID2: {"version": "v2.32.0-beta.2", "started": "2026-10-04T10:40:02+08:00",
+                         "done": "2026-10-04/endfield/MaaEnd-05-26-41", "held": False}})
+noisy = [{"msg": "MaaEnd-06-40-02 重启后读不到记录", "pushed": False, "recovered": False}]
+state = tmpdir()
+alertlog.AlertLog(state).record(texts.failed("MaaEnd"), "重试 2 次全部失败，已交给我们这边去查。\n· 失败于：MaaEnd 装新版 v2.32.0-beta.1 后自己重启，这一次重试被用掉",
+                                now=datetime(2026, 10, 4, 1, 51, 26, tzinfo=alertlog.timezone.utc))
+st, ev, _ = judge("#6", {"rec": R4, "raw": {}, "update_restarts": UR2, "relay_errors": noisy}, state=state)
+check("two restarts, both wrong: FAIL", st, "FAIL")
+check("…naming both: the alarm copy of the first and the relay error of the second",
+      ("MaaEnd-05-50-53" in ev and "却进了群" in ev, "MaaEnd-06-40-02" in ev and "会进群的报错" in ev), (True, True))
+st, _, _ = judge("#6", {"rec": R4, "raw": {}, "update_restarts": UR2, "relay_errors": noisy}, state=state)
+check("…and neither is judged again", st, None)
 
 print("\n[#43 / #46 没干完的每一趟都进了群]")
 undone = "OK-WW 这一轮有 1 项没干成，但它自己没报错：\n· 残象聚落：点了点位，但传送不过去，一次没打"

@@ -13,15 +13,21 @@ Two judgements, two replayers:
 * ``okww_pushes(text)`` replays outcome over one OK-WW run log - the real code
   (``outcome.okww_checks`` + ``outcome.summarize``), exactly what
   ``engine._verify_outcome`` runs. Faithful by construction.
-* ``errwatch_pushes(text, quiet=...)`` replays the errwatch handler over a
-  relay.log: every WARNING / ERROR line of an ``ark.*`` logger is a push,
-  except the lines this version no longer pushes. Those live in ``_QUIET``,
-  each with the fix that made it quiet. It is a hand registry, not the code,
-  because the recovered flag of a line is not in the log text (a recovered
-  line and a plain one share the same words) - the registry is the replay's
-  knowledge of the current code's recovered / removed wordings, the same way
-  the machine checks keep ``old=`` / ``recovered=`` patterns
-  (``machinechecks/phone_banners.py`` ``_lines``).
+* ``errwatch_pushes(text)`` replays a relay.log through the real errwatch
+  handler (``errwatch.ErrorKindAlert``; a push is a record that reaches its
+  ``_take``). The log text alone cannot be fed to it: whether a line was
+  recovered, or is logged at all, is decided by the code that wrote it, not by
+  its words. So each WARNING / ERROR line of a known 10-06 false alarm is routed
+  to the producer that wrote it, and that producer runs again, now, with the
+  inputs of that moment (``_PRODUCERS``): the WuWa calendar reader
+  (``wuwa._wuwa_calendar_start`` with the time already given by another source,
+  as ``_wuwa_second_half`` passes it), machine check #2 through
+  ``machinecheck.judge`` on the trace it left, and ``snapshot.read`` while the
+  relay's own power-off is under way. What the handler takes is what this
+  version would push. Every other WARNING / ERROR line is a push as written:
+  nothing in this version is known to keep it quiet. Until 2026-10-13 the
+  quiet lines were a hand list of wordings (``_QUIET``), so a change that
+  brought those false alarms back still passed the gate.
 
 The deploy script (``scripts/mac/deploy-relay.sh``) runs the module's ``main``
 over the checked-in false-alarm fixtures (and any ``$REPLAY_LOGS`` the deployer
@@ -29,8 +35,11 @@ adds) before it pushes; any push stops the deploy.
 """
 from __future__ import annotations
 
+import logging
 import re
 import sys
+import tempfile
+from datetime import datetime
 from pathlib import Path
 
 # A relay.log line: 「MM-DD HH:MM:SS LEVEL  ark.name  message」. LEVEL is padded
@@ -38,27 +47,93 @@ from pathlib import Path
 # bare 「diag:」 and traceback lines have no leading timestamp and are skipped.
 _LINE = re.compile(r"^\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s+(WARNING|ERROR)\s+(ark\.[\w.]+)\s+(.*)$")
 
-# The WARNING / ERROR wordings this version no longer pushes, by logger and
-# message. Each is one of the 2026-10-06 false alarms and its fix:
-#
-# * ark.banners calendar 「没找到…的日期」 / 「只有图，没读到字」 / 「读图失败」 - the
-#   cross-check mute of a4db06c1: when another source gave the time, these are
-#   logged ``extra=errwatch.recovered()`` (daily report only, not the group).
-#   The plain (no-other-source) wording is the same text and would still push;
-#   it cannot be told apart from the log line alone, so the registry keeps the
-#   fixed case quiet - the replay's job is the false alarm, not a second errwatch.
-# * ark.phone_banners 「🔬 上机核对没过：#2」 - the calendar #2 check now passes
-#   (the cross-check found the time), so this ERROR is no longer logged.
-# * ark.snapshot 「快照的 _MAS错误/_队列错误 这一段读不到」 - the shutdown snapshot
-#   skip of b799746e: after the relay issued the power-off those two sections are
-#   no longer read (they only fail during the AUTO-MAS teardown).
-_QUIET = (
-    ("ark.banners", re.compile(r"版本活动日历读了 \d+ 行，没找到「")),
-    ("ark.banners", re.compile(r"^这条公告只有图，没读到字：")),
-    ("ark.banners", re.compile(r"^鸣潮版本活动日历读图失败")),
-    ("ark.phone_banners", re.compile(r"^🔬 上机核对没过：#2\b")),
-    ("ark.snapshot", re.compile(r"^快照的 _(MAS错误|队列错误) 这一段读不到")),
-)
+# The 10-06 lines of the WuWa calendar read (all three come out of one
+# _wuwa_calendar_start call, and the #2 machine check judges its trace).
+_CAL_MISS = re.compile(r"^鸣潮 (\S+) 版本活动日历读了 \d+ 行，没找到「(.+?)」的日期：(.*)$")
+_CAL_IMG = re.compile(r"^这条公告只有图，没读到字：.*activity id=(\d+)「(\S+?)版本活动日历」(\S+)")
+_CAL_FAIL = re.compile(r"^鸣潮版本活动日历读图失败")
+_MC2 = re.compile(r"^🔬 上机核对没过：#2\b")
+# The 10-06 06:21 shutdown snapshot lines, written after the relay's own power-off.
+_SNAP = re.compile(r"^快照的 (_MAS错误|_队列错误) 这一段读不到")
+
+
+class _Taken(list):
+    """The records the real errwatch handler would queue for the group."""
+
+
+def _handler(state_dir: Path):
+    """A real ErrorKindAlert whose queue is this list: a record that reaches _take is a push."""
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+
+    class _NoSend:
+        def send(self, *_a, **_k):
+            return []
+
+    h = errwatch.ErrorKindAlert(_NoSend(), state_dir=state_dir, known={})
+    taken = _Taken()
+    h._take = lambda record: taken.append(record)
+    return h, taken
+
+
+def _replay_calendar(miss: "re.Match | None", img: "re.Match | None") -> None:
+    """The 10-06 06:20:17 calendar read again, as this version runs it: another source
+    (the first banner's end + 1 min) had already given the second half's time, so
+    _wuwa_second_half passes notes=None. The image reader returns the 78 OCR lines
+    the log quoted. Then machine check #2 judges the trace through judge()."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
+    from ark_relay.features.banners import banners as hub  # noqa: PLC0415
+    from ark_relay.features.selfcheck import machinecheck as mc  # noqa: PLC0415
+
+    ver = (miss and miss.group(1)) or (img and img.group(2)) or "3.7"
+    pool = (miss and miss.group(2)) or "余心所向九死未悔"
+    nid = (img and img.group(1)) or "50868"
+    url = (img and img.group(3)) or "https://example.invalid/cal.png"
+    words = (miss.group(3).split(" / ") if miss else [])
+    ocr = [SimpleNamespace(text=w, x=0, y=40 * i, w=10 * len(w), h=30) for i, w in enumerate(words)]
+    notice = {"activity": [{"id": nid, "tabTitle": f"{ver}版本活动日历", "startTimeMs": "1790712000000",
+                            "content": f'<p><img src="{url}" alt="" width="1080" height="2159"></p>'}]}
+    now = datetime(2026, 10, 6, 6, 20, 17, tzinfo=SERVER_TZ).replace(tzinfo=None)
+    end = datetime(2026, 10, 22, 9, 59)
+    tr = hub.Trace.new()
+    hub._wuwa_calendar_start(notice, pool, now, end, lambda _url: ocr, None, tr)
+    mc.load()
+    only = {"#2": mc.CHECKS["#2"]}
+    saved = dict(mc.CHECKS)
+    mc.CHECKS.clear()
+    mc.CHECKS.update(only)
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            mc.judge(td, "banners", {"trace": tr, "now": now}, notifier=None)
+    finally:
+        mc.CHECKS.clear()
+        mc.CHECKS.update(saved)
+
+
+def _replay_snapshot(labels: "set[str]") -> None:
+    """The 10-06 06:21 snapshot read again, as this version runs it: the relay's own
+    power-off is under way (what boot_stages wires into errwatch), and the AUTO-MAS
+    sections that failed then fail the same way (its backend being torn down)."""
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    from ark_relay.features.phone import snapshot  # noqa: PLC0415
+
+    def refused(_out):
+        raise ConnectionRefusedError("AUTO-MAS backend going away")
+
+    names = {"_MAS错误": "_mas", "_队列错误": "_queues"}
+    saved = {n: getattr(snapshot, n) for n in ("_mas", "_queues", "_okww", "_runtime")}
+    probe = errwatch._relay_poweroff[0]
+    try:
+        for label, n in names.items():
+            setattr(snapshot, n, refused if label in labels else (lambda _out: None))
+        snapshot._okww = snapshot._runtime = lambda _out: None
+        errwatch._relay_poweroff[0] = lambda: True
+        snapshot.read()
+    finally:
+        errwatch._relay_poweroff[0] = probe
+        for n, fn in saved.items():
+            setattr(snapshot, n, fn)
 
 
 def okww_pushes(text: str, *, expect_nest: bool = False, expect_daily: bool = True,
@@ -75,22 +150,53 @@ def okww_pushes(text: str, *, expect_nest: bool = False, expect_daily: bool = Tr
     return [msg] if msg else []
 
 
-def errwatch_pushes(text: str, quiet: tuple = _QUIET) -> list[dict]:
+def errwatch_pushes(text: str) -> list[dict]:
     """The group pushes errwatch would send for the WARNING / ERROR lines of a relay.log.
 
-    Each entry is ``{where, line, lineno}`` - the logger, the message, and the
-    source line number. ``quiet`` is the registry of wordings this version no
-    longer pushes; pass ``()`` to replay the old code (everything pushes)."""
+    Each entry is ``{where, line, lineno}``. A line of a known 10-06 false alarm
+    is replaced by what its producer, run again now under the real errwatch
+    handler, pushes (lineno = the first source line of that producer, line =
+    what this version would log); every other line pushes as written."""
     out: list[dict] = []
+    cal: dict[str, "re.Match"] = {}
+    cal_at = 0
+    snap: set[str] = set()
+    snap_at = 0
     for i, line in enumerate(text.splitlines(), 1):
         m = _LINE.match(line)
         if m is None:
             continue
         name, msg = m.group(2), m.group(3)
-        if any(n == name and rx.search(msg) for n, rx in quiet):
-            continue
-        out.append({"where": name, "line": msg, "lineno": i})
-    return out
+        if name == "ark.banners" and (hit := _CAL_MISS.match(msg) or _CAL_IMG.match(msg) or _CAL_FAIL.match(msg)):
+            cal.setdefault(hit.re.pattern, hit)
+            cal_at = cal_at or i
+        elif name == "ark.phone_banners" and _MC2.match(msg):
+            cal_at = cal_at or i
+        elif name == "ark.snapshot" and (hit := _SNAP.match(msg)):
+            snap.add(hit.group(1))
+            snap_at = snap_at or i
+        else:
+            out.append({"where": name, "line": msg, "lineno": i})
+    runs = []
+    if cal_at:
+        runs.append((cal_at, lambda: _replay_calendar(cal.get(_CAL_MISS.pattern), cal.get(_CAL_IMG.pattern))))
+    if snap_at:
+        runs.append((snap_at, lambda: _replay_snapshot(snap)))
+    if runs:
+        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        ark = logging.getLogger(errwatch.ARK)   # where boot_stages installs the handler
+        with tempfile.TemporaryDirectory() as td:
+            h, taken = _handler(Path(td) / "state")
+            ark.addHandler(h)
+            try:
+                for at, run in runs:
+                    before = len(taken)
+                    run()
+                    out += [{"where": r.name, "line": r.getMessage().splitlines()[0] if r.getMessage() else "",
+                             "lineno": at} for r in taken[before:]]
+            finally:
+                ark.removeHandler(h)
+    return sorted(out, key=lambda p: p["lineno"])
 
 
 def _is_okww(path: str) -> bool:

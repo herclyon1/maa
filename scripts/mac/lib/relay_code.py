@@ -2,17 +2,19 @@
 
 The installed relay (packaging/ark-relay.iss) runs {app}\\versions\\<current.txt>\\
 (relay/pkg_layout.py); C:\\ProgramData\\ark-relay holds only its data (.env, state\\,
-relay.log). The ark_relay folder still lying there is the old relay's code, frozen at the
-switch-over: a tool that imports it judges the machine by old code, and one that applies
-OK-WW patches with it writes old patches over newer fixes. Every tool that imports
-ark_relay on the machine takes the folder from here.
+relay.log). The old relay's ark_relay folder that lay there (a tool importing it judged
+the machine by old code, and one applying OK-WW patches with it wrote old patches over
+newer fixes) went to C:\\ProgramData\\ark-relay-retired-1011 on 2026-10-11 22:33
+(scripts/windows/retire_legacy.py, docs/TOOLING.md). Every tool that imports ark_relay
+on the machine takes the folder from here.
 
     from relay_code import use_relay_code   # its own line at column 0: winrun.sh --py
     CODE = use_relay_code()                 # ships the scripts/mac/lib modules it sees
                                             # imported that way next to the script
 
-A machine without the installed relay (still on the old service): the old folder, and one
-line on stderr saying so.
+A machine without the installed relay: the old folder is still put on sys.path, with one
+line on stderr saying so; since the old code was moved out, the import then fails (the
+tool stops with an import error rather than running old code).
 """
 from __future__ import annotations
 
@@ -25,7 +27,7 @@ from pathlib import Path
 APP = Path(os.environ.get("ARK_APP") or r"C:\Program Files\ArkRelay")
 # Data (.env, state, relay.log) stays here for every version (relay/pkg_layout.py data_root).
 DATA = Path(os.environ.get("ARK_HOME") or r"C:\ProgramData\ark-relay")
-# The old relay kept its code next to its data.
+# The old relay kept its code next to its data (moved out 2026-10-11, see the docstring).
 LEGACY_CODE = Path(r"C:\ProgramData\ark-relay")
 
 

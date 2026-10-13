@@ -159,5 +159,45 @@ finally:
     else:
         os.chmod(ad / "20261006.jsonl", 0o644)
 
+print("[pushes docs/NOTIFICATIONS.md routes `group (report)` are not alarms]")
+# The real rows: 10-13 10:00 the 🖼️ 无音区产出 the owner asked for (version 20261012131940;
+# the old gate printed MCWAIT_ALARM 1 on it), and 10-12 08:46 a 🩺 中继自己报错了 alarm.
+DOC = str(ROOT.parent / "docs" / "NOTIFICATIONS.md")
+real = [json.loads(ln) for ln in (ROOT / "tests" / "fixtures" / "alerts-e2-report-push.jsonl")
+        .read_text(encoding="utf-8").splitlines() if ln.strip()]
+tacet, fault = real
+e = tmpdir()
+(e / "alerts").mkdir()
+(e / "machinecheck.json").write_text(json.dumps({"#63": mc_row(version="20261012131940", event="boot")}),
+                                     encoding="utf-8")
+
+
+def run_doc(state_dir, version, *rows):
+    (Path(state_dir) / "alerts" / "20261013.jsonl").write_text(
+        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        rc = main([state_dir, version, "0", DOC])
+    return rc, out.getvalue()
+
+
+rc, out = run_doc(str(e), "20261012131940", tacet)
+check("无音区产出 only: exit 0", rc, 0)
+check("it is listed as INFO, not ALARM", ("INFO" in out and "无音区产出" in out, "ALARM" in out), (True, False))
+banner = dict(tacet, title="🎴 明天开新卡池：鸣潮", text="明天 10:00 开新卡池")
+rc, out = run_doc(str(e), "20261012131940", banner)
+check("明天开新卡池：<games> (title cut at the placeholder): exit 0", rc, 0)
+rc, out = run_doc(str(e), "20261012131940", tacet, dict(fault, version="20261012131940"))
+check("a real alarm next to it still fails: exit 1", rc, 1)
+check("only the alarm is an ALARM line", (out.count("ALARM 2026"), "MCWAIT_ALARM 1" in out), (1, True))
+rc, out = run_doc(str(e), "20261012131940", dict(fault, title="🌙 关机被取消", version="20261012131940"))
+check("🌙 关机被取消 is routed `group` in the page, so it counts", rc, 1)
+
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    rc = main([str(e), "20261012131940", "0", str(e / "no-such-page.md")])
+check("page missing: every group push counts again (exit 1, with a NOTE)",
+      (rc, "NOTE" in out.getvalue()), (1, True))
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

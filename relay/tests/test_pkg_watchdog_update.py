@@ -312,13 +312,15 @@ check("deploy-pkg.sh: sha read from info, after the watch and the rollback exits
       order == sorted(order), True)
 check("deploy-pkg.sh: the staged file is deleted on exit", "del $WD_STAGED" in pkg_sh, True)
 sh = (ROOT / "scripts/mac/deploy-relay.sh").read_text(encoding="utf-8")
-q = {k: sh.find(k) for k in ('\nWATCHDOG_FAIL_WHY=""\n', 'lib/deploy-pkg.sh"', 'publish-cos.py"', "grep -q '^SMOKE_OK$'",
+# The smoke runs before COS since 2026-10-13 (a failed smoke takes the way back, so it
+# must come before the version is published).
+q = {k: sh.find(k) for k in ('\nWATCHDOG_FAIL_WHY=""\n', 'lib/deploy-pkg.sh"', "grep -q '^SMOKE_OK$'", 'publish-cos.py"',
                              'if [ -n "$WATCHDOG_FAIL_WHY" ]; then\n  echo "❌❌ 中继已上线', 'echo "✅ 部署完成',
                              "push -q origin HEAD:refs/heads/main", "ledger-gap.py",
                              'if [ -n "$WATCHDOG_FAIL_WHY" ]; then\n  echo "❌❌ 再说一遍', "\n  exit 14\nfi")}
 check("deploy-relay.sh: every anchor there", [k for k, v in q.items() if v < 0], [])
 order = list(q.values())
-check("deploy-relay.sh: set for both layouts first; reported after COS and the smoke; exit 14 last",
+check("deploy-relay.sh: set for both layouts first; reported after the smoke and COS; exit 14 last",
       order == sorted(order), True)
 check("deploy-relay.sh: exit 14 is the last command", sh.rstrip().endswith("exit 14\nfi"), True)
 

@@ -10,6 +10,7 @@
 #
 #   OK <stem> <script> <result>     a run finished successfully
 #   FAIL <stem> <script> <result>   a run failed
+#   UPD <stem> MaaEnd <result>      AUTO-MAS installed a MaaEnd update (not a run)
 #   OFFLINE                         machine stopped responding (exit 2)
 #   DONE                            no game process left (exit 0)
 set -uo pipefail
@@ -34,6 +35,7 @@ fi
 
 echo "watching $DAY on $HOST every ${INTERVAL}s"
 seen=""
+upd_seen=""
 idle=0
 miss=0
 while true; do
@@ -50,6 +52,14 @@ while true; do
   miss=0
 
   while IFS='|' read -r tag stem kind ok res; do
+    # An update install is not a run: said once, and kept out of $seen, which
+    # decides whether a run has been seen before DONE may fire.
+    if [ "$tag" = "UPD" ]; then
+      case "$upd_seen" in *"<$stem>"*) continue ;; esac
+      upd_seen="$upd_seen<$stem>"
+      echo "UPD  $stem $kind $(printf '%s' "$res" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()))' 2>/dev/null || printf '%s' "$res")"
+      continue
+    fi
     [ "$tag" = "REC" ] || continue
     case "$seen" in *"<$stem>"*) continue ;; esac
     seen="$seen<$stem>"

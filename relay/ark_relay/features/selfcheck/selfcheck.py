@@ -22,6 +22,16 @@ log = logging.getLogger("ark.selfcheck")
 AUTOMAS_TASK = "AUTO-MAS_AutoStart"
 
 
+def _is_backend(cmd: str) -> bool:
+    """True if a python.exe command line is AUTO-MAS's backend: main.py run from under
+    the install root's \\automas\\ directory (the host keeper's rule, 083ebcef).
+
+    "main.py" alone also matched OK-WW (`D:\\ark\\okww\\data\\apps\\ok-ww\\working\\main.py`,
+    which may run as python.exe): a dead backend then passed this check while OK-WW ran."""
+    low = (cmd or "").lower().replace("/", "\\")
+    return "main.py" in low and "\\automas\\" in low
+
+
 @dataclass
 class Check:
     name: str      # plain language, shown in the alarm
@@ -87,7 +97,7 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
     out.append(Check("调度程序有应答", bool(mas_up()), "开机后中继叫过它一次，仍然没有应答"))
     # Without the process table this cannot be judged (None), so an unreadable
     # table is one failure, not two.
-    out.append(Check("调度程序的后台程序在跑", None if rows is None else any("main.py" in c for _, c in rows),
+    out.append(Check("调度程序的后台程序在跑", None if rows is None else any(_is_backend(c) for _, c in rows),
                      "判不了：程序列表读不到" if rows is None else "在跑的程序里没有它的后台"))
     ok, why = run_ok(["schtasks", "/query", "/tn", AUTOMAS_TASK])
     out.append(Check("调度程序的开机任务计划还在", ok, why))
@@ -147,6 +157,11 @@ def report(cfg, notifier, log_=None) -> list[Check]:
 # ---------- the daily report's 「中继体检」 lines ----------
 
 _TS = re.compile(r"^(\d\d-\d\d) (\d\d:\d\d):\d\d (\w+)\s+(\S+)\s+(.*)$")
+# A start that ends on purpose before the AUTO-MAS step: the self-update restart
+# (boot_stages._stage_selfupdate / app_main.SELF_UPDATE_LINE) and a stop that came
+# in mid-boot (service.ArkRelayService._stop_in_boot).
+_SELF_UPDATE = ("代码已更新，重启以立即生效", "代码已更新，切到新版本文件夹并重启")
+_BOOT_STOP = "开机还没走完就收到停止"
 
 
 def daily_lines(day: str, log_text: str) -> list[str]:
@@ -166,8 +181,13 @@ def daily_lines(day: str, log_text: str) -> list[str]:
     shifts: list[str] = []      # the after-shift check's one line per shift (shiftcheck.py)
     # Each service start opens a boot. A boot where AUTO-MAS answered at once logs
     # none of the four outcome lines below; one that closes without an outcome
-    # line is reported as "already up".
+    # line is reported as "already up" - when it got that far. The AUTO-MAS step
+    # runs before the boot self-check (phone_channel, then _stage_selfcheck), so a
+    # start followed by the next start with no 「开机自检」 line in between died
+    # before it: 10-10 16:28-16:32 a crash loop of 15 starts, each gone after
+    # about 18 s, read as 15 「开机时已经在」 until 2026-10-13.
     pending = ""
+    reached = False
     for line in log_text.splitlines():
         m = _TS.match(line)
         if not m or m.group(1) != md:
@@ -180,8 +200,22 @@ def daily_lines(day: str, log_text: str) -> list[str]:
             continue
         if msg.startswith("服务模式启动"):
             if pending:
-                boots.append(f"{pending} 开机时已经在")
+                boots.append(f"{pending} " + ("开机时已经在" if reached else "中继刚启动就停了，还没看调度程序在不在"))
             pending = hhmm
+            reached = False
+            continue
+        if msg.startswith("开机自检"):
+            reached = True
+        # Neither of these reaches the self-check either, but it is no crash:
+        # 10-05 21:20, 10-07 08:45 and 21:20, 10-08 20:05 each installed a new
+        # version and restarted, and read as a crash until 2026-10-13.
+        if pending and not reached and msg.startswith(_SELF_UPDATE):
+            boots.append(f"{pending} 装新版后自己重启了")
+            pending = ""
+            continue
+        if pending and not reached and msg.startswith(_BOOT_STOP):
+            boots.append(f"{pending} 开机还没走完就被叫停了")
+            pending = ""
             continue
         n_before = len(boots)
         # The four outcomes ensure_automas logs (boot_stages.py), matched on

@@ -67,6 +67,15 @@ with tempfile.TemporaryDirectory() as td:
     rows_ok = [(1, "python.exe other.py")]
     cs = selfcheck.run(cfg, **dict(good, procs=lambda: rows_ok))
     check("读得到进程表、后台不在才算不成立", [c.name for c in cs if c.ok is False], ["调度程序的后台程序在跑"])
+    # OK-WW's script is a main.py too (preupdate_okww.py); it is not the AUTO-MAS backend.
+    okww = [(7, r"D:\ark\okww\data\apps\ok-ww\python\python.exe D:\ark\okww\data\apps\ok-ww\working\main.py -t 2 -e")]
+    cs = selfcheck.run(cfg, **dict(good, procs=lambda: okww))
+    check("OK-WW's main.py is not taken for the backend", [c.name for c in cs if c.ok is False], ["调度程序的后台程序在跑"])
+    machine = [(5088, r"D:\ark\automas\runtime\environment\venv\Scripts\python.exe main.py")]  # test_procs_wmi.py
+    cs = selfcheck.run(cfg, **dict(good, procs=lambda: machine))
+    check("the machine's backend line (10-10) still counts", [c.name for c in cs if c.ok is False], [])
+    cs = selfcheck.run(cfg, **dict(good, procs=lambda: [(9, "d:/ARK/AutoMAS/repo/MAIN.PY")]))
+    check("/ and case do not matter", [c.name for c in cs if c.ok is False], [])
 
     print("\n[10-01..10-05 那种机器：没装 Pillow，读长图每次都 ModuleNotFoundError]")
     cs = selfcheck.run(cfg, **dict(good, has_module=lambda m: m != "PIL"))
@@ -144,6 +153,36 @@ with _mock.patch("ark_relay.core.logfile.tail_bytes", side_effect=PermissionErro
           selfcheck.daily_section("2026-09-18", "/locked/relay.log"),
           "中继体检\n· 中继日志读不到（被占用或没有权限）")
 check("the unreadable line is plain words", texts.plain(missing), [])
+
+print("\n[a start that died before the self-check is not 「开机时已经在」 (real 10-10 16:28-17:22)]")
+# relay.log 10-10 16:28-16:32: 15 starts about 18 s apart, none reaching the boot
+# self-check (the AUTO-MAS step runs before it), then boots that did reach it.
+crash = (Path(__file__).resolve().parent / "fixtures" / "relay-1010-crashloop-boots.log").read_text(encoding="utf-8")
+boots = selfcheck.daily_lines("2026-10-10", crash)[1].removeprefix("· 调度程序开机：").split("；")
+check("22 starts", len(boots), 22)
+check("the 15 crash-loop starts read as stopped before the AUTO-MAS step",
+      [b for b in boots[:15] if not b.endswith("中继刚启动就停了，还没看调度程序在不在")], [])
+check("16:32:46, 16:33, 16:59:30, 17:02:25 and 17:21 reached the self-check: already up",
+      [b for b in boots if b.endswith("开机时已经在")],
+      ["16:32 开机时已经在", "16:33 开机时已经在", "16:59 开机时已经在", "17:02 开机时已经在", "17:21 开机时已经在"])
+check("the line is plain words", texts.plain("；".join(boots)), [])
+
+print("\n[a self-update restart is not a crash (real 10-05 21:20, 10-07 08:45 / 21:20, 10-08 20:05)]")
+# Each of these starts fetched a new version and restarted before the boot
+# self-check; the restarted start that follows reached it.
+upd = (Path(__file__).resolve().parent / "fixtures" / "relay-selfupdate-restart-boots.log").read_text(encoding="utf-8")
+got = {d: selfcheck.daily_lines(d, upd)[1] for d in ("2026-10-05", "2026-10-07", "2026-10-08")}
+check("10-05", got["2026-10-05"], "· 调度程序开机：21:20 装新版后自己重启了；21:20 开机时已经在")
+check("10-07", got["2026-10-07"], "· 调度程序开机：08:45 装新版后自己重启了；08:45 自己起来了（等了 19 秒）；"
+      "21:20 装新版后自己重启了；21:20 自己起来了（等了 13 秒）")
+check("10-08", got["2026-10-08"], "· 调度程序开机：20:05 装新版后自己重启了；20:06 自己起来了（等了 3 秒）")
+check("the 10-10 crash loop still reads as a crash",
+      [b for b in boots[:15] if not b.endswith("中继刚启动就停了，还没看调度程序在不在")], [])
+# A stop mid-boot (service._stop_in_boot) - not in the real log yet; the line is the one service.py writes.
+stop = ("10-10 22:30:11 INFO    ark.service  服务模式启动，监视 D:\\ark\\automas\\history（变更即处理，兜底 30 秒）\n"
+        "10-10 22:30:12 INFO    ark.service  开机还没走完就收到停止，后面几步不做了，直接退出\n")
+check("a stop mid-boot", selfcheck.daily_lines("2026-10-10", stop)[1], "· 调度程序开机：22:30 开机还没走完就被叫停了")
+check("the new words are plain", texts.plain("；".join(got.values()) + "开机还没走完就被叫停了"), [])
 
 print()
 if fails:

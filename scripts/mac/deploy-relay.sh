@@ -361,7 +361,7 @@ lap
 # interpreter and arguments, the state dir): the installed relay's own, or the old service's.
 SMOKE_PY="\"$PY\""; SMOKE_ARGS=""; MC_STATE_ARG='"C:\ProgramData\ark-relay\state"'
 # Set by the installed relay's watchdog step (lib/deploy-pkg.sh 5.3) when the watchdog
-# service's file could not be updated; read after COS and the smoke (exit 14). Set here
+# service's file could not be updated; read after the smoke and COS (exit 14). Set here
 # for both layouts: under `set -u` an unset one would kill the old layout's deploy.
 WATCHDOG_FAIL_WHY=""
 if [ "$LAYOUT" = pkg ]; then
@@ -433,7 +433,7 @@ if ! grep -q '^SNAPSHOT ' <<<"$SNAP"; then
   exit 5
 fi
 PREV_VER=$(awk '/^SNAPSHOT /{print $3}' <<<"$SNAP")
-echo "    上一版已存好（$(awk '/^SNAPSHOT /{print $2}' <<<"$SNAP") 个要被覆盖的文件，版本 $PREV_VER）"
+echo "    上一版已存好（$(awk '/^SNAPSHOT /{print $2}' <<<"$SNAP") 个要被覆盖的文件，版本 ${PREV_VER}）"
 # <<< deploy watch: snapshot
 if [ -z "$CHANGED" ]; then
   echo "    机器上的文件和本地一致，无需推送"
@@ -607,7 +607,7 @@ if ! grep -q '^WATCH_OK' "$WATCH_OUT"; then
     "\"$PY\" -X utf8 $WATCH_PY watch C:\\ProgramData\\ark-relay\\relay.log \"$T0\" 60 rollback $PREV_VER" 2>&1 \
     | tr -d '\r' | tee "$WATCH_OUT" | sed 's/^/    /' || true
   if grep -q '^RESTORED ' <<<"$RESTORED" && [ "$STATE" = "Running" ] && grep -q '^WATCH_OK' "$WATCH_OUT"; then
-    echo "↩️  已自动退回上一版 $PREV_VER，退回后 60 秒没有重启。这次部署失败，没有发到 COS。"
+    echo "↩️  已自动退回上一版 ${PREV_VER}，退回后 60 秒没有重启。这次部署失败，没有发到 COS。"
     exit 12
   fi
   echo "❌❌❌ 退回上一版后也没稳住——中继现在可能是坏的，必须立刻有人处理。"
@@ -615,6 +615,66 @@ if ! grep -q '^WATCH_OK' "$WATCH_OUT"; then
 fi
 # <<< deploy watch: watch
 fi
+# >>> smoke gate
+# The smoke runs right after the watch, **before** COS gets this version and before the
+# notes stamp: until 2026-10-13 it ran after publish-cos.py, so a version whose code did
+# not import stayed live and was already the newest on COS, with no way back (only a
+# watch failure had one). A failed smoke now takes the watch's way back: the previous
+# version again, restarted, watched 60 s (exit 7; 13 when that does not hold either).
+# What the way back does not undo: for the installed relay, a runtime swap (runtime-done
+# has dropped the staged runtime whose python.exe runtime-back runs on; python.prev stays
+# for a hand restore) and the watchdog service's file (5.3, outside the version folders).
+smoke_way_back() {
+  if [ "$LAYOUT" = pkg ]; then
+    [ "$RUNTIME_TOUCHED" = 1 ] && echo "    运行环境这次换过，不跟着退（旧的留在 runtime\\python.prev，要退得手动）"
+    echo "▶ 自动退回上一版 ${PREV}（current.txt 改回去，新文件夹留着查）"
+    BACK=$(pkg_py "$PKG_DEPLOY" back "$APP_WIN" "$PREV" || true)
+    printf '%s\n' "$BACK" | tail -2 | sed 's/^/    /'
+    if [ "$APPFILES_SWAPPED" = 1 ]; then
+      pkg_py "$PKG_DEPLOY" appfiles-back "$APP_WIN" | tail -1 | sed 's/^/    /' || true
+    fi
+    pkg_restart
+    echo "    退回后：中继 ${STATE:-未知}，current.txt $CURRENT"
+    pkg_py "$WATCH_PY" watch 'C:\ProgramData\ark-relay\relay.log' "$T0" 60 rollback "$PREV" --pkg \
+      | tee "$WATCH_OUT" | sed 's/^/    /' || true
+    [ "$CURRENT" = "$PREV" ] && [ "$STATE" = "Running" ] && grep -q '^WATCH_OK' "$WATCH_OUT"
+    return
+  fi
+  echo "▶ 自动退回上一版 $PREV_VER"
+  RESTORED=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
+    "\"$PY\" -X utf8 $WATCH_PY restore ${REMOTE_DIR//\//\\} $BACKUP_DIR" 2>&1 | tr -d '\r' || true)
+  printf '%s\n' "$RESTORED" | tail -3 | sed 's/^/    /'
+  restart_service
+  echo "    退回后服务状态：${STATE:-未知}"
+  ssh "${SSH_OPTS[@]}" "$USER_AT" \
+    "\"$PY\" -X utf8 $WATCH_PY watch C:\\ProgramData\\ark-relay\\relay.log \"$T0\" 60 rollback $PREV_VER" 2>&1 \
+    | tr -d '\r' | tee "$WATCH_OUT" | sed 's/^/    /' || true
+  grep -q '^RESTORED ' <<<"$RESTORED" && [ "$STATE" = "Running" ] && grep -q '^WATCH_OK' "$WATCH_OUT"
+}
+# 「部署完成」这四个字只能在冒烟过了之后打印（用户 2026-09-06 的死命令）。
+# 哈希对得上只证明**字节到了**，不证明**代码跑得起来**：一个坏 import、
+# 一个模块级常量写错、一处只有机器那版 Python 3.14 才报的语法警告——
+# 三种都能通过哈希核对，然后在第一次 tick 才炸，而服务全程显示 RUNNING。
+echo "▶ 5.5/5 冒烟（机器上导入全部模块、读状态表、读启动后的日志）"
+scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/smoke.py" \
+  "${USER_AT}:C:/Users/Administrator/ark-smoke.py"
+CHANGED_CSV=$(printf '%s\n' $CHANGED | paste -sd, - 2>/dev/null || true)
+[ -z "$SMOKE_ARGS" ] && SMOKE_ARGS="--changed=$CHANGED_CSV"
+SMOKE=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
+  "$SMOKE_PY -X utf8 C:\\Users\\Administrator\\ark-smoke.py $SMOKE_ARGS" 2>&1 | tr -d '\r')
+ssh "${SSH_OPTS[@]}" "$USER_AT" "del C:\\Users\\Administrator\\ark-smoke.py" >/dev/null 2>&1 || true
+sed 's/^/    /' <<<"$SMOKE"
+if ! grep -q '^SMOKE_OK$' <<<"$SMOKE"; then
+  echo
+  echo "❌❌ 冒烟没过——文件到了、服务也 RUNNING，但代码跑不起来（原因见上面几行）。"
+  if smoke_way_back; then
+    echo "↩️  已自动退回上一版，退回后 60 秒没有重启。这次部署失败，没有发到 COS。"
+    exit 7
+  fi
+  echo "❌❌❌ 退回上一版后也没稳住——中继现在可能是坏的，必须立刻有人处理。"
+  exit 13
+fi
+# <<< smoke gate
 printf '%s' "$NOTES_SHA" > "$NOTES_STAMP"
 
 # COS goes up **before** the notes are cleared. publish-cos.py zips the files as
@@ -652,26 +712,6 @@ if [ -n "$PATCH_TROUBLE" ]; then
   exit 3
 fi
 
-# 「部署完成」这四个字只能在冒烟过了之后打印（用户 2026-09-06 的死命令）。
-# 哈希对得上只证明**字节到了**，不证明**代码跑得起来**：一个坏 import、
-# 一个模块级常量写错、一处只有机器那版 Python 3.14 才报的语法警告——
-# 三种都能通过哈希核对，然后在第一次 tick 才炸，而服务全程显示 RUNNING。
-echo "▶ 5.5/5 冒烟（机器上导入全部模块、读状态表、读启动后的日志）"
-scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/smoke.py" \
-  "${USER_AT}:C:/Users/Administrator/ark-smoke.py"
-CHANGED_CSV=$(printf '%s\n' $CHANGED | paste -sd, - 2>/dev/null || true)
-[ -z "$SMOKE_ARGS" ] && SMOKE_ARGS="--changed=$CHANGED_CSV"
-SMOKE=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
-  "$SMOKE_PY -X utf8 C:\\Users\\Administrator\\ark-smoke.py $SMOKE_ARGS" 2>&1 | tr -d '\r')
-ssh "${SSH_OPTS[@]}" "$USER_AT" "del C:\\Users\\Administrator\\ark-smoke.py" >/dev/null 2>&1 || true
-sed 's/^/    /' <<<"$SMOKE"
-if ! grep -q '^SMOKE_OK$' <<<"$SMOKE"; then
-  echo
-  echo "❌❌ 冒烟没过——文件到了、服务也 RUNNING，但代码跑不起来。"
-  echo "      **这次不算部署完成**，上面那几行就是原因。"
-  exit 7
-fi
-
 # ── 5.75 gate: after deploy, wait for the boot batch judged and group pushes 0 (E2, the other of the two hard gates the user added 2026-10-06) ──
 # The words 部署完成 may print only once machinecheck.json shows this boot batch
 # (event "boot") judged at least once and the group push count stayed 0 through
@@ -681,15 +721,20 @@ fi
 # the restart both the boot checks and the alert copy (state/alerts/<day>.jsonl)
 # carry that version, so "this deploy" == version == $VER.
 echo "▶ 5.75/5 部署后核对（等开机那批核对判过、群推送 0）"
+# The routing table of docs/NOTIFICATIONS.md goes along: the titles it routes
+# `group (report)` (🖼️ 无音区产出, 🎴 明天开新卡池) are pushes the owner asked for, not
+# alarms, and machinecheck_wait reads them from that page (4th argument).
 if ! scp -q "${SSH_OPTS[@]}" "$HERE/../scripts/windows/machinecheck_wait.py" \
-       "${USER_AT}:C:/Users/Administrator/ark-mcwait.py" 2>/dev/null; then
+       "${USER_AT}:C:/Users/Administrator/ark-mcwait.py" 2>/dev/null \
+   || ! scp -q "${SSH_OPTS[@]}" "$HERE/../docs/NOTIFICATIONS.md" \
+       "${USER_AT}:C:/Users/Administrator/ark-mcwait-notifications.md" 2>/dev/null; then
   echo "    ⚠️ 机器关着，改在下次开机后核（E2 跳过，不算失败）"
 else
   MCWAIT_RC=0
   MCWAIT=$(ssh "${SSH_OPTS[@]}" "$USER_AT" \
-        "$SMOKE_PY -X utf8 C:\\Users\\Administrator\\ark-mcwait.py $MC_STATE_ARG $VER 180" \
+        "$SMOKE_PY -X utf8 C:\\Users\\Administrator\\ark-mcwait.py $MC_STATE_ARG $VER 180 C:\\Users\\Administrator\\ark-mcwait-notifications.md" \
         2>&1 | tr -d '\r') || MCWAIT_RC=$?
-  ssh "${SSH_OPTS[@]}" "$USER_AT" "del C:\\Users\\Administrator\\ark-mcwait.py" >/dev/null 2>&1 || true
+  ssh "${SSH_OPTS[@]}" "$USER_AT" "del C:\\Users\\Administrator\\ark-mcwait.py C:\\Users\\Administrator\\ark-mcwait-notifications.md" >/dev/null 2>&1 || true
   case "$MCWAIT_RC" in
     0)
       printf '%s\n' "$MCWAIT" | sed 's/^/    /'

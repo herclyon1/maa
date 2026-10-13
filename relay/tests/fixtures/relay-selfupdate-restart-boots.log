@@ -1,0 +1,144 @@
+10-05 21:20:18 INFO    ark.service  服务模式启动，监视 D:\ark\automas\history（变更即处理，兜底 30 秒）
+10-05 21:20:19 INFO    ark.service  启动：OK-WW 有改动没贴上（上游源码和登记的不一致）：NightmareNestTask.find_nest（上游正文变了（现在 12d040afa102，我们照着 3b0271924cac 抄的））
+10-05 21:20:19 INFO    ark.notify  不推送（日报或手机页已有）：🩹 OK-WW 补丁（1 条） ｜ · OK-WW 有改动没贴上（上游源码和登记的不一致）：NightmareNestTask.find_nest（上游正文变了（现在 12d040afa102，我们照着 3b0271924cac 抄的））
+10-05 21:20:19 INFO    ark.service  刚开机，DNS 还没起来，最多等 90 秒
+10-05 21:20:21 INFO    ark.service  网络已就绪（等了 2 秒）
+10-05 21:20:22 INFO    ark.selfupdate  COS 上有新版 v20261005070241（本机 v20261002152907）
+10-05 21:20:22 INFO    ark.selfupdate  清单里的新文件 ark_relay/makeup.py 本机没有，这轮一起创建
+10-05 21:20:22 INFO    ark.selfupdate  清单里的新文件 ark_relay/trigger.py 本机没有，这轮一起创建
+10-05 21:20:22 INFO    ark.selfupdate  清单里的新文件 ark_relay/unresolved.py 本机没有，这轮一起创建
+10-05 21:20:23 INFO    ark.selfupdate  从 COS 的 bundle 里取到 21 个文件
+10-05 21:20:23 INFO    ark.selfupdate  代码已更新 21 个文件: RELEASE-NOTES.md、ark_relay/collect_retry.py、ark_relay/commands.py、ark_relay/core.py、ark_relay/echofarm.py、ark_relay/engine.py、ark_relay/handle.py、ark_relay/makeup.py、ark_relay/modes.py、ark_relay/notify.py、ark_relay/okww_files/ark_overrides.tasks.py、ark_relay/okww_overlay.py、ark_relay/outcome.py、ark_relay/phone.py、ark_relay/report.py、ark_relay/runwatch.py、ark_relay/shutdown.py、ark_relay/texts.py、ark_relay/trigger.py、ark_relay/unresolved.py、boot_stages.py
+10-05 21:20:23 INFO    ark.service  代码已更新，重启以立即生效: RELEASE-NOTES.md、ark_relay/collect_retry.py、ark_relay/commands.py、ark_relay/core.py、ark_relay/echofarm.py、ark_relay/engine.py、ark_relay/handle.py、ark_relay/makeup.py、ark_relay/modes.py、ark_relay/notify.py、ark_relay/okww_files/ark_overrides.tasks.py、ark_relay/okww_overlay.py、ark_relay/outcome.py、ark_relay/phone.py、ark_relay/report.py、ark_relay/runwatch.py、ark_relay/shutdown.py、ark_relay/texts.py、ark_relay/trigger.py、ark_relay/unresolved.py、boot_stages.py
+10-05 21:20:23 INFO    ark.service  主流程已返回，向 SCM 报告已停止；还活着的线程：MainThread
+10-05 21:20:26 INFO    ark.service  服务模式启动，监视 D:\ark\automas\history（变更即处理，兜底 30 秒）
+10-05 21:20:27 INFO    ark.service  启动：中继给 OK-WW 的改动文件已装到 D:\ark\okww\data\apps\ok-ww\working\ok_tasks\ark_overrides.py
+10-05 21:20:27 INFO    ark.service  启动：OK-WW 有改动没贴上（上游源码和登记的不一致）：NightmareNestTask.find_nest（上游正文变了（现在 12d040afa102，我们照着 3b0271924cac 抄的））
+10-05 21:20:27 INFO    ark.notify  不推送（日报或手机页已有）：🩹 OK-WW 补丁（2 条） ｜ · 中继给 OK-WW 的改动文件已装到 D:\ark\okww\data\apps\ok-ww\working\ok_tasks\ark_overrides.py · OK-WW 有改动没贴上（上游源码和登记的不一致）：NightmareNestTask.find_nest（上游正文变了（现在 12d040afa102，我们照着 3b0271924cac 抄的））
+10-05 21:20:27 INFO    ark.selfupdate  COS 上最新一次部署是 v20261005070241，本机 v20261005070241，已是最新，不再问 GitHub
+10-05 21:20:27 INFO    ark.notify  不推送（日报或手机页已有）：🔄 中继已更新（21 个文件） ｜ 10-05 21:20（东京 22:20） 生效 版本 v20261002152907 → v20261005070241  明日方舟 / 终末地没处理好的现在马上进群：补跑后仍没成、没能补跑、或跑完了但没干完，每个游戏每一班（早班 / 晚班）最多响一次，消息里写补跑结果、卡在哪和证据包；中继自己处理好了的（重试或补跑走通）照旧只进日报，原来的「一整天一趟都没跑成」报警去掉了。  更新在开机后、队
+10-05 21:20:27 INFO    ark.service  更新说明已记入当天日报（v20261005070241）
+10-05 21:21:52 INFO    ark.service  上游导出代码核对：1 个文件今天拉不到，明天再比
+10-05 21:21:52 INFO    ark.service  清掉 1 个超过 30 天的本地证据目录
+10-05 21:21:58 INFO    ark.phone  状态 43784 字节，压缩到 13187 字节
+10-05 21:22:00 INFO    ark.service  📱 已上报状态到手机（开机；今天 ntfy 已发 4 条）
+10-05 21:22:01 INFO    ark.phone  信箱里那条指令太老了（10-03 00:28:53 发出，68.9 小时前），丢弃
+10-05 21:22:01 INFO    ark.phone  信箱里那条指令太老了（10-03 00:36:52 发出，68.8 小时前），丢弃
+10-05 21:22:02 INFO    ark.phone  📱 手机通道已连上（长连接，不轮询）
+10-05 21:22:08 INFO    ark.service  开机自检 ✓ 看得到机器上在跑哪些程序
+10-05 21:22:08 INFO    ark.service  开机自检 ✓ 读得到每个程序是怎么启动的（系统自带的那条路）
+10-05 21:22:08 INFO    ark.service  开机自检 ✓ 调度程序有应答
+10-05 21:22:08 INFO    ark.service  开机自检 ✓ 调度程序的后台程序在跑
+10-05 21:22:08 INFO    ark.service  开机自检 ✓ 调度程序的开机任务计划还在
+10-05 21:22:08 INFO    ark.service  开机自检 ✓ 队列的排期读得到、至少一条开着定时
+10-05 21:22:08 INFO    ark.service  开机自检 ✓ 日志文件所在目录能写
+10-05 21:22:08 INFO    ark.service  开机自检 ✓ 状态目录能写
+10-05 21:22:08 INFO    ark.service  开机自检 ✓ 调度程序的历史目录在
+10-05 21:22:08 INFO    ark.service  开机自检 ✓ 至少一条通知通道配好了
+10-05 21:22:08 INFO    ark.service  开机自检 ✓ 手机通道配好了
+10-05 21:22:08 INFO    ark.service  开机自检 11 项全部成立
+10-07 08:45:19 INFO    ark.service  服务模式启动，监视 D:\ark\automas\history（变更即处理，兜底 30 秒）
+10-07 08:45:19 INFO    ark.service  中继代码版本 v20261006112530
+10-07 08:45:21 INFO    ark.selfupdate  COS 上有新版 v20261006214438（本机 v20261006112530）
+10-07 08:45:21 INFO    ark.selfupdate  清单里的新文件 ark_relay/logfile.py 本机没有，这轮一起创建
+10-07 08:45:22 INFO    ark.selfupdate  从 COS 的 bundle 里取到 20 个文件
+10-07 08:45:23 INFO    ark.selfupdate  代码已更新 20 个文件: RELEASE-NOTES.md、ark_relay/__main__.py、ark_relay/banners.py、ark_relay/collector_okww.py、ark_relay/engine.py、ark_relay/error_evidence.py、ark_relay/evidence.py、ark_relay/gameupdate_games.py、ark_relay/logfile.py、ark_relay/maaend_watchdog.py、ark_relay/machinechecks/runs.py、ark_relay/machinechecks/system.py、ark_relay/maintenance.py、ark_relay/okww_files/ark_overrides.tasks.py、ark_relay/outcome.py、ark_relay/phone.py、ark_relay/selfcheck.py、ark_relay/selfupdate.py、ark_relay/statestore.py、service.py
+10-07 08:45:23 INFO    ark.service  代码已更新，重启以立即生效: RELEASE-NOTES.md、ark_relay/__main__.py、ark_relay/banners.py、ark_relay/collector_okww.py、ark_relay/engine.py、ark_relay/error_evidence.py、ark_relay/evidence.py、ark_relay/gameupdate_games.py、ark_relay/logfile.py、ark_relay/maaend_watchdog.py、ark_relay/machinechecks/runs.py、ark_relay/machinechecks/system.py、ark_relay/maintenance.py、ark_relay/okww_files/ark_overrides.tasks.py、ark_relay/outcome.py、ark_relay/phone.py、ark_relay/selfcheck.py、ark_relay/selfupdate.py、ark_relay/statestore.py、service.py
+10-07 08:45:23 INFO    ark.service  主流程已返回，向 SCM 报告已停止；还活着的线程：MainThread
+10-07 08:45:27 INFO    ark.service  服务模式启动，监视 D:\ark\automas\history（变更即处理，兜底 30 秒）
+10-07 08:45:27 INFO    ark.service  中继代码版本 v20261006214438
+10-07 08:45:27 INFO    ark.service  启动：中继给 OK-WW 的改动文件已装到 D:\ark\okww\data\apps\ok-ww\working\ok_tasks\ark_overrides.py
+10-07 08:45:27 INFO    ark.notify  不推送（日报或手机页已有）：🩹 OK-WW 补丁（1 条） ｜ · 中继给 OK-WW 的改动文件已装到 D:\ark\okww\data\apps\ok-ww\working\ok_tasks\ark_overrides.py
+10-07 08:45:28 INFO    ark.selfupdate  COS 上最新一次部署是 v20261006214438，本机 v20261006214438，已是最新，不再问 GitHub
+10-07 08:45:28 INFO    ark.notify  不推送（日报或手机页已有）：🔄 中继已更新（20 个文件） ｜ 10-07 08:45（东京 09:45） 生效 版本 v20261006112530 → v20261006214438  - 鸣潮周本因为结晶波片不足没领到奖励，不再进群报警：这是游戏资源不够的正常情况，只在日报里写「周本（奖励没领：结晶波片不足，这一趟没打）」；领了几次后波片不够的，日报在那一行后面写「剩下的奖励没领：结晶波片不足」。周本因为别的原因没领到，照旧进群。  更新在开机后、队列开
+10-07 08:45:28 INFO    ark.service  更新说明已记入当天日报（v20261006214438）
+10-07 08:45:30 INFO    ark.service  上游导出代码核对：3 个文件今天拉不到，明天再比
+10-07 08:45:32 INFO    ark.service  AUTO-MAS 窗口已在、接口还没开，先等它自己起来（最多 150 秒）
+10-07 08:45:52 INFO    ark.service  AUTO-MAS 自己起来了（等了 19 秒）
+10-07 08:45:59 INFO    ark.phone  状态 43741 字节，压缩到 13131 字节
+10-07 08:46:00 INFO    ark.service  📱 已上报状态到手机（开机；今天 ntfy 已用 1 条）
+10-07 08:46:00 INFO    ark.machinecheck  上机核对 #10 过了：08:45:58 森空岛会话交给手机（6 项都在）；森空岛给的终末地体力：curStamina=268 maxStamina=360 maxTs=1791373701
+10-07 08:46:02 INFO    ark.phone  📱 ntfy 今天这个 IP 已用 1 条（中继自己发的 1 条）
+10-07 08:46:02 INFO    ark.phone  📱 手机通道已连上（长连接，不轮询）
+10-07 08:46:04 INFO    ark.service  开机自检 ✓ 看得到机器上在跑哪些程序
+10-07 08:46:04 INFO    ark.service  开机自检 ✓ 读得到每个程序是怎么启动的（系统自带的那条路）
+10-07 08:46:04 INFO    ark.service  开机自检 ✓ 调度程序有应答
+10-07 08:46:04 INFO    ark.service  开机自检 ✓ 调度程序的后台程序在跑
+10-07 08:46:04 INFO    ark.service  开机自检 ✓ 调度程序的开机任务计划还在
+10-07 08:46:04 INFO    ark.service  开机自检 ✓ 队列的排期读得到、至少一条开着定时
+10-07 08:46:04 INFO    ark.service  开机自检 ✓ 日志文件所在目录能写
+10-07 08:46:04 INFO    ark.service  开机自检 ✓ 状态目录能写
+10-07 08:46:04 INFO    ark.service  开机自检 ✓ 调度程序的历史目录在
+10-07 08:46:04 INFO    ark.service  开机自检 ✓ 至少一条通知通道配好了
+10-07 08:46:04 INFO    ark.service  开机自检 ✓ 手机通道配好了
+10-07 08:46:04 INFO    ark.service  开机自检 ✓ 中继装了读图组件（读官方长图（卡池几点几分）、压缩报警截图）
+10-07 08:46:04 INFO    ark.service  开机自检 12 项全部成立
+10-07 21:20:19 INFO    ark.service  服务模式启动，监视 D:\ark\automas\history（变更即处理，兜底 30 秒）
+10-07 21:20:19 INFO    ark.service  中继代码版本 v20261006214438
+10-07 21:20:19 INFO    ark.service  刚开机，DNS 还没起来，最多等 90 秒
+10-07 21:20:21 INFO    ark.service  网络已就绪（等了 2 秒）
+10-07 21:20:22 INFO    ark.selfupdate  COS 上有新版 v20261007101615（本机 v20261006214438）
+10-07 21:20:23 INFO    ark.selfupdate  从 COS 的 bundle 里取到 4 个文件
+10-07 21:20:24 INFO    ark.selfupdate  代码已更新 4 个文件: RELEASE-NOTES.md、ark_relay/phone.py、ark_relay/plan.py、ark_relay/snapshot.py
+10-07 21:20:24 INFO    ark.service  代码已更新，重启以立即生效: RELEASE-NOTES.md、ark_relay/phone.py、ark_relay/plan.py、ark_relay/snapshot.py
+10-07 21:20:24 INFO    ark.service  主流程已返回，向 SCM 报告已停止；还活着的线程：MainThread
+10-07 21:20:27 INFO    ark.service  服务模式启动，监视 D:\ark\automas\history（变更即处理，兜底 30 秒）
+10-07 21:20:27 INFO    ark.service  中继代码版本 v20261007101615
+10-07 21:20:28 INFO    ark.selfupdate  COS 上最新一次部署是 v20261007101615，本机 v20261007101615，已是最新，不再问 GitHub
+10-07 21:20:28 INFO    ark.notify  不推送（日报或手机页已有）：🔄 中继已更新（4 个文件） ｜ 10-07 21:20（东京 22:20） 生效 版本 v20261006214438 → v20261007101615  - 手机 App：机器关机前最后一次上报的状态里，明日方舟的设置（关卡、理智药、剿灭等）不再是空的；改为从排班用的同一份配置文件读，App 不会再退回去显示旧设置。  更新在开机后、队列开跑前落地，本轮直接使用新代码。
+10-07 21:20:28 INFO    ark.service  更新说明已记入当天日报（v20261007101615）
+10-07 21:20:34 INFO    ark.service  上游导出代码核对：三处都和登记的一致
+10-07 21:20:34 INFO    ark.service  清掉 2 个超过 30 天的本地证据目录
+10-07 21:20:36 INFO    ark.service  AUTO-MAS 窗口已在、接口还没开，先等它自己起来（最多 150 秒）
+10-07 21:20:50 INFO    ark.service  AUTO-MAS 自己起来了（等了 13 秒）
+10-07 21:20:56 INFO    ark.phone  状态 43747 字节，压缩到 13139 字节
+10-07 21:20:59 INFO    ark.service  📱 已上报状态到手机（开机；今天 ntfy 已用 6 条）
+10-07 21:20:59 INFO    ark.machinecheck  上机核对 #10 过了：21:20:55 森空岛会话交给手机（6 项都在）；森空岛给的终末地体力：curStamina=133 maxStamina=360 maxTs=1791477319
+10-07 21:21:24 INFO    ark.phone  📱 ntfy 今天这个 IP 已用 6 条（中继自己发的 6 条）
+10-07 21:21:28 INFO    ark.service  开机自检 ✓ 看得到机器上在跑哪些程序
+10-07 21:21:28 INFO    ark.service  开机自检 ✓ 读得到每个程序是怎么启动的（系统自带的那条路）
+10-07 21:21:28 INFO    ark.service  开机自检 ✓ 调度程序有应答
+10-07 21:21:28 INFO    ark.service  开机自检 ✓ 调度程序的后台程序在跑
+10-07 21:21:28 INFO    ark.service  开机自检 ✓ 调度程序的开机任务计划还在
+10-07 21:21:28 INFO    ark.service  开机自检 ✓ 队列的排期读得到、至少一条开着定时
+10-07 21:21:28 INFO    ark.service  开机自检 ✓ 日志文件所在目录能写
+10-07 21:21:28 INFO    ark.service  开机自检 ✓ 状态目录能写
+10-07 21:21:28 INFO    ark.service  开机自检 ✓ 调度程序的历史目录在
+10-07 21:21:28 INFO    ark.service  开机自检 ✓ 至少一条通知通道配好了
+10-07 21:21:28 INFO    ark.service  开机自检 ✓ 手机通道配好了
+10-07 21:21:28 INFO    ark.service  开机自检 ✓ 中继装了读图组件（读官方长图（卡池几点几分）、压缩报警截图）
+10-07 21:21:28 INFO    ark.service  开机自检 12 项全部成立
+10-08 20:05:34 INFO    ark.service  服务模式启动，监视 D:\ark\automas\history（变更即处理，兜底 30 秒）
+10-08 20:05:34 INFO    ark.service  中继代码版本 v20261007101615
+10-08 20:05:35 INFO    ark.selfupdate  COS 上有新版 v20261008050134（本机 v20261007101615）
+10-08 20:05:36 INFO    ark.selfupdate  从 COS 的 bundle 里取到 5 个文件
+10-08 20:05:37 INFO    ark.selfupdate  代码已更新 5 个文件: RELEASE-NOTES.md、ark_relay/banners.py、ark_relay/core.py、ark_relay/handle.py、ark_relay/texts.py
+10-08 20:05:37 INFO    ark.service  代码已更新，重启以立即生效: RELEASE-NOTES.md、ark_relay/banners.py、ark_relay/core.py、ark_relay/handle.py、ark_relay/texts.py
+10-08 20:05:37 INFO    ark.service  主流程已返回，向 SCM 报告已停止；还活着的线程：MainThread
+10-08 20:05:40 INFO    ark.service  服务模式启动，监视 D:\ark\automas\history（变更即处理，兜底 30 秒）
+10-08 20:05:40 INFO    ark.service  中继代码版本 v20261008050134
+10-08 20:05:41 INFO    ark.selfupdate  COS 上最新一次部署是 v20261008050134，本机 v20261008050134，已是最新，不再问 GitHub
+10-08 20:05:41 INFO    ark.notify  不推送（日报或手机页已有）：🔄 中继已更新（5 个文件） ｜ 10-08 20:05（东京 21:05） 生效 版本 v20261007101615 → v20261008050134  - 日报：终末地更新前被停下时，MaaEnd 自己记的「停止任务」不再算成一项游戏任务；10-08 日报标题里那个「终末地 1 项没证据」就是它，游戏里的各项其实都有截图。  更新在开机后、队列开跑前落地，本轮直接使用新代码。
+10-08 20:05:41 INFO    ark.service  更新说明已记入当天日报（v20261008050134）
+10-08 20:06:05 INFO    ark.service  上游导出代码核对：三处都和登记的一致
+10-08 20:06:05 INFO    ark.service  清掉 3 个超过 30 天的本地证据目录
+10-08 20:06:07 INFO    ark.service  AUTO-MAS 窗口已在、接口还没开，先等它自己起来（最多 150 秒）
+10-08 20:06:10 INFO    ark.service  AUTO-MAS 自己起来了（等了 3 秒）
+10-08 20:06:17 INFO    ark.phone  状态 43861 字节，压缩到 13243 字节
+10-08 20:06:18 INFO    ark.service  📱 已上报状态到手机（开机；今天 ntfy 已用 112 条）
+10-08 20:06:18 INFO    ark.machinecheck  上机核对 #10 过了：20:06:16 森空岛会话交给手机（6 项都在）；森空岛给的终末地体力：curStamina=83 maxStamina=360 maxTs=1791580839
+10-08 20:06:21 INFO    ark.phone  📱 ntfy 今天这个 IP 已用 112 条（中继自己发的 111 条）
+10-08 20:06:21 INFO    ark.phone  📱 手机通道已连上（长连接，不轮询）
+10-08 20:06:24 INFO    ark.service  开机自检 ✓ 看得到机器上在跑哪些程序
+10-08 20:06:24 INFO    ark.service  开机自检 ✓ 读得到每个程序是怎么启动的（系统自带的那条路）
+10-08 20:06:24 INFO    ark.service  开机自检 ✓ 调度程序有应答
+10-08 20:06:24 INFO    ark.service  开机自检 ✓ 调度程序的后台程序在跑
+10-08 20:06:24 INFO    ark.service  开机自检 ✓ 调度程序的开机任务计划还在
+10-08 20:06:24 INFO    ark.service  开机自检 ✓ 队列的排期读得到、至少一条开着定时
+10-08 20:06:24 INFO    ark.service  开机自检 ✓ 日志文件所在目录能写
+10-08 20:06:24 INFO    ark.service  开机自检 ✓ 状态目录能写
+10-08 20:06:24 INFO    ark.service  开机自检 ✓ 调度程序的历史目录在
+10-08 20:06:24 INFO    ark.service  开机自检 ✓ 至少一条通知通道配好了
+10-08 20:06:24 INFO    ark.service  开机自检 ✓ 手机通道配好了
+10-08 20:06:24 INFO    ark.service  开机自检 ✓ 中继装了读图组件（读官方长图（卡池几点几分）、压缩报警截图）
+10-08 20:06:24 INFO    ark.service  开机自检 12 项全部成立

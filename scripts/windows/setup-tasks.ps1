@@ -14,8 +14,19 @@
 # Keep sshd alive - it is the single point of failure for all remote access.
 sc.exe failure sshd reset= 86400 actions= restart/5000/restart/10000/restart/30000
 
+# What the relay itself needs, by the names retire_legacy.py checks before it
+# retires the old service (new_relay_problems: NEW_TASK_FOLDER\NEW_TASK_NAME and
+# NEW_WATCHDOG): the installed relay's scheduled task and its watchdog service.
+# Until 2026-10-13 only AUTO-MAS_AutoStart was checked, so a machine without the
+# relay's own task printed OK.
 Write-Output "--- verify ---"
-foreach ($t in @("AUTO-MAS_AutoStart")) {
-  schtasks /query /tn $t | Out-Null
+foreach ($t in @("AUTO-MAS_AutoStart", "\ArkRelay\main")) {
+  schtasks /query /tn $t 2>$null | Out-Null
   if ($LASTEXITCODE -eq 0) { Write-Output "  OK      $t" } else { Write-Output "  MISSING $t" }
+}
+foreach ($s in @("ArkRelayWatchdog")) {
+  $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
+  if (-not $svc) { Write-Output "  MISSING $s (service)" }
+  elseif ("$($svc.Status)" -ne "Running") { Write-Output "  STOPPED $s (service, $($svc.Status))" }
+  else { Write-Output "  OK      $s (service)" }
 }
