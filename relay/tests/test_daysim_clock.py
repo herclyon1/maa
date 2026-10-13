@@ -56,7 +56,12 @@ OLD.write_text("written before the sim started", encoding="utf-8")
 STEPLOG = D / "steps.log"
 S0 = R.datetime(2026, 10, 12, 8, 40, tzinfo=simclock.UTC8).timestamp()
 
-simclock.install("2026-10-12T08:40:00+08:00", power_on="2026-10-12T08:38:00+08:00", steplog=STEPLOG)
+# Short limits for the unparked checks below (the defaults are 5 CPU-s and 120 s real).
+import inspect  # noqa: E402
+
+HAS_HANG = "hang_s" in inspect.signature(simclock.install).parameters
+simclock.install("2026-10-12T08:40:00+08:00", power_on="2026-10-12T08:38:00+08:00", steplog=STEPLOG,
+                 **({"stall_s": 1.0, "hang_s": 2.0} if HAS_HANG else {}))
 
 # Only now the relay: its `from datetime import datetime` must bind the sim class.
 import datetime  # noqa: E402
@@ -246,14 +251,57 @@ with ThreadPoolExecutor(max_workers=2) as pool:
 check("pool shut down without moving time", simclock.now() - base, 3.0)
 check("no sim error so far", simclock.sim_errors(), [])
 
-print("\n[a helper not parked within 2 s real time is flagged]")
+print("\n[slow but working: a helper that spends little CPU for a long real while is not flagged]")
+# This Mac is shared: on 10-13 the relay's MaaEnd definitions parse took 19.3 s wall for
+# 0.77 s of CPU (simclock.STALL_S). A real-time limit flagged that as a stuck thread.
+base = simclock.now()
+simclock._st.hang_s = 10.0
+slow_done = []
+
+
+def slow():
+    R.sleep(2.5)                       # a long real while, no CPU: a starved thread looks the same
+    slow_done.append(simclock.now() - base)
+    time.sleep(5)                      # then parks, as relay work does
+
+
+t = spawn("slow-helper", slow)
+simclock.advance(None, 10_000)
+t.join()
+check("not flagged", simclock.sim_errors(), [])
+check("its work counted at the sim second it began", slow_done, [0.0])
+simclock._st.hang_s = 2.0
+
+print("\n[a helper burning CPU outside any sim wait is flagged by the CPU it spends]")
+base = simclock.now()
+stop_spin = []
+
+
+def spin():
+    x = 0
+    while not stop_spin:
+        x += 1                         # a busy loop: CPU, never a wait
+
+
+simclock._st.hang_s = 120.0            # only the CPU it burns may flag it (load-independent)
+t = spawn("spin-helper", spin)
+simclock.advance(None, 1000)
+simclock._st.hang_s = 2.0
+errs = simclock.sim_errors()
+check("one sim error for the spinning thread", [(e["what"], e["thread"]) for e in errs], [("unparked", "spin-helper")])
+require("it says the CPU limit", "CPU" in (errs[0]["detail"] if errs else ""), errs)
+stop_spin.append(1)
+t.join()
+simclock._st.outputs = [o for o in simclock._st.outputs if o.get("thread") != "spin-helper"]
+
+print("\n[a helper stuck in a real wait is flagged after hang_s real seconds]")
 base = simclock.now()
 stop_busy = []
 
 
 def busy():
     while not stop_busy:
-        R.sleep(0.01)                  # a busy loop: never in a sim wait
+        R.sleep(0.01)                  # stuck in real waits: never in a sim wait, no CPU
 
 
 t = spawn("busy-helper", busy)
@@ -264,7 +312,7 @@ errs = simclock.sim_errors()
 check("one sim error", [(e["what"], e["thread"]) for e in errs], [("unparked", "busy-helper")])
 stack = errs[0]["stack"] if errs else ""
 require("it names the busy loop in the stack", "busy" in stack, stack[-300:])
-require("flagged after 2 s real time, not long after", 2.0 <= flagged_after < 3.0, f"{flagged_after:.2f} s")
+require("flagged after hang_s (2 s) real time, not long after", 2.0 <= flagged_after < 3.0, f"{flagged_after:.2f} s")
 check("then the day went on", simclock.now() - base, 1.0)
 stop_busy.append(1)
 t.join()

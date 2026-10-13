@@ -46,6 +46,7 @@ from fake_win import FakeWin  # noqa: E402
 
 REAL_EXIT = os._exit
 REAL_CLOCK = time.perf_counter      # taken before simclock patches time
+CPU_CLOCK = time.process_time       # this process's CPU seconds (run.py's day budget)
 # A boot that has not ended this long after its recorded end is a sim error (a stop
 # the relay never finished). SvcStop's own hard exit is 15 s (service.py); the
 # app_main ending waits up to 10 + 3 + 2 s more.
@@ -77,7 +78,7 @@ def main() -> int:
     corpus = Path(spec["corpus"])
     out_path = Path(spec["out"])
     offline = bool(spec.get("offline"))
-    real0 = REAL_CLOCK()
+    real0, cpu0 = REAL_CLOCK(), CPU_CLOCK()
 
     # ---- 2. fakes first (real locks), then the clock
     sched = W.Sched(simclock)
@@ -113,7 +114,8 @@ def main() -> int:
         except Exception:  # noqa: BLE001
             simclock.out("sim_error", what="world state not saved", detail=traceback.format_exc()[-1500:])
         doc = {"boot": boot, "exit": how, "sim_end": W.iso(simclock.now()) if simclock._st.installed else None,
-               "real_s": round(REAL_CLOCK() - real0, 3), "outputs": simclock.outputs(), "log": log_lines}
+               "real_s": round(REAL_CLOCK() - real0, 3), "cpu_s": round(CPU_CLOCK() - cpu0, 3),
+               "outputs": simclock.outputs(), "log": log_lines}
         tmp = out_path.with_name(out_path.name + ".tmp")
         tmp.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, out_path)

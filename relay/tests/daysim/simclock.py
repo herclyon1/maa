@@ -19,10 +19,12 @@ Time model
   get/put, Semaphore, Barrier, threading.Timer), threading.Lock / RLock acquire
   when contended, Thread.join, queue.SimpleQueue (the pure-Python one, so
   ThreadPoolExecutor workers park), and `park()` for the fakes of other units.
-- A helper that stays unparked for `stall_s` real seconds while the main thread
-  waits to move time is a sim error ("unparked"): it is recorded with the thread's
-  stack, the thread is left out of quiescence until it parks again, and the day
-  goes on.
+- A helper that stays unparked while the main thread waits to move time is a sim
+  error ("unparked") once the process has spent `stall_s` CPU seconds meanwhile (a
+  busy loop), or after `hang_s` real seconds (stuck in a real wait, no CPU spent):
+  it is recorded with the thread's stack, the thread is left out of quiescence until
+  it parks again, and the day goes on. CPU, not wall time, for the busy case: this
+  Mac is shared, and real time says nothing about how much work a thread did.
 
 File times
 - os.stat / os.lstat / os.fstat and os.scandir entries: a time field that lies
@@ -63,6 +65,7 @@ import types
 # for real waits (REAL.sleep) and real stamps.
 REAL = types.SimpleNamespace(
     time=_time.time, time_ns=_time.time_ns, monotonic=_time.monotonic, sleep=_time.sleep,
+    process_time=_time.process_time,
     localtime=_time.localtime, gmtime=_time.gmtime, strftime=_time.strftime,
     ctime=_time.ctime, asctime=_time.asctime,
     datetime=_dtmod.datetime, date=_dtmod.date,
@@ -76,8 +79,15 @@ REAL = types.SimpleNamespace(
 
 UTC8 = _dtmod.timezone(_dtmod.timedelta(hours=8))
 INFINITE = 0xFFFFFFFF          # win32event.INFINITE: advance() waits without a deadline
-# design.md section 1: "A helper not parked within 2 s real time is a sim error".
-STALL_S = 2.0
+# design.md section 1 said "a helper not parked within 2 s real time is a sim error".
+# Measured 2026-10-13 18:42 (load average 61-115 on this 10-core Mac, other sessions):
+# the relay's own mastercfg._read_maaend_defs over MaaEnd's 68 task files took 19.3 s
+# wall for 0.77 s of CPU, so a real-time limit flagged legitimate work. A busy loop is
+# told by the CPU it burns (STALL_S, process CPU seconds, about 6x that parse); a
+# thread stuck in a real wait burns none and is told by HANG_S real seconds (6x that
+# parse's 19.3 s under the same load).
+STALL_S = 5.0
+HANG_S = 120.0
 # Real-time poll of the driver while helpers run (stall checks) and of a helper parked
 # on a predicate nobody pokes. Both are wake-ups for a re-check, not sim time.
 DRIVER_POLL_S = 0.005
@@ -97,12 +107,13 @@ class _Rec:
     """One thread as the scheduler sees it."""
 
     __slots__ = ("deadline", "error", "ident", "name", "on", "ready", "result",
-                 "rogue", "since", "state", "tracked", "wake")
+                 "rogue", "since", "since_cpu", "state", "tracked", "wake")
 
     def __init__(self, name: str, tracked: bool, ident: int | None = None):
         self.name, self.tracked, self.ident = name, tracked, ident
         self.state = "run"          # run | park | done
         self.since = REAL.monotonic()
+        self.since_cpu = REAL.process_time()
         self.deadline = self.ready = self.on = self.wake = self.error = None
         self.result = False
         self.rogue = False
@@ -118,6 +129,7 @@ class _State:
         self.mono_base = self.power_on = 0.0
         self.until: float | None = None
         self.stall_s = STALL_S
+        self.hang_s = HANG_S
         self.main_ident = 0
         self.events: list = []                  # heap of (t, seq, fn, tag)
         self.seq = itertools.count()
@@ -252,7 +264,8 @@ def stop() -> None:
     _kick()
 
 
-def install(start, *, power_on=None, steplog=None, until=None, stall_s: float = STALL_S) -> None:
+def install(start, *, power_on=None, steplog=None, until=None, stall_s: float = STALL_S,
+            hang_s: float = HANG_S) -> None:
     """Patch the clock, the waits and the stat calls. Call once, before importing the relay.
 
     start: sim time to begin at (epoch float, aware datetime or ISO string).
@@ -267,6 +280,7 @@ def install(start, *, power_on=None, steplog=None, until=None, stall_s: float = 
     _st.power_on = _st.mono_base = t0 if power_on is None else _as_epoch(power_on)
     _st.until = None if until is None else _as_epoch(until)
     _st.stall_s = float(stall_s)
+    _st.hang_s = float(hang_s)
     main = threading.main_thread()
     _st.main_ident = main.ident
     _st.recs[main.ident] = _Rec(main.name, tracked=False, ident=main.ident)
@@ -337,6 +351,7 @@ def _wake_locked(rec: _Rec, result) -> None:
     rec.result = result
     rec.ready = rec.on = None
     rec.since = REAL.monotonic()
+    rec.since_cpu = REAL.process_time()
     w = rec.wake
     if w is not None and w.locked():
         w.release()
@@ -388,7 +403,7 @@ def _park_helper(ident: int, timeout, ready, on):
 def _drive(timeout, ready):
     """A main-thread wait: move sim time until `ready()` or the deadline."""
     deadline = None if timeout is None else _st.t + max(0.0, float(timeout))
-    began = REAL.monotonic()
+    began, began_cpu = REAL.monotonic(), REAL.process_time()
     while True:
         due: list | None = []
         with _st.lock:
@@ -398,7 +413,7 @@ def _drive(timeout, ready):
                     return r
             if _st.stopped or (deadline is not None and _st.t >= deadline):
                 return False
-            running = _running_locked(began)
+            running = _running_locked(began, began_cpu)
             if not running and not _wake_ready_locked():
                 due = _jump_locked(deadline)
                 if due is not None and not due:
@@ -409,26 +424,29 @@ def _drive(timeout, ready):
             _st.kick.acquire(True, DRIVER_POLL_S)
 
 
-def _running_locked(began: float) -> list[_Rec]:
-    """Tracked helpers not parked; flags the ones unparked for longer than stall_s."""
-    real = REAL.monotonic()
+def _running_locked(began: float, began_cpu: float) -> list[_Rec]:
+    """Tracked helpers not parked; flags the ones unparked past stall_s CPU or hang_s real seconds."""
+    real, cpu = REAL.monotonic(), REAL.process_time()
     run = []
     for rec in itertools.chain(_st.unborn, _st.recs.values()):
         if not rec.tracked or rec.state != "run" or rec.rogue:
             continue
-        if real - max(rec.since, began) > _st.stall_s:
-            _flag_locked(rec)
+        if cpu - max(rec.since_cpu, began_cpu) > _st.stall_s:
+            _flag_locked(rec, f"not parked in a sim wait while the process spent {_st.stall_s:g} s of CPU")
+            continue
+        if real - max(rec.since, began) > _st.hang_s:
+            _flag_locked(rec, f"not parked in a sim wait within {_st.hang_s:g} s real time")
             continue
         run.append(rec)
     return run
 
 
-def _flag_locked(rec: _Rec) -> None:
+def _flag_locked(rec: _Rec, detail: str) -> None:
     rec.rogue = True
     frame = sys._current_frames().get(rec.ident) if rec.ident is not None else None
     stack = "".join(traceback.format_stack(frame)[-8:]) if frame is not None else ""
     _out_locked("sim_error", what="unparked", thread=rec.name,
-                detail=f"not parked in a sim wait within {_st.stall_s:g} s real time", stack=stack)
+                detail=detail, stack=stack)
 
 
 def _wake_ready_locked() -> bool:
