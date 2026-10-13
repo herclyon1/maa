@@ -117,7 +117,10 @@ def wuwa_teased(records: list, now: datetime) -> list[str]:
 #     ...
 #     ※可通过[身赴三途]角色活动唤取获得。
 _WW_ROLE = re.compile(r"5星共鸣者[「\[]([^」\]]+)[」\]]")
-_WW_POOL = re.compile(r"可通过[\[「]([^\]」]+)[\]」]角色活动唤取")
+# 活动 is the usual word; collaboration and memory banners say 联动 / 忆旅 instead
+# (the 库街区 notice titles of the 怒 烬中重燃 and 忆旅回响 banners), the same three
+# words wuwa_history._WW_HIST_TITLE accepts.
+_WW_POOL = re.compile(r"可通过[\[「]([^\]」]+)[\]」]角色(?:活动|联动|忆旅)唤取")
 
 
 def parse_wuwa_preview(content: str) -> "list[tuple[str, str]]":
@@ -170,7 +173,7 @@ _WW_NOTICE_UP = re.compile(r"5星角色「([^」]+)」")
 # first-half 3.7 banner post reads 「活动时间✦ 3.7版本更新后 ~ 2026年10月22日09:59」.
 _WW_NOTICE_SPAN = re.compile(r"活动时间[✦\s]*(?:(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2}):(\d{2})|(\d+\.\d+版本更新后))"
                              r"\s*[~～-]\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})")
-_WW_NOTICE_TITLE = re.compile(r"[\[「]([^\]」]+)[\]」]\s*角色活动唤取")
+_WW_NOTICE_TITLE = re.compile(r"[\[「]([^\]」]+)[\]」]\s*角色(?:活动|联动|忆旅)唤取")
 
 
 def parse_wuwa_notice_banners(notice: dict) -> list[Banner]:
