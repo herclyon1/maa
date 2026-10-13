@@ -1155,6 +1155,12 @@ def _install_hooks():
 
     @override(FarmEchoTask, "click_configured_boss_level")
     def click_configured_boss_level(self):
+        # Weekly boss only. Upstream calls this for the echo farm too (Teleport to
+        # Boss = 「Boss Challenge」, which echofarm.py writes; FarmEchoTask.py:351 via
+        # :316-317 and :383-384), and a 4C boss's level page has no 「本周剩余可收取
+        # 次数」: the unread-count stop below would end the farm at its first boss.
+        if not _weekly(self) or farming_echoes():
+            return pick_level(self)
         _shot(self, "weekly_remaining")
         left = raw = None
         try:

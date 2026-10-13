@@ -422,6 +422,18 @@ finally:
 check("upstream's own: the click, then confirm-and-tick within 1 s",
       (t.clicks, [e for e in t.events if e.startswith("skip-confirm")]), ([(0.880, 0.911)], ["skip-confirm {'time_out': 1}"]))
 
+print("\n[echo farm (Boss Challenge): a 4C boss's level page has no weekly counter -> upstream's level click, no stop]")
+t = task(left=["Box(name='推荐等级50', x=206, y=169)"])
+t.config = {"Teleport to Boss": "Boss Challenge"}
+got = "on"
+try:
+    t.click_configured_boss_level()
+except Exception as exc:  # noqa: BLE001 - the 10-13 bug: weekly_left_unread on the first realm boss
+    got = f"stop: {exc!r} {getattr(t, '_ark_failed', None)}"
+check("not stopped", got, "on")
+check("upstream's level click ran", t.events, ["level"])
+check("no weekly screenshot, no weekly read", (t.shots, any("周本本周剩余次数原文" in m for m in t.logs)), ([], False))
+
 print("\n[周本的复活交给上游 do_run 重新传送]")
 # The weekly boss is not the echo farm, so the revive is upstream's tower revive and
 # the exception goes up to do_run (v3.7.3 FarmEchoTask.py:204-216); the in-place
