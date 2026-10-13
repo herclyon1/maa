@@ -1,0 +1,3 @@
+MaaEnd v2.32.0 (git tag v2.32.0) assets/tasks/AutoStockStaple.json: the AutoStockStaple task
+declaration cut down to one option, and the AutoStockReserveWuling option as upstream defines it
+(verify rule at upstream line 1143). interface.json lists only that file.

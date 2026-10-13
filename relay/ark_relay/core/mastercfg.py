@@ -123,7 +123,14 @@ def _strip_jsonc(text: str) -> str:
     PuzzleSolver.json failed to parse on that, so the tasks they declare
     (CreditShoppingN2) were reported as orphans. A regex that removes `//.*`
     anywhere would eat "https://" inside strings, so this walks the text.
+    Trailing commas are dropped by a second walk for the same reason: a regex
+    over the whole text also turned the `\\d{6,}` inside AutoStockStaple.json's
+    verify rules into `\\d{6}`.
     """
+    return _strip_trailing_commas(_strip_comments(text))
+
+
+def _strip_comments(text: str) -> str:
     out = []
     i, n = 0, len(text)
     in_str = False
@@ -147,8 +154,33 @@ def _strip_jsonc(text: str) -> str:
             i = n if j == -1 else j + 2
             continue
         out.append(c); i += 1
-    cleaned = "".join(out)
-    return re.sub(r",(\s*[}\]])", r"\1", cleaned)
+    return "".join(out)
+
+
+def _strip_trailing_commas(text: str) -> str:
+    """Drop a comma outside strings whose next non-space character is } or ]."""
+    out = []
+    i, n = 0, len(text)
+    in_str = False
+    while i < n:
+        c = text[i]
+        if in_str:
+            out.append(c)
+            if c == "\\" and i + 1 < n:
+                out.append(text[i + 1]); i += 2; continue
+            if c == '"':
+                in_str = False
+            i += 1; continue
+        if c == '"':
+            in_str = True
+        elif c == ",":
+            j = i + 1
+            while j < n and text[j] in " \t\r\n":
+                j += 1
+            if j < n and text[j] in "}]":
+                i += 1; continue
+        out.append(c); i += 1
+    return "".join(out)
 
 
 def _jsonc(path: Path) -> dict:
