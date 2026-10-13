@@ -17,6 +17,7 @@ with a window was found. today() treats an exception from one as "could not read
 """
 from __future__ import annotations
 
+import contextvars
 import html as _html
 import json
 import logging
@@ -41,10 +42,81 @@ Window = tuple[datetime, datetime, str]
 # failing raises, and today() logs the WARNING.
 GET_ATTEMPTS = 2
 GET_PAUSE = 3.0
-# Per socket operation; app_main.stop_push (a fresh process at a Windows shutdown, no
-# cache) lowers it and GET_ATTEMPTS so tomorrow's plan cannot eat its time limit.
+# One try, whole: connect, headers and body (it was per socket operation, so a server
+# sending a byte now and then held a read for as long as it liked). A try cut off here
+# is a time-out like any other: retried once, then today()'s WARNING and FAIL_TTL.
+# Measured 2026-10-13 from the Mac, 140 timed reads of the seven bulletin URLs:
+# median 0.57 s, 90th percentile 1.88 s, slowest good reads 14.0 / 17.9 s; one read of
+# the 26 KB kurogame article/5477.json took 164.8 s. relay.log 10-02 23:05:34 / 23:05:54:
+# the machine's two failures, 20 s apart (silence until the per-op time-out).
+# app_main.stop_push (a fresh process at a Windows shutdown, no cache) lowers it and
+# GET_ATTEMPTS so tomorrow's plan cannot eat its time limit.
 GET_TIMEOUT = 20
+# All of one today() call's real reads together (up to seven URLs, a try each and a
+# retry): what is left after it fails at once, as a time-out. Measured with the same
+# reads: a whole today() took 3.2-22.2 s in 18 of 20 runs; the other two 47.4 s (a
+# 24.9 s read) and 169.7 s (the 164.8 s read). relay.log 10-11 16:57 / 18:31 / 21:47:
+# the whole stop-push state, all reads included, built in 11.3-11.6 s on the machine.
+TODAY_BUDGET = 60
 _sleep = time.sleep
+# When the running today() call's budget ends (time.monotonic()); None outside one.
+_UNTIL: "contextvars.ContextVar[float | None]" = contextvars.ContextVar("maintenance_until", default=None)
+
+
+def _limit(timeout: float) -> float:
+    """The time one try may take: `timeout`, or less when today()'s budget ends sooner."""
+    until = _UNTIL.get()
+    if until is None:
+        return timeout
+    left = until - time.monotonic()
+    if left <= 0:
+        raise TimeoutError("timed out")
+    return min(timeout, left)
+
+
+def _read_whole(req, end: float, limit: float) -> str:
+    """One request, read to the end unless time.monotonic() passes `end` first."""
+    with urllib.request.urlopen(req, timeout=limit) as r:
+        read1 = getattr(r, "read1", None)
+        if read1 is None:                      # a plain file-like answer
+            return r.read().decode("utf-8", "replace")
+        # Each socket read waits at most the time left (CPython's SocketIO keeps the
+        # socket in ._sock; without it a read still ends at `limit`).
+        sock = getattr(getattr(r.fp, "raw", None), "_sock", None)
+        parts: list[bytes] = []
+        while True:
+            left = end - time.monotonic()
+            if left <= 0:
+                raise TimeoutError("timed out")
+            if sock is not None and not r.isclosed():     # closed: read1 says b"" next
+                sock.settimeout(left)
+            chunk = read1(65536)
+            if not chunk:
+                return b"".join(parts).decode("utf-8", "replace")
+            parts.append(chunk)
+
+
+def _try(req, limit: float) -> str:
+    """_read_whole within `limit` seconds. In a thread of its own: a stalled DNS
+    lookup or a server that dribbles its headers is out of the body loop's reach; it
+    is left to end at its socket time-out."""
+    end = time.monotonic() + limit
+    box: dict = {}
+
+    def run():
+        try:
+            box["page"] = _read_whole(req, end, limit)
+        except BaseException as exc:  # noqa: BLE001 - handed to the caller as is
+            box["exc"] = exc
+
+    worker = threading.Thread(target=run, daemon=True, name="maintenance-get")
+    worker.start()
+    worker.join(limit)
+    if worker.is_alive():
+        raise TimeoutError("timed out")
+    if "exc" in box:
+        raise box["exc"]
+    return box["page"]
 
 
 def _get(url: str, timeout: "float | None" = None) -> str:
@@ -53,12 +125,12 @@ def _get(url: str, timeout: "float | None" = None) -> str:
     first = ""
     for i in range(GET_ATTEMPTS):
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                page = r.read().decode("utf-8", "replace")
+            page = _try(req, _limit(timeout))
         except urllib.error.HTTPError:
             raise
         except Exception as exc:  # timeout, reset, DNS (the last try re-raises)
-            if i + 1 >= GET_ATTEMPTS:
+            until = _UNTIL.get()
+            if i + 1 >= GET_ATTEMPTS or (until is not None and until - time.monotonic() <= GET_PAUSE):
                 raise
             first = first or f"{type(exc).__name__}: {exc}"
             log.info("维护公告：%s 没响应（%s），%.0f 秒后再试一次", url, exc, GET_PAUSE)
@@ -251,6 +323,16 @@ def today(now: datetime | None = None, sources=None,
     """
     now = now or datetime.now(tz=SERVER_TZ)
     out: dict[str, Window] = {}
+    budget = _UNTIL.set(time.monotonic() + TODAY_BUDGET)
+    try:
+        _today(now, sources, failed, out)
+    finally:
+        _UNTIL.reset(budget)
+    return out
+
+
+def _today(now: datetime, sources, failed: "list[str] | None", out: "dict[str, Window]") -> None:
+    """today()'s loop, inside its TODAY_BUDGET."""
     for game, fn in (sources if sources is not None else SOURCES).items():
         try:
             w = fn(now) if sources is not None else _read(game, fn, now)
@@ -268,4 +350,3 @@ def today(now: datetime | None = None, sources=None,
             continue
         if w and w[0].date() <= now.date() <= w[1].date():
             out[game] = w
-    return out
