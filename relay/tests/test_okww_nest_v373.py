@@ -308,5 +308,28 @@ t.back = lambda after_sleep=0: t.events.append("back")
 Nest.get_nest_to_go(t)
 check("no back", "back" in t.events, False)
 
+print("\n[the nest clicked is logged by name as well as by key: 「nightmare nest: nest name: <name>」]")
+t = fake(Nest, [page1("10/41"), PAGE2], ns)
+t.run()
+key = t.fought[0]
+t.shots = []
+t.screenshot = lambda name: t.shots.append(name)
+t.wait_feature = lambda *a, **kw: (_ for _ in ()).throw(Exception("wait_feature timeout"))
+try:
+    Nest.combat_nest(t, types.SimpleNamespace(cache_key=key))
+except Exception:  # noqa: BLE001 - the fake wait times out, as upstream's does
+    pass
+check("the key line as before", any(m == f"nightmare nest: 点进点位 {key}（截图 nest_go）" for m in t.infos))
+check("the name line, as OCR read it beside the count",
+      [m for m in t.infos if m.startswith("nightmare nest: nest name: ")], ["nightmare nest: nest name: 落渊南丘残象聚落"])
+check("the prefix is a constant the relay can import", ns["NEST_NAME_LINE"], "nightmare nest: nest name: ")
+t.infos = []
+try:
+    Nest.combat_nest(t, types.SimpleNamespace(cache_key="go_nest:48:999"))
+except Exception:  # noqa: BLE001
+    pass
+check("a key with no name read: 「?」", [m for m in t.infos if m.startswith("nightmare nest: nest name: ")],
+      ["nightmare nest: nest name: ?"])
+
 print("\n" +("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

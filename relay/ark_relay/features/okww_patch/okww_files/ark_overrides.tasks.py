@@ -1499,6 +1499,8 @@ _NEST_FIND_SHA = "12d040afa102"
 # The two nest sentences the relay's log reader keys on (collector_okww, outcome).
 NEST_COUNT_UNREAD = "指定点位的名字读到了，计数没读到"
 NEST_ADAPTED = "只刷指定点位的过滤是按 OK-WW 新版适配装上的"
+# Logged by combat_nest for the nest clicked: 「nightmare nest: nest name: <name as OCR read it>」.
+NEST_NAME_LINE = "nightmare nest: nest name: "
 _NEST_TOP_RE = re.compile(r"self\.ocr\(\s*0\.35\s*,\s*(0?\.\d+)\s*,\s*1\s*,\s*0\.96")
 
 
@@ -1586,6 +1588,10 @@ def _install_nest():
         self._ark_nest_raw = [(b.name, round(b.y)) for b in boxes]
         rows = [b.y + b.height / 2 for name in names for b in boxes
                 if name in (b.name or "")]
+        # The wanted names as OCR read them, with their rows: combat_nest logs the
+        # one it clicks (NEST_NAME_LINE), so the relay can compare names, not keys.
+        self._ark_nest_named_rows = [((b.name or "").strip(), b.y + b.height / 2)
+                                     for name in names for b in boxes if name in (b.name or "")]
         # Substring, not equality: OCR reads 「落渊南丘残象聚落」 while the setting says
         # 「落渊南丘」, and exact matching found nothing.
         if rows:
@@ -1646,6 +1652,10 @@ def _install_nest():
                 if not hasattr(self, "_ark_nest_progress"):
                     self._ark_nest_progress = {}
                 self._ark_nest_progress[cache_key] = numerator
+                if not hasattr(self, "_ark_nest_names"):
+                    self._ark_nest_names = {}
+                self._ark_nest_names[cache_key] = next(
+                    (n for n, w in getattr(self, "_ark_nest_named_rows", None) or [] if beside(count_box, w)), None)
                 count_box.x = self.width_of_screen(0.9)
                 count_box.y -= count_box.height * 0.9
                 count_box.height = 1
@@ -1731,7 +1741,12 @@ def _install_nest():
     @override(NightmareNestTask, "combat_nest")
     def combat_nest(self, nest):
         _shot(self, "nest_go")
-        self.log_info(f"nightmare nest: 点进点位 {getattr(nest, 'cache_key', '')}（截图 nest_go）")
+        key = getattr(nest, "cache_key", "")
+        self.log_info(f"nightmare nest: 点进点位 {key}（截图 nest_go）")
+        # The name of the nest clicked, as OCR read it beside its count; 「?」 when it
+        # was not read (no 「Only Farm These Nests」 filter, so no names were read).
+        name = (getattr(self, "_ark_nest_names", None) or {}).get(key) or "?"
+        self.log_info(f"{NEST_NAME_LINE}{name}")
         return go(self, nest)
 
     travel = getattr(NightmareNestTask, "_travel_to_nest_or_skip", None)
@@ -1757,6 +1772,8 @@ def _install_nest():
         self._ark_nest_progress = {}
         self._ark_only_logged = None      # log the filter's source once per run
         self._ark_close_map = False
+        self._ark_nest_names = {}
+        self._ark_nest_named_rows = []
         self._ark_nest_seen = False
         self._ark_nest_missed = None
         self._ark_nest_raw = None
