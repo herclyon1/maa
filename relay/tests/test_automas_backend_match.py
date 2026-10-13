@@ -78,8 +78,8 @@ print("[后台在跑：认得出]")
 automas_procs._python_processes = lambda: [(25244, OKWW), (5088, BACKEND)]
 check("_automas_running", automas_procs._automas_running(), True)
 check("_automas_handle takes the backend", automas_procs._automas_handle(), "handle:5088")
-check("forward slashes and case do not matter",
-      automas_procs.is_backend("d:/ARK/AutoMAS/repo/Main.py"), True)
+automas_procs._python_processes = lambda: [(6000, "d:/ARK/AutoMAS/repo/Main.py")]
+check("forward slashes and case do not matter", automas_procs._automas_running(), True)
 
 print("[第一个匹配打不开：接着试下一个]")
 opened.clear()
