@@ -22,6 +22,16 @@ log = logging.getLogger("ark.selfcheck")
 AUTOMAS_TASK = "AUTO-MAS_AutoStart"
 
 
+def _is_backend(cmd: str) -> bool:
+    """True if a python.exe command line is AUTO-MAS's backend: main.py run from under
+    the install root's \\automas\\ directory (the host keeper's rule, 083ebcef).
+
+    "main.py" alone also matched OK-WW (`D:\\ark\\okww\\data\\apps\\ok-ww\\working\\main.py`,
+    which may run as python.exe): a dead backend then passed this check while OK-WW ran."""
+    low = (cmd or "").lower().replace("/", "\\")
+    return "main.py" in low and "\\automas\\" in low
+
+
 @dataclass
 class Check:
     name: str      # plain language, shown in the alarm
@@ -87,7 +97,7 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
     out.append(Check("调度程序有应答", bool(mas_up()), "开机后中继叫过它一次，仍然没有应答"))
     # Without the process table this cannot be judged (None), so an unreadable
     # table is one failure, not two.
-    out.append(Check("调度程序的后台程序在跑", None if rows is None else any("main.py" in c for _, c in rows),
+    out.append(Check("调度程序的后台程序在跑", None if rows is None else any(_is_backend(c) for _, c in rows),
                      "判不了：程序列表读不到" if rows is None else "在跑的程序里没有它的后台"))
     ok, why = run_ok(["schtasks", "/query", "/tn", AUTOMAS_TASK])
     out.append(Check("调度程序的开机任务计划还在", ok, why))

@@ -67,6 +67,15 @@ with tempfile.TemporaryDirectory() as td:
     rows_ok = [(1, "python.exe other.py")]
     cs = selfcheck.run(cfg, **dict(good, procs=lambda: rows_ok))
     check("读得到进程表、后台不在才算不成立", [c.name for c in cs if c.ok is False], ["调度程序的后台程序在跑"])
+    # OK-WW's script is a main.py too (preupdate_okww.py); it is not the AUTO-MAS backend.
+    okww = [(7, r"D:\ark\okww\data\apps\ok-ww\python\python.exe D:\ark\okww\data\apps\ok-ww\working\main.py -t 2 -e")]
+    cs = selfcheck.run(cfg, **dict(good, procs=lambda: okww))
+    check("OK-WW's main.py is not taken for the backend", [c.name for c in cs if c.ok is False], ["调度程序的后台程序在跑"])
+    machine = [(5088, r"D:\ark\automas\runtime\environment\venv\Scripts\python.exe main.py")]  # test_procs_wmi.py
+    cs = selfcheck.run(cfg, **dict(good, procs=lambda: machine))
+    check("the machine's backend line (10-10) still counts", [c.name for c in cs if c.ok is False], [])
+    cs = selfcheck.run(cfg, **dict(good, procs=lambda: [(9, "d:/ARK/AutoMAS/repo/MAIN.PY")]))
+    check("/ and case do not matter", [c.name for c in cs if c.ok is False], [])
 
     print("\n[10-01..10-05 那种机器：没装 Pillow，读长图每次都 ModuleNotFoundError]")
     cs = selfcheck.run(cfg, **dict(good, has_module=lambda m: m != "PIL"))
