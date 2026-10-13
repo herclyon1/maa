@@ -430,9 +430,9 @@ def _top_rarity_only() -> None:
           [("提弗洛斯", "冬猎", None, True), ("伊冯", "绚丽异彩", "09-24 12:00", False)])
     ak_list = (FX / "maint" / "ak_news.html").read_text(encoding="utf-8", errors="replace")
     ak_get = ak_site(ak_lists(ak_list), {"1457": ak_post_fx("1457")})
-    nxt = _b.arknights_next_from_news(datetime(2026, 9, 3, 0, 0), get=ak_get)
+    nxt = _ak_next(datetime(2026, 9, 3, 0, 0), get=ak_get)
     check("方舟下一期：09-04 12:00 结城理「石白深蓝之夜」", (nxt[0].strftime("%m-%d %H:%M"), nxt[1]) if nxt else None, ("09-04 12:00", "结城理「石白深蓝之夜」"))
-    check("已经开了就不当下一期", _b.arknights_next_from_news(datetime(2026, 9, 5, 0, 0), get=ak_get), None)
+    check("已经开了就不当下一期", _ak_next(datetime(2026, 9, 5, 0, 0), get=ak_get), None)
     fake_prts = lambda n: {"予愿安洁莉娜": "|稀有度=5", "珊比": "|稀有度=5", "嘉辛塔": "|稀有度=4"}.get(n, "")  # noqa: E731
     b6 = _b.Banner("明日方舟", "车辙与风的归所", ("予愿安洁莉娜", "珊比", "嘉辛塔"), datetime(2026, 8, 1), datetime(2026, 8, 15))
     check("方舟池只留六星（PRTS 稀有度 5=六星）", _b.six_star_only(b6, fake_prts).chars, ("予愿安洁莉娜", "珊比"))
@@ -755,15 +755,15 @@ def _ak_history() -> None:
     # The next banner on 2026-10-06: announced only inside the 「昨日海」 event post
     get = ak_site(ak_lists(fx("ak-history-news-2026-10-06.txt")), cms)
     check("10-06 的下期：克莱门莎「海渊巡游」10-09 12:00（只在活动预告里）",
-          _b.arknights_next_from_news(datetime(2026, 10, 6, 12, 0), get=get),
+          _ak_next(datetime(2026, 10, 6, 12, 0), get=get),
           (datetime(2026, 10, 9, 12, 0), "克莱门莎「海渊巡游」"))
     # Two banners in one post: after the first opens, the second is still next
     get19 = ak_site({"ACTIVITY": sorted(((it["cid"], it["title"], it["displayTime"]) for it in page_items[39]),
                                         key=lambda it: -it[2])}, cms)
     check("一帖两池：08-21 发帖后下期是深夏的守夜人",
-          _b.arknights_next_from_news(datetime(2019, 8, 22), get=get19), (datetime(2019, 8, 27, 16, 0), "黑「深夏的守夜人」"))
+          _ak_next(datetime(2019, 8, 22), get=get19), (datetime(2019, 8, 27, 16, 0), "黑「深夏的守夜人」"))
     check("一帖两池：第一池开了以后下期是久铸尘铁",
-          _b.arknights_next_from_news(datetime(2019, 9, 1), get=get19), (datetime(2019, 9, 10, 16, 0), "赫拉格「久铸尘铁」"))
+          _ak_next(datetime(2019, 9, 1), get=get19), (datetime(2019, 9, 10, 16, 0), "赫拉格「久铸尘铁」"))
 
     # The same through _arknights (PRTS of 08-31 has no row for it yet)
     wt = fx("prts_limited.wikitext")
@@ -2034,6 +2034,19 @@ def _ef_no_version_notes() -> None:
     check("没有版本更新说明：当作公告没读到，说一次", _warned(recs, "公告取不到"), 1)
 
 
+def _ak_next(now, get):
+    """The next Arknights banner as _arknights picks it from the official posts:
+    the earliest one not yet open, whichever post announces it."""
+    fut = [(st, who) for st, who, _p, _en, _c in _b.arknights_banner_posts(now, get) if st > now]
+    return min(fut) if fut else None
+
+
+def _no_test_only_api() -> None:
+    """s20 #7: arknights_next_from_news and section() had callers only in tests
+    (the relay calls collect and render, and section() skipped save_trace)."""
+    check("只有测试在用的入口已删", [n for n in ("arknights_next_from_news", "section") if hasattr(_b, n)], [])
+
+
 def _crosscheck_honest() -> None:
     """s20 #6: the trace's cross-checks. Endfield filled a clock the bulletin does
     not print with Skland's own value and then compared Skland with itself (✓ with
@@ -2187,6 +2200,7 @@ def main() -> int:
     _ef_no_token()
     _ef_no_version_notes()
     _crosscheck_honest()
+    _no_test_only_api()
     _sf_ef_pool_ends()
     _sf_ef_brief_time()
     _sf_ww_first_half_end()

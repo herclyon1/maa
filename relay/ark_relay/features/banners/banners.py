@@ -35,7 +35,7 @@ having no report.
 ## Files
 
 This module holds what the three games share (Banner, Trace, render, the fetch
-helpers, the Yituliu tables, the history ledger, collect / section /
+helpers, the Yituliu tables, the history ledger, collect /
 opening_tomorrow) and re-exports the game modules' names, so `ark_relay.features.banners.banners.X`
 works for all of them: arknights.py, endfield.py, wuwa.py (banners and the two halves
 of a version), wuwa_posters.py (version-news posters, OCR, gacha notices) and
@@ -633,16 +633,6 @@ def save_trace(state_dir, now: datetime, text: str, tr: "Trace", notifier=None) 
         log.exception("卡池那一段的上机核对没能做")
 
 
-def section(now: datetime, **kw) -> str:
-    """The section at the end of the daily report."""
-    notes: dict[str, str] = {}
-    tr = Trace.new()
-    failed: list[str] = []
-    leads: dict[str, str] = {}
-    rows, nxt = collect(now, notes=notes, trace=tr, failed=failed, leads=leads, **kw)
-    return render(rows, now, nxt, notes, tr, failed, leads)
-
-
 def opening_tomorrow(now: datetime,
                      nxt: "dict[str, tuple[datetime | None, str]]"
                      ) -> "list[tuple[str, datetime, str]]":
@@ -691,7 +681,7 @@ from ark_relay.features.banners.arknights import (  # noqa: E402
     _AK_NEWS, _AK_NEWS_API, ak_news_pages, _AK_PAGES, _AK_POST, ak_post_text,
     _ak_posted, _ak_prts_rows, ak_rarity, AkPast, AkSection, _arknights,
     arknights_banner_posts, arknights_comm_lead, arknights_history,
-    arknights_next_from_news, parse_ak_post, parse_arknights, parse_arknights_html,
+    parse_ak_post, parse_arknights, parse_arknights_html,
     _PRTS, _PRTS_PAGE, _rarity_cache, six_star_only, update_arknights_history,
 )
 from ark_relay.features.banners.endfield import (  # noqa: E402
@@ -720,7 +710,7 @@ from ark_relay.features.banners.wuwa_history import (  # noqa: E402
 __all__ = [
     "AkPast", "AkSection", "Banner", "BiliFeedProblem", "KuroListProblem", "SERVER_TZ", "Trace",
     "ak_news_pages", "ak_post_text", "ak_rarity", "arknights_banner_posts",
-    "arknights_comm_lead", "arknights_history", "arknights_next_from_news",
+    "arknights_comm_lead", "arknights_history",
     "bili_shape", "bili_sign", "bili_wbi_keys", "collect", "crosscheck", "debut_only",
     "ef_banner_posts", "ef_briefing_banners", "ef_cms_posts", "ef_next_banner",
     "endfield_history", "endfield_next_from_briefing", "endfield_next_from_news",
@@ -730,7 +720,7 @@ __all__ = [
     "parse_arknights_html", "parse_ef_yituliu", "parse_endfield",
     "parse_endfield_notice", "parse_wuwa", "parse_wuwa_calendar",
     "parse_wuwa_notice_banners", "parse_wuwa_poster", "parse_wuwa_poster_first_end",
-    "parse_wuwa_preview", "record_history", "render", "save_trace", "section",
+    "parse_wuwa_preview", "record_history", "render", "save_trace",
     "six_star_only", "strip_plan", "upcoming", "update_arknights_history",
     "update_endfield_history", "update_history", "update_wuwa_history",
     "wuwa_bili_post", "wuwa_calendar_image", "wuwa_first_half_notice_end",

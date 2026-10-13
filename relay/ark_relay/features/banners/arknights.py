@@ -234,22 +234,6 @@ def ak_post_text(get, cid: str) -> str:
     return _ef_cms_text(str((d.get("data") or {}).get("data") or ""))
 
 
-def arknights_next_from_news(now: datetime, get=None) -> "tuple[datetime, str] | None":
-    """The earliest debut banner the newest official posts announce that has
-    not opened yet: (opening time, six-star「banner name」). None when there is
-    none. One post can announce two (cid 2019084798: 深夏的守夜人 08-27, then
-    久铸尘铁 09-10), so the first one having opened does not end the search.
-
-    The user, 2026-09-03: 「明日方舟官方早都公布角色了，中继完全没跟进」.
-    As recorded, bulletin 1457 of 08-29: 【石白深蓝之夜】限时寻访 09月04日 12:00 -
-    09月18日 03:59, ★★★★★★：结城理（占6★出率的50%）. The year is absent from the
-    bulletin and is taken from the post's own date (`_ak_year`).
-    """
-    fut = [(start, who) for start, who, _posted, _end, _cid in arknights_banner_posts(now, get)
-           if start > now]
-    return min(fut) if fut else None
-
-
 # A banner is announced in one of two places, both in the site's ACTIVITY tab:
 #  * a post of its own (cid 6247, title ending 【车辙与风的归所】限时寻访即将开启);
 #    only limited and collab banners get one;
@@ -627,8 +611,8 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
                 other = Banner("明日方舟", m.group(2), tuple(x for x in m.group(1).split("、") if x), st, en)
                 break
         tr.checks.append(crosscheck("明日方舟", "PRTS", b, "官网公告", other))
-    # The earliest announced one not yet open, whichever post it is in (the
-    # same rule as arknights_next_from_news).
+    # The earliest announced one not yet open, whichever post it is in: one post
+    # can announce two (cid 2019084798: 深夏的守夜人 08-27, then 久铸尘铁 09-10).
     if fut := [(st, who, en) for st, who, _p, en, _c in posts if st > now]:
         st, who, en = min(fut)
         tr.starts |= _stamps(st)
