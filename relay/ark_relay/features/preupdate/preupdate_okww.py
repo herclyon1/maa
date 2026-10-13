@@ -62,11 +62,20 @@ def _stop_okww_python() -> None:
 
 def okww_python_pids() -> "list[int] | None":
     """PIDs of OK-WW's running python processes (_OKWW_PY); None when the process
-    list could not be read."""
+    list could not be read.
+
+    No process gives empty output with exit 0 and nothing on stderr. A query that
+    failed inside pwsh also prints nothing on stdout, so a nonzero exit, or empty
+    output with an error on stderr, is "could not read", never "none left"."""
     r = _okww_py("Select-Object ProcessId | ConvertTo-Json -Compress")
+    if r is None or r.returncode != 0:
+        return None
+    text = (r.stdout or b"").decode("utf-8", "replace").strip()
+    if not text and (r.stderr or b"").strip():
+        return None
     try:
-        data = json.loads((r.stdout or b"").decode("utf-8", "replace").strip() or "null")
-    except (AttributeError, ValueError):
+        data = json.loads(text or "null")
+    except ValueError:
         return None
     out = []
     for proc in [data] if isinstance(data, dict) else (data or []):

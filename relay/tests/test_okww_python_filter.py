@@ -7,6 +7,9 @@ any python with "OK-WW" among its arguments was taken for OK-WW:
 `dispatch_guard.py start OK-WW` matched itself (scripts/windows/dispatch_guard.py).
 It now matches OK-WW's install folder. The -like patterns are run here with
 fnmatch on lowered strings, which is what -like does for '*' and '?'.
+
+okww_python_pids read a failed query (empty stdout) as "none running"; a nonzero
+exit, or empty output with an error on stderr, is now None.
 """
 import fnmatch
 import re
@@ -47,6 +50,33 @@ check("...nor the relay itself",
 estop = (Path(__file__).resolve().parents[2] / "scripts" / "mac" / "estop.sh").read_text(encoding="utf-8")
 check("the emergency stop's python filter is the folder too",
       re.findall(r'CommandLine -like "([^"]*)"', estop), [r"*\ok-ww\*"])
+
+print("[an unreadable list is None (unknown), never [] (none left)]")
+# 2026-10-13 review: pwsh started, the query failed, stdout was empty - and empty
+# read as "no OK-WW running", so the relaunch went ahead and game_alive said clean.
+
+
+class Done:
+    def __init__(self, rc, out=b"", err=b""):
+        self.returncode, self.stdout, self.stderr = rc, out, err
+
+
+real_py = P._okww_py
+cases = [
+    ("nothing running: empty output, exit 0, no error", Done(0), []),
+    ("one running", Done(0, b'{"ProcessId":4242}'), [4242]),
+    ("two running", Done(0, b'[{"ProcessId":1},{"ProcessId":2}]'), [1, 2]),
+    ("the query failed: exit 1, empty output", Done(1, b"", b"Get-CimInstance : Invalid class"), None),
+    ("an error on stderr with empty output, exit 0", Done(0, b"", b"Get-CimInstance : Access denied"), None),
+    ("a nonzero exit even with output", Done(1, b'{"ProcessId":4242}'), None),
+    ("pwsh did not run at all", None, None),
+]
+try:
+    for label, done, want in cases:
+        P._okww_py = lambda tail, d=done: d
+        check(label, P.okww_python_pids(), want)
+finally:
+    P._okww_py = real_py
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
