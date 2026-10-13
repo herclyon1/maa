@@ -71,6 +71,34 @@ def _write_whole(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
+def _flush_tree(folder: Path) -> None:
+    """fsync every file of a version folder, and each of its folders where the OS
+    allows it, so current.txt (fsynced) can never name a folder whose files a power cut
+    lost (audit s24 F2: copytree and check's writes were not flushed). The `state`
+    junction and __pycache__ at the top are skipped: the data folder is not code.
+
+    Files are opened "r+b": Windows' FlushFileBuffers needs write access. Folders are
+    fsynced off Windows only: os.open cannot open a folder there."""
+    for top, dirs, files in os.walk(folder):
+        if Path(top) == folder:
+            dirs[:] = [d for d in dirs if d not in ("state", "__pycache__")]
+        for name in files:
+            with open(os.path.join(top, name), "r+b") as f:
+                os.fsync(f.fileno())
+        _fsync_dir(Path(top))
+
+
+def _fsync_dir(folder: Path) -> None:
+    """fsync a folder's entries (POSIX); a no-op on Windows (see _flush_tree)."""
+    if os.name == "nt":
+        return
+    fd = os.open(folder, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def _set_current(app: Path, name: str) -> None:
     _write_whole(app / "current.txt", name + "\n")
 
@@ -259,7 +287,9 @@ def update(here: Path, check) -> list[str]:
             # The same version number came again (a re-deploy): keep another copy.
             n += 1
             name = f"{version}-{n}"
+        _flush_tree(staging)
         os.replace(staging, app / "versions" / name)
+        _fsync_dir(app / "versions")            # the rename itself
         _set_current(app, name)
         if _pinned(here):
             _pin(here, 0)            # a newer version than the one rolled away from
