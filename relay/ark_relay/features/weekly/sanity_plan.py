@@ -162,13 +162,48 @@ def _describe(t: dict) -> dict:
             "label": " → ".join(p for p in parts if p)}
 
 
-def read(automas_dir: "Path | None") -> dict:
+_DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+_DAYS_ZH = "一二三四五六日"
+
+
+def _ticked_days(t: dict, maaend_dir) -> "list[int] | None":
+    """The weekdays (0 = Monday) the task is ticked for in f"{task}Schedule".
+
+    With no schedule saved MaaEnd uses the option's default_case from its
+    definition, as plan._maaend_extra_bits reads AutoCollect's. None when that
+    definition cannot be read either: the caller then keeps the task, because
+    every MaaEnd version on record defaults to all seven days
+    (fixtures/maaend-2026-09-10, maaend228, maaend-protocolspace-v2.30.0-rc.1).
+    """
+    key = f"{t.get('taskName')}Schedule"
+    v = (t.get("optionValues") or {}).get(key)
+    if isinstance(v, dict):
+        names = v.get("caseNames") or []
+    else:
+        from ark_relay.core import mastercfg  # noqa: PLC0415 - imported where used, as plan.py does
+        opt = (mastercfg._maaend_defs(maaend_dir)[0] if maaend_dir else {}).get(key)
+        if not isinstance(opt, dict):
+            return None
+        names = opt.get("default_case") or []
+    return sorted({_DAYS.index(n[len(key):]) for n in names
+                   if isinstance(n, str) and n[len(key):] in _DAYS})
+
+
+def read(automas_dir: "Path | None", when: "datetime | None" = None,
+         maaend_dir: "Path | None" = None) -> dict:
     """The current plan: {tab, line, rewards_set, item, label}. {} if unreadable.
 
     Both sanity tasks can be on at once (mastercfg.MAAEND_TREE_TASKS: MaaEnd runs
     them in list order, so the first spends the sanity first). The label names
     both in run order; the top-level keys describe the first, and `tasks`
     carries each one.
+
+    when: the day the plan is for (tomorrow's plan). A task not ticked for that
+    weekday in its f"{task}Schedule" does not run that day and is left out; with
+    none left, `enabled` is False and the label says so. Without `when` (the
+    before/after echo of set_plan) every enabled task is described.
+    maaend_dir: MaaEnd's install, for a schedule's default_case; by default where
+    AUTO-MAS says it is.
     """
     f = _master(automas_dir)
     if f is None:
@@ -185,6 +220,24 @@ def read(automas_dir: "Path | None") -> dict:
     if not on:
         return {"tab": "", "line": "", "rewards_set": "", "item": "",
                 "enabled": False, "label": "理智任务全部关闭"}
+    if when is not None:
+        resolved = False
+        kept, off = [], []
+        for t in on:
+            days = _ticked_days(t, maaend_dir)
+            if days is None and not resolved and maaend_dir is None:
+                maaend_dir, resolved = _maaend_dir(automas_dir), True
+                days = _ticked_days(t, maaend_dir)
+            (kept if days is None or when.weekday() in days else off).append((t, days))
+        on = [t for t, _ in kept]
+        if not on:
+            why = "；".join(
+                f"{'基质刷取' if t['taskName'] == 'AutoEssence' else '协议空间'}"
+                + (f"仅周{'、'.join(_DAYS_ZH[i] for i in days)} 跑" if days else "一天都没勾")
+                for t, days in off)
+            return {"tab": "", "line": "", "rewards_set": "", "item": "",
+                    "enabled": False,
+                    "label": f"理智任务明天（周{_DAYS_ZH[when.weekday()]}）不跑（{why}）"}
     each = [_describe(t) for t in on]
     out = dict(each[0])
     out["tasks"] = each

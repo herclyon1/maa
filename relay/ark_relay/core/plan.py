@@ -785,8 +785,10 @@ def next_plan(automas_dir: Path | None) -> str:
                 # AUTO-MAS's SanityTaskType is only the tab; sanity_plan resolves
                 # which item the chain actually farms.
                 from ark_relay.features.weekly import sanity_plan  # noqa: PLC0415 - avoids a cycle
-                if label := sanity_plan.read(automas_dir).get("label"):
-                    bits.append(f"理智用于 {label}")
+                # Tomorrow's weekday ticks count, as _maaend_extra_bits does for AutoCollect.
+                sp = sanity_plan.read(automas_dir, when=_tomorrow(), maaend_dir=s.get("path"))
+                if label := sp.get("label"):
+                    bits.append(f"理智用于 {label}" if sp.get("enabled", True) else label)
                 bits += _maaend_extra_bits(automas_dir, s.get("path"), _tomorrow())
             elif s.get("sanity_use"):
                 bits.append(f"理智用于 {s['sanity_use']}")
