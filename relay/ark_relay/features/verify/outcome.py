@@ -88,6 +88,10 @@ _STAMINA_DIED = re.compile(_STAMINA_TASK + r"farm_(?:tacet|domain): exceeded rec
 # A real reading is logged by info_set (BaseWWTask.py:422; -1 does not match).
 _STAMINA_READ = re.compile(_STAMINA_TASK + r"(?:[^\n]*(按没读到处理（-1）)|info_set current_stamina \d)")
 STAMINA_UNREAD_SAY = "体力读不出来，没刷"
+# The 「不刷体力」 flag file was there: the overlay's farm hook logs this line and
+# returns without farming (okww_files/ark_overrides.tasks.py, _farm_hook).
+_STAMINA_FLAGGED = re.compile(_STAMINA_TASK + r"刷体力已禁用（标记文件在）")
+STAMINA_FLAG_SAY = "不刷体力的标记还在"
 
 
 # The activity points read after open_daily opens the dailies page. A first reading
@@ -468,7 +472,8 @@ def stamina_failure(text: str) -> str:
     """Why stamina farming failed in one OK-WW run log, or "" when no known failure.
 
     Read by okww_checks (the 刷体力 item) and collector_okww._okww_progress (why it
-    stopped), so the two say the same. Two failures:
+    stopped), so the two say the same. Three failures:
+      - the 「不刷体力」 flag file was there and nothing was farmed (_STAMINA_FLAGGED);
       - upstream gave up after three revives (_STAMINA_DIED);
       - the stamina task stopped right after a reading our override could not make
         (-1), with no stamina fight at all: its 「used all stamina」 / 「not enough
@@ -476,6 +481,8 @@ def stamina_failure(text: str) -> str:
         click and second read, TacetTask.py:63-64) is a real reading.
     """
     text = _task_lines(text)
+    if _STAMINA_FLAGGED.search(text):
+        return STAMINA_FLAG_SAY
     if m := _STAMINA_DIED.search(text):
         return f"刷体力时角色死了 {m.group(1)} 次，OK-WW 停止刷体力，体力没刷完"
     if _STAMINA_SPENT.search(text):
