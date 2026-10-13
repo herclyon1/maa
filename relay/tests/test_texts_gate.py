@@ -24,6 +24,41 @@ print("[texts.py 里每一句都是人话]")
 for s in texts.samples():
     check(s[:40], texts.plain(s), [])
 
+print("[texts.py 里每一个常量也都是人话：不只是 samples() 列到的（审查 10-13 s1 #6）]")
+# EVIDENCE_NOT_SHIPPED said 「relay.log」 in group alarm bodies, and the gate never
+# saw it because samples() did not list it. Every module-level string, and every
+# string inside a module-level tuple / list / set / dict, is checked here; only the
+# word lists the checker itself uses are left out.
+_WORD_LISTS = {"VAGUE", "JARGON", "ALLOWED_WORDS", "_THEIR_TERMS"}
+_const_bad, _const_n = [], 0
+for _name, _val in vars(texts).items():
+    if _name.startswith("__") or _name in _WORD_LISTS:
+        continue
+    if isinstance(_val, str):
+        _vals = [_val]
+    elif isinstance(_val, (tuple, list, set, frozenset)):
+        _vals = [x for x in _val if isinstance(x, str)]
+    elif isinstance(_val, dict):
+        _vals = [x for x in _val.values() if isinstance(x, str)]
+    else:
+        continue
+    for _v in _vals:
+        _const_n += 1
+        if texts.plain(_v):
+            _const_bad.append(f"{_name}: {_v[:30]!r} {texts.plain(_v)}")
+check("每个常量都过 plain()", _const_bad, [])
+check("确实扫到了很多常量（至少 150）", _const_n >= 150, True)
+
+print("[中继里每个记日志的部分在报错推送里都有名字（审查 10-13 s1 #8）]")
+# A WARNING from a logger missing in _RELAY_PARTS was pushed as 「出在「一个不常见的部分」」.
+_loggers = set()
+for _f in sorted((ROOT / "ark_relay").rglob("*.py")) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
+    if "okww_files" in _f.parts:
+        continue                            # runs inside OK-WW, not in the relay
+    _loggers |= set(re.findall(r"""getLogger\(\s*["'](ark(?:\.[\w.]+)?)["']""", _f.read_text(encoding="utf-8")))
+check("扫到了很多记日志的部分（至少 40）", len(_loggers) >= 40, True)
+check("每一个都有名字", sorted(_loggers - set(texts._RELAY_PARTS)), [])
+
 print("[各处中文对照表也是人话]")
 for table in (core._KIND_NOTE.values(), collector_okww._OKWW_TASK_ZH.values(),
               collector_okww._OKWW_EXC_ZH.values(), (zh for _, zh in collector_okww._OKWW_MSG_ZH),

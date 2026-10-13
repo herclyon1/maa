@@ -30,7 +30,7 @@ import logging
 import os
 import re
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.core.config import SERVER_TZ
@@ -73,34 +73,36 @@ def append(day: str, heading: str, text: str, *, state_dir=None, now: "datetime 
         return False
 
 
-def red_items(day: str, texts: "list[str]", *, now: "datetime | None" = None) -> list[str]:
-    """Lines for the red items of one check run, each with its own id."""
-    at = now or datetime.now(tz=SERVER_TZ)
-    stamp = at.strftime("%Y%m%d-%H%M")
-    return [f"{RED} R-{stamp}-{i} {t}" for i, t in enumerate(texts, 1)]
-
-
 _ids = threading.Lock()
 
 
 def add_red(day: str, heading: str, texts: "list[str]", *, state_dir=None,
             now: "datetime | None" = None) -> list[str]:
-    """Append one section of red items whose ids are not used yet in the day's file.
+    """Append one section of red items, each with an id not used yet.
 
-    red_items() numbers from 1 for every call, so two calls in the same minute
-    would write the same id twice and one `handled` would clear both; this one
-    continues after the highest number already written for that minute. Returns
-    the ids written ([] when nothing was written)."""
+    Numbering from 1 on every call would write the same id twice for two calls in
+    the same minute, and one `handled` would clear both; this continues after the
+    highest number already written for that minute. Returns the ids written ([]
+    when nothing was written)."""
     at = now or datetime.now(tz=SERVER_TZ)
     texts = [" ".join(str(t).split())[:400] for t in texts if str(t).strip()]
     if not texts:
         return []
     stamp = at.strftime("%Y%m%d-%H%M")
     with _ids:
-        try:
-            old = path_for(day, state_dir).read_text(encoding="utf-8")
-        except OSError:
-            old = ""
+        # The stamp comes from `at` but the item goes into `day`'s file, and the two
+        # differ for a round that started before midnight and is handled after it
+        # (gamelog_errors passes the round's start day). scripts/mac/techlog.py joins
+        # every day's file by id, so the numbers already used for this stamp are read
+        # from `day`, `at`'s own day and the day before it (review 2026-10-13, s5 #2).
+        old = ""
+        at_day = at.strftime("%Y-%m-%d")
+        prev_day = (at - timedelta(days=1)).strftime("%Y-%m-%d")
+        for d in dict.fromkeys((day, at_day, prev_day)):
+            try:
+                old += path_for(d, state_dir).read_text(encoding="utf-8") + "\n"
+            except OSError:
+                pass
         used = [int(m.group(1)) for m in re.finditer(rf"^{RED} R-{stamp}-(\d+) ", old, re.M)]
         start = max(used, default=0)
         lines = [f"{RED} R-{stamp}-{start + i} {t}" for i, t in enumerate(texts, 1)]

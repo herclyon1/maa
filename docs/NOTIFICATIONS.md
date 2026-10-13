@@ -74,13 +74,13 @@ finishing, so a timer would have to fire inside a moving window between
 | Recovered on retry | **daily report only**, not pushed: the failed run's row says the retry or the make-up got it, the make-up line says 「<游戏><班>失败后自动补跑…，走通了」 (the table 「Recovered by itself」 below; why each case is not a fault, with the code that checks the later success: USER-SWITCHES.txt). What the user wants, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。本来不就这样吗？本来不就是他自己弄好的，自己能修好的东西，不进报错里吗？」 From 2026-10-06 (「不论多少次什么错误都要发」) until 05:07 each was pushed to the group |
 | Task succeeded | **silent**, recorded only |
 | Should have run and did not / something missing | alarm immediately |
-| Config command applied | push a receipt: inbox version, name, note, and what changed in plain language |
-| **Relay code updated** | push the moment the new code is actually running - version before and after, and which files changed |
+| Config command applied | **not pushed** (route `log`, 「📱 配置已修改」): the receipt - inbox version, name, note, what changed in plain language - is written to relay.log and shown on the phone page; a command that failed is pushed (「📱 配置没改成」) |
+| **Relay code updated** | **not pushed** (route `log`, 「🔄 中继已更新」): written the moment the new code is actually running - version before and after, and which files changed - into relay.log and the technical log's 「今天中继改了什么」; the daily report says 「今天中继更新了 N 次」 |
 | **Relay code update failed** | push why, which files did not land, and that the machine is still on the old version |
 | A notification channel is broken | alarm over whatever channel still works, **every send it refused** (the user, 2026-10-06: 「不论多少次什么错误都要发」). From 2026-08-22 until then it was once per fault, with the record on disk so that a relay restart did not re-announce it |
 | MaaEnd updated itself | **not pushed** - the beta channel ships most days, so a notice per update is a daily message with nothing to act on. Log only |
 
-## Updates must land at boot, and must announce themselves
+## Updates must land at boot, and must record themselves
 
 Two rules, both given by the operator on 2026-08-21.
 
@@ -93,14 +93,18 @@ needs it could not be understood in the meantime. `service.py` runs selfupdate
 at service start, before the inbox, and restarts itself immediately so the new
 code is live before the queue fires.
 
-**Announce the moment it takes effect** - code updates as well as config ones.
+**Record the moment it takes effect** - code updates as well as config ones.
+Neither is pushed any more (both titles are on the `log` list, see the routing
+table below); what follows is about when and by which process the record is
+written, which still holds.
 The process that applies a code update is still running the old code and is
 about to replace itself, so it cannot be the one to report. It records what it
-did, and the process that comes up on the new code sends the notice. That way
-the message means "the new code is running", not "the files were written".
+did, and the process that comes up on the new code writes the record (the
+log-only 「🔄 中继已更新」 send). That way the record means "the new code is
+running", not "the files were written".
 
 The first update after this shipped is a special case: the code that applies it
-predates the feature and leaves no record. So the notice is also derivable from
+predates the feature and leaves no record. So the record is also derivable from
 the applied version alone, compared against the last version announced.
 
 **A failed update is announced as loudly as a successful one.** An update that
@@ -158,9 +162,9 @@ so it has no row below.
 
 | Channel | State |
 |---|---|
-| Server酱 (`sctapi.ftqq.com`) | **carrying everything** |
+| Server酱 (`sctapi.ftqq.com`) | the daily report and every other notice that is not an alarm; the group's fallback (see 「Three channels, three jobs」) |
 | WeCom self-built app | **down**: `errcode=60020`, the home IP is not in the trusted list |
-| WeCom group bot (`WECOM_BOT_URL`) | configured on the machine (since 2026-08-30) and, since 2026-09-23, in the Mac's push.env too; has no trusted-IP list, so it survives a changing home IP |
+| WeCom group bot (`WECOM_BOT_URL`) | carries the real alarms; configured on the machine (since 2026-08-30) and, since 2026-09-23, in the Mac's push.env too; has no trusted-IP list, so it survives a changing home IP |
 
 MAA's and AUTO-MAS's own direct pushes are all off - both would reach the same
 WeChat, so leaving them on delivers everything twice. When WeCom comes back,
@@ -175,6 +179,12 @@ this deployment's key belongs to is not recorded here; the key lives in
 
 Delivery rule: **one channel delivering counts as delivered.** See
 [PITFALLS.md](PITFALLS.md) for why that sentence exists.
+
+Every delivered send leaves one INFO line in relay.log naming its route and the
+channel that took it, 「推送已送到：<group|daily|info> 路，<channel> 收下 ｜ <title>」
+(`notify._say_delivered`; since 2026-10-13). Before that only group alarms left a
+record (the alerts copy below), so a fallback - a daily report taken by the group
+robot, an alarm taken by Server酱 - left no trace of where it went.
 
 ### Three channels, three jobs (2026-09-14 evening)
 
@@ -261,6 +271,7 @@ Server酱, zero alarms in the group.
 | 🔌 游戏机开着，没人登录 | group | the watchdog (`ALERT_NOBODY`): the machine has been up 15 minutes with nobody logged on, and the packaged relay runs only in a logon session; once until someone logs on |
 | ⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走 | group | MaaEnd's plugin crashed, its plugin is gone, or maafw.log stood still 10 minutes while 「运行」; the relay ended MaaEnd.exe and AUTO-MAS judges the run from MaaEnd's log (`maaend_watchdog.py`; 2026-10-01: 40 minutes lost on a dead plugin). This ⚠️ is the event's one group push: the 「MaaEnd 卡死」 WARNING logged after it carries errwatch.group_pushed (pushed by errwatch only when the ⚠️ did not reach the group robot), and the plugin's crash line is INFO (2026-10-11). A MaaEnd that completed every task and only failed to exit (the 09-28 41-minute gap; upstream MXU#371) is not the watchdog's: AUTO-MAS v5.7.0-beta.2 ends it right after recording the result (app/task/MaaEnd/AutoProxy.py `_wait_maaend_stage`, app.log 「MaaEnd 队列已结束但进程未退出，正在中止脚本进程」). The outcome check's 「🟠 MaaEnd … 任务全部完成，但跑完没自己退出」 line for that run is a WARNING marked `errwatch.recovered()` (daily report, 自己好了, not pushed) with one 「自愈待查」 red item in the technical log when that AUTO-MAS line follows the run's result line within 60 s (`collector._automas_ended_maaend`, `verdict._mark_no_self_exit`); without it the line is pushed. The WARNING line 「MaaEnd 卡死（PID …）：…；已结束」 is logged for every kill and is not marked recovered, so errwatch still pushes it as 「🩺 中继自己报错了」 |
 | ⚠️ 终末地 MaaEnd 卡死，没能结束 | group | same, but ending MaaEnd.exe failed; it stays hung until AUTO-MAS's own limit. Same one-push rule as the row above; machine check #31's FAIL (🔬) still follows as a check of its own |
+| ⚠️ 终末地看门狗读不到 MaaEnd 的运行日志 | group | the MaaEnd watchdog found MaaEnd running with not one line of maafw.log readable, so it cannot judge a hang and never kills on that (`maaend_watchdog._blind_alarm`, alert=True); once per MaaEnd PID, forgotten when that MaaEnd is gone. The 「看门狗读不到 maafw.log」 WARNING follows it |
 | ⏱️ <game>（<script>）跑超时，AUTO-MAS 正在重试 | group | every 运行超时/进程超时 line in AUTO-MAS's app.log, pushed while AUTO-MAS still retries (`runwatch.py`, 2026-10-01: three two-hour OK-WW timeouts, no alarm for six hours); a run a person started from AUTO-MAS itself too, saying so. Until 2026-10-06 only the first per script per day, and none for a hand-started run |
 | ⏰ <queue>超时还没跑完 | group | a queue still unfinished past the longest finish of the last 7 days + 30 minutes (`runwatch.py`), once for that queue run (re-checked every minute). Not when the task running is one a person started from AUTO-MAS itself (`trigger.py`, 10-03 00:43): it is not the shift, and the text would say the shift is still running |
 | ⏰ <queue>有脚本一直没出结果 | group | a shift script of this boot still without a record past that same deadline (longest finish of the last 7 days + 30 minutes) while 「⏰ <queue>超时还没跑完」 did not fire for that run: AUTO-MAS could not be asked, its task was gone or done but the record never landed, or the running task read as hand-started (`shutdown._alarm_shift_overdue`, alert=True; pushed whether or not the relay powers off). Once per shift run (queue + its time). Until 2026-10-12 this kept 「shift-running」 all night with one relay.log line; the user, 20:04: 「不能压警报…就是有错，但是不报，那是比报错更严重的事情。」 |
@@ -278,7 +289,7 @@ Server酱, zero alarms in the group.
 | 📱 配置没改成 / ✗ … | group | his phone order failed - an error, so the group (2026-10-06: every error, every time; `boot_stages._phone_execute`, alert=True), also an order that waited for the run and failed when drained after it (until 10-06 that one was a red receipt only); a drained order that went through is not pushed |
 | ⚠️ 跳过队列没办成 | group | a 「今天跳过」 / 「恢复」 of a queue that did not take effect (`engine._observe_modes`, alert=True); every failure, the body is the modes message. The acknowledgement of one that took stays 「⏭️ 跳过模式」 (log) |
 | 🧹 终末地配置清掉了死条目 / ⚠️ 终末地配置里的死条目没能清 | group | `mastercfg.prune_maaend_orphans` deleted master entries MaaEnd no longer defines (each named, 开着/关着) or refused to (why); every time, pushed through errwatch under its own title. Deleting them: an entry for a task MaaEnd neither defines nor labels in its own language pack runs nothing (MaaEnd v2.28 dropped AutoUseSpMedication) and only warns on the phone page every day; it refuses when it cannot read every definition, and backs the file up first (`mastercfg.prune_maaend_orphans`). On relay/USER-SWITCHES.txt; what the user wanted, 2026-09-09 03:49: the phone page's yellow warning fixed, not only alarmed |
-| 🧩 换写设置格式 | info | config maintenance (rare). Tasks the relay once switched off (leftover records in state.json) are switched back on at boot with an INFO log line, not pushed; failing to is a WARNING (`gameupdate.maaend_reenable_records`) |
+| 🧩 终末地新版本改了设置格式，已按原意换写 | info | config maintenance (rare). Tasks the relay once switched off (leftover records in state.json) are switched back on at boot with an INFO log line, not pushed; failing to is a WARNING (`gameupdate.maaend_reenable_records`) |
 | ⚠️ OK-WW 补丁有 N 条没贴上 | group | an OK-WW override no longer binds or no longer matches the new source (`boot_stages._stage_patch_okww`, `_preupdate_okww`), each time; until 2026-10-06 Server酱 only. Also when the override file itself is not in place or its master pointer cannot be written (`okww_overlay.OverlayTrouble`, counted as a failure whatever its words; until 2026-10-13 those lines went out under 🩹, log only) |
 | 🗓️ 新的一周 | info | Monday summary of the three weekly gates |
 | ⚠️ 剿灭开关关着 | group | at every boot (`boot_stages._annihilation_switch_off`, `annihilation.WeeklyGate.switch_off_line`): MAA's Info.Annihilation is `Close` and AUTO-MAS has no completed record for this game-week (Data.AnnihilationCompletedWeek). Since the 2026-10-11 hand-over (item 13) neither AUTO-MAS nor the relay turns the switch back on, so annihilation would not run again; the relay does not write the setting |

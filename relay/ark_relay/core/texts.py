@@ -122,7 +122,7 @@ COLLECT_RETRY_FAILED = "⚠️ 自动采集：补跑仍有路线没走通"
 COLLECT_RECURRENT = "🚩 自动采集：有路线连续两天补跑失败，是复发性问题"
 EVIDENCE_SAVED = "🗂️ 证据包已送出机器"
 # One line in a group alarm whose evidence bundle could not be uploaded.
-EVIDENCE_NOT_SHIPPED = "证据包没传上去（原因见 relay.log）"
+EVIDENCE_NOT_SHIPPED = "证据包这次没传上去，原因记在机器上的中继日志里，我们这边照着查。"
 EVIDENCE_SOURCE_CHANGED = "🧷 上游改了导出日志的代码，证据包的打法要重新核对"
 # Skland answered with more than one Endfield role; nothing was read (resources.py).
 SKLAND_MULTI_ROLE = "⚠️ 森空岛给了不止一个终末地角色，没有读"
@@ -166,9 +166,14 @@ def maaend_watch_blind_body(minutes: int) -> str:
             "读不到日志说明不了 MaaEnd 卡没卡，所以这次不结束它；已交给我们这边去查这个日志还在不在原处。")
 
 
-def maaend_stuck_body(reason: str, killed: bool, why: str) -> str:
+def maaend_stuck_body(reason: str, killed: bool, why: str, left: "list[str] | tuple" = ()) -> str:
+    """`left` names the plugins maaend_watchdog._end did not end (outside the agent
+    directory, or taskkill failed), e.g. 「agent\\go-service.exe」
+    (a path: the texts gate passes it; a bare name or PID it refuses)."""
     if killed:
-        return (reason + "\n已结束 MaaEnd 和它还开着的插件，游戏本身没动。"
+        ended = ("已结束 MaaEnd，游戏本身没动；它的插件 " + "、".join(left) + " 没结束掉，还开着。" if left
+                 else "已结束 MaaEnd 和它还开着的插件，游戏本身没动。")
+        return (reason + "\n" + ended +
                 "AUTO-MAS 接着按 MaaEnd 的日志判这一趟：没干完的、还有重试次数就马上重跑，"
                 "已经干完的直接收尾——不用再等它的时限（MaaEnd 日志 40 分钟不动才结束）。")
     return (reason + f"\n结束 MaaEnd 没成功（{why}），它还卡着，"
@@ -182,12 +187,9 @@ def collect_recurrent_body(names: list[str]) -> str:
 
 
 def evidence_saved_body(script: str, started: str, files: int, page: str) -> str:
-    """`started` is the run's start as 「09-11 10:18」, not its run_id (that is a path)."""
+    """`started` is the run's start as 「09-11 10:18」, not its run_id (that is a path).
+    `page` is the COS link: handle.py uploads through evidence.uploaders(), COS only."""
     head = f"{GAME_ZH.get(script, script)} {started} 那趟：一个压缩包，里面 {files} 个文件"
-    if page == "企业微信":
-        return head + "\n已作为文件发到你的企业微信（上面那条就是）。"
-    if page == "企业微信群":
-        return head + "\n已作为文件发到企业微信群（上面那条就是）。"
     return head + f"\n下载页：{page}"
 
 
@@ -590,6 +592,12 @@ _RELAY_PARTS = {
     "ark.maaend": "终末地设置", "ark.queues": "队列设置", "ark.modes": "跳过开关", "ark.plan": "排期",
     "ark.sanity_plan": "理智安排", "ark.summary": "文字撰写", "ark.watch": "盯运行记录目录",
     "ark.procs": "程序列表",
+    # Named 2026-10-13 (review s1 #8): each of these logs WARNINGs that errwatch pushes,
+    # and read 「一个不常见的部分」 until then. test_texts_gate checks every getLogger("ark…").
+    "ark": "主程序", "ark.errwatch": "报错转发", "ark.error_evidence": "当天日志外送",
+    "ark.gamelog_errors": "游戏日志报错核对", "ark.logfile": "中继日志文件", "ark.machinecheck": "机器上的核对",
+    "ark.macpush": "报警直送", "ark.phone_banners": "手机通道和卡池核对", "ark.shiftcheck": "收工体检",
+    "ark.stagegate": "关卡能不能去的检查", "ark.techlog": "技术日志", "ark.weekgate": "鸣潮周常开关",
 }
 
 
@@ -599,10 +607,11 @@ def relay_part(where: str) -> str:
 
 
 def selfcheck_failed_body(total: int, bad: list) -> str:
-    """`bad` is [(name, detail)] of the checks that did not hold."""
+    """`bad` is [(name, detail)] of the checks that did not hold. Not every check stops
+    the shift (some only slow the watchdog down), so the consequence is given per weight."""
     lines = "\n".join(f"· {n}" + (f"：{d}" if d else "") for n, d in bad)
     return (f"开机自检 {total} 项里有 {len(bad)} 项不成立：\n{lines}\n"
-            "这些不成立的后果：这一班跑不了，或者跑了中继也看不见。已交给我们这边去修。")
+            "后果看是哪一项：重的会让这一班跑不了，轻的只是中继发现问题慢一些、或者看不见。已交给我们这边去修。")
 
 
 # ---------- after-shift check (selfcheck/shiftcheck.py) ----------
@@ -655,8 +664,10 @@ OKWW_BATTLE_PASS_RETRIED = "第一次没打开，同一趟里重开一次领了"
 OKWW_BATTLE_PASS_UNCHECKED = "OK-WW 领战令的写法变了，这次照它原样领，没打开时不会重试"
 
 
-# The last line of every 「🩺 中继自己报错了」 push (errwatch.py).
-RELAY_ERROR_TAIL = "这不代表脚本没跑，是中继自己有一处出了错，已交给我们这边去修。"
+# The last line of every 「🩺 中继自己报错了」 push (errwatch.py). Since 10-06 every
+# WARNING is pushed, game and scheduler states included (AUTO-MAS backend down = the
+# shift does not run), so it no longer says the scripts were unaffected.
+RELAY_ERROR_TAIL = "已交给我们这边去修。"
 
 
 def relay_error_body(where: str, what: str, at: str = "") -> str:
@@ -771,7 +782,7 @@ def automas_down_body(tries: int) -> str:
 
 def automas_boot_down_body() -> str:
     return ("开机后 AUTO-MAS 没起来，中继拉了一次也没起来。它不起来，接下来这一班就不会跑。"
-            "中继会每 3 分钟再拉一次，连拉 3 次还不行会再报一次。")
+            "中继 3 分钟后再拉一次，之后每次间隔翻倍，连拉 3 次还不行会再报一次。")
 
 
 def preupdate_unconfirmed_tail() -> str:
@@ -1006,8 +1017,7 @@ def samples() -> list[str]:
         gamelog_unknown_errors("鸣潮"), gamelog_unknown_errors_body("鸣潮", "09:12", 2),
         gamelog_unknown_errors_body("终末地", "", 1),
         collect_retry_body(["路线16"], ["路线15"], [], ""),
-        collect_recurrent_body(["路线15：红矛叶"]), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://gofile.io/d/xxxx"),
-        evidence_saved_body("MaaEnd", "09-11 10:18", 3, "企业微信"), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "企业微信群"),
+        collect_recurrent_body(["路线15：红矛叶"]), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://example.cos.ap-shanghai.myqcloud.com/x/index.html"),
         evidence_source_changed_body(["MaaEnd 导出"]),
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),
         cant_enter("MaaEnd"), missing(not_run("早班")), missing(not_run_in("OK-WW", "早班")),
@@ -1040,6 +1050,7 @@ def samples() -> list[str]:
         maaend_stuck_body(maaend_crash_reason("0xc0000005"), True, ""),
         maaend_stuck_body(maaend_crash_reason(""), False, "退出码 128"),
         maaend_stuck_body(maaend_plugin_gone_reason(60), True, ""),
+        maaend_stuck_body(maaend_plugin_gone_reason(60), True, "", ["agent\\go-service.exe"]),
         maaend_stuck_body(maaend_stall_reason(10, "15:30:03"), False, "结束命令 30 秒没返回"),
         machinecheck_failed("#4", "周本领奖"), machinecheck_failed_body("周本领奖", "领完奖再看选等级页，本周剩余次数没读到"),
         machinecheck_section([("#4", "周本领奖", "A", "PASS", "领完奖本周剩余 3/3→2/3", "2026-10-06 21:40:00"),

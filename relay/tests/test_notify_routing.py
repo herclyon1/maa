@@ -187,6 +187,69 @@ check("两次被拒，两条通道故障", len([t for c, t in log if t.startswit
 check("故障通知试的也是群的顺序：先群机器人，再 Server酱",
       [c for c, t in log if t.startswith("🔌")][:2], ["企业微信机器人", "Server酱"])
 
+print("\n[每条送到的推送记一行：走哪一路、哪个渠道收下（审查 10-13 s5 #4）]")
+import logging  # noqa: E402
+
+
+class _Grab(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append((record.levelno, record.getMessage()))
+
+
+_g = _Grab()
+_nlog = logging.getLogger("ark.notify")
+_nlog.addHandler(_g)
+_lvl = _nlog.level
+_nlog.setLevel(logging.INFO)
+try:
+    n, log = build(broken=("Server酱",))
+    n._announcing = True
+    n.send("📋 日报", "正文", daily=True)
+    n, log = build()
+    n.send("⚠️ 出错了", "正文", alert=True)
+    n.send("🆕 游戏更新", "正文")
+    n.send_group("🎴 明天开新卡池：鸣潮", "正文")
+finally:
+    _nlog.removeHandler(_g)
+    _nlog.setLevel(_lvl)
+_info = [m for lv, m in _g.lines if lv == logging.INFO and "送到" in m]
+check("日报回退到群机器人：这一行写了 daily 路和群机器人",
+      any("daily" in m and "企业微信机器人" in m and "📋 日报" in m for m in _info), True)
+check("报警：group 路、群机器人", any("group" in m and "企业微信机器人" in m and "⚠️ 出错了" in m for m in _info), True)
+check("其余通知：info 路、Server酱", any("info" in m and "Server酱" in m and "🆕 游戏更新" in m for m in _info), True)
+check("只发群的：group 路、群机器人", any("group" in m and "企业微信机器人" in m and "🎴" in m for m in _info), True)
+check("一条送到的推送只记一行", len(_info), 4)
+
+print("\n[一个线程正在报通道故障时，另一个线程的被拒照样报（审查 10-13 s5 #5）]")
+# The flag was one per Notifier: while errwatch's push thread announced an outage,
+# a refusal on the main loop was only a WARNING line.
+import threading  # noqa: E402
+n, log = build(broken=("企业微信机器人",))
+inside, release = threading.Event(), threading.Event()
+_sc_send = n.serverchan.send_text
+
+
+def _slow(title, body=""):
+    if title.startswith("🔌") and not inside.is_set():
+        inside.set()                     # thread A is now inside its announcement
+        release.wait(5)
+    return _sc_send(title, body)
+
+
+n.serverchan.send_text = _slow
+ta = threading.Thread(target=lambda: n.send("⚠️ 甲线程的报警", "正文", alert=True))
+ta.start()
+check("甲线程进了通道故障通知", inside.wait(5), True)
+n.send("⚠️ 乙线程的报警", "正文", alert=True)
+release.set()
+ta.join(5)
+check("两条报警各报了一次通道故障（Server酱 收到两条 🔌）",
+      len([t for c, t in log if c == "Server酱" and t.startswith("🔌")]), 2)
+
 print("\n[默认就是日常，不是报警]")
 n, log = build()
 n.send("🆕 预更新", "")

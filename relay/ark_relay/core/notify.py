@@ -7,15 +7,12 @@ from __future__ import annotations
 
 import json
 import logging
-import mimetypes
 import random
-import re
 import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
 from pathlib import Path
 
 from ark_relay.core.config import Config
@@ -108,7 +105,7 @@ def _post_form(url: str, fields: dict) -> dict:
 
 
 class WeCom:
-    """企业微信自建应用. Plain text, no length games, supports images.
+    """企业微信自建应用. Plain text only (push.py --private).
 
     The caller's public IP must be in the app's trusted-IP list or every
     request comes back errcode=60020.
@@ -208,35 +205,6 @@ class WeCom:
             if i:
                 time.sleep(0.4)  # keep the parts in order on the client
             self._send_one(part)
-
-    def send_image(self, path: Path) -> None:
-        media_id = self._upload(path)
-        self._message("image", {"media_id": media_id}, "企业微信发图失败")
-
-    def _upload(self, path: Path) -> str:
-        """multipart/form-data upload; returns media_id (valid 3 days)."""
-        boundary = f"----ark{uuid.uuid4().hex}"
-        ctype = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        body = b"".join([
-            f"--{boundary}\r\n".encode(),
-            f'Content-Disposition: form-data; name="media"; filename="{path.name}"\r\n'.encode(),
-            f"Content-Type: {ctype}\r\n\r\n".encode(),
-            path.read_bytes(),
-            f"\r\n--{boundary}--\r\n".encode(),
-        ])
-        url = (
-            "https://qyapi.weixin.qq.com/cgi-bin/media/upload"
-            f"?access_token={self._access_token()}&type=image"
-        )
-        req = urllib.request.Request(
-            url, data=body,
-            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-        )
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        if data.get("errcode") != 0:
-            raise RuntimeError(f"媒体上传失败: {data.get('errcode')} {data.get('errmsg')}")
-        return data["media_id"]
 
 
 _WECOM_IMAGE_LIMIT = 1_800_000   # official cap is 2MB; leave room for the fields around the base64
@@ -367,16 +335,6 @@ class ServerChan:
         raise RuntimeError("Server酱 发送失败 -> " + "；".join(errors))
 
 
-def _hint(name: str, err: str) -> str:
-    """Turn a channel's raw error into something actionable on a phone."""
-    if name == "企业微信" and "60020" in err:
-        m = re.search(r"from ip:\s*([\d.]+)", err)
-        ip = m.group(1) if m else "（错误里没带地址）"
-        return (f"机器现在的出口地址是 {ip}，不在企业微信应用的可信名单里。家宽拨号地址会变；"
-                "去企业微信管理后台「应用管理 → 这个应用 → 企业可信IP」把这个地址加进去，加了就恢复。")
-    return ""
-
-
 # Three channels, three jobs (docs/NOTIFICATIONS.md has the full title -> route table):
 #
 #   企业微信群机器人  real alarms only. Sent from the Mac and never from here:
@@ -415,6 +373,15 @@ _LOG_ONLY_PREFIXES = (
 # to the group, every time (docs/NOTIFICATIONS.md, the 🩺 row).
 
 
+def _say_delivered(route: str, delivered: "list[str]", title: str) -> None:
+    """One INFO line per delivered send: which route it took and which channel took it.
+
+    Before this only group alarms left a record (alerts/), so a daily report that
+    fell back to the group robot, or an alarm that fell back to Server酱, left no
+    trace of where it went (review 2026-10-13, s5 #4)."""
+    log.info("推送已送到：%s 路，%s 收下 ｜ %s", route, "、".join(delivered), title)
+
+
 def route_of(title: str, *, alert: bool = False, daily: bool = False) -> str:
     """'group' | 'daily' | 'info' | 'log' for a title. Pure, so the doc table can be checked against it."""
     if daily:
@@ -445,11 +412,24 @@ class Notifier:
         self.wecom_bot = WeComBot(cfg)
         self.serverchan = ServerChan(cfg)
         self._state_dir = Path(cfg.state_dir)
-        self._announcing = False  # the outage alert itself goes out via _fan_out
+        self._busy = threading.local()   # _announcing, per thread (see the property)
         self._cfg = cfg
         self._alerts = None       # alertlog.AlertLog, made on first use
         self._mac = None          # macpush.MacPush, made on first use
         self._last = threading.local()   # what the last send on this thread reached
+
+    @property
+    def _announcing(self) -> bool:
+        """This thread is sending an outage notice (its own sends must not announce again).
+
+        Per thread: shared, it made a channel refusal on another thread - errwatch's
+        push thread, the main loop - during an announcement only a WARNING, and
+        breaks the 🔌 row's 「every send it refused」 (review 2026-10-13, s5 #5)."""
+        return getattr(self._busy, "announcing", False)
+
+    @_announcing.setter
+    def _announcing(self, value: bool) -> None:
+        self._busy.announcing = value
 
     def went_to_group(self) -> bool:
         """Whether the last send / send_group on this thread was taken by the group robot.
@@ -572,6 +552,7 @@ class Notifier:
             # this" is logged as an ERROR here.
             log.error("通知一条渠道都没送到：%s ｜ 标题：%s", "；".join(errs), title)
             return errs
+        _say_delivered(route, delivered, title)
         if route == "group":
             self._copy_alarm(title, body)
         if failed and not self._announcing:
@@ -593,6 +574,7 @@ class Notifier:
                                           stop_on_first=True)
         self._last.delivered = tuple(delivered)
         if delivered:
+            _say_delivered("group", delivered, title)
             self._copy_alarm(title, body)
             return []
         errs = [f"{n}: {e}" for n, e in failed.items()] or ["企业微信机器人没开"]
@@ -607,8 +589,6 @@ class Notifier:
         lines = []
         for name, err in failed.items():
             lines.append(f"· {name}：{err}")
-            if tip := _hint(name, err):
-                lines.append(f"  {tip}")
         lines += [
             "",
             f"刚才那条消息已通过 {'、'.join(delivered)} 送达，没有丢。",
@@ -622,6 +602,7 @@ class Notifier:
         finally:
             self._announcing = False
         if sent:
+            _say_delivered("group", sent, title)
             self._copy_alarm(title, "\n".join(lines))
         # The log line for each refusal. When the notice above reached the group
         # robot, errwatch does not push the line again (one fault, one push: this send).
@@ -640,13 +621,5 @@ class Notifier:
         except Exception as exc:  # noqa: BLE001
             log.warning("群机器人发图失败: %s", exc)
             return [str(exc)]
+        _say_delivered("group", ["企业微信机器人"], f"图片 {Path(path).name}")
         return []
-
-    def send_image(self, path: Path) -> list[str]:
-        if not self.wecom.enabled:
-            return ["企业微信未配置，无法发图"]
-        try:
-            self.wecom.send_image(path)
-            return []
-        except Exception as exc:  # noqa: BLE001
-            return [f"企业微信发图: {exc}"]
