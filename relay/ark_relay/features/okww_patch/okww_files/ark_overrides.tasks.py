@@ -249,49 +249,6 @@ class _Marker:
     """ok-script only executes a file that defines a class. This is that class."""
 
 
-def _install():
-    from src.task.FarmEchoTask import FarmEchoTask
-
-    revive = FarmEchoTask.revive_action
-
-    @override(FarmEchoTask, "revive_action")
-    def revive_action(self):
-        # Inside a realm upstream gives up on reviving - there is no teleport tower
-        # to run back to - so one death stops the whole task. For an overnight farm
-        # that means standing still until morning. The death dialog is on screen and
-        # OK-WW already recognises it, so find the confirm button by its own text and
-        # take the next lap. **By text, not by position**: the dialog is titled
-        # 「选择复苏物品」, and matching 复苏 clicked the title itself on 2026-09-09.
-        # Only the one case upstream refuses is ours: inside a realm it returns
-        # False, because there is no teleport tower to run back to. Everything else
-        # is theirs and still runs, so their improvements to it flow through.
-        if not (self._in_realm and farming_echoes()):
-            return revive(self)
-        try:
-            found = self.ocr(box=self.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
-            text = ' '.join(str(b) for b in found)
-            if '复苏物品' not in text and '复活' not in text:
-                self.log_info(f'刷声骸模式：这不像死亡弹窗，不乱点。整屏读到 {found}')
-                return False
-            button = None
-            for b in found:
-                name = str(getattr(b, 'name', '') or '').strip()
-                if '确认' in name and len(name) <= 6:
-                    button = b
-                    break
-            if button is None:
-                self.log_info(f'刷声骸模式：死亡弹窗上没找到「确认」，整屏读到 {found}')
-                return False
-            self.log_info(f'刷声骸模式：角色阵亡，用一个复苏物品点「{button}」，接着刷')
-            self.click(button, after_sleep=3)
-            self.wait_in_team_and_world(time_out=120)
-            self.is_revived = True
-            return True
-        except Exception as e:  # noqa: BLE001 - a failed revive must not kill the run
-            self.log_info(f'刷声骸模式：复活这一步没做成 {e!r}')
-            return False
-
-
 def _weekly(task) -> bool:
     return str(task.config.get("Teleport to Boss") or "") == "Weekly Challenge"
 
@@ -618,9 +575,17 @@ def _install_teleport():
 # touched that method - loudly, thanks to the hash pin, but the change would still
 # have stopped happening. Hooking one call deeper removes that exposure entirely.
 #
-# Two things still replace a method outright, because upstream's own body is what
-# has to go: revive_action (its realm branch is a bare `return False`) and
-# click_team_challenge (the whole point is to split it in two). Both are pinned.
+# A few still replace a method outright, because upstream's own body is what has
+# to go: click_team_challenge (the whole point is to split it in two), get_stamina
+# (its body is the bug) and find_nest (the nest filter). Each is pinned to
+# upstream's hash. revive_action was one until 2026-10-13. It is gone because
+# v3.7.4 FarmEchoTask.revive_action (:92-106) hands a realm death to
+# BaseCombatTask.revive_action (:227-240) whenever Teleport to Boss is on. That
+# cancels the revive popup (close_revive_popup, :202-224), leaves the realm to heal,
+# and do_run teleports back (FarmEchoTask.py:216-229), at most 3 times per run; after
+# that do_run returns and the relay's echo farm relaunches OK-WW after 5 quiet
+# minutes (echofarm.RESTART_QUIET_MINUTES). Ours clicked 确认 and spent a revive
+# item on every death to carry on in place.
 # ---------------------------------------------------------------------------
 
 # Upstream's click_team_challenge is three lines and this replaces all of them,
@@ -1102,19 +1067,19 @@ def _install_hooks():
 
     @override(FarmEchoTask, "combat_once")
     def combat_once(self, *a, **kw):
-        # A revive raises CharRevivedException. Upstream v3.7.3 catches it in
-        # do_run (FarmEchoTask.py:204-216) with a fresh teleport to the boss, at
+        # A revive raises CharRevivedException. Upstream v3.7.4 catches it in
+        # do_run (FarmEchoTask.py:216-229) with a fresh teleport to the boss, at
         # most 3 times per run. A revive that already put us back at the boss sets
-        # is_revived - our in-place one above, and upstream's own overworld one
-        # (FarmEchoTask.py:97-105) - and for those the exception stops here, so the
-        # loop takes its `if self.is_revived: continue` (FarmEchoTask.py:179)
-        # without a second trip and without the cap: an overnight farm would
-        # otherwise stop after its third death. A revive that leaves us elsewhere
-        # does not set it - the weekly boss's tower revive (BaseCombatTask.py:
-        # 227-240) - and goes up untouched to that re-teleport; swallowing it sent
-        # the loop looking for an echo at the tower. do_run clears is_revived at
-        # the top of every lap (FarmEchoTask.py:140-143), so it is False here
-        # unless this fight's revive set it.
+        # is_revived - upstream's own overworld one (FarmEchoTask.py:98-106) - and
+        # for that the exception stops here, so the loop takes its
+        # `if self.is_revived: continue` (FarmEchoTask.py:182-183) without a
+        # second trip and without the cap. A revive inside a realm does not set it
+        # - BaseCombatTask.revive_action (:227-240) cancels the popup and leaves
+        # the realm, for the weekly boss and the echo farm alike - and goes up
+        # untouched to that re-teleport; swallowing it sent the loop looking for
+        # an echo at the tower. do_run clears is_revived at the top of every lap
+        # (FarmEchoTask.py:144-147), so it is False here unless this fight's
+        # revive set it.
         #
         # Why not the whole lap, as the text patch did (okww_patches/revive.py:
         # 139-148)? Upstream had no handler then, and a revive anywhere in the lap
@@ -1814,7 +1779,6 @@ except Exception:  # noqa: BLE001 - never stop OK-WW from starting
 
 try:
     _install_hooks()
-    _install()
     _install_teleport()
     _install_nest()
     _install_claim()

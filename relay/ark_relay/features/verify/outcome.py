@@ -300,7 +300,6 @@ BEHAVIOUR_TESTS = {
     "BaseWWTask.click_on_book_target": "test_okww_weekly_entry_paths.py",
     "FarmEchoTask.teleport_to_configured_boss": "test_okww_weekly_entry_paths.py",
     "FarmEchoTask.teleport_to_configured_boss_and_prepare": "test_okww_weekly_entry_paths.py",
-    "FarmEchoTask.revive_action": "test_okww_revive_and_retry.py",
     "FarmEchoTask.run": "test_okww_revive_and_retry.py",
     "TacetTask.farm_tacet": "test_okww_farm_hook.py",
     "ForgeryTask.farm_forgery": "test_okww_farm_hook.py",

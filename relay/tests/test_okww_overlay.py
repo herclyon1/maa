@@ -60,8 +60,8 @@ check("多等那次不许自己抛，找不到才抛", "raise_if_not_found=False
 whole = [l for l in src.splitlines() if "@override(" in l]
 pinned = [l for l in whole if "expect_sha=" in l]
 check("整段替换的都钉住了上游哈希", len(pinned) >= 1)
-# revive_action stopped being a replacement on 2026-09-09: only the case upstream
-# refuses (inside a realm) is ours now, and their body still runs for the rest.
+# revive_action is no longer overridden at all (2026-10-13, upstream v3.7.4 handles
+# the realm death); the whole-method replacements are the pinned ones below.
 check("被替换的是那两个小方法", any("click_team_challenge" in l or "find_nest" in l
                                     for l in pinned))
 

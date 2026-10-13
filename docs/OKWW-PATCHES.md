@@ -30,9 +30,12 @@ method - the pin would have said so, but the change would have stopped happening
 Hooking one call deeper removes the exposure: 「skip the weekly boss when waveplates
 are short」 used to copy a 28-line teleport method and now replaces the three-line
 challenge button it calls. Most bindings are wrappers that run upstream's own body
-inside them; only `revive_action`, `click_team_challenge` and `get_stamina` (M7,
-2026-09-23: an unread 数/数 became 「0 current」) replace it, and each is pinned to
-its hash.
+inside them; only `click_team_challenge`, `get_stamina` (M7, 2026-09-23: an unread
+数/数 became 「0 current」) and `find_nest` replace it, and each is pinned to its hash.
+The `revive_action` override was removed on 2026-10-13: v3.7.4 handles a realm death
+itself (FarmEchoTask.revive_action :92-106 -> BaseCombatTask.revive_action :227-240:
+cancel the revive popup, leave the realm to heal, do_run re-teleports, at most 3 times
+per run), where ours confirmed the popup and spent a revive item on every death.
 
 **Daily activity chests (2026-10-10)**: the user, 10-10 19:4x (relayed by 网页-验收):
 「鸣潮的每日为什么okww没有领，中继也不报错？」 `DailyTask.claim_daily` is wrapped by

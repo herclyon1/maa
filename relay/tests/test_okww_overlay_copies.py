@@ -31,7 +31,6 @@ src = okww_overlay.source_text()
 
 # Everything we change, and the marker that proves it is still in the file.
 CHANGES = {
-    "刷声骸时角色阵亡原地复活": "刷声骸模式：角色阵亡，用一个复苏物品点",
     "复活之后接着刷下一趟": "刷声骸模式：复活成功，接着刷下一趟",
     "连败三次就收手": "次失败，退出本次任务，不再重试",
     "周本进本前读剩余次数": "本周周本次数已领满（0/3）",
@@ -81,7 +80,7 @@ for banned in ("def farm_do_run(", "def farm_teleport(", "def daily_run(",
     check(f"没有 {banned.strip('def (')}", banned in src, False)
 
 print("[包一层的必须真的调用上游那份]")
-for captured in ("revive(self", "nest_run(self", "capture_run(self", "next_nest(self", "daily_run(self", "farm_run(self", "farm_combat(self", "pick_level(self", "tacet_stamina(self",
+for captured in ("nest_run(self", "capture_run(self", "next_nest(self", "daily_run(self", "farm_run(self", "farm_combat(self", "pick_level(self", "tacet_stamina(self",
                  "open_daily(self", "run_additional(self", "original(self",
                  "inner(self", "outer(self", "prepare(self", "teleport(self",
                  "start_execute(game_cmd"):
