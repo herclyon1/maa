@@ -71,7 +71,7 @@ def _handler(state_dir: Path):
 
     h = errwatch.ErrorKindAlert(_NoSend(), state_dir=state_dir, known={})
     taken = _Taken()
-    h._take = lambda record: taken.append(record)  # noqa: SLF001 - the push thread is not wanted here
+    h._take = lambda record: taken.append(record)
     return h, taken
 
 
@@ -97,7 +97,7 @@ def _replay_calendar(miss: "re.Match | None", img: "re.Match | None") -> None:
     now = datetime(2026, 10, 6, 6, 20, 17, tzinfo=SERVER_TZ).replace(tzinfo=None)
     end = datetime(2026, 10, 22, 9, 59)
     tr = hub.Trace.new()
-    hub._wuwa_calendar_start(notice, pool, now, end, lambda _url: ocr, None, tr)  # noqa: SLF001
+    hub._wuwa_calendar_start(notice, pool, now, end, lambda _url: ocr, None, tr)
     mc.load()
     only = {"#2": mc.CHECKS["#2"]}
     saved = dict(mc.CHECKS)
@@ -123,15 +123,15 @@ def _replay_snapshot(labels: "set[str]") -> None:
 
     names = {"_MAS错误": "_mas", "_队列错误": "_queues"}
     saved = {n: getattr(snapshot, n) for n in ("_mas", "_queues", "_okww", "_runtime")}
-    probe = errwatch._relay_poweroff[0]  # noqa: SLF001
+    probe = errwatch._relay_poweroff[0]
     try:
         for label, n in names.items():
             setattr(snapshot, n, refused if label in labels else (lambda _out: None))
-        snapshot._okww = snapshot._runtime = lambda _out: None  # noqa: SLF001
-        errwatch._relay_poweroff[0] = lambda: True  # noqa: SLF001
+        snapshot._okww = snapshot._runtime = lambda _out: None
+        errwatch._relay_poweroff[0] = lambda: True
         snapshot.read()
     finally:
-        errwatch._relay_poweroff[0] = probe  # noqa: SLF001
+        errwatch._relay_poweroff[0] = probe
         for n, fn in saved.items():
             setattr(snapshot, n, fn)
 

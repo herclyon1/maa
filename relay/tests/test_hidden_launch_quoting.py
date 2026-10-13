@@ -19,8 +19,8 @@ from pathlib import Path, PureWindowsPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay.features.preupdate import preupdate_common as C  # noqa: E402
-from _tmp import tmpdir  # noqa: E402
+from ark_relay.features.preupdate import preupdate_common as C
+from _tmp import tmpdir
 
 fails = []
 
