@@ -499,6 +499,9 @@ def do_orders(ctx: Day) -> None:
 NET_RULES = (
     ("ark.phone", re.compile(r"^手机通道断了（(.*?)）"), "ntfy_stream"),
     ("ark.phone", re.compile(r"^开机读手机信箱没成（(.*?)）"), "ntfy_backlog"),
+    # mailbox.Mailbox._post's retry line is INFO, and the WARNING after a good retry keeps
+    # the error on its continuation line (10-08 21:49:04 / :08), so neither NET_ERR rule sees it.
+    ("ark.phone", re.compile(r"^发到信箱没成（(.*?)）"), "ntfy_publish"),
     ("ark.macpush", re.compile(r"^报警直送 Mac 没送到（(.*?)）"), "mac"),
     ("ark.service", re.compile(r"^上游导出代码核对：\d+ 个文件这次拉不到.*?：(.*?)）?$"), "web"),
 )

@@ -357,6 +357,14 @@ w.prepare()
 check("a program started after this power-on is still running at the relay's start",
       [p.image for p in w.win.procs.named("MAA.exe")], ["MAA.exe"])
 
+faults = []
+host = type("H", (), {"net": type("N", (), {"fault": lambda self, m, k, **f: faults.append((m, k, f))})(),
+                      "note": lambda self, *a, **k: None})()
+at = W.epoch("2026-10-08T21:49:04+08:00")
+W.World._fault(host, {"channel": "ntfy_publish", "error": "TimeoutError: The read operation timed out"}, at)
+check("an ntfy publish timeout fails the next publish begun up to POST_TIMEOUT before its line",
+      faults, [(f"ntfy.sh/{W.PHONE_TOPIC}", "timeout", {"method": "POST", "start": at - 21})])      # mailbox.Mailbox.POST_TIMEOUT 20 s, and one
+
 # ---- the morning of 10-12, end to end
 corpus = W.CORPUS_ROOT / "2026-10-12"
 owner_mac = sys.platform == "darwin" and (Path.home() / "Claude" / "maa-automation").is_dir()

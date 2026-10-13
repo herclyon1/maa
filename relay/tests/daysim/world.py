@@ -147,6 +147,9 @@ MASTER_NESTS = {
 # preupdate_okww.OKWW_MIN_WAIT_SECONDS (45) anyway: the record has the launch
 # (10-12 08:46:17) and 「无需更新（v3.7.4）」 45 s later (08:47:02).
 OKWW_APPJSON_REWRITE_S = 38
+# mailbox.Mailbox.POST_TIMEOUT: an ntfy publish that timed out began this long before
+# its 「发到信箱没成」 line.
+NTFY_POST_TIMEOUT_S = 20
 # OK-WW loads the relay's overrides at start (ok-script log 「task_manager:Found tasks:
 # [...ark_overrides.py]」) and they write C:\ProgramData\ark-okww-overlay.json then
 # (ark_overrides.tasks.py _write_report): 10-12 09:19:07.833 in the log, 「覆盖层报告
@@ -810,6 +813,10 @@ class World:
                  "wecom": "qyapi.weixin.qq.com", "serverchan": "ftqq.com"}.get(ch)
         if ch == "ntfy_stream":
             self.net.fault(PHONE_TOPIC, "stall", start=t)
+        elif ch == "ntfy_publish":
+            # The line comes when the call has failed; a timeout began POST_TIMEOUT before it.
+            self.net.fault(f"ntfy.sh/{PHONE_TOPIC}", kind, method="POST",
+                           start=t - NTFY_POST_TIMEOUT_S - 1 if kind == "timeout" else t)
         elif match:
             self.net.fault(match, kind, start=t)
         else:

@@ -264,6 +264,17 @@ for kind, want in (("refused", "URLError"), ("reset", "ConnectionResetError")):
     except (urllib.error.URLError, ConnectionResetError) as exc:
         got = type(exc).__name__
     check(f"fault {kind}", got, want)
+try:
+    net.fault("ntfy.sh/simpub", "refused", method="POST")
+except TypeError as exc:
+    check("a fault can be limited to one HTTP method", str(exc), "")
+urllib.request.urlopen(f"https://ntfy.sh/simpub/json?poll=1&since={int(t0)}", timeout=5).read()
+try:
+    urllib.request.urlopen(urllib.request.Request("https://ntfy.sh/simpub", data=b"x", method="POST"), timeout=5)
+    got = "published"
+except urllib.error.URLError:
+    got = "refused"
+check("a POST-only fault passes the GET on the same URL and fails the publish (10-08 21:49)", got, "refused")
 
 # ---------------------------------------------------------------- COS, self-update, inbox, evidence
 print("COS bucket, self-update 'current', the inbox doors, evidence stores")
