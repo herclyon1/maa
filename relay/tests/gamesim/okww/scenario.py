@@ -27,6 +27,15 @@ Shape (keys not listed here are refused, so a typo cannot silently drop an expec
             | "provisional_ocr": [{"text": "...", "box": [x0, y0, x1, y1], "evidence": "..."}]
               and/or "provisional_features": [{"name": "<OK-WW feature>", "box": [x0, y0, x1, y1],
                                                "evidence": "..."}],
+                                          # provisional_features: on a state with no frame,
+                                          # task.find_feature answers only these (U5)
+          "features": [{"name": "<template>", "box": [x0, y0, x1, y1], "evidence": "..."}],
+                                          # provisional template matches (no recorded frame shows
+                                          # them): find_one / find_feature answer these boxes for
+                                          # these names; on a state without a frame, nothing else
+          "fight": {"outcome": "returns" | "revived" | "realm_revive", "to": "<state>",
+                    "evidence": "..."},   # the upstream fight, scripted (harness.FIGHT_OUTCOMES);
+                                          # in_combat() is true exactly on states with a fight
           "transitions": [
             {"click": [x0, y0, x1, y1], "to": "<state>", "evidence": "..."},   # relative rectangle
             {"feature": "<name>", "threshold": 0.7, "to": ..., "evidence": ...}, # click in find_one's box
@@ -76,8 +85,12 @@ MAX_S = 1200
 _TOP = {"case", "about", "task", "start", "max_s", "config", "states", "expect"}
 _CONFIG = {"evidence", "task", "master", "flags"}
 _FLAGS = {"no_claim", "no_stamina"}
-_STATE = {"frame", "provisional_ocr", "provisional_features", "transitions", "ignore_inputs", "end",
-          "about", "fight"}
+_STATE = {"frame", "provisional_ocr", "provisional_features", "features", "transitions", "ignore_inputs",
+          "end", "about", "fight"}
+_FIGHT = {"outcome", "to", "evidence"}
+# What the upstream fight wrapped by the overlay's FarmEchoTask.combat_once can end in (gamesim
+# design 1, "Combat is a scripted state"); harness.py makes each happen the way upstream does.
+FIGHT_OUTCOMES = ("returns", "revived", "realm_revive")
 _TRANSITION_KINDS = ("click", "feature", "key", "after_s")
 _TRANSITION = set(_TRANSITION_KINDS) | {"to", "evidence", "threshold"}
 _EXPECT = {"sequence", "end", "never_states", "shots", "raises", "log", "log_never", "verdict"}
@@ -99,6 +112,13 @@ class Transition:
 
 
 @dataclass
+class Fight:
+    outcome: str              # one of FIGHT_OUTCOMES
+    to: str                   # the state the fight leaves the screen in
+    evidence: str
+
+
+@dataclass
 class State:
     name: str
     frame: "Path | None"
@@ -109,6 +129,8 @@ class State:
     # Templates the logged screen showed (each with the log line that found or clicked it),
     # answered instead of template matching on a frame that was never recorded.
     provisional_features: "list[dict] | None" = None
+    features: "list[dict] | None" = None
+    fight: "Fight | None" = None
 
 
 @dataclass
@@ -126,9 +148,19 @@ class Scenario:
 
     @property
     def provisional(self) -> "list[str]":
-        """States that run on OCR text and features from logs instead of a recorded frame (design 6.1)."""
+        """States that run on what the logs say instead of a recorded frame (design 6.1): OCR
+        text (provisional_ocr) or template matches (provisional_features, features)."""
         return [s.name for s in self.states.values()
-                if s.provisional_ocr is not None or s.provisional_features is not None]
+                if s.provisional_ocr is not None or s.provisional_features is not None
+                or s.features is not None]
+
+    @property
+    def has_fight(self) -> bool:
+        return any(s.fight is not None for s in self.states.values())
+
+    @property
+    def has_features(self) -> bool:
+        return any(s.features is not None for s in self.states.values())
 
 
 def _need(cond, where, why):
@@ -200,20 +232,35 @@ def _transition(t, where, names):
 def _state(name, s, index, names):
     where = f"state {name}"
     _keys(s, _STATE, where)
-    # Combat is a scripted state whose fake is pinned by the upstream body hash (design 1,
-    # rule 2); the echo-farm unit (U7) brings it with its first case.
-    _need("fight" not in s, where, "fight states are not supported yet (gamesim U7)")
     has_frame = "frame" in s
-    has_prov = "provisional_ocr" in s or "provisional_features" in s
+    has_ocr = "provisional_ocr" in s
+    has_pfeat = "provisional_features" in s
+    has_feat = "features" in s
     end = bool(s.get("end", False))
-    _need(has_frame + has_prov == 1 or (end and not has_frame and not has_prov), where,
-          "needs either `frame` or provisional_ocr / provisional_features (an end state may have neither)")
+    # A screen is a recorded frame, or what the logs say about one: provisional_ocr and / or
+    # provisional_features (U5, answered at task.find_feature), or `features` (U7, answered at
+    # FeatureSet.find_one_feature, also on a recorded frame); an end state may have none.
+    _need(not (has_frame and (has_ocr or has_pfeat)), where,
+          "a recorded `frame` cannot also have provisional_ocr / provisional_features")
+    _need(not (has_pfeat and has_feat), where, "provisional_features and features are two answers to one lookup")
+    _need(has_frame or has_ocr or has_pfeat or has_feat or end, where,
+          "needs a `frame`, provisional_ocr / provisional_features, or `features` (an end state may have none)")
     frame = _frame(s["frame"], where, index) if has_frame else None
     ocr = _provisional(s, "provisional_ocr", "text", where)
-    feats = _provisional(s, "provisional_features", "name", where)
+    pfeats = _provisional(s, "provisional_features", "name", where)
+    feats = _provisional(s, "features", "name", where)
+    fight = None
+    if "fight" in s:
+        w = f"{where} fight"
+        f = s["fight"]
+        _keys(f, _FIGHT, w)
+        _need(f.get("outcome") in FIGHT_OUTCOMES, w, f"outcome must be one of {list(FIGHT_OUTCOMES)}")
+        _need(f.get("to") in names, w, f"`to` {f.get('to')!r} is not a state")
+        fight = Fight(f["outcome"], f["to"], _evidence(f, w))
     trans = [_transition(t, f"{where} transitions[{i}]", names) for i, t in enumerate(s.get("transitions", []))]
-    _need(not (end and trans), where, "an end state has no transitions")
-    return State(name, frame, ocr, trans, bool(s.get("ignore_inputs", False)), end, feats)
+    _need(not (end and (trans or fight)), where, "an end state has no transitions and no fight")
+    return State(name, frame, ocr, trans, bool(s.get("ignore_inputs", False)), end,
+                 provisional_features=pfeats, features=feats, fight=fight)
 
 
 def _provisional(s, key, label, where):

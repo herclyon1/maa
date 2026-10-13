@@ -1,0 +1,225 @@
+{
+ "case": "retry_passes_retries",
+ "about": "Upstream v3.7.4 retries a failed body with self.run(retries - 1) (FarmEchoTask.py:108, :122-123, #1649); that call lands on the overlay's run, which must take and pass on `retries` (b24c48fc). Red at b24c48fc~1: run(self) takes no retries, so the retry is a TypeError. Constructed: no pulled ok-script log has that TypeError (b24c48fc found it in the source, 10-13 04:32 JST).",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "world",
+ "config": {
+  "evidence": "What the relay's echo farm writes into FarmEchoTask.json (echofarm.py:527-530: Teleport to Boss 'Boss Challenge', Which Boss Challenge to Teleport, Boss Level FARM_LEVEL '80', Repeat Farm Count BIG_COUNT 100000) and the no-claim marker it keeps while farming (echofarm.py:171, NO_CLAIM). The 10-13 run: ok-script.log (game PC, 2026-10-13):2117 'info_set Teleport to Boss Boss Challenge 0' (boss 1); ok-script.log (game PC, 2026-10-13):2132 '...按游戏记住的等级进（设置 Lv.80）'; ok-script.log (game PC, 2026-10-13):2075 'profile: Other {'combat_wait_time': 0, ...}'. Echo Pickup Method 'Walk': the PC's working/configs/FarmEchoTask.json (gamesim u0 redacted copy, read 2026-10-13) and ok-script.log (game PC, 2026-10-13):1349 'farm echo walk_find_echo None'",
+  "task": {
+   "Teleport to Boss": "Boss Challenge",
+   "Which Boss Challenge to Teleport": 1,
+   "Boss Level": "80",
+   "Repeat Farm Count": 100000,
+   "Boss": "Other",
+   "Combat Wait Time": 0,
+   "Echo Pickup Method": "Walk"
+  },
+  "flags": {
+   "no_claim": true
+  }
+ },
+ "states": {
+  "world": {
+   "about": "the open world, in team (the start of a teleport: ensure_main, then F2)",
+   "features": [
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2119 'info_set current task in main esc=True' (ensure_main's is_main was true); BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    },
+    {
+     "name": "char_3_text",
+     "box": [
+      0.9047,
+      0.4417,
+      0.913,
+      0.4583
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2119 'info_set current task in main esc=True' (ensure_main's is_main was true); BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f2",
+     "to": "book",
+     "evidence": "ok-script.log (game PC, 2026-10-13):2121 'send f2 key to open' (BaseWWTask.openF2Book :1016-1030)"
+    }
+   ]
+  },
+  "book": {
+   "about": "the F2 guidebook",
+   "features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2123 'BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=83)'"
+    }
+   ],
+   "transitions": [
+    {
+     "feature": "gray_book_boss",
+     "to": "book_boss",
+     "evidence": "ok-script.log (game PC, 2026-10-13):2124 'left_click gray_book_boss (76, 321) after_sleep 1.5'"
+    }
+   ]
+  },
+  "book_boss": {
+   "about": "the guidebook's boss tab; open_boss_book('qiangdi') clicks the Boss Challenge entry",
+   "features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2123 'BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=83)' (the side bar stays)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.22,
+      0.47,
+      0.26,
+      0.51
+     ],
+     "to": "boss_list",
+     "evidence": "ok-script.log (game PC, 2026-10-13):2126 'left_click qiangdi (460, 529) after_sleep 2' (BaseWWTask.open_boss_book: qiangdi is click_relative(0.24, 0.49))"
+    }
+   ]
+  },
+  "boss_list": {
+   "about": "the Boss Challenge list; boss 1's 前往 (boss_proceed) is the first row",
+   "features": [
+    {
+     "name": "boss_proceed",
+     "box": [
+      0.9414,
+      0.3028,
+      0.9586,
+      0.3583
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2128 'left_click boss_proceed (1824, 357) after_sleep 1' (click_on_book_target clicks the box centre); size: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    }
+   ],
+   "transitions": [
+    {
+     "feature": "boss_proceed",
+     "to": "dialog",
+     "evidence": "ok-script.log (game PC, 2026-10-13):2128 'left_click boss_proceed (1824, 357)' - and the 'team screen' is the dialog: upstream v3.7.4's own comment on run()'s retry (FarmEchoTask.py:121): '认不出的双按钮弹窗会被当成领奖弹窗关掉, 重进后又弹, 无限循环 (#1649)'; the game PC's 2026-09-01 09:46-10:34 loop of 81 rounds behind a dialog (ddf68376), the owner: 「一直卡循环了……你没有写退出机制。」 (quoted in ddf68376)"
+    }
+   ]
+  },
+  "dialog": {
+   "about": "a two-button dialog where the team screen should be (upstream's recorded 确认离开 / 重新挑战): not a screen the book trip knows; ESC closes it, and it comes back on the next trip",
+   "frame": "realm_exit_dialog/2026-05-08_064249.png",
+   "transitions": [
+    {
+     "key": "esc",
+     "to": "world_again",
+     "evidence": "upstream's retry: run()'s except (FarmEchoTask.py:119-123) calls handle_claim_button, whose has_claim is the dialog's left button (claim_cancel_button_hcenter_vcenter) -> send esc (BaseWWTask.py:520-526); upstream v3.7.4's own comment on run()'s retry (FarmEchoTask.py:121): '认不出的双按钮弹窗会被当成领奖弹窗关掉, 重进后又弹, 无限循环 (#1649)'; the game PC's 2026-09-01 09:46-10:34 loop of 81 rounds behind a dialog (ddf68376), the owner: 「一直卡循环了……你没有写退出机制。」 (quoted in ddf68376)"
+    }
+   ]
+  },
+  "world_again": {
+   "about": "the open world again after the ESC; this time the book trip starts",
+   "features": [
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "handle_claim_button closed the dialog (BaseWWTask.py:520-526); BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    },
+    {
+     "name": "char_3_text",
+     "box": [
+      0.9047,
+      0.4417,
+      0.913,
+      0.4583
+     ],
+     "evidence": "handle_claim_button closed the dialog (BaseWWTask.py:520-526); BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f2",
+     "to": "book_again",
+     "evidence": "upstream's retry (FarmEchoTask.run :122-123, self.run(retries - 1)) starts the book trip again: ok-script.log (game PC, 2026-10-13):2121 'send f2 key to open'"
+    }
+   ]
+  },
+  "book_again": {
+   "end": true,
+   "about": "the retried body reached the book: the retry ran"
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "key": "f2",
+    "evidence": "body 1"
+   },
+   {
+    "click": [
+     1824,
+     357
+    ],
+    "within": 5,
+    "evidence": "body 1: 前往 on boss 1"
+   },
+   {
+    "key": "esc",
+    "evidence": "upstream's retry: handle_claim_button's esc (FarmEchoTask.py:122)"
+   },
+   {
+    "state": "world_again",
+    "evidence": "the dialog closed"
+   },
+   {
+    "key": "f2",
+    "evidence": "body 2, the retry (FarmEchoTask.py:123)"
+   }
+  ],
+  "end": "book_again",
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "farm 4c error, try handle monthly card",
+    "evidence": "upstream's own line for the failed body (FarmEchoTask.py:120)"
+   },
+   {
+    "re": "点了前往，传送界面多等 15 秒也没来，这一屏认不出，停下不走",
+    "evidence": "the overlay's click_on_book_target on a screen after 前往 that is neither travel nor the team screen (ark_overrides.tasks.py _install_teleport, _entry_unknown): the body fails there"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "TypeError",
+    "evidence": "b24c48fc: the retry must not be a TypeError"
+   }
+  ],
+  "verdict": null
+ }
+}

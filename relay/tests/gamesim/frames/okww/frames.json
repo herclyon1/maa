@@ -1840,6 +1840,7 @@
    "truth_checked": "2026-10-13, U4: every truth box cut out at full size and read by eye against `text`; boxes located with macOS Vision OCR, never taken from it unchecked",
    "features": [],
    "cases_using": [
+    "echofarm/level_page_book_lv80",
     "okww/test_frame_truth.py"
    ]
   },
@@ -2780,6 +2781,128 @@
    "cases_using": [
     "okww/test_frame_truth.py"
    ]
+  },
+  {
+   "path": "echo_pickup/2025-04-17_132100.png",
+   "screen_id": "echo_pickup",
+   "about": "A boss realm after the fight: 挑战成功, the dropped echo's F 吸收 prompt, the realm exit 离开「无冠者之像・心脏」 top left, team slots 1 and 3 numbered. The echo pickup FarmEchoTask.do_run reaches after combat_once (FarmEchoTask.py:187-189, pick_echo).",
+   "shot": "",
+   "source": "ok-wuthering-waves tests/images/absorb.png at tag v3.7.4 (commit 2243d465d58c74f52765b658174bff76165656ee; file last changed in ba64f6d595, 2025-04-29), original sha256 055f1827625e73d72116cc0d0a19a7a98cee88df2c4785b82070f6002a124b2b",
+   "evidence": "upstream's own tests/TestOCR.py at v3.7.4 asserts pick_echo() is true on this image (set_image('tests/images/absorb.png'); self.assertTrue(self.task.pick_echo())); on-screen stamp 2025-04-17 13:21",
+   "sha256": "62652f8cf2cde457350f3e58eb20cb9d77ad0f8277c18116604ccebb5999d514",
+   "date": "2025-04-17 13:21:00 (upstream test image, not the game PC: see source)",
+   "okww": "upstream test image (ok-wuthering-waves tests/images at v3.7.4)",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "吸收",
+     "box": [
+      0.6969,
+      0.4981,
+      0.7266,
+      0.5296
+     ],
+     "evidence": "upstream tests/TestOCR.py at v3.7.4: pick_echo() is true on this image (its F prompt's 吸收 text is what find_f_with_text(absorb_echo_text()) reads)"
+    },
+    {
+     "region": "full",
+     "text": "挑战成功",
+     "box": [
+      0.4479,
+      0.2389,
+      0.551,
+      0.2926
+     ]
+    },
+    {
+     "region": "full",
+     "text": "无冠者之像",
+     "box": [
+      0.0312,
+      0.2481,
+      0.2083,
+      0.2833
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, read by eye on full-size crops of this file (gamesim U7)",
+   "features": [],
+   "cases_using": [
+    "echofarm/main_book_team_1013",
+    "okww/test_frame_truth.py"
+   ]
+  },
+  {
+   "path": "realm_exit_dialog/2026-05-08_064249.png",
+   "screen_id": "realm_exit_dialog",
+   "about": "提示 / 确认离开 with 重新挑战 (left) and 确认 (right) over a realm: ESC inside a boss realm. upstream clicks claim_cancel_button_hcenter_vcenter with relative_x=2, i.e. 重新挑战, to start the next lap.",
+   "shot": "",
+   "source": "ok-wuthering-waves tests/images/confirm_highlight.png at tag v3.7.4 (commit 2243d465d58c74f52765b658174bff76165656ee; file added in 775d27e8a7, 2026-05-08 06:42:49 UTC, the date used here: the image has no stamp), original sha256 0a41d8a8c5c13d1065b3b72d3005601d9b3d777e7c501fdbc6974ca8c533c369",
+   "evidence": "upstream's own tests/TestConfirm.py at v3.7.4 finds confirm_btn_hcenter_vcenter on this image; the dialog FarmEchoTask.do_run opens with ESC inside a realm (FarmEchoTask.py:152-157), whose 重新挑战 the machine clicked at 'left_click claim_cancel_button_hcenter_vcenter (538, 675)' (ok-script.log 2026-10-13 11:57:24, the 10-13 echo farm's lap 2)",
+   "sha256": "c8dbdbe3c20cbdd40724ae196c99cde2f4619bbc555d3faee8dac31d3cc6eb35",
+   "date": "2026-05-08 06:42:49 (upstream test image, not the game PC: see source)",
+   "okww": "upstream test image (ok-wuthering-waves tests/images at v3.7.4)",
+   "size": [
+    1920,
+    1080
+   ],
+   "uid_strip": "blacked out: OK-WW config.blur_area(1920, 1080) = Box(x=1688, y=1054, width=224, height=25) (ok-wuthering-waves v3.7.4 config.py), every pixel 0; checked again on Windows with the real config.blur_area",
+   "truth": [
+    {
+     "region": "full",
+     "text": "提示",
+     "box": [
+      0.2292,
+      0.2963,
+      0.2708,
+      0.338
+     ]
+    },
+    {
+     "region": "full",
+     "text": "确认离开",
+     "box": [
+      0.4583,
+      0.4583,
+      0.5547,
+      0.5
+     ]
+    },
+    {
+     "region": "full",
+     "text": "重新挑战",
+     "box": [
+      0.2969,
+      0.6037,
+      0.375,
+      0.6481
+     ],
+     "evidence": "the button upstream's claim_cancel_button_hcenter_vcenter click with relative_x=2 lands on (FarmEchoTask.py:154); the machine's click was (538, 675), ok-script.log 2026-10-13 11:57:24"
+    },
+    {
+     "region": "full",
+     "text": "确认",
+     "box": [
+      0.638,
+      0.6037,
+      0.6771,
+      0.6481
+     ]
+    }
+   ],
+   "truth_checked": "2026-10-13, read by eye on full-size crops of this file (gamesim U7)",
+   "features": [],
+   "cases_using": [
+    "echofarm/retry_passes_retries",
+    "echofarm/three_failures_arkstopped",
+    "echofarm/main_book_team_1013",
+    "okww/test_frame_truth.py"
+   ]
   }
  ],
  "regions": {
@@ -2913,12 +3036,6 @@
    "wanted_by": "design 1 Echo farm (first boss fought, lap 2)",
    "logged_ocr": "ok-script.log (2026-10-13):1282 'FarmEchoTask:boss_string is [Lv.90天傀劫煞_0.97]', :1355 '[Lv.90.天傀劫煞_0.86]', :1410 '[Lv.90._0.89]'",
    "provisional_text": "Lv.90天傀劫煞 (combat itself is a scripted state, design 1)"
-  },
-  {
-   "screen_id": "echo_pickup",
-   "wanted_by": "design 1 Echo farm (teleport -> first boss fought -> echo -> lap 2)",
-   "logged_ocr": "none: upstream's pick_echo is template driven (no text read)",
-   "provisional_text": "none; lead: upstream v3.7.4 tests/TestOCR.py drives pick_echo on its own recorded tests/images/absorb.png, fetchable by tag"
   },
   {
    "screen_id": "echo_boss_level_page",

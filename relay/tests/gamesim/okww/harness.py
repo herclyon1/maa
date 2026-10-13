@@ -29,12 +29,29 @@ uses (ok/test/__init__.py init_ok: `device_manager.capture_method = ImageCapture
                        (task.ocr_fun) and template lookups with the templates its log lines
                        found or clicked (task.find_feature), on a black frame; see scenario.py.
 
+Two more, only in scenarios that use them (scenario.py `features`, `fight`):
+
+  provisional features a screen no recorded frame shows, answered from what the machine's log
+                       says was found there (a logged Box, or a logged click on the template).
+                       Swapped in at ok-script's FeatureSet.find_one_feature, the one call
+                       every find_one / find_feature / wait_feature goes through
+                       (ok/feature/FeatureSet.py find_feature); a name the state declares
+                       gets its box, other names go to the real matcher on a recorded frame
+                       and find nothing on a black one.
+  the fight            combat is a scripted state, not a simulation (gamesim design 1). The
+                       upstream fight the overlay wraps (BaseCombatTask.combat_once, captured
+                       by the overlay's FarmEchoTask.combat_once at load) returns or raises
+                       CharRevivedException as the state says, and CombatCheck.in_combat is
+                       true exactly on a state with a fight. Both upstream bodies are pinned
+                       (FAKED): an upstream change fails the case before the fake can lie.
+
 A test calls the task's own methods inside `play()`; expectations come from the scenario
 file (scenario.py), each with its evidence, never from the code under test.
 """
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -66,10 +83,23 @@ from ok.task.task import BaseTask  # noqa: E402
 from ok.util.logger import Logger as OkLogger  # noqa: E402
 from ok.test.TaskTestCase import TaskTestCase  # noqa: E402
 from ok.feature.Box import Box, find_boxes_by_name  # noqa: E402
+from src.combat.CombatCheck import CombatCheck  # noqa: E402  OK-WW's own, faked only where a scenario has a fight
+from src.task.BaseCombatTask import BaseCombatTask, CharRevivedException  # noqa: E402
+from src.task.MouseResetTask import MouseResetTask  # noqa: E402
 
 import scenario as scn  # noqa: E402
 
 MODULE = "ark_overrides"      # ok-script names the module after the file (find_and_instantiate_class)
+# The upstream functions the harness fakes, by the overlay's own pin (ark_overrides _src_sha:
+# sha1 of inspect.getsource, first 12 hex), computed on the pinned copies
+# relay/tests/gamesim/upstream/okww-v3.7.4/src/... (v3.7.3's are byte-identical: same
+# BaseCombatTask.py and CombatCheck.py sha256 in both SOURCE.txt). The fake stands for what
+# these bodies do; when upstream changes one, the case fails here first (design 1, rule 2).
+FAKED = {
+    ("BaseCombatTask", "combat_once"): "27a85ea0bfab",      # src/task/BaseCombatTask.py:375-400
+    ("CombatCheck", "in_combat"): "b5af3e23230d",           # src/combat/CombatCheck.py:185-192
+    ("CombatCheck", "do_check_in_combat"): "4fc4eea1f210",  # src/combat/CombatCheck.py:139-183
+}
 # The game window's title on the game PC: ok-script.2026-10-07.log line 170,
 # "DeviceManager:update_pc_device pc_device: {... 'hwnd': '鸣潮  ', ...}" (two trailing spaces).
 WINDOW_TITLE = "鸣潮  "
@@ -158,7 +188,7 @@ class VirtualClock:
 
 @dataclass
 class Event:
-    kind: str            # click | key | key_up | mouse_up | move | scroll | swipe | text | state | decision | shot
+    kind: str            # click | key | key_up | mouse_up | move | scroll | swipe | text | state | decision | shot | fight
     state: str
     t: float             # virtual seconds since the scenario started
     data: dict = field(default_factory=dict)
@@ -286,9 +316,55 @@ class Script:
                 return
         if self.state.ignore_inputs:
             return
-        what = f"{self.state.name}: {kind} {data} matches no transition"
+        self.off(f"{self.state.name}: {kind} {data} matches no transition")
+
+    def off(self, what: str) -> None:
         self.run.off_script.append(what)
         raise OffScript(what)
+
+    # -- provisional template matches (scenario `features`)
+    def features(self, name: str, within) -> "list[Box] | None":
+        """The current state's declared boxes for template `name` whose centre lies in `within`
+        (the caller's search box, or None); None when the real matcher should look instead."""
+        st = self.state
+        declared = [f for f in (st.features or []) if f["name"] == name]
+        if not declared:
+            return None if st.frame is not None else []
+        h, w = self.frame().shape[:2]
+        found = []
+        for f in declared:
+            x0, y0, x1, y1 = f["box"]
+            b = Box(x0 * w, y0 * h, to_x=x1 * w, to_y=y1 * h, confidence=1.0, name=name)
+            cx, cy = b.x + b.width / 2, b.y + b.height / 2
+            if within is None or (within.x <= cx <= within.x + within.width
+                                  and within.y <= cy <= within.y + within.height):
+                found.append(b)
+        return found
+
+    # -- the fight (scenario `fight`)
+    def fight(self, task, revived_exc) -> bool:
+        """What the upstream fight did on this state: return, or raise CharRevivedException.
+
+        `revived` is upstream's overworld revive (FarmEchoTask.revive_action :98-106: heal,
+        teleport back to the boss, `self.is_revived = True`); `realm_revive` is
+        BaseCombatTask.revive_action (:227-240, cancel the popup and leave to heal), which sets
+        nothing. Either way BaseCombatTask.raise_not_in_combat raises CharRevivedException
+        (:320-333) out of the fight."""
+        st = self.state
+        if st.fight is None:
+            self.off(f"{st.name}: the task fought (combat_once) on a screen with no fight")
+        f = st.fight
+        self._event("fight", outcome=f.outcome)
+        if f.outcome == "revived":
+            task.is_revived = True
+        self.enter(f.to, f"fight {f.outcome}")
+        # The screen changed without an input: ok-script resets its cached frame after each
+        # input (so the next look captures), not after this; do it here, or the next look
+        # still sees the fight's screen.
+        task.executor.reset_scene(check_enabled=False)
+        if f.outcome == "returns":
+            return True
+        raise revived_exc("char dead")
 
 
 # --------------------------------------------------------------------------- the four pieces
@@ -367,6 +443,11 @@ class RecordingInteraction(BaseInteraction):
         self._input("text", text=text)
 
 
+def _src_sha(fn) -> str:
+    """The overlay's own pin of an upstream body (ark_overrides _src_sha)."""
+    return hashlib.sha1(inspect.getsource(fn).encode("utf-8")).hexdigest()[:12]
+
+
 class _LogTap(logging.Handler):
     """ok-script logs everything through the `ok` logger as '<Name>:<message>' (ok/util/logger.py)."""
 
@@ -401,6 +482,15 @@ class ScriptedCase(TaskTestCase):
         cls.interaction = RecordingInteraction(cls.capture)
         dm.capture_method = cls.capture      # where init_ok put ImageCaptureMethod
         dm.interaction = cls.interaction     # where init_ok put DoNothingInteraction
+        # Every one-time task's run() starts with WWOneTimeTask.run, which looks up the trigger
+        # task MouseResetTask (OK-WW config.py:281 lists it) and calls its run(). ok-script's
+        # TaskTestCase empties trigger_tasks, so upstream's own MouseResetTask is put back. It
+        # is built the way TaskTestCase builds the task and left as built, not enabled: its
+        # run() then returns at once. Enabled, it only moves the cursor back
+        # (MouseResetTask.mouse_reset), which nothing in a scenario reads.
+        executor = ok_test.ok.task_executor
+        if executor.get_task_by_class(MouseResetTask) is None:
+            executor.trigger_tasks.append(MouseResetTask(executor, None))
         cls.overlay = sys.modules.get(MODULE)
         if cls.overlay is None:
             raise RuntimeError(f"ok-script did not execute ok_tasks/{MODULE}.py; "
@@ -515,7 +605,9 @@ class ScriptedCase(TaskTestCase):
 
         def find_feature(feature_name=None, *args, box=None, **kwargs):
             script = case.capture.script
-            if script is None or script.state.frame is not None:
+            # A recorded frame gets real matching; so does a state that declares U7's `features`
+            # (answered one level down, at FeatureSet.find_one_feature, see _install_fakes).
+            if script is None or script.state.frame is not None or script.state.features is not None:
                 return real(feature_name, *args, box=box, **kwargs)
             h, w = script.frame().shape[:2]
             if isinstance(box, str):
@@ -532,6 +624,64 @@ class ScriptedCase(TaskTestCase):
                     found.append(b)
             return found
         return find_feature
+
+    # -- provisional features and the fight
+    def _install_fakes(self, sc: scn.Scenario, task, undo: list) -> None:
+        """Swap in the feature answers and the fight the scenario uses; undo steps go to `undo`."""
+        case = self
+        if sc.has_features:
+            fs = task.executor.feature_set
+            real_one = fs.find_one_feature
+
+            def find_one_feature(*args, **kwargs):
+                script = case.capture.script
+                name = kwargs.get("category_name", args[1] if len(args) > 1 else None)
+                name = str(getattr(name, "value", name))
+                if script is not None:
+                    got = script.features(name, kwargs.get("box"))
+                    if got is not None:
+                        return got
+                return real_one(*args, **kwargs)
+            fs.find_one_feature = find_one_feature
+            undo.append(lambda: fs.__dict__.pop("find_one_feature", None))
+        if sc.has_fight:
+            upstream = {("BaseCombatTask", "combat_once"): BaseCombatTask.combat_once,
+                        ("CombatCheck", "in_combat"): CombatCheck.in_combat,
+                        ("CombatCheck", "do_check_in_combat"): CombatCheck.do_check_in_combat}
+            for key, fn in upstream.items():
+                got = _src_sha(fn)
+                if got != FAKED[key]:
+                    raise AssertionError(f"upstream {key[0]}.{key[1]} is {got}, the fake stands for "
+                                         f"{FAKED[key]}: re-read the new body before trusting the fake")
+            up_fight = BaseCombatTask.combat_once
+
+            def fight(_self, *a, **kw):
+                script = case.capture.script
+                if script is None:
+                    raise AssertionError("combat_once outside a scenario")
+                return script.fight(_self, CharRevivedException)
+
+            def in_combat(target=False):
+                script = case.capture.script
+                return script is not None and script.state.fight is not None
+
+            cls_fn = next(k.__dict__["combat_once"] for k in type(task).__mro__ if "combat_once" in k.__dict__)
+            cells = [c for c in (getattr(cls_fn, "__closure__", None) or ()) if c.cell_contents is up_fight]
+            if cls_fn is up_fight:
+                # No overlay wrapper (an old overlay): the task calls upstream's directly.
+                task.combat_once = lambda *a, **kw: fight(task, *a, **kw)
+                undo.append(lambda: task.__dict__.pop("combat_once", None))
+            elif cells:
+                # The overlay's wrapper holds upstream's function in a closure cell (captured
+                # at load, `farm_combat = FarmEchoTask.combat_once`); the fake goes in there.
+                for c in cells:
+                    c.cell_contents = fight
+                undo.append(lambda: [setattr(c, "cell_contents", up_fight) for c in cells])
+            else:
+                raise AssertionError(f"cannot find upstream's combat_once under {cls_fn!r}: "
+                                     "neither the method itself nor in its closure")
+            task.in_combat = in_combat
+            undo.append(lambda: task.__dict__.pop("in_combat", None))
 
     # -- running
     def decide(self, name: str, value) -> None:
@@ -577,7 +727,9 @@ class ScriptedCase(TaskTestCase):
         self.capture.script = script
         self.interaction.script = script
         task.executor.reset_scene()           # the next look takes the start state's frame
+        undo = []
         try:
+            self._install_fakes(sc, task, undo)
             with title, clock:
                 try:
                     body(task)
@@ -589,6 +741,8 @@ class ScriptedCase(TaskTestCase):
                     run.raised = exc
                     run.trace = traceback.format_exc()
         finally:
+            for step in reversed(undo):
+                step()
             self.capture.script = None
             self.interaction.script = None
             for attr in ("screenshot", "ocr_fun", "find_feature"):
