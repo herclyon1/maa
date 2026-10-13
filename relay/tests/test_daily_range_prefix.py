@@ -16,10 +16,10 @@ from ark_relay.core import ledger as core
 fails = []
 
 
-def require(label, ok, detail=""):
-    print(("  ✓ " if ok else "  ✗ ") + label + ("" if ok else f"  -- {detail}"))
+def require(name, ok, detail=""):
+    print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -- {detail}"))
     if not ok:
-        fails.append(label)
+        fails.append(name)
 
 
 es = [json.loads(x) for x in (Path(__file__).parent / "fixtures" / "ledger-1008-maaend-two-lists.jsonl").read_text(encoding="utf-8").splitlines()]

@@ -9,9 +9,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ark_relay.core.ledger import State  # noqa: E402
-from ark_relay.features.report import scoreboard  # noqa: E402
-from _tmp import tmpdir  # noqa: E402
+from ark_relay.core.ledger import State
+from ark_relay.features.report import scoreboard
+from _tmp import tmpdir
 
 d = tmpdir()
 st = State(Path(d))

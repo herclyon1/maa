@@ -13,8 +13,8 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.core import ledger_report, ledger_rows  # noqa: E402
-from ark_relay.core.config import SERVER_TZ  # noqa: E402
+from ark_relay.core import ledger_report, ledger_rows
+from ark_relay.core.config import SERVER_TZ
 
 fails = []
 

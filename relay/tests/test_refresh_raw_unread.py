@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.core import collector  # noqa: E402
+from ark_relay.core import collector
 
 D = Path(__file__).parent / "fixtures" / "refresh-unread-1009"
 e = json.loads((D / "ledger.jsonl").read_text(encoding="utf-8"))

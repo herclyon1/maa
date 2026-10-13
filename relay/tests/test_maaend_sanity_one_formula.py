@@ -20,9 +20,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ark_relay.core import ledger_rows  # noqa: E402
-from ark_relay.core.config import SERVER_TZ  # noqa: E402
-from ark_relay.features.verify.collector_maaend import parse_maaend_log  # noqa: E402
+from ark_relay.core import ledger_rows
+from ark_relay.core.config import SERVER_TZ
+from ark_relay.features.verify.collector_maaend import parse_maaend_log
 
 D = Path(__file__).resolve().parent / "fixtures" / "maaend-sanity-1013"
 fails: list[str] = []

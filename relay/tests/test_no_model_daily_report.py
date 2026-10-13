@@ -11,8 +11,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.core import summary  # noqa: E402
-from ark_relay.features.report import report  # noqa: E402
+from ark_relay.core import summary
+from ark_relay.features.report import report
 
 fails = []
 for label, ok in (("summary.daily_report removed", not hasattr(summary, "daily_report")),

@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.features.verify.outcome import maaend_checks  # noqa: E402
+from ark_relay.features.verify.outcome import maaend_checks
 
 text = (Path(__file__).parent / "fixtures" / "maaend-collect-xianlu-1012.log").read_text(encoding="utf-8")
 got = {c.label: c.ok for c in maaend_checks(text, []) if "自动采集" in c.label}
