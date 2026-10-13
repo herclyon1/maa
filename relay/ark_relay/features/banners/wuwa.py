@@ -22,6 +22,18 @@ from ark_relay.features.banners.wuwa_history import (
 )
 
 
+# A character name with a middle dot is spelled with different dot characters by
+# different sources: the Kuro wiki writes 秧秧·玄翎 with U+00B7
+# (wuwa_catalogue_2026-09-12.json), the in-game notice 秧秧・玄翎 with U+30FB
+# (maint/ww_notice.json). Every parser below folds all the variants to U+00B7, so
+# the debut / running / notice comparisons in _wuwa compare like with like.
+_DOTS = str.maketrans({"\u30fb": "\u00b7", "\uff65": "\u00b7", "\u2022": "\u00b7", "\u2027": "\u00b7"})
+
+
+def _one_dot(name: str) -> str:
+    return name.translate(_DOTS)
+
+
 # ── Wuthering Waves: the Kuro BBS wiki homepage (no token) ─────
 # POST /wiki/core/homepage/getPage with just three fixed headers.
 # In data.contentJson.sideModules[], the modules whose title contains 「角色…唤取」;
@@ -59,7 +71,7 @@ def parse_wuwa(home: dict, name_of) -> list[Banner]:
             eid = (imgs[0].get("linkConfig") or {}).get("entryId") if imgs else None
             # The wiki entry name can carry whitespace (a leading space on 2026-09-12);
             # a raw compare against the bulletin's spelling dropped the running banner.
-            who = (name_of(str(eid)) if eid else "").strip()
+            who = _one_dot((name_of(str(eid)) if eid else "").strip())
             if not who:
                 continue
             out.append(Banner("鸣潮", str(tab.get("name") or "").strip(), (who,), a, b))
@@ -124,7 +136,7 @@ def parse_wuwa_preview(content: str) -> "list[tuple[str, str]]":
     for k, m in enumerate(hits):
         tail = seg[m.end():hits[k + 1].start() if k + 1 < len(hits) else len(seg)]
         pool = _WW_POOL.search(tail)
-        out.append((m.group(1), pool.group(1) if pool else ""))
+        out.append((_one_dot(m.group(1)), pool.group(1) if pool else ""))
     return out
 
 
@@ -182,7 +194,7 @@ def parse_wuwa_notice_banners(notice: dict) -> list[Banner]:
             continue
         g = sp.groups()
         start = datetime(*map(int, g[:5])) if g[0] else None
-        out.append(Banner("鸣潮", tm.group(1).strip(), (up.group(1).strip(),), start,
+        out.append(Banner("鸣潮", tm.group(1).strip(), (_one_dot(up.group(1).strip()),), start,
                           datetime(*map(int, g[6:]), 59), g[5] or ""))
     return out
 
