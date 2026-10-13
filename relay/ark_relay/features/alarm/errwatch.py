@@ -391,6 +391,12 @@ class ErrorKindAlert(logging.Handler):
 
     def _day(self, day: str) -> dict:
         if day not in self._days:
+            # One day is cached: write the one leaving first. _count saves a repeat
+            # only every SAVE_EVERY seconds, so dropping it unsaved lost counts around
+            # midnight (audit 2026-10-13 s7 #7).
+            if self._dir:
+                for old, rows in self._days.items():
+                    self._write(self._dir / DAY_DIR / f"{old}.json", rows)
             got = self._read(self._dir / DAY_DIR / f"{day}.json") if self._dir else None
             self._days = {day: got if isinstance(got, dict) else {}}
         return self._days[day]
