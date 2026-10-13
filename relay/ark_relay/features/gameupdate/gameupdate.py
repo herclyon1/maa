@@ -661,8 +661,10 @@ def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems
         # Ready. Servers still down: close the game when they are more than 10
         # minutes away, wait for them, then re-run.
         if end and clock() < end:
-            if end - clock() > timedelta(minutes=10):
-                kill("Endfield.exe", "Client-Win64-Shipping.exe")
+            # Only Endfield is opened here (_prepare_client): 明日方舟 and 鸣潮 open
+            # nothing, so any client of theirs is one the owner opened (s18 F2).
+            if game == "终末地" and end - clock() > timedelta(minutes=10):
+                kill("Endfield.exe")
             log.info("游戏更新：%s 客户端已就绪，等 %s 开服再补跑", game, end.strftime("%H:%M"))
             while clock() < end:
                 sleep(60)

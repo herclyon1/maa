@@ -162,11 +162,14 @@ gu.save_windows(ST, {"终末地": (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _
 (ST / "ledger-2026-09-04.jsonl").write_text(json.dumps({"script": "MaaEnd", "ok": False, "raw": {"maintenance": "官方公告"}}) + "\n", encoding="utf-8")
 gu.mark_pending(ST, "终末地", "官方公告")
 slept.clear(); dispatched.clear()
+killed = []
+gu.kill = lambda *names: killed.append(names)
 ticks1 = [_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ)]
 def clk1():
     ticks1.append(ticks1[-1] + _td(minutes=1)); return ticks1[-1]
 notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=lambda s: slept.append(s), clock=clk1)
 check("先准备好再等开服：一分钟一分钟等，开服后缓 2 分钟，然后补跑", (slept.count(60) >= 1, 120 in slept, reran), (True, True, ["MaaEnd"]))
+check("离开服还远：只关终末地，不碰鸣潮（s18 F2）", killed, [("Endfield.exe",)])
 gu.save_windows(ST, {})
 gu.clear_pending(ST, "明日方舟")
 
@@ -194,6 +197,8 @@ def clk2():
 gu.save_windows(ST, {"明日方舟": (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 06:00–12:00")})
 notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["x"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=lambda s: None, clock=clk2)
 check("明日方舟：等到开服再补跑被摘掉的 MAA（客户端交给 AUTO-MAS）", (reran, dispatched, probs), (["MAA"], ["MAA"], []))
+check("明日方舟等开服：什么游戏都不关（终末地、鸣潮可能是他自己开的，s18 F2）", killed, [("Endfield.exe",)])
+gu.kill = lambda *names: None
 gu.save_windows(ST, {})
 gu.clear_pending(ST, "明日方舟")
 import ark_relay.features.gameupdate.gameupdate as _gu2  # noqa: E402
