@@ -99,6 +99,15 @@ os.utime(old_dir, (1_600_000_000, 1_600_000_000))
 check("清掉一个", ev.prune(st, 30), 1)
 check("新的留着", new_dir.exists() and not old_dir.exists())
 
+print("\n[daily/: old files go even though the folder itself is refreshed daily (s17 F4)]")
+daily = st / "evidence" / "daily"; daily.mkdir()
+old_f = daily / "relay-2026-08-01.log"; old_f.write_text("x", encoding="utf-8")
+os.utime(old_f, (1_600_000_000, 1_600_000_000))
+new_f = daily / "relay-2026-10-13.log"; new_f.write_text("x", encoding="utf-8")
+ev.prune(st, 30)
+check("daily/: the old file went, today's and the folder stay",
+      (old_f.exists(), new_f.exists(), daily.is_dir()), (False, True, True))
+
 print("\n[MAA：config + resource(_custom) + cache + debug 根文件进 part01，子目录按 20MB 分卷]")
 maa = tmpdir() / "maa"
 for rel in ("config/gui.json", "resource/version.json", "resource/foo_custom.json", "cache/x.png",
