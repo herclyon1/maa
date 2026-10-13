@@ -1,0 +1,475 @@
+{
+ "case": "main_book_team_1013",
+ "about": "Echo farm main path, the game PC's run of 2026-10-13 11:54-11:57 (OK-WW v3.7.4, overlay at 35d6166b+): F2 book -> Boss Challenge 1 (天傀劫煞) -> 前往 opens the team screen directly -> 开启挑战 -> first boss fought -> echo picked up -> ESC, 重新挑战 -> lap 2. The 35d6166b part: on this entry there is no level page, so nothing may touch the level list or 单人挑战 (the team screen accepts only 开启挑战) and the overlay says so (刷声骸选等级：前往后是队伍界面...). Red at 35d6166b~1 on the same input (the 11:32 run, which farmed Lv.90 with 80 set and said nothing): no such line.",
+ "task": [
+  "src.task.FarmEchoTask",
+  "FarmEchoTask"
+ ],
+ "start": "world",
+ "config": {
+  "evidence": "What the relay's echo farm writes into FarmEchoTask.json (echofarm.py:527-530: Teleport to Boss 'Boss Challenge', Which Boss Challenge to Teleport, Boss Level FARM_LEVEL '80', Repeat Farm Count BIG_COUNT 100000) and the no-claim marker it keeps while farming (echofarm.py:171, NO_CLAIM). The 10-13 run: ok-script.log (game PC, 2026-10-13):2117 'info_set Teleport to Boss Boss Challenge 0' (boss 1); ok-script.log (game PC, 2026-10-13):2132 '...按游戏记住的等级进（设置 Lv.80）'; ok-script.log (game PC, 2026-10-13):2075 'profile: Other {'combat_wait_time': 0, ...}'. Echo Pickup Method 'Walk': the PC's working/configs/FarmEchoTask.json (gamesim u0 redacted copy, read 2026-10-13) and ok-script.log (game PC, 2026-10-13):1349 'farm echo walk_find_echo None'",
+  "task": {
+   "Teleport to Boss": "Boss Challenge",
+   "Which Boss Challenge to Teleport": 1,
+   "Boss Level": "80",
+   "Repeat Farm Count": 100000,
+   "Boss": "Other",
+   "Combat Wait Time": 0,
+   "Echo Pickup Method": "Walk"
+  },
+  "flags": {
+   "no_claim": true
+  }
+ },
+ "states": {
+  "world": {
+   "about": "the open world, in team (the start of a teleport: ensure_main, then F2)",
+   "features": [
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2119 'info_set current task in main esc=True' (ensure_main's is_main was true); BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    },
+    {
+     "name": "char_3_text",
+     "box": [
+      0.9047,
+      0.4417,
+      0.913,
+      0.4583
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2119 'info_set current task in main esc=True' (ensure_main's is_main was true); BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "f2",
+     "to": "book",
+     "evidence": "ok-script.log (game PC, 2026-10-13):2121 'send f2 key to open' (BaseWWTask.openF2Book :1016-1030)"
+    }
+   ]
+  },
+  "book": {
+   "about": "the F2 guidebook",
+   "features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2123 'BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=83)'"
+    }
+   ],
+   "transitions": [
+    {
+     "feature": "gray_book_boss",
+     "to": "book_boss",
+     "evidence": "ok-script.log (game PC, 2026-10-13):2124 'left_click gray_book_boss (76, 321) after_sleep 1.5'"
+    }
+   ]
+  },
+  "book_boss": {
+   "about": "the guidebook's boss tab; open_boss_book('qiangdi') clicks the Boss Challenge entry",
+   "features": [
+    {
+     "name": "gray_book_boss",
+     "box": [
+      0.0224,
+      0.262,
+      0.0563,
+      0.3315
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2123 'BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=83)' (the side bar stays)"
+    }
+   ],
+   "transitions": [
+    {
+     "click": [
+      0.22,
+      0.47,
+      0.26,
+      0.51
+     ],
+     "to": "boss_list",
+     "evidence": "ok-script.log (game PC, 2026-10-13):2126 'left_click qiangdi (460, 529) after_sleep 2' (BaseWWTask.open_boss_book: qiangdi is click_relative(0.24, 0.49))"
+    }
+   ]
+  },
+  "boss_list": {
+   "about": "the Boss Challenge list; boss 1's 前往 (boss_proceed) is the first row",
+   "features": [
+    {
+     "name": "boss_proceed",
+     "box": [
+      0.9414,
+      0.3028,
+      0.9586,
+      0.3583
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2128 'left_click boss_proceed (1824, 357) after_sleep 1' (click_on_book_target clicks the box centre); size: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    }
+   ],
+   "transitions": [
+    {
+     "feature": "boss_proceed",
+     "to": "team",
+     "evidence": "ok-script.log (game PC, 2026-10-13):2128 'left_click boss_proceed (1824, 357)'"
+    }
+   ]
+  },
+  "team": {
+   "about": "the team screen that 前往 on 天傀劫煞 opens directly (no level page): the game keeps the level it remembers (Lv.90 every lap on 10-13 11:32-11:57)",
+   "provisional_ocr": [
+    {
+     "text": "队伍5",
+     "box": [
+      0.051,
+      0.0444,
+      0.0958,
+      0.0824
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2132 '刷声骸选等级：前往后是队伍界面（没有选等级页）... 整屏读到 Box(name='队伍5', x=98, y=48, width=86, height=41) Box(name='影造圆庭・凝率', x=250, y=101, width=200, height=34) Box(name='02', x=36, y=288, width=94, height=73) Box(name='03', x=36, y=423, ...) Box(name='04', x=36, y=560, ...) Box(name='LV', x=537, y=791, ...) (cut at 400 characters)'"
+    },
+    {
+     "text": "影造圆庭・凝率",
+     "box": [
+      0.1302,
+      0.0935,
+      0.2344,
+      0.125
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2132 '刷声骸选等级：前往后是队伍界面（没有选等级页）... 整屏读到 Box(name='队伍5', x=98, y=48, width=86, height=41) Box(name='影造圆庭・凝率', x=250, y=101, width=200, height=34) Box(name='02', x=36, y=288, width=94, height=73) Box(name='03', x=36, y=423, ...) Box(name='04', x=36, y=560, ...) Box(name='LV', x=537, y=791, ...) (cut at 400 characters)'"
+    },
+    {
+     "text": "02",
+     "box": [
+      0.0187,
+      0.2667,
+      0.0677,
+      0.3343
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2132 '刷声骸选等级：前往后是队伍界面（没有选等级页）... 整屏读到 Box(name='队伍5', x=98, y=48, width=86, height=41) Box(name='影造圆庭・凝率', x=250, y=101, width=200, height=34) Box(name='02', x=36, y=288, width=94, height=73) Box(name='03', x=36, y=423, ...) Box(name='04', x=36, y=560, ...) Box(name='LV', x=537, y=791, ...) (cut at 400 characters)'"
+    },
+    {
+     "text": "03",
+     "box": [
+      0.0187,
+      0.3917,
+      0.0688,
+      0.4593
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2132 '刷声骸选等级：前往后是队伍界面（没有选等级页）... 整屏读到 Box(name='队伍5', x=98, y=48, width=86, height=41) Box(name='影造圆庭・凝率', x=250, y=101, width=200, height=34) Box(name='02', x=36, y=288, width=94, height=73) Box(name='03', x=36, y=423, ...) Box(name='04', x=36, y=560, ...) Box(name='LV', x=537, y=791, ...) (cut at 400 characters)'"
+    },
+    {
+     "text": "04",
+     "box": [
+      0.0187,
+      0.5185,
+      0.0688,
+      0.5843
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2132 '刷声骸选等级：前往后是队伍界面（没有选等级页）... 整屏读到 Box(name='队伍5', x=98, y=48, width=86, height=41) Box(name='影造圆庭・凝率', x=250, y=101, width=200, height=34) Box(name='02', x=36, y=288, width=94, height=73) Box(name='03', x=36, y=423, ...) Box(name='04', x=36, y=560, ...) Box(name='LV', x=537, y=791, ...) (cut at 400 characters)'"
+    },
+    {
+     "text": "LV",
+     "box": [
+      0.2797,
+      0.7324,
+      0.2917,
+      0.7546
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2132 '刷声骸选等级：前往后是队伍界面（没有选等级页）... 整屏读到 Box(name='队伍5', x=98, y=48, width=86, height=41) Box(name='影造圆庭・凝率', x=250, y=101, width=200, height=34) Box(name='02', x=36, y=288, width=94, height=73) Box(name='03', x=36, y=423, ...) Box(name='04', x=36, y=560, ...) Box(name='LV', x=537, y=791, ...) (cut at 400 characters)'"
+    }
+   ],
+   "features": [
+    {
+     "name": "team_close",
+     "box": [
+      0.9271,
+      0.0278,
+      0.9615,
+      0.0861
+     ],
+     "evidence": "click_on_book_target's wait for fast_travel_custom / gray_teleport / remove_custom / team_close (BaseWWTask.py:1219-1221) answered team_close: the next step was the team screen's 开启挑战, not travel (ok-script.log (game PC, 2026-10-13):2133 'left_click team_start_challenge (1791, 994)'; ok-script.log (game PC, 2026-10-13):1212 'find_one_feature team_close' on 11:32's same trip); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    },
+    {
+     "name": "team_start_challenge",
+     "box": [
+      0.9135,
+      0.8796,
+      0.9521,
+      0.9602
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2133 'left_click team_start_challenge (1791, 994) after_sleep 1' (the template's centre in OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465) is (1791, 993.5))"
+    }
+   ],
+   "transitions": [
+    {
+     "feature": "team_start_challenge",
+     "to": "arena1",
+     "evidence": "ok-script.log (game PC, 2026-10-13):2133 'left_click team_start_challenge (1791, 994) after_sleep 1'"
+    }
+   ]
+  },
+  "arena1": {
+   "about": "inside the boss realm, the boss up: the fight",
+   "provisional_ocr": [
+    {
+     "text": "Lv.90天傀劫煞",
+     "box": [
+      0.45,
+      0.01,
+      0.55,
+      0.05
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2198 'boss_string is [Lv.90天傀劫煞_0.97]' (check_boss_name's box, FarmEchoTask.py:705)"
+    }
+   ],
+   "features": [
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2135 'teleport_to_boss prepared as realm' (wait_in_team_and_world after 开启挑战 was true); BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    },
+    {
+     "name": "char_3_text",
+     "box": [
+      0.9047,
+      0.4417,
+      0.913,
+      0.4583
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2135 'teleport_to_boss prepared as realm' (wait_in_team_and_world after 开启挑战 was true); BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    }
+   ],
+   "fight": {
+    "outcome": "returns",
+    "to": "echo",
+    "evidence": "ok-script.log (game PC, 2026-10-13):2278, :2281 'too long a liberation, the boss was killed by the liberation' / 'combat_once out of combat break ...': the first boss fought and killed"
+   }
+  },
+  "echo": {
+   "about": "after the boss: the dropped echo's F 吸收 prompt in the realm (upstream's own recorded image)",
+   "frame": "echo_pickup/2025-04-17_132100.png",
+   "transitions": [
+    {
+     "key": "f",
+     "to": "realm_after_echo",
+     "evidence": "ok-script.log (game PC, 2026-10-13):2283 'farm echo on the face': pick_echo (BaseWWTask.py:577-582) found the F with 吸收 and sent f; upstream's TestOCR asserts pick_echo on this image"
+    }
+   ]
+  },
+  "realm_after_echo": {
+   "about": "the realm after the pickup, the boss gone; do_run's next lap leaves through ESC",
+   "features": [
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "the pickup did not open a claim dialog: ok-script.log (game PC, 2026-10-13):2283 'farm echo on the face' is logged only when handle_claim_button found none (BaseWWTask.pick_echo :577-582); BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    },
+    {
+     "name": "char_3_text",
+     "box": [
+      0.9047,
+      0.4417,
+      0.913,
+      0.4583
+     ],
+     "evidence": "the pickup did not open a claim dialog: ok-script.log (game PC, 2026-10-13):2283 'farm echo on the face' is logged only when handle_claim_button found none (BaseWWTask.pick_echo :577-582); BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    }
+   ],
+   "transitions": [
+    {
+     "key": "esc",
+     "to": "exit_dialog",
+     "evidence": "FarmEchoTask.do_run :151-157 (in a realm, not in combat, not in the world: send esc, then click 重新挑战); the machine's next action was that click, ok-script.log (game PC, 2026-10-13):2287 'left_click claim_cancel_button_hcenter_vcenter (538, 675)'"
+    }
+   ]
+  },
+  "exit_dialog": {
+   "about": "ESC inside a realm: 确认离开 with 重新挑战 / 确认 (upstream's own recorded image)",
+   "frame": "realm_exit_dialog/2026-05-08_064249.png",
+   "transitions": [
+    {
+     "click": [
+      0.24,
+      0.598,
+      0.43,
+      0.658
+     ],
+     "to": "arena2",
+     "evidence": "ok-script.log (game PC, 2026-10-13):2287 'left_click claim_cancel_button_hcenter_vcenter (538, 675) after_sleep 0' - 重新挑战 (claim_cancel_button with relative_x=2, FarmEchoTask.py:154); the button on this frame spans x 468-825, y 648-710"
+    }
+   ]
+  },
+  "arena2": {
+   "about": "inside the boss realm, the boss up: the fight",
+   "provisional_ocr": [
+    {
+     "text": "Lv.90.天傀劫煞",
+     "box": [
+      0.45,
+      0.01,
+      0.55,
+      0.05
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2290 'boss_string is [Lv.90.天傀劫煞_0.86]'"
+    }
+   ],
+   "features": [
+    {
+     "name": "char_2_text",
+     "box": [
+      0.9052,
+      0.3194,
+      0.913,
+      0.3361
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2288 'start wait in combat' after 重新挑战: wait_in_team_and_world (:158) was true; BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    },
+    {
+     "name": "char_3_text",
+     "box": [
+      0.9047,
+      0.4417,
+      0.913,
+      0.4583
+     ],
+     "evidence": "ok-script.log (game PC, 2026-10-13):2288 'start wait in combat' after 重新挑战: wait_in_team_and_world (:158) was true; BaseWWTask.in_team (:930-951) is true when one or two of the three slot numbers char_1/2/3_text show (the slot being played has none); box: OK-WW v3.7.4 assets/coco_annotations.json (the template's own box at 1920x1080, fetched by tag 2243d465)"
+    }
+   ],
+   "fight": {
+    "outcome": "returns",
+    "to": "stopped",
+    "evidence": "lap 2 began: ok-script.log (game PC, 2026-10-13):2292 'enter combat None'; the pulled log ends there (11:57:29). The echo farm stops on the relay's clock (echofarm.py docstring: 'the engine checks the deadline on every tick and stops the run'), so the scenario ends with the second fight"
+   }
+  },
+  "stopped": {
+   "end": true,
+   "about": "lap 2's fight over; the relay stops the farm by the clock"
+  }
+ },
+ "expect": {
+  "sequence": [
+   {
+    "key": "f2",
+    "evidence": "ok-script.log (game PC, 2026-10-13):2121 'send f2 key to open'"
+   },
+   {
+    "click": [
+     76,
+     321
+    ],
+    "within": 5,
+    "evidence": "ok-script.log (game PC, 2026-10-13):2124 'left_click gray_book_boss (76, 321)'"
+   },
+   {
+    "click": [
+     460,
+     529
+    ],
+    "within": 5,
+    "evidence": "ok-script.log (game PC, 2026-10-13):2126 'left_click qiangdi (460, 529)'"
+   },
+   {
+    "click": [
+     1824,
+     357
+    ],
+    "within": 5,
+    "evidence": "ok-script.log (game PC, 2026-10-13):2128 'left_click boss_proceed (1824, 357)'"
+   },
+   {
+    "click": [
+     1791,
+     994
+    ],
+    "within": 5,
+    "evidence": "ok-script.log (game PC, 2026-10-13):2133 'left_click team_start_challenge (1791, 994)'"
+   },
+   {
+    "state": "arena1",
+    "evidence": "ok-script.log (game PC, 2026-10-13):2135 'teleport_to_boss prepared as realm'"
+   },
+   {
+    "state": "echo",
+    "evidence": "ok-script.log (game PC, 2026-10-13):2281 'combat_once out of combat break ...'"
+   },
+   {
+    "key": "f",
+    "evidence": "ok-script.log (game PC, 2026-10-13):2283 'farm echo on the face'"
+   },
+   {
+    "key": "esc",
+    "evidence": "FarmEchoTask.do_run :153 (send esc in the realm before 重新挑战)"
+   },
+   {
+    "click": [
+     538,
+     675
+    ],
+    "within": 20,
+    "evidence": "ok-script.log (game PC, 2026-10-13):2287 'left_click claim_cancel_button_hcenter_vcenter (538, 675)'; the same point on 11:33:31, 11:34:47, 11:35:53 (:1352, :1407, :1461)"
+   },
+   {
+    "state": "arena2",
+    "evidence": "ok-script.log (game PC, 2026-10-13):2288 'start wait in combat'"
+   }
+  ],
+  "end": "stopped",
+  "never_states": [],
+  "shots": [],
+  "raises": null,
+  "log": [
+   {
+    "re": "刷声骸选等级：前往后是队伍界面（没有选等级页），不选等级，按游戏记住的等级进（设置 Lv\\.80）",
+    "evidence": "ok-script.log (game PC, 2026-10-13):2132 '刷声骸选等级：前往后是队伍界面（没有选等级页），不选等级，按游戏记住的等级进（设置 Lv.80）。...'"
+   },
+   {
+    "re": "开启挑战后读到（第 1 次）: \\[\\]",
+    "evidence": "ok-script.log (game PC, 2026-10-13):2134 '开启挑战后读到（第 1 次）: []'"
+   },
+   {
+    "re": "teleport_to_boss prepared as realm",
+    "evidence": "ok-script.log (game PC, 2026-10-13):2135 'teleport_to_boss prepared as realm'"
+   },
+   {
+    "re": "farm echo on the face",
+    "evidence": "ok-script.log (game PC, 2026-10-13):2283 'farm echo on the face'"
+   }
+  ],
+  "log_never": [
+   {
+    "re": "认不出的画面",
+    "evidence": "the team screen was recognised as one on the machine (ok-script.log (game PC, 2026-10-13):2132 '前往后是队伍界面')"
+   },
+   {
+    "re": "farm 4c error",
+    "evidence": "no error on the machine between 11:54:51 and 11:57:29 (ok-script.log 2026-10-13:2075-2292)"
+   },
+   {
+    "re": "这一趟按失败结束",
+    "evidence": "the run went on to lap 2 (ok-script.log (game PC, 2026-10-13):2288 'start wait in combat')"
+   }
+  ],
+  "verdict": null
+ }
+}
