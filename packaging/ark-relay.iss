@@ -12,9 +12,11 @@
 ;                             (highest privileges, no time limit, normal priority)
 ;   C:\ProgramData\ark-relay  data (.env, state, logs): created here, kept on uninstall
 ;                             unless the user says otherwise
-;   the old relay             stopped and disabled at install (packaging/legacy.py
-;                             takeover), deleted at uninstall (legacy.py remove,
-;                             the list is relay/handover/legacy-items.json)
+;   the old relay             retired 2026-10-11 (scripts/windows/retire_legacy.py):
+;                             install refuses while its service still exists (two
+;                             relays would both push and power off); what it left is
+;                             deleted at uninstall (packaging/legacy.py remove, the
+;                             list is relay/handover/legacy-items.json)
 ;   AUTO-MAS settings         the jobs it already does handed to it at install,
 ;                             put back at uninstall (relay/handover/automas_handover.py)
 ; The order of all of that is in packaging/switch.py; this file only copies files and
@@ -133,11 +135,12 @@ end;
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Args: String;
+  Rc: Integer;
 begin
   if CurStep <> ssPostInstall then
     exit;
-  // From here switch.py install owns the outcome: on failure it goes back to the old
-  // relay itself, and a resume on top would start the new watchdog next to it.
+  // From here switch.py install owns the outcome: on failure it switches the new relay
+  // on again itself, so no resume is needed on top.
   StoppedForUpgrade := False;
   // An installer older than the code the updater already brought in must not roll it
   // back: keep the newer version folder current.
@@ -147,11 +150,23 @@ begin
   Args := 'install "--user=' + GetUserNameString() + '"';
   if ExpandConstant('{param:SKIPHANDOVER|0}') = '1' then
     Args := Args + ' --skip-handover';
-  // switch.py has already gone back to the old relay when it fails (switch.py revert).
-  SwitchFailed := RunSwitch(Args) <> 0;
+  // When it fails, switch.py has already switched the same new relay on again as it is
+  // (there is no old relay any more); the way back to the version before is
+  // launch.py rollback.
+  Rc := RunSwitch(Args);
+  SwitchFailed := Rc <> 0;
   if SwitchFailed and not WizardSilent() then
-    MsgBox('新中继没有切换成功，已经退回老中继继续跑。原因写在安装日志里。',
-           mbError, MB_OK);
+    // 8: the old relay is still installed (switch.py install refuses; nothing started).
+    if Rc = 8 then
+      MsgBox('没有装上：老中继还在这台电脑上，两个中继不能同时跑，新中继没有打开。' +
+             '先撤掉老中继再装。原因写在 C:\ProgramData\ark-relay\switch.log 里。',
+             mbError, MB_OK)
+    else
+      MsgBox('新中继没有装好，已经把它按原样重新打开。' +
+             '要退回上一个版本，运行：' + #13#10 + '"' + ExpandConstant('{#Py}') + '" "' +
+             ExpandConstant('{app}\launch.py') + '" rollback' + #13#10 +
+             '原因写在 C:\ProgramData\ark-relay\switch.log 里。',
+             mbError, MB_OK);
 end;
 
 // A silent install (the updater, the cloud test) sees the failure in the exit code.
@@ -172,30 +187,86 @@ procedure DeinitializeSetup();
 begin
   if not StoppedForUpgrade then
     exit;
+  // A failed resume can leave the stop marker switch.py stop wrote (switch.py
+  // WATCHDOG_MARKER): the relay's guard leaves the watchdog down until the next boot,
+  // so only a restart brings both back, not a re-login.
   if RunSwitch('resume "--current=' + OldCurrent + '"') <> 0 then
     if not WizardSilent() then
       MsgBox('升级没有装完，原来的中继也没能重新开起来。原因写在 ' +
-             'C:\ProgramData\ark-relay\switch.log 里；重新登录或重启电脑后它会自己开。',
+             'C:\ProgramData\ark-relay\switch.log 里；重启电脑后它会自己开。',
              mbError, MB_OK);
 end;
 
+// The removal steps switch.py uninstall could not do (exit 7), one per line.
+function UninstallLeft(): String;
+var
+  Lines: TArrayOfString;
+  I: Integer;
+begin
+  Result := '';
+  if LoadStringsFromFile(ExpandConstant('{commonappdata}\ark-relay\uninstall-left.txt'), Lines) then
+    for I := 0 to GetArrayLength(Lines) - 1 do
+      if Trim(Lines[I]) <> '' then
+        Result := Result + '・' + Lines[I] + #13#10;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Rc, StartRc: Integer;
 begin
   // Before the files go: stop everything, put AUTO-MAS back, remove the old relay's
   // leftovers (switch.py uninstall).
   // An exception here stops the uninstall before any file is deleted (Inno Setup,
   // Setup.Uninstall.pas: CurUninstallStepChanged(usUninstall) runs before
-  // PerformUninstall and its exceptions are fatal). switch.py has started the relay
-  // again in that case.
+  // PerformUninstall and its exceptions are fatal).
   if CurUninstallStep = usUninstall then
-    if RunSwitch('uninstall') <> 0 then
+  begin
+    Rc := RunSwitch('uninstall');
+    if Rc = 3 then
     begin
+      // AUTO-MAS's settings not put back: switch.py removed nothing and started the
+      // relay again.
       if not UninstallSilent() then
         MsgBox('没有卸载：AUTO-MAS 的设置没能改回原样（它可能正在跑任务）。' +
                '中继已经重新开起来，什么都没删。等 AUTO-MAS 空下来再卸载一次。',
                mbError, MB_OK);
       RaiseException('AUTO-MAS settings could not be put back; nothing was removed');
+    end
+    else if Rc = 7 then
+    begin
+      // The relay is stopped and AUTO-MAS is as before; some removal steps failed, each
+      // tried on its own. The program files still go: stopping here would leave no relay,
+      // no watchdog and an installed entry.
+      if not UninstallSilent() then
+        MsgBox('卸载了：中继已经停掉，AUTO-MAS 的设置已经改回原样，程序文件接着删。' + #13#10 +
+               '但下面这些没删掉（详情在 C:\ProgramData\ark-relay\switch.log 里）：' + #13#10 +
+               UninstallLeft(), mbError, MB_OK);
+    end
+    else if Rc = -1 then
+    begin
+      // switch.py did not run at all (RunSwitch: Exec failed): nothing was touched.
+      if not UninstallSilent() then
+        MsgBox('没有卸载：卸载步骤没能运行，什么都没动，中继照常在跑。', mbError, MB_OK);
+      RaiseException('switch.py uninstall did not run; nothing was removed');
+    end
+    else if Rc <> 0 then
+    begin
+      // switch.py did not get past stopping the relay and putting AUTO-MAS back (it
+      // failed there, or did not run): nothing was removed. Start the relay again.
+      StartRc := RunSwitch('start');
+      if not UninstallSilent() then
+        if StartRc = 0 then
+          MsgBox('没有卸载：卸载中途出错（代码 ' + IntToStr(Rc) + '），程序文件一个没删。' +
+                 '中继已经重新开起来。原因写在 C:\ProgramData\ark-relay\switch.log 里。',
+                 mbError, MB_OK)
+        else
+          MsgBox('没有卸载：卸载中途出错（代码 ' + IntToStr(Rc) + '），程序文件一个没删。' +
+                 '中继没能马上重新开起来，重启电脑后它会自己开。原因写在 ' +
+                 'C:\ProgramData\ark-relay\switch.log 里。',
+                 mbError, MB_OK);
+      RaiseException('switch.py uninstall failed before removing anything; nothing was removed');
     end;
+  end;
   // The data folder holds his records (.env with the push keys, state, logs). Kept
   // unless he says to delete it; a silent uninstall keeps it.
   if (CurUninstallStep = usPostUninstall) and not UninstallSilent() then

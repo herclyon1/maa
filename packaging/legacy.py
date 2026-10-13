@@ -3,21 +3,13 @@
 The list itself is relay/handover/legacy-items.json (網页-检查, 10-11: every item with
 its source line or commit). This file only carries it out:
 
-    takeover()  at install: stop the old relay so two never run at once (both would
-                push and power off). Its service and launcher are disabled, not
-                deleted: until the uninstall, `switch.py revert` switches it back
-                on (undo_takeover) - as each was before the first takeover, which
-                is recorded in state\\legacy-takeover.json (the launcher task was
-                already disabled on the machine, 2026-10-11 03:41; enabling it
-                would start a second old relay at logon next to the service).
-    remove()    at uninstall: delete every item marked `remove` or `takeover` - the
-                uninstall removes the old relay too; the way back to it is
-                `switch.py revert`, not the uninstaller.
+    old_relay_present()  whether the old relay's service still exists; switch.py install
+                         refuses while it does (two relays would both push and power off)
+    remove()             at uninstall: delete every item marked `remove` or `takeover`
 
-Once scripts/windows/retire_legacy.py has retired the old relay (its service deleted, its
-code moved to RETIRED), there is nothing to switch back to: old_relay_present() is
-False, takeover() and undo_takeover() do nothing, remove() skips what is already gone
-and switch.py revert says so instead of stopping the new relay first.
+scripts/windows/retire_legacy.py retired the old relay on 2026-10-11 (its service deleted,
+its code moved to C:\\ProgramData\\ark-relay-retired-1011), so nothing here switches it on
+or off any more; remove() skips what is already gone.
 
 Data the user may want kept is never deleted here: in C:\\ProgramData\\ark-relay only the
 old relay's code files go; .env, state\\ and the logs stay, and the uninstaller asks
@@ -39,13 +31,12 @@ DATA = Path(r"C:\ProgramData\ark-relay")
 OLD_CODE = ["ark_relay", "run.py", "service.py", "boot_stages.py", "app_main.py",
             "pkg_layout.py", "manifest.json", "RELEASE-NOTES.md", "requirements.txt",
             "make-manifest.py", "USER-SWITCHES.txt", "README.md", "ark-relay.ps1"]
-# What starts the old relay: switched off at install.
+# The old relay's service; switch.py install refuses while it exists.
 OLD_SERVICE = "ark-relay"
-OLD_LAUNCHER_TASK = "ark-relay"
-# The launcher task's state before the first takeover (see takeover / undo_takeover).
+# Written at install by packages from before the old relay's retirement (it recorded the
+# launcher task's state for a way back that no longer exists); kept by retire_legacy.py,
+# deleted at uninstall.
 TAKEOVER_RECORD = DATA / "state" / "legacy-takeover.json"
-# Where scripts/windows/retire_legacy.py moved the old relay's files (kept 30 days).
-RETIRED = Path(r"C:\ProgramData\ark-relay-retired-1011")
 ERROR_SERVICE_DOES_NOT_EXIST = 1060
 
 
@@ -78,98 +69,75 @@ def _task_names() -> list[str]:
     return sorted({line.split('","')[0].strip('"').lstrip("\\") for line in out.splitlines() if line})
 
 
-def _launcher_enabled() -> "bool | None":
-    """Whether the old launcher task is enabled; None when there is none. Through the
-    Task Scheduler's COM interface: schtasks prints its status in the system's language."""
-    import pywintypes  # noqa: PLC0415
-    import win32com.client  # noqa: PLC0415
-    try:
-        sched = win32com.client.Dispatch("Schedule.Service")
-        sched.Connect()
-        return bool(sched.GetFolder("\\").GetTask(OLD_LAUNCHER_TASK).Enabled)
-    except pywintypes.com_error:
-        return None
-
-
-def takeover() -> None:
-    if not old_relay_present():
-        print(f"old relay retired (no service {OLD_SERVICE}): nothing to stop")
-        return
-    # What to put back on `revert`. Only before the first takeover: on an upgrade over
-    # an earlier install both are already switched off by us.
-    if not TAKEOVER_RECORD.exists():
-        TAKEOVER_RECORD.parent.mkdir(parents=True, exist_ok=True)
-        TAKEOVER_RECORD.write_text(json.dumps({"launcher_task_enabled": _launcher_enabled()}),
-                                   encoding="utf-8")
-    _run("sc", "stop", OLD_SERVICE)
-    _run("sc", "config", OLD_SERVICE, "start=", "disabled")
-    _run("schtasks", "/end", "/tn", OLD_LAUNCHER_TASK)
-    _run("schtasks", "/change", "/tn", OLD_LAUNCHER_TASK, "/disable")
-
-
-def undo_takeover() -> int:
-    """Back to the old relay (switch.py revert, or a switch-over that failed): its
-    service on automatic start and started, the launcher task as it was before the
-    takeover (left disabled when that is unknown). 0 = the service is running (1056:
-    it already was; 1060: there is no old relay any more)."""
-    if not old_relay_present():
-        print(f"old relay retired (no service {OLD_SERVICE}, files in {RETIRED}): not switched on")
-        return ERROR_SERVICE_DOES_NOT_EXIST
-    try:
-        was = json.loads(TAKEOVER_RECORD.read_text(encoding="utf-8")).get("launcher_task_enabled")
-    except (OSError, ValueError, AttributeError):
-        was = None
-    _run("sc", "config", OLD_SERVICE, "start=", "auto")
-    if was:
-        _run("schtasks", "/change", "/tn", OLD_LAUNCHER_TASK, "/enable")
-    rc = _run("sc", "start", OLD_SERVICE)
-    if rc in (0, 1056):
-        TAKEOVER_RECORD.unlink(missing_ok=True)   # the next install records afresh
-        return 0
-    return rc
-
-
-def _delete_path(p: Path) -> None:
+def _delete_path(p: Path) -> "list[str]":
+    """Delete p (a file or a whole folder); what could not be deleted, as text."""
     if p == DATA:
+        failed = []
         for name in OLD_CODE:
-            _delete_path(DATA / name)
-        return
+            failed += _delete_path(DATA / name)
+        return failed
     if p.is_dir():
         shutil.rmtree(p, ignore_errors=True)
     elif p.exists():
         p.unlink(missing_ok=True)
     else:
-        return
+        return []
+    if p.exists():
+        return [f"{p}: still there"]
     print("deleted", p)
+    return []
 
 
-def remove() -> None:
+def _remove_one(it: dict, tasks: "list[str] | None") -> "tuple[list[str], list[str] | None]":
+    failed: "list[str]" = []
+    kind = it.get("kind")
+    if kind == "service":
+        if not service_exists(it["name"]):
+            print("skipped (already gone):", it["name"])
+            return failed, tasks
+        _run("sc", "stop", it["name"])
+        if _run("sc", "delete", it["name"]) != 0:
+            failed.append(f"service {it['name']}: sc delete failed")
+    elif kind in ("task", "task-prefix"):
+        tasks = tasks if tasks is not None else _task_names()
+        for t in tasks:
+            if t == it["name"] or (kind == "task-prefix" and t.startswith(it["name"])):
+                if _run("schtasks", "/delete", "/tn", t, "/f") != 0:
+                    failed.append(f"task {t}: schtasks /delete failed")
+    elif kind in ("dir", "file", "glob"):
+        path = os.path.expandvars(it["path"])
+        if "<" in path:
+            print("skipped (path known only on the machine):", path)
+            return failed, tasks
+        for p in (glob.glob(path) if kind == "glob" else [path]):
+            failed += _delete_path(Path(p))
+    return failed, tasks
+
+
+def remove() -> "list[str]":
+    """Delete every item marked `remove` or `takeover`, each on its own: one that fails
+    (or raises) does not stop the rest. Returns what was not deleted, as text."""
+    try:
+        todo = [it for it in items() if it.get("action") in ("remove", "takeover")]
+    except (OSError, ValueError, KeyError) as exc:
+        return [f"{ITEMS.name} not read: {exc}"]
+    failed: "list[str]" = []
     tasks = None
-    for it in items():
-        if it.get("action") not in ("remove", "takeover"):
-            continue
-        kind = it.get("kind")
-        if kind == "service":
-            if not service_exists(it["name"]):
-                print("skipped (already gone):", it["name"])
-                continue
-            _run("sc", "stop", it["name"])
-            _run("sc", "delete", it["name"])
-        elif kind in ("task", "task-prefix"):
-            tasks = tasks if tasks is not None else _task_names()
-            for t in tasks:
-                if t == it["name"] or (kind == "task-prefix" and t.startswith(it["name"])):
-                    _run("schtasks", "/delete", "/tn", t, "/f")
-        elif kind in ("dir", "file", "glob"):
-            path = os.path.expandvars(it["path"])
-            if "<" in path:
-                print("skipped (path known only on the machine):", path)
-                continue
-            for p in (glob.glob(path) if kind == "glob" else [path]):
-                _delete_path(Path(p))
-    TAKEOVER_RECORD.unlink(missing_ok=True)   # nothing left to switch back to
+    for it in todo:
+        try:
+            more, tasks = _remove_one(it, tasks)
+            failed += more
+        except Exception as exc:  # noqa: BLE001 - one leftover must not stop the rest
+            failed.append(f"{it.get('name') or it.get('path')}: {type(exc).__name__}: {exc}")
+    try:
+        TAKEOVER_RECORD.unlink(missing_ok=True)
+    except OSError as exc:
+        failed.append(f"{TAKEOVER_RECORD}: {exc}")
+    for line in failed:
+        print("not removed:", line)
+    return failed
 
 
 if __name__ == "__main__":
     import sys
-    {"takeover": takeover, "undo-takeover": undo_takeover, "remove": remove}[sys.argv[1]]()
+    {"remove": remove}[sys.argv[1]]()

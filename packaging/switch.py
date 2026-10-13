@@ -5,46 +5,50 @@
     python.exe switch.py stop                        from the installer, before it replaces files;
                                                      by hand, to keep the relay down (docs/OPERATIONS.md)
     python.exe switch.py start                       by hand: the way back after `stop` (watchdog, task)
-    python.exe switch.py revert                      back to the old relay (by hand)
+    python.exe switch.py revert                      by hand: says the way back is `launch.py
+                                                     rollback` (exit 6); changes nothing
     python.exe switch.py resume [--current=<name>]   from the installer, when it ends between
                                                      `stop` and `install` (cancelled, a file
                                                      that could not be copied)
 
 The rule for all of them: whichever step fails, the machine is left with a relay that
-runs - the new one or the old one.
+runs.
 
-install: stop the old relay -> hand AUTO-MAS its jobs (relay/handover/automas_handover.py:
-plan must pass, then apply) -> register the logon task -> register and start the watchdog
+install: refuse while the old relay is present (below) -> hand AUTO-MAS its jobs
+(relay/handover/automas_handover.py: plan must pass, then apply) -> register the logon task -> register and start the watchdog
 -> start the relay (with someone at the console: running within 60 s and still 15 s
-later, else a failure;
-nobody there: the watchdog starts it at logon). If any step fails, everything is reverted (as `revert`) and the old
-relay is switched back on; exit code 1, and the installer exits non-zero too.
+later, else a failure; nobody there: the watchdog starts it at logon). If any step after
+the old-relay check fails, the same new relay is switched back on as it is (watchdog and
+task enabled and started; the watchdog keeps retrying it and alerts), AUTO-MAS's
+settings stay handed over, and the way back to the version before is `launch.py
+rollback`. Exit code 1, and the installer exits non-zero too and says so (since
+e1033fb1; before, this switched the old relay back on).
 --skip-handover is for a machine without AUTO-MAS (the cloud test).
 
-revert: the way back to the old relay, without uninstalling: put AUTO-MAS's settings
-back, then stop and switch off the new one (watchdog disabled, task disabled; files
-stay) and switch the old relay back on. If the settings cannot be put back, nothing
-changes and the new relay keeps running (exit 4): the old relay on top of the handed-over
-settings would do the same jobs twice. If the old relay does not start, the new one is
-switched on again (exit 5). Running the installer again switches over again. Once the old
-relay is retired (scripts/windows/retire_legacy.py), nothing changes and exit 6 says the way
-back is the previous version folder (`launch.py rollback`); before, revert stopped the new
-relay and handed AUTO-MAS's jobs back first, only to find no old relay to start.
+The old relay (service ark-relay) was retired on 2026-10-11 (scripts/windows/retire_legacy.py,
+BOARD DECISIONS 【现状 10-12】), so nothing here switches it on or off any more. install
+refuses while it is still present (exit 8): two relays would both push and power off.
+
+revert: there is no old relay to go back to: nothing changes, exit 6, and it says the way
+back is the previous version folder (`launch.py rollback`).
 
 resume: an upgrade ran `stop` and then ended before `install` - he pressed Cancel, or a
 file could not be replaced and Setup rolled back. Nothing else would start the relay
 before his next logon, so the version that ran before is started again: current.txt goes
 back to --current (the name the installer read before `stop`) when it names something
 else and that folder is complete, then the watchdog and the task start as at the end of
-an install. A watchdog a revert disabled stays off: the old relay is the one on then.
+an install.
 
-uninstall: removes everything - the new relay, the old relay and what it left
+uninstall: removes everything - the new relay and what the old relay left
 (legacy.py remove, relay/handover/legacy-items.json); only his data
 (C:\\ProgramData\\ark-relay: .env, state, logs) and his settings backups stay.
 First the watchdog and the relay stop and AUTO-MAS's settings are put back - with the old
 relay retired, all but the jobs it did (handover steps 13, 10a, 10b), which then stay with
 AUTO-MAS (_handover_rollback). If that cannot be done (AUTO-MAS busy or not answering), nothing is removed: the relay is started
 again, exit code 3, and the uninstaller stops before deleting anything and says why.
+After that point each removal step runs on its own: one that fails (or raises) does not
+stop the rest. Exit 7 = everything else removed; the steps that failed are in switch.log
+and in UNINSTALL_LEFT, which the uninstaller shows, then it goes on deleting the files.
 """
 from __future__ import annotations
 
@@ -82,11 +86,20 @@ WATCHDOG_MARKER = legacy.DATA / "watchdog-stopped.txt"
 # An update's restart helper (pkg_layout.restart_soon: pythonw.exe launch.py relaunch);
 # the same match as scripts/mac/estop.sh, in PowerShell -like wildcards.
 HELPER_LIKE = "*launch.py*relaunch*"
+# The removal steps of an uninstall that failed, one per line (UTF-8), for the
+# uninstaller's message box (ark-relay.iss reads it after exit 7).
+UNINSTALL_LEFT = legacy.DATA / "uninstall-left.txt"
+UNINSTALL_PARTIAL = 7
 
 
 def run(*cmd: "str | Path") -> int:
+    """Run cmd, print its exit code and output. sc.exe, schtasks and PowerShell write to
+    a pipe in the console's code page, not UTF-8 (switch.log of 2026-10-11 showed
+    `[SC] ChangeServiceConfig 成功` as mojibake): decoded as "oem", the codec of that code
+    page (docs.python.org/3/library/codecs.html, Windows only; legacy.py reads schtasks
+    as "mbcs", the same 936 on his machine)."""
     r = subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW)
+                       encoding="oem", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW)
     print(" ".join(map(str, cmd)), "->", r.returncode)
     for out in (r.stdout, r.stderr):
         if out.strip():
@@ -251,25 +264,6 @@ def start() -> int:
     return rc
 
 
-def _watchdog_disabled() -> bool:
-    """Its start type is disabled: a revert switched the new relay off on purpose."""
-    import pywintypes  # noqa: PLC0415
-    import win32service  # noqa: PLC0415
-    try:
-        scm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_CONNECT)
-        try:
-            svc = win32service.OpenService(scm, WATCHDOG, win32service.SERVICE_QUERY_CONFIG)
-            try:
-                return win32service.QueryServiceConfig(svc)[1] == win32service.SERVICE_DISABLED
-            finally:
-                win32service.CloseServiceHandle(svc)
-        finally:
-            win32service.CloseServiceHandle(scm)
-    except pywintypes.error as exc:
-        print("watchdog start type unknown:", exc)
-        return False
-
-
 def _restore_current(name: str) -> None:
     """current.txt back to `name`, the version folder in use before the upgrade.
 
@@ -301,11 +295,8 @@ def _restore_current(name: str) -> None:
 
 def resume(current: str) -> int:
     """After `stop`, Setup ended without `install`: start the version that ran before.
-    0 = its watchdog is running, or a revert had switched it off (nothing to start)."""
+    0 = its watchdog is running."""
     _restore_current(current)
-    if _watchdog_disabled():
-        print("watchdog disabled (switch.py revert): the old relay is the one on; nothing started")
-        return 0
     return start()
 
 
@@ -322,16 +313,8 @@ def _handover_rollback() -> int:
     rc = run(*args)
     if rc != 0:
         print("AUTO-MAS settings NOT put back (exit %d): state/automas-handover.json still "
-              "holds the old values; run `switch.py revert` or `uninstall` again once "
-              "AUTO-MAS is idle" % rc)
+              "holds the old values; run `switch.py uninstall` again once AUTO-MAS is idle" % rc)
     return rc
-
-
-def _switch_off_new() -> None:
-    """Stop the new relay and keep it from starting again; its files stay."""
-    stop()
-    run("sc.exe", "config", WATCHDOG, "start=", "disabled")
-    run("schtasks.exe", "/change", "/tn", TASK_PATH + TASK_NAME, "/disable")
 
 
 def _switch_on_new() -> None:
@@ -342,57 +325,32 @@ def _switch_on_new() -> None:
 
 
 def revert() -> int:
-    """Back to the old relay, by hand, while the new one works.
-
-    AUTO-MAS's settings go back first, with the new relay still running. If they cannot
-    (AUTO-MAS busy or not answering), nothing else changes: switching the old relay on
-    over the handed-over settings would have both doing the same jobs - the same stage
-    twice, sanity spent twice. Exit 4 then, the new relay keeps running.
-    0 = the old relay is on and AUTO-MAS is as before. 6 = the old relay is retired:
-    nothing changed."""
-    if not legacy.old_relay_present():
-        print(f"没有退回：老中继已经撤掉了（文件挪在 {legacy.RETIRED}），没有老中继可以退。"
-              "新中继照常在跑，什么都没改。要退回请用新版的上一个版本："
-              f'"{PY}" "{APP / "launch.py"}" rollback')
-        return 6
-    if _handover_rollback() != 0:
-        print("没有退回：AUTO-MAS 的设置没能改回原样（它可能正在跑任务）。新中继照常在跑，"
-              "老中继没有打开，免得两边同时干同样的活、多花理智。等 AUTO-MAS 空下来再运行一次 "
-              "switch.py revert。")
-        return 4
-    _switch_off_new()
-    old = legacy.undo_takeover()
-    if old != 0:
-        # No old relay to go back to: keep the new one, with the handover in place again.
-        print("老中继没能打开（可能已经被卸载）：新中继重新打开，AUTO-MAS 的交接重新做上。")
-        run(PY, HANDOVER, "apply", "--state-dir", STATE)
-        _switch_on_new()
-        return 5
-    return 0
+    """By hand. Once it switched back to the old relay; that relay is retired, so nothing
+    changes: 6, and the way back named is the previous version folder."""
+    print("没有退回：老中继已经撤掉了，没有老中继可以退。新中继照常在跑，什么都没改。"
+          "要退回请用新版的上一个版本："
+          f'"{PY}" "{APP / "launch.py"}" rollback')
+    return 6
 
 
-def _back_to_old_after_failed_install() -> None:
-    """The switch-over failed part way: the new relay does not work, so the old one is
-    switched on whatever happens to AUTO-MAS's settings (no relay at all is worse).
-    With the old relay retired there is none to switch on: the new one is switched on
-    again as it is (the watchdog retries it and alerts), AUTO-MAS's settings stay
-    handed over, and the way back is the previous version folder."""
-    if not legacy.old_relay_present():
-        print("old relay retired: the new relay is switched on again as it is; go back "
-              f'with "{PY}" "{APP / "launch.py"}" rollback')
-        _switch_on_new()
-        return
-    _switch_off_new()
-    if _handover_rollback() != 0:
-        print("AUTO-MAS settings NOT put back; the old relay is switched on anyway (the new "
-              "one is not working). Put them back with `switch.py revert` once AUTO-MAS is idle")
-    legacy.undo_takeover()
+def _switch_back_on_after_failed_install() -> None:
+    """The switch-over failed part way: there is no old relay to switch on, so the new
+    one is switched on again as it is (the watchdog retries it and alerts), AUTO-MAS's
+    settings stay handed over, and the way back is the previous version folder."""
+    print("no old relay to go back to (retired): the new relay is switched on again as it "
+          f'is; the way back to the version before is "{PY}" "{APP / "launch.py"}" rollback')
+    _switch_on_new()
 
 
 def install(user: str, skip_handover: bool) -> int:
     user = console_user(user)
     print("task user:", user)
-    legacy.takeover()
+    if legacy.old_relay_present():
+        # Stopping and disabling it was legacy.takeover(), removed with the old relay's
+        # retirement; starting the new relay next to it would have both push and power off.
+        print(f"没有切换：老中继（服务 {legacy.OLD_SERVICE}）还在这台电脑上，两个中继不能同时跑。"
+              "新中继没有打开；先撤掉老中继（scripts/windows/retire_legacy.py --go）再装。")
+        return 8
     # An upgrade over an earlier install: the handover is done and its backup holds the
     # settings from before the first one; doing it again could only change more.
     if (STATE / "automas-handover.json").exists():
@@ -401,26 +359,26 @@ def install(user: str, skip_handover: bool) -> int:
     if not skip_handover:
         if run(PY, HANDOVER, "plan", "--state-dir", STATE) != 0 or \
                 run(PY, HANDOVER, "apply", "--state-dir", STATE) != 0:
-            print("AUTO-MAS handover failed: putting its settings back and the old relay back on")
-            _back_to_old_after_failed_install()
+            print("AUTO-MAS handover failed: the new relay is switched on again as it is")
+            _switch_back_on_after_failed_install()
             return 1
     steps = [
         lambda: register_task(user),
         lambda: run(PY, APP / "watchdog" / "ark_watchdog.py", "install"),
-        lambda: run("sc.exe", "config", WATCHDOG, "start=", "auto"),   # after a revert
+        lambda: run("sc.exe", "config", WATCHDOG, "start=", "auto"),
         lambda: run("sc.exe", "failure", WATCHDOG, "reset=", "60",
                     "actions=", "restart/3000/restart/3000/restart/3000"),
         start_watchdog,
     ]
     for step in steps:
         if step() != 0:
-            print("switch-over failed after the handover: reverting to the old relay")
-            _back_to_old_after_failed_install()
+            print("switch-over failed after the handover: the new relay is switched on again as it is")
+            _switch_back_on_after_failed_install()
             return 1
     # The task runs only in the user's logon session. Nobody at the console yet (Setup
     # over RDP, a fresh boot, the cloud test) is a normal state: the watchdog runs the
     # task once someone logs on. With someone there, the new relay must really come
-    # up (its mutex), or the old one goes back on - a machine without a working relay
+    # up (its mutex), or the installer says so - a machine without a working relay
     # would otherwise wait for the watchdog's third failed start to say so.
     try:
         at_console = _console_session_user()
@@ -444,29 +402,71 @@ def install(user: str, skip_handover: bool) -> int:
             print(f"relay came up and was gone again within {STEADY_S} s")
         time.sleep(2)
     print(f"relay not running steadily {START_WAIT_S} s after the start (schtasks /run "
-          f"{'ok' if started else 'failed'}, {at_console} at the console): reverting "
-          "to the old relay")
-    _back_to_old_after_failed_install()
+          f"{'ok' if started else 'failed'}, {at_console} at the console): switched on "
+          "again as it is; the way back to the version before is launch.py rollback")
+    _switch_back_on_after_failed_install()
     return 1
 
 
+def _remove_state_links() -> "list[str]":
+    """The version folders' state junctions; the link only, never the data it points to."""
+    failed = []
+    for v in (APP / "versions").iterdir() if (APP / "versions").is_dir() else []:
+        link = v / "state"
+        try:
+            if os.path.isjunction(link) or link.is_symlink():
+                os.rmdir(link)
+        except OSError as exc:
+            failed.append(f"{link}: {exc}")
+    return failed
+
+
 def uninstall() -> int:
+    """0 = everything removed; 3 = AUTO-MAS not put back, nothing removed, the relay
+    started again; 7 = removed except the steps listed in UNINSTALL_LEFT."""
+    try:
+        UNINSTALL_LEFT.unlink(missing_ok=True)
+    except OSError as exc:
+        print("uninstall-left.txt:", exc)
     stop()
     if _handover_rollback() != 0:
         # Removing now would leave AUTO-MAS with the handover's settings and nobody
         # holding the old ones: keep everything, start the relay again, say so.
         start()
         return 3
-    for v in (APP / "versions").iterdir() if (APP / "versions").is_dir() else []:
-        link = v / "state"
-        if os.path.isjunction(link) or link.is_symlink():
-            os.rmdir(link)        # removes the link only, never the data it points to
-    run(PY, APP / "watchdog" / "ark_watchdog.py", "remove")
-    _mark_watchdog_stopped(False)          # no watchdog left to keep down
-    run("schtasks.exe", "/delete", "/tn", TASK_PATH + TASK_NAME, "/f")
-    delete_task_folder()
-    legacy.remove()
-    return 0
+    # From here the relay is down for good and AUTO-MAS is as before: every step is
+    # tried, whatever an earlier one did.
+    left: "list[str]" = []
+
+    def step(name: str, fn) -> None:
+        try:
+            out = fn()
+        except Exception as exc:  # noqa: BLE001 - one failed step must not stop the rest
+            left.append(f"{name}: {type(exc).__name__}: {exc}")
+            return
+        if isinstance(out, list):
+            left.extend(f"{name}: {x}" for x in out)
+        elif isinstance(out, int) and not isinstance(out, bool) and out != 0:
+            left.append(f"{name}: exit {out}")
+
+    step("state links", _remove_state_links)
+    step("watchdog service ArkRelayWatchdog", lambda: run(PY, APP / "watchdog" / "ark_watchdog.py", "remove"))
+    step("watchdog stop marker", lambda: _mark_watchdog_stopped(False))   # no watchdog left to keep down
+    step(f"task {TASK_PATH}{TASK_NAME}",
+         lambda: run("schtasks.exe", "/delete", "/tn", TASK_PATH + TASK_NAME, "/f"))
+    step("task folder", delete_task_folder)          # never fails: says so itself
+    step("old relay leftovers", legacy.remove)
+    if not left:
+        return 0
+    print(f"uninstall: {len(left)} step(s) not done, everything else removed:")
+    for line in left:
+        print("  not removed:", line)
+    try:
+        UNINSTALL_LEFT.parent.mkdir(parents=True, exist_ok=True)
+        UNINSTALL_LEFT.write_text("\n".join(left) + "\n", encoding="utf-8")
+    except OSError as exc:
+        print("uninstall-left.txt not written:", exc)
+    return UNINSTALL_PARTIAL
 
 
 def delete_task_folder(connect=None) -> bool:

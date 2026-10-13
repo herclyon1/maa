@@ -93,8 +93,55 @@ def stage_runtime(stage: Path, cache: Path) -> Path:
     return py
 
 
-def check_manifest(manifest: dict) -> None:
+NOTES = "RELEASE-NOTES.md"
+
+
+def _git(*args: str) -> "bytes | None":
+    """stdout of a git command run in the repo; None when it fails or git is missing."""
+    try:
+        r = subprocess.run(["git", *args], cwd=REPO, capture_output=True, timeout=120)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def _hashes_match(data: bytes, rel: str, manifest: dict) -> bool:
+    return (hashlib.sha256(data).hexdigest() == manifest["sha256"].get(rel)
+            and hashlib.sha1(data).hexdigest() == manifest["files"].get(rel))
+
+
+def notes_as_deployed(manifest: dict) -> "bytes | None":
+    """relay/RELEASE-NOTES.md as the manifest describes it; None when no copy matches.
+
+    deploy-relay.sh builds the manifest with the notes filled in, publishes, then empties
+    the notes and commits both in the commit it tags with the manifest's `ref` (its
+    0.5 gate, the clearing after publish-cos.py, and the commit at its end). So at every
+    deploy tip the tree's notes are empty and differ from the manifest (2026-10-13:
+    7ce92679, d6fb8004, 45584225), and the tagged commit holds the emptied copy too; the
+    filled one is in the tag's parent. Tried in order, the first whose sha256 and sha1
+    both match: the tree, `<ref>^`, `<ref>`. A checkout without the tag (CI: depth 1, no
+    tags) fetches it first."""
+    tree = RELAY / NOTES
+    if tree.is_file() and _hashes_match(tree.read_bytes(), NOTES, manifest):
+        return tree.read_bytes()
+    ref = str(manifest.get("ref") or "")
+    if not ref:
+        return None
+    if _git("rev-parse", "--verify", "--quiet", f"{ref}^^{{commit}}") is None:
+        shallow = (_git("rev-parse", "--is-shallow-repository") or b"").strip() == b"true"
+        _git("fetch", "--quiet", *(["--depth=2"] if shallow else []), "origin", "tag", ref)
+    for rev in (f"{ref}^", ref):
+        data = _git("show", f"{rev}:relay/{NOTES}")
+        if data is not None and _hashes_match(data, NOTES, manifest):
+            print(f"{NOTES}: taken from {rev} (the tree's copy is not the deployed one)")
+            return data
+    return None
+
+
+def check_manifest(manifest: dict) -> "bytes | None":
     """Stop unless relay/manifest.json matches the tree, file for file and hash for hash.
+    Returns RELEASE-NOTES.md as deployed (see notes_as_deployed), or None when the
+    manifest does not list it.
 
     The installed relay updates itself against the deployed manifest by these hashes;
     a package built from a stale one ships files the manifest does not describe
@@ -104,9 +151,15 @@ def check_manifest(manifest: dict) -> None:
             if p.is_file() and "__pycache__" not in p.parts and p.suffix in (".py", ".txt")}
     tree |= {p.name for p in RELAY.glob("*.py") if p.name != "make-manifest.py"}
     problems = [f"not listed: {rel}" for rel in sorted(tree - files.keys())]
+    notes = None
     for rel, want in sorted(files.items()):
         src = RELAY / rel
-        if not src.is_file():
+        if rel == NOTES:
+            notes = notes_as_deployed(manifest)
+            if notes is None:
+                problems.append(f"hash differs: {rel} (not in the tree, nor at "
+                                f"{manifest.get('ref')}^ / {manifest.get('ref')})")
+        elif not src.is_file():
             problems.append(f"listed, missing: {rel}")
         elif hashlib.sha256(src.read_bytes()).hexdigest() != want or \
                 hashlib.sha1(src.read_bytes()).hexdigest() != manifest["files"].get(rel):
@@ -115,18 +168,22 @@ def check_manifest(manifest: dict) -> None:
         raise SystemExit("relay/manifest.json does not match the files; run "
                          "relay/make-manifest.py and commit it, then build again:\n  "
                          + "\n  ".join(problems))
+    return notes
 
 
 def stage_code(stage: Path) -> str:
     manifest = json.loads((RELAY / "manifest.json").read_text(encoding="utf-8"))
     version = str(manifest["version"])
-    check_manifest(manifest)
+    notes = check_manifest(manifest)
     files = manifest["sha256"]
     dest = stage / "versions" / version
     for rel in files:
         src = RELAY / rel
         (dest / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dest / rel)
+        if rel == NOTES and notes is not None:
+            (dest / rel).write_bytes(notes)
+        else:
+            shutil.copy2(src, dest / rel)
     shutil.copy2(RELAY / "manifest.json", dest / "manifest.json")
     (stage / "current.txt").write_text(version + "\n", encoding="ascii")
     return version

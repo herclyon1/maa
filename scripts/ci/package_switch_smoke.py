@@ -1,21 +1,21 @@
-"""Switching between the old relay and the package, both ways, on a clean Windows runner.
+"""Installing, upgrading, deploying to and uninstalling the package on a clean Windows runner.
 
 Run by .github/workflows/package-switch.yml, never on the game machine. What
-package_smoke.py does not cover: a machine that already runs the old relay. Here the
-old relay is installed first the way main installs it, then:
+package_smoke.py does not cover: the AUTO-MAS handover against a stand-in backend, the
+watchdog guard, a cancelled upgrade, an upgrade, a deploy and the uninstall's clean-up of
+what the old relay left. The old relay itself was retired on 2026-10-11
+(scripts/windows/retire_legacy.py); the stages that installed a stand-in of it and
+switched back to it (old 2, 5, 6) went with the code they ran (packaging/switch.py revert
+now changes nothing).
 
   1 build        the package (as package_smoke.py)
-  2 old relay    main's relay/ files (its manifest.json list, as deploy-relay.sh pushes
-                 them) into C:\\ProgramData\\ark-relay, pywin32 into the runner's Python
-                 (the machine's Python314 has it, commit 0df8a910), `service.py --startup
-                 auto install`, restart-on-failure as on the machine (legacy-items.json:
-                 sc qc 2026-10-11 03:41, restart 3 s), started. The old logon launcher
-                 task ark-relay, disabled as on the machine, and three more legacy items.
-                 A stand-in AUTO-MAS backend (fake_automas.py) on 127.0.0.1:36163 with
-                 the old relay's weekly annihilation record in state\\state.json.
-  3 switch       the installer, handover on (no /SKIPHANDOVER): old service stopped and
-                 disabled, launcher task still disabled, new relay running, AUTO-MAS
-                 settings handed over and their old values in state\\automas-handover.json
+  2 leftovers    stand-ins for what the old relay and the Mac-side tools left (tasks,
+                 files, old relay code in C:\\ProgramData\\ark-relay) for the uninstall to
+                 remove. A stand-in AUTO-MAS backend (fake_automas.py) on 127.0.0.1:36163
+                 with the old relay's weekly annihilation record in state\\state.json.
+  3 install      the installer, handover on (no /SKIPHANDOVER): new relay running,
+                 AUTO-MAS settings handed over and their old values in
+                 state\\automas-handover.json
   3g guard       the relay starts its watchdog again (relay/watchdog_guard.py, looks every
                  GUARD_EVERY_S here): a plain `sc stop` (no marker: not on purpose, and a
                  clean stop fires no failure action) is undone within a minute; with the
@@ -29,10 +29,7 @@ old relay is installed first the way main installs it, then:
                  running, no stop marker left
   4 upgrade      the installer again over it: handover skipped (backup unchanged, no
                  setting written), watchdog updated in place (exit 0), relay running
-  5 revert       switch.py revert: AUTO-MAS settings back as before, backup gone, old
-                 service running on automatic start, launcher task as before (disabled),
-                 watchdog and logon task disabled, new relay stopped
-  6 switch again the installer once more: handed over again, new relay running
+  5 revert       switch.py revert: exit 6, nothing changed, relay still running
   7 deploy       scripts/mac/lib/deploy-pkg.sh end to end (deploy_pkg_e2e.sh, ssh and
                  scp stood in): a new version folder, current.txt switched, the watch;
                  on the runner the watch cannot pass (no AUTO-MAS, so no
@@ -43,7 +40,7 @@ old relay is installed first the way main installs it, then:
                  done in an earlier week, never closed by the relay, a map he chose,
                  quick config off, AUTO-MAS busy, AUTO-MAS not answering
   9 uninstall    unins000.exe: AUTO-MAS settings put back, everything of the package and
-                 the old relay gone (leftovers.py uninstalled), his .env kept
+                 what the old relay left gone (leftovers.py uninstalled), his .env kept
 
 Each check prints [ok] / [FAIL] / [UNTESTED]; the run fails if any check failed.
 """
@@ -67,7 +64,11 @@ CI = ROOT / "scripts" / "ci"
 PORT, CASE_PORT = 36163, 36164
 FAKE = OUT / "fake-automas"           # the AUTO-MAS folder the relay is pointed at
 CASES = OUT / "fake-automas-cases"
-OLD_SERVICE, OLD_TASK = "ark-relay", "ark-relay"
+# The old relay's pre-service logon task, planted as a leftover (legacy-items.json: remove).
+OLD_TASK = "ark-relay"
+# The old relay's code files planted in the data folder (legacy.py OLD_CODE: the uninstall
+# deletes them there and nothing else).
+OLD_CODE = ["service.py", "run.py", "boot_stages.py", "ark_relay/__init__.py", "manifest.json"]
 # Legacy items the uninstall must remove (relay/handover/legacy-items.json, action remove).
 # These two were already gone from the game machine on 2026-10-12 and their repo scripts are
 # deleted; they stay on the uninstaller's list (a machine restored from an old backup could
@@ -199,45 +200,22 @@ def build(pkg: dict) -> bool:
     return check("1 build", True)
 
 
-def install_old(pkg: dict) -> bool:
+def plant_leftovers(pkg: dict) -> None:
+    """What the old relay and the Mac-side tools left, for the uninstall to remove."""
     data = Path(pkg["data_dir"])
-    manifest = subprocess.run(["git", "show", "origin/main:relay/manifest.json"], cwd=ROOT,
-                              capture_output=True, check=True).stdout
-    files = list(json.loads(manifest)["files"]) + ["manifest.json"]
-    for rel in files:
-        blob = subprocess.run(["git", "show", f"origin/main:relay/{rel}"], cwd=ROOT,
-                              capture_output=True).stdout
-        dst = data / rel
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_bytes(blob)
-    print(f"old relay: {len(files)} files from origin/main into {data}")
-    r = run([sys.executable, "-m", "pip", "install", "--quiet", "pywin32"], timeout=600)
-    print(r.stdout[-1000:] + r.stderr[-1000:])
-    r = run([sys.executable, str(data / "service.py"), "--startup", "auto", "install"], timeout=120)
-    print(r.stdout + r.stderr)
-    run(["sc.exe", "failure", OLD_SERVICE, "reset=", "60",
-         "actions=", "restart/3000/restart/3000/restart/3000"])
-    # The pre-service launcher (legacy-items.json: disabled on the machine, runs ark-relay.ps1
-    # at logon). Its script here only leaves a mark, so a run of it would show.
-    (data / "ark-relay.ps1").write_text(
-        "Set-Content -Path 'C:\\ProgramData\\ark-relay\\launcher-ran.txt' -Value (Get-Date)\n", encoding="utf-8")
+    for rel in OLD_CODE:
+        (data / rel).parent.mkdir(parents=True, exist_ok=True)
+        (data / rel).write_text("old relay stand-in\n", encoding="utf-8")
     run(["schtasks", "/create", "/tn", OLD_TASK, "/sc", "onlogon", "/ru", "SYSTEM", "/f", "/tr",
-         f'pwsh -NoProfile -ExecutionPolicy Bypass -File "{data / "ark-relay.ps1"}"'])
+         "cmd /c exit 0"])
     run(["schtasks", "/change", "/tn", OLD_TASK, "/disable"])
     for t in OLD_EXTRA_TASKS:
         run(["schtasks", "/create", "/tn", t, "/sc", "once", "/st", "23:59", "/ru", "SYSTEM", "/f",
              "/tr", "cmd /c exit 0"])
     for f in OLD_EXTRA_FILES:
         Path(f).write_text("legacy\n", encoding="utf-8")
-    log = Path(pkg["log_file"])
-    at = size(log)
-    run(["sc.exe", "start", OLD_SERVICE])
-    up = wait_until(lambda: sc_field("query", OLD_SERVICE, "STATE") == "RUNNING", 60)
-    booted = up and wait_for_line(log, pkg["startup_log_line"], at, 120)
-    check("2a old relay service running", up, sc_field("query", OLD_SERVICE, "STATE"))
-    check("2b old relay booted (startup line in relay.log)", booted)
-    check("2c old launcher task disabled, as on the machine", task_state(OLD_TASK) == "Disabled", task_state(OLD_TASK))
-    return up and booted
+    check("2 leftovers planted", all((data / rel).exists() for rel in OLD_CODE)
+          and task_state(OLD_TASK) == "Disabled", task_state(OLD_TASK))
 
 
 def expect_new_on(pkg: dict, stage: str, at: int) -> None:
@@ -246,12 +224,6 @@ def expect_new_on(pkg: dict, stage: str, at: int) -> None:
     retried = [ln for ln in text.splitlines() if "watchdog not running after start attempt" in ln]
     if retried:   # switch.start_watchdog had to start it again: worth knowing, not a failure
         print(f"note {stage}: " + " | ".join(retried))
-    check(f"{stage}: old service stopped",
-          wait_until(lambda: sc_field("query", OLD_SERVICE, "STATE") == "STOPPED", 60),
-          sc_field("query", OLD_SERVICE, "STATE"))
-    check(f"{stage}: old service disabled", sc_field("qc", OLD_SERVICE, "START_TYPE") == "DISABLED",
-          sc_field("qc", OLD_SERVICE, "START_TYPE"))
-    check(f"{stage}: old launcher task still disabled", task_state(OLD_TASK) == "Disabled", task_state(OLD_TASK))
     check(f"{stage}: watchdog running",
           wait_until(lambda: sc_field("query", "ArkRelayWatchdog", "STATE") == "RUNNING", 30),
           sc_field("query", "ArkRelayWatchdog", "STATE"))
@@ -345,18 +317,17 @@ def main() -> int:
 
     if not build(pkg):
         return 1
-    if not install_old(pkg):
-        return 1
+    plant_leftovers(pkg)
 
-    # 3 switch over
+    # 3 install
     at = size(switch_log(pkg))
     rc = setup(pkg, "install-1")
-    check("3 switch: installer exit 0", rc == 0, f"exit {rc}")
-    expect_new_on(pkg, "3 switch", at)
+    check("3 install: installer exit 0", rc == 0, f"exit {rc}")
+    expect_new_on(pkg, "3 install", at)
     now = fake_values(FAKE)
-    check("3 switch: AUTO-MAS settings handed over", now == HANDED, f"{now}")
-    check("3 switch: their old values saved", backup.exists())
-    check("3 switch: package items present", P.leftovers("installed"))
+    check("3 install: AUTO-MAS settings handed over", now == HANDED, f"{now}")
+    check("3 install: their old values saved", backup.exists())
+    check("3 install: package items present", P.leftovers("installed"))
     guard(pkg)
     cancelled_upgrade(pkg)
 
@@ -372,42 +343,20 @@ def main() -> int:
     check("4 upgrade: watchdog updated in place", "ark_watchdog.py install -> 0" in text)
     expect_new_on(pkg, "4 upgrade", at)
 
-    # 5 revert
+    # 5 revert: there is no old relay to go back to
     inst = Path(pkg["install_dir"])
     py = str(inst / "runtime" / "python" / "python.exe")
-    log = Path(pkg["log_file"])
-    log_at = size(log)
+    at, calls = size(switch_log(pkg)), update_calls(FAKE)
     r = run([py, str(inst / "switch.py"), "revert"], timeout=300)
     print(r.stdout[-3000:] + r.stderr[-2000:])
-    check("5 revert: exit 0", r.returncode == 0, f"exit {r.returncode}")
-    now = fake_values(FAKE)
-    check("5 revert: AUTO-MAS settings as before", now == before, f"{now}")
-    check("5 revert: backup gone", not backup.exists())
-    check("5 revert: old service running",
-          wait_until(lambda: sc_field("query", OLD_SERVICE, "STATE") == "RUNNING", 60),
-          sc_field("query", OLD_SERVICE, "STATE"))
-    check("5 revert: old service on automatic start", sc_field("qc", OLD_SERVICE, "START_TYPE") == "AUTO_START",
-          sc_field("qc", OLD_SERVICE, "START_TYPE"))
-    check("5 revert: old relay booted", wait_for_line(log, pkg["startup_log_line"], log_at, 120))
-    check("5 revert: old launcher task as before (disabled)", task_state(OLD_TASK) == "Disabled",
-          task_state(OLD_TASK))
-    check("5 revert: watchdog disabled", sc_field("qc", "ArkRelayWatchdog", "START_TYPE") == "DISABLED",
-          sc_field("qc", "ArkRelayWatchdog", "START_TYPE"))
-    check("5 revert: watchdog stopped", sc_field("query", "ArkRelayWatchdog", "STATE") == "STOPPED",
-          sc_field("query", "ArkRelayWatchdog", "STATE"))
-    folder, _, name = pkg["tasks"][0].rpartition("\\")
-    check("5 revert: logon task disabled", task_state(name, folder + "\\") == "Disabled",
-          task_state(name, folder + "\\"))
-    check("5 revert: new relay stopped", wait_until(lambda: not new_running(pkg), 30))
-
-    # 6 switch again
-    at = size(switch_log(pkg))
-    rc = setup(pkg, "install-3")
-    check("6 switch again: installer exit 0", rc == 0, f"exit {rc}")
-    expect_new_on(pkg, "6 switch again", at)
-    now = fake_values(FAKE)
-    check("6 switch again: AUTO-MAS settings handed over again", now == HANDED, f"{now}")
-    check("6 switch again: old values saved again", backup.exists())
+    check("5 revert: exit 6", r.returncode == 6, f"exit {r.returncode}")
+    check("5 revert: names launch.py rollback", "rollback" in tail_from(switch_log(pkg), at))
+    check("5 revert: no AUTO-MAS setting written", update_calls(FAKE) == calls,
+          f"{update_calls(FAKE) - calls} updates")
+    check("5 revert: backup kept", backup.exists())
+    check("5 revert: watchdog still running", sc_field("query", WD, "STATE") == "RUNNING",
+          sc_field("query", WD, "STATE"))
+    check("5 revert: new relay still running", new_running(pkg))
 
     deploy(pkg)
     handover_cases(inst)
@@ -420,12 +369,10 @@ def main() -> int:
     check("9 uninstall: install folder gone", gone)
     now = fake_values(FAKE)
     check("9 uninstall: AUTO-MAS settings as before", now == before, f"{now}")
-    check("9 uninstall: nothing of the package or the old relay left", P.leftovers("uninstalled"))
-    left = [n for n in ("service.py", "run.py", "boot_stages.py", "ark_relay", "manifest.json")
-            if (data / n).exists()]
+    check("9 uninstall: nothing of the package or of what the old relay left", P.leftovers("uninstalled"))
+    left = [n for n in OLD_CODE if (data / n).exists()]
     check("9 uninstall: old relay code gone from the data folder", not left, ", ".join(left))
     check("9 uninstall: his .env kept", Path(pkg["env_file"]).exists())
-    check("9 uninstall: old relay service gone", sc_field("query", OLD_SERVICE, "STATE") == "")
     fake.kill()
     print("\nFAILED: " + "; ".join(FAILED) if FAILED else "\nall checks passed")
     return 1 if FAILED else 0
@@ -543,8 +490,7 @@ def keep_logs() -> None:
     scm = ("*[System[Provider[@Name='Service Control Manager'] and "
            "(EventID=7000 or EventID=7009 or EventID=7011 or EventID=7023 or EventID=7024 "
            "or EventID=7031 or EventID=7034 or EventID=7036)]]")
-    for cmd, name in ((["sc.exe", "qc", OLD_SERVICE], "sc-qc-ark-relay.txt"),
-                      (["schtasks", "/query", "/fo", "list"], "schtasks.txt"),
+    for cmd, name in ((["schtasks", "/query", "/fo", "list"], "schtasks.txt"),
                       (["wevtutil", "qe", "System", f"/q:{scm}", "/f:text", "/c:300", "/rd:true"],
                        "scm-events.txt")):
         r = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
