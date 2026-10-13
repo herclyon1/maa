@@ -5,11 +5,14 @@
 #   run-one.sh stop              # 按正确顺序停干净（API→等→残留才杀→复查拉起）
 #   run-one.sh MAA|MaaEnd|OK-WW  # dispatch one script; refused while busy. A normal
 #                                # daily-report row like any queue run.
-#   run-one.sh MaaEnd --test     # my test run: opens a test window; records inside it
+#   run-one.sh MaaEnd --test     # my test run: turns debug mode on first (refused if it
+#                                # cannot), then opens a test window; records inside it
 #                                # are one summary line in the report, not rows
 #   run-one.sh test-off          # close the window when done - or the user's own
-#                                # manual runs get counted as tests too
-#   run-one.sh test-status       # is a window open (healthcheck asks as well)
+#                                # manual runs get counted as tests too; turns debug
+#                                # mode off again only if this window turned it on
+#   run-one.sh test-status       # is a window open, and did it turn debug mode on
+#                                # (healthcheck asks as well)
 #
 # 为什么必须走这里：2026-09-01 上午,「派整条队列 + taskkill 队列成员」
 # 让 AUTO-MAS 的整队重试和手动派发打架——MAA 重复吃药、三个游戏同时在线。

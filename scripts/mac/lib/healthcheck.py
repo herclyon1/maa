@@ -217,7 +217,9 @@ try:
     _w = json.loads(_tw.read_text(encoding="utf-8")) if _tw.is_file() else []
     _open = [x for x in _w if isinstance(x, dict) and x.get("until") is None]
     check("测试窗口没开着", not _open,
-          f"开着（{_open[0].get('since') if _open else ''} 起）——这期间的记录不进日报正文，跑 run-one.sh test-off")
+          f"开着（{_open[0].get('since') if _open else ''} 起）——这期间的记录不进日报正文，跑 run-one.sh test-off"
+          + ((f"；调试模式是这个窗口开的（到 {_open[0].get('debug_set')}），test-off 时一起关")
+             if _open and _open[0].get("debug_set") else ""))
 except Exception as _exc:  # noqa: BLE001
     check("读得到测试窗口文件", False, f"{type(_exc).__name__}: {_exc}")
 
