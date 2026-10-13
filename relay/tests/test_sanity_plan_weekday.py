@@ -38,6 +38,10 @@ DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sun
 
 FAILED: list[str] = []
 
+# next_plan's maintenance notices come from the official sites; nothing here is about
+# them, and run 38363145659 (Windows) sat in those fetches until the 180 s limit.
+plan.maintenance_lines = lambda day: []
+
 
 def check(name, got, want):
     ok = got == want
