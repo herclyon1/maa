@@ -597,10 +597,23 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
         # A previewed badge can stay on long after the character is out (锁暝: badge 2
         # with a year-long window while its own banner ran, 2026-10-22), so names that
         # are running now or are this version's debuts are not 「the next version's」.
+        # When no debut was read (the fallback above) this point is reached with the
+        # second half still to come, so a name the bulletin quotes (「name」, as every
+        # bulletin writes a character; bare, a one-character name like 心 would match
+        # any text) is this version's too (2026-10-13 review, run6: 锁暝 shown as
+        # next version's while it was this version's second half). With no bulletin
+        # text either, they are said only when the running banners last until the
+        # announced update maintenance (the version's last half, as on the 3.7 eve);
+        # otherwise this version's names cannot be told from the next one's.
         current = live | {w for w, _ in debut}
-        teased = [t for t in wuwa_teased((((page.get("data") or {}).get("results") or {}).get("records")) or [], now)
-                  if t not in current]
-        tr.src("鸣潮", "预告角色", _KURO + f"/wiki/core/catalogue/item/getPage catalogueId={_WW_CHAR_CATALOGUE}", "预告角标：" + ("、".join(teased) or "无"))
+        text = _one_dot(body)
+        badged = wuwa_teased((((page.get("data") or {}).get("results") or {}).get("records")) or [], now)
+        if debut or text or (end and maint and end >= maint[1]):
+            teased = [t for t in badged if t not in current and f"「{t}」" not in text]
+            tr.src("鸣潮", "预告角色", _KURO + f"/wiki/core/catalogue/item/getPage catalogueId={_WW_CHAR_CATALOGUE}", "预告角标：" + ("、".join(teased) or "无"))
+        elif badged:
+            tr.src("鸣潮", "预告角色", _KURO + f"/wiki/core/catalogue/item/getPage catalogueId={_WW_CHAR_CATALOGUE}",
+                   "预告角标：" + "、".join(badged) + "（没有版本说明，也不是这一版最后半段，分不出是这一版还是下一版的，不报）")
     except Exception:
         log.warning("库街区角色图鉴取不到，预告角色这一项不出", exc_info=True)
     facts = []

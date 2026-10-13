@@ -7,6 +7,8 @@
 * Once both halves are out, the 「下期」 line listed every wiki entry with the
   previewed badge, including a character whose own banner was running (锁暝,
   2026-10-22 audit run5.py); running and current-debut names are now left out.
+  With no debut read (the fallback above), a name the bulletin quotes is left out
+  too, and with no bulletin text the line is not said at all (review run6).
 """
 import logging
 import sys
@@ -124,6 +126,26 @@ got, _n, notes, _w = run_wuwa(LATE, second, both, {"S": "锁暝"}, cat)
 check("the running debut is reported", [b.name for b in got], ["余心所向九死未悔"])
 check("the 下期 note names only the one not out yet",
       notes.get("鸣潮", ""), "官方已预告下一版新角色：新来的")
+
+print("[no debut read (the fallback): this version's second half is not the next version's]")
+# 2026-10-13 review run6 (live data with the debut lines' star prefix rewritten):
+# first half running, the debut list unreadable, and this version's second-half
+# character was announced as the next version's.
+first = home(("但愿长圆如此夜", "X", "2026-10-01 11:00", "2026-10-22 09:59"))
+five = {"game": [{"tabTitle": "3.7版本内容说明",
+                  "content": "<p>全新角色</p><p>五星共鸣者「心」</p><p>※可通过[但愿长圆如此夜]角色活动唤取获得</p>"
+                             "<p>五星共鸣者「锁暝」</p><p>※可通过[余心所向九死未悔]角色活动唤取获得</p><p>全新武器</p>"}]}
+cat13 = [badge("锁暝", "2026-09-03 00:00:00", "2027-09-03 00:00:00"),
+         badge("新来的", "2026-10-01 00:00:00", "2026-11-12 00:00:00")]
+got, _n, notes, warns = run_wuwa(NOW, first, five, {"X": "心"}, cat13)
+check("fixture: no debut read, the running pool still reported",
+      ([b.name for b in got], any("读不出这一版的新角色" in m for m in warns)), (["但愿长圆如此夜"], True))
+check("the bulletin's own second-half character is not called next version's",
+      notes.get("鸣潮", ""), "官方已预告下一版新角色：新来的")
+untitled = {"game": [{"tabTitle": "3.7版本更新公告", "content": "<p>五星共鸣者「锁暝」</p>"}]}
+got, _n, notes, _w = run_wuwa(NOW, first, untitled, {"X": "心"}, cat13)
+check("no bulletin text at all: no 「next version」 claim, since none can be told apart",
+      "下一版" in notes.get("鸣潮", ""), False)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
