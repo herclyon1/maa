@@ -7,3 +7,5 @@ __pycache__/
 # 那个刷不出基质的地区，而且没有时间戳——照它下判断会得出反的结论，已删。
 # 要用就现取：scripts/mac/config-check.py --save
 state/config-snapshot.json
+# Coverage data (coverage.py); the deploy gate (scripts/mac/lib/changed_covered.py) writes its own JSON instead.
+.coverage
