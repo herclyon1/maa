@@ -60,6 +60,7 @@ class Timeout:
     attempt: int = 0           # 0 when no attempt line was seen before it
     of: int = 0
     began: datetime | None = None
+    unsent: bool = False       # check_timeouts failed to push it and handed it back
 
 
 def _when(s: str) -> datetime:
@@ -130,6 +131,10 @@ def check_timeouts(eng, events: list[Timeout], now: datetime) -> list[Timeout]:
     tasks = None
     for ev in events:
         if now - ev.at > timedelta(minutes=FRESH_MINUTES):
+            if ev.unsent:
+                # Handed back after failed sends until it went stale: said once, not dropped silently.
+                log.warning("⏱️ %s %s 的超时告警 %d 分钟都没推出去，不再重试（第 %s 次%s）", ev.script,
+                            ev.at.strftime("%H:%M"), FRESH_MINUTES, ev.attempt or "?", ev.what)
             continue
         day = ev.at.strftime("%Y-%m-%d")
         key = f"超时|{ev.script}|{ev.at:%H:%M:%S}"      # this one line, not the script
@@ -144,6 +149,7 @@ def check_timeouts(eng, events: list[Timeout], now: datetime) -> list[Timeout]:
             body = texts.HAND_STARTED_NOTE + "\n" + body
         if errs := eng.notifier.send(title, body, alert=True):
             log.error("超时告警没推出去，下一轮再试：%s", ev.script)
+            ev.unsent = True
             unsent.append(ev)
             continue
         handle._mark_alerted(eng, day, key)

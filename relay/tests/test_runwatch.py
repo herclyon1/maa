@@ -165,6 +165,31 @@ e3.notifier.fail = False
 run_watch(e3, at(11, 22))
 check("sent on the next tick", len(alarms(e3)), 1)
 
+print("\n[an alarm still unsent when it goes stale: one WARNING, not dropped silently (audit s18 F3)]")
+import logging as _logging  # noqa: E402
+from ark_relay.features.run import runwatch  # noqa: E402
+_said = []
+_h = type("H", (_logging.Handler,), {"emit": lambda self, r: _said.append((r.levelno, r.getMessage()))})()
+runwatch.log.addHandler(_h)
+try:
+    write_log(4)
+    e3b = build()
+    e3b.notifier.fail = True
+    run_watch(e3b, at(11, 21))
+    _said.clear()
+    run_watch(e3b, at(12, 0))
+    gave_up = [m for lv, m in _said if lv == _logging.WARNING and "不再重试" in m]
+    check("one WARNING says the timeout alarm was given up", len(gave_up), 1)
+    check("it names the script and the time", bool(gave_up) and "OK-WW 11:20" in gave_up[0], True)
+    _said.clear()
+    run_watch(e3b, at(12, 1))
+    check("not said again", [m for lv, m in _said if "不再重试" in m], [])
+    check("a stale line read fresh from app.log is still dropped quietly",
+          runwatch.check_timeouts(e3b, [runwatch.Timeout(at(9, 0), "MAA", "进程超时")], at(12, 0)), [])
+    check("... with no WARNING", [m for lv, m in _said if "不再重试" in m], [])
+finally:
+    runwatch.log.removeHandler(_h)
+
 print("\n[app.log rotated (AUTO-MAS restarted): read from the start again]")
 write_log(0)
 e4 = build()
