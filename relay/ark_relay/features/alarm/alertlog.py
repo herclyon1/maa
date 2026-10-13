@@ -12,6 +12,9 @@ One JSON object per line, exactly these fields (empty string when unknown):
     title, text   what was pushed, verbatim
     version       the relay code version that sent it (StateStore versions/code)
     evidence_run  the run id (<date>/<user>/<stem>) the alarm names, else ""
+    channel       the channel(s) that took it, as notify names them (企业微信机器人 /
+                  Server酱 / 企业微信, joined by 、), else "". Rows written before
+                  2026-10-13 have no such field; read it with .get("channel", "")
 
 How it gets there. The line is first appended to state/alerts/<day>.jsonl on
 the caller's thread (a local write, so nothing is lost when the process dies
@@ -47,7 +50,7 @@ log = logging.getLogger("ark.alertlog")
 
 BEIJING = timezone(timedelta(hours=8))
 PREFIX = "alerts"
-FIELDS = ("ts", "game", "title", "text", "version", "evidence_run")
+FIELDS = ("ts", "game", "title", "text", "version", "evidence_run", "channel")
 TIMEOUT = 15
 KEEP_DAYS = 7          # local day files kept once they are on COS
 _DAY = re.compile(r"^\d{8}$")
@@ -97,13 +100,15 @@ def run_of(title: str, text: str) -> str:
     return "/".join(m.groups()) if m else ""
 
 
-def row(title: str, text: str, version: str = "", now: "datetime | None" = None) -> dict:
+def row(title: str, text: str, version: str = "", now: "datetime | None" = None,
+        channel: str = "") -> dict:
     return {"ts": beijing(now).strftime("%Y-%m-%d %H:%M:%S"),
             "game": game_of(title, text),
             "title": str(title or ""),
             "text": str(text or ""),
             "version": str(version or ""),
-            "evidence_run": run_of(title, text)}
+            "evidence_run": run_of(title, text),
+            "channel": str(channel or "")}
 
 
 class AlertLog:
@@ -147,9 +152,10 @@ class AlertLog:
         from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
         atomic_write_text(self._mark_path(day), json.dumps(mark))
 
-    def record(self, title: str, text: str, version: str = "", now: "datetime | None" = None) -> str:
+    def record(self, title: str, text: str, version: str = "", now: "datetime | None" = None,
+               channel: str = "") -> str:
         """Append one line to the day file; returns the Beijing day 'YYYYMMDD'."""
-        entry = row(title, text, version, now)
+        entry = row(title, text, version, now, channel)
         day = entry["ts"][:10].replace("-", "")
         line = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
         with self._lock:
@@ -255,9 +261,10 @@ class AlertLog:
         t.start()
         return t
 
-    def copy(self, title: str, text: str, version: str = "", now: "datetime | None" = None):
+    def copy(self, title: str, text: str, version: str = "", now: "datetime | None" = None,
+             channel: str = ""):
         """Keep the line, then send the day to COS on a thread. -> that thread or None."""
-        self.record(title, text, version, now)
+        self.record(title, text, version, now, channel)
         return self.flush_async()
 
 

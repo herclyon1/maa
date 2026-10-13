@@ -473,24 +473,26 @@ class Notifier:
             self._mac = macpush.for_config(self._cfg)
         return self._mac
 
-    def _copy_alarm(self, title: str, body: str) -> None:
+    def _copy_alarm(self, title: str, body: str, delivered: "list[str] | tuple" = ()) -> None:
         """Keep a delivered group alarm in COS alerts/<day>.jsonl (alertlog.py) and
         POST the same row to the Mac (macpush.py).
 
         The network parts run on threads of their own; never raises. Only delivered
         alarms are copied: an undelivered one is retried by its caller every tick.
-        One `now` for both, so the Mac gets the very row COS has."""
+        One `now` for both, so the Mac gets the very row COS has. `delivered` (the
+        channels _fan_out reports as having taken it) becomes the row's channel."""
         from datetime import datetime, timezone  # noqa: PLC0415
         now = datetime.now(timezone.utc)
         version = ""
+        channel = "、".join(delivered)
         try:
             version = str(self._store().get("versions", "code") or "")
-            self.alert_log().copy(title, body, version, now)
+            self.alert_log().copy(title, body, version, now, channel)
         except Exception:   # the copy must never break the alarm path
             log.warning("报警没能抄一份到本地/COS", exc_info=True)
         try:
             from ark_relay.features.alarm import alertlog  # noqa: PLC0415
-            self.mac_push().push(alertlog.row(title, body, version, now))
+            self.mac_push().push(alertlog.row(title, body, version, now, channel))
         except Exception:   # nor may the push to the Mac
             log.warning("报警没能直送 Mac", exc_info=True)
 
@@ -573,7 +575,7 @@ class Notifier:
             log.error("通知一条渠道都没送到：%s ｜ 标题：%s", "；".join(errs), title)
             return errs
         if route == "group":
-            self._copy_alarm(title, body)
+            self._copy_alarm(title, body, delivered)
         if failed and not self._announcing:
             self._announce_outage(failed, delivered)
         elif failed:
@@ -593,7 +595,7 @@ class Notifier:
                                           stop_on_first=True)
         self._last.delivered = tuple(delivered)
         if delivered:
-            self._copy_alarm(title, body)
+            self._copy_alarm(title, body, delivered)
             return []
         errs = [f"{n}: {e}" for n, e in failed.items()] or ["企业微信机器人没开"]
         log.error("群通知没送到：%s ｜ 标题：%s", "；".join(errs), title)
@@ -622,7 +624,7 @@ class Notifier:
         finally:
             self._announcing = False
         if sent:
-            self._copy_alarm(title, "\n".join(lines))
+            self._copy_alarm(title, "\n".join(lines), sent)
         # The log line for each refusal. When the notice above reached the group
         # robot, errwatch does not push the line again (one fault, one push: this send).
         from ark_relay.features.alarm import errwatch  # noqa: PLC0415

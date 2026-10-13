@@ -94,10 +94,10 @@ END_BODY = texts.unresolved_head("终末地", "早班", "补跑也没成", "基�
                                  "https://ark-1250000000.cos.ap-shanghai.myqcloud.com/"
                                  "2026-10-05_endfield_MaaEnd-07-30-14/MaaEnd.zip")
 
-print("[一行正好六个字段；ts 是北京时间，从 UTC 算，机器在东京也一样]")
+print("[一行正好七个字段；ts 是北京时间，从 UTC 算，机器在东京也一样]")
 at = datetime(2026, 10, 5, 14, 39, 0, tzinfo=timezone.utc)          # Beijing 22:39, Tokyo 23:39
 r = alertlog.row(texts.ROUND_INCOMPLETE, WW_BODY, "20261005153900", now=at)
-check("字段", list(r), ["ts", "game", "title", "text", "version", "evidence_run"])
+check("字段", list(r), ["ts", "game", "title", "text", "version", "evidence_run", "channel"])
 check("北京时间", r["ts"], "2026-10-05 22:39:00")
 check("鸣潮认得出", r["game"], "鸣潮")
 check("运行编号", r["evidence_run"], "2026-10-05/wuwa/OK-WW-05-39-25")
@@ -144,7 +144,7 @@ al.copy(texts.ROUND_INCOMPLETE, WW_BODY, "1", now=AT_TODAY).join(3)
 al.copy(texts.unresolved("终末地", "早班"), END_BODY, "1", now=AT_TODAY).join(3)
 got = lines(cos, KEY_TODAY)
 check("两行都在、顺序对", [x["title"] for x in got], [texts.ROUND_INCOMPLETE, texts.unresolved("终末地", "早班")])
-check("每行都是这六个字段", all(list(x) == list(alertlog.FIELDS) for x in got))
+check("每行都是 FIELDS 那几个字段", all(list(x) == list(alertlog.FIELDS) for x in got))
 check("本地也有这一天", (TMP / "s1" / "alerts" / f"{DAY_TODAY}.jsonl").exists())
 
 print("\n[COS 写不进：行留在本地、只记一条 WARNING；下一条报警把前面的一起补上]")
