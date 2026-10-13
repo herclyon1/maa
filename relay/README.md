@@ -24,7 +24,7 @@ Shared parts are in `ark_relay/core/`, each feature in `ark_relay/features/<name
 
 | File | Responsibility |
 |---|---|
-| `service.py` | Windows service host: answers the SCM, runs the boot stages, then hands over to the main loop |
+| `service.py` | the boot sequence's order (`ArkRelayService.main`) and the stop handling (`SvcStop`, `SvcShutdown`), which the app host (app_main.py) reuses; its Windows-service host (`SvcDoRun`, `install`) is no longer installed on the machine (old service removed 2026-10-11) |
 | `mainloop.py` + `dirwatch.py` / `day_roll.py` / `automas_keeper.py` (features/host/) | the main loop (wait for an event or the alarm clock, run tick) / AUTO-MAS history-directory change notifications / local midnight: put back the day's queue-command skips / keep the AUTO-MAS backend alive (handle, revival with backoff, alert after repeated failures) |
 | `procwatch.py` + `wmi_subscription.py` / `wmi_diag.py` (features/host/) | the python.exe start listener that wakes the loop / its cancellable asynchronous WMI subscription / what is logged when it drops (winmgmt PID and hosts, SCM events, HRESULT) |
 | `automas_procs.py` / `shutdown_signs.py` (features/host/) | the AUTO-MAS processes as tasklist and OpenProcess see them / is the machine going down (the relay's own power-off, the System log's 1074 / 1075) |
@@ -89,7 +89,7 @@ Shared parts are in `ark_relay/core/`, each feature in `ark_relay/features/<name
 ```bash
 python -m ark_relay check      # self-test
 python -m ark_relay test       # send one test message
-python -m ark_relay local      # foreground; production uses service.py
+python -m ark_relay local      # foreground; production runs app_main.py (scheduled task \ArkRelay\main)
 ```
 
 Configuration is environment variables or `relay/.env`; the list is in

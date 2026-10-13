@@ -219,6 +219,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         logging.getLogger("ark.service").warning(
             "停止前那份状态 %.0f 秒还没发完，中继不再等，手机上可能还是上一份状态", STOP_PUSH_WAIT_S)
 
+    # Not run by the installed relay (app_main.py hosts main and does this ending itself); called by tests/test_mc_system_fixes.py and tests/test_stop_push_watchdog.py.
     def SvcDoRun(self):  # noqa: N802 - name required by the framework
         servicemanager.LogMsg(
             servicemanager.EVENTLOG_INFORMATION_TYPE,
@@ -334,6 +335,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         _loop(self, cfg, engine, notifier, inbox, collect, deferred, log)
 
 
+# Not run by the installed relay; scripts/ci/package_switch_smoke.py runs `service.py install` to stage the old service.
 if __name__ == "__main__":
     if len(sys.argv) == 1:
         # Launched by the SCM rather than from a shell.

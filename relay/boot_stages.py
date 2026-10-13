@@ -422,6 +422,7 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
         log.exception("启动时贴 OK-WW 补丁失败，服务照常继续")
 
 
+# The installed relay runs app_main._packaged_selfupdate instead (app_main.py swaps it in); this body runs in tests/test_selfupdate_exit.py.
 def _stage_selfupdate(log) -> bool:
     """Pull new code; when something really updated, trigger a restart and return True so the caller exits at once."""
     try:
