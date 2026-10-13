@@ -147,6 +147,47 @@ def _fresh(self):
 check("正文对得上就照贴", Upstream().still_here(), "对得上就贴")
 check("没有被跳过的", ns["_skipped"], [])
 
+print("\n[the gate compares call shapes: a copy that does not take upstream's parameters is not bound]")
+
+
+class Up2:
+    def run(self, retries=3):
+        return f"upstream {retries}"
+
+    def pick(self, box, *, near=None):
+        return "upstream pick"
+
+    def free(self, *a, **kw):  # how the test fakes look: no constraint from upstream
+        return "upstream free"
+
+
+def gate(name, fn):
+    ns["_applied"].clear()
+    ns["_skipped"].clear()
+    ns["override"](Up2, name)(fn)
+    return list(ns["_applied"]), [x["why"] for x in ns["_skipped"]]
+
+
+# The 10-13 case: v3.7.4 retries with self.run(retries - 1); a run(self) copy made that a TypeError.
+applied, why = gate("run", lambda self: "ours")
+check("ours run(self) vs upstream run(self, retries=3): not bound", applied, [])
+check("listed as skipped, naming the parameter", len(why) == 1 and "参数变了" in why[0] and "retries" in why[0], True)
+check("upstream's own run left in place", Up2().run(2), "upstream 2")
+applied, _ = gate("run", lambda self, *a, **kw: "wrapper")
+check("a (self, *a, **kw) wrapper is bound", applied, ["Up2.run"])
+applied, _ = gate("run", lambda self, retries=3: "same")
+check("the same shape is bound", applied, ["Up2.run"])
+applied, why = gate("pick", lambda self, b, *, near=None: "renamed")
+check("a renamed parameter (box -> b) is not bound: callers may pass box=", applied, [])
+applied, why = gate("pick", lambda self, box: "no near")
+check("a dropped keyword-only parameter is not bound", applied, [])
+applied, why = gate("pick", lambda self, box, extra, *, near=None: "needs more")
+check("ours requiring a parameter upstream lacks is not bound", applied, [])
+applied, _ = gate("run", lambda self, retries: "required")
+check("ours requiring what upstream leaves optional is not bound", applied, [])
+applied, _ = gate("free", lambda self: "plain")
+check("upstream *a/**kw constrains nothing (the fakes' shape)", applied, ["Up2.free"])
+
 print("\n[体力读数：数/数 没读到是「没读到」，不是 0]")
 parse = ns["_parse_stamina"]
 # The strip as OCR reads it on the 2026-09-21 screenshots (10-20-43.029 and two more):

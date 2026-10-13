@@ -56,12 +56,60 @@ def _src_sha(fn) -> str:
         return ""
 
 
+def _sig_mismatch(old, fn) -> str:
+    """Why `fn` cannot stand in for upstream's `old` by call shape, or '' when it can.
+
+    Upstream's callers call with upstream's parameters (v3.7.4 FarmEchoTask.run
+    retries with self.run(retries - 1)); a copy that does not take them turns
+    every such call into a TypeError. So every parameter upstream names must be
+    taken by ours (by position and by name), and ours may not require one that
+    upstream leaves optional or does not have. Upstream's own *args / **kwargs
+    say nothing about what callers pass, so they constrain nothing; ours may be a
+    (self, *a, **kw) wrapper. A signature that cannot be read is not checked.
+    """
+    try:
+        up = list(inspect.signature(old).parameters.values())
+        ours = list(inspect.signature(fn).parameters.values())
+    except (TypeError, ValueError):
+        return ""
+    P = inspect.Parameter
+    positional = (P.POSITIONAL_ONLY, P.POSITIONAL_OR_KEYWORD)
+    ours_pos = [q for q in ours if q.kind in positional]
+    ours_names = {q.name for q in ours if q.kind in (P.POSITIONAL_OR_KEYWORD, P.KEYWORD_ONLY)}
+    ours_star = any(q.kind == P.VAR_POSITIONAL for q in ours)
+    ours_kw = any(q.kind == P.VAR_KEYWORD for q in ours)
+    up_pos = [q for q in up if q.kind in positional]
+    up_star = any(q.kind == P.VAR_POSITIONAL for q in up)
+    up_kw = any(q.kind == P.VAR_KEYWORD for q in up)
+    gaps = []
+    for i, q in enumerate(up_pos):
+        if i >= len(ours_pos) and not ours_star:
+            gaps.append(f"不收第 {i + 1} 个参数 {q.name}")
+        elif q.kind == P.POSITIONAL_OR_KEYWORD and q.name not in ours_names and not ours_kw:
+            gaps.append(f"不收按名字传的 {q.name}")
+    for q in up:
+        if q.kind == P.KEYWORD_ONLY and q.name not in ours_names and not ours_kw:
+            gaps.append(f"不收按名字传的 {q.name}")
+    for i, q in enumerate(ours_pos):
+        if q.default is P.empty and not up_star and (i >= len(up_pos) or up_pos[i].default is not P.empty):
+            gaps.append(f"要求上游可不传的 {q.name}")
+    up_names = {q.name: q for q in up}
+    for q in ours:
+        if q.kind == P.KEYWORD_ONLY and q.default is P.empty and not up_kw and (
+                q.name not in up_names or up_names[q.name].default is not P.empty):
+            gaps.append(f"要求上游可不传的 {q.name}")
+    if not gaps:
+        return ""
+    return f"上游参数变了（上游 {inspect.signature(old)}，我们 {inspect.signature(fn)}：{'；'.join(gaps)}）"
+
+
 def override(cls, name, *, expect_sha=None, adapt=False):
     """Rebind `cls.name`, but only when upstream still looks the way we think.
 
     `expect_sha` is for a method we copied wholesale: when upstream's own source
     changes, our copy is stale by definition and applying it would quietly undo
-    their fix. Without it, the check is just that the attribute exists.
+    their fix. Without it, the check is that the attribute exists and that ours
+    takes the parameters upstream's callers pass (_sig_mismatch).
 
     `adapt=True` is for the one copy whose job is a standing order rather than a
     fix: find_nest carries 「only 落渊南丘」, and skipping it hands the run to
@@ -77,6 +125,10 @@ def override(cls, name, *, expect_sha=None, adapt=False):
             return fn
         if why := getattr(fn, "_ark_refused", ""):
             # The copy itself said it cannot work against this upstream (see refuse()).
+            _skipped.append({"what": label, "why": why})
+            return fn
+        if why := _sig_mismatch(old, fn):
+            # Bound, every upstream call with its own parameters would be a TypeError.
             _skipped.append({"what": label, "why": why})
             return fn
         if expect_sha:
