@@ -139,8 +139,8 @@ var
 begin
   if CurStep <> ssPostInstall then
     exit;
-  // From here switch.py install owns the outcome: on failure it goes back to the old
-  // relay itself, and a resume on top would start the new watchdog next to it.
+  // From here switch.py install owns the outcome: on failure it switches the new relay
+  // on again itself, so no resume is needed on top.
   StoppedForUpgrade := False;
   // An installer older than the code the updater already brought in must not roll it
   // back: keep the newer version folder current.
@@ -150,7 +150,9 @@ begin
   Args := 'install "--user=' + GetUserNameString() + '"';
   if ExpandConstant('{param:SKIPHANDOVER|0}') = '1' then
     Args := Args + ' --skip-handover';
-  // switch.py has already gone back to the old relay when it fails (switch.py revert).
+  // When it fails, switch.py has already switched the same new relay on again as it is
+  // (there is no old relay any more); the way back to the version before is
+  // launch.py rollback.
   Rc := RunSwitch(Args);
   SwitchFailed := Rc <> 0;
   if SwitchFailed and not WizardSilent() then
@@ -160,7 +162,10 @@ begin
              '先撤掉老中继再装。原因写在 C:\ProgramData\ark-relay\switch.log 里。',
              mbError, MB_OK)
     else
-      MsgBox('新中继没有切换成功，已经退回老中继继续跑。原因写在安装日志里。',
+      MsgBox('新中继没有装好，已经把它按原样重新打开（看门服务会接着重试，起不来会在群里报）。' +
+             '要退回上一个版本，运行：' + #13#10 + '"' + ExpandConstant('{#Py}') + '" "' +
+             ExpandConstant('{app}\launch.py') + '" rollback' + #13#10 +
+             '原因写在 C:\ProgramData\ark-relay\switch.log 里。',
              mbError, MB_OK);
 end;
 

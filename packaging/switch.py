@@ -12,14 +12,17 @@
                                                      that could not be copied)
 
 The rule for all of them: whichever step fails, the machine is left with a relay that
-runs - the new one or the old one.
+runs.
 
 install: refuse while the old relay is present (below) -> hand AUTO-MAS its jobs
 (relay/handover/automas_handover.py: plan must pass, then apply) -> register the logon task -> register and start the watchdog
 -> start the relay (with someone at the console: running within 60 s and still 15 s
-later, else a failure;
-nobody there: the watchdog starts it at logon). If any step fails, everything is reverted (as `revert`) and the old
-relay is switched back on; exit code 1, and the installer exits non-zero too.
+later, else a failure; nobody there: the watchdog starts it at logon). If any step after
+the old-relay check fails, the same new relay is switched back on as it is (watchdog and
+task enabled and started; the watchdog keeps retrying it and alerts), AUTO-MAS's
+settings stay handed over, and the way back to the version before is `launch.py
+rollback`. Exit code 1, and the installer exits non-zero too and says so (since
+e1033fb1; before, this switched the old relay back on).
 --skip-handover is for a machine without AUTO-MAS (the cloud test).
 
 The old relay (service ark-relay) was retired on 2026-10-11 (scripts/windows/retire_legacy.py,
@@ -311,12 +314,12 @@ def revert() -> int:
     return 6
 
 
-def _back_to_old_after_failed_install() -> None:
+def _switch_back_on_after_failed_install() -> None:
     """The switch-over failed part way: there is no old relay to switch on, so the new
     one is switched on again as it is (the watchdog retries it and alerts), AUTO-MAS's
     settings stay handed over, and the way back is the previous version folder."""
-    print("old relay retired: the new relay is switched on again as it is; go back "
-          f'with "{PY}" "{APP / "launch.py"}" rollback')
+    print("no old relay to go back to (retired): the new relay is switched on again as it "
+          f'is; the way back to the version before is "{PY}" "{APP / "launch.py"}" rollback')
     _switch_on_new()
 
 
@@ -337,8 +340,8 @@ def install(user: str, skip_handover: bool) -> int:
     if not skip_handover:
         if run(PY, HANDOVER, "plan", "--state-dir", STATE) != 0 or \
                 run(PY, HANDOVER, "apply", "--state-dir", STATE) != 0:
-            print("AUTO-MAS handover failed: putting its settings back and the old relay back on")
-            _back_to_old_after_failed_install()
+            print("AUTO-MAS handover failed: the new relay is switched on again as it is")
+            _switch_back_on_after_failed_install()
             return 1
     steps = [
         lambda: register_task(user),
@@ -350,13 +353,13 @@ def install(user: str, skip_handover: bool) -> int:
     ]
     for step in steps:
         if step() != 0:
-            print("switch-over failed after the handover: reverting to the old relay")
-            _back_to_old_after_failed_install()
+            print("switch-over failed after the handover: the new relay is switched on again as it is")
+            _switch_back_on_after_failed_install()
             return 1
     # The task runs only in the user's logon session. Nobody at the console yet (Setup
     # over RDP, a fresh boot, the cloud test) is a normal state: the watchdog runs the
     # task once someone logs on. With someone there, the new relay must really come
-    # up (its mutex), or the old one goes back on - a machine without a working relay
+    # up (its mutex), or the installer says so - a machine without a working relay
     # would otherwise wait for the watchdog's third failed start to say so.
     try:
         at_console = _console_session_user()
@@ -380,9 +383,9 @@ def install(user: str, skip_handover: bool) -> int:
             print(f"relay came up and was gone again within {STEADY_S} s")
         time.sleep(2)
     print(f"relay not running steadily {START_WAIT_S} s after the start (schtasks /run "
-          f"{'ok' if started else 'failed'}, {at_console} at the console): reverting "
-          "to the old relay")
-    _back_to_old_after_failed_install()
+          f"{'ok' if started else 'failed'}, {at_console} at the console): switched on "
+          "again as it is; the way back to the version before is launch.py rollback")
+    _switch_back_on_after_failed_install()
     return 1
 
 

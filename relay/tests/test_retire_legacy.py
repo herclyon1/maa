@@ -361,7 +361,7 @@ try:
         check("revert names launch.py rollback", "launch.py" in out and "rollback" in out, True)
     steps.clear()
     legacy.old_relay_present = lambda: False
-    switch._back_to_old_after_failed_install()
+    switch._switch_back_on_after_failed_install()
     check("a failed upgrade switches the new relay on again, nothing else", steps,
           ["switch on new"])
 
