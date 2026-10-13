@@ -108,4 +108,22 @@ jobs:
         # test_order_push_main is left out for good: it runs scripts/mac/order.sh, which
         # only ever runs on the Mac (the order inbox is written from the Mac, never from
         # the game machine), and the Mac gate in deploy-relay.sh runs it on every deploy.
-        run: scripts/ci/relay-tests.sh --exclude test_need_table.py --exclude test_order_push_main.py
+        # The same holds for these: each tests a tool that only ever runs on the Mac
+        # (run 38360295330 had all six red):
+        #   test_order_now_confirmed - scripts/mac/order-now.sh;
+        #   test_estop_layout        - scripts/mac/estop.sh (fake ssh / curl on PATH);
+        #   test_deploy_smoke_gate   - deploy-relay.sh's smoke-gate block, run in bash;
+        #   test_deploy_pkg_bash32   - deploy-pkg.sh under macOS /bin/bash 3.2 (none here);
+        #   test_techlog_tool        - scripts/mac/techlog.py (shlex-splits its winrun
+        #                              command) and scripts/mac/winrun.sh;
+        #   test_tool_refs           - the lint tools under scripts/mac/lib/ and ff-toplevel.sh.
+        run: >-
+          scripts/ci/relay-tests.sh
+          --exclude test_need_table.py
+          --exclude test_order_push_main.py
+          --exclude test_order_now_confirmed.py
+          --exclude test_estop_layout.py
+          --exclude test_deploy_smoke_gate.py
+          --exclude test_deploy_pkg_bash32.py
+          --exclude test_techlog_tool.py
+          --exclude test_tool_refs.py
