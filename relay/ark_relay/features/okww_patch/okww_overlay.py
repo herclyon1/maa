@@ -214,15 +214,26 @@ def nest_source_pristine(okww_dir) -> "tuple[bool, str]":
 # anything runs.
 _PIN = re.compile(r'@override\((\w+), "(\w+)", expect_sha=(_\w+)(, adapt=True)?\)')
 _SHA_CONST = re.compile(r'^(_\w+) = "([0-9a-f]{12})"', re.M)
+# The copies that check their fingerprint themselves instead of through expect_sha
+# (claim_daily, claim_battle_pass: on a mismatch they hand the call to upstream's
+# body), written as
+#     claim = DailyTask.claim_battle_pass
+#     sha = _src_sha(claim)
+#     if sha != _BATTLE_PASS_SHA:
+# Without this the pre-run drift check missed them (audit 2026-10-13, A3).
+_SELF_PIN = re.compile(r'^\s*(\w+) = (\w+)\.(\w+)\s*\n\s*(\w+) = _src_sha\(\1\)\s*\n\s*if \4 != (_\w+):', re.M)
 # All of src/: the bases are spread over it (CombatCheck lives in src/combat/).
 _SRC = ("data", "apps", "ok-ww", "working", "src")
 
 
 def pins(text: str | None = None) -> list[tuple[str, str, str, bool]]:
-    """(class, method, pinned sha, adapts) for every pinned override in the overrides file."""
+    """(class, method, pinned sha, adapts) for every pinned override in the overrides file:
+    the expect_sha= ones, then the ones that check their own fingerprint (never adapted)."""
     text = source_text() if text is None else text
     consts = dict(_SHA_CONST.findall(text))
-    return [(c, m, consts.get(k, ""), bool(a)) for c, m, k, a in _PIN.findall(text)]
+    out = [(c, m, consts.get(k, ""), bool(a)) for c, m, k, a in _PIN.findall(text)]
+    out += [(c, m, consts.get(k, ""), False) for _v, c, m, _s, k in _SELF_PIN.findall(text)]
+    return out
 
 
 def _classes(src_dir: Path) -> dict:

@@ -48,6 +48,22 @@ check("find_nest 钉 v3.7.3，且会适配", got.get("NightmareNestTask.find_nes
 check("周本开启挑战钉住，不适配", got.get("FarmEchoTask.click_team_challenge", ("", None))[1], False)
 check("体力读数钉住", "BaseWWTask.get_stamina" in got)
 
+print("\n[the two copies that check their own fingerprint are pinned too (audit 2026-10-13, A3)]")
+# claim_daily and claim_battle_pass compare _src_sha with a constant inside the
+# overrides instead of through expect_sha=; until 10-13 pins() read only the
+# expect_sha= form, so the pre-run drift check covered 3 of 5.
+check("five pins in all", len(okww_overlay.pins()), 5)
+check("claim_daily pinned to v3.7.4, not adapted", got.get("DailyTask.claim_daily"), ("2b4977b62f7c", False))
+check("claim_battle_pass pinned to v3.7.4, not adapted",
+      got.get("DailyTask.claim_battle_pass"), ("e9e8d67cb3bc", False))
+DAILY374 = (Path(__file__).resolve().parent / "fixtures"
+            / "okww-DailyTask-v3.7.4.py.txt").read_text(encoding="utf-8")
+check("upstream v3.7.4 DailyTask on disk: no drift",
+      okww_overlay.drift(okww(V373, {"DailyTask.py": DAILY374})), [])
+changed = DAILY374.replace("    def claim_daily(self):\n", "    def claim_daily(self):\n        pass\n", 1)
+d = okww_overlay.drift(okww(V373, {"DailyTask.py": changed}))
+check("a changed claim_daily is found before the run", [x["what"] for x in d], ["DailyTask.claim_daily"])
+
 print("\n[v3.7.3 在盘上：对得上，不出声]")
 check("没有对不上的", okww_overlay.drift(okww(V373)), [])
 check("一句话都不说", okww_overlay.drift_line(okww(V373), tmpdir()), "")
