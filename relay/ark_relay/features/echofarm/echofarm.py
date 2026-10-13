@@ -297,7 +297,7 @@ UNREADABLE_SCRIPT = "OK-WW 脚本（查不到它还开没开着）"
 OKWW_SCRIPT = "OK-WW 脚本"
 
 
-def game_alive() -> "list[str]":
+def game_alive(timeout: "float | None" = None) -> "list[str]":
     """Which of the game's processes are still up, OK-WW's own python included.
     [] only when the desktop is clean.
 
@@ -305,6 +305,7 @@ def game_alive() -> "list[str]":
     so it is looked for by command line (preupdate_okww.okww_python_pids). Left
     out, a stop could report clean while OK-WW lived on and later wrote its
     in-memory config over the restored FarmEchoTask.json.
+    `timeout` bounds the PowerShell query (okww_python_pids); None is its guard.
     """
     try:
         out = subprocess.run(["tasklist"], capture_output=True, timeout=30).stdout
@@ -314,14 +315,16 @@ def game_alive() -> "list[str]":
                  type(exc).__name__, exc)
         return [UNREADABLE]
     from ark_relay.features.preupdate.preupdate_okww import okww_python_pids  # noqa: PLC0415 - preupdate_okww imports this module
-    pids = okww_python_pids()
+    pids = okww_python_pids(timeout)
     script = [UNREADABLE_SCRIPT] if pids is None else [OKWW_SCRIPT] if pids else []
     return [n for n in GAME_PROCS if n.lower() in low] + script
 
 
 # The whole stop-the-old-script step, PowerShell calls included: each list call may
 # otherwise run to its 60 s hang guard, and ten of them held a tick for ten minutes.
-# No timing behind it: the bound the 2026-10-13 review of this branch set ("about 15 s").
+# Measured on the game machine 2026-10-13 11:08 Beijing: okww_python_pids() took
+# 0.54, 0.39, 0.39, 0.41, 0.41 s (5 runs, OK-WW running, its real PID found), so
+# 15 s (the bound the review of this branch set) holds the stop and ~30 looks.
 STOP_SCRIPT_SECONDS = 15
 
 
@@ -386,22 +389,44 @@ def _kill_on_desktop(pids=()) -> None:
     subprocess.run(["schtasks", "/run", "/tn", STOP_TASK], capture_output=True)
 
 
-def stop_okww(sleep=time.sleep) -> str:
+# The whole wrap-up stop, PowerShell calls included. Before, the ten looks after the
+# desktop kill each ran a process query free to take its 60 s guard: one tick could
+# last over ten minutes. Measured on the game machine 2026-10-13 11:08 Beijing: that
+# query (okww_python_pids) took 0.39-0.54 s over 5 runs, so a normal stop - three
+# queries, the 2 s pause, ten one-second looks - fits in about 20 s; 60 s is that
+# with room, and what one query's hang guard alone allowed before.
+STOP_OKWW_SECONDS = 60
+
+
+def stop_okww(sleep=time.sleep, clock=time.monotonic) -> str:
     """End the farm and the game. '' when the desktop really is clean, otherwise a
-    line saying what is still up - saying 「已收工」 over a running game is a lie."""
+    line saying what is still up - saying 「已收工」 over a running game is a lie.
+
+    Bounded by STOP_OKWW_SECONDS: each PowerShell call gets only the time left (at
+    least one second), and the looks stop when it runs out. Out of time without a
+    clean look, the line says the game or the script may still be up. The taskkill
+    / tasklist / schtasks calls keep their own guards and are not cut short.
+    """
+    end = clock() + STOP_OKWW_SECONDS
+
+    def left() -> float:
+        return max(1.0, end - clock())
+
     subprocess.run(["schtasks", "/end", "/tn", TASK_NAME], capture_output=True)
-    from ark_relay.features.preupdate.preupdate_okww import _okww_quiesce  # noqa: PLC0415
-    _okww_quiesce()
-    if not game_alive():
+    from ark_relay.features.preupdate.preupdate_okww import _okww_quiesce, okww_python_pids  # noqa: PLC0415
+    _okww_quiesce(sleep=sleep, left=left)
+    still = game_alive(left())
+    if not still:
         return ""
-    from ark_relay.features.preupdate.preupdate_okww import okww_python_pids  # noqa: PLC0415
-    _kill_on_desktop(pids=okww_python_pids() or ())
+    _kill_on_desktop(pids=okww_python_pids(left()) or ())
     for _ in range(10):
-        left = game_alive()
-        if not left:
+        if clock() >= end:
+            return texts.echo_farm_stop_unconfirmed(still)
+        still = game_alive(left())
+        if not still:
             return ""
         sleep(1)
-    return texts.echo_farm_game_left(game_alive())
+    return texts.echo_farm_game_left(still)
 
 
 def _truth(cfg, working: Path) -> dict:

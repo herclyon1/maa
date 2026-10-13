@@ -870,6 +870,12 @@ def echo_farm_game_left(names: list[str]) -> str:
     return "；**游戏没关掉（" + "、".join(names) + "），已交给我们这边去关**"
 
 
+def echo_farm_stop_unconfirmed(names: list[str]) -> str:
+    """echofarm.stop_okww: its time ran out before a look found the desktop clean."""
+    return ("；**到时间还没确认关干净，最后一次看还开着的是：" + "、".join(names)
+            + "，已交给我们这边去关**")
+
+
 def echo_farm_progress(n: "int | None") -> str:
     """echofarm._finish: how many progress lines (a fight, an echo picked up, back in
     the realm) OK-WW logged during the farm; None when the log could not be read."""
