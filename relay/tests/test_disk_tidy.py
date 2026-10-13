@@ -368,5 +368,15 @@ items = dt.rule_old_gradle(nobrew, ctx)
 check("unknown Gradle version in use: nothing goes",
       sorted({i.keep for i in items}), ["cannot tell which Gradle version is in use"])
 
+# 10-13 23:30 the tool uninstalled swift 6.4.0 while the Android SDK bundle built for it was
+# installed, and the App's Android build stopped. A toolchain an SDK bundle needs stays.
+write(HOME / ".swiftly/config.json", json.dumps({"inUse": "6.4.1", "installedToolchains": ["6.4.1", "6.4.0"]}))
+write(HOME / "Library/Developer/Toolchains/swift-6.4.0-RELEASE.xctoolchain/usr/bin/swift")
+write(HOME / "Library/org.swift.swiftpm/swift-sdks/swift-6.4.0-RELEASE_android.artifactbundle/info.json")
+items = {i.path.rsplit("/", 1)[-1]: i for i in dt.rule_old_swift_toolchains(env, ctx)}
+check("a toolchain an installed Swift SDK needs is kept",
+      (items["swift-6.4.0-RELEASE.xctoolchain"].action, items["swift-6.4.0-RELEASE.xctoolchain"].keep),
+      ("rm", "needed by the Swift SDK swift-6.4.0-RELEASE_android.artifactbundle"))
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

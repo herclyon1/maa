@@ -190,6 +190,8 @@ class Env:
         self.dd = h / "Library/Developer/Xcode/DerivedData"
         self.toolchains = h / "Library/Developer/Toolchains"
         self.gradle, self.swiftly_cfg = h / ".gradle", h / ".swiftly/config.json"
+        # Swift SDK bundles (`swift sdk install`), e.g. swift-6.4.0-RELEASE_android.artifactbundle.
+        self.swift_sdks = (h / "Library/org.swift.swiftpm/swift-sdks", h / ".swiftpm/swift-sdks")
         self.sessions, self.projects = h / ".claude/sessions", h / ".claude/projects"
         self.hooks, self.ref_tools = h / ".claude/hooks", h / "Money/styl-work/remote-ref/tools"
         self.log, self.lock = h / "Library/Logs/disk-tidy.log", h / "Library/Logs/disk-tidy.lock"
@@ -716,10 +718,29 @@ def rule_old_gradle(env: Env, ctx: Ctx) -> list[Item]:
     return items
 
 
+def sdk_toolchain_versions(env: Env) -> dict[str, str]:
+    """Toolchain version -> the installed Swift SDK bundle that builds only with it. A bundle
+    named swift-6.4.0-RELEASE_android needs the 6.4.0 toolchain: 10-13 23:30 this tool removed
+    6.4.0 as unused and Skip's Android build stopped with "No Swift Toolchain matching version
+    6.4.0 for SDK version 6.4.0"."""
+    found = {}
+    for root in env.swift_sdks:
+        try:
+            names = sorted(p.name for p in root.iterdir())
+        except OSError:
+            continue
+        for name in names:
+            if m := re.match(r"swift-(\d+\.\d+(?:\.\d+)?)-RELEASE_.*\.artifactbundle$", name):
+                found.setdefault(m.group(1), name)
+    return found
+
+
 def rule_old_swift_toolchains(env: Env, ctx: Ctx) -> list[Item]:
-    """Inventory row 8: swiftly toolchains other than the one swiftly has in use and not pinned by
-    any repo's .swift-version, with nothing open inside; removed by `swiftly uninstall`."""
+    """Inventory row 8: swiftly toolchains other than the one swiftly has in use, not pinned by
+    any repo's .swift-version and not needed by an installed Swift SDK bundle, with nothing open
+    inside; removed by `swiftly uninstall`."""
     rule, items = "old-swift-toolchain", []
+    sdks = sdk_toolchain_versions(env)
     try:
         cfg = json.loads(env.swiftly_cfg.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -736,6 +757,7 @@ def rule_old_swift_toolchains(env: Env, ctx: Ctx) -> list[Item]:
         why = ("swiftly has no toolchain in use" if not in_use else None) \
             or ("in use" if v == in_use else None) \
             or ("pinned by a .swift-version" if v in pins else None) \
+            or (f"needed by the Swift SDK {sdks[v]}" if v in sdks else None) \
             or (None if tc.is_dir() else "toolchain folder not found") \
             or guard(env, ctx, str(tc))
         items.append(keep(rule, str(tc), why) if why else
