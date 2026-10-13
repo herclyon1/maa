@@ -481,15 +481,17 @@ class _AllRecords(logging.Handler):
 
 def _retry(rounds, minutes=60):
     it = iter(rounds)
-    ticks = iter(range(100))
-    gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: next(it)(problems)
+    t = [_t0]                # each round takes 10 minutes; the clock reads, never advances
+    def _round(problems):
+        t[0] += _tdl(minutes=10)
+        return next(it)(problems)
+    gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: _round(problems)
     keep = _AllRecords()
     gu.log.addHandler(keep)
     pr: list = []
     try:
         ready, _ = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=minutes),
-                                           clock=lambda: _t0 + _tdl(minutes=10 * next(ticks)),
-                                           sleep=lambda s: None, problems=pr)
+                                           clock=lambda: t[0], sleep=lambda s: None, problems=pr)
     finally:
         gu.log.removeHandler(keep)
         gu._prepare_client = _orig_prep
@@ -510,9 +512,26 @@ _ready, _pr, _healed = _retry([lambda pr: (pr.append("终末地：更新后游�
 check("package not out yet, then updated: no red item (the expected wait)", (_ready, _pr, _healed), (True, [], []))
 _SHOT = "终末地：启动器画面没读到按钮（截图 x）：…"
 _ready, _pr, _healed = _retry([lambda pr: (pr.append(_CLICK), (False, ""))[1],
-                               lambda pr: (pr.append(_SHOT), (False, ""))[1]], minutes=5)
+                               lambda pr: (pr.append(_SHOT), (False, ""))[1]], minutes=15)
 check("not ready by the deadline: the earlier round's problem is reported too",
       (_ready, any(_CLICK in x for x in _pr), any(_SHOT in x for x in _pr), _healed), (False, True, True, []))
+
+print("[终末地：一轮更新等下载的时间不超过离截止还剩的时间（s18 F6）]")
+_budgets = []
+_saved_f6 = (gu.endfield_paths, gu.update_endfield)
+gu.endfield_paths = lambda d: (Path("Endfield.exe"), Path("Launcher.exe"))
+gu.update_endfield = lambda desk, g, l, budget_s=2400, problems=None, sleep=None: _budgets.append(budget_s) or ""
+try:
+    _t0 = _dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ)
+    _ready, _ = gu._prepare_until_ready(cfg, FakeDesk([["x"]]), "终末地", deadline=_t0 + _td(minutes=25),
+                                        clock=lambda: _t0, sleep=nosleep, problems=[])
+    check("离截止还剩 25 分钟：这一轮最多等 25 分钟", _budgets, [1500.0])
+    _budgets.clear()
+    gu._prepare_until_ready(cfg, FakeDesk([["x"]]), "终末地", deadline=_t0 + _td(hours=3),
+                            clock=lambda: _t0, sleep=nosleep, problems=[])
+    check("还剩 3 小时：照旧最多 40 分钟", _budgets, [2400.0])
+finally:
+    gu.endfield_paths, gu.update_endfield = _saved_f6
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
