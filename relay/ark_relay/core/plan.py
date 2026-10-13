@@ -719,6 +719,13 @@ def _asar_value_labels(automas_dir, state_dir) -> dict:
     return out
 
 
+# QueueConfig Info.AfterAccomplish (AUTO-MAS v5.7 models/config.py), labels from
+# its frontend i18n/locales/zh-CN.ts queue.action. NoAction says nothing.
+_AFTER_ZH = {"Shutdown": "关机", "ShutdownForce": "强制关机", "Reboot": "重启",
+             "Hibernate": "休眠", "Sleep": "睡眠", "KillSelf": "退出 AUTO-MAS",
+             "Logoff": "注销"}
+
+
 def next_plan(automas_dir: Path | None) -> str:
     """Human-readable summary of what will run next. '' if it cannot be read."""
     if not automas_dir:
@@ -782,8 +789,8 @@ def next_plan(automas_dir: Path | None) -> str:
             game = _GAME_OF.get(str(s.get("kind") or ""), "")
             lines.append(f"▸ {game}" if game else f"▸ {label}")
             lines += [f"　{b}" for b in bits]
-        if q["after"] == "Shutdown":
-            lines.append("⏻ 跑完自动关机")
+        if (act := _AFTER_ZH.get(q["after"] or "")):
+            lines.append(f"⏻ 跑完自动{act}")
         lines.append("")
     return "\n".join(lines)
 
