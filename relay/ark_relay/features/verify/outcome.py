@@ -104,6 +104,15 @@ STAMINA_FLAG_SAY = "不刷体力的标记还在"
 # already >= 100 means the dailies were finished before this run started, and OK-WW
 # only claims the rewards.
 _DAILY_POINTS = re.compile(r"info_set total daily points (\d+)")
+# open_daily's reading of the 180-waveplate daily task (upstream DailyTask.py:225-233).
+# Upstream farms only while it is under 180 and the points are under 100 (:88-89);
+# at 180 it skips the farm with no line of its own (:117-128).
+_DAILY_PROGRESS = re.compile(r"DailyTask:info_set current daily progress (\d+)")
+# The overlay's claim_daily then farms what upstream skipped (「刷到空」), saying so
+# first, and logs an error line when that farm raised (okww_files/ark_overrides.tasks.py
+# claim_daily_after_farm).
+_LEFTOVER_FARM = re.compile(r"DailyTask:(上游这趟不刷体力（[^）\n]*）)")
+_LEFTOVER_FAILED = re.compile(r"DailyTask:补刷体力出错，照常领日常奖励: ([^\n]*)")
 _DAILY_POINTS_TARGET = 100
 
 # The overlay's daily-chest lines (okww_files/ark_overrides.tasks.py DAILY_*): every
@@ -648,10 +657,30 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
         elif _STAMINA_SHORT.search(text):
             out.append(Check("刷体力", True, "体力不足，本来就没得刷"))
         else:
-            out.append(Check("刷体力", False, "既没进本，也没说体力不足"))
+            out.append(Check("刷体力", False, _no_farm_reason(text)))
 
     out.extend(_ended_failed_checks(text, out))
     return out
+
+
+def _no_farm_reason(text: str) -> str:
+    """Why no stamina was farmed when the log shows neither a fight nor 「not enough」.
+
+    Upstream's own gate skips the farm once the daily task reads 180/180 (DailyTask.py
+    :88-89, :117-128; audit 2026-10-13 item 22) and says nothing; the overlay's
+    claim_daily farms it anyway (the standing order 「刷到空」). The reason names which
+    of those happened instead of the bare 「既没进本，也没说体力不足」.
+    """
+    t = _task_lines(text)
+    if m := _LEFTOVER_FARM.search(t):
+        if e := _LEFTOVER_FAILED.search(t):
+            return f"{m.group(1)}，中继按「刷到空」补刷时出错：{without_screen_dump(e.group(1))}"
+        return f"{m.group(1)}，中继按「刷到空」补刷了，但既没进本，也没说体力不足"
+    progress = [int(x) for x in _DAILY_PROGRESS.findall(t)]
+    if progress and max(progress) >= 180:
+        return (f"上游读到每日波片任务已到 {max(progress)}/180，按它自己的规矩不刷体力；"
+                "中继「刷到空」的补刷没有跑到（日志里没有它那句）")
+    return "既没进本，也没说体力不足"
 
 
 def _ended_failed_checks(text: str, out: list[Check]) -> list[Check]:
