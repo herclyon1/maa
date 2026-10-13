@@ -143,6 +143,29 @@ PAGE = {3: ["本周剩余可收取次数：3/3_1.00", "x60_0.79"], 2: ["本周�
 UNREAD = ["x60_0.79"]
 
 
+class _At:
+    """An OCR box with a place on the 1920x1080 screen."""
+    def __init__(self, name, x, y):
+        self.name, self.x, self.y, self.width, self.height = name, x, y, 40, 30
+
+    def __str__(self):
+        # ok-script's Box repr as the 10-12 log prints it
+        return (f"Box(name='{self.name}', x={self.x}, y={self.y}, width={self.width}, "
+                f"height={self.height}, confidence=100)")
+
+
+def claim_screen(wave, spare, cap="240"):
+    """The claim dialog over the top bar (10-12 11:44:41: backup 24 at x=1208, y=50)."""
+    return [_At(str(spare), 1208, 50), _At(f"{wave}/{cap}", 1480, 50), _At("15652", 1800, 50),
+            _At(CLAIM_DIALOG[0], 700, 500), _At("取消", 640, 700), _At("确认", 1280, 700)]
+
+
+# The claim dialog with a readable bar: 240 full (「240/240+」, 0921-weekly.log:18), and
+# 41 + backup 24 (enough with the backup, 10-12 11:44 numbers moved up by 24).
+FULL = claim_screen(240, 0, cap="240+")
+TOPUP = claim_screen(41, 24)
+
+
 def task(left=None, pages=(), screens=(), after=(), dialogs=(), gems=0, arena_at=None, crystal=True,
          walk_error=None, claim_up=True, boss="Weekly Challenge"):
     t = object.__new__(FarmEchoTask)
@@ -167,6 +190,7 @@ def task(left=None, pages=(), screens=(), after=(), dialogs=(), gems=0, arena_at
         return []
     t.ocr = ocr
     t.box_of_screen = lambda x, y, to_x, to_y: (x, y)
+    t.height_of_screen = lambda r: r * 1080
     t.in_world = lambda: False
     t.in_team_and_world = lambda: t.arena_at is not None and t.reads_after >= t.arena_at
     t.log_info = lambda msg, notify=False: t.logs.append(msg)
@@ -231,7 +255,7 @@ def lap(t):
 
 
 print("[(E) 结晶按 F→领奖弹窗点确认（不按 ESC）→波片不够动用备用体力→确认→结算页「退出副本」→回去读到 2/3]")
-t = task(left=3, pages=[PAGE[2]], screens=[CLAIM_DIALOG, SETTLEMENT], gems=1)
+t = task(left=3, pages=[PAGE[2]], screens=[TOPUP, SETTLEMENT], gems=1)
 check("没停", lap(t), "on")
 claim = t.events[:t.events.index("click:退出副本") + 1]
 check("走去结晶、按 F、确认、备用体力两下、返回、再确认、点退出副本", claim,
@@ -251,13 +275,13 @@ check("没报错", t.errors, [])
 check("这次的读数记下当下一次的「领前」", t._ark_weekly_left, 2)
 
 print("\n[波片够、不弹补体力：确认一下就到结算页]")
-t = task(left=3, pages=[PAGE[2]], screens=[CLAIM_DIALOG, SETTLEMENT])
+t = task(left=3, pages=[PAGE[2]], screens=[FULL, SETTLEMENT])
 check("没停", lap(t), "on")
 check("确认一次就退出副本", t.events[:5], ["incr", "walk", "key:f", "confirm", "click:退出副本"])
 check("没碰备用体力", [e for e in t.events if e.startswith("rel:") or e == "back"], [])
 
 print("\n[周一一趟三次：3/3→2/3→1/3→0/3，最后那次只读数，0/3 不进本]")
-t = task(left=3, pages=[PAGE[2], PAGE[1], PAGE[0]], screens=[CLAIM_DIALOG, SETTLEMENT] * 3)
+t = task(left=3, pages=[PAGE[2], PAGE[1], PAGE[0]], screens=[FULL, SETTLEMENT] * 3)
 got = [lap(t), lap(t), lap(t)]
 check("前两圈接着打，第三圈领完停（有意跳过）", got, ["on", "on", "stop"])
 check("三次回读都对上", [m for m in t.logs if "回读确认" in m],
@@ -268,21 +292,6 @@ check("读到 0/3 退回主界面", t.events[-1], "main")
 check("说了已领满", "本周周本次数已领满（0/3），不进本，跳过" in t.logs)
 check("一次 ESC 都没按", "key:esc" in t.events, False)
 check("没报错", t.errors, [])
-
-class _At:
-    """An OCR box with a place on the 1920x1080 screen."""
-    def __init__(self, name, x, y):
-        self.name, self.x, self.y, self.width, self.height = name, x, y, 40, 30
-
-    def __str__(self):
-        return f"Box(name='{self.name}', x={self.x}, y={self.y})"
-
-
-def claim_screen(wave, spare):
-    """The claim dialog over the top bar (10-12 11:44:41: backup 24 at x=1208, y=50)."""
-    return [_At(str(spare), 1208, 50), _At(f"{wave}/240", 1480, 50), _At("15652", 1800, 50),
-            _At(CLAIM_DIALOG[0], 700, 500), _At("取消", 640, 700), _At("确认", 1280, 700)]
-
 
 def on_screen(t):
     t.height_of_screen = lambda r: r * 1080
@@ -312,14 +321,26 @@ t = on_screen(task(left=3, pages=[PAGE[2]], screens=[claim_screen(60, 0), SETTLE
 check("没停", lap(t), "on")
 check("确认一次就退出副本", t.events[:5], ["incr", "walk", "key:f", "confirm", "click:退出副本"])
 
-print("\n[顶栏读不出数：照旧去领（不拿猜的数拦），日志说没读到]")
-t = on_screen(task(left=3, pages=[PAGE[2]], screens=[[_At(CLAIM_DIALOG[0], 700, 500)], SETTLEMENT]))
-check("没停", lap(t), "on")
-check("点了确认", "confirm" in t.events)
-check("说了顶栏没读到", any(m.startswith("周本领奖：顶栏没读全") for m in t.logs))
+print("\n[the claim dialog's bar: 「240/240+」 (0921-weekly.log:18) reads as 240, backup 0]")
+check("240/240+", ns["_waveplates"](on_screen(task()), claim_screen(240, 0, cap="240+")), (240, 0))
+check("41/240", ns["_waveplates"](on_screen(task()), claim_screen(41, 24)), (41, 24))
+check("0/240+ with a backup of 136 (the level page, 10-05 22:17:31)",
+      ns["_waveplates"](on_screen(task()), claim_screen(0, 136, cap="240+")), (0, 136))
+t = task(left=3, pages=[PAGE[2]], screens=[FULL, SETTLEMENT])
+check("240/240+: not stopped", lap(t), "on")
+check("240/240+: the two values are in the log", "周本领奖：顶栏读到波片 240/240，备用 0" in t.logs)
+check("the claim line shows the /240 token", any(m.startswith("周本领奖：认出弹窗") and "240/240+" in m for m in t.logs))
 
-print("\n[顶栏没读到、备用体力用上了仍不够（又弹补体力）：返回、点取消、按波片不足跳过，不动结晶溶剂]")
-t = task(left=3, screens=[CLAIM_DIALOG], gems=2)
+print("\n[bar not read: no blind 确认 (10-12 11:44 spent the backup that way) - picture, phone, stop]")
+t = task(left=3, pages=[PAGE[2]], screens=[[_At(CLAIM_DIALOG[0], 700, 500)], SETTLEMENT], gems=2)
+check("stopped", lap(t), "stop")
+check("nothing confirmed, backup untouched", [e for e in t.events if e in ("confirm", "back") or e.startswith("rel:")], [])
+check("picture", "weekly_claim_bar_unread" in t.shots)
+check("pushed to the phone, as a failure", len(t.errors) == 1 and t.errors[0][1] and "顶栏的波片没读全" in t.errors[0][0])
+check("ends as failed (a reason is kept)", "顶栏的波片没读全" in (getattr(t, "_ark_failed", None) or ""))
+
+print("\n[顶栏读到够（41+24）、备用体力用上了仍不够（又弹补体力）：返回、点取消、按波片不足跳过，不动结晶溶剂]")
+t = task(left=3, screens=[TOPUP], gems=2)
 check("跳过（结束这趟周本）", lap(t), "stop")
 check("备用体力一轮之后返回、取消，没再确认",
       t.events[3:], ["confirm", "rel:0.7,0.71", "rel:0.7,0.71", "back", "click:confirm-btn", "back", "cancel"])
@@ -331,28 +352,28 @@ check("按跳过结束：没留失败原因", getattr(t, "_ark_failed", None), N
 check("没当报错推送", t.errors, [])
 
 print("\n[回读次数没变：这次没领到，截图报手机，停下不再进本]")
-t = task(left=2, pages=[PAGE[2]], screens=[CLAIM_DIALOG, SETTLEMENT])
+t = task(left=2, pages=[PAGE[2]], screens=[FULL, SETTLEMENT])
 check("停下", lap(t), "stop")
 check("报到手机", t.errors, [("周本领奖：回读次数没变（2/3），这次没领到", True)])
 check("留图", "weekly_claim_unchanged" in t.shots)
 check("没点上游的选等级、没点开启挑战", [e for e in t.events if e in ("level", "start")], [])
 
 print("\n[回读没读到：截图报手机，停下]")
-t = task(left=3, pages=[UNREAD], screens=[CLAIM_DIALOG, SETTLEMENT])
+t = task(left=3, pages=[UNREAD], screens=[FULL, SETTLEMENT])
 check("停下", lap(t), "stop")
 check("报到手机", t.errors, [("周本领奖：回读没读到本周剩余次数", True)])
 check("原文进日志", any("回读时选等级页读到" in m and "x60_0.79" in m for m in t.logs))
 check("留图", "weekly_readback_unread" in t.shots)
 
 print("\n[重进没经过选等级页（直接落在场地里）：次数没回读，停下]")
-t = task(left=3, screens=[CLAIM_DIALOG, SETTLEMENT])
+t = task(left=3, screens=[FULL, SETTLEMENT])
 t.arena = True
 check("停下", lap(t), "stop")
 check("报回读没读到", t.errors, [("周本领奖：回读没读到本周剩余次数", True)])
 check("回读的账清掉，下一趟不拿它比", t._ark_claim_before, None)
 
 print("\n[点了确认后没看到「退出副本」：说一句、交回上游，不停、不按 ESC、不重进]")
-t = task(left=3, screens=[CLAIM_DIALOG])
+t = task(left=3, screens=[FULL])
 check("没停", lap(t), "on")
 check("说了交回上游、带整屏的字", any("没看到「退出副本」" in m and "某个没见过的画面" in m for m in t.logs))
 check("没按 ESC、没返回", [e for e in t.events if e in ("key:esc", "back")], [])

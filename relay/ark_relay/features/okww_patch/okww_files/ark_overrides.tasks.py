@@ -299,20 +299,24 @@ def _install_claim():
         # 10-12 11:44 the claim was confirmed with 17 waveplates and 24 backup: the
         # backup became waveplates, 41 was still short of 60, and the reward was not
         # taken. Read the top bar first (WWA does the same on this dialog and does not
-        # confirm below 60); when both are read and together cannot pay, cancel and
-        # skip as short, leaving the backup untouched. Logged before the click, which
-        # can raise (f40d0b19).
+        # confirm below 60); when together they cannot pay, cancel and skip as short,
+        # leaving the backup untouched. A bar that is not read is not confirmed blind:
+        # that is how 10-12 11:44 spent the backup for nothing. It stops with a picture.
+        # Logged before the click, which can raise (f40d0b19).
         wave, spare = _waveplates(self, found)
         if wave is None or spare is None:
-            self.log_info(f"周本领奖：顶栏没读全（波片 {wave}，备用 {spare}），照旧确认")
-        elif wave + spare < _CLAIM_COST:
+            _stop(self, "weekly_claim_bar_unread",
+                  f"周本领奖：领奖框上顶栏的波片没读全（波片 {wave}，备用 {spare}），不点确认，停下。"
+                  f"整屏读到 {text[:400]}")
+        self.log_info(f"周本领奖：顶栏读到波片 {wave}/240，备用 {spare}")
+        if wave + spare < _CLAIM_COST:
             self.log_info(f"结晶波片不足，取消并跳过本次周本（波片 {wave} + 备用 {spare}，"
                           f"不够领一次的 {_CLAIM_COST}，不动备用体力）")
             _shot(self, "weekly_short_claim")
             self.click_dialog_left_button()
             self.sleep(1)
             _skip_short(self)
-        self.log_info(f"周本领奖：认出弹窗，点确认。读到 {text[:70]}")
+        self.log_info(f"周本领奖：认出弹窗，点确认。读到 {text[:400]}")
         btn = self.click_dialog_right_button()
         if self.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
                              time_out=3, settle_time=0.5):
@@ -396,7 +400,9 @@ def _screen_text(task) -> str:
 
 
 _CLAIM_COST = 60       # the claim dialog asks for 60 crystal waveplates
-_WAVE_READ = re.compile(r"(\d{1,3})\s*/\s*240")
+# 「41/240」, and 「240/240+」 when the waveplates are full (0921-weekly.log:18; the level
+# page 10-05 22:17:31 read 「0/240+」).
+_WAVE_READ = re.compile(r"(\d{1,3})\s*/\s*240\+?")
 _DIGITS = re.compile(r"\d{1,3}")
 
 
@@ -415,7 +421,7 @@ def _waveplates(task, found):
             return None, None
         left = [(b.x, int(n)) for n, b in strip if b.x < cur[0].x and _DIGITS.fullmatch(n)]
         return cur[1], (max(left)[1] if left else None)
-    except Exception:  # noqa: BLE001 - plain strings or no frame: unread, the claim goes as before
+    except Exception:  # noqa: BLE001 - plain strings or no frame: unread, and the caller stops
         return None, None
 
 
