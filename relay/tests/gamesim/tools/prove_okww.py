@@ -99,18 +99,22 @@ def verdict(rev: str, test: str, args: list, label: str, overlay_from: "str | No
 
 
 def main(argv: list[str]) -> int:
-    bad = 0
-    for fix, test, args, label, overlay_from in CASES:
-        fix = resolve(fix, label)
-        if argv and fix not in argv:
+    bad = ran = 0
+    for row_fix, test, args, label, overlay_from in CASES:
+        fix = resolve(row_fix, label)
+        if argv and fix not in argv and row_fix not in argv:
             continue
+        ran += 1
         (before, why), (after, why_after) = (verdict(f"{fix}~1", test, args, label, overlay_from),
                                              verdict(fix, test, args, label, overlay_from))
         ok = before == "red" and after == "green"
         bad += not ok
         print(f"{'✓' if ok else '✗'} {fix}  {test} {' '.join(args)}  {fix}~1 {before}, {fix} {after}\n"
               f"    {fix}~1: {why[:300]}" + ("" if after == "green" else f"\n    {fix}: {why_after[:300]}"))
-    print("all cases red before green" if not bad else f"{bad} cases not red before green")
+    if not ran:
+        print(f"no case matches {argv}")
+        return 1
+    print(f"all {ran} cases red before green" if not bad else f"{bad} of {ran} cases not red before green")
     return 1 if bad else 0
 
 
