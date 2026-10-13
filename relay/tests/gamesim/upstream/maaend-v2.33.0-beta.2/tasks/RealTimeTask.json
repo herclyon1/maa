@@ -1,0 +1,1035 @@
+{
+    "task": [
+        {
+            "name": "RealTimeTask",
+            "label": "$task.RealTimeTask.label",
+            "entry": "RealTimeTaskMain",
+            "description": "$task.RealTimeTask.description",
+            "group": [
+                "realtime"
+            ],
+            "controller": [
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "Win32-Front"
+            ],
+            "option": [
+                "SklandMap",
+                "VideoBrowser",
+                "AutoSkip",
+                "AutoCloseInteraction",
+                "AutoFight",
+                "AutoPick",
+                "QuickTeleport",
+                "AutoPuzzleSolving",
+                "AutoAeroSalvage",
+                "AutoZipline",
+                "AutoPat",
+                "AutoTaskInterval"
+            ]
+        }
+    ],
+    "option": {
+        "SklandMap": {
+            "type": "switch",
+            "label": "$option.SklandMap.label",
+            "description": "$option.SklandMap.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "SklandMapOpacity"
+                    ],
+                    "pipeline_override": {
+                        "RealTimeTaskMain": {
+                            "attach": {
+                                "skland_map_enable": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "RealTimeTaskMain": {
+                            "attach": {
+                                "skland_map_enable": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "SklandMapOpacity": {
+            "type": "input",
+            "label": "$option.WindowOpacity.label",
+            "inputs": [
+                {
+                    "name": "SklandMapOpacityInt",
+                    "label": "$option.WindowOpacity.label",
+                    "description": "$option.WindowOpacity.description",
+                    "default": "100",
+                    "pipeline_type": "int",
+                    "verify": "^(100|[1-9]?\\d)$"
+                }
+            ],
+            "pipeline_override": {
+                "RealTimeTaskMain": {
+                    "attach": {
+                        "skland_map_opacity": "{SklandMapOpacityInt}"
+                    }
+                }
+            }
+        },
+        "VideoBrowser": {
+            "type": "switch",
+            "label": "$option.VideoBrowser.label",
+            "description": "$option.VideoBrowser.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "VideoBrowserOpacity",
+                        "VideoBrowserURL"
+                    ],
+                    "pipeline_override": {
+                        "RealTimeTaskMain": {
+                            "attach": {
+                                "video_browser_enable": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "RealTimeTaskMain": {
+                            "attach": {
+                                "video_browser_enable": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "VideoBrowserURL": {
+            "type": "input",
+            "label": "$option.VideoBrowserURL.label",
+            "inputs": [
+                {
+                    "name": "VideoBrowserURLString",
+                    "label": "$option.VideoBrowserURL.label",
+                    "default": "https://www.bilibili.com",
+                    "pipeline_type": "string"
+                }
+            ],
+            "pipeline_override": {
+                "RealTimeTaskMain": {
+                    "attach": {
+                        "video_browser_url": "{VideoBrowserURLString}"
+                    }
+                }
+            }
+        },
+        "VideoBrowserOpacity": {
+            "type": "input",
+            "label": "$option.WindowOpacity.label",
+            "inputs": [
+                {
+                    "name": "VideoBrowserOpacityInt",
+                    "label": "$option.WindowOpacity.label",
+                    "description": "$option.WindowOpacity.description",
+                    "default": "100",
+                    "pipeline_type": "int",
+                    "verify": "^(100|[1-9]?\\d)$"
+                }
+            ],
+            "pipeline_override": {
+                "RealTimeTaskMain": {
+                    "attach": {
+                        "video_browser_opacity": "{VideoBrowserOpacityInt}"
+                    }
+                }
+            }
+        },
+        "AutoSkip": {
+            "type": "switch",
+            "label": "$option.AutoSkip.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "AutoSkipAll",
+                        "AutoSkipChoose",
+                        "AutoSkipNext"
+                    ],
+                    "pipeline_override": {
+                        "RealTimeAutoSkip": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "RealTimeAutoSkip": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "AutoSkipAll": {
+            "type": "switch",
+            "label": "$option.AutoSkipAll.label",
+            "description": "$option.AutoSkipAll.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "RealTimeAutoSkipAll": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "RealTimeAutoSkipAll": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "AutoSkipChoose": {
+            "type": "switch",
+            "label": "$option.AutoSkipChoose.label",
+            "description": "$option.AutoSkipChoose.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "RealTimeAutoSkipChoose": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "RealTimeAutoSkipChoose": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "AutoSkipNext": {
+            "type": "switch",
+            "label": "$option.AutoSkipNext.label",
+            "description": "$option.AutoSkipNext.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "RealTimeAutoSkipNext": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "RealTimeAutoSkipNext": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "AutoCloseInteraction": {
+            "type": "switch",
+            "label": "$option.AutoCloseInteraction.label",
+            "description": "$option.AutoCloseInteraction.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "EnableTutorialGuide",
+                        "EnableTutorialBook",
+                        "EnableClickAnywhere",
+                        "EnableCloseSpecialPanel"
+                    ],
+                    "pipeline_override": {
+                        "HandleTutorialGuide_RightUp": {
+                            "enabled": true
+                        },
+                        "HandleTutorialGuide_LeftUp": {
+                            "enabled": true
+                        },
+                        "HandleTutorialPaging": {
+                            "enabled": true
+                        },
+                        "HandleTutorialConfirm": {
+                            "enabled": true
+                        },
+                        "CheckAnywhere": {
+                            "enabled": true
+                        },
+                        "CheckSpecialInfoPanel": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "HandleTutorialGuide_RightUp": {
+                            "enabled": false
+                        },
+                        "HandleTutorialGuide_LeftUp": {
+                            "enabled": false
+                        },
+                        "HandleTutorialPaging": {
+                            "enabled": false
+                        },
+                        "HandleTutorialConfirm": {
+                            "enabled": false
+                        },
+                        "CheckAnywhere": {
+                            "enabled": false
+                        },
+                        "CheckSpecialInfoPanel": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "EnableTutorialGuide": {
+            "type": "switch",
+            "label": "$option.EnableTutorialGuide.label",
+            "description": "$option.EnableTutorialGuide.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "HandleTutorialGuide_RightUp": {
+                            "enabled": true
+                        },
+                        "HandleTutorialGuide_LeftUp": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "HandleTutorialGuide_RightUp": {
+                            "enabled": false
+                        },
+                        "HandleTutorialGuide_LeftUp": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "EnableTutorialBook": {
+            "type": "switch",
+            "label": "$option.EnableTutorialBook.label",
+            "description": "$option.EnableTutorialBook.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "HandleTutorialPaging": {
+                            "enabled": true
+                        },
+                        "HandleTutorialConfirm": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "HandleTutorialPaging": {
+                            "enabled": false
+                        },
+                        "HandleTutorialConfirm": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "EnableClickAnywhere": {
+            "type": "switch",
+            "label": "$option.EnableClickAnywhere.label",
+            "description": "$option.EnableClickAnywhere.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "CheckAnywhere": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "CheckAnywhere": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "EnableCloseSpecialPanel": {
+            "type": "switch",
+            "label": "$option.EnableCloseSpecialPanel.label",
+            "description": "$option.EnableCloseSpecialPanel.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "CheckSpecialInfoPanel": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "CheckSpecialInfoPanel": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoFight": {
+            "type": "switch",
+            "label": "$option.AutoFight.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "AutoFightSettingFull"
+                    ],
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "AutoFightSettingFull": {
+            "type": "switch",
+            "label": "$option.AutoFightSettingFull.label",
+            "description": "$option.AutoFightSettingFull.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "AutoFightAttack",
+                        "AutoFightDodge",
+                        "AutoFightLockTarget",
+                        "AutoFightHealthDangerousSwitch",
+                        "AutoFightAxisFullSetting"
+                    ]
+                },
+                {
+                    "name": "No"
+                }
+            ]
+        },
+        "AutoFightAttack": {
+            "type": "switch",
+            "label": "$option.AutoFightAttack.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_attack": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_attack": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoFightCombo": {
+            "type": "switch",
+            "label": "$option.AutoFightCombo.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_combo": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_combo": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoFightDodge": {
+            "type": "switch",
+            "label": "$option.AutoFightDodge.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "AutoFightDodgeCompat"
+                    ],
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_dodge": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_dodge": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoFightDodgeCompat": {
+            "type": "switch",
+            "label": "$option.AutoFightDodgeCompat.label",
+            "description": "$option.AutoFightDodgeCompat.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_dodge_compat": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_dodge_compat": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "AutoFightAxis": {
+            "type": "switch",
+            "label": "$option.AutoFightAxis.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "AutoFightAxisData",
+                        "AutoFightAxisSkipComboCooldown"
+                    ]
+                },
+                {
+                    "name": "No",
+                    "option": [
+                        "AutoFightReserveSkillLevel"
+                    ]
+                }
+            ],
+            "default_case": "No"
+        },
+        "AutoFightAxisFullSetting": {
+            "type": "switch",
+            "label": "$option.AutoFightAxis.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "AutoFightAxisData",
+                        "AutoFightAxisSkipComboCooldown"
+                    ]
+                },
+                {
+                    "name": "No",
+                    "option": [
+                        "AutoFightCombo",
+                        "AutoFightSkill",
+                        "AutoFightEndSkill"
+                    ]
+                }
+            ],
+            "default_case": "No"
+        },
+        "AutoFightAxisData": {
+            "type": "input",
+            "label": "$option.AutoFightAxisData.label",
+            "description": "$option.AutoFightAxisData.description",
+            "inputs": [
+                {
+                    "name": "AutoFightAxisCodeString",
+                    "label": "$option.AutoFightAxisCodeString.label",
+                    "description": "$option.AutoFightAxisCodeString.description",
+                    "default": "",
+                    "pipeline_type": "string"
+                }
+            ],
+            "pipeline_override": {
+                "AutoFight": {
+                    "attach": {
+                        "end_axis_timeline_code": "{AutoFightAxisCodeString}"
+                    }
+                }
+            }
+        },
+        "AutoFightAxisSkipComboCooldown": {
+            "type": "switch",
+            "label": "$option.AutoFightAxisSkipComboCooldown.label",
+            "description": "$option.AutoFightAxisSkipComboCooldown.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "skip_combo_cooldown": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "skip_combo_cooldown": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "AutoFightSkill": {
+            "type": "switch",
+            "label": "$option.AutoFightSkill.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "AutoFightReserveSkillLevel"
+                    ],
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_skill": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_skill": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoFightReserveSkillLevel": {
+            "type": "select",
+            "label": "$option.AutoFightReserveSkillLevel.label",
+            "cases": [
+                {
+                    "name": "0",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "reserve_skill_level": 0
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "1",
+                    "option": [
+                        "AutoFightBreakAccumulatingPower"
+                    ],
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "reserve_skill_level": 1
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "2",
+                    "option": [
+                        "AutoFightBreakAccumulatingPower"
+                    ],
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "reserve_skill_level": 2
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "1"
+        },
+        "AutoFightBreakAccumulatingPower": {
+            "type": "switch",
+            "label": "$option.AutoFightBreakAccumulatingPower.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_break_accumulating_power": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_break_accumulating_power": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoFightEndSkill": {
+            "type": "switch",
+            "label": "$option.AutoFightEndSkill.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_end_skill": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_end_skill": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoFightHealthDangerousSwitch": {
+            "type": "switch",
+            "label": "$option.AutoFightHealthDangerousSwitch.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_health_dangerous_switch": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_health_dangerous_switch": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoFightLockTarget": {
+            "type": "switch",
+            "label": "$option.AutoFightLockTarget.label",
+            "description": "$option.AutoFightLockTarget.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_lock_target": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoFight": {
+                            "attach": {
+                                "enable_lock_target": false
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoPick": {
+            "type": "switch",
+            "label": "$option.AutoPick.label",
+            "cases": [
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AutoPickFalls": {
+                            "enabled": false
+                        },
+                        "AutoPickInteractive": {
+                            "enabled": false
+                        }
+                    }
+                },
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "AutoPickFalls": {
+                            "enabled": true
+                        },
+                        "AutoPickInteractive": {
+                            "enabled": true
+                        }
+                    }
+                }
+            ]
+        },
+        "QuickTeleport": {
+            "type": "switch",
+            "label": "$option.QuickTeleport.label",
+            "description": "$option.QuickTeleport.description",
+            "cases": [
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "RealTimeQuickTeleportList": {
+                            "enabled": false
+                        },
+                        "RealTimeQuickTeleportDirect": {
+                            "enabled": false
+                        }
+                    }
+                },
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "RealTimeQuickTeleportList": {
+                            "enabled": true
+                        },
+                        "RealTimeQuickTeleportDirect": {
+                            "enabled": true
+                        }
+                    }
+                }
+            ]
+        },
+        "AutoPuzzleSolving": {
+            "type": "switch",
+            "label": "$option.AutoPuzzleSolving.label",
+            "description": "$option.AutoPuzzleSolving.description",
+            "cases": [
+                {
+                    "name": "Yes"
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "PuzzleSolverMain": {
+                            "enabled": false
+                        },
+                        "PuzzleSolverOnScenePrepare": {
+                            "enabled": false
+                        },
+                        "PuzzleSolverOnSceneMain": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "AutoAeroSalvage": {
+            "type": "switch",
+            "label": "$option.AutoAeroSalvage.label",
+            "description": "$option.AutoAeroSalvage.description",
+            "cases": [
+                {
+                    "name": "Yes"
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "AeroSalvageMain": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "AutoTaskInterval": {
+            "type": "select",
+            "label": "$option.AutoTaskInterval.label",
+            "description": "$option.AutoTaskInterval.description",
+            "cases": [
+                {
+                    "name": "AutoTaskIntervalFast",
+                    "label": "$option.AutoTaskInterval.cases.AutoTaskIntervalFast.label",
+                    "pipeline_override": {
+                        "RealTimeSleep": {
+                            "post_delay": 50
+                        }
+                    }
+                },
+                {
+                    "name": "AutoTaskIntervalNormal",
+                    "label": "$option.AutoTaskInterval.cases.AutoTaskIntervalNormal.label",
+                    "pipeline_override": {
+                        "RealTimeSleep": {
+                            "post_delay": 200
+                        }
+                    }
+                },
+                {
+                    "name": "AutoTaskIntervalSlow",
+                    "label": "$option.AutoTaskInterval.cases.AutoTaskIntervalSlow.label",
+                    "pipeline_override": {
+                        "RealTimeSleep": {
+                            "post_delay": 400
+                        }
+                    }
+                }
+            ],
+            "default_case": "AutoTaskIntervalNormal"
+        },
+        "AutoZipline": {
+            "type": "switch",
+            "label": "$option.AutoZipline.label",
+            "description": "$option.AutoZipline.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "RealTimeAutoZipline": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "RealTimeAutoZipline": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "AutoPat": {
+            "type": "switch",
+            "label": "$option.AutoPat.label",
+            "description": "$option.AutoPat.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "RealTimeAutoPat": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "RealTimeAutoPat": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}

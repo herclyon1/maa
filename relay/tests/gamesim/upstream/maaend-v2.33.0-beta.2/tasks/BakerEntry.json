@@ -1,0 +1,25 @@
+{
+    "task": [
+        {
+            "name": "BakerEntry",
+            "label": "$task.BakerEntry.label",
+            "entry": "BakerEntry",
+            "description": "$task.BakerEntry.description",
+            "group": [
+                "other_menu"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "PlayCover",
+                "Win32-Front"
+            ]
+        }
+    ],
+    "option": {}
+}

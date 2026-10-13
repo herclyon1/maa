@@ -1,0 +1,25 @@
+{
+    "task": [
+        {
+            "name": "SimpleProductionBatchStart",
+            "label": "$task.SimpleProductionBatch.label",
+            "entry": "SimpleProductionBatchStart",
+            "description": "$task.SimpleProductionBatch.description",
+            "group": [
+                "backpack"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "PlayCover",
+                "Win32-Front"
+            ]
+        }
+    ],
+    "option": {}
+}

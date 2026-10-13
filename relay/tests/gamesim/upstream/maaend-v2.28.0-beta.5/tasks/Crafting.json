@@ -1,0 +1,24 @@
+{
+    "task": [
+        {
+            "name": "Crafting",
+            "label": "$task.Crafting.label",
+            "entry": "CraftingStart",
+            "description": "$task.Crafting.description",
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "PlayCover",
+                "Win32-Front"
+            ],
+            "group": [
+                "backpack"
+            ]
+        }
+    ]
+}

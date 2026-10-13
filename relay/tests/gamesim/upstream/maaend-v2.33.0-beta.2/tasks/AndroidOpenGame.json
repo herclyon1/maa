@@ -1,0 +1,156 @@
+{
+    "task": [
+        {
+            "name": "AndroidOpenGame",
+            "label": "$task.AndroidOpenGame.label",
+            "entry": "OpenGame",
+            "description": "$task.AndroidOpenGame.description",
+            "group": [
+                "other_menu"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "PlayCover"
+            ],
+            "option": [
+                "ClientVersion",
+                "ClientVersionCloudLocked"
+            ]
+        }
+    ],
+    "option": {
+        "ClientVersion": {
+            "type": "select",
+            "controller": [
+                "ADB",
+                "PlayCover"
+            ],
+            "label": "$option.ClientVersion.label",
+            "cases": [
+                {
+                    "name": "CN",
+                    "label": "$option.ClientVersion.cases.CN.label",
+                    "pipeline_override": {
+                        "StartUpGame": {
+                            "action": {
+                                "type": "StartApp",
+                                "param": {
+                                    "package": "com.hypergryph.endfield/com.u8.sdk.U8UnityContext"
+                                }
+                            }
+                        },
+                        "CloseGame": {
+                            "action": {
+                                "type": "StopApp",
+                                "param": {
+                                    "package": "com.hypergryph.endfield"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Bilibili",
+                    "label": "$option.ClientVersion.cases.Bilibili.label",
+                    "pipeline_override": {
+                        "StartUpGame": {
+                            "action": {
+                                "type": "StartApp",
+                                "param": {
+                                    "package": "com.hypergryph.endfield.bilibili/com.u8.sdk.U8UnityContext"
+                                }
+                            }
+                        },
+                        "CloseGame": {
+                            "action": {
+                                "type": "StopApp",
+                                "param": {
+                                    "package": "com.hypergryph.endfield.bilibili"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Global",
+                    "label": "$option.ClientVersion.cases.Global.label",
+                    "pipeline_override": {
+                        "StartUpGame": {
+                            "action": {
+                                "type": "StartApp",
+                                "param": {
+                                    "package": "com.gryphline.endfield.gp/com.u8.sdk.U8UnityContext"
+                                }
+                            }
+                        },
+                        "CloseGame": {
+                            "action": {
+                                "type": "StopApp",
+                                "param": {
+                                    "package": "com.gryphline.endfield.gp"
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "VN",
+                    "label": "$option.ClientVersion.cases.VN.label",
+                    "pipeline_override": {
+                        "StartUpGame": {
+                            "action": {
+                                "type": "StartApp",
+                                "param": {
+                                    "package": "com.hypergryph.endfield.vn/com.u8.sdk.U8UnityContext"
+                                }
+                            }
+                        },
+                        "CloseGame": {
+                            "action": {
+                                "type": "StopApp",
+                                "param": {
+                                    "package": "com.hypergryph.endfield.vn"
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "CN"
+        },
+        "ClientVersionCloudLocked": {
+            "type": "select",
+            "controller": [
+                "CloudADB"
+            ],
+            "label": "$option.ClientVersionCloudLocked.label",
+            "description": "$option.ClientVersionCloudLocked.description",
+            "cases": [
+                {
+                    "name": "Cloud",
+                    "label": "$option.ClientVersion.cases.Cloud.label",
+                    "pipeline_override": {
+                        "StartUpGame": {
+                            "action": {
+                                "type": "StartApp",
+                                "param": {
+                                    "package": "com.hypergryph.cloud.endfield/com.hypergryph.cloud.endfield.splash.SplashActivity"
+                                }
+                            }
+                        },
+                        "CloseGame": {
+                            "action": {
+                                "type": "StopApp",
+                                "param": {
+                                    "package": "com.hypergryph.cloud.endfield"
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": "Cloud"
+        }
+    }
+}

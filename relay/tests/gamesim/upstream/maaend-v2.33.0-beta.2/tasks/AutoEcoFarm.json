@@ -1,0 +1,88 @@
+{
+    "task": [
+        {
+            "name": "AutoEcoFarm",
+            "label": "$task.AutoEcoFarm.label",
+            "entry": "AutoEcoFarmTask",
+            "description": "$task.AutoEcoFarm.description",
+            "group": [
+                "open_world"
+            ],
+            "controller": [
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "Win32-Front"
+            ],
+            "option": [
+                "SelectFarm",
+                "StashBackpackSubTask"
+            ]
+        }
+    ],
+    "option": {
+        "SelectFarm": {
+            "type": "switch",
+            "label": "$task.AutoEcoFarm.option.SelectFarm.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "GotoValleyIV",
+                        "GotoWulin"
+                    ]
+                },
+                {
+                    "name": "No"
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "GotoValleyIV": {
+            "type": "switch",
+            "label": "$task.AutoEcoFarm.option.GotoValleyIV.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "_AutoEcoFarmInitStartValleyIV": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "_AutoEcoFarmInitStartValleyIV": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "GotoWulin": {
+            "type": "switch",
+            "label": "$task.AutoEcoFarm.option.GotoWulin.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "_AutoEcoFarmInitStartWulin": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "_AutoEcoFarmInitStartWulin": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        }
+    }
+}

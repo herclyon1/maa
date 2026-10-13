@@ -1,0 +1,11 @@
+# MXU source files that maaend_schema.py ports; byte for byte, never edit by hand.
+# Written by: python3.14 relay/tests/gamesim/lib/maaend_schema.py fetch-mxu v2.7.1
+repo https://github.com/MistEO/MXU
+tag v2.7.1
+commit 9fa8cc51e8ff8cd89d99f3ea55fe3a7a82e6ede3
+file 83ef34b13a13ce8a9c1be4cfbfc1f2153da755feaad713fc34ee7f4716668203 cb42b04f5580005af4bdef2e48cdfa00aeaa4db4 src/stores/helpers.ts
+file 3d82deb6ca308f562ed2cc5f5d281bb6aaf14909e50614e44423351ff3bceeb3 c90b58135b5b1c4c17f42c497213edb03e84cb6a src/stores/appStore.ts
+file 963aba356ae8847b7832d3bc955505365c025b8db7ddd2516d75480df2ed610b e2c7bd8c39e16ffe1327b20d76ad69aa5d3c3ba4 src/utils/pipelineOverride.ts
+file 545287d6586c6761e563c701e6fad2e66bd34fc6ea4402753fc15750560f5cae 3eab179dfe4e353f85ed783c2f0e3eabcb27d84e src/utils/optionHelpers.ts
+file 480e80fae0a8a5594b85cc7535e353398fe28b491d93b1834c2c19c08fd75b34 fa949154dcf2ee7526a1980088960e546bfd11a5 src/types/specialTasks.ts
+file a2e3f67cbe44dd65eb5092c40d486a09a6a98c664da95e4a8f7897b5120c2629 aa3744c22dfd435dd4c752e8b139f8b8e9a9f4ac src/services/interfaceLoader.ts
