@@ -10,6 +10,24 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
 `NEXT-BOOT.md` keeps only "the first thing to do at the next boot".
 
 ## Todo
+- [ ] **daysim-R1: machine check #59 contradicts the 10-10 WMI routing rule (added 2026-10-13, due 2026-10-20).**
+      Day replay 2026-10-06 (`relay/tests/daysim`, inputs `days/2026-10-06/events.jsonl` lines 215 and 288,
+      `wmi_subscription_lost` at 16:16:59 and 18:08:22). 324b640b (10-10) sends a self-recovered WMI drop of
+      unknown cause to the group (`procwatch.py`, `errwatch.recovered()` only when not pushed), but #59
+      (`machinechecks/system.py` `_wmi_recovered`, added 9e952cbf on 10-05) still requires a `recovered` row and
+      no group push, so the next boot pushes 「🔬 上机核对没过：#59 …」: every recovered drop costs two group pushes.
+      Smallest fix: re-scope #59 to "pushed to the group once, with its H1/H2/H3 hypothesis named", or retire it;
+      regression test: a recovered WMI WARNING without a `recovered` row passes #59. Listed in
+      `relay/tests/daysim/known-red.json`; remove that entry with the fix (the day gate refuses a stale one).
+- [ ] **daysim-R2: 「⚙️ 配置已更新：…」 has no row in docs/NOTIFICATIONS.md (added 2026-10-13, due 2026-10-20).**
+      Day replays 2026-10-12 (`events.jsonl` lines 15, 461) and 2026-10-13 (lines 245, 278): the inbox receipt
+      (`phone/inbox.py`, sent from `boot_stages.py`) is routed `info` (Server酱) by `notify.route_of`, as the machine
+      did, but the title is missing from the title -> route table, and NOTIFICATIONS.md lines 77/97 (de038830,
+      docs-only) describe these receipts as log-only. Decision owed: should our own `order.sh` orders reach his
+      Server酱 (「测试不进他眼」)? Yes -> add the table row `⚙️ 配置已更新 | info` and fix line 77, then add the
+      pushes to the two days' expected.json (reviewed, sourced); no -> add the title to `_LOG_ONLY_PREFIXES`
+      (`notify.py`). Either way a batch with `✗` lines must still be pushed. Listed in
+      `relay/tests/daysim/known-red.json`; remove those entries with the fix.
 - [ ] **Endfield version-briefing parser has only one sample (added 2026-10-08, due 2026-11-05).**
       `banners.ef_briefing_banners` reads the official version briefing (bulletin cid 2183 ->
       endfield.hypergryph.com/version_briefing/latest -> content script, JSON.parse blocks). Only the v1d6 page

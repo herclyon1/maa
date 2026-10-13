@@ -16,6 +16,11 @@ days run in date order and each consecutive day starts from the previous day's
 sim state folder (relay state, relay.log, step log) instead of the seeded one;
 the inputs (game logs, history, AUTO-MAS config) still come from that day's seed.
 
+Known red (knownred.py, known-red.json): failure lines a reported relay bug causes are
+listed per day; a day whose every failure line is listed is KNOWN RED, not FAIL. The exit
+code is 1 on any other failure line (new red) and on a listed entry that is stale, expired
+or whose report is closed, so the list can only shrink. --strict ignores the list.
+
 Budget: a day over DAY_CAP_S (design.md section 5; re-measured at DAY_CAP_S below) fails. The
 cap is on the CPU seconds the day's boot processes spent, not on wall time: this Mac is
 shared, and at a load average of 61-196 on its 10 cores (2026-10-13 18:42-18:48) the
@@ -37,6 +42,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import knownred  # noqa: E402
 import oracle  # noqa: E402
 import world as W  # noqa: E402
 
@@ -211,8 +217,8 @@ def run_day(day: str, *, code: Path, chain_from: "Path | None" = None, until: "s
             if f.exists():
                 shutil.copy2(f, keep_dir / f.name)
         shutil.rmtree(tree)
-    return {"day": day, "ok": res.ok, "report": res.report(), "real_s": real, "cpu_s": cpu, "boots": len(boots),
-            "final": (tree if keep else od / "final")}
+    return {"day": day, "ok": res.ok, "report": res.report(), "failures": list(res.failures), "real_s": real,
+            "cpu_s": cpu, "boots": len(boots), "final": (tree if keep else od / "final")}
 
 
 def clip(expected: dict, until: str) -> dict:
@@ -265,10 +271,26 @@ def main(argv=None) -> int:
     ap.add_argument("--keep", action="store_true", help="keep the sim tree")
     ap.add_argument("--code", default=str(W.RELAY), help="the relay code under test (default: this repo's relay/)")
     ap.add_argument("--out", default=str(OUT))
+    ap.add_argument("--strict", action="store_true", help="ignore known-red.json: every failure line counts")
+    ap.add_argument("--known-red", default=str(knownred.KNOWN_RED), help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
     days = sorted(p.name for p in W.DAYS.iterdir() if (p / "events.jsonl").exists()) if a.all else sorted(a.day)
     if not days:
         ap.error("give --all or --day")
+    entries = []
+    if not a.strict:
+        try:
+            entries = knownred.load(Path(a.known_red))
+        except knownred.KnownRedError as exc:
+            print("known-red.json refused (fix the list before any day runs):")
+            for x in exc.args[0]:
+                print(f"  - {x}")
+            return 1
+        if a.all:
+            gone = sorted({e["day"] for e in entries} - set(days))
+            if gone:
+                print(f"known-red.json lists days that have no replay: {', '.join(gone)}")
+                return 1
     missing = [d for d in days if not day_corpus(d).is_dir()]
     if missing:
         print(f"no corpus for {', '.join(missing)} under {W.CORPUS_ROOT} (scripts/mac/pull-day.sh)")
@@ -294,8 +316,23 @@ def main(argv=None) -> int:
         print(r["report"])
         print(f"  ({r['boots']} boots, {r['cpu_s']:.1f} s CPU, {r['real_s']:.1f} s real"
               f"{', chained' if r.get('chained') else ''})")
-        bad += not r["ok"]
+        sp = knownred.split(r["day"], r["failures"], entries, check_stale=not a.until)
+        print(f"  verdict {r['day']}: {verdict(sp)}")
+        for x in sp.new:
+            print(f"    NEW RED: {x}")
+        for x in sp.stale:
+            print(f"    STALE: {x}")
+        bad += not sp.ok
     return 1 if bad else 0
+
+
+def verdict(sp: "knownred.Split") -> str:
+    if sp.new or sp.stale:
+        return f"FAIL ({len(sp.new)} new red, {len(sp.stale)} stale known-red)"
+    if sp.known:
+        bugs = sorted({x.rsplit("[known red: ", 1)[1].split(",", 1)[0] for x in sp.known})
+        return f"KNOWN RED only ({len(sp.known)} line(s): {', '.join(bugs)})"
+    return "PASS"
 
 
 if __name__ == "__main__":
