@@ -511,6 +511,7 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
     debut: "list[tuple[str, str]]" = []
     notice_ok = True
     notice_banners: list[Banner] = []
+    body = ""
     try:
         notice = hub._json(_WW_NOTICE, _UA_BROWSER, timeout=25)
         body = newest_version([(str(n.get("tabTitle") or ""),
@@ -542,8 +543,20 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
     # If the bulletin cannot be fetched, better to report one extra rerun than to lose
     # the countdown entirely -- the banners within a version all end at the same time
     # anyway, and the value of this line is mostly in that moment.
+    # The same holds when the bulletin was fetched but no debut came out of it: its
+    # title no longer says 版本内容说明, or the 「全新角色」 section changed shape
+    # (_WW_ROLE). An empty debut list used to drop every running pool and the block
+    # read 「当期无新角色卡池」 with no log line.
     names = {w for w, _ in debut}
-    got = [b for b in pools if set(b.chars) & names] if notice_ok else pools
+    split = notice_ok
+    if notice_ok and pools and not debut:
+        split = False
+        why = ("没有标题含「版本内容说明」的公告" if not body
+               else "版本说明里没有「全新角色」一节" if "全新角色" not in body
+               else "「全新角色」一节里一个角色都没读出来（写法变了）")
+        # the first line is quoted in the daily report: no Latin letters
+        log.warning("鸣潮官方公告里读不出这一版的新角色（%s），分不出首发和复刻，在开的卡池全部照报", why)
+    got = [b for b in pools if set(b.chars) & names] if split else pools
     for b in got:
         if b.start <= now <= b.end:
             tr.ends |= _stamps(b.end)
