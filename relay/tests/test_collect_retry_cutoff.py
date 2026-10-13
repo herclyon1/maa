@@ -73,6 +73,45 @@ check("写上结束，后面不再每次都说", "finished" in after, True)
 did, _ = outcome(None)
 check("没有印记 → 照常跑", did, True)
 
+print("\n[补跑被打断后这次没补成（脚本还在跑）：下一次调用不再报、不再关一遍]")
+# Review of c6922283: the WARNING and the kills came before the early returns while the
+# stamp was rewritten only on the path that re-runs, so every later tick said and killed again.
+import logging  # noqa: E402
+
+
+class _Warnings(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.msgs = []
+
+    def emit(self, r):
+        self.msgs.append(r.getMessage())
+
+
+sd = tmpdir()
+f = sd / "collect-retry" / "2026-09-12.json"
+f.parent.mkdir(parents=True)
+f.write_text(json.dumps(cut), encoding="utf-8")
+eng = types.SimpleNamespace(
+    cfg=types.SimpleNamespace(state_dir=sd, maaend_dir=str(sd), history_dir=str(sd), automas_dir=None),
+    state=types.SimpleNamespace(read_ledger=lambda d: []), _scripts_running=lambda: True)
+saved = (cr.latest_gathering_run, cr._locale, cr.restore_master)
+cr.latest_gathering_run = lambda entries, hist, labels: ({"run_id": "r1"}, ["AutoCollectRoute15"])
+cr._locale, cr.restore_master = (lambda d: zh), (lambda cfg: "")
+w = _Warnings()
+cr.log.addHandler(w)
+del killed[:]
+try:
+    r1 = cr.maybe_run(eng, now=NOW, day="2026-09-12")
+    r2 = cr.maybe_run(eng, now=NOW + timedelta(minutes=1), day="2026-09-12")
+finally:
+    cr.log.removeHandler(w)
+    cr.latest_gathering_run, cr._locale, cr.restore_master = saved
+check("两次都没补（脚本还在跑）", (r1, r2), (False, False))
+check("只报一次没跑完", sum("没跑完" in m for m in w.msgs), 1)
+check("只关一次 MaaEnd 和游戏", killed, ["MaaEnd.exe", "Endfield.exe"])
+check("印记还没写结束，脚本停了还会补", "finished" in json.loads(f.read_text(encoding="utf-8")), False)
+
 print("\n[run_retry 半路放弃（MaaEnd 不响应）也关掉 MaaEnd 和游戏]")
 md = tmpdir() / "maaend"
 (md / "debug").mkdir(parents=True)

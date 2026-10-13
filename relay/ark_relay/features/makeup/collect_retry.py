@@ -516,9 +516,13 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
                         prev.get("started"), "、".join(prev.get("routes") or []))
             return False
         cut_off = str(prev.get("started"))
-        log.warning("自动采集补跑：%s 开始的补跑没跑完（中继中途停了），关掉留下的 MaaEnd 和游戏，再补一次", cut_off)
-        _kill("MaaEnd.exe")
-        _kill("Endfield.exe")
+        if not prev.get("closed"):
+            # Said and closed once: the early returns below (no routes, scripts
+            # running, ...) leave the stamp as it is and this is called every tick.
+            log.warning("自动采集补跑：%s 开始的补跑没跑完（中继中途停了），关掉留下的 MaaEnd 和游戏，再补一次", cut_off)
+            _kill("MaaEnd.exe")
+            _kill("Endfield.exe")
+            atomic_write_text(stamp, json.dumps(dict(prev, closed=now.isoformat()), ensure_ascii=False))
     if not cfg.maaend_dir or not cfg.history_dir:
         log.info("自动采集补跑：没配 MaaEnd 目录或历史目录，不跑")
         return False
