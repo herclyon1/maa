@@ -14,7 +14,7 @@ from ark_relay.features.banners.banners import (
     upcoming,
 )
 from ark_relay.features.banners.wuwa_posters import (
-    _KURO, _kuro_default, _kuro_gacha, _KURO_NEWS, _KURO_POST,
+    _KURO, _kuro_default, _kuro_gacha, _KURO_NEWS, _KURO_POST, kuro_checked,
     wuwa_first_half_notice_end, _wuwa_poster_span, _WW_GACHA_CHECKED,
 )
 from ark_relay.features.banners.wuwa_history import (
@@ -412,10 +412,12 @@ def _wuwa_first_half_end(ver: str, now: datetime, read_image, tr: "Trace", kuro_
     get = kuro_get or _kuro_default
     failed: list[str] = []
     try:
-        events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 3, "pageSize": 100}).get("data") or {}).get("list")
+        events = (kuro_checked(get(_KURO_NEWS, {"gameId": 3, "eventType": 3, "pageSize": 100}), "唤取公告列表")
+                  .get("data") or {}).get("list")
 
         def detail_of(pid: str) -> dict:
-            return ((get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}).get("data") or {})
+            return ((kuro_checked(get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}),
+                                  f"帖子 {pid}").get("data") or {})
                     .get("postDetail") or {})
         hit = wuwa_first_half_notice_end(events or [], detail_of, ver, now)
     except Exception as e:
@@ -485,7 +487,7 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
         if payload is not None:
             h["Content-Type"] = "application/x-www-form-urlencoded"
             body = urllib.parse.urlencode(payload).encode()
-        return hub._json(_KURO + path, _UA_BROWSER, body, h)
+        return kuro_checked(hub._json(_KURO + path, _UA_BROWSER, body, h), path)
 
     cache: dict[str, str] = {}
 

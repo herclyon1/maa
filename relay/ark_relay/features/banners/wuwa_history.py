@@ -13,7 +13,7 @@ from ark_relay.features.banners.banners import (
     record_history, _UA_BROWSER,
 )
 from ark_relay.features.banners.wuwa_posters import (
-    _kuro_default, _KURO_NEWS, _KURO_POST, _KURO_POST_URL, _kuro_text, _WW_GACHA_SPAN,
+    _kuro_default, _KURO_NEWS, _KURO_POST, _KURO_POST_URL, _kuro_text, _WW_GACHA_SPAN, kuro_checked,
 )
 
 
@@ -116,25 +116,32 @@ def update_wuwa_history(state_dir, now: datetime, get=None, article_get=None, bu
     except (OSError, ValueError):
         cache = {}
     texts, art_texts = cache.setdefault("text", {}), cache.setdefault("articles", {})
-    events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 3, "pageSize": 1000}).get("data") or {}).get("list") or []
+    events = (kuro_checked(get(_KURO_NEWS, {"gameId": 3, "eventType": 3, "pageSize": 1000}), "唤取公告列表")
+              .get("data") or {}).get("list") or []
     gacha = sorted((e for e in events if "唤取" in str(e.get("postTitle") or "")),
                    key=lambda e: -int(e.get("publishTime") or 0))
     articles = [a for a in json.loads(article_get(_WW_SITE_ARTICLES))
                 if "版本更新维护预告" in str(a.get("articleTitle") or "")]
-    for a in articles:
-        if str(a.get("articleId")) not in art_texts and budget > 0:
-            budget -= 1
-            body = json.loads(article_get(_WW_SITE_ARTICLE.format(id=a.get("articleId")))).get("articleContent") or ""
-            art_texts[str(a.get("articleId"))] = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body).replace("&nbsp;", " "))
-    for e in gacha:
-        pid = str(e.get("postId"))
-        if pid not in texts and budget > 0:
-            budget -= 1
-            d = ((get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}).get("data") or {})
-                 .get("postDetail") or {})
-            texts[pid] = _kuro_text(d)
-    cache_f.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(cache_f, json.dumps(cache, ensure_ascii=False))
+    # A fetch that fails raises out of here (update_history reports it); what was
+    # fetched before it is kept, and the failed post is fetched again next run
+    # instead of being cached as an empty text for ever.
+    try:
+        for a in articles:
+            if str(a.get("articleId")) not in art_texts and budget > 0:
+                budget -= 1
+                body = json.loads(article_get(_WW_SITE_ARTICLE.format(id=a.get("articleId")))).get("articleContent") or ""
+                art_texts[str(a.get("articleId"))] = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body).replace("&nbsp;", " "))
+        for e in gacha:
+            pid = str(e.get("postId"))
+            if pid not in texts and budget > 0:
+                budget -= 1
+                d = ((kuro_checked(get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}),
+                                   f"帖子 {pid}").get("data") or {})
+                     .get("postDetail") or {})
+                texts[pid] = _kuro_text(d)
+    finally:
+        cache_f.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(cache_f, json.dumps(cache, ensure_ascii=False))
     hist = wuwa_history([e for e in gacha if str(e.get("postId")) in texts],
                         lambda pid: {"postContent": [{"contentType": 1, "content": texts[pid]}]},
                         [a for a in articles if str(a.get("articleId")) in art_texts],

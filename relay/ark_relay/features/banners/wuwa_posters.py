@@ -272,6 +272,28 @@ class KuroListProblem(RuntimeError):
     not "no post" (the same distinction as BiliFeedProblem)."""
 
 
+class KuroAnswerProblem(RuntimeError):
+    """库街区 answered HTTP 200 with an error code in the body: a failed fetch, not
+    "nothing found"."""
+
+
+# Every saved 库街区 answer (tests/fixtures/wuwa_home.json, ww-news-events.json,
+# ww-kuro-events3-2026-10-05.json, ww-3.7-news-post.json, wuwa_entry_jingran.json,
+# wuwa_catalogue_2026-09-12.json) carries "code": 200 on success.
+_KURO_OK = 200
+
+
+def kuro_checked(answer, what: str):
+    """`answer` unchanged, or KuroAnswerProblem when its body carries a code other
+    than 200. Without the check an error body (data null) read as an empty list or
+    an empty post, i.e. "nothing found". A body with no `code` at all is left to
+    the caller's shape checks, as before."""
+    if isinstance(answer, dict) and "code" in answer and answer.get("code") != _KURO_OK:
+        raise KuroAnswerProblem(f"库街区 {what} 返回 code={answer.get('code')!r}："
+                                f"{json.dumps(answer, ensure_ascii=False)[:300]}")
+    return answer
+
+
 def _kuro_poster(ver: "str | None", now: datetime, get=None):
     """(page URL, title, images) of the 库街区 version-news post; None when the
     list reads fine but the post is not in it. Raises KuroListProblem when the
@@ -280,6 +302,7 @@ def _kuro_poster(ver: "str | None", now: datetime, get=None):
         h = dict(_KURO_BBS_HDR, **{"Content-Type": "application/x-www-form-urlencoded"})
         return hub._json(_KURO + path, _UA_BROWSER, urllib.parse.urlencode(payload).encode(), h)
     get = get or post
+    # An error body has no list either: KuroListProblem below covers it.
     answer = get(_KURO_NEWS, {"gameId": 3, "eventType": 2, "pageSize": 200})
     events = ((answer if isinstance(answer, dict) else {}).get("data") or {}).get("list")
     if not isinstance(events, list):
@@ -292,7 +315,8 @@ def _kuro_poster(ver: "str | None", now: datetime, get=None):
         log.info("库街区官方资讯里没找到 %s 版本资讯帖（列表 %d 条）", ver or "当期", len(events))
         return None
     pid, title, _at = hit
-    detail = ((get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}).get("data") or {})
+    detail = ((kuro_checked(get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}),
+                            f"帖子 {pid}").get("data") or {})
               .get("postDetail") or {})
     imgs = [(str(c["url"]), int(c.get("imgWidth") or 0), int(c.get("imgHeight") or 0))
             for c in detail.get("postContent") or [] if c.get("contentType") == 2 and c.get("url")]
@@ -360,10 +384,12 @@ def _kuro_gacha(ver: "str | None", pool: str, now: datetime, get=None):
         h = dict(_KURO_BBS_HDR, **{"Content-Type": "application/x-www-form-urlencoded"})
         return hub._json(_KURO + path, _UA_BROWSER, urllib.parse.urlencode(payload).encode(), h)
     get = get or post
-    events = (get(_KURO_NEWS, {"gameId": 3, "eventType": 3, "pageSize": 100}).get("data") or {}).get("list")
+    events = (kuro_checked(get(_KURO_NEWS, {"gameId": 3, "eventType": 3, "pageSize": 100}), "唤取公告列表")
+              .get("data") or {}).get("list")
 
     def detail_of(pid: str) -> dict:
-        return ((get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}).get("data") or {})
+        return ((kuro_checked(get(_KURO_POST, {"isOnlyPublisher": 0, "postId": pid, "showOrderType": 2}),
+                              f"帖子 {pid}").get("data") or {})
                 .get("postDetail") or {})
     return wuwa_gacha_notice(events or [], detail_of, ver, pool, now)
 
