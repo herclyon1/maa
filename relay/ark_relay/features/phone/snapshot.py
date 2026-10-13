@@ -50,8 +50,11 @@ def _mas(out: dict) -> None:
         name = info.get("Name") or info.get("RootPath", uid)
         try:
             users = _post("/api/scripts/user/get", {"scriptId": uid}).get("data") or {}
-        except Exception:  # noqa: BLE001
-            users = {}
+        except Exception as exc:  # noqa: BLE001 - said in the section, as _queues does
+            # Without a mark the script's section just vanished, as if it had no
+            # user (audit 11 #5); _queues marks the same case 「脚本读不到」.
+            out[_section_of(name)] = {"用户读不到": f"{type(exc).__name__}: {exc}"}
+            continue
         for _, u in users.items():
             if name == "MAA":
                 out["MAA"] = maa_fields(u.get("Info", {}), u.get("Task", {}))
@@ -78,6 +81,13 @@ def _mas(out: dict) -> None:
                         "❌ 不生效：快速配置是关的，真正跑的是 OK-WW 自己的母本配置",
                     **(u.get("Task", {}) or {}),
                 }
+
+
+def _section_of(name) -> str:
+    """The snapshot key _mas writes a script's user under."""
+    if name in ("MAA", "MaaEnd"):
+        return str(name)
+    return "OK-WW(MAS侧)" if "ok-ww" in str(name).lower() else str(name)
 
 
 def maa_fields(i: dict, t: dict) -> dict:
