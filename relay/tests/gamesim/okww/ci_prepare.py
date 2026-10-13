@@ -90,6 +90,20 @@ LANES = {
                           "expect": "green"},
 }
 
+# Echo farm (gamesim U7, test_echofarm.py): a red and a green lane per fix, each on the OK-WW the
+# game PC ran the code before the fix on - v3.7.3 through 2026-10-05 (COS bundles 2026-10-04 and
+# 10-05, ok-script.log 'ok-script init v3.7.3'), v3.7.4 from 10-06 09:19 (ok-script.2026-10-06.log
+# line 1 'ok-script init v3.7.4'). The test picks its cases by lane (test_echofarm.LANES), and
+# every red case must fail for its named reason. relay_line '': the old overlay loads clean on that
+# OK-WW, so the relay says nothing (okww_overlay.report_line).
+_U7 = {"35d6166b": "v3.7.4", "b24c48fc": "v3.7.4", "034a555d": "v3.7.3", "86bc0960": "v3.7.3",
+       "7b1099a1": "v3.7.3"}
+for _fix, _tag in _U7.items():
+    LANES[f"u7-red-{_fix}"] = {"tag": _tag, "overlay": f"{_fix}~1", "tests": "test_echofarm.py",
+                               "expect": "red", "relay_line": ""}
+    LANES[f"u7-green-{_fix}"] = {"tag": _tag, "overlay": _fix, "tests": "test_echofarm.py",
+                                 "expect": "green"}
+
 
 def sh(*cmd, cwd=None) -> str:
     print("+ " + " ".join(str(c) for c in cmd), flush=True)

@@ -13,9 +13,9 @@
 #
 # Lanes come from relay/tests/gamesim/okww/ci_prepare.py (LANES), and the tests in a lane by
 # glob there, so a new test file needs no edit here; a new lane needs its matrix entry below.
-# `installed` is the gate; the p1-* and p2-* lanes are the red-before-green proofs of
-# test_overlay_loads.py and test_p2_find_nest.py (a red lane passes only when the test fails
-# at an assertion and the relay says what it said on the machine).
+# `installed` is the gate; the p1-*, p2-* and u7-* lanes are the red-before-green proofs of
+# test_overlay_loads.py, test_p2_find_nest.py and test_echofarm.py (a red lane passes only when
+# the test fails at an assertion and the relay says what it said on the machine).
 #
 # Cost: "GitHub Actions usage is free for ... public repositories that use standard
 # GitHub-hosted runners." (docs.github.com, about billing for GitHub Actions)
@@ -41,7 +41,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lane: [installed, p1-red-f6b5f432, p1-green-f6b5f432, p2-red-f6b5f432, p2-green-f6b5f432]
+        lane: [installed, p1-red-f6b5f432, p1-green-f6b5f432, p2-red-f6b5f432, p2-green-f6b5f432,
+               u7-red-35d6166b, u7-green-35d6166b, u7-red-b24c48fc, u7-green-b24c48fc,
+               u7-red-034a555d, u7-green-034a555d, u7-red-86bc0960, u7-green-86bc0960,
+               u7-red-7b1099a1, u7-green-7b1099a1]
     defaults:
       run:
         shell: bash
