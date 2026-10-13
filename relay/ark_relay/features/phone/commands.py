@@ -687,8 +687,11 @@ def run_script(script: str) -> tuple[bool, str]:
     for sid, sc in scripts.items():
         if str((sc.get("Info") or {}).get("Name") or "").lower() != script.lower():
             continue
-        _note_dispatch(f"脚本 {script}")
         _overlay_before_start(f"单独开跑「{script}」前")
+        # Noted after the overlay step, which has no time limit: noted before it, a
+        # slow one put the dispatch outside trigger.MATCH_AFTER_S and the relay's
+        # own run was booked as hand-started.
+        _note_dispatch(f"脚本 {script}")
         try:
             r = _mas("/api/dispatch/start", {"taskId": sid, "mode": "AutoProxy"})
         except Exception as exc:  # noqa: BLE001
@@ -711,8 +714,8 @@ def _run_now(queue: str) -> tuple[bool, str]:
         name = str((q.get("Info") or {}).get("Name") or "")
         have.append(name)
         if name == queue:
-            _note_dispatch(f"队列 {queue}")
             _overlay_before_start(f"开跑队列「{queue}」前")
+            _note_dispatch(f"队列 {queue}")     # after the overlay step, as in run_script
             try:
                 # The only valid values for mode are AutoProxy / ScriptConfig /
                 # Update (TaskCreateIn in app/models/schema.py); anything else
