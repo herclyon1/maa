@@ -48,7 +48,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "install.json"
-ROOT = Path.home() / "Claude" / "daysim-corpus" / "_install"
+# The corpus root; DAYSIM_CORPUS points elsewhere (CI unpacks the light packs there, pack.py).
+CORPUS_ROOT = Path(os.environ.get("DAYSIM_CORPUS") or Path.home() / "Claude" / "daysim-corpus")
+ROOT = CORPUS_ROOT / "_install"
 BJ = timezone(timedelta(hours=8))
 
 # u0 files left out: the pyappify launcher script and requirements.txt (the relay

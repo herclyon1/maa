@@ -26,6 +26,7 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))         # -I leaves the script's folder off the path
 RELAY = HERE.parents[1]
 BADFIX = HERE / "badfix"
 PY = sys.executable
@@ -95,6 +96,9 @@ def main(argv=None) -> int:
     ap.add_argument("--jobs", type=int, default=3)
     ap.add_argument("--code", default=str(RELAY), help="the relay code under test (default: this repo's relay/)")
     ap.add_argument("--skip-self-check", action="store_true", help="bring-up only; the deploy never passes it")
+    ap.add_argument("--available", action="store_true",
+                    help="only the days whose corpus is there (CI: the light packs, pack.py unpack); "
+                         "the deploy runs every day")
     a = ap.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)   # deploy-relay.sh pipes it through sed
     free = shutil.disk_usage(tempfile.gettempdir()).free / 2**30
@@ -103,8 +107,18 @@ def main(argv=None) -> int:
         return 3
     t0 = time.perf_counter()
     work = Path(tempfile.mkdtemp(prefix="daysim-gate-"))
-    print("▶ day replay: run.py --all")
-    rc, out = run(["--all", "--jobs", str(a.jobs), "--code", str(a.code), "--out", str(work / "days")],
+    which = ["--all"]
+    if a.available:
+        import install  # noqa: PLC0415
+        have = sorted(p.parent.name for p in (HERE / "days").glob("*/events.jsonl")
+                      if (install.CORPUS_ROOT / p.parent.name).is_dir())
+        print(f"▶ days with a corpus under {install.CORPUS_ROOT}: {', '.join(have) or 'none'}")
+        if not have:
+            print("✋ day gate: no day to replay")
+            return 2
+        which = [x for d in have for x in ("--day", d)]
+    print(f"▶ day replay: run.py {' '.join(which)}")
+    rc, out = run([*which, "--jobs", str(a.jobs), "--code", str(a.code), "--out", str(work / "days")],
                   work / "days.log")
     problems = []
     for ln in out.splitlines():

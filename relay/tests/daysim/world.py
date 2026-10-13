@@ -76,6 +76,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import threading
 import urllib.parse
 from datetime import datetime, timedelta, timezone
@@ -86,7 +87,8 @@ import install
 HERE = Path(__file__).resolve().parent
 RELAY = HERE.parents[1]
 DAYS = HERE / "days"
-CORPUS_ROOT = Path.home() / "Claude" / "daysim-corpus"
+# DAYSIM_CORPUS: another corpus root (CI unpacks the light packs there; pack.py).
+CORPUS_ROOT = install.CORPUS_ROOT
 BJ = timezone(timedelta(hours=8))
 
 DATA_REL = "C/ProgramData/ark-relay"         # the relay's data folder on the machine
@@ -251,6 +253,9 @@ def clone(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     if dst.exists() or dst.is_symlink():
         dst.unlink()
+    if sys.platform != "darwin":         # clonefile is macOS's; Windows CI has no libc to load
+        shutil.copyfile(src, dst)
+        return
     if not _LIBC:
         _LIBC.append(ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True))
     fn = getattr(_LIBC[0], "clonefile", None)
