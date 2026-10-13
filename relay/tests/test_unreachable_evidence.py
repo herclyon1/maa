@@ -117,7 +117,7 @@ def cant_enter_sent(e):
 check("反例日志确实是「秒败、零完成」的形状", collector.maaend_unreachable(FIX.read_text(encoding="utf-8")), True)
 
 print("[形状有、没有官方维护也没有更新公告 → 普通故障]")
-handle.efstatus.update_hint = lambda now=None, fetch=None: ""
+handle.efstatus.update_hint = lambda now=None, fetch=None, strict=False: ""
 e = build()
 r = rec_from_fixture()
 
@@ -152,6 +152,30 @@ handle._push_unresolved(e, r, "补跑也没成", 1)
 body = e.notifier.sent[-1][1] if e.notifier.sent else ""
 check("报警里说了像没进游戏、按故障报", "像没进游戏" in body and "按故障报" in body, True)
 
+print("[形状有、公告读不到 → 普通故障，但记下「没读到」，不说成「没有公告」（审计 10-13 s1 #3）]")
+
+
+def hint_unreadable(now=None, fetch=None, strict=False):
+    # efstatus.update_hint's own contract: "" on a failed read unless strict.
+    if strict:
+        raise OSError("notice page unreachable")
+    return ""
+
+
+handle.efstatus.update_hint = hint_unreadable
+e = build()
+r = rec_from_fixture()
+handle._handle(e, r)
+check("还是普通故障", r.raw.get("maaend_unreachable"), None)
+check("记下公告没读到", r.raw.get("maaend_unreachable_unread"), True)
+check("账本上也记着", (ledger_raw(e, r) or {}).get("maaend_unreachable_unread"), True)
+check("没读到的说法不说「没有公告」", "没有官方" in getattr(texts, "UNREACHABLE_UNREAD_NOTE", "没有官方"), False)
+handle.efstatus.update_hint = lambda now=None, fetch=None, strict=False: ""
+e = build()
+r = rec_from_fixture()
+handle._handle(e, r)
+check("读到了、确实没有公告：不记没读到", r.raw.get("maaend_unreachable_unread"), None)
+
 print("[形状有 + 官方维护窗口 → 不补跑，进群一条，写明官方依据（2026-10-06 起）]")
 e = build()
 gameupdate._store(e.cfg.state_dir).set("updates", "maintenance_windows", {"终末地": {
@@ -171,7 +195,7 @@ e._flush_pending()
 check("下一轮不再推", len([t for t, _b, a in e.notifier.sent if a]), 1)
 
 print("[形状有 + 官方更新公告 → 不补跑，进群一条，写明那条公告]")
-handle.efstatus.update_hint = lambda now=None, fetch=None: "官方公告：今天 10:00 「雪凇幽梦」版本更新"
+handle.efstatus.update_hint = lambda now=None, fetch=None, strict=False: "官方公告：今天 10:00 「雪凇幽梦」版本更新"
 e = build()
 r = rec_from_fixture()
 handle._handle(e, r)

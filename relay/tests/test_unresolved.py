@@ -337,7 +337,7 @@ e = build()
 # 「进不了游戏」needs official evidence (handle._confirm_unreachable); here the
 # update notice. Without it the shape alone rings: test_unreachable_evidence.py.
 real_hint = handle.efstatus.update_hint
-handle.efstatus.update_hint = lambda now=None, fetch=None: "官方公告：今天 10:00 「雪凇幽梦」版本更新"
+handle.efstatus.update_hint = lambda now=None, fetch=None, strict=False: "官方公告：今天 10:00 「雪凇幽梦」版本更新"
 handle._handle(e, rec("MaaEnd", at(9, 5), raw={"maaend_unreachable_shape": True}))
 handle.efstatus.update_hint = real_hint
 e._flush_pending()

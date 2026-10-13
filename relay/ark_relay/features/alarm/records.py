@@ -198,12 +198,24 @@ def _confirm_unreachable(eng, rec: RunRecord) -> None:
         return
     raw["maaend_unreachable_shape"] = True
     why = ""
+    # Unknown is not evidence, but it is not "no notice" either (audit 2026-10-13
+    # s1 #3): `maaend_unreachable_unread` lets the alarm say the notices could not
+    # be read (texts.UNREACHABLE_UNREAD_NOTE) instead of 「今天没有官方…公告」.
+    unread = False
     try:
         from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
         why = gameupdate.in_maintenance(eng.cfg.state_dir, rec.script, rec.started)
-    except Exception:  # unknown is not evidence; logged with the traceback
+    except Exception:  # logged with the traceback
         log.warning("查不了维护窗口，%s 按普通失败处理", rec.run_id, exc_info=True)
-    why = why or efstatus.update_hint(rec.started)
+        unread = True
+    if not why:
+        try:
+            why = efstatus.update_hint(rec.started, strict=True)
+        except Exception:  # noqa: BLE001 - the alarm says the notice was not read
+            log.info("终末地更新公告没读到，%s 按普通失败处理", rec.run_id, exc_info=True)
+            unread = True
+    if unread and not why:
+        raw["maaend_unreachable_unread"] = True
     if why:
         raw["maaend_unreachable"] = True
         raw["maaend_unreachable_why"] = why

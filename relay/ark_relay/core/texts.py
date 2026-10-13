@@ -335,6 +335,11 @@ MAAEND_UPDATE_AFTER_DONE = "⚠️ 终末地装新版重启了这一趟（前面
 # (handle._confirm_unreachable): it is alarmed on as a fault.
 UNREACHABLE_SHAPE_NOTE = ("每个任务都在 30 秒内失败、一个没完成，看着像没进游戏；"
                           "但今天没有官方维护或更新公告，所以按故障报，已交给我们这边去查游戏窗口、分辨率、游戏有没有闪退。")
+# The same shape when the maintenance windows or the update notice could not be
+# read (records._confirm_unreachable: raw maaend_unreachable_unread).
+UNREACHABLE_UNREAD_NOTE = ("每个任务都在 30 秒内失败、一个没完成，看着像没进游戏；"
+                           "官方维护和更新公告这次没读到，分不清是不是在维护，所以按故障报，"
+                           "已交给我们这边去查游戏窗口、分辨率、游戏有没有闪退。")
 
 
 # A run a person started at AUTO-MAS itself (trigger.py): alarmed like any
@@ -959,7 +964,7 @@ def samples() -> list[str]:
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 13, 10), 220, 30,
                            "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
         shift_no_result_body("早班", t0, _dt(2026, 10, 1, 12, 31), "MaaEnd", 180, 30),
-        UNREACHABLE_SHAPE_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, ANNIHILATION_OFF,
+        UNREACHABLE_SHAPE_NOTE, UNREACHABLE_UNREAD_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, ANNIHILATION_OFF,
         annihilation_off_body("明日方舟 · 剿灭"), SKIP_MODE, ESTOP,
         ESTOP_FAILED, SHUTDOWN_CANCELLED, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ECHO_FARM, ECHO_FARM_DONE, ECHO_FARM_TROUBLE,
         CONFIG_CHANGED, CONFIG_FAILED, SELFUPDATE_FAILED, WATCH_LOST,
