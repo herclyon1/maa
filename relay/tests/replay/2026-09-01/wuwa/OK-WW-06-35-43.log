@@ -149,7 +149,7 @@
 2026-09-01 10:36:50,810 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:36:52,493 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:37:05,698 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2BEF9C0> 10 seconds
-2026-09-01 10:37:05,902 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:37:05,902 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:37:05,904 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     is_team = self.teleport_to_configured_boss()
@@ -197,7 +197,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:37:26,630 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:37:28,205 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:37:41,425 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2C2D6C0> 10 seconds
-2026-09-01 10:37:41,640 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:37:41,640 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:37:41,642 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     is_team = self.teleport_to_configured_boss()
@@ -274,7 +274,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:38:02,371 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:38:04,009 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:38:17,215 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2BEEFC0> 10 seconds
-2026-09-01 10:38:17,434 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:38:17,434 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:38:17,436 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     is_team = self.teleport_to_configured_boss()
@@ -381,7 +381,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:38:38,160 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:38:39,791 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:38:53,005 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2BEDB20> 10 seconds
-2026-09-01 10:38:53,232 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:38:53,232 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:38:53,235 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -530,7 +530,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:39:13,947 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:39:15,491 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:39:28,705 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2BED9E0> 10 seconds
-2026-09-01 10:39:28,922 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:39:28,922 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:39:28,925 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -712,7 +712,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:39:49,655 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:39:51,271 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:40:04,479 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2BED8A0> 10 seconds
-2026-09-01 10:40:04,695 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:40:04,695 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:40:04,700 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -929,7 +929,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:40:25,467 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:40:27,156 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:40:40,367 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2BB1940> 10 seconds
-2026-09-01 10:40:40,581 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:40:40,581 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:40:40,586 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -1177,7 +1177,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:41:01,298 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:41:02,995 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:41:16,214 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2C2C680> 10 seconds
-2026-09-01 10:41:16,472 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:41:16,472 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:41:16,480 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -1458,7 +1458,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:41:37,215 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:41:38,782 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:41:52,001 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2BEDF80> 10 seconds
-2026-09-01 10:41:52,306 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:41:52,306 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:41:52,315 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -1772,7 +1772,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:42:13,100 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:42:14,803 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:42:28,020 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2BEDA80> 10 seconds
-2026-09-01 10:42:28,295 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:42:28,295 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:42:28,305 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -2119,7 +2119,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:42:49,025 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:42:50,563 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:43:03,775 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2BED3A0> 10 seconds
-2026-09-01 10:43:04,038 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:43:04,038 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:43:04,047 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -2499,7 +2499,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:43:24,759 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:43:26,369 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:43:39,578 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2C3F740> 10 seconds
-2026-09-01 10:43:39,817 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:43:39,817 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:43:39,825 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -2912,7 +2912,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:44:00,536 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:44:02,123 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:44:15,346 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2C3F880> 10 seconds
-2026-09-01 10:44:15,577 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:44:15,577 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:44:15,585 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -3358,7 +3358,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:44:36,337 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:44:38,063 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:44:51,282 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2C3F6A0> 10 seconds
-2026-09-01 10:44:51,507 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:44:51,507 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:44:51,519 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -3837,7 +3837,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:45:12,268 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:45:13,889 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:45:27,102 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2C3FE20> 10 seconds
-2026-09-01 10:45:27,342 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:45:27,342 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:45:27,354 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -4349,7 +4349,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:45:48,069 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:45:49,739 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:46:02,948 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2C3FBA0> 10 seconds
-2026-09-01 10:46:03,177 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:46:03,177 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:46:03,188 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -4894,7 +4894,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:46:23,934 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:46:25,575 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:46:38,794 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2C3F4C0> 10 seconds
-2026-09-01 10:46:39,034 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:46:39,034 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:46:39,045 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -5472,7 +5472,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:46:59,751 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:47:01,382 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:47:14,591 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2C3D260> 10 seconds
-2026-09-01 10:47:14,842 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:47:14,842 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:47:14,855 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'
@@ -6083,7 +6083,7 @@ RuntimeError: Teleport to boss failed
 2026-09-01 10:47:35,760 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：2/3_1.00, x60_0.79]
 2026-09-01 10:47:37,377 INFO TaskExecutor FarmEchoTask:left_click 推荐等级90 (281, 609) after_sleep 1
 2026-09-01 10:47:50,588 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_click_feature.<locals>.<lambda> at 0x000001FCC2C2D300> 10 seconds
-2026-09-01 10:47:50,801 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：119403610_0.97]
+2026-09-01 10:47:50,801 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [提示_1.00, 结晶波片不足，无法获取奖励，请确认是否继续进入？_1.00, 本次登录不再提示_1.00, 取消_1.00, 确认_1.00, 特征码：UIDREDACT_0.97]
 2026-09-01 10:47:50,814 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):
   File "D:\ark\okww\data\apps\ok-ww\working\src\task\FarmEchoTask.py", line 256, in teleport_to_configured_boss_and_prepare
     return self.teleport_to_boss_enabled() and self._teleport_walk_result == 'combat'

@@ -211,10 +211,27 @@ fi
 
 echo "▶ 12/25 公开仓库里不许有他人身份信息"
 # 仓库是 public 的。别人的姓名、主机名、登录方式一旦提交就等于公开挂出去。
-if hits=$(grep -rnE '卢智超|Administrator[^a-zA-Z].{0,20}(空密码|无密码|自动登录)' \
+# The owner's game UID too: OK-WW's OCR dumps read it off the screen as the UID label followed
+# by digits (the last alternative of ID_RE), and until 2026-10-13 it sat in plain text in eight
+# committed files (now UIDREDACT, same length so offsets hold). Machine logs are committed as
+# .log / .jsonl / .json and gzip / zstd, so the scan covers those and the compressed files'
+# contents. ID_RE is the one copy of the pattern (relay/tests/daysim/pack.py identity_pattern()
+# reads it from this line); never put the UID itself here.
+ID_RE='卢智超|Administrator[^a-zA-Z].{0,20}(空密码|无密码|自动登录)|特征码(:|：) *[0-9]'
+if hits=$( { grep -rnE "$ID_RE" \
           --include='*.md' --include='*.py' --include='*.sh' --include='*.js' \
-          . 2>/dev/null | grep -v '^\./\.git/' | grep -v 'lint-repo.sh'); then
-  note "公开仓库里出现了他人身份信息或登录方式："
+          --include='*.log' --include='*.jsonl' --include='*.json' --include='*.txt' \
+          --include='*.csv' --include='*.tsv' --include='*.yml' --include='*.yaml' --include='*.html' \
+          . 2>/dev/null | grep -v '^\./\.git/' | grep -v 'lint-repo.sh'
+        git ls-files '*.gz' '*.zst' | while IFS= read -r f; do
+          case "$f" in
+            *.gz) gzip -dc "$f" ;;
+            *.zst) zstd -qdc "$f" ;;
+          esac 2>/dev/null | LC_ALL=C grep -aqE "$ID_RE" && echo "$f (decompressed)"
+        done
+        command -v zstd >/dev/null || echo "zstd missing: the .zst files were not scanned (brew install zstd)"
+      } ); [ -n "$hits" ]; then
+  note "公开仓库里出现了他人身份信息、登录方式或游戏 UID（特征码后的数字）："
   sed 's/^/       /' <<<"$hits"
 else
   ok "没有他人身份信息"
