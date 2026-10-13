@@ -55,8 +55,8 @@ class Logs(logging.Handler):
 
 
 logs = Logs()
-logging.getLogger("ark.maintenance").addHandler(logs)
-logging.getLogger("ark.maintenance").setLevel(logging.INFO)
+M.log.addHandler(logs)
+M.log.setLevel(logging.INFO)
 
 BIG = "公告".encode() * 34134 + b"ab"      # 204806 bytes of UTF-8
 hits: list[str] = []
