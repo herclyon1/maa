@@ -14,6 +14,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from ark_relay.core import mastercfg
 from ark_relay.core.config import SERVER_TZ, USER_TZ, atomic_write_text
 from ark_relay.core.names import GAME_ZH
 
@@ -507,16 +508,17 @@ def _okww_quick_overrides(automas_dir: Path | None) -> "dict | None | object":
     return None
 
 
-def _maaend_extra_bits(maaend_dir: Path | None, when) -> list[str]:
+def _maaend_extra_bits(automas_dir, maaend_dir: Path | None, when) -> list[str]:
     """What the MaaEnd round runs besides the dailies - for now, only AutoCollect.
 
     AutoCollect runs only on its selected weekdays and takes about half an hour,
-    so the plan says whether tomorrow is one of them.
+    so the plan says whether tomorrow is one of them. Read from the master copy:
+    phone edits land there, and AUTO-MAS copies it over MaaEnd's own file before
+    each run, so MaaEnd's file lags one run behind. With no AutoCollectSchedule
+    saved, MaaEnd uses the option's default_case from its definition.
     """
-    if not maaend_dir:
-        return []
-    f = Path(maaend_dir) / "config" / "mxu-MaaEnd.json"
-    if not f.is_file():
+    f = mastercfg.maaend_master(automas_dir) if automas_dir else None
+    if not f or not f.is_file():
         return []
     try:
         d = json.loads(f.read_text(encoding="utf-8", errors="replace"))
@@ -531,8 +533,12 @@ def _maaend_extra_bits(maaend_dir: Path | None, when) -> list[str]:
         for t in inst.get("tasks") or []:
             if t.get("taskName") != "AutoCollect" or not t.get("enabled"):
                 continue
-            opts = (t.get("optionValues") or {}).get("AutoCollectSchedule") or {}
-            names = opts.get("caseNames") or []
+            opts = (t.get("optionValues") or {}).get("AutoCollectSchedule")
+            if opts is None:
+                defs = mastercfg._maaend_defs(maaend_dir)[0] if maaend_dir else {}
+                names = (defs.get("AutoCollectSchedule") or {}).get("default_case") or []
+            else:
+                names = opts.get("caseNames") or []
             picked = sorted(days[n.replace("AutoCollectSchedule", "")]
                             for n in names
                             if n.replace("AutoCollectSchedule", "") in days)
@@ -716,7 +722,7 @@ def next_plan(automas_dir: Path | None) -> str:
                 from ark_relay.features.weekly import sanity_plan  # noqa: PLC0415 - avoids a cycle
                 if label := sanity_plan.read(automas_dir).get("label"):
                     bits.append(f"理智用于 {label}")
-                bits += _maaend_extra_bits(s.get("path"), _tomorrow())
+                bits += _maaend_extra_bits(automas_dir, s.get("path"), _tomorrow())
             elif s.get("sanity_use"):
                 bits.append(f"理智用于 {s['sanity_use']}")
             if s.get("kind") == "OK-WW":
