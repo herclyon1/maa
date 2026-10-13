@@ -136,7 +136,7 @@ def report_line() -> str:
     if not got:
         return ""
     if err := got.get("error"):
-        return "中继给 OK-WW 的改动文件自己报错了，改动一条都没生效：" + str(err)[-300:]
+        return _error_line(got, str(err))
     skipped = got.get("skipped") or []
     adapted = got.get("adapted") or []
     parts = []
@@ -147,6 +147,34 @@ def report_line() -> str:
         parts.append("OK-WW 升级改了这几处，中继已按新版适配：" +
                      "、".join(str(a.get("what")) for a in adapted))
     return "\n".join(parts)
+
+
+# Every override site in the overrides file: `@override(Cls, "name"...)` and the
+# stamina hooks bound through `_farm_hook(Cls, "name")`.
+_SITE = re.compile(r'(?:@override|_farm_hook)\((\w+), "(\w+)"')
+
+
+def _error_line(got: dict, err: str) -> str:
+    """The report says the overrides file raised part-way: which overrides are live, which are not.
+
+    The overrides are applied one by one and the report is written from the except
+    (ark_overrides.py, the block at the end), so `applied` is exactly what landed
+    before the error; the sites that are neither applied nor skipped did not.
+    """
+    applied = [str(a) for a in (got.get("applied") or [])]
+    if not applied:
+        return "中继给 OK-WW 的改动文件自己报错了，改动一条都没生效：" + err[-300:]
+    done = applied + [str(s.get("what", "")).split("（")[0] for s in (got.get("skipped") or [])
+                      if isinstance(s, dict)]
+    try:
+        sites = [f"{c}.{m}" for c, m in _SITE.findall(source_text())]
+    except OSError:
+        sites = []
+    missing = [t for t in dict.fromkeys(sites)
+               if not any(a == t or a.endswith("." + t) for a in done)]
+    line = (f"中继给 OK-WW 的改动文件自己报错了，停在半路：已生效 {len(applied)} 条（{'、'.join(applied)}）"
+            + (f"；没生效 {len(missing)} 条（{'、'.join(missing)}）" if missing else "；之后的没装上"))
+    return line + "。报错：" + err[-300:]
 
 
 def nest_patch_present(okww_dir) -> bool | None:
@@ -161,11 +189,13 @@ def nest_patch_present(okww_dir) -> bool | None:
         return None
     got = last_report()
     if got:
-        if got.get("error"):
-            return False
+        # Applied first: the overrides are applied one by one, so a file that raised
+        # later on (`error`) can still have bound find_nest before it.
         bound = got.get("applied") or []
         if any(b.endswith(".find_nest") for b in bound):
             return True
+        if got.get("error"):
+            return False
         if any(s.get("what", "").endswith(".find_nest") for s in (got.get("skipped") or [])):
             return False
     # No report yet: OK-WW has not started since the overlay was installed. Say
@@ -317,11 +347,15 @@ def drift_line(okww_dir, state_dir=None) -> str:
             atomic_write_text(mark, sig)
     except OSError:
         pass
-    parts = []
-    if adapted:
-        # Adapting can still refuse at OK-WW start (find_nest: box top unreadable);
-        # that start's report then lists it as skipped, said at the next boot.
-        parts.append(f"{'、'.join(adapted)} 中继会按新版适配后换上，适配不了就不换，并另外报出来")
-    if skipped:
-        parts.append(f"{'、'.join(skipped)} 这一处先按 OK-WW 新版跑，等我们重抄")
-    return "OK-WW 升级后，中继的改动有 %d 处和新版对不上：%s" % (len(found), "；".join(parts))
+    # Adapting can still refuse at OK-WW start (find_nest: box top unreadable);
+    # that start's report then lists it as skipped, said at the next boot. Until
+    # then an adapted copy is not a fault, so its sentence carries none of the
+    # words texts._PATCH_TROUBLE turns into the ⚠️ title (audit 2026-10-13, A5):
+    # it stays a logged line.
+    adapt_part = (f"OK-WW 升级改了 {'、'.join(adapted)}，中继会按新版适配后换上，适配不了就不换，并另外报出来"
+                  if adapted else "")
+    if not skipped:
+        return adapt_part
+    line = (f"OK-WW 升级后，中继的改动有 {len(skipped)} 处和新版对不上："
+            f"{'、'.join(skipped)} 这一处先按 OK-WW 新版跑，等我们重抄")
+    return line + (f"；另外 {adapt_part}" if adapt_part else "")

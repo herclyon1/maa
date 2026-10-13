@@ -52,6 +52,11 @@ try:
     check("被跳过了就是不在", nest_patch_present(okww(None)), False)
     okww_overlay.last_report = lambda: {"error": "Traceback ..."}
     check("整个文件炸了也是不在", nest_patch_present(okww(None)), False)
+    # The file raised after find_nest was bound (audit 2026-10-13, A5): it is bound.
+    okww_overlay.last_report = lambda: {"applied": ["NightmareNestTask.find_nest"], "error": "Traceback ..."}
+    check("raised after binding find_nest: present", nest_patch_present(okww(None)), True)
+    okww_overlay.last_report = lambda: {"applied": ["FarmEchoTask.run"], "error": "Traceback ..."}
+    check("raised before binding find_nest: absent", nest_patch_present(okww(None)), False)
     okww_overlay.last_report = lambda: {}
     check("还没有报告时说不知道，不瞎猜", nest_patch_present(okww(None)), None)
 finally:
