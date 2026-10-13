@@ -71,7 +71,8 @@ check("the embeddable zip of that version", build.EMBED_URL.endswith(f"/{build.P
 check("pins from requirements.txt's Windows lines, pywin32 included", PINS, ["pillow==12.3.0", "pywin32==312"])
 for wf in ("relay-windows.yml", "package-windows.yml", "package-switch.yml"):
     got = re.findall(r"python-version: '([^']+)'", (ROOT / ".github/workflows" / wf).read_text(encoding="utf-8"))
-    check(f"{wf} sets up the same Python", got, [build.PY_VERSION])
+    # relay-windows.yml sets it up once per job (tests, day-replay); each must be the same.
+    check(f"{wf} sets up the same Python", sorted(set(got)) if got else got, [build.PY_VERSION])
 
 print("[build.py stage_runtime: pins as arguments, laid out as the installer has it]")
 with tempfile.TemporaryDirectory() as td:

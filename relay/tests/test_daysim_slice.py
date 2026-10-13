@@ -128,7 +128,10 @@ def check_shape(day: str, evs: list, seed: dict) -> None:
     paths = [f["path"] for f in seed["files"]]
     require(f"{day} seed files: one entry per machine path", len(paths) == len(set(paths)),
             [p for p in set(paths) if paths.count(p) > 1][:3])
-    big = [(p.name, p.stat().st_size) for p in (DAYS / day).iterdir() if p.stat().st_size > 400_000]
+    # pack.tar.zst is the day's light pack for the Windows CI (design.md section 5, <= 5 MiB,
+    # test_daysim_pack.py); everything else stays small.
+    big = [(p.name, p.stat().st_size) for p in (DAYS / day).iterdir()
+           if p.stat().st_size > 400_000 and p.name != "pack.tar.zst"]
     require(f"{day} in-repo files stay small (corpus holds the bytes)", not big, big)
 
 

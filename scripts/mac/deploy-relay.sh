@@ -38,14 +38,14 @@ PY='D:\ark\automas\environment\python\python.exe'
 # "$(dirname "${BASH_SOURCE[0]}")"，相对路径当场失效，取日志那步静静失败了。
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../relay" && pwd)"
 
+# A dry run skips the next two: the second asks the game machine (winps.sh) and writes its log.
+if [ "$DRY_RUN" != 1 ]; then
 # Our own parts (bundled Python, Pillow, pywin32) against the newest patch of their line.
 # Printed for us only and never blocks: it needs the network (BOARD/DECISIONS.md D-1011, tools current).
+python3 "$HERE/../scripts/mac/lib/parts_latest.py" || true
 # Every other tool we run on the Mac and the game machine, same rule; behind ones go to the
 # machine's technical log as red items (user 10-12 08:34, scripts/mac/lib/tools_latest.py).
-# A dry run skips both: tools_latest asks the game machine (winps.sh) and writes its log.
-if [ "$DRY_RUN" != 1 ]; then
-  python3 "$HERE/../scripts/mac/lib/parts_latest.py" || true
-  python3 "$HERE/../scripts/mac/lib/tools_latest.py" || true
+python3 "$HERE/../scripts/mac/lib/tools_latest.py" || true
 fi
 
 cd "$HERE"
