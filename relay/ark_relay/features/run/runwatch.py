@@ -169,22 +169,31 @@ def _timed_out(e: dict) -> bool:
 
 def _chain(entries: list[dict], due: datetime) -> tuple[int | None, bool, bool]:
     """For the run that started at `due`: (minutes from `due` to its end,
-    every record ok, any record a timeout)."""
-    runs = sorted(((s, f, e.get("ok") is not False, _timed_out(e)) for e in entries
-                   if (s := _parse(e.get("started"))) and (f := _parse(e.get("finished")) or s)),
+    every script's last record ok, any record a timeout).
+
+    Clean is judged per script by its last record in the chain: AUTO-MAS retries a
+    failed script, and a retry that succeeds is a clean run (10-01..10-13 the 09:00
+    run was clean on 2 of 13 days when any failed attempt counted - one MaaEnd attempt
+    failing and its retry succeeding - so the limit fell back to the longest day)."""
+    # A run a person started at AUTO-MAS (raw.hand_started, handle._book) is not the
+    # shift's, so it neither lengthens nor dirties the chain (10-12: OK-WW 11:41-11:49).
+    runs = sorted(((s, f, e.get("ok") is not False, _timed_out(e), str(e.get("script") or "")) for e in entries
+                   if not (e.get("raw") or {}).get("hand_started")
+                   and (s := _parse(e.get("started"))) and (f := _parse(e.get("finished")) or s)),
                   key=lambda x: x[0])
-    end, clean, timeout = None, True, False
-    for s, f, ok, to in runs:
+    end, timeout, last_ok = None, False, {}
+    for s, f, ok, to, script in runs:
         if end is None:
             if due - timedelta(minutes=5) <= s <= due + timedelta(minutes=CHAIN_START_MIN):
-                end, clean, timeout = f, ok, to
+                end, timeout, last_ok = f, to, {script: ok}
             continue
         if s > end + timedelta(minutes=CHAIN_GAP_MIN):
             break
-        end, clean, timeout = max(end, f), clean and ok, timeout or to
+        end, timeout = max(end, f), timeout or to
+        last_ok[script] = ok
     if end is None:
         return None, True, False
-    return max(0, int((end - due).total_seconds() // 60)), clean, timeout
+    return max(0, int((end - due).total_seconds() // 60)), all(last_ok.values()), timeout
 
 
 def run_minutes(entries: list[dict], due: datetime) -> int | None:
@@ -195,9 +204,9 @@ def run_minutes(entries: list[dict], due: datetime) -> int | None:
 def planned_minutes(eng, hh: int, mm: int, today: datetime) -> tuple[int, int]:
     """(planned minutes for the queue at hh:mm, days it was taken from).
 
-    The longest finish among the last HISTORY_DAYS days that were clean (no failed
-    record). A day that timed out or raised an overrun alarm never counts, so one
-    overlong day does not raise the limit for a week. With fewer than
+    The longest finish among the last HISTORY_DAYS days that were clean (each
+    script's last record ok, _chain). A day that timed out or raised an overrun
+    alarm never counts, so one overlong day does not raise the limit for a week. With fewer than
     MIN_CLEAN_DAYS clean days, the longest of every day that did not time out is
     used instead. FALLBACK_LIMIT_MIN only when there is no usable day at all.
     """
