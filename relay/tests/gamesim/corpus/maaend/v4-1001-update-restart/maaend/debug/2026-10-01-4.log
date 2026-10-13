@@ -1,0 +1,5 @@
+2026-10-01 16:11:06 INFO  [App] 检测到待安装更新: v2.31.0-beta.6
+2026-10-01 16:11:06 INFO  [App] 开始安装更新: D:/ark/maaend/cache\10697.zip -> D:\ark\maaend
+2026-10-01 16:11:07 INFO  [App] 增量更新: deleted=0, added=0, modified=4
+2026-10-01 16:11:07 INFO  [App] 更新安装完成
+2026-10-01 16:11:07 INFO  [App] 已清除待安装更新信息

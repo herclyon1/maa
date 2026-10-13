@@ -1,0 +1,205 @@
+{
+    "ConfigVersion": 1,
+    "Current": "Default",
+    "Configurations": {
+        "Default": {
+            "TaskQueue": [
+                {
+                    "$type": "StartUpTask",
+                    "AccountName": "",
+                    "AccountSwitchEnabled": false,
+                    "Name": "",
+                    "IsEnable": true,
+                    "TaskType": "StartUp"
+                },
+                {
+                    "$type": "FightTask",
+                    "UseMedicine": true,
+                    "MedicineCount": 999,
+                    "UseStone": false,
+                    "StoneCount": 0,
+                    "EnableTargetDrop": false,
+                    "DropId": "",
+                    "DropCount": 0,
+                    "IsInventoryTarget": false,
+                    "EnableTimesLimit": false,
+                    "TimesLimit": 2147483647,
+                    "Series": 0,
+                    "StagePlan": [
+                        "1-7"
+                    ],
+                    "IsDrGrandet": false,
+                    "UseExpiringMedicine": false,
+                    "MedicineExpireDays": 2,
+                    "UseExpireMedicineForActivity": true,
+                    "UseCustomAnnihilation": false,
+                    "AnnihilationStage": "Annihilation",
+                    "HideUnavailableStage": false,
+                    "IsStageManually": true,
+                    "UseOptionalStage": true,
+                    "UseStoneAllowSave": false,
+                    "HideSeries": false,
+                    "StageResetMode": "Current",
+                    "UseWeeklySchedule": false,
+                    "Name": "理智作战",
+                    "IsEnable": true,
+                    "TaskType": "Fight"
+                },
+                {
+                    "$type": "InfrastTask",
+                    "Mode": "Normal",
+                    "UsesOfDrones": "Money",
+                    "DormThreshold": 30,
+                    "DormTrustEnabled": true,
+                    "OriginiumShardAutoReplenishment": true,
+                    "DormFilterNotStationed": true,
+                    "ReceptionMessageBoard": true,
+                    "ReceptionClueExchange": true,
+                    "SendClue": true,
+                    "ContinueTraining": false,
+                    "FiammettaTarget1": "清流",
+                    "FiammettaTarget2": "可露希尔",
+                    "FiammettaTarget3": "但书",
+                    "FiammettaRecoveryEnabled": false,
+                    "UsePinusSylvestris": false,
+                    "UsePerceptionInformation": false,
+                    "UseWorldlyPlight": false,
+                    "UseAbyssalHunter": false,
+                    "CustomFileType": "user_defined",
+                    "Filename": "",
+                    "PlanSelect": -1,
+                    "RoomList": [
+                        {
+                            "Room": "Mfg"
+                        },
+                        {
+                            "Room": "Trade"
+                        },
+                        {
+                            "Room": "Control"
+                        },
+                        {
+                            "Room": "Power"
+                        },
+                        {
+                            "Room": "Reception"
+                        },
+                        {
+                            "Room": "Office"
+                        },
+                        {
+                            "Room": "Dorm"
+                        },
+                        {
+                            "Room": "Processing"
+                        },
+                        {
+                            "Room": "Training"
+                        }
+                    ],
+                    "Name": "",
+                    "IsEnable": true,
+                    "TaskType": "Infrast"
+                },
+                {
+                    "$type": "RecruitTask",
+                    "MaxTimes": 4,
+                    "ExtraTagMode": 1,
+                    "Level3PreferTags": [],
+                    "PreferTagEnabled": true,
+                    "PreserveTagList": [
+                        "支援机械"
+                    ],
+                    "PreserveTagEnabled": true,
+                    "RefreshLevel3": true,
+                    "ForceRefresh": true,
+                    "Level3Choose": true,
+                    "Level3RecruitmentPermitReserveEnabled": false,
+                    "Level3RecruitmentPermitReserve": 8,
+                    "Level4Choose": true,
+                    "Level5Choose": false,
+                    "Level6Choose": false,
+                    "Level3Time": 540,
+                    "Level4Time": 540,
+                    "Name": "",
+                    "IsEnable": true,
+                    "TaskType": "Recruit"
+                },
+                {
+                    "$type": "MallTask",
+                    "Shopping": true,
+                    "CreditFight": false,
+                    "CreditFightFormation": 0,
+                    "CreditFightLastTime": "2026/05/17 00:00:00",
+                    "CreditFightOnceADay": true,
+                    "VisitFriends": true,
+                    "VisitFriendsOnceADay": false,
+                    "VisitFriendsLastTime": "2026/07/14 00:00:00",
+                    "FirstList": "招聘许可",
+                    "BlackList": "碳;家具;加急许可",
+                    "ShoppingIgnoreBlackListWhenFull": false,
+                    "OnlyBuyDiscount": false,
+                    "ReserveMaxCredit": false,
+                    "IsCreditFightAvailable": false,
+                    "IsVisitFriendsAvailable": true,
+                    "Name": "",
+                    "IsEnable": true,
+                    "TaskType": "Mall"
+                },
+                {
+                    "$type": "AwardTask",
+                    "Award": true,
+                    "Mail": true,
+                    "FreeGacha": false,
+                    "Orundum": true,
+                    "Mining": true,
+                    "SpecialAccess": true,
+                    "SignInEvent": false,
+                    "Name": "",
+                    "IsEnable": true,
+                    "TaskType": "Award"
+                },
+                {
+                    "$type": "RoguelikeTask",
+                    "Theme": "JieGarden",
+                    "Difficulty": 2147483647,
+                    "Mode": "Exp",
+                    "Squad": "",
+                    "SquadCollectible": "",
+                    "Roles": "",
+                    "StartCount": 999999,
+                    "StartingOpers": [],
+                    "UseAdditionalStartingOpers": false,
+                    "Investment": true,
+                    "InvestCount": 999,
+                    "InvestWithMoreScore": false,
+                    "CollectibleStartAwards": "HotWater, Hope, Idea",
+                    "CollectibleShopping": false,
+                    "StartWithEliteTwo": false,
+                    "StartWithEliteTwoOnly": false,
+                    "ExpectedCollapsalParadigms": "",
+                    "MonthlySquadAutoIterate": true,
+                    "MonthlySquadCheckComms": true,
+                    "DeepExplorationAutoIterate": true,
+                    "FindPlaytimeTarget": "Ling",
+                    "BlackFlowCultivationTarget": "Cat",
+                    "UseSupportNonFriend": false,
+                    "RefreshTraderWithDice": false,
+                    "SquadIsFoldartal": false,
+                    "SamiFirstFloorFoldartal": false,
+                    "SamiFirstFloorFoldartals": "",
+                    "SamiNewSquad2StartingFoldartal": false,
+                    "SamiNewSquad2StartingFoldartals": "",
+                    "StopWhenDepositFull": false,
+                    "StopAtFinalBoss": false,
+                    "StopWhenLevelMax": false,
+                    "StartWithSeed": false,
+                    "Seed": "",
+                    "Name": "",
+                    "IsEnable": false,
+                    "TaskType": "Roguelike"
+                }
+            ]
+        }
+    }
+}

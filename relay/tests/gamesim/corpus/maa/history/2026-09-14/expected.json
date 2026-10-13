@@ -1,0 +1,55 @@
+{
+ "MAA-05-00-01": {
+  "annihilation": true,
+  "automas_result": "MAA 部分任务执行失败",
+  "evidence": "annihilation: no 剿灭模式 line and no 开始行动 line; done-for-the-week is not asserted here (only the 09-14 incident runs carry evidence for it, see cases.json); refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-05-02-33": {
+  "annihilation": true,
+  "automas_result": "MAA 部分任务执行失败",
+  "evidence": "annihilation: no 剿灭模式 line and no 开始行动 line; done-for-the-week is not asserted here (only the 09-14 incident runs carry evidence for it, see cases.json); refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-05-04-50": {
+  "annihilation": true,
+  "automas_result": "MAA 部分任务执行失败",
+  "evidence": "annihilation: no 剿灭模式 line and no 开始行动 line; done-for-the-week is not asserted here (only the 09-14 incident runs carry evidence for it, see cases.json); refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-05-07-00": {
+  "automas_result": "Success!",
+  "evidence": "refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-17-30-02": {
+  "annihilation": true,
+  "annihilation_done": true,
+  "annihilation_progress": [
+   1800,
+   1800
+  ],
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "初级作战记录": 39,
+   "合成玉": 1430,
+   "理智": 1,
+   "龙门币": 990
+  },
+  "evidence": "drops: MAA's own last running totals in its 掉落统计 blocks (at 21:32:33, 21:32:51, 21:33:07, 21:33:23); AUTO-MAS left drop_statistics empty; annihilation: MAA's own last line 剿灭模式 : 1800 / 1800; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-17-33-38": {
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "代糖": 1,
+   "固源岩": 9,
+   "基础作战记录": 10,
+   "赤金": 1,
+   "酯原料": 1,
+   "龙门币": 504
+  },
+  "evidence": "drops: AUTO-MAS's own drop_statistics in the .json; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ }
+}

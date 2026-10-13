@@ -1,0 +1,17 @@
+{
+    "recruit_statistics": {
+        "3★": 3
+    },
+    "drop_statistics": {
+        "AT-4": {
+            "龙门币": 144,
+            "艺人见面抽选券": 12,
+            "闲言碎语": 12,
+            "固源岩": 1,
+            "装置": 1
+        }
+    },
+    "sanity": 10,
+    "sanity_full_at": "理智将在 2026-08-25 05:07 回满。(19h 49m 后)",
+    "maa_result": "Success!"
+}

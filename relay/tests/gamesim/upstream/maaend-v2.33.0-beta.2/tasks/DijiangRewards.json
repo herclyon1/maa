@@ -1,0 +1,998 @@
+{
+    "task": [
+        {
+            "name": "DijiangRewards",
+            "label": "$task.DijiangRewards.label",
+            "entry": "DijiangRewards",
+            "description": "$task.DijiangRewards.description",
+            "group": [
+                "dijiang_ship"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "PlayCover",
+                "Win32-Front"
+            ],
+            "option": [
+                "AutoStartExchange",
+                "StageTaskSetting",
+                "ClueSetting",
+                "QuickGiveDuplicateClues",
+                "SelectToGrow"
+            ]
+        }
+    ],
+    "option": {
+        "AutoStartExchange": {
+            "type": "switch",
+            "label": "$option.AutoStartExchange.label",
+            "description": "$option.AutoStartExchange.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "WaitExchangeBeforeStart"
+                    ],
+                    "pipeline_override": {
+                        "ReceptionRoomStartExchange": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "ReceptionRoomStartExchange": {
+                            "enabled": false
+                        },
+                        "ReceptionRoomWaitExchangeBeforeStart": {
+                            "enabled": false
+                        },
+                        "ReceptionRoomWaitExchangeUntilReady": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "WaitExchangeBeforeStart": {
+            "type": "switch",
+            "label": "$option.WaitExchangeBeforeStart.label",
+            "description": "$option.WaitExchangeBeforeStart.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "WaitExchangeBeforeStartThreshold"
+                    ],
+                    "pipeline_override": {
+                        "ReceptionRoomWaitExchangeBeforeStart": {
+                            "enabled": true
+                        },
+                        "ReceptionRoomWaitExchangeUntilReady": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "ReceptionRoomWaitExchangeBeforeStart": {
+                            "enabled": false
+                        },
+                        "ReceptionRoomWaitExchangeUntilReady": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "WaitExchangeBeforeStartThreshold": {
+            "type": "input",
+            "label": "$option.WaitExchangeBeforeStartThreshold.label",
+            "description": "$option.WaitExchangeBeforeStartThreshold.description",
+            "inputs": [
+                {
+                    "name": "WaitExchangeBeforeStartMinutes",
+                    "label": "$option.WaitExchangeBeforeStartThreshold.label",
+                    "description": "$option.WaitExchangeBeforeStartThreshold.description",
+                    "default": "5",
+                    "pipeline_type": "int",
+                    "verify": "^(?:[1-9]|[1-9]\\d|[1-9]\\d{2}|1[01]\\d{2}|1200)$",
+                    "pattern_msg": "$option.WaitExchangeBeforeStartThreshold.inputs.WaitExchangeBeforeStartMinutes.pattern_msg"
+                }
+            ],
+            "pipeline_override": {
+                "ReceptionRoomExchangeCountdownWithinThreshold": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "threshold_minutes": "{WaitExchangeBeforeStartMinutes}"
+                            }
+                        }
+                    }
+                },
+                "ReceptionRoomWaitExchangeCountdownNotice": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "threshold_minutes": "{WaitExchangeBeforeStartMinutes}",
+                                "report_waiting": true
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "StageTaskSetting": {
+            "type": "switch",
+            "label": "$option.StageTaskSetting.label",
+            "description": "$option.StageTaskSetting.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "FastCollect",
+                        "RecoveryEmotionStage",
+                        "ReceptionRoomStage",
+                        "ManufacturingStage",
+                        "GrowthChamberStage"
+                    ]
+                },
+                {
+                    "name": "No"
+                }
+            ],
+            "default_case": "No"
+        },
+        "FastCollect": {
+            "type": "switch",
+            "label": "$option.FastCollect.label",
+            "description": "$option.FastCollect.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "DijiangRewardsFastCollectProduction": {
+                            "enabled": true
+                        },
+                        "DijiangRewardsFastCollectClues": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "DijiangRewardsFastCollectProduction": {
+                            "enabled": false
+                        },
+                        "DijiangRewardsFastCollectClues": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "RecoveryEmotionStage": {
+            "type": "switch",
+            "label": "$option.RecoveryEmotionStage.label",
+            "description": "$option.RecoveryEmotionStage.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "RecoveryEmotionMain": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "RecoveryEmotionMain": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "ReceptionRoomStage": {
+            "type": "switch",
+            "label": "$option.ReceptionRoomStage.label",
+            "description": "$option.ReceptionRoomStage.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "ReceptionRoomMain": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "ReceptionRoomMain": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "ManufacturingStage": {
+            "type": "switch",
+            "label": "$option.ManufacturingStage.label",
+            "description": "$option.ManufacturingStage.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "MFGCabinMain": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "MFGCabinMain": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "GrowthChamberStage": {
+            "type": "switch",
+            "label": "$option.GrowthChamberStage.label",
+            "description": "$option.GrowthChamberStage.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "GrowthChamberMain": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "GrowthChamberMain": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "ClueSetting": {
+            "type": "switch",
+            "label": "$option.ClueSetting.label",
+            "description": "$option.ClueSetting.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "SendCluesDirect",
+                        "ClueSend",
+                        "ClueStockLimit"
+                    ]
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "ReceptionRoomSendCluesSelectClues": {
+                            "max_hit": 3
+                        },
+                        "ClueItemCount": {
+                            "expected": "^(?:[3-9]|[1-9]\\d+)$"
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "SendCluesDirect": {
+            "type": "switch",
+            "label": "$option.SendCluesDirect.label",
+            "description": "$option.SendCluesDirect.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "ReceptionRoomSendCluesDirect": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "ReceptionRoomSendCluesDirect": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "QuickGiveDuplicateClues": {
+            "type": "switch",
+            "label": "$option.QuickGiveDuplicateClues.label",
+            "description": "$option.QuickGiveDuplicateClues.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "ReceptionRoomSendCluesQuickGiveDuplicates": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "ReceptionRoomSendCluesQuickGiveDuplicates": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "No"
+        },
+        "ClueSend": {
+            "type": "input",
+            "label": "$option.ClueSend.label",
+            "inputs": [
+                {
+                    "name": "MaxClueSend",
+                    "label": "$option.ClueSend.MaxClueSend.label",
+                    "default": "3",
+                    "pipeline_type": "int"
+                }
+            ],
+            "pipeline_override": {
+                "ReceptionRoomSendCluesSelectClues": {
+                    "max_hit": "{MaxClueSend}"
+                }
+            }
+        },
+        "ClueStockLimit": {
+            "type": "select",
+            "label": "$option.ClueStockLimit.label",
+            "description": "$option.ClueStockLimit.description",
+            "cases": [
+                {
+                    "name": "1",
+                    "label": "$option.ClueStockLimit.cases.1.label",
+                    "pipeline_override": {
+                        "ClueItemCount": {
+                            "expected": "^(?:[2-9]|[1-9]\\d+)$"
+                        }
+                    }
+                },
+                {
+                    "name": "2",
+                    "label": "$option.ClueStockLimit.cases.2.label",
+                    "pipeline_override": {
+                        "ClueItemCount": {
+                            "expected": "^(?:[3-9]|[1-9]\\d+)$"
+                        }
+                    }
+                }
+            ],
+            "default_case": "2"
+        },
+        "SelectToGrow": {
+            "type": "select",
+            "label": "$option.SelectToGrow.label",
+            "description": "$option.SelectToGrow.description",
+            "cases": [
+                {
+                    "name": "DoNothing",
+                    "label": "$option.SelectToGrow.cases.DoNothing.label",
+                    "pipeline_override": {
+                        "GrowthChamberGrow": {
+                            "enabled": false
+                        }
+                    }
+                },
+                {
+                    "name": "GrowAgain",
+                    "label": "$option.SelectToGrow.cases.GrowAgain.label",
+                    "pipeline_override": {
+                        "GrowthChamberGrow": {
+                            "enabled": false
+                        },
+                        "GrowthChamberGrowAgain": {
+                            "enabled": true
+                        },
+                        "GrowthChamberFakeTrue": {
+                            "enabled": false
+                        }
+                    }
+                },
+                {
+                    "name": "Any",
+                    "label": "$option.SelectToGrow.cases.Any.label",
+                    "option": [
+                        "SelectToGrowItems",
+                        "AutoExtractSeed",
+                        "SortBy",
+                        "SortOrder"
+                    ]
+                }
+            ],
+            "default_case": "Any"
+        },
+        "SelectToGrowItems": {
+            "type": "checkbox",
+            "label": "$option.SelectToGrowItems.label",
+            "description": "$option.SelectToGrowItems.description",
+            "cases": [
+                {
+                    "name": "Wulingstone",
+                    "label": "$item.Wulingstone",
+                    "icon": "resource/image/UI/Item/item_plant_spcstone_2_2.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "wulingstone": [
+                                    "武陵石",
+                                    "Wulingstone",
+                                    "武陵石",
+                                    "武陵石",
+                                    "무릉석"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Igneosite",
+                    "label": "$item.Igneosite",
+                    "icon": "resource/image/UI/Item/item_plant_spcstone_2_1.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "igneosite": [
+                                    "燎石",
+                                    "Igneosite",
+                                    "燎石",
+                                    "燎石",
+                                    "화염석"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "FalseAggela",
+                    "label": "$item.FalseAggela",
+                    "icon": "resource/image/UI/Item/item_plant_crylplant_2_2.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "false_aggela": [
+                                    "岩天使叶",
+                                    "False Aggela",
+                                    "岩アンゲロス葉",
+                                    "岩天使葉",
+                                    "바위아겔로스 잎"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "BlightedJadeleaf",
+                    "label": "$item.BlightedJadeleaf",
+                    "icon": "resource/image/UI/Item/item_plant_crylplant_2_1.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "blighted_jadeleaf": [
+                                    "受蚀玉化叶",
+                                    "Blighted Jadeleaf",
+                                    "侵蝕玉化葉",
+                                    "受蝕玉化葉",
+                                    "침식된 옥 잎"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Cosmagaric",
+                    "label": "$item.Cosmagaric",
+                    "icon": "resource/image/UI/Item/item_plant_mushroom_2_2.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "cosmagaric": [
+                                    "星门菌",
+                                    "Cosmagaric",
+                                    "星門茸",
+                                    "星門菌",
+                                    "스타게이트 버섯"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Bloodcap",
+                    "label": "$item.Bloodcap",
+                    "icon": "resource/image/UI/Item/item_plant_mushroom_2_1.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "bloodcap": [
+                                    "血菌",
+                                    "Bloodcap",
+                                    "血潮茸",
+                                    "血菌",
+                                    "피버섯"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Umbronyx",
+                    "label": "$item.Umbronyx",
+                    "icon": "resource/image/UI/Item/item_plant_spcstone_1_3.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "umbronyx": [
+                                    "重黯石",
+                                    "Umbronyx",
+                                    "重闇石",
+                                    "重黯石",
+                                    "진한 흑암석"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Auronyx",
+                    "label": "$item.Auronyx",
+                    "icon": "resource/image/UI/Item/item_plant_spcstone_1_2.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "auronyx": [
+                                    "中黯石",
+                                    "Auronyx",
+                                    "中闇石",
+                                    "中黯石",
+                                    "일반 흑암석"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Kalkonyx",
+                    "label": "$item.Kalkonyx",
+                    "icon": "resource/image/UI/Item/item_plant_spcstone_1_1.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "kalkonyx": [
+                                    "轻黯石",
+                                    "Kalkonyx",
+                                    "軽闇石",
+                                    "輕黯石",
+                                    "연한 흑암석"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Vitrodendra",
+                    "label": "$item.Vitrodendra",
+                    "icon": "resource/image/UI/Item/item_plant_crylplant_1_3.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "vitrodendra": [
+                                    "至晶多齿叶",
+                                    "Vitrodendra",
+                                    "至晶鋭葉",
+                                    "至晶多齒葉",
+                                    "비트로덴드라"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Chrysodendra",
+                    "label": "$item.Chrysodendra",
+                    "icon": "resource/image/UI/Item/item_plant_crylplant_1_2.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "chrysodendra": [
+                                    "纯晶多齿叶",
+                                    "Chrysodendra",
+                                    "純晶鋭葉",
+                                    "純晶多齒葉",
+                                    "크리소덴드라"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Kalkodendra",
+                    "label": "$item.Kalkodendra",
+                    "icon": "resource/image/UI/Item/item_plant_crylplant_1_1.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "kalkodendra": [
+                                    "晶化多齿叶",
+                                    "Kalkodendra",
+                                    "結晶鋭葉",
+                                    "晶化多齒葉",
+                                    "칼코덴드라"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "RubyBolete",
+                    "label": "$item.RubyBolete",
+                    "icon": "resource/image/UI/Item/item_plant_mushroom_1_3.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "ruby_bolete": [
+                                    "重红柱状菌",
+                                    "Ruby Bolete",
+                                    "深紅茸",
+                                    "重紅柱狀菌",
+                                    "진한 붉은 기둥 버섯"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "RedBolete",
+                    "label": "$item.RedBolete",
+                    "icon": "resource/image/UI/Item/item_plant_mushroom_1_2.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "red_bolete": [
+                                    "中红柱状菌",
+                                    "Red Bolete",
+                                    "紅色茸",
+                                    "中紅柱狀菌",
+                                    "보통 붉은 기둥 버섯"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "PinkBolete",
+                    "label": "$item.PinkBolete",
+                    "icon": "resource/image/UI/Item/item_plant_mushroom_1_1.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "pink_bolete": [
+                                    "轻红柱状菌",
+                                    "Pink Bolete",
+                                    "薄紅茸",
+                                    "輕紅柱狀菌",
+                                    "연한 붉은 기둥 버섯"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "TalosCap",
+                    "label": "$item.TalosCap",
+                    "icon": "resource/image/UI/Item/item_plant_mushroom_2_3.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "talos_cap": [
+                                    "塔罗斯菌",
+                                    "Talos Cap",
+                                    "タロス茸",
+                                    "塔羅斯菌",
+                                    "탈로스 버섯"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "CrimsonSpearleaf",
+                    "label": "$item.CrimsonSpearleaf",
+                    "icon": "resource/image/UI/Item/item_plant_crylplant_2_3.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "crimson_spearleaf": [
+                                    "红矛叶",
+                                    "Crimson Spearleaf",
+                                    "赤槍葉",
+                                    "紅矛葉",
+                                    "붉은 창 잎"
+                                ]
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "Protocolith",
+                    "label": "$item.Protocolith",
+                    "icon": "resource/image/UI/Item/item_plant_spcstone_2_3.png",
+                    "pipeline_override": {
+                        "GrowthChamberSelectTarget": {
+                            "attach": {
+                                "protocolith": [
+                                    "协议纹石",
+                                    "Protocolith",
+                                    "協約紋石",
+                                    "協議紋石",
+                                    "프로토콜 문양석"
+                                ]
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": [
+                "Wulingstone",
+                "Igneosite",
+                "FalseAggela",
+                "BlightedJadeleaf",
+                "Cosmagaric",
+                "Bloodcap",
+                "Umbronyx",
+                "Auronyx",
+                "Kalkonyx",
+                "Vitrodendra",
+                "Chrysodendra",
+                "Kalkodendra",
+                "RubyBolete",
+                "RedBolete",
+                "PinkBolete",
+                "TalosCap",
+                "CrimsonSpearleaf",
+                "Protocolith"
+            ]
+        },
+        "AutoExtractSeed": {
+            "type": "switch",
+            "label": "$option.AutoExtrachSeed.label",
+            "description": "$option.AutoExtrachSeed.description",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "GrowthChamberSeedExtract": {
+                            "enabled": true
+                        },
+                        "GrowthChamberGrowExit": {
+                            "enabled": false
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "GrowthChamberFindTargetByPlant": {
+                            "enabled": false
+                        },
+                        "GrowthChamberSeedExtract": {
+                            "enabled": false
+                        },
+                        "GrowthChamberGrowExit": {
+                            "enabled": true
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "SortBy": {
+            "type": "select",
+            "label": "$option.SortBy.label",
+            "cases": [
+                {
+                    "name": "Default",
+                    "label": "$option.SortBy.cases.Default.label",
+                    "pipeline_override": {
+                        "GrowthChamberSortBy": {
+                            "enabled": true,
+                            "expected": [
+                                "拥有数量",
+                                "基核数量",
+                                "品质",
+                                "持有數量",
+                                "基核數量",
+                                "品質",
+                                "総在庫",
+                                "基核数",
+                                "品質",
+                                "Amount Owned",
+                                "Amount of Seeds",
+                                "Quality"
+                            ]
+                        },
+                        "GrowthChamberSortByChoose": {
+                            "expected": [
+                                "默认",
+                                "預設",
+                                "Default",
+                                "デフォルト"
+                            ]
+                        },
+                        "GrowthChamberSortBySwipe": {
+                            "enabled": false
+                        }
+                    }
+                },
+                {
+                    "name": "AmountOwned",
+                    "label": "$option.SortBy.cases.AmountOwned.label",
+                    "pipeline_override": {
+                        "GrowthChamberSortBy": {
+                            "enabled": true,
+                            "expected": [
+                                "默认",
+                                "基核数量",
+                                "品质",
+                                "預設",
+                                "基核數量",
+                                "品質",
+                                "デフォルト",
+                                "基核数",
+                                "品質",
+                                "Default",
+                                "Amount of Seeds",
+                                "Quality"
+                            ]
+                        },
+                        "GrowthChamberSortByChoose": {
+                            "expected": [
+                                "拥有数量",
+                                "持有數量",
+                                "総在庫",
+                                "Amount Owned"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "AmountOfSeeds",
+                    "label": "$option.SortBy.cases.AmountOfSeeds.label",
+                    "pipeline_override": {
+                        "GrowthChamberSortBy": {
+                            "enabled": true,
+                            "expected": [
+                                "默认",
+                                "拥有数量",
+                                "品质",
+                                "預設",
+                                "持有數量",
+                                "品質",
+                                "デフォルト",
+                                "総在庫",
+                                "品質",
+                                "Default",
+                                "Amount Owned",
+                                "Quality"
+                            ]
+                        },
+                        "GrowthChamberSortByChoose": {
+                            "expected": [
+                                "基核数量",
+                                "基核數量",
+                                "基核数",
+                                "Amount of Seeds"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Quality",
+                    "label": "$option.SortBy.cases.Quality.label",
+                    "pipeline_override": {
+                        "GrowthChamberSortBy": {
+                            "enabled": true,
+                            "expected": [
+                                "默认",
+                                "拥有数量",
+                                "基核数量",
+                                "預設",
+                                "持有數量",
+                                "基核數量",
+                                "デフォルト",
+                                "総在庫",
+                                "基核数",
+                                "Default",
+                                "Amount Owned",
+                                "Amount of Seeds"
+                            ]
+                        },
+                        "GrowthChamberSortByChoose": {
+                            "expected": [
+                                "品质",
+                                "品質",
+                                "品質",
+                                "Quality"
+                            ]
+                        }
+                    }
+                }
+            ],
+            "default_case": "Default"
+        },
+        "SortOrder": {
+            "type": "select",
+            "label": "$option.SortOrder.label",
+            "cases": [
+                {
+                    "name": "ASC",
+                    "label": "$option.SortOrder.cases.Ascending.label",
+                    "pipeline_override": {
+                        "GrowthChamberSortOrder": {
+                            "enabled": true,
+                            "expected": [
+                                "降序",
+                                "降序",
+                                "DESC",
+                                "降順"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "DESC",
+                    "label": "$option.SortOrder.cases.Descending.label",
+                    "pipeline_override": {
+                        "GrowthChamberSortOrder": {
+                            "enabled": true,
+                            "expected": [
+                                "升序",
+                                "升序",
+                                "ASC",
+                                "昇順"
+                            ]
+                        }
+                    }
+                }
+            ],
+            "default_case": "ASC"
+        }
+    }
+}

@@ -440,15 +440,16 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
         # so when MaaEnd renames a task AUTO-MAS records 「部分任务执行失败: X」
         # although X completed. MaaEnd's own log decides instead: every
         # 「任务开始」 has a matching 「任务完成」, there is no 「任务失败」, and
-        # the round's closing task (关闭游戏 / 结束进程) ran last and completed.
-        # The closing-task condition stops a MaaEnd that stopped between tasks
-        # from reading as done.
+        # either the round's closing task (关闭游戏 / 结束进程) ran last and
+        # completed or every X is a key AUTO-MAS could not name (_maaend_all_done).
+        # A listed display name that never started is a MaaEnd that stopped
+        # between tasks, not a finished round.
         if not ok and failed and "未捕获" not in result:
             try:
                 text = json_path.with_suffix(".log").read_text(encoding="utf-8", errors="replace")
             except OSError:
                 text = ""
-            if text and _maaend_all_done(text):
+            if text and _maaend_all_done(text, failed):
                 ok, failed = True, []
                 raw["maaend_name_mismatch"] = _split_failed(result)
         # Timed out after the work was done: MaaEnd logged every task complete

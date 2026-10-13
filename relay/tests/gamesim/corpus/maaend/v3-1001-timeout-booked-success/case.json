@@ -1,0 +1,32 @@
+{
+ "failure": "10-01 V3: the 15:24 MaaEnd run killed for 「MaaEnd 进程超时」 (its plugin crashed) went into the ledger and the daily report as a success",
+ "fix": "72e86999",
+ "checks": [
+  {
+   "probe": "record",
+   "record": "automas/history/2026-10-01/endfield/MaaEnd-11-23-07.json",
+   "want": {
+    "ok": false,
+    "failed_tasks": [
+     "MaaEnd 进程超时"
+    ],
+    "started": "2026-10-01T15:24:12+08:00",
+    "finished": "2026-10-01T16:10:00+08:00"
+   },
+   "evidence": {
+    "ok": "AUTO-MAS's result 「MaaEnd 进程超时」; MaaEnd's log stops mid-task at [2026-10-01 15:29:59.681] (信用点购物 started 15:29:44, never completed) and the rest of the queue (转交委托 ... 日常奖励领取) never started; the retry at 16:11 (app.log 16:11:10.839) failed every task",
+    "failed_tasks": "AUTO-MAS's own words for the kill, app.log 「2026-10-01 16:10:00.012 | INFO | MaaEnd 自动代理 | MaaEnd 任务结果: MaaEnd 进程超时, 日志锁已释放」",
+    "started": "the log's first line [2026-10-01 15:24:12.047] 正在连接窗口... Endfield",
+    "finished": "AUTO-MAS killed it at app.log 「2026-10-01 16:10:00.012 ... MaaEnd 任务结果: MaaEnd 进程超时」, not at the log's last line 15:29:59"
+   }
+  }
+ ],
+ "excerpts": {
+  "automas/debug/app.log": "lines 8464-8571 of AUTO-MAS's app.2026-09-25_08-46-08_682861.log (the app.log of 09-25..10-02, rotated out to D:/ark/automas/debug/*.zip), 2026-10-01 15:23:06.615 .. 16:11:10.839, verbatim"
+ },
+ "mtimes": {
+  "automas/history/2026-10-01/endfield/MaaEnd-11-23-07.json": 1790846863,
+  "automas/history/2026-10-01/endfield/MaaEnd-11-23-07.log": 1790846863,
+  "automas/debug/app.log": 1791878957
+ }
+}

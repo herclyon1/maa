@@ -1,0 +1,21 @@
+{
+    "task": [
+        {
+            "name": "CloseGame",
+            "label": "$task.CloseGame.label",
+            "entry": "CloseGame",
+            "description": "$task.CloseGame.description",
+            "group": [
+                "other_menu"
+            ],
+            "option": [
+                "ClientVersion",
+                "ClientVersionCloudLocked"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB"
+            ]
+        }
+    ]
+}

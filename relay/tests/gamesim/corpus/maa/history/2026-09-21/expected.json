@@ -1,0 +1,60 @@
+{
+ "MAA-05-00-02": {
+  "annihilation": true,
+  "annihilation_done": false,
+  "annihilation_progress": [
+   1480,
+   1800
+  ],
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "初级作战记录": 40,
+   "合成玉": 1480,
+   "龙门币": 1000
+  },
+  "evidence": "drops: MAA's own last running totals in its 掉落统计 blocks (at 09:02:44, 09:03:01, 09:03:18, 09:18:44); AUTO-MAS left drop_statistics empty; annihilation: MAA's own last line 剿灭模式 : 1480 / 1800; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-05-19-04": {
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "固源岩": 3,
+   "基础作战记录": 4,
+   "龙门币": 216
+  },
+  "evidence": "drops: AUTO-MAS's own drop_statistics in the .json; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-17-30-02": {
+  "annihilation": true,
+  "annihilation_done": true,
+  "annihilation_progress": [
+   1800,
+   1800
+  ],
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "初级作战记录": 9,
+   "合成玉": 320,
+   "理智": 1,
+   "龙门币": 240
+  },
+  "evidence": "drops: MAA's own last running totals in its 掉落统计 blocks (at 21:32:44); AUTO-MAS left drop_statistics empty; annihilation: MAA's own last line 剿灭模式 : 1800 / 1800; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ },
+ "MAA-17-32-54": {
+  "automas_result": "Success!",
+  "drop_statistics": {
+   "代糖": 2,
+   "固源岩": 17,
+   "基础作战记录": 22,
+   "异铁碎片": 1,
+   "源岩": 3,
+   "破损装置": 1,
+   "酯原料": 1,
+   "龙门币": 1152
+  },
+  "evidence": "drops: AUTO-MAS's own drop_statistics in the .json; refusal: none (no 序列化失败 / 添加任务失败 / [ERR] Cannot set stage / invalid params line)",
+  "maa_config_rejected": null
+ }
+}

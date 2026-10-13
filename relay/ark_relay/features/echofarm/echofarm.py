@@ -68,6 +68,11 @@ MAX_RESTARTS = 40
 # remembered Lv.90 with 80 set - so what owners read is the level the game showed
 # (level_since), never this.
 FARM_LEVEL = "80"
+# How many overworld bosses OK-WW's Boss Challenge list has: FarmEchoTask.total_boss_number
+# = 20 (v3.7.4, FarmEchoTask.py:64), the total teleport_to_configured_boss passes to
+# click_on_book_target (:284, :298). A position past it cannot be clicked. Same source
+# as weeklyboss.WEEKLY_BOSSES.
+BOSSES = 20
 
 
 # OK-WW's live config lives under its pyappify working directory, not at the
@@ -508,8 +513,8 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
         boss = int(boss)
     except (TypeError, ValueError):
         return False, f"「第几个」要是数字，收到 {boss!r}"
-    if not 1 <= boss <= 30:
-        return False, f"「第几个」超出范围：{boss}"
+    if not 1 <= boss <= BOSSES:
+        return False, f"「第几个」超出范围：{boss}（OK-WW 的列表只有 1 到 {BOSSES}）"
     until = resolve_until(until_hhmm, sent or now)
     if until is None:
         return False, f"结束时刻看不懂：{until_hhmm!r}（要 08:30 这种）"

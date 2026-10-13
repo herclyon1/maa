@@ -1,0 +1,25 @@
+{
+    "task": [
+        {
+            "name": "ReceiveProdManual",
+            "label": "$task.ReceiveProdManual.label",
+            "entry": "ProdManualStart",
+            "description": "$task.ReceiveProdManual.description",
+            "group": [
+                "backpack"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "PlayCover",
+                "Win32-Front"
+            ]
+        }
+    ],
+    "option": {}
+}

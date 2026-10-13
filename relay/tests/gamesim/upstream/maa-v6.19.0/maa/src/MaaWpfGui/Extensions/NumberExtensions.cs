@@ -1,0 +1,56 @@
+// <copyright file="NumberExtensions.cs" company="MaaAssistantArknights">
+// Part of the MaaWpfGui project, maintained by the MaaAssistantArknights team (Maa Team)
+// Copyright (C) 2021-2026 MaaAssistantArknights Contributors
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License v3.0 only as published by
+// the Free Software Foundation, either version 3 of the License, or
+// any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY
+// </copyright>
+
+#nullable enable
+using System;
+
+namespace MaaWpfGui.Extensions;
+
+public static class NumberExtensions
+{
+    public static string FormatNumber(this int n, bool abbreviateK = true) => n switch
+    {
+        >= 1_000_000_000 => $"{n / 1_000_000_000.0:#.#}B",
+        >= 1_000_000 => $"{n / 1_000_000.0:#.#}M",
+        >= 10_000 => $"{n / 1_000.0:#.#}k",
+        >= 1_000 when abbreviateK => $"{n / 1_000.0:#.#}k",
+        _ => $"{n}",
+    };
+
+    public static string FormatNumber(this long n, bool abbreviateK = true) => n switch
+    {
+        >= 1_000_000_000 => $"{n / 1_000_000_000.0:#.#}B",
+        >= 1_000_000 => $"{n / 1_000_000.0:#.#}M",
+        >= 10_000 => $"{n / 1_000.0:#.#}k",
+        >= 1_000 when abbreviateK => $"{n / 1_000.0:#.#}k",
+        _ => $"{n}",
+    };
+
+    public static string FormatNumber(this string n, bool abbreviateK = true)
+    {
+        if (!long.TryParse(n, out var number))
+        {
+            return n;
+        }
+        return number.FormatNumber(abbreviateK);
+    }
+
+    /// <summary>
+    /// 将数值限制在指定范围内
+    /// </summary>
+    /// <param name="n">原始值</param>
+    /// <param name="min">最小值</param>
+    /// <param name="max">最大值</param>
+    /// <returns>限制后的值</returns>
+    public static int Clamp(this int n, int min, int max) => Math.Clamp(n, min, max);
+}

@@ -1,0 +1,133 @@
+{
+    "task": [
+        {
+            "name": "VisitFriends",
+            "label": "$task.VisitFriends.label",
+            "entry": "VisitFriendsMain",
+            "description": "$task.VisitFriends.description",
+            "option": [
+                "VisitFriendsRemark",
+                "ProductionAssistControl"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "MacOS-Background",
+                "MacOS-Front",
+                "PlayCover",
+                "Win32-Front"
+            ],
+            "group": [
+                "dijiang_ship"
+            ]
+        }
+    ],
+    "option": {
+        "VisitFriendsRemark": {
+            "type": "switch",
+            "label": "$option.VisitFriendsRemark.label",
+            "default_case": "No",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "pipeline_override": {
+                        "VisitFriendsMenuScanTargetFriendOpenRemark": {
+                            "enabled": true
+                        },
+                        "VisitFriendsMenuScanTargetFriendOpen": {
+                            "enabled": false
+                        },
+                        "VisitFriendsMenuScanRemarkFallback": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "VisitFriendsMenuScanTargetFriendOpenRemark": {
+                            "enabled": false
+                        },
+                        "VisitFriendsMenuScanTargetFriendOpen": {
+                            "enabled": true
+                        },
+                        "VisitFriendsMenuScanRemarkFallback": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        },
+        "ProductionAssistControl": {
+            "type": "checkbox",
+            "label": "$option.ProductionAssistControl.label",
+            "default_case": [
+                "ProductionAssistControlNexus",
+                "ProductionAssistMFGCabin",
+                "ProductionAssistGrowthChamber"
+            ],
+            "cases": [
+                {
+                    "name": "ProductionAssistControlNexus",
+                    "label": "$option.ProductionAssistControl.ProductionAssistControlNexus.label",
+                    "pipeline_override": {
+                        "VisitFriendsCheckAssistControlNexus": {
+                            "recognition": "And",
+                            "all_of": [
+                                "VisitFriendsRecognitionItemDetailControlNexusAssist"
+                            ]
+                        },
+                        "VisitFriendsMenuAssistControlNexusEntry": {
+                            "enabled": true
+                        },
+                        "VisitFriendsAssistFullInit": {
+                            "enabled": false
+                        }
+                    }
+                },
+                {
+                    "name": "ProductionAssistMFGCabin",
+                    "label": "$option.ProductionAssistControl.ProductionAssistMFGCabin.label",
+                    "pipeline_override": {
+                        "VisitFriendsCheckAssistMFGCabin": {
+                            "recognition": "And",
+                            "all_of": [
+                                "VisitFriendsRecognitionItemDetailMFGCabinAssist"
+                            ]
+                        },
+                        "VisitFriendsMenuAssistMFGCabin1Entry": {
+                            "enabled": true
+                        },
+                        "VisitFriendsMenuAssistMFGCabin2Entry": {
+                            "enabled": true
+                        },
+                        "VisitFriendsAssistFullInit": {
+                            "enabled": false
+                        }
+                    }
+                },
+                {
+                    "name": "ProductionAssistGrowthChamber",
+                    "label": "$option.ProductionAssistControl.ProductionAssistGrowthChamber.label",
+                    "pipeline_override": {
+                        "VisitFriendsCheckAssistGrowthChamber": {
+                            "recognition": "And",
+                            "all_of": [
+                                "VisitFriendsRecognitionItemDetailGrowthChamberAssist"
+                            ]
+                        },
+                        "VisitFriendsMenuAssistGrowthChamberSwipeEntry": {
+                            "enabled": true
+                        },
+                        "VisitFriendsAssistFullInit": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}
