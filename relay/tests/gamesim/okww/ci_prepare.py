@@ -33,6 +33,7 @@ import ast
 import hashlib
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -239,7 +240,7 @@ def run(lane: str, root: Path, python: str, out_dir: Path, step_summary: "str | 
     out_dir = out_dir / lane
     out_dir.mkdir(parents=True, exist_ok=True)
     results = []
-    cpu = os.environ.get("PROCESSOR_IDENTIFIER", "") or "unknown"
+    cpu = platform.processor() or "unknown"      # on Windows: family, model, stepping, vendor
     print(f"runner CPU: {cpu}", flush=True)
     for name in ctx["tests"]:
         if okww_overlay.REPORT.exists():
