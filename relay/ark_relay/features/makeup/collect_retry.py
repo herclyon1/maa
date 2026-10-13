@@ -510,7 +510,9 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
             log.info("自动采集补跑：%s 已经跑过（%s）", day, stamp)
             return False
         if prev.get("cut_off"):
-            atomic_write_text(stamp, json.dumps(dict(prev, finished=now.isoformat(),
+            # passed/failed/unknown make report.retry_line read it as a result, not 「还没有结果」.
+            atomic_write_text(stamp, json.dumps(dict(prev, finished=now.isoformat(), passed=[], failed=[],
+                                                     unknown=list(prev.get("routes") or []),
                                                      note="补跑两次都没跑完"), ensure_ascii=False))
             log.warning("自动采集补跑：%s 开始的补跑又没跑完（中继中途停了），今天不再补；没走通的路线：%s",
                         prev.get("started"), "、".join(prev.get("routes") or []))

@@ -70,6 +70,15 @@ check("跑完了的 → 不再跑", did, False)
 did, after = outcome(dict(cut, cut_off="earlier"))
 check("已经补过一次又断了 → 不再补", did, False)
 check("写上结束，后面不再每次都说", "finished" in after, True)
+# Review of c6922283: the give-up stamp had no passed/failed, so the daily report said
+# 「开始了，还没有结果」 for a retry that was given up.
+from ark_relay.features.report import report  # noqa: E402
+gs = tmpdir()
+(gs / "collect-retry").mkdir(parents=True)
+(gs / "collect-retry" / "2026-09-12.json").write_text(json.dumps(after, ensure_ascii=False), encoding="utf-8")
+line = report.retry_line(gs, "2026-09-12")
+check("日报不说「还没有结果」", "还没有结果" in line, False)
+check("日报说补跑两次都没跑完、哪条路线没结论", ("补跑两次都没跑完" in line, "没结论" in line), (True, True))
 did, _ = outcome(None)
 check("没有印记 → 照常跑", did, True)
 
