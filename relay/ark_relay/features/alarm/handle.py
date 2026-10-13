@@ -593,7 +593,15 @@ def _failure_alarm(eng, rec: RunRecord, note: str, held: bool = False) -> tuple[
         _archive_okww_evidence(eng, rec)
     ev = _evidence_note(eng, rec)      # ships the bundle first when the record has none
     title, body = core.format_failure(rec, _diagnosis(eng, rec))
-    return title, note + "\n" + body + (f"\n{ev}" if ev else "")
+    body = note + "\n" + body + (f"\n{ev}" if ev else "")
+    # The 「像没进游戏」 shape with no official notice behind it: said here as
+    # pushes._push_unresolved says it on the held final alarm, since
+    # _confirm_unreachable logs it at INFO only (review of s7 #5).
+    raw = rec.raw or {}
+    if raw.get("maaend_unreachable_shape") and not raw.get("maaend_unreachable"):
+        body += "\n" + (texts.UNREACHABLE_UNREAD_NOTE if raw.get("maaend_unreachable_unread")
+                        else texts.UNREACHABLE_SHAPE_NOTE)
+    return title, body
 
 
 def _handle(eng, rec: RunRecord) -> None:
