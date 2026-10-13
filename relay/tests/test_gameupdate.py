@@ -178,7 +178,7 @@ gu.save_windows(ST, {})
 (ST / "queue-skips.json").unlink(missing_ok=True)
 import ark_relay.core.plan as _plan  # noqa: E402
 _plan_backup = _plan.schedule
-_plan.schedule = lambda d: [{"name": "早班", "times": ["09:00"]}, {"name": "晚班", "times": ["21:30"]}]
+_plan.schedule = lambda d: [{"name": "早班", "times": ["09:00"], "items": ["s1"]}, {"name": "晚班", "times": ["21:30"], "items": ["s1"]}]
 cfg.automas_dir = ST
 skipped = []
 src_ak = {"明日方舟": lambda n: (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 06:00–12:00")}
@@ -280,7 +280,7 @@ check("通知写已停未补", _notes, ["OK-WW：今天 09:46 停一切停过，
 
 src_ww = {"鸣潮": lambda n: (_dt(2026, 9, 30, 4, 0, tzinfo=T), _dt(2026, 9, 30, 11, 0, tzinfo=T),
                              "官方公告：「甲」3.7版本内容说明（09-30 04:00–11:00）")}
-_plan.schedule = lambda d: [{"name": "早班", "times": ["09:00"]}, {"name": "晚班", "times": ["21:30"]}]
+_plan.schedule = lambda d: [{"name": "早班", "times": ["09:00"], "items": ["s1"]}, {"name": "晚班", "times": ["21:30"], "items": ["s1"]}]
 (ST / "queue-skips.json").unlink(missing_ok=True)
 for g in list(gu.pending(ST)):
     gu.clear_pending(ST, g)

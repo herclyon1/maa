@@ -717,6 +717,8 @@ class Engine:
                 except ValueError:
                     continue
                 for due in today_and_tomorrow(hh, mm):
+                    if not plan.runs_at(q, hhmm, due):
+                        continue        # that time runs nothing that day: nothing to miss
                     key = f"{due:%Y-%m-%d}/{q['name']}/{hhmm}"
                     moment = due + timedelta(minutes=MISSED_GRACE_MIN)
                     if moment > now and key not in self._missed_alerted:

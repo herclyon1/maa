@@ -343,7 +343,8 @@ def _skip_default(queue: str, script: str) -> list[dict]:
 
 
 def _queues_today(automas_dir, now: datetime) -> list[dict]:
-    """Today's queue times that have not come yet: [{name, dues:[datetime]}]."""
+    """Today's queue times that have not come yet and run something today
+    (plan.runs_at): [{name, dues:[datetime]}]."""
     from ark_relay.core import plan  # noqa: PLC0415
     out = []
     for q in plan.schedule(automas_dir) if automas_dir else []:
@@ -354,7 +355,7 @@ def _queues_today(automas_dir, now: datetime) -> list[dict]:
             except ValueError:
                 continue
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
-            if due >= now:
+            if due >= now and plan.runs_at(q, hhmm, due):
                 dues.append(due)
         out.append({"name": q["name"], "dues": dues})
     return out

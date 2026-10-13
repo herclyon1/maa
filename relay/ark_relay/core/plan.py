@@ -744,10 +744,18 @@ def next_plan(automas_dir: Path | None) -> str:
     from datetime import datetime as _dt, timedelta as _td  # noqa: PLC0415
     from ark_relay.core.config import SERVER_TZ as _TZ  # noqa: PLC0415
     lines += maintenance_lines((_dt.now(tz=_TZ) + _td(days=1)).date())
+    tomorrow = _tomorrow()
     for q in queues:
-        for t in q["times"]:
+        # Tomorrow only: a time off that weekday is left out, and an item that sits the
+        # day out (the weekday rules, the relay's own one-day skip) is not listed
+        # (runs_at; audit 10-13: the plan listed skipped items).
+        times = [t for t in q["times"] if runs_at(q, t, tomorrow)]
+        if not times:
+            continue
+        running = {uid for t in times for uid in runs_at(q, t, tomorrow)}
+        for t in times:
             lines.append(f"🕘 {t}　东京 {_tokyo(t)}")
-        for uid in q["items"]:
+        for uid in [u for u in q["items"] if u in running]:
             s = scripts.get(uid) or {}
             bits = []
             if s.get("fight") is False:

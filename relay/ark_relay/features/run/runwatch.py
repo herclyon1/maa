@@ -253,6 +253,8 @@ def overrun_moments(eng, now: datetime):
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
             if due > now:
                 due -= timedelta(days=1)
+            if not plan.runs_at(q, hhmm, due):
+                continue        # off that weekday, or every item skipped: no run to overrun
             limit, days = planned_minutes(eng, hh, mm, due)
             yield (q, hhmm, q.get("uid"), due, limit,
                    due + timedelta(minutes=limit + OVERRUN_SLACK_MIN), days)

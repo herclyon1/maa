@@ -149,7 +149,7 @@ class Cfg:
 cfg = Cfg()
 cfg.state_dir, cfg.automas_dir, cfg.maa_dir, cfg.maaend_dir, cfg.okww_dir = state, state, None, None, None
 plan_backup = plan.schedule
-plan.schedule = lambda d: [{"name": "早班", "times": ["11:00"]}]
+plan.schedule = lambda d: [{"name": "早班", "times": ["11:00"], "items": ["s1"]}]
 src = {"终末地": lambda n: (D.replace(hour=10), D.replace(hour=12), "官方公告")}
 try:
     notes, probs = run(be, lambda: gameupdate.boot_check(cfg, budget_s=0, now=D, maint_sources=src,

@@ -59,7 +59,7 @@ class Eng:
 
 
 # The machine's AUTO-MAS schedule: 早班 09:00, 晚班 21:30 (every shift record in the fixtures).
-plan.schedule = lambda _d: [{"name": "早班", "times": ["09:00"]}, {"name": "晚班", "times": ["21:30"]}]
+plan.schedule = lambda _d: [{"name": "早班", "times": ["09:00"], "items": ["s1"]}, {"name": "晚班", "times": ["21:30"], "items": ["s1"]}]
 
 
 def at(s):

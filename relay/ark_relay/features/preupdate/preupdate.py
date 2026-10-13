@@ -112,7 +112,9 @@ def wanted_today(automas_dir: Path | None, now: datetime | None = None,
             due = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
             if due < now:
                 continue
+            # Only the items that run at that time on that day (plan.runs_at: the
+            # weekday rules and the relay's own one-day skip).
             if any((scripts.get(uid) or {}).get("kind") == kind
-                   for uid in q.get("items", [])):
+                   for uid in plan.runs_at(q, hhmm, due)):
                 return True
     return False

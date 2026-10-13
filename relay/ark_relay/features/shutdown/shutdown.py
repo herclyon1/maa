@@ -164,20 +164,24 @@ def _seen_landing(eng, booted: datetime, shift: list[dict]) -> bool:
     return abs((boot - booted).total_seconds()) <= BOOT_SLACK_S and at >= max(q["due"] for q in shift)
 
 
-def _schedule_times(eng) -> list[str]:
-    """The scheduled queue times ("HH:MM") from AUTO-MAS's own queue config."""
-    return [t for q in plan.schedule(eng.cfg.automas_dir) for t in q.get("times", [])]
+def _schedule_times(eng) -> list[tuple[dict, str]]:
+    """(queue, "HH:MM") for every scheduled queue time in AUTO-MAS's own queue config;
+    _near_due asks plan.runs_at whether that time runs anything on the day."""
+    return [(q, t) for q in plan.schedule(eng.cfg.automas_dir) for t in q.get("times", [])]
 
 
-def _near_due(first: datetime, times: list[str]) -> bool:
-    """`first` is within MANUAL_WINDOW_MIN of one of the scheduled times that day."""
-    for hhmm in times:
+def _near_due(first: datetime, times: list[tuple[dict, str]]) -> bool:
+    """`first` is within MANUAL_WINDOW_MIN of a scheduled time that runs something that
+    day. A time off that weekday, or whose items all sit the day out (the relay's own
+    one-day skip), is no shift: a hand start next to it stays a hand start (audit,
+    10-13: raw queue times read without the weekday rule)."""
+    for q, hhmm in times:
         try:
             hh, mm = (int(x) for x in hhmm.split(":"))
         except ValueError:
             continue
         due = first.replace(hour=hh, minute=mm, second=0, microsecond=0)
-        if abs((first - due).total_seconds()) <= MANUAL_WINDOW_MIN * 60:
+        if abs((first - due).total_seconds()) <= MANUAL_WINDOW_MIN * 60 and plan.runs_at(q, hhmm, due):
             return True
     return False
 
