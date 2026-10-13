@@ -166,15 +166,17 @@ def cmd_test(cfg: Config) -> int:
         print("✗ 没有配置任何推送渠道")
         return 1
     now = datetime.now(tz=SERVER_TZ)
-    # The point of a self-check is to exercise every channel, so this sends to all
-    # of them explicitly.
-    errors = n.send("🔧 中继自检",
-                    f"这是一条测试消息。\n当前 {both_clocks(now)}", alert=True)
-    for e in errors:
-        print(f"  ✗ {e}")
-    if not errors:
-        print(f"✅ 已通过 {'、'.join(n.channels)} 发出")
-    return 1 if errors else 0
+    # The point of a self-check is to exercise every channel, so each one is tried
+    # on its own and named only if it took the message. Not through send(): that
+    # stops at the first channel that accepts, and files the message as a group
+    # alarm (alerts/ copy) - a test is neither (audit s5 #3).
+    delivered, failed = n._fan_out("🔧 中继自检", f"这是一条测试消息。\n当前 {both_clocks(now)}",
+                                   order=tuple(n.channels), stop_on_first=False)
+    for name, err in failed.items():
+        print(f"  ✗ {name}: {err}")
+    if delivered:
+        print(f"✅ 已通过 {'、'.join(delivered)} 发出")
+    return 1 if failed else 0
 
 
 def _build_local_engine(cfg: Config) -> Engine:
