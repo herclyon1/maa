@@ -380,20 +380,68 @@ for name in STEPS:
 check("三条都试过了", (e12.tick(), sorted(handled)), (3, ["r1", "r2", "r3"]))
 check("成功的两条记成已处理", sorted(e12.state.seen), ["r1", "r3"])
 
-print("\n[一条记录次次处理都出错：重试 HANDLE_TRIES 轮就记成已处理，报一次错（audit s2 F3）]")
-e13 = build(source=Src([rec("bad")]))
-e13._handle = lambda r: (_ for _ in ()).throw(RuntimeError("这条记录永远处理不了"))
+print("\n[一条记录次次处理都出错：重试 HANDLE_TRIES 轮就放弃，群里只收到一条（audit s2 F3）]")
+from ark_relay.features.alarm import errwatch  # noqa: E402
+
+
+class GroupCount(errwatch.ErrorKindAlert):
+    """The real errwatch handler (its level and filters), with the push replaced by a list."""
+
+    def _take(self, record):
+        self.taken.append(record.getMessage())
+
+
+sdir13 = tmpdir()
+src13 = Src([rec("bad")])
+e13 = build(sdir13, source=src13)
+e13.state.store.set("versions", "code", "v1")
+broken = [True]
+calls13 = []
+
+
+def _bad(r):
+    calls13.append(r.run_id)
+    if broken[0]:
+        raise RuntimeError("这条记录永远处理不了")
+
+
+e13._handle = _bad
 for name in STEPS:
     setattr(e13, name, lambda *a, **k: None)
-gave_up = []
-_h = logging.Handler()
-_h.emit = lambda r: gave_up.append(r.getMessage()) if "不再重试" in r.getMessage() else None
-logging.getLogger("ark").addHandler(_h)
+group = GroupCount(Notes(), state_dir=tmpdir())
+group.taken = []
+logging.getLogger("ark").addHandler(group)
 for _ in range(6):                       # more ticks than the cap allows
     e13.tick()
-logging.getLogger("ark").removeHandler(_h)
-check("最后记成已处理，不再无限重试", "bad" in e13.state.seen, True)
-check("放弃那一下只报一次", len(gave_up), 1)
+logging.getLogger("ark").removeHandler(group)
+check("群里只收到一条：最后那句「不再重试」", (len(group.taken), "不再重试" in "".join(group.taken)), (1, True))
+check("放弃后不再每轮重试", len(calls13), eng.HANDLE_TRIES)
+check("放弃的记录没混进「已处理」，记在放弃清单里带代码版本",
+      ("bad" in e13.state.seen, (e13.state.store.get("queues", "given_up") or {}).get("bad", {}).get("code")),
+      (False, "v1"))
+
+# Restart with new code (a deploy that fixed it): the record is tried again and booked.
+e13b = build(sdir13, source=src13)
+e13b.state.store.set("versions", "code", "v2")
+broken[0] = False
+e13b._handle = _bad
+for name in STEPS:
+    setattr(e13b, name, lambda *a, **k: None)
+e13b.tick()
+check("部署新版后再试一次，成功就记成已处理、从放弃清单删掉",
+      ("bad" in e13b.state.seen, e13b.state.store.get("queues", "given_up")), (True, None))
+
+# Same code after a restart: no retry.
+sdir13c = tmpdir()
+e13c = build(sdir13c, source=Src([rec("bad")]))
+e13c.state.store.set("versions", "code", "v1")
+e13c.state.store.set("queues", "given_up", {"bad": {"code": "v1", "at": datetime.now(tz=SERVER_TZ).isoformat()}})
+tried = []
+e13c._handle = lambda r: tried.append(r.run_id)
+for name in STEPS:
+    setattr(e13c, name, lambda *a, **k: None)
+e13c.tick()
+check("代码没变就不再试", tried, [])
 
 
 print("[读模式开关炸了，也不许带走整轮——日报和关机在最后]")

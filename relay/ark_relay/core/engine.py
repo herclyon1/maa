@@ -120,8 +120,10 @@ _BUSY_SEEN: dict = {"state_dir": None, "automas_dir": None}
 BUSY_FILE = "machinecheck-busy.json"      # read by machinechecks/system.py (#18)
 # An app.log task with no end line counts as open for this long after its start.
 OTHER_MODE_OPEN_MIN = 30
-# Ticks a record may make _handle raise before it is marked seen anyway (tick).
+# Ticks a record may make _handle raise before the relay gives up on it (tick).
 HANDLE_TRIES = 3
+# A given-up record (queues.given_up) is dropped from that list after this many days.
+GIVEN_UP_KEEP_DAYS = 30
 _APPLOG_TAIL = 512 * 1024
 
 
@@ -412,8 +414,13 @@ class Engine:
             self._observe_modes()
         except Exception:
             log.exception("读模式开关出错，本轮按「没开任何模式」继续")
+        given_up = self._given_up()
+        code = self._code_version()
         try:
-            records = self.source.fetch(self.state.seen)
+            # A given-up record stays out until the code changes: a deploy (the fix
+            # for the alarm below) gets one more round of HANDLE_TRIES at it.
+            records = self.source.fetch(
+                self.state.seen | {k for k, v in given_up.items() if v.get("code") == code})
         except Exception:
             log.exception("读取运行记录失败，本轮按没有新记录处理")
             records = []
@@ -422,17 +429,29 @@ class Engine:
             try:
                 self._handle(rec)
             except Exception:
-                log.exception("处理运行记录失败: %s", rec.run_id)
                 # A record that always raises was retried on every tick with no end
                 # (09-08: 99 lines in half an hour), and never counted as landed for
-                # shutdown. After HANDLE_TRIES it is marked seen; the ERROR line
-                # below is the one group alarm (errwatch). Audit s2 F3.
+                # shutdown. A failed try is INFO (errwatch pushes WARNING and up, so
+                # the traceback stays in the log only); after HANDLE_TRIES one ERROR
+                # line is the one group alarm. The record is not marked seen but kept
+                # in queues.given_up with the code version, so the next deploy books
+                # it if the fix took. Audit s2 F3.
                 n = self._handle_fails[rec.run_id] = self._handle_fails.get(rec.run_id, 0) + 1
                 if n < HANDLE_TRIES:
+                    log.info("处理运行记录失败（第 %d 次，下一轮再试）: %s", n, rec.run_id, exc_info=True)
                     continue
-                log.error("运行记录连续 %d 次处理失败，不再重试，这一趟没记进账: %s", n, rec.run_id)
+                log.exception("运行记录连续 %d 次处理失败，不再重试，这一趟先不记进账，"
+                              "等修好部署后再补记一次: %s", n, rec.run_id)
+                self._handle_fails.pop(rec.run_id, None)
+                given_up[rec.run_id] = {"code": code, "at": datetime.now(tz=SERVER_TZ).isoformat()}
+                self._set_given_up(given_up)
+                self._handled_any = landed = True
+                continue
             self._handle_fails.pop(rec.run_id, None)
             self.state.mark_seen(rec.run_id)
+            if given_up.pop(rec.run_id, None) is not None:
+                log.info("之前放弃的运行记录这次记进账了: %s", rec.run_id)
+                self._set_given_up(given_up)
             self._handled_any = landed = True
         if landed:
             # On disk too: a restart on the same boot (a deploy) still knows it saw them land.
@@ -740,6 +759,39 @@ class Engine:
         return min(cands) if cands else None
 
     # ---------- bookkeeping and alerts (handle.py) ----------
+    def _code_version(self) -> str:
+        try:
+            return str(self.state.store.get("versions", "code") or "")
+        except Exception:  # noqa: BLE001 - no version only means no retry after a deploy
+            return ""
+
+    def _given_up(self) -> dict:
+        """queues.given_up: run_id -> {code, at} for records tick gave up on, minus
+        the ones older than GIVEN_UP_KEEP_DAYS."""
+        try:
+            raw = self.state.store.get("queues", "given_up") or {}
+        except Exception:
+            log.warning("读不出放弃过的运行记录，本轮按没有处理", exc_info=True)
+            return {}
+        cut = datetime.now(tz=SERVER_TZ) - timedelta(days=GIVEN_UP_KEEP_DAYS)
+        out = {}
+        for rid, v in raw.items() if isinstance(raw, dict) else ():
+            try:
+                if isinstance(v, dict) and datetime.fromisoformat(str(v.get("at"))) >= cut:
+                    out[str(rid)] = v
+            except ValueError:
+                continue
+        return out
+
+    def _set_given_up(self, given_up: dict) -> None:
+        try:
+            if given_up:
+                self.state.store.set("queues", "given_up", dict(given_up))
+            else:
+                self.state.store.pop("queues", "given_up")
+        except Exception:
+            log.warning("放弃过的运行记录没能存盘", exc_info=True)
+
     def _handle(self, rec: RunRecord) -> None:
         return handle._handle(self, rec)
 
