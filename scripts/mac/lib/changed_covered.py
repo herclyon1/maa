@@ -173,6 +173,10 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
     # files run as many at a time as there are cores (capped at 8); the result is
     # the union, the criterion unchanged.
     n = max(2, min(8, (os.cpu_count() or 4)))
+    # One at a time on this Mac: its macOS 27.2 beta kernel locks when background-priority processes exec
+    # many children at once (the board write-up of the 09-23 04:19 panic; froze 09-23, 10-10 twice, 10-14 19:52).
+    if sys.platform == "darwin":
+        n = 1
     d = Path(tempfile.mkdtemp())
     jobs = [(t, str(d / f"hit{i}.json")) for i, t in enumerate(test_files())]
     with ThreadPoolExecutor(max_workers=n) as pool:

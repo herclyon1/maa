@@ -74,6 +74,10 @@ def _cost(js: Path) -> int:
 def judge_all(todo: list[tuple[str, Path, Path, object]]) -> list:
     """judge() for every case, results in the cases' order."""
     workers = min(8, os.cpu_count() or 1, len(todo))
+    # One at a time on this Mac: its macOS 27.2 beta kernel locks when background-priority processes exec
+    # many children at once (the board write-up of the 09-23 04:19 panic; froze 09-23, 10-10 twice, 10-14 19:52).
+    if sys.platform == "darwin":
+        workers = 1
     if sys.gettrace() is not None or workers < 2:
         return [judge(js, day_root) for _, js, day_root, _ in todo]
     order = sorted(range(len(todo)), key=lambda i: -_cost(todo[i][1]))

@@ -492,7 +492,9 @@ def collect(jobs: "list[tuple[str, object]]") -> "list[Row]":
     rows = []
     if not jobs:
         return rows
-    with ThreadPoolExecutor(min(16, len(jobs))) as ex:
+    # One at a time on this Mac: its macOS 27.2 beta kernel locks when background-priority processes exec
+    # many children at once (the board write-up of the 09-23 04:19 panic; froze 09-23, 10-10 twice, 10-14 19:52).
+    with ThreadPoolExecutor(1 if sys.platform == "darwin" else min(16, len(jobs))) as ex:
         futures = [(name, ex.submit(fn)) for name, fn in jobs]
         for name, fut in futures:
             try:

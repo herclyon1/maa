@@ -122,7 +122,7 @@ grep -vxF -f "$GATED/skip" "$GATED/all" >"$GATED/run"
 # still go to the file test_speed_gate reads.
 rc=0
 TIMEFORMAT=%2R
-{ time xargs -P 8 -I{} bash -c 'run_one_test "$1"' _ {} 2>&1; } 2>"$GATED/tests.wall" <"$GATED/run" || rc=$?
+{ time xargs -P "$TEST_JOBS" -I{} bash -c 'run_one_test "$1"' _ {} 2>&1; } 2>"$GATED/tests.wall" <"$GATED/run" || rc=$?
 n=$(($(wc -l <"$GATED/run") + 1))
 if [ "$rc" != 0 ]; then
   echo "✗ some of the $n tests failed or timed out (see the FAIL / TIMEOUT lines above)"

@@ -22,7 +22,11 @@
   </dict>
   <key>StartInterval</key><integer>3600</integer>
   <key>RunAtLoad</key><false/>
-  <key>ProcessType</key><string>Background</string>
+  <!-- Standard, not Background: a Background job runs at darwin background priority, and on this
+       Mac's macOS 27.2 beta starting programs from that priority can lock the kernel (the Mac froze
+       09-23, 10-10 twice, 10-14). This job starts du and git for every worktree. Nice and
+       LowPriorityIO still keep it out of the way. -->
+  <key>ProcessType</key><string>Standard</string>
   <key>Nice</key><integer>10</integer>
   <key>LowPriorityIO</key><true/>
   <key>StandardOutPath</key><string>/Users/herclyon/Library/Logs/disk-tidy.out</string>

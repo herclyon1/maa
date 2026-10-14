@@ -78,9 +78,7 @@ if [ -n "${LINT_SKIP_TESTS:-}" ]; then
   echo "  ⏭ 已跳过（调用方自己会跑一遍，这里再跑是重复）"
 else
 echo "▶ 6/25 中继测试全绿"
-# 并行跑：这道闸每次部署会被跑两遍（部署自己一遍、闸门自检里的
-# lint-repo 一遍），串行十几秒全是白等。判据没松：退出码要 0，
-# 且最后一行必须写着 passed。
+# Criteria: exit code 0 and the last line says passed.
 # 失败时把**报错内容**打出来，不是只报一个文件名。原来只吐文件名，人还得自己
 # 再跑一遍才知道错在哪；而收进变量再 tr '\n' ' ' 会把 traceback 压成一整行，
 # 比不打还难读。所以让 runner 直接往 stdout 打，外层只判成败。
@@ -112,8 +110,21 @@ if bare=$(grep -nE '(^|[^"$A-Za-z_])python3 +("?\$\{?TEST_DIR|"?\$1"? *>|"?tests
   note "跑中继测试 / 中继代码的地方又用了系统自带的 python3："; sed 's/^/       /' <<<"$bare"
 fi
 cnt=$(find relay/tests -name 'test_*.py' | wc -l | tr -d ' ')
-if printf '%s\n' relay/tests/test_*.py \
-   | xargs -P 8 -I{} bash -c 'lint_one_test "$1"' _ {}; then
+# One test at a time, not `xargs -P 8`: on this Mac's macOS 27.2 beta, background-priority
+# processes that exec many children at once lock the kernel (09-23 04:19 panic symbolicated in
+# the board write-up of the 09-23 04:19 panic: this very xargs line started the grep that locked; 10-14 19:52 the
+# Mac froze again while this check ran). Slower, but the Mac stays up.
+# shellcheck source=scripts/mac/lib/wait-not-background.sh
+. scripts/mac/lib/wait-not-background.sh
+lint_all_tests() {
+  local f rc=0
+  for f in relay/tests/test_*.py; do
+    wait_not_background
+    lint_one_test "$f" || rc=1
+  done
+  return "$rc"
+}
+if lint_all_tests; then
   ok "$cnt 个测试全过"
 else
   note "有测试没过（见上）"

@@ -555,7 +555,9 @@ def wt_facts(env: Env, ctx: Ctx, wts: list[Worktree]) -> dict[str, tuple[bool, b
     """(merged, dirty) per worktree path, computed in parallel (git status is the slow part)."""
     def one(w: Worktree) -> tuple[str, tuple[bool, bool]]:
         return w.path, (merged(w.repo, w.head), dirty(w.path))
-    with ThreadPoolExecutor(8) as ex:
+    # One at a time on this Mac: its macOS 27.2 beta kernel locks when background-priority processes exec
+    # many children at once (the board write-up of the 09-23 04:19 panic; froze 09-23, 10-10 twice, 10-14 19:52).
+    with ThreadPoolExecutor(1) as ex:
         return dict(ex.map(one, wts))
 
 
@@ -959,7 +961,7 @@ def log_line(env: Env, it: Item, size_k: int | None) -> None:
 
 def measure(items: list[Item]) -> None:
     todo = [i for i in items if i.keep is None and i.size_k is None and i.path.startswith("/")]
-    with ThreadPoolExecutor(8) as ex:
+    with ThreadPoolExecutor(1) as ex:   # one du at a time, see wt_facts
         for it, k in zip(todo, ex.map(lambda i: du_k(i.path), todo), strict=True):
             it.size_k = k
 
