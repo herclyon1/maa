@@ -6,6 +6,7 @@ midnight, forty minutes later, while an AUTO-MAS update was still installing.
 What was asked for was "until the next cycle is about to start", i.e. ten
 minutes before the 08:40 power-on on the 23rd.
 """
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay.features.modes import modes
+from ark_relay.features.phone.commands import apply_command
 from ark_relay.core.statestore import StateStore
 from ark_relay.core.config import SERVER_TZ
 
@@ -86,9 +88,7 @@ def main(tmp: Path):
     store.set("modes", "shutdown_skipped", "2026-10-14:3|debug")
     modes.set_debug(tmp, off=True)
     check("debug mode's own skip is released either way", store.get("modes", "shutdown_skipped"), None)
-    import os
     os.environ["ARK_STATE_DIR"] = str(tmp)
-    from ark_relay.features.phone.commands import apply_command
     store.set("modes", "shutdown_skipped", "2026-10-14:3")
     ok, _ = apply_command({"action": "debug_mode", "off": True, "confirmed": True})
     check("the debug_mode off order releases the mark's skip",
