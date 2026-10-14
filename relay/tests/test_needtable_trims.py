@@ -79,5 +79,48 @@ origin = {"item": {"itemId": "9", "name": "O", "document": {
 check("origin keeps the 物品来源 chapter's blocks in order", build.trim_wiki_origin(origin),
       {"itemId": "9", "name": "O", "lines": ["采集：四号谷地"]})
 
+# The client-data mirrors: from the game PC raw.githubusercontent.com reset the TLS
+# handshake (2026-10-14 10:30:06); the jsDelivr doors come first.
+raw = "https://raw.githubusercontent.com/MaaEnd/MaaEnd/v2/assets/locales/interface/zh_cn.json"
+check("doors: three jsDelivr mirrors, then raw", build.github_doors(raw), [
+    "https://fastly.jsdelivr.net/gh/MaaEnd/MaaEnd@v2/assets/locales/interface/zh_cn.json",
+    "https://cdn.jsdelivr.net/gh/MaaEnd/MaaEnd@v2/assets/locales/interface/zh_cn.json",
+    "https://gcore.jsdelivr.net/gh/MaaEnd/MaaEnd@v2/assets/locales/interface/zh_cn.json", raw])
+check("another URL is its own door", build.github_doors("https://example.invalid/x"), ["https://example.invalid/x"])
+tried = []
+
+
+class _Resp:
+    def __init__(self, body):
+        self.body = body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def read(self):
+        return self.body
+
+
+def _urlopen(req, timeout=None):
+    tried.append(req.full_url)
+    if "gcore" not in req.full_url:
+        raise ConnectionResetError(10054, "reset")
+    return _Resp(b'{"iconRecognition.name.item_gold": "\u6298\u91d1\u7968"}')
+
+
+real = build.urllib.request.urlopen
+build.urllib.request.urlopen = _urlopen
+try:
+    src = build.RulesSource.__new__(build.RulesSource)
+    src.offline, src._store = None, (lambda name, data: None)
+    got = src.get_url("client-item-names", raw, build.trim_item_names)
+finally:
+    build.urllib.request.urlopen = real
+check("a reset door is skipped, the next answers", (got, [u.split("/")[2] for u in tried]),
+      ({"item_gold": "折金票"}, ["fastly.jsdelivr.net", "cdn.jsdelivr.net", "gcore.jsdelivr.net"]))
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

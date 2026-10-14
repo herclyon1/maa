@@ -202,6 +202,21 @@ def section_of(name: str, kind: str) -> str | None:
     return "通用"
 
 
+def github_doors(url: str) -> list[str]:
+    """One raw.githubusercontent.com URL as the doors the game PC can reach: the three
+    jsDelivr mirrors of the same repo path (order and figures in
+    selfupdate._alternates, measured from the PC 2026-08-21), then the URL itself; any
+    other URL is its own only door."""
+    prefix = "https://raw.githubusercontent.com/"
+    parts = url[len(prefix):].split("/", 3) if url.startswith(prefix) else []
+    if len(parts) < 4:
+        return [url]
+    owner, repo, branch, path = parts
+    ref = f"gh/{owner}/{repo}@{branch}/{path}"
+    return [f"https://fastly.jsdelivr.net/{ref}", f"https://cdn.jsdelivr.net/{ref}",
+            f"https://gcore.jsdelivr.net/{ref}", url]
+
+
 def _retry(fn, tries=4, wait=2):
     """Tokyo -> Shanghai wobbles; a first TLS handshake timing out is routine."""
     last = None
@@ -295,12 +310,21 @@ class RulesSource:
             return self._load(name)
 
         def once():
-            # 60 s: the MaaEnd strings are 217 KB from raw.githubusercontent.com, 0.24 s from the Mac
-            # (measured 2026-10-14); the margin is for the machine's slower route to GitHub.
-            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "ark-need-table"}), timeout=60) as r:
-                return json.loads(r.read().decode("utf-8"))
+            # The jsDelivr doors first: from the game PC in Shanghai a TLS handshake with
+            # raw.githubusercontent.com was reset (relay.log 2026-10-14 10:30:06, WinError
+            # 10054), the same route selfupdate._alternates measured at 2/8. 60 s each: the
+            # MaaEnd strings are 217 KB, 0.24 s from the Mac (measured 2026-10-14).
+            err: Exception = RuntimeError("no door answered")
+            for door in github_doors(url):
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(door, headers={"User-Agent": "ark-need-table"}),
+                                                timeout=60) as r:
+                        return json.loads(r.read().decode("utf-8"))
+                except Exception as e:  # noqa: BLE001 - the next door may answer
+                    err = e
+            raise err
 
-        data = _retry(once)
+        data = _retry(once, tries=2)
         data = trim(data) if trim else data
         self._store(name, data)
         return data

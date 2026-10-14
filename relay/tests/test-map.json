@@ -4687,6 +4687,10 @@
 "wuwa_posters",
 "wuwa_tacet"
 ],
+"test_needtable_trims.py": [
+"__init__",
+"build"
+],
 "test_nest_patch_visible.py": [
 "__init__",
 "config",
