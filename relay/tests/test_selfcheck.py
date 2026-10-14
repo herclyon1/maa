@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.features.selfcheck import selfcheck
-from ark_relay.core import texts
+from ark_relay.core import mascontract, texts
 from ark_relay.core.notify import route_of
 from ark_relay.features.phone import commands
 
@@ -76,11 +76,13 @@ with tempfile.TemporaryDirectory() as td:
                                 phone_topic="ark-x", phone_pin="1234")
     good = dict(procs=lambda: [(1, r"D:\ark\automas\repo\main.py")], mas_up=lambda: True,
                 schedule=lambda: [{"name": "早班", "times": ["09:00"]}], channels=lambda: ["群"],
-                run_ok=lambda cmd: (True, ""), has_module=lambda m: True)
+                run_ok=lambda cmd: (True, ""), has_module=lambda m: True,
+                # The AUTO-MAS settings check reads config files; test_mascontract.py covers it.
+                contract=lambda automas_dir: mascontract.Result([], [], 1))
 
     print("[一切正常：全部成立、不报警]")
     cs = selfcheck.run(cfg, **good)
-    check("13 项", len(cs), 13)
+    check("14 项", len(cs), 14)
     check("全部成立", [c.name for c in cs if not c.ok], [])
     check("每一项的名字都是人话", [texts.plain(c.name) for c in cs if texts.plain(c.name)], [])
 

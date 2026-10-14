@@ -128,8 +128,35 @@ def _why(procs_mod) -> str:
     return f"（{why}）" if why else ""
 
 
+def _contract(cfg, contract=None) -> "tuple[Check, list[str]]":
+    """(the check, its plain lines per feature that cannot be read) - every AUTO-MAS setting
+    the relay reads is where it looks (mascontract.check).
+
+    Not judged (None) when no file could tell: the settings folder or a file is unreadable
+    (the queue line above covers that) and nothing was found missing, or the files hold no
+    script, queue or plan at all. `contract` replaces mascontract.check in tests."""
+    from ark_relay.core import mascontract  # noqa: PLC0415
+    name = texts.MAS_CONTRACT_CHECK
+    try:
+        res = (contract or mascontract.check)(getattr(cfg, "automas_dir", None))
+    except Exception as exc:  # noqa: BLE001 - reported, not raised
+        return Check(name, False, f"核对时出了 {type(exc).__name__}"), []
+    lines = texts.mas_contract_lines(res.missing)
+    if res.missing:
+        return Check(name, False, texts.mas_contract_detail(res)), lines
+    if res.unreadable or not res.judged:
+        return Check(name, None, "判不了：" + (
+            texts.mas_contract_detail(res) if res.unreadable else "设置里一个脚本、队列都没有")), []
+    return Check(name, True), []
+
+
+def contract_check(cfg, contract=None) -> Check:
+    """The self-check line for the AUTO-MAS settings the relay reads (_contract)."""
+    return _contract(cfg, contract)[0]
+
+
 def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
-        run_ok=_run_ok, has_module=_has_module) -> list[Check]:
+        run_ok=_run_ok, has_module=_has_module, contract=None) -> list[Check]:
     """All checks, in the order they are reported. Dependencies are injectable for tests."""
     from ark_relay.features.phone import commands  # noqa: PLC0415
     from ark_relay.core import plan, procs as _procs  # noqa: PLC0415
@@ -171,6 +198,9 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
     else:
         why = "" if sched else "没有一条开着定时的队列"
     out.append(Check("队列的排期读得到、至少一条开着定时", bool(sched), why))
+    # 10-14: AUTO-MAS v5.7.0-beta.3 moved the stage items out of Info and every reader
+    # took the empty result for "not set" for 13 hours (mascontract.py).
+    out.append(contract_check(cfg, contract))
     log_file = os.environ.get("ARK_LOG_FILE", "")
     ok, why = (False, "没配置") if not log_file else _writable(Path(log_file).parent)
     out.append(Check("日志文件所在目录能写", ok, why))
@@ -189,6 +219,36 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
     return out
 
 
+def _push(notifier, title: str, body: str) -> dict:
+    """Send a failure to the group; the `extra` that marks the WARNING lines logged after it
+    as delivered (errwatch.group_pushed), so errwatch does not push them a second time."""
+    errs = notifier.send(title, body, alert=True)
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    return errwatch.group_pushed(title, errs, notifier)
+
+
+def report_contract(cfg, notifier, version: str, log_=None, contract=None) -> Check:
+    """Right after the pre-update installed a new AUTO-MAS (preupdate_automas.run_automas's
+    after_update): check the settings the relay reads again and push a miss to the group.
+
+    The boot self-check runs before the pre-update (boot_stages: _stage_selfcheck, then
+    _stage_preupdate), so on 10-14 the 08:45 boot check passed on the old AUTO-MAS and the
+    08:46 install went unchecked until the next boot."""
+    lg = log_ or log
+    c, lines = _contract(cfg, contract)
+    if c.ok is False:
+        lines = lines or [c.detail]
+        extra = _push(notifier, texts.AUTOMAS_CONTRACT, texts.automas_contract_body(version, lines))
+        lg.warning("调度程序升级到 %s 后，%s：%s", version, c.name, c.detail, extra=extra)
+    elif c.ok is None:
+        # At boot the queue line covers unreadable files; after an update nothing else looks
+        # again until the next boot, so this goes out (errwatch pushes WARNINGs to the group).
+        lg.warning("调度程序升级到 %s 后，核对「%s」%s", version, c.name, c.detail)
+    else:
+        lg.info("调度程序升级到 %s 后，%s：成立", version, c.name)
+    return c
+
+
 def report(cfg, notifier, log_=None) -> list[Check]:
     """Run, log every line, push the failures to the group. Returns the checks."""
     lg = log_ or log
@@ -200,12 +260,9 @@ def report(cfg, notifier, log_=None) -> list[Check]:
     bad = [c for c in checks if c.ok is False]
     pushed = {}
     if bad:
-        errs = notifier.send(texts.SELFCHECK_FAILED, texts.selfcheck_failed_body(
-            len(checks), [(c.name, c.detail) for c in bad]), alert=True)
-        # The ✗ lines logged below repeat this alarm; when it reached the group,
-        # `pushed` marks them as delivered so errwatch does not push them again.
-        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-        pushed = errwatch.group_pushed(texts.SELFCHECK_FAILED, errs, notifier)
+        # The ✗ lines logged below repeat this alarm (see _push).
+        pushed = _push(notifier, texts.SELFCHECK_FAILED, texts.selfcheck_failed_body(
+            len(checks), [(c.name, c.detail) for c in bad]))
     for c in checks:
         mark = "✓" if c.ok else "✗" if c.ok is False else "？"
         lg.log(logging.WARNING if c.ok is False else logging.INFO, "开机自检 %s %s%s",

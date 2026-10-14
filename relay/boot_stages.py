@@ -780,6 +780,13 @@ def _stage_selfcheck(cfg, notifier, log) -> None:
     selfcheck.report(cfg, notifier, log)
 
 
+def _contract_after_update(cfg, notifier, log, version: str) -> None:
+    """A new AUTO-MAS just came up: are the settings the relay reads still where it looks?
+    (selfcheck.report_contract; the boot self-check ran before this install.)"""
+    from ark_relay.features.selfcheck import selfcheck  # noqa: PLC0415
+    selfcheck.report_contract(cfg, notifier, version, log)
+
+
 def _stage_preupdate(cfg, notifier, log) -> None:
     """Do the program updates inside the boot window (once a day).
 
@@ -823,8 +830,10 @@ def _stage_preupdate(cfg, notifier, log) -> None:
                 log.info("预更新：AUTO-MAS 没有应答，不再等它，它的更新这次不查")
                 _note(problems, "AUTO-MAS 没有应答（开机时已经拉过它），它的更新这次没查")
             elif note := _once_more(cfg, log, "AUTO-MAS", preupdate.MAS_BUDGET_SECONDS, problems,
-                                    lambda problems: preupdate.run_automas(cfg.automas_dir,
-                                                                           problems=problems)):
+                                    lambda problems: preupdate.run_automas(
+                                        cfg.automas_dir, problems=problems,
+                                        after_update=lambda version: _contract_after_update(
+                                            cfg, notifier, log, version))):
                 notifier.send(texts.PREUPDATE, note)
             _preupdate_okww(cfg, notifier, log, problems)
             preupdate.mark_run(cfg.state_dir, _pre_now,

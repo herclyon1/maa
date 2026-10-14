@@ -57,15 +57,20 @@ def automas_dir(root: Path, *, stage="YW-4", stage_1="-", fight=True, mode="Fixe
 
     queues: {name: (HH:MM, [kinds])}, default 早班 09:00 [MAA, MaaEnd] and 晚班 21:30 [MAA].
     beta3: the user as AUTO-MAS v5.7.0-beta.3 saves it - the stage items in a Stage group
-    and Annihilation in Task, none of them left in Info (ark_relay/core/masuser.py).
+    and Annihilation in Task, none of them left in Info (ark_relay/core/masuser.py) - and
+    every node holding each item the relay reads (ark_relay/core/mascontract.py CONTRACT),
+    as AUTO-MAS writes every item of a node's model (values: the machine's queue copy in
+    fixtures/automas-config-2026-10-11, the rest upstream defaults of app/models/config.py).
     """
     cfg = root / "config"
     cfg.mkdir(parents=True, exist_ok=True)
     stage_items = {"Stage": stage, "Stage_1": stage_1, "Stage_2": "-", "Stage_3": "-",
                    "StageMode": mode, "MedicineNumb": 0}
     if beta3:
-        user = {"Info": {"Name": "arknights", "Base": "Shared"}, "Stage": stage_items,
-                "Task": {"IfFight": fight, "Annihilation": "Annihilation"}}
+        user = {"Info": {"Name": "arknights", "Base": "Shared"}, "Stage": {**stage_items, "SeriesNumb": "0"},
+                "Task": {"IfFight": fight, "Annihilation": "Annihilation", "IfActivityFirst": True,
+                         "ActivityStageIndex": 1},
+                "Data": {"AnnihilationCompletedWeek": "2000-W01"}}
     else:
         user = {"Info": {"Name": "arknights", **stage_items}, "Task": {"IfFight": fight}}
     scripts = {
@@ -76,18 +81,29 @@ def automas_dir(root: Path, *, stage="YW-4", stage_1="-", fight=True, mode="Fixe
                   "SubConfigsInfo": {"UserData": {"instances": [{"uid": "U2"}],
                                                   "U2": {"Info": {"Name": "x"}, "Task": {}}}}},
     }
+    if beta3:
+        scripts["S-MAA"]["Run"] = {"IfCheckGameUpdate": True, "IfAutoInstallGameApk": True}
+        scripts["S-END"]["Game"] = {"WaitTime": 60}
+        scripts["S-END"]["SubConfigsInfo"]["UserData"]["U2"]["Task"] = {
+            "IfSanity": True, "IfAutoUseSpMedication": False, "SanityTaskType": "ProtocolSpace",
+            "AutoEssenceSpecifiedLocation": ""}
     (cfg / "ScriptConfig.json").write_text(json.dumps(scripts, ensure_ascii=False), encoding="utf-8")
     sid = {"MAA": "S-MAA", "MaaEnd": "S-END"}
     queues = queues or {"早班": ("09:00", ["MAA", "MaaEnd"]), "晚班": ("21:30", ["MAA"])}
     qc: dict = {"instances": []}
+    week = {"Days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]} if beta3 else {}
     for n, (name, (hhmm, kinds)) in enumerate(queues.items()):
         uid = f"Q{n}"
         qc["instances"].append({"uid": uid})
-        qc[uid] = {"Info": {"Name": name, "TimeEnabled": True},
+        qc[uid] = {"Info": {"Name": name, "TimeEnabled": True,
+                            **({"CycleEnabled": False, "AfterAccomplish": "NoAction", "StartUpMode": "Never"}
+                               if beta3 else {})},
                    "SubConfigsInfo": {
-                       "TimeSet": {"instances": [], "T1": {"Info": {"Enabled": True, "Time": hhmm}}},
+                       "TimeSet": {"instances": [], "T1": {"Info": {"Enabled": True, "Time": hhmm, **week}}},
                        "QueueItem": {"instances": [],
-                                     **{f"I{i}": {"Info": {"ScriptId": sid[k]}} for i, k in enumerate(kinds)}}}}
+                                     **{f"I{i}": {"Info": {"ScriptId": sid[k]},
+                                                  **({"Schedule": dict(week)} if beta3 else {})}
+                                        for i, k in enumerate(kinds)}}}}
     (cfg / "QueueConfig.json").write_text(json.dumps(qc, ensure_ascii=False), encoding="utf-8")
     if plan is not None:
         (cfg / "PlanConfig.json").write_text(json.dumps(plan, ensure_ascii=False), encoding="utf-8")

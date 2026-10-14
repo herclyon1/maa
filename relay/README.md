@@ -35,6 +35,7 @@ Shared parts are in `ark_relay/core/`, each feature in `ark_relay/features/<name
 | `watch.py` | directory-change notification (Windows ctypes / macOS kqueue) |
 | `plan.py` | read AUTO-MAS's schedule; there is no second copy of it |
 | `masuser.py` | where an AUTO-MAS MAA user keeps each setting (Info before v5.7.0-beta.3, Stage / Task after) |
+| `mascontract.py` | every AUTO-MAS setting the relay reads or writes, and the check that each is still there (boot self-check, after an AUTO-MAS update; `scripts/mac/lib/automas_contract_watch.py` against a release) |
 | `notify.py` / `transport.py` | channels and HTTP with the right retry policy |
 | `summary.py` | wording, including the optional LLM line |
 | `inbox.py` | fetch and apply `queue/config.json` |

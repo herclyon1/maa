@@ -105,6 +105,9 @@ SELFUPDATE_FAILED = "⚠️ 中继自更新没成功"
 WATCH_LOST = "⚠️ 中继暂时不能在脚本跑完时马上处理结果"
 RELAY_ERROR = "🩺 中继自己报错了"
 SELFCHECK_FAILED = "🩺 开机自检没过"
+# The relay's pre-update just installed a new AUTO-MAS and a setting the relay reads is no
+# longer where it looks (mascontract.check; selfcheck.report_contract).
+AUTOMAS_CONTRACT = "⚠️ 调度程序升级后，中继有设置读不到"
 AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
 # The sanity booster stays on, and a MaaEnd change that stops it applying is an
@@ -636,6 +639,80 @@ def relay_part(where: str) -> str:
     return _RELAY_PARTS.get(where, "一个不常见的部分")
 
 
+# The AUTO-MAS settings the relay reads (ark_relay/core/mascontract.py CONTRACT), by feature:
+# what the setting is, and what goes wrong while the relay cannot read it.
+MAS_SETTING_WHAT = {
+    "script_path": "各个脚本的安装位置",
+    "script_name": "各个脚本的名字",
+    "client_update": "明日方舟、鸣潮客户端自动更新的开关",
+    "maaend_wait": "终末地的等待秒数",
+    "stage": "方舟的关卡设置",
+    "medicine": "方舟的理智药数量",
+    "fight": "方舟的刷理智开关",
+    "annihilation": "方舟的剿灭设置",
+    "activity": "方舟的活动关设置",
+    "maaend_phone": "终末地的理智用途和基质设置",
+    "okww_quick": "鸣潮的快速配置",
+    "queue_timer": "队列的定时设置",
+    "queue_after": "队列跑完后做什么",
+    "queue_startup": "调度程序一打开就跑队列的设置",
+    "queue_items": "队列里排了哪些游戏、哪几天跑",
+    "plan_table": "方舟的关卡计划表",
+}
+MAS_SETTING_BREAKS = {
+    "script_path": "中继认不出哪个是方舟、终末地、鸣潮，开跑前查关卡、补跑、关机前等游戏跑完",
+    "script_name": "手机上方舟的设置、剿灭开关和明日安排里鸣潮那几行",
+    "client_update": "开机自检判断游戏出新版时有没有人更新客户端",
+    "maaend_wait": "手机上改终末地的等待秒数",
+    "stage": "开跑前查关卡、明日安排、手机上显示和修改关卡",
+    "medicine": "明日安排和手机上显示、修改理智药",
+    "fight": "开跑前查关卡和明日安排",
+    "annihilation": "明日安排里的剿灭、每周剿灭打没打满、手机上的剿灭开关",
+    "activity": "手机上显示的活动关设置",
+    "maaend_phone": "手机上显示和修改终末地的这几项",
+    "okww_quick": "明日安排里鸣潮刷什么",
+    "queue_timer": "排班：开跑前查关卡、超时报警、关机前等队列跑完、漏跑核对、明日安排、手机上的跳过",
+    "queue_after": "明日安排里「跑完自动关机」那一行",
+    "queue_startup": "手机上的「开机就跑」",
+    "queue_items": "中继不知道每班跑哪些游戏，游戏更新日、关卡走不到时跳过当天那一项",
+    "plan_table": "按计划表打关时，开跑前查关卡和明日安排",
+}
+# The AUTO-MAS setting groups by the column they are shown in.
+MAS_GROUP_ZH = {"Info": "基本信息", "Stage": "关卡", "Task": "任务", "Data": "数据",
+                "Run": "运行", "Game": "游戏", "Schedule": "日程", "ALL": "计划表全周"}
+MAS_FILE_ZH = {"ScriptConfig.json": "脚本设置", "QueueConfig.json": "队列设置",
+               "PlanConfig.json": "关卡计划表", "config": "设置文件夹"}
+MAS_CONTRACT_CHECK = "中继要读的调度程序设置都在原处"
+
+
+def mas_contract_lines(missing) -> list[str]:
+    """One line per feature for the mascontract.Item list `missing`: which setting the relay
+    can no longer read, in which column it is not found, and what goes wrong."""
+    by_use: dict = {}
+    for it in missing:
+        cols = by_use.setdefault(it.use, [])
+        col = MAS_GROUP_ZH.get(it.group, "另一")
+        if col not in cols:
+            cols.append(col)
+    return [f"中继读不到{MAS_SETTING_WHAT.get(use, '一项设置')}（{'、'.join(c + '一栏' for c in cols)}里找不到），"
+            f"{MAS_SETTING_BREAKS.get(use, '用到它的地方')}都不对了" for use, cols in by_use.items()]
+
+
+def mas_contract_detail(result) -> str:
+    """The self-check line's detail for a mascontract.Result."""
+    parts = mas_contract_lines(result.missing)
+    if result.unreadable:
+        parts.append("读不到调度程序的" + "、".join(MAS_FILE_ZH.get(f, "设置") for f in result.unreadable))
+    return "；".join(parts)
+
+
+def automas_contract_body(version: str, lines: list[str]) -> str:
+    """The alarm right after the pre-update installed a new AUTO-MAS (selfcheck.report_contract)."""
+    body = "\n".join(f"· {x}" for x in lines)
+    return (f"中继刚把调度程序（AUTO-MAS）升级到 {version}，升级后：\n{body}\n"
+            "调度程序照常跑，读不到的这几处中继会当成没设。已交给我们这边去修。")
+
+
 def selfcheck_failed_body(total: int, bad: list) -> str:
     """`bad` is [(name, detail)] of the checks that did not hold. Not every check stops
     the shift (some only slow the watchdog down), so the consequence is given per weight."""
@@ -1049,6 +1126,9 @@ def samples() -> list[str]:
         relay_error_line("ark.report", "日报没发出去", "21:21:05 起共 3 次，最后一次 21:25:10"),
         relay_error_line("ark.banners", "官方图转 PNG 失败，原样交给系统 OCR", "21:47:01", "20261005151027",
                          "游戏机缺读图组件，官方长图读不了"),
+        AUTOMAS_CONTRACT, MAS_CONTRACT_CHECK,
+        automas_contract_body("v5.7.0-beta.3", [
+            "中继读不到方舟的关卡设置（关卡一栏里找不到），开跑前查关卡、明日安排、手机上显示和修改关卡都不对了"]),
         SELFCHECK_FAILED, selfcheck_failed_body(11, [("读得到每个程序是怎么启动的（系统自带的那条路）", "读不到"), ("调度程序的开机任务计划还在", "退出码 1")]),
         shiftcheck_summary("晚班", 4, [], []),
         shiftcheck_summary("早班", 4, [(SHIFTCHECK_ANNIHILATION, annihilation_off_body("明日方舟 · 剿灭")),

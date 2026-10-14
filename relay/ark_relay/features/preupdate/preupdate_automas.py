@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import time
+from typing import Callable
 
 from ark_relay.core.config import mas_base
 from pathlib import Path
@@ -124,8 +125,14 @@ def _wait_for_package(automas_dir: Path, deadline: float) -> Path | None:
 
 def run_automas(automas_dir: Path | None,
                 budget_s: float = MAS_BUDGET_SECONDS,
-                problems: list[str] | None = None) -> str:
-    """Check, download and apply an AUTO-MAS update now. Returns a note or ""."""
+                problems: list[str] | None = None,
+                after_update: "Callable[[str], object] | None" = None) -> str:
+    """Check, download and apply an AUTO-MAS update now. Returns a note or "".
+
+    after_update(new_version) is called once the restarted backend reports the new version,
+    and only then: boot_stages passes selfcheck.report_contract, which checks again that every
+    setting the relay reads is where it looks (10-14: v5.7.0-beta.3, installed here at 08:46,
+    moved the stage items, and the boot self-check had run at 08:45 on the old version)."""
     if not automas_dir:
         return ""
     root = Path(automas_dir)
@@ -208,6 +215,11 @@ def run_automas(automas_dir: Path | None,
     got = _wait_for_version(latest, time.monotonic() + MAS_INSTALL_WAIT_SECONDS)
     if got == latest:
         log.info("预更新：AUTO-MAS 已更新到 %s（后端重启后自报）", latest)
+        if after_update is not None:
+            try:
+                after_update(latest)
+            except Exception:  # noqa: BLE001 - the update itself landed; the check says so in the log
+                log.exception("预更新：AUTO-MAS 更新后核对中继要读的设置时出错")
         return f"AUTO-MAS 已更新：{_span(version, latest)}"
     log.warning("预更新：AUTO-MAS 装完 %.0f 秒内后端没有自报 %s（最后一次说的是 %s），留到下次开机再看",
                 MAS_INSTALL_WAIT_SECONDS, latest, got or "问不到")
