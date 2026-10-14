@@ -75,6 +75,10 @@ print("[empty stage '-']")
 got = maa_block({"Stage": "-"})
 require("no '理智 -'", not any(b.startswith("理智 -") for b in got) and "理智 没设关卡（固定）" in got, repr(got))
 
+print("[no StageMode read, no annihilation: still one line]")
+got = maa_block({"StageMode": "", "Annihilation": ""})
+require("a line saying the stage setting was not read", got == ["理智 读不到关卡设置"], repr(got))
+
 print("[\"*\" and fallback stages]")
 got = maa_block({"Stage": "*", "Stage_1": "1-7", "Stage_2": "-", "Stage_3": "CE-6"})
 require("current/last stage, then the fallbacks in order",

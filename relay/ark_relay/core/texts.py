@@ -950,7 +950,8 @@ def echo_farm_progress(n: "int | None") -> str:
         return "**读不到 OK-WW 的日志，刷到没有不知道**"
     if n == 0:
         return "**OK-WW 日志里一次都没刷到（没打怪、没捡到声骸）**"
-    return f"OK-WW 日志里记到 {n} 次进展（打怪、捡声骸、回到副本）"
+    # no log name: what the reader needs is what happened (App review 10-14)
+    return f"刷的过程中有 {n} 次进展（打怪、捡声骸、回到副本）"
 
 
 def echo_farm_no_claim_left(path: str) -> str:

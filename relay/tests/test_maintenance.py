@@ -1,12 +1,12 @@
 """三家停服维护公告解析——夹具是 2026-09-02/03 从官网原样抓的页面。"""
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.features.maintenance import maintenance as M
-from ark_relay.core.config import SERVER_TZ
+from ark_relay.core.config import SERVER_TZ, USER_TZ
 
 FX = Path(__file__).parent / "fixtures" / "maint"
 fails = []
@@ -97,10 +97,17 @@ M.today = lambda at: {"明日方舟": ak}
 lines = P.maintenance_lines(date(2026, 9, 4))
 check("维护当天出一行", len(lines), 1)
 check("点名游戏", "明日方舟" in lines[0], True)
-check("写清窗口", "09-04 06:00–12:00" in lines[0], True)
-check("说清当天不跑它", "当天队列里不跑它" in lines[0], True)
-check("说清跑完就更新客户端", "更新客户端" in lines[0], True)
-check("说清开服后补跑", "12:00 开服后单独补跑" in lines[0], True)
+# App review 10-14: the window on the phone's clock (Tokyo, one hour ahead) and in plain words
+check("写清窗口（手机的东京时间）", "09-04 07:00–13:00" in lines[0], True)
+check("说清这一班不跑它", "这一班先跳过它" in lines[0], True)
+check("说清跑完就更新它", "跑完就更新它" in lines[0], True)
+check("说清开服后补跑", "13:00 开服后单独补跑" in lines[0], True)
+check("不用「队列」「客户端」这些词", "队列" in lines[0] or "客户端" in lines[0], False)
+# tomorrow 07:00 on the phone's clock (06:00 on the machine's), whatever the hour the test runs
+_tmw = (datetime.now(tz=USER_TZ).replace(hour=7, minute=0, second=0, microsecond=0) + timedelta(days=1)).astimezone(SERVER_TZ)
+M.today = lambda at: {"终末地": (_tmw, _tmw.replace(hour=12), "test")}
+check("明天的窗口写「明天」", "终末地 明天 07:00–13:00 停服维护" in P.maintenance_lines(_tmw.date())[0], True)
+M.today = lambda at: {"明日方舟": ak}
 
 M.today = lambda at: {"明日方舟": ak, "终末地": ef}
 check("两家维护就出两行", len(P.maintenance_lines(date(2026, 9, 4))), 2)

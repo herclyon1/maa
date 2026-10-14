@@ -126,7 +126,9 @@ def set_skip_shutdown(state_dir: Path, on: bool) -> tuple[bool, str]:
     store = _store(state_dir)
     if on:
         store.set("modes", "skip_next_shutdown", True)
-        return True, "已记下「下次跑完不关机」：接下来第一趟早班/晚班跑完不关机，开到再下一趟跑完才关；只管一次"
+        # One short sentence (App review 10-14: three lines said what the App's switch row says in one);
+        # it keeps the mark's one name, the run and 「只管一次」 (test_skip_shutdown_wording).
+        return True, "已记下「下次跑完不关机」：下一趟早班/晚班跑完不关机，只管一次"
     if store.get("modes", "skip_next_shutdown"):
         store.pop("modes", "skip_next_shutdown")
         return True, "已撤回还没用上的「下次跑完不关机」：下一趟早班/晚班跑完照常关机"
@@ -252,7 +254,9 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
         skipped = str(store.get("modes", "shutdown_skipped") or "")
         if skipped and (release_skip or skipped.endswith(DEBUG_SKIP_TAG)):
             store.pop("modes", "shutdown_skipped")
-        return True, "调试模式已关闭，恢复正常运行（队列若被停用需另行恢复）"
+        # Debug mode stops no queue, so there is nothing for the reader to put back: the old
+        # 「（队列若被停用需另行恢复）」 asked for an action it did not name (App review 10-14).
+        return True, "调试模式已关闭"
     try:
         cycles = max(1, int(cycles))
     except (TypeError, ValueError):

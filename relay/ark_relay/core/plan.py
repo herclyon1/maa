@@ -236,7 +236,7 @@ def _startup_runs(info: dict) -> "bool | None":
 
 
 def queue_rows(automas_dir) -> list[dict]:
-    """Every queue as the phone state lists it: {"名", "定时", "开机跑", "脚本"}.
+    """Every queue as the phone state lists it: {"名", "定时", "开机跑", "脚本", "时刻"}.
 
     Read from the same QueueConfig.json / ScriptConfig.json next_plan reads (not
     from the AUTO-MAS backend, which snapshot.read skips once power-off is
@@ -256,8 +256,24 @@ def queue_rows(automas_dir) -> list[dict]:
         out.append({"名": str(info.get("Name") or "?"),
                     "定时": info.get("TimeEnabled"),
                     "开机跑": _startup_runs(info),
-                    "脚本": [names[s] for s in sids if s in names]})
+                    "脚本": [names[s] for s in sids if s in names],
+                    "时刻": _queue_times(node)})
     return out
+
+
+def _queue_times(node: dict) -> list[str]:
+    """A queue's enabled start times, "HH:MM" on the server clock, sorted; kept whether or
+    not the queue's timer is on. A skip for today turns the timer off (modes.py) and the
+    plan then leaves the shift out, so the phone takes the time from here to keep showing
+    it (App review 10-14: the skipped shift's row lost its time)."""
+    out = set()
+    for tid, t in ((node.get("SubConfigsInfo") or {}).get("TimeSet") or {}).items():
+        if tid == "instances" or not isinstance(t, dict):
+            continue
+        ti = t.get("Info") or {}
+        if ti.get("Enabled") and ti.get("Time") and (hhmm := _hhmm(ti["Time"])) is not None:
+            out.add(hhmm)
+    return sorted(out)
 
 
 def schedule(automas_dir: Path | None) -> list[dict]:
@@ -672,8 +688,17 @@ def maintenance_lines(day) -> list[str]:
         _say_once("maintenance", exc, "明日安排的停服维护那一行没算出来，这次不写", exc_info=True)
         return []
     _last_error.pop("maintenance", None)
-    return [f"⚠️ {game} {start:%m-%d %H:%M}–{end:%H:%M} 停服维护：当天队列里不跑它，"
-            f"队列跑完立刻更新客户端，{end:%H:%M} 开服后单独补跑"
+    # On the phone's clock, as every other time the App shows, and in plain words: the App puts
+    # this line under that game's row of the shift (App review 10-14: 「当天队列里不跑它」,
+    # 「客户端」 were the relay's words). "明天" when the window is tomorrow there.
+    tomorrow_user = (datetime.now(tz=USER_TZ) + timedelta(days=1)).date()
+
+    def when(t) -> str:
+        t = t.astimezone(USER_TZ)
+        return "明天" if t.date() == tomorrow_user else f"{t:%m-%d}"
+
+    return [f"⚠️ {game} {when(start)} {start.astimezone(USER_TZ):%H:%M}–{end.astimezone(USER_TZ):%H:%M} 停服维护："
+            f"这一班先跳过它，跑完就更新它，{end.astimezone(USER_TZ):%H:%M} 开服后单独补跑"
             for game, (start, end, _why) in wins.items()]
 
 
@@ -800,6 +825,10 @@ def next_plan(automas_dir: Path | None) -> str:
                 bits.append(f"理智用于 {s['sanity_use']}")
             if s.get("kind") == "OK-WW":
                 bits += _okww_plan_bits(automas_dir, s.get("path"))
+            if s.get("kind") == "MAA" and not bits:
+                # Combat on but no StageMode read (and no annihilation setting): the row
+                # had no line under it while 鸣潮 and 终末地 had theirs (10-14 review).
+                bits.append("理智 读不到关卡设置")
             # One thing per line: a phone wraps one long line into several.
             label = s.get("name", "?")
             game = _GAME_OF.get(str(s.get("kind") or ""), "")

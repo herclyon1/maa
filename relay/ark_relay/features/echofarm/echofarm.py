@@ -28,7 +28,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.core import texts
-from ark_relay.core.config import SERVER_TZ, atomic_write_text, okww_root, programdata_path
+from ark_relay.core.config import SERVER_TZ, USER_TZ, atomic_write_text, okww_root, programdata_path
 
 log = logging.getLogger("ark.echofarm")
 
@@ -525,7 +525,9 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
                        "要刷就再按一次")
     running = current(cfg.state_dir)
     if running:
-        return False, (f"已经在刷{running.get('name') or ''}了，刷到 {running.get('until')}。"
+        r_until = _stamp(running.get("until"))
+        return False, (f"已经在刷{running.get('name') or ''}了，刷到 "
+                       f"{user_clock(r_until, at) if r_until else running.get('until')}。"
                        "要换目标先停掉现在这一趟")
 
     saved = _truth(cfg, path)
@@ -551,7 +553,17 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
                    .strftime("%Y-%m-%d %H:%M"),
         "saved": saved,
     })
-    return True, f"开始刷{name or f'第 {boss} 个'}，刷到 {until:%H:%M} 为止（机器时间）"
+    return True, f"开始刷{name or f'第 {boss} 个'}，刷到 {user_clock(until, at)} 为止"
+
+
+def user_clock(t: datetime, now: "datetime | None" = None) -> str:
+    """A moment as the owner's phone shows it: "HH:MM" on its clock (USER_TZ), with "明天 " in
+    front when it is tomorrow there. The receipts reach the App, where every other time is the
+    phone's (App review 10-14: 「刷到 12:20 为止（机器时间）」 sat beside a 12:54 receipt time)."""
+    t = t.astimezone(USER_TZ)
+    today = (now or datetime.now(tz=SERVER_TZ)).astimezone(USER_TZ).date()
+    return f"{t:%H:%M}" if t.date() == today else (f"明天 {t:%H:%M}" if t.date() == today + timedelta(days=1)
+                                                 else f"{t:%m-%d %H:%M}")
 
 
 def retime(cfg, until_hhmm: str, now: datetime | None = None) -> tuple[bool, str]:
@@ -574,8 +586,9 @@ def retime(cfg, until_hhmm: str, now: datetime | None = None) -> tuple[bool, str
     # A time already past rolls to tomorrow, exactly as it does when a farm is
     # started - one rule, not two. Stopping now is what the 收工 button is for.
     mins = int((until - now).total_seconds() // 60)
-    return True, (f"刷{rec.get('name') or '声骸'}的收工时刻从 {str(was)[11:]} 改成 "
-                  f"{until:%H:%M}（还剩 {mins // 60} 小时 {mins % 60} 分）")
+    old = _stamp(was)
+    return True, (f"刷{rec.get('name') or '声骸'}的收工时刻从 {user_clock(old, now) if old else str(was)[11:]} 改成 "
+                  f"{user_clock(until, now)}（还剩 {mins // 60} 小时 {mins % 60} 分）")
 
 
 # Wrap-up lines of a stop by hand (finish(): the phone's stop-farm order, the red button)
@@ -639,14 +652,18 @@ def _finish(cfg, why: str, failed: bool = False, judge_progress: bool = False) -
     else:
         note += "；**找不到配置文件，没能还原**"
     _store(cfg.state_dir).pop("queues", "echo_farm")
-    started = rec.get("started") or "?"
+    # 「从 12:54 刷到 12:57」 on the phone's clock; no 「配置已还原」 (the App's reader acts on
+    # nothing there: a failure to put things back is still said, in bold, by `note`)
+    begun = _started_at(rec)
+    end = datetime.now(tz=SERVER_TZ)
+    span = f"从 {user_clock(begun, end)} 刷到 {user_clock(end, end)}" if begun else f"{rec.get('started') or '?'} 开始"
     tries = int(rec.get("restarts") or 0)
     again = f"，中途角色阵亡重开了 {tries} 次" if tries else ""
     if judge_progress and not laps:
         failed = True
     name = rec.get("name") or ""
-    return (f"刷{name}{texts.echo_farm_level(level, name)}结束（{why}）。{started} 开始{again}，{texts.echo_farm_progress(laps)}，"
-            f"配置已还原{note}", failed or bool(note))
+    return (f"刷{name}{texts.echo_farm_level(level, name)}结束（{why}），{span}{again}，{texts.echo_farm_progress(laps)}"
+            f"{note}", failed or bool(note))
 
 
 def tick(cfg, now: datetime | None = None) -> str:
@@ -665,7 +682,7 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
         return _finish(cfg, "结束时刻读不出来，为安全起见停掉", failed=True)
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     if now >= until:
-        return _finish(cfg, f"到点了（{until:%H:%M}）", judge_progress=True)
+        return _finish(cfg, f"到点了（{user_clock(until, now)}）", judge_progress=True)
     quiet = quiet_minutes(now, _stamp(rec.get("restarted")) or _started_at(rec))
     if quiet is None or quiet < RESTART_QUIET_MINUTES:
         return "", False
