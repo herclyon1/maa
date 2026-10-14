@@ -670,8 +670,17 @@ def maintenance_lines(day) -> list[str]:
         _say_once("maintenance", exc, "明日安排的停服维护那一行没算出来，这次不写", exc_info=True)
         return []
     _last_error.pop("maintenance", None)
-    return [f"⚠️ {game} {start:%m-%d %H:%M}–{end:%H:%M} 停服维护：当天队列里不跑它，"
-            f"队列跑完立刻更新客户端，{end:%H:%M} 开服后单独补跑"
+    # On the phone's clock, as every other time the App shows, and in plain words: the App puts
+    # this line under that game's row of the shift (App review 10-14: 「当天队列里不跑它」,
+    # 「客户端」 were the relay's words). "明天" when the window is tomorrow there.
+    tomorrow_user = (datetime.now(tz=USER_TZ) + timedelta(days=1)).date()
+
+    def when(t) -> str:
+        t = t.astimezone(USER_TZ)
+        return "明天" if t.date() == tomorrow_user else f"{t:%m-%d}"
+
+    return [f"⚠️ {game} {when(start)} {start.astimezone(USER_TZ):%H:%M}–{end.astimezone(USER_TZ):%H:%M} 停服维护："
+            f"这一班先跳过它，跑完就更新它，{end.astimezone(USER_TZ):%H:%M} 开服后单独补跑"
             for game, (start, end, _why) in wins.items()]
 
 
