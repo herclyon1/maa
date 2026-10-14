@@ -234,7 +234,7 @@ def _startup_runs(info: dict) -> "bool | None":
 
 
 def queue_rows(automas_dir) -> list[dict]:
-    """Every queue as the phone state lists it: {"名", "定时", "开机跑", "脚本"}.
+    """Every queue as the phone state lists it: {"名", "定时", "开机跑", "脚本", "时刻"}.
 
     Read from the same QueueConfig.json / ScriptConfig.json next_plan reads (not
     from the AUTO-MAS backend, which snapshot.read skips once power-off is
@@ -254,8 +254,24 @@ def queue_rows(automas_dir) -> list[dict]:
         out.append({"名": str(info.get("Name") or "?"),
                     "定时": info.get("TimeEnabled"),
                     "开机跑": _startup_runs(info),
-                    "脚本": [names[s] for s in sids if s in names]})
+                    "脚本": [names[s] for s in sids if s in names],
+                    "时刻": _queue_times(node)})
     return out
+
+
+def _queue_times(node: dict) -> list[str]:
+    """A queue's enabled start times, "HH:MM" on the server clock, sorted; kept whether or
+    not the queue's timer is on. A skip for today turns the timer off (modes.py) and the
+    plan then leaves the shift out, so the phone takes the time from here to keep showing
+    it (App review 10-14: the skipped shift's row lost its time)."""
+    out = set()
+    for tid, t in ((node.get("SubConfigsInfo") or {}).get("TimeSet") or {}).items():
+        if tid == "instances" or not isinstance(t, dict):
+            continue
+        ti = t.get("Info") or {}
+        if ti.get("Enabled") and ti.get("Time") and (hhmm := _hhmm(ti["Time"])) is not None:
+            out.add(hhmm)
+    return sorted(out)
 
 
 def schedule(automas_dir: Path | None) -> list[dict]:
