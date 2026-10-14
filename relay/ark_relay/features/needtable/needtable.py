@@ -161,6 +161,7 @@ def refresh(cfg, now: "datetime | None" = None, *, make=None, cos=None, put=cos_
     try:
         table = (make or (lambda: _live_table(cfg)))()
         data = json.dumps(table, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        summary = build.summary(table)    # read before the upload: a table it cannot read is a failed build
     except Exception as exc:  # noqa: BLE001 - whatever broke, today's table is not there; _settle logs the traceback
         _settle(cfg, today, ended(), False, str(exc) or type(exc).__name__, exc=exc)
         return False
@@ -168,7 +169,7 @@ def refresh(cfg, now: "datetime | None" = None, *, make=None, cos=None, put=cos_
     if why:
         _settle(cfg, today, ended(), False, f"算好了，但放不上腾讯云（{why}）")
         return False
-    _settle(cfg, today, ended(), True, build.summary(table))
+    _settle(cfg, today, ended(), True, summary)
     return True
 
 
