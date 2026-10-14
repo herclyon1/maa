@@ -1118,9 +1118,17 @@ def phone_body(ev: dict) -> "dict | None":
     if a == "skip_shutdown":
         return {"action": "skip_shutdown"} if args.get("on", True) else {"action": "skip_shutdown", "off": True}
     if a == "echo_farm":
-        m = re.search(r"开始刷(.+?)，刷到 (\d\d:\d\d) 为止", res)
+        # receipts up to 10-14 say the machine's clock 「（机器时间）」; later ones the owner's (echofarm
+        # user_clock: Tokyo, 「明天 」 in front when past midnight there) - the order wants the machine's
+        m = re.search(r"开始刷(.+?)，刷到 (?:明天 )?(\d\d):(\d\d) 为止(（机器时间）)?", res)
         if not m:
             return None
+        hh, mm = int(m.group(2)), int(m.group(3))
+        if not m.group(4):
+            from ark_relay.core.config import SERVER_TZ, USER_TZ  # noqa: PLC0415 - the relay is imported by now
+            shift = int((USER_TZ.utcoffset(None) - SERVER_TZ.utcoffset(None)).total_seconds() // 60)
+            hh, mm = divmod((hh * 60 + mm - shift) % (24 * 60), 60)
+        until = f"{hh:02d}:{mm:02d}"
         try:
             from ark_relay.core.wuwa_boss import BOSSES  # noqa: PLC0415 - the relay is imported by now
         except ImportError:
@@ -1128,7 +1136,7 @@ def phone_body(ev: dict) -> "dict | None":
         idx = next((i for i, row in BOSSES.items() if row[0] == m.group(1)), None)
         if idx is None:
             return None
-        return {"action": "echo_farm", "boss": idx, "until": m.group(2), "name": m.group(1), "confirmed": True}
+        return {"action": "echo_farm", "boss": idx, "until": until, "name": m.group(1), "confirmed": True}
     if a == "echo_farm_stop":
         return {"action": "echo_farm_stop"}
     return None
