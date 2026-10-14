@@ -108,7 +108,7 @@ def _urlopen(req, timeout=None):
     tried.append(req.full_url)
     if "gcore" not in req.full_url:
         raise ConnectionResetError(10054, "reset")
-    return _Resp(b'{"iconRecognition.name.item_gold": "\u6298\u91d1\u7968"}')
+    return _Resp('{"iconRecognition.name.item_gold": "折金票"}'.encode("utf-8"))
 
 
 real = build.urllib.request.urlopen
