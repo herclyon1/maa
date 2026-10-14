@@ -93,6 +93,10 @@ for label, text in (("arm", on), ("pull back", back), ("nothing to pull back", n
     check(f"{label}: names the mark", NAME in text, True)
     check(f"{label}: names the run (早班/晚班)", "早班/晚班" in text, True)
 check("arm: says it is one-time", "只管一次" in on, True)
+# App review 10-14: one sentence, not three clauses about the run after the next
+check("arm: one short sentence", len(on) <= 32 and "再下一趟" not in on, True)
+_ok_off, off = modes.set_debug(d, off=True)
+check("debug off: says it is off, asks for nothing", off, "调试模式已关闭")
 for label, text in (("pull back", back), ("nothing to pull back", none)):
     check(f"{label}: says 还没用上", "还没用上" in text, True)
     check(f"{label}: no bare 已取消", "已取消" in text, False)
