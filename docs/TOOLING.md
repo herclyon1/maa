@@ -82,6 +82,19 @@ if isinstance(st, str): st = json.loads(st)
 `tasks/*.json` via `import`. Looking only at the `task` field leads to the false conclusion that
 it has no tasks.
 
+**Which AUTO-MAS settings the relay depends on** is one list: `relay/ark_relay/core/mascontract.py`
+`CONTRACT` (script kind, level, group, key, the feature that breaks, the reader). Add a row there
+whenever relay code starts reading or writing another AUTO-MAS setting. On the machine the boot
+self-check and the pre-update (right after it installs a new AUTO-MAS) check the config files
+against it. Before the machine installs a release, from this Mac:
+`python3 scripts/mac/lib/automas_contract_watch.py [--tag vX.Y.Z | --file config.py]` takes the
+newest AUTO-MAS release, betas included (the machine installs from the beta channel), reads its
+`app/models/config.py` and prints every listed setting it no longer keeps where the relay reads,
+and moves (via `legacy_group` / `legacy_name`). Exit 0 = nothing changed, 2 = something did,
+3 = GitHub could not be read. Nothing schedules it yet. Limits: keys built in a loop or as
+f-strings (MaaPlanConfig's day rows, MaaEnd's `If{task}` switches) match as patterns, so a
+dropped one of those is not caught from source.
+
 ---
 
 ## The relay (ark-relay)
