@@ -42,9 +42,12 @@ mark). It is a one-time mark, not a state, and it has no expiry:
   means something before it is spent.
 * Arming it again while the current occasion is already skipped carries it to the next queue
   run, so that run does not shut down either.
-* Turning debug mode off by hand releases only an occasion debug mode itself skipped
-  (modes.shutdown_skipped, since 8bc5e2f6 on 2026-10-13): one the spent mark recorded stays,
-  so test-off after a test does not power the machine off.
+* Turning debug mode off by hand (the phone's switch, or
+  `scripts/mac/order-now.sh '{"action":"debug_mode","off":true,"confirmed":true}'`) releases
+  the skipped occasion, whichever skipped it, so the next re-check powers off (2026-10-14:
+  how a deploy that needed the PC on after a shift lets it power off once verified).
+  dispatch_guard's test-off releases only an occasion debug mode itself skipped (8bc5e2f6),
+  so a test after a spent mark does not power the machine off.
 * The occasion is keyed by the day plus its shift records (shutdown._shutdown_key), so an
   occasion skipped after the evening shift ends at 00:00 Beijing: the main loop wakes at
   midnight (day roll), the new day's key differs and the relay powers off then, well before

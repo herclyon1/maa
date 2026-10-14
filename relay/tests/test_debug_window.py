@@ -73,6 +73,27 @@ def main(tmp: Path):
     check("关闭后不再生效",
           modes.debug_active(tmp, at("2026-08-22 22:00")), False)
 
+    # 10-14: off by hand releases the occasion the spent skip-next-shutdown mark skipped
+    # (release_skip, the debug_mode order); dispatch_guard's test-off (no release_skip)
+    # still releases only debug mode's own skip.
+    store = StateStore(tmp)
+    store.set("modes", "shutdown_skipped", "2026-10-14:3")
+    modes.set_debug(tmp, off=True)
+    check("test-off keeps a skip the mark recorded",
+          store.get("modes", "shutdown_skipped"), "2026-10-14:3")
+    modes.set_debug(tmp, off=True, release_skip=True)
+    check("off by hand releases it", store.get("modes", "shutdown_skipped"), None)
+    store.set("modes", "shutdown_skipped", "2026-10-14:3|debug")
+    modes.set_debug(tmp, off=True)
+    check("debug mode's own skip is released either way", store.get("modes", "shutdown_skipped"), None)
+    import os
+    os.environ["ARK_STATE_DIR"] = str(tmp)
+    from ark_relay.features.phone.commands import apply_command
+    store.set("modes", "shutdown_skipped", "2026-10-14:3")
+    ok, _ = apply_command({"action": "debug_mode", "off": True, "confirmed": True})
+    check("the debug_mode off order releases the mark's skip",
+          (ok, StateStore(tmp).get("modes", "shutdown_skipped")), (True, None))
+
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
     return 0 if not FAILED else 1
 

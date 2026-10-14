@@ -169,12 +169,12 @@ def shutdown_skipped(state_dir: Path) -> str:
     queue run gives a new key and normal shutdown resumes.
 
     One thing clears it: turning debug mode off by hand (set_debug off=True),
-    which means "maintenance is over, back to normal" - and only a skip debug mode
-    wrote itself (stored with DEBUG_SKIP_TAG). An occasion skipped by the
-    「下次跑完不关机」 mark or by a press inside the countdown stays skipped: the
-    mark promised the machine stays on until the next shift has finished, and
-    dispatch_guard's test-off turns debug mode off right after a test (10-13: the
-    test after a spent mark would otherwise end in a power-off). A natural debug
+    which means "maintenance is over, back to normal" - a skip debug mode wrote itself
+    (stored with DEBUG_SKIP_TAG) always, any skip when the order says so (release_skip:
+    the phone's / order-now.sh's debug_mode off). Through dispatch_guard's test-off
+    an occasion skipped by the 「下次跑完不关机」 mark or by a press inside the
+    countdown stays skipped: test-off turns debug mode off right after a test (10-13:
+    the test after a spent mark would otherwise end in a power-off). A natural debug
     expiry clears nothing.
 
     The user, 2026-08-31: 「我开了调试模式是指把一次队列的中继关机指令跳过，
@@ -224,7 +224,7 @@ def debug_active(state_dir: Path, now: datetime | None = None) -> bool:
 
 
 def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
-              now: datetime | None = None) -> tuple[bool, str]:
+              now: datetime | None = None, release_skip: bool = False) -> tuple[bool, str]:
     """Hold until ten minutes before a scheduled power-on.
 
     `cycles=1` - the default and what "leave it alone tonight" means - releases
@@ -242,7 +242,15 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
         # natural expiry does not clear it**: that is the "skip this one time"
         # in shutdown_skipped. Only debug mode's own skip is released: one the
         # spent 「下次跑完不关机」 mark recorded stays (see shutdown_skipped).
-        if str(store.get("modes", "shutdown_skipped") or "").endswith(DEBUG_SKIP_TAG):
+        # `release_skip` (the debug_mode order from the phone or order-now.sh, i.e. a person
+        # saying "done, back to normal") releases a skip the spent skip-next-shutdown mark
+        # recorded too, so the next re-check powers off: 10-14 the mark kept the PC on for
+        # a deploy after the morning shift, and without this it would have idled until the
+        # evening shift, which the owner rejected (10-14 10:3x Tokyo).
+        # dispatch_guard's test-off passes nothing and keeps releasing only debug mode's
+        # own skip (8bc5e2f6: a test after a spent mark must not end in a power-off).
+        skipped = str(store.get("modes", "shutdown_skipped") or "")
+        if skipped and (release_skip or skipped.endswith(DEBUG_SKIP_TAG)):
             store.pop("modes", "shutdown_skipped")
         return True, "调试模式已关闭，恢复正常运行（队列若被停用需另行恢复）"
     try:
