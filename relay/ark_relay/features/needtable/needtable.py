@@ -162,7 +162,7 @@ def refresh(cfg, now: "datetime | None" = None, *, make=None, cos=None, put=cos_
     try:
         table = (make or (lambda: _live_table(cfg)))()
         data = json.dumps(table, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    except Exception as exc:  # whatever broke, today's table is not there
+    except Exception as exc:  # noqa: BLE001 - whatever broke, today's table is not there; _settle logs the traceback
         _settle(cfg, today, ended(), False, str(exc) or type(exc).__name__, exc=exc)
         return False
     why = put(cos, need_key(topic), data, Mailbox.COS_TIMEOUT)

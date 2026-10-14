@@ -1,8 +1,8 @@
 {
- "version": 20261014012418,
- "ref": "relay-20261014012418",
+ "version": 20261014012638,
+ "ref": "relay-20261014012638",
  "files": {
-  "RELEASE-NOTES.md": "f792bfda35ab508ca486f3e45c42c154d3a85d8f",
+  "RELEASE-NOTES.md": "b3b1c7a8b6dea4217430f7617ce1593af347d33e",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "efbdc0039c54560cd1e564414bb64eb3a3df7422",
@@ -92,7 +92,7 @@
   "ark_relay/features/modes/modes.py": "3223f87d40fc68320ef277ded651931d7bcfe9cd",
   "ark_relay/features/needtable/__init__.py": "03139a90dce13833b286ff8608d45b76f9f55cde",
   "ark_relay/features/needtable/build.py": "a16b2cb5d0cec2a1b526a9415279db822561ece9",
-  "ark_relay/features/needtable/needtable.py": "0a3389143e5fa2b7d9494335591cb8d6baa9d703",
+  "ark_relay/features/needtable/needtable.py": "fbc680d6a67d27520d77da5cbfdc36571dbc6545",
   "ark_relay/features/okww_patch/__init__.py": "91862a7d06f06ce3f5263c316e5fbb5ab5769172",
   "ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py": "50e8bfd8437c898dfbaab34c0e6113f8de483742",
   "ark_relay/features/okww_patch/okww_overlay.py": "5cd8b68aafbe3df90bbc334daa0faef47c59700c",
@@ -164,7 +164,7 @@
   "watchdog_guard.py": "cc505fe57c4c2923be2003c8fe5a4f0a47b0d887"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "e62ea8f67752342571f415bf041b2b9c52e22842f47b55b4ad0f8551d46c7056",
+  "RELEASE-NOTES.md": "9a0d79cebd5d977f099e2a3b3461c2e4c0c76a7c60c5279fbf654870c58f2c54",
   "app_main.py": "9a2bad4ee77f639044a37a362cd0630827e0ff1b87978e4caeb7898972cdc682",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "2b70cedda9a2b285439a76b3e17c5f50a728d313f1c580460e15f0b7d84cd318",
@@ -254,7 +254,7 @@
   "ark_relay/features/modes/modes.py": "297ff638c0579a9fff210cd562ea03e21254c1dac39d1e8007e00a50fc7d56bb",
   "ark_relay/features/needtable/__init__.py": "ac422d3c04f270cec79c2e3f304d57adb1b85af9c01ac36abfb306dd95b2d122",
   "ark_relay/features/needtable/build.py": "1eac9efec08a8e478ac210118f49f4ed9dc61f655480ec06bd98f762f6531a88",
-  "ark_relay/features/needtable/needtable.py": "6f9694cfdb4f07840ad817aba7f3bfff187c5b33fa5deedd5e22aac478a4414d",
+  "ark_relay/features/needtable/needtable.py": "95b130a8759c047c4cc0c797245ea75c5f9098bd263f4db1bd0f3fb97179c2fe",
   "ark_relay/features/okww_patch/__init__.py": "ca40c20977cf854823280549bdda7298cc00fe3caa60895c91c28d0553879b62",
   "ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py": "7f07188afede7678db242f65163e6cfc9f1a8952d8947bb36dc3bc549aa198b9",
   "ark_relay/features/okww_patch/okww_overlay.py": "d68d1297426c45c5be465e2a9912f2b2a9d38194b6062dc7dd513458850f3c96",
