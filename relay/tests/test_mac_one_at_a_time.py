@@ -47,7 +47,7 @@ FORK_ONLY = {
 FUNC = re.compile(r"^(\w+)\(\) \{\n(.*?)^\}", re.S | re.M)
 bad_sh = []
 for p in sorted((ROOT / "scripts/mac").rglob("*.sh")):
-    text = p.read_text(errors="replace")
+    text = p.read_text(errors="replace").replace("\r\n", "\n")
     funcs = {m.group(1): m.group(2) for m in FUNC.finditer(text)}
     for i, line in enumerate(text.splitlines(), 1):
         if line.lstrip().startswith("#"):
@@ -62,7 +62,9 @@ for p in sorted((ROOT / "scripts/mac").rglob("*.sh")):
 check("every `xargs -P <n>` above 1 in scripts/mac starts a function that waits first", bad_sh, [])
 
 # 2. deploy-relay.sh: the wait is inside the test timing block CI sources, and is exported
-dep = (ROOT / "scripts/mac/deploy-relay.sh").read_text()
+dep = (ROOT / "scripts/mac/deploy-relay.sh").read_text().replace("
+", "
+")
 block = re.search(r"^# >>> test timing$(.*?)^# <<< test timing$", dep, re.S | re.M).group(1)
 check("wait_not_background is defined in the block CI sources",
       bool(re.search(r"^wait_not_background\(\) \{", block, re.M)) and "export -f wait_not_background" in block, True)
@@ -73,10 +75,10 @@ STARTS = re.compile(r"subprocess\.|os\.system\(|Popen\(")
 bad_py = []
 files = [*sorted((ROOT / "scripts/mac").rglob("*.py")), *sorted((ROOT / "relay/tests").glob("test_*.py"))]
 for p in files:
-    rel = str(p.relative_to(ROOT))
+    rel = p.relative_to(ROOT).as_posix()
     if p.name == Path(__file__).name:
         continue
-    text = p.read_text(errors="replace")
+    text = p.read_text(errors="replace").replace("\r\n", "\n")
     if not POOL.search(text):
         continue
     if rel in FORK_ONLY:
@@ -121,13 +123,19 @@ n=$(cat {state}); set -- {seq}; shift $n 2>/dev/null; echo "${{1:-31}}"; echo $(
         return r.stdout.strip(), ("waiting" in r.stderr), calls
 
 
-lib = (ROOT / "scripts/mac/lib/wait-not-background.sh").read_text()
+# The wait only matters on the Mac, and the fake ps / uname need a POSIX shell; on a CI runner
+# (Windows / Linux) the text checks above still run, this section does not.
+lib = (ROOT / "scripts/mac/lib/wait-not-background.sh").read_text().replace("
+", "
+")
 fn = re.search(r"^wait_not_background\(\) \{.*?^\}", dep, re.S | re.M).group(0)
-for label, src in (("lib", lib), ("deploy block", fn)):
+for label, src in ((("lib", lib), ("deploy block", fn)) if sys.platform == "darwin" else ()):
     check(f"{label}: background (4, 4, 31) waits, says so once, then returns", run_wait(src, [4, 4, 31]), ("done", True, 3))
     check(f"{label}: foreground (31) returns at once, silent", run_wait(src, [31]), ("done", False, 1))
     check(f"{label}: not macOS returns without asking ps", run_wait(src, [4], uname="Linux"), ("done", False, 0))
-lint = (ROOT / "scripts/mac/lint-repo.sh").read_text()
+lint = (ROOT / "scripts/mac/lint-repo.sh").read_text().replace("
+", "
+")
 check("lint-repo.sh lint_one_test waits first",
       bool(re.search(r"lint_one_test\(\) \{\n\s+local name out\n\s+wait_not_background\n", lint)), True)
 check("deploy-relay.sh run_one_test waits first",
@@ -135,7 +143,9 @@ check("deploy-relay.sh run_one_test waits first",
 
 # 5. launchd jobs we install run at Standard, not Background (darwin background priority).
 for p in sorted((ROOT / "scripts/mac/launchd").glob("*.plist")):
-    t = p.read_text()
+    t = p.read_text().replace("
+", "
+")
     m = re.search(r"<key>ProcessType</key>\s*<string>(\w+)</string>", t)
     check(f"{p.name} is not a Background job", (m.group(1) if m else "unset") != "Background", True)
 
