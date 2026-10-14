@@ -40,12 +40,17 @@ FIELDS = ("okww_steps", "okww_unreachable", "okww_error", "okww_farm", "okww_run
 
 
 
+# The os module has PRIO_DARWIN_PROCESS from Python 3.12 on; deploy-relay.sh runs some of these scripts with
+# the system python3 (3.9), where reading it raised AttributeError. 4 is its value in <sys/resource.h>.
+PRIO_DARWIN_PROCESS = getattr(os, "PRIO_DARWIN_PROCESS", 4)
+
+
 def _wait_not_background() -> None:
     """Block while macOS runs this process at background priority, which it does to every other
     app's processes while a game is in front (Game Mode). Starting programs from that priority can
     lock this Mac's macOS 27.2 beta kernel (froze 09-23, 10-10 twice, 10-14 19:52). The kernel
     reports it as getpriority(PRIO_DARWIN_PROCESS) == 1 (checked live 10-14), 0 otherwise."""
-    while sys.platform == "darwin" and os.getpriority(os.PRIO_DARWIN_PROCESS, 0):
+    while sys.platform == "darwin" and os.getpriority(PRIO_DARWIN_PROCESS, 0):
         # Measured: 10-14 background spells lasted 56 s to 2 min 56 s; 30 s resumes soon after.
         time.sleep(30)
 

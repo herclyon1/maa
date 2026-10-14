@@ -84,9 +84,36 @@ for p in files:
         continue
     # test_replay.py's judges are spawned Python processes: a spawn is an exec.
     starts = STARTS.search(text) or "ProcessPoolExecutor(" in text
-    if starts and not ("os.getpriority(os.PRIO_DARWIN_PROCESS, 0)" in text and text.count("_wait_not_background()") >= 1):
+    if starts and not ("os.getpriority(PRIO_DARWIN_PROCESS, 0)" in text and text.count("_wait_not_background()") >= 1):
         bad_py.append(rel)
 check("pools that start programs wait while at background priority", bad_py, [])
+
+# 3a. The wait also runs under the system python3 (3.9), which deploy-relay.sh uses for tools_latest.py
+#     and changed_covered.py --tests-for: os.PRIO_DARWIN_PROCESS only exists from Python 3.12, so a bare
+#     os.PRIO_DARWIN_PROCESS raised AttributeError there and tools_latest.py stopped at its first check
+#     (deploy log 10-14 23:2x). Text check everywhere; on the Mac, each file's _wait_not_background runs
+#     under /usr/bin/python3 (a sleep exits at once, so a background run does not wait here).
+bare = [p.relative_to(ROOT).as_posix() for p in files if p.name != Path(__file__).name
+        and "os.PRIO_DARWIN_PROCESS" in p.read_text(errors="replace").replace('getattr(os, "PRIO_DARWIN_PROCESS"', "")]
+check("no bare os.PRIO_DARWIN_PROCESS (missing before Python 3.12)", bare, [])
+sys_py = Path("/usr/bin/python3")
+if sys.platform == "darwin" and sys_py.exists():
+    import ast
+    for p in files:
+        if p.name == Path(__file__).name:
+            continue
+        text = p.read_text(errors="replace")
+        if "def _wait_not_background()" not in text:
+            continue
+        tree = ast.parse(text)
+        parts = [ast.get_source_segment(text, n) for n in tree.body
+                 if (isinstance(n, ast.FunctionDef) and n.name == "_wait_not_background")
+                 or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "PRIO_DARWIN_PROCESS" for t in n.targets))]
+        prog = ("import os, sys\nclass _T:\n    @staticmethod\n    def sleep(s): sys.exit(0)\ntime = _T()\n"
+                + "\n".join(parts) + "\n_wait_not_background()\n")
+        r = subprocess.run([str(sys_py), "-c", prog], capture_output=True, text=True, timeout=30)
+        check(f"{p.relative_to(ROOT).as_posix()} _wait_not_background runs under {sys_py}",
+              (r.returncode, r.stderr.strip().splitlines()[-1:] if r.returncode else []), (0, []))
 
 # 3b. live, without starting any program: what the Python waits key on. This process puts itself at
 #     background priority, reads it back, and puts itself back.
