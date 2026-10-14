@@ -797,7 +797,9 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             # working. One cycle - the default - means "until ten minutes
             # before the next boot", not "until midnight".
             n = cmd.get("cycles", cmd.get("days", 1))
-            return set_debug(state_dir, n, bool(cmd.get("off")))
+            # Off from a person (phone / order-now.sh) also releases a skip the spent
+            # skip-next-shutdown mark recorded (modes.set_debug release_skip).
+            return set_debug(state_dir, n, bool(cmd.get("off")), release_skip=bool(cmd.get("off")))
         if action == "set_config":
             return _set_config(cmd)
         if action == "set_master":
