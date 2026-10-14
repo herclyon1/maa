@@ -151,6 +151,32 @@ def first_user(sid: str) -> tuple[str, dict]:
     raise Refused(f"script {sid} has no user")
 
 
+# Keys AUTO-MAS v5.7.0-beta.3 moved out of a MAA user's Info group (app/models/config.py of
+# that tag: Task_Annihilation = ConfigItem("Task", "Annihilation", ..., legacy_group="Info"),
+# Task_AnnihilationStartWeekday, Stage_Stage, ...). After its first start the user file has
+# only the new group and the backend refuses "Info.Annihilation", so a rollback that wrote
+# the old path would fail. The same map as relay/ark_relay/core/masuser.py MOVED, which this
+# file cannot import (see the module docstring); tests/test_automas_handover.py keeps the two equal.
+MOVED = {
+    "Stage": "Stage", "Stage_1": "Stage", "Stage_2": "Stage", "Stage_3": "Stage",
+    "StageMode": "Stage", "MedicineNumb": "Stage", "SeriesNumb": "Stage",
+    "Annihilation": "Task", "AnnihilationStartWeekday": "Task",
+    "InfrastMode": "Task", "InfrastName": "Task",
+}
+
+
+def user_path(user: dict, path: str) -> str:
+    """`path` as this user keeps it: an "Info.<key>" the user has in its new group (an
+    AUTO-MAS from v5.7.0-beta.3 on) becomes "<group>.<key>"; anything else is unchanged.
+    Backups and KEPT_WITHOUT_OLD_RELAY keep the old path as the key, so either version
+    reads them."""
+    group, _, key = path.partition(".")
+    new = MOVED.get(key)
+    if group == "Info" and new and isinstance(user.get(new), dict) and key in user[new]:
+        return f"{new}.{key}"
+    return path
+
+
 class Target:
     """One setting: how to read it and how to write it."""
 
@@ -167,7 +193,8 @@ class Target:
         sid = script_id(self.script)
         if self.kind == "script":
             return dig((mas("/api/scripts/get").get("data") or {})[sid], self.path)
-        return dig(first_user(sid)[1], self.path)
+        user = first_user(sid)[1]
+        return dig(user, user_path(user, self.path))
 
     def write(self, value) -> None:
         if self.kind == "setting":
@@ -177,8 +204,9 @@ class Target:
             if self.kind == "script":
                 mas("/api/scripts/update", {"scriptId": sid, "data": nest(self.path, value)})
             else:
-                uid, _ = first_user(sid)
-                mas("/api/scripts/user/update", {"scriptId": sid, "userId": uid, "data": nest(self.path, value)})
+                uid, user = first_user(sid)
+                mas("/api/scripts/user/update",
+                    {"scriptId": sid, "userId": uid, "data": nest(user_path(user, self.path), value)})
         now = self.read()
         if self.path.endswith(".Path") and isinstance(now, str) and isinstance(value, str):
             same = now.replace("/", "\\").lower() == value.replace("/", "\\").lower()

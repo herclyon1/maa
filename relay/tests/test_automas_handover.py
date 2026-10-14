@@ -22,10 +22,12 @@ from contextlib import nullcontext
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "handover"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 os.environ["ARK_MAS_PORT"] = "36163"
 import automas_handover as H
+from ark_relay.core import masuser
 
 H.this_week = lambda: "2026-W41"   # the game week every case below is run in
 
@@ -54,8 +56,10 @@ class Backend:
     """mode: "up" | "down" (connection refused) | "running" (updates answer
     code 500 「正在运行, 无法更新配置项」, the message commands._refused cites)."""
 
-    def __init__(self, mode="up", annihilation="Close", quick=True, server="Official", selfstart=True):
+    def __init__(self, mode="up", annihilation="Close", quick=True, server="Official", selfstart=True,
+                 beta3=False):
         self.mode = mode
+        self.beta3 = beta3
         self.calls = []
         self.scripts = {
             MAA: {"Info": {"Name": "MAA"}, "Run": {"IfCheckGameUpdate": False, "IfAutoInstallGameApk": False,
@@ -72,6 +76,12 @@ class Backend:
             OKWW: {UID: {"Info": {}}},
         }
         self.setting = {"Start": {"IfSelfStart": selfstart}}
+        if beta3:
+            # AUTO-MAS v5.7.0-beta.3 after its first start: the two annihilation items live
+            # in Task only (app/models/config.py of that tag, Task_Annihilation and
+            # Task_AnnihilationStartWeekday with legacy_group="Info").
+            info = self.users[MAA][UID]["Info"]
+            self.users[MAA][UID]["Task"] = {k: info.pop(k) for k in ("Annihilation", "AnnihilationStartWeekday")}
 
     def urlopen(self, req, timeout=None):
         path = req.full_url[len("http://127.0.0.1:36163"):]
@@ -91,6 +101,10 @@ class Backend:
             merge(self.scripts[body["scriptId"]], body["data"])
             return _Resp({"code": 200})
         if path == "/api/scripts/user/update":
+            moved = set((body["data"].get("Info") or {})) & set(masuser.MOVED)
+            if self.beta3 and moved:
+                # beta.3's backend has no Info.Annihilation item any more and refuses it.
+                return _Resp({"code": 500, "status": "error", "message": f"未知配置项 Info.{sorted(moved)[0]}"})
             merge(self.users[body["scriptId"]][body["userId"]], body["data"])
             return _Resp({"code": 200})
         if path == "/api/setting/update":
@@ -174,6 +188,31 @@ try:
         check("annihilation back to Close", be.users[MAA][UID]["Info"]["Annihilation"], "Close")
         check("update switch back off", be.scripts[MAA]["Run"]["IfCheckGameUpdate"], False)
         check("backup removed after a full rollback", (state / H.BACKUP_FILE).exists(), False)
+
+    print("the moved keys are the same here as in the relay (this file cannot import it)")
+    check("MOVED equals ark_relay.core.masuser.MOVED", getattr(H, "MOVED", None), masuser.MOVED)
+
+    with nullcontext(tmpdir()) as d:   # tmpdir() is a plain Path, removed at exit
+        state = Path(d)
+        (state / "state.json").write_text(json.dumps(
+            {"weekly": {"annihilation": {"done_week": "2026-W40", "restore_to": "Chernobog@Annihilation"}}}),
+            encoding="utf-8")
+        sd = ["--state-dir", str(state), "--okww-dir", str(Path(d) / "okww")]
+
+        print("AUTO-MAS v5.7.0-beta.3 (annihilation under Task): apply and rollback use Task")
+        be = Backend(beta3=True)
+        code, out = run(be, "plan", *sd)
+        check("plan reads the Close from Task", "'Close' -> 'Chernobog@Annihilation'" in out, True)
+        check("plan reads the start weekday from Task", "Info.AnnihilationStartWeekday = 'Monday'" in out, True)
+        code, out = run(be, "apply", *sd)
+        check("apply exit 0", code, 0)
+        check("annihilation restored in Task", be.users[MAA][UID]["Task"]["Annihilation"], "Chernobog@Annihilation")
+        check("no Info.Annihilation written back", "Annihilation" in be.users[MAA][UID]["Info"], False)
+        saved = json.loads((state / H.BACKUP_FILE).read_text(encoding="utf-8"))["old"]
+        check("backup keeps the old key", saved.get("user:MAA:Info.Annihilation"), "Close")
+        code, out = run(be, "rollback", "--state-dir", str(state))
+        check("rollback exit 0", code, 0)
+        check("rollback puts Close back in Task", be.users[MAA][UID]["Task"]["Annihilation"], "Close")
 
     with nullcontext(tmpdir()) as d:   # tmpdir() is a plain Path, removed at exit
         state = Path(d)
