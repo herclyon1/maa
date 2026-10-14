@@ -46,7 +46,9 @@ import json
 import plistlib
 import re
 import subprocess
+import os
 import sys
+import time
 import urllib.error
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -56,6 +58,16 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 
 
+
+
+def _wait_not_background() -> None:
+    """Block while macOS runs this process at background priority, which it does to every other
+    app's processes while a game is in front (Game Mode). Starting programs from that priority can
+    lock this Mac's macOS 27.2 beta kernel (froze 09-23, 10-10 twice, 10-14 19:52). The kernel
+    reports it as getpriority(PRIO_DARWIN_PROCESS) == 1 (checked live 10-14), 0 otherwise."""
+    while sys.platform == "darwin" and os.getpriority(os.PRIO_DARWIN_PROCESS, 0):
+        # Measured: 10-14 background spells lasted 56 s to 2 min 56 s; 30 s resumes soon after.
+        time.sleep(30)
 
 def _mac_tool(name: str) -> tuple[str, str]:
     """Homebrew's copy when it is installed (what `brew install` - the hint - puts there,
@@ -492,10 +504,8 @@ def collect(jobs: "list[tuple[str, object]]") -> "list[Row]":
     rows = []
     if not jobs:
         return rows
-    # One at a time on this Mac: its macOS 27.2 beta kernel locks when background-priority processes exec
-    # many children at once (the board write-up of the 09-23 04:19 panic; froze 09-23, 10-10 twice, 10-14 19:52).
-    with ThreadPoolExecutor(1 if sys.platform == "darwin" else min(16, len(jobs))) as ex:
-        futures = [(name, ex.submit(fn)) for name, fn in jobs]
+    with ThreadPoolExecutor(min(16, len(jobs))) as ex:
+        futures = [(name, ex.submit(lambda f=fn: (_wait_not_background(), f())[1])) for name, fn in jobs]
         for name, fut in futures:
             try:
                 r = fut.result()

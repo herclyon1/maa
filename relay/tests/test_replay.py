@@ -18,6 +18,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -37,6 +38,16 @@ FIELDS = ("okww_steps", "okww_unreachable", "okww_error", "okww_farm", "okww_run
           "okww_stamina_spent", "okww_stamina_left", "maaend_name_mismatch", "tasks_failed",
           "tasks_done", "okww_exit_race", "maaend_unreachable", "maaend_unreachable_shape")
 
+
+
+def _wait_not_background() -> None:
+    """Block while macOS runs this process at background priority, which it does to every other
+    app's processes while a game is in front (Game Mode). Starting programs from that priority can
+    lock this Mac's macOS 27.2 beta kernel (froze 09-23, 10-10 twice, 10-14 19:52). The kernel
+    reports it as getpriority(PRIO_DARWIN_PROCESS) == 1 (checked live 10-14), 0 otherwise."""
+    while sys.platform == "darwin" and os.getpriority(os.PRIO_DARWIN_PROCESS, 0):
+        # Measured: 10-14 background spells lasted 56 s to 2 min 56 s; 30 s resumes soon after.
+        time.sleep(30)
 
 def snapshot(rec) -> dict:
     out = {"script": rec.script, "ok": rec.ok, "failed_tasks": rec.failed_tasks,
@@ -74,16 +85,15 @@ def _cost(js: Path) -> int:
 def judge_all(todo: list[tuple[str, Path, Path, object]]) -> list:
     """judge() for every case, results in the cases' order."""
     workers = min(8, os.cpu_count() or 1, len(todo))
-    # One at a time on this Mac: its macOS 27.2 beta kernel locks when background-priority processes exec
-    # many children at once (the board write-up of the 09-23 04:19 panic; froze 09-23, 10-10 twice, 10-14 19:52).
-    if sys.platform == "darwin":
-        workers = 1
     if sys.gettrace() is not None or workers < 2:
         return [judge(js, day_root) for _, js, day_root, _ in todo]
     order = sorted(range(len(todo)), key=lambda i: -_cost(todo[i][1]))
     got: list = [None] * len(todo)
     with ProcessPoolExecutor(max_workers=workers) as pool:
-        futures = {i: pool.submit(judge, todo[i][1], todo[i][2]) for i in order}
+        futures = {}
+        for i in order:
+            _wait_not_background()
+            futures[i] = pool.submit(judge, todo[i][1], todo[i][2])
         for i, fut in futures.items():
             got[i] = fut.result()
     return got

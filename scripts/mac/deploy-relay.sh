@@ -81,18 +81,18 @@ echo "▶ 0/5 本地四道闸并行（闸门自检 · 死代码 · 回归测试 
 # Speed gate (2026-10-06, after the user said at 02:58 that the suite takes too
 # long to run after every change). Every test file's wall seconds are recorded and
 # printed, and the deploy stops when one file takes more than TEST_FILE_MAX_S or
-# the whole run (TEST_JOBS at a time) more than TEST_WALL_MAX_S: a slow test gets
+# the whole parallel run (8 at a time) more than TEST_WALL_MAX_S: a slow test gets
 # fixed (profile it), not waited out. Timing is bash's own `time` keyword (bash
 # 3.2 has it), so no extra process per test. This block is self-contained so it
 # can be driven on its own with fake tests:
 #   sed -n '/^# >>> test timing/,/^# <<< test timing/p' scripts/mac/deploy-relay.sh
 TEST_FILE_MAX_S=10
-# On this Mac one test at a time: its macOS 27.2 beta kernel locks when background-priority
-# processes exec many children at once (the board write-up of the 09-23 04:19 panic; the Mac froze 09-23, 10-10
-# twice, 10-14 19:52 while such runs were going). CI runners keep 8. The wall limit scales with
-# it: 30 s for 8 at a time; one at a time measured 144 s for 437 files on 10-14, limit 300 s.
-if [ "$(uname -s)" = Darwin ]; then TEST_JOBS=1; else TEST_JOBS=8; fi
-# wait_not_background: see the file. Defined here (not sourced) because CI copies this block alone.
+# Measured: the parallel run took 12 s (09-08); 30 s is the limit this gate had before 13461598.
+TEST_WALL_MAX_S=30
+# run_one_test first waits while macOS runs the deploy at background priority (it does that only
+# with a game in front; a background-priority process that starts programs can lock this Mac's
+# macOS 27.2 beta kernel - froze 09-23, 10-10 twice, 10-14 19:52).
+# wait_not_background: see scripts/mac/lib/wait-not-background.sh. Defined here (not sourced) because CI copies this block alone.
 # Poll every 30 s. Measured: on 10-14 the background spells lasted 56 s to 2 min 56 s (runningboardd
 # log 19:40:44-19:42:55, 19:46:21-19:47:17, 19:47:31-19:50:27), so 30 s resumes within about half of the
 # shortest one and costs one ps every 30 s while waiting.
@@ -106,7 +106,6 @@ wait_not_background() {
   done
 }
 export -f wait_not_background
-TEST_WALL_MAX_S=$(( TEST_JOBS == 1 ? 300 : 30 ))
 # $1 a test file, $2 where its output goes. Appends "<seconds> <name> <cpu seconds>"
 # to $TEST_TIMES (when set) and returns the test's own exit status. The CPU seconds
 # (user + sys) are what test_speed_gate falls back on for the whole run when the Mac
@@ -133,12 +132,12 @@ run_one_test() {
     return 1
   fi
 }
-# The test files named on stdin, TEST_JOBS at a time. Their output goes to $1, the wall
+# The test files named on stdin, 8 at a time. Their output goes to $1, the wall
 # seconds of the whole run to $2; the exit status is xargs's (non-zero when any
 # test failed).
 run_tests_timed() {
   local TIMEFORMAT=%2R
-  { time xargs -P "$TEST_JOBS" -I{} bash -c 'run_one_test "$1"' _ {} >"$1" 2>&1; } 2>"$2"
+  { time xargs -P 8 -I{} bash -c 'run_one_test "$1"' _ {} >"$1" 2>&1; } 2>"$2"
 }
 # $1 the "<seconds> <name>" lines, $2 the wall-seconds file. Prints every file's
 # seconds, slowest first; returns 1, saying why, when a file or the whole run went
@@ -181,11 +180,11 @@ test_speed_gate() {
     return 1
   fi
   if LC_ALL=C awk -v w="$wall" -v max="$TEST_WALL_MAX_S" 'BEGIN { exit !(w > max) }'; then
-    cpu=$(tr ',' '.' <"$times" | LC_ALL=C awk -v j="$TEST_JOBS" 'NF < 3 { bad = 1 } { s += $3 } END { if (!bad && NR) printf "%.1f", s / j }')
+    cpu=$(tr ',' '.' <"$times" | LC_ALL=C awk 'NF < 3 { bad = 1 } { s += $3 } END { if (!bad && NR) printf "%.1f", s / 8 }')
     if [ -n "$cpu" ] && LC_ALL=C awk -v c="$cpu" -v max="$TEST_WALL_MAX_S" 'BEGIN { exit !(c <= max) }'; then
-      echo "  · the run took ${wall} s on a busy Mac; its tests used ${cpu} s of CPU at ${TEST_JOBS} at a time, within ${TEST_WALL_MAX_S} s"
+      echo "  · the run took ${wall} s on a busy Mac; its tests used ${cpu} s of CPU at 8 at a time, within ${TEST_WALL_MAX_S} s"
     else
-      echo "  ✗ the tests together took ${wall} s, over ${TEST_WALL_MAX_S} s${cpu:+ (CPU at ${TEST_JOBS} at a time: ${cpu} s)}"
+      echo "  ✗ the tests together took ${wall} s, over ${TEST_WALL_MAX_S} s${cpu:+ (CPU at 8 at a time: ${cpu} s)}"
       return 1
     fi
   fi

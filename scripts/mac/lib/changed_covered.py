@@ -32,6 +32,7 @@ import subprocess
 import tokenize
 import sys
 import tempfile
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -41,6 +42,16 @@ RELAY = REPO / "relay"
 _FUNCS: set[str] = set()          # 这一轮里被执行过的 <文件>::<函数>
 JUDGING = {"collector", "core", "handle", "verdict", "report", "outcome"}
 
+
+
+def _wait_not_background() -> None:
+    """Block while macOS runs this process at background priority, which it does to every other
+    app's processes while a game is in front (Game Mode). Starting programs from that priority can
+    lock this Mac's macOS 27.2 beta kernel (froze 09-23, 10-10 twice, 10-14 19:52). The kernel
+    reports it as getpriority(PRIO_DARWIN_PROCESS) == 1 (checked live 10-14), 0 otherwise."""
+    while sys.platform == "darwin" and os.getpriority(os.PRIO_DARWIN_PROCESS, 0):
+        # Measured: 10-14 background spells lasted 56 s to 2 min 56 s; 30 s resumes soon after.
+        time.sleep(30)
 
 def _sh(*args: str) -> str:
     return subprocess.run(args, cwd=REPO, capture_output=True, text=True).stdout.strip()
@@ -159,6 +170,7 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
 
     def _one(args: tuple[str, str]) -> set[str]:
         name, out = args
+        _wait_not_background()
         subprocess.run([sys.executable, driver.name, name, out],
                        cwd=RELAY, capture_output=True, text=True)
         if not Path(out).exists():
@@ -173,10 +185,6 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
     # files run as many at a time as there are cores (capped at 8); the result is
     # the union, the criterion unchanged.
     n = max(2, min(8, (os.cpu_count() or 4)))
-    # One at a time on this Mac: its macOS 27.2 beta kernel locks when background-priority processes exec
-    # many children at once (the board write-up of the 09-23 04:19 panic; froze 09-23, 10-10 twice, 10-14 19:52).
-    if sys.platform == "darwin":
-        n = 1
     d = Path(tempfile.mkdtemp())
     jobs = [(t, str(d / f"hit{i}.json")) for i, t in enumerate(test_files())]
     with ThreadPoolExecutor(max_workers=n) as pool:

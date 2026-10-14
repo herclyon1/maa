@@ -1,20 +1,21 @@
-"""Nothing we run on the Mac starts programs many at a time.
+"""Nothing we run on the Mac starts programs in bulk while macOS runs it at background priority.
 
 The Mac runs a macOS 27.2 beta whose kernel locks itself when a background-priority process
 execs while it updates its own importance (09-23 04:19 panic, symbolicated in
 the board write-up of the 09-23 04:19 panic: the locking grep was started by lint-repo.sh's `xargs -P 8`).
 The Mac froze the same way 10-10 01:06 and 03:09, and 10-14 19:52 while a lint-repo.sh run
-(started 19:50:33) was still going. Running the tests and checks one at a time on the Mac is
-slower (437 relay tests: 144 s on 10-14) but keeps the machine up. CI runners are not this Mac
-and keep their parallelism.
+(started 19:50:33) was still going. macOS puts every other app's processes, Claude's included, at
+background priority while a game is in front (runningboardd: "Set darwin role to: Background" each
+time Game Mode turned on, 10-14). So the runners keep starting tests in parallel, but each start
+first waits while the run is at background priority.
 
 Checks:
-  * no shell script under scripts/mac/ hands xargs a literal parallelism above 1;
-  * deploy-relay.sh runs its tests TEST_JOBS at a time with TEST_JOBS=1 on Darwin (CI sources
-    the same block);
-  * every Python file the Mac runs that starts programs from a thread or process pool caps the
-    pool at 1 on Darwin (or is Mac-only and uses 1), except those listed in FORK_ONLY, whose
-    workers fork and never exec.
+  * every `xargs -P` above 1 under scripts/mac/ starts a function whose first step is
+    wait_not_background (deploy-relay.sh defines it inside the block CI sources);
+  * every Python file that starts programs from a thread or process pool waits on
+    getpriority(PRIO_DARWIN_PROCESS) first, except FORK_ONLY (forked workers that never exec);
+  * the wait itself, with a fake ps; the priority read, live, without starting a program;
+  * launchd jobs we install are not Background jobs.
 """
 import os
 import re
@@ -42,30 +43,33 @@ FORK_ONLY = {
     "relay/tests/test_daysim_clock.py": "fut = pool.submit(lambda: (time.sleep(3), simclock.now() - base)[1])",
 }
 
-# 1. shell: xargs -P <n> with n > 1 under scripts/mac/
+# 1. shell: every xargs -P <n> above 1 under scripts/mac/ runs a function that waits first
+FUNC = re.compile(r"^(\w+)\(\) \{\n(.*?)^\}", re.S | re.M)
 bad_sh = []
 for p in sorted((ROOT / "scripts/mac").rglob("*.sh")):
-    for i, line in enumerate(p.read_text(errors="replace").splitlines(), 1):
+    text = p.read_text(errors="replace")
+    funcs = {m.group(1): m.group(2) for m in FUNC.finditer(text)}
+    for i, line in enumerate(text.splitlines(), 1):
         if line.lstrip().startswith("#"):
             continue
-        for m in re.finditer(r"xargs\b[^|;&]*?-P\s*(\d+)", line):
-            if int(m.group(1)) > 1:
-                bad_sh.append(f"{p.relative_to(ROOT)}:{i}")
-check("no `xargs -P <n>` above 1 in scripts/mac", bad_sh, [])
+        for m in re.finditer(r"xargs\b[^|;&]*?-P\s*(\d+)[^|;&]*?bash -c '(\w+)", line):
+            body = funcs.get(m.group(2), "")
+            first = next((ln.strip() for ln in body.splitlines() if ln.strip() and not ln.strip().startswith(("local ", "#"))), "")
+            if int(m.group(1)) > 1 and first != "wait_not_background":
+                bad_sh.append(f"{p.relative_to(ROOT)}:{i} ({m.group(2)})")
+        if re.search(r"xargs\b[^|;&]*?-P\s*([2-9]|\d\d)", line) and "bash -c '" not in line:
+            bad_sh.append(f"{p.relative_to(ROOT)}:{i} (not a waiting function)")
+check("every `xargs -P <n>` above 1 in scripts/mac starts a function that waits first", bad_sh, [])
 
-# 2. deploy-relay.sh: TEST_JOBS=1 on Darwin, and xargs uses it
+# 2. deploy-relay.sh: the wait is inside the test timing block CI sources, and is exported
 dep = (ROOT / "scripts/mac/deploy-relay.sh").read_text()
-check("deploy-relay.sh sets TEST_JOBS=1 on Darwin",
-      bool(re.search(r'if \[ "\$\(uname -s\)" = Darwin \]; then TEST_JOBS=1;', dep)), True)
-check("deploy-relay.sh runs xargs with -P \"$TEST_JOBS\"",
-      'xargs -P "$TEST_JOBS"' in dep and not re.search(r"xargs -P [2-9]", dep), True)
 block = re.search(r"^# >>> test timing$(.*?)^# <<< test timing$", dep, re.S | re.M).group(1)
-check("TEST_JOBS is inside the test timing block CI sources", "TEST_JOBS=1" in block, True)
+check("wait_not_background is defined in the block CI sources",
+      bool(re.search(r"^wait_not_background\(\) \{", block, re.M)) and "export -f wait_not_background" in block, True)
 
-# 3. python: pools in files that start programs
+# 3. python: pools in files that start programs wait before each start
 POOL = re.compile(r"(ThreadPoolExecutor|ProcessPoolExecutor)\(")
 STARTS = re.compile(r"subprocess\.|os\.system\(|Popen\(")
-DARWIN_CAP = re.compile(r'sys\.platform\s*==\s*"darwin"|PoolExecutor\(1\)|max_workers=1\b')
 bad_py = []
 files = [*sorted((ROOT / "scripts/mac").rglob("*.py")), *sorted((ROOT / "relay/tests").glob("test_*.py"))]
 for p in files:
@@ -80,9 +84,19 @@ for p in files:
         continue
     # test_replay.py's judges are spawned Python processes: a spawn is an exec.
     starts = STARTS.search(text) or "ProcessPoolExecutor(" in text
-    if starts and not DARWIN_CAP.search(text):
+    if starts and not ("os.getpriority(os.PRIO_DARWIN_PROCESS, 0)" in text and text.count("_wait_not_background()") >= 1):
         bad_py.append(rel)
-check("pools that start programs are capped at 1 on Darwin", bad_py, [])
+check("pools that start programs wait while at background priority", bad_py, [])
+
+# 3b. live, without starting any program: what the Python waits key on. This process puts itself at
+#     background priority, reads it back, and puts itself back.
+if sys.platform == "darwin":
+    before = os.getpriority(os.PRIO_DARWIN_PROCESS, 0)
+    os.setpriority(os.PRIO_DARWIN_PROCESS, 0, os.PRIO_DARWIN_BG)
+    during = os.getpriority(os.PRIO_DARWIN_PROCESS, 0)
+    os.setpriority(os.PRIO_DARWIN_PROCESS, 0, 0)
+    after = os.getpriority(os.PRIO_DARWIN_PROCESS, 0)
+    check("getpriority(PRIO_DARWIN_PROCESS) reads 0 / 1 / 0 around background priority", (before, during, after), (0, 1, 0))
 
 # 4. wait_not_background: waits while ps shows priority 4 (background), returns when it rises,
 #    returns at once when not background or not macOS. Driven with a fake ps / uname on PATH.
@@ -114,8 +128,8 @@ for label, src in (("lib", lib), ("deploy block", fn)):
     check(f"{label}: foreground (31) returns at once, silent", run_wait(src, [31]), ("done", False, 1))
     check(f"{label}: not macOS returns without asking ps", run_wait(src, [4], uname="Linux"), ("done", False, 0))
 lint = (ROOT / "scripts/mac/lint-repo.sh").read_text()
-check("lint-repo.sh waits before every relay test",
-      bool(re.search(r"for f in relay/tests/test_\*\.py; do\n\s+wait_not_background\n", lint)), True)
+check("lint-repo.sh lint_one_test waits first",
+      bool(re.search(r"lint_one_test\(\) \{\n\s+local name out\n\s+wait_not_background\n", lint)), True)
 check("deploy-relay.sh run_one_test waits first",
       bool(re.search(r"run_one_test\(\) \{\n[^\n]*\n\s+wait_not_background\n", dep)), True)
 

@@ -96,6 +96,16 @@ BUILD_PROCS = {"xcodebuild", "swift-frontend", "swift-build", "swift-test", "XCB
                "SWBBuildService"}
 
 
+
+def _wait_not_background() -> None:
+    """Block while macOS runs this process at background priority, which it does to every other
+    app's processes while a game is in front (Game Mode). Starting programs from that priority can
+    lock this Mac's macOS 27.2 beta kernel (froze 09-23, 10-10 twice, 10-14 19:52). The kernel
+    reports it as getpriority(PRIO_DARWIN_PROCESS) == 1 (checked live 10-14), 0 otherwise."""
+    while sys.platform == "darwin" and os.getpriority(os.PRIO_DARWIN_PROCESS, 0):
+        # Measured: 10-14 background spells lasted 56 s to 2 min 56 s; 30 s resumes soon after.
+        time.sleep(30)
+
 def norm(p: str) -> str:
     """lsof and git print /tmp and /var; on macOS both are symlinks into /private."""
     for short in ("/tmp", "/var"):
@@ -554,10 +564,9 @@ def wt_named(ctx: Ctx, wt: Worktree) -> str | None:
 def wt_facts(env: Env, ctx: Ctx, wts: list[Worktree]) -> dict[str, tuple[bool, bool]]:
     """(merged, dirty) per worktree path, computed in parallel (git status is the slow part)."""
     def one(w: Worktree) -> tuple[str, tuple[bool, bool]]:
+        _wait_not_background()
         return w.path, (merged(w.repo, w.head), dirty(w.path))
-    # One at a time on this Mac: its macOS 27.2 beta kernel locks when background-priority processes exec
-    # many children at once (the board write-up of the 09-23 04:19 panic; froze 09-23, 10-10 twice, 10-14 19:52).
-    with ThreadPoolExecutor(1) as ex:
+    with ThreadPoolExecutor(8) as ex:
         return dict(ex.map(one, wts))
 
 
@@ -961,8 +970,8 @@ def log_line(env: Env, it: Item, size_k: int | None) -> None:
 
 def measure(items: list[Item]) -> None:
     todo = [i for i in items if i.keep is None and i.size_k is None and i.path.startswith("/")]
-    with ThreadPoolExecutor(1) as ex:   # one du at a time, see wt_facts
-        for it, k in zip(todo, ex.map(lambda i: du_k(i.path), todo), strict=True):
+    with ThreadPoolExecutor(8) as ex:
+        for it, k in zip(todo, ex.map(lambda i: (_wait_not_background(), du_k(i.path))[1], todo), strict=True):
             it.size_k = k
 
 

@@ -84,6 +84,7 @@ echo "▶ 6/25 中继测试全绿"
 # 比不打还难读。所以让 runner 直接往 stdout 打，外层只判成败。
 lint_one_test() {
   local name out
+  wait_not_background
   name=$(basename "$1")
   if ! out=$(cd relay && "$RELAY_PY" "tests/$name" 2>&1); then
     printf '  ✗ %s 抛异常：\n%s\n' "$name" "$(sed 's/^/       /' <<<"$(tail -15 <<<"$out")")"
@@ -110,21 +111,16 @@ if bare=$(grep -nE '(^|[^"$A-Za-z_])python3 +("?\$\{?TEST_DIR|"?\$1"? *>|"?tests
   note "跑中继测试 / 中继代码的地方又用了系统自带的 python3："; sed 's/^/       /' <<<"$bare"
 fi
 cnt=$(find relay/tests -name 'test_*.py' | wc -l | tr -d ' ')
-# One test at a time, not `xargs -P 8`: on this Mac's macOS 27.2 beta, background-priority
-# processes that exec many children at once lock the kernel (09-23 04:19 panic symbolicated in
-# the board write-up of the 09-23 04:19 panic: this very xargs line started the grep that locked; 10-14 19:52 the
-# Mac froze again while this check ran). Slower, but the Mac stays up.
+# Eight at a time, but every test first waits while macOS runs this check at background priority:
+# on this Mac's macOS 27.2 beta a background-priority process that starts programs can lock the
+# kernel (09-23 04:19 panic; 10-14 19:52 the Mac froze 62 s after Game Mode put Claude and all it
+# started at background priority while this check was starting about five tests a second). That
+# priority only comes with a game in front, so the rest of the time the check keeps its speed.
 # shellcheck source=scripts/mac/lib/wait-not-background.sh
 . scripts/mac/lib/wait-not-background.sh
-lint_all_tests() {
-  local f rc=0
-  for f in relay/tests/test_*.py; do
-    wait_not_background
-    lint_one_test "$f" || rc=1
-  done
-  return "$rc"
-}
-if lint_all_tests; then
+export -f wait_not_background
+if printf '%s\n' relay/tests/test_*.py \
+   | xargs -P 8 -I{} bash -c 'lint_one_test "$1"' _ {}; then
   ok "$cnt 个测试全过"
 else
   note "有测试没过（见上）"
