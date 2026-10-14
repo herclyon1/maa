@@ -356,7 +356,15 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
-"test_automas_handover.py": [],
+"test_automas_contract_watch.py": [
+"__init__",
+"mascontract",
+"masuser"
+],
+"test_automas_handover.py": [
+"__init__",
+"masuser"
+],
 "test_banner_post_miss.py": [
 "__init__",
 "arknights",
@@ -4267,6 +4275,29 @@
 "__init__",
 "mas_labels"
 ],
+"test_mascontract.py": [
+"__init__",
+"commands",
+"config",
+"config_fields",
+"errwatch",
+"mas_client",
+"mascontract",
+"mastercfg",
+"mastercfg_maa",
+"mastercfg_okww",
+"masuser",
+"names",
+"notify",
+"plan",
+"preupdate_automas",
+"preupdate_common",
+"procs",
+"redbutton",
+"selfcheck",
+"tape",
+"texts"
+],
 "test_mastercfg.py": [
 "__init__",
 "config",
@@ -7408,6 +7439,7 @@
 "maaend_fwlog",
 "manualstops",
 "mas_client",
+"mascontract",
 "mastercfg",
 "mastercfg_maa",
 "mastercfg_okww",
@@ -7546,6 +7578,7 @@
 "errwatch",
 "logfile",
 "mas_client",
+"mascontract",
 "mastercfg",
 "mastercfg_maa",
 "mastercfg_okww",
