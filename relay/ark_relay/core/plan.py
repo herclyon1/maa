@@ -17,6 +17,7 @@ from pathlib import Path
 from ark_relay.core import mastercfg
 from ark_relay.core.config import SERVER_TZ, USER_TZ, atomic_write_text
 from ark_relay.core.names import GAME_ZH
+from ark_relay.core import masuser
 
 log = logging.getLogger("ark.plan")
 
@@ -110,7 +111,8 @@ def _scripts(cfg_dir: Path) -> dict[str, dict]:
         for user in ((node.get("SubConfigsInfo") or {}).get("UserData") or {}).values():
             if not isinstance(user, dict):
                 continue
-            info, task = user.get("Info") or {}, user.get("Task") or {}
+            # masuser: AUTO-MAS v5.7.0-beta.3 moved the stage and annihilation items out of Info.
+            info, task = masuser.info_view(user), user.get("Task") or {}
             # The combat switch: off means no stage is farmed, and the plan says so.
             if "IfFight" in task:
                 entry["fight"] = bool(task.get("IfFight"))

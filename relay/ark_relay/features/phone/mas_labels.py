@@ -127,7 +127,10 @@ def _items(text: str) -> dict:
 # JSON.parse fails and the phone shows the machine as 「关机中」.
 SHOWN = (
     "Info.Stage", "Info.StageMode", "Info.MedicineNumb", "Info.SeriesNumb",
-    "Info.Annihilation", "Task.IfFight", "Task.IfActivityFirst",
+    "Info.Annihilation",
+    # AUTO-MAS v5.7.0-beta.3 moved those five here (ark_relay/core/masuser.py).
+    "Stage.Stage", "Stage.StageMode", "Stage.MedicineNumb", "Stage.SeriesNumb",
+    "Task.Annihilation", "Task.IfFight", "Task.IfActivityFirst",
     "Task.ActivityStageIndex", "Task.ActivityMedicineNumb",
     "Task.IfSanity", "Task.IfAutoUseSpMedication", "Task.SanityTaskType",
     "Task.AutoEssenceSpecifiedLocation",

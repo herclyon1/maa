@@ -21,6 +21,7 @@ from pathlib import Path
 
 from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ
+from ark_relay.core import masuser
 
 log = logging.getLogger("ark.annihilation")
 
@@ -166,7 +167,7 @@ class WeeklyGate:
         if not user:
             return None, ""
         return (_field(user, "Data", "AnnihilationCompletedWeek") == week,
-                _field(user, "Info", "Annihilation"))
+                str(masuser.get(user, "Annihilation") or ""))
 
     def settings(self, now: datetime | None = None) -> dict:
         """{"本周已完成": True / False, or None when AUTO-MAS could not be read, "当前": the switch}.

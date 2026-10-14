@@ -105,6 +105,7 @@ from pathlib import Path
 
 from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ
+from ark_relay.core import masuser
 
 log = logging.getLogger("ark.stagegate")
 
@@ -324,7 +325,8 @@ def run_verdict(automas_dir, maa_dir, at: datetime, problems: list | None = None
              if isinstance(u, dict)]
     verdicts: list[tuple[str, str, str]] = []
     for u in users:
-        info, task = u.get("Info") or {}, u.get("Task") or {}
+        # masuser: AUTO-MAS v5.7.0-beta.3 keeps the stage items in a Stage group, not Info.
+        info, task = masuser.info_view(u), u.get("Task") or {}
         if "IfFight" not in task:
             verdicts.append((UNKNOWN, "", "用户设置里没有理智作战开关"))
             continue

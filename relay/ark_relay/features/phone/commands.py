@@ -43,6 +43,7 @@ from ark_relay.features.phone.config_fields import _dig, _flatten, _humanize, _n
 from ark_relay.features.phone.mas_client import _mas, mas_post
 from ark_relay.features.phone.redbutton import (
     ESTOP_LAST, ESTOP_WINDOWS_FILE, estop, estop_label, estop_windows)
+from ark_relay.core import masuser
 
 log = logging.getLogger("ark.commands")
 
@@ -338,6 +339,9 @@ def _user_item_via_api(script: str, path: str, value: Any) -> "tuple[str, Any, A
         sid, uid, user = _find_user(script)
     except Exception as exc:  # noqa: BLE001
         return f"找不到脚本或用户: {exc}", None, None
+    # AUTO-MAS v5.7.0-beta.3 keeps Info.Stage / MedicineNumb / Annihilation ... under Stage or
+    # Task and refuses the old path; write wherever this user keeps the item (masuser).
+    path = masuser.resolve(user, path)
     try:
         before = _dig(user, path)
     except KeyError:

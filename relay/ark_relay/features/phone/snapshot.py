@@ -24,6 +24,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
+from ark_relay.core import masuser
 
 log = logging.getLogger("ark.snapshot")
 
@@ -90,7 +91,7 @@ def _mas(out: dict) -> None:
             continue
         for _, u in users.items():
             if name == "MAA":
-                out["MAA"] = maa_fields(u.get("Info", {}), u.get("Task", {}))
+                out["MAA"] = maa_fields(masuser.info_view(u), u.get("Task", {}))
             elif name == "MaaEnd":
                 t = u.get("Task", {})
                 st = t.get("SanityTaskType")
@@ -161,7 +162,7 @@ def maa_from_files(automas_dir) -> dict:
         # The last user wins, as in _mas.
         for u in ((node.get("SubConfigsInfo") or {}).get("UserData") or {}).values():
             if isinstance(u, dict):
-                found = maa_fields(u.get("Info") or {}, u.get("Task") or {})
+                found = maa_fields(masuser.info_view(u), u.get("Task") or {})
     if found is None:
         raise LookupError("ScriptConfig.json 里没有 MAA 脚本的用户")
     return found

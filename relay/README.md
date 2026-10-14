@@ -34,6 +34,7 @@ Shared parts are in `ark_relay/core/`, each feature in `ark_relay/features/<name
 | `collector.py`（聚合）+ `collector_maa.py` / `collector_maaend.py` / `collector_okww.py` | 扫 AUTO-MAS 的 history 记录、判成败；三个游戏的日志解析按游戏分文件；`maaend_fwlog.py` 读 MaaEnd 的框架日志和 MXU 自己的日志（collector_maaend 原名转出）；`gamelog_errors.py` 把跑成功那一趟游戏日志里没登记的报错报进群（清单 `gamelog_errors.txt`） |
 | `watch.py` | directory-change notification (Windows ctypes / macOS kqueue) |
 | `plan.py` | read AUTO-MAS's schedule; there is no second copy of it |
+| `masuser.py` | where an AUTO-MAS MAA user keeps each setting (Info before v5.7.0-beta.3, Stage / Task after) |
 | `notify.py` / `transport.py` | channels and HTTP with the right retry policy |
 | `summary.py` | wording, including the optional LLM line |
 | `inbox.py` | fetch and apply `queue/config.json` |

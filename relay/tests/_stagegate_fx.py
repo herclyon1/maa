@@ -52,16 +52,22 @@ def set_yw(root: Path, yw) -> None:
 
 
 def automas_dir(root: Path, *, stage="YW-4", stage_1="-", fight=True, mode="Fixed",
-                plan: dict | None = None, queues=None) -> Path:
+                plan: dict | None = None, queues=None, beta3: bool = False) -> Path:
     """An AUTO-MAS config: MAA (one user) + MaaEnd, and two timed queues.
 
     queues: {name: (HH:MM, [kinds])}, default 早班 09:00 [MAA, MaaEnd] and 晚班 21:30 [MAA].
+    beta3: the user as AUTO-MAS v5.7.0-beta.3 saves it - the stage items in a Stage group
+    and Annihilation in Task, none of them left in Info (ark_relay/core/masuser.py).
     """
     cfg = root / "config"
     cfg.mkdir(parents=True, exist_ok=True)
-    user = {"Info": {"Name": "arknights", "Stage": stage, "Stage_1": stage_1, "Stage_2": "-",
-                     "Stage_3": "-", "StageMode": mode, "MedicineNumb": 0},
-            "Task": {"IfFight": fight}}
+    stage_items = {"Stage": stage, "Stage_1": stage_1, "Stage_2": "-", "Stage_3": "-",
+                   "StageMode": mode, "MedicineNumb": 0}
+    if beta3:
+        user = {"Info": {"Name": "arknights", "Base": "Shared"}, "Stage": stage_items,
+                "Task": {"IfFight": fight, "Annihilation": "Annihilation"}}
+    else:
+        user = {"Info": {"Name": "arknights", **stage_items}, "Task": {"IfFight": fight}}
     scripts = {
         "instances": [{"uid": "S-MAA"}, {"uid": "S-END"}],
         "S-MAA": {"Info": {"Name": "MAA", "Path": "D:\\ark\\maa"},
