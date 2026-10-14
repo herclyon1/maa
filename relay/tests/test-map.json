@@ -2730,6 +2730,7 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
+"test_lint_pick_tests.py": [],
 "test_llm_breaker.py": [
 "__init__",
 "config",
@@ -3723,6 +3724,7 @@
 "texts"
 ],
 "test_mac_bootwatch.py": [],
+"test_mac_one_at_a_time.py": [],
 "test_machinecheck.py": [
 "__init__",
 "collector_maaend",

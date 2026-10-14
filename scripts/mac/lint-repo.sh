@@ -110,7 +110,17 @@ esac
 if bare=$(grep -nE '(^|[^"$A-Za-z_])python3 +("?\$\{?TEST_DIR|"?\$1"? *>|"?tests/|-m +(py_compile +ark_relay|ark_relay))' scripts/mac/lint-repo.sh scripts/mac/deploy-relay.sh); then
   note "跑中继测试 / 中继代码的地方又用了系统自带的 python3："; sed 's/^/       /' <<<"$bare"
 fi
-cnt=$(find relay/tests -name 'test_*.py' | wc -l | tr -d ' ')
+# Only the tests this change reaches (scripts/mac/lib/lint_pick_tests.py: the deploy selector, plus
+# tests that name a changed script; every test when it cannot decide). LINT_ALL_TESTS=1 runs all.
+LINT_TESTS=$(mktemp)
+pick_why=$(mktemp)
+if [ -n "${LINT_ALL_TESTS:-}" ] || ! picked=$("${RELAY_PY:-false}" scripts/mac/lib/lint_pick_tests.py 2>"$pick_why") || [ "$picked" = ALL ]; then
+  printf '%s\n' relay/tests/test_*.py >"$LINT_TESTS"; scope="全部"
+else
+  [ -n "$picked" ] && printf 'relay/tests/%s\n' $picked >"$LINT_TESTS"; scope="这次改动影响到的"
+fi
+cnt=$(grep -c . "$LINT_TESTS" || true)
+echo "  · 跑${scope} ${cnt} 个测试（$(head -c 200 "$pick_why")）"
 # Eight at a time, but every test first waits while macOS runs this check at background priority:
 # on this Mac's macOS 27.2 beta a background-priority process that starts programs can lock the
 # kernel (09-23 04:19 panic; 10-14 19:52 the Mac froze 62 s after Game Mode put Claude and all it
@@ -119,9 +129,8 @@ cnt=$(find relay/tests -name 'test_*.py' | wc -l | tr -d ' ')
 # shellcheck source=scripts/mac/lib/wait-not-background.sh
 . scripts/mac/lib/wait-not-background.sh
 export -f wait_not_background
-if printf '%s\n' relay/tests/test_*.py \
-   | xargs -P 8 -I{} bash -c 'lint_one_test "$1"' _ {}; then
-  ok "$cnt 个测试全过"
+if [ "$cnt" = 0 ] || xargs -P 8 -I{} bash -c 'lint_one_test "$1"' _ {} <"$LINT_TESTS"; then
+  ok "${scope} ${cnt} 个测试全过"
 else
   note "有测试没过（见上）"
 fi
