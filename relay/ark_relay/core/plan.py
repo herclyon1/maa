@@ -798,6 +798,10 @@ def next_plan(automas_dir: Path | None) -> str:
                 bits.append(f"理智用于 {s['sanity_use']}")
             if s.get("kind") == "OK-WW":
                 bits += _okww_plan_bits(automas_dir, s.get("path"))
+            if s.get("kind") == "MAA" and not bits:
+                # Combat on but no StageMode read (and no annihilation setting): the row
+                # had no line under it while 鸣潮 and 终末地 had theirs (10-14 review).
+                bits.append("理智 读不到关卡设置")
             # One thing per line: a phone wraps one long line into several.
             label = s.get("name", "?")
             game = _GAME_OF.get(str(s.get("kind") or ""), "")
