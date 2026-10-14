@@ -159,10 +159,15 @@ and `allow-headers: Cred,Sign,Platform,Timestamp,Did,Vname` (measured 2026-09-18
 **Static need** - built by `relay/ark_relay/features/needtable/build.py`. Since 2026-10-14 the
 relay rebuilds it on the first tick of every server day on the game machine (`needtable.py`,
 about 115 Skland requests, 55 s measured from the Mac on 2026-10-14) and PUTs it public-read
-next to the phone state, `state/<the state's hash>.need.json`; the App (`ark-remote`
-`Inventory.swift` `loadNeed`) reads that object and falls back to the old GitHub Pages copy
-(`web/data/need.json`, last published 2026-09-23) when it is missing. A failed day is one
-WARNING; the next server day tries again. `scripts/mac/build-need-tables.py` is the by-hand
+next to the phone state, `state/<the state's hash>.need.json`. The App reads that object only
+from its next update on (`ark-remote` `Inventory.swift` `loadNeed`, falling back to the old
+GitHub Pages copy when it is missing); the App installed on 2026-10-14 still reads only the GitHub
+Pages copy (`web/data/need.json`, last published 2026-09-23), so until that update a new table
+reaches it only through `build-need-tables.py` + `deploy-web.sh`. A failed build is an INFO line
+and a red item in the technical log, tried once more the same server day (at most two builds a
+day); the App keeps the previous object. A build that works after missed days is one WARNING for
+the daily report only (errwatch.recovered()), and three missed server days in a row are one
+WARNING for the group (`needtable.py`, `relay/USER-SWITCHES.txt`). `scripts/mac/build-need-tables.py` is the by-hand
 wrapper (`-o`, `--offline`, `--save-fixtures`). Why: until then a person had to notice a new
 six-star and rerun the script, and nobody did after 09-23. The
 user's caliber (2026-09-19): one standard, **the newest six-star in the official wiki -

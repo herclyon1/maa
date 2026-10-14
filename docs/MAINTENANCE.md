@@ -46,10 +46,11 @@ catch exactly that.
 ## Publishing the phone page
 
 > The phone page (`web/`) has been unmaintained since 10-10 (the project moved to the native App
-> `~/Claude/ark-remote`). Run this only if someone touches `web/` again. The App's need table no
-> longer depends on it: the relay rebuilds it once a server day and puts it on COS
-> (`relay/ark_relay/features/needtable/`); the deployed `web/data/need.json` is only the App's
-> fallback when that object is missing.
+> `~/Claude/ark-remote`). Run this only if someone touches `web/` again, or to publish a new
+> `web/data/need.json` for the App installed now, which reads only the deployed site. The relay
+> rebuilds the table once a server day and puts it on COS (`relay/ark_relay/features/needtable/`);
+> the App reads that copy only from its next update on, with the deployed `web/data/need.json` as
+> its fallback when that object is missing. Until that update, the deployed file is what it shows.
 
 ```bash
 scripts/mac/deploy-web.sh
