@@ -89,10 +89,9 @@ def due(state_dir, today: str, now: "datetime | None" = None) -> bool:
     if m.get("ok") or m.get("skip") or _num(m, "tries") >= BUILDS_A_DAY:
         return False
     try:
-        last = datetime.fromisoformat(m.get("last_at") or "")
-    except (TypeError, ValueError):
+        return (now or datetime.now(SERVER_TZ)) - datetime.fromisoformat(m.get("last_at") or "") >= SECOND_TRY_AFTER
+    except (TypeError, ValueError):   # unreadable, or a time without its zone: the cap still holds
         return True
-    return (now or datetime.now(SERVER_TZ)) - last >= SECOND_TRY_AFTER
 
 
 def _mark(state_dir, mark: dict) -> None:
@@ -112,7 +111,7 @@ def _settle(cfg, today: str, at: datetime, ok: bool, what: str, *, skip=False, e
     if not same and prev.get("day") and not prev.get("ok") and not prev.get("skip") and _num(prev, "tries"):
         missed += 1
     warned = bool(prev.get("warned"))
-    last_ok = prev.get("last_ok_day") or "上次"
+    last_ok = f"{prev['last_ok_day']} 那天" if prev.get("last_ok_day") else "上次"
     mark = {"day": today, "ok": ok, "skip": skip, "tries": tries, "last_at": at.isoformat(timespec="seconds"),
             "what": what, "missed_days": missed, "warned": warned, "last_ok_day": prev.get("last_ok_day", "")}
     if skip:
@@ -120,18 +119,18 @@ def _settle(cfg, today: str, at: datetime, ok: bool, what: str, *, skip=False, e
     elif ok:
         log.info("需求表已重算并放上 COS：%s", what)
         if missed:
-            log.warning("终末地「最新六星满练要多少」表今天重算成了；之前连着 %d 天没算成，App 库存页那几天用的是 %s 那天的表",
+            log.warning("终末地「最新六星满练要多少」表今天重算成了；之前连着 %d 天没算成，App 库存页那几天用的是%s的表",
                         missed, last_ok, extra=errwatch.recovered())
         mark.update(missed_days=0, warned=False, last_ok_day=today)
     else:
         later = "过半小时再试一次" if tries < BUILDS_A_DAY else "明天再试"
-        log.info("终末地「最新六星满练要多少」表今天第 %d 次没重算成：%s。App 库存页还用 %s 那天的表，%s",
+        log.info("终末地「最新六星满练要多少」表今天第 %d 次没重算成：%s。App 库存页还用%s的表，%s",
                  tries, what, last_ok, later, exc_info=exc)
         techlog.add_red(today, "需求表没重算成", [f"终末地需求表今天第 {tries} 次没重算成：{what}"],
                         state_dir=cfg.state_dir, now=at)
         failed_days = missed + (1 if tries >= BUILDS_A_DAY else 0)
         if failed_days >= GROUP_AFTER_DAYS and not warned:
-            log.warning("终末地「最新六星满练要多少」表已经连着 %d 个服务器日没重算成（这次：%s）。App 库存页一直用 %s 那天的表",
+            log.warning("终末地「最新六星满练要多少」表已经连着 %d 个服务器日没重算成（这次：%s）。App 库存页一直用%s的表",
                         failed_days, what, last_ok)
             mark["warned"] = True
     _mark(cfg.state_dir, mark)
