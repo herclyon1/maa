@@ -848,6 +848,17 @@ reads 「日报还没发出去」 until the report goes, then 「调试模式」
 08:39: 「调试模式会不会造成下次不关机」. tests/test_shutdown.py [debug outside a
 shift end].
 
+A shift's power-off opportunity is the moment it finished, not the rest of the boot
+(2026-10-15). Until then _not_shift's conditions (a shift of this boot finished, its
+landing seen, the newest round not by hand) never expired, and the make-up and
+client-update gates only deferred the go: on 10-15 the morning shift finished at
+09:3x, the deferred Endfield update and the MaaEnd make-up held the power-off until
+13:17:18, and at 13:18:00 the relay said 「本轮已处理完毕，60 秒后关机」. Now a
+「makeup」 / 「updating」 verdict after the shift finished (or the update thread
+running behind another hold) writes `marks.shutdown_forfeit` for that shift run, and
+_not_shift refuses it from then on; the next shift is a new opportunity.
+tests/test_shutdown_held_past_shift.py.
+
 ## core.py:_stacked
 
 ```

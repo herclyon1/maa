@@ -42,8 +42,12 @@ after an AUTO-MAS upgrade or a click in its window.
    service resumes.
 3. **Once ready**: if service resumption is still more than 10 minutes away, close the game
    first; at the resumption time wait another 2 minutes, then run that one script as a make-up
-   run; when it is done, write the recorded `Schedule.Days` back (item/update, read back),
-   then shut down as usual. A skip still open at the next boot is undone then.
+   run; when it is done, write the recorded `Schedule.Days` back (item/update, read back).
+   The machine is **not** powered off after it: the owner's rule (2026-10-10 18:31, D-1010)
+   allows a power-off only at the moment a morning / evening shift finished, and the update
+   and its make-up held that moment past (`shutdown._note_forfeit`; 2026-10-15 the relay
+   powered off at 13:18, hours after the 09:3x shift, before this was fixed). It stays on and
+   powers off after the next shift. A skip still open at the next boot is undone then.
 4. Only scripts that "did not get a run because of maintenance / could not get into the game"
    or "were skipped in today's queue for the update" get a make-up run; ordinary task failures do not
    (the lesson of the evening of 09-02, when a make-up run kicked the operator off mid-session).
@@ -61,7 +65,7 @@ after an AUTO-MAS upgrade or a click in its window.
    `_maybe_shutdown` does not power off.
 4. **After the update**: if that script's last attempt of the day did not succeed →
    `commands.run_script` dispatches that one script (not the whole queue); when it finishes,
-   accounting and shutdown proceed as usual.
+   accounting proceeds as usual (no power-off since 2026-10-15, see step 3 above).
 
 Notifications: `🆕 游戏更新` (success), `🔁 更新后重跑`, `⚠️ 游戏更新没能确认` (which step could
 not be confirmed — it never claims success it does not have).

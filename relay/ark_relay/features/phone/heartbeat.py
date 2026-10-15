@@ -38,7 +38,10 @@ log = logging.getLogger("ark.phone")   # same logger as phone.py: log lines keep
 #               (the 8-minute watch renewal) comes before 2 x 300 + 30 s;
 #   cos_every - how often this object is rewritten while someone watches
 #               (HEARTBEAT_SEC), so a reader can tell a stale object (power
-#               cut, nobody watching) from a live one at once.
+#               cut, nobody watching) from a live one at once;
+#   off       - on the bye only: who stopped the machine and why,
+#               {"by": "relay" | "windows" | "service", "why", "at"}
+#               (shutdown.poweroff_note).
 # A PUT costs 0.01 yuan per 10,000; 30 s for a 10-minute lease is 20 of them.
 HB_COS_SEC = HEARTBEAT_SEC
 
@@ -146,6 +149,13 @@ class Heartbeat:
         body = {"at": int(self._cos_last), "every": self.pace(), "cos_every": HB_COS_SEC}
         if bye:
             body["bye"] = True
+            # Who stopped the machine and why (the relay's own power-off names the shift
+            # and when it finished); an extra field, so an App that does not read it is unchanged.
+            try:
+                from ark_relay.features.shutdown import shutdown  # noqa: PLC0415
+                body["off"] = shutdown.poweroff_note(self.state_dir)
+            except Exception:  # the bye goes out without it
+                log.debug("下线心跳的关机原因没整理出来", exc_info=True)
         try:
             why = cos_put(self.cos, hb_key(self.topic), json.dumps(body).encode("utf-8"),
                           Mailbox.COS_TIMEOUT)

@@ -110,12 +110,15 @@ RELAY_LOST_TRACK = (BOOT_UNKNOWN, LANDING_UNSEEN)
 
 def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict]) -> "tuple[str, str] | None":
     """Why this decision is not the one right after a morning / evening shift finished:
-    (code, why), or None when it is (or the shift is still running).
+    (code, why), or None when it is (or the shift is still running). Code 「shift-held」:
+    the shift finished but a hold took its moment (_forfeited); decide reads it as not-shift.
 
     The user's rule (quoted in USER-SWITCHES.txt at shutdown.py:_say_if_moment_passed):
     only a shift from the AUTO-MAS schedule, run on this boot, whose records this
     relay saw land, may end in a power-off. Everything else - a boot by hand, a make-up or a
-    run started by hand, a relay restarted after the shift - leaves the machine on.
+    run started by hand, a relay restarted after the shift - leaves the machine on. So does
+    a shift whose power-off a make-up or client update held past its end (_forfeited): the
+    opportunity is the moment the shift finished, not the rest of the boot.
     """
     if booted is None:
         return "not-shift", BOOT_UNKNOWN
@@ -129,6 +132,9 @@ def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict
         # Still running, or failed: nothing to judge before every script of the shift
         # has recorded.
         return "shift-running", "；".join(missing)
+    if held := _forfeited(eng, shift):
+        # The shift did finish (shiftcheck still counts it); only its power-off is gone.
+        return "shift-held", held
     if not _seen_landing(eng, booted, shift):
         return "not-shift", LANDING_UNSEEN
     if eng._last_round_manual(now, entries):
@@ -137,6 +143,108 @@ def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict
 
 
 BOOT_SLACK_S = 120   # the boot time is now - uptime, so two reads of one boot differ by seconds
+
+
+# ---------- the opportunity is the moment the shift finished, not the rest of the boot ----------
+# Verdicts that hold the machine on past the moment a shift finished with work the relay
+# started itself after the shift: its make-up run (makeup.py) and the deferred client
+# update with its re-run (engine._maybe_deferred_update). Once one of them has held the
+# power-off, that shift's opportunity is gone; the machine stays on and powers off after
+# the next shift. 2026-10-15: the morning shift finished at 09:3x, the update and the
+# MaaEnd make-up held the power-off until 13:17, and the go came at 13:18 - hours after
+# the shift, against the user's rule (USER-SWITCHES.txt at shutdown.py:_say_if_moment_passed).
+HELD_PAST_SHIFT = ("makeup", "updating")
+# Verdicts reached only after _not_shift passed (the shift finished) that can sit in front
+# of 「updating」 in decide's chain: the update thread running behind one of them still
+# holds the power-off past the shift.
+AFTER_SHIFT = ("uptime", "running", "farming", "pending", "report")
+UPDATE_HOLD = "游戏客户端正在更新或重跑"
+
+
+def _newest_shift(shift: list[dict]) -> "dict | None":
+    return max(shift, key=lambda q: q["due"]) if shift else None
+
+
+def _shift_tag(q: dict) -> str:
+    """One shift run: its queue and due time (a later shift on the same boot is another)."""
+    return f"{q.get('name')}|{q['due'].astimezone(SERVER_TZ).isoformat()}"
+
+
+def _forfeited(eng, shift: list[dict]) -> str:
+    """Why the newest shift of this boot lost its power-off (_note_forfeit), or ''."""
+    q = _newest_shift(shift)
+    try:
+        got = eng.state.store.get("marks", "shutdown_forfeit")
+    except Exception:  # noqa: BLE001 - an unreadable mark reads as none
+        return ""
+    if q is None or not isinstance(got, dict) or got.get("shift") != _shift_tag(q):
+        return ""
+    return str(got.get("why") or "")
+
+
+def _held_past_shift(eng, v: "Verdict") -> str:
+    """What holds the power-off past the moment the shift finished, '' when nothing does."""
+    if v.code in HELD_PAST_SHIFT:
+        return v.reason
+    if v.code in AFTER_SHIFT:
+        try:
+            if eng._deferred_update_busy():
+                return UPDATE_HOLD
+        except Exception:  # noqa: BLE001 - the verdict's own gate decides then
+            return ""
+    return ""
+
+
+def _note_forfeit(eng, now: datetime, hold: str) -> None:
+    """The newest shift of this boot is past its moment: keep that in state.json marks, so
+    a later decision - in this process or a relay restarted on the same boot - refuses
+    instead of powering off once the hold lets go."""
+    booted = eng._boot_time(now)
+    q = _newest_shift(_shift_queues(eng, now, booted)) if booted is not None else None
+    if q is None:
+        return
+    tag = _shift_tag(q)
+    try:
+        got = eng.state.store.get("marks", "shutdown_forfeit")
+        if isinstance(got, dict) and got.get("shift") == tag:
+            return
+        done = _shift_finished(eng, now, q)
+        why = (f"{q.get('name')} {q['due'].astimezone(SERVER_TZ):%H:%M} 那趟"
+               + (f" {done:%H:%M} 跑完" if done else "跑完")
+               + f"后，{now:%H:%M} 起关机被拖住（{hold}），已经不是刚跑完；下一趟早班/晚班跑完照常关机")
+        eng.state.store.set("marks", "shutdown_forfeit", {"shift": tag, "why": why, "at": now.isoformat()})
+    except Exception:  # the process keeps judging; a restart would forget it
+        log.warning("「这一班的关机机会已过」没记到磁盘，等住的事放手后可能照样关机", exc_info=True)
+        return
+    log.info("这一班的关机机会已过：%s", why)
+
+
+def _shift_finished(eng, now: datetime, q: dict) -> "datetime | None":
+    """When shift run `q` finished: the latest end among its scripts' records since its time."""
+    since = q["due"] - timedelta(minutes=5)
+    ends = []
+    for e in eng._recent_entries(now):
+        try:
+            if e.get("script") in q.get("kinds", []) and _entry_time(e) >= since:
+                ends.append(_entry_time(e, "finished") if e.get("finished") else _entry_time(e))
+        except (KeyError, TypeError, ValueError):
+            continue
+    return max(ends) if ends else None
+
+
+def _poweroff_why(eng, now: datetime) -> dict:
+    """Why the relay powers off now, for state.json and the last heartbeat: which shift,
+    when it finished. {"why", "shift", "due", "finished"}."""
+    booted = eng._boot_time(now)
+    q = _newest_shift(_shift_queues(eng, now, booted)) if booted is not None else None
+    if q is None:
+        return {"why": f"中继 {now:%H:%M} 判定本轮已处理完毕，发出关机"}
+    due = q["due"].astimezone(SERVER_TZ)
+    done = _shift_finished(eng, now, q)
+    return {"why": f"{q.get('name')}（排期 {due:%H:%M}）"
+                   + (f"{done:%H:%M} 跑完，" if done else "跑完，") + f"中继 {now:%H:%M} 发出关机",
+            "shift": q.get("name"), "due": due.isoformat(),
+            "finished": done.isoformat() if done else None}
 
 
 def note_handled(eng, now: datetime) -> None:
@@ -437,7 +545,8 @@ def _last_round_manual(eng, now: datetime, entries: list[dict]) -> bool:
     if id(newest_entry) in off:
         return True
     # A catch-up run the relay itself dispatched after a client update is not a
-    # hand-started run; when it finishes, the machine may power off.
+    # hand-started run. It does not end in a power-off either: the update held the
+    # shift past its end, and _forfeited refuses that shift before this is asked.
     since = getattr(eng, "_gu_rerun_at", None)
     if since is not None and newest >= since:
         return False
@@ -456,7 +565,8 @@ def _relay_dispatched(eng, group: list[dict]) -> bool:
     The make-up (makeup.py) waits for an idle queue and can start hours after
     it, beyond what _round_of_newest chains to the scheduled round; read by the
     schedule alone it would be a hand-started round. A queue started from the
-    phone (「队列 …」) is not matched here."""
+    phone (「队列 …」) is not matched here. Not a hand start does not mean a power-off:
+    the make-up held its shift past the end, and _forfeited refuses that shift."""
     from ark_relay.features.guard import trigger  # noqa: PLC0415
     try:
         first = min(group, key=lambda e: datetime.fromisoformat(e["started"]))
@@ -557,6 +667,7 @@ def decide(eng, now: datetime) -> Verdict:
         code, why = no
         if code in ("shift-ahead", "shift-running"):
             return Verdict(False, code, f"等排期的那趟跑完再判关机（{why}）")
+        # 「shift-held」 (_forfeited) is a not-shift to everything downstream.
         return Verdict(False, "not-shift", f"不是早班/晚班跑完，不关机（{why}）")
     # The minimum-uptime floor guards against a "boot, power off at once" loop.
     if (now - eng._started_at).total_seconds() < eng.cfg.shutdown_min_uptime:
@@ -713,6 +824,10 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
         # "off": a shift that never records is a fault whether or not the relay powers off.
         if v.code in ("shift-running", "off"):
             _alarm_shift_overdue(eng, now)
+        # A make-up or client update holding the machine past the shift's end spends
+        # that shift's opportunity (HELD_PAST_SHIFT); the next decision says not-shift.
+        if hold := _held_past_shift(eng, v):
+            _note_forfeit(eng, now, hold)
         # One log line whenever the reason changes, for every reason. Two reasons are
         # the relay failing its own job rather than a state, so they are a WARNING
         # (pushed, once per change): the boot time unreadable (GetTickCount64 failed,
@@ -782,11 +897,17 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
         _up = {"errors": [f"upload raised {type(_exc).__name__}: {_exc}"]}
     for _e in (_up or {}).get("errors") or []:
         log.warning("关机前证据上传失败：%s", _e)
+    try:
+        why = _poweroff_why(eng, now)
+    except Exception:  # the reason is for the user to read; the power-off goes on
+        log.warning("关机原因没整理出来", exc_info=True)
+        why = {"why": f"中继 {now:%H:%M} 判定本轮已处理完毕，发出关机"}
     if not eng._power_off():
         return False
     eng._shutdown_issued = True
     eng._shutdown_issued_at = now      # decide: still up ISSUED_STUCK_MIN later is 「not-down」
-    _record_poweroff(eng, now)
+    _record_poweroff(eng, now, why)
+    log.info("关机原因：%s", why["why"])
     _ISSUED[0] = eng                   # abort_countdown: a phone order can still cancel it
     # From here the machine is going down: services and COM links drop as Windows
     # tears them down, and the errors that follow are not faults (errwatch is told).
@@ -795,18 +916,51 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     return True
 
 
-def _record_poweroff(eng, at: datetime | None) -> None:
+def _record_poweroff(eng, at: datetime | None, why: "dict | None" = None) -> None:
     """Keep the moment the relay issued its own power-off in state.json (None: the
-    countdown was cancelled). eng._shutdown_issued_at lives in this process only;
+    countdown was cancelled), and why (`relay_poweroff_why`, _poweroff_why: which
+    shift, when it finished) for the last heartbeat (poweroff_note).
+    eng._shutdown_issued_at lives in this process only;
     `app_main.py stop-push` runs in the watchdog's process at the same power-off and
     reads this (relay_poweroff_recorded). Never raises: the power-off goes on."""
     try:
         if at is None:
             eng.state.store.pop("marks", "relay_poweroff")
+            eng.state.store.pop("marks", "relay_poweroff_why")
         else:
             eng.state.store.set("marks", "relay_poweroff", at.isoformat())
+            eng.state.store.set("marks", "relay_poweroff_why", dict(why or {}, at=at.isoformat()))
     except Exception:  # the relay's own probe (boot_stages._relay_poweroff_live) still answers
         log.warning("没能把中继自己发出的关机记进 state.json，看门服务代发时认不出是中继关的机", exc_info=True)
+
+
+def poweroff_note(state_dir, now: datetime | None = None) -> dict:
+    """Who stopped the machine, for the last COS heartbeat (heartbeat.Heartbeat.bye):
+    {"by": "relay" | "windows" | "service", "why", "at" (unix seconds)}.
+
+    "relay": the relay issued its own power-off less than ISSUED_STUCK_MIN ago
+    (relay_poweroff_recorded), with the reason _record_poweroff kept. "windows":
+    Windows is shutting down (SvcShutdown ran, or the session says so) without that
+    command - a person, Windows Update or anything else. "service": the relay service
+    stopped and the machine is not going down (a deploy, `sc stop`). Never raises."""
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    try:
+        if relay_poweroff_recorded(state_dir, now):
+            from ark_relay.core.statestore import StateStore  # noqa: PLC0415
+            store = StateStore(state_dir)
+            issued = datetime.fromisoformat(str(store.get("marks", "relay_poweroff")))
+            got = store.get("marks", "relay_poweroff_why")
+            why = (str(got.get("why") or "") if isinstance(got, dict)
+                   and got.get("at") == issued.isoformat() else "")
+            return {"by": "relay", "why": why or "中继发出了关机命令（原因没记下）",
+                    "at": int(issued.timestamp())}
+    except Exception:  # fall through to what Windows says
+        log.debug("中继自己的关机记录读不出", exc_info=True)
+    if errwatch.os_shutdown() or errwatch.system_shutting_down():
+        return {"by": "windows", "why": "Windows 在关机，不是中继发的关机命令（有人关机或系统自己关）",
+                "at": int(now.timestamp())}
+    return {"by": "service", "why": "中继服务停了，机器没有关", "at": int(now.timestamp())}
 
 
 def relay_poweroff_recorded(state_dir, now: datetime | None = None) -> bool:

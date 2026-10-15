@@ -62,7 +62,11 @@ registered in the `FIELDS` field table can be written. Already moved in:
   ran for (`shiftcheck_shift`, once per shift); when the relay issued its own
   power-off (`relay_poweroff`, cleared when the countdown is cancelled), so
   `app_main.py stop-push` - a process of its own - can tell it from any other
-  shutdown (`shutdown.relay_poweroff_recorded`)
+  shutdown (`shutdown.relay_poweroff_recorded`); why it powered off (`relay_poweroff_why`: which
+  shift, when it finished), carried as `off` on the last COS heartbeat
+  (`shutdown.poweroff_note`); the shift whose power-off a make-up or client update
+  held past its end (`shutdown_forfeit`, `shutdown._note_forfeit`), so a relay
+  restarted on the same boot does not power off once the hold lets go
 * `modes`: the one-shot 「下次跑完不关机」 mark while not yet spent, the key of the
   shutdown occasion that was skipped (by debug mode or by spending that mark),
   debug-mode expiry

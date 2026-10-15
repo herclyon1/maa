@@ -49,6 +49,8 @@ FIELDS: dict[str, dict[str, str]] = {
         "noted:*": "某天已经记进日报的不关机原因（10-10 23:22 起不再写，旧的留着无害）",
         "handled_boot": "这次开机里中继看到运行记录落账：{boot, at}（重启后同一次开机接着判关机；shutdown.note_handled）",
         "relay_poweroff": "中继自己发出关机命令的时刻（看门服务代发停止前状态时据此认出是中继自己关的机；取消倒计时清掉；shutdown.relay_poweroff_recorded）",
+        "relay_poweroff_why": "中继自己关机的原因：{why, shift, due, finished, at}（哪一班、几点跑完；最后一跳心跳带给 App；取消倒计时清掉；shutdown.poweroff_note）",
+        "shutdown_forfeit": "哪一班的关机机会已过：{shift, why, at}（班跑完后补跑或游戏更新把关机拖住了，这一班不再关机，下一班照常；shutdown._note_forfeit）",
         "shiftcheck_shift": "收工体检查过的最后一班的排期时刻（每班只查一次，中继重启后不重查；shiftcheck.maybe_run）",
     },
     "modes": {

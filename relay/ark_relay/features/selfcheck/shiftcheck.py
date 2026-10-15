@@ -100,7 +100,8 @@ def finished_shift(eng, now: datetime) -> "dict | None":
         return None
     last = max(shift, key=lambda q: q["due"])
     reason = shutdown._not_shift(eng, now, eng._recent_entries(now), booted, shift)
-    if reason is None:
+    # 「shift-held」: the shift finished; a make-up or update after it took only its power-off.
+    if reason is None or reason[0] == "shift-held":
         return last
     code, why = reason
     if code == "not-shift":
