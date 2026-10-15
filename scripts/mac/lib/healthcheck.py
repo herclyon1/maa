@@ -110,8 +110,8 @@ check(f"巢穴：只刷{'、'.join(ONLY_NESTS)}",
 from ark_relay.features.verify import outcome                          # noqa: E402
 _last = outcome.latest_okww_run_log(r"D:\ark\automas\history")
 _ftxt = _last[1] if _last else ""
-_fbad = [c for c in outcome.nest_filter_checks(_ftxt, "落渊南丘") if not c.ok]
-check("巢穴：上一趟真的只进了落渊南丘（按运行日志）",
+_fbad = [c for c in outcome.nest_filter_checks(_ftxt, ",".join(ONLY_NESTS)) if not c.ok]
+check(f"巢穴：上一趟真的只进了{'、'.join(ONLY_NESTS)}（按运行日志）",
       _last is not None and not _fbad,
       "没有运行日志" if _last is None else "；".join(f"{c.label}：{c.detail}" for c in _fbad) or "")
 # Every override, judged by trigger-vs-effect on the last run (not by the binding report).

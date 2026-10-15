@@ -106,7 +106,7 @@ def main() -> int:
                       "= 抓一个声骸就收工，落渊南丘刷不满")
                 bad += 1
             if bad == 0:
-                print("  ✅ 母本设置：只刷落渊南丘，而且是刷满模式")
+                print(f"  ✅ 母本设置：只刷{'、'.join(ONLY_NESTS)}，而且是刷满模式")
     # The master is what is *meant*; the last run's log is what *happened*. From
     # 2026-09-10 to 09-13 the master said 落渊南丘 and every run farmed all four
     # nests, and this command printed ✅ each day. Never again without the log.
@@ -126,12 +126,15 @@ def last_run_filter_verdict() -> int:
     if "NightmareNestTask" not in text:
         print(f"  · 上一趟（{path.name}）没跑到残象聚落，过滤生效与否这趟看不出")
         return 0
-    checks = outcome.nest_filter_checks(text, "落渊南丘")
+    # The configured names, not a literal: since 2a7ff78d (10-12) two nests are farmed, and a
+    # hard-coded 「落渊南丘」 here failed every correct two-nest run (alarm f7a4bb6a, 10-15).
+    from ark_relay.core.mastercfg_okww import ONLY_NESTS  # noqa: PLC0415
+    checks = outcome.nest_filter_checks(text, ",".join(ONLY_NESTS))
     bad = [c for c in checks if not c.ok]
     for c in bad:
         print(f"  ❌ 上一趟（{path.name}）{c.label}：{c.detail}")
     if not bad:
-        print(f"  ✅ 上一趟（{path.name}）真的只进了落渊南丘")
+        print(f"  ✅ 上一趟（{path.name}）真的只进了{'、'.join(ONLY_NESTS)}")
     return 1 if bad else 0
 
 
