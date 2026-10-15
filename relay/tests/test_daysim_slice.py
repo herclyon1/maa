@@ -62,6 +62,9 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+SCANNED: dict = {}     # sha256 of a corpus copy's bytes -> sl.secret_hits of them
+
+
 def events_of(day: str) -> list:
     return [json.loads(x) for x in (DAYS / day / "events.jsonl").read_text(encoding="utf-8").splitlines()]
 
@@ -223,10 +226,17 @@ def check_record(day: str, evs: list, seed: dict, corpus: Path) -> None:
 
     # The copies that were rewritten on the way in are where a secret could survive;
     # --full scans every copy.
+    # A file the same in several days' corpora (APFS clones: 270 MB scanned held 68 MB of
+    # distinct bytes, 2026-10-16) is scanned once; the key is the sha256 of the bytes read
+    # now, not the manifest's, so a copy changed after slicing is scanned again.
     hits = []
     for rel, m in man["files"].items():
         if FULL or m["transform"] == "rebuilt" or m["size"] <= 5_000_000:
-            if h := sl.secret_hits((corpus / rel).read_bytes()):
+            data = (corpus / rel).read_bytes()
+            key = hashlib.sha256(data).digest()
+            if key not in SCANNED:
+                SCANNED[key] = sl.secret_hits(data)
+            if h := SCANNED[key]:
                 hits.append((rel, h))
     require(f"{day} no secret pattern in the corpus copies", not hits, hits[:3])
 

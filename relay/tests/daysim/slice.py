@@ -119,19 +119,31 @@ def redact_bytes(data: bytes) -> bytes:
     return data if out == data else out     # the same object when nothing was masked
 
 
-# A literal each pattern's match contains: `in` is a memchr-speed scan, so whole files
-# (hundreds of MB in a corpus) only meet a regex when the literal is there.
-_SECRET_GUARD = {"cos-akid": (b"AKID",), "cos-signature": (b"q-signature=",),
-                 "wecom-webhook-key": (b"webhook/send?key=",), "wecom-corpsecret": (b"corpsecret=",),
-                 "access-token": (b"access_token=",), "serverchan-key": (b"SCT",),
-                 "github-token": (b"ghp_", b"gho_", b"ghu_", b"ghs_", b"ghr_"), "api-key": (b"sk-",),
-                 "cdk": (b"cdk", b"CDK", b"Cdk")}
+# Whole files (hundreds of MB in a corpus) meet a pattern only after a cheaper test that
+# every match of it passes. Measured 2026-10-16 on 10 MB of corpus text (ak-posts.json +
+# relay.log): a pattern that starts with a literal finds it in 1.2-1.9 ms (sre's own
+# literal-prefix scan), faster than an `in` for that literal (1.7-5.9 ms), so it needs no
+# test; one that starts with \b tries every position (45 ms), and the same pattern without
+# the \b - which every match of it also matches - takes 1.6-1.9 ms; the case-blind cdk
+# pattern keeps its three literals (18 ms; a regex for them took 27 ms).
+_SECRET_LITERALS = {"cdk": (b"cdk", b"CDK", b"Cdk")}
+
+
+def _cheap_test(name: str, pattern: bytes):
+    if name in _SECRET_LITERALS:
+        return lambda data, lits=_SECRET_LITERALS[name]: any(g in data for g in lits)
+    if pattern.startswith(rb"\b"):
+        return re.compile(pattern[2:]).search
+    return None
+
+
+_SECRET_TEST = {n: _cheap_test(n, p) for n, p, _r in SECRET_PATTERNS}
 
 
 def secret_hits(data: bytes) -> list[str]:
     """Names of the secret patterns found in `data` (the test runs this over relay/)."""
     return [n for n, rx, _rep in _SECRET_RES
-            if n not in NOT_SCANNED and any(g in data for g in _SECRET_GUARD[n]) and rx.search(data)]
+            if n not in NOT_SCANNED and (_SECRET_TEST[n] is None or _SECRET_TEST[n](data)) and rx.search(data)]
 
 
 def clone(src: Path, dst: Path) -> None:
