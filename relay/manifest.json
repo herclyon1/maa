@@ -1,8 +1,8 @@
 {
- "version": 20261015152147,
- "ref": "relay-20261015152147",
+ "version": 20261015174123,
+ "ref": "relay-20261015174123",
  "files": {
-  "RELEASE-NOTES.md": "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+  "RELEASE-NOTES.md": "d5db42b21a24bc8b8b63df6907dca9eab5af169f",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "efbdc0039c54560cd1e564414bb64eb3a3df7422",
@@ -16,7 +16,7 @@
   "ark_relay/core/ledger_rows.py": "b64fcf509a62d424bb4f94e768afa5e3ed469d78",
   "ark_relay/core/logfile.py": "239084f09dec3eb0d5194ee8ede8702997c2d715",
   "ark_relay/core/mascontract.py": "5cce65c645c27e3d32e17b978915339331c72e96",
-  "ark_relay/core/mastercfg.py": "ac3bb404f648daaebfcf5f1dceda702b74a00040",
+  "ark_relay/core/mastercfg.py": "e6e5e81c73aa94f2962288a15ea9daa5a7d9370a",
   "ark_relay/core/mastercfg_maa.py": "b4b9ec58e6f1f8473637baadadb03e15b9bee8e1",
   "ark_relay/core/mastercfg_okww.py": "f3454f89d32b3d36758ec0c4d733fcb3b6df42b2",
   "ark_relay/core/masuser.py": "01bef8266388cbfe0e65c0069a78ad7932550d78",
@@ -168,7 +168,7 @@
   "watchdog_guard.py": "cc505fe57c4c2923be2003c8fe5a4f0a47b0d887"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "RELEASE-NOTES.md": "f273ed60f4b3d69627fedc8f57b92f767180d0780ce6d65d40206ac4c644eab5",
   "app_main.py": "9a2bad4ee77f639044a37a362cd0630827e0ff1b87978e4caeb7898972cdc682",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "2b70cedda9a2b285439a76b3e17c5f50a728d313f1c580460e15f0b7d84cd318",
@@ -182,7 +182,7 @@
   "ark_relay/core/ledger_rows.py": "6aa8fa89feacb6fc26d7b248d8eec497a6a7df3f853509824ca13fe2de488c13",
   "ark_relay/core/logfile.py": "744142c68e4c97f53ae888d578eaaa905b6fdba7034b11fa39b1c41afecf3531",
   "ark_relay/core/mascontract.py": "594864661b7069e64c69e2083852e8ee588fc9d4f7d4aaf8820cedf8d05a34f3",
-  "ark_relay/core/mastercfg.py": "fc1a8a355b8b0cfd1ecddf4ca10c5d8ebc61f4ebecc5cd2e10b1f3f7a63adbbc",
+  "ark_relay/core/mastercfg.py": "a4b2f298b7608f4fb4af4718508d9c699860569fa7718b0069879a50551017e3",
   "ark_relay/core/mastercfg_maa.py": "f929cdced138ab59a26b4e6146dd5a276b4965a5b5b4c11a4ffe3bd0f0353fa6",
   "ark_relay/core/mastercfg_okww.py": "e714d4050e31f60a2000cf1dce5fcb89d95121950e9e7fc763d1072903866a71",
   "ark_relay/core/masuser.py": "863f18dc3e681012a93baf8f73df69eb70529637782aa13f22985cdc76af88e3",

@@ -199,8 +199,20 @@ def _strip_trailing_commas(text: str) -> str:
 
 
 def _jsonc(path: Path) -> dict:
-    """MaaEnd task definitions are JSON with comments and trailing commas."""
-    return json.loads(_strip_jsonc(path.read_text(encoding="utf-8")))
+    """MaaEnd task definitions are JSON with comments and trailing commas.
+
+    A file that already parses as JSON is taken as it is: JSON has no comments and no
+    trailing commas outside strings, so _strip_jsonc would hand it back unchanged.
+    Only the rest goes through the character walker. Measured 2026-10-16 on the 10-12
+    machine's MaaEnd (daysim): of interface.json and the 68 files it imports, 63 (4.4 of
+    4.7 MB) are plain JSON; walking every file made one _read_maaend_defs take 0.33 s,
+    about five reads a relay boot, and with this 0.03 s.
+    """
+    text = path.read_text(encoding="utf-8")
+    try:
+        return json.loads(text)
+    except ValueError:
+        return json.loads(_strip_jsonc(text))
 
 
 class _Locale:

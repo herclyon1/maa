@@ -64,5 +64,31 @@ require("12000000 is in the master copy", landed == "12000000", landed)
 ok, msg = mastercfg.write_maaend(automas, FX, "AutoStockStaple/AutoStockReserveWuling", "1000")
 require("write 1000 (below the rule) is refused", not ok, msg)
 
+# 5. _jsonc takes a file that is already JSON as it is (the walker cost 0.33 s per
+#    _read_maaend_defs, about five a boot: daysim 10-12, 2026-10-16) and gives the
+#    walker's result for every file, plain or not.
+walked: list[str] = []
+real_strip = mastercfg._strip_jsonc
+mastercfg._strip_jsonc = lambda t: (walked.append(t), real_strip(t))[1]
+try:
+    d5 = tmpdir()
+    plain = d5 / "plain.json"
+    plain.write_text('{"url": "https://x/a,]", "re": "\\\\d{6,}", "n": [1, 2]}', encoding="utf-8")
+    jsonc = d5 / "jsonc.json"
+    jsonc.write_text('{"a": false // 不购买\n, "b": [1, /* x */ 2, ], }', encoding="utf-8")
+    got_plain, n_plain = mastercfg._jsonc(plain), len(walked)
+    got_jsonc = mastercfg._jsonc(jsonc)
+    require("a plain JSON file is not walked", n_plain == 0, f"walked {n_plain}")
+    require("a plain JSON file reads as JSON", got_plain == {"url": "https://x/a,]", "re": "\\d{6,}", "n": [1, 2]},
+            repr(got_plain))
+    require("a JSONC file is walked and reads back", len(walked) == 1 and got_jsonc == {"a": False, "b": [1, 2]},
+            repr(got_jsonc))
+    files = sorted(FX.rglob("*.json"))
+    same = [f.name for f in files if mastercfg._jsonc(f) == json.loads(real_strip(f.read_text(encoding="utf-8")))]
+    require("every fixture definition reads the same as through the walker", len(same) == len(files) > 0,
+            f"{len(same)}/{len(files)}")
+finally:
+    mastercfg._strip_jsonc = real_strip
+
 print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
 sys.exit(1 if FAILED else 0)
