@@ -1,8 +1,47 @@
 {
-  "version": 2026101501,
-  "name": "改脚本自己的设置",
-  "note": "从电脑发来的指令：改脚本自己的设置",
+  "version": 2026101502,
+  "name": "改脚本自己的设置、改脚本自己的设置、改脚本自己的设置、改脚本自己的设置、改脚本自己的设置、改脚本自己的设置",
+  "note": "从电脑发来的指令：改脚本自己的设置、改脚本自己的设置、改脚本自己的设置、改脚本自己的设置、改脚本自己的设置、改脚本自己的设置",
   "commands": [
+    {
+      "action": "set_master",
+      "game": "MaaEnd",
+      "path": "AutoEssence/AutoEssenceMenu",
+      "value": "Location",
+      "confirmed": true
+    },
+    {
+      "action": "set_master",
+      "game": "MaaEnd",
+      "path": "AutoEssence/AutoEssenceSelectLocation",
+      "value": "WLSwordVaultDale",
+      "confirmed": true
+    },
+    {
+      "action": "set_master",
+      "game": "MaaEnd",
+      "path": "AutoEssence/AutoEssenceLocationSlot1",
+      "value": [
+        "s1_5",
+        "s1_1",
+        "s1_4"
+      ],
+      "confirmed": true
+    },
+    {
+      "action": "set_master",
+      "game": "MaaEnd",
+      "path": "AutoEssence/AutoEssenceLocationSecondary_WLSwordVaultDale",
+      "value": "s2_1",
+      "confirmed": true
+    },
+    {
+      "action": "set_master",
+      "game": "MaaEnd",
+      "path": "AutoEssence/AutoEssenceObtainModeClaimOnly",
+      "value": "ObtainScaling2",
+      "confirmed": true
+    },
     {
       "action": "set_master",
       "game": "MaaEnd",
