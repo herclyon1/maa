@@ -67,8 +67,28 @@ SAMPLES = {
         "2026-09-27 09:21:24,986 ERROR TaskExecutor BaseCombatTask:combat check not in combat",
         "2026-09-30 18:01:49,174 ERROR TaskExecutor Denia:clicked liberation but no effect",
         "2026-10-10 09:06:42,695 ERROR TaskExecutor BaseCombatTask:not in_team while switching",
+        "2026-10-15 09:20:31,117 ERROR ok.core.start_controller DeviceManager:refresh error Traceback (most recent call last):",
+        "2026-10-15 09:20:31,127 ERROR ok.core.start_controller start_controller:check_device_error exception: 'NoneType' object is not subscriptable Traceback (most recent call last):",
+        "2026-10-15 09:20:31,127 ERROR ok.core.start_controller start_controller:waiting for game to start error 'NoneType' object is not subscriptable",
     ],
 }
+# Every ERROR line of one whole successful round, as the machine wrote it (trailing spaces
+# kept): 2026-10-15/wuwa/OK-WW-05-19-01, alarm f7a4bb6a. The first three were unlisted and
+# pushed; the round logged in at 09:20:33 and ended with 「Daily Task Completed」.
+ROUND_1015 = """\
+2026-10-15 09:20:31,117 ERROR ok.core.start_controller DeviceManager:refresh error Traceback (most recent call last):
+  File "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\ok\\util\\window.py", line 343, in is_match
+pywintypes.error: (1400, 'GetClassName', '无效的窗口句柄。')
+2026-10-15 09:20:31,118 INFO ok.core.start_controller start_controller:start_device: None
+2026-10-15 09:20:31,127 ERROR ok.core.start_controller start_controller:check_device_error exception: 'NoneType' object is not subscriptable Traceback (most recent call last):
+TypeError: 'NoneType' object is not subscriptable
+2026-10-15 09:20:31,127 ERROR ok.core.start_controller start_controller:waiting for game to start error 'NoneType' object is not subscriptable 
+2026-10-15 09:20:33,135 ERROR ok.core.start_controller start_controller:waiting for game to start error Selected capture method is not supported by the game or your system! 
+2026-10-15 09:22:59,239 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat 
+2026-10-15 09:22:59,239 ERROR TaskExecutor BaseCombatTask:combat check not in combat 
+2026-10-15 09:25:19,909 ERROR TaskExecutor Qingxiao:clicked liberation but no effect 
+2026-10-15 09:31:41,000 INFO TaskExecutor DailyTask:Daily Task Completed
+"""
 # Real failures inside rounds booked as a success: never on the list.
 MUST_PUSH = {
     "OK-WW": [
@@ -76,6 +96,10 @@ MUST_PUSH = {
         "2026-10-05 10:34:50,807 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):",
         "2026-10-05 10:35:22,335 ERROR TaskExecutor NightmareNestTask:can't find gray_book_boss, make sure f2 is the hotkey for book",
         "2026-10-05 10:34:52,359 ERROR TaskExecutor DailyTask:附加任务出错，不拖垮当趟日常:  Traceback (most recent call last):",
+        # Made up from the real 10-15 lines: the same words outside the start-wait loop, or
+        # a start error with another message, are not what was checked; they go to the group.
+        "2026-10-15 09:25:00,000 ERROR TaskExecutor DeviceManager:refresh error Traceback (most recent call last):",
+        "2026-10-15 09:20:31,127 ERROR ok.core.start_controller start_controller:waiting for game to start error 'NoneType' object has no attribute 'hwnd'",
     ],
     "MAA": [
         "[2026-10-02 23:40:26.537][ERR][VersionUpdateDialogViewModel] <2> mirrorc failed",
@@ -130,6 +154,11 @@ if BOARD.is_dir():
         if e.source.startswith("~/"):
             where = e.source.split(" (", 1)[0]
             check(f"line {e.line_no}: its source {where} exists", Path(where).expanduser().is_file(), True)
+
+print("[the 10-15 09:20 round (alarm f7a4bb6a): every ERROR line is listed, as recovered]")
+check("nothing unlisted in the whole round", ge.unregistered("OK-WW", ROUND_1015), [])
+check("the start-wait kinds count as recovered, not not-a-fault",
+      sorted({e.kind for e, _l, _n in ge.recovered_kinds("OK-WW", ROUND_1015)}), ["recovered"])
 
 print("[the parser refuses the bad shapes]")
 bad = ("MAA | x | verdict: fine - it is ok | src\n"
