@@ -4823,7 +4823,14 @@
 "test_mute_verdicts.py": [],
 "test_need_table.py": [
 "__init__",
-"build"
+"build",
+"config",
+"errwatch",
+"mastercfg",
+"mastercfg_maa",
+"mastercfg_okww",
+"names",
+"texts"
 ],
 "test_needtable_publish.py": [
 "__init__",
