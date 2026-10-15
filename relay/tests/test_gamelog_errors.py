@@ -72,8 +72,9 @@ SAMPLES = {
         "2026-10-15 09:20:31,127 ERROR ok.core.start_controller start_controller:waiting for game to start error 'NoneType' object is not subscriptable",
     ],
 }
-# Every ERROR line of one whole successful round, as the machine wrote it (trailing spaces
-# kept): 2026-10-15/wuwa/OK-WW-05-19-01, alarm f7a4bb6a. The first three were unlisted and
+# The ERROR kinds of one whole successful round, each line as the machine wrote it (trailing
+# spaces kept; a few INFO and traceback lines between them, the whole log is in the OK-WW
+# corpus): 2026-10-15/wuwa/OK-WW-05-19-01, alarm f7a4bb6a. The first three were unlisted and
 # pushed; the round logged in at 09:20:33 and ended with 「Daily Task Completed」.
 ROUND_1015 = """\
 2026-10-15 09:20:31,117 ERROR ok.core.start_controller DeviceManager:refresh error Traceback (most recent call last):
@@ -87,7 +88,7 @@ TypeError: 'NoneType' object is not subscriptable
 2026-10-15 09:22:59,239 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat 
 2026-10-15 09:22:59,239 ERROR TaskExecutor BaseCombatTask:combat check not in combat 
 2026-10-15 09:25:19,909 ERROR TaskExecutor Qingxiao:clicked liberation but no effect 
-2026-10-15 09:31:41,000 INFO TaskExecutor DailyTask:Daily Task Completed
+2026-10-15 09:31:40,834 INFO TaskExecutor DailyTask:Daily Task Completed
 """
 # Real failures inside rounds booked as a success: never on the list.
 MUST_PUSH = {
