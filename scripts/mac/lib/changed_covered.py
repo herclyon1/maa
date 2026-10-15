@@ -232,8 +232,8 @@ def tests_for(base: str) -> tuple[list[str], str]:
     # Data, not code (2026-10-16): the phone/order mailbox queue/config.json (order.sh commits it, often between
     # deploys; no test reads the repo's copy - test_inbox_poll / test_order_push_main build their own) and the
     # deploy's own bookkeeping relay/state/last-deployed-notes.sha1. Counting them as "outside" made every deploy
-    # after an order run all 445 tests: 10-16 01:2x-03:4x five deploys of a 3-file change ran the full suite (the
-    # owner: 「你就改了那么几十行代码，你全量检测什么呢？」).
+    # after an order run all 445 tests: 10-16 01:2x-03:4x five deploys of a 3-file change ran the full suite, which
+    # the owner called out (a few dozen changed lines should not cost a full run).
     outside = [l for l in diff if not (l.startswith("relay/ark_relay/") or l in ("relay/service.py", "relay/boot_stages.py")
                                         or l.startswith("relay/tests/") or l.startswith("relay/RELEASE-NOTES") or l.endswith("manifest.json")
                                         or l.startswith("docs/") or l.startswith("scripts/") or l.endswith(".md")
