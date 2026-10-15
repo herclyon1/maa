@@ -66,3 +66,8 @@ a4be51cb a 5e6085de (ported to features/run/maaend_watchdog.py)
 62d263e2 a same fix in main as b591704e
 f0058414 a same fix in main as 25a2b6c9
 7af04b61 a same fix in main as c4b1cd3e
+# 10-15: the four worker branches below were cherry-picked onto main (deploy-1015n) instead of merged; read both diffs.
+c4ed2cc4 a same fix in main as fe1949a2
+c4e4f8b8 a same fix in main as 00cae82d
+52eb68d2 a same fix in main as 4221bb25
+582bfe70 a same fix in main as 4221bb25
