@@ -48,9 +48,11 @@ def _run(case_id: str, root: Path) -> "tuple[str, str]":
     p = subprocess.run([sys.executable, str(TEST), "--relay-root", str(root), "--case", case_id],
                        capture_output=True, text=True, timeout=120)
     out = p.stdout + p.stderr
-    if "Traceback" in out or "HARNESS" in out:
-        return "broken", out[-600:]
     lines = out.splitlines()
+    # A crash starts a line with 「Traceback」; an assertion may quote a log line that has the
+    # word inside it (10-15: OK-WW's 「refresh error Traceback (most recent call last):」).
+    if any(ln.startswith("Traceback") for ln in lines) or "HARNESS" in out:
+        return "broken", out[-600:]
     if p.returncode == 0 and f"  ✓ {case_id} " in out:
         return "green", ""
     if p.returncode == 1 and any(ln.startswith(f"  ✗ {case_id} ") for ln in lines):

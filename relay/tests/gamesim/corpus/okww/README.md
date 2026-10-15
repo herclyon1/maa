@@ -27,7 +27,7 @@ case's evidence; never edit `expect` to match the new output.
     `raw_has` / `raw_lacks` (substrings), `failed_tasks` (`has` / `lacks` / `any_of`),
     `verdict` (`clean`, and `has` / `lacks` over the undone items, the 「· …」 lines of the
     outcome message), `group.any_of` (what reaches the group for a successful round: the
-    undone items plus the ERROR lines `gamelog_errors` has not registered);
+    undone items plus the ERROR lines `gamelog_errors` has not registered), `group.none_of` (substrings that must not reach the group, for a line the program got past);
   - `evidence` - `[{kind, ref}]`, kinds `ledger` (BOARD/报错台账.txt), `owner` (his words, with
     where they are written), `commit`, `alarm` (state/alerts copy of what was pushed), `frame`,
     `log` (line numbers in this run's log), `relay` (relay.log / ledger lines);
@@ -63,6 +63,7 @@ today's wording, so a reworded message does not turn a case red while a wrong ve
 | 0831-shortage-before-fight-said-as-shortage | 3f6b2fbe~1 red, 5ef071e7~1 red, f912c1f0~1 red | f912c1f0 green | verdict clean: want False, got None; undone items lack '结晶波片不足': [] |
 | 1005-additional-task-error-heard | 5fddd375~1 red | 5fddd375 green | undone items lack '附加任务出错': ['· 残象聚落：点了点位，但传送不过去，一次没打', '· 周本：进了本，但日志里没有开打的记录：一次没打'] |
 | 1012-second-run-weekly-stop-heard | f912c1f0~1 red | f912c1f0 green | verdict clean: want False, got None; undone items lack '周本': []; undone items lack '没等到结算页': [] |
+| 1015-start-wait-window-gone-recovered (2026-10-15) | a95fe613~1 red | a95fe613 green | the group hears 'DeviceManager:refresh error': "2026-10-15 09:20:31,117 ERROR ok.core.start_controller DeviceManager:refresh error Traceback (most recent call last):… |
 
 ## Listed failures with no case, and why
 

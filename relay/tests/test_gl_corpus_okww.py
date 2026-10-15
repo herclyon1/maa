@@ -186,6 +186,8 @@ def compare(case: dict, got: dict) -> list[str]:
     for alts in (exp.get("group") or {}).get("any_of", []):
         if not any(s in group for s in alts):
             bad.append(f"the group hears none of {alts!r}: {group.strip()[:400]!r}")
+    bad += [f"the group hears {s!r}: {group.strip()[:400]!r}"
+            for s in (exp.get("group") or {}).get("none_of", []) if s in group]
     return bad
 
 

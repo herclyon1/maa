@@ -573,6 +573,61 @@
     ],
     "green_at": "f912c1f0"
    }
+  },
+  {
+   "id": "1015-start-wait-window-gone-recovered",
+   "run": "2026-10-15/wuwa/OK-WW-05-19-01",
+   "incident": "10-15 alarm f7a4bb6a: three start-wait ERROR lines (a window closed while OK-WW listed windows) in a round that connected 2 s later and finished every task; pushed as unlisted",
+   "config": {
+    "DailyTask": {
+     "Additional Tasks to Run After Daily Task": [
+      "Auto Farm all Nightmare Nest"
+     ],
+     "Which to Farm": "Tacet Suppression"
+    },
+    "_source": "the machine's master D:\\ark\\automas\\data\\c5e96ddc-...\\Default\\ConfigFile\\DailyTask.json read 10-15 09:43 (Beijing), right after the run",
+    "NightmareNestTask": {
+     "Only Farm These Nests": "梦枢天罗,落渊南丘",
+     "_source": "the run's own log: nightmare nest: 只刷 ['梦枢天罗', '落渊南丘']（设置来自母本）"
+    }
+   },
+   "expect": {
+    "ok": true,
+    "verdict": {
+     "clean": true
+    },
+    "group": {
+     "none_of": [
+      "DeviceManager:refresh error",
+      "check_device_error",
+      "'NoneType' object is not subscriptable"
+     ]
+    }
+   },
+   "evidence": [
+    {
+     "kind": "log",
+     "ref": "line 63 '_wait_for_process_exit success 15292' (OK-WW's updater, 09:20:31.108); line 65 'DeviceManager:refresh error' with line 76 'pywintypes.error: (1400, 'GetClassName', ...)'; line 79 'check_device_error exception'; line 85 'waiting for game to start error 'NoneType' ...'; line 96 'hwnd changed,connected:1' (09:20:33)"
+    },
+    {
+     "kind": "log",
+     "ref": "line 474/477 '指定点位都已打满'; line 654 'must_use completed'; line 668 '活跃奖励：领完核对通过'; line 675 '战令：页面打开了，点了领取'; line 678 'Daily Task Completed'"
+    },
+    {
+     "kind": "alarm",
+     "ref": "〔报警 f7a4bb6a〕 10-15 09:31:57 (Beijing) 「鸣潮日志里有没查清的报错」; technical log R-20261015-0931-2"
+    },
+    {
+     "kind": "commit",
+     "ref": "a95fe613: the three start-wait lines registered as recovered (OK-WW start_controller.py L128-144, L290-296; DeviceManager.py L307-314)"
+    }
+   ],
+   "proof": {
+    "red_at": [
+     "a95fe613~1"
+    ],
+    "green_at": "a95fe613"
+   }
   }
  ]
 }
