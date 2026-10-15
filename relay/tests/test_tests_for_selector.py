@@ -58,6 +58,12 @@ with tempfile.TemporaryDirectory() as td:
     check("说了原因", "全量" in why)
     state["diff"] = ["relay/ark_relay/features/phone/phone.py"]
 
+    print("\n[信箱文件和部署记账跟着改：不算代码改动，照常只跑相关的]")
+    state["diff"] = ["relay/ark_relay/features/phone/phone.py", "queue/config.json", "relay/state/last-deployed-notes.sha1"]
+    picked, why = cc.tests_for("HEAD")
+    check("仍只选 a、new、scan", picked, ["test_a.py", "test_new.py", "test_scan.py"])
+    state["diff"] = ["relay/ark_relay/features/phone/phone.py"]
+
     print("\n[映射表不认识某个测试：全量]")
     (t / "relay" / "tests" / "test_unknown.py").write_text("", encoding="utf-8")
     picked, why = cc.tests_for("HEAD")
