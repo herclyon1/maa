@@ -37,7 +37,7 @@ def check(label, got, want):
 
 
 FAKE = r'''
-import json, os, subprocess, sys, time
+import json, sys, time
 from pathlib import Path
 cfg = json.loads(Path(__file__).with_name("fake.json").read_text(encoding="utf-8"))
 mode = cfg["mode"]
@@ -55,11 +55,13 @@ if mode == "pyfail" and not reading:
     sys.stderr.write("winrun: remote produced no output\n")
     sys.exit(4)
 print("[机器时间] 10-10 23:00:00")
-r = subprocess.run([sys.executable, sys.argv[2]], capture_output=True, text=True,
-                   env=dict(os.environ, PYTHONPATH=cfg["shim"]))
-sys.stdout.write(r.stdout)
-sys.stderr.write(r.stderr)
-sys.exit(r.returncode)
+# The --py script runs in this process, as its own __main__ with the arklog shim first
+# on the path: one interpreter fewer per call (each call started three; under a load of
+# 8 the file took up to 13.7 s, 10-16). Its exit code and output are the process's.
+import runpy
+sys.path.insert(0, cfg["shim"])
+sys.argv = [sys.argv[2]]
+runpy.run_path(sys.argv[0], run_name="__main__")
 '''
 
 base = tmpdir()
@@ -101,11 +103,17 @@ with socket.create_server(("127.0.0.1", 0)) as _s:
     CLOSED = f"127.0.0.1:{_s.getsockname()[1]}"   # nothing listens here once it is closed
 
 
+# The probe's and a hung read's limits, short so the two waits that run them out cost
+# half a second each (they were 1 s). A probe to the local listener connects in the kernel
+# whatever the load, and a hung read is killed at its limit however late it started.
+SHORT_S = "0.5"
+
+
 def run(*args, mode="ok", timeout="15", probe=REACHABLE):
     (base / "fake.json").write_text(json.dumps({"mode": mode, "log": str(log), "shim": str(shim)}),
                                     encoding="utf-8")
     env = dict(os.environ, TECHLOG_WINRUN=f"{sys.executable} {fake}", TECHLOG_REMOTE_DIR=str(tech),
-               TECHLOG_FETCH_TIMEOUT=timeout, TECHLOG_PROBE=probe, TECHLOG_PROBE_TIMEOUT="1")
+               TECHLOG_FETCH_TIMEOUT=timeout, TECHLOG_PROBE=probe, TECHLOG_PROBE_TIMEOUT=SHORT_S)
     r = subprocess.run([sys.executable, str(TOOL), *args], capture_output=True, text=True, env=env, timeout=60)
     return r.returncode, r.stdout, r.stderr
 
@@ -142,9 +150,9 @@ rc, out, err = run("red", mode="down")
 check("exit code", rc, 2)
 check("one 没读到 line naming why", out.splitlines(),
       ["技术日志没读到：最近 3 天（winrun: remote produced no output (script never ran, or machine unreachable)）"])
-rc, out, err = run("red", "--days", "1", mode="hang", timeout="1")
+rc, out, err = run("red", "--days", "1", mode="hang", timeout=SHORT_S)
 check("a hung read: exit code", rc, 2)
-check("a hung read: says it timed out", out.splitlines(), ["技术日志没读到：最近 1 天（超过 1 秒没回来）"])
+check("a hung read: says it timed out", out.splitlines(), ["技术日志没读到：最近 1 天（超过 0.5 秒没回来）"])
 locked = tech / "2026-10-08.md"
 locked.write_text("x\n", encoding="utf-8")
 locked.chmod(0)
