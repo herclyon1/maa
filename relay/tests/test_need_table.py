@@ -232,7 +232,7 @@ check("等级表来自专武应答（她自己还没有）", s5["sources"]["leve
 check("专武待定，理由说清", (s5["weapon"]["status"], s5["weapon"]["name"]), ("待定", ""))
 require("待定理由提到计算器未收录", "计算器还没收录" in s5["weapon"]["reason"], s5["weapon"]["reason"])
 for name, want in PURRCHENA.items():
-    check(f"噗切娜 {name}", (rows5[name]["need"], rows5[name]["group"]), (want, "噗切娜"))  # no rules yet: no per-step split
+    check(f"噗切娜 {name}", (rows5[name]["need"], rows5[name]["group"]), (want, "干员养成"))  # no rules yet: per-owner section, named by use
 check("含天赋的两行有说明", (rows5["协议棱柱"]["note"], rows5["协议棱柱组"]["note"]), ("预览表的数含天赋树", "预览表的数含天赋树"))
 check("caliber 写专武待定", g5["caliber"], "指定干员 噗切娜（2026-09-24 上线）：1→90 全突破、四技能 12、专武待定 1→90；不含天赋")
 require("footnote 提醒预览表含天赋", g5["footnote"].endswith("（上线前按客户端预览表，棱柱和折金票含天赋树）"), g5["footnote"])
@@ -303,9 +303,9 @@ require("游戏层的 rows / caliber / footnote / groups / useSource 都镜像�
         == (cur["caliber"], cur["footnote"], cur["groups"], cur["useSource"]))
 check("caliber 说的是祀", g15["caliber"], "最新六星 祀（2026-10-15 上线）：1→90 全突破、四技能 12、专武 玉中身 1→90；不含天赋")
 check("明河的 caliber 叫下一位", nxt["caliber"], "下一位六星 明河（2026-11-05 上线）：1→90 全突破、四技能 12、专武 唤月 1→90；不含天赋")
-check("每个标准带自己的节顺序：明河没有计算器分步，按人分节",
+check("每个标准带自己的节顺序：明河没有计算器分步，按人分节、节名按用途",
       (cur["groups"][:2], nxt["groups"], bool(cur["useSource"]), nxt["useSource"]),
-      (["干员精英化", "干员技能升级"], ["明河", "专武 唤月", "明河 + 专武 唤月"], True, ""))
+      (["干员精英化", "干员技能升级"], ["干员养成", "武器养成", "多处共用"], True, ""))
 check("coverage 指当前、并写出下一位", (g15["coverage"]["operator"], g15["coverage"]["weapon"], g15["coverage"]["next"], g15["coverage"]["nextError"]),
       ("祀", "玉中身", {"name": "明河", "releasedAt": "2026-11-05", "status": "未实装", "weapon": "唤月"}, ""))
 

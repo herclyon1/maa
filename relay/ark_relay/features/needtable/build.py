@@ -26,7 +26,7 @@ and 「养成只按照最新的一个一个来，就是玉中身」 (raise the n
 `--char` builds one standard, `role: "named"`. Every standard carries its own `rows`,
 `caliber`, `footnote`, `sources`, `weapon`, plus (additive, 2026-10-15) `role`, `label`,
 `groups` (its section order: a standard whose numbers are not from the calculator has
-per-owner groups, not the use groups), `useSource` and `originMissing`.
+per-owner sections 干员养成 / 武器养成 / 多处共用, not the step groups), `useSource` and `originMissing`.
 `coverage.next` is `{name, releasedAt, status, weapon}` of the second standard, or null.
 
 ## Essence advice (`standards[].weapon.essence`, additive 2026-10-15)
@@ -225,10 +225,12 @@ WEAPON_TAG_GROUP = "10208"
 # wiki's own limit for them - and 10-12 are mastery.
 # A material one build uses at more than one step goes to USE_SHARED, with every step
 # and its count in `uses`. Only calculator rules say which step; a build read from the
-# wiki cards or the preview table keeps the old per-owner group (who / 专武 …).
+# wiki cards or the preview table gets per-owner sections 干员养成 / 武器养成 / 多处共用.
 USE_ELITE, USE_SKILL_UP, USE_SKILL_MASTER, USE_CHAR_LV = "干员精英化", "干员技能升级", "干员技能专精", "干员等级提升"
 USE_WEAPON_BREAK, USE_WEAPON_LV, USE_SHARED = "武器突破", "武器等级提升", "多处共用"
 USE_ORDER = (USE_ELITE, USE_SKILL_UP, USE_SKILL_MASTER, USE_CHAR_LV, USE_WEAPON_BREAK, USE_WEAPON_LV, USE_SHARED)
+# Sections for a build without calculator step rules: by whom it serves, still named by use.
+OWNER_CHAR, OWNER_WEAPON = "干员养成", "武器养成"
 # 2-9 are upgrades, 10-12 mastery: the official wiki's own line, quoted in USE_SOURCE from its
 # entry for that leaf material: 「作为干员升级等级不高于9级的技能时的消耗素材」 (read 2026-09-23).
 SKILL_UP_MAX = 9
@@ -1092,8 +1094,10 @@ def build_standard(src: RulesSource, ctx: dict, ops: list[dict], who: str, role:
     char_gold, char_exp = level_totals(lv["charLevelRules"])
     weap_gold, weap_exp = level_totals(lv["weaponLevelRules"])
     gold_total = op_gold + char_gold + w_gold + weap_gold
-    who_group = who
-    weapon_group = f"专武 {weapon['name']}" if weapon else "专武（待定）"
+    # Fallback sections when the calculator has no step rules for her yet (the next one, read
+    # from the preview table): named by use, not by her name - user 2026-09-23 「按用途分类…
+    # 哪些是角色，哪些是武器」; the App shows the same three names (Stockpile.groupTitle).
+    who_group, weapon_group = OWNER_CHAR, OWNER_WEAPON
     wuses = weapon_uses(wneed)
     wiki_ids = wiki_material_ids(src)
     origin_missing = []
@@ -1125,10 +1129,10 @@ def build_standard(src: RulesSource, ctx: dict, ops: list[dict], who: str, role:
             row.update(need=None, exp=m["exp"], sumInto=EXP_CHAR if m["kind"] == "charExpMaterials" else EXP_WEAPON,
                        stage="干员经验" if m["kind"] == "charExpMaterials" else "武器经验")
         elif nm == "折金票":
-            row.update(need=gold_total, group=USE_SHARED if cuses is not None else f"{who_group} + {weapon_group}", owner="干员 + 专武",
+            row.update(need=gold_total, group=USE_SHARED, owner="干员 + 专武",
                        note=("；".join(x for x in (row["note"], f"干员 {op_gold + char_gold:,} + 专武 {w_gold + weap_gold:,}") if x)))
         elif c and w:
-            row.update(need=c + w, group=use_group or f"{who_group} + {weapon_group}", note=f"干员 {c} + 专武 {w}")
+            row.update(need=c + w, group=use_group or USE_SHARED, note=f"干员 {c} + 专武 {w}")
         elif c:
             row.update(need=c, group=use_group or who_group)
         elif w:
@@ -1152,7 +1156,7 @@ def build_standard(src: RulesSource, ctx: dict, ops: list[dict], who: str, role:
                  "section": "经验与货币", "stage": "武器经验", "virtual": True, "note": "武器检查套组 / 装置 / 单元按经验值折算" + wnote})
     # Rows in section order (the page takes sections in first-seen order): the use
     # sections, then any per-owner fallback groups, then rows with no group.
-    order = {g: i for i, g in enumerate(USE_ORDER + (who_group, weapon_group, f"{who_group} + {weapon_group}"))}
+    order = {g: i for i, g in enumerate(USE_ORDER[:-1] + (who_group, weapon_group, USE_SHARED))}
     rows.sort(key=lambda r: (order.get(r["group"], len(order)), 2 if r["need"] is None else 1 if r["need"] == 0 else 0,
                              -(r["need"] or 0), r["name"]))
     groups = list(dict.fromkeys(r["group"] for r in rows if r["group"]))
