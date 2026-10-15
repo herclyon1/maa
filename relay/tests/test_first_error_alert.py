@@ -61,11 +61,24 @@ class _Notifier:
         return []
 
 
+def _settled():
+    """No handler on the ark logger has anything left to send. A record is queued by
+    the logging call itself (ErrorKindAlert.emit runs on the caller's thread) and an
+    item leaves the queue only after it was delivered and counted, so once every queue
+    is empty no further push can come: a wrongly-sent extra one would still be queued."""
+    return not any(pending(x) for x in ARK.handlers if isinstance(x, errwatch.ErrorKindAlert))
+
+
 def _wait(n, count, secs=3.0):
+    """Until nothing is left to send (n then has every push it will get, `count` of
+    them when the code is right; the check after the call says), or `secs`. Until 10-16
+    a wait that got fewer than `count` sat out all of `secs` - every "no more is
+    pushed" check - and each wait added 0.1 s: 7.9 of the file's 8.7 s were those sleeps."""
     t0 = time.monotonic()
-    while len(n.sent) < count and time.monotonic() - t0 < secs:
-        time.sleep(0.02)
-    time.sleep(0.1)   # let a wrongly-sent extra one land too
+    while time.monotonic() - t0 < secs:
+        if _settled():
+            return
+        time.sleep(0.01)
 
 
 ARK = logging.getLogger(errwatch.ARK)
@@ -536,7 +549,6 @@ def section_recovered():
     lg.warning("手机通道断了 20 秒，自己重新连上了", extra=errwatch.recovered())
     lg.warning("维护公告：终末地 取不到")              # still broken: pushed
     _wait(n, 1)
-    time.sleep(0.3)
     check("没好的照报，自己好了的不报", [b for _, b, _ in n.sent if "重新连上" in b], [])
     check("没好的那条进群", len(n.sent), 1)
     rows = faults(R)
@@ -566,7 +578,7 @@ def section_recovered_push_thread():
     t = threading.Thread(target=on_push_thread, name=errwatch.PUSH_THREAD + "-z")
     t.start()
     t.join()
-    time.sleep(0.3)
+    _wait(n, 0)
     check("推送线程上的报错不回到推送里", n.sent, [])
     got = [r for r in faults(R) if "推送线程自愈样例" in str(r.get("line"))]
     check("推送线程上自己好了的记进当天的报错表", bool(got) and got[0].get("recovered"), True)
@@ -598,7 +610,7 @@ def section_drain():
     check("群收到一条", len(n.sent), 1)
     n2 = _Notifier()
     h2 = make(n2, D, pace=0)
-    time.sleep(0.2)
+    _wait(n2, 0)
     check("新进程（开机）不再重发同一条", n2.sent, [])
     drop(h)
     drop(h2)
