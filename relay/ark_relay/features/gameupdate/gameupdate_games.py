@@ -70,15 +70,19 @@ def _trace(desk, **entry) -> None:
             log.debug("游戏更新：这一屏没记进核对用的记录", exc_info=True)
 
 
-def _launcher_note(desk, game: str, stage: str, scr, busy_words, ready_words) -> None:
+def _launcher_note(desk, game: str, stage: str, scr, busy_words, ready_words,
+                   dialog_words=()) -> None:
     """What a launcher screen read as: the working word on it (正在下载 / 下载中 ...),
-    whether the ready button was there, and the raw text and screenshot."""
+    whether the ready button was there, whether a dialog the flow knows was up
+    (the disk-space 「系统提示」: a recognised screen, not one without words), and the
+    raw text and screenshot."""
     try:
         why = _unread(scr)
         busy = "" if why else next((w for w in busy_words if scr.has(w)), "")
         line = scr.find(busy) if busy else None
         _trace(desk, what="launcher", game=game, stage=stage, unread=why, busy=busy,
                ready=bool(not why and any(scr.has(w) for w in ready_words)),
+               dialog=bool(not why and dialog_words and scr.has(*dialog_words)),
                line=getattr(line, "text", ""), dump=scr.dump(8), shot=str(scr.shot))
     except Exception:  # evidence only, never in the flow's way
         log.debug("游戏更新：这一屏没记进核对用的记录", exc_info=True)
@@ -149,7 +153,7 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
         return ""
     sleep(25)
     scr = desk.read(focus="Games")
-    _launcher_note(desk, "终末地", "first", scr, _EF_BUSY, ("开始游戏",))
+    _launcher_note(desk, "终末地", "first", scr, _EF_BUSY, ("开始游戏",), _EF_SPACE_WORDS)
     if why := _unread(scr):
         # Not "up to date" and not "no button": nothing of the launcher was read.
         # Not killed either - a launcher sitting in the tray may be downloading.
@@ -187,7 +191,7 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
     while time.monotonic() < deadline:
         sleep(poll_s)
         scr = desk.read(focus="Games")
-        _launcher_note(desk, "终末地", "wait", scr, _EF_BUSY, ("开始游戏",))
+        _launcher_note(desk, "终末地", "wait", scr, _EF_BUSY, ("开始游戏",), _EF_SPACE_WORDS)
         if not _unread(scr) and scr.has("开始游戏"):
             ready = True
             break
@@ -201,8 +205,11 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
             log.info("游戏更新：终末地启动器弹「系统提示」（%s），%s", _space_line(scr),
                      f"已点「确认」（{how}），等它下载" if how else "「确认」没点上，下一轮再点")
             continue
+        # A frame with none of the words: its screenshot, not the first OCR lines (those
+        # are the desktop icons left of the launcher, 10-15 12:44:15).
         log.info("游戏更新：终末地启动器 %s", _unread(scr) or
-                 (next((ln for w in _EF_BUSY if (ln := scr.find(w))), None) or scr.dump(4)))
+                 (next((ln for w in _EF_BUSY if (ln := scr.find(w))), None)
+                  or f"这一帧没认出下载 / 安装的字（截图 {scr.shot}）"))
     if not ready:
         _note(problems, f"终末地：{budget_s / 60:.0f} 分钟内没等到「开始游戏」，启动器留在后台继续下，下次开机再确认")
         return ""

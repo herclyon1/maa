@@ -423,14 +423,18 @@ check("#60 两个字点到别的行：没过", got["#60"].status, mc.FAIL)
 got, _ = judge("gameupdate", {"screens": [dict(click_ok, log=["click 960,700"])]}, tmpdir())
 check("#60 没说点的是哪行：没过", got["#60"].status, mc.FAIL)
 
-print("\n[#61 启动器下载时屏上的字：认出「正在下载」→ 过；一个也认不出 → 没过]")
+print("\n[#61 启动器下载时屏上的字：认出「正在下载」→ 过；等待中一个也认不出、或连着 3 帧认不出 → 没过]")
 waiting = {"what": "launcher", "game": "终末地", "stage": "wait", "unread": "", "busy": "正在下载", "ready": False,
            "line": "正在下载 1.2GB/8.5GB", "dump": "正在下载 1.2GB/8.5GB / 暂停", "shot": "shot-1.png"}
 got, _ = judge("gameupdate", {"screens": [waiting]}, tmpdir())
 check("#61 过了", got["#61"].status, mc.PASS)
 unknown = dict(waiting, busy="", line="", dump="版本更新公告 / 活动")
-got, n = judge("gameupdate", {"screens": [waiting, unknown]}, tmpdir())
-check("#61 认不出：没过，推了", (got["#61"].status, len(n.fails("#61"))), (mc.FAIL, 1))
+got, n = judge("gameupdate", {"screens": [unknown, unknown]}, tmpdir())
+check("#61 等待中一个也认不出：没过，推了", (got["#61"].status, len(n.fails("#61"))), (mc.FAIL, 1))
+got, n = judge("gameupdate", {"screens": [waiting, unknown, unknown, unknown]}, tmpdir())
+check("#61 连着 3 帧认不出：没过，推了", (got["#61"].status, len(n.fails("#61"))), (mc.FAIL, 1))
+got, n = judge("gameupdate", {"screens": [waiting, unknown, waiting]}, tmpdir())
+check("#61 夹在中间的一帧认不出：过了，不推", (got["#61"].status, len(n.fails("#61"))), (mc.PASS, 0))
 
 
 print("\n[#64 终末地公告读不到：报警进了群 → 过；抄送里没有 → 没过]")
@@ -672,6 +676,91 @@ check("第一眼和等待中都记下了", stages[:2], [("first", ""), ("wait", 
 got, _ = judge("gameupdate", {"screens": d.trace}, tmpdir())
 check("#61 判过", got["#61"].status, mc.PASS)
 check("run_deferred 用过的那张桌子的 trace 拿得到", (gameupdate._LAST_DESK.__setitem__(0, d), gameupdate.last_trace())[1] == d.trace, True)
+
+print("\n[#61 重放 10-15 12:32-12:49 那一轮：没认出字的帧不到连着 3 帧不报，连着 3 帧才报；「系统提示」那一帧算认出]")
+# relay.log 2026-10-15 (ark-evidence/daily/2026-10-15/relay-2026-10-15.log lines 753-811), the
+# round after c47dfca6: the first look was the disk-space 「系统提示」 (12:32:13, 「确认」 clicked),
+# then one wait frame each ~36 s. A frame the log shows as Line(text='正在下载', x=1376, y=788,
+# w=64, h=16) is replayed with that line; a frame the log shows as desktop-icon text (the
+# wait loop logged dump(4) when no word was read) is replayed with those icon lines only.
+# 12:44:15 is the alarm's frame: its screenshot shot-84e4bfdf.png shows the launcher in
+# front with 「正在下载」 on the yellow button, so on that frame the OCR missed the button.
+# The other four such frames have no screenshot here; the replay keeps them as read.
+ICONS = ["控]面板", "Clashfor", "Windows", "EPIC", "EPICGames", "Launcher", "0", "ToDesk"]
+
+
+def frame(stamp, *extra, icons=ICONS):
+    lines = [dk.Line(t, 90, 61 + 17 * i, 50, 11) for i, t in enumerate(icons)] + list(extra)
+    return dk.Screen(lines, Path(f"shot-{stamp}.png"))
+
+
+DL = dk.Line("正在下载", 1376, 788, 64, 16)
+INST = dk.Line("安装中", 1384, 788, 47, 16)
+SPACE = [dk.Line("系统提示", 929, 416, 64, 16), dk.Line("-所需空间：", 749, 475, 77, 12)]
+waits_1015 = ([frame(f"1232-{i:02d}", DL) for i in range(20)]                     # 12:32:49-12:43:39
+              + [dk.Screen(frame("x").lines, Path("shot-84e4bfdf.png"))]            # 12:44:15
+              + [frame("124450", dk.Line("@正在下载", 1324, 782, 116, 26))]         # 12:44:50
+              + [frame("124525", DL)]                                               # 12:45:25
+              + [frame("124601", icons=["控制面板", "Clashfor", "Windows", "2"]),     # 12:46:01
+                 frame("124637", icons=["控]面板", "Clashfor", "Windows", "EPIC"])]  # 12:46:37
+              + [frame("124718", INST), frame("124757", INST)]                      # 12:47:18-12:47:57
+              + [frame("124833", icons=["控制面板", "Clashfor", "Windows", "EPIC"]),  # 12:48:33
+                 frame("124909", icons=["控]面板", "Clashfor", "Windows", "EPIC"])]  # 12:49:09
+              + [frame("ready", dk.Line("开始游戏", 1376, 788, 64, 16))])
+
+
+def replay(screens):
+    d = Desk([frame("123213", *SPACE)] + screens)
+    saved = (gg.kill, gg._spawn)
+    gg.kill, gg._spawn = (lambda *a: None), (lambda *a, **k: True)
+    try:
+        out = gg.update_endfield(d, Path("Endfield.exe"), Path("Launcher.exe"), budget_s=60, poll_s=0,
+                                 sleep=lambda s: None)
+    finally:
+        gg.kill, gg._spawn = saved
+    return d, out
+
+
+d, out = replay(list(waits_1015))
+check("这一轮装完了", out, "终末地 客户端已通过启动器更新")
+notes = [x for x in d.trace if x.get("what") == "launcher"]
+check("第一眼是「系统提示」，记成认出的框", (notes[0].get("stage"), notes[0].get("dialog")), ("first", True))
+check("等待中 30 帧，5 帧没认出字", (len(notes) - 1, sum(1 for x in notes[1:] if not (x.get("busy") or x.get("ready") or x.get("dialog")))), (30, 5))
+check("「@正在下载」那一帧算认出", notes[22].get("busy"), "正在下载")
+got, n = judge("gameupdate", {"screens": d.trace}, tmpdir())
+check("#61 过了，没推群", (got["#61"].status, len(n.fails("#61"))), (mc.PASS, 0))
+check("过的那行说了 30 帧里 5 帧没认出、最长连着 2 帧", "等待中 30 帧里 5 帧没认出字（最长连着 2 帧" in got["#61"].evidence, True)
+
+print("  （同一轮里真的连着 3 帧认不出 → 没过，推了，带第一帧截图）")
+three = waits_1015[:21] + [frame("x1"), frame("x2")] + waits_1015[21:]   # 12:44:15 then two more
+d, _ = replay(three)
+got, n = judge("gameupdate", {"screens": d.trace}, tmpdir())
+check("#61 没过，推了", (got["#61"].status, len(n.fails("#61"))), (mc.FAIL, 1))
+check("说连着 3 帧，第一帧是 12:44:15 那张", ("连着 3 帧" in got["#61"].evidence,
+                                          "shot-84e4bfdf.png" in got["#61"].evidence), (True, True))
+
+print("  （等待中又弹出「系统提示」→ 点「确认」，那一帧不算认不出）")
+d = Desk([scr("更新游戏"), dk.Screen([*SPACE], Path("shot-dlg.png")), scr("正在下载"), scr("开始游戏")])
+saved = (gg.kill, gg._spawn)
+gg.kill, gg._spawn = (lambda *a: None), (lambda *a, **k: True)
+try:
+    gg.update_endfield(d, Path("Endfield.exe"), Path("Launcher.exe"), budget_s=60, poll_s=0, sleep=lambda s: None)
+finally:
+    gg.kill, gg._spawn = saved
+waits = [(x.get("busy"), x.get("dialog")) for x in d.trace if x.get("what") == "launcher" and x.get("stage") == "wait"]
+check("等待中第一帧是框", waits[0], ("", True))
+got, _ = judge("gameupdate", {"screens": d.trace}, tmpdir())
+check("#61 过了", got["#61"].status, mc.PASS)
+
+print("  （分轮判：一次跑里两轮，第二轮一帧也没认出 → 没过；两轮边上各一两帧不连成 3 帧）")
+note = {"what": "launcher", "game": "终末地", "unread": "", "ready": False, "dialog": False, "line": "", "dump": "", "shot": "s.png"}
+busy = dict(note, stage="wait", busy="正在下载")
+miss = dict(note, stage="wait", busy="")
+first = dict(note, stage="first", busy="")
+got, n = judge("gameupdate", {"screens": [first, busy, busy, first, miss, miss]}, tmpdir())
+check("第二轮全没认出：没过", (got["#61"].status, len(n.fails("#61"))), (mc.FAIL, 1))
+got, _ = judge("gameupdate", {"screens": [first, busy, miss, miss, first, miss, busy]}, tmpdir())
+check("跨轮的 2+1 帧不连起来：过了", got["#61"].status, mc.PASS)
 
 print("\n[接线：开机游戏更新那步报了「终末地公告读不到」→ #64 判过（真抄送）]")
 sd = tmpdir()

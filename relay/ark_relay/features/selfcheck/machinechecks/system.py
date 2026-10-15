@@ -473,18 +473,76 @@ def _desktop_agent(ctx):
     return mc.Result(mc.PASS, "；".join(said)) if said else None
 
 
+# Wait frames in a row with none of the words before #61 says the launcher sat on a
+# screen it cannot read. One frame is ~36 s apart (poll_s 30 plus the agent's read;
+# relay.log 10-15 12:32:49, 12:33:25, 12:34:02 ...). A frame alone is not enough:
+# Windows OCR misses the black-on-yellow button on single frames while it shows
+# 「正在下载」 - 10-15 12:44:15 (shot-84e4bfdf.png, the button reads 「正在下载」 on
+# the picture) between 20 frames before and 1 after that read it at the same place.
+# On that day's download, which ended in 「开始游戏」, the longest run of such frames
+# was 2 (12:46:01-12:46:37 and 12:48:33-12:49:09); 3 is about 108 s of a launcher
+# screen with no known word.
+LAUNCHER_MISS_RUN = 3
+
+
+def _launcher_stages(notes: list[dict]) -> list[list[dict]]:
+    """The launcher notes cut into stages: one look at a launcher (stage "first") and
+    the wait that follows it, per game. One run_deferred can hold several rounds
+    (10-15: 「前面几轮没准备好，后来一轮准备好了」), each opening with its own first look."""
+    stages: list[list[dict]] = []
+    open_of: dict[str, list[dict]] = {}
+    for x in notes:
+        game = str(x.get("game") or "")
+        if x.get("stage") == "first" or game not in open_of:
+            open_of[game] = []
+            stages.append(open_of[game])
+        open_of[game].append(x)
+    return stages
+
+
+def _launcher_missed(x: dict) -> bool:
+    """A launcher frame on which none of the words the flow knows was read."""
+    return not (x.get("busy") or x.get("ready") or x.get("dialog"))
+
+
 @mc.check("#61", "启动器下载时屏上的字认得出（正在下载 / 下载中 / 解压中这些）", "B", "gameupdate")
 def _launcher_busy_words(ctx):
+    """Judged per stage: a stage fails when none of its wait frames read a known word
+    (busy, ready, or the disk-space dialog the flow handles), or when LAUNCHER_MISS_RUN
+    frames in a row read none. Single frames without a word are counted and said in
+    the PASS line, not alarmed."""
+    missed_all, longest_run = 0, (0, None)
+    for stage in _launcher_stages(_notes(ctx, "launcher")):
+        waits = [x for x in stage if x.get("stage") == "wait" and not x.get("unread")]
+        if not waits:
+            continue
+        game = waits[0].get("game")
+        missed = [x for x in waits if _launcher_missed(x)]
+        if len(missed) == len(waits):
+            x = missed[0]
+            return mc.Result(mc.FAIL, f"{game}启动器在下载时屏上的字一个也没认出（等了 {len(waits)} 帧，"
+                                      f"截图 {x.get('shot')}）：{str(x.get('dump') or '')[:160]}")
+        run: list[dict] = []
+        for x in waits:
+            run = run + [x] if _launcher_missed(x) else []
+            if len(run) >= LAUNCHER_MISS_RUN:
+                return mc.Result(mc.FAIL, f"{game}启动器连着 {len(run)} 帧（约 {len(run) * 36} 秒）屏上的字"
+                                          f"一个也没认出（第一帧截图 {run[0].get('shot')}）："
+                                          f"{str(run[0].get('dump') or '')[:160]}")
+            if len(run) > longest_run[0]:
+                longest_run = (len(run), run[0])
+        missed_all += len(missed)
     seen = [x for x in _notes(ctx, "launcher") if not x.get("unread")]
-    for x in seen:
-        if x.get("stage") == "wait" and not x.get("busy") and not x.get("ready"):
-            return mc.Result(mc.FAIL, f"{x.get('game')}启动器在下载时屏上的字一个也没认出（截图 {x.get('shot')}）："
-                                      f"{str(x.get('dump') or '')[:160]}")
     hit = next((x for x in seen if x.get("busy")), None)
     if hit is None:
         return None              # the download screen never came up (or nothing was read)
-    return mc.Result(mc.PASS, f"{hit.get('game')}启动器下载时读到「{hit.get('busy')}」"
-                              f"（那一行：{hit.get('line', '')}，截图 {hit.get('shot')}）")
+    said = (f"{hit.get('game')}启动器下载时读到「{hit.get('busy')}」"
+            f"（那一行：{hit.get('line', '')}，截图 {hit.get('shot')}）")
+    if missed_all:
+        waits = sum(1 for x in seen if x.get("stage") == "wait")
+        said += (f"；等待中 {waits} 帧里 {missed_all} 帧没认出字（最长连着 {longest_run[0]} 帧，"
+                 f"第一帧截图 {longest_run[1].get('shot')}），不到连着 {LAUNCHER_MISS_RUN} 帧，不报群")
+    return mc.Result(mc.PASS, said)
 
 
 @mc.check("#64", "终末地公告读不到时报到群里", "B", "gameupdate")
