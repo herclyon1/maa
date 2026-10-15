@@ -152,7 +152,10 @@ reset(); probs = []
 d = FakeDesk([["更新游戏"], ["开始游戏"], ["资源初始化更新完成，请重启游戏", "确认"], ["点击任意位置继续"]],
              click_ok=lambda w: w != "确认")
 out = gug.update_endfield(d, *EF, problems=probs, sleep=fake_sleep)
-check("重开了游戏", ("spawn", "Endfield.exe") in events)
+# Client 1.6.3 (2026-10-15) runs only when the launcher starts it: the restart clicks
+# 「开始游戏」 on the launcher again and never starts Endfield.exe itself.
+check("经启动器重开了游戏（又点了开始游戏）", d.clicks.count("开始游戏"), 2)
+check("没直接起 Endfield.exe", ("spawn", "Endfield.exe") in events, False)
 check("报了更新", out, "终末地 客户端已通过启动器更新")
 print("\n[6 终末地：更新后仍「客户端版本已过时」/ 15 分钟没到标题 → 不说已更新]")
 reset(); probs = []

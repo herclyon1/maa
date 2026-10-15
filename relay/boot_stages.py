@@ -856,6 +856,23 @@ def _stage_preupdate(cfg, notifier, log) -> None:
         log.exception("预更新出错，跳过（本轮照旧）")
 
 
+def _stage_endfield_start(cfg, notifier, log) -> None:
+    """Point every Endfield start (AUTO-MAS's Game.Path, MaaEnd's preAction) at the helper
+    that starts the game through the official launcher (gameupdate/efstart_setup.py).
+    Right after stagegate, where AUTO-MAS answers, and before the pre-update, which can
+    hold the boot up to the queue time. What could not be done is a WARNING (the group):
+    without it every MaaEnd run of the day fails at the game start."""
+    try:
+        from ark_relay.features.gameupdate import efstart_setup  # noqa: PLC0415
+        ok, notes = efstart_setup.install(cfg)
+        for n in notes:
+            log.info("开机：终末地开游戏：%s", n)
+        if not ok:
+            log.warning("开机：终末地还没全改成经官方启动器开，MaaEnd 可能开不了游戏：%s", "；".join(notes))
+    except Exception:
+        log.exception("开机改终末地开游戏方式出错")
+
+
 def _stage_reenable_maaend(cfg, notifier, log) -> None:
     """Check the sanity-booster step and prune master entries for tasks MaaEnd no
     longer has. (Switching back on tasks the relay once switched off went with

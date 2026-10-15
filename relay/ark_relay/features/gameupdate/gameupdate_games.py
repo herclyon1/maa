@@ -230,7 +230,16 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
             sleep(8)
             kill("Endfield.exe")
             sleep(3)
-            _spawn(game)
+            # Again through the launcher, still open: client 1.6.3 refuses to start as
+            # Endfield.exe directly (efstart.py). Its window may have gone to the tray
+            # after the first 「开始游戏」; Launcher.exe again brings it back. Then the same
+            # 25 s as after the first start above (measured 2026-09-02: a read 25 s after
+            # starting the launcher found its window).
+            if not desk.click_text("开始游戏", focus="Games"):
+                _spawn(launcher)
+                sleep(25)
+                if not desk.click_text("开始游戏", focus="Games"):
+                    log.warning("游戏更新：终末地「请重启游戏」后启动器的「开始游戏」没点上，等它自己到标题画面")
             restarted = True
             sleep(60)
             continue

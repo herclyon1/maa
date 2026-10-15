@@ -340,11 +340,13 @@ def _wait(pred, seconds: int, step: float = 3.0) -> bool:
 
 
 def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeout: int = 1200,
-              evidence: "dict | None" = None) -> tuple[dict[str, bool | None], str]:
+              evidence: "dict | None" = None, state_dir=None) -> tuple[dict[str, bool | None], str]:
     """Bring up MXU and the game, send the override, wait, judge. Returns (verdict, note).
 
     `spawn(exe: Path, cwd: Path, args: tuple)` launches on the interactive
-    desktop (the pre-update's helper in production, a stub in tests).
+    desktop (the pre-update's helper in production, a stub in tests). The game is
+    started by the launcher helper in `state_dir` (gameupdate/efstart.py), never as
+    Endfield.exe: client 1.6.3 refuses a start that is not the official launcher's.
     `evidence`, when given, gets "nodes": {route: the maafw.log line of its verdict}.
     """
     debug = maaend_dir / "debug"
@@ -358,7 +360,8 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
         return {r: None for r in routes}, "MaaEnd 的日志里找不到上一趟采集的参数，不敢自己编，这次不补跑"
     override = build_override(parts, routes, weekday)
     try:
-        return _bring_up_and_run(maaend_dir, routes, override, spawn=spawn, timeout=timeout, evidence=evidence)
+        return _bring_up_and_run(maaend_dir, routes, override, spawn=spawn, timeout=timeout, evidence=evidence,
+                                 state_dir=state_dir)
     finally:
         # Every way out, the early "gave up" returns and a raise included, closes
         # what this started (s16 #2): nothing else runs MaaEnd after the queue.
@@ -367,7 +370,7 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
 
 
 def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, spawn, timeout: int,
-                      evidence: "dict | None") -> tuple[dict[str, bool | None], str]:
+                      evidence: "dict | None", state_dir=None) -> tuple[dict[str, bool | None], str]:
     debug = maaend_dir / "debug"
     global MXU  # noqa: PLW0603 - the port is discovered per launch
     if "MaaEnd.exe" in _running(("MaaEnd.exe",)):
@@ -382,11 +385,12 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
     MXU = f"http://127.0.0.1:{mxu_port(maaend_dir)}/api"
     if not _wait(lambda: api("/maa/state", timeout=5) is not None, 60):
         return {r: None for r in routes}, "MaaEnd 起来 60 秒了还不响应"
-    game = _game_exe(maaend_dir)
-    if game is None:
-        return {r: None for r in routes}, "MaaEnd 配置里没有游戏路径"
-    if "Endfield.exe" not in _running(("Endfield.exe",)):
-        spawn(game, game.parent, ())
+    if state_dir is None:
+        return {r: None for r in routes}, "不知道开游戏助手在哪，游戏没开"
+    from ark_relay.features.gameupdate import efstart  # noqa: PLC0415 - pulls the desktop code
+    started = efstart.run_on_desktop(state_dir, spawn)
+    if started.code != efstart.OK:
+        return {r: None for r in routes}, f"游戏没经官方启动器开起来：{started.reason}"
     hwnd = {}
 
     def _window():
@@ -561,7 +565,7 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     seen: dict = {}
     try:
         verdict, note = run_retry(Path(cfg.maaend_dir), routes, WEEKDAYS[now.weekday()],
-                                  spawn=_spawn_interactive, evidence=seen)
+                                  spawn=_spawn_interactive, evidence=seen, state_dir=state_dir)
     except Exception as exc:  # the retry must never take the service down
         log.exception("补跑本身出错")
         verdict, note = {r: None for r in routes}, f"补跑没跑起来：{type(exc).__name__}"

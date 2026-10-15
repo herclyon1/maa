@@ -205,6 +205,14 @@ class Watchdog:
             self._pid, self._pid_seen_at, self._gone_since, self._crash = pid, now, None, ""
             self._pid_lines = self._lines
             self._err_offset, self._err_head = self._stderr_now()
+        if self._starting(procs):
+            # MXU is waiting for the helper that starts Endfield through the official
+            # launcher (a preAction with waitForExit, gameupdate/efstart.py): no task has
+            # started, so no plugin and no log line yet, and that is not a hang. The
+            # clocks start when the helper is done.
+            self._pid_seen_at = self._progress_at = now
+            self._gone_since = None
+            return None
         # one fault, one push: one hung MaaEnd, by its PID (forgotten once MaaEnd is gone)
         if pid in self._handled:
             return None
@@ -233,6 +241,14 @@ class Watchdog:
         if reason is None:
             return None
         return self._end(pid, procs, reason, now)
+
+    def _starting(self, procs) -> bool:
+        try:
+            from ark_relay.features.gameupdate.efstart import helper_alive  # noqa: PLC0415 - pulls the desktop code
+            return helper_alive(self.state_dir, procs)
+        except Exception:  # never in the watchdog's way; without it the old behaviour holds
+            log.debug("看门狗：读不了开游戏助手的状态", exc_info=True)
+            return False
 
     # ---------------------------------------------------------------- effects
 

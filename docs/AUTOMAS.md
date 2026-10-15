@@ -222,7 +222,7 @@ takes effect is 周常乐园 only**.
 | Script | Who brings the game up | Basis |
 |---|---|---|
 | MAA | AUTO-MAS starts the emulator | `Emulator.Id` |
-| MaaEnd | AUTO-MAS starts the PC client | `Game.Path` points at `Endfield.exe` |
+| MaaEnd | AUTO-MAS starts the relay's launcher helper, which starts the PC client through the official Hypergryph launcher (since 2026-10-15, client 1.6.3) | `Game.Path` = `C:\ProgramData\ark-relay\state\efstart\start-endfield.cmd`, `Game.WaitTime` >= 180; the MaaEnd master's preAction runs the same helper with `waitForExit`. Set at every relay start by `relay/ark_relay/features/gameupdate/efstart_setup.py`; the original values are in `state/efstart/target.json` and `efstart_setup.restore()` puts them back |
 | OK-WW | AUTO-MAS (since 2026-10-12, hand-over item 10b) | On the MAS side `Game.Enabled=true`, `Game.Type=Client`, `Game.Path=D:\Wuthering Waves\launcher.exe`, `Game.IfAutoUpdate=true` |
 
 Why it is on: AUTO-MAS updates the WuWa client (official version API, download, md5 check,

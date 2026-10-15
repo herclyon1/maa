@@ -313,6 +313,9 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         boot_stages._stage_stagegate(engine, log)
         if self._stop_in_boot(log):
             return
+        boot_stages._stage_endfield_start(cfg, notifier, log)
+        if self._stop_in_boot(log):
+            return
         boot_stages._stage_selfcheck(cfg, notifier, log)
         if self._stop_in_boot(log):
             return

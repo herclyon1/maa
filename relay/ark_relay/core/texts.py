@@ -611,6 +611,7 @@ def rerun_body(reran: list[str]) -> str:
 _RELAY_PARTS = {
     "ark.service": "主程序", "ark.engine": "核心", "ark.handle": "记账与告警", "ark.report": "日报",
     "ark.shutdown": "关机判定", "ark.missed": "漏跑核对", "ark.preupdate": "预更新", "ark.gameupdate": "游戏更新",
+    "ark.efstart": "经官方启动器开终末地", "ark.efstart_setup": "终末地开游戏方式设置",
     "ark.selfupdate": "自更新", "ark.phone": "手机通道", "ark.evidence": "证据外送", "ark.collect_watch": "采集看守",
     "ark.collect_retry": "采集补跑", "ark.inbox": "待办信箱", "ark.snapshot": "状态快照", "ark.notify": "推送",
     "ark.banners": "卡池信息", "ark.needtable": "库存需求表", "ark.desktop": "桌面读屏", "ark.alertlog": "报警抄送",

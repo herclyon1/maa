@@ -152,6 +152,16 @@ def main() -> int:
     import service  # noqa: PLC0415 - chdirs to the code folder, as on the machine
     from ark_relay.core import config  # noqa: PLC0415
     config.IS_WINDOWS = True
+    # The Endfield launcher helper's set-up at boot (gameupdate/efstart_setup.py) checks
+    # Windows paths read from AUTO-MAS and the relay's own pythonw.exe: answered from the
+    # sim tree, with the launcher where it is on the machine (Launcher.exe three levels
+    # above Endfield.exe, the parent session 2026-10-15).
+    from ark_relay.features.gameupdate import efstart_setup  # noqa: PLC0415
+    launcher = W.tpath(tree, r"D:\endfield\Hypergryph Launcher\Launcher.exe")
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    launcher.touch()
+    efstart_setup._is_file = lambda p: W.tpath(tree, str(p)).is_file()
+    efstart_setup._find_pythonw = lambda: Path(r"C:\Program Files\ArkRelay\runtime\python\pythonw.exe")
     os.chdir(tree / W.DATA_REL)          # app_main.run: os.chdir(DATA)
     desk.install()
     # Frozen code: the COS door says the version the machine already runs.

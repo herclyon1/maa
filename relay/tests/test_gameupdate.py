@@ -50,8 +50,10 @@ d = FakeDesk([["登录", "更新游戏"], ["正在下载"], ["安装中"], ["开
 probs = []
 out = gu.update_endfield(d, Path("Endfield.exe"), Path("Launcher.exe"), poll_s=0, problems=probs, sleep=nosleep)
 check("报了更新", out, "终末地 客户端已通过启动器更新")
-check("点击顺序", d.clicks, ["更新游戏", "开始游戏", "确认"])
-check("重启拉了游戏", "Endfield.exe" in spawned, True)
+# Client 1.6.3 (2026-10-15) runs only when the launcher starts it: the restart is a
+# second 「开始游戏」 on the launcher, never Endfield.exe itself.
+check("点击顺序", d.clicks, ["更新游戏", "开始游戏", "确认", "开始游戏"])
+check("重启经启动器，没直接拉 Endfield.exe", "Endfield.exe" in spawned, False)
 check("没有问题", probs, [])
 
 print("[终末地：读不到按钮要报问题]")
