@@ -19,13 +19,22 @@ Three things are pinned:
   future operator's wiki entry can stand in for the calculator;
 * the future path (`--rarity 5`): 噗切娜 (上线 2026-09-24, 未实装) is chosen although her
   date is in the future, her wiki entry has no cards yet, so the numbers come from the
-  preview table and say so; her weapon is 待定.
+  preview table and say so; her weapon is 待定 (pinned by --char since 2026-10-15: she
+  would be the second standard there, after a released five-star this fixture has no
+  numbers for).
 
 And over fixtures/skland-endfield-1014 (pulled 2026-10-14 03:36 UTC+8): two unreleased
 six-stars (祀 10-15, 明河 11-05) and four six-star entries in the preview table. The
 builder used to give up there (「cannot pick hers」), so nobody's table was current;
 now 明河's entry is found by elimination and weapon type, her signature weapon by her
 wiki weapon tag, and the preview table's new material by the calculator's md5 ids.
+
+And over fixtures/skland-endfield-1015 (pulled 2026-10-15 16:05 UTC+8, the day 祀 went
+live; the four MaaEnd essence files and Target.json / its term names from MaaEnd's
+GitHub v2 branch, data version 2026-10-08 08:40:17 UTC): the two standards of the
+2026-10-15 caliber - 祀 + 玉中身 first (from the calculator), 明河 + 唤月 next (preview
+table) - and the essence advice, cross-checked against CEP (github.com/cmyyx/cep
+src/data/weapons.ts + dungeons.ts, read 2026-10-15).
 """
 import json
 import subprocess
@@ -139,6 +148,9 @@ st = g["standards"][0]
 check("standards 只有一个，就是她", [(s["charId"], s["name"], s["rarity"], s["releasedAt"], s["status"]) for s in g["standards"]],
       [("9de117d5969945ecfdbd70dac3a632e6", "提弗洛斯", 6, "2026-09-02", "已实装")])
 check("默认标准 = 她", g["standard"], "9de117d5969945ecfdbd70dac3a632e6")
+check("没有已公布的下一位：只有当前这一个", (st["role"], st["label"], g["coverage"]["next"], g["coverage"]["nextError"]),
+      ("current", "最新六星", None, ""))
+check("标准自带的节顺序 = 游戏层那份", st["groups"], g["groups"])
 check("专武写实名", (st["weapon"]["name"], st["weapon"]["id"], st["weapon"]["releasedAt"], st["weapon"]["kind"], st["weapon"]["status"]),
       ("寒夜幽影", "4e7f3757fd7c98a1262bf4bca8fd9d83", "2026-09-02", "施术单元", "已收录"))
 check("来源", st["sources"], {"need": bnt.SRC_CALC, "weapon": bnt.SRC_CALC, "levels": bnt.SRC_CALC})
@@ -202,13 +214,19 @@ require("排序：按用途节，节内需求大的在前、不用的在后、�
         < order.index("武器经验") < order.index("协议棱柱组") < order.index("三相纳米片") < order.index("高级认知载体"),
         str(order[:8]))
 
-print("\n[未来的干员：--rarity 5 选中未实装的噗切娜，用量来自客户端预览表]")
-t5 = bnt.build(src, "fixture", TODAY, rarity="5")
+print("\n[未来的干员：--rarity 5 时未实装的噗切娜是「下一位」；她的用量来自客户端预览表]")
+# 2026-10-15: the first standard is the newest released one, the announced one the second
+# (build.pick_standards). This fixture holds no numbers for the released five-star, so her
+# build is pinned by name (--char), which takes the same path as the second standard.
+_, ranked5 = bnt.newest(fives)
+check("五星：已上线最新的那位在前，未实装的噗切娜是下一位", [(w, r) for w, r, _l, _c in bnt.pick_standards(ranked5, TODAY, "5")],
+      [(next(e["name"] for e in ranked5 if e["onlineDate"] <= TODAY), "current"), ("噗切娜", "next")])
+t5 = bnt.build(src, "fixture", TODAY, char_name="噗切娜", rarity="5")
 g5, rows5 = rows_by_name(t5)
 s5 = g5["standards"][0]
 check("选中未实装的她", (s5["name"], s5["releasedAt"], s5["status"], s5["dotType"], s5["charId"], s5["wikiItemId"]),
       ("噗切娜", "2026-09-24", "未实装", "label_type_preview", "", "2117"))
-check("chosenBy 写明含未实装", s5["chosenBy"], "百科上线时间最新的五星（含未实装）")
+check("指定的只建这一个标准", ([s["role"] for s in g5["standards"]], s5["chosenBy"], g5["coverage"]["next"]), (["named"], "--char", None))
 check("用量来源 = 预览表，并记下内部代号", (s5["sources"]["need"], s5["sources"]["foresightCharId"]), (bnt.SRC_FORESIGHT, "chr_0038_purrche"))
 check("等级表来自专武应答（她自己还没有）", s5["sources"]["levels"], f"{bnt.SRC_CALC}（等级表取自 寒夜幽影 的应答，各角色相同）")
 check("专武待定，理由说清", (s5["weapon"]["status"], s5["weapon"]["name"]), ("待定", ""))
@@ -216,7 +234,7 @@ require("待定理由提到计算器未收录", "计算器还没收录" in s5["w
 for name, want in PURRCHENA.items():
     check(f"噗切娜 {name}", (rows5[name]["need"], rows5[name]["group"]), (want, "噗切娜"))  # no rules yet: no per-step split
 check("含天赋的两行有说明", (rows5["协议棱柱"]["note"], rows5["协议棱柱组"]["note"]), ("预览表的数含天赋树", "预览表的数含天赋树"))
-check("caliber 写专武待定", g5["caliber"], "最新五星 噗切娜（2026-09-24 上线）：1→90 全突破、四技能 12、专武待定 1→90；不含天赋")
+check("caliber 写专武待定", g5["caliber"], "指定干员 噗切娜（2026-09-24 上线）：1→90 全突破、四技能 12、专武待定 1→90；不含天赋")
 require("footnote 提醒预览表含天赋", g5["footnote"].endswith("（上线前按客户端预览表，棱柱和折金票含天赋树）"), g5["footnote"])
 check("她不用的写明", (rows5["快子遴捡晶格"]["need"], rows5["快子遴捡晶格"]["note"]), (0, "噗切娜 的满练不用它"))
 check("coverage 标出她未实装", (g5["coverage"]["status"], g5["coverage"]["weaponStatus"], g5["coverage"]["candidates"][0]),
@@ -231,7 +249,7 @@ check("最新六星是未实装的明河，武器类型取自百科标签", (top
       ("明河", "2026-11-05", "单手剑"))
 check("其次是祀", (ranked14[1]["name"], ranked14[1]["onlineDate"], ranked14[1].get("weaponType")), ("祀", "2026-10-15", "双手剑"))
 try:
-    t14 = bnt.make(src14)
+    t14 = bnt.make(src14, char_name="明河")   # the fixture has no numbers for the then-current 提弗洛斯
     why14 = ""
 except Exception as exc:  # noqa: BLE001 - the old builder raised here; any exception is the failure checked below
     t14, why14 = None, f"{type(exc).__name__}: {exc}"
@@ -265,6 +283,115 @@ if pick is not None:
 naming = getattr(bnt, "foresight_names", None)
 names14 = naming(fs14["chr_0037_minghe"], src14.get_url("client-item-names", "", None), mat14) if naming else {}
 check("预览表的新材料按计算器 id（md5）取名，MaaEnd 还没有它", names14.get("item_char_skill_specialize_6"), "跃迁浆体涂片")
+
+print("\n[10-15：祀上线当天 —— 当前 = 已上线最新的祀，下一位 = 已公布的明河；专武附基质建议]")
+FIX15 = HERE / "fixtures" / "skland-endfield-1015"
+src15 = bnt.RulesSource(FIX15, None)
+t15 = bnt.make(src15)
+g15, rows15 = rows_by_name(t15)
+cur, nxt = (g15["standards"] + [None, None])[:2]
+check("两个标准：祀（当前）、明河（下一位）",
+      [(x["name"], x["role"], x["label"], x["status"], x["releasedAt"]) for x in g15["standards"]],
+      [("祀", "current", "最新六星", "已实装", "2026-10-15"), ("明河", "next", "下一位六星", "未实装", "2026-11-05")])
+check("祀的专武是玉中身，祀和玉中身都已进计算器", (cur["weapon"]["name"], cur["sources"]["need"], cur["sources"]["weapon"]),
+      ("玉中身", bnt.SRC_CALC, bnt.SRC_CALC))
+check("明河：预览表的条目、专武唤月待定", (nxt["sources"]["need"], nxt["sources"]["foresightCharId"], nxt["weapon"]["name"], nxt["weapon"]["status"]),
+      (bnt.SRC_FORESIGHT, "chr_0037_minghe", "唤月", "待定"))
+check("默认标准 = 祀（旧 App 落到她）", g15["standard"], cur["charId"])
+require("游戏层的 rows / caliber / footnote / groups / useSource 都镜像祀",
+        g15["rows"] is cur["rows"] and (g15["caliber"], g15["footnote"], g15["groups"], g15["useSource"])
+        == (cur["caliber"], cur["footnote"], cur["groups"], cur["useSource"]))
+check("caliber 说的是祀", g15["caliber"], "最新六星 祀（2026-10-15 上线）：1→90 全突破、四技能 12、专武 玉中身 1→90；不含天赋")
+check("明河的 caliber 叫下一位", nxt["caliber"], "下一位六星 明河（2026-11-05 上线）：1→90 全突破、四技能 12、专武 唤月 1→90；不含天赋")
+check("每个标准带自己的节顺序：明河没有计算器分步，按人分节",
+      (cur["groups"][:2], nxt["groups"], bool(cur["useSource"]), nxt["useSource"]),
+      (["干员精英化", "干员技能升级"], ["明河", "专武 唤月", "明河 + 专武 唤月"], True, ""))
+check("coverage 指当前、并写出下一位", (g15["coverage"]["operator"], g15["coverage"]["weapon"], g15["coverage"]["next"], g15["coverage"]["nextError"]),
+      ("祀", "玉中身", {"name": "明河", "releasedAt": "2026-11-05", "status": "未实装", "weapon": "唤月"}, ""))
+
+
+def app_default(game):
+    """ark-remote Inventory.swift standardFor() with nothing picked on the phone: the file's
+    `standard`, matched by charId else wikiItemId, else the first standard."""
+    key = lambda x: x.get("charId") or x.get("wikiItemId") or None  # noqa: E731
+    return next((x for x in game["standards"] if key(x) == game["standard"]), game["standards"][0])
+
+
+check("App 不选时用的就是祀", app_default(g15)["name"], "祀")
+
+ess = cur["weapon"]["essence"]
+check("玉中身：三个词条（基础 / 附加 / 技能），用 MaaEnd 的 id 和名字",
+      [(x["slot"], x["id"], x["name"]) for x in ess["terms"]],
+      [("基础属性", "s1_5", "智识提升"), ("附加属性", "s2_1", "寒冷伤害提升"), ("技能属性", "s3_7", "效益")])
+check("玉中身：MaaEnd 武器代号", ess["code"], "wpn_claym_0018")
+# CEP, read 2026-10-15: weapons.ts 玉中身 = gat_passive_attr_wisd / gat_passive_attr_icedam / gst_passive_keyword;
+# dungeons.ts points whose s2Pool and s3Pool hold the last two (names after the 「·」).
+CEP_POINTS = {"玉中身": ["枢纽区", "源石研究园", "矿脉源区", "藏剑谷", "应龙关"],
+              "唤月": ["源石研究园", "供能高地", "首墩", "应龙关"]}
+check("玉中身：能同时出三条的地方 = CEP 算出来的五处", [x["name"] for x in ess["points"]], CEP_POINTS["玉中身"])
+check("全名是游戏里的能量淤积点名", ess["points"][0]["full"], "重度能量淤积点·枢纽区")
+check("MaaEnd 的目标选择能勾玉中身", ess["inMaaEndTarget"], True)
+require("MaaEnd 那句：目标选择、只勾它、自己挑地方和预刻写",
+        all(w in ess["maaend"] for w in ("「目标选择」", "只勾玉中身", "自己挑地方", "预刻写")), ess["maaend"])
+check("预刻写那句", ess["engrave"], "预刻写：基础属性选 3 项（含智识提升），附加 / 技能属性固定寒冷伤害提升或效益")
+check("数据版本和来源", (ess["dataVersion"], ess["reason"], "保存的应答" in ess["source"]), ("2026-10-08 08:40:17 UTC", "", True))
+ess2 = nxt["weapon"]["essence"]
+check("唤月：意志提升 / 攻击提升 / 附术，四处 = CEP", ([x["name"] for x in ess2["terms"]], [x["name"] for x in ess2["points"]]),
+      (["意志提升", "攻击提升", "附术"], CEP_POINTS["唤月"]))
+
+print("\n[基质词条：按 MaaEnd 自己的匹配法，名字用基质上的叫法]")
+pools15 = src15.get_maaend(bnt.ESSENCE_POOLS)
+names15 = src15.get_maaend(bnt.ESSENCE_NAMES)
+check("武器栏写「源石技艺强度提升」，基质上叫「源石技艺提升」（古渠）",
+      [x["name"] for x in bnt.essence_terms(["力量提升·中", "源石技艺强度提升·中", "残暴·千秋旧土"], pools15, names15)],
+      ["力量提升", "源石技艺提升", "残暴"])
+check("武器栏写「法术提升」，基质上叫「法术伤害提升」（全自动骇新星）",
+      [x["id"] + x["name"] for x in bnt.essence_terms(["智识提升·小", "法术提升·小", "昂扬·远途起始"], pools15, names15)],
+      ["s1_5智识提升", "s2_5法术伤害提升", "s3_8昂扬"])
+check("终结技充能效率：取最长的那个池名", bnt.essence_terms(["敏捷提升·大", "终结技充能效率提升·大", "迸发·x"], pools15, names15)[1]["id"], "s2_11")
+check("对不上就是 None，不猜", bnt.essence_terms(["智识提升·大", "不存在的词条·大", "效益·x"], pools15, names15), None)
+
+print("\n[基质建议缺了不拖垮整张表]")
+ess_old = rows_by_name(bnt.make(bnt.RulesSource(FIX, None)))[0]["standards"][0]["weapon"]["essence"]
+check("旧夹具没有 MaaEnd 的基质文件：表照样建，建议写明缺什么", (ess_old["terms"], ess_old["points"], ess_old["weapon"]),
+      (None, None, "寒夜幽影"))
+require("缺的原因写出来", ess_old["reason"].startswith("读不到 MaaEnd 的基质数据"), ess_old["reason"])
+check("MaaEnd 里没有的武器：写明没有，不猜", bnt.essence_advice(src15, "不存在的武器")["reason"],
+      "MaaEnd 的基质数据（数据版本 2026-10-08 08:40:17 UTC）里还没有不存在的武器")
+
+
+class NoForesight(bnt.RulesSource):
+    """The 1015 fixture with the client preview table gone: 明河's numbers cannot be read."""
+
+    def get_url(self, name, url, trim=None, loads=json.loads):
+        if name == "client-foresight":
+            raise RuntimeError("preview table unreachable")
+        return super().get_url(name, url, trim, loads)
+
+
+t15b = bnt.make(NoForesight(FIX15, None))
+g15b = t15b["games"][0]
+check("下一位建不成：表照样出，只有祀，原因写进 coverage.nextError",
+      ([x["name"] for x in g15b["standards"]], g15b["coverage"]["next"], g15b["coverage"]["nextError"]),
+      (["祀"], None, "明河：RuntimeError: preview table unreachable"))
+require("summary 提到下一位没建成", "下一位没建成" in bnt.summary(t15b), bnt.summary(t15b))
+require("summary 两个都说到", all(w in bnt.summary(t15) for w in ("祀", "玉中身", "下一位 明河", "智识提升/寒冷伤害提升/效益")), bnt.summary(t15))
+
+print("\n[MaaEnd 的文件：游戏机上装着的那份优先（不联网），带注释也读得懂]")
+import tempfile  # noqa: E402
+with tempfile.TemporaryDirectory() as tmp:
+    inst = Path(tmp) / "maaend"
+    (inst / "data" / "EssenceFilter").mkdir(parents=True)
+    (inst / "data" / "EssenceFilter" / "matcher_config.json").write_text(
+        '{\n  // installed copy\n  "data_version": "installed-1",\n}\n', encoding="utf-8")
+    live = bnt.RulesSource.__new__(bnt.RulesSource)   # no Skland login: this read must not touch the network
+    live.offline, live.save, live.maaend_dir, live._memo, live.maaend_from = None, None, inst, {}, {}
+
+    def no_net(*_a, **_k):
+        raise AssertionError("went to the network although the installed file is there")
+    live.get_url = no_net
+    check("装着的 matcher_config 读到了", live.get_maaend(bnt.ESSENCE_MATCHER, bnt.trim_essence_matcher), {"data_version": "installed-1"})
+    check("来源记作游戏机上装着的 MaaEnd", live.maaend_from, {"maaend-essence-matcher": "游戏机上装着的 MaaEnd"})
 
 print("\n[三个坑]")
 lv = src.get("rules-char-9de117d5969945ecfdbd70dac3a632e6", "", "")

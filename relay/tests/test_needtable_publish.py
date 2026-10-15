@@ -18,7 +18,8 @@ and deploy-web.sh by hand; the last run was 09-23, and the two six-stars announc
 * a machine without a topic, COS or Skland token builds nothing and says so at INFO;
 * the engine's tick runs the step.
 
-No network: the table is built offline from fixtures/skland-endfield-1014, the PUT is a recorder.
+No network: the table is built offline from fixtures/skland-endfield-1015 (祀 current, 明河 next;
+skland-endfield-1014 until the 2026-10-15 two-standard caliber), the PUT is a recorder.
 """
 import inspect
 import json
@@ -59,7 +60,7 @@ from ark_relay.core.config import SERVER_TZ  # noqa: E402
 from ark_relay.features.phone.cos_store import state_key  # noqa: E402
 from ark_relay.features.phone.mailbox import Mailbox  # noqa: E402
 
-FIX14 = HERE / "fixtures" / "skland-endfield-1014"
+FIX15 = HERE / "fixtures" / "skland-endfield-1015"
 D1 = datetime(2026, 10, 14, 9, 0, tzinfo=SERVER_TZ)
 D2, D3, D4, D5, D6, D7, D8, D9 = (datetime(2026, 10, d, 9, 0, tzinfo=SERVER_TZ) for d in range(15, 23))
 
@@ -96,7 +97,7 @@ def reds(c):
 
 
 def offline():
-    return build.make(build.RulesSource(FIX14, None))
+    return build.make(build.RulesSource(FIX15, None))
 
 
 puts = []
@@ -121,7 +122,8 @@ cos, key, data, timeout = puts[0]
 check("放的位置", (cos, key), ("COS", needtable.need_key("ark-test-topic")))
 check("超时同手机状态", timeout, Mailbox.COS_TIMEOUT)
 table = json.loads(data.decode("utf-8"))
-check("内容就是明河那张表", (table["games"][0]["standards"][0]["name"], table["built"]), ("明河", "2026-10-14 03:36 UTC+8"))
+check("内容就是祀（当前）+ 明河（下一位）那张表", ([x["name"] for x in table["games"][0]["standards"]], table["built"]),
+      (["祀", "明河"], "2026-10-15 16:05 UTC+8"))
 check("cos_put 默认公开读（App 没有 COS 钥匙）",
       inspect.signature(needtable.cos_put).parameters["public"].default, True)
 check("当天不再到期", needtable.due(c.state_dir, "2026-10-14"), False)
@@ -260,6 +262,17 @@ try:
     check("第二天又能起", len(starts), 3)
 finally:
     needtable.atomic_write_text = real_write
+
+print("\n[机器上建表：把装着的 MaaEnd 交给建表（基质建议读它自己的数据）]")
+seen = {}
+real_rs, real_make = build.RulesSource, build.make
+build.RulesSource = lambda offline, save, token="", maaend_dir=None: seen.update(token=token, maaend_dir=maaend_dir) or "SRC"
+build.make = lambda src, **k: {"src": src}
+try:
+    got = needtable._live_table(SimpleNamespace(skland_token="tok", maaend_dir=Path("D:/ark/maaend")))
+finally:
+    build.RulesSource, build.make = real_rs, real_make
+check("令牌和 MaaEnd 目录都交过去", (got, seen), ({"src": "SRC"}, {"token": "tok", "maaend_dir": Path("D:/ark/maaend")}))
 
 print("\n[没配信箱或 COS 的机器：不建，INFO 说一句]")
 rec.rows.clear()

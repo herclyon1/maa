@@ -115,12 +115,40 @@ real = build.urllib.request.urlopen
 build.urllib.request.urlopen = _urlopen
 try:
     src = build.RulesSource.__new__(build.RulesSource)
-    src.offline, src._store = None, (lambda name, data: None)
+    src.offline, src._store, src._memo = None, (lambda name, data: None), {}
     got = src.get_url("client-item-names", raw, build.trim_item_names)
 finally:
     build.urllib.request.urlopen = real
 check("a reset door is skipped, the next answers", (got, [u.split("/")[2] for u in tried]),
       ({"item_gold": "折金票"}, ["fastly.jsdelivr.net", "cdn.jsdelivr.net", "gcore.jsdelivr.net"]))
+check("an answer is kept for the rest of the build (no second request)",
+      (src.get_url("client-item-names", raw, build.trim_item_names), len(tried)), ({"item_gold": "折金票"}, 3))
+
+# MaaEnd's essence files (build.essence_advice), shaped like assets/data/EssenceFilter/* and
+# tasks/AutoEssence/Target/Target.json of MaaEnd v2 on 2026-10-15.
+check("essence weapons: code -> CN name, CN skills, type, rarity", build.trim_essence_weapons(
+    {"wpn_claym_0018": {"internal_id": "wpn_claym_0018", "weapon_type": "Claymores", "rarity": 6, "icon_path": "x.png",
+                        "skill_ids": ["a"], "names": {"CN": "玉中身", "EN": "Jade Vessel"},
+                        "skills": {"CN": ["智识提升·大", "寒冷伤害提升·大", "效益·落墨添彩"], "EN": ["Intellect [L]"]},
+                        "foresight": True}}),
+      {"wpn_claym_0018": {"name": "玉中身", "skills": ["智识提升·大", "寒冷伤害提升·大", "效益·落墨添彩"],
+                          "type": "Claymores", "rarity": 6}})
+check("essence pools: id + cn per slot", build.trim_essence_pools(
+    {"slot1": [{"cn": "智识", "tc": "智識", "en": "Intellect", "id": 5}], "slot2": [{"cn": "寒冷", "id": 1}],
+     "slot3": [{"cn": "效益", "jp": "効率", "id": 7}]}),
+      {"slot1": [{"id": 5, "cn": "智识"}], "slot2": [{"id": 1, "cn": "寒冷"}], "slot3": [{"id": 7, "cn": "效益"}]})
+check("essence locations: name and the slot 2 / 3 ids", build.trim_essence_locations(
+    [{"name": "重度能量淤积点·枢纽区", "slot2_ids": [2, 1], "slot3_ids": [7], "slot2": [{"cn": "攻击"}]}]),
+      [{"name": "重度能量淤积点·枢纽区", "slot2_ids": [2, 1], "slot3_ids": [7]}])
+check("essence matcher: only the data version", build.trim_essence_matcher(
+    {"data_version": "2026-10-08 08:40:17 UTC", "similarWordMap": {"进": "迸"}}), {"data_version": "2026-10-08 08:40:17 UTC"})
+check("target: checkbox options -> case names; switches dropped", build.trim_essence_target({"option": {
+    "AutoEssenceWeaponTypeClaymore": {"type": "switch", "cases": [{"name": "Yes"}]},
+    "AutoEssenceWeaponsClaymore": {"type": "checkbox", "cases": [{"name": "wpn_claym_0018", "label": "$weapon.x", "icon": "i"}]}}}),
+      {"AutoEssenceWeaponsClaymore": ["wpn_claym_0018"]})
+check("essence names: only option.AutoEssenceSkill.*", build.trim_essence_names(
+    {"option.AutoEssenceSkill.s2_6": "源石技艺提升", "option.AutoEssenceMenu.label": "模式", "global.region.TheHub": "枢纽区"}),
+      {"s2_6": "源石技艺提升"})
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

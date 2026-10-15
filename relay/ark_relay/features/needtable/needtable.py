@@ -138,7 +138,9 @@ def _settle(cfg, today: str, at: datetime, ok: bool, what: str, *, skip=False, e
 
 def _live_table(cfg) -> dict:
     from ark_relay.features.needtable import build  # noqa: PLC0415 - only this thread needs it
-    return build.make(build.RulesSource(None, None, getattr(cfg, "skland_token", "") or ""))
+    # maaend_dir: the essence advice reads the installed MaaEnd's own data (build.essence_advice).
+    return build.make(build.RulesSource(None, None, getattr(cfg, "skland_token", "") or "",
+                                        maaend_dir=getattr(cfg, "maaend_dir", None)))
 
 
 def refresh(cfg, now: "datetime | None" = None, *, make=None, cos=None, put=cos_put) -> bool:

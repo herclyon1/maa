@@ -3,9 +3,65 @@
 
 The App's 库存 page (ark-remote Inventory.swift, ported from the phone page's 库存 tab)
 shows, per material, 库存 | 单个角色满练所需 | 人份 (stock ÷ need). Stock is live (the
-App asks Skland itself); need is this table. The user's caliber (2026-09-19): one
-standard, the newest six-star in the official wiki - **including one announced for a
-future date** - so the table shows her materials before the banner.
+App asks Skland itself); need is this table. The user's caliber (2026-09-19): the
+newest six-star in the official wiki - **including one announced for a future date** -
+so the table shows her materials before the banner. Refined 2026-10-15, when the
+table built that morning showed only the announced 明河 while 祀 went live at noon; he
+said 「app库存那边没有及时更新上新角色的数据」 (the stock page missed the new operator)
+and 「养成只按照最新的一个一个来，就是玉中身」 (raise the newest only, one at a time;
+玉中身 is the signature weapon of 祀). So there are two standards (next section).
+
+## Standards (`games[].standards[]`)
+
+1. `role: "current"` - the newest entry whose 上线时间 is today or earlier (server date):
+   the one he raises now. It is `games[].standard` (the default every App falls back
+   to), and the game-level `caliber`, `footnote`, `groups`, `useSource`, `originMissing`,
+   `rows` and `coverage` mirror it, so an App that knows nothing of the second standard
+   shows this one.
+2. `role: "next"` - the announced entry with the nearest future 上线时间, kept visible as
+   the next one; absent when nothing is announced. When her day comes she becomes the
+   current one with no code change. A failure building her does not fail the table:
+   it is written to `coverage.nextError` and the table ships with the current one.
+
+`--char` builds one standard, `role: "named"`. Every standard carries its own `rows`,
+`caliber`, `footnote`, `sources`, `weapon`, plus (additive, 2026-10-15) `role`, `label`,
+`groups` (its section order: a standard whose numbers are not from the calculator has
+per-owner groups, not the use groups), `useSource` and `originMissing`.
+`coverage.next` is `{name, releasedAt, status, weapon}` of the second standard, or null.
+
+## Essence advice (`standards[].weapon.essence`, additive 2026-10-15)
+
+For the signature weapon, the three essence terms it wants and the energy points that
+can drop all three (user 2026-10-15: 「顺带加上基质刷取建议」). Data is MaaEnd's own
+(`essence_advice`): the installed copy on the game PC (`<maaend_dir>/data/EssenceFilter/`,
+`tasks/AutoEssence/Target/Target.json`, `locales/interface/zh_cn.json` - what MaaEnd will
+actually farm with), else the same files on MaaEnd's GitHub `v2` branch (the Mac). Shape:
+
+    {"weapon": "玉中身", "code": "wpn_claym_0018",
+     "terms": [{"slot": "基础属性", "id": "s1_5", "name": "智识提升"},
+               {"slot": "附加属性", "id": "s2_1", "name": "寒冷伤害提升"},
+               {"slot": "技能属性", "id": "s3_7", "name": "效益"}],
+     "points": [{"name": "枢纽区", "full": "重度能量淤积点·枢纽区"}, ...],
+     "engrave": "...", "inMaaEndTarget": true, "maaend": "...",
+     "dataVersion": "2026-10-08 08:40:17 UTC", "source": "...", "reason": ""}
+
+* weapon: `weapons_output.json`, the entry whose `names.CN` is the weapon's wiki name.
+* term ids: each of its three `skills.CN` up to the `·`, matched to `skill_pools.json`
+  slot 1 / 2 / 3 by the longest pool name it starts with - MaaEnd's own
+  `cleanDisplayToCanonical` (agent/go-service/essencefilter/matchapi/loader.go).
+* term names: MaaEnd's `option.AutoEssenceSkill.s<slot>_<id>` strings - the essence's own
+  wording, which differs from the weapon's skill bar for two terms (源石技艺提升 /
+  法术伤害提升, see scripts/mac/gem-check.py); the text before `·` when a string is missing.
+* points: `locations.json` entries whose `slot2_ids` hold the 附加 id and `slot3_ids` the
+  技能 id. Base terms are not per point: MaaEnd's planner (autoessence/plan.go) offers
+  the full slot-1 pool everywhere, and its option text says to pick three of the five.
+* `inMaaEndTarget`: the weapon code is a case of a checkbox in Target.json, i.e. MaaEnd's
+  「目标选择」 mode can be told to farm it (that mode picks the point and the
+  pre-engraving itself, plan.go `SelectBestPlan`); `maaend` is the one line saying so.
+* Anything missing gives `terms: null, points: null` and a `reason`; it never fails the
+  table. Cross-checked 2026-10-15 against CEP (github.com/cmyyx/cep src/data/weapons.ts +
+  dungeons.ts): the same three terms and the same five points for the weapon of 祀, and
+  for the one of 明河 (relay/tests/test_need_table.py pins both).
 
 Who runs it: the relay, once a server day (needtable.py: rebuilt and put next to the
 phone state on COS, where the App reads it), so a new six-star, and her numbers moving
@@ -19,7 +75,7 @@ By hand, from the Mac (the wrapper reads SKLAND_TOKEN from ~/.config/ark/.env):
     python3 scripts/mac/build-need-tables.py --char 莱万汀 --weapon 熔铸火焰   # a named pair instead
 
 Endfield only for now. The `games[]` layer is where 明日方舟 / 鸣潮 go later; inside a
-game, `standards[]` holds the build standards (one today) and `rows` mirrors it.
+game, `standards[]` holds the build standards (above) and `rows` mirrors the first.
 
 ## Who (official Skland wiki, `docs/SKLAND-API.md` §8)
 
@@ -28,8 +84,9 @@ game, `standards[]` holds the build standards (one today) and `rows` mirrors it.
    six-star, `10005` five-star); `brief.dotType` `label_type_preview` = announced.
 2. `GET /web/v1/wiki/item/info?id=<itemId>` - the entry's attributes: operators carry
    `上线时间` and `主要获取方式`, weapons those two and `类型`.
-3. Newest = the latest `上线时间`, future dates included; `status` says 已实装 or
-   未实装 against the server date.
+3. Sorted by `上线时间`, future dates included; the current and the next standard are
+   picked from that list against the server date (above); `status` says 已实装 or
+   未实装 against the same date.
 4. Signature weapon = the six-star weapon with her `上线时间`, her `类型` (from
    `search-chars` `weaponType`) and `主要获取方式` 「武库交易所·限时特卖」 (熔铸火焰 for
    莱万汀, 寒夜幽影 for 提弗洛斯; the same-day 苦难的尽头 is battle-pass and is not chosen).
@@ -81,6 +138,20 @@ BUILT_FORMAT = "%Y-%m-%d %H:%M UTC+8"
 # wiki entry has the operator's numbers yet (source 3 above).
 FORESIGHT_URL = "https://raw.githubusercontent.com/rmxlinux/EndfieldData/main/TableCfg/ForesightCharGrowthTable.json"
 ITEM_NAMES_URL = "https://raw.githubusercontent.com/MaaEnd/MaaEnd/v2/assets/locales/interface/zh_cn.json"
+# MaaEnd's essence data (the essence advice above): (fixture name, path inside an installed
+# MaaEnd). A release is the repo's assets/ flattened (relay/tests/gamesim/upstream/*/SOURCE.txt,
+# "prefix assets/"), so the GitHub copy is MAAEND_RAW + the same path.
+MAAEND_RAW = "https://raw.githubusercontent.com/MaaEnd/MaaEnd/v2/assets/"
+ESSENCE_WEAPONS = ("maaend-essence-weapons", "data/EssenceFilter/weapons_output.json")
+ESSENCE_POOLS = ("maaend-essence-pools", "data/EssenceFilter/skill_pools.json")
+ESSENCE_LOCATIONS = ("maaend-essence-locations", "data/EssenceFilter/locations.json")
+ESSENCE_MATCHER = ("maaend-essence-matcher", "data/EssenceFilter/matcher_config.json")
+ESSENCE_TARGET = ("maaend-essence-target", "tasks/AutoEssence/Target/Target.json")
+ESSENCE_NAMES = ("maaend-essence-names", "locales/interface/zh_cn.json")
+# The three essence slots, in the order of a weapon's three skills (MaaEnd slot 1 / 2 / 3;
+# its option labels are 「基础属性」 and 「附加 / 技能属性」).
+ESSENCE_SLOTS = ("基础属性", "附加属性", "技能属性")
+STAR = {"6": "六", "5": "五", "4": "四"}
 
 GAME, GAME_ID = "终末地", "endfield"
 SOURCE = ("最新六星与其专武按森空岛百科的「上线时间」「类型」「主要获取方式」定；用量优先森空岛养成计算器 rules，"
@@ -234,15 +305,23 @@ class RulesSource:
     """Where responses come from: Skland live (plus the two mirrors), or a directory
     of saved ones. Wiki entries (`wiki-item-<id>`) share one fixture file,
     `wiki-items.json`, keyed by id; wiki documents (`wiki-doc-<id>`) likewise share
-    `wiki-docs.json`."""
+    `wiki-docs.json`. MaaEnd's essence files come from the installed MaaEnd when
+    `maaend_dir` has them (`get_maaend`). Every answer is kept for the rest of the
+    build (`_memo`): the second standard reads the same catalog, material-list and
+    物品来源 entries as the first, and asks Skland for none of them again."""
 
     MERGED = {"wiki-item-": "wiki-items.json", "wiki-doc-": "wiki-docs.json", "wiki-origin-": "wiki-origins.json"}
 
-    def __init__(self, offline: Path | None, save: Path | None, token: str = ""):
+    def __init__(self, offline: Path | None, save: Path | None, token: str = "", maaend_dir: Path | None = None):
         """Live needs `token` (the Skland token: the machine's cfg.skland_token, or
-        SKLAND_TOKEN of the Mac's .env read by the wrapper)."""
+        SKLAND_TOKEN of the Mac's .env read by the wrapper). `maaend_dir`: the installed
+        MaaEnd (the machine's cfg.maaend_dir); None on the Mac."""
         self.offline, self.save = offline, save
+        self.maaend_dir = Path(maaend_dir) if maaend_dir else None
         self.cred = None
+        self._memo: dict = {}
+        # Where each MaaEnd file came from (fixture name -> words for `essence.source`).
+        self.maaend_from: dict[str, str] = {}
         if offline is None:
             from ark_relay.core import skland  # noqa: PLC0415 - only the live path needs it
             self.skland = skland
@@ -282,8 +361,11 @@ class RulesSource:
     def get(self, name: str, path: str, query: str = "", trim=None) -> dict:
         """One Skland response, by fixture name, in the trimmed shape `build()` reads
         (the same shape is what `--offline` reads back)."""
+        if name in self._memo:
+            return self._memo[name]
         if self.offline is not None:
-            return self._load(name)
+            self._memo[name] = self._load(name)
+            return self._memo[name]
         url = f"{ZONAI}{path}" + (f"?{query}" if query else "")
 
         def once():
@@ -302,12 +384,16 @@ class RulesSource:
         # The trimmed shape is the one `build()` reads, live and offline alike.
         data = trim(d["data"]) if trim else d["data"]
         self._store(name, data)
+        self._memo[name] = data
         return data
 
-    def get_url(self, name: str, url: str, trim=None) -> dict:
-        """A plain JSON document from elsewhere (the client-data mirrors)."""
+    def get_url(self, name: str, url: str, trim=None, loads=json.loads) -> dict:
+        """A plain JSON document from elsewhere (the client-data mirrors, MaaEnd's files)."""
+        if name in self._memo:
+            return self._memo[name]
         if self.offline is not None:
-            return self._load(name)
+            self._memo[name] = self._load(name)
+            return self._memo[name]
 
         def once():
             # The jsDelivr doors first: from the game PC in Shanghai a TLS handshake with
@@ -319,7 +405,7 @@ class RulesSource:
                 try:
                     with urllib.request.urlopen(urllib.request.Request(door, headers={"User-Agent": "ark-need-table"}),
                                                 timeout=60) as r:
-                        return json.loads(r.read().decode("utf-8"))
+                        return loads(r.read().decode("utf-8"))
                 except Exception as e:  # noqa: BLE001 - the next door may answer
                     err = e
             raise err
@@ -327,7 +413,31 @@ class RulesSource:
         data = _retry(once, tries=2)
         data = trim(data) if trim else data
         self._store(name, data)
+        self._memo[name] = data
         return data
+
+    def get_maaend(self, what: tuple[str, str], trim=None) -> dict:
+        """One of MaaEnd's files, `what` = (fixture name, path inside a MaaEnd install):
+        the installed one when `maaend_dir` has it (MaaEnd farms with that copy), else
+        MaaEnd's GitHub `v2` branch. Both are read as JSON with comments (MaaEnd's
+        task files carry them; mastercfg._strip_jsonc)."""
+        name, rel = what
+        if name in self._memo:
+            return self._memo[name]
+        from ark_relay.core.mastercfg import _strip_jsonc  # noqa: PLC0415 - only this read needs it
+        if self.offline is not None:
+            self.maaend_from[name] = "保存的应答"
+            return self.get_url(name, "")
+        f = self.maaend_dir / rel if self.maaend_dir else None
+        if f is not None and f.is_file():
+            data = json.loads(_strip_jsonc(f.read_text(encoding="utf-8")))
+            data = trim(data) if trim else data
+            self._store(name, data)
+            self._memo[name] = data
+            self.maaend_from[name] = "游戏机上装着的 MaaEnd"
+            return data
+        self.maaend_from[name] = "MaaEnd 的 GitHub v2 分支"
+        return self.get_url(name, MAAEND_RAW + rel, trim, loads=lambda t: json.loads(_strip_jsonc(t)))
 
 
 # ── trims: what each response is cut down to when saved as a fixture ──────────
@@ -442,6 +552,108 @@ def trim_item_names(d: dict) -> dict:
     """MaaEnd's `iconRecognition.name.<item id>` strings, for the preview table's ids."""
     return {k[len("iconRecognition.name."):]: v for k, v in d.items()
             if k.startswith("iconRecognition.name.item_")}
+
+
+def trim_essence_weapons(d: dict) -> dict:
+    """weapons_output.json: weapon code -> its Chinese name and three Chinese skill strings."""
+    return {code: {"name": str((w.get("names") or {}).get("CN") or ""), "skills": list((w.get("skills") or {}).get("CN") or []),
+                   "type": w.get("weapon_type", ""), "rarity": w.get("rarity")}
+            for code, w in d.items() if isinstance(w, dict)}
+
+
+def trim_essence_pools(d: dict) -> dict:
+    """skill_pools.json: slot1 / slot2 / slot3 -> [{id, cn}]."""
+    return {slot: [{"id": int(e["id"]), "cn": str(e.get("cn") or "")} for e in d.get(slot) or []]
+            for slot in ("slot1", "slot2", "slot3")}
+
+
+def trim_essence_locations(d: list) -> list:
+    """locations.json: each energy point's name and the 附加 / 技能 term ids it drops."""
+    return [{"name": str(e.get("name") or ""), "slot2_ids": [int(x) for x in e.get("slot2_ids") or []],
+             "slot3_ids": [int(x) for x in e.get("slot3_ids") or []]} for e in d]
+
+
+def trim_essence_matcher(d: dict) -> dict:
+    """matcher_config.json: only its data version."""
+    return {"data_version": str(d.get("data_version") or "")}
+
+
+def trim_essence_target(d: dict) -> dict:
+    """Target.json (目标选择): every checkbox option -> its case names, the weapon codes it can farm."""
+    return {k: [c.get("name") for c in v.get("cases") or []] for k, v in (d.get("option") or {}).items()
+            if isinstance(v, dict) and v.get("type") == "checkbox"}
+
+
+def trim_essence_names(d: dict) -> dict:
+    """MaaEnd's `option.AutoEssenceSkill.s<slot>_<id>` strings: the essence terms' own names."""
+    pre = "option.AutoEssenceSkill."
+    return {k[len(pre):]: v for k, v in d.items() if k.startswith(pre)}
+
+
+# ── essence advice (the docstring's section) ──────────────────────────────────
+
+def essence_terms(skills: list, pools: dict, names: dict) -> list[dict] | None:
+    """A weapon's three skill strings as essence terms, or None when one does not match:
+    the text before `·`, matched to its slot's pool by the longest pool name it starts with
+    (MaaEnd's cleanDisplayToCanonical), named by MaaEnd's option string for that term."""
+    out = []
+    for i, text in enumerate(skills[:3]):
+        core = str(text).split("·")[0].strip()
+        hit = max((e for e in pools.get(f"slot{i + 1}") or [] if e["cn"] and core.startswith(e["cn"])),
+                  key=lambda e: len(e["cn"]), default=None)
+        if hit is None:
+            return None
+        tid = f"s{i + 1}_{hit['id']}"
+        out.append({"slot": ESSENCE_SLOTS[i], "id": tid, "name": names.get(tid) or core})
+    return out if len(out) == 3 else None
+
+
+def _essence(src: RulesSource, weapon: str, out: dict) -> None:
+    weapons = src.get_maaend(ESSENCE_WEAPONS, trim_essence_weapons)
+    out["dataVersion"] = src.get_maaend(ESSENCE_MATCHER, trim_essence_matcher).get("data_version", "")
+    hits = [(code, w) for code, w in weapons.items() if w.get("name") == weapon]
+    if len(hits) != 1:
+        out["reason"] = (f"MaaEnd 的基质数据（数据版本 {out['dataVersion'] or '未知'}）里"
+                         + (f"还没有{weapon}" if not hits else f"有 {len(hits)} 把叫{weapon}的武器，不猜是哪把"))
+        return
+    code, w = hits[0]
+    out["code"] = code
+    terms = essence_terms(w.get("skills") or [], src.get_maaend(ESSENCE_POOLS, trim_essence_pools),
+                          src.get_maaend(ESSENCE_NAMES, trim_essence_names))
+    if terms is None:
+        out["reason"] = f"MaaEnd 的基质数据里{weapon}的词条 {w.get('skills')} 对不上它的词条表"
+        return
+    s2, s3 = (int(t["id"].split("_")[1]) for t in terms[1:])
+    points = [{"name": e["name"].split("·")[-1], "full": e["name"]}
+              for e in src.get_maaend(ESSENCE_LOCATIONS, trim_essence_locations)
+              if s2 in e["slot2_ids"] and s3 in e["slot3_ids"]]
+    in_target = any(code in cases for cases in src.get_maaend(ESSENCE_TARGET, trim_essence_target).values())
+    t1, t2, t3 = (t["name"] for t in terms)
+    # The two option texts MaaEnd shows for a point's pre-engraving: 「选择 3 项基础属性」 and
+    # 「选择 1 项该地区可用的附加属性或技能属性」 (option.AutoEssenceLocationSlot1 / Secondary).
+    # Target mode (plan_action.go TargetPlanAction): only ticked weapons with no matching essence
+    # in the bag count; the plan that covers the most of them wins (plan.go SelectBestPlan), and
+    # with none left the task ends - so ticking only this weapon is what makes it farm for it.
+    out.update(terms=terms, points=points, inMaaEndTarget=in_target,
+               engrave=f"预刻写：基础属性选 3 项（含{t1}），附加 / 技能属性固定{t2}或{t3}" if points else "",
+               maaend=(f"MaaEnd「基质刷取」切到「目标选择」、只勾{weapon}：它自己挑地方、自己预刻写，背包里有了对得上的基质就停"
+                       if in_target else f"MaaEnd「目标选择」里还没有{weapon}，只能照上面的地方手动刷"),
+               reason="" if points else f"没有一处能量淤积点同时出{t2}和{t3}")
+
+
+def essence_advice(src: RulesSource, weapon: str) -> dict:
+    """`standards[].weapon.essence` (the docstring's section). Never raises: whatever is
+    missing leaves `terms` / `points` null and says why in `reason`."""
+    out = {"weapon": weapon, "code": "", "terms": None, "points": None, "engrave": "", "inMaaEndTarget": False,
+           "maaend": "", "dataVersion": "", "source": "", "reason": ""}
+    try:
+        _essence(src, weapon, out)
+    except Exception as e:  # noqa: BLE001 - advice is optional; the need table must still ship
+        out.update(terms=None, points=None, reason=f"读不到 MaaEnd 的基质数据：{type(e).__name__}: {e}")
+    where = "、".join(dict.fromkeys(src.maaend_from.values())) or "无"
+    out["source"] = ("词条和能量淤积点取自 MaaEnd 的 data/EssenceFilter（weapons_output / skill_pools / locations），"
+                     f"词条名取自 MaaEnd 界面文字，「目标选择」能勾哪些武器取自它的 Target.json；来自{where}")
+    return out
 
 
 # ── the arithmetic ────────────────────────────────────────────────────────────
@@ -733,22 +945,77 @@ def by_name_to_ids(counts: Counter, mat: dict[str, dict]) -> Counter:
     return out
 
 
+def pick_standards(ranked: list[dict], today: str, rarity: str, char_name: str = "") -> list[tuple[str, str, str, str]]:
+    """(who, role, label, chosenBy) of each standard, in order (the docstring's Standards
+    section): the newest released entry, then the announced one with the nearest date."""
+    star = STAR[rarity]
+    if char_name:
+        return [(char_name, "named", "指定干员", "--char")]
+    released = [e for e in ranked if e["onlineDate"] <= today]
+    upcoming = [e for e in ranked if e["onlineDate"] > today]
+    picks = []
+    if released:
+        picks.append((released[0]["name"], "current", f"最新{star}星", f"百科上线时间最新、已上线的{star}星"))
+    if upcoming:
+        picks.append((upcoming[-1]["name"], "next", f"下一位{star}星", f"百科里已公布、上线日期最近的未上线{star}星"))
+    return picks
+
+
 def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", weapon_name: str = "",
           rarity: str = "6") -> dict:
     raw_mat = src.get("material-list", "/web/v1/game/endfield/calculate/material-list")
     mat = material_table(raw_mat)
     box = self_select_box(raw_mat, mat)
     listed = src.get("search-chars", "/web/v1/game/endfield/search-chars", "", trim_search_chars)["chars"]
-    calc_ids = {c["name"]: c["id"] for c in listed}
-    weapon_types = {c["name"]: str(((c.get("weaponType") or {}).get("value")) or "") for c in listed}
     weapons_listed = src.get("search-weapons", "/web/v1/game/endfield/search-weapons", "", trim_search_weapons)["weapons"]
-    wid_of = {w["name"]: w["id"] for w in weapons_listed}
-    wnames = wiki_item_names(src)
+    ctx = {"mat": mat, "calc_ids": {c["name"]: c["id"] for c in listed},
+           "weapon_types": {c["name"]: str(((c.get("weaponType") or {}).get("value")) or "") for c in listed},
+           "weapons_listed": weapons_listed, "wid_of": {w["name"]: w["id"] for w in weapons_listed},
+           "wnames": wiki_item_names(src), "today": today, "rarity": rarity}
 
-    # 1. who, and her signature weapon - both from the official wiki
+    # 1. who - from the official wiki: the current standard and the announced next one
     ops = wiki_entries(src, "干员", rarity)
-    top, ranked = newest(ops)
-    who = char_name or top["name"]
+    _top, ranked = newest(ops)
+    picks = pick_standards(ranked, today, rarity, char_name)
+    if not picks:
+        raise RuntimeError("no entry to build a standard for")
+    standards, next_error = [], ""
+    for i, (who, role, label, chosen_by) in enumerate(picks):
+        try:
+            standards.append(build_standard(src, ctx, ops, who, role, label, chosen_by, weapon_name if i == 0 else ""))
+        except Exception as exc:  # the next one is optional; the current one is not (re-raised)
+            if i == 0:
+                raise
+            next_error = f"{who}：{type(exc).__name__}: {exc}"
+    first = standards[0]
+    nxt = next((s for s in standards[1:] if s["role"] == "next"), None)
+    return {
+        "built": pulled_at,
+        "games": [{
+            "game": GAME, "gameId": GAME_ID, "caliber": first["caliber"], "footnote": first["footnote"], "source": SOURCE,
+            "sections": list(SECTIONS), "groups": first["groups"], "useSource": first["useSource"],
+            "originSource": ORIGIN_SOURCE, "originMissing": first["originMissing"],
+            "lagMinutes": LAG_MINUTES, "lagNote": LAG_NOTE, "box": box,
+            "standard": first["charId"] or first["wikiItemId"], "standards": standards, "rows": first["rows"],
+            "coverage": {
+                "operator": first["name"], "releasedAt": first["releasedAt"], "status": first["status"],
+                "weapon": first["weapon"]["name"], "weaponStatus": first["weapon"]["status"], "asOf": today,
+                "sources": first["sources"],
+                "candidates": [f"{r['name']} {r['onlineDate']}{'（未实装）' if r['onlineDate'] > today else ''}" for r in ranked],
+                "next": ({"name": nxt["name"], "releasedAt": nxt["releasedAt"], "status": nxt["status"],
+                          "weapon": nxt["weapon"]["name"]} if nxt else None),
+                "nextError": next_error,
+            },
+        }],
+    }
+
+
+def build_standard(src: RulesSource, ctx: dict, ops: list[dict], who: str, role: str, label: str, chosen_by: str,
+                   weapon_name: str = "") -> dict:
+    """One entry of `standards[]`: her (and her signature weapon's) numbers, rows and essence advice."""
+    mat, calc_ids, weapon_types = ctx["mat"], ctx["calc_ids"], ctx["weapon_types"]
+    weapons_listed, wid_of, wnames = ctx["weapons_listed"], ctx["wid_of"], ctx["wnames"]
+    today, rarity = ctx["today"], ctx["rarity"]
     op = next((e for e in ops if e["name"] == who), None) or {"name": who, "wikiItemId": "", "onlineDate": "", "obtain": "", "dotType": ""}
     status = "已实装" if op["onlineDate"] and op["onlineDate"] <= today else "未实装"
     # The calculator's weaponType once she is listed, else her wiki entry's weapon tag.
@@ -890,38 +1157,26 @@ def build(src: RulesSource, pulled_at: str, today: str, char_name: str = "", wea
                              -(r["need"] or 0), r["name"]))
     groups = list(dict.fromkeys(r["group"] for r in rows if r["group"]))
 
-    label = {"6": "最新六星", "5": "最新五星", "4": "最新四星"}[rarity] if who == top["name"] and not char_name else "指定干员"
     online = f"（{op['onlineDate']} 上线）" if op.get("onlineDate") else ""
     wlabel = f"专武 {weapon['name']}" if weapon else "专武待定"
     caliber = f"{label} {who}{online}：1→90 全突破、四技能 12、{wlabel} 1→90；不含天赋"
     footnote = (f"人份 = 库存 ÷ {who}满练所需（1→90 全突破、四技能 12、{wlabel} 1→90，不含天赋"
-                + (f"；{op['onlineDate']} 上线的{label}" if op.get("onlineDate") and label != "指定干员" else "") + "）")
+                + (f"；{op['onlineDate']} 上线的{label}" if op.get("onlineDate") and role != "named" else "") + "）")
     if sources["need"] == SRC_FORESIGHT:
         footnote += "（上线前按客户端预览表，棱柱和折金票含天赋树）"
-    standard = {
+    weapon_out = ({"id": wid_of.get(weapon["name"], ""), "name": weapon["name"], "releasedAt": weapon.get("onlineDate", ""),
+                   "kind": weapon.get("kind", ""), "obtain": weapon.get("obtain", ""), "wikiItemId": weapon.get("wikiItemId", ""),
+                   "status": weapon_status, "reason": weapon_reason} if weapon else
+                  {"id": "", "name": "", "status": "待定", "reason": weapon_reason})
+    if weapon:
+        weapon_out["essence"] = essence_advice(src, weapon["name"])
+    return {
         "charId": calc_ids.get(who, ""), "name": who, "rarity": int(rarity), "releasedAt": op.get("onlineDate", ""),
         "status": status, "wikiItemId": op.get("wikiItemId", ""), "obtain": op.get("obtain", ""), "dotType": op.get("dotType", ""),
-        "chosenBy": "--char" if char_name else f"百科上线时间最新的{ {'6': '六', '5': '五', '4': '四'}[rarity] }星（含未实装）",
-        "weapon": ({"id": wid_of.get(weapon["name"], ""), "name": weapon["name"], "releasedAt": weapon.get("onlineDate", ""),
-                    "kind": weapon.get("kind", ""), "obtain": weapon.get("obtain", ""), "wikiItemId": weapon.get("wikiItemId", ""),
-                    "status": weapon_status, "reason": weapon_reason} if weapon else
-                   {"id": "", "name": "", "status": "待定", "reason": weapon_reason}),
-        "sources": sources, "caliber": caliber, "footnote": footnote, "rows": rows,
-    }
-    return {
-        "built": pulled_at,
-        "games": [{
-            "game": GAME, "gameId": GAME_ID, "caliber": caliber, "footnote": footnote, "source": SOURCE,
-            "sections": list(SECTIONS), "groups": groups, "useSource": USE_SOURCE if cuses is not None else "",
-            "originSource": ORIGIN_SOURCE, "originMissing": origin_missing,
-            "lagMinutes": LAG_MINUTES, "lagNote": LAG_NOTE, "box": box,
-            "standard": standard["charId"] or standard["wikiItemId"], "standards": [standard], "rows": rows,
-            "coverage": {
-                "operator": who, "releasedAt": op.get("onlineDate", ""), "status": status,
-                "weapon": weapon["name"] if weapon else "", "weaponStatus": weapon_status, "asOf": today, "sources": sources,
-                "candidates": [f"{r['name']} {r['onlineDate']}{'（未实装）' if r['onlineDate'] > today else ''}" for r in ranked],
-            },
-        }],
+        "role": role, "label": label, "chosenBy": chosen_by, "weapon": weapon_out,
+        "sources": sources, "caliber": caliber, "footnote": footnote,
+        "groups": groups, "useSource": USE_SOURCE if cuses is not None else "", "originMissing": origin_missing,
+        "rows": rows,
     }
 
 
@@ -947,6 +1202,13 @@ def make(src: RulesSource, *, today: str = "", char_name: str = "", weapon_name:
 def summary(table: dict) -> str:
     """One line on what a table holds (the wrapper prints it, the relay logs it)."""
     g = table["games"][0]
-    st = g["standards"][0]
-    return (f"{st['name']}（{st['releasedAt'] or '?'} 上线，{st['status']}）+ {st['weapon']['name'] or '专武待定'}"
-            f"（{st['weapon']['status']}），用量来自 {st['sources']['need']}，{len(g['rows'])} rows，built {table['built']}")
+
+    def one(st: dict) -> str:
+        ess = st["weapon"].get("essence") or {}
+        essence = ("，基质 " + "/".join(t["name"] for t in ess["terms"]) + f" 在 {len(ess['points'] or [])} 处"
+                   if ess.get("terms") else f"，基质建议缺：{ess['reason']}" if ess else "")
+        return (f"{st['name']}（{st['releasedAt'] or '?'} 上线，{st['status']}）+ {st['weapon']['name'] or '专武待定'}"
+                f"（{st['weapon']['status']}），用量来自 {st['sources']['need']}{essence}")
+    nxt = "；下一位 " + one(g["standards"][1]) if len(g["standards"]) > 1 else ""
+    err = f"；下一位没建成：{g['coverage']['nextError']}" if (g.get("coverage") or {}).get("nextError") else ""
+    return f"{one(g['standards'][0])}{nxt}{err}，{len(g['rows'])} rows，built {table['built']}"
