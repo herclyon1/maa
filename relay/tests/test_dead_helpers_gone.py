@@ -7,7 +7,8 @@
   notice; that app is never in an automatic order, so it could never fire.
 * techlog.red_items: numbered from 1 on every call (duplicate ids); add_red is the
   one writer.
-* Desktop.click(x, y): clicks go by text (click_text).
+* Desktop.click(x, y) was here too; it came back on 2026-10-15 with a caller: the
+  launcher's 「确认」 button that no OCR pass reads (gameupdate_games._confirm_space).
 
 Checked two ways: the names are not defined, and no relay or scripts source calls them.
 """
@@ -35,7 +36,6 @@ check("WeCom.send_image", hasattr(notify.WeCom, "send_image"), False)
 check("WeCom._upload", hasattr(notify.WeCom, "_upload"), False)
 check("notify._hint", hasattr(notify, "_hint"), False)
 check("techlog.red_items", hasattr(techlog, "red_items"), False)
-check("Desktop.click", hasattr(desktop.Desktop, "click"), False)
 check("群机器人发图还在", hasattr(notify.Notifier, "send_group_image"), True)
 check("按字点击还在", hasattr(desktop.Desktop, "click_text"), True)
 
@@ -44,7 +44,7 @@ srcs = [p for p in (ROOT / "ark_relay").rglob("*.py") if "okww_files" not in p.p
 srcs += [ROOT / "service.py", ROOT / "boot_stages.py"] + list((ROOT.parent / "scripts").rglob("*.py"))
 # WeComBot.send_image (the group image) stays; scripts/mac/techlog.py has its own red_items.
 pat = re.compile(r"(?<!wecom_bot)\.send_image\(|\._upload\(|\b_hint\(|\bcore\.techlog\b.*red_items|"
-                 r"\btechlog\.red_items\(|\bdesk\w*\.click\(")
+                 r"\btechlog\.red_items\(")
 hits = [f"{p.name}:{i}" for p in srcs for i, ln in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1)
         if pat.search(ln)]
 check("没有调用处", hits, [])

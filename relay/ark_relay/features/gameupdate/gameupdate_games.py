@@ -53,6 +53,12 @@ def _unread(scr) -> str:
     return f"桌面助手读屏失败：{err}" if err else ""
 
 
+def _space_line(scr) -> str:
+    """The 所需空间 line of the disk-space confirm, for the log; "" when not read."""
+    line = scr.find("所需空间")
+    return getattr(line, "text", "")
+
+
 def _trace(desk, **entry) -> None:
     """One reading of a launcher or game screen for the machine checks of a game update
     (Desktop.note; machinechecks/system.py). A desk without a trace is left alone."""
@@ -102,6 +108,36 @@ def endfield_paths(maaend_dir: Path | None) -> tuple[Path | None, Path | None]:
 # first look, it is resuming an earlier download: wait, do not click, do not kill.
 _EF_BUSY = ("正在下载", "安装中")
 
+# The disk-space confirm the launcher (1.6.0) opens after 「更新游戏」: title 「系统提示」,
+# 所需空间 / 剩余空间 and the patch size, buttons 取消 / 确认. The download starts only
+# after 「确认」. On 2026-10-15 nothing clicked it: three rounds of 40 minutes each
+# waited on this dialog and nothing was downloaded (relay.log 09:33:18-12:02:25;
+# screenshots shot-0956fb2a.png 09:33:52 and shot-cde1c7d2.png 12:02:25).
+_EF_SPACE_WORDS = ("系统提示", "所需空间", "剩余空间")
+# Neither OCR pass reads 「确认」 (white button, dark text; nor 「取消」), so the button is
+# placed from a line that is read. Offsets from that line's top-left corner to the
+# middle of 「确认」, measured on the 1920x1080 screenshot shot-0956fb2a.png: the
+# button spans x 968-1170, y 587-626; 「系统提示」 starts at (929, 416) and
+# 「-所需空间：」 at (749, 475). The launcher window has a fixed size in pixels.
+_EF_CONFIRM_FROM = (("系统提示", 140, 190), ("所需空间", 320, 131))
+# Clicks of 「确认」 before the dialog that will not go away is reported.
+_EF_CONFIRM_TRIES = 3
+
+
+def _space_dialog(scr) -> bool:
+    return not _unread(scr) and scr.has(*_EF_SPACE_WORDS)
+
+
+def _confirm_space(desk, scr) -> str:
+    """Click 「确认」 on the disk-space confirm; how it was clicked, or "" when not."""
+    if desk.click_text("确认", focus="Games"):
+        return "按字"
+    for word, dx, dy in _EF_CONFIRM_FROM:
+        line = scr.find(word)
+        if line is not None and desk.click(line.x + dx, line.y + dy, focus="Games"):
+            return f"按「{word}」的位置"
+    return ""
+
 
 def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
                     budget_s: float = 2400, poll_s: float = 30,
@@ -121,15 +157,24 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
         _note(problems, f"终末地：{where}，画面读不到，没判断是否要更新，启动器没关（截图 {scr.shot}）")
         return ""
     busy = next((w for w in _EF_BUSY if scr.has(w)), "")
+    confirms = 0
     if busy:
         log.info("游戏更新：终末地启动器一打开就是「%s」，在接着上次的下载，不点不关，等它装完", busy)
+    elif _space_dialog(scr):
+        # Left over from an earlier round: 「更新游戏」 was clicked, the download waits on it.
+        confirms += 1
+        if not (how := _confirm_space(desk, scr)):
+            _note(problems, f"终末地：启动器停在「系统提示」（{_space_line(scr)}），「确认」没点上，启动器没关（截图 {scr.shot}）")
+            return ""
+        log.info("游戏更新：终末地启动器停在「系统提示」（%s），已点「确认」（%s），等它下载安装", _space_line(scr), how)
     elif scr.has("开始游戏"):
         log.info("游戏更新：终末地启动器已是「开始游戏」，无需更新")
         kill("Games.exe")
         return ""
     elif not scr.has("更新游戏"):
-        _note(problems, f"终末地：启动器画面没读到按钮（截图 {scr.shot}）：{scr.dump(12)}")
-        kill("Games.exe")
+        # Not killed: a screen not recognised may be a launcher that is downloading
+        # under words not in _EF_BUSY, and killing it throws the download away.
+        _note(problems, f"终末地：启动器画面没读到按钮，启动器没关（截图 {scr.shot}）：{scr.dump(12)}")
         return ""
     elif not desk.click_text("更新游戏", focus="Games"):
         _note(problems, "终末地：点「更新游戏」没点上")
@@ -146,6 +191,16 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
         if not _unread(scr) and scr.has("开始游戏"):
             ready = True
             break
+        if _space_dialog(scr):
+            if confirms >= _EF_CONFIRM_TRIES:
+                _note(problems, f"终末地：「系统提示」点了 {confirms} 次「确认」还在（{_space_line(scr)}），"
+                                f"没开始下载，启动器没关（截图 {scr.shot}）")
+                return ""
+            confirms += 1
+            how = _confirm_space(desk, scr)
+            log.info("游戏更新：终末地启动器弹「系统提示」（%s），%s", _space_line(scr),
+                     f"已点「确认」（{how}），等它下载" if how else "「确认」没点上，下一轮再点")
+            continue
         log.info("游戏更新：终末地启动器 %s", _unread(scr) or
                  (next((ln for w in _EF_BUSY if (ln := scr.find(w))), None) or scr.dump(4)))
     if not ready:

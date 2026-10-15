@@ -16,6 +16,13 @@ Where the screens come from:
   Arknights prewarm, three bottom taps and then 「开始唤醒」. Replayed below.
 * The focus-missing screen is built from AGENT_PS's fields (the agent logs
   「focus: 没有 $f 的窗口」 and, since this audit, sets focus_missing); no real line.
+* SPACE_DIALOG: the launcher's 「系统提示」 disk-space confirm after 「更新游戏」, 2026-10-15
+  (relay.log 09:33:18 「已点「更新游戏」」, then 40 minutes of desktop-icon dumps; the
+  relay's own screenshot shot-0956fb2a.png 09:33:52). The lines are what the agent's
+  two OCR passes read off that screenshot, coordinates on the 1920x1080 screen; the
+  desktop-icon lines are cut down to three neutral ones (the others are file names
+  on his desktop). CONFIRM_BOX is the white 「确认」 button measured on the same
+  screenshot's pixels - neither OCR pass reads its text.
 """
 import sys
 import types
@@ -168,5 +175,102 @@ check("终末地：问题说读屏失败和原因", any("读屏失败" in p and 
 check("终末地：没说成「没读到按钮」", any("没读到按钮" in p for p in probs), False)
 check("终末地：什么都没点", d.clicks, [])
 check("终末地：没杀 Games.exe", [e for e in events if e[0] == "kill" and "Games.exe" in e], [])
+# ── 2026-10-15: the disk-space confirm that nothing clicked ──
+SPACE_DIALOG = [
+    Line("控]面板", 90, 61, 48, 11), Line("Clashfor", 163, 61, 52, 10), Line("Windows", 163, 78, 53, 10),
+    # whole-screen pass
+    Line("-所需空间：", 749, 475, 77, 12), Line("-剩余空间：", 749, 501, 77, 12),
+    Line("-补丁&72G", 760, 540, 68, 11), Line("1&99G（包衤卜丁：872G）", 840, 477, 178, 13),
+    Line("1409G", 840, 503, 56, 11),
+    # launcher-window pass (2x crop, mapped back to the screen)
+    Line("系统提示", 929, 416, 64, 16), Line("-所需空间：18．99G（包台补丁：872G)", 749, 474, 269, 15),
+    Line("剩空间：140．59G", 766, 500, 131, 13), Line("-补丁&72G", 760, 539, 68, 11),
+]
+CONFIRM_BOX = (968, 587, 1170, 626)
+
+
+class DialogLauncher:
+    """The real launcher: 「更新游戏」 opens the confirm, and the confirm stays on screen
+    until a click lands inside 「确认」; then it downloads, then shows 「开始游戏」.
+    `button_works=False` is a launcher whose 「确认」 does nothing."""
+
+    def __init__(self, dialog_first=False, button_works=True):
+        self.state = "dialog" if dialog_first else "update"
+        self.button_works = button_works
+        self.clicks = []
+        self.downloading = 0
+
+    def read(self, focus=None, settle_ms=0):
+        if focus == "Endfield":
+            lines = [Line("点击任意位置继续", 900, 900, 160, 20)]
+        elif self.state == "update":
+            lines = [Line("更新游戏", 1380, 790, 90, 20)]
+        elif self.state == "dialog":
+            lines = list(SPACE_DIALOG)
+        elif self.state == "downloading" and self.downloading < 2:
+            self.downloading += 1
+            lines = [Line("正在下载 45%", 700, 790, 120, 20)]
+        else:
+            lines = [Line("开始游戏", 1380, 790, 90, 20)]
+        events.append(("read", focus, tuple(ln.text for ln in lines)))
+        return Screen(lines, Path("shot-x.png"))
+
+    def click_text(self, text, focus=None):
+        # The agent finds the text in its own OCR of the screen: 「确认」 is never read.
+        ok = (text == "更新游戏" and self.state == "update") or \
+             (text == "开始游戏" and self.state == "downloading")
+        if text == "更新游戏" and ok:
+            self.state = "dialog"
+        self.clicks.append(text)
+        events.append(("click", text, ok))
+        return ok
+
+    def click(self, x, y, focus=None):
+        self.clicks.append((x, y))
+        hit = CONFIRM_BOX[0] <= x <= CONFIRM_BOX[2] and CONFIRM_BOX[1] <= y <= CONFIRM_BOX[3]
+        events.append(("click", (x, y), True))
+        if hit and self.button_works and self.state == "dialog":
+            self.state = "downloading"
+        return True
+
+
+def confirm_hits(d):
+    return [c for c in d.clicks if isinstance(c, tuple)
+            and CONFIRM_BOX[0] <= c[0] <= CONFIRM_BOX[2] and CONFIRM_BOX[1] <= c[1] <= CONFIRM_BOX[3]]
+
+
+print("\n[10-15 终末地：点「更新游戏」后弹「系统提示」（所需空间）→ 点「确认」，不干等 40 分钟]")
+reset(); probs = []
+d = DialogLauncher()
+out = gug.update_endfield(d, *EF, poll_s=30, problems=probs, sleep=fake_sleep)
+check("「确认」点在按钮里", len(confirm_hits(d)), 1)
+check("没报「40 分钟内没等到」", [p for p in probs if "没等到" in p], [])
+check("等到开始游戏前没杀 Games.exe", [e for e in before_first_click("kill") if "Games.exe" in e], [])
+check("报了更新", out, "终末地 客户端已通过启动器更新")
+
+print("\n[10-15 终末地：上一轮留下的「系统提示」一打开就在 → 点「确认」，不当成没读到按钮去杀启动器]")
+reset(); probs = []
+d = DialogLauncher(dialog_first=True)
+out = gug.update_endfield(d, *EF, poll_s=30, problems=probs, sleep=fake_sleep)
+check("「确认」点在按钮里", len(confirm_hits(d)), 1)
+check("没报没读到按钮", [p for p in probs if "没读到按钮" in p], [])
+check("没点「更新游戏」", "更新游戏" in d.clicks, False)
+check("报了更新", out, "终末地 客户端已通过启动器更新")
+
+print("\n[10-15 终末地：「确认」点了也不走 → 点三次就报问题带截图，不干等，不杀启动器]")
+reset(); probs = []
+d = DialogLauncher(button_works=False)
+out = gug.update_endfield(d, *EF, poll_s=30, problems=probs, sleep=fake_sleep)
+check("返回空", out, "")
+check("点了三次「确认」", len(confirm_hits(d)), 3)
+check("问题说「系统提示」还在、带截图", any("系统提示" in p and "shot-x.png" in p for p in probs))
+check("没等满 40 分钟", sum(slept) < 2400, True)
+check("没杀 Games.exe", [e for e in events if e[0] == "kill" and "Games.exe" in e], [])
+
+print("\n[认不出的启动器画面 → 报问题，但不杀启动器（可能在用别的字下载）]")
+reset(); probs = []
+d = FakeDesk([["-以％36．。6．78678967", "么"]])
+gug.update_endfield(d, *EF, problems=probs, sleep=fake_sleep)
+check("没杀 Games.exe", [e for e in events if e[0] == "kill" and "Games.exe" in e], [])
 print("\nPASS" if not fails else f"\nFAILED: {fails}")
 sys.exit(1 if fails else 0)

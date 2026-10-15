@@ -616,6 +616,15 @@ class Desktop:
             return False
         return bool(data.get("ok")) and bool(data.get("clicked"))
 
+    def click(self, x: int, y: int, focus: str | None = None) -> bool:
+        """Click one screen point: for a button the OCR cannot read, placed from a
+        line it did read (the Hypergryph launcher's 「确认」, gameupdate_games)."""
+        data = self.run([{"act": "click", "x": int(x), "y": int(y)}], focus=focus)
+        if focus and _focus_missing(data):
+            log.warning("桌面点击：没找到 %s 的窗口，不点 (%d, %d)", focus, x, y)
+            return False
+        return bool(data.get("ok")) and bool(data.get("clicked"))
+
 
 
 # taskkill's exit code when no process has that image name: not being there is not
