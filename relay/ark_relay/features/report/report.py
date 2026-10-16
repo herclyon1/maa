@@ -451,7 +451,7 @@ def retry_line(state_dir, day: str, maaend_dir=None) -> str:
     parts = []
     if d.get("blocked"):
         # Routes booked for the retry because they walked through 「战斗中无法使用」.
-        parts.append(texts.collect_blocked_row([name(r) for r in d["blocked"]]))
+        parts.append(texts.collect_blocked_row([name(r) for r in d["blocked"]], first=True))
     if d.get("passed"):
         parts.append("走通 " + "、".join(name(r) for r in d["passed"]))
     if d.get("failed"):

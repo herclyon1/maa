@@ -98,9 +98,16 @@ def blocked_route_ids(automas_log: str, shot_names: list[str], zh_cn: dict) -> d
     for label, pics in collector_maaend.blocked_routes(automas_log, shot_names).items():
         if rid := ids.get(label):
             out[rid] = pics
-        else:
+        elif label not in _UNKNOWN_SAID:
+            # Once per label: maybe_run is called every tick of the shutdown decision,
+            # and errwatch pushes each WARNING to the group.
+            _UNKNOWN_SAID.add(label)
             log.warning("自动采集补跑：%s 撞上「战斗中无法使用」没采到，但 MaaEnd 的路线名里找不到它，补不了", label)
     return out
+
+
+# Blocked route labels already said to have no route id (blocked_route_ids).
+_UNKNOWN_SAID: set[str] = set()
 
 
 def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: list[str]) -> dict[str, list[str]]:

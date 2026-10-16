@@ -144,12 +144,34 @@ check("补的是路线10（没有「采集失败」那一行也补）", asked, [
 check("补跑走通：不进群，只进日报", [(t, route_of(t, alert=a)) for t, _, a in sent],
       [(texts.COLLECT_RETRY_OK, "log")])
 check("日报那句写了为什么补", report.retry_line(sd, "2026-10-08", md),
-      "自动采集补跑：撞上「战斗中无法使用」没采到：路线10：重红柱状菌；走通 路线10：重红柱状菌")
+      "自动采集补跑：第一趟撞上「战斗中无法使用」没采到：路线10：重红柱状菌；走通 路线10：重红柱状菌")
 check("…是人话", texts.plain(report.retry_line(sd, "2026-10-08", md)), [])
 asked, sent, stamp, _ = maybe_run(False)
 check("补跑还没采到：照旧报群", [(t, a) for t, _, a in sent], [(texts.COLLECT_RETRY_FAILED, True)])
 asked, sent, stamp, _ = maybe_run(False, {"AutoCollectRoute10": ["2026-10-07"]})
 check("连续两天：照旧按复发报群", [(t, a) for t, _, a in sent], [(texts.COLLECT_RECURRENT, True)])
+
+print("\n[MaaEnd 的路线名里找不到这条：说一次，不每个关机判断都说（每条警告都会进群）]")
+import logging  # noqa: E402
+
+
+class _Warns(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.n = 0
+
+    def emit(self, record):
+        self.n += "路线名里找不到" in record.getMessage()
+
+
+warns = _Warns()
+cr.log.addHandler(warns)
+no_label = {k: v for k, v in ZH.items() if k != "option.AutoCollectRoute10.label"}
+for _ in range(2):
+    got = cr.blocked_route_ids(log("MaaEnd-06-34-21.log"), [P1008], no_label)
+check("认不出就不补，也不瞎猜", got, {})
+check("两次判断只警告一次", warns.n, 1)
+cr.log.removeHandler(warns)
 
 print("\n[补跑时又撞上：路线10 走到了 End，但截图在 Start 和 End 之间 → 判没走通]")
 fw = log("maafw-2026-10-12-routes9-11.log")

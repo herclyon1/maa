@@ -157,9 +157,10 @@ def collect_blocked_check(label: str) -> str:
     return f"自动采集 {label} {COLLECT_BLOCKED}，关机前单独补这一条"
 
 
-def collect_blocked_row(labels: list[str], again: bool = False) -> str:
-    """ledger_rows / report.retry_line: the routes that hit it; `again` = during the retry."""
-    return ("补跑时又" if again else "") + COLLECT_BLOCKED + "：" + "、".join(labels)
+def collect_blocked_row(labels: list[str], again: bool = False, first: bool = False) -> str:
+    """ledger_rows / report.retry_line: the routes that hit it; `again` = during the retry,
+    `first` = in the run the retry follows."""
+    return ("补跑时又" if again else "第一趟" if first else "") + COLLECT_BLOCKED + "：" + "、".join(labels)
 
 
 def collect_retry_body(passed: list[str], failed: list[str], unknown: list[str], note: str) -> str:
@@ -1235,7 +1236,7 @@ def samples() -> list[str]:
         gamelog_unknown_errors_body("终末地", "", 1),
         collect_retry_body(["路线16"], ["路线15"], [], ""),
         collect_blocked_check("路线10：重红柱状菌"), collect_blocked_row(["路线10：重红柱状菌"]),
-        collect_blocked_row(["路线10：重红柱状菌"], again=True),
+        collect_blocked_row(["路线10：重红柱状菌"], again=True), collect_blocked_row(["路线10：重红柱状菌"], first=True),
         collect_recurrent_body(["路线15：红矛叶"]), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://example.cos.ap-shanghai.myqcloud.com/x/index.html"),
         evidence_source_changed_body(["MaaEnd 导出"]),
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),
