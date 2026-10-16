@@ -149,7 +149,7 @@ NOT_LOG: "dict[tuple[str, str], str]" = {
     ("features/makeup/collect_retry.py", r"option\.(AutoCollect(?:Common)?Route\d+)\.failed"): "MaaEnd locale keys",
     ("features/makeup/collect_retry.py", "no-labels"): "the relay's own once-per-condition set",
     ("features/makeup/collect_retry.py", r"option\.(AutoCollect(?:Common)?Route\d+)\.label"): "MaaEnd locale keys",
-    ("features/verify/collector_maaend.py", r"^(\d{4}\.\d\d\.\d\d-\d\d\.\d\d\.\d\d)\.(\d+)___(.+)\.png$"):
+    ("features/verify/collector_maaend.py", r"^(\d{4}\.\d\d\.\d\d-\d\d\.\d\d\.\d\d)\.(\d+)_+(.+)\.png$"):
         "an on_error picture's file name (MaaEnd debug/on_error)",
     ("features/verify/collector_maaend.py", "MapNavigatorObstacleDevice_InteractPost"):
         "part of an on_error picture's file name (MaaEnd debug/on_error)",

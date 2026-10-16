@@ -250,6 +250,8 @@ check("in_window 是半开区间", [cm.in_window(datetime(2026, 1, 1, 0, 0, s), 
 check("截图名的毫秒：MaaFW 不补零，「.93」是 93 毫秒",
       cm.shot_time(PIC.format("2026.10.15-16.39.29.93")), datetime(2026, 10, 15, 16, 39, 29, 93000))
 check("截图名的毫秒：.895", cm.shot_time(P1012A), datetime(2026, 10, 12, 10, 44, 55, 895000))
+check("截图名只隔一个下划线的也认（2026-10-08 的 AutoCollectRoute1Start）",
+      cm.shot_time("2026.10.08-10.01.43.463_AutoCollectRoute1Start.png"), datetime(2026, 10, 8, 10, 1, 43, 463000))
 for k, want_log, want_fw in (("400", R10, "AutoCollectRoute10"),   # before End .489 and 路线11 .533
                              ("500", R10, "AutoCollectRoute10"),   # after End, before Route11 is announced
                              ("600", R11, "AutoCollectRoute11")):  # after 路线11 .533 / Route11 .510

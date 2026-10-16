@@ -212,7 +212,7 @@ _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
 #   2026.10.12-10.44.55.895___MapNavigatorObstacleDevice_InteractPost.png
 # The toast text itself is in no log (0 hits in 202 maafw logs, ledger #29).
 OBSTACLE_SHOT = "MapNavigatorObstacleDevice_InteractPost"
-_SHOT_NAME = re.compile(r"^(\d{4}\.\d\d\.\d\d-\d\d\.\d\d\.\d\d)\.(\d+)___(.+)\.png$")
+_SHOT_NAME = re.compile(r"^(\d{4}\.\d\d\.\d\d-\d\d\.\d\d\.\d\d)\.(\d+)_+(.+)\.png$")
 # A line's stamp to the millisecond, as the history log and maafw.log write it
 # (「[2026-10-12 10:45:39.489][INF]…」; the history log's route line below).
 _LINE_TIME = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)(?:\.(\d{1,6}))?")
@@ -229,9 +229,11 @@ _COLLECT_END = re.compile(r"任务(?:完成|失败)[:：]\s*\S*自动采集")
 
 def shot_time(name: str) -> "datetime | None":
     """The time in an on_error picture's own name, to the millisecond (the game PC's
-    clock, as the logs'). MaaFW writes the milliseconds unpadded - 「…10.44.55.895___」
-    but 「…16.39.29.93」 is 93 ms: 17 of the 160 maafw.bak names in the day corpus
-    have two digits, the one in ten that random milliseconds below 100 give."""
+    clock, as the logs'). The node name follows ___ (on_error) or a single _
+    (2026.10.08-10.01.43.463_AutoCollectRoute1Start.png). MaaFW writes the
+    milliseconds unpadded - 「…10.44.55.895___」 but 「…16.39.29.93」 is 93 ms: 17 of
+    the 160 maafw.bak names in the day corpus have two digits, the one in ten that
+    random milliseconds below 100 give."""
     m = _SHOT_NAME.match(name)
     try:
         base = datetime.strptime(m.group(1), "%Y.%m.%d-%H.%M.%S") if m else None
@@ -332,7 +334,7 @@ def round_shots(maaend_dir, started: datetime, until: "datetime | None" = None) 
                 t = _naive_beijing(datetime.fromtimestamp(p.stat().st_mtime, SERVER_TZ))
             except OSError:
                 continue
-        if lo <= t and (hi is None or t <= hi):
+        if in_window(t, lo, hi):
             out.append(p.name)
     return sorted(out)
 
