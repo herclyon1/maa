@@ -24,6 +24,10 @@ log = logging.getLogger("ark.handle")
 # checks have read it (_judge_run pops it): the outcome checks, the summary and, for
 # OK-WW, the nest settings they were judged with.
 _OUTCOME: dict[str, dict] = {}
+# The items of the 「没证据」 alarm pushes._push_unverified sent (or found sent, or kept
+# for the next tick) while each record was booked, until its machine checks have read
+# them (_judge_run pops it): #28 does not push a FAIL that alarm already carries.
+_UNVERIFIED: dict[str, list] = {}
 
 
 def _judged(rec: RunRecord, checks: list, who: str, **extra) -> str | None:
@@ -179,6 +183,7 @@ def _run_ctx(eng, rec: RunRecord, watch: _RunWatch) -> dict:
     ctx = {
         "rec": rec, "raw": rec.raw, "log_text": text,
         "outcome": _OUTCOME.get(rec.run_id),
+        "unverified_alarm": list(_UNVERIFIED.get(rec.run_id) or []),
         "held_before": list(watch.held_before),
         "held": [r.run_id for r in eng._pending.values()],
         "unsent": [x[2] for x in getattr(eng, "_unsent_unresolved", []) or []],

@@ -352,22 +352,48 @@ def task_verdict(task: str, trail: dict) -> "tuple[bool, str]":
     return False, f"终末地自己的记录里只走了 {sum(nodes.values())} 步，没有做成的一步，也没有「没东西可做」的结果"
 
 
-def task_trails(maaend_dir, times: dict) -> dict:
-    """{task: task_trail or None} for each of TRAIL_TASKS in `times` ({task: (start,
-    finish)}, naive machine-local, as collector_maaend.task_times gives them); MaaFW's
-    log is read once for all of them. {} when none of the four is in `times`."""
+def _trails_read(maaend_dir, times: dict) -> "tuple[dict, dict]":
+    """({task: task_trail or None}, {task: log_reaches its start}) for each of
+    TRAIL_TASKS in `times` ({task: (start, finish)}, naive machine-local, as
+    collector_maaend.task_times gives them); MaaFW's log is read once for all of them.
+    ({}, {}) when none of the four is in `times`."""
     tasks = [t for t in TRAIL_TASKS if t in times]
     if not tasks:
-        return {}
+        return {}, {}
     events = task_events(maaend_dir, min(times[t][0] for t in tasks), max(times[t][1] for t in tasks))
-    return {t: task_trail(events, TRAIL_RULES[t]["entry"], *times[t]) for t in tasks}
+    return ({t: task_trail(events, TRAIL_RULES[t]["entry"], *times[t]) for t in tasks},
+            {t: log_reaches(events, times[t][0]) for t in tasks})
 
 
-# Runs in a row whose four tasks are all missing from MaaFW's log before that counts:
-# machine check #28 FAILs and the ledger calls them unbacked (core.maaend_unverified).
-# One such run is left unjudged: MaaEnd clears its debug folder when it restarts, and a
-# folder that is not configured or not readable says nothing about the game.
+def log_reaches(events: list, t0: datetime) -> bool:
+    """MaaFW's log (`events` from task_events) holds an event in the TRAIL_SLACK_S before
+    t0, AUTO-MAS's 「任务开始」 of a task: the log reaches back to the moment MaaEnd
+    posted that task (its Tasker.Task.Starting comes up to a second before t0), so a
+    task with no start of its own there was not posted as MaaFW knows it. False when the
+    log begins later: MaaFW rotates its log into maafw.bak.<time>.log files (2026-10-16:
+    three in seven minutes) and MaaEnd clears its debug folder when it restarts, so the
+    files can begin inside a long run - also inside the task itself, which is why the
+    stretch before the start is read and not the task's whole window. The previous
+    task's end event sits 2 ms before the next start (2026-10-16); the first task of a
+    launch has nothing before it and reads as not reached."""
+    lo = t0 - timedelta(seconds=TRAIL_SLACK_S)
+    return any(lo <= w < t0 for w, _, _ in events)
+
+
+# Runs in a row with a task left unread before that counts: machine check #28 FAILs and
+# the ledger calls those tasks unbacked (core.maaend_unverified). A task is unread when
+# MaaFW's log holds none of the four, or when it holds no run of this task and does not
+# reach back to its start (log_reaches). One such run is left unjudged: MaaEnd clears
+# its debug folder when it restarts, MaaFW rotates its log, and a folder that is not
+# configured or not readable says nothing about the game.
 TRAIL_MISS_FAIL = 2
+
+
+def trail_unread(e: dict) -> bool:
+    """A booked trail_entry left unread. A row booked before the 「unread」 key read a
+    missing task as unread only when none of the four was found, and then its
+    raw['tasks_trail_miss'] is above 0 - which the callers ask first."""
+    return bool(e.get("unread", not e.get("found", True)))
 
 # AUTO-MAS's run-log line: 「[2026-10-08 10:34:16.230] UID显示不完整，…」.
 _RUN_LINE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\] (.+)$", re.M)
@@ -410,20 +436,25 @@ def abort_why(text: str, t0: datetime, t1: datetime) -> str:
     return f"，原因写在终末地自己记的 {at:%H:%M:%S} 那一行"
 
 
-def trail_entry(task: str, trail: "dict | None", t0: datetime, t1: datetime, text: str = "") -> dict:
+def trail_entry(task: str, trail: "dict | None", t0: datetime, t1: datetime, text: str = "",
+                unread: bool = False) -> dict:
     """One task's verdict as booked in raw['tasks_trail'] (alarm.records._mark_task_trails)
     and read back by machine check #28 and core.maaend_unverified, so MaaFW's log is
     read once per run:
 
         t0, t1   AUTO-MAS's 「任务开始」 / 「任务完成」 (ISO, machine-local)
         found    MaaFW's log holds this task's run (task_trail is not None)
+        unread   not found because the log does not cover it (`unread`, set by
+                 trail_table: none of the four found, or the log does not reach
+                 back to its start); a task found, or missing from a log that
+                 covers it, is not unread
         ok       task_verdict: did its job or found nothing to do
         said     what MaaFW's log shows (task_verdict), with MaaEnd's own reason
                  (abort_why, from the run log `text`) when it stopped itself
         abort    MaaEnd stopped itself inside this task (ABORT_STEP)
         ended    MaaFW's end event (ISO), None when there is none"""
     e = {"t0": t0.isoformat(), "t1": t1.isoformat(), "found": trail is not None,
-         "ok": False, "said": "", "abort": False, "ended": None}
+         "unread": trail is None and unread, "ok": False, "said": "", "abort": False, "ended": None}
     if trail is None:
         return e
     ok, said = task_verdict(task, trail)
@@ -436,20 +467,31 @@ def trail_entry(task: str, trail: "dict | None", t0: datetime, t1: datetime, tex
 
 
 def trail_table(maaend_dir, times: dict, text: str = "") -> "tuple[dict, str]":
-    """({task: trail_entry} for each of TRAIL_TASKS in `times`, why none of them is in
-    MaaFW's log - '' when one is, or when none was asked). An unreadable file is
-    skipped like a missing one (_fw_lines)."""
+    """({task: trail_entry} for each of TRAIL_TASKS in `times`, why some of them are
+    unread - '' when none is, or when none was asked). Unread: every one of them when
+    MaaFW's log holds none of the four; else each one with no run in the log that the
+    log does not reach back to (log_reaches: a rotated or cleared log beginning inside
+    the run). A task missing from a log that does reach its start is not unread: it
+    was not posted as MaaFW knows it, and is judged unbacked at once. An unreadable
+    file is skipped like a missing one (_fw_lines)."""
     asked = {t: times[t] for t in TRAIL_TASKS if t in times}
     if not asked:
         return {}, ""
-    found = task_trails(maaend_dir, asked) if maaend_dir else {}
-    table = {t: trail_entry(t, found.get(t), t0, t1, text) for t, (t0, t1) in asked.items()}
-    if any(e["found"] for e in table.values()):
+    found, reach = _trails_read(maaend_dir, asked) if maaend_dir else ({}, {})
+    none = not any(found.get(t) for t in asked)
+    table = {t: trail_entry(t, found.get(t), t0, t1, text, unread=none or not reach.get(t))
+             for t, (t0, t1) in asked.items()}
+    unread = [t for t, e in table.items() if e["unread"]]
+    if not unread:
         return table, ""
     if not maaend_dir:
         why = "没配终末地的文件夹"
     elif not _fw_files(maaend_dir):
         why = "终末地的日志文件夹里没有框架日志（它每次重启会清掉）"
+    elif not all(reach.get(t) for t in unread):
+        why = (f"框架日志没盖到{'、'.join(t for t in unread if not reach.get(t))}开始的那一刻："
+               f"开始前 {TRAIL_SLACK_S} 秒里一条记录也没有，日志换了新文件、终末地重启清掉了前面的、"
+               "或者文件读不了，都会这样")
     else:
-        why = "框架日志里这段时间没有这几个任务（文件读不了的也算在这里）"
+        why = "框架日志盖到了这段时间，但里面没有这几个任务"
     return table, why

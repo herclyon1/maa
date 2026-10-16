@@ -13,7 +13,9 @@ event did not exercise it (nothing to say yet), else PASS or FAIL with the one
 evidence line it rests on (a log line, a screenshot path, a game reading). Every
 FAIL is pushed to the group, every time it is judged (the user's order of 2026-10-06:
 「只要是报错…不论多少次什么错误都要发」); PASS and still-waiting go to the daily
-report's 「上机核对」 section only. Results live in state/machinecheck.json, per
+report's 「上机核对」 section only. A FAIL whose facts went to the group inside another
+alarm of the same booking (Result.pushed_with: #28 inside 「没证据」) is not pushed a
+second time; the group still hears it, in that one message. Results live in state/machinecheck.json, per
 item: the last verdict, its evidence, when, event, version, and pass / fail counts.
 
 Items that cannot be automated are listed in CANNOT with the reason, shown in the
@@ -35,6 +37,8 @@ from ark_relay.core.config import SERVER_TZ, atomic_write_text
 log = logging.getLogger("ark.machinecheck")
 
 PASS, FAIL = "PASS", "FAIL"
+# How daily_section shows a PASS marked Result.healed (texts.machinecheck_section).
+HEALED = "HEALED"
 STATE_FILE = "machinecheck.json"
 
 
@@ -42,6 +46,13 @@ STATE_FILE = "machinecheck.json"
 class Result:
     status: str          # PASS | FAIL
     evidence: str        # the one line the verdict rests on
+    # A PASS because the work this event failed at was made up for (another run of
+    # the day did it): the daily section says it failed and was made up for, for the
+    # rest of that day.
+    healed: bool = False
+    # A FAIL whose facts already went to the group inside that alarm (its kind, e.g.
+    # 「没证据」): recorded, not pushed again, so one cause is one group message.
+    pushed_with: str = ""
 
 
 @dataclass
@@ -186,15 +197,24 @@ def judge(state_dir, event: str, ctx: dict, *, version: str = "", now: datetime 
     if data is not None:
         for cid, r in out:
             row = dict(data.get(cid) or {})
-            row.update(status=r.status, evidence=r.evidence[:300], at=now.strftime("%Y-%m-%d %H:%M:%S"),
-                       version=version, event=event)
+            stamp = now.strftime("%Y-%m-%d %H:%M:%S")
+            row.update(status=r.status, evidence=r.evidence[:300], at=stamp, version=version, event=event)
+            # A made-up-for failure stays in the day's section after a plain PASS of
+            # the same day replaces the verdict (daily_section); a new day drops it.
+            if r.healed:
+                row.update(healed_at=stamp, healed_evidence=r.evidence[:300])
+            elif str(row.get("healed_at") or "")[:10] != stamp[:10]:
+                row.pop("healed_at", None)
+                row.pop("healed_evidence", None)
             key = "passes" if r.status == PASS else "fails"
             row[key] = int(row.get(key) or 0) + 1
             data[cid] = row
         _write(state_dir, data)
     for cid, r in out:
         c = CHECKS[cid]
-        if r.status == FAIL:
+        if r.status == FAIL and r.pushed_with:
+            log.info("上机核对 %s 没过，已写在「%s」那条报警里进群，不另发：%s", cid, r.pushed_with, r.evidence[:120])
+        elif r.status == FAIL:
             title, body = texts.machinecheck_failed(cid, c.what), texts.machinecheck_failed_body(c.what, r.evidence)
             if notifier is None:
                 log.error("%s\n%s", title, body)      # no notifier: errwatch pushes the ERROR
@@ -219,8 +239,12 @@ def daily_section(state_dir) -> str:
     rows = []
     for cid, c in sorted(CHECKS.items(), key=lambda kv: _num(kv[0])):
         r = data.get(cid) or {}
-        rows.append((cid, c.what, c.kind, str(r.get("status") or ""), str(r.get("evidence") or ""),
-                     str(r.get("at") or "")))
+        status, evidence, at = str(r.get("status") or ""), str(r.get("evidence") or ""), str(r.get("at") or "")
+        healed_at = str(r.get("healed_at") or "")
+        if status == PASS and healed_at and healed_at[:10] == at[:10]:
+            # Failed once today and made up for by another run: said so, not 「过了」.
+            status, evidence, at = HEALED, str(r.get("healed_evidence") or ""), healed_at
+        rows.append((cid, c.what, c.kind, status, evidence, at))
     return texts.machinecheck_section(rows, sorted(CANNOT.items(), key=lambda kv: _num(kv[0])))
 
 

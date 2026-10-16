@@ -41,7 +41,7 @@ from ark_relay.features.alarm.records import (
     _mark_update_restart, _restart_note, _restart_result, _restore_after_maaend, _same_shift,
     _state_relative, run_day)
 from ark_relay.features.alarm.runchecks import (
-    _OUTCOME, _RunWatch, _alert_days, _alert_file, _alert_sizes, _alerts_since, _judged,
+    _OUTCOME, _UNVERIFIED, _RunWatch, _alert_days, _alert_file, _alert_sizes, _alerts_since, _judged,
     _run_ctx, _test_run, _update_restarts)
 from ark_relay.features.alarm.verdict import _mark_no_self_exit, _verify_outcome
 from ark_relay.features.alarm.pushes import (
@@ -1007,3 +1007,4 @@ def _judge_run(eng, rec: RunRecord, watch: _RunWatch) -> None:
         log.exception("上机核对没跑成（%s；记账照常）", rec.run_id)
     finally:
         _OUTCOME.pop(rec.run_id, None)
+        _UNVERIFIED.pop(rec.run_id, None)

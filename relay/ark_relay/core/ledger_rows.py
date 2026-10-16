@@ -12,7 +12,7 @@ from datetime import datetime
 from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ, USER_TZ
 from ark_relay.features.verify.collector_maaend import _END_CLOSING_TASKS, _END_STOP_MARK
-from ark_relay.features.verify.maaend_fwlog import TRAIL_MISS_FAIL
+from ark_relay.features.verify.maaend_fwlog import TRAIL_MISS_FAIL, trail_unread
 
 
 def _fmt_items(d: dict, limit: int | None = None) -> str:
@@ -352,15 +352,17 @@ def maaend_unverified(raw: dict) -> list[str]:
 
 
 def maaend_unjudged(raw: dict) -> list[str]:
-    """Listed tasks of raw['tasks_trail'] left unjudged this run: MaaFW's log held none
-    of the four (raw['tasks_trail_miss'] counts the runs in a row) and that has not yet
-    happened maaend_fwlog.TRAIL_MISS_FAIL times in a row - as machine check #28 waits.
-    The daily report says so; neither done nor 「没证据」 (core.day_unverified_items)."""
+    """Listed tasks of raw['tasks_trail'] left unjudged this run: unread (MaaFW's log held
+    none of the four, or does not reach back to that task's start - maaend_fwlog.
+    trail_table; raw['tasks_trail_miss'] counts the runs in a row with one) and that has
+    not yet happened maaend_fwlog.TRAIL_MISS_FAIL times in a row - as machine check #28
+    waits. The tasks of the run the log does hold are judged as usual. The daily report
+    says so; neither done nor 「没证据」 (core.day_unverified_items)."""
     miss = int(raw.get("tasks_trail_miss") or 0)
     if not 0 < miss < TRAIL_MISS_FAIL:
         return []
     trail = raw.get("tasks_trail") or {}
-    return [t for t in _maaend_listed(raw) if isinstance(trail.get(t), dict) and not trail[t].get("found", True)]
+    return [t for t in _maaend_listed(raw) if isinstance(trail.get(t), dict) and trail_unread(trail[t])]
 
 
 def maaend_unbacked_why(raw: dict, task: str) -> str:
@@ -370,5 +372,8 @@ def maaend_unbacked_why(raw: dict, task: str) -> str:
     if not isinstance(e, dict):
         return ""
     if e.get("found") is False:
+        miss = int(raw.get("tasks_trail_miss") or 0)
+        if miss and trail_unread(e):
+            return f"终末地自己的记录连续 {miss} 趟没读到这一项"
         return "终末地自己的记录里找不到这一项"
     return str(e.get("said") or "")

@@ -352,6 +352,30 @@ def trail_unread_note(tasks: list, miss: int, fail_at: int) -> str:
             f"不算做成，也不报没证据；连续 {fail_at} 趟都读不到才报到群里")
 
 
+# How a later retry did each of a failed run's tasks (core.retried_notes).
+RETRY_DONE = "做成了"
+RETRY_BARE = "程序说做完了，但没证据，不算完成"
+RETRY_UNREAD = "终末地自己的记录没读到，先不判"
+
+
+def retry_outcome(tasks: list, when: str, done: list, bare: list, unread: list) -> str:
+    """The daily report's note on a failed run whose `tasks` a later retry (started
+    `when`, 「10:35（东京 11:35）开始的」) went on to do: one wording when they all
+    fared alike, else each kind with its tasks - done, done without evidence from the
+    game, and not judged because MaaEnd's own record did not cover them."""
+    head = f"{'、'.join(tasks)}　后来在 {when}那趟重试里"
+    kinds = [(xs, w) for xs, w in ((done, RETRY_DONE), (bare, RETRY_BARE), (unread, RETRY_UNREAD)) if xs]
+    if len(kinds) <= 1:
+        return head + (kinds[0][1] if kinds else RETRY_DONE)
+    return head + "：" + "；".join(f"{'、'.join(xs)} {w}" for xs, w in kinds)
+
+
+def unverified_trail_lines(pairs: list) -> str:
+    """For the 「没证据」 alarm (pushes._push_unverified): what MaaEnd's own record shows
+    for each of the four tasks on it, [(task, what it shows)], one line each; '' for none."""
+    return "".join(f"· {t}：{why}\n" for t, why in pairs if why)
+
+
 def unverified_alarm_head(game: str, shift: str, items: str, why: str, page: str) -> str:
     """The first line of that alarm: which items, and why they do not count."""
     head = (f"{game}{shift}：{items} 程序说做完了，但游戏里拿不出证据"
@@ -1206,6 +1230,12 @@ def samples() -> list[str]:
         maaend_unverified_why(["装备制造"], []),
         maaend_unverified_why([], ["基建任务"]),
         trail_unread_note(["赠送干员礼物", "装备制造"], 1, 2),
+        retry_outcome(["基建任务", "选剑演武"], "10:35（东京 11:35）开始的", ["基建任务"], ["选剑演武"], []),
+        retry_outcome(["装备制造", "转交委托"], "10:35（东京 11:35）开始的", [], [], ["装备制造", "转交委托"]),
+        unverified_trail_lines([("装备制造", "终末地自己检查画面没过，把后面的任务全停了，这一项没做成")]),
+        machinecheck_section([("#28", "终末地四个任务看得到做成了", "A", "HEALED",
+                               "装备制造（10:34:11→10:34:16）没做成；同一天 09:30（东京 10:30）开始的那趟已经做成了，不用人管",
+                               "2026-10-08 10:35:00")], []),
         phone_busy_reason("echo_farm"),
         makeup_restore_failed_body(r"D:\ark\automas\data\x\Default\ConfigFile\mxu-MaaEnd.json",
                                    r"C:\ProgramData\ark-relay\state\makeup\narrow.json"),
@@ -1313,13 +1343,18 @@ def machinecheck_failed_body(what: str, evidence: str) -> str:
 
 
 def machinecheck_section(rows: list, cannot: list) -> str:
-    """The daily report's 「上机核对」 lines. rows: (id, what, kind, status, evidence, at); cannot: (id, (what, why))."""
+    """The daily report's 「上机核对」 lines. rows: (id, what, kind, status, evidence, at) - status
+    PASS / FAIL / HEALED (a PASS made up for by another run, machinecheck.daily_section)
+    or '' for not judged yet; cannot: (id, (what, why))."""
     if not rows and not cannot:
         return ""
     mark = {"PASS": "✅", "FAIL": "❌"}
     lines = []
     for cid, what, kind, status, evidence, at in rows:
-        if status in mark:
+        if status == "HEALED":
+            # A PASS only because another run of the day did what this one failed at.
+            lines.append(f"↻ {cid} {what}：这一趟没过，同一天另一趟补上了，不用人管：{evidence}（{at[5:16]}）")
+        elif status in mark:
             lines.append(f"{mark[status]} {cid} {what}：{evidence}（{at[5:16]}）")
         else:
             wait = "等正常跑一趟" if kind == "A" else "等它自己被触发"

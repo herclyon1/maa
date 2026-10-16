@@ -302,8 +302,10 @@ KNOWN = {
     # by the evening shift and the record powered off at 21:41. 1008-24: the machine's daily
     # report did not name MaaEnd's own abort of 10:34:16 in 装备制造 (#28 passed on the desktop
     # picture then; verify ledger #28, ledger_rows._block_maaend names it from MaaFW's steps).
+    # 1008-26: the per-task retry wording (core.retried_notes, #28 review item 3) is new; the
+    # record keeps no report text for 10-08 (its report "text" is empty), so it cannot show it.
     "2026-10-07": {"1007-04", "1007-08", "1007-17", "1007-19", "1007-21", "1007-22", "1007-23"},
-    "2026-10-08": {"1008-04", "1008-13", "1008-19", "1008-21", "1008-24"},
+    "2026-10-08": {"1008-04", "1008-13", "1008-19", "1008-21", "1008-24", "1008-26"},
     "2026-10-09": {"1009-05", "1009-08", "1009-11", "1009-12", "1009-17", "1009-22", "1009-23"},
     "2026-10-11": {"1011-10", "1011-11", "1011-12", "1011-16"},
     "2026-10-12": {"1012-01", "1012-02", "1012-15", "1012-17", "1012-18", "1012-20"},

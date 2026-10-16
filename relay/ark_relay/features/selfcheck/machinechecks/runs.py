@@ -42,7 +42,7 @@ from ark_relay.features.verify import maaend_fwlog
 from ark_relay.features.selfcheck import machinecheck as mc
 from ark_relay.features.verify import outcome
 from ark_relay.core import texts
-from ark_relay.core.config import SERVER_TZ
+from ark_relay.core.config import SERVER_TZ, USER_TZ
 
 log = logging.getLogger("ark.runs")
 
@@ -514,7 +514,19 @@ def _c28(ctx):
     ledger row keeps the cause for the daily report (core.maaend_unverified). On
     2026-10-08 MaaEnd stopped itself in 装备制造 at 10:34:16 (MaaEnd-06-31-06) after
     the 09:33 run (MaaEnd-05-29-15) had crafted. Only runs booked before this one are
-    seen: a later run that does the task comes after this verdict."""
+    seen: a later run that does the task comes after this verdict. Such a verdict is a
+    PASS marked healed, which the daily section says as failed and made up for.
+
+    A task MaaFW's log does not cover (maaend_fwlog.trail_unread: a rotated or cleared
+    log beginning inside the run, or none of the four in it) is not judged until that
+    has happened SHOT_MISS_FAIL runs in a row, as the ledger waits; the rest of the run
+    is judged as usual.
+
+    A FAIL whose tasks are all on the 「没证据」 alarm sent (or queued, or sent earlier
+    the same day for the same items) while this record was booked
+    (ctx['unverified_alarm'], pushes._push_unverified) is not pushed again: that alarm
+    carries MaaEnd's own verdict and reason for each of them (maaend_unbacked_why), so
+    one cause goes to the group as one message; the FAIL stays on record."""
     if not _script(ctx, "MaaEnd") or not _unattended(ctx):
         return None
     text = ctx.get("log_text") or ""
@@ -534,19 +546,27 @@ def _c28(ctx):
     done = [t for t in SHOT_TASKS if isinstance(table.get(t), dict)]
     if not done:
         return None
-    if not any(table[t].get("found") for t in done):
-        if misses >= SHOT_MISS_FAIL:
-            return _r(FAIL, f"连续 {misses} 趟，{'、'.join(done)} 在终末地自己的记录里都找不到，做成没有看不出来")
-        return None
+    unread = [t for t in done if misses and maaend_fwlog.trail_unread(table[t])]
+    if unread and misses < SHOT_MISS_FAIL:
+        # Not judged this run; said on the verdict's line when the rest is judged.
+        done = [t for t in done if t not in unread]
+        if not done:
+            return None
+        waits = f"{'、'.join(unread)} 这一趟终末地自己的记录没盖到，先不判"
+    else:
+        waits = ""
+    if unread and len(unread) == len(done) and not waits:
+        return _fail_28(ctx, done, f"连续 {misses} 趟，{'、'.join(done)} 在终末地自己的记录里都找不到，做成没有看不出来")
     files = raw.get("tasks_shot_files") or {}
     state = Path(state_dir or ".")
-    good, bad = [], []
+    good, bad, healed = [], [], False
     for t in done:
         e = table[t]
         t0, t1 = datetime.fromisoformat(e["t0"]), datetime.fromisoformat(e["t1"])
         line = f"{t}（{t0:%H:%M:%S}→{t1:%H:%M:%S}）"
         if not e.get("found"):
-            line += "在终末地自己的记录里找不到"
+            line += (f"连续 {misses} 趟在终末地自己的记录里读不到" if t in unread
+                     else "在终末地自己的记录里找不到")
         else:
             line += str(e.get("said") or "")
             ended = datetime.fromisoformat(e["ended"]) if e.get("ended") else None
@@ -558,6 +578,7 @@ def _c28(ctx):
             # The work got done that day: no FAIL, but a session looks at why this run
             # did not do it (one 「自愈待查」 red item, techlog.self_heal).
             good.append(f"{line}；{by}，不用人管")
+            healed = True
             rid = getattr(ctx.get("rec"), "run_id", "")
             log.info("上机核对 #28：%s 的%s没做成，%s，不进群，只进日报", rid, t, by)
             try:
@@ -566,14 +587,31 @@ def _c28(ctx):
             except Exception:  # the verdict stands; the group hears the failure to write
                 log.warning("自愈待查的红项没写进技术日志：#28 %s %s", rid, t, exc_info=True)
         else:
-            bad.append(line)
+            bad.append((t, line))
+    tail = f"；{waits}" if waits else ""
     if bad:
-        return _r(FAIL, "；".join(bad) + (f"。做成的：{'；'.join(good)}" if good else ""))
-    return _r(PASS, "；".join(good))
+        return _fail_28(ctx, [t for t, _ in bad], "；".join(x for _, x in bad)
+                        + (f"。做成的：{'；'.join(good)}" if good else "") + tail)
+    return mc.Result(PASS, "；".join(good) + tail, healed=healed)
+
+
+# The alarm a #28 FAIL rides along with (pushes._push_unverified, its kind 「没证据」).
+UNVERIFIED_ALARM = "没证据"
+
+
+def _fail_28(ctx, tasks: list, evidence: str) -> mc.Result:
+    """#28's FAIL about `tasks`: not pushed on its own when the 「没证据」 alarm of this
+    booking names every one of them (ctx['unverified_alarm']) - that alarm carries the
+    same verdicts - so the group gets one message for one cause."""
+    sent = set(ctx.get("unverified_alarm") or [])
+    if tasks and all(t in sent for t in tasks):
+        return mc.Result(FAIL, evidence + "。已写在「没证据」那条报警里一起进群", pushed_with=UNVERIFIED_ALARM)
+    return _r(FAIL, evidence)
 
 
 def _done_elsewhere(ctx, task: str) -> str:
-    """「同一天 HH:MM 开始的那趟已经做成了」 when another MaaEnd run of the day booked before
+    """「同一天 HH:MM（东京 HH:MM）开始的那趟已经做成了」 - on both clocks, as the daily
+    report names a run (core.retried_notes) - when another MaaEnd run of the day booked before
     this one did `task` or found nothing to do in it (its raw['tasks_trail'] verdict,
     ctx['ledger']), else ''. A row booked before raw['tasks_trail'] backs nothing here."""
     rec = ctx.get("rec")
@@ -587,7 +625,7 @@ def _done_elsewhere(ctx, task: str) -> str:
                 at = datetime.fromisoformat(row.get("started") or "").astimezone(SERVER_TZ)
             except ValueError:
                 return "同一天另一趟已经做成了"
-            return f"同一天 {at:%H:%M} 开始的那趟已经做成了"
+            return f"同一天 {at:%H:%M}（东京 {at.astimezone(USER_TZ):%H:%M}）开始的那趟已经做成了"
     return ""
 
 

@@ -141,11 +141,14 @@ def _mark_task_trails(eng, rec: RunRecord) -> None:
     (_mark_task_shots) is no evidence, since it is taken 5-8 s after the task ended and
     shows the next one (task_shots.py).
 
-    raw['tasks_trail_miss']: when none of those tasks is in MaaFW's log (the folder is
-    not configured, MaaEnd cleared it at a restart, a file could not be read), how many
-    MaaEnd runs in a row that is, this one included (_trail_miss_streak); 0 otherwise.
-    Below maaend_fwlog.TRAIL_MISS_FAIL those tasks are left unjudged - said at INFO
-    and in the daily report (core.maaend_unjudged), not pushed - as #28 does.
+    raw['tasks_trail_miss']: when one of those tasks is unread (maaend_fwlog.trail_table:
+    none of them is in MaaFW's log - the folder is not configured, MaaEnd cleared it at
+    a restart, a file could not be read - or the log, rotated or cleared inside the run,
+    does not reach back to that task's start), how many MaaEnd runs in a row that is,
+    this one included (_trail_miss_streak); 0 otherwise. Below
+    maaend_fwlog.TRAIL_MISS_FAIL the unread tasks are left unjudged - said at INFO and
+    in the daily report (core.maaend_unjudged), not pushed - as #28 does; the tasks the
+    log does hold are judged as usual.
 
     Booked here, while MaaFW's log still holds the run: MaaEnd clears its debug folder
     when it restarts. Keys of their own, so collector.refresh_raw keeps them. Always
@@ -170,7 +173,8 @@ def _mark_task_trails(eng, rec: RunRecord) -> None:
             return
         miss = _trail_miss_streak(eng, rec)
         rec.raw["tasks_trail_miss"] = miss
-        log.info("%s：%s 在终末地自己的记录里都找不到（%s），连续第 %d 趟；%s", rec.run_id, "、".join(table), why,
+        unread = [t for t, e in table.items() if e.get("unread")]
+        log.info("%s：%s 在终末地自己的记录里读不到（%s），连续第 %d 趟；%s", rec.run_id, "、".join(unread), why,
                  miss, "到了次数，按没证据算" if miss >= maaend_fwlog.TRAIL_MISS_FAIL else "这一趟先不判，写进日报")
     except Exception:
         log.warning("没读成终末地自己的任务记录（这一趟的四个任务只按日志里的行算）", exc_info=True)

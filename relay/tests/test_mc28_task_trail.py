@@ -177,7 +177,16 @@ check("…but one 「自愈待查」 red item says a session has to look at why 
       [t.split("：")[:2] for _, t in reds], [["自愈待查", "上机核对 #28 2026-10-08/endfield/MaaEnd-06-31-06 装备制造"]])
 check("…its line keeps MaaEnd's reason and names the run that did it",
       "装备制造（10:34:11→10:34:16）终末地自己检查画面没过，把后面的任务全停了，这一项没做成，"
-      "它记的原因：左上角的账号编号显示不全" in ev and "；同一天 05:29 开始的那趟已经做成了，不用人管" in ev, True)
+      "它记的原因：左上角的账号编号显示不全" in ev and "；同一天 05:29（东京 06:29）开始的那趟已经做成了，不用人管" in ev, True)
+section = mc.daily_section(heal_state)
+line28 = next((x for x in section.splitlines() if " #28 " in x), "")
+check("the daily section says #28 failed this run and another run made up for it, not just 「过了」",
+      (line28.startswith("↻ #28 "), "这一趟没过，同一天另一趟补上了" in line28, "账号编号显示不全" in line28),
+      (True, True, True))
+check("…in plain Chinese", texts.plain(line28), [])
+judge("2026-10-08_MaaEnd-06-34-21.log", maaend("maafw-2026-10-08.log.gz"), heal_state)
+check("a plain PASS later that day does not wipe it from the day's section",
+      next((x for x in mc.daily_section(heal_state).splitlines() if " #28 " in x), "") == line28, True)
 row = day08.rows[-1]
 notes = ledger_rows._rows_for(row, datetime(2026, 10, 8, 10, 35, tzinfo=SERVER_TZ))[4]
 check("the daily report's row of 06-31-06 keeps the abort and its reason",
@@ -187,6 +196,34 @@ check("…and no 「没证据」 item is left for the day: the earlier run backs
       dict(core.day_unverified_items(day08.rows)).get("MaaEnd"), None)
 check("a run of the day without the booked verdicts backs nothing",
       runs._done_elsewhere({"rec": None, "ledger": [dict(day08.rows[0], raw={})]}, "装备制造"), "")
+
+print("\n[10-08 日报：06-31-06 没做的那些，10:35 那趟重试按项说：选剑演武没证据，其余做成了]")
+fw06 = day08.rows[-1]
+judge("2026-10-08_MaaEnd-06-34-21.log", fw08, ledger=day08)
+# The failed tasks AUTO-MAS booked for 06-31-06 (its history record; the 10-08 daysim
+# ledger row 2026-10-08/endfield/MaaEnd-06-31-06): every task after the abort.
+FAILED_0631 = ["拜访好友", "基建任务", "信用点购物", "转交委托", "据点交易", "环境监测", "自动囤货", "售卖弹性物资",
+               "购买稳定物资", "协议空间", "选剑演武", "自动采集", "日常奖励领取"]
+aborted = dict(day08.rows[1], ok=False, failed_tasks=FAILED_0631)
+check("06-31-06 is the aborted run", aborted["run_id"].endswith("06-31-06"), True)
+later = day08.rows[-1]["raw"]
+check("in 06-34-21 only 选剑演武 lacks evidence among them, none is left unjudged",
+      ([t for t in ledger_rows.maaend_unverified(later) if t in aborted["failed_tasks"]],
+       ledger_rows.maaend_unjudged(later)), (["选剑演武"], []))
+note = core.retried_notes([day08.rows[0], aborted, day08.rows[-1]]).get(aborted["run_id"], "")
+print(f"    {note}")
+rest = sorted(t for t in aborted["failed_tasks"] if t != "选剑演武")
+check("the retry note says 做成了 for the twelve and 没证据 for 选剑演武 alone",
+      note.endswith("开始的那趟重试里：" + "、".join(rest) + " 做成了；选剑演武 程序说做完了，但没证据，不算完成"), True)
+check("…in plain Chinese", texts.plain(note), [])
+unread_later = dict(day08.rows[-1], raw=dict(later, tasks_trail_miss=1, tasks_trail={
+    t: dict(v, found=False, unread=True, ok=False) for t, v in later["tasks_trail"].items()}))
+note = core.retried_notes([aborted, unread_later]).get(aborted["run_id"], "")
+check("a retry whose own record was not read: those two 先不判, not 做成了",
+      "环境监测、转交委托 终末地自己的记录没读到，先不判" in note and "选剑演武 程序说做完了" in note, True)
+all_backed = dict(day08.rows[-1], raw=dict(later, tasks_evidence=dict(later.get("tasks_evidence") or {}, 选剑演武=["x"])))
+check("all backed: one wording for the whole list, as before",
+      core.retried_notes([aborted, all_backed]).get(aborted["run_id"], "").endswith("开始的那趟重试里做成了"), True)
 
 print("\n[10-08 05-29-15：四个任务都做成了；截图是结束后 5-6 秒拍的]")
 state = tmpdir()
@@ -293,6 +330,81 @@ st2, _, pushed = judge("2026-10-13_MaaEnd-05-36-57.log", empty, state, book=Fals
 check("not booked: the same wait, read by #28 itself", (st, st2, len(pushed)), (None, "FAIL", 1))
 st, _, _ = judge("2026-10-13_MaaEnd-05-36-57.log", maaend("maafw-2026-10-13.log.gz"), state, book=False)
 check("…and judged from the log when it is there", st, "PASS")
+
+print("\n[框架日志在一趟里面换了文件、前一段没了：没盖到的任务先不判，盖到的照判]")
+# MaaFW rotates maafw.log into maafw.bak.<time>.log (10-16: three files in seven
+# minutes, ROT above) and MaaEnd clears its debug folder when it restarts, so the
+# files can begin inside a run. The real 10-08 lines, split at 09:38:30 - inside
+# 05-29-15's 转交委托 (09:37:39→09:39:28) - into the rotated part and maafw.log.
+SPLIT = "[2026-10-08 09:38:30"
+
+
+def split_1008(*parts, edit=None):
+    text = gzip.decompress((FIX / "maafw-2026-10-08.log.gz").read_bytes()).decode("utf-8")
+    if edit:
+        text = edit(text)
+    lines = text.splitlines(keepends=True)
+    files = {"bak": "".join(x for x in lines if x[:20] < SPLIT), "cur": "".join(x for x in lines if x[:20] >= SPLIT)}
+    names = {"bak": "maafw.bak.2026.10.08-09.38.30.012.log", "cur": "maafw.log"}
+    d = tmpdir()
+    (d / "debug").mkdir()
+    for part in parts:
+        (d / "debug" / names[part]).write_text(files[part], encoding="utf-8")
+    return d
+
+
+st, ev, pushed = judge("2026-10-08_MaaEnd-05-29-15.log", split_1008("bak", "cur"))
+check("both parts: the split alone changes nothing, PASS", (st, pushed, "确认转交了 5 单" in ev), ("PASS", [], True))
+part, levels = Ledger(), Levels()
+hlog.addHandler(levels)
+hlog.setLevel(logging.DEBUG)
+st, ev, pushed = judge("2026-10-08_MaaEnd-05-29-15.log", split_1008("cur"), ledger=part)
+hlog.removeHandler(levels)
+hlog.setLevel(old_level)
+raw = part.rows[-1]["raw"]
+OLD3 = ["赠送干员礼物", "装备制造", "转交委托"]
+check("only maafw.log: the three tasks before it are unread, 环境监测 is found",
+      ({t: (v["found"], v["unread"]) for t, v in raw["tasks_trail"].items()}, raw["tasks_trail_miss"]),
+      ({"赠送干员礼物": (False, True), "装备制造": (False, True), "转交委托": (False, True),
+        "环境监测": (True, False)}, 1))
+check("…转交委托 too, though maafw.log holds its later steps: the log starts inside it",
+      maaend_fwlog.log_reaches(maaend_fwlog.task_events(split_1008("cur"), datetime(2026, 10, 8, 9, 37, 39),
+                                                        datetime(2026, 10, 8, 9, 39, 28)),
+                               datetime(2026, 10, 8, 9, 37, 39)), False)
+check("#28 judges 环境监测 and waits for the three: PASS, nothing pushed",
+      (st, pushed, ev.startswith("环境监测（09:40:57→09:44:14）接了委托"),
+       ev.endswith("赠送干员礼物、装备制造、转交委托 这一趟终末地自己的记录没盖到，先不判")), ("PASS", [], True, True))
+check("…the ledger leaves the three unjudged, none unbacked, no 「没证据」 for the day",
+      (ledger_rows.maaend_unjudged(raw), ledger_rows.maaend_unverified(raw),
+       dict(core.day_unverified_items(part.rows)).get("MaaEnd")), (OLD3, [], None))
+check("…said at INFO with what the log lacks, nothing at WARNING or above",
+      ([m for lv, m in levels.got if lv >= logging.WARNING],
+       any(lv == logging.INFO and "赠送干员礼物、装备制造、转交委托 在终末地自己的记录里读不到" in m
+           and "开始前 5 秒里一条记录也没有" in m and "连续第 1 趟" in m for lv, m in levels.got)), ([], True))
+notes = ledger_rows._rows_for(part.rows[-1], datetime(2026, 10, 8, 10, 31, tzinfo=SERVER_TZ))[4]
+check("…and the daily report row says the three 先不判", any(
+    n.startswith("终末地自己的记录这一趟没读到（连续第 1 趟），赠送干员礼物、装备制造、转交委托 先不判") for n in notes), True)
+check("…in plain Chinese", texts.plain(" ".join([ev, *notes])), [])
+st, ev, pushed = judge("2026-10-08_MaaEnd-05-29-15.log", split_1008("cur"), ledger=part, later=60)
+raw = part.rows[-1]["raw"]
+check("the same again the next run: #28 FAIL, pushed, naming only the three",
+      (st, len(pushed), all(f"{t}（" in ev for t in OLD3), "环境监测（09:40:57→09:44:14）接了委托" in ev.split("。做成的：")[-1]),
+      ("FAIL", 1, True, True))
+check("…said as not read twice in a row", "转交委托（09:37:39→09:39:28）连续 2 趟在终末地自己的记录里读不到" in ev, True)
+check("…and the ledger now calls the three unbacked, with that reason",
+      (raw["tasks_trail_miss"], ledger_rows.maaend_unverified(raw), ledger_rows.maaend_unbacked_why(raw, "装备制造")),
+      (2, OLD3, "终末地自己的记录连续 2 趟没读到这一项"))
+# A log that reaches the task's start but holds no run of it: not a rotation, so no
+# wait - the gear task's start lines taken out of the whole, unsplit log.
+no_gear = split_1008("bak", "cur", edit=lambda t: "".join(
+    x for x in t.splitlines(keepends=True)
+    if not ("Tasker.Task.Starting" in x and '"entry":"GearAssemblyStart"' in x)))
+cov = Ledger()
+st, ev, pushed = judge("2026-10-08_MaaEnd-05-29-15.log", no_gear, ledger=cov)
+check("the log covers 装备制造's start but has no run of it: FAIL and pushed at once, no wait",
+      (st, len(pushed), ev.startswith("装备制造（09:33:03→09:33:22）在终末地自己的记录里找不到"),
+       cov.rows[-1]["raw"]["tasks_trail_miss"], ledger_rows.maaend_unverified(cov.rows[-1]["raw"])),
+      ("FAIL", 1, True, 0, ["装备制造"]))
 
 print("\n[读法：两个进程各记一遍的事件只算一次；子任务里的步骤算在发起它的任务上]")
 end = maaend("maafw-2026-10-08.log.gz")
