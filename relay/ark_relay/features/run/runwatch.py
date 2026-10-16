@@ -13,6 +13,16 @@ checks read live sources instead. Both run from the tick:
   FRESH_MINUTES are skipped, and a line already pushed is not pushed again
   (app.log is read from its start after a restart).
 
+* **Config-check skip.** AUTO-MAS checks a script's settings before it starts it;
+  a refusal is one app.log line and no history record, and the queue moves on:
+
+      2026-10-16 09:34:04.988 | INFO     | 业务调度 | 任务开始: 59da8762-8fa7-4260-8aee-10f9ca00097a
+      2026-10-16 09:34:05.023 | WARNING  | MaaEnd 调度器 | 未通过配置检查: <AUTO-MAS's reason>
+
+  The 任务开始 line names the script by its uid (the queue item), so the skip is
+  matched to its scheduled run by uid. It is pushed at once with AUTO-MAS's reason,
+  and booked as that script's failed run of the shift (check_config_skips).
+
 * **Shift overrun.** A queue still unfinished in runtime-snapshot after its
   planned end + OVERRUN_SLACK_MIN. AUTO-MAS's QueueConfig.json has no planned end
   or duration, so the planned end is the longest finish of the last HISTORY_DAYS
@@ -46,10 +56,16 @@ MIN_CLEAN_DAYS = 3
 FRESH_MINUTES = 30
 # While anything runs, the loop comes back this often to read app.log.
 RUNNING_RECHECK_S = 60
+# After running goes false, one more read this soon. Measured: AUTO-MAS wrote the refusal line
+# 117 ms after the record before it (app.log 10-16 09:34:04.906 / 09:34:05.023), and an answer of
+# "running" may be up to engine._SCRIPTS_TTL (3 s) old; 10 s covers both, well inside the minute.
+STOPPED_RECHECK_S = 10
 
 _STAMP = r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ \|[^|]*\| (\S+) 自动代理 \| "
 _TIMEOUT = re.compile(_STAMP + r".*?任务结果: \S+ (\S{2}超时)")
 _ATTEMPT = re.compile(_STAMP + r"用户 .*?尝试次数: (\d+)/(\d+)")
+_SCRIPT_START = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ \|[^|]*\| 业务调度 \| 任务开始: ([0-9a-fA-F-]{36})\s*$")
+_CONFIG_SKIP = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ \|[^|]*\| (\S+) 调度器 \| 未通过配置检查: (.+?)\s*$")
 
 
 @dataclass
@@ -61,6 +77,15 @@ class Timeout:
     of: int = 0
     began: datetime | None = None
     unsent: bool = False       # check_timeouts failed to push it and handed it back
+
+
+@dataclass
+class ConfigSkip:
+    at: datetime
+    script: str                # AUTO-MAS's type name in the line ("MaaEnd"), for the log
+    reason: str                # AUTO-MAS's own words, kept for the log
+    uid: str = ""              # the script uid of the script-start line before it; "" when none was seen
+    unsent: bool = False
 
 
 def _when(s: str) -> datetime:
@@ -79,10 +104,19 @@ class AppLog:
         self._offset = 0
         self._tail = ""
         self._attempt: dict[str, tuple[int, int, datetime]] = {}
+        self._started_uid = ""
+        # Config-check skips read so far and not yet taken (take_skips).
+        self.skips: list[ConfigSkip] = []
 
     def feed(self, lines) -> list[Timeout]:
         out: list[Timeout] = []
         for line in lines:
+            if "业务调度" in line and (m := _SCRIPT_START.match(line)):
+                self._started_uid = m.group(2).lower()
+                continue
+            if "未通过配置检查" in line and (m := _CONFIG_SKIP.match(line)):
+                self.skips.append(ConfigSkip(_when(m.group(1)), m.group(2), m.group(3), self._started_uid))
+                continue
             if "自动代理" not in line:
                 continue
             if m := _ATTEMPT.match(line):
@@ -114,6 +148,11 @@ class AppLog:
         self._offset += len(data)
         text, _, self._tail = (self._tail + data.decode("utf-8", "replace")).rpartition("\n")
         return self.feed(text.splitlines())
+
+
+    def take_skips(self) -> list[ConfigSkip]:
+        got, self.skips = self.skips, []
+        return got
 
 
 def applog_path(automas_dir) -> Path | None:
@@ -155,6 +194,128 @@ def check_timeouts(eng, events: list[Timeout], now: datetime) -> list[Timeout]:
         handle._mark_alerted(eng, day, key)
         log.warning("⏱️ %s 第 %s 次%s，已告警（AUTO-MAS 还在重试）", ev.script, ev.attempt or "?", ev.what,
                     extra=errwatch.group_pushed(title, errs, eng.notifier))
+    return unsent
+
+
+# ---------------------------------------------------------------- config-check skip
+
+def _script_of(automas_dir, uid: str) -> tuple[str, str]:
+    """(kind, first user's name) of script `uid` in AUTO-MAS's ScriptConfig.json; "" where unknown."""
+    if not automas_dir or not uid:
+        return "", ""
+    cfg_dir = Path(automas_dir) / "config"
+    kind = (plan._scripts(cfg_dir).get(uid) or {}).get("kind") or ""
+    node = plan._load(cfg_dir / "ScriptConfig.json").get(uid) or {}
+    users = ((node.get("SubConfigsInfo") or {}).get("UserData") or {}).values()
+    names = [str((u.get("Info") or {}).get("Name") or "") for u in users if isinstance(u, dict)]
+    return kind, next((n for n in names if n), "")
+
+
+def _shift_of_skip(eng, uid: str, kind: str, at: datetime):
+    """(queue, "HH:MM", due) of the scheduled run a skip at `at` belongs to: the latest due
+    time whose items include the script (by uid; by kind when no uid was seen) and that came
+    up at most cfg.partial_window minutes before. None for a run nobody scheduled."""
+    scripts = plan._scripts(Path(eng.cfg.automas_dir) / "config") if not uid and eng.cfg.automas_dir else {}
+    best = None
+    for q in plan.schedule(eng.cfg.automas_dir):
+        for hhmm in q.get("times", []):
+            try:
+                hh, mm = (int(x) for x in hhmm.split(":")[:2])
+            except ValueError:
+                continue
+            for back in (0, 1):
+                due = (at - timedelta(days=back)).replace(hour=hh, minute=mm, second=0, microsecond=0)
+                if not due - timedelta(minutes=5) <= at < due + timedelta(minutes=eng.cfg.partial_window):
+                    continue
+                items = [str(i).lower() for i in plan.runs_at(q, hhmm, due)]
+                hit = uid in items if uid else any((scripts.get(i) or {}).get("kind") == kind for i in items)
+                if hit and (best is None or due > best[2]):
+                    best = (q, hhmm, due)
+    return best
+
+
+def _book_skip(eng, ref: ConfigSkip, kind: str, user: str, queue: str, now: datetime) -> None:
+    """The skip on the day's ledger as the script's failed run of the shift, the way a failed
+    record is: the shutdown gate (shutdown._missing_kinds), the missing-item check and the
+    reports (ledger_report._bare_reason) all read the ledger. Not held in eng._pending: a
+    make-up would be refused by the same check. It scores against the code version like any
+    failed run (append_ledger): the relay's own efstart_setup set the path AUTO-MAS refused."""
+    from ark_relay.core.config import RunRecord  # noqa: PLC0415
+    from ark_relay.features.shutdown import shutdown  # noqa: PLC0415
+    who = user or kind
+    rec = RunRecord(run_id=f"{ref.at:%Y-%m-%d}/{who}/{kind}-skip-{ref.at:%H-%M-%S}", script=kind, user=who,
+                    started=ref.at, finished=ref.at, ok=False, failed_tasks=[],
+                    raw={"automas_config_skip": ref.reason, "queue": queue})
+    if any(e.get("run_id") == rec.run_id for e in eng.state.read_ledger(f"{ref.at:%Y-%m-%d}")):
+        return
+    eng.state.append_ledger(rec)
+    # The shift's last result, seen by this process (a line read again after a restart is not:
+    # shutdown._seen_landing keeps a relay restarted after the shift from powering off).
+    if ref.at >= eng._started_at:
+        eng._handled_any = True
+        shutdown.note_handled(eng, now)
+
+
+def check_config_skips(eng, refusals: list[ConfigSkip], now: datetime) -> list[ConfigSkip]:
+    """Push every config-check skip once, with AUTO-MAS's reason in plain words, and book a
+    scheduled one onto the ledger. Its key is missed's own (漏跑|<day>/<queue>/<HH:MM>/<kind>),
+    so the timed missing-item check (missed._check_partial_queues) does not say it again.
+    Returns the skips whose push failed, for the next tick (app.log is read once); while any
+    is left, shutdown.decide holds the machine on ("pending"), as for a held failure."""
+    from ark_relay.core.config import both_clocks  # noqa: PLC0415
+    from ark_relay.features.alarm import errwatch, handle, missed  # noqa: PLC0415
+    from ark_relay.features.guard import trigger  # noqa: PLC0415
+    unsent: list[ConfigSkip] = []
+    tasks = None
+    for ref in refusals:
+        kind, user = _script_of(eng.cfg.automas_dir, ref.uid)
+        kind = kind or ref.script
+        if tasks is None:
+            tasks = trigger.read(eng.cfg.automas_dir)
+        hand = trigger.hand_started_at(tasks, ref.at, eng.cfg.state_dir)
+        shift = None if hand else _shift_of_skip(eng, ref.uid, kind, ref.at)
+        if shift is not None:
+            q, hhmm, due = shift
+            # Past the missing-item window the missed check no longer looks either (app.log
+            # keeps earlier days until AUTO-MAS restarts).
+            if now - ref.at > timedelta(minutes=eng.cfg.partial_window):
+                if ref.unsent:
+                    log.warning("🔌 %s %s 开跑前没过检查的告警到缺项核对的时限都没推出去，不再重试（%s）", kind,
+                                ref.at.strftime("%H:%M"), ref.reason)
+                continue
+            queue, day = q["name"], due.strftime("%Y-%m-%d")
+            key = f"{day}/{queue}/{hhmm}/{kind}"
+            _book_skip(eng, ref, kind, user, queue, now)
+            # one fault, one push: one script refused at one queue run (missed's own key), re-read after a restart
+            if missed._settled(eng, day, key):
+                continue
+        else:
+            if now - ref.at > timedelta(minutes=FRESH_MINUTES):
+                if ref.unsent:
+                    log.warning("🔌 %s %s 开跑前没过检查的告警 %d 分钟都没推出去，不再重试（%s）", kind,
+                                ref.at.strftime("%H:%M"), FRESH_MINUTES, ref.reason)
+                continue
+            queue, day = "", ref.at.strftime("%Y-%m-%d")
+            key = f"配置检查|{kind}|{ref.at:%H:%M:%S}"
+            # one fault, one push: one refusal line of app.log (its own time stamp), seen again when app.log is re-read
+            if handle._already_alerted(eng, day, key):
+                continue
+        game = plan._GAME_OF.get(kind, kind)
+        title = texts.missing(texts.not_run_in(kind, queue or "手动开的一趟"))
+        body = texts.config_skip_body(game, texts.config_skip_why(ref.reason), both_clocks(ref.at), queue)
+        if hand:
+            body = texts.HAND_STARTED_NOTE + "\n" + body
+        if errs := eng.notifier.send(title, body, alert=True):
+            log.error("开跑前没过检查的告警没推出去，下一轮再试：%s", kind)
+            ref.unsent = True
+            unsent.append(ref)
+            continue
+        if shift is not None:
+            missed._settle(eng, day, key)
+        else:
+            handle._mark_alerted(eng, day, key)
+        log.warning("🔌 %s %s 开跑前没过 AUTO-MAS 的配置检查，没开跑：%s，已告警", queue or "手动开的一趟", kind,
+                    ref.reason, extra=errwatch.group_pushed(title, errs, eng.notifier))
     return unsent
 
 
@@ -349,7 +510,19 @@ def next_moments(eng, now: datetime, running: bool) -> list[tuple[datetime, str]
     That one moment covers both checks: a timeout line can only appear while a
     script runs, and a shift can only overrun while it is still running - so an
     idle machine adds no wake-ups at all.
+
+    One more wake STOPPED_RECHECK_S after running is first seen false: a config-check
+    skip of the queue's last item lands in app.log after the record that woke the loop,
+    when nothing runs any more (10-16: OK-WW's record 09:34:04.906, MaaEnd's skip line
+    09:34:05.023). Kept until it passes, so a second ask in the meantime gets it too.
     """
-    if not running:
-        return []
-    return [(now + timedelta(seconds=RUNNING_RECHECK_S), "在跑巡查：读 AUTO-MAS 日志、核对有没有超时")]
+    if running:
+        eng._watch_running, eng._watch_stopped = True, None
+        return [(now + timedelta(seconds=RUNNING_RECHECK_S), "在跑巡查：读 AUTO-MAS 日志、核对有没有超时")]
+    if getattr(eng, "_watch_running", False):
+        eng._watch_running, eng._watch_stopped = False, now + timedelta(seconds=STOPPED_RECHECK_S)
+    stop = getattr(eng, "_watch_stopped", None)
+    if stop is not None and stop > now:
+        return [(stop, "队列刚停：再读一次 AUTO-MAS 日志，看有没有开跑前被跳过的项")]
+    eng._watch_stopped = None
+    return []
