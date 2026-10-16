@@ -7,7 +7,8 @@ The relay booked them as the evening shift's failures, held them for the final a
 and pushed 「⏰ 晚班 21:30 开跑…还没跑完」 at 00:43. From then until 2026-10-06 such a
 run was booked for the daily report only; the user's order of 2026-10-06 (「不论多少次
 什么错误都要发」) puts its failures, 「没干完」 and timeouts back in the group. It is
-still not the shift: no make-up, no hold, no shift-overrun alarm.
+still not the shift: no make-up, no shift-overrun alarm. Since 2026-10-16 a failed
+attempt is held until the same AUTO-MAS task's later attempts decide, as the shift's are.
 
 trigger.py reads who created each task; the relay notes its own starts, because
 /api/dispatch/start is 「manual_task」 too and a rerun the relay makes keeps its alarms.
@@ -120,11 +121,17 @@ check("两个都开着", len(trigger.tasks_at(both, at(4, 9, 20))), 2)
 check("不算手动", trigger.hand_started_at(both, at(4, 9, 20), TMP / "state"), None)
 check("只有手动那个开着时才算", trigger.hand_started_at(both[1:], at(4, 9, 20), TMP / "state").id[:4], "bbbb")
 
-print("\n[有人手动开的失败：记账、不压着、不补跑，马上报群并写明是手动开的]")
+print("\n[有人手动开的失败：记账、不补跑，同一任务的重试结束就报群并写明是手动开的]")
+# Held until the task's later attempts decide (handle._hold_hand_started, 2026-10-16
+# task c6d40887: tests/test_hand_started_retry_1016.py), pushed by the flush.
 from ark_relay.core import texts  # noqa: E402
+from ark_relay.features.makeup import marker  # noqa: E402
 e = build()
 r = rec("m1", at(3, 0, 20))
 e._handle(r)
+check("先压着，等同一任务后面那次", (("MAA", "arknights") in e._pending, e.notifier.sent), (True, []))
+check("压着也不补跑", marker.eligible(r, now=at(3, 0, 30)), False)
+e._flush_pending()
 check("没进待推队列", ("MAA", "arknights") in e._pending, False)
 check("报群一条", e.notifier.sent, [(texts.failed("MAA"), True)])
 check("头一行写明是手动开的", e.notifier.bodies[-1].splitlines()[:1] if e.notifier.bodies else [],

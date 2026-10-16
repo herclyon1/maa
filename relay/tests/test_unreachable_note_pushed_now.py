@@ -2,8 +2,9 @@
 
 Review of s7 #5 (5a407a4f): _confirm_unreachable's WARNING became INFO and only
 pushes._push_unresolved (the held final alarm) adds texts.UNREACHABLE_SHAPE_NOTE.
-A MaaEnd failure alarmed straight away - a run a person started at AUTO-MAS, a run
-停一切 cut short - said it nowhere. Both now carry it (or the 「公告没读到」 note when
+A MaaEnd failure alarmed outside that path - a run a person started at AUTO-MAS
+(held only for its own task's retries, then pushed by the flush), a run 停一切 cut
+short - said it nowhere. Both now carry it (or the 「公告没读到」 note when
 the notices could not be read), as the held alarm does.
 """
 import os
@@ -81,6 +82,7 @@ for how, label in (("hand", "有人在 AUTO-MAS 上手动开的"), ("stop", "停
                     started=T0, finished=T0 + timedelta(minutes=1), ok=False,
                     failed_tasks=["协议空间", "自动采集"], raw={"maaend_unreachable": True})
     handle._handle(e, rec)
+    e._flush_pending()   # a hand-started failure waits for its task's retries (handle._hold_hand_started)
     check("按普通失败处理（形状留着）", (rec.raw.get("maaend_unreachable_shape"), rec.raw.get("maaend_unreachable")),
           (True, None))
     check("当场报了一条", len(e.notifier.sent), 1)
@@ -103,6 +105,7 @@ rec = RunRecord(run_id="2026-10-12/endfield/MaaEnd-06-04-unread", script="MaaEnd
                 started=T0, finished=T0 + timedelta(minutes=1), ok=False,
                 failed_tasks=["协议空间"], raw={"maaend_unreachable": True})
 handle._handle(e, rec)
+e._flush_pending()
 body = (e.notifier.sent or [("", "")])[0][1]
 check("写了「没读到」", texts.UNREACHABLE_UNREAD_NOTE in body)
 check("不写「今天没有官方公告」", texts.UNREACHABLE_SHAPE_NOTE in body, False)

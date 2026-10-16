@@ -365,8 +365,13 @@ e = build()
 real_hand = handle._hand_started
 handle._hand_started = lambda eng, r: "手动开始"
 handle._handle(e, rec("MAA", at(9, 5)))
-check("手动开的失败：马上进群，不压着", (alarms(e), dict(e._pending)), ([texts.failed("MAA")], {}))
+# Held until the same AUTO-MAS task's later attempts decide (handle._hold_hand_started,
+# 2026-10-16), never handed to the make-up.
+check("手动开的失败：先压着，等同一任务后面那次", (alarms(e), list(e._pending)), ([], [("MAA", "arknights")]))
+e._flush_pending()
+check("手动开的失败：同一任务里没有后来跑成的，进群", (alarms(e), dict(e._pending)), ([texts.failed("MAA")], {}))
 check("…头一行说是手动开的", last_body(e).splitlines()[:1], [getattr(texts, "HAND_STARTED_NOTE", "-")])
+handle._hand_started = lambda eng, r: "又一个手动任务"
 e._verify_outcome = lambda r: "MAA 这一轮有 1 项没干成，但它自己没报错：\n· 基建换班：x"
 handle._handle(e, rec("MAA", at(9, 40), ok=True))
 handle._hand_started = real_hand

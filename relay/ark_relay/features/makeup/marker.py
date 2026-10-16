@@ -109,13 +109,17 @@ def attempted(state_dir, day: str, script: str) -> bool:
 
 def eligible(rec, now: datetime | None = None) -> bool:
     """Whether a held failure is one a make-up is for: MAA / MaaEnd, started today,
-    not a maintenance day, not a game it could not even enter, not stopped by hand."""
+    not a maintenance day, not a game it could not even enter, not stopped by hand,
+    not a run a person started at AUTO-MAS (handle._hold_hand_started holds those only
+    until their task's retries are over; one whose alarm could not go out yet must
+    not get a make-up in the meantime, and shutdown counts it as an alarm to send)."""
     if getattr(rec, "script", None) not in SCRIPTS:
         return False
     if _day(rec.started) != _day(_now(now)):
         return False
     raw = rec.raw or {}
-    return not (raw.get("maintenance") or raw.get("maaend_unreachable") or raw.get("manual_stop"))
+    return not (raw.get("maintenance") or raw.get("maaend_unreachable") or raw.get("manual_stop")
+                or raw.get("hand_started"))
 
 
 def candidates(eng, now: datetime | None = None) -> list:
