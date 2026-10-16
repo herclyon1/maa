@@ -285,8 +285,9 @@ def item4():
               (r.deferred, sorted(on_file(state, runs.HELD_28) or {}), on_file(state, "#7-miss"),
                on_file(state, "#6")), (True, [R3], 1, [R2]))
 
-    print("  (a file that stays locked while holds wait: one ERROR naming them, not a silent skip)")
-    ERRORS.lines.clear()
+
+
+def item4b():
     state = fresh(R1, R2)
     check("read once while it can be read", sorted(runs._state_get(state, runs.HELD_28) or {}), [R1, R2])
 
@@ -415,7 +416,8 @@ def item8():
 for title, fn in (("1: covered_28 when its read fails once", item1),
                   ("2: a held run's FAIL pushed at once is marked sent only after its push", item2),
                   ("3: machinecheck.json locked while judging", item3),
-                  ("4: a machinecheck-runs.json that stays broken or locked", item4),
+                  ("4: a machinecheck-runs.json that stays broken", item4),
+                  ("4b: held FAILs stuck behind a machinecheck-runs.json that stays locked", item4b),
                   ("5: a brief Windows lock on os.replace", item5),
                   ("6: #7 / #28 miss counts in one read and write", item6),
                   ("7: #6 / #24a when the seen list cannot be read", item7),
