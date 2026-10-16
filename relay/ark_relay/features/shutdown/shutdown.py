@@ -690,7 +690,9 @@ def decide(eng, now: datetime) -> Verdict:
     # A held MAA / MaaEnd failure whose make-up is still to come is not an alarm
     # waiting to go out (makeup.holding); the make-up gate further down holds it.
     held = [r for r in eng._pending.values() if not makeup.holding(eng, r, now)]
-    if held or eng._recovered:
+    # A config-check skip whose push failed (runwatch.check_config_skips) is booked on the
+    # ledger as the shift's failed run but its alarm is still to go out, like a held failure.
+    if held or eng._recovered or getattr(eng, "_unsent_skips", None):
         return Verdict(False, "pending", "还有告警没推出去")
     if eng._deferred_update_busy():
         return Verdict(False, "updating", "游戏客户端正在更新或重跑")

@@ -260,7 +260,8 @@ def check_config_skips(eng, refusals: list[ConfigSkip], now: datetime) -> list[C
     """Push every config-check skip once, with AUTO-MAS's reason in plain words, and book a
     scheduled one onto the ledger. Its key is missed's own (漏跑|<day>/<queue>/<HH:MM>/<kind>),
     so the timed missing-item check (missed._check_partial_queues) does not say it again.
-    Returns the skips whose push failed, for the next tick (app.log is read once)."""
+    Returns the skips whose push failed, for the next tick (app.log is read once); while any
+    is left, shutdown.decide holds the machine on ("pending"), as for a held failure."""
     from ark_relay.core.config import both_clocks  # noqa: PLC0415
     from ark_relay.features.alarm import errwatch, handle, missed  # noqa: PLC0415
     from ark_relay.features.guard import trigger  # noqa: PLC0415
@@ -278,6 +279,9 @@ def check_config_skips(eng, refusals: list[ConfigSkip], now: datetime) -> list[C
             # Past the missing-item window the missed check no longer looks either (app.log
             # keeps earlier days until AUTO-MAS restarts).
             if now - ref.at > timedelta(minutes=eng.cfg.partial_window):
+                if ref.unsent:
+                    log.warning("🔌 %s %s 开跑前没过检查的告警到缺项核对的时限都没推出去，不再重试（%s）", kind,
+                                ref.at.strftime("%H:%M"), ref.reason)
                 continue
             queue, day = q["name"], due.strftime("%Y-%m-%d")
             key = f"{day}/{queue}/{hhmm}/{kind}"

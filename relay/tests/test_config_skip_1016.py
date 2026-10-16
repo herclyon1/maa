@@ -162,12 +162,21 @@ check("one MaaEnd row", len(rows), 1)
 check("…failed, at 09:34:05", (rows[0]["ok"], rows[0]["started"][:19]) if rows else None,
       (False, "2026-10-16T09:34:05"))
 
-print("\n[10:34 (the hour backstop) and 12:08 (the overdue check): nothing more for the same fault]")
+def overdue_at(e):
+    """One minute past the shift's overdue deadline, from the same source shutdown._shift_overdue
+    uses (runwatch.planned_minutes + OVERRUN_SLACK_MIN). On the machine it was 12:08 (158 min
+    planned); this fixture has no history, so planned is the default and the deadline later.
+    A check before the deadline proves nothing: the overdue alarm cannot fire yet."""
+    limit, _ = runwatch.planned_minutes(e, 9, 0, at(9, 0))
+    return at(9, 0) + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN + 1)
+
+
+print("\n[10:34 (the hour backstop) and the overdue check (12:08 on the machine): nothing more for the same fault]")
 first = list(got)
 e._check_missed_runs(at(10, 34, 12))
 check("no 10:34 「缺项」 alarm: only the 09:34 one", alarms(e), first)
-shutdown._alarm_shift_overdue(e, at(12, 8, 1))
-check("no 12:08 「一直没出结果」 alarm", alarms(e), first)
+shutdown._alarm_shift_overdue(e, overdue_at(e))
+check("no 「一直没出结果」 alarm past the overdue deadline", alarms(e), first)
 check("the 09:34 one was not empty", len(first), 1)
 check("no overdue wake-up left for 早班", shutdown.overdue_moments(e, at(9, 35)), [])
 
@@ -233,8 +242,50 @@ finally:
 check("the 10:15 alarm went out", [t for t, _ in alarms(e4)], ["🔌 MaaEnd 没有运行（早班）"])
 check("its log line is marked as already in the group (no 🩺 copy)",
       [bool(getattr(r, errwatch.PUSHED, False)) for r in cap if r.levelno >= logging.WARNING], [True])
-shutdown._alarm_shift_overdue(e4, at(12, 8, 1))
-check("and 12:08 does not say it again", len(alarms(e4)), 1)
+check("no overdue wake-up left for 早班 (MaaEnd is already in the group)", shutdown.overdue_moments(e4, at(10, 16)), [])
+shutdown._alarm_shift_overdue(e4, overdue_at(e4))
+check("and past the overdue deadline it is not said again", [t for t, _ in alarms(e4)], ["🔌 MaaEnd 没有运行（早班）"])
+
+print("\n[the same run with OK-WW also still missing: the overdue alarm still names OK-WW, not MaaEnd]")
+e5 = build(lines=SKIP_AT)
+e5.state.ledger_path("2026-10-16").write_text("\n".join(json.dumps(
+    {"run_id": r, "script": s, "user": u, "started": a.isoformat(), "finished": b.isoformat(), "ok": ok,
+     "failed_tasks": [], "transitional": tr, "raw": {}}) for r, s, u, a, b, ok, tr in LEDGER[:1]) + "\n",
+    encoding="utf-8")
+missed._settle(e5, "2026-10-16", "2026-10-16/早班/09:00/MaaEnd")
+shutdown._alarm_shift_overdue(e5, overdue_at(e5))
+over = [b for t, b in alarms(e5) if "一直没出结果" in t]
+check("one overdue alarm", len(over), 1)
+check("…it names OK-WW and not MaaEnd", (("OK-WW" in over[0]) or ("鸣潮" in over[0]), "MaaEnd" in over[0]) if over else None,
+      (True, False))
+
+print("\n[the skip alarm fails to send: the machine is held on, as for any failed alarm, and it goes out later]")
+
+
+class Down(Notes):
+    def __init__(self):
+        super().__init__()
+        self.up = False
+
+    def send(self, title, body="", **kw):
+        if not self.up:
+            return ["wecom: down"]
+        return super().send(title, body, **kw)
+
+
+e6 = build()
+e6.notifier = Down()
+e6._run_watch(at(9, 34, 7))
+check("nothing went out", alarms(e6), [])
+check("the skip waits to be sent again", len(e6._unsent_skips), 1)
+v6 = shutdown.decide(e6, at(9, 34, 8))
+check("the shutdown waits for it (not go)", v6.code, "pending")
+e6.notifier.up = True
+e6._run_watch(at(9, 35, 7))
+check("next tick: the alarm with the reason goes out",
+      [("找不到终末地官方启动器" in b) for t, b in alarms(e6)], [True])
+check("nothing left to send", e6._unsent_skips, [])
+check("then the shutdown says go", shutdown.decide(e6, at(9, 35, 8)).code, "go")
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 _mc.CHECKS.update(_mc_real)
