@@ -41,6 +41,7 @@ __all__ = [
     "claim_failures",
     "claim_lines",
     "in_window",
+    "is_obstacle_shot",
     "maaend_unreachable",
     "maafw_grep",
     "obstacle_shots",
@@ -247,6 +248,16 @@ def shot_time(name: str) -> "datetime | None":
                    else timedelta(microseconds=int(frac[:6].ljust(6, "0"))))
 
 
+def is_obstacle_shot(name: str) -> bool:
+    """Whether an on_error picture is a relay-device one (OBSTACLE_SHOT), by the node
+    name after its time - ___ or a single _, as shot_time reads it. The one test for
+    every part that looks for these pictures (obstacle_shots for the daily row and the
+    retry list, blocked_routes, collect_retry.retry_blocked, machine check #29), so a
+    picture the outcome check books is one the daily row and the retry book too."""
+    m = _SHOT_NAME.match(name)
+    return bool(m) and m.group(3) == OBSTACLE_SHOT
+
+
 def line_time(line: str) -> "datetime | None":
     """A history-log or maafw.log line's stamp, to the millisecond; None when it has none."""
     m = _LINE_TIME.match(line)
@@ -274,10 +285,12 @@ def spans(events, last: "datetime | None") -> list[tuple[str, datetime, "datetim
 
     The one window rule for the history log (route_windows) and maafw.log
     (collect_retry.retry_blocked), so the two cannot credit a picture differently:
-    'open' starts `route`'s window and closes the open one; 'close' closes it;
+    'open' starts `route`'s window and closes the open one; 'close' closes it (a
+    failed route, or the gathering task's end - where the history log ends its last
+    route, and maafw.log's Tasker.Task event for the same moment);
     'tail' (a route's End node, which the history log has no line for) is where the
     open window ends only when nothing follows - otherwise it runs on to the next
-    route's start, as the history log's does. The same route opened again while its
+    route's start or the task's end, as the history log's does. The same route opened again while its
     window is open is the same start (MaaFW logs every event twice, and the
     recognition and then the action of one Start node). A window still open at the
     end closes at its tail, else at `last`, the log's last stamp: nothing later is
@@ -340,12 +353,12 @@ def round_shots(maaend_dir, started: datetime, until: "datetime | None" = None) 
 
 
 def obstacle_shots(maaend_dir) -> list[str]:
-    """The relay-device pictures (OBSTACLE_SHOT) in MaaEnd's on_error folder, by name."""
+    """The relay-device pictures (is_obstacle_shot) in MaaEnd's on_error folder, by name."""
     if not maaend_dir:
         return []
     d = Path(maaend_dir) / "debug" / "on_error"
     try:
-        return sorted(p.name for p in d.glob(f"*___{OBSTACLE_SHOT}.png"))
+        return sorted(p.name for p in d.glob("*.png") if is_obstacle_shot(p.name))
     except OSError:
         return []
 
@@ -376,7 +389,7 @@ def route_windows(text: str) -> list[tuple[str, datetime, datetime]]:
 def blocked_routes(text: str, shot_names: list[str]) -> dict[str, list[str]]:
     """{route label: its relay-device pictures} for the routes of `text` that hit
     「战斗中无法使用」, in route order. A picture outside every route window is left out."""
-    shots = [(t, n) for n in shot_names if OBSTACLE_SHOT in n and (t := shot_time(n)) is not None]
+    shots = [(t, n) for n in shot_names if is_obstacle_shot(n) and (t := shot_time(n)) is not None]
     out: dict[str, list[str]] = {}
     if not shots:
         return out

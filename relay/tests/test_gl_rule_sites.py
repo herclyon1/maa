@@ -129,6 +129,10 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
     ("features/makeup/collect_retry.py",
      r"\[msg=Node\.(?:Recognition\.Succeeded|Action\.Starting)\].*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(Start|End|Failed)\""):
         ("fixture", "only fixtures/collect-blocked-1005-1012 (real maafw.log lines of 2026-10-12, no SOURCE in the census)"),
+    ("features/makeup/collect_retry.py",
+     r'\[msg=Tasker\.Task\.(?:Succeeded|Completed|Failed)\].*?"entry":"AutoCollectSchedule"'):
+        ("fixture", "only fixtures/collect-watch-2026-09-14/maafw-attempt3.log (real maafw.log line of 2026-09-14, "
+                    "no SOURCE in the census)"),
 }
 # Sites that read something other than a game's log - a config, a stage name, a path, a locale
 # key, the registry file's own format - so no log line is owed. Key as in GAPS; value: what it reads.
@@ -151,8 +155,6 @@ NOT_LOG: "dict[tuple[str, str], str]" = {
     ("features/makeup/collect_retry.py", r"option\.(AutoCollect(?:Common)?Route\d+)\.label"): "MaaEnd locale keys",
     ("features/verify/collector_maaend.py", r"^(\d{4}\.\d\d\.\d\d-\d\d\.\d\d\.\d\d)\.(\d+)_+(.+)\.png$"):
         "an on_error picture's file name (MaaEnd debug/on_error)",
-    ("features/verify/collector_maaend.py", "MapNavigatorObstacleDevice_InteractPost"):
-        "part of an on_error picture's file name (MaaEnd debug/on_error)",
     ("features/schedule/stagegate.py", r"^([A-Za-z]{0,3})(\d{1,2})-(\d{1,2})(?:-?(\w+))*$"): "an MAA stage name",
     ("features/schedule/stagegate.py", "SSReopen-"): "an MAA stage name",
     ("features/schedule/stagegate.py", "IfFight"): "an MAA gui.new.json task entry",

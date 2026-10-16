@@ -631,7 +631,7 @@ def _c29(ctx):
     if shots is None:
         rec = ctx["rec"]
         shots = cm.round_shots(ctx.get("maaend_dir"), rec.started, cm.round_until(rec))
-    pics = [n for n in shots if cm.OBSTACLE_SHOT in n
+    pics = [n for n in shots if cm.is_obstacle_shot(n)
             and (t := cm.shot_time(n)) is not None and cm.in_window(t, t0, t1)]
     if not pics:
         return None

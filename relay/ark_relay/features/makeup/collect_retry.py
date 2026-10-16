@@ -19,7 +19,7 @@ relay does it, from files MXU writes anyway:
   refused with a reason.
 * Did it work: MaaFW's log names the node that ran - `AutoCollectRoute15End`
   or `AutoCollectRoute15Failed`. A relay-device picture between a route's Start
-  and End nodes fails it although End ran (retry_blocked).
+  node and the task's end fails it although End ran (retry_blocked).
 
 A route that fails the retry is recorded per day; failing on RECURRENT_DAYS
 consecutive days makes it recurrent, and the alarm asks a person to file it
@@ -55,6 +55,10 @@ _NODE = re.compile(r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(AutoCollect(?:
 # node's recognition is the moment the route is announced, its action 0.2 s later.
 _ROUTE_EVENT = re.compile(r"\[msg=Node\.(?:Recognition\.Succeeded|Action\.Starting)\]"
                           r".*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(Start|End|Failed)\"")
+# The gathering task's own end in maafw.log (retry_blocked): the event the history
+# log's 「任务完成/任务失败: 自动采集」 line stamps. Succeeded is MaaFW's name for a
+# finished task (task_shots._EVENT); Completed is accepted as there. The entry is ENTRY.
+_TASK_END = re.compile(r'\[msg=Tasker\.Task\.(?:Succeeded|Completed|Failed)\].*?"entry":"AutoCollectSchedule"')
 _TAG = re.compile(r"<[^>]+>")
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 # Consecutive days a route has to fail its retry to count as recurrent.
@@ -120,9 +124,15 @@ def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: lis
     (collector_maaend.spans) on the same event: a route opens where MaaFW recognises
     its Start node - the moment MaaEnd announces 「路线10：重红柱状菌」, which AUTO-MAS
     stamps into the history log some 25 ms later - and runs to the next route's
-    start or its Failed node; its End node closes it only when nothing follows.
-    MaaEnd still runs End on such a route (maafw.log 2026-10-12 10:45:39
-    AutoCollectRoute10End, four pickups instead of 6-10). All to the millisecond."""
+    start, its Failed node or the task's end (Tasker.Task.Succeeded/Failed of
+    AutoCollectSchedule, which AUTO-MAS stamps 「任务完成: 自动采集」 - where the history
+    log ends its last route); its End node closes it only when none of these follows
+    (a retry stopped short). The last route's End comes some 25 s before the task's
+    end (maafw-attempt3 2026-09-14: Route17End 11:19:57.922, Task.Failed 11:20:23.065);
+    closed at End, a picture in that stretch was the route's in the daily row and
+    nobody's here. MaaEnd still runs End on such a route (maafw.log 2026-10-12
+    10:45:39 AutoCollectRoute10End, four pickups instead of 6-10). All to the
+    millisecond."""
     from ark_relay.features.verify import collector_maaend as cm  # noqa: PLC0415
     events: list[tuple] = []
     last = None
@@ -131,9 +141,13 @@ def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: lis
             continue
         if line.startswith("["):
             last = line
-        if "AutoCollect" not in line or not (m := _ROUTE_EVENT.search(line)):
+        if "AutoCollect" not in line:
             continue
-        if (at := cm.line_time(line)) is None:
+        if _TASK_END.search(line):
+            if (at := cm.line_time(line)) is not None:
+                events.append((at, "close", None))
+            continue
+        if not (m := _ROUTE_EVENT.search(line)) or (at := cm.line_time(line)) is None:
             continue
         rid, node = m.group(1), m.group(2)
         if node == "Start":
@@ -141,7 +155,7 @@ def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: lis
         else:
             events.append((at, "tail" if node == "End" else "close", rid))
     shots = [(t, n) for n in shot_names
-             if cm.OBSTACLE_SHOT in n and (t := cm.shot_time(n)) is not None]
+             if cm.is_obstacle_shot(n) and (t := cm.shot_time(n)) is not None]
     out: dict[str, list[str]] = {}
     for rid, start, end in cm.spans(events, cm.line_time(last) if last else None):
         for t, n in shots:

@@ -124,10 +124,10 @@ check("说给人听的话是人话", texts.plain(retry[0].label) if retry else [
 print("\n[关机前补跑：真实 10-08 那趟（AUTO-MAS 整轮重跑的 06-34-21）补路线10]")
 
 
-def maybe_run(verdict, failures_before=None, day="2026-10-08"):
+def maybe_run(verdict, failures_before=None, day="2026-10-08", pics=(P1008A, P1008)):
     """maybe_run over the real history log and picture; only MXU's part is stubbed.
     Returns (routes handed to the retry, what was sent, the day's stamp)."""
-    sd, hist, md = tmpdir(), tmpdir(), maaend_dir(P1008A, P1008)
+    sd, hist, md = tmpdir(), tmpdir(), maaend_dir(*pics)
     (hist / "2026-10-08" / "endfield").mkdir(parents=True)
     (hist / "2026-10-08" / "endfield" / "MaaEnd-06-34-21.log").write_text(log("MaaEnd-06-34-21.log"), encoding="utf-8")
     if failures_before:
@@ -260,9 +260,11 @@ for k, want_log, want_fw in (("400", R10, "AutoCollectRoute10"),   # before End 
     check(f"补跑：10:45:39.{k} 算 {want_fw}（和日志一致）",
           cr.retry_blocked(fw, ["AutoCollectRoute10", "AutoCollectRoute11"], "10:40:00", [ms[k]]),
           {want_fw: [ms[k]]})
-# A retry of route 10 alone runs no route after it: its window ends at its End node.
+# A retry of route 10 alone, stopped short (no task-end event, as after tasks/stop on a
+# timeout): its window ends at its End node. With the task's end it runs on to that,
+# as the history log's last route does (below).
 fw10 = "\n".join(x for x in fw.splitlines() if "AutoCollectRoute11" not in x)
-check("补跑只补路线10、后面没有路线：时段停在它的 End（10:45:39.489），.500 不算它的",
+check("补跑只补路线10、半路停了（没有任务结束）：时段停在它的 End（10:45:39.489），.500 不算它的",
       cr.retry_blocked(fw10, ["AutoCollectRoute10"], "10:40:00", [ms["400"], ms["500"]]),
       {"AutoCollectRoute10": [ms["400"]]})
 # 11:36:55.978 is 06-58-38's 「任务完成: 🧺自动采集」: .900 is still 路线17's, .990 no route's.
@@ -315,6 +317,66 @@ old_pic = PIC.format("2026.10.11-11.25.16.239")
 booked, st = end_to_end(old_pic, datetime(2026, 10, 12, 11, 25, 16, tzinfo=SERVER_TZ))
 check("名字在这一趟外、文件时间在里面：核对不记", booked, [])
 check("…#29 也不判", st, None)
+
+print("\n[只隔一个下划线的息壤中继器截图：日报、补跑名单、补跑结果、#29 用同一个认法]")
+# MaaFW also writes on_error names with a single underscore before the node
+# (2026.10.08-10.01.43.463_AutoCollectRoute1Start.png). shot_time reads both, so the
+# outcome check and #29 took such a relay-device picture; obstacle_shots globbed only
+# ___ names, so the daily row and the retry list (_blocked_in) did not - #29 then failed
+# 「日报那一行没写它没采到」 and route 10 was never re-run.
+ONE = "{}_MapNavigatorObstacleDevice_InteractPost.png"
+P1008_1, P1012_1 = ONE.format("2026.10.08-10.59.41.495"), ONE.format("2026.10.12-11.25.16.239")
+P1012A_1 = ONE.format("2026.10.12-10.44.55.895")
+has_matcher = hasattr(cm, "is_obstacle_shot")
+check("一个下划线的息壤中继器截图算", cm.is_obstacle_shot(P1012_1) if has_matcher else None, True)
+check("三个下划线的也算", cm.is_obstacle_shot(P1012) if has_matcher else None, True)
+check("别的节点的截图不算", cm.is_obstacle_shot("2026.10.08-10.01.43.463_AutoCollectRoute1Start.png")
+      if has_matcher else None, False)
+md1 = maaend_dir(P1012_1, "2026.10.12-11.20.00.000_AutoCollectRoute1Start.png")
+check("on_error 里只挑出息壤中继器那张", cm.obstacle_shots(md1), [P1012_1])
+src = tmpdir() / "MaaEnd-06-58-38.log"
+src.write_text(log("MaaEnd-06-58-38.log"), encoding="utf-8")
+raw1 = cm.parse_maaend_log(src, md1)
+check("日报那行：路线10 没采到、16/17 条走通",
+      (raw1.get("maaend_collect_blocked"), raw1.get("maaend_collect_done"), raw1.get("maaend_collect_total")),
+      ([R10], 16, 17))
+check("补跑名单（_blocked_in）有路线10", cr._blocked_in(src, md1, ZH), {"AutoCollectRoute10": [P1012_1]})
+check("补跑结果：又撞上就判没走通", cr.retry_blocked(fw, ["AutoCollectRoute10"], "10:40:00", [P1012A_1]),
+      {"AutoCollectRoute10": [P1012A_1]})
+st, ev = c29(outcome.maaend_checks(log("MaaEnd-06-58-38.log"), [P1012_1]), raw1, pics=(P1012_1,))
+check("#29：核对和日报都记了这张：PASS", st, "PASS")
+asked, _, _, _ = maybe_run(True, pics=(P1008A, P1008_1))
+check("关机前补跑真去补路线10", asked, [["AutoCollectRoute10"]])
+
+print("\n[最后一条路线：日志和补跑都到任务结束为止（不是一个到「任务完成」、一个到 End）]")
+# A gathering task's last route ends, in the history log, at 「任务完成/任务失败: 自动采集」
+# (route_windows); MaaFW announces the same moment as Tasker.Task.Succeeded/Failed of
+# AutoCollectSchedule, some 25 s after the last route's End node (maafw-attempt3 of
+# 2026-09-14: AutoCollectRoute17End 11:19:57.922, Tasker.Task.Failed 11:20:23.065). The
+# retry used to close the last route at End, so a picture in that tail was the route's
+# in the daily row (re-run) and nobody's in the retry (judged walked).
+# Both logs below are constructed for a run whose last route is 11: the maafw fixture
+# keeps only the route 9-11 node lines, so it gains the task's end event; the history
+# log 06-04-00 is cut before its 「路线12」 line and gains its real 「任务完成」 line.
+TASK_END = ('[2026-10-12 10:56:34.150][INF][Px2472][Tx52502][Utils/EventDispatcher.hpp][L65]'
+            '[MaaNS::EventDispatcher::notify] !!!OnEventNotify!!! [handle=true] [msg=Tasker.Task.Succeeded] '
+            '[details={"entry":"AutoCollectSchedule","hash":"","task_id":200000001,"uuid":""}]')
+check("任务结束那一行认的是补跑发的那个任务（ENTRY）", cr.ENTRY in cr._TASK_END.pattern, True)
+fw_end = fw + "\n" + TASK_END + "\n"
+both = ["AutoCollectRoute10", "AutoCollectRoute11"]
+tail_pic, after_pic = PIC.format("2026.10.12-10.50.00.000"), PIC.format("2026.10.12-10.56.34.200")
+hist11 = log("MaaEnd-06-04-00.log").split("[2026-10-12 10:47:16.806] 路线12")[0] \
+    + "[2026-10-12 10:56:34.179] 任务完成: 🧺自动采集\n"
+check("日志：路线11 的 End 之后、任务完成之前的截图算路线11",
+      cm.blocked_routes(hist11, [tail_pic]), {R11: [tail_pic]})
+check("补跑：同一张也算路线11（以前停在 End 10:47:16，判走通）",
+      cr.retry_blocked(fw_end, both, "10:40:00", [tail_pic]), {"AutoCollectRoute11": [tail_pic]})
+check("日志：任务完成之后的截图不算", cm.blocked_routes(hist11, [after_pic]), {})
+check("补跑：任务结束之后的截图也不算", cr.retry_blocked(fw_end, both, "10:40:00", [after_pic]), {})
+check("只补路线10：时段到任务结束，.500 也算它的（和日志一样）",
+      cr.retry_blocked(fw10 + "\n" + TASK_END + "\n", ["AutoCollectRoute10"], "10:40:00",
+                       [ms["400"], ms["500"]]),
+      {"AutoCollectRoute10": [ms["400"], ms["500"]]})
 
 print("\n[没跑完的那趟：「界面没卡住」照旧写出那张截图的名字，路线10 只记一次]")
 # 06-04-00 as it is: no 「自动执行任务完成」 line (AUTO-MAS re-ran it).
