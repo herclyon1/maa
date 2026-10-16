@@ -177,7 +177,12 @@ check("not 「shift-running」 (还差 MaaEnd)", v.code != "shift-running", True
 check("…the decision right after the shift says go", v.code, "go")
 
 print("\n[the interim / daily title is not 全绿]")
-entries = e.state.read_ledger("2026-10-16")
+# The same steps report._compose_daily runs before format_daily (no history log for the row).
+from ark_relay.core import collector                              # noqa: E402
+from ark_relay.features.report import report                      # noqa: E402
+entries = [collector.refresh_raw(r, HIST, None) for r in e.state.read_ledger("2026-10-16")]
+report._fill_single_run_sanity(entries)
+entries, _tests = core.split_test(entries, [])
 title2, body2 = core.format_daily("2026-10-16", entries, shifts=[("早班", "09:00"), ("晚班", "21:30")])
 check("title is not 全绿", "全绿" in title2, False)
 check("title says 终末地早班没跑成", "终末地早班没跑成" in title2, True)
