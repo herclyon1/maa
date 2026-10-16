@@ -193,6 +193,9 @@ def _run_ctx(eng, rec: RunRecord, watch: _RunWatch) -> dict:
         "test_run": _test_run(eng, rec),
         "maaend_dir": eng.cfg.maaend_dir,
     }
+    if hasattr(eng, "_already_alerted"):
+        # The day marks a #28 FAIL pushed at once is marked in (runs._hold_28), as settle_28 checks.
+        ctx["alerted"] = (eng._already_alerted, eng._mark_alerted)
     if unreadable:
         ctx["log_unreadable"] = True
     if rec.script == "MaaEnd":

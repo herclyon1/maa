@@ -301,24 +301,44 @@ def _state_get(state_dir, key: str):
         return None
 
 
-def _state_set(state_dir, key: str, value) -> bool:
-    """Set one key of state/machinecheck-runs.json. True when the file was written; a
-    failed write is not raised (the write is atomic: nothing of it landed), a caller
-    whose push depends on it says so."""
+def _state_update(state_dir, change, what: str = "") -> bool:
+    """Read state/machinecheck-runs.json once, apply `change(data)` to it and write it
+    back. True when the file was written. A file that is not there yet starts empty;
+    one that cannot be read (a Windows sharing violation, a broken file) is never
+    rewritten from nothing - that wiped every other key: the held #28 FAILs, the seen
+    lists, the miss counts - and the caller is told it was not written. A failed read
+    or write is an ERROR (errwatch: the group hears of it), never raised; the write is
+    atomic, so nothing of a failed one landed; `what` says on that ERROR what was not
+    written. A file that stays unreadable keeps every later write out until it reads
+    again."""
     from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
     f = Path(state_dir) / SEEN_FILE
     try:
         data = json.loads(f.read_text(encoding="utf-8"))
-        data = data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
+    except FileNotFoundError:
         data = {}
-    data[key] = value
+    except (OSError, ValueError) as exc:
+        log.error("上机核对：%s 读不出来（%s: %s），%s没写，免得把里面别的记录冲掉",
+                  SEEN_FILE, type(exc).__name__, exc, what or "这次")
+        return False
+    if not isinstance(data, dict):
+        log.error("上机核对：%s 里不是一张表（%s），%s没写，免得把里面别的记录冲掉",
+                  SEEN_FILE, type(data).__name__, what or "这次")
+        return False
+    change(data)
     try:
         f.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(f, json.dumps(data, ensure_ascii=False))
-    except OSError:
+    except OSError as exc:
+        log.error("上机核对：%s 写不进去（%s: %s），%s没写", SEEN_FILE, type(exc).__name__, exc, what or "这次")
         return False
     return True
+
+
+def _state_set(state_dir, key: str, value) -> bool:
+    """Set one key of state/machinecheck-runs.json (_state_update). True when the file
+    was written; a caller whose push depends on it says so."""
+    return _state_update(state_dir, lambda data: data.__setitem__(key, value))
 
 
 def _seen(state_dir, cid: str) -> set:
@@ -328,8 +348,12 @@ def _seen(state_dir, cid: str) -> set:
 
 
 def _mark_seen(state_dir, cid: str, run_ids: list) -> None:
-    """Add `run_ids` to check `cid`'s seen list, keeping the last 50."""
-    _state_set(state_dir, cid, (list(_state_get(state_dir, cid) or []) + list(run_ids))[-50:])
+    """Add `run_ids` to check `cid`'s seen list, keeping the last 50 - on the list as
+    read in the same write, so a failed read never cuts it to `run_ids`."""
+    def add(data):
+        got = data.get(cid)
+        data[cid] = ((list(got) if isinstance(got, list) else []) + list(run_ids))[-50:]
+    _state_update(state_dir, add)
 
 
 def _about_restart(row: dict, run_id: str, version: str) -> bool:
@@ -630,41 +654,61 @@ def _fail_28(ctx, tasks: list, evidence: str) -> mc.Result:
 
 def _hold_28(ctx, tasks: list, evidence: str) -> mc.Result:
     """Keep the FAIL about the held record (machinecheck-runs.json HELD_28) for
-    settle_28; pushed at once when it cannot be kept, so it is never lost."""
+    settle_28; pushed at once when it cannot be kept, so it is never lost. Whether it
+    is kept is what _state_update returned: a read that fails leaves the file as it
+    was (rewriting it from nothing dropped every other held FAIL, never pushed), a
+    read after a good write does not decide it (one failing pushed it here and again
+    at settle_28). A push at once is marked sent first (#28|<run id>, ctx['alerted']
+    as settle_28's `alerted`): an entry of this run already on file is then dropped
+    by settle_28 without a second push."""
     rec, state_dir = ctx.get("rec"), ctx.get("state_dir")
-    held = _state_get(state_dir, HELD_28)
-    held = dict(held) if isinstance(held, dict) else {}
-    held[rec.run_id] = {"script": rec.script, "user": rec.user, "day": ctx.get("day") or "",
-                        "tasks": list(tasks), "evidence": evidence, "covered": []}
-    # Whether the hold is on file is what the write returned, not a second read: a read
-    # failing once after a good write pushed it here and again at settle_28.
-    if not _state_set(state_dir, HELD_28, held):
-        log.warning("上机核对 #28：%s 在等重试，但没记下来，现在就报", rec.run_id)
-        return _r(FAIL, evidence)
-    return mc.Result(FAIL, evidence + HELD_NOTE, deferred=True)
+    entry = {"script": rec.script, "user": rec.user, "day": ctx.get("day") or "",
+             "tasks": list(tasks), "evidence": evidence, "covered": []}
+
+    def add(data):
+        held = data.get(HELD_28)
+        held = dict(held) if isinstance(held, dict) else {}
+        held[rec.run_id] = entry
+        data[HELD_28] = held
+
+    if _state_update(state_dir, add, f"#28 等重试的 {rec.run_id}"):
+        return mc.Result(FAIL, evidence + HELD_NOTE, deferred=True)
+    log.info("上机核对 #28：%s 在等重试，但没记下来，现在就报", rec.run_id)
+    try:
+        _alerted(ctx.get("alerted"))[1](ctx.get("day") or "", f"#28|{rec.run_id}")
+    except Exception:  # pushed anyway; settle_28 may push an older entry of it again
+        log.error("上机核对 #28：%s 现在就报，但「已报」没记下", rec.run_id, exc_info=True)
+    return _r(FAIL, evidence)
 
 
 def covered_28(state_dir, script: str, day: str, items: list) -> None:
     """A 「没证据」 alarm naming `items` of `script` on `day` was just sent (or queued
     until it goes out): the held #28 FAILs of that day about those tasks are in it."""
     held = _state_get(state_dir, HELD_28)
-    if not isinstance(held, dict) or not held:
+    if not isinstance(held, dict) or not any(
+            e.get("script") == script and e.get("day") == day for e in held.values()):
         return
-    changed = False
-    for e in held.values():
-        if e.get("script") != script or e.get("day") != day:
-            continue
-        add = [t for t in e.get("tasks") or [] if t in items and t not in (e.get("covered") or [])]
-        if add:
-            e["covered"] = list(e.get("covered") or []) + add
-            changed = True
-    if changed:
-        _state_set(state_dir, HELD_28, held)
+
+    def cover(data):
+        for e in (data.get(HELD_28) if isinstance(data.get(HELD_28), dict) else {}).values():
+            if e.get("script") != script or e.get("day") != day:
+                continue
+            add = [t for t in e.get("tasks") or [] if t in items and t not in (e.get("covered") or [])]
+            if add:
+                e["covered"] = list(e.get("covered") or []) + add
+
+    _state_update(state_dir, cover, f"#28 等重试的 {script} {day} 已由「没证据」报警带上的那几项")
 
 
 # Run ids whose #28 FAIL settle_28 pushed in this process: its guard against a repeat
 # when no day marks are given (see settle_28 `alerted`).
 _PUSHED_28: set = set()
+
+
+def _alerted(alerted):
+    """(already(day, key), mark(day, key)): the engine's day marks when given, else
+    this process's _PUSHED_28."""
+    return alerted or (lambda day, key: key in _PUSHED_28, lambda day, key: _PUSHED_28.add(key))
 
 
 def settle_28(state_dir, hold_over, ledger, notifier, alerted=None) -> None:
@@ -688,8 +732,7 @@ def settle_28(state_dir, hold_over, ledger, notifier, alerted=None) -> None:
         return
     mc.load()
     what = mc.CHECKS["#28"].what
-    already, mark = alerted or (lambda day, key: key in _PUSHED_28, lambda day, key: _PUSHED_28.add(key))
-    left = dict(held)
+    already, mark = _alerted(alerted)
     for rid, e in held.items():
         if not hold_over(e.get("script"), e.get("user")):
             continue
@@ -715,9 +758,8 @@ def settle_28(state_dir, hold_over, ledger, notifier, alerted=None) -> None:
                 mark(day, key)
             except Exception:  # HELD_28 below is the other record of it
                 log.error("上机核对 #28：%s 已进群，但「已进群」没记下", rid, exc_info=True)
-        left.pop(rid, None)
-        if not _state_set(state_dir, HELD_28, left):
-            log.error("上机核对 #28：%s 已结掉，但 %s 写不进去，等重试的单子上还留着它", rid, SEEN_FILE)
+        _state_update(state_dir, lambda data, rid=rid: _drop_held(data, rid),
+                      f"#28 已结掉的 {rid}（等重试的单子上还留着它）")
         try:
             if rest:
                 mc.restate(state_dir, "#28", was, evidence)
@@ -735,6 +777,12 @@ def settle_28(state_dir, hold_over, ledger, notifier, alerted=None) -> None:
                     log.warning("自愈待查的红项没写进技术日志：#28 %s", rid, exc_info=True)
         except OSError:
             log.warning("上机核对 #28：%s 的结论没改写进 machinecheck.json", rid, exc_info=True)
+
+
+def _drop_held(data: dict, rid: str) -> None:
+    held = data.get(HELD_28)
+    if isinstance(held, dict):
+        held.pop(rid, None)
 
 
 def _done_elsewhere(ctx, task: str) -> str:

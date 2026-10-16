@@ -5023,6 +5023,20 @@
 "wuwa_posters",
 "wuwa_tacet"
 ],
+"test_mc_runs_state_read_fails.py": [
+"__init__",
+"collector_maaend",
+"config",
+"errwatch",
+"maaend_fwlog",
+"machinecheck",
+"names",
+"outcome",
+"phone_banners",
+"runs",
+"system",
+"texts"
+],
 "test_mc_system.py": [
 "__init__",
 "alertlog",
