@@ -16,7 +16,16 @@ manual_task and no relay start matches it.
 Callers use this to keep a hand-started run out of the shift: it gets no shift overrun
 alarm (runwatch._not_the_shift) and no make-up, stays in the daily report, and its
 failures are pushed like any other run's, labelled as started by hand (the user's
-order of 2026-10-06 for that last part: 「不论多少次什么错误都要发」).
+order of 2026-10-06 for that last part: 「不论多少次什么错误都要发」). Attempts inside
+one task fold as a shift's do since 2026-10-16 (handle._hold_hand_started): a later
+success of the same task heals an earlier failure (daily report only, the
+USER-SWITCHES entry for handle._flush_pending), and only the task's last failure is
+pushed.
+
+scripts/mac/run-one.sh (dispatch_guard.py) does not note its starts (state file:
+only phone/commands.py writes it). A session's own run is not the shift either, so it
+counting as hand-started is right: no make-up, no shift checks, and shutdown.py
+(_off_shift) keeps the machine on after it.
 
 When app.log cannot be read or has no line for the run, nothing is hand-started.
 """

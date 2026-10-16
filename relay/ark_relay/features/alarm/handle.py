@@ -537,27 +537,36 @@ def _hand_started(eng, rec: RunRecord) -> str:
 
 
 def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str, str] | None":
-    """(day, alarm kind, title, body) of the alarm about a run a person started from
-    AUTO-MAS's own screen (trigger.py), or None when it got its work done. _handle
-    pushes it at once: alarmed like any other failure, with a line saying whose run
-    it was; no make-up is run for it.
+    """(day, alarm kind, title, body) of the alarm _handle pushes now about a run a
+    person started from AUTO-MAS's own screen (trigger.py), or None when nothing is
+    to be pushed now. Alarmed like any other run, with a line saying whose run it
+    was; no make-up is run for it (makeup.marker.eligible).
 
     It stays in the ledger as a normal row - the daily report shows it
-    (core.split_test). Its failure is pushed at once: AUTO-MAS writes a script's records only once all its attempts
-    are over, and holding it would hand it to the shift's make-up (makeup.py), which
-    is not for a person's own run.
+    (core.split_test). One AUTO-MAS task retries inside itself like a shift does
+    (its app.log counts the tries), so its attempts fold into one outcome as the
+    scheduled path's do: a failure is held under the task's id (_hold_hand_started),
+    a later attempt of the same task replaces it or, succeeding, heals it
+    (_retry_healed: daily report only), and only the task's last failure is pushed,
+    by _flush_pending once the script has stopped. AUTO-MAS writes all of a task's
+    records when the task ends, so that is decided in the tick they land in
+    (2026-10-16 task c6d40887: three records, three group alarms for one task that
+    got its work done).
     """
     day = run_day(rec)
     kind = "手动"          # unresolved.send keys it with rec.run_id
     if rec.ok:
-        # The held failure is done with, but not as 「重试后成功」: nobody's retry healed
+        held = eng._pending.get(key)
+        if held is not None and (held.raw or {}).get("hand_started") == rec.raw.get("hand_started"):
+            # An earlier attempt of this same task: AUTO-MAS's own retry got past it.
+            _retry_healed(eng, rec, key)
+        # Any other held failure is done with, but not as 「重试后成功」: nobody's retry healed
         # it, a person did. A person fixing it is not "fixed itself", so it is pushed
         # now with a line saying so, as the manual_stop branch pushes its held failure
         # (audit 2026-10-13 s7 #2: it was dropped with one INFO line).
         # Only a failure from before this run: one held from a later round was not
         # got past by it and stays held.
-        held = eng._pending.get(key)
-        if held is not None and held.started < rec.started:
+        elif held is not None and held.started < rec.started:
             eng._pending.pop(key, None)
             eng._persist_pending()
             hhmm = rec.started.astimezone(SERVER_TZ).strftime("%H:%M")
@@ -574,8 +583,47 @@ def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str
                                                        + (f"\n\n证据包：{page}" if page else ""))
         log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的，跑完了，静默记账", rec.script, rec.run_id)
         return None
+    if _hold_hand_started(eng, rec, key):
+        return None
     title, body = _failure_alarm(eng, rec, texts.HAND_STARTED_NOTE)
     return day, kind, title, body
+
+
+def _hold_hand_started(eng, rec: RunRecord, key: tuple) -> bool:
+    """Hold a failed attempt of a hand-started task until the task's later attempts
+    decide (_hand_started_alarm). False when a failure from somewhere else is held
+    for the same script (a shift's, or another task's): this one is then pushed at
+    once as before, and that one stays on its own path.
+
+    Replacing follows _hold_restart and _hold_for_retry: a later failure of the same
+    task replaces the held one, said in one INFO line, while a restart AUTO-MAS
+    recorded (transitional) or an earlier attempt landing late does not. Evidence is
+    archived and shipped for the record kept, as _hold_for_retry does; no
+    _mark_downtime, which is for a scheduled run (_failure_alarm)."""
+    held = eng._pending.get(key)
+    task = rec.raw.get("hand_started")
+    if held is not None and (held.raw or {}).get("hand_started") != task:
+        return False
+    keep_held = held is not None and (
+        (rec.transitional and not held.transitional)
+        or rec.started < held.started
+        or _keeps_rejected(held, rec))
+    if keep_held:
+        log.info("🖐 %s %s 是同一个手动任务里的另一次尝试，留着压着的 %s", rec.script, rec.run_id, held.run_id)
+        return True
+    eng._pending[key] = rec
+    eng._persist_pending()   # queued to disk before anything else can go wrong
+    if held is not None:
+        log.info("🖐 %s 压着的 %s 换成同一个手动任务后面那次失败 %s", rec.script, held.run_id, rec.run_id)
+    if rec.script == "MaaEnd":
+        eng._archive_maaend_evidence(rec)
+    elif rec.script == "OK-WW":
+        _archive_okww_evidence(eng, rec)
+    if _ship_evidence(eng, rec):
+        eng._persist_pending()   # again, now with the link the final alarm carries
+    log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的（任务 %s），AUTO-MAS 接着重试；先压着，看同一任务后面那次",
+             rec.script, rec.run_id, task)
+    return True
 
 
 def _failure_alarm(eng, rec: RunRecord, note: str, held: bool = False) -> tuple[str, str]:
@@ -662,8 +710,10 @@ def _book(eng, rec: RunRecord) -> None:
                  rec.script, rec.run_id, stop)
         return
     if rec.raw.get("hand_started"):
-        # A run a person started at AUTO-MAS itself (trigger.py): its failure or its
-        # undone round is pushed right here, at once - no make-up for a person's own run.
+        # A run a person started at AUTO-MAS itself (trigger.py): no make-up for a
+        # person's own run. An undone round, or a failure while another failure is
+        # held, is pushed right here; a failed attempt is held until its task's later
+        # attempts decide (_hold_hand_started, pushed by _flush_pending).
         if alarm := _hand_started_alarm(eng, rec, key):
             _, kind, title, body = alarm
             errs = _push_now(eng, day, kind, rec.run_id, title, body)
@@ -819,6 +869,20 @@ def _flush_pending(eng) -> None:
 
     for rec in list(eng._pending.values()):
         if eng._script_running(rec.script):
+            continue
+        if (rec.raw or {}).get("hand_started"):
+            # The last failed attempt of a task a person started (_hold_hand_started):
+            # its retries are over, so its alarm goes out now, saying whose run it was.
+            # Not a shift's: no update-restart, make-up or maintenance branch below.
+            title, body = _failure_alarm(eng, rec, texts.HAND_STARTED_NOTE, held=True)
+            from ark_relay.features.alarm import unresolved  # noqa: PLC0415
+            if not unresolved.send(eng, run_day(rec), "手动", rec.run_id, title, body):
+                return  # still held (makeup.marker.eligible skips it), retry next tick
+            eng._pending.pop((rec.script, rec.user), None)
+            eng._persist_pending()
+            eng.log_tails.pop(rec.run_id, None)
+            log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的（任务 %s），同一任务里没有后来跑成的，已报群",
+                     rec.script, rec.run_id, rec.raw.get("hand_started"))
             continue
         if _update_restart_done(eng, rec):
             continue

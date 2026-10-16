@@ -7,8 +7,9 @@ booked a plain failure, gameupdate.needs_rerun (it reads the ledger) never re-ra
 what the 「进不了游戏」 alarm promised, and MAA / OK-WW never got the mark. The
 alarm text also said 「20 秒内」 while the threshold is 30 seconds.
 Review of 308e21b3: the mark is for a scheduled run being held (and the MaaEnd
-update-restart hold, which lost it); a run pushed at once (hand-started, the MAA
-update day) is not booked ⏸ nor re-run by the relay.
+update-restart hold, which lost it); a hand-started run (held only for its own
+task's retries since 2026-10-16) and a MAA failure pushed at once on the update day
+are not booked ⏸ nor re-run by the relay.
 """
 import os
 import sys
@@ -123,7 +124,12 @@ handle._hand_started = lambda eng, r: "task-hand"
 handle._handle(e, rec)
 handle._hand_started = lambda eng, r: ""
 row = next(x for x in e.state.read_ledger("2026-10-12") if x["run_id"] == rec.run_id)
-check("pushed at once", len(e.notifier.sent), 1)
+# Held until its task's later attempts decide (handle._hold_hand_started), then pushed
+# by the flush - not through its maintenance branch (no 进不了游戏 / re-run for it).
+check("the persisted hold has no maintenance mark",
+      [(p.get("raw") or {}).get("maintenance") for p in State(state).load_pending().get("pending") or []], [None])
+e._flush_pending()
+check("pushed once the task's attempts are over", len(e.notifier.sent), 1)
 check("no maintenance mark on its ledger line", (row.get("raw") or {}).get("maintenance"), None)
 check("终末地 is not registered for a relay re-run", "终末地" in gameupdate.pending(state), False)
 check("needs_rerun stays false", gameupdate.needs_rerun(state, EVENING + timedelta(hours=2), "MaaEnd"), False)
