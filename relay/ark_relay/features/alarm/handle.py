@@ -119,10 +119,16 @@ def _warn_if_evidence_stale(eng, rec: RunRecord, dst: Path) -> None:
                 continue          # this one was taken by run_id, so it always lines up
             mtime = f.stat().st_mtime
             if mtime < cut:
+                # INFO, not WARNING: a correct note about the evidence pack, not a
+                # relay fault. errwatch pushes every ark.* WARNING to the group as
+                # 「🩺 中继自己报错了」 (2026-10-15 16:34 / 18:18: two pushes per failed
+                # run that wrote no debug log of its own); the failure itself already
+                # reached the group as ❌. The note still travels in the bundle's
+                # relay.log slice (logslice has no level filter).
                 mt = datetime.fromtimestamp(mtime, tz=SERVER_TZ)
-                log.warning("⚠️ 证据里的 %s 最后写于 %s，早于这一轮开始的 %s，"
-                            "多半是**别的轮次**的日志，别拿它当这次失败的依据",
-                            f.name, mt.strftime("%m-%d %H:%M:%S"), began.strftime("%m-%d %H:%M:%S"))
+                log.info("⚠️ 证据里的 %s 最后写于 %s，早于这一轮开始的 %s，"
+                         "是**别的轮次**的日志，别拿它当这次失败的依据",
+                         f.name, mt.strftime("%m-%d %H:%M:%S"), began.strftime("%m-%d %H:%M:%S"))
     except Exception:  # the booking goes on; the group hears the check broke
         log.warning("证据时间范围检查失败（这一份证据没核是不是这一轮的）", exc_info=True)
 

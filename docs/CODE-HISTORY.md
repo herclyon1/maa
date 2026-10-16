@@ -686,6 +686,13 @@ saved alongside it.
 
 run_id has the form `<日期>/<用户>/MaaEnd-HH-MM-SS`, and the last segment is
 the start time of that round.
+
+2026-10-15: the per-file note was a WARNING, chosen when WARNINGs went to the
+daily report only. Since 2026-10-06 errwatch pushes every WARNING to the group,
+so each failed MaaEnd run that wrote no debug log of its own (both archived
+debug logs from an earlier round) gave two 「🩺 中继自己报错了」 pushes (16:34,
+18:18). The note is INFO now; only a crashed check stays a WARNING. The failure
+itself still reaches the group as ❌.
 ```
 
 ## report.py:_fill_single_run_sanity
