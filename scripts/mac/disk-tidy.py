@@ -21,9 +21,11 @@ free-space floor (--floor-gb, default 30) the "floor" rules run too: the same ch
 worktrees and the shared Xcode caches.
 
 A running session's own tmp dir stays whole, but inside its scratchpad/ each subdirectory (and
-each top-level file of BIG_FILE_BYTES or more) goes once idle 24 h (2 h below the floor), unused,
-not a git worktree and not named by a live workflow journal (10-16: the acceptance session ran
-for days and its finished subagents' copies grew to 8.8 GB there). Hard refusals, whatever a rule says: anything under
+each top-level file of BIG_FILE_BYTES or more) goes once idle 24 h (2 h below the floor; idle by
+mtime and ctime, so a tree unpacked with old timestamps is fresh), unused, not a git worktree and
+not named by a running workflow's journal, script or agent prompt, nor a running subagent's
+prompt (10-16: the acceptance session ran for days and its finished subagents' copies grew to
+8.8 GB there). Hard refusals, whatever a rule says: anything under
 ~/Money or ~/Claude that is not a session worktree or a listed build output, a worktree with
 uncommitted changes, anything a running process has open or as its cwd, ~/.claude, CoreDevice
 (a mount of his phone), simulators (only `xcrun simctl delete unavailable`), and anything no
@@ -31,7 +33,8 @@ rule matches. Worktrees go only through `git worktree remove` (never --force); b
 
 Test hooks (relay/tests/test_disk_tidy.py): HOME, DISK_TIDY_TMP_ROOT, DISK_TIDY_TMPDIR,
 DISK_TIDY_BREW_PREFIX, DISK_TIDY_OPEN_PATHS (file of in-use paths instead of lsof),
-DISK_TIDY_PROCS (file of process names instead of ps), DISK_TIDY_FREE_BYTES.
+DISK_TIDY_PROCS (file of process names instead of ps), DISK_TIDY_FREE_BYTES, DISK_TIDY_NOW
+(the clock, epoch seconds: fixtures cannot set ctime back, so the test runs the tool in the future).
 """
 from __future__ import annotations
 
@@ -79,6 +82,9 @@ REF_FILE_BYTES = 2_000_000
 # file was 0.5 MB (gradle.log) and the 8.8 GB sat in subdirectories; 100 MB is a download or a
 # build product, and smaller files would only add hundreds of lines to every hourly run.
 BIG_FILE_BYTES = 100 << 20
+# Measured 10-16 22:0x over the 1509 subagent transcripts on this Mac: the leading user lines (the
+# prompt) were 3.7 KB median and 324 KB at most; 1 MB reads every prompt whole.
+PROMPT_BYTES = 1 << 20
 
 UUID_RX = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 UUID_NAME = re.compile(rf"^{UUID_RX}$")
@@ -161,14 +167,21 @@ def du_k(path: str) -> int | None:
         return None
 
 
-def changed_since(path: str, cutoff: float, skip: frozenset = frozenset()) -> str | None:
+def changed_since(path: str, cutoff: float, skip: frozenset = frozenset(),
+                  ctime: bool = False) -> str | None:
     """The first file or directory under path modified after cutoff, else None.
 
     Directory mtimes count: creating or deleting an entry is activity too. Symlinks are
-    not followed; directories named in skip are not entered.
+    not followed; directories named in skip are not entered. With ctime, an inode change counts
+    too: tar -x, unzip, ditto, cp -p and rsync -a keep the source's old mtime, but nothing can set
+    ctime back (10-16 review: a tarball dated 09-01 unpacked into a running session's scratchpad
+    looked 6 weeks idle the moment it landed).
     """
+    def t(st: os.stat_result) -> float:
+        return max(st.st_mtime, st.st_ctime) if ctime else st.st_mtime
+
     try:
-        if os.lstat(path).st_mtime > cutoff:
+        if t(os.lstat(path)) > cutoff:
             return path
     except OSError:
         return None
@@ -185,7 +198,7 @@ def changed_since(path: str, cutoff: float, skip: frozenset = frozenset()) -> st
                     st = e.stat(follow_symlinks=False)
                 except OSError:
                     continue
-                if st.st_mtime > cutoff:
+                if t(st) > cutoff:
                     return e.path
                 if stat.S_ISDIR(st.st_mode) and e.name not in skip:
                     stack.append(e.path)
@@ -228,7 +241,7 @@ class Env:
                    tmp_root=Path(norm(e.get("DISK_TIDY_TMP_ROOT", "/private/tmp/claude-501"))),
                    tmpdir=Path(os.path.realpath(e.get("DISK_TIDY_TMPDIR") or tempfile.gettempdir())),
                    brew=Path(e.get("DISK_TIDY_BREW_PREFIX", "/opt/homebrew")),
-                   now=time.time())
+                   now=float(e.get("DISK_TIDY_NOW") or time.time()))
 
     def cutoff(self, hours: float) -> float:
         return self.now - hours * 3600
@@ -356,21 +369,65 @@ def live_sessions(env: Env) -> set[str]:
     return ids
 
 
-def active_journals(env: Env) -> tuple[set[str], str]:
-    """Workflow journals written within ACTIVE_HOURS: (owning session ids, their text).
+def prompt_head(p: Path) -> str:
+    """The prompt of a subagent transcript: its leading "type": "user" lines (at most
+    PROMPT_BYTES). What the agent did later (an `ls scratchpad/` lists every subdir) is left
+    out, or every name it ever printed would stay protected."""
+    out, n = [], 0
+    try:
+        with p.open("rb") as fh:
+            for raw in fh:
+                n += len(raw)
+                try:
+                    if json.loads(raw).get("type") != "user":
+                        break
+                except (ValueError, AttributeError):
+                    break
+                out.append(raw.decode("utf-8", "replace"))
+                if n > PROMPT_BYTES:
+                    break
+    except OSError:
+        return ""
+    return "".join(out)
 
-    The inventory's deferred list: 28 merged worktrees idle for 2 h were still named by
-    journals being written 22:0x-22:2x, so a worktree a live journal names is in use."""
-    ids, texts = set(), []
-    cut = env.cutoff(ACTIVE_HOURS)
-    pattern = "*/*/subagents/workflows/*/journal.jsonl"
-    for j in env.projects.glob(pattern) if env.projects.is_dir() else []:
+
+def newest_mtime(paths: list[Path]) -> float:
+    best = 0.0
+    for p in paths:
         try:
-            if j.stat().st_mtime > cut:
-                ids.add(j.parts[-5])
-                texts.append(read_text(j))
+            best = max(best, p.stat().st_mtime)
         except OSError:
             continue
+    return best
+
+
+def active_journals(env: Env) -> tuple[set[str], str]:
+    """Workflows active within ACTIVE_HOURS: (owning session ids, what they name).
+
+    The inventory's deferred list: 28 merged worktrees idle for 2 h were still named by
+    journals being written 22:0x-22:2x, so a worktree a live journal names is in use. A run is
+    active while its journal or any of its agents' transcripts was written lately (one agent
+    can run for hours). A journal holds only type / key / agentId / label / phase / result
+    (10-16 review, all 81 on this Mac), so the run's script (~/.claude/projects/*/<sid>/
+    workflows/scripts/*-<runId>.js, under whichever project the session started it from) and
+    its agents' prompts are read too: relay-ledger-triage named scratchpad/ledger-triage only
+    there. Plain subagents still writing their transcript count by their prompt."""
+    ids, texts = set(), []
+    if not env.projects.is_dir():
+        return ids, ""
+    cut = env.cutoff(ACTIVE_HOURS)
+    for run in env.projects.glob("*/*/subagents/workflows/*/"):
+        journal, agents = run / "journal.jsonl", sorted(run.glob("agent-*.jsonl"))
+        if newest_mtime([journal, *agents]) <= cut:
+            continue
+        sid = run.parts[-4]
+        ids.add(sid)
+        texts.append(read_text(journal))
+        texts += [read_text(s) for s in env.projects.glob(f"*/{sid}/workflows/scripts/*-{run.name}.js")]
+        texts += [prompt_head(a) for a in agents]
+    for a in env.projects.glob("*/*/subagents/agent-*.jsonl"):
+        if newest_mtime([a]) > cut:
+            texts.append(prompt_head(a))
     return ids, "\n".join(texts)
 
 
@@ -887,7 +944,7 @@ def live_scratch(env: Env, ctx: Ctx, rule: str, hours: float) -> list[Item]:
                 except OSError:
                     continue
                 p = norm(e.path)
-                hit = changed_since(p, env.cutoff(hours))
+                hit = changed_since(p, env.cutoff(hours), ctime=True)
                 why = f"changed within {hours} h ({hit})" if hit else None
                 if not why:
                     why = next((f"holds the registered git worktree {w.path}" for w in ctx.worktrees
@@ -896,7 +953,8 @@ def live_scratch(env: Env, ctx: Ctx, rule: str, hours: float) -> list[Item]:
                     why = git_link_inside(p)
                 if not why and re.search(r"scratchpad/" + re.escape(e.name) + r"(?![A-Za-z0-9._-])",
                                          ctx.journal_text):
-                    why = f"a workflow journal written within {ACTIVE_HOURS} h names it"
+                    why = (f"a running workflow (journal, script or agent prompt) or subagent "
+                           f"active within {ACTIVE_HOURS} h names it")
                 why = why or guard(env, ctx, p)
                 items.append(keep(rule, p, why) if why else Item(rule, p))
     return items
@@ -907,9 +965,10 @@ def rule_live_session_scratch(env: Env, ctx: Ctx) -> list[Item]:
     dead-session rule kept its whole tmp dir while its scratchpad/ held 8.8 GB of finished
     subagents' leftovers (review copies of origin/main, a DerivedData copy, unpacked sources),
     none touched for hours. Each subdirectory of a running session's scratchpad/ (and each
-    top-level file of BIG_FILE_BYTES or more) goes once nothing in it changed within 24 h, no
-    process has a file in it open or as cwd, it neither is nor holds a git worktree, and no
-    workflow journal written within 2 h names it. If a tool names the session, all of it stays."""
+    top-level file of BIG_FILE_BYTES or more) goes once nothing in it changed within 24 h (mtime
+    or ctime: unpacked trees keep old mtimes), no process has a file in it open or as cwd, it
+    neither is nor holds a git worktree, and no workflow or subagent active within 2 h names it
+    (journal, script or agent prompt). If a tool names the session, all of it stays."""
     return live_scratch(env, ctx, "live-session-scratch", STALE_HOURS)
 
 
