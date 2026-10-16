@@ -613,6 +613,37 @@ def item12c():
     check("nothing of #28 is left waiting", base.held_28(state), {})
 
 
+
+def item12d():
+    e, notes, state = base.engine()
+    base.book(e, base.ABORT, ok=False)
+    mark = f"{pushes.UNVERIFIED_KIND}|"
+
+    def _locked(path, text):
+        # state.json held by a scan from the 「没证据」 day mark on: that write and every
+        # later one of the booking are refused.
+        if Path(path).name == statestore.FILE and mark in text:
+            raise PermissionError(13, "state.json being scanned (test)")
+        return REAL_SS_WRITE(path, text)
+
+    statestore.atomic_write_text = _locked
+    try:
+        with ss_no_waits():
+            base.book(e, base.RETRY, ok=True)
+    finally:
+        statestore.atomic_write_text = REAL_SS_WRITE
+    handle._flush_pending(e)
+    base.show(notes)
+    check("state.json refused the mark: one group message for the abort and the retry", len(base.group(notes)), 1)
+    check("…no 「上机核对没过：#28」 of its own", base.mc28_pushes(notes), [])
+    check("no ERROR saying the 「没证据」 alarm did not go out", [x for x in ERRORS.lines if "没能推到群里" in x], [])
+    said = [x for x in ERRORS.lines if "没记" in x]
+    check("one ERROR for the lock: the alarm went out, its mark did not land",
+          (len(said), bool(said) and "已进群" in said[0]), (1, True))
+    check("the mark not on file is not answered from memory either",
+          any(str(k).startswith(mark) for k in e.state.store.get("marks", f"alerted:{DAY}") or []), False)
+
+
 for title, fn in (("1: covered_28 when its read fails once", item1),
                   ("2: a held run's FAIL pushed at once is marked sent only after its push", item2),
                   ("3: machinecheck.json locked while judging", item3),
@@ -627,7 +658,8 @@ for title, fn in (("1: covered_28 when its read fails once", item1),
                   ("11: no state folder", item11),
                   ("12: state.json locked a moment while an alarm's day mark is written", item12),
                   ("12b: state.json locked while a write reads it first", item12b),
-                  ("12c: 「没证据」 sent, then no day mark can be written", item12c)):
+                  ("12c: 「没证据」 sent, then no day mark can be written", item12c),
+                  ("12d: 「没证据」 sent, then state.json refuses its day mark", item12d)):
     section(title, fn)
 
 print()

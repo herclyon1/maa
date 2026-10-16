@@ -318,16 +318,23 @@ class StateStore:
         if not _registered(section, key):
             raise KeyError(f"state.{section}.{key} 没在字段表里登记，拒绝写入（见 docs/STATE-MODEL.md）")
         with _WRITE_LOCK:
-            data = self._load(fresh=True)
+            data = self._writable()
             data[section][key] = value
             self._flush(data)
 
     def pop(self, section: str, key: str) -> None:
         with _WRITE_LOCK:
-            data = self._load(fresh=True)
+            data = self._writable()
             if key in data.get(section, {}):
                 del data[section][key]
                 self._flush(data)
+
+    def _writable(self) -> dict:
+        """state.json as on disk (_load fresh), its sections copied: a change is made
+        to the copy, which becomes the cached one only once _flush wrote it. Changed
+        in place, a write that failed left the cache answering with what never reached
+        the file - an alarm's day mark that a lock refused read as set (10-17)."""
+        return {s: dict(v) if isinstance(v, dict) else v for s, v in self._load(fresh=True).items()}
 
     def _flush(self, data: dict) -> None:
         """Write `data` as state.json; a Windows lock on it is waited out first

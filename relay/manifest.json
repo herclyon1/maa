@@ -1,6 +1,6 @@
 {
- "version": 20261016213028,
- "ref": "relay-20261016213028",
+ "version": 20261016213515,
+ "ref": "relay-20261016213515",
  "files": {
   "RELEASE-NOTES.md": "c3ac77faa7245b5a5da1db1a054452447292c9a5",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
@@ -25,7 +25,7 @@
   "ark_relay/core/plan.py": "1b76110f605d97d23e1329c84eae3217c4b7d8f7",
   "ark_relay/core/procs.py": "5483f1ec40f81a1ed9d4b766fc050063fb4f81d7",
   "ark_relay/core/skland.py": "1bed4824fdb79a215e208039eff94f9691e75881",
-  "ark_relay/core/statestore.py": "1b2a1f01441d2b176617e5b44a10bd9e998c86d8",
+  "ark_relay/core/statestore.py": "81d7b737c3193d9bb39b65ea290f4ca9da1a4b75",
   "ark_relay/core/summary.py": "5ede648b957e8b10b5d9692fc8fec9237965b4fb",
   "ark_relay/core/techlog.py": "7b499378999435e7e803d9afd4e81b446faacb85",
   "ark_relay/core/texts.py": "b8ade41bcced6d299686f5fe23ff4d8f08a9f0bb",
@@ -194,7 +194,7 @@
   "ark_relay/core/plan.py": "658af2fc71279b359d9ed7146dc4fcbd9139c84cbd2a72d9b976120134688478",
   "ark_relay/core/procs.py": "569a53068b9174ac3cc46d8cc42556a9ab02160392fbad6c78c48ab9752475f2",
   "ark_relay/core/skland.py": "9edd27778fc9e36218630a7b056ea4d4b6512e2e784ed2e3699b8f4407ea4a4d",
-  "ark_relay/core/statestore.py": "f05889c01ca3cf99a4c71a1ec4cb30f3de88bbad28025ecabcf8bd8f58696d01",
+  "ark_relay/core/statestore.py": "39f848ba7eb9b1c58e2296d7d8b48b3826f2578a6dc12db1f0b78b430709a46f",
   "ark_relay/core/summary.py": "bba751795021e958256c8f5afd33c00e947ed7e4660324dae987a23533ff577f",
   "ark_relay/core/techlog.py": "94558f42b7f22c60a08540ed6b764556dfa9257755529eaeb3305c88f326759d",
   "ark_relay/core/texts.py": "3378894644e6a2039892a13fc462754a08bc04b6ee858e67da971252b53bb7db",
