@@ -1,8 +1,8 @@
 {
- "version": 20261016213515,
- "ref": "relay-20261016213515",
+ "version": 20261016215751,
+ "ref": "relay-20261016215751",
  "files": {
-  "RELEASE-NOTES.md": "c3ac77faa7245b5a5da1db1a054452447292c9a5",
+  "RELEASE-NOTES.md": "41e6f413205edfeb7b4fb9f0f48db04fbca6fb35",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "2f8cce37bd21d8f45412b749da1eead09431ee6f",
@@ -140,7 +140,7 @@
   "ark_relay/features/selfcheck/machinecheck.py": "9ad8b9490e5b88f12fe4be607c9c2a74dd667675",
   "ark_relay/features/selfcheck/machinechecks/__init__.py": "ca147aadcca9f12ca402c0522896d7bf486a16b4",
   "ark_relay/features/selfcheck/machinechecks/phone_banners.py": "ddd28575160cc53d127fa6ffa26eca2d98ac4d1a",
-  "ark_relay/features/selfcheck/machinechecks/runs.py": "9553860c4b8190a4beecadffce9127ea72a5557b",
+  "ark_relay/features/selfcheck/machinechecks/runs.py": "a6070a190c20a2aded1faa11c24bf1c32bf8dded",
   "ark_relay/features/selfcheck/machinechecks/system.py": "87162510ed364085b8d1b76b63b148ed253ff8b6",
   "ark_relay/features/selfcheck/replay.py": "2e4a9f1d0b15c530d3cb489e58e2cb671aaa3cd4",
   "ark_relay/features/selfcheck/selfcheck.py": "7e2479338774a79e4d4adece9bc3fc9c327417c4",
@@ -171,7 +171,7 @@
   "watchdog_guard.py": "cc505fe57c4c2923be2003c8fe5a4f0a47b0d887"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "e2f7a8145baf54211ac9e7ccfe179098cc74e7e0e1eeb81f89dd5b3135e2a91b",
+  "RELEASE-NOTES.md": "3ef3b52a81499fa83a4fa78816049a58160e25f55a1221526b986529e10881ac",
   "app_main.py": "9a2bad4ee77f639044a37a362cd0630827e0ff1b87978e4caeb7898972cdc682",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "4473c5ed050428c5d4398f738fc5a9246f6d21064330d9e427d822e8b3c52cbc",
@@ -309,7 +309,7 @@
   "ark_relay/features/selfcheck/machinecheck.py": "e123ec8b434f14d9c215a4552ea2a51b3606df0800bb7126a8217a4193944e4c",
   "ark_relay/features/selfcheck/machinechecks/__init__.py": "097c883c51c0cf163ac374737ce11efa0e207dbc6bb18e32aa10140c72c51cc7",
   "ark_relay/features/selfcheck/machinechecks/phone_banners.py": "3b0b9700e4aabd2a2f529a5e818cca57242c144f9343c1547e9c2d8d260de981",
-  "ark_relay/features/selfcheck/machinechecks/runs.py": "d24c54e2ea5776a251c5de0935e21092fcc9c4cc013273bfe4cf8d06b198343d",
+  "ark_relay/features/selfcheck/machinechecks/runs.py": "3a96a49737d9e8551d020c6145754a496bd233c0c1b1966ac520162f085b69a4",
   "ark_relay/features/selfcheck/machinechecks/system.py": "509c7362a7e8ad2b51d2fb84314636a0e5462181e7e609495d0139407dc450fa",
   "ark_relay/features/selfcheck/replay.py": "2f38c49f29ea1991c2c915a0a6440bae3ce6fb87e5739e8e5064bc725cfa3db5",
   "ark_relay/features/selfcheck/selfcheck.py": "57278d9c33eb3520ba987f37714ea6798e2b83f5f667b4a23a932660954ea9aa",

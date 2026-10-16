@@ -31,6 +31,11 @@ Review of 9743738a (10-17):
  12. StateStore._flush had no lock waits, and unresolved.send let a failed day mark
      after a push that went out escape: _push_now skipped the #28 cover and #28
      pushed the same cause again, with a misleading 「没能推到群里」 line.
+
+Review of 87b9ee74 (10-17):
+ 13. covered_28 wrote through _state_update on every 「没证据」 alarm: with the file
+     locked it logged a group ERROR about a cover it had nothing to write, even when
+     the last good read held nothing - noise origin/main did not have (as item 9).
 """
 import contextlib
 import json
@@ -644,6 +649,34 @@ def item12d():
           any(str(k).startswith(mark) for k in e.state.store.get("marks", f"alerted:{DAY}") or []), False)
 
 
+def item13():
+    e, notes, state = base.engine()
+    (state / runs.SEEN_FILE).write_text(json.dumps({"#6": []}), encoding="utf-8")
+    check("read once while it can be read: nothing held", runs._state_get(state, runs.HELD_28), None)
+    cover = "已由「没证据」报警带上"
+    with no_waits(), read_fails(PermissionError(13, "locked (test)"), n=999):
+        base.book(e, base.RETRY, ok=True)       # a 「没证据」 run, nothing held
+        handle._flush_pending(e)
+    check("the 「没证据」 alarm reaches the group once", len(base.group(notes)), 1)
+    check("locked, the last good read held nothing: no ERROR about the #28 cover",
+          [x for x in ERRORS.lines if cover in x], [])
+    check("…the write the booking could not make is still one ERROR",
+          len([x for x in ERRORS.lines if runs.SEEN_FILE in x]), 1)
+    ERRORS.lines.clear()
+    state = fresh(R1)                     # never read in this process: what is held is unknown
+    with no_waits(), read_fails(PermissionError(13, "locked (test)"), n=999):
+        runs.covered_28(state, "MaaEnd", DAY, ["装备制造"])
+    check("locked, never read: the cover not written is still an ERROR",
+          len([x for x in ERRORS.lines if cover in x]), 1)
+    ERRORS.lines.clear()
+    state = fresh(R1)
+    check("read once: R1 held", list(runs._state_get(state, runs.HELD_28) or {}), [R1])
+    with no_waits(), read_fails(PermissionError(13, "locked (test)"), n=999):
+        runs.covered_28(state, "MaaEnd", DAY, ["装备制造"])
+    check("locked while a FAIL was held: the cover not written is still an ERROR",
+          len([x for x in ERRORS.lines if cover in x]), 1)
+
+
 for title, fn in (("1: covered_28 when its read fails once", item1),
                   ("2: a held run's FAIL pushed at once is marked sent only after its push", item2),
                   ("3: machinecheck.json locked while judging", item3),
@@ -659,7 +692,8 @@ for title, fn in (("1: covered_28 when its read fails once", item1),
                   ("12: state.json locked a moment while an alarm's day mark is written", item12),
                   ("12b: state.json locked while a write reads it first", item12b),
                   ("12c: 「没证据」 sent, then no day mark can be written", item12c),
-                  ("12d: 「没证据」 sent, then state.json refuses its day mark", item12d)):
+                  ("12d: 「没证据」 sent, then state.json refuses its day mark", item12d),
+                  ("13: covered_28 locked while nothing is held: no ERROR", item13)):
     section(title, fn)
 
 print()

@@ -397,7 +397,7 @@ def _state_get(state_dir, key: str):
     return data.get(key) if data else None
 
 
-def _state_update(state_dir, change, what: str = "") -> bool:
+def _state_update(state_dir, change, what: str = "", quiet_unheld: bool = False) -> bool:
     """Read state/machinecheck-runs.json once (_state_read), apply `change(data)` to it
     and write it back. True when the file was written, or `change` returned False:
     nothing to change, nothing written. One that cannot be read is never rewritten from
@@ -405,9 +405,15 @@ def _state_update(state_dir, change, what: str = "") -> bool:
     counts - and the caller is told it was not written. A failed read or write is an
     ERROR (errwatch: the group hears of it), never raised; the write is atomic, so
     nothing of a failed one landed, and a Windows lock on it is waited out first
-    (mc.write_waiting); `what` says on that ERROR what was not written."""
+    (mc.write_waiting); `what` says on that ERROR what was not written.
+
+    `quiet_unheld`: a failed read is no ERROR when the last good read held no #28 FAIL
+    - for a change that only touches held FAILs (covered_28), nothing it could have
+    written is lost (as held_stuck)."""
     data = _state_read(state_dir)
     if data is None:
+        if quiet_unheld and state_dir and _HELD_KNOWN.get(str(Path(state_dir) / SEEN_FILE)) == []:
+            return False
         log.error("上机核对：%s 读不出来（%s），%s没写，免得把里面别的记录冲掉", SEEN_FILE,
                   _READ_ERR.get(str(Path(state_dir) / SEEN_FILE), "原因不明") if state_dir
                   else "没给 state 目录", what or "这次")
@@ -833,7 +839,9 @@ def covered_28(state_dir, script: str, day: str, items: list) -> None:
     until it goes out): the held #28 FAILs of that day about those tasks are in it.
     One read and one write (_state_update), nothing written when no held FAIL is
     about them: a separate first read that failed skipped the cover without a word
-    (until 2026-10-17), and settle_28 then pushed the same cause a second time."""
+    (until 2026-10-17), and settle_28 then pushed the same cause a second time. A read
+    that fails is an ERROR only when the last good read held a FAIL or none was had:
+    held nothing, there is nothing to cover, and the group hears no line about it."""
     def cover(data):
         held = data.get(HELD_28)
         changed = False
@@ -846,7 +854,8 @@ def covered_28(state_dir, script: str, day: str, items: list) -> None:
                 changed = True
         return changed
 
-    _state_update(state_dir, cover, f"#28 等重试的 {script} {day} 已由「没证据」报警带上的那几项")
+    _state_update(state_dir, cover, f"#28 等重试的 {script} {day} 已由「没证据」报警带上的那几项",
+                  quiet_unheld=True)
 
 
 # Run ids whose #28 FAIL settle_28 pushed in this process: its guard against a repeat
