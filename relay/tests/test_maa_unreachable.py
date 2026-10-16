@@ -127,5 +127,40 @@ for js in sorted(CORPUS.glob("*/*.json")):
 check("看过的失败不少于 20 条", seen >= 20, True)
 check("没有一条对不上", disagree, [])
 
+print("\n[维护日：补跑刚派下去还没落地，队列后更新先不起，不会把同一趟明日方舟再派一次]")
+from datetime import datetime  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
+from ark_relay.features.makeup import marker as mk  # noqa: E402
+
+now = datetime.now(tz=SERVER_TZ)
+day = now.strftime("%Y-%m-%d")
+rec = booked("2026-09-23", "MAA-05-00-01")
+rec.run_id = f"{day}/arknights/MAA-05-00-01"
+rec.started = rec.finished = now.replace(hour=0, minute=0, second=1)
+sd = tmpdir()
+e = engine(sd)
+e.state.append_ledger(rec)
+e._unfinished_queues = lambda *a, **k: []
+mk._write_marker(sd, day, {"MAA": {"result": mk.DISPATCHED, "dispatched_at": now.isoformat(),
+                                   "run_id": rec.run_id, "tries": 1}})
+ran: list = []
+real_gu = (gameupdate.pending, gameupdate.run_deferred)
+gameupdate.pending = lambda state_dir: {"明日方舟": "今天官方维护"}
+gameupdate.run_deferred = lambda cfg, now=None, dispatch=None, **k: (ran.append(gameupdate.needs_rerun(sd, now, "MAA")) or ([], [], []))
+try:
+    e._maybe_deferred_update()
+    t = getattr(e, "_gu_thread", None)
+    if t is not None:
+        t.join(10)
+    check("补跑在路上：更新没起", ran, [])
+    check("没往群里推", [x for x in e.notifier.sent if x[2]], [])
+    mk._write_marker(sd, day, {"MAA": {"result": mk.OK, "dispatched_at": now.isoformat(),
+                                       "run_id": rec.run_id, "record": rec.run_id, "tries": 1}})
+    e._maybe_deferred_update()
+    e._gu_thread.join(10)
+    check("补跑落地后：更新照常起", len(ran), 1)
+finally:
+    gameupdate.pending, gameupdate.run_deferred = real_gu
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

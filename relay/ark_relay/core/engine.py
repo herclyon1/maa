@@ -558,6 +558,7 @@ class Engine:
         _scripts_running blocks shutdown as usual. At most once a day.
         """
         from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
+        from ark_relay.features.makeup import marker as makeup_marker  # noqa: PLC0415
         if self._deferred_update_busy() or not gameupdate.pending(self.state.dir):
             return
         now = datetime.now(tz=SERVER_TZ)
@@ -567,6 +568,14 @@ class Engine:
             why = "今天已经起过一次"
         elif self._scripts_running():
             why = "有脚本在跑"
+        elif inflight := makeup_marker.in_flight(self.cfg.state_dir, now):
+            # The make-up step runs just before this one in the same tick, and
+            # _scripts_running's answer is cached for _SCRIPTS_TTL, so a make-up
+            # dispatched a moment ago does not show as running yet. Started now,
+            # the re-run (needs_rerun) would read the failure the make-up is for
+            # (e.g. a never-started MAA, maa_unreachable) and dispatch the same
+            # script a second time; the make-up's record decides instead.
+            why = "补跑还没跑完：" + "、".join(inflight)
         elif not self.state.read_ledger(day):
             why = "今天还没有任何运行记录"
         elif unfinished := self._unfinished_queues(now, self._recent_entries(now)):
