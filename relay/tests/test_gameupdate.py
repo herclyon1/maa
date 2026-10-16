@@ -147,7 +147,13 @@ check("09:00 的 MAA 撞上维护", bool(gu.in_maintenance(ST, "MAA", _dt(2026, 
 check("开服 45 分钟内仍算（客户端还没更新）", bool(gu.in_maintenance(ST, "MAA", _dt(2026, 9, 4, 12, 30, tzinfo=gu.SERVER_TZ))), True)
 check("下午就不算", gu.in_maintenance(ST, "MAA", _dt(2026, 9, 4, 15, 0, tzinfo=gu.SERVER_TZ)), "")
 check("别的游戏不受影响", gu.in_maintenance(ST, "MaaEnd", _dt(2026, 9, 4, 9, 0, tzinfo=gu.SERVER_TZ)), "")
-(ST / "ledger-2026-09-04.jsonl").write_text(json.dumps({"script": "MAA", "ok": False, "raw": {"maintenance": "官方公告"}}) + "\n", encoding="utf-8")
+# The row as the collector books it: the round rule (makeup.maa_round_work_done)
+# reads run_id / started / finished, and a maintenance attempt clears only when its
+# log shows no fight (fight_count 0).
+(ST / "ledger-2026-09-04.jsonl").write_text(json.dumps({
+    "script": "MAA", "run_id": "2026-09-04/maa/MAA-09-00-01", "started": "2026-09-04T09:00:01+08:00",
+    "finished": "2026-09-04T09:03:10+08:00", "ok": False, "failed_tasks": ["MAA 在完成任务前中止"],
+    "raw": {"maintenance": "官方公告", "fight_count": 0}}) + "\n", encoding="utf-8")
 check("撞上维护的失败 → 该补跑", gu.needs_rerun(ST, _dt(2026, 9, 4, 13, 0), "MAA"), True)
 cfg.maa_dir = None
 gu.mark_pending(ST, "明日方舟", "官方公告")
@@ -405,7 +411,7 @@ check("efstatus 非 strict 仍返回空（handle.py 只拿它当旁证）",
 # 3. MAA's unreachable flag: needs_rerun("MAA") could only be true via skips / maintenance.
 _ledger_rows = [{"script": "MAA", "run_id": "2026-09-30/maa/MAA-05-01-02", "started": "2026-09-30T05:01:02+08:00",
                  "finished": "2026-09-30T05:09:10+08:00", "ok": False,
-                 "raw": {"maa_unreachable": True}}]
+                 "failed_tasks": ["MAA 未能正确登录 PRTS"], "raw": {"maa_unreachable": True}}]
 (A / "ledger-2026-09-30.jsonl").write_text("".join(json.dumps(r) + "\n" for r in _ledger_rows), encoding="utf-8")
 check("MAA 失败且 raw 带 maa_unreachable → needs_rerun", gu.needs_rerun(A, n930, "MAA"), True)
 _ledger_rows[0]["raw"] = {"maa_error": "关卡失败"}

@@ -24,7 +24,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from ark_relay.features.verify.collector_maa import parse_maa_log
+from ark_relay.features.verify.collector_maa import never_started as _maa_never_started, parse_maa_log
 from ark_relay.features.verify.collector_maaend import _END_SANITY_SEC_PER_POINT, CLAIM_UNCONFIRMED, maaend_unreachable, parse_maaend_log, _maaend_all_done, _split_failed
 from ark_relay.features.verify.collector_okww import okww_info, parse_okww_log
 from ark_relay.core.config import SERVER_TZ, RunRecord
@@ -530,6 +530,12 @@ def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: lis
     if flat := flatten_drops(raw):
         raw["drop_statistics"] = flat
     _mark_sanity_unread(raw, script)
+    # 「Could not get into the game」 for this one record (collector_maa.never_started):
+    # gameupdate.needs_rerun looks at it before it checks the whole round by the
+    # make-up's rule, and the machine check #65 reads it. Not an alarm or make-up
+    # exemption for MAA.
+    if script == "MAA" and not ok and _maa_never_started(failed, raw):
+        raw["maa_unreachable"] = True
     # Full-again time: MAA writes it itself; for the other two it is computed.
     # MaaEnd's counts from the log time of its last 「当前理智」 reading
     # (sanity_read_at), else the record's finish. A 0 the parser floored from a

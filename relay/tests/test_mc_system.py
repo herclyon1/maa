@@ -391,7 +391,7 @@ check("#33 没跑成：没过", got["#33"].status, mc.FAIL)
 got, _ = judge("makeup", {"kind": "补跑", "script": "MAA", "result": {"result": "gave_up", "note": "不补跑：调试模式开着"}}, tmpdir())
 check("#33 按规矩不补：不判", "#33" in got, False)
 
-print("\n[#65 明日方舟没进游戏：中继还不写 maa_unreachable → 没过，带上存下的日志；同一条只判一次]")
+print("\n[#65 明日方舟没进游戏、记录上却没有 maa_unreachable（旧版记的账或两边判断走散）→ 没过，带上存下的日志；同一条只判一次]")
 sd = tmpdir()
 cap = {"gui": 3, "asst": 2, "path": "state/machinecheck/maa-not-started/x.log", "last": "[2026-10-06 09:05:30][ERR] 连接失败"}
 ctx = {"kind": "没进游戏", "script": "MAA", "run_id": "2026-10-06/arknights/MAA-09-05-00", "failed": "开始唤醒", "captured": cap}
@@ -535,7 +535,7 @@ row = mc.read(sd).get("#55", {})
 check("#55 记了过", row.get("status"), "PASS")
 check("依据是 app.log 的 manual_task 那一行", "触发来源 manual_task" in row.get("evidence", ""), True)
 
-print("\n[接线：明日方舟没进游戏 → 存下 MAA 自己的 gui.log / asst.log 那一段，#65 没过并进群，同一条只一次]")
+print("\n[接线：明日方舟没进游戏、记录上没有 maa_unreachable → 存下 MAA 自己的 gui.log / asst.log 那一段，#65 没过并进群，同一条只一次（写了标记的真样本见 test_maa_unreachable.py）]")
 from ark_relay.features.makeup import makeup  # noqa: E402
 from ark_relay.core.config import RunRecord  # noqa: E402
 sd = tmpdir()

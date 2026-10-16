@@ -34,6 +34,7 @@ from pathlib import Path
 from ark_relay.core.config import SERVER_TZ, atomic_write_text
 
 from ark_relay.features.makeup import marker as _marker
+from ark_relay.features.verify import collector_maa as _collector_maa
 from ark_relay.features.makeup.marker import (
     COULDNT_RUN, DISPATCHED, FAILED, GAVE_UP, NO_RECORD, OK, RETRY_GAP_S, SCRIPTS, STALE_MIN,
     _at, _day, _dir, _fresh, _last_stamp, _now, _recent, _write_marker, candidates, holding,
@@ -64,14 +65,10 @@ WHOLE_MAAEND = "按原设置整轮再跑"
 # later (the evening queue) is not the make-up.
 RETRY_CHAIN = timedelta(minutes=10)
 
-# MAA's whole script is re-run only after a run that never got going. Every
-# failure has to read as one of these (AUTO-MAS's 「MAA 未能正确登录 PRTS」 is
-# the StartUp task, 开始唤醒, failing), and the record must carry none of
-# collector_maa's evidence of work.
-MAA_NOT_STARTED = ("开始唤醒", "StartUp", "未能正确登录", "模拟器", "连接", "ADB", "adb")
-MAA_WORK_KEYS = {"drop_statistics": "有掉落", "sanity_spent": "花过理智", "medicine_used": "吃过理智药",
-                 "run_times": "打过关", "stages": "进过关卡", "annihilation_progress": "打过剿灭",
-                 "fight_count": "打过仗"}
+# MAA's whole script is re-run only after a run that never got going. The rule
+# is collector_maa's (never_started): the collector writes raw['maa_unreachable']
+# by the same one, so the flag and the make-up cannot disagree about a record.
+MAA_NOT_STARTED, MAA_WORK_KEYS = _collector_maa.MAA_NOT_STARTED, _collector_maa.MAA_WORK_KEYS
 
 
 # ------------------------------------- MaaEnd master: 存放背包 in front
@@ -474,16 +471,17 @@ def never_started(eng, rec) -> None:
                         "written": bool((rec.raw or {}).get("maa_unreachable"))})
 
 
-def _yesterday_tail(eng, script: str, user: str, day: str, first_start: datetime) -> list[tuple[str, dict]]:
+def _yesterday_tail(read_ledger, script: str, user: str, day: str, first_start: datetime) -> list[tuple[str, dict]]:
     """(ledger day, row) for the failed attempts on the ledger of the day before `day`
     that belong to a round still going at midnight: AUTO-MAS's retries chain on
     (each starts within RETRY_CHAIN of the previous one's end) up to `first_start`,
     the round's earliest attempt on `day`. The ledger files each record by its own
     start day, so a round that crossed midnight is split over two files. Stops at
-    the first ok row or the first gap. Raises if the ledger cannot be read."""
+    the first ok row or the first gap. `read_ledger` is State.read_ledger. Raises
+    if the ledger cannot be read."""
     yday = _day(datetime.fromisoformat(day).replace(tzinfo=SERVER_TZ) - timedelta(days=1))
     rows = []
-    for e in eng.state.read_ledger(yday):
+    for e in read_ledger(yday):
         if e.get("script") != script or e.get("user") != user:
             continue
         started, finished = _at(e.get("started")), _at(e.get("finished"))
@@ -501,26 +499,49 @@ def _yesterday_tail(eng, script: str, user: str, day: str, first_start: datetime
 
 def maa_work_done(eng, rec) -> str:
     """Why a whole-MAA make-up would spend sanity a second time; '' when the failed
-    round never got going (and the make-up may run).
+    round never got going (and the make-up may run). maa_round_work_done over
+    the held record."""
+    return maa_round_work_done(eng.state.read_ledger, {
+        "script": rec.script, "user": rec.user, "run_id": rec.run_id, "started": rec.started,
+        "failed_tasks": list(rec.failed_tasks or []), "raw": dict(rec.raw or {})})
 
-    Looks at the held record and at every failed attempt of the same round before
-    it on the ledger (AUTO-MAS's earlier attempts may have fought before the last
-    one failed to log in). Anything not clearly 「never started」 is a no."""
-    rows = [{"failed_tasks": list(rec.failed_tasks or []), "raw": dict(rec.raw or {})}]
+
+def maa_round_work_done(read_ledger, last: dict, *, downtime: bool = False) -> str:
+    """Why running MAA's whole script again would spend sanity a second time; ''
+    when the round that `last` ended never got going.
+
+    `last` is a ledger row (or the held record in its shape): the round's latest
+    failed attempt. Looks at it and at every failed attempt of the same round
+    before it on the ledger (AUTO-MAS's earlier attempts may have fought before
+    the last one failed to log in). Anything not clearly 「never started」 is a no.
+    `read_ledger` is State.read_ledger.
+
+    Two readers, one rule: makeup.maa_work_done (the make-up) and
+    gameupdate.needs_rerun (the re-run after a client update). With `downtime`
+    (the re-run after an official maintenance), an attempt the relay marked as
+    started inside the maintenance window (raw['maintenance']) also counts as never
+    started when nothing on it shows work and its log shows no fight (fight_count
+    0): the servers were down, so it could not fight. The marked span reaches past
+    the window, so an attempt whose log was not read still counts as unsure."""
+    rows = [last]
+    started_at = _at(last.get("started"))
+    if started_at is None:
+        return "账本里有一条没有开始时间，拿不准前面几次有没有打过仗"
     try:
-        ledger = eng.state.read_ledger(_day(rec.started))
+        ledger = read_ledger(_day(started_at))
     except Exception:  # noqa: BLE001
         return "账本读不出来，拿不准前面几次有没有打过仗"
     earlier = []
     for e in ledger:
-        if e.get("script") != rec.script or e.get("user") != rec.user or e.get("run_id") == rec.run_id:
+        if (e.get("script") != last.get("script") or e.get("user") != last.get("user")
+                or e.get("run_id") == last.get("run_id")):
             continue
         started = _at(e.get("started"))
         if started is None:
             return "账本里有一条没有开始时间，拿不准前面几次有没有打过仗"
-        if started < rec.started:
+        if started < started_at:
             earlier.append((started, e))
-    first_start = rec.started
+    first_start = started_at
     for started, e in sorted(earlier, key=lambda x: x[0], reverse=True):
         if e.get("ok"):
             break                      # the round before this one; its spending was its own
@@ -529,28 +550,36 @@ def maa_work_done(eng, rec) -> str:
     else:
         # No ok row today: the round may have started before midnight (s16 #1).
         try:
-            rows += [e for _, e in _yesterday_tail(eng, rec.script, rec.user, _day(rec.started), first_start)]
+            rows += [e for _, e in _yesterday_tail(read_ledger, last.get("script"), last.get("user"),
+                                                   _day(started_at), first_start)]
         except Exception:  # noqa: BLE001
             return "账本读不出来，拿不准前面几次有没有打过仗"
     from ark_relay.core import texts  # noqa: PLC0415
     for row in rows:
         failed = [str(x) for x in row.get("failed_tasks") or []]
         raw = row.get("raw") or {}
-        # MAA refused the config (collector_maa): the same config run again is
-        # refused again, whatever else is on record.
+        if _collector_maa.never_started(failed, raw):
+            continue
+        # Why not, in the rule's own order. MAA refused the config (collector_maa):
+        # the same config run again is refused again, whatever else is on record.
         if rejected := raw.get("maa_config_rejected"):
             return texts.makeup_config_rejected(rejected)
-        worked = [v for k, v in MAA_WORK_KEYS.items() if raw.get(k)]
-        if not failed or not all(any(s in x for s in MAA_NOT_STARTED) for x in failed):
+        worked = _collector_maa.work_evidence(raw)
+        # A fight count of 0 means the log was read and shows no fight; a missing
+        # one (log unreadable) does not clear the attempt.
+        if downtime and raw.get("maintenance") and not worked and raw.get("fight_count") == 0:
+            continue
+        if not _collector_maa.failures_not_started(failed):
             what = "、".join(failed) or "没写失败项"
             # A fight count of 0 means the log was read and shows no fight (a
             # missing count means nothing). Still no make-up: only a round that
             # never got going is run again.
             if raw.get("fight_count") == 0 and not worked:
                 return texts.makeup_no_fight(what)
-            return texts.makeup_unsure(what)
-        if worked:
-            return "这一轮已经开始干活（" + "、".join(worked) + "），再跑一遍会再吃一份理智药"
+            if not worked:
+                return texts.makeup_unsure(what)
+            # The record shows work: say that, not "unsure".
+        return "这一轮已经开始干活（" + "、".join(worked) + "），再跑一遍会再吃一份理智药"
     return ""
 
 
@@ -824,7 +853,7 @@ def on_record(eng, rec) -> None:
         any_ok = any_ok or bool(e.get("ok"))
     if not any_ok:
         try:
-            rows += _yesterday_tail(eng, rec.script, rec.user, day, first_start)
+            rows += _yesterday_tail(eng.state.read_ledger, rec.script, rec.user, day, first_start)
         except Exception:
             log.warning("补跑：前一天的账本读不出来，跨午夜那几次没记上补跑做成", exc_info=True)
     for d, e in rows:

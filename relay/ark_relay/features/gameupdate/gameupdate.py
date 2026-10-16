@@ -32,6 +32,7 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ
 from ark_relay.core.ledger import manual_stop
 from ark_relay.core.desktop import Desktop, kill
@@ -62,6 +63,7 @@ __all__ = [
     "needs_rerun",
     "off",
     "pending",
+    "rerun_verdict",
     "restore_queue_skips_new_day",
     "restore_skips",
     "run_deferred",
@@ -159,9 +161,9 @@ def _today(state_dir: Path, now: datetime) -> list[dict]:
     return out
 
 
-# The ledger flag per script that says "could not get into the game". Nothing sets
-# maa_unreachable at present (collector_maa does not write it), so an MAA run is
-# re-run only when it was taken out of the queue or failed during maintenance.
+# The ledger flag per script that says "could not get into the game". The
+# collector writes maa_unreachable when every failure of an MAA record reads as
+# not started and nothing shows work (collector_maa.never_started).
 _UNREACHABLE_FLAG = {"MaaEnd": "maaend_unreachable", "OK-WW": "okww_unreachable",
                      "MAA": "maa_unreachable"}
 
@@ -187,19 +189,48 @@ def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
     maintenance. An ordinary task failure is not re-run: a re-run would fail
     again and take the account from the user for nothing. False when the
     operator stopped it today (stopped_today).
+
+    MAA is re-run only when the whole round never got going, by the make-up's
+    rule (makeup.maa_round_work_done): an earlier attempt of the same round may
+    have fought and used sanity potions before the last one failed to log in or
+    ran into the maintenance, and a second whole run would use them again.
     """
+    return rerun_verdict(state_dir, now, script)[0]
+
+
+def rerun_verdict(state_dir: Path, now: datetime, script: str) -> tuple[bool, str]:
+    """(needs_rerun, why not): the second part is the round rule's reason when it
+    alone refused an MAA re-run that the last record asked for, '' otherwise.
+    _rerun_script sends that reason as a plain GAME_UPDATE note, which routes to
+    the info channels (notify.route_of 'info'), not the group: it is not an alarm, and no
+    group message promised MAA a re-run."""
     if stopped_today(state_dir, now, script):
-        return False
+        return False, ""
     # A skip the user ordered through a queue command (source "queue") is his
     # choice for the day, not the update's, so it does not ask for a re-run - also
     # when the update holds the same item (both sources on one record).
     if any(r.get("script") == script and _sources(r) == {"update"} for r in skips(state_dir)):
-        return True                     # skipped in today's queue for the update
+        return True, ""                 # skipped in today's queue for the update
     last = _last_today(state_dir, now, script)   # manual stops are skipped
     if last is None or last.get("ok"):
-        return False
+        return False, ""
     raw = last.get("raw") or {}
-    return bool(raw.get(_UNREACHABLE_FLAG.get(script, "")) or raw.get("maintenance"))
+    if not (raw.get(_UNREACHABLE_FLAG.get(script, "")) or raw.get("maintenance")):
+        return False, ""
+    if script == "MAA":
+        from ark_relay.core.ledger import State  # noqa: PLC0415
+        from ark_relay.features.makeup import makeup  # noqa: PLC0415
+        try:
+            why = makeup.maa_round_work_done(State(Path(state_dir)).read_ledger, last,
+                                             downtime=bool(raw.get("maintenance")))
+        except Exception:
+            # Unsure: a second run may use sanity potions again.
+            log.warning("游戏更新：没查成明日方舟这一轮有没有打过仗，不补跑", exc_info=True)
+            why = "没查成这一轮前面有没有打过仗"
+        if why:
+            log.info("游戏更新：明日方舟不补跑：%s", why)
+            return False, why
+    return True, ""
 
 
 def off(state_dir: Path) -> bool:
@@ -598,14 +629,19 @@ def _rerun_script(cfg, now: datetime, dispatch, script: str,
     """Once the client is updated, re-run the script when needs_rerun says so.
 
     A script the red button stopped today is not re-run (stopped_today); that is
-    said in `notes`, not `problems`.
+    said in `notes`, not `problems`. So is an MAA round that already fought
+    (rerun_verdict's reason): not an alarm, so it goes to the info channels only, telling
+    the user why the round he may expect to run again after the update did not.
     """
     if stop := stopped_today(cfg.state_dir, now, script):
         log.info("游戏更新：%s 今天被停一切停过（%s），不自动补跑", script, stop)
         if notes is not None:
             notes.append(f"{script}：今天 {stop}停过，已停，未补")
         return
-    if needs_rerun(cfg.state_dir, now, script) and dispatch is not None:
+    rerun, why = rerun_verdict(cfg.state_dir, now, script)
+    if why and notes is not None:
+        notes.append(texts.update_rerun_refused(script, why))
+    if rerun and dispatch is not None:
         ok, msg = dispatch(script)
         log.info("游戏更新：补跑 %s → %s", script, msg)
         if ok:

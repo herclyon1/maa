@@ -337,7 +337,7 @@ def _maa_unreachable(ctx):
         return mc.Result(mc.PASS, f"{run_id} 明日方舟没进到游戏，记录上写了「进不了游戏」（maa_unreachable）")
     cap = ctx.get("captured") or {}
     return mc.Result(mc.FAIL, f"{run_id} 明日方舟像是没进到游戏（调度程序记的失败：{ctx.get('failed', '')}），"
-                              f"中继还不会在记录上写「进不了游戏」（maa_unreachable）；这一趟 MAA 自己的日志 gui.log {cap.get('gui', 0)} 行、"
+                              f"记录上却没写「进不了游戏」（maa_unreachable），记账和补跑对这一趟的判断不一样；这一趟 MAA 自己的日志 gui.log {cap.get('gui', 0)} 行、"
                               f"asst.log {cap.get('asst', 0)} 行已存到 {cap.get('path', '（没存下）')}，"
                               f"最后一行：{cap.get('last', '（没有）')}")
 
