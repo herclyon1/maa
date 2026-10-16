@@ -9,9 +9,9 @@ outcome check, verdict.json: says nothing). Only 玉中身 is ticked in
 target mode; its essence was already owned, so 基质刷取 spent 180 s on the
 inventory scan and ended with 「🎯目标模式：勾选武器的基质均已满足，结束任务」
 (upstream autoessence/plan_action.go "all targets satisfied"). The relay knew
-only 「已完成一次基质刷取|理智不足」 as work and 「根据执行周期跳过」 as a skip, so it
-pushed 「基质刷取 180 秒就报「任务完成」，日志里没有刷了的痕迹」 to the group at
-14:12:12.
+only 「已完成一次基质刷取|理智不足」 as work and 「根据执行周期跳过」 as a skip, so at
+14:12:12 it pushed a group alert saying the task had reported done after 180 s
+with no trace of farming in the log.
 
 The negative case keeps the generic 「基质目标已满足或任务结束」 line that
 AutoEssenceOnComplete prints on any target-mode ending: alone, it must still
