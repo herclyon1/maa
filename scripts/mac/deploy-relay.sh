@@ -656,10 +656,10 @@ fi
 # version back by itself and fails the deploy (exit 12; 13 when the previous
 # version does not hold either). 验收 10-10 17:3x.
 WATCH_S="${WATCH_S:-120}"
-echo "▶ 5.2/5 上线后盯到稳（不重启满 24 秒即过，最多 ${WATCH_S} 秒；不许重启、开机自检要全过、要挂上调度程序句柄）"
+echo "▶ 5.2/5 上线后盯到稳（不重启满 24 秒即过，最多 ${WATCH_S} 秒，开机预更新在跑就再等它跑完；不许重启、开机自检要全过、要挂上调度程序句柄）"
 WATCH_OUT=$(mktemp)
 ssh "${SSH_OPTS[@]}" "$USER_AT" \
-  "\"$PY\" -X utf8 $WATCH_PY watch C:\\ProgramData\\ark-relay\\relay.log \"$T0\" $WATCH_S deploy" 2>&1 \
+  "\"$PY\" -X utf8 $WATCH_PY watch C:\\ProgramData\\ark-relay\\relay.log \"$T0\" $WATCH_S deploy --root ${REMOTE_DIR//\//\\}" 2>&1 \
   | tr -d '\r' | tee "$WATCH_OUT" | sed 's/^/    /' || true
 if ! grep -q '^WATCH_OK' "$WATCH_OUT"; then
   echo "❌❌ 上线后没稳住：$(sed -n 's/^WATCH_FAIL //p' "$WATCH_OUT" | tail -1)"

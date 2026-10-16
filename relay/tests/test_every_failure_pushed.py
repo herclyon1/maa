@@ -65,6 +65,11 @@ from ark_relay.core import engine as eng_mod                                    
 from ark_relay.core.config import SERVER_TZ, Config, RunRecord                                    # noqa: E402
 from ark_relay.core.ledger import State                                                             # noqa: E402
 from ark_relay.core.notify import route_of                                                        # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
+
+# The stubbed win32api would make GetSystemMetrics read as "Windows is going down", and the
+# boot pre-update stops at once for a stopping relay (boot_stages._stage_preupdate, 10-16).
+errwatch.system_shutting_down = lambda: False
 
 fails = []
 
@@ -188,7 +193,7 @@ okww_overlay.install = lambda okww: ""
 okww_overlay.write_master_pointer = lambda automas_dir: ""
 okww_overlay.report_line = lambda: ""
 okww_overlay.drift_line = lambda okww, state_dir: BAD[0]
-preupdate.run_okww = lambda okww, problems=None: ""
+preupdate.run_okww = lambda okww, problems=None, **_k: ""
 notes = Notes()
 boot_stages._stage_patch_okww(CFG, notes, LOG)
 check("boot: sent as an alarm", [(t, a) for t, _, a in notes.sent], [(texts.patches(1, BAD), True)])

@@ -18,12 +18,15 @@ Three subcommands:
   restore <root> <backup_dir>    puts them back, deletes the files that were new,
                                  writes the old code version back, clears __pycache__;
                                  prints "RESTORED <n> <version>"
-  watch <log> <since> <seconds> <mode> [version]
+  watch <log> <since> <seconds> <mode> [version] [--root <code root>]
                                  mode "deploy": the three conditions above;
                                  mode "rollback": one start, no restart, and the
                                  relay names `version` as its code version.
                                  `since` is the machine-local time just before
                                  the service was started ("YYYY-MM-DD HH:MM:SS").
+                                 `--root`: the code that was just started; while its
+                                 boot pre-update runs, the handle line may come up to
+                                 that code's preupdate.worst_case_seconds() later.
                                  Prints one line per milestone and a last line
                                  "WATCH_OK ..." or "WATCH_FAIL <why>"; exit 0 / 1.
 
@@ -61,6 +64,8 @@ BOOT = "服务模式启动"
 SELFCHECK_FAIL = "开机自检 ✗"
 SELFCHECK_OK = re.compile(r"开机自检 \d+ 项全部成立")
 HANDLE = "已挂上 AUTO-MAS 进程句柄"
+# The boot pre-update's lines (relay/ark_relay/features/preupdate: every line starts so).
+PREUPDATE = "预更新："
 VERSION = re.compile(r"中继代码版本 (\S+)")
 _TS = re.compile(r"^(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d) ")
 
@@ -86,11 +91,35 @@ def lines_since(text: str, since: datetime) -> list[str]:
     return out
 
 
+def preupdate_cap_s(root: "str | Path | None") -> tuple[float, str]:
+    """(seconds, why): how much longer than `total` the handle line may take while the
+    boot pre-update runs - the started code's own preupdate.worst_case_seconds().
+
+    The handle line is logged only once the main loop starts, after every boot stage
+    (relay/ark_relay/features/host/mainloop.py), and the pre-update runs before it once a
+    day. 2026-10-16 02:33 a deploy restart was the day's first boot: AUTO-MAS really
+    updated (72 s), OK-WW took its 45 s minimum, the 120 s watch failed, the rollback's
+    stop hard-exited the relay mid pre-update, and the old version ran the pre-update
+    again. (0, why) when the code cannot be read: the watch then judges as before."""
+    if not root:
+        return 0.0, "没给中继代码目录"
+    try:
+        sys.path.insert(0, str(root))
+        from ark_relay.features.preupdate import preupdate  # noqa: PLC0415 - the machine's own copy
+        return float(preupdate.worst_case_seconds()), ""
+    except Exception as exc:  # noqa: BLE001 - an unreadable cap must not cost the watch itself
+        return 0.0, f"{type(exc).__name__}: {exc}"
+
+
 def judge(lines: list[str], *, pids: list[int], states: list[str], events: list[str],
-          elapsed: float, total: float, mode: str = "deploy", version: str = "") -> tuple[str, str]:
+          elapsed: float, total: float, mode: str = "deploy", version: str = "",
+          preupdate_cap: float = 0.0) -> tuple[str, str]:
     """("ok" | "fail" | "wait", why). Fails as soon as something is wrong; "ok" once every
     condition is met and QUIET_S has passed without a restart. `total` is only the cap for
-    waiting on the lines that are still missing."""
+    waiting on the lines that are still missing. In mode deploy, when the handle line is
+    the only one missing and the boot pre-update has started, it is waited for up to
+    `total + preupdate_cap` (preupdate_cap_s); a restart, a crash event, a new PID or a
+    self-check ✗ still fail at once."""
     boots = sum(BOOT in ln for ln in lines)
     if boots > 1:
         return "fail", f"中继启动后又重启了（{boots} 次「{BOOT}」）"
@@ -124,6 +153,12 @@ def judge(lines: list[str], *, pids: list[int], states: list[str], events: list[
             "，开机自检全过，已挂上调度程序句柄" if mode == "deploy" else f"，起来的是 {version}")
     if elapsed < total:
         return "wait", "、".join(need)
+    if (mode == "deploy" and need == [f"「{HANDLE}」"] and preupdate_cap > 0
+            and any(PREUPDATE in ln for ln in lines)):
+        if elapsed < total + preupdate_cap:
+            return "wait", f"「{HANDLE}」（开机预更新还在跑，它跑完中继才挂句柄）"
+        return "fail", (f"{int(total + preupdate_cap)} 秒内没等到 「{HANDLE}」"
+                        f"（开机预更新最长 {int(preupdate_cap)} 秒，已超过）")
     if need:
         return "fail", f"{int(total)} 秒内没等到 " + "、".join(need)
     return "ok", f"{int(total)} 秒内没有重启" + ("，开机自检全过，已挂上调度程序句柄" if mode == "deploy"
@@ -194,8 +229,13 @@ def _tail(log: str) -> str:
         return ""
 
 
-def watch(log: str, since_s: str, total: float, mode: str, version: str = "") -> int:
+def watch(log: str, since_s: str, total: float, mode: str, version: str = "",
+          root: "str | None" = None) -> int:
     since = datetime.strptime(since_s, "%Y-%m-%d %H:%M:%S")
+    cap, cap_why = preupdate_cap_s(root) if mode == "deploy" else (0.0, "")
+    if mode == "deploy":
+        print(f"  开机预更新在跑时，句柄最多再多等 {int(cap)} 秒" if cap else
+              f"  读不到中继的预更新时长（{cap_why}），预更新在跑也只等 {int(total)} 秒", flush=True)
     t0 = time.monotonic()
     pids, states, said = [], [], set()
     while True:
@@ -205,7 +245,7 @@ def watch(log: str, since_s: str, total: float, mode: str, version: str = "") ->
         states.append(state)
         lines = lines_since(_tail(log), since)
         for ln in lines:
-            for key in (BOOT, HANDLE, "中继代码版本") if mode == "deploy" else (BOOT, "中继代码版本"):
+            for key in (BOOT, HANDLE, "中继代码版本", PREUPDATE) if mode == "deploy" else (BOOT, "中继代码版本"):
                 if key in ln and key not in said:
                     said.add(key)
                     print(f"  {ln[:120]}", flush=True)
@@ -213,7 +253,8 @@ def watch(log: str, since_s: str, total: float, mode: str, version: str = "") ->
                 said.add("selfcheck")
                 print(f"  {ln[:120]}", flush=True)
         verdict, why = judge(lines, pids=pids, states=states, events=_crash_events(since),
-                             elapsed=elapsed, total=total, mode=mode, version=version)
+                             elapsed=elapsed, total=total, mode=mode, version=version,
+                             preupdate_cap=cap)
         if verdict == "ok":
             print(f"WATCH_OK {why}", flush=True)
             return 0
@@ -268,6 +309,11 @@ def main(argv: list[str]) -> int:
     if "--pkg" in argv:
         PKG = True
         argv = [a for a in argv if a != "--pkg"]
+    root = None
+    if "--root" in argv:
+        i = argv.index("--root")
+        root = argv[i + 1] if i + 1 < len(argv) else None
+        argv = argv[:i] + argv[i + 2:]
     cmd = argv[1] if len(argv) > 1 else ""
     if cmd == "snapshot":
         root, backup = Path(argv[2]), Path(argv[3])
@@ -284,7 +330,7 @@ def main(argv: list[str]) -> int:
         print(f"RESTORED {len(info['kept'])} {info['code_version'] or '-'}")
         return 0
     if cmd == "watch":
-        return watch(argv[2], argv[3], float(argv[4]), argv[5], argv[6] if len(argv) > 6 else "")
+        return watch(argv[2], argv[3], float(argv[4]), argv[5], argv[6] if len(argv) > 6 else "", root)
     print(__doc__)
     return 2
 

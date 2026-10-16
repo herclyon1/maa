@@ -23,9 +23,11 @@ from pathlib import Path
 
 from ark_relay.core.config import SERVER_TZ
 
-from ark_relay.features.preupdate.preupdate_common import log
-from ark_relay.features.preupdate.preupdate_automas import MAS_BUDGET_SECONDS, MAS_WAIT_SECONDS, run_automas
-from ark_relay.features.preupdate.preupdate_okww import OKWW_BUDGET_SECONDS, OKWW_MIN_WAIT_SECONDS, run_okww
+from ark_relay.features.preupdate.preupdate_common import PWSH_GUARD_S, TASKKILL_GUARD_S, log
+from ark_relay.features.preupdate.preupdate_automas import (
+    _MAS_HTTP_TIMEOUT, MAS_BUDGET_SECONDS, MAS_INSTALL_WAIT_SECONDS, MAS_WAIT_SECONDS, run_automas)
+from ark_relay.features.preupdate.preupdate_okww import (
+    OKWW_BUDGET_SECONDS, OKWW_MIN_WAIT_SECONDS, OKWW_QUIESCE_MAX_SECONDS, restore_autostart_leftover, run_okww)
 
 # Only public names are re-exported. Callers that need a private name import it
 # from the module that defines it.
@@ -37,10 +39,12 @@ __all__ = [
     "RETRY_MIN",
     "log",
     "mark_run",
+    "restore_autostart_leftover",
     "run_automas",
     "run_okww",
     "should_run",
     "wanted_today",
+    "worst_case_seconds",
 ]
 
 
@@ -118,3 +122,22 @@ def wanted_today(automas_dir: Path | None, now: datetime | None = None,
                    for uid in plan.runs_at(q, hhmm, due)):
                 return True
     return False
+
+
+def worst_case_seconds() -> float:
+    """The longest the boot pre-update can run, summed from its own budgets and hang guards.
+
+    scripts/windows/deploy_watch.py waits up to this much longer for the main loop's
+    「已挂上 AUTO-MAS 进程句柄」 while the pre-update runs: on 2026-10-16 02:33 a deploy
+    restart was the day's first boot, AUTO-MAS really updated (72 s) and OK-WW took its
+    45 s minimum, the 120 s watch failed, and the rollback's stop hard-exited the relay.
+
+    AUTO-MAS: the wait for its backend, plus one more HTTP try that began just before that
+    wait ran out (a check and a version read), the download, the install. OK-WW: a quiesce
+    before and after, the scheduled-task launch, closing ok-ww.exe, its budget.
+    boot_stages._once_more may run each item twice.
+    """
+    automas = (MAS_WAIT_SECONDS + 2 * _MAS_HTTP_TIMEOUT
+               + MAS_BUDGET_SECONDS + MAS_INSTALL_WAIT_SECONDS)
+    okww = 2 * OKWW_QUIESCE_MAX_SECONDS + PWSH_GUARD_S + TASKKILL_GUARD_S + OKWW_BUDGET_SECONDS
+    return float(2 * (automas + okww))

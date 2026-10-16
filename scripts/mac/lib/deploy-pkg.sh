@@ -320,9 +320,10 @@ if [ -z "$FAILED_WHY" ]; then
     if LOGB64=$(sed -n 's/^LOG=//p' <<<"$OUT") && [ -n "$LOGB64" ]; then
       printf '%s' "$LOGB64" | base64 -d 2>/dev/null | sed 's/^/    /' || true
     fi
-    echo "▶ 5.2/5 上线后盯到稳（不重启满 24 秒即过，最多 ${WATCH_S} 秒；不许重启、开机自检要全过、要挂上调度程序句柄）"
+    echo "▶ 5.2/5 上线后盯到稳（不重启满 24 秒即过，最多 ${WATCH_S} 秒，开机预更新在跑就再等它跑完；不许重启、开机自检要全过、要挂上调度程序句柄）"
+    # --root: the started version's own pre-update budgets (deploy_watch.preupdate_cap_s).
     pkg_py "$WATCH_PY" watch 'C:\ProgramData\ark-relay\relay.log' "$T0" "$WATCH_S" deploy --pkg \
-      | tee "$WATCH_OUT" | sed 's/^/    /' || true
+      --root "$APP_WIN\\versions\\$NEW" | tee "$WATCH_OUT" | sed 's/^/    /' || true
     grep -q '^WATCH_OK' "$WATCH_OUT" \
       || FAILED_WHY="上线后没稳住：$(sed -n 's/^WATCH_FAIL //p' "$WATCH_OUT" | tail -1)"
   fi

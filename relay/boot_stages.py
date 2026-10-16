@@ -398,6 +398,14 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
         # Local import: a module-level one would be evaluated during service
         # installation, when ark_relay may not be on sys.path yet.
         from ark_relay.features.okww_patch import okww_overlay as _overlay  # noqa: PLC0415
+        # A pre-update killed before its `finally` (10-16 02:35, the 15 s hard exit) left
+        # OK-WW's auto-start switch off; put it back on every boot, pre-update or not.
+        from ark_relay.features.preupdate import preupdate_okww  # noqa: PLC0415
+        try:
+            if line := preupdate_okww.restore_autostart_leftover(okww_at_boot, cfg.state_dir):
+                log.info("启动：%s", line)
+        except Exception:  # the overrides below must still be installed
+            log.exception("启动：放回 OK-WW 自动开游戏开关时出错")
         # Each step on its own: one that cannot do its job raises OverlayTrouble,
         # which is a failure by construction (the ⚠️ title, the group), whatever its
         # words - and must not skip the steps after it or the push.
@@ -720,6 +728,9 @@ def _once_more(cfg, log, name: str, budget_s: float, problems: list[str], step):
     out = step(problems)
     if len(problems) == n0:
         return out
+    if _stop_requested():
+        # A stopping relay starts no second try (boot_stages.py:_stage_preupdate).
+        return out
     try:
         left = _seconds_to_next_queue(cfg.automas_dir, datetime.now(tz=SERVER_TZ))
     except Exception:  # noqa: BLE001 - not knowing the schedule is no reason to risk the queue
@@ -754,9 +765,13 @@ def _preupdate_okww(cfg, notifier, log, problems) -> None:
                             if cfg.automas_dir else None)
     # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
     if note := _once_more(cfg, log, "OK-WW", preupdate.OKWW_BUDGET_SECONDS, problems,
-                          lambda problems: preupdate.run_okww(okww, problems=problems)):
+                          lambda problems: preupdate.run_okww(okww, problems=problems,
+                                                              state_dir=cfg.state_dir)):
         log.info("预更新：%s", note)
         notifier.send(texts.PREUPDATE, note)
+    if _stop_requested():
+        # retry_pending writes OK-WW's files: nothing more in a stopping process.
+        return
     patch_notes: list[str] = []
     # The pre-update closed OK-WW: put a skipped overlay in place now (a relay
     # restart mid-run left it pending; a WARNING when it still cannot be).
@@ -835,7 +850,16 @@ def _stage_preupdate(cfg, notifier, log) -> None:
                                         after_update=lambda version: _contract_after_update(
                                             cfg, notifier, log, version))):
                 notifier.send(texts.PREUPDATE, note)
+            if _stop_requested():
+                # 2026-10-16 02:35: a stop during the AUTO-MAS item must not go on to launch
+                # OK-WW (the rule above), and a pre-update cut short is neither marked done
+                # nor reported as unconfirmed: the next boot runs it again.
+                log.info("服务正在停止，预更新停在 AUTO-MAS 之后，下次开机重做")
+                return
             _preupdate_okww(cfg, notifier, log, problems)
+            if _stop_requested():
+                log.info("服务正在停止，预更新没做完，下次开机重做")
+                return
             preupdate.mark_run(cfg.state_dir, _pre_now,
                                clean=not problems)
             if problems:

@@ -119,6 +119,7 @@ def main(root: Path) -> int:
     timeout_mid_download(root)
     baseline_unknown(root)
     newer_listed_not_installed(root)
+    stop_and_switch_memo(root)
     print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
     return 0 if not FAILED else 1
 
@@ -327,6 +328,115 @@ def newer_listed_not_installed(root: Path) -> None:
     probs = []
     m._okww_report(probs, 240, "v3.7.3", ("v3.7.4", "v3.7.3"), "", True, "", "", None)
     check("the verdict reads the list it is given (the latest one)", len(probs), 1)
+
+
+def stop_and_switch_memo(root: Path) -> None:
+    """2026-10-16 02:35: a deploy rollback stopped the relay during the OK-WW wait, which
+    could not hear the stop; the 15 s hard exit killed the process before the `finally`
+    put the auto-start switch back, and the next run "restored" it to off. The wait now
+    ends at the poll after a stop, a stopping relay launches nothing, and the switch's
+    value is kept in state until it is back (restored on the next run or boot)."""
+    print("[stop during the OK-WW pre-update; the switch survives a hard exit]")
+    m = preupdate_okww
+
+    def stop_after(n):
+        asked = [0]
+
+        def stopping():
+            asked[0] += 1
+            return asked[0] > n
+        return stopping
+
+    # (a) the wait itself: a stop at poll 2 ends it there, before the 45 s minimum.
+    d = make(root / "stop", autostart=True)
+    now = [0.0]
+    out = m._okww_await_update(d, 240, "v3.6.4", (), m._okww_stamp(d),
+                               sleep=lambda s_: now.__setitem__(0, now[0] + s_), clock=lambda: now[0],
+                               stopping=stop_after(1))
+    check("(a) stop at poll 2: ends after 6 s, no error, not stuck", (now[0], out[2], out[3]), (6.0, "", ""))
+
+    (d / "ok-ww.exe").write_text("", encoding="utf-8")
+    state = root / "stop-state"
+    memo = state / m.AUTOSTART_MEMO
+    real_await = m._okww_await_update
+    saved = {k: getattr(m, k) for k in ("_spawn_interactive", "_okww_quiesce", "_close",
+                                        "_okww_await_update", "_okww_timeout_shot")}
+    order = []
+    try:
+        m._okww_quiesce = lambda *a, **kw: order.append("quiesce")
+        m._close = lambda exe: order.append("close")
+        m._okww_timeout_shot = lambda: order.append("shot") or Path("t.png")
+        m._spawn_interactive = lambda *a, **kw: order.append("spawn") or True
+        seen = {}
+
+        def fast_await(*a, **kw):
+            # What a hard exit right now would leave behind: switch off, record says on.
+            seen["switch"] = basic(d)["Auto Start Game When App Starts"]
+            seen["memo"] = json.loads(memo.read_text(encoding="utf-8"))["was"] if memo.exists() else None
+            now[0] = 0.0
+            return real_await(*a, sleep=lambda s_: now.__setitem__(0, now[0] + s_), clock=lambda: now[0], **kw)
+        m._okww_await_update = fast_await
+
+        # (b) stop mid-wait: closed, switch back on, no note, no screenshot, record gone.
+        probs = []
+        # stopping() is asked on entry, after the quiesce, then at each poll: the 4th call is poll 2.
+        got = m.run_okww(d, budget_s=240, problems=probs, state_dir=state, stopping=stop_after(3))
+        check("(b) stop mid-wait: no verdict, no note", (got, probs), ("", []))
+        check("(b) stop mid-wait: ends at the 2nd poll (6 s), then closes OK-WW",
+              (now[0], order), (6.0, ["quiesce", "spawn", "close", "quiesce"]))
+        check("(b) the switch is back on", basic(d)["Auto Start Game When App Starts"], True)
+        check("(b) during the wait the record held the original value", (seen["switch"], seen["memo"]), (False, True))
+        check("(b) record removed once the switch is back", memo.exists(), False)
+
+        # Stop before anything: nothing launched, nothing touched.
+        order.clear()
+        got = m.run_okww(d, budget_s=240, problems=probs, state_dir=state, stopping=lambda: True)
+        check("stopping already: no quiesce, no launch", (got, order, probs), ("", [], []))
+
+        # Stop during the quiesce (between the AUTO-MAS item and OK-WW): no switch flip, no launch.
+        order.clear()
+        flag = []
+        m._okww_quiesce = lambda *a, **kw: order.append("quiesce") or flag.append(1)
+        got = m.run_okww(d, budget_s=240, problems=probs, state_dir=state, stopping=lambda: bool(flag))
+        check("stop during the quiesce: OK-WW not launched", (got, order, probs), ("", ["quiesce"], []))
+        check("stop during the quiesce: switch untouched, no record", (basic(d)["Auto Start Game When App Starts"],
+                                                                       memo.exists()), (True, False))
+        m._okww_quiesce = lambda *a, **kw: order.append("quiesce")
+
+        # (c) a hard exit left the switch off and the record on: the next run puts back "on".
+        cfg = d / "data" / "apps" / "ok-ww" / "working" / "configs" / "Basic Options.json"
+        data = basic(d)
+        data["Auto Start Game When App Starts"] = False
+        cfg.write_text(json.dumps(data), encoding="utf-8")
+        state.mkdir(parents=True, exist_ok=True)
+        memo.write_text(json.dumps({"was": True}), encoding="utf-8")
+        m._okww_await_update = lambda *a, **kw: ("", True, "", "", ())
+        order.clear()
+        m.run_okww(d, budget_s=240, problems=[], state_dir=state, stopping=lambda: False)
+        check("(c) next run: the switch goes back to the recorded on, not the off it found",
+              (basic(d)["Auto Start Game When App Starts"], memo.exists()), (True, False))
+    finally:
+        for k, v in saved.items():
+            setattr(m, k, v)
+
+    # (c) at boot, pre-update or not: restored only while no OK-WW python runs.
+    data = basic(d)
+    data["Auto Start Game When App Starts"] = False
+    (d / "data" / "apps" / "ok-ww" / "working" / "configs" / "Basic Options.json").write_text(
+        json.dumps(data), encoding="utf-8")
+    memo.write_text(json.dumps({"was": True}), encoding="utf-8")
+    check("boot, OK-WW running: left alone", (m.restore_autostart_leftover(d, state, pids=lambda: [4242]),
+                                              basic(d)["Auto Start Game When App Starts"], memo.exists()),
+          ("", False, True))
+    check("boot, process list unreadable: left alone", (m.restore_autostart_leftover(d, state, pids=lambda: None),
+                                                        memo.exists()), ("", True))
+    line = m.restore_autostart_leftover(d, state, pids=lambda: [])
+    check("boot, nothing running: put back on, record removed",
+          (basic(d)["Auto Start Game When App Starts"], memo.exists(), "放回" in line), (True, False, True))
+    check("boot, no record: nothing to do, no process query",
+          m.restore_autostart_leftover(d, state, pids=lambda: 1 / 0), "")
+    from ark_relay.core import texts  # noqa: PLC0415
+    check("the boot line is plain words", texts.plain(line), [])
 
 
 if __name__ == "__main__":

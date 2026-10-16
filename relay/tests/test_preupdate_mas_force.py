@@ -15,6 +15,7 @@
 机器上实测：不强制 → 404；`if_force=True` → 换到新令牌，状态码 200。
 """
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -92,12 +93,12 @@ def main() -> int:
     orig_pack, orig_wait = P._wait_for_package, P._wait_for_version
     P._mas_post, P._automas_version = post_with_update, (lambda _root: "v5.5.0-beta.2")
     P._live_version = lambda: "v5.5.0-beta.2"
-    P._wait_for_package = lambda _root, _deadline: Path("UpdatePack_v5.5.0-beta.4.zip")
-    P._wait_for_version = lambda want, deadline: want
+    P._wait_for_package = lambda _root, _deadline, *_a: Path("UpdatePack_v5.5.0-beta.4.zip")
+    P._wait_for_version = lambda want, deadline, *_a: want
     problems = []
     note = P.run_automas(Path("."), budget_s=1, problems=problems)
     check("装成后通知说「已更新」", "已更新" in note and not problems, True)
-    P._wait_for_version = lambda want, deadline: "v5.5.0-beta.2"
+    P._wait_for_version = lambda want, deadline, *_a: "v5.5.0-beta.2"
     try:
         problems = []
         note = P.run_automas(Path("."), budget_s=1, problems=problems)
@@ -106,8 +107,94 @@ def main() -> int:
         P._wait_for_package, P._wait_for_version = orig_pack, orig_wait
     check("没确认装成时记为未确认项", bool(problems) and "还没确认" in note, True)
 
+    stop_hears_each_wait()
+
     print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")
     return 0 if not FAILED else 1
+
+
+def stop_hears_each_wait() -> None:
+    """2026-10-16 02:35: a stop came while the pre-update could not hear it and the 15 s
+    hard exit killed the relay. Each AUTO-MAS wait ends at its next poll once the relay
+    is stopping, with no problem note (nothing was judged; the next boot runs it again)."""
+    import time  # noqa: PLC0415
+    print("\n[a stop during each AUTO-MAS wait ends it at the next poll]")
+
+    def stop_after(n):
+        asked = [0]
+
+        def stopping():
+            asked[0] += 1
+            return asked[0] > n
+        return stopping
+
+    slept = []
+    far = time.monotonic() + 3600
+    # The waits sleep through the module's `time`: a fake one records the sleeps instead.
+    real_time = P.time
+    P.time = types.SimpleNamespace(sleep=slept.append, monotonic=time.monotonic)
+    try:
+        _stop_hears_each_wait(stop_after, slept, far)
+    finally:
+        P.time = real_time
+
+
+def _stop_hears_each_wait(stop_after, slept, far) -> None:
+    import tempfile  # noqa: PLC0415
+
+    # The wait for the package (download running).
+    with tempfile.TemporaryDirectory() as td:
+        got = P._wait_for_package(Path(td), far, stop_after(1))
+    check("package wait: None at the 2nd poll", (got, len(slept)), (None, 2))
+    check("package wait: well inside the 15 s hard exit", sum(slept) <= 6, True)
+
+    # The wait for the restarted backend (install running).
+    slept.clear()
+    orig_live = P._live_version
+    P._live_version = lambda: ""
+    try:
+        got = P._wait_for_version("v5.7.0-beta.4", far, stop_after(1))
+    finally:
+        P._live_version = orig_live
+    check("version wait: ends after one 5 s poll", (got, sum(slept)), ("", 5))
+
+    # The wait for the backend to answer at all: no 「没有检查更新」 note.
+    slept.clear()
+    orig = (P._mas_post, P._automas_version, P._live_version, P._wait_for_package, P._wait_for_version)
+
+    def refused(path, body=None):
+        raise OSError("refused")
+    P._mas_post, P._automas_version, P._live_version = refused, (lambda _r: "v5.7.0-beta.3"), (lambda: "")
+    try:
+        problems = []
+        note = P.run_automas(Path("."), problems=problems, stopping=stop_after(1))
+        check("backend wait: stops after one poll, no note", (note, problems, sum(slept)), ("", [], 5))
+
+        # Download running, then the stop: no install, no note.
+        posts = []
+
+        def post(path, body=None):
+            posts.append(path)
+            return {"if_need_update": True, "latest_version": "v5.7.0-beta.4"} if path == "/api/update/check" else {}
+        P._mas_post = post
+        P._wait_for_package, P._wait_for_version = orig[3], orig[4]
+        slept.clear()
+        problems = []
+        with tempfile.TemporaryDirectory() as td:
+            note = P.run_automas(Path(td), problems=problems, stopping=stop_after(1))
+        check("download wait: stop -> no install, no note",
+              (note, problems, "/api/update/install" in posts, sum(slept) <= 6), ("", [], False, True))
+
+        # Install started, then the stop while waiting for the new version: no note.
+        posts.clear()
+        slept.clear()
+        P._wait_for_package = lambda _root, _deadline, *_a: Path("UpdatePack_v5.7.0-beta.4.zip")
+        problems = []
+        note = P.run_automas(Path("."), problems=problems, stopping=stop_after(1))
+        check("install wait: stop -> no note, no 「还没确认」",
+              (note, problems, "/api/update/install" in posts, sum(slept) <= 6), ("", [], True, True))
+    finally:
+        (P._mas_post, P._automas_version, P._live_version, P._wait_for_package, P._wait_for_version) = orig
 
 
 if __name__ == "__main__":

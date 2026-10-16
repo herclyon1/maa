@@ -45,6 +45,11 @@ import boot_stages  # noqa: E402
 from ark_relay.features.okww_patch import okww_overlay as ov  # noqa: E402
 from ark_relay.features.phone import commands  # noqa: E402
 from ark_relay.features.preupdate import preupdate  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
+
+# The stubbed win32api would make GetSystemMetrics read as "Windows is going down", and the
+# boot pre-update stops at once for a stopping relay (boot_stages._stage_preupdate, 10-16).
+errwatch.system_shutting_down = lambda: False
 
 fails = []
 
@@ -121,7 +126,7 @@ try:
         print("\n[the pre-update tries it after closing OK-WW]")
         order.clear()
         real_pre = (preupdate.run_okww, ov.drift_line)
-        preupdate.run_okww = lambda okww, problems=None: order.append(("preupdate", "")) or ""
+        preupdate.run_okww = lambda okww, problems=None, **_k: order.append(("preupdate", "")) or ""
         ov.drift_line = lambda okww, state_dir: ""
         try:
             notes = types.SimpleNamespace(send=lambda *a, **k: [])
