@@ -377,19 +377,23 @@ check("maafw_grep: the plain line once (the second process's echo dropped), and 
 check("maafw_grep: nothing outside the window",
       collector_maaend.maafw_grep(str(fw), datetime(2026, 10, 5, 10, 11), datetime(2026, 10, 5, 10, 20),
                                   ("战斗中无法使用",)), [])
-st, ev, pushed = judge("#29", {"rec": CREC, "raw": {}, "log_text": COLLECT, "maaend_dir": str(fw)})
-check("route 15 hit it, and its End event followed: PASS", (st, pushed), ("PASS", []))
-check("evidence names the route", "路线15：武陵-红矛叶" in ev and "AutoCollectRoute15End" in ev)
-st, ev, pushed = judge("#29", {"rec": CREC, "raw": {}, "maaend_dir": str(fw),
-                               "log_text": COLLECT.replace("[2026-10-05 10:12:40.000] 路线16",
-                                                           "[2026-10-05 10:11:00.000] 路线15：武陵-红矛叶采集失败\n"
-                                                           "[2026-10-05 10:12:40.000] 路线16")})
-check("that route then logged 采集失败: FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
-(fw / "debug" / "maafw.log").write_text(FW_HIT + "\n", encoding="utf-8")
-st, ev, _ = judge("#29", {"rec": CREC, "raw": {}, "log_text": COLLECT, "maaend_dir": str(fw)})
-check("no sign the route finished: FAIL (no guess)", (st, "AutoCollectRoute15End" in ev), ("FAIL", True))
+st, _, _ = judge("#29", {"rec": CREC, "raw": {}, "log_text": COLLECT, "maaend_dir": str(fw)})
+check("the toast text alone, no picture: not judged (the text is in no real log, ledger #29)", st, None)
+# Judged by MaaEnd's on_error picture of the relay-device node inside a route's window
+# (tests/test_collect_blocked_1012.py has the real 10-05 / 10-08 / 10-12 runs).
+SHOT = "2026.10.05-10.10.03.000___MapNavigatorObstacleDevice_InteractPost.png"
+(fw / "debug" / "on_error").mkdir()
+(fw / "debug" / "on_error" / SHOT).write_bytes(b"")
+booked = outcome.maaend_checks(COLLECT, [SHOT])
+st, ev, pushed = judge("#29", {"rec": CREC, "raw": {}, "log_text": COLLECT, "maaend_dir": str(fw),
+                               "outcome": {"checks": booked}})
+check("route 15 hit it and was booked for the retry: PASS", (st, pushed), ("PASS", []))
+check("evidence names the route and the picture", "路线15：武陵-红矛叶" in ev and SHOT in ev)
+st, ev, pushed = judge("#29", {"rec": CREC, "raw": {}, "log_text": COLLECT, "maaend_dir": str(fw),
+                               "outcome": {"checks": [outcome.Check("出错截图 1 张（已重试恢复）", True)]}})
+check("the picture taken as 「已重试恢复」, route not booked: FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
 st, _, _ = judge("#29", {"rec": CREC, "raw": {}, "log_text": COLLECT, "maaend_dir": str(tmpdir())})
-check("the message never seen: not judged", st, None)
+check("the picture never seen: not judged", st, None)
 
 # ------------------------------------------------------------------ #6 / #24a, #43 / #46, #24b
 print("\n[#6 / #24a 做完以后装新版重启：判过的不重判，进过群的就是没过]")

@@ -14,6 +14,7 @@ import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from ark_relay.core.config import SERVER_TZ
 from ark_relay.features.verify.maaend_fwlog import (
     _END_STORAGE_FULL, _FW_META, _FW_PICK, _MXU_INSTALLED, _MXU_PENDING, _MXU_STAMP,
     UPDATE_AT_START_S, UPDATE_INSTALL_S, _fw_files, maafw_grep, maafw_text, maafw_window,
@@ -27,6 +28,7 @@ __all__ = [
     "CLAIM_LINE_CHARS",
     "CLAIM_TAIL_LINES",
     "CLAIM_UNCONFIRMED",
+    "OBSTACLE_SHOT",
     "UPDATE_AT_START_S",
     "UPDATE_INSTALL_S",
     "_FW_META",
@@ -35,11 +37,21 @@ __all__ = [
     "_MXU_PENDING",
     "_MXU_STAMP",
     "_fw_files",
+    "blocked_routes",
     "claim_failures",
     "claim_lines",
+    "in_window",
+    "is_obstacle_shot",
     "maaend_unreachable",
     "maafw_grep",
+    "obstacle_shots",
     "parse_maaend_log",
+    "line_time",
+    "round_shots",
+    "round_until",
+    "route_windows",
+    "shot_time",
+    "spans",
     "task_evidence",
     "task_times",
     "update_restart_version",
@@ -190,6 +202,202 @@ _END_COLLECT_SKIP = re.compile(r"任务开始[:：]\s*\S*自动采集\s*\n[^\n]*
 _END_SCHEDULE_SKIP = re.compile(
     r"任务开始[:：]\s*(\S.+?)\s*\n[^\n]*?现在游戏时间是(周[一二三四五六日天])，根据执行周期跳过任务")
 _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
+
+# A gathering route that reaches a relay device (息壤中继器) while a fight is on
+# gets the game's toast 「战斗中无法使用，请脱离战斗后尝试」. MaaEnd writes no line
+# for it and still ends the route normally (maafw.log 2026-10-12 10:45:39
+# AutoCollectRoute10End), so the history log reads the route as walked - but it
+# gathered nothing: 路线10 picked up 2 (10-05), 0 (10-08) and 4 (10-12) against
+# 6-10 on good runs (ledger #29). The only trace is the on_error picture of that
+# node, named by its own time:
+#   2026.10.12-10.44.55.895___MapNavigatorObstacleDevice_InteractPost.png
+# The toast text itself is in no log (0 hits in 202 maafw logs, ledger #29).
+OBSTACLE_SHOT = "MapNavigatorObstacleDevice_InteractPost"
+_SHOT_NAME = re.compile(r"^(\d{4}\.\d\d\.\d\d-\d\d\.\d\d\.\d\d)\.(\d+)_+(.+)\.png$")
+# A line's stamp to the millisecond, as the history log and maafw.log write it
+# (「[2026-10-12 10:45:39.489][INF]…」; the history log's route line below).
+_LINE_TIME = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)(?:\.(\d{1,6}))?")
+# A route's line in the AUTO-MAS history log, written when MaaEnd starts it:
+# 「[2026-10-12 10:43:58.226] 路线10：重红柱状菌」 (MaaEnd spells routes 1-3 线路).
+# It is the focus text of the route's Start node, which MaaFW announces in maafw.log
+# as Node.Recognition.Succeeded of AutoCollectRoute10Start at 10:43:58.201 (25 ms
+# before AUTO-MAS stamps it; the Action.Starting line comes 0.2 s later, at .410).
+# Its 「…采集失败」 and 「… 库存已达目标，本次跳过」 lines close a window but open none.
+_ROUTE_LINE = re.compile(r"^\[[^\]]+\]\s*((?:路线|线路)\d+[：:].*?)\s*$")
+_ROUTE_NOT_START = re.compile(r"采集失败$|本次跳过$")
+_COLLECT_END = re.compile(r"任务(?:完成|失败)[:：]\s*\S*自动采集")
+
+
+def shot_time(name: str) -> "datetime | None":
+    """The time in an on_error picture's own name, to the millisecond (the game PC's
+    clock, as the logs'). The node name follows ___ (on_error) or a single _
+    (2026.10.08-10.01.43.463_AutoCollectRoute1Start.png). MaaFW writes the
+    milliseconds unpadded - 「…10.44.55.895___」 but 「…16.39.29.93」 is 93 ms: 17 of
+    the 160 maafw.bak names in the day corpus have two digits, the one in ten that
+    random milliseconds below 100 give."""
+    m = _SHOT_NAME.match(name)
+    try:
+        base = datetime.strptime(m.group(1), "%Y.%m.%d-%H.%M.%S") if m else None
+    except ValueError:
+        return None
+    if base is None:
+        return None
+    frac = m.group(2)
+    # Unpadded milliseconds; more than three digits can only be a decimal fraction.
+    return base + (timedelta(milliseconds=int(frac)) if len(frac) <= 3
+                   else timedelta(microseconds=int(frac[:6].ljust(6, "0"))))
+
+
+def is_obstacle_shot(name: str) -> bool:
+    """Whether an on_error picture is a relay-device one (OBSTACLE_SHOT), by the node
+    name after its time - ___ or a single _, as shot_time reads it. The one test for
+    every part that looks for these pictures (obstacle_shots for the daily row and the
+    retry list, blocked_routes, collect_retry.retry_blocked, machine check #29), so a
+    picture the outcome check books is one the daily row and the retry book too."""
+    m = _SHOT_NAME.match(name)
+    return bool(m) and m.group(3) == OBSTACLE_SHOT
+
+
+def line_time(line: str) -> "datetime | None":
+    """A history-log or maafw.log line's stamp, to the millisecond; None when it has none."""
+    m = _LINE_TIME.match(line)
+    try:
+        base = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S") if m else None
+    except ValueError:
+        return None
+    return base.replace(microsecond=int((m.group(2) or "0").ljust(6, "0"))) if base else None
+
+
+def in_window(t: datetime, start: datetime, end: "datetime | None") -> bool:
+    """Whether a picture stamped `t` belongs to the window [start, end); end None = open.
+
+    The one rule for every part that hands a relay-device picture to a route or a run
+    (blocked_routes, collect_retry.retry_blocked, machine check #29, round_shots). All
+    stamps carry their milliseconds (shot_time, line_time): cut to the second, a
+    picture at 10:45:39.400 - before AutoCollectRoute10End (.489) and the 路线11 line
+    (.533) - went to route 11, which was then re-run for nothing while route 10 was
+    booked as walked."""
+    return start <= t and (end is None or t < end)
+
+
+def spans(events, last: "datetime | None") -> list[tuple[str, datetime, "datetime | None"]]:
+    """(route, start, end) windows from `events`, (time, kind, route) in log order.
+
+    The one window rule for the history log (route_windows) and maafw.log
+    (collect_retry.retry_blocked), so the two cannot credit a picture differently:
+    'open' starts `route`'s window and closes the open one; 'close' closes it (a
+    failed route, or the gathering task's end - where the history log ends its last
+    route, and maafw.log's Tasker.Task event for the same moment);
+    'tail' (a route's End node, which the history log has no line for) is where the
+    open window ends only when nothing follows - otherwise it runs on to the next
+    route's start or the task's end, as the history log's does. The same route opened again while its
+    window is open is the same start (MaaFW logs every event twice, and the
+    recognition and then the action of one Start node). A window still open at the
+    end closes at its tail, else at `last`, the log's last stamp: nothing later is
+    this run's."""
+    out: list[list] = []
+    tail = None
+    for t, kind, key in events:
+        cur = out[-1] if out and out[-1][2] is None else None
+        if kind == "tail":
+            if cur is not None:
+                tail = t
+            continue
+        if kind == "open" and cur is not None and cur[0] == key:
+            continue
+        if cur is not None:
+            cur[2] = t
+        tail = None
+        if kind == "open":
+            out.append([key, t, None])
+    if out and out[-1][2] is None:
+        out[-1][2] = tail or last
+    return [(a, b, c) for a, b, c in out]
+
+
+def _naive_beijing(t: datetime) -> datetime:
+    return t.astimezone(SERVER_TZ).replace(tzinfo=None) if t.tzinfo else t
+
+
+def round_until(rec) -> "datetime | None":
+    """The upper bound of a MaaEnd round's evidence: its finish + 5 min when its times
+    are known (a round judged late must not take the later rounds' pictures and lines,
+    audit 2026-10-13 s8 #2), else open."""
+    return rec.finished + timedelta(minutes=5) if getattr(rec, "duration_known", False) else None
+
+
+def round_shots(maaend_dir, started: datetime, until: "datetime | None" = None) -> list[str]:
+    """The on_error picture names of the round from `started` to `until` (round_until),
+    by the time in each name (shot_time; Beijing, the game PC's clock); a name with no
+    time goes by its file time. The one picture set of a round: the outcome check
+    (verdict -> outcome.maaend_checks) and machine check #29 both take it, so #29
+    cannot fail a run on a picture the outcome check never saw - by file time, a
+    picture copied or touched later was the check's by name and not by file."""
+    if not maaend_dir:
+        return []
+    d = Path(maaend_dir) / "debug" / "on_error"
+    if not d.is_dir():
+        return []
+    lo, hi = _naive_beijing(started), (_naive_beijing(until) if until is not None else None)
+    out: list[str] = []
+    for p in d.glob("*.png"):
+        t = shot_time(p.name)
+        if t is None:
+            try:
+                t = _naive_beijing(datetime.fromtimestamp(p.stat().st_mtime, SERVER_TZ))
+            except OSError:
+                continue
+        if in_window(t, lo, hi):
+            out.append(p.name)
+    return sorted(out)
+
+
+def obstacle_shots(maaend_dir) -> list[str]:
+    """The relay-device pictures (is_obstacle_shot) in MaaEnd's on_error folder, by name."""
+    if not maaend_dir:
+        return []
+    d = Path(maaend_dir) / "debug" / "on_error"
+    try:
+        return sorted(p.name for p in d.glob("*.png") if is_obstacle_shot(p.name))
+    except OSError:
+        return []
+
+
+def route_windows(text: str) -> list[tuple[str, datetime, datetime]]:
+    """(route label, start, end) for every route a history log shows MaaEnd starting.
+
+    A route runs from its own line to the next route line of any kind or the end of
+    自动采集. The last route of a run cut short (no 「任务完成/任务失败: 自动采集」) ends
+    at the log's last stamped line: nothing later is this run's. Left open, it took in
+    every later relay-device picture still in on_error (they stay for days), so a run
+    cut short in the morning was booked with a later run's 「战斗中无法使用」 (the real
+    2026-09-11 MaaEnd-06-47-30, cut short after its 「路线5：轻黯石」 line)."""
+    events: list[tuple] = []
+    last = None
+    for line in text.splitlines():
+        line = line.strip()
+        if (t := line_time(line)) is None:
+            continue
+        last = t
+        if m := _ROUTE_LINE.match(line):
+            events.append((t, "close" if _ROUTE_NOT_START.search(m.group(1)) else "open", m.group(1)))
+        elif _COLLECT_END.search(line):
+            events.append((t, "close", None))
+    return spans(events, last)
+
+
+def blocked_routes(text: str, shot_names: list[str]) -> dict[str, list[str]]:
+    """{route label: its relay-device pictures} for the routes of `text` that hit
+    「战斗中无法使用」, in route order. A picture outside every route window is left out."""
+    shots = [(t, n) for n in shot_names if is_obstacle_shot(n) and (t := shot_time(n)) is not None]
+    out: dict[str, list[str]] = {}
+    if not shots:
+        return out
+    for label, start, end in route_windows(text):
+        for t, n in shots:
+            if in_window(t, start, end):
+                out.setdefault(label, []).append(n)
+    return out
 
 
 # An essence (基质刷取) failure whose previous MaaEnd message is the claim click
@@ -795,8 +1003,14 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     # first routes 线路); routes that gathered nothing: those with 「采集失败」.
     started = set(re.findall(r"(?:路线|线路)(\d+)[：:]", text))
     failed_r = set(re.findall(r"(?:路线|线路)(\d+)[：:][^\n]*采集失败", text))
+    # Routes that walked through but hit 「战斗中无法使用」 gathered nothing either
+    # (blocked_routes); they are booked apart, with the reason, for the daily row.
+    blocked = blocked_routes(text, obstacle_shots(maaend_dir)) if started and maaend_dir else {}
+    blocked_r = {m.group(1) for lbl in blocked if (m := re.search(r"(\d+)[：:]", lbl))}
+    if blocked:
+        out["maaend_collect_blocked"] = list(blocked)
     if started:
-        out["maaend_collect_done"] = len(started - failed_r)
+        out["maaend_collect_done"] = len(started - failed_r - blocked_r)
         out["maaend_collect_total"] = len(started)
     # The failed routes by name and id: 「路线15：红矛叶采集失败」 gives
     # 「路线15：红矛叶」 and Route15.

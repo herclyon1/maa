@@ -449,10 +449,15 @@ def retry_line(state_dir, day: str, maaend_dir=None) -> str:
     zh = collect_retry._locale(Path(maaend_dir)) if maaend_dir else {}
     name = lambda r: collect_retry.route_label(r, zh)  # noqa: E731
     parts = []
+    if d.get("blocked"):
+        # Routes booked for the retry because they walked through 「战斗中无法使用」.
+        parts.append(texts.collect_blocked_row([name(r) for r in d["blocked"]], first=True))
     if d.get("passed"):
         parts.append("走通 " + "、".join(name(r) for r in d["passed"]))
     if d.get("failed"):
         parts.append("仍失败 " + "、".join(name(r) for r in d["failed"]))
+    if d.get("blocked_again"):
+        parts.append(texts.collect_blocked_row([name(r) for r in d["blocked_again"]], again=True))
     if d.get("unknown"):
         parts.append("没结论 " + "、".join(name(r) for r in d["unknown"]))
     if d.get("recurrent"):

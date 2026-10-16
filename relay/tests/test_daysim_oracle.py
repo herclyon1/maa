@@ -300,11 +300,13 @@ KNOWN = {
     # update had held the morning shift since 09:33) as a power-off opportunity and spent the
     # relay-one skip mark on it - the 10-15 bug (shutdown.py:_note_forfeit) - so the mark was gone
     # by the evening shift and the record powered off at 21:41.
+    # 1008-24 / 1012-27: route 10 hit 「战斗中无法使用」 and the machine's code booked it as
+    # walked, so no per-route retry ran (ledger #29; tests/test_collect_blocked_1012.py).
     "2026-10-07": {"1007-04", "1007-08", "1007-17", "1007-19", "1007-21", "1007-22", "1007-23"},
-    "2026-10-08": {"1008-04", "1008-13", "1008-19", "1008-21"},
+    "2026-10-08": {"1008-04", "1008-13", "1008-19", "1008-21", "1008-24"},
     "2026-10-09": {"1009-05", "1009-08", "1009-11", "1009-12", "1009-17", "1009-22", "1009-23"},
     "2026-10-11": {"1011-10", "1011-11", "1011-12", "1011-16"},
-    "2026-10-12": {"1012-01", "1012-02", "1012-15", "1012-17", "1012-18", "1012-20"},
+    "2026-10-12": {"1012-01", "1012-02", "1012-15", "1012-17", "1012-18", "1012-20", "1012-27"},
     "2026-10-13": {"1013-12", "invariant 2"},
 }
 for p in days:
