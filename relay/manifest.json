@@ -1,6 +1,6 @@
 {
- "version": 20261016082208,
- "ref": "relay-20261016082208",
+ "version": 20261016082514,
+ "ref": "relay-20261016082514",
  "files": {
   "RELEASE-NOTES.md": "f7156e2110ecf35f797bdb738103811af6e8f43c",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
@@ -60,7 +60,7 @@
   "ark_relay/features/echofarm/__init__.py": "12a54e2217c4a60c42e2756eb250b482444720c5",
   "ark_relay/features/echofarm/echofarm.py": "dbd08fc2ca0e690cbb0f807f06a9d480ab4dd060",
   "ark_relay/features/essence/__init__.py": "1cf5a04892f922493433adbf18dd6a75d863b342",
-  "ark_relay/features/essence/essence.py": "9ed23b6706fbfd931c9b574de0b105cf211ebcb1",
+  "ark_relay/features/essence/essence.py": "a5baf02593e5e41af1754e23790b9a16462e86cf",
   "ark_relay/features/evidence/__init__.py": "c85d6d2a446c22acb124c570a5c0813e5eef0115",
   "ark_relay/features/evidence/bundles.py": "bcc796f52b6ba03ade80525337cc40aef6d7efec",
   "ark_relay/features/evidence/error_evidence.py": "6cc56e69e0f325934d6902fc45cfea0541ec7ef8",
@@ -229,7 +229,7 @@
   "ark_relay/features/echofarm/__init__.py": "e8436b0539302a5bbda0003ef4d832fd48f9b2122648481f2a63c1800c0b56ea",
   "ark_relay/features/echofarm/echofarm.py": "9c59fd088f81670cc86a21a0914dd621b7daa74d7343666ddb0a71ced23f779c",
   "ark_relay/features/essence/__init__.py": "855780693f30244d7540b27133d95edef01227a39c4f0992c0d6dae945d9aba0",
-  "ark_relay/features/essence/essence.py": "25e55d3e0e7b7d89947aeb2e2c64d3c7dfcaf5f23148c43e19a7621d484d9fe3",
+  "ark_relay/features/essence/essence.py": "3c0b4a40ae28d8eaa2af4c486cfe9f61db30d20d0b5dc15cef54e915fc22ef33",
   "ark_relay/features/evidence/__init__.py": "21d26728f504e095651119a44c197aeba222f950441814b7e5d86f85ee9d2f04",
   "ark_relay/features/evidence/bundles.py": "2fc9c7d4d86b97444008ef597f6f374460d2e7da92ae7f07fe20f722543bb91f",
   "ark_relay/features/evidence/error_evidence.py": "a3644bf402615702bf92320d02f88063123331855b0e7e501efecec05648ae14",

@@ -173,15 +173,16 @@ def to_filler(doc: dict, opts: dict) -> Result:
     task = _task(doc)
     ov = task.setdefault("optionValues", {})
     cur = mode(doc)
-    types = _weapon_types(opts)
     res = Result(before={MENU: cur, OVERRIDE: _switch(ov, OVERRIDE),
-                         REGIONS: list((ov.get(REGIONS) or {}).get("caseNames") or [])},
-                 names=[w for ws in _picked(ov, types).values() for w in ws])
+                         REGIONS: list((ov.get(REGIONS) or {}).get("caseNames") or [])})
     if cur != TARGET:
         res.after = dict(res.before)
         res.note = ("基质刷取已经是随机模式，不用再切" if cur == RANDOM
                     else f"基质刷取现在是 {cur or '没设'}，不是目标选择，不动")
         return res
+    # The weapons it was farming toward, for the daily report; read only when switching,
+    # so a master already in another mode is never refused over the Target definitions.
+    res.names = [w for ws in _picked(ov, _weapon_types(opts)).values() for w in ws]
     regions = _case_names(opts[REGIONS])
     if not regions:
         raise Refused(f"MaaEnd 的 {REGIONS} 一个地区都没有，不动配置")
