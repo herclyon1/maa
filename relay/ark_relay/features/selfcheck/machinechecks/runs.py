@@ -474,12 +474,12 @@ SHOT_TASKS = ("赠送干员礼物", "装备制造", "转交委托", "环境监�
 #   none   - (step, what it means): the task found nothing to do, a normal end
 #            (资源不足 / 已领满 are normal states, not failures);
 #   needs  - for a `none` that is told by steps that did run, every one of these.
-# Gift: GiftOperatorGiftFlow.json - GiftOperatorConfirmGift 「点击赠送按钮」 (1-3 on
-#   every 10-07..10-16 run), GiftOperatorGiftFull 「赠送已满」.
+# Gift: GiftOperatorGiftFlow.json - GiftOperatorConfirmGift 「点击赠送按钮」 (once on
+#   every 10-08..10-16 run), GiftOperatorGiftFull 「赠送已满」.
 # Gear: GearAssembly/GearAssembly.json - GearAssemblyClickProduceBtn 「点击制作按钮」
 #   (once a run, followed by SceneNoticeRewardsConfirm), GearAssemblyCheckMaterialEnough
 #   「检测背包是否已满，背包已满直接结束」, GearAssemblyCheckFailedAndFinish 「检查制作失败，退出任务」.
-#   10-08 10:34:11-10:34:16 (AUTO-MAS stopped MaaEnd right after) ran only GearAssemblyStart.
+#   10-08 10:34:11-10:34:16 ran only the scene check, which failed and stopped MaaEnd (ABORT_STEP).
 # Delivery: DeliveryJobs/TransferJob.json - DeliveryJobsConfirmTaskTransfer (5 a run in the
 #   mornings); a region loop (Region/ValleyIV.json, Wuling.json) tries every depot's
 #   job and cargo and falls back to DeliveryJobsLoop when none is there: the re-runs
@@ -509,17 +509,25 @@ SHOT_RULES = {
 # Runs in a row with none of the four in MaaFW's log before that is a FAIL of its own
 # (as #7: MaaEnd clears its debug folder when it restarts).
 SHOT_MISS_FAIL = 2
-# AUTO-MAS's line when it stops MaaEnd (MaaEnd-06-31-06, 2026-10-08 10:34:16.413
-# 「任务开始: 停止任务」, 0.1 s after 装备制造 「完成」: AUTO-MAS stopped it for MaaEnd's
-# update, days/2026-10-08 item 1008-05). A task cut short that way did not fail on its
-# own; the run's verdict already books the stop, so #28 leaves that task unjudged.
-_STOP_LINE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\] 任务开始: 停止任务", re.M)
-STOP_AFTER_S = 5
+# MaaEnd's own abort: a failed scene check (SceneImageCheck.json, e.g.
+# __SceneImageCheckModFailedFinish) goes next to this node, which stops the whole task
+# chain through MaaFW's PostStop (SceneLoading.json 「运用 poststop 接口停止整个任务链」).
+# 2026-10-08 10:34:16 (MaaEnd-06-31-06): 装备制造's check found the UID line cut short,
+# MaaEnd said so in its own log (「UID显示不完整，…影响识别」, the line _ABORT_WORDS
+# words plainly), MaaFW logged
+# __SceneImageCheckModFailedFinish -> __SceneCheckAbortPipeline, GearAssemblyStart
+# Succeeded, MaaTaskerPostStop; MXU logged 「自动执行任务完成，关闭自身」 and the
+# 「停止任务」 lines are that stop. AUTO-MAS sent no stop (its MaaEnd update had ended at
+# 10:30:43). MaaFW books the task Succeeded, so the abort is read from this step. It is
+# no known normal state and no other check reports it: #28 fails on it.
+ABORT_STEP = "__SceneCheckAbortPipeline"
 
 
 def _shot_verdict(rule: dict, trail: dict) -> "tuple[bool, str]":
     """(did its job or found nothing to do, what the framework log shows)."""
     nodes = trail["nodes"]
+    if nodes.get(ABORT_STEP):
+        return False, "终末地自己检查画面没过，把后面的任务全停了，这一项没做成"
     if trail["result"] == "Failed":
         return False, "终末地自己记的结果是失败"
     did = [w.format(n=nodes[s]) for s, w in rule["did"] if nodes.get(s)]
@@ -531,6 +539,48 @@ def _shot_verdict(rule: dict, trail: dict) -> "tuple[bool, str]":
         if not step and all(nodes.get(x) for x in rule.get("needs", ())):
             return True, word
     return False, f"终末地自己的记录里只走了 {sum(nodes.values())} 步，没有做成的一步，也没有「没东西可做」的结果"
+
+
+_LOG_LINE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\] (.+)$", re.M)
+# MaaEnd's own lines in a task's window that are not its reason: the task's start and
+# end, and the scene check's standing note (2026-10-08 10:34:14.623).
+_NOT_REASON = re.compile(r"^任务(开始|完成)[:：]|^正在检查画面")
+
+
+def _abort_said(text: str, t0: datetime, t1: datetime) -> "tuple[str, datetime | None]":
+    """MaaEnd's last own line inside the task's window t0..t1 (whole seconds, as
+    task_times gives them) that is not a task start / end, and its time: why it
+    stopped itself (2026-10-08 10:34:16.230 「UID显示不完整，…影响识别」);
+    ("", None) when there is none."""
+    said, when = "", None
+    for m in _LOG_LINE.finditer(text):
+        at = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+        line = m.group(2).strip()
+        if t0 <= at <= t1 and line and not _NOT_REASON.search(line):
+            said, when = line, at
+    return said, when
+
+
+# MaaEnd's reasons said in plain words, where its own line carries English
+# (texts.plain): (part of its line, what it means).
+_ABORT_WORDS = (
+    ("UID显示不完整", "左上角的账号编号显示不全，它说开着隐藏账号编号的模组会挡住左上方的字，认不出画面"),
+)
+
+
+def _abort_why(text: str, t0: datetime, t1: datetime) -> str:
+    """", 原因…" for the evidence line: MaaEnd's own line, verbatim when it is plain
+    Chinese, else its _ABORT_WORDS meaning, else where to read it."""
+    from ark_relay.core import texts  # noqa: PLC0415
+    line, at = _abort_said(text, t0, t1)
+    if not line:
+        return ""
+    for part, meant in _ABORT_WORDS:
+        if part in line:
+            return f"，它记的原因：{meant}"
+    if not texts.plain(line):
+        return f"，它记的原因：「{line}」"
+    return f"，原因写在终末地自己记的 {at:%H:%M:%S} 那一行"
 
 
 def _shot_note(state: Path, rel: str, ended) -> str:
@@ -558,8 +608,9 @@ def _c28(ctx):
     """Judged from MaaFW's own steps of each task (SHOT_RULES), not from the desktop
     picture. Until 2026-10-16 this passed when the picture file existed, and the
     pictures of 10-08 showed the next task: 093302-赠送干员礼物.png the 装备制造 page,
-    093322-装备制造.png 拜访好友, 103416-装备制造.png the bare desktop after AUTO-MAS
-    stopped MaaEnd (verify ledger #28). The picture is still named, with how late it was."""
+    093322-装备制造.png 拜访好友, 103416-装备制造.png the bare desktop after MaaEnd
+    stopped itself (ABORT_STEP; verify ledger #28). The picture is still named, with how
+    late it was."""
     if not _script(ctx, "MaaEnd") or not _unattended(ctx):
         return None
     text = ctx.get("log_text") or ""
@@ -581,10 +632,9 @@ def _c28(ctx):
             return _r(FAIL, f"连续 {misses} 趟，{'、'.join(done)} 在终末地自己的记录里都找不到，做成没有看不出来")
         return None
     _state_set(state_dir, "#28-miss", 0)
-    stops = [datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S") for m in _STOP_LINE.finditer(text)]
     files = raw.get("tasks_shot_files") or {}
     state = Path(state_dir or ".")
-    good, bad, cut = [], [], []
+    good, bad = [], []
     for t in done:
         t0, t1 = times[t]
         trail = trails[t]
@@ -593,19 +643,16 @@ def _c28(ctx):
             bad.append(f"{t}（{span}）在终末地自己的记录里找不到")
             continue
         ok, said = _shot_verdict(SHOT_RULES[t], trail)
-        stop = next((s for s in stops if 0 <= (s - t1).total_seconds() <= STOP_AFTER_S), None)
-        if stop is not None and not ok:
-            cut.append(f"{t}（{span}）没做成就被调度程序停了（{stop:%H:%M:%S}），这趟不算它")
-            continue
+        if trail["nodes"].get(ABORT_STEP):
+            said += _abort_why(text, t0, t1)
         line = f"{t}（{span}）{said}"
         note = _shot_note(state, files[t], trail["ended"]) if files.get(t) else ""
         (good if ok else bad).append(line + (f"；{note}" if note else ""))
-    tail = f"。{'；'.join(cut)}" if cut else ""
     if bad:
-        return _r(FAIL, "；".join(bad) + (f"。做成的：{'；'.join(good)}" if good else "") + tail)
+        return _r(FAIL, "；".join(bad) + (f"。做成的：{'；'.join(good)}" if good else ""))
     if not good:
         return None
-    return _r(PASS, "；".join(good) + tail)
+    return _r(PASS, "；".join(good))
 
 
 _CLAIM = "确认领取奖励"

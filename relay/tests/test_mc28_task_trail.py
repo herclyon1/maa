@@ -3,7 +3,9 @@
 Verify ledger #28 (Endfield gift / gear / delivery / environment monitoring left no in-game picture): #28 passed
 when the picture file existed, and the pictures show the next task - the COS bundle
 2026-10-08_endfield_MaaEnd-05-29-15 has 093302-赠送干员礼物.png on the 装备制造 page and
-103416-装备制造.png on the bare desktop after AUTO-MAS stopped MaaEnd at 10:34:16.
+103416-装备制造.png on the bare desktop after MaaEnd stopped itself at 10:34:16
+(its scene check failed and __SceneCheckAbortPipeline ended the task chain; AUTO-MAS
+sent no stop - verify ledger #28 review).
 Now each task must show in MaaFW's own log (maaend_fwlog.task_trail) either the step
 that does its job or a 「nothing to do」 end; the picture is named with how late it was.
 
@@ -113,26 +115,23 @@ def judge(log, end_dir, state=None, files=None):
     return (r.status if r else None), (r.evidence if r else ""), pushed
 
 
-print("\n[10-08 06-31-06：装备制造只走到入口；截图文件在 → 以前算它做成了]")
-# The same run as AUTO-MAS logged it, and as it would read had AUTO-MAS not stopped
-# MaaEnd right after (its two stop-task lines taken out): the gear task then did
-# nothing on its own, which is what #28 is for.
+print("\n[10-08 06-31-06：装备制造查画面没过，终末地自己停了整条任务链；截图文件在 → 以前算它做成了]")
 state = tmpdir()
 st, ev, pushed = judge("2026-10-08_MaaEnd-06-31-06.log", maaend("maafw-2026-10-08.log.gz"), state,
                        shots(state, "shots/2026-10-08/MaaEnd-10-32-23/"))
-check("stopped by AUTO-MAS for the update 0.1 s later: 装备制造 not counted either way, nothing pushed",
-      (st, pushed), ("PASS", []))
-check("evidence says 装备制造 was stopped before doing anything and is not counted",
-      "装备制造（10:34:11→10:34:16）没做成就被调度程序停了（10:34:16），这趟不算它" in ev, True)
-check("the gift before it counts as done", ev.startswith("赠送干员礼物（10:32:23→10:34:11）点了「赠送」3 次"), True)
-unstopped = "\n".join(x for x in (FIX / "2026-10-08_MaaEnd-06-31-06.log").read_text(encoding="utf-8").splitlines()
-                      if "停止任务" not in x) + "\n"
-(TMP / "2026-10-08_MaaEnd-06-31-06.log").write_text(unstopped, encoding="utf-8")
-state = tmpdir()
-st, ev, pushed = judge(TMP / "2026-10-08_MaaEnd-06-31-06.log", maaend("maafw-2026-10-08.log.gz"), state,
-                       shots(state, "shots/2026-10-08/MaaEnd-10-32-23/"))
-check("not stopped: 装备制造 that only ran its entry is a FAIL, pushed (the picture no longer passes it)",
-      (st, len(pushed)), ("FAIL", 1))
+check("MaaEnd aborted its own chain after the scene check: FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
+check("evidence says MaaEnd stopped itself and quotes its own reason",
+      ev.startswith("装备制造（10:34:11→10:34:16）终末地自己检查画面没过，把后面的任务全停了，这一项没做成，"
+                    "它记的原因：左上角的账号编号显示不全，它说开着隐藏账号编号的模组会挡住左上方的字，认不出画面"), True)
+check("…and blames no scheduler", "调度程序" in ev, False)
+check("the gift before it counts as done, one 「赠送」 click",
+      "做成的：赠送干员礼物（10:32:23→10:34:11）点了「赠送」1 次" in ev, True)
+# Without MaaEnd's abort step (its two lines taken out) the gear task only ran its
+# entry and the scene check: still a FAIL, said as no step that did the job.
+no_abort = maaend("maafw-2026-10-08.log.gz", edit=lambda t: "".join(
+    x for x in t.splitlines(keepends=True) if '"name":"__SceneCheckAbortPipeline"' not in x))
+st, ev, pushed = judge("2026-10-08_MaaEnd-06-31-06.log", no_abort)
+check("no abort step: 装备制造 that only ran its entry is a FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
 check("evidence names the task and its window", ev.startswith("装备制造（10:34:11→10:34:16）终末地自己的记录里只走了"), True)
 
 print("\n[10-08 05-29-15：四个任务都做成了；截图是结束后 5-6 秒拍的]")
@@ -140,7 +139,7 @@ state = tmpdir()
 st, ev, pushed = judge("2026-10-08_MaaEnd-05-29-15.log", maaend("maafw-2026-10-08.log.gz"), state,
                        shots(state, "shots/2026-10-08/MaaEnd-09-30-35/"))
 check("PASS, nothing pushed", (st, pushed), ("PASS", []))
-for said in ("赠送干员礼物（09:30:36→09:33:02）点了「赠送」3 次", "装备制造（09:33:03→09:33:22）点了「制作」1 次",
+for said in ("赠送干员礼物（09:30:36→09:33:02）点了「赠送」1 次", "装备制造（09:33:03→09:33:22）点了「制作」1 次",
              "转交委托（09:37:39→09:39:28）确认转交了 5 单", "环境监测（09:40:57→09:44:14）接了委托、拍了监测照片"):
     check(f"evidence: {said}", said in ev, True)
 check("the gift picture is said to be taken 5 s after the task ended, next task already running",
@@ -153,10 +152,10 @@ check("evidence says nothing was there to transfer / photograph",
       "转交委托（10:37:01→10:37:28）两个地区都走了一遍，没有可转交的委托" in ev
       and "环境监测（10:38:44→10:38:50）两个监测终端都看过了，没有可接的委托" in ev, True)
 
-print("\n[10-13 05-36-57：送礼 3 次、制作 1 次、转交 5 单、环境监测没委托]")
+print("\n[10-13 05-36-57：送礼 1 次、制作 1 次、转交 5 单、环境监测没委托]")
 st, ev, pushed = judge("2026-10-13_MaaEnd-05-36-57.log", maaend("maafw-2026-10-13.log.gz"))
 check("PASS, nothing pushed", (st, pushed), ("PASS", []))
-check("evidence has all four", all(x in ev for x in ("点了「赠送」3 次", "点了「制作」1 次", "确认转交了 5 单",
+check("evidence has all four", all(x in ev for x in ("点了「赠送」1 次", "点了「制作」1 次", "确认转交了 5 单",
                                                      "两个监测终端都看过了")), True)
 
 print("\n[10-16 09-53-33：四个任务的记录分在三个轮换下来的框架日志里]")
@@ -201,8 +200,19 @@ check("the photo job ran as its own sub-task and is counted (AcceptEternalSunset
       trail["nodes"].get("AcceptEternalSunset"), 1)
 g0, g1 = datetime(2026, 10, 8, 9, 30, 36), datetime(2026, 10, 8, 9, 33, 2)
 gift = maaend_fwlog.task_trail(maaend_fwlog.task_events(end, g0, g1), "GiftOperatorMain", g0, g1)
-check("both processes log every step; ConfirmGift counted 3 times, not 6",
-      gift["nodes"].get("GiftOperatorConfirmGift"), 3)
+check("both processes log every step; ConfirmGift (hit once, 09:30-09:33) counted 1 time, not 2",
+      gift["nodes"].get("GiftOperatorConfirmGift"), 1)
+c0, c1 = datetime(2026, 10, 13, 9, 38, 17), datetime(2026, 10, 13, 9, 41, 36)
+gift13 = maaend_fwlog.task_trail(maaend_fwlog.task_events(maaend("maafw-2026-10-13.log.gz"), c0, c1),
+                                 "GiftOperatorMain", c0, c1)
+check("10-13: a step is the node that was hit - ConfirmGift clicked once, its two dialog skips and "
+      "the leave after it are their own steps (not 3 ConfirmGift)",
+      (gift13["nodes"].get("GiftOperatorConfirmGift"), gift13["nodes"].get("GiftOperatorGiftDialog"),
+       gift13["nodes"].get("GiftOperatorLeave")), (1, 2, 1))
+k0, k1 = datetime(2026, 10, 8, 10, 34, 11), datetime(2026, 10, 8, 10, 34, 16)
+gear = maaend_fwlog.task_trail(maaend_fwlog.task_events(end, k0, k1), "GearAssemblyStart", k0, k1)
+check("10-08 10:34 gear: MaaFW books it Succeeded, its trail holds MaaEnd's abort step once",
+      (gear["result"], gear["nodes"].get("__SceneCheckAbortPipeline")), ("Succeeded", 1))
 no_end = maaend("maafw-2026-10-08.log.gz", edit=lambda t: "".join(
     x for x in t.splitlines(keepends=True)
     if not ("Tasker.Task.Succeeded" in x and '"entry":"GiftOperatorMain"' in x)))
@@ -211,7 +221,7 @@ events = maaend_fwlog.task_events(no_end, g0, g1end)
 gift = maaend_fwlog.task_trail(events, "GiftOperatorMain", g0, g1)
 check("a gift run with no end event stops at its window: 装备制造's steps are not counted in it",
       (gift["ended"], gift["nodes"].get("GiftOperatorConfirmGift"), "GearAssemblyClickProduceBtn" in gift["nodes"]),
-      (None, 3, False))
+      (None, 1, False))
 
 print()
 if fails:

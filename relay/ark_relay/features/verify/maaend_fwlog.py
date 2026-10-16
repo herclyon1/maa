@@ -214,7 +214,13 @@ def task_trail(events: list, entry: str, t0: datetime, t1: datetime) -> "dict | 
     photo job ran as 200000559 - EternalSunsetExecute, AcceptEternalSunset,
     EnvironmentMonitoringTakePhoto). MaaEnd runs one task at a time, so the stretch
     holds only this task's work. The second process repeats every event line;
-    (task_id, node_id) counts it once."""
+    (task_id, node_id) counts it once.
+
+    A step is named by node_details.name, the node that was hit and acted. The
+    top-level "name" is the node whose next list was being tried: on 2026-10-13
+    09:41:34-36 GiftOperatorConfirmGift clicked once (node_details) and was the
+    top-level name three times, for the two [JumpBack]GiftOperatorGiftDialog skips
+    and GiftOperatorLeave after it (its next list, GiftOperatorGiftFlow.json)."""
     lo = t0 - timedelta(seconds=TRAIL_SLACK_S)
     hi = t1 + timedelta(seconds=TRAIL_SLACK_S)
     starts = [(abs((w - t0).total_seconds()), w, d.get("task_id")) for w, msg, d in events
@@ -240,6 +246,7 @@ def task_trail(events: list, entry: str, t0: datetime, t1: datetime) -> "dict | 
         if key in seen:
             continue
         seen.add(key)
-        name = str(d.get("name") or "")
+        hit = d.get("node_details") or d.get("action_details") or {}
+        name = str((hit.get("name") if isinstance(hit, dict) else "") or d.get("name") or "")
         nodes[name] = nodes.get(name, 0) + 1
     return {"started": started, "ended": ended, "result": result, "nodes": nodes}
