@@ -263,9 +263,14 @@ routes = [notify.route_of(title, alert=alert) for title, body, alert in e.notifi
           if "不再整轮补跑" in body]
 check("不补跑的那句：走通知，不进群", routes, ["info"])
 check("通知那一路就是 Server酱", notify._ORDERS["info"], ("Server酱",))
-line = next(x for x in (RELAY / "RELEASE-NOTES.md").read_text(encoding="utf-8").splitlines()
-            if "不再把整轮重跑" in x)
-check("更新说明说对了去处：不说「群里会说」，说不进群", ("群里" in line, "不进群" in line), (False, True))
+# deploy-relay.sh empties RELEASE-NOTES.md and commits that on every deploy, so the
+# line is gone between deploys: check its wording only while it is there.
+line = next((x for x in (RELAY / "RELEASE-NOTES.md").read_text(encoding="utf-8").splitlines()
+             if "不再把整轮重跑" in x), None)
+if line is None:
+    print("  ok   更新说明里没有这一行（部署后清空是正常状态），措辞检查跳过")
+else:
+    check("更新说明说对了去处：不说「群里会说」，说不进群", ("群里" in line, "不进群" in line), (False, True))
 
 print("\n[维护日：补跑刚派下去还没落地，队列后更新先不起，不会把同一趟明日方舟再派一次]")
 from datetime import datetime  # noqa: E402
