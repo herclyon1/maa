@@ -159,9 +159,9 @@ def _today(state_dir: Path, now: datetime) -> list[dict]:
     return out
 
 
-# The ledger flag per script that says "could not get into the game". Nothing sets
-# maa_unreachable at present (collector_maa does not write it), so an MAA run is
-# re-run only when it was taken out of the queue or failed during maintenance.
+# The ledger flag per script that says "could not get into the game". The
+# collector writes maa_unreachable when every failure of an MAA record reads as
+# not started and nothing shows work (collector_maa.never_started).
 _UNREACHABLE_FLAG = {"MaaEnd": "maaend_unreachable", "OK-WW": "okww_unreachable",
                      "MAA": "maa_unreachable"}
 

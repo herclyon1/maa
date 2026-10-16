@@ -34,6 +34,7 @@ from pathlib import Path
 from ark_relay.core.config import SERVER_TZ, atomic_write_text
 
 from ark_relay.features.makeup import marker as _marker
+from ark_relay.features.verify import collector_maa as _collector_maa
 from ark_relay.features.makeup.marker import (
     COULDNT_RUN, DISPATCHED, FAILED, GAVE_UP, NO_RECORD, OK, RETRY_GAP_S, SCRIPTS, STALE_MIN,
     _at, _day, _dir, _fresh, _last_stamp, _now, _recent, _write_marker, candidates, holding,
@@ -64,14 +65,10 @@ WHOLE_MAAEND = "按原设置整轮再跑"
 # later (the evening queue) is not the make-up.
 RETRY_CHAIN = timedelta(minutes=10)
 
-# MAA's whole script is re-run only after a run that never got going. Every
-# failure has to read as one of these (AUTO-MAS's 「MAA 未能正确登录 PRTS」 is
-# the StartUp task, 开始唤醒, failing), and the record must carry none of
-# collector_maa's evidence of work.
-MAA_NOT_STARTED = ("开始唤醒", "StartUp", "未能正确登录", "模拟器", "连接", "ADB", "adb")
-MAA_WORK_KEYS = {"drop_statistics": "有掉落", "sanity_spent": "花过理智", "medicine_used": "吃过理智药",
-                 "run_times": "打过关", "stages": "进过关卡", "annihilation_progress": "打过剿灭",
-                 "fight_count": "打过仗"}
+# MAA's whole script is re-run only after a run that never got going. The rule
+# is collector_maa's (never_started): the collector writes raw['maa_unreachable']
+# by the same one, so the flag and the make-up cannot disagree about a record.
+MAA_NOT_STARTED, MAA_WORK_KEYS = _collector_maa.MAA_NOT_STARTED, _collector_maa.MAA_WORK_KEYS
 
 
 # ------------------------------------- MaaEnd master: 存放背包 in front
@@ -536,12 +533,14 @@ def maa_work_done(eng, rec) -> str:
     for row in rows:
         failed = [str(x) for x in row.get("failed_tasks") or []]
         raw = row.get("raw") or {}
-        # MAA refused the config (collector_maa): the same config run again is
-        # refused again, whatever else is on record.
+        if _collector_maa.never_started(failed, raw):
+            continue
+        # Why not, in the rule's own order. MAA refused the config (collector_maa):
+        # the same config run again is refused again, whatever else is on record.
         if rejected := raw.get("maa_config_rejected"):
             return texts.makeup_config_rejected(rejected)
-        worked = [v for k, v in MAA_WORK_KEYS.items() if raw.get(k)]
-        if not failed or not all(any(s in x for s in MAA_NOT_STARTED) for x in failed):
+        worked = _collector_maa.work_evidence(raw)
+        if not _collector_maa.failures_not_started(failed):
             what = "、".join(failed) or "没写失败项"
             # A fight count of 0 means the log was read and shows no fight (a
             # missing count means nothing). Still no make-up: only a round that
@@ -549,8 +548,7 @@ def maa_work_done(eng, rec) -> str:
             if raw.get("fight_count") == 0 and not worked:
                 return texts.makeup_no_fight(what)
             return texts.makeup_unsure(what)
-        if worked:
-            return "这一轮已经开始干活（" + "、".join(worked) + "），再跑一遍会再吃一份理智药"
+        return "这一轮已经开始干活（" + "、".join(worked) + "），再跑一遍会再吃一份理智药"
     return ""
 
 

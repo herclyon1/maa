@@ -3,7 +3,8 @@ and a task MAA refused to take.
 
 MAA is the only one of the three programs that prints a drop table; the parse
 is a line-by-line scan of the drop blocks of each stage. core.collector calls
-`parse_maa_log`; makeup calls `keep_run_lines`.
+`parse_maa_log` and `never_started`; makeup calls `keep_run_lines` and the
+never-started rule's parts.
 """
 from __future__ import annotations
 
@@ -272,6 +273,39 @@ def parse_maa_log(log_path: Path) -> dict:
         out["maa_config_rejected"] = rejected
     _maa_annihilation(text, out)
     return out
+
+
+# ---------------------------------------------------------------- never got going
+
+# A MAA round that never got into the game. Every failure has to read as one of
+# these (AUTO-MAS's 「MAA 未能正确登录 PRTS」 is the StartUp task, 开始唤醒,
+# failing), and the record must carry none of parse_maa_log's evidence of work.
+# One rule for two readers: core.collector writes raw['maa_unreachable'] by it
+# when it books the record, and makeup.maa_work_done re-runs a round only when
+# every attempt of the round passes it.
+MAA_NOT_STARTED = ("开始唤醒", "StartUp", "未能正确登录", "模拟器", "连接", "ADB", "adb")
+MAA_WORK_KEYS = {"drop_statistics": "有掉落", "sanity_spent": "花过理智", "medicine_used": "吃过理智药",
+                 "run_times": "打过关", "stages": "进过关卡", "annihilation_progress": "打过剿灭",
+                 "fight_count": "打过仗"}
+
+
+def failures_not_started(failed) -> bool:
+    """Every failure on the record reads as MAA not getting into the game (and there is one)."""
+    failed = [str(x) for x in failed or []]
+    return bool(failed) and all(any(s in x for s in MAA_NOT_STARTED) for x in failed)
+
+
+def work_evidence(raw: dict) -> list[str]:
+    """What the record shows MAA did in the game (MAA_WORK_KEYS labels); [] for nothing."""
+    return [v for k, v in MAA_WORK_KEYS.items() if (raw or {}).get(k)]
+
+
+def never_started(failed, raw: dict) -> bool:
+    """One MAA record's failure is 「never got into the game」: every failure reads as
+    not started, nothing on it shows work, and MAA did not refuse its config (a
+    refused config is refused again, so it is not a run to repeat)."""
+    raw = raw or {}
+    return failures_not_started(failed) and not work_evidence(raw) and not raw.get("maa_config_rejected")
 
 
 # ---------------------------------------------------------------- one run's raw lines
