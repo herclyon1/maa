@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -291,47 +292,106 @@ def _c26(ctx):
 # ------------------------------------------------------------------ MaaEnd
 
 SEEN_FILE = "machinecheck-runs.json"
+# A run id as HELD_28 keys them ("2026-10-08/endfield/MaaEnd-06-31-06"): what a file that
+# no longer parses is searched for, to name the held FAILs it took with it.
+_RUN_ID = re.compile(r'"(\d{4}-\d{2}-\d{2}/[^"/]+/[^"/]+-\d{2}-\d{2}-\d{2})"\s*:\s*\{')
+# machinecheck-runs.json files set aside as unreadable: path -> the mtime that was
+# (statestore.set_aside); dropped once the file reads again.
+_CORRUPT_SAID: dict[str, float] = {}
+# The held #28 FAILs of the last good read, per file: named when a settle cannot read it.
+_HELD_KNOWN: dict[str, list] = {}
+# Files whose settle-blocking unreadability _settle_held has said (held_stuck), and
+# why the last read of each failed (for the ERROR lines).
+_STUCK_SAID: set = set()
+_READ_ERR: dict[str, str] = {}
+
+
+def _state_read(state_dir) -> "dict | None":
+    """state/machinecheck-runs.json as a table, read as UTF-8 with or without a BOM (a
+    hand edit in Notepad adds one). {} when it is not there yet.
+
+    A read that fails is tried again after each of mc.LOCK_WAITS (a Windows sharing
+    violation lasts a moment); one still failing is None: the file is there and may
+    hold anything, so nobody may write over it. A file that keeps reading as broken
+    JSON or as something other than a table is copied aside (statestore.set_aside:
+    <name>.corrupt-<mtime>), said in one ERROR naming the held #28 FAILs in it, and
+    read as {} - the next write replaces it. Until 2026-10-17 it was None forever:
+    every settle stopped without a word and every later write was an ERROR."""
+    from ark_relay.core import statestore  # noqa: PLC0415
+    f = Path(state_dir) / SEEN_FILE
+    key = str(f)
+    for wait in (*mc.LOCK_WAITS, None):
+        text, broken = "", None
+        try:
+            text = f.read_text(encoding="utf-8-sig")
+            data = json.loads(text)
+        except FileNotFoundError:
+            _CORRUPT_SAID.pop(key, None)
+            return {}
+        except OSError as exc:
+            if wait is None:
+                _READ_ERR[key] = f"{type(exc).__name__}: {exc}"
+                return None
+            time.sleep(wait)
+            continue
+        except ValueError as exc:       # broken JSON, or bytes that are not UTF-8
+            broken = exc
+        else:
+            if isinstance(data, dict):
+                _CORRUPT_SAID.pop(key, None)
+                held = data.get(HELD_28)
+                _HELD_KNOWN[key] = sorted(held) if isinstance(held, dict) else []
+                return data
+            broken = TypeError(f"不是一张表（{type(data).__name__}）")
+        try:
+            mtime = f.stat().st_mtime
+        except OSError:
+            mtime = -1.0
+        if _CORRUPT_SAID.get(key) == mtime:
+            return {}               # set aside already and said once
+        if wait is not None:
+            time.sleep(wait)        # a hand edit being saved: read it again first
+            continue
+        where = statestore.set_aside(f, mtime, _CORRUPT_SAID)
+        lost = list(dict.fromkeys(_RUN_ID.findall(text)))
+        log.error("上机核对：%s 读出来坏了（%s: %s），按空的重来；%s；%s", SEEN_FILE, type(broken).__name__,
+                  broken, where, f"里面等重试的 #28 结论 {'、'.join(lost)} 不会再结，要人看一眼"
+                  if lost else "里面等重试的 #28 结论（如有）不会再结，要人看一眼")
+        return {}
+    return None
 
 
 def _state_get(state_dir, key: str):
-    """One key of state/machinecheck-runs.json; None when missing or unreadable."""
-    try:
-        return json.loads((Path(state_dir) / SEEN_FILE).read_text(encoding="utf-8")).get(key)
-    except (OSError, ValueError, TypeError, AttributeError):
-        return None
+    """One key of state/machinecheck-runs.json (_state_read); None when missing or unreadable."""
+    data = _state_read(state_dir)
+    return data.get(key) if data else None
 
 
 def _state_update(state_dir, change, what: str = "") -> bool:
-    """Read state/machinecheck-runs.json once, apply `change(data)` to it and write it
-    back. True when the file was written. A file that is not there yet starts empty;
-    one that cannot be read (a Windows sharing violation, a broken file) is never
-    rewritten from nothing - that wiped every other key: the held #28 FAILs, the seen
-    lists, the miss counts - and the caller is told it was not written. A failed read
-    or write is an ERROR (errwatch: the group hears of it), never raised; the write is
-    atomic, so nothing of a failed one landed; `what` says on that ERROR what was not
-    written. A file that stays unreadable keeps every later write out until it reads
-    again."""
-    from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
+    """Read state/machinecheck-runs.json once (_state_read), apply `change(data)` to it
+    and write it back. True when the file was written, or `change` returned False:
+    nothing to change, nothing written. One that cannot be read is never rewritten from
+    nothing - that wiped every other key: the held #28 FAILs, the seen lists, the miss
+    counts - and the caller is told it was not written. A failed read or write is an
+    ERROR (errwatch: the group hears of it), never raised; the write is atomic, so
+    nothing of a failed one landed, and a Windows lock on it is waited out first
+    (mc.write_waiting); `what` says on that ERROR what was not written."""
     f = Path(state_dir) / SEEN_FILE
-    try:
-        data = json.loads(f.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        data = {}
-    except (OSError, ValueError) as exc:
-        log.error("上机核对：%s 读不出来（%s: %s），%s没写，免得把里面别的记录冲掉",
-                  SEEN_FILE, type(exc).__name__, exc, what or "这次")
+    data = _state_read(state_dir)
+    if data is None:
+        log.error("上机核对：%s 读不出来（%s），%s没写，免得把里面别的记录冲掉", SEEN_FILE,
+                  _READ_ERR.get(str(f), "原因不明"), what or "这次")
         return False
-    if not isinstance(data, dict):
-        log.error("上机核对：%s 里不是一张表（%s），%s没写，免得把里面别的记录冲掉",
-                  SEEN_FILE, type(data).__name__, what or "这次")
-        return False
-    change(data)
+    if change(data) is False:
+        return True
     try:
         f.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(f, json.dumps(data, ensure_ascii=False))
+        mc.write_waiting(f, json.dumps(data, ensure_ascii=False))
     except OSError as exc:
         log.error("上机核对：%s 写不进去（%s: %s），%s没写", SEEN_FILE, type(exc).__name__, exc, what or "这次")
         return False
+    held = data.get(HELD_28)
+    _HELD_KNOWN[str(f)] = sorted(held) if isinstance(held, dict) else []
     return True
 
 
@@ -341,9 +401,52 @@ def _state_set(state_dir, key: str, value) -> bool:
     return _state_update(state_dir, lambda data: data.__setitem__(key, value))
 
 
-def _seen(state_dir, cid: str) -> set:
-    """Run ids check `cid` has given its verdict on already."""
-    got = _state_get(state_dir, cid)
+def _state_bump(state_dir, key: str, change, what: str) -> "int | None":
+    """Counter `key` set to change(what is on file, as an int) in one read and one write
+    (_state_update); the new value, or None when the file could not be read - never a
+    count restarted from 0 because one read failed (a streak of misses then started
+    over at 1, until 2026-10-17)."""
+    box = {}
+
+    def bump(data):
+        try:
+            was = int(data.get(key) or 0)
+        except (TypeError, ValueError):
+            was = 0
+        box["n"] = data[key] = change(was)
+
+    _state_update(state_dir, bump, what)
+    return box.get("n")
+
+
+def held_stuck(state_dir) -> "list | None":
+    """The held #28 FAILs on file, or None when machinecheck-runs.json cannot be read;
+    then one ERROR, until it reads again, names the ones of the last good read, which
+    cannot be settled meanwhile (runchecks._settle_held)."""
+    data = _state_read(state_dir)
+    key = str(Path(state_dir) / SEEN_FILE)
+    if data is not None:
+        _STUCK_SAID.discard(key)
+        held = data.get(HELD_28)
+        return sorted(held) if isinstance(held, dict) else []
+    if key not in _STUCK_SAID:
+        _STUCK_SAID.add(key)
+        known = _HELD_KNOWN.get(key)
+        log.error("上机核对：%s 读不出来（%s），等重试的 #28 结论结不了，读得出来再结；%s", SEEN_FILE,
+                  _READ_ERR.get(key, "原因不明"),
+                  f"上次读到在等的是 {'、'.join(known)}" if known else
+                  "这次进程里没读到过它，不知道有哪几条在等" if known is None else "上次读到时没有在等的")
+    return None
+
+
+def _seen(state_dir, cid: str) -> "set | None":
+    """Run ids check `cid` has given its verdict on already; None when that cannot be
+    read, so nothing is judged twice on a failed read (it was an empty set until
+    2026-10-17: #6 / #24a judged a settled restart again)."""
+    data = _state_read(state_dir)
+    if data is None:
+        return None
+    got = data.get(cid)
     return set(got) if isinstance(got, list) else set()
 
 
@@ -382,8 +485,13 @@ def _update_restart_check(ctx, cid: str):
     state_dir = ctx.get("state_dir")
     seen = _seen(state_dir, cid)
     todo = {rid: x for rid, x in (ctx.get("update_restarts") or {}).items()
-            if x.get("done") and not x.get("held") and rid not in seen}
+            if x.get("done") and not x.get("held") and rid not in (seen or ())}
     if not todo:
+        return None
+    if seen is None:
+        # Which of them were judged already cannot be told: judged at the next booking
+        # whose read gets through, none of them marked seen meanwhile.
+        log.info("上机核对 %s：%s 读不出来，%s 这一回先不判", cid, SEEN_FILE, "、".join(todo))
         return None
     _mark_seen(state_dir, cid, list(todo))
     passed, failed = [], []
@@ -475,8 +583,11 @@ def _c7(ctx):
     state_dir = ctx.get("state_dir")
     lines, why = cm.maafw_window(ctx.get("maaend_dir"), t0, t1)
     if not lines:
-        misses = int(_state_get(state_dir, "#7-miss") or 0) + 1
-        _state_set(state_dir, "#7-miss", misses)
+        misses = _state_bump(state_dir, "#7-miss", lambda n: n + 1, "#7 连着几趟没框架日志")
+        if misses is None:
+            log.info("上机核对 #7：%s 这一趟的环境监测没有框架日志，连着几趟数不出来（%s 读不出来），先不判",
+                     getattr(ctx.get("rec"), "run_id", ""), SEEN_FILE)
+            return None
         if misses >= ENV_MISS_FAIL:
             return _r(FAIL, f"连续 {misses} 趟环境监测（这一趟 {t0:%m-%d %H:%M:%S}→{t1:%H:%M:%S}）"
                             f"那一段的框架日志都没有：{why}")
@@ -570,9 +681,13 @@ def _c28(ctx):
         skipped = raw.get("maaend_tasks_skipped") or {}
         table, why = maaend_fwlog.trail_table(ctx.get("maaend_dir"),
                                               {t: v for t, v in times.items() if t not in skipped}, text)
-        misses = int(_state_get(state_dir, "#28-miss") or 0) + 1 if why else 0
-        if table:
-            _state_set(state_dir, "#28-miss", misses)
+        misses = (_state_bump(state_dir, "#28-miss", lambda n: n + 1 if why else 0, "#28 连着几趟没盖到")
+                  if table else 0)
+        if misses is None:
+            # How many runs in a row cannot be told: this run's unread tasks wait.
+            log.info("上机核对 #28：%s 连着几趟没盖到数不出来（%s 读不出来），没盖到的先不判",
+                     getattr(ctx.get("rec"), "run_id", ""), SEEN_FILE)
+            misses = 1 if why else 0
     done = [t for t in SHOT_TASKS if isinstance(table.get(t), dict)]
     if not done:
         return None
@@ -658,9 +773,11 @@ def _hold_28(ctx, tasks: list, evidence: str) -> mc.Result:
     is kept is what _state_update returned: a read that fails leaves the file as it
     was (rewriting it from nothing dropped every other held FAIL, never pushed), a
     read after a good write does not decide it (one failing pushed it here and again
-    at settle_28). A push at once is marked sent first (#28|<run id>, ctx['alerted']
-    as settle_28's `alerted`): an entry of this run already on file is then dropped
-    by settle_28 without a second push."""
+    at settle_28). A push at once is marked sent (#28|<run id>, ctx['alerted'] as
+    settle_28's `alerted`) once judge's push went out (Result.after_push): an entry of
+    this run already on file is then dropped by settle_28 without a second push. Never
+    before the push - one that failed, or a process gone in between, left that entry
+    dropped unpushed (until 2026-10-17): it stays and settle_28 pushes it."""
     rec, state_dir = ctx.get("rec"), ctx.get("state_dir")
     entry = {"script": rec.script, "user": rec.user, "day": ctx.get("day") or "",
              "tasks": list(tasks), "evidence": evidence, "covered": []}
@@ -674,28 +791,27 @@ def _hold_28(ctx, tasks: list, evidence: str) -> mc.Result:
     if _state_update(state_dir, add, f"#28 等重试的 {rec.run_id}"):
         return mc.Result(FAIL, evidence + HELD_NOTE, deferred=True)
     log.info("上机核对 #28：%s 在等重试，但没记下来，现在就报", rec.run_id)
-    try:
-        _alerted(ctx.get("alerted"))[1](ctx.get("day") or "", f"#28|{rec.run_id}")
-    except Exception:  # pushed anyway; settle_28 may push an older entry of it again
-        log.error("上机核对 #28：%s 现在就报，但「已报」没记下", rec.run_id, exc_info=True)
-    return _r(FAIL, evidence)
+    mark, day, key = _alerted(ctx.get("alerted"))[1], ctx.get("day") or "", f"#28|{rec.run_id}"
+    return mc.Result(FAIL, evidence, after_push=lambda: mark(day, key))
 
 
 def covered_28(state_dir, script: str, day: str, items: list) -> None:
     """A 「没证据」 alarm naming `items` of `script` on `day` was just sent (or queued
-    until it goes out): the held #28 FAILs of that day about those tasks are in it."""
-    held = _state_get(state_dir, HELD_28)
-    if not isinstance(held, dict) or not any(
-            e.get("script") == script and e.get("day") == day for e in held.values()):
-        return
-
+    until it goes out): the held #28 FAILs of that day about those tasks are in it.
+    One read and one write (_state_update), nothing written when no held FAIL is
+    about them: a separate first read that failed skipped the cover without a word
+    (until 2026-10-17), and settle_28 then pushed the same cause a second time."""
     def cover(data):
-        for e in (data.get(HELD_28) if isinstance(data.get(HELD_28), dict) else {}).values():
-            if e.get("script") != script or e.get("day") != day:
+        held = data.get(HELD_28)
+        changed = False
+        for e in (held.values() if isinstance(held, dict) else ()):
+            if not isinstance(e, dict) or e.get("script") != script or e.get("day") != day:
                 continue
             add = [t for t in e.get("tasks") or [] if t in items and t not in (e.get("covered") or [])]
             if add:
                 e["covered"] = list(e.get("covered") or []) + add
+                changed = True
+        return changed
 
     _state_update(state_dir, cover, f"#28 等重试的 {script} {day} 已由「没证据」报警带上的那几项")
 

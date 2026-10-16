@@ -113,20 +113,25 @@ def _push_unverified(eng, rec: RunRecord) -> None:
         # Which record's booking sent it: a record replayed after its handling broke
         # off (_append_ledger_once) finds its own alarm, not an earlier run's.
         mine = unresolved._key(UNVERIFIED_BY, rec.run_id)
-        ours = True
-        if not eng._already_alerted(day, unresolved._key(UNVERIFIED_KIND, key)):
+        sent_now = not eng._already_alerted(day, unresolved._key(UNVERIFIED_KIND, key))
+        if sent_now:
             _push_now(eng, day, UNVERIFIED_KIND, key, texts.unverified_alarm(game, shift, len(items)), body)
-            eng._mark_alerted(day, mine)
-        else:
-            ours = eng._already_alerted(day, mine)
-        if ours:
+        if sent_now or eng._already_alerted(day, mine):
             # Sent, or kept for the next tick: these items reach the group in this
             # alarm, which machine check #28 then does not repeat - for this record
             # (runs._fail_28) and for a run of the day held for this retry (runs.covered_28).
+            # Said before this record's own mark is written: a state.json that cannot
+            # take the mark must not leave #28 pushing the same cause again (10-17).
             from ark_relay.features.alarm import runchecks  # noqa: PLC0415
             from ark_relay.features.selfcheck.machinechecks import runs  # noqa: PLC0415
             runchecks._UNVERIFIED[rec.run_id] = list(items)
             runs.covered_28(eng.cfg.state_dir, rec.script, day, list(items))
+            if sent_now:
+                try:
+                    eng._mark_alerted(day, mine)
+                except Exception:  # sent (or queued); only which record sent it is not on file
+                    log.error("「没证据」已经发出（或排着下一轮发），但「是 %s 这一趟发的」没记下："
+                              "这一趟的记账若重放，上机核对第 28 条会单独再报一次", rec.run_id, exc_info=True)
         else:
             # The same alarm went out for an earlier run of the day: machine check #28
             # pushes its own FAIL about this run (one abort, one group message).

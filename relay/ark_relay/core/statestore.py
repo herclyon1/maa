@@ -174,6 +174,23 @@ _SWEPT: set = set()
 # like _SWEPT. Dropped once the file reads again.
 _CORRUPT_SAID: dict[str, float] = {}
 
+def set_aside(path: Path, mtime: float, said: "dict[str, float] | None" = None) -> "str | None":
+    """Copy an unreadable state file aside as <name>.corrupt-<mtime> before anything
+    overwrites it; the one line saying where it went (for the caller's log line), or
+    None when this mtime of it was set aside already (`said`, default _CORRUPT_SAID:
+    path -> mtime; the caller drops the path once the file reads again)."""
+    said = _CORRUPT_SAID if said is None else said
+    if said.get(str(path)) == mtime:
+        return None
+    said[str(path)] = mtime
+    copy = path.with_name(f"{path.name}.corrupt-{datetime.fromtimestamp(mtime):%Y%m%d-%H%M%S}")
+    try:
+        shutil.copy2(path, copy)
+        return f"旧内容已另存为 {copy.name}"
+    except OSError as exc:
+        return f"旧内容没能另存（{type(exc).__name__}），下一次写入会把它盖掉"
+
+
 # Held around every load-modify-write of state.json. The phone listen thread
 # (queues.phone_seen, modes.* from live commands) and the engine thread write the
 # same file through StateStore instances of their own; without one lock for the
@@ -243,16 +260,9 @@ class StateStore:
         The next set()/pop() writes the near-empty fallback over state.json, so
         without a copy pending holds, weekly gates and debug mode are gone for
         good. Once per unreadable mtime: this is read on every tick."""
-        if _CORRUPT_SAID.get(str(self.path)) == mtime:
-            return
-        _CORRUPT_SAID[str(self.path)] = mtime
-        copy = self.path.with_name(f"{FILE}.corrupt-{datetime.fromtimestamp(mtime):%Y%m%d-%H%M%S}")
-        try:
-            shutil.copy2(self.path, copy)
-            where = f"旧内容已另存为 {copy.name}"
-        except OSError as exc:
-            where = f"旧内容没能另存（{type(exc).__name__}），下一次写入会把它盖掉"
-        log.warning("state.json 读不出来，按空处理；%s", where, exc_info=True)
+        where = set_aside(self.path, mtime)
+        if where:
+            log.warning("state.json 读不出来，按空处理；%s", where, exc_info=True)
 
     def section(self, name: str) -> dict:
         if name not in SECTIONS:

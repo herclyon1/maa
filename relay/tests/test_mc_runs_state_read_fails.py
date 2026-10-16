@@ -7,9 +7,15 @@ Review of commit 28306025 (10-17), left open there:
   and the seen lists (#6 / #24a) and miss counts (#7-miss, #28-miss) went with it.
 
 Now a read that fails leaves the file as it was and is an ERROR; a hold that cannot
-be kept is pushed at once and marked sent (#28|<run id>), so an older entry of the
-same run on file is not pushed again when its hold ends. Also a Windows sharing
-violation on os.replace: the file stays as it was, nothing is left behind.
+be kept is pushed at once and marked sent (#28|<run id>) once that push went out
+(Result.after_push, called by judge), so an older entry of the same run on file is
+not pushed again when its hold ends. Also a Windows sharing violation on os.replace:
+the file stays as it was, nothing is left behind.
+
+Since the 10-17 review (test_mc28_state_1017.py) a read that fails once is tried
+again (mc.LOCK_WAITS) and gets through, so the 「cannot be read」 cases here keep
+failing on every try; a file that keeps reading as something other than a table is
+copied aside and replaced.
 """
 import json
 import logging
@@ -150,7 +156,22 @@ def settle(state, alerted, notes):
 
 
 def r28(state, rid, alerted):
-    return runs._fail_28(ctx(state, rid, alerted), ["装备制造"], entry(rid)["evidence"])
+    """_fail_28, then what judge does once the push went out (Result.after_push)."""
+    r = runs._fail_28(ctx(state, rid, alerted), ["装备制造"], entry(rid)["evidence"])
+    if r.after_push:
+        r.after_push()
+    return r
+
+
+class no_waits:
+    """A lock that outlasts every wait, without the test sleeping through the waits."""
+
+    def __enter__(self):
+        self.was, mc.LOCK_WAITS = mc.LOCK_WAITS, (0.0, 0.0, 0.0)
+        return self
+
+    def __exit__(self, *a):
+        mc.LOCK_WAITS = self.was
 
 
 mc.load()
@@ -162,24 +183,40 @@ try:
     for name, exc in BAD_READS:
         print(f"\n[a hold is written while one read fails: {name}; R1, R2 held]")
         state = fresh(R1, R2)
-        before = raw(state)
         got, alerted = marks()
         ERRORS.lines.clear()
         with read_fails(exc) as rf:
             r = r28(state, R3, alerted)
         check("the read did fail", rf.n, 0)
-        check("machinecheck-runs.json is left as it was", raw(state) == before)
-        check("R3 is a plain FAIL, pushed at once", (r.status, r.deferred), (mc.FAIL, False))
-        check("…and marked sent", got, {(DAY, f"#28|{R3}")})
-        check("the failed read is an ERROR", any(runs.SEEN_FILE in x for x in ERRORS.lines))
-        check("R1 and R2 still reach the group when their hold ends", settle(state, alerted, Notes()),
-              sorted([R1, R2]))
+        check("read again and held: R3 waits beside R1 and R2", (r.deferred, held(state)), (True, [R1, R2, R3]))
+        check("…the other keys kept", (runs._state_get(state, "#6"), runs._state_get(state, "#28-miss")),
+              (["a", "b"], 1))
+        check("…no ERROR, nothing marked", (ERRORS.lines, got), ([], set()))
+        check("R1, R2 and R3 each reach the group once when their hold ends", settle(state, alerted, Notes()),
+              sorted([R1, R2, R3]))
         check("nothing of #28 is left waiting", held(state), [])
 
-    print("\n[_state_set while one read fails: the other keys stay]")
+    print("\n[a hold is written while every read fails (a lock outlasting the waits); R1, R2 held]")
     state = fresh(R1, R2)
     before = raw(state)
-    with read_fails(OSError(5, "Input/output error (test)")):
+    got, alerted = marks()
+    ERRORS.lines.clear()
+    with no_waits(), read_fails(PermissionError(13, "locked (test)"), n=99):
+        r = runs._fail_28(ctx(state, R3, alerted), ["装备制造"], entry(R3)["evidence"])
+    check("machinecheck-runs.json is left as it was", raw(state) == before)
+    check("R3 is a plain FAIL, pushed at once", (r.status, r.deferred), (mc.FAIL, False))
+    check("…not marked sent before its push", got, set())
+    r.after_push()
+    check("…marked sent once it went out", got, {(DAY, f"#28|{R3}")})
+    check("the failed read is an ERROR", any(runs.SEEN_FILE in x for x in ERRORS.lines))
+    check("R1 and R2 still reach the group when their hold ends", settle(state, alerted, Notes()),
+          sorted([R1, R2]))
+    check("nothing of #28 is left waiting", held(state), [])
+
+    print("\n[_state_set while every read fails: the other keys stay]")
+    state = fresh(R1, R2)
+    before = raw(state)
+    with no_waits(), read_fails(OSError(5, "Input/output error (test)"), n=99):
         wrote = runs._state_set(state, "#7-miss", 3)
     check("not written", wrote, False)
     check("machinecheck-runs.json is left as it was", raw(state) == before)
@@ -188,28 +225,29 @@ try:
     check("…held FAILs, seen lists and counts", (sorted(data[runs.HELD_28]), data["#6"], data["#28-miss"],
                                                 data["#7-miss"]), (sorted([R1, R2]), ["a", "b"], 1, 3))
 
-    print("\n[_mark_seen while one read fails: the seen list is not cut to the new ids]")
+    print("\n[_mark_seen while every read fails: the seen list is not cut to the new ids]")
     state = fresh()
-    with read_fails('{"#6": ['):
+    with no_waits(), read_fails(OSError(5, "Input/output error (test)"), n=99):
         runs._mark_seen(state, "#6", ["c"])
     check("the list as it was", runs._state_get(state, "#6"), ["a", "b"])
     runs._mark_seen(state, "#6", ["c"])
     check("…and added to once it reads", runs._state_get(state, "#6"), ["a", "b", "c"])
 
-    print("\n[the file reads as something other than a table: nothing is written]")
+    print("\n[the file keeps reading as something other than a table: copied aside, then replaced]")
     state = fresh(R1)
     before = raw(state)
     ERRORS.lines.clear()
-    with read_fails('[]', n=99):
+    with no_waits(), read_fails('[]', n=99):
         wrote = runs._state_set(state, "#28-miss", 0)
-    check("not written, and that is an ERROR", (wrote, len([x for x in ERRORS.lines if runs.SEEN_FILE in x])),
-          (False, 1))
-    check("machinecheck-runs.json is left as it was", raw(state) == before)
+    check("written, and that is one ERROR", (wrote, len([x for x in ERRORS.lines if runs.SEEN_FILE in x])),
+          (True, 1))
+    copies = [p for p in state.iterdir() if ".corrupt-" in p.name]
+    check("what was there is kept in the copy", [p.read_bytes() == before for p in copies], [True])
 
-    print("\n[R1 held already; judged again while the read fails: one push, not two]")
+    print("\n[R1 held already; judged again while every read fails: one push, not two]")
     state = fresh(R1, R2)
     got, alerted = marks()
-    with read_fails(OSError(5, "Input/output error (test)")):
+    with no_waits(), read_fails(OSError(5, "Input/output error (test)"), n=99):
         r = r28(state, R1, alerted)
     check("R1 pushed at once", r.deferred, False)
     check("…so its hold ending pushes only R2", settle(state, alerted, Notes()), [R2])
@@ -220,7 +258,7 @@ try:
     before = raw(state)
     got, alerted = marks()
     ERRORS.lines.clear()
-    with replace_locked():
+    with no_waits(), replace_locked():
         r3 = r28(state, R3, alerted)
         r1 = r28(state, R1, alerted)
     check("machinecheck-runs.json is left as it was", raw(state) == before)
@@ -229,7 +267,7 @@ try:
     check("…and marked sent", got, {(DAY, f"#28|{R3}"), (DAY, f"#28|{R1}")})
     check("each refused write is an ERROR", len([x for x in ERRORS.lines if "PermissionError" in x]), 2)
     notes = Notes()
-    with replace_locked():
+    with no_waits(), replace_locked():
         first = settle(state, alerted, notes)
         second = settle(state, alerted, notes)
     check("while still locked: R2 pushed once over two ticks, R1 not again", (first, second), ([R2], [R2]))

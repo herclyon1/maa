@@ -30,12 +30,13 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from ark_relay.core.config import SERVER_TZ, atomic_write_text
+from ark_relay.core.config import SERVER_TZ
 
 log = logging.getLogger("ark.machinecheck")
 
@@ -60,6 +61,10 @@ class Result:
     # it and settles it once the hold is over (machinechecks/runs.py settle_28): pushed
     # then, unless an alarm sent by then carries it or another run made up for it.
     deferred: bool = False
+    # Called once judge has pushed this FAIL and the push went out (notifier.send
+    # returned no errors) - never before, so a push that fails or a process that dies
+    # first leaves nothing saying it was sent (runs._hold_28 marks its day mark here).
+    after_push: "Callable[[], None] | None" = None
 
 
 @dataclass
@@ -165,10 +170,38 @@ def read(state_dir) -> dict:
     return _read_state(state_dir) or {}
 
 
+# A Windows lock on a state file is waited out this long before a read or write of it
+# is given up (seconds between tries): an antivirus scan or backup tool holding the
+# file open makes os.replace fail with ERROR_ACCESS_DENIED (5) or
+# ERROR_SHARING_VIOLATION (32), which Python raises as PermissionError, for a moment.
+LOCK_WAITS = (0.05, 0.15, 0.3)
+_LOCK_WINERRORS = (5, 32, 33)
+
+
+def locked(exc: OSError) -> bool:
+    """`exc` is how Windows refuses a file another handle holds open."""
+    return isinstance(exc, PermissionError) or getattr(exc, "winerror", None) in _LOCK_WINERRORS
+
+
+def write_waiting(path: Path, text: str) -> None:
+    """config.atomic_write_text, tried again after each of LOCK_WAITS while the file is
+    locked (locked()); raises the last OSError when it never gets through, or at once
+    for any other OSError. config is looked up at call time, as tests replace it."""
+    from ark_relay.core import config  # noqa: PLC0415
+    for wait in (*LOCK_WAITS, None):
+        try:
+            config.atomic_write_text(path, text)
+            return
+        except OSError as exc:
+            if wait is None or not locked(exc):
+                raise
+            time.sleep(wait)
+
+
 def _write(state_dir, data: dict) -> None:
     f = _file(state_dir)
     f.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(f, json.dumps(data, ensure_ascii=False, indent=1))
+    write_waiting(f, json.dumps(data, ensure_ascii=False, indent=1))
 
 
 # ------------------------------------------------------------------ judging
@@ -216,7 +249,13 @@ def judge(state_dir, event: str, ctx: dict, *, version: str = "", now: datetime 
             key = "passes" if r.status == PASS else "fails"
             row[key] = int(row.get(key) or 0) + 1
             data[cid] = row
-        _write(state_dir, data)
+        try:
+            _write(state_dir, data)
+        except OSError as exc:
+            # The verdicts stand and every FAIL below is still pushed; only the
+            # daily section misses this judging.
+            log.error("上机核对的结论没写进 %s（%s: %s），这次的 %s 照常推送，日报那一段可能是旧的",
+                      STATE_FILE, type(exc).__name__, exc, "、".join(cid for cid, _ in out))
     for cid, r in out:
         c = CHECKS[cid]
         if r.status == FAIL and r.pushed_with:
@@ -233,6 +272,11 @@ def judge(state_dir, event: str, ctx: dict, *, version: str = "", now: datetime 
                 log.error("上机核对 %s 没过，推送也没推出去：%s", cid, "；".join(errs))
             else:
                 log.info("上机核对 %s 没过，已报群：%s", cid, r.evidence[:120])
+                if r.after_push:
+                    try:
+                        r.after_push()
+                    except Exception:  # pushed; the check's own record of it is what failed
+                        log.error("上机核对 %s 已报群，但「已报」没记下", cid, exc_info=True)
         else:
             log.info("上机核对 %s 过了：%s", cid, r.evidence[:120])
     return out
