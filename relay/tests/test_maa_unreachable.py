@@ -211,7 +211,7 @@ b.raw.pop("fight_count", None)
 State(sd).append_ledger(b)
 check("撞上维护、日志没读到的别的失败：拿不准打没打过，不重跑", gameupdate.needs_rerun(sd, b.started, "MAA"), False)
 
-print("\n[整轮不补时告诉群里：维护那条消息说过会补跑]")
+print("\n[整轮不补时发一条通知（Server酱，不进群）说为什么]")
 import types  # noqa: E402
 from ark_relay.core import texts  # noqa: E402
 for label, maint in (("登录不上", False), ("撞上维护", True)):
@@ -233,6 +233,39 @@ notes, reran, sent = [], [], []
 gameupdate._rerun_script(types.SimpleNamespace(state_dir=sd), b.started,
                          lambda s: sent.append(s) or (True, "ok"), "MAA", reran, [], notes)
 check("只有 B 一次：照旧补跑、不多说话", (sent, reran, notes), (["MAA"], ["MAA"], []))
+
+# Where the note lands: the engine sends run_deferred's notes; follow it through
+# notify.route_of. It is not an alarm, so the info route only (notify._INFO_ORDER),
+# never the group - and the release note must say so (it claimed the group before).
+from ark_relay.core import notify  # noqa: E402
+sd, e, b = today_round(A, B)
+e._unfinished_queues = lambda *a, **k: []
+e._scripts_running = lambda *a, **k: False
+
+
+def _deferred(cfg, now=None, dispatch=None, **k):
+    out: list = []
+    gameupdate._rerun_script(cfg, now, lambda s: (True, "ok"), "MAA", [], [], out)
+    return out, [], []
+
+
+real_gu = (gameupdate.pending, gameupdate.run_deferred)
+gameupdate.pending = lambda state_dir: {"明日方舟": "今天官方维护"}
+gameupdate.run_deferred = _deferred
+try:
+    e._maybe_deferred_update()
+    t = getattr(e, "_gu_thread", None)
+    if t is not None:
+        t.join(10)
+finally:
+    gameupdate.pending, gameupdate.run_deferred = real_gu
+routes = [notify.route_of(title, alert=alert) for title, body, alert in e.notifier.sent
+          if "不再整轮补跑" in body]
+check("不补跑的那句：走通知，不进群", routes, ["info"])
+check("通知那一路就是 Server酱", notify._ORDERS["info"], ("Server酱",))
+line = next(x for x in (RELAY / "RELEASE-NOTES.md").read_text(encoding="utf-8").splitlines()
+            if "不再把整轮重跑" in x)
+check("更新说明说对了去处：不说「群里会说」，说不进群", ("群里" in line, "不进群" in line), (False, True))
 
 print("\n[维护日：补跑刚派下去还没落地，队列后更新先不起，不会把同一趟明日方舟再派一次]")
 from datetime import datetime  # noqa: E402

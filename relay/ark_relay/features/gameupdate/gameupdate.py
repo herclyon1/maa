@@ -201,8 +201,9 @@ def needs_rerun(state_dir: Path, now: datetime, script: str) -> bool:
 def rerun_verdict(state_dir: Path, now: datetime, script: str) -> tuple[bool, str]:
     """(needs_rerun, why not): the second part is the round rule's reason when it
     alone refused an MAA re-run that the last record asked for, '' otherwise.
-    _rerun_script tells the group that reason: the cant-enter alarm promised a
-    re-run after the update (texts.cant_enter_body)."""
+    _rerun_script sends that reason as a plain GAME_UPDATE note, which routes to
+    the info channels (notify.route_of 'info'), not the group: it is not an alarm, and no
+    group message promised MAA a re-run."""
     if stopped_today(state_dir, now, script):
         return False, ""
     # A skip the user ordered through a queue command (source "queue") is his
@@ -629,8 +630,8 @@ def _rerun_script(cfg, now: datetime, dispatch, script: str,
 
     A script the red button stopped today is not re-run (stopped_today); that is
     said in `notes`, not `problems`. So is an MAA round that already fought
-    (rerun_verdict's reason): not an alarm, but the cant-enter message promised
-    the re-run.
+    (rerun_verdict's reason): not an alarm, so it goes to the info channels only, telling
+    the user why the round he may expect to run again after the update did not.
     """
     if stop := stopped_today(cfg.state_dir, now, script):
         log.info("游戏更新：%s 今天被停一切停过（%s），不自动补跑", script, stop)

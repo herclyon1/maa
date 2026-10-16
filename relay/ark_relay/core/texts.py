@@ -524,8 +524,8 @@ def makeup_unsure(failed: str) -> str:
 
 def update_rerun_refused(script: str, why: str) -> str:
     """gameupdate._rerun_script: the client is updated, but the round rule refused
-    the re-run the cant-enter message promised (texts.cant_enter_body). `why` is
-    makeup.maa_round_work_done's reason."""
+    the whole-round re-run. A GAME_UPDATE note (info route only, not the group). `why`
+    is makeup.maa_round_work_done's reason."""
     return f"{script}：客户端更新好了，这一轮不再整轮补跑：{why}"
 
 
