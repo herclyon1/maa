@@ -273,6 +273,14 @@ TRAIL_TASKS = ("赠送干员礼物", "装备制造", "转交委托", "环境监�
 #   end: its next is GiftFullLeave -> GiftFullBackInWorld -> GiftFullRetry (max_hit 5,
 #   back to GiftOperatorEntry for another operator) and only then GiftOperatorGiftFullFail
 #   (StopTask; the pipeline's own desc: 「重试五次也只能找到送满的干员，正常失败」).
+#   A StopTask node is logged like any other and its task booked Succeeded: maafw.bak.
+#   2026.10.16-14.00.46.901.log 13:58:58.769 has Node.PipelineNode.Succeeded for
+#   CreditShoppingBuyItemStop (action "StopTask") and Tasker.Task.Succeeded for
+#   CreditShoppingMain at the same instant; MaaFramework's Actuator::stop_task returns
+#   success and PipelineTask::run_next notifies the node before its loop checks
+#   need_to_stop. So an all-full run ends in a logged GiftFullFail. A trail whose last
+#   step is GiftFull with nothing after it is no end: GiftFull's next is GiftFullLeave,
+#   and when that is not hit MaaFW takes on_error and books the task Failed.
 # Gear: GearAssembly/GearAssembly.json - GearAssemblyClickProduceBtn 「点击制作按钮」
 #   (once a run, followed by SceneNoticeRewardsConfirm on 10-07..10-16). Its next is
 #   [GearAssemblyCheckMaterialEnough 「检测背包是否已满，背包已满直接结束」,
@@ -324,10 +332,10 @@ def task_verdict(task: str, trail: dict) -> "tuple[bool, str]":
     """(did its job or found nothing to do, what MaaFW's log shows) for one of
     TRAIL_TASKS, from its task_trail.
 
-    Order: MaaEnd's abort; a nothing-to-do end step (before MaaFW's result: whether
-    GiftOperatorGiftFullFail's StopTask books the task Succeeded or Failed is in no
-    log we hold, and the pipeline calls it a normal end); MaaFW's Failed; the step
-    that did the job; a nothing-to-do told by the steps that ran."""
+    Order: MaaEnd's abort; a nothing-to-do end step (before MaaFW's result, which for
+    a StopTask end is Succeeded - TRAIL_RULES - but the pipeline calls the step a
+    normal end whatever is booked); MaaFW's Failed; the step that did the job; a
+    nothing-to-do told by the steps that ran."""
     rule, nodes = TRAIL_RULES[task], trail["nodes"]
     if nodes.get(ABORT_STEP):
         return False, "终末地自己检查画面没过，把后面的任务全停了，这一项没做成"
@@ -353,3 +361,95 @@ def task_trails(maaend_dir, times: dict) -> dict:
         return {}
     events = task_events(maaend_dir, min(times[t][0] for t in tasks), max(times[t][1] for t in tasks))
     return {t: task_trail(events, TRAIL_RULES[t]["entry"], *times[t]) for t in tasks}
+
+
+# Runs in a row whose four tasks are all missing from MaaFW's log before that counts:
+# machine check #28 FAILs and the ledger calls them unbacked (core.maaend_unverified).
+# One such run is left unjudged: MaaEnd clears its debug folder when it restarts, and a
+# folder that is not configured or not readable says nothing about the game.
+TRAIL_MISS_FAIL = 2
+
+# AUTO-MAS's run-log line: 「[2026-10-08 10:34:16.230] UID显示不完整，…」.
+_RUN_LINE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\] (.+)$", re.M)
+# MaaEnd's own lines in a task's window that are not its reason: the task's start and
+# end, and the scene check's standing note (2026-10-08 10:34:14.623).
+_NOT_REASON = re.compile(r"^任务(开始|完成)[:：]|^正在检查画面")
+# MaaEnd's reasons said in plain words, where its own line carries English
+# (texts.plain): (part of its line, what it means).
+_ABORT_WORDS = (
+    ("UID显示不完整", "左上角的账号编号显示不全，它说开着隐藏账号编号的模组会挡住左上方的字，认不出画面"),
+)
+
+
+def abort_said(text: str, t0: datetime, t1: datetime) -> "tuple[str, datetime | None]":
+    """MaaEnd's last own line in AUTO-MAS's run log `text` inside the task's window
+    t0..t1 (whole seconds, as collector_maaend.task_times gives them) that is not a
+    task start / end, and its time: why it stopped itself (2026-10-08 10:34:16.230
+    「UID显示不完整，…影响识别」); ("", None) when there is none."""
+    said, when = "", None
+    for m in _RUN_LINE.finditer(text or ""):
+        at = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+        line = m.group(2).strip()
+        if t0 <= at <= t1 and line and not _NOT_REASON.search(line):
+            said, when = line, at
+    return said, when
+
+
+def abort_why(text: str, t0: datetime, t1: datetime) -> str:
+    """\"，它记的原因：…\" for MaaEnd's abort of one task: its own line, verbatim when it
+    is plain Chinese, else its _ABORT_WORDS meaning, else where to read it."""
+    from ark_relay.core import texts  # noqa: PLC0415
+    line, at = abort_said(text, t0, t1)
+    if not line:
+        return ""
+    for part, meant in _ABORT_WORDS:
+        if part in line:
+            return f"，它记的原因：{meant}"
+    if not texts.plain(line):
+        return f"，它记的原因：「{line}」"
+    return f"，原因写在终末地自己记的 {at:%H:%M:%S} 那一行"
+
+
+def trail_entry(task: str, trail: "dict | None", t0: datetime, t1: datetime, text: str = "") -> dict:
+    """One task's verdict as booked in raw['tasks_trail'] (alarm.records._mark_task_trails)
+    and read back by machine check #28 and core.maaend_unverified, so MaaFW's log is
+    read once per run:
+
+        t0, t1   AUTO-MAS's 「任务开始」 / 「任务完成」 (ISO, machine-local)
+        found    MaaFW's log holds this task's run (task_trail is not None)
+        ok       task_verdict: did its job or found nothing to do
+        said     what MaaFW's log shows (task_verdict), with MaaEnd's own reason
+                 (abort_why, from the run log `text`) when it stopped itself
+        abort    MaaEnd stopped itself inside this task (ABORT_STEP)
+        ended    MaaFW's end event (ISO), None when there is none"""
+    e = {"t0": t0.isoformat(), "t1": t1.isoformat(), "found": trail is not None,
+         "ok": False, "said": "", "abort": False, "ended": None}
+    if trail is None:
+        return e
+    ok, said = task_verdict(task, trail)
+    abort = bool(trail["nodes"].get(ABORT_STEP))
+    if abort:
+        said += abort_why(text, t0, t1)
+    e.update(ok=ok, said=said, abort=abort,
+             ended=trail["ended"].isoformat() if trail["ended"] is not None else None)
+    return e
+
+
+def trail_table(maaend_dir, times: dict, text: str = "") -> "tuple[dict, str]":
+    """({task: trail_entry} for each of TRAIL_TASKS in `times`, why none of them is in
+    MaaFW's log - '' when one is, or when none was asked). An unreadable file is
+    skipped like a missing one (_fw_lines)."""
+    asked = {t: times[t] for t in TRAIL_TASKS if t in times}
+    if not asked:
+        return {}, ""
+    found = task_trails(maaend_dir, asked) if maaend_dir else {}
+    table = {t: trail_entry(t, found.get(t), t0, t1, text) for t, (t0, t1) in asked.items()}
+    if any(e["found"] for e in table.values()):
+        return table, ""
+    if not maaend_dir:
+        why = "没配终末地的文件夹"
+    elif not _fw_files(maaend_dir):
+        why = "终末地的日志文件夹里没有框架日志（它每次重启会清掉）"
+    else:
+        why = "框架日志里这段时间没有这几个任务（文件读不了的也算在这里）"
+    return table, why

@@ -12,6 +12,7 @@ from datetime import datetime
 from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ, USER_TZ
 from ark_relay.features.verify.collector_maaend import _END_CLOSING_TASKS, _END_STOP_MARK
+from ark_relay.features.verify.maaend_fwlog import TRAIL_MISS_FAIL
 
 
 def _fmt_items(d: dict, limit: int | None = None) -> str:
@@ -216,11 +217,13 @@ def _block_maaend(e: dict, raw: dict, finished: datetime,
     # raw["maaend_tasks_skipped"] and already out of tasks_done
     # (collector_maaend._schedule_skipped); it is named in the notes below.
     skipped = raw.get("maaend_tasks_skipped") or {}
-    # Done only with evidence from the game; the rest are named as unverified.
+    # Done only with evidence from the game; the rest are named as unverified, and
+    # the four left unjudged (MaaFW's log held none of them) are said as such.
     unverified = maaend_unverified(raw)
-    done = [t for t in done if t not in unverified]
+    unjudged = maaend_unjudged(raw)
+    done = [t for t in done if t not in unverified and t not in unjudged]
     failed = raw.get("tasks_failed") or []
-    if done or failed or unverified:
+    if done or failed or unverified or unjudged:
         # More than three: 「日常 1-N 项完成」, names in the footnote
         # (daily_footnote). Three or fewer are named here, and so is a list the
         # footnote's 1-N would not name (another run's longer list is the key).
@@ -236,7 +239,13 @@ def _block_maaend(e: dict, raw: dict, finished: datetime,
             n += "；失败 " + "、".join(_with_causes(failed, raw.get("maaend_fail_causes")))
         notes.append(n)
         if unverified:
-            notes.append(UNVERIFIED + "：" + "、".join(unverified))
+            # With what MaaEnd's own record shows for each of the four (e.g. it stopped
+            # itself inside the task, and why), so the report keeps the cause after
+            # another run of the day did the task (machine check #28 then stays quiet).
+            notes.append(UNVERIFIED + "：" + "、".join(
+                f"{t}（{why}）" if (why := maaend_unbacked_why(raw, t)) else t for t in unverified))
+        if unjudged:
+            notes.append(texts.trail_unread_note(unjudged, int(raw.get("tasks_trail_miss") or 0), TRAIL_MISS_FAIL))
     if total := raw.get("maaend_collect_total"):
         # Walked/total from the run's own 「路线N：…」 lines (a narrowed retry
         # round reads 「自动采集 2/2 条走通」).
@@ -317,10 +326,11 @@ def maaend_unverified(raw: dict) -> list[str]:
     exactly when its steps show the job done or nothing to do - also when MaaEnd wrote
     a line inside it: on 2026-10-08 10:34 装备制造's only line was its scene-check note,
     and the task was aborted. Any other task is backed by a line of its own in the log
-    (collector_maaend.task_evidence). The desktop picture is no evidence: it is taken
-    5-8 s after the task ended and shows the next task (task_shots.py, verify ledger
-    #28). A record without the evidence table at all (a log that could not be read
-    again) has none for any task.
+    (collector_maaend.task_evidence). The desktop picture is no evidence for any task:
+    it is taken 5-8 s after the task ended and shows the next task (task_shots.py,
+    verify ledger #28). A record without the evidence table at all (a log that could not
+    be read again) has none for any task. The four left unjudged because MaaFW's log
+    held none of them (maaend_unjudged) are neither backed nor unbacked.
 
     A record booked before raw['tasks_trail'] existed (no such key) is read by the rule
     it was booked under, picture included, so the days before this change keep the
@@ -330,9 +340,35 @@ def maaend_unverified(raw: dict) -> list[str]:
         shot = set(raw.get("tasks_shot") or [])
         return [t for t in _maaend_listed(raw) if not ev.get(t) and t not in shot]
     trail = raw.get("tasks_trail") or {}
+    unjudged = set(maaend_unjudged(raw))
 
     def backed(t: str) -> bool:
+        if t in unjudged:
+            return True
         if isinstance(trail.get(t), dict):
             return bool(trail[t].get("ok"))
         return bool(ev.get(t))
     return [t for t in _maaend_listed(raw) if not backed(t)]
+
+
+def maaend_unjudged(raw: dict) -> list[str]:
+    """Listed tasks of raw['tasks_trail'] left unjudged this run: MaaFW's log held none
+    of the four (raw['tasks_trail_miss'] counts the runs in a row) and that has not yet
+    happened maaend_fwlog.TRAIL_MISS_FAIL times in a row - as machine check #28 waits.
+    The daily report says so; neither done nor 「没证据」 (core.day_unverified_items)."""
+    miss = int(raw.get("tasks_trail_miss") or 0)
+    if not 0 < miss < TRAIL_MISS_FAIL:
+        return []
+    trail = raw.get("tasks_trail") or {}
+    return [t for t in _maaend_listed(raw) if isinstance(trail.get(t), dict) and not trail[t].get("found", True)]
+
+
+def maaend_unbacked_why(raw: dict, task: str) -> str:
+    """What MaaFW's log shows for an unbacked task of raw['tasks_trail'] (its verdict,
+    MaaEnd's own reason when it stopped itself), or '' when there is nothing to add."""
+    e = (raw.get("tasks_trail") or {}).get(task)
+    if not isinstance(e, dict):
+        return ""
+    if e.get("found") is False:
+        return "终末地自己的记录里找不到这一项"
+    return str(e.get("said") or "")

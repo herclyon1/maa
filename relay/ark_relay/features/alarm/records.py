@@ -4,7 +4,7 @@ record and its ledger line before deciding what to push.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.core import texts
@@ -132,35 +132,69 @@ def _mark_task_shots(eng, rec: RunRecord) -> None:
 
 
 def _mark_task_trails(eng, rec: RunRecord) -> None:
-    """raw['tasks_trail']: {task: {"ok", "said"}} for each of maaend_fwlog.TRAIL_TASKS
-    this run finished (its 「任务完成」, not a weekday skip) whose run MaaFW's log holds:
-    ok when its steps show the job done or nothing to do (maaend_fwlog.task_verdict,
-    the same judgment as machine check #28). It is the game evidence of those tasks for
-    core.maaend_unverified; the desktop picture (_mark_task_shots) is not, since it is
-    taken 5-8 s after the task ended and shows the next one (task_shots.py).
+    """raw['tasks_trail']: {task: maaend_fwlog.trail_entry} for each of
+    maaend_fwlog.TRAIL_TASKS this run finished (its 「任务完成」, not a weekday skip):
+    whether MaaFW's log holds its run, and whether its steps show the job done or
+    nothing to do (maaend_fwlog.task_verdict). It is the game evidence of those tasks
+    for core.maaend_unverified, and machine check #28 reads its verdict from here
+    (machinechecks/runs.py) instead of reading MaaFW's log again; the desktop picture
+    (_mark_task_shots) is no evidence, since it is taken 5-8 s after the task ended and
+    shows the next one (task_shots.py).
+
+    raw['tasks_trail_miss']: when none of those tasks is in MaaFW's log (the folder is
+    not configured, MaaEnd cleared it at a restart, a file could not be read), how many
+    MaaEnd runs in a row that is, this one included (_trail_miss_streak); 0 otherwise.
+    Below maaend_fwlog.TRAIL_MISS_FAIL those tasks are left unjudged - said at INFO
+    and in the daily report (core.maaend_unjudged), not pushed - as #28 does.
 
     Booked here, while MaaFW's log still holds the run: MaaEnd clears its debug folder
-    when it restarts. A key of its own, so collector.refresh_raw keeps it. Always set on
-    a MaaEnd record ({} when nothing could be read), which tells maaend_unverified the
-    record was booked under this rule."""
+    when it restarts. Keys of their own, so collector.refresh_raw keeps them. Always
+    set on a MaaEnd record ({} when the run did none of the four), which tells
+    maaend_unverified the record was booked under this rule."""
     trails: dict = {}
     rec.raw["tasks_trail"] = trails
+    rec.raw["tasks_trail_miss"] = 0
     try:
         from ark_relay.features.verify import collector_maaend, maaend_fwlog  # noqa: PLC0415
         log_path = rec.log_path
-        maaend_dir = getattr(eng.cfg, "maaend_dir", None)
-        if not maaend_dir or not log_path or not Path(log_path).is_file():
+        if not log_path or not Path(log_path).is_file():
             return
-        times = collector_maaend.task_times(Path(log_path).read_text(encoding="utf-8", errors="replace"))
+        text = Path(log_path).read_text(encoding="utf-8", errors="replace")
+        times = collector_maaend.task_times(text)
         done = set(rec.raw.get("tasks_done") or [])
         skipped = rec.raw.get("maaend_tasks_skipped") or {}
         times = {t: v for t, v in times.items() if t in done and t not in skipped}
-        for t, trail in maaend_fwlog.task_trails(maaend_dir, times).items():
-            if trail is not None:
-                ok, said = maaend_fwlog.task_verdict(t, trail)
-                trails[t] = {"ok": ok, "said": said}
+        table, why = maaend_fwlog.trail_table(getattr(eng.cfg, "maaend_dir", None), times, text)
+        trails.update(table)
+        if not why:
+            return
+        miss = _trail_miss_streak(eng, rec)
+        rec.raw["tasks_trail_miss"] = miss
+        log.info("%s：%s 在终末地自己的记录里都找不到（%s），连续第 %d 趟；%s", rec.run_id, "、".join(table), why,
+                 miss, "到了次数，按没证据算" if miss >= maaend_fwlog.TRAIL_MISS_FAIL else "这一趟先不判，写进日报")
     except Exception:
         log.warning("没读成终末地自己的任务记录（这一趟的四个任务只按日志里的行算）", exc_info=True)
+
+
+def _trail_miss_streak(eng, rec: RunRecord) -> int:
+    """1 + the tasks_trail_miss of the MaaEnd run booked last before this one (today's
+    and yesterday's ledger) among those that asked MaaFW's log about any of the four
+    tasks; 1 when that run found them or there is none. Read from the ledger, so a
+    record handled again (handle._append_ledger_once) does not count twice."""
+    try:
+        day = datetime.strptime(run_day(rec), "%Y-%m-%d")
+        rows = [*eng.state.read_ledger((day - timedelta(days=1)).strftime("%Y-%m-%d")),
+                *eng.state.read_ledger(run_day(rec))]
+        before = sorted((e for e in rows if e.get("script") == "MaaEnd" and e.get("run_id") != rec.run_id
+                         and (e.get("started") or "") < rec.started.isoformat()
+                         and (e.get("raw") or {}).get("tasks_trail")),
+                        key=lambda e: e.get("started") or "")
+    except Exception:  # no history: this run counts as the first in a row
+        log.info("读不到前几趟的账，这一趟按连续第 1 趟算", exc_info=True)
+        return 1
+    if not before:
+        return 1
+    return int((before[-1].get("raw") or {}).get("tasks_trail_miss") or 0) + 1
 
 
 def _state_relative(state_dir, p: Path) -> str:

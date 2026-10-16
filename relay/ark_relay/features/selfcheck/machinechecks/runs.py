@@ -31,6 +31,7 @@ when the line a check needs is not there, that is a FAIL quoting what is there.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from datetime import datetime, timedelta
@@ -42,6 +43,8 @@ from ark_relay.features.selfcheck import machinecheck as mc
 from ark_relay.features.verify import outcome
 from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ
+
+log = logging.getLogger("ark.runs")
 
 PASS, FAIL = mc.PASS, mc.FAIL
 LINE_CHARS = 160
@@ -465,54 +468,12 @@ def _c7(ctx):
 
 
 # The four tasks and how each is judged from MaaFW's own steps live in maaend_fwlog
-# (TRAIL_TASKS, TRAIL_RULES, task_verdict), shared with the ledger's 「没证据」 rule.
+# (TRAIL_TASKS, TRAIL_RULES, task_verdict, trail_table), shared with the ledger's
+# 「没证据」 rule, which reads the same verdicts booked in raw['tasks_trail'].
 SHOT_TASKS = maaend_fwlog.TRAIL_TASKS
-ABORT_STEP = maaend_fwlog.ABORT_STEP
 # Runs in a row with none of the four in MaaFW's log before that is a FAIL of its own
-# (as #7: MaaEnd clears its debug folder when it restarts).
-SHOT_MISS_FAIL = 2
-
-
-_LOG_LINE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\] (.+)$", re.M)
-# MaaEnd's own lines in a task's window that are not its reason: the task's start and
-# end, and the scene check's standing note (2026-10-08 10:34:14.623).
-_NOT_REASON = re.compile(r"^任务(开始|完成)[:：]|^正在检查画面")
-
-
-def _abort_said(text: str, t0: datetime, t1: datetime) -> "tuple[str, datetime | None]":
-    """MaaEnd's last own line inside the task's window t0..t1 (whole seconds, as
-    task_times gives them) that is not a task start / end, and its time: why it
-    stopped itself (2026-10-08 10:34:16.230 「UID显示不完整，…影响识别」);
-    ("", None) when there is none."""
-    said, when = "", None
-    for m in _LOG_LINE.finditer(text):
-        at = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
-        line = m.group(2).strip()
-        if t0 <= at <= t1 and line and not _NOT_REASON.search(line):
-            said, when = line, at
-    return said, when
-
-
-# MaaEnd's reasons said in plain words, where its own line carries English
-# (texts.plain): (part of its line, what it means).
-_ABORT_WORDS = (
-    ("UID显示不完整", "左上角的账号编号显示不全，它说开着隐藏账号编号的模组会挡住左上方的字，认不出画面"),
-)
-
-
-def _abort_why(text: str, t0: datetime, t1: datetime) -> str:
-    """", 原因…" for the evidence line: MaaEnd's own line, verbatim when it is plain
-    Chinese, else its _ABORT_WORDS meaning, else where to read it."""
-    from ark_relay.core import texts  # noqa: PLC0415
-    line, at = _abort_said(text, t0, t1)
-    if not line:
-        return ""
-    for part, meant in _ABORT_WORDS:
-        if part in line:
-            return f"，它记的原因：{meant}"
-    if not texts.plain(line):
-        return f"，它记的原因：「{line}」"
-    return f"，原因写在终末地自己记的 {at:%H:%M:%S} 那一行"
+# (as #7: MaaEnd clears its debug folder when it restarts). The ledger waits as long.
+SHOT_MISS_FAIL = maaend_fwlog.TRAIL_MISS_FAIL
 
 
 def _shot_note(state: Path, rel: str, ended) -> str:
@@ -541,45 +502,93 @@ def _c28(ctx):
     picture. Until 2026-10-16 this passed when the picture file existed, and the
     pictures of 10-08 showed the next task: 093302-赠送干员礼物.png the 装备制造 page,
     093322-装备制造.png 拜访好友, 103416-装备制造.png the bare desktop after MaaEnd
-    stopped itself (ABORT_STEP; verify ledger #28). The picture is still named, with how
-    late it was."""
+    stopped itself (maaend_fwlog.ABORT_STEP; verify ledger #28). The picture is still
+    named, with how late it was.
+
+    The verdicts are the ones booked with the record (raw['tasks_trail'],
+    alarm.records._mark_task_trails), so MaaFW's log is read once a run; a record
+    without them is read here the same way.
+
+    A task another MaaEnd run of the same day did (or found nothing to do in) does not
+    need a person: it is no FAIL, its line says which run did it, and the run's own
+    ledger row keeps the cause for the daily report (core.maaend_unverified). On
+    2026-10-08 MaaEnd stopped itself in 装备制造 at 10:34:16 (MaaEnd-06-31-06) after
+    the 09:33 run (MaaEnd-05-29-15) had crafted. Only runs booked before this one are
+    seen: a later run that does the task comes after this verdict."""
     if not _script(ctx, "MaaEnd") or not _unattended(ctx):
         return None
     text = ctx.get("log_text") or ""
     raw = ctx.get("raw") or {}
-    skipped = raw.get("maaend_tasks_skipped") or {}
-    times = cm.task_times(text)
-    done = [t for t in SHOT_TASKS if t in times and t not in skipped]
+    state_dir = ctx.get("state_dir")
+    if "tasks_trail" in raw:
+        table = raw.get("tasks_trail") or {}
+        misses = int(raw.get("tasks_trail_miss") or 0)
+    else:
+        times = cm.task_times(text)
+        skipped = raw.get("maaend_tasks_skipped") or {}
+        table, why = maaend_fwlog.trail_table(ctx.get("maaend_dir"),
+                                              {t: v for t, v in times.items() if t not in skipped}, text)
+        misses = int(_state_get(state_dir, "#28-miss") or 0) + 1 if why else 0
+        if table:
+            _state_set(state_dir, "#28-miss", misses)
+    done = [t for t in SHOT_TASKS if isinstance(table.get(t), dict)]
     if not done:
         return None
-    trails = maaend_fwlog.task_trails(ctx.get("maaend_dir"), {t: times[t] for t in done})
-    state_dir = ctx.get("state_dir")
-    if not any(trails.values()):
-        misses = int(_state_get(state_dir, "#28-miss") or 0) + 1
-        _state_set(state_dir, "#28-miss", misses)
+    if not any(table[t].get("found") for t in done):
         if misses >= SHOT_MISS_FAIL:
             return _r(FAIL, f"连续 {misses} 趟，{'、'.join(done)} 在终末地自己的记录里都找不到，做成没有看不出来")
         return None
-    _state_set(state_dir, "#28-miss", 0)
     files = raw.get("tasks_shot_files") or {}
     state = Path(state_dir or ".")
     good, bad = [], []
     for t in done:
-        t0, t1 = times[t]
-        trail = trails[t]
-        span = f"{t0:%H:%M:%S}→{t1:%H:%M:%S}"
-        if trail is None:
-            bad.append(f"{t}（{span}）在终末地自己的记录里找不到")
-            continue
-        ok, said = maaend_fwlog.task_verdict(t, trail)
-        if trail["nodes"].get(ABORT_STEP):
-            said += _abort_why(text, t0, t1)
-        line = f"{t}（{span}）{said}"
-        note = _shot_note(state, files[t], trail["ended"]) if files.get(t) else ""
-        (good if ok else bad).append(line + (f"；{note}" if note else ""))
+        e = table[t]
+        t0, t1 = datetime.fromisoformat(e["t0"]), datetime.fromisoformat(e["t1"])
+        line = f"{t}（{t0:%H:%M:%S}→{t1:%H:%M:%S}）"
+        if not e.get("found"):
+            line += "在终末地自己的记录里找不到"
+        else:
+            line += str(e.get("said") or "")
+            ended = datetime.fromisoformat(e["ended"]) if e.get("ended") else None
+            if note := (_shot_note(state, files[t], ended) if files.get(t) else ""):
+                line += f"；{note}"
+        if e.get("ok"):
+            good.append(line)
+        elif by := _done_elsewhere(ctx, t):
+            # The work got done that day: no FAIL, but a session looks at why this run
+            # did not do it (one 「自愈待查」 red item, techlog.self_heal).
+            good.append(f"{line}；{by}，不用人管")
+            rid = getattr(ctx.get("rec"), "run_id", "")
+            log.info("上机核对 #28：%s 的%s没做成，%s，不进群，只进日报", rid, t, by)
+            try:
+                from ark_relay.core import techlog  # noqa: PLC0415
+                techlog.self_heal(f"上机核对 #28 {rid} {t}", f"{line}；{by}", state_dir=state_dir)
+            except Exception:  # the verdict stands; the group hears the failure to write
+                log.warning("自愈待查的红项没写进技术日志：#28 %s %s", rid, t, exc_info=True)
+        else:
+            bad.append(line)
     if bad:
         return _r(FAIL, "；".join(bad) + (f"。做成的：{'；'.join(good)}" if good else ""))
     return _r(PASS, "；".join(good))
+
+
+def _done_elsewhere(ctx, task: str) -> str:
+    """「同一天 HH:MM 开始的那趟已经做成了」 when another MaaEnd run of the day booked before
+    this one did `task` or found nothing to do in it (its raw['tasks_trail'] verdict,
+    ctx['ledger']), else ''. A row booked before raw['tasks_trail'] backs nothing here."""
+    rec = ctx.get("rec")
+    me = getattr(rec, "run_id", None)
+    for row in ctx.get("ledger") or []:
+        if row.get("script") != "MaaEnd" or row.get("run_id") == me:
+            continue
+        e = ((row.get("raw") or {}).get("tasks_trail") or {}).get(task)
+        if isinstance(e, dict) and e.get("ok"):
+            try:
+                at = datetime.fromisoformat(row.get("started") or "").astimezone(SERVER_TZ)
+            except ValueError:
+                return "同一天另一趟已经做成了"
+            return f"同一天 {at:%H:%M} 开始的那趟已经做成了"
+    return ""
 
 
 _CLAIM = "确认领取奖励"

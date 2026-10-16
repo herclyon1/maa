@@ -42,12 +42,25 @@ def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> tuple[str, list]:
 
 
 # Why an item does not count, by game (core.day_unverified_items says how each is found).
+# MaaEnd's depends on the items: those judged from its own record say so
+# (_unverified_why, texts.maaend_unverified_why); this one is for the rest.
 _UNVERIFIED_WHY = {
-    "MaaEnd": "日志里没有游戏回显，终末地自己的记录里也看不到做成或没东西可做",
+    "MaaEnd": "日志里没有游戏回显",
     "MAA": "日志里没有「剿灭模式 x/y」这行进度",
     "OK-WW": "日志里没读到做完",
 }
 UNVERIFIED_KIND = "没证据"
+
+
+def _unverified_why(script: str, items: list, entries: list) -> str:
+    """_UNVERIFIED_WHY for `items`, one day's ledger `entries`. For MaaEnd, an item some
+    run of the day judged from MaaEnd's own record (raw['tasks_trail'], the four of
+    maaend_fwlog.TRAIL_TASKS) is said that way; the rest by their log line."""
+    if script != "MaaEnd":
+        return _UNVERIFIED_WHY.get(script, "没有游戏里的证据")
+    judged = {t for e in entries if e.get("script") == "MaaEnd"
+              for t, v in ((e.get("raw") or {}).get("tasks_trail") or {}).items() if isinstance(v, dict)}
+    return texts.maaend_unverified_why([t for t in items if t in judged], [t for t in items if t not in judged])
 
 
 def _push_unverified(eng, rec: RunRecord) -> None:
@@ -65,14 +78,15 @@ def _push_unverified(eng, rec: RunRecord) -> None:
         # Read from handle at call time: tests rebind handle._ship_evidence.
         from ark_relay.features.alarm.handle import _ship_evidence  # noqa: PLC0415
         day = run_day(rec)
-        items = dict(core.day_unverified_items(eng.state.read_ledger(day))).get(rec.script)
+        entries = eng.state.read_ledger(day)
+        items = dict(core.day_unverified_items(entries)).get(rec.script)
         if not items:
             return
         _, shift = unresolved.where(eng, rec)
         game = core._game(rec.script)
         page = _ship_evidence(eng, rec)
         head = texts.unverified_alarm_head(game, shift, "、".join(items),
-                                           _UNVERIFIED_WHY.get(rec.script, "没有游戏里的证据"), page)
+                                           _unverified_why(rec.script, items, entries), page)
         body = head + ("" if page else texts.EVIDENCE_NOT_SHIPPED + "\n")
         # Keyed by the items, not the record: a later run of the same game the same
         # day with the same items left unbacked is the same alarm, not a new one.

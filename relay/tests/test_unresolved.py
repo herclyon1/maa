@@ -444,7 +444,7 @@ title = texts.unverified_alarm("终末地", "早班", 1)
 check("终末地 1 项没证据：进群", alarms(e), [title])
 check("标题走群", route_of(title, alert=True), "group")
 check("头一行写出哪一项、为什么不算、证据包", last_body(e).splitlines()[0],
-      "终末地早班：赠送干员礼物 程序说做完了，但游戏里拿不出证据（日志里没有游戏回显，终末地自己的记录里也看不到做成或没东西可做），"
+      "终末地早班：赠送干员礼物 程序说做完了，但游戏里拿不出证据（日志里没有游戏回显），"
       f"不算完成，已交给我们这边去查（证据包 {PAGE}）")
 handle._handle(e, rec("MaaEnd", at(9, 40), ok=True, raw=dict(GIFT)))
 check("同一天同样这几项又没证据：不重推", len(alarms(e)), 1)

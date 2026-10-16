@@ -37,6 +37,12 @@ from ark_relay.core import texts  # noqa: E402
 from ark_relay.core.config import SERVER_TZ, RunRecord  # noqa: E402
 from ark_relay.features.selfcheck import machinecheck as mc  # noqa: E402
 from ark_relay.features.verify import collector_maaend, maaend_fwlog  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from ark_relay.core import ledger as core  # noqa: E402
+from ark_relay.core import ledger_rows  # noqa: E402
+from ark_relay.features.alarm import handle, pushes  # noqa: E402
+from ark_relay.features.selfcheck.machinechecks import runs  # noqa: E402
 
 FIX = Path(__file__).resolve().parent / "fixtures" / "maaend-task-trail"
 SHOT_TIMES = {k: v for k, v in json.loads((FIX / "shot-times.json").read_text(encoding="utf-8")).items()
@@ -94,19 +100,41 @@ def shots(state, prefix):
     return files
 
 
-def judge(log, end_dir, state=None, files=None):
+class Ledger:
+    """The ledger rows handle._book leaves for the next run: what
+    records._trail_miss_streak and #28's 「another run did it」 read."""
+    def __init__(self):
+        self.rows = []
+
+    def read_ledger(self, day):
+        return [r for r in self.rows if r["started"][:10] == day]
+
+
+def judge(log, end_dir, state=None, files=None, ledger=None, later=0, book=True):
+    """#28 on one fixture run, booked the way handle._book books it (records.
+    _mark_task_trails, which #28 then reads) unless `book` is False. `ledger` holds the
+    day's earlier rows and gets this run's row after; `later` moves the run's start by
+    that many minutes, so the same log can stand for runs in a row."""
     path = log if isinstance(log, Path) else FIX / log
     text = path.read_text(encoding="utf-8")
     raw = collector_maaend.parse_maaend_log(path)
     if files:
         raw["tasks_shot_files"] = files
     day, run = path.name.removesuffix(".log").split("_")
-    started = datetime.strptime(f"{day} {run[7:]}", "%Y-%m-%d %H-%M-%S").replace(tzinfo=SERVER_TZ)
-    rec = RunRecord(run_id=f"{day}/endfield/{run}", script="MaaEnd", user="endfield", started=started,
-                    finished=started + timedelta(hours=1), ok=True, failed_tasks=[], raw=raw)
+    started = (datetime.strptime(f"{day} {run[7:]}", "%Y-%m-%d %H-%M-%S").replace(tzinfo=SERVER_TZ)
+               + timedelta(minutes=later))
+    rec = RunRecord(run_id=f"{day}/endfield/{run}" + (f"+{later}" if later else ""), script="MaaEnd",
+                    user="endfield", started=started, finished=started + timedelta(hours=1), ok=True,
+                    failed_tasks=[], raw=raw, log_path=path)
+    ledger = ledger if ledger is not None else Ledger()
+    if book:
+        handle._mark_task_trails(SimpleNamespace(cfg=SimpleNamespace(maaend_dir=str(end_dir)), state=ledger), rec)
     n = N()
     got = dict(mc.judge(state or tmpdir(), "run", {"rec": rec, "raw": raw, "log_text": text,
-                                                   "maaend_dir": str(end_dir)}, notifier=n, now=NOW))
+                                                   "maaend_dir": str(end_dir),
+                                                   "ledger": ledger.read_ledger(day)}, notifier=n, now=NOW))
+    ledger.rows.append({"run_id": rec.run_id, "script": "MaaEnd", "started": started.isoformat(),
+                        "ok": True, "raw": raw})
     r = got.get("#28")
     pushed = [t for t, _, a in n.sent if a and t.startswith(texts.machinecheck_failed("#28", ""))]
     if r is not None:
@@ -133,6 +161,32 @@ no_abort = maaend("maafw-2026-10-08.log.gz", edit=lambda t: "".join(
 st, ev, pushed = judge("2026-10-08_MaaEnd-06-31-06.log", no_abort)
 check("no abort step: 装备制造 that only ran its entry is a FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
 check("evidence names the task and its window", ev.startswith("装备制造（10:34:11→10:34:16）终末地自己的记录里只走了"), True)
+
+print("\n[10-08：同一天前一趟已经做成了装备制造，06-31-06 这趟终末地自己停了 → 不进群，日报里留原因]")
+day08, fw08 = Ledger(), maaend("maafw-2026-10-08.log.gz")
+st, _, pushed = judge("2026-10-08_MaaEnd-05-29-15.log", fw08, ledger=day08)
+check("05-29-15 crafted (09:33): PASS", (st, pushed), ("PASS", []))
+heal_state = tmpdir() / "state"   # techlog writes next to it, in ../tech
+heal_state.mkdir()
+st, ev, pushed = judge("2026-10-08_MaaEnd-06-31-06.log", fw08, heal_state, ledger=day08)
+check("06-31-06's abort is healed by that run: no FAIL, nothing pushed", (st, pushed), ("PASS", []))
+from ark_relay.core import techlog  # noqa: E402
+reds = techlog.unhandled("\n".join(f.read_text(encoding="utf-8")
+                                   for f in techlog.tech_dir(heal_state).glob("*.md")))
+check("…but one 「自愈待查」 red item says a session has to look at why it stopped itself",
+      [t.split("：")[:2] for _, t in reds], [["自愈待查", "上机核对 #28 2026-10-08/endfield/MaaEnd-06-31-06 装备制造"]])
+check("…its line keeps MaaEnd's reason and names the run that did it",
+      "装备制造（10:34:11→10:34:16）终末地自己检查画面没过，把后面的任务全停了，这一项没做成，"
+      "它记的原因：左上角的账号编号显示不全" in ev and "；同一天 05:29 开始的那趟已经做成了，不用人管" in ev, True)
+row = day08.rows[-1]
+notes = ledger_rows._rows_for(row, datetime(2026, 10, 8, 10, 35, tzinfo=SERVER_TZ))[4]
+check("the daily report's row of 06-31-06 keeps the abort and its reason",
+      any(n.startswith(ledger_rows.UNVERIFIED + "：装备制造（终末地自己检查画面没过") and "账号编号显示不全" in n
+          for n in notes), True)
+check("…and no 「没证据」 item is left for the day: the earlier run backs it",
+      dict(core.day_unverified_items(day08.rows)).get("MaaEnd"), None)
+check("a run of the day without the booked verdicts backs nothing",
+      runs._done_elsewhere({"rec": None, "ledger": [dict(day08.rows[0], raw={})]}, "装备制造"), "")
 
 print("\n[10-08 05-29-15：四个任务都做成了；截图是结束后 5-6 秒拍的]")
 state = tmpdir()
@@ -178,16 +232,67 @@ st, ev, pushed = judge("2026-10-16_MaaEnd-09-53-33.log", failed_env)
 check("environment monitoring booked Failed by MaaFW: FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
 check("evidence says so", "环境监测（14:02:04→14:02:11）终末地自己记的结果是失败" in ev, True)
 
-print("\n[没有框架日志：第一趟不判，连续两趟判不过]")
-state = tmpdir()
-empty = tmpdir()
-st, _, pushed = judge("2026-10-13_MaaEnd-05-36-57.log", empty, state)
-check("first run without MaaFW's log: not judged, nothing pushed", (st, pushed), (None, []))
-st, ev, pushed = judge("2026-10-13_MaaEnd-05-36-57.log", empty, state)
-check("second in a row: FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
+print("\n[没有框架日志：第一趟不判（#28 和账本都不报），连续两趟判不过（两边都报）]")
+import logging  # noqa: E402
+
+
+class Levels(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.got = []
+
+    def emit(self, record):
+        self.got.append((record.levelno, record.getMessage()))
+
+
+FOUR = ["赠送干员礼物", "装备制造", "转交委托", "环境监测"]
+state, empty, book = tmpdir(), tmpdir(), Ledger()
+from ark_relay.features.alarm import records  # noqa: E402
+
+levels, hlog = Levels(), records.log
+old_level = hlog.level
+hlog.addHandler(levels)
+hlog.setLevel(logging.DEBUG)
+st, _, pushed = judge("2026-10-13_MaaEnd-05-36-57.log", empty, state, ledger=book)
+hlog.removeHandler(levels)
+hlog.setLevel(old_level)
+first = book.rows[-1]["raw"]
+check("first run without MaaFW's log: #28 not judged, nothing pushed", (st, pushed), (None, []))
+check("…booked as the first miss in a row", first.get("tasks_trail_miss"), 1)
+check("…the ledger leaves the four unjudged, not unbacked",
+      (ledger_rows.maaend_unverified(first), ledger_rows.maaend_unjudged(first)), ([], FOUR))
+check("…so the day has no 「没证据」 item to push (pushes._push_unverified)",
+      dict(core.day_unverified_items(book.rows)).get("MaaEnd"), None)
+check("…said at INFO, nothing at WARNING or above (errwatch would push that to the group)",
+      ([m for lv, m in levels.got if lv >= logging.WARNING],
+       any(lv == logging.INFO and "连续第 1 趟" in m and "先不判" in m for lv, m in levels.got)), ([], True))
+notes = ledger_rows._rows_for(book.rows[-1], datetime(2026, 10, 13, 10, 0, tzinfo=SERVER_TZ))[4]
+check("…and the daily report says the record was not read, and that the four are not counted done",
+      (any(n.startswith("终末地自己的记录这一趟没读到（连续第 1 趟），赠送干员礼物、装备制造、转交委托、环境监测 先不判")
+           for n in notes), any("赠送干员礼物" in n for n in notes if n.startswith("做了"))), (True, False))
+check("…in plain Chinese", texts.plain(" ".join(notes)), [])
+st, ev, pushed = judge("2026-10-13_MaaEnd-05-36-57.log", empty, state, ledger=book, later=60)
+second = book.rows[-1]["raw"]
+check("second in a row: #28 FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
 check("…saying the four cannot be seen", ev.startswith("连续 2 趟"), True)
-st, _, _ = judge("2026-10-13_MaaEnd-05-36-57.log", maaend("maafw-2026-10-13.log.gz"), state)
-check("with the log again: judged again", st, "PASS")
+check("…and the ledger now calls them unbacked, so 「没证据」 goes to the group too",
+      (second.get("tasks_trail_miss"), ledger_rows.maaend_unverified(second),
+       dict(core.day_unverified_items(book.rows[-1:])).get("MaaEnd")), (2, FOUR, FOUR))
+st, _, _ = judge("2026-10-13_MaaEnd-05-36-57.log", maaend("maafw-2026-10-13.log.gz"), state, ledger=book,
+                 later=120)
+check("with the log again: judged again, the streak starts over",
+      (st, book.rows[-1]["raw"].get("tasks_trail_miss")), ("PASS", 0))
+st, _, pushed = judge("2026-10-13_MaaEnd-05-36-57.log", empty, state, ledger=book, later=180)
+check("one miss after that: not judged again", (st, pushed, book.rows[-1]["raw"].get("tasks_trail_miss")),
+      (None, [], 1))
+# A record #28 sees without the booked verdicts reads MaaFW's log itself, counting
+# misses in its own state.
+state = tmpdir()
+st, _, _ = judge("2026-10-13_MaaEnd-05-36-57.log", empty, state, book=False)
+st2, _, pushed = judge("2026-10-13_MaaEnd-05-36-57.log", empty, state, book=False)
+check("not booked: the same wait, read by #28 itself", (st, st2, len(pushed)), (None, "FAIL", 1))
+st, _, _ = judge("2026-10-13_MaaEnd-05-36-57.log", maaend("maafw-2026-10-13.log.gz"), state, book=False)
+check("…and judged from the log when it is there", st, "PASS")
 
 print("\n[读法：两个进程各记一遍的事件只算一次；子任务里的步骤算在发起它的任务上]")
 end = maaend("maafw-2026-10-08.log.gz")
@@ -223,11 +328,30 @@ check("a gift run with no end event stops at its window: 装备制造's steps ar
       (gift["ended"], gift["nodes"].get("GiftOperatorConfirmGift"), "GearAssemblyClickProduceBtn" in gift["nodes"]),
       (None, 1, False))
 
+print("\n[StopTask 这种节点照样记一步、任务记成功（10-16 13:58:58 信用点商店）]")
+# The gift task's all-full end, GiftOperatorGiftFullFail, is a StopTask node. Whether
+# such a node is logged decides whether that end can be read at all: the real 10-16
+# line of another StopTask node (CreditShoppingBuyItemStop, CreditShopping/Flow/
+# BuyItem.json) shows it is, and that MaaFW books its task Succeeded. MaaFramework's
+# Actuator::stop_task returns success; PipelineTask::run_next notifies the node before
+# its loop checks need_to_stop.
+c0, c1 = datetime(2026, 10, 16, 13, 58, 50), datetime(2026, 10, 16, 13, 58, 59)
+events = maaend_fwlog.task_events(maaend(*ROT), c0, c1)
+stop = [(w, d) for w, msg, d in events if msg == "Node.PipelineNode.Succeeded"
+        and (d.get("node_details") or {}).get("name") == "CreditShoppingBuyItemStop"]
+check("the StopTask node has its Node.PipelineNode.Succeeded line, action StopTask",
+      [(f"{w:%H:%M:%S.%f}"[:12], (d.get("action_details") or {}).get("action")) for w, d in stop][:1],
+      [("13:58:58.769", "StopTask")])
+check("…and its task (CreditShoppingMain) is booked Succeeded at that instant",
+      [f"{w:%H:%M:%S.%f}"[:12] for w, msg, d in events
+       if msg == "Tasker.Task.Succeeded" and d.get("entry") == "CreditShoppingMain"][:1], ["13:58:58.769"])
+
 # ---- The 「nothing to do」 ends, which no run on the machine has hit yet --------------
 # GiftOperatorGiftFull / GiftOperatorGiftFullFail, GearAssemblyCheckMaterialEnough and
 # GearAssemblyCheckFailedAndFinish have no Node.PipelineNode.Succeeded line in any
 # maafw*.log of the corpus pull 2026-10-13 15:26 (D/ark/maaend/debug and the evidence
-# bundles of 09-14..10-13) nor in the 10-16 bundle. So the trails below are synthetic:
+# bundles of 09-14..10-13) nor in the 10-16 bundle: no run hit them. A StopTask node
+# is logged when hit (the check just above). So the trails below are synthetic:
 # the real 10-13 run with its gift / gear steps replaced by the steps MaaEnd's own
 # pipeline takes, each one in its predecessor's "next" list as written in
 # assets/resource/pipeline/GearAssembly/GearAssembly.json and
@@ -337,8 +461,8 @@ st, ev, pushed = run_1013(splice(GIFT_AFTER_UI, steps))
 check("all full: PASS (normal end), nothing pushed", (st, pushed), ("PASS", []))
 check("evidence reads as the nothing-to-do end",
       "赠送干员礼物（09:38:17→09:41:36）连换 5 次干员，礼物都已送满，算没东西可做" in ev, True)
-# GiftFullFail stops the task with StopTask. Whether MaaFW then books the task
-# Succeeded or Failed is in no log we hold; the end step is read either way.
+# GiftFullFail stops the task with StopTask, which MaaFW books Succeeded (the 10-16
+# CreditShoppingBuyItemStop check above); the end step is read whatever is booked.
 booked_failed = splice(GIFT_AFTER_UI, steps)
 st, ev, pushed = run_1013(lambda text: booked_failed(text).replace(
     '[msg=Tasker.Task.Succeeded] [details={"entry":"GiftOperatorMain"',
@@ -346,17 +470,15 @@ st, ev, pushed = run_1013(lambda text: booked_failed(text).replace(
 check("…the same when MaaFW books that stop as Failed", (st, "礼物都已送满，算没东西可做" in ev), ("PASS", True))
 
 print("\n[送礼：只碰到一次送满、后面什么也没有 → 不算没东西可做]")
+# Not a normal end: GiftFull's only next is GiftFullLeave, and when nothing more is
+# logged MaaFW did not get on (on_error, the task booked Failed); an all-full run logs
+# GiftFullFail, as a StopTask node is logged (10-16 13:58:58.769 above).
 steps, _ = chain(30.0, FULL)
 st, ev, pushed = run_1013(splice(GIFT_AFTER_UI, steps))
 check("GiftFull alone is not an end (its next is the retry): FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
 
 # ---- The ledger's 「没证据」 reads the same MaaFW judgment, not the picture ------------
 print("\n[账本：四个任务有没有证据看终末地自己的记录，桌面截图不算]")
-from types import SimpleNamespace  # noqa: E402
-
-from ark_relay.core import ledger_rows  # noqa: E402
-from ark_relay.features.alarm import handle  # noqa: E402
-
 abort_log = FIX / "2026-10-08_MaaEnd-06-31-06.log"
 araw = collector_maaend.parse_maaend_log(abort_log)
 check("the log alone has a line inside 装备制造 (MaaEnd's scene-check note)",
@@ -380,9 +502,31 @@ check("booked with the trail rule and nothing in MaaFW: a picture alone backs no
 no_dir = RunRecord(run_id="x", script="MaaEnd", user="endfield", started=started,
                    finished=started + timedelta(minutes=3), ok=True, failed_tasks=[],
                    raw={"tasks_done": ["赠送干员礼物"]}, log_path=abort_log)
-handle._mark_task_trails(SimpleNamespace(cfg=SimpleNamespace(maaend_dir=None)), no_dir)
-check("no MaaEnd folder configured: the record still carries the (empty) trail table",
-      no_dir.raw.get("tasks_trail"), {})
+handle._mark_task_trails(SimpleNamespace(cfg=SimpleNamespace(maaend_dir=None), state=Ledger()), no_dir)
+check("no MaaEnd folder configured: the gift is booked as not found, a first miss, so unjudged",
+      ({t: v.get("found") for t, v in no_dir.raw.get("tasks_trail").items()}, no_dir.raw.get("tasks_trail_miss"),
+       ledger_rows.maaend_unverified(no_dir.raw), ledger_rows.maaend_unjudged(no_dir.raw)),
+      ({"赠送干员礼物": False}, 1, [], ["赠送干员礼物"]))
+
+print("\n[「没证据」的原因按项写：四个任务看终末地自己的记录，其余看日志里的回显]")
+judged = [{"script": "MaaEnd", "raw": {"tasks_trail": {"装备制造": {"found": True, "ok": False}}}},
+          {"script": "MaaEnd", "raw": {"tasks_done": ["赠送干员礼物"]}}]
+
+
+def why(script, items):
+    return pushes._unverified_why(script, items, judged)
+
+
+check("only tasks judged by their log line: that, MaaEnd's own record not named",
+      (why("MaaEnd", ["基建任务"]), why("MaaEnd", ["赠送干员礼物"])), ("日志里没有游戏回显", "日志里没有游戏回显"))
+check("only tasks judged from MaaEnd's own record: that", why("MaaEnd", ["装备制造"]),
+      "终末地自己的记录里看不到做成或没东西可做")
+check("both: each part names its tasks",
+      why("MaaEnd", ["装备制造", "基建任务"]),
+      "装备制造 在终末地自己的记录里看不到做成或没东西可做，基建任务 的日志里没有游戏回显")
+check("other games unchanged", why("MAA", ["剿灭"]), "日志里没有「剿灭模式 x/y」这行进度")
+check("all in plain Chinese",
+      texts.plain(" ".join(why("MaaEnd", x) for x in (["基建任务"], ["装备制造"], ["装备制造", "基建任务"]))), [])
 
 print()
 if fails:

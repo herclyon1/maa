@@ -10,7 +10,7 @@ from ark_relay.core import texts
 from ark_relay.core.config import RunRecord, SERVER_TZ, USER_TZ, both_clocks
 from ark_relay.core.ledger_rows import (
     UNVERIFIED_STEP, _END_WRAPUP, _LABELS, _maaend_listed, _row, _rows_for, _with_causes,
-    maaend_unverified,
+    maaend_unjudged, maaend_unverified,
 )
 from ark_relay.core.names import GAME_ZH
 
@@ -260,7 +260,7 @@ def footnote_tasks(entries: list[dict]) -> list[str]:
         if e.get("script") != "MaaEnd":
             continue
         raw = e.get("raw") or {}
-        unverified = maaend_unverified(raw)
+        unverified = {*maaend_unverified(raw), *maaend_unjudged(raw)}
         # The same list the run's row counts (ledger_rows._block_maaend).
         done = [t for t in _maaend_listed(raw) if t not in unverified]
         # The longest list of the day, whether or not that run was marked failed.
@@ -487,7 +487,12 @@ def day_unverified_items(entries: list[dict]) -> list[tuple[str, list[str]]]:
         script = e.get("script")
         if script == "MaaEnd":
             unv = maaend_unverified(raw)
+            # Left unjudged this run (MaaFW's log held none of the four, not yet
+            # TRAIL_MISS_FAIL runs in a row): neither backs nor lacks evidence.
+            unj = set(maaend_unjudged(raw))
             for t in _maaend_listed(raw):
+                if t in unj:
+                    continue
                 end_listed[t] = None
                 if t not in unv:
                     end_ok.add(t)
