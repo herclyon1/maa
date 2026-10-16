@@ -926,7 +926,13 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
     for label, pics in blocked.items():
         out.append(Check(texts.collect_blocked_check(label), True, "出错截图：" + "、".join(pics[:3]),
                          kind=RETRY))
+    # Only a finished run drops those pictures from the count below (they would read
+    # "recovered by retry"). A run that did not finish keeps every picture in its failed
+    # stuck-UI line - the reader needs the names to see where it stopped - while the
+    # route stays booked once, by the RETRY check above, and the run as unfinished by
+    # the run-finished check.
     used = {n for pics in blocked.values() for n in pics}
+    all_names = on_error_names
     on_error_names = [n for n in on_error_names if n not in used]
 
     stuck = [n for n in on_error_names if _MAAEND_STUCK.search(n)]
@@ -934,10 +940,10 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
         out.append(Check("界面没卡住", False,
                          f"万能跳转失败 {len(stuck)} 次，存了截图："
                          + "、".join(stuck[:3])))
-    elif on_error_names and not done:
+    elif all_names and not done:
         out.append(Check("界面没卡住", False,
-                         f"有 {len(on_error_names)} 张出错截图："
-                         + "、".join(on_error_names[:3])))
+                         f"有 {len(all_names)} 张出错截图："
+                         + "、".join(all_names[:3])))
     elif on_error_names:
         out.append(Check(f"出错截图 {len(on_error_names)} 张（已重试恢复）", True))
     else:

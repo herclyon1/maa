@@ -39,6 +39,7 @@ __all__ = [
     "blocked_routes",
     "claim_failures",
     "claim_lines",
+    "in_window",
     "maaend_unreachable",
     "maafw_grep",
     "obstacle_shots",
@@ -224,6 +225,17 @@ def shot_time(name: str) -> "datetime | None":
         return None
 
 
+def in_window(t: datetime, start: datetime, end: "datetime | None") -> bool:
+    """Whether a picture stamped `t` belongs to the window [start, end); end None = open.
+
+    The one rule for every part that hands a relay-device picture to a route or a run
+    (blocked_routes, collect_retry.retry_blocked, machine check #29). Stamps are cut to
+    the second, so a picture in the same second as the next route's line goes to that
+    next route only; with mixed rules it was credited to both routes, or to the run's
+    gathering window but to none of its routes."""
+    return start <= t and (end is None or t < end)
+
+
 def obstacle_shots(maaend_dir) -> list[str]:
     """The relay-device pictures (OBSTACLE_SHOT) in MaaEnd's on_error folder, by name."""
     if not maaend_dir:
@@ -272,7 +284,7 @@ def blocked_routes(text: str, shot_names: list[str]) -> dict[str, list[str]]:
         return out
     for label, start, end in route_windows(text):
         for t, n in shots:
-            if start <= t < end:
+            if in_window(t, start, end):
                 out.setdefault(label, []).append(n)
     return out
 

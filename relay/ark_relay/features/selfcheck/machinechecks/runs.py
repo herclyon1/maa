@@ -624,7 +624,7 @@ def _c29(ctx):
         return None
     t0, t1 = span
     pics = [n for n in cm.obstacle_shots(ctx.get("maaend_dir"))
-            if (t := cm.shot_time(n)) is not None and t0 <= t <= t1]
+            if (t := cm.shot_time(n)) is not None and cm.in_window(t, t0, t1)]
     if not pics:
         return None
     blocked = cm.blocked_routes(text, pics)

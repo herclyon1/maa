@@ -140,7 +140,7 @@ def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: lis
     out: dict[str, list[str]] = {}
     for rid, start, end in spans:
         for t, n in shots:
-            if start <= t and (end is None or t <= end):
+            if collector_maaend.in_window(t, start, end):
                 out.setdefault(rid, []).append(n)
     return out
 

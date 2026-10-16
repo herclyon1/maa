@@ -208,12 +208,12 @@ REC = RunRecord(run_id="2026-10-12/endfield/MaaEnd-06-58-38", script="MaaEnd", u
                 finished=datetime(2026, 10, 12, 11, 36, 56, tzinfo=SERVER_TZ), ok=True, failed_tasks=[], raw={})
 
 
-def c29(checks, raw=None):
+def c29(checks, raw=None, pics=(P1012A, P1012)):
     n = types.SimpleNamespace(sent=[])
     n.send = lambda t, b="", alert=False, **kw: n.sent.append((t, alert)) or []
     n.send_group = lambda t, b="": n.send(t, b, alert=True)
     r = dict(mc.judge(tmpdir(), "run", {"rec": REC, "raw": raw or {}, "log_text": log("MaaEnd-06-58-38.log"),
-                                        "maaend_dir": str(maaend_dir(P1012A, P1012)),
+                                        "maaend_dir": str(maaend_dir(*pics)),
                                         "outcome": None if checks is None else {"checks": checks}},
                       notifier=n, now=datetime(2026, 10, 12, 21, 0, tzinfo=SERVER_TZ))).get("#29")
     if r is not None:
@@ -234,6 +234,37 @@ st, ev = c29(None, {"maaend_collect_total": 17, "maaend_collect_blocked": [R10]}
 check("失败的那趟（没做结果核对）：日报记了就 PASS", st, "PASS")
 st, ev = c29(None, {"maaend_collect_total": 17})
 check("失败的那趟：日报也没记：FAIL", st, "FAIL")
+
+print("\n[边界：截图和下一条路线同一秒 → 三处都按 [开始, 结束) 只算给下一条]")
+# Stamps are cut to the second. 10-12 10:45:39 is 路线11's line in the history log
+# (10:45:39.533) and both AutoCollectRoute10End (.489) and Route11Start (.717) in
+# maafw.log; 11:36:55 is 06-58-38's 「任务完成: 🧺自动采集」. A picture in such a second
+# was credited to route 11 by the history log, to routes 10 and 11 by the retry, and to
+# the run but none of its routes by #29 (FAIL 「认不出是哪条路线」).
+EDGE = PIC.format("2026.10.12-10.45.39.600")
+R11 = "路线11：重黯石"
+check("in_window 是半开区间", [cm.in_window(datetime(2026, 1, 1, 0, 0, s), datetime(2026, 1, 1, 0, 0, 1),
+                                            datetime(2026, 1, 1, 0, 0, 2)) for s in (0, 1, 2)]
+      if hasattr(cm, "in_window") else None, [False, True, False])
+check("日志：同一秒的截图算路线11", cm.blocked_routes(log("MaaEnd-06-04-00.log"), [EDGE]), {R11: [EDGE]})
+check("补跑：同一秒的截图只算路线11，不算路线10",
+      cr.retry_blocked(fw, ["AutoCollectRoute10", "AutoCollectRoute11"], "10:40:00", [EDGE]),
+      {"AutoCollectRoute11": [EDGE]})
+END_EDGE = PIC.format("2026.10.12-11.36.55.990")
+check("日志：和「任务完成: 自动采集」同一秒的截图不算任何路线",
+      cm.blocked_routes(log("MaaEnd-06-58-38.log"), [END_EDGE]), {})
+st, ev = c29(outcome.maaend_checks(log("MaaEnd-06-58-38.log"), [END_EDGE]),
+             {"maaend_collect_total": 17}, pics=(END_EDGE,))
+check("#29：这张也不算这一趟的（不报「认不出是哪条路线」）", st, None)
+
+print("\n[没跑完的那趟：「界面没卡住」照旧写出那张截图的名字，路线10 只记一次]")
+# 06-04-00 as it is: no 「自动执行任务完成」 line (AUTO-MAS re-ran it).
+checks = outcome.maaend_checks(log("MaaEnd-06-04-00.log"), [P1012A])
+stuck = [c for c in checks if c.label == "界面没卡住"]
+check("「MaaEnd 跑完」判没跑完", [c.ok for c in checks if c.label == "MaaEnd 跑完"], [False])
+check("「界面没卡住」判失败、写了截图名", [(c.ok, P1012A in c.detail) for c in stuck], [(False, True)])
+check("路线10 还是只交给补跑一次", [c.label for c in checks if c.kind == outcome.RETRY],
+      [texts.collect_blocked_check(R10)])
 
 print("\nall checks passed" if not fails else f"\nFAILED: {len(fails)}")
 sys.exit(1 if fails else 0)
