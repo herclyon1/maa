@@ -19,7 +19,7 @@ make-up is only for a failure of today, so the no-make-up checks mean something)
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -42,7 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ark_relay.core import collector, texts                     # noqa: E402
 from ark_relay.core import engine as eng_mod                    # noqa: E402
-from ark_relay.core.config import SERVER_TZ, Config             # noqa: E402
+from ark_relay.core.config import SERVER_TZ, Config, RunRecord  # noqa: E402
 from ark_relay.core.ledger import State                         # noqa: E402
 from ark_relay.features.alarm import handle                     # noqa: E402
 from ark_relay.features.makeup import collect_retry, makeup, marker  # noqa: E402
@@ -228,6 +228,59 @@ for r in records():
 e._flush_pending()
 check("one ⚠️ about the round, no ❌", [t for t, _ in alarms(e)], [texts.ROUND_INCOMPLETE])
 check("held failure healed, not pushed", (dict(e._pending), dict(e._recovered)), ({}, {}))
+
+def scheduled(hh: int, mm: int, ok: bool) -> RunRecord:
+    """A shift's MaaEnd round (no hand_started: its own task, not c6d40887)."""
+    t0 = datetime.now(tz=SERVER_TZ).replace(hour=hh, minute=mm, second=0, microsecond=0)
+    return RunRecord(run_id=f"{TODAY}/endfield/MaaEnd-{hh:02d}-{mm:02d}-00", script="MaaEnd", user="endfield",
+                     started=t0, finished=t0 + timedelta(minutes=20), ok=ok,
+                     failed_tasks=[] if ok else ["协议空间"], raw={})
+
+
+def hand_alarms(e):
+    return [(t, b) for t, b in alarms(e) if b.startswith(texts.HAND_STARTED_NOTE)]
+
+
+for why in ("the shift's MaaEnd is queued at the flush", "the group robot is down at the flush"):
+    for ok in (False, True):
+        print(f"\n[the person's last failure still held ({why}); then a shift's MaaEnd "
+              f"{'success' if ok else 'failure'} lands -> the person's ❌ goes out, not replaced or healed]")
+        e = build()
+        running = set()
+        e._script_running = lambda name: name in running
+        if why.startswith("the shift"):
+            running.add("MaaEnd")
+        for r in records("09-21-28", "09-23-36"):
+            handle._handle(e, r)
+        e.notifier.down = why.startswith("the group")
+        e._flush_pending()
+        check("held over the flush", (held_id(e), alarms(e)), (SECOND, []))
+        e.notifier.down = False
+        s = scheduled(14, 40, ok)
+        handle._handle(e, s)
+        got = hand_alarms(e)
+        check("the person's ❌ went out at once, about 09-23-36's failed tasks",
+              ([t for t, _ in got], all(w in (got[0][1] if got else "") for w in ("转交委托", "选剑演武", "基质刷取"))),
+              ([texts.failed("MaaEnd")], True))
+        check("not booked as healed by the shift's run", held_id(e, "_recovered"), None)
+        check("the shift's record is on its own path", held_id(e), None if ok else s.run_id)
+        running.clear()
+        for _ in range(3):
+            e._flush_pending()
+            makeup.maybe_run(e)
+        check("still exactly one alarm about the person's task", len(hand_alarms(e)), 1)
+
+print("\n[the robot is still down when the shift's record lands -> the person's ❌ is queued, sent next tick]")
+e = build()
+for r in records("09-21-28", "09-23-36"):
+    handle._handle(e, r)
+e.notifier.down = True
+e._flush_pending()
+handle._handle(e, scheduled(14, 40, False))
+check("queued to be sent, not lost", [x[2] for x in e._unsent_unresolved], [SECOND])
+e.notifier.down = False
+e._flush_pending()
+check("sent once the robot is back", len(hand_alarms(e)), 1)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 _mc.CHECKS.update(_mc_real)

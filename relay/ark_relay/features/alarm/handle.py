@@ -626,6 +626,31 @@ def _hold_hand_started(eng, rec: RunRecord, key: tuple) -> bool:
     return True
 
 
+def _release_hand_started(eng, rec: RunRecord, key: tuple) -> None:
+    """Before a record that is not a person's run is booked at `key`: a hand-started
+    task's last failure still held there (_hold_hand_started; its flush waited while
+    the script was running or queued, or while the robot was down) is pushed now.
+
+    That task is over - AUTO-MAS lands all of a task's records together - and the
+    paths below would otherwise replace it (_hold_for_retry, the update-restart
+    hold) or move it to the self-heal path (_handle_success -> _retry_healed) on the
+    strength of a run that is not its task: its alarm would never go out. The other
+    way round, a person's record landing on a held shift failure, is
+    _hold_hand_started's False."""
+    held = eng._pending.get(key)
+    if held is not None and held is not rec and (held.raw or {}).get("hand_started"):
+        title, body = _failure_alarm(eng, held, texts.HAND_STARTED_NOTE, held=True)
+        # Pushed (or queued to disk by _push_now when the robot is down) before it
+        # leaves the queue: a crash in between must not lose it.
+        errs = _push_now(eng, run_day(held), "手动", held.run_id, title, body)
+        eng._pending.pop(key, None)
+        eng._persist_pending()
+        eng.log_tails.pop(held.run_id, None)
+        log.info("🖐 %s 压着的 %s 是有人在 AUTO-MAS 上手动开的（任务 %s），%s 这趟不是它的，先把它报了：%s",
+                 rec.script, held.run_id, held.raw.get("hand_started"), rec.run_id,
+                 "没推出去，下一轮再推" if errs else "已报群")
+
+
 def _failure_alarm(eng, rec: RunRecord, note: str, held: bool = False) -> tuple[str, str]:
     """(title, body) of the final-failure alarm about `rec` when it is pushed now
     rather than held (no make-up is run for it): the usual failure text with `note`
@@ -720,6 +745,7 @@ def _book(eng, rec: RunRecord) -> None:
             log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的（任务 %s）：%s，%s", rec.script, rec.run_id,
                      rec.raw.get("hand_started"), title, "没推出去，下一轮再推" if errs else "已报群")
         return
+    _release_hand_started(eng, rec, key)
 
     if rec.ok:
         _handle_success(eng, rec, key)
