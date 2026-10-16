@@ -3,13 +3,20 @@
 A whole fake HOME is built in a temp dir: a repo with a bare origin and every kind of worktree
 (merged / fresh / dirty / unmerged / in use / named by a live workflow / named by a tool /
 locked / standing / outside the session zone / gone), Claude session tmp dirs (dead, running,
-continued by a running one, fresh, reused by a hook, owning a live workflow journal), Xcode
+continued by a running one, fresh, reused by a hook, owning a live workflow journal; inside a
+running session's scratchpad: idle / fresh / 5 h idle / open / worktree subdirs, subdirs named by a
+running workflow's script or an agent's prompt, and a big idle file), Xcode
 DerivedData, Gradle and swiftly versions, the one-off build outputs and the caches. The tool
 runs as a subprocess against it, with stub `swiftly` / `uv` / `brew` / `go` / `xcrun` on PATH
 that only record their arguments. Then: the dry run removes nothing and logs nothing, --apply
 removes exactly the rule matches and logs one line each, the floor tier adds its rules, and
 guard() refuses his files, CoreDevice, simulators, symlinks and - with the real lsof - a
 directory a live process sits in.
+
+Clock: the scratchpad rule counts ctime too (tar / cp -p / rsync -a keep old mtimes, never
+ctime), and os.utime cannot set ctime back. So once built, every fixture's mtime is moved SHIFT
+into the future and the tool runs with DISK_TIDY_NOW = real now + SHIFT: relative ages stay as
+built, and every ctime reads SHIFT old. The "unpacked just now" case runs at the real clock.
 """
 import importlib.util
 import json
@@ -50,6 +57,7 @@ OPEN = BASE / "open-paths.txt"
 PROCS = BASE / "procs.txt"
 GIT_ENV = dict(os.environ, HOME=str(HOME), GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
                GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t", GIT_CONFIG_NOSYSTEM="1")
+SHIFT = 48 * 3600
 U = {k: f"{n}0000000-0000-4000-8000-00000000000{n}" for n, k in enumerate(
     ["dead", "live", "pred", "fresh", "reused", "journal", "transcript", "cwd"], start=1)}
 
@@ -68,13 +76,25 @@ def write(p, text="x"):
     return p
 
 
-def age(path, hours):
-    """Set the mtime of path and everything below it to `hours` ago."""
-    t = time.time() - hours * 3600
+def age(path, hours, now=None):
+    """Set the mtime of path and everything below it to `hours` before now (default: the real
+    clock, which shift_all() later moves with everything else)."""
+    t = (now or time.time()) - hours * 3600
     for dirpath, dirnames, filenames in os.walk(path, topdown=False):
         for n in filenames + dirnames:
             os.utime(os.path.join(dirpath, n), (t, t), follow_symlinks=False)
     os.utime(path, (t, t), follow_symlinks=False)
+
+
+def shift_all():
+    """Move every mtime under BASE SHIFT into the future; returns the simulated clock."""
+    now = time.time()
+    for dirpath, dirnames, filenames in os.walk(BASE, topdown=False):
+        for n in filenames + dirnames:
+            p = os.path.join(dirpath, n)
+            st = os.lstat(p)
+            os.utime(p, (st.st_atime, st.st_mtime + SHIFT), follow_symlinks=False)
+    return now + SHIFT
 
 
 REPO = HOME / "Claude" / "maa-automation"
@@ -132,8 +152,32 @@ def build():
     write(HOME / f".claude/projects/-Users-x/{U['live']}.jsonl",
           f'{{"m": "read the full transcript at: {HOME}/.claude/projects/-Users-x/{U["pred"]}.jsonl\\nContinue"}}\n')
     write(HOME / f".claude/projects/-Users-x/{U['transcript']}.jsonl", "{}\n")
-    write(HOME / f".claude/projects/-Users-x/{U['journal']}/subagents/workflows/wf_1/journal.jsonl",
-          '{"prompt": "work in .claude/worktrees/wt-journal now"}\n')
+    # Workflows, in the real layout (10-16 review: 81 journals on this Mac hold only type / key /
+    # agentId / label / phase / result, never a prompt). A run's script lives under whichever
+    # project dir the session started the workflow from; its agents' prompts open their
+    # agent-*.jsonl. wf_1 is running, wf_2 is in a 5 h phase (journal idle, agents writing),
+    # wf_0 finished 3 days ago and its script names sp-old.
+    runs = HOME / f".claude/projects/-Users-x/{U['journal']}/subagents/workflows"
+    scripts = HOME / f".claude/projects/-Users-y/{U['journal']}/workflows/scripts"
+    spx = f"/tmp/claude-501/-Users-x/{U['live']}/scratchpad"
+    for run in ("wf_0", "wf_1", "wf_2"):
+        write(runs / run / "journal.jsonl",
+              '{"type": "started", "key": "fix", "agentId": "a1", "label": "fix", "phase": "Fix"}\n'
+              '{"type": "result", "key": "fix", "agentId": "a1", "result": "done"}\n')
+    write(scripts / "fix-wf_1.js", f'const TREE = ".claude/worktrees/wt-journal";\n'
+                                   f'const IN = "{spx}/sp-journal/";\n')
+    write(runs / "wf_1/agent-a1.jsonl",
+          '{"parentUuid": null, "type": "user", "message": {"content": "[harness] request"}}\n'
+          f'{{"parentUuid": "p", "type": "user", "message": {{"content": "read {spx}/sp-prompt/in.txt"}}}}\n'
+          '{"parentUuid": "q", "type": "attachment", "attachment": {}}\n'
+          f'{{"parentUuid": "r", "type": "assistant", "message": {{"content": "ls {spx}/sp-old"}}}}\n')
+    write(scripts / "long-wf_2.js", f'const IN = "{spx}/sp-longrun";\n')
+    write(runs / "wf_2/agent-b1.jsonl", '{"parentUuid": null, "type": "user", "message": {}}\n')
+    write(scripts / "done-wf_0.js", f'const IN = "{spx}/sp-old";\n')
+    write(runs / "wf_0/agent-c1.jsonl", f'{{"parentUuid": null, "type": "user", "message": "{spx}/sp-old"}}\n')
+    # A plain subagent (no workflow) that is still writing its transcript.
+    write(HOME / f".claude/projects/-Users-x/{U['live']}/subagents/agent-d1.jsonl",
+          f'{{"parentUuid": null, "type": "user", "message": {{"content": "use {spx}/sp-plain"}}}}\n')
     write(HOME / ".claude/hooks/h.py",
           f'SRC = "/private/tmp/claude-501/-Users-x/{U["reused"]}/scratchpad/r-1.txt"\n'
           f'TREE = "{WT / "wt-named"}"\n')
@@ -170,6 +214,8 @@ def build():
     for sid in U.values():
         if sid != U["fresh"]:
             age(proj / sid, 72)
+    age(runs / "wf_0", 72)
+    age(runs / "wf_2/journal.jsonl", 5)
     for p in (WT / n for n in ("wt-old", "wt-dirty", "wt-cwd", "wt-journal", "wt-named", "wt-locked",
                                "wt-unmerged")):
         age_wt(p, 72)
@@ -178,6 +224,27 @@ def build():
               "Money/styl-work/ds-relay-tree", "Money/other-tree"):
         age_wt(HOME / p, 72)
     write(dd / "Proj-new/Build/x", "fresh")
+
+    # Inside a running session's scratchpad (10-16: the acceptance session ran for days and its
+    # finished subagents' copies grew to 8.8 GB): created after the 72 h aging above.
+    sp = proj / U["live"] / "scratchpad"
+    for name in ("sp-old", "sp-open", "sp-journal", "sp-prompt", "sp-longrun", "sp-plain", "sp-gitlink"):
+        write(sp / name / "deep/f.txt")
+        age(sp / name, 72)
+    write(sp / "sp-5h/f.txt")
+    age(sp / "sp-5h", 5)
+    write(sp / "sp-new/f.txt")
+    write(sp / "sp-gitlink/.git", "gitdir: /elsewhere/.git/worktrees/x\n")    # a worktree of a repo
+    age(sp / "sp-gitlink", 72)                                               # outside ~/Claude
+    add_wt(sp / "sp-wt")
+    age_wt(sp / "sp-wt", 72)
+    with open(sp / "big.bin", "wb") as fh:
+        fh.truncate(getattr(dt, "BIG_FILE_BYTES", 100 << 20) + 1)            # sparse
+    age(sp / "big.bin", 72)
+    write(sp / "small.log", "s")
+    age(sp / "small.log", 72)
+    write(proj / U["live"] / "tasks/a1.output", "o")                   # outside scratchpad/
+    age(proj / U["live"] / "tasks", 72)
 
     STUBS.mkdir()
     for tool in ("uv", "brew", "go", "swiftly", "xcrun"):
@@ -191,14 +258,15 @@ if [ "{tool}" = xcrun ] && [ "$3" = "-j" ]; then
 fi
 """)
         os.chmod(STUBS / tool, 0o755)
-    write(OPEN, f"{WT / 'wt-cwd' / 'sub'}\n")
+    write(OPEN, f"{WT / 'wt-cwd' / 'sub'}\n{proj / U['live'] / 'scratchpad/sp-open/deep/f.txt'}\n")
     write(PROCS, "launchd\nzsh\n")
 
 
 def tool(*args, free=10 ** 15):
     env = dict(GIT_ENV, PATH=f"{STUBS}:{os.environ['PATH']}", DISK_TIDY_TMP_ROOT=str(TMP_ROOT),
                DISK_TIDY_TMPDIR=str(TDIR), DISK_TIDY_BREW_PREFIX=str(BREW),
-               DISK_TIDY_OPEN_PATHS=str(OPEN), DISK_TIDY_PROCS=str(PROCS), DISK_TIDY_FREE_BYTES=str(free))
+               DISK_TIDY_OPEN_PATHS=str(OPEN), DISK_TIDY_PROCS=str(PROCS), DISK_TIDY_FREE_BYTES=str(free),
+               DISK_TIDY_NOW=str(NOW))
     r = subprocess.run([sys.executable, str(TOOL), *args], env=env, capture_output=True, text=True,
                        timeout=300)
     if r.returncode not in (0, 1):
@@ -229,19 +297,22 @@ def reason(res, p):
 
 
 build()
+NOW = shift_all()                       # the clock every tool run below is given
 proj = TMP_ROOT / "-Users-x"
 dd = HOME / "Library/Developer/Xcode/DerivedData"
+SP = proj / U["live"] / "scratchpad"
 LOG = HOME / "Library/Logs/disk-tidy.log"
 GONE = [WT / "wt-old", HOME / "Claude/maa-automation-sib", dd / "Proj-old", HOME / ".gradle/caches/9.8.0",
         HOME / ".gradle/daemon/9.8.0", HOME / "Library/Developer/Toolchains/swift-6.4.0-RELEASE.xctoolchain",
         proj / U["dead"], TDIR / "precheck-abc", HOME / "Claude/transit-app/build",
-        HOME / "Money/styl-work/remote-ref/tools/bugexam/xcr-dd", HOME / ".cache/pyright-python"]
+        HOME / "Money/styl-work/remote-ref/tools/bugexam/xcr-dd", HOME / ".cache/pyright-python",
+        SP / "sp-old", SP / "big.bin"]
 KEPT = {
     WT / "wt-new": "changed within 24",
     WT / "wt-dirty": "uncommitted changes",
     WT / "wt-unmerged": "not merged",
     WT / "wt-cwd": "running process",
-    WT / "wt-journal": "workflow journal",
+    WT / "wt-journal": "running workflow",
     WT / "wt-named": "names its path",
     WT / "wt-locked": "locked",
     WT / "wt-5h": "changed within 24",
@@ -256,11 +327,21 @@ KEPT = {
     proj / U["journal"]: "workflow journal",
     proj / U["transcript"]: "transcript written",
     dd / "Proj-new": "changed",
+    SP / "sp-new": "changed within 24",
+    SP / "sp-5h": "changed within 24",
+    SP / "sp-open": "running process",
+    SP / "sp-journal": "running workflow",
+    SP / "sp-prompt": "running workflow",
+    SP / "sp-longrun": "running workflow",
+    SP / "sp-plain": "running workflow",
+    SP / "sp-wt": "registered git worktree",
+    SP / "sp-gitlink": "linked git worktree",
     HOME / ".gradle/caches/9.8.1": "version in use",
     HOME / "Library/Developer/Toolchains/swift-6.4.1-RELEASE.xctoolchain": "in use",
 }
 UNTOUCHED = [HOME / "Money/styl-work/BOARD/OPEN.md", HOME / "Documents/mine.txt", TMP_ROOT / "disk-tidy",
-             HOME / ".gradle/caches/modules-2", dd / "ModuleCache.noindex"]
+             HOME / ".gradle/caches/modules-2", dd / "ModuleCache.noindex", SP, SP / "small.log",
+             proj / U["live"] / "tasks"]
 
 print("[dry run: decides everything, removes nothing, logs nothing]")
 r = tool()
@@ -325,12 +406,19 @@ check("floor removed the 5 h idle merged tree", (verb(res, WT / "wt-5h"), (WT / 
       ("removed", False))
 check("floor still keeps the fresh tree", (WT / "wt-new").exists(), True)
 check("floor still keeps the tree in use", (WT / "wt-cwd").exists(), True)
+check("floor removed the 5 h idle scratchpad subdir (2 h window)",
+      (verb(res, SP / "sp-5h"), (SP / "sp-5h").exists()), ("removed", False))
+for p in (SP / "sp-new", SP / "sp-open", SP / "sp-journal", SP / "sp-prompt", SP / "sp-longrun",
+          SP / "sp-plain", SP / "sp-wt", SP / "sp-gitlink", SP / "small.log"):
+    check(f"floor still keeps {p.relative_to(BASE)}", p.exists(), True)
+check("running session's dir and scratchpad stay", (proj / U["live"]).is_dir() and SP.is_dir(), True)
 for p in UNTOUCHED[:3]:
     check(f"floor leaves {p.relative_to(BASE)}", p.exists(), True)
 
 print("[guard: hard refusals, whatever a rule matched]")
 os.environ.update(HOME=str(HOME), DISK_TIDY_TMP_ROOT=str(TMP_ROOT), DISK_TIDY_TMPDIR=str(TDIR),
-                  DISK_TIDY_BREW_PREFIX=str(BREW), DISK_TIDY_OPEN_PATHS=str(OPEN), DISK_TIDY_PROCS=str(PROCS))
+                  DISK_TIDY_BREW_PREFIX=str(BREW), DISK_TIDY_OPEN_PATHS=str(OPEN), DISK_TIDY_PROCS=str(PROCS),
+                  DISK_TIDY_NOW=str(NOW))
 env = dt.Env.from_environ()
 ctx = dt.snapshot(env)
 os.symlink(HOME / "Money", proj / "link-to-money")
@@ -349,6 +437,28 @@ for p, want in ((HOME / "Money/styl-work/BOARD", "not in a place"),
     got = dt.guard(env, ctx, str(p)) or ""
     check(f"guard refuses {p.relative_to(BASE)}", want in got, True)
 check("guard allows a dead session dir", dt.guard(env, ctx, str(proj / U["cwd"])), None)
+
+# 10-16 review: a tree unpacked into a running session's scratchpad keeps its old mtimes
+# (tar -x, unzip, ditto, cp -Rp, rsync -a), so on mtime alone it looked idle the moment it landed
+# and the next hourly run could delete it under a subagent still reading it. ctime cannot be set
+# back: the real clock here, not the simulated one.
+pkg = BASE / "pkg"
+write(pkg / "src/a.txt", "a")
+old = time.mktime((2026, 9, 1, 0, 0, 0, 0, 0, -1))
+for f in (pkg / "src/a.txt", pkg / "src", pkg):
+    os.utime(f, (old, old))
+sh("tar", "-cf", BASE / "pkg.tar", "-C", pkg, "src")
+(SP / "sp-unpacked").mkdir()
+sh("tar", "-xf", BASE / "pkg.tar", "-C", SP / "sp-unpacked")
+os.utime(SP / "sp-unpacked", (old, old))
+real = dt.Env(HOME, TMP_ROOT, TDIR, BREW, time.time())
+check("unpacked tree: every mtime is old (mtime alone calls it idle)",
+      dt.changed_since(str(SP / "sp-unpacked"), real.cutoff(dt.ACTIVE_HOURS)), None)
+for fn in (dt.rule_live_session_scratch, dt.rule_live_session_scratch_floor):
+    got = {i.path: i.keep or "" for i in fn(real, ctx)}.get(str(SP / "sp-unpacked"), "-")
+    check(f"{fn.__name__}: a tree unpacked just now with old mtimes is kept", "changed within" in got, True)
+got = {i.path: i.keep for i in dt.rule_live_session_scratch(env, ctx)}.get(str(SP / "sp-unpacked"), "-")
+check("the same tree 48 h later goes", got, None)
 saved = ctx.in_use
 ctx.in_use = None
 check("guard refuses everything when lsof failed", "lsof failed" in (dt.guard(env, ctx, str(proj / U["cwd"])) or ""), True)
@@ -361,9 +471,9 @@ finally:
     sleeper.kill()
     sleeper.wait()
 ctx.in_use = saved
-nobrew = dt.Env(HOME, TMP_ROOT, TDIR, BASE / "no-brew", time.time())
+nobrew = dt.Env(HOME, TMP_ROOT, TDIR, BASE / "no-brew", NOW)
 write(HOME / ".gradle/caches/9.7.0/f")
-age(HOME / ".gradle/caches/9.7.0", 72)
+age(HOME / ".gradle/caches/9.7.0", 72, NOW)
 items = dt.rule_old_gradle(nobrew, ctx)
 check("unknown Gradle version in use: nothing goes",
       sorted({i.keep for i in items}), ["cannot tell which Gradle version is in use"])
