@@ -34,7 +34,9 @@ import json
 import logging
 import os
 import re
+import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -304,6 +306,26 @@ _HELD_KNOWN: dict[str, list] = {}
 # why the last read of each failed (for the ERROR lines).
 _STUCK_SAID: set = set()
 _READ_ERR: dict[str, str] = {}
+# Per thread: the files whose lock outlasted every wait in the booking or tick open on
+# it (one_pass), read without waiting for the rest of it; None outside one.
+_PASS = threading.local()
+
+
+@contextmanager
+def one_pass():
+    """One booking (handle._handle) or one tick's _flush_pending: once a read of
+    machinecheck-runs.json has waited out every mc.LOCK_WAITS and still failed, later
+    reads of it in the same pass fail at once instead of waiting again - about six
+    reads a booking, 0.5 s each, held the engine thread ~3 s while a lock lasted.
+    Nested passes are the outer one."""
+    if getattr(_PASS, "gave_up", None) is not None:
+        yield
+        return
+    _PASS.gave_up = set()
+    try:
+        yield
+    finally:
+        _PASS.gave_up = None
 
 
 def _state_read(state_dir) -> "dict | None":
@@ -318,8 +340,11 @@ def _state_read(state_dir) -> "dict | None":
     read as {} - the next write replaces it. Until 2026-10-17 it was None forever:
     every settle stopped without a word and every later write was an ERROR."""
     from ark_relay.core import statestore  # noqa: PLC0415
+    if not state_dir:
+        return None                 # nowhere to read it from: unreadable, nothing to wait for
     f = Path(state_dir) / SEEN_FILE
     key = str(f)
+    gave_up = getattr(_PASS, "gave_up", None)
     for wait in (*mc.LOCK_WAITS, None):
         text, broken = "", None
         try:
@@ -329,8 +354,10 @@ def _state_read(state_dir) -> "dict | None":
             _CORRUPT_SAID.pop(key, None)
             return {}
         except OSError as exc:
-            if wait is None:
+            if wait is None or (gave_up is not None and key in gave_up):
                 _READ_ERR[key] = f"{type(exc).__name__}: {exc}"
+                if gave_up is not None:
+                    gave_up.add(key)
                 return None
             time.sleep(wait)
             continue
@@ -339,6 +366,9 @@ def _state_read(state_dir) -> "dict | None":
         else:
             if isinstance(data, dict):
                 _CORRUPT_SAID.pop(key, None)
+                _STUCK_SAID.discard(key)    # a stretch it could not be read in is over
+                if gave_up is not None:
+                    gave_up.discard(key)
                 held = data.get(HELD_28)
                 _HELD_KNOWN[key] = sorted(held) if isinstance(held, dict) else []
                 return data
@@ -376,12 +406,13 @@ def _state_update(state_dir, change, what: str = "") -> bool:
     ERROR (errwatch: the group hears of it), never raised; the write is atomic, so
     nothing of a failed one landed, and a Windows lock on it is waited out first
     (mc.write_waiting); `what` says on that ERROR what was not written."""
-    f = Path(state_dir) / SEEN_FILE
     data = _state_read(state_dir)
     if data is None:
         log.error("上机核对：%s 读不出来（%s），%s没写，免得把里面别的记录冲掉", SEEN_FILE,
-                  _READ_ERR.get(str(f), "原因不明"), what or "这次")
+                  _READ_ERR.get(str(Path(state_dir) / SEEN_FILE), "原因不明") if state_dir
+                  else "没给 state 目录", what or "这次")
         return False
+    f = Path(state_dir) / SEEN_FILE
     if change(data) is False:
         return True
     try:
@@ -422,20 +453,22 @@ def _state_bump(state_dir, key: str, change, what: str) -> "int | None":
 def held_stuck(state_dir) -> "list | None":
     """The held #28 FAILs on file, or None when machinecheck-runs.json cannot be read;
     then one ERROR, until it reads again, names the ones of the last good read, which
-    cannot be settled meanwhile (runchecks._settle_held)."""
+    cannot be settled meanwhile (runchecks._settle_held). Silent when the last good
+    read held nothing: nothing is stuck behind it, and a hold kept meanwhile cannot be
+    written (_state_update), so its FAIL is pushed at once (_hold_28)."""
     data = _state_read(state_dir)
-    key = str(Path(state_dir) / SEEN_FILE)
     if data is not None:
-        _STUCK_SAID.discard(key)
         held = data.get(HELD_28)
         return sorted(held) if isinstance(held, dict) else []
-    if key not in _STUCK_SAID:
+    if not state_dir:
+        return None
+    key = str(Path(state_dir) / SEEN_FILE)
+    known = _HELD_KNOWN.get(key)
+    if known != [] and key not in _STUCK_SAID:
         _STUCK_SAID.add(key)
-        known = _HELD_KNOWN.get(key)
         log.error("上机核对：%s 读不出来（%s），等重试的 #28 结论结不了，读得出来再结；%s", SEEN_FILE,
                   _READ_ERR.get(key, "原因不明"),
-                  f"上次读到在等的是 {'、'.join(known)}" if known else
-                  "这次进程里没读到过它，不知道有哪几条在等" if known is None else "上次读到时没有在等的")
+                  f"上次读到在等的是 {'、'.join(known)}" if known else "这次进程里没读到过它，不知道有哪几条在等")
     return None
 
 

@@ -42,7 +42,7 @@ from ark_relay.features.alarm.records import (
     _state_relative, run_day)
 from ark_relay.features.alarm.runchecks import (
     _OUTCOME, _UNVERIFIED, _RunWatch, _alert_days, _alert_file, _alert_sizes, _alerts_since, _judged,
-    _run_ctx, _settle_held, _test_run, _update_restarts)
+    _one_pass, _run_ctx, _settle_held, _test_run, _update_restarts)
 from ark_relay.features.alarm.verdict import _mark_no_self_exit, _verify_outcome
 from ark_relay.features.alarm.pushes import (
     UNVERIFIED_KIND, _UNVERIFIED_WHY, _errwatch, _evidence_note, _push_now, _push_undone,
@@ -684,6 +684,7 @@ def _failure_alarm(eng, rec: RunRecord, note: str, held: bool = False) -> tuple[
     return title, body
 
 
+@_one_pass
 def _handle(eng, rec: RunRecord) -> None:
     """Book one run record, then let the machine checks read what happened
     (machinecheck.py, event 「run」).
@@ -875,6 +876,7 @@ def _hold_restart(eng, rec: RunRecord, key: tuple) -> None:
              _restart_result(rec))
 
 
+@_one_pass
 def _flush_pending(eng) -> None:
     """Push what is held once its script is done retrying, then settle the
     machine-check FAILs kept while their run was held (runchecks._settle_held)."""

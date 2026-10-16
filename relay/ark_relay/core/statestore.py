@@ -191,6 +191,34 @@ def set_aside(path: Path, mtime: float, said: "dict[str, float] | None" = None) 
         return f"旧内容没能另存（{type(exc).__name__}），下一次写入会把它盖掉"
 
 
+# A Windows lock on a state file is waited out this long before a read or write of it
+# is given up (seconds between tries): an antivirus scan or backup tool holding the
+# file open makes os.replace fail with ERROR_ACCESS_DENIED (5) or
+# ERROR_SHARING_VIOLATION (32), which Python raises as PermissionError, for a moment.
+LOCK_WAITS = (0.05, 0.15, 0.3)
+_LOCK_WINERRORS = (5, 32, 33)
+
+
+def locked(exc: OSError) -> bool:
+    """`exc` is how Windows refuses a file another handle holds open."""
+    return isinstance(exc, PermissionError) or getattr(exc, "winerror", None) in _LOCK_WINERRORS
+
+
+def write_waiting(path: Path, text: str, write=None, waits=None) -> None:
+    """write(path, text) (default: this module's atomic_write_text, looked up at call
+    time, as tests replace it), tried again after each of `waits` (default LOCK_WAITS)
+    while the file is locked (locked()); raises the last OSError when it never gets
+    through, or at once for any other OSError."""
+    write = write or atomic_write_text
+    for wait in (*(LOCK_WAITS if waits is None else waits), None):
+        try:
+            write(path, text)
+            return
+        except OSError as exc:
+            if wait is None or not locked(exc):
+                raise
+            time.sleep(wait)
+
 # Held around every load-modify-write of state.json. The phone listen thread
 # (queues.phone_seen, modes.* from live commands) and the engine thread write the
 # same file through StateStore instances of their own; without one lock for the
@@ -242,13 +270,26 @@ class StateStore:
             return self._data
         data: dict = {}
         if m >= 0:
-            try:
-                data = json.loads(self.path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                self._set_aside(m)
-                data = {}
-            else:
-                _CORRUPT_SAID.pop(str(self.path), None)
+            # A write waits out a lock on reading it too (LOCK_WAITS) and raises when it
+            # outlasts them: read as empty, the write that follows (now itself waiting
+            # the lock out) would put the near-empty fallback over everything on file.
+            for wait in (*(LOCK_WAITS if fresh else ()), None):
+                try:
+                    data = json.loads(self.path.read_text(encoding="utf-8"))
+                except OSError as exc:
+                    if fresh and locked(exc):
+                        if wait is None:
+                            raise
+                        time.sleep(wait)
+                        continue
+                    self._set_aside(m)
+                    data = {}
+                except ValueError:
+                    self._set_aside(m)
+                    data = {}
+                else:
+                    _CORRUPT_SAID.pop(str(self.path), None)
+                break
         for s in SECTIONS:
             data.setdefault(s, {})
         self._data, self._mtime = data, m
@@ -289,8 +330,11 @@ class StateStore:
                 self._flush(data)
 
     def _flush(self, data: dict) -> None:
+        """Write `data` as state.json; a Windows lock on it is waited out first
+        (write_waiting), so a scan holding it a moment does not make set() / pop()
+        raise - a day mark of an alarm that went out was lost that way (10-17)."""
         self.dir.mkdir(parents=True, exist_ok=True)
-        atomic_write_text(self.path, json.dumps(data, ensure_ascii=False, indent=1))
+        write_waiting(self.path, json.dumps(data, ensure_ascii=False, indent=1))
         try:
             self._mtime = self.path.stat().st_mtime
         except OSError:

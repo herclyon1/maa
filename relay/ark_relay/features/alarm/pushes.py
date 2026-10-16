@@ -114,8 +114,9 @@ def _push_unverified(eng, rec: RunRecord) -> None:
         # off (_append_ledger_once) finds its own alarm, not an earlier run's.
         mine = unresolved._key(UNVERIFIED_BY, rec.run_id)
         sent_now = not eng._already_alerted(day, unresolved._key(UNVERIFIED_KIND, key))
+        queued = False
         if sent_now:
-            _push_now(eng, day, UNVERIFIED_KIND, key, texts.unverified_alarm(game, shift, len(items)), body)
+            queued = bool(_push_now(eng, day, UNVERIFIED_KIND, key, texts.unverified_alarm(game, shift, len(items)), body))
         if sent_now or eng._already_alerted(day, mine):
             # Sent, or kept for the next tick: these items reach the group in this
             # alarm, which machine check #28 then does not repeat - for this record
@@ -126,7 +127,12 @@ def _push_unverified(eng, rec: RunRecord) -> None:
             from ark_relay.features.selfcheck.machinechecks import runs  # noqa: PLC0415
             runchecks._UNVERIFIED[rec.run_id] = list(items)
             runs.covered_28(eng.cfg.state_dir, rec.script, day, list(items))
-            if sent_now:
+            if sent_now and not queued and not eng._already_alerted(day, unresolved._key(UNVERIFIED_KIND, key)):
+                # Went out, but its own day mark did not land (unresolved.send said so in
+                # one ERROR, replay included): the mark of this record would fail on the
+                # same lock and say the same cause again.
+                log.info("「没证据」已发出、当天记号没记上（已报），不再记「是 %s 这一趟发的」", rec.run_id)
+            elif sent_now:
                 try:
                     eng._mark_alerted(day, mine)
                 except Exception:  # sent (or queued); only which record sent it is not on file

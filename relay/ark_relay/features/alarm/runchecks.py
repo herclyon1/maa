@@ -5,6 +5,7 @@ restarts around it.
 """
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import threading
@@ -205,6 +206,18 @@ def _run_ctx(eng, rec: RunRecord, watch: _RunWatch) -> dict:
         from ark_relay.features.okww_patch import okww_overlay  # noqa: PLC0415
         ctx["overlay"] = okww_overlay.report_snapshot()
     return ctx
+
+
+def _one_pass(fn):
+    """`fn` (handle._handle: one booking; handle._flush_pending: one tick's) as one
+    pass of machinecheck-runs.json reads (machinechecks/runs.py one_pass): a lock on
+    the file is waited out once in it, not on every read."""
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        from ark_relay.features.selfcheck.machinechecks import runs  # noqa: PLC0415
+        with runs.one_pass():
+            return fn(*args, **kwargs)
+    return run
 
 
 def _settle_held(eng) -> None:

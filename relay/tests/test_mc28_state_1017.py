@@ -21,7 +21,18 @@ Review of 46e7e5bc (10-17), one scenario per finding:
   8. pushes._push_unverified marked its record before covered_28: a state.json that
      could not take the mark skipped the cover, logged 「没证据」这一项没能推到群里
      though it went out, and #28 then pushed the same cause again.
+
+Review of 9743738a (10-17):
+  9. held_stuck sent a group ERROR for an unreadable stretch even when the last good
+     read held nothing - noise origin/main did not have.
+ 10. every read that kept failing slept all of mc.LOCK_WAITS, about six times a
+     booking: ~3 s of the engine thread per booking while a lock lasted.
+ 11. _state_read(None) raised TypeError (Path(None)); the old _state_get gave None.
+ 12. StateStore._flush had no lock waits, and unresolved.send let a failed day mark
+     after a push that went out escape: _push_now skipped the #28 cover and #28
+     pushed the same cause again, with a misleading 「没能推到群里」 line.
 """
+import contextlib
 import json
 import logging
 import os
@@ -32,7 +43,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_mc28_one_alarm as base  # its own scenarios run on import
 
-from ark_relay.core import texts
+from ark_relay.core import statestore, texts
 from ark_relay.core.config import SERVER_TZ
 from ark_relay.features.alarm import handle, pushes, runchecks
 from ark_relay.features.selfcheck import machinecheck as mc
@@ -46,6 +57,7 @@ MC28 = texts.machinecheck_failed("#28", "")
 REAL_READ_TEXT, REAL_REPLACE, REAL_MC_WRITE = Path.read_text, os.replace, mc._write
 REAL_TASK_WINDOW, REAL_WINDOW = runs._task_window, runs.cm.maafw_window
 REAL_TASK_TIMES, REAL_TRAIL = runs.cm.task_times, runs.maaend_fwlog.trail_table
+REAL_RUNS_TIME, REAL_SS_WRITE = runs.time, statestore.atomic_write_text
 NO_WAITS = (0.0, 0.0, 0.0)
 
 
@@ -66,7 +78,7 @@ class Errors(logging.Handler):
 
 
 ERRORS = Errors()
-for name in ("ark.runs", "ark.machinecheck", "ark.pushes"):
+for name in ("ark.runs", "ark.machinecheck", "ark.pushes", "ark.unresolved", "ark.statestore"):
     logging.getLogger(name).addHandler(ERRORS)
 pushes.log.addHandler(ERRORS)
 
@@ -200,6 +212,7 @@ def section(title, fn):
         check(f"{title}: ran to the end", f"{type(exc).__name__}: {exc}", "")
     finally:
         Path.read_text, os.replace, mc._write = REAL_READ_TEXT, REAL_REPLACE, REAL_MC_WRITE
+        runs.time, statestore.atomic_write_text = REAL_RUNS_TIME, REAL_SS_WRITE
 
 
 mc.load()
@@ -413,6 +426,193 @@ def item8():
     check("nothing of #28 is left waiting", base.held_28(state), {})
 
 
+class Eng4b:
+    """The engine attributes runchecks._settle_held reads."""
+    _pending = {}
+    state = type("S", (), {"read_ledger": staticmethod(lambda day: [])})()
+
+    def __init__(self, state):
+        self.cfg = type("C", (), {"state_dir": state})()
+        self.notifier = Notes()
+
+    def _script_running(self, name):
+        return False
+
+    def _already_alerted(self, day, key):
+        return False
+
+    def _mark_alerted(self, day, key):
+        pass
+
+
+def item9():
+    state = fresh()                       # nothing held
+    check("read once while it can be read: nothing held", runs._state_get(state, runs.HELD_28), {})
+    eng = Eng4b(state)
+    with no_waits(), read_fails(PermissionError(13, "locked (test)"), n=999):
+        for _ in range(3):
+            runchecks._settle_held(eng)
+    check("locked, the last good read held nothing: no ERROR",
+          [x for x in ERRORS.lines if runs.SEEN_FILE in x], [])
+    ERRORS.lines.clear()
+    state = fresh(R1)                     # never read in this process: what is held is unknown
+    with no_waits(), read_fails(PermissionError(13, "locked (test)"), n=999):
+        for _ in range(3):
+            runchecks._settle_held(Eng4b(state))
+    stuck = [x for x in ERRORS.lines if runs.SEEN_FILE in x]
+    check("locked, never read: one ERROR saying what is held is not known",
+          (len(stuck), bool(stuck) and "不知道" in stuck[0]), (1, True))
+
+
+class Sleeps:
+    """runs.time with a sleep that only counts."""
+
+    def __init__(self):
+        self.n = 0
+
+    def sleep(self, s):
+        self.n += 1
+
+
+def one_pass():
+    """runs.one_pass, or no pass at all where there is none (before 10-17)."""
+    return getattr(runs, "one_pass", contextlib.nullcontext)()
+
+
+class ss_no_waits:
+    """statestore.LOCK_WAITS set to no waits (set even where it does not exist yet)."""
+
+    def __enter__(self):
+        self.was = getattr(statestore, "LOCK_WAITS", None)
+        statestore.LOCK_WAITS = NO_WAITS
+
+    def __exit__(self, *a):
+        if self.was is None:
+            del statestore.LOCK_WAITS
+        else:
+            statestore.LOCK_WAITS = self.was
+
+
+def item10():
+    state = fresh(R1)
+    clock = runs.time = Sleeps()
+    with read_fails(PermissionError(13, "locked (test)"), n=999):
+        runs._state_read(state)
+        runs._state_read(state)
+    waits = len(mc.LOCK_WAITS)
+    check("outside a booking or tick each locked read waits all of LOCK_WAITS", clock.n, 2 * waits)
+    clock.n = 0
+    with read_fails(PermissionError(13, "locked (test)"), n=999), one_pass():
+        got = [runs._state_read(state) for _ in range(6)]
+    check("inside one: only the first read waits, every read is None (never {})",
+          (clock.n, got), (waits, [None] * 6))
+    clock.n = 0
+    with read_fails(PermissionError(13, "locked (test)"), n=999), one_pass():
+        runs._state_read(state)
+    check("the next booking or tick waits once again", clock.n, waits)
+    clock.n = 0
+    with one_pass():
+        with read_fails(PermissionError(13, "locked (test)"), n=999):
+            runs._state_read(state)
+        runs._state_read(state)           # readable again: the lock is over
+        with read_fails(PermissionError(13, "locked (test)"), n=999):
+            runs._state_read(state)
+    check("a lock that ends and comes back in one pass is waited out again", clock.n, 2 * waits)
+
+    e, notes, st = base.engine()
+    clock.n = 0
+    with read_fails(PermissionError(13, "locked (test)"), n=9999):
+        base.book(e, base.ABORT, ok=False)
+        handle._flush_pending(e)
+    check("one booking and one tick with the file locked: LOCK_WAITS waited once each",
+          clock.n, 2 * waits)
+
+
+def item11():
+    clock = runs.time = Sleeps()
+    try:
+        got = (runs._state_read(None), runs._state_get(None, runs.HELD_28), runs._seen(None, "#6"),
+               runs.held_stuck(None), runs._state_set(None, "#7-miss", 1))
+    except TypeError as exc:
+        got = f"TypeError: {exc}"
+    check("no state folder: unreadable, nothing raised", got, (None, None, None, None, False))
+    check("…without waiting", clock.n, 0)
+
+
+def item12():
+    st = tmpdir() / "state"
+    st.mkdir()
+    store = statestore.StateStore(st)
+    left = [2]
+
+    def _locked_twice(path, text):
+        if left[0] and Path(path).name == statestore.FILE:
+            left[0] -= 1
+            raise PermissionError(13, "state.json being scanned (test)")
+        return REAL_SS_WRITE(path, text)
+
+    statestore.atomic_write_text = _locked_twice
+    try:
+        with ss_no_waits():
+            store.set("marks", f"alerted:{DAY}", ["k"])
+        wrote = json.loads((st / statestore.FILE).read_text(encoding="utf-8"))["marks"].get(f"alerted:{DAY}")
+    except OSError as exc:
+        wrote = f"{type(exc).__name__}: {exc}"
+    finally:
+        statestore.atomic_write_text = REAL_SS_WRITE
+    check("state.json locked twice, then let through: the day mark is written", wrote, ["k"])
+
+
+
+def item12b():
+    st = tmpdir() / "state"
+    st.mkdir()
+    statestore.StateStore(st).set("marks", f"alerted:{DAY}", ["k"])
+    good = (st / statestore.FILE).read_text(encoding="utf-8")
+
+    def _read(path, *a, **kw):
+        if path.name == statestore.FILE:
+            raise PermissionError(13, "state.json being scanned (test)")
+        return REAL_READ_TEXT(path, *a, **kw)
+
+    Path.read_text = _read
+    try:
+        with ss_no_waits():
+            statestore.StateStore(st).set("marks", f"alerted:{DAY}", ["k", "k2"])
+        raised = ""
+    except OSError as exc:
+        raised = type(exc).__name__
+    finally:
+        Path.read_text = REAL_READ_TEXT
+    check("a write whose read stays locked raises, never writing the empty fallback over it",
+          (raised, (st / statestore.FILE).read_text(encoding="utf-8")), ("PermissionError", good))
+
+
+def item12c():
+    e, notes, state = base.engine()
+    base.book(e, base.ABORT, ok=False)
+    real_mark = e._mark_alerted
+
+    def _mark(day, key):
+        raise PermissionError(13, "state.json locked (test)")
+
+    e._mark_alerted = _mark
+    try:
+        base.book(e, base.RETRY, ok=True)
+    finally:
+        e._mark_alerted = real_mark
+    handle._flush_pending(e)
+    base.show(notes)
+    check("every day mark refused: one group message for the abort and the retry", len(base.group(notes)), 1)
+    check("…no 「上机核对没过：#28」 of its own", base.mc28_pushes(notes), [])
+    check("…not kept to be sent again", e._unsent_unresolved, [])
+    check("no ERROR saying the 「没证据」 alarm did not go out", [x for x in ERRORS.lines if "没能推到群里" in x], [])
+    said = [x for x in ERRORS.lines if "没记" in x]
+    check("one ERROR saying the alarm went out and its mark did not land",
+          (len(said), bool(said) and "已进群" in said[0]), (1, True))
+    check("nothing of #28 is left waiting", base.held_28(state), {})
+
+
 for title, fn in (("1: covered_28 when its read fails once", item1),
                   ("2: a held run's FAIL pushed at once is marked sent only after its push", item2),
                   ("3: machinecheck.json locked while judging", item3),
@@ -421,7 +621,13 @@ for title, fn in (("1: covered_28 when its read fails once", item1),
                   ("5: a brief Windows lock on os.replace", item5),
                   ("6: #7 / #28 miss counts in one read and write", item6),
                   ("7: #6 / #24a when the seen list cannot be read", item7),
-                  ("8: 「没证据」 sent, then its record's mark cannot be written", item8)):
+                  ("8: 「没证据」 sent, then its record's mark cannot be written", item8),
+                  ("9: locked while nothing is held: no ERROR", item9),
+                  ("10: a lock is waited out once per booking or tick", item10),
+                  ("11: no state folder", item11),
+                  ("12: state.json locked a moment while an alarm's day mark is written", item12),
+                  ("12b: state.json locked while a write reads it first", item12b),
+                  ("12c: 「没证据」 sent, then no day mark can be written", item12c)):
     section(title, fn)
 
 print()

@@ -30,12 +30,12 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+from ark_relay.core import statestore
 from ark_relay.core.config import SERVER_TZ
 
 log = logging.getLogger("ark.machinecheck")
@@ -170,32 +170,17 @@ def read(state_dir) -> dict:
     return _read_state(state_dir) or {}
 
 
-# A Windows lock on a state file is waited out this long before a read or write of it
-# is given up (seconds between tries): an antivirus scan or backup tool holding the
-# file open makes os.replace fail with ERROR_ACCESS_DENIED (5) or
-# ERROR_SHARING_VIOLATION (32), which Python raises as PermissionError, for a moment.
-LOCK_WAITS = (0.05, 0.15, 0.3)
-_LOCK_WINERRORS = (5, 32, 33)
-
-
-def locked(exc: OSError) -> bool:
-    """`exc` is how Windows refuses a file another handle holds open."""
-    return isinstance(exc, PermissionError) or getattr(exc, "winerror", None) in _LOCK_WINERRORS
+# The lock waits of core/statestore.py (one rule for every state file): here so tests
+# can shorten them for the machine-check files alone.
+LOCK_WAITS = statestore.LOCK_WAITS
+locked = statestore.locked
 
 
 def write_waiting(path: Path, text: str) -> None:
-    """config.atomic_write_text, tried again after each of LOCK_WAITS while the file is
-    locked (locked()); raises the last OSError when it never gets through, or at once
-    for any other OSError. config is looked up at call time, as tests replace it."""
+    """statestore.write_waiting with config.atomic_write_text and this module's
+    LOCK_WAITS, both looked up at call time, as tests replace them."""
     from ark_relay.core import config  # noqa: PLC0415
-    for wait in (*LOCK_WAITS, None):
-        try:
-            config.atomic_write_text(path, text)
-            return
-        except OSError as exc:
-            if wait is None or not locked(exc):
-                raise
-            time.sleep(wait)
+    statestore.write_waiting(path, text, write=config.atomic_write_text, waits=LOCK_WAITS)
 
 
 def _write(state_dir, data: dict) -> None:
