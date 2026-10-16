@@ -31,9 +31,17 @@ The collect-watch thread only queues; a thread of its own takes the pictures.
 A picture goes through the desktop agent (desktop.py: an interactive scheduled
 task, polled up to 45 s), and that thread also narrows the gathering routes and
 ticks the MaaEnd watchdog, both of which must not wait on it. So a picture
-lands a few seconds after its log line (the watcher's 2 s coalescing plus the
-agent's start-up) and may already show the next task beginning; the file name
-carries the log line's time, the file time when it was really taken. The
+lands 5-8 s after its log line (the watcher's 2 s coalescing plus the agent's
+start-up; file times against file names in the evidence bundles of 2026-10-08,
+-11 and -16), while MaaEnd posts the next task within 2 ms of a task's end and
+that task's first input lands 0.1-1.5 s later (maafw.log 2026-10-16). A picture
+therefore shows the next task, never the finished task's result screen (the
+verify ledger's #28: 093302-赠送干员礼物.png of 10-08 shows the 装备制造 page).
+Showing that screen needs a desktop agent already running when the task ends,
+which cannot be built or checked off the machine. Machine check #28 judges the
+four tasks from MaaFW's own steps instead (maaend_fwlog.task_trail) and names the
+picture with how late it was. The file name carries the log line's time, the
+file time when it was really taken. The
 entry -> name table is read once at service start: an entry added by a MaaEnd
 update mid-day is named by its entry until the next start.
 

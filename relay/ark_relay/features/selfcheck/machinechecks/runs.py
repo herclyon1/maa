@@ -464,10 +464,102 @@ def _c7(ctx):
 
 
 SHOT_TASKS = ("赠送干员礼物", "装备制造", "转交委托", "环境监测")
+# What each task's own run in MaaFW's log has to show. MaaEnd's AUTO-MAS log has only
+# 「任务开始」 / 「任务完成」 for these four; the framework log names every step that
+# succeeded (maaend_fwlog.task_trail). Steps from MaaEnd's pipeline
+# (github.com/MaaEnd/MaaEnd, branch v2, assets/resource/pipeline/), checked against
+# the runs of 2026-10-07..10-13 and 10-16:
+#   entry  - the task MXU posts (Tasker.Task.Starting "entry");
+#   did    - (step, what it means): the task did its job when one of these succeeded;
+#   none   - (step, what it means): the task found nothing to do, a normal end
+#            (资源不足 / 已领满 are normal states, not failures);
+#   needs  - for a `none` that is told by steps that did run, every one of these.
+# Gift: GiftOperatorGiftFlow.json - GiftOperatorConfirmGift 「点击赠送按钮」 (1-3 on
+#   every 10-07..10-16 run), GiftOperatorGiftFull 「赠送已满」.
+# Gear: GearAssembly/GearAssembly.json - GearAssemblyClickProduceBtn 「点击制作按钮」
+#   (once a run, followed by SceneNoticeRewardsConfirm), GearAssemblyCheckMaterialEnough
+#   「检测背包是否已满，背包已满直接结束」, GearAssemblyCheckFailedAndFinish 「检查制作失败，退出任务」.
+#   10-08 10:34:11-10:34:16 (AUTO-MAS stopped MaaEnd right after) ran only GearAssemblyStart.
+# Delivery: DeliveryJobs/TransferJob.json - DeliveryJobsConfirmTaskTransfer (5 a run in the
+#   mornings); a region loop (Region/ValleyIV.json, Wuling.json) tries every depot's
+#   job and cargo and falls back to DeliveryJobsLoop when none is there: the re-runs
+#   of 10-08 10:37 and 10-12 11:03 ran both region loops and transferred nothing.
+# Environment: EnvironmentMonitoring/TakePhoto.json - EnvironmentMonitoringTakePhoto
+#   (10-08 09:42, 10-10, 10-12 10:1x took one job each; the step succeeds twice a job,
+#   so no count is said); Terminals.json - each
+#   terminal's loop tries all its jobs; on 10-08 10:38, 10-11, 10-12 11:04, 10-13 and
+#   10-16 both terminal loops ran, no job was taken and the task ended in 6-8 s.
+SHOT_RULES = {
+    "赠送干员礼物": {"entry": "GiftOperatorMain",
+                 "did": (("GiftOperatorConfirmGift", "点了「赠送」{n} 次"),),
+                 "none": (("GiftOperatorGiftFull", "干员的礼物已经送满"),)},
+    "装备制造": {"entry": "GearAssemblyStart",
+              "did": (("GearAssemblyClickProduceBtn", "点了「制作」{n} 次"),),
+              "none": (("GearAssemblyCheckMaterialEnough", "背包已满，没法再做"),
+                       ("GearAssemblyCheckFailedAndFinish", "材料不够，做不了"))},
+    "转交委托": {"entry": "DeliveryJobsMain",
+              "did": (("DeliveryJobsConfirmTaskTransfer", "确认转交了 {n} 单"),),
+              "none": (("", "两个地区都走了一遍，没有可转交的委托"),),
+              "needs": ("DeliveryJobsValleyIVLoop", "DeliveryJobsWulingLoop")},
+    "环境监测": {"entry": "EnvironmentMonitoringMain",
+              "did": (("EnvironmentMonitoringTakePhoto", "接了委托、拍了监测照片"),),
+              "none": (("", "两个监测终端都看过了，没有可接的委托"),),
+              "needs": ("OutskirtsMonitoringTerminalLoop", "MarkerStoneMonitoringTerminalLoop")},
+}
+# Runs in a row with none of the four in MaaFW's log before that is a FAIL of its own
+# (as #7: MaaEnd clears its debug folder when it restarts).
+SHOT_MISS_FAIL = 2
+# AUTO-MAS's line when it stops MaaEnd (MaaEnd-06-31-06, 2026-10-08 10:34:16.413
+# 「任务开始: 停止任务」, 0.1 s after 装备制造 「完成」: AUTO-MAS stopped it for MaaEnd's
+# update, days/2026-10-08 item 1008-05). A task cut short that way did not fail on its
+# own; the run's verdict already books the stop, so #28 leaves that task unjudged.
+_STOP_LINE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\] 任务开始: 停止任务", re.M)
+STOP_AFTER_S = 5
 
 
-@mc.check("#28", "终末地送礼/装备制造/转交委托/环境监测做完都有一张结束时的截图", "A", "run")
+def _shot_verdict(rule: dict, trail: dict) -> "tuple[bool, str]":
+    """(did its job or found nothing to do, what the framework log shows)."""
+    nodes = trail["nodes"]
+    if trail["result"] == "Failed":
+        return False, "终末地自己记的结果是失败"
+    did = [w.format(n=nodes[s]) for s, w in rule["did"] if nodes.get(s)]
+    if did:
+        return True, "、".join(did)
+    for step, word in rule["none"]:
+        if step and nodes.get(step):
+            return True, word
+        if not step and all(nodes.get(x) for x in rule.get("needs", ())):
+            return True, word
+    return False, f"终末地自己的记录里只走了 {sum(nodes.values())} 步，没有做成的一步，也没有「没东西可做」的结果"
+
+
+def _shot_note(state: Path, rel: str, ended) -> str:
+    """The desktop picture of this task, said for what it is: task_shots takes it after
+    the task's end event through the desktop agent, 5-8 s late (2026-10-08, -11, -16:
+    file times against file names), while MaaEnd posts the next task within 2 ms and
+    its first input lands 0.1-1.5 s later (maafw.log 2026-10-16). So it shows the
+    next task, never this one's result screen."""
+    p = state / rel
+    try:
+        taken = datetime.fromtimestamp(p.stat().st_mtime)
+    except (OSError, ValueError):
+        return ""
+    where = f"{Path(rel).parent.as_posix()} 里 {p.stem[:6]} 那张"
+    if ended is None:
+        return f"桌面截图 {where} 只作参考"
+    late = (taken - ended).total_seconds()
+    if late <= 0:
+        return f"桌面截图 {where} 是它结束前拍的"
+    return f"桌面截图 {where} 是它结束后 {late:.0f} 秒才拍到的，那时下一个任务已经开始，只作参考"
+
+
+@mc.check("#28", "终末地送礼/装备制造/转交委托/环境监测每趟在终末地自己的记录里看得到做成了（或没东西可做）", "A", "run")
 def _c28(ctx):
+    """Judged from MaaFW's own steps of each task (SHOT_RULES), not from the desktop
+    picture. Until 2026-10-16 this passed when the picture file existed, and the
+    pictures of 10-08 showed the next task: 093302-赠送干员礼物.png the 装备制造 page,
+    093322-装备制造.png 拜访好友, 103416-装备制造.png the bare desktop after AUTO-MAS
+    stopped MaaEnd (verify ledger #28). The picture is still named, with how late it was."""
     if not _script(ctx, "MaaEnd") or not _unattended(ctx):
         return None
     text = ctx.get("log_text") or ""
@@ -477,15 +569,43 @@ def _c28(ctx):
     done = [t for t in SHOT_TASKS if t in times and t not in skipped]
     if not done:
         return None
+    from ark_relay.features.verify import maaend_fwlog  # noqa: PLC0415
+    events = maaend_fwlog.task_events(ctx.get("maaend_dir"), min(times[t][0] for t in done),
+                                      max(times[t][1] for t in done))
+    trails = {t: maaend_fwlog.task_trail(events, SHOT_RULES[t]["entry"], *times[t]) for t in done}
+    state_dir = ctx.get("state_dir")
+    if not any(trails.values()):
+        misses = int(_state_get(state_dir, "#28-miss") or 0) + 1
+        _state_set(state_dir, "#28-miss", misses)
+        if misses >= SHOT_MISS_FAIL:
+            return _r(FAIL, f"连续 {misses} 趟，{'、'.join(done)} 在终末地自己的记录里都找不到，做成没有看不出来")
+        return None
+    _state_set(state_dir, "#28-miss", 0)
+    stops = [datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S") for m in _STOP_LINE.finditer(text)]
     files = raw.get("tasks_shot_files") or {}
-    state = Path(ctx.get("state_dir") or ".")
-    have = {t: files[t] for t in done if files.get(t) and (state / files[t]).is_file()}
-    missing = [t for t in done if t not in have]
-    if missing:
-        return _r(FAIL, f"{'、'.join(missing)} 做完了（任务完成 "
-                        f"{'、'.join(f'{times[t][1]:%H:%M:%S}' for t in missing)}），state/shots 里没有它们结束那一刻的截图"
-                        + (f"；有截图的：{'、'.join(have)}" if have else ""))
-    return _r(PASS, "；".join(f"{t} {have[t]}" for t in done))
+    state = Path(state_dir or ".")
+    good, bad, cut = [], [], []
+    for t in done:
+        t0, t1 = times[t]
+        trail = trails[t]
+        span = f"{t0:%H:%M:%S}→{t1:%H:%M:%S}"
+        if trail is None:
+            bad.append(f"{t}（{span}）在终末地自己的记录里找不到")
+            continue
+        ok, said = _shot_verdict(SHOT_RULES[t], trail)
+        stop = next((s for s in stops if 0 <= (s - t1).total_seconds() <= STOP_AFTER_S), None)
+        if stop is not None and not ok:
+            cut.append(f"{t}（{span}）没做成就被调度程序停了（{stop:%H:%M:%S}），这趟不算它")
+            continue
+        line = f"{t}（{span}）{said}"
+        note = _shot_note(state, files[t], trail["ended"]) if files.get(t) else ""
+        (good if ok else bad).append(line + (f"；{note}" if note else ""))
+    tail = f"。{'；'.join(cut)}" if cut else ""
+    if bad:
+        return _r(FAIL, "；".join(bad) + (f"。做成的：{'；'.join(good)}" if good else "") + tail)
+    if not good:
+        return None
+    return _r(PASS, "；".join(good) + tail)
 
 
 _CLAIM = "确认领取奖励"

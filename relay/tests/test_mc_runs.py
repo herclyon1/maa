@@ -307,7 +307,7 @@ check("one miss after that: not judged again", (st, pushed), (None, []))
 st, _, _ = judge("#7", endctx(text=essence, maaend_dir=str(fwdir)), state=tmpdir())
 check("a run without 环境监测: not judged", st, None)
 
-print("\n[#28 四个任务都有结束时的截图]")
+print("\n[#28 四个任务：图片在、终末地自己的记录不在 → 不再算过（真数据见 test_mc28_task_trail.py）]")
 state = tmpdir()
 shots = {}
 for t in ("赠送干员礼物", "装备制造", "转交委托", "环境监测"):
@@ -317,13 +317,8 @@ for t in ("赠送干员礼物", "装备制造", "转交委托", "环境监测"):
     shots[t] = p.relative_to(state).as_posix()
 times = collector_maaend.task_times(END_LOG)
 check("the 09-27 log ran all four", all(t in times for t in shots), True)
-st, ev, pushed = judge("#28", endctx(raw=dict(raw, tasks_shot_files=shots)), state=state)
-check("a picture for each: PASS", (st, pushed), ("PASS", []))
-check("evidence names the pictures", "shots/2026-09-27/MaaEnd-09-36-00/094300-装备制造.png" in ev)
-st, ev, pushed = judge("#28", endctx(raw=dict(raw, tasks_shot_files={k: v for k, v in shots.items() if k != "转交委托"})),
-                       state=state)
-check("one missing: FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
-check("evidence names the missing one", ev.startswith("转交委托 做完了"))
+st, ev, pushed = judge("#28", endctx(raw=dict(raw, tasks_shot_files=shots), maaend_dir=str(tmpdir())), state=state)
+check("a picture for each but no MaaFW log: not judged (was PASS on the picture alone)", (st, pushed), (None, []))
 
 print("\n[#30 基质刷取领奖后失败：背包满了 / 原始日志]")
 BAG = (FIX / "maaend_bagfull_2026-09-25.log").read_text(encoding="utf-8")

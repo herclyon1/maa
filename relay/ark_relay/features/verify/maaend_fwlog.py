@@ -160,3 +160,83 @@ def update_restart_version(maaend_dir, started) -> str:
                       and pending_at <= at <= pending_at + timedelta(seconds=UPDATE_INSTALL_S)):
                     return version
     return ""
+
+
+
+# One MaaFW event line: [msg=Tasker.Task.Starting] [details={...}] (maafw.log, 2026-10-16:
+# 「[msg=Tasker.Task.Succeeded] [details={"entry":"GiftOperatorMain",...,"task_id":200000001,...}]」).
+_FW_EVENT = re.compile(r"\[msg=(Tasker\.Task\.\w+|Node\.PipelineNode\.Succeeded)\]\s*\[details=(\{.*\})\]\s*$")
+_FW_AT = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d(?:\.\d+)?)\]")
+# AUTO-MAS prints 「任务开始」 up to a second after MaaFW's Tasker.Task.Starting
+# (2026-10-16: 13:54:59.034 against 13:54:58.249), so windows are read this much wider.
+TRAIL_SLACK_S = 5
+
+
+def task_events(maaend_dir, t0: datetime, t1: datetime) -> list:
+    """MaaFW's task and node events from t0 - TRAIL_SLACK_S to t1 + TRAIL_SLACK_S,
+    as (time, "Tasker.Task.Starting" | ... | "Node.PipelineNode.Succeeded", details),
+    oldest first; [] when there is no directory or nothing there. Read once and
+    handed to task_trail for each task of a run: the rotated files are tens of MB each."""
+    if not maaend_dir:
+        return []
+    lo = t0 - timedelta(seconds=TRAIL_SLACK_S)
+    hi = t1 + timedelta(seconds=TRAIL_SLACK_S)
+    lines = _fw_lines(_fw_files(maaend_dir), lo, hi,
+                      lambda line: "[msg=Tasker.Task." in line or "[msg=Node.PipelineNode.Succeeded]" in line)
+    events = []
+    for line in lines:
+        m, at = _FW_EVENT.search(line), _FW_AT.match(line)
+        if not m or not at:
+            continue
+        try:
+            details = json.loads(m.group(2))
+            when = datetime.fromisoformat(at.group(1))
+        except ValueError:
+            continue
+        if isinstance(details, dict):
+            events.append((when, m.group(1), details))
+    events.sort(key=lambda e: e[0])
+    return events
+
+
+def task_trail(events: list, entry: str, t0: datetime, t1: datetime) -> "dict | None":
+    """What MaaFW logged for one task (`events` from task_events): the run of `entry`
+    whose start is nearest t0 (AUTO-MAS's 「任务开始」) within TRAIL_SLACK_S of the
+    window t0..t1 (its 「任务完成」).
+
+    Returns {"started", "ended" (datetimes, ended None when no end event),
+    "result" ("Succeeded" / "Failed" / ""), "nodes" ({node name: times it
+    succeeded})} or None when there is no start of `entry` in the window.
+
+    The nodes are every Node.PipelineNode.Succeeded between that start and end,
+    whatever task_id they carry: a custom action runs its work as a sub-task of its
+    own (environment monitoring, 2026-10-08 09:41: task 200000008 was posted, the
+    photo job ran as 200000559 - EternalSunsetExecute, AcceptEternalSunset,
+    EnvironmentMonitoringTakePhoto). MaaEnd runs one task at a time, so the stretch
+    holds only this task's work. The second process repeats every event line;
+    (task_id, node_id) counts it once."""
+    lo = t0 - timedelta(seconds=TRAIL_SLACK_S)
+    hi = t1 + timedelta(seconds=TRAIL_SLACK_S)
+    starts = [(abs((w - t0).total_seconds()), w, d.get("task_id")) for w, msg, d in events
+              if msg == "Tasker.Task.Starting" and d.get("entry") == entry and lo <= w <= hi]
+    if not starts:
+        return None
+    _, started, task_id = min(starts, key=lambda s: (s[0], s[1]))
+    ended, result = None, ""
+    for w, msg, d in events:
+        if (w >= started and d.get("task_id") == task_id and d.get("entry") == entry
+                and msg in ("Tasker.Task.Succeeded", "Tasker.Task.Failed")):
+            ended, result = w, msg.rsplit(".", 1)[-1]
+            break
+    nodes: dict = {}
+    seen: set = set()
+    for w, msg, d in events:
+        if msg != "Node.PipelineNode.Succeeded" or w < started or (ended is not None and w > ended):
+            continue
+        key = (d.get("task_id"), d.get("node_id"))
+        if key in seen:
+            continue
+        seen.add(key)
+        name = str(d.get("name") or "")
+        nodes[name] = nodes.get(name, 0) + 1
+    return {"started": started, "ended": ended, "result": result, "nodes": nodes}
