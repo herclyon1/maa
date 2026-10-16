@@ -1,0 +1,33 @@
+{
+    "__AutoUseSpMedicationUseEmergencySpBooster": {
+        "action": "Click",
+        "anchor": {
+            "SceneNoticeRewardsConfirmNextAnchor": "__AutoUseSpMedicationUseEmergencySpBoosterFinish"
+        },
+        "desc": "点击恢复理智对话框的确认按钮",
+        "focus": {
+            "Node.Action.Starting": "$task.AutoUseSpMedication.focus.restore_sanity"
+        },
+        "next": [
+            "SceneNoticeRewardsConfirmWithAnchor"
+        ],
+        "post_wait_freezes": 300,
+        "recognition": {
+            "param": {
+                "expected": [
+                    "确认",
+                    "確定",
+                    "(?i)Confirm",
+                    "확인"
+                ],
+                "roi": [
+                    860,
+                    465,
+                    300,
+                    90
+                ]
+            },
+            "type": "OCR"
+        }
+    }
+}
