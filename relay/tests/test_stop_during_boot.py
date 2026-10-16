@@ -228,6 +228,52 @@ ran, alarms = preupdate_stage("automas", notes_first=True)
 check("a stopping relay gives an item no second try, and says nothing", (ran, alarms), (["automas"], []))
 
 
+print("[a stop during the second try is not a verdict: no recovered (self-fixed) line]")
+
+
+class _Records(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.got = []
+
+    def emit(self, record):
+        self.got.append((record.levelname, bool(getattr(record, errwatch.RECOVERED, False))))
+
+
+def once_more_stopped_on_retry():
+    """Try 1 leaves a note; SvcStop arrives during try 2, which returns no note."""
+    tries = []
+
+    def step(problems):
+        tries.append(1)
+        if len(tries) == 1:
+            problems.append("OK-WW 预更新：拿不到控制台会话，**没有检查更新**")
+        else:
+            errwatch.mark_stopping()
+        return ""
+
+    log = logging.getLogger("ark.test_stop_during_boot")
+    rec = _Records()
+    log.addHandler(rec)
+    saved = boot_stages._seconds_to_next_queue, errwatch.system_shutting_down
+    boot_stages._seconds_to_next_queue = lambda *a, **k: 10 * 3600.0   # room for a second try
+    errwatch.system_shutting_down = lambda: False
+    problems: list[str] = []
+    try:
+        boot_stages._once_more(types.SimpleNamespace(automas_dir=Path("automas")), log, "OK-WW",
+                               240.0, problems, step)
+    finally:
+        boot_stages._seconds_to_next_queue, errwatch.system_shutting_down = saved
+        errwatch._stopping.clear()
+        log.removeHandler(rec)
+    return len(tries), [r for r in rec.got if r[0] == "WARNING" or r[1]]
+
+
+tries, warned = once_more_stopped_on_retry()
+check("the retry ran (the stop came during it)", tries, 2)
+check("no WARNING and no recovered-tagged line", warned, [])
+
+
 print("[every boot puts back a switch a killed pre-update left off]")
 from ark_relay.features.preupdate import preupdate_okww  # noqa: E402
 asked = []

@@ -467,6 +467,17 @@ check("no copy of the alarm: FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
 relay.write_text(f"{today} 08:50:34 WARNING ark.service  预更新有 1 项没能确认：\n", encoding="utf-8")
 st, ev, _ = judge("#24b", {"rec": WWREC, "raw": {}}, state=tmpdir())
 check("unconfirmed without a second try: FAIL", (st, "再试一次" in ev), ("FAIL", True))
+RETRY = f"{today} 08:46:10 INFO    ark.service  预更新：OK-WW 没给出结论（OK-WW 预更新：拿不到控制台会话，**没有检查更新**），再试一次"
+relay.write_text("\n".join([
+    RETRY,
+    f"{today} 08:49:02 WARNING ark.service  预更新：OK-WW 第一次没给出结论，再试一次给出了结论",
+    "OK-WW 预更新：拿不到控制台会话，**没有检查更新**"]) + "\n", encoding="utf-8")
+st, ev, pushed = judge("#24b", {"rec": WWREC, "raw": {}}, state=tmpdir())
+check("retried and the second try gave a verdict: PASS", (st, pushed, "第二次给出了结论" in ev), ("PASS", [], True))
+# A stop during the second try (boot_stages._once_more) logs the retry line and nothing after.
+relay.write_text(RETRY + "\n", encoding="utf-8")
+st, _, _ = judge("#24b", {"rec": WWREC, "raw": {}}, state=tmpdir())
+check("retry line but no verdict and no alarm line (stopped mid-retry): not judged, not PASS", st, None)
 relay.write_text("", encoding="utf-8")
 st, _, _ = judge("#24b", {"rec": WWREC, "raw": {}}, state=tmpdir())
 check("no pre-update trouble today: not judged", st, None)

@@ -739,6 +739,10 @@ def _c46(ctx):
 _PRE_RETRY = re.compile(r"预更新：(\S+) 没给出结论（.*），再试一次")
 _PRE_NO_ROOM = re.compile(r"预更新：(\S+) 没给出结论，离下一个队列只有 \d+ 秒，不再试")
 _PRE_LEFT = re.compile(r"预更新有 (\d+) 项没能确认")
+# boot_stages._once_more: the second try gave a verdict. A retry line followed by neither
+# this nor _PRE_LEFT is a pre-update that did not finish (a stop during the retry, which
+# says nothing by design), so it is not judged rather than passed.
+_PRE_FIXED = re.compile(r"预更新：(\S+) 第一次没给出结论，再试一次给出了结论")
 RELAY_TAIL = 4 * 1024 * 1024
 
 
@@ -776,6 +780,8 @@ def _c24b(ctx):
     if not left:
         if any(_PRE_NO_ROOM.search(ln) for ln in first):
             return _r(FAIL, f"{head}；说了不再试，后面却没有「预更新有 N 项没能确认」")
+        if not any(_PRE_FIXED.search(ln) for ln in lines):
+            return None      # the retry never finished: nothing was judged yet
         return _r(PASS, f"{head}；第二次给出了结论")
     n = int(_PRE_LEFT.search(left[-1]).group(1))
     title = texts.unconfirmed("预更新", n)

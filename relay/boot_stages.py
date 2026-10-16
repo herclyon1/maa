@@ -742,6 +742,10 @@ def _once_more(cfg, log, name: str, budget_s: float, problems: list[str], step):
     log.info("预更新：%s 没给出结论（%s），再试一次", name, first)
     del problems[n0:]
     out = step(problems) or out
+    if _stop_requested():
+        # A stop during the second try: it returns no note because it judged nothing,
+        # so "no notes" here is not a verdict and nothing fixed itself; say nothing.
+        return out
     if len(problems) == n0:
         # The second try gave a verdict: the first try's problem fixed itself, one red item.
         from ark_relay.features.alarm import errwatch  # noqa: PLC0415
