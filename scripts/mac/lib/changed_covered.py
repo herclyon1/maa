@@ -219,6 +219,9 @@ def save_test_map() -> None:
                             encoding="utf-8")
 
 
+TEST_READ_FILES = ("relay/USER-SWITCHES.txt",)
+
+
 def tests_for(base: str) -> tuple[list[str], str]:
     """(test files to run, why). An empty list with a reason means: run everything."""
     diff = _sh("git", "diff", "--name-only", base, "--").splitlines()
@@ -234,10 +237,15 @@ def tests_for(base: str) -> tuple[list[str], str]:
     # deploy's own bookkeeping relay/state/last-deployed-notes.sha1. Counting them as "outside" made every deploy
     # after an order run all 445 tests: 10-16 01:2x-03:4x five deploys of a 3-file change ran the full suite, which
     # the owner called out (a few dozen changed lines should not cost a full run).
+    # Text files that tests read by name (2026-10-16): relay/USER-SWITCHES.txt is the muted-alarm register that
+    # test_user_switches.py and a dozen alarm tests parse. A change to it is a change to those tests' input, not to
+    # unknown code, so the tests that name it run instead of all 445 (the 10-16 hand-started fix touched it).
+    read_by_tests = [l for l in diff if l in TEST_READ_FILES]
     outside = [l for l in diff if not (l.startswith("relay/ark_relay/") or l in ("relay/service.py", "relay/boot_stages.py")
                                         or l.startswith("relay/tests/") or l.startswith("relay/RELEASE-NOTES") or l.endswith("manifest.json")
                                         or l.startswith("docs/") or l.startswith("scripts/") or l.endswith(".md")
-                                        or l in ("queue/config.json", "relay/state/last-deployed-notes.sha1"))]
+                                        or l in ("queue/config.json", "relay/state/last-deployed-notes.sha1")
+                                        or l in TEST_READ_FILES)]
     if outside:
         return [], f"改动不在中继模块范围内（{outside[0]}…），全量跑"
     if not TEST_MAP.exists():
@@ -254,6 +262,11 @@ def tests_for(base: str) -> tuple[list[str], str]:
     # import okww_overlay, so a change there picks them.
     if any(l.startswith("relay/ark_relay/features/okww_patch/okww_files/") for l in diff):
         changed = changed | {"okww_overlay"}
+    readers = {p.name for f in read_by_tests for p in (REPO / "relay" / "tests").glob("test_*.py")
+               if Path(f).name.rsplit(".", 1)[0] in p.read_text(encoding="utf-8", errors="replace")}
+    if read_by_tests and not readers:
+        return [], f"{read_by_tests[0]} 改了，却找不到读它的测试，全量跑"
+    touched_tests |= readers
     if not changed and not touched_tests:
         return [], "没有会改变行为的改动，全量跑（便宜的保险）"
     # A test that imports nothing from the relay (it scans source text or runs a

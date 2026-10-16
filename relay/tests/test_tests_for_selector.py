@@ -64,6 +64,18 @@ with tempfile.TemporaryDirectory() as td:
     check("仍只选 a、new、scan", picked, ["test_a.py", "test_new.py", "test_scan.py"])
     state["diff"] = ["relay/ark_relay/features/phone/phone.py"]
 
+    print("\n[静音登记表 USER-SWITCHES.txt 跟着改：不全量，加跑读它的测试]")
+    (t / "relay" / "tests" / "test_reads_switches.py").write_text('REG = "relay/USER-SWITCHES.txt"\n', encoding="utf-8")
+    table = json.loads(cc.TEST_MAP.read_text(encoding="utf-8"))
+    cc.TEST_MAP.write_text(json.dumps({**table, "test_reads_switches.py": ["engine"]}), encoding="utf-8")
+    state["diff"] = ["relay/ark_relay/features/phone/phone.py", "relay/USER-SWITCHES.txt"]
+    picked, why = cc.tests_for("HEAD")
+    check("选 a、new、scan，加上读登记表的那个", picked, ["test_a.py", "test_new.py", "test_reads_switches.py", "test_scan.py"])
+    check("没退回全量", "全量" not in why)
+    (t / "relay" / "tests" / "test_reads_switches.py").unlink()
+    cc.TEST_MAP.write_text(json.dumps(table), encoding="utf-8")
+    state["diff"] = ["relay/ark_relay/features/phone/phone.py"]
+
     print("\n[映射表不认识某个测试：全量]")
     (t / "relay" / "tests" / "test_unknown.py").write_text("", encoding="utf-8")
     picked, why = cc.tests_for("HEAD")
