@@ -18,7 +18,12 @@ in it change lately, does a running session or workflow still name it, does a to
 Removals are appended to ~/Library/Logs/disk-tidy.log (time, rule, path, size). Below the
 free-space floor (--floor-gb, default 30) the "floor" rules run too: the same checks with a
 2 h idle window instead of 24 h, plus git-ignored build outputs inside idle unmerged or dirty
-worktrees and the shared Xcode caches. Hard refusals, whatever a rule says: anything under
+worktrees and the shared Xcode caches.
+
+A running session's own tmp dir stays whole, but inside its scratchpad/ each subdirectory (and
+each top-level file of BIG_FILE_BYTES or more) goes once idle 24 h (2 h below the floor), unused,
+not a git worktree and not named by a live workflow journal (10-16: the acceptance session ran
+for days and its finished subagents' copies grew to 8.8 GB there). Hard refusals, whatever a rule says: anything under
 ~/Money or ~/Claude that is not a session worktree or a listed build output, a worktree with
 uncommitted changes, anything a running process has open or as its cwd, ~/.claude, CoreDevice
 (a mount of his phone), simulators (only `xcrun simctl delete unavailable`), and anything no
@@ -69,6 +74,11 @@ LSOF_TIMEOUT_S = 60
 TOOL_TIMEOUT_S = 600
 # Files bigger than this are data or logs, not tools; the reuse scan reads only code.
 REF_FILE_BYTES = 2_000_000
+# Top-level files of a running session's scratchpad from this size on are judged one by one.
+# Measured 10-16 21:3x in the acceptance session's scratchpad (832 entries): the largest top-level
+# file was 0.5 MB (gradle.log) and the 8.8 GB sat in subdirectories; 100 MB is a download or a
+# build product, and smaller files would only add hundreds of lines to every hourly run.
+BIG_FILE_BYTES = 100 << 20
 
 UUID_RX = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 UUID_NAME = re.compile(rf"^{UUID_RX}$")
@@ -818,6 +828,96 @@ def rule_dead_session_dirs(env: Env, ctx: Ctx) -> list[Item]:
     return items
 
 
+def git_link_inside(path: str) -> str | None:
+    """A `.git` file (a linked worktree of some repo, maybe outside ~/Claude) or a clone whose
+    .git/worktrees is not empty (it has linked trees elsewhere) under path, else None."""
+    stack = [path]
+    while stack:
+        d = stack.pop()
+        try:
+            it = os.scandir(d)
+        except OSError:
+            continue
+        with it:
+            for e in it:
+                try:
+                    if e.name == ".git" and e.is_file(follow_symlinks=False):
+                        return f"holds a linked git worktree ({d})"
+                    if not e.is_dir(follow_symlinks=False):
+                        continue
+                    if e.name == ".git":
+                        if any(os.scandir(os.path.join(e.path, "worktrees"))):
+                            return f"holds a repo with linked worktrees ({d})"
+                        continue
+                except OSError:
+                    continue
+                stack.append(e.path)
+    return None
+
+
+def live_scratch(env: Env, ctx: Ctx, rule: str, hours: float) -> list[Item]:
+    """Subdirectories and big top-level files of a running session's scratchpad/. Only entries of
+    scratchpad/ are judged: the session dir, scratchpad/ itself and tasks/ (symlinks into
+    ~/.claude) never are."""
+    items = []
+    try:
+        projects = sorted(p for p in env.tmp_root.iterdir() if p.is_dir() and not p.is_symlink())
+    except OSError:
+        return []
+    for proj in projects:
+        for sid in sorted(ctx.live_ids):
+            sp = proj / sid / "scratchpad"
+            if sp.is_symlink() or not sp.is_dir():
+                continue
+            if sid in ctx.ref_ids:
+                items.append(keep(rule, str(sp), "a tool, hook or repo file names this session (reused)"))
+                continue
+            try:
+                entries = sorted(os.scandir(sp), key=lambda e: e.name)
+            except OSError:
+                continue
+            for e in entries:
+                try:
+                    if e.is_symlink():
+                        continue
+                    is_dir = e.is_dir(follow_symlinks=False)
+                    if not is_dir and (not e.is_file(follow_symlinks=False)
+                                       or e.stat(follow_symlinks=False).st_size < BIG_FILE_BYTES):
+                        continue
+                except OSError:
+                    continue
+                p = norm(e.path)
+                hit = changed_since(p, env.cutoff(hours))
+                why = f"changed within {hours} h ({hit})" if hit else None
+                if not why:
+                    why = next((f"holds the registered git worktree {w.path}" for w in ctx.worktrees
+                                if within(w.path, p) or within(p, w.path)), None)
+                if not why and is_dir:
+                    why = git_link_inside(p)
+                if not why and re.search(r"scratchpad/" + re.escape(e.name) + r"(?![A-Za-z0-9._-])",
+                                         ctx.journal_text):
+                    why = f"a workflow journal written within {ACTIVE_HOURS} h names it"
+                why = why or guard(env, ctx, p)
+                items.append(keep(rule, p, why) if why else Item(rule, p))
+    return items
+
+
+def rule_live_session_scratch(env: Env, ctx: Ctx) -> list[Item]:
+    """10-16 Low disk space at 9 GB free: the acceptance session had run for days, so the
+    dead-session rule kept its whole tmp dir while its scratchpad/ held 8.8 GB of finished
+    subagents' leftovers (review copies of origin/main, a DerivedData copy, unpacked sources),
+    none touched for hours. Each subdirectory of a running session's scratchpad/ (and each
+    top-level file of BIG_FILE_BYTES or more) goes once nothing in it changed within 24 h, no
+    process has a file in it open or as cwd, it neither is nor holds a git worktree, and no
+    workflow journal written within 2 h names it. If a tool names the session, all of it stays."""
+    return live_scratch(env, ctx, "live-session-scratch", STALE_HOURS)
+
+
+def rule_live_session_scratch_floor(env: Env, ctx: Ctx) -> list[Item]:
+    """Below the floor: the same scratchpad entries after 2 h idle."""
+    return live_scratch(env, ctx, "live-session-scratch-2h", ACTIVE_HOURS)
+
+
 def rule_known_build_outputs(env: Env, ctx: Ctx) -> list[Item]:
     """Inventory row 11: $TMPDIR/precheck-* (hook-test copies), ~/Claude/transit-app/build (an
     old Xcode build, git-ignored) and remote-ref/tools/bugexam/xcr-dd (old DerivedData, no
@@ -902,14 +1002,14 @@ def rule_unavailable_simulators(env: Env, ctx: Ctx) -> list[Item]:
 
 
 NORMAL_RULES = [rule_merged_worktrees, rule_stale_registrations, rule_derived_data, rule_old_gradle,
-                rule_old_swift_toolchains, rule_dead_session_dirs, rule_known_build_outputs,
-                rule_uv_cache, rule_brew_cache, rule_go_cache, rule_pyright_cache,
-                rule_unavailable_simulators]
+                rule_old_swift_toolchains, rule_dead_session_dirs, rule_live_session_scratch,
+                rule_known_build_outputs, rule_uv_cache, rule_brew_cache, rule_go_cache,
+                rule_pyright_cache, rule_unavailable_simulators]
 FLOOR_RULES = [rule_merged_worktrees_floor, rule_derived_data_floor, rule_shared_derived_caches,
-               rule_idle_build_outputs]
+               rule_idle_build_outputs, rule_live_session_scratch_floor]
 # Floor rules that only repeat a normal rule with a shorter window: their KEEP lines would
 # repeat what the normal pass already printed.
-QUIET_KEEPS = {"merged-worktree-2h", "derived-data-2h"}
+QUIET_KEEPS = {"merged-worktree-2h", "derived-data-2h", "live-session-scratch-2h"}
 
 
 # ---- running -------------------------------------------------------------------------------
