@@ -174,6 +174,12 @@ _SWEPT: set = set()
 # like _SWEPT. Dropped once the file reads again.
 _CORRUPT_SAID: dict[str, float] = {}
 
+# The last state.json content this process read or wrote, per path: what a plain read
+# answers with while the file refuses to be read (a Windows lock), for the StateStore
+# built fresh at most call sites as for the long-lived ones. Never written to disk
+# from here: a write reads the file itself (_load fresh).
+_LAST_GOOD: dict[str, dict] = {}
+
 def set_aside(path: Path, mtime: float, said: "dict[str, float] | None" = None) -> "str | None":
     """Copy an unreadable state file aside as <name>.corrupt-<mtime> before anything
     overwrites it; the one line saying where it went (for the caller's log line), or
@@ -240,7 +246,12 @@ class StateStore:
                 with _WRITE_LOCK:
                     self._sweep_legacy()
             except OSError:
-                log.warning("清扫旧状态文件时出错，下次进程启动再试", exc_info=True)
+                # Swept again by the next StateStore: an unmigrated report-*.sent makes
+                # that day's report count as unsent. Only state.json's own read or write
+                # raises here (a lock outlasting LOCK_WAITS): a legacy file that cannot
+                # be read or moved is skipped inside.
+                _SWEPT.discard(str(self.dir))
+                log.warning("清扫旧状态文件时出错，下一次再试", exc_info=True)
             self._sweep_stray_tmp()
 
     def _sweep_stray_tmp(self) -> None:
@@ -270,29 +281,49 @@ class StateStore:
             return self._data
         data: dict = {}
         if m >= 0:
-            # A write waits out a lock on reading it too (LOCK_WAITS) and raises when it
-            # outlasts them: read as empty, the write that follows (now itself waiting
-            # the lock out) would put the near-empty fallback over everything on file.
-            for wait in (*(LOCK_WAITS if fresh else ()), None):
+            # Only content that is there and broken (not JSON, not a table) is set aside
+            # and read as empty. A read the file refused (a Windows lock: an antivirus
+            # scan or backup tool holding it a moment, or any other OSError) says nothing
+            # about its content: read as empty, every alarm's day mark answered "not sent"
+            # (one cause pushed twice) and a healthy file was copied aside (10-17).
+            # A write waits out a lock on reading it (LOCK_WAITS) and raises when it
+            # outlasts them, or at once for any other OSError: read as empty, the write
+            # that follows would put the near-empty fallback over everything on file.
+            # A plain read answers with the last good copy (this instance's, else the
+            # last this process read or wrote: most call sites build a StateStore per
+            # call) and tries the file again next time; with none yet it waits the lock
+            # out once, then answers empty for this call only.
+            last = self._data if self._data is not None else _LAST_GOOD.get(str(self.path))
+            waits = LOCK_WAITS if fresh or last is None else ()
+            for wait in (*waits, None):
                 try:
                     data = json.loads(self.path.read_text(encoding="utf-8"))
                 except OSError as exc:
-                    if fresh and locked(exc):
-                        if wait is None:
-                            raise
+                    # Gone since the stat (FileNotFoundError) is no different: the
+                    # next call's stat tells a file removed for good from a replace
+                    # caught midway.
+                    if wait is not None and locked(exc):
                         time.sleep(wait)
                         continue
-                    self._set_aside(m)
-                    data = {}
+                    if fresh:
+                        raise
+                    log.info("state.json 这次读不出来（%s），先用上次读到的", type(exc).__name__)
+                    # Not cached, _mtime kept: the next read tries the file again.
+                    return last if last is not None else {sec: {} for sec in SECTIONS}
                 except ValueError:
                     self._set_aside(m)
                     data = {}
                 else:
-                    _CORRUPT_SAID.pop(str(self.path), None)
+                    if not isinstance(data, dict):
+                        self._set_aside(m)
+                        data = {}
+                    else:
+                        _CORRUPT_SAID.pop(str(self.path), None)
                 break
         for s in SECTIONS:
             data.setdefault(s, {})
         self._data, self._mtime = data, m
+        _LAST_GOOD[str(self.path)] = data
         return data
 
     def _set_aside(self, mtime: float) -> None:
@@ -322,6 +353,19 @@ class StateStore:
             data[section][key] = value
             self._flush(data)
 
+    def update(self, section: str, key: str, change) -> None:
+        """state[section][key] = change(its value on disk, None when unset), the read
+        and the write under one hold of _WRITE_LOCK. A caller that get()s, changes and
+        set()s builds the value from a read outside the lock (and from the cached copy):
+        two such writers racing put back the copy each had read, and the second
+        dropped the first's change - one alarm's day mark lost that way (10-17)."""
+        if not _registered(section, key):
+            raise KeyError(f"state.{section}.{key} 没在字段表里登记，拒绝写入（见 docs/STATE-MODEL.md）")
+        with _WRITE_LOCK:
+            data = self._writable()
+            data[section][key] = change(data[section].get(key))
+            self._flush(data)
+
     def pop(self, section: str, key: str) -> None:
         with _WRITE_LOCK:
             data = self._writable()
@@ -347,6 +391,7 @@ class StateStore:
         except OSError:
             self._mtime = -1.0
         self._data = data
+        _LAST_GOOD[str(self.path)] = data
 
     # ---------- migration ----------
 
@@ -368,7 +413,7 @@ class StateStore:
             if value in ("", {}, None) and value is not False:
                 return False
             if data is None:
-                data = self._load()
+                data = self._writable()
             if key in data.get(section, {}):
                 return False        # already has a value: state.json wins
             data.setdefault(section, {})[key] = value
@@ -397,7 +442,7 @@ class StateStore:
                 # already reported that day would be replayed.
                 if value == "" and how == "text":
                     if data is None:
-                        data = self._load()
+                        data = self._writable()
                     data.setdefault(section, {}).setdefault(tmpl.format(stem), "")
                     moved.append(f.name)
                     continue
