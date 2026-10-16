@@ -137,8 +137,8 @@ def run_mas(answers, *, pack=Path("UpdatePack_v5.5.0-beta.5.zip")):
     A._mas_post = fake_post
     A._automas_version = lambda _root: "v5.5.0-beta.4"
     A._live_version = lambda: ""
-    A._wait_for_package = lambda _root, _deadline: waits.append("package") or pack
-    A._wait_for_version = lambda want, deadline: waits.append("version") or "v5.5.0-beta.4"
+    A._wait_for_package = lambda _root, _deadline, *_a: waits.append("package") or pack
+    A._wait_for_version = lambda want, deadline, *_a: waits.append("version") or "v5.5.0-beta.4"
     try:
         problems = []
         note = A.run_automas(TMP, budget_s=1, problems=problems)

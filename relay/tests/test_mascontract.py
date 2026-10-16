@@ -193,8 +193,8 @@ def update_run(*, need: bool, confirmed: bool) -> list:
             return {"if_need_update": need, "latest_version": "v5.7.0-beta.3"}
         return {}
     P._mas_post, P._automas_version, P._live_version = post, (lambda _r: "v5.7.0-beta.2"), (lambda: "v5.7.0-beta.2")
-    P._wait_for_package = lambda _root, _deadline: Path("UpdatePack_v5.7.0-beta.3.zip")
-    P._wait_for_version = (lambda want, _d: want) if confirmed else (lambda want, _d: "v5.7.0-beta.2")
+    P._wait_for_package = lambda _root, _deadline, *_a: Path("UpdatePack_v5.7.0-beta.3.zip")
+    P._wait_for_version = (lambda want, _d, *_a: want) if confirmed else (lambda want, _d, *_a: "v5.7.0-beta.2")
     try:
         kw = {"after_update": seen.append} if has_hook else {}
         P.run_automas(Path("."), budget_s=1, problems=[], **kw)

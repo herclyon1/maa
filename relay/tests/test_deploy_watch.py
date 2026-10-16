@@ -51,10 +51,12 @@ GOOD = """10-10 16:05:30 INFO    ark.service  服务模式启动，监视 D:\\ar
 """
 
 
-def j(text, since, *, elapsed=120, total=120, pids=(4242,), states=("RUNNING",), events=(), mode="deploy", version=""):
+def j(text, since, *, elapsed=120, total=120, pids=(4242,), states=("RUNNING",), events=(), mode="deploy", version="",
+      cap=None):
     lines = dw.lines_since(text, datetime.strptime(since, "%Y-%m-%d %H:%M:%S"))
+    kw = {} if cap is None else {"preupdate_cap": cap}
     return dw.judge(lines, pids=list(pids), states=list(states), events=list(events),
-                    elapsed=elapsed, total=total, mode=mode, version=version)
+                    elapsed=elapsed, total=total, mode=mode, version=version, **kw)
 
 
 print("[16:28 那一版：启动几秒就崩、又起来]")
@@ -83,6 +85,92 @@ check("没满实测崩溃间隔：继续盯", j(GOOD, "2026-10-10 16:05:29", ela
 check("满了实测崩溃间隔、三项都齐：通过，不再干等两分钟", j(GOOD, "2026-10-10 16:05:29", elapsed=25)[0], "ok")
 check("满两分钟：通过", j(GOOD, "2026-10-10 16:05:29")[0], "ok")
 check("一行都没有：两分钟到了算失败", j("", "2026-10-10 16:05:29")[0], "fail")
+
+print("\n[10-16 02:33 部署重启正好是当天第一次开机：预更新在跑，句柄要等它跑完才挂]")
+# relay.log 10-16 02:33:29-02:35:07 as written (v20261015183310): boot, version, self-check all
+# green, then the pre-update - AUTO-MAS really updated (72 s), OK-WW launched with its 45 s
+# minimum - and no handle line yet. The 120 s watch failed here, the rollback's stop came
+# while the pre-update could not hear it, and the 15 s hard exit fired (the 02:35 「主程序」 alarm).
+PREUPDATE_1016 = r"""10-16 02:33:29 INFO    ark.service  服务模式启动，监视 D:\ark\automas\history（变更即处理，兜底 30 秒）
+10-16 02:33:29 INFO    ark.service  中继代码版本 v20261015183310
+10-16 02:33:30 INFO    ark.selfupdate  COS 上最新一次部署是 v20261015101332，本机 v20261015183310，已是最新，不再问 GitHub
+10-16 02:33:30 INFO    ark.notify  不推送（日报或手机页已有）：🔄 中继已更新 ｜ 刚刚生效 版本 v20261015101332 → v20261015183310  - 中继读终末地（MaaEnd）任务说明文件变快了：这些文件九成以上本来就是标准格式，现在直接读，只有带注释的那几个才逐字清理。在 Mac 上量：以前每次开机要把 4.7 MB 逐字过五遍，约 1.5 秒白白耗在这上面，现在不到 0.2 秒。读出来的内容和以前一字不差，手机上看到的选项、写配置的校验都不变。  更
+10-16 02:33:30 INFO    ark.service  更新说明已记入当天日报（v20261015183310）
+10-16 02:33:33 INFO    ark.macpush  报警直送 Mac 没送到（URLError: <urlopen error [WinError 10061] 由于目标计算机积极拒绝，无法连接。>），13 条留着，下一条报警或下次开机再补
+10-16 02:33:35 INFO    ark.service  上游导出代码核对：三处都和登记的一致
+10-16 02:33:39 INFO    ark.phone  状态 44167 字节，压缩到 13023 字节
+10-16 02:33:41 INFO    ark.service  📱 已上报状态到手机（开机；今天 ntfy 已用 148 条）
+10-16 02:33:41 INFO    ark.machinecheck  上机核对 #10 过了：02:33:39 森空岛会话交给手机（6 项都在）；森空岛给的终末地体力：curStamina=134 maxStamina=360 maxTs=1792186851
+10-16 02:33:43 INFO    ark.phone  📱 手机通道已连上（长连接，不轮询）
+10-16 02:33:43 INFO    ark.phone  📱 ntfy 今天这个 IP 已用 148 条（中继自己发的 143 条）
+10-16 02:33:46 INFO    ark.service  开机：终末地开游戏：开游戏助手的入口已指向 C:\Program Files\ArkRelay\versions\20261015183310
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 看得到机器上在跑哪些程序
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 读得到每个程序是怎么启动的（系统自带的那条路）
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 调度程序有应答
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 调度程序的后台程序在跑
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 调度程序的开机任务计划还在
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 调度程序还管着两个游戏客户端的更新（明日方舟、鸣潮）
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 队列的排期读得到、至少一条开着定时
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 中继要读的调度程序设置都在原处
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 日志文件所在目录能写
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 状态目录能写
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 调度程序的历史目录在
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 至少一条通知通道配好了
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 手机通道配好了
+10-16 02:33:46 INFO    ark.service  开机自检 ✓ 中继装了读图组件（读官方长图（卡池几点几分）、压缩报警截图）
+10-16 02:33:46 INFO    ark.service  开机自检 14 项全部成立
+10-16 02:33:46 INFO    ark.preupdate  预更新：AUTO-MAS 后端自报 v5.7.0-beta.3（res/version.json 还写着 v5.5.0-beta.2，新版不再改那个文件）
+10-16 02:33:46 INFO    ark.preupdate  预更新：AUTO-MAS 有更新 v5.7.0-beta.3 → v5.7.0-beta.4，开始下载
+10-16 02:34:10 INFO    ark.preupdate  预更新：更新包就绪（UpdatePack_v5.7.0-beta.4.zip），开始安装
+10-16 02:34:58 INFO    ark.preupdate  预更新：AUTO-MAS 已更新到 v5.7.0-beta.4（后端重启后自报）
+10-16 02:34:58 INFO    ark.service  调度程序升级到 v5.7.0-beta.4 后，中继要读的调度程序设置都在原处：成立
+10-16 02:34:58 INFO    ark.notify  推送已送到：info 路，Server酱 收下 ｜ 🆕 预更新
+10-16 02:35:02 INFO    ark.preupdate  预更新：中继服务没有拿控制台令牌的权限（这台机器上一直如此），直接用计划任务启动 ok-ww.exe
+10-16 02:35:07 INFO    ark.preupdate  预更新：已通过计划任务在交互会话启动 ok-ww.exe
+10-16 02:35:07 INFO    ark.preupdate  预更新：已启动 OK-WW（已临时关掉自动开游戏），最多 240 秒
+"""
+# Before anything imports ark_relay: once imported, a later root would read the cached module.
+_bad = dw.preupdate_cap_s(ROOT / "no-such-dir")
+check("读不到中继代码：上限 0，说清原因", (_bad[0], "ModuleNotFoundError" in _bad[1]), (0.0, True))
+CAP, CAP_WHY = dw.preupdate_cap_s(ROOT / "relay")
+sys.path.insert(0, str(ROOT / "relay"))
+from ark_relay.features.preupdate import preupdate as _pre  # noqa: E402
+check("预更新时长上限读的是中继自己的 worst_case_seconds()", (CAP, CAP_WHY), (_pre.worst_case_seconds(), ""))
+check("上限比两分钟长得多（AUTO-MAS 下载 600 秒、OK-WW 240 秒都在里面）", CAP > 600 + 240, True)
+S1016 = "2026-10-16 02:33:28"
+v, why = j(PREUPDATE_1016, S1016, elapsed=125, total=120, cap=CAP)
+check("(i) 只缺句柄、预更新在跑：两分钟过了继续等，不退回", v, "wait")
+check("(i) 说明在等预更新", "预更新" in why, True)
+check("没给上限（读不到中继代码）：照旧两分钟判失败", j(PREUPDATE_1016, S1016, elapsed=125, total=120)[0], "fail")
+check("(ii) 预更新期间又重启：马上失败",
+      j(PREUPDATE_1016 + PREUPDATE_1016.splitlines()[0] + "\n", S1016, elapsed=125, total=120, cap=CAP)[0], "fail")
+check("预更新期间进程号变了：马上失败",
+      j(PREUPDATE_1016, S1016, elapsed=125, total=120, cap=CAP, pids=(4242, 5120))[0], "fail")
+check("预更新期间系统日志记下意外退出：马上失败",
+      j(PREUPDATE_1016, S1016, elapsed=125, total=120, cap=CAP, events=("事件 7031（2026-10-15T18:34:00 UTC）",))[0], "fail")
+red = PREUPDATE_1016.replace("INFO    ark.service  开机自检 ✓ 调度程序有应答",
+                             "WARNING ark.service  开机自检 ✗ 调度程序有应答")
+check("预更新在跑但自检有 ✗：马上失败", j(red, S1016, elapsed=30, total=120, cap=CAP)[0], "fail")
+v, why = j(PREUPDATE_1016, S1016, elapsed=120 + CAP + 1, total=120, cap=CAP)
+check("(iii) 超过预更新最长时长还没句柄：失败", v, "fail")
+check("(iii) 说清超过了预更新最长时长", "预更新最长" in why and "已挂上 AUTO-MAS 进程句柄" in why, True)
+no_selfcheck = "\n".join(ln for ln in PREUPDATE_1016.splitlines() if "全部成立" not in ln)
+check("还缺「全部成立」时不因预更新多等", j(no_selfcheck, S1016, elapsed=125, total=120, cap=CAP)[0], "fail")
+check("句柄挂上了：通过", j(PREUPDATE_1016 + "10-16 02:37:08 INFO    ark.service  已挂上 AUTO-MAS 进程句柄，它一退出立即拉起\n",
+                          S1016, elapsed=220, total=120, cap=CAP)[0], "ok")
+check("没给代码目录：上限 0", dw.preupdate_cap_s(None), (0.0, "没给中继代码目录"))
+
+got = []
+real_watch = dw.watch
+dw.watch = lambda *a: got.append(a) or 0
+try:
+    dw.main(["deploy_watch.py", "watch", "relay.log", S1016, "120", "deploy", "--pkg", "--root", "C:\\A B\\versions\\9"])
+finally:
+    dw.watch, dw.PKG = real_watch, False
+check("--root 传到 watch，其余参数位置不变", got, [("relay.log", S1016, 120.0, "deploy", "", "C:\\A B\\versions\\9")])
+pkg_sh = (ROOT / "scripts/mac/lib/deploy-pkg.sh").read_text(encoding="utf-8")
+check("安装版部署把刚起来的版本文件夹交给盯梢", '"$WATCH_S" deploy --pkg \\\n      --root "$APP_WIN\\\\versions\\\\$NEW"' in pkg_sh, True)
+check("老服务部署也交代码目录", "$WATCH_S deploy --root ${REMOTE_DIR" in (ROOT / "scripts/mac/deploy-relay.sh").read_text(encoding="utf-8"), True)
 
 print("\n[退回之后：一次启动、版本是上一版]")
 check("版本对：通过", j(GOOD, "2026-10-10 16:05:29", total=60, mode="rollback", version="v20261010080447")[0], "ok")

@@ -9,7 +9,8 @@ import time
 from pathlib import Path
 
 
-from ark_relay.features.preupdate.preupdate_common import _close, _note, _pwsh, _span, _spawn_interactive, log
+from ark_relay.features.preupdate.preupdate_common import (
+    PWSH_GUARD_S, TASKKILL_GUARD_S, _close, _note, _pwsh, _span, _spawn_interactive, going_down, log)
 
 
 # OK-WW updates itself through pyappify from a CNB git mirror when ok-ww.exe (the
@@ -25,6 +26,11 @@ OKWW_BUDGET_SECONDS = 240
 # pyappify update check in 30000ms"), while app.json is rewritten within seconds
 # of launch. A verdict of "checked, no update" waits at least this long.
 OKWW_MIN_WAIT_SECONDS = 45
+# Where run_okww keeps the switch's value from before it turned it off, until it has put
+# it back. 2026-10-16 02:35 the 15 s hard exit killed the relay inside run_okww, the
+# `finally` that restores the switch never ran, and the next run read the switch as off
+# and "restored" it to off. The next run and every boot restore from this file instead.
+AUTOSTART_MEMO = "okww-autostart-was.json"
 
 
 # OK-WW's own python processes: python.exe or pythonw.exe (the echo farm launches
@@ -51,7 +57,7 @@ def _okww_py(tail: str, timeout: "float | None" = None):
     # guard fires only when pwsh or WMI hangs.
     try:
         return subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
-                       capture_output=True, timeout=60 if timeout is None else timeout)
+                       capture_output=True, timeout=PWSH_GUARD_S if timeout is None else timeout)
     except (OSError, subprocess.SubprocessError):
         return None
 
@@ -103,16 +109,15 @@ def _okww_quiesce(sleep=time.sleep, launcher_root: Path | None = None, left=None
     PowerShell call here gets only that (echofarm.stop_okww).
     """
     _stop_okww_python(timeout=left() if left else None)
-    for name in ("ok-ww.exe", "Wuthering Waves.exe",
-                 "Client-Win64-Shipping.exe", "KRSDKExternal.exe"):
+    for name in _QUIESCE_EXES:
         try:
             subprocess.run(["taskkill", "/F", "/IM", name],
-                           capture_output=True, timeout=30)
+                           capture_output=True, timeout=TASKKILL_GUARD_S)
         except (OSError, subprocess.SubprocessError):
             pass
     _stop_wuwa_launcher(launcher_root, timeout=left() if left else None)
     # Two seconds for the processes to exit. `sleep` is injectable for tests.
-    sleep(2)
+    sleep(_QUIESCE_SETTLE_S)
 
 
 def _okww_close(sleep=time.sleep, launcher_root: Path | None = None) -> list[str]:
@@ -162,6 +167,14 @@ _WW_LAUNCHER_EXES = ("launcher.exe", "launcher_main.exe")
 # Used when the launcher's folder cannot be worked out. A path segment, so the game
 # body's folder (…\Wuthering Waves Game\…) does not match.
 _WW_LAUNCHER_SEGMENT = "\\wuthering waves\\"
+_QUIESCE_EXES = ("ok-ww.exe", "Wuthering Waves.exe", "Client-Win64-Shipping.exe", "KRSDKExternal.exe")
+_QUIESCE_SETTLE_S = 2
+# The longest one _okww_quiesce can take, from its hang guards: the OK-WW python query
+# (_stop_okww_python), one taskkill per name, the launcher query and one taskkill per
+# launcher process, then the settle sleep.
+OKWW_QUIESCE_MAX_SECONDS = (2 * PWSH_GUARD_S
+                            + (len(_QUIESCE_EXES) + len(_WW_LAUNCHER_EXES)) * TASKKILL_GUARD_S
+                            + _QUIESCE_SETTLE_S)
 
 
 def _norm(path) -> str:
@@ -192,7 +205,7 @@ def _wuwa_launcher_procs(root: Path | None = None,
     # at 0.39-0.54 s over 5 runs.
     try:
         r = subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
-                           capture_output=True, timeout=60 if timeout is None else timeout)
+                           capture_output=True, timeout=PWSH_GUARD_S if timeout is None else timeout)
         data = json.loads((r.stdout or b"").decode("utf-8", "replace").strip() or "null")
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
@@ -216,7 +229,8 @@ def _stop_wuwa_launcher(root: Path | None = None, timeout: "float | None" = None
     stopped = []
     for pid, path in _wuwa_launcher_procs(root, timeout) or []:
         try:
-            r = subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, timeout=30)
+            r = subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True,
+                               timeout=TASKKILL_GUARD_S)
         except (OSError, subprocess.SubprocessError) as exc:
             log.warning("鸣潮启动器没关掉（PID %d，%s）：%s", pid, path, exc)
             continue
@@ -279,7 +293,8 @@ def _okww_stamp(okww_dir: Path) -> float:
 def _okww_await_update(root: Path, budget_s: float, before_version: str,
                        before_avail: tuple[str, ...],
                        before_stamp: float, sleep=time.sleep,
-                       clock=time.monotonic) -> tuple[str, bool, str, str, tuple[str, ...]]:
+                       clock=time.monotonic,
+                       stopping=None) -> tuple[str, bool, str, str, tuple[str, ...]]:
     """Watch app.json until OK-WW is done: returns (new version, did it check, error,
     the state it was still in when the budget ran out - "" unless it timed out busy,
     the last non-empty available_versions read - `before_avail` if none was read).
@@ -287,7 +302,10 @@ def _okww_await_update(root: Path, budget_s: float, before_version: str,
     "Did it check" is true when the version list changed, app.json was
     rewritten, the update state left idle, or the version changed. A
     "checked, settled" verdict also needs OKWW_MIN_WAIT_SECONDS since launch.
+    `stopping()` true at a poll ends the wait at once (default: the relay is stopping,
+    preupdate_common.going_down); the caller asks it again and gives no verdict.
     """
+    stopping = stopping or going_down
     deadline = clock() + budget_s
     launched = clock()
     settled = ""
@@ -298,6 +316,8 @@ def _okww_await_update(root: Path, budget_s: float, before_version: str,
     latest = before_avail     # the list the verdict reads: the newest one seen
     while clock() < deadline:
         sleep(3)
+        if stopping():
+            break
         version, state, err, avail = _okww_state(root)
         if avail:
             latest = avail
@@ -382,15 +402,94 @@ def _okww_timeout_shot(take=None) -> "Path | None":
         return None
 
 
+def _okww_autostart_now(okww_dir: Path) -> bool | None:
+    """The auto-start switch as it is now, read only; None when unreadable."""
+    try:
+        data = json.loads(Path(okww_dir).joinpath(*_OKWW_BASIC).read_text(encoding="utf-8"))
+        return bool(data.get(_OKWW_AUTOSTART_KEY, False))
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def _memo_path(state_dir: "Path | None") -> "Path | None":
+    return Path(state_dir) / AUTOSTART_MEMO if state_dir else None
+
+
+def _memo_read(memo: "Path | None") -> bool | None:
+    """The switch's value from before a run turned it off, when that run never put it
+    back; None when there is no such record (or it cannot be read)."""
+    if memo is None:
+        return None
+    try:
+        value = json.loads(memo.read_text(encoding="utf-8")).get("was")
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+    return value if isinstance(value, bool) else None
+
+
+def _memo_write(memo: "Path | None", value: bool) -> None:
+    if memo is None:
+        return
+    try:
+        memo.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(memo, json.dumps({"was": value, "at": time.strftime("%Y-%m-%d %H:%M:%S")}))
+    except OSError:
+        # Without the record a hard exit loses the value again, as before 10-16; the run goes on.
+        log.warning("预更新：记不下 OK-WW 自动开游戏开关的原值（%s）", memo, exc_info=True)
+
+
+def _memo_drop(memo: "Path | None") -> None:
+    if memo is None:
+        return
+    try:
+        memo.unlink(missing_ok=True)
+    except OSError:
+        log.warning("预更新：删不掉 %s，下次还会按它放回开关", memo, exc_info=True)
+
+
+def restore_autostart_leftover(okww_dir: "Path | None", state_dir: "Path | None",
+                               pids=None) -> str:
+    """At boot: put the auto-start switch back from the record a killed run left
+    (AUTOSTART_MEMO). Returns a log line when it did, else "".
+
+    Every boot, not only a pre-update boot: a day with no OK-WW queue left, or a clean
+    pre-update already done, runs no pre-update and would leave the switch wrong. Only
+    while no OK-WW python runs (`pids`, default okww_python_pids; [] = none): a running
+    OK-WW writes its settings back from memory. Unknown (None) is left for the next boot.
+    """
+    memo = _memo_path(state_dir)
+    was = _memo_read(memo)
+    if was is None or not okww_dir:
+        return ""
+    running = (pids or okww_python_pids)()
+    if running is None or running:
+        log.info("启动：OK-WW 的自动开游戏开关上次没放回，但 OK-WW %s，留到下次开机再放",
+                 "在跑" if running else "在不在跑查不到")
+        return ""
+    if _okww_autostart(Path(okww_dir), was) is None:
+        return ""
+    _memo_drop(memo)
+    return f"OK-WW 的自动开游戏开关上次没放回，已放回原来的「{'开' if was else '关'}」"
+
+
 def run_okww(okww_dir: Path | None,
              budget_s: float = OKWW_BUDGET_SECONDS,
-             problems: list[str] | None = None) -> str:
+             problems: list[str] | None = None,
+             state_dir: "Path | None" = None,
+             stopping=None) -> str:
     """Let OK-WW apply any pending update now, without starting the game.
 
     Appends to `problems` whenever the check could not be shown to have
     happened. Returns 「OK-WW 已更新：旧 → 新」 or "".
+    `state_dir` holds AUTOSTART_MEMO (none given: no record kept). `stopping()` (default
+    preupdate_common.going_down): a stopping relay launches nothing, and a stop during
+    the wait closes OK-WW and puts the switch back at once, with no verdict and no note.
     """
+    stopping = stopping or going_down
     if not okww_dir:
+        return ""
+    if stopping():
+        log.info("预更新：中继正在停止，不启动 OK-WW")
         return ""
     root = Path(okww_dir)
     exe = root / "ok-ww.exe"
@@ -403,13 +502,25 @@ def run_okww(okww_dir: Path | None,
     before_stamp = _okww_stamp(root)
     # Nothing may be holding the config in memory while we edit it.
     _okww_quiesce()
+    if stopping():
+        # The stop came during the quiesce: no switch flip, no launch.
+        log.info("预更新：中继正在停止，不启动 OK-WW")
+        return ""
     # ok-ww.exe has no launch argument that keeps it from starting the game, so
     # the auto-start switch is turned off for this launch and restored in the
-    # `finally` below.
+    # `finally` below. Its value is kept in state first, so a process killed before
+    # the `finally` (10-16 02:35) does not lose it.
+    memo = _memo_path(state_dir)
+    kept = _memo_read(memo)
+    if kept is None and (now := _okww_autostart_now(root)) is not None:
+        _memo_write(memo, now)
     was = _okww_autostart(root, False)
     if was is None:
         _note(problems, "OK-WW 预更新：改不动 Basic Options.json 里的自动开游戏开关，没有检查更新")
         return ""
+    if kept is not None:
+        # An earlier run turned it off and never put it back: the record has the real value.
+        was = kept
     launched = False
     try:
         # require_console: in session 0 OK-WW's updater does not run.
@@ -421,7 +532,11 @@ def run_okww(okww_dir: Path | None,
         launched = True
         log.info("预更新：已启动 OK-WW（已临时关掉自动开游戏），最多 %.0f 秒", budget_s)
         settled, checked, failed, stuck, latest_avail = _okww_await_update(
-            root, budget_s, before_version, before_avail, before_stamp)
+            root, budget_s, before_version, before_avail, before_stamp, stopping=stopping)
+        if stopping():
+            # No verdict, no note, no screenshot: the next boot runs the pre-update again.
+            log.info("预更新：中继正在停止，不等 OK-WW 了，关掉它、放回开关")
+            return ""
         _okww_report(problems, budget_s, before_version, latest_avail,
                      settled, checked, failed, stuck, _okww_timeout_shot() if stuck else None)
         if not before_version:
@@ -443,3 +558,5 @@ def run_okww(okww_dir: Path | None,
             if back is None:
                 from ark_relay.core import texts  # noqa: PLC0415
                 log.warning("%s", texts.okww_autostart_not_restored(bool(was)))
+            else:
+                _memo_drop(memo)

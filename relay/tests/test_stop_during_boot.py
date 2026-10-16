@@ -150,5 +150,145 @@ check("close() woke it in under 2 s", time.monotonic() - t0 < 2, True)
 check("record still queued for the next start", len(h.pending()), 1)
 lg.removeHandler(h)
 
+
+print("[stop during the boot pre-update (10-16 02:35): no OK-WW launch, no mark_run, no alarm]")
+# 2026-10-16 02:35: a deploy rollback stopped the relay mid pre-update. A stop that only
+# ended the AUTO-MAS wait would go straight on to launch OK-WW (boot_stages forbids a
+# stopping process to start programs), and a pre-update cut short must be neither marked
+# done nor reported as 「没能确认」: the next boot runs it again.
+from ark_relay.features.okww_patch import okww_overlay  # noqa: E402
+from ark_relay.features.phone import commands  # noqa: E402
+from ark_relay.features.preupdate import preupdate  # noqa: E402
+
+
+class _Notifier:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body="", **k):
+        self.sent.append((title, k.get("alert", False)))
+        return []
+
+
+def preupdate_stage(stop_in: str, notes_first: bool = False):
+    """Run _stage_preupdate with every program step faked; `stop_in` names the step during
+    which SvcStop arrives ("automas", "okww" or "" for none). Returns what ran."""
+    ran: list[str] = []
+    cfg = types.SimpleNamespace(automas_dir=Path("automas"), okww_dir=Path("okww"),
+                                state_dir=Path("state-never-written"))
+    notifier = _Notifier()
+
+    def automas(*_a, problems=None, **_k):
+        ran.append("automas")
+        if notes_first:
+            problems.append("AUTO-MAS 预更新：等了 180 秒仍问不到更新状态，**没有检查更新**")
+        if stop_in == "automas":
+            errwatch.mark_stopping()
+        return ""
+
+    def okww(*_a, problems=None, **_k):
+        ran.append("okww")
+        if stop_in == "okww":
+            errwatch.mark_stopping()
+        return ""
+    saved = (preupdate.wanted_today, preupdate.should_run, preupdate.mark_run, preupdate.run_automas,
+             preupdate.run_okww, commands.mas_up, okww_overlay.retry_pending, okww_overlay.drift_line,
+             boot_stages._seconds_to_next_queue)
+    preupdate.wanted_today = lambda *a, **k: True
+    preupdate.should_run = lambda *a, **k: True
+    preupdate.mark_run = lambda *a, **k: ran.append("mark_run")
+    preupdate.run_automas = automas
+    preupdate.run_okww = okww
+    commands.mas_up = lambda *a, **k: True
+    okww_overlay.retry_pending = lambda *a, **k: ran.append("retry_pending")
+    okww_overlay.drift_line = lambda *a, **k: ran.append("drift_line") and ""
+    boot_stages._seconds_to_next_queue = lambda *a, **k: 10 * 3600.0   # room for a second try
+    # win32api is stubbed above, so GetSystemMetrics would read as "Windows is going down".
+    real_shutting, errwatch.system_shutting_down = errwatch.system_shutting_down, lambda: False
+    try:
+        boot_stages._stage_preupdate(cfg, notifier, logging.getLogger("ark.test_stop_during_boot"))
+    finally:
+        (preupdate.wanted_today, preupdate.should_run, preupdate.mark_run, preupdate.run_automas,
+         preupdate.run_okww, commands.mas_up, okww_overlay.retry_pending, okww_overlay.drift_line,
+         boot_stages._seconds_to_next_queue) = saved
+        errwatch._stopping.clear()
+        errwatch.system_shutting_down = real_shutting
+    return ran, [t for t, alert in notifier.sent if alert]
+
+
+ran, alarms = preupdate_stage("")
+check("no stop: both items, overrides, mark_run", ran, ["automas", "okww", "retry_pending", "drift_line", "mark_run"])
+ran, alarms = preupdate_stage("automas")
+check("(d) stop during the AUTO-MAS item: OK-WW never launched, no mark_run", ran, ["automas"])
+check("(d) no alarm", alarms, [])
+ran, alarms = preupdate_stage("okww")
+check("(e) stop during the OK-WW item: no override writes, no mark_run", ran, ["automas", "okww"])
+check("(e) no alarm", alarms, [])
+ran, alarms = preupdate_stage("automas", notes_first=True)
+check("a stopping relay gives an item no second try, and says nothing", (ran, alarms), (["automas"], []))
+
+
+print("[a stop during the second try is not a verdict: no recovered (self-fixed) line]")
+
+
+class _Records(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.got = []
+
+    def emit(self, record):
+        self.got.append((record.levelname, bool(getattr(record, errwatch.RECOVERED, False))))
+
+
+def once_more_stopped_on_retry():
+    """Try 1 leaves a note; SvcStop arrives during try 2, which returns no note."""
+    tries = []
+
+    def step(problems):
+        tries.append(1)
+        if len(tries) == 1:
+            problems.append("OK-WW 预更新：拿不到控制台会话，**没有检查更新**")
+        else:
+            errwatch.mark_stopping()
+        return ""
+
+    log = logging.getLogger("ark.test_stop_during_boot")
+    rec = _Records()
+    log.addHandler(rec)
+    saved = boot_stages._seconds_to_next_queue, errwatch.system_shutting_down
+    boot_stages._seconds_to_next_queue = lambda *a, **k: 10 * 3600.0   # room for a second try
+    errwatch.system_shutting_down = lambda: False
+    problems: list[str] = []
+    try:
+        boot_stages._once_more(types.SimpleNamespace(automas_dir=Path("automas")), log, "OK-WW",
+                               240.0, problems, step)
+    finally:
+        boot_stages._seconds_to_next_queue, errwatch.system_shutting_down = saved
+        errwatch._stopping.clear()
+        log.removeHandler(rec)
+    return len(tries), [r for r in rec.got if r[0] == "WARNING" or r[1]]
+
+
+tries, warned = once_more_stopped_on_retry()
+check("the retry ran (the stop came during it)", tries, 2)
+check("no WARNING and no recovered-tagged line", warned, [])
+
+
+print("[every boot puts back a switch a killed pre-update left off]")
+from ark_relay.features.preupdate import preupdate_okww  # noqa: E402
+asked = []
+saved = (preupdate_okww.restore_autostart_leftover, okww_overlay.install, okww_overlay.write_master_pointer,
+         okww_overlay.report_line, okww_overlay.drift_line)
+preupdate_okww.restore_autostart_leftover = lambda okww, state: asked.append((okww, state)) or ""
+okww_overlay.install = okww_overlay.write_master_pointer = lambda *a, **k: ""
+okww_overlay.report_line = okww_overlay.drift_line = lambda *a, **k: ""
+try:
+    boot_stages._stage_patch_okww(types.SimpleNamespace(automas_dir=None, okww_dir=Path("okww"), state_dir=Path("st")),
+                                  _Notifier(), logging.getLogger("ark.test_stop_during_boot"))
+finally:
+    (preupdate_okww.restore_autostart_leftover, okww_overlay.install, okww_overlay.write_master_pointer,
+     okww_overlay.report_line, okww_overlay.drift_line) = saved
+check("_stage_patch_okww restores from the record", asked, [(Path("okww"), Path("st"))])
+
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

@@ -11,7 +11,7 @@ from ark_relay.core.config import mas_base
 from pathlib import Path
 
 
-from ark_relay.features.preupdate.preupdate_common import _note, _span, log
+from ark_relay.features.preupdate.preupdate_common import _note, _span, going_down, log
 
 
 # AUTO-MAS is already running and its FastAPI backend answers on localhost, so it
@@ -57,10 +57,11 @@ def _live_version() -> str:
         return ""
 
 
-def _wait_for_version(want: str, deadline: float) -> str:
-    """Poll the backend until it reports `want` or the deadline passes; returns what it last said."""
+def _wait_for_version(want: str, deadline: float, stopping=going_down) -> str:
+    """Poll the backend until it reports `want`, the deadline passes or `stopping()`;
+    returns what it last said."""
     got = ""
-    while time.monotonic() < deadline:
+    while time.monotonic() < deadline and not stopping():
         got = _live_version()
         if got == want:
             return got
@@ -94,8 +95,9 @@ def _mas_error(answer) -> str | None:
     return f"code={code} status={status} {answer.get('message') or ''}".strip()[:200]
 
 
-def _wait_for_package(automas_dir: Path, deadline: float) -> Path | None:
-    """Wait for UpdatePack_*.zip to appear and keep the same size for 9 s.
+def _wait_for_package(automas_dir: Path, deadline: float, stopping=going_down) -> Path | None:
+    """Wait for UpdatePack_*.zip to appear and keep the same size for 9 s; None when
+    the deadline passes or `stopping()` first.
 
     install_update() refuses when the package is not there yet.
     """
@@ -103,6 +105,8 @@ def _wait_for_package(automas_dir: Path, deadline: float) -> Path | None:
     last_size = -1
     while time.monotonic() < deadline:
         time.sleep(3)
+        if stopping():
+            return None
         packs = sorted(Path(automas_dir).glob("UpdatePack_*.zip"),
                        key=lambda f: f.stat().st_mtime)
         if not packs:
@@ -126,13 +130,19 @@ def _wait_for_package(automas_dir: Path, deadline: float) -> Path | None:
 def run_automas(automas_dir: Path | None,
                 budget_s: float = MAS_BUDGET_SECONDS,
                 problems: list[str] | None = None,
-                after_update: "Callable[[str], object] | None" = None) -> str:
+                after_update: "Callable[[str], object] | None" = None,
+                stopping=None) -> str:
     """Check, download and apply an AUTO-MAS update now. Returns a note or "".
 
     after_update(new_version) is called once the restarted backend reports the new version,
     and only then: boot_stages passes selfcheck.report_contract, which checks again that every
     setting the relay reads is where it looks (10-14: v5.7.0-beta.3, installed here at 08:46,
-    moved the stage items, and the boot self-check had run at 08:45 on the old version)."""
+    moved the stage items, and the boot self-check had run at 08:45 on the old version).
+
+    `stopping()` (default preupdate_common.going_down) is asked at every poll of the three
+    waits; a stop ends the item at once with "" and no note, since nothing was judged and
+    the next boot runs the pre-update again."""
+    stopping = stopping or going_down
     if not automas_dir:
         return ""
     root = Path(automas_dir)
@@ -158,6 +168,9 @@ def run_automas(automas_dir: Path | None,
                                {"current_version": version, "if_force": True})
             break
         except Exception:  # noqa: BLE001 - not up yet, or genuinely unreachable
+            if stopping():
+                log.info("预更新：中继正在停止，AUTO-MAS 的更新这次不查了")
+                return ""
             if time.monotonic() >= wait_until:
                 log.warning("预更新：等了 %.0f 秒仍问不到 AUTO-MAS 更新状态，跳过",
                             MAS_WAIT_SECONDS)
@@ -191,7 +204,11 @@ def run_automas(automas_dir: Path | None,
         _note(problems, f"AUTO-MAS 预更新：查到有 {latest}，但下载没能启动（{failed}）")
         return ""
 
-    pack = _wait_for_package(root, deadline)
+    pack = _wait_for_package(root, deadline, stopping)
+    if pack is None and stopping():
+        # The partial package stays; the next boot continues from it.
+        log.info("预更新：中继正在停止，AUTO-MAS 的更新包留到下次开机再装")
+        return ""
     if pack is None:
         # The partial package stays; the next boot continues from it.
         log.warning("预更新：AUTO-MAS 更新包 %.0f 秒内没下完，留到下次开机再装", budget_s)
@@ -212,7 +229,10 @@ def run_automas(automas_dir: Path | None,
                         f"（{failed}），留到下次开机再装")
         return ""
     # The backend restarts itself after install; wait for it to report the new version.
-    got = _wait_for_version(latest, time.monotonic() + MAS_INSTALL_WAIT_SECONDS)
+    got = _wait_for_version(latest, time.monotonic() + MAS_INSTALL_WAIT_SECONDS, stopping)
+    if got != latest and stopping():
+        log.info("预更新：中继正在停止，AUTO-MAS 的安装已启动，装没装上留到下次开机再看")
+        return ""
     if got == latest:
         log.info("预更新：AUTO-MAS 已更新到 %s（后端重启后自报）", latest)
         if after_update is not None:

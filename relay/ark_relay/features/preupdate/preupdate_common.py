@@ -10,6 +10,20 @@ from pathlib import Path
 
 log = logging.getLogger("ark.preupdate")
 
+# Hang guards of the subprocess calls in the pre-update: the most one call may take,
+# not what it takes (pwsh + Get-CimInstance measured 0.39-0.54 s on the game machine,
+# 2026-10-13 11:08). preupdate.worst_case_seconds() sums them.
+PWSH_GUARD_S = 60
+TASKKILL_GUARD_S = 30
+
+
+def going_down() -> bool:
+    """The relay is stopping (SvcStop, or Windows going down). Every pre-update wait asks
+    this at each poll, as boot_stages._stop_requested does: on 2026-10-16 02:35 a deploy
+    rollback stopped the relay while the OK-WW wait could not hear it, and the 15 s hard
+    exit killed the process before the auto-start switch was put back."""
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415 - errwatch is heavy; only at call time
+    return errwatch.going_down()
 
 
 def _note(problems: list[str] | None, msg: str) -> None:
@@ -40,7 +54,7 @@ def _close(exe: Path) -> None:
     try:
         subprocess.run(
             ["taskkill", "/IM", exe.name, "/F"],
-            capture_output=True, timeout=30, check=False)
+            capture_output=True, timeout=TASKKILL_GUARD_S, check=False)
     except (OSError, subprocess.SubprocessError):
         log.warning("预更新：关闭 %s 失败", exe.name, exc_info=True)
 
@@ -96,7 +110,7 @@ def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = (),
     try:
         r = subprocess.run(
             [exe_ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
-            capture_output=True, timeout=60, check=False)
+            capture_output=True, timeout=PWSH_GUARD_S, check=False)
     except (OSError, subprocess.SubprocessError):
         log.warning("预更新：计划任务方式启动 %s 失败", exe.name, exc_info=True)
         return False
