@@ -3,7 +3,9 @@
 A whole fake HOME is built in a temp dir: a repo with a bare origin and every kind of worktree
 (merged / fresh / dirty / unmerged / in use / named by a live workflow / named by a tool /
 locked / standing / outside the session zone / gone), Claude session tmp dirs (dead, running,
-continued by a running one, fresh, reused by a hook, owning a live workflow journal), Xcode
+continued by a running one, fresh, reused by a hook, owning a live workflow journal; inside a
+running session's scratchpad: idle / fresh / 5 h idle / open / journal-named / worktree subdirs and
+a big idle file), Xcode
 DerivedData, Gradle and swiftly versions, the one-off build outputs and the caches. The tool
 runs as a subprocess against it, with stub `swiftly` / `uv` / `brew` / `go` / `xcrun` on PATH
 that only record their arguments. Then: the dry run removes nothing and logs nothing, --apply
@@ -133,7 +135,8 @@ def build():
           f'{{"m": "read the full transcript at: {HOME}/.claude/projects/-Users-x/{U["pred"]}.jsonl\\nContinue"}}\n')
     write(HOME / f".claude/projects/-Users-x/{U['transcript']}.jsonl", "{}\n")
     write(HOME / f".claude/projects/-Users-x/{U['journal']}/subagents/workflows/wf_1/journal.jsonl",
-          '{"prompt": "work in .claude/worktrees/wt-journal now"}\n')
+          '{"prompt": "work in .claude/worktrees/wt-journal now"}\n'
+          f'{{"prompt": "read /tmp/claude-501/-Users-x/{U["live"]}/scratchpad/sp-journal/out.txt"}}\n')
     write(HOME / ".claude/hooks/h.py",
           f'SRC = "/private/tmp/claude-501/-Users-x/{U["reused"]}/scratchpad/r-1.txt"\n'
           f'TREE = "{WT / "wt-named"}"\n')
@@ -179,6 +182,27 @@ def build():
         age_wt(HOME / p, 72)
     write(dd / "Proj-new/Build/x", "fresh")
 
+    # Inside a running session's scratchpad (10-16: the acceptance session ran for days and its
+    # finished subagents' copies grew to 8.8 GB): created after the 72 h aging above.
+    sp = proj / U["live"] / "scratchpad"
+    for name in ("sp-old", "sp-open", "sp-journal", "sp-gitlink"):
+        write(sp / name / "deep/f.txt")
+        age(sp / name, 72)
+    write(sp / "sp-5h/f.txt")
+    age(sp / "sp-5h", 5)
+    write(sp / "sp-new/f.txt")
+    write(sp / "sp-gitlink/.git", "gitdir: /elsewhere/.git/worktrees/x\n")    # a worktree of a repo
+    age(sp / "sp-gitlink", 72)                                               # outside ~/Claude
+    add_wt(sp / "sp-wt")
+    age_wt(sp / "sp-wt", 72)
+    with open(sp / "big.bin", "wb") as fh:
+        fh.truncate(getattr(dt, "BIG_FILE_BYTES", 100 << 20) + 1)            # sparse
+    age(sp / "big.bin", 72)
+    write(sp / "small.log", "s")
+    age(sp / "small.log", 72)
+    write(proj / U["live"] / "tasks/a1.output", "o")                   # outside scratchpad/
+    age(proj / U["live"] / "tasks", 72)
+
     STUBS.mkdir()
     for tool in ("uv", "brew", "go", "swiftly", "xcrun"):
         write(STUBS / tool, f"""#!/bin/sh
@@ -191,7 +215,7 @@ if [ "{tool}" = xcrun ] && [ "$3" = "-j" ]; then
 fi
 """)
         os.chmod(STUBS / tool, 0o755)
-    write(OPEN, f"{WT / 'wt-cwd' / 'sub'}\n")
+    write(OPEN, f"{WT / 'wt-cwd' / 'sub'}\n{proj / U['live'] / 'scratchpad/sp-open/deep/f.txt'}\n")
     write(PROCS, "launchd\nzsh\n")
 
 
@@ -231,11 +255,13 @@ def reason(res, p):
 build()
 proj = TMP_ROOT / "-Users-x"
 dd = HOME / "Library/Developer/Xcode/DerivedData"
+SP = proj / U["live"] / "scratchpad"
 LOG = HOME / "Library/Logs/disk-tidy.log"
 GONE = [WT / "wt-old", HOME / "Claude/maa-automation-sib", dd / "Proj-old", HOME / ".gradle/caches/9.8.0",
         HOME / ".gradle/daemon/9.8.0", HOME / "Library/Developer/Toolchains/swift-6.4.0-RELEASE.xctoolchain",
         proj / U["dead"], TDIR / "precheck-abc", HOME / "Claude/transit-app/build",
-        HOME / "Money/styl-work/remote-ref/tools/bugexam/xcr-dd", HOME / ".cache/pyright-python"]
+        HOME / "Money/styl-work/remote-ref/tools/bugexam/xcr-dd", HOME / ".cache/pyright-python",
+        SP / "sp-old", SP / "big.bin"]
 KEPT = {
     WT / "wt-new": "changed within 24",
     WT / "wt-dirty": "uncommitted changes",
@@ -256,11 +282,18 @@ KEPT = {
     proj / U["journal"]: "workflow journal",
     proj / U["transcript"]: "transcript written",
     dd / "Proj-new": "changed",
+    SP / "sp-new": "changed within 24",
+    SP / "sp-5h": "changed within 24",
+    SP / "sp-open": "running process",
+    SP / "sp-journal": "workflow journal",
+    SP / "sp-wt": "registered git worktree",
+    SP / "sp-gitlink": "linked git worktree",
     HOME / ".gradle/caches/9.8.1": "version in use",
     HOME / "Library/Developer/Toolchains/swift-6.4.1-RELEASE.xctoolchain": "in use",
 }
 UNTOUCHED = [HOME / "Money/styl-work/BOARD/OPEN.md", HOME / "Documents/mine.txt", TMP_ROOT / "disk-tidy",
-             HOME / ".gradle/caches/modules-2", dd / "ModuleCache.noindex"]
+             HOME / ".gradle/caches/modules-2", dd / "ModuleCache.noindex", SP, SP / "small.log",
+             proj / U["live"] / "tasks"]
 
 print("[dry run: decides everything, removes nothing, logs nothing]")
 r = tool()
@@ -325,6 +358,11 @@ check("floor removed the 5 h idle merged tree", (verb(res, WT / "wt-5h"), (WT / 
       ("removed", False))
 check("floor still keeps the fresh tree", (WT / "wt-new").exists(), True)
 check("floor still keeps the tree in use", (WT / "wt-cwd").exists(), True)
+check("floor removed the 5 h idle scratchpad subdir (2 h window)",
+      (verb(res, SP / "sp-5h"), (SP / "sp-5h").exists()), ("removed", False))
+for p in (SP / "sp-new", SP / "sp-open", SP / "sp-journal", SP / "sp-wt", SP / "sp-gitlink", SP / "small.log"):
+    check(f"floor still keeps {p.relative_to(BASE)}", p.exists(), True)
+check("running session's dir and scratchpad stay", (proj / U["live"]).is_dir() and SP.is_dir(), True)
 for p in UNTOUCHED[:3]:
     check(f"floor leaves {p.relative_to(BASE)}", p.exists(), True)
 
