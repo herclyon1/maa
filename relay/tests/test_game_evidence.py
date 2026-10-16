@@ -178,7 +178,9 @@ check("标题那句", texts.plain("终末地 1 项没证据，不算完成 ❔")
 
 print("\n[MaaEnd 自己的「停止任务」不是游戏里的任务（10-08 日报「终末地 1 项没证据」就是它）]")
 # The 10:32 attempt of 2026-10-08 (evidence bundle MaaEnd-06-31-06): two tasks, then
-# AUTO-MAS stopped MaaEnd for its update and the log says 「任务完成: 停止任务」.
+# MaaEnd stopped itself after its failed scene check (__SceneCheckAbortPipeline) and
+# the log says 「任务完成: 停止任务」. A record booked before raw['tasks_trail'] (no such
+# key, as here) keeps the picture rule; the trail rule is in test_mc28_task_trail.py.
 stop = collector.parse_maaend_log(FX / "maaend_stop_task_2026-10-08.log")
 check("日志里解析出了停止任务", "停止任务" in (stop.get("tasks_done") or []), True)
 stop["tasks_shot"] = ["赠送干员礼物", "装备制造"]   # 103411 / 103416 in that bundle

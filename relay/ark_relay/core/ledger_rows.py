@@ -1,7 +1,8 @@
 """One ledger entry as report rows (做了 / 消耗 / 产出 / 剩余 / 备注), one builder per tool.
 
-Also the rules for which MaaEnd steps count as done without evidence
-(`maaend_unverified`), which the daily report and the alarm text share.
+Also the rule for which MaaEnd tasks count as done without evidence
+(`maaend_unverified`: MaaFW's own steps for four tasks, a log line for the rest),
+which the daily report and the alarm text share.
 """
 from __future__ import annotations
 
@@ -309,10 +310,29 @@ def _maaend_listed(raw: dict) -> list[str]:
 
 
 def maaend_unverified(raw: dict) -> list[str]:
-    """Listed MaaEnd tasks with no game evidence: no line of their own in the log
-    (collector_maaend.task_evidence) and no task-end picture (raw['tasks_shot'],
-    handle._mark_task_shots). A record without the evidence table at all (a log
-    that could not be read again) has none for any task."""
+    """Listed MaaEnd tasks with no game evidence.
+
+    A task MaaFW's own log was read for at booking (raw['tasks_trail'],
+    alarm.records._mark_task_trails: the four of maaend_fwlog.TRAIL_TASKS) is backed
+    exactly when its steps show the job done or nothing to do - also when MaaEnd wrote
+    a line inside it: on 2026-10-08 10:34 装备制造's only line was its scene-check note,
+    and the task was aborted. Any other task is backed by a line of its own in the log
+    (collector_maaend.task_evidence). The desktop picture is no evidence: it is taken
+    5-8 s after the task ended and shows the next task (task_shots.py, verify ledger
+    #28). A record without the evidence table at all (a log that could not be read
+    again) has none for any task.
+
+    A record booked before raw['tasks_trail'] existed (no such key) is read by the rule
+    it was booked under, picture included, so the days before this change keep the
+    verdict they were reported with."""
     ev = raw.get("tasks_evidence") or {}
-    shot = set(raw.get("tasks_shot") or [])
-    return [t for t in _maaend_listed(raw) if not ev.get(t) and t not in shot]
+    if "tasks_trail" not in raw:
+        shot = set(raw.get("tasks_shot") or [])
+        return [t for t in _maaend_listed(raw) if not ev.get(t) and t not in shot]
+    trail = raw.get("tasks_trail") or {}
+
+    def backed(t: str) -> bool:
+        if isinstance(trail.get(t), dict):
+            return bool(trail[t].get("ok"))
+        return bool(ev.get(t))
+    return [t for t in _maaend_listed(raw) if not backed(t)]

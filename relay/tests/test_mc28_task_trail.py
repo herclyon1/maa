@@ -223,6 +223,167 @@ check("a gift run with no end event stops at its window: 装备制造's steps ar
       (gift["ended"], gift["nodes"].get("GiftOperatorConfirmGift"), "GearAssemblyClickProduceBtn" in gift["nodes"]),
       (None, 1, False))
 
+# ---- The 「nothing to do」 ends, which no run on the machine has hit yet --------------
+# GiftOperatorGiftFull / GiftOperatorGiftFullFail, GearAssemblyCheckMaterialEnough and
+# GearAssemblyCheckFailedAndFinish have no Node.PipelineNode.Succeeded line in any
+# maafw*.log of the corpus pull 2026-10-13 15:26 (D/ark/maaend/debug and the evidence
+# bundles of 09-14..10-13) nor in the 10-16 bundle. So the trails below are synthetic:
+# the real 10-13 run with its gift / gear steps replaced by the steps MaaEnd's own
+# pipeline takes, each one in its predecessor's "next" list as written in
+# assets/resource/pipeline/GearAssembly/GearAssembly.json and
+# GiftOperator/GiftOperatorGiftFlow.json of MaaEnd v2.33.0-beta.3 (the version on the
+# machine, daysim-corpus/_install/D/ark/maaend/interface.json):
+#   GearAssemblySelectFirstGear.next = [ClickProduceBtn, CheckFailedAndContinue]
+#   GearAssemblyClickProduceBtn.next = [CheckMaterialEnough 「检测背包是否已满，背包已满直接结束」,
+#                                       SceneNoticeRewardsConfirm]
+#   GearAssemblyCheckFailedAndContinue.next = [GearListScrollEnd, SwipeToNextRow]
+#   GearAssemblyGearListScrollEnd.next = [CheckFailedAndFinish 「检查制作失败，退出任务」]
+#   GiftOperatorGiftUI.next = [GiftFull, ClickGift]; GiftFull.next = [GiftFullLeave];
+#   GiftFullLeave.next = [.., GiftFullBackInWorld]; GiftFullBackInWorld.next =
+#   [GiftFullRetry (max_hit 5, next GiftOperatorEntry), GiftFullFail (StopTask)];
+#   GiftFullFail's own desc: 「重试五次也只能找到送满的干员，正常失败」 (all operators full).
+# A synthetic line carries what task_trail reads (time, task_id, node_id, the node hit
+# and its predecessor) in the machine's line format.
+GEAR_TASK, GIFT_TASK = 200000002, 200000001
+
+
+def fw_step(at, task_id, node_id, name, parent):
+    details = {"action_details": {"action": "DoNothing", "action_id": node_id + 200000000, "box": [0, 0, 0, 0],
+                                  "detail": {}, "name": name, "success": True},
+               "focus": None, "name": parent,
+               "node_details": {"action_id": node_id + 200000000, "completed": True, "name": name,
+                                "node_id": node_id, "reco_id": node_id + 100000000},
+               "node_id": node_id, "task_id": task_id}
+    return (f"[2026-10-13 {at}][INF][Px19280][Tx5463][Utils/EventDispatcher.hpp][L65]"
+            f"[MaaNS::EventDispatcher::notify] !!!OnEventNotify!!! [handle=true] "
+            f"[msg=Node.PipelineNode.Succeeded] [details={json.dumps(details, separators=(',', ':'))}] \n")
+
+
+def splice(drop_nodes, steps):
+    """An edit for maaend(): the real 10-13 lines without the steps whose node_id is in
+    `drop_nodes` (both processes' copies), plus `steps` [(time, task_id, name, parent)]."""
+    def edit(text):
+        keep = [x for x in text.splitlines(keepends=True)
+                if not any(f'"node_id":{n},' in x for n in drop_nodes)]
+        return "".join(keep) + "".join(fw_step(at, task, 390000000 + i, name, parent)
+                                       for i, (at, task, name, parent) in enumerate(steps))
+    return edit
+
+
+def run_1013(edit):
+    return judge("2026-10-13_MaaEnd-05-36-57.log", maaend("maafw-2026-10-13.log.gz", edit=edit))
+
+
+# 10-13 gear (09:41:36→09:41:55): SelectFirstGear 300000425 at 09:41:45.408, then
+# ClickProduceBtn 300000426, SceneNoticeRewardsConfirm 300000427, its click 300000436
+# and __ScenePrivateNextTrue 300000441 before the task's end at 09:41:55.671.
+REWARD = (300000427, 300000436, 300000441)
+print("\n[装备制造：点了「制作」后背包已满（GearAssemblyCheckMaterialEnough），是没东西可做，不是做成了]")
+st, ev, pushed = run_1013(splice(REWARD, [
+    ("09:41:46.900", GEAR_TASK, "GearAssemblyCheckMaterialEnough", "GearAssemblyClickProduceBtn")]))
+check("bag full: PASS (a normal end), nothing pushed", (st, pushed), ("PASS", []))
+check("evidence reads as the nothing-to-do end", "装备制造（09:41:36→09:41:55）背包已满，做不出来，算没东西可做" in ev, True)
+check("…not as 「点了「制作」1 次」", "点了「制作」" in ev, False)
+
+print("\n[装备制造：列表翻到底都做不了（GearAssemblyCheckFailedAndFinish）]")
+st, ev, pushed = run_1013(splice((300000426, *REWARD), [
+    ("09:41:46.300", GEAR_TASK, "GearAssemblyCheckFailedAndContinue", "GearAssemblySelectFirstGear"),
+    ("09:41:46.600", GEAR_TASK, "GearAssemblyGearListScrollEnd", "GearAssemblyCheckFailedAndContinue"),
+    ("09:41:46.900", GEAR_TASK, "GearAssemblyCheckFailedAndFinish", "GearAssemblyGearListScrollEnd")]))
+check("nothing craftable: PASS, nothing pushed", (st, pushed), ("PASS", []))
+check("evidence names both causes the step recognises (NotEnough or NotUnlocked)",
+      "装备制造（09:41:36→09:41:55）装备列表翻到底，没有能做的（材料不够或没解锁），算没东西可做" in ev, True)
+
+# 10-13 gift (09:38:17→09:41:36): GiftOperatorGiftUI 300000354 at 09:41:29.394, then
+# ClickGift 300000358, GiftSelected 300000361, ConfirmGift 300000363, GiftDialog
+# 300000366 / 300000367, Leave 300000368; the task ends 09:41:36.138.
+GIFT_AFTER_UI = (300000358, 300000361, 300000363, 300000366, 300000367, 300000368)
+
+
+def chain(t, pairs, step=0.08):
+    """[(time, gift task, name, parent)] from second `t` of 09:41, `step` apart; and the next second."""
+    out = []
+    for name, parent in pairs:
+        out.append((f"09:41:{t:06.3f}", GIFT_TASK, name, parent))
+        t += step
+    return out, t
+
+
+# One operator whose gifts are full. Between GiftOperatorEntry and the next GiftUI a
+# retry walks the same steps as the real run (09:40:08-09:41:29); they are left out,
+# the verdict reads only the named ones.
+FULL = (("GiftOperatorGiftFull", "GiftOperatorGiftUI"),
+        ("GiftOperatorGiftFullLeave", "GiftOperatorGiftFull"),
+        ("GiftOperatorGiftFullBackInWorld", "GiftOperatorGiftFullLeave"))
+RETRY = (("GiftOperatorGiftFullRetry", "GiftOperatorGiftFullBackInWorld"),
+         ("GiftOperatorEntry", "GiftOperatorGiftFullRetry"),
+         ("GiftOperatorGiftUI", "GiftOperatorBranchGift"))
+
+print("\n[送礼：一个干员送满、换人后送出去了 → 还是做成了]")
+steps, _ = chain(29.5, FULL + RETRY, step=0.12)
+st, ev, pushed = run_1013(splice((), steps))
+check("one full operator, then the real ConfirmGift: PASS, said as the gift sent",
+      (st, "赠送干员礼物（09:38:17→09:41:36）点了「赠送」1 次" in ev), ("PASS", True))
+
+print("\n[送礼：连换 5 次干员都送满了（GiftOperatorGiftFullFail）→ 没东西可做]")
+steps, t = chain(30.0, FULL)
+for _ in range(5):
+    more, t = chain(t, RETRY + FULL)
+    steps += more
+more, t = chain(t, (("GiftOperatorGiftFullFail", "GiftOperatorGiftFullBackInWorld"),))
+steps += more
+check("the synthetic chain ends before the task's end event (09:41:36.138)", t < 36.1, True)
+st, ev, pushed = run_1013(splice(GIFT_AFTER_UI, steps))
+check("all full: PASS (normal end), nothing pushed", (st, pushed), ("PASS", []))
+check("evidence reads as the nothing-to-do end",
+      "赠送干员礼物（09:38:17→09:41:36）连换 5 次干员，礼物都已送满，算没东西可做" in ev, True)
+# GiftFullFail stops the task with StopTask. Whether MaaFW then books the task
+# Succeeded or Failed is in no log we hold; the end step is read either way.
+booked_failed = splice(GIFT_AFTER_UI, steps)
+st, ev, pushed = run_1013(lambda text: booked_failed(text).replace(
+    '[msg=Tasker.Task.Succeeded] [details={"entry":"GiftOperatorMain"',
+    '[msg=Tasker.Task.Failed] [details={"entry":"GiftOperatorMain"'))
+check("…the same when MaaFW books that stop as Failed", (st, "礼物都已送满，算没东西可做" in ev), ("PASS", True))
+
+print("\n[送礼：只碰到一次送满、后面什么也没有 → 不算没东西可做]")
+steps, _ = chain(30.0, FULL)
+st, ev, pushed = run_1013(splice(GIFT_AFTER_UI, steps))
+check("GiftFull alone is not an end (its next is the retry): FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
+
+# ---- The ledger's 「没证据」 reads the same MaaFW judgment, not the picture ------------
+print("\n[账本：四个任务有没有证据看终末地自己的记录，桌面截图不算]")
+from types import SimpleNamespace  # noqa: E402
+
+from ark_relay.core import ledger_rows  # noqa: E402
+from ark_relay.features.alarm import handle  # noqa: E402
+
+abort_log = FIX / "2026-10-08_MaaEnd-06-31-06.log"
+araw = collector_maaend.parse_maaend_log(abort_log)
+check("the log alone has a line inside 装备制造 (MaaEnd's scene-check note)",
+      bool((araw.get("tasks_evidence") or {}).get("装备制造")), True)
+araw["tasks_shot"] = ["赠送干员礼物", "装备制造"]   # 103411 / 103416 in that bundle
+started = datetime(2026, 10, 8, 10, 32, 8, tzinfo=SERVER_TZ)
+arec = RunRecord(run_id="2026-10-08/endfield/MaaEnd-06-31-06", script="MaaEnd", user="endfield",
+                 started=started, finished=started + timedelta(minutes=3), ok=True, failed_tasks=[],
+                 raw=araw, log_path=abort_log)
+handle._mark_task_trails(SimpleNamespace(cfg=SimpleNamespace(maaend_dir=maaend("maafw-2026-10-08.log.gz"))), arec)
+trails = araw.get("tasks_trail") or {}
+check("booked: the gift did its job, the gear task did not",
+      {t: v.get("ok") for t, v in trails.items()}, {"赠送干员礼物": True, "装备制造": False})
+check("the aborted gear task is unverified despite its picture and its log line",
+      ledger_rows.maaend_unverified(araw), ["装备制造"])
+pics_only = {"tasks_done": ["赠送干员礼物", "装备制造", "转交委托", "环境监测"],
+             "tasks_evidence": {}, "tasks_shot": ["赠送干员礼物", "装备制造", "转交委托", "环境监测"],
+             "tasks_trail": {}}
+check("booked with the trail rule and nothing in MaaFW: a picture alone backs nothing",
+      ledger_rows.maaend_unverified(pics_only), ["赠送干员礼物", "装备制造", "转交委托", "环境监测"])
+no_dir = RunRecord(run_id="x", script="MaaEnd", user="endfield", started=started,
+                   finished=started + timedelta(minutes=3), ok=True, failed_tasks=[],
+                   raw={"tasks_done": ["赠送干员礼物"]}, log_path=abort_log)
+handle._mark_task_trails(SimpleNamespace(cfg=SimpleNamespace(maaend_dir=None)), no_dir)
+check("no MaaEnd folder configured: the record still carries the (empty) trail table",
+      no_dir.raw.get("tasks_trail"), {})
+
 print()
 if fails:
     print(f"✗ {len(fails)} 条没过：{fails}")

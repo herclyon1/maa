@@ -43,7 +43,7 @@ def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> tuple[str, list]:
 
 # Why an item does not count, by game (core.day_unverified_items says how each is found).
 _UNVERIFIED_WHY = {
-    "MaaEnd": "日志里没有游戏回显，也没有任务结束的截图",
+    "MaaEnd": "日志里没有游戏回显，终末地自己的记录里也看不到做成或没东西可做",
     "MAA": "日志里没有「剿灭模式 x/y」这行进度",
     "OK-WW": "日志里没读到做完",
 }

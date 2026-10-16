@@ -95,8 +95,9 @@ SHOT_BEFORE_S, SHOT_AFTER_S = 5, 120
 
 def _mark_task_shots(eng, rec: RunRecord) -> None:
     """raw['tasks_shot']: the MaaEnd tasks of this run with a task-end picture
-    (task_shots.py) - game evidence for core.maaend_unverified. A key of its own,
-    so collector.refresh_raw (which re-parses only the log) never drops it.
+    (task_shots.py). Game evidence for core.maaend_unverified only on records booked
+    before raw['tasks_trail'] (_mark_task_trails): the picture shows the next task. A
+    key of its own, so collector.refresh_raw (which re-parses only the log) never drops it.
     raw['tasks_shot_files']: {task: that picture, relative to the state folder},
     the evidence a machine check names (machinechecks/runs.py)."""
     try:
@@ -128,6 +129,38 @@ def _mark_task_shots(eng, rec: RunRecord) -> None:
             rec.raw["tasks_shot_files"] = files
     except Exception:
         log.warning("核对任务截图出错（这一趟的任务按日志里的证据算）", exc_info=True)
+
+
+def _mark_task_trails(eng, rec: RunRecord) -> None:
+    """raw['tasks_trail']: {task: {"ok", "said"}} for each of maaend_fwlog.TRAIL_TASKS
+    this run finished (its 「任务完成」, not a weekday skip) whose run MaaFW's log holds:
+    ok when its steps show the job done or nothing to do (maaend_fwlog.task_verdict,
+    the same judgment as machine check #28). It is the game evidence of those tasks for
+    core.maaend_unverified; the desktop picture (_mark_task_shots) is not, since it is
+    taken 5-8 s after the task ended and shows the next one (task_shots.py).
+
+    Booked here, while MaaFW's log still holds the run: MaaEnd clears its debug folder
+    when it restarts. A key of its own, so collector.refresh_raw keeps it. Always set on
+    a MaaEnd record ({} when nothing could be read), which tells maaend_unverified the
+    record was booked under this rule."""
+    trails: dict = {}
+    rec.raw["tasks_trail"] = trails
+    try:
+        from ark_relay.features.verify import collector_maaend, maaend_fwlog  # noqa: PLC0415
+        log_path = rec.log_path
+        maaend_dir = getattr(eng.cfg, "maaend_dir", None)
+        if not maaend_dir or not log_path or not Path(log_path).is_file():
+            return
+        times = collector_maaend.task_times(Path(log_path).read_text(encoding="utf-8", errors="replace"))
+        done = set(rec.raw.get("tasks_done") or [])
+        skipped = rec.raw.get("maaend_tasks_skipped") or {}
+        times = {t: v for t, v in times.items() if t in done and t not in skipped}
+        for t, trail in maaend_fwlog.task_trails(maaend_dir, times).items():
+            if trail is not None:
+                ok, said = maaend_fwlog.task_verdict(t, trail)
+                trails[t] = {"ok": ok, "said": said}
+    except Exception:
+        log.warning("没读成终末地自己的任务记录（这一趟的四个任务只按日志里的行算）", exc_info=True)
 
 
 def _state_relative(state_dir, p: Path) -> str:

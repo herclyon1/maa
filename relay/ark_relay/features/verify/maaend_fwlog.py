@@ -6,7 +6,7 @@
 * MXU app log: `<maaend>/debug/YYYY-MM-DD-N.log`, one per MaaEnd launch, lines
   starting with `YYYY-MM-DD HH:MM:SS `.
 
-collector_maaend re-exports every public name here.
+collector_maaend re-exports the readers it used to hold, under their old names.
 """
 from __future__ import annotations
 
@@ -250,3 +250,106 @@ def task_trail(events: list, entry: str, t0: datetime, t1: datetime) -> "dict | 
         name = str((hit.get("name") if isinstance(hit, dict) else "") or d.get("name") or "")
         nodes[name] = nodes.get(name, 0) + 1
     return {"started": started, "ended": ended, "result": result, "nodes": nodes}
+
+
+# The four MaaEnd tasks whose AUTO-MAS log has only 「任务开始」 / 「任务完成」: whether
+# they did their job is read from MaaFW's own steps (task_trail), by machine check #28
+# (machinechecks/runs.py) and by the ledger's 「没证据」 rule (core.maaend_unverified,
+# through raw['tasks_trail'] booked by alarm.records._mark_task_trails).
+TRAIL_TASKS = ("赠送干员礼物", "装备制造", "转交委托", "环境监测")
+# What each task's own run in MaaFW's log has to show. Steps from MaaEnd's pipeline
+# (github.com/MaaEnd/MaaEnd, tag v2.33.0-beta.3 - the version on the machine -
+# assets/resource/pipeline/):
+#   entry  - the task MXU posts (Tasker.Task.Starting "entry");
+#   did    - (step, what it means): the task did its job when one of these succeeded;
+#   end    - (step, what it means): a step with no way on but the task's end, reached
+#            when there is nothing to do - a normal end (资源不足 / 已领满 are normal
+#            states, not failures). Read before `did`: the gear task's bag-full end
+#            comes right after its produce click;
+#   none   - for tasks whose nothing-to-do is told by the steps that ran: what it
+#            means, when every step of `needs` succeeded and no `did` step did.
+# Gift: GiftOperatorGiftFlow.json - GiftOperatorConfirmGift 「点击赠送按钮」 (once on
+#   every 10-08..10-16 run). GiftOperatorGiftFull 「赠送已满」 is one operator, not the
+#   end: its next is GiftFullLeave -> GiftFullBackInWorld -> GiftFullRetry (max_hit 5,
+#   back to GiftOperatorEntry for another operator) and only then GiftOperatorGiftFullFail
+#   (StopTask; the pipeline's own desc: 「重试五次也只能找到送满的干员，正常失败」).
+# Gear: GearAssembly/GearAssembly.json - GearAssemblyClickProduceBtn 「点击制作按钮」
+#   (once a run, followed by SceneNoticeRewardsConfirm on 10-07..10-16). Its next is
+#   [GearAssemblyCheckMaterialEnough 「检测背包是否已满，背包已满直接结束」,
+#   SceneNoticeRewardsConfirm]; GearAssemblyCheckFailedAndFinish 「检查制作失败，退出任务」
+#   (recognises NotEnough or NotUnlocked) is reached from GearAssemblyGearListScrollEnd.
+#   10-08 10:34:11-10:34:16 ran only the scene check, which failed and stopped MaaEnd (ABORT_STEP).
+#   GiftFullFail, CheckMaterialEnough and CheckFailedAndFinish appear in no run we
+#   hold (corpus pull 2026-10-13, 10-16 bundle): read from the pipeline only
+#   (tests/test_mc28_task_trail.py builds those trails from it).
+# Delivery: DeliveryJobs/TransferJob.json - DeliveryJobsConfirmTaskTransfer (5 a run in the
+#   mornings); a region loop (Region/ValleyIV.json, Wuling.json) tries every depot's
+#   job and cargo and falls back to DeliveryJobsLoop when none is there: the re-runs
+#   of 10-08 10:37 and 10-12 11:03 ran both region loops and transferred nothing.
+# Environment: EnvironmentMonitoring/TakePhoto.json - EnvironmentMonitoringTakePhoto
+#   (10-08 09:42, 10-10, 10-12 10:1x took one job each; the step succeeds twice a job,
+#   so no count is said); Terminals.json - each
+#   terminal's loop tries all its jobs; on 10-08 10:38, 10-11, 10-12 11:04, 10-13 and
+#   10-16 both terminal loops ran, no job was taken and the task ended in 6-8 s.
+TRAIL_RULES = {
+    "赠送干员礼物": {"entry": "GiftOperatorMain",
+                 "did": (("GiftOperatorConfirmGift", "点了「赠送」{n} 次"),),
+                 "end": (("GiftOperatorGiftFullFail", "连换 5 次干员，礼物都已送满，算没东西可做"),)},
+    "装备制造": {"entry": "GearAssemblyStart",
+              "did": (("GearAssemblyClickProduceBtn", "点了「制作」{n} 次"),),
+              "end": (("GearAssemblyCheckMaterialEnough", "背包已满，做不出来，算没东西可做"),
+                      ("GearAssemblyCheckFailedAndFinish", "装备列表翻到底，没有能做的（材料不够或没解锁），算没东西可做"))},
+    "转交委托": {"entry": "DeliveryJobsMain",
+              "did": (("DeliveryJobsConfirmTaskTransfer", "确认转交了 {n} 单"),),
+              "none": "两个地区都走了一遍，没有可转交的委托",
+              "needs": ("DeliveryJobsValleyIVLoop", "DeliveryJobsWulingLoop")},
+    "环境监测": {"entry": "EnvironmentMonitoringMain",
+              "did": (("EnvironmentMonitoringTakePhoto", "接了委托、拍了监测照片"),),
+              "none": "两个监测终端都看过了，没有可接的委托",
+              "needs": ("OutskirtsMonitoringTerminalLoop", "MarkerStoneMonitoringTerminalLoop")},
+}
+# MaaEnd's own abort: a failed scene check (SceneImageCheck.json, e.g.
+# __SceneImageCheckModFailedFinish) goes next to this node, which stops the whole task
+# chain through MaaFW's PostStop (SceneLoading.json 「运用 poststop 接口停止整个任务链」).
+# 2026-10-08 10:34:16 (MaaEnd-06-31-06): 装备制造's check found the UID line cut short,
+# MaaEnd said so in its own log (「UID显示不完整，…影响识别」), MaaFW logged
+# __SceneImageCheckModFailedFinish -> __SceneCheckAbortPipeline, GearAssemblyStart
+# Succeeded, MaaTaskerPostStop; MXU logged 「自动执行任务完成，关闭自身」 and the
+# 「停止任务」 lines are that stop. AUTO-MAS sent no stop (its MaaEnd update had ended at
+# 10:30:43). MaaFW books the task Succeeded, so the abort is read from this step.
+ABORT_STEP = "__SceneCheckAbortPipeline"
+
+
+def task_verdict(task: str, trail: dict) -> "tuple[bool, str]":
+    """(did its job or found nothing to do, what MaaFW's log shows) for one of
+    TRAIL_TASKS, from its task_trail.
+
+    Order: MaaEnd's abort; a nothing-to-do end step (before MaaFW's result: whether
+    GiftOperatorGiftFullFail's StopTask books the task Succeeded or Failed is in no
+    log we hold, and the pipeline calls it a normal end); MaaFW's Failed; the step
+    that did the job; a nothing-to-do told by the steps that ran."""
+    rule, nodes = TRAIL_RULES[task], trail["nodes"]
+    if nodes.get(ABORT_STEP):
+        return False, "终末地自己检查画面没过，把后面的任务全停了，这一项没做成"
+    for step, word in rule.get("end", ()):
+        if nodes.get(step):
+            return True, word
+    if trail["result"] == "Failed":
+        return False, "终末地自己记的结果是失败"
+    did = [w.format(n=nodes[s]) for s, w in rule["did"] if nodes.get(s)]
+    if did:
+        return True, "、".join(did)
+    if rule.get("needs") and all(nodes.get(x) for x in rule["needs"]):
+        return True, rule["none"]
+    return False, f"终末地自己的记录里只走了 {sum(nodes.values())} 步，没有做成的一步，也没有「没东西可做」的结果"
+
+
+def task_trails(maaend_dir, times: dict) -> dict:
+    """{task: task_trail or None} for each of TRAIL_TASKS in `times` ({task: (start,
+    finish)}, naive machine-local, as collector_maaend.task_times gives them); MaaFW's
+    log is read once for all of them. {} when none of the four is in `times`."""
+    tasks = [t for t in TRAIL_TASKS if t in times]
+    if not tasks:
+        return {}
+    events = task_events(maaend_dir, min(times[t][0] for t in tasks), max(times[t][1] for t in tasks))
+    return {t: task_trail(events, TRAIL_RULES[t]["entry"], *times[t]) for t in tasks}

@@ -37,6 +37,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.features.verify import collector_maaend as cm
+from ark_relay.features.verify import maaend_fwlog
 from ark_relay.features.selfcheck import machinecheck as mc
 from ark_relay.features.verify import outcome
 from ark_relay.core import texts
@@ -463,82 +464,13 @@ def _c7(ctx):
                     + (f"；结束截图 {shot}" if shot else ""))
 
 
-SHOT_TASKS = ("赠送干员礼物", "装备制造", "转交委托", "环境监测")
-# What each task's own run in MaaFW's log has to show. MaaEnd's AUTO-MAS log has only
-# 「任务开始」 / 「任务完成」 for these four; the framework log names every step that
-# succeeded (maaend_fwlog.task_trail). Steps from MaaEnd's pipeline
-# (github.com/MaaEnd/MaaEnd, branch v2, assets/resource/pipeline/), checked against
-# the runs of 2026-10-07..10-13 and 10-16:
-#   entry  - the task MXU posts (Tasker.Task.Starting "entry");
-#   did    - (step, what it means): the task did its job when one of these succeeded;
-#   none   - (step, what it means): the task found nothing to do, a normal end
-#            (资源不足 / 已领满 are normal states, not failures);
-#   needs  - for a `none` that is told by steps that did run, every one of these.
-# Gift: GiftOperatorGiftFlow.json - GiftOperatorConfirmGift 「点击赠送按钮」 (once on
-#   every 10-08..10-16 run), GiftOperatorGiftFull 「赠送已满」.
-# Gear: GearAssembly/GearAssembly.json - GearAssemblyClickProduceBtn 「点击制作按钮」
-#   (once a run, followed by SceneNoticeRewardsConfirm), GearAssemblyCheckMaterialEnough
-#   「检测背包是否已满，背包已满直接结束」, GearAssemblyCheckFailedAndFinish 「检查制作失败，退出任务」.
-#   10-08 10:34:11-10:34:16 ran only the scene check, which failed and stopped MaaEnd (ABORT_STEP).
-# Delivery: DeliveryJobs/TransferJob.json - DeliveryJobsConfirmTaskTransfer (5 a run in the
-#   mornings); a region loop (Region/ValleyIV.json, Wuling.json) tries every depot's
-#   job and cargo and falls back to DeliveryJobsLoop when none is there: the re-runs
-#   of 10-08 10:37 and 10-12 11:03 ran both region loops and transferred nothing.
-# Environment: EnvironmentMonitoring/TakePhoto.json - EnvironmentMonitoringTakePhoto
-#   (10-08 09:42, 10-10, 10-12 10:1x took one job each; the step succeeds twice a job,
-#   so no count is said); Terminals.json - each
-#   terminal's loop tries all its jobs; on 10-08 10:38, 10-11, 10-12 11:04, 10-13 and
-#   10-16 both terminal loops ran, no job was taken and the task ended in 6-8 s.
-SHOT_RULES = {
-    "赠送干员礼物": {"entry": "GiftOperatorMain",
-                 "did": (("GiftOperatorConfirmGift", "点了「赠送」{n} 次"),),
-                 "none": (("GiftOperatorGiftFull", "干员的礼物已经送满"),)},
-    "装备制造": {"entry": "GearAssemblyStart",
-              "did": (("GearAssemblyClickProduceBtn", "点了「制作」{n} 次"),),
-              "none": (("GearAssemblyCheckMaterialEnough", "背包已满，没法再做"),
-                       ("GearAssemblyCheckFailedAndFinish", "材料不够，做不了"))},
-    "转交委托": {"entry": "DeliveryJobsMain",
-              "did": (("DeliveryJobsConfirmTaskTransfer", "确认转交了 {n} 单"),),
-              "none": (("", "两个地区都走了一遍，没有可转交的委托"),),
-              "needs": ("DeliveryJobsValleyIVLoop", "DeliveryJobsWulingLoop")},
-    "环境监测": {"entry": "EnvironmentMonitoringMain",
-              "did": (("EnvironmentMonitoringTakePhoto", "接了委托、拍了监测照片"),),
-              "none": (("", "两个监测终端都看过了，没有可接的委托"),),
-              "needs": ("OutskirtsMonitoringTerminalLoop", "MarkerStoneMonitoringTerminalLoop")},
-}
+# The four tasks and how each is judged from MaaFW's own steps live in maaend_fwlog
+# (TRAIL_TASKS, TRAIL_RULES, task_verdict), shared with the ledger's 「没证据」 rule.
+SHOT_TASKS = maaend_fwlog.TRAIL_TASKS
+ABORT_STEP = maaend_fwlog.ABORT_STEP
 # Runs in a row with none of the four in MaaFW's log before that is a FAIL of its own
 # (as #7: MaaEnd clears its debug folder when it restarts).
 SHOT_MISS_FAIL = 2
-# MaaEnd's own abort: a failed scene check (SceneImageCheck.json, e.g.
-# __SceneImageCheckModFailedFinish) goes next to this node, which stops the whole task
-# chain through MaaFW's PostStop (SceneLoading.json 「运用 poststop 接口停止整个任务链」).
-# 2026-10-08 10:34:16 (MaaEnd-06-31-06): 装备制造's check found the UID line cut short,
-# MaaEnd said so in its own log (「UID显示不完整，…影响识别」, the line _ABORT_WORDS
-# words plainly), MaaFW logged
-# __SceneImageCheckModFailedFinish -> __SceneCheckAbortPipeline, GearAssemblyStart
-# Succeeded, MaaTaskerPostStop; MXU logged 「自动执行任务完成，关闭自身」 and the
-# 「停止任务」 lines are that stop. AUTO-MAS sent no stop (its MaaEnd update had ended at
-# 10:30:43). MaaFW books the task Succeeded, so the abort is read from this step. It is
-# no known normal state and no other check reports it: #28 fails on it.
-ABORT_STEP = "__SceneCheckAbortPipeline"
-
-
-def _shot_verdict(rule: dict, trail: dict) -> "tuple[bool, str]":
-    """(did its job or found nothing to do, what the framework log shows)."""
-    nodes = trail["nodes"]
-    if nodes.get(ABORT_STEP):
-        return False, "终末地自己检查画面没过，把后面的任务全停了，这一项没做成"
-    if trail["result"] == "Failed":
-        return False, "终末地自己记的结果是失败"
-    did = [w.format(n=nodes[s]) for s, w in rule["did"] if nodes.get(s)]
-    if did:
-        return True, "、".join(did)
-    for step, word in rule["none"]:
-        if step and nodes.get(step):
-            return True, word
-        if not step and all(nodes.get(x) for x in rule.get("needs", ())):
-            return True, word
-    return False, f"终末地自己的记录里只走了 {sum(nodes.values())} 步，没有做成的一步，也没有「没东西可做」的结果"
 
 
 _LOG_LINE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\] (.+)$", re.M)
@@ -605,7 +537,7 @@ def _shot_note(state: Path, rel: str, ended) -> str:
 
 @mc.check("#28", "终末地送礼/装备制造/转交委托/环境监测每趟在终末地自己的记录里看得到做成了（或没东西可做）", "A", "run")
 def _c28(ctx):
-    """Judged from MaaFW's own steps of each task (SHOT_RULES), not from the desktop
+    """Judged from MaaFW's own steps of each task (maaend_fwlog.task_verdict), not from the desktop
     picture. Until 2026-10-16 this passed when the picture file existed, and the
     pictures of 10-08 showed the next task: 093302-赠送干员礼物.png the 装备制造 page,
     093322-装备制造.png 拜访好友, 103416-装备制造.png the bare desktop after MaaEnd
@@ -620,10 +552,7 @@ def _c28(ctx):
     done = [t for t in SHOT_TASKS if t in times and t not in skipped]
     if not done:
         return None
-    from ark_relay.features.verify import maaend_fwlog  # noqa: PLC0415
-    events = maaend_fwlog.task_events(ctx.get("maaend_dir"), min(times[t][0] for t in done),
-                                      max(times[t][1] for t in done))
-    trails = {t: maaend_fwlog.task_trail(events, SHOT_RULES[t]["entry"], *times[t]) for t in done}
+    trails = maaend_fwlog.task_trails(ctx.get("maaend_dir"), {t: times[t] for t in done})
     state_dir = ctx.get("state_dir")
     if not any(trails.values()):
         misses = int(_state_get(state_dir, "#28-miss") or 0) + 1
@@ -642,7 +571,7 @@ def _c28(ctx):
         if trail is None:
             bad.append(f"{t}（{span}）在终末地自己的记录里找不到")
             continue
-        ok, said = _shot_verdict(SHOT_RULES[t], trail)
+        ok, said = maaend_fwlog.task_verdict(t, trail)
         if trail["nodes"].get(ABORT_STEP):
             said += _abort_why(text, t0, t1)
         line = f"{t}（{span}）{said}"
@@ -650,8 +579,6 @@ def _c28(ctx):
         (good if ok else bad).append(line + (f"；{note}" if note else ""))
     if bad:
         return _r(FAIL, "；".join(bad) + (f"。做成的：{'；'.join(good)}" if good else ""))
-    if not good:
-        return None
     return _r(PASS, "；".join(good))
 
 
