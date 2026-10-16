@@ -115,10 +115,34 @@ for label, edit in (
         ("roi 不是四个数", lambda n: n["recognition"]["param"].update(roi=[860, 465, 300])),
         ("expected 是空的", lambda n: n["recognition"]["param"].update(expected=[])),
         ("没有点击动作", lambda n: n.pop("action")),
-        ("识别类型不是 OCR", lambda n: n["recognition"].update(type="TemplateMatch"))):
+        ("识别类型不是 OCR", lambda n: n["recognition"].update(type="TemplateMatch")),
+        ("认的字是「领取」（背后奖励页的按钮）", lambda n: n["recognition"]["param"].update(expected=["领取"])),
+        ("认的字是任意文字", lambda n: n["recognition"]["param"].update(expected=[".*"])),
+        ("确认之外还认「领取」", lambda n: n["recognition"]["param"]["expected"].append("领取")),
+        ("认的字里没有「确认」", lambda n: n["recognition"]["param"].update(expected=["(?i)Confirm"])),
+        ("roi 是全屏", lambda n: n["recognition"]["param"].update(roi=[0, 0, 1280, 720])),
+        ("roi 是 [0,0,0,0]（框架当全屏）", lambda n: n["recognition"]["param"].update(roi=[0, 0, 0, 0])),
+        ("roi 挪到左上角", lambda n: n["recognition"]["param"].update(roi=[0, 0, 10, 10])),
+        ("roi 上游微调过", lambda n: n["recognition"]["param"].update(roi=[860, 465, 300, 100])),
+        ("roi 带小数", lambda n: n["recognition"]["param"].update(roi=[860.0, 465, 300, 90])),
+        ("roi 是节点名", lambda n: n["recognition"]["param"].update(roi="SomeNode")),
+        ("expected 是一个字符串", lambda n: n["recognition"]["param"].update(expected="确认")),
+        ("识别结果取反", lambda n: n.update(inverse=True)),
+        ("节点被停用", lambda n: n.update(enabled=False)),
+        ("点击位置另给（target）", lambda n: n.update(target=[100, 100, 10, 10])),
+        ("点击位置偏移（target_offset）", lambda n: n.update(target_offset=[0, 300, 0, 0])),
+        ("OCR 里又夹了 all_of", lambda n: n["recognition"]["param"].update(all_of=["X"])),
+        ("type/param 摊平（九月那种错写法）", lambda n: n.update(
+            recognition={"type": "OCR", "roi": [860, 465, 300, 90], "expected": ["确认"]})),
+        ("action 写成 {type: Click}", lambda n: n.update(action={"type": "Click"}))):
     d = variant(edit)
     check(f"{label}：认不出", gameupdate.spmed_shape(d), "unknown")
     check(f"{label}：开机报群一条", len(boot_alarms(d)), 1)
+
+print("[识别结果不取反、节点明写启用：照样认得]")
+for label, edit in (("inverse: false", lambda n: n.update(inverse=False)),
+                    ("enabled: true", lambda n: n.update(enabled=True))):
+    check(f"{label}：认得", gameupdate.spmed_shape(variant(edit)), "ocr")
 
 print("[同样的写法挂在 v2.32 以前的旧名字下：认不出，报群]")
 d = variant(lambda n: None, name="AutoUseSpMedicationQuickUse")

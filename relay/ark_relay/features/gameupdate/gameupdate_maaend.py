@@ -66,6 +66,11 @@ def spmed_shape(maaend_dir) -> str:
         return "unknown"
     if name == SPMED_NODE_V232 and _is_region_ocr_click(node):
         return "ocr"
+    # all_of only means something under an "And" recognition (older test fixtures
+    # leave the type out); an all_of tucked into an OCR or any other type is not
+    # one of the shapes below.
+    if node["recognition"].get("type", "And") != "And":
+        return "unknown"
     all_of = (node["recognition"].get("param") or {}).get("all_of")
     if not isinstance(all_of, list) or not all_of:
         return "unknown"
@@ -76,21 +81,35 @@ def spmed_shape(maaend_dir) -> str:
     return "fixed" if all(isinstance(x, str) or "recognition" in x for x in all_of) else "broken"
 
 
+# The v2.33.0-rc.1 confirm node, as shipped by upstream PR #6476 (commit cfd2e875).
+SPMED_OCR_ROI = [860, 465, 300, 90]
+SPMED_OCR_WORDS = frozenset({"确认", "確定", "(?i)Confirm", "확인"})
+
+
 def _is_region_ocr_click(node: dict) -> bool:
-    """The v2.33.0-rc.1 confirm node: action "Click" on a top-level OCR recognition
-    whose param has a non-empty list of expected strings and a four-number roi. The
-    roi is required: upstream moved to OCR precisely so the click stays inside the
-    dialog's button area and never lands on the rewards screen's 领取 behind it."""
-    if node.get("action") != "Click":
+    """The v2.33.0-rc.1 confirm node exactly: action "Click" (plain string, so no
+    click target of its own) on a recognition that is only {"type": "OCR", "param":
+    {"expected", "roi"}}, roi exactly SPMED_OCR_ROI, expected only the dialog's
+    confirm words and including the Simplified Chinese one; the node not disabled,
+    not inverted, and with no v1 click target. The roi and the words are what keep
+    the click on the dialog's confirm button and off the rewards screen's claim
+    button behind it (PR #6476), so any
+    other roi or text, a retune included, alarms and a person re-checks it (D210)."""
+    if node.get("action") != "Click" or node.get("inverse") or node.get("enabled") is False:
+        return False
+    if "target" in node or "target_offset" in node:
         return False
     reco = node["recognition"]
     param = reco.get("param")
-    if reco.get("type") != "OCR" or not isinstance(param, dict):
+    if set(reco) != {"type", "param"} or reco.get("type") != "OCR" or not isinstance(param, dict):
         return False
-    expected, roi = param.get("expected"), param.get("roi")
-    return (isinstance(expected, list) and bool(expected) and all(isinstance(x, str) and x for x in expected)
-            and isinstance(roi, list) and len(roi) == 4
-            and all(isinstance(x, int) and not isinstance(x, bool) for x in roi))
+    if set(param) != {"expected", "roi"}:
+        return False
+    expected, roi = param["expected"], param["roi"]
+    return (isinstance(expected, list) and all(isinstance(x, str) for x in expected)
+            and "确认" in expected and set(expected) <= SPMED_OCR_WORDS
+            and type(roi) is list and len(roi) == 4
+            and all(type(x) is int for x in roi) and roi == SPMED_OCR_ROI)
 
 
 def spmed_check(cfg) -> str:
