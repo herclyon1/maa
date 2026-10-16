@@ -748,17 +748,21 @@ def _shift_overdue(eng, now: datetime):
     """(queue, due, missing scripts, limit, deadline, days) for each shift queue of this boot that
     still lacks a record, and whose run check_overrun has not alarmed on. The limit is
     check_overrun's: runwatch.planned_minutes + OVERRUN_SLACK_MIN from the queue's time."""
-    from ark_relay.features.alarm import handle  # noqa: PLC0415
+    from ark_relay.features.alarm import handle, missed  # noqa: PLC0415
     from ark_relay.features.run import runwatch  # noqa: PLC0415
     booted = eng._boot_time(now)
     if booted is None:
         return
     entries = eng._recent_entries(now)
     for q in _shift_queues(eng, now, booted):
-        if not (missing := _missing_kinds(eng, q, entries)):
-            continue
         due = q["due"].astimezone(SERVER_TZ)
         day, hhmm = due.strftime("%Y-%m-%d"), due.strftime("%H:%M")
+        # A script already in the group as missing from this run (missed's key, also settled by
+        # runwatch.check_config_skips) is that fault's one push; only the others are overdue.
+        # Per script, not per shift: a second script hanging in the same run is still said.
+        if not (missing := [k for k in _missing_kinds(eng, q, entries)
+                            if not missed._settled(eng, day, f"{day}/{q['name']}/{hhmm}/{k}")]):
+            continue
         # one fault, one push: one shift run (queue + its due time) without a record past its end, re-checked every tick
         if (handle._already_alerted(eng, day, f"{OVERDUE_KEY}|{q['name']}|{hhmm}")
                 or handle._already_alerted(eng, day, f"队列超时|{q['name']}|{hhmm}")):

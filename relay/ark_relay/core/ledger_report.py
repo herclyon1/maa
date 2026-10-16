@@ -401,6 +401,9 @@ def _bare_reason(runs: list[dict]) -> str:
     for e in runs:
         if rejected := (e.get("raw") or {}).get("maa_config_rejected"):
             return plain_rejected(str(rejected))
+        # AUTO-MAS refused the script before starting it (runwatch.check_config_skips).
+        if skipped := (e.get("raw") or {}).get("automas_config_skip"):
+            return "开跑前检查没过：" + texts.config_skip_why(str(skipped))
     if runs[0].get("script") == "MAA" and all((e.get("raw") or {}).get("fight_count") == 0 for e in runs):
         return "一仗都没打就停了"
     said: dict[str, None] = {}      # a tool's own sentence, said plainly

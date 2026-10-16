@@ -72,8 +72,10 @@ def plain(text: str) -> list[str]:
 # Quoted verbatim from logs, matched but never said to a person: upstream's
 # 「结束进程」, the overlay's weekly read-back lines (outcome.WEEKLY_CLAIM_*), and
 # AUTO-MAS's result text that ledger_report.plain_words rewrites before the report,
-# and AUTO-MAS's line for ending a MaaEnd that did not exit (collector._automas_ended_maaend).
-_THEIR_TERMS = ("结束进程", "周本领奖：回读", "MaaEnd 进程超时", "进程未退出")
+# AUTO-MAS's line for ending a MaaEnd that did not exit (collector._automas_ended_maaend),
+# and the tag of AUTO-MAS's config-check refusal line (runwatch._CONFIG_SKIP; the message
+# says config_skip_why instead).
+_THEIR_TERMS = ("结束进程", "周本领奖：回读", "MaaEnd 进程超时", "进程未退出", "调度器 \\| 未通过配置检查")
 
 
 # ---------------- titles ----------------
@@ -920,6 +922,44 @@ def missed_item_body(ran: list[str], kind: str, late_min: int) -> str:
             "队列本身是跑了的，所以不是没开机——是这一项自己没起来。")
 
 
+# AUTO-MAS's own config-check refusals (repo app/task/<type>/manager.py check(), v5.7.0-beta.4),
+# matched by the text before their first comma, said plainly (runwatch.check_config_skips).
+CONFIG_SKIP_WHY = {
+    "未找到终末地官方启动器": "找不到终末地官方启动器",
+    "MaaEnd.exe文件不存在": "找不到 MaaEnd 的程序文件",
+    "MAA.exe文件不存在": "找不到 MAA 的程序文件",
+    "MaaEnd 配置文件不存在": "找不到 MaaEnd 的设置文件",
+    "MAA配置文件不存在": "找不到 MAA 的设置文件",
+    "未完成 MAA 全局设置": "MAA 的总设置没做",
+    "未选择 MaaEnd 控制器": "MaaEnd 没选控制方式",
+    "未完成游戏配置": "游戏那一栏没填好",
+    "未完成模拟器配置": "模拟器那一栏没填好",
+    "未填写配置路径": "设置文件的位置没填",
+    "未填写日志路径": "日志的位置没填",
+    "不支持的任务模式": "这一项的运行方式它不支持",
+    "脚本配置类型错误": "这一项的脚本类型填错了",
+}
+CONFIG_SKIP_UNREAD = "它写的原因没法直接转成大白话，原话在中继的技术日志里"
+
+
+def config_skip_why(reason: str) -> str:
+    """AUTO-MAS's config-check refusal, said plainly; its own words when they already read plainly."""
+    head = re.split(r"[,，]", reason or "", maxsplit=1)[0].strip().rstrip("！!。")
+    for key, plain_why in CONFIG_SKIP_WHY.items():
+        if key in head:
+            return plain_why
+    return head if head and not plain(head) else CONFIG_SKIP_UNREAD
+
+
+def config_skip_body(game: str, why: str, when: str, queue: str) -> str:
+    """AUTO-MAS refused to start one script of a running queue at its own config check
+    (runwatch.check_config_skips): the run did not happen and will not until the setting is fixed."""
+    shift = f"{queue}这一班的" if queue else "这一趟的"
+    return (f"AUTO-MAS 开跑前检查没过：{why}。\n"
+            f"{game}这一项 {when} 没开跑就被跳过了，游戏没开，{shift}{game}没做。\n"
+            "设置不改的话，下次排到它还会一样被跳过，要有人去改。")
+
+
 def attempt_timeout(game: str, script: str) -> str:
     return f"⏱️ {game}（{script}）跑超时，AUTO-MAS 正在重试"
 
@@ -1173,6 +1213,9 @@ def samples() -> list[str]:
         rerun_body(["OK-WW"]), watch_lost_body(), automas_down_body(4), automas_boot_down_body(),
         preupdate_unconfirmed_tail(), cant_enter_body("MaaEnd", 3, True, "", 30),
         missed_queue_body(30), missed_item_body(["MAA"], "OK-WW", 75),
+        config_skip_body("终末地", config_skip_why("未找到终末地官方启动器, 请选择鹰角官方启动器 Launcher.exe 或 Games.exe！"),
+                         "10-16 09:34（东京 10:34）", "早班"),
+        config_skip_body("终末地", config_skip_why("未完成URL配置, 请检查"), "09:34", ""),
         attempt_timeout("鸣潮", "OK-WW"), shift_overrun("早班"), shift_no_result("早班"),
         MAAEND_STUCK_KILLED, MAAEND_STUCK_KILL_FAILED, MAAEND_WATCH_BLIND, maaend_watch_blind_body(10),
         maaend_stuck_body(maaend_crash_reason("0xc0000005"), True, ""),

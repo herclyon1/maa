@@ -237,6 +237,7 @@ class Engine:
         # alarms that could not be sent yet (the log line is read only once).
         self._applog = None
         self._unsent_timeouts: list = []
+        self._unsent_skips: list = []
         # 「没干完」 alarms (unresolved.py) whose push failed: (day, kind, run_id, title,
         # body), tried again at the top of every _flush_pending; kept on disk with
         # _pending (_persist_pending).
@@ -736,6 +737,20 @@ class Engine:
                     if moment > now and key not in self._missed_alerted:
                         cands.append((moment, f"核对队列「{q['name']}」{hhmm} 是否漏跑"))
 
+        # A queue that ran but still lacks a script becomes reportable at due + partial_grace
+        # (missed._check_partial_queues). Without this moment it waited for the hour backstop
+        # (10-16: due 10:15, pushed 10:34).
+        try:
+            entries = self._recent_entries(now)
+            for q in plan.recent_due_queues(self.cfg.automas_dir, now, window_minutes=self.cfg.partial_window):
+                moment = q["due"] + timedelta(minutes=self.cfg.partial_grace)
+                day, hhmm = q["due"].strftime("%Y-%m-%d"), q["due"].strftime("%H:%M")
+                if moment > now and any(not missed._settled(self, day, f"{day}/{q['name']}/{hhmm}/{k}")
+                                        for k in shutdown._missing_kinds(self, q, entries)):
+                    cands.append((moment, f"核对队列「{q['name']}」{hhmm} 有没有缺项"))
+        except Exception:
+            log.exception("算缺项核对的时刻出错，跳过")
+
         # A running queue is only visible through AUTO-MAS's own log and snapshot,
         # neither of which wakes the loop (runwatch.next_moments).
         try:
@@ -850,13 +865,15 @@ class Engine:
         return makeup.maybe_run(self, now)
 
     def _run_watch(self, now: datetime | None = None) -> None:
-        """First timeout of each script, and a shift running past its planned end (runwatch)."""
+        """Every timeout of each script, a script AUTO-MAS refused at its config check, and a
+        shift running past its planned end (runwatch)."""
         from ark_relay.features.run import runwatch  # noqa: PLC0415
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         if self._applog is None:
             self._applog = runwatch.AppLog(runwatch.applog_path(self.cfg.automas_dir))
         events = self._unsent_timeouts + self._applog.poll()
         self._unsent_timeouts = runwatch.check_timeouts(self, events, now)
+        self._unsent_skips = runwatch.check_config_skips(self, self._unsent_skips + self._applog.take_skips(), now)
         if config.IS_WINDOWS:
             runwatch.check_overrun(self, now, _automas_snapshot())
 

@@ -32,6 +32,7 @@ def _check_missed_runs(eng, now: datetime | None = None,
     powered on cannot be caught from inside it; that is the GitHub Actions
     watchdog's job (scripts/watchdog.py, reading Tailscale lastSeen).
     """
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     # Checked and pushed in debug mode too: a queue that did not run is an error.
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     day = now.strftime("%Y-%m-%d")
@@ -87,9 +88,11 @@ def _check_missed_runs(eng, now: datetime | None = None,
             late = int((now - due).total_seconds() // 60)
             title, body = core.format_missing(texts.not_run(q['name']), due,
                                               texts.missed_queue_body(late))
-            if not eng.notifier.send(title, body, alert=True):
+            if not (errs := eng.notifier.send(title, body, alert=True)):
                 _settle(eng, day, key)
-                log.warning("🔌 %s 该跑没跑，已告警", q["name"])
+                # errwatch would push this WARNING again as 「中继自己报错了」 (10-16 10:34:15).
+                log.warning("🔌 %s 该跑没跑，已告警", q["name"],
+                            extra=errwatch.group_pushed(title, errs, eng.notifier))
     eng._check_partial_queues(now, day, entries)
 
 
@@ -112,6 +115,7 @@ def _check_partial_queues(eng, now: datetime, day: str,
     Records are matched to their own queue by start time, so the morning's
     MaaEnd can never be mistaken for the evening's.
     """
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     for q in plan.recent_due_queues(eng.cfg.automas_dir, now,
                                     window_minutes=eng.cfg.partial_window):
         due = q["due"]
@@ -149,9 +153,10 @@ def _check_partial_queues(eng, now: datetime, day: str,
             late = int((now - due).total_seconds() // 60)
             title, body = core.format_missing(texts.not_run_in(kind, q['name']), due,
                                               texts.missed_item_body(list(ran), kind, late))
-            if not eng.notifier.send(title, body, alert=True):
+            if not (errs := eng.notifier.send(title, body, alert=True)):
                 _settle(eng, day, key)
-                log.warning("🔌 %s 缺项：%s 没跑，已告警", q["name"], kind)
+                log.warning("🔌 %s 缺项：%s 没跑，已告警", q["name"], kind,
+                            extra=errwatch.group_pushed(title, errs, eng.notifier))
 
 
 # The settled keys also go into the day marks in state.json (marks.alerted:<day>), the
