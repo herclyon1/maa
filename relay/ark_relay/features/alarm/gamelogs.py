@@ -205,16 +205,11 @@ def _maaend_new_shots(maaend_dir: str | Path | None,
     `until` (finish + 5 min, as for _maaend_app_log) leaves out the later
     rounds' pictures: 10-01's 15:24 round was judged at 17:27 and blamed for a
     16:44 picture of the 16:12 round (relay.log 24567; audit 2026-10-13 s8 #2).
+    Each picture goes by the time in its name (collector_maaend.round_shots), as
+    machine check #29 reads the same set.
     """
-    if not maaend_dir:
-        return []
-    d = Path(maaend_dir) / "debug" / "on_error"
-    if not d.is_dir():
-        return []
-    cut = started.timestamp()
-    top = until.timestamp() if until is not None else float("inf")
-    return sorted(p.name for p in d.glob("*.png")
-                  if cut <= p.stat().st_mtime <= top)
+    from ark_relay.features.verify import collector_maaend  # noqa: PLC0415
+    return collector_maaend.round_shots(maaend_dir, started, until)
 
 
 def _okww_log_file(okww_dir: "str | Path | None") -> "Path | None":

@@ -127,7 +127,7 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
         ("fixture", "reads the message part of a route line; 采集失败 only in fixtures/collect-retry-2026-09-11 "
                     "(real MXU lines, no SOURCE in the census)"),
     ("features/makeup/collect_retry.py",
-     r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(Start|End|Failed)\""):
+     r"\[msg=Node\.(?:Recognition\.Succeeded|Action\.Starting)\].*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(Start|End|Failed)\""):
         ("fixture", "only fixtures/collect-blocked-1005-1012 (real maafw.log lines of 2026-10-12, no SOURCE in the census)"),
 }
 # Sites that read something other than a game's log - a config, a stage name, a path, a locale
@@ -149,7 +149,7 @@ NOT_LOG: "dict[tuple[str, str], str]" = {
     ("features/makeup/collect_retry.py", r"option\.(AutoCollect(?:Common)?Route\d+)\.failed"): "MaaEnd locale keys",
     ("features/makeup/collect_retry.py", "no-labels"): "the relay's own once-per-condition set",
     ("features/makeup/collect_retry.py", r"option\.(AutoCollect(?:Common)?Route\d+)\.label"): "MaaEnd locale keys",
-    ("features/verify/collector_maaend.py", r"^(\d{4}\.\d\d\.\d\d-\d\d\.\d\d\.\d\d)\.\d+___(.+)\.png$"):
+    ("features/verify/collector_maaend.py", r"^(\d{4}\.\d\d\.\d\d-\d\d\.\d\d\.\d\d)\.(\d+)___(.+)\.png$"):
         "an on_error picture's file name (MaaEnd debug/on_error)",
     ("features/verify/collector_maaend.py", "MapNavigatorObstacleDevice_InteractPost"):
         "part of an on_error picture's file name (MaaEnd debug/on_error)",

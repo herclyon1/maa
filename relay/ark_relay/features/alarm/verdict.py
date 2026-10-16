@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
-from ark_relay.features.verify import outcome
+from ark_relay.features.verify import collector_maaend, outcome
 from ark_relay.core.config import RunRecord
 from ark_relay.features.alarm.gamelogs import (
     MAAEND_NOTHING_TO_RUN, _maa_app_log, _maaend_app_log, _maaend_new_shots, _okww_master_config,
@@ -88,7 +88,7 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
                 return None
             # Bounded above like MAA's log: a round judged late must not take the
             # later rounds' pictures and lines as its own.
-            until = rec.finished + timedelta(minutes=5) if rec.duration_known else None
+            until = collector_maaend.round_until(rec)
             shots = _maaend_new_shots(eng.cfg.maaend_dir, rec.started, until)
             # Read AUTO-MAS's history log together with MaaEnd's own app log:
             # the wrap-up marker only exists in the latter and task start/finish
@@ -100,7 +100,9 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
             own = bool(app.strip())
             if outcome.maaend_no_self_exit(both, own_log=own):
                 _mark_no_self_exit(eng, rec)
-            return _judged(rec, outcome.maaend_checks(both, shots, own_log=own), "MaaEnd")
+            # The pictures go with the checks: machine check #29 judges this booking
+            # on the very same set (runs._c29).
+            return _judged(rec, outcome.maaend_checks(both, shots, own_log=own), "MaaEnd", shots=shots)
     except Exception as exc:
         log.exception("结果核对本身出错")
         # None would mean "everything was done"; a check that crashed has

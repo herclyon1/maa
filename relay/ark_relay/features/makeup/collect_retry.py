@@ -51,7 +51,10 @@ _ROUTE_KEY = re.compile(r"^(AutoCollect(?:Common)?Route\d+)(Start|Dispatch)$")
 _FAILED_LINE = re.compile(r"^\[[^\]]+\]\s*(.+?采集失败)\s*$")
 _OVERRIDE_LINE = re.compile(r"entry=" + ENTRY + r", pipelineOverride=(\[.*\])\s*$")
 _NODE = re.compile(r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(End|Failed)\"")
-_NODE_SPAN = re.compile(r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(Start|End|Failed)\"")
+# A route node's recognition or action in maafw.log (retry_blocked): the Start
+# node's recognition is the moment the route is announced, its action 0.2 s later.
+_ROUTE_EVENT = re.compile(r"\[msg=Node\.(?:Recognition\.Succeeded|Action\.Starting)\]"
+                          r".*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(Start|End|Failed)\"")
 _TAG = re.compile(r"<[^>]+>")
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 # Consecutive days a route has to fail its retry to count as recurrent.
@@ -113,34 +116,36 @@ _UNKNOWN_SAID: set[str] = set()
 def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: list[str]) -> dict[str, list[str]]:
     """{route: relay-device pictures} for the retried routes that hit 「战斗中无法使用」 again.
 
-    Windows from the route's Start node to its End / Failed node after `since`
-    (HH:MM:SS, as judge); MaaEnd still runs End on such a route (maafw.log
-    2026-10-12 10:45:39 AutoCollectRoute10End, four pickups instead of 6-10)."""
-    from ark_relay.features.verify import collector_maaend  # noqa: PLC0415
-    spans: list[list] = []
+    Route windows after `since` (HH:MM:SS, as judge) by the history log's rule
+    (collector_maaend.spans) on the same event: a route opens where MaaFW recognises
+    its Start node - the moment MaaEnd announces 「路线10：重红柱状菌」, which AUTO-MAS
+    stamps into the history log some 25 ms later - and runs to the next route's
+    start or its Failed node; its End node closes it only when nothing follows.
+    MaaEnd still runs End on such a route (maafw.log 2026-10-12 10:45:39
+    AutoCollectRoute10End, four pickups instead of 6-10). All to the millisecond."""
+    from ark_relay.features.verify import collector_maaend as cm  # noqa: PLC0415
+    events: list[tuple] = []
+    last = None
     for line in maafw_log.splitlines():
         if len(line) < 20 or line[12:20] < since:
             continue
-        m = _NODE_SPAN.search(line)
-        if not m or m.group(1) not in routes:
+        if line.startswith("["):
+            last = line
+        if "AutoCollect" not in line or not (m := _ROUTE_EVENT.search(line)):
             continue
-        try:
-            at = datetime.strptime(line[1:20], "%Y-%m-%d %H:%M:%S")
-        except ValueError:
+        if (at := cm.line_time(line)) is None:
             continue
-        if m.group(2) == "Start":
-            spans.append([m.group(1), at, None])
+        rid, node = m.group(1), m.group(2)
+        if node == "Start":
+            events.append((at, "open", rid) if rid in routes else (at, "close", None))
         else:
-            for sp in reversed(spans):
-                if sp[0] == m.group(1) and sp[2] is None:
-                    sp[2] = at
-                    break
+            events.append((at, "tail" if node == "End" else "close", rid))
     shots = [(t, n) for n in shot_names
-             if collector_maaend.OBSTACLE_SHOT in n and (t := collector_maaend.shot_time(n)) is not None]
+             if cm.OBSTACLE_SHOT in n and (t := cm.shot_time(n)) is not None]
     out: dict[str, list[str]] = {}
-    for rid, start, end in spans:
+    for rid, start, end in cm.spans(events, cm.line_time(last) if last else None):
         for t, n in shots:
-            if collector_maaend.in_window(t, start, end):
+            if cm.in_window(t, start, end):
                 out.setdefault(rid, []).append(n)
     return out
 

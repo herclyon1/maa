@@ -597,15 +597,15 @@ COLLECT = "自动采集"
 
 
 def _collect_window(text: str) -> "tuple[datetime, datetime] | None":
+    """The 自动采集 task's [start, end), to the millisecond (cm.line_time, as the routes')."""
     start = end = None
     for line in text.splitlines():
-        m = _FW_STAMP.match(line)
-        if not m:
+        if (t := cm.line_time(line)) is None:
             continue
         if re.search(r"任务开始[:：]\s*\S*" + COLLECT, line):
-            start = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+            start = t
         elif start and re.search(r"任务(完成|失败)[:：]\s*\S*" + COLLECT, line):
-            end = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+            end = t
     return (start, end) if start and end else None
 
 
@@ -623,8 +623,16 @@ def _c29(ctx):
     if span is None:
         return None
     t0, t1 = span
-    pics = [n for n in cm.obstacle_shots(ctx.get("maaend_dir"))
-            if (t := cm.shot_time(n)) is not None and cm.in_window(t, t0, t1)]
+    # The pictures the outcome check was handed (verdict keeps them with its checks),
+    # or, for a run it did not check, the same round_shots over the same bounds: by
+    # name time both, so #29 judges no picture the check never saw.
+    checked = ctx.get("outcome")
+    shots = (checked or {}).get("shots")
+    if shots is None:
+        rec = ctx["rec"]
+        shots = cm.round_shots(ctx.get("maaend_dir"), rec.started, cm.round_until(rec))
+    pics = [n for n in shots if cm.OBSTACLE_SHOT in n
+            and (t := cm.shot_time(n)) is not None and cm.in_window(t, t0, t1)]
     if not pics:
         return None
     blocked = cm.blocked_routes(text, pics)
@@ -632,7 +640,6 @@ def _c29(ctx):
         return _r(FAIL, f"撞了「{COMBAT_BLOCK}」，存了出错截图 {lost[0]}，日志里认不出是哪条路线")
     # A failed run is not outcome-checked (handle: AUTO-MAS's own retry follows), so its
     # booking is the daily row's alone; the per-route retry reads the day's last run.
-    checked = ctx.get("outcome")
     raw = ctx.get("raw") or {}
     if checked is None and "maaend_collect_total" not in raw:
         return None
