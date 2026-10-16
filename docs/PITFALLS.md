@@ -820,10 +820,11 @@ tested, so do not treat that as a conclusion.**
 
 ### 2 & 3. 终末地 「选剑演武」 ×2 - **this one is our settings**, fixed
 
-See [AUTOMAS.md](AUTOMAS.md#选剑演武-succeeds-in-the-game-reported-as-a-failure-by-maaend--now-disabled).
+See [AUTOMAS.md](AUTOMAS.md#选剑演武-enabled-when-it-fails-it-leaves-the-character-inside-the-challenge).
 I had added the task the same day; its recognition is unreliable, and on failure
 it also left the character stuck in the challenge, which dragged down essence
-farming. Now disabled.
+farming. It was disabled then; it is enabled again and has run daily since at
+least 09-15 (status in AUTOMAS.md).
 
 ### 4. 鸣潮 「游戏更新成功，即将重启任务」 - a false alarm
 

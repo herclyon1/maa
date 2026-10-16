@@ -267,6 +267,14 @@ def outcome_settings_only(msg: str) -> bool:
     return first.endswith(OUTCOME_SETTINGS_HEAD) and not first.startswith("另外")
 
 
+# MaaEnd's essence farming in target mode ends with 「勾选武器的基质均已满足，结束任务」
+# when the ticked weapons' essences are already owned (upstream plan_action.go
+# "all targets satisfied"): nothing farmed, no sanity spent, not a fault.
+# outcome.summarize names it on its own line; the daily report has one note.
+OUTCOME_ESSENCE_MET_HEAD = "勾选的武器基质已经齐了、没刷："
+ESSENCE_TARGET_MET = "基质刷取：勾选的武器要的基质都已经有了，这趟没刷、没花理智；可以换一把要刷的武器勾上"
+
+
 def unresolved_settings(game: str, shift: str) -> str:
     """A MaaEnd shift that did its work, but by the defaults: a new version reset the
     user's settings (outcome.settings_only)."""

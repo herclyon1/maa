@@ -3256,6 +3256,20 @@
 "wuwa_posters",
 "wuwa_tacet"
 ],
+"test_maaend_essence_met.py": [
+"__init__",
+"collector_maaend",
+"config",
+"ledger",
+"ledger_report",
+"ledger_rows",
+"maaend_fwlog",
+"names",
+"outcome",
+"scoreboard",
+"statestore",
+"texts"
+],
 "test_maaend_false_green.py": [
 "__init__",
 "names",

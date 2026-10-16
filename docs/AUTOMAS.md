@@ -431,9 +431,23 @@ keeps it from blocking 鸣潮.
 How to change it: `POST /api/queue/item/order`, where `indexList` is the **queue-item IDs**
 arranged in the new order.
 
-## 选剑演武: succeeds in the game, reported as a failure by MaaEnd — now disabled
+## 选剑演武: enabled; when it fails it leaves the character inside the challenge
 
-It broke on 2026-08-28, the very day it was first enabled, and has been set to `enabled: false`.
+**Status (2026-10-16)**: enabled and runs every day. It was switched off on 2026-08-28 (ed84e6a5,
+the history below) and is on again: AUTO-MAS history shows `任务完成: 🗡️选剑演武` in every MaaEnd
+run from 09-15 to 10-15. When it was switched back on is not recorded in git.
+
+**Last failure, 2026-10-16 13:47** (make-up round, MaaEnd v2.33.0-beta.5): the third paid round's
+node `TrialOfSwordmancyFight` timed out after 20 s because neither `AutoFight` nor
+`TrialOfSwordmancyFightFinish` matched (the on_error shot shows 「击败所有敌人 0/5」 and no combat
+HUD). Cause unknown; not a MaaEnd version change (the fight pipeline is unchanged since upstream
+605da581, 10-12) and not a relay desktop shot. The upstream node has no timeout fallback and does
+not press 中止挑战, so the character stayed in the arena and the next 基质刷取 failed on the map
+with 「当前禁止传送」 - the same knock-on as 08-28 point 1 below.
+
+### History: 2026-08-28, succeeds in the game, reported as a failure by MaaEnd
+
+It broke on 2026-08-28, the very day it was first enabled, and was then set to `enabled: false`.
 
 **Symptom**: the task ran to completion in the game and the reward arrived
 (`获得 武陵调度券 ×320000`, exactly the 「奖励数额 320000」 shown on the challenge screen), yet
@@ -443,7 +457,7 @@ MaaEnd still reported `任务失败: 🗡️选剑演武`.
 **0.286** on template matching against a threshold of 0.7, so it could not identify the enemy
 cards → `Tasker.Task.Failed`.
 
-**Why it must be disabled rather than shrugged off as "the reward arrived anyway"**:
+**Why it was disabled then rather than shrugged off as "the reward arrived anyway"**:
 
 1. **When it fails it leaves the character inside the challenge arena.** The 基质刷取 that follows
    therefore failed as a knock-on — from the MXU log: `↩️返回大世界` (21 seconds, could not get
@@ -452,6 +466,6 @@ cards → `Tasker.Task.Failed`.
 2. **It burns AUTO-MAS's retry budget** (`RunTimesLimit=3`). All three rounds that day were
    consumed by it.
 
-**To re-enable it**, fix the recognition first: switch to `刷镀层` mode (which does not enter
+**What was advised then before re-enabling it**: fix the recognition first: switch to `刷镀层` mode (which does not enter
 combat and does not need to identify cards), or confirm that the game's resolution and graphics
-settings match the upstream templates. **Do not turn it on before the recognition is fixed.**
+settings match the upstream templates.

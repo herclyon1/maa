@@ -26,12 +26,15 @@ class Check:
     detail: str = ""    # why it was judged this way, for troubleshooting
     # "" = a task that did or did not do its job; SETTINGS = the run went by defaults
     # because a new version reset the user's settings (failed, but not 「没干成」);
-    # SKIPPED = the task's own schedule says not today (passed, but not 「干成的」).
+    # SKIPPED = the task's own schedule says not today (passed, but not 「干成的」);
+    # SATISFIED = essence target mode found the ticked weapons' essences already
+    # owned and stopped without farming (passed, but not 「干成的」 either).
     kind: str = ""
 
 
 SETTINGS = "settings"
 SKIPPED = "skipped"
+SATISFIED = "satisfied"
 
 
 # ── OK-WW ──────────────────────────────────────────────────────────
@@ -779,6 +782,13 @@ _MAAEND_WORK = (
     ("协议空间", re.compile(r"进入协议空间成功|理智不足"), "进了"),
 )
 _MAAEND_SKIPPED = re.compile(r"根据执行周期跳过")
+# Essence target mode with every ticked weapon's essence already owned: the planner
+# stops at once (upstream autoessence/plan_action.go "all targets satisfied"). Real
+# line, 2026-10-16 14:10:13 (tests/fixtures/maaend-2026-10-16/MaaEnd-09-53-33.log):
+# 「🎯目标模式：勾选武器的基质均已满足，结束任务」. Only this line: the 🎉 line after it,
+# 「目标模式：基质目标已满足或任务结束」, is AutoEssenceOnComplete's focus text on any
+# target-mode ending, farmed or not, and would hide a real false green.
+_MAAEND_ESSENCE_MET = re.compile(r"勾选武器的基质均已满足")
 _MAAEND_TS = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
 
 
@@ -888,6 +898,11 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
                 continue
             if evidence.search(seg):
                 out.append(Check(f"{key} 真的{what}", True))
+            elif key == "基质刷取" and _MAAEND_ESSENCE_MET.search(seg):
+                # Nothing to farm: the ticked weapons' essences are owned already
+                # (2026-10-16 14:10, a 180 s inventory scan, then this line). Not a
+                # false green and not work done today (summarize).
+                out.append(Check(key, True, kind=SATISFIED))
             elif _MAAEND_SKIPPED.search(seg):
                 # The task itself said it was not due today (weekday schedule);
                 # a quick completion is then the right outcome, not a false green.
@@ -998,7 +1013,9 @@ def summarize(checks: list[Check], who: str) -> str | None:
         lines += [_bullet(c) for c in reset]
     if skipped := [c.label for c in checks if c.ok and c.kind == SKIPPED]:
         lines.append("按周期今天不跑：" + "、".join(skipped))
-    ok = [c.label for c in checks if c.ok and c.kind != SKIPPED]
+    if met := [c.label for c in checks if c.ok and c.kind == SATISFIED]:
+        lines.append(texts.OUTCOME_ESSENCE_MET_HEAD + "、".join(met))
+    ok = [c.label for c in checks if c.ok and c.kind not in (SKIPPED, SATISFIED)]
     if ok:
         lines.append("干成的：" + "、".join(ok))
     return "\n".join(lines)

@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
+from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ, USER_TZ
 from ark_relay.features.verify.collector_maaend import _END_CLOSING_TASKS, _END_STOP_MARK
 
@@ -249,6 +250,10 @@ def _block_maaend(e: dict, raw: dict, finished: datetime,
     # 自动采集 has its own sentence above; the rest are said here, by name.
     if other := [(n, wd) for n, wd in skipped.items() if "自动采集" not in n]:
         notes.append("按排班跳过、没有做：" + "、".join(f"{n}（今天{wd}）" for n, wd in other))
+    if raw.get("maaend_essence_met"):
+        # Target mode stopped at once: the ticked weapons' essences are owned
+        # (collector_maaend._farm_one). Nothing farmed; he can tick the next weapon.
+        notes.append(texts.ESSENCE_TARGET_MET)
 
     return did, cost, out, left, notes
 

@@ -34,6 +34,7 @@ is pulled with `scripts/mac/pull-replay.sh 2026-10-10 endfield` while the machin
 | 2026-09-04 | 5 | 终末地基质刷取失败→重试成功（刷错地区那个 bug 还在的时候） |
 | 2026-09-05 | 5 | 同上，这是改成藏剑谷/清波寨的前一趟 |
 | 2026-09-07 | 10 | 平常的一天：三个脚本都跑、周本领了一次之后没退出 |
+| 2026-10-16 | 1 | Endfield 09:53 record only: essence target mode with the ticked weapon's essence already owned scans the inventory for 180 s and ends with 「勾选武器的基质均已满足，结束任务」; the outcome check must say nothing (verdict.json, MaaEnd's app log 2026-10-16-3.log beside it; test_maaend_essence_met.py) |
 
 每条 `expected.json` 都逐条看过：核对过 `general_result` 是 AUTO-MAS 自己写的原话、
 `WaitFailedException` 确实在日志里、失败任务名和当天记的事故对得上。

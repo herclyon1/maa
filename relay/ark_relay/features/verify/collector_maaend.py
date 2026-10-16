@@ -180,6 +180,8 @@ _END_TASK_FAIL = re.compile(r"任务失败[:：]\s*(\S.+?)\s*$", re.M)
 _END_FARM_TASKS = ("基质刷取", "协议空间")
 _END_PLACE = re.compile(r"目标地点[:：]\s*(\S+)")
 _END_ESSENCE_DONE = re.compile(r"已完成一次基质刷取")
+# Target mode with the ticked weapons' essences already owned (outcome._MAAEND_ESSENCE_MET).
+_END_ESSENCE_MET = re.compile(r"勾选武器的基质均已满足")
 _END_ESSENCE_DROP = re.compile(r"^是(\S+?基质)\s*$")
 _END_MEDICINE = re.compile(r"使用(?:了)?应急理智加强剂|补充理智")
 _END_COLLECT_SKIP = re.compile(r"任务开始[:：]\s*\S*自动采集\s*\n[^\n]*?现在游戏时间是(周[一二三四五六日天])，根据执行周期跳过任务")
@@ -500,8 +502,12 @@ def _maaend_farm(text: str) -> dict:
     if len(segs) <= 1:
         return _farm_one(text, lines, *(segs[0] if segs else _farm_segment(lines)), skipped)
     parts = [_farm_one(text, lines, *x, skipped) for x in segs]
-    parts = [x for x in parts if x]
-    out: dict = {"maaend_farm": "、".join(x["maaend_farm"] for x in parts)}
+    met = any(x.get("maaend_essence_met") for x in parts)
+    parts = [x for x in parts if x.get("maaend_farm")]
+    out: dict = {"maaend_essence_met": True} if met else {}
+    if not parts:
+        return out
+    out["maaend_farm"] = "、".join(x["maaend_farm"] for x in parts)
     if places := [x["maaend_farm_place"] for x in parts if x.get("maaend_farm_place")]:
         out["maaend_farm_place"] = places[0]
     if runs := sum(x.get("maaend_farm_runs", 0) for x in parts):
@@ -529,6 +535,10 @@ def _farm_one(text: str, lines: list[str], farm: str, start: int, end, skipped: 
         return out          # a weekday-skipped farming task farmed nothing
     seg = lines[start:(end + 1) if end is not None else None]
     body = "\n".join(seg)
+    if _END_ESSENCE_MET.search(body) and not _END_ESSENCE_DONE.search(body):
+        # Target mode found every ticked weapon's essence owned and farmed nothing
+        # (2026-10-16 14:10): said as such, not as a farm of 0 runs.
+        return {"maaend_essence_met": True}
     out["maaend_farm"] = farm
     if m := _END_PLACE.search(body):
         out["maaend_farm_place"] = m.group(1)
