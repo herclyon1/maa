@@ -1353,7 +1353,7 @@ def machinecheck_section(rows: list, cannot: list) -> str:
     for cid, what, kind, status, evidence, at in rows:
         if status == "HEALED":
             # A PASS only because another run of the day did what this one failed at.
-            lines.append(f"↻ {cid} {what}：这一趟没过，同一天另一趟补上了，不用人管：{evidence}（{at[5:16]}）")
+            lines.append(f"↻ {cid} {what}：这一趟没过，同一天另一趟补上了：{evidence}（{at[5:16]}）")
         elif status in mark:
             lines.append(f"{mark[status]} {cid} {what}：{evidence}（{at[5:16]}）")
         else:

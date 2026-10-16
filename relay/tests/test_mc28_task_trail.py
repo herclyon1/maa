@@ -198,7 +198,6 @@ check("a run of the day without the booked verdicts backs nothing",
       runs._done_elsewhere({"rec": None, "ledger": [dict(day08.rows[0], raw={})]}, "装备制造"), "")
 
 print("\n[10-08 日报：06-31-06 没做的那些，10:35 那趟重试按项说：选剑演武没证据，其余做成了]")
-fw06 = day08.rows[-1]
 judge("2026-10-08_MaaEnd-06-34-21.log", fw08, ledger=day08)
 # The failed tasks AUTO-MAS booked for 06-31-06 (its history record; the 10-08 daysim
 # ledger row 2026-10-08/endfield/MaaEnd-06-31-06): every task after the abort.
