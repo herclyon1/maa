@@ -1,18 +1,16 @@
-"""Start Endfield (终末地) through the official Hypergryph launcher, for every MaaEnd run.
+"""Start Endfield (终末地) through the official Hypergryph launcher, for the relay's own starts.
 
 Client 1.6.3 (「丹青渡」, 2026-10-15) refuses to run unless its parent process is the
 running launcher: started as Endfield.exe directly it shows 「游戏启动失败」
 「请通过官方启动器打开游戏」 (MaaEnd/MaaEnd#6469; #6457 traces it to the SDK checking
 the direct parent process). On 2026-10-15 15:14 AUTO-MAS started Endfield.exe itself
 (account switch "MAS": Game.Path, app/task/MaaEnd/AutoProxy.py:950-967 in v5.6.2) and
-every MaaEnd task failed. Everything that started the game directly now starts this
-helper instead (efstart_setup.py points them here):
-
-* AUTO-MAS's MaaEnd script Game.Path -> start-endfield.cmd (fire and forget: AUTO-MAS
-  sleeps Game.WaitTime, then looks for the window);
-* the preAction AUTO-MAS injects into MaaEnd's config (program = Game.Path, the same .cmd);
-* our own preAction in the MaaEnd master, with waitForExit, so MXU connects only after it;
-* the relay's own gathering retry (collect_retry), through run_on_desktop.
+every MaaEnd task failed. From 10-15 to 10-16 every such start ran this helper instead;
+since AUTO-MAS v5.7.0-beta.4 (Game.LaunchMode "Launcher", PR #1394) AUTO-MAS starts the
+game through the launcher itself for its runs, and efstart_setup.py hands those back to it
+(Game.Path on Endfield.exe again, the helper's preAction out of the MaaEnd master). The
+helper still serves the relay's own start: the gathering retry (collect_retry), through
+run_on_desktop.
 
 What one start does (start_via_launcher):
 

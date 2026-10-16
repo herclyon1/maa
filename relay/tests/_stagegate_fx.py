@@ -83,7 +83,8 @@ def automas_dir(root: Path, *, stage="YW-4", stage_1="-", fight=True, mode="Fixe
     }
     if beta3:
         scripts["S-MAA"]["Run"] = {"IfCheckGameUpdate": True, "IfAutoInstallGameApk": True}
-        scripts["S-END"]["Game"] = {"WaitTime": 60}
+        scripts["S-END"]["Game"] = {"WaitTime": 60,
+                                    "Path": "D:\\endfield\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe"}
         scripts["S-END"]["SubConfigsInfo"]["UserData"]["U2"]["Task"] = {
             "IfSanity": True, "IfAutoUseSpMedication": False, "SanityTaskType": "ProtocolSpace",
             "AutoEssenceSpecifiedLocation": ""}

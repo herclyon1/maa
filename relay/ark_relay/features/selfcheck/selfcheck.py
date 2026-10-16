@@ -128,7 +128,16 @@ def _why(procs_mod) -> str:
     return f"（{why}）" if why else ""
 
 
-def _contract(cfg, contract=None) -> "tuple[Check, list[str]]":
+def _live_automas_version() -> str:
+    """The running AUTO-MAS's own version ('' when it cannot be asked)."""
+    try:
+        from ark_relay.features.preupdate.preupdate_automas import _live_version  # noqa: PLC0415
+        return _live_version()
+    except Exception:  # noqa: BLE001 - unknown: the items new in a version are not judged
+        return ""
+
+
+def _contract(cfg, contract=None, version: "str | None" = None) -> "tuple[Check, list[str]]":
     """(the check, its plain lines per feature that cannot be read) - every AUTO-MAS setting
     the relay reads is where it looks (mascontract.check).
 
@@ -138,7 +147,11 @@ def _contract(cfg, contract=None) -> "tuple[Check, list[str]]":
     from ark_relay.core import mascontract  # noqa: PLC0415
     name = texts.MAS_CONTRACT_CHECK
     try:
-        res = (contract or mascontract.check)(getattr(cfg, "automas_dir", None))
+        if contract is not None:
+            res = contract(getattr(cfg, "automas_dir", None))
+        else:
+            res = mascontract.check(getattr(cfg, "automas_dir", None),
+                                    _live_automas_version() if version is None else version)
     except Exception as exc:  # noqa: BLE001 - reported, not raised
         return Check(name, False, f"核对时出了 {type(exc).__name__}"), []
     lines = texts.mas_contract_lines(res.missing)
@@ -235,7 +248,7 @@ def report_contract(cfg, notifier, version: str, log_=None, contract=None) -> Ch
     _stage_preupdate), so on 10-14 the 08:45 boot check passed on the old AUTO-MAS and the
     08:46 install went unchecked until the next boot."""
     lg = log_ or log
-    c, lines = _contract(cfg, contract)
+    c, lines = _contract(cfg, contract, version)
     if c.ok is False:
         lines = lines or [c.detail]
         extra = _push(notifier, texts.AUTOMAS_CONTRACT, texts.automas_contract_body(version, lines))

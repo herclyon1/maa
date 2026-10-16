@@ -784,7 +784,12 @@ def _contract_after_update(cfg, notifier, log, version: str) -> None:
     """A new AUTO-MAS just came up: are the settings the relay reads still where it looks?
     (selfcheck.report_contract; the boot self-check ran before this install.)"""
     from ark_relay.features.selfcheck import selfcheck  # noqa: PLC0415
-    selfcheck.report_contract(cfg, notifier, version, log)
+    try:
+        selfcheck.report_contract(cfg, notifier, version, log)
+    finally:
+        # _stage_endfield_start ran on the version before this install (10-16: beta.4 came
+        # in at 02:34, right after it): converge and check Endfield's start on the new one.
+        _endfield_launch(cfg, log, f"调度程序升级到 {version} 后")
 
 
 def _stage_preupdate(cfg, notifier, log) -> None:
@@ -857,20 +862,31 @@ def _stage_preupdate(cfg, notifier, log) -> None:
 
 
 def _stage_endfield_start(cfg, notifier, log) -> None:
-    """Point every Endfield start (AUTO-MAS's Game.Path, MaaEnd's preAction) at the helper
-    that starts the game through the official launcher (gameupdate/efstart_setup.py).
-    Right after stagegate, where AUTO-MAS answers, and before the pre-update, which can
-    hold the boot up to the queue time. What could not be done is a WARNING (the group):
-    without it every MaaEnd run of the day fails at the game start."""
+    """Leave Endfield's start to AUTO-MAS's launcher mode (gameupdate/efstart_setup.py):
+    Game.Path back on Endfield.exe, LaunchMode Launcher, the relay's helper out of the MaaEnd
+    master, and a check that AUTO-MAS will find the official launcher. Right after
+    stagegate, where AUTO-MAS answers, and before the pre-update, which can hold the boot
+    up to the queue time (and runs it again after installing a new AUTO-MAS:
+    _contract_after_update). What could not be done is a WARNING (the group): without it
+    every MaaEnd run of the day is skipped at AUTO-MAS's own pre-run check."""
+    _endfield_launch(cfg, log, "开机")
+    try:
+        from ark_relay.features.gameupdate import efstart_setup  # noqa: PLC0415
+        efstart_setup.check_d3d11()
+    except Exception:
+        log.exception("开机核对终末地是不是用 DirectX 11 开的出错")
+
+
+def _endfield_launch(cfg, log, when: str) -> None:
     try:
         from ark_relay.features.gameupdate import efstart_setup  # noqa: PLC0415
         ok, notes = efstart_setup.install(cfg)
         for n in notes:
-            log.info("开机：终末地开游戏：%s", n)
+            log.info("%s：终末地开游戏：%s", when, n)
         if not ok:
-            log.warning("开机：终末地还没全改成经官方启动器开，MaaEnd 可能开不了游戏：%s", "；".join(notes))
+            log.warning("%s：终末地开游戏的设置没全对上：%s", when, "；".join(notes))
     except Exception:
-        log.exception("开机改终末地开游戏方式出错")
+        log.exception("%s核对终末地开游戏方式出错", when)
 
 
 def _stage_reenable_maaend(cfg, notifier, log) -> None:

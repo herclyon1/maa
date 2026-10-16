@@ -22,6 +22,7 @@ app/models/config.py before the machine installs it.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,6 +37,7 @@ class Item:
     key: str
     use: str        # feature id: texts.MAS_SETTING_WHAT / MAS_SETTING_BREAKS
     source: str     # where the relay reads (or writes) it
+    since: str = "" # the AUTO-MAS version that brought it in; judged only from that version on
 
     @property
     def owner(self) -> str:
@@ -59,8 +61,8 @@ OWNER = {
 TYPE_KIND = {"MaaConfig": "MAA", "MaaEndConfig": "MaaEnd", "OkwwConfig": "OK-WW"}
 
 
-def _items(kind, level, group, keys, use, source):
-    return [Item(kind, level, group, k, use, source) for k in keys]
+def _items(kind, level, group, keys, use, source, since=""):
+    return [Item(kind, level, group, k, use, source, since) for k in keys]
 
 
 CONTRACT: tuple[Item, ...] = tuple([
@@ -82,6 +84,12 @@ CONTRACT: tuple[Item, ...] = tuple([
             "selfcheck.py:_handed_updates_gaps"),
     *_items("MaaEnd", "script", "Game", ("WaitTime",), "maaend_wait",
             "commands.py:_set_wait_time (write)"),
+    # LaunchMode / LauncherPath: AUTO-MAS v5.7.0-beta.4 (PR #1394); its pre-run check finds the
+    # launcher from Game.Path (10-16 09:34 it refused the relay's .cmd there).
+    *_items("MaaEnd", "script", "Game", ("Path",), "maaend_launch",
+            "efstart_setup.py:install/launcher_for (write)"),
+    *_items("MaaEnd", "script", "Game", ("LaunchMode", "LauncherPath"), "maaend_launch",
+            "efstart_setup.py:install/launcher_for (write LaunchMode)", since="v5.7.0-beta.4"),
     # ---- MAA user (SubConfigsInfo.UserData.<uid>); Stage.* and Task.Annihilation via masuser
     *_items("MAA", "user", "Stage", ("StageMode", "Stage", "Stage_1", "Stage_2", "Stage_3", "SeriesNumb"),
             "stage", "plan.py:_scripts, stagegate.py:run_verdict, snapshot.py:maa_fields, "
@@ -209,17 +217,38 @@ def nodes_by_level(cfg_dir: Path, unreadable: list) -> dict[tuple[str, str], lis
     return out
 
 
-def check(automas_dir) -> Result:
-    """Every CONTRACT item a node of its kind does not have, read from <automas_dir>/config."""
+_VERSION = re.compile(r"v?(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$")
+
+
+def version_key(version: str) -> "tuple[int, ...] | None":
+    """v5.7.0-beta.4 -> (5, 7, 0, 0, 4); v5.7.0 -> (5, 7, 0, 1, 0), after its betas; None
+    when it does not read as an AUTO-MAS version."""
+    m = _VERSION.match(str(version or "").strip())
+    if not m:
+        return None
+    major, minor, patch, beta = m.groups()
+    return (int(major), int(minor), int(patch), 0 if beta else 1, int(beta or 0))
+
+
+def check(automas_dir, version: str = "") -> Result:
+    """Every CONTRACT item a node of its kind does not have, read from <automas_dir>/config.
+
+    `version` is the installed AUTO-MAS's own (the backend's /api/core/health; its
+    res/version.json is not rewritten by newer builds). An item with `since` is judged only
+    when that version is known and not older: an older AUTO-MAS never had it, and the
+    recorded days of the day simulator run v5.6.2 to v5.7.0-beta.3."""
     cfg_dir = Path(automas_dir) / "config" if automas_dir else None
     if cfg_dir is None or not cfg_dir.is_dir():
         return Result([], ["config"], 0)
     unreadable: list = []
     by_level = nodes_by_level(cfg_dir, unreadable)
+    have = version_key(version)
     missing, judged = [], 0
     for item in CONTRACT:
         nodes = by_level.get((item.kind, item.level)) or []
         if not nodes:
+            continue
+        if item.since and (have is None or have < version_key(item.since)):
             continue
         judged += 1
         if item.level == "user":

@@ -5,11 +5,13 @@ AUTO-MAS v5.7.0-beta.3 was published 2026-10-13 07:23 UTC and installed on the m
 08:46 Beijing; it moved the MAA user's stage items from Info to Stage. With the relay's list as it
 stood before masuser (every MAA user item in Info), the tool must name that move from the release's
 app/models/config.py alone; with the current list (ark_relay/core/mascontract.py + masuser) it must
-report nothing for v5.7.0-beta.3 and for v5.7.0-beta.2.
+report nothing for v5.7.0-beta.4, and for v5.7.0-beta.3 and v5.7.0-beta.2 only the two MaaEnd
+launcher settings beta.4 brought in (Game.LaunchMode, Game.LauncherPath; read since 10-16).
 
 Fixtures (public upstream source): fixtures/automas-models/config.py.txt is v5.7.0-beta.2's whole
 config.py (already used by test_mas_labels.py); config-v5.7.0-beta.3-excerpt.py.txt holds only the
-ConfigItem statements of the listed settings from v5.7.0-beta.3, verbatim, under their classes.
+ConfigItem statements of the listed settings from v5.7.0-beta.3, verbatim, under their classes;
+config-v5.7.0-beta.4-excerpt.py.txt the same from v5.7.0-beta.4.
 GitHub itself is not asked here (main() is given the file); the exit codes are checked on that path.
 """
 import io
@@ -29,6 +31,10 @@ except ImportError:          # the code before this change
 
 BETA2 = HERE / "fixtures" / "automas-models" / "config.py.txt"
 BETA3 = HERE / "fixtures" / "automas-models" / "config-v5.7.0-beta.3-excerpt.py.txt"
+BETA4 = HERE / "fixtures" / "automas-models" / "config-v5.7.0-beta.4-excerpt.py.txt"
+# The two MaaEnd settings AUTO-MAS v5.7.0-beta.4 brought in (PR #1394, the launcher start);
+# the relay reads them since 10-16 (efstart_setup), so an older release lacks them.
+NEW_IN_BETA4 = ["MaaEndConfig Game.LaunchMode", "MaaEndConfig Game.LauncherPath"]
 fails = []
 
 
@@ -49,6 +55,10 @@ def run_main(*argv):
 check("the tool and the relay's list exist", w is not None and mascontract is not None)
 if w is not None and mascontract is not None:
     beta2, beta3 = w.parse(BETA2.read_text(encoding="utf-8")), w.parse(BETA3.read_text(encoding="utf-8"))
+    beta4 = w.parse(BETA4.read_text(encoding="utf-8"))
+
+    def named(gaps):
+        return [g.split(":")[0] for g in gaps]
     # The list as it stood before masuser: the moved MAA user items read from Info only.
     before = [mascontract.Item(i.kind, i.level, "Info", i.key, i.use, i.source)
               if i.level == "user" and i.key in masuser.MOVED else i for i in mascontract.CONTRACT]
@@ -67,13 +77,16 @@ if w is not None and mascontract is not None:
         "MaaUserConfig Info.Stage_2 -> Stage.Stage_2",
         "MaaUserConfig Info.Stage_3 -> Stage.Stage_3",
     ])
-    check("nothing else is reported", len(gaps), len(moved))
-    check("v5.7.0-beta.2 against that same list: nothing (it still kept them in Info)",
-          w.compare(beta2, before), [])
+    check("nothing else is reported but the two settings beta.4 brought in",
+          sorted(set(named(gaps)) - {m.split(" -> ")[0] for m in moved}), NEW_IN_BETA4)
+    check("v5.7.0-beta.2 against that same list: only those two (it still kept the rest in Info)",
+          named(w.compare(beta2, before)), NEW_IN_BETA4)
 
     print("\n[the current list (mascontract + masuser)]")
-    check("v5.7.0-beta.3: nothing changed", w.compare(beta3, mascontract.CONTRACT, masuser.MOVED), [])
-    check("v5.7.0-beta.2: nothing changed", w.compare(beta2, mascontract.CONTRACT, masuser.MOVED), [])
+    check("v5.7.0-beta.4: nothing changed", w.compare(beta4, mascontract.CONTRACT, masuser.MOVED), [])
+    check("v5.7.0-beta.3: only the two settings beta.4 brought in",
+          named(w.compare(beta3, mascontract.CONTRACT, masuser.MOVED)), NEW_IN_BETA4)
+    check("v5.7.0-beta.2: the same two", named(w.compare(beta2, mascontract.CONTRACT, masuser.MOVED)), NEW_IN_BETA4)
 
     print("\n[a key a release drops is reported, a whole class too]")
     fake = [mascontract.Item("MAA", "user", "Stage", "NoSuchKey", "stage", "x.py:f"),
@@ -90,12 +103,12 @@ if w is not None and mascontract is not None:
     check("legacy_group is read", beta3["MaaUserConfig"][("Stage", "Stage")], ("Info", "Stage"))
 
     print("\n[exit codes]")
-    code, text = run_main("--file", str(BETA3))
+    code, text = run_main("--file", str(BETA4))
     check("nothing changed: exit 0", code, 0)
     orig = mascontract.CONTRACT
     mascontract.CONTRACT = tuple(before)
     try:
-        code, text = run_main("--file", str(BETA3))
+        code, text = run_main("--file", str(BETA4))
     finally:
         mascontract.CONTRACT = orig
     check("something changed: exit 2", code, 2)

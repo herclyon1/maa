@@ -13,7 +13,7 @@ refusal dialog's two lines; the login screen's words are the module's guess (LOG
 """
 import json
 import sys
-from pathlib import Path, PureWindowsPath
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -352,47 +352,74 @@ check("起的是 pythonw 跑入口", calls, [("pythonw.exe", str(sd2 / "efstart"
 check("拿到助手的结果", (r.code, r.reason), (ef.OK, "终末地已经开着，没再开"))
 check("结果文件用完删掉", list((sd2 / "efstart").glob("result-*.json")), [])
 
-print("\n[母本前置程序改写：直接开 Endfield.exe 的那条换成助手，等它退出、不按路径跳过；再跑一次不变]")
-pyw = Path("C:/Program Files/ArkRelay/runtime/python/pythonw.exe")
-tramp = Path("C:/ProgramData/ark-relay/state/efstart/efstart.py")
+print("\n[10-16：开游戏交还给调度程序自己的官方启动器方式（AUTO-MAS v5.7.0-beta.4 / #1394）]")
+# The machine on 10-16 (AUTO-MAS API read, mxu-MaaEnd.json, state/efstart/target.json): Game.Path
+# was the relay's .cmd, LaunchMode Launcher, LauncherPath empty, WaitTime 180; the master's
+# helper entry had kept the replaced entry's id jw75pty. AUTO-MAS's pre-run check found no
+# launcher from the .cmd: 09:34:05 「未找到终末地官方启动器」, the 早班 MaaEnd never ran.
+from ark_relay.core import texts  # noqa: E402
+from ark_relay.features.phone import commands  # noqa: E402
+
+pyw = "C:\\Program Files\\ArkRelay\\runtime\\python\\pythonw.exe"
 orig = {"id": "jw75pty", "customName": "▶️ 启动 Endfield.exe", "enabled": True,
         "program": "D:\\endfield\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe", "args": "",
         "waitForExit": False, "skipIfRunning": True, "useCmd": False}
-mas_entry = {"id": "automas-endfield", "program": "C:\\x\\start-endfield.cmd", "waitForExit": False}
-doc = {"instances": [{"name": "automas", "preActions": [dict(mas_entry), dict(orig)]}]}
-changed, replaced = setup.rewrite_preactions(doc, pyw, tramp)
-acts = doc["instances"][0]["preActions"]
-check("改了", changed, True)
-check("记下了原来那条", replaced, [orig])
-check("AUTO-MAS 自己那条原样", acts[0], mas_entry)
-check("保留原 id", acts[1]["id"], "jw75pty")
-check("程序是中继的 pythonw", acts[1]["program"], str(pyw))
-check("参数带引号的入口路径", acts[1]["args"], f'"{tramp}" --caller maaend')
-check("等它退出", acts[1]["waitForExit"], True)
-check("不按路径跳过（中继自己的 pythonw 一直在跑）", acts[1]["skipIfRunning"], False)
-check("MXU 认的字段一个不少、没有多的", sorted(acts[1]), sorted(orig))
-check("再改一次不变", setup.rewrite_preactions(doc, pyw, tramp), (False, []))
-doc2 = {"instances": [{"name": "a"}]}
-setup.rewrite_preactions(doc2, pyw, tramp)
-check("没有那一条就加上", [a["id"] for a in doc2["instances"][0]["preActions"]], [setup.OUR_PREACTION_ID])
-
-print("\n[install：母本和调度程序都改好、读回核对；再跑一次什么都不写；restore 改回原样]")
-from ark_relay.features.phone import commands  # noqa: E402
+mas_entry = {"id": "automas-endfield", "program": "D:\\endfield\\Endfield.exe", "waitForExit": False}
+ours = {"id": "jw75pty", "customName": "▶️ 经官方启动器启动终末地（中继）", "enabled": True, "program": pyw,
+        "args": '"C:\\ProgramData\\ark-relay\\state\\efstart\\efstart.py" --caller maaend',
+        "waitForExit": True, "skipIfRunning": False, "useCmd": False}
+doc = {"instances": [{"name": "automas", "preActions": [dict(mas_entry), dict(ours)]}]}
+changed, removed = setup.remove_preactions(doc)
+check("母本里中继那条（id 是 jw75pty，不是 ark-efstart）删掉了", (changed, [a["id"] for a in removed]), (True, ["jw75pty"]))
+check("调度程序自己那条原样留着", doc["instances"][0]["preActions"], [mas_entry])
+check("再删一次不变", setup.remove_preactions(doc), (False, []))
+check("没有往母本里加任何东西的入口了", hasattr(setup, "rewrite_preactions"), False)
 
 root = tmpdir()
-game_dir = root / "endfield" / "Hypergryph Launcher" / "games" / "Endfield Game"
+lroot = root / "endfield" / "Hypergryph Launcher"
+game_dir = lroot / "games" / "Endfield Game"
 game_dir.mkdir(parents=True)
 (game_dir / "Endfield.exe").write_text("", encoding="utf-8")
-(root / "endfield" / "Hypergryph Launcher" / "Launcher.exe").write_text("", encoding="utf-8")
+(lroot / "Launcher.exe").write_text("", encoding="utf-8")
+(lroot / "1.6.0").mkdir()
+(lroot / "1.6.0" / "Games.exe").write_text("", encoding="utf-8")
 game_exe = str(game_dir / "Endfield.exe")
+setup._is_file = lambda p: Path(str(p).replace("\\", "/")).is_file()
+setup._subdirs = lambda p: [str(x) for x in Path(str(p).replace("\\", "/")).iterdir() if x.is_dir()] \
+    if Path(str(p).replace("\\", "/")).is_dir() else []
+
+print("\n[调度程序找启动器的规矩，照它 endfield_launcher.py 的写法]")
+check("游戏本体：往上找到 Launcher.exe 加带 Games.exe 的版本文件夹",
+      Path(str(setup.launcher_for(game_exe)).replace("\\", "/")), lroot / "Launcher.exe")
+home = root / "state" / "efstart"
+home.mkdir(parents=True)
+cmd = home / "start-endfield.cmd"
+cmd.write_text("@echo off\r\n", encoding="utf-8")
+check("10-16 那样指着批处理：找不到（调度程序就是这样拒绝的）", setup.launcher_for(str(cmd)), None)
+check("指定 Games.exe：换成上两层的 Launcher.exe",
+      Path(str(setup.launcher_for(str(cmd), str(lroot / "1.6.0" / "Games.exe"))).replace("\\", "/")),
+      lroot / "Launcher.exe")
+check("指定别的程序：不算", setup.launcher_for(game_exe, str(game_dir / "Endfield.exe")), None)
+(lroot / "1.6.0" / "Games.exe").unlink()
+check("没有版本文件夹：不认（Launcher.exe 这个名字太常见）", setup.launcher_for(game_exe), None)
+(lroot / "1.6.0" / "Games.exe").write_text("", encoding="utf-8")
+
+print("\n[install：路径改回游戏本体、启动方式是官方启动器、等待改回、母本里的助手删掉；再跑不写；restore 不放回直接开]")
 automas = root / "automas"
 cfgdir = automas / "data" / "59da8762" / "Default" / "ConfigFile"
 cfgdir.mkdir(parents=True)
 master = cfgdir / "mxu-MaaEnd.json"
 master.write_text(json.dumps({"instances": [{"name": "automas", "tasks": [],
-                                              "preActions": [dict(orig, program=game_exe)]}]},
+                                              "preActions": [dict(mas_entry), dict(ours)]}]},
                              ensure_ascii=False, indent=2), encoding="utf-8")
-mas = {"data": {"s1": {"Info": {"Name": "MaaEnd"}, "Game": {"Path": game_exe, "Arguments": "", "WaitTime": 60}}}}
+(home / ef.TARGET).write_text(json.dumps({
+    "game": game_exe, "launcher": str(lroot / "Launcher.exe"), "cmd": str(cmd),
+    "trampoline": str(home / ef.TRAMPOLINE),
+    "original": {"preactions": [dict(orig, program=game_exe)], "game_path": game_exe, "wait_time": 60}}),
+    encoding="utf-8")
+mas = {"data": {"s1": {"Info": {"Name": "MaaEnd"},
+                       "Game": {"Path": str(cmd), "LaunchMode": "Launcher", "LauncherPath": "",
+                                "Arguments": "", "WaitTime": 180}}}}
 writes = []
 
 
@@ -408,43 +435,110 @@ def fake_mas(path, body=None, timeout=20):
 
 
 cfg = types.SimpleNamespace(state_dir=root / "state", automas_dir=automas, maaend_dir=None)
-# The launcher path is built as a Windows path (backslashes) from the game's.
-setup._is_file = lambda p: Path(str(p).replace("\\", "/")).is_file()
 saved_mas = commands._mas
 commands._mas = fake_mas
 try:
-    ok, notes = setup.install(cfg, pythonw=Path("C:/py/pythonw.exe"), code_root=Path("C:/relay/versions/7"))
-    home = root / "state" / "efstart"
-    cmd = home / setup.CMD
-    check("全部改好", ok, True)
-    check("调度程序的终末地路径指向批处理", mas["data"]["s1"]["Game"]["Path"], str(cmd))
-    check("启动后等待提到下限", mas["data"]["s1"]["Game"]["WaitTime"], setup.WAIT_FLOOR_S)
+    ok, notes = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+    g = mas["data"]["s1"]["Game"]
+    check("全部对上", ok, True)
+    check("调度程序的终末地路径改回游戏本体（不再是批处理）", g["Path"], game_exe)
+    check("启动方式是官方启动器", g["LaunchMode"], "Launcher")
+    check("启动器路径留空，让调度程序自己找", g["LauncherPath"], "")
+    check("等待改回原来的 60 秒（不再提到 180）", g["WaitTime"], 60)
+    check("写的只有路径和等待（启动方式本来就对，没写）",
+          sorted(k for w in writes for k in w["data"]["Game"]), ["Path", "WaitTime"])
     back = json.loads(master.read_text(encoding="utf-8"))["instances"][0]["preActions"]
-    check("母本读回来是助手那条", (back[0]["program"], back[0]["waitForExit"], back[0]["skipIfRunning"]),
-          (str(Path("C:/py/pythonw.exe")), True, False))
+    check("母本读回来：只剩调度程序自己那条，没有助手，也没放回直接开 Endfield.exe", back, [mas_entry])
+    check("批处理删了", cmd.exists(), False)
+    check("开游戏助手的入口还在（中继自己的补采集要用）",
+          repr(str(Path("C:/relay/versions/7"))) in (home / ef.TRAMPOLINE).read_text(encoding="utf-8"), True)
     tgt = json.loads((home / ef.TARGET).read_text(encoding="utf-8"))
-    check("记下了游戏和启动器", (tgt["game"], PureWindowsPath(tgt["launcher"]).name), (game_exe, "Launcher.exe"))
-    check("记下了原来的路径、等待、前置程序",
-          (tgt["original"]["game_path"], tgt["original"]["wait_time"], tgt["original"]["preactions"][0]["id"]),
-          (game_exe, 60, "jw75pty"))
-    check("批处理用中继的 pythonw 跑入口", f'"{Path("C:/py/pythonw.exe")}" "{home / ef.TRAMPOLINE}" --caller automas'
-          in cmd.read_text(encoding="utf-8"), True)
-    check("入口指向当前代码目录", repr(str(Path("C:/relay/versions/7"))) in (home / ef.TRAMPOLINE).read_text(encoding="utf-8"),
-          True)
+    check("记录里不再有批处理", "cmd" in tgt, False)
+    check("原来的值一个没丢", tgt["original"]["game_path"], game_exe)
     n_writes, master_text = len(writes), master.read_text(encoding="utf-8")
-    ok2, notes2 = setup.install(cfg, pythonw=Path("C:/py/pythonw.exe"), code_root=Path("C:/relay/versions/7"))
-    check("再跑一次：照样全好", ok2, True)
+    ok2, notes2 = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+    check("再跑一次：照样全好、什么都不说", (ok2, notes2), (True, []))
     check("再跑一次：调度程序没再写", len(writes), n_writes)
     check("再跑一次：母本没再写", master.read_text(encoding="utf-8"), master_text)
-    check("再跑一次：原来的值没被盖成新值", json.loads((home / ef.TARGET).read_text(encoding="utf-8"))["original"]["game_path"],
-          game_exe)
+
+    g["LaunchMode"] = "Client"
+    ok3, _ = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+    check("启动方式被改成直接开：改回官方启动器", (ok3, g["LaunchMode"]), (True, "Launcher"))
+
+    (lroot / "1.6.0" / "Games.exe").unlink()
+    ok4, notes4 = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+    check("调度程序找不到启动器：不算好，说清楚它会拒绝开终末地",
+          (ok4, any(texts.ENDFIELD_NO_LAUNCHER in n for n in notes4)), (False, True))
+    check("这句是人话", texts.plain(texts.ENDFIELD_NO_LAUNCHER), [])
+    (lroot / "1.6.0" / "Games.exe").write_text("", encoding="utf-8")
+
+    master.write_text(json.dumps({"instances": [{"name": "automas", "preActions": [dict(mas_entry), dict(ours)]}]}),
+                      encoding="utf-8")
+    g["WaitTime"] = 180
     okr, _ = setup.restore(cfg)
-    check("改回：调度程序", (okr, mas["data"]["s1"]["Game"]["Path"], mas["data"]["s1"]["Game"]["WaitTime"]),
-          (True, game_exe, 60))
     back = json.loads(master.read_text(encoding="utf-8"))["instances"][0]["preActions"]
-    check("改回：母本前置程序", [a["program"] for a in back], [game_exe])
+    check("restore：母本里没有直接开 Endfield.exe 的那条，也没有助手", back, [mas_entry])
+    check("restore：路径还是游戏本体（不放回批处理）、等待改回", (okr, g["Path"], g["WaitTime"]), (True, game_exe, 60))
 finally:
     commands._mas = saved_mas
+
+print("\n[开机和调度程序升级后都核对一遍；每趟终末地跑完看游戏日志是不是用 DirectX 11 开的]")
+relay_dir = Path(__file__).resolve().parents[1]
+import boot_stages  # noqa: E402
+seen = []
+saved = (setup.install, boot_stages.selfcheck if hasattr(boot_stages, "selfcheck") else None)
+from ark_relay.features.selfcheck import selfcheck  # noqa: E402
+saved_rc = selfcheck.report_contract
+setup.install = lambda c, **k: (seen.append(c) or (True, []))
+selfcheck.report_contract = lambda *a, **k: None
+
+
+class _L:
+    def __init__(self):
+        self.warned = []
+
+    def info(self, *a, **k):
+        pass
+
+    def warning(self, msg, *a, **k):
+        self.warned.append(msg % a)
+
+    def exception(self, *a, **k):
+        self.warned.append(a[0])
+
+
+try:
+    boot_stages._contract_after_update("CFG", None, _L(), "v5.7.0-beta.4")
+    check("调度程序升级后（开机那次核对是对着旧版的）再核对一遍", seen, ["CFG"])
+    setup.install = lambda c, **k: (False, ["一句"])
+    lg = _L()
+    boot_stages._contract_after_update("CFG", None, lg, "v5.7.0-beta.4")
+    check("没对上：一条 WARNING（进群）", len(lg.warned), 1)
+finally:
+    setup.install, selfcheck.report_contract = saved[0], saved_rc
+handle_src = (relay_dir / "ark_relay" / "features" / "alarm" / "handle.py").read_text(encoding="utf-8")
+check("终末地记录落地后核对 DirectX 11", "_check_d3d11_after_maaend()" in handle_src)
+
+logs = tmpdir()
+good = logs / "a" / "Player.log"
+good.parent.mkdir()
+head = ["Mono path[0] = 'x'", "Mono config path = 'x'", "[Physics::Module] Initialized", "x",
+        "Initialize engine version: 2021.3.34f1"]
+good.write_text("\n".join(head + [setup.D3D11_LINE, "Direct3D:"]) + "\n", encoding="utf-8")
+setup._player_logs = lambda: [str(good)]
+check("第 6 行是 Direct3D 11：不报", setup.check_d3d11(), None)
+bad = logs / "b" / "Player.log"
+bad.parent.mkdir()
+bad.write_text("\n".join(head + ["Forcing GfxDevice: Direct3D 12", "x"]) + "\n", encoding="utf-8")
+import os  # noqa: E402
+os.utime(bad, (good.stat().st_mtime + 10, good.stat().st_mtime + 10))
+setup._player_logs = lambda: [str(good), str(bad)]
+check("最新那份不是 Direct3D 11：说出那一格", setup.check_d3d11(), texts.ENDFIELD_NOT_D3D11)
+check("同一份日志不再说第二遍", setup.check_d3d11(), None)
+check("这句点名「DirectX 11 启动」那一格，是人话",
+      ("「DirectX 11 启动」" in texts.ENDFIELD_NOT_D3D11, texts.plain(texts.ENDFIELD_NOT_D3D11)), (True, []))
+setup._player_logs = lambda: []
+check("没有游戏日志：不报", setup.check_d3d11(), None)
 
 print("\nPASS" if not fails else f"\nFAILED: {fails}")
 sys.exit(1 if fails else 0)

@@ -96,6 +96,45 @@ if mascontract is not None:
           lines, ["中继读不到方舟的关卡设置（关卡一栏里找不到），开跑前查关卡、明日安排、手机上显示和修改关卡都不对了"])
     check("that line is plain words", [p for x in lines for p in texts.plain(x)], [])
 
+print("\n[settings new in AUTO-MAS v5.7.0-beta.4: MaaEnd's launcher start (10-16)]")
+# 10-16: beta.4 (PR #1394) brought Game.LaunchMode / Game.LauncherPath, and its pre-run check
+# found no launcher from the relay's .cmd in Game.Path; the 早班 MaaEnd never ran. The relay
+# now reads and writes all three (efstart_setup). The two new ones are judged only on beta.4
+# or later: the recorded days of the day simulator run v5.6.2 to beta.3.
+if mascontract is not None:
+    launch = {(i.kind, i.path) for i in mascontract.CONTRACT if i.use == "maaend_launch"}
+    check("MaaEnd Game.Path, Game.LaunchMode, Game.LauncherPath are listed",
+          launch, {("MaaEnd", "Game.Path"), ("MaaEnd", "Game.LaunchMode"), ("MaaEnd", "Game.LauncherPath")})
+    check("version order: beta.4 after beta.3, the release after its betas",
+          (mascontract.version_key("v5.7.0-beta.3") < mascontract.version_key("v5.7.0-beta.4")
+           < mascontract.version_key("v5.7.0") < mascontract.version_key("v5.7.1-beta.1"),
+           mascontract.version_key("nonsense")), (True, None))
+    b3 = fx.automas_dir(tmpdir(), beta3=True)
+    new_keys = [("MaaEnd", "Game.LaunchMode"), ("MaaEnd", "Game.LauncherPath")]
+    check("beta.4 installed, the two new keys absent: both named",
+          [(i.kind, i.path) for i in mascontract.check(b3, "v5.7.0-beta.4").missing], new_keys)
+    check("beta.3 installed: they are not judged", mascontract.check(b3, "v5.7.0-beta.3").missing, [])
+    check("version unknown: not judged either", mascontract.check(b3, "").missing, [])
+
+    def add_launch(root):
+        f = root / "config" / "ScriptConfig.json"
+        data = json.loads(f.read_text(encoding="utf-8"))
+        data["S-END"]["Game"].update(LaunchMode="Launcher", LauncherPath="")
+        f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return root
+    check("beta.4 with them in place: nothing missing",
+          mascontract.check(add_launch(fx.automas_dir(tmpdir(), beta3=True)), "v5.7.0-beta.4").missing, [])
+
+    def drop_path(root):
+        f = root / "config" / "ScriptConfig.json"
+        data = json.loads(f.read_text(encoding="utf-8"))
+        data["S-END"]["Game"].pop("Path")
+        f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return root
+    check("Game.Path is judged on every version",
+          [(i.kind, i.path) for i in mascontract.check(drop_path(fx.automas_dir(tmpdir(), beta3=True))).missing],
+          [("MaaEnd", "Game.Path")])
+
 print("\n[the boot self-check has it as one item, routed like the others]")
 SELF_GOOD = dict(procs=lambda: [(1, r"D:\ark\automas\repo\main.py")], mas_up=lambda: True,
                  schedule=lambda: [{"name": "早班", "times": ["09:00"]}], channels=lambda: ["群"],
@@ -186,6 +225,11 @@ if report is not None:
     n = _Notifier()
     report(types.SimpleNamespace(automas_dir=str(fx.automas_dir(tmpdir(), beta3=True))), n, "v5.7.0-beta.3")
     check("nothing missing: nothing pushed", n.sent, [])
+    n = _Notifier()
+    report(types.SimpleNamespace(automas_dir=str(fx.automas_dir(tmpdir(), beta3=True))), n, "v5.7.0-beta.4")
+    check("just updated to beta.4 and its launcher settings are not there: the alarm names them",
+          bool(n.sent) and "终末地的游戏位置和开游戏方式" in n.sent[0][1])
+    check("that alarm is plain words", texts.plain(n.sent[0][1] if n.sent else ""), [])
 
     class _Log:
         def __init__(self):

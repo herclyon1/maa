@@ -26,6 +26,7 @@ ALLOWED_WORDS = {
     "MAA", "MaaEnd", "OK-WW", "AUTO-MAS", "MXU", "Boss", "Annihilation", "F2",
     "PIN", "net", "stop", "start", "ark-relay", "deploy-relay.sh", "scripts/mac/deploy-relay.sh",
     "MuMu", "APK", "v",
+    "DirectX",      # the Endfield launcher's own label: 「DirectX 11 启动」
 }
 # Hedges are vagueness too: a sentence either states what was measured or says
 # outright what could not be read - it never guesses.
@@ -121,6 +122,12 @@ MAKEUP_RESTORE_FAILED = "⚠️ 终末地设置没能自动改回"
 MAAEND_PRUNED = "🧹 终末地配置清掉了死条目"
 MAAEND_PRUNED_REFUSED = "⚠️ 终末地配置里的死条目没能清"
 MAAEND_MIGRATED = "🧩 终末地新版本改了设置格式，已按原意换写"
+# efstart_setup: AUTO-MAS's own pre-run check will refuse every MaaEnd run (10-16 09:34).
+ENDFIELD_NO_LAUNCHER = ("调度程序会拒绝开终末地：它从游戏所在的位置往上找不到终末地的官方启动器，"
+                        "MaaEnd 每一趟都会在开跑前直接跳过")
+# efstart_setup.check_d3d11: the game's own log says its last start was not Direct3D 11.
+ENDFIELD_NOT_D3D11 = ("终末地上次开游戏没用 DirectX 11：官方启动器「开始游戏」下面「DirectX 11 启动」那一格没勾上，"
+                      "MaaEnd 会认不出游戏画面。调度程序开游戏时不会去勾它，要在官方启动器上勾上")
 # Not pushed: collect_retry.maybe_run logs it; the retry's outcome decides.
 COLLECT_RETRY_START = "🔁 自动采集：只补跑失败的路线"
 COLLECT_RETRY_OK = "✅ 自动采集：补跑后全部走完"
@@ -647,6 +654,7 @@ MAS_SETTING_WHAT = {
     "script_name": "各个脚本的名字",
     "client_update": "明日方舟、鸣潮客户端自动更新的开关",
     "maaend_wait": "终末地的等待秒数",
+    "maaend_launch": "终末地的游戏位置和开游戏方式",
     "stage": "方舟的关卡设置",
     "medicine": "方舟的理智药数量",
     "fight": "方舟的刷理智开关",
@@ -665,6 +673,7 @@ MAS_SETTING_BREAKS = {
     "script_name": "手机上方舟的设置、剿灭开关和明日安排里鸣潮那几行",
     "client_update": "开机自检判断游戏出新版时有没有人更新客户端",
     "maaend_wait": "手机上改终末地的等待秒数",
+    "maaend_launch": "开机时核对调度程序能不能经官方启动器开终末地",
     "stage": "开跑前查关卡、明日安排、手机上显示和修改关卡",
     "medicine": "明日安排和手机上显示、修改理智药",
     "fight": "开跑前查关卡和明日安排",
