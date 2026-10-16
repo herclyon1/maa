@@ -1,0 +1,7 @@
+{
+  "import": [
+    "tasks/AutoEssence/AutoEssence.json",
+    "tasks/AutoEssence/Location/ChooseLocation.json",
+    "tasks/AutoEssence/Target/Target.json"
+  ]
+}

@@ -275,6 +275,21 @@ OUTCOME_ESSENCE_MET_HEAD = "勾选的武器基质已经齐了、没刷："
 ESSENCE_TARGET_MET = "基质刷取：勾选的武器要的基质都已经有了，这趟没刷、没花理智；可以换一把要刷的武器勾上"
 
 
+def essence_filler_on(names: list[str]) -> str:
+    """essence.step switched 基质刷取 to filler mode after a target-met run (daily report, once)."""
+    who = "和".join(names) if names else "勾选的武器"
+    return f"基质刷取：{who}的基质都齐了，已切成随机地区刷垫子，刻写券关了"
+
+
+# essence.step could not switch to filler mode (a group alarm).
+ESSENCE_FILLER_FAILED = "⚠️ 基质刷取没能切成刷垫子"
+
+
+def essence_filler_failed(why: str) -> str:
+    return (f"勾选的武器基质都齐了，要把基质刷取切成随机地区刷垫子、关掉刻写券，但没改成：{why}。"
+            "下次照旧按目标选择跑（会直接结束、不花理智）；已交给我们这边去改")
+
+
 def unresolved_settings(game: str, shift: str) -> str:
     """A MaaEnd shift that did its work, but by the defaults: a new version reset the
     user's settings (outcome.settings_only)."""
@@ -631,7 +646,7 @@ _RELAY_PARTS = {
     "ark.efstart": "经官方启动器开终末地", "ark.efstart_setup": "终末地开游戏方式设置",
     "ark.selfupdate": "自更新", "ark.phone": "手机通道", "ark.evidence": "证据外送", "ark.collect_watch": "采集看守", "ark.display_wake": "开终末地时叫醒屏幕",
     "ark.collect_retry": "采集补跑", "ark.inbox": "待办信箱", "ark.snapshot": "状态快照", "ark.notify": "推送",
-    "ark.banners": "卡池信息", "ark.needtable": "库存需求表", "ark.desktop": "桌面读屏", "ark.alertlog": "报警抄送",
+    "ark.banners": "卡池信息", "ark.needtable": "库存需求表", "ark.essence": "基质刷取切刷垫子", "ark.desktop": "桌面读屏", "ark.alertlog": "报警抄送",
     # Every WARNING reaches the group (errwatch), so these are named too.
     "ark.annihilation": "剿灭开关", "ark.garden": "周常乐园开关", "ark.weeklyboss": "周本开关",
     "ark.unresolved": "没处理好的报警", "ark.runwatch": "在跑巡查", "ark.trigger": "认手动开的趟",
@@ -1144,7 +1159,8 @@ def samples() -> list[str]:
         shift_no_result_body("早班", t0, _dt(2026, 10, 1, 12, 31), "MaaEnd", 180, 30, 0),
         UNREACHABLE_SHAPE_NOTE, UNREACHABLE_UNREAD_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, ANNIHILATION_OFF,
         annihilation_off_body("明日方舟 · 剿灭"), SKIP_MODE, ESTOP,
-        ESTOP_FAILED, SHUTDOWN_CANCELLED, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ECHO_FARM, ECHO_FARM_DONE, ECHO_FARM_TROUBLE,
+        ESTOP_FAILED, SHUTDOWN_CANCELLED, SKIP_FAILED, MAAEND_PRUNED, MAAEND_PRUNED_REFUSED, ESSENCE_FILLER_FAILED, essence_filler_failed("写进去之后读出来和写的不一样"),
+        essence_filler_on(["玉中身", "唤月"]), essence_filler_on([]), ECHO_FARM, ECHO_FARM_DONE, ECHO_FARM_TROUBLE,
         CONFIG_CHANGED, CONFIG_FAILED, INBOX_APPLIED, SELFUPDATE_FAILED, WATCH_LOST,
         AUTOMAS_DOWN, ROUND_INCOMPLETE, SPMED_UNRECOGNISED, MAAEND_MIGRATED, TACET_DROPS, RELAY_ERROR,
         *(spmed_unrecognised_body(k) for k in ("broken", "unknown", "missing", "unreadable")),

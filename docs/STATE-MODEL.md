@@ -80,7 +80,11 @@ registered in the `FIELDS` field table can be written. Already moved in:
   records (`stagegate_skips`: MAA pulled from a queue run because its stage cannot be
   navigated to, until it is put back; `stagegate_dues`: the verdict of each MAA due of
   the last three days, read by the missed-run checks, the shutdown wait and the daily
-  report - see `relay/ark_relay/stagegate.py`)
+  report - see `relay/ark_relay/stagegate.py`), and the essence filler switch
+  (`essence_filler_pending`: a MaaEnd record whose target-mode essence farming found every
+  ticked weapon satisfied, waiting for a moment with no AUTO-MAS task running;
+  `essence_filler_done_for`: the last such record acted on - see
+  `relay/ark_relay/features/essence/essence.py`)
 * `queues`: alerts waiting to be pushed, phone-command deduplication, the
   to-do version, skip mode's restore marks and the day's skips
 
