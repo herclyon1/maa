@@ -235,23 +235,31 @@ def obstacle_shots(maaend_dir) -> list[str]:
         return []
 
 
-def route_windows(text: str) -> list[tuple[str, datetime, "datetime | None"]]:
+def route_windows(text: str) -> list[tuple[str, datetime, datetime]]:
     """(route label, start, end) for every route a history log shows MaaEnd starting.
 
     A route runs from its own line to the next route line of any kind or the end of
-    自动采集; the last one of a run cut short has no end (None)."""
+    自动采集. The last route of a run cut short (no 「任务完成/任务失败: 自动采集」) ends
+    at the log's last stamped line: nothing later is this run's. Left open, it took in
+    every later relay-device picture still in on_error (they stay for days), so a run
+    cut short in the morning was booked with a later run's 「战斗中无法使用」 (the real
+    2026-09-11 MaaEnd-06-47-30, cut short after its 「路线5：轻黯石」 line)."""
     out: list[list] = []
+    last = None
     for line in text.splitlines():
         line = line.strip()
-        m = _ROUTE_LINE.match(line)
-        stamp = m or (_END_STAMP.match(line) if _COLLECT_END.search(line) else None)
-        if not stamp:
+        if not (any_stamp := _END_STAMP.match(line)):
             continue
-        at = datetime.strptime(stamp.group(1), "%Y-%m-%d %H:%M:%S")
+        last = datetime.strptime(any_stamp.group(1), "%Y-%m-%d %H:%M:%S")
+        m = _ROUTE_LINE.match(line)
+        if not (m or _COLLECT_END.search(line)):
+            continue
         if out and out[-1][2] is None:
-            out[-1][2] = at
+            out[-1][2] = last
         if m and not _ROUTE_NOT_START.search(m.group(2)):
-            out.append([m.group(2), at, None])
+            out.append([m.group(2), last, None])
+    if out and out[-1][2] is None:
+        out[-1][2] = last
     return [(a, b, c) for a, b, c in out]
 
 
@@ -264,7 +272,7 @@ def blocked_routes(text: str, shot_names: list[str]) -> dict[str, list[str]]:
         return out
     for label, start, end in route_windows(text):
         for t, n in shots:
-            if start <= t and (end is None or t < end):
+            if start <= t < end:
                 out.setdefault(label, []).append(n)
     return out
 

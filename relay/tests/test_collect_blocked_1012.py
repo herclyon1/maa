@@ -9,7 +9,8 @@ relay.log 10-14 09:59:16 says the retry found nothing to re-run: 「…全部路
 
 Fixtures (tests/fixtures/collect-blocked-1005-1012) are the 自动采集 stretch of the
 real AUTO-MAS history logs (2026-10-05 MaaEnd-06-39-48, 10-08 MaaEnd-06-34-21,
-10-12 MaaEnd-06-04-00 and MaaEnd-06-58-38) and the route 9-11 node lines of
+10-12 MaaEnd-06-04-00 and MaaEnd-06-58-38; MaaEnd-06-47-30 is the whole 2026-09-11 run
+that was cut short after its 「路线5：轻黯石」 line) and the route 9-11 node lines of
 maafw.bak.2026.10.12-10.56.34.166.log. The picture names are the real ones from
 MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
 (归档-1012/今日报错-1005.txt:18, 11:17:28), so its milliseconds are 000.
@@ -92,6 +93,23 @@ line = next((x for x in block.split("；") + block.splitlines() if "自动采集
 check("日报原文", "自动采集 16/17 条走通，撞上「战斗中无法使用」没采到：路线10：重红柱状菌" in block, True)
 print("    " + line.strip())
 check("日报这句是人话", texts.plain(line), [])
+
+print("\n[半路断掉的那趟（09-11 06-47-30，最后一行是「路线5：轻黯石」）：后来的截图不算它的]")
+# on_error keeps pictures for days; refresh_raw re-parses every row of the day at report
+# time. A later run's picture (same day 12:30, or the real 10-05/10-08/10-12 ones) used
+# to land in the cut-short run's open last window and book 路线5 as not gathered.
+later = PIC.format("2026.09.11-12.30.00.000")
+cut = log("MaaEnd-06-47-30.log")
+check("半路断掉：后面的截图都不认成路线5", cm.blocked_routes(cut, [later, P1005, P1008, P1012A, P1012]), {})
+check("…路线5 的时段就停在日志最后一行", cm.route_windows(cut)[-1][1:],
+      (datetime(2026, 9, 11, 10, 55, 6), datetime(2026, 9, 11, 10, 55, 6)))
+in_r4 = PIC.format("2026.09.11-10.53.40.000")
+check("…前面的路线照旧能认（10:53:40 落在路线4）", cm.blocked_routes(cut, [in_r4]), {"路线4：纯晶多齿叶": [in_r4]})
+src = tmpdir() / "MaaEnd-06-47-30.log"
+src.write_text(cut, encoding="utf-8")
+raw = cm.parse_maaend_log(src, maaend_dir(later))
+check("日报那行不写「撞上…没采到」", raw.get("maaend_collect_blocked"), None)
+check("5 条照旧都算走通", (raw.get("maaend_collect_done"), raw.get("maaend_collect_total")), (5, 5))
 
 print("\n[跑完当场的核对：不判失败（不进群），交给关机前补跑；不再算「已重试恢复」]")
 text = log("MaaEnd-06-04-00.log") + "\n2026-10-12 10:57:01 INFO  [App] 自动执行任务完成，关闭自身\n"
