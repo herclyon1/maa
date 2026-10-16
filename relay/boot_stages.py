@@ -998,6 +998,15 @@ def _stage_collect_watch(cfg, notifier, log) -> None:
         log.exception("挂 MaaEnd 日志监听出错，采集路线失败记不下来")
 
 
+def _stage_display_wake(cfg, notifier, log) -> None:
+    """Arm the watch on AUTO-MAS's log that wakes the display while Endfield's launcher starts."""
+    try:
+        from ark_relay.features.run import display_wake  # noqa: PLC0415
+        display_wake.start(cfg)
+    except Exception:
+        log.exception("挂调度程序日志监听出错，终末地开游戏时不会叫醒屏幕")
+
+
 def _stage_gameupdate(cfg, notifier, log) -> None:
     """Major version update days: register the game clients that need updating."""
     # On major update days, update the game clients too (asked for by the user

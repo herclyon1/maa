@@ -328,6 +328,9 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         boot_stages._stage_collect_watch(cfg, notifier, log)
         if self._stop_in_boot(log):
             return
+        boot_stages._stage_display_wake(cfg, notifier, log)
+        if self._stop_in_boot(log):
+            return
         boot_stages._stage_gameupdate(cfg, notifier, log)
         if self._stop_in_boot(log):
             return

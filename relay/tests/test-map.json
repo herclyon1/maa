@@ -1162,7 +1162,14 @@
 ],
 "test_deploy_pkg_bash32.py": [],
 "test_deploy_smoke_gate.py": [],
-"test_deploy_watch.py": [],
+"test_deploy_watch.py": [
+"__init__",
+"config",
+"preupdate",
+"preupdate_automas",
+"preupdate_common",
+"preupdate_okww"
+],
 "test_desktop_focus.py": [
 "__init__",
 "config",
@@ -1251,6 +1258,13 @@
 "tape",
 "texts",
 "trigger"
+],
+"test_display_wake_1016.py": [
+"__init__",
+"config",
+"desktop",
+"display_wake",
+"watch"
 ],
 "test_dotenv_hash.py": [
 "__init__",
@@ -2454,6 +2468,7 @@
 "__init__",
 "config",
 "echofarm",
+"errwatch",
 "names",
 "preupdate_common",
 "preupdate_okww",
@@ -5516,6 +5531,8 @@
 "names",
 "notify",
 "okww_overlay",
+"preupdate_common",
+"preupdate_okww",
 "procs",
 "texts"
 ],
@@ -5533,6 +5550,7 @@
 "commands",
 "config",
 "config_fields",
+"errwatch",
 "mas_client",
 "masuser",
 "names",
@@ -6630,8 +6648,11 @@
 "test_preupdate_mas_force.py": [
 "__init__",
 "config",
+"errwatch",
+"names",
 "preupdate_automas",
-"preupdate_common"
+"preupdate_common",
+"texts"
 ],
 "test_preupdate_not_alarm.py": [
 "__init__",
@@ -6667,6 +6688,7 @@
 "test_preupdate_okww.py": [
 "__init__",
 "config",
+"errwatch",
 "names",
 "preupdate",
 "preupdate_automas",
@@ -6686,10 +6708,13 @@
 "test_preupdate_problems.py": [
 "__init__",
 "config",
+"errwatch",
+"names",
 "preupdate",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_okww"
+"preupdate_okww",
+"texts"
 ],
 "test_preupdate_session.py": [],
 "test_preupdate_span.py": [
@@ -6703,9 +6728,12 @@
 "test_preupdate_unknown_not_fine.py": [
 "__init__",
 "config",
+"errwatch",
+"names",
 "preupdate_automas",
 "preupdate_common",
-"preupdate_okww"
+"preupdate_okww",
+"texts"
 ],
 "test_procnames.py": [
 "__init__",
@@ -7604,7 +7632,10 @@
 "okww_overlay",
 "outcome",
 "plan",
+"preupdate",
+"preupdate_automas",
 "preupdate_common",
+"preupdate_okww",
 "procs",
 "pushes",
 "queues",
