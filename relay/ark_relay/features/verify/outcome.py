@@ -15,6 +15,7 @@ from collections import Counter
 from dataclasses import dataclass
 
 from ark_relay.core import texts
+from ark_relay.features.verify import collector_maaend
 
 
 @dataclass
@@ -28,13 +29,16 @@ class Check:
     # because a new version reset the user's settings (failed, but not 「没干成」);
     # SKIPPED = the task's own schedule says not today (passed, but not 「干成的」);
     # SATISFIED = essence target mode found the ticked weapons' essences already
-    # owned and stopped without farming (passed, but not 「干成的」 either).
+    # owned and stopped without farming (passed, but not 「干成的」 either);
+    # RETRY = a gathering route that gathered nothing and is handed to the per-route
+    # retry before power-off, whose outcome decides the group alarm (not 「干成的」).
     kind: str = ""
 
 
 SETTINGS = "settings"
 SKIPPED = "skipped"
 SATISFIED = "satisfied"
+RETRY = "retry"
 
 
 # ── OK-WW ──────────────────────────────────────────────────────────
@@ -913,6 +917,18 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
                 out.append(Check(f"{key} 真的{what}", False,
                                  f"{key} {secs} 秒就报「任务完成」，日志里没有{what}的痕迹"))
 
+    # A route that hit 「战斗中无法使用」 at a relay device walked on and gathered
+    # nothing (collector_maaend.blocked_routes; ledger #29). Its picture used to land in
+    # 「出错截图 N 张（已重试恢复）」 below - a false green. It is booked by route and
+    # handed to collect_retry, which re-runs it before power-off: not a failed Check,
+    # so nothing goes to the group now; the retry's outcome decides that.
+    blocked = collector_maaend.blocked_routes(text, on_error_names)
+    for label, pics in blocked.items():
+        out.append(Check(texts.collect_blocked_check(label), True, "出错截图：" + "、".join(pics[:3]),
+                         kind=RETRY))
+    used = {n for pics in blocked.values() for n in pics}
+    on_error_names = [n for n in on_error_names if n not in used]
+
     stuck = [n for n in on_error_names if _MAAEND_STUCK.search(n)]
     if stuck:
         out.append(Check("界面没卡住", False,
@@ -1015,7 +1031,8 @@ def summarize(checks: list[Check], who: str) -> str | None:
         lines.append("按周期今天不跑：" + "、".join(skipped))
     if met := [c.label for c in checks if c.ok and c.kind == SATISFIED]:
         lines.append(texts.OUTCOME_ESSENCE_MET_HEAD + "、".join(met))
-    ok = [c.label for c in checks if c.ok and c.kind not in (SKIPPED, SATISFIED)]
+    lines += [c.label for c in checks if c.ok and c.kind == RETRY]
+    ok = [c.label for c in checks if c.ok and c.kind not in (SKIPPED, SATISFIED, RETRY)]
     if ok:
         lines.append("干成的：" + "、".join(ok))
     return "\n".join(lines)

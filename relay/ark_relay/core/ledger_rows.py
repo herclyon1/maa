@@ -242,6 +242,9 @@ def _block_maaend(e: dict, raw: dict, finished: datetime,
         n = f"自动采集 {raw.get('maaend_collect_done', 0)}/{total} 条走通"
         if bad := raw.get("maaend_collect_failed"):
             n += "，没走通：" + "、".join(bad)
+        if blocked := raw.get("maaend_collect_blocked"):
+            # Walked, but gathered nothing (collector_maaend.blocked_routes).
+            n += "，" + texts.collect_blocked_row(blocked)
         notes.append(n)
     elif routes := raw.get("maaend_collect_routes"):
         notes.append(f"自动采集 {routes} 条路线")

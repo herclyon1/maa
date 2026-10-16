@@ -27,6 +27,7 @@ __all__ = [
     "CLAIM_LINE_CHARS",
     "CLAIM_TAIL_LINES",
     "CLAIM_UNCONFIRMED",
+    "OBSTACLE_SHOT",
     "UPDATE_AT_START_S",
     "UPDATE_INSTALL_S",
     "_FW_META",
@@ -35,11 +36,15 @@ __all__ = [
     "_MXU_PENDING",
     "_MXU_STAMP",
     "_fw_files",
+    "blocked_routes",
     "claim_failures",
     "claim_lines",
     "maaend_unreachable",
     "maafw_grep",
+    "obstacle_shots",
     "parse_maaend_log",
+    "route_windows",
+    "shot_time",
     "task_evidence",
     "task_times",
     "update_restart_version",
@@ -190,6 +195,78 @@ _END_COLLECT_SKIP = re.compile(r"任务开始[:：]\s*\S*自动采集\s*\n[^\n]*
 _END_SCHEDULE_SKIP = re.compile(
     r"任务开始[:：]\s*(\S.+?)\s*\n[^\n]*?现在游戏时间是(周[一二三四五六日天])，根据执行周期跳过任务")
 _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
+
+# A gathering route that reaches a relay device (息壤中继器) while a fight is on
+# gets the game's toast 「战斗中无法使用，请脱离战斗后尝试」. MaaEnd writes no line
+# for it and still ends the route normally (maafw.log 2026-10-12 10:45:39
+# AutoCollectRoute10End), so the history log reads the route as walked - but it
+# gathered nothing: 路线10 picked up 2 (10-05), 0 (10-08) and 4 (10-12) against
+# 6-10 on good runs (ledger #29). The only trace is the on_error picture of that
+# node, named by its own time:
+#   2026.10.12-10.44.55.895___MapNavigatorObstacleDevice_InteractPost.png
+# The toast text itself is in no log (0 hits in 202 maafw logs, ledger #29).
+OBSTACLE_SHOT = "MapNavigatorObstacleDevice_InteractPost"
+_SHOT_NAME = re.compile(r"^(\d{4}\.\d\d\.\d\d-\d\d\.\d\d\.\d\d)\.\d+___(.+)\.png$")
+# A route's line in the AUTO-MAS history log, written when MaaEnd starts it:
+# 「[2026-10-12 10:43:58.226] 路线10：重红柱状菌」 (MaaEnd spells routes 1-3 线路).
+# Its 「…采集失败」 and 「… 库存已达目标，本次跳过」 lines close a window but open none.
+_ROUTE_LINE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\]\s*((?:路线|线路)\d+[：:].*?)\s*$")
+_ROUTE_NOT_START = re.compile(r"采集失败$|本次跳过$")
+_COLLECT_END = re.compile(r"任务(?:完成|失败)[:：]\s*\S*自动采集")
+
+
+def shot_time(name: str) -> "datetime | None":
+    """The time in an on_error picture's own name (the game PC's clock, as the logs')."""
+    m = _SHOT_NAME.match(name)
+    try:
+        return datetime.strptime(m.group(1), "%Y.%m.%d-%H.%M.%S") if m else None
+    except ValueError:
+        return None
+
+
+def obstacle_shots(maaend_dir) -> list[str]:
+    """The relay-device pictures (OBSTACLE_SHOT) in MaaEnd's on_error folder, by name."""
+    if not maaend_dir:
+        return []
+    d = Path(maaend_dir) / "debug" / "on_error"
+    try:
+        return sorted(p.name for p in d.glob(f"*___{OBSTACLE_SHOT}.png"))
+    except OSError:
+        return []
+
+
+def route_windows(text: str) -> list[tuple[str, datetime, "datetime | None"]]:
+    """(route label, start, end) for every route a history log shows MaaEnd starting.
+
+    A route runs from its own line to the next route line of any kind or the end of
+    自动采集; the last one of a run cut short has no end (None)."""
+    out: list[list] = []
+    for line in text.splitlines():
+        line = line.strip()
+        m = _ROUTE_LINE.match(line)
+        stamp = m or (_END_STAMP.match(line) if _COLLECT_END.search(line) else None)
+        if not stamp:
+            continue
+        at = datetime.strptime(stamp.group(1), "%Y-%m-%d %H:%M:%S")
+        if out and out[-1][2] is None:
+            out[-1][2] = at
+        if m and not _ROUTE_NOT_START.search(m.group(2)):
+            out.append([m.group(2), at, None])
+    return [(a, b, c) for a, b, c in out]
+
+
+def blocked_routes(text: str, shot_names: list[str]) -> dict[str, list[str]]:
+    """{route label: its relay-device pictures} for the routes of `text` that hit
+    「战斗中无法使用」, in route order. A picture outside every route window is left out."""
+    shots = [(t, n) for n in shot_names if OBSTACLE_SHOT in n and (t := shot_time(n)) is not None]
+    out: dict[str, list[str]] = {}
+    if not shots:
+        return out
+    for label, start, end in route_windows(text):
+        for t, n in shots:
+            if start <= t and (end is None or t < end):
+                out.setdefault(label, []).append(n)
+    return out
 
 
 # An essence (基质刷取) failure whose previous MaaEnd message is the claim click
@@ -795,8 +872,14 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     # first routes 线路); routes that gathered nothing: those with 「采集失败」.
     started = set(re.findall(r"(?:路线|线路)(\d+)[：:]", text))
     failed_r = set(re.findall(r"(?:路线|线路)(\d+)[：:][^\n]*采集失败", text))
+    # Routes that walked through but hit 「战斗中无法使用」 gathered nothing either
+    # (blocked_routes); they are booked apart, with the reason, for the daily row.
+    blocked = blocked_routes(text, obstacle_shots(maaend_dir)) if started and maaend_dir else {}
+    blocked_r = {m.group(1) for lbl in blocked if (m := re.search(r"(\d+)[：:]", lbl))}
+    if blocked:
+        out["maaend_collect_blocked"] = list(blocked)
     if started:
-        out["maaend_collect_done"] = len(started - failed_r)
+        out["maaend_collect_done"] = len(started - failed_r - blocked_r)
         out["maaend_collect_total"] = len(started)
     # The failed routes by name and id: 「路线15：红矛叶采集失败」 gives
     # 「路线15：红矛叶」 and Route15.

@@ -592,7 +592,6 @@ def _c20(ctx):
 
 
 COMBAT_BLOCK = "战斗中无法使用"
-_ROUTE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\] ((?:路线|线路)(\d+)[：:]\S*)")
 _FW_STAMP = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
 COLLECT = "自动采集"
 
@@ -610,6 +609,11 @@ def _collect_window(text: str) -> "tuple[datetime, datetime] | None":
     return (start, end) if start and end else None
 
 
+# Triggered by MaaEnd's on_error picture of the relay-device node, not by the toast
+# text: that text is in no log (0 hits in 202 maafw logs, ledger #29), so the old
+# text grep never fired. The route still ends normally, so the relay has to book it
+# as not gathered itself (outcome.maaend_checks, kind RETRY) for collect_retry to
+# re-run it before power-off. This judges that booking, right after the record.
 @mc.check("#29", "终末地采集撞上「战斗中无法使用」的那条路线采没采到", "A", "run")
 def _c29(ctx):
     if not _script(ctx, "MaaEnd") or not _unattended(ctx):
@@ -619,31 +623,28 @@ def _c29(ctx):
     if span is None:
         return None
     t0, t1 = span
-    own = [ln for ln in text.splitlines() if COMBAT_BLOCK in ln]
-    fw = cm.maafw_grep(ctx.get("maaend_dir"), t0, t1, (COMBAT_BLOCK,))
-    hits = own + fw
-    if not hits:
+    pics = [n for n in cm.obstacle_shots(ctx.get("maaend_dir"))
+            if (t := cm.shot_time(n)) is not None and t0 <= t <= t1]
+    if not pics:
         return None
-    hit = hits[0]
-    m = _FW_STAMP.match(hit)
-    if not m:
-        return _r(FAIL, f"撞了「{COMBAT_BLOCK}」，但这一行没有时间，认不出是哪条路线：{_cut(hit)}")
-    at = m.group(1)
-    routes = [(r.group(1), r.group(2), r.group(3)) for ln in text.splitlines() if (r := _ROUTE.match(ln))]
-    before = [x for x in routes if x[0] <= at and not x[1].endswith("采集失败")]
-    if not before:
-        return _r(FAIL, f"{at[11:]} 撞了「{COMBAT_BLOCK}」，这之前日志里没有路线行，认不出是哪条：{_cut(hit)}")
-    _, label, n = before[-1]
-    if failed := [x for x in routes if x[2] == n and x[1].endswith("采集失败")]:
-        return _r(FAIL, f"{label} 在 {at[11:]} 撞了「{COMBAT_BLOCK}」，没采到：{failed[-1][1]}")
-    ends = cm.maafw_grep(ctx.get("maaend_dir"), datetime.strptime(at, "%Y-%m-%d %H:%M:%S"), t1,
-                         (f'"name":"AutoCollectRoute{n}End"', f'"name":"AutoCollectRoute{n}Failed"'))
-    if any(f"AutoCollectRoute{n}Failed" in x for x in ends):
-        return _r(FAIL, f"{label} 在 {at[11:]} 撞了「{COMBAT_BLOCK}」，框架日志记这条路线失败：{_cut(ends[0])}")
-    if done := [x for x in ends if f"AutoCollectRoute{n}End" in x]:
-        return _r(PASS, f"{label} 在 {at[11:]} 撞了「{COMBAT_BLOCK}」，后来走完了：{_cut(done[0])}")
-    return _r(FAIL, f"{label} 在 {at[11:]} 撞了「{COMBAT_BLOCK}」，没有采集失败那一行，"
-                    f"框架日志里也没有这条路线走完（AutoCollectRoute{n}End）的记录：{_cut(hit)}")
+    blocked = cm.blocked_routes(text, pics)
+    if lost := [n for n in pics if not any(n in v for v in blocked.values())]:
+        return _r(FAIL, f"撞了「{COMBAT_BLOCK}」，存了出错截图 {lost[0]}，日志里认不出是哪条路线")
+    # A failed run is not outcome-checked (handle: AUTO-MAS's own retry follows), so its
+    # booking is the daily row's alone; the per-route retry reads the day's last run.
+    checked = ctx.get("outcome")
+    raw = ctx.get("raw") or {}
+    if checked is None and "maaend_collect_total" not in raw:
+        return None
+    booked = {c.label for c in (checked or {}).get("checks") or [] if getattr(c, "kind", "") == outcome.RETRY}
+    for label, shots in blocked.items():
+        if checked is not None and texts.collect_blocked_check(label) not in booked:
+            return _r(FAIL, f"{label} 撞了「{COMBAT_BLOCK}」（{shots[0]}），这一趟的核对没把它记成没采到、没交给关机前补跑")
+        if "maaend_collect_total" in raw and label not in (raw.get("maaend_collect_blocked") or []):
+            return _r(FAIL, f"{label} 撞了「{COMBAT_BLOCK}」（{shots[0]}），日报那一行没写它没采到")
+    names = "、".join(blocked)
+    return _r(PASS, f"{names} 撞了「{COMBAT_BLOCK}」（{next(iter(blocked.values()))[0]}），记成没采到"
+                    + ("，交给关机前单独补跑" if checked is not None else "（这一趟没跑完，补跑看当天最后一趟）"))
 
 
 def _at(line: str) -> "datetime | None":

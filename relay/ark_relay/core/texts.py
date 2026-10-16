@@ -146,6 +146,22 @@ MAAEND_STUCK_KILL_FAILED = "⚠️ 终末地 MaaEnd 卡死，没能结束"
 MAAEND_WATCH_BLIND = "⚠️ 终末地看门狗读不到 MaaEnd 的运行日志"
 
 
+# A gathering route that walked through but hit the game's 「战斗中无法使用」 at a relay
+# device gathered nothing (collector_maaend.blocked_routes). Said in the daily row, in
+# the outcome check that hands it to the retry, and in the retry's daily line.
+COLLECT_BLOCKED = "撞上「战斗中无法使用」没采到"
+
+
+def collect_blocked_check(label: str) -> str:
+    """outcome.maaend_checks: one blocked route, handed to the retry before power-off."""
+    return f"自动采集 {label} {COLLECT_BLOCKED}，关机前单独补这一条"
+
+
+def collect_blocked_row(labels: list[str], again: bool = False) -> str:
+    """ledger_rows / report.retry_line: the routes that hit it; `again` = during the retry."""
+    return ("补跑时又" if again else "") + COLLECT_BLOCKED + "：" + "、".join(labels)
+
+
 def collect_retry_body(passed: list[str], failed: list[str], unknown: list[str], note: str) -> str:
     lines = []
     if passed:
@@ -1218,6 +1234,8 @@ def samples() -> list[str]:
         gamelog_unknown_errors("鸣潮"), gamelog_unknown_errors_body("鸣潮", "09:12", 2),
         gamelog_unknown_errors_body("终末地", "", 1),
         collect_retry_body(["路线16"], ["路线15"], [], ""),
+        collect_blocked_check("路线10：重红柱状菌"), collect_blocked_row(["路线10：重红柱状菌"]),
+        collect_blocked_row(["路线10：重红柱状菌"], again=True),
         collect_recurrent_body(["路线15：红矛叶"]), evidence_saved_body("MaaEnd", "09-11 10:18", 3, "https://example.cos.ap-shanghai.myqcloud.com/x/index.html"),
         evidence_source_changed_body(["MaaEnd 导出"]),
         patches(3), unconfirmed("预更新", 2), failed("MaaEnd"), self_healed("OK-WW"),

@@ -123,6 +123,12 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
         ("fixture", "only fixtures/collect-retry-2026-09-11 (real MXU lines, no SOURCE in the census)"),
     ("features/makeup/collect_retry.py", r"Web server listening on http://127\.0\.0\.1:(\d+)"):
         ("none", "MXU's own stdout at start; not kept in any record"),
+    ("features/verify/collector_maaend.py", r"采集失败$|本次跳过$"):
+        ("fixture", "reads the message part of a route line; 采集失败 only in fixtures/collect-retry-2026-09-11 "
+                    "(real MXU lines, no SOURCE in the census)"),
+    ("features/makeup/collect_retry.py",
+     r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(Start|End|Failed)\""):
+        ("fixture", "only fixtures/collect-blocked-1005-1012 (real maafw.log lines of 2026-10-12, no SOURCE in the census)"),
 }
 # Sites that read something other than a game's log - a config, a stage name, a path, a locale
 # key, the registry file's own format - so no log line is owed. Key as in GAPS; value: what it reads.
@@ -142,6 +148,11 @@ NOT_LOG: "dict[tuple[str, str], str]" = {
     ("features/makeup/collect_retry.py", r"^AutoCollect.*Routes$"): "MaaEnd option names",
     ("features/makeup/collect_retry.py", r"option\.(AutoCollect(?:Common)?Route\d+)\.failed"): "MaaEnd locale keys",
     ("features/makeup/collect_retry.py", "no-labels"): "the relay's own once-per-condition set",
+    ("features/makeup/collect_retry.py", r"option\.(AutoCollect(?:Common)?Route\d+)\.label"): "MaaEnd locale keys",
+    ("features/verify/collector_maaend.py", r"^(\d{4}\.\d\d\.\d\d-\d\d\.\d\d\.\d\d)\.\d+___(.+)\.png$"):
+        "an on_error picture's file name (MaaEnd debug/on_error)",
+    ("features/verify/collector_maaend.py", "MapNavigatorObstacleDevice_InteractPost"):
+        "part of an on_error picture's file name (MaaEnd debug/on_error)",
     ("features/schedule/stagegate.py", r"^([A-Za-z]{0,3})(\d{1,2})-(\d{1,2})(?:-?(\w+))*$"): "an MAA stage name",
     ("features/schedule/stagegate.py", "SSReopen-"): "an MAA stage name",
     ("features/schedule/stagegate.py", "IfFight"): "an MAA gui.new.json task entry",
