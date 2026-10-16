@@ -312,7 +312,7 @@ KEPT = {
     WT / "wt-dirty": "uncommitted changes",
     WT / "wt-unmerged": "not merged",
     WT / "wt-cwd": "running process",
-    WT / "wt-journal": "workflow journal",
+    WT / "wt-journal": "running workflow",
     WT / "wt-named": "names its path",
     WT / "wt-locked": "locked",
     WT / "wt-5h": "changed within 24",

@@ -289,8 +289,9 @@ class Ctx:
     in_use: list[str] | None          # sorted; None = lsof failed, refuse everything
     procs: set[str]
     live_ids: set[str]                # running sessions and the ones they continue
-    journal_ids: set[str]             # sessions owning a workflow journal written lately
-    journal_text: str
+    journal_ids: set[str]             # sessions owning a workflow active lately (active_journals)
+    journal_text: str                 # those runs' journals, scripts and agent prompts, plus
+                                      # running plain subagents' prompts
     ref_ids: set[str]                 # session ids named by tools / hooks / repo code
     ref_paths: list[str]              # sorted absolute paths named there
     repos: list[str]
@@ -627,7 +628,7 @@ def wt_named(ctx: Ctx, wt: Worktree) -> str | None:
     name = os.path.basename(wt.path)
     rx = re.compile(r"(?:worktrees/" + re.escape(name) + "|" + re.escape(wt.path) + r")(?![A-Za-z0-9._-])")
     if rx.search(ctx.journal_text):
-        return f"a workflow journal written within {ACTIVE_HOURS} h names it"
+        return f"a running workflow (journal, script or agent prompt) active within {ACTIVE_HOURS} h names it"
     if sorted_hit(ctx.ref_paths, wt.path):
         return "a tool, hook or repo file names its path (reused)"
     return None
