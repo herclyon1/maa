@@ -522,6 +522,13 @@ def makeup_unsure(failed: str) -> str:
     return f"失败的不只是开始唤醒或连模拟器（{failed}），拿不准有没有打过仗"
 
 
+def update_rerun_refused(script: str, why: str) -> str:
+    """gameupdate._rerun_script: the client is updated, but the round rule refused
+    the re-run the cant-enter message promised (texts.cant_enter_body). `why` is
+    makeup.maa_round_work_done's reason."""
+    return f"{script}：客户端更新好了，这一轮不再整轮补跑：{why}"
+
+
 # What to do about a failure whose cause is known (collector_maaend
 # _maaend_fail_causes). Said plainly instead of asking the model to guess.
 _CAUSE_ADVICE = {

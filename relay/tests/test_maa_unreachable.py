@@ -7,6 +7,13 @@ Real AUTO-MAS records from tests/gamesim/corpus/maa/history:
                             pushes nothing; gameupdate.needs_rerun re-runs it.
   2026-08-26/MAA-11-03-30   「MAA 部分任务执行失败」 after fighting: not flagged.
   2026-09-23/MAA-05-03-07   「Success!」: not flagged.
+  2026-08-26/MAA-05-16-47 then 2026-09-23/MAA-05-00-01, moved onto today's ledger
+                            as one round: the first fought and used sanity
+                            potions, the second never logged in. Neither the
+                            make-up nor the re-run after a client update (flag
+                            or maintenance) runs the round again; before the
+                            round rule, needs_rerun read only the last record and
+                            said yes.
 Before the fix nothing wrote the flag, so the first case failed here and #65 went
 to the group on the first real never-started round.
 
@@ -126,6 +133,106 @@ for js in sorted(CORPUS.glob("*/*.json")):
         disagree.append(r.run_id)
 check("看过的失败不少于 20 条", seen >= 20, True)
 check("没有一条对不上", disagree, [])
+
+print("\n[同一轮：前一次打过仗才中止、后一次没登录上，客户端更新后不再整轮重跑]")
+# 2026-08-26 MAA-05-16-47 (A) fought and used sanity potions, then 「MAA 在完成任务前中止」;
+# 2026-09-23 MAA-05-00-01 (B) 「MAA 未能正确登录 PRTS」. Moved onto today's ledger as
+# one round, B's own record is never-started (flagged), but the round already
+# fought: the make-up refuses, and the re-run after a client update must too.
+from datetime import datetime  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
+
+
+def today_round(*picks, maintenance=False):
+    """Book the corpus records onto today's ledger one hour apart from 05:00; the
+    last is the round's latest attempt. Returns (state dir, engine, last record)."""
+    now = datetime.now(tz=SERVER_TZ)
+    sd = tmpdir()
+    e = engine(sd)
+    last = None
+    for i, (cday, stem) in enumerate(picks):
+        r = booked(cday, stem)
+        r.run_id = f"{now:%Y-%m-%d}/arknights/{stem}"
+        r.started = now.replace(hour=5 + i, minute=0, second=1, microsecond=0)
+        r.finished = r.started.replace(minute=10)
+        last = r
+        if i == len(picks) - 1 and maintenance:
+            r.raw.pop("maa_unreachable", None)
+            r.raw["maintenance"] = "05:00-10:00"
+        e.state.append_ledger(r)
+    return sd, e, last
+
+
+A, B, OK = ("2026-08-26", "MAA-05-16-47"), ("2026-09-23", "MAA-05-00-01"), ("2026-09-23", "MAA-05-03-07")
+a = booked(*A)
+check("A：失败、吃过理智药、不写「进不了游戏」",
+      (a.ok, bool(a.raw.get("medicine_used")), "maa_unreachable" in a.raw), (False, True, False))
+sd, e, b = today_round(A, B)
+check("B 自己写了「进不了游戏」", b.raw.get("maa_unreachable"), True)
+check("补跑的判断：这一轮打过仗，不补", makeup.maa_work_done(e, b) != "", True)
+check("客户端更新后不整轮重跑", gameupdate.needs_rerun(sd, b.started, "MAA"), False)
+sd, e, b = today_round(A, B, maintenance=True)
+check("B 撞上维护：这一轮打过仗，维护后也不整轮重跑", gameupdate.needs_rerun(sd, b.started, "MAA"), False)
+# The round crossed midnight: A started yesterday 23:50, B today 00:05 (AUTO-MAS's
+# retry within makeup.RETRY_CHAIN); the ledger files each by its own start day.
+from datetime import timedelta  # noqa: E402
+sd = tmpdir()
+e = engine(sd)
+today0 = datetime.now(tz=SERVER_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+for (cday, stem), start in ((A, today0 - timedelta(minutes=10)), (B, today0 + timedelta(minutes=5))):
+    r = booked(cday, stem)
+    r.run_id = f"{start:%Y-%m-%d}/arknights/{stem}"
+    r.started, r.finished = start, start + timedelta(minutes=8)
+    e.state.append_ledger(r)
+check("跨午夜的一轮：前一天打过仗，客户端更新后也不整轮重跑", gameupdate.needs_rerun(sd, r.started, "MAA"), False)
+# Controls: the round rule still re-runs a round that never got going.
+sd, e, b = today_round(B)
+check("只有 B 一次：重跑", gameupdate.needs_rerun(sd, b.started, "MAA"), True)
+sd, e, b = today_round(A, OK, B)
+check("A 和 B 中间跑成过一轮：B 这一轮没开始干活，重跑", gameupdate.needs_rerun(sd, b.started, "MAA"), True)
+check("补跑的判断也一样", makeup.maa_work_done(e, b), "")
+sd, e, b = today_round(B, maintenance=True)
+check("只有 B 一次、撞上维护：维护后重跑", gameupdate.needs_rerun(sd, b.started, "MAA"), True)
+# A maintenance attempt whose failure text is not a login failure but shows no work
+# (the servers were down, so it could not fight) is still re-run after the update.
+sd = tmpdir()
+b = booked(*B)
+b.run_id = f"{datetime.now(tz=SERVER_TZ):%Y-%m-%d}/arknights/MAA-05-00-01"
+b.started = b.finished = datetime.now(tz=SERVER_TZ).replace(hour=5, minute=0, second=1, microsecond=0)
+b.failed_tasks = ["MAA 在完成任务前中止"]
+b.raw.pop("maa_unreachable", None)
+b.raw["maintenance"] = "05:00-10:00"
+State(sd).append_ledger(b)
+check("撞上维护、没打过仗的别的失败：维护后照旧重跑", gameupdate.needs_rerun(sd, b.started, "MAA"), True)
+# The same attempt with its log unread (no fight count): the marked span reaches
+# 45 minutes past the window, when the servers may be up, so it may have fought.
+sd = tmpdir()
+b.raw.pop("fight_count", None)
+State(sd).append_ledger(b)
+check("撞上维护、日志没读到的别的失败：拿不准打没打过，不重跑", gameupdate.needs_rerun(sd, b.started, "MAA"), False)
+
+print("\n[整轮不补时告诉群里：维护那条消息说过会补跑]")
+import types  # noqa: E402
+from ark_relay.core import texts  # noqa: E402
+for label, maint in (("登录不上", False), ("撞上维护", True)):
+    sd, e, b = today_round(A, B, maintenance=maint)
+    notes, reran, problems, sent = [], [], [], []
+    gameupdate._rerun_script(types.SimpleNamespace(state_dir=sd), b.started,
+                             lambda s: sent.append(s) or (True, "ok"), "MAA", reran, problems, notes)
+    check(f"{label}：没派明日方舟", (sent, reran, problems), ([], [], []))
+    why = makeup.maa_round_work_done(State(sd).read_ledger, e.state.read_ledger(f"{b.started:%Y-%m-%d}")[-1],
+                                     downtime=maint)
+    check(f"{label}：说了为什么不补跑（补跑的同一条理由）",
+          (bool(why), notes), (True, [f"MAA：客户端更新好了，这一轮不再整轮补跑：{why}"]))
+    # A fought (fight_count 8, medicine_used 2): the reason names it, not 「拿不准」.
+    check(f"{label}：理由说的是前面打过仗、吃过理智药",
+          ("这一轮已经开始干活" in why, "吃过理智药" in why, "拿不准" in why), (True, True, False))
+    check(f"{label}：那句话是大白话", [texts.plain(n) for n in notes], [[]])
+sd, e, b = today_round(B)
+notes, reran, sent = [], [], []
+gameupdate._rerun_script(types.SimpleNamespace(state_dir=sd), b.started,
+                         lambda s: sent.append(s) or (True, "ok"), "MAA", reran, [], notes)
+check("只有 B 一次：照旧补跑、不多说话", (sent, reran, notes), (["MAA"], ["MAA"], []))
 
 print("\n[维护日：补跑刚派下去还没落地，队列后更新先不起，不会把同一趟明日方舟再派一次]")
 from datetime import datetime  # noqa: E402

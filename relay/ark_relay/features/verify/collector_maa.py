@@ -280,9 +280,10 @@ def parse_maa_log(log_path: Path) -> dict:
 # A MAA round that never got into the game. Every failure has to read as one of
 # these (AUTO-MAS's 「MAA 未能正确登录 PRTS」 is the StartUp task, 开始唤醒,
 # failing), and the record must carry none of parse_maa_log's evidence of work.
-# One rule for two readers: core.collector writes raw['maa_unreachable'] by it
-# when it books the record, and makeup.maa_work_done re-runs a round only when
-# every attempt of the round passes it.
+# One rule for every reader: core.collector writes raw['maa_unreachable'] by it
+# when it books the record, and makeup.maa_round_work_done (the make-up, and
+# gameupdate.needs_rerun after a client update) re-runs a round only when every
+# attempt of the round passes it.
 MAA_NOT_STARTED = ("开始唤醒", "StartUp", "未能正确登录", "模拟器", "连接", "ADB", "adb")
 MAA_WORK_KEYS = {"drop_statistics": "有掉落", "sanity_spent": "花过理智", "medicine_used": "吃过理智药",
                  "run_times": "打过关", "stages": "进过关卡", "annihilation_progress": "打过剿灭",

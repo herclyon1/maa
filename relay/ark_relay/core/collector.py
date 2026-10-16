@@ -530,9 +530,10 @@ def _enrich_record(raw: dict, script: str, log_path: Path, ok: bool, failed: lis
     if flat := flatten_drops(raw):
         raw["drop_statistics"] = flat
     _mark_sanity_unread(raw, script)
-    # 「Could not get into the game」 (the same rule makeup.maa_work_done re-runs
-    # by): gameupdate.needs_rerun re-runs MAA after a client update on it, and the
-    # machine check #65 reads it. Not an alarm or make-up exemption for MAA.
+    # 「Could not get into the game」 for this one record (collector_maa.never_started):
+    # gameupdate.needs_rerun looks at it before it checks the whole round by the
+    # make-up's rule, and the machine check #65 reads it. Not an alarm or make-up
+    # exemption for MAA.
     if script == "MAA" and not ok and _maa_never_started(failed, raw):
         raw["maa_unreachable"] = True
     # Full-again time: MAA writes it itself; for the other two it is computed.
