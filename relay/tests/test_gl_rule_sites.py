@@ -108,7 +108,8 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
         ("none", "in none of 131 recorded runs (U13a); the overlay leaves find_nest bound on v3.5.28..v3.7.5 (U9)"),
     ("features/verify/outcome.py", "列表里没找到指定的点位"): ("none", _OKWW_RARE),
     ("core/collector.py", r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ \|[^|]*\| MaaEnd 自动代理 \| MaaEnd 队列已结束但进程未退出"):
-        ("none", "AUTO-MAS AutoProxy.py _wait_maaend_stage (MXU#371); no AUTO-MAS app.log with it in the corpora"),
+        ("fixture", "AUTO-MAS AutoProxy.py _wait_maaend_stage (MXU#371); real app.log line 2026-10-16 13:53:01 "
+                    "only in fixtures/display-wake-2026-10-16"),
     ("core/collector.py", "未捕获"): ("fixture", "AUTO-MAS's 「未捕获到日志」 result; only fixtures"),
     ("core/collector.py", "模拟器启动失败"):
         ("fixture", "design 3: cite AUTO-MAS's producer line or delete the rule (not done); only fixtures"),

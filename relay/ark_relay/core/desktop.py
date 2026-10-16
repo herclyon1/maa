@@ -253,6 +253,8 @@ public class ArkD {
     switch ([string]$a.act) {
       'wait' { Start-Sleep -Milliseconds ([int]$a.ms); [void]$log.Add("wait $($a.ms)") }
       'shot' { Shot $shot; [void]$log.Add("shot $shot") }
+      # Wake the display only, no picture: display_wake.py, while AUTO-MAS starts Endfield's launcher.
+      'wake' { WakeDisplay; [void]$log.Add("wake") }
       'ocr' {
         Shot $shot
         # 函数返回的 ArrayList 会被 PowerShell 展开成定长数组，重新装一遍才能 Add
@@ -608,6 +610,13 @@ class Desktop:
         data = self.run([{"act": "shot"}], timeout=timeout)
         shot = Path(data.get("shot") or "")
         return shot if data.get("ok") and shot.is_file() else None
+
+    def wake(self, timeout: float = 30) -> bool:
+        """Wake the display (WakeDisplay: a zero-distance mouse move), no picture, no
+        window brought to the front. For display_wake.py: the Hypergryph launcher
+        keeps its window hidden while the display is off."""
+        data = self.run([{"act": "wake"}], timeout=timeout)
+        return bool(data.get("ok")) and "wake" in [str(x) for x in (data.get("log") or [])]
 
     def click_text(self, text: str, focus: str | None = None) -> bool:
         data = self.run([{"act": "click_text", "text": text}], focus=focus)
