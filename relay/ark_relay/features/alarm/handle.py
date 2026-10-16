@@ -718,6 +718,14 @@ def _book(eng, rec: RunRecord) -> None:
             makeup.on_record(eng, rec)
         except Exception:
             log.exception("补跑结果记账出错")
+    if rec.script == "MaaEnd":
+        # Target mode found every ticked weapon's essence owned: switch to filler mode
+        # at the next safe moment (essence.step, an engine tick step).
+        try:
+            from ark_relay.features.essence import essence  # noqa: PLC0415
+            essence.on_record(eng, rec, day)
+        except Exception:
+            log.exception("基质刷取切刷垫子记账出错")
 
     if rec.raw.get("manual_stop"):
         # Cut short by the red button: not a self-heal, not a success (no weekly

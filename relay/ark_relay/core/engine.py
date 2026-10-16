@@ -483,6 +483,9 @@ class Engine:
             # failure gets its one make-up run first (makeup.py), and the reports
             # wait for it instead of describing the day without it.
             ("补跑", self._maybe_makeup),
+            # After the make-up (it may hold a temporary change in the master) and
+            # before the reports (the switch is one line in the daily report).
+            ("基质刷垫子", self._essence_filler),
             ("临时查看", self._maybe_interim_report),
             ("队列后更新", self._maybe_deferred_update),
             # Before the report (it quotes the line) and the shutdown step (which
@@ -859,6 +862,11 @@ class Engine:
             # A retried 「没干完」 alarm that went out leaves the copy on disk too.
             if len(self._unsent_unresolved) != unsent:
                 self._persist_pending()
+
+    def _essence_filler(self, now: datetime | None = None) -> None:
+        """A target-met essence run switches 基质刷取 to filler mode (features/essence)."""
+        from ark_relay.features.essence import essence  # noqa: PLC0415
+        essence.step(self, now)
 
     def _maybe_makeup(self, now: datetime | None = None) -> bool:
         from ark_relay.features.makeup import makeup  # noqa: PLC0415

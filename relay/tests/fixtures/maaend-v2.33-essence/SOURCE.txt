@@ -1,0 +1,12 @@
+Read unchanged from the game PC on 2026-10-16 (MaaEnd v2.33.0-rc.1, D:\ark\maaend; upstream
+https://github.com/MaaEnd/MaaEnd tag v2.33.0-rc.1, assets/tasks/AutoEssence/...):
+  tasks/AutoEssence/AutoEssence.json, tasks/AutoEssence/Location/ChooseLocation.json,
+  tasks/AutoEssence/Target/Target.json  - whole files.
+interface.json lists only those three (the real one imports every task file).
+locales/interface/zh_cn.json: only the keys matching AutoEssence / wpn_sword_0025 / wpn_claym_0018
+  from D:\ark\maaend\locales\interface\zh_cn.json.
+master-1016.json: the AUTO-MAS MaaEnd master
+  D:\ark\automas\data\<id>\Default\ConfigFile\mxu-MaaEnd.json as it was at 2026-10-16 13:19:42
+  (Beijing), cut down to the instance's id/name/controller/resource and the ProtocolSpace,
+  AutoEssence and DailyRewards tasks (the __MXU_WEBHOOK__ entries, settings and savedDevice
+  are left out). AutoEssence is in target mode with only 玉中身 (wpn_claym_0018) ticked.

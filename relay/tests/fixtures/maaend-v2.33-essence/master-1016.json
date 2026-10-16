@@ -1,0 +1,361 @@
+{
+  "version": "1.0",
+  "instances": [
+    {
+      "id": "automas",
+      "name": "AUTO-MAS",
+      "controllerName": "Win32-Front",
+      "resourceName": "官服",
+      "tasks": [
+        {
+          "id": "c4kzbdr",
+          "taskName": "ProtocolSpace",
+          "enabled": false,
+          "enabledByController": {
+            "Win32-Front": true
+          },
+          "optionValues": {
+            "ProtocolSpaceSchedule": {
+              "type": "checkbox",
+              "caseNames": [
+                "ProtocolSpaceScheduleMonday",
+                "ProtocolSpaceScheduleTuesday",
+                "ProtocolSpaceScheduleWednesday",
+                "ProtocolSpaceScheduleThursday",
+                "ProtocolSpaceScheduleFriday",
+                "ProtocolSpaceScheduleSaturday",
+                "ProtocolSpaceScheduleSunday"
+              ]
+            },
+            "AutoFightSetting": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoFightHealthDangerousSwitch": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoFightDodge": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoFightDodgeCompat": {
+              "type": "switch",
+              "value": false
+            },
+            "AutoFightLockTarget": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoFightAxis": {
+              "type": "switch",
+              "value": false
+            },
+            "AutoFightReserveSkillLevel": {
+              "type": "select",
+              "caseName": "1"
+            },
+            "AutoFightBreakAccumulatingPower": {
+              "type": "switch",
+              "value": true
+            },
+            "ProtocolSpaceTeamChoose": {
+              "type": "select",
+              "caseName": "ProtocolSpaceTeamChooseDefault"
+            },
+            "ProtocolSpaceMode": {
+              "type": "select",
+              "caseName": "ByCount"
+            },
+            "ProtocolSpaceSuccessCount": {
+              "type": "select",
+              "caseName": "ProtocolSpaceSuccessCountUnlimited"
+            },
+            "ProtocolSpaceFailedCount": {
+              "type": "select",
+              "caseName": "ProtocolSpaceFailedCount3"
+            },
+            "ProtocolSpaceTab": {
+              "type": "select",
+              "caseName": "OperatorProgression"
+            },
+            "OperatorProgression": {
+              "type": "select",
+              "caseName": "T-Creds"
+            },
+            "OperatorEXPRewardsSetOption": {
+              "type": "select",
+              "caseName": "CognitiveCarriers"
+            },
+            "ProtocolSpaceLevel": {
+              "type": "select",
+              "caseName": "ProtocolSpaceLevel05"
+            },
+            "SkillUpRewardsSetOption": {
+              "type": "select",
+              "caseName": "Protohedron"
+            },
+            "PromotionsRewardsSetOption": {
+              "type": "select",
+              "caseName": "Protoset"
+            },
+            "WeaponProgression": {
+              "type": "select",
+              "caseName": "WeaponEXP"
+            },
+            "CrisisDrills": {
+              "type": "select",
+              "caseName": "AdvancedProgression1"
+            }
+          }
+        },
+        {
+          "id": "ess0001",
+          "taskName": "AutoEssence",
+          "enabled": true,
+          "enabledByController": true,
+          "optionValues": {
+            "AutoEssenceSchedule": {
+              "type": "checkbox",
+              "caseNames": [
+                "AutoEssenceScheduleMonday",
+                "AutoEssenceScheduleTuesday",
+                "AutoEssenceScheduleWednesday",
+                "AutoEssenceScheduleThursday",
+                "AutoEssenceScheduleFriday",
+                "AutoEssenceScheduleSaturday",
+                "AutoEssenceScheduleSunday"
+              ]
+            },
+            "AutoEssenceChooseLocation": {
+              "type": "checkbox",
+              "caseNames": [
+                "WLSwordVaultDale"
+              ]
+            },
+            "AutoEssenceObtainMode": {
+              "type": "select",
+              "caseName": "ObtainScaling2"
+            },
+            "AutoEssenceDoOverride": {
+              "type": "switch",
+              "value": true
+            },
+            "EssenceFilterAfterBattle": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoEssenceRepeatCount": {
+              "type": "input",
+              "values": {
+                "AutoEssenceRepeatCountValue": "99"
+              }
+            },
+            "AutoFightSettingFull": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoFightAttack": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoFightDodge": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoFightDodgeCompat": {
+              "type": "switch",
+              "value": false
+            },
+            "AutoFightLockTarget": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoFightHealthDangerousSwitch": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoFightAxisFullSetting": {
+              "type": "switch",
+              "value": false
+            },
+            "AutoFightCombo": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoFightSkill": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoFightReserveSkillLevel": {
+              "type": "select",
+              "caseName": "1"
+            },
+            "AutoFightBreakAccumulatingPower": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoFightEndSkill": {
+              "type": "switch",
+              "value": true
+            },
+            "EssenceFilterAfterBattleSelectWeaponRarity": {
+              "type": "switch",
+              "value": true
+            },
+            "EssenceFilterAfterBattleRarity6Weapon": {
+              "type": "switch",
+              "value": true
+            },
+            "EssenceFilterAfterBattleRarity5Weapon": {
+              "type": "switch",
+              "value": false
+            },
+            "EssenceFilterAfterBattleRarity4Weapon": {
+              "type": "switch",
+              "value": false
+            },
+            "EssenceFilterAfterBattleSelectEssence": {
+              "type": "switch",
+              "value": true
+            },
+            "EssenceFilterAfterBattleFlawlessEssence": {
+              "type": "switch",
+              "value": true
+            },
+            "EssenceFilterAfterBattlePureEssence": {
+              "type": "switch",
+              "value": false
+            },
+            "EssenceFilterAfterBattleSelectExtraRules": {
+              "type": "switch",
+              "value": false
+            },
+            "AutoEssenceSpMedicationExpireWithinDays": {
+              "type": "select",
+              "caseName": "All"
+            },
+            "AutoEssenceMenu": {
+              "type": "select",
+              "caseName": "Target"
+            },
+            "AutoUseSpMedication": {
+              "type": "select",
+              "caseName": "UseMedication"
+            },
+            "AutoEssenceWeaponTypeClaymore": {
+              "type": "switch",
+              "value": true
+            },
+            "AutoEssenceWeaponTypeSword": {
+              "type": "switch",
+              "value": false
+            },
+            "AutoEssenceWeaponTypePistol": {
+              "type": "switch",
+              "value": false
+            },
+            "AutoEssenceWeaponTypeWand": {
+              "type": "switch",
+              "value": false
+            },
+            "AutoEssenceWeaponTypeLance": {
+              "type": "switch",
+              "value": false
+            },
+            "AutoEssenceWeaponsClaymore": {
+              "type": "checkbox",
+              "caseNames": [
+                "wpn_claym_0018"
+              ]
+            },
+            "AutoEssenceObtainModeClaimOnlyForcedFilter": {
+              "type": "select",
+              "caseName": "ObtainScaling2"
+            },
+            "AutoEssenceSelectLocation": {
+              "type": "select",
+              "caseName": "WLSwordVaultDale"
+            },
+            "AutoEssenceLocationSlot1": {
+              "type": "checkbox",
+              "caseNames": [
+                "s1_5",
+                "s1_1",
+                "s1_4"
+              ]
+            },
+            "AutoEssenceLocationSecondary_WLSwordVaultDale": {
+              "type": "select",
+              "caseName": "s2_1"
+            },
+            "AutoEssenceObtainModeClaimOnly": {
+              "type": "select",
+              "caseName": "ObtainScaling2"
+            }
+          }
+        },
+        {
+          "id": "dzglg11",
+          "taskName": "DailyRewards",
+          "enabled": true,
+          "enabledByController": {
+            "Win32-Front": true
+          },
+          "optionValues": {
+            "DailyEmailRewards": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyTaskRewards": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyTaskUpgradeWeapon": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyTaskCreation": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyTaskAssemble": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyTaskLevelUpOperator": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyClaimDeliveryJobsRewards": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyEventRewards": {
+              "type": "switch",
+              "value": true
+            },
+            "DailyProtocolPassRewards": {
+              "type": "switch",
+              "value": true
+            },
+            "GearAssemblyType": {
+              "type": "select",
+              "caseName": "SetGear"
+            },
+            "GearAssemblySortOrder": {
+              "type": "select",
+              "caseName": "Lower"
+            },
+            "LevelUpOperatorMaxLevelThreshold": {
+              "type": "input",
+              "values": {
+                "MaxLevelThreshold": "80"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
