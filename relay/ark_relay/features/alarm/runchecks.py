@@ -219,6 +219,7 @@ def _settle_held(eng) -> None:
         held = {(r.script, r.user) for r in eng._pending.values()}
         runs.settle_28(state_dir,
                        lambda script, user: (script, user) not in held and not eng._script_running(script),
-                       eng.state.read_ledger, eng.notifier)
+                       eng.state.read_ledger, eng.notifier,
+                       alerted=(eng._already_alerted, eng._mark_alerted))
     except Exception:
         log.exception("上机核对等重试的那几条没结成（下一轮再结）")

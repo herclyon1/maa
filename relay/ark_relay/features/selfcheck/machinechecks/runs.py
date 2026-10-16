@@ -301,8 +301,10 @@ def _state_get(state_dir, key: str):
         return None
 
 
-def _state_set(state_dir, key: str, value) -> None:
-    """Set one key of state/machinecheck-runs.json; a failed write is dropped."""
+def _state_set(state_dir, key: str, value) -> bool:
+    """Set one key of state/machinecheck-runs.json. True when the file was written; a
+    failed write is not raised (the write is atomic: nothing of it landed), a caller
+    whose push depends on it says so."""
     from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
     f = Path(state_dir) / SEEN_FILE
     try:
@@ -315,7 +317,8 @@ def _state_set(state_dir, key: str, value) -> None:
         f.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(f, json.dumps(data, ensure_ascii=False))
     except OSError:
-        pass
+        return False
+    return True
 
 
 def _seen(state_dir, cid: str) -> set:
@@ -633,8 +636,9 @@ def _hold_28(ctx, tasks: list, evidence: str) -> mc.Result:
     held = dict(held) if isinstance(held, dict) else {}
     held[rec.run_id] = {"script": rec.script, "user": rec.user, "day": ctx.get("day") or "",
                         "tasks": list(tasks), "evidence": evidence, "covered": []}
-    _state_set(state_dir, HELD_28, held)
-    if rec.run_id not in (_state_get(state_dir, HELD_28) or {}):
+    # Whether the hold is on file is what the write returned, not a second read: a read
+    # failing once after a good write pushed it here and again at settle_28.
+    if not _state_set(state_dir, HELD_28, held):
         log.warning("上机核对 #28：%s 在等重试，但没记下来，现在就报", rec.run_id)
         return _r(FAIL, evidence)
     return mc.Result(FAIL, evidence + HELD_NOTE, deferred=True)
@@ -658,19 +662,33 @@ def covered_28(state_dir, script: str, day: str, items: list) -> None:
         _state_set(state_dir, HELD_28, held)
 
 
-def settle_28(state_dir, hold_over, ledger, notifier) -> None:
+# Run ids whose #28 FAIL settle_28 pushed in this process: its guard against a repeat
+# when no day marks are given (see settle_28 `alerted`).
+_PUSHED_28: set = set()
+
+
+def settle_28(state_dir, hold_over, ledger, notifier, alerted=None) -> None:
     """Settle each held #28 FAIL whose hold is over (`hold_over(script, user)`: no record
     of that script and user held any more, the script not running): the tasks a
     「没证据」 alarm sent for them carries (covered_28) are in the group already; a task
     another run of the day did (`ledger(day)`, _done_elsewhere) was made up for, which
     the daily report says, as for a FAIL healed at once; any other task is pushed now
     as the check's own FAIL, with the evidence of the held run. A push that did not go
-    out is kept and tried again at the next settle."""
+    out is kept and tried again at the next settle.
+
+    A push that went out is pushed once: it is marked sent (`alerted`: (already(day,
+    key), mark(day, key)), the engine's state.json day marks, as unresolved.send keys
+    its pushes; without them, this process's _PUSHED_28) before anything else is
+    written, and its entry is dropped from HELD_28 right then, entry by entry. A
+    HELD_28 that cannot be written is an ERROR; the mark, in another file, keeps the
+    next settle from pushing it again. Rewording the recorded verdict (mc.restate)
+    comes last and its failure is only a warning."""
     held = _state_get(state_dir, HELD_28)
     if not isinstance(held, dict) or not held:
         return
     mc.load()
     what = mc.CHECKS["#28"].what
+    already, mark = alerted or (lambda day, key: key in _PUSHED_28, lambda day, key: _PUSHED_28.add(key))
     left = dict(held)
     for rid, e in held.items():
         if not hold_over(e.get("script"), e.get("user")):
@@ -679,31 +697,44 @@ def settle_28(state_dir, hold_over, ledger, notifier) -> None:
         covered = set(e.get("covered") or [])
         evidence = str(e.get("evidence") or "")
         was = evidence + HELD_NOTE
-        ctx = {"rec": type("Held", (), {"run_id": rid})(), "ledger": ledger(e.get("day") or "")}
+        day = e.get("day") or ""
+        ctx = {"rec": type("Held", (), {"run_id": rid})(), "ledger": ledger(day)}
         healed = {t: by for t in tasks if t not in covered and (by := _done_elsewhere(ctx, t))}
-        if rest := [t for t in tasks if t not in covered and t not in healed]:
+        rest = [t for t in tasks if t not in covered and t not in healed]
+        key = f"#28|{rid}"
+        if rest and already(day, key):
+            log.info("上机核对 #28：%s 这一条已经进过群（上回没从等重试的单子上划掉），不重推", rid)
+        elif rest:
             errs = notifier.send(texts.machinecheck_failed("#28", what),
                                  texts.machinecheck_failed_body(what, evidence), alert=True)
             if errs:
                 log.error("上机核对 #28 没过（%s 等重试的那一趟），推送也没推出去，下一轮再推：%s", rid, "；".join(errs))
                 continue
             log.info("上机核对 #28 没过，%s 的重试完了，%s 没有别的报警带上，已报群：%s", rid, "、".join(rest), evidence[:120])
-            mc.restate(state_dir, "#28", was, evidence)
-        elif covered:
-            log.info("上机核对 #28 没过，%s 已写在「没证据」那条报警里进群，不另发：%s", rid, evidence[:120])
-            mc.restate(state_dir, "#28", was, evidence + RODE_ALONG)
-        else:
-            by = "；".join(f"{t}：{b}" for t, b in healed.items())
-            log.info("上机核对 #28：%s 的%s没做成，%s，不进群，只进日报", rid, "、".join(healed), by)
-            mc.restate(state_dir, "#28", was, f"{evidence}；{by}，不用人管", healed=True)
             try:
-                from ark_relay.core import techlog  # noqa: PLC0415
-                techlog.self_heal(f"上机核对 #28 {rid} {'、'.join(healed)}", f"{evidence}；{by}", state_dir=state_dir)
-            except Exception:  # the verdict stands; the group hears the failure to write
-                log.warning("自愈待查的红项没写进技术日志：#28 %s", rid, exc_info=True)
+                mark(day, key)
+            except Exception:  # HELD_28 below is the other record of it
+                log.error("上机核对 #28：%s 已进群，但「已进群」没记下", rid, exc_info=True)
         left.pop(rid, None)
-    if left != held:
-        _state_set(state_dir, HELD_28, left)
+        if not _state_set(state_dir, HELD_28, left):
+            log.error("上机核对 #28：%s 已结掉，但 %s 写不进去，等重试的单子上还留着它", rid, SEEN_FILE)
+        try:
+            if rest:
+                mc.restate(state_dir, "#28", was, evidence)
+            elif covered:
+                log.info("上机核对 #28 没过，%s 已写在「没证据」那条报警里进群，不另发：%s", rid, evidence[:120])
+                mc.restate(state_dir, "#28", was, evidence + RODE_ALONG)
+            else:
+                by = "；".join(f"{t}：{b}" for t, b in healed.items())
+                log.info("上机核对 #28：%s 的%s没做成，%s，不进群，只进日报", rid, "、".join(healed), by)
+                mc.restate(state_dir, "#28", was, f"{evidence}；{by}，不用人管", healed=True)
+                try:
+                    from ark_relay.core import techlog  # noqa: PLC0415
+                    techlog.self_heal(f"上机核对 #28 {rid} {'、'.join(healed)}", f"{evidence}；{by}", state_dir=state_dir)
+                except Exception:  # the verdict stands; the group hears the failure to write
+                    log.warning("自愈待查的红项没写进技术日志：#28 %s", rid, exc_info=True)
+        except OSError:
+            log.warning("上机核对 #28：%s 的结论没改写进 machinecheck.json", rid, exc_info=True)
 
 
 def _done_elsewhere(ctx, task: str) -> str:
