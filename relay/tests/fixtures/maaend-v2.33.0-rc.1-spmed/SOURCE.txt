@@ -1,0 +1,7 @@
+The booster's confirm node from the game machine's live D:\ark\maaend\resource\pipeline\nodes.json
+(MaaEnd v2.33.0-rc.1, file written 2026-10-16 13:53:06 Beijing by MaaEnd's self-update from
+v2.33.0-beta.5), read with scripts/mac/winps.sh on 2026-10-16 and copied here verbatim (only this
+node; the rest of nodes.json is not needed). Upstream source: MaaEnd tag v2.33.0-rc.1,
+assets/resource/pipeline/Common/Private/AutoUseSpMedication/Main.json, changed by commit cfd2e875
+(PR #6476): game 1.6 changed the dialog's confirm icon, so YellowConfirmButtonType2 no longer
+matched; the node now OCRs the confirm text inside the dialog's button region.
