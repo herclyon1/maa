@@ -51,6 +51,8 @@ _UNVERIFIED_WHY = {
     "OK-WW": "日志里没读到做完",
 }
 UNVERIFIED_KIND = "没证据"
+# The mark naming the record whose booking sent (or queued) a 「没证据」 alarm.
+UNVERIFIED_BY = "没证据-发自"
 
 
 def _unverified_why(script: str, items: list, entries: list) -> str:
@@ -107,12 +109,29 @@ def _push_unverified(eng, rec: RunRecord) -> None:
                 + ("" if page else texts.EVIDENCE_NOT_SHIPPED + "\n"))
         # Keyed by the items, not the record: a later run of the same game the same
         # day with the same items left unbacked is the same alarm, not a new one.
-        _push_now(eng, day, UNVERIFIED_KIND, f"{rec.script}:{'、'.join(items)}",
-                  texts.unverified_alarm(game, shift, len(items)), body)
-        # Sent, sent before, or kept for the next tick: these items reach the group in
-        # this alarm, which machine check #28 then does not repeat (runs._fail_28).
-        from ark_relay.features.alarm import runchecks  # noqa: PLC0415
-        runchecks._UNVERIFIED[rec.run_id] = list(items)
+        key = f"{rec.script}:{'、'.join(items)}"
+        # Which record's booking sent it: a record replayed after its handling broke
+        # off (_append_ledger_once) finds its own alarm, not an earlier run's.
+        mine = unresolved._key(UNVERIFIED_BY, rec.run_id)
+        ours = True
+        if not eng._already_alerted(day, unresolved._key(UNVERIFIED_KIND, key)):
+            _push_now(eng, day, UNVERIFIED_KIND, key, texts.unverified_alarm(game, shift, len(items)), body)
+            eng._mark_alerted(day, mine)
+        else:
+            ours = eng._already_alerted(day, mine)
+        if ours:
+            # Sent, or kept for the next tick: these items reach the group in this
+            # alarm, which machine check #28 then does not repeat - for this record
+            # (runs._fail_28) and for a run of the day held for this retry (runs.covered_28).
+            from ark_relay.features.alarm import runchecks  # noqa: PLC0415
+            from ark_relay.features.selfcheck.machinechecks import runs  # noqa: PLC0415
+            runchecks._UNVERIFIED[rec.run_id] = list(items)
+            runs.covered_28(eng.cfg.state_dir, rec.script, day, list(items))
+        else:
+            # The same alarm went out for an earlier run of the day: machine check #28
+            # pushes its own FAIL about this run (one abort, one group message).
+            log.info("「%s」今天已经为更早的一趟发过，这一趟由上机核对第 28 条单独报（%s）",
+                     texts.unverified_alarm(game, shift, len(items)), rec.run_id)
     except Exception:
         log.exception("「没证据」这一项没能推到群里（%s）", rec.run_id)
 

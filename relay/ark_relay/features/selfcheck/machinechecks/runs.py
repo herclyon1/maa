@@ -522,11 +522,14 @@ def _c28(ctx):
     has happened SHOT_MISS_FAIL runs in a row, as the ledger waits; the rest of the run
     is judged as usual.
 
-    A FAIL whose tasks are all on the 「没证据」 alarm sent (or queued, or sent earlier
-    the same day for the same items) while this record was booked
-    (ctx['unverified_alarm'], pushes._push_unverified) is not pushed again: that alarm
-    carries MaaEnd's own verdict and reason for each of them (maaend_unbacked_why), so
-    one cause goes to the group as one message; the FAIL stays on record."""
+    A FAIL whose tasks are all on the 「没证据」 alarm sent (or queued) while this record
+    was booked (ctx['unverified_alarm'], pushes._push_unverified) is not pushed again:
+    that alarm carries MaaEnd's own verdict and reason for each of them
+    (maaend_unbacked_why), so one cause goes to the group as one message; the FAIL
+    stays on record. An alarm for the same items sent earlier that day does not count:
+    that one was about another run. A FAIL about a run held for its retry - how the
+    machine books MaaEnd stopping itself: ok=False, every later task failed
+    (MaaEnd-06-31-06) - waits for the hold to end (_fail_28, settle_28)."""
     if not _script(ctx, "MaaEnd") or not _unattended(ctx):
         return None
     text = ctx.get("log_text") or ""
@@ -597,16 +600,110 @@ def _c28(ctx):
 
 # The alarm a #28 FAIL rides along with (pushes._push_unverified, its kind 「没证据」).
 UNVERIFIED_ALARM = "没证据"
+RODE_ALONG = "。已写在「没证据」那条报警里一起进群"
+# #28 FAILs of runs held for their retry, until settle_28 settles them (machinecheck-runs.json):
+# {run_id: {script, user, day, tasks, evidence, covered}}.
+HELD_28 = "#28-held"
+HELD_NOTE = "。这一趟中途停了，等这一班的重试跑完再定要不要报"
 
 
 def _fail_28(ctx, tasks: list, evidence: str) -> mc.Result:
-    """#28's FAIL about `tasks`: not pushed on its own when the 「没证据」 alarm of this
-    booking names every one of them (ctx['unverified_alarm']) - that alarm carries the
-    same verdicts - so the group gets one message for one cause."""
+    """#28's FAIL about `tasks`: not pushed on its own when the 「没证据」 alarm sent while
+    this record was booked names every one of them (ctx['unverified_alarm']) - that
+    alarm carries the same verdicts - so the group gets one message for one cause.
+
+    A run held for its retry (ctx['held']: booked ok=False, as AUTO-MAS books MaaEnd
+    stopping itself, every later task failed) is not pushed yet either: its 「没证据」
+    alarm, if any, comes with the retry's booking (handle._handle_success), and the
+    retry may do the task. _hold_28 keeps it until settle_28 settles it."""
     sent = set(ctx.get("unverified_alarm") or [])
     if tasks and all(t in sent for t in tasks):
-        return mc.Result(FAIL, evidence + "。已写在「没证据」那条报警里一起进群", pushed_with=UNVERIFIED_ALARM)
+        return mc.Result(FAIL, evidence + RODE_ALONG, pushed_with=UNVERIFIED_ALARM)
+    rec = ctx.get("rec")
+    if tasks and getattr(rec, "run_id", None) in (ctx.get("held") or []):
+        return _hold_28(ctx, tasks, evidence)
     return _r(FAIL, evidence)
+
+
+def _hold_28(ctx, tasks: list, evidence: str) -> mc.Result:
+    """Keep the FAIL about the held record (machinecheck-runs.json HELD_28) for
+    settle_28; pushed at once when it cannot be kept, so it is never lost."""
+    rec, state_dir = ctx.get("rec"), ctx.get("state_dir")
+    held = _state_get(state_dir, HELD_28)
+    held = dict(held) if isinstance(held, dict) else {}
+    held[rec.run_id] = {"script": rec.script, "user": rec.user, "day": ctx.get("day") or "",
+                        "tasks": list(tasks), "evidence": evidence, "covered": []}
+    _state_set(state_dir, HELD_28, held)
+    if rec.run_id not in (_state_get(state_dir, HELD_28) or {}):
+        log.warning("上机核对 #28：%s 在等重试，但没记下来，现在就报", rec.run_id)
+        return _r(FAIL, evidence)
+    return mc.Result(FAIL, evidence + HELD_NOTE, deferred=True)
+
+
+def covered_28(state_dir, script: str, day: str, items: list) -> None:
+    """A 「没证据」 alarm naming `items` of `script` on `day` was just sent (or queued
+    until it goes out): the held #28 FAILs of that day about those tasks are in it."""
+    held = _state_get(state_dir, HELD_28)
+    if not isinstance(held, dict) or not held:
+        return
+    changed = False
+    for e in held.values():
+        if e.get("script") != script or e.get("day") != day:
+            continue
+        add = [t for t in e.get("tasks") or [] if t in items and t not in (e.get("covered") or [])]
+        if add:
+            e["covered"] = list(e.get("covered") or []) + add
+            changed = True
+    if changed:
+        _state_set(state_dir, HELD_28, held)
+
+
+def settle_28(state_dir, hold_over, ledger, notifier) -> None:
+    """Settle each held #28 FAIL whose hold is over (`hold_over(script, user)`: no record
+    of that script and user held any more, the script not running): the tasks a
+    「没证据」 alarm sent for them carries (covered_28) are in the group already; a task
+    another run of the day did (`ledger(day)`, _done_elsewhere) was made up for, which
+    the daily report says, as for a FAIL healed at once; any other task is pushed now
+    as the check's own FAIL, with the evidence of the held run. A push that did not go
+    out is kept and tried again at the next settle."""
+    held = _state_get(state_dir, HELD_28)
+    if not isinstance(held, dict) or not held:
+        return
+    mc.load()
+    what = mc.CHECKS["#28"].what
+    left = dict(held)
+    for rid, e in held.items():
+        if not hold_over(e.get("script"), e.get("user")):
+            continue
+        tasks = list(e.get("tasks") or [])
+        covered = set(e.get("covered") or [])
+        evidence = str(e.get("evidence") or "")
+        was = evidence + HELD_NOTE
+        ctx = {"rec": type("Held", (), {"run_id": rid})(), "ledger": ledger(e.get("day") or "")}
+        healed = {t: by for t in tasks if t not in covered and (by := _done_elsewhere(ctx, t))}
+        if rest := [t for t in tasks if t not in covered and t not in healed]:
+            errs = notifier.send(texts.machinecheck_failed("#28", what),
+                                 texts.machinecheck_failed_body(what, evidence), alert=True)
+            if errs:
+                log.error("上机核对 #28 没过（%s 等重试的那一趟），推送也没推出去，下一轮再推：%s", rid, "；".join(errs))
+                continue
+            log.info("上机核对 #28 没过，%s 的重试完了，%s 没有别的报警带上，已报群：%s", rid, "、".join(rest), evidence[:120])
+            mc.restate(state_dir, "#28", was, evidence)
+        elif covered:
+            log.info("上机核对 #28 没过，%s 已写在「没证据」那条报警里进群，不另发：%s", rid, evidence[:120])
+            mc.restate(state_dir, "#28", was, evidence + RODE_ALONG)
+        else:
+            by = "；".join(f"{t}：{b}" for t, b in healed.items())
+            log.info("上机核对 #28：%s 的%s没做成，%s，不进群，只进日报", rid, "、".join(healed), by)
+            mc.restate(state_dir, "#28", was, f"{evidence}；{by}，不用人管", healed=True)
+            try:
+                from ark_relay.core import techlog  # noqa: PLC0415
+                techlog.self_heal(f"上机核对 #28 {rid} {'、'.join(healed)}", f"{evidence}；{by}", state_dir=state_dir)
+            except Exception:  # the verdict stands; the group hears the failure to write
+                log.warning("自愈待查的红项没写进技术日志：#28 %s", rid, exc_info=True)
+        left.pop(rid, None)
+    if left != held:
+        _state_set(state_dir, HELD_28, left)
 
 
 def _done_elsewhere(ctx, task: str) -> str:

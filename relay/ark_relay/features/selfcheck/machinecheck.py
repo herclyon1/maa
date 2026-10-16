@@ -15,7 +15,10 @@ FAIL is pushed to the group, every time it is judged (the user's order of 2026-1
 「只要是报错…不论多少次什么错误都要发」); PASS and still-waiting go to the daily
 report's 「上机核对」 section only. A FAIL whose facts went to the group inside another
 alarm of the same booking (Result.pushed_with: #28 inside 「没证据」) is not pushed a
-second time; the group still hears it, in that one message. Results live in state/machinecheck.json, per
+second time; the group still hears it, in that one message. A FAIL about a run held
+for its retry (Result.deferred: #28) is pushed when the hold is over, unless an alarm
+sent by then carries it or another run of the day made up for it (runs.settle_28).
+Results live in state/machinecheck.json, per
 item: the last verdict, its evidence, when, event, version, and pass / fail counts.
 
 Items that cannot be automated are listed in CANNOT with the reason, shown in the
@@ -53,6 +56,10 @@ class Result:
     # A FAIL whose facts already went to the group inside that alarm (its kind, e.g.
     # 「没证据」): recorded, not pushed again, so one cause is one group message.
     pushed_with: str = ""
+    # A FAIL about a run held for its retry: recorded, not pushed yet; the check keeps
+    # it and settles it once the hold is over (machinechecks/runs.py settle_28): pushed
+    # then, unless an alarm sent by then carries it or another run made up for it.
+    deferred: bool = False
 
 
 @dataclass
@@ -214,6 +221,8 @@ def judge(state_dir, event: str, ctx: dict, *, version: str = "", now: datetime 
         c = CHECKS[cid]
         if r.status == FAIL and r.pushed_with:
             log.info("上机核对 %s 没过，已写在「%s」那条报警里进群，不另发：%s", cid, r.pushed_with, r.evidence[:120])
+        elif r.status == FAIL and r.deferred:
+            log.info("上机核对 %s 没过，这一趟在等重试，重试跑完再定：%s", cid, r.evidence[:120])
         elif r.status == FAIL:
             title, body = texts.machinecheck_failed(cid, c.what), texts.machinecheck_failed_body(c.what, r.evidence)
             if notifier is None:
@@ -227,6 +236,28 @@ def judge(state_dir, event: str, ctx: dict, *, version: str = "", now: datetime 
         else:
             log.info("上机核对 %s 过了：%s", cid, r.evidence[:120])
     return out
+
+
+def restate(state_dir, cid: str, was: str, evidence: str, *, healed: bool = False) -> bool:
+    """Reword check `cid`'s recorded verdict when it is still the one whose evidence was
+    `was`; a later verdict that replaced it is left alone. `healed`: the failure was
+    made up for, so it becomes a PASS marked healed (as judge records Result.healed),
+    or, when a later PASS replaced it, that PASS carries the mark, so daily_section
+    says failed and made up for. True when something was written."""
+    data = _read_state(state_dir) if state_dir else None
+    row = (data or {}).get(cid)
+    if not isinstance(row, dict):
+        return False
+    if row.get("evidence") == was[:300]:
+        row["evidence"] = evidence[:300]
+        if healed:
+            row["status"] = PASS
+    elif not (healed and row.get("status") == PASS):
+        return False
+    if healed:
+        row.update(healed_at=str(row.get("at") or ""), healed_evidence=evidence[:300])
+    _write(state_dir, data)
+    return True
 
 
 def daily_section(state_dir) -> str:
