@@ -29,7 +29,7 @@ import sys
 import threading
 import time
 import traceback
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -152,16 +152,24 @@ def main() -> int:
     import service  # noqa: PLC0415 - chdirs to the code folder, as on the machine
     from ark_relay.core import config  # noqa: PLC0415
     config.IS_WINDOWS = True
-    # The Endfield launcher helper's set-up at boot (gameupdate/efstart_setup.py) checks
-    # Windows paths read from AUTO-MAS and the relay's own pythonw.exe: answered from the
-    # sim tree, with the launcher where it is on the machine (Launcher.exe three levels
-    # above Endfield.exe, the parent session 2026-10-15).
+    # Endfield's start set-up at boot (gameupdate/efstart_setup.py) checks Windows paths
+    # read from AUTO-MAS by AUTO-MAS's own launcher rule: answered from the sim tree, with
+    # the launcher laid out as on the machine (Launcher.exe three levels above Endfield.exe
+    # and its version folder 1.6.0 holding Games.exe, read 2026-10-16).
     from ark_relay.features.gameupdate import efstart_setup  # noqa: PLC0415
-    launcher = W.tpath(tree, r"D:\endfield\Hypergryph Launcher\Launcher.exe")
-    launcher.parent.mkdir(parents=True, exist_ok=True)
-    launcher.touch()
+    lroot = W.tpath(tree, r"D:\endfield\Hypergryph Launcher")
+    (lroot / "1.6.0").mkdir(parents=True, exist_ok=True)
+    (lroot / "Launcher.exe").touch()
+    (lroot / "1.6.0" / "Games.exe").touch()
+    (lroot / "games" / "Endfield Game").mkdir(parents=True, exist_ok=True)
+    (lroot / "games" / "Endfield Game" / "Endfield.exe").touch()
     efstart_setup._is_file = lambda p: W.tpath(tree, str(p)).is_file()
-    efstart_setup._find_pythonw = lambda: Path(r"C:\Program Files\ArkRelay\runtime\python\pythonw.exe")
+
+    def _subdirs(p):
+        d = W.tpath(tree, str(p))
+        return [str(PureWindowsPath(str(p)) / c.name) for c in d.iterdir() if c.is_dir()] if d.is_dir() else []
+    efstart_setup._subdirs = _subdirs
+    efstart_setup._player_logs = lambda: []
     os.chdir(tree / W.DATA_REL)          # app_main.run: os.chdir(DATA)
     desk.install()
     # Frozen code: the COS door says the version the machine already runs.

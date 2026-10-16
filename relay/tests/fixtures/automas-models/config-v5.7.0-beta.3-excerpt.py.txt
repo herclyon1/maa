@@ -156,6 +156,7 @@ class MaaEndConfig(ConfigBase):
     def __init__(self) -> None:
         self.Info_Name = ConfigItem("Info", "Name", "新 MaaEnd 脚本")
         self.Info_Path = ConfigItem("Info", "Path", "", FolderValidator())
+        self.Game_Path = ConfigItem("Game", "Path", "", FileValidator())
         self.Game_WaitTime = ConfigItem(
             "Game", "WaitTime", 60, RangeValidator(60, 9999)
         )

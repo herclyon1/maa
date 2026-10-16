@@ -36,7 +36,7 @@ from ark_relay.features.alarm.gamelogs import (
     _maaend_app_log, _maaend_new_shots, _okww_log_file, _okww_master_config, _okww_nest_expected)
 from ark_relay.features.alarm.records import (
     SHOT_AFTER_S, SHOT_BEFORE_S, _append_ledger_once, _attempts, _confirm_unreachable, _diagnosis,
-    _estop_overlap, _healed_title, _later_success, _mark_raw_on_ledger, _mark_task_shots,
+    _check_d3d11_after_maaend, _estop_overlap, _healed_title, _later_success, _mark_raw_on_ledger, _mark_task_shots,
     _mark_update_restart, _restart_note, _restart_result, _restore_after_maaend, _same_shift,
     _state_relative, run_day)
 from ark_relay.features.alarm.runchecks import (
@@ -630,6 +630,7 @@ def _book(eng, rec: RunRecord) -> None:
     key = (rec.script, rec.user)
     if rec.script == "MaaEnd":
         _restore_after_maaend(eng)
+        _check_d3d11_after_maaend()
     if rec.script in ("MAA", "MaaEnd"):
         # Is this the day's make-up run? Book its outcome before anything below
         # can return early (a red-button stop returns right away).

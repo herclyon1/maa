@@ -206,10 +206,11 @@ class Watchdog:
             self._pid_lines = self._lines
             self._err_offset, self._err_head = self._stderr_now()
         if self._starting(procs):
-            # MXU is waiting for the helper that starts Endfield through the official
-            # launcher (a preAction with waitForExit, gameupdate/efstart.py): no task has
-            # started, so no plugin and no log line yet, and that is not a hang. The
-            # clocks start when the helper is done.
+            # The relay's helper is starting Endfield through the official launcher
+            # (gameupdate/efstart.py, for the relay's own retries): no task has started,
+            # so no plugin and no log line yet, and that is not a hang. The clocks start
+            # when the helper is done. AUTO-MAS's own launcher start (v5.7.0-beta.4) runs
+            # before MaaEnd is started, so it never shows up here.
             self._pid_seen_at = self._progress_at = now
             self._gone_since = None
             return None

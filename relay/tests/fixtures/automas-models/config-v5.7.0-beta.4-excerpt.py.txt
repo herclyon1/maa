@@ -1,0 +1,252 @@
+# Excerpt of AUTO-MAS v5.7.0-beta.4 app/models/config.py (https://github.com/AUTO-MAS-Project/AUTO-MAS/blob/v5.7.0-beta.4/app/models/config.py):
+# only the ConfigItem statements of the settings relay/ark_relay/core/mascontract.py lists, verbatim,
+# under their class headers (and the MaaEnd helper / MaaPlanConfig loop that declare some of them).
+# Generated from v5.7.0-beta.4's own file: each statement below is lifted verbatim from it.
+
+class QueueItem(ConfigBase):
+    def __init__(self) -> None:
+        self.Info_ScriptId = ConfigItem(
+            "Info",
+            "ScriptId",
+            "-",
+            MultipleUIDValidator("-", self.related_config, "ScriptConfig"),
+        )
+        self.Schedule_Days = ConfigItem(
+            "Schedule",
+            "Days",
+            list(calendar.day_name),
+            MultipleOptionsValidator(list(calendar.day_name)),
+        )
+
+class TimeSet(ConfigBase):
+    def __init__(self) -> None:
+        self.Info_Enabled = ConfigItem("Info", "Enabled", True, BoolValidator())
+        self.Info_Days = ConfigItem(
+            "Info",
+            "Days",
+            list(calendar.day_name),
+            MultipleOptionsValidator(list(calendar.day_name)),
+        )
+        self.Info_Time = ConfigItem("Info", "Time", "00:00", DateTimeValidator("%H:%M"))
+
+class QueueConfig(ConfigBase):
+    def __init__(self) -> None:
+        self.Info_Name = ConfigItem("Info", "Name", "新队列")
+        self.Info_TimeEnabled = ConfigItem(
+            "Info", "TimeEnabled", False, BoolValidator()
+        )
+        self.Info_StartUpMode = ConfigItem(
+            "Info",
+            "StartUpMode",
+            "Never",
+            OptionsValidator(["Never", "Always", "DailyFirst"]),
+        )
+        self.Info_CycleEnabled = ConfigItem(
+            "Info", "CycleEnabled", False, BoolValidator()
+        )
+        self.Info_AfterAccomplish = ConfigItem(
+            "Info",
+            "AfterAccomplish",
+            "NoAction",
+            OptionsValidator(
+                [
+                    "NoAction",
+                    "Shutdown",
+                    "ShutdownForce",
+                    "Reboot",
+                    "Hibernate",
+                    "Sleep",
+                    "KillSelf",
+                    "RestartSelf",
+                    "Logoff",
+                ]
+            ),
+        )
+
+class MaaUserConfig(ConfigBase):
+    def __init__(self) -> None:
+        self.Stage_StageMode = ConfigItem(
+            "Stage",
+            "StageMode",
+            "Fixed",
+            TypedMultipleUIDValidator(
+                "Fixed", self.related_config, "PlanConfig", MaaPlanConfig
+            ),
+            legacy_group="Info",
+        )
+        self.Stage_Stage = ConfigItem("Stage", "Stage", "-", legacy_group="Info")
+        self.Stage_Stage_1 = ConfigItem("Stage", "Stage_1", "-", legacy_group="Info")
+        self.Stage_Stage_2 = ConfigItem("Stage", "Stage_2", "-", legacy_group="Info")
+        self.Stage_Stage_3 = ConfigItem("Stage", "Stage_3", "-", legacy_group="Info")
+        self.Stage_MedicineNumb = ConfigItem(
+            "Stage", "MedicineNumb", 0, RangeValidator(0, 9999), legacy_group="Info"
+        )
+        self.Stage_SeriesNumb = ConfigItem(
+            "Stage",
+            "SeriesNumb",
+            "0",
+            OptionsValidator(["0", "6", "5", "4", "3", "2", "1", "-1"]),
+            legacy_group="Info",
+        )
+        self.Data_AnnihilationCompletedWeek = ConfigItem(
+            "Data", "AnnihilationCompletedWeek", "2000-W01"
+        )
+        self.Task_IfFight = ConfigItem("Task", "IfFight", True, BoolValidator())
+        self.Task_Annihilation = ConfigItem(
+            "Task",
+            "Annihilation",
+            "Annihilation",
+            OptionsValidator(
+                [
+                    "Close",
+                    "Annihilation",
+                    "Chernobog@Annihilation",
+                    "LungmenOutskirts@Annihilation",
+                    "LungmenDowntown@Annihilation",
+                ]
+            ),
+            legacy_group="Info",
+        )
+        self.Task_IfActivityFirst = ConfigItem(
+            "Task", "IfActivityFirst", False, BoolValidator()
+        )
+        self.Task_ActivityStageIndex = ConfigItem(
+            "Task", "ActivityStageIndex", 1, RangeValidator(1, 9999)
+        )
+
+class MaaConfig(ConfigBase):
+    def __init__(self) -> None:
+        self.Info_Name = ConfigItem("Info", "Name", "新 MAA 脚本")
+        self.Info_Path = ConfigItem("Info", "Path", "", FolderValidator())
+        self.Run_IfCheckGameUpdate = ConfigItem(
+            "Run", "IfCheckGameUpdate", False, BoolValidator()
+        )
+        self.Run_IfAutoInstallGameApk = ConfigItem(
+            "Run", "IfAutoInstallGameApk", False, BoolValidator()
+        )
+
+def init_maaend_task_config(config) -> None:
+    config.Task_SanityTaskType = ConfigItem(
+        "Task",
+        "SanityTaskType",
+        MAAEND_SANITY_TASK_DEFAULTS["SanityTaskType"],
+        OptionsValidator(list(MAAEND_SANITY_TASK_TYPES)),
+    )
+    config.Task_AutoEssenceSpecifiedLocation = ConfigItem(
+        "Task",
+        "AutoEssenceSpecifiedLocation",
+        MAAEND_SANITY_TASK_DEFAULTS["AutoEssenceSpecifiedLocation"],
+        StringValidator(),
+    )
+    for task_name in MAAEND_TASKS:
+        setattr(
+            config,
+            f"Task_If{task_name}",
+            ConfigItem(
+                "Task",
+                f"If{task_name}",
+                task_name != "PullCountCalculator",
+                BoolValidator(),
+            ),
+        )
+
+class MaaEndUserConfig(ConfigBase):
+    def __init__(self) -> None:
+        init_maaend_task_config(self)
+
+class MaaEndConfig(ConfigBase):
+    def __init__(self) -> None:
+        self.Info_Name = ConfigItem("Info", "Name", "新 MaaEnd 脚本")
+        self.Info_Path = ConfigItem("Info", "Path", "", FolderValidator())
+        self.Game_LaunchMode = ConfigItem(
+            "Game",
+            "LaunchMode",
+            "Launcher",
+            OptionsValidator(["Client", "Launcher"]),
+        )
+        self.Game_Path = ConfigItem("Game", "Path", "", FileValidator())
+        self.Game_LauncherPath = ConfigItem("Game", "LauncherPath", "", FileValidator())
+        self.Game_WaitTime = ConfigItem(
+            "Game", "WaitTime", 60, RangeValidator(60, 9999)
+        )
+
+class MaaPlanConfig(ConfigBase):
+    def __init__(self) -> None:
+        self.Info_Mode = ConfigItem(
+            "Info", "Mode", "ALL", OptionsValidator(["ALL", "Weekly"])
+        )
+        self.config_item_dict: dict[str, dict[str, ConfigItem]] = {}
+        for group in ["ALL", *calendar.day_name]:
+            self.config_item_dict[group] = {}
+
+            ## 理智药数量
+            self.config_item_dict[group]["MedicineNumb"] = ConfigItem(
+                group, "MedicineNumb", 0, RangeValidator(0, 9999)
+            )
+            ## 连战次数
+            self.config_item_dict[group]["SeriesNumb"] = ConfigItem(
+                group,
+                "SeriesNumb",
+                "0",
+                OptionsValidator(["0", "6", "5", "4", "3", "2", "1", "-1"]),
+            )
+
+            ## 理智关卡
+            for name in MAA_STAGE_KEY[2:]:
+                # Stage、Stage_1、Stage_2、Stage_3
+                self.config_item_dict[group][name] = ConfigItem(group, name, "-")
+
+            for name in MAA_STAGE_KEY:
+                setattr(self, f"{group}_{name}", self.config_item_dict[group][name])
+
+class OkwwUserConfig(ConfigBase):
+    def __init__(self) -> None:
+        self.Info_IfQuickConfig = ConfigItem(
+            "Info", "IfQuickConfig", True, BoolValidator()
+        )
+        self.Task_WhichToFarm = ConfigItem(
+            "Task",
+            "WhichToFarm",
+            "Tacet Suppression",
+            OptionsValidator(
+                ["Tacet Suppression", "Forgery Challenge", "Simulation Challenge"]
+            ),
+        )
+        self.Task_WhichTacetSuppressionToFarm = ConfigItem(
+            "Task", "WhichTacetSuppressionToFarm", 1, RangeValidator(1, 99)
+        )
+        self.Task_WhichForgeryChallengeToFarm = ConfigItem(
+            "Task", "WhichForgeryChallengeToFarm", 1, RangeValidator(1, 99)
+        )
+        self.Task_MaterialSelection = ConfigItem(
+            "Task",
+            "MaterialSelection",
+            "Shell Credit",
+            OptionsValidator(["Resonator EXP", "Weapon EXP", "Shell Credit"]),
+        )
+        self.Task_FarmNightmareNestForDailyEcho = ConfigItem(
+            "Task", "FarmNightmareNestForDailyEcho", True, BoolValidator()
+        )
+        self.Task_AdditionalTasks = ConfigItem(
+            "Task",
+            "AdditionalTasks",
+            ["Check Weekly Garden"],
+            MultipleOptionsValidator(
+                [
+                    "Check Weekly Garden",
+                    "Auto Farm all Nightmare Nest",
+                    "Merge Echo If discarded > 1000",
+                    "Teleport and Farm 4C Echo",
+                ]
+            ),
+        )
+
+class OkwwConfig(ConfigBase):
+    def __init__(self) -> None:
+        self.Info_Name = ConfigItem("Info", "Name", "新 OK-WW 脚本")
+        self.Info_RootPath = ConfigItem("Info", "RootPath", "", FileValidator())
+        self.Game_Enabled = ConfigItem("Game", "Enabled", False, BoolValidator())
+        self.Game_Path = ConfigItem("Game", "Path", "", FileValidator())
+        self.Game_IfAutoUpdate = ConfigItem(
+            "Game", "IfAutoUpdate", True, BoolValidator()
+        )
