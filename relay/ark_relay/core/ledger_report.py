@@ -10,7 +10,7 @@ from ark_relay.core import texts
 from ark_relay.core.config import RunRecord, SERVER_TZ, USER_TZ, both_clocks
 from ark_relay.core.ledger_rows import (
     UNVERIFIED_STEP, _END_WRAPUP, _LABELS, _maaend_listed, _row, _rows_for, _with_causes,
-    maaend_unverified,
+    maaend_unjudged, maaend_unverified,
 )
 from ark_relay.core.names import GAME_ZH
 
@@ -242,12 +242,18 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
                 # By start time on both clocks, the way the run's own line is labelled.
                 st = datetime.fromisoformat(later["started"])
                 when = f"{_hm(st)}（东京 {st.astimezone(USER_TZ):%H:%M}）开始的"
-                # A MaaEnd retry's 「任务完成」 with nothing from the game is not
-                # 「做成了」; the day's title counts it as unverified.
-                bare = named & set(maaend_unverified(later.get("raw") or {})) if later.get("script") == "MaaEnd" else set()
-                got = "程序说做完了，但没证据，不算完成" if bare else "做成了"
-                out[e["run_id"]] = ("、".join(sorted(want))
-                                    + f"　后来在 {when}那趟重试里{got}")
+                # Said per task: a MaaEnd retry's 「任务完成」 with nothing from the game
+                # is not 「做成了」 (the day's title counts it as unverified), and one of
+                # the four MaaEnd's own record did not cover is not judged yet
+                # (maaend_unjudged); the others the retry did are 做成了. A 「超时」 item
+                # goes with the done ones: the later success is what covers it.
+                lraw = later.get("raw") or {}
+                end = later.get("script") == "MaaEnd"
+                bare = named & set(maaend_unverified(lraw)) if end else set()
+                unread = named & set(maaend_unjudged(lraw)) if end else set()
+                out[e["run_id"]] = texts.retry_outcome(
+                    sorted(want), when, [t for t in sorted(want) if t not in bare and t not in unread],
+                    sorted(bare), sorted(unread))
                 break
     return out
 
@@ -260,7 +266,7 @@ def footnote_tasks(entries: list[dict]) -> list[str]:
         if e.get("script") != "MaaEnd":
             continue
         raw = e.get("raw") or {}
-        unverified = maaend_unverified(raw)
+        unverified = {*maaend_unverified(raw), *maaend_unjudged(raw)}
         # The same list the run's row counts (ledger_rows._block_maaend).
         done = [t for t in _maaend_listed(raw) if t not in unverified]
         # The longest list of the day, whether or not that run was marked failed.
@@ -487,7 +493,12 @@ def day_unverified_items(entries: list[dict]) -> list[tuple[str, list[str]]]:
         script = e.get("script")
         if script == "MaaEnd":
             unv = maaend_unverified(raw)
+            # Left unjudged this run (MaaFW's log held none of the four, not yet
+            # TRAIL_MISS_FAIL runs in a row): neither backs nor lacks evidence.
+            unj = set(maaend_unjudged(raw))
             for t in _maaend_listed(raw):
+                if t in unj:
+                    continue
                 end_listed[t] = None
                 if t not in unv:
                     end_ok.add(t)

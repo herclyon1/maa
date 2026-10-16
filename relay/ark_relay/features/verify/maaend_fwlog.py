@@ -6,7 +6,7 @@
 * MXU app log: `<maaend>/debug/YYYY-MM-DD-N.log`, one per MaaEnd launch, lines
   starting with `YYYY-MM-DD HH:MM:SS `.
 
-collector_maaend re-exports every public name here.
+collector_maaend re-exports the readers it used to hold, under their old names.
 """
 from __future__ import annotations
 
@@ -160,3 +160,338 @@ def update_restart_version(maaend_dir, started) -> str:
                       and pending_at <= at <= pending_at + timedelta(seconds=UPDATE_INSTALL_S)):
                     return version
     return ""
+
+
+
+# One MaaFW event line: [msg=Tasker.Task.Starting] [details={...}] (maafw.log, 2026-10-16:
+# 「[msg=Tasker.Task.Succeeded] [details={"entry":"GiftOperatorMain",...,"task_id":200000001,...}]」).
+_FW_EVENT = re.compile(r"\[msg=(Tasker\.Task\.\w+|Node\.PipelineNode\.Succeeded)\]\s*\[details=(\{.*\})\]\s*$")
+_FW_AT = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d(?:\.\d+)?)\]")
+# AUTO-MAS prints 「任务开始」 up to a second after MaaFW's Tasker.Task.Starting
+# (2026-10-16: 13:54:59.034 against 13:54:58.249), so windows are read this much wider.
+TRAIL_SLACK_S = 5
+
+
+def task_events(maaend_dir, t0: datetime, t1: datetime) -> list:
+    """MaaFW's task and node events from t0 - TRAIL_SLACK_S to t1 + TRAIL_SLACK_S,
+    as (time, "Tasker.Task.Starting" | ... | "Node.PipelineNode.Succeeded", details),
+    oldest first; [] when there is no directory or nothing there. Read once and
+    handed to task_trail for each task of a run: the rotated files are tens of MB each."""
+    if not maaend_dir:
+        return []
+    lo = t0 - timedelta(seconds=TRAIL_SLACK_S)
+    hi = t1 + timedelta(seconds=TRAIL_SLACK_S)
+    lines = _fw_lines(_fw_files(maaend_dir), lo, hi,
+                      lambda line: "[msg=Tasker.Task." in line or "[msg=Node.PipelineNode.Succeeded]" in line)
+    events = []
+    for line in lines:
+        m, at = _FW_EVENT.search(line), _FW_AT.match(line)
+        if not m or not at:
+            continue
+        try:
+            details = json.loads(m.group(2))
+            when = datetime.fromisoformat(at.group(1))
+        except ValueError:
+            continue
+        if isinstance(details, dict):
+            events.append((when, m.group(1), details))
+    events.sort(key=lambda e: e[0])
+    return events
+
+
+def task_trail(events: list, entry: str, t0: datetime, t1: datetime) -> "dict | None":
+    """What MaaFW logged for one task (`events` from task_events): the run of `entry`
+    whose start is nearest t0 (AUTO-MAS's 「任务开始」) within TRAIL_SLACK_S of the
+    window t0..t1 (its 「任务完成」).
+
+    Returns {"started", "ended" (datetimes, ended None when no end event),
+    "result" ("Succeeded" / "Failed" / ""), "nodes" ({node name: times it
+    succeeded})} or None when there is no start of `entry` in the window.
+
+    The nodes are every Node.PipelineNode.Succeeded between that start and end,
+    whatever task_id they carry: a custom action runs its work as a sub-task of its
+    own (environment monitoring, 2026-10-08 09:41: task 200000008 was posted, the
+    photo job ran as 200000559 - EternalSunsetExecute, AcceptEternalSunset,
+    EnvironmentMonitoringTakePhoto). MaaEnd runs one task at a time, so the stretch
+    holds only this task's work. The second process repeats every event line;
+    (task_id, node_id) counts it once.
+
+    A step is named by node_details.name, the node that was hit and acted. The
+    top-level "name" is the node whose next list was being tried: on 2026-10-13
+    09:41:34-36 GiftOperatorConfirmGift clicked once (node_details) and was the
+    top-level name three times, for the two [JumpBack]GiftOperatorGiftDialog skips
+    and GiftOperatorLeave after it (its next list, GiftOperatorGiftFlow.json)."""
+    lo = t0 - timedelta(seconds=TRAIL_SLACK_S)
+    hi = t1 + timedelta(seconds=TRAIL_SLACK_S)
+    starts = [(abs((w - t0).total_seconds()), w, d.get("task_id")) for w, msg, d in events
+              if msg == "Tasker.Task.Starting" and d.get("entry") == entry and lo <= w <= hi]
+    if not starts:
+        return None
+    _, started, task_id = min(starts, key=lambda s: (s[0], s[1]))
+    ended, result = None, ""
+    for w, msg, d in events:
+        if (w >= started and d.get("task_id") == task_id and d.get("entry") == entry
+                and msg in ("Tasker.Task.Succeeded", "Tasker.Task.Failed")):
+            ended, result = w, msg.rsplit(".", 1)[-1]
+            break
+    # Without an end event the stretch stops at the window's edge, not at the end of
+    # `events`, which holds the later tasks of the run too.
+    last = ended if ended is not None else hi
+    nodes: dict = {}
+    seen: set = set()
+    for w, msg, d in events:
+        if msg != "Node.PipelineNode.Succeeded" or w < started or w > last:
+            continue
+        key = (d.get("task_id"), d.get("node_id"))
+        if key in seen:
+            continue
+        seen.add(key)
+        hit = d.get("node_details") or d.get("action_details") or {}
+        name = str((hit.get("name") if isinstance(hit, dict) else "") or d.get("name") or "")
+        nodes[name] = nodes.get(name, 0) + 1
+    return {"started": started, "ended": ended, "result": result, "nodes": nodes}
+
+
+# The four MaaEnd tasks whose AUTO-MAS log has only 「任务开始」 / 「任务完成」: whether
+# they did their job is read from MaaFW's own steps (task_trail), by machine check #28
+# (machinechecks/runs.py) and by the ledger's 「没证据」 rule (core.maaend_unverified,
+# through raw['tasks_trail'] booked by alarm.records._mark_task_trails).
+TRAIL_TASKS = ("赠送干员礼物", "装备制造", "转交委托", "环境监测")
+# What each task's own run in MaaFW's log has to show. Steps from MaaEnd's pipeline
+# (github.com/MaaEnd/MaaEnd, tag v2.33.0-beta.3 - the version on the machine -
+# assets/resource/pipeline/):
+#   entry  - the task MXU posts (Tasker.Task.Starting "entry");
+#   did    - (step, what it means): the task did its job when one of these succeeded;
+#   end    - (step, what it means): a step with no way on but the task's end, reached
+#            when there is nothing to do - a normal end (资源不足 / 已领满 are normal
+#            states, not failures). Read before `did`: the gear task's bag-full end
+#            comes right after its produce click;
+#   none   - for tasks whose nothing-to-do is told by the steps that ran: what it
+#            means, when every step of `needs` succeeded and no `did` step did.
+# Gift: GiftOperatorGiftFlow.json - GiftOperatorConfirmGift 「点击赠送按钮」 (once on
+#   every 10-08..10-16 run). GiftOperatorGiftFull 「赠送已满」 is one operator, not the
+#   end: its next is GiftFullLeave -> GiftFullBackInWorld -> GiftFullRetry (max_hit 5,
+#   back to GiftOperatorEntry for another operator) and only then GiftOperatorGiftFullFail
+#   (StopTask; the pipeline's own desc: 「重试五次也只能找到送满的干员，正常失败」).
+#   A StopTask node is logged like any other and its task booked Succeeded: maafw.bak.
+#   2026.10.16-14.00.46.901.log 13:58:58.769 has Node.PipelineNode.Succeeded for
+#   CreditShoppingBuyItemStop (action "StopTask") and Tasker.Task.Succeeded for
+#   CreditShoppingMain at the same instant; MaaFramework's Actuator::stop_task returns
+#   success and PipelineTask::run_next notifies the node before its loop checks
+#   need_to_stop. So an all-full run ends in a logged GiftFullFail. A trail whose last
+#   step is GiftFull with nothing after it is no end: GiftFull's next is GiftFullLeave,
+#   and when that is not hit MaaFW takes on_error and books the task Failed.
+# Gear: GearAssembly/GearAssembly.json - GearAssemblyClickProduceBtn 「点击制作按钮」
+#   (once a run, followed by SceneNoticeRewardsConfirm on 10-07..10-16). Its next is
+#   [GearAssemblyCheckMaterialEnough 「检测背包是否已满，背包已满直接结束」,
+#   SceneNoticeRewardsConfirm]; GearAssemblyCheckFailedAndFinish 「检查制作失败，退出任务」
+#   (recognises NotEnough or NotUnlocked) is reached from GearAssemblyGearListScrollEnd.
+#   10-08 10:34:11-10:34:16 ran only the scene check, which failed and stopped MaaEnd (ABORT_STEP).
+#   GiftFullFail, CheckMaterialEnough and CheckFailedAndFinish appear in no run we
+#   hold (corpus pull 2026-10-13, 10-16 bundle): read from the pipeline only
+#   (tests/test_mc28_task_trail.py builds those trails from it).
+# Delivery: DeliveryJobs/TransferJob.json - DeliveryJobsConfirmTaskTransfer (5 a run in the
+#   mornings); a region loop (Region/ValleyIV.json, Wuling.json) tries every depot's
+#   job and cargo and falls back to DeliveryJobsLoop when none is there: the re-runs
+#   of 10-08 10:37 and 10-12 11:03 ran both region loops and transferred nothing.
+# Environment: EnvironmentMonitoring/TakePhoto.json - EnvironmentMonitoringTakePhoto
+#   (10-08 09:42, 10-10, 10-12 10:1x took one job each; the step succeeds twice a job,
+#   so no count is said); Terminals.json - each
+#   terminal's loop tries all its jobs; on 10-08 10:38, 10-11, 10-12 11:04, 10-13 and
+#   10-16 both terminal loops ran, no job was taken and the task ended in 6-8 s.
+TRAIL_RULES = {
+    "赠送干员礼物": {"entry": "GiftOperatorMain",
+                 "did": (("GiftOperatorConfirmGift", "点了「赠送」{n} 次"),),
+                 "end": (("GiftOperatorGiftFullFail", "连换 5 次干员，礼物都已送满，算没东西可做"),)},
+    "装备制造": {"entry": "GearAssemblyStart",
+              "did": (("GearAssemblyClickProduceBtn", "点了「制作」{n} 次"),),
+              "end": (("GearAssemblyCheckMaterialEnough", "背包已满，做不出来，算没东西可做"),
+                      ("GearAssemblyCheckFailedAndFinish", "装备列表翻到底，没有能做的（材料不够或没解锁），算没东西可做"))},
+    "转交委托": {"entry": "DeliveryJobsMain",
+              "did": (("DeliveryJobsConfirmTaskTransfer", "确认转交了 {n} 单"),),
+              "none": "两个地区都走了一遍，没有可转交的委托",
+              "needs": ("DeliveryJobsValleyIVLoop", "DeliveryJobsWulingLoop")},
+    "环境监测": {"entry": "EnvironmentMonitoringMain",
+              "did": (("EnvironmentMonitoringTakePhoto", "接了委托、拍了监测照片"),),
+              "none": "两个监测终端都看过了，没有可接的委托",
+              "needs": ("OutskirtsMonitoringTerminalLoop", "MarkerStoneMonitoringTerminalLoop")},
+}
+# MaaEnd's own abort: a failed scene check (SceneImageCheck.json, e.g.
+# __SceneImageCheckModFailedFinish) goes next to this node, which stops the whole task
+# chain through MaaFW's PostStop (SceneLoading.json 「运用 poststop 接口停止整个任务链」).
+# 2026-10-08 10:34:16 (MaaEnd-06-31-06): 装备制造's check found the UID line cut short,
+# MaaEnd said so in its own log (「UID显示不完整，…影响识别」), MaaFW logged
+# __SceneImageCheckModFailedFinish -> __SceneCheckAbortPipeline, GearAssemblyStart
+# Succeeded, MaaTaskerPostStop; MXU logged 「自动执行任务完成，关闭自身」 and the
+# 「停止任务」 lines are that stop. AUTO-MAS sent no stop (its MaaEnd update had ended at
+# 10:30:43). MaaFW books the task Succeeded, so the abort is read from this step.
+ABORT_STEP = "__SceneCheckAbortPipeline"
+
+
+def task_verdict(task: str, trail: dict) -> "tuple[bool, str]":
+    """(did its job or found nothing to do, what MaaFW's log shows) for one of
+    TRAIL_TASKS, from its task_trail.
+
+    Order: MaaEnd's abort; a nothing-to-do end step (before MaaFW's result, which for
+    a StopTask end is Succeeded - TRAIL_RULES - but the pipeline calls the step a
+    normal end whatever is booked); MaaFW's Failed; the step that did the job; a
+    nothing-to-do told by the steps that ran."""
+    rule, nodes = TRAIL_RULES[task], trail["nodes"]
+    if nodes.get(ABORT_STEP):
+        return False, "终末地自己检查画面没过，把后面的任务全停了，这一项没做成"
+    for step, word in rule.get("end", ()):
+        if nodes.get(step):
+            return True, word
+    if trail["result"] == "Failed":
+        return False, "终末地自己记的结果是失败"
+    did = [w.format(n=nodes[s]) for s, w in rule["did"] if nodes.get(s)]
+    if did:
+        return True, "、".join(did)
+    if rule.get("needs") and all(nodes.get(x) for x in rule["needs"]):
+        return True, rule["none"]
+    return False, f"终末地自己的记录里只走了 {sum(nodes.values())} 步，没有做成的一步，也没有「没东西可做」的结果"
+
+
+def _trails_read(maaend_dir, times: dict) -> "tuple[dict, dict]":
+    """({task: task_trail or None}, {task: log_reaches its start}) for each of
+    TRAIL_TASKS in `times` ({task: (start, finish)}, naive machine-local, as
+    collector_maaend.task_times gives them); MaaFW's log is read once for all of them.
+    ({}, {}) when none of the four is in `times`."""
+    tasks = [t for t in TRAIL_TASKS if t in times]
+    if not tasks:
+        return {}, {}
+    events = task_events(maaend_dir, min(times[t][0] for t in tasks), max(times[t][1] for t in tasks))
+    return ({t: task_trail(events, TRAIL_RULES[t]["entry"], *times[t]) for t in tasks},
+            {t: log_reaches(events, times[t][0]) for t in tasks})
+
+
+def log_reaches(events: list, t0: datetime) -> bool:
+    """MaaFW's log (`events` from task_events) holds an event in the TRAIL_SLACK_S before
+    t0, AUTO-MAS's 「任务开始」 of a task: the log reaches back to the moment MaaEnd
+    posted that task (its Tasker.Task.Starting comes up to a second before t0), so a
+    task with no start of its own there was not posted as MaaFW knows it. False when the
+    log begins later: MaaFW rotates its log into maafw.bak.<time>.log files (2026-10-16:
+    three in seven minutes) and MaaEnd clears its debug folder when it restarts, so the
+    files can begin inside a long run - also inside the task itself, which is why the
+    stretch before the start is read and not the task's whole window. The previous
+    task's end event sits 2 ms before the next start (2026-10-16); the first task of a
+    launch has nothing before it and reads as not reached."""
+    lo = t0 - timedelta(seconds=TRAIL_SLACK_S)
+    return any(lo <= w < t0 for w, _, _ in events)
+
+
+# Runs in a row with a task left unread before that counts: machine check #28 FAILs and
+# the ledger calls those tasks unbacked (core.maaend_unverified). A task is unread when
+# MaaFW's log holds none of the four, or when it holds no run of this task and does not
+# reach back to its start (log_reaches). One such run is left unjudged: MaaEnd clears
+# its debug folder when it restarts, MaaFW rotates its log, and a folder that is not
+# configured or not readable says nothing about the game.
+TRAIL_MISS_FAIL = 2
+
+
+def trail_unread(e: dict) -> bool:
+    """A booked trail_entry left unread. A row booked before the 「unread」 key read a
+    missing task as unread only when none of the four was found, and then its
+    raw['tasks_trail_miss'] is above 0 - which the callers ask first."""
+    return bool(e.get("unread", not e.get("found", True)))
+
+# AUTO-MAS's run-log line: 「[2026-10-08 10:34:16.230] UID显示不完整，…」.
+_RUN_LINE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\] (.+)$", re.M)
+# MaaEnd's own lines in a task's window that are not its reason: the task's start and
+# end, and the scene check's standing note (2026-10-08 10:34:14.623).
+_NOT_REASON = re.compile(r"^任务(开始|完成)[:：]|^正在检查画面")
+# MaaEnd's reasons said in plain words, where its own line carries English
+# (texts.plain): (part of its line, what it means).
+_ABORT_WORDS = (
+    ("UID显示不完整", "左上角的账号编号显示不全，它说开着隐藏账号编号的模组会挡住左上方的字，认不出画面"),
+)
+
+
+def abort_said(text: str, t0: datetime, t1: datetime) -> "tuple[str, datetime | None]":
+    """MaaEnd's last own line in AUTO-MAS's run log `text` inside the task's window
+    t0..t1 (whole seconds, as collector_maaend.task_times gives them) that is not a
+    task start / end, and its time: why it stopped itself (2026-10-08 10:34:16.230
+    「UID显示不完整，…影响识别」); ("", None) when there is none."""
+    said, when = "", None
+    for m in _RUN_LINE.finditer(text or ""):
+        at = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+        line = m.group(2).strip()
+        if t0 <= at <= t1 and line and not _NOT_REASON.search(line):
+            said, when = line, at
+    return said, when
+
+
+def abort_why(text: str, t0: datetime, t1: datetime) -> str:
+    """\"，它记的原因：…\" for MaaEnd's abort of one task: its own line, verbatim when it
+    is plain Chinese, else its _ABORT_WORDS meaning, else where to read it."""
+    from ark_relay.core import texts  # noqa: PLC0415
+    line, at = abort_said(text, t0, t1)
+    if not line:
+        return ""
+    for part, meant in _ABORT_WORDS:
+        if part in line:
+            return f"，它记的原因：{meant}"
+    if not texts.plain(line):
+        return f"，它记的原因：「{line}」"
+    return f"，原因写在终末地自己记的 {at:%H:%M:%S} 那一行"
+
+
+def trail_entry(task: str, trail: "dict | None", t0: datetime, t1: datetime, text: str = "",
+                unread: bool = False) -> dict:
+    """One task's verdict as booked in raw['tasks_trail'] (alarm.records._mark_task_trails)
+    and read back by machine check #28 and core.maaend_unverified, so MaaFW's log is
+    read once per run:
+
+        t0, t1   AUTO-MAS's 「任务开始」 / 「任务完成」 (ISO, machine-local)
+        found    MaaFW's log holds this task's run (task_trail is not None)
+        unread   not found because the log does not cover it (`unread`, set by
+                 trail_table: none of the four found, or the log does not reach
+                 back to its start); a task found, or missing from a log that
+                 covers it, is not unread
+        ok       task_verdict: did its job or found nothing to do
+        said     what MaaFW's log shows (task_verdict), with MaaEnd's own reason
+                 (abort_why, from the run log `text`) when it stopped itself
+        abort    MaaEnd stopped itself inside this task (ABORT_STEP)
+        ended    MaaFW's end event (ISO), None when there is none"""
+    e = {"t0": t0.isoformat(), "t1": t1.isoformat(), "found": trail is not None,
+         "unread": trail is None and unread, "ok": False, "said": "", "abort": False, "ended": None}
+    if trail is None:
+        return e
+    ok, said = task_verdict(task, trail)
+    abort = bool(trail["nodes"].get(ABORT_STEP))
+    if abort:
+        said += abort_why(text, t0, t1)
+    e.update(ok=ok, said=said, abort=abort,
+             ended=trail["ended"].isoformat() if trail["ended"] is not None else None)
+    return e
+
+
+def trail_table(maaend_dir, times: dict, text: str = "") -> "tuple[dict, str]":
+    """({task: trail_entry} for each of TRAIL_TASKS in `times`, why some of them are
+    unread - '' when none is, or when none was asked). Unread: every one of them when
+    MaaFW's log holds none of the four; else each one with no run in the log that the
+    log does not reach back to (log_reaches: a rotated or cleared log beginning inside
+    the run). A task missing from a log that does reach its start is not unread: it
+    was not posted as MaaFW knows it, and is judged unbacked at once. An unreadable
+    file is skipped like a missing one (_fw_lines)."""
+    asked = {t: times[t] for t in TRAIL_TASKS if t in times}
+    if not asked:
+        return {}, ""
+    found, reach = _trails_read(maaend_dir, asked) if maaend_dir else ({}, {})
+    none = not any(found.get(t) for t in asked)
+    table = {t: trail_entry(t, found.get(t), t0, t1, text, unread=none or not reach.get(t))
+             for t, (t0, t1) in asked.items()}
+    unread = [t for t, e in table.items() if e["unread"]]
+    if not unread:
+        return table, ""
+    if not maaend_dir:
+        why = "没配终末地的文件夹"
+    elif not _fw_files(maaend_dir):
+        why = "终末地的日志文件夹里没有框架日志（它每次重启会清掉）"
+    elif not all(reach.get(t) for t in unread):
+        why = (f"框架日志没盖到{'、'.join(t for t in unread if not reach.get(t))}开始的那一刻："
+               f"开始前 {TRAIL_SLACK_S} 秒里一条记录也没有，日志换了新文件、终末地重启清掉了前面的、"
+               "或者文件读不了，都会这样")
+    else:
+        why = "框架日志盖到了这段时间，但里面没有这几个任务"
+    return table, why

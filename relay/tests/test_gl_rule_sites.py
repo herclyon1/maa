@@ -88,6 +88,9 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
     ("features/verify/collector_maaend.py", r"^任务(开始|完成|失败)[:：]\s*(\S.+?)\s*$"):
         ("none", "reads the message part of a stamped line (_LINE_STAMP strips the stamp first); "
                  "the corpus lines carry the stamp"),
+    ("features/verify/maaend_fwlog.py", r"^任务(开始|完成)[:：]|^正在检查画面"):
+        ("none", "reads the message part of a stamped run-log line (_RUN_LINE strips the stamp first, "
+                 "abort_said); the corpus lines carry the stamp"),
     ("features/verify/collector_maaend.py", r"(?:路线|线路)(\d+)[：:][^\n]*采集失败"):
         ("fixture", "only fixtures/collect-retry-2026-09-11 (real MXU lines, no SOURCE in the census)"),
     ("features/verify/collector_maaend.py", r"((?:路线|线路)(\d+)[：:][^\n]*?)采集失败"):

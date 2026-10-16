@@ -248,7 +248,8 @@ evidence from the game:
 
 | Game | Item | Evidence | Code |
 |---|---|---|---|
-| 终末地 | each daily task | a line MaaEnd wrote between the task's 「任务开始」 and 「任务完成」 other than those two (「获得 信用 ×400」, 「当前理智 234/360」, ...), or a task-end picture `state/shots/<day>/MaaEnd-*/<HHMMSS>-<task>.png` taken 5 s before to 120 s after the 「任务完成」 | `collector_maaend.task_evidence` (raw `tasks_evidence`), `handle._mark_task_shots` (raw `tasks_shot`), `core.maaend_unverified` |
+| 终末地 | gifts, gear assembly, delivery jobs, environment monitoring | MaaEnd's own steps in MaaFW's log (`maafw*.log`): the step that does the job or a nothing-to-do end, booked with the record. When MaaFW's log holds none of the four, or does not reach back to a task's start (rotated or cleared inside the run), the run leaves those tasks unjudged (said in the daily report) until that happens twice in a row; a task missing from a log that does reach its start is unbacked at once | `maaend_fwlog.trail_table` / `task_verdict`, `records._mark_task_trails` (raw `tasks_trail`, `tasks_trail_miss`), `core.maaend_unverified` / `maaend_unjudged` |
+| 终末地 | every other daily task | a line MaaEnd wrote between the task's 「任务开始」 and 「任务完成」 other than those two (「获得 信用 ×400」, 「当前理智 234/360」, ...). The task-end desktop picture is no evidence since 2026-10-16: it is taken 5-8 s after the task ended and shows the next task (`task_shots.py`); records booked before then keep the picture rule (raw `tasks_shot`) | `collector_maaend.task_evidence` (raw `tasks_evidence`), `core.maaend_unverified` |
 | 明日方舟 | annihilation | a 「剿灭模式 x/y」 line | `core.format_daily` |
 | 鸣潮 | weekly garden | 「乐园任务完成」 (the counter read alone is not) | `collector_okww._okww_steps` |
 

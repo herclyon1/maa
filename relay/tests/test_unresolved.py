@@ -444,13 +444,16 @@ title = texts.unverified_alarm("终末地", "早班", 1)
 check("终末地 1 项没证据：进群", alarms(e), [title])
 check("标题走群", route_of(title, alert=True), "group")
 check("头一行写出哪一项、为什么不算、证据包", last_body(e).splitlines()[0],
-      "终末地早班：赠送干员礼物 程序说做完了，但游戏里拿不出证据（日志里没有游戏回显，也没有任务结束的截图），"
+      "终末地早班：赠送干员礼物 程序说做完了，但游戏里拿不出证据（日志里没有游戏回显），"
       f"不算完成，已交给我们这边去查（证据包 {PAGE}）")
 handle._handle(e, rec("MaaEnd", at(9, 40), ok=True, raw=dict(GIFT)))
 check("同一天同样这几项又没证据：不重推", len(alarms(e)), 1)
 e = build()
+# The desktop picture is taken 5-8 s after the task ended and shows the next task
+# (task_shots.py, verify ledger #28): booked now, it backs nothing. What backs these
+# four is MaaFW's own steps (test_mc28_task_trail.py), and here there is no MaaFW log.
 handle._handle(e, rec("MaaEnd", at(9, 5), ok=True, raw=dict(GIFT, tasks_shot=["赠送干员礼物"])))
-check("有任务结束截图就是证据：不推", alarms(e), [])
+check("只有一张任务结束截图不算证据：照推", alarms(e), [title])
 e = build()
 handle._handle(e, rec("MaaEnd", at(9, 5), failed=["基建任务"], raw=dict(GIFT)))
 handle._handle(e, rec("MaaEnd", at(9, 40), ok=True,

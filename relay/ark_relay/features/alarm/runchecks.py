@@ -24,6 +24,10 @@ log = logging.getLogger("ark.handle")
 # checks have read it (_judge_run pops it): the outcome checks, the summary and, for
 # OK-WW, the nest settings they were judged with.
 _OUTCOME: dict[str, dict] = {}
+# The items of the 「没证据」 alarm pushes._push_unverified sent (or kept for the next
+# tick) while each record was booked, until its machine checks have read them
+# (_judge_run pops it): #28 does not push a FAIL that alarm already carries.
+_UNVERIFIED: dict[str, list] = {}
 
 
 def _judged(rec: RunRecord, checks: list, who: str, **extra) -> str | None:
@@ -177,8 +181,9 @@ def _run_ctx(eng, rec: RunRecord, watch: _RunWatch) -> dict:
             text, unreadable = "", True
     day = run_day(rec)
     ctx = {
-        "rec": rec, "raw": rec.raw, "log_text": text,
+        "rec": rec, "raw": rec.raw, "log_text": text, "day": day,
         "outcome": _OUTCOME.get(rec.run_id),
+        "unverified_alarm": list(_UNVERIFIED.get(rec.run_id) or []),
         "held_before": list(watch.held_before),
         "held": [r.run_id for r in eng._pending.values()],
         "unsent": [x[2] for x in getattr(eng, "_unsent_unresolved", []) or []],
@@ -188,6 +193,9 @@ def _run_ctx(eng, rec: RunRecord, watch: _RunWatch) -> dict:
         "test_run": _test_run(eng, rec),
         "maaend_dir": eng.cfg.maaend_dir,
     }
+    if hasattr(eng, "_already_alerted"):
+        # The day marks a #28 FAIL pushed at once is marked in (runs._hold_28), as settle_28 checks.
+        ctx["alerted"] = (eng._already_alerted, eng._mark_alerted)
     if unreadable:
         ctx["log_unreadable"] = True
     if rec.script == "MaaEnd":
@@ -196,3 +204,25 @@ def _run_ctx(eng, rec: RunRecord, watch: _RunWatch) -> dict:
         from ark_relay.features.okww_patch import okww_overlay  # noqa: PLC0415
         ctx["overlay"] = okww_overlay.report_snapshot()
     return ctx
+
+
+def _settle_held(eng) -> None:
+    """Settle the machine-check FAILs kept while their run was held for its retry
+    (machinechecks/runs.py settle_28) whose hold is over: no record of that script and
+    user held any more, the script not running. After every booking and every
+    _flush_pending; never raises (a broken settle is an ERROR, which reaches the group,
+    and the FAILs stay kept for the next one)."""
+    state_dir = getattr(getattr(eng, "cfg", None), "state_dir", None)
+    if not state_dir:
+        return
+    try:
+        from ark_relay.features.selfcheck.machinechecks import runs  # noqa: PLC0415
+        if not runs._state_get(state_dir, runs.HELD_28):
+            return
+        held = {(r.script, r.user) for r in eng._pending.values()}
+        runs.settle_28(state_dir,
+                       lambda script, user: (script, user) not in held and not eng._script_running(script),
+                       eng.state.read_ledger, eng.notifier,
+                       alerted=(eng._already_alerted, eng._mark_alerted))
+    except Exception:
+        log.exception("上机核对等重试的那几条没结成（下一轮再结）")

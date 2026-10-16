@@ -10,6 +10,7 @@ import logging
 
 from ark_relay.core import texts
 from ark_relay.core import ledger as core
+from ark_relay.core.ledger_rows import maaend_unbacked_why, maaend_unverified
 from ark_relay.core.config import RunRecord
 from ark_relay.features.alarm.records import _diagnosis, _restart_note, run_day
 
@@ -42,12 +43,42 @@ def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> tuple[str, list]:
 
 
 # Why an item does not count, by game (core.day_unverified_items says how each is found).
+# MaaEnd's depends on the items: those judged from its own record say so
+# (_unverified_why, texts.maaend_unverified_why); this one is for the rest.
 _UNVERIFIED_WHY = {
-    "MaaEnd": "日志里没有游戏回显，也没有任务结束的截图",
+    "MaaEnd": "日志里没有游戏回显",
     "MAA": "日志里没有「剿灭模式 x/y」这行进度",
     "OK-WW": "日志里没读到做完",
 }
 UNVERIFIED_KIND = "没证据"
+# The mark naming the record whose booking sent (or queued) a 「没证据」 alarm.
+UNVERIFIED_BY = "没证据-发自"
+
+
+def _unverified_why(script: str, items: list, entries: list) -> str:
+    """_UNVERIFIED_WHY for `items`, one day's ledger `entries`. For MaaEnd, an item some
+    run of the day judged from MaaEnd's own record (raw['tasks_trail'], the four of
+    maaend_fwlog.TRAIL_TASKS) is said that way; the rest by their log line."""
+    if script != "MaaEnd":
+        return _UNVERIFIED_WHY.get(script, "没有游戏里的证据")
+    judged = {t for e in entries if e.get("script") == "MaaEnd"
+              for t, v in ((e.get("raw") or {}).get("tasks_trail") or {}).items() if isinstance(v, dict)}
+    return texts.maaend_unverified_why([t for t in items if t in judged], [t for t in items if t not in judged])
+
+
+def _trail_whys(rec: RunRecord, items: list, entries: list) -> list:
+    """[(task, what MaaEnd's own record shows)] for the items of the 「没证据」 alarm judged
+    from it (raw['tasks_trail']: MaaEnd stopped itself inside the task and why, no step
+    that did the job, ...), from this run's record first, else the day's latest run that
+    left it unbacked; the same verdict machine check #28 reads, so the alarm carries it."""
+    out = []
+    rows = [rec.raw or {}, *((e.get("raw") or {}) for e in reversed(entries) if e.get("script") == rec.script)]
+    for t in items:
+        for raw in rows:
+            if t in maaend_unverified(raw) and (why := maaend_unbacked_why(raw, t)):
+                out.append((t, why))
+                break
+    return out
 
 
 def _push_unverified(eng, rec: RunRecord) -> None:
@@ -65,19 +96,42 @@ def _push_unverified(eng, rec: RunRecord) -> None:
         # Read from handle at call time: tests rebind handle._ship_evidence.
         from ark_relay.features.alarm.handle import _ship_evidence  # noqa: PLC0415
         day = run_day(rec)
-        items = dict(core.day_unverified_items(eng.state.read_ledger(day))).get(rec.script)
+        entries = eng.state.read_ledger(day)
+        items = dict(core.day_unverified_items(entries)).get(rec.script)
         if not items:
             return
         _, shift = unresolved.where(eng, rec)
         game = core._game(rec.script)
         page = _ship_evidence(eng, rec)
         head = texts.unverified_alarm_head(game, shift, "、".join(items),
-                                           _UNVERIFIED_WHY.get(rec.script, "没有游戏里的证据"), page)
-        body = head + ("" if page else texts.EVIDENCE_NOT_SHIPPED + "\n")
+                                           _unverified_why(rec.script, items, entries), page)
+        body = (head + texts.unverified_trail_lines(_trail_whys(rec, items, entries))
+                + ("" if page else texts.EVIDENCE_NOT_SHIPPED + "\n"))
         # Keyed by the items, not the record: a later run of the same game the same
         # day with the same items left unbacked is the same alarm, not a new one.
-        _push_now(eng, day, UNVERIFIED_KIND, f"{rec.script}:{'、'.join(items)}",
-                  texts.unverified_alarm(game, shift, len(items)), body)
+        key = f"{rec.script}:{'、'.join(items)}"
+        # Which record's booking sent it: a record replayed after its handling broke
+        # off (_append_ledger_once) finds its own alarm, not an earlier run's.
+        mine = unresolved._key(UNVERIFIED_BY, rec.run_id)
+        ours = True
+        if not eng._already_alerted(day, unresolved._key(UNVERIFIED_KIND, key)):
+            _push_now(eng, day, UNVERIFIED_KIND, key, texts.unverified_alarm(game, shift, len(items)), body)
+            eng._mark_alerted(day, mine)
+        else:
+            ours = eng._already_alerted(day, mine)
+        if ours:
+            # Sent, or kept for the next tick: these items reach the group in this
+            # alarm, which machine check #28 then does not repeat - for this record
+            # (runs._fail_28) and for a run of the day held for this retry (runs.covered_28).
+            from ark_relay.features.alarm import runchecks  # noqa: PLC0415
+            from ark_relay.features.selfcheck.machinechecks import runs  # noqa: PLC0415
+            runchecks._UNVERIFIED[rec.run_id] = list(items)
+            runs.covered_28(eng.cfg.state_dir, rec.script, day, list(items))
+        else:
+            # The same alarm went out for an earlier run of the day: machine check #28
+            # pushes its own FAIL about this run (one abort, one group message).
+            log.info("「%s」今天已经为更早的一趟发过，这一趟由上机核对第 28 条单独报（%s）",
+                     texts.unverified_alarm(game, shift, len(items)), rec.run_id)
     except Exception:
         log.exception("「没证据」这一项没能推到群里（%s）", rec.run_id)
 

@@ -37,11 +37,12 @@ from ark_relay.features.alarm.gamelogs import (
 from ark_relay.features.alarm.records import (
     SHOT_AFTER_S, SHOT_BEFORE_S, _append_ledger_once, _attempts, _confirm_unreachable, _diagnosis,
     _check_d3d11_after_maaend, _estop_overlap, _healed_title, _later_success, _mark_raw_on_ledger, _mark_task_shots,
+    _mark_task_trails,
     _mark_update_restart, _restart_note, _restart_result, _restore_after_maaend, _same_shift,
     _state_relative, run_day)
 from ark_relay.features.alarm.runchecks import (
-    _OUTCOME, _RunWatch, _alert_days, _alert_file, _alert_sizes, _alerts_since, _judged,
-    _run_ctx, _test_run, _update_restarts)
+    _OUTCOME, _UNVERIFIED, _RunWatch, _alert_days, _alert_file, _alert_sizes, _alerts_since, _judged,
+    _run_ctx, _settle_held, _test_run, _update_restarts)
 from ark_relay.features.alarm.verdict import _mark_no_self_exit, _verify_outcome
 from ark_relay.features.alarm.pushes import (
     UNVERIFIED_KIND, _UNVERIFIED_WHY, _errwatch, _evidence_note, _push_now, _push_undone,
@@ -693,6 +694,9 @@ def _handle(eng, rec: RunRecord) -> None:
     with watch:
         _book(eng, rec)
     _judge_run(eng, rec, watch)
+    # A check's FAIL kept while a run was held for its retry: this booking may have
+    # ended the hold (the retry got through) or sent the alarm that carries it.
+    _settle_held(eng)
 
 
 def _book(eng, rec: RunRecord) -> None:
@@ -705,6 +709,7 @@ def _book(eng, rec: RunRecord) -> None:
     _confirm_unreachable(eng, rec)
     if rec.script == "MaaEnd":
         _mark_task_shots(eng, rec)
+        _mark_task_trails(eng, rec)
     _append_ledger_once(eng, rec)
     key = (rec.script, rec.user)
     if rec.script == "MaaEnd":
@@ -871,120 +876,125 @@ def _hold_restart(eng, rec: RunRecord, key: tuple) -> None:
 
 
 def _flush_pending(eng) -> None:
-    if getattr(eng, "_unsent_unresolved", None):
-        from ark_relay.features.alarm import unresolved  # noqa: PLC0415
-        unresolved.retry_unsent(eng)
-    if not (eng._pending or eng._recovered):
-        return
-
-    # Wait only on the failed script's own retries, never on the rest of the queue.
-    # AUTO-MAS writes a script's records once all its attempts are over, so by the
-    # time one is held here its retries are normally spent; waiting for the whole
-    # queue would hold an alarm behind every script after it.
-    for rec in list(eng._recovered.values()):
-        if eng._script_running(rec.script):
-            continue
-        day = run_day(rec)
-        # Recovered by itself: AUTO-MAS's own retry, the rerun after an update
-        # restart, or the relay's make-up (makeup.py: its success moved the held
-        # failure here) got past it. Not pushed; the daily report says it - the
-        # failed run's row (↻ 「后来在 HH:MM 那趟重试/补跑里做成了」 with its evidence
-        # link, or ↪️ for an update's streak, core.episode_kinds), the run that got
-        # through, and the make-up line (report.makeup_line). The user's words for
-        # this are in relay/USER-SWITCHES.txt (this function's entry). The title
-        # (texts.self_healed / healed_after_update / makeup_passed) only names the
-        # log line.
-        title = _healed_title(eng, rec, day)
-        eng._recovered.pop((rec.script, rec.user), None)
-        eng._persist_pending()   # only now is it safe to forget
-        why = "、".join(rec.failed_tasks or []) or "没写失败项"
-        log.info("%s（%s，跑了 %d 次）：自己好了，只进日报", title, why, _attempts(eng, rec, day))
-        _self_heal_red(eng, f"{rec.script} {rec.run_id} {title}", why)
-
-    for rec in list(eng._pending.values()):
-        if eng._script_running(rec.script):
-            continue
-        if (rec.raw or {}).get("hand_started"):
-            # The last failed attempt of a task a person started (_hold_hand_started):
-            # its retries are over, so its alarm goes out now, saying whose run it was.
-            # Not a shift's: no update-restart, make-up or maintenance branch below.
-            title, body = _failure_alarm(eng, rec, texts.HAND_STARTED_NOTE, held=True)
+    """Push what is held once its script is done retrying, then settle the
+    machine-check FAILs kept while their run was held (runchecks._settle_held)."""
+    try:
+        if getattr(eng, "_unsent_unresolved", None):
             from ark_relay.features.alarm import unresolved  # noqa: PLC0415
-            if not unresolved.send(eng, run_day(rec), "手动", rec.run_id, title, body):
-                return  # still held (makeup.marker.eligible skips it), retry next tick
-            eng._pending.pop((rec.script, rec.user), None)
-            eng._persist_pending()
-            eng.log_tails.pop(rec.run_id, None)
-            log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的（任务 %s），同一任务里没有后来跑成的，已报群",
-                     rec.script, rec.run_id, rec.raw.get("hand_started"))
-            continue
-        if _update_restart_done(eng, rec):
-            continue
-        day = run_day(rec)
-        attempts = _attempts(eng, rec, day)
-        # Could not get into the game, with an official maintenance window or update
-        # notice behind it (handle._mark_downtime, _confirm_unreachable):
-        # every such record goes to the group, with that notice in the text; no
-        # make-up (gameupdate re-runs it after the queue).
-        raw = rec.raw or {}
-        maint = raw.get("maintenance")
-        if maint or (rec.script == "MaaEnd" and raw.get("maaend_unreachable")):
-            hint = maint or raw.get("maaend_unreachable_why") or efstatus.update_hint()
-            note = _evidence_note(eng, rec)      # ships the bundle first when the record has none
-            page = raw.get("evidence_page") or ""
-            from ark_relay.features.verify.collector_maaend import _UNREACHABLE_QUICK_SEC  # noqa: PLC0415
-            body = (texts.cant_enter_body(rec.script, attempts, bool(maint), str(hint or ""),
-                                          _UNREACHABLE_QUICK_SEC)
-                    + (f"\n证据包：{page}" if page else f"\n{note}" if note else ""))
-            if eng.notifier.send(texts.cant_enter(rec.script), body, alert=True):
-                return  # if it cannot be sent, come back next tick
-            eng._pending.pop((rec.script, rec.user), None)
-            eng._persist_pending()
-            eng.log_tails.pop(rec.run_id, None)
-            log.info("⏸ %s 进不了游戏（尝试 %d 次），已报群", rec.script, attempts)
-            continue
-        if rec.script in ("MAA", "MaaEnd"):
-            # A person would restart the game and run just the failed part once
-            # more before calling it a fault (makeup.py). Held until the make-up is
-            # over. Still failed, or no make-up for it -> the group hears of it now,
-            # every time (unresolved.py). Went through -> recovered: the daily report
-            # only, its make-up line and the failed run's row say it.
-            from ark_relay.features.makeup import makeup  # noqa: PLC0415
-            from ark_relay.features.alarm import unresolved  # noqa: PLC0415
-            # MAA refused the config itself: no make-up can help, so it is refused
-            # here and the alarm goes out on this tick, not after maybe_run's.
-            makeup.refuse_rejected(eng, rec)
-            verdict, phrase = unresolved.after_makeup(eng, rec)
-            if verdict == unresolved.WAIT:
+            unresolved.retry_unsent(eng)
+        if not (eng._pending or eng._recovered):
+            return
+
+        # Wait only on the failed script's own retries, never on the rest of the queue.
+        # AUTO-MAS writes a script's records once all its attempts are over, so by the
+        # time one is held here its retries are normally spent; waiting for the whole
+        # queue would hold an alarm behind every script after it.
+        for rec in list(eng._recovered.values()):
+            if eng._script_running(rec.script):
                 continue
-            if verdict == unresolved.PASSED:
+            day = run_day(rec)
+            # Recovered by itself: AUTO-MAS's own retry, the rerun after an update
+            # restart, or the relay's make-up (makeup.py: its success moved the held
+            # failure here) got past it. Not pushed; the daily report says it - the
+            # failed run's row (↻ 「后来在 HH:MM 那趟重试/补跑里做成了」 with its evidence
+            # link, or ↪️ for an update's streak, core.episode_kinds), the run that got
+            # through, and the make-up line (report.makeup_line). The user's words for
+            # this are in relay/USER-SWITCHES.txt (this function's entry). The title
+            # (texts.self_healed / healed_after_update / makeup_passed) only names the
+            # log line.
+            title = _healed_title(eng, rec, day)
+            eng._recovered.pop((rec.script, rec.user), None)
+            eng._persist_pending()   # only now is it safe to forget
+            why = "、".join(rec.failed_tasks or []) or "没写失败项"
+            log.info("%s（%s，跑了 %d 次）：自己好了，只进日报", title, why, _attempts(eng, rec, day))
+            _self_heal_red(eng, f"{rec.script} {rec.run_id} {title}", why)
+
+        for rec in list(eng._pending.values()):
+            if eng._script_running(rec.script):
+                continue
+            if (rec.raw or {}).get("hand_started"):
+                # The last failed attempt of a task a person started (_hold_hand_started):
+                # its retries are over, so its alarm goes out now, saying whose run it was.
+                # Not a shift's: no update-restart, make-up or maintenance branch below.
+                title, body = _failure_alarm(eng, rec, texts.HAND_STARTED_NOTE, held=True)
+                from ark_relay.features.alarm import unresolved  # noqa: PLC0415
+                if not unresolved.send(eng, run_day(rec), "手动", rec.run_id, title, body):
+                    return  # still held (makeup.marker.eligible skips it), retry next tick
                 eng._pending.pop((rec.script, rec.user), None)
                 eng._persist_pending()
                 eng.log_tails.pop(rec.run_id, None)
-                passed = texts.makeup_passed(unresolved.GAME[rec.script], unresolved.where(eng, rec)[1])
-                log.info("%s（尝试 %d 次）：补跑走通了，只进日报", passed, attempts)
-                _self_heal_red(eng, f"{rec.script} {rec.run_id} {passed}",
-                               "、".join(rec.failed_tasks or []) or "没写失败项")
+                log.info("🖐 %s %s 是有人在 AUTO-MAS 上手动开的（任务 %s），同一任务里没有后来跑成的，已报群",
+                         rec.script, rec.run_id, rec.raw.get("hand_started"))
                 continue
-            if not _push_unresolved(eng, rec, phrase, attempts):
+            if _update_restart_done(eng, rec):
+                continue
+            day = run_day(rec)
+            attempts = _attempts(eng, rec, day)
+            # Could not get into the game, with an official maintenance window or update
+            # notice behind it (handle._mark_downtime, _confirm_unreachable):
+            # every such record goes to the group, with that notice in the text; no
+            # make-up (gameupdate re-runs it after the queue).
+            raw = rec.raw or {}
+            maint = raw.get("maintenance")
+            if maint or (rec.script == "MaaEnd" and raw.get("maaend_unreachable")):
+                hint = maint or raw.get("maaend_unreachable_why") or efstatus.update_hint()
+                note = _evidence_note(eng, rec)      # ships the bundle first when the record has none
+                page = raw.get("evidence_page") or ""
+                from ark_relay.features.verify.collector_maaend import _UNREACHABLE_QUICK_SEC  # noqa: PLC0415
+                body = (texts.cant_enter_body(rec.script, attempts, bool(maint), str(hint or ""),
+                                              _UNREACHABLE_QUICK_SEC)
+                        + (f"\n证据包：{page}" if page else f"\n{note}" if note else ""))
+                if eng.notifier.send(texts.cant_enter(rec.script), body, alert=True):
+                    return  # if it cannot be sent, come back next tick
+                eng._pending.pop((rec.script, rec.user), None)
+                eng._persist_pending()
+                eng.log_tails.pop(rec.run_id, None)
+                log.info("⏸ %s 进不了游戏（尝试 %d 次），已报群", rec.script, attempts)
+                continue
+            if rec.script in ("MAA", "MaaEnd"):
+                # A person would restart the game and run just the failed part once
+                # more before calling it a fault (makeup.py). Held until the make-up is
+                # over. Still failed, or no make-up for it -> the group hears of it now,
+                # every time (unresolved.py). Went through -> recovered: the daily report
+                # only, its make-up line and the failed run's row say it.
+                from ark_relay.features.makeup import makeup  # noqa: PLC0415
+                from ark_relay.features.alarm import unresolved  # noqa: PLC0415
+                # MAA refused the config itself: no make-up can help, so it is refused
+                # here and the alarm goes out on this tick, not after maybe_run's.
+                makeup.refuse_rejected(eng, rec)
+                verdict, phrase = unresolved.after_makeup(eng, rec)
+                if verdict == unresolved.WAIT:
+                    continue
+                if verdict == unresolved.PASSED:
+                    eng._pending.pop((rec.script, rec.user), None)
+                    eng._persist_pending()
+                    eng.log_tails.pop(rec.run_id, None)
+                    passed = texts.makeup_passed(unresolved.GAME[rec.script], unresolved.where(eng, rec)[1])
+                    log.info("%s（尝试 %d 次）：补跑走通了，只进日报", passed, attempts)
+                    _self_heal_red(eng, f"{rec.script} {rec.run_id} {passed}",
+                                   "、".join(rec.failed_tasks or []) or "没写失败项")
+                    continue
+                if not _push_unresolved(eng, rec, phrase, attempts):
+                    return  # still on disk, retry next tick
+                eng._pending.pop((rec.script, rec.user), None)
+                eng._persist_pending()
+                eng.log_tails.pop(rec.run_id, None)
+                log.info("❌ %s 没处理好，已进群（%s；尝试 %d 次）", rec.script, phrase, attempts)
+                continue
+            # Every final failure is pushed, the same step failing again the same day
+            # included.
+            note = _evidence_note(eng, rec)
+            title, body = core.format_failure(rec, _diagnosis(eng, rec))
+            body = texts.failed_body_head(attempts) + _restart_note(rec) + body + (f"\n{note}" if note else "")
+            errors = eng.notifier.send(title, body, alert=True)
+            if errors:
+                log.error("告警推送出错，保留待重发: %s", "；".join(errors))
                 return  # still on disk, retry next tick
             eng._pending.pop((rec.script, rec.user), None)
-            eng._persist_pending()
-            eng.log_tails.pop(rec.run_id, None)
-            log.info("❌ %s 没处理好，已进群（%s；尝试 %d 次）", rec.script, phrase, attempts)
-            continue
-        # Every final failure is pushed, the same step failing again the same day
-        # included.
-        note = _evidence_note(eng, rec)
-        title, body = core.format_failure(rec, _diagnosis(eng, rec))
-        body = texts.failed_body_head(attempts) + _restart_note(rec) + body + (f"\n{note}" if note else "")
-        errors = eng.notifier.send(title, body, alert=True)
-        if errors:
-            log.error("告警推送出错，保留待重发: %s", "；".join(errors))
-            return  # still on disk, retry next tick
-        eng._pending.pop((rec.script, rec.user), None)
-        eng._persist_pending()   # only now is it safe to forget
-        log.info("❌ %s 最终失败，告警已推送（尝试 %d 次）", rec.script, attempts)
+            eng._persist_pending()   # only now is it safe to forget
+            log.info("❌ %s 最终失败，告警已推送（尝试 %d 次）", rec.script, attempts)
+    finally:
+        _settle_held(eng)
 
 
 # ---------- machine checks (machinecheck.py, event 「run」) ----------
@@ -1005,3 +1015,4 @@ def _judge_run(eng, rec: RunRecord, watch: _RunWatch) -> None:
         log.exception("上机核对没跑成（%s；记账照常）", rec.run_id)
     finally:
         _OUTCOME.pop(rec.run_id, None)
+        _UNVERIFIED.pop(rec.run_id, None)

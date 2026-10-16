@@ -31,16 +31,20 @@ when the line a check needs is not there, that is a FAIL quoting what is there.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.features.verify import collector_maaend as cm
+from ark_relay.features.verify import maaend_fwlog
 from ark_relay.features.selfcheck import machinecheck as mc
 from ark_relay.features.verify import outcome
 from ark_relay.core import texts
-from ark_relay.core.config import SERVER_TZ
+from ark_relay.core.config import SERVER_TZ, USER_TZ
+
+log = logging.getLogger("ark.runs")
 
 PASS, FAIL = mc.PASS, mc.FAIL
 LINE_CHARS = 160
@@ -297,21 +301,44 @@ def _state_get(state_dir, key: str):
         return None
 
 
-def _state_set(state_dir, key: str, value) -> None:
-    """Set one key of state/machinecheck-runs.json; a failed write is dropped."""
+def _state_update(state_dir, change, what: str = "") -> bool:
+    """Read state/machinecheck-runs.json once, apply `change(data)` to it and write it
+    back. True when the file was written. A file that is not there yet starts empty;
+    one that cannot be read (a Windows sharing violation, a broken file) is never
+    rewritten from nothing - that wiped every other key: the held #28 FAILs, the seen
+    lists, the miss counts - and the caller is told it was not written. A failed read
+    or write is an ERROR (errwatch: the group hears of it), never raised; the write is
+    atomic, so nothing of a failed one landed; `what` says on that ERROR what was not
+    written. A file that stays unreadable keeps every later write out until it reads
+    again."""
     from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
     f = Path(state_dir) / SEEN_FILE
     try:
         data = json.loads(f.read_text(encoding="utf-8"))
-        data = data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
+    except FileNotFoundError:
         data = {}
-    data[key] = value
+    except (OSError, ValueError) as exc:
+        log.error("上机核对：%s 读不出来（%s: %s），%s没写，免得把里面别的记录冲掉",
+                  SEEN_FILE, type(exc).__name__, exc, what or "这次")
+        return False
+    if not isinstance(data, dict):
+        log.error("上机核对：%s 里不是一张表（%s），%s没写，免得把里面别的记录冲掉",
+                  SEEN_FILE, type(data).__name__, what or "这次")
+        return False
+    change(data)
     try:
         f.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(f, json.dumps(data, ensure_ascii=False))
-    except OSError:
-        pass
+    except OSError as exc:
+        log.error("上机核对：%s 写不进去（%s: %s），%s没写", SEEN_FILE, type(exc).__name__, exc, what or "这次")
+        return False
+    return True
+
+
+def _state_set(state_dir, key: str, value) -> bool:
+    """Set one key of state/machinecheck-runs.json (_state_update). True when the file
+    was written; a caller whose push depends on it says so."""
+    return _state_update(state_dir, lambda data: data.__setitem__(key, value))
 
 
 def _seen(state_dir, cid: str) -> set:
@@ -321,8 +348,12 @@ def _seen(state_dir, cid: str) -> set:
 
 
 def _mark_seen(state_dir, cid: str, run_ids: list) -> None:
-    """Add `run_ids` to check `cid`'s seen list, keeping the last 50."""
-    _state_set(state_dir, cid, (list(_state_get(state_dir, cid) or []) + list(run_ids))[-50:])
+    """Add `run_ids` to check `cid`'s seen list, keeping the last 50 - on the list as
+    read in the same write, so a failed read never cuts it to `run_ids`."""
+    def add(data):
+        got = data.get(cid)
+        data[cid] = ((list(got) if isinstance(got, list) else []) + list(run_ids))[-50:]
+    _state_update(state_dir, add)
 
 
 def _about_restart(row: dict, run_id: str, version: str) -> bool:
@@ -463,29 +494,315 @@ def _c7(ctx):
                     + (f"；结束截图 {shot}" if shot else ""))
 
 
-SHOT_TASKS = ("赠送干员礼物", "装备制造", "转交委托", "环境监测")
+# The four tasks and how each is judged from MaaFW's own steps live in maaend_fwlog
+# (TRAIL_TASKS, TRAIL_RULES, task_verdict, trail_table), shared with the ledger's
+# 「没证据」 rule, which reads the same verdicts booked in raw['tasks_trail'].
+SHOT_TASKS = maaend_fwlog.TRAIL_TASKS
+# Runs in a row with none of the four in MaaFW's log before that is a FAIL of its own
+# (as #7: MaaEnd clears its debug folder when it restarts). The ledger waits as long.
+SHOT_MISS_FAIL = maaend_fwlog.TRAIL_MISS_FAIL
 
 
-@mc.check("#28", "终末地送礼/装备制造/转交委托/环境监测做完都有一张结束时的截图", "A", "run")
+def _shot_note(state: Path, rel: str, ended) -> str:
+    """The desktop picture of this task, said for what it is: task_shots takes it after
+    the task's end event through the desktop agent, 5-8 s late (2026-10-08, -11, -16:
+    file times against file names), while MaaEnd posts the next task within 2 ms and
+    its first input lands 0.1-1.5 s later (maafw.log 2026-10-16). So it shows the
+    next task, never this one's result screen."""
+    p = state / rel
+    try:
+        taken = datetime.fromtimestamp(p.stat().st_mtime)
+    except (OSError, ValueError):
+        return ""
+    where = f"{Path(rel).parent.as_posix()} 里 {p.stem[:6]} 那张"
+    if ended is None:
+        return f"桌面截图 {where} 只作参考"
+    late = (taken - ended).total_seconds()
+    if late <= 0:
+        return f"桌面截图 {where} 是它结束前拍的"
+    return f"桌面截图 {where} 是它结束后 {late:.0f} 秒才拍到的，那时下一个任务已经开始，只作参考"
+
+
+@mc.check("#28", "终末地送礼/装备制造/转交委托/环境监测每趟在终末地自己的记录里看得到做成了（或没东西可做）", "A", "run")
 def _c28(ctx):
+    """Judged from MaaFW's own steps of each task (maaend_fwlog.task_verdict), not from the desktop
+    picture. Until 2026-10-16 this passed when the picture file existed, and the
+    pictures of 10-08 showed the next task: 093302-赠送干员礼物.png the 装备制造 page,
+    093322-装备制造.png 拜访好友, 103416-装备制造.png the bare desktop after MaaEnd
+    stopped itself (maaend_fwlog.ABORT_STEP; verify ledger #28). The picture is still
+    named, with how late it was.
+
+    The verdicts are the ones booked with the record (raw['tasks_trail'],
+    alarm.records._mark_task_trails), so MaaFW's log is read once a run; a record
+    without them is read here the same way.
+
+    A task another MaaEnd run of the same day did (or found nothing to do in) does not
+    need a person: it is no FAIL, its line says which run did it, and the run's own
+    ledger row keeps the cause for the daily report (core.maaend_unverified). On
+    2026-10-08 MaaEnd stopped itself in 装备制造 at 10:34:16 (MaaEnd-06-31-06) after
+    the 09:33 run (MaaEnd-05-29-15) had crafted. Only runs booked before this one are
+    seen: a later run that does the task comes after this verdict. Such a verdict is a
+    PASS marked healed, which the daily section says as failed and made up for.
+
+    A task MaaFW's log does not cover (maaend_fwlog.trail_unread: a rotated or cleared
+    log beginning inside the run, or none of the four in it) is not judged until that
+    has happened SHOT_MISS_FAIL runs in a row, as the ledger waits; the rest of the run
+    is judged as usual.
+
+    A FAIL whose tasks are all on the 「没证据」 alarm sent (or queued) while this record
+    was booked (ctx['unverified_alarm'], pushes._push_unverified) is not pushed again:
+    that alarm carries MaaEnd's own verdict and reason for each of them
+    (maaend_unbacked_why), so one cause goes to the group as one message; the FAIL
+    stays on record. An alarm for the same items sent earlier that day does not count:
+    that one was about another run. A FAIL about a run held for its retry - how the
+    machine books MaaEnd stopping itself: ok=False, every later task failed
+    (MaaEnd-06-31-06) - waits for the hold to end (_fail_28, settle_28)."""
     if not _script(ctx, "MaaEnd") or not _unattended(ctx):
         return None
     text = ctx.get("log_text") or ""
     raw = ctx.get("raw") or {}
-    skipped = raw.get("maaend_tasks_skipped") or {}
-    times = cm.task_times(text)
-    done = [t for t in SHOT_TASKS if t in times and t not in skipped]
+    state_dir = ctx.get("state_dir")
+    if "tasks_trail" in raw:
+        table = raw.get("tasks_trail") or {}
+        misses = int(raw.get("tasks_trail_miss") or 0)
+    else:
+        times = cm.task_times(text)
+        skipped = raw.get("maaend_tasks_skipped") or {}
+        table, why = maaend_fwlog.trail_table(ctx.get("maaend_dir"),
+                                              {t: v for t, v in times.items() if t not in skipped}, text)
+        misses = int(_state_get(state_dir, "#28-miss") or 0) + 1 if why else 0
+        if table:
+            _state_set(state_dir, "#28-miss", misses)
+    done = [t for t in SHOT_TASKS if isinstance(table.get(t), dict)]
     if not done:
         return None
+    unread = [t for t in done if misses and maaend_fwlog.trail_unread(table[t])]
+    if unread and misses < SHOT_MISS_FAIL:
+        # Not judged this run; said on the verdict's line when the rest is judged.
+        done = [t for t in done if t not in unread]
+        if not done:
+            return None
+        waits = f"{'、'.join(unread)} 这一趟终末地自己的记录没盖到，先不判"
+    else:
+        waits = ""
+    if unread and len(unread) == len(done) and not waits:
+        return _fail_28(ctx, done, f"连续 {misses} 趟，{'、'.join(done)} 在终末地自己的记录里都找不到，做成没有看不出来")
     files = raw.get("tasks_shot_files") or {}
-    state = Path(ctx.get("state_dir") or ".")
-    have = {t: files[t] for t in done if files.get(t) and (state / files[t]).is_file()}
-    missing = [t for t in done if t not in have]
-    if missing:
-        return _r(FAIL, f"{'、'.join(missing)} 做完了（任务完成 "
-                        f"{'、'.join(f'{times[t][1]:%H:%M:%S}' for t in missing)}），state/shots 里没有它们结束那一刻的截图"
-                        + (f"；有截图的：{'、'.join(have)}" if have else ""))
-    return _r(PASS, "；".join(f"{t} {have[t]}" for t in done))
+    state = Path(state_dir or ".")
+    good, bad, healed = [], [], False
+    for t in done:
+        e = table[t]
+        t0, t1 = datetime.fromisoformat(e["t0"]), datetime.fromisoformat(e["t1"])
+        line = f"{t}（{t0:%H:%M:%S}→{t1:%H:%M:%S}）"
+        if not e.get("found"):
+            line += (f"连续 {misses} 趟在终末地自己的记录里读不到" if t in unread
+                     else "在终末地自己的记录里找不到")
+        else:
+            line += str(e.get("said") or "")
+            ended = datetime.fromisoformat(e["ended"]) if e.get("ended") else None
+            if note := (_shot_note(state, files[t], ended) if files.get(t) else ""):
+                line += f"；{note}"
+        if e.get("ok"):
+            good.append(line)
+        elif by := _done_elsewhere(ctx, t):
+            # The work got done that day: no FAIL, but a session looks at why this run
+            # did not do it (one 「自愈待查」 red item, techlog.self_heal).
+            good.append(f"{line}；{by}，不用人管")
+            healed = True
+            rid = getattr(ctx.get("rec"), "run_id", "")
+            log.info("上机核对 #28：%s 的%s没做成，%s，不进群，只进日报", rid, t, by)
+            try:
+                from ark_relay.core import techlog  # noqa: PLC0415
+                techlog.self_heal(f"上机核对 #28 {rid} {t}", f"{line}；{by}", state_dir=state_dir)
+            except Exception:  # the verdict stands; the group hears the failure to write
+                log.warning("自愈待查的红项没写进技术日志：#28 %s %s", rid, t, exc_info=True)
+        else:
+            bad.append((t, line))
+    tail = f"；{waits}" if waits else ""
+    if bad:
+        return _fail_28(ctx, [t for t, _ in bad], "；".join(x for _, x in bad)
+                        + (f"。做成的：{'；'.join(good)}" if good else "") + tail)
+    return mc.Result(PASS, "；".join(good) + tail, healed=healed)
+
+
+# The alarm a #28 FAIL rides along with (pushes._push_unverified, its kind 「没证据」).
+UNVERIFIED_ALARM = "没证据"
+RODE_ALONG = "。已写在「没证据」那条报警里一起进群"
+# #28 FAILs of runs held for their retry, until settle_28 settles them (machinecheck-runs.json):
+# {run_id: {script, user, day, tasks, evidence, covered}}.
+HELD_28 = "#28-held"
+HELD_NOTE = "。这一趟中途停了，等这一班的重试跑完再定要不要报"
+
+
+def _fail_28(ctx, tasks: list, evidence: str) -> mc.Result:
+    """#28's FAIL about `tasks`: not pushed on its own when the 「没证据」 alarm sent while
+    this record was booked names every one of them (ctx['unverified_alarm']) - that
+    alarm carries the same verdicts - so the group gets one message for one cause.
+
+    A run held for its retry (ctx['held']: booked ok=False, as AUTO-MAS books MaaEnd
+    stopping itself, every later task failed) is not pushed yet either: its 「没证据」
+    alarm, if any, comes with the retry's booking (handle._handle_success), and the
+    retry may do the task. _hold_28 keeps it until settle_28 settles it."""
+    sent = set(ctx.get("unverified_alarm") or [])
+    if tasks and all(t in sent for t in tasks):
+        return mc.Result(FAIL, evidence + RODE_ALONG, pushed_with=UNVERIFIED_ALARM)
+    rec = ctx.get("rec")
+    if tasks and getattr(rec, "run_id", None) in (ctx.get("held") or []):
+        return _hold_28(ctx, tasks, evidence)
+    return _r(FAIL, evidence)
+
+
+def _hold_28(ctx, tasks: list, evidence: str) -> mc.Result:
+    """Keep the FAIL about the held record (machinecheck-runs.json HELD_28) for
+    settle_28; pushed at once when it cannot be kept, so it is never lost. Whether it
+    is kept is what _state_update returned: a read that fails leaves the file as it
+    was (rewriting it from nothing dropped every other held FAIL, never pushed), a
+    read after a good write does not decide it (one failing pushed it here and again
+    at settle_28). A push at once is marked sent first (#28|<run id>, ctx['alerted']
+    as settle_28's `alerted`): an entry of this run already on file is then dropped
+    by settle_28 without a second push."""
+    rec, state_dir = ctx.get("rec"), ctx.get("state_dir")
+    entry = {"script": rec.script, "user": rec.user, "day": ctx.get("day") or "",
+             "tasks": list(tasks), "evidence": evidence, "covered": []}
+
+    def add(data):
+        held = data.get(HELD_28)
+        held = dict(held) if isinstance(held, dict) else {}
+        held[rec.run_id] = entry
+        data[HELD_28] = held
+
+    if _state_update(state_dir, add, f"#28 等重试的 {rec.run_id}"):
+        return mc.Result(FAIL, evidence + HELD_NOTE, deferred=True)
+    log.info("上机核对 #28：%s 在等重试，但没记下来，现在就报", rec.run_id)
+    try:
+        _alerted(ctx.get("alerted"))[1](ctx.get("day") or "", f"#28|{rec.run_id}")
+    except Exception:  # pushed anyway; settle_28 may push an older entry of it again
+        log.error("上机核对 #28：%s 现在就报，但「已报」没记下", rec.run_id, exc_info=True)
+    return _r(FAIL, evidence)
+
+
+def covered_28(state_dir, script: str, day: str, items: list) -> None:
+    """A 「没证据」 alarm naming `items` of `script` on `day` was just sent (or queued
+    until it goes out): the held #28 FAILs of that day about those tasks are in it."""
+    held = _state_get(state_dir, HELD_28)
+    if not isinstance(held, dict) or not any(
+            e.get("script") == script and e.get("day") == day for e in held.values()):
+        return
+
+    def cover(data):
+        for e in (data.get(HELD_28) if isinstance(data.get(HELD_28), dict) else {}).values():
+            if e.get("script") != script or e.get("day") != day:
+                continue
+            add = [t for t in e.get("tasks") or [] if t in items and t not in (e.get("covered") or [])]
+            if add:
+                e["covered"] = list(e.get("covered") or []) + add
+
+    _state_update(state_dir, cover, f"#28 等重试的 {script} {day} 已由「没证据」报警带上的那几项")
+
+
+# Run ids whose #28 FAIL settle_28 pushed in this process: its guard against a repeat
+# when no day marks are given (see settle_28 `alerted`).
+_PUSHED_28: set = set()
+
+
+def _alerted(alerted):
+    """(already(day, key), mark(day, key)): the engine's day marks when given, else
+    this process's _PUSHED_28."""
+    return alerted or (lambda day, key: key in _PUSHED_28, lambda day, key: _PUSHED_28.add(key))
+
+
+def settle_28(state_dir, hold_over, ledger, notifier, alerted=None) -> None:
+    """Settle each held #28 FAIL whose hold is over (`hold_over(script, user)`: no record
+    of that script and user held any more, the script not running): the tasks a
+    「没证据」 alarm sent for them carries (covered_28) are in the group already; a task
+    another run of the day did (`ledger(day)`, _done_elsewhere) was made up for, which
+    the daily report says, as for a FAIL healed at once; any other task is pushed now
+    as the check's own FAIL, with the evidence of the held run. A push that did not go
+    out is kept and tried again at the next settle.
+
+    A push that went out is pushed once: it is marked sent (`alerted`: (already(day,
+    key), mark(day, key)), the engine's state.json day marks, as unresolved.send keys
+    its pushes; without them, this process's _PUSHED_28) before anything else is
+    written, and its entry is dropped from HELD_28 right then, entry by entry. A
+    HELD_28 that cannot be written is an ERROR; the mark, in another file, keeps the
+    next settle from pushing it again. Rewording the recorded verdict (mc.restate)
+    comes last and its failure is only a warning."""
+    held = _state_get(state_dir, HELD_28)
+    if not isinstance(held, dict) or not held:
+        return
+    mc.load()
+    what = mc.CHECKS["#28"].what
+    already, mark = _alerted(alerted)
+    for rid, e in held.items():
+        if not hold_over(e.get("script"), e.get("user")):
+            continue
+        tasks = list(e.get("tasks") or [])
+        covered = set(e.get("covered") or [])
+        evidence = str(e.get("evidence") or "")
+        was = evidence + HELD_NOTE
+        day = e.get("day") or ""
+        ctx = {"rec": type("Held", (), {"run_id": rid})(), "ledger": ledger(day)}
+        healed = {t: by for t in tasks if t not in covered and (by := _done_elsewhere(ctx, t))}
+        rest = [t for t in tasks if t not in covered and t not in healed]
+        key = f"#28|{rid}"
+        if rest and already(day, key):
+            log.info("上机核对 #28：%s 这一条已经进过群（上回没从等重试的单子上划掉），不重推", rid)
+        elif rest:
+            errs = notifier.send(texts.machinecheck_failed("#28", what),
+                                 texts.machinecheck_failed_body(what, evidence), alert=True)
+            if errs:
+                log.error("上机核对 #28 没过（%s 等重试的那一趟），推送也没推出去，下一轮再推：%s", rid, "；".join(errs))
+                continue
+            log.info("上机核对 #28 没过，%s 的重试完了，%s 没有别的报警带上，已报群：%s", rid, "、".join(rest), evidence[:120])
+            try:
+                mark(day, key)
+            except Exception:  # HELD_28 below is the other record of it
+                log.error("上机核对 #28：%s 已进群，但「已进群」没记下", rid, exc_info=True)
+        _state_update(state_dir, lambda data, rid=rid: _drop_held(data, rid),
+                      f"#28 已结掉的 {rid}（等重试的单子上还留着它）")
+        try:
+            if rest:
+                mc.restate(state_dir, "#28", was, evidence)
+            elif covered:
+                log.info("上机核对 #28 没过，%s 已写在「没证据」那条报警里进群，不另发：%s", rid, evidence[:120])
+                mc.restate(state_dir, "#28", was, evidence + RODE_ALONG)
+            else:
+                by = "；".join(f"{t}：{b}" for t, b in healed.items())
+                log.info("上机核对 #28：%s 的%s没做成，%s，不进群，只进日报", rid, "、".join(healed), by)
+                mc.restate(state_dir, "#28", was, f"{evidence}；{by}，不用人管", healed=True)
+                try:
+                    from ark_relay.core import techlog  # noqa: PLC0415
+                    techlog.self_heal(f"上机核对 #28 {rid} {'、'.join(healed)}", f"{evidence}；{by}", state_dir=state_dir)
+                except Exception:  # the verdict stands; the group hears the failure to write
+                    log.warning("自愈待查的红项没写进技术日志：#28 %s", rid, exc_info=True)
+        except OSError:
+            log.warning("上机核对 #28：%s 的结论没改写进 machinecheck.json", rid, exc_info=True)
+
+
+def _drop_held(data: dict, rid: str) -> None:
+    held = data.get(HELD_28)
+    if isinstance(held, dict):
+        held.pop(rid, None)
+
+
+def _done_elsewhere(ctx, task: str) -> str:
+    """「同一天 HH:MM（东京 HH:MM）开始的那趟已经做成了」 - on both clocks, as the daily
+    report names a run (core.retried_notes) - when another MaaEnd run of the day booked before
+    this one did `task` or found nothing to do in it (its raw['tasks_trail'] verdict,
+    ctx['ledger']), else ''. A row booked before raw['tasks_trail'] backs nothing here."""
+    rec = ctx.get("rec")
+    me = getattr(rec, "run_id", None)
+    for row in ctx.get("ledger") or []:
+        if row.get("script") != "MaaEnd" or row.get("run_id") == me:
+            continue
+        e = ((row.get("raw") or {}).get("tasks_trail") or {}).get(task)
+        if isinstance(e, dict) and e.get("ok"):
+            try:
+                at = datetime.fromisoformat(row.get("started") or "").astimezone(SERVER_TZ)
+            except ValueError:
+                return "同一天另一趟已经做成了"
+            return f"同一天 {at:%H:%M}（东京 {at.astimezone(USER_TZ):%H:%M}）开始的那趟已经做成了"
+    return ""
 
 
 _CLAIM = "确认领取奖励"
