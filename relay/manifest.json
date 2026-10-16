@@ -1,6 +1,6 @@
 {
- "version": 20261016134823,
- "ref": "relay-20261016134823",
+ "version": 20261016135349,
+ "ref": "relay-20261016135349",
  "files": {
   "RELEASE-NOTES.md": "034a340be6a41e404dfa4d703f6f20cd6b02153c",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
@@ -156,7 +156,7 @@
   "ark_relay/features/verify/collector_okww.py": "d330cc34c47e45709d6f0372131f4d3c365ab30f",
   "ark_relay/features/verify/gamelog_errors.py": "f86d38a783a1c4baa75377ffdf616d48ae5fefc8",
   "ark_relay/features/verify/gamelog_errors.txt": "4700101bc13912b393650fd76b20bf2943cfba91",
-  "ark_relay/features/verify/maaend_fwlog.py": "4c1b07da2cc565276ea784e5c88fc6f465b57d77",
+  "ark_relay/features/verify/maaend_fwlog.py": "01e5fab3238874d01541269c00db201fb9e2bb8a",
   "ark_relay/features/verify/outcome.py": "2c337426a5ff616fecab96cdbacb34890646f58f",
   "ark_relay/features/weekly/__init__.py": "0b5dc81b2caa760bdd6f4c2abd47e4de71345442",
   "ark_relay/features/weekly/annihilation.py": "5156bad587bdc445c42ed0bfa6f8703134ef4d73",
@@ -325,7 +325,7 @@
   "ark_relay/features/verify/collector_okww.py": "0e24e580021da0c836bfcc12d258f52484eba525a41fc26c6fddf4084736141b",
   "ark_relay/features/verify/gamelog_errors.py": "91e9f66ff339bcceadd603c38537b8e4c352d8fde4344a376de89b5a2b22bb9d",
   "ark_relay/features/verify/gamelog_errors.txt": "7dcb87ce98314ea5f11460beaae1bb38b9543d6bbb9939476c98dc164a210b54",
-  "ark_relay/features/verify/maaend_fwlog.py": "3b9edcf719d004c22ce7641896d658c74eb49ad7ad6084b0426d482c4b2d1508",
+  "ark_relay/features/verify/maaend_fwlog.py": "abc6cbc8b24ebebda510c71211bc7acdf1819a5ec92ee6ebf021a818af519414",
   "ark_relay/features/verify/outcome.py": "b4e74f69fac54a33e88e28e72647532ac48c111f29b26de41220e571fd98e75d",
   "ark_relay/features/weekly/__init__.py": "8e519e188cd898bc23095f5716ca52d07afa16ac47a1e897dd90b60d5196ca3f",
   "ark_relay/features/weekly/annihilation.py": "2a6f9a1863cb2a2a415c093e08148a43940be6da91505be09035abcadc98f8d9",

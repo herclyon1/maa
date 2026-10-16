@@ -228,10 +228,13 @@ def task_trail(events: list, entry: str, t0: datetime, t1: datetime) -> "dict | 
                 and msg in ("Tasker.Task.Succeeded", "Tasker.Task.Failed")):
             ended, result = w, msg.rsplit(".", 1)[-1]
             break
+    # Without an end event the stretch stops at the window's edge, not at the end of
+    # `events`, which holds the later tasks of the run too.
+    last = ended if ended is not None else hi
     nodes: dict = {}
     seen: set = set()
     for w, msg, d in events:
-        if msg != "Node.PipelineNode.Succeeded" or w < started or (ended is not None and w > ended):
+        if msg != "Node.PipelineNode.Succeeded" or w < started or w > last:
             continue
         key = (d.get("task_id"), d.get("node_id"))
         if key in seen:

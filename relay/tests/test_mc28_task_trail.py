@@ -203,6 +203,15 @@ g0, g1 = datetime(2026, 10, 8, 9, 30, 36), datetime(2026, 10, 8, 9, 33, 2)
 gift = maaend_fwlog.task_trail(maaend_fwlog.task_events(end, g0, g1), "GiftOperatorMain", g0, g1)
 check("both processes log every step; ConfirmGift counted 3 times, not 6",
       gift["nodes"].get("GiftOperatorConfirmGift"), 3)
+no_end = maaend("maafw-2026-10-08.log.gz", edit=lambda t: "".join(
+    x for x in t.splitlines(keepends=True)
+    if not ("Tasker.Task.Succeeded" in x and '"entry":"GiftOperatorMain"' in x)))
+g1end = datetime(2026, 10, 8, 9, 33, 22)
+events = maaend_fwlog.task_events(no_end, g0, g1end)
+gift = maaend_fwlog.task_trail(events, "GiftOperatorMain", g0, g1)
+check("a gift run with no end event stops at its window: 装备制造's steps are not counted in it",
+      (gift["ended"], gift["nodes"].get("GiftOperatorConfirmGift"), "GearAssemblyClickProduceBtn" in gift["nodes"]),
+      (None, 3, False))
 
 print()
 if fails:
