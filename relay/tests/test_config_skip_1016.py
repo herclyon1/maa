@@ -55,7 +55,7 @@ from ark_relay.core import engine as eng                       # noqa: E402
 from ark_relay.core import ledger as core, texts               # noqa: E402
 from ark_relay.core.config import SERVER_TZ, Config             # noqa: E402
 from ark_relay.core.ledger import State                          # noqa: E402
-from ark_relay.features.alarm import errwatch                    # noqa: E402
+from ark_relay.features.alarm import errwatch, missed            # noqa: E402
 from ark_relay.features.run import runwatch                      # noqa: E402
 from ark_relay.features.shutdown import shutdown                 # noqa: E402
 from ark_relay.features.selfcheck import machinecheck as _mc     # noqa: E402
@@ -121,7 +121,7 @@ LEDGER = [("2026-10-16/arknights/MAA-05-00-24", "MAA", "arknights", at(9, 0, 27)
           ("2026-10-16/wuwa/OK-WW-05-20-13", "OK-WW", "wuwa", at(9, 21, 26), at(9, 33, 54), True, False)]
 
 
-def build(state_dir=None, lines=len(LINES)):
+def build(state_dir=None, lines=None):
     APPLOG.write_text("".join(ln + "\n" for ln in LINES[:lines]), encoding="utf-8")
     cfg = Config()
     cfg.state_dir = state_dir or tmpdir()
@@ -220,11 +220,11 @@ class _H(logging.Handler):
 
 
 h = _H()
-logging.getLogger("ark.missed").addHandler(h)
+missed.log.addHandler(h)
 try:
     e4._check_missed_runs(at(10, 15, 5))
 finally:
-    logging.getLogger("ark.missed").removeHandler(h)
+    missed.log.removeHandler(h)
 check("the 10:15 alarm went out", [t for t, _ in alarms(e4)], ["🔌 MaaEnd 没有运行（早班）"])
 check("its log line is marked as already in the group (no 🩺 copy)",
       [bool(getattr(r, errwatch.PUSHED, False)) for r in cap if r.levelno >= logging.WARNING], [True])
