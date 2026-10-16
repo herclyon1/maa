@@ -17,7 +17,7 @@ checks read live sources instead. Both run from the tick:
   a refusal is one app.log line and no history record, and the queue moves on:
 
       2026-10-16 09:34:04.988 | INFO     | 业务调度 | 任务开始: 59da8762-8fa7-4260-8aee-10f9ca00097a
-      2026-10-16 09:34:05.023 | WARNING  | MaaEnd 调度器 | 未通过配置检查: 未找到终末地官方启动器, ...
+      2026-10-16 09:34:05.023 | WARNING  | MaaEnd 调度器 | 未通过配置检查: <AUTO-MAS's reason>
 
   The 任务开始 line names the script by its uid (the queue item), so the skip is
   matched to its scheduled run by uid. It is pushed at once with AUTO-MAS's reason,
