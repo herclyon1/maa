@@ -26,7 +26,7 @@ ALLOWED_WORDS = {
     "MAA", "MaaEnd", "OK-WW", "AUTO-MAS", "MXU", "Boss", "Annihilation", "F2",
     "PIN", "net", "stop", "start", "ark-relay", "deploy-relay.sh", "scripts/mac/deploy-relay.sh",
     "MuMu", "APK", "v",
-    "DirectX",      # the Endfield launcher's own label: 「DirectX 11 启动」
+    "DirectX",      # the Endfield launcher's own label 「DirectX 11 启动」 (ENDFIELD_NO_MAAEND_START)
 }
 # Hedges are vagueness too: a sentence either states what was measured or says
 # outright what could not be read - it never guesses.
@@ -127,9 +127,10 @@ MAAEND_MIGRATED = "🧩 终末地新版本改了设置格式，已按原意换�
 # efstart_setup: AUTO-MAS's own pre-run check will refuse every MaaEnd run (10-16 09:34).
 ENDFIELD_NO_LAUNCHER = ("调度程序会拒绝开终末地：它从游戏所在的位置往上找不到终末地的官方启动器，"
                         "MaaEnd 每一趟都会在开跑前直接跳过")
-# efstart_setup.check_d3d11: the game's own log says its last start was not Direct3D 11.
-ENDFIELD_NOT_D3D11 = ("终末地上次开游戏没用 DirectX 11：官方启动器「开始游戏」下面「DirectX 11 启动」那一格没勾上，"
-                      "MaaEnd 会认不出游戏画面。调度程序开游戏时不会去勾它，要在官方启动器上勾上")
+# efstart_setup: AUTO-MAS cannot be put on 「MaaEnd 启动」 (window 1280x720, fullscreen back after),
+# so it stays on the launcher's fullscreen start, which MaaEnd reads only with DirectX 11 ticked.
+ENDFIELD_NO_MAAEND_START = ("调度程序没法让 MaaEnd 把终末地开成窗口，只能退回经官方启动器全屏开："
+                            "官方启动器上「DirectX 11 启动」那一格没勾时，MaaEnd 每一趟都会认不出游戏画面")
 # Not pushed: collect_retry.maybe_run logs it; the retry's outcome decides.
 COLLECT_RETRY_START = "🔁 自动采集：只补跑失败的路线"
 COLLECT_RETRY_OK = "✅ 自动采集：补跑后全部走完"
@@ -715,6 +716,7 @@ _RELAY_PARTS = {
     "ark.service": "主程序", "ark.engine": "核心", "ark.handle": "记账与告警", "ark.report": "日报",
     "ark.shutdown": "关机判定", "ark.missed": "漏跑核对", "ark.preupdate": "预更新", "ark.gameupdate": "游戏更新",
     "ark.efstart": "经官方启动器开终末地", "ark.efstart_setup": "终末地开游戏方式设置",
+    "ark.maaend_launch": "终末地开成窗口的设置核对",
     "ark.selfupdate": "自更新", "ark.phone": "手机通道", "ark.evidence": "证据外送", "ark.collect_watch": "采集看守", "ark.display_wake": "开终末地时叫醒屏幕",
     "ark.collect_retry": "采集补跑", "ark.inbox": "待办信箱", "ark.snapshot": "状态快照", "ark.notify": "推送",
     "ark.banners": "卡池信息", "ark.needtable": "库存需求表", "ark.essence": "基质刷取切刷垫子", "ark.desktop": "桌面读屏", "ark.alertlog": "报警抄送",
@@ -752,6 +754,7 @@ MAS_SETTING_WHAT = {
     "client_update": "明日方舟、鸣潮客户端自动更新的开关",
     "maaend_wait": "终末地的等待秒数",
     "maaend_launch": "终末地的游戏位置和开游戏方式",
+    "maaend_window": "终末地跑脚本时开成窗口、跑完改回全屏的设置",
     "stage": "方舟的关卡设置",
     "medicine": "方舟的理智药数量",
     "fight": "方舟的刷理智开关",
@@ -771,6 +774,7 @@ MAS_SETTING_BREAKS = {
     "client_update": "开机自检判断游戏出新版时有没有人更新客户端",
     "maaend_wait": "手机上改终末地的等待秒数",
     "maaend_launch": "开机时核对调度程序能不能经官方启动器开终末地",
+    "maaend_window": "跑终末地前把游戏开成窗口（不勾 DirectX 11 时 MaaEnd 靠它认游戏画面）、跑完改回全屏",
     "stage": "开跑前查关卡、明日安排、手机上显示和修改关卡",
     "medicine": "明日安排和手机上显示、修改理智药",
     "fight": "开跑前查关卡和明日安排",

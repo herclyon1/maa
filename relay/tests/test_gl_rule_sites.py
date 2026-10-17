@@ -136,6 +136,11 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
      r'\[msg=Tasker\.Task\.(?:Succeeded|Completed|Failed)\].*?"entry":"AutoCollectSchedule"'):
         ("fixture", "only fixtures/collect-watch-2026-09-14/maafw-attempt3.log (real maafw.log line of 2026-09-14, "
                     "no SOURCE in the census)"),
+    ("features/makeup/collect_retry.py",
+     r'\[msg=Tasker\.Task\.(Succeeded|Completed|Failed)\].*?"entry":"CloseGamePC"'):
+        ("none", "the machine's maafw.log has it (2026-10-17 11:33:31.268 Tasker.Task.Succeeded CloseGamePC, AUTO-MAS's "
+                 "「MaaEnd 启动」 test run), but no raw line is kept in the repo; the event shape is the AutoCollectSchedule "
+                 "site's above, and test_maaend_windowed_start_1017.py feeds it"),
 }
 # Sites that read something other than a game's log - a config, a stage name, a path, a locale
 # key, the registry file's own format - so no log line is owed. Key as in GAPS; value: what it reads.

@@ -890,19 +890,15 @@ def _stage_preupdate(cfg, notifier, log) -> None:
 
 
 def _stage_endfield_start(cfg, notifier, log) -> None:
-    """Leave Endfield's start to AUTO-MAS's launcher mode (gameupdate/efstart_setup.py):
-    Game.Path back on Endfield.exe, LaunchMode Launcher, the relay's helper out of the MaaEnd
-    master, and a check that AUTO-MAS will find the official launcher. Right after
+    """Leave Endfield's start to AUTO-MAS's 「MaaEnd 启动」 (gameupdate/efstart_setup.py):
+    Game.Path back on Endfield.exe, the window settings and LaunchMode MaaEnd when MaaEnd
+    still declares its launcher pretask (else LaunchMode Launcher and a check that AUTO-MAS
+    will find the official launcher), the relay's helper out of the MaaEnd master. Right after
     stagegate, where AUTO-MAS answers, and before the pre-update, which can hold the boot
     up to the queue time (and runs it again after installing a new AUTO-MAS:
     _contract_after_update). What could not be done is a WARNING (the group): without it
     every MaaEnd run of the day is skipped at AUTO-MAS's own pre-run check."""
     _endfield_launch(cfg, log, "开机")
-    try:
-        from ark_relay.features.gameupdate import efstart_setup  # noqa: PLC0415
-        efstart_setup.check_d3d11()
-    except Exception:
-        log.exception("开机核对终末地是不是用 DirectX 11 开的出错")
 
 
 def _endfield_launch(cfg, log, when: str) -> None:

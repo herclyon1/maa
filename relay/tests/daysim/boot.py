@@ -169,7 +169,10 @@ def main() -> int:
         d = W.tpath(tree, str(p))
         return [str(PureWindowsPath(str(p)) / c.name) for c in d.iterdir() if c.is_dir()] if d.is_dir() else []
     efstart_setup._subdirs = _subdirs
-    efstart_setup._player_logs = lambda: []
+    # Whether MaaEnd can start the game windowed is read from MaaEnd's own files (the
+    # Windows folder AUTO-MAS names): from the sim tree.
+    from ark_relay.features.gameupdate import maaend_launch  # noqa: PLC0415
+    efstart_setup._launch_check = lambda d, c: maaend_launch.check(W.tpath(tree, str(d)) if d else d, c)
     os.chdir(tree / W.DATA_REL)          # app_main.run: os.chdir(DATA)
     desk.install()
     # Frozen code: the COS door says the version the machine already runs.

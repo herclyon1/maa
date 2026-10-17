@@ -127,6 +127,23 @@ for hms in ("13:21:29", "13:21:59", "13:22:29", "13:22:30"):
     dw.step(waker, tail, lambda: calls.append(tail.now) or False, at(hms))
 check("tried at 13:21:29 and again at 13:22:29", calls, [at("13:21:29"), at("13:22:29")])
 
+print("\n[AUTO-MAS v5.7.0-beta.5: the bare mode line arms it, for 「MaaEnd 启动」 too (10-17)]")
+# beta.5 AutoProxy.py:496/503/521 log the mode alone, no 「，将由 MAS ...」 (the machine's app.log
+# 2026-10-17 11:31:03.832: 「启动方式为「MaaEnd 启动」」); efstart_setup sets 「MaaEnd 启动」 since
+# 10-17, whose pretask starts Launcher.exe and finds it by its window. Same logger and layout
+# as the 10-16 lines above; the times are this fixture's own.
+B5 = "2026-10-16 15:00:03.832 | INFO     | MaaEnd 自动代理 | "
+B5_UP = "2026-10-16 15:01:30.100 | INFO     | MaaEnd 自动代理 | 运行脚本任务: D:\\ark\\maaend\\MaaEnd.exe"
+for mode in ("MaaEnd 启动", "启动器启动"):
+    wakes = replay([B5 + f"启动方式为「{mode}」", B5_UP], "15:00:00", "15:10:00")
+    check(f"「{mode}」 alone: woken within one backstop look",
+          bool(wakes) and wakes[0] <= at("15:00:03.832") + timedelta(seconds=dw.POLL_SECONDS))
+    check(f"「{mode}」: none after 运行脚本任务", [w for w in wakes if w > at("15:01:30.100")], [])
+check("「MAS 启动」 (Endfield.exe started directly, no launcher window): no wake",
+      replay([B5 + "启动方式为「MAS 启动」"], "15:00:00", "15:10:00"), [])
+check("the scheduler's own mode line (MaaEnd 调度器, before the hand-off): no wake",
+      replay([ln for ln in LINES if "MaaEnd 调度器 | 启动方式为" in ln], "13:21:00", "13:30:00"), [])
+
 
 class _Levels(logging.Handler):
     def __init__(self):

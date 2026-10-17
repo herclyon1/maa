@@ -237,16 +237,6 @@ def _restore_after_maaend(eng) -> None:
         log.exception("补跑的母本改回出错")
 
 
-def _check_d3d11_after_maaend() -> None:
-    """A MaaEnd record has landed: did AUTO-MAS's launcher start run the game on Direct3D 11?
-    AUTO-MAS never ticks 「DirectX 11 启动」 (efstart_setup.check_d3d11 reads Player.log)."""
-    try:
-        from ark_relay.features.gameupdate import efstart_setup  # noqa: PLC0415
-        efstart_setup.check_d3d11()
-    except Exception:
-        log.exception("核对终末地是不是用 DirectX 11 开的出错")
-
-
 def _confirm_unreachable(eng, rec: RunRecord) -> None:
     """A MaaEnd failure shaped like "never got into the game" is that only when
     there is evidence the game itself was unavailable.

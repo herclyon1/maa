@@ -27,8 +27,13 @@ upstream.
 
 The retry needs the game and MaaEnd on the interactive desktop, so it launches
 them with preupdate_common._spawn_interactive and drives MXU over its local HTTP
-API. It runs from the shutdown decision (or by hand from ark_relay.__main__), at
-most once per day, only when no script is running, and the power-off waits for it.
+API. The game is started the way AUTO-MAS's 「MaaEnd 启动」 starts it (10-17): MaaEnd's
+own pretask, run on the desktop by the relay's helper (gameupdate/efstart.py), opens it
+as a 1280x720 window through the official launcher, and after the gathering MaaEnd's
+CloseGamePC task closes it and writes fullscreen 1920x1080 back (maaend_launch.py), so
+the owner's own play is fullscreen again. It runs from the shutdown decision (or by hand
+from ark_relay.__main__), at most once per day, only when no script is running, and the
+power-off waits for it.
 """
 from __future__ import annotations
 
@@ -55,6 +60,16 @@ _NODE = re.compile(r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(AutoCollect(?:
 # node's recognition is the moment the route is announced, its action 0.2 s later.
 _ROUTE_EVENT = re.compile(r"\[msg=Node\.(?:Recognition\.Succeeded|Action\.Starting)\]"
                           r".*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(Start|End|Failed)\"")
+# CloseGamePC's own end in maafw.log (_close_game): Succeeded once CloseGameAction killed the
+# game and wrote the display settings, Failed when either went wrong (action.go returns false).
+_CLOSE_END = re.compile(r'\[msg=Tasker\.Task\.(Succeeded|Completed|Failed)\].*?"entry":"CloseGamePC"')
+# CloseGamePC kills the game, waits up to 5 s for it to go and writes the registry
+# (https://github.com/MaaEnd/MaaEnd/blob/v2.33.0/agent/go-service/common/closegame/action.go
+# waitEndfieldExit); a minute is twelve times that. Measured on the machine 10-17: AUTO-MAS's
+# CloseGamePC took 2 s (go-service.log 11:33:29 「Endfield.exe killed」, 11:33:31 「applied」).
+CLOSE_TIMEOUT_S = 60
+# MaaEnd's two agents, as MaaEnd's interface.json declares them; every task start passes them.
+AGENTS = [{"child_exec": "agent/go-service"}, {"child_exec": "agent/cpp-algo", "child_args": []}]
 # The gathering task's own end in maafw.log (retry_blocked): the event the history
 # log's 「任务完成/任务失败: 自动采集」 line stamps. Succeeded is MaaFW's name for a
 # finished task (task_shots._EVENT); Completed is accepted as there. The entry is ENTRY.
@@ -437,8 +452,9 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
 
     `spawn(exe: Path, cwd: Path, args: tuple)` launches on the interactive
     desktop (the pre-update's helper in production, a stub in tests). The game is
-    started by the launcher helper in `state_dir` (gameupdate/efstart.py), never as
-    Endfield.exe: client 1.6.3 refuses a start that is not the official launcher's.
+    started by the helper in `state_dir` (gameupdate/efstart.py) through MaaEnd's own
+    launcher pretask, windowed, never as Endfield.exe: client 1.6.3 refuses a start that
+    is not the official launcher's. Fullscreen is written back before MaaEnd is closed.
     `evidence`, when given, gets "nodes": {route: the maafw.log line of its verdict}.
     """
     debug = maaend_dir / "debug"
@@ -479,10 +495,21 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
         return {r: None for r in routes}, "MaaEnd 起来 60 秒了还不响应"
     if state_dir is None:
         return {r: None for r in routes}, "不知道开游戏助手在哪，游戏没开"
-    from ark_relay.features.gameupdate import efstart  # noqa: PLC0415 - pulls the desktop code
-    started = efstart.run_on_desktop(state_dir, spawn)
+    from ark_relay.features.gameupdate import efstart, maaend_launch  # noqa: PLC0415 - pulls the desktop code
+    restore, why = maaend_launch.restore_override(maaend_dir)
+    if restore is None:
+        # Not started at all: a window the relay could not put back to fullscreen afterwards
+        # would be the owner's next own play.
+        return {r: None for r in routes}, f"游戏没开：{why}，开成窗口后没法改回全屏"
+    started = efstart.run_on_desktop(state_dir, spawn, maaend_dir)
     if started.code != efstart.OK:
-        return {r: None for r in routes}, f"游戏没经官方启动器开起来：{started.reason}"
+        note = f"游戏没经官方启动器开起来：{started.reason}"
+        if started.code in efstart.RAN:
+            # The pretask writes the window settings before it starts the launcher, so a
+            # failed start leaves them too; with no game window there is no controller
+            # for CloseGamePC.
+            note = _not_restored(note, "游戏没开起来", evidence)
+        return {r: None for r in routes}, note
     hwnd = {}
 
     def _window():
@@ -492,7 +519,7 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
             hwnd["h"] = wins[0].get("handle") or wins[0].get("hwnd")
         return bool(hwnd)
     if not _wait(_window, 180):
-        return {r: None for r in routes}, "游戏窗口 3 分钟没出现"
+        return {r: None for r in routes}, _not_restored("游戏窗口 3 分钟没出现", "没有游戏窗口", evidence)
     time.sleep(10)
     inst = next(iter((api("/maa/state").get("instances") or {}).keys()), "automas")
 
@@ -501,14 +528,14 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
     api(f"/maa/instances/{inst}/connect", {"type": "Win32", "handle": int(hwnd["h"]),
                                          "screencap_method": 32, "mouse_method": 1, "keyboard_method": 1}, timeout=60)
     if not _wait(lambda: _state().get("connected"), 60):
-        return {r: None for r in routes}, "控制器没连上游戏窗口"
+        return {r: None for r in routes}, _not_restored("控制器没连上游戏窗口", "控制器没连上", evidence)
     if not _state().get("resource_loaded"):
         api(f"/maa/instances/{inst}/resource/load", {"paths": [str(maaend_dir / "resource")]}, timeout=120)
         _wait(lambda: _state().get("resource_loaded"), 120)
     since = time.strftime("%H:%M:%S")
     api(f"/maa/instances/{inst}/tasks/start", {
         "tasks": [{"entry": ENTRY, "pipeline_override": json.dumps(override, ensure_ascii=False)}],
-        "agent_configs": [{"child_exec": "agent/go-service"}, {"child_exec": "agent/cpp-algo", "child_args": []}],
+        "agent_configs": AGENTS,
         "cwd": str(maaend_dir), "tcp_compat_mode": False, "pi_envs": None,
         "reset_state": True, "controller_info": None}, timeout=120)
     done = _wait(lambda: not _state().get("is_running"), timeout, step=15)
@@ -517,13 +544,14 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
             api(f"/maa/instances/{inst}/tasks/stop", {})
         except (urllib.error.URLError, OSError):
             pass
+    closing = time.strftime("%H:%M:%S")
+    closed = _close_game(inst, restore, _state, maaend_dir)
     try:
         api(f"/maa/instances/{inst}/agent/stop", {})
     except (urllib.error.URLError, OSError):
         pass
-    text = ""
-    for p in sorted(debug.glob("maafw*.log"), key=lambda q: q.stat().st_mtime)[-2:]:
-        text += p.read_text(encoding="utf-8", errors="replace")
+    text = _maafw_text(debug)
+    closed = closed or _closed_verdict(text, closing)
     verdict = judge(text, routes, since)
     from ark_relay.features.verify import collector_maaend  # noqa: PLC0415
     again = retry_blocked(text, routes, since, collector_maaend.obstacle_shots(maaend_dir))
@@ -533,7 +561,64 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
         evidence["nodes"] = node_lines(text, routes, since)
         if again:
             evidence["blocked"] = again
-    return verdict, ("补跑超时，已停掉" if not done else "")
+    note = "补跑超时，已停掉" if not done else ""
+    if closed:
+        note = _not_restored(note, closed, evidence)
+    return verdict, note
+
+
+def _maafw_text(debug: Path) -> str:
+    text = ""
+    for p in sorted(debug.glob("maafw*.log"), key=lambda q: q.stat().st_mtime)[-2:]:
+        text += p.read_text(encoding="utf-8", errors="replace")
+    return text
+
+
+def _close_game(inst: str, override: dict, state, maaend_dir: Path) -> str:
+    """Run MaaEnd's CloseGamePC with `override` (maaend_launch.restore_override): the game
+    closed and fullscreen 1920x1080 written back. "" when MXU took the task and it ended
+    in time (maafw.log then says how it ended, _closed_verdict); else why not."""
+    try:
+        # Same body as the gathering's start; MaaEnd's agents again, since CloseGameAction
+        # lives in go-service (it runs before agent/stop).
+        api(f"/maa/instances/{inst}/tasks/start", {
+            "tasks": [{"entry": "CloseGamePC", "pipeline_override": json.dumps(override, ensure_ascii=False)}],
+            "agent_configs": AGENTS,
+            "cwd": str(maaend_dir), "tcp_compat_mode": False, "pi_envs": None,
+            "reset_state": True, "controller_info": None}, timeout=CLOSE_TIMEOUT_S)
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        return f"MaaEnd 没接下关游戏这一步（{type(exc).__name__}）"
+    if not _wait(lambda: not state().get("is_running"), CLOSE_TIMEOUT_S, step=3):
+        try:
+            api(f"/maa/instances/{inst}/tasks/stop", {})
+        except (urllib.error.URLError, OSError):
+            pass
+        return f"MaaEnd 关游戏 {CLOSE_TIMEOUT_S} 秒没做完"
+    return ""
+
+
+def _closed_verdict(maafw_log: str, since: str) -> str:
+    """'' when maafw.log after `since` (HH:MM:SS) has CloseGamePC succeeded; else why not."""
+    last = None
+    for line in maafw_log.splitlines():
+        if len(line) >= 20 and line[12:20] >= since and (m := _CLOSE_END.search(line)):
+            last = m.group(1)
+    if last in ("Succeeded", "Completed"):
+        return ""
+    return "MaaEnd 关游戏时没能把显示设置写回" if last == "Failed" else "MaaEnd 的日志里没有关游戏的结果"
+
+
+def _not_restored(note: str, why: str, evidence: "dict | None") -> str:
+    """The retry's note plus one line that fullscreen was not written back: the owner's own
+    play would start in the 1280x720 window until AUTO-MAS's next MaaEnd run writes
+    fullscreen back at its end (Game.RestoreDisplayType, efstart_setup). The note reaches
+    the group with the retry's alarm; when every route passed there is none, and maybe_run
+    says it on its own (evidence["not_restored"])."""
+    log.info("自动采集补跑：游戏开成窗口后没改回全屏（%s）", why)
+    if evidence is not None:
+        evidence["not_restored"] = why
+    tail = f"游戏开成窗口后没改回全屏（{why}），下次调度程序跑完终末地会改回"
+    return f"{note}；{tail}" if note else tail
 
 
 # ------------------------------------------------------------------ glue
@@ -710,6 +795,10 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     # COLLECT_RETRY_OK takes notify's log route (daily report only). The daily
     # report carries every outcome (report.retry_line).
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    if not failed and not unknown and seen.get("not_restored"):
+        # The routes are fine (daily report only), the display is not: the group hears that.
+        log.warning("自动采集补跑：路线都走通了，但游戏开成窗口后没改回全屏（%s）；下次调度程序跑完终末地会改回",
+                    seen["not_restored"])
     if not failed and not unknown:
         eng.state.mark_incomplete(day, last["run_id"], "")
         eng.notifier.send(texts.COLLECT_RETRY_OK, body)

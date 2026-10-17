@@ -1,44 +1,40 @@
-"""Start Endfield (终末地) through the official Hypergryph launcher, for the relay's own starts.
+"""Start Endfield (终末地) windowed through MaaEnd's own launcher pretask, for the relay's own starts.
 
 Client 1.6.3 (「丹青渡」, 2026-10-15) refuses to run unless its parent process is the
-running launcher: started as Endfield.exe directly it shows 「游戏启动失败」
-「请通过官方启动器打开游戏」 (MaaEnd/MaaEnd#6469; #6457 traces it to the SDK checking
-the direct parent process). On 2026-10-15 15:14 AUTO-MAS started Endfield.exe itself
-(account switch "MAS": Game.Path, app/task/MaaEnd/AutoProxy.py:950-967 in v5.6.2) and
-every MaaEnd task failed. From 10-15 to 10-16 every such start ran this helper instead;
-since AUTO-MAS v5.7.0-beta.4 (Game.LaunchMode "Launcher", PR #1394) AUTO-MAS starts the
-game through the launcher itself for its runs, and efstart_setup.py hands those back to it
-(Game.Path on Endfield.exe again, the helper's preAction out of the MaaEnd master). The
-helper still serves the relay's own start: the gathering retry (collect_retry), through
-run_on_desktop.
+running official launcher (MaaEnd/MaaEnd#6469). AUTO-MAS starts the game for its own runs
+(efstart_setup.py sets its Game.LaunchMode); this helper serves the one start the relay
+makes itself: the gathering retry (collect_retry), through run_on_desktop.
 
-What one start does (start_via_launcher):
+Until 2026-10-17 this helper drove the launcher by OCR and made sure the launcher's
+「DirectX 11 启动」 box was ticked, because MaaEnd read a fullscreen non-DX11 game as
+「当前环境识别异常」. The box is to stay unticked now (the launcher remembers it, so the
+owner's own play started in DX11 too), and the game runs windowed below the desktop
+instead, which MaaEnd reads on any graphics API. The start is MaaEnd's own pretask
+LaunchGamePC, exactly as AUTO-MAS v5.7.0-beta.5's 「MaaEnd 启动」 runs it (maaend_launch.py
+has the options and the evidence): it writes a 1280x720 window into the game's display
+settings, starts Launcher.exe and clicks 「开始游戏」 in the real launcher, so Games.exe stays
+the parent; exit code 0 once the game window is up. collect_retry puts fullscreen back
+afterwards through MaaEnd's CloseGamePC task.
 
-* The game window is up (FindWindow UnityWndClass / "Endfield", what AUTO-MAS's login()
-  looks for) and is not the refusal dialog: exit 0, nothing clicked.
-* Endfield.exe runs but shows the refusal dialog, or has no window for
-  RUNNING_NO_WINDOW_S: it is closed and started again through the launcher.
-* Otherwise: Launcher.exe is started when Games.exe is not running, 「DirectX 11 启动」
-  under 「开始游戏」 is made sure to be ticked (2026-10-15 15:33: a game started without
-  it reached the title, and MaaEnd then failed with 「当前环境识别异常，请使用 D3D11
-  启动游戏…」), 「开始游戏」 is clicked, and the game is watched up to its title screen
-  「点击任意位置继续」; on the terms prompt 「游戏协议条款提示」 its button 「同意并继续」 is
-  clicked (the owner, 10-15: not to be asked about it), 「请重启游戏」 restarts it once through the launcher.
-* Exits non-zero, with a log line and a screenshot path, on a phone-number login screen
-  (needs a person), a launcher or game that wants a client update first (the relay's
-  game update does that after the queue), the refusal dialog after a launcher start, a
-  launcher that cannot be driven, or a timeout.
+What one start does (start_via_maaend):
 
-Several starters fire at once, so a named mutex lets one drive; a later one waits for it
-and then looks again. The helper runs on the interactive desktop with the relay's own
-pythonw.exe, from the trampoline efstart_setup writes into state/efstart/. pythonw has no
-stdout and MXU discards the child's output anyway, so the outcome is a file: the log
+* Refuses, with a reason, when the installed MaaEnd no longer declares the pretask or one
+  of its options, or its program is not in the MaaEnd folder (nothing is guessed).
+* Closes a running Endfield.exe first: the pretask skips everything, the window settings
+  included, when the game already runs (launchgamepc.go), and the game would then stay
+  fullscreen.
+* Wakes the display: the launcher keeps its window hidden while the power plan has turned
+  the display off (display_wake.py has the evidence), and the pretask finds the launcher
+  by its window. One wake keeps it on for the 300 s idle time, longer than the pretask's
+  own waits (60 s launcher + 120 s game).
+* Runs the pretask from the MaaEnd folder (AUTO-MAS's cwd) with AUTO-MAS's 240 s limit
+  and reports its exit code.
+
+Several starters fire at once, so a named mutex lets one drive; a later one waits for it.
+The helper runs on the interactive desktop (the launcher and the game must open there)
+with the relay's own pythonw.exe, from the trampoline efstart_setup writes into
+state/efstart/. pythonw has no stdout, so the outcome is a file: the log
 state/efstart/efstart.log and the last result state/efstart/last.json.
-
-The OCR words of the launcher and the game were read off the real screens (the update
-flow in gameupdate_games.py, and the parent session on 2026-10-15) except LOGIN_WORDS,
-which nobody has seen on this machine: a guess that only ever ends a start with a
-message, never clicks.
 """
 from __future__ import annotations
 
@@ -50,75 +46,41 @@ import os
 import subprocess
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from ark_relay.features.gameupdate import gameupdate_games as gug
+from ark_relay.features.gameupdate import maaend_launch
 
 log = logging.getLogger("ark.efstart")
 
 GAME_EXE = "Endfield.exe"
-LAUNCHER_EXE = "Games.exe"          # the Hypergryph launcher's process (Launcher.exe starts it)
-GAME_FOCUS = "Endfield"
-LAUNCHER_FOCUS = "Games"
 
 # Exit codes. Every non-zero one comes with a reason in efstart.log and last.json.
 OK = 0
-SETUP = 2          # no game / launcher path written by the relay
-LOGIN = 3          # phone-number login screen: needs a person
-UPDATE = 4         # the launcher or the game wants a client update first
-REFUSED = 5        # the game refused a start even through the launcher
-LAUNCHER = 6       # the launcher could not be started or driven
-TIMED_OUT = 7      # the game did not reach its title screen in time
+SETUP = 2          # MaaEnd's launcher pretask is not there to run (folder, declaration, program)
+PRETASK = 5        # the pretask ran and exited non-zero
+LAUNCHER = 6       # the helper could not start, or the game could not be closed first
+TIMED_OUT = 7      # the pretask (or the helper) did not end in time
 UNREADABLE = 8     # the process list could not be read; nothing was touched
 BUSY = 9           # another start held the lock past the whole budget
+# The pretask ran (or may still run): it writes the window settings before starting the
+# launcher, so the caller has fullscreen to put back even though the start failed.
+RAN = (PRETASK, TIMED_OUT)
 
-START_WORD = "开始游戏"
-D3D11_WORD = "DirectX"              # the option line under the start button reads DirectX 11 ...
-UPDATE_WORDS = ("更新游戏",) + gug._EF_SPACE_WORDS
-REFUSED_WORDS = ("请通过官方启动器", "游戏启动失败")
-AGREEMENT_WORDS = ("游戏协议条款提示",)
-AGREE_BUTTON = "同意并继续"
-LOGIN_WORDS = ("手机号", "获取验证码")
-RESTART_WORDS = ("请重启游戏",)
-OUTDATED_WORDS = ("客户端版本已过时",)
-READY_WORDS = gug.READY_WORDS["终末地"]
-
-# Measured 10-15 15:19-15:21 (the parent session, by hand): from starting Launcher.exe
-# to the game window took about 2 minutes. The launcher gets three times that to show
-# its start button.
-LAUNCHER_BUDGET_S = 360
-# After 「开始游戏」 the game has as long as update_endfield gives it to reach the title
-# (900 s, gameupdate_games.py). Measured 10-15 15:21 onward: the first start of 1.6.3 ran
-# an ~850 MB hot update, then 「正在编译着色器」, inside that.
-GAME_BUDGET_S = 900
-# Measured 10-15 15:19-15:21: the game process came up seconds after the click; a
-# minute without Endfield.exe means the click did not take.
-NO_GAME_AFTER_CLICK_S = 60
-# A running Endfield.exe with no game window this long (and no refusal dialog) is not
-# coming up: measured 10-15 15:19-15:21, the window followed the process within seconds;
-# twice the minute above.
-RUNNING_NO_WINDOW_S = 120
-# Launcher.exe is started again when its window has not shown this long after the last
-# start: measured 2026-09-02, update_endfield's first read 25 s after the start found it.
-LAUNCHER_RESPAWN_S = 45
-# Clicks of one button before it is reported as not clickable: the same three tries
-# update_endfield gives the disk-space 「确认」 (_EF_CONFIRM_TRIES).
-CLICK_TRIES = gug._EF_CONFIRM_TRIES
-
-# The 「DirectX 11 启动」 checkbox, from the middle of 「开始游戏」: measured 10-15 15:36 by
-# the parent session on the 1920x1080 desktop, 「开始游戏」 at about (1407, 796) and the
-# box at about (1315, 843). The launcher window has a fixed size in pixels (c47dfca6).
-D3D11_BOX_FROM_START = (-92, 47)
-# Half the side of the square sampled around that point. Not measured: the parent gave
-# the box's position as 「about」, so the square is kept small (15 px) to stay on the box.
-D3D11_BOX_HALF = 7
-# Mean brightness (0-255) two readings of the box must differ by to count as two states.
-# Not measured: a tick turns a dark box into a filled one, which moves the mean of a
-# 15 px square by far more than this; two reads of an unchanged screen move it by ~0.
-D3D11_MARGIN = 20.0
+# AUTO-MAS v5.7.0-beta.5 gives the launching pretask 240 s (AutoProxy.py
+# _apply_launcher_game_settings, https://github.com/AUTO-MAS-Project/AUTO-MAS/blob/v5.7.0-beta.5/app/task/MaaEnd/AutoProxy.py);
+# the pretask itself waits up to 60 s for the launcher and 120 s for the game window
+# (launchgamepc.go launcherWindowTimeout / gameWindowTimeout). Measured on the machine 10-17:
+# 25 s from 「Pretask invoked」 11:31:05 to 「Pretask succeeded」 11:31:30 (go-service.log).
+PRETASK_TIMEOUT_S = 240
+# After closing a running game: MaaEnd's own close waits up to 5 s for Endfield.exe to go
+# (https://github.com/MaaEnd/MaaEnd/blob/v2.33.0/agent/go-service/common/closegame/action.go
+# waitEndfieldExit); twice that before looking again.
+GAME_EXIT_S = 10
+# The tail of the pretask's own output kept in efstart.log on a failure.
+OUTPUT_TAIL = 2000
 
 
 @dataclass
@@ -130,235 +92,49 @@ class Result:
 
 @dataclass
 class Probes:
-    """Everything outside the screen: injectable, so the flow runs without Windows."""
-    running: Callable[[tuple], "set[str] | None"]    # names among those running; None = unreadable
-    window: Callable[[], "bool | None"]               # the game window is there; None = cannot tell
-    spawn: Callable[[Path], bool]                     # start a program on the desktop
+    """Everything outside this process: injectable, so the flow runs without Windows."""
+    running: Callable[[tuple], "set[str] | None"]     # names among those running; None = unreadable
     kill: Callable[..., bool]
-    box: Callable[[str, int, int, int], "float | None"]  # mean brightness of a square of a screenshot
-    calib: dict = field(default_factory=dict)          # the D3D11 box's two readings, remembered
+    run: Callable[..., "tuple[int | None, str]"]      # (argv, cwd, timeout) -> (exit code, None = timed out; output)
+    wake: Callable[[], bool]                           # wake the display
     sleep: Callable[[float], None] = time.sleep
-    clock: Callable[[], float] = time.monotonic
-
-
-def _unread(scr) -> bool:
-    return bool(gug._unread(scr))
-
-
-def _shot(scr) -> str:
-    return str(getattr(scr, "shot", "") or "")
 
 
 # ─────────────────────────── the flow ───────────────────────────
 
-def start_via_launcher(desk, launcher: Path, p: Probes, *, budget_s: float = GAME_BUDGET_S,
-                       launcher_s: float = LAUNCHER_BUDGET_S, poll_s: float = 10.0,
-                       settle_s: float = 25.0) -> Result:
-    """Bring the game up through the launcher; Result(OK) when it is up (see the module doc).
-
-    poll_s: one desktop read is itself a few seconds of agent start and OCR, so a read
-    every 10 s keeps the agent busy about half the time. settle_s: update_endfield's
-    first look 25 s after starting the launcher."""
-    procs = p.running((GAME_EXE, LAUNCHER_EXE))
+def start_via_maaend(maaend_dir, p: Probes) -> Result:
+    """Bring the game up windowed through MaaEnd's pretask; Result(OK) when it exited 0."""
+    plan, why = maaend_launch.launch_plan(maaend_dir)
+    if plan is None:
+        return Result(SETUP, f"{why}，游戏没开")
+    exe = maaend_launch.executable(maaend_dir, plan["exec"])
+    if exe is None:
+        return Result(SETUP, f"MaaEnd 文件夹里没有它开游戏用的程序（{Path(str(maaend_dir)) / plan['exec']}），游戏没开")
+    procs = p.running((GAME_EXE,))
     if procs is None:
         return Result(UNREADABLE, "读不到电脑上在运行哪些程序，没动游戏")
     if GAME_EXE in procs:
-        res = _check_running(desk, p, poll_s)
-        if res is not None:
-            return res
-        procs = p.running((GAME_EXE, LAUNCHER_EXE)) or set()
-    spawned_at = None
-    if LAUNCHER_EXE not in procs:
-        if not p.spawn(launcher):
-            return Result(LAUNCHER, "官方启动器没能在桌面会话里起来，游戏没开")
-        log.info("终末地：已启动官方启动器 %s", launcher)
-        spawned_at = p.clock()
-        p.sleep(settle_s)
-    res = _click_start(desk, launcher, p, launcher_s, poll_s, spawned_at)
-    if res is not None:
-        return res
-    return _wait_game(desk, launcher, p, budget_s, launcher_s, poll_s)
-
-
-def _check_running(desk, p: Probes, poll_s: float) -> "Result | None":
-    """Endfield.exe is running. Result(OK) when its window is up and is not the refusal
-    dialog; None after closing it (refusal dialog, or no window in RUNNING_NO_WINDOW_S),
-    for the caller to start it through the launcher."""
-    deadline = p.clock() + RUNNING_NO_WINDOW_S
-    while True:
-        win = p.window()
-        scr = desk.read(focus=GAME_FOCUS)
-        if not _unread(scr) and scr.has(*REFUSED_WORDS):
-            log.warning("终末地开着，但停在「请通过官方启动器打开游戏」（不是经启动器开的），关掉经启动器重开（截图 %s）",
-                        _shot(scr))
-            p.kill(GAME_EXE)
-            p.sleep(poll_s)
-            return None
-        if win or win is None:
-            # Up (or no way to look for the window, and the screen is not the dialog):
-            # the run goes on with this game.
-            return Result(OK, "终末地已经开着，没再开")
-        if p.clock() >= deadline:
-            log.warning("终末地开着，但 %d 秒没有游戏窗口，关掉经启动器重开（截图 %s）",
-                        RUNNING_NO_WINDOW_S, _shot(scr))
-            p.kill(GAME_EXE)
-            p.sleep(poll_s)
-            return None
-        p.sleep(poll_s)
-
-
-def _click_start(desk, launcher: Path, p: Probes, launcher_s: float, poll_s: float,
-                 spawned_at: "float | None") -> "Result | None":
-    """Wait for 「开始游戏」 on the launcher, make sure DirectX 11 is ticked, click it.
-    None when clicked; a Result when it cannot be."""
-    deadline = p.clock() + launcher_s
-    misses = 0
-    scr = None
-    while True:
-        scr = desk.read(focus=LAUNCHER_FOCUS)
-        if gug._focus_missing(scr):
-            # In the tray, or still opening: Launcher.exe again brings its window up.
-            if spawned_at is None or p.clock() - spawned_at >= LAUNCHER_RESPAWN_S:
-                log.info("终末地：没找到启动器窗口，再启动一次 %s", launcher.name)
-                p.spawn(launcher)
-                spawned_at = p.clock()
-        elif not _unread(scr):
-            if scr.has(*UPDATE_WORDS):
-                return Result(UPDATE, f"官方启动器要先更新客户端（{scr.dump(6)}），游戏没开；客户端更新由中继在队列后做",
-                              _shot(scr))
-            start = scr.find(START_WORD)
-            if start is not None:
-                res = _ensure_d3d11(desk, p, scr, start)
-                if res is not None:
-                    return res
-                if desk.click_text(START_WORD, focus=LAUNCHER_FOCUS):
-                    log.info("终末地：已在官方启动器点「开始游戏」")
-                    return None
-                misses += 1
-                if misses >= CLICK_TRIES:
-                    return Result(LAUNCHER, f"官方启动器的「开始游戏」点了 {misses} 次没点上", _shot(scr))
-            else:
-                log.info("终末地：启动器还没到「开始游戏」：%s", scr.dump(4))
-        if p.clock() >= deadline:
-            why = "窗口没找到" if gug._focus_missing(scr) else (gug._unread(scr) or scr.dump(6))
-            return Result(LAUNCHER, f"官方启动器 {launcher_s / 60:.0f} 分钟没出现「开始游戏」（{why}）", _shot(scr))
-        p.sleep(poll_s)
-
-
-def _ensure_d3d11(desk, p: Probes, scr, start) -> "Result | None":
-    """Make sure 「DirectX 11 启动」 is ticked before 「开始游戏」. None when it is.
-
-    The tick is a picture, not text, so the box is judged by the mean brightness of a
-    square around it on the launcher screenshot. A fixed threshold would be a guess, so
-    the two states are learnt once by clicking the box and reading it again (the brighter
-    one is ticked: a filled box with a check mark), and remembered in p.calib; a later
-    start compares with them and clicks only when the box is in the unticked state."""
-    x = start.center[0] + D3D11_BOX_FROM_START[0]
-    y = start.center[1] + D3D11_BOX_FROM_START[1]
-    now = p.box(_shot(scr), x, y, D3D11_BOX_HALF)
-    if now is None:
-        return Result(LAUNCHER, "读不了启动器截图里「DirectX 11 启动」的勾", _shot(scr))
-    on, off = p.calib.get("on"), p.calib.get("off")
-    learnt = on is not None and off is not None and abs(on - off) >= D3D11_MARGIN
-    if learnt and abs(now - on) <= abs(now - off):
-        return None
-    if not scr.has(D3D11_WORD):
-        # Nothing is clicked where the option was not read: it sits under 「开始游戏」 on
-        # this launcher, and a launcher that moved it would take the click somewhere else.
-        return Result(LAUNCHER, "官方启动器上没读到「DirectX 11 启动」，没法确认勾上，游戏没开（不勾 MaaEnd 认不出游戏画面）",
-                      _shot(scr))
-    # Learnt and unticked: one click. Not learnt yet: click, read again, keep it ticked.
-    return _toggle_d3d11(desk, p, x, y, now, learn=not learnt, before_shot=_shot(scr))
-
-
-def _toggle_d3d11(desk, p: Probes, x: int, y: int, before: float, *, learn: bool,
-                  before_shot: str = "") -> "Result | None":
-    for _ in range(CLICK_TRIES + 1):
-        if not desk.click(x, y, focus=LAUNCHER_FOCUS):
-            continue
-        p.sleep(1)
-        scr = desk.read(focus=LAUNCHER_FOCUS)
-        after = None if _unread(scr) else p.box(_shot(scr), x, y, D3D11_BOX_HALF)
-        if after is None:
-            continue
-        if abs(after - before) < D3D11_MARGIN:
-            log.info("终末地：点了「DirectX 11 启动」的勾，读出来没变（%.0f → %.0f）", before, after)
-            continue
-        if learn:
-            # Learnt: the brighter reading is the ticked one.
-            # Both screenshots are kept in the calibration and the log, so a person can
-            # check once that the brighter one really shows the tick.
-            p.calib.update(on=max(before, after), off=min(before, after),
-                           shots=[before_shot, _shot(scr)], box=[x, y])
-            learn = False
-            log.info("终末地：「DirectX 11 启动」两种样子记下了（勾上 %.0f，没勾 %.0f；点之前 %s，点之后 %s）",
-                     p.calib["on"], p.calib["off"], before_shot, _shot(scr))
-        if abs(after - p.calib["on"]) <= abs(after - p.calib["off"]):
-            log.info("终末地：已勾上「DirectX 11 启动」")
-            return None
-        # It had been ticked and this click took it off: click once more.
-        before = after
-    return Result(LAUNCHER, "官方启动器的「DirectX 11 启动」点了几次没确认勾上，游戏没开")
-
-
-def _wait_game(desk, launcher: Path, p: Probes, budget_s: float, launcher_s: float,
-               poll_s: float) -> Result:
-    """After 「开始游戏」: watch the game up to its title screen."""
-    deadline = p.clock() + budget_s
-    clicked_at = p.clock()
-    restarted = reclicked = False
-    agreed = 0
-    scr = None
-    while p.clock() < deadline:
-        p.sleep(poll_s)
-        procs = p.running((GAME_EXE,))
-        if procs is not None and GAME_EXE not in procs:
-            if p.clock() - clicked_at < NO_GAME_AFTER_CLICK_S:
-                continue
-            if reclicked:
-                return Result(LAUNCHER, "官方启动器「开始游戏」点了两回，游戏都没起来", _shot(scr))
-            reclicked = True
-            log.info("终末地：点了「开始游戏」%d 秒游戏还没起来，再点一次", NO_GAME_AFTER_CLICK_S)
-            res = _click_start(desk, launcher, p, launcher_s, poll_s, None)
-            if res is not None:
-                return res
-            clicked_at = p.clock()
-            continue
-        scr = desk.read(focus=GAME_FOCUS)
-        if _unread(scr):
-            continue
-        if scr.has(*REFUSED_WORDS):
-            return Result(REFUSED, "经官方启动器开的游戏还是说「请通过官方启动器打开游戏」", _shot(scr))
-        if scr.has(*AGREEMENT_WORDS) or scr.has(AGREE_BUTTON):
-            agreed += 1
-            if agreed > CLICK_TRIES:
-                return Result(TIMED_OUT, f"「游戏协议条款提示」点了 {CLICK_TRIES} 次「同意并继续」还在", _shot(scr))
-            ok = desk.click_text(AGREE_BUTTON, focus=GAME_FOCUS)
-            log.info("终末地：弹了「游戏协议条款提示」，%s", "已点「同意并继续」" if ok else "「同意并继续」没点上，下一轮再点")
-            continue
-        if scr.has(*LOGIN_WORDS):
-            return Result(LOGIN, "游戏停在手机号登录画面，要人登录一次（这一步自动做不了）", _shot(scr))
-        if scr.has(*OUTDATED_WORDS):
-            return Result(UPDATE, "游戏说客户端版本已过时，要先更新；客户端更新由中继在队列后做", _shot(scr))
-        if scr.has(*RESTART_WORDS):
-            if restarted:
-                return Result(TIMED_OUT, "游戏重开一次后又要「请重启游戏」", _shot(scr))
-            restarted = True
-            log.info("终末地：游戏要「请重启游戏」，点「确认」后经官方启动器重开")
-            desk.click_text("确认", focus=GAME_FOCUS)
-            p.sleep(poll_s)
-            p.kill(GAME_EXE)
-            p.sleep(poll_s)
-            res = _click_start(desk, launcher, p, launcher_s, poll_s, None)
-            if res is not None:
-                return res
-            clicked_at = p.clock()
-            continue
-        if scr.has(*READY_WORDS):
-            return Result(OK, "终末地已经由官方启动器开到标题画面")
-        log.info("终末地：还在加载：%s", scr.dump(4))
-    last = scr.dump(6) if scr is not None else ""
-    return Result(TIMED_OUT, f"点「开始游戏」后 {budget_s / 60:.0f} 分钟没到标题画面（最后一屏：{last}）", _shot(scr))
+        log.info("终末地：游戏已经开着，先关掉（开着时 MaaEnd 不改窗口设置也不重开）")
+        p.kill(GAME_EXE)
+        p.sleep(GAME_EXIT_S)
+        after = p.running((GAME_EXE,))
+        if after is None or GAME_EXE in after:
+            return Result(LAUNCHER, "开着的游戏关不掉，没法按窗口重开")
+    if not p.wake():
+        log.info("终末地：叫醒屏幕没成功，照样开（屏幕关着时启动器不显示窗口，MaaEnd 就找不到它）")
+    argv = [str(exe), *plan["args"]]
+    log.info("终末地：由 MaaEnd 开游戏（1280×720 窗口）：%s", " ".join(argv))
+    t0 = time.monotonic()
+    code, out = p.run(argv, cwd=str(maaend_dir), timeout=PRETASK_TIMEOUT_S)
+    took = time.monotonic() - t0
+    if code is None:
+        log.info("终末地：MaaEnd 开游戏的输出：%s", out[-OUTPUT_TAIL:])
+        return Result(TIMED_OUT, f"MaaEnd 开游戏 {PRETASK_TIMEOUT_S // 60} 分钟没结束，已停下")
+    if code != 0:
+        log.info("终末地：MaaEnd 开游戏的输出：%s", out[-OUTPUT_TAIL:])
+        return Result(PRETASK, f"MaaEnd 开游戏没成功（退出码 {code}），它自己的日志在 MaaEnd 的 debug\\go-service.log")
+    log.info("终末地：MaaEnd 开游戏用了 %.0f 秒", took)
+    return Result(OK, "MaaEnd 已经经官方启动器把游戏开成 1280×720 的窗口")
 
 
 # ─────────────────────────── the process (pythonw on the desktop) ───────────────────────────
@@ -369,12 +145,12 @@ TARGET = "target.json"       # written by efstart_setup: game and launcher paths
 RUNNING = "running.json"     # this helper's PID while it drives; maaend_watchdog reads it
 LAST = "last.json"
 LOG = "efstart.log"
-CALIB = "d3d11.json"
 LOCK_NAME = "Global\\ArkRelayEndfieldStart"
 # The log file is cut back to its last half once it passes this many bytes.
 LOG_KEEP = 1_000_000
-# The longest one start can take, and so how long a later start waits for the lock.
-WHOLE_S = LAUNCHER_BUDGET_S + GAME_BUDGET_S + RUNNING_NO_WINDOW_S
+# The longest one start can take, and so how long a later start waits for the lock:
+# the pretask's limit, closing a running game first and the display wake's own 30 s cap.
+WHOLE_S = PRETASK_TIMEOUT_S + GAME_EXIT_S + 30
 
 
 def _tasklist(names: tuple) -> "set[str] | None":
@@ -391,23 +167,19 @@ def _tasklist(names: tuple) -> "set[str] | None":
     return {n for n in names if n.lower() in have}
 
 
-def _find_window() -> "bool | None":
+def _run(argv: list, cwd: str, timeout: float) -> "tuple[int | None, str]":
+    """Run the pretask and wait; (exit code, output), exit code None when it ran past
+    `timeout` (subprocess.run then kills it)."""
     try:
-        import win32gui  # noqa: PLC0415 - Windows only
-        return bool(win32gui.FindWindow("UnityWndClass", "Endfield"))
-    except Exception:  # noqa: BLE001 - no pywin32, or no desktop: cannot tell
-        return None
-
-
-def box_brightness(shot: str, x: int, y: int, half: int) -> "float | None":
-    """Mean brightness (0-255) of the (2*half+1)-pixel square at (x, y) of a screenshot."""
-    try:
-        from PIL import Image  # noqa: PLC0415 - the relay's runtime ships Pillow
-        with Image.open(shot) as im:
-            vals = list(im.convert("L").crop((x - half, y - half, x + half + 1, y + half + 1)).getdata())
-    except Exception:  # noqa: BLE001 - a missing or broken screenshot is "cannot tell"
-        return None
-    return sum(vals) / len(vals) if vals else None
+        r = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=timeout, check=False,
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except subprocess.TimeoutExpired as exc:
+        out = exc.stdout or ""
+        return None, out if isinstance(out, str) else out.decode("utf-8", "replace")
+    except OSError as exc:
+        return -1, f"{type(exc).__name__}: {exc}"
+    return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 
 def _spawn_desktop(task: str):
@@ -491,18 +263,17 @@ def _write_json(f: Path, data: dict) -> None:
         log.warning("终末地：写不了 %s", f, exc_info=True)
 
 
-def run_once(home: Path, caller: str, *, desk, probes: Probes, single=_single) -> Result:
+def run_once(home: Path, caller: str, maaend_dir, *, probes: Probes, single=_single) -> Result:
     """One start under the lock, with running.json written while it drives."""
-    target = _read_json(home / TARGET)
-    if not target.get("launcher"):
-        return Result(SETUP, f"中继没写启动器位置（{home / TARGET}），游戏没开")
+    if not maaend_dir:
+        return Result(SETUP, "中继没告诉开游戏助手 MaaEnd 装在哪，游戏没开")
     with single(WHOLE_S) as got:
         if not got:
             return Result(BUSY, "另一次开游戏一直没结束，这次没开")
         _write_json(home / RUNNING, {"pid": os.getpid(), "caller": caller,
                                      "started": datetime.now().isoformat(timespec="seconds")})
         try:
-            return start_via_launcher(desk, Path(str(target["launcher"])), probes)
+            return start_via_maaend(maaend_dir, probes)
         except Exception as exc:  # said in last.json, not a traceback nobody reads
             log.exception("终末地：开游戏的流程自己出错")
             return Result(LAUNCHER, f"开游戏的流程自己出错：{type(exc).__name__}: {exc}")
@@ -511,32 +282,28 @@ def run_once(home: Path, caller: str, *, desk, probes: Probes, single=_single) -
 
 
 def main(argv: "list[str] | None" = None) -> int:
-    """The helper process. `--home` is state/efstart (the trampoline passes it); anything
-    after the known options is ignored (AUTO-MAS appends Game.Arguments)."""
+    """The helper process. `--home` is state/efstart (the trampoline passes it), `--maaend`
+    the MaaEnd folder; anything after the known options is ignored."""
     ap = argparse.ArgumentParser(prog="efstart")
     ap.add_argument("--home", required=True)
     ap.add_argument("--caller", default="")
     ap.add_argument("--result", default="")
+    ap.add_argument("--maaend", default="")
     args, _rest = ap.parse_known_args(argv)
     home = Path(args.home)
     home.mkdir(parents=True, exist_ok=True)
     _setup_log(home)
     log.info("终末地：开始（调用方 %s）", args.caller or "?")
     from ark_relay.core.desktop import Desktop, kill  # noqa: PLC0415
-    calib = _read_json(home / CALIB)
-    probes = Probes(running=_tasklist, window=_find_window, spawn=_spawn_desktop("ark-efstart-launcher"),
-                    kill=kill, box=box_brightness, calib=dict(calib))
-    res = run_once(home, args.caller, desk=Desktop(home, spawn=_spawn_desktop("ark-efstart-agent")),
-                   probes=probes)
-    if probes.calib != calib:
-        _write_json(home / CALIB, probes.calib)
+    desk = Desktop(home, spawn=_spawn_desktop("ark-efstart-agent"))
+    probes = Probes(running=_tasklist, kill=kill, run=_run, wake=desk.wake)
+    res = run_once(home, args.caller, args.maaend, probes=probes)
     out = {"at": datetime.now().isoformat(timespec="seconds"), "caller": args.caller,
            "code": res.code, "reason": res.reason, "shot": res.shot}
     _write_json(home / LAST, out)
     if args.result:
         _write_json(Path(args.result), out)
-    (log.info if res.code == OK else log.warning)("终末地：结束 %d：%s%s", res.code, res.reason,
-                                                   f"（截图 {res.shot}）" if res.shot else "")
+    (log.info if res.code == OK else log.warning)("终末地：结束 %d：%s", res.code, res.reason)
     return res.code
 
 
@@ -551,10 +318,11 @@ def helper_alive(state_dir, procs) -> bool:
     return any(p == pid and str(n).lower() in ("pythonw.exe", "python.exe") for n, p in procs or ())
 
 
-def run_on_desktop(state_dir, spawn, *, wait_s: float = WHOLE_S, sleep=time.sleep,
+def run_on_desktop(state_dir, spawn, maaend_dir, *, wait_s: float = 2 * WHOLE_S, sleep=time.sleep,
                    clock=time.monotonic, pythonw=None, poll_s: float = 5.0) -> Result:
     """Run the helper on the interactive desktop from the relay's service and wait for its
     result. `spawn(exe, cwd, args)` is preupdate_common._spawn_interactive in production.
+    wait_s: the helper may first wait WHOLE_S for another start's lock, then start.
     poll_s: how often the result file is looked for; a start takes minutes."""
     if pythonw is None:
         from ark_relay.features.preupdate.preupdate_common import _pythonw  # noqa: PLC0415
@@ -564,7 +332,8 @@ def run_on_desktop(state_dir, spawn, *, wait_s: float = WHOLE_S, sleep=time.slee
     if pythonw is None or not trampoline.is_file():
         return Result(SETUP, f"开游戏的助手没装好（{pythonw or '没有 pythonw.exe'}，{trampoline}）")
     result = home / f"result-{uuid.uuid4().hex[:8]}.json"
-    if not spawn(Path(pythonw), home, (str(trampoline), "--caller", "relay", "--result", str(result))):
+    if not spawn(Path(pythonw), home, (str(trampoline), "--caller", "relay", "--maaend", str(maaend_dir),
+                                       "--result", str(result))):
         return Result(LAUNCHER, "开游戏的助手没能在桌面会话里起来")
     deadline = clock() + wait_s
     while clock() < deadline:

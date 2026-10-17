@@ -103,8 +103,9 @@ print("\n[settings new in AUTO-MAS v5.7.0-beta.4: MaaEnd's launcher start (10-16
 # or later: the recorded days of the day simulator run v5.6.2 to beta.3.
 if mascontract is not None:
     launch = {(i.kind, i.path) for i in mascontract.CONTRACT if i.use == "maaend_launch"}
-    check("MaaEnd Game.Path, Game.LaunchMode, Game.LauncherPath are listed",
-          launch, {("MaaEnd", "Game.Path"), ("MaaEnd", "Game.LaunchMode"), ("MaaEnd", "Game.LauncherPath")})
+    check("MaaEnd Game.Path, Game.LaunchMode, Game.LauncherPath, Game.ControllerType are listed",
+          launch, {("MaaEnd", "Game.Path"), ("MaaEnd", "Game.LaunchMode"), ("MaaEnd", "Game.LauncherPath"),
+                   ("MaaEnd", "Game.ControllerType")})
     check("version order: beta.4 after beta.3, the release after its betas",
           (mascontract.version_key("v5.7.0-beta.3") < mascontract.version_key("v5.7.0-beta.4")
            < mascontract.version_key("v5.7.0") < mascontract.version_key("v5.7.1-beta.1"),
@@ -134,6 +135,33 @@ if mascontract is not None:
     check("Game.Path is judged on every version",
           [(i.kind, i.path) for i in mascontract.check(drop_path(fx.automas_dir(tmpdir(), beta3=True))).missing],
           [("MaaEnd", "Game.Path")])
+
+print("\n[「MaaEnd 启动」's window settings, written by the relay since 10-17]")
+# efstart_setup sets Game.SetResolution / CloseOnFinish / RestoreDisplayType / RestoreResolution
+# and reads Game.ControllerType (maaend_launch.check). An AUTO-MAS that drops one must be
+# reported: listed, judged on every version (MaaEndConfig has them since v5.7.0-beta.2 at
+# least), and a missing one named in one plain line.
+if mascontract is not None:
+    WINDOW_KEYS = ("SetResolution", "CloseOnFinish", "RestoreDisplayType", "RestoreResolution")
+    window = [(i.kind, i.path, i.since) for i in mascontract.CONTRACT if i.use == "maaend_window"]
+    check("the four window settings are listed, judged on every version",
+          window, [("MaaEnd", f"Game.{k}", "") for k in WINDOW_KEYS])
+
+    def drop_window(root):
+        f = root / "config" / "ScriptConfig.json"
+        data = json.loads(f.read_text(encoding="utf-8"))
+        for k in (*WINDOW_KEYS, "ControllerType"):
+            data["S-END"]["Game"].pop(k)
+        f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return root
+    gone = mascontract.check(drop_window(fx.automas_dir(tmpdir(), beta3=True)))
+    check("an AUTO-MAS that drops them: all five named",
+          sorted((i.kind, i.path) for i in gone.missing),
+          sorted([("MaaEnd", f"Game.{k}") for k in (*WINDOW_KEYS, "ControllerType")]))
+    lines = texts.mas_contract_lines(gone.missing)
+    check("plain lines for them, one per feature", (len(lines), [p for x in lines for p in texts.plain(x)]), (2, []))
+    check("the fixture as on the machine: nothing missing",
+          mascontract.check(fx.automas_dir(tmpdir(), beta3=True)).missing, [])
 
 print("\n[the boot self-check has it as one item, routed like the others]")
 SELF_GOOD = dict(procs=lambda: [(1, r"D:\ark\automas\repo\main.py")], mas_up=lambda: True,

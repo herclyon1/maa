@@ -90,6 +90,15 @@ CONTRACT: tuple[Item, ...] = tuple([
             "efstart_setup.py:install/launcher_for (write)"),
     *_items("MaaEnd", "script", "Game", ("LaunchMode", "LauncherPath"), "maaend_launch",
             "efstart_setup.py:install/launcher_for (write LaunchMode)", since="v5.7.0-beta.4"),
+    # 「MaaEnd 启动」 (10-17): LaunchMode "MaaEnd" only when MaaEnd's launcher pretask supports
+    # Game.ControllerType (maaend_launch.check), and the four settings that make it start the
+    # game as a 1280x720 window and write fullscreen 1920x1080 back after the run. All five
+    # are in MaaEndConfig since v5.7.0-beta.2 at least (fixtures/automas-models/config.py.txt).
+    *_items("MaaEnd", "script", "Game", ("ControllerType",), "maaend_launch",
+            "efstart_setup.py:install (maaend_launch.check)"),
+    *_items("MaaEnd", "script", "Game", ("SetResolution", "CloseOnFinish", "RestoreDisplayType",
+                                         "RestoreResolution"), "maaend_window",
+            "efstart_setup.py:install/restore (write)"),
     # ---- MAA user (SubConfigsInfo.UserData.<uid>); Stage.* and Task.Annihilation via masuser
     *_items("MAA", "user", "Stage", ("StageMode", "Stage", "Stage_1", "Stage_2", "Stage_3", "SeriesNumb"),
             "stage", "plan.py:_scripts, stagegate.py:run_verdict, snapshot.py:maa_fields, "

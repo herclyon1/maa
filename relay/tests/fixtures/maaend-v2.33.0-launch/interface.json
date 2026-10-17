@@ -1,0 +1,36 @@
+{
+    "version": "v0.1.0",
+    "controller": [
+        {
+            "name": "Win32-Front"
+        },
+        {
+            "name": "ADB"
+        },
+        {
+            "name": "CloudADB"
+        },
+        {
+            "name": "PlayCover"
+        },
+        {
+            "name": "Linux-Gamescope"
+        },
+        {
+            "name": "Linux-ScreenCast"
+        },
+        {
+            "name": "Linux-Wlroots"
+        },
+        {
+            "name": "MacOS-Front"
+        },
+        {
+            "name": "MacOS-Background"
+        }
+    ],
+    "import": [
+        "tasks/pretasks/LaunchGamePC.json",
+        "tasks/CloseGamePC.json"
+    ]
+}

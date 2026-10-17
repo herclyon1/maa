@@ -89,7 +89,6 @@ class Notes:
 handle._ship_evidence = lambda eng, rec: ""
 handle._weekly_gates = lambda eng, rec: None
 handle._push_unverified = lambda eng, rec: None   # task screenshots are not in the fixture
-handle._check_d3d11_after_maaend = lambda: None
 collect_retry.restore_master = lambda cfg: ""
 dispatched = []
 makeup._dispatch = lambda script: (dispatched.append(script), (True, "ok"))[1]
