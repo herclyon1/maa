@@ -117,9 +117,50 @@ if ml is not None:
         "CloseGamePC gone": ml.check(maaend_copy(lambda d: edit_json(
             d / "interface.json", lambda j: j["import"].pop())), "Win32-Front"),
     }
+    # AUTO-MAS sends only LaunchGamePCGameSetting (AutoProxy.py:2199-2207 @fdfb0fd); every other
+    # option is LaunchGamePC.json's default case, so a default that is not the window case starts
+    # the game that way even though the case still exists.
+    for opt, other in (("LaunchGamePCDisplayType", "Fullscreen"), ("LaunchGamePCResolution", "1920x1080"),
+                       ("LaunchGamePCRegion", "Global"), ("LaunchGamePCLauncherPath", "Manual")):
+        reasons[f"{opt} default {other}"] = ml.check(maaend_copy(lambda d, o=opt, v=other: edit_json(
+            d / "tasks" / "pretasks" / "LaunchGamePC.json",
+            lambda j: j["option"][o].update(default_case=v))), "Win32-Front")
+    reasons["(the relay's own start sends the values itself: still planned with DisplayType default Fullscreen)"] = (
+        "" if ml.launch_plan(maaend_copy(lambda d: edit_json(
+            d / "tasks" / "pretasks" / "LaunchGamePC.json",
+            lambda j: j["option"]["LaunchGamePCDisplayType"].update(default_case="Fullscreen"))))[0] else "refused")
+    planned = reasons.pop("(the relay's own start sends the values itself: still planned with DisplayType default Fullscreen)")
+    check("the relay's own start sends every value itself: a changed default does not stop it", planned, "")
     for what, why in reasons.items():
         check(f"{what}: refused", bool(why), True)
     check("every reason is plain Chinese", {w: texts.plain(r) for w, r in reasons.items() if texts.plain(r)}, {})
+
+    print("\n[a stored __MXU_PRETASK__LaunchGamePC entry in AUTO-MAS's MaaEnd config overrides the defaults]")
+    stored = getattr(ml, "stored_override", None)
+    check("maaend_launch.stored_override exists", callable(stored))
+    if callable(stored):
+        def doc(*ovs):
+            return {"instances": [{"id": f"i{n}", "tasks": [{"taskName": "__MXU_PRETASK__LaunchGamePC",
+                                                            "optionValues": ov}]} for n, ov in enumerate(ovs)]}
+        check("no entry (AUTO-MAS adds an empty one): fine", stored({"instances": [{"tasks": []}]}), "")
+        check("only the switch AUTO-MAS writes itself: fine",
+              stored(doc({"LaunchGamePCGameSetting": {"type": "switch", "value": False}})), "")
+        check("the same window values stored: fine", stored(doc({
+            "LaunchGamePCDisplayType": {"type": "select", "caseName": "Window"},
+            "LaunchGamePCResolution": {"type": "select", "caseName": "1280x720"},
+            "LaunchGamePCRegion": {"type": "select", "caseName": "CN"},
+            "LaunchGamePCLauncherPath": {"type": "select", "caseName": "Auto"}})), "")
+        overrides = {
+            "DisplayType Fullscreen stored": stored(doc({"LaunchGamePCDisplayType": {"type": "select", "caseName": "Fullscreen"}})),
+            "Resolution 1920x1080 stored as value": stored(doc({"LaunchGamePCResolution": {"type": "select", "value": "1920x1080"}})),
+            "Region Global in a second instance": stored(doc({}, {"LaunchGamePCRegion": {"type": "select", "caseName": "Global"}})),
+            "LauncherPath Manual stored": stored(doc({"LaunchGamePCLauncherPath": {"type": "select", "caseName": "Manual"}})),
+            "an entry AUTO-MAS cannot read": stored(doc({"LaunchGamePCDisplayType": "Window"})),
+            "no config to read": stored(None),
+        }
+        for what, why in overrides.items():
+            check(f"{what}: refused", bool(why), True)
+        check("every reason is plain Chinese", {w: texts.plain(r) for w, r in overrides.items() if texts.plain(r)}, {})
 
 # ─────────────────────────── efstart_setup.install ───────────────────────────
 
@@ -222,6 +263,36 @@ try:
           (len(lg.warned), NO_MAAEND_START in (lg.warned or [""])[0]), (1, True))
     check("…said again at the next boot while it lasts (not an INFO note)",
           (boot_stages._endfield_launch(cfg, lg, "开机"), len(lg.warned)), (None, 2))
+
+    print("\n[MaaEnd's default is not the window: AUTO-MAS would start it fullscreen, so 「启动器启动」 stays]")
+    game.update(BEFORE)
+    lg.warned.clear()
+    mas["data"]["59da8762"]["Info"]["Path"] = str(maaend_copy(lambda d: edit_json(
+        d / "tasks" / "pretasks" / "LaunchGamePC.json",
+        lambda j: j["option"]["LaunchGamePCDisplayType"].update(default_case="Fullscreen"))))
+    ok, notes = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+    check("DisplayType default Fullscreen: not done, still 「启动器启动」", (ok, game["LaunchMode"]), (False, "Launcher"))
+    check("…and said", any(NO_MAAEND_START in x for x in notes))
+    boot_stages._endfield_launch(cfg, lg, "开机")
+    check("…as a WARNING at boot", (len(lg.warned), NO_MAAEND_START in (lg.warned or [""])[0]), (1, True))
+
+    print("\n[AUTO-MAS's MaaEnd config stores a fullscreen pretask value: 「启动器启动」 stays]")
+    mas["data"]["59da8762"]["Info"]["Path"] = str(FX)
+    mfile = cfgdir / "mxu-MaaEnd.json"
+    plain_master = mfile.read_text(encoding="utf-8")
+
+    def stored_master(ov):
+        mfile.write_text(json.dumps({"instances": [{"name": "automas", "preActions": [], "tasks": [
+            {"taskName": "__MXU_PRETASK__LaunchGamePC", "enabled": False, "optionValues": ov}]}]}), encoding="utf-8")
+    stored_master({"LaunchGamePCDisplayType": {"type": "select", "caseName": "Fullscreen"}})
+    ok, notes = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+    check("stored DisplayType Fullscreen: not done, still 「启动器启动」", (ok, game["LaunchMode"]), (False, "Launcher"))
+    check("…and said", any(NO_MAAEND_START in x for x in notes))
+    stored_master({"LaunchGamePCDisplayType": {"type": "select", "caseName": "Window"},
+                   "LaunchGamePCGameSetting": {"type": "switch", "value": False}})
+    ok, notes = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+    check("stored Window (the same as the default): 「MaaEnd 启动」", (ok, game["LaunchMode"]), (True, "MaaEnd"))
+    mfile.write_text(plain_master, encoding="utf-8")
 
     print("\n[a window setting AUTO-MAS refuses: the mode is not switched]")
     mas["data"]["59da8762"]["Info"]["Path"] = str(FX)

@@ -23,7 +23,9 @@ So, at every relay start and right after the pre-update installs a new AUTO-MAS
 
 1. Game.Path -> Endfield.exe (target.json "game", which is original.game_path);
 2. when the installed MaaEnd still declares the pretask, its options and CloseGamePC's
-   restore for AUTO-MAS's Game.ControllerType (maaend_launch.check): Game.SetResolution
+   restore for AUTO-MAS's Game.ControllerType, its default cases are the window ones
+   (maaend_launch.check) and the MaaEnd master stores no other value for them
+   (maaend_launch.stored_override; AUTO-MAS sends only LaunchGamePCGameSetting itself): Game.SetResolution
    true, Game.CloseOnFinish true, Game.RestoreDisplayType "Fullscreen",
    Game.RestoreResolution "1920x1080" (not "Original": that takes the registry as found
    at run start, so one run that died windowed would keep the game windowed), and only
@@ -274,7 +276,8 @@ def install(cfg, *, pythonw: "Path | None" = None, code_root: "Path | None" = No
         log.info("调度程序还没有「开终末地的方式」这一项（比 v5.7.0-beta.4 旧），没改")
     else:
         maaend_dir = str((script.get("Info") or {}).get("Path") or "") or cfg.maaend_dir
-        why = _launch_check(maaend_dir, str(game_cfg.get("ControllerType") or ""))
+        why = (_launch_check(maaend_dir, str(game_cfg.get("ControllerType") or ""))
+               or maaend_launch.stored_override(master))
         want = LAUNCH_MODE
         if why:
             want = FALLBACK_MODE

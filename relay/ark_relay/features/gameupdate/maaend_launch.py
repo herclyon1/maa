@@ -49,6 +49,14 @@ LAUNCH_VALUES = {
     "LaunchGamePCDisplayType": "Window",
     "LaunchGamePCResolution": "1280x720",
 }
+# AUTO-MAS v5.7.0-beta.5 itself sends only LaunchGamePCGameSetting (AutoProxy.py:2199-2207 @fdfb0fd):
+# every other option is what its MaaEnd config stores in the __MXU_PRETASK__LaunchGamePC task's
+# optionValues, else LaunchGamePC.json's default case. So the window comes up only while both
+# give LAUNCH_VALUES for these four (check, stored_override); the relay's own start sends them
+# itself (launch_plan).
+AUTOMAS_DEFAULTED = ("LaunchGamePCDisplayType", "LaunchGamePCResolution",
+                     "LaunchGamePCRegion", "LaunchGamePCLauncherPath")
+STORED_TASK = "__MXU_PRETASK__LaunchGamePC"   # AutoProxy.py _MAAEND_LAUNCH_GAME_PRETASK
 # What CloseGamePC writes back: the owner's own settings, fullscreen 1920x1080 (registry on
 # 2026-10-17 10:2x: Screenmanager Fullscreen mode 1, 1920x1080). Both width and height, or
 # CloseGameAction refuses before closing the game ("incomplete or invalid resolution
@@ -142,6 +150,53 @@ def launch_options(pretask: dict, opts: dict) -> "tuple[dict | None, str]":
     return values, ""
 
 
+def default_mismatch(opts: dict) -> str:
+    """'' when LaunchGamePC.json's default case of every AUTOMAS_DEFAULTED option is the
+    LAUNCH_VALUES case, else the Chinese reason: AUTO-MAS would start the game that way."""
+    wrong = {n: (opts.get(n) or {}).get("default_case") for n in AUTOMAS_DEFAULTED
+             if (opts.get(n) or {}).get("default_case") != LAUNCH_VALUES[n]}
+    if not wrong:
+        return ""
+    log.info("MaaEnd 开游戏预任务的默认值不是窗口要用的：%s（要 %s）", wrong,
+             {n: LAUNCH_VALUES[n] for n in wrong})
+    return "MaaEnd 的开游戏预任务默认不再是「1280×720 窗口」，调度程序照默认开游戏就不是窗口"
+
+
+def _stored_case(raw) -> "str | None":
+    """The case a stored MXU option value names (AUTO-MAS shell_instances._mxu_option_value):
+    caseName, else value; None when it is not a value AUTO-MAS can read."""
+    if not isinstance(raw, dict):
+        return None
+    if "caseName" in raw:
+        return str(raw.get("caseName") or "")
+    return None if isinstance(raw.get("value"), bool) else str(raw.get("value") or "")
+
+
+def stored_override(master: "dict | None") -> str:
+    """'' when AUTO-MAS's MaaEnd config (mxu-MaaEnd.json, `master`) stores nothing other than
+    LAUNCH_VALUES for the AUTOMAS_DEFAULTED options in any instance's STORED_TASK entry; else
+    the Chinese reason. No config read at all is a reason too: nothing could be checked."""
+    if not isinstance(master, dict):
+        return "读不到调度程序给 MaaEnd 存的配置，没法确认开游戏的设置还是「1280×720 窗口」"
+    wrong = []
+    for inst in master.get("instances") or []:
+        for task in (inst.get("tasks") or []) if isinstance(inst, dict) else []:
+            if not isinstance(task, dict) or task.get("taskName") != STORED_TASK:
+                continue
+            ov = task.get("optionValues") or {}
+            if not isinstance(ov, dict):
+                wrong.append(f"{inst.get('id') or inst.get('name')}: optionValues={ov!r}")
+                continue
+            for n in AUTOMAS_DEFAULTED:
+                if n in ov and _stored_case(ov[n]) != LAUNCH_VALUES[n]:
+                    wrong.append(f"{inst.get('id') or inst.get('name')}: {n}={ov[n]!r}")
+    if not wrong:
+        return ""
+    log.info("调度程序存的 MaaEnd 开游戏预任务设置盖过了窗口要用的：%s（要 %s）", "; ".join(wrong),
+             {n: LAUNCH_VALUES[n] for n in AUTOMAS_DEFAULTED})
+    return "调度程序给 MaaEnd 存的开游戏设置不是「1280×720 窗口」，照它开游戏就不是窗口"
+
+
 def launch_plan(maaend_dir, controller: str = "", decls=None) -> "tuple[dict | None, str]":
     """{"exec": the pretask's exec as declared, "args": [...]}, or (None, why).
     `controller` (AUTO-MAS's Game.ControllerType) must be one the pretask supports: its own
@@ -195,12 +250,17 @@ def restore_override(maaend_dir, decls=None) -> "tuple[dict | None, str]":
 
 
 def check(maaend_dir, controller: str) -> str:
-    """'' when MaaEnd can start the game windowed for this controller and put fullscreen
-    back afterwards; else the Chinese reason."""
+    """'' when AUTO-MAS's 「MaaEnd 启动」 makes MaaEnd start the game windowed for this
+    controller (the pretask's default cases are LAUNCH_VALUES, default_mismatch) and put
+    fullscreen back afterwards; else the Chinese reason. What AUTO-MAS's config stores is
+    stored_override's part."""
     if not controller:
         return "调度程序里终末地没选控制器"
     decls = read_decls(maaend_dir)
     _plan, why = launch_plan(maaend_dir, controller, decls)
+    if why:
+        return why
+    why = default_mismatch(decls[1])
     if why:
         return why
     _over, why = restore_override(maaend_dir, decls)
