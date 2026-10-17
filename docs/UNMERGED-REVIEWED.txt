@@ -83,3 +83,4 @@ c03fc013 b superseded by 09b5b4d2 (Direct3D 11 alarm removed on main with the �
 # 10-17, fix-1017-maaend-launch: held, see BOARD/DECISIONS.md D-1017-终末地窗口模式暂缓
 09b5b4d2 declined held until a windowed MaaEnd test passes with the boot desktop (ToDesk not minimized by hand) and the windowed collect retry runs once (BOARD/DECISIONS.md D-1017-终末地窗口模式暂缓)
 2c212641 declined docs of 09b5b4d2, held with it (BOARD/DECISIONS.md D-1017-终末地窗口模式暂缓)
+b4c1500b declined launch-option gate of 09b5b4d2 (MaaEnd default cases and AUTO-MAS stored pretask values must be the window), held with it (BOARD/DECISIONS.md D-1017-终末地窗口模式暂缓)
