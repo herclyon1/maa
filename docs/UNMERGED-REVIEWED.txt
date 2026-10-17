@@ -80,7 +80,6 @@ c03fc013 b superseded by 09b5b4d2 (Direct3D 11 alarm removed on main with the �
 395c4fd8 declined boot-time state.json lock handling, shelved by D-1017-状态文件开机锁修补搁置 (BOARD/DECISIONS.md)
 3c709ae1 declined boot-time state.json lock handling, shelved by D-1017-状态文件开机锁修补搁置 (BOARD/DECISIONS.md)
 08635a7b declined boot-time state.json lock handling, shelved by D-1017-状态文件开机锁修补搁置 (BOARD/DECISIONS.md)
-# 10-17, fix-1017-maaend-launch: held, see BOARD/DECISIONS.md D-1017-终末地窗口模式暂缓
-09b5b4d2 declined held until a windowed MaaEnd test passes with the boot desktop (ToDesk not minimized by hand) and the windowed collect retry runs once (BOARD/DECISIONS.md D-1017-终末地窗口模式暂缓)
-2c212641 declined docs of 09b5b4d2, held with it (BOARD/DECISIONS.md D-1017-终末地窗口模式暂缓)
-b4c1500b declined launch-option gate of 09b5b4d2 (MaaEnd default cases and AUTO-MAS stored pretask values must be the window), held with it (BOARD/DECISIONS.md D-1017-终末地窗口模式暂缓)
+# 10-17 evening, fix-1017-maaend-launch (09b5b4d2, 2c212641, b4c1500b) merged into main for tonight's deploy
+# (BOARD/DECISIONS.md D-1017-终末地窗口模式暂缓, updated 18:1x: merge and deploy after the evening run,
+# zero-cost windowed test, roll back if it fails); their "declined ... held" lines are dropped.

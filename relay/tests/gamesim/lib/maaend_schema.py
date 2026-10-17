@@ -56,7 +56,8 @@ MXU_DIR = UPSTREAM / f"mxu-{MXU}"
 MAAEND_REPO = "MaaEnd/MaaEnd"
 MXU_REPO = "MistEO/MXU"
 MXU_FILES = ("src/stores/helpers.ts", "src/stores/appStore.ts", "src/utils/pipelineOverride.ts",
-             "src/utils/optionHelpers.ts", "src/types/specialTasks.ts", "src/services/interfaceLoader.ts")
+             "src/utils/optionHelpers.ts", "src/types/specialTasks.ts", "src/services/interfaceLoader.ts",
+             "src/utils/taskControllerCache.ts")
 PIPELINE_PREFIX = "assets/resource/pipeline/"
 NODES_FILE = "pipeline-nodes.txt"
 
@@ -240,6 +241,12 @@ PORTS = {
     "load: recentlyClosed": ("src/stores/appStore.ts", "recentlyClosed: (config.recentlyClosed || []).map(",
                              "restoreOptionValuesFromConfig(config.globalOptionValues || {}, pi, projectName),\n"
                              "          };"),
+    "cacheTaskEnabledForController": ("src/utils/taskControllerCache.ts",
+                                      "export function cacheTaskEnabledForController(", None),
+    "load: task flags": ("src/stores/appStore.ts", "const savedTasks: SelectedTask[] = inst.tasks",
+                         "enabledByController: t.enabledByController,\n              optionValues: mergedValues,"),
+    "save: task flags": ("src/stores/appStore.ts", "function generateConfig(): MxuConfig {",
+                         "inst.controllerName,\n            t.enabled,\n          ),"),
 }
 
 
@@ -315,6 +322,34 @@ def sanitize_option_value(key: str, value: dict, options: dict, warn: list) -> "
         valid = {i.get("name") for i in od.get("inputs") or []}
         return {"type": "input", "values": {k: v for k, v in (value.get("values") or {}).items() if k in valid}}
     return value
+
+
+def cache_task_enabled_for_controller(cache, controller_name, enabled: bool):
+    """Port of taskControllerCache.ts cacheTaskEnabledForController (v2.8.0's file
+    has the same sha256 as the stored v2.7.1 one). JS `{...cache}` of a boolean or
+    undefined is `{}`, so a bare boolean cache becomes a dict."""
+    if not controller_name:
+        return cache
+    return {**(cache if isinstance(cache, dict) else {}), controller_name: enabled}
+
+
+def mxu_load_save_flags(doc: dict) -> dict:
+    """The enabled flags MXU writes back after it loads this config and saves it
+    untouched: load copies `enabled` and `enabledByController` as they are
+    (appStore.ts "load: task flags"); save (generateConfig) writes `enabled` and
+    `cacheTaskEnabledForController(enabledByController, inst.controllerName,
+    enabled)`. A copy of `doc` with only those two keys redone; a cache that comes
+    back undefined stays absent (JSON.stringify drops it)."""
+    out = json.loads(json.dumps(doc))
+    for inst in out.get("instances") or []:
+        for t in inst.get("tasks") or []:
+            cache = cache_task_enabled_for_controller(t.get("enabledByController"),
+                                                      inst.get("controllerName"), t.get("enabled"))
+            if cache is None:
+                t.pop("enabledByController", None)
+            else:
+                t["enabledByController"] = cache
+    return out
 
 
 def special_task_names(mxu_dir: Path = MXU_DIR) -> set[str]:
