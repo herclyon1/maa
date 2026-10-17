@@ -20,7 +20,9 @@ make-up was.
 What this does: a thread tails AUTO-MAS's `<automas>/debug/app.log` (woken by a
 directory-change notification, POLL_SECONDS as a backstop) and, at each line where
 AUTO-MAS hands Endfield to its launcher (「MaaEnd 自动代理 | 启动方式为「启动器启动」，
-将由 MAS ...」, 13:21:28.423 that day; one per attempt, so a retry re-arms it), wakes the display at once through the
+将由 MAS ...」, 13:21:28.423 that day; on v5.7.0-beta.5 「启动方式为「启动器启动」」 or, in
+the 「MaaEnd 启动」 mode used since 10-17, 「启动方式为「MaaEnd 启动」」; one per attempt, so a
+retry re-arms it), wakes the display at once through the
 desktop agent (a zero-distance mouse move, the same WakeDisplay every screenshot
 uses), then again every REWAKE_SECONDS until AUTO-MAS logs that the game is up
 (「运行脚本任务: ...MaaEnd.exe」, 13:26:14 for attempt 2), the attempt failed
@@ -57,7 +59,11 @@ POLL_SECONDS = 10.0
 COALESCE_SECONDS = 0.5
 
 _STAMP = r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ \|[^|]*\| MaaEnd 自动代理 \| "
-_HANDOFF = re.compile(_STAMP + r"启动方式为「启动器启动」，将由")
+# beta.4 logged 「启动方式为「启动器启动」，将由 MAS ...」; v5.7.0-beta.5 logs the bare mode
+# (AutoProxy.py:496 「启动方式为「启动器启动」」, :503 「启动方式为「MaaEnd 启动」」, the mode
+# efstart_setup sets since 10-17). In 「MaaEnd 启动」 MaaEnd's pretask starts Launcher.exe and
+# finds it by its window just the same. 「MAS 启动」 starts Endfield.exe itself, no launcher window.
+_HANDOFF = re.compile(_STAMP + r"启动方式为「(?:启动器启动|MaaEnd 启动)」")
 _GAME_UP = re.compile(_STAMP + r"运行脚本任务")
 _LAUNCH_FAILED = re.compile(_STAMP + r".*游戏启动失败")
 

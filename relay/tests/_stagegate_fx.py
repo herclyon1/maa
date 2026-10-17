@@ -83,8 +83,11 @@ def automas_dir(root: Path, *, stage="YW-4", stage_1="-", fight=True, mode="Fixe
     }
     if beta3:
         scripts["S-MAA"]["Run"] = {"IfCheckGameUpdate": True, "IfAutoInstallGameApk": True}
+        # Game keys of MaaEndConfig since v5.7.0-beta.2 at least, as on the machine 10-17 10:2x.
         scripts["S-END"]["Game"] = {"WaitTime": 60,
-                                    "Path": "D:\\endfield\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe"}
+                                    "Path": "D:\\endfield\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe",
+                                    "ControllerType": "Win32-Front", "SetResolution": False, "CloseOnFinish": True,
+                                    "RestoreDisplayType": "Window", "RestoreResolution": "Off"}
         scripts["S-END"]["SubConfigsInfo"]["UserData"]["U2"]["Task"] = {
             "IfSanity": True, "IfAutoUseSpMedication": False, "SanityTaskType": "ProtocolSpace",
             "AutoEssenceSpecifiedLocation": ""}

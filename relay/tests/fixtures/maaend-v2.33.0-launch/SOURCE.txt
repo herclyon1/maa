@@ -1,0 +1,8 @@
+# MaaEnd v2.33.0 (https://github.com/MaaEnd/MaaEnd, tag v2.33.0, commit 39a22f9176a2484c38c10d256b8f595d4370f6a9),
+# the version AUTO-MAS v5.7.0-beta.5 started windowed on the machine 2026-10-17 11:31 Beijing.
+# tasks/pretasks/LaunchGamePC.json and tasks/CloseGamePC.json: assets/<same path>, byte for byte.
+# interface.json: NOT upstream's file; written for these tests from upstream assets/interface.json:
+# its version, its controller names (in order) and an import list of just the two files above.
+# sha256 <path>
+b0bc23a8bf1f0949163f963c06c5cd684df6a771acc5ac694fa691593cf4bfc0 tasks/pretasks/LaunchGamePC.json
+e4e567e8acb1577398952f15d8a68bdb0119943fdd24779a6a3e98b6b315b2fd tasks/CloseGamePC.json

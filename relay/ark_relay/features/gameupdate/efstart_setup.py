@@ -1,46 +1,51 @@
-"""Leave Endfield's start to AUTO-MAS's own launcher mode; run at each relay start.
+"""Leave Endfield's start to AUTO-MAS's 「MaaEnd 启动」 mode, windowed; run at each relay start.
 
 Since client 1.6.3 (2026-10-15) the game runs only when the official launcher starts it
 (efstart.py has the evidence). From 10-15 to 10-16 the relay pointed AUTO-MAS's MaaEnd
 Game.Path at its own helper (state/efstart/start-endfield.cmd) and put the helper in the
-MaaEnd master as a preAction. AUTO-MAS v5.7.0-beta.4 (installed by the relay's pre-update
-10-16 02:34, upstream PR #1394) starts Endfield through the official launcher itself:
-Game.LaunchMode "Launcher" (the default) opens Launcher.exe --game=Endfield, clicks
-「开始游戏」 (and 「更新游戏」 / 「确认」 when the launcher wants an update) and waits
-Game.WaitTime after the game window appears (AutoProxy.py:501-558 @0fec00e0). Its pre-run
-check (manager.py:149-163) finds the launcher from Game.Path, and it found none from the
-.cmd: 10-16 09:34:05 「未通过配置检查: 未找到终末地官方启动器」, the 早班 MaaEnd never ran.
+MaaEnd master as a preAction; AUTO-MAS v5.7.0-beta.4's pre-run check found no launcher from
+the .cmd, and the morning MaaEnd run was skipped (its app.log, 10-16 09:34:05:
+「未通过配置检查: 未找到终末地官方启动器」). From 10-16 to 10-17 the relay kept AUTO-MAS on
+Game.LaunchMode "Launcher" (AUTO-MAS clicks 「开始游戏」 itself), with the launcher's 「DirectX 11 启动」 box ticked by hand: MaaEnd reads a fullscreen non-DX11 game
+as 「当前环境识别异常」, and the launcher remembers the tick, so the owner's own play started
+in DX11 too.
+
+Since 10-17 (DECISIONS D-1016-终末地等AUTO-MAS新版; the owner said 「好」 on 10-16) the game
+runs windowed below the desktop for script runs instead, which MaaEnd reads on any graphics
+API, and the box is to be unticked. AUTO-MAS v5.7.0-beta.5's Game.LaunchMode "MaaEnd" runs
+MaaEnd's own pretask LaunchGamePC before a run (a 1280x720 window, then the real launcher's
+「开始游戏」, so Games.exe stays the parent) and CloseGamePC after it (fullscreen 1920x1080
+back); maaend_launch.py has the options and the 10-17 11:31 run that proved them.
 
 So, at every relay start and right after the pre-update installs a new AUTO-MAS
 (boot_stages), this module converges AUTO-MAS's MaaEnd script, each write read back
 (commands._script_item_via_api):
 
 1. Game.Path -> Endfield.exe (target.json "game", which is original.game_path);
-2. Game.LaunchMode -> "Launcher" when it is anything else; Game.LauncherPath is left as
-   it is (empty = AUTO-MAS finds the launcher by itself, which works on this machine);
-3. Game.WaitTime -> its value before 10-15 (original.wait_time; the 180 s floor was for
-   the .cmd, AUTO-MAS now waits only after the window is up);
-4. the relay's own preAction (the helper, found by its trampoline in args; on the machine
-   it kept the old entry's id jw75pty) is removed from the MaaEnd master and not added
-   back. The direct Endfield.exe start it once replaced (original.preactions) is never put
-   back: 1.6.3 refuses it.
+2. when the installed MaaEnd still declares the pretask, its options and CloseGamePC's
+   restore for AUTO-MAS's Game.ControllerType (maaend_launch.check): Game.SetResolution
+   true, Game.CloseOnFinish true, Game.RestoreDisplayType "Fullscreen",
+   Game.RestoreResolution "1920x1080" (not "Original": that takes the registry as found
+   at run start, so one run that died windowed would keep the game windowed), and only
+   once all four hold, Game.LaunchMode "MaaEnd". When the check fails, Game.LaunchMode
+   "Launcher" and a WARNING (the group): with the box unticked every MaaEnd run of that
+   mode starts fullscreen on Vulkan and fails;
+3. Game.WaitTime -> its value before 10-15 (original.wait_time);
+4. the relay's own preAction (the helper, found by its trampoline in args) is removed from
+   the MaaEnd master and not added back; the direct Endfield.exe start it once replaced is
+   never put back: 1.6.3 refuses it.
 
-Then it applies upstream's launcher discovery rule (app/services/endfield_launcher.py
-@0fec00e0) to what AUTO-MAS now holds; when it fails, AUTO-MAS will refuse every MaaEnd
-run, and the relay says so at boot (a WARNING, so the group hears it) instead of at 09:34.
+In "Launcher" mode it also applies upstream's launcher discovery rule
+(app/services/endfield_launcher.py) to what AUTO-MAS now holds; when it fails, AUTO-MAS
+refuses every MaaEnd run of that mode, and the relay says so at boot (a WARNING). In
+"MaaEnd" mode MaaEnd finds the launcher itself (AUTO-MAS manager.py: 「原生模式由 MaaEnd
+自行定位」), so a miss there is only logged.
 
-The trampoline state/efstart/efstart.py stays: the relay's own starts (collect_retry's
-gathering retry, through efstart.run_on_desktop) still go through the helper.
-
-AUTO-MAS never ticks the launcher's 「DirectX 11 启动」 (launcher_start.py:100-102), which
-MaaEnd needs (memory endfield-163-launcher-dx11.md). The launcher kept the tick across its
-own restarts (efstart.log 10-15 18:18:55). check_d3d11() reads line 6 of the game's
-Player.log after each MaaEnd record and at boot, and says so when the last start was not
-Direct3D 11; it never clicks anything.
+The trampoline state/efstart/efstart.py stays: the relay's own start (collect_retry's
+gathering retry, through efstart.run_on_desktop) runs the same pretask through it.
 """
 from __future__ import annotations
 
-import glob
 import json
 import logging
 import os
@@ -49,7 +54,7 @@ from pathlib import Path, PureWindowsPath
 
 from ark_relay.core import texts
 from ark_relay.core.config import atomic_write_bytes, atomic_write_text
-from ark_relay.features.gameupdate import efstart
+from ark_relay.features.gameupdate import efstart, maaend_launch
 
 log = logging.getLogger("ark.efstart_setup")
 
@@ -66,16 +71,18 @@ def _subdirs(path: str) -> "list[str]":
         return []
 
 
-def _player_logs() -> "list[str]":
-    """Every Endfield Player.log under a user profile: the game writes
-    %USERPROFILE%\\AppData\\LocalLow\\HyperGryph\\Endfield\\Player.log for the user it runs
-    as (Administrator on the machine, read 10-16)."""
-    users = os.environ.get("SystemDrive", "C:") + "\\Users"
-    return glob.glob(os.path.join(users, "*", "AppData", "LocalLow", "HyperGryph", "Endfield", "Player.log"))
-
-
 AUTOMAS_PREACTION_ID = "automas-endfield"     # AUTO-MAS's own entry (AutoProxy.py:301-327)
-LAUNCH_MODE = "Launcher"                      # AUTO-MAS v5.7.0-beta.4 Game.LaunchMode
+LAUNCH_MODE = "MaaEnd"                        # AUTO-MAS v5.7.0-beta.5 Game.LaunchMode 「MaaEnd 启动」
+FALLBACK_MODE = "Launcher"                    # 「启动器启动」 (v5.7.0-beta.4, PR #1394)
+# Script-level Game settings 「MaaEnd 启动」 needs (AUTO-MAS v5.7.0-beta.5 app/models/config.py
+# MaaEndConfig; values as set and run on the machine 10-17 11:31). Written before LaunchMode.
+WINDOWED = {"SetResolution": True, "CloseOnFinish": True,
+            "RestoreDisplayType": "Fullscreen", "RestoreResolution": "1920x1080"}
+# Their values before the relay set them (AUTO-MAS API read 10-17 10:2x Beijing): restore().
+WINDOWED_BEFORE = {"SetResolution": False, "CloseOnFinish": True,
+                   "RestoreDisplayType": "Window", "RestoreResolution": "Off"}
+# MaaEnd's declarations, read from its folder; the day simulator answers it from its sim tree.
+_launch_check = maaend_launch.check
 # upstream app/services/endfield_launcher.py @0fec00e0
 _LAUNCHER_EXE = "Launcher.exe"
 _LAUNCHER_EXE_NAMES = ("launcher.exe", "games.exe")
@@ -83,9 +90,6 @@ _VERSION_MARKER = "Games.exe"
 # AUTO-MAS's lower bound for Game.WaitTime: RangeValidator(60, 9999) in
 # https://github.com/AUTO-MAS-Project/AUTO-MAS/blob/v5.7.0-beta.4/app/models/config.py
 WAIT_MIN_S = 60
-# Player.log line 6 when the game runs on Direct3D 11 (the machine, 10-15 18:22).
-D3D11_LINE_NO = 6
-D3D11_LINE = "Forcing GfxDevice: Direct3D 11"
 
 
 def _is_game(prog: str) -> bool:
@@ -210,8 +214,8 @@ def _read_master(mfile: "Path | None") -> "tuple[dict | None, str]":
 
 
 def install(cfg, *, pythonw: "Path | None" = None, code_root: "Path | None" = None) -> "tuple[bool, list[str]]":
-    """Converge AUTO-MAS's MaaEnd script and the MaaEnd master on AUTO-MAS's own launcher
-    start (module docstring). (all done and AUTO-MAS will find the launcher, notes).
+    """Converge AUTO-MAS's MaaEnd script and the MaaEnd master on AUTO-MAS's 「MaaEnd 启动」
+    (module docstring). (all done and AUTO-MAS will start the game windowed, notes).
     Each write is read back. `pythonw` is accepted for the callers' sake and not used."""
     from ark_relay.core import mastercfg  # noqa: PLC0415
     from ark_relay.features.phone import commands  # noqa: PLC0415
@@ -263,15 +267,36 @@ def install(cfg, *, pythonw: "Path | None" = None, code_root: "Path | None" = No
         if done:
             now_game = str(game)
         notes.append(("调度程序的终末地路径已改回游戏本体：" if done else "调度程序的终末地路径没改成：") + text)
+    mode = str(game_cfg.get("LaunchMode") or "")
     if "LaunchMode" not in game_cfg:
         # An AUTO-MAS older than v5.7.0-beta.4 has no launcher mode; the boot self-check's
         # settings line (mascontract) is the one place that says a setting is missing.
-        log.info("调度程序还没有「经官方启动器开终末地」这一项（比 v5.7.0-beta.4 旧），没改")
-    elif game_cfg.get("LaunchMode") != LAUNCH_MODE:
-        done, text = commands._script_item_via_api(reply, "MaaEnd", "Game.LaunchMode", LAUNCH_MODE)
-        ok &= done
-        notes.append(("调度程序已改成经官方启动器开终末地：" if done else "调度程序开终末地的方式没改成经官方启动器：")
-                     + text)
+        log.info("调度程序还没有「开终末地的方式」这一项（比 v5.7.0-beta.4 旧），没改")
+    else:
+        maaend_dir = str((script.get("Info") or {}).get("Path") or "") or cfg.maaend_dir
+        why = _launch_check(maaend_dir, str(game_cfg.get("ControllerType") or ""))
+        want = LAUNCH_MODE
+        if why:
+            want = FALLBACK_MODE
+            notes.append(f"{texts.ENDFIELD_NO_MAAEND_START}：{why}")
+        else:
+            for key, value in WINDOWED.items():
+                if game_cfg.get(key) == value:
+                    continue
+                done, text = commands._script_item_via_api(reply, "MaaEnd", f"Game.{key}", value)
+                notes.append(text if done else f"终末地跑脚本时改窗口、跑完改回全屏的设置没改成（{key}）：{text}")
+                if not done:
+                    want = FALLBACK_MODE
+            if want != LAUNCH_MODE:
+                notes.append(f"{texts.ENDFIELD_NO_MAAEND_START}：上面那项设置没改成")
+        ok &= want == LAUNCH_MODE
+        if mode != want:
+            done, text = commands._script_item_via_api(reply, "MaaEnd", "Game.LaunchMode", want)
+            ok &= done
+            if done:
+                mode = want
+            what = "由 MaaEnd 开终末地（1280×720 窗口，跑完改回全屏）" if want == LAUNCH_MODE else "经官方启动器开终末地"
+            notes.append((f"调度程序已改成{what}：" if done else f"调度程序开终末地的方式没改成{what}：") + text)
     wait = original.get("wait_time")
     if isinstance(wait, int) and wait >= WAIT_MIN_S and game_cfg.get("WaitTime") != wait:
         done, text = commands._script_item_via_api(reply, "MaaEnd", "Game.WaitTime", wait)
@@ -279,7 +304,10 @@ def install(cfg, *, pythonw: "Path | None" = None, code_root: "Path | None" = No
         notes.append(text if done else f"终末地开出来后的等待没改回 {wait} 秒：{text}")
 
     launcher = launcher_for(now_game, str(game_cfg.get("LauncherPath") or ""))
-    if launcher is None:
+    if launcher is None and mode == LAUNCH_MODE:
+        log.info("按调度程序的规矩从游戏位置找不到官方启动器（%s）；由 MaaEnd 开游戏时它自己找，不影响",
+                 now_game or "空")
+    elif launcher is None:
         ok = False
         notes.append(f"{texts.ENDFIELD_NO_LAUNCHER}（调度程序里的游戏位置：{now_game or '空'}）")
 
@@ -291,9 +319,11 @@ def install(cfg, *, pythonw: "Path | None" = None, code_root: "Path | None" = No
 
 
 def restore(cfg) -> "tuple[bool, list[str]]":
-    """Undo what the relay itself added: its helper preAction in the MaaEnd master and the
-    raised Game.WaitTime. Never puts back the direct Endfield.exe start (1.6.3 refuses it)
-    or the helper's .cmd as Game.Path. For going back by hand; nothing calls it on its own."""
+    """Undo what the relay itself set: its helper preAction in the MaaEnd master, the raised
+    Game.WaitTime, and 「MaaEnd 启动」 with its four window settings (back to 「启动器启动」 and
+    WINDOWED_BEFORE; the launcher's 「DirectX 11 启动」 box must then be ticked by hand again).
+    Never puts back the direct Endfield.exe start (1.6.3 refuses it) or the helper's .cmd
+    as Game.Path. For going back by hand; nothing calls it on its own."""
     from ark_relay.core import mastercfg  # noqa: PLC0415
     from ark_relay.features.phone import commands  # noqa: PLC0415
 
@@ -310,42 +340,10 @@ def restore(cfg) -> "tuple[bool, list[str]]":
         done, text = commands._script_item_via_api(reply, "MaaEnd", "Game.WaitTime", wait)
         ok &= done
         notes.append(text)
+    script = _mas_script(reply) or {}
+    if "LaunchMode" in (script.get("Game") or {}):
+        for key, value in [("LaunchMode", FALLBACK_MODE), *WINDOWED_BEFORE.items()]:
+            done, text = commands._script_item_via_api(reply, "MaaEnd", f"Game.{key}", value)
+            ok &= done
+            notes.append(text)
     return ok, notes
-
-
-_d3d11_judged: set = set()
-
-
-def check_d3d11() -> "str | None":
-    """Did the game's last start run on Direct3D 11? Reads line 6 of the newest Player.log.
-    Returns the WARNING text when it did not (logged once per Player.log write), else None.
-    A missing, unreadable or short log says nothing about the tick: INFO at most."""
-    logs = []
-    for p in _player_logs():
-        try:
-            logs.append((os.path.getmtime(p), p))
-        except OSError:
-            continue
-    if not logs:
-        log.debug("终末地的游戏日志没找到，没核对 DirectX 11")
-        return None
-    mtime, path = max(logs)
-    if (path, mtime) in _d3d11_judged:
-        return None
-    _d3d11_judged.add((path, mtime))
-    try:
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            lines = [next(fh, "") for _ in range(D3D11_LINE_NO)]
-    except OSError as exc:
-        log.info("终末地的游戏日志读不了（%s：%s），没核对 DirectX 11", path, exc)
-        return None
-    line = lines[-1].strip()
-    if not line:
-        log.info("终末地的游戏日志不到 %d 行（%s），没核对 DirectX 11", D3D11_LINE_NO, path)
-        return None
-    if line == D3D11_LINE:
-        log.info("终末地上次开游戏用的是 DirectX 11（%s 第 %d 行）", path, D3D11_LINE_NO)
-        return None
-    log.info("终末地的游戏日志第 %d 行：%s（%s）", D3D11_LINE_NO, line, path)
-    log.warning("%s", texts.ENDFIELD_NOT_D3D11)
-    return texts.ENDFIELD_NOT_D3D11
