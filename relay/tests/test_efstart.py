@@ -491,6 +491,9 @@ from ark_relay.features.selfcheck import selfcheck  # noqa: E402
 saved_rc = selfcheck.report_contract
 setup.install = lambda c, **k: (seen.append(c) or (True, []))
 selfcheck.report_contract = lambda *a, **k: None
+# The backend answers here (boot_stages.await_backend asks it before install()).
+saved_up = commands.mas_up
+commands.mas_up = lambda: True
 
 
 class _L:
@@ -516,6 +519,7 @@ try:
     check("没对上：一条 WARNING（进群）", len(lg.warned), 1)
 finally:
     setup.install, selfcheck.report_contract = saved[0], saved_rc
+    commands.mas_up = saved_up
 handle_src = (relay_dir / "ark_relay" / "features" / "alarm" / "handle.py").read_text(encoding="utf-8")
 check("终末地记录落地后核对 DirectX 11", "_check_d3d11_after_maaend()" in handle_src)
 

@@ -198,12 +198,77 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE, not
         else:
             log.warning("AUTO-MAS 没在运行（%s），中继打开它之后服务就停了，没等到它起来", why)
         return False
+    # Down for this process: the boot steps after this do not wait for it again (await_backend).
+    _backend_gave_up[0] = timeout
     pushed: dict = {}
     if notifier is not None:
         errs = notifier.send(texts.AUTOMAS_DOWN, texts.automas_boot_down_body(), alert=True)
         pushed = errwatch.group_pushed(texts.AUTOMAS_DOWN, errs, notifier)
     log.error("AUTO-MAS 拉起后 %.0f 秒内接口仍不通", timeout, extra=pushed)
     return False
+
+
+# How long a boot step that needs the AUTO-MAS backend waits for it to answer, right
+# before that step. ensure_automas (the phone channel step) waits for the first answer,
+# but one answer is not "up for the rest of the boot": 2026-10-17 21:20 the backend
+# answered at 21:20:55 (ensure_automas: up by itself after 24 s), refused the
+# connection at 21:21:25 (efstart_setup, a group alarm) and 21:21:30 (the boot
+# self-check: no answer, no backend process), and its runtime and python processes then
+# on the machine had started at 21:21:34; it answered again by 21:23. Nothing in the
+# relay restarted it (the keeper only runs from the main loop on). AUTO-MAS restarted its
+# own backend. So each such step asks again right before it runs, and waits. 180 s
+# covers that gap (about 1.5 min down) twice over and the slowest cold start seen
+# (backend about 84 s after power-on that evening, about 50 s on mornings 10-10..10-16).
+# The step is reached about 70 s after power-on and the machine boots 10-15 min before
+# its queue (stagegate.BOOT_LEAD_MIN), so the wait is over minutes before the queue. It
+# is also cut to the time left before the next queue (_seconds_to_next_queue, which
+# already keeps QUEUE_MARGIN_S back).
+# Measured: relay-2026-10-17.log (down 21:21:25, processes 21:21:34, answering by 21:23)
+# and the AUTO-MAS logs 10-10..10-16; the 3 s poll is _wait_for_api's.
+BACKEND_WAIT_SECONDS = 180
+BACKEND_POLL_SECONDS = 3
+# The seconds of a wait that ran out, once one did: AUTO-MAS is down for this process,
+# and the later steps ask it once instead of each waiting the full time again (the
+# boot's other steps are not held up more than one wait); they report that wait. Tests
+# reset it.
+_backend_gave_up: "list[float | None]" = [None]
+
+
+def await_backend(log, step: str, cfg=None) -> "tuple[bool, float]":
+    """Right before boot step `step` uses the AUTO-MAS API: (answering, seconds waited).
+
+    Answering at once is (True, 0.0) and logs nothing. Otherwise polls commands.mas_up()
+    every BACKEND_POLL_SECONDS up to BACKEND_WAIT_SECONDS (less when the next queue of
+    `cfg` is nearer), stopping early when the service is told to stop. Not answering
+    after that is (False, waited): the step then says what it says when AUTO-MAS does
+    not answer, with how long it waited; this function raises no alarm of its own.
+    After one wait ran out, a step that finds no answer gets (False, that wait) at once."""
+    from ark_relay.features.phone import commands  # noqa: PLC0415
+    if commands.mas_up():
+        return True, 0.0
+    if _backend_gave_up[0] is not None:
+        return False, _backend_gave_up[0]
+    limit = float(BACKEND_WAIT_SECONDS)
+    if cfg is not None:
+        try:
+            limit = min(limit, _seconds_to_next_queue(cfg.automas_dir, datetime.now(tz=SERVER_TZ)))
+        except Exception:  # noqa: BLE001 - not knowing the schedule keeps the plain limit
+            pass
+    log.info("%s前调度程序没应答，先等它（最多 %.0f 秒）", step, limit)
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < limit:
+        if _stop_requested():
+            log.info("服务正在停止，不再等调度程序")
+            return False, time.monotonic() - t0
+        time.sleep(BACKEND_POLL_SECONDS)
+        if commands.mas_up():
+            waited = time.monotonic() - t0
+            log.info("%s前等了 %.0f 秒，调度程序有应答了", step, waited)
+            return True, waited
+    waited = time.monotonic() - t0
+    _backend_gave_up[0] = waited
+    log.info("%s前等了 %.0f 秒，调度程序还是没应答", step, waited)
+    return False, waited
 
 
 def _boot_stamp(now: datetime) -> str:
@@ -796,7 +861,12 @@ def _preupdate_okww(cfg, notifier, log, problems) -> None:
 def _stage_selfcheck(cfg, notifier, log) -> None:
     """Verify every assumption the relay stands on, once, and tell the group about any that fails (selfcheck.py)."""
     from ark_relay.features.selfcheck import selfcheck  # noqa: PLC0415
-    selfcheck.report(cfg, notifier, log)
+    # Before the process table is read too: a backend that is restarting has no process.
+    up, waited = await_backend(log, "开机自检", cfg)
+    if not up and _stop_requested():
+        log.info("服务正在停止，开机自检这次不做")
+        return
+    selfcheck.report(cfg, notifier, log, mas_waited=waited)
 
 
 def _contract_after_update(cfg, notifier, log, version: str) -> None:
@@ -835,7 +905,6 @@ def _stage_preupdate(cfg, notifier, log) -> None:
         _pre_now = datetime.now(tz=SERVER_TZ)
         if (preupdate.wanted_today(cfg.automas_dir)
                 and preupdate.should_run(cfg.state_dir, _pre_now)):
-            from ark_relay.features.phone import commands  # noqa: PLC0415
             # Every update that lands is pushed, per the standing order: when an
             # auto-update takes effect, say so at once.
             # Everything that could not be confirmed goes into this basket and
@@ -850,9 +919,15 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             # down and the pre-update asked it for 180 s) waited 150 + 120 s again and
             # pushed the same ERROR a second time (audit s23 F2); the item is skipped
             # with one line instead. OK-WW's pre-update does not go through AUTO-MAS.
-            if not commands.mas_up():
+            # It is waited for, not relaunched (await_backend: a backend restarting itself).
+            up, waited = await_backend(log, "预更新", cfg)
+            if not up and _stop_requested():
+                log.info("服务正在停止，不做预更新")
+                return
+            if not up:
                 log.info("预更新：AUTO-MAS 没有应答，不再等它，它的更新这次不查")
-                _note(problems, "AUTO-MAS 没有应答（开机时已经拉过它），它的更新这次没查")
+                _note(problems, "AUTO-MAS 没有应答（开机时已经拉过它" + (
+                    f"，又等了 {waited:.0f} 秒" if waited else "") + "），它的更新这次没查")
             elif note := _once_more(cfg, log, "AUTO-MAS", preupdate.MAS_BUDGET_SECONDS, problems,
                                     lambda problems: preupdate.run_automas(
                                         cfg.automas_dir, problems=problems,
@@ -908,11 +983,18 @@ def _stage_endfield_start(cfg, notifier, log) -> None:
 def _endfield_launch(cfg, log, when: str) -> None:
     try:
         from ark_relay.features.gameupdate import efstart_setup  # noqa: PLC0415
+        # install() reads and writes the MaaEnd script through the AUTO-MAS API (await_backend).
+        up, waited = await_backend(log, f"{when}核对终末地开游戏方式", cfg)
+        if not up and _stop_requested():
+            log.info("%s：服务正在停止，终末地开游戏方式这次不核对", when)
+            return
         ok, notes = efstart_setup.install(cfg)
         for n in notes:
             log.info("%s：终末地开游戏：%s", when, n)
         if not ok:
-            log.warning("%s：终末地开游戏的设置没全对上：%s", when, "；".join(notes))
+            log.warning("%s：终末地开游戏的设置没全对上%s：%s", when,
+                        f"（先等调度程序应答等了 {waited:.0f} 秒）" if not up and waited else "",
+                        "；".join(notes))
     except Exception:
         log.exception("%s核对终末地开游戏方式出错", when)
 
@@ -1020,7 +1102,9 @@ def _stage_gameupdate(cfg, notifier, log) -> None:
         _gu_now = datetime.now(tz=SERVER_TZ)
         _boot_id = _boot_stamp(_gu_now)
         if gameupdate.should_run(cfg.state_dir, _gu_now, boot_id=_boot_id):
-            budget = _seconds_to_next_queue(cfg.automas_dir, _gu_now)
+            # Taking a game off the queue for its update goes through the AUTO-MAS API.
+            await_backend(log, "游戏更新检查", cfg)
+            budget = _seconds_to_next_queue(cfg.automas_dir, datetime.now(tz=SERVER_TZ))
             log.info("游戏更新：开始检查三家客户端（预算 %.0f 秒）", budget)
             notes, gproblems = gameupdate.boot_check(cfg, budget_s=budget, now=_gu_now)
             for n in notes:
@@ -1052,6 +1136,7 @@ def _stage_stagegate(engine, log) -> None:
     the boot window up to 90 s before the queue (stagegate.py, "Where it runs")."""
     try:
         from ark_relay.features.schedule import stagegate  # noqa: PLC0415
+        await_backend(log, "开机关卡门", getattr(engine, "cfg", None))
         engine._stage_gate(lead_min=stagegate.BOOT_LEAD_MIN)
     except Exception:
         log.exception("开机关卡门出错，跳过（循环里每一轮还会再查）")
