@@ -196,6 +196,8 @@ writes, refuse = [], set()
 
 
 def fake_mas(path, body=None, timeout=20):
+    if path == "/api/queue/get":    # commands.mas_up: the backend answers (boot_stages.await_backend)
+        return {"code": 200, "data": {}}
     if path == "/api/scripts/get":
         return json.loads(json.dumps(mas))
     if path == "/api/scripts/update":

@@ -305,6 +305,9 @@ from ark_relay.features.selfcheck import selfcheck  # noqa: E402
 saved_rc = selfcheck.report_contract
 setup.install = lambda c, **k: (seen.append(c) or (True, []))
 selfcheck.report_contract = lambda *a, **k: None
+# The backend answers here (boot_stages.await_backend asks it before install()).
+saved_up = commands.mas_up
+commands.mas_up = lambda: True
 
 
 class _L:
@@ -330,5 +333,6 @@ try:
     check("没对上：一条 WARNING（进群）", len(lg.warned), 1)
 finally:
     setup.install, selfcheck.report_contract = saved[0], saved_rc
+    commands.mas_up = saved_up
 print("\nPASS" if not fails else f"\nFAILED: {fails}")
 sys.exit(1 if fails else 0)

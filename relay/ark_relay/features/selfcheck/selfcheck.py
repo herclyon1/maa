@@ -169,8 +169,11 @@ def contract_check(cfg, contract=None) -> Check:
 
 
 def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
-        run_ok=_run_ok, has_module=_has_module, contract=None) -> list[Check]:
-    """All checks, in the order they are reported. Dependencies are injectable for tests."""
+        run_ok=_run_ok, has_module=_has_module, contract=None, mas_waited: float = 0.0) -> list[Check]:
+    """All checks, in the order they are reported. Dependencies are injectable for tests.
+
+    `mas_waited`: seconds the boot step waited for AUTO-MAS to answer before this ran
+    (boot_stages.await_backend); said in the not-answering line."""
     from ark_relay.features.phone import commands  # noqa: PLC0415
     from ark_relay.core import plan, procs as _procs  # noqa: PLC0415
     procs = procs or (lambda: _procs.python_processes(warn=False))
@@ -185,7 +188,8 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
                      "" if rows is not None else f"读不到{_why(_procs)}——看门狗只能靠调度程序有没有应答来判断，它退出时不会立刻察觉；"
                      "调度程序的后台程序在不在跑也就判不了"))
     up = bool(mas_up())
-    out.append(Check("调度程序有应答", up, "开机后中继叫过它一次，仍然没有应答"))
+    out.append(Check("调度程序有应答", up, "开机后中继叫过它一次" + (
+        f"，又等了 {mas_waited:.0f} 秒" if mas_waited else "") + "，仍然没有应答"))
     # Without the process table this cannot be judged (None), so an unreadable
     # table is one failure, not two.
     out.append(Check("调度程序的后台程序在跑", None if rows is None else any(_is_backend(c) for _, c in rows),
@@ -262,11 +266,12 @@ def report_contract(cfg, notifier, version: str, log_=None, contract=None) -> Ch
     return c
 
 
-def report(cfg, notifier, log_=None) -> list[Check]:
+def report(cfg, notifier, log_=None, mas_waited: float = 0.0) -> list[Check]:
     """Run, log every line, push the failures to the group. Returns the checks."""
     lg = log_ or log
     try:
-        checks = run(cfg, channels=lambda: list(getattr(notifier, "channels", []) or []))
+        checks = run(cfg, channels=lambda: list(getattr(notifier, "channels", []) or []),
+                     mas_waited=mas_waited)
     except Exception:  # noqa: BLE001 - the self-check itself must not take the boot down
         lg.exception("开机自检自己出错")
         return []
