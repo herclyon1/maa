@@ -279,7 +279,13 @@ def send(eng, day: str, kind: str, run_id: str, title: str, body: str) -> bool:
         # A failure of its own: errwatch pushes this line too (queued until the group takes it).
         log.warning("「%s」没推出去，下一轮再试：%s", title, "；".join(errs))
         return False
-    eng._mark_alerted(day, key)
+    try:
+        eng._mark_alerted(day, key)
+    except Exception:  # it went out; only the record of that failed
+        # Not raised: the caller would keep an alarm that went out for the next tick
+        # and skip what follows a push (pushes._push_unverified: the cover of #28).
+        log.error("「%s」已进群，但「已进群」没记进 state.json：这条记录若重新处理一遍，会再推一次",
+                  title, exc_info=True)
     log.warning("🚨 %s 已进群：%s", title, body.replace("\n", " ")[:300],
                 extra=errwatch.group_pushed(title, errs, eng.notifier))
     # Judged once it went out: one that did not is said above and tried again.

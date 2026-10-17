@@ -35,8 +35,12 @@ def _already_alerted(eng, day: str, key: str) -> bool:
 
 
 def _mark_alerted(eng, day: str, key: str) -> None:
-    got = eng.state.store.get("marks", f"alerted:{day}")
-    cur = list(got) if isinstance(got, list) else []
-    if key not in cur:
-        cur.append(key)
-    eng.state.store.set("marks", f"alerted:{day}", cur)
+    """Add `key` to the day's marks in one read-modify-write of state.json (update):
+    built from a get() outside the write lock, two marks racing wrote back the list
+    each had read and one of them was lost."""
+    def _add(got):
+        cur = list(got) if isinstance(got, list) else []
+        if key not in cur:
+            cur.append(key)
+        return cur
+    eng.state.store.update("marks", f"alerted:{day}", _add)

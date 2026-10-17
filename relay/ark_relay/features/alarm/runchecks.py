@@ -5,6 +5,7 @@ restarts around it.
 """
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import threading
@@ -194,7 +195,8 @@ def _run_ctx(eng, rec: RunRecord, watch: _RunWatch) -> dict:
         "maaend_dir": eng.cfg.maaend_dir,
     }
     if hasattr(eng, "_already_alerted"):
-        # The day marks a #28 FAIL pushed at once is marked in (runs._hold_28), as settle_28 checks.
+        # The day marks a #28 FAIL pushed at once is marked in once its push went out
+        # (runs._hold_28, Result.after_push), as settle_28 checks.
         ctx["alerted"] = (eng._already_alerted, eng._mark_alerted)
     if unreadable:
         ctx["log_unreadable"] = True
@@ -206,18 +208,32 @@ def _run_ctx(eng, rec: RunRecord, watch: _RunWatch) -> dict:
     return ctx
 
 
+def _one_pass(fn):
+    """`fn` (handle._handle: one booking; handle._flush_pending: one tick's) as one
+    pass of machinecheck-runs.json reads (machinechecks/runs.py one_pass): a lock on
+    the file is waited out once in it, not on every read."""
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        from ark_relay.features.selfcheck.machinechecks import runs  # noqa: PLC0415
+        with runs.one_pass():
+            return fn(*args, **kwargs)
+    return run
+
+
 def _settle_held(eng) -> None:
     """Settle the machine-check FAILs kept while their run was held for its retry
     (machinechecks/runs.py settle_28) whose hold is over: no record of that script and
     user held any more, the script not running. After every booking and every
     _flush_pending; never raises (a broken settle is an ERROR, which reaches the group,
-    and the FAILs stay kept for the next one)."""
+    and the FAILs stay kept for the next one). A machinecheck-runs.json that cannot be
+    read is one ERROR naming the holds stuck behind it until it reads again
+    (runs.held_stuck), not a settle skipped without a word."""
     state_dir = getattr(getattr(eng, "cfg", None), "state_dir", None)
     if not state_dir:
         return
     try:
         from ark_relay.features.selfcheck.machinechecks import runs  # noqa: PLC0415
-        if not runs._state_get(state_dir, runs.HELD_28):
+        if not runs.held_stuck(state_dir):
             return
         held = {(r.script, r.user) for r in eng._pending.values()}
         runs.settle_28(state_dir,
