@@ -73,3 +73,10 @@ c4e4f8b8 a same fix in main as 00cae82d
 582bfe70 a same fix in main as 1ee468f3
 # 10-16: held, not shipped yet. Dropping the DX11 alarm is only right once the launcher's DX11 box comes off, which waits for an AUTO-MAS release newer than v5.7.0-beta.4 (BOARD/DECISIONS.md D-1016-终末地等AUTO-MAS新版). Revisit then.
 c03fc013 declined held until AUTO-MAS > v5.7.0-beta.4 is installed and a windowed run passes (DECISIONS D-1016-终末地等AUTO-MAS新版)
+# 10-17, fix-1017-mc28-state past 4690d518: shelved, see BOARD/DECISIONS.md D-1017-状态文件开机锁修补搁置
+503a66cb declined boot-time state.json lock handling, shelved by D-1017-状态文件开机锁修补搁置 (BOARD/DECISIONS.md)
+3c44db85 declined boot-time state.json lock handling, shelved by D-1017-状态文件开机锁修补搁置 (BOARD/DECISIONS.md)
+841b1114 declined boot-time state.json lock handling, shelved by D-1017-状态文件开机锁修补搁置 (BOARD/DECISIONS.md)
+395c4fd8 declined boot-time state.json lock handling, shelved by D-1017-状态文件开机锁修补搁置 (BOARD/DECISIONS.md)
+3c709ae1 declined boot-time state.json lock handling, shelved by D-1017-状态文件开机锁修补搁置 (BOARD/DECISIONS.md)
+08635a7b declined boot-time state.json lock handling, shelved by D-1017-状态文件开机锁修补搁置 (BOARD/DECISIONS.md)
