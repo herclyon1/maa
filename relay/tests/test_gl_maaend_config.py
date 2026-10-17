@@ -82,6 +82,9 @@ PORT_PINS = {
     "cleanOptionValues": "48cff5c7c85660d8",
     "load: valid task names": "d4433f61ef5c09f9",
     "load: recentlyClosed": "b8c24ff83d9b53be",
+    "cacheTaskEnabledForController": "b4ffde4802a1c9c4",
+    "load: task flags": "568ec765bb15c733",
+    "save: task flags": "ba3f8fc6aacf54df",
 }
 
 FAILED: list[str] = []

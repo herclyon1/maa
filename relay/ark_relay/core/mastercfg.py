@@ -76,6 +76,7 @@ __all__ = [
     "read_maa",
     "read_maaend",
     "read_okww",
+    "set_maaend_enabled",
     "write_maa",
     "write_maaend",
     "write_okww",
@@ -245,6 +246,29 @@ def _maaend_task(doc: dict, name: str) -> dict | None:
         if t.get("taskName") == name:
             return t
     return None
+
+
+def set_maaend_enabled(task: dict, on: bool, controller_name) -> bool:
+    """Switch a MaaEnd task on or off the way MXU's own UI saves it; True when
+    anything changed.
+
+    MXU keeps a per-controller copy of the switch: on every save
+    (`src/stores/appStore.ts` generateConfig) it writes
+    `enabledByController = cacheTaskEnabledForController(cache, inst.controllerName,
+    enabled)` (`src/utils/taskControllerCache.ts`, the same at v2.7.1 and v2.8.0):
+    no controller name -> the cache as it was; otherwise `{...cache,
+    [controllerName]: enabled}`, so a bare boolean (spread to nothing) becomes a
+    dict and other controllers' entries are kept. Writing only `enabled` leaves a
+    stale copy that MXU reads when the instance moves to another controller.
+    `controller_name` is the task's instance's `controllerName`."""
+    before = (task.get("enabled"), task.get("enabledByController"))
+    task["enabled"] = on
+    if controller_name:
+        ctl = task.get("enabledByController")
+        cache = dict(ctl) if isinstance(ctl, dict) else {}
+        cache[str(controller_name)] = on
+        task["enabledByController"] = cache
+    return (task.get("enabled"), task.get("enabledByController")) != before
 
 
 def _maaend_defs(maaend_dir) -> tuple[dict, dict]:
@@ -517,7 +541,7 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
         before = bool(task.get("enabled"))
         if before == bool(value):
             return True, f"{task_name} 本来就是{'开' if before else '关'}着的"
-        task["enabled"] = bool(value)
+        set_maaend_enabled(task, bool(value), (doc.get("instances") or [{}])[0].get("controllerName"))
     else:
         d = _maaend_option_def(maaend_dir, task_name, opt)
         cur = (task.get("optionValues") or {}).get(opt)

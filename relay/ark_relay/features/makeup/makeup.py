@@ -99,15 +99,11 @@ def _labels(maaend_dir) -> dict[str, str]:
     return out
 
 
-def _set_flag(task: dict, on: bool) -> None:
-    """Set `enabled` and every per-controller copy of it."""
-    task["enabled"] = on
-    ctl = task.get("enabledByController")
-    if isinstance(ctl, dict):
-        for k in ctl:
-            ctl[k] = on
-    elif isinstance(ctl, bool):
-        task["enabledByController"] = on
+def _set_flag(task: dict, on: bool, controller_name) -> None:
+    """Set `enabled` and the instance's controller's copy of it the way MXU saves
+    them (mastercfg.set_maaend_enabled)."""
+    from ark_relay.core import mastercfg  # noqa: PLC0415
+    mastercfg.set_maaend_enabled(task, on, controller_name)
 
 
 def bag_full(causes: dict | None) -> bool:
@@ -212,7 +208,7 @@ def stash_first(cfg, run_id: str, now: datetime) -> tuple[bool, str]:
     doc = json.loads(text)
     if not has_stash(doc):
         return False, "母本里没有存放背包这一项，没法先清背包"
-    # Copies, not views: _set_flag below changes the controller dicts in place.
+    # Copies, not views: the snapshot must not share dicts with the doc _set_flag edits.
     before = json.loads(json.dumps(_snapshot(doc)))
     others0 = json.loads(json.dumps(_others(doc)))
     changed = False
@@ -221,10 +217,13 @@ def stash_first(cfg, run_id: str, now: datetime) -> tuple[bool, str]:
         stash = next((t for t in tasks if t.get("taskName") == STASH), None)
         if stash is None:
             continue
-        if not stash.get("enabled") or stash.get("enabledByController") is False or (
-                isinstance(stash.get("enabledByController"), dict)
-                and not all(stash["enabledByController"].values())):
-            _set_flag(stash, True)
+        # Off: its switch, or this instance's controller's copy of it, says off. A
+        # stale copy alone (a bare boolean, another controller's entry) is no reason
+        # to write; when something else is written it goes out as MXU saves it.
+        ctl, ctrl = stash.get("enabledByController"), inst.get("controllerName")
+        off = not stash.get("enabled") or ctl is False or (isinstance(ctl, dict) and ctl.get(ctrl) is False)
+        _set_flag(stash, True, ctrl)
+        if off:
             changed = True
         first = next((i for i, t in enumerate(tasks)
                       if t.get("enabled") and t is not stash

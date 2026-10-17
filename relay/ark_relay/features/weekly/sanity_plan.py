@@ -281,15 +281,20 @@ def _validate_plan(tab: str, line: str, rewards_set: str,
     return None
 
 
-def _toggle_sanity_tasks(have: dict, want_task: str, changes: list[str]) -> None:
+def _toggle_sanity_tasks(have: dict, want_task: str, changes: list[str],
+                         controller_name=None) -> None:
     """Enable want_task, disable the other sanity task; record edits in changes.
 
     This is a separate step because "whichever one is enabled is the current plan" is
-    this module's fundamental criterion. It touches only the enabled field and shares
-    no intermediate state with the code below that writes the dropdowns.
+    this module's fundamental criterion. It touches only the switch (`enabled` and
+    MXU's per-controller copy of it, written by mastercfg.set_maaend_enabled with the
+    instance's `controllerName`) and shares no intermediate state with the code
+    below that writes the dropdowns. Only a flip of `enabled` counts as a change: a
+    stale per-controller copy alone does not make a write.
     A task that does not exist in the master copy is skipped here -- **only toggle
     tasks that already exist, never create them**.
     """
+    from ark_relay.core import mastercfg  # noqa: PLC0415 - imported where used, as plan.py does
     for name in SANITY_TASKS:
         t = have.get(name)
         if t is None:
@@ -297,7 +302,7 @@ def _toggle_sanity_tasks(have: dict, want_task: str, changes: list[str]) -> None
         want_on = name == want_task
         if bool(t.get("enabled")) != want_on:
             changes.append(f"{name}: {'开' if want_on else '关'}")
-            t["enabled"] = want_on
+        mastercfg.set_maaend_enabled(t, want_on, controller_name)
 
 
 def _write_options(ov: dict, want_task: str, tab: str, line: str,
@@ -376,7 +381,7 @@ def set_plan(automas_dir: "Path | None", tab: str, line: str = "",
                        f"先在 MaaEnd 界面加上并同步进母本")
 
     changes: list[str] = []
-    _toggle_sanity_tasks(have, want_task, changes)
+    _toggle_sanity_tasks(have, want_task, changes, ins.get("controllerName"))
 
     ov = have[want_task].setdefault("optionValues", {})
     if err := _write_options(ov, want_task, tab, line, rewards_set, location,
