@@ -187,7 +187,8 @@ def build():
           f"SCR = '/private/tmp/claude-501/-Users-x/{U['live']}/scratchpad/sp-named'\n"
           f"OUT = '/private/tmp/claude-501/-Users-x/{U['live']}/scratchpad/sp-ro/M4/oue.json'\n"
           f'DD = "{HOME}/Money/styl-work/evidence/named/dd"\n'
-          'CMD = ["xcodebuild", "-derivedDataPath", dd]\n')    # a variable: names no folder "dd"
+          'CMD = ["xcodebuild", "-derivedDataPath", dd]\n'     # a variable: names no folder "dd"
+          f'OLD = "xcodebuild -derivedDataPath ~/Money/styl-work/evidence/gone/dd"\n')  # that one only
 
     dd = HOME / "Library/Developer/Xcode/DerivedData"
     write(dd / "Proj-old/Build/x")
