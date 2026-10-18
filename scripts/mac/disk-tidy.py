@@ -25,16 +25,20 @@ each top-level file of BIG_FILE_BYTES or more) goes once idle 24 h (2 h below th
 mtime and ctime, so a tree unpacked with old timestamps is fresh), unused, not a git worktree and
 not named by a running workflow's journal, script or agent prompt, nor a running subagent's
 prompt (10-16: the acceptance session ran for days and its finished subagents' copies grew to
-8.8 GB there). Hard refusals, whatever a rule says: anything under
-~/Money or ~/Claude that is not a session worktree or a listed build output, a worktree with
+8.8 GB there). A tool that names an entry of that scratchpad keeps that entry only; one that names
+the session dir or scratchpad/ itself keeps all of it. Hard refusals, whatever a rule says: anything
+under ~/Money or ~/Claude that is not a session worktree, a listed build output or an idle Xcode
+DerivedData folder (Build/ beside an Index / CompilationCache / ModuleCache .noindex) inside
+~/Money/styl-work that no tool names (the files beside it stay), a worktree with
 uncommitted changes, anything a running process has open or as its cwd, ~/.claude, CoreDevice
 (a mount of his phone), simulators (only `xcrun simctl delete unavailable`), and anything no
 rule matches. Worktrees go only through `git worktree remove` (never --force); branches stay.
 
 Test hooks (relay/tests/test_disk_tidy.py): HOME, DISK_TIDY_TMP_ROOT, DISK_TIDY_TMPDIR,
 DISK_TIDY_BREW_PREFIX, DISK_TIDY_OPEN_PATHS (file of in-use paths instead of lsof),
-DISK_TIDY_PROCS (file of process names instead of ps), DISK_TIDY_FREE_BYTES, DISK_TIDY_NOW
-(the clock, epoch seconds: fixtures cannot set ctime back, so the test runs the tool in the future).
+DISK_TIDY_PROCS (file of process names and command lines instead of ps), DISK_TIDY_FREE_BYTES,
+DISK_TIDY_NOW (the clock, epoch seconds: fixtures cannot set ctime back, so the test runs the
+tool in the future).
 """
 from __future__ import annotations
 
@@ -90,7 +94,13 @@ UUID_RX = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 UUID_NAME = re.compile(rf"^{UUID_RX}$")
 # A session's tmp dir as code names it. Hooks and tests also quote session ids of transcripts
 # (~/.claude/projects/...), which says nothing about the tmp dir, so only this form counts.
-TMP_REF = re.compile(rf"claude-501/[^/\s'\"]+/({UUID_RX})")
+# Group 2 is the scratchpad entry it names, if any (10-18: two map scripts named
+# scratchpad/urwalk2 and scratchpad/ro-apple/M4/oue.json, and the whole 11 GB scratchpad stayed).
+# An entry the pattern cannot read whole (an f-string placeholder or a glob, as in run-{n} or *.json)
+# must not count as a shorter name, so the entry has to end at a path or string boundary;
+# otherwise the group stays empty and the whole scratchpad stays.
+TMP_REF = re.compile(rf"claude-501/[^/\s'\"]+/({UUID_RX})"
+                     rf"(?:/scratchpad/([^/\s'\"`<>()\[\]{{}},;|*?\\$]+)(?=[/\s'\"`<>(),;|\\]|$))?")
 # A session that was continued after compaction names its predecessor's transcript like this;
 # the running successor keeps using the predecessor's tmp dir (c0d9dfdd -> 983aaaa0, 10-13).
 CONTINUED = re.compile(rf"read the full transcript at: \S*?/({UUID_RX})\.jsonl")
@@ -110,6 +120,17 @@ SHARED_DD = {"ModuleCache.noindex", "SDKExplicitPrecompiledModules", "SymbolCach
              "SDKStatCaches.noindex", "CompilationCache.noindex"}
 BUILD_PROCS = {"xcodebuild", "swift-frontend", "swift-build", "swift-test", "XCBBuildService",
                "SWBBuildService"}
+# A Gradle build in progress, as its java command line shows it (`ps -o comm` says only `java`):
+# the daemon, the in-process client (--no-daemon) and the wrapper.
+GRADLE_CMD = re.compile(r"GradleDaemon|GradleMain|GradleWrapperMain")
+# An Xcode DerivedData folder (-derivedDataPath): Build/ plus at least one of these.
+DD_SIGNATURE = {"Index.noindex", "CompilationCache.noindex", "ModuleCache.noindex"}
+# A build folder a tool reuses, as its xcodebuild call names it. Absolute paths are caught by the
+# path scan; this catches relative ones (axdump.sh: -derivedDataPath "$HERE/../axdump-dd").
+DD_PATH_ARG = re.compile(r"""-derivedDataPath["',\s]+["']?([^"'\s,\]\)]+)""")
+# Measured 10-18 22:5x: `find` over ~/Money/styl-work (no .git / node_modules / *.noindex) took
+# 4.4 s; the deepest DerivedData folder in the 10-18 inventory sat 5 levels below it.
+MONEY_DD_DEPTH = 8
 
 
 
@@ -293,10 +314,15 @@ class Ctx:
     journal_text: str                 # those runs' journals, scripts and agent prompts, plus
                                       # running plain subagents' prompts
     ref_ids: set[str]                 # session ids named by tools / hooks / repo code
+    ref_whole: set[str]               # of those, named without a scratchpad entry (all of it stays)
+    dd_names: set[str]                # last component of every -derivedDataPath a tool passes
+    ref_entries: dict[str, set[str]]  # sid -> scratchpad entries named (only those stay)
     ref_paths: list[str]              # sorted absolute paths named there
     repos: list[str]
     worktrees: list[Worktree]
     allowed_wt: list[str] = field(default_factory=list)
+    money_dd: list[str] = field(default_factory=list)   # DerivedData folders in ~/Money/styl-work
+    gradle_running: bool = True       # unknown counts as running
 
 
 def open_paths() -> list[str] | None:
@@ -318,6 +344,19 @@ def proc_names() -> set[str]:
         return {x.strip() for x in Path(f).read_text(encoding="utf-8").splitlines() if x.strip()}
     r = run(["ps", "-axo", "comm="])
     return set() if r is None else {os.path.basename(x.strip()) for x in r.stdout.splitlines()}
+
+
+def gradle_running() -> bool:
+    """Is a Gradle build or daemon running? True when ps fails (unknown = running)."""
+    f = os.environ.get("DISK_TIDY_PROCS")
+    if f:
+        lines = Path(f).read_text(encoding="utf-8").splitlines()
+    else:
+        r = run(["ps", "-axww", "-o", "args="])
+        if r is None or r.returncode != 0:
+            return True
+        lines = r.stdout.splitlines()
+    return any(GRADLE_CMD.search(x) for x in lines)
 
 
 def sorted_hit(paths: list[str], p: str) -> bool:
@@ -446,9 +485,14 @@ def ref_files(env: Env, repos: list[str]) -> list[Path]:
     return out
 
 
-def references(env: Env, repos: list[str]) -> tuple[set[str], list[str]]:
-    """Session ids and ~/Claude, ~/Money paths that some tool's code names (it reuses them)."""
+def references(env: Env, repos: list[str]) -> tuple[set[str], set[str], dict[str, set[str]], set[str], list[str]]:
+    """What some tool's code names (it reuses it): session ids; of those, the ones named without a
+    scratchpad entry; per session the scratchpad entries named; the folder names tools pass to
+    -derivedDataPath; ~/Claude and ~/Money paths."""
     ids: set[str] = set()
+    whole: set[str] = set()
+    entries: dict[str, set[str]] = {}
+    dd_names: set[str] = set()
     paths: set[str] = set()
     home = str(env.home)
     path_ref = re.compile("(?:~|" + re.escape(home) + ")" + PATH_TAIL)
@@ -459,11 +503,19 @@ def references(env: Env, repos: list[str]) -> tuple[set[str], list[str]]:
         except OSError:
             continue
         text = read_text(f)
-        ids.update(TMP_REF.findall(text))
+        for sid, entry in TMP_REF.findall(text):
+            ids.add(sid)
+            entry = entry.rstrip(".:")
+            if entry:
+                entries.setdefault(sid, set()).add(entry)
+            else:
+                whole.add(sid)
+        for v in DD_PATH_ARG.findall(text):
+            dd_names.add(os.path.basename(v.rstrip("/")))
         for m in path_ref.findall(text):
             p = home + m[1:] if m.startswith("~") else m
             paths.add(p.rstrip("/.:"))
-    return ids, sorted(paths)
+    return ids, whole, entries, dd_names, sorted(paths)
 
 
 def repo_list(env: Env) -> list[str]:
@@ -510,16 +562,34 @@ def allowed_worktree(env: Env, wt: Worktree) -> bool:
             and not os.path.isdir(os.path.join(p, ".git")))
 
 
+def money_derived_data(env: Env) -> list[str]:
+    """Xcode DerivedData folders (Build/ plus a DD_SIGNATURE .noindex) under ~/Money/styl-work,
+    sorted. Not entered: .git, node_modules, a match's own insides, deeper than MONEY_DD_DEPTH."""
+    root = str(env.money / "styl-work")
+    out: list[str] = []
+    for dirpath, dirnames, _ in os.walk(root):
+        names = set(dirnames)
+        if "Build" in names and names & DD_SIGNATURE and dirpath != root:
+            out.append(norm(dirpath))
+            dirnames[:] = []
+            continue
+        depth = dirpath[len(root):].count("/")
+        dirnames[:] = [] if depth >= MONEY_DD_DEPTH else [
+            d for d in dirnames if d not in {".git", "node_modules", "Build"} and not d.endswith(".noindex")]
+    return sorted(out)
+
+
 def snapshot(env: Env) -> Ctx:
     repos = repo_list(env)
     wts = [w for r in repos for w in worktrees(r)]
     ids, text = active_journals(env)
-    ref_ids, ref_paths = references(env, repos)
+    ref_ids, ref_whole, ref_entries, dd_names, ref_paths = references(env, repos)
     standing = env.standing()
     allowed = sorted(w.path for w in wts if allowed_worktree(env, w) and w.path not in standing)
     return Ctx(in_use=open_paths(), procs=proc_names(), live_ids=live_sessions(env),
-               journal_ids=ids, journal_text=text, ref_ids=ref_ids, ref_paths=ref_paths,
-               repos=repos, worktrees=wts, allowed_wt=allowed)
+               journal_ids=ids, journal_text=text, ref_ids=ref_ids, ref_whole=ref_whole,
+               ref_entries=ref_entries, dd_names=dd_names, ref_paths=ref_paths, repos=repos, worktrees=wts,
+               allowed_wt=allowed, money_dd=money_derived_data(env), gradle_running=gradle_running())
 
 
 def zone_ok(env: Env, ctx: Ctx, p: str) -> bool:
@@ -539,6 +609,8 @@ def zone_ok(env: Env, ctx: Ctx, p: str) -> bool:
             return True
     if within(p, env.claude) or within(p, env.money):
         if any(within(p, o) for o in env.known_outputs()):
+            return True
+        if p in ctx.money_dd:
             return True
         return within(p, env.claude) and any(within(p, w) for w in ctx.allowed_wt)
     return False
@@ -802,6 +874,34 @@ def rule_old_gradle(env: Env, ctx: Ctx) -> list[Item]:
     return items
 
 
+def gradle_transforms(env: Env, ctx: Ctx, rule: str, hours: float) -> list[Item]:
+    items = []
+    try:
+        dirs = sorted(d / "transforms" for d in (env.gradle / "caches").iterdir()
+                      if VERSION.match(d.name) and (d / "transforms").is_dir())
+    except OSError:
+        return []
+    for d in dirs:
+        why = ("a Gradle build or daemon is running" if ctx.gradle_running else None) \
+            or (f"changed {ago(str(d))}" if changed_since(str(d), env.cutoff(hours)) else None) \
+            or guard(env, ctx, str(d))
+        items.append(keep(rule, str(d), why) if why else Item(rule, str(d)))
+    return items
+
+
+def rule_gradle_transforms(env: Env, ctx: Ctx) -> list[Item]:
+    """10-18 inventory A2 (9.8 GB): ~/.gradle/caches/<v>/transforms holds the outputs of artifact
+    transforms, a cache Gradle recreates on first use (https://docs.gradle.org/current/userguide/
+    directory_layout.html#dir:caches:version_specific). It goes while no Gradle daemon, client or
+    wrapper runs and nothing in it changed within 24 h; the downloaded jars (modules-2) stay."""
+    return gradle_transforms(env, ctx, "gradle-transforms", STALE_HOURS)
+
+
+def rule_gradle_transforms_floor(env: Env, ctx: Ctx) -> list[Item]:
+    """Below the floor: the same after 2 h idle."""
+    return gradle_transforms(env, ctx, "gradle-transforms-2h", ACTIVE_HOURS)
+
+
 def sdk_toolchain_versions(env: Env) -> dict[str, str]:
     """Toolchain version -> the installed Swift SDK bundle that builds only with it. A bundle
     named swift-6.4.0-RELEASE_android needs the 6.4.0 toolchain: 10-13 23:30 this tool removed
@@ -927,9 +1027,10 @@ def live_scratch(env: Env, ctx: Ctx, rule: str, hours: float) -> list[Item]:
             sp = proj / sid / "scratchpad"
             if sp.is_symlink() or not sp.is_dir():
                 continue
-            if sid in ctx.ref_ids:
+            if sid in ctx.ref_whole:
                 items.append(keep(rule, str(sp), "a tool, hook or repo file names this session (reused)"))
                 continue
+            named = ctx.ref_entries.get(sid, set())
             try:
                 entries = sorted(os.scandir(sp), key=lambda e: e.name)
             except OSError:
@@ -950,6 +1051,8 @@ def live_scratch(env: Env, ctx: Ctx, rule: str, hours: float) -> list[Item]:
                 if not why:
                     why = next((f"holds the registered git worktree {w.path}" for w in ctx.worktrees
                                 if within(w.path, p) or within(p, w.path)), None)
+                if not why and e.name in named:
+                    why = f"a tool, hook or repo file names scratchpad/{e.name} (reused)"
                 if not why and is_dir:
                     why = git_link_inside(p)
                 if not why and re.search(r"scratchpad/" + re.escape(e.name) + r"(?![A-Za-z0-9._-])",
@@ -969,7 +1072,8 @@ def rule_live_session_scratch(env: Env, ctx: Ctx) -> list[Item]:
     top-level file of BIG_FILE_BYTES or more) goes once nothing in it changed within 24 h (mtime
     or ctime: unpacked trees keep old mtimes), no process has a file in it open or as cwd, it
     neither is nor holds a git worktree, and no workflow or subagent active within 2 h names it
-    (journal, script or agent prompt). If a tool names the session, all of it stays."""
+    (journal, script or agent prompt). An entry a tool names stays; if a tool names the session
+    dir or scratchpad/ itself, all of it stays."""
     return live_scratch(env, ctx, "live-session-scratch", STALE_HOURS)
 
 
@@ -995,6 +1099,36 @@ def rule_known_build_outputs(env: Env, ctx: Ctx) -> list[Item]:
         why = why or guard(env, ctx, str(p))
         items.append(keep(rule, str(p), why) if why else Item(rule, str(p)))
     return items
+
+
+def money_dd(env: Env, ctx: Ctx, rule: str, hours: float) -> list[Item]:
+    items = []
+    for p in ctx.money_dd:
+        why = (f"changed {ago(p)}" if changed_since(p, env.cutoff(hours)) else None) \
+            or ("a tool, hook or repo file names its path (reused)" if sorted_hit(ctx.ref_paths, p) else None) \
+            or (f"a tool builds into a folder of this name (-derivedDataPath .../{os.path.basename(p)})"
+                if os.path.basename(p) in ctx.dd_names else None) \
+            or (f"a running workflow or subagent active within {ACTIVE_HOURS} h names it"
+                if re.search(re.escape(p) + r"(?![A-Za-z0-9._-])", ctx.journal_text) else None) \
+            or guard(env, ctx, p)
+        items.append(keep(rule, p, why) if why else Item(rule, p))
+    return items
+
+
+def rule_money_derived_data(env: Env, ctx: Ctx) -> list[Item]:
+    """10-18 inventory A5 (5.75 GB): app sessions built with -derivedDataPath into evidence and
+    BOARD folders under ~/Money/styl-work. A folder holding Build/ plus an Index /
+    CompilationCache / ModuleCache .noindex is xcodebuild output, rebuilt from the commit; it
+    goes once nothing in it changed within 24 h, nothing has it open and no tool or running
+    workflow names its path, nor passes a folder of its name to -derivedDataPath (axdump.sh builds
+    into "$HERE/../axdump-dd" and reuses it). Only that folder goes: the screenshots and reference sets beside it,
+    which app-page-references.txt and the hooks name, stay."""
+    return money_dd(env, ctx, "money-derived-data", STALE_HOURS)
+
+
+def rule_money_derived_data_floor(env: Env, ctx: Ctx) -> list[Item]:
+    """Below the floor: the same after 2 h idle."""
+    return money_dd(env, ctx, "money-derived-data-2h", ACTIVE_HOURS)
 
 
 # ---- rebuildable caches --------------------------------------------------------------------
@@ -1062,14 +1196,17 @@ def rule_unavailable_simulators(env: Env, ctx: Ctx) -> list[Item]:
 
 
 NORMAL_RULES = [rule_merged_worktrees, rule_stale_registrations, rule_derived_data, rule_old_gradle,
-                rule_old_swift_toolchains, rule_dead_session_dirs, rule_live_session_scratch,
-                rule_known_build_outputs, rule_uv_cache, rule_brew_cache, rule_go_cache,
-                rule_pyright_cache, rule_unavailable_simulators]
+                rule_gradle_transforms, rule_old_swift_toolchains, rule_dead_session_dirs,
+                rule_live_session_scratch, rule_known_build_outputs, rule_money_derived_data,
+                rule_uv_cache, rule_brew_cache, rule_go_cache, rule_pyright_cache,
+                rule_unavailable_simulators]
 FLOOR_RULES = [rule_merged_worktrees_floor, rule_derived_data_floor, rule_shared_derived_caches,
-               rule_idle_build_outputs, rule_live_session_scratch_floor]
+               rule_idle_build_outputs, rule_live_session_scratch_floor, rule_gradle_transforms_floor,
+               rule_money_derived_data_floor]
 # Floor rules that only repeat a normal rule with a shorter window: their KEEP lines would
 # repeat what the normal pass already printed.
-QUIET_KEEPS = {"merged-worktree-2h", "derived-data-2h", "live-session-scratch-2h"}
+QUIET_KEEPS = {"merged-worktree-2h", "derived-data-2h", "live-session-scratch-2h", "gradle-transforms-2h",
+               "money-derived-data-2h"}
 
 
 # ---- running -------------------------------------------------------------------------------

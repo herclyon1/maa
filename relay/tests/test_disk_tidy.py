@@ -5,8 +5,9 @@ A whole fake HOME is built in a temp dir: a repo with a bare origin and every ki
 locked / standing / outside the session zone / gone), Claude session tmp dirs (dead, running,
 continued by a running one, fresh, reused by a hook, owning a live workflow journal; inside a
 running session's scratchpad: idle / fresh / 5 h idle / open / worktree subdirs, subdirs named by a
-running workflow's script or an agent's prompt, and a big idle file), Xcode
-DerivedData, Gradle and swiftly versions, the one-off build outputs and the caches. The tool
+running workflow's script or an agent's prompt, subdirs a tool names, and a big idle file), Xcode
+DerivedData (also folders of it inside ~/Money/styl-work evidence), Gradle versions and transform
+caches, swiftly versions, the one-off build outputs and the caches. The tool
 runs as a subprocess against it, with stub `swiftly` / `uv` / `brew` / `go` / `xcrun` on PATH
 that only record their arguments. Then: the dry run removes nothing and logs nothing, --apply
 removes exactly the rule matches and logs one line each, the floor tier adds its rules, and
@@ -178,9 +179,14 @@ def build():
     # A plain subagent (no workflow) that is still writing its transcript.
     write(HOME / f".claude/projects/-Users-x/{U['live']}/subagents/agent-d1.jsonl",
           f'{{"parentUuid": null, "type": "user", "message": {{"content": "use {spx}/sp-plain"}}}}\n')
+    # 10-18: two map scripts named one folder (and one file) inside the acceptance session's
+    # scratchpad, and the whole 11 GB scratchpad stayed. A reference keeps only the entry it names.
     write(HOME / ".claude/hooks/h.py",
           f'SRC = "/private/tmp/claude-501/-Users-x/{U["reused"]}/scratchpad/r-1.txt"\n'
-          f'TREE = "{WT / "wt-named"}"\n')
+          f'TREE = "{WT / "wt-named"}"\n'
+          f"SCR = '/private/tmp/claude-501/-Users-x/{U['live']}/scratchpad/sp-named'\n"
+          f"OUT = '/private/tmp/claude-501/-Users-x/{U['live']}/scratchpad/sp-ro/M4/oue.json'\n"
+          f'DD = "{HOME}/Money/styl-work/evidence/named/dd"\n')
 
     dd = HOME / "Library/Developer/Xcode/DerivedData"
     write(dd / "Proj-old/Build/x")
@@ -189,7 +195,7 @@ def build():
     write(BREW / "Cellar/gradle/9.8.1_1/bin/gradle")      # a Homebrew revision suffix
     (BREW / "opt").mkdir(parents=True)
     os.symlink("../Cellar/gradle/9.8.1_1", BREW / "opt/gradle")
-    for d in ("caches/9.8.0", "caches/9.8.1", "caches/modules-2", "daemon/9.8.0"):
+    for d in ("caches/9.8.0", "caches/9.8.1", "caches/9.8.1/transforms", "caches/modules-2", "daemon/9.8.0"):
         write(HOME / ".gradle" / d / "f")
     write(HOME / ".swiftly/config.json", json.dumps({"inUse": "6.4.1", "installedToolchains": ["6.4.1", "6.4.0"]}))
     for v in ("6.4.0", "6.4.1"):
@@ -203,14 +209,30 @@ def build():
     write(app / "build/Release/x")
     write(HOME / "Money/styl-work/remote-ref/tools/bugexam/xcr-dd/Build/x")
     write(HOME / "Money/styl-work/BOARD/OPEN.md", "his board")
+    # Xcode DerivedData folders left inside ~/Money/styl-work evidence (10-18 inventory, A5): the
+    # folder goes, the screenshots beside it stay.
+    ev = HOME / "Money/styl-work/evidence"
+    for x in ("x", "named", "fresh", "deep/a/b"):
+        write(ev / x / "dd/Build/Products/app")
+        write(ev / x / "dd/Index.noindex/i")
+        write(ev / x / "a.png", "png")
+    write(ev / "y/dd/a.png", "png")                                      # no DerivedData signature
+    write(ev / "y/dd/Build/b.png", "png")
+    # A tool that builds into its own DerivedData by a relative path and reuses it (axdump.sh).
+    tools = HOME / "Money/styl-work/remote-ref/tools"
+    write(tools / "axd/axd.sh", 'xcodebuild test -derivedDataPath "$HERE/../axd-dd" -quiet\n')
+    write(tools / "axd-dd/Build/Products/app")
+    write(tools / "axd-dd/ModuleCache.noindex/m")
     write(HOME / "Documents/mine.txt", "his file")
     for c in (".cache/pyright-python/n", ".cache/uv/u", "Library/Caches/Homebrew/b", "Library/Caches/go-build/g"):
         write(HOME / c)
 
     # Everything old, except what must look fresh.
     for p in (HOME / ".gradle", HOME / "Library", HOME / ".cache", HOME / "Money/styl-work/remote-ref",
-              HOME / "Money/styl-work/BOARD", TDIR, app / "build", TMP_ROOT / "disk-tidy"):
+              HOME / "Money/styl-work/BOARD", HOME / "Money/styl-work/evidence", TDIR, app / "build",
+              TMP_ROOT / "disk-tidy"):
         age(p, 72)
+    age(HOME / "Money/styl-work/evidence/fresh/dd", 1)
     for sid in U.values():
         if sid != U["fresh"]:
             age(proj / sid, 72)
@@ -228,9 +250,10 @@ def build():
     # Inside a running session's scratchpad (10-16: the acceptance session ran for days and its
     # finished subagents' copies grew to 8.8 GB): created after the 72 h aging above.
     sp = proj / U["live"] / "scratchpad"
-    for name in ("sp-old", "sp-open", "sp-journal", "sp-prompt", "sp-longrun", "sp-plain", "sp-gitlink"):
+    for name in ("sp-old", "sp-open", "sp-journal", "sp-prompt", "sp-longrun", "sp-plain", "sp-gitlink",
+                 "sp-named", "sp-ro/M4"):
         write(sp / name / "deep/f.txt")
-        age(sp / name, 72)
+        age(sp / name.split("/")[0], 72)
     write(sp / "sp-5h/f.txt")
     age(sp / "sp-5h", 5)
     write(sp / "sp-new/f.txt")
@@ -306,7 +329,8 @@ GONE = [WT / "wt-old", HOME / "Claude/maa-automation-sib", dd / "Proj-old", HOME
         HOME / ".gradle/daemon/9.8.0", HOME / "Library/Developer/Toolchains/swift-6.4.0-RELEASE.xctoolchain",
         proj / U["dead"], TDIR / "precheck-abc", HOME / "Claude/transit-app/build",
         HOME / "Money/styl-work/remote-ref/tools/bugexam/xcr-dd", HOME / ".cache/pyright-python",
-        SP / "sp-old", SP / "big.bin"]
+        SP / "sp-old", SP / "big.bin", HOME / ".gradle/caches/9.8.1/transforms",
+        HOME / "Money/styl-work/evidence/x/dd", HOME / "Money/styl-work/evidence/deep/a/b/dd"]
 KEPT = {
     WT / "wt-new": "changed within 24",
     WT / "wt-dirty": "uncommitted changes",
@@ -336,12 +360,18 @@ KEPT = {
     SP / "sp-plain": "running workflow",
     SP / "sp-wt": "registered git worktree",
     SP / "sp-gitlink": "linked git worktree",
+    SP / "sp-named": "names scratchpad/sp-named",
+    SP / "sp-ro": "names scratchpad/sp-ro",
+    HOME / "Money/styl-work/evidence/named/dd": "names its path",
+    HOME / "Money/styl-work/evidence/fresh/dd": "changed",
+    HOME / "Money/styl-work/remote-ref/tools/axd-dd": "-derivedDataPath .../axd-dd",
     HOME / ".gradle/caches/9.8.1": "version in use",
     HOME / "Library/Developer/Toolchains/swift-6.4.1-RELEASE.xctoolchain": "in use",
 }
 UNTOUCHED = [HOME / "Money/styl-work/BOARD/OPEN.md", HOME / "Documents/mine.txt", TMP_ROOT / "disk-tidy",
              HOME / ".gradle/caches/modules-2", dd / "ModuleCache.noindex", SP, SP / "small.log",
-             proj / U["live"] / "tasks"]
+             proj / U["live"] / "tasks", HOME / "Money/styl-work/evidence/y/dd",
+             HOME / "Money/styl-work/evidence/x/a.png", HOME / "Money/styl-work/evidence/x"]
 
 print("[dry run: decides everything, removes nothing, logs nothing]")
 r = tool()
@@ -409,7 +439,9 @@ check("floor still keeps the tree in use", (WT / "wt-cwd").exists(), True)
 check("floor removed the 5 h idle scratchpad subdir (2 h window)",
       (verb(res, SP / "sp-5h"), (SP / "sp-5h").exists()), ("removed", False))
 for p in (SP / "sp-new", SP / "sp-open", SP / "sp-journal", SP / "sp-prompt", SP / "sp-longrun",
-          SP / "sp-plain", SP / "sp-wt", SP / "sp-gitlink", SP / "small.log"):
+          SP / "sp-plain", SP / "sp-wt", SP / "sp-gitlink", SP / "small.log", SP / "sp-named",
+          SP / "sp-ro/M4/deep/f.txt", HOME / "Money/styl-work/evidence/named/dd",
+          HOME / "Money/styl-work/evidence/fresh/dd", HOME / "Money/styl-work/evidence/x/a.png"):
     check(f"floor still keeps {p.relative_to(BASE)}", p.exists(), True)
 check("running session's dir and scratchpad stay", (proj / U["live"]).is_dir() and SP.is_dir(), True)
 for p in UNTOUCHED[:3]:
@@ -487,6 +519,35 @@ items = {i.path.rsplit("/", 1)[-1]: i for i in dt.rule_old_swift_toolchains(env,
 check("a toolchain an installed Swift SDK needs is kept",
       (items["swift-6.4.0-RELEASE.xctoolchain"].action, items["swift-6.4.0-RELEASE.xctoolchain"].keep),
       ("rm", "needed by the Swift SDK swift-6.4.0-RELEASE_android.artifactbundle"))
+
+# 10-18: a reference that names the session dir or scratchpad/ itself - or an entry the scan
+# cannot read, like an f-string placeholder - still keeps the whole scratchpad.
+for label, ref in (("the session dir", f"/private/tmp/claude-501/-Users-x/{U['live']}/"),
+                   ("scratchpad/ itself", f"/private/tmp/claude-501/-Users-x/{U['live']}/scratchpad"),
+                   ("an f-string entry", f"/private/tmp/claude-501/-Users-x/{U['live']}/scratchpad/sp-{{name}}")):
+    write(HOME / ".claude/hooks/h2.py", f"P = f'{ref}'\n")
+    got = {i.path: i.keep or "" for i in dt.rule_live_session_scratch(env, dt.snapshot(env))}
+    check(f"a tool naming {label} keeps the whole scratchpad",
+          (list(got), "names this session" in got.get(str(SP), "")), ([str(SP)], True))
+write(HOME / ".claude/hooks/h2.py", "\n")
+
+# 10-18: Gradle's transform cache goes only while no Gradle process runs and once idle. `ps -o
+# comm` shows a daemon as `java`, so the check reads the command line.
+tf = HOME / ".gradle/caches/9.8.1/transforms"
+write(tf / "t/f")
+age(tf, 72, NOW)
+rule_tf = getattr(dt, "rule_gradle_transforms", lambda e, c: [])
+write(PROCS, "launchd\n/usr/bin/java -Xmx2g -cp gradle-daemon-main-9.8.1.jar "
+             "org.gradle.launcher.daemon.bootstrap.GradleDaemon 9.8.1\n")
+got = {i.path: i.keep for i in rule_tf(env, dt.snapshot(env))}.get(str(tf), "-")
+check("gradle transforms kept while a Gradle daemon runs", "Gradle" in (got or ""), True)
+write(PROCS, "launchd\n")
+got = {i.path: i.keep for i in rule_tf(env, dt.snapshot(env))}.get(str(tf), "-")
+check("gradle transforms go when no Gradle runs", got, None)
+write(tf / "t/g")
+age(tf / "t/g", 1, NOW)
+got = {i.path: i.keep for i in rule_tf(env, dt.snapshot(env))}.get(str(tf), "-")
+check("gradle transforms changed 1 h ago are kept", "changed" in (got or ""), True)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
