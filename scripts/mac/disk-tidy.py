@@ -510,8 +510,9 @@ def references(env: Env, repos: list[str]) -> tuple[set[str], set[str], dict[str
                 entries.setdefault(sid, set()).add(entry)
             else:
                 whole.add(sid)
-        for v in DD_PATH_ARG.findall(text):
-            dd_names.add(os.path.basename(v.rstrip("/")))
+        # A path, not a variable: ark-remote's scripts pass `"-derivedDataPath", dd` and counting
+        # that would keep every folder named dd.
+        dd_names.update(os.path.basename(v.rstrip("/")) for v in DD_PATH_ARG.findall(text) if "/" in v)
         for m in path_ref.findall(text):
             p = home + m[1:] if m.startswith("~") else m
             paths.add(p.rstrip("/.:"))
