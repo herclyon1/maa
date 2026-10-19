@@ -3615,6 +3615,15 @@
 "statestore",
 "texts"
 ],
+"test_maaend_essence_stamina_out.py": [
+"__init__",
+"collector_maaend",
+"config",
+"maaend_fwlog",
+"names",
+"outcome",
+"texts"
+],
 "test_maaend_false_green.py": [
 "__init__",
 "collector_maaend",

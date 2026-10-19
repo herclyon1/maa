@@ -782,7 +782,9 @@ def _dropped_checks(dropped: list[str]) -> list[Check]:
 # 1-3 「线路N：」, 2026-10-12), essence and protocol 2026-08-25.
 _MAAEND_WORK = (
     ("自动采集", re.compile(r"(?:路线|线路)\d+[：:]"), "走了路线"),
-    ("基质刷取", re.compile(r"已完成一次基质刷取|理智不足"), "刷了"),
+    # 「体力不足，任务结束」: MaaEnd v2.34's out-of-sanity ending of 基质刷取 (2026-10-19
+    # MaaEnd-07-14-29.log, retry with 9 sanity left; tests/test_maaend_essence_stamina_out.py).
+    ("基质刷取", re.compile(r"已完成一次基质刷取|理智不足|体力不足[，,]\s*任务结束"), "刷了"),
     ("协议空间", re.compile(r"进入协议空间成功|理智不足"), "进了"),
 )
 _MAAEND_SKIPPED = re.compile(r"根据执行周期跳过")

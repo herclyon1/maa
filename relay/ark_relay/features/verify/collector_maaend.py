@@ -151,7 +151,8 @@ _END_GAIN = re.compile(r"获得\s+(\S.*?)\s*[×x]\s*(\d+)")
 # Endfield's sanity reading, e.g. 「当前理智 920/360」 (it can exceed the cap).
 _END_SANITY = re.compile(r"当前理智\s*(\d+)\s*/\s*(\d+)")
 # MaaEnd's line when it stops a task because sanity ran out.
-_END_SANITY_OUT = re.compile(r"理智不足[，,]\s*结束任务")
+# MaaEnd v2.34 words it 「😴**体力不足，任务结束**」 (2026-10-19 MaaEnd-07-14-29.log).
+_END_SANITY_OUT = re.compile(r"理智不足[，,]\s*结束任务|体力不足[，,]\s*任务结束")
 # Sanity one Protocol Space settlement costs, used only when the log shows no
 # drop between two readings (measured 241 -> 81 in a 2026-08-25 log). A drop
 # seen in the log is used instead.
