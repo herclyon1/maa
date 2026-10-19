@@ -1,10 +1,6 @@
 {
-  "version": 2026101901,
-  "name": "调试模式",
-  "note": "从电脑发来的指令：调试模式",
-  "commands": [
-    {
-      "action": "debug_mode"
-    }
-  ]
+  "version": 2026101902,
+  "name": "空（安全状态）",
+  "note": "从电脑发来的指令：空（安全状态）",
+  "commands": []
 }
