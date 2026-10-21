@@ -1,0 +1,28 @@
+[2026-10-21 09:00:53.201][INF][Px23092][Tx57929] asst::Assistant::append_task StartUp {"start_game_enabled":true,"client_type":"Official"}
+[2026-10-21 09:00:53.202][INF][Px23092][Tx57929] asst::Assistant::append_task | task_id: 1
+[2026-10-21 09:00:53.208][INF][Px23092][Tx57929] asst::Assistant::append_task Fight {"stage":"YW-4","medicine":999,"medicine_expire_days":5,"stone":0,"times":2147483647,"series":0,"DrGrandet":false,"report_to_penguin":true,"penguin_id":"303948262","report_to_yituliu":true,"server":"CN","client_type":"Official"}
+[2026-10-21 09:00:53.209][INF][Px23092][Tx57929] asst::Assistant::append_task | task_id: 2
+[2026-10-21 09:00:53.212][INF][Px23092][Tx57929] asst::Assistant::append_task Infrast {"facility":["Mfg","Trade","Control","Power","Reception","Office","Dorm","Processing","Training","AssistantChange"],"drones":"Money","continue_training":false,"threshold":0.3,"dorm_notstationed_enabled":true,"dorm_trust_enabled":true,"replenish":true,"reception_message_board":true,"reception_clue_exchange":true,"reception_send_clue":true,"fiammetta_targets":["清流","可露希尔","但书"],"fiammetta_recovery_enabled":false,"use_pinus_sylvestris":false,"use_perception_information":false,"use_worldly_plight":false,"use_abyssal_hunter":false,"mode":0}
+[2026-10-21 09:00:53.214][INF][Px23092][Tx57929] asst::Assistant::append_task | task_id: 3
+[2026-10-21 09:00:53.215][INF][Px23092][Tx57929] asst::Assistant::append_task Recruit {"refresh":true,"force_refresh":true,"select":[4],"confirm":[3,4],"level3_recruitment_permit_reserve":0,"times":4,"set_time":true,"expedite":false,"preserve_tags":[],"extra_tags_mode":0,"first_tags":[],"recruitment_time":{"3":540,"4":540,"5":540,"6":540},"report_to_penguin":true,"report_to_yituliu":true,"server":"CN","penguin_id":"303948262","yituliu_id":""}
+[2026-10-21 09:00:53.215][INF][Px23092][Tx57929] asst::Assistant::append_task | task_id: 4
+[2026-10-21 09:00:53.219][INF][Px23092][Tx57929] asst::Assistant::append_task Mall {"credit_fight":false,"formation_index":0,"visit_friends":true,"shopping":true,"buy_first":["{{ HighPriorityDefault }}"],"blacklist":["{{ BlacklistDefault }}","讯使","嘉维尔","坚雷"],"force_shopping_if_credit_full":false,"only_buy_discount":false,"reserve_max_credit":false}
+[2026-10-21 09:00:53.233][INF][Px23092][Tx57929] asst::Assistant::append_task | task_id: 5
+[2026-10-21 09:00:53.234][INF][Px23092][Tx57929] asst::Assistant::append_task Award {"award":true,"mail":false,"recruit":false,"orundum":false,"mining":false,"specialaccess":false,"signinevent":false}
+[2026-10-21 09:00:53.234][INF][Px23092][Tx57929] asst::Assistant::append_task | task_id: 6
+[2026-10-21 09:00:53.238][INF][Px23092][Tx242] Assistant::append_callback | TaskChainStart {"taskchain":"StartUp","taskid":1,"uuid":"d912769d7cb0ae0a"}
+[2026-10-21 09:02:03.485][INF][Px23092][Tx242] Assistant::append_callback | TaskChainCompleted {"taskchain":"StartUp","taskid":1,"uuid":"d912769d7cb0ae0a"}
+[2026-10-21 09:02:03.987][INF][Px23092][Tx242] Assistant::append_callback | TaskChainStart {"taskchain":"Fight","taskid":2,"uuid":"d912769d7cb0ae0a"}
+[2026-10-21 09:07:02.433][INF][Px23092][Tx242] Assistant::append_callback | TaskChainCompleted {"taskchain":"Fight","taskid":2,"uuid":"d912769d7cb0ae0a"}
+[2026-10-21 09:07:02.935][INF][Px23092][Tx242] Assistant::append_callback | TaskChainStart {"taskchain":"Infrast","taskid":3,"uuid":"d912769d7cb0ae0a"}
+[2026-10-21 09:16:48.496][INF][Px23092][Tx242] Assistant::append_callback | TaskChainCompleted {"taskchain":"Infrast","taskid":3,"uuid":"d912769d7cb0ae0a"}
+[2026-10-21 09:16:49.007][INF][Px23092][Tx242] Assistant::append_callback | TaskChainStart {"taskchain":"Recruit","taskid":4,"uuid":"d912769d7cb0ae0a"}
+[2026-10-21 09:17:31.251][INF][Px23092][Tx242] Assistant::append_callback | TaskChainCompleted {"taskchain":"Recruit","taskid":4,"uuid":"d912769d7cb0ae0a"}
+[2026-10-21 09:17:31.752][INF][Px23092][Tx242] Assistant::append_callback | TaskChainStart {"taskchain":"Mall","taskid":5,"uuid":"d912769d7cb0ae0a"}
+[2026-10-21 09:19:09.733][INF][Px23092][Tx242] Assistant::append_callback | TaskChainCompleted {"taskchain":"Mall","taskid":5,"uuid":"d912769d7cb0ae0a"}
+[2026-10-21 09:19:10.234][INF][Px23092][Tx242] Assistant::append_callback | TaskChainStart {"taskchain":"Award","taskid":6,"uuid":"d912769d7cb0ae0a"}
+[2026-10-21 09:19:25.078][INF][Px23092][Tx242] Assistant::append_callback | TaskChainCompleted {"taskchain":"Award","taskid":6,"uuid":"d912769d7cb0ae0a"}
+[2026-10-21 09:19:25.078][INF][Px23092][Tx242] Assistant::append_callback | AllTasksCompleted {"finished_tasks":[1,2,3,4,5,6],"taskchain":"Award","taskid":6,"uuid":"d912769d7cb0ae0a"}
+[2026-10-21 09:19:25.110][INF][Px23092][Tx57929] asst::Assistant::append_task CloseDown {"client_type":"Official"}
+[2026-10-21 09:19:25.111][INF][Px23092][Tx57929] asst::Assistant::append_task | task_id: 7
+[2026-10-21 09:19:25.579][INF][Px23092][Tx242] Assistant::append_callback | TaskChainStart {"taskchain":"CloseDown","taskid":7,"uuid":"d912769d7cb0ae0a"}

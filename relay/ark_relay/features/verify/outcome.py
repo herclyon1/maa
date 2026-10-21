@@ -984,6 +984,12 @@ def _one_run_only(text: str) -> str:
     return text[:cut] if cut > 0 else text
 
 
+def _closedown_after_all_done(text: str) -> bool:
+    """The last CloseDown start comes after an AllTasksCompleted receipt (MAA's post-action)."""
+    start = text.rfind('TaskChainStart {"taskchain":"CloseDown"')
+    return start > 0 and "AllTasksCompleted" in text[:start]
+
+
 def maa_checks(text: str) -> list[Check]:
     """Verify one MAA run. `text` is the asst.log within that run's time window."""
     text = _one_run_only(text)
@@ -1011,6 +1017,14 @@ def maa_checks(text: str) -> list[Check]:
         return out
 
     dangling = started - ended
+    # CloseDown after AllTasksCompleted is MAA's own post-action (「退出 明日方舟」).
+    # AUTO-MAS reads 「任务已全部完成」 as the end of the run, stops MAA.exe and quits
+    # the emulator itself, so whether MAA's StopGameTask got its receipt in first
+    # is a race, not work left undone: 2026-10-21 09:19:25 CloseDown started 350 ms
+    # before AUTO-MAS stopped MAA.exe and closed LDPlayer instance 1000 (ledger
+    # #107; tests/test_maa_closedown_postaction.py); on 10-20 it won by 0.1 s.
+    if dangling.get("CloseDown") and _closedown_after_all_done(text):
+        del dangling["CloseDown"]
     out.append(Check("每一项都做到了结尾", not dangling,
                      "" if not dangling else
                      "开了没收尾：" + "、".join(sorted(dangling))))

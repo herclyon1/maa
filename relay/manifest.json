@@ -1,8 +1,8 @@
 {
- "version": 20261019135633,
- "ref": "relay-20261019135633",
+ "version": 20261021012242,
+ "ref": "relay-20261021012242",
  "files": {
-  "RELEASE-NOTES.md": "23b2690d9701fdfe5180bd95284b401858c1cf42",
+  "RELEASE-NOTES.md": "3ea656d5c4d5ea29efaeeda8b22e07b251188164",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "2f8cce37bd21d8f45412b749da1eead09431ee6f",
@@ -158,7 +158,7 @@
   "ark_relay/features/verify/gamelog_errors.py": "f86d38a783a1c4baa75377ffdf616d48ae5fefc8",
   "ark_relay/features/verify/gamelog_errors.txt": "4700101bc13912b393650fd76b20bf2943cfba91",
   "ark_relay/features/verify/maaend_fwlog.py": "c7d7ad16cc669686be122512196c35d0115681e0",
-  "ark_relay/features/verify/outcome.py": "f753b0063f1c5676b4daabca7ef6e5d4f90555b2",
+  "ark_relay/features/verify/outcome.py": "24294491a977bb79fbf46a2ffc98e6c4215067c9",
   "ark_relay/features/weekly/__init__.py": "0b5dc81b2caa760bdd6f4c2abd47e4de71345442",
   "ark_relay/features/weekly/annihilation.py": "5156bad587bdc445c42ed0bfa6f8703134ef4d73",
   "ark_relay/features/weekly/garden.py": "66d3fdcaf8aa1dea8f0a916c6fcb07be918b74f6",
@@ -172,7 +172,7 @@
   "watchdog_guard.py": "cc505fe57c4c2923be2003c8fe5a4f0a47b0d887"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "e9a33bf40f899c3f63310c1ee15b22ac06faa32f215832d45fafa628280a51d6",
+  "RELEASE-NOTES.md": "96658ba14de8767038246e656984cda2f66023ca7f589df30b0505c62c12c7cf",
   "app_main.py": "9a2bad4ee77f639044a37a362cd0630827e0ff1b87978e4caeb7898972cdc682",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "4473c5ed050428c5d4398f738fc5a9246f6d21064330d9e427d822e8b3c52cbc",
@@ -328,7 +328,7 @@
   "ark_relay/features/verify/gamelog_errors.py": "91e9f66ff339bcceadd603c38537b8e4c352d8fde4344a376de89b5a2b22bb9d",
   "ark_relay/features/verify/gamelog_errors.txt": "7dcb87ce98314ea5f11460beaae1bb38b9543d6bbb9939476c98dc164a210b54",
   "ark_relay/features/verify/maaend_fwlog.py": "8d11d2008459cdaa506a4df69a26d5c79e7987d52fa8db59941d52ca1e02f314",
-  "ark_relay/features/verify/outcome.py": "627493980c897691c8a73c48956c3a1586bf5d0427bd9a570eb17b31fca0d993",
+  "ark_relay/features/verify/outcome.py": "5d2167cbf33880c8907dcbba47a2cb9cb18aa15d8522366a808aaeb489f84492",
   "ark_relay/features/weekly/__init__.py": "8e519e188cd898bc23095f5716ca52d07afa16ac47a1e897dd90b60d5196ca3f",
   "ark_relay/features/weekly/annihilation.py": "2a6f9a1863cb2a2a415c093e08148a43940be6da91505be09035abcadc98f8d9",
   "ark_relay/features/weekly/garden.py": "6d1ade88c19747a12a09a78fc75270d5d6ad6474576b821f811fe003302e928b",
