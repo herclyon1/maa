@@ -78,6 +78,9 @@ _MAAEND = "no MaaEnd record in the corpora prints it (U13b's 17 cases; replay 10
 _OKWW_RARE = "no recorded OK-WW run (corpus okww 11 runs, replay 09-01..09-07) nor scenario prints it"
 _SCEN_STOPS = "its overlay line comes after the moment the scenario ends, or on a path no scenario plays"
 GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
+    ("features/verify/gamelog_errors.txt",
+     r"\[ERR\]\[[^\]]*\]\[[^\]]*\]\[navigation_state_machine\.cpp\]\[L\d+\]\[mapnavigator::NavigationStateMachine::FailNavigation\] Off-route with no route progress past the wedge timeout; terminating so the pipeline can retry\."):
+        ("fixture", "only fixtures/maaend-2026-10-21 (real AUTO-MAS history lines 09:54:30-09:57:11, ledger #108)"),
     ("features/verify/collector_maa.py", r"Cannot set stage\W*([A-Za-z0-9\-]+)"):
         ("none", "design 3: cite MAA's producer line at the installed tag or delete the rule (not done)"),
     ("features/verify/collector_maaend.py", r"^是(\S+?基质)\s*$"): ("none", _MAAEND),

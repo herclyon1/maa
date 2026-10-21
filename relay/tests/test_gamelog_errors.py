@@ -51,6 +51,7 @@ SAMPLES = {
         "[2026-10-02 21:46:55.570][ERR][TaskQueueViewModel]     <2> 识别错误, 已返回",
     ],
     "MaaEnd": [
+        "[2026-10-21 09:55:08.002] [2026-10-21 09:55:07.977][ERR][Px6540][Tx4086][navigation_state_machine.cpp][L2696][mapnavigator::NavigationStateMachine::FailNavigation] Off-route with no route progress past the wedge timeout; terminating so the pipeline can retry. [current_distance=9.953856] [yaw_error=59.709557] [stalled_ms=0]",
         "[2026-09-27 09:33:23.006][ERR][Px23408][Tx41825][TemplateMatcher.cpp][L54][MaaNS::VisionNS::TemplateMatcher::template_match] __CancelButtonType1Icon templ size is too large [image=[258,20,16]] [templ=[29,29,16]]",
         "[2026-09-27 09:43:52.582][ERR][Px23408][Tx41825][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,722,143,40]]",
         "[2026-09-27 09:44:13.860][ERR][Px23408][Tx41825][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid ",
