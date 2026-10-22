@@ -29,6 +29,8 @@ from ark_relay.features.makeup import collect_retry, makeup       # noqa: E402
 
 # The relay's tick is about a minute ("下一个闹钟"); two give the shutdown decision that
 # debug mode was holding back a turn to start what it was waiting to do.
+# Measured: relay.log 10-22, ticks a minute apart (21:30:26, 21:31:27, 21:32:28), and the
+# gathering retry started 2 s after debug mode went off (16:44:18 -> 16:44:20).
 DEBUG_OFF_GRACE_MINUTES = 2
 
 
