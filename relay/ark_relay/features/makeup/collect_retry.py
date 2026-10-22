@@ -676,6 +676,16 @@ def _locale(maaend_dir: Path) -> dict:
         return {}
 
 
+def _clock(iso) -> str:
+    """A stamp's ISO time as 「10-22 16:44」 on the machine's clock. These WARNINGs reach the
+    group as written, and only when they read as plain words (texts.plain): the ISO form's
+    「T16」 turned the 10-22 21:48 alarm into 「原话有术语没翻译」 (ledger #110)."""
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
+    try:
+        return datetime.fromisoformat(str(iso)).astimezone(SERVER_TZ).strftime("%m-%d %H:%M")
+    except ValueError:
+        return str(iso)
+
 def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     """Once per day, after the queue is idle: retry that day's failed routes. True if a retry ran.
 
@@ -714,14 +724,19 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
             atomic_write_text(stamp, json.dumps(dict(prev, finished=now.isoformat(), passed=[], failed=[],
                                                      unknown=list(prev.get("routes") or []),
                                                      note="补跑两次都没跑完"), ensure_ascii=False))
+            # Routes by MaaEnd's own names: the stamp keeps ids (AutoCollectRoute15), which keep the
+            # WARNING from reaching the group as plain words.
+            zh0 = _locale(Path(cfg.maaend_dir)) if cfg.maaend_dir else {}
             log.warning("自动采集补跑：%s 开始的补跑又没跑完（中继中途停了），今天不再补；没走通的路线：%s",
-                        prev.get("started"), "、".join(prev.get("routes") or []))
+                        _clock(prev.get("started")),
+                        "、".join(route_label(r, zh0) for r in prev.get("routes") or []))
             return False
         cut_off = str(prev.get("started"))
         if not prev.get("closed"):
             # Said and closed once: the early returns below (no routes, scripts
             # running, ...) leave the stamp as it is and this is called every tick.
-            log.warning("自动采集补跑：%s 开始的补跑没跑完（中继中途停了），关掉留下的 MaaEnd 和游戏，再补一次", cut_off)
+            log.warning("自动采集补跑：%s 开始的补跑没跑完（中继中途停了），关掉留下的 MaaEnd 和游戏，再补一次",
+                        _clock(cut_off))
             _kill("MaaEnd.exe")
             _kill("Endfield.exe")
             atomic_write_text(stamp, json.dumps(dict(prev, closed=now.isoformat()), ensure_ascii=False))

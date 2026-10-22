@@ -121,6 +121,21 @@ check("只报一次没跑完", sum("没跑完" in m for m in w.msgs), 1)
 check("只关一次 MaaEnd 和游戏", killed, ["MaaEnd.exe", "Endfield.exe"])
 check("印记还没写结束，脚本停了还会补", "finished" in json.loads(f.read_text(encoding="utf-8")), False)
 
+print("\n[没跑完的两句警告原样进群：时刻写成「10-22 16:44」，不带 ISO 的「T16」（账本 #110）]")
+from ark_relay.core.texts import plain  # noqa: E402
+w2 = _Warnings()
+cr.log.addHandler(w2)
+try:
+    outcome(cut)
+    outcome(dict(cut, cut_off="earlier"))
+finally:
+    cr.log.removeHandler(w2)
+said = [m for m in w.msgs + w2.msgs if "没跑完" in m]
+check("两种没跑完都说了", (any("再补一次" in m for m in said), any("今天不再补" in m for m in said)), (True, True))
+check("每句都是白话（texts.plain 没挑出毛病）", [plain(m) for m in said], [[] for _ in said])
+check("时刻是机器上的「月-日 时:分」", all(cr._clock(cut["started"]) in m for m in said), True)
+check("读不懂的时刻原样留着", cr._clock("earlier"), "earlier")
+
 print("\n[run_retry 半路放弃（MaaEnd 不响应）也关掉 MaaEnd 和游戏]")
 md = tmpdir() / "maaend"
 (md / "debug").mkdir(parents=True)
