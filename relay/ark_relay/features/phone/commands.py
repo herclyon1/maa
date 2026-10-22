@@ -822,7 +822,8 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
                 gate.enforce()
             return ok, msg
         if action == "echo_farm":
-            # Farm one overworld boss for its 4-cost echoes until a wall-clock time.
+            # Farm one boss for its 4-cost echoes until a wall-clock time: an overworld
+            # boss, or with "weekly": true the boss-th weekly boss.
             # The count OK-WW understands is set high; echofarm owns the clock.
             from ark_relay.features.echofarm import echofarm  # noqa: PLC0415
             from ark_relay.core.config import Config  # noqa: PLC0415
@@ -831,8 +832,11 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             # backlog order mean the deadline its sender meant - see echofarm.start.
             sent = cmd.get("sent")
             sent = datetime.fromtimestamp(sent, tz=SERVER_TZ) if isinstance(sent, int) else None
-            return echofarm.start(Config(), cmd.get("boss"), cmd.get("until"),
-                                  str(cmd.get("name") or "") or label(cmd.get("boss")), sent=sent)
+            weekly = cmd.get("weekly") is True
+            name = str(cmd.get("name") or "") or (f"周本第 {cmd.get('boss')} 个" if weekly
+                                                  else label(cmd.get("boss")))
+            return echofarm.start(Config(), cmd.get("boss"), cmd.get("until"), name,
+                                  sent=sent, weekly=weekly)
         if action == "echo_farm_until":
             from ark_relay.features.echofarm.echofarm import retime  # noqa: PLC0415
             from ark_relay.core.config import Config  # noqa: PLC0415

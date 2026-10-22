@@ -3261,6 +3261,15 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
+"test_maa_closedown_postaction.py": [
+"__init__",
+"collector_maaend",
+"config",
+"maaend_fwlog",
+"names",
+"outcome",
+"texts"
+],
 "test_maa_config_rejected.py": [
 "__init__",
 "alertlog",

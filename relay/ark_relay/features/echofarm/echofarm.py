@@ -495,8 +495,16 @@ def _truth(cfg, working: Path) -> dict:
 
 
 def start(cfg, boss: int, until_hhmm: str, name: str = "",
-          now: datetime | None = None, sent: datetime | None = None) -> tuple[bool, str]:
+          now: datetime | None = None, sent: datetime | None = None,
+          weekly: bool = False) -> tuple[bool, str]:
     """Point OK-WW at one overworld boss and farm it until `until_hhmm`.
+
+    `weekly` farms the `boss`-th weekly boss (F2 → 战歌重奏) instead. Its echoes drop
+    without the reward claim, and the claim stays refused by the same no-claim
+    marker: the patch's weekly claim / count / solo-challenge hooks all hand back to
+    upstream while it exists (ark_overrides.tasks.farming_echoes). The App's farm
+    could only pick an overworld boss, so on 2026-10-22 a weekly-boss farm had to be
+    set up by hand (the user: 「做了半截导致我现在还得手动找你」).
 
     `now` pins the clock in tests.
 
@@ -513,8 +521,12 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
         boss = int(boss)
     except (TypeError, ValueError):
         return False, f"「第几个」要是数字，收到 {boss!r}"
-    if not 1 <= boss <= BOSSES:
-        return False, f"「第几个」超出范围：{boss}（OK-WW 的列表只有 1 到 {BOSSES}）"
+    # The weekly boss as the daily's weekly step writes it: same teleport mode, index
+    # key, level and 1..9 range.
+    from ark_relay.features.weekly.weeklyboss import MAX_LEVEL, WEEKLY, WEEKLY_BOSSES  # noqa: PLC0415
+    top = WEEKLY_BOSSES if weekly else BOSSES
+    if not 1 <= boss <= top:
+        return False, f"「第几个」超出范围：{boss}（OK-WW 的列表只有 1 到 {top}）"
     until = resolve_until(until_hhmm, sent or now)
     if until is None:
         return False, f"结束时刻看不懂：{until_hhmm!r}（要 08:30 这种）"
@@ -531,11 +543,12 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
                        "要换目标先停掉现在这一趟")
 
     saved = _truth(cfg, path)
-    back = _write_cfg(path, {"Teleport to Boss": "Boss Challenge",
-                             "Which Boss Challenge to Teleport": boss,
-                             "Boss Level": FARM_LEVEL,
+    which = "Which Weekly Boss to Teleport" if weekly else "Which Boss Challenge to Teleport"
+    back = _write_cfg(path, {"Teleport to Boss": WEEKLY if weekly else "Boss Challenge",
+                             which: boss,
+                             "Boss Level": MAX_LEVEL if weekly else FARM_LEVEL,
                              "Repeat Farm Count": BIG_COUNT})
-    if back.get("Which Boss Challenge to Teleport") != boss:
+    if back.get(which) != boss:
         atomic_write_text(path, json.dumps(saved, ensure_ascii=False, indent=1))
         return False, "写进去之后读出来和写的不一样，设置已改回，没有开跑"
 
@@ -547,7 +560,7 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
         return False, f"{why}；配置已还原"
 
     _store(cfg.state_dir).set("queues", "echo_farm", {
-        "boss": boss, "name": name or f"第 {boss} 个",
+        "boss": boss, "name": name or f"第 {boss} 个", "weekly": weekly,
         "until": until.strftime("%Y-%m-%d %H:%M"),
         "started": (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
                    .strftime("%Y-%m-%d %H:%M"),

@@ -320,6 +320,27 @@ for bad in (0, 31, "一", None):
     check(f"拒绝 {bad!r} 后配置没动", cfg_now(c2), ORIGINAL)
 
 
+print("\n[weekly boss farm (2026-10-22): Weekly Challenge, its own index key, level 90, no-claim marker on]")
+echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
+cw = fresh()
+okw, msgw = echofarm.start(cw, 2, "08:30", "周本第 2 个", now=NOW, weekly=True)
+check("weekly farm started", okw, True)
+w = cfg_now(cw)
+check("teleport mode is the weekly one", w["Teleport to Boss"], "Weekly Challenge")
+check("weekly index written", w["Which Weekly Boss to Teleport"], 2)
+check("overworld index untouched", w["Which Boss Challenge to Teleport"], ORIGINAL["Which Boss Challenge to Teleport"])
+check("weekly level 90", w["Boss Level"], "90")
+check("count handed to the clock", w["Repeat Farm Count"], echofarm.BIG_COUNT)
+check("no-claim marker on", echofarm.no_claim_on(), True)
+check("record says weekly", echofarm.current(cw.state_dir).get("weekly"), True)
+echofarm.finish(cw, "手动停止")
+check("config restored after a weekly farm", cfg_now(cw), ORIGINAL)
+check("marker off after a weekly farm", echofarm.no_claim_on(), False)
+for bad in (0, 10):
+    cb = fresh()
+    check(f"weekly index {bad} refused (OK-WW lists 1..9)", echofarm.start(cb, bad, "08:30", weekly=True, now=NOW)[0], False)
+    check(f"config untouched after weekly {bad}", cfg_now(cb), ORIGINAL)
+
 print("\n[刷声骸期间必须挂着「不领奖」标记：领一次奖 60 波片，通宵刷会掏空账号]")
 echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
 c = fresh()

@@ -86,7 +86,7 @@ FIELDS: dict[str, dict[str, str]] = {
         "maaend_disabled_spmed": "旧记录：9 月初关掉的应急理智加强剂 {tasks, since}；开机开回那一步 10-13 已删，留下的不动",
     },
     "queues": {
-        "echo_farm": "正在刷的声骸 boss：{boss, name, until, started, saved}",
+        "echo_farm": "正在刷的声骸 boss：{boss, name, weekly, until, started, saved}",
         "pending": "还没推出去的失败告警：{脚本|账号: 记录}",
         "phone_seen": "手机指令去重用的消息 id 列表",
         "phone_mark": "手机信箱读到的最新 ntfy 时间（unix 秒），下次开机据此算读不到的时段",

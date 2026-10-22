@@ -101,14 +101,19 @@ print("[中继写的路径和改动文件读的路径是同一个]")
 name = Path(echofarm.NO_CLAIM.replace("\\", "/")).name
 check(f"文件名一致（{name}）", Path(okww_overlay.source_text().split('NO_CLAIM = "')[1].split('"')[0]).name, name)
 
-print("[刷声骸走的是强敌（Boss Challenge），领奖钩子本来就不碰；上游自己退本再按 F 重进]")
+print("[刷强敌（Boss Challenge）时领奖钩子本来就不碰；刷周本（10-22 起）靠上面那道标记；上游自己退本再按 F 重进]")
 t = Task(boss="Boss Challenge")
 t.incr_drop(True)
 check("强敌：只跑上游的掉落计数", t.events, ["upstream-incr"])
 t = Task(boss="Boss Challenge")
 t.handle_claim_button()
 check("强敌：领奖弹窗照上游按 ESC", t.events, ["upstream-esc"])
-check("中继刷声骸写的是 Boss Challenge", '"Teleport to Boss": "Boss Challenge"' in Path(echofarm.__file__).read_text(encoding="utf-8"))
+_src = Path(echofarm.__file__).read_text(encoding="utf-8")
+check("中继刷强敌写的是 Boss Challenge", '"Boss Challenge"' in _src)
+# A weekly-boss farm writes Weekly Challenge, where only the marker keeps the claim hooks off: the marker must be up
+# before OK-WW starts, on the one start path both kinds take.
+check("刷周本也是先挂标记再启动（同一个 start）",
+      0 <= _src.index("_set_no_claim(True)") < _src.index("ok, why = _launch()"))
 check("不补「不退本按 F 重进」的理由写在钩子里", "enter_configured_boss_realm_from_f" in okww_overlay.source_text()
       and "FarmEchoTask.py:147-152" in okww_overlay.source_text())
 

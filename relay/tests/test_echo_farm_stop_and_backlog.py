@@ -116,6 +116,18 @@ commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 1, "un
 check("换成了机器时区的时刻", got.get("sent"), at(5, 22, 0))
 commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 1, "until": "08:30"})
 check("没带就是 None", got.get("sent"), None)
+
+print("\n[weekly: true from the App reaches echofarm.start, with a weekly name when none is sent (2026-10-22)]")
+echofarm.start = lambda cfg, boss, until, name, sent=None, weekly=False, **kw: (
+    got.update(boss=boss, name=name, weekly=weekly), (True, ""))[1]
+commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 1, "until": "08:30", "weekly": True})
+check("weekly passed on", got.get("weekly"), True)
+check("default name says weekly, not 讨伐强敌's 1", got.get("name"), "周本第 1 个")
+commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 1, "until": "08:30"})
+check("no weekly key = overworld", got.get("weekly"), False)
+check("overworld default name from wuwa_boss", got.get("name"), "天傀劫煞")
+commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 1, "until": "08:30", "weekly": "yes"})
+check("only a real true means weekly", got.get("weekly"), False)
 echofarm.start = real_start
 
 

@@ -324,8 +324,9 @@ def _install_claim():
     So incr_drop - called once per lap right after the echo pickup - walks there
     with upstream's own walk_to_treasure and presses F with its own pick_f, which
     calls handle_claim_button exactly as scroll_and_click_buttons does.
-    Echo farm: the relay farms with 「Boss Challenge」 (echofarm.py writes it), so
-    neither hook acts there; farming_echoes() guards a stale weekly config.
+    Echo farm: neither hook acts while the relay farms. An overworld farm is
+    「Boss Challenge」; a weekly-boss farm (echofarm.start weekly=, 2026-10-22) is
+    「Weekly Challenge」 too and is told apart by the no-claim marker, farming_echoes().
     """
     from src.task.FarmEchoTask import FarmEchoTask
 
