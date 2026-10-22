@@ -1,8 +1,8 @@
 {
- "version": 20261022135624,
- "ref": "relay-20261022135624",
+ "version": 20261022140037,
+ "ref": "relay-20261022140037",
  "files": {
-  "RELEASE-NOTES.md": "139785df5f7dfeee7d965beff49fa7a925c659c0",
+  "RELEASE-NOTES.md": "1ac27e1a18951e3a52e19d94a3ccd10abbc5b474",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "2f8cce37bd21d8f45412b749da1eead09431ee6f",
@@ -92,7 +92,7 @@
   "ark_relay/features/maintenance/efstatus.py": "4fa51bc6514488fad2adc7857f5e52008bbef882",
   "ark_relay/features/maintenance/maintenance.py": "0ae13a11fe13e8723d62748fa333ab1c2079f4f4",
   "ark_relay/features/makeup/__init__.py": "528e2895983c96b7419c069cd60b65599832eeb8",
-  "ark_relay/features/makeup/collect_retry.py": "a3b12bb00ed13f6d1add06c9e2fe357d988ad6fe",
+  "ark_relay/features/makeup/collect_retry.py": "c26d98b3cf2735a157928dd02bb9cb7976400d7c",
   "ark_relay/features/makeup/makeup.py": "31cecfc94d144bce179288f4d4cbaca2ed906528",
   "ark_relay/features/makeup/marker.py": "416a7cf6a7ef4896149ea8f285fe9b56b6ef6b9c",
   "ark_relay/features/modes/__init__.py": "a478e57cc5c9e9cd99d68fb1459f84c07c55419d",
@@ -172,7 +172,7 @@
   "watchdog_guard.py": "cc505fe57c4c2923be2003c8fe5a4f0a47b0d887"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "9b4599504e58cf96a157fec84903edb8ed182d493dc14ded26f0588a4c2ab13d",
+  "RELEASE-NOTES.md": "9bae7dadc4c1e7fc5e7f1adbbe6d1ce59d1b8e2b960af4c9be4c759021ef87ff",
   "app_main.py": "9a2bad4ee77f639044a37a362cd0630827e0ff1b87978e4caeb7898972cdc682",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "4473c5ed050428c5d4398f738fc5a9246f6d21064330d9e427d822e8b3c52cbc",
@@ -262,7 +262,7 @@
   "ark_relay/features/maintenance/efstatus.py": "70f018750a2bc475d9877d23fe7f68ca4f17f3e7af26c71b50ba4c4ec3f2fad7",
   "ark_relay/features/maintenance/maintenance.py": "6eea0476227c573f8d22da3aab2a8b35b34bd22aac9db819672aad177bc67fc3",
   "ark_relay/features/makeup/__init__.py": "e4ca1e334c6b88f19cd6417487eedb55cc48b518f78f957817f00efbf8ec0969",
-  "ark_relay/features/makeup/collect_retry.py": "d0dbfea8a4de0ff48f5f0dd6f6e13c7d86686b20bb7a65e05825c6a19dfa923e",
+  "ark_relay/features/makeup/collect_retry.py": "7a3256fa38275cf439301fed563eb82602ec551c855cf382364d60c9df003081",
   "ark_relay/features/makeup/makeup.py": "65c268a47aba7721802732cbf4ac3655d084a4fbf54da3b8366d9e9065d2b2de",
   "ark_relay/features/makeup/marker.py": "b0bf569316cbd98145f4db242ef23234db5e3abc78bd21d1007c170cddd020c7",
   "ark_relay/features/modes/__init__.py": "b77340d3d0e98c4c88e3ca1837fe26a7d0769ea6491928ea19554e548fe1759a",

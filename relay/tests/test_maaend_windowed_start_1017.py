@@ -446,8 +446,10 @@ md = maaend_copy()
 mxu = MXU(md)
 seen, note, got = retry(md, mxu)
 check("the helper is given the MaaEnd folder", seen, [("SD", md)])
-check("gathering, then CloseGamePC, then the agents stop",
-      mxu.entries(), [("start", "AutoCollectSchedule"), ("start", "CloseGamePC"), ("stop", None)])
+# The gathering's agents stop before CloseGamePC starts its own: MXU does not stop them, and
+# beside them the new go-service could not connect (10-22 21:56:40, ledger #111).
+check("gathering, the gathering's agents stop, CloseGamePC, then its agents stop",
+      mxu.entries(), [("start", "AutoCollectSchedule"), ("stop", None), ("start", "CloseGamePC"), ("stop", None)])
 close_body = next((b for p, b in mxu.calls if p.endswith("/tasks/start") and b["tasks"][0]["entry"] == "CloseGamePC"), None)
 check("CloseGamePC carries the fullscreen 1920x1080 override",
       json.loads(close_body["tasks"][0]["pipeline_override"]) if close_body else None, RESTORE)
