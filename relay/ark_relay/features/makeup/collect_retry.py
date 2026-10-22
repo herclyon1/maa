@@ -546,10 +546,7 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
             pass
     closing = time.strftime("%H:%M:%S")
     closed = _close_game(inst, restore, _state, maaend_dir)
-    try:
-        api(f"/maa/instances/{inst}/agent/stop", {})
-    except (urllib.error.URLError, OSError):
-        pass
+    _stop_agents(inst)
     text = _maafw_text(debug)
     closed = closed or _closed_verdict(text, closing)
     verdict = judge(text, routes, since)
@@ -574,13 +571,28 @@ def _maafw_text(debug: Path) -> str:
     return text
 
 
+def _stop_agents(inst: str) -> None:
+    try:
+        api(f"/maa/instances/{inst}/agent/stop", {})
+    except (urllib.error.URLError, OSError):
+        pass
+
+
 def _close_game(inst: str, override: dict, state, maaend_dir: Path) -> str:
     """Run MaaEnd's CloseGamePC with `override` (maaend_launch.restore_override): the game
     closed and fullscreen 1920x1080 written back. "" when MXU took the task and it ended
-    in time (maafw.log then says how it ended, _closed_verdict); else why not."""
+    in time (maafw.log then says how it ended, _closed_verdict); else why not.
+
+    The gathering's agents are stopped first. MXU starts a task's agents afresh and leaves
+    the ones a finished task attached: on 10-22 21:56:40 CloseGamePC's go-service could not
+    connect beside the gathering's (mxu-tauri.log 「[agent#0] Connection failed: MaaFramework
+    internal error: status 0」, then 「Stopping 2 agent client(s)」 - the gathering's two) and
+    the game stayed windowed (ledger #111). With none attached, as at the gathering's own
+    start (21:49:55 「Connected successfully!」), the new ones connect."""
+    _stop_agents(inst)
     try:
         # Same body as the gathering's start; MaaEnd's agents again, since CloseGameAction
-        # lives in go-service (it runs before agent/stop).
+        # lives in go-service.
         api(f"/maa/instances/{inst}/tasks/start", {
             "tasks": [{"entry": "CloseGamePC", "pipeline_override": json.dumps(override, ensure_ascii=False)}],
             "agent_configs": AGENTS,

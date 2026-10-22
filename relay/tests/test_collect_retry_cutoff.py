@@ -149,5 +149,31 @@ verdict, note = cr.run_retry(md, ["AutoCollectRoute15"], "saturday", spawn=lambd
 check("放弃了", note, "MaaEnd 起来 60 秒了还不响应")
 check("关掉了 MaaEnd 和游戏", sorted(killed), ["Endfield.exe", "MaaEnd.exe"])
 
+print("\n[关游戏前先停掉补跑那组助手：MXU 不停旧的，新的连不上（10-22 21:56:40，账本 #111）]")
+import urllib.error  # noqa: E402
+calls, attached = [], {"n": 2}   # the gathering's go-service and cpp-algo, still attached
+
+
+def fake_api(path, body=None, timeout=30):
+    calls.append(path.rsplit("/", 2)[-2] + "/" + path.rsplit("/", 1)[-1])
+    if path.endswith("/agent/stop"):
+        attached["n"] = 0
+    elif path.endswith("/tasks/start"):
+        if attached["n"]:
+            # mxu-tauri.log 21:56:40: 「Connection failed: MaaFramework internal error: status 0」
+            raise urllib.error.HTTPError(path, 500, "agent failed to start", {}, None)
+        attached["n"] = 2
+    return {}
+
+
+saved_api, saved_wait = cr.api, cr._wait
+cr.api, cr._wait = fake_api, (lambda pred, seconds, step=3.0: pred())
+try:
+    why = cr._close_game("automas", {"CloseGamePC": {}}, lambda: {"is_running": False}, tmpdir())
+finally:
+    cr.api, cr._wait = saved_api, saved_wait
+check("关游戏这一步被接下了（不再是 HTTPError）", why, "")
+check("先停旧助手，再开关游戏任务", calls[:2], ["agent/stop", "tasks/start"])
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
