@@ -1,10 +1,15 @@
 """Daily activity short of 100 because the waveplates ran out: the evening shift tops it up.
 
-The user, 2026-10-23 (Tokyo 11:0x-11:2x), after that morning's 「⚠️ 这一轮没干完」 for
-「每日活跃满 100：今天活跃 80 分」: 「以后再遇到这种情况，最好让中继自己知道该怎么做而不是报错，
-今天这个不是错误报警而是功能缺失问题」, then 「中继不报警但是要在群里说一声今天早班没满活跃，
-晚班补。如果连晚班都没满就报警。」; the waveplates are spent in full, backup included
-(「我有时候自己刷不代表你默认把体力留给我刷」「如果正常体力不够的话，你们可以用备用体力补」).
+The user, 2026-10-23 (Tokyo 11:0x-11:2x), after that morning's alarm for the daily activity
+at 80 points, wanted the relay to handle it rather than ring: 「以后再遇到这种情况，最好让中继自己
+知道该怎么做而不是报错」 (next time the relay should know what to do, not raise an error), as
+「今天这个不是错误报警而是功能缺失问题」 (this was a missing feature, not a fault). Then the rule:
+「中继不报警但是要在群里说一声今天早班没满活跃，晚班补。」 (no alarm, but tell the group that
+the morning fell short and the evening shift tops it up) and 「如果连晚班都没满就报警。」 (alarm
+if the evening fails too).
+The waveplates are spent in full, the backup ones included: 「我有时候自己刷不代表你默认把体力
+留给我刷」 (his own farming is no reason to keep any for him), 「如果正常体力不够的话，你们可以用
+备用体力补」 (use the backup when the normal ones run short).
 
 That morning OK-WW started with 98/240 and no backup (he had spent them himself the day
 before), spent 80 and stopped (「current stamina: 19 not enough to continue」, 「used all

@@ -114,8 +114,8 @@ AUTOMAS_CONTRACT = "⚠️ 调度程序升级后，中继有设置读不到"
 AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
 # OK-WW's daily activity short of 100 because the waveplates ran out: a notice in the group,
-# not an alarm, and the evening shift tops it up (features/makeup/activity.py; the user,
-# 2026-10-23: 「中继不报警但是要在群里说一声今天早班没满活跃，晚班补。如果连晚班都没满就报警。」).
+# not an alarm, and the evening shift tops it up (features/makeup/activity.py, which quotes
+# the user's words of 2026-10-23).
 ACTIVITY_TOPUP = "🔁 鸣潮早班活跃没满，晚班补"
 ACTIVITY_TOPUP_WAIT = "鸣潮活跃晚班补还没完"
 
@@ -757,7 +757,7 @@ _RELAY_PARTS = {
     # Every WARNING reaches the group (errwatch), so these are named too.
     "ark.annihilation": "剿灭开关", "ark.garden": "周常乐园开关", "ark.weeklyboss": "周本开关",
     "ark.unresolved": "没处理好的报警", "ark.runwatch": "在跑巡查", "ark.trigger": "认手动开的趟",
-    "ark.resources": "手机页的数字", "ark.skland": "森空岛", "ark.config": "读设置", "ark.makeup": "补跑", "ark.core": "记账",
+    "ark.resources": "手机页的数字", "ark.skland": "森空岛", "ark.config": "读设置", "ark.makeup": "补跑", "ark.activity": "鸣潮活跃晚班补", "ark.core": "记账",
     "ark.collector": "读运行记录", "ark.selfcheck": "开机自检", "ark.maaend_watchdog": "终末地看门狗",
     "ark.commands": "执行命令", "ark.task_shots": "任务截图", "ark.statestore": "状态档案",
     "ark.monthcard": "月卡提醒", "ark.echofarm": "刷声骸", "ark.maintenance": "停服维护公告",

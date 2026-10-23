@@ -1,12 +1,11 @@
 """A waveplate-short daily activity is topped up by the evening shift (features/makeup/activity.py).
 
 2026-10-23: OK-WW started the morning with 98/240 waveplates and no backup (he had spent them
-himself), spent 80, and the daily stopped at 80 points; the group got 「⚠️ 这一轮没干完」. He:
-「中继不报警但是要在群里说一声今天早班没满活跃，晚班补。如果连晚班都没满就报警。」 The lines below
-are that morning's own (ok-script.log 09:28:40-09:29:22); the queues are the machine's (早班
+himself), spent 80, and the daily stopped at 80 points; the group got an alarm. His rule (quoted
+in activity.py): no alarm, a word in the group, the evening tops it up, an alarm if the evening
+fails too. The lines below are that morning's own (ok-script.log 09:28:40-09:29:22); the queues are the machine's (早班
 09:00, 晚班 21:30, AUTO-MAS v5.8 YAML).
 """
-import json
 import sys
 import types
 from datetime import datetime, timedelta

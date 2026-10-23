@@ -1,6 +1,65 @@
 {
+"test_activity_topup.py": [
+"__init__",
+"activity",
+"annihilation",
+"arknights",
+"banners",
+"collector",
+"collector_maa",
+"collector_maaend",
+"collector_okww",
+"config",
+"daymarks",
+"efstatus",
+"endfield",
+"engine",
+"errwatch",
+"gamelogs",
+"handle",
+"ledger",
+"ledger_report",
+"ledger_rows",
+"maaend_fwlog",
+"makeup",
+"manualstops",
+"marker",
+"masconfig",
+"mastercfg",
+"mastercfg_maa",
+"mastercfg_okww",
+"masuser",
+"miniyaml",
+"missed",
+"modes",
+"names",
+"notify",
+"outcome",
+"plan",
+"pushes",
+"records",
+"report",
+"runchecks",
+"scoreboard",
+"shutdown",
+"stagegate",
+"statestore",
+"summary",
+"tape",
+"texts",
+"transport",
+"verdict",
+"weekgate",
+"weeklyboss",
+"wuwa",
+"wuwa_forgery",
+"wuwa_history",
+"wuwa_posters",
+"wuwa_tacet"
+],
 "test_alert_dedup.py": [
 "__init__",
+"activity",
 "alertlog",
 "annihilation",
 "arknights",
@@ -850,6 +909,7 @@
 ],
 "test_config_skip_1016.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -1002,6 +1062,7 @@
 ],
 "test_daily_techlog.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -1476,6 +1537,7 @@
 ],
 "test_due_weekdays_everywhere.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -1714,6 +1776,7 @@
 ],
 "test_engine_pending.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -1820,6 +1883,7 @@
 ],
 "test_error_evidence.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -2983,6 +3047,7 @@
 ],
 "test_held_push_keeps_evidence.py": [
 "__init__",
+"activity",
 "alertlog",
 "annihilation",
 "arknights",
@@ -4974,6 +5039,7 @@
 ],
 "test_manual_stop_not_selfheal.py": [
 "__init__",
+"activity",
 "alertlog",
 "annihilation",
 "arknights",
@@ -5525,6 +5591,7 @@
 ],
 "test_mc_runs.py": [
 "__init__",
+"activity",
 "alertlog",
 "annihilation",
 "arknights",
@@ -6007,6 +6074,7 @@
 ],
 "test_next_deadline.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -6456,6 +6524,7 @@
 ],
 "test_okww_nest_expected.py": [
 "__init__",
+"activity",
 "annihilation",
 "collector",
 "collector_maa",
@@ -6968,6 +7037,7 @@
 ],
 "test_phone_cmd_queue.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -8169,6 +8239,7 @@
 ],
 "test_recovered_daily_only.py": [
 "__init__",
+"activity",
 "alertlog",
 "annihilation",
 "arknights",
@@ -8432,6 +8503,7 @@
 ],
 "test_report_due.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -8571,6 +8643,7 @@
 ],
 "test_runwatch.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -9105,6 +9178,7 @@
 ],
 "test_shutdown.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -9176,6 +9250,7 @@
 ],
 "test_shutdown_after_restart.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -9283,6 +9358,7 @@
 ],
 "test_shutdown_held_past_shift.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -9478,6 +9554,7 @@
 ],
 "test_shutdown_whitelist.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -10576,6 +10653,7 @@
 ],
 "test_tick_isolation.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
@@ -10679,6 +10757,7 @@
 "test_undefined_names.py": [],
 "test_undone_fallback_full.py": [
 "__init__",
+"activity",
 "alertlog",
 "annihilation",
 "arknights",
@@ -10910,6 +10989,7 @@
 ],
 "test_unresolved.py": [
 "__init__",
+"activity",
 "alertlog",
 "annihilation",
 "arknights",
@@ -11004,6 +11084,7 @@
 "test_upstream_post_silent.py": [],
 "test_uptime_alarm.py": [
 "__init__",
+"activity",
 "annihilation",
 "arknights",
 "banners",
