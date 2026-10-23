@@ -14,7 +14,7 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from ark_relay.core import mastercfg
+from ark_relay.core import masconfig, mastercfg
 from ark_relay.core.config import SERVER_TZ, USER_TZ, atomic_write_text
 from ark_relay.core.names import GAME_ZH
 from ark_relay.core import masuser
@@ -60,8 +60,9 @@ def _tokyo(hhmm: str) -> str:
 
 def _load(path: Path) -> dict:
     try:
-        doc = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        # The JSON, or AUTO-MAS v5.8's YAML in the same shape (masconfig, ledger #113).
+        doc = masconfig.read(path)
+    except (OSError, ValueError) as exc:
         # Read on every engine tick (schedule) and every phone publish (next_plan).
         _say_once(f"load:{path}", exc, "读取 %s 失败: %s", path.name, exc)
         return {}
@@ -505,10 +506,10 @@ def _okww_quick_overrides(automas_dir: Path | None) -> "dict | None | object":
     if not automas_dir:
         return None
     f = Path(automas_dir) / "config" / "ScriptConfig.json"
-    if not f.is_file():
+    if not masconfig.source(f).is_file():
         return None
     try:
-        root = json.loads(f.read_text(encoding="utf-8", errors="replace"))
+        root = masconfig.read(f)
     except (OSError, ValueError) as exc:
         _say_once("quick", exc, "AUTO-MAS ScriptConfig.json 读不到（%s），明日安排鸣潮写「附加任务读不到」", exc)
         return _UNREADABLE

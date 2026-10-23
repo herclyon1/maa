@@ -13,7 +13,6 @@ off with this week not done (switch_off_line) - nothing turns it back on.
 """
 from __future__ import annotations
 
-import json
 import logging
 import urllib.error
 from datetime import datetime, timedelta
@@ -21,7 +20,7 @@ from pathlib import Path
 
 from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ
-from ark_relay.core import masuser
+from ark_relay.core import masconfig, masuser
 
 log = logging.getLogger("ark.annihilation")
 
@@ -107,8 +106,8 @@ def _maa_user(automas_dir: Path | None) -> dict:
     if not automas_dir:
         return {}
     try:
-        data = json.loads(_script_config(automas_dir).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        data = masconfig.read(_script_config(automas_dir))   # or v5.8's YAML (ledger #113)
+    except (OSError, ValueError):
         return {}
     for user in _maa_users(data):
         return user

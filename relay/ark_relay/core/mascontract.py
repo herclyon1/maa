@@ -21,12 +21,11 @@ app/models/config.py before the machine installs it.
 """
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from ark_relay.core import masuser
+from ark_relay.core import masconfig, masuser
 
 
 @dataclass(frozen=True)
@@ -149,12 +148,12 @@ class Result:
 
 
 def _load(path: Path):
-    """The file's JSON; None when it is not there; raises ValueError / OSError otherwise."""
+    """The file's settings - the JSON, or AUTO-MAS v5.8's YAML in the same shape (masconfig,
+    ledger #113); None when it is not there; raises ValueError / OSError otherwise."""
     try:
-        text = path.read_text(encoding="utf-8")
+        return masconfig.read(path)
     except FileNotFoundError:
         return None
-    return json.loads(text)
 
 
 def _nodes(data) -> list[tuple[dict, dict]]:

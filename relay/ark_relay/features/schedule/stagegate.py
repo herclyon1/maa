@@ -105,7 +105,7 @@ from pathlib import Path
 
 from ark_relay.core import texts
 from ark_relay.core.config import SERVER_TZ
-from ark_relay.core import masuser
+from ark_relay.core import masconfig, masuser
 
 log = logging.getLogger("ark.stagegate")
 
@@ -244,7 +244,7 @@ def check(stage: str, maa_dir, problems: list | None = None) -> tuple[str, str]:
 # ---------- what AUTO-MAS will send ----------
 
 def _load(path: Path):
-    return json.loads(path.read_text(encoding="utf-8"))
+    return masconfig.read(path)   # the JSON, or AUTO-MAS v5.8's YAML (ledger #113)
 
 
 def _plan_of(src: dict) -> list[str] | None:
@@ -448,7 +448,7 @@ def _files_sig(cfg) -> str:
     parts = []
     try:
         files = (_task_files(cfg.maa_dir) if cfg.maa_dir else []) + [
-            Path(cfg.automas_dir) / "config" / n for n in ("ScriptConfig.json", "PlanConfig.json")]
+            masconfig.source(Path(cfg.automas_dir) / "config" / n) for n in ("ScriptConfig.json", "PlanConfig.json")]
         for f in files:
             if f.exists():
                 st = f.stat()

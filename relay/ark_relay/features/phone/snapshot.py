@@ -24,7 +24,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from ark_relay.core import masuser
+from ark_relay.core import masconfig, masuser
 
 log = logging.getLogger("ark.snapshot")
 
@@ -152,8 +152,7 @@ def maa_from_files(automas_dir) -> dict:
     service-stop push)."""
     if not automas_dir:
         raise FileNotFoundError("没配 AUTO-MAS 目录")
-    data = json.loads((Path(automas_dir) / "config" / "ScriptConfig.json")
-                      .read_text(encoding="utf-8"))
+    data = masconfig.read(Path(automas_dir) / "config" / "ScriptConfig.json")   # or v5.8's YAML
     found = None
     for inst in data.get("instances", []):
         node = data.get(inst.get("uid")) or {}

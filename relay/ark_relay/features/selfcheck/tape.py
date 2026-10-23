@@ -236,9 +236,10 @@ def _config_records() -> list[dict]:
     base = _st["automas_dir"]
     if base is None:
         return []
+    from ark_relay.core import masconfig  # noqa: PLC0415 - the tape imports nothing of the relay at load
     out = []
     for name in CONFIG_FILES:
-        p = base / "config" / name
+        p = masconfig.source(base / "config" / name)   # v5.8 keeps them as YAML
         try:
             raw = p.read_bytes()
             mt = datetime.fromtimestamp(p.stat().st_mtime, BEIJING).isoformat(timespec="seconds")
