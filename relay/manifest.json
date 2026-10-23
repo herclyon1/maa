@@ -1,6 +1,6 @@
 {
- "version": 20261023022055,
- "ref": "relay-20261023022055",
+ "version": 20261023022254,
+ "ref": "relay-20261023022254",
  "files": {
   "RELEASE-NOTES.md": "759b87f2fe1d6a4e81c48381aa9627d170ad9a63",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
@@ -42,7 +42,7 @@
   "ark_relay/features/alarm/daymarks.py": "a01f518806dcf114ceb49cfb58bb1eebdb997be6",
   "ark_relay/features/alarm/errwatch.py": "582b83dbfb283a0ca65fc85374ef55396828b10e",
   "ark_relay/features/alarm/gamelogs.py": "38408e5a8aff325fa5fc885ebb66accbf0da46d1",
-  "ark_relay/features/alarm/handle.py": "297cecbc0458b31388969801c727c1ba5f8f7eb0",
+  "ark_relay/features/alarm/handle.py": "7fa35ee01d28e645968e086ce8a460e23511d455",
   "ark_relay/features/alarm/known_fixed.py": "1764cd8141637d4b490bf5db1d29bdbd3d4dedd9",
   "ark_relay/features/alarm/macpush.py": "05b4cb8b03459c3b0f8c2e063a59a2853c65aa2e",
   "ark_relay/features/alarm/manualstops.py": "5d5c1f984edbe27970f1cfcfcb695313845b5745",
@@ -215,7 +215,7 @@
   "ark_relay/features/alarm/daymarks.py": "d1565f308c4ee0ab9dd0066ded543beeeeaefcf545a5f4a21d3695ea2d99749e",
   "ark_relay/features/alarm/errwatch.py": "40a1d91bcbd8f60e740933124b3e97a163596c8a8bd180408564d3de0f17fd34",
   "ark_relay/features/alarm/gamelogs.py": "ee29b42f638ddbfd55e7a437c1ff89cbb9c74171679952466d96a5ec38b3cdbb",
-  "ark_relay/features/alarm/handle.py": "ba8bfc58fef7b70c35600b5a8e397f49b6f3be7e6b05dd36748b74eeb444c1e5",
+  "ark_relay/features/alarm/handle.py": "a178b340db64d78ae44c805358b69b369ec289478cd75f2778e76d41a98a5666",
   "ark_relay/features/alarm/known_fixed.py": "c41004027d3aba7299498e9ca874b824b4f06d82cfc5b8287add2db073474fb6",
   "ark_relay/features/alarm/macpush.py": "02f9331d09746c5f470f72cb57af42f841244739f3bfd054cd069bd5dc60da58",
   "ark_relay/features/alarm/manualstops.py": "e92406adb02ee3a51f0d1684fa9ec7c0d0e6755bfcdd42dd05f711f9a0d1c47c",
