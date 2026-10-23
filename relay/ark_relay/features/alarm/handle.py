@@ -700,6 +700,22 @@ def _handle(eng, rec: RunRecord) -> None:
     _settle_held(eng)
 
 
+def _book_own_run(eng, rec: RunRecord) -> None:
+    """A make-up (makeup.py) or an activity top-up (activity.py) record: into its marker."""
+    if rec.script in ("MAA", "MaaEnd"):
+        try:
+            from ark_relay.features.makeup import makeup  # noqa: PLC0415
+            makeup.on_record(eng, rec)
+        except Exception:
+            log.exception("补跑结果记账出错")
+    elif rec.script == "OK-WW":
+        try:
+            from ark_relay.features.makeup import activity  # noqa: PLC0415
+            activity.on_record(eng, rec)
+        except Exception:
+            log.exception("鸣潮活跃晚班补记账出错")
+
+
 def _book(eng, rec: RunRecord) -> None:
     day = run_day(rec)
     if stop := _estop_overlap(eng, rec):
@@ -715,20 +731,10 @@ def _book(eng, rec: RunRecord) -> None:
     key = (rec.script, rec.user)
     if rec.script == "MaaEnd":
         _restore_after_maaend(eng)
-    if rec.script in ("MAA", "MaaEnd"):
-        # Is this the day's make-up run? Book its outcome before anything below
-        # can return early (a red-button stop returns right away).
-        try:
-            from ark_relay.features.makeup import makeup  # noqa: PLC0415
-            makeup.on_record(eng, rec)
-        except Exception:
-            log.exception("补跑结果记账出错")
-    if rec.script == "OK-WW":
-        try:
-            from ark_relay.features.makeup import activity  # noqa: PLC0415
-            activity.on_record(eng, rec)
-        except Exception:
-            log.exception("鸣潮活跃晚班补记账出错")
+    # Is this a run the relay dispatched itself (the day's make-up, the evening activity
+    # top-up)? Booked before anything below can return early (a red-button stop returns
+    # right away).
+    _book_own_run(eng, rec)
     if rec.script == "MaaEnd":
         # Target mode found every ticked weapon's essence owned: switch to filler mode
         # at the next safe moment (essence.step, an engine tick step).
