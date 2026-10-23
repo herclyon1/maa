@@ -483,6 +483,9 @@ class Engine:
             # failure gets its one make-up run first (makeup.py), and the reports
             # wait for it instead of describing the day without it.
             ("补跑", self._maybe_makeup),
+            # The evening top-up of a waveplate-short daily activity (activity.py), after
+            # the queue and before the reports and the shutdown decision, which wait for it.
+            ("补活跃", self._maybe_activity_topup),
             # After the make-up (it may hold a temporary change in the master) and
             # before the reports (the switch is one line in the daily report).
             ("基质刷垫子", self._essence_filler),
@@ -792,6 +795,9 @@ class Engine:
             from ark_relay.features.makeup import makeup  # noqa: PLC0415
             if moment := makeup.next_moment(self.cfg.state_dir, now):
                 cands.append(moment)
+            from ark_relay.features.makeup import activity  # noqa: PLC0415
+            if moment := activity.next_moment(self.cfg.state_dir, now):
+                cands.append(moment)
         except Exception:
             log.exception("算补跑的时刻出错，跳过")
 
@@ -876,6 +882,10 @@ class Engine:
         """A target-met essence run switches 基质刷取 to filler mode (features/essence)."""
         from ark_relay.features.essence import essence  # noqa: PLC0415
         essence.step(self, now)
+
+    def _maybe_activity_topup(self, now: datetime | None = None) -> bool:
+        from ark_relay.features.makeup import activity  # noqa: PLC0415
+        return activity.maybe_run(self, now)
 
     def _maybe_makeup(self, now: datetime | None = None) -> bool:
         from ark_relay.features.makeup import makeup  # noqa: PLC0415

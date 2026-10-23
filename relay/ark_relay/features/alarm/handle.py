@@ -723,6 +723,12 @@ def _book(eng, rec: RunRecord) -> None:
             makeup.on_record(eng, rec)
         except Exception:
             log.exception("补跑结果记账出错")
+    if rec.script == "OK-WW":
+        try:
+            from ark_relay.features.makeup import activity  # noqa: PLC0415
+            activity.on_record(eng, rec)
+        except Exception:
+            log.exception("鸣潮活跃晚班补记账出错")
     if rec.script == "MaaEnd":
         # Target mode found every ticked weapon's essence owned: switch to filler mode
         # at the next safe moment (essence.step, an engine tick step).

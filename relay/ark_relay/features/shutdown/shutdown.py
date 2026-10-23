@@ -701,6 +701,9 @@ def decide(eng, now: datetime) -> Verdict:
     # clears itself once the make-up's record lands or it goes stale.
     if waiting := makeup.waiting(eng, now):
         return Verdict(False, "makeup", f"{'、'.join(waiting)} 补跑还没完")
+    from ark_relay.features.makeup import activity  # noqa: PLC0415
+    if why := activity.holding(eng, now):
+        return Verdict(False, "makeup", why)
     day = now.strftime("%Y-%m-%d")
     cutoff = eng._report_cutoff(now)   # same source as the report itself
     # An empty ledger means nothing ran today, so there is no daily report to wait

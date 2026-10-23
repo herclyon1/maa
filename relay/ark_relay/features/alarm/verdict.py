@@ -19,6 +19,15 @@ from ark_relay.features.alarm.runchecks import _judged
 log = logging.getLogger("ark.handle")
 
 
+def _activity_topup(eng, rec: RunRecord, text: str, checks: list) -> None:
+    """Daily activity short of 100 with the waveplates spent: 「晚班补」, not undone (activity.py)."""
+    try:
+        from ark_relay.features.makeup import activity  # noqa: PLC0415
+        activity.morning(eng, rec, text, checks)
+    except Exception:  # the round is still judged; the item stays undone
+        log.warning("鸣潮活跃晚班补没记上", exc_info=True)
+
+
 def _verify_outcome(eng, rec: RunRecord) -> str | None:
     """Check against the evidence what this round actually accomplished; returns None when everything was done.
 
@@ -56,7 +65,9 @@ def _verify_outcome(eng, rec: RunRecord) -> str | None:
                 only = (_okww_master_config(eng.cfg.automas_dir, "NightmareNestTask")
                         .get("Only Farm These Nests") or "").strip()
                 checks = outcome.okww_checks(text, expect_nest=expect_nest, only_nest=only)
+                _activity_topup(eng, rec, text, checks)
                 return _judged(rec, checks, "OK-WW", expect_nest=expect_nest, only_nest=only)
+            _activity_topup(eng, rec, text, checks)
             return _judged(rec, checks, "OK-WW", expect_nest=None, only_nest="")
         if rec.script == "MAA":
             # Only MAA's own log is read: AUTO-MAS's history carries no per-

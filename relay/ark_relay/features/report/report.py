@@ -68,6 +68,17 @@ def _makeup_in_flight(eng, now: datetime) -> list[str]:
         return []
 
 
+def _activity_holding(eng, now: datetime) -> str:
+    """The evening top-up of a waveplate-short daily activity is due or running (activity.py):
+    the report waits for it, as for a make-up."""
+    try:
+        from ark_relay.features.makeup import activity  # noqa: PLC0415
+        return activity.holding(eng, now)
+    except Exception:
+        log.exception("读鸣潮活跃晚班补的状态出错，日报不等它")
+        return ""
+
+
 def _maybe_interim_report(eng, now: datetime | None = None) -> None:
     """Report once the day's earlier queues are done, hours before the
     daily summary is due.
@@ -88,7 +99,7 @@ def _maybe_interim_report(eng, now: datetime | None = None) -> None:
         return
     if eng._unfinished_queues(now, entries):
         return
-    if _makeup_in_flight(eng, now):
+    if _makeup_in_flight(eng, now) or _activity_holding(eng, now):
         return
     # Once per finished daytime round, not once per day: a later run adds
     # entries past the covered mark and gets its own interim.
@@ -144,6 +155,9 @@ def _maybe_daily_report(eng, now: datetime | None = None) -> None:
         return
     if going := _makeup_in_flight(eng, now):
         log.info("日报再等等：%s 的补跑还没出结果", "、".join(going))
+        return
+    if why := _activity_holding(eng, now):
+        log.info("日报再等等：%s", why)
         return
 
     title, body = eng._compose_daily(day, entries)

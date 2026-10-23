@@ -113,6 +113,40 @@ SELFCHECK_FAILED = "🩺 开机自检没过"
 AUTOMAS_CONTRACT = "⚠️ 调度程序升级后，中继有设置读不到"
 AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
+# OK-WW's daily activity short of 100 because the waveplates ran out: a notice in the group,
+# not an alarm, and the evening shift tops it up (features/makeup/activity.py; the user,
+# 2026-10-23: 「中继不报警但是要在群里说一声今天早班没满活跃，晚班补。如果连晚班都没满就报警。」).
+ACTIVITY_TOPUP = "🔁 鸣潮早班活跃没满，晚班补"
+ACTIVITY_TOPUP_WAIT = "鸣潮活跃晚班补还没完"
+
+
+def activity_topup_body(points, due) -> str:
+    got = f"{points} 分" if points is not None else "没满 100"
+    return (f"今天早班鸣潮每日活跃 {got}：波片（连备用）不够，「累计消耗 180 点结晶波片」那一项没做完。"
+            f"晚班（北京 {due:%H:%M}）跑完后中继再让鸣潮跑一次每日任务，把波片刷完补满；晚班还没满会再报。")
+
+
+ACTIVITY_TOPUP_NEVER_RAN = "晚班没补上（那晚没开机，或者开了没轮到它）"
+
+
+def activity_topup_not_dispatched(tries: int, why: str) -> str:
+    return f"晚班派了 {tries} 次都没派下去（{why}）"
+
+
+def activity_topup_no_record(sent) -> str:
+    return f"晚班 {sent:%H:%M} 派下去了，过了两个小时还没有这一趟的记录"
+
+
+def activity_topup_failed(points, why: str) -> str:
+    """The alarm when the evening top-up did not get to run (activity._alarm)."""
+    got = f"{points} 分" if points is not None else "没满 100"
+    return f"鸣潮今天每日活跃 {got}，早班波片不够、说好晚班补，但{why}，所以今天没满 100。"
+
+
+def activity_topup_detail(points, due) -> str:
+    """The 「每日活跃满 100」 item of a morning booked for the top-up: passed, with why."""
+    got = f"早班 {points} 分" if points is not None else "早班没满"
+    return f"{got}，波片不够，晚班（北京 {due:%H:%M}）补"
 # The sanity booster stays on, and a MaaEnd change that stops it applying is an
 # alarm: a booster step in a shape the relay does not know rings the group at
 # every boot (gameupdate.spmed_check).
