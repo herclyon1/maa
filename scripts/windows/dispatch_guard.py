@@ -354,6 +354,11 @@ if __name__ == "__main__":
     a = sys.argv[1:] or ["status"]
     if a[0] == "status":
         status()
+    elif a[0] == "idle":
+        # Exit 0 only when no script and no game runs: run-one.sh wait-idle loops on the
+        # exit code, not on the wording of the status line (2026-10-24 a hand-written wait
+        # grepped 「脚本在跑: []」 while the line says 「脚本在跑: 无」 and waited past the end).
+        sys.exit(0 if not any(running()) else 3)
     elif a[0] == "start" and len(a) > 1:
         sys.exit(start(a[1], test="--test" in a[2:]))
     elif a[0] == "test-off":
