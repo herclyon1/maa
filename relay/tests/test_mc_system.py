@@ -212,6 +212,22 @@ check("#37 没过", got["#37"].status, mc.FAIL)
 check("#38 没过", got["#38"].status, mc.FAIL)
 check("两条都推了", (len(n.fails("#37")), len(n.fails("#38"))), (1, 1))
 check("#38 依据是重开那一行", "中继正在重新打开它" in got["#38"].evidence, True)
+print("[#38 关机被人取消（系统事件 1075）后机器开着，中继去重开调度程序 → 过（10-24 21:36 报警 4074ce7d）]")
+cancelled = EVENING[:6] + [
+    logline("10-06 21:59:08", "不关机：关机命令 21:58 发出后，21:59:07 被取消了（系统事件 1075），中继不会再自己关机", name="ark.shutdown"),
+    logline("10-06 22:09:40", "AUTO-MAS 没在运行，中继正在重新打开它（第 1 次）", level="WARNING"),
+] + EVENING[6:]
+got, n, _, _ = at_boot(cancelled)
+check("#38 过了", got["#38"].status, mc.PASS)
+check("#38 依据写到关机被取消", "关机被取消" in got["#38"].evidence, True)
+check("没进群", len(n.fails("#38")), 0)
+print("[#38 关机取消之前就去重开 → 照样没过]")
+early = EVENING[:5] + [
+    logline("10-06 21:58:30", "AUTO-MAS 没在运行，中继正在重新打开它（第 1 次）", level="WARNING"),
+    logline("10-06 21:59:08", "不关机：关机命令 21:58 发出后，21:59:07 被取消了（系统事件 1075），中继不会再自己关机", name="ark.shutdown"),
+] + EVENING[6:]
+got, n, _, _ = at_boot(early)
+check("#38 没过", got["#38"].status, mc.FAIL)
 got, _, _, _ = at_boot(manual)
 check("不是中继关的机：#37/#38 不判", ("#37" in got, "#38" in got), (False, False))
 

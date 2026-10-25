@@ -48,6 +48,7 @@ WATCHDOG_PUSHER = "ark.app.stop_push"
 EXIT_AT_POWER_OFF = "中继自己发出了关机命令，AUTO-MAS 后台此时退出"   # service._AutomasKeeper._exited
 EXIT_UNEXPLAINED = re.compile(r"^AUTO-MAS 后台(意外)?退出了")       # the same, any other exit
 REVIVE_WORDS = ("中继正在重新打开它", "中继正在关掉它重新打开", "AUTO-MAS 接口不在，拉起它")
+SHUTDOWN_CANCELLED = "中继不会再自己关机"   # features/shutdown/shutdown.py: the "cancelled" verdict (system event 1075)
 WMI_BACK = re.compile(r"^系统的程序启动通知(断过|订不上的情况持续了).*已经自己")   # service._ProcessWatch._subscribed
 TAIL_BYTES = 4_000_000
 _LINE = re.compile(r"^(\d\d-\d\d) (\d\d:\d\d:\d\d) (\w+)\s+(\S+)\s+(.*)$")
@@ -371,8 +372,17 @@ def _poweroff_no_revival(ctx):
     if got is None:
         return None
     off, after = got
+    # Someone at the machine cancelled the shutdown (system event 1075): the machine stays on and from then on the
+    # relay keeps the scheduler running as on any other evening, so a revival after that line is not this check's
+    # case (10-24 21:36:06 cancelled, 21:46:29 reopened; alert 4074ce7d failed #38 on it).
+    cut = next((i for i, r in enumerate(after) if SHUTDOWN_CANCELLED in r.msg), None)
+    if cut is not None:
+        after = after[:cut + 1]
     if bad := next((r for r in after if any(w in r.msg for w in REVIVE_WORDS)), None):
         return _once(ctx, "#38", mc.Result(mc.FAIL, f"{off.show()}；之后 {bad.show()}"))
+    if cut is not None:
+        return _once(ctx, "#38", mc.Result(
+            mc.PASS, f"{off.show()}；到关机被取消（{after[-1].md} {after[-1].hms}）没有去重新打开调度程序，之后机器开着"))
     return _once(ctx, "#38", mc.Result(
         mc.PASS, f"{off.show()}；到中继停下（{after[-1].md} {after[-1].hms}）没有去重新打开调度程序"))
 
