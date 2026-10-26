@@ -593,6 +593,9 @@ MAA_REJECT_WHY = {"序列化失败": "序列化失败", "添加任务失败": "�
 # MAA's result JSON said 0 sanity with no refill time: it never read sanity that round.
 SANITY_UNREAD = "理智没读到"
 NO_FIGHT = "这一趟一仗都没打"
+# MAA's Annihilation@UnableToAgent: the annihilation map's auto-deploy is locked (a new
+# map is, until it is cleared once by hand with all 400 kills), so MAA cannot run it.
+ANNIHILATION_NO_PROXY = "这张剿灭图的「代理指挥」没解锁，MAA 代理不了：要先手动打一次（满 400 杀）"
 
 
 def maa_config_rejected(task: str, why: str, stage: str) -> str:

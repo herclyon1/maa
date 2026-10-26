@@ -99,6 +99,21 @@ def _span(started: datetime, finished: datetime, known: bool = True) -> str:
             f"　东京 {tk(started)}→{tk(finished)}")
 
 
+def maa_mode(e: dict) -> str:
+    """Which of AUTO-MAS's MAA jobs a ledger line (or a record's fields) was: its
+    Annihilation mode (raw.annihilation from collector_maa) or its Routine mode.
+
+    A success of one is no retry of the other: on 2026-10-26 three Annihilation
+    attempts failed (auto-deploy locked) and the Routine round AUTO-MAS ran next was
+    read as their retry, so the failure reached only the daily report, as made up
+    at 09:07, and never the group, with the week's annihilation still undone.
+    Other scripts have one job: ''."""
+    if not isinstance(e, dict) or e.get("script") != "MAA":
+        return ""
+    raw = e.get("raw")
+    return "剿灭" if isinstance(raw, dict) and raw.get("annihilation") else "日常"
+
+
 def manual_stop(e: dict) -> bool:
     """Whether a ledger line is a run the red button (停一切) cut short
     (raw.manual_stop, set by handle._handle or handle.backfill_manual_stops).
@@ -374,6 +389,8 @@ def later_success(entries: list[dict], failed: dict,
             continue
         if e.get("script") != failed.get("script") or e.get("user") != failed.get("user"):
             continue
+        if maa_mode(e) != maa_mode(failed):
+            continue
         try:
             at = datetime.fromisoformat(str(e.get("started")))
         except (TypeError, ValueError):
@@ -407,6 +424,8 @@ def _bare_reason(runs: list[dict]) -> str:
     for e in runs:
         if rejected := (e.get("raw") or {}).get("maa_config_rejected"):
             return plain_rejected(str(rejected))
+        if (e.get("raw") or {}).get("annihilation_no_proxy"):
+            return texts.ANNIHILATION_NO_PROXY
         # AUTO-MAS refused the script before starting it (runwatch.check_config_skips).
         if skipped := (e.get("raw") or {}).get("automas_config_skip"):
             return "开跑前检查没过：" + texts.config_skip_why(str(skipped))

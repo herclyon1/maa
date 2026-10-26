@@ -319,7 +319,8 @@ def _attempts(eng, rec: RunRecord, day: str) -> int:
     AUTO-MAS wrote for an attempt that never ran (transitional, e.g. 「未捕获到日志」)
     are not tries either, while an attempt MaaEnd spent installing its own update
     did use up one of AUTO-MAS's tries, so it counts. Without a readable shift the
-    streak alone bounds it."""
+    streak alone bounds it. Only rows of the same MAA job count (core.maa_mode): the
+    Routine round after three Annihilation failures is not their fourth try (10-26)."""
     from ark_relay.features.alarm import unresolved  # noqa: PLC0415
     try:
         shift = unresolved.where(eng, rec)
@@ -329,6 +330,7 @@ def _attempts(eng, rec: RunRecord, day: str) -> int:
     for d in dict.fromkeys((day, shift[0] if shift else day)):
         rows += [e for e in eng.state.read_ledger(d)
                  if e.get("script") == rec.script and e.get("user") == rec.user
+                 and core.maa_mode(e) == core.maa_mode({"script": rec.script, "raw": rec.raw})
                  and _row_started(e) is not None]
     rows.sort(key=_row_started)
     n = 0
@@ -370,19 +372,21 @@ def _diagnosis(eng, rec: RunRecord) -> str:
     known = {k: v for k, v in causes.items() if v != CLAIM_UNCONFIRMED}
     rest = [t for t in rec.failed_tasks if t not in known]
     return "\n".join(x for x in (
+        texts.ANNIHILATION_NO_PROXY if (rec.raw or {}).get("annihilation_no_proxy") else "",
         texts.known_cause(causes),
         summary.diagnose(eng.cfg, rec.script, rest, tail) if rest or not known else "",
     ) if x)
 
 
 def _later_success(eng, rec: RunRecord) -> str:
-    """run_id of a ledger row of the same script and user, started after `rec`, that
-    exited normally with nothing left undone and was not cut short by the red
-    button; '' when there is none."""
+    """run_id of a ledger row of the same script and user (and MAA job, core.maa_mode),
+    started after `rec`, that exited normally with nothing left undone and was not
+    cut short by the red button; '' when there is none."""
     day = run_day(rec)
     for e in eng.state.read_ledger(day):
         if ((e.get("script"), e.get("user")) != (rec.script, rec.user) or not e.get("ok")
-                or e.get("incomplete") or core.manual_stop(e)):
+                or e.get("incomplete") or core.manual_stop(e)
+                or core.maa_mode(e) != core.maa_mode({"script": rec.script, "raw": rec.raw})):
             continue
         try:
             after = datetime.fromisoformat(str(e.get("started"))) > rec.started

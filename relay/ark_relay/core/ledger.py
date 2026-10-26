@@ -29,7 +29,7 @@ from ark_relay.core.ledger_report import (
     _KIND_ICON, _KIND_NOTE, _claim_block, _collapse_retries, _count_by_script, _daily_head,
     _fmt_failed, _game, _hm, _launch_miss, _maaend_restart, _no_exit_note, _ran_later,
     _skipped_gathering_only, _span, daily_footnote, day_unverified, day_unverified_items,
-    episode_kinds, format_daily, format_failure, format_missing, manual_stop, retried_notes,
+    episode_kinds, format_daily, format_failure, format_missing, maa_mode, manual_stop, retried_notes,
     split_test,
 )
 
@@ -76,6 +76,7 @@ __all__ = [
     "format_missing",
     "log",
     "maaend_unverified",
+    "maa_mode",
     "manual_stop",
     "retried_notes",
     "split_test",

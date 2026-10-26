@@ -328,8 +328,11 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     held = eng._pending.get(key)
     after_done = (held is not None and bool((held.raw or {}).get("maaend_update_restart"))
                   and rec.started < held.started and _same_shift(eng, held, rec))
-    if not after_done:
+    if not after_done and _same_job(held, rec):
         _retry_healed(eng, rec, key)
+    elif held is not None and not after_done:
+        log.info("↪️ %s %s（%s）跑成了，但压着的 %s 是%s失败，不算它自己好了，照旧等着报",
+                 rec.script, rec.run_id, core.maa_mode(_job(rec)), held.run_id, core.maa_mode(_job(held)))
     _weekly_gates(eng, rec)
     # AUTO-MAS saying 「这个脚本正常退出了」 does not mean it got the work done.
     # So check against the evidence before returning, and anything not done has
@@ -835,7 +838,8 @@ def _book(eng, rec: RunRecord) -> None:
         # MAA stopping at once for lack of sanity (「理智 17，需要 25」) fought
         # nothing and spent nothing; say that and stop there.
         until = rec.finished + timedelta(minutes=5) if rec.duration_known else None
-        short = outcome.maa_sanity_short(_maa_app_log(eng.cfg.maa_dir, rec.started, until) or "")
+        app_log = _maa_app_log(eng.cfg.maa_dir, rec.started, until) or ""
+        short = outcome.maa_sanity_short(app_log)
         if short:
             rec.raw["maa_sanity_short"] = short
             # The ledger line was written above, before this was known: put it
@@ -851,6 +855,12 @@ def _book(eng, rec: RunRecord) -> None:
             log.info("🟡 MAA 理智不够（%s/%s），没打，%s", short["have"], short["cost"],
                      "没推出去，下一轮再推" if errs else "已报群")
             return
+        if outcome.maa_annihilation_no_proxy(app_log):
+            # The annihilation map's auto-deploy is locked: no retry or make-up can run
+            # it. Held and alarmed on as usual (only another Annihilation success heals
+            # it, _same_job); the alarm and the daily row say why (texts.ANNIHILATION_NO_PROXY).
+            rec.raw["annihilation_no_proxy"] = True
+            _mark_raw_on_ledger(eng, rec, "annihilation_no_proxy", True)
     if rec.script == "MAA" and not rec.ok and eng._maintenance_today("明日方舟"):
         # A MAA failure on a day with a registered version update is still a
         # failure: pushed now, saying it is the update day, and not held for a
@@ -864,6 +874,17 @@ def _book(eng, rec: RunRecord) -> None:
     # Every other failure - a MaaEnd round that failed on 自动采集 / 应急理智加强剂
     # alone included - is held, made up and alarmed on.
     _hold_for_retry(eng, rec, key)
+
+
+def _job(rec: RunRecord) -> dict:
+    return {"script": rec.script, "raw": rec.raw}
+
+
+def _same_job(held: "RunRecord | None", rec: RunRecord) -> bool:
+    """Whether `rec` succeeding can heal `held`: the same MAA job (core.maa_mode) -
+    AUTO-MAS runs Annihilation and Routine as one script, one after the other
+    (2026-10-26: a Routine success had healed three Annihilation failures)."""
+    return held is None or core.maa_mode(_job(held)) == core.maa_mode(_job(rec))
 
 
 def _hold_restart(eng, rec: RunRecord, key: tuple) -> None:

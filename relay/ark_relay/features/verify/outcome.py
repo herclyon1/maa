@@ -364,6 +364,12 @@ _MAA_SANITY = re.compile(r"analyze_sanity_remain Current Sanity: (\d+) , Max San
 _MAA_COST = re.compile(r'"sanity_cost":(\d+),"series":\d+,"times_finished":(\d+)')
 
 
+def maa_annihilation_no_proxy(text: str) -> bool:
+    """Whether this run's annihilation stopped at a locked auto-deploy (MAA's
+    Annihilation@UnableToAgent template, asst.log 2026-10-26 09:02:39)."""
+    return "Annihilation@UnableToAgent" in _one_run_only(text)
+
+
 def maa_sanity_short(text: str) -> "dict | None":
     """{'have': 17, 'cost': 25} when the Fight chain never ran because sanity was below the cost; else None.
 
