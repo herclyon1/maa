@@ -221,8 +221,30 @@ def _merge(parts: list[dict]) -> dict:
     return out
 
 
+# A route that meets a relay device (息壤中继器) in its way stops before it to move or remove it
+# (MaaEnd assets/resource/pipeline/MapNavigator/ObstacleDevice.json); while a fight is on the game
+# answers the interact with 「战斗中无法使用」, no device dialog opens, __..._InteractPost's next
+# list times out after its 1 s and MaaEnd gives the route up (路线10 on 10-05, 10-08, 10-12, 10-22
+# and 10-26, the retry each time too; ledgers #29, #112). The retry waits instead: on that error it
+# stops 8 s and recognises the interact button again, at most 4 times (MaaFW max_hit, which MaaEnd's
+# coding standard asks for on a node that can loop), then gives up the way MaaEnd did (_NoHit).
+# Whether a fight ends while the operator stands still is what the next retry shows: its maafw.log
+# names ArkRelayObstacleCombatWait each time it ran.
+OBSTACLE_COMBAT_WAIT = {
+    "__MapNavigatorObstacleDevice_InteractPost": {
+        "on_error": ["ArkRelayObstacleCombatWait", "__MapNavigatorObstacleDevice_NoHit"],
+    },
+    "ArkRelayObstacleCombatWait": {
+        "pre_delay": 8000,
+        "max_hit": 4,
+        "next": ["__MapNavigatorObstacleDevice_WaitFreezes", "__MapNavigatorObstacleDevice_NoHit"],
+    },
+}
+
+
 def build_override(parts: list[dict], routes: list[str], weekday: str) -> dict:
-    """Keep the logged override but only the wanted routes, and make today a gathering day."""
+    """Keep the logged override but only the wanted routes, make today a gathering day, and wait out a
+    fight at a relay device (OBSTACLE_COMBAT_WAIT)."""
     if weekday not in WEEKDAYS:
         raise ValueError(f"not a weekday: {weekday}")
     merged = _merge(parts)
@@ -239,6 +261,8 @@ def build_override(parts: list[dict], routes: list[str], weekday: str) -> dict:
     sched = out.setdefault("AutoCollectScheduleEnabled", {})
     attach = sched.setdefault("attach", {}) if isinstance(sched, dict) else {}
     attach[weekday] = True
+    for node, spec in OBSTACLE_COMBAT_WAIT.items():
+        out[node] = {**out.get(node, {}), **spec}
     return out
 
 

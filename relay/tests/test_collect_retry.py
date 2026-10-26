@@ -95,6 +95,12 @@ check("周六加进排班", ov["AutoCollectScheduleEnabled"]["attach"].get("satu
 check("原来的周五还在（attach 合并不是覆盖）", ov["AutoCollectScheduleEnabled"]["attach"].get("friday"), True)
 check("键位等其他覆盖原样保留", ov.get("EnterCameraModeLongPress"), {"key": 82})
 check("没有那一行就拒绝", cr.logged_override("2026-09-11 10:18:19 INFO [App] nothing here"), None)
+check("撞上「战斗中无法使用」先等再点：碰设备出错转去等",
+      ov["__MapNavigatorObstacleDevice_InteractPost"]["on_error"][0], "ArkRelayObstacleCombatWait")
+check("…等 8 秒，最多 4 次，之后照 MaaEnd 原样放弃",
+      (ov["ArkRelayObstacleCombatWait"]["pre_delay"], ov["ArkRelayObstacleCombatWait"]["max_hit"],
+       ov["ArkRelayObstacleCombatWait"]["next"][-1], ov["__MapNavigatorObstacleDevice_InteractPost"]["on_error"][-1]),
+      (8000, 4, "__MapNavigatorObstacleDevice_NoHit", "__MapNavigatorObstacleDevice_NoHit"))
 try:
     cr.build_override(parts, routes, "someday")
     check("不认识的星期报错", False)

@@ -431,7 +431,10 @@ def other_writers() -> None:
     logged = ms.logged_overrides(LOG_1010.read_text(encoding="utf-8"))[collect_retry.ENTRY]
     for v, nodes_of in ((V1010, logged), (ms.INSTALLED, logged)):
         built = collect_retry.build_override(nodes_of, rids, "monday")
-        missing = sorted(ms.override_nodes(built) - DEFS[v].nodes)
+        # ArkRelay* nodes are the relay's own, defined whole in the override (collect_retry.OBSTACLE_COMBAT_WAIT);
+        # every node they and the rest name must still be MaaEnd's
+        own = {n for n in built if n.startswith("ArkRelay")}
+        missing = sorted(ms.override_nodes(built) - DEFS[v].nodes - own)
         require(f"[G] {v}: retry override for all {len(rids)} routes names only pipeline nodes",
               bool(rids) and not missing, missing[:5])
     split = getattr(mastercfg, "_COLLECT_SPLIT", {})
