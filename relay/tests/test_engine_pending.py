@@ -18,6 +18,7 @@
 import json
 import os
 import sys
+import time
 import types
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -278,6 +279,40 @@ try:
             SubprocessError=real_sub.SubprocessError)
         eng._SCRIPTS_CACHE.update(at=-1e9, val=False)
         check(f"进程表里只有 {name.decode()}", eng.Engine._scripts_running(), want)
+
+    print("\n[OK-WW counts too, however it was started (10-27: a make-up run outside AUTO-MAS was 「nothing running」)]")
+    from ark_relay.features.okww_patch import okww_overlay
+    real_okww, real_env = okww_overlay.okww_running, os.environ.get("ARK_OKWW_DIR")
+    okww_dir = tmpdir()
+    logs = okww_dir / "data" / "apps" / "ok-ww" / "working" / "logs"
+    logs.mkdir(parents=True)
+    os.environ["ARK_OKWW_DIR"] = str(okww_dir)
+    eng.subprocess = types.SimpleNamespace(                 # tasklist: only explorer
+        run=lambda *a, **k: types.SimpleNamespace(stdout=b'"explorer.exe","123"\r\n'),
+        SubprocessError=real_sub.SubprocessError)
+    try:
+        for up, quiet_s, want, label in (
+                (True, 30, True, "OK-WW up, its log written 30 s ago: running"),
+                (True, 120, True, "the 120 s travel wait (10-27 09:23:04-09:25:04): still running"),
+                (True, eng.OKWW_QUIET_MIN * 60 + 60, False, "log quiet past OKWW_QUIET_MIN: hung, not running"),
+                (False, 30, False, "no OK-WW process: not running"),
+                (None, 30, False, "process list unreadable: adds nothing")):
+            okww_overlay.okww_running = lambda up=up: up
+            log_file = logs / "ok-script.log"
+            log_file.write_text("x", encoding="utf-8")
+            os.utime(log_file, (time.time() - quiet_s, time.time() - quiet_s))
+            eng._SCRIPTS_CACHE.update(at=-1e9, val=False)
+            check(label, eng.Engine._scripts_running(), want)
+        okww_overlay.okww_running = lambda: True
+        log_file.unlink()
+        eng._SCRIPTS_CACHE.update(at=-1e9, val=False)
+        check("OK-WW up, no log to read: counted (cannot tell -> wait)", eng.Engine._scripts_running(), True)
+    finally:
+        okww_overlay.okww_running = real_okww
+        if real_env is None:
+            os.environ.pop("ARK_OKWW_DIR", None)
+        else:
+            os.environ["ARK_OKWW_DIR"] = real_env
 finally:
     eng.config.IS_WINDOWS, eng._automas_busy, eng.subprocess = real_win, real_busy, real_sub
     eng._SCRIPTS_CACHE.update(at=-1e9, val=False)

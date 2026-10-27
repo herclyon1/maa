@@ -34,6 +34,9 @@ log = logging.getLogger("ark.engine")
 # Short-lived cache for `_scripts_running`; see the comment on that method.
 _SCRIPTS_CACHE: dict = {"at": -1e9, "val": False}
 _SCRIPTS_TTL = 3.0
+# An OK-WW process whose log is older than this is hung and no longer counts as running
+# (_okww_up): eight times its longest quiet stretch at work, the 120 s wait_until.
+OKWW_QUIET_MIN = 15
 
 
 def forget_scripts_cache() -> None:
@@ -118,6 +121,32 @@ def _automas_busy():
     busy = _judge_snapshot(snap)
     _note_other_modes(snap, busy)
     return busy
+
+
+def _okww_up() -> bool:
+    """Is an OK-WW process up, however it was started (okww_overlay.okww_running is True)?
+
+    AUTO-MAS answers busy only for its own dispatches, and the process fallback knew
+    MAA, MaaEnd and Endfield only, so OK-WW started outside AUTO-MAS (okww-task.sh, the
+    echo farm's scheduled task) was 「nothing running」: 10-27 a make-up nest run had to
+    be held with debug mode or the morning shift's shutdown would have landed mid-run.
+    OK-WW exits when its task ends (main.py -e), so its process is the sign; the game
+    client can outlive it. An unreadable process list (None) adds nothing.
+
+    A process whose log has been quiet for OKWW_QUIET_MIN is hung, not working: it must
+    not keep the machine on all day. The longest quiet stretch of a working run is a
+    wait_until of 120 s (10-27 09:23:04-09:25:04, the nest travel); combat logs every
+    few seconds. A log that cannot be read leaves the process counted.
+    """
+    from ark_relay.features.okww_patch.okww_overlay import okww_running  # noqa: PLC0415 - import cycle
+    if okww_running() is not True:
+        return False
+    logs = config.okww_root() / "data" / "apps" / "ok-ww" / "working" / "logs"
+    try:
+        newest = max(f.stat().st_mtime for f in logs.glob("*.log"))
+    except (OSError, ValueError):
+        return True
+    return time.time() - newest < OKWW_QUIET_MIN * 60
 
 
 # Where _note_other_modes keeps what it saw and finds AUTO-MAS's app.log; set by
@@ -693,7 +722,7 @@ class Engine:
                 # its own**, AUTO-MAS's python drives it in-process, so watching only
                 # MaaEnd.exe goes blind for the entire Endfield stretch.
                 # 来龙去脉见 docs/CODE-HISTORY.md「engine.py:_scripts_running」
-                val = any(n in out for n in (b"MAA.exe", b"MaaEnd.exe", b"Endfield.exe"))
+                val = any(n in out for n in (b"MAA.exe", b"MaaEnd.exe", b"Endfield.exe")) or _okww_up()
         _SCRIPTS_CACHE["at"], _SCRIPTS_CACHE["val"] = now, val
         return val
 
