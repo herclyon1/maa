@@ -113,6 +113,9 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
     ("features/verify/outcome.py", "只刷指定点位的改动没装上，这一轮不刷巢穴"):
         ("none", "in none of 131 recorded runs (U13a); the overlay leaves find_nest bound on v3.5.28..v3.7.5 (U9)"),
     ("features/verify/outcome.py", "列表里没找到指定的点位"): ("none", _OKWW_RARE),
+    ("features/verify/outcome.py", r"nightmare nest: 传送两次都不过去，这一轮不打了 \S+（([^）\n]*)）"):
+        ("none", "the overlay's NEST_GAVE_UP_LINE, new 10-27 (eec080f3): no machine has printed it yet; "
+                 "the real 10-27 run it answers is fixtures/okww-1027-nest-unreachable.log"),
     ("core/collector.py", r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ \|[^|]*\| MaaEnd 自动代理 \| MaaEnd 队列已结束但进程未退出"):
         ("fixture", "AUTO-MAS AutoProxy.py _wait_maaend_stage (MXU#371); real app.log line 2026-10-16 13:53:01 "
                     "only in fixtures/display-wake-2026-10-16"),
