@@ -926,6 +926,17 @@ MaaEnd record" and sent two false 「没有运行」 alarms. Changed to ask AUTO
 `GET /api/dispatch/runtime-snapshot` first (完成/异常/运行/等待 per script), and
 fall back to the process check only when that cannot be reached.
 
+## engine.py:_scripts_running（2026-10-27 补）
+
+The process fallback still knew MAA.exe / MaaEnd.exe / Endfield.exe only, and AUTO-MAS
+answers busy only for its own dispatches, so an OK-WW run started outside AUTO-MAS
+(okww-task.sh, the echo farm's scheduled task) was "nothing running". 10-27 a make-up
+of the 梦枢天罗 nest (skipped in the morning shift: the 快速旅行 click took no effect
+while someone was on TeamViewer) had to be held with debug mode, or the shift's
+shutdown would have landed mid-run. `_okww_up` adds the OK-WW process (okww_running),
+but only while its newest log is younger than OKWW_QUIET_MIN (15 min), so a hung
+process cannot keep the machine on all day.
+
 ## claim.py:(模块级)（2026-09-07 补，v5）
 
 Once the reward is claimed, the game goes straight into a full-screen
