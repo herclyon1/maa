@@ -679,6 +679,7 @@ _NEST_STEP = {
     "count_unread": "（计数没读到，停下没刷）",
     "full": "（已刷满）",
     "fought": "",
+    "partly": "（有一处传送两次都不过去，那一处没打）",
     "unreachable": "（传送不过去，一次没打）",
     "failed": "（失败，一次没打）",
     "quit": "（开了界面就退出，一次没打）",
@@ -694,6 +695,8 @@ def _nest_step(text: str) -> str:
     # only on a fight line, not on the task appearing in the log; the bare name
     # means farmed (selfcheck #25 reads it that way).
     line = nest + _NEST_STEP[outcome.nest_state(text)]
+    if names := outcome.nests_given_up(text):
+        line += f"（{'、'.join(names)}）"
     if outcome._NEST_ADAPTED in text:
         # find_nest was installed adapted to a changed upstream body.
         line += "（只刷指定点位的过滤按 OK-WW 新版适配，请核对）"

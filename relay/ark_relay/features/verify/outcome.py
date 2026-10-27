@@ -67,6 +67,10 @@ _NEST_NOT_FOUND = "列表里没找到指定的点位"
 # Upstream's line when travel to a nest did not happen (NightmareNestTask
 # _travel_to_nest_or_skip), e.g. 「nightmare nest unreachable, skip this run: go_nest:48:18」.
 _NEST_UNREACHABLE = re.compile(r"nightmare nest unreachable")
+# The overrides' line when a nest's travel failed a second time in the run (ark_overrides
+# NEST_GAVE_UP_LINE; the first failure is retried at once):
+#   NightmareNestTask:nightmare nest: 传送两次都不过去，这一轮不打了 go_nest:48:18（梦枢天罗残象聚落）
+_NEST_GAVE_UP = re.compile(r"nightmare nest: 传送两次都不过去，这一轮不打了 \S+（([^）\n]*)）")
 # The overrides' line when find_nest could not be installed at all: no nests this run
 # rather than upstream's 「every nest that reads 0」 (ark_overrides.tasks.py, NightmareNestTask.run).
 _NEST_FILTER_MISSING = "只刷指定点位的改动没装上，这一轮不刷巢穴"
@@ -518,11 +522,17 @@ _NEST_VERDICT = {
     "count_unread": ("残象聚落", False, "列表里指定点位的计数没读到，停下没刷（截图 nest_count_unread）"),
     "full": ("残象聚落（已满，跳过）", True, "指定点位都打满了"),
     "fought": ("残象聚落", True, "有进本/战斗记录"),
+    "partly": ("残象聚落", False, "有一处点位传送两次都不过去，那一处没打"),
     "unreachable": ("残象聚落", False, "点了点位，但传送不过去，一次没打"),
     "failed": ("残象聚落", False, "任务中途出错退出，一次没打"),
     "quit": ("残象聚落", False, "任务起来了，但既没打、也没说点位已满——开了界面就原地退出了"),
     "not_run": ("残象聚落", False, "这一轮根本没跑到这个任务"),
 }
+
+
+def nests_given_up(text: str) -> list[str]:
+    """Names of the nests given up after two failed travels in one OK-WW run log, in order."""
+    return list(dict.fromkeys(m.group(1) for m in _NEST_GAVE_UP.finditer(_task_lines(text))))
 
 
 def nest_state(text: str) -> str:
@@ -540,6 +550,10 @@ def nest_state(text: str) -> str:
         return "not_found"
     if _NEST_COUNT_UNREAD in text and not engaged:
         return "count_unread"
+    # A nest given up after two failed travels was not farmed, whatever the other
+    # nests did (10-27: 梦枢天罗 unreachable, 落渊南丘 fought, booked as 「fought」).
+    if _NEST_GAVE_UP.search(text):
+        return "partly" if engaged else "unreachable"
     # A fight first, then 「all full」: the run farmed the nest until it was full.
     # That is 「fought」; 「full」 (skipped) is for a run that found it full before
     # fighting at all (audit 2026-10-13 item 11).
@@ -620,6 +634,8 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
 
     if expect_nest:
         label, ok, why = _NEST_VERDICT[nest_state(text)]
+        if names := nests_given_up(text):
+            why += f"（{'、'.join(names)}）"
         out.append(Check(label, ok, why))
 
     # The weekly boss passes only on a confirmed reward claim.

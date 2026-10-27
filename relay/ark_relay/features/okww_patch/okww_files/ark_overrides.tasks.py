@@ -1641,6 +1641,9 @@ NEST_COUNT_UNREAD = "指定点位的名字读到了，计数没读到"
 NEST_ADAPTED = "只刷指定点位的过滤是按 OK-WW 新版适配装上的"
 # Logged by combat_nest for the nest clicked: 「nightmare nest: nest name: <name as OCR read it>」.
 NEST_NAME_LINE = "nightmare nest: nest name: "
+# Logged by _travel_to_nest_or_skip when a nest's travel failed the second time in a
+# run: 「nightmare nest: 传送两次都不过去，这一轮不打了 <key>（<name>）」 (outcome.nest_state).
+NEST_GAVE_UP_LINE = "nightmare nest: 传送两次都不过去，这一轮不打了 "
 _NEST_TOP_RE = re.compile(r"self\.ocr\(\s*0\.35\s*,\s*(0?\.\d+)\s*,\s*1\s*,\s*0\.96")
 
 
@@ -1909,7 +1912,27 @@ def _install_nest():
         if not went:
             self._ark_close_map = True     # get_nest_to_go closes the map before the book
             _shot(self, "nest_unreachable")
-            self.log_info(f"nightmare nest: 传送不过去 {getattr(nest, 'cache_key', '')}（截图 nest_travel / nest_unreachable）")
+            key = getattr(nest, "cache_key", "")
+            self.log_info(f"nightmare nest: 传送不过去 {key}（截图 nest_travel / nest_unreachable）")
+            # One more try per nest per run. 10-27 09:23:03 the 快速旅行 click on
+            # 梦枢天罗 (go_nest:48:18) took no effect while someone was connected
+            # over TeamViewer (09:22:44-09:23:51); the same click had travelled on
+            # each of 10-20 .. 10-26, and upstream cached the nest as unreachable
+            # for the rest of the run, so it went unfarmed that day. Upstream picks
+            # the first nest not cached, so un-caching it makes the next lap try it
+            # again; get_nest_to_go's no-progress stamp is dropped with it.
+            retried = getattr(self, "_ark_travel_retried", None)
+            if retried is None:
+                retried = self._ark_travel_retried = set()
+            if key and key not in retried:
+                retried.add(key)
+                self._unreachable_nests.discard(key)
+                progress = getattr(self, "_ark_nest_progress", {}).get(key, "")
+                (getattr(self, "_ark_nest_tried", None) or set()).discard(f"{key}@{progress}")
+                self.log_info(f"nightmare nest: 传送不过去，马上再试一次 {key}")
+            else:
+                name = (getattr(self, "_ark_nest_names", None) or {}).get(key) or "?"
+                self.log_info(f"{NEST_GAVE_UP_LINE}{key}（{name}）")
         return went
 
     def nest_entry(self, upstream):
@@ -1921,6 +1944,7 @@ def _install_nest():
         """
         self._ark_nest_tried = set()
         self._ark_nest_progress = {}
+        self._ark_travel_retried = set()
         self._ark_only_logged = None      # log the filter's source once per run
         self._ark_close_map = False
         self._ark_nest_names = {}

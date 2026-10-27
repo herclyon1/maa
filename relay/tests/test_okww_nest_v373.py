@@ -344,5 +344,66 @@ except Exception:  # noqa: BLE001
 check("no filter: the first row's name, 「新区残象聚落」", [m for m in t.infos if m.startswith("nightmare nest: nest name: ")],
       ["nightmare nest: nest name: 新区残象聚落"])
 
+print("\n[10-27: a travel that failed once is tried again at once; only a second failure gives the nest up]")
+# ok-script.log 10-27 09:23:00-09:25:18: 梦枢天罗 0/48 clicked, 快速旅行 at 09:23:03 took no
+# effect (TeamViewer connected 09:22:44-09:23:51), 「unreachable, skip this run」 at
+# 09:25:04, then 「skip cached unreachable nightmare nest: go_nest:48:18」 and 落渊南丘 only.
+NestTarget = sys.modules["src.task.NightmareNestTask"].NestTarget
+MENGSHU = [Box("梦枢天罗残象聚落", 300), Box("已击败残象：0/48", 374),
+           Box("落渊南丘残象聚落", 450), Box("已击败残象：10/41", 524)]
+
+
+def travel_fake(ns_, results):
+    """A nest run whose 快速旅行 works or not by `results`, in order (True = travelled; then always works)."""
+    t = fake(Nest, [MENGSHU, PAGE2], ns_, only="梦枢天罗,落渊南丘")
+    tries = iter(results)
+    t.shots = []
+    t.screenshot = lambda name: t.shots.append(name)
+    t.in_team_and_world = lambda: True               # the map closed: no extra back
+    t.back = lambda after_sleep=0: t.events.append("back")
+    t._find_first_feature = lambda names, threshold: None
+    t.find_one = lambda *a, **kw: None
+    t.wait_in_team_and_world = lambda **kw: True
+    # Upstream's travel: no 快速旅行 button found = unreachable, as a click that did nothing.
+    t.wait_until = lambda cond, **kw: (Box("gray_teleport", 1007) if next(tries, True) else None) \
+        if cond == t._find_travel_button else cond()
+    t.combat_nest = lambda nest: t.fought.append(nest.cache_key) if Nest._travel_to_nest_or_skip(t, nest) else None
+    return t
+
+
+ns6 = overlay()
+ns6["_install_nest"]()
+t = travel_fake(ns6, [False, True])
+t.run()
+mengshu = [k for k in t.fought if k.endswith(":48:18")]
+check("fail, then travel: 梦枢天罗 fought on the second try", len(mengshu), 1)
+check("落渊南丘 still fought after it", len(t.fought), 2)
+check("said it tries again", [m for m in t.infos if "马上再试一次" in m], [f"nightmare nest: 传送不过去，马上再试一次 {mengshu[0]}"])
+check("no give-up line", any(m.startswith(ns6["NEST_GAVE_UP_LINE"]) for m in t.infos), False)
+
+t = travel_fake(ns6, [False, False, True])
+t.run()
+check("fail twice: 梦枢天罗 not fought, 落渊南丘 still is", [k.split(":")[1] for k in t.fought], ["41"])
+gave_up = [m for m in t.infos if m.startswith(ns6["NEST_GAVE_UP_LINE"])]
+check("the give-up line names the nest", [m.endswith("（梦枢天罗残象聚落）") for m in gave_up], [True])
+check("then cached as upstream does", any("skip cached unreachable nightmare nest" in m for m in t.infos), True)
+check("tried exactly twice", sum("nightmare nest unreachable" in m for m in t.infos), 2)
+
+print("\n[the retry is per run: the next run tries again, then retries again]")
+t2 = travel_fake(ns6, [False, True])
+t2.__dict__.update(_ark_travel_retried={"go_nest:48:18"})   # left over from an earlier run
+t2.run()
+check("a new run starts with nothing retried", [k.split(":")[1] for k in t2.fought], ["48", "41"])
+
+print("\n[a nest whose travel failed once is not cached: its key and no-progress stamp are dropped]")
+t = travel_fake(ns6, [False])
+key = "go_nest:48:18"
+t._ark_nest_progress, t._ark_nest_tried, t._ark_travel_retried = {key: "0"}, {f"{key}@0"}, set()
+t._unreachable_nests.add(key)                          # what upstream does for a NestTarget
+check("travel fails as upstream's", Nest._travel_to_nest_or_skip(t, NestTarget(Box("x", 0), key)), False)
+check("un-cached", key in t._unreachable_nests, False)
+check("stamp dropped", t._ark_nest_tried, set())
+check("both pictures as before", t.shots, ["nest_travel", "nest_unreachable"])
+
 print("\n" +("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

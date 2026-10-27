@@ -1,0 +1,28 @@
+2026-10-27 09:22:58,502 INFO TaskExecutor NightmareNestTask:nightmare nest: 只刷 ['梦枢天罗', '落渊南丘']（设置来自母本）
+2026-10-27 09:23:00,488 INFO TaskExecutor NightmareNestTask:Box(name='已击败残象：0/48', x=889, y=374, width=198, height=30, confidence=100) is not complete
+2026-10-27 09:23:00,489 INFO TaskExecutor NightmareNestTask:nightmare nest: 点进点位 go_nest:48:18（截图 nest_go）
+2026-10-27 09:23:00,490 INFO TaskExecutor NightmareNestTask:nightmare nest: nest name: 梦枢天罗残象聚落
+2026-10-27 09:23:00,690 INFO TaskExecutor NightmareNestTask:left_click 已击败残象：0/48 (1729, 348) after_sleep 2
+2026-10-27 09:23:03,545 INFO TaskExecutor NightmareNestTask:left_click gray_teleport (1351, 1007) after_sleep 1
+2026-10-27 09:25:04,638 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method BaseWWTask.in_team_and_world of <src.task.NightmareNestTask.NightmareNestTask object at 0x0000028076737350>> 120 seconds
+2026-10-27 09:25:04,638 INFO TaskExecutor NightmareNestTask:nightmare nest unreachable, skip this run: go_nest:48:18
+2026-10-27 09:25:05,674 INFO TaskExecutor NightmareNestTask:nightmare nest: 传送不过去 go_nest:48:18（截图 nest_travel / nest_unreachable）
+2026-10-27 09:25:05,676 INFO TaskExecutor NightmareNestTask:click f2 to open the book
+2026-10-27 09:25:09,705 INFO TaskExecutor NightmareNestTask:send f2 key to open
+2026-10-27 09:25:10,741 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=86)
+2026-10-27 09:25:13,143 INFO TaskExecutor NightmareNestTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-10-27 09:25:14,644 INFO TaskExecutor NightmareNestTask:open_boss_book canxiang
+2026-10-27 09:25:15,445 INFO TaskExecutor NightmareNestTask:left_click canxiang (460, 896) after_sleep 2
+2026-10-27 09:25:18,365 INFO TaskExecutor NightmareNestTask:skip cached unreachable nightmare nest: go_nest:48:18
+2026-10-27 09:25:18,365 INFO TaskExecutor NightmareNestTask:Box(name='已击败残象：0/41', x=890, y=527, width=194, height=31, confidence=100) is not complete
+2026-10-27 09:25:18,365 INFO TaskExecutor NightmareNestTask:nightmare nest: 点进点位 go_nest:41:25（截图 nest_go）
+2026-10-27 09:25:18,365 INFO TaskExecutor NightmareNestTask:nightmare nest: nest name: 落渊南丘残象聚落
+2026-10-27 09:25:18,567 INFO TaskExecutor NightmareNestTask:left_click 已击败残象：0/41 (1729, 500) after_sleep 2
+2026-10-27 09:25:21,318 INFO TaskExecutor NightmareNestTask:left_click gray_teleport (1351, 1007) after_sleep 1
+2026-10-27 09:25:29,285 INFO TaskExecutor NightmareNestTask:info_set Liberation Key r
+2026-10-27 09:25:29,285 INFO TaskExecutor NightmareNestTask:info_set Echo Key q
+2026-10-27 09:25:32,024 INFO TaskExecutor NightmareNestTask:info_set Chars 心, Suoming, 守岸人
+2026-10-27 09:25:32,025 INFO TaskExecutor NightmareNestTask:loaded chars success Hsin 0.9614519476890564
+2026-10-27 09:25:32,025 INFO TaskExecutor NightmareNestTask:loaded chars success Suoming 0.9553992748260498
+2026-10-27 09:25:32,025 INFO TaskExecutor NightmareNestTask:loaded chars success ShoreKeeper 0.962532639503479
+2026-10-27 09:25:32,293 INFO TaskExecutor NightmareNestTask:enter combat None

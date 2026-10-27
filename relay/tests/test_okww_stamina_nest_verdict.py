@@ -162,6 +162,9 @@ SAMPLES = {
     "count_unread": line("00:01", "NightmareNestTask", "nightmare nest: " + outcome._NEST_COUNT_UNREAD),
     "full": line("00:01", "NightmareNestTask", "nightmare nest: 指定点位都已打满，跳过"),
     "fought": line("00:01", "NightmareNestTask", "enter combat None"),
+    "partly": line("00:01", "NightmareNestTask", "enter combat None")
+              + line("00:02", "NightmareNestTask",
+                     "nightmare nest: 传送两次都不过去，这一轮不打了 go_nest:48:18（梦枢天罗残象聚落）"),
     "unreachable": line("00:01", "NightmareNestTask", "nightmare nest unreachable, skip this run"),
     "failed": line("00:01", "NightmareNestTask", "opened gray_book_boss")
               + "2026-10-13 10:00:02,000 ERROR TaskExecutor DailyTask:NightmareNestTask Failed\n",
