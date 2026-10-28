@@ -1,0 +1,774 @@
+[2026-10-28 09:34:58.586] 正在连接窗口... Endfield
+[2026-10-28 09:34:58.664] 窗口连接成功: Endfield
+[2026-10-28 09:34:58.892] 已连接控制器 [电脑端-前台]
+[2026-10-28 09:34:58.892] 稳定性最好，需要游戏窗口保持在最前且不被遮挡，会完全抢占鼠标
+[2026-10-28 09:35:00.033] 正在连接窗口... Endfield
+[2026-10-28 09:35:00.100] 窗口连接成功: Endfield
+[2026-10-28 09:35:00.990] 正在加载资源: 通用资源（目前仅简中支持较好）
+[2026-10-28 09:35:01.872] 资源加载成功: 通用资源（目前仅简中支持较好）
+[2026-10-28 09:35:03.569] 任务开始: 🎁赠送干员礼物
+[2026-10-28 09:37:27.112] 任务完成: 🎁赠送干员礼物
+[2026-10-28 09:37:27.228] 任务开始: 🔧装备制造
+[2026-10-28 09:37:30.141] 正在检查画面，提示登出账号是正常现象，会自动取消
+[2026-10-28 09:37:31.834] 画面检查通过
+[2026-10-28 09:37:32.226][ERR][Px7388][Tx56336][ActionHelper.cpp][L40][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=__SceneImageCheckFinishExitSuccess] 
+[2026-10-28 09:37:49.160] 任务完成: 🔧装备制造
+[2026-10-28 09:37:49.273] 任务开始: 🤝拜访好友
+[2026-10-28 09:38:04.664] 开始拜访好友
+[2026-10-28 09:39:17.326] 助力次数已满；列表改为只认可线索交换好友
+[2026-10-28 09:39:17.642] 线索交换次数已满，已关闭线索交换检查与领取
+[2026-10-28 09:39:17.991] 好友助力和线索交换次数已满，停止拜访
+[2026-10-28 09:39:18.060] 任务完成: 🤝拜访好友
+[2026-10-28 09:39:18.156] 任务开始: 🎁基建任务
+[2026-10-28 09:39:44.453] 获得以下物品：
+[2026-10-28 09:39:44.453] 协议纹石子簇 ×1
+[2026-10-28 09:39:44.453] 武器检查套组 ×8
+[2026-10-28 09:39:44.453] 重红柱状菌 ×1
+[2026-10-28 09:39:44.453] 高级认知载体 ×3
+[2026-10-28 09:39:49.646] 获得以下物品：
+[2026-10-28 09:39:49.646] 信用 ×45
+[2026-10-28 09:39:56.112] 获得以下物品：
+[2026-10-28 09:39:56.112] 信用 ×400
+[2026-10-28 09:40:02.257] 任务完成: 🎁基建任务
+[2026-10-28 09:40:02.359] 任务开始: 🛍️信用点购物
+[2026-10-28 09:40:19.481] 获得以下物品：
+[2026-10-28 09:40:19.481] 信用 ×300
+[2026-10-28 09:40:28.895] 获得以下物品：
+[2026-10-28 09:40:28.895] 武库配额 ×20
+[2026-10-28 09:40:35.219] 刷新商品
+[2026-10-28 09:40:44.317] 获得以下物品：
+[2026-10-28 09:40:44.317] 武库配额 ×20
+[2026-10-28 09:40:53.081] 获得以下物品：
+[2026-10-28 09:40:53.081] 武器检查单元 ×30
+[2026-10-28 09:40:58.847] 刷新商品
+[2026-10-28 09:41:07.960] 获得以下物品：
+[2026-10-28 09:41:07.960] 武库配额 ×20
+[2026-10-28 09:41:16.730] 获得以下物品：
+[2026-10-28 09:41:16.730] 重型强固模具 ×1
+[2026-10-28 09:41:22.447] 刷新商品
+[2026-10-28 09:41:33.041] 获得以下物品：
+[2026-10-28 09:41:33.041] 协议棱柱组 ×1
+[2026-10-28 09:41:38.716] 信用点低于保留阈值，退出购买流程
+[2026-10-28 09:41:39.139] 任务完成: 🛍️信用点购物
+[2026-10-28 09:41:39.245] 任务开始: 🚚转交委托
+[2026-10-28 09:42:48.472] 任务完成: 🚚转交委托
+[2026-10-28 09:42:48.602] 任务开始: 🛒据点交易
+[2026-10-28 09:42:49.049] 💸 最低售卖单价：10，单价低于它的货品不会被售卖（优先货品不受限制）。
+[2026-10-28 09:42:53.890] 👥 已加载干员列表缓存（更新于 2026-09-06 09:52:16），将直接进行干员规划
+[2026-10-28 09:42:55.819] 📋 天王坪援建点当前计划
+[2026-10-28 09:42:55.819] 👤 售卖联络干员目标：汤汤；售后生产派驻目标：汤汤
+[2026-10-28 09:42:55.819] 📦 售卖顺序：中容武陵电池 → 赫铜零件 → 低容武陵电池 → 优质芽针针剂 → 优质锦草软饮 → 重息壤 → 芽针针剂 → 锦草软饮
+[2026-10-28 09:42:55.819] 🚫 售罄排除：无
+[2026-10-28 09:42:55.819] 🎯 保留量已满足：无
+[2026-10-28 09:42:55.819] ⛔ 用户排除：无
+[2026-10-28 09:42:55.819] 💸 低于最低单价排除：赤铜零件、息壤
+[2026-10-28 09:42:55.819] 🧰 保留规则：无（全部售卖）
+[2026-10-28 09:42:56.150] 👤 售卖联络干员沿用：汤汤（天王坪援建点）
+[2026-10-28 09:43:00.200] 📦 已切换货品：中容武陵电池（天王坪援建点）
+[2026-10-28 09:43:02.254][ERR][Px7388][Tx56336][ActionHelper.cpp][L40][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingSkyKingFlatsConstructionSiteBetterSliding] 
+[2026-10-28 09:43:04.345] ✅ 已完成交易
+[2026-10-28 09:43:04.730] 📭 当前货品已售罄，继续尝试下一货品
+[2026-10-28 09:43:04.830] 🚫 已确认售罄并排除：中容武陵电池（天王坪援建点）
+[2026-10-28 09:43:07.861] 📦 已切换货品：赫铜零件（天王坪援建点）
+[2026-10-28 09:43:08.326] 📭 当前货品已售罄，继续尝试下一货品
+[2026-10-28 09:43:08.465] 🚫 已确认售罄并排除：赫铜零件（天王坪援建点）
+[2026-10-28 09:43:11.495] 📦 已切换货品：优质芽针针剂（天王坪援建点）
+[2026-10-28 09:43:11.913] 📭 当前货品已售罄，继续尝试下一货品
+[2026-10-28 09:43:12.040] 🚫 已确认售罄并排除：优质芽针针剂（天王坪援建点）
+[2026-10-28 09:43:14.891] 📦 已切换货品：优质锦草软饮（天王坪援建点）
+[2026-10-28 09:43:15.320] 📭 当前货品已售罄，继续尝试下一货品
+[2026-10-28 09:43:15.446] 🚫 已确认售罄并排除：优质锦草软饮（天王坪援建点）
+[2026-10-28 09:43:18.326] 📦 已切换货品：重息壤（天王坪援建点）
+[2026-10-28 09:43:20.371][ERR][Px7388][Tx56336][ActionHelper.cpp][L40][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingSkyKingFlatsConstructionSiteBetterSliding] 
+[2026-10-28 09:43:22.490] ✅ 已完成交易
+[2026-10-28 09:43:23.116] 👤 售后生产联络干员沿用：汤汤（天王坪援建点）
+[2026-10-28 09:43:25.887] 📋 心脏修缮站当前计划
+[2026-10-28 09:43:25.887] 👤 售卖联络干员目标：庄方宜；售后生产派驻目标：庄方宜
+[2026-10-28 09:43:25.887] 📦 售卖顺序：灼铜零件 → 重息壤
+[2026-10-28 09:43:25.887] 🚫 售罄排除：中容武陵电池、赫铜零件、低容武陵电池、优质锦草软饮、优质芽针针剂
+[2026-10-28 09:43:25.887] 🎯 保留量已满足：无
+[2026-10-28 09:43:25.887] ⛔ 用户排除：无
+[2026-10-28 09:43:25.887] 💸 低于最低单价排除：息壤
+[2026-10-28 09:43:25.887] 🧰 保留规则：无（全部售卖）
+[2026-10-28 09:43:26.188] 👤 售卖联络干员沿用：庄方宜（心脏修缮站）
+[2026-10-28 09:43:26.872] 📦 沿用当前货品：灼铜零件（心脏修缮站）
+[2026-10-28 09:43:28.966][ERR][Px7388][Tx56336][ActionHelper.cpp][L40][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingCardiacRemediationStationBetterSliding] 
+[2026-10-28 09:43:31.099] ✅ 已完成交易
+[2026-10-28 09:43:31.693] 👤 售后生产联络干员沿用：庄方宜（心脏修缮站）
+[2026-10-28 09:43:34.334] 📋 盈天台建设站当前计划
+[2026-10-28 09:43:34.334] 👤 售卖联络干员目标：诀；售后生产派驻目标：诀
+[2026-10-28 09:43:34.334] 📦 售卖顺序：灼铜零件 → 重息壤
+[2026-10-28 09:43:34.334] 🚫 售罄排除：中容武陵电池、优质锦草软饮、优质芽针针剂
+[2026-10-28 09:43:34.334] 🎯 保留量已满足：无
+[2026-10-28 09:43:34.334] ⛔ 用户排除：无
+[2026-10-28 09:43:34.334] 💸 低于最低单价排除：分离芯、息壤
+[2026-10-28 09:43:34.334] 🧰 保留规则：无（全部售卖）
+[2026-10-28 09:43:34.625] 👤 售卖联络干员沿用：诀（盈天台建设站）
+[2026-10-28 09:43:37.441] 📦 已切换货品：灼铜零件（盈天台建设站）
+[2026-10-28 09:43:39.511][ERR][Px7388][Tx56336][ActionHelper.cpp][L40][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingXiranflowCloudseederStationBetterSliding] 
+[2026-10-28 09:43:41.540] ✅ 已完成交易
+[2026-10-28 09:43:41.972] 📭 当前货品已售罄，继续尝试下一货品
+[2026-10-28 09:43:42.112] 🚫 已确认售罄并排除：灼铜零件（盈天台建设站）
+[2026-10-28 09:43:44.836] 📦 已切换货品：重息壤（盈天台建设站）
+[2026-10-28 09:43:46.969][ERR][Px7388][Tx56336][ActionHelper.cpp][L40][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingXiranflowCloudseederStationBetterSliding] 
+[2026-10-28 09:43:49.125] ✅ 已完成交易
+[2026-10-28 09:43:49.748] 👤 售后生产联络干员沿用：诀（盈天台建设站）
+[2026-10-28 09:43:58.574] 📋 难民暂居处当前计划
+[2026-10-28 09:43:58.574] 👤 售卖联络干员目标：莱万汀；售后生产派驻目标：莱万汀
+[2026-10-28 09:43:58.574] 📦 售卖顺序：精选荞愈胶囊 → 高容谷地电池 → 精选柑实罐头 → 中容谷地电池 → 优质荞愈胶囊 → 优质柑实罐头 → 荞愈胶囊 → 柑实罐头
+[2026-10-28 09:43:58.574] 🚫 售罄排除：无
+[2026-10-28 09:43:58.574] 🎯 保留量已满足：无
+[2026-10-28 09:43:58.574] ⛔ 用户排除：无
+[2026-10-28 09:43:58.574] 💸 低于最低单价排除：紫晶质瓶、晶体外壳、紫晶零件
+[2026-10-28 09:43:58.574] 🧰 保留规则：无（全部售卖）
+[2026-10-28 09:43:58.843] 👤 售卖联络干员沿用：莱万汀（难民暂居处）
+[2026-10-28 09:43:59.493] 📦 沿用当前货品：精选荞愈胶囊（难民暂居处）
+[2026-10-28 09:44:01.598][ERR][Px7388][Tx56336][ActionHelper.cpp][L40][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingRefugeeCampBetterSliding] 
+[2026-10-28 09:44:03.706] ✅ 已完成交易
+[2026-10-28 09:44:04.300] 👤 售后生产联络干员沿用：莱万汀（难民暂居处）
+[2026-10-28 09:44:07.386] 📋 基建前站当前计划
+[2026-10-28 09:44:07.386] 👤 售卖联络干员目标：伊冯；售后生产派驻目标：伊冯
+[2026-10-28 09:44:07.386] 📦 售卖顺序：精选荞愈胶囊 → 高容谷地电池 → 精选柑实罐头 → 中容谷地电池 → 优质荞愈胶囊 → 优质柑实罐头 → 低容谷地电池 → 柑实罐头
+[2026-10-28 09:44:07.386] 🚫 售罄排除：无
+[2026-10-28 09:44:07.386] 🎯 保留量已满足：无
+[2026-10-28 09:44:07.386] ⛔ 用户排除：无
+[2026-10-28 09:44:07.386] 💸 低于最低单价排除：铁制零件
+[2026-10-28 09:44:07.386] 🧰 保留规则：无（全部售卖）
+[2026-10-28 09:44:07.681] 👤 售卖联络干员沿用：伊冯（基建前站）
+[2026-10-28 09:44:08.319] 📦 沿用当前货品：精选荞愈胶囊（基建前站）
+[2026-10-28 09:44:10.441][ERR][Px7388][Tx56336][ActionHelper.cpp][L40][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingInfraStationBetterSliding] 
+[2026-10-28 09:44:12.546] ✅ 已完成交易
+[2026-10-28 09:44:13.152] 👤 售后生产联络干员沿用：伊冯（基建前站）
+[2026-10-28 09:44:15.892] 📋 重建指挥部当前计划
+[2026-10-28 09:44:15.892] 👤 售卖联络干员目标：洁尔佩塔；售后生产派驻目标：洁尔佩塔
+[2026-10-28 09:44:15.892] 📦 售卖顺序：精选荞愈胶囊 → 高容谷地电池 → 精选柑实罐头 → 中容谷地电池 → 优质荞愈胶囊 → 优质柑实罐头 → 柑实罐头
+[2026-10-28 09:44:15.892] 🚫 售罄排除：无
+[2026-10-28 09:44:15.892] 🎯 保留量已满足：无
+[2026-10-28 09:44:15.892] ⛔ 用户排除：无
+[2026-10-28 09:44:15.892] 💸 低于最低单价排除：钢制零件
+[2026-10-28 09:44:15.892] 🧰 保留规则：无（全部售卖）
+[2026-10-28 09:44:16.154] 👤 售卖联络干员沿用：洁尔佩塔（重建指挥部）
+[2026-10-28 09:44:18.918] 📦 已切换货品：精选荞愈胶囊（重建指挥部）
+[2026-10-28 09:44:21.060][ERR][Px7388][Tx56336][ActionHelper.cpp][L40][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingReconstructionHQBetterSliding] 
+[2026-10-28 09:44:23.081] ✅ 已完成交易
+[2026-10-28 09:44:23.473] 📭 当前货品已售罄，继续尝试下一货品
+[2026-10-28 09:44:23.598] 🚫 已确认售罄并排除：精选荞愈胶囊（重建指挥部）
+[2026-10-28 09:44:26.208] 📦 已切换货品：高容谷地电池（重建指挥部）
+[2026-10-28 09:44:28.278][ERR][Px7388][Tx56336][ActionHelper.cpp][L40][MaaNS::TaskNS::ActionHelper::wait_freezes] failed to get target rect for wait_freezes [noti_ctx.name=OutpostTradingReconstructionHQBetterSliding] 
+[2026-10-28 09:44:30.311] ✅ 已完成交易
+[2026-10-28 09:44:30.970] 👤 售后生产联络干员沿用：洁尔佩塔（重建指挥部）
+[2026-10-28 09:44:33.466] 🏁 售卖任务已完成
+[2026-10-28 09:44:33.562] 任务完成: 🛒据点交易
+[2026-10-28 09:44:33.666] 任务开始: 🌿环境监测
+[2026-10-28 09:46:51.485] 任务完成: 🌿环境监测
+[2026-10-28 09:46:51.595] 任务开始: 📦自动囤货
+[2026-10-28 09:46:54.226] 正在前往: 四号谷地
+[2026-10-28 09:47:00.860] 识别完成，共识别到 12 个商品
+[2026-10-28 09:47:00.975] 未找到符合条件的商品 (没有满足条件的商品)
+[2026-10-28 09:47:01.083] 跳过本次购买
+[2026-10-28 09:47:01.145] 正在前往: 武陵
+[2026-10-28 09:47:09.659] 识别完成，共识别到 12 个商品
+[2026-10-28 09:47:09.793] 「低价购买」界石锁货组 (价格 764)
+[2026-10-28 09:47:13.371] 购买成功
+[2026-10-28 09:47:13.504] 任务完成: 📦自动囤货
+[2026-10-28 09:47:13.571] 任务开始: 💰售卖弹性物资
+[2026-10-28 09:47:13.717] 正在前往四号谷地扫描拥有物资
+[2026-10-28 09:47:20.603] 拥有弹性需求物资：硬脑壳头盔货组、警戒者矿镐货组、塞什卡髀石货组、锚点厨具货组、源石树幼苗货组、巫术矿钻货组、团结牌口服液货组
+[2026-10-28 09:47:20.697] 检查物资 硬脑壳头盔货组 价格，该物资价格变动极大
+[2026-10-28 09:47:21.032] 30000000 < 41900000 匹配
+[2026-10-28 09:47:21.156] 四号谷地调度券已超过阈值
+[2026-10-28 09:47:21.504] 检查物资 警戒者矿镐货组 价格，该物资价格变动极大
+[2026-10-28 09:47:21.863] 30000000 < 41900000 匹配
+[2026-10-28 09:47:21.989] 四号谷地调度券已超过阈值
+[2026-10-28 09:47:22.348] 检查物资 塞什卡髀石货组 价格，该物资价格变动较大
+[2026-10-28 09:47:22.708] 30000000 < 41900000 匹配
+[2026-10-28 09:47:22.837] 四号谷地调度券已超过阈值
+[2026-10-28 09:47:23.206] 检查物资 锚点厨具货组 价格，该物资价格变动适中
+[2026-10-28 09:47:23.550] 30000000 < 41900000 匹配
+[2026-10-28 09:47:23.676] 四号谷地调度券已超过阈值
+[2026-10-28 09:47:24.027] 检查物资 源石树幼苗货组 价格，该物资价格变动极大
+[2026-10-28 09:47:24.396] 30000000 < 41900000 匹配
+[2026-10-28 09:47:24.476] 四号谷地调度券已超过阈值
+[2026-10-28 09:47:24.881] 检查物资 巫术矿钻货组 价格，该物资价格变动适中
+[2026-10-28 09:47:25.247] 30000000 < 41900000 匹配
+[2026-10-28 09:47:25.341] 四号谷地调度券已超过阈值
+[2026-10-28 09:47:25.729] 检查物资 团结牌口服液货组 价格，该物资价格变动较大
+[2026-10-28 09:47:26.077] 30000000 < 41900000 匹配
+[2026-10-28 09:47:26.196] 四号谷地调度券已超过阈值
+[2026-10-28 09:47:26.498] 正在前往武陵扫描拥有物资
+[2026-10-28 09:47:33.524] 拥有弹性需求物资：武侠电影货组、飞天迎宾员货组、界石锁货组
+[2026-10-28 09:47:33.652] 检查物资 武侠电影货组 价格，该物资价格变动适中
+[2026-10-28 09:47:36.544] 3967 >= 4600 不匹配
+[2026-10-28 09:47:37.252] 检查物资 飞天迎宾员货组 价格，该物资价格变动较大
+[2026-10-28 09:47:40.019] 3311 >= 4600 不匹配
+[2026-10-28 09:47:40.686] 检查物资 界石锁货组 价格，该物资价格变动较大
+[2026-10-28 09:47:43.441] 4468 >= 4600 不匹配
+[2026-10-28 09:47:44.076] 任务完成: 💰售卖弹性物资
+[2026-10-28 09:47:44.204] 任务开始: 🏪购买稳定物资
+[2026-10-28 09:47:55.757][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,721,144,41]] 
+[2026-10-28 09:47:55.757][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,721,144,41]] 
+[2026-10-28 09:47:55.757][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,721,144,41]] 
+[2026-10-28 09:47:55.757][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,721,144,41]] 
+[2026-10-28 09:47:55.843][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,721,144,41]] 
+[2026-10-28 09:47:55.843][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,721,144,41]] 
+[2026-10-28 09:47:55.844][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,721,144,41]] 
+[2026-10-28 09:47:55.844][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,721,144,41]] 
+[2026-10-28 09:47:55.928][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,721,144,41]] 
+[2026-10-28 09:47:55.928][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,721,144,41]] 
+[2026-10-28 09:47:55.928][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,721,144,41]] 
+[2026-10-28 09:47:55.928][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,721,144,41]] 
+[2026-10-28 09:47:56.025][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,721,144,41]] 
+[2026-10-28 09:47:56.025][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,721,144,41]] 
+[2026-10-28 09:47:56.025][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,721,144,41]] 
+[2026-10-28 09:47:56.025][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,721,144,41]] 
+[2026-10-28 09:48:02.246][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,797,144,39]] 
+[2026-10-28 09:48:02.246][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,797,144,39]] 
+[2026-10-28 09:48:02.246][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,797,144,39]] 
+[2026-10-28 09:48:02.246][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,797,144,39]] 
+[2026-10-28 09:48:02.246][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,797,144,39]] 
+[2026-10-28 09:48:02.246][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,797,144,39]] 
+[2026-10-28 09:48:02.246][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[988,797,144,39]] 
+[2026-10-28 09:48:02.507][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,797,144,39]] 
+[2026-10-28 09:48:02.507][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,797,144,39]] 
+[2026-10-28 09:48:02.507][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,797,144,39]] 
+[2026-10-28 09:48:02.507][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,797,144,39]] 
+[2026-10-28 09:48:02.507][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,797,144,39]] 
+[2026-10-28 09:48:02.507][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,797,144,39]] 
+[2026-10-28 09:48:02.507][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[988,797,144,39]] 
+[2026-10-28 09:48:02.773][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,797,144,39]] 
+[2026-10-28 09:48:02.773][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,797,144,39]] 
+[2026-10-28 09:48:02.773][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,797,144,39]] 
+[2026-10-28 09:48:02.773][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,797,144,39]] 
+[2026-10-28 09:48:02.773][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,797,144,39]] 
+[2026-10-28 09:48:02.773][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,797,144,39]] 
+[2026-10-28 09:48:02.773][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[988,797,144,39]] 
+[2026-10-28 09:48:03.029][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,797,144,39]] 
+[2026-10-28 09:48:03.029][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,797,144,39]] 
+[2026-10-28 09:48:03.029][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,797,144,39]] 
+[2026-10-28 09:48:03.029][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,797,144,39]] 
+[2026-10-28 09:48:03.029][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,797,144,39]] 
+[2026-10-28 09:48:03.029][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,797,144,39]] 
+[2026-10-28 09:48:03.029][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[988,797,144,39]] 
+[2026-10-28 09:48:24.276][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,770,144,40]] 
+[2026-10-28 09:48:24.276][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,770,144,40]] 
+[2026-10-28 09:48:24.276][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,770,144,40]] 
+[2026-10-28 09:48:24.276][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,770,144,40]] 
+[2026-10-28 09:48:24.276][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,770,144,40]] 
+[2026-10-28 09:48:24.276][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,770,144,40]] 
+[2026-10-28 09:48:24.276][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[988,770,144,40]] 
+[2026-10-28 09:48:24.276][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 09:48:24.300][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,770,144,40]] 
+[2026-10-28 09:48:24.300][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,770,144,40]] 
+[2026-10-28 09:48:24.300][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,770,144,40]] 
+[2026-10-28 09:48:24.300][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,770,144,40]] 
+[2026-10-28 09:48:24.300][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,770,144,40]] 
+[2026-10-28 09:48:24.300][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,770,144,40]] 
+[2026-10-28 09:48:24.301][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[988,770,144,40]] 
+[2026-10-28 09:48:24.301][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 09:48:24.325][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,770,144,40]] 
+[2026-10-28 09:48:24.325][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,770,144,40]] 
+[2026-10-28 09:48:24.325][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,770,144,40]] 
+[2026-10-28 09:48:24.325][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,770,144,40]] 
+[2026-10-28 09:48:24.325][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,770,144,40]] 
+[2026-10-28 09:48:24.325][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,770,144,40]] 
+[2026-10-28 09:48:24.325][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[988,770,144,40]] 
+[2026-10-28 09:48:24.325][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 09:48:24.352][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,770,144,40]] 
+[2026-10-28 09:48:24.352][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,770,144,40]] 
+[2026-10-28 09:48:24.352][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,770,144,40]] 
+[2026-10-28 09:48:24.352][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,770,144,40]] 
+[2026-10-28 09:48:24.352][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,770,144,40]] 
+[2026-10-28 09:48:24.352][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,770,144,40]] 
+[2026-10-28 09:48:24.352][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[988,770,144,40]] 
+[2026-10-28 09:48:24.352][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 09:48:24.378][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,770,144,40]] 
+[2026-10-28 09:48:24.378][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,770,144,40]] 
+[2026-10-28 09:48:24.378][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,770,144,40]] 
+[2026-10-28 09:48:24.378][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,770,144,40]] 
+[2026-10-28 09:48:24.378][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,770,144,40]] 
+[2026-10-28 09:48:24.378][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,770,144,40]] 
+[2026-10-28 09:48:24.378][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[988,770,144,40]] 
+[2026-10-28 09:48:24.378][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 09:48:29.596][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:30.018][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:30.459][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:32.822] 正本补元汤剂数量达标
+[2026-10-28 09:48:34.503][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:34.934][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:35.351][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:37.719] 锦素炒饭数量达标
+[2026-10-28 09:48:39.266][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:39.707][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:40.132][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:42.449] 潘师傅蛋羹数量达标
+[2026-10-28 09:48:44.189][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:44.604][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:45.024][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:47.223] 陈皮拌笋数量达标
+[2026-10-28 09:48:48.781][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:49.196][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:49.610][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:50.033][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:48:50.443][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,803,144,33]] 
+[2026-10-28 09:49:00.949] 回响秘剂数量达标
+[2026-10-28 09:49:07.423][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,789,144,40]] 
+[2026-10-28 09:49:07.423][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,789,144,40]] 
+[2026-10-28 09:49:07.423][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,789,144,40]] 
+[2026-10-28 09:49:07.423][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,789,144,40]] 
+[2026-10-28 09:49:07.423][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,789,144,40]] 
+[2026-10-28 09:49:07.423][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,789,144,40]] 
+[2026-10-28 09:49:07.903][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,789,144,40]] 
+[2026-10-28 09:49:07.903][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,789,144,40]] 
+[2026-10-28 09:49:07.903][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,789,144,40]] 
+[2026-10-28 09:49:07.903][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,789,144,40]] 
+[2026-10-28 09:49:07.903][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,789,144,40]] 
+[2026-10-28 09:49:07.903][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,789,144,40]] 
+[2026-10-28 09:49:08.382][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,789,144,40]] 
+[2026-10-28 09:49:08.382][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,789,144,40]] 
+[2026-10-28 09:49:08.382][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,789,144,40]] 
+[2026-10-28 09:49:08.382][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,789,144,40]] 
+[2026-10-28 09:49:08.382][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,789,144,40]] 
+[2026-10-28 09:49:08.382][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,789,144,40]] 
+[2026-10-28 09:49:08.845][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,789,144,40]] 
+[2026-10-28 09:49:08.845][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,789,144,40]] 
+[2026-10-28 09:49:08.845][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,789,144,40]] 
+[2026-10-28 09:49:08.845][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,789,144,40]] 
+[2026-10-28 09:49:08.845][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,789,144,40]] 
+[2026-10-28 09:49:08.845][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,789,144,40]] 
+[2026-10-28 09:49:09.312][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[67,789,144,40]] 
+[2026-10-28 09:49:09.312][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[220,789,144,40]] 
+[2026-10-28 09:49:09.312][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[374,789,144,40]] 
+[2026-10-28 09:49:09.312][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[527,789,144,40]] 
+[2026-10-28 09:49:09.312][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[681,789,144,40]] 
+[2026-10-28 09:49:09.312][ERR][Px7388][Tx56336][Vision/VisionUtils.hpp][L349][MaaNS::VisionNS::correct_roi] roi is out of range [image.size()=[1280,720]] [res=[835,789,144,40]] 
+[2026-10-28 09:49:19.040] 新锐武陵探物器数量达标
+[2026-10-28 09:49:24.203] 新锐武陵罗盘数量达标
+[2026-10-28 09:49:50.430] 任务完成: 🏪购买稳定物资
+[2026-10-28 09:49:50.534] 任务开始: 🗡️选剑演武
+[2026-10-28 09:50:55.275] 选剑演武
+[2026-10-28 09:50:55.275] 手牌 5
+[2026-10-28 09:50:55.275] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:50:55.275] 演算3 翻倍2 放弃3 未翻倍
+[2026-10-28 09:50:55.275] 抽牌决策 → 抽牌
+[2026-10-28 09:50:56.528] 选剑演武
+[2026-10-28 09:50:56.528] 手牌 1,5
+[2026-10-28 09:50:56.528] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:50:56.528] 演算3 翻倍2 放弃3 未翻倍
+[2026-10-28 09:50:56.528] 抽牌决策 → 选择翻倍
+[2026-10-28 09:50:57.765] 选剑演武
+[2026-10-28 09:50:57.765] 手牌 1,5
+[2026-10-28 09:50:57.765] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:50:57.765] 演算3 翻倍2 放弃3 已翻倍
+[2026-10-28 09:50:57.765] 抽牌决策 → 抽牌
+[2026-10-28 09:51:00.463] 选剑演武
+[2026-10-28 09:51:00.463] 手牌 1,5,5
+[2026-10-28 09:51:00.463] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:51:00.463] 演算3 翻倍2 放弃3 已翻倍
+[2026-10-28 09:51:00.463] 抽牌决策 → 放弃本局
+[2026-10-28 09:51:06.790] 选剑演武
+[2026-10-28 09:51:06.790] 手牌 3
+[2026-10-28 09:51:06.790] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:51:06.790] 演算3 翻倍2 放弃2 未翻倍
+[2026-10-28 09:51:06.790] 抽牌决策 → 抽牌
+[2026-10-28 09:51:08.054] 选剑演武
+[2026-10-28 09:51:08.054] 手牌 2,3
+[2026-10-28 09:51:08.054] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:51:08.054] 演算3 翻倍2 放弃2 未翻倍
+[2026-10-28 09:51:08.054] 抽牌决策 → 选择翻倍
+[2026-10-28 09:51:09.247] 选剑演武
+[2026-10-28 09:51:09.247] 手牌 2,3
+[2026-10-28 09:51:09.247] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:51:09.247] 演算3 翻倍2 放弃2 已翻倍
+[2026-10-28 09:51:09.247] 抽牌决策 → 抽牌
+[2026-10-28 09:51:11.971] 选剑演武
+[2026-10-28 09:51:11.971] 手牌 2,3,3
+[2026-10-28 09:51:11.971] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:51:11.971] 演算3 翻倍2 放弃2 已翻倍
+[2026-10-28 09:51:11.971] 抽牌决策 → 抽牌
+[2026-10-28 09:51:13.228] 选剑演武
+[2026-10-28 09:51:13.228] 手牌 2,2,3,3
+[2026-10-28 09:51:13.228] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:51:13.228] 演算3 翻倍2 放弃2 已翻倍
+[2026-10-28 09:51:13.228] 抽牌决策 → 开始演算
+[2026-10-28 09:51:21.523] 进入战斗场景
+[2026-10-28 09:51:21.825] 共 4 名干员参战
+[2026-10-28 09:51:21.951] 开始战斗，尝试锁定目标
+[2026-10-28 09:51:35.437] 找不到敌人，尝试锁定目标
+[2026-10-28 09:51:38.461] 长时间找不到敌人，前进
+[2026-10-28 09:51:43.262] 退出战斗场景
+[2026-10-28 09:51:47.523] 获得以下物品：
+[2026-10-28 09:51:47.523] 武陵调度券 ×320000
+[2026-10-28 09:51:50.981] 选剑演武
+[2026-10-28 09:51:50.981] 手牌 2
+[2026-10-28 09:51:50.981] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:51:50.981] 演算2 翻倍1 放弃2 未翻倍
+[2026-10-28 09:51:50.981] 抽牌决策 → 抽牌
+[2026-10-28 09:51:52.225] 选剑演武
+[2026-10-28 09:51:52.225] 手牌 2,2
+[2026-10-28 09:51:52.225] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:51:52.225] 演算2 翻倍1 放弃2 未翻倍
+[2026-10-28 09:51:52.225] 抽牌决策 → 选择翻倍
+[2026-10-28 09:51:53.454] 选剑演武
+[2026-10-28 09:51:53.454] 手牌 2,2
+[2026-10-28 09:51:53.454] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:51:53.454] 演算2 翻倍1 放弃2 已翻倍
+[2026-10-28 09:51:53.454] 抽牌决策 → 抽牌
+[2026-10-28 09:51:56.261] 选剑演武
+[2026-10-28 09:51:56.261] 手牌 2,2,3
+[2026-10-28 09:51:56.261] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:51:56.261] 演算2 翻倍1 放弃2 已翻倍
+[2026-10-28 09:51:56.261] 抽牌决策 → 抽牌
+[2026-10-28 09:51:57.652] 选剑演武
+[2026-10-28 09:51:57.652] 手牌 2,2,3,5
+[2026-10-28 09:51:57.652] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:51:57.652] 演算2 翻倍1 放弃2 已翻倍
+[2026-10-28 09:51:57.652] 抽牌决策 → 放弃本局
+[2026-10-28 09:52:28.197] 选剑演武
+[2026-10-28 09:52:28.197] 手牌 5
+[2026-10-28 09:52:28.197] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:52:28.197] 演算2 翻倍1 放弃1 未翻倍
+[2026-10-28 09:52:28.197] 抽牌决策 → 抽牌
+[2026-10-28 09:52:29.463] 选剑演武
+[2026-10-28 09:52:29.463] 手牌 1,5
+[2026-10-28 09:52:29.463] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:52:29.463] 演算2 翻倍1 放弃1 未翻倍
+[2026-10-28 09:52:29.463] 抽牌决策 → 选择翻倍
+[2026-10-28 09:52:30.635] 选剑演武
+[2026-10-28 09:52:30.635] 手牌 1,5
+[2026-10-28 09:52:30.635] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:52:30.635] 演算2 翻倍1 放弃1 已翻倍
+[2026-10-28 09:52:30.635] 抽牌决策 → 抽牌
+[2026-10-28 09:52:33.383] 选剑演武
+[2026-10-28 09:52:33.383] 手牌 1,3,5
+[2026-10-28 09:52:33.383] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:52:33.383] 演算2 翻倍1 放弃1 已翻倍
+[2026-10-28 09:52:33.383] 抽牌决策 → 开始演算
+[2026-10-28 09:52:40.740] 进入战斗场景
+[2026-10-28 09:52:41.017] 共 4 名干员参战
+[2026-10-28 09:52:41.149] 开始战斗，尝试锁定目标
+[2026-10-28 09:52:52.467] 找不到敌人，尝试锁定目标
+[2026-10-28 09:52:55.159] 长时间找不到敌人，前进
+[2026-10-28 09:52:57.034] 退出战斗场景
+[2026-10-28 09:53:01.133] 获得以下物品：
+[2026-10-28 09:53:01.133] 武陵调度券 ×200000
+[2026-10-28 09:53:04.751] 选剑演武
+[2026-10-28 09:53:04.751] 手牌 4
+[2026-10-28 09:53:04.751] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:53:04.751] 演算1 翻倍0 放弃1 未翻倍
+[2026-10-28 09:53:04.751] 抽牌决策 → 抽牌
+[2026-10-28 09:53:06.077] 选剑演武
+[2026-10-28 09:53:06.077] 手牌 4,4
+[2026-10-28 09:53:06.077] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:53:06.077] 演算1 翻倍0 放弃1 未翻倍
+[2026-10-28 09:53:06.077] 抽牌决策 → 抽牌
+[2026-10-28 09:53:08.226] 选剑演武
+[2026-10-28 09:53:08.226] 手牌 3,4,4
+[2026-10-28 09:53:08.226] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:53:08.226] 演算1 翻倍0 放弃1 未翻倍
+[2026-10-28 09:53:08.226] 抽牌决策 → 放弃本局
+[2026-10-28 09:53:36.731] 选剑演武
+[2026-10-28 09:53:36.731] 手牌 2
+[2026-10-28 09:53:36.731] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:53:36.731] 演算1 翻倍0 放弃0 未翻倍
+[2026-10-28 09:53:36.731] 抽牌决策 → 抽牌
+[2026-10-28 09:53:38.074] 选剑演武
+[2026-10-28 09:53:38.074] 手牌 2,2
+[2026-10-28 09:53:38.074] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:53:38.074] 演算1 翻倍0 放弃0 未翻倍
+[2026-10-28 09:53:38.074] 抽牌决策 → 抽牌
+[2026-10-28 09:53:40.239] 选剑演武
+[2026-10-28 09:53:40.239] 手牌 2,2,5
+[2026-10-28 09:53:40.239] 牌库 1:6 2:6 3:9 4:4 5:3
+[2026-10-28 09:53:40.239] 演算1 翻倍0 放弃0 未翻倍
+[2026-10-28 09:53:40.239] 抽牌决策 → 开始演算
+[2026-10-28 09:53:46.406] 进入战斗场景
+[2026-10-28 09:53:46.713] 共 4 名干员参战
+[2026-10-28 09:53:46.871] 开始战斗，尝试锁定目标
+[2026-10-28 09:54:03.157] 找不到敌人，尝试锁定目标
+[2026-10-28 09:54:05.734] 退出战斗场景
+[2026-10-28 09:54:09.798] 获得以下物品：
+[2026-10-28 09:54:09.798] 武陵调度券 ×100000
+[2026-10-28 09:54:11.824] 任务完成: 🗡️选剑演武
+[2026-10-28 09:54:11.959] 任务开始: 分解武器基质
+[2026-10-28 09:54:25.301] 武器基质未高于阈值，返回大世界
+[2026-10-28 09:54:30.410] 任务完成: 分解武器基质
+[2026-10-28 09:54:30.516] 任务开始: 🎱基质刷取
+[2026-10-28 09:54:30.622] ▶️**准备开始本次基质刷取**
+[2026-10-28 09:54:30.682] 📌目标地点：供能高地
+[2026-10-28 09:54:30.790] 🧠正在判断当前状态
+[2026-10-28 09:54:30.895] ✈️准备传送到最近锚点
+[2026-10-28 09:55:09.684] 🚶正在前往激发点附近
+[2026-10-28 09:55:50.581] 🚶正在前往激发点
+[2026-10-28 09:55:53.171] 识别到交互提示
+[2026-10-28 09:55:54.836] 🧠正在判断当前状态
+[2026-10-28 09:55:55.189] 👆点击激发按钮
+[2026-10-28 09:55:57.750] 当前理智 236/360
+[2026-10-28 09:55:59.145] 👆点击开启挑战按钮
+[2026-10-28 09:56:01.300] 👷无视预刻写警告，继续刷取
+[2026-10-28 09:56:02.801] ⚔️正在通过自动战斗挑战
+[2026-10-28 09:56:03.803] ⚔️正在通过自动战斗挑战
+[2026-10-28 09:56:03.922] 进入战斗场景
+[2026-10-28 09:56:04.178] 共 4 名干员参战
+[2026-10-28 09:56:04.312] 开始战斗，尝试锁定目标
+[2026-10-28 09:56:12.193] 找不到敌人，尝试锁定目标
+[2026-10-28 09:56:16.089] 找不到敌人，尝试锁定目标
+[2026-10-28 09:56:19.067] 长时间找不到敌人，后退
+[2026-10-28 09:56:36.468] 找不到敌人，尝试锁定目标
+[2026-10-28 09:56:41.156] 敌人正在蓄力
+[2026-10-28 09:56:52.170] 找不到敌人，尝试锁定目标
+[2026-10-28 09:56:55.144] 长时间找不到敌人，前进
+[2026-10-28 09:57:07.808] 找不到敌人，尝试锁定目标
+[2026-10-28 09:57:19.475] 找不到敌人，尝试锁定目标
+[2026-10-28 09:57:19.744] 退出战斗场景
+[2026-10-28 09:57:22.818] 🔍检查挑战是否结束
+[2026-10-28 09:57:22.947] 👌识别到挑战结束
+[2026-10-28 09:57:23.215] 🚶正在前往激发点附近
+[2026-10-28 09:57:34.044] 🚶正在前往激发点
+[2026-10-28 09:57:37.193] 识别到交互提示
+[2026-10-28 09:57:38.860] 🧠正在判断当前状态
+[2026-10-28 09:57:39.046][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 09:57:41.783] 👆点击领取奖励按钮
+[2026-10-28 09:57:45.081] 👆点击单倍领取按钮
+[2026-10-28 09:57:45.622] 👆点击双倍领取按钮
+[2026-10-28 09:57:46.200] 👆点击确认领取按钮
+[2026-10-28 09:57:52.021] 识别到基质，开始筛选并锁定有用的
+[2026-10-28 09:57:52.984] 未能从界面识别游戏语言，已回退为简体中文；请确认在基质库存页或战利品界面
+[2026-10-28 09:57:53.152] 武器数据加载完成
+[2026-10-28 09:57:53.287] 已选择稀有度：6
+[2026-10-28 09:57:53.370] 已选择基质类型：无瑕基质
+[2026-10-28 09:57:53.504] 符合条件的武器数量：48
+[2026-10-28 09:57:53.588] 宏愿聚合工业四二式·肃阵
+[2026-10-28 09:57:53.588] 雾中微光镀红祝福热熔切割器
+[2026-10-28 09:57:53.588] 赫拉芬格玉中身孤舟
+[2026-10-28 09:57:53.588] 领航者白夜新星遥望
+[2026-10-28 09:57:53.588] 昔日精品赤缨显赫声名
+[2026-10-28 09:57:53.588] 典范悠久传承灯火使命
+[2026-10-28 09:57:53.588] 艺术暴君唤月遗忘
+[2026-10-28 09:57:53.588] 骁勇光荣记忆狼之绯
+[2026-10-28 09:57:53.588] 大雷斑曜夜的首演黯色火炬
+[2026-10-28 09:57:53.588] 负山望乡破碎君王
+[2026-10-28 09:57:53.588] 同类相食熔铸火焰不知归
+[2026-10-28 09:57:53.588] 黄金时代幻想苦痛爆破单元
+[2026-10-28 09:57:53.588] 联结点寒夜幽影楔子
+[2026-10-28 09:57:53.588] 作品：蚀迹扶摇宏愿
+[2026-10-28 09:57:53.588] 骑士精神使命必达苦难的尽头
+[2026-10-28 09:57:53.588] J.E.T.沧溟星梦落草
+[2026-10-28 09:57:53.749] 目标技能列表：
+[2026-10-28 09:57:53.749] 词条 1:
+[2026-10-28 09:57:53.749] 
+[2026-10-28 09:57:53.749] 主能力力量意志
+[2026-10-28 09:57:53.749] 敏捷智识
+[2026-10-28 09:57:53.749] 词条 2:
+[2026-10-28 09:57:53.749] 
+[2026-10-28 09:57:53.749] 寒冷攻击暴击率
+[2026-10-28 09:57:53.749] 治疗法术源石技艺强度
+[2026-10-28 09:57:53.749] 灼热物理生命
+[2026-10-28 09:57:53.749] 电磁终结技充能自然
+[2026-10-28 09:57:53.749] 词条 3:
+[2026-10-28 09:57:53.749] 
+[2026-10-28 09:57:53.749] 切骨医疗压制
+[2026-10-28 09:57:53.749] 夜幕巧技强攻
+[2026-10-28 09:57:53.749] 效益残暴流转
+[2026-10-28 09:57:53.749] 粉碎迸发追袭
+[2026-10-28 09:57:53.749] 附术
+[2026-10-28 09:57:53.871] 当前数据日期：2026-10-24 16:04:15 UTC（如已更新请留意）
+[2026-10-28 09:57:53.949] 初始化完成
+[2026-10-28 09:57:54.723] 基质未锁定
+[2026-10-28 09:57:55.516] 是无瑕基质
+[2026-10-28 09:57:56.384] OCR到技能：敏捷提升(+2) | 自然伤害提升(+1) | 切骨(+1)
+[2026-10-28 09:57:56.540] 未匹配到目标技能组合，跳过该物品
+[2026-10-28 09:57:57.996] 基质未锁定
+[2026-10-28 09:57:58.888] 是无瑕基质
+[2026-10-28 09:57:59.826] OCR到技能：意志提升(+1) | 自然伤害提升(+1) | 切骨(+1)
+[2026-10-28 09:57:59.974] 未匹配到目标技能组合，跳过该物品
+[2026-10-28 09:58:01.392] 基质未锁定
+[2026-10-28 09:58:02.162] 是无瑕基质
+[2026-10-28 09:58:03.035] OCR到技能：主能力提升(+1) | 意志提升(+1) | 残暴(+1)
+[2026-10-28 09:58:03.174] 未匹配到目标技能组合，跳过该物品
+[2026-10-28 09:58:04.585] 基质未锁定
+[2026-10-28 09:58:05.350] 是无瑕基质
+[2026-10-28 09:58:06.151] OCR到技能：意志提升(+1) | 攻击提升(+1) | 残暴(+1)
+[2026-10-28 09:58:06.292] 未匹配到目标技能组合，跳过该物品
+[2026-10-28 09:58:07.712] 基质未锁定
+[2026-10-28 09:58:08.489] 是无瑕基质
+[2026-10-28 09:58:09.331] OCR到技能：自然伤害提升(+3) | 暴击率提升(+1) | 治疗效率提升(+1)
+[2026-10-28 09:58:09.462] 未匹配到目标技能组合，跳过该物品
+[2026-10-28 09:58:10.930] 基质未锁定
+[2026-10-28 09:58:11.690] 是无瑕基质
+[2026-10-28 09:58:12.489] OCR到技能：力量提升(+3) | 残暴(+1) | 追袭(+1)
+[2026-10-28 09:58:12.633] 未匹配到目标技能组合，跳过该物品
+[2026-10-28 09:58:14.075] 基质未锁定
+[2026-10-28 09:58:15.028] 是高纯基质
+[2026-10-28 09:58:16.597] 基质未锁定
+[2026-10-28 09:58:17.500] 是高纯基质
+[2026-10-28 09:58:19.062] 基质未锁定
+[2026-10-28 09:58:19.942] 是高纯基质
+[2026-10-28 09:58:21.507] 基质未锁定
+[2026-10-28 09:58:22.372] 是高纯基质
+[2026-10-28 09:58:24.528] ✅已完成一次基质刷取
+[2026-10-28 09:58:24.747] ▶️**准备开始本次基质刷取**
+[2026-10-28 09:58:24.895] 🧠正在判断当前状态
+[2026-10-28 09:58:25.127] 👆点击激发按钮
+[2026-10-28 09:58:27.688] 当前理智 76/360
+[2026-10-28 09:58:29.078] 👆点击开启挑战按钮
+[2026-10-28 09:58:31.187] 👷无视预刻写警告，继续刷取
+[2026-10-28 09:58:38.852] 补充理智
+[2026-10-28 09:58:46.162] 👆点击开启挑战按钮
+[2026-10-28 09:58:48.254] 👷无视预刻写警告，继续刷取
+[2026-10-28 09:58:49.748] ⚔️正在通过自动战斗挑战
+[2026-10-28 09:58:49.909] 进入战斗场景
+[2026-10-28 09:58:50.176] 共 4 名干员参战
+[2026-10-28 09:58:50.296] 开始战斗，尝试锁定目标
+[2026-10-28 09:58:53.262] 找不到敌人，尝试锁定目标
+[2026-10-28 09:59:03.822] 找不到敌人，尝试锁定目标
+[2026-10-28 09:59:06.837] 长时间找不到敌人，前进
+[2026-10-28 09:59:15.448] 找不到敌人，尝试锁定目标
+[2026-10-28 09:59:30.105] 敌人正在蓄力
+[2026-10-28 09:59:40.198] 找不到敌人，尝试锁定目标
+[2026-10-28 09:59:43.195] 长时间找不到敌人，前进
+[2026-10-28 09:59:54.295] 找不到敌人，尝试锁定目标
+[2026-10-28 10:00:01.156] 找不到敌人，尝试锁定目标
+[2026-10-28 10:00:04.179] 长时间找不到敌人，前进
+[2026-10-28 10:00:05.612] 退出战斗场景
+[2026-10-28 10:00:08.686] 🔍检查挑战是否结束
+[2026-10-28 10:00:08.809] 👌识别到挑战结束
+[2026-10-28 10:00:09.081] 🚶正在前往激发点附近
+[2026-10-28 10:00:21.520] 🚶正在前往激发点
+[2026-10-28 10:00:24.387] 识别到交互提示
+[2026-10-28 10:00:26.046] 🧠正在判断当前状态
+[2026-10-28 10:00:26.196][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:00:28.887] 👆点击领取奖励按钮
+[2026-10-28 10:00:31.089] 👆点击单倍领取按钮
+[2026-10-28 10:00:31.619] 👆点击双倍领取按钮
+[2026-10-28 10:00:32.171] 👆点击确认领取按钮
+[2026-10-28 10:00:36.559] ✖️关闭体力不足弹窗
+[2026-10-28 10:00:40.916] 补充理智
+[2026-10-28 10:00:46.480] 👆点击确认领取按钮
+[2026-10-28 10:00:49.869] ✖️关闭体力不足弹窗
+[2026-10-28 10:00:59.353] 识别到基质，开始筛选并锁定有用的
+[2026-10-28 10:00:59.765] 初始化完成
+[2026-10-28 10:01:00.833] 基质未锁定
+[2026-10-28 10:01:01.616] 是无瑕基质
+[2026-10-28 10:01:02.400] OCR到技能：智识提升(+1) | 源石技艺提升(+1) | 附术(+1)
+[2026-10-28 10:01:02.541] 未匹配到目标技能组合，跳过该物品
+[2026-10-28 10:01:03.982] 基质未锁定
+[2026-10-28 10:01:04.782] 是无瑕基质
+[2026-10-28 10:01:05.542] OCR到技能：力量提升(+1) | 源石技艺提升(+1) | 附术(+1)
+[2026-10-28 10:01:05.683] 未匹配到目标技能组合，跳过该物品
+[2026-10-28 10:01:07.106] 基质未锁定
+[2026-10-28 10:01:07.924] 是无瑕基质
+[2026-10-28 10:01:08.734] OCR到技能：智识提升(+1) | 生命提升(+1) | 昂扬(+1)
+[2026-10-28 10:01:08.868] 未匹配到目标技能组合，跳过该物品
+[2026-10-28 10:01:10.287] 基质未锁定
+[2026-10-28 10:01:11.187] 是高纯基质
+[2026-10-28 10:01:12.758] 基质未锁定
+[2026-10-28 10:01:13.670] 是高纯基质
+[2026-10-28 10:01:15.848] ✅已完成一次基质刷取
+[2026-10-28 10:01:16.070] ▶️**准备开始本次基质刷取**
+[2026-10-28 10:01:16.195] 🧠正在判断当前状态
+[2026-10-28 10:01:16.437] 👆点击激发按钮
+[2026-10-28 10:01:19.019] 当前理智 77/360
+[2026-10-28 10:01:20.433] 👆点击开启挑战按钮
+[2026-10-28 10:01:22.473] 👷无视预刻写警告，继续刷取
+[2026-10-28 10:01:28.511] 😴**体力不足，任务结束**
+[2026-10-28 10:01:28.511] 如需继续刷取，请补充足够的体力值~
+[2026-10-28 10:01:28.657] 任务完成: 🎱基质刷取
+[2026-10-28 10:01:28.721] 任务开始: 🧺自动采集
+[2026-10-28 10:01:28.834] 现在游戏时间是周三，根据执行周期跳过任务
+[2026-10-28 10:01:28.905] 任务完成: 🧺自动采集
+[2026-10-28 10:01:29.015] 任务开始: 📅日常奖励领取
+[2026-10-28 10:01:29.083] 开始领取邮件奖励
+[2026-10-28 10:01:34.474] 尝试打开邮件
+[2026-10-28 10:01:36.246] 已进入邮件界面
+[2026-10-28 10:01:36.823] 收取暂存区物资
+[2026-10-28 10:01:40.850] 暂无邮件奖励
+[2026-10-28 10:01:41.716] 开始领取每日任务奖励
+[2026-10-28 10:02:01.602] 获得以下物品：
+[2026-10-28 10:02:01.602] 协议棱柱 ×5
+[2026-10-28 10:02:01.602] 嵌晶玉 ×200
+[2026-10-28 10:02:01.602] 应急理智加强剂 ×1
+[2026-10-28 10:02:01.602] 折金票 ×9000
+[2026-10-28 10:02:01.602] 武器检查套组 ×2
+[2026-10-28 10:02:01.602] 行动资历 ×1150
+[2026-10-28 10:02:01.602] 通行证经验 ×2000
+[2026-10-28 10:02:01.602] 高级作战记录 ×1
+[2026-10-28 10:02:11.054] 开始领取「我转交的委托」奖励
+[2026-10-28 10:02:33.306] 获得以下物品：
+[2026-10-28 10:02:33.306] 武陵调度券 ×283000
+[2026-10-28 10:02:33.306] 谷地调度券 ×747000
+[2026-10-28 10:02:36.856] 领取「我转交的委托」奖励完成
+[2026-10-28 10:02:37.082] 开始领取通行证奖励
+[2026-10-28 10:02:54.105] 获得以下物品：
+[2026-10-28 10:02:54.105] 折金票 ×150000
+[2026-10-28 10:02:55.987] 开始领取活动奖励
+[2026-10-28 10:03:10.026][ERR][Px7388][Tx56336][PipelineTask.cpp][L292][MaaNS::TaskNS::PipelineTask::recognize_list] get_pipeline_data failed, node not exist [node={"anchor":true,"jump_back":true,"name":"MouseMoveResetAnchor"}] 
+[2026-10-28 10:03:13.039][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.055][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.074][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.090][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.111][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.129][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.145][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.165][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.187][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.210][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.229][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.250][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.269][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.287][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.305][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.323][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.342][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.361][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.379][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.400][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.420][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.438][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.458][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.475][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.494][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.514][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:13.535][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:14.892] 跳过未支持的活动
+[2026-10-28 10:03:16.294] 跳过未支持的活动
+[2026-10-28 10:03:17.052][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.067][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.085][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.102][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.121][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.138][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.158][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.175][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.196][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.212][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.230][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.248][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.268][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.285][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.303][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.321][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.341][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.359][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.379][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.400][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.420][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.437][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.456][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.475][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.493][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.510][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.529][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.546][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.563][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.583][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.601][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:17.618][ERR][Px7388][Tx56336][RuntimeCache.cpp][L66][MaaNS::RuntimeCache::set_reco_detail] uid is invalid 
+[2026-10-28 10:03:24.870] 获得以下物品：
+[2026-10-28 10:03:24.870] 协议棱柱组 ×8
+[2026-10-28 10:03:24.870] 嵌晶玉 ×350
+[2026-10-28 10:03:24.870] 武器检查套组 ×8
+[2026-10-28 10:03:24.870] 高级作战记录 ×8
+[2026-10-28 10:03:28.940] 领取活动奖励结束
+[2026-10-28 10:03:29.364] 任务完成: 📅日常奖励领取
+[2026-10-28 10:03:29.480] 任务开始: ❌关闭游戏（PC）
+[2026-10-28 10:03:31.170] 任务完成: ❌关闭游戏（PC）

@@ -11,6 +11,14 @@ The JSON says which script ran and whether it succeeded:
 The filename is the start time (UTC+4, see AUTOMAS_NAME_TZ); the times inside
 the log are preferred when there are any (_log_span).
 
+From v5.8.0-beta.2 (the machine updated itself 2026-10-28 08:47) AUTO-MAS writes
+no JSON: each run is a row of data/history.db `records` (id, time with its +04:00
+offset, username, script_name, status, message, data, log_path) and its log is
+history/<YYYY-MM-DD>/<id>/0.log; the old dated folders were removed. scan() reads
+both layouts (_db_rows / parse_db_record): reading only the JSON one, the relay
+booked nothing of that morning's three runs and pushed 「早班 没有运行」 at 10:04,
+the minute the scripts stopped (ledger #120).
+
 This module walks the history directory, works out which program a record
 belongs to, judges success or failure, and hands the log to that game's parser
 (features/verify: collector_maa / collector_maaend / collector_okww). The
@@ -21,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -51,6 +60,7 @@ __all__ = [
     "parse_maa_log",
     "parse_maaend_log",
     "parse_okww_log",
+    "parse_db_record",
     "parse_record",
     "refresh_raw",
     "scan",
@@ -263,6 +273,13 @@ def parse_record(json_path: Path, history_root: Path,
     if got is None:
         return None
     raw, date_str, user, stem, started, finished = got
+    return _build_record(raw, json_path, history_root, maaend_dir, date_str, user, stem, started, finished)
+
+
+def _build_record(raw: dict, json_path: Path, history_root: Path, maaend_dir: Path | None,
+                  date_str: str, user: str, stem: str, started, finished) -> RunRecord | None:
+    """Judge one record and read its log; shared by the JSON layout (parse_record) and the
+    history.db one (parse_db_record). The log is `json_path` with a .log suffix in both."""
     judged = _judge_result(raw, json_path, stem)
     if judged is None:
         return None
@@ -369,6 +386,80 @@ def _automas_ended_maaend(history_root: Path, result_at) -> "datetime | None":
         if result_at <= at <= result_at + MAAEND_ENDED_WITHIN:
             return at
     return None
+
+# AUTO-MAS v5.8.0-beta.2 history.db: script_name -> the result key _judge_result reads.
+# OK-WW is a 通用脚本 there, under general_result with the script named by the stem prefix.
+_DB_RESULT_KEY = {"MAA": "maa_result", "MaaEnd": "maaend_result"}
+_db_said: set[str] = set()     # history.db read errors already logged in this process
+
+
+def _db_rows(history_root: Path) -> list[tuple]:
+    """The run rows of AUTO-MAS's data/history.db (v5.8.0-beta.2 on), oldest first; [] when
+    there is no such file (older AUTO-MAS) or it cannot be read this time."""
+    db = history_root.parent / "data" / "history.db"
+    if not db.exists():
+        return []
+    try:
+        con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True, timeout=5)
+        try:
+            return con.execute("SELECT id, time, date, username, script_name, message, data, log_path"
+                               " FROM records ORDER BY timestamp").fetchall()
+        finally:
+            con.close()
+    except sqlite3.Error as e:
+        # INFO, not WARNING (a WARNING is a group message): AUTO-MAS holding the file for
+        # a moment is read on the next scan, 30 s later at the latest.
+        if str(e) not in _db_said:
+            _db_said.add(str(e))
+            log.info("AUTO-MAS 的 history.db 这次读不了（%s），下一轮再读", e)
+        return []
+
+
+def _db_identity(row: tuple, history_root: Path):
+    """(raw, json_path, date, user, stem, started) of a history.db row; None when its time
+    does not parse. json_path is the row's 0.log with a .json suffix (no such file), so
+    _build_record and _judge_result find the log the way they do for the JSON layout; the
+    stem is "<script>-HH-MM-SS" on the UTC+4 clock, as the JSON layout's file name was, which
+    gives run_ids of the same shape (date/user/MAA-05-00-03)."""
+    rid, time_s, date_str, user, script_name, message, data, log_rel = row
+    try:
+        at = datetime.fromisoformat(str(time_s))
+    except ValueError:
+        return None
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=AUTOMAS_NAME_TZ)
+    try:
+        raw = json.loads(data or "{}")
+    except json.JSONDecodeError:
+        raw = {}
+    if not isinstance(raw, dict):
+        raw = {}
+    # history.db wraps each statistic as {"kind": "counter" | "snapshot", "value": v} where the JSON
+    # layout had v itself ("sanity": 2, "drop_statistics": {"1-7": {...}}); unwrapped here so the
+    # parsers read one shape.
+    raw = {k: v["value"] if isinstance(v, dict) and set(v) == {"kind", "value"} else v for k, v in raw.items()}
+    raw[_DB_RESULT_KEY.get(script_name, "general_result")] = message or ""
+    raw["automas_record_id"] = rid
+    stem = f"{script_name}-{at.astimezone(AUTOMAS_NAME_TZ):%H-%M-%S}"
+    log_path = history_root / (log_rel or f"{date_str}/{rid}/0.log")
+    return raw, log_path.with_suffix(".json"), str(date_str), str(user), stem, at.astimezone(SERVER_TZ)
+
+
+def parse_db_record(row: tuple, history_root: Path,
+                    maaend_dir: Path | None = None) -> RunRecord | None:
+    """Parse one history.db row (AUTO-MAS v5.8.0-beta.2 on). None if it is not a run record."""
+    got = _db_identity(row, history_root)
+    if got is None:
+        return None
+    raw, json_path, date_str, user, stem, started = got
+    try:
+        finished = datetime.fromtimestamp(json_path.with_suffix(".log").stat().st_mtime, tz=SERVER_TZ)
+    except OSError:
+        finished = started
+    if finished < started:
+        finished = started
+    return _build_record(raw, json_path, history_root, maaend_dir, date_str, user, stem, started, finished)
+
 
 def _record_identity(json_path: Path, history_root: Path):
     """Read the JSON and work out date / account / start time from the path
@@ -595,6 +686,15 @@ def scan(history_root: Path, seen: set[str], maaend_dir: Path | None = None) -> 
         except (ValueError, IndexError):
             pass
         rec = parse_record(path, history_root, maaend_dir)
+        if rec and rec.run_id not in seen:
+            out.append(rec)
+    # AUTO-MAS v5.8.0-beta.2 on: the rows of data/history.db. A row is written when its run
+    # ends, after its 0.log, so there is no half-written record to wait out here.
+    for row in _db_rows(history_root):
+        got = _db_identity(row, history_root)
+        if got is None or f"{got[2]}/{got[3]}/{got[4]}" in seen:
+            continue
+        rec = parse_db_record(row, history_root, maaend_dir)
         if rec and rec.run_id not in seen:
             out.append(rec)
     _say_unparsed()

@@ -1,0 +1,699 @@
+2026-10-28 09:21:08,069 INFO MainThread ok:ok-script init v3.7.12-beta.2, ['D:\\ark\\okww\\data\\apps\\ok-ww\\working\\main.py', '-t', '1', '-e'], pid=10384 config: {'debug': False, 'custom_tasks': True, 'gui': {'type': 'qt'}, 'config_folder': 'configs', 'blur_area': <function blur_area at 0x00000271FFF47600>, 'gui_icon': 'icons/icon.png', 'global_configs': [<ok.util.config.ConfigOption object at 0x00000271E55E3F50>, <ok.util.config.ConfigOption object at 0x00000271E55E3F80>, <ok.util.config.ConfigOption object at 0x00000271E7914620>, <ok.util.config.ConfigOption object at 0x00000271E79173B0>], 'custom_tabs': [['src.gui.CharacterCodeTab', 'CharacterCodeTab'], ['src.gui.MultiAccountConfigTab', 'MultiAccountConfigTab']], 'ocr': {'lib': 'onnxocr', 'auto_simplify': True, 'params': {'use_openvino': True, 'use_npu': True}}, 'plugin': True, 'my_app': ['src.globals', 'Globals'], 'start_timeout': 120, 'wait_until_settle_time': 0, 'template_matching': {'template_folder': 'assets\\templates', 'default_horizontal_variance': 0.002, 'default_vertical_variance': 0.002, 'default_threshold': 0.8, 'feature_processor': <function process_feature at 0x00000271E78BE0C0>, 'vcenter_features': ['monthly_card', 'skip_dialog_check'], 'hcenter_features': ['monthly_card', 'suisui_forte3', 'message_dialog', 'claim_stamina_sign', 'skip_dialog_check', 'skip_quest_confirm', 'skip_quest_confirm_new', 'login_close', 'garden_confirm', 'garden_continue_game', 'garden_unpause', 'garden_get_gold', 'garden_get_purple', 'garden_get_skip', 'garden_not_interested_confirm', 'garden_not_interested', 'a_garden_back', 'garden_get_confirm_gray', 'the_garden_max', 'garden_shop_close', 'garden_new_stage', 'a_garden_restart', 'suisui_forte2', 'e_forte', 'f_break_full']}, 'windows': {'top_hwnd_class': [re.compile('CAgreementDlg'), re.compile('CLoginDlg_P_'), 'CefBrowserWindow', 'Chrome_RenderWidgetHostHWND', '#32770', re.compile('CNativeLoginDlg'), 'Static', 'ComboBox', 'ComboLBox', 'Button'], 'calculate_pc_exe_path': <function calculate_pc_exe_path at 0x00000271FFF47560>, 'launch_arguments': <function get_game_launch_arguments at 0x00000271E78BF920>, 'exe': 'Client-Win64-Shipping.exe', 'hwnd_class': 'UnrealWindow', 'interaction': 'PostMessage', 'capture_method': ['WGC', 'WGC_HDR', 'BitBlt_RenderFull'], 'check_hdr': False, 'force_no_hdr': False, 'check_auto_hdr': True, 'check_night_light': True, 'force_no_night_light': False}, 'window_size': {'width': 1200, 'height': 800, 'min_width': 1200, 'min_height': 800}, 'supported_resolution': {'ratio': '16:9', 'resize_to': [(2560, 1440), (1920, 1080), (1600, 900), (1280, 720)], 'min_size': (1280, 720)}, 'links': {'default': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'download': 'https://ok-script.com/ok-ww', 'sponsor': 'https://patreon.com/ok_oldking', 'share': 'Download OK-WW from https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww/'}, 'zh_CN': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'sponsor': 'https://afdian.com/a/ok-oldking', 'share': '下载okww https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww', 'qq_group': 'https://qm.qq.com/q/jw2NltIEWA', 'qq_channel': 'https://pd.qq.com/s/djmm6l44y'}}, 'about': '\n    <p style="color:red;">\n    <strong>本软件是免费开源的。</strong> 如果你被收费，请立即退款。请访问QQ频道或GitHub下载最新的官方版本。\n    </p>\n    <p style="color:red;">\n        <strong>本软件仅供个人使用，用于学习Python编程、计算机视觉、UI自动化等。</strong> 请勿将其用于任何营利性或商业用途。\n    </p>\n    <p style="color:red;">\n        <strong>使用本软件可能会导致账号被封。</strong> 请在了解风险后再使用。\n    </p>\n', 'screenshots_folder': 'screenshots', 'gui_title': 'OK-WW', 'log_file': 'logs/ok-ww.log', 'error_log_file': 'logs/ok-ww_error.log', 'launcher_log_file': 'logs/launcher.log', 'launcher_error_log_file': 'logs/launcher_error.log', 'version': 'v3.7.12-beta.2', 'onetime_tasks': [['src.task.DailyTask', 'DailyTask'], ['src.task.FarmEchoTask', 'FarmEchoTask'], ['src.task.NightmareNestTask', 'NightmareNestTask'], ['src.task.TacetTask', 'TacetTask'], ['src.task.ForgeryTask', 'ForgeryTask'], ['src.task.SimulationTask', 'SimulationTask'], ['src.task.MultiAccountDailyTask', 'MultiAccountDailyTask'], ['src.task.MultiAccountConfigTask', 'MultiAccountConfigTask'], ['src.task.MergeEchoTask', 'MergeEchoTask'], ['src.task.EnhanceEchoTask', 'EnhanceEchoTask'], ['src.task.ChangeEchoTask', 'ChangeEchoTask'], ['src.task.GardenTask', 'GardenTask'], ['src.task.TacetEliminationTask', 'TacetEliminationTask']], 'trigger_tasks': [['src.task.AutoCombatTask', 'AutoCombatTask'], ['src.task.AutoPickTask', 'AutoPickTask'], ['src.task.AutoLoginTask', 'AutoLoginTask'], ['src.task.SkipDialogTask', 'AutoDialogTask'], ['src.task.FastTravelTask', 'FastTravelTask'], ['src.task.MouseResetTask', 'MouseResetTask']], 'scene': ['src.scene.WWScene', 'WWScene'], 'update_pyappify': {'to_version': '1.2.3', 'zip_url': 'https://github.com/ok-oldking/ok-wuthering-waves/releases/download/v3.5.30/ok-ww-win32.zip', 'sha256': '447207edbfb6944beb994347048e155df99775eb18c87dcae54dda125071c94a'}, 'profile': 'China'}
+2026-10-28 09:21:08,069 INFO MainThread ok:pyappify  app_version:v3.7.12-beta.2, app_profile:China, pyappify_version:1.2.3 pyappify_upgradeable:True, pyappify_executable:D:\ark\okww\ok-ww.exe
+2026-10-28 09:21:08,072 INFO MainThread capture:check available WINDOWS_BUILD_NUMBER:26300 >= 20348 True
+2026-10-28 09:21:08,120 INFO MainThread capture:check available WINDOWS_BUILD_NUMBER:26300 >= 20348 True
+2026-10-28 09:21:08,122 INFO MainThread ok:use_dml result is True
+2026-10-28 09:21:08,122 INFO MainThread ok:SetProcessDpiAwareness 0
+2026-10-28 09:21:08,124 INFO MainThread ok:do_init, config: {'debug': False, 'custom_tasks': True, 'gui': {'type': 'qt'}, 'config_folder': 'configs', 'blur_area': <function blur_area at 0x00000271FFF47600>, 'gui_icon': 'icons/icon.png', 'global_configs': [<ok.util.config.ConfigOption object at 0x00000271E55E3F50>, <ok.util.config.ConfigOption object at 0x00000271E55E3F80>, <ok.util.config.ConfigOption object at 0x00000271E7914620>, <ok.util.config.ConfigOption object at 0x00000271E79173B0>], 'custom_tabs': [['src.gui.CharacterCodeTab', 'CharacterCodeTab'], ['src.gui.MultiAccountConfigTab', 'MultiAccountConfigTab']], 'ocr': {'lib': 'onnxocr', 'auto_simplify': True, 'params': {'use_openvino': True, 'use_npu': True}}, 'plugin': True, 'my_app': ['src.globals', 'Globals'], 'start_timeout': 120, 'wait_until_settle_time': 0, 'template_matching': {'template_folder': 'assets\\templates', 'default_horizontal_variance': 0.002, 'default_vertical_variance': 0.002, 'default_threshold': 0.8, 'feature_processor': <function process_feature at 0x00000271E78BE0C0>, 'vcenter_features': ['monthly_card', 'skip_dialog_check'], 'hcenter_features': ['monthly_card', 'suisui_forte3', 'message_dialog', 'claim_stamina_sign', 'skip_dialog_check', 'skip_quest_confirm', 'skip_quest_confirm_new', 'login_close', 'garden_confirm', 'garden_continue_game', 'garden_unpause', 'garden_get_gold', 'garden_get_purple', 'garden_get_skip', 'garden_not_interested_confirm', 'garden_not_interested', 'a_garden_back', 'garden_get_confirm_gray', 'the_garden_max', 'garden_shop_close', 'garden_new_stage', 'a_garden_restart', 'suisui_forte2', 'e_forte', 'f_break_full']}, 'windows': {'top_hwnd_class': [re.compile('CAgreementDlg'), re.compile('CLoginDlg_P_'), 'CefBrowserWindow', 'Chrome_RenderWidgetHostHWND', '#32770', re.compile('CNativeLoginDlg'), 'Static', 'ComboBox', 'ComboLBox', 'Button'], 'calculate_pc_exe_path': <function calculate_pc_exe_path at 0x00000271FFF47560>, 'launch_arguments': <function get_game_launch_arguments at 0x00000271E78BF920>, 'exe': 'Client-Win64-Shipping.exe', 'hwnd_class': 'UnrealWindow', 'interaction': 'PostMessage', 'capture_method': ['WGC', 'WGC_HDR', 'BitBlt_RenderFull'], 'check_hdr': False, 'force_no_hdr': False, 'check_auto_hdr': True, 'check_night_light': True, 'force_no_night_light': False, 'start_exe': True, 'start_method': 'start'}, 'window_size': {'width': 1200, 'height': 800, 'min_width': 1200, 'min_height': 800}, 'supported_resolution': {'ratio': '16:9', 'resize_to': [(2560, 1440), (1920, 1080), (1600, 900), (1280, 720)], 'min_size': (1280, 720)}, 'links': {'default': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'download': 'https://ok-script.com/ok-ww', 'sponsor': 'https://patreon.com/ok_oldking', 'share': 'Download OK-WW from https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww/'}, 'zh_CN': {'github': 'https://github.com/ok-oldking/ok-wuthering-waves', 'discord': 'https://discord.gg/vVyCatEBgA', 'sponsor': 'https://afdian.com/a/ok-oldking', 'share': '下载okww https://ok-script.com/ok-ww', 'faq': 'https://ok-script.com/ok-ww', 'qq_group': 'https://qm.qq.com/q/jw2NltIEWA', 'qq_channel': 'https://pd.qq.com/s/djmm6l44y'}}, 'about': '\n    <p style="color:red;">\n    <strong>本软件是免费开源的。</strong> 如果你被收费，请立即退款。请访问QQ频道或GitHub下载最新的官方版本。\n    </p>\n    <p style="color:red;">\n        <strong>本软件仅供个人使用，用于学习Python编程、计算机视觉、UI自动化等。</strong> 请勿将其用于任何营利性或商业用途。\n    </p>\n    <p style="color:red;">\n        <strong>使用本软件可能会导致账号被封。</strong> 请在了解风险后再使用。\n    </p>\n', 'screenshots_folder': 'screenshots', 'gui_title': 'OK-WW', 'log_file': 'logs/ok-ww.log', 'error_log_file': 'logs/ok-ww_error.log', 'launcher_log_file': 'logs/launcher.log', 'launcher_error_log_file': 'logs/launcher_error.log', 'version': 'v3.7.12-beta.2', 'onetime_tasks': [['src.task.DailyTask', 'DailyTask'], ['src.task.FarmEchoTask', 'FarmEchoTask'], ['src.task.NightmareNestTask', 'NightmareNestTask'], ['src.task.TacetTask', 'TacetTask'], ['src.task.ForgeryTask', 'ForgeryTask'], ['src.task.SimulationTask', 'SimulationTask'], ['src.task.MultiAccountDailyTask', 'MultiAccountDailyTask'], ['src.task.MultiAccountConfigTask', 'MultiAccountConfigTask'], ['src.task.MergeEchoTask', 'MergeEchoTask'], ['src.task.EnhanceEchoTask', 'EnhanceEchoTask'], ['src.task.ChangeEchoTask', 'ChangeEchoTask'], ['src.task.GardenTask', 'GardenTask'], ['src.task.TacetEliminationTask', 'TacetEliminationTask']], 'trigger_tasks': [['src.task.AutoCombatTask', 'AutoCombatTask'], ['src.task.AutoPickTask', 'AutoPickTask'], ['src.task.AutoLoginTask', 'AutoLoginTask'], ['src.task.SkipDialogTask', 'AutoDialogTask'], ['src.task.FastTravelTask', 'FastTravelTask'], ['src.task.MouseResetTask', 'MouseResetTask']], 'scene': ['src.scene.WWScene', 'WWScene'], 'update_pyappify': {'to_version': '1.2.3', 'zip_url': 'https://github.com/ok-oldking/ok-wuthering-waves/releases/download/v3.5.30/ok-ww-win32.zip', 'sha256': '447207edbfb6944beb994347048e155df99775eb18c87dcae54dda125071c94a'}, 'profile': 'China'}
+2026-10-28 09:21:08,167 INFO MainThread DeviceManager:__init__ start
+2026-10-28 09:21:08,168 INFO MainThread hwnd_window:HwndWindow init title:None player_id:-1 exe_name:['Client-Win64-Shipping.exe'] hwnd_class:UnrealWindow top_hwnd_class:[re.compile('CAgreementDlg'), re.compile('CLoginDlg_P_'), 'CefBrowserWindow', 'Chrome_RenderWidgetHostHWND', '#32770', re.compile('CNativeLoginDlg'), 'Static', 'ComboBox', 'ComboLBox', 'Button']
+2026-10-28 09:21:08,172 INFO MainThread hwnd_window:do_update_window_size hwnd changed from 0 to 263712 top 263712 D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080
+2026-10-28 09:21:08,215 INFO MainThread hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-10-28 09:21:08,215 INFO MainThread DeviceManager:__init__ end
+2026-10-28 09:21:08,231 INFO MainThread TaskExecutor:install ocr translations error for en_US
+2026-10-28 09:21:08,232 INFO DefaultOCRInit TaskExecutor:start init default ocr
+2026-10-28 09:21:08,244 INFO screenshot screenshot:remove_old_files D:\ark\okww\data\apps\ok-ww\working\screenshots
+2026-10-28 09:21:08,449 INFO DefaultOCRInit TaskExecutor:init onnxocr {'use_openvino': True, 'use_npu': True}
+2026-10-28 09:21:08,450 INFO DefaultOCRInit TaskExecutor:use_openvino: True
+2026-10-28 09:21:08,450 INFO DefaultOCRInit TaskExecutor:use_npu: True
+2026-10-28 09:21:08,454 INFO DefaultOCRInit TaskExecutor:use_angle_cls: False
+2026-10-28 09:21:08,455 INFO DefaultOCRInit TaskExecutor:det_model_dir: D:\ark\okww\data\apps\ok-ww\python\Lib\site-packages\onnxocr\models\ppocrv5\det\det.onnx
+2026-10-28 09:21:08,455 INFO DefaultOCRInit TaskExecutor:rec_model_dir: D:\ark\okww\data\apps\ok-ww\python\Lib\site-packages\onnxocr\models\ppocrv5\rec\rec.onnx
+2026-10-28 09:21:08,455 INFO DefaultOCRInit TaskExecutor:rec_image_shape: 3, 48, 320
+2026-10-28 09:21:08,778 INFO MainThread app:translator install success <PySide6.QtCore.QLocale()/* Chinese, Simplified Han, China */ at 0x000002718AF02600>, 开发工具
+2026-10-28 09:21:08,779 INFO MainThread TaskExecutor:install ocr translations error for zh_CN
+2026-10-28 09:21:08,840 INFO DefaultOCRInit TaskExecutor:openvino cache_dir: D:\ark\okww\data\apps\ok-ww\working\cache\openvino
+2026-10-28 09:21:08,954 INFO MainThread task_manager:Found tasks: ['D:\\ark\\okww\\data\\apps\\ok-ww\\working\\ok_tasks\\ark_overrides.py']
+2026-10-28 09:21:09,011 INFO MainThread task_manager:Class 'ArkStopped' is not a subclass of BaseTask.
+2026-10-28 09:21:09,011 INFO MainThread task_manager:Class '_Marker' is not a subclass of BaseTask.
+2026-10-28 09:21:09,011 INFO MainThread task_manager:Class '_EarlyOpen' is not a subclass of BaseTask.
+2026-10-28 09:21:09,013 INFO MainThread ok:do_init, end
+2026-10-28 09:21:09,013 INFO MainThread ok:OK start id:2688202714544 pid:10384
+2026-10-28 09:21:09,142 INFO DefaultOCRInit TaskExecutor:openvino core.available_devices ['CPU', 'GPU']
+2026-10-28 09:21:09,178 INFO MainThread MainWindow:main window __init__
+2026-10-28 09:21:09,183 INFO MainThread MainWindow:Refresh primary button color: #00689b
+2026-10-28 09:21:09,944 INFO MainThread ok:translation installed for zh_CN
+2026-10-28 09:21:09,971 INFO DefaultOCRInit TaskExecutor:openvino async infer requests: 1
+2026-10-28 09:21:09,978 INFO DefaultOCRInit TaskExecutor:openvino cache_dir: D:\ark\okww\data\apps\ok-ww\working\cache\openvino
+2026-10-28 09:21:09,993 INFO DefaultOCRInit TaskExecutor:openvino core.available_devices ['CPU', 'GPU']
+2026-10-28 09:21:10,305 INFO DefaultOCRInit TaskExecutor:openvino async infer requests: 1
+2026-10-28 09:21:10,378 INFO DefaultOCRInit TaskExecutor:ocr_lib init <onnxocr.onnx_paddleocr.ONNXPaddleOcr object at 0x00000271879CF800> onnxocr
+2026-10-28 09:21:10,379 INFO DefaultOCRInit TaskExecutor:default ocr init end, cost: 2.15s
+2026-10-28 09:21:11,495 INFO MainThread Loaded 0 tasks from cache
+2026-10-28 09:21:11,496 INFO ScheduleRefresh schedule_index_sync:schedule index sync start: 13 onetime_tasks, root=\OK-WW
+2026-10-28 09:21:11,504 INFO ScheduleRefresh schedule_index_sync:schedule index sync skipped: cache is empty/invalid
+2026-10-28 09:21:11,505 INFO ScheduleRefresh Loaded 0 tasks from cache
+2026-10-28 09:21:11,528 INFO ScheduleRefresh Initializing Windows Task Scheduler COM service, root=\OK-WW
+2026-10-28 09:21:11,563 INFO ScheduleRefresh Windows Task Scheduler COM service initialized, root=\OK-WW
+2026-10-28 09:21:11,597 INFO ScheduleRefresh Saved 0 tasks to cache
+2026-10-28 09:21:12,463 INFO MainThread UpdateCard:initialized current_version='v3.7.12-beta.2', pyappify_module='D:\\ark\\okww\\data\\apps\\ok-ww\\working\\pyappify\\__init__.py', pyappify_app_version='v3.7.12-beta.2', test_mode=False
+2026-10-28 09:21:12,494 INFO MainThread pyappify_startup:get_startup_version_change from_version=v3.7.12-beta.1, to_version=v3.7.12-beta.2, is_updated=False, is_downgraded=False
+2026-10-28 09:21:12,745 INFO MainThread MainWindow:main window __init__ done
+2026-10-28 09:21:12,808 INFO MainThread ok:Attempting to minimize window for process with PID: 20672
+2026-10-28 09:21:12,818 INFO MainThread ok:pyappify no need to upgrade True 1.2.3 447207edbfb6944beb994347048e155df99775eb18c87dcae54dda125071c94a ['https://github.com/ok-oldking/ok-wuthering-waves/releases/download/v3.5.30/ok-ww-win32.zip']
+2026-10-28 09:21:12,818 INFO MainThread MainWindow:Window has fully displayed
+2026-10-28 09:21:12,818 INFO MainThread ok:start runtime with task param 0 True
+2026-10-28 09:21:12,818 INFO MainThread MainWindow:MainWindow showEvent Kill Launcher After Start
+2026-10-28 09:21:12,819 INFO ok.core.start_controller start_controller:enable param task <src.task.DailyTask.DailyTask object at 0x000002718AF1F0E0>
+2026-10-28 09:21:12,820 INFO PyAppifyShutdown ok:Attempting to terminate process with PID: 20672
+2026-10-28 09:21:12,820 INFO ok.core.start_controller start_controller:do_start: call do_refresh True
+2026-10-28 09:21:12,820 INFO MainThread pyappify_startup:get_startup_version_change from_version=v3.7.12-beta.1, to_version=v3.7.12-beta.2, is_updated=False, is_downgraded=False
+2026-10-28 09:21:12,821 INFO MainThread MainWindow:update success, show copyright
+2026-10-28 09:21:12,827 INFO MainThread MainWindow:schedule pyappify update check in 30000ms
+2026-10-28 09:21:12,844 INFO PyAppifyShutdown ok:_wait_for_process_exit success 20672
+2026-10-28 09:21:12,863 INFO ok.core.start_controller DeviceManager:update_pc_device pc_device: {'address': '', 'imei': 'pc_263712', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 263712, 'exe': ['Client-Win64-Shipping.exe']}
+2026-10-28 09:21:12,863 INFO MainThread ok:app.exec()
+2026-10-28 09:21:12,863 INFO ok.core.start_controller DeviceManager:first start use first or connected device {'address': '', 'imei': 'pc_263712', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 263712, 'exe': ['Client-Win64-Shipping.exe'], 'resolution': '1920x1080'}
+2026-10-28 09:21:12,864 INFO ok.core.start_controller DeviceManager:preferred device did change pc_263712
+2026-10-28 09:21:12,881 INFO ok.core.start_controller start_controller:start_device: {'address': '', 'imei': 'pc_263712', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 263712, 'exe': ['Client-Win64-Shipping.exe'], 'resolution': '1920x1080'}
+2026-10-28 09:21:12,882 INFO ok.core.start_controller start_controller:test check_device_error msg: 鸣潮   is not connected, please select the game window.
+2026-10-28 09:21:12,883 ERROR ok.core.start_controller start_controller:waiting for game to start error Selected capture method is not supported by the game or your system! 
+2026-10-28 09:21:12,887 INFO RefreshAdb hwnd_window:do_update_window_size hwnd changed from 0 to 263712 top 263712 D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080
+2026-10-28 09:21:12,894 INFO RefreshAdb hwnd_window:hwnd changed,connected:1
+2026-10-28 09:21:12,895 INFO RefreshAdb hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-10-28 09:21:12,896 INFO RefreshAdb capture:check available WINDOWS_BUILD_NUMBER:26300 >= 20348 True
+2026-10-28 09:21:12,896 INFO RefreshAdb windows_graphics:start_or_stop start WGC capture
+2026-10-28 09:21:13,047 INFO MainThread ScheduleTaskTab:Loaded 0 tasks
+2026-10-28 09:21:13,119 INFO RefreshAdb update:use WGC capture
+2026-10-28 09:21:13,119 INFO RefreshAdb DeviceManager:capture method <class 'ok.device.capture_methods.windows_graphics.WindowsGraphicsCaptureMethod'>
+2026-10-28 09:21:13,193 INFO MainThread pyappify_startup:get_startup_version_change from_version=v3.7.12-beta.1, to_version=v3.7.12-beta.2, is_updated=False, is_downgraded=False
+2026-10-28 09:21:13,802 INFO global MainWindow:Window geometry updated in ok_config {'window_x': 360, 'window_y': 116, 'window_width': 1200, 'window_height': 800, 'window_maximized': False, 'navigation_expanded': True, 'use_overlay': False}
+2026-10-28 09:21:14,886 INFO ok.core.start_controller DeviceManager:update_pc_device pc_device: {'address': '', 'imei': 'pc_263712', 'device': 'windows', 'model': '', 'nick': '鸣潮  ', 'width': 1920, 'height': 1080, 'hwnd': '鸣潮  ', 'capture': 'windows', 'connected': True, 'full_path': 'D:\\Wuthering Waves Game\\Client\\Binaries\\Win64\\Client-Win64-Shipping.exe', 'real_hwnd': 263712, 'exe': ['Client-Win64-Shipping.exe']}
+2026-10-28 09:21:14,887 INFO ok.core.start_controller hwnd_window:do_update_window_size hwnd changed from 0 to 263712 top 263712 D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe UnrealWindow real:0,0,1920,1080
+2026-10-28 09:21:14,889 INFO ok.core.start_controller hwnd_window:hwnd changed,connected:1
+2026-10-28 09:21:14,890 INFO ok.core.start_controller hwnd_window:do_update_window_size changed,visible:False,exists:1 x:0 y:0 window:1920x1080 self.window:1920x1080 real:1920x1080
+2026-10-28 09:21:14,890 INFO ok.core.start_controller capture:check available WINDOWS_BUILD_NUMBER:26300 >= 20348 True
+2026-10-28 09:21:14,903 INFO ok.core.start_controller update:use WGC capture
+2026-10-28 09:21:14,903 INFO ok.core.start_controller DeviceManager:capture method <class 'ok.device.capture_methods.windows_graphics.WindowsGraphicsCaptureMethod'>
+2026-10-28 09:21:14,904 INFO ok.core.start_controller start_controller:test check_device_error msg: 鸣潮   is not connected, please select the game window.
+2026-10-28 09:21:14,917 INFO ok.core.start_controller start_controller:check_device_error: capturing frame (1920, 1080)
+2026-10-28 09:21:14,917 INFO ok.core.start_controller start_controller:check_device_error: checking feature_set size
+2026-10-28 09:21:14,917 INFO ok.core.start_controller FeatureSet:FeatureSet: Width and height changed from 0x0 to 1920x1080
+2026-10-28 09:21:14,918 INFO ok.core.start_controller start_controller:check_device_error: checking resolution
+2026-10-28 09:21:14,918 INFO ok.core.start_controller TaskExecutor:start check_frame_and_resolution
+2026-10-28 09:21:15,048 INFO ok.core.start_controller gpu_driver_settings:Windows HDR enabled: False (\\.\DISPLAY1: enabled=False, supported=True, bits=8)
+2026-10-28 09:21:15,071 INFO ok.core.start_controller gpu_driver_settings:NVIDIA filter profile in use: Unknown (NVIDIA filter profile slot not found for D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe)
+2026-10-28 09:21:15,258 INFO ok.core.start_controller gpu_driver_settings:NVIDIA Image Sharpening enabled: False
+2026-10-28 09:21:15,259 INFO ok.core.start_controller gpu_driver_settings:AMD image sharpening check skipped: ADLXPybind is not installed
+2026-10-28 09:21:15,431 INFO ok.core.start_controller gpu_driver_settings:NVIDIA RTX Dynamic Vibrance enabled: False
+2026-10-28 09:21:15,431 INFO ok.core.start_controller gpu_driver_settings:NVIDIA RTX HDR enabled: False (Windows HDR is not enabled)
+2026-10-28 09:21:15,431 INFO ok.core.start_controller gpu_driver_settings:GPU driver post-processing detected features: []
+2026-10-28 09:21:15,431 INFO ok.core.start_controller TaskExecutor:queued onetime_task 📅 Daily Task
+2026-10-28 09:21:15,431 INFO ok.core.start_controller start_controller:enabled task <src.task.DailyTask.DailyTask object at 0x000002718AF1F0E0>
+2026-10-28 09:21:15,435 INFO TaskExecutor TaskExecutor:start execute
+2026-10-28 09:21:15,437 INFO TaskExecutor TaskExecutor:get queued onetime_task 📅 Daily Task
+2026-10-28 09:21:15,952 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-10-28 09:21:16,458 INFO TaskExecutor DailyTask:wait_login Box(name='Labels.switch_account', x=1796, y=533, width=43, height=42, confidence=92) [点击连接_1.00]
+2026-10-28 09:21:37,619 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-10-28 09:21:37,619 INFO TaskExecutor DailyTask:open_daily
+2026-10-28 09:21:37,619 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-10-28 09:21:38,135 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-10-28 09:21:38,135 INFO TaskExecutor DailyTask:click f2 to open the book
+2026-10-28 09:21:42,165 INFO TaskExecutor DailyTask:send f2 key to open
+2026-10-28 09:21:42,829 INFO pyappify-update UpdateCard:calling pyappify.get_version_list(release_only=True)
+2026-10-28 09:21:43,236 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_quest', x=48, y=156, width=57, height=67, confidence=71)
+2026-10-28 09:21:45,304 INFO pyappify-update UpdateCard:pyappify.get_version_list(release_only=True) result=[{'version': 'v3.7.11', 'previous_version': 'v3.7.9', 'update_note': ['Detect game assets quality automatically and update ok-script (ok-oldking)', 'Ignore imported plugins in source and update repositories (ok-oldking)', '优化刷4C声骸时，双奶配队一直互切，主C一直不上场的问题 (#1754) (Rakuyama)', 'fix: detect tinted skip icons and ultrawide quest confirmations (ok-oldking)', 'Update ok-script to 2.0.15b2 (ok-oldking)', 'fix: load win32api only for desktop mouse reset (#1795) (Pinwheel)', '基于`MultiAccountDailyTask.py`  新增多账号一条龙配置，可以对不同账号进行不同的一条龙或者任务配置，并自动切号换号 (#1695) (henry1yyt)', '添加凌阳 (ok-oldking)', '加入缺失的角色：秋水、凌阳、灯灯、秧秧 (#1644) (Zhicheng Zhang)', '更新ok-script至2.0.15b1 (ok-oldking)']}, {'version': 'v3.7.9', 'previous_version': 'v3.7.8', 'update_note': ['修复工坊403错误和旧服务器下载链接 (ok-oldking)']}, {'version': 'v3.7.8', 'previous_version': 'v3.7.7', 'update_note': ['更新工坊服务器使用Cloud Flare (ok-oldking)']}, {'version': 'v3.7.7', 'previous_version': 'v3.7.6', 'update_note': ['支持锁瞑 (ok-oldking)']}, {'version': 'v3.7.6', 'previous_version': 'v3.7.4', 'update_note': ['添加支持AutoHDR的截图方式 (ok-oldking)', 'feat(char): 卜灵读取卦象栏, 按卦象松开强化重击 (#1753) (Rakuyama)', 'Run app entry points through PowerShell launcher (ok-oldking)', 'Run main scripts in the terminal by default (ok-oldking)', 'Reset auto-combat state safely across disable and restart (ok-oldking)', 'Add English translations for character task metadata (ok-oldking)', 'Add WGC HDR capture support and update display guidance (ok-oldking)', 'Document HDR settings and enable Auto HDR checks (ok-oldking)', 'Fix healer switch lockout fallback and update ok-script (ok-oldking)', '【功能建议】优化队伍代码导入弹窗：为 Description 增加滚动区域 (#1759) (Accompanymetoseethesea)']}, {'version': 'v3.7.4', 'previous_version': 'v3.7.3', 'update_note': ['fix: 4C 传送进本时处理结晶波片不足弹窗，限制异常重试次数 (#1724) (EEEEEEEEdison)', '支持雷主 (#1739) (EEEEEEEEdison)', 'add test image (ok-oldking)', 'fix: 一条龙接续刷 4C 时每小时声骸数始终为 0 (#1734) (#1735) (EEEEEEEEdison)']}, {'version': 'v3.7.3', 'previous_version': 'v3.7.2', 'update_note': ['fix: 批量强化声骸适配 3.7 背包选中逻辑 (#1722) (EEEEEEEEdison)', 'fix: 无音区、4C 死亡复苏后按体力副本流程重新进入 (#1699) (EEEEEEEEdison)', 'feat(farm-echo): 4C 刷取的「传送到Boss」支持特异梦魇 (#1721) (EEEEEEEEdison)', 'fix(nest): 残象聚落列表滚到底再查一次，适配3.7第5个聚落 (#1719) (EEEEEEEEdison)']}, {'version': 'v3.7.2', 'previous_version': 'v3.6.7', 'update_note': ['Prevent OCR warmup from hanging test shutdown (ok-oldking)', 'Update ok-script to 2.0.8 (ok-oldking)', 'Use configured dynamic game launch arguments (ok-oldking)', '适配3.7无音区 (ok-oldking)', '支持心 (ok-oldking)', '支持3.7启动游戏 (ok-oldking)', 'fix: 多账号日常在国际服登录框直接读写 ComboBox 切换账号 (#1701) (GenjiM1n4moto)', 'fix(char): 修复夏空大招期间 boss 死亡后未切人导致锁定失败 (#1682) (#1702) (LiunianShuai)', 'feat(char code): 增加角色、队伍一键切换导入/内置代码，队伍列表标记代码状态 (#1706) (EEEEEEEEdison)', 'fix:修复对话框左侧按钮找不到（#1683） (#1690) (Sawwwww541)']}, {'version': 'v3.6.7', 'previous_version': 'v3.6.6', 'update_note': ['优化自动登录 (ok-oldking)', '升级 ok-script 至 2.0.7b1 (ok-oldking)', '添加凌阳 (#1650) (AliceJump)', 'Update issue triage workflow lock (ok-oldking)', '添加秋水,秧秧,灯灯的模板图 (#1646) (AliceJump)', 'feat(char): 优化露西、丽贝卡、莫宁，支持露丽莫、露丽维 (#1623) (EEEEEEEEdison)', 'fix:修复讨伐强敌/战歌重奏 boss 定位全滚到底的回退 (#1605 引入) (#1638) (EEEEEEEEdison)', 'Declare onnxocr-ppocrv5 as a direct dependency (ok-oldking)', 'Reschedule mouse resets without duplicate handlers (ok-oldking)']}, {'version': 'v3.6.6', 'previous_version': 'v3.6.5', 'update_note': ['chore(deps): upgrade ok-script to 2.0.5 (ok-oldking)', 'fix(workshop): sanitize team URLs and log requests (ok-oldking)']}]
+2026-10-28 09:21:45,308 INFO MainThread UpdateCard:loaded 10 valid versions into selector: ['v3.7.11', 'v3.7.9', 'v3.7.8', 'v3.7.7', 'v3.7.6', 'v3.7.4', 'v3.7.3', 'v3.7.2', 'v3.6.7', 'v3.6.6']
+2026-10-28 09:21:45,308 INFO MainThread UpdateCard:update_available=False, current_version='v3.7.12-beta.2', newest_update_index=None
+2026-10-28 09:21:45,638 INFO TaskExecutor DailyTask:left_click gray_book_quest (77, 190) after_sleep 1.5
+2026-10-28 09:21:48,662 INFO TaskExecutor DailyTask:info_set current daily progress 0
+2026-10-28 09:21:48,713 INFO TaskExecutor DailyTask:info_set total daily points 20
+2026-10-28 09:21:49,215 INFO TaskExecutor NightmareNestTask:opened gray_book_boss
+2026-10-28 09:21:49,215 INFO TaskExecutor NightmareNestTask:click f2 to open the book
+2026-10-28 09:21:50,273 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=85)
+2026-10-28 09:21:52,674 INFO TaskExecutor NightmareNestTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-10-28 09:21:54,175 INFO TaskExecutor NightmareNestTask:open_boss_book canxiang
+2026-10-28 09:21:54,976 INFO TaskExecutor NightmareNestTask:left_click canxiang (460, 896) after_sleep 2
+2026-10-28 09:21:56,988 INFO TaskExecutor NightmareNestTask:nightmare nest: 只刷 ['梦枢天罗', '落渊南丘']（设置来自母本）
+2026-10-28 09:21:57,881 INFO TaskExecutor NightmareNestTask:Box(name='已击败残象：0/48', x=889, y=374, width=198, height=30, confidence=100) is not complete
+2026-10-28 09:21:57,882 INFO TaskExecutor NightmareNestTask:nightmare nest: 点进点位 go_nest:48:18（截图 nest_go）
+2026-10-28 09:21:57,882 INFO TaskExecutor NightmareNestTask:nightmare nest: nest name: 梦枢天罗残象聚落
+2026-10-28 09:21:58,072 INFO screenshot screenshot:screenshot saved: D:\ark\okww\data\apps\ok-ww\working\screenshots\2026-10-28_09-21-57-883_nest_go_original.png
+2026-10-28 09:21:58,083 INFO TaskExecutor NightmareNestTask:left_click 已击败残象：0/48 (1729, 348) after_sleep 2
+2026-10-28 09:22:00,871 INFO TaskExecutor NightmareNestTask:left_click gray_teleport (1351, 1007) after_sleep 1
+2026-10-28 09:22:00,872 INFO screenshot screenshot:screenshot saved: D:\ark\okww\data\apps\ok-ww\working\screenshots\2026-10-28_09-22-00-651_nest_travel_original.png
+2026-10-28 09:22:09,116 INFO TaskExecutor NightmareNestTask:info_set Liberation Key r
+2026-10-28 09:22:09,116 INFO TaskExecutor NightmareNestTask:info_set Echo Key q
+2026-10-28 09:22:09,805 INFO TaskExecutor NightmareNestTask:info_set Chars 心, Suoming, 守岸人
+2026-10-28 09:22:09,805 INFO TaskExecutor NightmareNestTask:loaded chars success Hsin 0.9615128636360168
+2026-10-28 09:22:09,805 INFO TaskExecutor NightmareNestTask:loaded chars success Suoming 0.9557504653930664
+2026-10-28 09:22:09,805 INFO TaskExecutor NightmareNestTask:loaded chars success ShoreKeeper 0.9554726481437683
+2026-10-28 09:22:12,127 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-10-28 09:22:12,279 INFO TaskExecutor NightmareNestTask:enter combat Box(name='edge_levitator', x=1507, y=944, width=41, height=41, confidence=92)
+2026-10-28 09:22:15,753 INFO TaskExecutor ShoreKeeper:click_liberation end 2.926910638809204
+2026-10-28 09:22:15,916 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:22:15,917 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0
+2026-10-28 09:22:15,973 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.055s
+2026-10-28 09:22:16,171 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F42C0> 0.1 seconds
+2026-10-28 09:22:16,353 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F42C0> 0.1 seconds
+2026-10-28 09:22:16,535 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EBCE0> 0.1 seconds
+2026-10-28 09:22:16,717 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EBCE0> 0.1 seconds
+2026-10-28 09:22:16,918 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EB560> 0.1 seconds
+2026-10-28 09:22:17,100 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EB560> 0.1 seconds
+2026-10-28 09:22:18,262 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:22:18,262 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0
+2026-10-28 09:22:18,337 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.075s
+2026-10-28 09:22:18,371 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Hsin(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-10-28 09:22:18,371 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Hsin(MainDps) has_intro False has_sub_dps_intro False current_con 0
+2026-10-28 09:22:18,558 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.187s
+2026-10-28 09:22:24,576 INFO TaskExecutor Hsin:Hsin rotation end: timeout, finisher=False, enhanced_e=False, h2=False
+2026-10-28 09:22:24,591 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=ShoreKeeper(Healer) has_intro=True reason=intro_unbuffed_healer
+2026-10-28 09:22:24,592 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> ShoreKeeper(Healer) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:22:24,681 INFO TaskExecutor Hsin:switch_out at full con set current_con to 0
+2026-10-28 09:22:24,681 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.089s
+2026-10-28 09:22:26,080 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:22:26,080 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0
+2026-10-28 09:22:26,157 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.077s
+2026-10-28 09:22:26,335 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F6340> 0.1 seconds
+2026-10-28 09:22:26,516 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F6340> 0.1 seconds
+2026-10-28 09:22:26,700 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x000002718B8E84A0> 0.1 seconds
+2026-10-28 09:22:26,880 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x000002718B8E84A0> 0.1 seconds
+2026-10-28 09:22:27,081 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98A7B00> 0.1 seconds
+2026-10-28 09:22:27,261 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98A7B00> 0.1 seconds
+2026-10-28 09:22:28,408 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:22:28,409 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.0
+2026-10-28 09:22:28,481 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.072s
+2026-10-28 09:22:28,516 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=True reason=intro_unbuffed_subdps
+2026-10-28 09:22:28,516 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:22:28,702 INFO TaskExecutor ShoreKeeper:switch_out at full con set current_con to 0
+2026-10-28 09:22:28,703 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.186s
+2026-10-28 09:22:35,480 INFO TaskExecutor Suoming:click_liberation end 4.9630842208862305
+2026-10-28 09:22:35,571 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=Hsin(MainDps) has_intro=True reason=intro_role_order_main_sub_healer
+2026-10-28 09:22:35,572 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> Hsin(MainDps) has_intro True has_sub_dps_intro True current_con 0
+2026-10-28 09:22:36,207 INFO TaskExecutor Suoming:switch_out at full con set current_con to 0
+2026-10-28 09:22:36,207 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.636s
+2026-10-28 09:22:44,142 INFO TaskExecutor Hsin:click_liberation end 4.479430437088013
+2026-10-28 09:22:44,142 INFO TaskExecutor Hsin:Hsin finisher start: R1 confirmed, duration=18
+2026-10-28 09:22:44,191 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=False
+2026-10-28 09:22:49,196 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=True, previously_confirmed=False
+2026-10-28 09:22:49,196 INFO TaskExecutor Hsin:Hsin enhanced E start: generic prompt ready
+2026-10-28 09:22:49,210 INFO TaskExecutor Hsin:Hsin enhanced E key: send=1, elapsed=0.002s
+2026-10-28 09:22:49,524 INFO TaskExecutor Hsin:Hsin enhanced E result: confirmed=True, sends=1, elapsed=0.328s
+2026-10-28 09:22:49,541 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=True
+2026-10-28 09:22:55,177 INFO TaskExecutor CombatCheck:target lost try retarget 30
+2026-10-28 09:22:55,233 INFO TaskExecutor Hsin:Hsin H2 protection start: at most 4s through R2 transition
+2026-10-28 09:22:57,341 INFO TaskExecutor TaskExecutor:wait_until timeout <function Hsin.wait_for_lib2.<locals>.<lambda> at 0x00000271C98F5800> 1.5 seconds
+2026-10-28 09:22:58,196 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EA980> 0.4 seconds
+2026-10-28 09:22:58,197 ERROR TaskExecutor Hsin:clicked liberation but no effect 
+2026-10-28 09:23:02,760 INFO TaskExecutor Hsin:click_liberation end 4.436784982681274
+2026-10-28 09:23:02,797 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=Suoming(SubDps) has_intro=True reason=intro_unbuffed_subdps
+2026-10-28 09:23:02,798 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> Suoming(SubDps) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:23:02,833 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-10-28 09:23:03,414 INFO TaskExecutor Hsin:switch_out at full con set current_con to 0
+2026-10-28 09:23:03,415 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.617s
+2026-10-28 09:23:12,847 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:23:12,847 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.701010101010101
+2026-10-28 09:23:13,270 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=True reason=intro_unbuffed_healer
+2026-10-28 09:23:13,271 INFO TaskExecutor BaseCombatTask:switch_next_char refreshed target after intro became available: ShoreKeeper
+2026-10-28 09:23:13,470 INFO TaskExecutor Suoming:switch_out at full con set current_con to 0
+2026-10-28 09:23:13,470 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.623s
+2026-10-28 09:23:18,667 INFO TaskExecutor ShoreKeeper:click_liberation end 2.9233107566833496
+2026-10-28 09:23:18,803 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Hsin(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-10-28 09:23:18,803 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Hsin(MainDps) has_intro False has_sub_dps_intro False current_con 0.499009900990099
+2026-10-28 09:23:18,868 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.064s
+2026-10-28 09:23:22,958 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F6D40> 0.4 seconds
+2026-10-28 09:23:22,959 ERROR TaskExecutor Hsin:clicked liberation but no effect 
+2026-10-28 09:23:24,872 INFO TaskExecutor Hsin:Hsin rotation end: timeout, finisher=False, enhanced_e=False, h2=False
+2026-10-28 09:23:24,886 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:23:24,887 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.0
+2026-10-28 09:23:24,940 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.053s
+2026-10-28 09:23:25,122 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E8360> 0.1 seconds
+2026-10-28 09:23:25,305 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E8360> 0.1 seconds
+2026-10-28 09:23:25,503 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E91C0> 0.1 seconds
+2026-10-28 09:23:25,687 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E91C0> 0.1 seconds
+2026-10-28 09:23:25,866 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E9DA0> 0.1 seconds
+2026-10-28 09:23:26,049 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E9DA0> 0.1 seconds
+2026-10-28 09:23:27,194 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:23:27,195 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.0
+2026-10-28 09:23:27,267 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.072s
+2026-10-28 09:23:27,299 INFO TaskExecutor BaseCombatTask:switch_next_char current_con 0.81 almost full, sleep and check again
+2026-10-28 09:23:27,357 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Hsin(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-10-28 09:23:27,357 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Hsin(MainDps) has_intro False has_sub_dps_intro False current_con 0.7940594059405941
+2026-10-28 09:23:27,413 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.056s
+2026-10-28 09:23:33,451 INFO TaskExecutor Hsin:Hsin rotation end: timeout, finisher=False, enhanced_e=False, h2=False
+2026-10-28 09:23:33,469 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:23:33,469 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.0
+2026-10-28 09:23:33,561 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.091s
+2026-10-28 09:23:33,741 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EBD80> 0.1 seconds
+2026-10-28 09:23:33,923 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EA7A0> 0.1 seconds
+2026-10-28 09:23:34,105 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EA7A0> 0.1 seconds
+2026-10-28 09:23:34,304 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F60C0> 0.1 seconds
+2026-10-28 09:23:34,486 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F60C0> 0.1 seconds
+2026-10-28 09:23:34,670 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F60C0> 0.1 seconds
+2026-10-28 09:23:35,814 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:23:35,814 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.0
+2026-10-28 09:23:35,885 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.070s
+2026-10-28 09:23:35,998 INFO TaskExecutor BaseCombatTask:switch_next_char current_con 0.82 almost full, sleep and check again
+2026-10-28 09:23:36,068 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=True reason=intro_unbuffed_subdps
+2026-10-28 09:23:36,068 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:23:36,143 INFO TaskExecutor ShoreKeeper:switch_out at full con set current_con to 0
+2026-10-28 09:23:36,144 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.075s
+2026-10-28 09:23:42,903 INFO TaskExecutor Suoming:click_liberation end 4.96297550201416
+2026-10-28 09:23:42,960 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=Hsin(MainDps) has_intro=True reason=intro_role_order_main_sub_healer
+2026-10-28 09:23:42,960 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> Hsin(MainDps) has_intro True has_sub_dps_intro True current_con 0
+2026-10-28 09:23:43,491 INFO TaskExecutor Suoming:switch_out at full con set current_con to 0
+2026-10-28 09:23:43,491 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.531s
+2026-10-28 09:23:50,820 INFO TaskExecutor Hsin:click_liberation end 4.199838399887085
+2026-10-28 09:23:50,820 INFO TaskExecutor Hsin:Hsin finisher start: R1 confirmed, duration=18
+2026-10-28 09:23:50,857 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=False
+2026-10-28 09:23:59,765 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=True, previously_confirmed=False
+2026-10-28 09:23:59,765 INFO TaskExecutor Hsin:Hsin enhanced E start: generic prompt ready
+2026-10-28 09:23:59,780 INFO TaskExecutor CombatCheck:target lost try retarget 30
+2026-10-28 09:23:59,867 INFO TaskExecutor Hsin:Hsin enhanced E key: send=1, elapsed=0.089s
+2026-10-28 09:24:00,164 INFO TaskExecutor Hsin:Hsin enhanced E result: confirmed=True, sends=1, elapsed=0.399s
+2026-10-28 09:24:00,182 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=True
+2026-10-28 09:24:05,875 INFO TaskExecutor Hsin:Hsin H2 protection start: at most 4s through R2 transition
+2026-10-28 09:24:07,981 INFO TaskExecutor TaskExecutor:wait_until timeout <function Hsin.wait_for_lib2.<locals>.<lambda> at 0x00000271C99518A0> 1.5 seconds
+2026-10-28 09:24:13,164 INFO TaskExecutor Hsin:click_liberation end 4.472612619400024
+2026-10-28 09:24:13,198 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=Suoming(SubDps) has_intro=True reason=intro_unbuffed_subdps
+2026-10-28 09:24:13,198 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> Suoming(SubDps) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:24:13,235 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-10-28 09:24:23,271 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat 
+2026-10-28 09:24:23,271 ERROR TaskExecutor BaseCombatTask:combat check not in combat 
+2026-10-28 09:24:25,290 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_feature.<locals>.<lambda> at 0x00000271C98E9620> 2 seconds
+2026-10-28 09:24:25,290 INFO TaskExecutor BaseCombatTask:combat_once out of combat break combat check not in combat
+2026-10-28 09:24:29,047 INFO TaskExecutor BaseWWTask:walk_until_f direction w target_text: re.compile('(吸收|Absorb)')
+2026-10-28 09:24:31,617 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method BaseWWTask.has_claim of <src.task.NightmareNestTask.NightmareNestTask object at 0x000002718B83E3F0>> 1.5 seconds
+2026-10-28 09:24:31,617 INFO TaskExecutor NightmareNestTask:farm echo walk find true
+2026-10-28 09:24:35,655 INFO TaskExecutor NightmareNestTask:click f2 to open the book
+2026-10-28 09:24:39,706 INFO TaskExecutor NightmareNestTask:send f2 key to open
+2026-10-28 09:24:40,749 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=85)
+2026-10-28 09:24:43,151 INFO TaskExecutor NightmareNestTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-10-28 09:24:44,652 INFO TaskExecutor NightmareNestTask:open_boss_book canxiang
+2026-10-28 09:24:45,454 INFO TaskExecutor NightmareNestTask:left_click canxiang (460, 896) after_sleep 2
+2026-10-28 09:24:48,276 INFO TaskExecutor NightmareNestTask:Box(name='已击败残象：0/41', x=890, y=527, width=194, height=31, confidence=100) is not complete
+2026-10-28 09:24:48,277 INFO TaskExecutor NightmareNestTask:nightmare nest: 点进点位 go_nest:41:25（截图 nest_go）
+2026-10-28 09:24:48,277 INFO TaskExecutor NightmareNestTask:nightmare nest: nest name: 落渊南丘残象聚落
+2026-10-28 09:24:48,461 INFO screenshot screenshot:screenshot saved: D:\ark\okww\data\apps\ok-ww\working\screenshots\2026-10-28_09-24-48-277_nest_go_original.png
+2026-10-28 09:24:48,479 INFO TaskExecutor NightmareNestTask:left_click 已击败残象：0/41 (1729, 500) after_sleep 2
+2026-10-28 09:24:51,227 INFO screenshot screenshot:screenshot saved: D:\ark\okww\data\apps\ok-ww\working\screenshots\2026-10-28_09-24-51-007_nest_travel_original.png
+2026-10-28 09:24:51,242 INFO TaskExecutor NightmareNestTask:left_click gray_teleport (1351, 1007) after_sleep 1
+2026-10-28 09:25:13,892 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-10-28 09:25:13,951 INFO TaskExecutor NightmareNestTask:enter combat Box(name='edge_levitator', x=1507, y=944, width=41, height=41, confidence=93)
+2026-10-28 09:25:14,205 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98A7920> 0.1 seconds
+2026-10-28 09:25:14,298 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:25:14,299 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.0
+2026-10-28 09:25:14,393 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.094s
+2026-10-28 09:25:14,586 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271E79B9DA0> 0.1 seconds
+2026-10-28 09:25:14,768 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271E79B9DA0> 0.1 seconds
+2026-10-28 09:25:14,952 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271E79B9DA0> 0.1 seconds
+2026-10-28 09:25:15,134 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E99E0> 0.1 seconds
+2026-10-28 09:25:15,314 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E99E0> 0.1 seconds
+2026-10-28 09:25:15,513 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E89A0> 0.1 seconds
+2026-10-28 09:25:16,661 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:25:16,661 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.3434343434343434
+2026-10-28 09:25:16,754 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.092s
+2026-10-28 09:25:19,843 INFO TaskExecutor ShoreKeeper:click_liberation end 2.983715295791626
+2026-10-28 09:25:19,902 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Hsin(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-10-28 09:25:19,902 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Hsin(MainDps) has_intro False has_sub_dps_intro False current_con 0.5317460317460317
+2026-10-28 09:25:19,972 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.070s
+2026-10-28 09:25:25,989 INFO TaskExecutor Hsin:Hsin rotation end: timeout, finisher=False, enhanced_e=False, h2=False
+2026-10-28 09:25:26,007 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=ShoreKeeper(Healer) has_intro=True reason=intro_unbuffed_healer
+2026-10-28 09:25:26,007 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> ShoreKeeper(Healer) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:25:26,078 INFO TaskExecutor Hsin:switch_out at full con set current_con to 0
+2026-10-28 09:25:26,079 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.071s
+2026-10-28 09:25:27,488 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:25:27,489 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.6309523809523809
+2026-10-28 09:25:27,571 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.082s
+2026-10-28 09:25:27,749 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C99436A0> 0.1 seconds
+2026-10-28 09:25:27,931 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C99436A0> 0.1 seconds
+2026-10-28 09:25:28,113 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9943EC0> 0.1 seconds
+2026-10-28 09:25:28,295 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9943EC0> 0.1 seconds
+2026-10-28 09:25:28,495 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9954720> 0.1 seconds
+2026-10-28 09:25:28,677 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9954720> 0.1 seconds
+2026-10-28 09:25:29,823 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:25:29,823 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.40973630831643004
+2026-10-28 09:25:29,894 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.072s
+2026-10-28 09:25:29,926 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Hsin(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-10-28 09:25:29,927 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Hsin(MainDps) has_intro False has_sub_dps_intro False current_con 0.7301587301587301
+2026-10-28 09:25:30,116 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.189s
+2026-10-28 09:25:36,181 INFO TaskExecutor Hsin:Hsin rotation end: timeout, finisher=False, enhanced_e=False, h2=False
+2026-10-28 09:25:36,186 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:25:36,187 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.21906693711967545
+2026-10-28 09:25:37,807 INFO TaskExecutor BaseCombatTask:switch_next_char end 1.620s
+2026-10-28 09:25:37,986 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E85E0> 0.1 seconds
+2026-10-28 09:25:38,168 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E85E0> 0.1 seconds
+2026-10-28 09:25:38,367 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E85E0> 0.1 seconds
+2026-10-28 09:25:38,550 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9955E40> 0.1 seconds
+2026-10-28 09:25:38,748 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9955E40> 0.1 seconds
+2026-10-28 09:25:38,949 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9955620> 0.1 seconds
+2026-10-28 09:25:40,096 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:25:40,096 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.47058823529411764
+2026-10-28 09:25:40,169 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.072s
+2026-10-28 09:25:40,341 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Hsin(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-10-28 09:25:40,341 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Hsin(MainDps) has_intro False has_sub_dps_intro False current_con 0.7817460317460317
+2026-10-28 09:25:40,425 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.084s
+2026-10-28 09:25:41,057 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C99545E0> 0.4 seconds
+2026-10-28 09:25:41,058 ERROR TaskExecutor Hsin:clicked liberation but no effect 
+2026-10-28 09:25:45,476 INFO TaskExecutor Hsin:click_liberation end 4.236556768417358
+2026-10-28 09:25:45,476 INFO TaskExecutor Hsin:Hsin finisher start: R1 confirmed, duration=18
+2026-10-28 09:25:45,514 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=False
+2026-10-28 09:25:50,894 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=True, previously_confirmed=False
+2026-10-28 09:25:50,895 INFO TaskExecutor Hsin:Hsin enhanced E start: generic prompt ready
+2026-10-28 09:25:50,907 INFO TaskExecutor Hsin:Hsin enhanced E key: send=1, elapsed=0.001s
+2026-10-28 09:25:51,223 INFO TaskExecutor Hsin:Hsin enhanced E result: confirmed=True, sends=1, elapsed=0.328s
+2026-10-28 09:25:51,240 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=True
+2026-10-28 09:25:56,958 INFO TaskExecutor Hsin:Hsin H2 protection start: at most 4s through R2 transition
+2026-10-28 09:25:59,064 INFO TaskExecutor TaskExecutor:wait_until timeout <function Hsin.wait_for_lib2.<locals>.<lambda> at 0x00000271C9941F80> 1.5 seconds
+2026-10-28 09:25:59,810 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9943EC0> 0.4 seconds
+2026-10-28 09:25:59,811 ERROR TaskExecutor Hsin:clicked liberation but no effect 
+2026-10-28 09:26:04,391 INFO TaskExecutor Hsin:click_liberation end 4.472356796264648
+2026-10-28 09:26:04,424 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=ShoreKeeper(Healer) has_intro=True reason=intro_unbuffed_healer
+2026-10-28 09:26:04,424 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> ShoreKeeper(Healer) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:26:05,282 INFO TaskExecutor Hsin:switch_out at full con set current_con to 0
+2026-10-28 09:26:05,282 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.858s
+2026-10-28 09:26:09,699 INFO TaskExecutor ShoreKeeper:click_liberation end 2.981112480163574
+2026-10-28 09:26:09,752 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:26:09,753 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.5119047619047619
+2026-10-28 09:26:09,839 INFO TaskExecutor CombatCheck:target lost try retarget 30
+2026-10-28 09:26:09,955 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.202s
+2026-10-28 09:26:10,137 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E8680> 0.1 seconds
+2026-10-28 09:26:10,336 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E9B20> 0.1 seconds
+2026-10-28 09:26:10,537 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E9E40> 0.1 seconds
+2026-10-28 09:26:10,737 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E8220> 0.1 seconds
+2026-10-28 09:26:10,937 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E8220> 0.1 seconds
+2026-10-28 09:26:12,082 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:26:12,083 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.5797979797979798
+2026-10-28 09:26:12,176 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.093s
+2026-10-28 09:26:12,327 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Hsin(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-10-28 09:26:12,327 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Hsin(MainDps) has_intro False has_sub_dps_intro False current_con 0.5853174603174603
+2026-10-28 09:26:12,413 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.085s
+2026-10-28 09:26:18,420 INFO TaskExecutor Hsin:Hsin rotation end: timeout, finisher=False, enhanced_e=False, h2=False
+2026-10-28 09:26:18,449 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:26:18,449 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.19797979797979798
+2026-10-28 09:26:19,336 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.886s
+2026-10-28 09:26:19,536 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98A53A0> 0.1 seconds
+2026-10-28 09:26:19,737 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98A53A0> 0.1 seconds
+2026-10-28 09:26:19,936 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9954680> 0.1 seconds
+2026-10-28 09:26:20,136 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9954B80> 0.1 seconds
+2026-10-28 09:26:20,318 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9954B80> 0.1 seconds
+2026-10-28 09:26:20,518 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C99553A0> 0.1 seconds
+2026-10-28 09:26:21,682 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:26:21,682 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.6424242424242425
+2026-10-28 09:26:21,777 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.094s
+2026-10-28 09:26:21,851 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Hsin(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-10-28 09:26:21,851 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Hsin(MainDps) has_intro False has_sub_dps_intro False current_con 0.7876984126984127
+2026-10-28 09:26:21,922 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.070s
+2026-10-28 09:26:27,660 INFO TaskExecutor Hsin:click_liberation end 4.288186073303223
+2026-10-28 09:26:27,660 INFO TaskExecutor Hsin:Hsin finisher start: R1 confirmed, duration=18
+2026-10-28 09:26:28,550 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=False
+2026-10-28 09:26:33,512 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=True, previously_confirmed=False
+2026-10-28 09:26:33,513 INFO TaskExecutor Hsin:Hsin enhanced E start: generic prompt ready
+2026-10-28 09:26:33,527 INFO TaskExecutor Hsin:Hsin enhanced E key: send=1, elapsed=0.002s
+2026-10-28 09:26:33,840 INFO TaskExecutor Hsin:Hsin enhanced E result: confirmed=True, sends=1, elapsed=0.327s
+2026-10-28 09:26:33,859 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=True
+2026-10-28 09:26:39,462 INFO TaskExecutor Hsin:Hsin H2 protection start: at most 4s through R2 transition
+2026-10-28 09:26:41,565 INFO TaskExecutor TaskExecutor:wait_until timeout <function Hsin.wait_for_lib2.<locals>.<lambda> at 0x00000271E79B8680> 1.5 seconds
+2026-10-28 09:26:46,766 INFO TaskExecutor Hsin:click_liberation end 4.473717451095581
+2026-10-28 09:26:46,787 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=ShoreKeeper(Healer) has_intro=True reason=intro_unbuffed_healer
+2026-10-28 09:26:46,787 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> ShoreKeeper(Healer) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:26:47,403 INFO TaskExecutor Hsin:switch_out at full con set current_con to 0
+2026-10-28 09:26:47,404 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.616s
+2026-10-28 09:26:51,821 INFO TaskExecutor ShoreKeeper:click_liberation end 2.905113458633423
+2026-10-28 09:26:52,123 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=True reason=intro_unbuffed_subdps
+2026-10-28 09:26:52,123 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:26:52,138 INFO TaskExecutor CombatCheck:target lost try retarget 30
+2026-10-28 09:26:52,296 INFO TaskExecutor ShoreKeeper:switch_out at full con set current_con to 0
+2026-10-28 09:26:52,296 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.173s
+2026-10-28 09:26:59,184 INFO TaskExecutor Suoming:click_liberation end 5.073578596115112
+2026-10-28 09:26:59,303 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=Hsin(MainDps) has_intro=True reason=intro_role_order_main_sub_healer
+2026-10-28 09:26:59,304 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> Hsin(MainDps) has_intro True has_sub_dps_intro True current_con 0
+2026-10-28 09:26:59,985 INFO TaskExecutor Suoming:switch_out at full con set current_con to 0
+2026-10-28 09:26:59,985 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.681s
+2026-10-28 09:27:13,747 INFO TaskExecutor Hsin:click_liberation end 4.253146171569824
+2026-10-28 09:27:13,748 INFO TaskExecutor Hsin:Hsin finisher start: R1 confirmed, duration=18
+2026-10-28 09:27:13,767 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=False
+2026-10-28 09:27:13,858 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=True, previously_confirmed=False
+2026-10-28 09:27:13,858 INFO TaskExecutor Hsin:Hsin enhanced E start: generic prompt ready
+2026-10-28 09:27:13,871 INFO TaskExecutor Hsin:Hsin enhanced E key: send=1, elapsed=0.001s
+2026-10-28 09:27:14,184 INFO TaskExecutor Hsin:Hsin enhanced E result: confirmed=True, sends=1, elapsed=0.326s
+2026-10-28 09:27:14,202 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=True
+2026-10-28 09:27:17,676 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=True, previously_confirmed=True
+2026-10-28 09:27:17,676 INFO TaskExecutor Hsin:Hsin enhanced E prompt returned; retry E
+2026-10-28 09:27:17,677 INFO TaskExecutor Hsin:Hsin enhanced E start: generic prompt ready
+2026-10-28 09:27:17,689 INFO TaskExecutor Hsin:Hsin enhanced E key: send=1, elapsed=0.000s
+2026-10-28 09:27:17,984 INFO TaskExecutor Hsin:Hsin enhanced E result: confirmed=True, sends=1, elapsed=0.307s
+2026-10-28 09:27:18,002 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=True
+2026-10-28 09:27:23,476 INFO TaskExecutor Hsin:Hsin H2 protection start: at most 4s through R2 transition
+2026-10-28 09:27:25,565 INFO TaskExecutor TaskExecutor:wait_until timeout <function Hsin.wait_for_lib2.<locals>.<lambda> at 0x00000271C98EA840> 1.5 seconds
+2026-10-28 09:27:26,438 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9952980> 0.4 seconds
+2026-10-28 09:27:26,438 ERROR TaskExecutor Hsin:clicked liberation but no effect 
+2026-10-28 09:27:31,107 INFO TaskExecutor Hsin:click_liberation end 4.558803081512451
+2026-10-28 09:27:31,117 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=Suoming(SubDps) has_intro=True reason=intro_unbuffed_subdps
+2026-10-28 09:27:31,118 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> Suoming(SubDps) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:27:31,133 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-10-28 09:27:32,305 INFO TaskExecutor Hsin:switch_out at full con set current_con to 0
+2026-10-28 09:27:32,305 INFO TaskExecutor BaseCombatTask:switch_next_char end 1.187s
+2026-10-28 09:27:34,685 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-10-28 09:27:44,704 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat 
+2026-10-28 09:27:44,704 ERROR TaskExecutor BaseCombatTask:combat check not in combat 
+2026-10-28 09:27:46,723 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_feature.<locals>.<lambda> at 0x00000271C98A7C40> 2 seconds
+2026-10-28 09:27:46,723 INFO TaskExecutor BaseCombatTask:combat_once out of combat break combat check not in combat
+2026-10-28 09:27:50,478 INFO TaskExecutor BaseWWTask:walk_until_f direction w target_text: re.compile('(吸收|Absorb)')
+2026-10-28 09:27:53,032 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method BaseWWTask.has_claim of <src.task.NightmareNestTask.NightmareNestTask object at 0x000002718B83E3F0>> 1.5 seconds
+2026-10-28 09:27:53,032 INFO TaskExecutor NightmareNestTask:farm echo walk find true
+2026-10-28 09:27:57,052 INFO TaskExecutor NightmareNestTask:click f2 to open the book
+2026-10-28 09:28:01,103 INFO TaskExecutor NightmareNestTask:send f2 key to open
+2026-10-28 09:28:02,151 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=85)
+2026-10-28 09:28:04,555 INFO TaskExecutor NightmareNestTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-10-28 09:28:06,056 INFO TaskExecutor NightmareNestTask:open_boss_book canxiang
+2026-10-28 09:28:06,858 INFO TaskExecutor NightmareNestTask:left_click canxiang (460, 896) after_sleep 2
+2026-10-28 09:28:09,718 INFO TaskExecutor NightmareNestTask:nightmare nest: 指定点位都已打满，跳过（截图 nest_all_full）
+2026-10-28 09:28:09,718 INFO TaskExecutor NightmareNestTask:open_boss_book canxiang
+2026-10-28 09:28:09,908 INFO screenshot screenshot:screenshot saved: D:\ark\okww\data\apps\ok-ww\working\screenshots\2026-10-28_09-28-09-718_nest_all_full_original.png
+2026-10-28 09:28:10,520 INFO TaskExecutor NightmareNestTask:left_click canxiang (460, 896) after_sleep 2
+2026-10-28 09:28:14,594 INFO TaskExecutor NightmareNestTask:nightmare nest: 指定点位都已打满，跳过（截图 nest_all_full）
+2026-10-28 09:28:14,784 INFO screenshot screenshot:screenshot saved: D:\ark\okww\data\apps\ok-ww\working\screenshots\2026-10-28_09-28-14-594_nest_all_full_original.png
+2026-10-28 09:28:15,595 INFO TaskExecutor TacetTask:info_set current task wait main esc=True
+2026-10-28 09:28:18,153 INFO TaskExecutor TacetTask:info_set current task in main esc=True
+2026-10-28 09:28:18,153 INFO TaskExecutor TacetTask:click f2 to open the book
+2026-10-28 09:28:22,181 INFO TaskExecutor TacetTask:send f2 key to open
+2026-10-28 09:28:23,218 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_boss', x=43, y=283, width=65, height=75, confidence=86)
+2026-10-28 09:28:25,620 INFO TaskExecutor TacetTask:left_click gray_book_boss (76, 321) after_sleep 1.5
+2026-10-28 09:28:27,211 INFO TaskExecutor TacetTask:体力读字原文（第 1 次）: ['49', '240/240', '+', '我']
+2026-10-28 09:28:27,211 INFO TaskExecutor TacetTask:info_set current_stamina 240
+2026-10-28 09:28:27,211 INFO TaskExecutor TacetTask:info_set back_up_stamina 49
+2026-10-28 09:28:27,211 INFO TaskExecutor TacetTask:open_boss_book wuyin
+2026-10-28 09:28:28,013 INFO TaskExecutor TacetTask:left_click wuyin (460, 788) after_sleep 2
+2026-10-28 09:28:30,014 INFO TaskExecutor TacetTask:info_set Teleport to Tacet Suppression 0
+2026-10-28 09:28:30,734 INFO TaskExecutor TacetTask:left_click boss_proceed (1824, 357) after_sleep 1
+2026-10-28 09:28:33,178 INFO TaskExecutor TacetTask:left_click team_start_challenge (1791, 994) after_sleep 1
+2026-10-28 09:28:37,827 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method BaseWWTask.click_skip_dialog_confirm of <src.task.TacetTask.TacetTask object at 0x000002718ADA1F70>> 3 seconds
+2026-10-28 09:28:41,177 INFO TaskExecutor TacetTask:info_set Liberation Key r
+2026-10-28 09:28:41,177 INFO TaskExecutor TacetTask:info_set Echo Key q
+2026-10-28 09:28:41,277 INFO TaskExecutor TacetTask:info_set Chars 心, Suoming, 守岸人
+2026-10-28 09:28:41,277 INFO TaskExecutor TacetTask:loaded chars success Hsin 0.9615778923034668
+2026-10-28 09:28:41,277 INFO TaskExecutor TacetTask:loaded chars success Suoming 0.9553984999656677
+2026-10-28 09:28:41,277 INFO TaskExecutor TacetTask:loaded chars success ShoreKeeper 0.9552040696144104
+2026-10-28 09:28:41,344 INFO TaskExecutor TacetTask:enter combat Box(name='edge_levitator', x=1507, y=944, width=41, height=41, confidence=93)
+2026-10-28 09:28:44,448 INFO TaskExecutor ShoreKeeper:click_liberation end 2.981889486312866
+2026-10-28 09:28:44,603 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:28:44,604 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.3815789473684211
+2026-10-28 09:28:44,667 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.063s
+2026-10-28 09:28:44,848 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F63E0> 0.1 seconds
+2026-10-28 09:28:45,031 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F63E0> 0.1 seconds
+2026-10-28 09:28:45,212 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F74C0> 0.1 seconds
+2026-10-28 09:28:45,394 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F74C0> 0.1 seconds
+2026-10-28 09:28:45,593 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F42C0> 0.1 seconds
+2026-10-28 09:28:45,775 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F42C0> 0.1 seconds
+2026-10-28 09:28:46,923 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=True reason=intro_unbuffed_healer
+2026-10-28 09:28:46,923 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro True has_sub_dps_intro True current_con 1
+2026-10-28 09:28:46,993 INFO TaskExecutor Suoming:switch_out at full con set current_con to 0
+2026-10-28 09:28:46,993 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.070s
+2026-10-28 09:28:48,387 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Hsin(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-10-28 09:28:48,387 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Hsin(MainDps) has_intro False has_sub_dps_intro False current_con 0.7982456140350878
+2026-10-28 09:28:48,449 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.061s
+2026-10-28 09:28:54,556 INFO TaskExecutor Hsin:Hsin rotation end: timeout, finisher=False, enhanced_e=False, h2=False
+2026-10-28 09:28:54,577 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:28:54,577 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.2175732217573222
+2026-10-28 09:28:54,648 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.071s
+2026-10-28 09:28:54,688 INFO TaskExecutor BaseCombatTask:switch_next_char current_con 0.92 almost full, sleep and check again
+2026-10-28 09:28:54,756 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=False reason=fallback_role_order
+2026-10-28 09:28:54,756 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.9166666666666666
+2026-10-28 09:28:54,812 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.055s
+2026-10-28 09:28:54,994 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C99439C0> 0.1 seconds
+2026-10-28 09:28:55,175 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9943560> 0.1 seconds
+2026-10-28 09:28:55,358 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9943560> 0.1 seconds
+2026-10-28 09:28:55,539 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9943E20> 0.1 seconds
+2026-10-28 09:28:55,721 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9942980> 0.1 seconds
+2026-10-28 09:28:55,902 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C9942980> 0.1 seconds
+2026-10-28 09:28:57,050 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:28:57,050 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.0
+2026-10-28 09:28:57,122 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.070s
+2026-10-28 09:28:57,156 INFO TaskExecutor BaseCombatTask:switch_next_char current_con 0.93 almost full, sleep and check again
+2026-10-28 09:28:57,211 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Hsin(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-10-28 09:28:57,211 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Hsin(MainDps) has_intro False has_sub_dps_intro False current_con 0.9407894736842105
+2026-10-28 09:28:57,268 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.056s
+2026-10-28 09:29:03,331 INFO TaskExecutor Hsin:Hsin rotation end: timeout, finisher=False, enhanced_e=False, h2=False
+2026-10-28 09:29:03,340 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:29:03,341 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.3493723849372385
+2026-10-28 09:29:04,880 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-10-28 09:29:05,212 INFO TaskExecutor BaseCombatTask:switch_next_char end 1.872s
+2026-10-28 09:29:05,399 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E9940> 0.1 seconds
+2026-10-28 09:29:05,611 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E9940> 0.1 seconds
+2026-10-28 09:29:05,857 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E9BC0> 0.1 seconds
+2026-10-28 09:29:06,710 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98E9BC0> 0.1 seconds
+2026-10-28 09:29:07,873 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:29:07,874 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.0
+2026-10-28 09:29:07,947 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.073s
+2026-10-28 09:29:08,131 INFO TaskExecutor BaseCombatTask:switch_next_char current_con 0.95 almost full, sleep and check again
+2026-10-28 09:29:08,199 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=True reason=intro_unbuffed_subdps
+2026-10-28 09:29:08,200 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:29:08,254 INFO TaskExecutor ShoreKeeper:switch_out at full con set current_con to 0
+2026-10-28 09:29:08,254 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.054s
+2026-10-28 09:29:15,017 INFO TaskExecutor Suoming:click_liberation end 4.94459867477417
+2026-10-28 09:29:15,093 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=Hsin(MainDps) has_intro=True reason=intro_role_order_main_sub_healer
+2026-10-28 09:29:15,094 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> Hsin(MainDps) has_intro True has_sub_dps_intro True current_con 0
+2026-10-28 09:29:15,620 INFO TaskExecutor Suoming:switch_out at full con set current_con to 0
+2026-10-28 09:29:15,621 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.527s
+2026-10-28 09:29:16,309 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x000002718B9828E0> 0.4 seconds
+2026-10-28 09:29:16,309 ERROR TaskExecutor Hsin:clicked liberation but no effect 
+2026-10-28 09:29:20,744 INFO TaskExecutor Hsin:click_liberation end 4.235916376113892
+2026-10-28 09:29:20,744 INFO TaskExecutor Hsin:Hsin finisher start: R1 confirmed, duration=18
+2026-10-28 09:29:20,783 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=False
+2026-10-28 09:29:25,800 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=True, previously_confirmed=False
+2026-10-28 09:29:25,801 INFO TaskExecutor Hsin:Hsin enhanced E start: generic prompt ready
+2026-10-28 09:29:25,815 INFO TaskExecutor Hsin:Hsin enhanced E key: send=1, elapsed=0.002s
+2026-10-28 09:29:26,111 INFO TaskExecutor Hsin:Hsin enhanced E result: confirmed=True, sends=1, elapsed=0.309s
+2026-10-28 09:29:26,129 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=True
+2026-10-28 09:29:38,854 INFO TaskExecutor Hsin:Hsin rotation end: timeout, finisher=True, enhanced_e=True, h2=False
+2026-10-28 09:29:38,905 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=Suoming(SubDps) has_intro=True reason=intro_unbuffed_subdps
+2026-10-28 09:29:38,906 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> Suoming(SubDps) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:29:38,948 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-10-28 09:29:48,961 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat 
+2026-10-28 09:29:48,961 ERROR TaskExecutor BaseCombatTask:combat check not in combat 
+2026-10-28 09:29:50,981 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_feature.<locals>.<lambda> at 0x00000271C98E9B20> 2 seconds
+2026-10-28 09:29:50,981 INFO TaskExecutor BaseCombatTask:combat_once out of combat break combat check not in combat
+2026-10-28 09:29:51,736 INFO TaskExecutor TacetTask:start walk_to_treasure
+2026-10-28 09:29:55,320 INFO TaskExecutor BaseWWTask:do_walk_to_box ended Box(name='Labels.pick_up_f_hcenter_vcenter', x=1222, y=548, width=20, height=20, confidence=54)
+2026-10-28 09:29:55,325 INFO TaskExecutor BaseWWTask:walk_until_f direction w target_text: None
+2026-10-28 09:30:00,443 INFO TaskExecutor TacetTask:体力读字原文领奖框（第 1 次）: ['49', '240/240']
+2026-10-28 09:30:00,443 INFO TaskExecutor TacetTask:info_set current_stamina 240
+2026-10-28 09:30:00,444 INFO TaskExecutor TacetTask:info_set back_up_stamina 49
+2026-10-28 09:30:00,444 INFO TaskExecutor BaseWWTask:当前体力大于等于双倍, 240 >= 120
+2026-10-28 09:30:00,445 WARNING TaskExecutor task:find_one:found [<Labels.confirm_btn_hcenter_vcenter: 'confirm_btn_hcenter_vcenter'>, <Labels.confirm_btn_highlight_hcenter_vcenter: 'confirm_btn_highlight_hcenter_vcenter'>] too many 2
+2026-10-28 09:30:00,646 INFO TaskExecutor TacetTask:left_click Labels.confirm_btn_hcenter_vcenter (1419, 678) after_sleep 2
+2026-10-28 09:30:04,669 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_feature.<locals>.<lambda> at 0x00000271C98EB880> 2 seconds
+2026-10-28 09:30:12,285 INFO TaskExecutor TaskExecutor:wait_until timeout <bound method BaseWWTask.click_skip_dialog_confirm of <src.task.TacetTask.TacetTask object at 0x000002718ADA1F70>> 3 seconds
+2026-10-28 09:30:13,710 INFO TaskExecutor TacetTask:enter combat Box(name='edge_levitator', x=1507, y=944, width=41, height=41, confidence=93)
+2026-10-28 09:30:16,852 INFO TaskExecutor ShoreKeeper:click_liberation end 2.98148775100708
+2026-10-28 09:30:17,013 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:30:17,013 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.3760869565217391
+2026-10-28 09:30:17,070 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.056s
+2026-10-28 09:30:17,252 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C994DEE0> 0.1 seconds
+2026-10-28 09:30:17,435 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C994DEE0> 0.1 seconds
+2026-10-28 09:30:17,616 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C994D580> 0.1 seconds
+2026-10-28 09:30:17,798 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C994D580> 0.1 seconds
+2026-10-28 09:30:17,998 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C994C180> 0.1 seconds
+2026-10-28 09:30:18,179 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C994C180> 0.1 seconds
+2026-10-28 09:30:19,326 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:30:19,326 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.5085470085470085
+2026-10-28 09:30:19,399 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.073s
+2026-10-28 09:30:19,428 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Hsin(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-10-28 09:30:19,428 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Hsin(MainDps) has_intro False has_sub_dps_intro False current_con 0.6891304347826087
+2026-10-28 09:30:19,599 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.170s
+2026-10-28 09:30:25,737 INFO TaskExecutor Hsin:Hsin rotation end: timeout, finisher=False, enhanced_e=False, h2=False
+2026-10-28 09:30:25,747 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=ShoreKeeper(Healer) has_intro=True reason=intro_unbuffed_healer
+2026-10-28 09:30:25,748 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> ShoreKeeper(Healer) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:30:25,819 INFO TaskExecutor Hsin:switch_out at full con set current_con to 0
+2026-10-28 09:30:25,819 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.071s
+2026-10-28 09:30:27,222 INFO TaskExecutor BaseCombatTask:switch_next_char current_con 0.82 almost full, sleep and check again
+2026-10-28 09:30:27,291 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:30:27,292 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.8260869565217391
+2026-10-28 09:30:27,365 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.072s
+2026-10-28 09:30:27,543 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EBD80> 0.1 seconds
+2026-10-28 09:30:27,727 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EBD80> 0.1 seconds
+2026-10-28 09:30:27,907 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EB100> 0.1 seconds
+2026-10-28 09:30:28,089 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EB100> 0.1 seconds
+2026-10-28 09:30:28,289 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EA520> 0.1 seconds
+2026-10-28 09:30:28,471 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98EA520> 0.1 seconds
+2026-10-28 09:30:29,617 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:30:29,617 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.6236786469344608
+2026-10-28 09:30:30,397 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.780s
+2026-10-28 09:30:30,432 INFO TaskExecutor BaseCombatTask:switch_next_char current_con 0.98 almost full, sleep and check again
+2026-10-28 09:30:30,488 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Hsin(MainDps) has_intro=False reason=support_buffs_active_return_to_main_dps
+2026-10-28 09:30:30,488 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Hsin(MainDps) has_intro False has_sub_dps_intro False current_con 0.967391304347826
+2026-10-28 09:30:30,545 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.057s
+2026-10-28 09:30:36,571 INFO TaskExecutor Hsin:Hsin rotation end: timeout, finisher=False, enhanced_e=False, h2=False
+2026-10-28 09:30:36,588 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:30:36,588 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.0
+2026-10-28 09:30:36,674 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-10-28 09:30:36,999 INFO TaskExecutor CombatCheck:target lost try retarget 30
+2026-10-28 09:30:37,373 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.785s
+2026-10-28 09:30:37,550 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F6160> 0.1 seconds
+2026-10-28 09:30:37,732 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F6160> 0.1 seconds
+2026-10-28 09:30:37,932 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F6700> 0.1 seconds
+2026-10-28 09:30:38,132 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F6700> 0.1 seconds
+2026-10-28 09:30:38,332 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F6700> 0.1 seconds
+2026-10-28 09:30:38,532 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F5D00> 0.1 seconds
+2026-10-28 09:30:39,677 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=ShoreKeeper(Healer) has_intro=False reason=unbuffed_healer
+2026-10-28 09:30:39,677 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> ShoreKeeper(Healer) has_intro False has_sub_dps_intro False current_con 0.7441860465116279
+2026-10-28 09:30:39,750 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.073s
+2026-10-28 09:30:39,925 INFO TaskExecutor BaseCombatTask:switch selection result current=ShoreKeeper(Healer) target=Suoming(SubDps) has_intro=True reason=intro_unbuffed_subdps
+2026-10-28 09:30:39,925 INFO TaskExecutor BaseCombatTask:switch_next_char ShoreKeeper(Healer) -> Suoming(SubDps) has_intro True has_sub_dps_intro False current_con 1
+2026-10-28 09:30:39,987 INFO TaskExecutor ShoreKeeper:switch_out at full con set current_con to 0
+2026-10-28 09:30:39,987 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.062s
+2026-10-28 09:30:42,602 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F6CA0> 0.1 seconds
+2026-10-28 09:30:42,818 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F6CA0> 0.1 seconds
+2026-10-28 09:30:47,925 INFO TaskExecutor Suoming:click_liberation end 4.520238161087036
+2026-10-28 09:30:47,977 INFO TaskExecutor BaseCombatTask:switch selection result current=Suoming(SubDps) target=Hsin(MainDps) has_intro=True reason=intro_role_order_main_sub_healer
+2026-10-28 09:30:47,977 INFO TaskExecutor BaseCombatTask:switch_next_char Suoming(SubDps) -> Hsin(MainDps) has_intro True has_sub_dps_intro True current_con 0
+2026-10-28 09:30:48,511 INFO TaskExecutor Suoming:switch_out at full con set current_con to 0
+2026-10-28 09:30:48,511 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.533s
+2026-10-28 09:30:49,142 INFO TaskExecutor TaskExecutor:wait_until timeout <function BaseChar.click_liberation.<locals>.<lambda> at 0x00000271C98F4400> 0.4 seconds
+2026-10-28 09:30:49,142 ERROR TaskExecutor Hsin:clicked liberation but no effect 
+2026-10-28 09:30:49,304 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-10-28 09:30:53,961 INFO TaskExecutor Hsin:click_liberation end 4.218965768814087
+2026-10-28 09:30:53,962 INFO TaskExecutor Hsin:Hsin finisher start: R1 confirmed, duration=18
+2026-10-28 09:30:53,997 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=False
+2026-10-28 09:30:59,070 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=True, previously_confirmed=False
+2026-10-28 09:30:59,070 INFO TaskExecutor Hsin:Hsin enhanced E start: generic prompt ready
+2026-10-28 09:30:59,084 INFO TaskExecutor Hsin:Hsin enhanced E key: send=1, elapsed=0.002s
+2026-10-28 09:30:59,380 INFO TaskExecutor Hsin:Hsin enhanced E result: confirmed=True, sends=1, elapsed=0.309s
+2026-10-28 09:30:59,399 INFO TaskExecutor Hsin:Hsin enhanced E prompt: ready=False, previously_confirmed=True
+2026-10-28 09:31:11,972 INFO TaskExecutor Hsin:Hsin rotation end: timeout, finisher=True, enhanced_e=True, h2=False
+2026-10-28 09:31:11,995 INFO TaskExecutor BaseCombatTask:switch_next_char current_con 0.84 almost full, sleep and check again
+2026-10-28 09:31:12,050 INFO TaskExecutor BaseCombatTask:switch selection result current=Hsin(MainDps) target=Suoming(SubDps) has_intro=False reason=unbuffed_subdps
+2026-10-28 09:31:12,050 INFO TaskExecutor BaseCombatTask:switch_next_char Hsin(MainDps) -> Suoming(SubDps) has_intro False has_sub_dps_intro False current_con 0.8562367864693446
+2026-10-28 09:31:12,067 INFO TaskExecutor CombatCheck:target lost try retarget 10
+2026-10-28 09:31:22,068 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat 
+2026-10-28 09:31:22,068 ERROR TaskExecutor BaseCombatTask:combat check not in combat 
+2026-10-28 09:31:24,070 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_feature.<locals>.<lambda> at 0x00000271C994C9A0> 2 seconds
+2026-10-28 09:31:24,070 INFO TaskExecutor BaseCombatTask:combat_once out of combat break combat check not in combat
+2026-10-28 09:31:24,824 INFO TaskExecutor TacetTask:start walk_to_treasure
+2026-10-28 09:31:28,827 INFO TaskExecutor BaseWWTask:do_walk_to_box ended Box(name='Labels.pick_up_f_hcenter_vcenter', x=1222, y=548, width=20, height=20, confidence=61)
+2026-10-28 09:31:28,833 INFO TaskExecutor BaseWWTask:walk_until_f direction w target_text: None
+2026-10-28 09:31:33,947 INFO TaskExecutor TacetTask:体力读字原文领奖框（第 1 次）: ['49', '120/240']
+2026-10-28 09:31:33,947 INFO TaskExecutor TacetTask:info_set current_stamina 120
+2026-10-28 09:31:33,947 INFO TaskExecutor TacetTask:info_set back_up_stamina 49
+2026-10-28 09:31:33,948 INFO TaskExecutor BaseWWTask:当前体力大于等于双倍, 120 >= 120
+2026-10-28 09:31:33,951 WARNING TaskExecutor task:find_one:found [<Labels.confirm_btn_hcenter_vcenter: 'confirm_btn_hcenter_vcenter'>, <Labels.confirm_btn_highlight_hcenter_vcenter: 'confirm_btn_highlight_hcenter_vcenter'>] too many 2
+2026-10-28 09:31:34,152 INFO TaskExecutor TacetTask:left_click Labels.confirm_btn_hcenter_vcenter (1419, 678) after_sleep 2
+2026-10-28 09:31:38,156 INFO TaskExecutor TaskExecutor:wait_until timeout <function FindFeature.wait_feature.<locals>.<lambda> at 0x00000271C98F49A0> 2 seconds
+2026-10-28 09:31:38,156 INFO TaskExecutor BaseWWTask:current stamina: 0 not enough to continue
+2026-10-28 09:31:38,308 INFO screenshot screenshot:screenshot saved: D:\ark\okww\data\apps\ok-ww\working\screenshots\2026-10-28_09-31-38-156_tacet_drops_original.png
+2026-10-28 09:31:58,820 INFO TaskExecutor DailyTask:info_set current task claim daily
+2026-10-28 09:31:58,820 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-10-28 09:31:59,331 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-10-28 09:31:59,331 INFO TaskExecutor DailyTask:click f2 to open the book
+2026-10-28 09:32:03,360 INFO TaskExecutor DailyTask:send f2 key to open
+2026-10-28 09:32:04,394 INFO TaskExecutor BaseWWTask:found gray_book_boss Box(name='gray_book_quest', x=48, y=156, width=57, height=67, confidence=71)
+2026-10-28 09:32:06,798 INFO TaskExecutor DailyTask:left_click gray_book_quest (77, 190) after_sleep 1.5
+2026-10-28 09:32:08,318 INFO TaskExecutor DailyTask:no_boss_proceed, click claim
+2026-10-28 09:32:10,778 INFO TaskExecutor DailyTask:活跃奖励：活跃度 140
+2026-10-28 09:32:10,791 INFO TaskExecutor DailyTask:活跃奖励：点 40 档宝箱（1005,958）
+2026-10-28 09:32:14,994 INFO TaskExecutor DailyTask:活跃奖励：点 60 档宝箱（1259,958）
+2026-10-28 09:32:17,768 INFO TaskExecutor DailyTask:活跃奖励：点 80 档宝箱（1515,958）
+2026-10-28 09:32:20,347 INFO TaskExecutor DailyTask:活跃奖励：点 100 档宝箱（1772,959）
+2026-10-28 09:32:22,956 INFO TaskExecutor DailyTask:活跃奖励：领完核对通过（活跃度 140，已领 20、40、60、80、100，各档对勾分 20:0.97，40:0.93，60:0.98，80:0.96，100:0.93）
+2026-10-28 09:32:22,958 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-10-28 09:32:27,528 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-10-28 09:32:27,528 INFO TaskExecutor DailyTask:info_set current task claim mail
+2026-10-28 09:32:31,442 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-10-28 09:32:38,041 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-10-28 09:32:39,043 INFO TaskExecutor DailyTask:battle pass
+2026-10-28 09:32:53,633 INFO TaskExecutor DailyTask:战令：页面打开了，点了领取（等级 950/1000）
+2026-10-28 09:32:53,633 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-10-28 09:32:56,175 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-10-28 09:32:56,175 INFO TaskExecutor DailyTask:Daily Task Completed
+2026-10-28 09:32:56,189 INFO TaskExecutor TaskExecutor:Successfully Executed Task, Exiting Game and App!

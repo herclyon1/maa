@@ -937,6 +937,21 @@ shutdown would have landed mid-run. `_okww_up` adds the OK-WW process (okww_runn
 but only while its newest log is younger than OKWW_QUIET_MIN (15 min), so a hung
 process cannot keep the machine on all day.
 
+## collector.py:scan / parse_db_record（2026-10-28 补）
+
+AUTO-MAS updated itself from v5.8.0-beta.1 to v5.8.0-beta.2 at 08:47 that morning (the
+relay's own preupdate). The new version writes no per-run JSON: each run is a row of
+data/history.db `records` (time with its +04:00 offset, username, script_name, message,
+data) and its log is history/<date>/<id>/0.log; the old dated folders were removed. scan()
+walked `*.json` only, so the morning's MAA, two OK-WW attempts and MaaEnd were never
+booked, no ledger-2026-10-28.jsonl was written, and _check_missed_runs pushed 「早班 没有
+运行」 at 10:04:08, the minute the scripts stopped (it had held off while they ran; ledger
+#120). scan() now also reads the database (read-only): a row is mapped to the raw dict of
+the JSON layout (message under maa_result / maaend_result / general_result, each
+{"kind", "value"} statistic unwrapped), the stem is "<script>-HH-MM-SS" on the UTC+4 clock
+so run_ids keep their shape, and the same _build_record judges it and reads its 0.log.
+Fixture: that morning's real history.db and logs (tests/test_collect_history_db.py).
+
 ## claim.py:(模块级)（2026-09-07 补，v5）
 
 Once the reward is claimed, the game goes straight into a full-screen
