@@ -400,7 +400,7 @@ def _db_rows(history_root: Path) -> list[tuple]:
     if not db.exists():
         return []
     try:
-        con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True, timeout=5)
+        con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
         try:
             return con.execute("SELECT id, time, date, username, script_name, message, data, log_path"
                                " FROM records ORDER BY timestamp").fetchall()

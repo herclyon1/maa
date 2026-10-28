@@ -7,7 +7,7 @@ morning's real history.db and the five 0.log files it points to.
 """
 import shutil
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -77,4 +77,4 @@ if True:
 if fails:
     print(f"✗ {len(fails)} 项不过")
     sys.exit(1)
-print("✓ 全过")
+print("PASS test_collect_history_db")
