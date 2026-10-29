@@ -1,0 +1,1144 @@
+{
+    "task": [
+        {
+            "name": "AutoCollect",
+            "label": "$task.AutoCollect.label",
+            "entry": "AutoCollectSchedule",
+            "description": "$task.AutoCollect.description",
+            "group": [
+                "open_world"
+            ],
+            "controller": [
+                "ADB",
+                "CloudADB",
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "PlayCover",
+                "Win32-Front"
+            ],
+            "option": [
+                "AutoCollectSchedule",
+                "AutoCollectValleyIV",
+                "AutoCollectWuling",
+                "AutoCollectMode",
+                "AutoCollectStashBackpackSubTask"
+            ]
+        }
+    ],
+    "option": {
+        "AutoCollectSchedule": {
+            "type": "checkbox",
+            "label": "$option.TaskSchedule.label",
+            "cases": [
+                {
+                    "name": "AutoCollectScheduleMonday",
+                    "label": "$option.TaskScheduleMonday.label",
+                    "pipeline_override": {
+                        "AutoCollectScheduleEnabled": {
+                            "attach": {
+                                "monday": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "AutoCollectScheduleTuesday",
+                    "label": "$option.TaskScheduleTuesday.label",
+                    "pipeline_override": {
+                        "AutoCollectScheduleEnabled": {
+                            "attach": {
+                                "tuesday": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "AutoCollectScheduleWednesday",
+                    "label": "$option.TaskScheduleWednesday.label",
+                    "pipeline_override": {
+                        "AutoCollectScheduleEnabled": {
+                            "attach": {
+                                "wednesday": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "AutoCollectScheduleThursday",
+                    "label": "$option.TaskScheduleThursday.label",
+                    "pipeline_override": {
+                        "AutoCollectScheduleEnabled": {
+                            "attach": {
+                                "thursday": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "AutoCollectScheduleFriday",
+                    "label": "$option.TaskScheduleFriday.label",
+                    "pipeline_override": {
+                        "AutoCollectScheduleEnabled": {
+                            "attach": {
+                                "friday": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "AutoCollectScheduleSaturday",
+                    "label": "$option.TaskScheduleSaturday.label",
+                    "pipeline_override": {
+                        "AutoCollectScheduleEnabled": {
+                            "attach": {
+                                "saturday": true
+                            }
+                        }
+                    }
+                },
+                {
+                    "name": "AutoCollectScheduleSunday",
+                    "label": "$option.TaskScheduleSunday.label",
+                    "pipeline_override": {
+                        "AutoCollectScheduleEnabled": {
+                            "attach": {
+                                "sunday": true
+                            }
+                        }
+                    }
+                }
+            ],
+            "default_case": [
+                "AutoCollectScheduleMonday",
+                "AutoCollectScheduleTuesday",
+                "AutoCollectScheduleWednesday",
+                "AutoCollectScheduleThursday",
+                "AutoCollectScheduleFriday",
+                "AutoCollectScheduleSaturday",
+                "AutoCollectScheduleSunday"
+            ]
+        },
+        "AutoCollectStashBackpackSubTask": {
+            "type": "switch",
+            "label": "$task.AutoCollect.option.AutoCollectStashBackpackSubTask.label",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "StashBackpackType"
+                    ],
+                    "pipeline_override": {
+                        "StashBackpackMain": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "No",
+                    "pipeline_override": {
+                        "StashBackpackMain": {
+                            "enabled": false
+                        }
+                    }
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoCollectMode": {
+            "type": "select",
+            "controller": [
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "Win32-Front"
+            ],
+            "label": "$option.AutoCollectMode.label",
+            "description": "$option.AutoCollectMode.description",
+            "cases": [
+                {
+                    "name": "Always",
+                    "label": "$option.AutoCollectMode.case.Always.label"
+                },
+                {
+                    "name": "TargetInventory",
+                    "label": "$option.AutoCollectMode.case.TargetInventory.label",
+                    "option": [
+                        "AutoCollectTargetInventory"
+                    ],
+                    "pipeline_override": {
+                        "AutoCollectInventory": {
+                            "enabled": true
+                        }
+                    }
+                }
+            ],
+            "default_case": "Always"
+        },
+        "AutoCollectTargetInventory": {
+            "type": "input",
+            "controller": [
+                "Linux-Gamescope",
+                "Linux-ScreenCast",
+                "Linux-Wlroots",
+                "Win32-Front"
+            ],
+            "label": "$option.AutoCollectTargetInventory.label",
+            "description": "$option.AutoCollectTargetInventory.description",
+            "inputs": [
+                {
+                    "name": "AutoCollectLimit_item_plant_crylplant_1_2",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_crylplant_1_2.label",
+                    "default": "64",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_spcstone_1_1",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_spcstone_1_1.label",
+                    "default": "12",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_mushroom_1_1",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_mushroom_1_1.label",
+                    "default": "12",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_spcstone_1_2",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_spcstone_1_2.label",
+                    "default": "20",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_crylplant_1_1",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_crylplant_1_1.label",
+                    "default": "48",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_moss_spc_1",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_moss_spc_1.label",
+                    "default": "0",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_moss_spc_2",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_moss_spc_2.label",
+                    "default": "0",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_crylplant_2_1",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_crylplant_2_1.label",
+                    "default": "252",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_crylplant_2_2",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_crylplant_2_2.label",
+                    "default": "252",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_crylplant_1_3",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_crylplant_1_3.label",
+                    "default": "64",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_mushroom_2_1",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_mushroom_2_1.label",
+                    "default": "32",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_spcstone_2_2",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_spcstone_2_2.label",
+                    "default": "32",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_mushroom_2_2",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_mushroom_2_2.label",
+                    "default": "32",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_spcstone_2_1",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_spcstone_2_1.label",
+                    "default": "32",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_mushroom_1_3",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_mushroom_1_3.label",
+                    "default": "20",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_spcstone_1_3",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_spcstone_1_3.label",
+                    "default": "20",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_mushroom_1_2",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_mushroom_1_2.label",
+                    "default": "20",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_crylplant_2_3",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_crylplant_2_3.label",
+                    "default": "252",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_spcstone_2_3",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_spcstone_2_3.label",
+                    "default": "32",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_mushroom_2_3",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_mushroom_2_3.label",
+                    "default": "32",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_tundra_insect_2",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_tundra_insect_2.label",
+                    "default": "0",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_tundra_insect_1",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_tundra_insect_1.label",
+                    "default": "0",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_grass_spc_1",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_grass_spc_1.label",
+                    "default": "0",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_sp_3",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_sp_3.label",
+                    "default": "0",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_grass_spc_2",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_grass_spc_2.label",
+                    "default": "0",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                },
+                {
+                    "name": "AutoCollectLimit_item_plant_sp_4",
+                    "label": "$option.AutoCollectTargetInventory.inputs.item_plant_sp_4.label",
+                    "default": "0",
+                    "pipeline_type": "int",
+                    "verify": "^\\d+$",
+                    "pattern_msg": "$option.AutoCollectTargetInventory.pattern_msg"
+                }
+            ],
+            "pipeline_override": {
+                "__AutoCollectValleyIVChrysodendraSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_crylplant_1_2}>0 && {item_plant_crylplant_1_2}>={AutoCollectLimit_item_plant_crylplant_1_2}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectValleyIVKalkonyxSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_spcstone_1_1}>0 && {item_plant_spcstone_1_1}>={AutoCollectLimit_item_plant_spcstone_1_1}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectValleyIVPinkBoleteSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_mushroom_1_1}>0 && {item_plant_mushroom_1_1}>={AutoCollectLimit_item_plant_mushroom_1_1}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectValleyIVAuronyxSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_spcstone_1_2}>0 && {item_plant_spcstone_1_2}>={AutoCollectLimit_item_plant_spcstone_1_2}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectValleyIVKalkodendraSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_crylplant_1_1}>0 && {item_plant_crylplant_1_1}>={AutoCollectLimit_item_plant_crylplant_1_1}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectValleyIVFirebuckleSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_moss_spc_1}>0 && {item_plant_moss_spc_1}>={AutoCollectLimit_item_plant_moss_spc_1}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectValleyIVUmbralineSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_moss_spc_2}>0 && {item_plant_moss_spc_2}>={AutoCollectLimit_item_plant_moss_spc_2}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingBlightedJadeleafSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_crylplant_2_1}>0 && {item_plant_crylplant_2_1}>={AutoCollectLimit_item_plant_crylplant_2_1}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingFalseAggelaSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_crylplant_2_2}>0 && {item_plant_crylplant_2_2}>={AutoCollectLimit_item_plant_crylplant_2_2}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingVitrodendraSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_crylplant_1_3}>0 && {item_plant_crylplant_1_3}>={AutoCollectLimit_item_plant_crylplant_1_3}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingBloodcapSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_mushroom_2_1}>0 && {item_plant_mushroom_2_1}>={AutoCollectLimit_item_plant_mushroom_2_1}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingWulingstoneSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_spcstone_2_2}>0 && {item_plant_spcstone_2_2}>={AutoCollectLimit_item_plant_spcstone_2_2}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingCosmagaricSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_mushroom_2_2}>0 && {item_plant_mushroom_2_2}>={AutoCollectLimit_item_plant_mushroom_2_2}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingIgneositeSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_spcstone_2_1}>0 && {item_plant_spcstone_2_1}>={AutoCollectLimit_item_plant_spcstone_2_1}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingRubyBoleteSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_mushroom_1_3}>0 && {item_plant_mushroom_1_3}>={AutoCollectLimit_item_plant_mushroom_1_3}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingUmbronyxSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_spcstone_1_3}>0 && {item_plant_spcstone_1_3}>={AutoCollectLimit_item_plant_spcstone_1_3}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingRedBoleteSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_mushroom_1_2}>0 && {item_plant_mushroom_1_2}>={AutoCollectLimit_item_plant_mushroom_1_2}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingCrimsonSpearleafSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_crylplant_2_3}>0 && {item_plant_crylplant_2_3}>={AutoCollectLimit_item_plant_crylplant_2_3}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingProtocolithSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_spcstone_2_3}>0 && {item_plant_spcstone_2_3}>={AutoCollectLimit_item_plant_spcstone_2_3}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingTalosCapSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_mushroom_2_3}>0 && {item_plant_mushroom_2_3}>={AutoCollectLimit_item_plant_mushroom_2_3}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingScorchbugSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_tundra_insect_2}>0 && {item_plant_tundra_insect_2}>={AutoCollectLimit_item_plant_tundra_insect_2}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingGlowbugSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_tundra_insect_1}>0 && {item_plant_tundra_insect_1}>={AutoCollectLimit_item_plant_tundra_insect_1}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingFluffedJincaoSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_grass_spc_1}>0 && {item_plant_grass_spc_1}>={AutoCollectLimit_item_plant_grass_spc_1}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingRedjadeGinsengSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_sp_3}>0 && {item_plant_sp_3}>={AutoCollectLimit_item_plant_sp_3}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingThornyYazhenSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_grass_spc_2}>0 && {item_plant_grass_spc_2}>={AutoCollectLimit_item_plant_grass_spc_2}"
+                            }
+                        }
+                    }
+                },
+                "__AutoCollectWulingAmberRiceSkipped": {
+                    "recognition": {
+                        "param": {
+                            "custom_recognition_param": {
+                                "expression": "{AutoCollectLimit_item_plant_sp_4}>0 && {item_plant_sp_4}>={AutoCollectLimit_item_plant_sp_4}"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "AutoCollectValleyIV": {
+            "type": "switch",
+            "label": "$global.region.ValleyIV",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "AutoCollectValleyIVRareItems",
+                        "AutoCollectValleyIVCommonItems"
+                    ]
+                },
+                {
+                    "name": "No"
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoCollectValleyIVRareItems": {
+            "type": "checkbox",
+            "label": "$option.AutoCollectRareItems.label",
+            "cases": [
+                {
+                    "name": "item_plant_crylplant_1_2",
+                    "label": "$option.AutoCollectItem.item_plant_crylplant_1_2.label",
+                    "icon": "resource/image/UI/Item/item_plant_crylplant_1_2.png",
+                    "pipeline_override": {
+                        "__AutoCollectValleyIVChrysodendraDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectValleyIVChrysodendraSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectValleyIVChrysodendra1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_spcstone_1_1",
+                    "label": "$option.AutoCollectItem.item_plant_spcstone_1_1.label",
+                    "icon": "resource/image/UI/Item/item_plant_spcstone_1_1.png",
+                    "pipeline_override": {
+                        "__AutoCollectValleyIVKalkonyxDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectValleyIVKalkonyxSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectValleyIVKalkonyx1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_mushroom_1_1",
+                    "label": "$option.AutoCollectItem.item_plant_mushroom_1_1.label",
+                    "icon": "resource/image/UI/Item/item_plant_mushroom_1_1.png",
+                    "pipeline_override": {
+                        "__AutoCollectValleyIVPinkBoleteDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectValleyIVPinkBoleteSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectValleyIVPinkBolete1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_spcstone_1_2",
+                    "label": "$option.AutoCollectItem.item_plant_spcstone_1_2.label",
+                    "icon": "resource/image/UI/Item/item_plant_spcstone_1_2.png",
+                    "pipeline_override": {
+                        "__AutoCollectValleyIVAuronyxDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectValleyIVAuronyxSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectValleyIVAuronyx1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_crylplant_1_1",
+                    "label": "$option.AutoCollectItem.item_plant_crylplant_1_1.label",
+                    "icon": "resource/image/UI/Item/item_plant_crylplant_1_1.png",
+                    "pipeline_override": {
+                        "__AutoCollectValleyIVKalkodendraDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectValleyIVKalkodendraSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectValleyIVKalkodendra1Start": {
+                            "enabled": true
+                        }
+                    }
+                }
+            ],
+            "default_case": [
+                "item_plant_crylplant_1_2",
+                "item_plant_spcstone_1_1",
+                "item_plant_mushroom_1_1",
+                "item_plant_spcstone_1_2",
+                "item_plant_crylplant_1_1"
+            ]
+        },
+        "AutoCollectValleyIVCommonItems": {
+            "type": "checkbox",
+            "label": "$option.AutoCollectCommonItems.label",
+            "cases": [
+                {
+                    "name": "item_plant_moss_spc_1",
+                    "label": "$option.AutoCollectItem.item_plant_moss_spc_1.label",
+                    "icon": "resource/image/UI/Item/item_plant_moss_spc_1.png",
+                    "pipeline_override": {
+                        "__AutoCollectValleyIVFirebuckleDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectValleyIVFirebuckleSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectValleyIVFirebuckle1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_moss_spc_2",
+                    "label": "$option.AutoCollectItem.item_plant_moss_spc_2.label",
+                    "icon": "resource/image/UI/Item/item_plant_moss_spc_2.png",
+                    "pipeline_override": {
+                        "__AutoCollectValleyIVUmbralineDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectValleyIVUmbralineSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectValleyIVUmbraline1Start": {
+                            "enabled": true
+                        }
+                    }
+                }
+            ],
+            "default_case": [
+                "item_plant_moss_spc_1",
+                "item_plant_moss_spc_2"
+            ]
+        },
+        "AutoCollectWuling": {
+            "type": "switch",
+            "label": "$global.region.Wuling",
+            "cases": [
+                {
+                    "name": "Yes",
+                    "option": [
+                        "AutoCollectWulingRareItems",
+                        "AutoCollectWulingCommonItems"
+                    ]
+                },
+                {
+                    "name": "No"
+                }
+            ],
+            "default_case": "Yes"
+        },
+        "AutoCollectWulingRareItems": {
+            "type": "checkbox",
+            "label": "$option.AutoCollectRareItems.label",
+            "cases": [
+                {
+                    "name": "item_plant_crylplant_2_1",
+                    "label": "$option.AutoCollectItem.item_plant_crylplant_2_1.label",
+                    "icon": "resource/image/UI/Item/item_plant_crylplant_2_1.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingBlightedJadeleafDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingBlightedJadeleafSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingBlightedJadeleaf1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_crylplant_2_2",
+                    "label": "$option.AutoCollectItem.item_plant_crylplant_2_2.label",
+                    "icon": "resource/image/UI/Item/item_plant_crylplant_2_2.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingFalseAggelaDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingFalseAggelaSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingFalseAggela1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_crylplant_1_3",
+                    "label": "$option.AutoCollectItem.item_plant_crylplant_1_3.label",
+                    "icon": "resource/image/UI/Item/item_plant_crylplant_1_3.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingVitrodendraDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingVitrodendraSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingVitrodendra1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_mushroom_2_1",
+                    "label": "$option.AutoCollectItem.item_plant_mushroom_2_1.label",
+                    "icon": "resource/image/UI/Item/item_plant_mushroom_2_1.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingBloodcapDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingBloodcapSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingBloodcapWulingstone1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_spcstone_2_2",
+                    "label": "$option.AutoCollectItem.item_plant_spcstone_2_2.label",
+                    "icon": "resource/image/UI/Item/item_plant_spcstone_2_2.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingWulingstoneDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingWulingstoneSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingBloodcapWulingstone1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_mushroom_2_2",
+                    "label": "$option.AutoCollectItem.item_plant_mushroom_2_2.label",
+                    "icon": "resource/image/UI/Item/item_plant_mushroom_2_2.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingCosmagaricDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingCosmagaricSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingCosmagaric1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_spcstone_2_1",
+                    "label": "$option.AutoCollectItem.item_plant_spcstone_2_1.label",
+                    "icon": "resource/image/UI/Item/item_plant_spcstone_2_1.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingIgneositeDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingIgneositeSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingIgneosite1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_mushroom_1_3",
+                    "label": "$option.AutoCollectItem.item_plant_mushroom_1_3.label",
+                    "icon": "resource/image/UI/Item/item_plant_mushroom_1_3.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingRubyBoleteDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingRubyBoleteSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingRubyBolete1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_spcstone_1_3",
+                    "label": "$option.AutoCollectItem.item_plant_spcstone_1_3.label",
+                    "icon": "resource/image/UI/Item/item_plant_spcstone_1_3.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingUmbronyxDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingUmbronyxSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingUmbronyx1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_mushroom_1_2",
+                    "label": "$option.AutoCollectItem.item_plant_mushroom_1_2.label",
+                    "icon": "resource/image/UI/Item/item_plant_mushroom_1_2.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingRedBoleteDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingRedBoleteSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingRedBolete1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_crylplant_2_3",
+                    "label": "$option.AutoCollectItem.item_plant_crylplant_2_3.label",
+                    "icon": "resource/image/UI/Item/item_plant_crylplant_2_3.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingCrimsonSpearleafDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingCrimsonSpearleafSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingCrimsonSpearleaf1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_spcstone_2_3",
+                    "label": "$option.AutoCollectItem.item_plant_spcstone_2_3.label",
+                    "icon": "resource/image/UI/Item/item_plant_spcstone_2_3.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingProtocolithDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingProtocolithSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingProtocolith1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_mushroom_2_3",
+                    "label": "$option.AutoCollectItem.item_plant_mushroom_2_3.label",
+                    "icon": "resource/image/UI/Item/item_plant_mushroom_2_3.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingTalosCapDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingTalosCapSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingTalosCap1Start": {
+                            "enabled": true
+                        }
+                    }
+                }
+            ],
+            "default_case": [
+                "item_plant_crylplant_2_1",
+                "item_plant_crylplant_2_2",
+                "item_plant_crylplant_1_3",
+                "item_plant_mushroom_2_1",
+                "item_plant_spcstone_2_2",
+                "item_plant_mushroom_2_2",
+                "item_plant_spcstone_2_1",
+                "item_plant_mushroom_1_3",
+                "item_plant_spcstone_1_3",
+                "item_plant_mushroom_1_2",
+                "item_plant_crylplant_2_3",
+                "item_plant_spcstone_2_3",
+                "item_plant_mushroom_2_3"
+            ]
+        },
+        "AutoCollectWulingCommonItems": {
+            "type": "checkbox",
+            "label": "$option.AutoCollectCommonItems.label",
+            "cases": [
+                {
+                    "name": "item_plant_tundra_insect_2",
+                    "label": "$option.AutoCollectItem.item_plant_tundra_insect_2.label",
+                    "icon": "resource/image/UI/Item/item_plant_tundra_insect_2.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingScorchbugDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingScorchbugSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingScorchbug1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_tundra_insect_1",
+                    "label": "$option.AutoCollectItem.item_plant_tundra_insect_1.label",
+                    "icon": "resource/image/UI/Item/item_plant_tundra_insect_1.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingGlowbugDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingGlowbugSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingGlowbug1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_grass_spc_1",
+                    "label": "$option.AutoCollectItem.item_plant_grass_spc_1.label",
+                    "icon": "resource/image/UI/Item/item_plant_grass_spc_1.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingFluffedJincaoDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingFluffedJincaoSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingFluffedJincao1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_sp_3",
+                    "label": "$option.AutoCollectItem.item_plant_sp_3.label",
+                    "icon": "resource/image/UI/Item/item_plant_sp_3.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingRedjadeGinsengDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingRedjadeGinsengSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingRedjadeGinseng1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_grass_spc_2",
+                    "label": "$option.AutoCollectItem.item_plant_grass_spc_2.label",
+                    "icon": "resource/image/UI/Item/item_plant_grass_spc_2.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingThornyYazhenDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingThornyYazhenSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingThornyYazhen1Start": {
+                            "enabled": true
+                        }
+                    }
+                },
+                {
+                    "name": "item_plant_sp_4",
+                    "label": "$option.AutoCollectItem.item_plant_sp_4.label",
+                    "icon": "resource/image/UI/Item/item_plant_sp_4.png",
+                    "pipeline_override": {
+                        "__AutoCollectWulingAmberRiceDispatch": {
+                            "enabled": true
+                        },
+                        "__AutoCollectWulingAmberRiceSkipped": {
+                            "enabled": true
+                        },
+                        "AutoCollectWulingAmberRice1Start": {
+                            "enabled": true
+                        }
+                    }
+                }
+            ],
+            "default_case": [
+                "item_plant_tundra_insect_2",
+                "item_plant_tundra_insect_1",
+                "item_plant_grass_spc_1",
+                "item_plant_sp_3",
+                "item_plant_grass_spc_2",
+                "item_plant_sp_4"
+            ]
+        }
+    }
+}

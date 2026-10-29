@@ -108,10 +108,17 @@ MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
         "AutoCollectSchedule",          # Which days to gather (哪几天采)
         # From v2.28.0-beta.5 routes are per region: a switch for the region,
         # then its rare and common lists (the old AutoCollectRoutes is gone).
+        # v2.36.0-beta.5 (2026-10-29) picks by item: *Routes became *Items.
         "AutoCollectValleyIV",
+        "AutoCollectValleyIVRareItems",
+        "AutoCollectValleyIVCommonItems",
+        "AutoCollectWuling",
+        "AutoCollectWulingRareItems",
+        "AutoCollectWulingCommonItems",
+        # The route lists stay listed for a MaaEnd still on the route format; a key with no definition and no
+        # saved value is skipped quietly, so on v2.36 they show nothing once the master is migrated.
         "AutoCollectValleyIVRareRoutes",
         "AutoCollectValleyIVCommonRoutes",
-        "AutoCollectWuling",
         "AutoCollectWulingRareRoutes",
         "AutoCollectWulingCommonRoutes",
         "AutoCollectMode",              # Tick-list or target-inventory gathering
@@ -724,6 +731,29 @@ def _prune_refused(note: str) -> tuple[list[str], str]:
 # keys in the master are rewritten here. Each entry: old key -> how to rewrite it.
 # Only observed changes are translated; any other dead key is removed and named
 # in the note.
+# v2.36.0-beta.5 (installed 2026-10-29 10:27 Beijing) picks gathering by item instead of by route: the four
+# *Routes checkboxes became *Items checkboxes whose cases are item ids. Each old route gathered one item (route 7
+# gathered two), named in MaaEnd's own zh_cn locale on both sides (beta.4 「路线4：纯晶多齿叶」, beta.5 item
+# 「纯晶多齿叶」), so this table is read off those two files, not guessed. A route not in it is dropped and named.
+_COLLECT_ITEMS = {
+    "AutoCollectValleyIVRareRoutes": ("AutoCollectValleyIVRareItems", {
+        "Route4": ["item_plant_crylplant_1_2"], "Route5": ["item_plant_spcstone_1_1"],
+        "Route6": ["item_plant_mushroom_1_1"], "Route13": ["item_plant_spcstone_1_2"],
+        "Route14": ["item_plant_crylplant_1_1"]}),
+    "AutoCollectValleyIVCommonRoutes": ("AutoCollectValleyIVCommonItems", {
+        "CommonRoute1": ["item_plant_moss_spc_1"], "CommonRoute2": ["item_plant_moss_spc_2"]}),
+    "AutoCollectWulingRareRoutes": ("AutoCollectWulingRareItems", {
+        "Route1": ["item_plant_crylplant_2_1"], "Route2": ["item_plant_crylplant_2_2"],
+        "Route3": ["item_plant_crylplant_1_3"], "Route7": ["item_plant_mushroom_2_1", "item_plant_spcstone_2_2"],
+        "Route8": ["item_plant_mushroom_2_2"], "Route9": ["item_plant_spcstone_2_1"],
+        "Route10": ["item_plant_mushroom_1_3"], "Route11": ["item_plant_spcstone_1_3"],
+        "Route12": ["item_plant_mushroom_1_2"], "Route15": ["item_plant_crylplant_2_3"],
+        "Route16": ["item_plant_spcstone_2_3"], "Route17": ["item_plant_mushroom_2_3"]}),
+    "AutoCollectWulingCommonRoutes": ("AutoCollectWulingCommonItems", {
+        "CommonRoute3": ["item_plant_tundra_insect_2"], "CommonRoute4": ["item_plant_tundra_insect_1"],
+        "CommonRoute5": ["item_plant_grass_spc_1"], "CommonRoute6": ["item_plant_sp_3"],
+        "CommonRoute7": ["item_plant_grass_spc_2"], "CommonRoute8": ["item_plant_sp_4"]}),
+}
 _COLLECT_SPLIT = {
     "AutoCollectRoutes": ("AutoCollectValleyIVRareRoutes", "AutoCollectWulingRareRoutes"),
     "AutoCollectCommonRoutes": ("AutoCollectValleyIVCommonRoutes", "AutoCollectWulingCommonRoutes"),
@@ -869,6 +899,22 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
                     ov.setdefault(region, {"type": "switch", "value": True})
                 changes.append(f"{name}/{old} → 按区域拆成 {valley}、{wuling}"
                                f"（保留原来勾的 {len(picked)} 条）")
+            # 自动采集 v2.36: route lists -> item lists (the same picks, by what each route gathered).
+            for old, (new_key, items) in _COLLECT_ITEMS.items():
+                if old not in ov or new_key in ov or new_key not in opts:
+                    continue
+                picked = list((ov[old] or {}).get("caseNames") or [])
+                valid = set(_cases(opts, new_key))
+                mine, unknown = [], []
+                for route in picked:
+                    got = [i for i in items.get(route, []) if i in valid]
+                    if got:
+                        mine.extend(i for i in got if i not in mine)
+                    else:
+                        unknown.append(route)
+                ov[new_key] = {"type": "checkbox", "caseNames": mine}
+                changes.append(f"{name}/{old} → {new_key}（原来勾的 {len(picked)} 条路线换成 {len(mine)} 样采集物"
+                               + (f"；对不上的：{'、'.join(unknown)}" if unknown else "") + "）")
             if name == "AutoCollect" and "AutoCollectMode" in opts and "AutoCollectMode" not in ov:
                 ov["AutoCollectMode"] = {"type": "select", "caseName": "Always"}
                 changes.append(f"{name}/AutoCollectMode 补上默认值 Always")

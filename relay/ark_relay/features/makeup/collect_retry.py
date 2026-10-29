@@ -55,7 +55,11 @@ ENTRY = "AutoCollectSchedule"
 _ROUTE_KEY = re.compile(r"^(AutoCollect(?:Common)?Route\d+)(Start|Dispatch)$")
 _FAILED_LINE = re.compile(r"^\[[^\]]+\]\s*(.+?采集失败)\s*$")
 _OVERRIDE_LINE = re.compile(r"entry=" + ENTRY + r", pipelineOverride=(\[.*\])\s*$")
-_NODE = re.compile(r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(End|Failed)\"")
+# v2.36 (2026-10-29) names routes by item - AutoCollectValleyIVChrysodendra1Start/End, a Failed node with two
+# leading underscores, and per item __AutoCollect<Item>Dispatch/Skipped - so a route id is AutoCollect<name><n>
+_NEW_START = re.compile(r"^(AutoCollect(?!(?:Common)?Route\d)[A-Za-z]+\d+)Start$")
+_NEW_ITEM = re.compile(r"^__AutoCollect([A-Za-z]+)(Dispatch|Skipped)$")
+_NODE = re.compile(r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(?:__)?(AutoCollect[A-Za-z]*\d+)(End|Failed)\"")
 # A route node's recognition or action in maafw.log (retry_blocked): the Start
 # node's recognition is the moment the route is announced, its action 0.2 s later.
 _ROUTE_EVENT = re.compile(r"\[msg=Node\.(?:Recognition\.Succeeded|Action\.Starting)\]"
@@ -95,9 +99,17 @@ def failed_labels_from_locale(zh_cn: dict) -> dict[str, str]:
     out: dict[str, str] = {}
     for key, val in zh_cn.items():
         m = re.fullmatch(r"option\.(AutoCollect(?:Common)?Route\d+)\.failed", key)
-        if m and isinstance(val, str):
-            out[_TAG.sub("", val).strip()] = m.group(1)
+        # v2.36: task.AutoCollect.route.ValleyIVChrysodendra1.failed = 「纯晶多齿叶采集失败」
+        n = re.fullmatch(r"task\.AutoCollect\.route\.([A-Za-z]+\d+)\.failed", key)
+        if (m or n) and isinstance(val, str):
+            out[_TAG.sub("", val).strip()] = m.group(1) if m else f"AutoCollect{n.group(1)}"
     return out
+
+
+def _item_of(rid: str) -> str | None:
+    """v2.36 route id → its item's name in the dispatch nodes (AutoCollectValleyIVChrysodendra1 → ValleyIVChrysodendra)."""
+    m = _NEW_START.match(rid + "Start")
+    return re.sub(r"\d+$", "", m.group(1)[len("AutoCollect"):]) if m else None
 
 
 def route_ids_by_label(zh_cn: dict) -> dict[str, str]:
@@ -250,14 +262,19 @@ def build_override(parts: list[dict], routes: list[str], weekday: str) -> dict:
     merged = _merge(parts)
     wanted = set(routes)
     out: dict = {}
+    items = {i for i in map(_item_of, routes) if i}
     for node, spec in merged.items():
-        m = _ROUTE_KEY.match(node)
+        m = _ROUTE_KEY.match(node) or _NEW_START.match(node)
         if m and m.group(1) not in wanted:
+            continue
+        n = _NEW_ITEM.match(node)
+        if n and n.group(1) not in items:
             continue
         out[node] = spec
     for rid in routes:
         out.setdefault(f"{rid}Start", {"enabled": True})
-        out.setdefault(f"{rid}Dispatch", {"enabled": True})
+        item = _item_of(rid)
+        out.setdefault(f"__AutoCollect{item}Dispatch" if item else f"{rid}Dispatch", {"enabled": True})
     sched = out.setdefault("AutoCollectScheduleEnabled", {})
     attach = sched.setdefault("attach", {}) if isinstance(sched, dict) else {}
     attach[weekday] = True
