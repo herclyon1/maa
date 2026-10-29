@@ -49,6 +49,7 @@ SAMPLES = {
     "MAA": [
         "[2026-09-27 09:00:55.117][ERR][AutoStart]              <2> Failed to set startup: No value exists with that name.",
         "[2026-10-02 21:46:55.570][ERR][TaskQueueViewModel]     <2> 识别错误, 已返回",
+        "[2026-10-29 21:34:09.756][ERR][GameDataReportService]  <2> Error during HTTP POST request to https://penguin-stats.io/PenguinStats/api/v2/report",
     ],
     "MaaEnd": [
         "[2026-10-21 09:55:08.002] [2026-10-21 09:55:07.977][ERR][Px6540][Tx4086][navigation_state_machine.cpp][L2696][mapnavigator::NavigationStateMachine::FailNavigation] Off-route with no route progress past the wedge timeout; terminating so the pipeline can retry. [current_distance=9.953856] [yaw_error=59.709557] [stalled_ms=0]",
@@ -105,6 +106,8 @@ MUST_PUSH = {
     ],
     "MAA": [
         "[2026-10-02 23:40:26.537][ERR][VersionUpdateDialogViewModel] <2> mirrorc failed",
+        # Made up from the real penguin-stats.io line: the backup domain failing too is not recovered.
+        "[2026-10-29 21:34:09.813][ERR][GameDataReportService]  <2> Error during HTTP POST request to https://penguin-stats.cn/PenguinStats/api/v2/report",
     ],
     "MaaEnd": [
         # Made up from the real anchor line: a node that does not exist without being an anchor.
