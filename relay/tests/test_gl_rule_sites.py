@@ -128,8 +128,9 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
                  "(gamesim/chain test_log_contract.py, main_book_team_1013 level)"),
     ("features/makeup/collect_retry.py", r"^\[[^\]]+\]\s*(.+?采集失败)\s*$"):
         ("fixture", "only fixtures/collect-retry-2026-09-11 (real MXU lines, no SOURCE in the census)"),
-    ("features/makeup/collect_retry.py", r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(End|Failed)\""):
-        ("fixture", "only fixtures/collect-retry-2026-09-11 (real MXU lines, no SOURCE in the census)"),
+    ("features/makeup/collect_retry.py", r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(?:__)?(AutoCollect[A-Za-z]*\d+)(End|Failed)\""):
+        ("fixture", "only fixtures/collect-retry-2026-09-11 (real MXU lines, no SOURCE in the census); the "
+                    "v2.36 names it now also takes (ledger #122) no machine has logged yet"),
     ("features/makeup/collect_retry.py", r"Web server listening on http://127\.0\.0\.1:(\d+)"):
         ("none", "MXU's own stdout at start; not kept in any record"),
     ("features/verify/collector_maaend.py", r"采集失败$|本次跳过$"):
@@ -163,6 +164,11 @@ NOT_LOG: "dict[tuple[str, str], str]" = {
     ("features/weekly/annihilation.py", "backend-error"): "the relay's own once-per-condition set",
     ("features/makeup/makeup.py", ".label"): "MaaEnd locale keys (task.<name>.label)",
     ("features/makeup/collect_retry.py", r"^(AutoCollect(?:Common)?Route\d+)(Start|Dispatch)$"): "MaaEnd pipeline node names",
+    ("features/makeup/collect_retry.py", r"^(AutoCollect(?!(?:Common)?Route\d)[A-Za-z]+\d+)Start$"):
+        "MaaEnd pipeline node names (v2.36)",
+    ("features/makeup/collect_retry.py", r"^__AutoCollect([A-Za-z]+)(Dispatch|Skipped)$"):
+        "MaaEnd pipeline node names (v2.36)",
+    ("features/makeup/collect_retry.py", r"task\.AutoCollect\.route\.([A-Za-z]+\d+)\.failed"): "MaaEnd locale keys (v2.36)",
     ("features/makeup/collect_retry.py", r"^AutoCollect.*Routes$"): "MaaEnd option names",
     ("features/makeup/collect_retry.py", r"option\.(AutoCollect(?:Common)?Route\d+)\.failed"): "MaaEnd locale keys",
     ("features/makeup/collect_retry.py", "no-labels"): "the relay's own once-per-condition set",
