@@ -3814,6 +3814,17 @@
 "names",
 "texts"
 ],
+"test_maaend_collect_items_v236.py": [
+"__init__",
+"collect_retry",
+"config",
+"errwatch",
+"mastercfg",
+"mastercfg_maa",
+"mastercfg_okww",
+"names",
+"texts"
+],
 "test_maaend_collect_xianlu.py": [
 "__init__",
 "collector_maaend",
