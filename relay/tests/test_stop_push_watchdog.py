@@ -18,8 +18,12 @@ Checked here, on any OS (pywin32 is faked):
      relay still running had a few seconds to finish; the marker is written by
      send_state and cleared when the phone channel comes up;
   c. the watchdog accepts PRESHUTDOWN, its handler only flags and returns, and it does
-     not start the relay again once Windows is going down.
+     not start the relay again once Windows is going down;
+  d. a service stop (a deploy) whose push was cut off passes #11 when the restarted
+     relay's boot push went out, tagged recovered; a Windows shutdown's cut-off, or one
+     with no boot push after it, still fails (2026-10-29 22:11:56).
 """
+import logging
 import os
 import re
 import sys
@@ -120,6 +124,7 @@ from ark_relay.features.selfcheck import machinecheck as mc  # noqa: E402
 from ark_relay.features.phone import phone  # noqa: E402
 from ark_relay.core.config import SERVER_TZ  # noqa: E402
 from ark_relay.features.selfcheck.machinechecks import system as sysmc  # noqa: E402
+from ark_relay.features.alarm import errwatch  # noqa: E402
 
 # ---------------------------------------------------------------- relay.log and #11
 
@@ -185,6 +190,31 @@ check("#11 passed", r and r.status, mc.PASS)
 r = judge11(BEFORE[:3] + BOOT_NOW)
 check("without it: still the old failure", r and r.status, mc.FAIL)
 
+# 2026-10-29 22:11:46 a deploy's stop: the push was not done in 10 s, the restarted relay pushed at 22:12:48.
+CUT = logline("10-11 14:25:20", "停止前那份状态 10 秒还没发完，中继不再等，手机上可能还是上一份状态")
+SVC_STOP = BEFORE[:3] + [logline("10-11 14:25:10", "收到停止通知（停止中继）"), CUT]
+BOOT_PUSHED = BOOT_NOW + [logline("10-11 14:26:50", "📱 已上报状态到手机（开机；今天 ntfy 已用 32 条）")]
+held = []
+hook = logging.Handler()
+hook.emit = lambda rec: held.append(rec)
+sysmc.log.addHandler(hook)
+
+print("[d. a service stop's push cut off, the restarted relay's boot push went out -> passes, recovered]")
+r = judge11(SVC_STOP + BOOT_PUSHED)
+check("#11 passed", r and r.status, mc.PASS)
+check("the evidence names the boot push", "开机" in (r.evidence if r else "") and "重启后" in (r.evidence if r else ""), True)
+check("one WARNING tagged recovered (daily report, not the group)",
+      [bool(getattr(x, errwatch.RECOVERED, False)) for x in held if x.levelno == logging.WARNING], [True])
+
+print("[d. the same cut-off at a Windows shutdown -> still fails: its next start is the next power-on]")
+r = judge11(BEFORE + [CUT] + BOOT_PUSHED)
+check("#11 failed", r and r.status, mc.FAIL)
+
+print("[d. a service stop's push cut off and no boot push after it -> fails]")
+r = judge11(SVC_STOP + BOOT_NOW)
+check("#11 failed", r and r.status, mc.FAIL)
+sysmc.log.removeHandler(hook)
+
 print("[a+b. the real stop_push writes the line #11 reads into relay.log]")
 LOG.write_text("\n".join(BEFORE) + "\n", encoding="utf-8")
 published = []
@@ -233,7 +263,6 @@ check("no marker after a failed push", phone.stop_pushed(DATA / "state"), False)
 check("the failure line #11 reads",
       "状态没能上报到手机（停止前）：COS 403" in LOG.read_text(encoding="utf-8"), True)
 # Audit 2026-10-13 s5: stop-push had no errwatch, so this WARNING never reached the group.
-from ark_relay.features.alarm import errwatch  # noqa: E402
 _today = datetime.now(tz=__import__("ark_relay.core.config", fromlist=["SERVER_TZ"]).SERVER_TZ).strftime("%Y-%m-%d")
 check("errwatch took the failure line (it goes to the group)",
       any("状态没能上报到手机" in str(r.get("line")) for r in errwatch.day_faults(DATA / "state", _today)), True)

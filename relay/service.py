@@ -213,10 +213,15 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         main thread came out of the loop at once and went straight on to
         os._exit, so the 「停止前」 state was cut off unless it took under the
         heartbeat's 3 s join. Not waited for when no stop was asked (the
-        self-update restart returns from main by itself)."""
+        self-update restart returns from main by itself).
+
+        A cut-off push is logged, not pushed: a process being torn down cannot tell
+        whether the phone is left behind, so boot check #11 judges it at the next
+        start (machinechecks/system.py:_stop_push) - 2026-10-29 22:11:56 a deploy's
+        stop rang the group although the restarted relay pushed at 22:12:48."""
         if not self._stop_asked.is_set() or self._stop_pushed.wait(STOP_PUSH_WAIT_S):
             return
-        logging.getLogger("ark.service").warning(
+        logging.getLogger("ark.service").info(
             "停止前那份状态 %.0f 秒还没发完，中继不再等，手机上可能还是上一份状态", STOP_PUSH_WAIT_S)
 
     # Not run by the installed relay (app_main.py hosts main and does this ending itself); called by tests/test_mc_system_fixes.py and tests/test_stop_push_watchdog.py.

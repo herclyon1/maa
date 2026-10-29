@@ -18,6 +18,7 @@ the same session is not judged twice (its evidence is the same as the stored one
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -26,6 +27,8 @@ from pathlib import Path
 
 from ark_relay.features.selfcheck import machinecheck as mc
 from ark_relay.core.config import SERVER_TZ
+
+log = logging.getLogger("ark.system")
 
 # ------------------------------------------------------------------ relay.log
 
@@ -42,6 +45,7 @@ POWER_OFF = "本轮已处理完毕，60 秒后关机"               # engine.Eng
 PUSHED = "已上报状态到手机（"                         # boot_stages publish_state, ok
 NOT_PUSHED = "状态没能上报到手机（"                    # boot_stages publish_state, failed
 STOP_PUSH_FAILED = ("停止前上报状态失败", "停止前那份状态")  # service.SvcStop / _wait_stop_push
+OS_STOP = "（Windows 关机）"                       # service.SvcShutdown's _stop_how in STOP_NOTICE
 # app_main.stop_push, run by the watchdog service at a Windows shutdown: its lines are
 # logged under this name, after the relay's own (the same session of relay.log).
 WATCHDOG_PUSHER = "ark.app.stop_push"
@@ -138,6 +142,13 @@ def _prev(ctx) -> "list[Rec] | None":
     return _SESSION[key]
 
 
+def _following(ctx, prev: list[Rec]) -> list[Rec]:
+    """The session that came right after `prev` in relay.log (the one judging, or a self-update restart); [] when none."""
+    found = sessions(records(read_tail(_log_file(ctx))))
+    i = next((n for n, x in enumerate(found) if x[0] == prev[0]), None)
+    return found[i + 1] if i is not None and i + 1 < len(found) else []
+
+
 def _now(ctx) -> datetime:
     return (ctx.get("now") or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
 
@@ -180,6 +191,16 @@ def _stop_push(ctx):
         by = "（看门服务代发）" if ok.name == WATCHDOG_PUSHER else ""
         return _once(ctx, "#11", mc.Result(mc.PASS, f"{stop.show()}；{ok.show()}{by}"))
     if bad is not None:
+        # A service stop (a deploy, a restart by hand) whose next start pushed the boot
+        # state left the phone with a newer state than the one cut off: recovered.
+        # A Windows shutdown stays strict - its next start is the next power-on.
+        boot = next((r for r in _following(ctx, s) if f"{PUSHED}开机" in r.msg), None)
+        if boot is not None and OS_STOP not in stop.msg:
+            from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+            log.warning(
+                "停止前那份状态没送完，中继重新启动后开机那份已送到手机：%s；%s", bad.show(), boot.show(),
+                extra=errwatch.recovered())
+            return _once(ctx, "#11", mc.Result(mc.PASS, f"{stop.show()}；{bad.show()}；重启后{boot.show()}"))
         return _once(ctx, "#11", mc.Result(mc.FAIL, f"{stop.show()}；{bad.show()}"))
     # The relay's own power-off pushes 「关机前」 just before it issues the command,
     # so the page already has the last state when Windows then stops the service.
