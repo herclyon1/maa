@@ -854,6 +854,27 @@ def _migrate_left_over(back: dict, opts, tasks, switched) -> "str | None":
     return None
 
 
+def _routes_to_items(name: str, ov: dict, opts: dict) -> list[str]:
+    """AutoCollect v2.36: route lists -> item lists (the same picks, by what each route gathered)."""
+    changes: list[str] = []
+    for old, (new_key, items) in _COLLECT_ITEMS.items():
+        if old not in ov or new_key in ov or new_key not in opts:
+            continue
+        picked = list((ov[old] or {}).get("caseNames") or [])
+        valid = set(_cases(opts, new_key))
+        mine, unknown = [], []
+        for route in picked:
+            got = [i for i in items.get(route, []) if i in valid]
+            if got:
+                mine.extend(i for i in got if i not in mine)
+            else:
+                unknown.append(route)
+        ov[new_key] = {"type": "checkbox", "caseNames": mine}
+        changes.append(f"{name}/{old} → {new_key}（原来勾的 {len(picked)} 条路线换成 {len(mine)} 样采集物"
+                       + (f"；对不上的：{'、'.join(unknown)}" if unknown else "") + "）")
+    return changes
+
+
 def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
     """Rewrite option values in the master that this MaaEnd no longer understands.
 
@@ -899,22 +920,7 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
                     ov.setdefault(region, {"type": "switch", "value": True})
                 changes.append(f"{name}/{old} → 按区域拆成 {valley}、{wuling}"
                                f"（保留原来勾的 {len(picked)} 条）")
-            # 自动采集 v2.36: route lists -> item lists (the same picks, by what each route gathered).
-            for old, (new_key, items) in _COLLECT_ITEMS.items():
-                if old not in ov or new_key in ov or new_key not in opts:
-                    continue
-                picked = list((ov[old] or {}).get("caseNames") or [])
-                valid = set(_cases(opts, new_key))
-                mine, unknown = [], []
-                for route in picked:
-                    got = [i for i in items.get(route, []) if i in valid]
-                    if got:
-                        mine.extend(i for i in got if i not in mine)
-                    else:
-                        unknown.append(route)
-                ov[new_key] = {"type": "checkbox", "caseNames": mine}
-                changes.append(f"{name}/{old} → {new_key}（原来勾的 {len(picked)} 条路线换成 {len(mine)} 样采集物"
-                               + (f"；对不上的：{'、'.join(unknown)}" if unknown else "") + "）")
+            changes += _routes_to_items(name, ov, opts)
             if name == "AutoCollect" and "AutoCollectMode" in opts and "AutoCollectMode" not in ov:
                 ov["AutoCollectMode"] = {"type": "select", "caseName": "Always"}
                 changes.append(f"{name}/AutoCollectMode 补上默认值 Always")
