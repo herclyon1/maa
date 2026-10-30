@@ -233,12 +233,14 @@ echo "▶ 12/25 公开仓库里不许有他人身份信息"
 # .log / .jsonl / .json and gzip / zstd, so the scan covers those and the compressed files'
 # contents. ID_RE is the one copy of the pattern (relay/tests/daysim/pack.py identity_pattern()
 # reads it from this line); never put the UID itself here.
+# .claude/worktrees is git-ignored, so nothing there is public; a worktree older than 10-13 still holds the
+# unredacted logs and failed the scan on 10-29 / 10-31 (95 lines in relay1-skipabort, none of them in the repo).
 ID_RE='卢智超|Administrator[^a-zA-Z].{0,20}(空密码|无密码|自动登录)|特征码(:|：) *[0-9]'
 if hits=$( { grep -rnE "$ID_RE" \
           --include='*.md' --include='*.py' --include='*.sh' --include='*.js' \
           --include='*.log' --include='*.jsonl' --include='*.json' --include='*.txt' \
           --include='*.csv' --include='*.tsv' --include='*.yml' --include='*.yaml' --include='*.html' \
-          . 2>/dev/null | grep -v '^\./\.git/' | grep -v 'lint-repo.sh'
+          --exclude-dir=worktrees . 2>/dev/null | grep -v '^\./\.git/' | grep -v 'lint-repo.sh'
         git ls-files '*.gz' '*.zst' | while IFS= read -r f; do
           # (pattern) with both parens: bash 3.2 (macOS /bin/bash) misreads a lone `)` inside $( ).
           case "$f" in
