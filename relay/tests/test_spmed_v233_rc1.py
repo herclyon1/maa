@@ -139,10 +139,13 @@ for label, edit in (
     check(f"{label}：认不出", gameupdate.spmed_shape(d), "unknown")
     check(f"{label}：开机报群一条", len(boot_alarms(d)), 1)
 
-print("[识别结果不取反、节点明写启用：照样认得]")
+print("[识别结果不取反、节点明写启用、v2.36.0 扩大的确认框：照样认得]")
 for label, edit in (("inverse: false", lambda n: n.update(inverse=False)),
-                    ("enabled: true", lambda n: n.update(enabled=True))):
-    check(f"{label}：认得", gameupdate.spmed_shape(variant(edit)), "ocr")
+                    ("enabled: true", lambda n: n.update(enabled=True)),
+                    ("v2.36.0 roi [860,465,390,120] (PR #6933)", lambda n: n["recognition"]["param"].update(roi=[860, 465, 390, 120]))):
+    v = variant(edit)
+    check(f"{label}：认得", gameupdate.spmed_shape(v), "ocr")
+    check(f"{label}：开机不报群", boot_alarms(v), [])
 
 print("[同样的写法挂在 v2.32 以前的旧名字下：认不出，报群]")
 d = variant(lambda n: None, name="AutoUseSpMedicationQuickUse")

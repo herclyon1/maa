@@ -1,8 +1,8 @@
 {
- "version": 20261029144134,
- "ref": "relay-20261029144134",
+ "version": 20261030220555,
+ "ref": "relay-20261030220555",
  "files": {
-  "RELEASE-NOTES.md": "2ed0cffd5281184002a963446b280ae476a66f0d",
+  "RELEASE-NOTES.md": "662660653b5a3e50083f15a94f1fdb39127c2b9a",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "2f8cce37bd21d8f45412b749da1eead09431ee6f",
@@ -76,7 +76,7 @@
   "ark_relay/features/gameupdate/efstart_setup.py": "09136ab18cdf0d2dba64180573ba3927a228359c",
   "ark_relay/features/gameupdate/gameupdate.py": "d036b83784043a947aba9442a133ac71f2c5902c",
   "ark_relay/features/gameupdate/gameupdate_games.py": "9b8ac8c6150e6dd86fa895299d9f491571a957c1",
-  "ark_relay/features/gameupdate/gameupdate_maaend.py": "ff1822d7ca08099645e176df2f79fb5ef09748ea",
+  "ark_relay/features/gameupdate/gameupdate_maaend.py": "cc45b72b6c80a7717b715140a636b2482e3e5062",
   "ark_relay/features/gameupdate/maaend_launch.py": "532ee260ca5eca98ba76b9be8e75593fc32c8390",
   "ark_relay/features/guard/__init__.py": "b7acfcf8785be9460b0330d8f42b01b68831c6c2",
   "ark_relay/features/guard/trigger.py": "128c4143673e9a4e3f6c5796fc4f222c0bf9072d",
@@ -175,7 +175,7 @@
   "watchdog_guard.py": "cc505fe57c4c2923be2003c8fe5a4f0a47b0d887"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "2490c26ae7fab808445459e01a188249bf2499c4b7d2de485a9dc15f13843cf2",
+  "RELEASE-NOTES.md": "e951951b22d1337f75d1b6d12314568c671654fcbee593b6b8a061f9818e4f27",
   "app_main.py": "9a2bad4ee77f639044a37a362cd0630827e0ff1b87978e4caeb7898972cdc682",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "4473c5ed050428c5d4398f738fc5a9246f6d21064330d9e427d822e8b3c52cbc",
@@ -249,7 +249,7 @@
   "ark_relay/features/gameupdate/efstart_setup.py": "bdbe7e7da85562fb310b5cafaeaf9119a7b1a624d0bab6c5f507b40db8e10c40",
   "ark_relay/features/gameupdate/gameupdate.py": "1ce265acb75633c62993e09c93bb2d77ab5d9cb7f11b2fb1981c295c9b902a96",
   "ark_relay/features/gameupdate/gameupdate_games.py": "ad24059989402edbd199bd4be95493474dc7906f874243916a63e0c4d83148a3",
-  "ark_relay/features/gameupdate/gameupdate_maaend.py": "9f99d985f0a323ca3c10c1f9b57c3d87cefb9ef151b877da0a3f8254c9f35395",
+  "ark_relay/features/gameupdate/gameupdate_maaend.py": "41dc88f6d6475ebfabf76757da5b2d32dfc333e059efa89541ca1cb95cd634bb",
   "ark_relay/features/gameupdate/maaend_launch.py": "6838571433d9be97c42205e8397f1d919ce8fb44d7911584fd711e5aa56fbc83",
   "ark_relay/features/guard/__init__.py": "454f1efc1b3b856699b7cdebc4ee15ec6f251b00ccd806a3921df8edf95fddc0",
   "ark_relay/features/guard/trigger.py": "383c2dc8e090fd236e053e729bd13982d2b68fc1d87711730a471fdf14e40c14",

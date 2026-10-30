@@ -81,19 +81,21 @@ def spmed_shape(maaend_dir) -> str:
     return "fixed" if all(isinstance(x, str) or "recognition" in x for x in all_of) else "broken"
 
 
-# The v2.33.0-rc.1 confirm node, as shipped by upstream PR #6476 (commit cfd2e875).
+# The v2.33.0-rc.1 confirm node, as shipped by upstream PR #6476 (commit cfd2e875),
+# and v2.36.0-rc.1+ after PR #6933 (commit 45ba41caec) widened the box to [860, 465, 390, 120].
 SPMED_OCR_ROI = [860, 465, 300, 90]
+SPMED_OCR_ROIS = (SPMED_OCR_ROI, [860, 465, 390, 120])
 SPMED_OCR_WORDS = frozenset({"确认", "確定", "(?i)Confirm", "확인"})
 
 
 def _is_region_ocr_click(node: dict) -> bool:
-    """The v2.33.0-rc.1 confirm node exactly: action "Click" (plain string, so no
+    """The v2.33.0-rc.1 / v2.36.0 confirm node: action "Click" (plain string, so no
     click target of its own) on a recognition that is only {"type": "OCR", "param":
-    {"expected", "roi"}}, roi exactly SPMED_OCR_ROI, expected only the dialog's
+    {"expected", "roi"}}, roi in SPMED_OCR_ROIS, expected only the dialog's
     confirm words and including the Simplified Chinese one; the node not disabled,
     not inverted, and with no v1 click target. The roi and the words are what keep
     the click on the dialog's confirm button and off the rewards screen's claim
-    button behind it (PR #6476), so any
+    button behind it (PR #6476, PR #6933), so any
     other roi or text, a retune included, alarms and a person re-checks it (D210)."""
     if node.get("action") != "Click" or node.get("inverse") or node.get("enabled") is False:
         return False
@@ -109,7 +111,7 @@ def _is_region_ocr_click(node: dict) -> bool:
     return (isinstance(expected, list) and all(isinstance(x, str) for x in expected)
             and "确认" in expected and set(expected) <= SPMED_OCR_WORDS
             and type(roi) is list and len(roi) == 4
-            and all(type(x) is int for x in roi) and roi == SPMED_OCR_ROI)
+            and all(type(x) is int for x in roi) and roi in SPMED_OCR_ROIS)
 
 
 def spmed_check(cfg) -> str:
