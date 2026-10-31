@@ -284,7 +284,9 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
             # so it must not be blocked by the gate below.
             from ark_relay.features.phone import commands as _cmd  # noqa: PLC0415
             ok, msg = _cmd.estop(state_dir=cfg_state_dir)
-            log.warning("🛑 红按钮：%s", msg)
+            # Only a stop that could not get the machine quiet is a fault: at WARNING every press also reached the group
+            # as 「中继自己报错了」 (10-31 10:05:51, a press that worked on an idle machine).
+            (log.info if ok else log.warning)("🛑 红按钮：%s", msg)
             _push_farm_trouble(notifier, log)
             try:
                 receipt(ok, msg)
