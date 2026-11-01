@@ -773,7 +773,19 @@ def _shift_overdue(eng, now: datetime):
                 or handle._already_alerted(eng, day, f"队列超时|{q['name']}|{hhmm}")):
             continue
         limit, days = runwatch.planned_minutes(eng, due.hour, due.minute, due)
-        yield q, due, missing, limit, due + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN), days
+        yield q, due, missing, limit, _overdue_from(eng, due, missing) + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN), days
+
+
+def _overdue_from(eng, due: datetime, missing: list[str]) -> datetime:
+    """When the shift's clock starts for the scripts still missing: the queue's time, or - when the
+    client update held all of them out of the queue and the relay re-ran them itself afterwards
+    (engine._gu_reran) - the re-run's start. 2026-11-01: 明日方舟 updated, MAA was skipped in the
+    09:00 早班 and re-run at 12:02; at 12:04 「⏰ 早班有脚本一直没出结果」 counted 142 + 30 minutes
+    from 09:00. Timed from the re-run it still alarms if the re-run itself hangs."""
+    since = getattr(eng, "_gu_rerun_at", None)
+    if since is not None and since >= due and set(missing) <= set(getattr(eng, "_gu_reran", ())):
+        return since.astimezone(SERVER_TZ)
+    return due
 
 
 OVERDUE_KEY = "班次无结果"

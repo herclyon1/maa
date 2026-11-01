@@ -629,6 +629,8 @@ class Engine:
             try:
                 def _dispatch(name: str):
                     self._gu_rerun_at = datetime.now(tz=SERVER_TZ)
+                    # Which scripts the catch-up re-ran: shutdown._shift_overdue times them from here
+                    self._gu_reran = {*getattr(self, "_gu_reran", ()), name}
                     return commands.run_script(name)
                 try:
                     notes, problems, reran = gameupdate.run_deferred(
