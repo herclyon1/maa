@@ -7026,6 +7026,24 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
+"test_overdue_after_update_rerun.py": [
+"__init__",
+"config",
+"errwatch",
+"masconfig",
+"mastercfg",
+"mastercfg_maa",
+"mastercfg_okww",
+"masuser",
+"miniyaml",
+"modes",
+"names",
+"plan",
+"shutdown",
+"stagegate",
+"tape",
+"texts"
+],
 "test_payload_roundtrip.py": [
 "__init__",
 "annihilation",
