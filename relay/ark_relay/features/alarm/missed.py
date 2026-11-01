@@ -57,6 +57,11 @@ def _check_missed_runs(eng, now: datetime | None = None,
             if stagegate.settled_alone(eng.cfg.state_dir, q["name"], due):
                 _settle(eng, day, key)
                 continue
+            # Skipped today on purpose (phone switch / order-now skip_today): its restore after
+            # the slot re-enables the queue, and this check must not read that as a missed run.
+            if _sat_out(eng, day, q["name"]):
+                _settle(eng, day, key)
+                continue
             # Anything recorded after the scheduled time counts as "it ran".
             ran = any(datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
                       >= due - timedelta(minutes=5) for e in entries)
@@ -94,6 +99,16 @@ def _check_missed_runs(eng, now: datetime | None = None,
                 log.warning("🔌 %s 该跑没跑，已告警", q["name"],
                             extra=errwatch.group_pushed(title, errs, eng.notifier))
     eng._check_partial_queues(now, day, entries)
+
+
+def _sat_out(eng, day: str, queue: str) -> bool:
+    """Whether `queue` was skipped on purpose on `day` (modes.sat_out); unreadable counts as no."""
+    from ark_relay.core import names  # noqa: PLC0415
+    from ark_relay.features.modes import modes  # noqa: PLC0415
+    try:
+        return names.canonical(queue) in modes.sat_out(eng.cfg.state_dir, day)
+    except Exception:  # noqa: BLE001 - a broken skip record must not silence a real missed run
+        return False
 
 
 def _check_partial_queues(eng, now: datetime, day: str,

@@ -62,6 +62,11 @@ def _recent_entries(eng, now: datetime) -> list[dict]:
 
 def _missing_kinds(eng, q: dict, entries: list[dict]) -> list[str]:
     """The scripts of queue `q` not recorded since its own time."""
+    from ark_relay.features.alarm import missed  # noqa: PLC0415
+    # A queue skipped on purpose that day owes nothing (11-01: after the evening queue's skip was
+    # restored, the overdue check and the shutdown wait both counted it as still missing MAA).
+    if missed._sat_out(eng, q["due"].astimezone(SERVER_TZ).strftime("%Y-%m-%d"), q["name"]):
+        return []
     # Only runs started at or after this queue's own time count -
     # otherwise the morning's MaaEnd would satisfy the evening queue.
     ran = {e["script"] for e in entries if _entry_time(e) >= q["due"] - timedelta(minutes=5)}

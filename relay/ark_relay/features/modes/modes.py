@@ -511,6 +511,38 @@ def skipped_today_all(state_dir: Path, now: datetime | None = None) -> list[str]
     return out
 
 
+def _mark_sat_out(state_dir: Path, day: str, queue: str) -> None:
+    """Remember that `queue` sat `day` out once its restore has dropped the marker.
+
+    The missed-run and overdue checks still ask about that day's slot after the
+    restore: 2026-11-01 晚班 was skipped, the machine stayed on, the restore ran at
+    22:03:45 (Beijing) and at 22:03:47 「🔌 晚班 没有运行」 went to the group.
+    """
+    store = _store(Path(state_dir))
+    key = f"skip_done:{day}"
+    with _SKIP_LOCK:
+        v = store.get("queues", key)
+        have = list(v) if isinstance(v, list) else ([str(v)] if v else [])
+        if queue not in have:
+            store.set("queues", key, [*have, queue])
+
+
+def sat_out(state_dir: Path, day: str) -> list[str]:
+    """Every queue that sits `day` out: flagged, engaged, or already restored after its slot.
+
+    For the checks that judge a slot of `day` (missed.py, shutdown.py). The phone
+    switch keeps reading skipped_today_all: once restored, the switch is off again.
+    """
+    noon = datetime.strptime(day, "%Y-%m-%d").replace(hour=12, tzinfo=SERVER_TZ)
+    out = skipped_today_all(state_dir, noon)
+    v = _store(Path(state_dir)).get("queues", f"skip_done:{day}")
+    for q in (v if isinstance(v, list) else [v] if v else []):
+        q = names.canonical(str(q))
+        if q and q not in out:
+            out.append(q)
+    return out
+
+
 def skipped_today(state_dir: Path, now: datetime | None = None) -> str | None:
     """The first queue sitting out today, for readers that show one name.
 
@@ -590,6 +622,7 @@ def _maybe_restore(state_dir: Path, automas_dir: Path | None,
             out.append(msg)
             continue
         gone.append(info)
+        _mark_sat_out(state_dir, day, queue)
         _skip_receipt(state_dir, "unskip_today", True, f"队列「{queue}」的跳过已结束：{detail}")
         out.append(f"队列「{queue}」的跳过已结束，定时已恢复")
     if gone:
