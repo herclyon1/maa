@@ -80,7 +80,11 @@ _MAA_SUCCESS = "Success!"
 # ("exited before finishing") when the process is gone before it saw success in
 # the log. _OKWW_DONE is the line OK-WW writes when its daily task is complete.
 _OKWW_EXITED = "在完成任务前退出"
-_OKWW_DONE = "Daily Task Completed"
+# OK-WW v3.7.14-beta.2 (on the machine since 2026-11-02 08:46) wraps its log sentences in
+# self.tr(); the machine's OK-WW runs in zh_CN (「translator install success ... Chinese」 in
+# ok-script.log), so upstream's own lines now come out in Chinese - this one as 「每日任务已完成」
+# (i18n/zh_CN/LC_MESSAGES/ok.po at that tag). Both spellings are read.
+_OKWW_DONE = ("Daily Task Completed", "每日任务已完成")
 
 # Results AUTO-MAS writes for an attempt it restarts right away. A real result
 # always follows, so such a record is neither a success nor a failure. The first
@@ -573,8 +577,8 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
         # the round is done.
         if not ok and _OKWW_EXITED in result:
             try:
-                if _OKWW_DONE in json_path.with_suffix(".log").read_text(
-                        encoding="utf-8", errors="replace"):
+                log_text = json_path.with_suffix(".log").read_text(encoding="utf-8", errors="replace")
+                if any(s in log_text for s in _OKWW_DONE):
                     ok = True
                     raw["okww_exit_race"] = True
             except OSError:

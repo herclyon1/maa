@@ -840,7 +840,9 @@ def _read_stamina(task, in_dialog):
 # tick scored 0.96 where it is, 0.35 where it was looked for) and 「没领到」 went out.
 # Evidence: tests/fixtures/ww-daily-140-1011-row.png, from that run's screenshot.
 # ---------------------------------------------------------------------------
-_CLAIM_DAILY_SHA = "2b4977b62f7c"       # upstream claim_daily as copied in _claim_daily_checked
+_CLAIM_DAILY_SHA = "555de9348dc7"       # upstream claim_daily as copied in _claim_daily_checked
+# (v3.7.14-beta.2, 2026-11-02: v3.7.4..v3.7.13 were 2b4977b62f7c; the new body only wraps its two
+# log sentences in self.tr(), so the copy is unchanged and keeps English lines the relay reads)
 DAILY_TIERS = (20, 40, 60, 80, 100)
 DAILY_POINTS_LINE = "活跃奖励：活跃度 "
 DAILY_OK = "活跃奖励：领完核对通过"
@@ -1079,7 +1081,8 @@ def _claim_daily_checked(task):
 # they claimed is not checked - there is no picture of a claimed page to check against
 # yet, so the line says 「点了领取」, not 「领到了」.
 # ---------------------------------------------------------------------------
-_BATTLE_PASS_SHA = "e9e8d67cb3bc"       # upstream claim_battle_pass as copied in _claim_battle_pass_checked
+_BATTLE_PASS_SHA = "0a11121c349a"       # upstream claim_battle_pass as copied in _claim_battle_pass_checked
+# (v3.7.14-beta.2, 2026-11-02: was e9e8d67cb3bc; only self.tr() around its two log sentences)
 BATTLE_PASS_LEVEL_BOX = (0.2, 0.13, 0.32, 0.22)
 BATTLE_PASS_OK = "战令：页面打开了，点了领取（等级 "
 BATTLE_PASS_RETRY = "战令：第一次没打开，回大世界再开一次"
@@ -1635,7 +1638,9 @@ _KNOWN_DENOMINATORS = ("24", "36", "48", "41")
 # OCR box from 0.13 to 0.25 of the screen. v3.6.9-beta.1 and v3.7.2 were 3b0271924cac;
 # the morning runs of 10-04 and 10-05 skipped our copy on that difference and farmed
 # upstream's way. A future change is adapted to, not skipped (override(adapt=True)).
-_NEST_FIND_SHA = "12d040afa102"
+# v3.7.14-beta.2 (2026-11-02): was 12d040afa102 (v3.7.3..v3.7.13); only self.tr() around two log
+# sentences changed, the box top is still 0.25
+_NEST_FIND_SHA = "cae94d349d31"
 # The two nest sentences the relay's log reader keys on (collector_okww, outcome).
 NEST_COUNT_UNREAD = "指定点位的名字读到了，计数没读到"
 NEST_ADAPTED = "只刷指定点位的过滤是按 OK-WW 新版适配装上的"

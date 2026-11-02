@@ -29,6 +29,10 @@ V373 = (Path(__file__).resolve().parent / "fixtures"
 # v3.7.2's find_nest differs from v3.7.3's in the box top only (diff of the two releases).
 V372 = V373.replace("counts = self.ocr(0.35, 0.25, 1, 0.96, match=self.count_re)",
                     "counts = self.ocr(0.35, 0.13, 1, 0.96, match=self.count_re)")
+# The OK-WW the machine runs (test_gl_okww_contract.INSTALLED): the pins are its bodies.
+INST = Path(__file__).resolve().parent / "gamesim" / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task"
+VINST = (INST / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
+DAILY_INST = (INST / "DailyTask.py.txt").read_text(encoding="utf-8")
 
 
 def okww(nest_text, extra=None):
@@ -44,7 +48,7 @@ def okww(nest_text, extra=None):
 
 print("\n[钉住的三处都从覆盖文件里读出来]")
 got = {f"{c}.{m}": (sha, a) for c, m, sha, a in okww_overlay.pins()}
-check("find_nest 钉 v3.7.3，且会适配", got.get("NightmareNestTask.find_nest"), ("12d040afa102", True))
+check("find_nest 钉 v3.7.14-beta.2，且会适配", got.get("NightmareNestTask.find_nest"), ("cae94d349d31", True))
 check("周本开启挑战钉住，不适配", got.get("FarmEchoTask.click_team_challenge", ("", None))[1], False)
 check("体力读数钉住", "BaseWWTask.get_stamina" in got)
 
@@ -53,20 +57,18 @@ print("\n[the two copies that check their own fingerprint are pinned too (audit 
 # overrides instead of through expect_sha=; until 10-13 pins() read only the
 # expect_sha= form, so the pre-run drift check covered 3 of 5.
 check("five pins in all", len(okww_overlay.pins()), 5)
-check("claim_daily pinned to v3.7.4, not adapted", got.get("DailyTask.claim_daily"), ("2b4977b62f7c", False))
-check("claim_battle_pass pinned to v3.7.4, not adapted",
-      got.get("DailyTask.claim_battle_pass"), ("e9e8d67cb3bc", False))
-DAILY374 = (Path(__file__).resolve().parent / "fixtures"
-            / "okww-DailyTask-v3.7.4.py.txt").read_text(encoding="utf-8")
-check("upstream v3.7.4 DailyTask on disk: no drift",
-      okww_overlay.drift(okww(V373, {"DailyTask.py": DAILY374})), [])
-changed = DAILY374.replace("    def claim_daily(self):\n", "    def claim_daily(self):\n        pass\n", 1)
-d = okww_overlay.drift(okww(V373, {"DailyTask.py": changed}))
+check("claim_daily pinned to v3.7.14-beta.2, not adapted", got.get("DailyTask.claim_daily"), ("555de9348dc7", False))
+check("claim_battle_pass pinned to v3.7.14-beta.2, not adapted",
+      got.get("DailyTask.claim_battle_pass"), ("0a11121c349a", False))
+check("upstream v3.7.14-beta.2 DailyTask on disk: no drift",
+      okww_overlay.drift(okww(VINST, {"DailyTask.py": DAILY_INST})), [])
+changed = DAILY_INST.replace("    def claim_daily(self):\n", "    def claim_daily(self):\n        pass\n", 1)
+d = okww_overlay.drift(okww(VINST, {"DailyTask.py": changed}))
 check("a changed claim_daily is found before the run", [x["what"] for x in d], ["DailyTask.claim_daily"])
 
-print("\n[v3.7.3 在盘上：对得上，不出声]")
-check("没有对不上的", okww_overlay.drift(okww(V373)), [])
-check("一句话都不说", okww_overlay.drift_line(okww(V373), tmpdir()), "")
+print("\n[装着的 v3.7.14-beta.2 在盘上：对得上，不出声]")
+check("没有对不上的", okww_overlay.drift(okww(VINST)), [])
+check("一句话都不说", okww_overlay.drift_line(okww(VINST), tmpdir()), "")
 
 print("\n[盘上是旧版（或下一版）：开跑前就说，且只说一次]")
 d = okww_overlay.drift(okww(V372))
@@ -89,9 +91,9 @@ print("\n[skipped pin (no adapt): said at every boot - its override stays off un
 farm = ("class FarmEchoTask:\n    def click_team_challenge(self):\n"
         "        return 'changed upstream'\n")
 state = tmpdir()
-first = okww_overlay.drift_line(okww(V373, {"FarmEchoTask.py": farm}), state)
+first = okww_overlay.drift_line(okww(VINST, {"FarmEchoTask.py": farm}), state)
 check("first boot: said", "FarmEchoTask.click_team_challenge" in first and "等我们重抄" in first)
-again = okww_overlay.drift_line(okww(V373, {"FarmEchoTask.py": farm}), state)
+again = okww_overlay.drift_line(okww(VINST, {"FarmEchoTask.py": farm}), state)
 check("second boot, same mismatch: said again", again, first)
 check("skipped: counted and worded as a fault", "有 1 处和新版对不上" in first, True)
 both = okww_overlay.drift_line(okww(V372, {"FarmEchoTask.py": farm}), tmpdir())

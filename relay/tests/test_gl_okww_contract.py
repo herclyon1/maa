@@ -53,11 +53,12 @@ def check(label, got, want=True):
 # The OK-WW on the game PC: 「ok-script init v3.7.4」 at every start since 10-06, last at
 # 2026-10-13 11:07:05 (OK-WW app log app.2026-10-13 line 517, pulled from the machine
 # to scratchpad/gamedata/okww/ark/okww/logs). 10-04 and 10-05 it was v3.7.3 (app.2026-10-04).
-INSTALLED = "v3.7.4"
+INSTALLED = "v3.7.14-beta.2"
 VERSION = sys.argv[1] if len(sys.argv) > 1 else INSTALLED
 # What each tag pointed at when fetched (git ls-remote ...ok-wuthering-waves refs/tags/<tag>^{},
 # 2026-10-13); v3.7.4 = 2243d465 is also the design's W.
 COMMITS = {
+    "v3.7.14-beta.2": "984d5dfb62610b70db6efe7ee04a1e5a21311717",   # fetch_upstream, 2026-11-02
     "v3.7.4": "2243d465d58c74f52765b658174bff76165656ee",
     "v3.7.3": "f5f38c8d9e2b7f7e91edad77bd5fab14df3f162d",
     "v3.6.5": "f4b3799c5e0ab8bc3d7191f43a842b84197081ff",
@@ -265,6 +266,28 @@ def pin_problems(tree):
 # A new installed version needs its own row, written after reading each body against the
 # comment that relies on it (gamesim design, P0). Values: body_sha of the fetched copy.
 RELIED = {
+    # v3.7.14-beta.2, on the machine since 2026-11-02 08:46 (relay.log 「OK-WW 已更新 v3.7.13 →
+    # v3.7.14-beta.2」). Each body diffed against v3.7.4 (upstream/okww-v3.7.4 vs -v3.7.14-beta.2):
+    # unchanged except as noted.
+    "v3.7.14-beta.2": [
+        ("FarmEchoTask.revive_action", "cbdf4bb7e32d"),
+        ("BaseCombatTask.revive_action", "5da4d78b71ef"),
+        ("FarmEchoTask.click_solo_challenge", "c0bd68198fbf"),
+        # Only self.tr() around 「NightmareNestTask Failed」 and 「Daily Task Completed」; the
+        # ensure_main swap the comment above relies on is unchanged. Those two lines now come
+        # out in Chinese (zh_CN), read in both spellings (collector._OKWW_DONE, outcome._DAILY_DONE).
+        ("DailyTask.run", "5041cbeba14f"),
+        ("TacetTask.__init__", "6936f96f63b2"),
+        # Only self.tr() around the IndexError message; the groups are used the same way.
+        ("TacetTask.teleport_to_tacet", "528d1a698b0b"),
+        # Changed: the package is no longer Basic Options 「Game Package」 but detected from the
+        # launcher's own files (kr_game_cache/platform_ui_state.bin, launcherDownloadConfig.json);
+        # when that fails it warns, raises a tray alert and passes -krqlv=hd. Still upstream's own
+        # -krqlv, no hook of ours (788c031b) is needed.
+        ("src/game_launcher.py:get_game_launch_arguments", "c89c8b40ad56"),
+        # Only self.tr() around two log sentences; the box top is still 0.25 (NEST_TOP).
+        ("NightmareNestTask.find_nest", "cae94d349d31"),
+    ],
     "v3.7.4": [
         # AO comment above _TEAM_CHALLENGE_SHA: a realm death goes FarmEchoTask.revive_action
         # (:92-106) -> BaseCombatTask.revive_action (:227-240), which cancels the popup;
@@ -293,7 +316,7 @@ RELIED = {
 # config.py:203 at v3.7.4, the line that hands the launch argument to ok-script.
 LAUNCH_LINE = "'launch_arguments': get_game_launch_arguments,"
 # NightmareNestTask.py:229 at v3.7.3 and v3.7.4; v3.6.5 had 0.13 (NightmareNestTask.py:212).
-NEST_TOP = {"v3.7.4": "0.25", "v3.7.3": "0.25", "v3.6.5": "0.13"}
+NEST_TOP = {"v3.7.14-beta.2": "0.25", "v3.7.4": "0.25", "v3.7.3": "0.25", "v3.6.5": "0.13"}
 
 
 def relied_sha(tree, what):

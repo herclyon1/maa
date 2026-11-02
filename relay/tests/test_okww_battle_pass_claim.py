@@ -37,7 +37,8 @@ def check(label, got, want=True):
         fails.append(label)
 
 
-UPSTREAM = (HERE / "fixtures" / "okww-DailyTask-v3.7.4.py.txt").read_text(encoding="utf-8")
+# The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.4 until 2026-11-02.
+UPSTREAM = (HERE / "gamesim" / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "DailyTask.py.txt").read_text(encoding="utf-8")
 
 
 def overlay():
@@ -121,6 +122,10 @@ class Game:
     def log_error(self, msg, *a, **kw):
         self.errors.append(msg)
 
+    # ok-script's translation (v3.7.14-beta.2 wraps log sentences in it); English here
+    def tr(self, msg):
+        return msg
+
 
 def as_log(game):
     """The lines as OK-WW writes them for the task executor (what the relay reads)."""
@@ -139,7 +144,7 @@ print("[the pin is upstream's real body]")
 with tempfile.TemporaryDirectory() as d:
     Path(d, "DailyTask.py").write_text(UPSTREAM, encoding="utf-8")
     got = okww_overlay._method_sha(okww_overlay._classes(Path(d)), "DailyTask", "claim_battle_pass")
-check("sha of claim_battle_pass in v3.7.4 == _BATTLE_PASS_SHA", got, ns["_BATTLE_PASS_SHA"])
+check("sha of claim_battle_pass in the installed v3.7.14-beta.2 == _BATTLE_PASS_SHA", got, ns["_BATTLE_PASS_SHA"])
 check("the overlay reads the same level box upstream does",
       "self.wait_ocr(0.2, 0.13, 0.32, 0.22" in UPSTREAM and ns["BATTLE_PASS_LEVEL_BOX"] == (0.2, 0.13, 0.32, 0.22), True)
 check("the overlay's line markers are the ones outcome reads",

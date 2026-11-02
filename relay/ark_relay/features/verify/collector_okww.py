@@ -133,11 +133,13 @@ _OKWW_MSG_ZH = (
     ("Teleport to boss failed", "传送去打 Boss 没成（图鉴传送、选关卡、进本其中一步没过），没进本，一次没打"),
     ("can't find gray_book_boss", "按 F2 打不开图鉴——先核对键位是不是游戏默认"),
     ("NightmareNestTask Failed", "没打成"),
+    ("梦魇巢穴任务失败", "没打成"),          # the same line in zh_CN since v3.7.14-beta.2
     ("Logger.error() got an unexpected keyword", "旧版补丁自己的日志调用写错（已撤回）"),
     # DailyTask.claim_battle_pass: 「can not battle pass, maybe ended」 is a battle-pass
     # page with no level digits read, the claim skipped. It read 「没能进入战斗」 until 10-11
     # (the 09-29 09:28 run, BOARD 未进群报错-OKWW-AUTOMAS-1010.md).
     ("can not battle pass", texts.OKWW_BATTLE_PASS_UNCLAIMED),
+    ("无法领取先约电台奖励", texts.OKWW_BATTLE_PASS_UNCLAIMED),   # zh_CN since v3.7.14-beta.2
     ("Game window is not connected", "连不上游戏窗口"),
     ("not in combat", "没有进入战斗"),
     ("can't find boss_proceed", "图鉴里找不到「前往」按钮"),

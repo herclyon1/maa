@@ -32,14 +32,17 @@ def check(label, got, want=True):
         fails.append(label)
 
 
-UPSTREAM = (Path(__file__).resolve().parent / "fixtures"
-            / "okww-NightmareNestTask-v3.7.3.py.txt").read_text(encoding="utf-8")
+# The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.3/v3.7.4 body until 2026-11-02.
+UPSTREAM = (Path(__file__).resolve().parent / "gamesim" / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
 
 
 def upstream_class(text=UPSTREAM):
     class WWOneTimeTask:
         def run(self):
             pass
+
+        def tr(self, msg):          # ok-script's translation, English here
+            return msg
 
     ok = types.ModuleType("ok")
     ok.Logger = types.SimpleNamespace(get_logger=lambda name: types.SimpleNamespace(info=lambda *a: None))

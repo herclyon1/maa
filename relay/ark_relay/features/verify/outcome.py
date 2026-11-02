@@ -81,7 +81,11 @@ _NEST_COUNT_UNREAD = "指定点位的名字读到了，计数没读到"
 # (NEST_ADAPTED there): installed, but not checked against the new body by us.
 _NEST_ADAPTED = "只刷指定点位的过滤是按 OK-WW 新版适配装上的"
 # Marker that DailyTask finished (printed by upstream itself).
-_DAILY_DONE = "Daily Task Completed"
+# OK-WW v3.7.14-beta.2 (on the machine since 2026-11-02 08:46) wraps its log sentences in
+# self.tr(); the machine's OK-WW runs in zh_CN (「translator install success ... Chinese」 in
+# ok-script.log), so upstream's own lines now come out in Chinese - this one as 「每日任务已完成」
+# (i18n/zh_CN/LC_MESSAGES/ok.po at that tag). Both spellings are read.
+_DAILY_DONE = ("Daily Task Completed", "每日任务已完成")
 # Stamina is farmed by TacetTask, ForgeryTask or SimulationTask (upstream v3.7.4
 # DailyTask.py:117-128; the last two are DomainTask subclasses, and the log prefix is
 # the instance's class). Only their own lines count: 「enter combat」 is CombatCheck.py:181
@@ -147,7 +151,8 @@ _BATTLE_PASS_OK = "战令：页面打开了，点了领取（等级 "
 _BATTLE_PASS_RETRY = "战令：第一次没打开，回大世界再开一次"
 _BATTLE_PASS_FAILED = "战令没领到："
 _BATTLE_PASS_UNCHECKED = "战令：没有重试，"
-_BATTLE_PASS_UPSTREAM_FAILED = "can not battle pass"
+# upstream's 「can not battle pass, maybe ended」, in zh_CN since v3.7.14-beta.2 (see _DAILY_DONE)
+_BATTLE_PASS_UPSTREAM_FAILED = ("can not battle pass", "无法领取先约电台奖励")
 
 # ── weekly boss claims ──
 # 「周本领奖：已点确认」 is logged right after the click and proves nothing on its
@@ -500,7 +505,7 @@ def battle_pass_checks(text: str) -> list[Check]:
     read only after the overlay's own lines."""
     if _BATTLE_PASS_FAILED in text:
         return [Check(texts.OKWW_BATTLE_PASS_LABEL, False, texts.OKWW_BATTLE_PASS_FAILED)]
-    if _BATTLE_PASS_UPSTREAM_FAILED in text:
+    if any(s in text for s in _BATTLE_PASS_UPSTREAM_FAILED):
         return [Check(texts.OKWW_BATTLE_PASS_LABEL, False, texts.OKWW_BATTLE_PASS_UNCLAIMED)]
     if _BATTLE_PASS_OK in text:
         return [Check(texts.OKWW_BATTLE_PASS_LABEL, True,
@@ -563,7 +568,7 @@ def nest_state(text: str) -> str:
         return "full"
     if _NEST_UNREACHABLE.search(text):
         return "unreachable"
-    if "NightmareNestTask Failed" in text:
+    if "NightmareNestTask Failed" in text or "梦魇巢穴任务失败" in text:
         return "failed"
     if "NightmareNestTask" in text:
         return "quit"
@@ -619,16 +624,16 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
     m = _DAILY_POINTS.search(text)
     dailies_done = bool(m and int(m.group(1)) >= _DAILY_POINTS_TARGET)
     if dailies_done:
-        done = _DAILY_DONE in text
+        done = any(s in text for s in _DAILY_DONE)
         out.append(Check("今日日常此前已完成，本轮仅领奖", done,
                          "" if done else "但连领奖收尾都没跑完"))
         expect_daily = expect_stamina = False
         expect_nest = expect_nest and "NightmareNestTask" in text
 
     if expect_daily:
-        done = _DAILY_DONE in text
+        done = any(s in text for s in _DAILY_DONE)
         out.append(Check("每日任务跑完", done,
-                         "" if done else f"日志里没有「{_DAILY_DONE}」"))
+                         "" if done else f"日志里没有「{_DAILY_DONE[0]}」（中文版「{_DAILY_DONE[1]}」）"))
     out.extend(daily_reward_checks(text))
     out.extend(battle_pass_checks(text))
 

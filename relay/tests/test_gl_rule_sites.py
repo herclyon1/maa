@@ -77,7 +77,13 @@ RE_FUNCS = {"compile", "search", "match", "fullmatch", "findall", "finditer", "s
 _MAAEND = "no MaaEnd record in the corpora prints it (U13b's 17 cases; replay 10-10)"
 _OKWW_RARE = "no recorded OK-WW run (corpus okww 11 runs, replay 09-01..09-07) nor scenario prints it"
 _SCEN_STOPS = "its overlay line comes after the moment the scenario ends, or on a path no scenario plays"
+_OKWW_ZH = ("OK-WW v3.7.14-beta.2's zh_CN translation of an upstream line (i18n/zh_CN/LC_MESSAGES/ok.po at "
+            "that tag; the machine's OK-WW runs zh_CN), installed 2026-11-02 08:46: no recorded run has it yet")
 GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
+    ("features/verify/outcome.py", "梦魇巢穴任务失败"): ("none", _OKWW_ZH),
+    ("features/verify/outcome.py", "无法领取先约电台奖励"): ("none", _OKWW_ZH),
+    ("features/verify/outcome.py", "每日任务已完成"): ("none", _OKWW_ZH),
+    ("core/collector.py", "每日任务已完成"): ("none", _OKWW_ZH),
     ("features/verify/gamelog_errors.txt",
      r"\[ERR\]\[[^\]]*\]\[[^\]]*\]\[navigation_state_machine\.cpp\]\[L\d+\]\[mapnavigator::NavigationStateMachine::FailNavigation\] Off-route with no route progress past the wedge timeout; terminating so the pipeline can retry\."):
         ("fixture", "only fixtures/maaend-2026-10-21 (real AUTO-MAS history lines 09:54:30-09:57:11, ledger #108)"),
