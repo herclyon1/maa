@@ -173,7 +173,7 @@ class Tree:
     def _fetch(self, tag: str) -> None:
         pin = self._pin(tag)
         git("-C", self.work, "-c", "core.autocrlf=false", "fetch", "-q", "--depth", "1", pin["repo"], pin["commit"])
-        git("-C", self.work, "-c", "core.autocrlf=false", "checkout", "-q", "FETCH_HEAD")
+        git("-C", self.work, "-c", "core.autocrlf=false", "checkout", "-f", "-q", "FETCH_HEAD")
         head = git("-C", self.work, "rev-parse", "HEAD").strip()
         if head != pin["commit"]:
             raise SystemExit(f"fetched {head}, upstream/okww-{tag}/SOURCE.txt pins {pin['commit']}")
