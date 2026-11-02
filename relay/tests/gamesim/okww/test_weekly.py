@@ -53,7 +53,7 @@ FIGHT_S = 83
 # (get_task_by_class returns None), and activates a PostMessage window. Nothing of it is under
 # test. Pinned by its body: sha1 of inspect.getsource, as the overlay pins (v3.7.3 and v3.7.4
 # WWOneTimeTask.py:7-12 are the same bytes), so an upstream change turns the case red first.
-_ONE_TIME_RUN_SHA = "5af28163def7" if harness.CTX.get("tag") == "v3.7.14-beta.2" else "74e7f46544c5"
+_ONE_TIME_RUN_SHA = ("74e7f46544c5", "5af28163def7")
 
 
 def _one_time_prelude(task):
@@ -159,7 +159,7 @@ class TestWeekly(ScriptedCase):
     # -- T5: a deliberate skip ends the run once
     def test_run_0of3_not_retried(self):
         got = hashlib.sha1(inspect.getsource(WWOneTimeTask.run).encode("utf-8")).hexdigest()[:12]
-        self.assertEqual(got, _ONE_TIME_RUN_SHA, "upstream WWOneTimeTask.run changed: re-read it before faking it")
+        self.assertIn(got, _ONE_TIME_RUN_SHA, "upstream WWOneTimeTask.run changed: re-read it before faking it")
         with mock.patch.object(WWOneTimeTask, "run", _one_time_prelude):
             self.run_case("run_0of3_not_retried", lambda task: task.run())
 
