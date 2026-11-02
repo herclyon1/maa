@@ -23,8 +23,8 @@ import inspect
 from unittest import mock
 
 PINS = {
-    ("BaseWWTask", "openF2Book"): "1a5b9827a7fb",     # BaseWWTask.py v3.7.4 lines 1016-1039
-    ("BaseWWTask", "ensure_main"): "a376a810ce91",    # BaseWWTask.py v3.7.4 lines 717-724
+    ("BaseWWTask", "openF2Book"): ("1a5b9827a7fb", "a412f8cd7de1"),     # BaseWWTask.py v3.7.4 / v3.7.14-beta.2
+    ("BaseWWTask", "ensure_main"): ("a376a810ce91", "19d5be52b444"),    # BaseWWTask.py v3.7.4 / v3.7.14-beta.2
 }
 
 
@@ -37,8 +37,9 @@ def body_sha(fn) -> str:
 def pinned(cls, name: str, replacement):
     """Replace cls.name with `replacement` while its upstream body still hashes to the pin."""
     pin = PINS[(cls.__name__, name)]
+    pins = pin if isinstance(pin, tuple) else (pin,)
     got = body_sha(getattr(cls, name))
-    if got != pin:
+    if got not in pins:
         raise RuntimeError(f"upstream {cls.__name__}.{name} is {got}, the fake was written against {pin}; "
                            "read the new body and update the fake")
     with mock.patch.object(cls, name, replacement):

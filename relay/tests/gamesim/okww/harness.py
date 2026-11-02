@@ -96,10 +96,11 @@ MODULE = "ark_overrides"      # ok-script names the module after the file (find_
 # relay/tests/gamesim/upstream/okww-v3.7.4/src/... (v3.7.3's are byte-identical: same
 # BaseCombatTask.py and CombatCheck.py sha256 in both SOURCE.txt). The fake stands for what
 # these bodies do; when upstream changes one, the case fails here first (design 1, rule 2).
+_V3714 = CTX.get("tag") == "v3.7.14-beta.2"
 FAKED = {
     ("BaseCombatTask", "combat_once"): "27a85ea0bfab",      # src/task/BaseCombatTask.py:375-400
-    ("CombatCheck", "in_combat"): "b5af3e23230d",           # src/combat/CombatCheck.py:185-192
-    ("CombatCheck", "do_check_in_combat"): "4fc4eea1f210",  # src/combat/CombatCheck.py:139-183
+    ("CombatCheck", "in_combat"): "9b00c94ff415" if _V3714 else "b5af3e23230d",
+    ("CombatCheck", "do_check_in_combat"): "a57810bde7e3" if _V3714 else "4fc4eea1f210",
 }
 # The game window's title on the game PC: ok-script.2026-10-07.log line 170,
 # "DeviceManager:update_pc_device pc_device: {... 'hwnd': '鸣潮  ', ...}" (two trailing spaces).

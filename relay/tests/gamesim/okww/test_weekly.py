@@ -53,7 +53,7 @@ FIGHT_S = 83
 # (get_task_by_class returns None), and activates a PostMessage window. Nothing of it is under
 # test. Pinned by its body: sha1 of inspect.getsource, as the overlay pins (v3.7.3 and v3.7.4
 # WWOneTimeTask.py:7-12 are the same bytes), so an upstream change turns the case red first.
-_ONE_TIME_RUN_SHA = "74e7f46544c5"
+_ONE_TIME_RUN_SHA = "5af28163def7" if harness.CTX.get("tag") == "v3.7.14-beta.2" else "74e7f46544c5"
 
 
 def _one_time_prelude(task):

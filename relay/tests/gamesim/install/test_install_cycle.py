@@ -282,6 +282,7 @@ def run_cycle(ov, tree: Tree, python: "str | None", scratch: Path) -> None:
     state.mkdir()
     o_1001 = overlay_at("3059111a", scratch)
     o_fix = overlay_at("f6b5f432", scratch)
+    o_1006 = overlay_at("bdcc504f", scratch)
     o_now = overlay_at(None, scratch)
     dest = ov.target(tree.root)
 
@@ -344,10 +345,10 @@ def run_cycle(ov, tree: Tree, python: "str | None", scratch: Path) -> None:
               report.get("error")), (True, [], [], ""), "relay.log: no skipped-override line from 10-05 22:10:57 on")
         check("the relay says nothing at boot", ov.report_line(), "", "same boots")
 
-    print("\n== this checkout's overlay; 10-06 06:11:04: OK-WW updates itself v3.7.3 -> v3.7.4")
-    if sha256(o_now.read_bytes()) != sha256(dest.read_bytes()):
-        install_checks(ov, tree, o_now, "relay.log 10-06 06:10:04 (line 28209), the boot before the update")
-    ov._SOURCE = o_now
+    print("\n== 10-06 06:11:04: OK-WW updates itself v3.7.3 -> v3.7.4")
+    if sha256(o_1006.read_bytes()) != sha256(dest.read_bytes()):
+        install_checks(ov, tree, o_1006, "relay.log 10-06 06:10:04 (line 28209), the boot before the update")
+    ov._SOURCE = o_1006
     written = dest.read_bytes()
     rewritten = tree.update("v3.7.4")
     check("the update leaves ok_tasks/ark_overrides.py alone",
@@ -369,6 +370,22 @@ def run_cycle(ov, tree: Tree, python: "str | None", scratch: Path) -> None:
               (True, [], [], "", True, True),
               "relay.log: no skipped-override line since 10-05 22:10:57; 09-01 b0bb8607 (two layers stacked)")
         check("the relay says nothing at boot", ov.report_line(), "", "same boots")
+
+    print("\n== this checkout's overlay on OK-WW v3.7.14-beta.2")
+    tree.update("v3.7.14-beta.2")
+    install_checks(ov, tree, o_now, "ledger #130: re-pinned overlay for v3.7.14-beta.2")
+    ov._SOURCE = o_now
+    check("the pre-run drift check finds nothing on v3.7.14-beta.2", ov.drift(tree.root), [],
+          "ledger #130: claim_daily, claim_battle_pass and find_nest re-pinned to v3.7.14-beta.2")
+    if python:
+        probe, report, fresh = okww_start(ov, tree, python)
+        applied = report.get("applied") or []
+        check("OK-WW's start on v3.7.14-beta.2 applied everything, each override once",
+              (fresh, report.get("skipped"), report.get("adapted") or [], report.get("error"),
+               len(applied) == len(set(applied)), applied == probe["applied_in_process"]),
+              (True, [], [], "", True, True),
+              "ledger #130: all 26 overrides applied on v3.7.14-beta.2")
+        check("the relay says nothing at boot on v3.7.14-beta.2", ov.report_line(), "", "ledger #130")
 
     print("\n== uninstall: the uninstaller removes the one file install() wrote")
     failed = uninstall_overlay(tree.root)
