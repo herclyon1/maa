@@ -122,6 +122,20 @@ check("不许抢掉更靠谱的那条：回放里 09-01 那条仍报「等一个
       "Daily Task exception stopped" in str(__import__("ark_relay.features.verify.collector_okww", fromlist=["x"])._OKWW_MSG_ZH), False)
 check("不认识的错还是照旧说不认识",
       "还不认识" in _okww_say("TaskExecutor", "完全没见过的错", "WeirdError"), True)
+check("v3.7.14-beta.2 zh_CN 请在大世界并在队伍中开始 翻得出人话",
+      _okww_say("TaskExecutor", "请在大世界并在队伍中开始!", ""),
+      "任务执行：开跑时游戏不在大世界、或者没有出战队伍，OK-WW 不肯开工")
+_garden_then_farm = (
+    "2026-11-02 10:07:16,454 INFO TaskExecutor GardenTask:info_set current task garden_new_stage\n"
+    "2026-11-02 10:33:59,555 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束：周本领奖：这一圈打完没看到结晶，不领就会被上游按 ESC 退本，停下。\n"
+    "2026-11-02 10:33:59,603 ERROR TaskExecutor DailyTask:run_task_by_class <class 'src.task.FarmEchoTask.FarmEchoTask'> Traceback (most recent call last):\n"
+    "  File \"task.py\", line 1118, in run_task_by_class\n"
+    "    task.run()\n"
+    "ark_overrides.ArkStopped: 周本领奖：这一圈打完没看到结晶，不领就会被上游按 ESC 退本，停下。\n"
+)
+check("周常乐园跑完后周本抛 run_task_by_class 不误算到周常乐园头上",
+      _cok._okww_error(_garden_then_farm),
+      "周本领奖：这一圈打完没看到结晶，不领就会被上游按 ESC 退本，停下。")
 
 print("\n[「游戏即将重启」弹窗：看客户端到底换没换文件（2026-09-12 09:21 只是反作弊刷新）]")
 import os as _os  # noqa: E402

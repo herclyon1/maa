@@ -131,7 +131,9 @@ _OKWW_MSG_ZH = (
     # used to read 「打完 Boss 领完奖之后没能退出副本」, which on 2026-09-21 was
     # said of a run that never got into the realm (OK-WW-05-33-53.log:1172-1177).
     ("Teleport to boss failed", "传送去打 Boss 没成（图鉴传送、选关卡、进本其中一步没过），没进本，一次没打"),
+    ("传送到首领失败", "传送去打 Boss 没成（图鉴传送、选关卡、进本其中一步没过），没进本，一次没打"),
     ("can't find gray_book_boss", "按 F2 打不开图鉴——先核对键位是不是游戏默认"),
+    ("找不到boss列表", "按 F2 打不开图鉴——先核对键位是不是游戏默认"),
     ("NightmareNestTask Failed", "没打成"),
     ("梦魇巢穴任务失败", "没打成"),          # the same line in zh_CN since v3.7.14-beta.2
     ("Logger.error() got an unexpected keyword", "旧版补丁自己的日志调用写错（已撤回）"),
@@ -142,10 +144,14 @@ _OKWW_MSG_ZH = (
     ("无法领取先约电台奖励", texts.OKWW_BATTLE_PASS_UNCLAIMED),   # zh_CN since v3.7.14-beta.2
     ("Game window is not connected", "连不上游戏窗口"),
     ("not in combat", "没有进入战斗"),
+    ("未进入战斗", "没有进入战斗"),
     ("can't find boss_proceed", "图鉴里找不到「前往」按钮"),
+    ("找不到前往挑战按钮", "图鉴里找不到「前往」按钮"),
     # All three of the morning's failures on 2026-09-08 carried exactly this, and
     # the notification never showed it - see the wrapper branch in _okww_say.
     ("Please start in game world and in team",
+     "开跑时游戏不在大世界、或者没有出战队伍，OK-WW 不肯开工"),
+    ("请在大世界并在队伍中开始",
      "开跑时游戏不在大世界、或者没有出战队伍，OK-WW 不肯开工"),
 )
 _OKWW_WRAPPER = "Daily Task exception stopped"
@@ -234,13 +240,6 @@ def _okww_error(text: str) -> str:
         # The catch-all sentence (see _OKWW_MSG_ZH): the reason is the exception
         # printed under it, e.g. 「RuntimeError: Teleport to boss failed」.
         msg = excs[-1][1].lstrip(": ").strip() if excs else ""
-    # The current task upstream recorded itself is more reliable than the
-    # wrapper layer's class name: `run_task_by_class <class …>` only says who
-    # called it, while `current task` says which step is being done.
-    if task in ("DailyTask", "TaskExecutor"):
-        before_tasks = okww_info(text, until=head.start())["tasks"]
-        if before_tasks:
-            task = _OKWW_TASK_BY_STEP.get(before_tasks[-1].split()[0], task)
     if task in ("DailyTask", "TaskExecutor"):
         # Raised by the wrapper layer itself (such as
         # 「NightmareNestTask Failed」or 「run_task_by_class <class …>」): the real
@@ -255,6 +254,13 @@ def _okww_error(text: str) -> str:
                  if m.group(1) not in ("DailyTask", "TaskExecutor", "CombatCheck", "BaseCombatTask")]
         if prior:
             task, msg = prior[-1].group(1), prior[-1].group(2).strip()
+    # When still on a wrapper header (such as 「Daily Task exception stopped」
+    # with no inner task class in msg or prior ERROR), use the step upstream
+    # recorded via `current task`.
+    if task in ("DailyTask", "TaskExecutor"):
+        before_tasks = okww_info(text, until=head.start())["tasks"]
+        if before_tasks:
+            task = _OKWW_TASK_BY_STEP.get(before_tasks[-1].split()[0], task)
     # No generic catch-all: an untranslated error is quoted raw (_okww_say).
     return _okww_say(task, msg, exc, text, head.start())
 
