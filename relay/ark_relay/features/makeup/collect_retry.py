@@ -63,7 +63,7 @@ _NODE = re.compile(r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(?:__)?(AutoCol
 # A route node's recognition or action in maafw.log (retry_blocked): the Start
 # node's recognition is the moment the route is announced, its action 0.2 s later.
 _ROUTE_EVENT = re.compile(r"\[msg=Node\.(?:Recognition\.Succeeded|Action\.Starting)\]"
-                          r".*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(Start|End|Failed)\"")
+                          r".*?\"name\":\"(?:__)?(AutoCollect[A-Za-z]*\d+)(Start|End|Failed)\"")
 # CloseGamePC's own end in maafw.log (_close_game): Succeeded once CloseGameAction killed the
 # game and wrote the display settings, Failed when either went wrong (action.go returns false).
 _CLOSE_END = re.compile(r'\[msg=Tasker\.Task\.(Succeeded|Completed|Failed)\].*?"entry":"CloseGamePC"')
@@ -113,14 +113,15 @@ def _item_of(rid: str) -> str | None:
 
 
 def route_ids_by_label(zh_cn: dict) -> dict[str, str]:
-    """{route label as the history log prints it: route id} from `option.<id>.label`.
+    """{route label as the history log prints it: route id} from `option.<id>.label` or `task.AutoCollect.route.<id>.label`.
 
     By label, never by number: AutoCollectRoute1 and AutoCollectCommonRoute1 are both 线路1."""
     out: dict[str, str] = {}
     for key, val in zh_cn.items():
         m = re.fullmatch(r"option\.(AutoCollect(?:Common)?Route\d+)\.label", key)
-        if m and isinstance(val, str):
-            out[_TAG.sub("", val).strip()] = m.group(1)
+        n = re.fullmatch(r"task\.AutoCollect\.route\.([A-Za-z]+\d+)\.label", key)
+        if (m or n) and isinstance(val, str):
+            out[_TAG.sub("", val).strip()] = m.group(1) if m else f"AutoCollect{n.group(1)}"
     return out
 
 

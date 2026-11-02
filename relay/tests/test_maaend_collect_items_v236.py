@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ark_relay.core import mastercfg
 from ark_relay.features.makeup import collect_retry as cr
+from ark_relay.features.verify import collector_maaend as cm, outcome
 
 FIX = Path(__file__).parent / "fixtures" / "maaend-2026-10-29"
 fails = []
@@ -111,6 +112,51 @@ with tempfile.TemporaryDirectory() as d:
     check("补跑结论认新版节点", cr.judge(mf, ["AutoCollectValleyIVChrysodendra1", "AutoCollectWulingCosmagaric1"],
                                      "00:00:00"),
           {"AutoCollectValleyIVChrysodendra1": False, "AutoCollectWulingCosmagaric1": True})
+
+    # Real 2026-11-02 morning MaaEnd-06-37-16 log lines (ledger #134): 16 item-named routes in 1654 s.
+    log_1102 = "\n".join([
+        "[2026-11-02 10:37:28.880] 开始执行任务, 数量: 1",
+        "[2026-11-02 11:02:29.664] 任务开始: 🧺自动采集",
+        "[2026-11-02 11:02:29.665] 正在前往四号谷地扫描拥有物资",
+        "[2026-11-02 11:02:51.970] 正在前往武陵扫描拥有物资",
+        "[2026-11-02 11:03:04.220] 仓库库存同步完成，开始按目标库存筛选采集物",
+        "[2026-11-02 11:03:05.320] 采集纯晶多齿叶",
+        "[2026-11-02 11:04:52.668] 采集轻黯石",
+        "[2026-11-02 11:06:37.493] 采集轻红柱状菌",
+        "[2026-11-02 11:07:39.258] 采集中黯石",
+        "[2026-11-02 11:10:23.899] 采集晶化多齿叶",
+        "[2026-11-02 11:11:23.671] 采集受蚀玉化叶",
+        "[2026-11-02 11:13:02.786] 采集至晶多齿叶",
+        "[2026-11-02 11:14:00.095] 采集血菌、武陵石",
+        "[2026-11-02 11:17:37.438] 采集星门菌",
+        "[2026-11-02 11:18:54.406] 采集燎石",
+        "[2026-11-02 11:20:59.443] 采集重红柱状菌",
+        "[2026-11-02 11:22:42.233] 采集重黯石",
+        "[2026-11-02 11:24:21.668] 采集中红柱状菌",
+        "[2026-11-02 11:25:10.574] 采集红矛叶",
+        "[2026-11-02 11:26:26.877] 采集协议纹石",
+        "[2026-11-02 11:28:24.733] 采集塔罗斯菌",
+        "[2026-11-02 11:30:03.197] 任务完成: 🧺自动采集",
+        "[2026-11-02 11:31:57.991] 自动执行任务完成",
+    ])
+    checks = {c.label: c.ok for c in outcome.maaend_checks(log_1102, [], own_log=True)}
+    check("11-02 早班 16 条新版采集路线判为「自动采集 真的走了路线」", checks.get("自动采集 真的走了路线"), True)
+    log_p = d / "0.log"
+    log_p.write_text(log_1102, encoding="utf-8")
+    parsed = cm.parse_maaend_log(log_p)
+    check("11-02 早班路线计数 16/16", (parsed.get("maaend_collect_done"), parsed.get("maaend_collect_total")), (16, 16))
+
+    shot = "2026.11.02-11.21.15.123___MapNavigatorObstacleDevice_InteractPost.png"
+    check("新版路线撞上中继器能对上路线 ID",
+          cr.blocked_route_ids(log_1102, [shot], zh),
+          {"AutoCollectWulingRubyBolete1": [shot]})
+    mf_blocked = (
+        '[2026-11-02 11:20:59.400][INF] [msg=Node.Recognition.Succeeded] {"name":"AutoCollectWulingRubyBolete1Start"}\n'
+        '[2026-11-02 11:22:40.000][INF] [msg=Node.Action.Starting] {"name":"AutoCollectWulingRubyBolete1End"}\n'
+    )
+    check("补跑复查认得新版路线节点窗口",
+          cr.retry_blocked(mf_blocked, ["AutoCollectWulingRubyBolete1"], "11:00:00", [shot]),
+          {"AutoCollectWulingRubyBolete1": [shot]})
 
 print("\nall checks passed" if not fails else f"\n{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

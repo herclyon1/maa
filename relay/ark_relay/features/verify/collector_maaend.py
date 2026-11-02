@@ -221,12 +221,13 @@ _SHOT_NAME = re.compile(r"^(\d{4}\.\d\d\.\d\d-\d\d\.\d\d\.\d\d)\.(\d+)_+(.+)\.pn
 # (「[2026-10-12 10:45:39.489][INF]…」; the history log's route line below).
 _LINE_TIME = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)(?:\.(\d{1,6}))?")
 # A route's line in the AUTO-MAS history log, written when MaaEnd starts it:
-# 「[2026-10-12 10:43:58.226] 路线10：重红柱状菌」 (MaaEnd spells routes 1-3 线路).
+# 「[2026-10-12 10:43:58.226] 路线10：重红柱状菌」 (MaaEnd spells routes 1-3 线路),
+# or in MaaEnd v2.36+ (2026-10-29, ledger #122/#134) 「[2026-11-02 11:03:05.320] 采集纯晶多齿叶」.
 # It is the focus text of the route's Start node, which MaaFW announces in maafw.log
 # as Node.Recognition.Succeeded of AutoCollectRoute10Start at 10:43:58.201 (25 ms
 # before AUTO-MAS stamps it; the Action.Starting line comes 0.2 s later, at .410).
 # Its 「…采集失败」 and 「… 库存已达目标，本次跳过」 lines close a window but open none.
-_ROUTE_LINE = re.compile(r"^\[[^\]]+\]\s*((?:路线|线路)\d+[：:].*?)\s*$")
+_ROUTE_LINE = re.compile(r"^\[[^\]]+\]\s*((?:路线|线路)\d+[：:].*?|(?:采集(?!失败$)[^\s：:]+|\S+(?:采集失败| 库存已达目标，本次跳过)))\s*$")
 _ROUTE_NOT_START = re.compile(r"采集失败$|本次跳过$")
 _COLLECT_END = re.compile(r"任务(?:完成|失败)[:：]\s*\S*自动采集")
 
@@ -1003,23 +1004,32 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     if m := _END_COLLECT_SKIP.search(text):
         out["maaend_collect_skipped"] = m.group(1)
     # Routes walked: distinct 「路线N：」 / 「线路N：」 numbers (MaaEnd spells the
-    # first routes 线路); routes that gathered nothing: those with 「采集失败」.
+    # first routes 线路) or v2.36+ item routes 「采集<Item>」 (ledger #122/#134);
+    # routes that gathered nothing: those with 「采集失败」.
     started = set(re.findall(r"(?:路线|线路)(\d+)[：:]", text))
-    failed_r = set(re.findall(r"(?:路线|线路)(\d+)[：:][^\n]*采集失败", text))
+    if started:
+        failed_r = set(re.findall(r"(?:路线|线路)(\d+)[：:][^\n]*采集失败", text))
+        blocked = blocked_routes(text, obstacle_shots(maaend_dir)) if maaend_dir else {}
+        blocked_r = {m.group(1) for lbl in blocked if (m := re.search(r"(\d+)[：:]", lbl))}
+        if failed_lines := re.findall(r"((?:路线|线路)(\d+)[：:][^\n]*?)采集失败", text):
+            out["maaend_collect_failed"] = list(dict.fromkeys(lbl.strip() for lbl, _ in failed_lines))
+            out["maaend_collect_failed_ids"] = list(dict.fromkeys(f"Route{n}" for _, n in failed_lines))
+    else:
+        v236_started = list(dict.fromkeys(re.findall(r"(?m)^\[[^\]]+\]\s*采集(?!失败\s*$)([^\s：:]+)\s*$", text)))
+        started = set(v236_started)
+        v236_failed = list(dict.fromkeys(re.findall(r"(?m)^\[[^\]]+\]\s*(?!(?:路线|线路)\d+[：:])([^\s：:]+?)采集失败\s*$", text)))
+        failed_r = set(v236_failed) & started
+        blocked = blocked_routes(text, obstacle_shots(maaend_dir)) if started and maaend_dir else {}
+        blocked_r = {lbl.removeprefix("采集") for lbl in blocked} & started
+        if v236_failed:
+            out["maaend_collect_failed"] = [f"采集{it}" for it in v236_failed if it in started] or v236_failed
     # Routes that walked through but hit 「战斗中无法使用」 gathered nothing either
     # (blocked_routes); they are booked apart, with the reason, for the daily row.
-    blocked = blocked_routes(text, obstacle_shots(maaend_dir)) if started and maaend_dir else {}
-    blocked_r = {m.group(1) for lbl in blocked if (m := re.search(r"(\d+)[：:]", lbl))}
     if blocked:
         out["maaend_collect_blocked"] = list(blocked)
     if started:
         out["maaend_collect_done"] = len(started - failed_r - blocked_r)
         out["maaend_collect_total"] = len(started)
-    # The failed routes by name and id: 「路线15：红矛叶采集失败」 gives
-    # 「路线15：红矛叶」 and Route15.
-    if failed_lines := re.findall(r"((?:路线|线路)(\d+)[：:][^\n]*?)采集失败", text):
-        out["maaend_collect_failed"] = list(dict.fromkeys(lbl.strip() for lbl, _ in failed_lines))
-        out["maaend_collect_failed_ids"] = list(dict.fromkeys(f"Route{n}" for _, n in failed_lines))
     if hits := _END_SANITY.findall(text):
         _sanity_fields(text, hits, out)
     if _END_SANITY_OUT.search(text):
