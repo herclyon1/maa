@@ -104,6 +104,12 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
         ("fixture", "only fixtures/collect-retry-2026-09-11 (real MXU lines, no SOURCE in the census)"),
     ("features/verify/collector_maaend.py", r"((?:路线|线路)(\d+)[：:][^\n]*?)采集失败"):
         ("fixture", "only fixtures/collect-retry-2026-09-11 (real MXU lines, no SOURCE in the census)"),
+    ("features/verify/collector_maaend.py", r"(?m)^\[[^\]]+\]\s*采集(?!失败\s*$)([^\s：:]+)\s*$"):
+        ("none", "MaaEnd v2.36 item-named route lines (first Monday gathering run 2026-11-02 MaaEnd-06-37-16, ledger #134); "
+                 "tested in test_maaend_collect_items_v236.py"),
+    ("features/verify/collector_maaend.py", r"(?m)^\[[^\]]+\]\s*(?!(?:路线|线路)\d+[：:])([^\s：:]+?)采集失败\s*$"):
+        ("none", "MaaEnd v2.36 item-named route failure lines (task.AutoCollect.route.*.failed, ledger #122/#134); "
+                 "tested in test_maaend_collect_items_v236.py"),
     ("features/verify/collector_okww.py", r"info_set Teleport to Forgery Challenge (\d+)"):
         ("none", "the machine farms Tacet; no Forgery run recorded"),
     ("features/verify/collector_okww.py", "ForgeryTask:"): ("none", "the machine farms Tacet; no Forgery run recorded"),
@@ -143,8 +149,9 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
         ("fixture", "reads the message part of a route line; 采集失败 only in fixtures/collect-retry-2026-09-11 "
                     "(real MXU lines, no SOURCE in the census)"),
     ("features/makeup/collect_retry.py",
-     r"\[msg=Node\.(?:Recognition\.Succeeded|Action\.Starting)\].*?\"name\":\"(AutoCollect(?:Common)?Route\d+)(Start|End|Failed)\""):
-        ("fixture", "only fixtures/collect-blocked-1005-1012 (real maafw.log lines of 2026-10-12, no SOURCE in the census)"),
+     r"\[msg=Node\.(?:Recognition\.Succeeded|Action\.Starting)\].*?\"name\":\"(?:__)?(AutoCollect[A-Za-z]*\d+)(Start|End|Failed)\""):
+        ("fixture", "only fixtures/collect-blocked-1005-1012 (real maafw.log lines of 2026-10-12, no SOURCE in the census); "
+                    "also takes v2.36 item route nodes (ledger #122/#134)"),
     ("features/makeup/collect_retry.py",
      r'\[msg=Tasker\.Task\.(?:Succeeded|Completed|Failed)\].*?"entry":"AutoCollectSchedule"'):
         ("fixture", "only fixtures/collect-watch-2026-09-14/maafw-attempt3.log (real maafw.log line of 2026-09-14, "
@@ -175,6 +182,7 @@ NOT_LOG: "dict[tuple[str, str], str]" = {
     ("features/makeup/collect_retry.py", r"^__AutoCollect([A-Za-z]+)(Dispatch|Skipped)$"):
         "MaaEnd pipeline node names (v2.36)",
     ("features/makeup/collect_retry.py", r"task\.AutoCollect\.route\.([A-Za-z]+\d+)\.failed"): "MaaEnd locale keys (v2.36)",
+    ("features/makeup/collect_retry.py", r"task\.AutoCollect\.route\.([A-Za-z]+\d+)\.label"): "MaaEnd locale keys (v2.36)",
     ("features/makeup/collect_retry.py", r"^AutoCollect.*Routes$"): "MaaEnd option names",
     ("features/makeup/collect_retry.py", r"option\.(AutoCollect(?:Common)?Route\d+)\.failed"): "MaaEnd locale keys",
     ("features/makeup/collect_retry.py", "no-labels"): "the relay's own once-per-condition set",
