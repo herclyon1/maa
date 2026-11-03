@@ -498,6 +498,21 @@ t.click_team_challenge()
 check("看满 6 眼", t.reads_after, 6)
 check("什么都没确认", [e for e in t.events if e in ("cancel", "confirm", "skip-confirm")], [])
 
+print("\n[2026-11-03 账本 #135：Boss 转阶段 walk_find_echo 检测到还在战斗（_in_combat=True）返回 False：接着打完再领结晶，不误报没看到结晶]")
+t = task(left=3, pages=[PAGE[2]], screens=[FULL, SETTLEMENT])
+t._in_combat = True
+def _resume_combat(**kw):
+    t.events.append("resume-combat")
+    t._in_combat = False
+t.combat_once = _resume_combat
+t.pick_echo = lambda: False
+t.walk_find_echo = lambda: (t.events.append("pick-echo"), True)[1]
+t.incr_drop(False)
+check("先接着打完再捡声骸再领奖", t.events[:7], ["incr", "resume-combat", "pick-echo", "incr", "walk", "key:f", "confirm"])
+check("领完剩余次数变 2", t._ark_weekly_left, 2)
+check("BaseWWTask.tr 返回英文原句（不让 zh_CN 破坏 AUTO-MAS 完成判定）",
+      t.tr("Daily Task Completed"), "Daily Task Completed")
+
 # The coverage driver runs every test in one process: leave sys.modules as found.
 for k, v in _saved.items():
     if v is None:

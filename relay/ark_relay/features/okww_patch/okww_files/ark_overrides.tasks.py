@@ -452,6 +452,21 @@ def _install_claim():
             return
         if not getattr(self, "_in_realm", False) or self.in_world():
             return
+        # walk_find_echo passes check_combat=True to walk_until_f (BaseWWTask.py:658): when
+        # combat_once exits during a boss phase transition or brief target loss, walk_until_f
+        # sees self.in_combat() again (setting self._in_combat = True) and returns early so
+        # combat can resume. Finish the fight before looking for the reward crystal.
+        while getattr(self, "_in_combat", False):
+            self.log_info("周本领奖：拾取阶段已重新进入战斗（Boss 未打完），继续打完再领奖")
+            self.combat_once(wait_combat_time=5, raise_if_not_found=False)
+            if getattr(self, "is_revived", False):
+                return
+            if self.pick_echo() or self.walk_find_echo():
+                upstream_incr(self, True)
+            if getattr(self, "_ark_claimed", False):
+                self._ark_claimed = False
+                _after_claim(self)
+                return
         # Upstream's own test for a treasure to walk to (walk_to_treasure_and_restart,
         # and the 5 s wait for it in do_run). No crystal, or a walk that does not get
         # there, used to go back to upstream (a8cc86b6, after 10-12 09:52:20). Its
@@ -1169,6 +1184,15 @@ def _install_hooks():
     logger = Logger.get_logger("ark_overrides")
     TaskDisabledException, CharRevivedException = _TDE, _CRE
     _ArkStop = type("ArkStop", (_TDE,), {"__doc__": "Unwinds a FarmEchoTask run that ends as failed (_end_failed)."})
+    # OK-WW v3.7.14-beta.2 wrapped its task log and exception strings in self.tr().
+    # On a zh_CN machine ok.BaseTask.tr translates them into Chinese, which hides
+    # "Daily Task Completed" from AUTO-MAS's AutoProxy (making AUTO-MAS judge every
+    # completed run as "OK-WW 未连接游戏客户端" and retry 3 times) and splits every
+    # log line between English (gamesim) and Chinese (machine). Task.tr is never used
+    # for OCR (which uses executor.ocr_po_translation); keeping BaseWWTask.tr as the
+    # identity function keeps task logs in canonical English for both AUTO-MAS and
+    # the relay.
+    BaseWWTask.tr = lambda self, message: message
 
     # -- 4C farm: stop retrying for ever; a stop ends the task as FAILED -----
     farm_run = FarmEchoTask.run

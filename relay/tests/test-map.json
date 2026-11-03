@@ -3817,12 +3817,15 @@
 "test_maaend_collect_items_v236.py": [
 "__init__",
 "collect_retry",
+"collector_maaend",
 "config",
 "errwatch",
+"maaend_fwlog",
 "mastercfg",
 "mastercfg_maa",
 "mastercfg_okww",
 "names",
+"outcome",
 "texts"
 ],
 "test_maaend_collect_xianlu.py": [

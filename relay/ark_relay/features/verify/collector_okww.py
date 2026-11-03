@@ -131,27 +131,19 @@ _OKWW_MSG_ZH = (
     # used to read 「打完 Boss 领完奖之后没能退出副本」, which on 2026-09-21 was
     # said of a run that never got into the realm (OK-WW-05-33-53.log:1172-1177).
     ("Teleport to boss failed", "传送去打 Boss 没成（图鉴传送、选关卡、进本其中一步没过），没进本，一次没打"),
-    ("传送到首领失败", "传送去打 Boss 没成（图鉴传送、选关卡、进本其中一步没过），没进本，一次没打"),
     ("can't find gray_book_boss", "按 F2 打不开图鉴——先核对键位是不是游戏默认"),
-    ("找不到boss列表", "按 F2 打不开图鉴——先核对键位是不是游戏默认"),
     ("NightmareNestTask Failed", "没打成"),
-    ("梦魇巢穴任务失败", "没打成"),          # the same line in zh_CN since v3.7.14-beta.2
     ("Logger.error() got an unexpected keyword", "旧版补丁自己的日志调用写错（已撤回）"),
     # DailyTask.claim_battle_pass: 「can not battle pass, maybe ended」 is a battle-pass
     # page with no level digits read, the claim skipped. It read 「没能进入战斗」 until 10-11
     # (the 09-29 09:28 run, BOARD 未进群报错-OKWW-AUTOMAS-1010.md).
     ("can not battle pass", texts.OKWW_BATTLE_PASS_UNCLAIMED),
-    ("无法领取先约电台奖励", texts.OKWW_BATTLE_PASS_UNCLAIMED),   # zh_CN since v3.7.14-beta.2
     ("Game window is not connected", "连不上游戏窗口"),
     ("not in combat", "没有进入战斗"),
-    ("未进入战斗", "没有进入战斗"),
     ("can't find boss_proceed", "图鉴里找不到「前往」按钮"),
-    ("找不到前往挑战按钮", "图鉴里找不到「前往」按钮"),
     # All three of the morning's failures on 2026-09-08 carried exactly this, and
     # the notification never showed it - see the wrapper branch in _okww_say.
     ("Please start in game world and in team",
-     "开跑时游戏不在大世界、或者没有出战队伍，OK-WW 不肯开工"),
-    ("请在大世界并在队伍中开始",
      "开跑时游戏不在大世界、或者没有出战队伍，OK-WW 不肯开工"),
 )
 _OKWW_WRAPPER = "Daily Task exception stopped"
@@ -221,6 +213,7 @@ def _okww_error(text: str) -> str:
     「Daily Task exception stopped」) for the same event; the innermost one
     carries the explanation.
     """
+    text = outcome.normalize_okww_log(text)
     info = okww_info(text)
     heads = list(_OKWW_TB_HEAD.finditer(text))
     if not heads:
@@ -314,6 +307,7 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
     """Turn (task, raw message, exception name) into one plain-language
     sentence. When it cannot be translated, say so outright -- never be vague.
     """
+    msg = outcome.normalize_okww_log(msg)
     task_zh = _OKWW_TASK_ZH.get(task)
     if _OKWW_ENDED_FAILED in msg:
         # The overlay ended the run as failed and logged why in Chinese.
@@ -426,7 +420,7 @@ def parse_okww_log(log_path: Path) -> dict:
     naive subtraction reads that refill as if it had never been spent.
     """
     try:
-        text = log_path.read_text(encoding="utf-8", errors="replace")
+        text = outcome.normalize_okww_log(log_path.read_text(encoding="utf-8", errors="replace"))
     except OSError:
         return {}
 
@@ -780,7 +774,7 @@ def _okww_steps(text: str, entries: int) -> list[str]:
         else:
             steps.append("周本（没进本，一次没打）")
     # GardenTask logs 「乐园任务完成, 已达到上限」 when the week is already done and
-    # right after finishing it; the English line is the older wording.
+    # right after finishing it; DailyTask logs 「weekly garden already completed」.
     if "weekly garden already completed" in text or "乐园任务完成" in text:
         steps.append("周常乐园（本周已完成）")
     elif "GardenTask:" in text:

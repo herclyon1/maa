@@ -35,7 +35,8 @@ from pathlib import Path
 
 from ark_relay.features.verify.collector_maa import never_started as _maa_never_started, parse_maa_log
 from ark_relay.features.verify.collector_maaend import _END_SANITY_SEC_PER_POINT, CLAIM_UNCONFIRMED, maaend_unreachable, parse_maaend_log, _maaend_all_done, _split_failed
-from ark_relay.features.verify.collector_okww import okww_info, parse_okww_log
+from ark_relay.features.verify.collector_okww import _okww_error, okww_info, parse_okww_log
+from ark_relay.features.verify.outcome import normalize_okww_log
 from ark_relay.core.config import SERVER_TZ, RunRecord
 
 log = logging.getLogger("ark.collector")
@@ -77,14 +78,13 @@ AUTOMAS_NAME_TZ = timezone(timedelta(hours=4))
 _LOG_TS = re.compile(r"^\[?(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 _MAA_SUCCESS = "Success!"
 # AUTO-MAS (app/task/Okww/AutoProxy.py) records OK-WW as 「在完成任务前退出」
-# ("exited before finishing") when the process is gone before it saw success in
-# the log. _OKWW_DONE is the line OK-WW writes when its daily task is complete.
-_OKWW_EXITED = "在完成任务前退出"
-# OK-WW v3.7.14-beta.2 (on the machine since 2026-11-02 08:46) wraps its log sentences in
-# self.tr(); the machine's OK-WW runs in zh_CN (「translator install success ... Chinese」 in
-# ok-script.log), so upstream's own lines now come out in Chinese - this one as 「每日任务已完成」
-# (i18n/zh_CN/LC_MESSAGES/ok.po at that tag). Both spellings are read.
-_OKWW_DONE = ("Daily Task Completed", "每日任务已完成")
+# ("exited before finishing") or 「未连接游戏客户端」 (from 2026-11-03, when
+# AutoProxy added "connected:0" to _OKWW_DISCONNECT_LOG while _OKWW_SUCCESS_LOG
+# stayed English-only and OK-WW -e logs "hwnd changed,connected:0" on stop_hwnd
+# seconds after finishing) when it did not see English success in the log.
+# _OKWW_DONE is the line OK-WW writes at the end of DailyTask.run().
+_OKWW_EXITED = ("在完成任务前退出", "未连接游戏客户端")
+_OKWW_DONE = "Daily Task Completed"
 
 # Results AUTO-MAS writes for an attempt it restarts right away. A real result
 # always follows, so such a record is neither a success nor a failure. The first
@@ -226,7 +226,10 @@ def refresh_raw(entry: dict, history_root: Path | None, maaend_dir: Path | None 
     raw = dict(entry.get("raw") or {})
     script = entry.get("script")
     try:
-        log_path = Path(history_root) / (str(entry.get("run_id") or "") + ".log")
+        run_id = str(entry.get("run_id") or "")
+        log_path = Path(history_root) / (run_id + ".log")
+        if not log_path.is_file() and (rid := raw.get("automas_record_id")):
+            log_path = Path(history_root) / run_id.split("/", 1)[0] / str(rid) / "0.log"
         if not log_path.is_file():
             return entry
         if script == "MAA":
@@ -263,6 +266,10 @@ def refresh_raw(entry: dict, history_root: Path | None, maaend_dir: Path | None 
         for k in ("maaend_name_mismatch", "okww_exit_race"):
             if k in rec.raw:
                 raw[k] = rec.raw[k]
+    elif rec is None and raw.get("automas_record_id") and not out.get("ok"):
+        judged = _judge_result(raw, log_path.with_suffix(".json"), run_id.rsplit("/", 1)[-1])
+        if judged is not None and judged[2]:
+            out["ok"], out["failed_tasks"] = True, []
     return out
 
 
@@ -571,14 +578,15 @@ def _judge_result(raw: dict, json_path: Path, stem: str):
         script = prefix or "通用脚本"
         result = str(raw.get("general_result") or "")
         ok = result.strip() == _MAA_SUCCESS
-        # OK-WW exits within seconds of writing 「Daily Task Completed」; when
-        # AUTO-MAS sees the process gone in those seconds it records
-        # 「在完成任务前退出」. OK-WW's own log decides: if it wrote Completed,
-        # the round is done.
-        if not ok and _OKWW_EXITED in result:
+        # OK-WW exits or closes its hwnd within seconds of writing its end-of-run
+        # completion line; when AUTO-MAS sees that before its English success line,
+        # it records _OKWW_EXITED. OK-WW's own log decides: if it ended a line with
+        # _OKWW_DONE (not the start-of-round "每日任务已完成，开始传送并刷取4C声骸")
+        # and had no inner task error, the round is done.
+        if not ok and any(s in result for s in _OKWW_EXITED):
             try:
-                log_text = json_path.with_suffix(".log").read_text(encoding="utf-8", errors="replace")
-                if any(s in log_text for s in _OKWW_DONE):
+                log_text = normalize_okww_log(json_path.with_suffix(".log").read_text(encoding="utf-8", errors="replace"))
+                if _OKWW_DONE in log_text and not _okww_error(log_text):
                     ok = True
                     raw["okww_exit_race"] = True
             except OSError:
