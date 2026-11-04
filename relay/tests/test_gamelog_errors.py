@@ -251,5 +251,17 @@ check("_handle_success calls gamelog_errors.check_round", "gamelog_errors.check_
 check("after the outcome check's early return", body.index("gamelog_errors.check_round") > body.index("_verify_outcome"),
       True)
 
+print("[OK-WW v3.7.14 zh_CN framework lines are read as the listed English (ledger #136, 11-04 09:21)]")
+ZH_1104 = ("2026-11-04 09:21:32,965 ERROR ok.core.start_controller start_controller:waiting for game to start error "
+           "当前游戏或模拟器不支持选择的截图方式!")
+check("the 11-04 zh capture-method line is not unregistered", ge.unregistered("OK-WW", ZH_1104), [])
+check("it counts as the recovered capture-method entry",
+      [e.pattern.pattern for e, _, _ in ge.recovered_kinds("OK-WW", ZH_1104)] ==
+      [ge.known("OK-WW", "2026-10-10 09:20:00,000 ERROR ok.core.start_controller start_controller:waiting for game "
+                "to start error Selected capture method is not supported by the game or your system!").pattern.pattern],
+      True)
+check("a real failure in zh still reaches the group", len(ge.unregistered(
+    "OK-WW", "2026-11-04 09:30:00,000 ERROR TaskExecutor 无法领取先约电台奖励")), 1)
+
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

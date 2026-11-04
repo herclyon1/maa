@@ -72,6 +72,8 @@ _OKWW_ZH_TO_EN = (
     ("每日任务异常停止", "Daily Task exception stopped"),
     ("等待游戏启动错误", "waiting for game to start error"),
     ("游戏窗口未连接", "Game window is not connected"),
+    # ok-script framework (start_controller), seen 2026-11-04 09:21:32 in run OK-WW-05-19-58 (ledger #136)
+    ("当前游戏或模拟器不支持选择的截图方式!", "Selected capture method is not supported by the game or your system!"),
 )
 
 
