@@ -2770,10 +2770,13 @@
 ],
 "test_gamelog_errors.py": [
 "__init__",
+"collector_maaend",
 "config",
 "errwatch",
 "gamelog_errors",
+"maaend_fwlog",
 "names",
+"outcome",
 "techlog",
 "texts"
 ],

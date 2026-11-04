@@ -103,7 +103,7 @@ def error_lines(script: str, text: str) -> "list[str]":
         return []
     if script == "OK-WW":
         # OK-WW v3.7.14-beta.2 prints the ok-script framework's own messages in zh_CN too
-        # (2026-11-04 09:21:32 「当前游戏或模拟器不支持选择的截图方式!」); the list holds the
+        # (2026-11-04 09:21:32, the capture-method line of start_controller); the list holds the
         # upstream English, so restore it first, as every other OK-WW reader does (ledger #136).
         from ark_relay.features.verify.outcome import normalize_okww_log  # noqa: PLC0415
         text = normalize_okww_log(text)
