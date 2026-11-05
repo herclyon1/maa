@@ -637,11 +637,16 @@ def makeup_no_fight(failed: str) -> str:
     return f"失败的不只是开始唤醒或连模拟器（{failed}），日志里这一轮一仗都没打"
 
 
+# The words makeup_only_gathering always carries: pushes._unresolved_title_head tells this
+# make-up decision from the others by them.
+MAKEUP_ONLY_GATHERING_MARK = "除了自动采集，别的都干完了"
+
+
 def makeup_only_gathering(at: str) -> str:
     """Why no whole MaaEnd make-up: one attempt of the round did everything but gathering
     (makeup.maaend_round_only_gathering); `at` is that attempt's start, 「10:24」."""
     when = f"{at} 那一遍" if at else "这一轮有一遍"
-    return (f"{when}除了自动采集，别的都干完了，整轮再跑只会把干完的再做一遍；"
+    return (f"{when}{MAKEUP_ONLY_GATHERING_MARK}，整轮再跑只会把干完的再做一遍；"
             "没走通的采集路线关机前单独补")
 
 

@@ -201,12 +201,24 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> 
     # The link goes in the head; the rest of the body is the usual failure text without it.
     _, rest = core.format_failure(dataclasses.replace(rec, raw={k: v for k, v in raw.items() if k != "evidence_page"}),
                                   _diagnosis(eng, rec))
-    body = (texts.unresolved_head(game, shift, makeup_phrase, stuck, page) + (note + "\n" if note else "") + "\n"
-            + texts.failed_body_head(attempts) + _restart_note(rec) + rest)
+    title, head = _unresolved_title_head(game, shift, makeup_phrase, stuck, page)
+    body = head + (note + "\n" if note else "") + "\n" + texts.failed_body_head(attempts) + _restart_note(rec) + rest
     if raw.get("maaend_unreachable_shape") and not raw.get("maaend_unreachable"):
         # maaend_unreachable_unread: the official notices could not be read, so
         # "no notice today" would be a guess (records._confirm_unreachable).
         unread_note = getattr(texts, "UNREACHABLE_UNREAD_NOTE", None)
         body += "\n" + (unread_note if raw.get("maaend_unreachable_unread") and unread_note
                          else texts.UNREACHABLE_SHAPE_NOTE)
-    return unresolved.send(eng, day, unresolved.UNRESOLVED_KIND, rec.run_id, texts.unresolved(game, shift), body)
+    return unresolved.send(eng, day, unresolved.UNRESOLVED_KIND, rec.run_id, title, body)
+
+
+def _unresolved_title_head(game: str, shift: str, makeup_phrase: str, stuck: str, page: str) -> tuple[str, str]:
+    """(title, first line) of a held failure's alarm. A MaaEnd round whose only unfinished task
+    was gathering got no whole make-up (makeup.maaend_round_only_gathering): every other task was
+    done, so it is said as 「没干完」 like any round left with gathering undone, with why there was
+    no whole make-up under it - not as 「没跑成」."""
+    if texts.MAKEUP_ONLY_GATHERING_MARK in makeup_phrase:
+        from ark_relay.features.makeup import makeup  # noqa: PLC0415
+        return (texts.unresolved_undone(game, shift),
+                texts.unresolved_undone_head(game, shift, makeup.GATHERING, page) + makeup_phrase + "\n")
+    return texts.unresolved(game, shift), texts.unresolved_head(game, shift, makeup_phrase, stuck, page)

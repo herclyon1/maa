@@ -205,5 +205,19 @@ check("an unreadable ledger: make-up as before", makeup.maaend_round_only_gather
 check("the held attempt itself left only gathering", makeup.maaend_round_only_gathering(ledger_of(ROWS[:1]), ROWS[0]),
       texts.makeup_only_gathering("10:24"))
 
+print("[the alarm: 「没干完」, not 「没跑成」]")
+from ark_relay.features.alarm import pushes  # noqa: E402
+from ark_relay.features.alarm.unresolved import _gave_up_phrase  # noqa: E402
+phrase = _gave_up_phrase("不补跑：" + texts.makeup_only_gathering("10:24"))
+title, head = pushes._unresolved_title_head("终末地", "早班", phrase, "自动采集", "https://example.test/x")
+check("title", title, "⚠️ 终末地早班没干完")
+check("first line", head.splitlines()[0], "终末地早班跑完了但没干完：自动采集，这一类不补跑（证据包 https://example.test/x）")
+check("then why no whole make-up", head.splitlines()[1],
+      "没补跑：10:24 那一遍除了自动采集，别的都干完了，整轮再跑只会把干完的再做一遍；没走通的采集路线关机前单独补")
+check("plain words", texts.plain(title + head.replace("https://example.test/x", "")), [])
+t2, h2 = pushes._unresolved_title_head("终末地", "早班", "补跑也没成", "自动采集", "")
+check("any other make-up outcome: as before", (t2, h2), (texts.unresolved("终末地", "早班"),
+                                                     texts.unresolved_head("终末地", "早班", "补跑也没成", "自动采集", "")))
+
 print("all checks passed" if not fails else f"FAILED: {fails}")
 sys.exit(1 if fails else 0)

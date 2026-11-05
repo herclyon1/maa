@@ -727,7 +727,11 @@ def walked_today(ledger_entries: list[dict], history_dir: Path, by_label: dict[s
 
     2026-11-05: the 10:24 attempt walked 16 of 17 routes; the 11:26 and 12:02 attempts, logged out
     mid-run, failed 15 and 13 of them. The retry took the routes of the last run with a verdict,
-    so it would have re-walked 12 routes gathered in the morning for the one that never made it."""
+    so it would have re-walked 12 routes gathered in the morning for the one that never made it.
+
+    Known limit: when no run of the day walked a route (every attempt cut before its gathering got
+    going), the retry gets every route against run_retry's 1200 s; those it does not reach in time
+    are booked as no verdict (没拿到结果), not as failed."""
     out: set[str] = set()
     for e in ledger_entries:
         if e.get("script") != "MaaEnd" or not e.get("run_id"):
