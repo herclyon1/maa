@@ -3651,6 +3651,25 @@
 "wuwa_posters",
 "wuwa_tacet"
 ],
+"test_maa_start_watchdog.py": [
+"__init__",
+"config",
+"errwatch",
+"maa_start_watchdog",
+"maaend_watchdog",
+"masconfig",
+"mastercfg",
+"mastercfg_maa",
+"mastercfg_okww",
+"masuser",
+"miniyaml",
+"names",
+"notify",
+"plan",
+"runwatch",
+"statestore",
+"texts"
+],
 "test_maa_unreachable.py": [
 "__init__",
 "annihilation",
