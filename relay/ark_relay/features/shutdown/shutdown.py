@@ -778,19 +778,26 @@ def _shift_overdue(eng, now: datetime):
                 or handle._already_alerted(eng, day, f"队列超时|{q['name']}|{hhmm}")):
             continue
         limit, days = runwatch.planned_minutes(eng, due.hour, due.minute, due)
-        yield q, due, missing, limit, _overdue_from(eng, due, missing) + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN), days
+        yield q, due, missing, limit, _overdue_from(eng, due, missing, limit) + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN), days
 
 
-def _overdue_from(eng, due: datetime, missing: list[str]) -> datetime:
+def _overdue_from(eng, due: datetime, missing: list[str], limit: int | None = None) -> datetime:
     """When the shift's clock starts for the scripts still missing: the queue's time, or - when the
     client update held all of them out of the queue and the relay re-ran them itself afterwards
     (engine._gu_reran) - the re-run's start. 2026-11-01: 明日方舟 updated, MAA was skipped in the
     09:00 早班 and re-run at 12:02; at 12:04 「⏰ 早班有脚本一直没出结果」 counted 142 + 30 minutes
-    from 09:00. Timed from the re-run it still alarms if the re-run itself hangs."""
+    from 09:00. Timed from the re-run it still alarms if the re-run itself hangs.
+    With `limit` (the shift's planned minutes) a script of the run that timed out and was
+    retried by AUTO-MAS restarts the clock too (runwatch.retry_clock, 2026-11-05 ledger #138);
+    the later of the two starts wins."""
+    from ark_relay.features.run import runwatch  # noqa: PLC0415
+    start = due
     since = getattr(eng, "_gu_rerun_at", None)
     if since is not None and since >= due and set(missing) <= set(getattr(eng, "_gu_reran", ())):
-        return since.astimezone(SERVER_TZ)
-    return due
+        start = since.astimezone(SERVER_TZ)
+    if limit is not None and (retried := runwatch.retry_clock(eng, due, limit)) is not None:
+        start = max(start, retried.astimezone(SERVER_TZ))
+    return start
 
 
 OVERDUE_KEY = "班次无结果"
@@ -824,8 +831,10 @@ def _alarm_shift_overdue(eng, now: datetime) -> None:
         if now < deadline:
             continue
         title = texts.shift_no_result(q["name"])
+        start = deadline - timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN)
         body = texts.shift_no_result_body(q["name"], due, now, "、".join(missing),
-                                          limit, runwatch.OVERRUN_SLACK_MIN, days)
+                                          limit, runwatch.OVERRUN_SLACK_MIN, days,
+                                          restarted=start if start != due else None)
         if errs := eng.notifier.send(title, body, alert=True):
             log.error("班次没出结果的告警没推出去，下一轮再试：%s", q["name"])
             continue

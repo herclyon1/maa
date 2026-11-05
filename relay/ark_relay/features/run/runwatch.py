@@ -402,9 +402,48 @@ def planned_minutes(eng, hh: int, mm: int, today: datetime) -> tuple[int, int]:
     return FALLBACK_LIMIT_MIN, 0
 
 
+def retry_clock(eng, due: datetime, limit: int) -> datetime | None:
+    """The latest moment a script of the shift that started at `due` timed out and AUTO-MAS
+    retried it: the 「超时|<script>|<HH:MM:SS>」 marks check_timeouts leaves once the timeout
+    alarm is out, between `due` and the shift's planned end (due + limit + OVERRUN_SLACK_MIN).
+    None when there is none (or no state to read).
+
+    2026-11-05: in the 09:00 早班 MAA's first attempt hung at StartUp for 46 minutes until
+    AUTO-MAS's timeout at 09:48 and a retry; MaaEnd started only at 10:22, and at 10:57 both the
+    overrun alarm and the no-result alarm counted 87 + 30 minutes from 09:00 (ledger #138) - on
+    top of the timeout alarm already pushed for MAA. A retried timeout restarts the shift's
+    clock: the rest of the shift is timed from it with the same planned minutes, so a script
+    that hangs after the retry is still caught. A timeout after the planned end moves nothing:
+    the overrun was due by then.
+    """
+    end = due + timedelta(minutes=limit + OVERRUN_SLACK_MIN)
+    try:
+        store = eng.state.store
+    except AttributeError:
+        return None
+    latest = None
+    for day in sorted({due.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")}):
+        try:
+            got = store.get("marks", f"alerted:{day}")
+        except Exception:  # noqa: BLE001 - a state read error must not stop the overrun check
+            continue
+        for key in got if isinstance(got, list) else []:
+            parts = str(key).split("|")
+            if len(parts) != 3 or parts[0] != "超时":
+                continue
+            try:
+                at = datetime.strptime(f"{day} {parts[2]}", "%Y-%m-%d %H:%M:%S").replace(tzinfo=due.tzinfo)
+            except ValueError:
+                continue
+            if due <= at <= end and (latest is None or at > latest):
+                latest = at
+    return latest
+
+
 def overrun_moments(eng, now: datetime):
     """(queue, hhmm, uid, due, limit, deadline, days) for the latest due of every timed
-    queue; `days` is planned_minutes' day count (0: the fallback, no history)."""
+    queue; `days` is planned_minutes' day count (0: the fallback, no history). The
+    deadline runs from retry_clock when a script of that run timed out and was retried."""
     for q in plan.schedule(eng.cfg.automas_dir):
         for hhmm in q.get("times", []):
             try:
@@ -417,8 +456,9 @@ def overrun_moments(eng, now: datetime):
             if not plan.runs_at(q, hhmm, due):
                 continue        # off that weekday, or every item skipped: no run to overrun
             limit, days = planned_minutes(eng, hh, mm, due)
+            start = retry_clock(eng, due, limit) or due
             yield (q, hhmm, q.get("uid"), due, limit,
-                   due + timedelta(minutes=limit + OVERRUN_SLACK_MIN), days)
+                   start + timedelta(minutes=limit + OVERRUN_SLACK_MIN), days)
 
 
 def _queue_task(snap, uid):
@@ -490,8 +530,10 @@ def check_overrun(eng, now: datetime, snap) -> None:
             continue
         states = "、".join(f"{i.get('name')} {i.get('status')}"
                           for i in task.get("task_info") or [])
+        start = deadline - timedelta(minutes=limit + OVERRUN_SLACK_MIN)
         body = texts.shift_overrun_body(q["name"], due, now, limit, OVERRUN_SLACK_MIN,
-                                        states, str(task.get("log") or ""), days)
+                                        states, str(task.get("log") or ""), days,
+                                        restarted=start if start != due else None)
         if errs := eng.notifier.send(texts.shift_overrun(q["name"]), body, alert=True):
             log.error("队列超时告警没推出去，下一轮再试：%s", q["name"])
             continue

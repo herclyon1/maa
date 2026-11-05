@@ -1135,15 +1135,21 @@ def _overrun_basis(limit_min: int, days: int) -> str:
     return f"近 7 天最长 {limit_min} 分钟跑完"
 
 
+def _restart_note(restarted) -> str:
+    """The clause for a shift whose clock a retried timeout restarted (runwatch.retry_clock)."""
+    return f"中间有脚本跑超时、AUTO-MAS {restarted:%H:%M} 重试，从那时重新算，" if restarted else ""
+
+
 def shift_overrun_body(queue: str, due, now, limit_min: int, slack_min: int,
-                       states: str, last_log: str, days: int = 1) -> str:
+                       states: str, last_log: str, days: int = 1, restarted=None) -> str:
     """A queue still unfinished past its planned end (runwatch). `days`: how many past
-    days the limit was taken from (runwatch.planned_minutes)."""
+    days the limit was taken from (runwatch.planned_minutes); `restarted`: when a retried
+    timeout restarted the clock (runwatch.retry_clock), else None."""
     from datetime import timedelta as _td  # noqa: PLC0415
     ran = int((now - due).total_seconds() // 60)
     body = (f"{queue} {due:%H:%M} 开跑，到现在 {now:%H:%M} 还没跑完，已跑 {ran} 分钟。\n"
-            f"{_overrun_basis(limit_min, days)}，按 {limit_min} + {slack_min} 分钟算，"
-            f"该在 {due + _td(minutes=limit_min + slack_min):%H:%M} 前结束。")
+            f"{_overrun_basis(limit_min, days)}，{_restart_note(restarted)}按 {limit_min} + {slack_min} 分钟算，"
+            f"该在 {(restarted or due) + _td(minutes=limit_min + slack_min):%H:%M} 前结束。")
     if states:
         body += f"\n现在各脚本：{states}"
     if last_log:
@@ -1156,12 +1162,12 @@ def shift_no_result(queue: str) -> str:
 
 
 def shift_no_result_body(queue: str, due, now, missing: str, limit_min: int, slack_min: int,
-                         days: int = 1) -> str:
+                         days: int = 1, restarted=None) -> str:
     """A shift script with no record past the shift's planned end, where AUTO-MAS did not show
-    the shift still running (shutdown._alarm_shift_overdue)."""
+    the shift still running (shutdown._alarm_shift_overdue). `restarted`: as shift_overrun_body."""
     ran = int((now - due).total_seconds() // 60)
     return (f"{queue} {due:%H:%M} 开跑，到现在 {now:%H:%M}（{ran} 分钟）{missing} 还没有结果。\n"
-            f"{_overrun_basis(limit_min, days)}，按 {limit_min} + {slack_min} 分钟算早该跑完了。")
+            f"{_overrun_basis(limit_min, days)}，{_restart_note(restarted)}按 {limit_min} + {slack_min} 分钟算早该跑完了。")
 
 
 # ---- what a group alarm says when the relay could not finish the job itself ----
