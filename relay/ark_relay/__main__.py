@@ -394,6 +394,11 @@ def cmd_local(cfg: Config) -> int:
         display_wake.start(cfg)
     except Exception:
         log.exception("挂调度程序日志监听出错，终末地开游戏时不会叫醒屏幕")
+    try:
+        from ark_relay.features.run import maa_start_watchdog  # noqa: PLC0415
+        maa_start_watchdog.start(cfg, engine.notifier)
+    except Exception:
+        log.exception("挂明日方舟开游戏看门狗出错，开游戏卡住时要等 AUTO-MAS 自己的时限")
     log.info("已挂上目录变更通知，记录一落盘立即处理" if watching
              else f"本平台没有目录变化通知，退回 {cfg.poll_seconds} 秒定时扫描")
     backstop = 3600.0 if watching else float(cfg.poll_seconds)
