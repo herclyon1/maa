@@ -15,9 +15,9 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ark_relay.core import notify, texts  # noqa: E402
-from ark_relay.core.config import SERVER_TZ  # noqa: E402
-from ark_relay.features.run import runwatch  # noqa: E402
+from ark_relay.core import notify, texts
+from ark_relay.core.config import SERVER_TZ
+from ark_relay.features.run import runwatch
 
 fails = []
 
