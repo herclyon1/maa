@@ -8,6 +8,7 @@ notification text.
 """
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from datetime import datetime
@@ -16,6 +17,8 @@ from dataclasses import dataclass
 
 from ark_relay.core import texts
 from ark_relay.features.verify import collector_maaend
+
+log = logging.getLogger("ark.outcome")
 
 
 @dataclass
@@ -78,7 +81,18 @@ _OKWW_ZH_TO_EN = (
 
 
 def normalize_okww_log(text: str) -> str:
-    """Restore v3.7.14-beta.2 zh_CN self.tr() task lines to their canonical upstream strings."""
+    """Restore zh_CN OK-WW log lines to their canonical upstream strings.
+
+    First every whole message the machine's own catalogs translate (okww_i18n: OK-WW's ok.po and
+    ok-script's zh_CN.ts), so an upgrade that translates more strings needs no change here; then
+    the hand-written pairs above, for what the catalogs do not hold (pieces of longer messages,
+    strings from elsewhere). A catalog that cannot be read leaves the text to the pairs alone, and
+    a line neither turns back keeps failing its check, which is pushed as before."""
+    from ark_relay.features.verify import okww_i18n  # noqa: PLC0415
+    try:
+        text = okww_i18n.normalize(text)
+    except Exception:  # noqa: BLE001 - see above: the pairs still apply and unmatched lines still alarm
+        log.warning("OK-WW 翻译表读不出来，只用手写对照表", exc_info=True)
     for zh, en in _OKWW_ZH_TO_EN:
         text = text.replace(zh, en)
     return text
