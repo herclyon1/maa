@@ -1,0 +1,13 @@
+Real lines from the game machine, 2026-11-05 (Beijing), cut without changes:
+
+history-MaaEnd-07-24-54-gathering.log
+    D:\ark\automas\history\2026-11-05\ac34ce3c-372e-49fa-8b28-86b7b0ee906c\0.log, 11:39:04-11:54:57:
+    the gathering task of MaaEnd's 11:26 attempt (ledger MaaEnd-07-24-54). The account was logged in
+    elsewhere at 11:43:57 (「登录认证已失效」); every route after that failed at its own Start node and
+    the failure collector logged it, with no 「…采集失败」 line.
+
+maafw-route-node-failed.log
+    D:\ark\maaend\debug\maafw.bak.2026.11.05-11.22.22.975.log and ...-11.54.57.205.log: the
+    Node.PipelineNode.Failed events of AutoCollectWulingProtocolith2Goto (11:20:43, the 10:24 attempt's
+    one failed route), AutoCollectFinish (11:22:21), AutoCollectValleyIVPinkBolete1Goto (11:43:56, the
+    logout) and AutoCollectAfterStashBackpack (11:54:57).

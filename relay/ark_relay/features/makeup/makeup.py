@@ -582,6 +582,59 @@ def maa_round_work_done(read_ledger, last: dict, *, downtime: bool = False) -> s
     return ""
 
 
+GATHERING = "自动采集"     # MaaEnd's AutoCollect task as its failure sentence names it, emoji stripped
+
+
+def maaend_only_gathering_left(eng, rec) -> str:
+    """Why a whole MaaEnd make-up would only redo finished work; '' when it may run.
+    maaend_round_only_gathering over the held record."""
+    return maaend_round_only_gathering(eng.state.read_ledger, {
+        "script": rec.script, "user": rec.user, "run_id": rec.run_id, "started": rec.started,
+        "failed_tasks": list(rec.failed_tasks or []), "raw": dict(rec.raw or {})})
+
+
+def maaend_round_only_gathering(read_ledger, last: dict) -> str:
+    """Why running MaaEnd's whole script again would only redo finished work: an attempt of the
+    round that `last` ended ran to its end with gathering (自动采集) the only task AUTO-MAS
+    found unfinished, so every other task was done in that attempt; '' otherwise.
+
+    2026-11-05 早班: the 10:22 attempt finished every task but one gathering route
+    (AUTO-MAS 「MaaEnd 未完成任务列表: {'🧺自动采集': [...]}」, ledger raw maaend_result
+    「MaaEnd 部分任务执行失败: 🧺自动采集」); the 11:26 and 12:02 attempts were cut by the
+    account being logged in elsewhere and by AUTO-MAS's 120-minute cap, and then the whole
+    make-up ran everything a fourth time. The routes that did not make it are collect_retry's
+    to re-run, one by one, before the power-off. Only AUTO-MAS's own unfinished list counts:
+    a cut attempt (「运行超过 120 分钟，已终止」) names no task and says nothing about the rest.
+    `read_ledger` is State.read_ledger; an unreadable ledger is a no (the make-up runs)."""
+    from ark_relay.features.verify import collector_maaend  # noqa: PLC0415
+    from ark_relay.core import texts  # noqa: PLC0415
+    started_at = _at(last.get("started"))
+    if started_at is None:
+        return ""
+    try:
+        ledger = read_ledger(_day(started_at))
+    except Exception:  # noqa: BLE001
+        return ""
+    rows = [last]
+    earlier = []
+    for e in ledger:
+        if (e.get("script") != last.get("script") or e.get("user") != last.get("user")
+                or e.get("run_id") == last.get("run_id")):
+            continue
+        if (t := _at(e.get("started"))) is not None and t < started_at:
+            earlier.append((t, e))
+    for _, e in sorted(earlier, key=lambda x: x[0], reverse=True):
+        if e.get("ok"):
+            break                      # the round before this one
+        rows.append(e)
+    for row in rows:
+        result = str((row.get("raw") or {}).get("maaend_result") or "")
+        if collector_maaend._split_failed(result) == [GATHERING]:
+            when = _at(row.get("started"))
+            return texts.makeup_only_gathering(when.strftime("%H:%M") if when else "")
+    return ""
+
+
 def refuse_rejected(eng, rec, now: datetime | None = None) -> None:
     """Spend today's MAA make-up at once for a held record whose config MAA refused
     (collector_maa `maa_config_rejected`), with maa_work_done's reason.
@@ -669,6 +722,9 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
             _give_up(state_dir, day, marker, "MAA", f"不补跑：{why}", r.run_id)
         elif r.script == "MAA":
             never_started(eng, r)
+        elif r.script == "MaaEnd" and (why := maaend_only_gathering_left(eng, r)):
+            log.info("补跑：终末地这次不整轮补（%s），失败照常进群", why)
+            _give_up(state_dir, day, marker, "MaaEnd", f"不补跑：{why}", r.run_id)
     # Debug mode: no make-up, and the held failures are not kept waiting for one.
     from ark_relay.features.modes import modes  # noqa: PLC0415
     if modes.debug_active(state_dir):

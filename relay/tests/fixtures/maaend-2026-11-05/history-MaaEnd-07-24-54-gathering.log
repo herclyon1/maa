@@ -1,0 +1,41 @@
+[2026-11-05 11:39:04.379] 😴**体力不足，任务结束**
+[2026-11-05 11:39:04.379] 如需继续刷取，请补充足够的体力值~
+[2026-11-05 11:39:04.501] 任务完成: 🎱基质刷取
+[2026-11-05 11:39:04.557] 任务开始: 🧺自动采集
+[2026-11-05 11:39:41.462] 采集纯晶多齿叶
+[2026-11-05 11:41:15.668] 本次寻路未使用滑索。如需使用，请先单独执行一次「🚡导入/更新滑索坐标」任务。
+[2026-11-05 11:41:15.909] 采集轻黯石
+[2026-11-05 11:42:44.367] 等待10s完成收集
+[2026-11-05 11:42:54.406] 采集轻红柱状菌
+[2026-11-05 11:43:56.522] [2026-11-05 11:43:56.497][ERR][Px21872][Tx56783][navigation_state_machine.cpp][L297][mapnavigator::NavigationStateMachine::failNavigation] Localization lost beyond timeout (re-acquire failed; likely shoved off-route into another zone); terminating navigation. [current_distance=0.000000] [yaw_error=0.000000] [stalled_ms=0]
+[2026-11-05 11:43:56.737] 2026-11-05T11:43:56+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectValleyIVPinkBolete1Start
+[2026-11-05 11:43:56.884] 采集中黯石
+[2026-11-05 11:50:06.894] 2026-11-05T11:50:06+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectValleyIVAuronyx1Start
+[2026-11-05 11:50:07.040] 采集晶化多齿叶
+[2026-11-05 11:50:27.724] 2026-11-05T11:50:27+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectValleyIVKalkodendra1Start
+[2026-11-05 11:50:27.865] 采集受蚀玉化叶
+[2026-11-05 11:50:48.319] 2026-11-05T11:50:48+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectWulingBlightedJadeleaf1Start
+[2026-11-05 11:50:48.460] 采集至晶多齿叶
+[2026-11-05 11:51:09.087] 2026-11-05T11:51:09+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectWulingVitrodendra1Start
+[2026-11-05 11:51:09.229] 采集血菌、武陵石
+[2026-11-05 11:51:29.811] 2026-11-05T11:51:29+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectWulingBloodcapWulingstone1Start
+[2026-11-05 11:51:29.940] 采集星门菌
+[2026-11-05 11:51:50.623] 2026-11-05T11:51:50+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectWulingCosmagaric1Start
+[2026-11-05 11:51:50.770] 采集燎石
+[2026-11-05 11:52:11.247] 2026-11-05T11:52:11+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectWulingIgneosite1Start
+[2026-11-05 11:52:11.402] 采集重红柱状菌
+[2026-11-05 11:52:32.093] 2026-11-05T11:52:32+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectWulingRubyBolete1Start
+[2026-11-05 11:52:32.233] 采集重黯石
+[2026-11-05 11:52:52.870] 2026-11-05T11:52:52+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectWulingUmbronyx1Start
+[2026-11-05 11:52:53.024] 采集中红柱状菌
+[2026-11-05 11:53:13.620] 2026-11-05T11:53:13+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectWulingRedBolete1Start
+[2026-11-05 11:53:13.780] 采集红矛叶
+[2026-11-05 11:53:34.210] 2026-11-05T11:53:34+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectWulingCrimsonSpearleaf1Start
+[2026-11-05 11:53:34.367] 采集协议纹石（路线1）
+[2026-11-05 11:53:54.909] 2026-11-05T11:53:54+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectWulingProtocolith1Start
+[2026-11-05 11:53:55.037] 采集协议纹石（路线2）
+[2026-11-05 11:54:15.759] 2026-11-05T11:54:15+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectWulingProtocolith2Start
+[2026-11-05 11:54:15.900] 采集塔罗斯菌
+[2026-11-05 11:54:36.544] 2026-11-05T11:54:36+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/common/failurecollector/action.go:60 > FailureCollector subtask failed task=AutoCollectWulingTalosCap1Start
+[2026-11-05 11:54:57.226] 任务失败: 🧺自动采集
+[2026-11-05 11:54:57.394] 任务开始: 📅日常奖励领取

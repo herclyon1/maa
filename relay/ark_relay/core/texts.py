@@ -637,6 +637,14 @@ def makeup_no_fight(failed: str) -> str:
     return f"失败的不只是开始唤醒或连模拟器（{failed}），日志里这一轮一仗都没打"
 
 
+def makeup_only_gathering(at: str) -> str:
+    """Why no whole MaaEnd make-up: one attempt of the round did everything but gathering
+    (makeup.maaend_round_only_gathering); `at` is that attempt's start, 「10:24」."""
+    when = f"{at} 那一遍" if at else "这一轮有一遍"
+    return (f"{when}除了自动采集，别的都干完了，整轮再跑只会把干完的再做一遍；"
+            "没走通的采集路线关机前单独补")
+
+
 def makeup_unsure(failed: str) -> str:
     """Why no make-up when the failure is not a start-up one and the log was not read."""
     return f"失败的不只是开始唤醒或连模拟器（{failed}），拿不准有没有打过仗"
@@ -1388,6 +1396,7 @@ def samples() -> list[str]:
         makeup_config_rejected(maa_config_rejected("理智作战", "序列化失败", "1-7")),
         makeup_config_rejected(maa_config_rejected("", "添加任务失败", "")),
         makeup_no_fight("基建换班"), makeup_unsure("MAA 在完成任务前中止"),
+        makeup_only_gathering("10:24"), makeup_only_gathering(""),
         MAAEND_UPDATE_AFTER_DONE,
         cant_enter_body("MaaEnd", 3, False, "官方公告：今天 10:00「雪凇幽梦」版本更新", 30),
         failed_body_head(3),

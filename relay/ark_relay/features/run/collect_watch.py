@@ -30,7 +30,13 @@ log = logging.getLogger("ark.collect_watch")
 
 ENTRY = "AutoCollectSchedule"
 _TASK = re.compile(r"\[msg=Tasker\.Task\.(Starting|Completed|Failed)\].*?\"entry\":\"" + ENTRY + r"\"")
-_ROUTE_FAILED = re.compile(r"\[msg=Node\.Action\.Starting\].*?\"name\":\"AutoCollect((?:Common)?Route\d+)Failed\"")
+# A failed route, three shapes: the pre-v2.36 AutoCollectRoute10Failed node, v2.36's
+# __AutoCollect<Item><n>Failed node, and a route whose own Goto / Start node failed (no Failed
+# node runs; maafw.log 2026-11-05 11:20:43 「[msg=Node.PipelineNode.Failed] ...
+# "name":"AutoCollectWulingProtocolith2Goto"」, which this pattern alone used to miss: 「日志里没有点名哪条路线」).
+_ROUTE_FAILED = re.compile(
+    r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(?:__)?AutoCollect((?:Common)?Route\d+|[A-Za-z]+?\d+)Failed\""
+    r"|\[msg=Node\.PipelineNode\.Failed\].*?\"name\":\"AutoCollect([A-Za-z]+?\d+)[A-Z][A-Za-z]*\"")
 _STAMP = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
 # Only the dispatcher's own line; the agent client echoes every event once more.
 _NOTIFY = "EventDispatcher::notify"
@@ -73,7 +79,7 @@ class Watcher:
             if _PREFILTER not in line:
                 continue
             if m := _ROUTE_FAILED.search(line):
-                rid = m.group(1)
+                rid = m.group(1) or m.group(2)
                 if rid not in self.failed:
                     self.failed.append(rid)
             elif m := _TASK.search(line):

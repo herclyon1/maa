@@ -229,7 +229,60 @@ _LINE_TIME = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)(?:\.(\d{1,6}))?")
 # Its 「…采集失败」 and 「… 库存已达目标，本次跳过」 lines close a window but open none.
 _ROUTE_LINE = re.compile(r"^\[[^\]]+\]\s*((?:路线|线路)\d+[：:].*?|(?:采集(?!失败$)[^\s：:]+|\S+(?:采集失败| 库存已达目标，本次跳过)))\s*$")
 _ROUTE_NOT_START = re.compile(r"采集失败$|本次跳过$")
+# v2.36+: a route whose own node fails - Goto when the map navigator loses its position, Start
+# when the game cannot be brought back into the world (behind a 「登录认证已失效」 dialog) - has
+# no 「…采集失败」 line; the plugin's failure collector names its node instead. AUTO-MAS history
+# log 2026-11-05 11:43:56 (MaaEnd-07-24-54): 「FailureCollector subtask failed
+# task=AutoCollectValleyIVPinkBolete1Start」, then 14 more such lines while that run booked
+# 17 of 17 routes walked. The route id is the node without its step (AutoCollectValleyIVPinkBolete1).
+_COLLECTOR_FAILED = re.compile(r"FailureCollector subtask failed task=(AutoCollect[A-Za-z]+?\d+)[A-Z][A-Za-z]*\b")
 _COLLECT_END = re.compile(r"任务(?:完成|失败)[:：]\s*\S*自动采集")
+
+
+def collector_failed_routes(text: str) -> list[str]:
+    """Route ids the failure collector failed in a run's AUTO-MAS log, in order (_COLLECTOR_FAILED)."""
+    found: list[str] = []
+    for m in _COLLECTOR_FAILED.finditer(text):
+        if m.group(1) not in found:
+            found.append(m.group(1))
+    return found
+
+
+# v2.36+ item-named route lines, 「[time] 采集纯晶多齿叶」 (also read by collect_retry.walked_routes).
+_V236_ROUTE_START = re.compile(r"(?m)^\[[^\]]+\]\s*采集(?!失败\s*$)([^\s：:]+)\s*$")
+
+
+def _collector_failed_items(text: str, items: dict[str, str]) -> list[str]:
+    """The items (as in 「采集<item>」) of the routes the failure collector failed, in order."""
+    out: list[str] = []
+    last = None
+    for line in text.splitlines():
+        if m := _V236_ROUTE_START.match(line.strip()):
+            last = m.group(1)
+        elif m := _COLLECTOR_FAILED.search(line):
+            it = items.get(m.group(1)) or last
+            if it and it not in out:
+                out.append(it)
+    return out
+
+
+def _add_collector_failed(text: str, maaend_dir, failed_items: list[str], out: dict) -> None:
+    """Routes the failure collector named (no 「采集失败」 line of their own) join `failed_items`:
+    by item through the locale, else the route whose 「采集…」 line came last before the failure line."""
+    if cf_ids := collector_failed_routes(text):
+        out["maaend_collect_failed_ids"] = cf_ids
+        for it in _collector_failed_items(text, route_items(maaend_dir) if maaend_dir else {}):
+            if it not in failed_items:
+                failed_items.append(it)
+
+
+def route_items(maaend_dir) -> dict[str, str]:
+    """{route id: what the history log writes after 「采集」} from MaaEnd's own zh_cn locale, through
+    collect_retry's label table: task.AutoCollect.route.WulingProtocolith2.label 「采集协议纹石（路线2）」
+    -> 「协议纹石（路线2）」, the words of the run's own 「采集协议纹石（路线2）」 line. {} without a locale."""
+    from ark_relay.features.makeup import collect_retry  # noqa: PLC0415 - collect_retry reads this module
+    zh = collect_retry._locale(Path(maaend_dir))
+    return {rid: lbl.removeprefix("采集") for lbl, rid in collect_retry.route_ids_by_label(zh).items()}
 
 
 def shot_time(name: str) -> "datetime | None":
@@ -1015,9 +1068,10 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
             out["maaend_collect_failed"] = list(dict.fromkeys(lbl.strip() for lbl, _ in failed_lines))
             out["maaend_collect_failed_ids"] = list(dict.fromkeys(f"Route{n}" for _, n in failed_lines))
     else:
-        v236_started = list(dict.fromkeys(re.findall(r"(?m)^\[[^\]]+\]\s*采集(?!失败\s*$)([^\s：:]+)\s*$", text)))
+        v236_started = list(dict.fromkeys(_V236_ROUTE_START.findall(text)))
         started = set(v236_started)
         v236_failed = list(dict.fromkeys(re.findall(r"(?m)^\[[^\]]+\]\s*(?!(?:路线|线路)\d+[：:])([^\s：:]+?)采集失败\s*$", text)))
+        _add_collector_failed(text, maaend_dir, v236_failed, out)
         failed_r = set(v236_failed) & started
         blocked = blocked_routes(text, obstacle_shots(maaend_dir)) if started and maaend_dir else {}
         blocked_r = {lbl.removeprefix("采集") for lbl in blocked} & started

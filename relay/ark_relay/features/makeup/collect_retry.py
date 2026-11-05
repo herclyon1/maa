@@ -60,6 +60,10 @@ _OVERRIDE_LINE = re.compile(r"entry=" + ENTRY + r", pipelineOverride=(\[.*\])\s*
 _NEW_START = re.compile(r"^(AutoCollect(?!(?:Common)?Route\d)[A-Za-z]+\d+)Start$")
 _NEW_ITEM = re.compile(r"^__AutoCollect([A-Za-z]+)(Dispatch|Skipped)$")
 _NODE = re.compile(r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(?:__)?(AutoCollect[A-Za-z]*\d+)(End|Failed)\"")
+# A route's own node failing (its Goto when the navigator loses its place, its Start when the
+# world cannot be entered): no End and no Failed node runs, only this (maafw.log 2026-11-05
+# 11:43:56.702 「[msg=Node.PipelineNode.Failed] ... "name":"AutoCollectValleyIVPinkBolete1Goto"」).
+_NODE_FAILED = re.compile(r"\[msg=Node\.PipelineNode\.Failed\].*?\"name\":\"(AutoCollect[A-Za-z]+?\d+)[A-Z][A-Za-z]*\"")
 # A route node's recognition or action in maafw.log (retry_blocked): the Start
 # node's recognition is the moment the route is announced, its action 0.2 s later.
 _ROUTE_EVENT = re.compile(r"\[msg=Node\.(?:Recognition\.Succeeded|Action\.Starting)\]"
@@ -193,7 +197,10 @@ def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: lis
 
 
 def failed_routes(automas_log: str, labels: dict[str, str]) -> list[str]:
-    """Route ids whose 「…采集失败」 line appears in the run's AUTO-MAS log, in order."""
+    """Route ids whose 「…采集失败」 line appears in the run's AUTO-MAS log, in order, then those
+    the failure collector named without such a line (collector_maaend.collector_failed_routes:
+    a route whose Goto or Start node itself failed, 2026-11-05)."""
+    from ark_relay.features.verify import collector_maaend  # noqa: PLC0415
     found: list[str] = []
     for line in automas_log.splitlines():
         m = _FAILED_LINE.match(line.strip())
@@ -201,6 +208,9 @@ def failed_routes(automas_log: str, labels: dict[str, str]) -> list[str]:
             continue
         rid = labels.get(m.group(1).strip())
         if rid and rid not in found:
+            found.append(rid)
+    for rid in collector_maaend.collector_failed_routes(automas_log):
+        if rid not in found:
             found.append(rid)
     return found
 
@@ -290,10 +300,10 @@ def judge(maafw_log: str, routes: list[str], since: str) -> dict[str, bool | Non
     for line in maafw_log.splitlines():
         if len(line) < 20 or line[12:20] < since:
             continue
-        m = _NODE.search(line)
+        m = _NODE.search(line) or _NODE_FAILED.search(line)
         if not m or m.group(1) not in verdict:
             continue
-        verdict[m.group(1)] = m.group(2) == "End"
+        verdict[m.group(1)] = m.re is _NODE and m.group(2) == "End"
     return verdict
 
 
@@ -304,7 +314,7 @@ def node_lines(maafw_log: str, routes: list[str], since: str) -> dict[str, str]:
     for line in maafw_log.splitlines():
         if len(line) < 20 or line[12:20] < since:
             continue
-        m = _NODE.search(line)
+        m = _NODE.search(line) or _NODE_FAILED.search(line)
         if m and m.group(1) in routes:
             out[m.group(1)] = line.strip()[:300]
     return out
@@ -680,6 +690,60 @@ def _not_restored(note: str, why: str, evidence: "dict | None") -> str:
 _VERDICT = re.compile(r"任务(完成|失败)[:：]\s*\S*自动采集")
 
 
+_GATHER_END_LINE = re.compile(r"任务(?:完成|失败)[:：]\s*\S*自动采集")
+
+
+def walked_routes(automas_log: str, by_label: dict[str, str], failed_by_text: dict[str, str] | None = None) -> set[str]:
+    """Route ids a run walked through: a 「采集…」 line followed by the next route's line or the
+    gathering task's end, and no failure of that route anywhere in the run - neither the failure
+    collector naming it (collector_maaend.collector_failed_routes, by id) nor its 「…采集失败」 line
+    (by `failed_by_text`, failed_labels_from_locale; a text it does not hold fails the route whose
+    line came last). The route still open when a run was cut is not counted. `by_label` is
+    route_ids_by_label."""
+    from ark_relay.features.verify import collector_maaend  # noqa: PLC0415
+    closed: set[str] = set()
+    failed: set[str] = set(collector_maaend.collector_failed_routes(automas_log))
+    cur = None
+    for line in automas_log.splitlines():
+        s = line.strip()
+        if m := collector_maaend._V236_ROUTE_START.match(s):
+            if cur:
+                closed.add(cur)
+            cur = by_label.get("采集" + m.group(1))
+        elif m := _FAILED_LINE.match(s):
+            if rid := (failed_by_text or {}).get(m.group(1).strip()) or cur:
+                failed.add(rid)
+        elif _GATHER_END_LINE.search(s):
+            if cur:
+                closed.add(cur)
+            cur = None
+    return closed - failed
+
+
+def walked_today(ledger_entries: list[dict], history_dir: Path, by_label: dict[str, str],
+                 maaend_dir=None, zh_cn: dict | None = None) -> set[str]:
+    """Route ids walked through by any of the day's MaaEnd runs (walked_routes over each run's
+    history log), less those a run walked but gathered nothing on (「战斗中无法使用」, _blocked_in).
+
+    2026-11-05: the 10:24 attempt walked 16 of 17 routes; the 11:26 and 12:02 attempts, logged out
+    mid-run, failed 15 and 13 of them. The retry took the routes of the last run with a verdict,
+    so it would have re-walked 12 routes gathered in the morning for the one that never made it."""
+    out: set[str] = set()
+    for e in ledger_entries:
+        if e.get("script") != "MaaEnd" or not e.get("run_id"):
+            continue
+        p = Path(history_dir) / (str(e["run_id"]) + ".log")
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        walked = walked_routes(text, by_label, failed_labels_from_locale(zh_cn or {}))
+        if walked and maaend_dir:
+            walked -= set(_blocked_in(p, maaend_dir, zh_cn or {}))
+        out |= walked
+    return out
+
+
 def latest_gathering_run(ledger_entries: list[dict], history_dir: Path, labels: dict[str, str]) -> tuple[dict | None, list[str]]:
     """Walk the day's MaaEnd records from the last one back to the first whose log reached a gathering verdict.
 
@@ -701,7 +765,12 @@ def latest_gathering_run(ledger_entries: list[dict], history_dir: Path, labels: 
 
 
 def route_label(rid: str, zh_cn: dict) -> str:
-    return _TAG.sub("", str(zh_cn.get(f"option.{rid}.label") or rid)).strip()
+    """The route's own words: option.<id>.label, or for a v2.36 id task.AutoCollect.route.<name>.label
+    (AutoCollectWulingProtocolith2 -> 「采集协议纹石（路线2）」); the id when neither is there."""
+    val = zh_cn.get(f"option.{rid}.label")
+    if val is None and rid.startswith("AutoCollect"):
+        val = zh_cn.get(f"task.AutoCollect.route.{rid[len('AutoCollect'):]}.label")
+    return _TAG.sub("", str(val or rid)).strip()
 
 
 def _blocked_in(history_log: Path, maaend_dir, zh: dict) -> dict[str, list[str]]:
@@ -818,6 +887,11 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
         routes = list(routes) + extra
         log.info("自动采集补跑：%s 里 %s %s，算没走通一起补", last["run_id"],
                  "、".join(route_label(r, zh) for r in extra), texts.COLLECT_BLOCKED)
+    if routes and (earlier := walked_today(entries, Path(cfg.history_dir), route_ids_by_label(zh),
+                                           cfg.maaend_dir, zh)):
+        if done_before := [r for r in routes if r in earlier]:
+            routes = [r for r in routes if r not in earlier]
+            log.info("自动采集补跑：%s 今天别的那几遍已经走通，不再补", "、".join(route_label(r, zh) for r in done_before))
     if not routes:
         log.info("自动采集补跑：%s 全部路线走通，没有要补的", last["run_id"])
         return False
