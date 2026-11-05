@@ -1085,6 +1085,15 @@ def _stage_display_wake(cfg, notifier, log) -> None:
         log.exception("挂调度程序日志监听出错，终末地开游戏时不会叫醒屏幕")
 
 
+def _stage_maa_start_watch(cfg, notifier, log) -> None:
+    """Arm the watch on MAA's asst.log that ends a hung Arknights start so AUTO-MAS restarts it (#137)."""
+    try:
+        from ark_relay.features.run import maa_start_watchdog  # noqa: PLC0415
+        maa_start_watchdog.start(cfg, notifier)
+    except Exception:
+        log.exception("挂明日方舟开游戏看门狗出错，开游戏卡住时要等 AUTO-MAS 自己的时限")
+
+
 def _stage_gameupdate(cfg, notifier, log) -> None:
     """Major version update days: register the game clients that need updating."""
     # On major update days, update the game clients too (asked for by the user

@@ -179,6 +179,8 @@ SKLAND_MULTI_ROLE = "⚠️ 森空岛给了不止一个终末地角色，没有�
 MAAEND_STUCK_KILLED = "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走"
 MAAEND_STUCK_KILL_FAILED = "⚠️ 终末地 MaaEnd 卡死，没能结束"
 MAAEND_WATCH_BLIND = "⚠️ 终末地看门狗读不到 MaaEnd 的运行日志"
+MAA_START_STUCK_KILLED = "⚠️ 明日方舟开游戏卡住，已结束 MAA 让 AUTO-MAS 重开"
+MAA_START_STUCK_KILL_FAILED = "⚠️ 明日方舟开游戏卡住，没能结束 MAA"
 
 
 # A gathering route that walked through but hit the game's 「战斗中无法使用」 at a relay
@@ -231,6 +233,22 @@ def maaend_stall_reason(minutes: int, last: str) -> str:
 def maaend_watch_blind_body(minutes: int) -> str:
     return (f"MaaEnd 已经跑了 {minutes} 分钟，看门狗一行运行日志（debug\\maafw.log）都没读到。\n"
             "读不到日志说明不了 MaaEnd 卡没卡，所以这次不结束它；已交给我们这边去查这个日志还在不在原处。")
+
+
+def maa_start_stuck_body(started: str, minutes: int, presses: int, killed: bool, why: str,
+                         quiet_minutes: int) -> str:
+    """maa_start_watchdog: `started` 「09:03」 is when MAA began starting the game (the machine's
+    clock), `minutes` the time since; `presses` how often MAA pressed 「开始唤醒」 meanwhile;
+    `quiet_minutes` how long it has been since the last download or resource-check screen."""
+    head = f"MAA {started} 开始开明日方舟，{minutes} 分钟了还没进到游戏里"
+    if presses:
+        head += f"，「开始唤醒」点了 {presses} 次画面都没变"
+    head += f"；最近 {quiet_minutes} 分钟没在下载更新，也没在校验资源。平时开游戏 1 分钟多一点。"
+    if killed:
+        return head + ("\n已结束 MAA，模拟器和游戏留给 AUTO-MAS 关。AUTO-MAS 每分钟看一次，发现 MAA 不在了就算这一次失败："
+                       "截图、关模拟器、重开一次（重试次数用完才算这一班 MAA 失败），不用再等它自己的时限。")
+    return head + (f"\n结束 MAA 没成功（{why}），它还卡着，要等 AUTO-MAS 自己的时限才会被结束；"
+                   "已交给我们这边去查为什么结束不了。")
 
 
 def maaend_stuck_body(reason: str, killed: bool, why: str, left: "list[str] | tuple" = ()) -> str:
@@ -761,7 +779,7 @@ _RELAY_PARTS = {
     "ark.annihilation": "剿灭开关", "ark.garden": "周常乐园开关", "ark.weeklyboss": "周本开关",
     "ark.unresolved": "没处理好的报警", "ark.runwatch": "在跑巡查", "ark.trigger": "认手动开的趟",
     "ark.resources": "手机页的数字", "ark.skland": "森空岛", "ark.config": "读设置", "ark.makeup": "补跑", "ark.activity": "鸣潮活跃晚班补", "ark.core": "记账",
-    "ark.collector": "读运行记录", "ark.selfcheck": "开机自检", "ark.maaend_watchdog": "终末地看门狗",
+    "ark.collector": "读运行记录", "ark.selfcheck": "开机自检", "ark.maaend_watchdog": "终末地看门狗", "ark.maa_start_watchdog": "明日方舟开游戏看门狗",
     "ark.commands": "执行命令", "ark.task_shots": "任务截图", "ark.statestore": "状态档案",
     "ark.monthcard": "月卡提醒", "ark.echofarm": "刷声骸", "ark.maintenance": "停服维护公告",
     "ark.okww_overlay": "鸣潮补丁", "ark.mastercfg": "脚本设置",
@@ -1381,6 +1399,10 @@ def samples() -> list[str]:
         config_skip_body("终末地", config_skip_why("未完成URL配置, 请检查"), "09:34", ""),
         attempt_timeout("鸣潮", "OK-WW"), shift_overrun("早班"), shift_no_result("早班"),
         MAAEND_STUCK_KILLED, MAAEND_STUCK_KILL_FAILED, MAAEND_WATCH_BLIND, maaend_watch_blind_body(10),
+        MAA_START_STUCK_KILLED, MAA_START_STUCK_KILL_FAILED,
+        maa_start_stuck_body("09:03", 5, 69, True, "", 5),
+        maa_start_stuck_body("09:03", 25, 0, True, "", 5),
+        maa_start_stuck_body("09:03", 5, 69, False, "退出码 128", 5),
         maaend_stuck_body(maaend_crash_reason("0xc0000005"), True, ""),
         maaend_stuck_body(maaend_crash_reason(""), False, "退出码 128"),
         maaend_stuck_body(maaend_plugin_gone_reason(60), True, ""),
