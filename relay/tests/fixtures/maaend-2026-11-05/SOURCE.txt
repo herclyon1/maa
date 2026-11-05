@@ -11,3 +11,8 @@ maafw-route-node-failed.log
     Node.PipelineNode.Failed events of AutoCollectWulingProtocolith2Goto (11:20:43, the 10:24 attempt's
     one failed route), AutoCollectFinish (11:22:21), AutoCollectValleyIVPinkBolete1Goto (11:43:56, the
     logout) and AutoCollectAfterStashBackpack (11:54:57).
+
+maafw-logged-out-ocr.log
+    D:\ark\maaend\debug\maafw.bak.2026.11.05-11.54.57.205.log, the first line holding 「登录认证已失效」
+    (11:43:57.149): MaaFW's batch OCR reading the dialog the game put up when the account was logged in
+    on another device (his brother). Fetched 2026-11-05 21:2x Beijing by Select-String, one line, CRLF dropped.

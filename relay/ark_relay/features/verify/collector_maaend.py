@@ -28,6 +28,8 @@ __all__ = [
     "CLAIM_LINE_CHARS",
     "CLAIM_TAIL_LINES",
     "CLAIM_UNCONFIRMED",
+    "LOGGED_OUT",
+    "LOGGED_OUT_TEXT",
     "OBSTACLE_SHOT",
     "UPDATE_AT_START_S",
     "UPDATE_INSTALL_S",
@@ -525,6 +527,44 @@ def _maaend_fail_causes(text: str, fw_text: str = "") -> dict:
                 click <= t <= failed + timedelta(seconds=_STORAGE_FULL_AFTER_S) for t in notices):
             causes[name] = BAG_FULL
     return causes
+
+
+# 2026-11-05 11:43:57 the account was logged in on another device (his brother: 「登录是我 bro 在登录」,
+# 11-05 13:0x Tokyo). The game put 「登录认证已失效，请重新登录」 over everything, MaaFW's batch OCR logged it
+# in maafw.log (tests/fixtures/maaend-2026-11-05/maafw-logged-out-ocr.log), and every route after it failed;
+# the alarm said gathering failed. A task that failed at or after that dialog names it as the cause.
+LOGGED_OUT_TEXT = "登录认证已失效"
+LOGGED_OUT = "这个号在别的设备上登录了，游戏弹「登录认证已失效」，之后进不了游戏"
+
+
+def _logged_out(text: str, maaend_dir) -> "tuple[str, dict]":
+    """('HH:MM:SS' of the first 「登录认证已失效」 MaaEnd's framework log has within this run,
+    {failed task: LOGGED_OUT} for the tasks that failed at or after it), or ('', {})."""
+    stamps = [t for line in text.splitlines() if (t := _stamp(line))]
+    if not maaend_dir or not stamps:
+        return "", {}
+    hits = maafw_grep(maaend_dir, min(stamps), max(stamps), (LOGGED_OUT_TEXT,))
+    at = next((t for h in hits if (t := _stamp(h))), None)
+    if at is None:
+        return "", {}
+    causes = {}
+    for line in text.splitlines():
+        if (m := _END_TASK_FAIL.search(line)) and (t := _stamp(line)) and t >= at:
+            causes[_strip_emoji(m.group(1))] = LOGGED_OUT
+    return at.strftime("%H:%M:%S"), causes
+
+
+def _add_logged_out(text: str, maaend_dir, failed: list[str], causes: dict, out: dict) -> dict:
+    """`causes` with LOGGED_OUT for the tasks that failed at or after the dialog, and
+    out["maaend_logged_out_at"] set; unchanged when nothing failed or the dialog was not
+    seen. Only a run with a failure reads the framework log for it (~90 MB a file)."""
+    if not failed:
+        return causes
+    at, lost = _logged_out(text, maaend_dir)
+    if not at:
+        return causes
+    out["maaend_logged_out_at"] = at
+    return {**lost, **causes}
 
 
 def _cap(lines: list[str]) -> list[str]:
@@ -1041,7 +1081,7 @@ def parse_maaend_log(log_path: Path, maaend_dir=None) -> dict:
     # The framework logs run to ~90 MB each; read them only when a claim click
     # is there to be explained.
     fw = maafw_text(maaend_dir) if _END_CLAIM_CLICK.search(text) else ""
-    causes = _maaend_fail_causes(text, fw)
+    causes = _add_logged_out(text, maaend_dir, failed, _maaend_fail_causes(text, fw), out)
     if causes:
         out["maaend_fail_causes"] = causes
     if _END_CLAIM_CLICK.search(text) and (claim := claim_lines(text, maaend_dir, causes)):
