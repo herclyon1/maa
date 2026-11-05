@@ -639,6 +639,26 @@ def makeup_no_fight(failed: str) -> str:
 
 # The words makeup_only_gathering always carries: pushes._unresolved_title_head tells this
 # make-up decision from the others by them.
+# Endfield's failure retry limit found back at 3 and written back to 1 (run_limit.py, 2026-11-05).
+RUN_LIMIT_RESET = "终末地失败重试上限已改回 1"
+RUN_LIMIT_STUCK = "⚠️ 终末地失败重试上限改不回 1"
+
+
+def run_limit_reset_body(game: str, cur, want) -> str:
+    return (f"{game}在 AUTO-MAS 里的「失败重试上限」变成了 {cur}（AUTO-MAS 升级、或者有人在它界面上改过），"
+            f"中继已经改回 {want}：失败时不再让它自己白跑几遍，缺什么由中继判断只补缺的")
+
+
+def run_limit_stuck_body(game: str, cur, want, why: str) -> str:
+    return (f"{game}在 AUTO-MAS 里的「失败重试上限」是 {cur}，中继连着 3 次没改回 {want}：{why}。"
+            f"不改回来，{game}一失败 AUTO-MAS 会自己连跑几遍；已交给我们这边去查")
+
+
+# 2026-11-05 13:19: a make-up stopped by the red button (停一切) was pushed as 「补跑也没成：卡在 任务被用户手动停止」,
+# read as the make-up failing on its own. A stopped make-up is said as such; AUTO-MAS's words for a
+# task someone stopped are not where it got stuck.
+MAKEUP_STOPPED_PHRASE = "补跑被红按钮（停一切）停掉了，没再补"
+AUTOMAS_MANUAL_STOP = "任务被用户手动停止"
 MAKEUP_ONLY_GATHERING_MARK = "除了自动采集，别的都干完了"
 
 
@@ -1319,6 +1339,9 @@ def samples() -> list[str]:
         MAKEUP_RESTORE_FAILED, PHONE_QUEUED, phone_busy_reason("run_now"),
         unresolved("明日方舟", "早班"), unresolved_undone("终末地", "早班"), unresolved_settings("终末地", "早班"),
         unresolved_head("明日方舟", "早班", "补跑也没成", "开始唤醒", "https://gofile.io/d/xxxx"),
+        unresolved_head("终末地", "早班", MAKEUP_STOPPED_PHRASE, "自动采集", ""),
+        RUN_LIMIT_RESET, RUN_LIMIT_STUCK, run_limit_reset_body("终末地", 3, 1),
+        run_limit_stuck_body("终末地", 3, 1, "调度程序没有接受这次修改：正在运行，无法更新配置项"),
         unresolved_head("明日方舟", "晚班", "没补跑：这一轮已经开始干活（打过关），再跑一遍会再吃一份理智药",
                         "开始唤醒", ""),
         unresolved_head("终末地", "早班", "补跑没能开跑（找不到终末地的母本）", "基质刷取（背包满了）", ""),

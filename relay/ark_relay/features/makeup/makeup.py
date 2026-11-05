@@ -36,7 +36,7 @@ from ark_relay.core.config import SERVER_TZ, atomic_write_text
 from ark_relay.features.makeup import marker as _marker
 from ark_relay.features.verify import collector_maa as _collector_maa
 from ark_relay.features.makeup.marker import (
-    COULDNT_RUN, DISPATCHED, FAILED, GAVE_UP, NO_RECORD, OK, RETRY_GAP_S, SCRIPTS, STALE_MIN,
+    COULDNT_RUN, DISPATCHED, FAILED, GAVE_UP, NO_RECORD, OK, RETRY_GAP_S, SCRIPTS, STALE_MIN, STOPPED_NOTE,
     _at, _day, _dir, _fresh, _last_stamp, _now, _recent, _write_marker, candidates, holding,
     in_flight, read_marker,
 )
@@ -874,13 +874,17 @@ def on_record(eng, rec) -> None:
     day, marker, ent, since = found
     if not _belongs(ent, rec, since):
         return
-    stopped = bool((rec.raw or {}).get("manual_stop"))
+    # 2026-11-05 13:19: the make-up the red button stopped had no raw.manual_stop yet (the estop window
+    # was not backfilled), only AUTO-MAS's 「任务被用户手动停止」, so it was booked failed and pushed as
+    # 「补跑也没成」. AUTO-MAS writes those words only for a task someone (he or 停一切) stopped.
+    from ark_relay.core import texts  # noqa: PLC0415
+    stopped = bool((rec.raw or {}).get("manual_stop")) or any(texts.AUTOMAS_MANUAL_STOP in str(t) for t in (rec.failed_tasks or []))
     ent["result"] = OK if rec.ok and not stopped else FAILED
     ent["record"] = rec.run_id
     ent["record_user"] = rec.user
     ent["record_finished"] = rec.finished.astimezone(SERVER_TZ).isoformat()
     if stopped:
-        ent["note"] = "被停一切停掉"
+        ent["note"] = STOPPED_NOTE
     elif not rec.ok:
         ent["note"] = "、".join(rec.failed_tasks or []) or ent.get("note", "")
     else:

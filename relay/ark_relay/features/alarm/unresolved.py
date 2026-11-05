@@ -223,6 +223,8 @@ def after_makeup(eng, rec, now: datetime | None = None) -> tuple[str, str]:
     if res == makeup.OK:
         return PASSED, ""
     if res == makeup.FAILED:
+        if note == makeup.STOPPED_NOTE:
+            return UNRESOLVED, texts.MAKEUP_STOPPED_PHRASE
         return UNRESOLVED, "补跑也没成"
     if res == makeup.NO_RECORD:
         return UNRESOLVED, f"补跑派下去了，{makeup.STALE_MIN} 分钟没跑出记录"

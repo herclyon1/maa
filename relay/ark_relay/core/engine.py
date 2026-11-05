@@ -511,6 +511,9 @@ class Engine:
             # Before both reports and the shutdown decision: a held MAA / MaaEnd
             # failure gets its one make-up run first (makeup.py), and the reports
             # wait for it instead of describing the day without it.
+            # Before the make-up: it must not be dispatched under a retry limit someone
+            # put back to 3 (run_limit.py).
+            ("重试上限", self._run_limit_guard),
             ("补跑", self._maybe_makeup),
             # The evening top-up of a waveplate-short daily activity (activity.py), after
             # the queue and before the reports and the shutdown decision, which wait for it.
@@ -546,6 +549,11 @@ class Engine:
             return
         log.info("刷声骸：%s", note)
         echofarm.push_wrapup(self.notifier, note, failed)
+
+    def _run_limit_guard(self) -> None:
+        """Endfield's failure retry limit in AUTO-MAS kept at 1 (run_limit.py)."""
+        from ark_relay.features.schedule import run_limit  # noqa: PLC0415
+        run_limit.step(self)
 
     def _monthcard_notice(self) -> None:
         """From five days before a monthly card's last claim day, one Server酱 line a day."""

@@ -26,6 +26,9 @@ STALE_MIN = 10
 # as today's attempt.
 DISPATCHED, COULDNT_RUN, GAVE_UP, OK, FAILED, NO_RECORD = (
     "dispatched", "couldnt_run", "gave_up", "ok", "failed", "no_record")
+# The note makeup.on_record gives a make-up the red button (停一切) stopped; unresolved.after_makeup
+# says it as stopped, not as failed.
+STOPPED_NOTE = "被停一切停掉"
 
 
 # ------------------------------------------------------------------ marker

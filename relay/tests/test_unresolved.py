@@ -485,6 +485,27 @@ check("同一条记录再来一遍：不重推，算推过", (unresolved.send(e,
 check("另一条记录：照推", (unresolved.send(e, D, "手动", "rid-2", "t2", "b2"), len(alarms(e))), (True, 2))
 check("同一条记录的另一种报警：照推", (unresolved.send(e, D, "重启", "rid-1", "t3", "b3"), len(alarms(e))), (True, 3))
 
+print("\n[补跑被红按钮（停一切）停掉：不说「补跑也没成」，AUTO-MAS 的「任务被用户手动停止」不当卡点（11-05 13:19）]")
+DAYS = f"{DAY:%Y-%m-%d}"
+for label, mk_raw in (("停一切时段当时还没补上（13:19 原样，只有 AUTO-MAS 那句话）", {}),
+                      ("停一切时段已经标上", {"manual_stop": "10:20"})):
+    e = build()
+    handle._handle(e, rec("MAA", at(9, 5), failed=["开始唤醒"]))
+    e._flush_pending()
+    makeup.maybe_run(e, at(10, 5))
+    e._flush_pending()
+    handle._handle(e, rec("MAA", at(10, 6), failed=["任务被用户手动停止"], raw=mk_raw))
+    e._flush_pending()
+    m_ent = makeup.read_marker(e.cfg.state_dir, DAYS).get("MAA") or {}
+    check(label + "：补跑记成被停掉", (m_ent.get("result"), m_ent.get("note")), (makeup.FAILED, makeup.STOPPED_NOTE))
+    heads = [b.splitlines()[0] for t, b, a in e.notifier.sent if a]
+    check(label + "：没有「补跑也没成」", any("补跑也没成" in h for h in heads), False)
+    check(label + "：没有把「任务被用户手动停止」当卡点", any("卡在 " + texts.AUTOMAS_MANUAL_STOP in h for h in heads), False)
+    if not mk_raw:
+        check(label + "：一条进群，头一行说补跑被红按钮停掉", heads,
+              [f"明日方舟早班没跑成，{texts.MAKEUP_STOPPED_PHRASE}（证据包 {PAGE}）"])
+check("没被停掉、自己失败的补跑照旧说「补跑也没成」", makeup.STOPPED_NOTE != "开始唤醒", True)
+
 print("\n[整天报警没了]")
 check("dayfail.py 删了", (ROOT / "ark_relay" / "dayfail.py").exists(), False)
 src = (ROOT / "ark_relay" / "core" / "engine.py").read_text(encoding="utf-8")

@@ -196,6 +196,8 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> 
     note = _evidence_note(eng, rec)
     raw = rec.raw or {}
     names = core._with_causes(list(rec.failed_tasks or []), raw.get("maaend_fail_causes"))
+    if makeup_phrase == texts.MAKEUP_STOPPED_PHRASE:
+        names = [n for n in names if texts.AUTOMAS_MANUAL_STOP not in n]
     stuck = "、".join(names[:3]) + ("…" if len(names) > 3 else "")
     page = raw.get("evidence_page") or ""
     # The link goes in the head; the rest of the body is the usual failure text without it.
