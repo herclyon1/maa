@@ -1,8 +1,8 @@
 {
- "version": 20261105040455,
- "ref": "relay-20261105040455",
+ "version": 20261105040922,
+ "ref": "relay-20261105040922",
  "files": {
-  "RELEASE-NOTES.md": "1f0ec985ae6acd6c836c521183968c614e5bbae9",
+  "RELEASE-NOTES.md": "f5e1e85aa20cb507ee0fe3ac0f174a697c6066d2",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "4a9624cd3c60f76109e3c75bae3268410bfaf9e1",
@@ -135,7 +135,7 @@
   "ark_relay/features/run/__init__.py": "87782e2019716aa81255d96a2183bd6b9d6d76d3",
   "ark_relay/features/run/collect_watch.py": "2f6decdb1f558b94e864a2d04aa103c079726707",
   "ark_relay/features/run/display_wake.py": "d344c2a633aab6fffb3b50c0d8a05714551801c8",
-  "ark_relay/features/run/maa_start_watchdog.py": "0e4a75dd343c9b9eb2de1d63004cf6032950d30b",
+  "ark_relay/features/run/maa_start_watchdog.py": "dca0681e0a7c7685696f7bbe2f17ff29d21adbc5",
   "ark_relay/features/run/maaend_watchdog.py": "df500871aa5008f383fdae8c2d73d08c40dc3cb6",
   "ark_relay/features/run/runwatch.py": "6138f125af5a5126d11c06bcf87a589d1d268397",
   "ark_relay/features/schedule/__init__.py": "bffa06999cf67fadbfcdcdc42edd92a265072ae5",
@@ -177,7 +177,7 @@
   "watchdog_guard.py": "cc505fe57c4c2923be2003c8fe5a4f0a47b0d887"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "1dd2c7540863a911de7524af1404c46b62714423d5de4f541b80f8077a905f1e",
+  "RELEASE-NOTES.md": "93085bc633fc99c79c9e72b5392a220ea974e5a6055c5e4f864a5b00766ad021",
   "app_main.py": "9a2bad4ee77f639044a37a362cd0630827e0ff1b87978e4caeb7898972cdc682",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "735141521ad30388c1e68ebe4ffd28f79e7cfd70a6f2f4f9880d5277b00be2f5",
@@ -310,7 +310,7 @@
   "ark_relay/features/run/__init__.py": "ed1fe8be4e63512d713609bfce48bf8366aec31e97b44dcdf38fb51bb02b90ef",
   "ark_relay/features/run/collect_watch.py": "9c337d5b0cba8a803947c58a80ea6ff0d797c6f173bf8bf7d2dfd57a0e9fb11e",
   "ark_relay/features/run/display_wake.py": "0123729960f7866726bafe0a0266393f39dfd6ee5b4c9449c0e55fc91df43e39",
-  "ark_relay/features/run/maa_start_watchdog.py": "8011919bcb11bae4846f7d267dab42790ef91da699d1559323a83bc6fc2d3607",
+  "ark_relay/features/run/maa_start_watchdog.py": "456794f421a50498358e7aee1ff12a7009cd80410d77a651701a48d59e4dedf5",
   "ark_relay/features/run/maaend_watchdog.py": "f1e725f5c091ec11a9ae02b75203b9e10e663da2bb93817383886bedc57bdd79",
   "ark_relay/features/run/runwatch.py": "d20618964f8fbbfa02a148c0c1864af2d308fecdac1b00c941ca836a10673ea7",
   "ark_relay/features/schedule/__init__.py": "23b5ae67a7f09987db1e2c72520b861473b52985571cfec5ac30ff3d3a91c3d7",

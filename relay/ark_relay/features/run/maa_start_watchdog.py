@@ -29,7 +29,17 @@ Hung means, all at once:
     one restarts the clock. A hot update is progress, never a hang.
 
 Only MAA.exe is ended, by its PID and image name (maaend_watchdog._taskkill: no /T). One alarm
-per hung start (its PID and start time), whether the kill worked or not.
+per hung start (its PID and start time), whether the kill worked or not. After a kill the
+watchdog leaves the mark AUTO-MAS's own timeout leaves (「超时|MAA|<HH:MM:SS>」, runwatch.
+check_timeouts), so the shift's overrun and no-result clocks restart from it the same way
+(runwatch.retry_clock, ledger #138). No other alarm follows the kill: AUTO-MAS logs
+「MAA 任务结果: MAA 在完成任务前退出」, which runwatch does not read as a timeout.
+
+Not this: a download whose screen MAA no longer recognises. The only signs of progress are the
+two OCR tasks above; should an update change that screen so GameStartUpdateOCR stops firing,
+a long download would be ended as a hang on every attempt. AUTO-MAS's app.log line
+「检测到待下载的游戏资源热更新」 (AutoProxy._check_game_update, logged when the resource version
+differs from the last good run) would be the second sign to read then.
 
 Its own thread (start), one look every CHECK_EVERY_SECONDS; the snapshot and the process list
 are only read once a start has gone quiet for the limit.
@@ -93,8 +103,9 @@ class Watchdog:
 
     def __init__(self, notifier, maa_dir, *, now=datetime.now, snapshot=maaend_watchdog._snapshot,
                  processes=maaend_watchdog._tasklist, kill=maaend_watchdog._taskkill,
-                 active: "bool | None" = None):
+                 active: "bool | None" = None, state_dir=None):
         self.notifier = notifier
+        self.state_dir = state_dir      # where the restart mark goes (runwatch.retry_clock)
         self.path = Path(maa_dir) / "debug" / "asst.log"
         self.now, self.snapshot, self.processes, self.kill = now, snapshot, processes, kill
         self.active = config.IS_WINDOWS if active is None else active
@@ -195,6 +206,8 @@ class Watchdog:
     def _end(self, s: Start, now: datetime, quiet: float) -> str:
         self._handled.add((s.pid, s.at))
         ok, why = self.kill(s.pid, "MAA.exe")
+        if ok:
+            self._mark_restart(now)
         title = texts.MAA_START_STUCK_KILLED if ok else texts.MAA_START_STUCK_KILL_FAILED
         body = texts.maa_start_stuck_body(s.at.strftime("%H:%M"), int((now - s.at).total_seconds() // 60),
                                           s.presses, ok, why, int(quiet // 60))
@@ -213,6 +226,23 @@ class Watchdog:
         return title
 
 
+    def _mark_restart(self, now: datetime) -> None:
+        """The 「超时|MAA|<HH:MM:SS>」 day mark runwatch.retry_clock restarts the shift's clocks
+        from. Never raises: a mark that cannot be written leaves the clocks at the shift's time."""
+        if not self.state_dir:
+            return
+        key = f"超时|{SCRIPT}|{now:%H:%M:%S}"
+
+        def add(got):
+            cur = list(got) if isinstance(got, list) else []
+            return cur if key in cur else [*cur, key]
+        try:
+            from ark_relay.core.statestore import StateStore  # noqa: PLC0415
+            StateStore(self.state_dir).update("marks", f"alerted:{now:%Y-%m-%d}", add)
+        except Exception:
+            log.warning("记不下这次重开的时刻：这一班的超时计时还从排定的开跑时间算", exc_info=True)
+
+
 def start(cfg, notifier) -> bool:
     """Arm the thread. False (and a log line) off Windows or without MAA's install folder."""
     if not config.IS_WINDOWS:
@@ -220,7 +250,7 @@ def start(cfg, notifier) -> bool:
     if not cfg.maa_dir:
         log.info("没配 MAA 目录，明日方舟开游戏卡住时不会自动重开")
         return False
-    dog = Watchdog(notifier, cfg.maa_dir)
+    dog = Watchdog(notifier, cfg.maa_dir, state_dir=cfg.state_dir)
 
     def run() -> None:
         while True:

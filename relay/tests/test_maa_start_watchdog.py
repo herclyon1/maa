@@ -13,7 +13,8 @@ the kill and the log file are stand-ins; nothing touches a real process. Checked
 * a new MAA (banner, new PID) or a closed chain (Completed / Error / Stopped) clears the start;
 * other chains' presses do not count; reading resumes across partial lines, a rotated log and a
   relay that starts mid-hang (the backlog read, its first partial line skipped);
-* the alarm: group route, the kill-failed title, and plain language for both texts.
+* the alarm: group route, the kill-failed title, and plain language for both texts;
+* a kill that worked leaves 「超时|MAA|<time>」, so runwatch.retry_clock restarts the shift's clocks.
 """
 import sys
 from datetime import datetime, timedelta
@@ -237,6 +238,33 @@ for b in (texts.maa_start_stuck_body("09:03", 5, 69, True, "", 5),
           texts.maa_start_stuck_body("09:03", 25, 0, True, "", 5),
           texts.maa_start_stuck_body("09:03", 5, 69, False, "结束命令 30 秒没返回", 5)):
     check("plain language: " + b[:24], texts.plain(b), [])
+
+print("[the restart mark: the shift's clocks restart from the kill, as after AUTO-MAS's own timeout]")
+import types  # noqa: E402
+from ark_relay.core.config import SERVER_TZ  # noqa: E402
+from ark_relay.core.statestore import StateStore  # noqa: E402
+from ark_relay.features.run import runwatch  # noqa: E402
+w = World("mark")
+w.dog.state_dir = w.dir / "state"
+w.dog.state_dir.mkdir()
+hang_until(w, T0 + timedelta(minutes=6))
+kill_at = T0 + timedelta(minutes=6)
+w.at(kill_at)
+store = StateStore(w.dog.state_dir)
+check("the kill leaves the timeout mark of its own moment", store.get("marks", "alerted:2026-11-05"),
+      ["超时|MAA|09:09:23"])
+eng = types.SimpleNamespace(state=types.SimpleNamespace(store=store))
+due = datetime(2026, 11, 5, 9, 0, tzinfo=SERVER_TZ)
+check("runwatch.retry_clock restarts the shift from it", runwatch.retry_clock(eng, due, 87),
+      datetime(2026, 11, 5, 9, 9, 23, tzinfo=SERVER_TZ))
+w = World("mark-failed-kill")
+w.dog.state_dir = w.dir / "state"
+w.dog.state_dir.mkdir()
+w.kill_result = (False, "退出码 128")
+hang_until(w, T0 + timedelta(minutes=6))
+w.at(T0 + timedelta(minutes=6))
+check("a kill that failed leaves no mark (nothing restarted)",
+      StateStore(w.dog.state_dir).get("marks", "alerted:2026-11-05"), None)
 
 print("all checks passed" if not fails else f"FAILED: {fails}")
 sys.exit(1 if fails else 0)
