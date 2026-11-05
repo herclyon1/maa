@@ -91,7 +91,7 @@ def normalize_okww_log(text: str) -> str:
     from ark_relay.features.verify import okww_i18n  # noqa: PLC0415
     try:
         text = okww_i18n.normalize(text)
-    except Exception:  # noqa: BLE001 - see above: the pairs still apply and unmatched lines still alarm
+    except Exception:  # see above: the pairs still apply and unmatched lines still alarm
         log.warning("OK-WW 翻译表读不出来，只用手写对照表", exc_info=True)
     for zh, en in _OKWW_ZH_TO_EN:
         text = text.replace(zh, en)
