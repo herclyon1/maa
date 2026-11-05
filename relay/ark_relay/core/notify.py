@@ -246,6 +246,12 @@ class WeComBot:
     # Plain text, not markdown: the group is a WeChat group and WeChat shows a
     # robot's markdown as 「暂不支持此消息类型」. The text cap is 2048 bytes.
     _LIMIT = 1800
+    # 2026-11-05 北京 10:56: runwatch's overrun alarm carried AUTO-MAS's whole task log (38151
+    # characters) as its 「最后一句」 and went out as 20 of 44 parts before the robot's 20-a-minute
+    # cap refused the 21st (45009) - the group was flooded and every other alarm of that minute
+    # failed. A group message is for a person to act on: past MAX_PARTS parts the rest is cut with
+    # a note, and the cut is logged so the text that grew that long gets fixed.
+    MAX_PARTS = 3
 
     def __init__(self, cfg: Config):
         self.url = cfg.wecom_bot_url
@@ -254,8 +260,29 @@ class WeComBot:
     def enabled(self) -> bool:
         return bool(self.url)
 
+    @classmethod
+    def _cap(cls, text: str) -> str:
+        """`text` cut to what fits in MAX_PARTS parts (split numbering included), ending with a
+        note of how much was left out; unchanged when it fits."""
+        if len(WeCom._split(text, cls._LIMIT)) <= cls.MAX_PARTS:
+            return text
+        budget = cls._LIMIT * cls.MAX_PARTS - 400     # room for the 「（i/N）」 prefixes and the note
+        kept, size = [], 0
+        for line in text.split("\n"):
+            n = len(line.encode("utf-8")) + 1
+            if size + n > budget:
+                if not kept:                            # one huge first line: cut inside it
+                    kept.append(line.encode("utf-8")[:budget].decode("utf-8", "ignore"))
+                break
+            kept.append(line)
+            size += n
+        log.warning("群机器人：一条消息 %d 字节、要切成 %d 段，只发前 %d 段：%s",
+                    len(text.encode("utf-8")), len(WeCom._split(text, cls._LIMIT)), cls.MAX_PARTS,
+                    text.split("\n", 1)[0][:80])
+        return "\n".join(kept) + "\n（后面还有很长一段没发，免得刷屏）"
+
     def send_text(self, text: str) -> None:
-        for part in WeCom._split(text, self._LIMIT):
+        for part in WeCom._split(self._cap(text), self._LIMIT):
             data = _post_json(self.url, {
                 "msgtype": "text", "text": {"content": part},
             })

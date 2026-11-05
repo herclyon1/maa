@@ -461,6 +461,20 @@ def overrun_moments(eng, now: datetime):
                    start + timedelta(minutes=limit + OVERRUN_SLACK_MIN), days)
 
 
+def last_log_line(log_text, limit: int = 200) -> str:
+    """The last non-empty line of AUTO-MAS's task log, at most `limit` characters.
+
+    runtime-snapshot's task `log` is the task's whole log, not its last line: 2026-11-05 the
+    早班 MaaEnd task's was 38151 characters in 343 lines, and the overrun alarm put all of it
+    into the group text as 「AUTO-MAS 最后一句」 (44 robot messages, see notify.WeComBot.MAX_PARTS).
+    """
+    for line in reversed(str(log_text or "").splitlines()):
+        line = line.strip()
+        if line:
+            return line if len(line) <= limit else line[: limit - 1] + "…"
+    return ""
+
+
 def _queue_task(snap, uid):
     for task in (snap or {}).get("tasks") or []:
         if uid and task.get("queueId") == uid:
@@ -532,7 +546,7 @@ def check_overrun(eng, now: datetime, snap) -> None:
                           for i in task.get("task_info") or [])
         start = deadline - timedelta(minutes=limit + OVERRUN_SLACK_MIN)
         body = texts.shift_overrun_body(q["name"], due, now, limit, OVERRUN_SLACK_MIN,
-                                        states, str(task.get("log") or ""), days,
+                                        states, last_log_line(task.get("log")), days,
                                         restarted=start if start != due else None)
         if errs := eng.notifier.send(texts.shift_overrun(q["name"]), body, alert=True):
             log.error("队列超时告警没推出去，下一轮再试：%s", q["name"])
