@@ -1,8 +1,8 @@
 {
- "version": 20261106022633,
- "ref": "relay-20261106022633",
+ "version": 20261106044720,
+ "ref": "relay-20261106044720",
  "files": {
-  "RELEASE-NOTES.md": "672af237a32c5ec0c2072204bc7b4a3cdf5a65df",
+  "RELEASE-NOTES.md": "25dbc836f8043cb6eb76d7e98963c76a277027e7",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "4a9624cd3c60f76109e3c75bae3268410bfaf9e1",
@@ -149,7 +149,7 @@
   "ark_relay/features/selfcheck/machinechecks/runs.py": "a6070a190c20a2aded1faa11c24bf1c32bf8dded",
   "ark_relay/features/selfcheck/machinechecks/system.py": "440c6cee51be19d9f38d2b63607d7091edf51c7e",
   "ark_relay/features/selfcheck/replay.py": "2e4a9f1d0b15c530d3cb489e58e2cb671aaa3cd4",
-  "ark_relay/features/selfcheck/selfcheck.py": "298e35afb1c658f7383d58748e22e0abccbe3756",
+  "ark_relay/features/selfcheck/selfcheck.py": "d37bd42b1089b83d37397547f4da76f0ae76f6b8",
   "ark_relay/features/selfcheck/shiftcheck.py": "768522ac46d1ce0d521e25de9e6b83e40357e51c",
   "ark_relay/features/selfcheck/tape.py": "13ead4a501bec4422261b1cb4947da3ef83d8f09",
   "ark_relay/features/selfupdate/__init__.py": "de7e7c29c70a617c5ec13c10abf9feba04c8c5b3",
@@ -178,7 +178,7 @@
   "watchdog_guard.py": "cc505fe57c4c2923be2003c8fe5a4f0a47b0d887"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "1d4fd98b73dea628175ff579e00d3f1285d4a56fb1839f29ccba0235ac76e321",
+  "RELEASE-NOTES.md": "ecc28163042b00b7c5dbaadafd019bcd758615fc8f4e5073409907ab58e8abbf",
   "app_main.py": "9a2bad4ee77f639044a37a362cd0630827e0ff1b87978e4caeb7898972cdc682",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "735141521ad30388c1e68ebe4ffd28f79e7cfd70a6f2f4f9880d5277b00be2f5",
@@ -325,7 +325,7 @@
   "ark_relay/features/selfcheck/machinechecks/runs.py": "3a96a49737d9e8551d020c6145754a496bd233c0c1b1966ac520162f085b69a4",
   "ark_relay/features/selfcheck/machinechecks/system.py": "34bf70ae1ac16c40ffd65a13ad63aa12f6c841ac962802df066b3ebbba696abd",
   "ark_relay/features/selfcheck/replay.py": "2f38c49f29ea1991c2c915a0a6440bae3ce6fb87e5739e8e5064bc725cfa3db5",
-  "ark_relay/features/selfcheck/selfcheck.py": "f2e1df298ef232e33654e7a7b9e6b60eebd709295c8d6d807a9bc0a02c4a59ee",
+  "ark_relay/features/selfcheck/selfcheck.py": "71bac98aa2ac0850312a49c451edb4c7ba2fe5c45114f5b33122f061e30e6aec",
   "ark_relay/features/selfcheck/shiftcheck.py": "ebc4c35abdc00874c20023b167f259031bacbb5d6a2e408d87b9eb13e173209f",
   "ark_relay/features/selfcheck/tape.py": "867ae2087e050e378e067b6cac0a384604e320978cb1fab6bab092826f6380d5",
   "ark_relay/features/selfupdate/__init__.py": "5ab717977864113819e9c55a24f077182d90e83b15851cdccaf74984e496d118",

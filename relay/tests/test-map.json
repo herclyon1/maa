@@ -590,6 +590,7 @@
 "names",
 "notify",
 "plan",
+"preupdate_common",
 "procs",
 "redbutton",
 "selfcheck",
@@ -4057,6 +4058,16 @@
 "weeklyboss",
 "wuwa_forgery",
 "wuwa_tacet"
+],
+"test_maaend_logged_out.py": [
+"__init__",
+"collect_retry",
+"collector_maaend",
+"config",
+"ledger_rows",
+"maaend_fwlog",
+"names",
+"texts"
 ],
 "test_maaend_migrate_options.py": [
 "__init__",

@@ -78,11 +78,13 @@ with tempfile.TemporaryDirectory() as td:
                 schedule=lambda: [{"name": "早班", "times": ["09:00"]}], channels=lambda: ["群"],
                 run_ok=lambda cmd: (True, ""), has_module=lambda m: True,
                 # The AUTO-MAS settings check reads config files; test_mascontract.py covers it.
-                contract=lambda automas_dir: mascontract.Result([], [], 1))
+                contract=lambda automas_dir: mascontract.Result([], [], 1),
+                # 11-06 12:07 the machine answered this after VBS was turned off (VT-x again).
+                virt=lambda: "VBS=0 HV=False")
 
     print("[一切正常：全部成立、不报警]")
     cs = selfcheck.run(cfg, **good)
-    check("14 项", len(cs), 14)
+    check("15 项", len(cs), 15)
     check("全部成立", [c.name for c in cs if not c.ok], [])
     check("每一项的名字都是人话", [texts.plain(c.name) for c in cs if texts.plain(c.name)], [])
 
@@ -119,6 +121,29 @@ with tempfile.TemporaryDirectory() as td:
     check("说怎么补", miss and "pip install Pillow" in miss[0].detail)
     check("真查：本机查得到标准库、查不到不存在的包",
           (selfcheck._has_module("json"), selfcheck._has_module("no_such_pkg_ark")), (True, False))
+
+    print("\n[11-04 21:25 那种机器：系统自己打开了「基于虚拟化的安全」，雷电落到慢路]")
+    # 11-06 10:2x the machine read VirtualizationBasedSecurityStatus 2 while VBS was on;
+    # 12:07 after it was turned off: 0, HypervisorPresent False.
+    cs = selfcheck.run(cfg, **dict(good, virt=lambda: "VBS=2 HV=True"))
+    miss = [c for c in cs if not c.ok]
+    check("VBS on: only this line fails", [(c.name, c.ok) for c in miss], [(selfcheck.VIRT_NAME, False)])
+    check("VBS on: the detail says what it costs", bool(miss) and "70 多秒" in miss[0].detail)
+    check("VBS on: the detail is plain words", [texts.plain(c.detail) for c in miss if texts.plain(c.detail)], [])
+    cs = selfcheck.run(cfg, **dict(good, virt=lambda: "VBS=0 HV=True"))
+    miss = [c for c in cs if not c.ok]
+    check("another hypervisor holds VT-x: fails too", [(c.name, c.ok) for c in miss], [(selfcheck.VIRT_NAME, False)])
+    check("that detail is plain words too", [texts.plain(c.detail) for c in miss if texts.plain(c.detail)], [])
+    cs = selfcheck.run(cfg, **dict(good, virt=lambda: "VBS=1 HV=False"))
+    check("configured but not running (needs a reboot): holds", [c.name for c in cs if not c.ok], [])
+
+    def _no_pwsh():
+        raise FileNotFoundError(2, "pwsh")
+    for label, reader in (("the query cannot start", _no_pwsh), ("an empty answer", lambda: ""),
+                          ("an answer it cannot read", lambda: "Get-CimInstance : 拒绝访问")):
+        cs = selfcheck.run(cfg, **dict(good, virt=reader))
+        check(f"{label}: not judged (None), never an alarm",
+              [(c.name, c.ok) for c in cs if not c.ok], [(selfcheck.VIRT_NAME, None)])
 
     print("\n[AUTO-MAS 还管着两个游戏客户端的更新（交接 10a、10b）：被改掉了就点名]")
     # s26 audit 2026-10-13: the handover runs once; an AUTO-MAS upgrade or a click in its

@@ -123,6 +123,48 @@ def _has_module(name: str) -> bool:
 NEEDED_MODULES = (("PIL", "Pillow", "读官方长图（卡池几点几分）、压缩报警截图"),)
 
 
+# 11-06: at 11-04 21:25:26 (machine time) the system turned on virtualization-based security
+# by itself: DeviceGuard EnableVirtualizationBasedSecurity=1 while the console session was
+# still locked, with no logon and no update in that minute. LDPlayer then lost VT-x and fell
+# back to the hypervisor (VBox.log "HMR3Init: Attempting fall back to NEM"): the morning's
+# first cold boot went from 22 s to 71-78 s and Android's not-responding box covered the game,
+# so MAA clicked into it (group alarm #145). Turned off 11-06 12:27; the next cold boot took
+# 12 s on VT-x. This line names it at the first boot after it comes back.
+VIRT_NAME = "雷电模拟器能用上硬件加速（系统没开「基于虚拟化的安全」）"
+_VIRT_PS = ("$d = Get-CimInstance -Namespace root\\Microsoft\\Windows\\DeviceGuard -ClassName Win32_DeviceGuard "
+            "-ErrorAction Stop; $c = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop; "
+            "'VBS=' + $d.VirtualizationBasedSecurityStatus + ' HV=' + $c.HypervisorPresent")
+
+
+def _virt_layer() -> str:
+    """'VBS=<0|1|2> HV=<True|False>' as the machine answers (VirtualizationBasedSecurityStatus
+    2 = running; HypervisorPresent True = some hypervisor holds VT-x). Read-only. PowerShell 7
+    with the pre-update's hang guard (pwsh + Get-CimInstance answers in about half a second)."""
+    from ark_relay.features.preupdate.preupdate_common import _PWSH7, PWSH_GUARD_S  # noqa: PLC0415
+    r = subprocess.run([str(_PWSH7), "-NoProfile", "-Command", _VIRT_PS],
+                       capture_output=True, text=True, timeout=PWSH_GUARD_S,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    return (r.stdout or "").strip()
+
+
+def _virt_check(read) -> Check:
+    """The VIRT_NAME line from `read()`'s answer; not judged (None) when the machine cannot
+    be asked, so a failed query is never an alarm."""
+    try:
+        out = read()
+    except (OSError, subprocess.SubprocessError) as exc:
+        return Check(VIRT_NAME, None, f"判不了：问系统没问出来（{type(exc).__name__}）")
+    m = re.search(r"VBS=(\d)\s+HV=(\w+)", out or "")
+    if not m:
+        return Check(VIRT_NAME, None, "判不了：系统没答出来")
+    if m.group(1) == "2":
+        return Check(VIRT_NAME, False, "系统打开了「基于虚拟化的安全」：雷电只能走慢路，早上头一次冷开机从 20 多秒"
+                     "拖到 70 多秒，还会弹「系统界面没有响应」挡住游戏。11-04 晚系统自己开过一次，关它要改系统的安全设置")
+    if m.group(2).lower() == "true":
+        return Check(VIRT_NAME, False, "有别的虚拟化软件占着硬件加速：雷电只能走慢路，冷开机会慢好几倍")
+    return Check(VIRT_NAME, True)
+
+
 def _why(procs_mod) -> str:
     why = procs_mod.last_failure()
     return f"（{why}）" if why else ""
@@ -169,7 +211,8 @@ def contract_check(cfg, contract=None) -> Check:
 
 
 def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
-        run_ok=_run_ok, has_module=_has_module, contract=None, mas_waited: float = 0.0) -> list[Check]:
+        run_ok=_run_ok, has_module=_has_module, contract=None, mas_waited: float = 0.0,
+        virt=_virt_layer) -> list[Check]:
     """All checks, in the order they are reported. Dependencies are injectable for tests.
 
     `mas_waited`: seconds the boot step waited for AUTO-MAS to answer before this ran
@@ -233,6 +276,7 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
     for mod, pkg, used in NEEDED_MODULES:
         out.append(Check(f"中继装了读图组件（{used}）", bool(has_module(mod)),
                          f"没装：用中继那份 python.exe 跑 pip install {pkg}"))
+    out.append(_virt_check(virt))
     return out
 
 

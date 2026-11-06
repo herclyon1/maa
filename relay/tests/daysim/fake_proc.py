@@ -666,7 +666,16 @@ class ProcRouter:
         script = args[i + 1]
         if "Register-ScheduledTask" in script:
             return self._ps_launch(script, argv)
+        if "Win32_DeviceGuard" in script:
+            return self._ps_virt(script)
         return self._ps_pipeline(script, argv)
+
+    def _ps_virt(self, script: str) -> _Answer:
+        """selfcheck._virt_layer: the machine's VBS / hypervisor state, as it answered on
+        11-06 12:07 after VBS was turned off. A World may set `virt` to another answer."""
+        if "Win32_ComputerSystem" not in script or "VirtualizationBasedSecurityStatus" not in script:
+            raise _Unrouted("DeviceGuard query not the self-check's")
+        return _Answer(0, (getattr(self.win, "virt", "VBS=0 HV=False") + "\r\n").encode("utf-8"))
 
     def _ps_launch(self, script: str, argv) -> _Answer:
         """preupdate_common._spawn_via_task: register a one-shot task, start it, unregister it."""
