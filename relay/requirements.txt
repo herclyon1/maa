@@ -45,7 +45,7 @@ pywin32==312; sys_platform == "win32"
 #                    imported by ark_relay/features/okww_patch/okww_files/*.py, which are copied into
 #                    OK-WW and run inside OK-WW's own Python, not the relay's.
 #   PySide6, qfluentwidgets
-#                    relay/tests/fixtures/source-pins/StartTab.py, a pinned copy of
+#                    relay/tests/fixtures/source-pins/diagnostics.py, a pinned copy of
 #                    OK-WW's ok-script source that tests read as text; never imported.
 #   asst             scripts/windows/copilot-run.py, copilot-drive.py: MAA's own
 #                    Python binding, shipped inside the MAA install.

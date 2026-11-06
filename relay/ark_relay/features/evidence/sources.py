@@ -86,8 +86,8 @@ def pinned_text(pin: "Pin", raw: bytes) -> bytes:
 PINS = (
     Pin("MaaEnd 导出（MXU file_ops.rs）", "MistEO/MXU", "main",
         "src-tauri/src/commands/file_ops.rs",
-        "eb0e21271ff6a64de8f42a6995c2f709e3463f8f",
-        "50fbc34dd9b69798687f734a448d40573f592f06d88e49dcc50e51303b8e3bdb",
+        "316ac0f6fb0ba7dd1187f8667c4a50b1b159db35",
+        "1573c2683360d9056d3eb39ca7fdaae4afe1e822134cdb00ca264fa4f0cff849",
         ("export_logs_blocking", "collect_files_recursively", "collect_debug_subdir_files",
          "add_file_to_zip", "normalize_archive_path", "is_image_file", "has_extension",
          "estimate_compressed_upper_bound", "pre_compress_measure")),
@@ -96,13 +96,13 @@ PINS = (
         "src/MaaWpfGui/ViewModels/UserControl/Settings/IssueReportUserControlModel.cs",
         # GenerateSupportPayload is `public async Task`: the C# header pattern in
         # _HEADER accepts `async` for it.
-        "7c4edb832f96a45fc9b8abccd82699a4f11e381c",
-        "ba7a983cbead8cf1e3c7f5475483b869e89126286fc281ca033b73da40028e31",
+        "53870a7a5214c04ae25abd5a02f0bcfb8ad99507",
+        "c392771bccda4f98eb1caa22404d37491c8c8c8414e94e001198c6357c2dafaa",
         ("GenerateSupportPayload", "CopyDirectoryIfExists")),
-    Pin("OK-WW Export Logs（ok-script StartTab.py）", "ok-oldking/ok-script", "master",
-        "ok/ui/qt/start/StartTab.py",
-        "41a59bc67e6708158a62cae970709e8e37a3305f",
-        "84d68845c67c9fc8bce4b2f80984eaee29433bdce9d4e53da08f6691984d918b",
+    Pin("OK-WW Export Logs（ok-script diagnostics.py）", "ok-oldking/ok-script", "master",
+        "ok/ui/qt/shell/diagnostics.py",
+        "f90444e11713496bd41de389a886501673531bad",
+        "d43f0e28ce473e881945ede50ee7aaa8a9c73bcbc3ff4a9e788189b24804230c",
         ("export_logs",)),
 )
 

@@ -30,7 +30,7 @@ from pathlib import Path
 
 SKIP_DIRS = {".git", "__pycache__", ".venv", "node_modules", "build", "dist"}
 # 上游的源码原样存在这里作参照，里面的方法由 OK-WW 自己调用，不归我们管。
-SKIP_PARTS = {"okww_files"}
+SKIP_PARTS = {"okww_files", "source-pins"}
 # 「定义了没人调用」只在这些地方算铁案：测试里的孤立函数一定是漏跑的，
 # 脚本里的孤立函数一定是忘了接。库模块对外提供 API，不适用。
 # 2026-09-08 补上 relay/ark_relay/：这个包没有外部使用者（只有 service.py 和测试

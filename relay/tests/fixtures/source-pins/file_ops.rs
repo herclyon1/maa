@@ -24,6 +24,9 @@ const DEBUG_ARTIFACT_DIRS: [&str; 2] = ["on_error", "vision"];
 const DEBUG_DIR: &str = "debug";
 /// 日志导出产物目录名，与 `debug/` 同级，避免下次导出把上次的产物扫进去。
 const DEBUG_EXPORTS_DIR: &str = "debug_exports";
+/// tauri-plugin-log 从进程启动起一直握着这个文件（见 `lib.rs` 的 `file_name: mxu-tauri`）。
+/// Windows 上删除已打开文件只会摘掉目录项，后续写入进已删除句柄，导出就看不到启动日志。
+const ACTIVE_TAURI_LOG_FILE: &str = "mxu-tauri.log";
 
 #[derive(Clone)]
 struct ExportEntry {
@@ -93,6 +96,36 @@ where
     if let Err(e) = zip.start_file(archive_name, options) {
         log::warn!("创建 zip 条目失败 {}: {}", archive_name, e);
         return false;
+    }
+
+    let text_file = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            [
+                "log", "txt", "json", "jsonc", "yaml", "yml", "toml", "xml", "csv",
+            ]
+            .contains(&ext.to_ascii_lowercase().as_str())
+        });
+    if text_file {
+        use std::io::BufRead;
+        let mut reader = std::io::BufReader::new(file);
+        let mut line = Vec::new();
+        loop {
+            match reader.read_until(b'\n', &mut line) {
+                Ok(0) => break,
+                Ok(_) => {}
+                Err(_) => return false,
+            }
+            if zip
+                .write_all(super::log_secrets::redact(&String::from_utf8_lossy(&line)).as_bytes())
+                .is_err()
+            {
+                return false;
+            }
+            line.clear();
+        }
+        return true;
     }
 
     if let Err(e) = io::copy(&mut file, zip) {
@@ -331,8 +364,9 @@ fn clear_dir_contents(dir: &Path) -> u64 {
 }
 
 /// 递归删除 `dir` 及其所有子目录下的 .log 文件，返回删除数量。
-/// `exclude_file_name` 匹配的文件名会被跳过（当前会话正在写入的日志）。
-/// 只删文件不回收空目录，避免改动既有目录结构。
+/// `exclude_file_name` 匹配的文件名会被跳过（当前会话正在写入的前端日志）。
+/// 活动文件 `mxu-tauri.log` 同样跳过：日志插件全程握着它，删掉后写入会进已删除句柄。
+/// 已关闭的轮转文件 `mxu-tauri_*.log` 仍删除。只删文件不回收空目录，避免改动既有目录结构。
 fn remove_log_files_recursively(dir: &Path, exclude_file_name: Option<&str>) -> u64 {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
@@ -360,7 +394,10 @@ fn remove_log_files_recursively(dir: &Path, exclude_file_name: Option<&str>) -> 
             continue;
         };
 
-        if !name.ends_with(".log") || exclude_file_name == Some(name) {
+        if !name.ends_with(".log")
+            || exclude_file_name == Some(name)
+            || name == ACTIVE_TAURI_LOG_FILE
+        {
             continue;
         }
 
@@ -394,7 +431,8 @@ fn clear_log_dirs(debug_dir: &Path, exports_dir: &Path, exclude_file_name: Optio
 
 /// 递归删除 debug 目录（含所有子目录）中的 .log 文件，清空 on_error/、vision/ 内的调试产物
 /// 以及 debug_exports/ 下的日志导出产物（保留这几个目录本身）。
-/// 可选择排除一个当前正在使用的日志文件。返回删除的文件与产物总数。
+/// 可选择排除一个当前正在使用的前端日志文件。活动文件 `mxu-tauri.log` 始终保留。
+/// 返回删除的文件与产物总数。
 #[tauri::command]
 pub fn clear_log_files(exclude_file_name: Option<String>) -> Result<u64, String> {
     let data_dir = get_app_data_dir()?;
@@ -841,4 +879,51 @@ fn parse_export_timestamp(dir_name: &str) -> Option<String> {
     }
     // 形状校验通过 ⇒ 全是 ASCII，from_utf8 必然成功
     Some(std::str::from_utf8(tail).ok()?.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Cursor, Read};
+
+    #[test]
+    fn exported_text_is_redacted_without_changing_line_endings_or_binary_files() {
+        let secret = "unique-export-test-token".to_string();
+        super::super::log_secrets::register(&[secret.clone()]);
+        let root = std::env::temp_dir().join(format!(
+            "mxu-export-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let log_path = root.join("maafw.log");
+        let binary_path = root.join("evidence.bin");
+        std::fs::write(&log_path, format!("first\r\npassword={secret}")).unwrap();
+        let binary = vec![0, 255, 1, 2, 3];
+        std::fs::write(&binary_path, &binary).unwrap();
+        let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let text_added = add_file_to_zip(&mut zip, &log_path, "maafw.log", Default::default());
+        let binary_added =
+            add_file_to_zip(&mut zip, &binary_path, "evidence.bin", Default::default());
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(text_added && binary_added);
+        let mut archive = zip::ZipArchive::new(zip.finish().unwrap()).unwrap();
+        let mut text = String::new();
+        archive
+            .by_name("maafw.log")
+            .unwrap()
+            .read_to_string(&mut text)
+            .unwrap();
+        assert_eq!(text, "first\r\npassword=******");
+        let mut bytes = Vec::new();
+        archive
+            .by_name("evidence.bin")
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        assert_eq!(bytes, binary);
+    }
 }

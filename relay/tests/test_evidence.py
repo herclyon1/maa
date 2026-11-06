@@ -159,7 +159,7 @@ print("\n[只钉打包那几个函数：别处改一行日志不报，函数体�
 FXP = Path(__file__).resolve().parent / "fixtures" / "source-pins"
 files = {"IssueReportUserControlModel.cs": "MAA 生成日志压缩包（IssueReportUserControlModel.cs）",
          "file_ops.rs": "MaaEnd 导出（MXU file_ops.rs）",
-         "StartTab.py": "OK-WW Export Logs（ok-script StartTab.py）"}
+         "diagnostics.py": "OK-WW Export Logs（ok-script diagnostics.py）"}
 def from_fixtures(url):
     for fname in files:
         if url.endswith("/" + fname):
@@ -186,9 +186,9 @@ renamed = cs.replace("public async Task GenerateSupportPayload()", "public async
 check("改名替换生效", renamed != cs)
 changed, _ = ev.check_sources(fetch=lambda url: renamed.encode() if url.endswith(".cs") else from_fixtures(url))
 check("函数被改名也报（缺失标记进哈希）", changed, [files["IssueReportUserControlModel.cs"]])
-py = (FXP / "StartTab.py").read_text(encoding="utf-8")
-seg = ev.region_text(py, "StartTab.py", ("export_logs",))
-check("Python 按缩进截到函数结尾", seg.splitlines()[0].strip().startswith("def export_logs") and "export_logs exception" in seg and "def ocr_log_bg" not in seg)
+py = (FXP / "diagnostics.py").read_text(encoding="utf-8")
+seg = ev.region_text(py, "diagnostics.py", ("export_logs",))
+check("Python 按缩进截到函数结尾", seg.splitlines()[0].strip().startswith("def export_logs") and "export_logs exception" in seg and "def _ocr_log" not in seg)
 rs = (FXP / "file_ops.rs").read_text(encoding="utf-8")
 seg = ev.region_text(rs, "file_ops.rs", ("export_logs_blocking",))
 check("Rust 按花括号截到函数结尾", seg.startswith("fn export_logs_blocking(") and seg.rstrip().endswith("}") and "pub async fn export_logs" not in seg)

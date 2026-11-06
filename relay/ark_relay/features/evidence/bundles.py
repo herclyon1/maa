@@ -3,7 +3,7 @@ always limited to a time window (`window=(t0, t1)`, epoch seconds).
 
 * MaaEnd: MXU `src-tauri/src/commands/file_ops.rs::export_logs_blocking`.
 * MAA: `IssueReportUserControlModel.GenerateSupportPayload`.
-* OK-WW: ok-script `ok/ui/qt/start/StartTab.py::export_logs`.
+* OK-WW: ok-script `ok/ui/qt/shell/diagnostics.py::export_logs`.
 
 The upstream functions are pinned in sources.py.
 """
