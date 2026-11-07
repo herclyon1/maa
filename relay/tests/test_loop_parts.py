@@ -255,5 +255,29 @@ check("超过宽限才拉起", revived, [1])
 automas_procs._automas_running, automas_procs._automas_shell_running = orig_running, orig_shell
 automas_procs._installer_running, boot_stages._revive_automas = orig_inst, orig_revive
 
+print("\n[清单-1108 A-04：目录监听断开时，循环按重建时刻醒，不再一觉睡到一小时的备用闹钟]")
+set_time(types.SimpleNamespace(monotonic=lambda: 5000.0, sleep=lambda s: None))
+cw = dirwatch._DirWatch(types.SimpleNamespace(history_dir=Path("/nope"), poll_seconds=300), Notifier(), Log())
+cw.handle, cw.retry_at = None, 5005.0
+check("断开、5 秒后重建：最多睡 5 秒", cw.cap_wait(3600.0), 5.0)
+cw.retry_at = 4000.0
+check("重建时刻已过：睡 1 秒就醒", cw.cap_wait(3600.0), 1.0)
+cw.retry_at = 99999.0
+check("退避再长也按定时扫描间隔醒来看记录", cw.cap_wait(3600.0), 300.0)
+cw.handle = object()
+check("挂着的时候不管", cw.cap_wait(3600.0), 3600.0)
+cw.handle = None
+cw.cfg.history_dir = None
+check("没有历史目录：不管", cw.cap_wait(3600.0), 3600.0)
+
+print("\n[清单-1108 A-04：几个句柄同时亮，每一个都处理，不只处理编号最小的那个]")
+lit = {1, 2, 3}
+mainloop.win32event = types.SimpleNamespace(
+    WAIT_OBJECT_0=0,
+    WaitForSingleObject=lambda h, ms: (_ for _ in ()).throw(OSError("closed")) if h == "gone" else (0 if h in lit else 258))
+check("等到 1 号（进程启动），2、3 号（目录变更、AUTO-MAS 退出）也亮着", mainloop._fired([0, 1, 2, 3], 1), {1, 2, 3})
+check("超时：谁也没亮", mainloop._fired([0, 5, 6], 258), set())
+check("已关掉的句柄算没亮", mainloop._fired([0, "gone", 2], 0), {0, 2})
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

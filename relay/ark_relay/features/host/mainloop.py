@@ -65,20 +65,22 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
             log.exception("计算下一个时刻出错，退回备用间隔")
         wait_s = keeper.cap_wait(wait_s)
         wait_s = dayroll.cap_wait(wait_s)
+        wait_s = watch.cap_wait(wait_s)
         if not inbox.last_fetch_ok:
             wait_s = min(wait_s, 300)   # wake in time for the fetch retry
 
         rc = win32event.WaitForMultipleObjects(
             handles, False, int(wait_s * 1000))
-        if rc == win32event.WAIT_OBJECT_0:
+        fired = _fired(handles, rc)
+        if 0 in fired:
             log.info("收到停止信号，退出")
             keeper.stopping()     # what has not recovered by now is pushed
             watch.stopping()
             watch.close()
             return
-        if rc == win32event.WAIT_OBJECT_0 + proc_idx:
+        if proc_idx in fired:
             keeper.on_process_started()
-        if watch.handle and rc == win32event.WAIT_OBJECT_0 + watch_idx:
+        if watch.handle and watch_idx in fired:
             watch.rearm()
 
         try:
@@ -101,5 +103,23 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
             log.info("脚本已停，补做之前推迟的待办检查")
             collect("推迟补做")
 
-        keeper.check(bool(keeper.handle) and rc == win32event.WAIT_OBJECT_0 + automas_idx,
-                     time.monotonic())
+        keeper.check(bool(keeper.handle) and automas_idx in fired, time.monotonic())
+
+
+def _fired(handles: list, rc: int) -> "set[int]":
+    """Every handle that is signaled now, by index. WaitForMultipleObjects names only
+    the lowest one; a run record landing in the same moment as a python.exe start
+    left the change notification signaled and not re-armed, and an AUTO-MAS exit
+    behind either went unseen until a later wake (清单-1108 A-04). An auto-reset
+    event looked at here is consumed, which is right: it is handled now."""
+    first = rc - win32event.WAIT_OBJECT_0
+    out = {first} if 0 <= first < len(handles) else set()
+    for i, h in enumerate(handles):
+        if i in out:
+            continue
+        try:
+            if win32event.WaitForSingleObject(h, 0) == win32event.WAIT_OBJECT_0:
+                out.add(i)
+        except Exception:  # noqa: BLE001 - a handle closed meanwhile is not signaled
+            continue
+    return out

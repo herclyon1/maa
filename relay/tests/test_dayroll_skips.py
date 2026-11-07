@@ -106,6 +106,8 @@ for r in gameupdate.skips(state):
 print("\n[past midnight: AUTO-MAS not answering, kept and tried again]")
 n1 = D + timedelta(hours=1, seconds=1)
 check("first try fails", (roll.check(n1), put, roll.pending), ([], ["MaaEnd"], True))
+check("…and the loop wakes in 2 minutes to try again, not at the next alarm (清单-1108 A-04)",
+      roll.cap_wait(3600, n1), day_roll._DayRoll.RETRY_S)
 ok_restore[0] = True
 put.clear()
 check("the next wake puts it back", (roll.check(n1 + timedelta(minutes=5)), put),
@@ -116,6 +118,7 @@ check("the update's holds stay (MAA keeps the update's, loses the queue's)", lef
       [("MAA", ("update",)), ("OK-WW", ("update",))])
 put.clear()
 check("nothing more the same day", (roll.check(n1 + timedelta(hours=3)), put, roll.pending), ([], [], False))
+check("nothing open: no 2-minute wakes", roll.cap_wait(3600, n1 + timedelta(hours=3)), 3600)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

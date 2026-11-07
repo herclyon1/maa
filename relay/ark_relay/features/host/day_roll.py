@@ -31,10 +31,18 @@ class _DayRoll:
         # per machine boot - and the put-back only touches earlier days' records.
         self.pending = True
 
+    # While a put-back is still open (AUTO-MAS did not answer), the loop wakes at
+    # least this often to try again: 「下次醒来再试」 meant the next alarm, up to
+    # the hour-long backstop (清单-1108 A-04).
+    RETRY_S = 120.0
+
     def cap_wait(self, wait_s: float, now: datetime | None = None) -> float:
         now = now or datetime.now(tz=SERVER_TZ)
         midnight = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-        return min(wait_s, max((midnight - now).total_seconds() + 1, 1.0))
+        wait_s = min(wait_s, max((midnight - now).total_seconds() + 1, 1.0))
+        if self.pending and getattr(self.cfg, "state_dir", None):
+            wait_s = min(wait_s, self.RETRY_S)
+        return wait_s
 
     def check(self, now: datetime | None = None) -> list[str]:
         now = now or datetime.now(tz=SERVER_TZ)

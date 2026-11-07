@@ -90,6 +90,16 @@ class _DirWatch:
             self._rebuilt()
         self.retry_at = time.monotonic() + self.retry_delay
 
+    def cap_wait(self, wait_s: float) -> float:
+        """While the watch is lost, the loop wakes for the next rebuild (retry_at) and,
+        with no change notification to wake it, at least every poll_seconds to look
+        for run records - what 「退回定时检查」 and 「5 秒后重建」 promise. Without
+        it the loop slept to the next alarm or the hour-long backstop (清单-1108 A-04)."""
+        if self.handle is not None or not self.cfg.history_dir:
+            return wait_s
+        poll = float(getattr(self.cfg, "poll_seconds", 300) or 300)
+        return min(wait_s, poll, max(self.retry_at - time.monotonic(), 1.0))
+
     def _lost(self, exc: BaseException) -> None:
         """Note the start of a loss (a later failure keeps the first one's time and reason)."""
         if self.lost_since is None:
