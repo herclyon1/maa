@@ -72,6 +72,23 @@ skland.bindings = boom
 check("失败给原因", resources.skland_session(Tok)["错误"].startswith("RuntimeError: HTTP Error 401"), True)
 check("失败后不留半个会话", resources._session["sk"], None)
 
+
+print("\n[终末地角色这次没读到：过一阵重做会话，不一直缺（11-08 [D-04]）]")
+_saved_role, _saved_bind = skland.endfield_role, skland.bindings
+skland.bindings = lambda c: []
+def _ef_timeout(c):
+    raise TimeoutError("timed out")
+skland.endfield_role = _ef_timeout
+resources._session["sk"] = None; resources._session.pop("ef_retry_at", None)
+got = resources.skland_session(Tok)
+check("先给缺角色的会话", "efRole" in got, False)
+skland.endfield_role = lambda c: ("999", "1")
+check("没到重试时间：还用旧的", "efRole" in resources.skland_session(Tok), False)
+resources._session["ef_retry_at"] = 0
+check("到点了重做：角色补上", resources.skland_session(Tok).get("efRole"), "999")
+skland.endfield_role, skland.bindings = _saved_role, _saved_bind
+resources._session["sk"] = None
+
 print("\n[森空岛给了不止一个终末地角色：不读，报群]")
 # The account has exactly one Endfield role (checked 2026-10-06); more than one
 # in an answer is a refusal (skland.endfield_role) the group has to hear of.

@@ -117,6 +117,7 @@ def _since(text: str, since: "datetime | None") -> str:
     go with the line above). The whole text when `since` is None."""
     if since is None:
         return text
+    since = since.replace(microsecond=0)   # log lines carry whole seconds only
     keep, out = False, []
     for line in text.splitlines():
         try:
