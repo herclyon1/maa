@@ -152,6 +152,9 @@ class Watchdog:
                 if first:
                     self._offset = max(0, size - BACKLOG_BYTES)
                 elif size < self._offset or (self._head and head[:len(self._head)] != self._head):
+                    # Rotated: what the old file gained after the last read is now in
+                    # asst.bak.log - StartUp's completion line can be there (audit B-05).
+                    self._feed_rotated_tail(self._offset)
                     self._offset, self._rest = 0, b""
                 fh.seek(self._offset)
                 data = fh.read()
@@ -169,6 +172,21 @@ class Watchdog:
         for line in lines:
             self._feed(line.rstrip(b"\r"))
 
+    def _feed_rotated_tail(self, offset: int) -> None:
+        """Feed asst.bak.log from `offset` (where the read of asst.log stopped) to its end."""
+        bak = self.path.with_name("asst.bak.log")
+        try:
+            with bak.open("rb") as fh:
+                if bak.stat().st_size < offset:
+                    return              # not the file read up to offset: nothing to resume
+                fh.seek(offset)
+                data = fh.read(BACKLOG_BYTES)
+        except OSError:
+            return
+        lines = (self._rest + data).split(b"\n")
+        for line in lines:
+            self._feed(line.rstrip(b"\r"))
+
     def _feed(self, line: bytes) -> None:
         m = _LINE.match(line)
         if not m:
@@ -178,7 +196,16 @@ class Watchdog:
             self.start = None           # a new MAA: an open start belonged to the one before
             return
         cb = _CALLBACK.match(rest)
-        if not cb or _STARTUP not in rest:
+        if not cb:
+            return
+        if _STARTUP not in rest:
+            # Another task chain of the same MAA began (Fight, Infrast ...): its StartUp is
+            # over, even if the completion line was lost (asst.log rotated between reads) -
+            # left open, the start ran out its limit during the fight and MAA was killed
+            # mid-stage (audit 2026-11-08 B-05).
+            s = self.start
+            if s is not None and cb.group(1) == b"TaskChainStart" and int(m.group(2)) == s.pid:
+                self.start = None
             return
         try:
             at = datetime.strptime(m.group(1).decode("ascii"), "%Y-%m-%d %H:%M:%S")
