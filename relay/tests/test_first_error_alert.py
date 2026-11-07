@@ -674,7 +674,7 @@ for x in HANDLERS:
     drop(x)
 print()
 print("\n[audit 11-08 C-05: two faults alike in their first 160 characters are two queue keys]")
-_h = errwatch.ErrorKindAlert(Notes() if "Notes" in globals() else None, lambda: False, tmpdir(), known={})
+_h = errwatch.ErrorKindAlert(None, lambda: False, tmpdir(), known={})
 _same = "收集器读不了 " + "x" * 170
 _r1 = logging.LogRecord("ark.handle", logging.WARNING, __file__, 1, _same + " A 模块", None, None)
 _r2 = logging.LogRecord("ark.handle", logging.WARNING, __file__, 1, _same + " B 模块", None, None)
