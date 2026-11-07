@@ -968,9 +968,16 @@ def task_evidence(text: str) -> dict[str, str]:
                 out[name] = first
             cur, first = "", ""
             continue
-        if cur and not first and msg:
+        if cur and not first and msg and not _NOT_EVIDENCE.search(msg):
             first = msg[:80]
     return out
+
+
+# Lines MaaEnd writes whether or not a task does anything: its scene check and the
+# warnings / failure dumps around it. 2026-10-08 10:34 装备制造's only line was
+# 「正在检查画面，提示登出账号是正常现象，会自动取消」 (then 「UID显示不完整…」), and the task was
+# aborted (fixtures/maaend_stop_task_2026-10-08.log) - neither is evidence (audit 2026-11-08 B-07).
+_NOT_EVIDENCE = re.compile(r"^正在检查画面|^UID显示不完整|\[(?:ERR|WRN)\]|FailureCollector")
 
 
 def task_times(text: str) -> dict[str, tuple[datetime, datetime]]:

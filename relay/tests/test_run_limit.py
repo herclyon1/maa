@@ -128,5 +128,23 @@ print("\n[文案]")
 for s in (texts.run_limit_reset_body("终末地", 3, 1), texts.run_limit_stuck_body("终末地", 3, 1, "x")):
     check("没有英文变量名", "RunTimesLimit" in s, False)
 
+print("\n[audit 11-08 B-07: an alarm whose send failed is sent again on the next failed tick]")
+e = Eng()
+_down = {"n": 0}
+
+
+def _send_fails_once(title, body, *, alert=False, daily=False):
+    _down["n"] += 1
+    e.notifier.sent.append((title, body, alert))
+    return ["群机器人没回"] if _down["n"] == 1 else []
+
+
+e.notifier.send = _send_fails_once
+state.update(limit=3, refuse="写入失败: 连接被拒绝", writes=0)
+for _ in range(R.ALARM_AFTER + 2):
+    R.step(e, DAY)
+check("the 3rd tick's send failed, the 4th sent it, the 5th is quiet",
+      [t for t, _, _ in e.notifier.sent], [texts.RUN_LIMIT_STUCK, texts.RUN_LIMIT_STUCK])
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

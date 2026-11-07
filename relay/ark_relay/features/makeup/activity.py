@@ -209,8 +209,10 @@ def _missed(eng, now: datetime) -> None:
 
 
 def on_record(eng, rec) -> None:
-    """An OK-WW record that started after today's dispatch is the top-up's: booked as landed."""
-    if rec.script != SCRIPT:
+    """An OK-WW record that started after today's dispatch is the top-up's: booked as landed.
+    Not a transitional one (「游戏更新成功，即将重启任务」): the real record follows it, and booked
+    first it took the top-up's place (audit 2026-11-08 B-07)."""
+    if rec.script != SCRIPT or getattr(rec, "transitional", False):
         return
     day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
     top = read(eng.cfg.state_dir, day)

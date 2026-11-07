@@ -109,6 +109,56 @@ if True:
     check("a retry begun before midnight still reads the lines after it",
           cr.judge(fw2, ["AutoCollectRoute15"], "2026-10-27 23:57:00"), {"AutoCollectRoute15": True})
 
+print("\n[audit 11-08 B-07: history.db failing in a row, a same-second row, a 0.log not there yet]")
+if True:
+    import logging
+    import sqlite3
+
+    class _Cap(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.rows = []
+
+        def emit(self, r):
+            self.rows.append((r.levelname, r.getMessage()))
+    cap = _Cap()
+    logging.getLogger(collector.log.name).addHandler(cap)
+    bad = tmpdir() / "bad" / "automas"
+    (bad / "data").mkdir(parents=True)
+    (bad / "history").mkdir()
+    (bad / "data" / "history.db").write_bytes(b"not a database at all" * 100)
+    collector._db_fail_streak[0] = 0
+    for _ in range(5):
+        collector._db_rows(bad / "history")
+    warns = [m for lv, m in cap.rows if lv == "WARNING" and "history.db" in m]
+    check("unreadable 5 times in a row: one WARNING (at the 3rd)", len(warns), 1)
+    collector._db_rows(FX / "history")
+    check("read again: the streak is reset", collector._db_fail_streak[0], 0)
+    logging.getLogger(collector.log.name).removeHandler(cap)
+
+    twin = tmpdir() / "twin"
+    shutil.copytree(FX, twin / "automas")
+    db = twin / "automas" / "data" / "history.db"
+    con = sqlite3.connect(db)
+    row = list(con.execute("SELECT * FROM records WHERE script_name='MAA'").fetchone())
+    cols = [r[1] for r in con.execute("pragma table_info(records)")]
+    row[cols.index("id")] = "0badc0de-0000-0000-0000-000000000000"
+    row[cols.index("timestamp")] = row[cols.index("timestamp")] + 0.2      # same second, a bit later
+    row[cols.index("log_path")] = "2026-10-28/0badc0de-0000-0000-0000-000000000000/0.log"
+    con.execute(f"INSERT INTO records VALUES ({','.join('?' * len(row))})", row)
+    con.commit()
+    con.close()
+    th = twin / "automas" / "history"
+    shutil.copytree(th / "2026-10-28" / "71bade62-8710-47f9-bd0d-3ef3f4efab47",
+                    th / "2026-10-28" / "0badc0de-0000-0000-0000-000000000000")
+    ids = sorted(r.run_id for r in collector.scan(th, set()) if r.script == "MAA")
+    check("two MAA rows of one second: both booked, the later one suffixed",
+          ids, ["2026-10-28/arknights/MAA-05-01-00", "2026-10-28/arknights/MAA-05-01-00-0badc0de"])
+    (th / "2026-10-28" / "0badc0de-0000-0000-0000-000000000000" / "0.log").unlink()
+    collector._db_log_missing.clear()
+    ids = [r.run_id for r in collector.scan(th, {"2026-10-28/arknights/MAA-05-01-00"}) if r.script == "MAA"]
+    check("its 0.log not there yet: waited for, not booked without it", ids, [])
+
 if fails:
     print(f"✗ {len(fails)} 项不过")
     sys.exit(1)

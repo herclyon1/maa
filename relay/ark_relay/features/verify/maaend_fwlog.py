@@ -237,10 +237,18 @@ def task_trail(events: list, entry: str, t0: datetime, t1: datetime) -> "dict | 
     # Without an end event the stretch stops at the window's edge, not at the end of
     # `events`, which holds the later tasks of the run too.
     last = ended if ended is not None else hi
+    # ... and before the next task's start inside that slack: its first nodes are not this
+    # task's work (audit 2026-11-08 B-07). Only top-level tasks post Tasker.Task.Starting -
+    # a custom action's sub-task (200000559 on 10-08) logs node events only - so this
+    # never cuts this task's own sub-tasks short.
+    nxt = None
+    if ended is None:
+        nxt = min((w for w, msg, d in events if msg == "Tasker.Task.Starting" and w > started
+                   and d.get("task_id") != task_id and w <= hi), default=None)
     nodes: dict = {}
     seen: set = set()
     for w, msg, d in events:
-        if msg != "Node.PipelineNode.Succeeded" or w < started or w > last:
+        if msg != "Node.PipelineNode.Succeeded" or w < started or w > last or (nxt is not None and w >= nxt):
             continue
         key = (d.get("task_id"), d.get("node_id"))
         if key in seen:

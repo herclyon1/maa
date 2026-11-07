@@ -154,6 +154,11 @@ blocked["why"] = ""
 check("跑完空闲了：派鸣潮一次", (activity.maybe_run(eng, at(21, 50)), sent), (True, ["OK-WW"]))
 check("派过就不再派", (activity.maybe_run(eng, at(22, 0)), sent), (False, ["OK-WW"]))
 check("还没出结果：继续等", activity.holding(eng, at(22, 0)), "鸣潮活跃晚班补还没完")
+_tr = rec("OK-WW-13-50-00", at(21, 50), at(21, 52))
+_tr.transitional = True
+activity.on_record(eng, _tr)
+check("audit 11-08 B-07: a 「游戏更新成功，即将重启任务」 record is not the top-up's", activity.holding(eng, at(21, 53)),
+      "鸣潮活跃晚班补还没完")
 activity.on_record(eng, rec("OK-WW-13-50-12", at(21, 50), at(22, 5)))
 check("补的那一趟记录到了：不再等", activity.holding(eng, at(22, 6)), "")
 ev = outcome.daily_reward_checks(MORNING)
