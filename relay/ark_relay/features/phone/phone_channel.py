@@ -84,6 +84,19 @@ def _phone_stamp_sent(body: dict, sent, meta: dict | None) -> None:
         body["sent"] = when
 
 
+def _monthcard_stamp_at(body: dict, sent, meta: dict | None) -> None:
+    """A monthly-card order without `at` (an older App, or a bare add made offline)
+    is dated by when it was sent, not when the relay got to it: dated at the drain,
+    it beat a later correction made in between (11-08 [D-07])."""
+    from datetime import timezone  # noqa: PLC0415
+    ntime = (meta or {}).get("ntfy_time")
+    when = ntime if isinstance(ntime, int) else sent
+    if isinstance(when, int):
+        when = datetime.fromtimestamp(when, tz=timezone.utc)
+    if isinstance(when, datetime):
+        body["at"] = when.isoformat()
+
+
 def _machine_check(state_dir, event: str, ctx: dict, notifier, log) -> None:
     """Judge the machine checks listening to `event` (machinecheck.py; the phone ones
     are in ark_relay/features/selfcheck/machinechecks/phone_banners.py). Never breaks the phone path."""
@@ -115,6 +128,8 @@ def _phone_execute(apply_command, notifier, log, push_state, receipt,
     from ark_relay.core import engine as _engine_mod  # noqa: PLC0415
     if action == "echo_farm":
         _phone_stamp_sent(body, sent, meta)
+    if action == "monthcard" and body.get("at") is None:
+        _monthcard_stamp_at(body, sent, meta)
     ok, msg = apply_command(body)
     log.info("📱 手机指令 %s：%s", action, msg)
     _push_farm_trouble(notifier, log)
