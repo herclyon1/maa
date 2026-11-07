@@ -83,6 +83,15 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
         if watch.handle and watch_idx in fired:
             watch.rearm()
 
+        # Scripts have just stopped: apply the config commands that were deferred,
+        # now that a write will not be clobbered - before tick, whose decisions
+        # (the shift's power-off above all) must see them: a 「下次跑完不关机」 or
+        # debug order sent during the shift landed only after tick had powered
+        # the machine off (清单-1108 A-05).
+        if deferred_inbox[0] and not engine.scripts_running():
+            log.info("脚本已停，补做之前推迟的待办检查")
+            collect("推迟补做")
+
         try:
             engine.tick()
         except Exception:
@@ -96,12 +105,6 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
         if not inbox.last_fetch_ok and time.monotonic() >= next_inbox_retry:
             next_inbox_retry = time.monotonic() + 300
             collect("重试")
-
-        # Scripts have just stopped: apply the config commands that were
-        # deferred, now that a write will not be clobbered.
-        if deferred_inbox[0] and not engine.scripts_running():
-            log.info("脚本已停，补做之前推迟的待办检查")
-            collect("推迟补做")
 
         keeper.check(bool(keeper.handle) and automas_idx in fired, time.monotonic())
 

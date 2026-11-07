@@ -279,5 +279,46 @@ check("等到 1 号（进程启动），2、3 号（目录变更、AUTO-MAS 退�
 check("超时：谁也没亮", mainloop._fired([0, 5, 6], 258), set())
 check("已关掉的句柄算没亮", mainloop._fired([0, "gone", 2], 0), {0, 2})
 
+print("\n[清单-1108 A-05：脚本刚停，先补做推迟的待办，再跑 tick（关机判断要看见它）]")
+order = []
+
+
+class _Keeper:
+    proc_evt, handle = "proc", None
+    def __init__(self, *a): pass
+    def cap_wait(self, w): return w
+    def on_process_started(self): order.append("proc")
+    def stopping(self): pass
+    def check(self, *a): pass
+
+
+class _Roll:
+    def __init__(self, *a): pass
+    def cap_wait(self, w): return w
+    def check(self): order.append("dayroll")
+
+
+class _Watch:
+    handle = None
+    def __init__(self, *a): pass
+    def maybe_rebuild(self): pass
+    def cap_wait(self, w): return w
+    def stopping(self): pass
+    def close(self): pass
+
+
+waits = iter([258, 0])
+mainloop.win32event = types.SimpleNamespace(WAIT_OBJECT_0=0, WaitForMultipleObjects=lambda h, a, ms: next(waits),
+                                            WaitForSingleObject=lambda h, ms: 258)
+saved = (mainloop.automas_keeper._AutomasKeeper, mainloop.day_roll._DayRoll, mainloop.dirwatch._DirWatch)
+mainloop.automas_keeper._AutomasKeeper, mainloop.day_roll._DayRoll, mainloop.dirwatch._DirWatch = _Keeper, _Roll, _Watch
+eng = types.SimpleNamespace(next_deadline=lambda: None, scripts_running=lambda: False, tick=lambda: order.append("tick"))
+try:
+    mainloop._loop(types.SimpleNamespace(stop_event="stop"), types.SimpleNamespace(), eng, Notifier(),
+                   types.SimpleNamespace(last_fetch_ok=True), lambda why: order.append(f"collect:{why}"), [True], Log())
+finally:
+    mainloop.automas_keeper._AutomasKeeper, mainloop.day_roll._DayRoll, mainloop.dirwatch._DirWatch = saved
+check("推迟的待办在 tick 之前补做", order, ["collect:推迟补做", "tick", "dayroll"])
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
