@@ -54,7 +54,7 @@ report.plan = types.SimpleNamespace(next_plan=lambda d: "", activity_countdown=l
                                     schedule=lambda d: [])
 report.banners = types.SimpleNamespace(
     collect=lambda now, skland_token="", failed=None, notes=None, trace=None, versions=None, leads=None,
-    read_image=None: ([], {}),
+    read_image=None, state_dir=None: ([], {}),
     image_reader=lambda state_dir: None,
     render=lambda rows, now, nxt, notes=None, trace=None, failed=None, leads=None: "",
     Trace=types.SimpleNamespace(new=lambda: None),

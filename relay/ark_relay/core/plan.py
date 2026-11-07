@@ -682,7 +682,8 @@ def maintenance_lines(day) -> list[str]:
         from ark_relay.features.maintenance import maintenance  # noqa: PLC0415
         from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
         at = _dt(day.year, day.month, day.day, 8, 46, tzinfo=SERVER_TZ)
-        wins = maintenance.today(at)
+        unread: list[str] = []
+        wins = maintenance.today(at, failed=unread)
     except Exception as exc:  # noqa: BLE001
         # A site that did not answer is WARNed inside maintenance.today; this is
         # anything else, and without it the plan reads as "no maintenance".
@@ -698,9 +699,13 @@ def maintenance_lines(day) -> list[str]:
         t = t.astimezone(USER_TZ)
         return "明天" if t.date() == tomorrow_user else f"{t:%m-%d}"
 
-    return [f"⚠️ {game} {when(start)} {start.astimezone(USER_TZ):%H:%M}–{end.astimezone(USER_TZ):%H:%M} 停服维护："
-            f"这一班先跳过它，跑完就更新它，{end.astimezone(USER_TZ):%H:%M} 开服后单独补跑"
-            for game, (start, end, _why) in wins.items()]
+    lines = [f"⚠️ {game} {when(start)} {start.astimezone(USER_TZ):%H:%M}–{end.astimezone(USER_TZ):%H:%M} 停服维护："
+             f"这一班先跳过它，跑完就更新它，{end.astimezone(USER_TZ):%H:%M} 开服后单独补跑"
+             for game, (start, end, _why) in wins.items()]
+    # A game whose bulletin could not be read is not "no maintenance": an empty
+    # result said both until 2026-11-08 (maintenance.today WARNs the read itself).
+    return lines + [f"⚠️ {game} 明天的停服维护公告这次没读到：不知道有没有维护，这一班照常排"
+                    for game in dict.fromkeys(unread) if game not in wins]
 
 
 # The annihilation field's values are an English enum (Annihilation /
@@ -899,7 +904,8 @@ def activity_countdown(automas_dir: Path | None, now=None,
 
     Read from MAA's own activity cache (cache/gui/StageActivityV2.json,
     maintained by the MAA resource repo and OTA-updated), so the relay holds no
-    copy of event dates. Empty string when anything is missing.
+    copy of event dates. Empty string when MAA is not set up; a cache that is
+    there but cannot be read is also empty, and said once (_say_once).
 
     An event that ended within _EXPIRED_REMINDER gets a reminder to clear out
     the event shop, with how long the reminder keeps showing; older ones are
@@ -913,8 +919,17 @@ def activity_countdown(automas_dir: Path | None, now=None,
                 return ""
             cache_path = Path(maa) / "cache" / "gui" / "StageActivityV2.json"
         data = json.loads(cache_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, ValueError):
+    except FileNotFoundError:
+        # MAA writes the cache when it first updates its resources: a fresh
+        # install has none yet, which is not a fault. Said, not pushed.
+        log.info("MAA 的活动缓存还没有（%s），日报这次没有活动倒计时", cache_path)
         return ""
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        # MAA's event cache is there but cannot be read: the countdown vanished
+        # from the report in silence until 2026-11-08.
+        _say_once("activity", exc, "MAA 的活动缓存读不了（%s），日报这次没有活动倒计时", cache_path, exc_info=True)
+        return ""
+    _last_error.pop("activity", None)
     now = now or datetime.now(tz=SERVER_TZ)
     lines: list[str] = []
     for node in ((data.get("Official") or {}).get("sideStoryStage") or {}).values():

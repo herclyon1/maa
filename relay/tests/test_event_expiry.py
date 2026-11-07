@@ -64,5 +64,39 @@ out = activity_countdown(None, now=NOW,
 check("没有结束提醒", "已于" in out, False)
 check("有倒计时", "剩" in out and "结束" in out, True)
 
+print("\n[缓存在但读不了：说一次，不再默默没有倒计时（2026-11-08）]")
+import logging  # noqa: E402
+from ark_relay.core import plan as _plan  # noqa: E402
+
+
+class _Grab(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.lines = []
+
+    def emit(self, r):
+        self.lines.append((r.levelno, r.getMessage()))
+
+
+_g = _Grab()
+_plan.log.addHandler(_g)
+_lvl = _plan.log.level
+_plan.log.setLevel(logging.DEBUG)
+_plan._last_error.pop("activity", None)
+broken = TMP / "broken.json"
+broken.write_text("{not json", encoding="utf-8")
+check("读不了还是空", activity_countdown(None, now=NOW, cache_path=broken), "")
+check("读不了的说一次", [m for lv, m in _g.lines if lv == logging.WARNING and "活动缓存读不了" in m] != [], True)
+n = len(_g.lines)
+activity_countdown(None, now=NOW, cache_path=broken)
+check("同一个毛病不重复说", len(_g.lines), n)
+activity_countdown(None, now=NOW, cache_path=cache("又好了", NOW + timedelta(days=1)))
+check("好了以后忘掉，下次坏了再说", "activity" in _plan._last_error, False)
+check("还没有缓存（新装的 MAA）：只记一行，不推群",
+      (activity_countdown(None, now=NOW, cache_path=TMP / "none.json"),
+       [lv for lv, m in _g.lines if "活动缓存还没有" in m]), ("", [logging.INFO]))
+_plan.log.removeHandler(_g)
+_plan.log.setLevel(_lvl)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

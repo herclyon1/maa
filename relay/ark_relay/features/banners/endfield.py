@@ -192,7 +192,35 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
     # Unreadable must raise: `collect` then reports the game as not read, where
     # an empty return would print "no new banner running", which is false.
     pools = (sk_get("/web/v1/wiki/char-pool")["data"] or {}).get("list") or []
+    live = _ef_skland(pools, sk_get, failed)
+    html, debut, notice_ok = _ef_bulletin()
+    names = {w for w, _ in debut}
+    got = [b for b in live if set(b.chars) & names] if notice_ok else live
+    try:
+        pools_n = endfield_pools_from_notice(html) if notice_ok else []
+        ends_n = hub.endfield_pool_ends(html) if notice_ok else {}
+    except Exception:
+        pools_n, ends_n = [], {}
+        # The bulletin's opening and closing times are the official next-banner
+        # time; without them the line falls to a weaker source or 「官方未公告」.
+        log.warning("终末地版本更新说明里的卡池时间读不出，下一期开放时间这次不按公告报", exc_info=True)
+    off = _EfOfficial.read(tr)
+    if not pools and not notice_ok and off.cms_posts is None and off.brief is None:
+        # Skland empty and no official source read: nothing tells "no banner"
+        # from "not read".
+        log.warning("终末地：森空岛的当期卡池表是空的，版本更新说明、特许寻访说明、新版本导览三个官方来源也都没读到，分不出有没有在开的卡池")
+        if failed is not None:
+            failed.append("终末地（森空岛的当期卡池表是空的，官方公告也没读到）")
+    opened = [r for r in ef_official_pools(pools_n, ends_n, off.cms_rows, off.brief[1] if off.brief else [])
+              if r["start"] is not None and r["start"] <= now and (r["end"] is None or now <= r["end"])]
+    _ef_crosscheck(got, now, pools_n, ends_n, notice_ok, tr)
+    _ef_fill(got, live, opened, now, tr)
+    on = {c for b in live for c in b.chars} | {r["op"] for r in opened}
+    return got, _ef_next(now, on, debut, pools_n, off, notes, tr)
 
+
+def _ef_skland(pools: list, sk_get, failed: "list[str] | None") -> "list[Banner]":
+    """Skland's char-pool rows as banners, each UP operator named through item/info."""
     unnamed: list[str] = []
     why: list[str] = []
 
@@ -218,11 +246,12 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
             raise RuntimeError(msg)
         log.warning("终末地：%s，当期这次按没读到报", msg)
         failed.append("终末地")
+    return live
 
-    # Official bulletin: which new operators this version has, and on which banner
-    html = ""
-    debut: "list[tuple[str, str]]" = []
-    notice_ok = True
+
+def _ef_bulletin() -> "tuple[str, list[tuple[str, str]], bool]":
+    """(the newest version notes' html, its debuts, whether it was read) off the
+    official bulletin: which new operators this version has, and on which banner."""
     try:
         d = hub._json(_EF_BULLETIN, _UA_BROWSER, timeout=25)
         html = newest_version([
@@ -236,70 +265,73 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
             # notes of 09-02 beside 10-13's pre-download notice, so the entry stays
             # up all version; this guards a list that drops it.
             raise ValueError("公告列表里没有「版本更新说明」")
-        debut = parse_endfield_notice(html)
+        return html, parse_endfield_notice(html), True
     except Exception:
-        notice_ok = False
         log.warning("终末地官方公告取不到，这一版分不出首发和复刻", exc_info=True)
+        return "", [], False
 
-    names = {w for w, _ in debut}
-    got = [b for b in live if set(b.chars) & names] if notice_ok else live
-    try:
-        pools_n = endfield_pools_from_notice(html) if notice_ok else []
-        ends_n = hub.endfield_pool_ends(html) if notice_ok else {}
-    except Exception:
-        pools_n, ends_n = [], {}
-        # The bulletin's opening and closing times are the official next-banner
-        # time; without them the line falls to a weaker source or 「官方未公告」.
-        log.warning("终末地版本更新说明里的卡池时间读不出，下一期开放时间这次不按公告报", exc_info=True)
-    # The official banner notices and the version briefing are read every time,
-    # for the running banner as much as for the next one: from 11-05 12:00 to
-    # 11-08 Skland's char-pool was empty while all three official sources had
-    # 明河「烟火邀星河」 open, and the report said 「当期无新角色卡池」. Each is read
-    # once; a source that fails here is said once below where the next banner
-    # needs it, and the running banner is cross-checked without it.
-    cms_posts: "list | None" = None
-    cms_rows: "list[dict]" = []
-    try:
-        cms_posts = ef_cms_posts(max_pages=1)
-        cms_rows = ef_banner_posts(cms_posts)
-    except Exception as e:
-        log.info("终末地官网寻访说明这次没读到，当期少一个官方来源", exc_info=True)
-        tr.problems.append(f"终末地｜特许寻访说明｜{_EF_CMS}｜{type(e).__name__}: {e}"[:300])
-    brief: "tuple[str, list[dict]] | None" = None
-    brief_err: "Exception | None" = None
-    try:
-        brief = ef_briefing_fetch()
-    except Exception as e:
-        brief_err = e
-        log.info("终末地新版本导览这次没读到，当期少一个官方来源", exc_info=True)
-    if not pools and not notice_ok and cms_posts is None and brief is None:
-        # Skland empty and no official source read: nothing tells "no banner"
-        # from "not read".
-        log.warning("终末地：森空岛的当期卡池表是空的，版本更新说明、特许寻访说明、新版本导览三个官方来源也都没读到，分不出有没有在开的卡池")
-        if failed is not None:
-            failed.append("终末地（森空岛的当期卡池表是空的，官方公告也没读到）")
-    offi = ef_official_pools(pools_n, ends_n, cms_rows, brief[1] if brief else [])
-    opened = [r for r in offi if r["start"] is not None and r["start"] <= now
-              and (r["end"] is None or now <= r["end"])]
+
+class _EfOfficial:
+    """The banner notices and the version briefing, read once per report.
+
+    They are read every time, for the running banner as much as for the next one:
+    from 11-05 12:00 to 11-08 Skland's char-pool was empty while all three
+    official sources had 明河「烟火邀星河」 open, and the report said 「当期无新角色
+    卡池」. A source that fails here is said once where the next banner needs it
+    (_ef_next); the running banner is cross-checked without it.
+    """
+
+    def __init__(self) -> None:
+        self.cms_posts: "list | None" = None
+        self.cms_rows: "list[dict]" = []
+        self.brief: "tuple[str, list[dict]] | None" = None
+        self.brief_err: "Exception | None" = None
+
+    @classmethod
+    def read(cls, tr: "Trace") -> "_EfOfficial":
+        off = cls()
+        try:
+            off.cms_posts = ef_cms_posts(max_pages=1)
+            off.cms_rows = ef_banner_posts(off.cms_posts)
+        except Exception as e:
+            log.info("终末地官网寻访说明这次没读到，当期少一个官方来源", exc_info=True)
+            tr.problems.append(f"终末地｜特许寻访说明｜{_EF_CMS}｜{type(e).__name__}: {e}"[:300])
+        try:
+            off.brief = ef_briefing_fetch()
+        except Exception as e:
+            off.brief_err = e
+            log.info("终末地新版本导览这次没读到，当期少一个官方来源", exc_info=True)
+        return off
+
+
+def _ef_crosscheck(got: "list[Banner]", now: datetime, pools_n: list, ends_n: dict,
+                   notice_ok: bool, tr: "Trace") -> None:
+    """Each banner Skland has running, against what the version bulletin prints."""
     for b in got:
-        if b.start <= now <= b.end:
-            tr.ends |= _stamps(b.end)
-            tr.src("终末地", "当期", "森空岛 /web/v1/wiki/char-pool", f"{b.name} {'、'.join(b.chars)} {b.start:%Y-%m-%d %H:%M}~{b.end:%Y-%m-%d %H:%M}")
-            other = None
-            for n, pname, w, _dbt in pools_n:
-                if pname == b.name or n in b.chars:
-                    # What the bulletin prints and nothing else: filling a missing
-                    # clock with Skland's own value compared Skland with itself.
-                    en = ends_n.get((n, pname))
-                    other = Banner("终末地", pname, (n,), w, en, "" if w else "版本更新后")
-                    tr.src("终末地", "公告", _EF_BULLETIN,
-                           f"{pname} {n} 开 {f'{w:%Y-%m-%d %H:%M}' if w else '版本更新后'}"
-                           f" 止 {f'{en:%Y-%m-%d %H:%M}' if en else '没写'}")
-                    break
-            tr.checks.append(crosscheck("终末地", "森空岛", b, "公告", other) if notice_ok
-                             else "终末地：公告取不到，只有森空岛一个来源 ✗")
-    # The other direction: every new-operator banner an official source has open
-    # must be in the report whether or not Skland lists it.
+        if not b.start <= now <= b.end:
+            continue
+        tr.ends |= _stamps(b.end)
+        tr.src("终末地", "当期", "森空岛 /web/v1/wiki/char-pool", f"{b.name} {'、'.join(b.chars)} {b.start:%Y-%m-%d %H:%M}~{b.end:%Y-%m-%d %H:%M}")
+        other = None
+        for n, pname, w, _dbt in pools_n:
+            if pname == b.name or n in b.chars:
+                # What the bulletin prints and nothing else: filling a missing
+                # clock with Skland's own value compared Skland with itself.
+                en = ends_n.get((n, pname))
+                other = Banner("终末地", pname, (n,), w, en, "" if w else "版本更新后")
+                tr.src("终末地", "公告", _EF_BULLETIN,
+                       f"{pname} {n} 开 {f'{w:%Y-%m-%d %H:%M}' if w else '版本更新后'}"
+                       f" 止 {f'{en:%Y-%m-%d %H:%M}' if en else '没写'}")
+                break
+        tr.checks.append(crosscheck("终末地", "森空岛", b, "公告", other) if notice_ok
+                         else "终末地：公告取不到，只有森空岛一个来源 ✗")
+
+
+def _ef_fill(got: "list[Banner]", live: "list[Banner]", opened: "list[dict]", now: datetime,
+             tr: "Trace") -> None:
+    """The other direction: every new-operator banner an official source has open
+    goes in the report whether or not Skland lists it (appended to `got`), and the
+    official sources must agree on its times."""
     sk_running = [b for b in live if b.start <= now <= b.end]
     for r in opened:
         if not r["debut"]:
@@ -318,50 +350,54 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
         tr.src("终末地", "当期", by, f"{b.name} {r['op']} {b.start:%Y-%m-%d %H:%M}~"
                + (f"{b.end:%Y-%m-%d %H:%M}" if b.end else "结束时刻未公布"))
         hub.official_fill("终末地", "森空岛", b, by, tr)
-    # Reached also when nothing is running, so the official notice is still read.
-    # Prefer the official bulletin for the next banner: the one whose opening time is
-    # in the future. Debuts only - a rerun is never "the next banner" (new characters
-    # only, see banners.py).
-    on = {c for b in live for c in b.chars} | {r["op"] for r in opened}
+
+
+def _ef_next(now: datetime, on: "set[str]", debut: "list[tuple[str, str]]", pools_n: list,
+             off: "_EfOfficial", notes: "dict[str, str] | None", tr: "Trace"
+             ) -> "tuple[datetime | None, str] | None":
+    """The next debut banner: the version bulletin first (the one whose opening time
+    is in the future, then the version's second half by name), then the newest
+    banner notice, then the version briefing. A rerun is never "the next banner"
+    (new characters only, see banners.py). None when nothing is announced."""
     future = [(n, p, w, d) for n, p, w, d in pools_n if w and w > now and n not in on and d]
     if future:
         n, p, w, d = min(future, key=lambda x: x[2])
         tr.starts |= _stamps(w)
         tr.src("终末地", "预告", _EF_BULLETIN, f"{p} {n} 开 {w:%Y-%m-%d %H:%M} 首发")
-        return got, (w, f"{n}「{p}」")
+        return (w, f"{n}「{p}」")
     rest = upcoming(debut, on)
     if rest:
         # The bulletin names the second half but gives it no time: say only that.
         tr.src("终末地", "预告", _EF_BULLETIN, "本版下半：" + "、".join(f"{w}「{p}」" for w, p in rest) + "，开放时间公告未写")
-        return got, (None, "、".join(f"{w}「{p}」" if p else w for w, p in rest))
+        return (None, "、".join(f"{w}「{p}」" if p else w for w, p in rest))
 
     # Both halves of this version have finished. The official site posts the next
     # version's banner notice about a day before the update; until then nobody has
     # announced the operator, and the line must say exactly that.
     try:
-        official = (ef_next_from_rows(cms_rows, now) if cms_posts is not None
+        official = (ef_next_from_rows(off.cms_rows, now) if off.cms_posts is not None
                     else hub.endfield_next_from_news(now))
         if official:
             if official[0] is None:
                 # The notice names the banner; its version's maintenance window is not out yet.
                 tr.src("终末地", "预告", _EF_NEWS, f"{official[1]} 版本开启后开，维护时间公告未写")
-                return got, official
+                return official
             tr.starts |= _stamps(official[0])
             tr.src("终末地", "预告", _EF_NEWS, f"{official[1]} 开 {official[0]:%Y-%m-%d %H:%M}")
-            return got, official
+            return official
     except Exception:
         log.warning("终末地官网寻访公告取不到", exc_info=True)
     # No banner notice yet: the version briefing names the next version's operators
     # from its preview broadcast on (see _EF_BRIEFING).
     try:
-        if brief is None:
-            raise brief_err or ValueError("新版本导览没有读")
-        if nb := ef_briefing_next(now, on, *brief):
+        if off.brief is None:
+            raise off.brief_err or ValueError("新版本导览没有读")
+        if nb := ef_briefing_next(now, on, *off.brief):
             when, who, ver, day = nb
             if when is not None:
                 tr.starts |= _stamps(when)
                 tr.src("终末地", "预告", _EF_BRIEFING, f"{who} 开 {when:%Y-%m-%d %H:%M}")
-                return got, (when, who)
+                return (when, who)
             note = f"「{ver}」版本更新后开" if ver else "版本更新后开"
             if day is not None:
                 tr.starts |= {f"{day:%m-%d}"}
@@ -369,13 +405,12 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
             if notes is not None:
                 notes["终末地"] = note
             tr.src("终末地", "预告", _EF_BRIEFING, f"{who} {note}")
-            return got, (None, who)
+            return (None, who)
     except Exception:
         log.warning("终末地新版本导览取不到", exc_info=True)
     # Yituliu's table has no announced/predicted mark, so it is recorded only.
     _yituliu_future("终末地", now, tr)
-    return got, None
-
+    return None
 
 _EF_NEWS = "https://endfield.hypergryph.com/news"
 # The backend the news page itself pages through (page 2 onwards is fetched in the

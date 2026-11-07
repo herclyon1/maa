@@ -93,7 +93,7 @@ from ark_relay.core import plan as P                                     # noqa:
 from datetime import date                                           # noqa: E402
 
 _real_today = M.today
-M.today = lambda at: {"明日方舟": ak}
+M.today = lambda at, failed=None: {"明日方舟": ak}
 lines = P.maintenance_lines(date(2026, 9, 4))
 check("维护当天出一行", len(lines), 1)
 check("点名游戏", "明日方舟" in lines[0], True)
@@ -105,18 +105,32 @@ check("说清开服后补跑", "13:00 开服后单独补跑" in lines[0], True)
 check("不用「队列」「客户端」这些词", "队列" in lines[0] or "客户端" in lines[0], False)
 # tomorrow 07:00 on the phone's clock (06:00 on the machine's), whatever the hour the test runs
 _tmw = (datetime.now(tz=USER_TZ).replace(hour=7, minute=0, second=0, microsecond=0) + timedelta(days=1)).astimezone(SERVER_TZ)
-M.today = lambda at: {"终末地": (_tmw, _tmw.replace(hour=12), "test")}
+M.today = lambda at, failed=None: {"终末地": (_tmw, _tmw.replace(hour=12), "test")}
 check("明天的窗口写「明天」", "终末地 明天 07:00–13:00 停服维护" in P.maintenance_lines(_tmw.date())[0], True)
-M.today = lambda at: {"明日方舟": ak}
+M.today = lambda at, failed=None: {"明日方舟": ak}
 
-M.today = lambda at: {"明日方舟": ak, "终末地": ef}
+M.today = lambda at, failed=None: {"明日方舟": ak, "终末地": ef}
 check("两家维护就出两行", len(P.maintenance_lines(date(2026, 9, 4))), 2)
 
-M.today = lambda at: {}
+M.today = lambda at, failed=None: {}
 check("没人维护就一行都不出", P.maintenance_lines(date(2026, 9, 3)), [])
 
-M.today = lambda at: (_ for _ in ()).throw(OSError("net"))
+M.today = lambda at, failed=None: (_ for _ in ()).throw(OSError("net"))
 check("取不到公告时安静返回空，不许把明日安排带走", P.maintenance_lines(date(2026, 9, 4)), [])
+
+
+# 2026-11-08: a game whose bulletin could not be read was left out of today()'s
+# result, and the plan read that as "no maintenance tomorrow".
+def _unread(at, failed=None):
+    failed.extend(["终末地", "终末地"])
+    return {"明日方舟": ak}
+
+
+M.today = _unread
+lines = P.maintenance_lines(date(2026, 9, 4))
+check("公告没读到的游戏单独一行，不当成没有维护",
+      [ln for ln in lines if "没读到" in ln], ["⚠️ 终末地 明天的停服维护公告这次没读到：不知道有没有维护，这一班照常排"])
+check("读到的维护照旧一行", sum("停服维护：" in ln for ln in lines), 1)
 M.today = _real_today
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))

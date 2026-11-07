@@ -522,6 +522,30 @@ def _wuwa_name_from_notice(home: dict, nameless: "dict[str, Exception]",
     return out
 
 
+def _wuwa_fill_from_notice(now: datetime, pools: "list[Banner]", notice_banners: "list[Banner]",
+                           debut: "list[tuple[str, str]]", tr: "Trace") -> "list[Banner]":
+    """The other direction: the in-game notice's banners that are open now and that
+    the wiki does not list, to go in the report from the notice. The notice posts a
+    banner when it opens, so one still before its end is running, also when its
+    start reads 「X版本更新后」. With the version's debuts known (`debut`), a rerun is
+    left out, as everywhere in the report."""
+    out: list[Banner] = []
+    debut_names = {w for w, _ in debut}
+    for x in notice_banners:
+        if not (now <= x.end and (x.start is None or x.start <= now)):
+            continue
+        if debut_names and not set(x.chars) & debut_names:
+            continue
+        tr.opened("鸣潮", x.name, "、".join(x.chars), x.start, x.end, _WW_NOTICE)
+        if any(b.name == x.name or set(b.chars) & set(x.chars) for b in pools if hub.running(b, now)):
+            continue
+        out.append(x)
+        tr.src("鸣潮", "当期", _WW_NOTICE, f"{x.name} {'、'.join(x.chars)} "
+               + (f"{x.start:%Y-%m-%d %H:%M}" if x.start else x.start_note) + f"~{x.end:%Y-%m-%d %H:%M}")
+        hub.official_fill("鸣潮", "库街区", x, "游戏公告", tr)
+    return out
+
+
 def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
           trace: "Trace | None" = None, read_image=None, kuro_get=None, bili_get=None
           ) -> "tuple[list[Banner], tuple[datetime | None, str] | None]":
@@ -590,23 +614,7 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
     pools = hub.parse_wuwa(home, name_of)
     if nameless:
         pools += _wuwa_name_from_notice(home, nameless, debut, notice_banners)
-    # The other direction: a banner the in-game notice has open goes in even when
-    # the wiki does not list it. The notice posts a banner when it opens, so one
-    # still before its end is running, also when its start reads 「X版本更新后」.
-    synth: list[Banner] = []
-    debut_names = {w for w, _ in debut}
-    for x in notice_banners:
-        if not (now <= x.end and (x.start is None or x.start <= now)):
-            continue
-        if notice_ok and debut and not set(x.chars) & debut_names:
-            continue                     # a rerun: never reported
-        tr.opened("鸣潮", x.name, "、".join(x.chars), x.start, x.end, _WW_NOTICE)
-        if any(b.name == x.name or set(b.chars) & set(x.chars) for b in pools if hub.running(b, now)):
-            continue
-        synth.append(x)
-        tr.src("鸣潮", "当期", _WW_NOTICE, f"{x.name} {'、'.join(x.chars)} "
-               + (f"{x.start:%Y-%m-%d %H:%M}" if x.start else x.start_note) + f"~{x.end:%Y-%m-%d %H:%M}")
-        hub.official_fill("鸣潮", "库街区", x, "游戏公告", tr)
+    synth = _wuwa_fill_from_notice(now, pools, notice_banners, debut if notice_ok else [], tr)
     pools += synth
     end = min((b.end for b in pools), default=None)
 

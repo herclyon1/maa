@@ -278,6 +278,69 @@ w.close()
 check("#58 那句又成了报错（旧代码）：没过", (status(v, "#58"), "旧报错又出现了" in ev(v, "#58")), (FAIL, True))
 check("#58 没过推群", len(n.failed("#58")), 1)
 
+# ------------------------------------------------------------------ #3 before the post, #66 #67 #68
+print("\n[#3 两边都还没发这一帖不算没过；#66 核对有对不上的不过；#67 官方在开的新池日报当期得写上；#68 预告过的池开了不许变成没有]")
+NEW3 = ("#66", "#67", "#68")
+check("新三项听卡池那一段", {c: mc.CHECKS[c].triggers for c in NEW3 if c in mc.CHECKS}, {c: ("banners",) for c in NEW3})
+check("新三项写的是人话", {c: texts.plain(mc.CHECKS[c].what) for c in NEW3 if c in mc.CHECKS}, {c: [] for c in NEW3})
+
+
+def doors(kuro, bili):
+    tr = _b.Trace.new()
+    tr.src("鸣潮", "版本资讯门", "库街区", kuro)
+    tr.src("鸣潮", "版本资讯门", "B 站", bili)
+    return tr
+
+
+v = judged(tmpdir(), "banners", {"trace": doors("没有这一帖", "没有这一帖"), "text": "", "now": feb})
+check("#3 库街区和哔哩哔哩都还没这一帖：过（11-08 前每晚误报）", (status(v, "#3"), "官方还没发这一帖" in ev(v, "#3")), (PASS, True))
+v = judged(tmpdir(), "banners", {"trace": doors("取不到：OSError: x", "没有这一帖"), "text": "", "now": feb})
+check("#3 库街区那边取不到、哔哩哔哩读了没有：过", status(v, "#3"), PASS)
+v = judged(tmpdir(), "banners", {"trace": doors("长图里没读到「余心所向九死未悔」", "没有这一帖"), "text": "", "now": feb})
+check("#3 库街区有帖、哔哩哔哩没有：照旧不过", status(v, "#3"), FAIL)
+
+ok_checks = ["鸣潮：库街区=游戏公告 ✓",
+             "终末地：森空岛里没有在开的「烟火邀星河」，新版本导览写着 11-05 12:00 开、11-26 06:00 结束，已按官方补进当期 ✓（兜底）"]
+tr = _b.Trace.new()
+tr.checks += ok_checks
+v = judged(tmpdir(), "banners", {"trace": tr, "text": "", "now": feb})
+check("#66 都对得上（含官方补上的）：过，依据说补了哪条", (status(v, "#66"), "官方来源补上的" in ev(v, "#66")), (PASS, True))
+tr.checks.append("终末地：公告取不到，只有森空岛一个来源 ✗")
+n = N()
+v = judged(tmpdir(), "banners", {"trace": tr, "text": "", "now": feb}, n)
+check("#66 有对不上的：不过，推群，依据是那一条", (status(v, "#66"), "只有森空岛一个来源" in ev(v, "#66"), len(n.failed("#66"))),
+      (FAIL, True, 1))
+check("#66 没有核对：不判", status(judged(tmpdir(), "banners", {"trace": _b.Trace.new(), "text": "", "now": feb}), "#66"), None)
+
+SECTION = ("🎴 卡池（时间为北京时间）\n明日方舟\n· 当期无新角色卡池\n· 下期：官方未公告\n鸣潮\n· 当期无新角色卡池\n"
+           "· 下期：官方未公告\n终末地\n{ef}\n· 下期：官方未公告")
+tr = _b.Trace.new()
+tr.opened("终末地", "烟火邀星河", "明河", datetime(2026, 11, 5, 12), datetime(2026, 11, 26, 6), "新版本导览")
+shown = SECTION.format(ef="· 当期：烟火邀星河 · 明河 · 北京 11-26 06:00 结束 · 剩 18 天 6 小时")
+v = judged(tmpdir(), "banners", {"trace": tr, "text": shown, "now": feb})
+check("#67 官方在开的写上了：过", (status(v, "#67"), "终末地「烟火邀星河」" in ev(v, "#67")), (PASS, True))
+d = tmpdir()
+n = N()
+_b.save_trace(d, datetime(2026, 11, 7, 23, 28), SECTION.format(ef="· 当期无新角色卡池"), tr, n)     # the real call site
+row = mc.read(d).get("#67") or {}
+check("#67 11-05 到 11-08 那样（官方在开、日报写没有）：不过，推群",
+      (row.get("status"), "烟火邀星河" in str(row.get("evidence")), "当期无新角色卡池" in str(row.get("evidence")),
+       len(n.failed("#67"))), (FAIL, True, True, 1))
+v = judged(tmpdir(), "banners", {"trace": tr, "text": SECTION.format(ef="· 这次没读到（没有森空岛令牌），不是没有卡池"), "now": feb})
+check("#67 那一游戏按没读到报：不算漏（没读到自己会报）", (status(v, "#67"), "按没读到报" in ev(v, "#67")), (PASS, True))
+check("#67 官方没有在开的：不判", status(judged(tmpdir(), "banners", {"trace": _b.Trace.new(), "text": shown, "now": feb}), "#67"), None)
+
+tr = _b.Trace.new()
+tr.continuity = [["终末地", "lost", "2026-11-04.json 预告 11-05 12:00 开 明河「烟火邀星河」，今天各来源都没有，按没读到报"]]
+n = N()
+v = judged(tmpdir(), "banners", {"trace": tr, "text": "", "now": feb}, n)
+check("#68 预告过的池开了却哪儿都没有：不过，推群", (status(v, "#68"), "明河" in ev(v, "#68"), len(n.failed("#68"))), (FAIL, True, 1))
+tr.continuity = [["终末地", "recovered", "按预告补回"], ["鸣潮", "ok", "今天当期里有"]]
+v = judged(tmpdir(), "banners", {"trace": tr, "text": "", "now": feb})
+check("#68 补回的、本来就有的：过", (status(v, "#68"), "按预告补回" in ev(v, "#68")), (PASS, True))
+tr.continuity = None
+check("#68 没跑跨天核对：不判", status(judged(tmpdir(), "banners", {"trace": tr, "text": "", "now": feb}), "#68"), None)
+
 # ------------------------------------------------------------------ #8
 print("\n[#8 明日方舟下期「官方通讯」一行：该出就出，过期就撤，取不到不过]")
 page = (FX / "prts_limited_page.html").read_text(encoding="utf-8")

@@ -197,7 +197,8 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
         leads: dict[str, str] = {}
         rows, nxt = banners.collect(bnow, skland_token=eng.cfg.skland_token, failed=banner_failed, notes=notes,
                                     trace=tr, leads=leads,
-                                    read_image=banners.image_reader(eng.cfg.state_dir))
+                                    read_image=banners.image_reader(eng.cfg.state_dir),
+                                    state_dir=eng.cfg.state_dir)
         # A source that could not be read says so in its own block (render gets
         # `failed`); otherwise a missing game reads as "nothing running there".
         pool = banners.render(rows, bnow, nxt, notes, tr, banner_failed, leads)

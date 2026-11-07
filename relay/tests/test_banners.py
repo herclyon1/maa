@@ -1735,8 +1735,11 @@ def _sf_pool_times() -> None:
     check("silent 244: the readable pool is kept", [b.name for b in got], ["晨星于此闪耀"])
     check("silent 244: one unreadable pool is one WARNING", _warned(recs, "坏池"), 1)
     with _logs() as recs:
-        check("silent 244: no pools is no banner, not an error", parse_endfield([], name), [])
-    check("silent 244: no pools says nothing", _warned(recs, ""), 0)
+        # The parser's own answer only: whether a banner is running is _endfield's,
+        # with the official sources (_audit_1108_endfield: Skland empty while 明河
+        # was open from 11-05 to 11-08).
+        check("silent 244: an empty char-pool parses to no Skland rows", parse_endfield([], name), [])
+    check("silent 244: ...and the parser says nothing about it", _warned(recs, ""), 0)
 
     home = json.loads((FX / "wuwa_home.json").read_text(encoding="utf-8"))
     names = {"1536353668409655296": "清宵", "1488852222116831232": "达妮娅"}
@@ -2189,6 +2192,414 @@ def _sf_ww_first_half_end() -> None:
     check("silent 2666: the poster giving the end is no group message", (got, warns), (end, []))
 
 
+# ------------------------------------------------------------------ 2026-11-08 audit
+# The user, 2026-11-08 00:12 / 00:15: 明河「烟火邀星河」 had been open since 11-05
+# 12:00 while the report said 「当期无新角色卡池」; the group had been told on 11-04
+# that it opens 11-05 12:00; and he wants the hidden mines of the whole section
+# cleared, not only the one that rang (BOARD/中继卡池与关联模块清雷清单-1108.md).
+
+EF1107 = FX / "ef-1107"
+EF_NOW = datetime(2026, 11, 7, 23, 28)
+
+
+def _ef_pages(briefing=True, bundle=None):
+    """The official site as read 2026-11-07 23:28: the banner-notice backend's first
+    page (trimmed to the three notices _endfield reads) and the version briefing
+    (the 10-08 recording, whose GachaCharPool rows are the same version's)."""
+    pages = {_b._EF_CMS_LIST.format(page=1): (EF1107 / "cms_list_p1.json").read_text(encoding="utf-8")}
+    for cid in ("7204", "8548", "2650"):
+        pages[_b._EF_CMS_POST.format(cid=cid)] = (EF1107 / f"cms_{cid}.json").read_text(encoding="utf-8")
+    if briefing:
+        fx = FX / "ef-briefing-v1d6"
+        page = (fx / "latest.html").read_text(encoding="utf-8")
+        pages[_b._EF_BRIEFING] = page
+        pages[_b._EF_BRIEFING_JS.search(page).group(1)] = bundle or (fx / "bundle.js").read_text(encoding="utf-8")
+    return pages
+
+
+def _ef_1107(now=EF_NOW, *, pages=None, bulletin=True, failed=None, sk=None):
+    """_endfield on 11-07's real answers: Skland's char-pool empty (as it was from
+    11-05 to 11-08), the version bulletin, the banner notices and the briefing."""
+    html = json.loads((EF1107 / "bulletin.json").read_text(encoding="utf-8"))["data"]["list"][0]["data"]["html"]
+    real = (_b._json, _b._text, _b.endfield_next_from_news)
+    pg = _ef_pages() if pages is None else pages
+
+    def js(url, *a, **k):
+        if url == _b._EF_BULLETIN and bulletin:
+            return {"data": {"list": [{"title": "版本更新说明", "data": {"html": html}}]}}
+        raise OSError(f"offline: {url}")
+
+    def text(url, *a, **k):
+        if url in pg:
+            return pg[url]
+        raise OSError(f"offline: {url}")
+    _b._json, _b._text, _b.endfield_next_from_news = js, text, (lambda now: None)
+    tr = _b.Trace.new()
+    try:
+        with _logs() as recs:
+            got, nxt = _b._endfield(None, sk or (lambda path: {"data": {"list": []}}), now, trace=tr, failed=failed)
+    finally:
+        _b._json, _b._text, _b.endfield_next_from_news = real
+    return got, nxt, tr, recs
+
+
+def _recovered(recs: list, part: str) -> "list[bool]":
+    """For each WARNING carrying `part`: is it marked recovered (daily report only)?"""
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    return [bool(getattr(r, errwatch.RECOVERED, False)) for r in recs
+            if r.levelno == logging.WARNING and part in r.getMessage()]
+
+
+def _audit_1108_endfield() -> None:
+    got, nxt, tr, recs = _ef_1107()
+    out = render(got, EF_NOW, {"终末地": nxt} if nxt else {}, {}, tr)
+    check("1108 ef: 明河 is running from the official sources while Skland is empty",
+          [(b.name, b.chars, b.start, b.end) for b in got],
+          [("烟火邀星河", ("明河",), datetime(2026, 11, 5, 12, 0), datetime(2026, 11, 26, 6, 0))])
+    check("1108 ef: the report line", "· 当期：烟火邀星河 · 明河 · 北京 11-26 06:00 结束 · 剩 18 天 6 小时" in out, True)
+    check("1108 ef: never 「当期无新角色卡池」", "当期无新角色卡池" in _block(out, "终末地"), False)
+    check("1108 ef: the fill is a ✓ cross-check naming all three official sources",
+          [c for c in tr.checks if "兜底" in c],
+          ["终末地：森空岛里没有在开的「烟火邀星河」，版本更新说明、特许寻访说明、新版本导览写着 11-05 12:00 开、"
+           "11-26 06:00 结束，已按官方补进当期 ✓（兜底）"])
+    check("1108 ef: one WARNING, marked recovered", _recovered(recs, "烟火邀星河"), [True])
+    check("1108 ef: no Latin letters in its first line",
+          [bool(re.search(r"[A-Za-z]", r.getMessage().split("\n")[0])) for r in recs
+           if r.levelno == logging.WARNING and "烟火邀星河" in r.getMessage()], [False])
+    check("1108 ef: the open banner is recorded for check #67",
+          tr.opens, [["终末地", "烟火邀星河", "明河", "2026-11-05 12:00", "2026-11-26 06:00",
+                      "版本更新说明、特许寻访说明、新版本导览"]])
+    check("1108 ef: 明河 running means no next banner yet", nxt, None)
+    check("1108 ef: the end is a source date", "11-26 06:00" in tr.ends, True)
+
+    # 11-27: everything in the bulletin, the notices and the briefing has closed.
+    got, nxt, tr, recs = _ef_1107(datetime(2026, 11, 27, 12, 0))
+    out = render(got, datetime(2026, 11, 27, 12, 0), {}, {}, tr)
+    check("silent 244: Skland empty and no official banner open -> no banner, said plainly",
+          (got, "· 当期无新角色卡池" in out, tr.opens), ([], True, []))
+
+    # The briefing unreadable: the notices say 「版本更新维护前」 and nothing gives the end.
+    failed: list = []
+    got, nxt, tr, recs = _ef_1107(pages=_ef_pages(briefing=False), failed=failed)
+    out = render(got, EF_NOW, {}, {}, tr, failed)
+    check("1108 ef: with no end published the banner is still running",
+          [(b.name, b.end) for b in got], [("烟火邀星河", None)])
+    check("1108 ef: its line says the end is not published",
+          "· 当期：烟火邀星河 · 明河 · 版本更新维护前结束（几点官方还没公布）" in out, True)
+    check("1108 ef: and that is a ✗ (#66 pushes it once), no WARNING of its own",
+          (any("✗" in c and "烟火邀星河" in c for c in tr.checks), _recovered(recs, "烟火邀星河"),
+           [r.levelno for r in recs if "结束时刻哪个官方来源都没给" in r.getMessage()]), (True, [], [logging.INFO]))
+    check("1108 ef: the briefing is said once, where the next banner needed it", _warned(recs, "新版本导览取不到"), 1)
+    check("1108 ef: not read is not the game failing", failed, [])
+
+    # Two official sources disagree on the opening time.
+    bundle = (FX / "ef-briefing-v1d6" / "bundle.js").read_text(encoding="utf-8").replace(
+        '"cn":{"openTime":"2026/11/5 12:00:00","closeTime":"2026/11/26 6:00:00","endTimeDisplay"',
+        '"cn":{"openTime":"2026/11/5 13:00:00","closeTime":"2026/11/26 6:00:00","endTimeDisplay"')
+    got, nxt, tr, recs = _ef_1107(pages=_ef_pages(bundle=bundle))
+    check("1108 ef: official sources disagreeing is a ✗ naming each",
+          [c for c in tr.checks if "对不上" in c],
+          ["终末地：「烟火邀星河」各官方来源的开始时刻对不上 ✗（版本更新说明 11-05 12:00；特许寻访说明 11-05 12:00；新版本导览 11-05 13:00）"])
+
+    # Skland empty and every official source unreadable: not read, never "none".
+    failed = []
+    got, nxt, tr, recs = _ef_1107(pages={}, bulletin=False, failed=failed)
+    check("1108 ef: Skland empty and nothing official read is listed as not read",
+          failed, ["终末地（森空岛的当期卡池表是空的，官方公告也没读到）"])
+    check("1108 ef: ...said once", _warned(recs, "三个官方来源也都没读到"), 1)
+
+    # Skland lists 明河: nothing is filled, the cross-check is Skland's against the bulletin.
+    pool = {"name": "烟火邀星河", "poolStartAtTs": "1794024000", "poolEndAtTs": "1795644000",
+            "chars": [{"dotType": "label_type_up", "pcLink": "x?gameEntryId=2001"}]}
+
+    def sk(path):
+        if path == "/web/v1/wiki/char-pool":
+            return {"data": {"list": [pool]}}
+        return {"data": {"item": {"name": "明河"}}}
+    got, nxt, tr, recs = _ef_1107(sk=sk)
+    check("1108 ef: Skland listing it -> no fill, no fill warning",
+          ([b.chars for b in got], [c for c in tr.checks if "兜底" in c], _warned(recs, "补进当期")), ([("明河",)], [], 0))
+
+    # The next banner from the notices already read (no second fetch of the backend).
+    before = _b.ef_banner_posts([(c, t, ts, x) for c, t, ts, x in _b.ef_cms_posts(lambda u: _ef_pages()[u], 1)])
+    check("1108 ef: the notices read once give the next banner the same way",
+          (_b.ef_next_from_rows(before, datetime(2026, 11, 1)), _b.ef_next_from_rows([], EF_NOW)),
+          ((datetime(2026, 11, 5, 12, 0), "明河「烟火邀星河」"), None))
+    check("1108 ef: a notice with no start and a past end is not next",
+          _b.ef_next_from_rows([{"who": "x「y」", "start": None, "end": datetime(2026, 1, 1)}], EF_NOW), None)
+    check("1108 ef: a notice with no start yet is next with no time",
+          _b.ef_next_from_rows([{"who": "x「y」", "start": None, "end": None}], EF_NOW), (None, "x「y」"))
+
+
+def _audit_1108_read_retry() -> None:
+    import http.client  # noqa: PLC0415
+    import urllib.error  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+
+    class R:
+        status = 200
+
+        def __init__(self, body):
+            self.body = body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return self.body
+    calls: list = []
+    pauses: list = []
+
+    def run(*answers):
+        seq = list(answers)
+
+        def fake(req, timeout=None):
+            calls.append(req.full_url)
+            a = seq.pop(0)
+            if isinstance(a, BaseException):
+                raise a
+            return R(a)
+        real, real_pause = urllib.request.urlopen, _b._pause
+        urllib.request.urlopen, _b._pause = fake, pauses.append
+        calls.clear()
+        pauses.clear()
+        try:
+            with _logs() as recs:
+                try:
+                    out = _b._text("https://example.invalid/x", "ua")
+                except Exception as e:  # noqa: BLE001
+                    out = e
+        finally:
+            urllib.request.urlopen, _b._pause = real, real_pause
+        return out, len(calls), list(pauses), recs
+    out, n, pz, recs = run(http.client.IncompleteRead(b"half"), b"whole")
+    check("1108 read: a body cut short is read again", (out, n, pz), ("whole", 2, [_b._RETRY_PAUSE]))
+    check("1108 read: the retry is INFO, not a group message",
+          [r.levelno for r in recs if "再读一次" in r.getMessage()], [logging.INFO])
+    out, n, _pz, _r = run(TimeoutError("timed out"), urllib.error.URLError("reset"))
+    check("1108 read: two cut-short reads raise the second", (type(out).__name__, n), ("URLError", 2))
+    out, n, _pz, _r = run(urllib.error.HTTPError("https://example.invalid/x", 503, "busy", {}, None))
+    check("1108 read: an HTTP status is the site's answer, not retried", (type(out).__name__, n), ("HTTPError", 1))
+    out, n, _pz, _r = run(ValueError("odd"))
+    check("1108 read: anything else is not retried", (type(out).__name__, n), ("ValueError", 1))
+
+
+def _audit_1108_arknights() -> None:
+    # PRTS has not listed 海渊巡游 on its first day; the official post has it open.
+    now = datetime(2026, 10, 10, 12, 0)
+    out, tr, recs = _ak_offline(now, [], _ak_site_1006())
+    got = out[0] if isinstance(out, tuple) else out
+    text = render(got, now, {}, {}, tr)
+    check("1108 ak: the official post fills the running banner PRTS lacks",
+          "· 当期：海渊巡游 · 克莱门莎 · 北京 10-23 03:59 结束" in text, True)
+    check("1108 ak: as a ✓ fill, one recovered WARNING",
+          ([c for c in tr.checks if "兜底" in c and "资料站" in c] != [], _recovered(recs, "海渊巡游")), (True, [True]))
+    check("1108 ak: recorded for check #67", [o[:3] for o in tr.opens], [["明日方舟", "海渊巡游", "克莱门莎"]])
+    # PRTS has it (prefixed, 07:00): no fill.
+    row = _b.Banner("明日方舟", "【限定寻访·夏季】海渊巡游", ("克莱门莎",),
+                    datetime(2026, 10, 9, 7, 0), datetime(2026, 10, 23, 3, 59))
+    out, tr, recs = _ak_offline(now, [row], _ak_site_1006(), {"克莱门莎": 5})
+    check("1108 ak: PRTS listing it -> no fill", ([c for c in tr.checks if "兜底" in c], _warned(recs, "补进当期")), ([], 0))
+    # Before it opens and after it closes: nothing.
+    for when in (datetime(2026, 10, 9, 11, 0), datetime(2026, 10, 23, 4, 0)):
+        out, tr, recs = _ak_offline(when, [], _ak_site_1006())
+        check(f"1108 ak: not open at {when:%m-%d %H:%M} -> nothing filled", tr.opens, [])
+
+
+def _audit_1108_wuwa() -> None:
+    notice = json.loads((FX / "ww-notice-2026-10-05.json").read_text(encoding="utf-8"))
+    now = datetime(2026, 10, 10, 12, 0)
+
+    def run(home, entry):
+        def js(url, *a, **k):
+            if url == _b._WW_NOTICE:
+                return notice
+            if url.endswith("/wiki/core/homepage/getPage"):
+                return home
+            if url.endswith("/getEntryDetail"):
+                return entry()
+            raise OSError("offline")
+
+        def text(url, *a, **k):
+            if url == _b._WW_SITE_ARTICLES:
+                return "[]"
+            raise OSError("offline")
+        real = _b._json, _b._text
+        _b._json, _b._text = js, text
+        tr = _b.Trace.new()
+        try:
+            with _logs() as recs:
+                got, nxt = _b._wuwa(now, {}, tr, None, lambda p, q: {"data": {"list": []}}, lambda u, c: {})
+        finally:
+            _b._json, _b._text = real
+        return got, nxt, tr, recs, render(got, now, {"鸣潮": nxt} if nxt else {}, {}, tr)
+
+    def tab(name, eid):
+        return {"name": name, "countDown": {"dateRange": ["2026-09-30 11:00", "2026-10-22 09:59"]},
+                "imgs": [{"linkConfig": {"entryId": eid}}]}
+
+    def home(*tabs):
+        return {"code": 200, "data": {"contentJson": {"sideModules": [
+            {"title": "角色活动唤取", "content": {"tabs": list(tabs)}}]}}}
+
+    def cut():
+        raise http_incomplete
+    import http.client  # noqa: PLC0415
+    http_incomplete = http.client.IncompleteRead(b"")
+
+    # The wiki lists no running banner; the in-game post has 但愿长圆如此夜 open.
+    got, nxt, tr, recs, out = run(home(), cut)
+    check("1108 ww: the in-game post fills the running banner the wiki lacks",
+          "· 当期：但愿长圆如此夜 · 心 · 北京 10-22 09:59 结束" in out, True)
+    check("1108 ww: as a ✓ fill, one recovered WARNING",
+          ([c for c in tr.checks if "兜底" in c and "库街区" in c] != [], _recovered(recs, "但愿长圆如此夜")), (True, [True]))
+    check("1108 ww: the second half is still next, not the running one",
+          nxt[1] if nxt else None, "锁暝「余心所向九死未悔」")
+    # The wiki lists it but its character's name lookup is cut short.
+    got, nxt, tr, recs, out = run(home(tab("但愿长圆如此夜", 101)), cut)
+    check("1108 ww: a nameless wiki banner is named from the bulletin",
+          [(b.name, b.chars) for b in got if b.name == "但愿长圆如此夜"], [("但愿长圆如此夜", ("心",))])
+    check("1108 ww: said once, marked recovered", _recovered(recs, "查不到名字"), [True])
+    check("1108 ww: named, it is the wiki's and cross-checked, not filled again",
+          ([c for c in tr.checks if "兜底" in c], any("库街区=游戏公告" in c for c in tr.checks)), ([], True))
+    # A nameless tab no notice names stays out, with the plain WARNING.
+    got, nxt, tr, recs, out = run(home(tab("但愿长圆如此夜", 101), tab("别的卡池", 102)), cut)
+    check("1108 ww: a name found nowhere is the plain WARNING", _recovered(recs, "102 查不到名字"), [False])
+
+
+def _audit_1108_gate() -> None:
+    import tempfile  # noqa: PLC0415
+    sd = Path(tempfile.mkdtemp())
+    (sd / "banners").mkdir()
+
+    def snap(day, nxt, until=None, raw=None):
+        f = sd / "banners" / f"{day}.json"
+        f.write_text(raw if raw is not None else json.dumps({"next": nxt, "until": until or {}}, ensure_ascii=False),
+                     encoding="utf-8")
+    # 11-04's report: 「明天开」 明河 at 11-05 12:00 (what the group was told).
+    snap("2026-11-04", {"终末地": ["2026-11-05 12:00", "明河「烟火邀星河」"], "鸣潮": [None, "锁暝"]})
+    snap("2026-11-05", {}, raw="{broken")
+
+    def gate(rows, failed=None, now=EF_NOW):
+        tr = _b.Trace.new()
+        failed = [] if failed is None else failed
+        with _logs() as recs:
+            _b.check_continuity(sd, now, rows, failed, tr)
+        return rows, failed, tr, recs
+    rows, failed, tr, recs = gate([])
+    out = render(rows, EF_NOW, {}, {}, tr, failed)
+    check("1108 gate: announced, opened, lost everywhere, no end -> not read",
+          (failed, _block(out, "终末地")),
+          (["终末地（11-05 12:00 已预告开的明河「烟火邀星河」）"],
+           "终末地\n· 这次没读到（11-05 12:00 已预告开的明河「烟火邀星河」），不是没有卡池"))
+    check("1108 gate: the verdict for #68 (which pushes it once), no WARNING of its own",
+          (_recovered(recs, "之前预告"), [r.levelno for r in recs if "之前预告" in r.getMessage()],
+           [r[1] for r in tr.continuity]), ([], [logging.INFO], ["lost"]))
+    ming = _b.Banner("终末地", "烟火邀星河", ("明河",), datetime(2026, 11, 5, 12), datetime(2026, 11, 26, 6))
+    rows, failed, tr, recs = gate([ming])
+    check("1108 gate: in today's 当期 -> ok", ([r[1] for r in tr.continuity], failed), (["ok"], []))
+    rows, failed, tr, recs = gate([], ["终末地（没有森空岛令牌）"])
+    check("1108 gate: a game already not read is left alone", tr.continuity, [])
+    # The end published with the announcement: put back.
+    snap("2026-11-04", {"终末地": ["2026-11-05 12:00", "明河「烟火邀星河」"]}, {"终末地": "2026-11-26 06:00"})
+    rows, failed, tr, recs = gate([])
+    check("1108 gate: with its end -> put back, recovered",
+          ([(b.name, b.end) for b in rows], failed, _recovered(recs, "之前预告"), [r[1] for r in tr.continuity]),
+          ([("烟火邀星河", datetime(2026, 11, 26, 6))], [], [True], ["recovered"]))
+    # The end from the history ledger instead.
+    snap("2026-11-04", {"终末地": ["2026-11-05 12:00", "明河「烟火邀星河」"]})
+    (sd / "banners" / "history.json").write_text(json.dumps({"终末地": {
+        "丹青渡|明河「烟火邀星河」": [["2026-11-05 12:00", "2026-11-26 06:00"]],
+        "丹青渡|祀「万物更新」": [["2026-10-15 12:00", "2026-11-05 11:59"]]}}, ensure_ascii=False), encoding="utf-8")
+    rows, failed, tr, recs = gate([])
+    check("1108 gate: end from banners/history.json", [(b.name, b.end) for b in rows],
+          [("烟火邀星河", datetime(2026, 11, 26, 6))])
+    (sd / "banners" / "history.json").write_text("{broken", encoding="utf-8")
+    # Not yet due / over / too old / a bare announcement.
+    snap("2026-11-04", {"终末地": ["2026-11-08 12:00", "明河「烟火邀星河」"],
+                        "明日方舟": ["2026-11-07 00:00", "「新年限定」"],
+                        "鸣潮": ["2026-10-20 10:00", "3.8版本第一期"]}, {"明日方舟": "2026-11-21 03:59"})
+    rows, failed, tr, recs = gate([])
+    check("1108 gate: not opened yet, a date-only start today, a week-old one -> nothing",
+          (tr.continuity, failed), ([], []))
+    snap("2026-11-04", {"鸣潮": ["2026-11-06 10:00", "3.8版本第一期"], "终末地": ["2026-11-01 12:00", "x「y」"]},
+         {"终末地": "2026-11-03 12:00"})
+    xin = _b.Banner("鸣潮", "某池", ("某人",), datetime(2026, 11, 6, 10), datetime(2026, 11, 27, 9, 59))
+    rows, failed, tr, recs = gate([xin])
+    check("1108 gate: an announcement naming no banner is met by any running one; an ended one is skipped",
+          [r[:2] for r in tr.continuity], [["鸣潮", "ok"]])
+    snap("2026-11-04", {"鸣潮": ["bad", "x"]})
+    check("1108 gate: an unreadable time is skipped", gate([])[2].continuity, [])
+
+    # Through collect and save_trace: the verdicts and the next banner's end are kept.
+    real = (_b._ak_prts_rows, _b._json, _b._text, _b._wuwa, _b.endfield_next_from_news)
+    _b._ak_prts_rows, _b._wuwa = (lambda tr: []), (lambda *a, **k: ([], None))
+    _b._json = _b._text = lambda url, *a, **k: (_ for _ in ()).throw(OSError("offline"))
+    snap("2026-11-04", {"终末地": ["2026-11-05 12:00", "明河「烟火邀星河」"], "明日方舟": ["2026-11-06 16:00", "某人「某池」"]})
+    failed, tr = [], _b.Trace.new()
+    try:
+        with _logs():
+            rows, nxt = _b.collect(EF_NOW, sk_get=lambda path: {"data": {"list": []}}, failed=failed, trace=tr,
+                                   state_dir=sd)
+    finally:
+        _b._ak_prts_rows, _b._json, _b._text, _b._wuwa, _b.endfield_next_from_news = real
+    check("1108 gate: collect runs it when given the state dir (终末地 is already not read there)",
+          [r[:2] for r in tr.continuity], [["明日方舟", "lost"]])
+    tr.until["明日方舟"] = datetime(2026, 11, 21, 3, 59)
+    sd2 = Path(tempfile.mkdtemp())
+    with _logs():
+        _b.save_trace(sd2, EF_NOW, "🎴", tr)
+    saved = json.loads((sd2 / "banners" / f"{EF_NOW:%Y-%m-%d}.json").read_text(encoding="utf-8"))
+    check("1108 gate: the trace file keeps until, opens and the verdicts",
+          (saved["until"], [r[1] for r in saved["continuity"]]), ({"明日方舟": "2026-11-21 03:59"}, ["lost"]))
+
+
+def _audit_1108_first_end_doors() -> None:
+    """_wuwa_first_half_end's poster doors are traced like _wuwa_poster_span's, so
+    machine check #3 sees both halves of a version (until 11-08 the first-half
+    poster wrote no door at all)."""
+    now = datetime(2026, 11, 8, 12, 0)
+    post = ("https://www.kurobbs.com/mc/post/1", "3.8版本资讯", [("https://img/1.png", 733, 10000)])
+    real = (_b._kuro_poster, _b._bili_poster, _b.parse_wuwa_poster_first_end)
+
+    def run(kuro_door, bili_door, read_image, first_end=None):
+        _b._kuro_poster = lambda ver, now, get=None: kuro_door()
+        _b._bili_poster = lambda ver, now, get=None: bili_door()
+        _b.parse_wuwa_poster_first_end = lambda lines: first_end
+        tr = _b.Trace.new()
+        try:
+            with _logs():
+                got = _b._wuwa_first_half_end("3.8", now, read_image, tr, lambda p, q: {"data": {"list": []}}, None)
+        finally:
+            _b._kuro_poster, _b._bili_poster, _b.parse_wuwa_poster_first_end = real
+        return got, {w: v for w, v in (x.split("｜")[2:] for x in tr.sources if "｜版本资讯门｜" in x)}
+
+    def down():
+        raise OSError("timed out")
+    got, d = run(lambda: None, lambda: None, lambda u: [])
+    check("1108 doors: no post on either side", d, {"库街区": "没有这一帖", "B 站": "没有这一帖"})
+    end = datetime(2026, 12, 3, 9, 59)
+    got, d = run(down, lambda: post, lambda u: [], end)
+    check("1108 doors: one failed, the other gave the end",
+          (got, d["库街区"].startswith("取不到"), d["B 站"]), (end, True, "给出了 3.8 第一期的结束时刻 12-03 09:59"))
+    got, d = run(lambda: post, lambda: None, lambda u: None)
+    check("1108 doors: the poster read with no result", (got, d["库街区"].startswith("长图没读出来")), (None, True))
+    got, d = run(lambda: post, lambda: None, lambda u: [])
+    check("1108 doors: the poster read, no end on it", d["库街区"], "长图里没读到 3.8 第一期的结束时刻")
+
+
+def _audit_1108_render() -> None:
+    now = datetime(2026, 10, 10, 12, 0)
+    b = _b.Banner("鸣潮", "某池", ("某人",), None, datetime(2026, 10, 22, 9, 59, 59), "3.7版本更新后")
+    check("1108 render: a running banner whose start is 「版本更新后」 is running",
+          (_b.running(b, now), "· 当期：某池 · 某人 · 北京 10-22 09:59 结束" in render([b], now, {}, {})), (True, True))
+    check("1108 render: who split", (_b.split_who("明河「烟火邀星河」"), _b.split_who("3.8版本第一期"), _b.split_who("")),
+          (("明河", "烟火邀星河"), ("3.8版本第一期", ""), ("", "")))
+
+
 def main() -> int:
     # One function per section. This used to be a 215-line main: when a check went
     # red you had to count line numbers to tell which game's section it was in.
@@ -2227,6 +2638,13 @@ def main() -> int:
     _sf_ef_pool_ends()
     _sf_ef_brief_time()
     _sf_ww_first_half_end()
+    _audit_1108_endfield()
+    _audit_1108_read_retry()
+    _audit_1108_arknights()
+    _audit_1108_wuwa()
+    _audit_1108_gate()
+    _audit_1108_first_end_doors()
+    _audit_1108_render()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 

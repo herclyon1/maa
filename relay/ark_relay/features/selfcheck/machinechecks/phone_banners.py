@@ -1,6 +1,6 @@
 """Machine checks of the phone channel, the phone orders and the banner section.
 
-Ledger items of this area: #2 #3 #8 #9 (the daily report's banner section),
+Ledger items of this area: #2 #3 #8 #9 #66 #67 #68 (the daily report's banner section),
 #10 #15 #16 #23 (the phone page and the phone orders), and groups of log-line
 signatures of ark.phone / ark.service publish_state / ark.maintenance / ark.banners.
 One check covers each group of signatures; it carries the group's first number and
@@ -273,7 +273,13 @@ def _bili_door(ctx):
     bili = doors.get("B 站")
     if bili is None:
         return None          # 库街区 gave the time (or nothing asked for it): the door was not needed
-    head = f"库街区：{doors.get('库街区', '没去取')}；哔哩哔哩：{bili}"
+    kuro = doors.get("库街区", "没去取")
+    head = f"库街区：{kuro}；哔哩哔哩：{bili}"
+    if bili == "没有这一帖" and (kuro == "没有这一帖" or kuro.startswith("取不到")):
+        # Bilibili's feed was read and the post is not in it, nor in Kuro's list:
+        # the publisher has not posted it yet, the door did its job. Until
+        # 2026-11-08 this was a FAIL every evening before the post went up.
+        return mc.Result(mc.PASS, f"官方还没发这一帖（{head}）")
     return mc.Result(mc.PASS if bili.startswith("给出了") else mc.FAIL, head)
 
 
@@ -335,6 +341,64 @@ def _kuro_door(ctx):
     if kuro == "没有这一帖":
         return mc.Result(mc.PASS, f"库街区这次没有这一帖，只记了日志、没进群；哔哩哔哩：{_doors(tr).get('B 站', '没去取')}")
     return mc.Result(mc.PASS, f"库街区官方资讯里找到了这一帖：{kuro}")
+
+
+# The three checks below hold what the section ends with, whatever went wrong on the
+# way. The user, 2026-11-08 00:15, after 明河「烟火邀星河」 was lost for three days
+# with no alarm at all, in his words: 「有很多问题他根本不报」 (many faults are never reported).
+
+@mc.check("#66", "卡池几个来源互相核对，对不上的都已经补上", "A", "banners")
+def _no_open_mismatch(ctx):
+    checks = [str(c) for c in getattr(ctx.get("trace"), "checks", None) or []]
+    if not checks:
+        return None          # nothing was cross-checked this time
+    bad = [c for c in checks if "✗" in c]
+    filled = [c for c in checks if "兜底" in c and "✗" not in c]
+    if bad:
+        return mc.Result(mc.FAIL, f"{len(bad)} 条对不上：" + "；".join(bad[:3]))
+    return mc.Result(mc.PASS, f"{len(checks)} 条核对都对得上"
+                     + (f"，其中 {len(filled)} 条是官方来源补上的：" + "；".join(filled[:2]) if filled else ""))
+
+
+def _block_says(text: str, game: str, pool: str) -> "str | None":
+    """How the game's block treats the open banner `pool`: None when a 当期 line
+    names it, else the lines it has instead."""
+    lines = _block(text, game)
+    if any(ln.startswith("· 当期：") and pool and pool in ln for ln in lines):
+        return None
+    return " / ".join(ln.strip() for ln in lines if ln.startswith("· 当期") or "没读到" in ln) or "没有这一块"
+
+
+@mc.check("#67", "官方写着正在开的新角色卡池，日报当期都写上了", "A", "banners")
+def _opens_shown(ctx):
+    tr, text = ctx.get("trace"), str(ctx.get("text") or "")
+    opens = getattr(tr, "opens", None) or []
+    if not opens:
+        return None          # no official source had a new-character banner open
+    bad, ok, unread = [], [], []
+    for game, pool, who, start, end, by in opens:
+        said = _block_says(text, game, pool)
+        if said is None:
+            ok.append(f"{game}「{pool}」")
+        elif "没读到" in said:
+            unread.append(f"{game}「{pool}」（{said}）")    # said as not read: honest, alarmed on its own
+        else:
+            bad.append(f"{game}「{pool}」{who}（{by}：{start or '版本更新后'} 开，{end or '结束未公布'} 结束）日报却是：{said}")
+    if bad:
+        return mc.Result(mc.FAIL, "；".join(bad[:3]))
+    return mc.Result(mc.PASS, "日报当期写上了：" + "、".join(ok) + (f"；按没读到报的：{'、'.join(unread)}" if unread else ""))
+
+
+@mc.check("#68", "预告过的卡池开了以后，日报没有变成「当期无新角色卡池」", "A", "banners")
+def _announced_kept(ctx):
+    rows = getattr(ctx.get("trace"), "continuity", None)
+    if not rows:
+        return None          # the gate did not run, or nothing announced has opened
+    lost = [r[2] for r in rows if r[1] == "lost"]
+    back = [r[2] for r in rows if r[1] == "recovered"]
+    if lost:
+        return mc.Result(mc.FAIL, "；".join(lost))
+    return mc.Result(mc.PASS, "；".join(back + [r[2] for r in rows if r[1] == "ok"]))
 
 
 # ------------------------------------------------------------------ the phone page and orders

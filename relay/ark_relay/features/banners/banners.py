@@ -255,7 +255,7 @@ def running(b: Banner, now: datetime) -> bool:
 
 
 def split_who(who: str) -> "tuple[str, str]":
-    """「明河「烟火邀星河」」 -> ("明河", "烟火邀星河"); a bare name -> (name, "")."""
+    """Split an operator「banner」 string into (operator, banner); a bare name gives (name, "")."""
     m = _WHO.match(who or "")
     return (m.group(1), m.group(2)) if m else (who or "", "")
 
@@ -562,7 +562,9 @@ def official_fill(game: str, main: str, b: Banner, by: str, tr: "Trace") -> None
     caller puts it in the report. Said in the trace as a cross-check and once in
     the log: with its end known it is a fault the relay got over (WARNING marked
     recovered, the daily report only; why: USER-SWITCHES.txt at
-    banners.py:official_fill); with no end published it is a plain WARNING and a ✗.
+    banners.py:official_fill); with no end published it is a ✗, which machine
+    check #66 pushes to the group once (the log line is INFO: a WARNING of its own
+    rang the group a second time for the same banner).
 
     The user, 2026-11-08 00:12, after 明河「烟火邀星河」 had been open three days
     while the report said 「当期无新角色卡池」: 「现在实际上是有卡池的」.
@@ -579,8 +581,8 @@ def official_fill(game: str, main: str, b: Banner, by: str, tr: "Trace") -> None
         return
     tr.checks.append(f"{game}：{main}里没有在开的「{b.name}」，{by}写着 {when} 开，"
                      f"结束时刻官方还没公布，已补进当期但没有倒计时 ✗")
-    log.warning("%s：%s里没有正在开的「%s」（%s），%s写着 %s 开，结束时刻哪个官方来源都没给，当期一行没有倒计时",
-                game, main, b.name, "、".join(b.chars), by, when)
+    log.info("%s：%s里没有正在开的「%s」（%s），%s写着 %s 开，结束时刻哪个官方来源都没给，当期一行没有倒计时",
+             game, main, b.name, "、".join(b.chars), by, when)
 
 
 def _ef_cms_text(html_body: str) -> str:
@@ -776,12 +778,13 @@ def check_continuity(state_dir, now: datetime, rows: "list[Banner]", failed: "li
     already listed as not read. When every source lost it: put back with its end
     from the announcement or the history ledger (a fault the relay got over, a
     WARNING marked recovered - why: USER-SWITCHES.txt at banners.py:check_continuity),
-    or, with no end anywhere, the game is listed as not read and a plain WARNING
-    goes to the group - never 「当期无新角色卡池」.
+    or, with no end anywhere, the game is listed as not read - never 「当期无新角色
+    卡池」 - and the verdict in `tr.continuity` makes machine check #68 push it to
+    the group once (the log line is INFO, as in official_fill).
 
-    The user, 2026-11-08 00:12: the group was told on 11-04 that 明河「烟火邀星河」
-    opens 11-05 12:00, and from that moment the report said no banner was running:
-    「更新卡池之前它居然是有通知过的，结果居然把这个丢失了」.
+    The group was told on 11-04 that 明河「烟火邀星河」 opens 11-05 12:00, and from
+    that moment the report said no banner was running. The user, 2026-11-08 00:12,
+    in his words: 「更新卡池之前它居然是有通知过的，结果居然把这个丢失了」 (the banner was announced, then lost).
     """
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     tr.continuity = []
@@ -810,10 +813,9 @@ def check_continuity(state_dir, now: datetime, rows: "list[Banner]", failed: "li
                         extra=errwatch.recovered())
             continue
         failed.append(f"{game}（{start:%m-%d %H:%M} 已预告开的{who}）")
-        tr.checks.append(f"{game}：{said}，今天各来源都没读到它，也没有结束时刻可补 ✗")
         tr.continuity.append([game, "lost", f"{said}，今天各来源都没有，按没读到报"])
-        log.warning("%s：之前预告 %s 开的%s今天哪个来源都没读到，日报这一游戏按没读到报，不写「当期无新角色卡池」",
-                    game, f"{start:%m-%d %H:%M}", who)
+        log.info("%s：之前预告 %s 开的%s今天哪个来源都没读到，日报这一游戏按没读到报，不写「当期无新角色卡池」",
+                 game, f"{start:%m-%d %H:%M}", who)
 
 
 def save_trace(state_dir, now: datetime, text: str, tr: "Trace", notifier=None) -> None:
@@ -822,7 +824,7 @@ def save_trace(state_dir, now: datetime, text: str, tr: "Trace", notifier=None) 
     URL and field it came from without re-fetching anything.
 
     Then the machine checks of the banner section are judged on what was just
-    built (machinecheck event "banners": #2 #3 #8 #9 #58). `notifier` is the
+    built (machinecheck event "banners": #2 #3 #8 #9 #58 #66 #67 #68). `notifier` is the
     relay's when the caller has it; without it a check that did not hold goes
     to the group through errwatch with its own title and evidence.
     """
