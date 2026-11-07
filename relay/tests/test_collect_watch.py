@@ -190,6 +190,20 @@ w.poll()
 check("从旧文件尾巴读到失败", w.failed, ["Route10"])
 check("母本还是不动", _lists(f), FULL)
 
+print("\n[audit 11-08 B-06: the old file's last line without a newline is still read]")
+cfg, f, n = _setup()
+w = collect_watch.Watcher(cfg, n)
+lp = w.log_path()
+lp.write_text("\n".join(before_failed) + "\n", encoding="utf-8")
+w.poll()
+_r10 = [ln for ln in failed_lines if "Route10Failed" in ln]
+with lp.open("a", encoding="utf-8") as fh:
+    fh.write(_r10[-1])                                                 # the node line, no newline at the end
+lp.rename(lp.parent / "maafw.bak.2026.09.14-11.20.24.685.log")
+lp.write_text("x\n", encoding="utf-8")
+w.poll()
+check("the Failed node closing the old file is read", w.failed, ["Route10"])
+
 print("\n[线程：目录一有变化就读，不用定时]")
 cfg, f, n = _setup()
 nf = _old_narrowing(cfg, f, (["Route10"], []))

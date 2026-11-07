@@ -170,5 +170,16 @@ check("moved to recovered", (("MAA", "arknights") in e._pending, ("MAA", "arknig
 e._flush_pending()
 check("no failure alarm", [t for t, _ in alarms(e) if "没跑成" in t], [])
 
+print("\n[audit 11-08 B-04: the daily report's retry notes keep the two jobs apart too]")
+from ark_relay.core import ledger_report as _lr  # noqa: E402
+_ann = {"run_id": "d/arknights/MAA-05-00-00", "script": "MAA", "user": "arknights", "ok": False,
+        "started": "2026-10-26T05:00:00+08:00", "failed_tasks": ["MAA 运行超时"], "raw": {"annihilation": True}}
+_rou = {"run_id": "d/arknights/MAA-06-00-00", "script": "MAA", "user": "arknights", "ok": True,
+        "started": "2026-10-26T06:00:00+08:00", "failed_tasks": [], "raw": {"tasks_done": ["基建换班"]}}
+check("a Routine success is not the retry of a timed-out Annihilation", _lr.retried_notes([_ann, _rou]), {})
+_ann2 = dict(_rou, run_id="d/arknights/MAA-07-00-00", started="2026-10-26T07:00:00+08:00",
+             raw={"annihilation": True, "tasks_done": []})
+check("a later Annihilation success is", list(_lr.retried_notes([_ann, _rou, _ann2])), [_ann["run_id"]])
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

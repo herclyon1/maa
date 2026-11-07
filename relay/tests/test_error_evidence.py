@@ -338,5 +338,22 @@ try:
 finally:
     error_evidence.upload_daily_logs = real_upload
 
+print("\n[audit 11-08 C-08: a throttled call after a failed upload carries that failure]")
+
+
+class DownUp:
+    def upload(self, path, timeout=0):
+        raise OSError("connection reset")
+
+
+error_evidence._last_attempt[0] = 0.0
+first = error_evidence.upload_daily_logs(cfg_with(relay, None, st), force=True, now=NOW,
+                                         clock=lambda: 2000.0, uploader=DownUp())
+check("the real attempt failed", bool(first["errors"]), True)
+again = error_evidence.upload_daily_logs(cfg_with(relay, None, st), now=NOW, clock=lambda: 2010.0, uploader=DownUp())
+check("10 s later: throttled, and it says the last one failed", (again["skipped"], again["errors"]),
+      (True, first["errors"]))
+error_evidence._last_attempt[0] = 0.0
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

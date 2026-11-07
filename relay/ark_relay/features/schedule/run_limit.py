@@ -51,6 +51,15 @@ def _read(script: str) -> "tuple[dict | None, object]":
     return None, None
 
 
+def _fails(eng) -> dict:
+    """{script: {"n": write-backs failed in a row, "alarmed": the group has it}}, on the engine."""
+    got = getattr(eng, "_run_limit_fails", None)
+    if not isinstance(got, dict):
+        got = {}
+        eng._run_limit_fails = got
+    return got
+
+
 def step(eng, now: "datetime | None" = None) -> None:
     """One look per engine tick; a limit other than WANT is written back."""
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
@@ -62,14 +71,15 @@ def step(eng, now: "datetime | None" = None) -> None:
         reply, cur = _read(script)
         if reply is None:
             continue
+        fails = _fails(eng)
         if cur == want:
-            eng._run_limit_fails = 0
+            fails.pop(script, None)
             continue
         ok, msg = commands._script_item_via_api(reply, script, PATH, want)
         game = GAME.get(script, script)
         if ok:
             log.info("%s 的失败重试上限被改成了 %s，已改回 %s：%s", script, cur, want, msg)
-            eng._run_limit_fails = 0
+            fails.pop(script, None)
             if getattr(eng, "_run_limit_noted", "") != day and \
                     not eng.notifier.send(texts.RUN_LIMIT_RESET, texts.run_limit_reset_body(game, cur, want)):
                 eng._run_limit_noted = day
@@ -77,7 +87,12 @@ def step(eng, now: "datetime | None" = None) -> None:
         if BUSY in msg:
             log.info("%s 正在跑，失败重试上限 %s 先不改回 %s，下一轮再改", script, cur, want)
             continue
-        n = eng._run_limit_fails = getattr(eng, "_run_limit_fails", 0) + 1
+        st = fails.setdefault(script, {"n": 0, "alarmed": False})
+        st["n"] += 1
+        n = st["n"]
         log.info("%s 的失败重试上限是 %s，改回 %s 没成（第 %d 次）：%s", script, cur, want, n, msg)
-        if n == ALARM_AFTER:
-            eng.notifier.send(texts.RUN_LIMIT_STUCK, texts.run_limit_stuck_body(game, cur, want, msg), alert=True)
+        # From ALARM_AFTER on until the group has it: an alarm whose send failed was never
+        # tried again while the count ran past it (audit 2026-11-08 B-07).
+        if n >= ALARM_AFTER and not st["alarmed"]:
+            errs = eng.notifier.send(texts.RUN_LIMIT_STUCK, texts.run_limit_stuck_body(game, cur, want, msg), alert=True)
+            st["alarmed"] = not errs

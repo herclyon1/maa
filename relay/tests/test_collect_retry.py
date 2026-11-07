@@ -44,7 +44,8 @@ def _retry_outcome(verdict, failures_before=None):
     sent = []
     eng = types.SimpleNamespace(
         cfg=types.SimpleNamespace(state_dir=sd, maaend_dir=str(sd), history_dir=str(sd), automas_dir=None),
-        state=types.SimpleNamespace(read_ledger=lambda d: [], mark_incomplete=lambda *a: True),
+        state=types.SimpleNamespace(read_ledger=lambda d: [], mark_incomplete=lambda *a: True,
+                                clear_incomplete_items=lambda *a: True),
         notifier=types.SimpleNamespace(send=lambda t, b, **kw: sent.append((t, kw.get("alert", False))) or []),
         _scripts_running=lambda: False)
     saved = (cr.latest_gathering_run, cr.run_retry, cr._locale, cr.restore_master)
@@ -112,10 +113,10 @@ maafw = ("[2026-09-11 00:12:00.000][INF] x [msg=Node.Action.Starting] {\"name\":
          "[2026-09-11 00:54:39.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute16Start\"}\n"
          "[2026-09-11 00:57:10.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute16End\"}\n"
          "[2026-09-11 00:58:00.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute15Failed\"}\n")
-v = cr.judge(maafw, ["AutoCollectRoute15", "AutoCollectRoute16"], "00:50:00")
+v = cr.judge(maafw, ["AutoCollectRoute15", "AutoCollectRoute16"], "2026-09-11 00:50:00")
 check("16 走完了", v["AutoCollectRoute16"], True)
 check("15 这次失败（之前那次 End 在窗口外不算）", v["AutoCollectRoute15"], False)
-check("没出现的路线没有结论", cr.judge(maafw, ["AutoCollectRoute3"], "00:50:00"), {"AutoCollectRoute3": None})
+check("没出现的路线没有结论", cr.judge(maafw, ["AutoCollectRoute3"], "2026-09-11 00:50:00"), {"AutoCollectRoute3": None})
 
 print("\n[连续两天补跑失败＝复发，请人工]")
 store = tmpdir() / "failures.json"
@@ -238,7 +239,8 @@ print("\n[MaaEnd locale unreadable: not 「all routes passed」, said once]")
 _sd = tmpdir()
 _eng = types.SimpleNamespace(
     cfg=types.SimpleNamespace(state_dir=_sd, maaend_dir=str(_sd / "maaend"), history_dir=str(_sd), automas_dir=None),
-    state=types.SimpleNamespace(read_ledger=lambda d: [], mark_incomplete=lambda *a: True),
+    state=types.SimpleNamespace(read_ledger=lambda d: [], mark_incomplete=lambda *a: True,
+                                clear_incomplete_items=lambda *a: True),
     notifier=types.SimpleNamespace(send=lambda *a, **k: []),
     _scripts_running=lambda: False)
 _saved = (cr.latest_gathering_run, cr.restore_master)

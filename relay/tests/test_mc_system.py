@@ -389,7 +389,7 @@ from ark_relay.features.makeup import collect_retry as cr  # noqa: E402
 maafw = ("[2026-10-06 21:20:00.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute15End\"}\n"
          "[2026-10-06 21:40:01.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute16End\"}\n"
          "[2026-10-06 21:41:00.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute15Failed\"}\n")
-nodes = cr.node_lines(maafw, ["AutoCollectRoute15", "AutoCollectRoute16"], "21:30:00")
+nodes = cr.node_lines(maafw, ["AutoCollectRoute15", "AutoCollectRoute16"], "2026-10-06 21:30:00")
 check("补跑判结论用的那几行 maafw.log 留下来（窗口之前那次不算）",
       {k: v.split('"name":"')[1][:-2] for k, v in nodes.items()},
       {"AutoCollectRoute15": "AutoCollectRoute15Failed", "AutoCollectRoute16": "AutoCollectRoute16End"})

@@ -167,9 +167,11 @@ handle._flush_pending(e)
 show(notes)
 check("the morning abort: one message", n_morning, 1)
 check("the evening abort reaches the group too: two messages in all", len(group(notes)), 2)
-check("…the second is #28's own FAIL naming 装备制造 and MaaEnd's reason (the 「没证据」 alarm for "
-      "the same items went out in the morning)",
-      [("装备制造" in b, "账号编号显示不全" in b) for b in mc28_pushes(notes)], [(True, True)])
+# D210 (audit 2026-11-08 C-01): every run's 「没证据」 is its own alarm; until then the evening's
+# went out as #28's FAIL, the morning alarm's key holding the same items.
+check("…the second is the evening run's own 「没证据」 alarm naming 装备制造 and MaaEnd's reason",
+      [("装备制造" in b, "账号编号显示不全" in b) for _t, b in group(notes)[1:]], [(True, True)])
+check("…so #28 does not push it again", mc28_pushes(notes), [])
 check("nothing of #28 is left waiting", held_28(state), {})
 
 print("\n[ok=True abort twice the same day: the 「没证据」 alarm for the same items goes out once]")
@@ -182,9 +184,8 @@ check("two group messages for two aborts", len(got), 2)
 check("…the first the 「没证据」 alarm with the reason",
       (got[0][0] if got else "", REASON in (got[0][1] if got else "")),
       (texts.unverified_alarm("终末地", "早班", 1), True))
-check("…the second #28's own FAIL", len(mc28_pushes(notes)), 1)
-check("…which is not marked as riding along with an alarm that did not go out",
-      "已写在「没证据」" in str((mc.read(state).get("#28") or {}).get("evidence")), False)
+check("…the second its own 「没证据」 alarm too (D210, audit 11-08 C-01), not #28's FAIL",
+      (REASON in (got[1][1] if len(got) > 1 else ""), len(mc28_pushes(notes))), (True, 0))
 
 print("\n[the same ok=True record replayed (its handling broke off): still the one alarm it sent]")
 e, notes, state = engine()

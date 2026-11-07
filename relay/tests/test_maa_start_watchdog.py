@@ -266,5 +266,27 @@ w.at(T0 + timedelta(minutes=6))
 check("a kill that failed leaves no mark (nothing restarted)",
       StateStore(w.dog.state_dir).get("marks", "alerted:2026-11-05"), None)
 
+print("\n[audit 11-08 B-05: StartUp's end lost to a rotation does not get a fighting MAA killed]")
+w = World("rotated-mid-start")
+w.write(line(T0, chain("TaskChainStart")) + line(T0 + timedelta(seconds=30), sub("StartUpBegin")))
+w.at(T0 + timedelta(seconds=31))
+# MAA writes StartUp's completion into asst.log, then rotates it before the next read.
+w.write(line(T0 + timedelta(seconds=60), chain("TaskChainCompleted")))
+w.log.rename(w.log.with_name("asst.bak.log"))
+w.log.write_bytes(line(T0 + timedelta(seconds=70), sub("FightBegin", name="Fight")).encode())
+w.at(T0 + timedelta(seconds=75))
+check("the completion line is read from asst.bak.log", w.dog.start, None)
+w = World("rotated-lost")
+w.write(line(T0, chain("TaskChainStart")) + line(T0 + timedelta(seconds=30), sub("StartUpBegin")))
+w.at(T0 + timedelta(seconds=31))
+w.log.write_bytes(line(T0 + timedelta(seconds=70), chain("TaskChainStart", "Fight")).encode())   # no bak at all
+w.at(T0 + timedelta(seconds=75))
+check("no completion anywhere, but a Fight chain of the same MAA began: start closed", w.dog.start, None)
+check("so nothing is killed 10 minutes into the fight", (w.at(T0 + timedelta(minutes=10)), w.kills), (None, []))
+w = World("other-pid-chain")
+w.write(line(T0, chain("TaskChainStart")) + line(T0 + timedelta(seconds=5), chain("TaskChainStart", "Fight"), pid=999))
+w.at(T0 + timedelta(seconds=6))
+check("another MAA's chain does not close this start", w.dog.start and w.dog.start.pid, PID)
+
 print("all checks passed" if not fails else f"FAILED: {fails}")
 sys.exit(1 if fails else 0)

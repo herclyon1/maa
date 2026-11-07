@@ -43,7 +43,8 @@ def outcome(stamp: dict | None):
         f.write_text(json.dumps(stamp), encoding="utf-8")
     eng = types.SimpleNamespace(
         cfg=types.SimpleNamespace(state_dir=sd, maaend_dir=str(sd), history_dir=str(sd), automas_dir=None),
-        state=types.SimpleNamespace(read_ledger=lambda d: [], mark_incomplete=lambda *a: True),
+        state=types.SimpleNamespace(read_ledger=lambda d: [], mark_incomplete=lambda *a: True,
+                                clear_incomplete_items=lambda *a: True),
         notifier=types.SimpleNamespace(send=lambda t, b, **kw: []), _scripts_running=lambda: False)
     saved = (cr.latest_gathering_run, cr.run_retry, cr._locale, cr.restore_master)
     cr.latest_gathering_run = lambda entries, hist, labels: ({"run_id": "r1"}, ["AutoCollectRoute15"])

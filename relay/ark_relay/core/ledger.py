@@ -10,6 +10,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import re
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -107,6 +108,43 @@ _INTERIM_SAID: dict[str, str] = {}
 # replace was lost, which is a run missing from the day (audit s4 A6).
 _LEDGER_LOCK = threading.RLock()
 
+
+
+_UNDONE_HEAD = re.compile(r"这一轮有 (\d+) 项没干成")
+
+
+def strip_incomplete_items(why: str, keyword: str) -> str:
+    """outcome.summarize's paragraph less the 「· …」 items naming `keyword`; "" when no
+    item is left. The 「有 N 项没干成」 head is recounted, or dropped with its items."""
+    lines = why.splitlines()
+    kept = [ln for ln in lines if not (ln.startswith("· ") and keyword in ln)]
+    if len(kept) == len(lines):
+        return why
+    if not any(ln.startswith("· ") for ln in kept):
+        return ""
+    out: list[str] = []
+    i = 0
+    while i < len(kept):
+        ln = kept[i]
+        if m := _UNDONE_HEAD.search(ln):
+            j = i + 1
+            while j < len(kept) and kept[j].startswith("· "):
+                j += 1
+            if j == i + 1:
+                # No undone item left under this head: the settings head after it, if
+                # any, said 「另外…」 and now opens the paragraph.
+                who = ln[:m.start()].strip()
+                if j < len(kept) and kept[j].startswith("另外"):
+                    kept[j] = f"{who} {kept[j][len('另外'):]}"
+                i = j
+                continue
+            out.append(ln[:m.start()] + f"这一轮有 {j - i - 1} 项没干成" + ln[m.end():])
+            out += kept[i + 1:j]
+            i = j
+            continue
+        out.append(ln)
+        i += 1
+    return "\n".join(out)
 
 class State:
     """Which runs have been handled, and today's ledger.
@@ -216,6 +254,18 @@ class State:
         daily report reads it.
         """
         return self._rewrite_entry(day, run_id, lambda e: e.__setitem__("incomplete", why))
+
+    def clear_incomplete_items(self, day: str, run_id: str, keyword: str) -> bool:
+        """Drop from the line's `incomplete` only the undone items naming `keyword`
+        (strip_incomplete_items); the field empties only when no undone item is left.
+
+        The gathering retry used to write "" over the whole field: an ok run whose 自动采集
+        and 基质刷取 both failed their checks read as done once its routes were re-walked
+        (audit 2026-11-08 B-01)."""
+        def put(e: dict) -> None:
+            if why := e.get("incomplete"):
+                e["incomplete"] = strip_incomplete_items(str(why), keyword)
+        return self._rewrite_entry(day, run_id, put)
 
     def mark_raw(self, day: str, run_id: str, key: str, value) -> bool:
         """Set one raw field on the day's ledger line (the line is written first)."""

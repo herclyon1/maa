@@ -174,6 +174,10 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
                         if (x.get("raw") or {}).get("maaend_update_restart"):
                             kinds.setdefault(x["run_id"], "update")
                 elif any(x.get("transitional") for x in streak):
+                    # The whole streak, on purpose (audit 2026-11-08 B-04 asked for the
+                    # transitional record alone): 2026-09-02 OK-WW 09:18 update restart, 09:20
+                    # failed as the game came back, 09:28 ok - two ❌ and a self-heal push were
+                    # the false alarm tests/test_episodes.py pins.
                     for x in streak:
                         kinds.setdefault(x["run_id"], "update")
                 streak = []
@@ -245,6 +249,8 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
                 continue
             if (later.get("raw") or {}).get("manual_stop"):
                 continue          # stopped by the red button: it did not "get them later"
+            if maa_mode(later) != maa_mode(e):
+                continue          # a Routine round is no retry of Annihilation (2026-10-26)
             if later.get("script") != e.get("script") or later.get("user") != e.get("user"):
                 continue
             if (later.get("started") or "") <= (e.get("started") or ""):
@@ -253,6 +259,10 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
             # 「超时」 names no task: a later success of the same script covers it.
             # Every task the record does name still has to be in that success.
             named = {t for t in want if "超时" not in t}
+            # A later run whose own outcome check failed still covers a bare timeout (audit
+            # 2026-11-08 B-04 asked otherwise): its undone items are their own title item
+            # (「终末地 1 项没干完」, tests/test_maaend_update_restart.py 10-01), so the round is
+            # not green either way and 「没跑成」 on top would say the one problem twice.
             if (named != want and named <= done) or want <= done:
                 # By start time on both clocks, the way the run's own line is labelled.
                 st = datetime.fromisoformat(later["started"])
@@ -544,6 +554,28 @@ def day_unverified_items(entries: list[dict]) -> list[tuple[str, list[str]]]:
     return out
 
 
+def day_unjudged_items(entries: list[dict]) -> list[str]:
+    """MaaEnd tasks of the day left unjudged in some run (maaend_unjudged: MaaFW's log not
+    read, fewer than TRAIL_MISS_FAIL runs in a row) that no run of the day backs. Not pushed -
+    one unread run is MaaEnd clearing its debug folder or MaaFW rotating its log as often as
+    anything - but not green either: the title says 待核 (audit 2026-11-08 C-02; until then
+    backed() let such a day read 全绿 ✅ while the run's row said 不算做成)."""
+    unj: dict[str, None] = {}
+    backed: set[str] = set()
+    for e in entries:
+        if e.get("script") != "MaaEnd" or manual_stop(e):
+            continue
+        raw = e.get("raw") or {}
+        skip = set(maaend_unjudged(raw))
+        unv = set(maaend_unverified(raw))
+        for t in _maaend_listed(raw):
+            if t in skip:
+                unj[t] = None
+            elif t not in unv:
+                backed.add(t)
+    return [t for t in unj if t not in backed]
+
+
 def day_unverified(entries: list[dict]) -> list[tuple[str, int]]:
     """[(script, n)]: how many day_unverified_items each game has."""
     return [(s, len(items)) for s, items in day_unverified_items(entries)]
@@ -551,7 +583,7 @@ def day_unverified(entries: list[dict]) -> list[tuple[str, int]]:
 
 def _daily_head(failed: list, undone: list, retried: dict, kinds: dict,
                 no_exit: list | None = None, unverified: list | None = None,
-                bare: "dict | None" = None) -> str:
+                bare: "dict | None" = None, unjudged: "list | None" = None) -> str:
     """The verdict in the report title, worst thing first.
 
     Failures and unfinished runs are counted per game. Items done with no
@@ -572,6 +604,8 @@ def _daily_head(failed: list, undone: list, retried: dict, kinds: dict,
     parts += [f"{_game(s)} {n} 趟没按你的设置跑" for s, n in _count_by_script(reset)]
     parts += [_no_exit_note(e) for e in (no_exit or [])]
     unv = [f"{_game(s)} {n} 项没证据" for s, n in (unverified or [])]
+    if unjudged:
+        unv.append(f"{_game('MaaEnd')} {len(unjudged)} 项待核（自己的记录没读到）")
     if parts:
         return "、".join(parts + unv) + " ⚠️"
     if unv:
@@ -617,6 +651,10 @@ def test_windows(state_dir) -> list[dict]:
         return []
 
 
+# = shutdown.OPEN_WINDOW_MAX_H (measured there: the longest run plus its wait).
+OPEN_TEST_WINDOW_MAX_H = 3
+
+
 def split_test(entries: list[dict], windows: list[dict]) -> tuple[list[dict], list[dict]]:
     """(real records, records inside a marked test window).
 
@@ -630,7 +668,11 @@ def split_test(entries: list[dict], windows: list[dict]) -> tuple[list[dict], li
     for w in windows or []:
         try:
             since = datetime.fromisoformat(w["since"])
-            until = datetime.fromisoformat(w["until"]) if w.get("until") else None
+            # A window left open ends OPEN_TEST_WINDOW_MAX_H after it opened, as the shutdown
+            # decision already reads it (shutdown.OPEN_WINDOW_MAX_H): open for ever, it took
+            # every later scheduled run out of the report's rows (audit 2026-11-08 C-07).
+            until = (datetime.fromisoformat(w["until"]) if w.get("until")
+                     else since + timedelta(hours=OPEN_TEST_WINDOW_MAX_H))
         except (KeyError, TypeError, ValueError):
             continue
         spans.append((since, until))
@@ -704,7 +746,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     for e in no_exit:
         tech.append(f"{e['run_id']} {_no_exit_note(e)}")
     bare = _bare_failure_groups(entries, failed, shifts)
-    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds, None, day_unverified(entries), bare)}"
+    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds, None, day_unverified(entries), bare, day_unjudged_items(entries))}"
 
     foot = footnote_tasks(entries)
     lines: list[str] = []

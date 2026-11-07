@@ -126,6 +126,21 @@ try:
     check("一条都不推", e.notifier.sent, [])
     check("还在待推里", list(e._pending), [("OK-WW", "wuwa")])
 
+    print("\n[audit 11-08 C-03: one alarm that cannot go out does not hold the ones after it]")
+    e = build(TODAY)
+    second = okww_rounds()[-1]
+    second.user, second.run_id = "wuwa2", "2026-10-01/wuwa2/OK-WW-09-21-22"
+    e._pending[(second.script, second.user)] = second
+    _calls = []
+
+    def _first_fails(title, body="", **kw):
+        _calls.append(title)
+        return ["群机器人没回"] if len(_calls) == 1 else []
+    e.notifier.send = _first_fails
+    e._flush_pending()
+    check("both tried this tick", len(_calls), 2)
+    check("the one that failed stays held, the other is out", list(e._pending), [("OK-WW", "wuwa")])
+
     print("\n[只看名字对得上的那一格]")
     check("MaaEnd 运行 → MaaEnd 在跑", eng._script_unfinished(TODAY, "MaaEnd"), True)
     check("OK-WW 异常 → OK-WW 不在跑", eng._script_unfinished(TODAY, "OK-WW"), False)

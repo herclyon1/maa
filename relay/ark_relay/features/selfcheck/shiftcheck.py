@@ -25,9 +25,9 @@ A due shift whose scripts all recorded but that _not_shift rules out (started by
 hand, records not seen landing) gets one INFO line 「收工体检（晚班）这班没查：<why>」
 instead, so the daily report says the shift went unchecked.
 
-Route: one relay.log INFO line per shift (texts.shiftcheck_summary), which
-selfcheck.daily_lines quotes in the daily report's relay section. Nothing is
-pushed. Items 2 and 3 are recorded normal states (USER-SWITCHES.txt,
+Route: one relay.log line per shift (texts.shiftcheck_summary), which
+selfcheck.daily_lines quotes in the daily report's relay section: INFO when every
+item holds, WARNING (errwatch pushes it) when one does not (audit 2026-11-08 C-07). Items 2 and 3 are recorded normal states (USER-SWITCHES.txt,
 shutdown.py:_say_if_moment_passed), 4 is ours; the annihilation switch already rings the group once per boot
 (boot_stages._annihilation_switch_off). A crash inside the check is a relay fault of
 its own: logged at ERROR (errwatch pushes it, as every other broken relay step in
@@ -147,5 +147,11 @@ def maybe_run(eng, now: datetime) -> "list[Check] | None":
     except Exception:
         log.exception(texts.shiftcheck_broken(shift))
         return []
-    log.info(summary(shift, checks))
+    # An item that is not right reaches the group, every shift it stays so (D210; audit
+    # 2026-11-08 C-07: at INFO a test window left open sat in relay.log only). The notes
+    # (items 2 and 3, ok with a detail) stay INFO.
+    if any(c.ok is False for c in checks):
+        log.warning(summary(shift, checks))
+    else:
+        log.info(summary(shift, checks))
     return checks

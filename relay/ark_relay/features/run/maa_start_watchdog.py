@@ -152,6 +152,9 @@ class Watchdog:
                 if first:
                     self._offset = max(0, size - BACKLOG_BYTES)
                 elif size < self._offset or (self._head and head[:len(self._head)] != self._head):
+                    # Rotated: what the old file gained after the last read is now in
+                    # asst.bak.log - StartUp's completion line can be there (audit B-05).
+                    self._feed_rotated_tail(self._offset)
                     self._offset, self._rest = 0, b""
                 fh.seek(self._offset)
                 data = fh.read()
@@ -169,6 +172,21 @@ class Watchdog:
         for line in lines:
             self._feed(line.rstrip(b"\r"))
 
+    def _feed_rotated_tail(self, offset: int) -> None:
+        """Feed asst.bak.log from `offset` (where the read of asst.log stopped) to its end."""
+        bak = self.path.with_name("asst.bak.log")
+        try:
+            with bak.open("rb") as fh:
+                if bak.stat().st_size < offset:
+                    return              # not the file read up to offset: nothing to resume
+                fh.seek(offset)
+                data = fh.read(BACKLOG_BYTES)
+        except OSError:
+            return
+        lines = (self._rest + data).split(b"\n")
+        for line in lines:
+            self._feed(line.rstrip(b"\r"))
+
     def _feed(self, line: bytes) -> None:
         m = _LINE.match(line)
         if not m:
@@ -178,7 +196,16 @@ class Watchdog:
             self.start = None           # a new MAA: an open start belonged to the one before
             return
         cb = _CALLBACK.match(rest)
-        if not cb or _STARTUP not in rest:
+        if not cb:
+            return
+        if _STARTUP not in rest:
+            # Another task chain of the same MAA began (Fight, Infrast ...): its StartUp is
+            # over, even if the completion line was lost (asst.log rotated between reads) -
+            # left open, the start ran out its limit during the fight and MAA was killed
+            # mid-stage (audit 2026-11-08 B-05).
+            s = self.start
+            if s is not None and cb.group(1) == b"TaskChainStart" and int(m.group(2)) == s.pid:
+                self.start = None
             return
         try:
             at = datetime.strptime(m.group(1).decode("ascii"), "%Y-%m-%d %H:%M:%S")
@@ -227,20 +254,25 @@ class Watchdog:
 
 
     def _mark_restart(self, now: datetime) -> None:
-        """The 「超时|MAA|<HH:MM:SS>」 day mark runwatch.retry_clock restarts the shift's clocks
-        from. Never raises: a mark that cannot be written leaves the clocks at the shift's time."""
-        if not self.state_dir:
-            return
-        key = f"超时|{SCRIPT}|{now:%H:%M:%S}"
+        mark_restart(self.state_dir, SCRIPT, now)
 
-        def add(got):
-            cur = list(got) if isinstance(got, list) else []
-            return cur if key in cur else [*cur, key]
-        try:
-            from ark_relay.core.statestore import StateStore  # noqa: PLC0415
-            StateStore(self.state_dir).update("marks", f"alerted:{now:%Y-%m-%d}", add)
-        except Exception:
-            log.warning("记不下这次重开的时刻：这一班的超时计时还从排定的开跑时间算", exc_info=True)
+
+def mark_restart(state_dir, script: str, now: datetime) -> None:
+    """The 「超时|<script>|<HH:MM:SS>」 day mark runwatch.retry_clock restarts the shift's clocks
+    from, after a watchdog ended a hung script and AUTO-MAS starts it again. Never raises: a
+    mark that cannot be written leaves the clocks at the shift's time."""
+    if not state_dir:
+        return
+    key = f"超时|{script}|{now:%H:%M:%S}"
+
+    def add(got):
+        cur = list(got) if isinstance(got, list) else []
+        return cur if key in cur else [*cur, key]
+    try:
+        from ark_relay.core.statestore import StateStore  # noqa: PLC0415
+        StateStore(state_dir).update("marks", f"alerted:{now:%Y-%m-%d}", add)
+    except Exception:
+        log.warning("记不下这次重开的时刻：这一班的超时计时还从排定的开跑时间算", exc_info=True)
 
 
 def start(cfg, notifier) -> bool:

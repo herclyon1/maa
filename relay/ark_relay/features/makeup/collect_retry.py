@@ -149,10 +149,26 @@ def blocked_route_ids(automas_log: str, shot_names: list[str], zh_cn: dict) -> d
 _UNKNOWN_SAID: set[str] = set()
 
 
+# outcome.maaend_checks' undone item for gathering (「· 自动采集 真的走了路线：…」); the
+# settings item 「· 自动采集的设置：…」 is not the retry's to clear.
+GATHERING_UNDONE = "自动采集 真的"
+STAMP_FMT = "%Y-%m-%d %H:%M:%S"   # `since` for the maafw.log readers below (_after)
+
+
+def _after(line: str, since: str) -> bool:
+    """A stamped maafw.log line ([YYYY-MM-DD HH:MM:SS.mmm]...) at or after `since` (STAMP_FMT).
+
+    The full date is compared: _maafw_text reads the last two maafw*.log files, so a line of
+    an earlier day with a later clock time passed the old HH:MM:SS cut (line[12:20]), as did
+    nothing after midnight for a retry begun before it (audit 2026-11-08 B-01). Unstamped
+    lines are never after: every event these readers take is stamped."""
+    return len(line) >= 20 and line[0] == "[" and line[1:20] >= since
+
+
 def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: list[str]) -> dict[str, list[str]]:
     """{route: relay-device pictures} for the retried routes that hit 「战斗中无法使用」 again.
 
-    Route windows after `since` (HH:MM:SS, as judge) by the history log's rule
+    Route windows after `since` (STAMP_FMT, as judge) by the history log's rule
     (collector_maaend.spans) on the same event: a route opens where MaaFW recognises
     its Start node - the moment MaaEnd announces 「路线10：重红柱状菌」, which AUTO-MAS
     stamps into the history log some 25 ms later - and runs to the next route's
@@ -169,10 +185,9 @@ def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: lis
     events: list[tuple] = []
     last = None
     for line in maafw_log.splitlines():
-        if len(line) < 20 or line[12:20] < since:
+        if not _after(line, since):
             continue
-        if line.startswith("["):
-            last = line
+        last = line
         if "AutoCollect" not in line:
             continue
         if _TASK_END.search(line):
@@ -295,10 +310,11 @@ def build_override(parts: list[dict], routes: list[str], weekday: str) -> dict:
 
 
 def judge(maafw_log: str, routes: list[str], since: str) -> dict[str, bool | None]:
-    """{route: True passed / False failed / None no verdict} from MaaFW node events after `since` (HH:MM:SS)."""
+    """{route: True passed / False failed / None no verdict} from MaaFW node events after `since`
+    (YYYY-MM-DD HH:MM:SS, _after)."""
     verdict: dict[str, bool | None] = {r: None for r in routes}
     for line in maafw_log.splitlines():
-        if len(line) < 20 or line[12:20] < since:
+        if not _after(line, since):
             continue
         m = _NODE.search(line) or _NODE_FAILED.search(line)
         if not m or m.group(1) not in verdict:
@@ -312,7 +328,7 @@ def node_lines(maafw_log: str, routes: list[str], since: str) -> dict[str, str]:
     machine check of the retry (#32) quotes. Routes with no such line are left out."""
     out: dict[str, str] = {}
     for line in maafw_log.splitlines():
-        if len(line) < 20 or line[12:20] < since:
+        if not _after(line, since):
             continue
         m = _NODE.search(line) or _NODE_FAILED.search(line)
         if m and m.group(1) in routes:
@@ -584,7 +600,7 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
     if not _state().get("resource_loaded"):
         api(f"/maa/instances/{inst}/resource/load", {"paths": [str(maaend_dir / "resource")]}, timeout=120)
         _wait(lambda: _state().get("resource_loaded"), 120)
-    since = time.strftime("%H:%M:%S")
+    since = time.strftime(STAMP_FMT)
     api(f"/maa/instances/{inst}/tasks/start", {
         "tasks": [{"entry": ENTRY, "pipeline_override": json.dumps(override, ensure_ascii=False)}],
         "agent_configs": AGENTS,
@@ -596,7 +612,7 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
             api(f"/maa/instances/{inst}/tasks/stop", {})
         except (urllib.error.URLError, OSError):
             pass
-    closing = time.strftime("%H:%M:%S")
+    closing = time.strftime(STAMP_FMT)
     closed = _close_game(inst, restore, _state, maaend_dir)
     _stop_agents(inst)
     text = _maafw_text(debug)
@@ -662,10 +678,10 @@ def _close_game(inst: str, override: dict, state, maaend_dir: Path) -> str:
 
 
 def _closed_verdict(maafw_log: str, since: str) -> str:
-    """'' when maafw.log after `since` (HH:MM:SS) has CloseGamePC succeeded; else why not."""
+    """'' when maafw.log after `since` (YYYY-MM-DD HH:MM:SS, _after) has CloseGamePC succeeded; else why not."""
     last = None
     for line in maafw_log.splitlines():
-        if len(line) >= 20 and line[12:20] >= since and (m := _CLOSE_END.search(line)):
+        if _after(line, since) and (m := _CLOSE_END.search(line)):
             last = m.group(1)
     if last in ("Succeeded", "Completed"):
         return ""
@@ -720,6 +736,12 @@ def walked_routes(automas_log: str, by_label: dict[str, str], failed_by_text: di
     return closed - failed
 
 
+def _history_log(history_dir, entry: dict) -> Path | None:
+    """collector.resolve_history_log: old <run_id>.log or AUTO-MAS v5.8's <date>/<record id>/0.log."""
+    from ark_relay.core.collector import resolve_history_log  # noqa: PLC0415
+    return resolve_history_log(history_dir, entry)
+
+
 def walked_today(ledger_entries: list[dict], history_dir: Path, by_label: dict[str, str],
                  maaend_dir=None, zh_cn: dict | None = None) -> set[str]:
     """Route ids walked through by any of the day's MaaEnd runs (walked_routes over each run's
@@ -736,7 +758,9 @@ def walked_today(ledger_entries: list[dict], history_dir: Path, by_label: dict[s
     for e in ledger_entries:
         if e.get("script") != "MaaEnd" or not e.get("run_id"):
             continue
-        p = Path(history_dir) / (str(e["run_id"]) + ".log")
+        p = _history_log(history_dir, e)
+        if p is None:
+            continue
         try:
             text = p.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -758,8 +782,8 @@ def latest_gathering_run(ledger_entries: list[dict], history_dir: Path, labels: 
     """
     runs = [e for e in ledger_entries if e.get("script") == "MaaEnd" and e.get("run_id")]
     for rec in reversed(runs):
-        p = Path(history_dir) / (str(rec["run_id"]) + ".log")
-        if not p.is_file():
+        p = _history_log(history_dir, rec)
+        if p is None:
             continue
         text = p.read_text(encoding="utf-8", errors="replace")
         if not _VERDICT.search(text):
@@ -886,7 +910,8 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     if not last:
         log.info("自动采集补跑：%s 没有带采集结论的终末地记录", day)
         return False
-    blocked = _blocked_in(Path(cfg.history_dir) / (str(last["run_id"]) + ".log"), cfg.maaend_dir, zh)
+    blocked = _blocked_in(_history_log(cfg.history_dir, last) or Path(cfg.history_dir) / (str(last["run_id"]) + ".log"),
+                          cfg.maaend_dir, zh)
     if extra := [r for r in blocked if r not in routes]:
         routes = list(routes) + extra
         log.info("自动采集补跑：%s 里 %s %s，算没走通一起补", last["run_id"],
@@ -947,7 +972,8 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
         log.warning("自动采集补跑：路线都走通了，但游戏开成窗口后没改回全屏（%s）；下次调度程序跑完终末地会改回",
                     seen["not_restored"])
     if not failed and not unknown:
-        eng.state.mark_incomplete(day, last["run_id"], "")
+        # Only the gathering's own undone item: another task's (基质刷取 ...) still stands.
+        eng.state.clear_incomplete_items(day, last["run_id"], GATHERING_UNDONE)
         eng.notifier.send(texts.COLLECT_RETRY_OK, body)
         # Healed by the retry, so not pushed - and one red item, so a session looks at
         # why the routes failed the first time (techlog.self_heal).

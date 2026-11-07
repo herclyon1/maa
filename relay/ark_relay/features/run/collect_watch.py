@@ -134,12 +134,14 @@ class Watcher:
             # MaaEnd exits) are still unread there.
             baks = sorted(p.parent.glob("maafw.bak.*.log"), key=lambda q: q.stat().st_mtime)
             if baks:
-                notes.extend(self._read_from(baks[-1], self._offset))
+                # final: the old file is closed, so its last line is whole even without a
+                # newline - kept as the tail it was dropped by the reset below (audit B-06).
+                notes.extend(self._read_from(baks[-1], self._offset, final=True))
             self._offset, self._tail = 0, ""
         notes.extend(self._read_from(p, self._offset, track=True))
         return notes
 
-    def _read_from(self, p: Path, offset: int, *, track: bool = False) -> list[str]:
+    def _read_from(self, p: Path, offset: int, *, track: bool = False, final: bool = False) -> list[str]:
         try:
             with p.open("rb") as fh:
                 fh.seek(offset)
@@ -149,7 +151,10 @@ class Watcher:
         if not data:
             return []
         text = self._tail + data.decode("utf-8", "replace")
-        text, _, rest = text.rpartition("\n")
+        if final:
+            text, rest = text.rstrip("\r\n"), ""
+        else:
+            text, _, rest = text.rpartition("\n")
         if text:
             self.lines_seen += text.count("\n") + 1
             for line in reversed(text.splitlines()):

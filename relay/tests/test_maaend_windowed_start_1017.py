@@ -493,7 +493,8 @@ def outcome(not_restored):
     sent = []
     eng = types.SimpleNamespace(
         cfg=types.SimpleNamespace(state_dir=sd, maaend_dir=str(sd), history_dir=str(sd), automas_dir=None),
-        state=types.SimpleNamespace(read_ledger=lambda d: [], mark_incomplete=lambda *a: True),
+        state=types.SimpleNamespace(read_ledger=lambda d: [], mark_incomplete=lambda *a: True,
+                                    clear_incomplete_items=lambda *a: True),
         notifier=types.SimpleNamespace(send=lambda t, b, **kw: sent.append((t, kw.get("alert", False))) or []),
         _scripts_running=lambda: False)
 

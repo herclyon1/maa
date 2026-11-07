@@ -316,6 +316,15 @@ def latest_okww_run_log(history_dir) -> "tuple[Path, str] | None":
         return None
     days = sorted((d for d in hist.iterdir() if d.is_dir()), reverse=True)[:7]
     logs = [f for d in days for f in d.rglob("OK-WW-*.log")]
+    # AUTO-MAS v5.8.0-beta.2 on: no OK-WW-*.log, each run is a history.db row whose log is
+    # <date>/<record id>/0.log; the glob alone found nothing newer than 2026-10-28
+    # (audit 2026-11-08 B-01).
+    from ark_relay.core.collector import _db_rows  # noqa: PLC0415 - collector imports this module
+    week = {d.name for d in days}
+    for rid, _t, date_s, _u, script_name, _m, _d, log_rel in _db_rows(hist):
+        if str(script_name).startswith("OK-WW") and str(date_s) in week:
+            if (f := hist / (log_rel or f"{date_s}/{rid}/0.log")).is_file():
+                logs.append(f)
     if not logs:
         return None
     newest = max(logs, key=lambda f: f.stat().st_mtime)
@@ -936,6 +945,31 @@ def maaend_no_self_exit(text: str, own_log: bool = False) -> bool:
     return _all_done_no_exit(text, own_log)
 
 
+def _maaend_cut_short(text: str) -> list[Check]:
+    """Failed checks for a round MaaEnd cut short although AUTO-MAS booked it ok (audit
+    2026-11-08 B-03): a task with more 「任务开始」 than 「任务完成/失败」, and MaaEnd's own stop
+    (「任务开始: 停止任务」, __SceneCheckAbortPipeline PostStopping the chain, 2026-10-08
+    10:34:16) before the round's closing task with fewer tasks finished than it was given.
+
+    The stop alone is not enough: MXU prints it whenever the chain is stopped, also when
+    AUTO-MAS stops a MaaEnd that finished everything and sat (collector_maaend
+    _maaend_round_closed). Without the scheduled count (MaaEnd's own log missing) a stop
+    before the closing task counts."""
+    stop = collector_maaend._END_STOP_MARK
+    starts = [collector_maaend._strip_emoji(n) for n in re.findall(r"任务开始[:：]\s*(\S.+?)\s*$", text, re.M)]
+    ends = [collector_maaend._strip_emoji(n) for n in re.findall(r"任务(?:完成|失败)[:：]\s*(\S.+?)\s*$", text, re.M)]
+    out = [Check(f"{name} 跑完", False, f"{name} 开始了 {Counter(starts)[name]} 次，只结束了 {Counter(ends)[name]} 次")
+           for name in (Counter(n for n in starts if n != stop) - Counter(ends))]
+    if stop in starts and not collector_maaend._maaend_round_closed(text):
+        counts = [int(n) for n in _MAAEND_SCHEDULED.findall(text)]
+        finished = len([n for n in ends if n != stop])
+        if not counts or finished < counts[-1]:
+            out.append(Check("MaaEnd 没被中途停掉", False,
+                             "日志里有「停止任务」，停在收尾之前"
+                             + (f"，排了 {counts[-1]} 个任务只结束了 {finished} 个" if counts else "")))
+    return out
+
+
 def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -> list[Check]:
     """Verify one MaaEnd run.
 
@@ -960,6 +994,7 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
         out.append(Check("MaaEnd 跑完", done,
                          "" if done else "日志里没有「自动执行任务完成」"))
     done = done or all_done_no_exit
+    out += _maaend_cut_short(text)
 
     # A failed universal jump (SceneAnyEnterWorld / PipelineTask bad next) always
     # counts as a fault -- 2026-08-27 was exactly the "stuck on a dialog, reports no

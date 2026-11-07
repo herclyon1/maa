@@ -202,6 +202,14 @@ cut = base[:base.rindex("[2026-09-28 11:22:07.978]")] + ("[2026-09-28 11:22:40.4
 check("the stop task does not stand in for a missing 关闭游戏", collector_maaend._maaend_all_done(cut), False)
 
 print()
+print("\n[audit 11-08 B-07: a scene check or a warning is no evidence]")
+_stop = (FX / "maaend_stop_task_2026-10-08.log").read_text(encoding="utf-8")
+check("10-08 10:34 装备制造: its scene-check lines are not evidence",
+      collector_maaend.task_evidence(_stop).get("装备制造"), "")
+_w = ("[2026-11-08 10:00:00.000] 任务开始: 🚚转交委托\n[2026-11-08 10:00:01.000] [WRN] something\n"
+      "[2026-11-08 10:00:02.000] FailureCollector dump\n[2026-11-08 10:00:03.000] 任务完成: 🚚转交委托\n")
+check("[WRN] and FailureCollector lines are not evidence", collector_maaend.task_evidence(_w).get("转交委托"), "")
+
 if fails:
     print("FAILED:", fails)
     sys.exit(1)

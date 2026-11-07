@@ -447,7 +447,7 @@ check("头一行写出哪一项、为什么不算、证据包", last_body(e).spl
       "终末地早班：赠送干员礼物 程序说做完了，但游戏里拿不出证据（日志里没有游戏回显），"
       f"不算完成，已交给我们这边去查（证据包 {PAGE}）")
 handle._handle(e, rec("MaaEnd", at(9, 40), ok=True, raw=dict(GIFT)))
-check("同一天同样这几项又没证据：不重推", len(alarms(e)), 1)
+check("同一天同样这几项又没证据：这一趟也进群（D210，audit 11-08 C-01）", alarms(e), [title, title])
 e = build()
 # The desktop picture is taken 5-8 s after the task ended and shows the next task
 # (task_shots.py, verify ledger #28): booked now, it backs nothing. What backs these

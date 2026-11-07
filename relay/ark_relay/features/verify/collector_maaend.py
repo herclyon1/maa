@@ -11,6 +11,7 @@ here under their old names.
 from __future__ import annotations
 
 import re
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -86,10 +87,17 @@ def _maaend_all_done(text: str, failed: "list[str] | None" = None) -> bool:
     record shows one.
     """
     started = [_strip_emoji(m.group(1)) for m in _END_TASK_START.finditer(text)]
-    done = {_strip_emoji(m.group(1)) for m in _END_TASK_DONE.finditer(text)}
+    done = Counter(_strip_emoji(m.group(1)) for m in _END_TASK_DONE.finditer(text))
     if not started or _END_TASK_FAIL.search(text):
         return False
-    if not all(s in done for s in started):
+    # By count: a task started twice and completed once did not complete (audit 2026-11-08 B-02).
+    if Counter(started) - done:
+        return False
+    # A display name AUTO-MAS lists as failed that never started is a round that stopped
+    # short, closing task or not: checked before the closing task, which alone booked such
+    # a round ok (audit 2026-11-08 B-02). A bare key (SellProduct) is AUTO-MAS's own
+    # naming gap and says nothing either way.
+    if failed and any(not _AUTOMAS_KEY.fullmatch(n) and n not in started for n in failed):
         return False
     if _maaend_round_closed(text):
         return True
@@ -960,9 +968,16 @@ def task_evidence(text: str) -> dict[str, str]:
                 out[name] = first
             cur, first = "", ""
             continue
-        if cur and not first and msg:
+        if cur and not first and msg and not _NOT_EVIDENCE.search(msg):
             first = msg[:80]
     return out
+
+
+# Lines MaaEnd writes whether or not a task does anything: its scene check and the
+# warnings / failure dumps around it. On 2026-10-08 10:34 the only lines inside one task
+# were the scene-check note and the UID warning, and that task was aborted
+# (fixtures/maaend_stop_task_2026-10-08.log) - neither is evidence (audit 2026-11-08 B-07).
+_NOT_EVIDENCE = re.compile(r"^正在检查画面|^UID显示不完整|\[(?:ERR|WRN)\]|FailureCollector")
 
 
 def task_times(text: str) -> dict[str, tuple[datetime, datetime]]:

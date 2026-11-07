@@ -592,8 +592,8 @@ check("GiftFull alone is not an end (its next is the retry): FAIL, pushed", (st,
 print("\n[账本：四个任务有没有证据看终末地自己的记录，桌面截图不算]")
 abort_log = FIX / "2026-10-08_MaaEnd-06-31-06.log"
 araw = collector_maaend.parse_maaend_log(abort_log)
-check("the log alone has a line inside 装备制造 (MaaEnd's scene-check note)",
-      bool((araw.get("tasks_evidence") or {}).get("装备制造")), True)
+check("装备制造's only line, MaaEnd's scene-check note, is no evidence on its own (audit 11-08 B-07)",
+      bool((araw.get("tasks_evidence") or {}).get("装备制造")), False)
 araw["tasks_shot"] = ["赠送干员礼物", "装备制造"]   # 103411 / 103416 in that bundle
 started = datetime(2026, 10, 8, 10, 32, 8, tzinfo=SERVER_TZ)
 arec = RunRecord(run_id="2026-10-08/endfield/MaaEnd-06-31-06", script="MaaEnd", user="endfield",
@@ -640,6 +640,21 @@ check("all in plain Chinese",
       texts.plain(" ".join(why("MaaEnd", x) for x in (["基建任务"], ["装备制造"], ["装备制造", "基建任务"]))), [])
 
 print()
+print("\n[audit 11-08 B-07: a task with no end event does not take the next task's first nodes]")
+_t = datetime(2026, 11, 8, 10, 0, 0)
+_ev = [(_t, "Tasker.Task.Starting", {"entry": "GiftOperatorMain", "task_id": 1}),
+       (_t + timedelta(seconds=10), "Node.PipelineNode.Succeeded", {"task_id": 1, "node_id": 1, "name": "GiftOperatorEnter"}),
+       (_t + timedelta(seconds=20), "Tasker.Task.Starting", {"entry": "GearAssemblyStart", "task_id": 2}),
+       (_t + timedelta(seconds=21), "Node.PipelineNode.Succeeded", {"task_id": 2, "node_id": 2, "name": "GiftOperatorConfirmGift"})]
+_tr = maaend_fwlog.task_trail(_ev, "GiftOperatorMain", _t, _t + timedelta(seconds=19))
+check("no end event: its own node is kept", _tr["nodes"].get("GiftOperatorEnter"), 1)
+check("the next task's node 2 s after its start is not borrowed", _tr["nodes"].get("GiftOperatorConfirmGift"), None)
+_ev2 = _ev[:2] + [(_t + timedelta(seconds=15), "Node.PipelineNode.Succeeded",
+                   {"task_id": 559, "node_id": 3, "name": "EnvironmentMonitoringTakePhoto"})] + _ev[2:]
+_tr2 = maaend_fwlog.task_trail(_ev2, "GiftOperatorMain", _t, _t + timedelta(seconds=19))
+check("a sub-task's node before the next start still counts (sub-tasks post no Starting)",
+      _tr2["nodes"].get("EnvironmentMonitoringTakePhoto"), 1)
+
 if fails:
     print(f"✗ {len(fails)} 条没过：{fails}")
     sys.exit(1)

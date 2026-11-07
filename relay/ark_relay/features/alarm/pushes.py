@@ -107,9 +107,12 @@ def _push_unverified(eng, rec: RunRecord) -> None:
                                            _unverified_why(rec.script, items, entries), page)
         body = (head + texts.unverified_trail_lines(_trail_whys(rec, items, entries))
                 + ("" if page else texts.EVIDENCE_NOT_SHIPPED + "\n"))
-        # Keyed by the items, not the record: a later run of the same game the same
-        # day with the same items left unbacked is the same alarm, not a new one.
-        key = f"{rec.script}:{'、'.join(items)}"
+        # Keyed by the record too: every run that leaves items unbacked is pushed (D210,
+        # 「不论多少次什么错误都要发」). Keyed by the items alone, a second run of the day was
+        # only an INFO line handing it to machine check #28, which covers MaaEnd's four
+        # trail tasks and nothing of MAA or OK-WW (audit 2026-11-08 C-01). A replay of this
+        # very record still finds its own key and is not pushed twice.
+        key = f"{rec.script}:{rec.run_id}:{'、'.join(items)}"
         # Which record's booking sent it: a record replayed after its handling broke
         # off (_append_ledger_once) finds its own alarm, not an earlier run's.
         mine = unresolved._key(UNVERIFIED_BY, rec.run_id)
@@ -139,10 +142,9 @@ def _push_unverified(eng, rec: RunRecord) -> None:
                     log.error("「没证据」已经发出（或排着下一轮发），但「是 %s 这一趟发的」没记下："
                               "这一趟的记账若重放，上机核对第 28 条会单独再报一次", rec.run_id, exc_info=True)
         else:
-            # The same alarm went out for an earlier run of the day: machine check #28
-            # pushes its own FAIL about this run (one abort, one group message).
-            log.info("「%s」今天已经为更早的一趟发过，这一趟由上机核对第 28 条单独报（%s）",
-                     texts.unverified_alarm(game, shift, len(items)), rec.run_id)
+            # Only a replay of this record whose own mark did not land gets here: its alarm
+            # went out under the same key the first time.
+            log.info("「%s」这一趟已经发过（%s 重放），不再发", texts.unverified_alarm(game, shift, len(items)), rec.run_id)
     except Exception:
         log.exception("「没证据」这一项没能推到群里（%s）", rec.run_id)
 

@@ -184,5 +184,21 @@ _plan.recent_due_queues = _orig
 (STATE / "ledger-2026-08-21.jsonl").unlink()
 check("one push across the restart", len(sent), 1)
 
+print("\n[audit 11-08 C-06: a run a person started at AUTO-MAS is not the queue's run]")
+reset()
+BOOT[0] = at(21, 20)
+E._started_at = at(21, 0)
+_real_recent = E._recent_entries
+E._recent_entries = lambda now: [{"run_id": "2026-08-21/wuwa/OK-WW-17-40-00", "script": "OK-WW",
+                                  "started": at(21, 40).isoformat(), "ok": True, "raw": {"hand_started": "手动"}}]
+E._check_missed_runs(at(22, 0))
+check("hand-started run only: still the missed-run alarm", len(sent), 1)
+reset()
+E._recent_entries = lambda now: [{"run_id": "2026-08-21/arknights/MAA-17-31-00", "script": "MAA",
+                                  "started": at(21, 31).isoformat(), "ok": True, "raw": {"manual_stop": "停一切"}}]
+E._check_missed_runs(at(22, 0))
+check("a run 停一切 stopped did start: no missed-run alarm", len(sent), 0)
+E._recent_entries = _real_recent
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

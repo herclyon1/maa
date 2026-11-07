@@ -209,6 +209,30 @@ _OKWW_STAMINA_CAP = 240
 _OKWW_SEC_PER_POINT = 360
 
 
+def resolve_history_log(history_root, entry: dict) -> Path | None:
+    """The AUTO-MAS history log of one ledger entry; None when it is not on disk.
+
+    Old layout: history/<run_id>.log (run_id = <date>/<user>/<stem>). AUTO-MAS v5.8.0-beta.2
+    on: history/<date>/<automas_record_id>/0.log, the id kept in raw.automas_record_id
+    (_db_identity). Every reader of a ledger entry's log goes through here: collect_retry
+    built only the old path, found no log for any run since 2026-10-28, and so never
+    retried a gathering route (audit 2026-11-08 B-01)."""
+    if not history_root or not entry:
+        return None
+    run_id = str(entry.get("run_id") or "")
+    if not run_id:
+        return None
+    old = Path(history_root) / (run_id + ".log")
+    if old.is_file():
+        return old
+    raw = entry.get("raw") if isinstance(entry.get("raw"), dict) else {}
+    if rid := raw.get("automas_record_id"):
+        new = Path(history_root) / run_id.split("/", 1)[0] / str(rid) / "0.log"
+        if new.is_file():
+            return new
+    return None
+
+
 def refresh_raw(entry: dict, history_root: Path | None, maaend_dir: Path | None = None) -> dict:
     """Recompute an old ledger entry's `raw` from its history log before reporting.
 
@@ -227,10 +251,8 @@ def refresh_raw(entry: dict, history_root: Path | None, maaend_dir: Path | None 
     script = entry.get("script")
     try:
         run_id = str(entry.get("run_id") or "")
-        log_path = Path(history_root) / (run_id + ".log")
-        if not log_path.is_file() and (rid := raw.get("automas_record_id")):
-            log_path = Path(history_root) / run_id.split("/", 1)[0] / str(rid) / "0.log"
-        if not log_path.is_file():
+        log_path = resolve_history_log(history_root, entry)
+        if log_path is None:
             return entry
         if script == "MAA":
             parsed = parse_maa_log(log_path)
@@ -402,6 +424,9 @@ def _automas_ended_maaend(history_root: Path, result_at) -> "datetime | None":
 # OK-WW is a 通用脚本 there, under general_result with the script named by the stem prefix.
 _DB_RESULT_KEY = {"MAA": "maa_result", "MaaEnd": "maaend_result"}
 _db_said: set[str] = set()     # history.db read errors already logged in this process
+_db_fail_streak = [0]          # history.db reads failed in a row (scan runs every 30 s or on a write)
+DB_FAIL_WARN_AFTER = 3         # this many in a row and the group hears it, once per streak
+_db_log_missing: dict[str, float] = {}   # record id -> when its 0.log was first found missing
 
 
 def _db_rows(history_root: Path) -> list[tuple]:
@@ -413,17 +438,27 @@ def _db_rows(history_root: Path) -> list[tuple]:
     try:
         con = sqlite3.connect(f"file:{db.as_posix()}?mode=ro", uri=True)
         try:
-            return con.execute("SELECT id, time, date, username, script_name, message, data, log_path"
+            rows = con.execute("SELECT id, time, date, username, script_name, message, data, log_path"
                                " FROM records ORDER BY timestamp").fetchall()
         finally:
             con.close()
     except sqlite3.Error as e:
         # INFO, not WARNING (a WARNING is a group message): AUTO-MAS holding the file for
-        # a moment is read on the next scan, 30 s later at the latest.
+        # a moment is read on the next scan, 30 s later at the latest. A read failing
+        # DB_FAIL_WARN_AFTER times in a row is no moment: nothing is booked meanwhile, and
+        # until 2026-11-08 nobody heard it (audit B-07).
+        _db_fail_streak[0] += 1
         if str(e) not in _db_said:
             _db_said.add(str(e))
             log.info("AUTO-MAS 的 history.db 这次读不了（%s），下一轮再读", e)
+        if _db_fail_streak[0] == DB_FAIL_WARN_AFTER:
+            log.warning("AUTO-MAS 的 history.db 连续 %d 次读不了（%s），这期间跑完的记录都记不上账",
+                        DB_FAIL_WARN_AFTER, e)
         return []
+    if _db_fail_streak[0] >= DB_FAIL_WARN_AFTER:
+        log.info("AUTO-MAS 的 history.db 又读得了（之前连续 %d 次读不了）", _db_fail_streak[0])
+    _db_fail_streak[0] = 0
+    return rows
 
 
 def _db_identity(row: tuple, history_root: Path):
@@ -457,8 +492,10 @@ def _db_identity(row: tuple, history_root: Path):
 
 
 def parse_db_record(row: tuple, history_root: Path,
-                    maaend_dir: Path | None = None) -> RunRecord | None:
-    """Parse one history.db row (AUTO-MAS v5.8.0-beta.2 on). None if it is not a run record."""
+                    maaend_dir: Path | None = None, suffix: str = "") -> RunRecord | None:
+    """Parse one history.db row (AUTO-MAS v5.8.0-beta.2 on). None if it is not a run record.
+    `suffix` goes on the run_id, not the stem the script name is read from (scan: a second
+    row of the same second)."""
     got = _db_identity(row, history_root)
     if got is None:
         return None
@@ -469,7 +506,10 @@ def parse_db_record(row: tuple, history_root: Path,
         finished = started
     if finished < started:
         finished = started
-    return _build_record(raw, json_path, history_root, maaend_dir, date_str, user, stem, started, finished)
+    rec = _build_record(raw, json_path, history_root, maaend_dir, date_str, user, stem, started, finished)
+    if rec is not None and suffix:
+        rec.run_id += suffix
+    return rec
 
 
 def _record_identity(json_path: Path, history_root: Path):
@@ -702,11 +742,30 @@ def scan(history_root: Path, seen: set[str], maaend_dir: Path | None = None) -> 
             out.append(rec)
     # AUTO-MAS v5.8.0-beta.2 on: the rows of data/history.db. A row is written when its run
     # ends, after its 0.log, so there is no half-written record to wait out here.
+    # Two rows of one user and script in the same second would share a run_id, and the second
+    # would read as seen and never be booked: the later one gets its record id's head as a
+    # suffix (audit 2026-11-08 B-07). Rows come oldest first, so a run_id once given stays.
+    taken: set[str] = set()
     for row in _db_rows(history_root):
         got = _db_identity(row, history_root)
-        if got is None or f"{got[2]}/{got[3]}/{got[4]}" in seen:
+        if got is None:
             continue
-        rec = parse_db_record(row, history_root, maaend_dir)
+        rid_ = str(row[0])
+        base = f"{got[2]}/{got[3]}/{got[4]}"
+        suffix = f"-{rid_[:8]}" if base in taken else ""
+        taken.add(base)
+        if base + suffix in seen:
+            continue
+        # The row is written after its 0.log (above); a 0.log still missing is waited out
+        # for 120 s like the JSON layout's .log, then the run is booked without it.
+        log_file = got[1].with_suffix(".log")
+        if not log_file.exists():
+            first = _db_log_missing.setdefault(rid_, now)
+            if now - first < 120:
+                continue
+        else:
+            _db_log_missing.pop(rid_, None)
+        rec = parse_db_record(row, history_root, maaend_dir, suffix=suffix)
         if rec and rec.run_id not in seen:
             out.append(rec)
     _say_unparsed()

@@ -629,6 +629,7 @@ check("看到在跑，记在昨天那份里", bool(mk_of(e, "MaaEnd", yday).get(
 check("仍算在跑", makeup.in_flight(e.cfg.state_dir, mid + timedelta(minutes=15)), ["MaaEnd"])
 r_mid = rec("MaaEnd", mid + timedelta(minutes=1), ok=True)
 makeup.on_record(e, r_mid)
+makeup.after_outcome(e, r_mid, None)   # its own outcome check passed (handle._handle_success)
 check("零点后开始的记录也记进昨天那份", mk_of(e, "MaaEnd", yday).get("result"), makeup.OK)
 row = {x["run_id"]: x for x in e.state.read_ledger(yday)}[y_rec.run_id]
 check("昨天那条失败记上补跑做成", bool((row.get("raw") or {}).get("makeup_ok")))
@@ -762,7 +763,19 @@ e.state.append_ledger(inc)
 e.state.mark_incomplete(day, inc.run_id, "有 1 项没干成")
 makeup._write_marker(e.cfg.state_dir, day, {"MaaEnd": {"dispatched_at": NOW.isoformat(), "result": makeup.DISPATCHED,
                                                        "tries": 1, "tasks": [WHOLE]}})
-makeup.on_record(e, rec("MaaEnd", NOW + timedelta(minutes=1), ok=True))
+mk_rec = rec("MaaEnd", NOW + timedelta(minutes=1), ok=True)
+makeup.on_record(e, mk_rec)
+check("结果核对之前不清（AUTO-MAS 说成功不算干完）",
+      {x["run_id"]: x for x in e.state.read_ledger(day)}[inc.run_id].get("incomplete"), "有 1 项没干成")
+makeup.after_outcome(e, mk_rec, "MaaEnd 这一轮有 1 项没干成，但它自己没报错：\n· 基质刷取 真的刷了：x")
+check("补跑自己核对没过：前面那条照旧没干完",
+      {x["run_id"]: x for x in e.state.read_ledger(day)}[inc.run_id].get("incomplete"), "有 1 项没干成")
+e.state.mark_incomplete(day, inc.run_id, "有 1 项没干成")
+makeup._write_marker(e.cfg.state_dir, day, {"MaaEnd": {"dispatched_at": NOW.isoformat(), "result": makeup.DISPATCHED,
+                                                       "tries": 1, "tasks": [WHOLE]}})
+mk_rec2 = rec("MaaEnd", NOW + timedelta(minutes=2), ok=True, run_id=f"{day}/endfield/MaaEnd-mk2")
+makeup.on_record(e, mk_rec2)
+makeup.after_outcome(e, mk_rec2, None)
 check("没干完那条清掉了", {x["run_id"]: x for x in e.state.read_ledger(day)}[inc.run_id].get("incomplete"), "")
 
 print("\n[the day's make-up marker is there but corrupt: no second make-up, said once]")
