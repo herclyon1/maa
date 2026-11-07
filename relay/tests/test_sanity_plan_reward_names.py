@@ -142,5 +142,14 @@ out = box._apply([{"action": "sanity_plan", "tab": "OperatorProgression",
                    "line": "OperatorEXP", "rewards_set": "AdvancedCombatRecord"}])
 check("a real case gets ✅", [o.startswith("✅ 理智方案") for o in out], [True])
 
+print("\n[orders run in the order written (11-08 [D-08])]")
+_saved_ac = inbox.apply_command
+inbox.apply_command = lambda c: (True, "first")
+out = box._apply([{"action": "skip_today", "queue": "x"},
+                  {"action": "sanity_plan", "tab": "OperatorProgression",
+                   "line": "OperatorEXP", "rewards_set": "AdvancedCombatRecord"}])
+inbox.apply_command = _saved_ac
+check("the earlier order answers first", [o.startswith("✅ first") for o in out], [True, False])
+
 print("\n" + ("FAILED: " + ", ".join(FAILED) if FAILED else "all checks passed"))
 sys.exit(1 if FAILED else 0)

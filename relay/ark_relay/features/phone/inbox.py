@@ -412,36 +412,35 @@ class Inbox:
         # commands.ALLOWED, the App never had it), so apply_command refuses it.
         others = [c for c in commands if isinstance(c, dict)]
 
-        for cmd in [c for c in others if c.get("action") == "queue"]:
-            if not self.automas_dir:
-                out.append("✗ 队列：找不到 AUTO-MAS 目录，跳过")
-                continue
-            ok, detail = queues.apply(
-                self.automas_dir, str(cmd.get("name") or ""),
-                cmd.get("enabled"), cmd.get("scripts"), state_dir=self.state_dir)
-            out.append(("✅ " if ok else "✗ ") + detail)
-
-        for cmd in [c for c in others if c.get("action") == "sanity_plan"]:
-            # Decides where MaaEnd spends its sanity. This writes the AUTO-MAS
-            # **master copy** -- MaaEnd's own copy is overwritten wholesale from the
-            # master on every startup.
-            if not self.automas_dir:
-                out.append("✗ 理智方案：找不到 AUTO-MAS 目录，跳过")
-                continue
-            ok, detail = sanity_plan.set_plan(
-                self.automas_dir, str(cmd.get("tab") or ""),
-                str(cmd.get("line") or ""), str(cmd.get("rewards_set") or ""),
-                str(cmd.get("location") or ""))
-            out.append(("✅ 理智方案：" if ok else "✗ 理智方案：") + detail)
-
-        for cmd in [c for c in others
-                    if c.get("action") not in ("sanity_plan", "queue")]:
-            # The file can only be written by whoever can push to the repo, so
-            # authorship is the confirmation that gate ② asks for.
-            ok, detail = apply_command({**cmd, "confirmed": True})
-            # On success report only the human-readable part (detail already
-            # reads like 「刷取关卡：TO-5 → 1-7」); the internal action name is
-            # added only on failure, where it is a diagnostic clue and not
-            # noise.
-            out.append(f"✅ {detail}" if ok else f"✗ {cmd.get('action')}: {detail}")
+        # In the order they were written (11-08 [D-08]): queue and sanity_plan orders
+        # used to run first, so a later order could be undone by an earlier one.
+        for cmd in others:
+            act = cmd.get("action")
+            if act == "queue":
+                if not self.automas_dir:
+                    out.append("✗ 队列：找不到 AUTO-MAS 目录，跳过")
+                    continue
+                ok, detail = queues.apply(
+                    self.automas_dir, str(cmd.get("name") or ""),
+                    cmd.get("enabled"), cmd.get("scripts"), state_dir=self.state_dir)
+                out.append(("✅ " if ok else "✗ ") + detail)
+            elif act == "sanity_plan":
+                # Decides where MaaEnd spends its sanity. This writes the AUTO-MAS
+                # **master copy** -- MaaEnd's own copy is overwritten wholesale from the
+                # master on every startup.
+                if not self.automas_dir:
+                    out.append("✗ 理智方案：找不到 AUTO-MAS 目录，跳过")
+                    continue
+                ok, detail = sanity_plan.set_plan(
+                    self.automas_dir, str(cmd.get("tab") or ""),
+                    str(cmd.get("line") or ""), str(cmd.get("rewards_set") or ""),
+                    str(cmd.get("location") or ""))
+                out.append(("✅ 理智方案：" if ok else "✗ 理智方案：") + detail)
+            else:
+                # The file can only be written by whoever can push to the repo, so
+                # authorship is the confirmation that gate ② asks for.
+                ok, detail = apply_command({**cmd, "confirmed": True})
+                # On success report only the human-readable part; the internal action
+                # name is added only on failure, where it is a diagnostic clue.
+                out.append(f"✅ {detail}" if ok else f"✗ {act}: {detail}")
         return out
