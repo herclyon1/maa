@@ -48,10 +48,9 @@ mark). It is a one-time mark, not a state, and it has no expiry:
   how a deploy that needed the PC on after a shift lets it power off once verified).
   dispatch_guard's test-off releases only an occasion debug mode itself skipped (8bc5e2f6),
   so a test after a spent mark does not power the machine off.
-* The occasion is keyed by the day plus its shift records (shutdown._shutdown_key), so an
-  occasion skipped after the evening shift ends at 00:00 Beijing: the main loop wakes at
-  midnight (day roll), the new day's key differs and the relay powers off then, well before
-  the 08:40 plug cut. No interim report goes out for that new day: nothing ran on it.
+* The occasion is keyed by the latest day with shift records plus its shift count
+  (shutdown._shutdown_key), so an occasion skipped after the evening shift stays skipped
+  across the 00:00 midnight wake until the next scheduled shift runs and records.
 
 It calls the relay's own `ark_relay.features.modes.modes.set_skip_shutdown`;
 **it must not be changed to write the state file directly**: after the 2026-09-08 state

@@ -66,7 +66,7 @@ def atomic_write_text(path: Path, text: str, newline: str | None = None) -> None
     the new one, never a truncated one. Configs AUTO-MAS cannot start without
     are written through here.
     """
-    atomic_write_bytes(path, text.encode("utf-8") if newline is None
+    atomic_write_bytes(path, text.encode("utf-8") if not newline
                        else text.replace("\n", newline).encode("utf-8"))
 
 

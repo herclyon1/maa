@@ -134,6 +134,10 @@ import os  # noqa: E402
 os.environ["ARK_STATE_DIR"] = str(tmpdir())
 from ark_relay.features.phone import commands  # noqa: E402
 check("白名单、免确认", "monthcard" in commands.REVERSIBLE, True)
+p2 = tmpdir()
+monthcard.apply(p2, {"game": "终末地", "add": 1, "at": "2026-09-25T15:30:00Z"}, today=D)
+check("不带 last 只带 at（隔夜收到）：按发出那天的上海日期算第 1 天",
+      monthcard.status(p2, today=D)["终末地"]["最后领取"], "2026-10-24")
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

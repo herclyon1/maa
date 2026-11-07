@@ -152,5 +152,67 @@ try:
 except FileNotFoundError:
     check("neither file: the error reading the JSON gives", True)
 
+print("\n[offline file-edit fallback on v5.8 YAML (11-08 [D-05])]")
+import os  # noqa: E402
+from ark_relay.features.phone import commands  # noqa: E402
+from ark_relay.features.schedule import queues  # noqa: E402
+
+yroot = tmpdir()
+ycfg = yroot / "config"
+ycfg.mkdir()
+(ycfg / "queues.yaml").write_text(QUEUES, encoding="utf-8")
+SCRIPTS_YAML = """\
+order:
+- uid: s1
+  type: ScriptConfig
+- uid: s2
+  type: ScriptConfig
+data:
+  s1:
+    Info:
+      Name: MAA
+    UserData:
+      order:
+      - uid: u1
+        type: MAAUserConfig
+      data:
+        u1:
+          Info:
+            Name: 默认用户
+            Stage: CE-6
+            MedicineNumb: 0
+  s2:
+    Info:
+      Name: MaaEnd
+    Game:
+      WaitTime: 60
+"""
+(ycfg / "scripts.yaml").write_text(SCRIPTS_YAML, encoding="utf-8")
+os.environ["ARK_AUTOMAS_DIR"] = str(yroot)
+orig_backend = commands._backend_scripts
+orig_refusal = commands._stage_refusal
+orig_q_backend = queues._enabled_via_backend
+commands._backend_scripts = lambda: (None, "")
+commands._stage_refusal = lambda s: ""
+queues._enabled_via_backend = lambda name, enabled: None
+try:
+    ok_s, msg_s = commands._set_stage("1-7")
+    check("YAML _set_stage ok", ok_s, True)
+    check("YAML _set_stage read back", masconfig.read(ycfg / "ScriptConfig.json")["s1"]["SubConfigsInfo"]["UserData"]["u1"]["Info"]["Stage"], "1-7")
+    ok_m, msg_m = commands._set_medicine(5)
+    check("YAML _set_medicine ok", ok_m, True)
+    check("YAML _set_medicine read back", masconfig.read(ycfg / "ScriptConfig.json")["s1"]["SubConfigsInfo"]["UserData"]["u1"]["Info"]["MedicineNumb"], 5)
+    ok_w, msg_w = commands._set_wait_time(120)
+    check("YAML _set_wait_time ok", ok_w, True)
+    check("YAML _set_wait_time read back", masconfig.read(ycfg / "ScriptConfig.json")["s2"]["Game"]["WaitTime"], 120)
+    ok_q, msg_q = queues.apply(yroot, "早班", enabled=False)
+    check("YAML queues.apply ok", ok_q, True)
+    check("YAML queues.apply read back", masconfig.read(ycfg / "QueueConfig.json")["q1"]["Info"]["TimeEnabled"], False)
+    check("no stray JSON written next to YAML", (ycfg / "QueueConfig.json").exists() or (ycfg / "ScriptConfig.json").exists(), False)
+finally:
+    commands._backend_scripts = orig_backend
+    commands._stage_refusal = orig_refusal
+    queues._enabled_via_backend = orig_q_backend
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

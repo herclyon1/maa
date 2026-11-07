@@ -10,10 +10,9 @@ That morning every reader found its JSON gone (「设置里一个脚本、队列
 QueueConfig.json 失败: [Errno 2]」, ledger #113). read() gives the v5.7 shape from either, so each
 reader keeps its one walk; the JSON wins while it exists, i.e. on an AUTO-MAS before v5.8.
 
-Only reading. A relay that wrote a JSON file next to the YAML would write where AUTO-MAS no
-longer looks, and the file would then shadow the YAML for every reader here; the file-edit
-fallbacks (commands._safe_rewrite, queues) read before they write, so with no JSON they fail
-loudly instead.
+Never write a new JSON file next to a v5.8 YAML file (it would shadow the YAML for every reader
+while AUTO-MAS ignores it); the offline file-edit fallbacks (commands._safe_rewrite, queues.apply)
+use source() and parse_text() to edit the active file in place and verify the structural diff.
 """
 from __future__ import annotations
 
@@ -47,19 +46,23 @@ def source(path: Path) -> Path:
     return path
 
 
+def parse_text(src: Path, text: str) -> dict:
+    """Parse `text` from `src` (.json or .yaml) into the v5.7 JSON shape."""
+    if Path(src).suffix == ".json":
+        return json.loads(text)
+    doc = miniyaml.loads(text)
+    if not isinstance(doc, dict):
+        raise ValueError(f"{Path(src).name}: not a mapping")
+    return legacy(doc)
+
+
 def read(path: Path) -> dict:
     """The settings `path` names, in the v5.7 JSON shape.
 
     Raises what reading the JSON would (OSError, ValueError) when neither file can be read,
     so a reader's error handling stays as it was."""
     src = source(path)
-    text = Path(src).read_text(encoding="utf-8")
-    if src.suffix == ".json":
-        return json.loads(text)
-    doc = miniyaml.loads(text)
-    if not isinstance(doc, dict):
-        raise ValueError(f"{src.name}: not a mapping")
-    return legacy(doc)
+    return parse_text(src, Path(src).read_text(encoding="utf-8"))
 
 
 def legacy(node: dict) -> dict:

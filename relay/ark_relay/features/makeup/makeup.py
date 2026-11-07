@@ -638,7 +638,11 @@ def maaend_round_only_gathering(read_ledger, last: dict, history_dir=None) -> st
         rows.append(e)
     for row in rows:
         result = str((row.get("raw") or {}).get("maaend_result") or "")
-        if collector_maaend._split_failed(result) == [GATHERING]:
+        other_failed = any(
+            not collector_maaend._strip_emoji(str(x)).startswith(GATHERING)
+            for x in (row.get("failed_tasks") or [])
+        )
+        if collector_maaend._split_failed(result) == [GATHERING] and not other_failed:
             if history_dir:
                 from ark_relay.core.collector import resolve_history_log  # noqa: PLC0415
                 if resolve_history_log(history_dir, row) is None:

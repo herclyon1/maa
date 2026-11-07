@@ -21,7 +21,6 @@ Gate ③'s structural diff catches an edit that touches more than it should
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 
@@ -99,12 +98,14 @@ def _script_config() -> Path:
 def _safe_rewrite(path: Path, mutate: Callable[[str], str],
                   expect_changed: int) -> tuple[bool, str]:
     """Back up, edit, validate, diff. Roll back unless exactly as expected."""
+    from ark_relay.core import masconfig  # noqa: PLC0415
+    path = masconfig.source(path)
     if not path.exists():
         return False, f"配置文件不存在: {path}"
     original = path.read_text(encoding="utf-8")
     try:
-        before = json.loads(original)
-    except json.JSONDecodeError as exc:
+        before = masconfig.parse_text(path, original)
+    except ValueError as exc:
         return False, f"原文件已经不是合法 JSON，拒绝改动: {exc}"
 
     try:
@@ -113,8 +114,8 @@ def _safe_rewrite(path: Path, mutate: Callable[[str], str],
         return False, f"生成改动失败: {exc}"
 
     try:
-        after = json.loads(updated)
-    except json.JSONDecodeError as exc:
+        after = masconfig.parse_text(path, updated)
+    except ValueError as exc:
         return False, f"改动后 JSON 非法，已放弃: {exc}"
 
     a, b = _flatten(before), _flatten(after)
@@ -198,9 +199,12 @@ def _set_stage(value: str) -> tuple[bool, str]:
 
     def mutate(raw: str) -> str:
         hits = re.findall(r'"Stage":\s*"[^"]*"', raw)
-        if len(hits) != 1:
-            raise ValueError(f'找到 {len(hits)} 处 "Stage"，预期恰好 1 处')
-        return re.sub(r'("Stage":\s*)"[^"]*"', rf'\1"{stage}"', raw, count=1)
+        if len(hits) == 1:
+            return re.sub(r'("Stage":\s*)"[^"]*"', rf'\1"{stage}"', raw, count=1)
+        yhits = re.findall(r"(?m)^\s*Stage:\s*\S+.*$", raw)
+        if not hits and len(yhits) == 1:
+            return re.sub(r"(?m)^(\s*Stage:\s*)\S+.*$", rf"\g<1>{stage}", raw, count=1)
+        raise ValueError(f'找到 {len(hits) or len(yhits)} 处 "Stage"，预期恰好 1 处')
 
     return _safe_rewrite(_script_config(), mutate, expect_changed=1)
 
@@ -223,9 +227,12 @@ def _set_medicine(value: Any) -> tuple[bool, str]:
 
     def mutate(raw: str) -> str:
         hits = re.findall(r'"MedicineNumb":\s*\d+', raw)
-        if len(hits) != 1:
-            raise ValueError(f'找到 {len(hits)} 处 "MedicineNumb"，预期恰好 1 处')
-        return re.sub(r'("MedicineNumb":\s*)\d+', rf"\g<1>{n}", raw, count=1)
+        if len(hits) == 1:
+            return re.sub(r'("MedicineNumb":\s*)\d+', rf"\g<1>{n}", raw, count=1)
+        yhits = re.findall(r"(?m)^\s*MedicineNumb:\s*\d+$", raw)
+        if not hits and len(yhits) == 1:
+            return re.sub(r"(?m)^(\s*MedicineNumb:\s*)\d+$", rf"\g<1>{n}", raw, count=1)
+        raise ValueError(f'找到 {len(hits) or len(yhits)} 处 "MedicineNumb"，预期恰好 1 处')
 
     return _safe_rewrite(_script_config(), mutate, expect_changed=1)
 
@@ -263,9 +270,12 @@ def _set_wait_time(value: Any) -> tuple[bool, str]:
 
     def mutate(raw: str) -> str:
         hits = re.findall(r'"WaitTime":\s*\d+', raw)
-        if len(hits) != 1:
-            raise ValueError(f'找到 {len(hits)} 处 "WaitTime"，预期恰好 1 处')
-        return re.sub(r'("WaitTime":\s*)\d+', rf"\g<1>{n}", raw, count=1)
+        if len(hits) == 1:
+            return re.sub(r'("WaitTime":\s*)\d+', rf"\g<1>{n}", raw, count=1)
+        yhits = re.findall(r"(?m)^\s*WaitTime:\s*\d+$", raw)
+        if not hits and len(yhits) == 1:
+            return re.sub(r"(?m)^(\s*WaitTime:\s*)\d+$", rf"\g<1>{n}", raw, count=1)
+        raise ValueError(f'找到 {len(hits) or len(yhits)} 处 "WaitTime"，预期恰好 1 处')
 
     return _safe_rewrite(_script_config(), mutate, expect_changed=1)
 

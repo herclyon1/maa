@@ -597,20 +597,24 @@ def _relay_dispatched(eng, group: list[dict]) -> bool:
 def _shutdown_key(eng, now: datetime) -> str:
     """Identifier for this one "time to power off" opportunity.
 
-    It is the number of the day's ledger entries that belong to a 早班/晚班 (not
-    _off_shift): the count grows every time a scheduled queue's script records, so
+    It is the day and count of the ledger entries that belong to the latest 早班/晚班
+    (not _off_shift): the count grows every time a scheduled queue's script records, so
     "the one after the evening shift" and "the one after the morning shift" are two
     different opportunities, while a hand-started or test run in between leaves the
-    key - and a skip recorded on it - as it was. Debug mode, or the spent
-    「下次跑完不关机」 mark, skips one of them (modes.shutdown_skipped); neither stops
-    the machine powering off from the next one on.
+    key - and a skip recorded on it - as it was. When today has no shift records yet
+    (e.g. at the 00:00 midnight wake after yesterday's evening shift), the key stays on
+    yesterday's shift count so a skipped evening shift does not power off at midnight.
     """
     day = now.strftime("%Y-%m-%d")
+    yday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
     today = eng.state.read_ledger(day)
-    # Yesterday's records too, so an evening shift that ran past midnight still
-    # links the records it left in today's file.
-    off = _off_shift(eng, today + eng.state.read_ledger((now - timedelta(days=1)).strftime("%Y-%m-%d")))
-    return f"{day}:{sum(1 for e in today if id(e) not in off)}"
+    yesterday = eng.state.read_ledger(yday)
+    off = _off_shift(eng, today + yesterday)
+    today_n = sum(1 for e in today if id(e) not in off)
+    if today_n or not yesterday:
+        return f"{day}:{today_n}"
+    yday_n = sum(1 for e in yesterday if id(e) not in off)
+    return f"{yday}:{yday_n}" if yday_n else f"{day}:0"
 
 
 @dataclass(frozen=True)

@@ -70,13 +70,9 @@ if True:
     # already seen: nothing comes back
     check("都记过的再扫一遍是空的", collector.scan(history, set(by)), [])
 
-    # no history.db (AUTO-MAS before v5.8.0-beta.2): the JSON layout alone, no error
-    (root / "data" / "history.db").unlink()
-    check("没有 history.db 时什么也不读、不报错", collector.scan(history, set()), [])
-
 print("\n[audit 11-08 B-01: readers of a ledger entry's log find v5.8's <date>/<record id>/0.log]")
 if True:
-    from ark_relay.core.ledger import strip_incomplete_items
+    from ark_relay.core.ledger import State, strip_incomplete_items
     from ark_relay.features.makeup import collect_retry as cr
     from ark_relay.features.verify import outcome
     end = by.get("2026-10-28/endfield/MaaEnd-05-33-08")
@@ -87,7 +83,7 @@ if True:
     check("no record id and no old .log: None", collector.resolve_history_log(history, {"run_id": "2026-10-28/x/y"}), None)
     check("the gathering retry reads the day's MaaEnd log (was: never found, so never retried)",
           cr._history_log(history, entry) == got, True)
-    ok = outcome.latest_okww_run_log(FX / "history")
+    ok = outcome.latest_okww_run_log(history)
     check("latest_okww_run_log finds an OK-WW 0.log through history.db (was: only OK-WW-*.log)",
           bool(ok) and ok[0].parts[-2] in ("978d8567-f7bf-4f9f-b402-6afca1880ba0",
                                            "a1a4259e-e90d-4749-bbbd-57f63d6ffd62"), True)
@@ -95,6 +91,15 @@ if True:
            "· 基质刷取 真的刷了：5 秒就报\n干成的：MaaEnd 跑完")
     check("a re-walked gathering clears only its own item", strip_incomplete_items(two, cr.GATHERING_UNDONE),
           "MaaEnd 这一轮有 1 项没干成，但它自己没报错：\n· 基质刷取 真的刷了：5 秒就报\n干成的：MaaEnd 跑完")
+    st_led = State(tmpdir() / "ledstate")
+    if end:
+        st_led.append_ledger(end)
+        st_led.mark_incomplete("2026-10-28", end.run_id, two)
+        check("State.clear_incomplete_items rewrites the ledger entry",
+              st_led.clear_incomplete_items("2026-10-28", end.run_id, cr.GATHERING_UNDONE), True)
+        check("State.clear_incomplete_items leaves the other undone item",
+              st_led.read_ledger("2026-10-28")[0].get("incomplete"),
+              "MaaEnd 这一轮有 1 项没干成，但它自己没报错：\n· 基质刷取 真的刷了：5 秒就报\n干成的：MaaEnd 跑完")
     check("gathering the only item: cleared",
           strip_incomplete_items("MaaEnd 这一轮有 1 项没干成，但它自己没报错：\n· 自动采集 真的走了路线：x", cr.GATHERING_UNDONE), "")
     check("the gathering settings item is not the retry's to clear",
@@ -132,9 +137,13 @@ if True:
         collector._db_rows(bad / "history")
     warns = [m for lv, m in cap.rows if lv == "WARNING" and "history.db" in m]
     check("unreadable 5 times in a row: one WARNING (at the 3rd)", len(warns), 1)
-    collector._db_rows(FX / "history")
+    collector._db_rows(history)
     check("read again: the streak is reset", collector._db_fail_streak[0], 0)
     logging.getLogger(collector.log.name).removeHandler(cap)
+
+    # no history.db (AUTO-MAS before v5.8.0-beta.2): the JSON layout alone, no error
+    (root / "data" / "history.db").unlink()
+    check("没有 history.db 时什么也不读、不报错", collector.scan(history, set()), [])
 
     twin = tmpdir() / "twin"
     shutil.copytree(FX, twin / "automas")

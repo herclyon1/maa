@@ -202,23 +202,28 @@ def apply(automas_dir: Path, name: str, enabled: bool | None = None,
     if enabled is not None:
         if (via := _enabled_via_backend(name, enabled)) is not None:
             return via
-    path = _path(automas_dir)
+    from ark_relay.core import masconfig  # noqa: PLC0415
+    import re  # noqa: PLC0415
+    path = masconfig.source(_path(automas_dir))
     try:
         original = path.read_text(encoding="utf-8")
-        data = json.loads(original)
-    except (OSError, json.JSONDecodeError) as exc:
+        data = masconfig.parse_text(path, original)
+    except (OSError, ValueError) as exc:
         return False, f"读不了 QueueConfig: {exc}"
 
     target = None
+    target_uid = ""
     # Not called `names`: that is the module used by names.canonical() above, and a
     # local of the same name would make that call raise UnboundLocalError.
     have = []
     for inst in data.get("instances", []):
-        node = data.get(inst.get("uid")) or {}
+        uid = str(inst.get("uid") or "")
+        node = data.get(uid) or {}
         qn = (node.get("Info") or {}).get("Name")
         have.append(qn)
         if qn == name:
             target = node
+            target_uid = uid
     if target is None:
         return False, f"没有叫「{name}」的队列（现有：{'、'.join(n for n in have if n)}）"
 
@@ -230,11 +235,22 @@ def apply(automas_dir: Path, name: str, enabled: bool | None = None,
     if not changes:
         return True, "已经是这个状态，无需改动"
 
+    if path.suffix == ".yaml":
+        pat = re.compile(rf"(?ms)(^  {re.escape(target_uid)}:\n.*?^\s*TimeEnabled:\s*)(?:true|false)(\s*$)")
+        updated, count = pat.subn(rf"\g<1>{'true' if enabled else 'false'}\2", original, count=1)
+        try:
+            if count != 1 or masconfig.parse_text(path, updated) != data:
+                return False, f"改动 {path.name} 后核对不符，已放弃"
+        except ValueError as exc:
+            return False, f"改动 {path.name} 后语法非法，已放弃: {exc}"
+    else:
+        updated = json.dumps(data, ensure_ascii=False, indent=2)
+
     stamp = datetime.now(tz=SERVER_TZ)
-    backup = path.with_suffix(f".bak-{stamp:%Y%m%d-%H%M%S}.json")
+    backup = path.with_suffix(f".bak-{stamp:%Y%m%d-%H%M%S}{path.suffix}")
     shutil.copy2(path, backup)
     try:
-        atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
+        atomic_write_text(path, updated)
     except OSError as exc:
         shutil.copy2(backup, path)
         return False, f"写入失败，已回滚: {exc}"

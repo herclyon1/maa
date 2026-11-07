@@ -450,7 +450,7 @@ check("(b) nothing recorded as skipped", modes.shutdown_skipped(STATE), "")
 dbg_set(f"{real - timedelta(hours=1):%Y-%m-%d %H:%M}")
 late = dict(run, run_id="late", finished=day_at(22, 0, 40).isoformat())
 ledgers({21: [morning, late]})
-check("(b) same key as at 00:05", E._shutdown_key(day_at(22, 0, 45)), "2026-08-22:0")
+check("(b) key advances when the shift record lands in yesterday's ledger", E._shutdown_key(day_at(22, 0, 45)), "2026-08-21:2")
 check("(b) 00:45, the shift ended, debug ran out -> go", verdict(day_at(22, 0, 45)), "go")
 check("(b) 00:45: powers off", E._maybe_shutdown(day_at(22, 0, 45)), True)
 check("(b) …with one power-off command", len(power_offs()), 1)
@@ -503,28 +503,25 @@ ledgers({21: [morning, run, dict(run, run_id="y")]})
 check("(d) the next shift end powers off", E._maybe_shutdown(day_at(21, 23, 40)), True)
 E._shutdown_issued = False; sd._ISSUED[0] = None; skipped_clear(); dbg_clear()
 
-# (e) 2026-10-13: the mark spent at the evening shift's end. The key is the day plus its
-# shift records, so at the midnight wake (mainloop's day roll) the new day's key differs
-# from the skipped one and the decision is "go": the relay powers off at 00:00, before
-# the 08:40 plug cut. The new day has no records yet, so no interim report goes out
-# (it would be an empty 「🔎 临时查看」 at midnight). The evening's own report went out
-# before (relay.log 10-13 21:47:56), as here.
-interims = []
-E.send_daily_now = lambda mark=True, label="临时查看": interims.append(mark) or True
-E.state.report_sent = lambda d: d == "2026-08-21"
+# (e) the mark spent at the evening shift's end stays skipped across the 00:00 midnight
+# day roll (11-08 [A-01]): when the new day has no shift records yet, _shutdown_key keeps
+# yesterday's shift key, so the machine does not power off at midnight and waits for the
+# next scheduled shift to finish.
 skipped_clear(); dbg_clear()
 ledgers({21: [run]})
 fresh(day_at(21, 21, 20))
 modes.set_skip_shutdown(STATE, True)
 check("(e) the evening shift ends: stays on", E._maybe_shutdown(day_at(21, 22, 25)), False)
 check("(e) 23:59: still skipped", verdict(day_at(21, 23, 59)), "skipped")
-interims.clear()
-check("(e) 00:00 the next day: powers off", E._maybe_shutdown(day_at(22, 0, 0)), True)
-check("(e) one power-off command", len(power_offs()), 1)
-check("(e) no interim for the new day, nothing ran on it", interims, [])
+check("(e) 00:00 the next day: still skipped across midnight", verdict(day_at(22, 0, 0)), "skipped")
+check("(e) 00:00 the next day: stays on", E._maybe_shutdown(day_at(22, 0, 0)), False)
+check("(e) no power-off command at midnight", len(power_offs()), 0)
+next_morning = {"script": "MAA", "started": day_at(22, 9, 0).isoformat(),
+                "finished": day_at(22, 9, 40).isoformat(), "ok": True, "run_id": "m22"}
+ledgers({21: [run], 22: [next_morning]})
+check("(e) the next shift finishes: powers off", E._maybe_shutdown(day_at(22, 9, 45)), True)
+check("(e) one power-off command after the next shift", len(power_offs()), 1)
 E._shutdown_issued = False; sd._ISSUED[0] = None; skipped_clear(); dbg_clear()
-E.state.report_sent = lambda d: True
-del E.send_daily_now
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

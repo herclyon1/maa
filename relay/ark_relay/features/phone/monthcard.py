@@ -150,12 +150,13 @@ def apply(state_dir, cmd: dict, today: "date | None" = None) -> tuple[bool, str]
     if phone_last is not None:
         last = phone_last
     elif not has_left:
+        base_day = at.astimezone(SERVER_TZ).date() if at is not None else today
         prev = date.fromisoformat(rec["last"]) if rec.get("last") else None
-        if prev is not None and prev >= today:
+        if prev is not None and prev >= base_day:
             last = prev + timedelta(days=DAYS[game] * n)
         else:
             # Never registered, or lapsed: the purchase day is day 1.
-            last = today + timedelta(days=DAYS[game] * n - 1)
+            last = base_day + timedelta(days=DAYS[game] * n - 1)
     rec.update(last=last.isoformat(),
                set=(at or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ).isoformat(timespec="milliseconds"))
     # milliseconds: the page compares 登记于 with its own registration time, which has them

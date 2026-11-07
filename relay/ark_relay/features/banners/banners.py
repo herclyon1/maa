@@ -671,9 +671,26 @@ def collect(now: datetime, *, skland_token: str = "",
     if sk_get is None and skland_token:
         try:
             from ark_relay.core import skland  # noqa: PLC0415 - needed only here
-            cred = skland.login(skland_token)
+            try:
+                cred = skland.login(skland_token)
+            except Exception as exc:
+                if not _transient(exc):
+                    raise
+                log.info("森空岛登录第一次没读完（%s: %s），%.0f 秒后再试一次",
+                         type(exc).__name__, exc, _RETRY_PAUSE)
+                _pause(_RETRY_PAUSE)
+                cred = skland.login(skland_token)
+
             def sk_get(path):
-                return skland.get(cred, path)
+                try:
+                    return skland.get(cred, path)
+                except Exception as exc:
+                    if not _transient(exc):
+                        raise
+                    log.info("森空岛 %s 第一次没读完（%s: %s），%.0f 秒后再读一次",
+                             path, type(exc).__name__, exc, _RETRY_PAUSE)
+                    _pause(_RETRY_PAUSE)
+                    return skland.get(cred, path)
         except Exception:
             log.warning("森空岛登录失败，终末地卡池这一行不出", exc_info=True)
             sk_get = None

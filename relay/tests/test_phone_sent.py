@@ -151,5 +151,13 @@ old = json.dumps({"v": 1, "kind": "cmd", "pin": "p", "ts": T, "body": {"action":
 check("丢掉", phone.unpack("p", old, now=T + 30 * 3600), None)
 check("那一行有发出时刻", "09-30 08:46:23 发出" in grab.lines[-1], True)
 
+print("\n[月卡没带 at：按发出时刻记，不按机器收到的时刻（11-08 [D-07]）]")
+_b = {"action": "monthcard"}
+phone_channel._monthcard_stamp_at(_b, None, {"ntfy_time": 1762560000})
+check("用 ntfy 的发出时刻", _b.get("at"), "2025-11-08T00:00:00+00:00")
+_b = {"action": "monthcard"}
+phone_channel._monthcard_stamp_at(_b, None, None)
+check("什么时刻都没有：不编一个", "at" in _b, False)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
