@@ -58,8 +58,14 @@ from ark_relay.features.phone import phone
 from ark_relay.core import texts
 from ark_relay.features.phone import cos_store as phone_cos_store, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota
 from ark_relay.core.config import SERVER_TZ
+from ark_relay.core import netretry
 from ark_relay.features.evidence.evidence import Cos
 from datetime import datetime
+
+# A COS write or read the network cut short is tried again inside its own 8 s (netretry,
+# dispatch relay-opt-round3-1108 O-03): COS that is down answers every one of those attempts.
+netretry._sleep = lambda s: None
+DOWN = netretry.ATTEMPTS
 
 PIN = "8964"
 TOPIC = "topic-abc"
@@ -227,6 +233,11 @@ phone.log.addHandler(logs)
 phone.log.addHandler(WATCH)
 phone.log.setLevel(logging.DEBUG)
 phone.log.propagate = False
+# The COS retry logs on its own logger (netretry.call).
+netretry.log.addHandler(logs)
+netretry.log.addHandler(WATCH)
+netretry.log.setLevel(logging.DEBUG)
+netretry.log.propagate = False
 
 
 def ntfy_error(http: int, code: int = 0, text: str = "", headers=None):
@@ -294,11 +305,20 @@ def b_cos_is_delivered():
           "状态的通知没发到手机信箱" in daily() and "自己好了，只进日报" in daily(), True)
     logs.clear()
     mb = mailbox(cos=COS)
-    use(FakeNet(urllib.error.HTTPError("https://cos", 503, "busy", {}, None), FakeResp()))
-    check("COS 回 503、ntfy 发到了：算送到了", mb.publish({"at": 1}), True)
+    use(FakeNet(*[urllib.error.HTTPError("https://cos", 503, "busy", {}, None)] * DOWN, FakeResp()))
+    check("COS 一直回 503、ntfy 发到了：算送到了", mb.publish({"at": 1}), True)
     check("……nothing for the group", logs.loud(), [])
     check("……one recovered WARNING: COS refused, ntfy carried it (daily only)",
           recovered_ok("状态没存上腾讯云，这一份改走手机信箱发到了"), (1, [], 0, True))
+    logs.clear()
+    mb = mailbox(cos=COS)
+    net = FakeNet(urllib.error.HTTPError("https://cos", 503, "busy", {}, None), FakeResp(), FakeResp())
+    use(net)
+    check("COS 回一次 503、再写一次存上了：算送到了", mb.publish({"at": 1}), True)
+    check("……两次 PUT，存上了就只发一条 ntfy 通知", [m for _, m, _ in net.sent], ["PUT", "PUT", "POST"])
+    check("……nothing for the group", logs.loud(), [])
+    check("……one recovered WARNING: written on the second try (daily only)",
+          recovered_ok("第一次没成，第 2 次成了"), (1, [], 0, True))
     logs.clear()
     d = tmpdir()
     mb = mailbox(cos=COS, state_dir=d)
@@ -324,7 +344,7 @@ def c_timeout_one_reason():
     check("……两次之间停了一下", mb.slept, [1])
     logs.clear()
     mb = mailbox(cos=COS)
-    use(FakeNet(urllib.error.URLError("timed out"), TimeoutError("t1"), TimeoutError("t2")))
+    use(FakeNet(*[urllib.error.URLError("timed out")] * DOWN, TimeoutError("t1"), TimeoutError("t2")))
     check("COS 和 ntfy 都不通：没送到", mb.publish({"at": 1}), False)
     check("……原因两边都说", ("腾讯云 COS" in mb.last_error, "ntfy" in mb.last_error), (True, True))
 
@@ -461,9 +481,9 @@ def g_stream_drops():
 
 def h_cos_beat_info():
     logs.clear()
-    use(FakeNet(urllib.error.URLError("timed out")))
+    use(FakeNet(*[urllib.error.URLError("timed out")] * DOWN))
     hb = phone.Heartbeat(TOPIC, tmpdir(), post=lambda p, t: None, cos=COS)
-    check("COS 心跳超时一次、ntfy 心跳照发", hb.beat(), True)
+    check("COS 心跳这一跳没写进去、ntfy 心跳照发", hb.beat(), True)
     check("……不记 WARNING（10-03 00:16:44 那条）", logs.warnings(), [])
     check("……记一行 INFO", bool(logs.infos("腾讯云 COS")), True)
     use(FakeNet())
@@ -473,7 +493,7 @@ def h_cos_beat_info():
     check("……nothing for the group", logs.loud(), [])
     logs.clear()
     hb2 = phone.Heartbeat(TOPIC, tmpdir(), post=lambda p, t: None, cos=COS)
-    use(FakeNet(*[urllib.error.URLError("timed out")] * 3))
+    use(FakeNet(*[urllib.error.URLError("timed out")] * (3 * DOWN)))
     hb2.cos_beat()
     hb2._cos_down -= hb2.COS_OUTAGE_SEC          # "ten minutes ago" without waiting
     before = settled()

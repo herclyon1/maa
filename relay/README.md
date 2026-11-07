@@ -39,6 +39,7 @@ Shared parts are in `ark_relay/core/`, each feature in `ark_relay/features/<name
 | `masconfig.py` / `miniyaml.py` | AUTO-MAS's ScriptConfig / QueueConfig / PlanConfig in the v5.7 JSON shape, read from the JSON or from v5.8's scripts / queues / plans.yaml (times back to local), with the YAML subset reader that needs |
 | `mascontract.py` | every AUTO-MAS setting the relay reads or writes, and the check that each is still there (boot self-check, after an AUTO-MAS update; `scripts/mac/lib/automas_contract_watch.py` against a release) |
 | `notify.py` / `transport.py` | channels and HTTP with the right retry policy |
+| `netretry.py` | another try, inside the caller's own time limit, for a request the network cut short (COS, the Endfield bulletin) |
 | `summary.py` | wording, including the optional LLM line |
 | `inbox.py` | fetch and apply `queue/config.json` |
 | `logfile.py` | relay.log size rotation (16 MB × 3 backups) that never stops the relay when Windows refuses the rename; `tail_bytes` reads across the rotated files |

@@ -144,6 +144,22 @@ try:
     except urllib.error.HTTPError:
         raised = True
     check("404：直接报，不重试", (raised, len(calls)), (True, 1))
+    # relay-opt-round3-1108 O-03: a gateway's 503 is the network in front of the site.
+    logs.recs.clear()
+    logs.marked = []
+    slept.clear()
+    calls = net(urllib.error.HTTPError("https://x", 503, "busy", {}, None), "公告".encode())
+    check("网关 503：停一下再试一次，取到了", (M._get("https://x"), len(calls), slept), ("公告", 2, [M.GET_PAUSE]))
+    check("……只进日报（标自己好了），第二行写着回了 503",
+          (logs.marked, "回了 503" in (logs.warnings() or [""])[0]), ([True], True))
+    calls = net(urllib.error.HTTPError("https://x", 503, "busy", {}, None),
+                urllib.error.HTTPError("https://x", 503, "busy", {}, None))
+    try:
+        M._get("https://x")
+        raised = False
+    except urllib.error.HTTPError:
+        raised = True
+    check("两次都 503：报出来", (raised, len(calls)), (True, 2))
 except Exception as exc:  # noqa: BLE001
     print(f"  ✗ _get: {type(exc).__name__}: {exc}")
     fails.append("_get")

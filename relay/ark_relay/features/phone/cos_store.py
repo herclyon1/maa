@@ -8,6 +8,7 @@ import hashlib
 import urllib.error
 import urllib.request
 
+from ark_relay.core import netretry
 from ark_relay.features.phone.wire import _UA
 
 
@@ -50,7 +51,8 @@ def cos_put(cos, key: str, data: bytes, timeout: float, *, public: bool = True,
     cached (or the App reads a stale copy). `public=False` leaves the bucket's
     private ACL (alertlog.py: only key holders read the alarm copy). None when
     stored, else why not - the caller says what that means for its own object
-    in its own log line."""
+    in its own log line. A reset or a gateway 5xx is tried again within `timeout`
+    (netretry.call): the caller's limit is not stretched."""
     headers = {"Authorization": cos.authorization("PUT", key),
                "Cache-Control": "no-store",
                "Content-Type": content_type,
@@ -58,9 +60,12 @@ def cos_put(cos, key: str, data: bytes, timeout: float, *, public: bool = True,
     if public:
         headers["x-cos-acl"] = "public-read"
     req = urllib.request.Request(f"https://{cos.host}/{key}", data=data, method="PUT", headers=headers)
+
+    def once(left):
+        with urllib.request.urlopen(req, timeout=left) as r:
+            return r.status
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            status = r.status
+        status = netretry.call(once, "写腾讯云", timeout, detail=key)
     except urllib.error.HTTPError as exc:
         return f"回 {exc.code}"
     except Exception as exc:  # noqa: BLE001 - any failure is reported, never raised
@@ -71,13 +76,16 @@ def cos_put(cos, key: str, data: bytes, timeout: float, *, public: bool = True,
 def cos_get(cos, key: str, timeout: float) -> "tuple[bytes | None, str]":
     """GET `key` with the same signing as cos_put: (body, '') when it is there,
     (None, '') when the object does not exist (404), (None, why) for anything
-    else. Never raises."""
+    else. Never raises. Tried again within `timeout` like cos_put."""
     req = urllib.request.Request(f"https://{cos.host}/{key}",
                                  headers={"Authorization": cos.authorization("GET", key),
                                           "User-Agent": _UA})
+
+    def once(left):
+        with urllib.request.urlopen(req, timeout=left) as r:
+            return r.read()
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.read(), ""
+        return netretry.call(once, "读腾讯云", timeout, detail=key), ""
     except urllib.error.HTTPError as exc:
         return None, ("" if exc.code == 404 else f"回 {exc.code}")
     except Exception as exc:  # noqa: BLE001 - any failure is reported, never raised

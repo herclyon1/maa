@@ -164,16 +164,20 @@ check("PUT 一次 + 整条状态一次", [m for _, m, _, _ in net.sent], ["PUT",
 check("ntfy 上那条就是对象本身", net.sent[1][2], net.sent[0][2])
 
 print("\n[COS 存不上：照旧切片发，什么都不丢]")
-for label, err in (("COS 拒绝（403）", urllib.error.HTTPError(
-        f"https://{COS.host}/{key}", 403, "Forbidden", {}, io.BytesIO(b""))),
-        ("连不上 COS", urllib.error.URLError("网断了")),
-        ("COS 回的不是 2xx（302）", FakeResp(status=302))):
+# A connection that is down is tried again inside the 8 s (netretry, dispatch
+# relay-opt-round3-1108 O-03); COS's own answers (403, 302) are not.
+from ark_relay.core import netretry  # noqa: E402
+netretry._sleep = lambda s: None
+for label, errs, puts in (("COS 拒绝（403）", [urllib.error.HTTPError(
+        f"https://{COS.host}/{key}", 403, "Forbidden", {}, io.BytesIO(b""))], 1),
+        ("连不上 COS", [urllib.error.URLError("网断了")] * netretry.ATTEMPTS, netretry.ATTEMPTS),
+        ("COS 回的不是 2xx（302）", [FakeResp(status=302)], 1)):
     mb_f = phone.Mailbox(TOPIC, PIN, tmpdir(), cos=COS)
-    net = FakeNet(err)
+    net = FakeNet(*errs)
     ok = with_net(net, lambda: mb_f.publish(BIG))
     posts = [b for u, m, b, _ in net.sent if m == "POST"]
     check(f"{label}：还是发出去了", ok, True)
-    check(f"{label}：PUT 只试一次，不重试", sum(1 for _, m, _, _ in net.sent if m == "PUT"), 1)
+    check(f"{label}：PUT 试了 {puts} 次", sum(1 for _, m, _, _ in net.sent if m == "PUT"), puts)
     check(f"{label}：退回切片（多条，每条带 gzp）",
           len(posts) > 1 and all("gzp" in json.loads(p) for p in posts), True)
 

@@ -28,6 +28,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime
 
+from ark_relay.core import netretry
 from ark_relay.core.config import SERVER_TZ
 from ark_relay.features.selfcheck import tape
 
@@ -129,8 +130,18 @@ def _get(url: str, timeout: "float | None" = None) -> str:
         try:
             page = _try(req, _limit(timeout))
         except urllib.error.HTTPError as exc:
-            tape.answer("web", url, error=exc)        # the day's tape (selfcheck/tape.py)
-            raise
+            # The site's answer is not tried again; a gateway's 502 / 503 / 504 is the
+            # network in front of it and is (netretry.transient; dispatch
+            # relay-opt-round3-1108 O-03).
+            until = _UNTIL.get()
+            if (not netretry.transient(exc) or i + 1 >= GET_ATTEMPTS
+                    or (until is not None and until - time.monotonic() <= GET_PAUSE)):
+                tape.answer("web", url, error=exc)        # the day's tape (selfcheck/tape.py)
+                raise
+            first = first or f"回了 {exc.code}"
+            log.info("维护公告：%s 回了 %d，%.0f 秒后再试一次", url, exc.code, GET_PAUSE)
+            _sleep(GET_PAUSE)
+            continue
         except Exception as exc:  # timeout, reset, DNS (the last try re-raises)
             until = _UNTIL.get()
             if i + 1 >= GET_ATTEMPTS or (until is not None and until - time.monotonic() <= GET_PAUSE):
@@ -142,6 +153,8 @@ def _get(url: str, timeout: "float | None" = None) -> str:
             continue
         if i:
             from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+            # Machine check #50 reads this first line (phone_banners._maintenance): a gateway
+            # 5xx keeps the same words, its code is on the second line.
             log.warning("停服维护公告的官网第一次没响应，%.0f 秒后再取一次，取到了\n%s 第一次：%s",
                         GET_PAUSE * i, url, first, extra=errwatch.recovered())
         tape.answer("web", url, body=page, resp=req)

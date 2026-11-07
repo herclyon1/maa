@@ -2405,8 +2405,11 @@ def _audit_1108_read_retry() -> None:
           [r.levelno for r in recs if "再读一次" in r.getMessage()], [logging.INFO])
     out, n, _pz, _r = run(TimeoutError("timed out"), urllib.error.URLError("reset"))
     check("1108 read: two cut-short reads raise the second", (type(out).__name__, n), ("URLError", 2))
-    out, n, _pz, _r = run(urllib.error.HTTPError("https://example.invalid/x", 503, "busy", {}, None))
+    out, n, _pz, _r = run(urllib.error.HTTPError("https://example.invalid/x", 404, "nf", {}, None))
     check("1108 read: an HTTP status is the site's answer, not retried", (type(out).__name__, n), ("HTTPError", 1))
+    # relay-opt-round3-1108 O-03: a gateway's 502 / 503 / 504 is the network, not the site.
+    out, n, _pz, _r = run(urllib.error.HTTPError("https://example.invalid/x", 503, "busy", {}, None), b"whole")
+    check("1108 read: a gateway 503 is read again", (out, n), ("whole", 2))
     out, n, _pz, _r = run(ValueError("odd"))
     check("1108 read: anything else is not retried", (type(out).__name__, n), ("ValueError", 1))
 

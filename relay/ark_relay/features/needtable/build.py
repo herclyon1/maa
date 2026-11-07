@@ -123,6 +123,7 @@ import hashlib
 import json
 import re
 import time
+import urllib.error
 import urllib.request
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -291,11 +292,19 @@ def github_doors(url: str) -> list[str]:
 
 
 def _retry(fn, tries=4, wait=2):
-    """Tokyo -> Shanghai wobbles; a first TLS handshake timing out is routine."""
+    """Tokyo -> Shanghai wobbles; a first TLS handshake timing out is routine. A 4xx is
+    the server's answer (a 404 stays a 404) and is raised at once, not asked again
+    `tries` times (dispatch relay-opt-round3-1108 O-03)."""
     last = None
     for i in range(tries):
         try:
             return fn()
+        except urllib.error.HTTPError as e:
+            if e.code < 500:
+                raise
+            last = e
+            if i < tries - 1:
+                time.sleep(wait)
         except Exception as e:  # noqa: BLE001 - whatever it was, the next try may pass
             last = e
             if i < tries - 1:

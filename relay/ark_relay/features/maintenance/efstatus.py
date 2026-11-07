@@ -12,6 +12,7 @@ import re
 import urllib.request
 from datetime import datetime
 
+from ark_relay.core import netretry
 from ark_relay.core.config import SERVER_TZ
 from ark_relay.features.selfcheck import tape
 
@@ -43,9 +44,15 @@ def update_hint(now: datetime | None = None, fetch=None, strict: bool = False) -
     try:
         if fetch is None:
             req = urllib.request.Request(_URL, headers={"User-Agent": _UA})
-            with urllib.request.urlopen(req, timeout=8) as r:
-                raw = r.read()
-            tape.answer("web", _URL, body=raw, resp=r)     # the day's tape (selfcheck/tape.py)
+            got = {}
+
+            def once(left):
+                with urllib.request.urlopen(req, timeout=left) as r:
+                    got["resp"] = r
+                    return r.read()
+            # The 8 s this read always had, now shared by its tries (netretry.call).
+            raw = netretry.call(once, "读终末地官方公告", 8, detail=_URL)
+            tape.answer("web", _URL, body=raw, resp=got.get("resp"))     # the day's tape (selfcheck/tape.py)
             data = json.loads(raw.decode("utf-8"))
         else:
             data = fetch()

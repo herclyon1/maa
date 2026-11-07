@@ -44,17 +44,16 @@ wuwa_history.py (past banners, maintenance windows).
 from __future__ import annotations
 
 import html
-import http.client
 import json
 import logging
 import re
 import time
-import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from ark_relay.core import netretry
 from ark_relay.core.config import SERVER_TZ, atomic_write_text  # tests read banners.SERVER_TZ
 from ark_relay.features.selfcheck import tape
 
@@ -407,14 +406,12 @@ _RETRY_PAUSE = 2.0
 
 
 def _transient(exc: BaseException) -> bool:
-    """A read the network cut short (a timeout, a body ended early, a reset or a
-    DNS failure) - worth one more try. An HTTP status is the site's answer and is
-    never retried. 2026-11-07: one IncompleteRead from Kuro's getEntryDetail left
-    the running 鸣潮 banner nameless, and it was dropped from the report."""
-    if isinstance(exc, urllib.error.HTTPError):
-        return False
-    return isinstance(exc, (TimeoutError, http.client.IncompleteRead, ConnectionError,
-                            urllib.error.URLError))
+    """A read the network cut short (a timeout, a body ended early, a reset, a DNS
+    failure, or a gateway's 502 / 503 / 504: netretry.transient) - worth one more try.
+    Any other HTTP status is the site's answer and is never retried. 2026-11-07: one
+    IncompleteRead from Kuro's getEntryDetail left the running 鸣潮 banner nameless,
+    and it was dropped from the report."""
+    return netretry.transient(exc)
 
 
 def _read(req, url: str, data: "bytes | None", timeout: int) -> bytes:
