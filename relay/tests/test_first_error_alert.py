@@ -585,7 +585,9 @@ def section_recovered_push_thread():
     red = [x for f in sorted(techlog.tech_dir(R).glob("*.md"))
            for _, x in techlog.unhandled(f.read_text(encoding="utf-8")) if "推送线程自愈样例" in x]
     check("推送线程上自己好了的写一条「自愈待查」红项", [techlog.SELF_HEAL in x for x in red], [True])
-    check("没好的那条不记成自己好了", [r for r in faults(R) if "推送线程样例" in str(r.get("line"))], [])
+    # audit 11-08 C-05: counted (errkinds keeps a trace of a fault on the push path), never as recovered.
+    check("没好的那条记进报错表，但不记成自己好了",
+          [bool(r.get("recovered")) for r in faults(R) if "推送线程样例" in str(r.get("line"))], [False])
     drop(h)
 
 
@@ -671,6 +673,15 @@ check("正文不再说「同一次开机只报这一条」", "同一次开机只
 for x in HANDLERS:
     drop(x)
 print()
+print("\n[audit 11-08 C-05: two faults alike in their first 160 characters are two queue keys]")
+_h = errwatch.ErrorKindAlert(Notes() if "Notes" in globals() else None, lambda: False, tmpdir(), known={})
+_same = "收集器读不了 " + "x" * 170
+_r1 = logging.LogRecord("ark.handle", logging.WARNING, __file__, 1, _same + " A 模块", None, None)
+_r2 = logging.LogRecord("ark.handle", logging.WARNING, __file__, 1, _same + " B 模块", None, None)
+check("different tails, different keys",
+      _h._item(_r1, "s1", "t")["key"] != _h._item(_r2, "s2", "t")["key"], True)
+_h.close()
+
 if fails:
     print("FAILED:", fails)
     sys.exit(1)

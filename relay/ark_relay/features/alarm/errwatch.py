@@ -425,6 +425,9 @@ class ErrorKindAlert(logging.Handler):
                 self._note_recovered(record)
                 return
             if record.threadName.startswith(PUSH_THREAD):
+                # Never pushed from the push path (it would loop), but counted: errkinds and
+                # the day file kept no trace of a fault there (audit 2026-11-08 C-05).
+                self._count_only(record)
                 return
             self._take(record)
         except Exception:  # noqa: BLE001 - a logging handler must never raise into the caller
@@ -443,7 +446,9 @@ class ErrorKindAlert(logging.Handler):
                     "fixed_in": str(fixed.get("fixed_in", "")), "fixed_what": str(fixed.get("what", ""))}
         else:
             item = {"title": texts.RELAY_ERROR, "where": record.name, "line": line[:160]}
-        item["key"] = json.dumps([item.get(k) for k in ("title", "body", "where", "line")], ensure_ascii=False)
+        # Merged in a backlog by the whole first line, not its first 160 characters: two faults
+        # alike that far were one queued item and the second one's tail was lost (audit C-05).
+        item["key"] = json.dumps([item.get("title"), item.get("body"), item.get("where"), line], ensure_ascii=False)
         item.update(sig=sig, first=stamp, last=stamp, n=1, t=record.created)
         return item
 
@@ -469,6 +474,16 @@ class ErrorKindAlert(logging.Handler):
             self._count(when.strftime("%Y-%m-%d"), sig, record, item, stamp)
             self._cv.notify_all()
             self._start()
+
+    def _count_only(self, record: logging.LogRecord) -> None:
+        """Count a record taken on the push thread, without queueing it."""
+        from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
+        when = datetime.fromtimestamp(record.created, tz=SERVER_TZ)
+        stamp = when.strftime("%Y-%m-%d %H:%M:%S")
+        sig = record_signature(record)
+        item = self._item(record, sig, stamp)
+        with self._cv:
+            self._count(when.strftime("%Y-%m-%d"), sig, record, item, stamp)
 
     def _note_recovered(self, record: logging.LogRecord) -> None:
         """A fault the relay recovered from by itself: counted, never pushed, and one
