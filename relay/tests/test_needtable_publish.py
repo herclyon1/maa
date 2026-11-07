@@ -8,13 +8,15 @@ and deploy-web.sh by hand; the last run was 09-23, and the two six-stars announc
   ark-remote Relay.needURL; the hex for "ark-test-topic" is pinned on both sides);
 * a due day builds once, on a thread of its own, and PUTs the table public-read (cos_put's
   default) with the state's timeout; a day that has its table does not build again; the next does;
-* a build or a PUT that fails is an INFO line and a red item in the technical log (not a
-  WARNING: every WARNING goes to the owner's group, and a table a day old is nothing he must
-  act on), never raises, and is tried once more the same day at least 30 min later - at most
-  two builds a server day, even when the mark file cannot be written;
-* a build that works after one or more server days without a table is one WARNING marked
-  errwatch.recovered() (daily report only) naming the days missed; three such days in a row
-  are one plain WARNING (the group), not repeated until a build works again;
+* a build or a PUT that fails is an INFO line and a red item in the technical log, never
+  raises, and is tried once more the same day at least 30 min later - at most two builds a
+  server day, even when the mark file cannot be written;
+* a day's second failed try, or two failed builds in a row that no group message covered
+  yet (a day's lone try and the next day's first), is one plain WARNING (the group) at
+  once, every time - no three-day wait (Gemini's dispatch relay-audit-round2-1108 N-01, 2026-11-08);
+* a build that works after a failure (the same day's second try, or a later day) is one
+  WARNING marked errwatch.recovered() (daily report only) naming the failure and the days
+  missed;
 * a machine without a topic, COS or Skland token builds nothing and says so at INFO;
 * the engine's tick runs the step.
 
@@ -171,10 +173,14 @@ check("技术日志一条红项，带原因", [("cannot pick hers" in t) for t i
 check("30 分钟内不再试", needtable.due(c3.state_dir, T, mins(10)), False)
 check("30 分钟后再试一次", needtable.due(c3.state_dir, T, mins(31)), True)
 
-print("\n[当天只再试一次：一天最多建两次]")
+print("\n[当天第二次也没建成：当场一条进群的 WARNING]")
 rec.rows.clear()
 check("第二次也建不成", needtable.refresh(c3, mins(31), make=broken, cos="COS", put=put_ok), False)
-check("还是 INFO", {lv for lv, _, _ in rec.rows}, {"INFO"})
+check("一条 INFO 带原因，一条进群的 WARNING（没标自己好了）",
+      [(lv, r) for lv, _, r in rec.rows], [("INFO", False), ("WARNING", False)])
+check("WARNING 说连着 2 次、带原因、不带报错堆栈",
+      [("2 次" in m and "cannot pick hers" in m, "Traceback" not in m) for lv, m, _ in rec.rows if lv == "WARNING"],
+      [(True, True)])
 check("第二条红项", len(reds(c3)), 2)
 check("当天不再到期", needtable.due(c3.state_dir, T, mins(240)), False)
 check("第二天又到期", needtable.due(c3.state_dir, "2026-10-15", D2), True)
@@ -194,41 +200,48 @@ def warnings():
     return [(m, recovered) for lv, m, recovered in rec.rows if lv == "WARNING"]
 
 
-print("\n[连着三个服务器日没建成：一条进群的 WARNING，之后不再重复]")
+print("\n[每天两次都没建成：每天都当场进群一条，不等三天、不只报一次]")
 rec.rows.clear()
 c5 = cfg_with()
-fail_day(c5, D1)
+fail_day(c5, D1, tries=1)
+check("第一次没成：还没有 WARNING", warnings(), [])
+needtable.refresh(c5, mins(31, D1), make=broken, cos="COS", put=put_ok)
+check("当天第二次也没成：一条进群的 WARNING", [r for _, r in warnings()], [False])
 fail_day(c5, D2)
-fail_day(c5, D3, tries=1)
-check("两天半：还没有 WARNING", warnings(), [])
-needtable.refresh(c5, mins(31, D3), make=broken, cos="COS", put=put_ok)
-w = warnings()
-check("第三天也没建成：一条 WARNING", len(w), 1)
-check("它进群（没标自己好了），说 3 天", [(r, "3" in m) for m, r in w], [(False, True)])
-fail_day(c5, D4)
-check("第四天：不再发", len(warnings()), 1)
+fail_day(c5, D3)
+check("第二天、第三天各一条，都进群", [r for _, r in warnings()], [False, False, False])
 
 print("\n[失败几天后建成：一条标「自己好了」的 WARNING（只进日报），说漏了几天]")
 rec.rows.clear()
-check("第五天建成", needtable.refresh(c5, D5, make=offline, cos="COS", put=put_ok), True)
+check("第四天建成", needtable.refresh(c5, D4, make=offline, cos="COS", put=put_ok), True)
 w = warnings()
 check("一条 WARNING，标自己好了", [r for _, r in w], [True])
-check("说漏了 4 天", ["4 天" in m for m, _ in w], [True])
+check("说漏了 3 天", ["3 天" in m for m, _ in w], [True])
 rec.rows.clear()
-needtable.refresh(c5, D6, make=offline, cos="COS", put=put_ok)
+needtable.refresh(c5, D5, make=offline, cos="COS", put=put_ok)
 check("再下一天建成：没有 WARNING", warnings(), [])
-fail_day(c5, D7)
-fail_day(c5, D8)
-fail_day(c5, D9)
-check("成功清零后，再连着三天没成：又一条进群的 WARNING", [r for _, r in warnings()], [False])
+
+print("\n[当天第一次没成、半小时后重试成了：一条标「自己好了」的 WARNING（只进日报）]")
 rec.rows.clear()
 c6 = cfg_with()
 needtable.refresh(c6, D1, make=broken, cos="COS", put=put_ok)
-check("当天重试建成：不算漏了一天，没有 WARNING",
-      (needtable.refresh(c6, mins(31), make=offline, cos="COS", put=put_ok), warnings()), (True, []))
+check("当天重试建成", needtable.refresh(c6, mins(31), make=offline, cos="COS", put=put_ok), True)
+check("一条标自己好了的 WARNING，说第一次为什么没成、没说漏了几天",
+      [(r, "cannot pick hers" in m, "天没算成" in m) for m, r in warnings()], [(True, True, False)])
+
+print("\n[一天只试了一次（第二次没轮到），第二天第一次又没成：当场进群，不再往后拖]")
+rec.rows.clear()
 c7 = cfg_with()
-fail_day(c7, D1)
-needtable.refresh(c7, D2, make=offline, cos="COS", put=put_ok)
+fail_day(c7, D1, tries=1)
+fail_day(c7, D2, tries=1)
+check("两次连着没成：一条进群的 WARNING", [(r, "2 次" in m) for m, r in warnings()], [(False, True)])
+rec.rows.clear()
+needtable.refresh(c7, mins(31, D2), make=broken, cos="COS", put=put_ok)
+check("当天第二次也没成：照样进群一条，说连着 3 次", [(r, "3 次" in m) for m, r in warnings()], [(False, True)])
+c7b = cfg_with()
+fail_day(c7b, D1)
+rec.rows.clear()
+needtable.refresh(c7b, D2, make=offline, cos="COS", put=put_ok)
 check("漏了一天后建成：一条自己好了的 WARNING，说 1 天", [(r, "1 天" in m) for m, r in warnings()], [(True, True)])
 
 print("\n[没有森空岛令牌：INFO 一句，不建，当天不再试]")

@@ -16,19 +16,19 @@ PUT keeps it, and only a machine silent for 30 days loses it.
 One build is about 115 Skland requests, 55 s from the Mac (measured 2026-10-14), so it
 runs on a thread of its own and the tick never waits for it.
 
-Where a failure goes (relay/USER-SWITCHES.txt, needtable.py:_settle). Every WARNING is
-pushed to the owner's group (errwatch), and the group is for what a person must act on
-now; a table one day old is not that - the App keeps the previous COS object, and its
-库存 footer says on which day that table was built. So:
+Where a failure goes (relay/USER-SWITCHES.txt, needtable.py:_settle). Every WARNING not
+marked recovered is pushed to the owner's group (errwatch). The App keeps the previous COS
+object meanwhile, and its 库存 footer says on which day that table was built. So:
   * a failed build (or a PUT that did not land) is an INFO line and a red item in the
     technical log (techlog.add_red), and the same server day tries once more, at least
     SECOND_TRY_AFTER after the failure: at most BUILDS_A_DAY builds a day;
-  * the mark file counts the server days that ended without a table since the last one
-    that had one; a build that works after one or more of them is one WARNING marked
-    errwatch.recovered() (daily report only, and errwatch writes its 自愈待查 red item)
-    saying how many days were missed;
-  * GROUP_AFTER_DAYS such days in a row is one plain WARNING (the group), and not again
-    until a build works.
+  * a day's last allowed try failing (BUILDS_A_DAY), or BUILDS_A_DAY failed builds in a
+    row that no group message has covered yet (a day's lone failure and the next day's
+    first), is one plain WARNING, pushed at once - every time, not held for days (Gemini's dispatch relay-audit-round2-1108
+    N-01, 2026-11-08: the old three-days-in-a-row threshold had no source);
+  * a build that works after a failure (the same day's second try, or a later day) is one
+    WARNING marked errwatch.recovered() (daily report only, and errwatch writes its
+    自愈待查 red item) naming the failure and how many server days went without a table.
 A machine without a topic, COS or Skland token builds nothing: one INFO line a day.
 """
 from __future__ import annotations
@@ -49,10 +49,9 @@ log = logging.getLogger("ark.needtable")
 MARK = "needtable.json"
 # The routing numbers are the review's ceiling for this step (2026-10-14, needtable branch),
 # not measurements: one more try the same day for a passing Skland or COS fault, spaced so a
-# short outage can end first; a table older than three server days is worth a person's look.
+# short outage can end first.
 BUILDS_A_DAY = 2
 SECOND_TRY_AFTER = timedelta(minutes=30)
-GROUP_AFTER_DAYS = 3
 _lock = threading.Lock()
 # This process's builds: the thread, and the server day, count and end of the builds
 # started on it - so the cap holds even when the mark file cannot be written.
@@ -110,30 +109,69 @@ def _settle(cfg, today: str, at: datetime, ok: bool, what: str, *, skip=False, e
     missed = _num(prev, "missed_days")
     if not same and prev.get("day") and not prev.get("ok") and not prev.get("skip") and _num(prev, "tries"):
         missed += 1
-    warned = bool(prev.get("warned"))
+    # Failed builds since the last table, and since the last group message about them.
+    in_row = _num(prev, "fails_in_row")
+    unpushed = _num(prev, "unpushed_fails")
+    failed_today = prev.get("what", "") if same and not prev.get("ok") and not prev.get("skip") else ""
     last_ok = f"{prev['last_ok_day']} 那天" if prev.get("last_ok_day") else "上次"
     mark = {"day": today, "ok": ok, "skip": skip, "tries": tries, "last_at": at.isoformat(timespec="seconds"),
-            "what": what, "missed_days": missed, "warned": warned, "last_ok_day": prev.get("last_ok_day", "")}
+            "what": what, "missed_days": missed, "fails_in_row": in_row,
+            "unpushed_fails": unpushed,
+            "last_ok_day": prev.get("last_ok_day", "")}
     if skip:
         log.info("%s，需求表不重建", what)
     elif ok:
         log.info("需求表已重算并放上 COS：%s", what)
-        if missed:
-            log.warning("终末地「最新六星满练要多少」表今天重算成了；之前连着 %d 天没算成，App 库存页那几天用的是%s的表",
-                        missed, last_ok, extra=errwatch.recovered())
-        mark.update(missed_days=0, warned=False, last_ok_day=today)
+        if missed or failed_today:
+            before = [f"之前连着 {missed} 天没算成，App 库存页那几天用的是{last_ok}的表"] if missed else []
+            if failed_today:
+                before.append(f"今天第 1 次没算成（{failed_today}），过了半小时重试成了")
+            log.warning("终末地「最新六星满练要多少」表今天重算成了；%s", "；".join(before),
+                        extra=errwatch.recovered())
+        mark.update(missed_days=0, fails_in_row=0, unpushed_fails=0, last_ok_day=today)
     else:
         later = "过半小时再试一次" if tries < BUILDS_A_DAY else "明天再试"
         log.info("终末地「最新六星满练要多少」表今天第 %d 次没重算成：%s。App 库存页还用%s的表，%s",
                  tries, what, last_ok, later, exc_info=exc)
         techlog.add_red(today, "需求表没重算成", [f"终末地需求表今天第 {tries} 次没重算成：{what}"],
                         state_dir=cfg.state_dir, now=at)
-        failed_days = missed + (1 if tries >= BUILDS_A_DAY else 0)
-        if failed_days >= GROUP_AFTER_DAYS and not warned:
-            log.warning("终末地「最新六星满练要多少」表已经连着 %d 个服务器日没重算成（这次：%s）。App 库存页一直用%s的表",
-                        failed_days, what, last_ok)
-            mark["warned"] = True
+        in_row += 1
+        unpushed += 1
+        if tries >= BUILDS_A_DAY or unpushed >= BUILDS_A_DAY:
+            # No traceback here: the INFO line above carries it, and a pushed body is read on a phone.
+            log.warning("终末地「最新六星满练要多少」表连着 %d 次没重算成（这次：%s）。App 库存页还用%s的表，%s",
+                        in_row, what, last_ok, later)
+            unpushed = 0
+        mark.update(fails_in_row=in_row, unpushed_fails=unpushed)
     _mark(cfg.state_dir, mark)
+
+
+def next_moment(state_dir, now: datetime) -> "tuple[datetime, str] | None":
+    """When the loop must wake for the same server day's second try (engine.next_deadline):
+    SECOND_TRY_AFTER past the failed one, which _settle promised (「过半小时再试一次」). Nothing
+    else woke the loop then, so the second try waited for the hour backstop (dispatch
+    relay-audit-round2-1108 N-05). While a build runs on its thread its end wakes nothing
+    either: the loop looks again SECOND_TRY_AFTER later at the latest. None when no second
+    try is due today, or its moment has passed (the tick that comes first starts it)."""
+    today = now.strftime("%Y-%m-%d")
+    t = _running.get("thread")
+    if t is not None and t.is_alive():
+        return (now + SECOND_TRY_AFTER, "看终末地需求表重算完没有")
+    if _running.get("day") == today and _num(_running, "count") >= BUILDS_A_DAY:
+        return None
+    m = _read_mark(state_dir)
+    if m.get("day") != today or m.get("ok") or m.get("skip") or _num(m, "tries") >= BUILDS_A_DAY:
+        return None
+    try:
+        at = datetime.fromisoformat(m.get("last_at") or "") + SECOND_TRY_AFTER
+    except (TypeError, ValueError):
+        return None
+    if at.tzinfo is None:
+        return None
+    ended = _running.get("ended")
+    if _running.get("day") == today and isinstance(ended, datetime) and ended.tzinfo is not None:
+        at = max(at, ended + SECOND_TRY_AFTER)
+    return (at, "终末地需求表当天第二次重算") if at > now else None
 
 
 def _live_table(cfg) -> dict:

@@ -744,6 +744,23 @@ class Engine:
 
     # ---------- daily wrap-up ----------
 
+    def _reread_moments(self, now: datetime) -> list[tuple[datetime, str]]:
+        """Reads the last tick put off that no file event will bring back: state.json
+        refusing reads (statestore.refused_since), a record waiting for its log or a
+        history.db read that failed (collector.next_moment), the need table's same-day
+        second try (needtable.next_moment). Each waited for the hour backstop before
+        (dispatch relay-audit-round2-1108 N-02 / N-05)."""
+        from ark_relay.core import collector, statestore  # noqa: PLC0415
+        from ark_relay.features.needtable import needtable  # noqa: PLC0415
+        out = []
+        state_file = getattr(getattr(self.state, "store", None), "path", None)
+        if state_file is not None and statestore.refused_since(state_file) is not None:
+            out.append((now + timedelta(seconds=statestore.UNREAD_RETRY_S), "重读 state.json"))
+        for moment in (collector.next_moment(now), needtable.next_moment(self.cfg.state_dir, now)):
+            if moment is not None:
+                out.append(moment)
+        return out
+
     def next_deadline(self, now: datetime | None = None) -> tuple[datetime, str] | None:
         """The next moment any purely time-based decision can change.
 
@@ -769,6 +786,11 @@ class Engine:
                 return (check, "核对关机有没有关下去")
             return None
         cands: list[tuple[datetime, str]] = []
+
+        try:
+            cands.extend(self._reread_moments(now))
+        except Exception:
+            log.exception("算重读的时刻出错，跳过")
 
         # An echo farm: its deadline, and a look every RESTART_QUIET_MINUTES while
         # it runs to notice the task has died.

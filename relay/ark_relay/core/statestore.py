@@ -187,6 +187,52 @@ _LAST_GOOD: dict[str, dict] = {}
 # when no write came in between (清单-1108 A-07).
 _WRITE_SEQ: dict[str, int] = {}
 
+# While reads of a state file are refused (a lock outlasting LOCK_WAITS, any OSError), the
+# loop wakes this often to read it again (engine.next_deadline): nothing else woke it once
+# the shift's last record had landed, so what waited on a write waited for the hour backstop.
+# Measured 10-17 on the Mac (commit 08635a7b): one refused read with the shipped LOCK_WAITS
+# takes 0.53 s, so retrying every 45 s spends about 1 % of the time waiting.
+UNREAD_RETRY_S = 45
+# Refused this long without a read getting through: one WARNING, which errwatch pushes. The
+# user on an error left unreported, 10-12 20:04: 「就是有错，但是不报，那是比报错更严重的事情。」
+# 600 s: the relay's other outages are pushed at the same mark (procwatch.OUTAGE_ALARM_SECONDS,
+# Mailbox.OUTAGE_SEC); tests/test_state_unread_1108.py pins them equal.
+UNREAD_WARN_S = 600
+# path -> [time.monotonic() of the first refusal of the current run, its WARNING sent].
+_UNREAD: dict[str, list] = {}
+
+
+def _refused(path: Path, exc: OSError) -> None:
+    """A read of `path` was refused for good this time: start or go on with its run of
+    refusals; one INFO line when the run starts, one WARNING once it lasts UNREAD_WARN_S."""
+    now = time.monotonic()
+    run = _UNREAD.get(str(path))
+    if run is None:
+        run = _UNREAD[str(path)] = [now, False]
+        log.info("%s 这次读不出来（%s），先用上次读到的；读回来之前写不进去，每 %d 秒再读一次",
+                 path.name, type(exc).__name__, UNREAD_RETRY_S)
+    if not run[1] and now - run[0] >= UNREAD_WARN_S:
+        run[1] = True
+        log.warning("中继自己的状态文件 %s 已经 %d 分钟读不出来（%s: %s）。这期间只能用上次读到的内容，"
+                    "要写进去的报警记号、运行记录和手机指令都写不进去；读回来后自动接着用",
+                    path.name, int((now - run[0]) // 60), type(exc).__name__, exc)
+
+
+def _read_back(path: Path) -> None:
+    """A read of `path` got through: its run of refusals, if any, is over (one INFO line)."""
+    run = _UNREAD.pop(str(path), None)
+    if run is not None:
+        log.info("%s 读回来了（读不出来持续了约 %d 分钟%s）", path.name,
+                 int((time.monotonic() - run[0]) // 60), "，之前已报过一条「读不出来」" if run[1] else "")
+
+
+def refused_since(path: Path) -> "float | None":
+    """time.monotonic() of the first refused read of `path` in the current run of
+    refusals, None while it reads (engine.next_deadline)."""
+    run = _UNREAD.get(str(path))
+    return run[0] if run else None
+
+
 def set_aside(path: Path, mtime: float, said: "dict[str, float] | None" = None) -> "str | None":
     """Copy an unreadable state file aside as <name>.corrupt-<mtime> before anything
     overwrites it; the one line saying where it went (for the caller's log line), or
@@ -287,7 +333,10 @@ class StateStore:
         except OSError:
             m = -1.0
         seq = _WRITE_SEQ.get(str(self.path), 0)
-        if self._data is not None and m == self._mtime and not fresh and self._seq == seq:
+        # While its reads are refused the cached copy is not served: each read tries the
+        # file once more, so the run of refusals ends (or reaches its WARNING) on a read.
+        if (self._data is not None and m == self._mtime and not fresh and self._seq == seq
+                and str(self.path) not in _UNREAD):
             return self._data
         data: dict = {}
         if m >= 0:
@@ -315,9 +364,9 @@ class StateStore:
                     if wait is not None and locked(exc):
                         time.sleep(wait)
                         continue
+                    _refused(self.path, exc)
                     if fresh:
                         raise
-                    log.info("state.json 这次读不出来（%s），先用上次读到的", type(exc).__name__)
                     # Not cached, _mtime kept: the next read tries the file again.
                     return last if last is not None else {sec: {} for sec in SECTIONS}
                 except ValueError:
@@ -329,6 +378,7 @@ class StateStore:
                         data = {}
                     else:
                         _CORRUPT_SAID.pop(str(self.path), None)
+                _read_back(self.path)
                 break
         for s in SECTIONS:
             data.setdefault(s, {})

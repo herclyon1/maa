@@ -424,9 +424,12 @@ def _automas_ended_maaend(history_root: Path, result_at) -> "datetime | None":
 # OK-WW is a 通用脚本 there, under general_result with the script named by the stem prefix.
 _DB_RESULT_KEY = {"MAA": "maa_result", "MaaEnd": "maaend_result"}
 _db_said: set[str] = set()     # history.db read errors already logged in this process
-_db_fail_streak = [0]          # history.db reads failed in a row (scan runs every 30 s or on a write)
+_db_fail_streak = [0]          # history.db reads failed in a row (a scan runs on each wake of the loop)
 DB_FAIL_WARN_AFTER = 3         # this many in a row and the group hears it, once per streak
 _db_log_missing: dict[str, float] = {}   # record id -> when its 0.log was first found missing
+# When each record the last scan put off (its log still missing, waited out for 120 s) is
+# booked without it; rebuilt by every scan, read by next_moment.
+_put_off: list[float] = []
 
 
 def _db_rows(history_root: Path) -> list[tuple]:
@@ -444,7 +447,7 @@ def _db_rows(history_root: Path) -> list[tuple]:
             con.close()
     except sqlite3.Error as e:
         # INFO, not WARNING (a WARNING is a group message): AUTO-MAS holding the file for
-        # a moment is read on the next scan, 30 s later at the latest. A read failing
+        # a moment is read on the next scan, which next_moment wakes the loop for. A read failing
         # DB_FAIL_WARN_AFTER times in a row is no moment: nothing is booked meanwhile, and
         # until 2026-11-08 nobody heard it (audit B-07).
         _db_fail_streak[0] += 1
@@ -715,6 +718,7 @@ def scan(history_root: Path, seen: set[str], maaend_dir: Path | None = None) -> 
     """
     out: list[RunRecord] = []
     now = datetime.now(tz=SERVER_TZ).timestamp()
+    _put_off.clear()
     for path in sorted(history_root.rglob("*.json")):
         try:
             age = now - path.stat().st_mtime
@@ -729,6 +733,7 @@ def scan(history_root: Path, seen: set[str], maaend_dir: Path | None = None) -> 
         # (dirwatch subscribes to LAST_WRITE). Past 120s the run is taken to have
         # no log. Negative age (mtime in the future, clock skew) is never skipped.
         if 0 <= age < 120 and not path.with_suffix(".log").exists():
+            _put_off.append(now - age + 120)
             continue
         # Skip records already processed by run_id from the path, before parsing.
         try:
@@ -762,6 +767,7 @@ def scan(history_root: Path, seen: set[str], maaend_dir: Path | None = None) -> 
         if not log_file.exists():
             first = _db_log_missing.setdefault(rid_, now)
             if now - first < 120:
+                _put_off.append(first + 120)
                 continue
         else:
             _db_log_missing.pop(rid_, None)
@@ -771,6 +777,22 @@ def scan(history_root: Path, seen: set[str], maaend_dir: Path | None = None) -> 
     _say_unparsed()
     out.sort(key=lambda r: r.started)
     return out
+
+
+def next_moment(now: datetime) -> "tuple[datetime, str] | None":
+    """When the loop must look at AUTO-MAS's records again for what the last scan could not
+    book (engine.next_deadline): a record put off for its missing log, at the moment it is
+    booked without it; a history.db read that failed, statestore.UNREAD_RETRY_S later (the
+    same spacing as a refused state.json read; that is the read it was measured on). The
+    directory watch wakes the loop on a write only, and neither case writes again, so both
+    waited for the hour backstop (dispatch relay-audit-round2-1108 N-05). None when nothing
+    is waiting."""
+    from ark_relay.core.statestore import UNREAD_RETRY_S  # noqa: PLC0415 - keep this module's imports light
+    cands = [(datetime.fromtimestamp(t, tz=SERVER_TZ), "补记缺日志的运行记录")
+             for t in _put_off if t > now.timestamp()]
+    if _db_fail_streak[0]:
+        cands.append((now + timedelta(seconds=UNREAD_RETRY_S), "重读 AUTO-MAS 的 history.db"))
+    return min(cands) if cands else None
 
 
 def _say_unparsed() -> None:
