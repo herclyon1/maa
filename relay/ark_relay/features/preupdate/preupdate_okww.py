@@ -472,6 +472,129 @@ def restore_autostart_leftover(okww_dir: "Path | None", state_dir: "Path | None"
     return f"OK-WW 的自动开游戏开关上次没放回，已放回原来的「{'开' if was else '关'}」"
 
 
+# ── after the pre-update: are OK-WW's own Python packages all there? (ledger #115) ──
+# 10-24 OK-WW updated itself to v3.7.11-beta.1, whose ok/core/plugins.py imports
+# `packaging`; its bundled Python had none, and the morning run crashed at start three
+# times. It was fixed by a pip install by hand, and the ledger said an update that
+# rebuilds the environment would crash again (dispatch relay-opt-round3-1108 O-01).
+# So, with OK-WW closed, its own python imports what main.py imports (config, ok) and
+# `packaging`, and names each module it cannot find.
+_OKWW_PYTHON = ("data", "apps", "ok-ww", "python", "python.exe")
+_OKWW_WORKING = ("data", "apps", "ok-ww", "working")
+_DEPS_PROBE = (
+    "import importlib, sys\n"
+    "sys.path.insert(0, '.')\n"
+    "for n in ('packaging', 'config', 'ok'):\n"
+    "    try:\n"
+    "        importlib.import_module(n)\n"
+    "    except ModuleNotFoundError as e:\n"
+    "        print('MISSING', (e.name or '').split('.')[0])\n"
+    "    except Exception as e:\n"
+    "        print('OTHER', n, type(e).__name__)\n"
+)
+# Installed only when OK-WW itself asks for it: a dist its own requirements.txt pins (at
+# that pin) whose name is the missing module's, or `packaging` (#115: imported by
+# ok-script but not in OK-WW's list). A module name is not a package name everywhere (cv2,
+# PIL, yaml), and pip would fetch whatever PyPI holds under a guessed name, so any other
+# missing module is said, not installed.
+_DEPS_ALWAYS = {"packaging": "packaging"}
+
+
+def _dist_key(name: str) -> str:
+    """A dist or module name as pip compares them (PEP 503: case, '-', '_' and '.' alike)."""
+    return "".join("-" if c in "-_." else c for c in name.strip().lower())
+
+
+def _okww_pins(working: Path) -> "dict[str, str]":
+    """{normalised dist name: requirement as written (name==version)} from OK-WW's own
+    requirements.txt (pip-compile's output: one `name==version` per line); {} unreadable."""
+    try:
+        text = (working / "requirements.txt").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    out = {}
+    for line in text.splitlines():
+        spec = line.split("#", 1)[0].strip()
+        if spec and not spec.startswith("-"):
+            out[_dist_key(spec.split("==", 1)[0].split("[", 1)[0])] = spec
+    return out
+
+
+def _deps_probe(py: Path, working: Path, run) -> "tuple[list[str], str]":
+    """(the module roots OK-WW's python cannot find, why the probe could not tell or '')."""
+    try:
+        r = run([str(py), "-c", _DEPS_PROBE], cwd=str(working), capture_output=True,
+                           timeout=PWSH_GUARD_S, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [], f"{type(exc).__name__}: {exc}"
+    out = r.stdout.decode("utf-8", "replace") if isinstance(r.stdout, bytes) else str(r.stdout or "")
+    missing, other = [], []
+    for line in out.splitlines():
+        word, _, rest = line.strip().partition(" ")
+        if word == "MISSING" and rest and rest not in missing:
+            missing.append(rest)
+        elif word == "OTHER":
+            other.append(rest)
+    if other:
+        # Not a missing package: an import that failed for another reason, which the run itself shows.
+        log.info("OK-WW 自带的 Python 试导入时别的地方出错（不是缺包）：%s", "；".join(other))
+    if r.returncode != 0 and not missing:
+        return [], f"试导入退出码 {r.returncode}"
+    return missing, ""
+
+
+def ensure_okww_deps(okww_dir: Path, problems: "list[str] | None" = None, *, run=None) -> str:
+    """With OK-WW closed: find the Python packages its bundled python cannot import (the
+    comment above), pip install the ones OK-WW asks for and import again. Returns
+    「OK-WW 缺的 Python 包已补装：…」 when that fixed it, '' otherwise; what it could not fix or
+    could not tell goes in `problems`. No OK-WW python here (a test tree, another layout):
+    nothing, silently. `run` replaces subprocess.run (the tests' door)."""
+    root = Path(okww_dir)
+    py, working = root.joinpath(*_OKWW_PYTHON), root.joinpath(*_OKWW_WORKING)
+    if not py.is_file() or not working.is_dir():
+        return ""
+    run = run or subprocess.run
+    missing, why = _deps_probe(py, working, run)
+    if why:
+        _note(problems, f"OK-WW 预更新：没能核对 OK-WW 自带的 Python 包齐不齐（{why}）")
+        return ""
+    if not missing:
+        log.info("OK-WW 自带的 Python 包齐全")
+        return ""
+    pins = _okww_pins(working)
+    specs = {m: pins.get(_dist_key(m)) or _DEPS_ALWAYS.get(m) for m in missing}
+    unknown = [m for m, spec in specs.items() if not spec]
+    if unknown:
+        _note(problems, f"OK-WW 自带的 Python 缺包 {'、'.join(unknown)}：OK-WW 自己的依赖清单里没有，"
+                        "没有自动装，OK-WW 一启动就会崩")
+    wanted = [spec for spec in specs.values() if spec]
+    if not wanted:
+        return ""
+    try:
+        r = run([str(py), "-m", "pip", "install", "--disable-pip-version-check", "--no-input", *wanted],
+                cwd=str(working), capture_output=True, timeout=PWSH_GUARD_S,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        pip_rc = r.returncode
+    except (OSError, subprocess.SubprocessError) as exc:
+        pip_rc = f"{type(exc).__name__}: {exc}"
+    still, why = _deps_probe(py, working, run)
+    if why:
+        _note(problems, f"OK-WW 自带的 Python 缺包 {'、'.join(wanted)}，补装过（pip 结果 {pip_rc}），"
+                        f"装完没能再核对（{why}）")
+        return ""
+    fixed = [m for m in missing if m not in unknown and m not in still]
+    left = [m for m in missing if m not in unknown and m in still]
+    if left:
+        _note(problems, f"OK-WW 自带的 Python 缺包 {'、'.join(left)}，自动补装没成（pip 结果 {pip_rc}），"
+                        "OK-WW 一启动就会崩")
+    if not fixed:
+        return ""
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    log.warning("OK-WW 更新后自带的 Python 缺包 %s，已自动补装、再导入核对过", "、".join(fixed),
+                extra=errwatch.recovered())
+    return f"OK-WW 缺的 Python 包已补装：{'、'.join(fixed)}"
+
+
 def run_okww(okww_dir: Path | None,
              budget_s: float = OKWW_BUDGET_SECONDS,
              problems: list[str] | None = None,
@@ -553,6 +676,13 @@ def run_okww(okww_dir: Path | None,
             if launched:
                 _close(exe)
                 _okww_quiesce()
+                if not stopping():
+                    # OK-WW closed: its own python may be run (ledger #115).
+                    try:
+                        if fixed := ensure_okww_deps(root, problems):
+                            log.info("预更新：%s", fixed)
+                    except Exception:  # noqa: BLE001 - the switch below must still be put back
+                        log.warning("预更新：核对 OK-WW 自带的 Python 包时出错", exc_info=True)
         finally:
             back = _okww_autostart(root, was)   # put it back as we found it
             if back is None:
