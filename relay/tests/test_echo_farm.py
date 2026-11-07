@@ -132,6 +132,23 @@ echofarm.finish(c, "收尾")
 check("没在刷的时候改不了", echofarm.retime(c, "21:00", now=NOW)[0], False)
 check("而且说清是没在刷", "没有在刷" in echofarm.retime(c, "21:00", now=NOW)[1], True)
 
+
+print("\n[刷的时候手机改了母本：收工按现在的母本还原，五项都核（11-08 [D-06]）]")
+c = fresh()
+echofarm.start(c, 3, "08:30", "第 3 个")
+_changed = dict(ORIGINAL, **{"Which Weekly Boss to Teleport": 7})
+_saved_truth = echofarm._truth
+echofarm._truth = lambda cfg, working: dict(_changed)
+echofarm.finish(c, "手动停止")
+echofarm._truth = _saved_truth
+check("刷的时候改的周本序号还在", cfg_now(c).get("Which Weekly Boss to Teleport"), 7)
+c = fresh()
+echofarm.start(c, 3, "08:30", "第 3 个")
+echofarm._truth = lambda cfg, working: json.loads(working.read_text(encoding="utf-8"))
+echofarm.finish(c, "手动停止")
+echofarm._truth = _saved_truth
+check("母本读不到时（拿到的是刷声骸那份）：还用开刷时记下的", cfg_now(c), ORIGINAL)
+
 print("\n[手动停：一样还原]")
 c = fresh()
 echofarm.start(c, 3, "08:30", "第 3 个")

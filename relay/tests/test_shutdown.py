@@ -293,6 +293,22 @@ E._before_shutdown = lambda: apply_command({"action": "skip_shutdown"})
 check("关机前拉到了「下次跑完不关机」：不关", E._maybe_shutdown(at(23, 0)), False)
 check("并且没有发出关机命令", len(issued), 0)
 
+# The last pull turned on debug mode or dispatched a script: it still holds (11-08 [A-05])
+skipped_clear(); store.pop("modes", "skip_next_shutdown")
+E._shutdown_issued = False; issued.clear()
+E._before_shutdown = lambda: dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
+check("关机前拉到了调试模式：不关", E._maybe_shutdown(at(23, 0)), False)
+check("调试模式那次也没发关机命令", len(issued), 0)
+store.pop("modes", "debug_until"); skipped_clear()
+_saved_running = E._scripts_running
+_flag = []
+E._before_shutdown = lambda: _flag.append(1)
+E._scripts_running = lambda: bool(_flag)
+check("关机前刚派了脚本：不关", E._maybe_shutdown(at(23, 0)), False)
+check("派脚本那次也没发关机命令", len(issued), 0)
+E._scripts_running = _saved_running
+skipped_clear()
+
 # 拉不到不等于有人喊停
 skipped_clear(); store.pop("modes", "skip_next_shutdown")
 def boom():

@@ -305,7 +305,11 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
         # apply. 「下次跑完不关机」 in particular is only ever pressed **while** a
         # run is going - that is the whole point of it - and it was the one command
         # the gate reliably threw away.
-        if action not in ("skip_shutdown", "debug_mode"):
+        # The echo-farm, monthly-card and tacet-screenshot orders touch only OK-WW's own
+        # file or relay state too: queued behind a farm they waited for the farm to end
+        # (「现在收工」 could not stop it, 11-08 [D-01]).
+        if action not in ("skip_shutdown", "debug_mode", "echo_farm_stop", "echo_farm_until",
+                          "monthcard", "tacet_shots"):
             # Config changed while a script is running gets clobbered by
             # AUTO-MAS's in-memory copy, so the order waits for the end of the
             # run (it used to be dropped with a 「再按一次」 push). An order that

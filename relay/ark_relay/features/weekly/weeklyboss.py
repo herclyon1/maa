@@ -27,7 +27,7 @@ from pathlib import Path
 from ark_relay.features.verify import outcome
 from ark_relay.features.weekly.annihilation import week_key
 from ark_relay.features.weekly.weekgate import DAILY, KEY, WeekGate, master_file
-from ark_relay.core.config import SERVER_TZ, atomic_write_text
+from ark_relay.core.config import SERVER_TZ, atomic_write_text, okww_root
 
 log = logging.getLogger("ark.weeklyboss")
 
@@ -75,11 +75,7 @@ def _okww_log() -> "Path | None":
     the log the claims-left count and the boss name cannot be read."""
     if path := os.environ.get("ARK_OKWW_LOG"):
         return Path(path)
-    root = os.environ.get("ARK_OKWW_DIR")
-    if not root:
-        log.warning("ARK_OKWW_DIR 没设，读不到 OK-WW 的日志——"
-                    "周本记账、剩余次数、周本名字全都会失效")
-        return None
+    root = okww_root()     # ARK_OKWW_DIR, else the install default (11-08 [D-02])
     logs = Path(root) / "data" / "apps" / "ok-ww" / "working" / "logs"
     try:
         return max(logs.glob("*.log*"), key=lambda q: q.stat().st_mtime)
@@ -114,6 +110,25 @@ def _okww_log_text() -> "str | None":
         return Path(str(f)).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
+
+
+def _since(text: str, since: "datetime | None") -> str:
+    """The part of an OK-WW log written at or after `since` (lines without a timestamp
+    go with the line above). The whole text when `since` is None."""
+    if since is None:
+        return text
+    since = since.replace(microsecond=0)   # log lines carry whole seconds only
+    keep, out = False, []
+    for line in text.splitlines():
+        try:
+            t = datetime.strptime(line[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
+        except ValueError:
+            t = None
+        if t is not None:
+            keep = t >= since
+        if keep:
+            out.append(line)
+    return "\n".join(out)
 
 
 def left_after_claims(text: str) -> "int | None":
@@ -180,6 +195,9 @@ class WeeklyBossGate(WeekGate):
     def configure(self, *, index: "int | None" = None) -> tuple[bool, str]:
         s = self._load()
         if index is not None:
+            # True is an int to Python and would read as boss 1 (11-08 [D-03]).
+            if isinstance(index, bool) or not isinstance(index, (int, str)) or not str(index).strip().isdigit():
+                return False, f"周本序号 {index!r} 不像话（应在 1~{WEEKLY_BOSSES}）"
             if not 1 <= int(index) <= WEEKLY_BOSSES:
                 return False, f"周本序号 {index} 不像话（应在 1~{WEEKLY_BOSSES}）"
             s["index"] = int(index)
@@ -197,7 +215,10 @@ class WeeklyBossGate(WeekGate):
 
     # ---------- done for the week ----------
 
-    def on_success(self, now: "datetime | None" = None) -> str:
+    def on_success(self, now: "datetime | None" = None, since: "datetime | None" = None) -> str:
+        """`since`: when this run started. Only the log from then on is read, so a
+        Sunday 「0/3」 left in the same log cannot book Monday's week as done when
+        Monday's run never read the counter (11-08 [D-02])."""
         s = self._load()
         week = week_key(now or datetime.now(tz=SERVER_TZ))
         if s.get("done_week") == week:
@@ -206,7 +227,8 @@ class WeeklyBossGate(WeekGate):
             if s.get("name") != nm:
                 s["name"] = nm
                 self._save(s)
-        left = remaining_from_log()
+        text = _okww_log_text()
+        left = None if text is None else left_after_claims(_since(text, since))
         if left is None:
             # WARNING: if the count stays unreadable the week is never booked.
             log.warning("周本：这趟打完了，但读不到本周剩余次数，没记成打完；下一趟再看，一直读不到就一直不记")
@@ -280,7 +302,7 @@ class WeeklyBossGate(WeekGate):
             daily[KEY] = tasks
             if not _write(daily_f, daily):
                 log.warning("周本开关写不进 %s", DAILY)
-                self._last_error = farm_error
+                self._last_error = farm_error or "daily-write"
                 return False
             changed = True
 

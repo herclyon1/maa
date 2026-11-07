@@ -65,13 +65,25 @@ def _probe_stamina(skland, cred, sk: dict) -> None:
     _probe["p"] = p     # one store: probe() sees the old result or the new one, never a mix
 
 
+# One phone watch lease (quota.WATCH_LEASE_SEC): a page someone is looking at gets
+# a retried Endfield lookup within the lease, without hitting Skland every publish.
+from ark_relay.features.phone.quota import WATCH_LEASE_SEC as EF_ROLE_RETRY_S  # noqa: E402
+
+
 def skland_session(cfg) -> dict:
     """{cred, token, dId, uid, efRole, efServer} for the page, or {"错误": ...}."""
     from ark_relay.core import skland  # noqa: PLC0415
     if not getattr(cfg, "skland_token", ""):
         return {"错误": "没配森空岛 token"}
     try:
+        # A session cached while the Endfield role lookup failed (a timeout, say) is
+        # remade after EF_ROLE_RETRY_S, so one bad moment does not leave the phone
+        # saying 「没有终末地角色」 until the relay restarts (11-08 [D-04]).
+        if (_session["sk"] is not None and "efRole" not in _session["sk"]
+                and time.monotonic() >= _session.get("ef_retry_at", float("inf"))):
+            _session["sk"] = None
         if _session["sk"] is None:
+            _session.pop("ef_retry_at", None)
             did = skland.get_did()
             cred = skland.login(cfg.skland_token, did)
             cred = skland.refresh(cred)
@@ -96,6 +108,7 @@ def skland_session(cfg) -> dict:
                 # Once per session made (a session is kept until it fails): the account
                 # has an Endfield role, so not finding it is a fault, not a state.
                 log.warning("终末地角色没找到：%s", exc)
+                _session["ef_retry_at"] = time.monotonic() + EF_ROLE_RETRY_S
             _probe_stamina(skland, cred, sk)
             _session["sk"] = sk
             _session.pop("failed", None)

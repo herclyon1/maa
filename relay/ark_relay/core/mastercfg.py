@@ -248,8 +248,19 @@ def maaend_master(automas_dir) -> Path | None:
     return (d / "mxu-MaaEnd.json") if d else None
 
 
+def _maaend_instance(doc: dict) -> dict:
+    """The AUTO-MAS instance (id "automas"), as plan.py and sanity_plan read it;
+    the first one when none is marked (11-08 [D-08]: a second instance listed
+    first had its tasks edited instead)."""
+    ins = [i for i in (doc.get("instances") or []) if isinstance(i, dict)]
+    for i in ins:
+        if i.get("id") == "automas" or i.get("name") == "AUTO-MAS":
+            return i
+    return ins[0] if ins else {}
+
+
 def _maaend_task(doc: dict, name: str) -> dict | None:
-    for t in (doc.get("instances") or [{}])[0].get("tasks", []):
+    for t in _maaend_instance(doc).get("tasks", []):
         if t.get("taskName") == name:
             return t
     return None
@@ -548,7 +559,7 @@ def write_maaend(automas_dir, maaend_dir, path: str, value) -> tuple[bool, str]:
         before = bool(task.get("enabled"))
         if before == bool(value):
             return True, f"{task_name} 本来就是{'开' if before else '关'}着的"
-        set_maaend_enabled(task, bool(value), (doc.get("instances") or [{}])[0].get("controllerName"))
+        set_maaend_enabled(task, bool(value), _maaend_instance(doc).get("controllerName"))
     else:
         d = _maaend_option_def(maaend_dir, task_name, opt)
         cur = (task.get("optionValues") or {}).get(opt)

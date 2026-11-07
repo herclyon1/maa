@@ -872,6 +872,8 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
             eng._last_wait_note = v.reason
             (log.warning if any(r in v.reason for r in RELAY_LOST_TRACK) else log.info)("不关机：%s", v.reason)
         _say_if_moment_passed(eng, now, v)
+        if v.code in ("cancelled", "not-down"):
+            _give_up_poweroff(eng, now, v)
         return False
     eng._last_wait_note = ""
     # The queue is idle and nothing else holds the machine: this is the one
@@ -904,6 +906,18 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
             eng._before_shutdown()
         except Exception:
             log.warning("关机前的待办检查失败，按原计划关机", exc_info=True)
+        # That pull may have just turned on debug mode or dispatched a script: an
+        # order that took effect a moment ago must still hold this power-off
+        # (11-08 [A-05]). 「下次跑完不关机」 is spent right below (take_skip).
+        if modes.debug_active(eng.state.dir):
+            key = eng._shutdown_key(now)
+            if modes.shutdown_skipped(eng.state.dir) != key:
+                modes.mark_shutdown_skipped(eng.state.dir, key, by_debug=True)
+            log.info("🔧 关机前刚收到调试模式：这一次关机跳过（%s）", key)
+            return False
+        if eng._scripts_running():
+            log.info("关机前刚派了脚本：先不关机，等它跑完再判")
+            return False
     # The one-shot 「下次跑完不关机」 mark (phone order or desktop .bat) is spent
     # here: this occasion is recorded as skipped, so the re-checks that follow stop
     # at decide()'s "skipped" gate and never power off, and the machine stays on
@@ -949,6 +963,24 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     errwatch.mark_stopping()
     return True
+
+
+def _give_up_poweroff(eng, now: datetime, v: "Verdict") -> None:
+    """The power-off was aborted or never took: this shift has lost its power-off.
+    Clear the "issued" state so engine.next_deadline, the alarms and the next
+    shift's power-off work again (before 11-08 they stayed dead until a restart)."""
+    try:
+        _note_forfeit(eng, now, v.reason)
+    except Exception:  # the reset below matters more than the mark
+        log.warning("「这一班不再关机」没记下来", exc_info=True)
+    eng._shutdown_issued = False
+    eng._shutdown_issued_at = None
+    eng._cancel_verdict = None
+    _ISSUED[0] = None
+    _record_poweroff(eng, None)
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    errwatch.clear_stopping()
+    log.info("关机没成：这一班不再关机，定时报警和下一班关机恢复正常")
 
 
 def _record_poweroff(eng, at: datetime | None, why: "dict | None" = None) -> None:

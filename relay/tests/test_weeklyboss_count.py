@@ -98,5 +98,20 @@ check("still not booked", W.WeeklyBossGate(STATE3, None).on_success(NOW), "")
 check("one WARNING says the count could not be read",
       len([m for lv, m in _log.lines if lv == "WARNING" and "剩余次数" in m]), 1)
 
+print("\n[周日留下的 0/3 不算周一这趟（11-08 [D-02]）]")
+(TMP / "sd2").mkdir(); g2 = W.WeeklyBossGate(TMP / "sd2", None); g2.configure(index=1)
+write("2026-08-30 21:00:00,000 INFO 周本本周剩余次数原文: [Box(text='本周剩余可收取次数：0/3')]",
+      "2026-08-31 20:00:05,000 INFO 进入周本失败")
+MON = datetime(2026, 8, 31, 20, 0, tzinfo=SERVER_TZ)
+check("周一这趟没读到次数：不记成打满", g2.on_success(MON, since=MON), "")
+write("2026-08-30 21:00:00,000 INFO 周本本周剩余次数原文: [Box(text='本周剩余可收取次数：0/3')]",
+      "2026-08-31 20:00:05,000 INFO 周本本周剩余次数原文: [Box(text='本周剩余可收取次数：0/3')]")
+check("周一这趟自己读到 0/3：记成打满", "已领满" in g2.on_success(MON, since=MON), True)
+
+print("\n[周本序号：True / 乱值不收（11-08 [D-03]）]")
+check("True is refused", gx.configure(index=True)[0], False)
+check("'x' is refused", gx.configure(index="x")[0], False)
+check("'3' is accepted", gx.configure(index="3")[0], True)
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

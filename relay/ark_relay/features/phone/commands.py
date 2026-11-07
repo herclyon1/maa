@@ -758,6 +758,25 @@ def _skip_today(queue: str, want_day: str = "") -> tuple[bool, str]:
     return True, f"今天（{day}）将跳过队列「{queue}」"
 
 
+def _weekly_boss(cmd: dict) -> tuple[bool, str]:
+    from ark_relay.features.weekly.weeklyboss import WeeklyBossGate  # noqa: PLC0415
+    state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
+    gate = WeeklyBossGate(state_dir, os.environ.get("ARK_AUTOMAS_DIR"))
+    before = gate._load().get("index")
+    ok, msg = gate.configure(index=cmd.get("index"))
+    if ok:
+        gate.enforce()
+        # enforce answers "changed", not "worked": a write that failed leaves
+        # _last_error. Never report ok then (11-08 [D-03]); put the old
+        # number back so state.json matches what OK-WW really has.
+        if gate._last_error:
+            s = gate._load()
+            s["index"] = before
+            gate._save(s)
+            return False, f"周本序号没改成：OK-WW 的设置文件写不进去或读回来不对（{gate._last_error}），还是原来的第 {before or 1} 个"
+    return ok, msg
+
+
 def apply_command(cmd: dict) -> tuple[bool, str]:
     """Validate and apply one command. Never raises; always reports.
 
@@ -814,13 +833,7 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             # removed automatically and hung back on Monday at 04:00.
             # The only thing that can be changed is which one to fight: 3 times a
             # week at level 90 is fixed (per the user, 2026-09-07).
-            from ark_relay.features.weekly.weeklyboss import WeeklyBossGate  # noqa: PLC0415
-            state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
-            gate = WeeklyBossGate(state_dir, os.environ.get("ARK_AUTOMAS_DIR"))
-            ok, msg = gate.configure(index=cmd.get("index"))
-            if ok:
-                gate.enforce()
-            return ok, msg
+            return _weekly_boss(cmd)
         if action == "echo_farm":
             # Farm one boss for its 4-cost echoes until a wall-clock time: an overworld
             # boss, or with "weekly": true the boss-th weekly boss.
