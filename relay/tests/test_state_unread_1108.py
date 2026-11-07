@@ -71,7 +71,14 @@ class Rows(logging.Handler):
 rows = Rows()
 statestore.log.addHandler(rows)
 statestore.log.setLevel(logging.DEBUG)
-statestore.log.propagate = False
+# errwatch's handler sits on the "ark" logger (errwatch.install): what reaches it there is
+# what the group hears. It writes errkinds/ and the technical log, never state.json, so the
+# push does not die in the outage it reports.
+at_errwatch = []
+_ark = logging.getLogger(errwatch.ARK)
+_ark_rows = Rows()
+_ark_rows.emit = lambda r: at_errwatch.append(r.levelname) if r.name == statestore.log.name else None
+_ark.addHandler(_ark_rows)
 
 clock = [1000.0]
 import time as _time  # noqa: E402
@@ -134,6 +141,7 @@ st.get("weekly", "garden")
 w = [(m, r) for lv, m, r in rows.rows if lv == "WARNING"]
 check("600 秒：一条 WARNING，没标自己好了，说 10 分钟、带原因",
       [(r, "10 分钟" in m, "PermissionError" in m) for m, r in w], [(False, True, True)])
+check("这条 WARNING 到了 errwatch 挂的那个 logger（会进群）", at_errwatch.count("WARNING"), 1)
 clock[0] = 1000.0 + 1800
 st.get("weekly", "garden")
 check("再过 20 分钟：不再发第二条", levels().count("WARNING"), 1)
