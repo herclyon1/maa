@@ -2251,6 +2251,7 @@ def _recovered(recs: list, part: str) -> "list[bool]":
 
 
 def _audit_1108_endfield() -> None:
+    from ark_relay.features.banners import endfield as _ef  # noqa: PLC0415
     got, nxt, tr, recs = _ef_1107()
     out = render(got, EF_NOW, {"终末地": nxt} if nxt else {}, {}, tr)
     check("1108 ef: 明河 is running from the official sources while Skland is empty",
@@ -2271,6 +2272,23 @@ def _audit_1108_endfield() -> None:
                       "版本更新说明、特许寻访说明、新版本导览"]])
     check("1108 ef: 明河 running means no next banner yet", nxt, None)
     check("1108 ef: the end is a source date", "11-26 06:00" in tr.ends, True)
+
+    # 11-01: 祀 running (Skland empty, filled from the notices), 明河 announced for
+    # 11-05 12:00: its end is recorded like the other games' (the 下期 line and the
+    # trace file's "until", which the cross-day gate puts it back with).
+    nov1 = datetime(2026, 11, 1, 12, 0)
+    got, nxt, tr, recs = _ef_1107(nov1)
+    out = render(got, nov1, {"终末地": nxt}, {}, tr)
+    check("1108 ef: the next banner's end is recorded",
+          (nxt, tr.until.get("终末地"), "11-26 06:00" in tr.ends),
+          ((datetime(2026, 11, 5, 12, 0), "明河「烟火邀星河」"), datetime(2026, 11, 26, 6, 0), True))
+    check("1108 ef: and printed on the 下期 line, which passes the source gate",
+          ("· 下期：烟火邀星河 · 明河 · 北京 11-05 12:00 开 · 11-26 06:00 结束" in out, tr.withheld), (True, []))
+    check("1108 ef: 祀 running from the notices, ending at the changeover",
+          "· 当期：万物更新 · 祀 · 北京 11-05 11:59 换池" in out, True)
+    check("1108 ef: no end known for a next banner -> none recorded",
+          (_ef._ef_until(None, [], _b.Trace.new()), _ef._ef_until((None, "x「y」"), [], _b.Trace.new())),
+          (None, None))
 
     # 11-27: everything in the bulletin, the notices and the briefing has closed.
     got, nxt, tr, recs = _ef_1107(datetime(2026, 11, 27, 12, 0))
@@ -2321,7 +2339,6 @@ def _audit_1108_endfield() -> None:
           ([b.chars for b in got], [c for c in tr.checks if "兜底" in c], _warned(recs, "补进当期")), ([("明河",)], [], 0))
 
     # A notice whose title names no banner never makes a nameless 当期 line.
-    from ark_relay.features.banners import endfield as _ef  # noqa: PLC0415
     got, tr = [], _b.Trace.new()
     _ef._ef_fill(got, [], [{"op": "明河", "pool": "", "debut": True, "starts": {}, "ends": {}, "by": ["特许寻访说明"],
                             "start": datetime(2026, 11, 5, 12), "end": None}], EF_NOW, tr)

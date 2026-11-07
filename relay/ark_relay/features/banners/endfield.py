@@ -211,12 +211,31 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
         log.warning("终末地：森空岛的当期卡池表是空的，版本更新说明、特许寻访说明、新版本导览三个官方来源也都没读到，分不出有没有在开的卡池")
         if failed is not None:
             failed.append("终末地（森空岛的当期卡池表是空的，官方公告也没读到）")
-    opened = [r for r in ef_official_pools(pools_n, ends_n, off.cms_rows, off.brief[1] if off.brief else [])
+    offi = ef_official_pools(pools_n, ends_n, off.cms_rows, off.brief[1] if off.brief else [])
+    opened = [r for r in offi
               if r["start"] is not None and r["start"] <= now and (r["end"] is None or now <= r["end"])]
     _ef_crosscheck(got, now, pools_n, ends_n, notice_ok, tr)
     _ef_fill(got, live, opened, now, tr)
     on = {c for b in live for c in b.chars} | {r["op"] for r in opened}
-    return got, _ef_next(now, on, debut, pools_n, off, notes, tr)
+    nxt = _ef_next(now, on, debut, pools_n, off, notes, tr)
+    _ef_until(nxt, offi, tr)
+    return got, nxt
+
+
+def _ef_until(nxt: "tuple[datetime | None, str] | None", offi: "list[dict]", tr: "Trace") -> None:
+    """The next banner's published end, as the other two games record theirs: the
+    下期 line prints it after the opening, and the trace file keeps it so the
+    cross-day gate (banners.check_continuity) can put an announced banner back
+    with it if every source loses it once it has opened. Taken from whichever
+    official source prints it (ef_official_pools: the bulletin, the notice, the
+    briefing's GachaCharPool row)."""
+    if not nxt or nxt[0] is None:
+        return
+    op, pool = hub.split_who(nxt[1])
+    end = next((r["end"] for r in offi if (r["op"], r["pool"]) == (op, pool) and r["end"]), None)
+    if end is not None:
+        tr.until["终末地"] = end
+        tr.ends |= _stamps(end)
 
 
 def _ef_skland(pools: list, sk_get, failed: "list[str] | None") -> "list[Banner]":
