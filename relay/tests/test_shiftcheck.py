@@ -149,8 +149,9 @@ with tempfile.TemporaryDirectory() as td:
         check("next shift, faults red and switches noted, read from the state files", got and [c.ok for c in got],
               [False, True, True, False])
         check("switch notes read from the state files", got and [bool(c.detail) for c in got][1:3], [True, True])
-        check("red still INFO only (WARNING would reach the group through errwatch)",
-              [r.levelno for r in rec.records], [logging.INFO])
+        # D210 / audit 11-08 C-07: a red item is a WARNING, so errwatch takes it to the group.
+        check("red goes out as a WARNING (errwatch takes it to the group)",
+              [r.levelno for r in rec.records], [logging.WARNING])
         check("red line names the morning shift", rec.records[0].getMessage().startswith("收工体检（早班）4 项里 2 项不对"),
               True)
 
@@ -231,6 +232,15 @@ check("both shifts of the day quoted after the two relay lines, not yesterday's"
                   "· 收工体检（早班）4 项都对"])
 check("the shift line does not count as a boot", lines[1], "· 调度程序开机：21:21 自己起来了（等了 21 秒）")
 check("no shift line -> still the two lines", len(selfcheck.daily_lines("2026-10-09", log)), 2)
+
+print("\n[audit 11-08 C-07: a test window left open does not take later scheduled runs out of the report]")
+from ark_relay.core import ledger_report as _lr  # noqa: E402
+_open = [{"since": "2026-10-12T04:50:00+08:00", "until": None}]
+_test_run = {"run_id": "t", "started": "2026-10-12T05:10:00+08:00"}
+_shift_run = {"run_id": "s", "started": "2026-10-12T09:00:00+08:00"}
+_real, _tests = _lr.split_test([_test_run, _shift_run], _open)
+check("the run inside the window is a test", [e["run_id"] for e in _tests], ["t"])
+check("the 09:00 shift, 4 h after it opened, is real", [e["run_id"] for e in _real], ["s"])
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

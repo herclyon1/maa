@@ -469,7 +469,7 @@ def _linked(prev: dict, cur: dict) -> bool:
 # machine never powered off again (review of 25ebc227, 10-13). Measured in the 10-01..10-13
 # ledgers (86 runs): the longest MAA run 67.9 min, MaaEnd 60.3, OK-WW 60.0; with OK-WW's
 # 120 + TIMEOUT_SLACK_MIN, 3 h leaves 50 min for the wait before the run starts.
-OPEN_WINDOW_MAX_H = 3
+OPEN_WINDOW_MAX_H = 3     # ledger_report.OPEN_TEST_WINDOW_MAX_H reads open windows the same way
 
 
 def _test_spans(eng) -> list[tuple[datetime, datetime]]:

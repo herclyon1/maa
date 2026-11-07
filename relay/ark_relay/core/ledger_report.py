@@ -651,6 +651,10 @@ def test_windows(state_dir) -> list[dict]:
         return []
 
 
+# = shutdown.OPEN_WINDOW_MAX_H (measured there: the longest run plus its wait).
+OPEN_TEST_WINDOW_MAX_H = 3
+
+
 def split_test(entries: list[dict], windows: list[dict]) -> tuple[list[dict], list[dict]]:
     """(real records, records inside a marked test window).
 
@@ -664,7 +668,11 @@ def split_test(entries: list[dict], windows: list[dict]) -> tuple[list[dict], li
     for w in windows or []:
         try:
             since = datetime.fromisoformat(w["since"])
-            until = datetime.fromisoformat(w["until"]) if w.get("until") else None
+            # A window left open ends OPEN_TEST_WINDOW_MAX_H after it opened, as the shutdown
+            # decision already reads it (shutdown.OPEN_WINDOW_MAX_H): open for ever, it took
+            # every later scheduled run out of the report's rows (audit 2026-11-08 C-07).
+            until = (datetime.fromisoformat(w["until"]) if w.get("until")
+                     else since + timedelta(hours=OPEN_TEST_WINDOW_MAX_H))
         except (KeyError, TypeError, ValueError):
             continue
         spans.append((since, until))
