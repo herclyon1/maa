@@ -20,6 +20,13 @@ MISSED_GRACE_MIN = 25
 
 # ---------- a run that should have happened and did not ----------
 
+
+def _queue_run(e: dict, q: dict) -> bool:
+    """A ledger line that can be queue `q`'s run: one of its scripts, not started by hand."""
+    kinds = q.get("kinds") or ()
+    return (not kinds or e.get("script") in kinds) and not (e.get("raw") or {}).get("hand_started")
+
+
 def _check_missed_runs(eng, now: datetime | None = None,
                        grace_min: int = MISSED_GRACE_MIN) -> None:
     """Alert when a scheduled queue produced nothing.
@@ -62,9 +69,11 @@ def _check_missed_runs(eng, now: datetime | None = None,
             if _sat_out(eng, day, q["name"]):
                 _settle(eng, day, key)
                 continue
-            # Anything recorded after the scheduled time counts as "it ran".
-            ran = any(datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
-                      >= due - timedelta(minutes=5) for e in entries)
+            # A record of one of this queue's scripts after the scheduled time counts as "it
+            # ran" - not a run a person started at AUTO-MAS (raw.hand_started), nor another
+            # queue's script (audit 2026-11-08 C-06). A run 停一切 stopped did start: it counts.
+            ran = any(datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ) >= due - timedelta(minutes=5)
+                      and _queue_run(e, q) for e in entries)
             if ran:
                 _settle(eng, day, key)   # settled, stop checking
                 continue
@@ -138,7 +147,7 @@ def _check_partial_queues(eng, now: datetime, day: str,
             continue  # still legitimately in progress
         ran = {e["script"] for e in entries
                if datetime.fromisoformat(e["started"]).astimezone(SERVER_TZ)
-               >= due - timedelta(minutes=5)}
+               >= due - timedelta(minutes=5) and _queue_run(e, q)}
         if not ran:
             continue  # nothing at all - already covered by the check above
         for kind in q["kinds"]:
