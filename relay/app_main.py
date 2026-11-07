@@ -244,10 +244,17 @@ def run() -> int:
     threading.Thread(target=_end_session_window, args=(host,), daemon=True, name="end-session").start()
     threading.Thread(target=_stop_requests, args=(host, stop_evt), daemon=True, name="stop-request").start()
     log = logging.getLogger("ark.app")
+    code = 0
     try:
         host.main()
     except Exception:
         log.exception("中继主流程出错退出")
+        # Said where the watchdog looks when it has to start the relay again and
+        # again (START_ERROR, quoted in its alarm), and as the exit code: until
+        # 2026-11-08 a crash ended with 0 like a clean stop (清单-1108 A-07).
+        import traceback  # noqa: PLC0415
+        _record_crash(traceback.format_exc())
+        code = 1
     # As SvcDoRun after main returns: let the last push finish, then a hard exit
     # (threads stuck in C calls would hold up interpreter shutdown).
     host._wait_stop_push()
@@ -258,7 +265,26 @@ def run() -> int:
     errwatch.drain(2.0)
     logging.shutdown()
     _ = (mutex, stop_evt)            # held to the end; the system closes them at exit
-    os._exit(0)
+    os._exit(code)
+
+
+# packaging/launch.py's file and size for a start that failed; a crash of the running
+# relay is appended the same way (packaging/watchdog/ark_watchdog.py reads its tail).
+START_ERROR = "start-error.txt"
+START_ERROR_MAX = 32_000
+
+
+def _record_crash(text: str, data: "Path | None" = None) -> None:
+    """Append the main flow's crash (time, version folder, traceback) to START_ERROR in
+    the data folder, keeping the newest START_ERROR_MAX characters. Never raises."""
+    data = data or DATA
+    entry = f"{time.strftime('%Y-%m-%d %H:%M:%S')} app_main.py run ({HERE.name}):\n{text.rstrip()}\n"
+    path = data / START_ERROR
+    try:
+        old = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+        path.write_text((old + entry)[-START_ERROR_MAX:], encoding="utf-8")
+    except OSError:
+        pass
 
 
 MAIN_TASK = pkg_layout.MAIN_TASK

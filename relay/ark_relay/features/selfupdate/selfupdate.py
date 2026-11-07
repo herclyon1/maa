@@ -339,6 +339,15 @@ def _applied_version(root: Path) -> int:
     return _stored_version(root, "code")
 
 
+def _rollback_floor(root: Path) -> int:
+    """The version a rollback moved away from (pkg_layout.PIN_FILE in the state folder),
+    0 when there is none - also off the packaged layout, where nothing writes it."""
+    try:
+        return int((root / "state" / "rolled-back-from.txt").read_text(encoding="ascii").strip() or 0)
+    except (OSError, ValueError):
+        return 0
+
+
 def _announced_version(root: Path) -> int:
     return _stored_version(root, "announced")
 
@@ -687,7 +696,9 @@ def check(root: Path, base_url: str = "",
     """
     base = (base_url or DEFAULT_BASE).rstrip("/") + "/"
     deadline = time.monotonic() + budget_s if budget_s else None
-    local_ver = _applied_version(root)
+    # A rolled-back relay records the version it runs (pkg_layout.record_running_version);
+    # the version it rolled away from is the floor here, so that one is not "new".
+    local_ver = max(_applied_version(root), _rollback_floor(root))
     cos = None
     manifest = None
     fallback = github_fallback()

@@ -108,6 +108,29 @@ finally:
 check("停止前那份推完了才结束进程", [e[0] for e in events], ["pushed", "exit"])
 check("SvcStop 说了是 Windows 关机", [m for _, m in h.got if m.startswith("收到停止通知")], ["收到停止通知（Windows 关机）"])
 
+print("[1b. 清单-1108 A-07：第二次停止（关机消息和停止请求两个线程都来了）不再推一遍、不再挂第二个强退]")
+h2 = Lines()
+service.log.addHandler(h2)
+timers = []
+real_timer = service.threading.Timer
+service.threading.Timer = lambda *a, **k: timers.append(a) or types.SimpleNamespace(daemon=True, start=lambda: None)
+try:
+    svc.SvcStop()
+finally:
+    service.threading.Timer = real_timer
+    service.log.removeHandler(h2)
+check("第二次：没再推、没再挂强退，只记一行",
+      ([e for e in events if e[0] == "pushed"], timers, [m for _, m in h2.got if m.startswith("又收到一次停止")]),
+      ([("pushed", "停止前")], [], ["又收到一次停止（Windows 关机），第一次的停止还在做"]))
+fresh = service.ArkRelayService(["ark-relay"])
+fresh._push_state = lambda why: (_ for _ in ()).throw(AssertionError("the hard exit must be armed before this"))
+service.threading.Timer = lambda *a, **k: timers.append(a) or types.SimpleNamespace(daemon=True, start=lambda: None)
+try:
+    fresh.SvcStop()
+finally:
+    service.threading.Timer = real_timer
+check("强退在停止前那份推送之前就挂上了", [t[0] for t in timers], [15])
+
 print("\n[2. WMI 订阅断了：diag 行写明是哪种情况]")
 watch = procwatch._ProcessWatch(object(), {"ok": True}, service.log, lambda: None)
 watch.hosts = "winmgmt pid 1234; WmiPrvSE pids 5,6"

@@ -57,5 +57,17 @@ check("a write cut before the swap keeps current.txt", pkg_layout.current(app), 
 pkg_layout._pin(code, 0)
 check("pin 0 removes the file", (code / "state" / pkg_layout.PIN_FILE).exists(), False)
 
+# 清单-1108 A-07: after a rollback the record names the code that runs, and the pin is
+# the floor selfupdate.check compares against (the version rolled away from is not new).
+from ark_relay.features.selfupdate import selfupdate  # noqa: E402
+root = tmpdir()
+here = root / "20261012111426"
+(here / "state").mkdir(parents=True)
+pkg_layout._pin(here, 20261012130559)
+pkg_layout.record_running_version(here)
+check("a rolled-back relay records the version it runs", selfupdate._applied_version(here), 20261012111426)
+check("…and check counts from the version it rolled away from", selfupdate._rollback_floor(here), 20261012130559)
+check("no pin: no floor", selfupdate._rollback_floor(tmpdir()), 0)
+
 print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

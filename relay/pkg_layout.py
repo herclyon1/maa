@@ -135,9 +135,12 @@ def record_running_version(here: Path) -> None:
     rollback, or an install over the old relay whose record is newer than the installed
     code. selfupdate.check trusts the record, so each start sets it from the folder.
 
-    After a rollback the record is the version rolled away from (PIN), not the running
-    one: otherwise check would see the deployed version as new and update straight back
-    into it. The pin holds until a higher version is deployed (update clears it).
+    After a rollback too the record is the running version: every machine check, run
+    record and report stamps it as the code that ran (until 2026-11-08 it was the
+    version rolled away from, so a rolled-back relay's verdicts carried the version it
+    had left - 清单-1108 A-07). selfupdate.check keeps from updating straight back into
+    that version by taking the pin (PIN_FILE) as the floor of what counts as new; the
+    pin holds until a higher version is deployed (update clears it).
 
     The "code was updated" note goes the same way when it names a version newer than the
     folder in use: check wrote it into the shared state for a copy that never became
@@ -146,10 +149,9 @@ def record_running_version(here: Path) -> None:
     the first boot after a real switch and stays."""
     from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415
     running = version_key(here.name)[0]
-    want = max(running, _pinned(here))
-    if want and selfupdate._applied_version(here) != want:
-        log.info("记录的代码版本改成 %s（正在用的文件夹 %s）", want, here.name)
-        selfupdate._remember_version(here, want)
+    if running and selfupdate._applied_version(here) != running:
+        log.info("记录的代码版本改成 %s（正在用的文件夹 %s）", running, here.name)
+        selfupdate._remember_version(here, running)
     note = _read_note(selfupdate._announce_path(here))
     if running and note is not None and int(note.get("version") or 0) > running:
         log.info("丢掉 v%s 的更新通知：正在用的文件夹是 %s，那一版没换上",

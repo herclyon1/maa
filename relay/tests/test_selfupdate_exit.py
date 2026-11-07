@@ -103,9 +103,31 @@ def test_preupdate_skipped_while_stopping():
         boot_stages._stop_requested, preupdate.wanted_today = real
 
 
+def test_preupdate_automas_without_okww():
+    print("清单-1108 A-07：今天只剩 MAA / MaaEnd 的队列：AUTO-MAS 的更新照查，OK-WW 不动")
+    ran = []
+    names = ("_stop_requested", "await_backend", "_once_more", "_preupdate_okww")
+    real = [getattr(boot_stages, n) for n in names] + [preupdate.wanted_today, preupdate.should_run, preupdate.mark_run]
+    boot_stages._stop_requested = lambda: False
+    boot_stages.await_backend = lambda log, why, cfg: (True, 0)
+    boot_stages._once_more = lambda cfg, log, what, budget, problems, fn: ran.append(what) or None
+    boot_stages._preupdate_okww = lambda *a: ran.append("OK-WW")
+    preupdate.wanted_today = lambda d, now=None, kind="OK-WW": kind == "MAA"
+    preupdate.should_run = lambda *a: True
+    preupdate.mark_run = lambda *a, **k: ran.append("marked")
+    try:
+        boot_stages._stage_preupdate(types.SimpleNamespace(automas_dir=None, state_dir=None), None, _Log())
+        check("AUTO-MAS 查了、OK-WW 没动、今天记为做过", ran, ["AUTO-MAS", "marked"])
+    finally:
+        for n, v in zip(names, real):
+            setattr(boot_stages, n, v)
+        preupdate.wanted_today, preupdate.should_run, preupdate.mark_run = real[len(names):]
+
+
 if __name__ == "__main__":
     test_selfupdate_returns_true()
     test_no_bare_return_in_bool_functions()
     test_preupdate_skipped_while_stopping()
+    test_preupdate_automas_without_okww()
     print("all checks passed" if not fails else f"FAILED: {fails}")
     raise SystemExit(1 if fails else 0)

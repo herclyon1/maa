@@ -109,5 +109,22 @@ selfupdate._remember_version(v, 20261013)
 check("boot line after the change", boot_version_line(), "v20261013")
 check("the old folder's data is still there", (DATA / "state" / "state.json").exists(), True)
 
+print("\n[清单-1108 A-07: a crash of the main flow goes where the watchdog reads start errors]")
+crash = TMP / "crash"
+crash.mkdir()
+app_main._record_crash("Traceback (most recent call last):\nRuntimeError: boom", data=crash)
+app_main._record_crash("Traceback (most recent call last):\nRuntimeError: again", data=crash)
+got = (crash / app_main.START_ERROR).read_text(encoding="utf-8")
+check("both crashes, newest last, with the version folder",
+      (got.count("app_main.py run"), got.rstrip().endswith("RuntimeError: again"), f"({app_main.HERE.name})" in got),
+      (2, True, True))
+check("the same file the watchdog reads", app_main.START_ERROR, "start-error.txt")
+(crash / app_main.START_ERROR).write_text("x" * app_main.START_ERROR_MAX, encoding="utf-8")
+app_main._record_crash("RuntimeError: last", data=crash)
+check("kept to the newest START_ERROR_MAX characters",
+      len((crash / app_main.START_ERROR).read_text(encoding="utf-8")), app_main.START_ERROR_MAX)
+app_main._record_crash("RuntimeError: nowhere", data=crash / "missing" / "dir")
+check("a folder that is not there: nothing raised", (crash / "missing").exists(), False)
+
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

@@ -11,6 +11,7 @@ deleted (renamed to .migrated) and cleaned up after three stable days.
 """
 from __future__ import annotations
 
+import copy
 import fnmatch
 import json
 import logging
@@ -180,6 +181,11 @@ _CORRUPT_SAID: dict[str, float] = {}
 # built fresh at most call sites as for the long-lived ones. Never written to disk
 # from here: a write reads the file itself (_load fresh).
 _LAST_GOOD: dict[str, dict] = {}
+# Every write this process made, per file: a cached copy read before another
+# instance's write is stale even when the file's mtime reads the same (two writes
+# inside the clock's resolution, or a clock step back). _load serves its cache only
+# when no write came in between (清单-1108 A-07).
+_WRITE_SEQ: dict[str, int] = {}
 
 def set_aside(path: Path, mtime: float, said: "dict[str, float] | None" = None) -> "str | None":
     """Copy an unreadable state file aside as <name>.corrupt-<mtime> before anything
@@ -236,6 +242,8 @@ _WRITE_LOCK = threading.RLock()
 
 
 class StateStore:
+    _seq = -1           # the _WRITE_SEQ value the cached copy was read at
+
     def __init__(self, state_dir: Path):
         self.dir = Path(state_dir)
         self.path = self.dir / FILE
@@ -278,7 +286,8 @@ class StateStore:
             m = self.path.stat().st_mtime
         except OSError:
             m = -1.0
-        if self._data is not None and m == self._mtime and not fresh:
+        seq = _WRITE_SEQ.get(str(self.path), 0)
+        if self._data is not None and m == self._mtime and not fresh and self._seq == seq:
             return self._data
         data: dict = {}
         if m >= 0:
@@ -323,7 +332,7 @@ class StateStore:
                 break
         for s in SECTIONS:
             data.setdefault(s, {})
-        self._data, self._mtime = data, m
+        self._data, self._mtime, self._seq = data, m, seq
         _LAST_GOOD[str(self.path)] = data
         return data
 
@@ -379,7 +388,10 @@ class StateStore:
         to the copy, which becomes the cached one only once _flush wrote it. Changed
         in place, a write that failed left the cache answering with what never reached
         the file - an alarm's day mark that a lock refused read as set (10-17)."""
-        return {s: dict(v) if isinstance(v, dict) else v for s, v in self._load(fresh=True).items()}
+        # A deep copy: with each section copied only one level down, a list or table
+        # inside a key was shared with the cache, and changing it in place changed
+        # the cache before the write went through (清单-1108 A-07).
+        return copy.deepcopy(self._load(fresh=True))
 
     def _flush(self, data: dict) -> None:
         """Write `data` as state.json; a Windows lock on it is waited out first
@@ -392,6 +404,7 @@ class StateStore:
         except OSError:
             self._mtime = -1.0
         self._data = data
+        _WRITE_SEQ[str(self.path)] = self._seq = _WRITE_SEQ.get(str(self.path), 0) + 1
         _LAST_GOOD[str(self.path)] = data
 
     # ---------- migration ----------

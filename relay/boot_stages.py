@@ -916,7 +916,12 @@ def _stage_preupdate(cfg, notifier, log) -> None:
         # three times, and on the third MAA did not answer within 180 seconds
         # and we reported 「没能确认」.
         _pre_now = datetime.now(tz=SERVER_TZ)
-        if (preupdate.wanted_today(cfg.automas_dir)
+        # AUTO-MAS's own update check is wanted before any queue still to come
+        # today; OK-WW's update only before one that runs OK-WW. Until 2026-11-08
+        # both waited on an OK-WW queue, so on a day of MAA / MaaEnd queues alone
+        # AUTO-MAS's update was not checked either (清单-1108 A-07).
+        okww_wanted = preupdate.wanted_today(cfg.automas_dir)
+        if ((okww_wanted or any(preupdate.wanted_today(cfg.automas_dir, kind=k) for k in ("MAA", "MaaEnd")))
                 and preupdate.should_run(cfg.state_dir, _pre_now)):
             # Every update that lands is pushed, per the standing order: when an
             # auto-update takes effect, say so at once.
@@ -953,7 +958,10 @@ def _stage_preupdate(cfg, notifier, log) -> None:
                 # nor reported as unconfirmed: the next boot runs it again.
                 log.info("服务正在停止，预更新停在 AUTO-MAS 之后，下次开机重做")
                 return
-            _preupdate_okww(cfg, notifier, log, problems)
+            if okww_wanted:
+                _preupdate_okww(cfg, notifier, log, problems)
+            else:
+                log.info("预更新：今天剩下的队列不跑 OK-WW，它的更新这次不查")
             if _stop_requested():
                 log.info("服务正在停止，预更新没做完，下次开机重做")
                 return

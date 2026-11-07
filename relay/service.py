@@ -108,6 +108,25 @@ def _wait_for_network(log, timeout: float = 90.0) -> bool:
             delay = min(delay * 2, 15.0)
 
 
+def _force_exit() -> None:
+    """SvcStop's hard exit: the main loop did not come out of tick() within 15 seconds
+    (it happened once at 2026-09-07 10:29, with no clue at all in the log). Print the
+    line each thread is stuck on, so next time there is nothing to guess."""
+    import sys  # noqa: PLC0415
+    import traceback  # noqa: PLC0415
+    names = {t.ident: t.name for t in threading.enumerate()}
+    dump = []
+    for ident, frame in sys._current_frames().items():
+        if ident == threading.get_ident():
+            continue
+        stack = traceback.format_stack(frame)[-4:]
+        dump.append(f"[{names.get(ident, ident)}]\n" + "".join(stack))
+    logging.getLogger("ark.service").warning(
+        "停止 15 秒后进程仍未退出，硬保险强制退出。各线程卡在：\n%s", "\n".join(dump))
+    logging.shutdown()
+    os._exit(0)
+
+
 class ArkRelayService(win32serviceutil.ServiceFramework):
     _svc_name_ = "ark-relay"
     _svc_display_name_ = "Ark Relay (MAA notification relay)"
@@ -137,8 +156,26 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # pywin32 routes SERVICE_CONTROL_SHUTDOWN to SvcShutdown, which calls
         # this, so this is also where a Windows shutdown first shows up.
         from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        # Once per process. The installed relay (app_main.py) reaches this from two
+        # threads that can both fire - WM_ENDSESSION and the stop request - and a
+        # second run pushed the state again and armed a second hard exit
+        # (清单-1108 A-07). dict.setdefault is atomic under the GIL.
+        if not self.__dict__.setdefault("_stop_once", threading.Lock()).acquire(blocking=False):
+            logging.getLogger("ark.service").info("又收到一次停止（%s），第一次的停止还在做", self._stop_how)
+            return
         errwatch.mark_stopping()
         self._stop_asked.set()
+        # Hard backstop first: force the process to exit if it has not shut down
+        # cleanly within 15 seconds. Hanging in STOP_PENDING is far worse than a
+        # forced exit, and every piece of this process's state is written to
+        # disk atomically, so a forced exit cannot corrupt anything. Armed before
+        # the last state push (until 2026-11-08 after it), so a push that hangs
+        # cannot hold the process past it either; the main thread gives that push
+        # STOP_PUSH_WAIT_S (10 s) before its own exit.
+        # 来龙去脉见 docs/CODE-HISTORY.md「service.py:SvcStop」
+        killer = threading.Timer(15, _force_exit)
+        killer.daemon = True     # it must not itself hold up the exit
+        killer.start()
         # The line the machine check of the last state push (#11) starts from:
         # it also shows that a Windows shutdown reached SvcShutdown at all.
         logging.getLogger("ark.service").info("%s（%s）", STOP_NOTICE, self._stop_how)
@@ -161,32 +198,6 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         box = getattr(self, "_mailbox", None)
         if box is not None:
             box.close()
-        # Hard backstop: force the process to exit if it has not shut down
-        # cleanly within 15 seconds. Hanging in STOP_PENDING is far worse than a
-        # forced exit, and every piece of this process's state is written to
-        # disk atomically, so a forced exit cannot corrupt anything.
-        # 来龙去脉见 docs/CODE-HISTORY.md「service.py:SvcStop」
-        def _force_exit() -> None:
-            # Getting here means the main loop did not come out of tick()
-            # within 15 seconds (it happened once at 2026-09-07 10:29, with no
-            # clue at all in the log). Print the line each thread is stuck on,
-            # so next time there is nothing to guess.
-            import sys  # noqa: PLC0415
-            import traceback  # noqa: PLC0415
-            names = {t.ident: t.name for t in threading.enumerate()}
-            dump = []
-            for ident, frame in sys._current_frames().items():
-                if ident == threading.get_ident():
-                    continue
-                stack = traceback.format_stack(frame)[-4:]
-                dump.append(f"[{names.get(ident, ident)}]\n" + "".join(stack))
-            logging.getLogger("ark.service").warning(
-                "停止 15 秒后进程仍未退出，硬保险强制退出。各线程卡在：\n%s", "\n".join(dump))
-            logging.shutdown()
-            os._exit(0)
-        killer = threading.Timer(15, _force_exit)
-        killer.daemon = True     # it must not itself hold up the exit
-        killer.start()
 
     def SvcShutdown(self):  # noqa: N802 - name required by the framework
         """Windows is shutting down: stop exactly as for `sc stop`.
