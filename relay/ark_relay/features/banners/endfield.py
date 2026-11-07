@@ -334,8 +334,8 @@ def _ef_fill(got: "list[Banner]", live: "list[Banner]", opened: "list[dict]", no
     official sources must agree on its times."""
     sk_running = [b for b in live if b.start <= now <= b.end]
     for r in opened:
-        if not r["debut"]:
-            continue
+        if not r["debut"] or not r["pool"]:
+            continue    # a notice whose title names no banner cannot make a 当期 line
         by = "、".join(r["by"])
         tr.opened("终末地", r["pool"], r["op"], r["start"], r["end"], by)
         for kind, seen in (("开始", r["starts"]), ("结束", r["ends"])):

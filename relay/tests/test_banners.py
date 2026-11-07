@@ -2320,6 +2320,13 @@ def _audit_1108_endfield() -> None:
     check("1108 ef: Skland listing it -> no fill, no fill warning",
           ([b.chars for b in got], [c for c in tr.checks if "兜底" in c], _warned(recs, "补进当期")), ([("明河",)], [], 0))
 
+    # A notice whose title names no banner never makes a nameless 当期 line.
+    from ark_relay.features.banners import endfield as _ef  # noqa: PLC0415
+    got, tr = [], _b.Trace.new()
+    _ef._ef_fill(got, [], [{"op": "明河", "pool": "", "debut": True, "starts": {}, "ends": {}, "by": ["特许寻访说明"],
+                            "start": datetime(2026, 11, 5, 12), "end": None}], EF_NOW, tr)
+    check("1108 ef: an open notice with no banner name is not filled", (got, tr.opens), ([], []))
+
     # The next banner from the notices already read (no second fetch of the backend).
     before = _b.ef_banner_posts([(c, t, ts, x) for c, t, ts, x in _b.ef_cms_posts(lambda u: _ef_pages()[u], 1)])
     check("1108 ef: the notices read once give the next banner the same way",
