@@ -487,6 +487,7 @@
 "names",
 "notify",
 "outcome",
+"procs",
 "procwatch",
 "pushes",
 "records",
@@ -1230,11 +1231,15 @@
 "masuser",
 "names",
 "preupdate_common",
+"procwatch",
 "redbutton",
 "scoreboard",
+"shutdown_signs",
 "statestore",
 "tape",
-"texts"
+"texts",
+"wmi_diag",
+"wmi_subscription"
 ],
 "test_daysim_clock.py": [
 "__init__",
@@ -7876,7 +7881,12 @@
 "test_pkg_appfiles_update.py": [],
 "test_pkg_install_messages.py": [],
 "test_pkg_layout_names.py": [],
-"test_pkg_pin_whole_write.py": [],
+"test_pkg_pin_whole_write.py": [
+"__init__",
+"config",
+"selfupdate",
+"statestore"
+],
 "test_pkg_runtime_update.py": [],
 "test_pkg_state_dir.py": [],
 "test_pkg_switch_failed_announce.py": [],
