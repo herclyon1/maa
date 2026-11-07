@@ -967,7 +967,9 @@ _CLAIM = "确认领取奖励"
 _HEAD = re.compile(r"^获得以下物品[:：]\s*$")
 _ITEM = re.compile(r"^([^\[\s].*?)\s*[×x]\s*(\d+)\s*$")
 _READING = re.compile(r"当前理智\s*(\d+)\s*/\s*(\d+)")
-_STOP = re.compile(r"理智不足")
+# MaaEnd v2.34 says 「体力不足，任务结束」 where it said 理智不足 (collector_maaend._END_SANITY_OUT;
+# dispatch relay-opt-round3-1108 O-04).
+_STOP = re.compile(r"理智不足|体力不足[，,]\s*任务结束")
 _MSG = re.compile(r"^\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d[.\d]*\] (.*)$")
 # What one Protocol Space claim cost, told by its own payout: the double reward pays
 # 折金票 ×68000 and costs 160 (MaaEnd-05-29-05, 2026-10-07: 277 -> 117 across one such

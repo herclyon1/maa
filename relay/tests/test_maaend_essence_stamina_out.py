@@ -49,6 +49,17 @@ require("without the stop line a 76 s 基质刷取 still alerts",
 require("the sanity collector reads the new stop line as sanity exhausted",
       parse_maaend_log(LOG_PATH).get("sanity_exhausted") is True)
 
+# 协议空间 and machine check #20 read the same v2.34 ending (dispatch relay-opt-round3-1108 O-04):
+# until then both knew only 理智不足, which #106 had replaced.
+from ark_relay.features.verify import outcome  # noqa: E402
+from ark_relay.features.selfcheck.machinechecks import runs  # noqa: E402
+proto = dict((name, rx) for name, rx, _ in outcome._MAAEND_WORK)["协议空间"]
+require("协议空间 counts 「体力不足，任务结束」 as its ending", bool(proto.search(STOP)))
+require("协议空间 still counts the old 理智不足", bool(proto.search("理智不足")))
+require("#20 reads 「体力不足，任务结束」 as the stop", bool(runs._STOP.search("体力不足，任务结束")))
+require("#20 still reads the old 理智不足", bool(runs._STOP.search("理智不足")))
+require("#20 does not take any 体力不足 for the stop", runs._STOP.search("体力不足") is None)
+
 if fails:
     print(f"\n{len(fails)} failed")
     sys.exit(1)
