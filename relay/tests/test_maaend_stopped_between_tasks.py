@@ -122,5 +122,28 @@ old_ok = {"run_id": run_id, "script": "MaaEnd", "ok": True, "failed_tasks": [], 
 fresh = collector.refresh_raw(old_ok, root)
 check("an entry already marked ok is left ok", (fresh.get("ok"), fresh.get("failed_tasks")), (True, []))
 
+print("\n[audit 11-08 B-02/B-03: a closing task does not excuse tasks that never started]")
+from ark_relay.features.verify.collector_maaend import _maaend_all_done  # noqa: E402
+from ark_relay.features.verify import outcome  # noqa: E402
+full = "".join(LOG_0928)
+check("the real 09-28 round, closing task last: done", _maaend_all_done(full), True)
+no_proto = "".join(x for x in LOG_0928 if "⚔️协议空间" not in x)
+check("closing task ran, but a display name AUTO-MAS lists never started: not done",
+      _maaend_all_done(no_proto, ["协议空间"]), False)
+check("the listed name did start (AUTO-MAS's stale verdict): still done", _maaend_all_done(full, ["协议空间"]), True)
+check("a bare key AUTO-MAS could not name still passes (09-06 SellProduct)", _maaend_all_done(full, ["SellProduct"]), True)
+twice = full.replace("[2026-09-28 11:22:07.978] 任务开始: ❌关闭游戏（PC）",
+                     "[2026-09-28 11:22:07.000] 任务开始: 🎁赠送干员礼物\n[2026-09-28 11:22:07.978] 任务开始: ❌关闭游戏（PC）")
+check("a task started twice and completed once is not done (count, not set)", _maaend_all_done(twice), False)
+cut = [c for c in outcome._maaend_cut_short(twice) if not c.ok]
+check("maaend_checks: started without an end is a failed check", [c.label for c in cut], ["赠送干员礼物 跑完"])
+stop_log = (FIX / "maaend_stop_task_2026-10-08.log").read_text(encoding="utf-8")
+cut = outcome._maaend_cut_short(stop_log)
+check("10-08 10:34 MaaEnd stopped itself before the closing task: failed check", [c.label for c in cut],
+      ["MaaEnd 没被中途停掉"])
+hung = full + "[2026-09-28 11:40:00.000] 任务开始: 停止任务\n[2026-09-28 11:40:00.100] 任务完成: 停止任务\n"
+check("a stop after the closing task (AUTO-MAS stopping a done MaaEnd) is not a failure",
+      outcome._maaend_cut_short(hung), [])
+
 print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
