@@ -28,6 +28,10 @@ INHERITED = {
         # logging.handlers.RotatingFileHandler (logfile.py doRollover)
         "stream", "_open", "backupCount", "baseFilename", "delay", "rotate",
     },
+    "_WordsOut": {
+        # ast.NodeTransformer (okww_overlay.py, the shape of an OK-WW method)
+        "generic_visit",
+    },
 }
 
 
