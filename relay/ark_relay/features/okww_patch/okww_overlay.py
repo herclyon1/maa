@@ -17,6 +17,7 @@ import inspect
 import json
 import logging
 import re
+import textwrap
 from pathlib import Path
 
 from ark_relay.core.config import atomic_write_text, master_config_dir, programdata_path
@@ -355,20 +356,101 @@ def _classes(src_dir: Path) -> dict:
     return out
 
 
-def _method_sha(classes: dict, cls: str, name: str, seen=None) -> str:
-    """inspect.getsource's hash for cls.name, looked up through the bases; '' when not found."""
+def _method_text(classes: dict, cls: str, name: str, seen=None) -> str:
+    """inspect.getsource's text for cls.name, looked up through the bases; '' when not found."""
     seen = set() if seen is None else seen
     if cls in seen or cls not in classes:
         return ""
     seen.add(cls)
     lines, methods, bases = classes[cls]
     if name in methods:
-        block = inspect.getblock(lines[methods[name]:])
-        return hashlib.sha1("".join(block).encode("utf-8")).hexdigest()[:12]
+        return "".join(inspect.getblock(lines[methods[name]:]))
     for b in bases:
-        if got := _method_sha(classes, b, name, seen):
+        if got := _method_text(classes, b, name, seen):
             return got
     return ""
+
+
+def _method_sha(classes: dict, cls: str, name: str, seen=None) -> str:
+    """inspect.getsource's hash for cls.name, looked up through the bases; '' when not found."""
+    text = _method_text(classes, cls, name, seen)
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12] if text else ""
+
+
+# ── the shape of a method: what the overrides compute at OK-WW start ─────────────
+# A copy whose upstream body changed only in words - the log text, self.tr(...),
+# docstrings, comments, layout - is applied there anyway and listed as adapted
+# (ark_overrides.tasks.py _SHAPES / _same_shape; dispatch relay-opt-round3-1108 O-02,
+# ledger #130). The same transform here, so the check before the run says the same:
+# tests/test_okww_shape_1108.py pins the two equal. Keep them alike.
+_LOG_CALLS = frozenset({"log_info", "log_debug", "log_error", "log_warning"})
+
+
+def _canon(node) -> str:
+    if isinstance(node, ast.AST):
+        parts = []
+        for f in node._fields:
+            v = getattr(node, f, None)
+            if f in ("ctx", "type_comment", "kind") or v is None or v == []:
+                continue
+            parts.append(f"{f}={_canon(v)}")
+        return f"{type(node).__name__}({','.join(parts)})"
+    if isinstance(node, list):
+        return "[" + ",".join(_canon(x) for x in node) + "]"
+    return repr(node)
+
+
+def _is_text(node) -> bool:
+    return isinstance(node, ast.JoinedStr) or (isinstance(node, ast.Constant) and isinstance(node.value, str))
+
+
+class _WordsOut(ast.NodeTransformer):
+    def visit_Call(self, node):
+        self.generic_visit(node)
+        f = node.func
+        name = f.attr if isinstance(f, ast.Attribute) else f.id if isinstance(f, ast.Name) else ""
+        if name == "tr" and len(node.args) == 1 and not node.keywords:
+            return node.args[0]
+        if name in _LOG_CALLS:
+            node.args = [ast.Constant("") if _is_text(a) else a for a in node.args]
+        return node
+
+    def _no_docstring(self, node):
+        self.generic_visit(node)
+        if node.body and isinstance(node.body[0], ast.Expr) and _is_text(node.body[0].value):
+            node.body = node.body[1:] or [ast.Pass()]
+        return node
+
+    visit_FunctionDef = visit_AsyncFunctionDef = visit_ClassDef = _no_docstring
+
+
+def _shape_text(src: str) -> str:
+    """The shape of one method's source text; '' when there is none or it does not parse."""
+    if not src.strip():
+        return ""
+    try:
+        tree = ast.parse(textwrap.dedent(src))
+    except (SyntaxError, ValueError):
+        return ""
+    return hashlib.sha1(_canon(_WordsOut().visit(tree)).encode("utf-8")).hexdigest()[:12]
+
+
+def shapes(text: str | None = None) -> dict:
+    """{"Class.method": pinned shape} read from the overrides file's _SHAPES; {} when absent."""
+    text = source_text() if text is None else text
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return {}
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name) and node.targets[0].id == "_SHAPES"):
+            try:
+                got = ast.literal_eval(node.value)
+            except ValueError:
+                return {}
+            return got if isinstance(got, dict) else {}
+    return {}
 
 
 def drift(okww_dir) -> list[dict]:
@@ -379,6 +461,7 @@ def drift(okww_dir) -> list[dict]:
     if not src.is_dir():
         return []
     classes = _classes(src)
+    pinned_shapes = shapes()
     out = []
     for cls, name, want, adapts in pins():
         got = _method_sha(classes, cls, name)
@@ -386,7 +469,11 @@ def drift(okww_dir) -> list[dict]:
         # f-strings) or a renamed method. The in-process report covers the latter;
         # neither is evidence of a changed body.
         if got and got != want:
-            out.append({"what": f"{cls}.{name}", "want": want, "got": got, "adapt": adapts})
+            # Changed only in words: the overrides apply it anyway (_same_shape there).
+            words = bool(pinned_shapes.get(f"{cls}.{name}")) and (
+                _shape_text(_method_text(classes, cls, name)) == pinned_shapes[f"{cls}.{name}"])
+            out.append({"what": f"{cls}.{name}", "want": want, "got": got, "adapt": adapts or words,
+                        "words": words})
     return out
 
 
@@ -402,7 +489,8 @@ def drift_line(okww_dir, state_dir=None) -> str:
     found = drift(okww_dir)
     if not found:
         return ""
-    adapted = [d["what"] for d in found if d["adapt"]]
+    adapted = [d["what"] for d in found if d["adapt"] and not d.get("words")]
+    worded = [d["what"] for d in found if d.get("words")]
     skipped = [d["what"] for d in found if not d["adapt"]]
     sig = ";".join(f"{d['what']}={d['got']}" for d in found)
     mark = Path(state_dir) / "okww-drift.txt" if state_dir else None
@@ -419,8 +507,10 @@ def drift_line(okww_dir, state_dir=None) -> str:
     # then an adapted copy is not a fault, so its sentence carries none of the
     # words texts._PATCH_TROUBLE turns into the ⚠️ title (audit 2026-10-13, A5):
     # it stays a logged line.
-    adapt_part = (f"OK-WW 升级改了 {'、'.join(adapted)}，中继会按新版适配后换上，适配不了就不换，并另外报出来"
-                  if adapted else "")
+    adapt_part = "；".join(x for x in (
+        f"OK-WW 升级改了 {'、'.join(adapted)}，中继会按新版适配后换上，适配不了就不换，并另外报出来" if adapted else "",
+        f"OK-WW 升级只改了 {'、'.join(worded)} 的日志文字或排版，中继的改动照样换上" if worded else "",
+    ) if x)
     if not skipped:
         return adapt_part
     line = (f"OK-WW 升级后，中继的改动有 {len(skipped)} 处和新版对不上："

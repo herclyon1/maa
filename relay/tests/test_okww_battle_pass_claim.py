@@ -229,6 +229,20 @@ g = Game([False, True])
 cls.claim_battle_pass(g)
 check("the installed method retries", len([a for a in g.acts if a[:3] == ("click_relative", 0.86, 0.05)]), 2)
 
+# Only words changed (ledger #130's kind: v3.7.13 -> v3.7.14-beta.2 wrapped the log text in
+# self.tr): another text, the same shape - our copy goes on, listed as adapted, not skipped
+# (dispatch relay-opt-round3-1108 O-02).
+WORDED = re.sub(r"self\.tr\(('[^']*')\)", r"\1", UPSTREAM)
+check("the worded body really differs from the pin", WORDED != UPSTREAM, True)
+n, cls = install(WORDED)
+check("words only: applied, nothing skipped", (n["_applied"], n["_skipped"]), (["DailyTask.claim_battle_pass"], []))
+check("words only: listed as adapted, saying the structure is unchanged",
+      [(a["what"], "代码结构没变" in a["why"]) for a in n["_adapted"]], [("DailyTask.claim_battle_pass", True)])
+g = Game([False, True])
+cls.claim_battle_pass(g)
+check("words only: our copy runs (it retries)",
+      len([a for a in g.acts if a[:3] == ("click_relative", 0.86, 0.05)]), 2)
+
 CHANGED = UPSTREAM.replace("self.click_relative(0.86, 0.05)", "self.click_relative(0.87, 0.05)")
 n, cls = install(CHANGED)
 check("changed upstream body: listed as skipped", [s["what"] for s in n["_skipped"]],

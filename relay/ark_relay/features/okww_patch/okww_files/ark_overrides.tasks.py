@@ -18,6 +18,7 @@ behaviour would go missing without a word - the exact failure the text patches
 kept producing. What was checked, applied and skipped is written to
 `ark-okww-overlay.json`, which the relay reads at boot and pushes.
 """
+import ast
 import hashlib
 import inspect
 import json
@@ -25,6 +26,7 @@ import os
 import pathlib
 import re
 import sys
+import textwrap
 import traceback
 
 # The copied method bodies below reach these as module globals. They are filled in by
@@ -54,6 +56,115 @@ def _src_sha(fn) -> str:
         return hashlib.sha1(inspect.getsource(fn).encode("utf-8")).hexdigest()[:12]
     except (OSError, TypeError):
         return ""
+
+
+# ── the shape of an upstream method: its code without the words in it ─────────
+# 11-02 (ledger #130) OK-WW v3.7.14-beta.2 wrapped the log text of claim_daily and
+# claim_battle_pass in self.tr(...) and changed nothing else; _src_sha hashes the text,
+# so both copies were skipped and upstream's bodies ran (the first four daily chests
+# unclaimed, no second try at the battle pass). The shape is the method's syntax tree
+# with what is only words taken out: docstrings, the strings handed to the log_* calls,
+# and self.tr(x) read as x; comments and layout are not in the tree at all. A body whose
+# text changed but whose shape is the pinned one (_SHAPES) is the code we copied, so the
+# copy goes on and is listed under `adapted`; any other change - a coordinate, a call, a
+# feature name - changes the shape and the copy is skipped as before, so a fix upstream is
+# never covered by a stale copy (dispatch relay-opt-round3-1108 O-02). The relay computes
+# the same shape before the run (okww_overlay._shape_text; the two are pinned equal by
+# tests/test_okww_shape_1108.py): keep them alike.
+_LOG_CALLS = frozenset({"log_info", "log_debug", "log_error", "log_warning"})
+# Measured on the pinned bodies (tests/gamesim/upstream/okww-v3.7.14-beta.2), the same under
+# Python 3.12 (OK-WW's) and 3.14 (the relay's); v3.7.13, before the self.tr wrapping, has the
+# same shapes.
+_SHAPES = {
+    "DailyTask.claim_daily": "bb38fbec282a",
+    "DailyTask.claim_battle_pass": "18db027b93ca",
+    "FarmEchoTask.click_team_challenge": "d669deb3d44c",
+    "BaseWWTask.get_stamina": "63b1734dc1bb",
+}
+
+
+def _canon(node) -> str:
+    """A syntax tree as text, fields with nothing in them left out (ast.dump's output for
+    those differs between Python versions)."""
+    if isinstance(node, ast.AST):
+        parts = []
+        for f in node._fields:
+            v = getattr(node, f, None)
+            if f in ("ctx", "type_comment", "kind") or v is None or v == []:
+                continue
+            parts.append(f"{f}={_canon(v)}")
+        return f"{type(node).__name__}({','.join(parts)})"
+    if isinstance(node, list):
+        return "[" + ",".join(_canon(x) for x in node) + "]"
+    return repr(node)
+
+
+def _is_text(node) -> bool:
+    return isinstance(node, ast.JoinedStr) or (isinstance(node, ast.Constant) and isinstance(node.value, str))
+
+
+class _WordsOut(ast.NodeTransformer):
+    def visit_Call(self, node):
+        self.generic_visit(node)
+        f = node.func
+        name = f.attr if isinstance(f, ast.Attribute) else f.id if isinstance(f, ast.Name) else ""
+        if name == "tr" and len(node.args) == 1 and not node.keywords:
+            return node.args[0]
+        if name in _LOG_CALLS:
+            node.args = [ast.Constant("") if _is_text(a) else a for a in node.args]
+        return node
+
+    def _no_docstring(self, node):
+        self.generic_visit(node)
+        if node.body and isinstance(node.body[0], ast.Expr) and _is_text(node.body[0].value):
+            node.body = node.body[1:] or [ast.Pass()]
+        return node
+
+    visit_FunctionDef = visit_AsyncFunctionDef = visit_ClassDef = _no_docstring
+
+
+def _shape_text(src: str) -> str:
+    """The shape of one method's source text; '' when there is none or it does not parse."""
+    if not src.strip():
+        return ""
+    try:
+        tree = ast.parse(textwrap.dedent(src))
+    except (SyntaxError, ValueError):
+        return ""
+    return hashlib.sha1(_canon(_WordsOut().visit(tree)).encode("utf-8")).hexdigest()[:12]
+
+
+def _src_shape(fn) -> str:
+    try:
+        return _shape_text(inspect.getsource(fn))
+    except (OSError, TypeError):
+        return ""
+
+
+def _same_shape(label, old, got, pinned) -> bool:
+    """`old`'s text differs from the pin but its shape is the pinned one: listed under
+    `adapted` (said once, not a fault) and True."""
+    want = _SHAPES.get(label)
+    if not want or _src_shape(old) != want:
+        return False
+    _adapted.append({"what": label,
+                     "why": f"上游只改了日志文字、注释或排版（现在 {got or '读不到'}，我们照着 {pinned} 抄的，"
+                            "代码结构没变），照样换上"})
+    return True
+
+
+def _upstream_changed(label, old, got, pinned, adapt) -> bool:
+    """Upstream's body is not the pinned text: True when our copy goes on anyway (same
+    shape, or a copy that adapts), else listed under `skipped` and False."""
+    if _same_shape(label, old, got, pinned):
+        return True
+    if adapt:
+        _adapted.append({"what": label,
+                         "why": f"上游正文变了（现在 {got or '读不到'}，我们照着 {pinned} 抄的），已按新版适配后照样换上"})
+        return True
+    _skipped.append({"what": label,
+                     "why": f"上游正文变了（现在 {got or '读不到'}，我们照着 {pinned} 抄的）"})
+    return False
 
 
 def _sig_mismatch(old, fn) -> str:
@@ -134,12 +245,7 @@ def override(cls, name, *, expect_sha=None, adapt=False):
             return fn
         if expect_sha:
             got = _src_sha(old)
-            if got != expect_sha and adapt:
-                _adapted.append({"what": label,
-                                 "why": f"上游正文变了（现在 {got or '读不到'}，我们照着 {expect_sha} 抄的），已按新版适配后照样换上"})
-            elif got != expect_sha:
-                _skipped.append({"what": label,
-                                 "why": f"上游正文变了（现在 {got or '读不到'}，我们照着 {expect_sha} 抄的）"})
+            if got != expect_sha and not _upstream_changed(label, old, got, expect_sha, adapt):
                 return fn
         setattr(cls, name, fn)
         _applied.append(label)
@@ -1157,8 +1263,12 @@ def _install_battle_pass():
     claim = DailyTask.claim_battle_pass
     sha = _src_sha(claim)
     if sha != _BATTLE_PASS_SHA:
-        _skipped.append({"what": "DailyTask.claim_battle_pass（战令没打开时再开一次）",
-                         "why": f"上游正文变了（现在 {sha or '读不到'}，我们照着 {_BATTLE_PASS_SHA} 抄的）"})
+        # Only words changed (the shape is the pinned one): our copy is still upstream's code.
+        if _same_shape("DailyTask.claim_battle_pass", claim, sha, _BATTLE_PASS_SHA):
+            sha = _BATTLE_PASS_SHA
+        else:
+            _skipped.append({"what": "DailyTask.claim_battle_pass（战令没打开时再开一次）",
+                             "why": f"上游正文变了（现在 {sha or '读不到'}，我们照着 {_BATTLE_PASS_SHA} 抄的）"})
 
     @override(DailyTask, "claim_battle_pass")
     def claim_battle_pass(self):
@@ -1588,8 +1698,12 @@ def _install_hooks():
     claim_daily = DailyTask.claim_daily
     claim_sha = _src_sha(claim_daily)
     if claim_sha != _CLAIM_DAILY_SHA:
-        _skipped.append({"what": "DailyTask.claim_daily（活跃奖励逐档领、领完核对）",
-                         "why": f"上游正文变了（现在 {claim_sha or '读不到'}，我们照着 {_CLAIM_DAILY_SHA} 抄的）"})
+        # Only words changed (the shape is the pinned one): our copy is still upstream's code.
+        if _same_shape("DailyTask.claim_daily", claim_daily, claim_sha, _CLAIM_DAILY_SHA):
+            claim_sha = _CLAIM_DAILY_SHA
+        else:
+            _skipped.append({"what": "DailyTask.claim_daily（活跃奖励逐档领、领完核对）",
+                             "why": f"上游正文变了（现在 {claim_sha or '读不到'}，我们照着 {_CLAIM_DAILY_SHA} 抄的）"})
 
     @override(DailyTask, "claim_daily")
     def claim_daily_after_farm(self):
