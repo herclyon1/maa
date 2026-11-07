@@ -151,6 +151,21 @@ check("时间跨到最后一次", "09:00→09:06" in b4, True)
 check("备注写理智数", "理智 17 不够这关要的 25" in b4, True)
 check("日常那趟单独一行", b4.count("明日方舟　"), 1)
 
+print("\n[audit 11-08 C-02: a task left unjudged (MaaEnd's own record unread once) keeps the title off 全绿]")
+from ark_relay.core import ledger_report as _lr  # noqa: E402
+_e = {"run_id": "2026-11-08/endfield/MaaEnd-05-30-00", "script": "MaaEnd", "user": "endfield", "ok": True,
+      "started": "2026-11-08T09:30:00+08:00", "finished": "2026-11-08T10:20:00+08:00", "failed_tasks": [],
+      "raw": {"tasks_done": ["赠送干员礼物", "日常奖励领取"], "tasks_trail_miss": 1,
+              "tasks_trail": {"赠送干员礼物": {"found": False, "unread": True}},
+              "tasks_evidence": {"日常奖励领取": "获得 x"}}}
+check("unjudged this day", _lr.day_unjudged_items([_e]), ["赠送干员礼物"])
+_t, _ = _lr.format_daily("2026-11-08", [_e])
+check("title says 待核, not 全绿", ("待核" in _t, "全绿" in _t), (True, False))
+_e2 = dict(_e, run_id="2026-11-08/endfield/MaaEnd-13-30-00", started="2026-11-08T17:30:00+08:00",
+           raw={"tasks_done": ["赠送干员礼物"], "tasks_trail_miss": 0,
+                "tasks_trail": {"赠送干员礼物": {"found": True, "ok": True}}})
+check("another run of the day backed it: not 待核", _lr.day_unjudged_items([_e, _e2]), [])
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
 

@@ -554,6 +554,28 @@ def day_unverified_items(entries: list[dict]) -> list[tuple[str, list[str]]]:
     return out
 
 
+def day_unjudged_items(entries: list[dict]) -> list[str]:
+    """MaaEnd tasks of the day left unjudged in some run (maaend_unjudged: MaaFW's log not
+    read, fewer than TRAIL_MISS_FAIL runs in a row) that no run of the day backs. Not pushed -
+    one unread run is MaaEnd clearing its debug folder or MaaFW rotating its log as often as
+    anything - but not green either: the title says 待核 (audit 2026-11-08 C-02; until then
+    backed() let such a day read 全绿 ✅ while the run's row said 不算做成)."""
+    unj: dict[str, None] = {}
+    backed: set[str] = set()
+    for e in entries:
+        if e.get("script") != "MaaEnd" or manual_stop(e):
+            continue
+        raw = e.get("raw") or {}
+        skip = set(maaend_unjudged(raw))
+        unv = set(maaend_unverified(raw))
+        for t in _maaend_listed(raw):
+            if t in skip:
+                unj[t] = None
+            elif t not in unv:
+                backed.add(t)
+    return [t for t in unj if t not in backed]
+
+
 def day_unverified(entries: list[dict]) -> list[tuple[str, int]]:
     """[(script, n)]: how many day_unverified_items each game has."""
     return [(s, len(items)) for s, items in day_unverified_items(entries)]
@@ -561,7 +583,7 @@ def day_unverified(entries: list[dict]) -> list[tuple[str, int]]:
 
 def _daily_head(failed: list, undone: list, retried: dict, kinds: dict,
                 no_exit: list | None = None, unverified: list | None = None,
-                bare: "dict | None" = None) -> str:
+                bare: "dict | None" = None, unjudged: "list | None" = None) -> str:
     """The verdict in the report title, worst thing first.
 
     Failures and unfinished runs are counted per game. Items done with no
@@ -582,6 +604,8 @@ def _daily_head(failed: list, undone: list, retried: dict, kinds: dict,
     parts += [f"{_game(s)} {n} 趟没按你的设置跑" for s, n in _count_by_script(reset)]
     parts += [_no_exit_note(e) for e in (no_exit or [])]
     unv = [f"{_game(s)} {n} 项没证据" for s, n in (unverified or [])]
+    if unjudged:
+        unv.append(f"{_game('MaaEnd')} {len(unjudged)} 项待核（自己的记录没读到）")
     if parts:
         return "、".join(parts + unv) + " ⚠️"
     if unv:
@@ -714,7 +738,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
     for e in no_exit:
         tech.append(f"{e['run_id']} {_no_exit_note(e)}")
     bare = _bare_failure_groups(entries, failed, shifts)
-    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds, None, day_unverified(entries), bare)}"
+    title = f"📋 {day[5:]} · {_daily_head(failed, undone, retried, kinds, None, day_unverified(entries), bare, day_unjudged_items(entries))}"
 
     foot = footnote_tasks(entries)
     lines: list[str] = []

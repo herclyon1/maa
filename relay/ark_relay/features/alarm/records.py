@@ -176,6 +176,16 @@ def _mark_task_trails(eng, rec: RunRecord) -> None:
         unread = [t for t, e in table.items() if e.get("unread")]
         log.info("%s：%s 在终末地自己的记录里读不到（%s），连续第 %d 趟；%s", rec.run_id, "、".join(unread), why,
                  miss, "到了次数，按没证据算" if miss >= maaend_fwlog.TRAIL_MISS_FAIL else "这一趟先不判，写进日报")
+        if unread and miss < maaend_fwlog.TRAIL_MISS_FAIL:
+            # Not pushed (one unread run is usually MaaEnd's restart or MaaFW's rotation), but
+            # one red item, so a session looks at it; the daily title says 待核 (audit 2026-11-08 C-02).
+            try:
+                from ark_relay.core import techlog  # noqa: PLC0415
+                techlog.self_heal(f"MaaEnd {rec.run_id} 自己的记录没读到",
+                                  f"{'、'.join(unread)} 这一趟先不判（{why}），连续第 {miss} 趟",
+                                  state_dir=getattr(eng.cfg, "state_dir", None))
+            except Exception:  # the booking stands; only the red item is missing
+                log.info("「自己的记录没读到」的红项没写进技术日志（%s）", rec.run_id, exc_info=True)
     except Exception:
         log.warning("没读成终末地自己的任务记录（这一趟的四个任务只按日志里的行算）", exc_info=True)
 
