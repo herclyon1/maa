@@ -119,7 +119,7 @@ def test_preupdate_automas_without_okww():
         boot_stages._stage_preupdate(types.SimpleNamespace(automas_dir=None, state_dir=None), None, _Log())
         check("AUTO-MAS 查了、OK-WW 没动、今天记为做过", ran, ["AUTO-MAS", "marked"])
     finally:
-        for n, v in zip(names, real):
+        for n, v in zip(names, real[:len(names)], strict=True):
             setattr(boot_stages, n, v)
         preupdate.wanted_today, preupdate.should_run, preupdate.mark_run = real[len(names):]
 
