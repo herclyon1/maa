@@ -174,6 +174,10 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
                         if (x.get("raw") or {}).get("maaend_update_restart"):
                             kinds.setdefault(x["run_id"], "update")
                 elif any(x.get("transitional") for x in streak):
+                    # The whole streak, on purpose (audit 2026-11-08 B-04 asked for the
+                    # transitional record alone): 2026-09-02 OK-WW 09:18 update restart, 09:20
+                    # failed as the game came back, 09:28 ok - two ❌ and a self-heal push were
+                    # the false alarm tests/test_episodes.py pins.
                     for x in streak:
                         kinds.setdefault(x["run_id"], "update")
                 streak = []
@@ -245,6 +249,8 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
                 continue
             if (later.get("raw") or {}).get("manual_stop"):
                 continue          # stopped by the red button: it did not "get them later"
+            if maa_mode(later) != maa_mode(e):
+                continue          # a Routine round is no retry of Annihilation (2026-10-26)
             if later.get("script") != e.get("script") or later.get("user") != e.get("user"):
                 continue
             if (later.get("started") or "") <= (e.get("started") or ""):
@@ -253,6 +259,10 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
             # 「超时」 names no task: a later success of the same script covers it.
             # Every task the record does name still has to be in that success.
             named = {t for t in want if "超时" not in t}
+            # A later run whose own outcome check failed still covers a bare timeout (audit
+            # 2026-11-08 B-04 asked otherwise): its undone items are their own title item
+            # (「终末地 1 项没干完」, tests/test_maaend_update_restart.py 10-01), so the round is
+            # not green either way and 「没跑成」 on top would say the one problem twice.
             if (named != want and named <= done) or want <= done:
                 # By start time on both clocks, the way the run's own line is labelled.
                 st = datetime.fromisoformat(later["started"])
