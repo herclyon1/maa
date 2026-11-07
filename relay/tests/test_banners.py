@@ -1520,6 +1520,14 @@ def _ww_bili_feed() -> None:
     get, asked = fake(lambda n, off: last)
     check("B 站：列表到底了就停", (_b._bili_poster("3.8", now, get, slept.append, lambda: next(ticks)),
                                 len(asked["feed"])), (None, 1))
+    # 2026-11-07 21:48: 3.8 maintenance notice out, 3.8版本前瞻 posted on page 1, 3.8版本资讯 not out
+    # yet; once page 1's unpinned items pass the preview timestamp, stop instead of paging into 3.7 (page 4 empty)
+    p1_38 = json.loads(json.dumps(pages[0], ensure_ascii=False).replace("3.7版本前瞻", "3.8版本前瞻"))
+    p1_38["data"]["items"][0]["modules"]["module_author"]["pub_ts"] = p1_38["data"]["items"][8]["modules"]["module_author"]["pub_ts"]
+    get, asked = fake(lambda n, off: p1_38 if off == "" else empty)
+    check("B 站：已翻过本版前瞻仍无版本资讯就停在当页，不继续翻旧版撞风控",
+          (_b._bili_poster("3.8", now, get, slept.append, lambda: next(ticks)),
+           len(asked["feed"])), (None, 1))
     try:
         _b.bili_wbi_keys({"code": -101, "data": {"isLogin": False}})
         err = None

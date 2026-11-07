@@ -182,14 +182,17 @@ def _bili_at(it: dict) -> "datetime | None":
         return None
 
 
+def _bili_opus(it: dict) -> dict:
+    return (((it.get("modules") or {}).get("module_dynamic") or {}).get("major") or {}).get("opus") or {}
+
+
 def wuwa_bili_post(items: list, ver: "str | None", now: datetime
                    ) -> "tuple[str, str, list[tuple[str, int, int]]] | None":
     """(dynamic id, first line, [(image URL, width, height)]) of the newest
     「版本资讯」 dynamic up to `now`, for version `ver` when known."""
     best = None
     for it in items or []:
-        m = it.get("modules") or {}
-        op = ((m.get("module_dynamic") or {}).get("major") or {}).get("opus") or {}
+        op = _bili_opus(it)
         text = str((op.get("summary") or {}).get("text") or "")
         head = next((x for x in text.splitlines() if "版本资讯" in x), "")
         if not head or (ver and f"{ver}版本" not in head):
@@ -222,6 +225,7 @@ def _bili_poster(ver: "str | None", now: datetime, get=None, sleep=None, clock=N
         return f"buvid3={spi['b_3']}; buvid4={urllib.parse.quote(spi['b_4'])}"
     cookie = visitor()
     img_key, sub_key = bili_wbi_keys(get(_BILI_NAV, cookie))   # once per run
+    preview_at: datetime | None = None
     offset = ""
     for page in range(_BILI_PAGES):
         if page:
@@ -256,6 +260,22 @@ def _bili_poster(ver: "str | None", now: datetime, get=None, sleep=None, clock=N
         hit = wuwa_bili_post(items, ver, now)
         if hit:
             return _BILI_POST_URL.format(id=hit[0]), hit[1], hit[2]
+        if ver:
+            for it in items:
+                at = _bili_at(it)
+                txt = str((_bili_opus(it).get("summary") or {}).get("text") or "")
+                if at and at <= now and f"{ver}版本前瞻" in txt and (preview_at is None or at > preview_at):
+                    preview_at = at
+            unpinned = dated[1:] if len(dated) > 1 and dated[0] < dated[1] else dated
+            if preview_at is not None and min(unpinned) <= preview_at:
+                # The version-news poster comes out days after the preview livestream
+                # (3.7: preview 09-19, version-news 09-28; 3.8: preview 11-06). Once the
+                # chronological feed has scrolled back to the preview without seeing it,
+                # the post is not published yet; paging further only walks into the
+                # previous version and hits multi-page risk control (11-07 21:48 page 4).
+                log.info("Bilibili feed: no %s version-news post; page %d reached %s, past %s版本前瞻 (%s)",
+                         ver, page + 1, f"{min(unpinned):%Y-%m-%d}", ver, f"{preview_at:%Y-%m-%d}")
+                return None
         offset = str(data.get("offset") or "")
         if max(dated) < now - _BILI_OLDEST:
             # a door's miss, INFO: _wuwa_poster_span warns once when no door has it
