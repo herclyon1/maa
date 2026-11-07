@@ -139,7 +139,8 @@ def maybe_run(verdict, failures_before=None, day="2026-10-08", pics=(P1008A, P10
                                   automas_dir=None),
         state=types.SimpleNamespace(read_ledger=lambda d: [{"script": "MaaEnd",
                                                             "run_id": "2026-10-08/endfield/MaaEnd-06-34-21"}],
-                                    mark_incomplete=lambda *a: True),
+                                    mark_incomplete=lambda *a: True,
+                                    clear_incomplete_items=lambda *a: True),
         notifier=types.SimpleNamespace(send=lambda t, b, **kw: sent.append((t, b, kw.get("alert", False))) or []),
         _scripts_running=lambda: False)
     saved = (cr.run_retry, cr._locale, cr.restore_master)
@@ -193,12 +194,12 @@ cr.log.removeHandler(warns)
 
 print("\n[补跑时又撞上：路线10 走到了 End，但截图在 Start 和 End 之间 → 判没走通]")
 fw = log("maafw-2026-10-12-routes9-11.log")
-check("只看 End 会判走通（maafw 10:45:39 AutoCollectRoute10End）", cr.judge(fw, ["AutoCollectRoute10"], "10:40:00"),
+check("只看 End 会判走通（maafw 10:45:39 AutoCollectRoute10End）", cr.judge(fw, ["AutoCollectRoute10"], "2026-10-12 10:40:00"),
       {"AutoCollectRoute10": True})
-got = cr.retry_blocked(fw, ["AutoCollectRoute10"], "10:40:00", [P1012A, P1012]) \
+got = cr.retry_blocked(fw, ["AutoCollectRoute10"], "2026-10-12 10:40:00", [P1012A, P1012]) \
     if hasattr(cr, "retry_blocked") else None
 check("截图 10:44:55 在路线10 的 10:43:58–10:45:39 里", got, {"AutoCollectRoute10": [P1012A]})
-check("补跑开始前的截图不算", cr.retry_blocked(fw, ["AutoCollectRoute10"], "10:46:00", [P1012A])
+check("补跑开始前的截图不算", cr.retry_blocked(fw, ["AutoCollectRoute10"], "2026-10-12 10:46:00", [P1012A])
       if hasattr(cr, "retry_blocked") else None, {})
 
 print("\n[上机核对 #29：按截图认，不再按日志里的提示原文（那句话哪份日志都没有）]")
@@ -258,14 +259,14 @@ for k, want_log, want_fw in (("400", R10, "AutoCollectRoute10"),   # before End 
     check(f"日志：10:45:39.{k} 算{want_log[:4]}",
           cm.blocked_routes(log("MaaEnd-06-04-00.log"), [ms[k]]), {want_log: [ms[k]]})
     check(f"补跑：10:45:39.{k} 算 {want_fw}（和日志一致）",
-          cr.retry_blocked(fw, ["AutoCollectRoute10", "AutoCollectRoute11"], "10:40:00", [ms[k]]),
+          cr.retry_blocked(fw, ["AutoCollectRoute10", "AutoCollectRoute11"], "2026-10-12 10:40:00", [ms[k]]),
           {want_fw: [ms[k]]})
 # A retry of route 10 alone, stopped short (no task-end event, as after tasks/stop on a
 # timeout): its window ends at its End node. With the task's end it runs on to that,
 # as the history log's last route does (below).
 fw10 = "\n".join(x for x in fw.splitlines() if "AutoCollectRoute11" not in x)
 check("补跑只补路线10、半路停了（没有任务结束）：时段停在它的 End（10:45:39.489），.500 不算它的",
-      cr.retry_blocked(fw10, ["AutoCollectRoute10"], "10:40:00", [ms["400"], ms["500"]]),
+      cr.retry_blocked(fw10, ["AutoCollectRoute10"], "2026-10-12 10:40:00", [ms["400"], ms["500"]]),
       {"AutoCollectRoute10": [ms["400"]]})
 # 11:36:55.978 is 06-58-38's 「任务完成: 🧺自动采集」: .900 is still 路线17's, .990 no route's.
 END_IN, END_EDGE = PIC.format("2026.10.12-11.36.55.900"), PIC.format("2026.10.12-11.36.55.990")
@@ -341,7 +342,7 @@ check("日报那行：路线10 没采到、16/17 条走通",
       (raw1.get("maaend_collect_blocked"), raw1.get("maaend_collect_done"), raw1.get("maaend_collect_total")),
       ([R10], 16, 17))
 check("补跑名单（_blocked_in）有路线10", cr._blocked_in(src, md1, ZH), {"AutoCollectRoute10": [P1012_1]})
-check("补跑结果：又撞上就判没走通", cr.retry_blocked(fw, ["AutoCollectRoute10"], "10:40:00", [P1012A_1]),
+check("补跑结果：又撞上就判没走通", cr.retry_blocked(fw, ["AutoCollectRoute10"], "2026-10-12 10:40:00", [P1012A_1]),
       {"AutoCollectRoute10": [P1012A_1]})
 st, ev = c29(outcome.maaend_checks(log("MaaEnd-06-58-38.log"), [P1012_1]), raw1, pics=(P1012_1,))
 check("#29：核对和日报都记了这张：PASS", st, "PASS")
@@ -370,11 +371,11 @@ hist11 = log("MaaEnd-06-04-00.log").split("[2026-10-12 10:47:16.806] 路线12")[
 check("日志：路线11 的 End 之后、任务完成之前的截图算路线11",
       cm.blocked_routes(hist11, [tail_pic]), {R11: [tail_pic]})
 check("补跑：同一张也算路线11（以前停在 End 10:47:16，判走通）",
-      cr.retry_blocked(fw_end, both, "10:40:00", [tail_pic]), {"AutoCollectRoute11": [tail_pic]})
+      cr.retry_blocked(fw_end, both, "2026-10-12 10:40:00", [tail_pic]), {"AutoCollectRoute11": [tail_pic]})
 check("日志：任务完成之后的截图不算", cm.blocked_routes(hist11, [after_pic]), {})
-check("补跑：任务结束之后的截图也不算", cr.retry_blocked(fw_end, both, "10:40:00", [after_pic]), {})
+check("补跑：任务结束之后的截图也不算", cr.retry_blocked(fw_end, both, "2026-10-12 10:40:00", [after_pic]), {})
 check("只补路线10：时段到任务结束，.500 也算它的（和日志一样）",
-      cr.retry_blocked(fw10 + "\n" + TASK_END + "\n", ["AutoCollectRoute10"], "10:40:00",
+      cr.retry_blocked(fw10 + "\n" + TASK_END + "\n", ["AutoCollectRoute10"], "2026-10-12 10:40:00",
                        [ms["400"], ms["500"]]),
       {"AutoCollectRoute10": [ms["400"], ms["500"]]})
 

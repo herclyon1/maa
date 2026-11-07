@@ -316,6 +316,15 @@ def latest_okww_run_log(history_dir) -> "tuple[Path, str] | None":
         return None
     days = sorted((d for d in hist.iterdir() if d.is_dir()), reverse=True)[:7]
     logs = [f for d in days for f in d.rglob("OK-WW-*.log")]
+    # AUTO-MAS v5.8.0-beta.2 on: no OK-WW-*.log, each run is a history.db row whose log is
+    # <date>/<record id>/0.log; the glob alone found nothing newer than 2026-10-28
+    # (audit 2026-11-08 B-01).
+    from ark_relay.core.collector import _db_rows  # noqa: PLC0415 - collector imports this module
+    week = {d.name for d in days}
+    for rid, _t, date_s, _u, script_name, _m, _d, log_rel in _db_rows(hist):
+        if str(script_name).startswith("OK-WW") and str(date_s) in week:
+            if (f := hist / (log_rel or f"{date_s}/{rid}/0.log")).is_file():
+                logs.append(f)
     if not logs:
         return None
     newest = max(logs, key=lambda f: f.stat().st_mtime)

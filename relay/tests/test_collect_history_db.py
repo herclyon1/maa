@@ -74,6 +74,41 @@ if True:
     (root / "data" / "history.db").unlink()
     check("没有 history.db 时什么也不读、不报错", collector.scan(history, set()), [])
 
+print("\n[audit 11-08 B-01: readers of a ledger entry's log find v5.8's <date>/<record id>/0.log]")
+if True:
+    from ark_relay.core.ledger import strip_incomplete_items
+    from ark_relay.features.makeup import collect_retry as cr
+    from ark_relay.features.verify import outcome
+    end = by.get("2026-10-28/endfield/MaaEnd-05-33-08")
+    entry = {"script": "MaaEnd", "run_id": end.run_id, "raw": dict(end.raw)} if end else {}
+    got = collector.resolve_history_log(history, entry)
+    check("resolve_history_log finds the 0.log by the record id", got and got.parts[-3:],
+          ("2026-10-28", "b6acb2fc-cd77-4f28-86dd-6f192c7d2f86", "0.log"))
+    check("no record id and no old .log: None", collector.resolve_history_log(history, {"run_id": "2026-10-28/x/y"}), None)
+    check("the gathering retry reads the day's MaaEnd log (was: never found, so never retried)",
+          cr._history_log(history, entry) == got, True)
+    ok = outcome.latest_okww_run_log(FX / "history")
+    check("latest_okww_run_log finds an OK-WW 0.log through history.db (was: only OK-WW-*.log)",
+          bool(ok) and ok[0].parts[-2] in ("978d8567-f7bf-4f9f-b402-6afca1880ba0",
+                                           "a1a4259e-e90d-4749-bbbd-57f63d6ffd62"), True)
+    two = ("MaaEnd 这一轮有 2 项没干成，但它自己没报错：\n· 自动采集 真的走了路线：30 秒就报\n"
+           "· 基质刷取 真的刷了：5 秒就报\n干成的：MaaEnd 跑完")
+    check("a re-walked gathering clears only its own item", strip_incomplete_items(two, cr.GATHERING_UNDONE),
+          "MaaEnd 这一轮有 1 项没干成，但它自己没报错：\n· 基质刷取 真的刷了：5 秒就报\n干成的：MaaEnd 跑完")
+    check("gathering the only item: cleared",
+          strip_incomplete_items("MaaEnd 这一轮有 1 项没干成，但它自己没报错：\n· 自动采集 真的走了路线：x", cr.GATHERING_UNDONE), "")
+    check("the gathering settings item is not the retry's to clear",
+          strip_incomplete_items("MaaEnd 这一轮没按你的设置跑：\n· 自动采集的设置：3 个路线选项", cr.GATHERING_UNDONE),
+          "MaaEnd 这一轮没按你的设置跑：\n· 自动采集的设置：3 个路线选项")
+    fw = ("[2026-10-27 22:10:00.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute15End\"}\n"
+          "[2026-10-28 10:05:00.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute15Failed\"}\n")
+    check("yesterday's later clock time is not after today's retry start",
+          cr.judge(fw, ["AutoCollectRoute15"], "2026-10-28 10:00:00"), {"AutoCollectRoute15": False})
+    fw2 = ("[2026-10-27 23:58:00.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute15Start\"}\n"
+           "[2026-10-28 00:03:00.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute15End\"}\n")
+    check("a retry begun before midnight still reads the lines after it",
+          cr.judge(fw2, ["AutoCollectRoute15"], "2026-10-27 23:57:00"), {"AutoCollectRoute15": True})
+
 if fails:
     print(f"✗ {len(fails)} 项不过")
     sys.exit(1)

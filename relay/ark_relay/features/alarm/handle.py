@@ -339,7 +339,16 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     # to be said out loud.
     # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:_handle」
     _push_unverified(eng, rec)
-    if msg := eng._verify_outcome(rec):
+    msg = eng._verify_outcome(rec)
+    if rec.script in ("MAA", "MaaEnd"):
+        # A make-up booked OK (makeup.on_record) is tied to the failures it made up for
+        # only now, on this check's word.
+        try:
+            from ark_relay.features.makeup import makeup  # noqa: PLC0415
+            makeup.after_outcome(eng, rec, msg)
+        except Exception:
+            log.exception("补跑结果记账出错")
+    if msg:
         if after_done:
             _retry_healed(eng, rec, key)
         # Onto the ledger too, or the daily report would open with 全绿 while this

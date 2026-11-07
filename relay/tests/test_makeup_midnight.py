@@ -78,6 +78,7 @@ makeup._write_marker(e.cfg.state_dir, "2026-10-03", {"MAA": {
 mk = rec("2026-10-03/arknights/MAA-makeup", "2026-10-03T01:41:00+08:00",
          "2026-10-03T02:00:00+08:00", True, [])
 makeup.on_record(e, mk)
+makeup.after_outcome(e, mk, None)   # its own outcome check passed (handle._handle_success)
 y = {x["run_id"]: x for x in e.state.read_ledger("2026-10-02")}
 t = {x["run_id"]: x for x in e.state.read_ledger("2026-10-03")}
 

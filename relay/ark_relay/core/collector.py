@@ -209,6 +209,30 @@ _OKWW_STAMINA_CAP = 240
 _OKWW_SEC_PER_POINT = 360
 
 
+def resolve_history_log(history_root, entry: dict) -> Path | None:
+    """The AUTO-MAS history log of one ledger entry; None when it is not on disk.
+
+    Old layout: history/<run_id>.log (run_id = <date>/<user>/<stem>). AUTO-MAS v5.8.0-beta.2
+    on: history/<date>/<automas_record_id>/0.log, the id kept in raw.automas_record_id
+    (_db_identity). Every reader of a ledger entry's log goes through here: collect_retry
+    built only the old path, found no log for any run since 2026-10-28, and so never
+    retried a gathering route (audit 2026-11-08 B-01)."""
+    if not history_root or not entry:
+        return None
+    run_id = str(entry.get("run_id") or "")
+    if not run_id:
+        return None
+    old = Path(history_root) / (run_id + ".log")
+    if old.is_file():
+        return old
+    raw = entry.get("raw") if isinstance(entry.get("raw"), dict) else {}
+    if rid := raw.get("automas_record_id"):
+        new = Path(history_root) / run_id.split("/", 1)[0] / str(rid) / "0.log"
+        if new.is_file():
+            return new
+    return None
+
+
 def refresh_raw(entry: dict, history_root: Path | None, maaend_dir: Path | None = None) -> dict:
     """Recompute an old ledger entry's `raw` from its history log before reporting.
 
@@ -227,10 +251,8 @@ def refresh_raw(entry: dict, history_root: Path | None, maaend_dir: Path | None 
     script = entry.get("script")
     try:
         run_id = str(entry.get("run_id") or "")
-        log_path = Path(history_root) / (run_id + ".log")
-        if not log_path.is_file() and (rid := raw.get("automas_record_id")):
-            log_path = Path(history_root) / run_id.split("/", 1)[0] / str(rid) / "0.log"
-        if not log_path.is_file():
+        log_path = resolve_history_log(history_root, entry)
+        if log_path is None:
             return entry
         if script == "MAA":
             parsed = parse_maa_log(log_path)

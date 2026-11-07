@@ -590,10 +590,11 @@ def maaend_only_gathering_left(eng, rec) -> str:
     maaend_round_only_gathering over the held record."""
     return maaend_round_only_gathering(eng.state.read_ledger, {
         "script": rec.script, "user": rec.user, "run_id": rec.run_id, "started": rec.started,
-        "failed_tasks": list(rec.failed_tasks or []), "raw": dict(rec.raw or {})})
+        "failed_tasks": list(rec.failed_tasks or []), "raw": dict(rec.raw or {})},
+        history_dir=getattr(eng.cfg, "history_dir", None) or None)
 
 
-def maaend_round_only_gathering(read_ledger, last: dict) -> str:
+def maaend_round_only_gathering(read_ledger, last: dict, history_dir=None) -> str:
     """Why running MaaEnd's whole script again would only redo finished work: an attempt of the
     round that `last` ended ran to its end with gathering (自动采集) the only task AUTO-MAS
     found unfinished, so every other task was done in that attempt; '' otherwise.
@@ -605,7 +606,15 @@ def maaend_round_only_gathering(read_ledger, last: dict) -> str:
     make-up ran everything a fourth time. The routes that did not make it are collect_retry's
     to re-run, one by one, before the power-off. Only AUTO-MAS's own unfinished list counts:
     a cut attempt (「运行超过 120 分钟，已终止」) names no task and says nothing about the rest.
-    `read_ledger` is State.read_ledger; an unreadable ledger is a no (the make-up runs)."""
+    `read_ledger` is State.read_ledger; an unreadable ledger is a no (the make-up runs).
+
+    Any one such attempt is enough, not all of them (audit 2026-11-08 B-01 asked for all):
+    that attempt did every other task, so a later attempt failing 协议空间 failed work already
+    done, and a whole make-up would only run it a second time (the 11-05 policy: 只缺采集路线
+    单补，真缺活才整轮补). With `history_dir`, that attempt's AUTO-MAS log must be on disk too:
+    collect_retry reads its 「…采集失败」 lines to know what to re-walk, and without them the
+    hand-over re-walks nothing (until 2026-11-08 it built only the pre-v5.8 path and never
+    found one)."""
     from ark_relay.features.verify import collector_maaend  # noqa: PLC0415
     from ark_relay.core import texts  # noqa: PLC0415
     started_at = _at(last.get("started"))
@@ -630,6 +639,13 @@ def maaend_round_only_gathering(read_ledger, last: dict) -> str:
     for row in rows:
         result = str((row.get("raw") or {}).get("maaend_result") or "")
         if collector_maaend._split_failed(result) == [GATHERING]:
+            if history_dir:
+                from ark_relay.core.collector import resolve_history_log  # noqa: PLC0415
+                if resolve_history_log(history_dir, row) is None:
+                    # INFO: the safe way is taken (the whole make-up runs), nothing to fix by hand.
+                    log.info("补跑：%s 只差自动采集，但读不到它的 AUTO-MAS 日志，单路线补跑不知道补哪几条，"
+                                "照旧整轮补跑", row.get("run_id"))
+                    return ""
             when = _at(row.get("started"))
             return texts.makeup_only_gathering(when.strftime("%H:%M") if when else "")
     return ""
@@ -915,6 +931,29 @@ def on_record(eng, rec) -> None:
             rows += _yesterday_tail(eng.state.read_ledger, rec.script, rec.user, day, first_start)
         except Exception:
             log.warning("补跑：前一天的账本读不出来，跨午夜那几次没记上补跑做成", exc_info=True)
+    # Tied to the earlier failures only once this record's own outcome check passed
+    # (after_outcome, called by handle._handle_success): AUTO-MAS's 「正常退出」 is not the work
+    # done, and the earlier lines read 「补跑走通」 off these marks (audit 2026-11-08 B-01).
+    _TIE_UP[rec.run_id] = (rows, when)
+    log.info("✅ 补跑：%s %s AUTO-MAS 记成功，等结果核对过了再记到之前那几次上", rec.script, rec.run_id)
+
+
+# run_id -> (ledger rows, HH:MM) of a make-up booked OK, until its outcome check is done.
+_TIE_UP: dict[str, tuple] = {}
+
+
+def after_outcome(eng, rec, undone: "str | None") -> None:
+    """The make-up `rec`'s outcome check is done (`undone`: its 没干成 paragraph, None when
+    all was done). Done: mark the failures it made up for (raw.makeup_ok) and clear the
+    earlier rounds' incomplete. Undone: leave them as they are - the record's own alarm
+    says what is still missing. A record that is not a make-up booked OK does nothing."""
+    got = _TIE_UP.pop(getattr(rec, "run_id", None), None)
+    if got is None:
+        return
+    rows, when = got
+    if undone:
+        log.info("补跑：%s %s AUTO-MAS 记成功，但结果核对没过，之前那几次不算补上", rec.script, rec.run_id)
+        return
     for d, e in rows:
         if not e.get("ok"):
             eng.state.mark_raw(d, e["run_id"], "makeup_ok", when)
