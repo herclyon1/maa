@@ -476,6 +476,11 @@ def stop_okww(sleep=time.sleep, clock=time.monotonic) -> str:
     return texts.echo_farm_game_left(still)
 
 
+# Every field start() changes; all of them have to read back after the farm.
+RESTORE_KEYS = ("Teleport to Boss", "Boss Level", "Repeat Farm Count",
+                "Which Boss Challenge to Teleport", "Which Weekly Boss to Teleport")
+
+
 def _truth(cfg, working: Path) -> dict:
     """What FarmEchoTask.json should look like after the farm: the AUTO-MAS master.
 
@@ -548,7 +553,9 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
                              which: boss,
                              "Boss Level": MAX_LEVEL if weekly else FARM_LEVEL,
                              "Repeat Farm Count": BIG_COUNT})
-    if back.get(which) != boss:
+    wrote = {"Teleport to Boss": WEEKLY if weekly else "Boss Challenge", which: boss,
+             "Boss Level": MAX_LEVEL if weekly else FARM_LEVEL, "Repeat Farm Count": BIG_COUNT}
+    if any(back.get(k) != v for k, v in wrote.items()):
         atomic_write_text(path, json.dumps(saved, ensure_ascii=False, indent=1))
         return False, "写进去之后读出来和写的不一样，设置已改回，没有开跑"
 
@@ -654,11 +661,20 @@ def _finish(cfg, why: str, failed: bool = False, judge_progress: bool = False) -
     note += "" if not no_claim_on() else texts.echo_farm_no_claim_left(NO_CLAIM)
     path = _cfg_path(getattr(cfg, "okww_dir", None) or os.environ.get("ARK_OKWW_DIR"))
     saved = rec.get("saved")
+    # The master as it is now, not the copy taken at the start: a weekly-boss number
+    # or level changed on the phone during the farm stays changed (11-08 [D-06]).
+    if path and path.is_file():
+        try:
+            fresh = _truth(cfg, path)
+            if isinstance(fresh, dict) and fresh.get("Repeat Farm Count") != BIG_COUNT:
+                saved = fresh
+        except (OSError, ValueError):
+            log.warning("收工时母本读不出来，用开刷时记下的那份还原", exc_info=True)
     if path and path.is_file() and isinstance(saved, dict):
         try:
             atomic_write_text(path, json.dumps(saved, ensure_ascii=False, indent=1))
             back = json.loads(path.read_text(encoding="utf-8"))
-            if back.get("Teleport to Boss") != saved.get("Teleport to Boss"):
+            if any(back.get(k) != saved.get(k) for k in RESTORE_KEYS):
                 note += texts.echo_farm_boss_not_back(True)
         except OSError:
             note += texts.echo_farm_boss_not_back(False)
