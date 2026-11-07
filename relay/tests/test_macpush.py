@@ -268,6 +268,27 @@ check("留最新的 MAX_QUEUE 条", (len(mp.pending()), mp.pending()[0]["title"]
 check("坏文件按空队列", macpush.MacPush(TMP / "bad", down).pending(), [])
 
 print()
+print("\n[audit 11-08 C-09: a corrupt queue file is kept aside and said at WARNING, not read as empty]")
+import logging as _logging  # noqa: E402
+_bad_dir = TMP / "corrupt"
+_bad_dir.mkdir()
+(_bad_dir / macpush.QUEUE_FILE).write_text("[{not json", encoding="utf-8")
+_seen = []
+
+
+class _H(_logging.Handler):
+    def emit(self, r):
+        _seen.append(r.levelno)
+
+
+_h = _H()
+macpush.log.addHandler(_h)
+_mp = macpush.MacPush(_bad_dir, "http://127.0.0.1:9/")
+macpush.log.removeHandler(_h)
+check("the queue reads as empty", _mp.pending(), [])
+check("one WARNING", _seen.count(_logging.WARNING), 1)
+check("the broken file is kept aside", len(list(_bad_dir.glob("*.corrupt-*"))), 1)
+
 if fails:
     print("FAILED:", fails)
     sys.exit(1)

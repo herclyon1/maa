@@ -38,6 +38,7 @@ import http.client
 import json
 import logging
 import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -83,7 +84,18 @@ class MacPush:
             data = json.loads(self._path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return []
-        except (OSError, ValueError) as exc:
+        except ValueError as exc:
+            # Corrupt: the alarms in it would be lost without a word (audit 2026-11-08 C-09).
+            # Kept aside for a session to read, and said once at WARNING (errwatch takes it to the group).
+            aside = self._path.with_name(f"{self._path.stem}.corrupt-{int(time.time())}{self._path.suffix}")
+            try:
+                self._path.replace(aside)
+            except OSError:
+                aside = self._path
+            log.warning("%s 坏了读不出来（%s），里面没送到 Mac 的报警丢了；原文件留在 %s",
+                        QUEUE_FILE, type(exc).__name__, aside.name)
+            return []
+        except OSError as exc:
             log.info("%s 读不出来（%s），按空队列处理", QUEUE_FILE, type(exc).__name__)
             return []
         return [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
