@@ -44,10 +44,12 @@ wuwa_history.py (past banners, maintenance windows).
 from __future__ import annotations
 
 import html
+import http.client
 import json
 import logging
 import re
 import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -80,8 +82,12 @@ class Banner:
     game: str
     name: str
     chars: tuple[str, ...]
-    start: "datetime | None"    # None only on a notice that opens 「X版本更新后」
-    end: "datetime | None"      # None only on a second source that prints no end (crosscheck)
+    # None on a notice that opens 「X版本更新后」; on a running banner only when the
+    # official source that put it in the report prints no clock (render says so)
+    start: "datetime | None"
+    # None on a second source that prints no end (crosscheck), or on a running
+    # banner the official sources say closes 「版本更新维护前」 with no time yet
+    end: "datetime | None"
     start_note: str = ""        # that wording, when start is None
 
 
@@ -126,6 +132,13 @@ class Trace:
     # when the section started being built: the machine check (#58) reads the
     # relay's own log lines from here on
     born: float = field(default_factory=time.time)
+    # Every new-character banner an official source says is open now, whichever
+    # source the report took it from: [game, pool, who, start, end, sources]
+    # (machine check #67 holds the report's 当期 lines against it).
+    opens: list = field(default_factory=list)
+    # The cross-day gate's verdicts (check_continuity): [game, "ok" | "recovered" |
+    # "lost", what was announced and what came of it] (machine check #68).
+    continuity: "list | None" = None
 
     @classmethod
     def new(cls) -> "Trace":
@@ -133,6 +146,11 @@ class Trace:
 
     def src(self, game: str, what: str, where: str, value: str) -> None:
         self.sources.append(f"{game}｜{what}｜{where}｜{value}")
+
+    def opened(self, game: str, pool: str, who: str, start: "datetime | None",
+               end: "datetime | None", sources: str) -> None:
+        self.opens.append([game, pool, who, f"{start:%Y-%m-%d %H:%M}" if start else None,
+                           f"{end:%Y-%m-%d %H:%M}" if end else None, sources])
 
 
 def _stamps(when: datetime) -> set[str]:
@@ -230,6 +248,18 @@ _WHO = re.compile(r"(.*)「([^」]+)」$")
 _SWAP = timedelta(minutes=1)
 
 
+def running(b: Banner, now: datetime) -> bool:
+    """Open at `now`. A start or end that is None on a running banner comes only
+    from an official source that says the banner is open (see Banner)."""
+    return (b.start is None or b.start <= now) and (b.end is None or now <= b.end)
+
+
+def split_who(who: str) -> "tuple[str, str]":
+    """「明河「烟火邀星河」」 -> ("明河", "烟火邀星河"); a bare name -> (name, "")."""
+    m = _WHO.match(who or "")
+    return (m.group(1), m.group(2)) if m else (who or "", "")
+
+
 def _next_line(when: "datetime | None", who: str, swap: bool, note: str = "",
                until: "datetime | None" = None, how: str = "") -> str:
     m = _WHO.match(who)
@@ -281,7 +311,7 @@ def render(banners: list[Banner], now: datetime,
     if trace is not None:
         trace.nexts = dict(next_starts or {})
     live: dict[str, list[Banner]] = {}
-    for b in sorted((x for x in banners if x.start <= now <= x.end), key=lambda x: x.end):
+    for b in sorted((x for x in banners if running(x, now)), key=lambda x: x.end or datetime.max):
         live.setdefault(b.game, []).append(b)
     nxt = {g: v for g, v in (next_starts or {}).items()
            if v[1] and (v[0] is None or v[0] > now
@@ -299,6 +329,11 @@ def render(banners: list[Banner], now: datetime,
         when, who = nxt.get(game, (None, ""))
         swapped = False
         for b in live.get(game, []):
+            if b.end is None:
+                # The official notice says 「版本更新维护前」 and no source has
+                # published that maintenance yet: no countdown, and saying so.
+                lines.append(f"· 当期：{b.name} · {'、'.join(b.chars)} · 版本更新维护前结束（几点官方还没公布）")
+                continue
             swap = when is not None and abs(when - b.end) <= _SWAP
             swapped |= swap
             lines.append(f"· 当期：{b.name} · {'、'.join(b.chars)} · 北京 {_stamp(b.end)} "
@@ -367,8 +402,36 @@ def _text(url: str, ua: str, timeout: int = 20) -> str:
     return _read(req, url, None, timeout).decode("utf-8", "replace")
 
 
+# The pause before the one retry of a read cut short by the network.
+_RETRY_PAUSE = 2.0
+
+
+def _transient(exc: BaseException) -> bool:
+    """A read the network cut short (a timeout, a body ended early, a reset or a
+    DNS failure) - worth one more try. An HTTP status is the site's answer and is
+    never retried. 2026-11-07: one IncompleteRead from Kuro's getEntryDetail left
+    the running 鸣潮 banner nameless, and it was dropped from the report."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return False
+    return isinstance(exc, (TimeoutError, http.client.IncompleteRead, ConnectionError,
+                            urllib.error.URLError))
+
+
 def _read(req, url: str, data: "bytes | None", timeout: int) -> bytes:
-    """The whole answer to `req`, recorded on the day's tape (selfcheck/tape.py)."""
+    """The whole answer to `req`, recorded on the day's tape (selfcheck/tape.py).
+    A read the network cut short is tried once more after _RETRY_PAUSE; the second
+    failure is raised to the caller, which says what it could not read."""
+    try:
+        return _read_once(req, url, data, timeout)
+    except Exception as exc:
+        if not _transient(exc):
+            raise
+        log.info("%s 第一次没读完（%s: %s），%.0f 秒后再读一次", url, type(exc).__name__, exc, _RETRY_PAUSE)
+    _pause(_RETRY_PAUSE)
+    return _read_once(req, url, data, timeout)
+
+
+def _read_once(req, url: str, data: "bytes | None", timeout: int) -> bytes:
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             raw = r.read()
@@ -493,6 +556,33 @@ def crosscheck(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None
     return f"{game}：{a_name}={b_name} ✓"
 
 
+def official_fill(game: str, main: str, b: Banner, by: str, tr: "Trace") -> None:
+    """`b` is open by the official sources `by` and missing from the game's main
+    source `main` (a wiki that has not listed it yet, or listed it nameless); the
+    caller puts it in the report. Said in the trace as a cross-check and once in
+    the log: with its end known it is a fault the relay got over (WARNING marked
+    recovered, the daily report only; why: USER-SWITCHES.txt at
+    banners.py:official_fill); with no end published it is a plain WARNING and a ✗.
+
+    The user, 2026-11-08 00:12, after 明河「烟火邀星河」 had been open three days
+    while the report said 「当期无新角色卡池」: 「现在实际上是有卡池的」.
+    """
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    when = f"{b.start:%m-%d %H:%M}" if b.start else (b.start_note or "开始时刻没写")
+    if b.end is not None:
+        tr.ends |= _stamps(b.end)
+        tr.checks.append(f"{game}：{main}里没有在开的「{b.name}」，{by}写着 {when} 开、"
+                         f"{b.end:%m-%d %H:%M} 结束，已按官方补进当期 ✓（兜底）")
+        log.warning("%s：%s里没有正在开的「%s」（%s），已按%s补进当期\n%s 开，%s 结束",
+                    game, main, b.name, "、".join(b.chars), by, when, f"{b.end:%Y-%m-%d %H:%M}",
+                    extra=errwatch.recovered())
+        return
+    tr.checks.append(f"{game}：{main}里没有在开的「{b.name}」，{by}写着 {when} 开，"
+                     f"结束时刻官方还没公布，已补进当期但没有倒计时 ✗")
+    log.warning("%s：%s里没有正在开的「%s」（%s），%s写着 %s 开，结束时刻哪个官方来源都没给，当期一行没有倒计时",
+                game, main, b.name, "、".join(b.chars), by, when)
+
+
 def _ef_cms_text(html_body: str) -> str:
     """The CMS API returns the article HTML once-escaped as a JSON string, so a plain
     tag strip is enough (the SSR page needs _ak_article_text instead).
@@ -552,10 +642,14 @@ def update_history(state_dir, now: datetime) -> "list[str]":
 def collect(now: datetime, *, skland_token: str = "",
             cred=None, sk_get=None, failed: "list[str] | None" = None,
             notes: "dict[str, str] | None" = None, trace: "Trace | None" = None,
-            leads: "dict[str, str] | None" = None, read_image=None
+            leads: "dict[str, str] | None" = None, read_image=None, state_dir=None
             ) -> "tuple[list[Banner], dict[str, tuple[datetime | None, str]]]":
     """Pull all three games. If one cannot be fetched, that line is missing and the
     others are unaffected.
+
+    `state_dir`, when given, runs the cross-day gate (check_continuity) on what
+    was read: a banner an earlier report announced must not turn into 「当期无新角色
+    卡池」 once it has opened.
 
     Only Endfield needs `skland_token` (or the caller supplies `cred`/`sk_get`
     directly, which is how the tests inject it). Arknights uses PRTS and Wuthering
@@ -612,7 +706,114 @@ def collect(now: datetime, *, skland_token: str = "",
     except Exception:
         log.warning("鸣潮卡池整段失败", exc_info=True)
         failed.append("鸣潮")
+    if state_dir is not None:
+        check_continuity(state_dir, now, rows, failed, trace if trace is not None else Trace.new())
     return rows, nxt
+
+
+# How far back the cross-day gate looks for an announcement, and how long after its
+# opening an announced banner with no published end is still expected to run: every
+# new-character banner of the three games has run at least 10 days (PRTS and Kuro
+# histories, banners/history.json), so a week is inside any of them.
+_GATE_LOOKBACK = timedelta(days=10)
+_GATE_SPAN = timedelta(days=7)
+
+
+def _announced(state_dir, now: datetime) -> "dict[str, tuple[datetime, str, datetime | None, str]]":
+    """{game: (start, who, end or None, the snapshot it is from)}: the latest banner
+    an earlier snapshot (banners/<day>.json, up to _GATE_LOOKBACK back) announced
+    as opening at or before `now` and not yet over. A date-only start counts from
+    the day after (its clock is not published)."""
+    out: "dict[str, tuple[datetime, str, datetime | None, str]]" = {}
+    d = Path(state_dir) / "banners"
+    day = (now - _GATE_LOOKBACK).date()
+    while day <= now.date():
+        f = d / f"{day:%Y-%m-%d}.json"
+        day += timedelta(days=1)
+        try:
+            snap = json.loads(f.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError) as e:
+            log.info("卡池记录 %s 读不了（%s），跨天核对跳过这一天", f.name, e)
+            continue
+        until = snap.get("until") or {}
+        for game, (w, who) in (snap.get("next") or {}).items():
+            try:
+                start = datetime.strptime(w, "%Y-%m-%d %H:%M") if w else None
+                end = datetime.strptime(until[game], "%Y-%m-%d %H:%M") if until.get(game) else None
+            except (TypeError, ValueError):
+                continue
+            if start is None or not who:
+                continue
+            opened = (now.date() > start.date() if (start.hour, start.minute) == (0, 0) else start <= now)
+            if not opened or (end is not None and end < now) or (end is None and now - start > _GATE_SPAN):
+                continue
+            if game not in out or start >= out[game][0]:
+                out[game] = (start, who, end, f.name)
+    return out
+
+
+def _past_end(state_dir, game: str, who: str, start: datetime) -> "datetime | None":
+    """The end banners/history.json holds for `who` opening at `start`, if any."""
+    try:
+        data = json.loads((Path(state_dir) / "banners" / "history.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    for key, spans in (data.get(game) or {}).items():
+        if key.split("|", 1)[-1] != who:
+            continue
+        for a, b in spans:
+            if a == f"{start:%Y-%m-%d %H:%M}":
+                return datetime.strptime(b, "%Y-%m-%d %H:%M")
+    return None
+
+
+def check_continuity(state_dir, now: datetime, rows: "list[Banner]", failed: "list[str]",
+                     tr: "Trace") -> None:
+    """The cross-day gate. A banner an earlier report announced (its group notice
+    said 「明天开」) that has opened must be in today's 当期, unless the game is
+    already listed as not read. When every source lost it: put back with its end
+    from the announcement or the history ledger (a fault the relay got over, a
+    WARNING marked recovered - why: USER-SWITCHES.txt at banners.py:check_continuity),
+    or, with no end anywhere, the game is listed as not read and a plain WARNING
+    goes to the group - never 「当期无新角色卡池」.
+
+    The user, 2026-11-08 00:12: the group was told on 11-04 that 明河「烟火邀星河」
+    opens 11-05 12:00, and from that moment the report said no banner was running:
+    「更新卡池之前它居然是有通知过的，结果居然把这个丢失了」.
+    """
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    tr.continuity = []
+    for game, (start, who, end, snap) in sorted(_announced(state_dir, now).items()):
+        if any(f.startswith(game) for f in failed):
+            continue
+        chars, pool = split_who(who)
+        names = {c for c in chars.split("、") if c}
+        live = [b for b in rows if b.game == game and running(b, now)]
+        said = f"{snap} 预告 {start:%m-%d %H:%M} 开 {who}"
+        # An announcement that names no banner (「3.8版本第一期」) is met by any
+        # running one of that game.
+        hit = (any(re.sub(r"^【[^】]*】", "", b.name) == pool or names & set(b.chars) for b in live)
+               if pool else bool(live))
+        if hit:
+            tr.continuity.append([game, "ok", f"{said}，今天当期里有"])
+            continue
+        end = end or _past_end(state_dir, game, who, start)
+        if pool and names and end is not None and end > now:
+            rows.append(Banner(game, pool, tuple(sorted(names)), start, end))
+            tr.ends |= _stamps(end)
+            tr.checks.append(f"{game}：{said}，今天各来源都没读到它，按预告和它公布的 {end:%m-%d %H:%M} 结束补回当期 ✓（兜底）")
+            tr.continuity.append([game, "recovered", f"{said}，今天各来源都没有，按预告补回（{end:%m-%d %H:%M} 结束）"])
+            log.warning("%s：之前预告 %s 开的%s今天哪个来源都没读到，已按预告补回当期\n%s 结束（%s）",
+                        game, f"{start:%m-%d %H:%M}", who, f"{end:%Y-%m-%d %H:%M}", snap,
+                        extra=errwatch.recovered())
+            continue
+        failed.append(f"{game}（{start:%m-%d %H:%M} 已预告开的{who}）")
+        tr.checks.append(f"{game}：{said}，今天各来源都没读到它，也没有结束时刻可补 ✗")
+        tr.continuity.append([game, "lost", f"{said}，今天各来源都没有，按没读到报"])
+        log.warning("%s：之前预告 %s 开的%s今天哪个来源都没读到，日报这一游戏按没读到报，不写「当期无新角色卡池」",
+                    game, f"{start:%m-%d %H:%M}", who)
 
 
 def save_trace(state_dir, now: datetime, text: str, tr: "Trace", notifier=None) -> None:
@@ -634,6 +835,10 @@ def save_trace(state_dir, now: datetime, text: str, tr: "Trace", notifier=None) 
             "starts": sorted(tr.starts), "ends": sorted(tr.ends),
             "next": {g: [w.strftime("%Y-%m-%d %H:%M") if w else None, who]
                      for g, (w, who) in tr.nexts.items()},
+            # the next banner's published end: the cross-day gate puts an
+            # announced banner back with it when every source has lost it
+            "until": {g: f"{w:%Y-%m-%d %H:%M}" for g, w in tr.until.items() if w},
+            "opens": tr.opens, "continuity": tr.continuity,
         }, ensure_ascii=False, indent=1))
     except OSError:
         log.warning("卡池来源记录写不进去", exc_info=True)
@@ -696,9 +901,10 @@ from ark_relay.features.banners.arknights import (  # noqa: E402
     _PRTS, _PRTS_PAGE, _rarity_cache, six_star_only, update_arknights_history,
 )
 from ark_relay.features.banners.endfield import (  # noqa: E402
-    ef_banner_posts, _ef_brief_time, _EF_BRIEFING, ef_briefing_banners,
-    _EF_BRIEFING_JS, _EF_BULLETIN, _EF_CMS_LIST, _EF_CMS_POST, ef_cms_posts, _EF_NEWS,
-    ef_next_banner, _EF_SPAN, _endfield, endfield_history, endfield_next_from_briefing,
+    ef_banner_posts, _ef_brief_time, _EF_BRIEFING, ef_briefing_banners, ef_briefing_fetch,
+    ef_briefing_next, _EF_BRIEFING_JS, _EF_BULLETIN, _EF_CMS_LIST, _EF_CMS_POST, ef_cms_posts, _EF_NEWS,
+    ef_next_banner, ef_next_from_rows, ef_official_pools, _EF_SPAN, _endfield, endfield_history,
+    endfield_next_from_briefing,
     endfield_next_from_news, endfield_pool_ends, endfield_pools_from_notice,
     parse_endfield, parse_endfield_notice, update_endfield_history,
 )
@@ -722,16 +928,17 @@ __all__ = [
     "AkPast", "AkSection", "Banner", "BiliFeedProblem", "KuroListProblem", "SERVER_TZ", "Trace",
     "ak_news_pages", "ak_post_text", "ak_rarity", "arknights_banner_posts",
     "arknights_comm_lead", "arknights_history",
-    "bili_shape", "bili_sign", "bili_wbi_keys", "collect", "crosscheck", "debut_only",
-    "ef_banner_posts", "ef_briefing_banners", "ef_cms_posts", "ef_next_banner",
+    "bili_shape", "bili_sign", "bili_wbi_keys", "check_continuity", "collect", "crosscheck",
+    "debut_only", "ef_banner_posts", "ef_briefing_banners", "ef_briefing_fetch", "ef_briefing_next",
+    "ef_cms_posts", "ef_next_banner", "ef_next_from_rows", "ef_official_pools",
     "endfield_history", "endfield_next_from_briefing", "endfield_next_from_news",
     "endfield_pool_ends", "endfield_pools_from_notice", "gate_preview", "gh_raw",
     "group_notice", "image_reader", "log", "newest_version", "ocr_strips",
-    "opening_tomorrow", "parse_ak_post", "parse_ak_schedule", "parse_arknights",
+    "official_fill", "opening_tomorrow", "parse_ak_post", "parse_ak_schedule", "parse_arknights",
     "parse_arknights_html", "parse_ef_yituliu", "parse_endfield",
     "parse_endfield_notice", "parse_wuwa", "parse_wuwa_calendar",
     "parse_wuwa_notice_banners", "parse_wuwa_poster", "parse_wuwa_poster_first_end",
-    "parse_wuwa_preview", "record_history", "render", "save_trace",
+    "parse_wuwa_preview", "record_history", "render", "running", "save_trace", "split_who",
     "six_star_only", "strip_plan", "upcoming", "update_arknights_history",
     "update_endfield_history", "update_history", "update_wuwa_history",
     "wuwa_bili_post", "wuwa_calendar_image", "wuwa_first_half_notice_end",

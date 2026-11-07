@@ -617,6 +617,25 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
                 other = Banner("明日方舟", m.group(2), tuple(x for x in m.group(1).split("、") if x), st, en)
                 break
         tr.checks.append(crosscheck("明日方舟", "PRTS", b, "官网公告", other))
+    # The other direction: a debut banner the official site has open goes in the
+    # report even when PRTS has not listed it yet (the day it opens, PRTS can lag
+    # the post; a missing row read as 「当期无新角色卡池」 before 2026-11-08).
+    prts_running = [r for r in rows if r.start <= now <= r.end]
+    for st, who, _p, en, cid in posts:
+        # a post that gives the opening day only (「版本更新后」) counts from the next day
+        if not (now.date() > st.date() if (st.hour, st.minute) == (0, 0) else st <= now) or now > en:
+            continue
+        chars, pool = hub.split_who(who)
+        names = tuple(x for x in chars.split("、") if x)
+        tr.opened("明日方舟", pool, chars, st, en, f"{_AK_NEWS}/{cid}")
+        if any(re.sub(r"^【[^】]*】", "", r.name) == pool
+               or (r.start.date() == st.date() and set(names) & set(r.chars)) for r in prts_running):
+            continue
+        b = Banner("明日方舟", pool, names, st, en)
+        debut.append(b)
+        live.append(b)
+        tr.src("明日方舟", "当期", f"{_AK_NEWS}/{cid}", f"{pool} {chars} {st:%Y-%m-%d %H:%M}~{en:%Y-%m-%d %H:%M}")
+        hub.official_fill("明日方舟", "资料站", b, "官网寻访公告", tr)
     # The earliest announced one not yet open, whichever post it is in: one post
     # can announce two (cid 2019084798: 深夏的守夜人 08-27, then 久铸尘铁 09-10).
     if fut := [(st, who, en) for st, who, _p, en, _c in posts if st > now]:

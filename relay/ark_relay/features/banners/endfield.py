@@ -183,8 +183,10 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
               notes: "dict[str, str] | None" = None,
               failed: "list[str] | None" = None
               ) -> "tuple[list[Banner], tuple[datetime, str] | None]":
-    """Running banners come from Skland (authoritative on timing); debuts and
-    previews come from the official version bulletin.
+    """Running banners come from Skland (authoritative on timing) and from the
+    three official sources (_EF_OFFICIAL) for any new-operator banner they have
+    open that Skland does not list; debuts and previews come from the official
+    version bulletin, then the banner notices and the version briefing.
     """
     tr = trace if trace is not None else Trace.new()
     # Unreadable must raise: `collect` then reports the game as not read, where
@@ -249,6 +251,36 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
         # The bulletin's opening and closing times are the official next-banner
         # time; without them the line falls to a weaker source or 「官方未公告」.
         log.warning("终末地版本更新说明里的卡池时间读不出，下一期开放时间这次不按公告报", exc_info=True)
+    # The official banner notices and the version briefing are read every time,
+    # for the running banner as much as for the next one: from 11-05 12:00 to
+    # 11-08 Skland's char-pool was empty while all three official sources had
+    # 明河「烟火邀星河」 open, and the report said 「当期无新角色卡池」. Each is read
+    # once; a source that fails here is said once below where the next banner
+    # needs it, and the running banner is cross-checked without it.
+    cms_posts: "list | None" = None
+    cms_rows: "list[dict]" = []
+    try:
+        cms_posts = ef_cms_posts(max_pages=1)
+        cms_rows = ef_banner_posts(cms_posts)
+    except Exception as e:
+        log.info("终末地官网寻访说明这次没读到，当期少一个官方来源", exc_info=True)
+        tr.problems.append(f"终末地｜特许寻访说明｜{_EF_CMS}｜{type(e).__name__}: {e}"[:300])
+    brief: "tuple[str, list[dict]] | None" = None
+    brief_err: "Exception | None" = None
+    try:
+        brief = ef_briefing_fetch()
+    except Exception as e:
+        brief_err = e
+        log.info("终末地新版本导览这次没读到，当期少一个官方来源", exc_info=True)
+    if not pools and not notice_ok and cms_posts is None and brief is None:
+        # Skland empty and no official source read: nothing tells "no banner"
+        # from "not read".
+        log.warning("终末地：森空岛的当期卡池表是空的，版本更新说明、特许寻访说明、新版本导览三个官方来源也都没读到，分不出有没有在开的卡池")
+        if failed is not None:
+            failed.append("终末地（森空岛的当期卡池表是空的，官方公告也没读到）")
+    offi = ef_official_pools(pools_n, ends_n, cms_rows, brief[1] if brief else [])
+    opened = [r for r in offi if r["start"] is not None and r["start"] <= now
+              and (r["end"] is None or now <= r["end"])]
     for b in got:
         if b.start <= now <= b.end:
             tr.ends |= _stamps(b.end)
@@ -266,11 +298,31 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
                     break
             tr.checks.append(crosscheck("终末地", "森空岛", b, "公告", other) if notice_ok
                              else "终末地：公告取不到，只有森空岛一个来源 ✗")
+    # The other direction: every new-operator banner an official source has open
+    # must be in the report whether or not Skland lists it.
+    sk_running = [b for b in live if b.start <= now <= b.end]
+    for r in opened:
+        if not r["debut"]:
+            continue
+        by = "、".join(r["by"])
+        tr.opened("终末地", r["pool"], r["op"], r["start"], r["end"], by)
+        for kind, seen in (("开始", r["starts"]), ("结束", r["ends"])):
+            clocks = {src: t.replace(second=0, microsecond=0) for src, t in seen.items()}
+            if len(set(clocks.values())) > 1:
+                tr.checks.append(f"终末地：「{r['pool']}」各官方来源的{kind}时刻对不上 ✗（"
+                                 + "；".join(f"{src} {t:%m-%d %H:%M}" for src, t in clocks.items()) + "）")
+        if any(r["op"] in b.chars or b.name == r["pool"] for b in sk_running):
+            continue
+        b = Banner("终末地", r["pool"], (r["op"],), r["start"], r["end"])
+        got.append(b)
+        tr.src("终末地", "当期", by, f"{b.name} {r['op']} {b.start:%Y-%m-%d %H:%M}~"
+               + (f"{b.end:%Y-%m-%d %H:%M}" if b.end else "结束时刻未公布"))
+        hub.official_fill("终末地", "森空岛", b, by, tr)
     # Reached also when nothing is running, so the official notice is still read.
     # Prefer the official bulletin for the next banner: the one whose opening time is
     # in the future. Debuts only - a rerun is never "the next banner" (new characters
     # only, see banners.py).
-    on = {c for b in live for c in b.chars}
+    on = {c for b in live for c in b.chars} | {r["op"] for r in opened}
     future = [(n, p, w, d) for n, p, w, d in pools_n if w and w > now and n not in on and d]
     if future:
         n, p, w, d = min(future, key=lambda x: x[2])
@@ -287,7 +339,9 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
     # version's banner notice about a day before the update; until then nobody has
     # announced the operator, and the line must say exactly that.
     try:
-        if official := hub.endfield_next_from_news(now):
+        official = (ef_next_from_rows(cms_rows, now) if cms_posts is not None
+                    else hub.endfield_next_from_news(now))
+        if official:
             if official[0] is None:
                 # The notice names the banner; its version's maintenance window is not out yet.
                 tr.src("终末地", "预告", _EF_NEWS, f"{official[1]} 版本开启后开，维护时间公告未写")
@@ -300,8 +354,10 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
     # No banner notice yet: the version briefing names the next version's operators
     # from its preview broadcast on (see _EF_BRIEFING).
     try:
-        if brief := endfield_next_from_briefing(now, on):
-            when, who, ver, day = brief
+        if brief is None:
+            raise brief_err or ValueError("新版本导览没有读")
+        if nb := ef_briefing_next(now, on, *brief):
+            when, who, ver, day = nb
             if when is not None:
                 tr.starts |= _stamps(when)
                 tr.src("终末地", "预告", _EF_BRIEFING, f"{who} 开 {when:%Y-%m-%d %H:%M}")
@@ -425,13 +481,56 @@ def ef_next_banner(posts: "list[tuple[str, str, int, str]]", now: datetime
     (None, who) when it opens with a version whose maintenance window is not
     published yet - that version has not been released, so neither has the banner.
     """
-    rows = ef_banner_posts(posts)
+    return ef_next_from_rows(ef_banner_posts(posts), now)
+
+
+def ef_next_from_rows(rows: "list[dict]", now: datetime) -> "tuple[datetime | None, str] | None":
+    """ef_next_banner on notices ef_banner_posts has already read."""
     if not rows:
         return None
     r = rows[0]
     if r["start"] is None:
         return None if (r["end"] and r["end"] <= now) else (None, r["who"])
     return (r["start"], r["who"]) if r["start"] > now else None
+
+
+# The three official sources' names, in the order their times are taken.
+_EF_OFFICIAL = ("版本更新说明", "特许寻访说明", "新版本导览")
+
+
+def ef_official_pools(pools_n: list, ends_n: dict, cms_rows: "list[dict]",
+                      brief_rows: "list[dict]") -> "list[dict]":
+    """Every 6-star banner the three official sources name, merged by (operator,
+    banner): {op, pool, debut, starts, ends, by, start, end}. `starts` / `ends` map
+    each source to the time it prints; `start` / `end` are the first one printed,
+    in _EF_OFFICIAL order - a later source fills only what an earlier one leaves
+    out (the notice of 明河「烟火邀星河」 closes it 「版本更新维护前」; the briefing's
+    GachaCharPool row closes it 2026-11-26 06:00). A 特许寻访 notice and a
+    briefing row are debuts by construction (reruns are 重构寻访, and the briefing
+    lists the version's new operators); the bulletin says it for its own rows.
+    """
+    rows: "dict[tuple[str, str], dict]" = {}
+
+    def put(op: str, pool: str, src: str, start, end, debut: bool) -> None:
+        r = rows.setdefault((op, pool), {"op": op, "pool": pool, "debut": False,
+                                         "starts": {}, "ends": {}, "by": []})
+        r["debut"] = r["debut"] or debut
+        if src not in r["by"]:
+            r["by"].append(src)
+        if start is not None:
+            r["starts"][src] = start
+        if end is not None:
+            r["ends"][src] = end
+    for op, pool, w, d in pools_n:
+        put(op, pool, _EF_OFFICIAL[0], w, ends_n.get((op, pool)), d)
+    for r in cms_rows:
+        put(*hub.split_who(r["who"]), _EF_OFFICIAL[1], r["start"], r["end"], True)
+    for r in brief_rows:
+        put(*hub.split_who(r["who"]), _EF_OFFICIAL[2], r["open"], r["close"], True)
+    for r in rows.values():
+        r["start"] = next((r["starts"][s] for s in _EF_OFFICIAL if s in r["starts"]), None)
+        r["end"] = next((r["ends"][s] for s in _EF_OFFICIAL if s in r["ends"]), None)
+    return list(rows.values())
 
 
 def endfield_next_from_news(now: datetime, get=None) -> "tuple[datetime | None, str] | None":
@@ -555,12 +654,22 @@ def endfield_next_from_briefing(now: datetime, on: "set[str]", get=None
     running: (open, who, version, version day). `open` is None for a banner that
     opens 「版本更新后」; the version day is then the date its listed time falls on.
     """
+    return ef_briefing_next(now, on, *ef_briefing_fetch(get))
+
+
+def ef_briefing_fetch(get=None) -> "tuple[str, list[dict]]":
+    """(version, banners) off the live briefing page (ef_briefing_banners)."""
     get = get or (lambda u: hub._text(u, _UA_BROWSER))
     page = get(_EF_BRIEFING)
     js = _EF_BRIEFING_JS.search(page)
     if not js:
         raise ValueError("新版本导览页里找不到内容脚本")
-    version, rows = ef_briefing_banners(get(js.group(1)))
+    return ef_briefing_banners(get(js.group(1)))
+
+
+def ef_briefing_next(now: datetime, on: "set[str]", version: str, rows: "list[dict]"
+                     ) -> "tuple[datetime | None, str, str, datetime | None] | None":
+    """endfield_next_from_briefing on a briefing already read."""
     ahead = [r for r in rows if r["listed"] and r["listed"] > now
              and re.sub(r"「.*", "", r["who"]) not in on]
     if not ahead:

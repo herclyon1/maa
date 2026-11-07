@@ -14,7 +14,7 @@ from ark_relay.features.banners.banners import (
     upcoming,
 )
 from ark_relay.features.banners.wuwa_posters import (
-    _KURO, _kuro_default, _kuro_gacha, _KURO_NEWS, _KURO_POST, kuro_checked,
+    _door, _KURO, _kuro_default, _kuro_gacha, _KURO_NEWS, _KURO_POST, kuro_checked,
     wuwa_first_half_notice_end, _wuwa_poster_span, _WW_GACHA_CHECKED,
 )
 from ark_relay.features.banners.wuwa_history import (
@@ -44,11 +44,10 @@ def _one_dot(name: str) -> str:
 # **The imgs after the first are the same generic entries in every tab; only the
 # first one is the character.**
 # Weapon banners are not reported.
-def parse_wuwa(home: dict, name_of) -> list[Banner]:
-    """Raises ValueError when there are character tabs but none has a readable
-    dateRange (an empty return would read as "none", see _wuwa); some tabs
-    unreadable is one WARNING."""
-    out: list[Banner] = []
+def wuwa_tabs(home: dict) -> "tuple[list[tuple[str, str, datetime, datetime]], list[str], int]":
+    """The homepage's character-banner tabs: ([(banner name, the character's entry
+    id or "", start, end)], the tabs whose dateRange cannot be read, how many tabs)."""
+    out: "list[tuple[str, str, datetime, datetime]]" = []
     bad: list[str] = []
     n_tabs = 0
     content = ((home or {}).get("data") or {}).get("contentJson") or {}
@@ -69,12 +68,23 @@ def parse_wuwa(home: dict, name_of) -> list[Banner]:
                 continue
             imgs = tab.get("imgs") or []
             eid = (imgs[0].get("linkConfig") or {}).get("entryId") if imgs else None
-            # The wiki entry name can carry whitespace (a leading space on 2026-09-12);
-            # a raw compare against the bulletin's spelling dropped the running banner.
-            who = _one_dot((name_of(str(eid)) if eid else "").strip())
-            if not who:
-                continue
-            out.append(Banner("鸣潮", str(tab.get("name") or "").strip(), (who,), a, b))
+            out.append((str(tab.get("name") or "").strip(), str(eid) if eid else "", a, b))
+    return out, bad, n_tabs
+
+
+def parse_wuwa(home: dict, name_of) -> list[Banner]:
+    """Raises ValueError when there are character tabs but none has a readable
+    dateRange (an empty return would read as "none", see _wuwa); some tabs
+    unreadable is one WARNING. A tab whose character has no name is left out
+    (_wuwa names it from the official notices when it can)."""
+    out: list[Banner] = []
+    tabs, bad, n_tabs = wuwa_tabs(home)
+    for name, eid, a, b in tabs:
+        # The wiki entry name can carry whitespace (a leading space on 2026-09-12);
+        # a raw compare against the bulletin's spelling dropped the running banner.
+        who = _one_dot((name_of(eid) if eid else "").strip())
+        if who:
+            out.append(Banner("鸣潮", name, (who,), a, b))
     if bad and len(bad) == n_tabs:
         raise ValueError(f"库街区 {n_tabs} 个角色唤取都读不出起止时间（countDown.dateRange）："
                          + "；".join(bad))
@@ -450,9 +460,12 @@ def _wuwa_first_end_poster(ver: str, now: datetime, read_image, tr: "Trace", get
             log.info("%s版本资讯帖取不到", what, exc_info=True)
             tr.problems.append(f"鸣潮｜版本资讯｜{what}｜{type(e).__name__}: {e}")
             failed.append(f"{who}版本资讯帖取不到（{type(e).__name__}）")
+            _door(tr, what, f"取不到：{type(e).__name__}: {e}")
             continue
         if not found:
+            _door(tr, what, "没有这一帖")
             continue
+        had = len(failed)
         page, title, imgs = found
         for n, (url, w, h) in enumerate(imgs, 1):
             if h <= 2.5 * max(w, 1):
@@ -465,13 +478,48 @@ def _wuwa_first_end_poster(ver: str, now: datetime, read_image, tr: "Trace", get
                 continue
             if lines is None:
                 failed.append(f"{who}那一帖第 {n} 张图没读出来（读图没有结果）")
+                _door(tr, what, f"长图没读出来：{failed[-1]}")
                 return None
             end = hub.parse_wuwa_poster_first_end(lines)
             if end and end > now:
                 tr.src("鸣潮", "版本资讯", f"{what} {page}「{title}」第 {n} 张图 {url}",
                        f"{ver} 第一期 {end:%Y-%m-%d %H:%M} 结束（服务器时间）")
+                _door(tr, what, f"给出了 {ver} 第一期的结束时刻 {end:%m-%d %H:%M}")
                 return end
+        mine = "；".join(failed[had:])
+        _door(tr, what, f"长图里没读到 {ver} 第一期的结束时刻" + (f"（{mine}）" if mine else ""))
     return None
+
+
+def _wuwa_name_from_notice(home: dict, nameless: "dict[str, Exception]",
+                           debut: "list[tuple[str, str]]", notice_banners: "list[Banner]"
+                           ) -> "list[Banner]":
+    """The banners parse_wuwa left out because the wiki gave their character no name,
+    named from the official notices where they name the same banner: the version
+    bulletin's debuts, then the in-game banner posts. A name found that way is a
+    fault the relay got over (WARNING marked recovered, the daily report only; why:
+    USER-SWITCHES.txt at wuwa.py:_wuwa_name_from_notice); one found nowhere is the
+    plain WARNING it always was, and the banner stays out.
+
+    2026-11-07: one cut-short getEntryDetail left 锁暝 nameless and 「余心所向九死
+    未悔」 vanished from the report, though both notices named him on it."""
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    by_pool = {p: w for w, p in debut if p}
+    for x in notice_banners:
+        by_pool.setdefault(x.name, x.chars[0])
+    out: list[Banner] = []
+    named: "dict[str, str]" = {}
+    for name, eid, a, b in wuwa_tabs(home)[0]:
+        if eid in nameless and (who := by_pool.get(name)):
+            out.append(Banner("鸣潮", name, (_one_dot(who),), a, b))
+            named[eid] = f"「{name}」{who}"
+    for eid, e in nameless.items():
+        if eid in named:
+            log.warning("鸣潮：库街区条目 %s 查不到名字，按官方公告补上%s\n%s: %s", eid, named[eid],
+                        type(e).__name__, e, extra=errwatch.recovered())
+        else:
+            log.warning("库街区条目 %s 查不到名字", eid, exc_info=e)
+    return out
 
 
 def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
@@ -493,6 +541,7 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
         return kuro_checked(hub._json(_KURO + path, _UA_BROWSER, body, h), path)
 
     cache: dict[str, str] = {}
+    nameless: "dict[str, Exception]" = {}
 
     def name_of(eid: str) -> str:
         if eid not in cache:
@@ -500,8 +549,9 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
                 d = post("/wiki/core/catalogue/item/getEntryDetail",
                          {"id": eid})["data"] or {}
                 cache[eid] = str(d.get("name") or "").strip()
-            except Exception:
-                log.warning("库街区条目 %s 查不到名字", eid, exc_info=True)
+            except Exception as e:   # said once the official notices are read (below)
+                log.info("库街区条目 %s 查不到名字", eid, exc_info=True)
+                nameless[eid] = e
                 cache[eid] = ""
         return cache[eid]
 
@@ -538,6 +588,26 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
     # Unreadable raises (see _endfield): an empty return would read as "none".
     home = post("/wiki/core/homepage/getPage")
     pools = hub.parse_wuwa(home, name_of)
+    if nameless:
+        pools += _wuwa_name_from_notice(home, nameless, debut, notice_banners)
+    # The other direction: a banner the in-game notice has open goes in even when
+    # the wiki does not list it. The notice posts a banner when it opens, so one
+    # still before its end is running, also when its start reads 「X版本更新后」.
+    synth: list[Banner] = []
+    debut_names = {w for w, _ in debut}
+    for x in notice_banners:
+        if not (now <= x.end and (x.start is None or x.start <= now)):
+            continue
+        if notice_ok and debut and not set(x.chars) & debut_names:
+            continue                     # a rerun: never reported
+        tr.opened("鸣潮", x.name, "、".join(x.chars), x.start, x.end, _WW_NOTICE)
+        if any(b.name == x.name or set(b.chars) & set(x.chars) for b in pools if hub.running(b, now)):
+            continue
+        synth.append(x)
+        tr.src("鸣潮", "当期", _WW_NOTICE, f"{x.name} {'、'.join(x.chars)} "
+               + (f"{x.start:%Y-%m-%d %H:%M}" if x.start else x.start_note) + f"~{x.end:%Y-%m-%d %H:%M}")
+        hub.official_fill("鸣潮", "库街区", x, "游戏公告", tr)
+    pools += synth
     end = min((b.end for b in pools), default=None)
 
     # If the bulletin cannot be fetched, better to report one extra rerun than to lose
@@ -558,7 +628,7 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
         log.warning("鸣潮官方公告里读不出这一版的新角色（%s），分不出首发和复刻，在开的卡池全部照报", why)
     got = [b for b in pools if set(b.chars) & names] if split else pools
     for b in got:
-        if b.start <= now <= b.end:
+        if b not in synth and b.start <= now <= b.end:
             tr.ends |= _stamps(b.end)
             tr.src("鸣潮", "当期", _KURO + "/wiki/core/homepage/getPage", f"{b.name} {'、'.join(b.chars)} {b.start:%Y-%m-%d %H:%M}~{b.end:%Y-%m-%d %H:%M}")
             other = next((x for x in notice_banners if x.name == b.name or set(x.chars) & set(b.chars)), None)
