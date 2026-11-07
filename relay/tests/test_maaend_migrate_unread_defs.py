@@ -75,5 +75,13 @@ changes, note = mastercfg.migrate_maaend_options(automas, maaend)
 require("refuses when MaaEnd's own file list cannot be read",
         not changes and "interface.json" in note and "OldDeadKey" in values(master), note)
 
+print("[the AUTO-MAS instance, not just the first one (11-08 [D-08])]")
+from ark_relay.core import mastercfg as _mc  # noqa: E402
+_doc = {"instances": [{"id": "other", "tasks": [{"taskName": "T", "x": 1}]},
+                      {"id": "automas", "tasks": [{"taskName": "T", "x": 2}]}]}
+require("picks id automas", (_mc._maaend_task(_doc, "T") or {}).get("x") == 2)
+require("no automas: the first",
+        (_mc._maaend_task({"instances": [{"tasks": [{"taskName": "T", "x": 3}]}]}, "T") or {}).get("x") == 3)
+
 print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
 sys.exit(1 if FAILED else 0)

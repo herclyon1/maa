@@ -1,6 +1,6 @@
 {
- "version": 20261107164924,
- "ref": "relay-20261107164924",
+ "version": 20261107165144,
+ "ref": "relay-20261107165144",
  "files": {
   "RELEASE-NOTES.md": "df53dd16575e3b87e32926a5774a268c7ad3db0c",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
@@ -17,7 +17,7 @@
   "ark_relay/core/logfile.py": "239084f09dec3eb0d5194ee8ede8702997c2d715",
   "ark_relay/core/masconfig.py": "43b53efef9710bd1a4547cf7d87c3d9b0748b5bc",
   "ark_relay/core/mascontract.py": "ed661d65e88f54865257c8d75e1782a404cdbc44",
-  "ark_relay/core/mastercfg.py": "11a742db21ec630fdb3e72b8ff341490bae2280d",
+  "ark_relay/core/mastercfg.py": "0553a012cf9f69cd71c4973080ef430c032ab173",
   "ark_relay/core/mastercfg_maa.py": "b4b9ec58e6f1f8473637baadadb03e15b9bee8e1",
   "ark_relay/core/mastercfg_okww.py": "f3454f89d32b3d36758ec0c4d733fcb3b6df42b2",
   "ark_relay/core/masuser.py": "01bef8266388cbfe0e65c0069a78ad7932550d78",
@@ -193,7 +193,7 @@
   "ark_relay/core/logfile.py": "744142c68e4c97f53ae888d578eaaa905b6fdba7034b11fa39b1c41afecf3531",
   "ark_relay/core/masconfig.py": "699b69ef33208be63ad2c33e2b2787520a012ab03d60f19fb600aec19afd20a9",
   "ark_relay/core/mascontract.py": "6a0c1dddc917a0e99287dd110e1790530d174c722e646d560299a4e85ae52fc9",
-  "ark_relay/core/mastercfg.py": "67d56d8059dc1667b3b5f8de153828abf9c57ff937be559b88a1eb81a2111adb",
+  "ark_relay/core/mastercfg.py": "4a343841696704a8f748033f9cbedc0605dda26580c11c11ed8f467415803804",
   "ark_relay/core/mastercfg_maa.py": "f929cdced138ab59a26b4e6146dd5a276b4965a5b5b4c11a4ffe3bd0f0353fa6",
   "ark_relay/core/mastercfg_okww.py": "e714d4050e31f60a2000cf1dce5fcb89d95121950e9e7fc763d1072903866a71",
   "ark_relay/core/masuser.py": "863f18dc3e681012a93baf8f73df69eb70529637782aa13f22985cdc76af88e3",
