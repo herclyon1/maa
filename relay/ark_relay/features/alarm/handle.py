@@ -962,7 +962,10 @@ def _flush_pending(eng) -> None:
                 title, body = _failure_alarm(eng, rec, texts.HAND_STARTED_NOTE, held=True)
                 from ark_relay.features.alarm import unresolved  # noqa: PLC0415
                 if not unresolved.send(eng, run_day(rec), "手动", rec.run_id, title, body):
-                    return  # still held (makeup.marker.eligible skips it), retry next tick
+                    # Still held (makeup.marker.eligible skips it), retried next tick; the
+                    # records after it are still tried now (audit 2026-11-08 C-03: a return
+                    # here held every later alarm behind one that could not go out).
+                    continue
                 eng._pending.pop((rec.script, rec.user), None)
                 eng._persist_pending()
                 eng.log_tails.pop(rec.run_id, None)
@@ -987,8 +990,9 @@ def _flush_pending(eng) -> None:
                 body = (texts.cant_enter_body(rec.script, attempts, bool(maint), str(hint or ""),
                                               _UNREACHABLE_QUICK_SEC)
                         + (f"\n证据包：{page}" if page else f"\n{note}" if note else ""))
-                if eng.notifier.send(texts.cant_enter(rec.script), body, alert=True):
-                    return  # if it cannot be sent, come back next tick
+                if errs := eng.notifier.send(texts.cant_enter(rec.script), body, alert=True):
+                    log.error("进不了游戏的告警推送出错，保留待重发：%s", "；".join(errs))
+                    continue  # if it cannot be sent, come back next tick
                 eng._pending.pop((rec.script, rec.user), None)
                 eng._persist_pending()
                 eng.log_tails.pop(rec.run_id, None)
@@ -1018,7 +1022,7 @@ def _flush_pending(eng) -> None:
                                    "、".join(rec.failed_tasks or []) or "没写失败项")
                     continue
                 if not _push_unresolved(eng, rec, phrase, attempts):
-                    return  # still on disk, retry next tick
+                    continue  # still on disk, retry next tick
                 eng._pending.pop((rec.script, rec.user), None)
                 eng._persist_pending()
                 eng.log_tails.pop(rec.run_id, None)
@@ -1032,7 +1036,7 @@ def _flush_pending(eng) -> None:
             errors = eng.notifier.send(title, body, alert=True)
             if errors:
                 log.error("告警推送出错，保留待重发: %s", "；".join(errors))
-                return  # still on disk, retry next tick
+                continue  # still on disk, retry next tick
             eng._pending.pop((rec.script, rec.user), None)
             eng._persist_pending()   # only now is it safe to forget
             log.info("❌ %s 最终失败，告警已推送（尝试 %d 次）", rec.script, attempts)
