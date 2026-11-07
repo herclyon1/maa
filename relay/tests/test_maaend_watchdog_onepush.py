@@ -177,5 +177,26 @@ crash(r)
 check("errwatch queues the 「卡死」 WARNING", [x[:9] for x in r.group()[1:]], ["MaaEnd 卡死"])
 r.done()
 
+print("\n[audit 11-08 B-06: a kill restarts the shift's overrun clock, as MAA's does]")
+from datetime import datetime as _dt  # noqa: E402
+from ark_relay.core.config import SERVER_TZ as _TZ  # noqa: E402
+from ark_relay.core.statestore import StateStore as _SS  # noqa: E402
+_sd = tmpdir() / "relaystate-mark"
+r = Rig(Notes(), state_dir=_sd)
+r.dog.wall = lambda: _dt(2026, 11, 8, 10, 31, 5, tzinfo=_TZ)
+crash(r)
+r.run_for(600)
+check("killed", bool(r.killed), True)
+check("「超时|MaaEnd|10:31:05」 is left for runwatch.retry_clock",
+      "超时|MaaEnd|10:31:05" in (_SS(_sd).get("marks", "alerted:2026-11-08") or []), True)
+r.done()
+r = Rig(Notes(), kill_ok=False, state_dir=tmpdir() / "relaystate-nokill")
+r.dog.wall = lambda: _dt(2026, 11, 8, 10, 31, 5, tzinfo=_TZ)
+crash(r)
+r.run_for(600)
+check("a failed kill leaves no mark (nothing restarts)",
+      _SS(r.dog.state_dir).get("marks", "alerted:2026-11-08"), None)
+r.done()
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

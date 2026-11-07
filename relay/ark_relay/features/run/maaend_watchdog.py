@@ -40,9 +40,11 @@ import os
 import re
 import subprocess
 import time
+from datetime import datetime
 from pathlib import Path
 
 from ark_relay.core import config, texts
+from ark_relay.core.config import SERVER_TZ
 
 log = logging.getLogger("ark.maaend_watchdog")
 
@@ -140,9 +142,12 @@ class Watchdog:
 
     def __init__(self, notifier, debug_dir, *, clock=time.monotonic, snapshot=_snapshot,
                  processes=_tasklist, kill=_taskkill, plugin_paths=_plugin_paths,
-                 active: "bool | None" = None, state_dir=None):
+                 active: "bool | None" = None, state_dir=None, wall=None):
         self.notifier = notifier
         self.state_dir = state_dir      # where the machine check of a kill (#31) keeps its verdict
+        # Wall clock for the 「超时|MaaEnd|…」 mark (`clock` is monotonic): the machine's time,
+        # which runwatch.retry_clock reads on SERVER_TZ.
+        self.wall = wall or (lambda: datetime.now(tz=SERVER_TZ))
         self._killed: "dict | None" = None   # the last kill, until it is known whether MaaEnd went
         self.stderr = Path(debug_dir) / "go-service.stderr.log"
         # Plugins are only ended when they run from MaaEnd's own agent folder: the
@@ -274,6 +279,11 @@ class Watchdog:
     def _end(self, pid: int, procs, reason: str, now: float) -> str:
         self._handled.add(pid)
         ok, why = self.kill(pid, "MaaEnd.exe")
+        if ok:
+            # AUTO-MAS starts MaaEnd again: the shift's overrun clocks restart from now, as after
+            # MAA's hung start (maa_start_watchdog; audit 2026-11-08 B-06).
+            from ark_relay.features.run.maa_start_watchdog import mark_restart  # noqa: PLC0415
+            mark_restart(self.state_dir, "MaaEnd", self.wall())
         # Plugins left running (skipped or kill failed), in path form: the texts gate
         # refuses a bare English name or a PID.
         left = []

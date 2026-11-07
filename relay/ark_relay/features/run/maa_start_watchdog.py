@@ -254,20 +254,25 @@ class Watchdog:
 
 
     def _mark_restart(self, now: datetime) -> None:
-        """The 「超时|MAA|<HH:MM:SS>」 day mark runwatch.retry_clock restarts the shift's clocks
-        from. Never raises: a mark that cannot be written leaves the clocks at the shift's time."""
-        if not self.state_dir:
-            return
-        key = f"超时|{SCRIPT}|{now:%H:%M:%S}"
+        mark_restart(self.state_dir, SCRIPT, now)
 
-        def add(got):
-            cur = list(got) if isinstance(got, list) else []
-            return cur if key in cur else [*cur, key]
-        try:
-            from ark_relay.core.statestore import StateStore  # noqa: PLC0415
-            StateStore(self.state_dir).update("marks", f"alerted:{now:%Y-%m-%d}", add)
-        except Exception:
-            log.warning("记不下这次重开的时刻：这一班的超时计时还从排定的开跑时间算", exc_info=True)
+
+def mark_restart(state_dir, script: str, now: datetime) -> None:
+    """The 「超时|<script>|<HH:MM:SS>」 day mark runwatch.retry_clock restarts the shift's clocks
+    from, after a watchdog ended a hung script and AUTO-MAS starts it again. Never raises: a
+    mark that cannot be written leaves the clocks at the shift's time."""
+    if not state_dir:
+        return
+    key = f"超时|{script}|{now:%H:%M:%S}"
+
+    def add(got):
+        cur = list(got) if isinstance(got, list) else []
+        return cur if key in cur else [*cur, key]
+    try:
+        from ark_relay.core.statestore import StateStore  # noqa: PLC0415
+        StateStore(state_dir).update("marks", f"alerted:{now:%Y-%m-%d}", add)
+    except Exception:
+        log.warning("记不下这次重开的时刻：这一班的超时计时还从排定的开跑时间算", exc_info=True)
 
 
 def start(cfg, notifier) -> bool:
