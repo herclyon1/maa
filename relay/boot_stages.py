@@ -102,7 +102,7 @@ def _revive_automas() -> None:
     time.sleep(4)  # let the shell actually exit before the task is re-run
     try:
         r = subprocess.run(["schtasks", "/run", "/tn", AUTOMAS_TASK],
-                           capture_output=True, timeout=30)
+                       capture_output=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as exc:
         log.info("重新打开 AUTO-MAS：计划任务没能启动（%s），下次检查再试", exc)
         return

@@ -75,12 +75,11 @@ SHUTDOWN_NO_SHOW_SECONDS = 180.0
 # revival state is not reset, so a backend that starts and never serves (its port
 # still held by a leftover process) keeps counting towards REVIVE_ALERT_AFTER
 # instead of starting from zero at every attempt (清单-1108 A-06). The loop asks
-# again every API_RECHECK_SECONDS; one that has not answered API_GRACE_SECONDS after
-# its process appeared is a WARNING (pushed) once. The backend's bootstrap runs in
-# the shell before its python.exe starts (SHELL_GRACE_SECONDS), so a minute of API
-# start-up is plenty; five leave room for a slow disk.
-API_RECHECK_SECONDS = 30.0
-API_GRACE_SECONDS = 300.0
+# again on the keeper's own liveness beat (procwatch.AUTOMAS_CHECK_SECONDS); one that
+# has not answered after the first revival wait (REVIVE_FIRST_WAIT) since its process
+# appeared is a WARNING (pushed) once. No new numbers: both are the keeper's own.
+API_RECHECK_SECONDS = float(procwatch.AUTOMAS_CHECK_SECONDS)
+API_GRACE_SECONDS = float(REVIVE_FIRST_WAIT)
 
 
 def _api_up() -> bool:

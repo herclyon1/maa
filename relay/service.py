@@ -151,6 +151,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # that SvcDoRun does not end the process under that push (STOP_PUSH_WAIT_S).
         self._stop_asked = threading.Event()
         self._stop_pushed = threading.Event()
+        self._stop_once = threading.Lock()      # SvcStop runs once per process
 
     def SvcStop(self):  # noqa: N802 - name required by the framework
         # pywin32 routes SERVICE_CONTROL_SHUTDOWN to SvcShutdown, which calls
@@ -158,9 +159,8 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         # Once per process. The installed relay (app_main.py) reaches this from two
         # threads that can both fire - WM_ENDSESSION and the stop request - and a
-        # second run pushed the state again and armed a second hard exit
-        # (清单-1108 A-07). dict.setdefault is atomic under the GIL.
-        if not self.__dict__.setdefault("_stop_once", threading.Lock()).acquire(blocking=False):
+        # second run pushed the state again and armed a second hard exit (BOARD list A-07).
+        if not self._stop_once.acquire(blocking=False):
             logging.getLogger("ark.service").info("又收到一次停止（%s），第一次的停止还在做", self._stop_how)
             return
         errwatch.mark_stopping()

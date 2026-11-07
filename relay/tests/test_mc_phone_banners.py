@@ -300,7 +300,7 @@ v = judged(tmpdir(), "banners", {"trace": doors("长图里没读到「余心所�
 check("#3 库街区有帖、哔哩哔哩没有：照旧不过", status(v, "#3"), FAIL)
 
 ok_checks = ["鸣潮：库街区=游戏公告 ✓",
-             "终末地：森空岛里没有在开的「烟火邀星河」，新版本导览写着 11-05 12:00 开、11-26 06:00 结束，已按官方补进当期 ✓（兜底）"]
+             "终末地：森空岛里没有在开的「烟火邀星河」，新版本导览写着 11-05 12:00 开、11-26 06:00 结束，已按官方补进当期 ✓"]
 tr = _b.Trace.new()
 tr.checks += ok_checks
 v = judged(tmpdir(), "banners", {"trace": tr, "text": "", "now": feb})

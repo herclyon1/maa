@@ -2260,9 +2260,9 @@ def _audit_1108_endfield() -> None:
     check("1108 ef: the report line", "· 当期：烟火邀星河 · 明河 · 北京 11-26 06:00 结束 · 剩 18 天 6 小时" in out, True)
     check("1108 ef: never 「当期无新角色卡池」", "当期无新角色卡池" in _block(out, "终末地"), False)
     check("1108 ef: the fill is a ✓ cross-check naming all three official sources",
-          [c for c in tr.checks if "兜底" in c],
+          [c for c in tr.checks if "补进当期 ✓" in c],
           ["终末地：森空岛里没有在开的「烟火邀星河」，版本更新说明、特许寻访说明、新版本导览写着 11-05 12:00 开、"
-           "11-26 06:00 结束，已按官方补进当期 ✓（兜底）"])
+           "11-26 06:00 结束，已按官方补进当期 ✓"])
     check("1108 ef: one WARNING, marked recovered", _recovered(recs, "烟火邀星河"), [True])
     check("1108 ef: no Latin letters in its first line",
           [bool(re.search(r"[A-Za-z]", r.getMessage().split("\n")[0])) for r in recs
@@ -2336,7 +2336,7 @@ def _audit_1108_endfield() -> None:
         return {"data": {"item": {"name": "明河"}}}
     got, nxt, tr, recs = _ef_1107(sk=sk)
     check("1108 ef: Skland listing it -> no fill, no fill warning",
-          ([b.chars for b in got], [c for c in tr.checks if "兜底" in c], _warned(recs, "补进当期")), ([("明河",)], [], 0))
+          ([b.chars for b in got], [c for c in tr.checks if "补进当期 ✓" in c], _warned(recs, "补进当期")), ([("明河",)], [], 0))
 
     # A notice whose title names no banner never makes a nameless 当期 line.
     got, tr = [], _b.Trace.new()
@@ -2420,13 +2420,13 @@ def _audit_1108_arknights() -> None:
     check("1108 ak: the official post fills the running banner PRTS lacks",
           "· 当期：海渊巡游 · 克莱门莎 · 北京 10-23 03:59 结束" in text, True)
     check("1108 ak: as a ✓ fill, one recovered WARNING",
-          ([c for c in tr.checks if "兜底" in c and "资料站" in c] != [], _recovered(recs, "海渊巡游")), (True, [True]))
+          ([c for c in tr.checks if "补进当期 ✓" in c and "资料站" in c] != [], _recovered(recs, "海渊巡游")), (True, [True]))
     check("1108 ak: recorded for check #67", [o[:3] for o in tr.opens], [["明日方舟", "海渊巡游", "克莱门莎"]])
     # PRTS has it (prefixed, 07:00): no fill.
     row = _b.Banner("明日方舟", "【限定寻访·夏季】海渊巡游", ("克莱门莎",),
                     datetime(2026, 10, 9, 7, 0), datetime(2026, 10, 23, 3, 59))
     out, tr, recs = _ak_offline(now, [row], _ak_site_1006(), {"克莱门莎": 5})
-    check("1108 ak: PRTS listing it -> no fill", ([c for c in tr.checks if "兜底" in c], _warned(recs, "补进当期")), ([], 0))
+    check("1108 ak: PRTS listing it -> no fill", ([c for c in tr.checks if "补进当期 ✓" in c], _warned(recs, "补进当期")), ([], 0))
     # Before it opens and after it closes: nothing.
     for when in (datetime(2026, 10, 9, 11, 0), datetime(2026, 10, 23, 4, 0)):
         out, tr, recs = _ak_offline(when, [], _ak_site_1006())
@@ -2479,7 +2479,7 @@ def _audit_1108_wuwa() -> None:
     check("1108 ww: the in-game post fills the running banner the wiki lacks",
           "· 当期：但愿长圆如此夜 · 心 · 北京 10-22 09:59 结束" in out, True)
     check("1108 ww: as a ✓ fill, one recovered WARNING",
-          ([c for c in tr.checks if "兜底" in c and "库街区" in c] != [], _recovered(recs, "但愿长圆如此夜")), (True, [True]))
+          ([c for c in tr.checks if "补进当期 ✓" in c and "库街区" in c] != [], _recovered(recs, "但愿长圆如此夜")), (True, [True]))
     check("1108 ww: the second half is still next, not the running one",
           nxt[1] if nxt else None, "锁暝「余心所向九死未悔」")
     # The wiki lists it but its character's name lookup is cut short.
@@ -2488,7 +2488,7 @@ def _audit_1108_wuwa() -> None:
           [(b.name, b.chars) for b in got if b.name == "但愿长圆如此夜"], [("但愿长圆如此夜", ("心",))])
     check("1108 ww: said once, marked recovered", _recovered(recs, "查不到名字"), [True])
     check("1108 ww: named, it is the wiki's and cross-checked, not filled again",
-          ([c for c in tr.checks if "兜底" in c], any("库街区=游戏公告" in c for c in tr.checks)), ([], True))
+          ([c for c in tr.checks if "补进当期 ✓" in c], any("库街区=游戏公告" in c for c in tr.checks)), ([], True))
     # A nameless tab no notice names stays out, with the plain WARNING.
     got, nxt, tr, recs, out = run(home(tab("但愿长圆如此夜", 101), tab("别的卡池", 102)), cut)
     check("1108 ww: a name found nowhere is the plain WARNING", _recovered(recs, "102 查不到名字"), [False])

@@ -86,7 +86,7 @@ _plan._last_error.pop("activity", None)
 broken = TMP / "broken.json"
 broken.write_text("{not json", encoding="utf-8")
 check("读不了还是空", activity_countdown(None, now=NOW, cache_path=broken), "")
-check("读不了的说一次", [m for lv, m in _g.lines if lv == logging.WARNING and "活动缓存读不了" in m] != [], True)
+check("读不了的说一次", [m for lv, m in _g.lines if lv == logging.WARNING and "活动表读不了" in m] != [], True)
 n = len(_g.lines)
 activity_countdown(None, now=NOW, cache_path=broken)
 check("同一个毛病不重复说", len(_g.lines), n)
@@ -94,7 +94,7 @@ activity_countdown(None, now=NOW, cache_path=cache("又好了", NOW + timedelta(
 check("好了以后忘掉，下次坏了再说", "activity" in _plan._last_error, False)
 check("还没有缓存（新装的 MAA）：只记一行，不推群",
       (activity_countdown(None, now=NOW, cache_path=TMP / "none.json"),
-       [lv for lv, m in _g.lines if "活动缓存还没有" in m]), ("", [logging.INFO]))
+       [lv for lv, m in _g.lines if "活动表还没有" in m]), ("", [logging.INFO]))
 _plan.log.removeHandler(_g)
 _plan.log.setLevel(_lvl)
 

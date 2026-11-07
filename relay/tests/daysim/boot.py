@@ -200,6 +200,7 @@ def main() -> int:
             self._stop_how = "停止中继"
             self._stop_asked = threading.Event()
             self._stop_pushed = threading.Event()
+            self._stop_once = threading.Lock()      # service.ArkRelayService.__init__
 
         def ReportServiceStatus(self, *_args) -> None:  # noqa: N802 - SvcStop calls it
             """No SCM to report to."""

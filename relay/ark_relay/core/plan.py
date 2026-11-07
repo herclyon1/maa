@@ -922,12 +922,12 @@ def activity_countdown(automas_dir: Path | None, now=None,
     except FileNotFoundError:
         # MAA writes the cache when it first updates its resources: a fresh
         # install has none yet, which is not a fault. Said, not pushed.
-        log.info("MAA 的活动缓存还没有（%s），日报这次没有活动倒计时", cache_path)
+        log.info("MAA 存的活动表还没有（%s），日报这次没有活动倒计时", cache_path)
         return ""
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         # MAA's event cache is there but cannot be read: the countdown vanished
         # from the report in silence until 2026-11-08.
-        _say_once("activity", exc, "MAA 的活动缓存读不了（%s），日报这次没有活动倒计时", cache_path, exc_info=True)
+        _say_once("activity", exc, "MAA 存的活动表读不了（%s），日报这次没有活动倒计时", cache_path, exc_info=True)
         return ""
     _last_error.pop("activity", None)
     now = now or datetime.now(tz=SERVER_TZ)

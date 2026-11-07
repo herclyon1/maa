@@ -574,7 +574,7 @@ def official_fill(game: str, main: str, b: Banner, by: str, tr: "Trace") -> None
     if b.end is not None:
         tr.ends |= _stamps(b.end)
         tr.checks.append(f"{game}：{main}里没有在开的「{b.name}」，{by}写着 {when} 开、"
-                         f"{b.end:%m-%d %H:%M} 结束，已按官方补进当期 ✓（兜底）")
+                         f"{b.end:%m-%d %H:%M} 结束，已按官方补进当期 ✓")
         log.warning("%s：%s里没有正在开的「%s」（%s），已按%s补进当期\n%s 开，%s 结束",
                     game, main, b.name, "、".join(b.chars), by, when, f"{b.end:%Y-%m-%d %H:%M}",
                     extra=errwatch.recovered())
@@ -806,7 +806,7 @@ def check_continuity(state_dir, now: datetime, rows: "list[Banner]", failed: "li
         if pool and names and end is not None and end > now:
             rows.append(Banner(game, pool, tuple(sorted(names)), start, end))
             tr.ends |= _stamps(end)
-            tr.checks.append(f"{game}：{said}，今天各来源都没读到它，按预告和它公布的 {end:%m-%d %H:%M} 结束补回当期 ✓（兜底）")
+            tr.checks.append(f"{game}：{said}，今天各来源都没读到它，按预告和它公布的 {end:%m-%d %H:%M} 结束补回当期 ✓")
             tr.continuity.append([game, "recovered", f"{said}，今天各来源都没有，按预告补回（{end:%m-%d %H:%M} 结束）"])
             log.warning("%s：之前预告 %s 开的%s今天哪个来源都没读到，已按预告补回当期\n%s 结束（%s）",
                         game, f"{start:%m-%d %H:%M}", who, f"{end:%Y-%m-%d %H:%M}", snap,

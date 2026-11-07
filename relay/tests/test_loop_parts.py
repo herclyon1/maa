@@ -283,19 +283,14 @@ print("\n[清单-1108 A-05：脚本刚停，先补做推迟的待办，再跑 ti
 order = []
 
 
-class _Keeper:
-    proc_evt, handle = "proc", None
-    def __init__(self, *a): pass
-    def cap_wait(self, w): return w
-    def on_process_started(self): order.append("proc")
-    def stopping(self): pass
-    def check(self, *a): pass
+def _keeper(*a):
+    return types.SimpleNamespace(proc_evt="proc", handle=None, cap_wait=lambda w: w,
+                                 on_process_started=lambda: order.append("proc"),
+                                 stopping=lambda: None, check=lambda *x: None)
 
 
-class _Roll:
-    def __init__(self, *a): pass
-    def cap_wait(self, w): return w
-    def check(self): order.append("dayroll")
+def _roll(*a):
+    return types.SimpleNamespace(cap_wait=lambda w: w, check=lambda: order.append("dayroll"))
 
 
 class _Watch:
@@ -311,7 +306,7 @@ waits = iter([258, 0])
 mainloop.win32event = types.SimpleNamespace(WAIT_OBJECT_0=0, WaitForMultipleObjects=lambda h, a, ms: next(waits),
                                             WaitForSingleObject=lambda h, ms: 258)
 saved = (mainloop.automas_keeper._AutomasKeeper, mainloop.day_roll._DayRoll, mainloop.dirwatch._DirWatch)
-mainloop.automas_keeper._AutomasKeeper, mainloop.day_roll._DayRoll, mainloop.dirwatch._DirWatch = _Keeper, _Roll, _Watch
+mainloop.automas_keeper._AutomasKeeper, mainloop.day_roll._DayRoll, mainloop.dirwatch._DirWatch = _keeper, _roll, _Watch
 eng = types.SimpleNamespace(next_deadline=lambda: None, scripts_running=lambda: False, tick=lambda: order.append("tick"))
 try:
     mainloop._loop(types.SimpleNamespace(stop_event="stop"), types.SimpleNamespace(), eng, Notifier(),

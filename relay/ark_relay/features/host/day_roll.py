@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta
 
 from ark_relay.core.config import SERVER_TZ
+from ark_relay.features.host import procwatch
 
 # service.py's logger: these lines were always ark.service, and machine checks and tests read them there.
 log = logging.getLogger("ark.service")
@@ -33,8 +34,9 @@ class _DayRoll:
 
     # While a put-back is still open (AUTO-MAS did not answer), the loop wakes at
     # least this often to try again: 「下次醒来再试」 meant the next alarm, up to
-    # the hour-long backstop (清单-1108 A-04).
-    RETRY_S = 120.0
+    # the hour-long backstop (清单-1108 A-04). The keeper's own beat for a silent
+    # AUTO-MAS (procwatch.AUTOMAS_CHECK_SECONDS), not a new number.
+    RETRY_S = float(procwatch.AUTOMAS_CHECK_SECONDS)
 
     def cap_wait(self, wait_s: float, now: datetime | None = None) -> float:
         now = now or datetime.now(tz=SERVER_TZ)
