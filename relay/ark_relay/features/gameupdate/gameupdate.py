@@ -546,13 +546,20 @@ def in_maintenance(state_dir: Path, script: str, at: datetime) -> str:
 
 # ─────────────── after the queue finishes: update + re-run ───────────────
 
+def relay_updates_client(game: str) -> bool:
+    """Whether the relay itself updates this game's client (_prepare_client): only
+    Endfield. AUTO-MAS checks and installs the Arknights and Wuthering Waves
+    clients before their next MAA / OK-WW run."""
+    return game == "终末地"
+
+
 def _prepare_client(cfg, desk: Desktop, game: str, problems: list[str], sleep,
                     budget_s: float = 2400) -> tuple[bool, str]:
     """Update one game's client through to the login screen. Returns (ready,
     notification sentence); when not ready, the reason is in problems. `budget_s`
     caps the wait for the launcher's download."""
     before = len(problems)
-    if game == "终末地":
+    if relay_updates_client(game):
         g, launcher = endfield_paths(cfg.maaend_dir)
         if not (g and launcher):
             problems.append("终末地：找不到启动器"); return False, ""
@@ -698,6 +705,16 @@ def _work_deferred(cfg, now, todo, desk, dispatch, sleep, clock, notes, problems
     from ark_relay.features.maintenance import maintenance  # noqa: PLC0415
     for game, why in list(todo.items()):
         script = maintenance.SCRIPT_OF.get(game, "")
+        if not relay_updates_client(game) and not needs_rerun(cfg.state_dir, clock(), script):
+            # Nothing to prepare (AUTO-MAS updates this client before its next
+            # run) and nothing to re-run: the round ran before the maintenance,
+            # or the operator stopped it. Waiting for the servers would only hold
+            # the shift's power-off: a 10:00-16:00 window kept the machine on
+            # from a 09:45 morning finish to 16:02 (BOARD 清单-1108 A-03).
+            log.info("游戏更新：%s 不用中继更新客户端、%s 也不用补跑，不等开服", game, script)
+            _rerun_script(cfg, now, dispatch, script, reran, problems, notes)
+            clear_pending(cfg.state_dir, game)
+            continue
         start, end = (wins.get(game) or (None, None, ""))[:2]
         deadline = (end + timedelta(hours=2)) if end else clock() + timedelta(hours=1)
         ready, note = _prepare_until_ready(cfg, desk, game, deadline=deadline, clock=clock,

@@ -181,6 +181,24 @@ check("离开服还远：只关终末地，不碰鸣潮（s18 F2）", killed, [(
 gu.save_windows(ST, {})
 gu.clear_pending(ST, "明日方舟")
 
+print("[白天维护 10:00–16:00，早班 09:00 在开服前就跑完了：不等到 16:02，早班照常关机（清单-1108 A-03）]")
+_ledger_0904 = (ST / "ledger-2026-09-04.jsonl").read_text(encoding="utf-8")
+(ST / "ledger-2026-09-04.jsonl").write_text(json.dumps({
+    "script": "MAA", "run_id": "2026-09-04/maa/MAA-09-00-01", "started": "2026-09-04T09:00:01+08:00",
+    "finished": "2026-09-04T09:40:10+08:00", "ok": True, "raw": {}}) + "\n", encoding="utf-8")
+gu.save_windows(ST, {"明日方舟": (_dt(2026, 9, 4, 10, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 16, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 10:00–16:00")})
+gu.mark_pending(ST, "明日方舟", "官方公告")
+slept.clear(); dispatched.clear()
+ticks3 = [_dt(2026, 9, 4, 9, 45, tzinfo=gu.SERVER_TZ)]
+def clk3():
+    ticks3.append(ticks3[-1] + _td(minutes=1)); return ticks3[-1]
+notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 9, 45, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["x"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=lambda s: slept.append(s), clock=clk3)
+check("早班已跑完、不用补跑 → 一分钟都不等", (slept, dispatched, reran, probs), ([], [], [], []))
+check("……登记清掉，线程马上结束，早班的关机不被扣住", "明日方舟" in gu.pending(ST), False)
+check("终末地照旧由中继更新客户端（这条不放过它）", (gu.relay_updates_client("终末地"), gu.relay_updates_client("明日方舟")), (True, False))
+gu.save_windows(ST, {})
+(ST / "ledger-2026-09-04.jsonl").write_text(_ledger_0904, encoding="utf-8")
+
 print("[维护日：队列时刻落在窗口里 → 摘掉；补跑完加回]")
 gu.save_windows(ST, {})
 (ST / "queue-skips.json").unlink(missing_ok=True)

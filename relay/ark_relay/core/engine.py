@@ -639,7 +639,13 @@ class Engine:
                     self._gu_rerun_at = datetime.now(tz=SERVER_TZ)
                     # Which scripts the catch-up re-ran: shutdown._shift_overdue times them from here
                     self._gu_reran = {*getattr(self, "_gu_reran", ()), name}
-                    return commands.run_script(name)
+                    try:
+                        return commands.run_script(name)
+                    finally:
+                        # The thread ends right after this; the shutdown decision of
+                        # the next tick must ask AUTO-MAS, not reuse a 「nothing runs」
+                        # read cached before the re-run was dispatched (清单-1108 A-14).
+                        forget_scripts_cache()
                 try:
                     notes, problems, reran = gameupdate.run_deferred(
                         self.cfg, now=now, dispatch=_dispatch)
