@@ -69,5 +69,14 @@ two = "甲" * 500 + "\n" + "乙" * 500
 bot.send_text(two)
 check("a two-part text: two messages as before, no note", (len(posts), any("免得刷屏" in p for p in posts)), (2, False))
 
+print("\n[audit 11-08 C-04: a capped message keeps its evidence link at the end]")
+_long = "终末地早班没跑成\n" + "\n".join("日志行 " + "x" * 200 + f" {i}" for i in range(400)) \
+    + "\n证据包：https://example.invalid/e/abc"
+_capped = notify.WeComBot._cap(_long)
+check("capped to MAX_PARTS", len(notify.WeCom._split(_capped, notify.WeComBot._LIMIT)) <= notify.WeComBot.MAX_PARTS, True)
+check("the head is kept", _capped.splitlines()[0], "终末地早班没跑成")
+check("the evidence link is the last line", _capped.splitlines()[-1], "证据包：https://example.invalid/e/abc")
+check("the cut is said, in the middle", "（中间还有很长一段没发，免得刷屏）" in _capped, True)
+
 print("all checks passed" if not fails else f"FAILED: {fails}")
 sys.exit(1 if fails else 0)

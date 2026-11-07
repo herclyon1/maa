@@ -6,6 +6,7 @@ Plain HTTP with urllib; no push library.
 from __future__ import annotations
 
 import json
+import re
 import logging
 import random
 import threading
@@ -233,6 +234,10 @@ def _image_bytes_for_wecom(path: Path, limit: int = _WECOM_IMAGE_LIMIT) -> bytes
     return buf.getvalue()
 
 
+# A line carrying a link the reader needs (the evidence bundle, a log): kept by WeComBot._cap.
+_LINK_LINE = re.compile(r"证据包[：:]|日志[：:]\s*https?://|https?://")
+
+
 class WeComBot:
     """企业微信群机器人 - a webhook, with no trusted-IP list.
 
@@ -267,8 +272,19 @@ class WeComBot:
         if len(WeCom._split(text, cls._LIMIT)) <= cls.MAX_PARTS:
             return text
         budget = cls._LIMIT * cls.MAX_PARTS - 400     # room for the 「（i/N）」 prefixes and the note
+        lines = text.split("\n")
+        # The evidence / log links sit at the end; cut from the middle so they survive (audit
+        # 2026-11-08 C-04: the cut from the end dropped exactly them). At most a quarter of
+        # the budget, the last few such lines.
+        tail_idx = [i for i, ln in enumerate(lines) if _LINK_LINE.search(ln)][-3:]
+        tail = [lines[i] for i in tail_idx]
+        tail_size = sum(len(ln.encode("utf-8")) + 1 for ln in tail)
+        if tail_size > budget // 4:
+            tail, tail_idx, tail_size = [], [], 0
+        budget -= tail_size
+        lines = [ln for i, ln in enumerate(lines) if i not in set(tail_idx)]
         kept, size = [], 0
-        for line in text.split("\n"):
+        for line in lines:
             n = len(line.encode("utf-8")) + 1
             if size + n > budget:
                 if not kept:                            # one huge first line: cut inside it
@@ -279,7 +295,8 @@ class WeComBot:
         log.warning("群机器人：一条消息 %d 字节、要切成 %d 段，只发前 %d 段：%s",
                     len(text.encode("utf-8")), len(WeCom._split(text, cls._LIMIT)), cls.MAX_PARTS,
                     text.split("\n", 1)[0][:80])
-        return "\n".join(kept) + "\n（后面还有很长一段没发，免得刷屏）"
+        return "\n".join(kept) + "\n（中间还有很长一段没发，免得刷屏）" + "".join("\n" + ln for ln in tail) \
+            if tail else "\n".join(kept) + "\n（后面还有很长一段没发，免得刷屏）"
 
     def send_text(self, text: str) -> None:
         for part in WeCom._split(self._cap(text), self._LIMIT):
