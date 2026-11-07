@@ -906,6 +906,18 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
             eng._before_shutdown()
         except Exception:
             log.warning("关机前的待办检查失败，按原计划关机", exc_info=True)
+        # That pull may have just turned on debug mode or dispatched a script: an
+        # order that took effect a moment ago must still hold this power-off
+        # (11-08 [A-05]). 「下次跑完不关机」 is spent right below (take_skip).
+        if modes.debug_active(eng.state.dir):
+            key = eng._shutdown_key(now)
+            if modes.shutdown_skipped(eng.state.dir) != key:
+                modes.mark_shutdown_skipped(eng.state.dir, key, by_debug=True)
+            log.info("🔧 关机前刚收到调试模式：这一次关机跳过（%s）", key)
+            return False
+        if eng._scripts_running():
+            log.info("关机前刚派了脚本：先不关机，等它跑完再判")
+            return False
     # The one-shot 「下次跑完不关机」 mark (phone order or desktop .bat) is spent
     # here: this occasion is recorded as skipped, so the re-checks that follow stop
     # at decide()'s "skipped" gate and never power off, and the machine stays on
