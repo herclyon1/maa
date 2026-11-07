@@ -196,8 +196,9 @@ w = collect_watch.Watcher(cfg, n)
 lp = w.log_path()
 lp.write_text("\n".join(before_failed) + "\n", encoding="utf-8")
 w.poll()
+_r10 = [ln for ln in failed_lines if "Route10Failed" in ln]
 with lp.open("a", encoding="utf-8") as fh:
-    fh.write("\n".join(failed_lines))                                 # no newline at the end
+    fh.write(_r10[-1])                                                 # the node line, no newline at the end
 lp.rename(lp.parent / "maafw.bak.2026.09.14-11.20.24.685.log")
 lp.write_text("x\n", encoding="utf-8")
 w.poll()
