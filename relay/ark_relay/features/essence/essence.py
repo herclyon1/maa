@@ -299,3 +299,11 @@ def step(eng, now: datetime | None = None) -> None:
                        {"at": (now or datetime.now(tz=SERVER_TZ)).isoformat(), "weapons": names})
     log.info("基质刷取：已切成随机地区刷垫子、刻写券关了（%s 之后；%s → %s；原文件备份为 %s）",
              run_id, res.before, res.after, res.note)
+    # The phone page shows the essence settings: tell it, as the skip step does
+    # (engine 「跳过队列」), or it shows the old mode until the next publish (11-08 [D-08]).
+    push = getattr(eng, "_push_state", None)
+    if push is not None:
+        try:
+            push("基质切刷垫子")
+        except Exception:
+            log.exception("基质切刷垫子后状态没能上报到手机")
