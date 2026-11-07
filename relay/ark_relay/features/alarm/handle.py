@@ -303,7 +303,7 @@ def _weekly_gates(eng, rec: RunRecord) -> None:
     # itself displays 「刷4C(大世界/副本)」; both are accepted. The criterion matches
     # the weekly garden - only actually finishing that step counts.
     if any(s.startswith("周本") and "已完成" in s for s in steps):
-        if msg := eng._weeklyboss.on_success(rec.finished):
+        if msg := eng._weeklyboss.on_success(rec.finished, since=rec.started):
             eng.notifier.send(texts.WEEKLY, msg)
     if any("周常乐园" in s and "已完成" in s for s in steps) and eng._garden:
         if msg := eng._garden.on_success(rec.finished):
