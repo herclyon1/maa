@@ -166,6 +166,11 @@ src = (pathlib.Path(__file__).resolve().parents[1]
        / "ark_relay" / "features" / "alarm" / "handle.py").read_text(encoding="utf-8")
 body = src[src.index("def _archive_maaend_evidence"):]
 body = body[:body.index("\ndef ", 10)] if "\ndef " in body[10:] else body
+# Since audit 11-08 C-08 the history files come from _history_files (old <run_id>.log/.json,
+# else v5.8's 0.log); the archive must call it, and it must read both suffixes.
+if "_history_files(" in body:
+    hf = src[src.index("def _history_files"):]
+    body += hf[:hf.index("\ndef ", 10)]
 if 'history_dir' not in body:
     fails.append("存档没有带上 AUTO-MAS 的 history 记录")
 for suffix in ('".log"', '".json"'):

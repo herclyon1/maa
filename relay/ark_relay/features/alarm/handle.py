@@ -172,6 +172,21 @@ def _screenshot_to(out: Path) -> bool:
         ps1.unlink(missing_ok=True)
 
 
+def _history_files(eng, rec: RunRecord) -> list:
+    """This run's AUTO-MAS history files: <run_id>.log/.json (before v5.8), else the record's
+    own log (v5.8's <date>/<record id>/0.log, rec.log_path) - the old path alone found
+    nothing since 2026-10-28 (audit 2026-11-08 C-08, as B-01)."""
+    out = []
+    if eng.cfg.history_dir:
+        for suffix in (".log", ".json"):
+            f = Path(eng.cfg.history_dir) / (rec.run_id + suffix)
+            if f.is_file():
+                out.append(f)
+    if not out and rec.log_path and Path(rec.log_path).is_file():
+        out.append(Path(rec.log_path))
+    return out
+
+
 def _archive_okww_evidence(eng, rec: RunRecord) -> None:
     """When OK-WW fails, rescue a log slice and **a screenshot taken right then**.
 
@@ -194,12 +209,9 @@ def _archive_okww_evidence(eng, rec: RunRecord) -> None:
                 n += 1
             except OSError:
                 log.warning("OK-WW 日志读不出来：%s", log_path, exc_info=True)
-        if eng.cfg.history_dir:
-            for suffix in (".log", ".json"):
-                src_f = Path(eng.cfg.history_dir) / (rec.run_id + suffix)
-                if src_f.is_file():
-                    shutil.copy2(src_f, dst / ("automas-" + src_f.name))
-                    n += 1
+        for src_f in _history_files(eng, rec):
+            shutil.copy2(src_f, dst / ("automas-" + src_f.name))
+            n += 1
         # The screen. This is the reason this function exists.
         if _screenshot_to(dst / "screen.png"):
             n += 1
@@ -241,12 +253,9 @@ def _archive_maaend_evidence(eng, rec: RunRecord) -> None:
         # AUTO-MAS's own .log/.json for that round **always lines up with this
         # failure**, whereas MaaEnd's debug log may not - see the time-range check
         # below. The .json names the failing task.
-        if eng.cfg.history_dir:
-            for suffix in (".log", ".json"):
-                src_f = Path(eng.cfg.history_dir) / (rec.run_id + suffix)
-                if src_f.is_file():
-                    shutil.copy2(src_f, dst / ("automas-" + src_f.name))
-                    n += 1
+        for src_f in _history_files(eng, rec):
+            shutil.copy2(src_f, dst / ("automas-" + src_f.name))
+            n += 1
         log.info("📦 MaaEnd 失败证据已存档 %d 个文件 → %s", n, dst)
         eng._warn_if_evidence_stale(rec, dst)
     except Exception:
@@ -498,12 +507,16 @@ def _ship_evidence(eng, rec: RunRecord) -> str:
     """
     try:
         from ark_relay.features.evidence import evidence  # noqa: PLC0415
-        extra = []
-        if eng.cfg.history_dir:
-            for suffix in (".log", ".json"):
-                f = Path(eng.cfg.history_dir) / (rec.run_id + suffix)
-                if f.is_file():
-                    extra.append(f)
+        extra = list(_history_files(eng, rec))
+        shot = None
+        if rec.script == "OK-WW":
+            # The screen _archive_okww_evidence took when the failure was booked goes in;
+            # no second one some seconds later (audit 2026-11-08 C-08: the first was left
+            # out of the bundle and a later desktop taken instead).
+            first = Path(eng.cfg.state_dir) / "evidence" / rec.run_id.replace("/", "_") / "screen.png"
+            if first.is_file():
+                extra.append(first)
+                shot = lambda: None  # noqa: E731
         # One run's window, widened a little on both ends (evidence.WINDOW_SLACK):
         # a bundle is always cut by time, never the whole debug folder.
         window = evidence.run_window(rec.started, rec.finished if rec.duration_known else None)
@@ -514,7 +527,7 @@ def _ship_evidence(eng, rec: RunRecord) -> str:
             extra += task_shots.in_window(eng.cfg.state_dir, window)
         # relay.log up to now: what the relay did about the run comes after it.
         res = evidence.save_and_upload(eng.cfg, rec.script, rec.run_id, extra, window=window,
-                                       relay_until=time.time())
+                                       relay_until=time.time(), screenshot=shot)
         if res.get("page"):
             # One archive goes up (evidence.pack_one), so "uploaded" holds one link;
             # the count that means something is the files inside it.

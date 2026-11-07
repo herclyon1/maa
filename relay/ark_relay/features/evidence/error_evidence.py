@@ -54,6 +54,7 @@ _ocr_sent = [0.0]
 # The last upload's {url, truncated}: a push inside the throttle minute still ends
 # with the link (the day object is already there and is overwritten, not new).
 _last_ok: dict = {}
+_last_errors: list = []      # the last real attempt's errors, handed out with a throttled call
 # One PUT's socket timeout. Cos.upload defaults to 900 s, which would hold
 # a relay-error push (and the power-off) for a quarter of an hour on a stalled line.
 UPLOAD_TIMEOUT_S = 60
@@ -117,14 +118,18 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
     """
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     if not force and clock() - _last_attempt[0] < THROTTLE_S:
+        # The last attempt's errors come with it: a throttled call after a failed upload
+        # read as a clean one, with the older link (audit 2026-11-08 C-08).
         return {"url": _last_ok.get("url", ""), "at": now.strftime("%H:%M"),
-                "truncated": bool(_last_ok.get("truncated")), "errors": [], "skipped": True}
+                "truncated": bool(_last_ok.get("truncated")), "errors": list(_last_errors),
+                "skipped": True}
     up = uploader if uploader is not None else _daily_uploader(cfg)
     result = {"url": "", "at": now.strftime("%H:%M"), "truncated": False,
               "errors": [], "skipped": False}
     if up is None:
         result["errors"].append("没有配置 COS（.env 里缺 COS_SECRET_ID / COS_SECRET_KEY / COS_BUCKET / COS_REGION）")
         _last_attempt[0] = clock()
+        _last_errors[:] = result["errors"]
         return result
     day = now.strftime("%Y-%m-%d")
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -155,6 +160,7 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
             _last_ok.update(url=result["url"], truncated=truncated)
     _upload_ocr_samples(cfg, up, tmp_dir, day)
     _last_attempt[0] = clock()
+    _last_errors[:] = result["errors"]
     return result
 
 
