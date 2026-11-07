@@ -1,6 +1,6 @@
 {
- "version": 20261107145836,
- "ref": "relay-20261107145836",
+ "version": 20261107155830,
+ "ref": "relay-20261107155830",
  "files": {
   "RELEASE-NOTES.md": "df53dd16575e3b87e32926a5774a268c7ad3db0c",
   "app_main.py": "fac756e1908abe666ddbb89e06f3a2a13818ba29",
@@ -155,7 +155,7 @@
   "ark_relay/features/selfupdate/__init__.py": "de7e7c29c70a617c5ec13c10abf9feba04c8c5b3",
   "ark_relay/features/selfupdate/selfupdate.py": "076c817e27dc23baba1c807c44b61ee17973c8d7",
   "ark_relay/features/shutdown/__init__.py": "f4c05acefb01bba2f653dfd0b19393c92980235d",
-  "ark_relay/features/shutdown/shutdown.py": "e12e3a91d391846fcc58a82029487ec65254dc5c",
+  "ark_relay/features/shutdown/shutdown.py": "2088d852f05a5e3772716db166e9d901b25544d6",
   "ark_relay/features/verify/__init__.py": "8f81e56cb6b307048cca4c0b979e29cbc1e68ae5",
   "ark_relay/features/verify/collector_maa.py": "4885fdaf4479ee4fb098e52ed69c8209c3b4e074",
   "ark_relay/features/verify/collector_maaend.py": "c21dc886be23bb80431baa527a7c2508701d7c29",
@@ -331,7 +331,7 @@
   "ark_relay/features/selfupdate/__init__.py": "5ab717977864113819e9c55a24f077182d90e83b15851cdccaf74984e496d118",
   "ark_relay/features/selfupdate/selfupdate.py": "5b9b9671719b4cd4a4c262472c6bc4ffc99ecfa452f882df0e8262076dc770d2",
   "ark_relay/features/shutdown/__init__.py": "9e83cbd3c92b7e4898f3c353e9152d134efb0987577af8e83fac3e98fcd3b6cd",
-  "ark_relay/features/shutdown/shutdown.py": "ef5343df6b8a0d9fbacf35e36d70cbd85552a9134864a64860ee48f478047411",
+  "ark_relay/features/shutdown/shutdown.py": "989b33526cd2e31730996a8f6370de04eac29ce814bce033c9f0e6b01eb8574e",
   "ark_relay/features/verify/__init__.py": "65ab89a26e72a29cdcf81d1302b904fa588665a51d2e744c2dd0c79561f8d5cb",
   "ark_relay/features/verify/collector_maa.py": "60a17823f9cbf5a2fe2e482ee2023e101695c00532ea6406d9e4e3cb43eb0712",
   "ark_relay/features/verify/collector_maaend.py": "07f0a3bdd38d063f7288f473d549ef6a97136020842de8ae5f16bf72295e7850",

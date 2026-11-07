@@ -872,6 +872,8 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
             eng._last_wait_note = v.reason
             (log.warning if any(r in v.reason for r in RELAY_LOST_TRACK) else log.info)("不关机：%s", v.reason)
         _say_if_moment_passed(eng, now, v)
+        if v.code in ("cancelled", "not-down"):
+            _give_up_poweroff(eng, now, v)
         return False
     eng._last_wait_note = ""
     # The queue is idle and nothing else holds the machine: this is the one
@@ -949,6 +951,24 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
     errwatch.mark_stopping()
     return True
+
+
+def _give_up_poweroff(eng, now: datetime, v: "Verdict") -> None:
+    """The power-off was aborted or never took: this shift has lost its power-off.
+    Clear the "issued" state so engine.next_deadline, the alarms and the next
+    shift's power-off work again (before 11-08 they stayed dead until a restart)."""
+    try:
+        _note_forfeit(eng, now, v.reason)
+    except Exception:  # the reset below matters more than the mark
+        log.warning("「这一班不再关机」没记下来", exc_info=True)
+    eng._shutdown_issued = False
+    eng._shutdown_issued_at = None
+    eng._cancel_verdict = None
+    _ISSUED[0] = None
+    _record_poweroff(eng, None)
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    errwatch.clear_stopping()
+    log.info("关机没成：这一班不再关机，定时报警和下一班关机恢复正常")
 
 
 def _record_poweroff(eng, at: datetime | None, why: "dict | None" = None) -> None:

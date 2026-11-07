@@ -196,5 +196,19 @@ check("…this occasion recorded as before (no late power-off)", shutdown.modes.
 print("[刷声骸那条要说清刷到几点，不能只说「在刷」]")
 check("理由里带收工时刻", "才收工" in src)
 
+print("[关机没成之后：发出状态清掉，定时报警和下一班关机恢复（11-08 之前一直卡到重启）]")
+_ew = __import__("ark_relay.features.alarm.errwatch", fromlist=["x"])
+shutdown.shutdown_event_xml = lambda s, ids=(1074, 1075): None
+e = engine(NIGHT + timedelta(hours=3))
+e._shutdown_issued, e._shutdown_issued_at = True, NIGHT
+e._boot_time = lambda now: None; e._last_wait_note = ""
+_ew.mark_stopping()
+e.cfg.shutdown_after_run = True
+shutdown._maybe_shutdown(e, NIGHT + timedelta(minutes=STUCK_MIN))
+check("没关下去：发出状态清掉", (e._shutdown_issued, e._shutdown_issued_at), (False, None))
+check("没关下去：errwatch 不再当成正在关机", _ew._stopping.is_set(), False)
+check("没关下去：群里照样推了一条", len(e.sent), 1)
+shutdown.shutdown_event_xml = saved_reader
+
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)
