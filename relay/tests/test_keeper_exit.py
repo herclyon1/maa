@@ -101,6 +101,11 @@ from ark_relay.features.alarm import errwatch  # noqa: E402
 from ark_relay.core import texts  # noqa: E402
 from ark_relay.core.config import SERVER_TZ  # noqa: E402
 
+# The backend's API answers unless a case says otherwise (清单-1108 A-06: a handle is
+# adopted only once the API answers; the cases on that are at the end).
+api = {"up": True}
+automas_keeper._api_up = lambda: api["up"]
+
 
 def set_time(t):
     """service.py's code now lives in several modules, each reading its own `time`; swap it in all."""
@@ -313,10 +318,13 @@ try:
     check("revived once the power-off is off", len(revived), 1)
     check("one WARNING (pushed): AUTO-MAS is not running", [("没在运行" in m) for m in rec.at(logging.WARNING)], [True])
 
-    print("\n[the relay's power-off lands 2 s after the exit: still INFO]")
-    rec, rv, _ = run_exit(1, down_after=2.0, down_after_fn=relay_poweroff)
-    check("no WARNING", rec.at(logging.WARNING), [])
-    check("INFO, not a fault", any("不算故障" in m for m in rec.at(logging.INFO)))
+    # 清单-1108 A-06: the relay issues its power-off from this same loop thread
+    # (engine.tick -> shutdown._maybe_shutdown), so nothing can set the flag while the
+    # keeper rules on an exit there; the 15 s settle wait only held the loop.
+    print("\n[a power-off 2 s after the exit cannot come from another thread: the keeper does not wait]")
+    rec, rv, k = run_exit(1, down_after=2.0, down_after_fn=relay_poweroff)
+    check("ruled at once: an exit nothing explained, no 15 s stall",
+          (k.gone is not None, any("不算故障" in m for m in rec.at(logging.INFO))), (True, False))
 
     # The user, 2026-10-06: only the planned power-off the relay itself started may
     # stay out of the group; every other shutdown is pushed.
@@ -619,6 +627,68 @@ try:
     refuse_query[0] = True
     check("refused: still a handle", automas_procs._automas_handle(), "handle:21932")
     check("second try with SYNCHRONIZE alone", opened, [SYNCHRONIZE | 0x1000, SYNCHRONIZE])
+
+    print("\n[清单-1108 A-06: a revived backend is adopted only once its API answers]")
+    vt = VClock()
+    set_time(vt)
+    try:
+        k, rec = keeper(handle=None)
+        k.revive_failures, k.revive_wait = 2, 720.0
+        automas_procs._automas_handle = lambda: "handle:31000"
+        api["up"] = False
+        k.on_process_started()
+        check("process up, API silent: handle held, the revivals still counted",
+              (k.handle, k.revive_failures, k.api_since is not None), ("handle:31000", 2, True))
+        check("the loop wakes to ask again", k.cap_wait(3600.0), automas_keeper.API_RECHECK_SECONDS)
+        k.check(False, vt.now + 30)
+        check("still silent: nothing reset, no WARNING yet", (k.revive_failures, rec.at(logging.WARNING)), (2, []))
+        vt.now += automas_keeper.API_GRACE_SECONDS
+        k.check(False, vt.now)
+        k.check(False, vt.now + 30)
+        check("silent past the grace: one WARNING (pushed), said once",
+              [("接口一直没响应" in m) for m in rec.at(logging.WARNING)], [True])
+        api["up"] = True
+        k.check(False, vt.now + 60)
+        check("the API answers: adopted, the revival state reset",
+              (k.revive_failures, k.revive_wait, k.api_since, k.cap_wait(3600.0)),
+              (0, float(automas_keeper.REVIVE_FIRST_WAIT), None, 3600.0))
+        api["up"] = False
+        k.handle, k.revive_deadline = None, vt.now + 61
+        automas_procs._automas_running = lambda: True
+        k.check(False, vt.now + 62)
+        check("found by the liveness check with the API silent: held, not adopted", k.api_since is not None, True)
+        exit_codes["handle:31000"] = 1
+        automas_procs._automas_running = lambda: False
+        automas_procs._automas_handle = lambda: None
+        k.check(True, vt.now + 120)
+        check("its exit clears the API wait", (k.api_since, k.api_warned), (None, False))
+    finally:
+        set_time(orig[1])
+        api["up"] = True
+
+
+    print("\n[清单-1108 A-06: a revival kills the process trees and any leftover backend, and says what schtasks answered]")
+    ran = []
+    real_run, real_bt = subprocess.run, boot_stages.time
+    subprocess.run = lambda cmd, **kw: (ran.append(cmd), types.SimpleNamespace(
+        returncode=0x41301 if cmd[:2] == ["schtasks", "/run"] else 0, stdout=b"already running"))[1]
+    boot_stages.time = types.SimpleNamespace(sleep=lambda s: None, monotonic=time.monotonic, time=time.time)
+    automas_procs._python_processes = lambda: [(31000, r"D:\ark\automas\runtime\python.exe D:\ark\automas\repo\main.py"),
+                                               (2, r"C:\python.exe other.py")]
+    grab = Records()
+    boot_stages.log.addHandler(grab)
+    lvl = boot_stages.log.level
+    boot_stages.log.setLevel(logging.DEBUG)
+    try:
+        orig[3]()
+    finally:
+        subprocess.run, boot_stages.time = real_run, real_bt
+        boot_stages.log.removeHandler(grab)
+        boot_stages.log.setLevel(lvl)
+    check("the shell and the runtime with their children (/T)",
+          ran[:2], [["taskkill", "/IM", "AUTO-MAS.exe", "/F", "/T"], ["taskkill", "/IM", "auto-mas-runtime.exe", "/F", "/T"]])
+    check("the leftover backend by its pid, nothing else", [c for c in ran if "/PID" in c], [["taskkill", "/PID", "31000", "/F", "/T"]])
+    check("schtasks /run's refusal is said with its code", any("0x41301" in m for m in grab.at(logging.INFO)), True)
 finally:
     (errwatch.system_shutting_down, procwatch.time, subprocess.run, boot_stages._revive_automas,
      automas_procs._automas_running, automas_procs._automas_handle, procwatch._start_process_watch,

@@ -82,9 +82,17 @@ def _revive_automas() -> None:
     「等待用户处理」 - no backend, no queue, until a person clicks. That is what
     took out the 21:30 queue on 2026-09-17. So the runtime goes too.
     """
+    # /T takes each one's child processes too, and a backend python.exe left
+    # behind (the keeper revives only when none is found, but one it cannot see
+    # through an unreadable process list would still hold the API port) is ended
+    # by its pid: a new backend could not open port 36163 next to it (清单-1108 A-06).
+    from ark_relay.features.host import automas_procs  # noqa: PLC0415
+    leftover = [["taskkill", "/PID", str(pid), "/F", "/T"]
+                for pid, cmd in (automas_procs._python_processes() or []) if automas_procs.is_backend(cmd)]
     for cmd in (
-        ["taskkill", "/IM", "AUTO-MAS.exe", "/F"],
-        ["taskkill", "/IM", "auto-mas-runtime.exe", "/F"],
+        ["taskkill", "/IM", "AUTO-MAS.exe", "/F", "/T"],
+        ["taskkill", "/IM", "auto-mas-runtime.exe", "/F", "/T"],
+        *leftover,
         ["schtasks", "/end", "/tn", AUTOMAS_TASK],
     ):
         try:
@@ -93,10 +101,15 @@ def _revive_automas() -> None:
             pass
     time.sleep(4)  # let the shell actually exit before the task is re-run
     try:
-        subprocess.run(["schtasks", "/run", "/tn", AUTOMAS_TASK],
-                       capture_output=True, timeout=30)
-    except (OSError, subprocess.SubprocessError):
-        pass  # next check will try again
+        r = subprocess.run(["schtasks", "/run", "/tn", AUTOMAS_TASK],
+                           capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        log.info("重新打开 AUTO-MAS：计划任务没能启动（%s），下次检查再试", exc)
+        return
+    # The keeper decides from what comes up; the code says why when nothing does.
+    if r.returncode:
+        log.info("重新打开 AUTO-MAS：schtasks /run 返回 0x%X：%s", r.returncode & 0xFFFFFFFF,
+                 (r.stdout or b"").decode("gbk", "replace").strip()[:200])
 
 
 # How long an AUTO-MAS shell that is already up gets to open its API before it

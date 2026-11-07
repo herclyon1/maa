@@ -199,7 +199,8 @@ real_revive = boot_stages.__dict__["_revive_automas"]
 import importlib  # noqa: E402
 importlib.reload(boot_stages)
 boot_stages.time.sleep = lambda s: None
-boot_stages.subprocess.run = lambda cmd, **kw: ran.append(" ".join(cmd))
+boot_stages.subprocess.run = lambda cmd, **kw: (ran.append(" ".join(cmd)),
+                                                types.SimpleNamespace(returncode=0, stdout=b""))[1]
 boot_stages._revive_automas()
 check("先杀窗口", any("taskkill /IM AUTO-MAS.exe /F" in c for c in ran))
 check("再杀 runtime（不杀它，新窗口会卡在 MUTATION_IN_PROGRESS）",

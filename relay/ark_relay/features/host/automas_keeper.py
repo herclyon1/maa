@@ -71,6 +71,22 @@ EXIT_BEFORE_SHUTDOWN_SECONDS = 60.0
 # is still up this long after the exit (the shutdown did not happen), the exit is
 # handled as an unexpected one from then on.
 SHUTDOWN_NO_SHOW_SECONDS = 180.0
+# A backend process is held only when its API answers (_confirm): until then the
+# revival state is not reset, so a backend that starts and never serves (its port
+# still held by a leftover process) keeps counting towards REVIVE_ALERT_AFTER
+# instead of starting from zero at every attempt (清单-1108 A-06). The loop asks
+# again every API_RECHECK_SECONDS; one that has not answered API_GRACE_SECONDS after
+# its process appeared is a WARNING (pushed) once. The backend's bootstrap runs in
+# the shell before its python.exe starts (SHELL_GRACE_SECONDS), so a minute of API
+# start-up is plenty; five leave room for a slow disk.
+API_RECHECK_SECONDS = 30.0
+API_GRACE_SECONDS = 300.0
+
+
+def _api_up() -> bool:
+    """Whether the AUTO-MAS backend API answers (commands.mas_up)."""
+    from ark_relay.features.phone import commands  # noqa: PLC0415
+    return commands.mas_up()
 
 
 class _AutomasKeeper:
@@ -83,8 +99,10 @@ class _AutomasKeeper:
     immediately instead of at the next liveness check).
     """
 
-    # Class default as well as set in __init__: tests build a keeper with __new__.
+    # Class defaults as well as set in __init__: tests build a keeper with __new__.
     hold_said = None
+    api_since = None     # monotonic time a held backend's API was first found silent
+    api_warned = False
 
     def __init__(self, log, notifier):
         self.log, self.notifier = log, notifier
@@ -127,9 +145,10 @@ class _AutomasKeeper:
         self.gone = None
 
     def cap_wait(self, wait_s: float) -> float:
-        """With no handle held, do not sleep past the moment it should have appeared."""
+        """With no handle held, do not sleep past the moment it should have appeared;
+        with one held whose API has not answered yet, wake to ask again."""
         if self.handle:
-            return wait_s
+            return min(wait_s, API_RECHECK_SECONDS) if self.api_since is not None else wait_s
         if self.wmi_alive["ok"] and self.revive_deadline is not None:
             return min(wait_s, max(1.0, self.revive_deadline - time.monotonic()))
         if not self.wmi_alive["ok"]:
@@ -165,6 +184,26 @@ class _AutomasKeeper:
         self.unattached_noted = False
         self.hold_said = None
 
+    def _confirm(self) -> None:
+        """A backend handle is held: its revival state is reset (_adopted) only once its
+        API answers. Until then the loop asks every API_RECHECK_SECONDS (check), and a
+        backend still silent API_GRACE_SECONDS after its process appeared is pushed once."""
+        if _api_up():
+            if self.api_since is not None:
+                self.log.info("AUTO-MAS 后台接口响应了（进程起来后 %s）",
+                              wmi_diag._span(time.monotonic() - self.api_since))
+            self.api_since, self.api_warned = None, False
+            self._adopted()
+            return
+        if self.api_since is None:
+            self.api_since = time.monotonic()
+            self.log.info("AUTO-MAS 后台进程起来了，接口还没响应，每 %.0f 秒再问一次", API_RECHECK_SECONDS)
+        elif not self.api_warned and time.monotonic() - self.api_since >= API_GRACE_SECONDS:
+            self.api_warned = True
+            self.log.warning("AUTO-MAS 后台进程起来 %s 了，接口一直没响应（端口可能被残留进程占着），"
+                             "中继每 %.0f 秒再问一次，打开的次数照旧累计",
+                             wmi_diag._span(time.monotonic() - self.api_since), API_RECHECK_SECONDS)
+
     def on_process_started(self) -> None:
         """A python.exe has started: if it is the backend, take the handle at once instead of waiting for the next liveness check."""
         if self.handle:
@@ -172,13 +211,17 @@ class _AutomasKeeper:
         self.handle = automas_procs._automas_handle()
         if self.handle:
             self.log.info("AUTO-MAS 已启动，进程句柄已挂上")
-            self._adopted()
+            self._confirm()
 
     def check(self, died: bool, now: float) -> None:
         """The backend died, or the moment it should have appeared has arrived: check once, and revive if needed."""
         from ark_relay.features.alarm import errwatch  # noqa: PLC0415
         if died:
+            self.api_since, self.api_warned = None, False
             self._exited()
+        elif self.handle and self.api_since is not None:
+            self._confirm()
+            return
         gone = self.gone
         if self.handle is None and gone is not None and gone.get("shutdown") and not gone["decided"]:
             if time.monotonic() - gone["at"] < SHUTDOWN_NO_SHOW_SECONDS:
@@ -224,7 +267,7 @@ class _AutomasKeeper:
         self.handle = automas_procs._automas_handle()
         if self.handle:
             self.log.info("AUTO-MAS 进程句柄已挂上")
-            self._adopted()
+            self._confirm()
         elif revived:
             # Arm with the CURRENT wait, then double for the next
             # failure - doubling first made the very first retry gap
@@ -272,7 +315,10 @@ class _AutomasKeeper:
         win32api.CloseHandle(self.handle)
         self.handle = None
         said = f"0x{code & 0xFFFFFFFF:X}" if code is not None else "读不到"
-        if shutdown_signs._going_down_soon():
+        # No settle wait (0): the power-off the relay issues comes from this same loop
+        # thread (engine.tick), so waiting here for it only held the loop 15 s at
+        # every exit that was not one (清单-1108 A-06).
+        if shutdown_signs._going_down_soon(0):
             self.log.info("%s，AUTO-MAS 后台此时退出（退出码 %s），按关机处理，不算故障，不再重新打开它",
                           shutdown_signs._down_reason(), said)
             return
