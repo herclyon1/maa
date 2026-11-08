@@ -54,7 +54,7 @@ def check(label, got, want):
         fails.append(label)
 
 
-STAGES = ("selfupdate", "flush_copies", "patch_okww", "backfill_manual_stops", "announce_update",
+STAGES = ("selfupdate", "flush_copies", "patch_okww", "automas_jobfix", "backfill_manual_stops", "announce_update",
           "evidence_sources", "inbox_and_phone", "stagegate", "selfcheck", "preupdate",
           "reenable_maaend", "collect_watch", "gameupdate", "annihilation", "machinecheck")
 

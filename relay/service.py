@@ -312,6 +312,9 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         boot_stages._stage_patch_okww(cfg, notifier, log)
         if self._stop_in_boot(log):
             return
+        boot_stages._stage_automas_jobfix(cfg, log)
+        if self._stop_in_boot(log):
+            return
         boot_stages._stage_backfill_manual_stops(engine, log)
         if self._stop_in_boot(log):
             return

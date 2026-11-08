@@ -342,6 +342,56 @@ below are copied from the machine; the ledger shapes from 09-24..09-30.
         run_watch(e7, at(22, 19))
         check("22:19: alarm", [x[0] for x in alarms(e7)], ["⏰ 晚班超时还没跑完"])
 
+        print("\n[a 晚班 the relay starts late (run_now, a make-up) is timed from its own start (11-09 #151)]")
+        # 2026-11-09 00:52:21 session 2499 re-ran the evening shift through the phone's run_now;
+        # 7 s later the overrun alarm said the 21:30 run had gone 202 minutes. Same shape on this
+        # seed: 21:30 + 19 + 30 is 22:19; the late task is created 10-02 00:52:21.
+        from ark_relay.features.alarm import handle as _handle
+        from ark_relay.features.guard import trigger as _trigger
+        late_at = datetime(2026, 10, 2, 0, 52, 21, tzinfo=SERVER_TZ)
+
+        def late_engine(noted_at=late_at, created="2026-10-02 00:52:21.335", source="manual_task"):
+            e = build()
+            seed(e.state)
+            APPLOG.write_text(f"{created} | INFO     | 业务调度 | 创建任务: 8f47a684-1111-4222-8333-944455556666, "
+                              f"模式: AutoProxy, 触发来源: {source}\n", encoding="utf-8")
+            # phone/commands.py notes every run_now it dispatches; one noted hours away is not this task's
+            _trigger.note_dispatch(e.cfg.state_dir, "run_now 晚班", now=noted_at)
+            return e
+
+        eng._automas_snapshot = lambda: snap("等待", "等待", queue=EVENING_UID)
+        el = late_engine()
+        run_watch(el, datetime(2026, 10, 2, 0, 52, 28, tzinfo=SERVER_TZ))
+        check("00:52:28, 7 s into the late run: no alarm", alarms(el), [])
+        run_watch(el, datetime(2026, 10, 2, 1, 41, tzinfo=SERVER_TZ))
+        check("01:41, before 00:52:21 + 19 + 30: no alarm", alarms(el), [])
+        run_watch(el, datetime(2026, 10, 2, 1, 42, tzinfo=SERVER_TZ))
+        got = alarms(el)
+        check("01:42, past its own end: one alarm", [x[0] for x in got], ["⏰ 晚班超时还没跑完"])
+        body = got[0][1] if got else ""
+        check("the body counts from 00:52, not 21:30",
+              ("晚班排的是 21:30，这趟 00:52 才开跑，到现在 01:42 还没跑完，已跑 49 分钟" in body,
+               "该在 01:41 前结束" in body, "22:19" in body, "重试" in body), (True, True, False, False))
+        el = late_engine()
+        _handle._mark_alerted(el, "2026-10-02", "超时|MAA|01:10:00")
+        run_watch(el, datetime(2026, 10, 2, 1, 42, tzinfo=SERVER_TZ))
+        check("a timeout AUTO-MAS retried at 01:10 inside the late run restarts its clock", alarms(el), [])
+        run_watch(el, datetime(2026, 10, 2, 1, 59, tzinfo=SERVER_TZ))
+        got = alarms(el)
+        check("……so it alarms at 01:10 + 19 + 30 = 01:59, saying both",
+              bool(got) and "这趟 00:52 才开跑" in got[0][1] and "AUTO-MAS 01:10 重试" in got[0][1]
+              and "该在 01:59 前结束" in got[0][1], True)
+        el = late_engine(created="2026-10-01 21:30:00.780", source="scheduled_task")
+        run_watch(el, at(22, 18))
+        run_watch(el, at(22, 19))
+        got = alarms(el)
+        check("AUTO-MAS's own timer task (created 21:30:00.780) keeps the 21:30 clock",
+              bool(got) and "晚班 21:30 开跑" in got[0][1] and "才开跑" not in got[0][1], True)
+        el = late_engine(noted_at=late_at - timedelta(hours=2))
+        run_watch(el, datetime(2026, 10, 2, 1, 42, tzinfo=SERVER_TZ))
+        check("the same late task started by a person: not the shift, no overrun alarm", alarms(el), [])
+        write_log(0)
+
         print("\n[no usable day: the body says the 180 is a default, not a 7-day record (audit s1 #4)]")
         e10 = build()
         eng._automas_snapshot = lambda: snap("运行", "等待")

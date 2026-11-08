@@ -196,6 +196,7 @@
 "test_automas.py": [
 "__init__",
 "annihilation",
+"automas_jobfix",
 "automas_keeper",
 "automas_procs",
 "boot_stages",
@@ -1053,6 +1054,7 @@
 "test_efstart.py": [
 "__init__",
 "annihilation",
+"automas_jobfix",
 "boot_stages",
 "collect_retry",
 "collector",

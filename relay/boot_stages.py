@@ -517,6 +517,29 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
         log.exception("启动时贴 OK-WW 补丁失败，服务照常继续")
 
 
+def _stage_automas_jobfix(cfg, log) -> None:
+    """Put AUTO-MAS's job-object fallback back in its venv when a file is missing or differs
+    (features/host/automas_jobfix.py). Before the inbox step: a backend the relay starts from
+    there on (ensure_automas) reads the .pth."""
+    _automas_jobfix(cfg, log, "开机")
+
+
+def _automas_jobfix(cfg, log, when: str) -> None:
+    """automas_jobfix.heal, said in relay.log; a fallback it could not put in place is a
+    WARNING (the group): without it AUTO-MAS's starts of MAA can fail again with
+    「拒绝访问」 (2026-11-08 21:30). Never raises."""
+    automas_dir = getattr(cfg, "automas_dir", None)
+    try:
+        from ark_relay.features.host import automas_jobfix  # noqa: PLC0415
+        if put := automas_jobfix.heal(automas_dir):
+            log.info("%s：AUTO-MAS 的 Job 兜底文件补回去了：%s（AUTO-MAS 后端下次启动时生效）", when, "、".join(put))
+        elif automas_dir and automas_jobfix.site_dir(automas_dir) is None:
+            log.info("%s：AUTO-MAS 自带的 Python 目录不在（%s），Job 兜底文件没地方放", when,
+                     Path(automas_dir).joinpath(*automas_jobfix.SITE_PACKAGES))
+    except Exception as exc:  # noqa: BLE001 - the boot goes on; the WARNING says what is missing
+        log.warning("%s：AUTO-MAS 的 Job 兜底文件没能放好（%s），AUTO-MAS 启动 MAA 时可能又报「拒绝访问」", when, exc)
+
+
 # The installed relay runs app_main._packaged_selfupdate instead (app_main.py swaps it in); this body runs in tests/test_selfupdate.py.
 def _stage_selfupdate(log) -> bool:
     """Pull new code; when something really updated, trigger a restart and return True so the caller exits at once."""
@@ -901,6 +924,8 @@ def _contract_after_update(cfg, notifier, log, version: str) -> None:
         # _stage_endfield_start ran on the version before this install (10-16: beta.4 came
         # in at 02:34, right after it): converge and check Endfield's start on the new one.
         _endfield_launch(cfg, log, f"调度程序升级到 {version} 后")
+        # A new AUTO-MAS can bring a rebuilt venv without the job-object fallback.
+        _automas_jobfix(cfg, log, f"调度程序升级到 {version} 后")
 
 
 def _stage_preupdate(cfg, notifier, log) -> None:

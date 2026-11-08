@@ -1192,15 +1192,19 @@ def _restart_note(restarted) -> str:
 
 
 def shift_overrun_body(queue: str, due, now, limit_min: int, slack_min: int,
-                       states: str, last_log: str, days: int = 1, restarted=None) -> str:
+                       states: str, last_log: str, days: int = 1, restarted=None, started=None) -> str:
     """A queue still unfinished past its planned end (runwatch). `days`: how many past
     days the limit was taken from (runwatch.planned_minutes); `restarted`: when a retried
-    timeout restarted the clock (runwatch.retry_clock), else None."""
+    timeout restarted the clock (runwatch.retry_clock), else None; `started`: when the
+    running task was created after its due minute (runwatch._late_start: a phone run_now,
+    a make-up, a re-run after an update), else None - the minutes run and the planned end
+    are then counted from it, not from `due`."""
     from datetime import timedelta as _td  # noqa: PLC0415
-    ran = int((now - due).total_seconds() // 60)
-    body = (f"{queue} {due:%H:%M} 开跑，到现在 {now:%H:%M} 还没跑完，已跑 {ran} 分钟。\n"
+    ran = int((now - (started or due)).total_seconds() // 60)
+    opening = f"{queue}排的是 {due:%H:%M}，这趟 {started:%H:%M} 才开跑" if started else f"{queue} {due:%H:%M} 开跑"
+    body = (f"{opening}，到现在 {now:%H:%M} 还没跑完，已跑 {ran} 分钟。\n"
             f"{_overrun_basis(limit_min, days)}，{_restart_note(restarted)}按 {limit_min} + {slack_min} 分钟算，"
-            f"该在 {(restarted or due) + _td(minutes=limit_min + slack_min):%H:%M} 前结束。")
+            f"该在 {(restarted or started or due) + _td(minutes=limit_min + slack_min):%H:%M} 前结束。")
     if states:
         body += f"\n现在各脚本：{states}"
     if last_log:
@@ -1326,6 +1330,8 @@ def samples() -> list[str]:
                            "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
         shift_no_result_body("早班", t0, _dt(2026, 10, 1, 12, 31), "MaaEnd", 180, 30),
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 12, 31), 180, 30, "", "", 0),
+        shift_overrun_body("晚班", _dt(2026, 11, 8, 21, 30), _dt(2026, 11, 9, 1, 44), 21, 30,
+                           "MAA 运行", "", 7, started=_dt(2026, 11, 9, 0, 52, 21)),
         shift_no_result_body("早班", t0, _dt(2026, 10, 1, 12, 31), "MaaEnd", 180, 30, 0),
         UNREACHABLE_SHAPE_NOTE, UNREACHABLE_UNREAD_NOTE, PREUPDATE, GAME_UPDATE, RERUN_AFTER_UPDATE, WEEKLY, NEW_WEEK, ANNIHILATION_OFF,
         annihilation_off_body("明日方舟 · 剿灭"), SKIP_MODE, ESTOP,

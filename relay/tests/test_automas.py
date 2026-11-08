@@ -1095,5 +1095,102 @@ Endpoints and bodies as relay/ark_relay/commands.py and annihilation.py use them
         urllib.request.urlopen = _real
 
 
+def _part_automas_jobfix():
+    """AUTO-MAS's job-object fallback is put back in its venv at boot and after an AUTO-MAS update (11-09).
+
+From 2026-11-08 21:30 AUTO-MAS's starts of MAA failed with (5, 'AssignProcessToJobObject',
+'拒绝访问。'). auto-mas-runtime puts its repo back to upstream at every start, so session 2499's
+fallback lives in the venv's site-packages (a module and the .pth importing it); an update that
+rebuilds the venv drops them. features/host/automas_jobfix.py keeps them there.
+    """
+    import ast
+    import hashlib
+    import logging
+    import os
+    import types
+    from unittest import mock
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import boot_stages
+    from ark_relay.features.host import automas_jobfix as jf
+
+    print("[the payload: the two files session 2499 tried on the machine, byte for byte]")
+    # SHA-256 of zz_automas_job_fix.py / .pth as installed on 2026-11-09 (2499's scratchpad ex/jobfix).
+    check("module unchanged", hashlib.sha256(jf.payload("zz_automas_job_fix.py")).hexdigest(),
+          "979bea5fe532c281e6a843018fc48dd14b8a79e9ff3423beb0094f27d623a7b2")
+    check(".pth imports the module", jf.payload("zz_automas_job_fix.pth"), b"import zz_automas_job_fix\n")
+    tree = ast.parse(jf.payload("zz_automas_job_fix.py").decode("utf-8"))
+    check("the module is Python and imports only sys at its top",
+          [n.names[0].name for n in tree.body if isinstance(n, ast.Import)], ["sys"])
+    # site.addsitedir reads .pth files in sorted order: after pywin32.pth, so win32job imports.
+    check(".pth sorts after pywin32.pth and _virtualenv.pth",
+          sorted(["_virtualenv.pth", "pywin32.pth", "zz_automas_job_fix.pth"])[-1], "zz_automas_job_fix.pth")
+
+    print("\n[heal: no AUTO-MAS, or no venv in it -> nothing written]")
+    check("no AUTO-MAS folder", (jf.site_dir(None), jf.heal(None)), (None, []))
+    bare = tmpdir()
+    check("AUTO-MAS without the venv", (jf.site_dir(bare), jf.heal(bare)), (None, []))
+
+    print("\n[heal: missing -> both put back; right -> untouched; one changed -> that one]")
+    root = tmpdir()
+    site = root.joinpath(*jf.SITE_PACKAGES)
+    site.mkdir(parents=True)
+    check("both missing: both written", jf.heal(root), ["zz_automas_job_fix.py", "zz_automas_job_fix.pth"])
+    check("……byte for byte", [(site / n).read_bytes() == jf.payload(n) for n in jf.FILES], [True, True])
+    os.utime(site / "zz_automas_job_fix.py", (1_000_000, 1_000_000))
+    check("already right: nothing written", jf.heal(root), [])
+    check("……mtime not touched", (site / "zz_automas_job_fix.py").stat().st_mtime, 1_000_000)
+    (site / "zz_automas_job_fix.pth").write_bytes(b"import something_else\n")
+    check("the .pth changed: only it is put back", jf.heal(root), ["zz_automas_job_fix.pth"])
+    check("……and reads right", (site / "zz_automas_job_fix.pth").read_bytes(), jf.payload("zz_automas_job_fix.pth"))
+    (site / "zz_automas_job_fix.py").unlink()
+    with mock.patch.object(jf, "atomic_write_bytes", lambda path, data: path.write_bytes(data[:-1])):
+        try:
+            jf.heal(root)
+            raised = None
+        except OSError as exc:
+            raised = str(exc)
+    check("a read-back that differs raises", bool(raised) and "读回来不一样" in raised, True)
+
+    print("\n[the boot stage says it: put back is INFO, not placed is a WARNING (the group)]")
+    lines: list[tuple[int, str]] = []
+    lg = logging.getLogger("ark.test_automas")
+    lg.propagate = False
+    lg.setLevel(logging.INFO)
+    h = type("H", (logging.Handler,), {"emit": lambda self, r: lines.append((r.levelno, r.getMessage()))})()
+    lg.addHandler(h)
+    try:
+        (site / "zz_automas_job_fix.py").unlink(missing_ok=True)
+        boot_stages._stage_automas_jobfix(types.SimpleNamespace(automas_dir=root), lg)
+        check("put back: one INFO naming it", [(lv, "补回去了" in m and "zz_automas_job_fix.py" in m) for lv, m in lines],
+              [(logging.INFO, True)])
+        lines.clear()
+        boot_stages._stage_automas_jobfix(types.SimpleNamespace(automas_dir=root), lg)
+        check("already right: silent", lines, [])
+        boot_stages._stage_automas_jobfix(types.SimpleNamespace(automas_dir=None), lg)
+        boot_stages._stage_automas_jobfix(types.SimpleNamespace(), lg)
+        check("no AUTO-MAS in the config: silent", lines, [])
+        boot_stages._stage_automas_jobfix(types.SimpleNamespace(automas_dir=bare), lg)
+        check("no venv: one INFO", [(lv, "没地方放" in m) for lv, m in lines], [(logging.INFO, True)])
+        lines.clear()
+        (site / "zz_automas_job_fix.py").unlink()
+        with mock.patch.object(jf, "atomic_write_bytes", mock.Mock(side_effect=PermissionError(13, "denied"))):
+            boot_stages._stage_automas_jobfix(types.SimpleNamespace(automas_dir=root), lg)
+        check("a write refused: one WARNING saying what it risks",
+              [(lv, "没能放好" in m and "拒绝访问" in m) for lv, m in lines], [(logging.WARNING, True)])
+        lines.clear()
+
+        print("\n[after the pre-update installs a new AUTO-MAS: put back too]")
+        from ark_relay.features.selfcheck import selfcheck
+        cfg = types.SimpleNamespace(automas_dir=root)
+        with mock.patch.object(selfcheck, "report_contract", lambda *a: None), \
+                mock.patch.object(boot_stages, "_endfield_launch", lambda *a: None):
+            boot_stages._contract_after_update(cfg, None, lg, "v5.2.0")
+        check("the file is back", (site / "zz_automas_job_fix.py").read_bytes() == jf.payload("zz_automas_job_fix.py"), True)
+        check("……said with the version", [("调度程序升级到 v5.2.0 后" in m) for _, m in lines], [True])
+    finally:
+        lg.removeHandler(h)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_automas_backend_match, _part_automas_boot_one_alarm, _part_automas_boot_revival, _part_automas_contract_watch, _part_automas_handover]))
+    sys.exit(run_parts([_part_automas_backend_match, _part_automas_boot_one_alarm, _part_automas_boot_revival, _part_automas_contract_watch, _part_automas_handover, _part_automas_jobfix]))

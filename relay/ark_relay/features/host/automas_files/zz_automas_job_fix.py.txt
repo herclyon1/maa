@@ -1,0 +1,120 @@
+# AUTO-MAS 本机兜底（2026-11-09，Claude A 按双子星〔Job 补丁防冲掉根治法〕）。
+# auto-mas-runtime 每次启动会把 D:\ark\automas\repo 还原成上游版本，改 repo 里的 process.py 会被冲掉（11-09 00:35 实测）。
+# 这个模块放在 AUTO-MAS 自己 venv 的 site-packages 里，由同目录 zz_automas_job_fix.pth 在 python 启动时导入，给 win32job 包一层：
+#   - AssignProcessToJobObject 拒绝访问（winerror 5）：换一个新 Job 再放；还拒绝就不进 Job、不抛错（调用方接着 ResumeThread）。
+#   - TerminateJobObject 之后这个 Job 再放进程会被拒：记下它，之后放进程直接用新 Job；结束时连新 Job 一起结束。
+# 11-08 21:30 起 AUTO-MAS 启动 MAA、MAA 更新器、游戏更新检查都报 (5, 'AssignProcessToJobObject', '拒绝访问。')。
+# 文件名带 zz_：site 按文件名顺序处理 .pth，要排在 pywin32.pth 之后，win32job 才导入得了；导入不了就等 win32job 被导入时再装。
+# 任何异常都吞掉，绝不影响 AUTO-MAS 启动。删掉这两个文件即恢复原样。
+import sys
+
+
+def _install(win32job):
+    if getattr(win32job, "_automas_job_fix", False):
+        return
+    import pywintypes
+
+    orig_assign = win32job.AssignProcessToJobObject
+    orig_term = win32job.TerminateJobObject
+    orig_create = win32job.CreateJobObject
+    repl = {}  # 原 Job 句柄的值 -> 替补的新 Job
+
+    def key(h):
+        try:
+            return int(h)
+        except Exception:
+            return id(h)
+
+    def warn(message):
+        try:
+            from app.utils import get_logger
+
+            get_logger("进程管理").warning("任务 Job 兜底：" + message)
+        except Exception:
+            pass
+
+    def assign(job, process):
+        k = key(job)
+        target = repl.get(k, job)
+        try:
+            return orig_assign(target, process)
+        except pywintypes.error as error:
+            if getattr(error, "winerror", None) != 5:
+                raise
+        try:
+            fresh = orig_create(None, "")
+            repl[k] = fresh
+            result = orig_assign(fresh, process)
+            warn("放进任务 Job 被拒绝访问，换新 Job 后放进去了")
+            return result
+        except pywintypes.error as error:
+            if getattr(error, "winerror", None) != 5:
+                raise
+            warn("换新 Job 仍被拒绝访问，这个子进程不进任务 Job，照常继续")
+            return None
+
+    def terminate(job, code):
+        k = key(job)
+        spare = repl.get(k)
+        if spare is not None:
+            try:
+                orig_term(spare, code)
+            except pywintypes.error:
+                pass
+        try:
+            return orig_term(job, code)
+        finally:
+            try:
+                repl[k] = orig_create(None, "")
+            except Exception:
+                pass
+
+    win32job.AssignProcessToJobObject = assign
+    win32job.TerminateJobObject = terminate
+    win32job._automas_job_fix = True
+
+
+class _WhenImported:
+    """win32job 还导入不了时（.pth 顺序不对），等它第一次被导入后再装。"""
+
+    def find_spec(self, name, path=None, target=None):
+        if name != "win32job":
+            return None
+        try:
+            sys.meta_path.remove(self)
+        except ValueError:
+            pass
+        try:
+            import importlib.util
+
+            spec = importlib.util.find_spec(name)
+        except Exception:
+            return None
+        if spec is None or spec.loader is None:
+            return spec
+        real = spec.loader
+
+        class _Loader:
+            def create_module(self, s):
+                return real.create_module(s)
+
+            def exec_module(self, module):
+                real.exec_module(module)
+                try:
+                    _install(module)
+                except Exception:
+                    pass
+
+        spec.loader = _Loader()
+        return spec
+
+
+try:
+    import win32job as _w
+
+    _install(_w)
+except Exception:
+    try:
+        sys.meta_path.insert(0, _WhenImported())
+    except Exception:
+        pass

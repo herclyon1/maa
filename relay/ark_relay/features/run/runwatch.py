@@ -521,6 +521,21 @@ def _created(t) -> str:
     return f"{t.created:%m-%d %H:%M:%S} 创建任务 {t.id[:8]}，模式 {t.mode}，触发来源 {t.source}" if t else ""
 
 
+def _late_start(app, due: datetime) -> datetime | None:
+    """When the running task was created after its due minute: its creation time, else None.
+
+    2026-11-09 00:52:21 session 2499 re-ran the evening shift through the phone's run_now; at 00:52:28
+    the overrun alarm (ledger #151) said the 21:30 run had been going for 202 minutes and was
+    due to end by 22:21. The relay's own late starts (run_now, a make-up, a re-run after an
+    update: phone/commands.py notes each one, so _not_the_shift keeps them in the shift) are
+    timed from their own start. AUTO-MAS's timer creates the shift's task inside its due
+    minute (21:30:00.780 in app.log), so that one keeps the due time.
+    """
+    if app is None or app.created.replace(second=0, microsecond=0) <= due:
+        return None
+    return app.created
+
+
 def check_overrun(eng, now: datetime, snap) -> None:
     """A queue still running past its planned end: one alarm for that run (key: the
     queue and its due time - the same overrun is one event, re-checked every minute)."""
@@ -549,18 +564,25 @@ def check_overrun(eng, now: datetime, snap) -> None:
             # Machine check #55: the task left out was a person's (its app.log line).
             unresolved.machinecheck(eng, dict(seen, alarmed=False))
             continue
+        start = deadline - timedelta(minutes=limit + OVERRUN_SLACK_MIN)
+        restarted = start if start != due else None
+        if (started := _late_start(app, due)) is not None:
+            # Its own clock: from its creation, or from a timeout AUTO-MAS retried inside it.
+            restarted = retry_clock(eng, started, limit)
+            if now < (restarted or started) + timedelta(minutes=limit + OVERRUN_SLACK_MIN):
+                continue
         states = "、".join(f"{i.get('name')} {i.get('status')}"
                           for i in task.get("task_info") or [])
-        start = deadline - timedelta(minutes=limit + OVERRUN_SLACK_MIN)
         body = texts.shift_overrun_body(q["name"], due, now, limit, OVERRUN_SLACK_MIN,
                                         states, last_log_line(task.get("log")), days,
-                                        restarted=start if start != due else None)
+                                        restarted=restarted, started=started)
         if errs := eng.notifier.send(texts.shift_overrun(q["name"]), body, alert=True):
             log.error("队列超时告警没推出去，下一轮再试：%s", q["name"])
             continue
         handle._mark_alerted(eng, day, key)
         log.warning("⏰ %s %s 开跑，%s 还没跑完（计划 %d 分钟 + %d），已告警",
-                    q["name"], hhmm, now.strftime("%H:%M"), limit, OVERRUN_SLACK_MIN,
+                    q["name"], f"{hhmm}（这趟 {started:%H:%M}）" if started else hhmm,
+                    now.strftime("%H:%M"), limit, OVERRUN_SLACK_MIN,
                     extra=errwatch.group_pushed(texts.shift_overrun(q["name"]), errs, eng.notifier))
         # Machine check #55: the task alarmed on was the shift's own (its app.log line).
         unresolved.machinecheck(eng, dict(seen, alarmed=True, sent=True, title=texts.shift_overrun(q["name"]),
