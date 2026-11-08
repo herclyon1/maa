@@ -220,11 +220,15 @@ stage after stage, with **no manual step inside the game beyond three taps**:
 Costs: EX-1/2 10, EX-3〜6 15, EX-7 20 (EX-8 not read yet). Sanity 87 at start
 covered six stages.
 
-Operators this account does **not** have (formation stops at them): **结城理**
-(`Unavailable` even with `ignore_requirements` - so `Unavailable` is not only
-"training too low") and **泡普卡** (`Missing`). Every copilot from the 「9 人一摆到底」
-series (author 柠檬味の小小猪 / Linus) uses 结城理 from EX-3 on - keep a second
-choice per stage ready: EX-3/4/5 went through on 圣聆初雪＋予愿安洁莉娜 sets
+Who the account has changes: check the roster as it is now, never this page, before
+saying an operator is missing (2026-11-09: a session read the 09-13 line below, told the
+user the account had no 结城理 and so could not do EX-8 - it has had 结城理 since at least
+10-10, see §3).
+On 09-13 formation stopped at **结城理** (`Unavailable` even with `ignore_requirements` -
+so `Unavailable` is not only "training too low"; the account owns 结城理 by 10-10, §3) and
+at **泡普卡** (`Missing`; not checked since). Every copilot from the 「9 人一摆到底」
+series (author 柠檬味の小小猪 / Linus) uses 结城理 from EX-3 on; on 09-13 these went
+through without him: EX-3/4/5 on 圣聆初雪＋予愿安洁莉娜 sets
 (ids 102508, 102596 with operator groups, 102540). After a refused formation the
 game sits on the operator-picker: tap 确认 (1290,850) to get back to the squad screen
 before the next `single`.
