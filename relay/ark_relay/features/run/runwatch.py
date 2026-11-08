@@ -526,10 +526,11 @@ def _late_start(app, due: datetime) -> datetime | None:
 
     2026-11-09 00:52:21 session 2499 re-ran the evening shift through the phone's run_now; at 00:52:28
     the overrun alarm (ledger #151) said the 21:30 run had been going for 202 minutes and was
-    due to end by 22:21. The relay's own late starts (run_now, a make-up, a re-run after an
-    update: phone/commands.py notes each one, so _not_the_shift keeps them in the shift) are
-    timed from their own start. AUTO-MAS's timer creates the shift's task inside its due
-    minute (21:30:00.780 in app.log), so that one keeps the due time.
+    due to end by 22:21. The relay's own late start of the whole queue (the phone's run_now:
+    phone/commands.py notes it, so _not_the_shift keeps it in the shift) is timed from its own
+    start. A make-up or a re-run after an update dispatches one script, not the queue, so its
+    task is not the queue's and this check never sees it. AUTO-MAS's timer creates the shift's
+    task inside its due minute (21:30:00.780 in app.log), so that one keeps the due time.
     """
     if app is None or app.created.replace(second=0, microsecond=0) <= due:
         return None

@@ -11,7 +11,9 @@ update that rebuilds the venv drops both; the relay puts them back at every boot
 it installs a new AUTO-MAS (boot_stages._automas_jobfix).
 
 The two files ship byte for byte as session 2499 installed and tried them on the machine on
-2026-11-09 (automas_files/*.txt, .txt so the linters do not compile AUTO-MAS-side code). A
+2026-11-09 (automas_files/*.txt, .txt so the linters do not compile AUTO-MAS-side code). That
+try showed the hook loads; it did not reproduce the refusal (without the hook the re-assignment
+into a terminated job also succeeded), so whether it cures the 21:30 failure is still open. A
 .pth is read at interpreter start: a file put back takes effect at AUTO-MAS's next backend
 start, not in the one already running.
 """

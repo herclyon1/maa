@@ -342,7 +342,7 @@ below are copied from the machine; the ledger shapes from 09-24..09-30.
         run_watch(e7, at(22, 19))
         check("22:19: alarm", [x[0] for x in alarms(e7)], ["⏰ 晚班超时还没跑完"])
 
-        print("\n[a 晚班 the relay starts late (run_now, a make-up) is timed from its own start (11-09 #151)]")
+        print("\n[a 晚班 the relay starts late (the phone's run_now) is timed from its own start (11-09 #151)]")
         # 2026-11-09 00:52:21 session 2499 re-ran the evening shift through the phone's run_now;
         # 7 s later the overrun alarm said the 21:30 run had gone 202 minutes. Same shape on this
         # seed: 21:30 + 19 + 30 is 22:19; the late task is created 10-02 00:52:21.

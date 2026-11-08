@@ -1196,9 +1196,9 @@ def shift_overrun_body(queue: str, due, now, limit_min: int, slack_min: int,
     """A queue still unfinished past its planned end (runwatch). `days`: how many past
     days the limit was taken from (runwatch.planned_minutes); `restarted`: when a retried
     timeout restarted the clock (runwatch.retry_clock), else None; `started`: when the
-    running task was created after its due minute (runwatch._late_start: a phone run_now,
-    a make-up, a re-run after an update), else None - the minutes run and the planned end
-    are then counted from it, not from `due`."""
+    running task was created after its due minute (runwatch._late_start: the phone's run_now
+    of the queue), else None - the minutes run and the planned end are then counted from it,
+    not from `due`."""
     from datetime import timedelta as _td  # noqa: PLC0415
     ran = int((now - (started or due)).total_seconds() // 60)
     opening = f"{queue}排的是 {due:%H:%M}，这趟 {started:%H:%M} 才开跑" if started else f"{queue} {due:%H:%M} 开跑"
