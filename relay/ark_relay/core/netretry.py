@@ -2,7 +2,9 @@
 
 Dispatch relay-opt-round3-1108 O-03: cos_store.cos_put / cos_get (every phone-state push,
 heartbeat and alarm copy) and maintenance/efstatus.update_hint were one urlopen each, so one
-reset or one 502 from the gateway in front counted as COS or the bulletin being down.
+reset or one 502 from the gateway in front counted as COS or the bulletin being down. The
+30 s heartbeat stays one try between beats (cos_put retry=False: its next beat is the retry,
+round3b-1108); its shutdown bye is retried.
 
 A retry never stretches the caller's limit. The phone state's Mailbox.COS_TIMEOUT (8 s) has
 to fit in the 30 s a Windows service stop allows, and a miss there already goes over ntfy; so

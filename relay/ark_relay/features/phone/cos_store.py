@@ -46,13 +46,14 @@ def hb_key(topic: str) -> str:
 
 
 def cos_put(cos, key: str, data: bytes, timeout: float, *, public: bool = True,
-            content_type: str = "application/json; charset=utf-8") -> "str | None":
+            content_type: str = "application/json; charset=utf-8", retry: bool = True) -> "str | None":
     """PUT `data` to `key`: public-read by default (the App has no COS keys), never
     cached (or the App reads a stale copy). `public=False` leaves the bucket's
     private ACL (alertlog.py: only key holders read the alarm copy). None when
     stored, else why not - the caller says what that means for its own object
     in its own log line. A reset or a gateway 5xx is tried again within `timeout`
-    (netretry.call): the caller's limit is not stretched."""
+    (netretry.call): the caller's limit is not stretched. `retry=False` makes one try
+    (heartbeat.cos_beat between beats: its next beat is the retry)."""
     headers = {"Authorization": cos.authorization("PUT", key),
                "Cache-Control": "no-store",
                "Content-Type": content_type,
@@ -65,7 +66,7 @@ def cos_put(cos, key: str, data: bytes, timeout: float, *, public: bool = True,
         with urllib.request.urlopen(req, timeout=left) as r:
             return r.status
     try:
-        status = netretry.call(once, "写腾讯云", timeout, detail=key)
+        status = netretry.call(once, "写腾讯云", timeout, detail=key) if retry else once(timeout)
     except urllib.error.HTTPError as exc:
         return f"回 {exc.code}"
     except Exception as exc:  # noqa: BLE001 - any failure is reported, never raised

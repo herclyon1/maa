@@ -228,7 +228,7 @@ class Cos:
 
 puts = []
 saved_put = heartbeat.cos_put
-heartbeat.cos_put = lambda cos, key, body, timeout: puts.append(json.loads(body)) or ""
+heartbeat.cos_put = lambda cos, key, body, timeout, **kw: puts.append(json.loads(body)) or ""
 hb = heartbeat.Heartbeat("t0pic", STATE, post=lambda b, t: None, cos=Cos())
 hb.cos_beat(bye=True)
 off = (puts[-1] if puts else {}).get("off") or {}

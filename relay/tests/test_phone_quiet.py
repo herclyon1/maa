@@ -481,9 +481,13 @@ def g_stream_drops():
 
 def h_cos_beat_info():
     logs.clear()
-    use(FakeNet(*[urllib.error.URLError("timed out")] * DOWN))
+    net = FakeNet(urllib.error.URLError("timed out"))
+    use(net)
     hb = phone.Heartbeat(TOPIC, tmpdir(), post=lambda p, t: None, cos=COS)
-    check("COS 心跳这一跳没写进去、ntfy 心跳照发", hb.beat(), True)
+    check("COS 心跳超时一次、ntfy 心跳照发", hb.beat(), True)
+    # Between beats a COS heartbeat is one try: the next beat is the retry (dispatch
+    # relay-opt-round3b-1108), so a flaky link writes no red item per beat.
+    check("……这一跳只写了一次（不在这一跳里重试）", sum(1 for _, m, _ in net.sent if m == "PUT"), 1)
     check("……不记 WARNING（10-03 00:16:44 那条）", logs.warnings(), [])
     check("……记一行 INFO", bool(logs.infos("腾讯云 COS")), True)
     use(FakeNet())
@@ -493,7 +497,7 @@ def h_cos_beat_info():
     check("……nothing for the group", logs.loud(), [])
     logs.clear()
     hb2 = phone.Heartbeat(TOPIC, tmpdir(), post=lambda p, t: None, cos=COS)
-    use(FakeNet(*[urllib.error.URLError("timed out")] * (3 * DOWN)))
+    use(FakeNet(*[urllib.error.URLError("timed out")] * 3))
     hb2.cos_beat()
     hb2._cos_down -= hb2.COS_OUTAGE_SEC          # "ten minutes ago" without waiting
     before = settled()

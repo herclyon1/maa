@@ -3,6 +3,7 @@ launcher."""
 from __future__ import annotations
 
 import json
+import re
 from ark_relay.core.config import atomic_write_text
 import subprocess
 import time
@@ -481,23 +482,63 @@ def restore_autostart_leftover(okww_dir: "Path | None", state_dir: "Path | None"
 # `packaging`, and names each module it cannot find.
 _OKWW_PYTHON = ("data", "apps", "ok-ww", "python", "python.exe")
 _OKWW_WORKING = ("data", "apps", "ok-ww", "working")
-_DEPS_PROBE = (
-    "import importlib, sys\n"
-    "sys.path.insert(0, '.')\n"
-    "for n in ('packaging', 'config', 'ok'):\n"
-    "    try:\n"
-    "        importlib.import_module(n)\n"
-    "    except ModuleNotFoundError as e:\n"
-    "        print('MISSING', (e.name or '').split('.')[0])\n"
-    "    except Exception as e:\n"
-    "        print('OTHER', n, type(e).__name__)\n"
-)
-# Installed only when OK-WW itself asks for it: a dist its own requirements.txt pins (at
-# that pin) whose name is the missing module's, or `packaging` (#115: imported by
-# ok-script but not in OK-WW's list). A module name is not a package name everywhere (cv2,
-# PIL, yaml), and pip would fetch whatever PyPI holds under a guessed name, so any other
-# missing module is said, not installed.
+# The probe, run by OK-WW's own python in its working folder. Two looks, one line each:
+# * every dist OK-WW's own requirements.txt lists is installed (importlib.metadata, by the
+#   dist's name: a module's name is not its dist's - cv2 / opencv-python, PIL / pillow,
+#   win32api / pywin32), else `DIST <name>`;
+# * what main.py imports (config, ok), ok.core.plugins (#115's file: ok lazy-imports, so
+#   `import ok` alone never reaches it) and `packaging` import, else `MODULE <root>` for
+#   the module that was not found. A probed submodule this ok-script version does not have
+#   is not a missing package and says nothing.
+# A requirement with an environment marker is checked only when the marker applies here;
+# without `packaging` to read the marker, it is checked anyway (the machine is the Windows
+# the markers are written for).
+_DEPS_PROBE = r"""
+import importlib, importlib.metadata, re, sys
+sys.path.insert(0, '.')
+try:
+    from packaging.markers import Marker
+except Exception:
+    Marker = None
+try:
+    lines = open('requirements.txt', encoding='utf-8', errors='replace').read().splitlines()
+except OSError:
+    lines = []
+for line in lines:
+    spec = line.split('#', 1)[0].strip()
+    if not spec or spec.startswith('-'):
+        continue
+    req, _, marker = spec.partition(';')
+    if marker.strip() and Marker is not None:
+        try:
+            if not Marker(marker.strip()).evaluate():
+                continue
+        except Exception:
+            pass
+    name = re.split(r'[=<>!~\[;\s]', req.strip(), maxsplit=1)[0]
+    try:
+        importlib.metadata.distribution(name)
+    except importlib.metadata.PackageNotFoundError:
+        print('DIST', name)
+for n in ('packaging', 'config', 'ok', 'ok.core.plugins'):
+    try:
+        importlib.import_module(n)
+    except ModuleNotFoundError as e:
+        miss = e.name or ''
+        if '.' in n and (n == miss or n.startswith(miss + '.')):
+            continue
+        print('MODULE', miss.split('.')[0])
+    except Exception as e:
+        print('OTHER', n, type(e).__name__)
+"""
+# Installed only when OK-WW itself asks for it: a dist its own requirements.txt lists (as
+# written there, pin included), or `packaging` (#115: imported by ok-script, not in OK-WW's
+# list). A missing module is matched to a listed dist by name only; any other is said,
+# not installed: pip would fetch whatever PyPI holds under a guessed name.
 _DEPS_ALWAYS = {"packaging": "packaging"}
+# A requirement's name ends at its version, extras, marker or whitespace
+# (`onnxocr-ppocrv5>=0.0.20`, `ok-script[ocr,qt]==3.0.3`).
+_REQ_NAME_END = re.compile(r"[=<>!~\[;\s]")
 
 
 def _dist_key(name: str) -> str:
@@ -506,84 +547,102 @@ def _dist_key(name: str) -> str:
 
 
 def _okww_pins(working: Path) -> "dict[str, str]":
-    """{normalised dist name: requirement as written (name==version)} from OK-WW's own
-    requirements.txt (pip-compile's output: one `name==version` per line); {} unreadable."""
+    """{normalised dist name: requirement as written (`name==version`, `name>=version`, ...,
+    marker dropped)} from OK-WW's own requirements.txt; {} unreadable."""
     try:
         text = (working / "requirements.txt").read_text(encoding="utf-8", errors="replace")
     except OSError:
         return {}
     out = {}
     for line in text.splitlines():
-        spec = line.split("#", 1)[0].strip()
+        spec = line.split("#", 1)[0].split(";", 1)[0].strip()
         if spec and not spec.startswith("-"):
-            out[_dist_key(spec.split("==", 1)[0].split("[", 1)[0])] = spec
+            out[_dist_key(_REQ_NAME_END.split(spec, maxsplit=1)[0])] = spec
     return out
 
 
-def _deps_probe(py: Path, working: Path, run) -> "tuple[list[str], str]":
-    """(the module roots OK-WW's python cannot find, why the probe could not tell or '')."""
+def _deps_probe(py: Path, working: Path, run) -> "tuple[list[str], list[str], str]":
+    """(dists OK-WW lists that are not installed, module roots its python cannot find, why
+    the probe could not tell or '')."""
     try:
         r = run([str(py), "-c", _DEPS_PROBE], cwd=str(working), capture_output=True,
-                           timeout=PWSH_GUARD_S, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                timeout=PWSH_GUARD_S, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     except (OSError, subprocess.SubprocessError) as exc:
-        return [], f"{type(exc).__name__}: {exc}"
+        return [], [], f"{type(exc).__name__}: {exc}"
     out = r.stdout.decode("utf-8", "replace") if isinstance(r.stdout, bytes) else str(r.stdout or "")
-    missing, other = [], []
+    dists, modules, other = [], [], []
     for line in out.splitlines():
         word, _, rest = line.strip().partition(" ")
-        if word == "MISSING" and rest and rest not in missing:
-            missing.append(rest)
+        if word == "DIST" and rest and rest not in dists:
+            dists.append(rest)
+        elif word == "MODULE" and rest and rest not in modules:
+            modules.append(rest)
         elif word == "OTHER":
             other.append(rest)
     if other:
         # Not a missing package: an import that failed for another reason, which the run itself shows.
         log.info("OK-WW 自带的 Python 试导入时别的地方出错（不是缺包）：%s", "；".join(other))
-    if r.returncode != 0 and not missing:
-        return [], f"试导入退出码 {r.returncode}"
-    return missing, ""
+    if r.returncode != 0 and not dists and not modules:
+        return [], [], f"试导入退出码 {r.returncode}"
+    return dists, modules, ""
+
+
+def _deps_specs(working: Path, dists: list[str], modules: list[str]) -> "tuple[list[str], list[str]]":
+    """(what to hand pip, missing modules OK-WW does not ask for)."""
+    pins = _okww_pins(working)
+    specs = [pins.get(_dist_key(d)) or d for d in dists]
+    unknown = []
+    for m in modules:
+        spec = pins.get(_dist_key(m)) or _DEPS_ALWAYS.get(m)
+        if spec and spec not in specs:
+            specs.append(spec)
+        elif not spec:
+            unknown.append(m)
+    return specs, unknown
 
 
 def ensure_okww_deps(okww_dir: Path, problems: "list[str] | None" = None, *, run=None) -> str:
-    """With OK-WW closed: find the Python packages its bundled python cannot import (the
-    comment above), pip install the ones OK-WW asks for and import again. Returns
-    「OK-WW 缺的 Python 包已补装：…」 when that fixed it, '' otherwise; what it could not fix or
-    could not tell goes in `problems`. No OK-WW python here (a test tree, another layout):
-    nothing, silently. `run` replaces subprocess.run (the tests' door)."""
+    """With OK-WW closed: find the packages its bundled python lacks (the probe above), pip
+    install the ones OK-WW asks for and probe again. Returns 「OK-WW 缺的 Python 包已补装：…」
+    when that fixed something, '' otherwise; what it could not fix or could not tell goes in
+    `problems`. No OK-WW python here (a test tree, another layout): nothing, silently. `run`
+    replaces subprocess.run (the tests' door)."""
     root = Path(okww_dir)
     py, working = root.joinpath(*_OKWW_PYTHON), root.joinpath(*_OKWW_WORKING)
     if not py.is_file() or not working.is_dir():
         return ""
     run = run or subprocess.run
-    missing, why = _deps_probe(py, working, run)
+    dists, modules, why = _deps_probe(py, working, run)
     if why:
         _note(problems, f"OK-WW 预更新：没能核对 OK-WW 自带的 Python 包齐不齐（{why}）")
         return ""
-    if not missing:
+    if not dists and not modules:
         log.info("OK-WW 自带的 Python 包齐全")
         return ""
-    pins = _okww_pins(working)
-    specs = {m: pins.get(_dist_key(m)) or _DEPS_ALWAYS.get(m) for m in missing}
-    unknown = [m for m, spec in specs.items() if not spec]
+    specs, unknown = _deps_specs(working, dists, modules)
+    pip_rc = "没装"
+    if specs:
+        try:
+            r = run([str(py), "-m", "pip", "install", "--disable-pip-version-check", "--no-input", *specs],
+                    cwd=str(working), capture_output=True, timeout=PWSH_GUARD_S,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            pip_rc = r.returncode
+        except (OSError, subprocess.SubprocessError) as exc:
+            pip_rc = f"{type(exc).__name__}: {exc}"
+        # A missing dist may be what provides a missing module: look again before judging.
+        still_d, still_m, why = _deps_probe(py, working, run)
+        if why:
+            _note(problems, f"OK-WW 自带的 Python 缺包 {'、'.join(specs)}，补装过（pip 结果 {pip_rc}），"
+                            f"装完没能再核对（{why}）")
+            return ""
+    else:
+        still_d, still_m = dists, modules
+    fixed = [x for x in dists + modules if x not in still_d + still_m]
+    unknown = [m for m in still_m if m in unknown]
+    left = [x for x in still_d + still_m if x not in unknown]
     if unknown:
         _note(problems, f"OK-WW 自带的 Python 缺包 {'、'.join(unknown)}：OK-WW 自己的依赖清单里没有，"
                         "没有自动装，OK-WW 一启动就会崩")
-    wanted = [spec for spec in specs.values() if spec]
-    if not wanted:
-        return ""
-    try:
-        r = run([str(py), "-m", "pip", "install", "--disable-pip-version-check", "--no-input", *wanted],
-                cwd=str(working), capture_output=True, timeout=PWSH_GUARD_S,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        pip_rc = r.returncode
-    except (OSError, subprocess.SubprocessError) as exc:
-        pip_rc = f"{type(exc).__name__}: {exc}"
-    still, why = _deps_probe(py, working, run)
-    if why:
-        _note(problems, f"OK-WW 自带的 Python 缺包 {'、'.join(wanted)}，补装过（pip 结果 {pip_rc}），"
-                        f"装完没能再核对（{why}）")
-        return ""
-    fixed = [m for m in missing if m not in unknown and m not in still]
-    left = [m for m in missing if m not in unknown and m in still]
     if left:
         _note(problems, f"OK-WW 自带的 Python 缺包 {'、'.join(left)}，自动补装没成（pip 结果 {pip_rc}），"
                         "OK-WW 一启动就会崩")

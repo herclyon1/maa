@@ -21,6 +21,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from ark_relay.core import netretry, notify
 from ark_relay.features.alarm import errwatch
@@ -155,6 +156,21 @@ try:
     check("读取：404 就是没有这个对象，不再试", (cos_store.cos_get(cos, "k", 8), len(calls)), ((None, ""), 1))
     urllib.request.urlopen, calls = scripted([OSError("odd")])
     check("读取：别的错照旧不抛、说原因", (cos_store.cos_get(cos, "k", 8)[1], len(calls)), ("odd", 1))
+
+    urllib.request.urlopen, calls = scripted([ConnectionResetError(54, "reset"), Resp(status=200)])
+    check("写入 retry=False：只写一次，说原因", (bool(cos_store.cos_put(cos, "state/k.json", b"{}", 8, retry=False)),
+                                          len(calls)), (True, 1))
+
+    print("\n[心跳：平时一跳只写一次（下一跳就是重试），关机那一跳在 8 秒里再写一次]")
+    # dispatch relay-opt-round3b-1108: a 30 s beat retried in the call wrote one 自愈待查 red
+    # item per healed beat on a flaky link; the bye has no next beat.
+    from ark_relay.features.phone import phone
+    from _tmp import tmpdir
+    hb = phone.Heartbeat("ark-test-topic", tmpdir(), post=lambda p, t: None, cos=cos)
+    urllib.request.urlopen, calls = scripted([ConnectionResetError(54, "reset"), Resp(status=200)])
+    check("平时那一跳：断了就算这一跳没写上，只写一次", (hb.cos_beat(), len(calls)), (False, 1))
+    urllib.request.urlopen, calls = scripted([ConnectionResetError(54, "reset"), Resp(status=200)])
+    check("关机那一跳：断了再写一次，写上了", (hb.cos_beat(bye=True), len(calls)), (True, 2))
 
     print("\n[终末地官方公告：网关 503 后在 8 秒里再读一次]")
     body = b'{"data": {"list": []}}'

@@ -157,8 +157,11 @@ class Heartbeat:
             except Exception:  # the bye goes out without it
                 log.debug("下线心跳的关机原因没整理出来", exc_info=True)
         try:
+            # One try between beats: the next beat, HB_COS_SEC on, is the retry, and an
+            # outage has its own WARNING (below). The bye has no next beat: it is tried
+            # again inside its COS_TIMEOUT (netretry; dispatch relay-opt-round3b-1108).
             why = cos_put(self.cos, hb_key(self.topic), json.dumps(body).encode("utf-8"),
-                          Mailbox.COS_TIMEOUT)
+                          Mailbox.COS_TIMEOUT, retry=bye)
         except Exception as exc:  # noqa: BLE001 - e.g. signing; never reaches the ntfy beat
             why = str(exc) or type(exc).__name__
         if why:
