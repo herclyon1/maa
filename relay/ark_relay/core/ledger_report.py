@@ -177,7 +177,7 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
                     # The whole streak, on purpose (audit 2026-11-08 B-04 asked for the
                     # transitional record alone): 2026-09-02 OK-WW 09:18 update restart, 09:20
                     # failed as the game came back, 09:28 ok - two ❌ and a self-heal push were
-                    # the false alarm tests/test_episodes.py pins.
+                    # the false alarm tests/test_verify.py pins.
                     for x in streak:
                         kinds.setdefault(x["run_id"], "update")
                 streak = []

@@ -1,6 +1,6 @@
-"""AUTO-MAS from the relay side: its address, the mas-api tool, its field labels and the user the phone looks at.
+"""AUTO-MAS from the relay side: its address, the mas-api tool, its field labels and the user the phone looks at; its YAML config, the settings contract, the beta3 user.
 
-One part per former file, each run on its own (tests/_parts.py): test_mas_address.py, test_mas_api_silent.py, test_mas_labels.py, test_mas_user_pick_1108.py.
+One part per former file, each run on its own (tests/_parts.py): test_mas.py, test_masconfig_yaml.py, test_mascontract.py, test_masuser_beta3.py.
 """
 # Each part imports the relay itself, after its own environment is set, as the file it was did at
 # its top.
@@ -287,5 +287,562 @@ changed the other. Pinned here, with two MAA users:
     check("后台的回答里先列 instances 也跳过", masuser.pick({"instances": [], "U9": {"Info": {}}})[0], "U9")
 
 
+def _part_masconfig_yaml():
+    """AUTO-MAS v5.8's YAML settings read like v5.7's JSON (core/masconfig.py, core/miniyaml.py).
+
+Ledger #113 (2026-10-23 08:48 Beijing): AUTO-MAS updated itself to v5.8.0-beta.1, moved
+config/QueueConfig.json, ScriptConfig.json and PlanConfig.json into config/legacy-json and kept
+the settings in queues.yaml, scripts.yaml and plans.yaml, with every time as UTC ISO. The relay
+then found 「设置里一个脚本、队列都没有」 and 「读取 QueueConfig.json 失败: [Errno 2]」.
+The YAML here is written in the shape of that machine's own files (indentless sequences, long
+JSON strings folded in single quotes, quoted UTC times); the files themselves are not in this
+public repo. Against the real files, miniyaml matched PyYAML on all four and plan.schedule,
+plan._scripts, plan.next_plan and mascontract.check gave the same answers as from the JSON.
+
+    Formerly test_masconfig_yaml.py.
+    """
+    import json
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import masconfig, miniyaml, plan
+
+
+    print("[miniyaml: the constructs AUTO-MAS's files use]")
+    doc = miniyaml.loads("""\
+order:
+- uid: aaa
+  type: QueueConfig
+- uid: bbb
+  type: QueueConfig
+data:
+  aaa:
+    Info:
+      Name: 早班
+      TimeEnabled: true
+      Delay: 0
+      Ratio: 1.5
+      ScriptAfterTask: null
+      Note: ~
+    Pipeline: '{"Data": {"Week": "2026-W42",
+      "Notes": "it''s", "Tag": "[{\\"text\\": \\"日常\\"}]"},
+      "Run": 2}'
+    Quoted: "a\\tb \\u4e2d
+      c"
+    Long: a plain line
+      that folds
+    Empty: {}
+    None: []
+    '2026-10-22': date key
+""")
+    check("an indentless sequence under its key", [x["uid"] for x in doc["order"]], ["aaa", "bbb"])
+    info = doc["data"]["aaa"]["Info"]
+    check("true / int / float / null / ~", (info["TimeEnabled"], info["Delay"], info["Ratio"],
+                                            info["ScriptAfterTask"], info["Note"]), (True, 0, 1.5, None, None))
+    check("a single-quoted string folded over three lines, '' kept as one quote",
+          json.loads(doc["data"]["aaa"]["Pipeline"]), {"Data": {"Week": "2026-W42", "Notes": "it's",
+                                                                "Tag": '[{"text": "日常"}]'}, "Run": 2})
+    check("a double-quoted string: escapes and folding", doc["data"]["aaa"]["Quoted"], "a\tb 中 c")
+    check("a plain scalar folded over lines", doc["data"]["aaa"]["Long"], "a plain line that folds")
+    check("{} and []", (doc["data"]["aaa"]["Empty"], doc["data"]["aaa"]["None"]), ({}, []))
+    check("a quoted key stays a string", doc["data"]["aaa"]["2026-10-22"], "date key")
+    for bad in ("a: [1, 2]\n", "a: |\n  text\n", "a: &x 1\n", "a: !!str 1\n"):
+        try:
+            miniyaml.loads(bad)
+            check(f"refuses {bad.strip()!r}", "parsed", "ValueError")
+        except ValueError:
+            check(f"refuses {bad.strip()!r}", True)
+
+    print("\n[masconfig: v5.8's layout read in v5.7's shape]")
+    QUEUES = """\
+order:
+- uid: q1
+  type: QueueConfig
+data:
+  q1:
+    Data:
+      LastTimedStart: '2026-10-22T01:00:00Z'
+    Info:
+      Name: 早班
+      TimeEnabled: true
+      StartUpMode: Never
+      AfterAccomplish: NoAction
+    TimeSet:
+      order:
+      - uid: t1
+        type: TimeSet
+      data:
+        t1:
+          Info:
+            Days:
+            - Monday
+            - Tuesday
+            - Wednesday
+            - Thursday
+            - Friday
+            - Saturday
+            - Sunday
+            Enabled: true
+            Time: '2000-01-01T01:00:00Z'
+    QueueItem:
+      order:
+      - uid: i1
+        type: QueueItem
+      data:
+        i1:
+          Info:
+            ScriptId: s1
+          Schedule:
+            Days:
+            - Monday
+            - Tuesday
+            - Wednesday
+            - Thursday
+            - Friday
+            - Saturday
+            - Sunday
+            Enabled: true
+            Mode: fixed_time
+            Time: '1999-12-31T16:00:00Z'
+"""
+    old = masconfig.legacy(miniyaml.loads(QUEUES))
+    check("order -> instances", old["instances"], [{"uid": "q1", "type": "QueueConfig"}])
+    check("sub-collections go under SubConfigsInfo", sorted(old["q1"]["SubConfigsInfo"]), ["QueueItem", "TimeSet"])
+    ts = old["q1"]["SubConfigsInfo"]["TimeSet"]["t1"]["Info"]
+    check("09:00 Beijing written as 2000-01-01T01:00:00Z reads back as 09:00 (v5.7's form)", ts["Time"], "09:00")
+    check("LastTimedStart in v5.7's form", old["q1"]["Data"]["LastTimedStart"], "2026-10-22 09:00")
+    check("a queue item's time too",
+          old["q1"]["SubConfigsInfo"]["QueueItem"]["i1"]["Schedule"]["Time"], "00:00")
+
+    print("\n[the reader finds the YAML only when the JSON is gone]")
+    root = tmpdir()
+    cfg = root / "config"
+    cfg.mkdir()
+    (cfg / "queues.yaml").write_text(QUEUES, encoding="utf-8")
+    check("no JSON: the YAML", masconfig.source(cfg / "QueueConfig.json").name, "queues.yaml")
+    sched = plan.schedule(root)
+    check("plan.schedule sees the 09:00 morning queue (10-23 it saw none)",
+          [(q["name"], q["times"], q["items"]) for q in sched], [("早班", ["09:00"], ["s1"])])
+    (cfg / "QueueConfig.json").write_text(json.dumps(old, ensure_ascii=False), encoding="utf-8")
+    check("JSON there (AUTO-MAS before v5.8): the JSON", masconfig.source(cfg / "QueueConfig.json").name,
+          "QueueConfig.json")
+    try:
+        masconfig.read(cfg / "ScriptConfig.json")
+        check("neither file: the error reading the JSON gives", "read", "FileNotFoundError")
+    except FileNotFoundError:
+        check("neither file: the error reading the JSON gives", True)
+
+    print("\n[offline file-edit fallback on v5.8 YAML (11-08 [D-05])]")
+    import os
+    from ark_relay.features.phone import commands
+    from ark_relay.features.schedule import queues
+
+    yroot = tmpdir()
+    ycfg = yroot / "config"
+    ycfg.mkdir()
+    (ycfg / "queues.yaml").write_text(QUEUES, encoding="utf-8")
+    SCRIPTS_YAML = """\
+order:
+- uid: s1
+  type: ScriptConfig
+- uid: s2
+  type: ScriptConfig
+data:
+  s1:
+    Info:
+      Name: MAA
+    UserData:
+      order:
+      - uid: u1
+        type: MAAUserConfig
+      data:
+        u1:
+          Info:
+            Name: 默认用户
+            Stage: CE-6
+            MedicineNumb: 0
+  s2:
+    Info:
+      Name: MaaEnd
+    Game:
+      WaitTime: 60
+"""
+    (ycfg / "scripts.yaml").write_text(SCRIPTS_YAML, encoding="utf-8")
+    os.environ["ARK_AUTOMAS_DIR"] = str(yroot)
+    orig_backend = commands._backend_scripts
+    orig_refusal = commands._stage_refusal
+    orig_q_backend = queues._enabled_via_backend
+    commands._backend_scripts = lambda: (None, "")
+    commands._stage_refusal = lambda s: ""
+    queues._enabled_via_backend = lambda name, enabled: None
+    try:
+        ok_s, msg_s = commands._set_stage("1-7")
+        check("YAML _set_stage ok", ok_s, True)
+        check("YAML _set_stage read back", masconfig.read(ycfg / "ScriptConfig.json")["s1"]["SubConfigsInfo"]["UserData"]["u1"]["Info"]["Stage"], "1-7")
+        ok_m, msg_m = commands._set_medicine(5)
+        check("YAML _set_medicine ok", ok_m, True)
+        check("YAML _set_medicine read back", masconfig.read(ycfg / "ScriptConfig.json")["s1"]["SubConfigsInfo"]["UserData"]["u1"]["Info"]["MedicineNumb"], 5)
+        ok_w, msg_w = commands._set_wait_time(120)
+        check("YAML _set_wait_time ok", ok_w, True)
+        check("YAML _set_wait_time read back", masconfig.read(ycfg / "ScriptConfig.json")["s2"]["Game"]["WaitTime"], 120)
+        ok_q, msg_q = queues.apply(yroot, "早班", enabled=False)
+        check("YAML queues.apply ok", ok_q, True)
+        check("YAML queues.apply read back", masconfig.read(ycfg / "QueueConfig.json")["q1"]["Info"]["TimeEnabled"], False)
+        check("no stray JSON written next to YAML", (ycfg / "QueueConfig.json").exists() or (ycfg / "ScriptConfig.json").exists(), False)
+    finally:
+        commands._backend_scripts = orig_backend
+        commands._stage_refusal = orig_refusal
+        queues._enabled_via_backend = orig_q_backend
+
+
+def _part_mascontract():
+    """The relay notices at once when an AUTO-MAS update moves a setting it reads.
+
+10-14: AUTO-MAS v5.7.0-beta.3, installed by the relay's own pre-update at 08:46 Beijing, moved
+the MAA user's stage items from Info to a new Stage group. The relay read Info, got nothing,
+treated it as "no stage set" (stage gate placeholder at 08:55:27), and nothing reached the
+group for 13 hours: the boot self-check had run at 08:45, on the old version.
+
+* ark_relay/core/mascontract.py lists every AUTO-MAS setting the relay reads, and check()
+  finds each one in the config files (through masuser for the moved keys);
+* the boot self-check has it as one item, and a miss reaches the group with the self-check;
+* right after the pre-update installs a new AUTO-MAS (and only then) the check runs again and
+  a miss goes to the group under its own title.
+Each part fails on the code before it (no list, no item, no hook).
+
+    Formerly test_mascontract.py.
+    """
+    import inspect
+    import json
+    import os
+    import types
+
+    import _stagegate_fx as fx
+
+    os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import texts
+    from ark_relay.features.phone import commands
+    from ark_relay.features.preupdate import preupdate_automas as P
+    from ark_relay.features.selfcheck import selfcheck
+    try:
+        from ark_relay.core import mascontract
+    except ImportError:          # the code before this change
+        mascontract = None
+
+
+    def edit_user(root: Path, fn) -> Path:
+        """Apply fn to the MAA user of the fixture's ScriptConfig.json."""
+        f = root / "config" / "ScriptConfig.json"
+        data = json.loads(f.read_text(encoding="utf-8"))
+        fn(data["S-MAA"]["SubConfigsInfo"]["UserData"]["U1"])
+        f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return root
+
+
+    def drop_stage(user):
+        """A later AUTO-MAS that keeps the main stage neither in Stage nor in Info."""
+        user["Stage"].pop("Stage")
+        user["Info"].pop("Stage", None)
+
+
+    print("[the list of AUTO-MAS settings the relay reads]")
+    check("ark_relay/core/mascontract.py exists", mascontract is not None)
+    if mascontract is not None:
+        items = mascontract.CONTRACT
+        check("it lists the moved stage items at their new group",
+              {("Stage", k) for k in ("Stage", "StageMode", "MedicineNumb")} <= {(i.group, i.key) for i in items})
+        check("each item names its reader and a feature with plain words",
+              [i.path for i in items if not i.source or i.use not in texts.MAS_SETTING_WHAT
+               or i.use not in texts.MAS_SETTING_BREAKS], [])
+        check("every script kind, the queue and the plan table are covered",
+              {i.kind for i in items}, {"MAA", "MaaEnd", "OK-WW", "queue", "plan"})
+
+    print("\n[the check on AUTO-MAS v5.7.0-beta.3's layout]")
+    if mascontract is not None:
+        beta3 = fx.automas_dir(tmpdir(), beta3=True)
+        res = mascontract.check(beta3)
+        check("beta.3 layout: nothing missing", [i.path for i in res.missing], [])
+        check("beta.3 layout: the items were judged, not skipped", res.judged >= 30)
+        check("beta.3 layout: no file unreadable", res.unreadable, [])
+
+        def to_info(user):
+            """The same user as an AUTO-MAS before beta.3 keeps it: the moved items in Info."""
+            for k, g in mascontract.masuser.MOVED.items():
+                if k in (user.get(g) or {}):
+                    user["Info"][k] = user[g].pop(k)
+        old = edit_user(fx.automas_dir(tmpdir(), beta3=True), to_info)
+        check("the same items kept in Info (before beta.3) also pass", [i.path for i in mascontract.check(old).missing], [])
+
+        gone = edit_user(fx.automas_dir(tmpdir(), beta3=True), drop_stage)
+        res = mascontract.check(gone)
+        check("a stage kept in neither Stage nor Info fails and names it",
+              [(i.kind, i.path) for i in res.missing], [("MAA", "Stage.Stage")])
+        lines = texts.mas_contract_lines(res.missing)
+        check("the plain line says which setting and which column",
+              lines, ["中继读不到方舟的关卡设置（关卡一栏里找不到），开跑前查关卡、明日安排、手机上显示和修改关卡都不对了"])
+        check("that line is plain words", [p for x in lines for p in texts.plain(x)], [])
+
+    print("\n[settings new in AUTO-MAS v5.7.0-beta.4: MaaEnd's launcher start (10-16)]")
+    # 10-16: beta.4 (PR #1394) brought Game.LaunchMode / Game.LauncherPath, and its pre-run check
+    # found no launcher from the relay's .cmd in Game.Path; the 早班 MaaEnd never ran. The relay
+    # now reads and writes all three (efstart_setup). The two new ones are judged only on beta.4
+    # or later: the recorded days of the day simulator run v5.6.2 to beta.3.
+    if mascontract is not None:
+        launch = {(i.kind, i.path) for i in mascontract.CONTRACT if i.use == "maaend_launch"}
+        check("MaaEnd Game.Path, Game.LaunchMode, Game.LauncherPath, Game.ControllerType are listed",
+              launch, {("MaaEnd", "Game.Path"), ("MaaEnd", "Game.LaunchMode"), ("MaaEnd", "Game.LauncherPath"),
+                       ("MaaEnd", "Game.ControllerType")})
+        check("version order: beta.4 after beta.3, the release after its betas",
+              (mascontract.version_key("v5.7.0-beta.3") < mascontract.version_key("v5.7.0-beta.4")
+               < mascontract.version_key("v5.7.0") < mascontract.version_key("v5.7.1-beta.1"),
+               mascontract.version_key("nonsense")), (True, None))
+        b3 = fx.automas_dir(tmpdir(), beta3=True)
+        new_keys = [("MaaEnd", "Game.LaunchMode"), ("MaaEnd", "Game.LauncherPath")]
+        check("beta.4 installed, the two new keys absent: both named",
+              [(i.kind, i.path) for i in mascontract.check(b3, "v5.7.0-beta.4").missing], new_keys)
+        check("beta.3 installed: they are not judged", mascontract.check(b3, "v5.7.0-beta.3").missing, [])
+        check("version unknown: not judged either", mascontract.check(b3, "").missing, [])
+
+        def add_launch(root):
+            f = root / "config" / "ScriptConfig.json"
+            data = json.loads(f.read_text(encoding="utf-8"))
+            data["S-END"]["Game"].update(LaunchMode="Launcher", LauncherPath="")
+            f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            return root
+        check("beta.4 with them in place: nothing missing",
+              mascontract.check(add_launch(fx.automas_dir(tmpdir(), beta3=True)), "v5.7.0-beta.4").missing, [])
+
+        def drop_path(root):
+            f = root / "config" / "ScriptConfig.json"
+            data = json.loads(f.read_text(encoding="utf-8"))
+            data["S-END"]["Game"].pop("Path")
+            f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            return root
+        check("Game.Path is judged on every version",
+              [(i.kind, i.path) for i in mascontract.check(drop_path(fx.automas_dir(tmpdir(), beta3=True))).missing],
+              [("MaaEnd", "Game.Path")])
+
+    print("\n[「MaaEnd 启动」's window settings, written by the relay since 10-17]")
+    # efstart_setup sets Game.SetResolution / CloseOnFinish / RestoreDisplayType / RestoreResolution
+    # and reads Game.ControllerType (maaend_launch.check). An AUTO-MAS that drops one must be
+    # reported: listed, judged on every version (MaaEndConfig has them since v5.7.0-beta.2 at
+    # least), and a missing one named in one plain line.
+    if mascontract is not None:
+        WINDOW_KEYS = ("SetResolution", "CloseOnFinish", "RestoreDisplayType", "RestoreResolution")
+        window = [(i.kind, i.path, i.since) for i in mascontract.CONTRACT if i.use == "maaend_window"]
+        check("the four window settings are listed, judged on every version",
+              window, [("MaaEnd", f"Game.{k}", "") for k in WINDOW_KEYS])
+
+        def drop_window(root):
+            f = root / "config" / "ScriptConfig.json"
+            data = json.loads(f.read_text(encoding="utf-8"))
+            for k in (*WINDOW_KEYS, "ControllerType"):
+                data["S-END"]["Game"].pop(k)
+            f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            return root
+        gone = mascontract.check(drop_window(fx.automas_dir(tmpdir(), beta3=True)))
+        check("an AUTO-MAS that drops them: all five named",
+              sorted((i.kind, i.path) for i in gone.missing),
+              sorted([("MaaEnd", f"Game.{k}") for k in (*WINDOW_KEYS, "ControllerType")]))
+        lines = texts.mas_contract_lines(gone.missing)
+        check("plain lines for them, one per feature", (len(lines), [p for x in lines for p in texts.plain(x)]), (2, []))
+        check("the fixture as on the machine: nothing missing",
+              mascontract.check(fx.automas_dir(tmpdir(), beta3=True)).missing, [])
+
+    print("\n[the boot self-check has it as one item, routed like the others]")
+    SELF_GOOD = dict(procs=lambda: [(1, r"D:\ark\automas\repo\main.py")], mas_up=lambda: True,
+                     schedule=lambda: [{"name": "早班", "times": ["09:00"]}], channels=lambda: ["群"],
+                     run_ok=lambda cmd: (True, ""), has_module=lambda m: True)
+
+
+    class _Notifier:
+        channels = ["企业微信机器人"]
+
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body, *, alert=False, daily=False):
+            self.sent.append((title, body, alert))
+            return []
+
+
+    def self_items(root):
+        cfg = types.SimpleNamespace(automas_dir=str(root), state_dir=Path(root) / "state", history_dir=str(root),
+                                    phone_topic="ark-x", phone_pin="1234")
+        # The update settings are read from the backend; it is not asked in this test.
+        orig = selfcheck._handed_updates_gaps
+        orig_mas = commands._mas
+        commands._mas = lambda *a, **k: {"data": {}}
+        selfcheck._handed_updates_gaps = lambda scripts: []
+        try:
+            return selfcheck.run(cfg, **SELF_GOOD)
+        finally:
+            selfcheck._handed_updates_gaps, commands._mas = orig, orig_mas
+
+
+    name = getattr(texts, "MAS_CONTRACT_CHECK", "中继要读的调度程序设置都在原处")
+    os.environ["ARK_LOG_FILE"] = str(tmpdir() / "log" / "relay.log")
+    good = [c for c in self_items(fx.automas_dir(tmpdir(), beta3=True)) if c.name == name]
+    check("the self-check has the item", len(good), 1)
+    check("it holds on the beta.3 layout", [c.ok for c in good], [True])
+    bad = [c for c in self_items(edit_user(fx.automas_dir(tmpdir(), beta3=True), drop_stage)) if c.name == name]
+    check("it fails when the stage cannot be found", [c.ok for c in bad], [False])
+    check("its detail names the setting", bool(bad) and "方舟的关卡设置" in bad[0].detail)
+    empty = [c for c in self_items(tmpdir()) if c.name == name]
+    check("no settings folder: not judged (the queue line says it), not a second failure",
+          [c.ok for c in empty], [None])
+
+    print("\n[right after the pre-update installed a new AUTO-MAS, and only then]")
+    has_hook = "after_update" in inspect.signature(P.run_automas).parameters
+    check("run_automas takes an after_update hook", has_hook)
+
+
+    def update_run(*, need: bool, confirmed: bool) -> list:
+        """run_automas against a fake backend; the versions after_update was called with."""
+        seen: list = []
+        orig = (P._mas_post, P._automas_version, P._live_version, P._wait_for_package, P._wait_for_version)
+
+        def post(path, body=None):
+            if path == "/api/update/check":
+                return {"if_need_update": need, "latest_version": "v5.7.0-beta.3"}
+            return {}
+        P._mas_post, P._automas_version, P._live_version = post, (lambda _r: "v5.7.0-beta.2"), (lambda: "v5.7.0-beta.2")
+        P._wait_for_package = lambda _root, _deadline, *_a: Path("UpdatePack_v5.7.0-beta.3.zip")
+        P._wait_for_version = (lambda want, _d, *_a: want) if confirmed else (lambda want, _d, *_a: "v5.7.0-beta.2")
+        try:
+            kw = {"after_update": seen.append} if has_hook else {}
+            P.run_automas(Path("."), budget_s=1, problems=[], **kw)
+        finally:
+            (P._mas_post, P._automas_version, P._live_version, P._wait_for_package, P._wait_for_version) = orig
+        return seen
+
+
+    check("a new version came up: the check runs once, with it", update_run(need=True, confirmed=True), ["v5.7.0-beta.3"])
+    check("no update: no check", update_run(need=False, confirmed=False), [])
+    check("install not confirmed (version unchanged): no check", update_run(need=True, confirmed=False), [])
+    boot = (Path(__file__).resolve().parents[1] / "boot_stages.py").read_text(encoding="utf-8")
+    check("the boot's pre-update passes the hook", "after_update=" in boot and "report_contract" in boot)
+
+    print("\n[the post-update check pushes a miss to the group, under its own title]")
+    report = getattr(selfcheck, "report_contract", None)
+    check("selfcheck.report_contract exists", report is not None)
+    if report is not None:
+        n = _Notifier()
+        cfg = types.SimpleNamespace(automas_dir=str(edit_user(fx.automas_dir(tmpdir(), beta3=True), drop_stage)))
+        c = report(cfg, n, "v5.7.0-beta.3")
+        check("a miss: one alarm", [(t, a) for t, _, a in n.sent], [(texts.AUTOMAS_CONTRACT, True)])
+        body = n.sent[0][1] if n.sent else ""
+        check("it says the version and what stops working",
+              "v5.7.0-beta.3" in body and "方舟的关卡设置" in body and "开跑前查关卡" in body)
+        check("the alarm is plain words", texts.plain(texts.AUTOMAS_CONTRACT + body), [])
+        check("returns the failed check", c.ok, False)
+        n = _Notifier()
+        report(types.SimpleNamespace(automas_dir=str(fx.automas_dir(tmpdir(), beta3=True))), n, "v5.7.0-beta.3")
+        check("nothing missing: nothing pushed", n.sent, [])
+        n = _Notifier()
+        report(types.SimpleNamespace(automas_dir=str(fx.automas_dir(tmpdir(), beta3=True))), n, "v5.7.0-beta.4")
+        check("just updated to beta.4 and its launcher settings are not there: the alarm names them",
+              bool(n.sent) and "终末地的游戏位置和开游戏方式" in n.sent[0][1])
+        check("that alarm is plain words", texts.plain(n.sent[0][1] if n.sent else ""), [])
+
+        class _Log:
+            def __init__(self):
+                self.warned = []
+
+            def warning(self, msg, *args, **kw):
+                self.warned.append(msg % args)
+
+            def info(self, msg, *args, **kw):
+                pass
+        lg = _Log()
+        c = report(types.SimpleNamespace(automas_dir=str(tmpdir())), _Notifier(), "v5.7.0-beta.3", lg)
+        check("files unreadable after an update: not judged, and said as a WARNING (errwatch pushes it)",
+              (c.ok, len(lg.warned)), (None, 1))
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_masuser_beta3():
+    """The relay reads and writes the MAA user's settings where AUTO-MAS keeps them.
+
+AUTO-MAS v5.7.0-beta.3 (its own updater, game machine 10-14 08:46 Beijing) moved the stage
+items into a Stage group and Annihilation into Task, and stopped keeping them in Info. From
+then on the relay saw nothing: the stage gate logged its "current stage" placeholder at
+08:55:27 instead of YW-4, and the snapshot, the plan, the annihilation switch and the phone's
+stage / sanity-potion writes all used Info.* (ark_relay/core/masuser.py has the details).
+Each check below fails on the code before the fix and holds for both layouts.
+
+    Formerly test_masuser_beta3.py.
+    """
+    import json
+    import os
+    from datetime import datetime
+
+    import _stagegate_fx as fx
+
+    os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import masuser, plan
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features.schedule import stagegate as sg
+    from ark_relay.features.phone import snapshot, commands
+
+
+    OLD = {"Info": {"Stage": "YW-4", "MedicineNumb": 3, "Annihilation": "Close"}, "Task": {}}
+    NEW = {"Info": {"Name": "x"}, "Stage": {"Stage": "YW-4", "MedicineNumb": 3},
+           "Task": {"Annihilation": "Close"}}
+
+    print("[masuser]")
+    for name, u in (("old (Info)", OLD), ("beta.3 (Stage / Task)", NEW)):
+        check(f"{name}: Stage", masuser.get(u, "Stage"), "YW-4")
+        check(f"{name}: MedicineNumb", masuser.get(u, "MedicineNumb"), 3)
+        check(f"{name}: Annihilation", masuser.get(u, "Annihilation"), "Close")
+        check(f"{name}: info_view has the stage", masuser.info_view(u).get("Stage"), "YW-4")
+    check("old: Info.MedicineNumb stays", masuser.resolve(OLD, "Info.MedicineNumb"), "Info.MedicineNumb")
+    check("beta.3: Info.MedicineNumb -> Stage.MedicineNumb", masuser.resolve(NEW, "Info.MedicineNumb"), "Stage.MedicineNumb")
+    check("beta.3: Info.Annihilation -> Task.Annihilation", masuser.resolve(NEW, "Info.Annihilation"), "Task.Annihilation")
+    check("an item that did not move keeps its path", masuser.resolve(NEW, "Task.IfFight"), "Task.IfFight")
+
+    SAT9 = datetime(2026, 10, 10, 9, 0, tzinfo=SERVER_TZ)
+    MORNING = fx.maa_dir(tmpdir())
+    print("[stage gate on a beta.3 config]")
+    check("beta.3: the gate reads Stage.Stage (YW-4 is a definite no on the 10-10 files)",
+          sg.run_verdict(fx.automas_dir(tmpdir(), beta3=True), MORNING, SAT9)[:2], (sg.NO, "YW-4"))
+    check("old layout unchanged", sg.run_verdict(fx.automas_dir(tmpdir()), MORNING, SAT9)[:2], (sg.NO, "YW-4"))
+
+    print("[plan and snapshot on a beta.3 config]")
+    d = fx.automas_dir(tmpdir(), beta3=True)
+    maa = next(s for s in plan._scripts(d / "config").values() if s.get("kind") == "MAA")
+    check("plan: stage mode", maa.get("stage_mode"), "Fixed")
+    check("plan: stage", (maa.get("stage_info") or {}).get("Stage"), "YW-4")
+    check("plan: annihilation from Task", maa.get("annihilation"), "Annihilation")
+    snap = snapshot.maa_from_files(d)
+    check("snapshot: 关卡", snap.get("关卡"), "YW-4")
+    check("snapshot: 理智药", snap.get("理智药"), 0)
+    check("snapshot: 剿灭", snap.get("剿灭"), "Annihilation")
+
+    print("[phone writes go where the user keeps the item]")
+    sent = []
+    real = commands._find_user, commands._mas
+    try:
+        user = json.loads(json.dumps(NEW))
+        commands._find_user = lambda script: ("S", "U", user)
+
+        def fake_mas(route, payload):
+            if route.endswith("/update"):
+                sent.append(payload["data"])
+                for g, items in payload["data"].items():
+                    user.setdefault(g, {}).update(items)
+                return {"code": 200}
+            return {"data": {"U": user}}
+        commands._mas = fake_mas
+        failed, before, now = commands._user_item_via_api("MAA", "Info.MedicineNumb", 5)
+        check("beta.3: the write goes to Stage.MedicineNumb and reads back 5", (failed, before, now, sent), ("", 3, 5, [{"Stage": {"MedicineNumb": 5}}]))
+    finally:
+        commands._find_user, commands._mas = real
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_mas_address, _part_mas_api_silent, _part_mas_labels, _part_mas_user_pick]))
+    sys.exit(run_parts([_part_mas_address, _part_mas_api_silent, _part_mas_labels, _part_mas_user_pick, _part_masconfig_yaml, _part_mascontract, _part_masuser_beta3]))

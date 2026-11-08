@@ -1,6 +1,6 @@
-"""Config: no bot, a config-check skip, one warning, and who writes it.
+"""Config: no bot, a config-check skip, one warning, and who writes it; the .env hash.
 
-One part per former file, each run on its own (tests/_parts.py): test_config_no_bot.py, test_config_skip_1016.py, test_config_warn_once.py, test_config_writers.py.
+One part per former file, each run on its own (tests/_parts.py): test_config.py, test_dotenv_hash.py.
 """
 from __future__ import annotations
 
@@ -579,5 +579,51 @@ burnt sanity potions. Nothing here had a test.
     check("目录是 None：没东西可查", gameupdate.spmed_shape(None), "")
 
 
+def _part_dotenv_hash():
+    """The relay's .env loader must not cut a value at a '#' inside quotes or inside the value.
+
+Audit s2 F7 (2026-10-13): _load_dotenv did value.split("#")[0] on every line, so
+KEY="abc#def" loaded as 'abc'. Comments still end an unquoted value at ' #'.
+
+    Formerly test_dotenv_hash.py.
+    """
+    import os
+
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay import __main__ as relay_main
+
+
+    env = tmpdir() / ".env"
+    env.write_text("\n".join([
+        "# a comment line",
+        'ARKT_QUOTED="https://example.invalid/hook#frag"   # trailing comment',
+        "ARKT_SINGLE='p#ss word'",
+        "ARKT_BARE=abc#def",
+        "ARKT_COMMENTED=plain # a note",
+        "ARKT_PLAIN=value",
+        "ARKT_EMPTY=   # only a note",
+        'ARKT_UNCLOSED="abc',
+    ]) + "\n", encoding="utf-8")
+    KEYS = ("ARKT_QUOTED", "ARKT_SINGLE", "ARKT_BARE", "ARKT_COMMENTED", "ARKT_PLAIN",
+            "ARKT_EMPTY", "ARKT_UNCLOSED")
+    for k in KEYS:
+        os.environ.pop(k, None)
+    relay_main._load_dotenv(env)
+    # Test-only names, read through one dict so check-docs does not list them as relay settings.
+    got = {k: os.environ.get(k) for k in KEYS}
+
+    print("[a '#' inside the value survives; a ' #' comment is still dropped]")
+    check("double-quoted value keeps its '#'", got["ARKT_QUOTED"], "https://example.invalid/hook#frag")
+    check("single-quoted value keeps '#' and space", got["ARKT_SINGLE"], "p#ss word")
+    check("unquoted '#' with no space before it is part of the value", got["ARKT_BARE"], "abc#def")
+    check("unquoted ' #' starts a comment", got["ARKT_COMMENTED"], "plain")
+    check("plain value", got["ARKT_PLAIN"], "value")
+    check("a value that is only a ' #' comment loads as empty (not set)", got["ARKT_EMPTY"], None)
+    check("an unclosed quote is stripped, as before", got["ARKT_UNCLOSED"], "abc")
+
+    print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_config_no_bot, _part_config_skip, _part_config_warn_once, _part_config_writers]))
+    sys.exit(run_parts([_part_config_no_bot, _part_config_skip, _part_config_warn_once, _part_config_writers, _part_dotenv_hash]))

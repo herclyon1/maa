@@ -16,7 +16,7 @@ def _maintenance_today(eng, game: str) -> bool:
 
 
 # Script + user + which steps failed. No push is held back on this key; only
-# tests/test_alert_dedup.py reads it (through Engine._alert_key).
+# tests/test_alarm.py reads it (through Engine._alert_key).
 # 来龙去脉见 docs/CODE-HISTORY.md「handle.py:(模块级)」
 def _alert_key(eng, rec) -> str:
     return f"{rec.script}|{rec.user}|{','.join(sorted(rec.failed_tasks or ['?']))}"

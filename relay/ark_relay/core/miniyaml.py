@@ -12,7 +12,7 @@ this reads the subset PyYAML's block-style dump produces there:
 
 Anything else - a non-empty flow collection, a block scalar (| or >), an anchor or a tag - is
 refused with ValueError rather than guessed at. Keys are always strings, as they were in the
-JSON. Checked against PyYAML on the machine's own files (relay/tests/test_masconfig_yaml.py
+JSON. Checked against PyYAML on the machine's own files (relay/tests/test_mas.py
 has synthetic copies of every construct; the repo is public, so not the files themselves).
 """
 from __future__ import annotations

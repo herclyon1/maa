@@ -88,7 +88,7 @@ tells on itself instead.
         good = dict(procs=lambda: [(1, r"D:\ark\automas\repo\main.py")], mas_up=lambda: True,
                     schedule=lambda: [{"name": "早班", "times": ["09:00"]}], channels=lambda: ["群"],
                     run_ok=lambda cmd: (True, ""), has_module=lambda m: True,
-                    # The AUTO-MAS settings check reads config files; test_mascontract.py covers it.
+                    # The AUTO-MAS settings check reads config files; test_mas.py covers it.
                     contract=lambda automas_dir: mascontract.Result([], [], 1),
                     # 11-06 12:07 the machine answered this after VBS was turned off (VT-x again).
                     virt=lambda: "VBS=0 HV=False")
@@ -119,7 +119,7 @@ tells on itself instead.
         okww = [(7, r"D:\ark\okww\data\apps\ok-ww\python\python.exe D:\ark\okww\data\apps\ok-ww\working\main.py -t 2 -e")]
         cs = selfcheck.run(cfg, **dict(good, procs=lambda: okww))
         check("OK-WW's main.py is not taken for the backend", [c.name for c in cs if c.ok is False], ["调度程序的后台程序在跑"])
-        machine = [(5088, r"D:\ark\automas\runtime\environment\venv\Scripts\python.exe main.py")]  # test_procs_wmi.py
+        machine = [(5088, r"D:\ark\automas\runtime\environment\venv\Scripts\python.exe main.py")]  # test_procs.py
         cs = selfcheck.run(cfg, **dict(good, procs=lambda: machine))
         check("the machine's backend line (10-10) still counts", [c.name for c in cs if c.ok is False], [])
         cs = selfcheck.run(cfg, **dict(good, procs=lambda: [(9, "d:/ARK/AutoMAS/repo/MAIN.PY")]))

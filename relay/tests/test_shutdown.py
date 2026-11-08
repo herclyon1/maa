@@ -1,6 +1,6 @@
-"""The shutdown decision: after a restart, runs by hand and test runs, holds past the shift, the notice, an open test window, rounds, a morning gap on the evening, a farm, the whitelist.
+"""The shutdown decision: after a restart, runs by hand and test runs, holds past the shift, the notice, an open test window, rounds, a morning gap on the evening, a farm, the whitelist; the exit window, the power-off return code, a power-off that went through, the skip wording.
 
-One part per former file, each run on its own (tests/_parts.py): test_shutdown.py, test_shutdown_after_restart.py, test_shutdown_hand_and_test_runs.py, test_shutdown_held_past_shift.py, test_shutdown_notice.py, test_shutdown_open_test_window.py, test_shutdown_round.py, test_shutdown_stale_shift.py, test_shutdown_waits_for_farm.py, test_shutdown_whitelist.py.
+One part per former file, each run on its own (tests/_parts.py): test_shutdown.py, test_exit_shutdown_window.py, test_power_off_returncode.py, test_poweroff_ok.py, test_skip_shutdown_wording.py.
 """
 # Each part imports the relay itself, after its own environment is set, as the file it was did at
 # its top.
@@ -229,7 +229,7 @@ during the queue.
 
     print("\n[one-shot mark] spent at a shift end; re-checks stay on; re-arming carries to the next run")
     # The 「下次跑完不关机」 mark is one-shot, not a state (the user, 2026-10-11 15:25, quoted
-    # in test_skip_shutdown_wording.py). relay.log 2026-10-11: spent at 09:59:26, then the
+    # in the _part_skip_shutdown_wording part). relay.log 2026-10-11: spent at 09:59:26, then the
     # re-checks at 10:04:55 / 12:26:28 / 12:29:16 all stayed on.
     dbg_clear(); skipped_clear(); store.pop("modes", "skip_next_shutdown")
     ledger(run)
@@ -1918,5 +1918,368 @@ The evening shift is the morning one moved to 21:30.
     e.notifier, e._scripts_running, e._power_off = saved_notifier, (lambda: False), saved_power_off
 
 
+def _part_exit_shutdown_window():
+    """An AUTO-MAS exit looks back an hour for a Windows shutdown request, not 120 s (audit s15 #5).
+
+_exited asked the System log for a 1074 of the last 120 s. The 1074 is written when the
+command is given, the countdown before the shutdown: `shutdown /s /t 300` by hand
+puts it ~300 s before AUTO-MAS is closed, outside that window, so the exit read as an
+unexpected one and a revival ran into the closing session. _shutdown_before
+(the WMI drop) already looks back SHUTDOWN_BEFORE_WINDOW_SECONDS (an hour).
+
+The 1074 is the real one of 2026-10-10 04:27:24 (machine clock; `shutdown /s /t 60` by
+hand, tests/fixtures/system-1010-0427-manual-shutdown.xml), moved to 300 s ago. With the
+hour, a 1074 from before the current boot must not count: a 6005 (the Event Log service
+started, docs/OPERATIONS.md "6005 boot") newer than it ends it.
+
+    Formerly test_exit_shutdown_window.py.
+    """
+    import logging
+    import re
+    import types
+    from datetime import datetime, timedelta, timezone
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+
+    for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
+                  "win32con", "win32file", "servicemanager", "win32process",
+                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
+                  "win32evtlog", "win32gui"):
+        sys.modules.setdefault(_name, _Stub(_name))
+
+    from ark_relay.features.alarm import errwatch
+    from ark_relay.features.host import automas_keeper, automas_procs, shutdown_signs
+    from ark_relay.features.shutdown import shutdown
+
+
+    REAL_1074 = (Path(__file__).resolve().parent / "fixtures" /
+                 "system-1010-0427-manual-shutdown.xml").read_text(encoding="utf-8").strip()
+    NS = "http://schemas.microsoft.com/win/2004/08/events/event"
+
+
+    def stamp(utc: datetime) -> str:
+        return utc.strftime("%Y-%m-%dT%H:%M:%S.0000000Z")
+
+
+    def at(xml: str, utc: datetime) -> str:
+        return re.sub(r"SystemTime='[^']*'", f"SystemTime='{stamp(utc)}'", xml)
+
+
+    def boot_event(utc: datetime) -> str:
+        """A 6005 as EvtRender gives it (Provider EventLog)."""
+        return (f"<Event xmlns='{NS}'><System><Provider Name='EventLog'/><EventID Qualifiers='32768'>6005</EventID>"
+                f"<TimeCreated SystemTime='{stamp(utc)}'/><Channel>System</Channel></System>"
+                "<EventData><Binary/></EventData></Event>")
+
+
+    log_events: list = []     # (utc, event id, xml) - the System log, any order
+
+
+    def fake_reader(window_s, ids=(1074, 1075)):
+        """shutdown.shutdown_event_xml over log_events: the query's id and time filter, newest first."""
+        now = datetime.now(tz=timezone.utc)
+        hits = [(t, x) for t, eid, x in log_events
+                if eid in ids and (now - t).total_seconds() <= window_s]
+        return [x for t, x in sorted(hits, key=lambda h: h[0], reverse=True)]
+
+
+    shutdown.shutdown_event_xml = fake_reader
+    shutdown_signs.GOING_DOWN_SETTLE_SECONDS = 0.0
+    errwatch.relay_shutdown_issued = lambda: False
+    automas_procs._exit_code = lambda h: 0
+    automas_procs._tasklist = lambda: b"explorer.exe"
+    automas_keeper.win32api.CloseHandle = lambda h: None
+
+
+    class _Keep(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.msgs = []
+
+        def emit(self, record):
+            self.msgs.append(record.getMessage())
+
+
+    def exit_now():
+        keep = _Keep()
+        log = logging.getLogger("ark.test_shutdown")
+        log.handlers[:] = [keep]
+        log.setLevel(logging.INFO)
+        log.propagate = False
+        k = automas_keeper._AutomasKeeper.__new__(automas_keeper._AutomasKeeper)
+        k.log, k.handle, k.gone = log, object(), None
+        k._exited()
+        return k, keep.msgs
+
+
+    now = datetime.now(tz=timezone.utc)
+
+    print("[shutdown /s /t 300：1074 在 AUTO-MAS 退出前 300 秒写下 → 按 Windows 关机处理，不重新打开]")
+    log_events[:] = [(now - timedelta(seconds=300), 1074, at(REAL_1074, now - timedelta(seconds=300)))]
+    k, msgs = exit_now()
+    check("held as a Windows shutdown", bool(k.gone and k.gone.get("shutdown")), True)
+    check("its initiator is named", any("shutdown.exe" in m and "发起了 Windows 关机" in m for m in msgs), True)
+
+    print("[1074 是这次开机之前的（之后有 6005）→ 不算关机]")
+    log_events[:] = [(now - timedelta(seconds=1500), 1074, at(REAL_1074, now - timedelta(seconds=1500))),
+                     (now - timedelta(seconds=1400), 6005, boot_event(now - timedelta(seconds=1400)))]
+    k, msgs = exit_now()
+    check("not a shutdown", bool(k.gone and k.gone.get("shutdown")), False)
+    check("an unexpected exit", any("意外退出了" in m for m in msgs), True)
+
+    print("[更早于一小时的 1074 → 不算]")
+    log_events[:] = [(now - timedelta(seconds=4000), 1074, at(REAL_1074, now - timedelta(seconds=4000)))]
+    k, msgs = exit_now()
+    check("not a shutdown", bool(k.gone and k.gone.get("shutdown")), False)
+
+
+def _part_power_off_returncode():
+    """A shutdown command that failed must not count as a power-off (review of 2026-10-07, item 1).
+
+`shutdown /s` was run with check=False and its exit code never read: when Windows
+refuses (1190, a shutdown is already scheduled; or no privilege) _power_off still
+returned True, shutdown._maybe_shutdown set _shutdown_issued and marked the
+machine as going down, and every teardown after that was waved through as "the
+relay's own power-off" while the machine stayed on.
+
+Pinned: a non-zero exit code returns False; one ERROR line carries the exit
+code and what shutdown printed (errwatch pushes a new kind of ERROR to the
+group - the existing alarm path); and 「本轮已处理完毕，60 秒后关机」 is written only
+after the command succeeded, because machine checks #37/#38 read that line as
+proof the relay powered the machine off.
+
+    Formerly test_power_off_returncode.py.
+    """
+    import logging
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import engine
+    from ark_relay.features.selfcheck.machinechecks.system import POWER_OFF
+
+
+    class _Grab(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.DEBUG)
+            self.rows = []
+
+        def emit(self, record):
+            self.rows.append((record.levelno, record.getMessage()))
+
+
+    class _Done:
+        def __init__(self, code, err=b""):
+            self.returncode, self.stdout, self.stderr = code, b"", err
+
+
+    grab = _Grab()
+    lg = engine.log
+    lg.addHandler(grab)
+    lg.setLevel(logging.DEBUG)
+    orig = engine.subprocess.run
+
+    print("[shutdown 退出码 1190（已经排了一次关机）：没关成]")
+    # What Windows prints is in the console codepage (GBK on the machine).
+    engine.subprocess.run = lambda cmd, **kw: _Done(1190, "系统关机已经安排好了。(1190)".encode("gbk"))
+    grab.rows.clear()
+    check("返回 False", engine.Engine._power_off(None), False)
+    errs = [m for lv, m in grab.rows if lv >= logging.ERROR]
+    check("记了一条 ERROR", len(errs), 1)
+    check("ERROR 里有退出码", bool(errs) and "1190" in errs[0], True)
+    check("ERROR 里有 Windows 说的原话", bool(errs) and "系统关机已经安排好了" in errs[0], True)
+    check("没写「60 秒后关机」", any(m.startswith(POWER_OFF) for _, m in grab.rows), False)
+
+    print("[shutdown 退出码 0：关了]")
+    seen = []
+    engine.subprocess.run = lambda cmd, **kw: (seen.append(cmd), _Done(0))[1]
+    grab.rows.clear()
+    check("返回 True", engine.Engine._power_off(None), True)
+    # Planned, reason Application: Maintenance - without /d Windows logs it as unplanned.
+    check("argv: /s /t 60 /d p:4:1", seen and seen[0][:6], ["shutdown", "/s", "/t", "60", "/d", "p:4:1"])
+    check("写了「60 秒后关机」", any(m.startswith(POWER_OFF) for _, m in grab.rows), True)
+    check("没有 ERROR", [m for lv, m in grab.rows if lv >= logging.ERROR], [])
+
+    print("[shutdown 根本跑不起来：没关成]")
+    def _boom(cmd, **kw):
+        raise OSError("shutdown.exe not found")
+    engine.subprocess.run = _boom
+    grab.rows.clear()
+    check("返回 False", engine.Engine._power_off(None), False)
+    check("没写「60 秒后关机」", any(m.startswith(POWER_OFF) for _, m in grab.rows), False)
+
+    engine.subprocess.run = orig
+
+
+def _part_poweroff_ok():
+    """A hand power-off waits for the relay's own work (scripts/mac/lib/poweroff_ok.py).
+
+Ledger #110 (2026-10-22): 调试模式 off at 16:44:18 Beijing, the gathering retry started by
+the shutdown decision at 16:44:20, a hand `shutdown /s /t 60` at 16:44:5x cut it, and the
+evening boot re-ran it with 「中继自己报错了」 in the group. Each case below is one thing a
+person's power-off must not cut, the first two being that afternoon's.
+
+    Formerly test_poweroff_ok.py.
+    """
+    import json
+    from datetime import datetime, timedelta
+
+    ROOT = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(ROOT / "relay"))
+    sys.path.insert(0, str(ROOT / "relay" / "tests"))
+    sys.path.insert(0, str(ROOT / "scripts" / "mac" / "lib"))
+    import poweroff_ok
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features.echofarm import echofarm
+
+
+    NOW = datetime(2026, 10, 22, 16, 44, 50, tzinfo=SERVER_TZ)
+    idle = lambda: False   # noqa: E731
+
+
+    def why(sd, running=idle, lines=()):
+        return poweroff_ok.reasons(NOW, sd, running, list(lines))
+
+
+    def stamp(sd, **rec):
+        f = sd / "collect-retry" / f"{NOW:%Y-%m-%d}.json"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps(rec), encoding="utf-8")
+
+
+    print("[10-22 那天下午的两件事]")
+    sd = tmpdir()
+    stamp(sd, run_id="r1", routes=["AutoCollectRoute2"], started=(NOW - timedelta(seconds=30)).isoformat())
+    got = why(sd)
+    check("采集补跑开了还没写结束 → 先别关", any("采集补跑在跑" in w for w in got), True)
+    check("说了几点开始的", any("16:44" in w for w in got), True)
+    got = why(tmpdir(), lines=["10-22 16:44:18 INFO    ark.service  📱 手机指令 debug_mode：调试模式已关闭"])
+    check("调试模式刚关 → 先等中继判一次关机", any("调试模式" in w for w in got), True)
+
+    print("\n[别的在跑的]")
+    check("调度程序或游戏在跑 → 先别关", bool(why(tmpdir(), running=lambda: True)), True)
+    sd = tmpdir()
+    echofarm._store(sd).set("queues", "echo_farm", {"name": "周本第 1 个", "until": "2026-10-22 16:41"})
+    check("刷声骸在跑 → 先别关", any("刷声骸在跑" in w for w in why(sd)), True)
+
+    print("\n[可以关的]")
+    check("什么都没在跑 → 可以关", why(tmpdir()), [])
+    sd = tmpdir()
+    stamp(sd, run_id="r1", started=(NOW - timedelta(minutes=30)).isoformat(), finished=NOW.isoformat())
+    check("补跑已经跑完 → 不拦", why(sd), [])
+    sd = tmpdir()
+    stamp(sd, run_id="r1", started=(NOW - timedelta(days=1)).isoformat())
+    check("开始太久的印记（中继停过，下次开机它自己补）→ 不拦", why(sd), [])
+
+
+def _part_skip_shutdown_wording():
+    """The 「下次跑完不关机」 mark is named and described one way everywhere a human reads it.
+
+The mark is one-shot: it is spent when the next 早班/晚班 run finishes, that
+shutdown occasion is skipped, the re-checks after it stay on, and the run after
+that shuts down as usual (modes.skip_armed; behaviour pinned in test_shutdown.py
+"[one-shot mark]"). We misread it twice because the words around it were wrong:
+other names for the same mark (「今晚别关机」, 「这次别关机」, ...) and a receipt
+that said 「已取消，跑完照常关机」 as if a spent mark could still be cancelled.
+The user's words are kept below as data (USER_1011).
+
+Checks:
+1. No file a human reads (relay code and comments, web/, docs/, scripts/) uses
+   another name for the mark. Dated audit/handover records are history and keep
+   the words they were written with.
+2. set_skip_shutdown's receipts, as returned by the function, name the mark;
+   pulling it back always says the mark was 「还没用上」 and never a bare 「已取消」.
+
+    Formerly test_skip_shutdown_wording.py.
+    """
+    import re
+
+
+    RELAY = Path(__file__).resolve().parents[1]
+    REPO = RELAY.parent
+    sys.path.insert(0, str(RELAY))
+
+    from ark_relay.features.modes import modes
+
+    USER_1011 = (
+        "10-11 15:25「跑完不关机是一次标记，标记下一次跑完不关机，他不是状态，跑完了哪来的取消？」",
+        "10-11 15:33「你应该真的应该好好的把那个文档那个注释所有的东西都改清楚，你每次都这样。」",
+        "10-11 15:34「这个显而易见就是因为文档里面注释里面写错了」",
+    )
+    NAME = "下次跑完不关机"
+    print("  (the user's words this part holds the relay to:)", *USER_1011, sep="\n    ")
+
+
+    # ---------- 1. one name ----------
+    print("[one name for the mark in every human-read file]")
+    OTHER_NAMES = re.compile(r"今晚别关机|这次别关机|下一次别关机|下次不关机|下一次跑完别关机")
+    WEB = REPO / "web"
+    ROOTS = [RELAY / "ark_relay", WEB, REPO / "docs", REPO / "scripts" / "windows", REPO / "scripts" / "mac"]
+    TOP = [p for p in RELAY.glob("*.py")] + [RELAY / "README.md", REPO / "README.md"]
+    EXTS = {".py", ".js", ".html", ".css", ".md", ".bat", ".ps1", ".sh", ".txt", ".json"}
+    # Dated records: what was seen and said on that day, quoted as it was. Rewriting
+    # them would falsify the record, so they are left out.
+    HISTORY = re.compile(r"^docs/(SURVEY-.*|ERROR-LEDGER-.*|NEXT-BOOT|SILENT-FAILURES-AUDIT|CODE-HISTORY)\.md$")
+
+
+    def files():
+        for root in ROOTS:
+            for p in root.rglob("*"):
+                if p.is_file() and p.suffix in EXTS and "node_modules" not in p.parts:
+                    yield p
+        for p in TOP:
+            if p.is_file():
+                yield p
+
+
+    hits = []
+    scanned = 0
+    for p in files():
+        rel = p.relative_to(REPO).as_posix()
+        if HISTORY.match(rel) or rel == "relay/manifest.json":
+            continue
+        scanned += 1
+        for n, line in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if OTHER_NAMES.search(line):
+                hits.append(f"{rel}:{n}: {line.strip()[:80]}")
+    check("files scanned (sanity: the walk found the tree)", scanned > 300, True)
+    check("no other name for the mark", hits, [])
+    check("web/ is in the walk", WEB.is_dir(), True)
+
+
+    # ---------- 2. receipts ----------
+    print("\n[set_skip_shutdown receipts say which run, and that only an unspent mark is pulled back]")
+    d = tmpdir()
+    ok_on, on = modes.set_skip_shutdown(d, True)
+    ok_back, back = modes.set_skip_shutdown(d, False)          # armed -> pulled back
+    ok_none, none = modes.set_skip_shutdown(d, False)          # nothing armed (never, or spent)
+    check("all accepted", (ok_on, ok_back, ok_none), (True, True, True))
+    for label, text in (("arm", on), ("pull back", back), ("nothing to pull back", none)):
+        check(f"{label}: names the mark", NAME in text, True)
+        check(f"{label}: names the run (早班/晚班)", "早班/晚班" in text, True)
+    check("arm: says it is one-time", "只管一次" in on, True)
+    # App review 10-14: one sentence, not three clauses about the run after the next
+    check("arm: one short sentence", len(on) <= 32 and "再下一趟" not in on, True)
+    _ok_off, off = modes.set_debug(d, off=True)
+    check("debug off: says it is off, asks for nothing", off, "调试模式已关闭")
+    for label, text in (("pull back", back), ("nothing to pull back", none)):
+        check(f"{label}: says 还没用上", "还没用上" in text, True)
+        check(f"{label}: no bare 已取消", "已取消" in text, False)
+        check(f"{label}: next run shuts down as usual", "照常关机" in text, True)
+    check("nothing to pull back: says it may already be spent", "已经用掉" in none, True)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_main, _part_shutdown_after_restart, _part_shutdown_hand_and_test_runs, _part_shutdown_held_past_shift, _part_shutdown_notice, _part_shutdown_open_test_window, _part_shutdown_round, _part_shutdown_stale_shift, _part_shutdown_waits_for_farm, _part_shutdown_whitelist]))
+    sys.exit(run_parts([_part_main, _part_shutdown_after_restart, _part_shutdown_hand_and_test_runs, _part_shutdown_held_past_shift, _part_shutdown_notice, _part_shutdown_open_test_window, _part_shutdown_round, _part_shutdown_stale_shift, _part_shutdown_waits_for_farm, _part_shutdown_whitelist, _part_exit_shutdown_window, _part_power_off_returncode, _part_poweroff_ok, _part_skip_shutdown_wording]))

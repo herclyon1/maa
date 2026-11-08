@@ -165,7 +165,7 @@ def probe(**env):
 
 
 # Unset (the machine): byte-identical to the literals the machine has always used,
-# on every host - the OK-WW override hard-codes the same strings (test_nofarm_visible).
+# on every host - the OK-WW override hard-codes the same strings (test_verify).
 MACHINE = {
     "PROGRAMDATA": r"C:\ProgramData",
     "NO_STAMINA_FARM_FLAG": r"C:\ProgramData\ark-relay\state\no-stamina-farm.flag",

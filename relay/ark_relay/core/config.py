@@ -36,7 +36,7 @@ def programdata_path(*parts: str) -> str:
 
     While PROGRAMDATA is the machine's own folder the result is spelt with
     backslashes on every host: those are the exact strings the OK-WW override
-    hard-codes (test_nofarm_visible), and off Windows a Path would join
+    hard-codes (test_verify), and off Windows a Path would join
     r"C:\\ProgramData" with "/".
     """
     machine = str(PROGRAMDATA) == r"C:\ProgramData"
@@ -74,7 +74,7 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
     """Same as above, for bytes (`.ps1` files need a BOM; `.py` files are code).
 
     The one implementation of "temp file + fsync + replace" in the relay
-    (test_atomic_write.py checks no other copy exists). The temp file is
+    (test_statestore.py checks no other copy exists). The temp file is
     removed when the write fails.
 
     The temp name is unique per call (mkstemp in the same folder, so the replace
@@ -436,7 +436,7 @@ def no_stamina_farm() -> bool:
 
     Always the fixed NO_STAMINA_FARM_FLAG, never ARK_STATE_DIR: the OK-WW override
     obeys that fixed path and reads no environment variable (ark_overrides.tasks.py
-    NO_STAMINA_FLAG, the same string - test_nofarm_visible), so the relay and OK-WW
+    NO_STAMINA_FLAG, the same string - test_verify), so the relay and OK-WW
     look at one file by construction. Until 2026-10-13 this followed ARK_STATE_DIR,
     and a .env pointing it elsewhere would have read a different file. Only
     ARK_PROGRAMDATA moves it, and only the day simulator sets that.

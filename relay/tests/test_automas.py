@@ -30,7 +30,7 @@ as python.exe (preupdate_okww.py). Then a dead backend read as alive while OK-WW
 failed ended the search, so a live backend listed after it was never attached.
 
 The backend's command line as WMI returned it on the machine (2026-10-10, see
-test_procs_wmi.py): `D:\\ark\\automas\\runtime\\environment\\venv\\Scripts\\python.exe main.py`.
+test_procs.py): `D:\\ark\\automas\\runtime\\environment\\venv\\Scripts\\python.exe main.py`.
 
     Formerly test_automas_backend_match.py.
     """

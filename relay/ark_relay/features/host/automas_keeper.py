@@ -411,7 +411,7 @@ class _AutomasKeeper:
         installer = automas_procs._installer_running()
         if installer is None:
             # Unknown is not "no installer": killing a window mid-install is the
-            # worse mistake (test_revive_gates.py), so hands off - but said as
+            # worse mistake (test_verify.py), so hands off - but said as
             # what it is. Same level rule as every step here (say); a hold that
             # outlasts REVIVE_ALERT_AFTER checks reaches the group below with
             # this `holding` as the reason.

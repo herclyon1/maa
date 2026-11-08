@@ -1,6 +1,6 @@
-"""state.json: the store, reads a Windows lock refuses, and reads put off with nothing to bring them back.
+"""state.json: the store, reads a Windows lock refuses, and reads put off with nothing to bring them back; atomic writes, pending state, threads.
 
-One part per former file, each run on its own (tests/_parts.py): test_statestore.py, test_state_read_lock_1017.py, test_state_unread_1108.py.
+One part per former file, each run on its own (tests/_parts.py): test_statestore.py, test_atomic_write.py, test_state_pending.py, test_statestore_threads.py.
 """
 # Each part imports the relay itself, after its own environment is set, as the file it was did at
 # its top.
@@ -683,5 +683,278 @@ place in next_deadline are pinned here too.
     check("日志来了：不再等", collector._put_off, [])
 
 
+def _part_atomic_write():
+    """落盘只能走 config.atomic_write_*，不许自己手抄「临时文件 + replace」。
+
+2026-09-08 数出来的：仓库里有 5 处手抄的原子写，各写各的——有的漏 fsync、有的
+失败了不清理临时文件、报错方式还各不相同。同一件事五种写法，改一处别处不会跟着改，
+而它们写的都是 AUTO-MAS / OK-WW / MaaEnd 没有就起不来的配置。
+
+（当初我给的理由是「机器每天硬断电两次」，操作者纠正：一天只有一次，而且那一刻
+机器已经关着。这条测试守的是「实现只有一份」，不是防断电。）
+
+这条测试盯两件事：实现只有一份、别处不许再抄。
+
+Section 4 (added 2026-10-12) is about power cuts after all, for state files
+the relay reads back: the 08:40 socket cut takes the machine down whether
+it is on or off (memory queue-schedule-what-runs.md), and a forced shutdown
+or kill can land mid-write too.
+
+    Formerly test_atomic_write.py.
+    """
+    import re
+
+    ROOT = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(ROOT))
+
+
+    # 1. 唯一的实现在 config.py，而且带 fsync
+    cfg = (ROOT / "ark_relay" / "core" / "config.py").read_text(encoding="utf-8")
+    check("config.atomic_write_bytes 存在", "def atomic_write_bytes" in cfg, True)
+    body = cfg[cfg.index("def atomic_write_bytes"):]
+    body = body[:body.index("\ndef ", 1)] if "\ndef " in body[1:] else body
+    check("它 fsync 了", "os.fsync" in body, True)
+    check("它用 os.replace", "os.replace" in body, True)
+
+    # 2. 别处不许再出现「.tmp 然后 replace」这一对
+    offenders = []
+    for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files"} & set(p.parts)]) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
+        if p.name == "config.py":
+            continue
+        src = p.read_text(encoding="utf-8")
+        for m in re.finditer(r'^\s*(\w+)\s*=\s*.*with_suffix\([^\n]*\.tmp', src, re.M):
+            var = m.group(1)
+            after = src[m.end():m.end() + 600]
+            if re.search(rf"\b(os\.replace\(\s*{var}|{var}\.replace\()", after):
+                line = src[:m.start()].count("\n") + 1
+                offenders.append(f"{p.name}:{line}")
+    check("没有别处再手抄原子写", offenders, [])
+
+    # 3. 写配置的模块都在用它（抽查那五个改过的）
+    # (paths after ark_relay/ was split into core/ and features/<name>/)
+    for name in ("features/weekly/garden.py", "features/weekly/weeklyboss.py",
+                 "features/preupdate/preupdate_okww.py", "core/desktop.py"):
+        src = (ROOT / "ark_relay" / name).read_text(encoding="utf-8")
+        check(f"{name} 走的是共用实现",
+              bool(re.search(r"atomic_write_(text|bytes)\(", src)), True)
+
+    # 4. State files the relay reads back must not be written in place.
+    # The game PC can lose power or be killed mid-write (the 08:40 socket cut when
+    # the machine was left on, a forced shutdown). A half-written state file is
+    # read as empty: retry failure streaks reset, sent markers are lost (the tacet
+    # shot / upstream-change notice goes out again), the ntfy day count drops to
+    # zero. These modules write such files and must go through atomic_write_*;
+    # a direct write_text / write_bytes / open("w") in them fails here.
+    # Appends (open "a" / "ab") are allowed: a cut loses at most the last line.
+    DIRECT_OVERWRITE = re.compile(
+        r"\.write_text\(|\.write_bytes\(|\bopen\([^)\n]*[\"'](?:w|wb|w\+|wb\+|x|xb)[\"']")
+    STATE_WRITERS = (
+        "ark_relay/features/makeup/collect_retry.py",   # collect-retry/failures.json, <day>.json
+        "ark_relay/features/report/report.py",          # tacet-shots-<day>.sent
+        "boot_stages.py",                               # evidence-source-notified.json
+        "ark_relay/features/phone/quota.py",            # ntfy-<utc day>.json
+        "ark_relay/features/alarm/alertlog.py",         # alert day file re-seeded from COS
+        "ark_relay/features/evidence/stores.py",        # evidence/gofile.json
+        "ark_relay/features/banners/banners.py",        # banners/<day>.json
+    )
+    for name in STATE_WRITERS:
+        src = (ROOT / name).read_text(encoding="utf-8")
+        direct = [f"{name}:{src[:m.start()].count(chr(10)) + 1}"
+                  for m in DIRECT_OVERWRITE.finditer(src)]
+        check(f"{name} has no direct state-file overwrite", direct, [])
+        check(f"{name} writes via atomic_write_*",
+              bool(re.search(r"atomic_write_(text|bytes)\(", src)), True)
+
+
+def _part_state_pending():
+    """待推告警的存/取。**这条路没有测试过，结果炸在生产上。**
+
+2026-09-08 上午：`core.State.save_pending` 上面被贴了一行多余的 `@property`。
+后果不是「保存失败」这么轻——属性访问本身就抛 TypeError（getter 缺 payload），
+于是 `_persist_pending` 每一轮都炸，三条鸣潮失败记录永远落不了账；
+中继下一轮扫到它们，当成**新**失败又推一遍，每十几秒一条，把用户的群轰炸了半小时。
+
+88 个测试里没有任何一个调用过 save_pending，静态检查也没有「@property 带参数」
+这条规则，所以这行改动一路绿灯上了机器。这个文件补的就是那条路。
+
+    Formerly test_state_pending.py.
+    """
+    from datetime import datetime, timedelta
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core.config import SERVER_TZ, RunRecord
+    from ark_relay.core.ledger import State
+    from ark_relay.core.transport import record_to_payload, payload_to_record
+
+
+    def rec(run_id="2026-09-08/wuwa/OK-WW-05-22-26"):
+        now = datetime.now(tz=SERVER_TZ)
+        return RunRecord(run_id=run_id, script="OK-WW", user="wuwa",
+                         started=now - timedelta(minutes=10), finished=now,
+                         ok=False, failed_tasks=["任务执行：某个错"], raw={})
+
+
+    print("[save_pending 是方法，不是属性——这正是 09-08 那次的原形]")
+    check("是普通函数", type(State.__dict__["save_pending"]).__name__, "function")
+    check("不是 property", isinstance(State.__dict__["save_pending"], property), False)
+
+    print("\n[存进去、另起一个实例读回来，内容一样]")
+    d = tmpdir()
+    st = State(d)
+    payload = {"pending": [record_to_payload(rec())], "recovered": []}
+    st.save_pending(payload)
+    back = State(d).load_pending()
+    check("pending 条数", len(back.get("pending") or []), 1)
+    check("run_id 对得上", back["pending"][0]["run_id"], "2026-09-08/wuwa/OK-WW-05-22-26")
+    check("recovered 空", back.get("recovered"), [])
+
+    print("\n[读回来能还原成记录，告警才发得出去]")
+    r2 = payload_to_record(back["pending"][0])
+    check("脚本名", r2.script, "OK-WW")
+    check("失败任务", r2.failed_tasks, ["任务执行：某个错"])
+    check("不是成功", r2.ok, False)
+
+    print("\n[空的也存得下：清空待推队列走的就是这条路]")
+    st.save_pending({"pending": [], "recovered": []})
+    check("清空后读回来是空的", State(d).load_pending(), {"pending": [], "recovered": []})
+
+    print("\n[没存过时读回空字典，不抛异常]")
+    check("空目录", State(tmpdir()).load_pending(), {})
+
+
+def _part_statestore_threads():
+    """Two threads writing state.json must not lose each other's key.
+
+Audit s9 A2 (2026-10-13): the phone listen thread writes queues.phone_seen and,
+through live commands, modes.* (set_debug, set_skip_shutdown ...), while the
+engine thread writes the same file. StateStore.set/pop did load-modify-write with
+no lock, and config.atomic_write_bytes always used the same temp name
+(state.json.tmp). Run with two threads: 200/200 trials lost one update, 199 raised
+FileNotFoundError on the rename. A lost modes.skip_next_shutdown means the reply
+says 「已记下」 and the machine powers off anyway.
+
+Both halves are made deterministic here: the first writer is held between its read
+and its write while the second writer runs.
+
+    Formerly test_statestore_threads.py.
+    """
+    import os
+    import threading
+    import time
+
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import config, statestore
+    from ark_relay.core.statestore import StateStore
+
+
+    print("[a second writer runs while the first is between its read and its write]")
+    d = tmpdir()
+    StateStore(d).set("queues", "phone_seen", [])
+    real_write = statestore.atomic_write_text
+    errors: list = []
+    other: list = []
+
+
+    def slow_first_write(path, text, *a, **k):
+        # Only the first write is slowed down: the engine-thread writer below.
+        if not other:
+            def phone_thread():
+                try:
+                    StateStore(d).set("queues", "phone_seen", ["ntfy-1"])
+                except Exception as exc:  # noqa: BLE001 - recorded for the check
+                    errors.append(exc)
+            t = threading.Thread(target=phone_thread)
+            other.append(t)
+            t.start()
+            time.sleep(0.3)          # the phone thread gets every chance to write now
+        return real_write(path, text, *a, **k)
+
+
+    statestore.atomic_write_text = slow_first_write
+    try:
+        StateStore(d).set("modes", "debug_until", "2026-10-13 21:10")
+    finally:
+        statestore.atomic_write_text = real_write
+    other[0].join(5)
+    s = StateStore(d)
+    check("the engine thread's key is there", s.get("modes", "debug_until"), "2026-10-13 21:10")
+    check("the phone thread's key is there", s.get("queues", "phone_seen"), ["ntfy-1"])
+    check("no writer raised", errors, [])
+
+    print("\n[pop is under the same lock]")
+    other.clear()
+
+
+    def slow_first_write2(path, text, *a, **k):
+        if not other:
+            t = threading.Thread(target=lambda: StateStore(d).set("queues", "phone_seen", ["ntfy-2"]))
+            other.append(t)
+            t.start()
+            time.sleep(0.3)
+        return real_write(path, text, *a, **k)
+
+
+    statestore.atomic_write_text = slow_first_write2
+    try:
+        StateStore(d).pop("modes", "debug_until")
+    finally:
+        statestore.atomic_write_text = real_write
+    other[0].join(5)
+    s = StateStore(d)
+    check("the popped key is gone", s.get("modes", "debug_until"), None)
+    check("the other thread's write survived the pop", s.get("queues", "phone_seen"), ["ntfy-2"])
+
+    print("\n[two writes of the same file never share a temp file]")
+    d2 = tmpdir()
+    target = d2 / "state.json"
+    real_fsync = config.os.fsync
+    inner_err: list = []
+    nested = []
+
+
+    def fsync_then_second_write(fd):
+        real_fsync(fd)
+        if not nested:
+            nested.append(1)
+            # A second writer of the same path while the first one's temp file is open.
+            try:
+                config.atomic_write_bytes(target, b'{"b": 1}')
+            except OSError as exc:
+                inner_err.append(exc)
+
+
+    config.os.fsync = fsync_then_second_write
+    outer_err = None
+    try:
+        config.atomic_write_bytes(target, b'{"a": 1}')
+    except OSError as exc:
+        outer_err = exc
+    finally:
+        config.os.fsync = real_fsync
+    check("the inner write did not fail", inner_err, [])
+    check("the outer write did not fail", repr(outer_err) if outer_err else None, None)
+    check("the last write wins, whole", target.read_bytes(), b'{"a": 1}')
+    check("no temp file left behind", sorted(p.name for p in d2.iterdir()), ["state.json"])
+
+    print("\n[a temp file a power cut left behind is removed at the next start once it is a day old]")
+    d3 = tmpdir()
+    (d3 / "state.json").write_text("{}", encoding="utf-8")
+    old_tmp = d3 / "state.json.abc123.tmp"
+    fresh_tmp = d3 / "state.json.def456.tmp"
+    legacy_tmp = d3 / "state.json.tmp"
+    other_tmp = d3 / "ledger-2026-10-13.jsonl.xyz.tmp"
+    for f in (old_tmp, fresh_tmp, legacy_tmp, other_tmp):
+        f.write_text("{", encoding="utf-8")
+    two_days_ago = time.time() - 2 * 86400
+    for f in (old_tmp, legacy_tmp, other_tmp):
+        os.utime(f, (two_days_ago, two_days_ago))
+    statestore._SWEPT.discard(str(d3))
+    statestore.StateStore(d3)
+    check("old state.json temp files are gone, a fresh one (a live write) and other files stay",
+          sorted(p.name for p in d3.iterdir()),
+          sorted(["state.json", fresh_tmp.name, other_tmp.name]))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_main, _part_state_read_lock, _part_state_unread]))
+    sys.exit(run_parts([_part_main, _part_state_read_lock, _part_state_unread, _part_atomic_write, _part_state_pending, _part_statestore_threads]))

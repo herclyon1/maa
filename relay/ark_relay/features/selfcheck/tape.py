@@ -52,7 +52,7 @@ BEIJING = timezone(timedelta(hours=8))
 DIR = "tape"
 # A day's tape stops at this size. Measured 2026-10-14 by replaying the seven recorded
 # days (10-06 .. 10-13, relay/tests/daysim/run.py --all --keep) with the hooks in place:
-# 448-458 KB a day, 94 % of it information-source answers (test_tape.py lists each day).
+# 448-458 KB a day, 94 % of it information-source answers (test_verify.py lists each day).
 # The cap is nine times that, for a day whose AUTO-MAS answers change far more often
 # than the replay's; 14 full days are 56 MB.
 DAY_CAP_BYTES = 4 * 1024 * 1024
@@ -87,7 +87,7 @@ _SECRET_RES = [(re.compile(p.decode("ascii")), r.decode("ascii")) for _n, p, r i
 # (lint-repo.sh item 12). The digits become UIDREDACT cut to their length.
 UID_RE = re.compile("(特征码(?::|：) *)([0-9]+)")
 MASK = "<已隐藏>"          # scripts/mac/redact.py's MASK
-# scripts/mac/redact.py SECRET_KEY_HINTS / SECRET_KEY_ALLOW (test_tape.py keeps them equal).
+# scripts/mac/redact.py SECRET_KEY_HINTS / SECRET_KEY_ALLOW (test_verify.py keeps them equal).
 KEY_HINTS = ("key", "cdk", "secret", "token", "password", "passwd", "credential",
              "sendkey", "webhook", "cookie", "authorization", "auth", "corpsecret",
              "apikey", "access", "private", "signature")

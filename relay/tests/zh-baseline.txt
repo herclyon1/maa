@@ -1,6 +1,6 @@
 # Lines of Chinese comment/docstring per file. **This may only shrink.**
 # Why, and what stays Chinese on purpose: scripts/mac/lib/zh_ratchet.py
-# total 1803 lines in 132 files
+# total 1803 lines in 124 files
 # regenerate: python3 scripts/mac/lib/zh_ratchet.py --update
 relay/ark_relay/core/config.py 2
 relay/ark_relay/core/skland.py 1
@@ -20,23 +20,19 @@ relay/ark_relay/features/verify/collector_maaend.py 6
 relay/ark_relay/features/weekly/weeklyboss.py 3
 relay/boot_stages.py 2
 relay/tests/_tmp.py 3
-relay/tests/test_atomic_write.py 7
+relay/tests/test_alarm.py 11
+relay/tests/test_banner_fetch.py 8
 relay/tests/test_banners.py 31
-relay/tests/test_command_table.py 5
-relay/tests/test_commands_gates.py 18
+relay/tests/test_commands.py 23
 relay/tests/test_config.py 1
-relay/tests/test_daily.py 11
-relay/tests/test_drops.py 1
-relay/tests/test_engine_pending.py 27
-relay/tests/test_episodes.py 5
-relay/tests/test_event_expiry.py 8
+relay/tests/test_daily.py 45
+relay/tests/test_engine.py 29
 relay/tests/test_evidence.py 10
 relay/tests/test_gameupdate.py 5
 relay/tests/test_garden.py 12
 relay/tests/test_heartbeat.py 4
 relay/tests/test_inbox_poll.py 12
 relay/tests/test_ledger.py 5
-relay/tests/test_loop_parts.py 2
 relay/tests/test_maa.py 12
 relay/tests/test_maaend.py 16
 relay/tests/test_maaend_watchdog.py 18
@@ -54,27 +50,23 @@ relay/tests/test_okww_nest.py 4
 relay/tests/test_outcome.py 7
 relay/tests/test_phone.py 28
 relay/tests/test_preupdate.py 46
+relay/tests/test_procs.py 3
 relay/tests/test_queue.py 8
-relay/tests/test_release_notes.py 14
-relay/tests/test_report_due.py 34
+relay/tests/test_repo_gates.py 14
 relay/tests/test_sanity_plan.py 12
-relay/tests/test_scan_skips_seen.py 3
 relay/tests/test_scoreboard.py 9
 relay/tests/test_scripts_relay.py 4
 relay/tests/test_self_attrs.py 3
 relay/tests/test_selfupdate.py 30
 relay/tests/test_shutdown.py 22
-relay/tests/test_silent_green_guards.py 11
 relay/tests/test_skip.py 6
-relay/tests/test_state_pending.py 5
-relay/tests/test_statestore.py 5
+relay/tests/test_statestore.py 17
 relay/tests/test_stop.py 8
 relay/tests/test_tacet_shots.py 5
 relay/tests/test_texts_gate.py 3
 relay/tests/test_tick_isolation.py 6
-relay/tests/test_transitional.py 5
 relay/tests/test_undefined_names.py 17
-relay/tests/test_wait_network.py 3
+relay/tests/test_verify.py 14
 relay/tests/test_weeklyboss.py 17
 scripts/mac/UsbCheck/make-app.sh 1
 scripts/mac/adbdo.sh 16

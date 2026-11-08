@@ -44,7 +44,7 @@ def is_backend(cmd: str) -> bool:
     """True if a python.exe command line is AUTO-MAS's backend: main.py run from under the
     install root's \\automas\\ directory.
 
-    On the machine (2026-10-10, relay/tests/test_procs_wmi.py) it reads
+    On the machine (2026-10-10, relay/tests/test_procs.py) it reads
     `D:\\ark\\automas\\runtime\\environment\\venv\\Scripts\\python.exe main.py`. "main.py"
     alone also matched OK-WW (`D:\\ark\\okww\\data\\apps\\ok-ww\\working\\main.py`, which
     may run as python.exe - preupdate_okww.py): a dead backend then read as alive,

@@ -144,7 +144,7 @@ class FakeMas:
             if _unfinished(t):
                 # A queue run names its queue in queueId (a timed run, slice.QUEUE_WAKE), in
                 # taskId or, as AUTO-MAS lists a queue task, in mode
-                # (tests/test_estop_verifies.py: {"taskId": ..., "mode": "早班"}).
+                # (tests/test_procs.py: {"taskId": ..., "mode": "早班"}).
                 out.add(str(t.get("queueId") or ""))
                 out.add(str(t.get("taskId") or ""))
                 out.add(str(t.get("mode") or ""))

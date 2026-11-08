@@ -57,7 +57,7 @@ The report is rendered through report._compose_daily, the same function the
 
 
     # No network: the banner section and the report-writing model are stubbed, as in
-    # test_report_due.py.
+    # test_daily.py.
     report.plan = types.SimpleNamespace(next_plan=lambda d: "", activity_countdown=lambda d: "",
                                         schedule=lambda d: [])
     report.banners = types.SimpleNamespace(

@@ -60,7 +60,7 @@ is "no" (a user it does not run - Info.Status off, RemainedDay 0 - is not looked
    App / scripts/mac/order-now.sh through boot_stages._phone_execute (live, drained
    after a run, boot backlog; the refusal is the phone's receipt), and
    scripts/mac/order.sh through inbox.Inbox._apply. The user's words asking for this
-   are USER_SAID in tests/test_stage_set_refused.py.
+   are USER_SAID in tests/test_stagegate.py.
    Not gated: scripts/mac/mas-api.py and AUTO-MAS's own screen (they write
    AUTO-MAS directly) - the tick below still checks before the due.
 2. Engine tick (`step`, every ~30 s, local files only): for each queue containing

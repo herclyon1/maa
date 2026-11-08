@@ -109,7 +109,7 @@ def skip_armed(state_dir: Path) -> bool:
     during maintenance; this mark has no time at all.
     The user, 2026-08-31: 「你给一个人类好去调这个模式的方法，独立于你的。」
     His 2026-10-11 15:25 correction of our misreading is quoted in
-    tests/test_skip_shutdown_wording.py.
+    tests/test_shutdown.py.
     """
     return bool(_store(state_dir).get("modes", "skip_next_shutdown"))
 
@@ -127,7 +127,7 @@ def set_skip_shutdown(state_dir: Path, on: bool) -> tuple[bool, str]:
     if on:
         store.set("modes", "skip_next_shutdown", True)
         # One short sentence (App review 10-14: three lines said what the App's switch row says in one);
-        # it keeps the mark's one name, the run and 「只管一次」 (test_skip_shutdown_wording).
+        # it keeps the mark's one name, the run and 「只管一次」 (test_shutdown).
         return True, "已记下「下次跑完不关机」：下一趟早班/晚班跑完不关机，只管一次"
     if store.get("modes", "skip_next_shutdown"):
         store.pop("modes", "skip_next_shutdown")

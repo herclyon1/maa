@@ -103,15 +103,15 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
         ("fixture", "only fixtures/collect-retry-2026-09-11 (real MXU lines, no SOURCE in the census)"),
     ("features/verify/collector_maaend.py", r"FailureCollector subtask failed task=(AutoCollect[A-Za-z]+?\d+)[A-Z][A-Za-z]*\b"):
         ("fixture", "only fixtures/maaend-2026-11-05 (real AUTO-MAS history lines 11:39-11:54 of MaaEnd-07-24-54, "
-                    "the attempt logged out mid-run); tested in test_gathering_route_node_failed.py"),
+                    "the attempt logged out mid-run); tested in test_verify.py"),
     ("features/makeup/collect_retry.py",
      r'\[msg=Node\.PipelineNode\.Failed\].*?\"name\":\"(AutoCollect[A-Za-z]+?\d+)[A-Z][A-Za-z]*\"'):
         ("fixture", "only fixtures/maaend-2026-11-05 (real maafw.log lines 11-05 11:20:43 / 11:43:56); "
-                    "tested in test_gathering_route_node_failed.py"),
+                    "tested in test_verify.py"),
     ("features/verify/collector_maaend.py", r"(?m)^\[[^\]]+\]\s*采集(?!失败\s*$)([^\s：:]+)\s*$"):
         ("fixture", "only fixtures/maaend-2026-11-05 (real AUTO-MAS history lines of MaaEnd-07-24-54); MaaEnd v2.36 "
                     "item-named route lines (first Monday gathering run 2026-11-02 MaaEnd-06-37-16, ledger #134); "
-                    "tested in test_maaend_collect.py and test_gathering_route_node_failed.py"),
+                    "tested in test_maaend_collect.py and test_verify.py"),
     ("features/verify/collector_maaend.py", r"(?m)^\[[^\]]+\]\s*(?!(?:路线|线路)\d+[：:])([^\s：:]+?)采集失败\s*$"):
         ("none", "MaaEnd v2.36 item-named route failure lines (task.AutoCollect.route.*.failed, ledger #122/#134); "
                  "tested in test_maaend_collect.py"),

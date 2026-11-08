@@ -1,6 +1,6 @@
-"""The daily report: format, partial failures, range prefixes and the technical log.
+"""The daily report: format, partial failures, range prefixes and the technical log; no model, the report coming due, the model's breaker.
 
-One part per former file, each run on its own (tests/_parts.py): test_daily_format.py, test_daily_partial_failure.py, test_daily_range_prefix.py, test_daily_techlog.py.
+One part per former file, each run on its own (tests/_parts.py): test_daily.py, test_no_model_daily_report.py, test_report_due.py, test_llm_breaker.py.
 """
 # Each part imports the relay itself, after its own environment is set, as the file it was did at
 # its top.
@@ -287,7 +287,7 @@ Also: written where the day's report is sent and marked, never by an interim loo
 not twice on a retried send, and a technical log that cannot be written leaves the
 report exactly as it was and still sends it.
 
-No network: banners and the report-writing model are stubbed as in test_report_due.py.
+No network: banners and the report-writing model are stubbed as in the _part_report_due part.
 
     Formerly test_daily_techlog.py.
     """
@@ -591,5 +591,547 @@ No network: banners and the report-writing model are stubbed as in test_report_d
     print("\nall checks passed")
 
 
+def _part_no_model_daily_report():
+    """The model-written daily report is gone; the template is the only path.
+
+Retired on 08-30 (66711d4f: 「模型写日报是废除的规划（太贵）」) yet report.py still
+tried summary.daily_report first; relay.log has 0 「日报由模型撰写」 lines and 129
+「日报用结构化模板」. Had it run, it would have skipped split_test (test-window
+runs in the report) and the retry / make-up / stage-gate lines.
+
+    Formerly test_no_model_daily_report.py.
+    """
+    #!/usr/bin/env python3
+    import inspect
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import summary
+    from ark_relay.features.report import report
+
+    for label, ok in (("summary.daily_report removed", not hasattr(summary, "daily_report")),
+                      ("_compose_daily has no model branch", "日报由模型撰写" not in inspect.getsource(report._compose_daily))):
+        print(("  ✓ " if ok else "  ✗ ") + label)
+        if not ok:
+            fails.append(label)
+
+
+def _part_report_due():
+    """日报什么时候该发、什么时候不许发，以及发出去的那份里必须有什么。
+
+**这里坏了的后果不是「少了一条通知」，是机器整夜不关。** `_maybe_shutdown` 的前提之一
+就是 `report_sent(今天)`，日报发不出去 → 关机永远等不到条件 → 机器开一整夜
+（docs/PITFALLS.md 里那次是判据写错：条件用「最后一趟的**结束时刻**」和 21:30 比，
+队列挪到 21:25、21:28 跑完之后这个条件**永远为真**，日报永远发不出，机器永远不关）。
+
+report.py 的 10 个函数里 5 个从来没被执行过，`_maybe_daily_report`、`_compose_daily`、
+`_maybe_interim_report` 都在里面。这个文件补的就是这几条路，钉住六件事：
+
+1. 昨天的日报没发出去，过了零点只剩今天这一次机会——必须先补昨天；
+2. 同一天不许发两遍（记号是 `marks: report:<日期>`），但**推送失败时不许落记号**，
+   否则那一天就永远丢了；
+3. 一天里一条记录都没有时不发也不落记号（落了记号，晚到的那趟就永远不会被报）；
+4. 到点之前、脚本还在跑、队列还没跑完，一律再等——尤其最后一条：cutoff 就是晚班的
+   **发车时刻**，那几秒游戏还在启动，只看早班记录会写出一份「今天就这些」的假日报，
+   还把当天记号落掉，晚班从此无人过问；
+5. 末尾那行版本记分（`scoreboard.line`）必须真的挂上去，而且在我写的任何字之后——
+   用户 2026-09-06：「我说『修好了』而它写『失败 1 趟』，谎话当场现形。」；
+6. 模型撰写不可用时走结构化模板，那是**正常路径不是故障**，不许在日志里留假伤
+   （天天一条假 WARNING，真的那条就没人看了）。
+
+不联网：卡池和撰写模型都换成了本地假货，AUTO-MAS 目录一律 None。
+
+    Formerly test_report_due.py.
+    """
+    import json
+    import logging
+    import types
+    from datetime import datetime, timedelta
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.report import report, scoreboard
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.core.ledger import State
+
+
+    # ---------------------------------------------------------- 把外面的世界掐掉
+    # 卡池要连 prts.wiki / 库街区 / 森空岛；撰写模型要连大模型。两个都换成本地假货，
+    # 这个文件才既跑得快又不会因为别人家的网站抖一下就变红。
+    SCHEDULE: list = []
+    report.plan = types.SimpleNamespace(
+        schedule=lambda automas_dir: list(SCHEDULE),
+        next_plan=lambda automas_dir: "",
+        activity_countdown=lambda automas_dir: "",
+    )
+    report.banners = types.SimpleNamespace(
+        collect=lambda now, skland_token="", failed=None, notes=None, trace=None, versions=None, leads=None,
+        read_image=None, state_dir=None: ([], {}),
+        image_reader=lambda state_dir: None,
+        render=lambda rows, now, nxt, notes=None, trace=None, failed=None, leads=None: "",
+        Trace=types.SimpleNamespace(new=lambda: None),
+        save_trace=lambda state_dir, now, text, tr: None,
+        update_history=lambda state_dir, now: [],
+    )
+
+
+    class LogGrab(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.records: list = []
+
+        def emit(self, record):
+            self.records.append(record)
+
+        def worst(self):
+            return max((r.levelno for r in self.records), default=0)
+
+
+    GRAB = LogGrab()
+    # 直接挂 report 自己那个 logger 对象，不写死日志名：名字要是改了，这里跟着走。
+    report.log.addHandler(GRAB)
+    report.log.setLevel(logging.DEBUG)
+
+
+    # --------------------------------------------------------------- 替身零件
+    class FakeNotifier:
+        """记下发出去的每一条；`broken` 时每次都返回「一个渠道都没送到」。"""
+
+        def __init__(self):
+            self.sent: list = []
+            self.groups: list = []
+            self.broken = False
+
+        def send(self, title, body, *, alert=False, daily=False):
+            self.sent.append((title, body, alert, daily))
+            return ["Server酱: 假装挂了"] if self.broken else []
+
+        def send_group(self, title, body):
+            self.groups.append((title, body))
+            return []
+
+        def send_group_image(self, path):
+            return []
+
+        def titles(self):
+            return [t for t, *_ in self.sent]
+
+
+    class Eng:
+        """Engine 里跟日报有关的那一小块，其余全部换成可控的替身。
+    转发方式跟 engine.py 里一模一样，改了那边的签名这里会当场对不上。"""
+
+        def __init__(self, state, *, interim=True, last_run_after="21:30"):
+            self.cfg = types.SimpleNamespace(
+                automas_dir=None, history_dir=None, okww_dir=None, skland_token="",
+                state_dir=None, last_run_after=last_run_after, interim_report=interim)
+            self.state = state
+            self.notifier = FakeNotifier()
+            self.running = False
+            self.unfinished: list = []
+            self.manual = False
+
+        def _report_cutoff(self, now):
+            return report._report_cutoff(self, now)
+
+        def _scripts_running(self):
+            return self.running
+
+        def _unfinished_queues(self, now, entries):
+            return list(self.unfinished)
+
+        def _round_is_manual(self, new_entries):
+            return self.manual
+
+        def _compose_daily(self, day, entries):
+            return report._compose_daily(self, day, entries)
+
+        def _announce_banners(self, now, nxt):
+            return None
+
+        def send_daily_now(self, mark=True, label="临时查看"):
+            return report.send_daily_now(self, mark, label)
+
+
+    TODAY = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
+    YDAY = (datetime.now(tz=SERVER_TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
+
+
+    def entry(day, n=1, script="MAA", ok=True):
+        start = datetime.fromisoformat(f"{day}T09:0{n}:00+08:00")
+        return {"run_id": f"{day}/ark/0{n}", "script": script, "user": "ark",
+                "started": start.isoformat(),
+                "finished": (start + timedelta(minutes=20)).isoformat(),
+                "ok": ok, "failed_tasks": [] if ok else ["某一步炸了"], "raw": {}}
+
+
+    def make(entries_by_day=None, **kw):
+        """一台干净的机器：真 State（记号和账本都是真的），假通知和假队列。"""
+        st = State(tmpdir())
+        for day, rows in (entries_by_day or {}).items():
+            st.ledger_path(day).write_text(
+                "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+                encoding="utf-8")
+        return Eng(st, **kw)
+
+
+    def at(day, hhmm):
+        return datetime.fromisoformat(f"{day}T{hhmm}:00+08:00").astimezone(SERVER_TZ)
+
+
+    # =========================================================== 日报什么时候到点
+    print("[到点时刻跟着 AUTO-MAS 自己的队列走，不是写死的]")
+    SCHEDULE[:] = [{"name": "早班", "times": ["09:00"]},
+                   {"name": "晚班", "times": ["21:25"]}]
+    e = make()
+    check("取最晚那一条队列的时刻",
+          e._report_cutoff(at(TODAY, "12:00")).strftime("%H:%M"), "21:25")
+    SCHEDULE[:] = []
+    check("读不到队列才退回 ARK_LAST_RUN_AFTER",
+          e._report_cutoff(at(TODAY, "12:00")).strftime("%H:%M"), "21:30")
+    bad = make(last_run_after="晚上")
+    try:
+        got = bad._report_cutoff(at(TODAY, "12:00")).strftime("%H:%M")
+    except Exception as exc:                      # noqa: BLE001
+        got = f"抛了 {exc!r}"
+    check("时刻写坏了兜底 21:30，不抛异常——抛了这一轮连关机也一起没了", got, "21:30")
+
+    # ================================================= 昨天没发出去，今天必须先补
+    print("\n[昨天的日报没发出去：过了零点只剩这一次机会]")
+    e = make({YDAY: [entry(YDAY)], TODAY: [entry(TODAY)]})
+    report._maybe_daily_report(e, at(TODAY, "22:00"))
+    check("补发那条排在最前", e.notifier.titles()[0].endswith("（补发）"), True)
+    check("昨天的记号落上了", e.state.report_sent(YDAY), True)
+    check("今天那条照发，不是拿补发顶替", len(e.notifier.sent), 2)
+    check("今天的记号也落上了", e.state.report_sent(TODAY), True)
+
+    print("\n[补发也推不出去时：不许落记号，下一轮还要再补]")
+    e = make({YDAY: [entry(YDAY)]})
+    e.notifier.broken = True
+    report._maybe_daily_report(e, at(TODAY, "22:00"))
+    check("试着发了", len(e.notifier.sent), 1)
+    check("昨天的记号绝不能落", e.state.report_sent(YDAY), False)
+    e.notifier.broken = False
+    report._maybe_daily_report(e, at(TODAY, "22:00"))
+    check("下一轮补上了", e.state.report_sent(YDAY), True)
+
+    print("\n[昨天已经发过 / 昨天一条记录都没有：都不许补]")
+    e = make({YDAY: [entry(YDAY)]})
+    e.state.mark_report_sent(YDAY)
+    report._maybe_daily_report(e, at(TODAY, "22:00"))
+    check("发过了就不重发", e.notifier.sent, [])
+    e = make({TODAY: [entry(TODAY)]})
+    report._maybe_daily_report(e, at(TODAY, "22:00"))
+    check("昨天没跑过就不补一份空的",
+          [t for t in e.notifier.titles() if "补发" in t], [])
+
+    # ============================================================ 同一天只发一遍
+    print("\n[同一天不许发两遍]")
+    e = make({TODAY: [entry(TODAY)]})
+    report._maybe_daily_report(e, at(TODAY, "22:00"))
+    check("发了一条", len(e.notifier.sent), 1)
+    check("落了 report:<日期> 记号", e.state.report_sent(TODAY), True)
+    report._maybe_daily_report(e, at(TODAY, "22:05"))
+    check("第二轮什么都不发", len(e.notifier.sent), 1)
+    check("记号是写在 marks 里的",
+          e.state.store.get("marks", f"report:{TODAY}") is not None, True)
+
+    print("\n[当天部署过的更新说明进技术日志，日报只留一句次数（D-1010；更新通知本身不再推）]")
+    from _tmp import tmpdir as _tmpd0
+
+
+    def _tmpd():
+        # <tmp>/state, so the technical log (<state>/../tech) stays inside the tmp dir.
+        d = _tmpd0() / "state"
+        d.mkdir()
+        return d
+
+
+    e = make({TODAY: [entry(TODAY)]})
+    e.cfg.state_dir = _tmpd()
+    report.remember_change(e.cfg.state_dir, "周本领奖补回来了。", "20260914104917", day=TODAY)
+    report.remember_change(e.cfg.state_dir, "通知分三路。", "20260914104918", day=TODAY)
+    report._maybe_daily_report(e, at(TODAY, "22:00"))
+    body = e.notifier.sent[-1][1]
+    check("日报不带「今天中继改了什么」", "今天中继改了什么" in body, False)
+    check("日报不带部署说明", "周本领奖补回来了" in body or "通知分三路" in body, False)
+    check("日报末尾一句部署次数", body.rstrip().endswith("今天中继更新了 2 次"), True)
+    tech = (e.cfg.state_dir.parent / "tech" / f"{TODAY}.md").read_text(encoding="utf-8")
+    check("两次部署的说明都在技术日志里", "## " in tech and "今天中继改了什么" in tech
+          and "周本领奖补回来了" in tech and "通知分三路" in tech, True)
+    check("日报走的是 daily（进群）", e.notifier.sent[-1][3], True)
+    e2 = make({TODAY: [entry(TODAY)]})
+    e2.cfg.state_dir = _tmpd()
+    report._maybe_daily_report(e2, at(TODAY, "22:00"))
+    check("没部署过就没有这一句", "中继更新了" in e2.notifier.sent[-1][1], False)
+
+    print("\n[当天补跑过的结果附在日报里（补跑开始/完成不再单独推）]")
+    import json as _json
+    e = make({TODAY: [entry(TODAY)]})
+    e.cfg.state_dir = _tmpd()
+    (e.cfg.state_dir / "collect-retry").mkdir()
+    (e.cfg.state_dir / "collect-retry" / f"{TODAY}.json").write_text(_json.dumps(
+        {"run_id": "x", "routes": ["AutoCollectRoute15", "AutoCollectRoute16"], "passed": ["AutoCollectRoute15"],
+         "failed": ["AutoCollectRoute16"], "unknown": [], "note": ""}), encoding="utf-8")
+    report._maybe_daily_report(e, at(TODAY, "22:00"))
+    body = e.notifier.sent[-1][1]
+    check("日报里有补跑结果", "自动采集补跑：走通 AutoCollectRoute15；仍失败 AutoCollectRoute16" in body, True)
+
+    print("\n[推送失败时不许落记号：落了这一天就永远丢了]")
+    e = make({TODAY: [entry(TODAY)]})
+    e.notifier.broken = True
+    report._maybe_daily_report(e, at(TODAY, "22:00"))
+    check("没落记号", e.state.report_sent(TODAY), False)
+    e.notifier.broken = False
+    report._maybe_daily_report(e, at(TODAY, "22:01"))
+    check("下一轮重发成功", len(e.notifier.sent), 2)
+    check("这才落记号", e.state.report_sent(TODAY), True)
+
+    # ================================================================ 什么时候等
+    print("\n[没到点、还在跑、队列没跑完——一律再等]")
+    e = make({TODAY: [entry(TODAY)]})
+    report._maybe_daily_report(e, at(TODAY, "20:00"))
+    check("没到点不发", e.notifier.sent, [])
+    e.running = True
+    report._maybe_daily_report(e, at(TODAY, "22:00"))
+    check("脚本还在跑不发", e.notifier.sent, [])
+    e.running = False
+    e.unfinished = ["晚班还没跑完"]
+    report._maybe_daily_report(e, at(TODAY, "22:00"))
+    check("队列没跑完不发——cutoff 就是晚班发车时刻，那几秒游戏还没起来",
+          e.notifier.sent, [])
+    check("也没落记号，不然晚班从此没人问", e.state.report_sent(TODAY), False)
+    e.unfinished = []
+    report._maybe_daily_report(e, at(TODAY, "22:00"))
+    check("跑完了才发", len(e.notifier.sent), 1)
+
+    print("\n[一天里一条记录都没有]")
+    e = make({TODAY: []})
+    report._maybe_daily_report(e, at(TODAY, "22:00"))
+    check("不发空日报", e.notifier.sent, [])
+    check("更不许落记号——落了，晚到的那趟就永远不会被报",
+          e.state.report_sent(TODAY), False)
+    print("  （人主动要的时候是另一回事：问了就得有答案）")
+    e2 = make({TODAY: []})
+    check("手动 report 命令照发", e2.send_daily_now(), True)
+    check("正文说清楚今天没跑过", "今天没有任何运行记录。" in e2.notifier.sent[0][1], True)
+
+    # ====================================================== 末尾那行版本记分牌
+    print("\n[版本记分照算照记，但不再印进日报（用户 09-14：毫无意义）]")
+    e = make({TODAY: [entry(TODAY, ok=False)]})
+    e.state.store.set("versions", "code", "9.9.9")
+    scoreboard.record(e.state.store, "9.9.9", ok=True)
+    scoreboard.record(e.state.store, "9.9.9", ok=False)
+    want_line = scoreboard.line(e.state.store, "9.9.9")
+    check("记分牌自己算出来的那一串不是空的", want_line.startswith("代码 v9.9.9"), True)
+    check("它数的是真跑过的趟数", "跑过 2 趟，失败 1 趟" in want_line, True)
+    _, body = e._compose_daily(TODAY, e.state.read_ledger(TODAY))
+    check("正文里不再有那一行", want_line in body, False)
+    check("正文里没有「代码 v」字样", "代码 v" in body, False)
+    e2 = make({TODAY: [entry(TODAY)]})
+    _, body2 = e2._compose_daily(TODAY, e2.state.read_ledger(TODAY))
+    check("没记录版本号时不留一截空尾巴", body2.rstrip(), body2)
+
+    # ============================================== 结构化模板
+    print("\n[日报只走结构化模板（模型撰写 08-30 废弃、已删），这是正常路径不是故障]")
+    check("模型撰写那条路已删", hasattr(__import__("ark_relay.core.summary", fromlist=["x"]), "daily_report"), False)
+    GRAB.records.clear()
+    e = make({TODAY: [entry(TODAY)]})
+    title, body = e._compose_daily(TODAY, e.state.read_ledger(TODAY))
+    check("照样出得来一份日报", bool(title and body), True)
+    check("走的是结构化模板那条路", "9:01" in body or "09:01" in body, True)
+    check("日志里一条 WARNING 都不许有——假伤会让真伤没人看",
+          GRAB.worst() < logging.WARNING, True)
+    check("而且确实说了这是正常路径",
+          any("正常路径" in r.getMessage() for r in GRAB.records), True)
+
+    # ============================================================ 白天那份速览
+    print("\n[白天速览：关掉就不发]")
+    e = make({TODAY: [entry(TODAY)]}, interim=False)
+    report._maybe_interim_report(e, at(TODAY, "12:00"))
+    check("开关关着就一条都不发", e.notifier.sent, [])
+
+    print("\n[到点之后不发速览，让真日报说话]")
+    e = make({TODAY: [entry(TODAY)]})
+    report._maybe_interim_report(e, at(TODAY, "22:00"))
+    check("过了 cutoff 就闭嘴", e.notifier.sent, [])
+
+    print("\n[今天日报已经发过 / 没有记录 / 还在跑 / 队列没完：都不发]")
+    e = make({TODAY: [entry(TODAY)]})
+    e.state.mark_report_sent(TODAY)
+    report._maybe_interim_report(e, at(TODAY, "12:00"))
+    check("日报发过了就不再速览", e.notifier.sent, [])
+    e = make({TODAY: []})
+    report._maybe_interim_report(e, at(TODAY, "12:00"))
+    check("没记录不发", e.notifier.sent, [])
+    e = make({TODAY: [entry(TODAY)]})
+    e.running = True
+    report._maybe_interim_report(e, at(TODAY, "12:00"))
+    check("还在跑不发", e.notifier.sent, [])
+    e.running = False
+    e.unfinished = ["早班还没跑完"]
+    report._maybe_interim_report(e, at(TODAY, "12:00"))
+    check("队列没跑完不发", e.notifier.sent, [])
+
+    print("\n[早班跑完就发一份速览，但**不许吃掉当天的日报**]")
+    e = make({TODAY: [entry(TODAY, 1), entry(TODAY, 2)]})
+    report._maybe_interim_report(e, at(TODAY, "12:00"))
+    check("发了一条", len(e.notifier.sent), 1)
+    check("标题是 🔎 不是 📋", e.notifier.titles()[0].startswith("🔎"), True)
+    check("说清是临时查看", "（临时查看）" in e.notifier.titles()[0], True)
+    check("当天日报的记号绝不能落——落了晚上那份就没了",
+          e.state.report_sent(TODAY), False)
+    check("记下这一轮盖到第几条", e.state.interim_covered(TODAY), 2)
+
+    print("\n[同一轮不重发；补跑多出来的那一条要另算一轮]")
+    report._maybe_interim_report(e, at(TODAY, "12:05"))
+    check("同一轮闭嘴", len(e.notifier.sent), 1)
+    rows = e.state.read_ledger(TODAY) + [entry(TODAY, 3)]
+    e.state.ledger_path(TODAY).write_text(
+        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+    report._maybe_interim_report(e, at(TODAY, "15:00"))
+    check("补跑了就再报一次", len(e.notifier.sent), 2)
+    check("覆盖数跟着往前推", e.state.interim_covered(TODAY), 3)
+
+    print("\n[手动触发的那一轮要说是手动的——人得知道这份速览为什么冒出来]")
+    e = make({TODAY: [entry(TODAY)]})
+    e.manual = True
+    report._maybe_interim_report(e, at(TODAY, "12:00"))
+    check("标签是手动执行", "（手动执行）" in e.notifier.titles()[0], True)
+
+    print("\n[速览推不出去时不许记覆盖数，否则这一轮就永远没人报了]")
+    e = make({TODAY: [entry(TODAY)]})
+    e.notifier.broken = True
+    report._maybe_interim_report(e, at(TODAY, "12:00"))
+    check("试着发了", len(e.notifier.sent), 1)
+    check("没记覆盖数", e.state.interim_covered(TODAY), 0)
+
+    print("\n[只有我们自己的测试跑（测试窗口里）的一轮不推速览——测试不进他眼（10-12 18:29 实发过一次）]")
+    e = make({TODAY: [entry(TODAY)]})
+    e.cfg.state_dir = e.state.dir
+    (e.state.dir / "test-windows.json").write_text(json.dumps(
+        [{"since": f"{TODAY}T09:00:00+08:00", "until": f"{TODAY}T09:02:00+08:00"}]),
+        encoding="utf-8")
+    report._maybe_interim_report(e, at(TODAY, "12:00"))
+    check("测试那一轮一条都不发", e.notifier.sent, [])
+    check("但要记成已覆盖，下一轮真跑不把它算进去", e.state.interim_covered(TODAY), 1)
+    rows = e.state.read_ledger(TODAY) + [entry(TODAY, 5)]
+    e.state.ledger_path(TODAY).write_text(
+        "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+    report._maybe_interim_report(e, at(TODAY, "15:00"))
+    check("窗口外的真跑照常报", len(e.notifier.sent), 1)
+
+
+def _part_llm_breaker():
+    """The wording model is a garnish, but a dead endpoint is not free: each attempt
+can cost the full 60 s timeout, inside the path that must finish before the
+machine may power off. After a failure it rests summary.REST_S, then is asked again
+(audit 11-08 B-D7: until then one failure closed it for the whole process); the group
+hears of it once per process.
+
+    Formerly test_llm_breaker.py.
+    """
+    import logging
+    import sys, time
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import summary
+
+
+    class Cfg:
+        llm_key = "sk-test"
+        llm_provider = "openai"
+        llm_model = "deepseek-chat"
+        llm_base_url = "https://api.deepseek.com"
+
+    calls = []
+    def slow_and_broken(*a, **kw):
+        calls.append(1)
+        time.sleep(0.05)                      # stand-in for a 60 s timeout
+        raise OSError("connection refused")
+
+    summary.urllib.request.urlopen = slow_and_broken
+    summary._endpoint_dead = None
+    NOW = [1000.0]
+    summary._clock = lambda: NOW[0]
+
+
+    class Levels(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.DEBUG)
+            self.levels = []
+
+        def emit(self, record):
+            self.levels.append(record.levelname)
+
+
+    levels = Levels()
+    summary.log.addHandler(levels)
+    summary.log.setLevel(logging.DEBUG)
+    summary.log.propagate = False
+
+    print("[first call tries, and fails]")
+    check("returns nothing", summary._ask(Cfg(), "hi"), "")
+    check("did attempt", len(calls), 1)
+
+    print("\n[every later call in this process is free]")
+    t0 = time.monotonic()
+    for _ in range(20):
+        summary._ask(Cfg(), "hi")
+    elapsed = time.monotonic() - t0
+    check("no further attempts", len(calls), 1)
+    check("cost ~nothing", elapsed < 0.05, True)
+    check("one WARNING (the group hears of it)", levels.levels, ["WARNING"])
+
+    print("\n[after the rest it is asked again; failing again is INFO, not a second push]")
+    NOW[0] += summary.REST_S - 1
+    summary._ask(Cfg(), "hi")
+    check("just before the rest ends: still skipped", len(calls), 1)
+    NOW[0] += 2
+    summary._ask(Cfg(), "hi")
+    check("after the rest: asked again", len(calls), 2)
+    check("……that failure is INFO", levels.levels, ["WARNING", "INFO"])
+
+
+    class Resp:
+        def read(self):
+            return '{"choices": [{"message": {"content": "好"}}]}'.encode("utf-8")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+
+    summary.urllib.request.urlopen = lambda *a, **kw: calls.append(1) or Resp()
+    NOW[0] += summary.REST_S
+    check("back: the answer is used", summary._ask(Cfg(), "hi"), "好")
+    check("……and the next call is not held back", (summary._endpoint_dead, summary._ask(Cfg(), "hi")), (None, "好"))
+    summary.urllib.request.urlopen = slow_and_broken
+    summary._endpoint_dead = NOW[0]          # dead again, resting
+    calls[:] = [1]
+
+    print("\n[the report still renders without it]")
+    entry = {"run_id": "x", "script": "MAA", "user": "arknights",
+             "started": "2026-08-21T21:30:00+08:00",
+             "finished": "2026-08-21T22:15:00+08:00", "ok": True}
+    check("diagnose returns empty, caller falls back",
+          summary.diagnose(Cfg(), entry["script"], ["x"], "log tail"), "")
+
+    print("\n[an explicit check must really ask again]")
+    try:
+        summary.check(Cfg())
+    except Exception:  # noqa: BLE001
+        pass
+    check("breaker was reset by check()", len(calls), 2)
+
+    print("\n[no key at all: never attempts]")
+    class NoKey(Cfg):
+        llm_key = ""
+    summary._endpoint_dead = None
+    before = len(calls)
+    check("returns nothing", summary._ask(NoKey(), "hi"), "")
+    check("no attempt", len(calls), before)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_daily_format, _part_daily_partial_failure, _part_daily_range_prefix, _part_daily_techlog]))
+    sys.exit(run_parts([_part_daily_format, _part_daily_partial_failure, _part_daily_range_prefix, _part_daily_techlog, _part_no_model_daily_report, _part_report_due, _part_llm_breaker]))
