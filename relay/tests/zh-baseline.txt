@@ -1,6 +1,6 @@
 # Lines of Chinese comment/docstring per file. **This may only shrink.**
 # Why, and what stays Chinese on purpose: scripts/mac/lib/zh_ratchet.py
-# total 1803 lines in 138 files
+# total 1803 lines in 132 files
 # regenerate: python3 scripts/mac/lib/zh_ratchet.py --update
 relay/ark_relay/core/config.py 2
 relay/ark_relay/core/skland.py 1
@@ -38,9 +38,8 @@ relay/tests/test_inbox_poll.py 12
 relay/tests/test_ledger.py 5
 relay/tests/test_loop_parts.py 2
 relay/tests/test_maa.py 12
-relay/tests/test_maaend_app_log.py 8
-relay/tests/test_maaend_dir_resolve.py 8
-relay/tests/test_maaend_sanity.py 18
+relay/tests/test_maaend.py 16
+relay/tests/test_maaend_watchdog.py 18
 relay/tests/test_maintenance.py 4
 relay/tests/test_manifest_covers_tree.py 6
 relay/tests/test_mas.py 5
@@ -48,15 +47,10 @@ relay/tests/test_mastercfg.py 4
 relay/tests/test_missed_runs.py 4
 relay/tests/test_module_table.py 2
 relay/tests/test_next.py 6
-relay/tests/test_notify_channels.py 33
-relay/tests/test_notify_routing.py 10
-relay/tests/test_okww_error_reason.py 7
-relay/tests/test_okww_exit_race.py 3
-relay/tests/test_okww_names_not_numbers.py 11
-relay/tests/test_okww_report.py 21
-relay/tests/test_okww_stamina_end.py 7
-relay/tests/test_okww_structured.py 4
-relay/tests/test_okww_weekly_boss_step.py 4
+relay/tests/test_notify_routing.py 43
+relay/tests/test_okww.py 46
+relay/tests/test_okww_daily.py 7
+relay/tests/test_okww_nest.py 4
 relay/tests/test_outcome.py 7
 relay/tests/test_phone.py 28
 relay/tests/test_preupdate.py 46
@@ -66,7 +60,7 @@ relay/tests/test_report_due.py 34
 relay/tests/test_sanity_plan.py 12
 relay/tests/test_scan_skips_seen.py 3
 relay/tests/test_scoreboard.py 9
-relay/tests/test_scripts_running_asks_automas.py 4
+relay/tests/test_scripts_relay.py 4
 relay/tests/test_self_attrs.py 3
 relay/tests/test_selfupdate.py 30
 relay/tests/test_shutdown.py 22

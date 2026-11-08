@@ -233,7 +233,7 @@ def tests_for(base: str) -> tuple[list[str], str]:
     # 「can't open file test_okww_early_open_weekly.py」).
     touched_tests = {t for t in touched_tests if t.startswith("test_") and (REPO / "relay" / "tests" / t).exists()}
     # Data, not code (2026-10-16): the phone/order mailbox queue/config.json (order.sh commits it, often between
-    # deploys; no test reads the repo's copy - test_inbox_poll / test_order_push_main build their own) and the
+    # deploys; no test reads the repo's copy - test_inbox_poll / test_order build their own) and the
     # deploy's own bookkeeping relay/state/last-deployed-notes.sha1. Counting them as "outside" made every deploy
     # after an order run all 445 tests: 10-16 01:2x-03:4x five deploys of a 3-file change ran the full suite, which
     # the owner called out (a few dozen changed lines should not cost a full run).

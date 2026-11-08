@@ -651,7 +651,7 @@ def _item_blocks(lines: list[str]) -> dict[str, int]:
 
 def _prints_item_blocks(text: str) -> bool:
     """Does this log contain 「获得以下物品：」 blocks? Older MaaEnd logs (the
-    2026-08-24/25 samples in test_maaend_sanity.py) have none and are read by the
+    2026-08-24/25 samples in test_maaend_watchdog.py) have none and are read by the
     older wording."""
     return any(_END_ITEMS_HEAD.match(_msg(x).strip()) for x in text.splitlines())
 

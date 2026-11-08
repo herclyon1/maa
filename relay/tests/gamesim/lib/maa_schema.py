@@ -9,7 +9,7 @@ upstream rule in our own words: names are parsed out of the upstream files, and 
 a rule is code (AUTO-MAS's validators, its week marker, its config copy, its task
 lookup) the upstream function itself is executed, cut out of the pinned file.
 
-Used by tests/test_gl_maa_config.py (Mac) and gamesim/maa/append_check.py (Windows).
+Used by tests/test_gl.py (Mac) and gamesim/maa/append_check.py (Windows).
 """
 from __future__ import annotations
 

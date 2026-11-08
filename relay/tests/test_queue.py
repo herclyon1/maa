@@ -185,8 +185,12 @@ commands._run_now 里各留着一个叫 names 的局部列表。Python 把它当
     Formerly test_queue_apply_runnow.py.
     """
     import json
+    import os
     import pathlib
 
+    # _run_now writes the relay's state; until round 3 of the slimming (2026-11-08) nothing set
+    # where, and it went to ./ark-state under whatever folder the test ran from.
+    os.environ["ARK_STATE_DIR"] = str(tmpdir() / "state")
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
     from ark_relay.features.phone import commands

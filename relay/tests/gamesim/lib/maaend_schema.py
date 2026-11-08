@@ -16,7 +16,7 @@ definitions, never against tables in the relay. Two upstream sources:
   functions are ported below. Each port names the upstream function it follows;
   the test pins the sha256 of each vendored file and of each ported function's
   body, so an MXU change turns the test red before the port drifts. The ports
-  are validated against MXU's own log lines from the machine (test_gl_maaend_config).
+  are validated against MXU's own log lines from the machine (test_gl).
 
 Version on the machine (INSTALLED): read from MXU's app log, see the evidence
 string. To swap in the machine's own copy once U0 pulls it: copy

@@ -22,7 +22,7 @@ them back, each with the case that did not recover, which still rings every time
   reached nobody is still an ERROR that errwatch pushes.
 
 MaaEnd's update restart after a done round and the gathering retry are pinned
-where they live (test_maaend_update_after_done, test_collect).
+where they live (test_maaend_watchdog, test_collect).
 """
 import json
 import logging
@@ -51,7 +51,7 @@ from ark_relay.core.config import SERVER_TZ, Config, RunRecord                  
 from ark_relay.features.selfcheck import machinecheck as _mc                     # noqa: E402
 _mc.load()
 _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
-_mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc_*.py
+_mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc.py
 from ark_relay.core.ledger import State                                              # noqa: E402
 
 fails = []

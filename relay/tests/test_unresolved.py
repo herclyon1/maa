@@ -57,7 +57,7 @@ from ark_relay.core.notify import route_of                              # noqa: 
 from ark_relay.features.selfcheck import machinecheck as _mc                     # noqa: E402
 _mc.load()
 _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
-_mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc_*.py
+_mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc.py
 
 fails = []
 
@@ -335,7 +335,7 @@ check("SOFT_FAILS 没了", hasattr(e, "SOFT_FAILS") or hasattr(unresolved, "soft
 print("\n[进不了游戏、理智不够、手动开的、更新日、红按钮停的都响]")
 e = build()
 # 「进不了游戏」needs official evidence (handle._confirm_unreachable); here the
-# update notice. Without it the shape alone rings: test_unreachable_evidence.py.
+# update notice. Without it the shape alone rings: test_unreachable.py.
 real_hint = handle.efstatus.update_hint
 handle.efstatus.update_hint = lambda now=None, fetch=None, strict=False: "官方公告：今天 10:00 「雪凇幽梦」版本更新"
 handle._handle(e, rec("MaaEnd", at(9, 5), raw={"maaend_unreachable_shape": True}))

@@ -394,16 +394,16 @@ PATCH_COVERAGE = {
 # behaviour test instead: the file named here drives that method with a fake task.
 # The gate checks the file exists and names the method.
 BEHAVIOUR_TESTS = {
-    "FarmEchoTask.combat_once": "test_okww_weekly_entry_paths.py",
-    "FarmEchoTask.click_team_challenge": "test_okww_weekly_entry_paths.py",
-    "FarmEchoTask.click_solo_challenge": "test_okww_weekly_entry_paths.py",
-    "BaseWWTask.click_on_book_target": "test_okww_weekly_entry_paths.py",
-    "FarmEchoTask.teleport_to_configured_boss": "test_okww_weekly_entry_paths.py",
-    "FarmEchoTask.teleport_to_configured_boss_and_prepare": "test_okww_weekly_entry_paths.py",
-    "FarmEchoTask.run": "test_okww_revive_and_retry.py",
-    "TacetTask.farm_tacet": "test_okww_farm_hook.py",
-    "ForgeryTask.farm_forgery": "test_okww_farm_hook.py",
-    "SimulationTask.farm_simulation": "test_okww_farm_hook.py",
+    "FarmEchoTask.combat_once": "test_okww_nest.py",
+    "FarmEchoTask.click_team_challenge": "test_okww_nest.py",
+    "FarmEchoTask.click_solo_challenge": "test_okww_nest.py",
+    "BaseWWTask.click_on_book_target": "test_okww_nest.py",
+    "FarmEchoTask.teleport_to_configured_boss": "test_okww_nest.py",
+    "FarmEchoTask.teleport_to_configured_boss_and_prepare": "test_okww_nest.py",
+    "FarmEchoTask.run": "test_okww_daily.py",
+    "TacetTask.farm_tacet": "test_okww_daily.py",
+    "ForgeryTask.farm_forgery": "test_okww_daily.py",
+    "SimulationTask.farm_simulation": "test_okww_daily.py",
 }
 
 
@@ -842,7 +842,7 @@ _MAAEND_DROPPED = re.compile(r'选项 "([^"]+)" (?:已不存在，已丢弃保�
                              r'|的类型已从 "[^"]*" 变更为 "[^"]*"，已重置为默认值)')
 # Which task a reset option belongs to, told by its key prefix, and what the user
 # loses with it. Only the prefixes with a known owner: AutoStockBuy* are 自动囤货's
-# buy lists (test_maaend_migrate_stock_switch, 2026-10-10), AutoCollect* are
+# buy lists (test_maaend_config, 2026-10-10), AutoCollect* are
 # 自动采集's routes (2026-09-10 above). Any other key is counted as 「其他」, not guessed.
 _DROPPED_OWNER = (
     ("AutoStockBuy", "自动囤货", "购买", "买"),
@@ -875,7 +875,7 @@ _MAAEND_WORK = (
     # or target-stock skip (「纯晶多齿叶 库存已达目标，本次跳过」) instead of 「路线N：」/「线路N：」.
     ("自动采集", re.compile(r"(?:路线|线路)\d+[：:]|(?m:^(?:\[[^\]]+\]\s*)?采集(?!失败\s*$)[^\s：:]+\s*$)|库存已达目标，本次跳过"), "走了路线"),
     # 「体力不足，任务结束」: MaaEnd v2.34's out-of-sanity ending of 基质刷取 (2026-10-19
-    # MaaEnd-07-14-29.log, retry with 9 sanity left; tests/test_maaend_essence_stamina_out.py).
+    # MaaEnd-07-14-29.log, retry with 9 sanity left; tests/test_maaend_watchdog.py).
     ("基质刷取", re.compile(r"已完成一次基质刷取|理智不足|体力不足[，,]\s*任务结束"), "刷了"),
     # The same v2.34 ending in 协议空间 (dispatch relay-opt-round3-1108 O-04, missed by #106).
     ("协议空间", re.compile(r"进入协议空间成功|理智不足|体力不足[，,]\s*任务结束"), "进了"),
@@ -1031,7 +1031,7 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
             elif _MAAEND_SKIPPED.search(seg):
                 # The task itself said it was not due today (weekday schedule);
                 # a quick completion is then the right outcome, not a false green.
-                # The real line from 2026-09-11 10:01 is in test_maaend_false_green.
+                # The real line from 2026-09-11 10:01 is in test_maaend.
                 # Not listed as 「干成的」 though: it did nothing today (summarize).
                 out.append(Check(key, True, kind=SKIPPED))
             else:

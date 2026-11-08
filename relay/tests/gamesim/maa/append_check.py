@@ -7,7 +7,7 @@ StageNavigationTask::set_stage_name. Here the real core gives the verdict instea
 params MAA itself sent (asst.log), and the imitation is compared with it stage by stage.
 
 Why no device is needed: asst::Assistant::append_task (pinned
-src/MaaCore/Assistant.cpp; its body hash is in tests/test_gl_maa_config.py PINNED_BODIES)
+src/MaaCore/Assistant.cpp; its body hash is in tests/test_gl.py PINNED_BODIES)
 parses the JSON, builds the task, calls set_params and returns 0 when that fails, else a
 task id. It touches no controller. AsstCreate needs only a loaded resource (AsstCaller.cpp,
 inited()). So: AsstLoadResource -> AsstCreate -> AsstAppendTask, nothing else.

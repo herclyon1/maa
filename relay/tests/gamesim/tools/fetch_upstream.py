@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fetch an upstream tool's source by tag into relay/tests/gamesim/upstream/, or check a copy.
 
-The game-layer tests (relay/tests/test_gl_*.py) read the upstream source of the version
+The game-layer tests (relay/tests/test_gl.py and test_gl_*.py) read the upstream source of the version
 installed on the game PC instead of stand-ins written from memory (gamesim design, rule 2:
 upstream is run, never imitated). This tool is the only writer of those copies; nobody
 edits them by hand, and `check` re-fetches a copy and fails on any difference.

@@ -1190,7 +1190,7 @@ notifies services, and WMI can go in either order with the notification, so
 the two failures a shutdown explains - the process-start listener dropping and
 the backend exiting - wait up to `GOING_DOWN_SETTLE_SECONDS` (15 s) for a
 going-down sign before they are logged as faults (`service._going_down_soon`).
-Tests: `relay/tests/test_procwatch_drop.py`, `relay/tests/test_keeper.py`.
+Tests: `relay/tests/test_procwatch.py`, `relay/tests/test_keeper.py`.
 
 **Rule.** Do not write down what a framework does with a control, a signal or
 a callback without the line of its source that does it. The framework here is

@@ -67,7 +67,7 @@ among them, switched off) and failures of only 自动采集 / 应急理智加强
     from ark_relay.features.selfcheck import machinecheck as _mc
     _mc.load()
     _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
-    _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc_*.py
+    _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc.py
     from ark_relay.core.ledger import State
     from ark_relay.core.notify import route_of
 
@@ -878,7 +878,7 @@ make-up is only for a failure of today, so the no-make-up checks mean something)
 
     _mc.load()
     _mc_real = dict(_mc.CHECKS)
-    _mc.CHECKS.clear()     # machine checks have their own tests (tests/test_mc_*.py)
+    _mc.CHECKS.clear()     # machine checks have their own tests (tests/test_mc.py)
 
     TODAY = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
     TASK = "c6d40887-2c99-43e7-9bbf-a94f9bf49d6d"

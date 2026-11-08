@@ -91,8 +91,8 @@ jobs:
       #   test_need_table.py - runs web/inventory.js in macOS JavaScriptCore
       #     (osascript -l JavaScript); there is no osascript on Windows, and the
       #     code it checks is the web page's, not the relay's.
-      # test_banners / test_notify_channels / test_tacet_shots build their image
-      # fixtures with Pillow, test_okww_daily_chests with NumPy as well; the Mac gate's
+      # test_banners / test_notify_routing / test_tacet_shots build their image
+      # fixtures with Pillow, test_okww_daily with NumPy as well; the Mac gate's
       # Python has both, a bare setup-python does not.
       - name: Install Pillow and NumPy for the image fixtures
         run: python3 -m pip install --disable-pip-version-check pillow numpy
@@ -105,12 +105,13 @@ jobs:
           # is slower. This job checks pass / fail on Windows, not speed.
           CI_TEST_FILE_MAX_S: '60'
           CI_TEST_WALL_MAX_S: '600'
-        # test_order_push_main is left out for good: it runs scripts/mac/order.sh, which
-        # only ever runs on the Mac (the order inbox is written from the Mac, never from
-        # the game machine), and the Mac gate in deploy-relay.sh runs it on every deploy.
+        # test_order is left out for good: it runs scripts/mac/order.sh and
+        # scripts/mac/order-now.sh, which only ever run on the Mac (the order inbox is
+        # written from the Mac, never from the game machine), and the Mac gate in
+        # deploy-relay.sh runs it on every deploy (two files of their own until 11-08:
+        # ..._push_main, ..._now_confirmed).
         # The same holds for these: each tests a tool that only ever runs on the Mac
         # (run 38360295330 had all six red):
-        #   test_order_now_confirmed - scripts/mac/order-now.sh;
         #   test_estop_layout        - scripts/mac/estop.sh (fake ssh / curl on PATH);
         #   test_deploy              - deploy-relay.sh's smoke-gate block, run in bash, and
         #                              deploy-pkg.sh under macOS /bin/bash 3.2 (none here)
@@ -123,8 +124,7 @@ jobs:
         run: >-
           scripts/ci/relay-tests.sh
           --exclude test_need_table.py
-          --exclude test_order_push_main.py
-          --exclude test_order_now_confirmed.py
+          --exclude test_order.py
           --exclude test_estop_layout.py
           --exclude test_deploy.py
           --exclude test_techlog_tool.py

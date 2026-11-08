@@ -81,7 +81,7 @@ class Task:
 
     def teleport_to_configured_boss_and_prepare(self):
         """The way back in up to the level page, as click_configured_boss_level reads
-        it (the real one runs in test_okww_claim_readback.py)."""
+        it (the real one runs in test_okww_daily.py)."""
         self.entries += 1
         if self.fail:
             raise self.fail

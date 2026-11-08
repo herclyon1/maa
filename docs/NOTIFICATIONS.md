@@ -327,7 +327,7 @@ with `scripts/mac/techlog.py handled`. The user, 2026-10-11 17:44: 「只进日�
 自己好了，可以不报警，但你们必须有人要去查，去看是什么情况。」 The same holds for every WARNING
 marked `errwatch.recovered()` (errwatch writes the red item). `test_mute_verdicts.py` fails a
 `normal-state - recovered:` line in USER-SWITCHES.txt whose code writes no red item, and
-`test_self_heal_red.py` checks the writing.
+`test_self_attrs.py` checks the writing.
 
 Nothing else may stay out of the group (the user, 2026-10-11 17:43: 「你们有多少东西只进日报不去修的？
 如果不是自己好了禁止只进日报」): what is not a fault at all is on test_mute_verdicts.NOT_A_FAULT,

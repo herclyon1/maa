@@ -261,7 +261,7 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
             named = {t for t in want if "超时" not in t}
             # A later run whose own outcome check failed still covers a bare timeout (audit
             # 2026-11-08 B-04 asked otherwise): its undone items are their own title item
-            # (「终末地 1 项没干完」, tests/test_maaend_update_restart.py 10-01), so the round is
+            # (「终末地 1 项没干完」, tests/test_maaend_watchdog.py 10-01), so the round is
             # not green either way and 「没跑成」 on top would say the one problem twice.
             if (named != want and named <= done) or want <= done:
                 # By start time on both clocks, the way the run's own line is labelled.

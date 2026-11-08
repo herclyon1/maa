@@ -191,7 +191,7 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
       day replays of 2026-10-07, 10-08 and 10-11; fixed 2026-10-13): #20 no longer prices the claim after the last
       reading as the largest drop between readings; it reads that claim's own payout (折金票 ×68000 = double, 160;
       ×34000 = single, 80), adds the potions used after the reading, and leaves the figure unjudged for any other
-      amount - independent of the collector's rule (`machinechecks/runs.py` `_c20`, `relay/tests/test_mc_runs.py`
+      amount - independent of the collector's rule (`machinechecks/runs.py` `_c20`, `relay/tests/test_mc.py`
       with the three runs' logs: 37 / 78 / 37 pass, 0 fails). Its known-red entries are gone; the list is empty.
 - [x] **daysim-R2: 「⚙️ 配置已更新：…」 had no row in docs/NOTIFICATIONS.md** (found 2026-10-13 by the day
       replays of 2026-10-12 / 10-13; decided by 验收 and fixed 2026-10-13): the receipt of our own order.sh batch
@@ -202,7 +202,7 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
       replay of 2026-10-06; fixed 2026-10-13): #59 now checks what procwatch does since 324b640b - a drop that
       came back by itself is pushed to the group once (or, when the outage was already pushed, its end line is
       tagged recovered and not pushed again), and its diag names H1/H2/H3 (`machinechecks/system.py`
-      `_wmi_recovered`, `relay/tests/test_mc_system.py`). Its known-red entry is gone.
+      `_wmi_recovered`, `relay/tests/test_mc.py`). Its known-red entry is gone.
 - [x] All four OK-WW patches submitted upstream (2026-08-27):
       [#1625](https://github.com/ok-oldking/ok-wuthering-waves/pull/1625) a failed instance no longer
       drags down the dailies,

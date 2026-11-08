@@ -18,7 +18,7 @@ Of the 28 FIXED, the fix for part of kinds 7/8/19/20/43 is on main but not yet o
 
 - **Kinds 5 and 14: the WMI process-start subscription drops (RPC failed 0x800706BE).** Happened 3 times: 10-05 22:45:46, 10-06 16:16:59, 10-06 18:08:22. Each time it was 37-51 s after a deploy restart: the update landed at 22:44:00 / 16:16:08 / 18:07:33 (L16167, L17011, L17183). Root cause unknown. Commit 6ca49eac only changed the line from a pushed ERROR to a recovered WARNING. Commits 372c24c1 and fed9a445 (not deployed) only add the System log's winmgmt events to the diag line. Nothing touches what drops the subscription.
   - Next step: deploy 372c24c1 and fed9a445, then read the System log for 10-05 22:43-22:47 and 10-06 16:12-16:17 and 18:03-18:09 (the last two are listed in docs/NEXT-BOOT.md). Event 7036/7031/7034 for winmgmt shows whether something stopped WMI or it crashed. If a relay boot stage or a deploy-time remote command restarts it (both drops came in the first minute after a restart; 8 other restarts that day did not drop), move or remove that call.
-  - Covering tests: relay/tests/test_wmi_listener.py and relay/tests/test_mc_system_fixes.py, plus a new case built from the 7036 sample.
+  - Covering tests: relay/tests/test_wmi_listener.py and relay/tests/test_mc.py, plus a new case built from the 7036 sample.
 
 ### Settled after the first draft: kind 12 (09-30) and kind 41
 

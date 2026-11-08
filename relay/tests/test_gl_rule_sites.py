@@ -80,7 +80,7 @@ _SCEN_STOPS = "its overlay line comes after the moment the scenario ends, or on 
 GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
     ("core/collector.py", "未连接游戏客户端"):
         ("none", "AUTO-MAS AutoProxy.py _OKWW_DISCONNECT_MSG when OK-WW -e closes hwnd after completion "
-                 "(2026-11-03 OK-WW-05-44-13, ledger #135); tested in test_okww_exit_race.py"),
+                 "(2026-11-03 OK-WW-05-44-13, ledger #135); tested in test_okww.py"),
     ("features/verify/gamelog_errors.txt",
      r"\[ERR\]\[[^\]]*\]\[[^\]]*\]\[navigation_state_machine\.cpp\]\[L\d+\]\[mapnavigator::NavigationStateMachine::FailNavigation\] Off-route with no route progress past the wedge timeout; terminating so the pipeline can retry\."):
         ("fixture", "only fixtures/maaend-2026-10-21 (real AUTO-MAS history lines 09:54:30-09:57:11, ledger #108)"),
@@ -111,10 +111,10 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
     ("features/verify/collector_maaend.py", r"(?m)^\[[^\]]+\]\s*采集(?!失败\s*$)([^\s：:]+)\s*$"):
         ("fixture", "only fixtures/maaend-2026-11-05 (real AUTO-MAS history lines of MaaEnd-07-24-54); MaaEnd v2.36 "
                     "item-named route lines (first Monday gathering run 2026-11-02 MaaEnd-06-37-16, ledger #134); "
-                    "tested in test_maaend_collect_items_v236.py and test_gathering_route_node_failed.py"),
+                    "tested in test_maaend_collect.py and test_gathering_route_node_failed.py"),
     ("features/verify/collector_maaend.py", r"(?m)^\[[^\]]+\]\s*(?!(?:路线|线路)\d+[：:])([^\s：:]+?)采集失败\s*$"):
         ("none", "MaaEnd v2.36 item-named route failure lines (task.AutoCollect.route.*.failed, ledger #122/#134); "
-                 "tested in test_maaend_collect_items_v236.py"),
+                 "tested in test_maaend_collect.py"),
     ("features/verify/collector_okww.py", r"info_set Teleport to Forgery Challenge (\d+)"):
         ("none", "the machine farms Tacet; no Forgery run recorded"),
     ("features/verify/collector_okww.py", "ForgeryTask:"): ("none", "the machine farms Tacet; no Forgery run recorded"),

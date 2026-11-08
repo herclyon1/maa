@@ -57,7 +57,7 @@ const SET_ICONS = {
 /* 每个无音区固定掉两个套装，没有只掉一个的。 */
 /* 鸣潮 3.7（2026-09-30）把沉心域、烬心域插在梦州组最上面，老的全部往后挪 2 个
    （中继一 09-30 在游戏里读的 F2 列表和合鸣筛选，BOARD/evidence/鸣潮3.7-选项-0930）。
-   和 relay/ark_relay/wuwa_tacet.py 由 test_okww_names_not_numbers 钉在一起。 */
+   和 relay/ark_relay/wuwa_tacet.py 由 test_okww 钉在一起。 */
 const TACET = [
   [["衔梦照世之心", "茜染怀想之花"], 1],
   [["衔梦照世之心", "镜影流电之瞬"], 2],

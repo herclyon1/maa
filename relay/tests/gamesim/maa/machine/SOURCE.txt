@@ -1,4 +1,4 @@
-Machine config copies for tests/test_gl_maa_config.py (gamesim U12), cut down and checked
+Machine config copies for tests/test_gl.py (gamesim U12), cut down and checked
 for private values before commit. Both were pulled read-only from the game machine on
 2026-10-13 (scratchpad daydata pull, D:\ark\...).
 

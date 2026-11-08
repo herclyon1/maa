@@ -239,7 +239,7 @@ with MAA's own refill sentence) as the control.
 
     _mc.load()
     _mc_real = dict(_mc.CHECKS)
-    _mc.CHECKS.clear()     # machine checks have their own tests (tests/test_mc_*.py)
+    _mc.CHECKS.clear()     # machine checks have their own tests (tests/test_mc.py)
 
     FX = Path(__file__).resolve().parent / "fixtures" / "maa-2026-10-10"
     SANITY_UNREAD = getattr(texts, "SANITY_UNREAD", "理智没读到")   # getattr: the red run predates it

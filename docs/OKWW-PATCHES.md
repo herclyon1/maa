@@ -47,7 +47,7 @@ tier labels, in units of one tier step), and each is checked for the claimed tic
 `BOARD/evidence/ww-daily-80-1010.png`; claimed 0.94-0.99, unclaimed 0.49). Two tries,
 then 「活跃奖励没领到：…」 with a screenshot. Any other hash: upstream's claim runs and
 the log says 「活跃奖励：没有核对，…」. The relay turns these lines, and points under 100,
-into items undone (`outcome.daily_reward_checks`). Test: `tests/test_okww_daily_chests.py`.
+into items undone (`outcome.daily_reward_checks`). Test: `tests/test_okww_daily.py`.
 2026-10-11 09:29 all five were claimed at 140 points and the log still said
 「100 档点了没领到」 (100: 0.35): chests were placed from each label's box centre, and
 「100」 is a digit wider than 「20」-「80」 while the chest keeps one distance from the
@@ -70,7 +70,7 @@ opened page gets upstream's clicks unchanged and 「战令：页面打开了，�
 not verified (no picture of the page to check against yet). Any other upstream hash: upstream's own body
 runs and the log says 「战令：没有重试，…」. The relay turns these lines (and upstream's sentence alone) into
 the item 「战令（先约电台）点了领取」 (`outcome.battle_pass_checks`, also in the 「dailies done before the run」
-branch); red goes to the group in 「⚠️ 这一轮没干完」. Test: `relay/tests/test_okww_battle_pass_claim.py`.
+branch); red goes to the group in 「⚠️ 这一轮没干完」. Test: `relay/tests/test_okww_daily.py`.
 
 **Tacet list groups (2026-09-30, WuWa 3.7; removed 2026-10-13):** upstream v3.7.4 sets
 `structure = [4, 5, 5, 7]` itself (TacetTask.py:18), so the wrapper below never changed anything
