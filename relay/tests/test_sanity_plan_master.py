@@ -76,6 +76,25 @@ def main() -> int:
         check("ProtocolSpace 关了", tasks["ProtocolSpace"]["enabled"], False)
         check("别的任务没被动", tasks["DailyRewards"]["enabled"], True)
 
+        print("\n[基质刷取在「目标选择」模式：写地点没用，拒绝，不替他切回随机（审计 11-08 D-13）]")
+        mf = am / "data/59da8762/Default/ConfigFile/mxu-MaaEnd.json"
+        doc = json.loads(mf.read_text(encoding="utf-8"))
+        ess = next(x for x in doc["instances"][0]["tasks"] if x["taskName"] == "AutoEssence")
+        ess["optionValues"]["AutoEssenceMenu"] = {"type": "select", "caseName": "Target"}
+        mf.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+        before = mf.read_text(encoding="utf-8")
+        ok, msg = sanity_plan.set_plan(am, "Essence", location="VFTheHub")
+        check("目标选择 + 地点：拒绝", ok, False)
+        check("……说清楚是哪种模式、为什么不生效", ("目标选择" in msg, "随机模式" in msg), (True, True))
+        check("……母本一个字没动", mf.read_text(encoding="utf-8"), before)
+        ok, _ = sanity_plan.set_plan(am, "Essence")
+        check("目标选择、不写地点：照常", ok, True)
+        check("……读出来的标签说目标选择，不说那个不生效的地点", sanity_plan.read(am)["label"], "基质刷取 → 目标选择")
+        ess["optionValues"]["AutoEssenceMenu"] = {"type": "select", "caseName": "Random"}
+        mf.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+        ok, _ = sanity_plan.set_plan(am, "Essence", location="VFTheHub")
+        check("随机模式 + 地点：照常写", (ok, sanity_plan.read(am)["locations"]), (True, ["VFTheHub"]))
+
         print("\n[切回协议空间]")
         ok, _ = sanity_plan.set_plan(am, "OperatorProgression", "SkillUp")
         check("写成功", ok, True)

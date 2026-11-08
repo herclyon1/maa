@@ -306,13 +306,6 @@ def _maa_script(data: dict) -> tuple[str, dict] | None:
     return found[0] if len(found) == 1 else None
 
 
-def _runs(info: dict) -> bool:
-    """Whether AUTO-MAS runs this user at all: app/task/manager_base.py is_user_selected
-    (AUTO-MAS-Project/AUTO-MAS 9e605ff7, 2026-10-13) takes a user only when Info.Status is
-    on and Info.RemainedDay is not 0 (defaults True and -1, app/models/config.py)."""
-    return bool(info.get("Status", True)) and info.get("RemainedDay", -1) != 0
-
-
 def run_verdict(automas_dir, maa_dir, at: datetime, problems: list | None = None,
                 every: list | None = None) -> tuple[str, str, str]:
     """Will MAA accept the Fight stage AUTO-MAS sends at `at`? (verdict, stage, reason).
@@ -338,7 +331,7 @@ def run_verdict(automas_dir, maa_dir, at: datetime, problems: list | None = None
     if script is None:
         return UNKNOWN, "", "找不到唯一的 MAA 脚本"
     users = [u for u in ((script[1].get("SubConfigsInfo") or {}).get("UserData") or {}).values()
-             if isinstance(u, dict) and _runs(masuser.info_view(u))]
+             if isinstance(u, dict) and masuser.runs(masuser.info_view(u))]
     verdicts: list[tuple[str, str, str]] = []
     for u in users:
         # masuser: AUTO-MAS v5.7.0-beta.3 keeps the stage items in a Stage group, not Info.

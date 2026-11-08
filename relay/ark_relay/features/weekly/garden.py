@@ -127,6 +127,19 @@ class GardenGate(WeekGate):
                 log.warning("周常乐园开关写不进去：%s", exc)
                 self._last_write_error = str(exc)
             return False
+        # Read back before saying it is set, as weeklyboss does (audit 11-08 D-13: until then
+        # the write alone counted).
+        try:
+            back = TASK_NAME in (json.loads(f.read_text(encoding="utf-8")).get(KEY) or [])
+        except (OSError, ValueError, AttributeError) as exc:
+            back, why = None, f"读回来出错（{type(exc).__name__}: {exc}）"
+        else:
+            why = "读回来还是" + ("关着" if want_on else "开着")
+        if back is not want_on:
+            if why != self._last_write_error:
+                log.warning("周常乐园开关写了但没对上：要%s，%s", "开" if want_on else "关", why)
+                self._last_write_error = why
+            return False
         self._last_write_error = ""
         if want_on:
             log.info("周常乐园检查已恢复")

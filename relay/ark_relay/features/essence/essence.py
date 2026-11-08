@@ -36,7 +36,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from ark_relay.core import texts
+from ark_relay.core import notify, texts
 from ark_relay.core.config import SERVER_TZ, atomic_write_text
 
 log = logging.getLogger("ark.essence")
@@ -265,6 +265,21 @@ def on_record(eng, rec, day: str) -> None:
     log.info("基质刷取：%s 勾选的武器基质都已齐，等没有任务在跑时切成随机地区刷垫子", rec.run_id)
 
 
+# A pending switch's count of reads / writes of the master that failed with an OSError, and
+# the last one's words. The step runs once a tick; this many in a row is a fault (the same
+# number of tries as a push, notify._RETRIES).
+OS_TRIES, OS_LAST = "os_tries", "os_last"
+OS_ATTEMPTS = notify._RETRIES
+
+
+def _give_up(st, run_id: str, why: str, errwatch) -> None:
+    """The switch is not made: the pending mark goes, this record is done, the group hears why."""
+    st.pop(SECTION, PENDING)
+    st.set(SECTION, DONE_FOR, run_id)
+    body = texts.essence_filler_failed(why)
+    log.warning("%s", body, extra=errwatch.alarm(texts.ESSENCE_FILLER_FAILED, body))
+
+
 def step(eng, now: datetime | None = None) -> None:
     """Engine tick step: carry out a pending switch to filler mode when it is safe."""
     st = _store(eng)
@@ -279,18 +294,29 @@ def step(eng, now: datetime | None = None) -> None:
         return
     eng._essence_wait_note = ""
     run_id = str(pending["run_id"])
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    tries = int(pending.get(OS_TRIES) or 0)
     try:
         res = apply(cfg, to_filler, "filler")
+    except OSError as exc:
+        # The master held by another program for a moment (MaaEnd or AUTO-MAS just let go of
+        # it): tried again on the next tick, up to OS_ATTEMPTS (audit 11-08 D-10: until then
+        # the first such error gave up for good).
+        tries += 1
+        if tries < OS_ATTEMPTS:
+            st.set(SECTION, PENDING, dict(pending, **{OS_TRIES: tries, OS_LAST: f"{type(exc).__name__}: {exc}"}))
+            log.info("基质刷取：切刷垫子时母本读写没成（第 %d 次，%s: %s），下一轮再试", tries, type(exc).__name__, exc)
+            return
+        _give_up(st, run_id, f"连着 {tries} 次读写母本没成：{type(exc).__name__}: {exc}", errwatch)
+        return
     except Exception as exc:  # noqa: BLE001 - Refused or a broken file: said once, not retried
-        st.pop(SECTION, PENDING)
-        st.set(SECTION, DONE_FOR, run_id)
-        why = str(exc) if isinstance(exc, Refused) else f"{type(exc).__name__}: {exc}"
-        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-        body = texts.essence_filler_failed(why)
-        log.warning("%s", body, extra=errwatch.alarm(texts.ESSENCE_FILLER_FAILED, body))
+        _give_up(st, run_id, str(exc) if isinstance(exc, Refused) else f"{type(exc).__name__}: {exc}", errwatch)
         return
     st.pop(SECTION, PENDING)
     st.set(SECTION, DONE_FOR, run_id)
+    if tries:
+        log.warning("基质刷取：切刷垫子前面 %d 次读写母本没成，这次成了\n上一次：%s", tries,
+                    pending.get(OS_LAST) or "?", extra=errwatch.recovered())
     if not res.changed:
         log.info("基质刷取：%s 之后没切（%s）", run_id, res.note)
         return

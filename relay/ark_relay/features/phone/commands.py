@@ -296,10 +296,12 @@ def _find_user(script: str) -> "tuple[str, str, dict]":
         if name.lower() != script.lower():
             continue
         users = _mas("/api/scripts/user/get", {"scriptId": sid}).get("data") or {}
-        if not users:
+        # The user the snapshot and the plan show (masuser.pick): until 11-08 this took the
+        # first and they the last (audit 11-08 D-11).
+        if (got := masuser.pick(users)) is None:
             raise KeyError(f"脚本「{script}」下面没有用户")
-        uid = next(iter(users))
-        return sid, uid, users[uid]
+        uid, user = got
+        return sid, uid, user
     raise KeyError(f"没有叫「{script}」的脚本")
 
 

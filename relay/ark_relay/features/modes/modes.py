@@ -657,7 +657,7 @@ _RECEIPTS_LOCK = threading.Lock()
 
 
 def add_receipt(state_dir, action: str, ok: bool, text: str, sent: "int | None" = None,
-                queued: bool = False) -> None:
+                queued: bool = False, target: str = "") -> None:
     """One answer on the phone page. `sent` is the phone's own time of the press
     (the command envelope's ts), kept as "sent" beside "at" - the moment it was
     acted on - so a receipt says when an order was sent, not only when it ran.
@@ -665,7 +665,12 @@ def add_receipt(state_dir, action: str, ok: bool, text: str, sent: "int | None" 
     `queued` (D207): the order is waiting for the running script to end. The App
     shows such a receipt as 「排队中 · 跑完执行」 instead of a failure, until the
     final receipt (no "queued") for the same action and send time arrives. The
-    key is only written when set, so every other receipt keeps its shape."""
+    key is only written when set, so every other receipt keeps its shape.
+
+    "ts" (the send time to the second) and "target" (which setting or queue,
+    phone_channel.receipt_target) tell apart receipts of one action sent in one minute -
+    a save of several settings at once (audit 11-08 D-07, relay side). Both are only
+    written when there is one; every key before them is unchanged."""
     import json  # noqa: PLC0415
     from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
     p = Path(state_dir) / _RECEIPTS
@@ -680,6 +685,9 @@ def add_receipt(state_dir, action: str, ok: bool, text: str, sent: "int | None" 
                 "ok": bool(ok), "text": str(text)[:200]}
         if isinstance(sent, int):
             item["sent"] = datetime.fromtimestamp(sent, tz=SERVER_TZ).strftime("%m-%d %H:%M")
+            item["ts"] = sent
+        if target:
+            item["target"] = str(target)[:120]
         if queued:
             item["queued"] = True
         items.append(item)

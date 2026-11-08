@@ -37,6 +37,22 @@ log = logging.getLogger("ark.service")
 LIVE_ONLY_ACTIONS = ("estop",)
 
 
+
+def receipt_target(body: "dict | None") -> str:
+    """Which setting or queue an order is about, for its receipt's "target" (modes.add_receipt):
+    set_master game:path, set_config script:path, skip_today / unskip_today the queue; ''
+    for any other order. The fields are the ones commands.apply_command reads."""
+    body = body or {}
+    action = str(body.get("action") or "")
+    if action == "set_master":
+        return f"{body.get('game') or ''}:{body.get('path') or ''}"
+    if action == "set_config":
+        return f"{body.get('script') or ''}:{body.get('path') or ''}"
+    if action in ("skip_today", "unskip_today"):
+        return str(body.get("queue") or "")
+    return ""
+
+
 def _before(body, started) -> bool:
     """True unless ntfy received `body` at or after `started` (unix seconds).
 
@@ -65,10 +81,10 @@ def boot_backlog(cmds: list[dict], log, started: float | None = None) -> list[di
     return out
 
 
-def _phone_answer(receipt, log, push_state, action: str, sent, ok: bool, msg: str) -> None:
+def _phone_answer(receipt, log, push_state, action: str, sent, ok: bool, msg: str, target: str = "") -> None:
     """Write an order's receipt and push the state: the answer is on the page where he pressed."""
     try:
-        receipt(action, sent, ok, msg)
+        receipt(action, sent, ok, msg, target=target)
     except Exception:
         log.exception("手机指令回执没记下")
     push_state("改完配置")
@@ -143,7 +159,7 @@ def _phone_execute(apply_command, notifier, log, push_state, receipt,
     # it where he pressed the button (2026-09-14); a failed order also goes
     # to the group.
     try:
-        receipt(action, sent, ok, msg)
+        receipt(action, sent, ok, msg, target=receipt_target(body))
     except Exception:
         log.exception("手机指令回执没记下")
     if notify or not ok:
@@ -171,7 +187,7 @@ def _phone_enqueue(queue, log, queued_receipt, raw: dict, action: str, mid: str,
     else:
         log.info("📱 手机指令 %s 已经排过队或执行过，不再重复（id %s）", action, mid)
     if queued_receipt is not None and got in (_phone.QUEUED, _phone.RESENT):
-        queued_receipt(action, sent)
+        queued_receipt(action, sent, receipt_target(raw))
 
 
 def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
@@ -191,17 +207,17 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
     queue = _phone.CmdQueue(state_dir)
     drain_lock = threading.Lock()
 
-    def _receipt(action, sent, ok, msg, queued=False):
+    def _receipt(action, sent, ok, msg, queued=False, target=""):
         # "sent" beside "at": the page shows both (「HH:MM 发出 · HH:MM 执行」,
         # web data 5238f367), so the text itself stays the plain answer.
         from ark_relay.features.modes import modes as _modes  # noqa: PLC0415
-        _modes.add_receipt(cfg_state_dir, action, ok, msg, sent=sent, queued=queued)
+        _modes.add_receipt(cfg_state_dir, action, ok, msg, sent=sent, queued=queued, target=target)
 
-    def _queued_receipt(action: str, sent) -> None:
+    def _queued_receipt(action: str, sent, target: str = "") -> None:
         """D207: the moment an order is queued behind a running script, a receipt says
         so and a state goes out, so the App shows 「排队中」 instead of 「没生效」."""
         try:
-            _receipt(action, sent, True, texts.PHONE_QUEUED, queued=True)
+            _receipt(action, sent, True, texts.PHONE_QUEUED, queued=True, target=target)
         except Exception:
             log.exception("手机指令排队回执没记下")
         push_state("指令排队")
@@ -255,7 +271,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
                            "过期没执行；需要就重新发一次")
                     log.warning("📱 排队的手机指令 %s 过期没执行（id %s）",
                                 action, meta.get("ntfy_id") or "?")
-                    _phone_answer(_receipt, log, push_state, action, sent, False, msg)
+                    _phone_answer(_receipt, log, push_state, action, sent, False, msg, target=receipt_target(body))
                     _machine_check(state_dir, "phone_cmd", {"action": action, "ok": False, "msg": msg,
                                                             "via": "expired", "queued_at": item.get("queued"),
                                                             "sent": sent}, notifier, log)
@@ -280,7 +296,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
         sent = meta.get("sent") if isinstance(meta.get("sent"), int) else None
 
         def receipt(ok, msg):
-            _receipt(action, sent, ok, msg)
+            _receipt(action, sent, ok, msg, target=receipt_target(body))
 
         action = str((body or {}).get("action") or "")
         if action == "refresh":

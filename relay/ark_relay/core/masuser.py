@@ -58,3 +58,20 @@ def info_view(user: dict) -> dict:
         if isinstance(src, dict) and key in src:
             out[key] = src[key]
     return out
+
+
+def runs(info: dict) -> bool:
+    """Whether AUTO-MAS runs this user at all: app/task/manager_base.py is_user_selected
+    (AUTO-MAS-Project/AUTO-MAS 9e605ff7, 2026-10-13) takes a user only when Info.Status is
+    on and Info.RemainedDay is not 0 (defaults True and -1, app/models/config.py)."""
+    return bool(info.get("Status", True)) and info.get("RemainedDay", -1) != 0
+
+
+def pick(users) -> "tuple[str, dict] | None":
+    """(user id, user) of a script's UserData (the file) or /api/scripts/user/get reply
+    (the backend): the first user AUTO-MAS runs, else the first user; None when there is
+    none. One choice for every reader and writer (audit 11-08 D-11: the phone's changes
+    went to the first user while its snapshot and the plan showed the last). The file's
+    "instances" list and any other non-user entry are skipped."""
+    found = [(str(k), v) for k, v in (users or {}).items() if k != "instances" and isinstance(v, dict)]
+    return next((x for x in found if runs(info_view(x[1]))), found[0] if found else None)

@@ -257,6 +257,18 @@ e5.state.ledger_path("2026-10-01").write_text("\n".join(json.dumps(r) for r in r
 check("10-02 早班 limit stays 220", runwatch.planned_minutes(e5, 9, 0, at(9, 0, day=2))[0], 220)
 e5.state.ledger_path("2026-10-01").unlink()
 
+print("\n[a MaaEnd that did every task and then hung (booked ok) is a timeout, not a clean day (audit 11-08 B-D17)]")
+ledger(e5.state, at(0, 0), [("MAA", at(9, 0), at(9, 18)), ("OK-WW", at(9, 18), at(10, 20)),
+                            ("MaaEnd", at(10, 20), at(15, 40))])
+rows = [json.loads(x) for x in e5.state.ledger_path("2026-10-01").read_text(encoding="utf-8").splitlines()]
+rows[-1]["raw"] = {"maaend_result": "MaaEnd 进程超时", "maaend_done_then_hung": True}
+e5.state.ledger_path("2026-10-01").write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+check("the hung record reads as a timeout", runwatch._timed_out(rows[-1]), True)
+check("……so 10-01's 400 minutes do not raise 10-02's 早班 limit", runwatch.planned_minutes(e5, 9, 0, at(9, 0, day=2))[0], 220)
+check("an MAA record whose own result says 超时 too", runwatch._timed_out({"ok": True, "raw": {"maa_result": "MAA 进程超时"}}), True)
+check("a plain clean record is not", runwatch._timed_out({"ok": True, "raw": {"maaend_result": "Success!"}}), False)
+e5.state.ledger_path("2026-10-01").unlink()
+
 
 def fail_day(state, day, timeout=False):
     """Mark every record of 09-<day> failed, the way a retry day looks in the ledger."""

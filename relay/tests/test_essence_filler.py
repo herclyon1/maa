@@ -274,6 +274,42 @@ def main() -> int:
     require("one group alarm under its own title", [t for t, _ in CATCH.alarms()] == [texts.ESSENCE_FILLER_FAILED],
             repr(CATCH.alarms()))
 
+    print("[母本一时被占着（OSError）：下一轮再试，后来成了只进日报；连着 OS_ATTEMPTS 次才进群（审计 11-08 D-10）]")
+    put_master(picked)
+    CATCH.records.clear()
+    e3 = build()
+    e3._handle(record(f"{DAY}/endfield/MaaEnd-locked", HIST_LOG))
+    real_apply, held = essence.apply, [1]
+
+    def locked(*a, **k):
+        if held[0]:
+            held[0] -= 1
+            raise PermissionError(13, "The process cannot access the file because it is being used by another process")
+        return real_apply(*a, **k)
+    essence.apply = locked
+    try:
+        e3._essence_filler()
+        require("first try held: still pending, master untouched, nothing pushed",
+                e3.state.store.get(essence.SECTION, essence.PENDING) is not None and master() == picked
+                and CATCH.alarms() == [], repr(CATCH.alarms()))
+        e3._essence_filler()
+        require("next tick: switched", ov(master())["AutoEssenceMenu"]["caseName"] == "Random")
+        healed = [r for r in CATCH.records if r.levelno == logging.WARNING and getattr(r, errwatch.RECOVERED, False)]
+        require("one WARNING marked recovered (daily report, not the group)", len(healed) == 1 and CATCH.alarms() == [],
+                repr([r.getMessage() for r in CATCH.records]))
+        require("……its first line is plain words", texts.plain(healed[0].getMessage().splitlines()[0]) == [])
+        put_master(picked)
+        CATCH.records.clear()
+        e3._handle(record(f"{DAY}/endfield/MaaEnd-locked-2", HIST_LOG))
+        held[0] = essence.OS_ATTEMPTS
+        for _ in range(essence.OS_ATTEMPTS):
+            e3._essence_filler()
+        require(f"{essence.OS_ATTEMPTS} in a row: given up, one group alarm",
+                (e3.state.store.get(essence.SECTION, essence.PENDING), [t for t, _ in CATCH.alarms()])
+                == (None, [texts.ESSENCE_FILLER_FAILED]), repr(CATCH.alarms()))
+    finally:
+        essence.apply = real_apply
+
     print("\n" + ("FAILED: " + ", ".join(FAILED) if FAILED else "all checks passed"))
     return 1 if FAILED else 0
 

@@ -86,7 +86,7 @@ def phone(body):
     """One order through the phone channel's executor, as live / drained / boot backlog do."""
     n, receipts = Note(), []
     phone_channel._phone_execute(commands.apply_command, n, logging.getLogger("ark.test_stage_set_refused"),
-                               lambda *a, **k: None, lambda a, s, ok, msg: receipts.append((ok, msg)),
+                               lambda *a, **k: None, lambda a, s, ok, msg, **k: receipts.append((ok, msg)),
                                dict(body, confirmed=True), body["action"], None, True)
     return receipts[0], n.sent
 

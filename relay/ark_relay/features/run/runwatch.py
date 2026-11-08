@@ -330,7 +330,14 @@ def _parse(v) -> datetime | None:
 
 
 def _timed_out(e: dict) -> bool:
-    words = list(e.get("failed_tasks") or []) + [str((e.get("raw") or {}).get("general_result") or "")]
+    """A record AUTO-MAS ended on its time limit. MAA's and MaaEnd's own result keys count
+    too: a MaaEnd that did every task and then hung is booked ok with no failed task
+    (collector._judge_result, maaend_done_then_hung) and kept its 「超时」 only in
+    raw["maaend_result"], so until 11-08 its hung minutes went into planned_minutes'
+    clean days (audit 11-08 B-D17)."""
+    raw = e.get("raw") or {}
+    words = list(e.get("failed_tasks") or []) + [str(raw.get(k) or "")
+                                                  for k in ("general_result", "maa_result", "maaend_result")]
     return any("超时" in str(w) for w in words)
 
 

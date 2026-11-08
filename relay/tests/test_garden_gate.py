@@ -93,6 +93,18 @@ def test_gate(tmp: Path) -> None:
     check("开机清账并说新的一周", bool(g.maybe_reopen(nxt)), True)
     check("过期记账已清掉", json.loads((tmp / "state.json").read_text())["weekly"].get("garden") or {}, {})
 
+    # Written but read back unchanged (another program wrote it back): not reported as set,
+    # False, pushed again next round (audit 11-08 D-13).
+    g.on_success(nxt)
+    real_write = garden.atomic_write_text
+    garden.atomic_write_text = lambda f, text: None          # the write "went through", the file did not change
+    try:
+        check("写了但读回来没变：不算改成", g.enforce(nxt), False)
+        check("……开关还在（没谎称关了）", garden.TASK_NAME in _read(automas), True)
+    finally:
+        garden.atomic_write_text = real_write
+    check("下一轮照常写成", g.enforce(nxt), True)
+
     # 找不到母本时必须安静地不动手，而不是抛异常把中继带崩
     g2 = garden.GardenGate(tmp, tmp / "nowhere")
     g2._save({"done_week": week_key(now)})

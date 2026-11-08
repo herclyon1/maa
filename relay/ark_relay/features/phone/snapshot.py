@@ -89,7 +89,9 @@ def _mas(out: dict) -> None:
             # user (audit 11 #5); _queues marks the same case 「脚本读不到」.
             out[_section_of(name)] = {"用户读不到": f"{type(exc).__name__}: {exc}"}
             continue
-        for _, u in users.items():
+        # One user per script, the one the phone's changes go to (masuser.pick; until 11-08
+        # every user was written in turn and the last one shown, audit 11-08 D-11).
+        for _, u in [got] if (got := masuser.pick(users)) else []:
             if name == "MAA":
                 out["MAA"] = maa_fields(masuser.info_view(u), u.get("Task", {}))
             elif name == "MaaEnd":
@@ -158,10 +160,10 @@ def maa_from_files(automas_dir) -> dict:
         node = data.get(inst.get("uid")) or {}
         if (node.get("Info") or {}).get("Name") != "MAA":
             continue
-        # The last user wins, as in _mas.
-        for u in ((node.get("SubConfigsInfo") or {}).get("UserData") or {}).values():
-            if isinstance(u, dict):
-                found = maa_fields(masuser.info_view(u), u.get("Task") or {})
+        # The user _mas shows and the phone's changes go to (masuser.pick).
+        if got := masuser.pick((node.get("SubConfigsInfo") or {}).get("UserData")):
+            u = got[1]
+            found = maa_fields(masuser.info_view(u), u.get("Task") or {})
     if found is None:
         raise LookupError("ScriptConfig.json 里没有 MAA 脚本的用户")
     return found

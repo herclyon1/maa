@@ -109,9 +109,8 @@ def _scripts(cfg_dir: Path) -> dict[str, dict]:
             "kind": _script_kind(info_node.get("Path") or info_node.get("RootPath") or ""),
             "path": info_node.get("Path") or info_node.get("RootPath") or "",
         }
-        for user in ((node.get("SubConfigsInfo") or {}).get("UserData") or {}).values():
-            if not isinstance(user, dict):
-                continue
+        # The user the phone shows and changes (masuser.pick; until 11-08 the last one won).
+        for _uid, user in [got] if (got := masuser.pick((node.get("SubConfigsInfo") or {}).get("UserData"))) else []:
             # masuser: AUTO-MAS v5.7.0-beta.3 moved the stage and annihilation items out of Info.
             info, task = masuser.info_view(user), user.get("Task") or {}
             # The combat switch: off means no stage is farmed, and the plan says so.

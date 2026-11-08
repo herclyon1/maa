@@ -137,6 +137,9 @@ def _describe(t: dict) -> dict:
     if t["taskName"] == "AutoEssence":
         loc = (ov.get("AutoEssenceChooseLocation") or {}).get("caseNames") or []
         parts = ["基质刷取"] + [LOCATION_LABELS.get(x, x) for x in loc]
+        if (menu := _case(ov, "AutoEssenceMenu")) and menu != "Random":
+            # The ticked regions apply in Random mode only (_write_options): name the mode instead.
+            parts = ["基质刷取", ESSENCE_MENU_LABELS.get(menu, menu)]
         return {"tab": "Essence", "line": "", "rewards_set": "", "item": "",
                 "enabled": True, "locations": list(loc), "understood": True,
                 "label": " → ".join(parts)}
@@ -305,6 +308,11 @@ def _toggle_sanity_tasks(have: dict, want_task: str, changes: list[str],
         mastercfg.set_maaend_enabled(t, want_on, controller_name)
 
 
+# AutoEssenceMenu's cases in MaaEnd's own words (locales/interface/zh_cn.json,
+# option.AutoEssenceMenu.cases.*.label, v2.33.0-beta.2).
+ESSENCE_MENU_LABELS = {"Random": "随机模式", "Location": "地区模式", "Target": "目标选择"}
+
+
 def _write_options(ov: dict, want_task: str, tab: str, line: str,
                    rewards_set: str, location: str,
                    changes: list[str]) -> str | None:
@@ -320,6 +328,15 @@ def _write_options(ov: dict, want_task: str, tab: str, line: str,
     """
     if tab == "Essence":
         if location:
+            # AutoEssenceChooseLocation is an option of AutoEssenceMenu's Random case only
+            # (MaaEnd tasks/AutoEssence/AutoEssence.json, v2.33.0-beta.2; Random is the
+            # default_case, so no key reads as Random). In Target or Location mode the region
+            # written here does nothing: refused, not reported as set (audit 11-08 D-13). The
+            # menu is not switched here: Target mode is the owner's weapon farming of 10-16
+            # (essence.py), which the relay leaves only when its targets are met.
+            if (menu := _case(ov, "AutoEssenceMenu")) and menu != "Random":
+                return (f"母本的基质刷取现在是「{ESSENCE_MENU_LABELS.get(menu, menu)}」，刷取地点只在「随机模式」下生效，"
+                        "中继不会替你切回随机模式（那样会停掉现在的刷法）；要按地点刷，先把「刷取设置」改成随机模式")
             cur = (ov.get("AutoEssenceChooseLocation") or {}).get("caseNames") or []
             if cur != [location]:
                 changes.append(f"地点: {cur} → [{location}]")
