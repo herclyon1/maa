@@ -3,6 +3,7 @@
 One part per former file, each run on its own (tests/_parts.py): test_skland_api.py, test_skland_http_error_body.py, test_skland_role.py, test_skland_sign.py, test_skland_sync_guard.py.
 """
 from __future__ import annotations
+
 # Each part imports the relay itself, after its own environment is set, as the file it was did at
 # its top.
 # ruff: noqa: PLC0415
@@ -10,10 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_skland_api():
@@ -36,20 +38,9 @@ bindingList[].roles[]); no real binding response is on file.
 
     import gzip
     import json
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import skland
-
-    fails: list[str] = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def raises(fn) -> str:
@@ -200,21 +191,10 @@ docs/SKLAND-API.md) never reached the log or the phone tile, which showed only
     """
     import email.message
     import io
-    import sys
     import urllib.error
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import skland
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}, want {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def refusing(code: int, body: bytes):
@@ -248,7 +228,6 @@ docs/SKLAND-API.md) never reached the log or the phone tile, which showed only
     skland.urllib.request.urlopen = real
 
     print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
-    sys.exit(1 if fails else 0)
 
 
 def _part_skland_role():
@@ -263,8 +242,6 @@ role was returned whatever else was bound.
     """
     #!/usr/bin/env python3
 
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -345,20 +322,9 @@ string), and `platform` / `vName` staying at "3" / "1.0.0".
     import hashlib
     import hmac
     import json
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import skland
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" if not ok else f"  ✓ {label}")
-        if not ok:
-            fails.append(label)
 
 
     FIXED = 1757000000
@@ -425,9 +391,6 @@ string), and `platform` / `vName` staying at "3" / "1.0.0".
     other = skland.Cred(cred="CRED-abc", token="TOKEN-OTHER", dId="DID-1")
     check("换了 token 签名就变", skland.sign_headers(other, url)["sign"] != h["sign"], True)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_skland_sync_guard():
     """skland.get / bindings must align clocks first when this process has not yet.
@@ -439,20 +402,9 @@ session had refreshed first, the request was signed with the local clock
 
     Formerly test_skland_sync_guard.py.
     """
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import skland
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}, want {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     calls: list = []
@@ -482,7 +434,6 @@ session had refreshed first, the request was signed with the local clock
         check("only the request", calls, [target])
 
     print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
-    sys.exit(1 if fails else 0)
 
 
 if __name__ == "__main__":

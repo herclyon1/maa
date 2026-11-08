@@ -177,7 +177,7 @@ if ! command -v uvx >/dev/null; then
 else
   # okww_files 是上游原样文件，不归我们管。
   # 2026-09-08 把 relay/tests 也纳进来：之前不查，于是 55 条报告在里面躺着，
-  # 其中 test_preupdate_problems.py 那条 f-string 缺占位符指向一个真断言错误——
+  # 其中 test_preupdate.py 那条 f-string 缺占位符指向一个真断言错误——
   # 它用 for + break 只查了四个函数里的第一个。
   # -q: on a cold cache uvx itself prints "Installed 1 package in 1ms" to stderr, which the
   # 2>&1 below turned into a pyflakes "hit" (M4 lint, 2026-09-23 08:20:57; reproduced with an

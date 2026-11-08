@@ -113,7 +113,7 @@ check("没走通的路线号（给收窄用）", got.get("maaend_collect_failed_
 
 # Narrowing from records was removed on 2026-09-14 (AUTO-MAS writes all attempts'
 # records at the end of the task, so a record can never precede the retry); the
-# live-log version is tested in test_collect_watch.py.
+# live-log version is tested in test_collect.py.
 print("\n[自动采集：不是采集日的 0 分钟不算「做了」（2026-09-05 周六真实日志）]")
 real = Path(__file__).resolve().parent / "replay" / "2026-09-05" / "endfield" / "MaaEnd-05-27-42.log"
 got = collector.parse_maaend_log(real)

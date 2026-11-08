@@ -303,7 +303,7 @@ ERROR_ACCESS_DENIED = 5
 
 def _stop(running, ask, end_task, sleep=time.sleep, clock=time.monotonic,
           note=lambda _msg: None) -> int:
-    """stop()'s loop with the Windows calls passed in (relay/tests/test_stop_denied.py).
+    """stop()'s loop with the Windows calls passed in (relay/tests/test_stop.py).
 
     `ask()` sets the stop event: "asked", "not yet" (no event: the relay is still
     starting) or "denied" (the event is there but this account may not set it - a relay

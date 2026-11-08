@@ -9,10 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_main():
@@ -29,14 +30,10 @@ definite no - never on "could not tell".
     """
     import logging
     import os
-    import sys
     import time
     import types
     from datetime import datetime
-    from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     import _stagegate_fx as fx
 
     os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
@@ -44,15 +41,6 @@ definite no - never on "could not tell".
     from ark_relay.features.schedule import stagegate as sg
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" + ("" if ok else f": {got!r} != {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     def at(d, hh, mm):
@@ -335,9 +323,6 @@ definite no - never on "could not tell".
     check("no alarm, no pull", (n.sent, skipped), ([], []))
     sg.log.removeHandler(grab)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_stagegate_users():
     """Several MAA users: one user's stage MAA cannot reach is said, users AUTO-MAS does not run
@@ -358,13 +343,9 @@ picks the first stage open today, which the relay does not replicate.
     """
     import json
     import os
-    import sys
     import types
     from datetime import datetime
-    from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     import _stagegate_fx as fx
 
     os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
@@ -372,15 +353,6 @@ picks the first stage open today, which the relay does not replicate.
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features.schedule import stagegate as sg
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" + ("" if ok else f" (want {want!r})"))
-        if not ok:
-            fails.append(label)
 
 
     SAT9 = datetime(2026, 10, 10, 9, 0, tzinfo=SERVER_TZ)
@@ -451,9 +423,6 @@ picks the first stage open today, which the relay does not replicate.
         check("……里面点名用户", "arknights" in n.sent[0][1], True)
     finally:
         sg.PULL_FROM_QUEUE = saved
-
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 if __name__ == "__main__":

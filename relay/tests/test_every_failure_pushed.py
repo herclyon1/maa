@@ -7,7 +7,7 @@ stayed out of the group: a pushed 「⚠️ OK-WW 补丁有 N 条没贴上」 an
 that could not confirm went to Server酱 only; the make-up's log said 「只进日报」
 for a MAA failure that is pushed. Pinned here (the other paths are pinned where
 they live: test_unresolved, test_makeup, test_unreachable_evidence,
-test_maaend_update_after_done, test_maaend_update_restart, test_preupdate_not_alarm,
+test_maaend_update_after_done, test_maaend_update_restart, test_preupdate,
 test_notify_routing, test_channel_down). The self-heal and the attempt AUTO-MAS
 restarted at once were pinned here as pushed too, until the user took what
 recovered back out of the group at 05:07 that day (「报错后自己好了的，只进日报、不进群。」):

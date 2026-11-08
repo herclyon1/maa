@@ -41,7 +41,7 @@ def _cleanup() -> None:
     a directory removed here; on Windows the change notification then fails and
     the watcher logs 「目录监听掉了，5 秒后重建」, as it should in service. That
     line landed after the test's result line (Windows CI, 2026-10-07: runs
-    37519943859 test_collect_watch.py and 37525386830 test_maaend_watchdog.py),
+    37519943859 test_collect.py and 37525386830 test_maaend_watchdog.py),
     and the test gate reads the last line. Nothing the test checks runs here.
     """
     logging.disable(logging.CRITICAL)

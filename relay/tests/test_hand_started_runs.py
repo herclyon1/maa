@@ -123,7 +123,7 @@ check("只有手动那个开着时才算", trigger.hand_started_at(both[1:], at(
 
 print("\n[有人手动开的失败：记账、不补跑，同一任务的重试结束就报群并写明是手动开的]")
 # Held until the task's later attempts decide (handle._hold_hand_started, 2026-10-16
-# task c6d40887: tests/test_hand_started_retry.py), pushed by the flush.
+# task c6d40887: tests/test_makeup.py), pushed by the flush.
 from ark_relay.core import texts  # noqa: E402
 from ark_relay.features.makeup import marker  # noqa: E402
 e = build()

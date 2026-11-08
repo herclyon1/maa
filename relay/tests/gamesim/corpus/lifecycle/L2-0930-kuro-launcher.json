@@ -25,7 +25,7 @@
       "cmdline": "\"D:\\Wuthering Waves\\2.6.5.0\\launcher_main.exe\"",
       "session": 1,
       "evidence": [
-        {"source": "commit 98f37ac7, relay/tests/test_wuwa_update_close.py docstring (measured on the machine 2026-09-30 16:58)", "quote": "The launcher then runs as launcher_main.exe in a version folder (D:\\\\Wuthering Waves\\\\2.6.5.0\\\\launcher_main.exe), which the old full-path match on …\\\\Wuthering Waves\\\\launcher.exe missed."},
+        {"source": "commit 98f37ac7, relay/tests/test_wuwa.py docstring (measured on the machine 2026-09-30 16:58)", "quote": "The launcher then runs as launcher_main.exe in a version folder (D:\\\\Wuthering Waves\\\\2.6.5.0\\\\launcher_main.exe), which the old full-path match on …\\\\Wuthering Waves\\\\launcher.exe missed."},
         {"source": "commit 98f37ac7, relay/ark_relay/preupdate_okww.py comment", "quote": "launcher.exe is only the entry shell; while it runs, the process is D:\\Wuthering Waves\\2.6.5.0\\launcher_main.exe (the version folder changes)."}
       ],
       "not_recorded": "The raw process list was not saved (branches.md W16: launcher process lists missing); the path is the one measured and quoted above, the pid is synthetic. Whether the entry shell launcher.exe was still running beside it is not recorded, so it is left out."

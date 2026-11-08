@@ -51,7 +51,7 @@ the restarter - `if _stage_selfupdate(log): return` is how the old process
 exits. 25b76dd4 (09-08) moved the block out of main and left a bare `return`,
 so for three weeks every self-update let the dying process run the boot stages;
 09-18 23:10 (ensure_automas hang) and 09-29 08:45 (MAA left open, pre-update
-timed out) were both this. `relay/tests/test_selfupdate_exit.py` pins it and
+timed out) were both this. `relay/tests/test_selfupdate.py` pins it and
 rejects any bare `return` in a function declared `-> bool`.
 
 ## service.py:_stage_patch_okww
@@ -864,7 +864,7 @@ client-update gates only deferred the go: on 10-15 the morning shift finished at
 「makeup」 / 「updating」 verdict after the shift finished (or the update thread
 running behind another hold) writes `marks.shutdown_forfeit` for that shift run, and
 _not_shift refuses it from then on; the next shift is a new opportunity.
-tests/test_shutdown_held_past_shift.py.
+tests/test_shutdown.py.
 
 ## core.py:_stacked
 
@@ -900,7 +900,7 @@ The consequences, by date:
 
 Changed to manual reset (second argument 1) on 2026-09-07: the signal stays lit,
 so all three threads can each see it. The regression test
-`tests/test_stop_event_manual_reset.py` watches this argument.
+`tests/test_stop.py` watches this argument.
 
 Addendum (same day): after the event was switched to manual reset, the gap
 between "stop signal received" and "the main flow has returned" is 0 seconds,
@@ -950,7 +950,7 @@ booked, no ledger-2026-10-28.jsonl was written, and _check_missed_runs pushed �
 the JSON layout (message under maa_result / maaend_result / general_result, each
 {"kind", "value"} statistic unwrapped), the stem is "<script>-HH-MM-SS" on the UTC+4 clock
 so run_ids keep their shape, and the same _build_record judges it and reads its 0.log.
-Fixture: that morning's real history.db and logs (tests/test_collect_history_db.py).
+Fixture: that morning's real history.db and logs (tests/test_collect.py).
 
 ## claim.py:(模块级)（2026-09-07 补，v5）
 

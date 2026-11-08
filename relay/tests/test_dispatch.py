@@ -9,10 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_dispatch_guard_idle():
@@ -25,19 +26,9 @@ and kept waiting long after the morning shift had ended (he asked 「不是已�
     """
     import runpy
     import subprocess
-    import sys
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[2]
     GUARD = ROOT / "scripts" / "windows" / "dispatch_guard.py"
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def idle_exit(tasklist: str, okww_pids: str = "") -> int:
@@ -68,9 +59,6 @@ and kept waiting long after the morning shift had ended (he asked 「不是已�
     run_one = (ROOT / "scripts" / "mac" / "run-one.sh").read_text(encoding="utf-8")
     check("run-one.sh wait-idle 用的是 idle 的退出码，不 grep 状态那一行", ("--py \"$G\" idle" in run_one, "grep" in run_one), (True, False))
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_dispatch_guard_self():
     """The busy gate must not mistake itself for a running script.
@@ -84,22 +72,11 @@ everything is as broken as one that blocks nothing.
     Formerly test_dispatch_guard_self.py.
     """
     import re
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     SRC = (Path(__file__).resolve().parents[2] / "scripts" / "windows"
            / "dispatch_guard.py").read_text(encoding="utf-8")
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     pattern = re.search(r"CommandLine -like '([^']+)'", SRC)
@@ -129,9 +106,6 @@ everything is as broken as one that blocks nothing.
     check("中继自己",
           matches(r"C:\Program Files\Python314\pythonservice.exe"), False)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_dispatch_guard_silent():
     """dispatch_guard.py must not read "cannot ask" as "nothing there".
@@ -150,24 +124,12 @@ Silent-failure audit rows:
     import contextlib
     import io
     import json
-    import sys
     import urllib.error
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(ROOT / "relay" / "tests"))
     sys.path.insert(0, str(ROOT / "scripts" / "windows"))
     import dispatch_guard as g
-    from _tmp import tmpdir
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     class Answer:
@@ -269,9 +231,6 @@ Silent-failure audit rows:
     check("test_off exits non-zero", isinstance(got, tuple) and got[1] not in (0, None), True)
     check("the file is untouched", Path(g.TEST_WINDOWS).read_bytes(), before)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_dispatch_guard_test_debug():
     """A test dispatch turns debug mode on first, and test-off turns off only what it turned on.
@@ -291,25 +250,13 @@ test_off turns it off again only if this window turned it on.
     import inspect
     import io
     import json
-    import sys
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(ROOT / "relay"))
     sys.path.insert(0, str(ROOT / "relay" / "tests"))
     sys.path.insert(0, str(ROOT / "scripts" / "windows"))
     import dispatch_guard as g
-    from _tmp import tmpdir
     from ark_relay.features.modes import modes
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def setup():
@@ -432,7 +379,6 @@ test_off turns it off again only if this window turned it on.
     check("dispatched, debug still off", (rc, modes.debug_active(state)), (0, False))
 
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_dispatch_note_timing():
@@ -448,12 +394,8 @@ hand-started (no make-up, no overrun alarm).
     Formerly test_dispatch_note_timing.py.
     """
     import os
-    import sys
     from datetime import datetime, timedelta
-    from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -464,15 +406,6 @@ hand-started (no make-up, no overrun alarm).
     from ark_relay.features.guard import trigger
     from ark_relay.features.okww_patch import okww_overlay as ov
     from ark_relay.features.phone import commands
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     clock = {"t": datetime(2026, 10, 13, 8, 0, 0, tzinfo=SERVER_TZ)}
@@ -514,7 +447,6 @@ hand-started (no make-up, no overrun alarm).
         ov.retry_pending, commands._mas, trigger.note_dispatch = real
 
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-    sys.exit(1 if fails else 0)
 
 
 if __name__ == "__main__":

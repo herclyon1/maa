@@ -301,7 +301,7 @@ KNOWN = {
     # relay-one skip mark on it - the 10-15 bug (shutdown.py:_note_forfeit) - so the mark was gone
     # by the evening shift and the record powered off at 21:41.
     # 1008-24 / 1012-27: route 10 hit 「战斗中无法使用」 and the machine's code booked it as
-    # walked, so no per-route retry ran (ledger #29; tests/test_collect_retry.py).
+    # walked, so no per-route retry ran (ledger #29; tests/test_collect.py).
     # 1008-26: the machine's daily report did not name MaaEnd's own abort of 10:34:16 in 装备制造
     # (#28 passed on the desktop picture then; verify ledger #28, ledger_rows._block_maaend names it
     # from MaaFW's steps). 1008-28: the per-task retry wording (core.retried_notes, #28 review item

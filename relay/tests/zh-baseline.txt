@@ -1,6 +1,6 @@
 # Lines of Chinese comment/docstring per file. **This may only shrink.**
 # Why, and what stays Chinese on purpose: scripts/mac/lib/zh_ratchet.py
-# total 1803 lines in 149 files
+# total 1803 lines in 138 files
 # regenerate: python3 scripts/mac/lib/zh_ratchet.py --update
 relay/ark_relay/core/config.py 2
 relay/ark_relay/core/skland.py 1
@@ -30,16 +30,14 @@ relay/tests/test_drops.py 1
 relay/tests/test_engine_pending.py 27
 relay/tests/test_episodes.py 5
 relay/tests/test_event_expiry.py 8
-relay/tests/test_evidence_archive.py 10
+relay/tests/test_evidence.py 10
 relay/tests/test_gameupdate.py 5
-relay/tests/test_garden_gate.py 9
-relay/tests/test_garden_unified.py 3
+relay/tests/test_garden.py 12
 relay/tests/test_heartbeat.py 4
 relay/tests/test_inbox_poll.py 12
 relay/tests/test_ledger.py 5
 relay/tests/test_loop_parts.py 2
-relay/tests/test_maa_checks.py 4
-relay/tests/test_maa_window_overlap.py 8
+relay/tests/test_maa.py 12
 relay/tests/test_maaend_app_log.py 8
 relay/tests/test_maaend_dir_resolve.py 8
 relay/tests/test_maaend_sanity.py 18
@@ -49,7 +47,7 @@ relay/tests/test_mas.py 5
 relay/tests/test_mastercfg.py 4
 relay/tests/test_missed_runs.py 4
 relay/tests/test_module_table.py 2
-relay/tests/test_next_plan_imports.py 6
+relay/tests/test_next.py 6
 relay/tests/test_notify_channels.py 33
 relay/tests/test_notify_routing.py 10
 relay/tests/test_okww_error_reason.py 7
@@ -60,15 +58,8 @@ relay/tests/test_okww_stamina_end.py 7
 relay/tests/test_okww_structured.py 4
 relay/tests/test_okww_weekly_boss_step.py 4
 relay/tests/test_outcome.py 7
-relay/tests/test_phone.py 4
-relay/tests/test_phone_gzip.py 8
-relay/tests/test_phone_state.py 16
-relay/tests/test_preupdate_mas_force.py 10
-relay/tests/test_preupdate_okww.py 9
-relay/tests/test_preupdate_once.py 9
-relay/tests/test_preupdate_problems.py 13
-relay/tests/test_preupdate_session.py 1
-relay/tests/test_preupdate_span.py 4
+relay/tests/test_phone.py 28
+relay/tests/test_preupdate.py 46
 relay/tests/test_queue.py 8
 relay/tests/test_release_notes.py 14
 relay/tests/test_report_due.py 34
@@ -77,22 +68,20 @@ relay/tests/test_scan_skips_seen.py 3
 relay/tests/test_scoreboard.py 9
 relay/tests/test_scripts_running_asks_automas.py 4
 relay/tests/test_self_attrs.py 3
-relay/tests/test_selfupdate_doors.py 30
+relay/tests/test_selfupdate.py 30
 relay/tests/test_shutdown.py 22
 relay/tests/test_silent_green_guards.py 11
 relay/tests/test_skip.py 6
 relay/tests/test_state_pending.py 5
 relay/tests/test_statestore.py 5
-relay/tests/test_stop_event_manual_reset.py 8
+relay/tests/test_stop.py 8
 relay/tests/test_tacet_shots.py 5
 relay/tests/test_texts_gate.py 3
 relay/tests/test_tick_isolation.py 6
 relay/tests/test_transitional.py 5
 relay/tests/test_undefined_names.py 17
 relay/tests/test_wait_network.py 3
-relay/tests/test_weeklyboss_count.py 5
-relay/tests/test_weeklyboss_cycle.py 7
-relay/tests/test_weeklyboss_reopen.py 5
+relay/tests/test_weeklyboss.py 17
 scripts/mac/UsbCheck/make-app.sh 1
 scripts/mac/adbdo.sh 16
 scripts/mac/build-fleetmonitor.sh 5

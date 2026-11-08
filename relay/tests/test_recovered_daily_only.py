@@ -22,7 +22,7 @@ them back, each with the case that did not recover, which still rings every time
   reached nobody is still an ERROR that errwatch pushes.
 
 MaaEnd's update restart after a done round and the gathering retry are pinned
-where they live (test_maaend_update_after_done, test_collect_retry).
+where they live (test_maaend_update_after_done, test_collect).
 """
 import json
 import logging

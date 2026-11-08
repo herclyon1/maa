@@ -67,7 +67,7 @@ FAIL_LIMIT = 3
 NOBODY_LIMIT_S = 15 * 60
 DATA = Path(os.environ.get("ARK_HOME") or r"C:\ProgramData\ark-relay")
 # The two group-bot messages, both rows of docs/NOTIFICATIONS.md's route table (group:
-# a person has to act). Plain words only: relay/tests/test_watchdog_copy.py runs them
+# a person has to act). Plain words only: relay/tests/test_watchdog.py runs them
 # through texts.plain(), the check every relay push passes.
 ALERT_DOWN = ("🔌 中继停了，自己重开没成功\n"
               "游戏机上的中继没在跑，重开了 {n} 次（每次隔 {s} 秒）都没起来，要人到机器上看一眼。")

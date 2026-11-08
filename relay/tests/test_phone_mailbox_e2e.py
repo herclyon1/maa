@@ -51,7 +51,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _tmp import tmpdir
 
 # boot_stages imports the Windows service modules at top level (same stubs as
-# test_phone_channel_boot.py).
+# test_phone.py).
 
 
 class _Any:

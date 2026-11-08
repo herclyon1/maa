@@ -76,7 +76,7 @@ V_BETA5 = FIX / "maaend-2026-09-10" / "interface.json"                 # v2.28.0
 V_230 = FIX / "maaend-v2.30.0-beta.4-spmed"                            # interface + nodes
 NODES_230 = V_230 / "resource" / "pipeline" / "nodes.json"
 # The confirm step under neither of its names: v2.30's real file has it as
-# __AutoUseSpMedicationUseEmergencySpBooster, in the fixed shape (test_spmed_v232.py).
+# __AutoUseSpMedicationUseEmergencySpBooster, in the fixed shape (test_spmed.py).
 NODES_GONE = {k: v for k, v in json.loads(NODES_230.read_text(encoding="utf-8")).items()
               if k not in ("AutoUseSpMedicationQuickUse", "__AutoUseSpMedicationUseEmergencySpBooster")}
 FOUR = ["GiftOperator", "GearAssembly", "DeliveryJobs", "EnvironmentMonitoring"]

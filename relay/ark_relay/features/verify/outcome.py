@@ -1141,7 +1141,7 @@ def maa_checks(text: str) -> list[Check]:
     # the emulator itself, so whether MAA's StopGameTask got its receipt in first
     # is a race, not work left undone: 2026-10-21 09:19:25 CloseDown started 350 ms
     # before AUTO-MAS stopped MAA.exe and closed LDPlayer instance 1000 (ledger
-    # #107; tests/test_maa_closedown_postaction.py); on 10-20 it won by 0.1 s.
+    # #107; tests/test_maa.py); on 10-20 it won by 0.1 s.
     if dangling.get("CloseDown") and _closedown_after_all_done(text):
         del dangling["CloseDown"]
     out.append(Check("每一项都做到了结尾", not dangling,

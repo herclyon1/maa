@@ -156,7 +156,7 @@ def first_user(sid: str) -> tuple[str, dict]:
 # Task_AnnihilationStartWeekday, Stage_Stage, ...). After its first start the user file has
 # only the new group and the backend refuses "Info.Annihilation", so a rollback that wrote
 # the old path would fail. The same map as relay/ark_relay/core/masuser.py MOVED, which this
-# file cannot import (see the module docstring); tests/test_automas_handover.py keeps the two equal.
+# file cannot import (see the module docstring); tests/test_automas.py keeps the two equal.
 MOVED = {
     "Stage": "Stage", "Stage_1": "Stage", "Stage_2": "Stage", "Stage_3": "Stage",
     "StageMode": "Stage", "MedicineNumb": "Stage", "SeriesNumb": "Stage",

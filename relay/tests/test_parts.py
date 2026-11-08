@@ -1,6 +1,7 @@
 """tests/_parts.py, the runner of the merged test files (dispatch relay-slim-round1-1108):
 
-* a part that exits non-zero, or raises, is a failed part, and the parts after it still run;
+* a part that exits non-zero, raises, or fails a shared check (_parts.check / require) is a
+  failed part, and the parts after it still run, each with no failed check carried over;
 * what a part changed is back before the next one: os.environ, a stdlib attribute it swapped
   (urlopen), a logger's propagate flag, a module it imported (dropped from sys.modules), its
   working directory.
@@ -12,6 +13,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _parts
 from _parts import run_parts
 from _tmp import tmpdir
 
@@ -63,6 +65,24 @@ check("……nor its logger flag", seen.get("propagate"), True)
 check("……nor the module it imported", seen.get("module"), False)
 check("……nor its working directory", seen.get("cwd"), CWD)
 check("all passing parts: 0", run_parts([_part_sees_nothing_of_it]), 0)
+
+
+print("\n[the shared check (_parts.check): a failed one fails its part only]")
+later = {}
+
+
+def _part_fails_a_shared_check():
+    _parts.check("one equals two", 1, 2)
+
+
+def _part_after_it():
+    later["fails"] = list(_parts.fails)
+    _parts.require("still true", True)
+
+
+check("a part with a failed shared check fails the run", run_parts([_part_fails_a_shared_check, _part_after_it]), 1)
+check("……the next part starts with no failed check", later.get("fails"), [])
+check("passing shared checks: 0", run_parts([_part_after_it]), 0)
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
 sys.exit(1 if fails else 0)

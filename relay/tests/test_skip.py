@@ -9,10 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_skip_failed_pushed():
@@ -30,13 +31,9 @@ queues.apply (AUTO-MAS's answer) and plan.schedule are faked.
 
     Formerly test_skip_failed_pushed.py.
     """
-    import sys
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     from ark_relay.core import engine as eng_mod
     from ark_relay.features.modes import modes
@@ -46,15 +43,6 @@ queues.apply (AUTO-MAS's answer) and plan.schedule are faked.
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
     from ark_relay.core.notify import route_of
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" + ("" if ok else f": {got!r} != {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     class Notes:
@@ -142,9 +130,6 @@ queues.apply (AUTO-MAS's answer) and plan.schedule are faked.
     finally:
         _q.apply, _plan.schedule = _real
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_skip_flag_collision():
     """两个功能共用「skip-」这个前缀，清理陈旧标记时把对方扫掉了。
@@ -158,9 +143,7 @@ skip-next-shutdown.flag，两者住同一个 state 目录。process_skip 每一�
 
     Formerly test_skip_flag_collision.py.
     """
-    import sys
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features.modes import modes
@@ -168,18 +151,10 @@ skip-next-shutdown.flag，两者住同一个 state 目录。process_skip 每一�
     from ark_relay.core import plan as _plan
     from ark_relay.core.statestore import StateStore
     from ark_relay.core.config import SERVER_TZ
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     STATE = tmpdir() / "state"; STATE.mkdir(parents=True)
     NOW = datetime(2026, 8, 31, 12, 44, tzinfo=SERVER_TZ)
 
-    fails = []
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got}, want {want}")
-        if not ok:
-            fails.append(label)
 
     print("\n[the bug] 清理陈旧队列标记不许碰「下次跑完不关机」")
     modes.set_skip_shutdown(STATE, True)
@@ -312,9 +287,6 @@ skip-next-shutdown.flag，两者住同一个 state 目录。process_skip 每一�
     finally:
         _q.apply = _real_apply
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_skip_receipt_lost():
     """A skip that failed stays a failure when its red receipt could not be written.
@@ -327,25 +299,13 @@ the phone page kept showing the press's green 「已记下」.
 
     Formerly test_skip_receipt_lost.py.
     """
-    import sys
-    from pathlib import Path
 
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY))
 
-    from _tmp import tmpdir
 
     from ark_relay.core import engine
     from ark_relay.features.modes import modes
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok' if ok else 'FAIL'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     sd = tmpdir()
@@ -396,13 +356,9 @@ after a skip step so the receipt reaches the page without waiting for a refresh.
     Formerly test_skip_receipts.py.
     """
     import os
-    import sys
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     from ark_relay.features.modes import modes
     from ark_relay.core import plan as _plan
@@ -410,15 +366,6 @@ after a skip step so the receipt reaches the page without waiting for a refresh.
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.statestore import StateStore
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" + ("" if ok else f": got {got!r}, want {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     T0 = datetime(2026, 9, 30, 8, 51, tzinfo=SERVER_TZ)
@@ -591,9 +538,6 @@ after a skip step so the receipt reaches the page without waiting for a refresh.
     finally:
         modes.process_skip = real_ps
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_skip_sat_out():
     """A queue skipped on purpose stays skipped for that day's checks after its restore.
@@ -606,12 +550,8 @@ the overdue check and the shutdown wait also still counted 晚班 as missing MAA
     """
     import json
     import os
-    import sys
     from datetime import datetime
-    from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
     (AUTOMAS / "config").mkdir(parents=True)
@@ -657,15 +597,6 @@ the overdue check and the shutdown wait also still counted 晚班 as missing MAA
     E = Engine(cfg, source=None, state=State(cfg.state_dir), notifier=FakeNotifier(cfg))
     E._boot_time = lambda now: at(8, 0)
 
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}, want {want!r}")
-        if not ok:
-            fails.append(label)
-
 
     def at(hh, mm):
         return datetime(2026, 11, 1, hh, mm, 45, tzinfo=SERVER_TZ)
@@ -710,7 +641,6 @@ the overdue check and the shutdown wait also still counted 晚班 as missing MAA
     check("tomorrow not sat out", modes.sat_out(STATE, "2026-11-02"), [])
 
     print("\nall checks passed" if not fails else f"\n{len(fails)} FAILED: {fails}")
-    sys.exit(1 if fails else 0)
 
 
 def _part_skip_shutdown_bat_error():
@@ -726,20 +656,9 @@ previous value. No cmd.exe on the Mac, so the file is read as text.
     Formerly test_skip_shutdown_bat_error.py.
     """
     import re
-    import sys
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[2]
     bat = (ROOT / "scripts" / "windows" / "skip-shutdown.bat").read_bytes().decode("utf-8").replace("\r\n", "\n")
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     read = next((ln for ln in bat.splitlines() if ln.startswith("for /f") and "skip_armed" in ln), "")
@@ -754,9 +673,6 @@ previous value. No cmd.exe on the Mac, so the file is read as text.
     before = bat[:bat.find(read)] if read else ""
     check("STATE is cleared before each read", 'set "STATE="' in before[before.rfind(":menu"):], True)
     check("the error file is cleared before each read", f'del "{var}"' in before[before.rfind(":menu"):], True)
-
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 if __name__ == "__main__":

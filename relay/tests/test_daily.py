@@ -9,10 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_daily_format():
@@ -28,24 +29,14 @@ def _part_daily_format():
 
     Formerly test_daily_format.py.
     """
-    import sys
     from datetime import datetime, timedelta
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     from ark_relay.core import collector
     from ark_relay.core import ledger as core
     from ark_relay.core.config import SERVER_TZ
 
     FX = Path(__file__).parent / "fixtures"
-    fails = []
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
     def ent(run_id, script, hh, mm, dur, ok=True, **kw):
         st = datetime(2026, 9, 2, hh, mm, tzinfo=SERVER_TZ)
@@ -186,9 +177,6 @@ def _part_daily_format():
                     "tasks_trail": {"赠送干员礼物": {"found": True, "ok": True}}})
     check("another run of the day backed it: not 待核", _lr.day_unjudged_items([_e, _e2]), [])
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_daily_partial_failure():
     """A run that failed one task still has to report the nineteen it finished.
@@ -205,20 +193,9 @@ in fact gone fine. His words: 「这终末地通知就是一坨屎吧」.
     Formerly test_daily_partial_failure.py.
     """
     import json
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger as core
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     entries = json.loads((Path(__file__).parent / "fixtures" / "daily-2026-09-09.json")
@@ -262,9 +239,6 @@ in fact gone fine. His words: 「这终末地通知就是一坨屎吧」.
     check("列出了完整日常", foot.count(".") >= 13)
     check("不是只有一项", "日常：1.据点交易" not in foot)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_daily_range_prefix():
     """「日常 1-N 项完成」 only when the run's list is the footnote's first N names.
@@ -278,19 +252,9 @@ naming tasks it never did.
     """
     #!/usr/bin/env python3
     import json
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger as core
-
-    fails = []
-
-
-    def require(name, ok, detail=""):
-        print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -- {detail}"))
-        if not ok:
-            fails.append(name)
 
 
     es = [json.loads(x) for x in (Path(__file__).parent / "fixtures" / "ledger-1008-maaend-two-lists.jsonl").read_text(encoding="utf-8").splitlines()]
@@ -302,9 +266,6 @@ naming tasks it never did.
     require("10:35 run lists 自动采集 it did", "自动采集、日常奖励领取" in late, late)
     require("the footnote's own run keeps 1-13", "日常 1-13 项完成" in early, early)
     require("footnote starts with 05:29's list", core.daily_footnote(es).startswith("———————\n日常：1.赠送干员礼物 2.装备制造"))
-
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_daily_techlog():
@@ -333,28 +294,15 @@ No network: banners and the report-writing model are stubbed as in test_report_d
     import json
     import os
     import re
-    import sys
     import types
     from datetime import datetime, timedelta
-    from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features.alarm import errwatch
     from ark_relay.features.report import report
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core import ledger as core, techlog
     from ark_relay.core.ledger import State
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}" + ("" if ok else f": got {got!r:.400}, want {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     report.plan = types.SimpleNamespace(

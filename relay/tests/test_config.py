@@ -3,6 +3,7 @@
 One part per former file, each run on its own (tests/_parts.py): test_config_no_bot.py, test_config_skip_1016.py, test_config_warn_once.py, test_config_writers.py.
 """
 from __future__ import annotations
+
 # Each part imports the relay itself, after its own environment is set, as the file it was did at
 # its top.
 # ruff: noqa: PLC0415
@@ -10,10 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_config_no_bot():
@@ -28,26 +30,13 @@ problem (「没有它一条都送不到」), and a problem stops the relay at bo
     """
     import logging
     import os
-    import sys
-    from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     HIST = tmpdir()
     os.environ.update(ARK_HISTORY_DIR=str(HIST), WECOM_BOT_URL="", SERVERCHAN_KEY="SCT-test",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_AGENTID="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import Config
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}, want {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     said: list = []
@@ -67,7 +56,6 @@ problem (「没有它一条都送不到」), and a problem stops the relay at bo
     check("blocked", len(Config().validate()), 1)
 
     print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
-    sys.exit(1 if fails else 0)
 
 
 def _part_config_skip():
@@ -91,12 +79,8 @@ the relay.log timeline is relay-1016.log 220-254 (09:34:07 tick, 10:34:12 backst
     import json
     import logging
     import os
-    import sys
     from datetime import datetime, timedelta
-    from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
@@ -137,15 +121,6 @@ the relay.log timeline is relay-1016.log 220-254 (09:34:07 tick, 10:34:12 backst
     _mc.load()
     _mc_real = dict(_mc.CHECKS)
     _mc.CHECKS.clear()
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" + ("" if ok else f" (want {want!r})"))
-        if not ok:
-            fails.append(label)
 
 
     class Notes:
@@ -362,9 +337,7 @@ the relay.log timeline is relay-1016.log 220-254 (09:34:07 tick, 10:34:12 backst
     check("nothing left to send", e6._unsent_skips, [])
     check("then the shutdown says go", shutdown.decide(e6, at(9, 35, 8)).code, "go")
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
     _mc.CHECKS.update(_mc_real)
-    sys.exit(1 if fails else 0)
 
 
 def _part_config_warn_once():
@@ -381,13 +354,9 @@ A condition that clears and comes back is said again.
 
     import json
     import logging
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    from _tmp import tmpdir
     from ark_relay.core import mastercfg, mastercfg_maa, plan
 
     FAILED: list[str] = []
@@ -498,23 +467,10 @@ burnt sanity potions. Nothing here had a test.
     Formerly test_config_writers.py.
     """
     import json
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
     from ark_relay.features.gameupdate import gameupdate
     from ark_relay.core import mastercfg
-    from _tmp import tmpdir
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" if not ok else f"  ✓ {label}")
-        if not ok:
-            fails.append(label)
 
 
     def maa_tree(drones="Money"):
@@ -621,9 +577,6 @@ burnt sanity potions. Nothing here had a test.
     check("节点不是字典：认不出", gameupdate.spmed_shape(nodes("会开的")), "unknown")
     check("文件不存在：读不到", gameupdate.spmed_shape(tmpdir()), "unreadable")
     check("目录是 None：没东西可查", gameupdate.spmed_shape(None), "")
-
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 if __name__ == "__main__":

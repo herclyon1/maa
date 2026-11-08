@@ -9,10 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_main():
@@ -21,7 +22,6 @@ def _part_main():
     Formerly test_statestore.py.
     """
     import json, logging, sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.statestore import StateStore
@@ -39,15 +39,6 @@ def _part_main():
             self.lines.append(record.getMessage())
 
 
-    fails = []
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     d = tmpdir()
     s = StateStore(d)
     print("[空目录：读到空段，不落盘]")
@@ -197,9 +188,6 @@ def _part_main():
     data["updates"]["queue_skips"].append({"script": "MaaEnd"})
     check("改写副本里的列表，不动缓存", c.get("updates", "queue_skips"), [{"script": "OK-WW"}])
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_state_read_lock():  # noqa: C901 - the whole body of the file this part was
     """state.json reads that a Windows lock refuses, and alarm day marks written by two
@@ -222,30 +210,18 @@ Review of 99999b8e (10-17), one scenario per finding:
     import json
     import logging
     import os
-    import sys
     import types
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     from ark_relay.core import statestore
     from ark_relay.core.statestore import StateStore
     from ark_relay.features.alarm import handle, unresolved
 
-    fails = []
     DAY = "2026-10-08"
     MARK = f"alerted:{DAY}"
     REAL_READ_TEXT = Path.read_text
     NO_WAITS = (0.0, 0.0, 0.0)
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     class Lines(logging.Handler):
@@ -493,14 +469,11 @@ place in next_deadline are pinned here too.
     import json
     import logging
     import os
-    import sys
     from datetime import datetime, timedelta
-    from pathlib import Path
     from types import SimpleNamespace
 
     HERE = Path(__file__).resolve().parent
     sys.path.insert(0, str(HERE))
-    from _tmp import tmpdir
 
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
@@ -520,15 +493,6 @@ place in next_deadline are pinned here too.
     from ark_relay.core.ledger import State
     from ark_relay.features.alarm import errwatch
     from ark_relay.features.needtable import needtable
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" + ("" if ok else f" (want {want!r})"))
-        if not ok:
-            fails.append(label)
 
 
     class Rows(logging.Handler):
@@ -717,9 +681,6 @@ place in next_deadline are pinned here too.
     (young.with_suffix(".log")).write_text("", encoding="utf-8")
     collector.scan(hist, set())
     check("日志来了：不再等", collector._put_off, [])
-
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 if __name__ == "__main__":

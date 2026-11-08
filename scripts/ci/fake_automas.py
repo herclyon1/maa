@@ -3,7 +3,7 @@
 relay/handover/automas_handover.py changes AUTO-MAS only through its backend
 (POST http://127.0.0.1:<port>/api/...), so the test needs something answering there.
 This serves the endpoints the handover uses, with the shapes it reads
-(relay/tests/test_automas_handover.py Backend), and keeps the settings in a folder
+(relay/tests/test_automas.py Backend), and keeps the settings in a folder
 laid out as AUTO-MAS keeps them:
 
     <dir>/config/ScriptConfig.json   {"instances": [{"uid": ...}], "<uid>": {"Info": ...,

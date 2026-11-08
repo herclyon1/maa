@@ -20,7 +20,7 @@ watchdog after the watch (pkg_deploy.py watchdog, it needs a service restart).
 
 The runtime ({app}\\runtime\\python) used to be the installer's alone, and the deploy
 refused when it differed, so a Python patch release meant setup.exe again (the user,
-10-11 16:37, quoted in relay/tests/test_pkg_runtime_update.py). Now the deploy compares the machine's runtime (Python version, the pinned
+10-11 16:37, quoted in relay/tests/test_pkg.py). Now the deploy compares the machine's runtime (Python version, the pinned
 packages) with packaging/build.py PY_VERSION and relay/requirements.txt, and when they
 differ it builds the runtime the installer would (build.py --runtime-only, on the Mac),
 sends it with a sha1 per file, has the machine check it and run it (pkg_deploy.py

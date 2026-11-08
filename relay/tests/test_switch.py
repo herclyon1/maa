@@ -9,10 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_switch_resume():
@@ -29,24 +30,13 @@ the watchdog and the task start as uninstall's way back does (switch.start).
     Formerly test_switch_resume.py.
     """
     import re
-    import sys
     import tempfile
-    from pathlib import Path
 
     RELAY = Path(__file__).resolve().parents[1]
     ROOT = RELAY.parent
     sys.path.insert(0, str(ROOT / "packaging"))
 
     import switch
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok' if ok else 'FAIL'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     def resume_in(app: Path, current: str, *, watchdog_rc=0):
@@ -153,7 +143,6 @@ the watchdog and the task start as uninstall's way back does (switch.start).
           sources[:2], ["legacy.py", "switch.py"])
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_switch_run_encoding():
@@ -167,22 +156,11 @@ and that 936 bytes decode cleanly under the code page "oem" maps to on his machi
 
     Formerly test_switch_run_encoding.py.
     """
-    import sys
-    from pathlib import Path
 
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY.parent / "packaging"))
 
     import switch
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok' if ok else 'FAIL'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     class Done:
@@ -218,7 +196,6 @@ and that 936 bytes decode cleanly under the code page "oem" maps to on his machi
     check("and were mojibake under UTF-8", "成功" in sc_ok.decode("utf-8", "replace"), False)
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_switch_stop():
@@ -236,8 +213,6 @@ now ends it as scripts/mac/estop.sh does.
     """
     import fnmatch
     import subprocess
-    import sys
-    from pathlib import Path
 
     RELAY = Path(__file__).resolve().parents[1]
     ROOT = RELAY.parent
@@ -246,15 +221,6 @@ now ends it as scripts/mac/estop.sh does.
 
     import pkg_layout
     import switch
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok' if ok else 'FAIL'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     def like(text: str, pattern: str) -> bool:
@@ -347,7 +313,6 @@ now ends it as scripts/mac/estop.sh does.
           switch.delete_task_folder(connect=lambda: FakeScheduler(fail=True)), False)
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_switch_uninstall():
@@ -368,9 +333,7 @@ Fakes for every Windows call; no Windows needed.
     import contextlib
     import io
     import re
-    import sys
     import tempfile
-    from pathlib import Path
 
     RELAY = Path(__file__).resolve().parents[1]
     ROOT = RELAY.parent
@@ -378,15 +341,6 @@ Fakes for every Windows call; no Windows needed.
 
     import legacy
     import switch
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok' if ok else 'FAIL'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     def quiet(fn, *args):
@@ -583,7 +537,6 @@ Fakes for every Windows call; no Windows needed.
           0 <= other.find("RunSwitch('start')") < other.find("RaiseException"), True)
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 if __name__ == "__main__":

@@ -297,7 +297,7 @@ TRAIL_TASKS = ("赠送干员礼物", "装备制造", "转交委托", "环境监�
 #   10-08 10:34:11-10:34:16 ran only the scene check, which failed and stopped MaaEnd (ABORT_STEP).
 #   GiftFullFail, CheckMaterialEnough and CheckFailedAndFinish appear in no run we
 #   hold (corpus pull 2026-10-13, 10-16 bundle): read from the pipeline only
-#   (tests/test_mc28_task_trail.py builds those trails from it).
+#   (tests/test_mc28.py builds those trails from it).
 # Delivery: DeliveryJobs/TransferJob.json - DeliveryJobsConfirmTaskTransfer (5 a run in the
 #   mornings); a region loop (Region/ValleyIV.json, Wuling.json) tries every depot's
 #   job and cargo and falls back to DeliveryJobsLoop when none is there: the re-runs

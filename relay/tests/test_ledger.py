@@ -9,10 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_ledger_bad_times():
@@ -27,7 +28,6 @@ fromisoformat，值不合法照样 ValueError → 日报发不出 → 关机等�
     """
     import json
     import pathlib
-    import sys
     from datetime import datetime
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -35,9 +35,7 @@ fromisoformat，值不合法照样 ValueError → 日报发不出 → 关机等�
     from ark_relay.core import ledger as core
     from ark_relay.core.config import SERVER_TZ
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
-    fails = []
     d = tmpdir()
     st = core.State(d)
     good = {"run_id": "a", "script": "MAA", "user": "u", "ok": True,
@@ -62,7 +60,6 @@ fromisoformat，值不合法照样 ValueError → 日报发不出 → 关机等�
         fails.append(f"日报渲染炸了：{exc}")
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_ledger_gap():
@@ -74,22 +71,11 @@ written into BOARD/报错台账.txt; 验收 found it at 22:4x.
     Formerly test_ledger_gap.py.
     """
     import importlib.util
-    import sys
-    from pathlib import Path
 
     spec = importlib.util.spec_from_file_location(
         "ledger_gap", Path(__file__).resolve().parents[2] / "scripts" / "mac" / "ledger-gap.py")
     lg = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(lg)
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" + ("" if ok else f" (want {want!r})"))
-        if not ok:
-            fails.append(label)
 
 
     ERR = ["ERR|10-10 04:28:51 ERROR   ark.service  系统的程序启动通知断了 6 秒（远程过程调用失败，0x800706BE），到中继停下时还没重新订上"]
@@ -104,9 +90,6 @@ written into BOARD/报错台账.txt; 验收 found it at 22:4x.
     check("another day's 04:28:51 does not count", lg.gaps(ERR, "10-09 04:28:51 x\n") != [], True)
     check("the same minute is not the same error", lg.gaps(ERR, "10-10 04:28 x\n") != [], True)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_ledger_guard():
     """A malformed ledger line must not be able to keep the machine powered on.
@@ -120,19 +103,10 @@ report is never sent, and the shutdown path waits for a sent report.
     Formerly test_ledger_guard.py.
     """
     import json, logging, sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.ledger import State, format_daily, log as core_log
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
-    fails = []
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}, want {want!r}")
-        if not ok:
-            fails.append(label)
 
     GOOD = {"run_id": "2026-08-21/arknights/21-30-00", "script": "MAA",
             "user": "arknights", "started": "2026-08-21T21:30:00+08:00",
@@ -205,9 +179,6 @@ report is never sent, and the shutdown path waits for a sent report.
     entries = ledger(json.dumps({"script": "MAA"}), "{bad").read_ledger("2026-08-21")
     check("nothing survives", entries, [])
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_ledger_incomplete():
     """A failed outcome check must reach the ledger and the daily headline.
@@ -218,21 +189,10 @@ and the evening report still said 全绿 for a run that walked zero routes.
     Formerly test_ledger_incomplete.py.
     """
     import json
-    import sys
     import tempfile
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger as core
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     with tempfile.TemporaryDirectory() as d:
@@ -291,9 +251,6 @@ and the evening report still said 全绿 for a run that walked zero routes.
         title2, _ = core.format_daily(day, [e1])
         check("纯绿仍报全绿", "全绿 ✅" in title2)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_ledger_once_per_run():
     """One run is one ledger line, however many times its record is handled.
@@ -309,25 +266,12 @@ line for a (day, run_id) already in the ledger.
     Formerly test_ledger_once_per_run.py.
     """
     import json
-    import sys
     from datetime import datetime, timedelta
-    from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger
     from ark_relay.core.config import RunRecord, SERVER_TZ
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}, want {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def rec(hms: str, ok: bool = True) -> RunRecord:
@@ -388,27 +332,14 @@ Made deterministic: the rewrite is held just before its replace while the append
 
     Formerly test_ledger_rewrite_race.py.
     """
-    import sys
     import threading
     import time
     from datetime import datetime, timedelta
-    from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger
     from ark_relay.core.config import RunRecord, SERVER_TZ
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}, want {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def rec(hms: str) -> RunRecord:
@@ -446,7 +377,6 @@ Made deterministic: the rewrite is held just before its replace while the append
     check("the appended run is still in the day", "2026-10-13/arknights/06-00-00" in rows, True)
 
     print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
-    sys.exit(1 if fails else 0)
 
 
 def _part_ledger_scoreboard_started():
@@ -460,25 +390,12 @@ older signature without it.
 
     Formerly test_ledger_scoreboard_started.py.
     """
-    import sys
     from datetime import datetime, timedelta
-    from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger
     from ark_relay.core.config import RunRecord, SERVER_TZ
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}, want {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def rec(hms: str) -> RunRecord:
@@ -532,24 +449,11 @@ last stamps.
     Formerly test_ledger_truth_1001.py.
     """
     import json
-    import sys
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
     from ark_relay.core.config import SERVER_TZ
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     root = tmpdir() / "AUTO-MAS"
@@ -656,9 +560,6 @@ last stamps.
     (root / "debug" / "app.log").unlink()
     r = record("wuwa", "OK-WW-01-00-00", {"general_result": "OK-WW 运行超时"}, okww_log(5, 0, 0, 5, 1, 0))
     check("falls back to the log", r.finished, at(5, 1, 0))
-
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 if __name__ == "__main__":

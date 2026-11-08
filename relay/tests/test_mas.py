@@ -9,10 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_mas_address():
@@ -30,18 +31,10 @@ def _part_mas_address():
     import ast
     import os
     import re
-    import sys
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
 
-    fails = []
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
     print("[地址只有一处出处]")
     hard = []
@@ -77,9 +70,6 @@ def _part_mas_address():
         else:
             os.environ["ARK_MAS_PORT"] = old
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_mas_api_silent():
     """mas-api.py must exit non-zero when AUTO-MAS answered with an HTTP error.
@@ -93,22 +83,11 @@ and the tool exited 0.
     import contextlib
     import importlib.util
     import io
-    import sys
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[2]
     spec = importlib.util.spec_from_file_location("mas_api", ROOT / "scripts" / "mac" / "mas-api.py")
     mas = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mas)
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     def run(answer):
@@ -133,9 +112,6 @@ and the tool exited 0.
     check("a dict answer exits 0", run({"code": 200, "data": {}})[0], 0)
     check("a list answer exits 0", run([{"a": 1}])[0], 0)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_mas_labels():
     """AUTO-MAS field labels: every labelled ConfigItem is read (audit 11 #4, 2026-10-13).
@@ -159,22 +135,9 @@ this file (only schema.py Field descriptions): no `##` label exists for them.
 
     Formerly test_mas_labels.py.
     """
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     from ark_relay.features.phone import mas_labels
-
-    fails: list[str] = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}" + ("" if ok else f", want {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     # Kept as .txt so the repo's Python tools (ruff, the comment ratchet) do not read
@@ -240,9 +203,6 @@ class MaaEndUserConfig(ConfigBase):
           {"Info.C": "丙", "Info.D": "丁", "Task.A": "甲", "Task.B": "乙"})
     check("options inside a wrapped call", got.get("Task.B", {}).get("options"), ["p", "q"])
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_mas_user_pick():
     """The phone's changes, its snapshot and the plan look at one and the same AUTO-MAS user
@@ -262,24 +222,11 @@ changed the other. Pinned here, with two MAA users:
     Formerly test_mas_user_pick_1108.py.
     """
     import json
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     from ark_relay.core import masuser, plan
     from ark_relay.features.phone import commands, snapshot
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" + ("" if ok else f" (want {want!r})"))
-        if not ok:
-            fails.append(label)
 
 
     def user(stage, **info):
@@ -338,9 +285,6 @@ changed the other. Pinned here, with two MAA users:
     check("没有用户", masuser.pick({}), None)
     check("只有 instances 列表", masuser.pick({"instances": [{"uid": "U1"}]}), None)
     check("后台的回答里先列 instances 也跳过", masuser.pick({"instances": [], "U9": {"Info": {}}})[0], "U9")
-
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 if __name__ == "__main__":

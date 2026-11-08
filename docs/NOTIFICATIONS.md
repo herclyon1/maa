@@ -152,7 +152,7 @@ running: three group rows in the table below (🔌 中继停了 / 🔌 中继反
 🔌 游戏机开着，没人登录), each at most once until the relay is back (the crash loop: once an
 hour). It sends straight to the group bot (WECOM_BOT_URL
 in the relay's .env): it is a separate small program and cannot use the relay's
-notifier. Its copy passes texts.plain() (relay/tests/test_watchdog_copy.py). A
+notifier. Its copy passes texts.plain() (relay/tests/test_watchdog.py). A
 restart that worked is written to watchdog.log only.
 At a Windows shutdown it also sends the relay's last 「停止前」 state to the phone page when
 the relay could not (`launch.py stop-push`, docs/OPERATIONS.md): a state, not a notification,

@@ -316,7 +316,7 @@ check("one miss after that: not judged again", (st, pushed), (None, []))
 st, _, _ = judge("#7", endctx(text=essence, maaend_dir=str(fwdir)), state=tmpdir())
 check("a run without 环境监测: not judged", st, None)
 
-print("\n[#28 四个任务：图片在、终末地自己的记录不在 → 不再算过（真数据见 test_mc28_task_trail.py）]")
+print("\n[#28 四个任务：图片在、终末地自己的记录不在 → 不再算过（真数据见 test_mc28.py）]")
 state = tmpdir()
 shots = {}
 for t in ("赠送干员礼物", "装备制造", "转交委托", "环境监测"):
@@ -384,7 +384,7 @@ check("maafw_grep: nothing outside the window",
 st, _, _ = judge("#29", {"rec": CREC, "raw": {}, "log_text": COLLECT, "maaend_dir": str(fw)})
 check("the toast text alone, no picture: not judged (the text is in no real log, ledger #29)", st, None)
 # Judged by MaaEnd's on_error picture of the relay-device node inside a route's window
-# (tests/test_collect_retry.py has the real 10-05 / 10-08 / 10-12 runs).
+# (tests/test_collect.py has the real 10-05 / 10-08 / 10-12 runs).
 SHOT = "2026.10.05-10.10.03.000___MapNavigatorObstacleDevice_InteractPost.png"
 (fw / "debug" / "on_error").mkdir()
 (fw / "debug" / "on_error" / SHOT).write_bytes(b"")

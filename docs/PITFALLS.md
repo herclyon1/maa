@@ -903,7 +903,7 @@ The fix: send `/api/update/check` with `if_force: True` (`UpdateCheckIn` already
 has the field). Measured on the machine: without forcing → 404; with forcing → a
 fresh token, status 200, **102.8MB downloaded in 9.93 seconds**. So the
 600-second budget was never the bottleneck. Tests in
-`relay/tests/test_preupdate_mas_force.py`.
+`relay/tests/test_preupdate.py`.
 
 **The lesson**: when "X started" is followed by neither a success nor a failure
 line, do not read it as "still in progress". Go to the callee's log and see what
@@ -1056,7 +1056,7 @@ Fixes (e2e15df, deployed 22:57):
 * `scripts/mac/lib/healthcheck.py` (78644f6): lists the day's ERROR lines and any
   boot where AUTO-MAS had to be killed and relaunched.
 
-Verified: `relay/tests/test_automas_boot_revival.py`; relay.log 23:00:21 「已挂上 AUTO-MAS
+Verified: `relay/tests/test_automas.py`; relay.log 23:00:21 「已挂上 AUTO-MAS
 进程句柄」 (first since 08-28); the drill `~/Money/styl-work/drill_boot.py` at 23:34
 (kill shell + runtime → keeper revives within 1 s → bootstrap clean → `ensure_automas`
 waits 4 s and returns). The missed MAA run was made up by hand at 23:15-23:31
@@ -1190,7 +1190,7 @@ notifies services, and WMI can go in either order with the notification, so
 the two failures a shutdown explains - the process-start listener dropping and
 the backend exiting - wait up to `GOING_DOWN_SETTLE_SECONDS` (15 s) for a
 going-down sign before they are logged as faults (`service._going_down_soon`).
-Tests: `relay/tests/test_procwatch_drop.py`, `relay/tests/test_keeper_exit.py`.
+Tests: `relay/tests/test_procwatch_drop.py`, `relay/tests/test_keeper.py`.
 
 **Rule.** Do not write down what a framework does with a control, a signal or
 a callback without the line of its source that does it. The framework here is

@@ -3,6 +3,7 @@
 One part per former file, each run on its own (tests/_parts.py): test_queue_apply_backend.py, test_queue_apply_runnow.py, test_queue_names.py, test_queue_rows_times.py, test_queue_skip_holders.py, test_queue_skip_partial.py, test_queue_skip_partial_receipt.py, test_queue_skip_scripts.py.
 """
 from __future__ import annotations
+
 # Each part imports the relay itself, after its own environment is set, as the file it was did at
 # its top.
 # ruff: noqa: PLC0415
@@ -10,10 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_queue_apply_backend():
@@ -29,10 +31,8 @@ queues.apply now goes through /api/queue/update and only reports success once
     Formerly test_queue_apply_backend.py.
     """
     import json
-    import sys
     import urllib.error
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features.phone import commands
@@ -41,15 +41,6 @@ queues.apply now goes through /api/queue/update and only reports success once
     from ark_relay.core import plan as _plan
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.statestore import StateStore
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
-
-    fails = []
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got}, want {want}")
-        if not ok:
-            fails.append(label)
 
 
     def automas_dir():
@@ -180,7 +171,6 @@ queues.apply now goes through /api/queue/update and only reports success once
         commands._mas = real_mas
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_queue_apply_runnow():
@@ -196,16 +186,13 @@ commands._run_now 里各留着一个叫 names 的局部列表。Python 把它当
     """
     import json
     import pathlib
-    import sys
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
     from ark_relay.features.phone import commands
     from ark_relay.features.schedule import queues
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
-    fails = []
 
     # ---- queues.apply：真跑一遍，改完读回 ----
     tmp = tmpdir()
@@ -264,7 +251,6 @@ commands._run_now 里各留着一个叫 names 的局部列表。Python 把它当
             fails.append(f"不存在的队列应失败并列出现有队列：{msg4}")
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_queue_names():
@@ -276,24 +262,14 @@ def _part_queue_names():
     Formerly test_queue_names.py.
     """
     import os
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     STATE = tmpdir()
     os.environ["ARK_STATE_DIR"] = str(STATE)
     from ark_relay.features.phone import commands
     from ark_relay.core import names
     from ark_relay.core.statestore import StateStore
 
-    fails = []
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
     print("[canonical]")
     check("新队列→早班", names.canonical("新队列"), "早班")
@@ -318,9 +294,6 @@ def _part_queue_names():
     check("默认早班", any(v == "早班" for k, v in StateStore(STATE).section("queues").items()
                         if k.startswith("skip_day:")), True)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_queue_rows_times():
     """queue_rows gives each queue its start times (「时刻」), also while its timer is off.
@@ -335,13 +308,9 @@ queues only, so the phone's row of a skipped shift had no time to show (App revi
 
     import json
     import shutil
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    from _tmp import tmpdir
     from ark_relay.core import plan
 
     FAILED: list[str] = []
@@ -396,26 +365,13 @@ The clock is pinned through each module's `datetime`.
     Formerly test_queue_skip_holders.py.
     """
     import json
-    import sys
     from datetime import datetime, timedelta
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     from ark_relay.features.phone import commands
     from ark_relay.features.schedule import queues
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features.gameupdate import gameupdate
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}" + ("" if ok else f", want {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     ALL = list(commands.WEEKDAYS)
@@ -539,9 +495,6 @@ The clock is pinned through each module's `datetime`.
     recs = run(be, lambda: gameupdate._skip_default("早班", "MaaEnd"), D)
     check("the maintenance skip covers both items too", sorted(r["queueItemId"] for r in recs), ["i2", "i4"])
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_queue_skip_partial():
     """A today-only queue skip that fails part-way keeps its undo record.
@@ -559,26 +512,13 @@ test_queue_skip_holders.py; `fail` makes one call raise after the write.
     Formerly test_queue_skip_partial.py.
     """
     import json
-    import sys
     from datetime import datetime, timedelta
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features.gameupdate import gameupdate
     from ark_relay.features.phone import commands
     from ark_relay.features.schedule import queues
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}" + ("" if ok else f", want {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     ALL = list(commands.WEEKDAYS)
@@ -708,9 +648,6 @@ test_queue_skip_holders.py; `fail` makes one call raise after the write.
     check("the record is kept with the original days",
           [(r["queueItemId"], r["days"], r.get("why")) for r in gameupdate.skips(state)], [("i2", ALL, "官方公告")])
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_queue_skip_partial_receipt():
     """A queue's today-only script list that fails part-way names what it had already changed.
@@ -724,25 +661,12 @@ one of test_queue_skip_holders.py; here the update of the OK-WW item fails.
     Formerly test_queue_skip_partial_receipt.py.
     """
     import json
-    import sys
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     from ark_relay.features.phone import commands
     from ark_relay.features.schedule import queues
     from ark_relay.core.config import SERVER_TZ
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}" + ("" if ok else f", want {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     ALL = list(commands.WEEKDAYS)
@@ -834,7 +758,6 @@ one of test_queue_skip_holders.py; here the update of the OK-WW item fails.
     check("failed, no 「这之前已经改了」", (ok, "这之前已经改了" in msg), (False, False))
 
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_queue_skip_scripts():
@@ -852,26 +775,13 @@ item/update) and app/models/schema.py QueueItem_Schedule.Days.
     Formerly test_queue_skip_scripts.py.
     """
     import json
-    import sys
     from datetime import datetime, timedelta
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     from ark_relay.features.phone import commands
     from ark_relay.features.schedule import queues
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features.gameupdate import gameupdate
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}" + ("" if ok else f", want {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     ALL = list(commands.WEEKDAYS)
@@ -971,9 +881,6 @@ item/update) and app/models/schema.py QueueItem_Schedule.Days.
     check("backend down: refused, no file edit", (ok, "调度程序没应答" in msg), (False, True))
     ok, msg = run(be, lambda: queues.apply(automas, "早班", scripts=["MAA"]))
     check("no state dir: refused before touching anything", (ok, be.days()["i2"]), (False, ALL))
-
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 One part per former file, each run on its own (tests/_parts.py): test_plan_after_accomplish.py, test_plan_collect_days_master.py, test_plan_queue_weekdays.py, test_plan_silent.py, test_plan_stage_modes.py, test_plan_startup_mode.py.
 """
 from __future__ import annotations
+
 # Each part imports the relay itself, after its own environment is set, as the file it was did at
 # its top.
 # ruff: noqa: PLC0415
@@ -10,10 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_plan_after_accomplish():
@@ -30,13 +32,9 @@ hibernate showed no line at all. Base data: the real 10-11 config (NoAction).
 
     import json
     import shutil
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    from _tmp import tmpdir
     from ark_relay.core import plan
 
     # next_plan's maintenance notices come from the official sites; nothing here is about
@@ -95,14 +93,10 @@ config (tests/fixtures/automas-config-2026-10-11) pointing MaaEnd at a temp dir.
 
     import json
     import shutil
-    import sys
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    from _tmp import tmpdir
     from ark_relay.core import plan
     from ark_relay.core.config import SERVER_TZ
 
@@ -198,12 +192,8 @@ Config: tests/fixtures/automas-config-2026-10-11 (the machine's own, see SOURCE.
     import json
     import os
     import shutil
-    import sys
     from datetime import datetime
-    from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     FX = Path(__file__).resolve().parent / "fixtures" / "automas-config-2026-10-11"
     TMP = tmpdir()
@@ -341,26 +331,13 @@ read fine in between.
     import json
     import logging
     import os
-    import sys
-    from pathlib import Path
     from unittest import mock
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     os.environ["ARK_STATE_DIR"] = str(tmpdir())
     os.environ.pop("ARK_OKWW_DIR", None)
     from ark_relay.core import plan
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok' if ok else 'FAIL'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     class Grab(logging.Handler):
@@ -495,9 +472,6 @@ read fine in between.
         plan.maintenance_lines(day)
         check("broken again after it worked -> WARNING again", len(grab.warnings()), 1)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_plan_stage_modes():
     """「明日安排」 shows MAA's stages the way AUTO-MAS v5.7 hands them to MAA.
@@ -515,13 +489,9 @@ Base data: the real 10-11 AUTO-MAS config (YW-4, Fixed, 999).
 
     import json
     import shutil
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    from _tmp import tmpdir
     from ark_relay.core import plan
 
     # next_plan's maintenance notices come from the official sites; nothing here is about
@@ -620,13 +590,9 @@ relay still read StartUpEnabled, so on the real 10-11 config every queue said
 
     import json
     import shutil
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    from _tmp import tmpdir
     from ark_relay.core import plan
 
     FAILED: list[str] = []

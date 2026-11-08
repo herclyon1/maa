@@ -3,6 +3,7 @@
 One part per former file, each run on its own (tests/_parts.py): test_sanity_plan_both_on.py, test_sanity_plan_master.py, test_sanity_plan_reward_names.py, test_sanity_plan_weekday.py, test_sanity_span.py.
 """
 from __future__ import annotations
+
 # Each part imports the relay itself, after its own environment is set, as the file it was did at
 # its top.
 # ruff: noqa: PLC0415
@@ -10,10 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_sanity_plan_both_on():
@@ -37,23 +39,11 @@ the ones sanity_plan writes since the relay2-patchC-1005 version was chosen
     Formerly test_sanity_plan_both_on.py.
     """
     import json
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     from ark_relay.features.weekly import sanity_plan
 
     FX = Path(__file__).parent / "fixtures" / "maaend-2026-09-10" / "master-before.json"
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok' if ok else 'FAIL'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     def automas_with(data: dict, name: str) -> Path:
@@ -104,9 +94,6 @@ the ones sanity_plan writes since the relay2-patchC-1005 version was chosen
           r.get("label", "").split("，用完再 ")[:2],
           ["读不懂：ProtocolSpace 没有选页签，不知道理智会用在哪", "基质刷取 → 藏剑谷 → 清波寨（2 项都开着，按母本顺序先打前面的）"])
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_sanity_plan_master():
     """理智方案读写母本——不再依赖 AUTO-MAS 的快速配置。
@@ -118,9 +105,7 @@ def _part_sanity_plan_master():
     Formerly test_sanity_plan_master.py.
     """
     import json
-    import sys
     import tempfile
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -301,13 +286,9 @@ the v2.30.0-rc.1 definition fixture.
 
     import json
     import shutil
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    from _tmp import tmpdir
     from ark_relay.core import mastercfg
     from ark_relay.features.phone import inbox
     from ark_relay.features.weekly import sanity_plan
@@ -457,14 +438,10 @@ a temp install.
 
     import json
     import shutil
-    import sys
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    from _tmp import tmpdir
     from ark_relay.core import plan
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.names import GAME_ZH
@@ -601,7 +578,6 @@ def _part_sanity_span():
     from ark_relay.features.verify import collector_maaend, collector_okww
     from ark_relay.features.report import report
 
-    fails = []
 
     def chk(name, got, want):
         if got != want:
@@ -645,7 +621,6 @@ def _part_sanity_span():
         chk("鸣潮消耗", sum(a - b for a, b in zip(series, series[1:], strict=False) if a > b), 199)
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 if __name__ == "__main__":

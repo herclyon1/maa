@@ -62,7 +62,7 @@ the swap runs on the new runtime's own python.exe, from RUNTIME_IN, with both st
 the new one is copied next to the old one first (RUNTIME_IN stays the swap's
 interpreter, and runtime-back's), the swap itself is two renames, and python.prev is the
 way back (the user's words of 10-11 16:37
-are quoted in relay/tests/test_pkg_runtime_update.py).
+are quoted in relay/tests/test_pkg.py).
 """
 from __future__ import annotations
 

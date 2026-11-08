@@ -3,6 +3,7 @@
 One part per former file, each run on its own (tests/_parts.py): test_annihilation_no_progress.py, test_annihilation_not_healed_by_routine.py, test_annihilation_status.py, test_annihilation_unreadable_none.py.
 """
 from __future__ import annotations
+
 # Each part imports the relay itself, after its own environment is set, as the file it was did at
 # its top.
 # ruff: noqa: PLC0415
@@ -10,10 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_annihilation_no_progress():
@@ -40,27 +42,15 @@ selected, chain started and finished, no fight, no progress - the 09-14 shape.
     Formerly test_annihilation_no_progress.py.
     """
     import json
-    import sys
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     from ark_relay.features.verify import collector_maa
     from ark_relay.features.alarm import handle
     from ark_relay.core import ledger as core
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
     FX = Path(__file__).parent / "fixtures" / "maa-annihilation-2026-09-21" / "MAA-17-30-02.log"
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     TMP = tmpdir()
@@ -162,9 +152,6 @@ selected, chain started and finished, no fight, no progress - the 09-14 shape.
               and not r["raw"].get("annihilation_progress") for r in old), True)
     check("三行当时都被记成完成", [r["raw"].get("annihilation_done") for r in old], [True, True, True])
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_annihilation_not_healed_by_routine():
     """A Routine success does not heal an Annihilation failure; a locked 代理指挥 is named.
@@ -189,12 +176,8 @@ handle._flush_pending). Pinned here:
     """
     import json
     import os
-    import sys
     from datetime import datetime, timedelta
-    from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -210,15 +193,6 @@ handle._flush_pending). Pinned here:
     from ark_relay.core import ledger_report
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def automas_dir() -> Path:
@@ -352,9 +326,6 @@ handle._flush_pending). Pinned here:
                  raw={"annihilation": True, "tasks_done": []})
     check("a later Annihilation success is", list(_lr.retried_notes([_ann, _rou, _ann2])), [_ann["run_id"]])
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_annihilation_status():
     """Annihilation (剿灭) weekly status, read from AUTO-MAS (hand-over item 13, 2026-10-11).
@@ -381,28 +352,15 @@ Sources for the shapes used:
     import json
     import logging
     import os
-    import sys
     import urllib.error
     import urllib.request
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
     os.environ["ARK_MAS_PORT"] = "36163"   # config.mas_base(); the fake below answers only there
     from ark_relay.features.weekly import annihilation as A
     from ark_relay.features.alarm import errwatch
     from ark_relay.core.config import SERVER_TZ
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" + ("" if ok else f": got {got!r}, want {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     class Capture(logging.Handler):
@@ -623,9 +581,6 @@ Sources for the shapes used:
     finally:
         urllib.request.urlopen = _real_urlopen
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_annihilation_unreadable_none():
     """An unreadable annihilation week record is "unknown", not "not done".
@@ -651,15 +606,11 @@ Plan text through next_plan with the machine's AUTO-MAS config
     import json
     import logging
     import shutil
-    import sys
     from datetime import datetime
-    from pathlib import Path
     from unittest import mock
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-    from _tmp import tmpdir
     from ark_relay.core import plan
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features.weekly import annihilation as A

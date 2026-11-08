@@ -1,6 +1,6 @@
-"""The desktop agent: focus, killing, no window, screenshots and its work files.
+"""The desktop agent: focus, killing, no window, screenshots and its work files; and the installed relay's direct starts.
 
-One part per former file, each run on its own (tests/_parts.py): test_desktop_focus.py, test_desktop_kill.py, test_desktop_no_window.py, test_desktop_screenshot.py, test_desktop_workfiles.py.
+One part per former file, each run on its own (tests/_parts.py): test_desktop.py, test_spawn_direct.py, test_display_wake.py.
 """
 # Each part imports the relay itself, after its own environment is set, as the file it was did at
 # its top.
@@ -9,10 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _tmp  # loaded before the parts: its atexit cleanup and env default stay
-from _parts import run_parts
+from _parts import check, fails, require, run_parts, tmpdir  # after the path
 
-_BEFORE_THE_PARTS = (_tmp,)
+# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
+# still reads as using all of it.
+_SHARED = (check, fails, require, tmpdir)
 
 
 def _part_desktop_focus():
@@ -29,23 +30,10 @@ write the result JSON the way agent.ps1 does.
     Formerly test_desktop_focus.py.
     """
     import json
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
     from ark_relay.core import desktop as dk
     from ark_relay.core.desktop import Desktop, Line, Screen
-    from _tmp import tmpdir
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     OTHER_WINDOW = [{"text": "版本更新公告", "x": 10, "y": 10, "w": 100, "h": 20},
@@ -150,9 +138,6 @@ write the result JSON the way agent.ps1 does.
     check("click_text 两字以下要整行相等", "if ($want.Length -le 2) { $t -eq $want }" in ps, True)
     check("旧的纯子串匹配没了", "Where-Object { ($_.text -replace '\\s', '') -like \"*$want*\" }" in ps, False)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_desktop_kill():
     """desktop.kill says when taskkill did not end a program (review 2026-10-13, s5 #8).
@@ -166,21 +151,10 @@ No Windows here: subprocess.run is faked.
     Formerly test_desktop_kill.py.
     """
     import logging
-    import sys
     import types
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import desktop
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     class Grab(logging.Handler):
@@ -231,9 +205,6 @@ No Windows here: subprocess.run is faked.
         desktop.subprocess.run = real_run
         desktop.log.removeHandler(g)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_desktop_no_window():
     """A desktop picture never puts a window on the screen.
@@ -252,23 +223,11 @@ CREATE_NO_WINDOW. No Windows here: spawns are faked.
     """
     import ast
     import json
-    import sys
     from pathlib import Path, PureWindowsPath
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
     from ark_relay.core.desktop import POWERSHELL, Desktop
     from ark_relay.features.preupdate import preupdate_common as C
-    from _tmp import tmpdir
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def fake(tag, calls):
@@ -367,9 +326,6 @@ CREATE_NO_WINDOW. No Windows here: spawns are faked.
     finally:
         C._spawn_via_task, C._pythonw = saved
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_desktop_screenshot():
     """Desktop.screenshot(): one picture of the real desktop through the interactive
@@ -380,24 +336,11 @@ png the request names).
     Formerly test_desktop_screenshot.py.
     """
     import json
-    import sys
     import threading
     import time
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
     from ark_relay.core.desktop import Desktop
-    from _tmp import tmpdir
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def agent(write_png=True, ok=True):
@@ -477,9 +420,6 @@ png the request names).
         t.join(10)
     check("never two agents at once", peak[0], 1)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_desktop_workfiles():
     """The desktop agent's working files do not pile up in state/desktop/ (review 2026-10-13, s5 #7).
@@ -495,23 +435,10 @@ features in the same folder are never touched. No Windows here: spawns are faked
     """
     import json
     import os
-    import sys
     import time
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
     from ark_relay.core.desktop import Desktop
-    from _tmp import tmpdir
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def agent(exe, cwd, args):
@@ -556,9 +483,406 @@ features in the same folder are never touched. No Windows here: spawns are faked
     d2.read()
     check("没有留下请求文件", sorted(p.name for p in work.glob("req-*.json")), [])
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
+
+def _part_spawn_direct():
+    """The installed relay starts programs itself; each scheduled-task launch has a name of its own
+(audit 11-08 A-21; dispatch relay-opt-round4-1108 R4-02; preupdate_common._spawn_here).
+
+The relay now runs in the logged-on user's session (app_main.py, \\ArkRelay\\main, highest
+privileges), yet every picture, click and launcher start still went through PowerShell
+building a scheduled task and waiting 3 s, and that task was named after the program only,
+so two launches of one program within those 3 s (two threads taking pictures) replaced or
+unregistered each other's task. Pinned here, with Windows faked:
+
+* elevated on the console session: Popen, no PowerShell; out of the relay task's job
+  (CREATE_BREAKAWAY_FROM_JOB), the logged-on user's environment, a console window or
+  CREATE_NO_WINDOW as asked, SW_SHOWMINNOACTIVE when minimized; the hidden route writes no
+  pythonw launcher;
+* breakaway refused (access denied): the task route, now and for every later start;
+* another start failure, or not on the console / not elevated / no environment: the task
+  route, as before;
+* the task route: a new task name on every launch, under the program's stem.
+
+    Formerly test_spawn_direct.py.
+    """
+    import subprocess
+    from types import SimpleNamespace
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.features.preupdate import preupdate_common as C
+
+
+    class SI:
+        """subprocess.STARTUPINFO (Windows only)."""
+
+        def __init__(self):
+            self.dwFlags, self.wShowWindow = 0, 0
+
+
+    popens, tasks = [], []
+    answer = [None]          # an OSError to raise from Popen, or None
+
+
+    def fake_popen(argv, **kw):
+        popens.append((list(argv), kw))
+        if answer[0] is not None:
+            raise answer[0]
+        return SimpleNamespace(pid=4242)
+
+
+    def fake_task(exe, cwd, args=(), **kw):
+        tasks.append((Path(exe).name, tuple(args)))
+        return True
+
+
+    here = [True]
+    saved = (subprocess.Popen, getattr(subprocess, "STARTUPINFO", None), C._here_in_console, C._logon_env,
+             C._spawn_via_task, C._direct_refused[0])
+    subprocess.Popen, subprocess.STARTUPINFO = fake_popen, SI
+    C._here_in_console = lambda: here[0]
+    C._logon_env = lambda: {"USERPROFILE": "C:\\Users\\Administrator", "PATH": "C:\\Windows"}
+    C._spawn_via_task = fake_task
+    EXE = Path("D:/ark/okww/ok-ww.exe")
+    work = tmpdir()
+    try:
+        print("[中继就在桌面会话里：直接启动，不走 PowerShell 计划任务]")
+        check("启动成功", C._spawn_interactive(EXE, work, ("-t", "1"), require_console=True, minimized=True), True)
+        argv, kw = popens[-1]
+        check("命令行原样", argv, [str(EXE), "-t", "1"])
+        check("脱离中继计划任务的作业（中继重启不连带）", bool(kw["creationflags"] & C._CREATE_BREAKAWAY_FROM_JOB), True)
+        check("带自己的控制台（和计划任务那条路一样）", bool(kw["creationflags"] & C._CREATE_NEW_CONSOLE), True)
+        check("用登录用户的环境变量，不是中继的", kw["env"].get("USERPROFILE"), "C:\\Users\\Administrator")
+        check("最小化、不抢前台", (kw["startupinfo"].dwFlags & C._STARTF_USESHOWWINDOW, kw["startupinfo"].wShowWindow),
+              (C._STARTF_USESHOWWINDOW, C._SW_SHOWMINNOACTIVE))
+        check("工作目录", kw["cwd"], str(work))
+        check("没建计划任务", tasks, [])
+
+        print("\n[无窗口那条路：CREATE_NO_WINDOW，不写 pythonw 启动器]")
+        PS = Path("C:/Program Files/PowerShell/7/pwsh.exe")
+        check("启动成功", C._spawn_hidden_via_task(PS, work, ("-File", "a.ps1")), True)
+        argv, kw = popens[-1]
+        check("没有窗口", bool(kw["creationflags"] & C._CREATE_NO_WINDOW), True)
+        check("……也不另开控制台", bool(kw["creationflags"] & C._CREATE_NEW_CONSOLE), False)
+        check("……照样脱离作业", bool(kw["creationflags"] & C._CREATE_BREAKAWAY_FROM_JOB), True)
+        check("没写无窗口启动器", (work / C.HIDDEN_LAUNCHER_NAME).exists(), False)
+        check("没建计划任务", tasks, [])
+
+        print("\n[启动失败（不是不许脱离）：这一次走计划任务，下次照旧先直接启动]")
+        answer[0] = FileNotFoundError(2, "not found")
+        check("走计划任务启动成功", C._spawn_interactive(EXE, work, require_console=True), True)
+        check("计划任务启动的是它", tasks[-1][0], "ok-ww.exe")
+        answer[0] = None
+        n = len(tasks)
+        C._spawn_interactive(EXE, work, require_console=True)
+        check("下一次又直接启动了", len(tasks), n)
+
+        print("\n[作业不许脱离（拒绝访问）：这次和以后都走计划任务]")
+        denied = OSError(13, "Access is denied")
+        denied.winerror = C._ERROR_ACCESS_DENIED
+        answer[0] = denied
+        n_pop, n = len(popens), len(tasks)
+        check("走计划任务启动成功", C._spawn_interactive(EXE, work, require_console=True), True)
+        answer[0] = None
+        C._spawn_interactive(EXE, work, require_console=True)
+        check("之后不再试直接启动", (len(popens) - n_pop, len(tasks) - n), (1, 2))
+        C._direct_refused[0] = False
+
+        print("\n[不在桌面会话 / 不是管理员 / 取不到环境：照旧走计划任务]")
+        here[0] = False
+        n_pop = len(popens)
+        C._spawn_hidden_via_task(PS, work, ())
+        check("不在桌面会话：没直接启动", len(popens), n_pop)
+        here[0] = True
+        C._logon_env = lambda: None
+        C._spawn_interactive(EXE, work, require_console=True)
+        check("取不到登录用户的环境：没直接启动", len(popens), n_pop)
+    finally:
+        (subprocess.Popen, _si, C._here_in_console, C._logon_env, C._spawn_via_task, C._direct_refused[0]) = saved
+        if _si is None:
+            del subprocess.STARTUPINFO
+        else:
+            subprocess.STARTUPINFO = _si
+
+    print("[走不了直接启动的原因：每个原因在日志里说一次（INFO），部署后看得见]")
+    import logging
+    said = []
+
+
+    class _Rows(logging.Handler):
+        def emit(self, record):
+            said.append((record.levelname, record.getMessage()))
+
+
+    h = _Rows()
+    C.log.addHandler(h)
+    level = C.log.level
+    C.log.setLevel(logging.DEBUG)
+    C._not_here_said[0] = ""
+    try:
+        C._here_in_console()            # this Mac: no pywin32
+        C._here_in_console()
+    finally:
+        C.log.removeHandler(h)
+        C.log.setLevel(level)
+    check("说了一次、是 INFO、说了原因", [(lv, "看不出中继是不是在桌面会话里" in m) for lv, m in said], [("INFO", True)])
+
+    print("\n[计划任务那条路：每次一个新任务名]")
+    scripts = []
+    real_run = subprocess.run
+    subprocess.run = lambda argv, **kw: scripts.append(argv[-1]) or SimpleNamespace(returncode=0, stderr=b"")
+    try:
+        C._spawn_via_task(PS, work, ("-File", "a.ps1"))
+        C._spawn_via_task(PS, work, ("-File", "a.ps1"))
+        C._spawn_via_task(PS, work, (), task="ark-efstart")
+    finally:
+        subprocess.run = real_run
+
+
+    def name_of(ps):
+        return ps.split('Register-ScheduledTask -TaskName "', 1)[1].split('"', 1)[0]
+
+
+    names = [name_of(s) for s in scripts]
+    check("两次启动同一个程序：任务名不同", names[0] != names[1], True)
+    check("……都以程序名开头", all(n.startswith(C._task_name(PS.stem) + "-") for n in names[:2]), True)
+    check("……一个脚本里注册、启动、注销的是同一个名字", all(s.count(f'"{n}"') == 4 for s, n in zip(scripts, names, strict=True)), True)
+    check("指定了任务名的也加后缀", names[2].startswith("ark-efstart-") and len(names[2]) == len("ark-efstart-") + 8, True)
+
+
+def _part_display_wake():
+    """display_wake: the display is woken while AUTO-MAS starts Endfield through its launcher.
+
+2026-10-16 13:21 (a hand-started make-up), attempt 1: the game PC's display had been
+off (power plan, 300 s idle), the Hypergryph launcher kept its main window hidden
+(games.log 13:21:31.615 bMainWndHide:true / 13:21:31.616 「display off」), AUTO-MAS
+only wakes a running screensaver, and at 13:23:36 it gave up: 「游戏启动失败: 等待终末地
+游戏窗口超时」. Nothing in the relay woke the display.
+
+Fixture: the real app.log lines of that day (HTTP request lines left out):
+09:33:54-09:34:05 (OK-WW finishing, then MaaEnd refused at its config check: no
+launch), 13:21:13-13:26:14 (attempt 1 hand-off 13:21:28.423, timeout 13:23:36.444,
+attempt 2 hand-off 13:23:36.799, game up 13:26:14.036) and 13:53:00-13:54:52 (attempt 3).
+
+    Formerly test_display_wake.py.
+    """
+    import json
+    import logging
+    import threading
+    import time
+    from datetime import datetime, timedelta
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import config, desktop, watch
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features.run import display_wake as dw
+
+
+    FIX = Path(__file__).resolve().parent / "fixtures" / "display-wake-2026-10-16" / "app.log"
+    LINES = FIX.read_text(encoding="utf-8").splitlines()
+
+
+    def at(hms: str) -> datetime:
+        return datetime.fromisoformat(f"2026-10-16 {hms}").replace(tzinfo=SERVER_TZ)
+
+
+    def stamp(line: str) -> datetime:
+        return datetime.fromisoformat(line[:23]).replace(tzinfo=SERVER_TZ)
+
+
+    class _ClockTail:
+        """app.log as the thread sees it at `now`: every line written by then, once."""
+
+        def __init__(self, lines):
+            self.lines, self.i, self.now = lines, 0, None
+
+        def read(self):
+            out = []
+            while self.i < len(self.lines) and stamp(self.lines[self.i]) <= self.now:
+                out.append(self.lines[self.i])
+                self.i += 1
+            return out
+
+
+    def replay(lines, start: str, end: str, every: float = dw.POLL_SECONDS):
+        """Run the thread's step on a fake clock that looks every `every` seconds (the
+    backstop alone, no change notification). Returns the moments a wake was issued."""
+        waker, tail, wakes = dw.Waker(), _ClockTail(lines), []
+        now, stop = at(start), at(end)
+        while now <= stop:
+            tail.now = now
+            dw.step(waker, tail, lambda: wakes.append(tail.now) or True, now)
+            now += timedelta(seconds=every)
+        return wakes
+
+
+    print("[attempt 1, 13:21: the display is woken right after AUTO-MAS hands off to the launcher]")
+    HANDOFF1, TIMEOUT1 = at("13:21:28.423"), at("13:23:36.444")
+    wakes = replay(LINES, "13:21:00", "13:27:00")
+    first = wakes[0] if wakes else None
+    check("a wake is issued for attempt 1", first is not None)
+    if first:
+        check(f"first wake {first:%H:%M:%S} within one backstop look of the hand-off line",
+              HANDOFF1 <= first <= HANDOFF1 + timedelta(seconds=dw.POLL_SECONDS))
+        check("well inside AUTO-MAS's 120 s launcher wait", first < HANDOFF1 + timedelta(seconds=120))
+    att1 = [w for w in wakes if w < TIMEOUT1]
+    check("re-woken at most every REWAKE_SECONDS during attempt 1",
+          all((b - a).total_seconds() >= dw.REWAKE_SECONDS for a, b in zip(att1, att1[1:], strict=False)))
+    HANDOFF2, UP2 = at("13:23:36.799"), at("13:26:14.036")
+    att2 = [w for w in wakes if w >= TIMEOUT1]
+    check("attempt 2 (retry) re-arms and wakes at once",
+          bool(att2) and att2[0] <= HANDOFF2 + timedelta(seconds=dw.POLL_SECONDS))
+    check("no wake after AUTO-MAS logs 运行脚本任务 (game up, 13:26:14)", [w for w in wakes if w > UP2], [])
+    print(f"    wakes: {', '.join(f'{w:%H:%M:%S}' for w in wakes)}")
+
+    print("\n[a change notification: the wake follows the hand-off line within a second or two]")
+    wakes = replay(LINES, "13:21:27", "13:21:40", every=1.0)
+    check("woken by 13:21:30", bool(wakes) and wakes[0] <= at("13:21:30"))
+
+    print("\n[attempt 3, 13:53: woken, then left alone once the game is up]")
+    wakes = replay(LINES, "13:52:50", "14:05:00")
+    check("one wake right after 13:53:33.918",
+          bool(wakes) and at("13:53:33.918") <= wakes[0] <= at("13:53:44"))
+    check("none after 13:54:52 (运行脚本任务)", [w for w in wakes if w > at("13:54:52.502")], [])
+
+    print("\n[no MaaEnd launch, no wake: OK-WW finishing and MaaEnd refused at its config check, 09:33-09:34]")
+    check("no wake 09:33:50-09:40:00", replay(LINES, "09:33:50", "09:40:00"), [])
+
+    print("\n[bounded: a hand-off with no end line wakes for WINDOW_SECONDS at most]")
+    only = [ln for ln in LINES if ln.startswith("2026-10-16 13:21:28.423")]
+    wakes = replay(only, "13:21:00", "13:45:00")
+    check("hand-off line alone gives wakes", bool(wakes))
+    check(f"at most {dw.WINDOW_SECONDS // dw.REWAKE_SECONDS} wakes ({len(wakes)})",
+          len(wakes) <= dw.WINDOW_SECONDS // dw.REWAKE_SECONDS)
+    check("none later than WINDOW_SECONDS after the hand-off",
+          all(w < HANDOFF1 + timedelta(seconds=dw.WINDOW_SECONDS) for w in wakes))
+
+    print("\n[an old hand-off line read again (app.log re-read from its start) wakes nothing]")
+    waker = dw.Waker()
+    waker.feed(only)
+    check("not due 10 minutes later", waker.due(at("13:31:30")), False)
+
+    print("\n[a failed wake is retried after REWAKE_SECONDS]")
+    waker, tail, calls = dw.Waker(), _ClockTail(only), []
+    for hms in ("13:21:29", "13:21:59", "13:22:29", "13:22:30"):
+        tail.now = at(hms)
+        dw.step(waker, tail, lambda: calls.append(tail.now) or False, at(hms))
+    check("tried at 13:21:29 and again at 13:22:29", calls, [at("13:21:29"), at("13:22:29")])
+
+    print("\n[AUTO-MAS v5.7.0-beta.5: the bare mode line arms it, for 「MaaEnd 启动」 too (10-17)]")
+    # beta.5 AutoProxy.py:496/503/521 log the mode alone, no 「，将由 MAS ...」 (the machine's app.log
+    # 2026-10-17 11:31:03.832: 「启动方式为「MaaEnd 启动」」); efstart_setup sets 「MaaEnd 启动」 since
+    # 10-17, whose pretask starts Launcher.exe and finds it by its window. Same logger and layout
+    # as the 10-16 lines above; the times are this fixture's own.
+    B5 = "2026-10-16 15:00:03.832 | INFO     | MaaEnd 自动代理 | "
+    B5_UP = "2026-10-16 15:01:30.100 | INFO     | MaaEnd 自动代理 | 运行脚本任务: D:\\ark\\maaend\\MaaEnd.exe"
+    for mode in ("MaaEnd 启动", "启动器启动"):
+        wakes = replay([B5 + f"启动方式为「{mode}」", B5_UP], "15:00:00", "15:10:00")
+        check(f"「{mode}」 alone: woken within one backstop look",
+              bool(wakes) and wakes[0] <= at("15:00:03.832") + timedelta(seconds=dw.POLL_SECONDS))
+        check(f"「{mode}」: none after 运行脚本任务", [w for w in wakes if w > at("15:01:30.100")], [])
+    check("「MAS 启动」 (Endfield.exe started directly, no launcher window): no wake",
+          replay([B5 + "启动方式为「MAS 启动」"], "15:00:00", "15:10:00"), [])
+    check("the scheduler's own mode line (MaaEnd 调度器, before the hand-off): no wake",
+          replay([ln for ln in LINES if "MaaEnd 调度器 | 启动方式为" in ln], "13:21:00", "13:30:00"), [])
+
+
+    class _Levels(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.DEBUG)
+            self.levels = []
+
+        def emit(self, record):
+            self.levels.append(record.levelno)
+
+
+    lv = _Levels()
+    dw.log.addHandler(lv)
+    _old_level = dw.log.level
+    dw.log.setLevel(logging.DEBUG)
+    waker, tail = dw.Waker(), _ClockTail(only)
+
+
+    def _boom():
+        raise OSError("no agent")
+
+
+    for hms in ("13:21:29", "13:22:29", "13:23:29"):
+        tail.now = at(hms)
+        dw.step(waker, tail, _boom, at(hms))
+    dw.log.removeHandler(lv)
+    dw.log.setLevel(_old_level)
+    check("a failing wake goes to the group (WARNING) once per attempt, then only to the log",
+          lv.levels, [logging.WARNING, logging.INFO, logging.INFO])
+
+    print("\n[Tail: starts at the end of app.log, follows AUTO-MAS's rotation]")
+    d = tmpdir()
+    f = d / "app.log"
+    f.write_text("\n".join(LINES[:40]) + "\n", encoding="utf-8")
+    t = dw.Tail(f)
+    check("lines from before the start are not read", t.read(), [])
+    with f.open("a", encoding="utf-8") as fh:
+        fh.write(LINES[57] + "\n" + LINES[58][:30])
+    check("an appended line is read, a half line is held", t.read(), [LINES[57]])
+    f.write_text(LINES[58] + "\n", encoding="utf-8")
+    check("after rotation the new file is read from its start", t.read(), [LINES[58]])
+
+    print("\n[Desktop.wake: one windowless agent run with the wake act; the agent wakes the display]")
+    calls = []
+
+
+    def _spawn(tag):
+        def spawn(exe, cwd, args):
+            req, res = Path(args[-2]), Path(args[-1])
+            calls.append((tag, json.loads(req.read_text(encoding="utf-8"))["actions"]))
+            res.write_text(json.dumps({"ok": True, "log": ["wake"], "ocr": [], "clicked": []}), encoding="utf-8")
+            return True
+        return spawn
+
+
+    dk = desktop.Desktop(tmpdir() / "state", spawn=_spawn("window"), spawn_hidden=_spawn("hidden"), timeout=5)
+    check("wake() reports success", dk.wake(), True)
+    check("windowless route, the single wake act", calls, [("hidden", [{"act": "wake"}])])
+    check("the agent's wake act calls WakeDisplay", "'wake' { WakeDisplay;" in desktop.AGENT_PS)
+
+    print("\n[start(): the thread reads a live app.log and wakes (Windows switched on, the agent faked)]")
+    woken = threading.Event()
+    real_windows, real_wake, real_poll = config.IS_WINDOWS, desktop.Desktop.wake, dw.POLL_SECONDS
+    real_watch = watch.start
+    try:
+        config.IS_WINDOWS = True
+        watch.start = lambda path, ev: False      # no change notification: the backstop alone
+        desktop.Desktop.wake = lambda self: woken.set() or True
+        dw.POLL_SECONDS = 0.3
+        root = tmpdir()
+        (root / "debug").mkdir()
+        applog = root / "debug" / "app.log"
+        applog.write_text(LINES[0] + "\n", encoding="utf-8")
+
+        class _Cfg:
+            automas_dir = str(root)
+            state_dir = str(tmpdir())
+
+        check("start() arms the thread", dw.start(_Cfg), True)
+        now = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d %H:%M:%S")
+        with applog.open("a", encoding="utf-8") as fh:
+            fh.write(f"{now}.423 | INFO     | MaaEnd 自动代理 | 启动方式为「启动器启动」，将由 MAS 经终末地官方启动器拉起游戏\n")
+        check("woken within 3 s of the hand-off line landing", woken.wait(3.0))
+    finally:
+        config.IS_WINDOWS, desktop.Desktop.wake, watch.start = real_windows, real_wake, real_watch
+        time.sleep(dw.POLL_SECONDS)
+        dw.POLL_SECONDS = real_poll
+
+
+    class _NoDir:
+        automas_dir = None
+        state_dir = str(tmpdir())
+
+
+    config.IS_WINDOWS = True
+    check("no AUTO-MAS folder: start() returns False", dw.start(_NoDir), False)
+    config.IS_WINDOWS = real_windows
 
 
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_desktop_focus, _part_desktop_kill, _part_desktop_no_window, _part_desktop_screenshot, _part_desktop_workfiles]))
+    sys.exit(run_parts([_part_desktop_focus, _part_desktop_kill, _part_desktop_no_window, _part_desktop_screenshot, _part_desktop_workfiles, _part_spawn_direct, _part_display_wake]))

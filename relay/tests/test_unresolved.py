@@ -451,7 +451,7 @@ check("同一天同样这几项又没证据：这一趟也进群（D210，audit 
 e = build()
 # The desktop picture is taken 5-8 s after the task ended and shows the next task
 # (task_shots.py, verify ledger #28): booked now, it backs nothing. What backs these
-# four is MaaFW's own steps (test_mc28_task_trail.py), and here there is no MaaFW log.
+# four is MaaFW's own steps (test_mc28.py), and here there is no MaaFW log.
 handle._handle(e, rec("MaaEnd", at(9, 5), ok=True, raw=dict(GIFT, tasks_shot=["赠送干员礼物"])))
 check("只有一张任务结束截图不算证据：照推", alarms(e), [title])
 e = build()
