@@ -196,7 +196,7 @@ UNREAD_RETRY_S = 45
 # Refused this long without a read getting through: one WARNING, which errwatch pushes. The
 # user on an error left unreported, 10-12 20:04: 「就是有错，但是不报，那是比报错更严重的事情。」
 # 600 s: the relay's other outages are pushed at the same mark (procwatch.OUTAGE_ALARM_SECONDS,
-# Mailbox.OUTAGE_SEC); tests/test_state_unread_1108.py pins them equal.
+# Mailbox.OUTAGE_SEC); tests/test_statestore.py pins them equal.
 UNREAD_WARN_S = 600
 # path -> [time.monotonic() of the first refusal of the current run, its WARNING sent].
 _UNREAD: dict[str, list] = {}

@@ -44,7 +44,7 @@ why and whether it was made up later (「❌ 明日方舟 早班 09:00–09:04�
 没跑成（关卡 YW-4 当时走不到），12:15 手动补跑成功」), one title item
 (「明日方舟早班没跑成（12:15 补上了）」). Durations stay, and so do the retry words
 (「后来在 HH:MM 那趟重试里做成了」, 「有项目重试后成功」): both are results he reads
-(验收 2026-10-11). `tests/test_daily_techlog.py`.
+(验收 2026-10-11). `tests/test_daily.py`.
 
 Kind 2 exists only while the system is under test: set `ARK_INTERIM_REPORT=0`
 to stop it once the daily report alone is trusted. Turning it off must not

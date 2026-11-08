@@ -70,7 +70,7 @@ def _src_sha(fn) -> str:
 # feature name - changes the shape and the copy is skipped as before, so a fix upstream is
 # never covered by a stale copy (dispatch relay-opt-round3-1108 O-02). The relay computes
 # the same shape before the run (okww_overlay._shape_text; the two are pinned equal by
-# tests/test_okww_shape_1108.py): keep them alike.
+# tests/test_okww_shape.py): keep them alike.
 _LOG_CALLS = frozenset({"log_info", "log_debug", "log_error", "log_warning"})
 # Measured on the pinned bodies (tests/gamesim/upstream/okww-v3.7.14-beta.2), the same under
 # Python 3.12 (OK-WW's) and 3.14 (the relay's); v3.7.13, before the self.tr wrapping, has the

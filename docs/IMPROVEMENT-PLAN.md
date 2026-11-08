@@ -145,12 +145,12 @@ Done that day (no new features; everything has a test or a gate):
 * Fixed: in `queues.apply` and `commands._run_now` a local variable shadowed the
   `names` module, so every call had crashed since 09-02 (skip-queue, the todo
   queue switch, and the phone page's 「现在跑一趟」 had been dead for four days).
-  `test_queue_apply_runnow.py`.
+  `test_queue.py`.
 * Fixed: one failing section of `tick()` took the daily report and the shutdown
   with it (the 09-04 incident) - each section now has its own fallback.
   `test_tick_isolation.py`.
 * Fixed: one bad time in a ledger line -> the daily report cannot be sent -> the
-  machine stays on all night. `test_ledger_bad_times.py`.
+  machine stays on all night. `test_ledger.py`.
 * Changed: `_scripts_running` now caches for three seconds, which saves a dozen
   `tasklist` invocations per round.
 * Fixed: `GetTickCount64` had no 64-bit return declared; an invalid escape in

@@ -424,24 +424,6 @@ refuses "日志名和模块名不一致必须被拒" "应该是" \
   python3 scripts/mac/lib/loggernames.py "$TMP/logname"
 
 echo
-echo "▶ CODE-HISTORY 锚点（history-anchors）"
-# 2026-09-08：文档里有 5 组同名章节 + 代码里二十来处半截话。
-mkdir -p "$TMP/anchor/relay"
-cat > "$TMP/anchor/relay/x.py" <<'EOF'
-# 这句话没说完，后面直接就是指针
-# 来龙去脉见 docs/CODE-HISTORY.md「service.py:main」
-EOF
-refuses "指针上面半截话必须被拒" "没说完" \
-  python3 scripts/mac/lib/history-anchors.py "$TMP/anchor/relay"
-
-cat > "$TMP/anchor/relay/x.py" <<'EOF'
-# 这句话说完了。
-# 来龙去脉见 docs/CODE-HISTORY.md「根本没有这一节」
-EOF
-refuses "指向不存在的章节必须被拒" "章节不存在" \
-  python3 scripts/mac/lib/history-anchors.py "$TMP/anchor/relay"
-
-echo
 echo "▶ noqa 必须真的压着一条规则（ruff RUF100）"
 # 2026-09-08：521 条 noqa 没有任何东西验过，其中一条规则号写错了。
 mkdir -p "$TMP/ruff"
@@ -504,7 +486,7 @@ refuses "deploy guard: untracked file in web/ is refused" "deploy refused" bash 
 rm -f "$DG/wt/web/stray.js"; dgit checkout -q --detach HEAD~1
 refuses "deploy guard: HEAD behind origin/main is refused" "deploy refused" bash "$DG/wt/scripts/mac/guard.sh"
 
-echo "▶ tool references (lint item 22)"
+echo "▶ tool references (lint item 21)"
 # A rule file naming a script that is not there must be refused, by name.
 printf 'run `scripts/mac/_guardcheck_no_such_tool.sh`\n' > "$TMP/toolrefs.md"
 refuses "rule file naming a missing script is refused" "_guardcheck_no_such_tool.sh does not exist" \

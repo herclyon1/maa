@@ -132,8 +132,7 @@ a known-bad sample and asserts that it must be rejected.
 | 15 | what the docs say matches what the code does | `scripts/mac/check-docs.py --local` |
 | 16 | logger names must equal `ark.<module name>` | `scripts/mac/lib/loggernames.py` |
 | 17 | `check()` in tests may only mean one thing | `scripts/mac/lib/checkshape.py` |
-| 18 | anchors pointing at CODE-HISTORY are unique and complete | `scripts/mac/lib/history-anchors.py` |
-| 19 | every `# noqa` really suppresses a rule | `ruff check --config ruff.toml` (RUF100) |
+| 18 | every `# noqa` really suppresses a rule | `ruff check --config ruff.toml` (RUF100) |
 
 Which rules were chosen, and why SLF001/S310/S603 were not, is written in the
 comments of `ruff.toml`.

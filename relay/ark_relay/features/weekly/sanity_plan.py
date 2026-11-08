@@ -75,7 +75,7 @@ LINE_LABELS = {
 
 # (line, MaaEnd's case of f"{line}RewardsSetOption") -> the item that drops, in
 # MaaEnd's own Chinese without its "A." / "B." prefix
-# (tests/test_sanity_plan_reward_names.py checks it against the v2.30.0-rc.1 files).
+# (tests/test_sanity_plan.py checks it against the v2.30.0-rc.1 files).
 REWARD = {
     ("OperatorEXP", "CognitiveCarriers"): "高级认知载体、初级认知载体",
     ("OperatorEXP", "AdvancedCombatRecord"): "高级作战记录",

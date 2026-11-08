@@ -382,7 +382,7 @@ def _method_sha(classes: dict, cls: str, name: str, seen=None) -> str:
 # docstrings, comments, layout - is applied there anyway and listed as adapted
 # (ark_overrides.tasks.py _SHAPES / _same_shape; dispatch relay-opt-round3-1108 O-02,
 # ledger #130). The same transform here, so the check before the run says the same:
-# tests/test_okww_shape_1108.py pins the two equal. Keep them alike.
+# tests/test_okww_shape.py pins the two equal. Keep them alike.
 _LOG_CALLS = frozenset({"log_info", "log_debug", "log_error", "log_warning"})
 
 

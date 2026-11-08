@@ -5,4 +5,3 @@
 __main__.cmd_check
 __main__.cmd_local
 __main__.cmd_report
-commands.mas_up

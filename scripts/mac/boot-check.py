@@ -424,7 +424,7 @@ def main() -> int:
         check_version(res, args.want_version)
         report_vanish(res)
         check_backfill(res, runs, args.stop_label)
-    say("说明", "跳过回执", "没按跳过就没什么可看；逻辑由 relay/tests/test_skip_receipts.py 覆盖")
+    say("说明", "跳过回执", "没按跳过就没什么可看；逻辑由 relay/tests/test_skip.py 覆盖")
     if args.wtest and not offline_test:
         check_wtest(args)
     else:

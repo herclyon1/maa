@@ -5,7 +5,7 @@ Client 1.6.3 refuses a start whose parent is not the Hypergryph launcher: on 202
 「请通过官方启动器打开游戏」 and every MaaEnd task failed. Measured by the parent session.
 
 Since 10-17 the relay's own start (efstart, for the gathering retry) runs MaaEnd's launcher
-pretask, windowed; test_maaend_windowed_start_1017.py pins that flow. Here: the helper's lock
+pretask, windowed; test_maaend_windowed_start.py pins that flow. Here: the helper's lock
 and running.json, the watchdog's view of it, run_on_desktop, and efstart_setup's convergence of
 AUTO-MAS (its launcher discovery rule, the relay's old preAction, Game.Path and the wait).
 """

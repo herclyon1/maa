@@ -4,7 +4,7 @@ that day (audit 10-13: raw queue times were read without the weekday rule in fiv
 and the daily report's 「明日安排」 listed skipped items).
 
 AUTO-MAS fires a time only on its TimeSet Days and skips an item whose Schedule.Days leave
-out the day (the relay's own one-day skip writes exactly that); test_plan_queue_weekdays.py
+out the day (the relay's own one-day skip writes exactly that); test_plan.py
 covers plan itself. Here: the shift / hand-start split (shutdown._near_due), the loop's
 missed-run wake-up (Engine.next_deadline), the overrun watch (runwatch.overrun_moments),
 the pre-update's 「a queue still to come runs OK-WW」 (preupdate.wanted_today), the

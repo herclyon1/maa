@@ -42,7 +42,7 @@ def fake_login(token, did=""):
 
 
 # Put the real functions back at the end: the coverage pass runs many test files in one
-# process, and a later file (test_skland_api) must reach the real skland functions.
+# process, and a later file (test_skland, its part skland_api) must reach the real skland functions.
 _REAL = (skland.get_did, skland.login, skland.refresh, skland.bindings)
 skland.get_did, skland.login, skland.refresh = (lambda: "Bdev"), fake_login, (lambda c: c)
 skland.bindings = lambda c: [

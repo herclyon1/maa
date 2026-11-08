@@ -12,7 +12,7 @@ be kept is pushed at once and marked sent (#28|<run id>) once that push went out
 not pushed again when its hold ends. Also a Windows sharing violation on os.replace:
 the file stays as it was, nothing is left behind.
 
-Since the 10-17 review (test_mc28_state_1017.py) a read that fails once is tried
+Since the 10-17 review (test_mc28_state.py) a read that fails once is tried
 again (mc.LOCK_WAITS) and gets through, so the 「cannot be read」 cases here keep
 failing on every try; a file that keeps reading as something other than a table is
 copied aside and replaced.

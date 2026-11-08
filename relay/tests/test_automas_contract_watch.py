@@ -9,7 +9,7 @@ report nothing for v5.7.0-beta.4, and for v5.7.0-beta.3 and v5.7.0-beta.2 only t
 launcher settings beta.4 brought in (Game.LaunchMode, Game.LauncherPath; read since 10-16).
 
 Fixtures (public upstream source): fixtures/automas-models/config.py.txt is v5.7.0-beta.2's whole
-config.py (already used by test_mas_labels.py); config-v5.7.0-beta.3-excerpt.py.txt holds only the
+config.py (already used by test_mas.py); config-v5.7.0-beta.3-excerpt.py.txt holds only the
 ConfigItem statements of the listed settings from v5.7.0-beta.3, verbatim, under their classes;
 config-v5.7.0-beta.4-excerpt.py.txt the same from v5.7.0-beta.4.
 GitHub itself is not asked here (main() is given the file); the exit codes are checked on that path.

@@ -114,7 +114,7 @@ PWSH7_NAME = r"C:\Program Files\PowerShell\7\pwsh.exe"
 POWEROFF_MATCH_S = 600
 # Program files the pull does not carry, from the repo's recorded copies (each fixture
 # says where and when it was copied): AUTO-MAS's app/models/config.py, copied from the
-# machine 2026-10-12 (tests/test_mas_labels.py docstring), which mas_labels reads.
+# machine 2026-10-12 (tests/test_mas.py docstring), which mas_labels reads.
 INSTALL_COPIES = {
     "D:/ark/automas/app/models/config.py": RELAY / "tests" / "fixtures" / "automas-models" / "config.py.txt",
 }

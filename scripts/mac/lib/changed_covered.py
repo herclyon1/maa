@@ -141,7 +141,7 @@ def executed_modules(want_replay: bool) -> tuple[set[str], set[str]]:
     2026-10-07 this pass ran a shard of files one after another in one process,
     so whatever a test swapped out and left swapped (test_resources.py set
     skland.login / refresh / bindings / get_did to fakes) was still swapped for
-    the next file in that shard: test_skland_api then called the fakes, and the
+    the next file in that shard: test_skland_api (now a part of test_skland.py) then called the fakes, and the
     ratchet named those four functions as never executed, a failure of the
     pass, not of the relay. A fresh process per file shares nothing - module
     attributes, class attributes, sys.modules, os.environ, cwd - so no test can

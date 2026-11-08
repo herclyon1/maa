@@ -384,7 +384,7 @@ check("maafw_grep: nothing outside the window",
 st, _, _ = judge("#29", {"rec": CREC, "raw": {}, "log_text": COLLECT, "maaend_dir": str(fw)})
 check("the toast text alone, no picture: not judged (the text is in no real log, ledger #29)", st, None)
 # Judged by MaaEnd's on_error picture of the relay-device node inside a route's window
-# (tests/test_collect_blocked_1012.py has the real 10-05 / 10-08 / 10-12 runs).
+# (tests/test_collect_retry.py has the real 10-05 / 10-08 / 10-12 runs).
 SHOT = "2026.10.05-10.10.03.000___MapNavigatorObstacleDevice_InteractPost.png"
 (fw / "debug" / "on_error").mkdir()
 (fw / "debug" / "on_error" / SHOT).write_bytes(b"")
