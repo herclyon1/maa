@@ -1932,6 +1932,7 @@
 "notify",
 "outcome",
 "phone_banners",
+"preupdate_common",
 "redbutton",
 "runs",
 "selfcheck",
@@ -3024,6 +3025,7 @@
 "wuwa_forgery",
 "wuwa_tacet"
 ],
+"test_gh_watchdog_1108.py": [],
 "test_gl_corpus_maa.py": [],
 "test_gl_corpus_maaend.py": [],
 "test_gl_corpus_okww.py": [],

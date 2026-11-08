@@ -161,6 +161,46 @@ check("起的是 pythonw 跑入口", calls, [("pythonw.exe", str(sd2 / "efstart"
 check("拿到助手的结果", (r.code, r.reason), (ef.OK, "终末地已经开着，没再开"))
 check("结果文件用完删掉", list((sd2 / "efstart").glob("result-*.json")), [])
 
+print("\n[run_on_desktop：中继要停了就不再等助手（审计 11-08 A-23：这一等在主循环里，停机会被拖到强退）]")
+polls = []
+r = ef.run_on_desktop(sd2, lambda exe, cwd, args: True, md, pythonw=Path("pythonw.exe"),
+                      sleep=lambda s_: polls.append(s_), stopping=lambda: len(polls) >= 2)
+check("停了：不判结论，回 STOPPED", (r.code, r.code in ef.RAN, len(polls)), (ef.STOPPED, False, 2))
+check("STOPPED 不和助手的退出码撞号", ef.STOPPED not in (ef.OK, ef.SETUP, ef.PRETASK, ef.LAUNCHER, ef.TIMED_OUT,
+                                                      ef.UNREADABLE, ef.BUSY), True)
+
+print("\n[_single：互斥锁用完，句柄关掉（PyHANDLE 自己的 Close）]")
+
+
+class _H:
+    closed = False
+
+    def Close(self):  # noqa: N802 - pywin32's name
+        self.closed = True
+
+
+h = _H()
+fake_ev = types.SimpleNamespace(CreateMutex=lambda *a: h, WaitForSingleObject=lambda hh, ms: 0, WAIT_OBJECT_0=0,
+                                WAIT_ABANDONED=0x80, ReleaseMutex=lambda hh: released.append(hh))
+released = []
+saved_mod = sys.modules.get("win32event")
+sys.modules["win32event"] = fake_ev
+try:
+    with ef._single(1) as got:
+        pass
+    check("拿到锁、放了锁、关了句柄", (got, released == [h], h.closed), (True, True, True))
+    h2 = _H()
+    fake_ev.CreateMutex = lambda *a: h2
+    fake_ev.WaitForSingleObject = lambda hh, ms: 0x102          # WAIT_TIMEOUT
+    with ef._single(1) as got:
+        pass
+    check("没等到锁：不放锁，照样关句柄", (got, h2.closed), (False, True))
+finally:
+    if saved_mod is None:
+        sys.modules.pop("win32event", None)
+    else:
+        sys.modules["win32event"] = saved_mod
+
 print("\n[10-16：开游戏交还给调度程序自己的官方启动器方式（AUTO-MAS v5.7.0-beta.4 / #1394）]")
 # The machine on 10-16 (AUTO-MAS API read, mxu-MaaEnd.json, state/efstart/target.json): Game.Path
 # was the relay's .cmd, LaunchMode Launcher, LauncherPath empty, WaitTime 180; the master's

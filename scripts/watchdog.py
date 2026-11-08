@@ -62,9 +62,12 @@ def today_at(hhmm: str, now: datetime) -> datetime:
     beyond any real cron delay and far short of a day.
     """
     hh, mm = (int(x) for x in hhmm.split(":"))
-    ref = now.astimezone(SERVER_TZ).replace(
-        hour=hh, minute=mm, second=0, microsecond=0)
-    if ref - now > timedelta(hours=6):
+    srv = now.astimezone(SERVER_TZ)
+    ref = srv.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    # Only a run in the small hours (server time) can be a late check of the evening
+    # before. Until 11-08 a daytime run by hand (10:00) also moved tonight's 23:10 back
+    # to last night's and judged it overdue (audit 11-08 A-25).
+    if ref - now > timedelta(hours=6) and srv.hour < 6:
         ref -= timedelta(days=1)
     return ref
 
@@ -170,7 +173,17 @@ def main() -> int:
               "workflow 的 schedule 失配了。")
         return 1
 
-    last = tailscale_last_seen(str(cfg.get("device", "ins")))
+    try:
+        last = tailscale_last_seen(str(cfg.get("device", "ins")))
+    except Exception as exc:  # noqa: BLE001 - said, not raised: a watchdog that cannot see says so
+        # The docstring of tailscale_last_seen: never "all quiet" when it cannot see. Until
+        # 11-08 the exception only failed the Actions run (audit 11-08 A-25).
+        title, body = "🔌 开机监督自身异常", f"问不到 Tailscale 的设备记录，这一轮没法判断机器开没开：{type(exc).__name__}: {exc}"
+        if manual:
+            print(f"[手动触发，只打印不推送] {title}\n{body}")
+        else:
+            alert(title, body)
+        return 1
     failures = 0
     for key, check in todo.items():
         body = run_check(str(check.get("kind", "boot")), check, last, now)

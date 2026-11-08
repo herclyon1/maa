@@ -161,6 +161,15 @@ st, ev, _ = judge("#5", wwctx(["NightmareNestTask:opened gray_book_boss",
 check("list opened with no filter line (10-04 / 10-05): FAIL", st, "FAIL")
 st, _, _ = judge("#5", wwctx(NEST_OK, outcome=dict(NEST, only_nest="")))
 check("no 「only these nests」 setting: not judged", st, None)
+# Audit 11-08 C-11: a nest fought with no filter line and no 「opened gray_book_boss」 line
+# (an upstream that logs the page under other words) is the copy missing from that run.
+st, ev, pushed = judge("#5", wwctx(["NightmareNestTask:open_boss_book canxiang",
+                                    "NightmareNestTask:enter combat None"], outcome=NEST))
+check("fought a nest, no filter line, no page line: FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
+check("……the evidence is the fight line", "enter combat" in ev, True)
+st, _, _ = judge("#5", wwctx(["NightmareNestTask:open_boss_book canxiang",
+                              "NightmareNestTask:Traceback (most recent call last):"], outcome=NEST))
+check("started, cut short before any nest (no page, no fight): not judged", st, None)
 
 print("\n[#25 残象聚落只认战斗]")
 TEN05 = ["NightmareNestTask:opened gray_book_boss", "NightmareNestTask:nightmare nest: 只刷 ['落渊南丘']（设置来自母本）",

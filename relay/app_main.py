@@ -127,6 +127,14 @@ def _packaged_selfupdate(log) -> bool:
         return False
     if not changed:
         return False
+    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    if errwatch.going_down():
+        # Told to stop during the update (Windows going down, `app_main.py stop` from the
+        # installer): no restart behind that stop (audit 11-08 A-23). current.txt already
+        # names the new folder, so the next start runs it. Not SELF_UPDATE_LINE: this
+        # session ends in a stop, and machine check #11 judges its last push.
+        log.info("代码已更新，已切到新版本文件夹；中继正在停止，不重启，下次启动就是新版本：%s", "、".join(changed))
+        return True
     log.info("%s: %s", SELF_UPDATE_LINE, "、".join(changed))
     try:
         pkg_layout.restart_soon(pkg_layout.app_root(HERE))

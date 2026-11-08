@@ -942,6 +942,13 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     except Exception as exc:  # the retry must never take the service down
         log.exception("补跑本身出错")
         verdict, note = {r: None for r in routes}, f"补跑没跑起来：{type(exc).__name__}"
+    from ark_relay.features.preupdate.preupdate_common import going_down  # noqa: PLC0415
+    if going_down():
+        # A stop cut the retry short (efstart.run_on_desktop stops waiting, STOPPED): nothing
+        # was judged. The stamp stays without `finished`, so the next start closes what is
+        # left and runs it once more (the stale-stamp branch above); no verdict, no alarm.
+        log.info("自动采集补跑：中继正在停止，补跑停在一半（%s），下次启动再补", note or "没有结论")
+        return True
     passed = [r for r, v in verdict.items() if v is True]
     failed = [r for r, v in verdict.items() if v is False]
     unknown = [r for r, v in verdict.items() if v is None]

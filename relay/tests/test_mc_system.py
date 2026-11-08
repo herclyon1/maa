@@ -168,10 +168,14 @@ got, n, _, _ = at_boot(died)
 check("#11 没过", got["#11"].status, mc.FAIL)
 check("依据是那一段的最后一行", got["#11"].evidence.endswith("10-06 21:58:01 📱 已上报状态到手机（关机前；今天 ntfy 已用 20 条）"), True)
 
-print("[#11 上一段是部署前的老代码（没有版本那一行）→ 不判；自更新那一段跳过，判再前一段]")
+print("[#11 上一段没写出版本那一行就没了（刚起就崩）→ 照判（审计 11-08 C-13：以前当老代码跳过）；自更新那一段跳过，判再前一段]")
+early = [logline("10-07 08:45:50", START)]
+got, n, _, _ = at_boot(EVENING + early)
+check("刚起就崩的那一段：判了，没过", got["#11"].status, mc.FAIL)
+check("……依据是它仅有的那一行", "服务模式启动" in got["#11"].evidence, True)
 old = [x for x in EVENING if MARK not in x]
 got, _, _, _ = at_boot(old)
-check("老代码不判", "#11" in got, False)
+check("没有版本那一行、别的都在的一段：照常判", got["#11"].status, mc.PASS)
 selfupd = [logline("10-07 08:45:50", START), logline("10-07 08:45:50", MARK),
            logline("10-07 08:46:01", "代码已更新，重启以立即生效: ark_relay/core/engine.py")]
 got, _, _, _ = at_boot(EVENING + selfupd)

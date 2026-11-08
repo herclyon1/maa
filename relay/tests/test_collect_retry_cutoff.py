@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ark_relay.features.makeup import collect_retry as cr
+from ark_relay.features.preupdate import preupdate_common as pc
 from _tmp import tmpdir
 
 fails = []
@@ -34,8 +35,9 @@ killed, ran = [], []
 cr._kill = lambda name: killed.append(name)
 
 
-def outcome(stamp: dict | None):
-    """maybe_run with the retry stubbed and `stamp` already on disk: (ran?, stamp after)."""
+def outcome(stamp: dict | None, stopping: bool = False):
+    """maybe_run with the retry stubbed and `stamp` already on disk: (ran?, stamp after).
+    `stopping`: the relay is told to stop while the retry runs."""
     sd = tmpdir()
     f = sd / "collect-retry" / "2026-09-12.json"
     if stamp is not None:
@@ -46,15 +48,17 @@ def outcome(stamp: dict | None):
         state=types.SimpleNamespace(read_ledger=lambda d: [], mark_incomplete=lambda *a: True,
                                 clear_incomplete_items=lambda *a: True),
         notifier=types.SimpleNamespace(send=lambda t, b, **kw: []), _scripts_running=lambda: False)
-    saved = (cr.latest_gathering_run, cr.run_retry, cr._locale, cr.restore_master)
+    saved = (cr.latest_gathering_run, cr.run_retry, cr._locale, cr.restore_master, pc.going_down)
     cr.latest_gathering_run = lambda entries, hist, labels: ({"run_id": "r1"}, ["AutoCollectRoute15"])
-    cr.run_retry = lambda *a, **k: (ran.append(1), ({"AutoCollectRoute15": True}, ""))[1]
+    cr.run_retry = lambda *a, **k: (ran.append(1), ({"AutoCollectRoute15": None}, "中继正在停止，不等开游戏的助手了")
+                                    if stopping else ({"AutoCollectRoute15": True}, ""))[1]
     cr._locale, cr.restore_master = (lambda d: zh), (lambda cfg: "")
+    pc.going_down = lambda: bool(ran) and stopping
     del ran[:], killed[:]
     try:
         cr.maybe_run(eng, now=NOW, day="2026-09-12")
     finally:
-        cr.latest_gathering_run, cr.run_retry, cr._locale, cr.restore_master = saved
+        cr.latest_gathering_run, cr.run_retry, cr._locale, cr.restore_master, pc.going_down = saved
     return bool(ran), json.loads(f.read_text(encoding="utf-8"))
 
 
@@ -68,6 +72,11 @@ did, _ = outcome(dict(cut, started=(NOW - timedelta(minutes=10)).isoformat()))
 check("10 分钟前开始的（可能还在跑）→ 不动", did, False)
 did, _ = outcome(dict(cut, finished=NOW.isoformat()))
 check("跑完了的 → 不再跑", did, False)
+
+print("\n[补跑跑到一半中继要停（审计 11-08 A-23）：印记不写结束，下次启动照「中途停了」再补]")
+did, after = outcome(None, stopping=True)
+check("跑过", did, True)
+check("印记没有结束时间、没有结论", ("finished" in after, "passed" in after), (False, False))
 did, after = outcome(dict(cut, cut_off="earlier"))
 check("已经补过一次又断了 → 不再补", did, False)
 check("写上结束，后面不再每次都说", "finished" in after, True)

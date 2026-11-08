@@ -132,6 +132,29 @@ finally:
     pkg_layout.update, pkg_layout.restart_soon, pkg_layout.app_root = real
 check("process exits so the watchdog starts the switched folder", got, True)
 
+print("told to stop during the update: switched, exits, no restart behind the stop (audit 11-08 A-23)")
+from ark_relay.features.alarm import errwatch  # noqa: E402
+restarts = []
+pkg_layout.update = lambda _here, _check: ["x.py"]
+pkg_layout.restart_soon = lambda a: restarts.append(a)
+pkg_layout.app_root = lambda _here: app
+real_down = errwatch.going_down
+errwatch.going_down = lambda: True
+try:
+    got = app_main._packaged_selfupdate(LOG)
+finally:
+    pkg_layout.update, pkg_layout.restart_soon, pkg_layout.app_root = real
+    errwatch.going_down = real_down
+check("stopping: exits, restart_soon not called", (got, restarts), (True, []))
+pkg_layout.update = lambda _here, _check: ["x.py"]
+pkg_layout.restart_soon = lambda a: restarts.append(a)
+pkg_layout.app_root = lambda _here: app
+try:
+    got = app_main._packaged_selfupdate(LOG)
+finally:
+    pkg_layout.update, pkg_layout.restart_soon, pkg_layout.app_root = real
+check("not stopping: restarts as before", (got, restarts), (True, [app]))
+
 print("an update that changes nothing still continues the boot")
 pkg_layout.update = lambda _here, _check: []
 try:

@@ -65,6 +65,9 @@ LAUNCHER = 6       # the helper could not start, or the game could not be closed
 TIMED_OUT = 7      # the pretask (or the helper) did not end in time
 UNREADABLE = 8     # the process list could not be read; nothing was touched
 BUSY = 9           # another start held the lock past the whole budget
+# Not an exit code of the helper: run_on_desktop stopped waiting for it because the relay
+# is stopping (nothing judged; collect_retry leaves its stamp open for the next start).
+STOPPED = 10
 # The pretask ran (or may still run): it writes the window settings before starting the
 # launcher, so the caller has fullscreen to put back even though the start failed.
 RAN = (PRETASK, TIMED_OUT)
@@ -221,8 +224,14 @@ def _single(wait_s: float):
     try:
         yield got
     finally:
-        if got:
-            win32event.ReleaseMutex(h)
+        try:
+            if got:
+                win32event.ReleaseMutex(h)
+        finally:
+            # The PyHANDLE's own Close (not kernel32.CloseHandle, which would leave it to
+            # close the handle again when collected). The helper process is short-lived,
+            # so the handle was only ever held until it exited (audit 11-08 A-23).
+            h.Close()
 
 
 def _setup_log(home: Path) -> None:
@@ -319,11 +328,17 @@ def helper_alive(state_dir, procs) -> bool:
 
 
 def run_on_desktop(state_dir, spawn, maaend_dir, *, wait_s: float = 2 * WHOLE_S, sleep=time.sleep,
-                   clock=time.monotonic, pythonw=None, poll_s: float = 5.0) -> Result:
+                   clock=time.monotonic, pythonw=None, poll_s: float = 5.0, stopping=None) -> Result:
     """Run the helper on the interactive desktop from the relay's service and wait for its
     result. `spawn(exe, cwd, args)` is preupdate_common._spawn_interactive in production.
     wait_s: the helper may first wait WHOLE_S for another start's lock, then start.
-    poll_s: how often the result file is looked for; a start takes minutes."""
+    poll_s: how often the result file is looked for; a start takes minutes.
+    stopping (default preupdate_common.going_down): asked at every poll; a stopping relay
+    stops waiting with STOPPED. This wait runs on the main loop's thread (the shutdown
+    decision's gathering retry), where until 11-08 a stop sat it out to the 15 s hard
+    exit (audit 11-08 A-23)."""
+    if stopping is None:
+        from ark_relay.features.preupdate.preupdate_common import going_down as stopping  # noqa: PLC0415
     if pythonw is None:
         from ark_relay.features.preupdate.preupdate_common import _pythonw  # noqa: PLC0415
         pythonw = _pythonw()
@@ -337,6 +352,8 @@ def run_on_desktop(state_dir, spawn, maaend_dir, *, wait_s: float = 2 * WHOLE_S,
         return Result(LAUNCHER, "开游戏的助手没能在桌面会话里起来")
     deadline = clock() + wait_s
     while clock() < deadline:
+        if stopping():
+            return Result(STOPPED, "中继正在停止，不等开游戏的助手了")
         if result.is_file():
             d = _read_json(result)
             _drop(result)

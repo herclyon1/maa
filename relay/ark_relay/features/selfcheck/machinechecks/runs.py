@@ -187,6 +187,12 @@ def _c5(ctx):
         return _r(PASS, line)
     if opened := _first(text, "NightmareNestTask:opened gray_book_boss"):
         return _r(FAIL, f"打开了残象聚落页，日志里却没有「nightmare nest: 只刷 […]」（设置是只刷{only}）：{opened}")
+    # Fought a nest with no filter line: the copy was not in that run, whatever upstream now
+    # logs when it opens the page (audit 11-08 C-11). A run cut short before the nests (no
+    # page, no fight) did not exercise the copy and says nothing, as before: the filter line
+    # is written while the nests are picked (ark_overrides only_names, from wanted_rows).
+    if fought := _first(text, _NEST_COMBAT):
+        return _r(FAIL, f"进了残象聚落的战斗，日志里却没有「nightmare nest: 只刷 […]」（设置是只刷{only}）：{fought}")
     return None
 
 
@@ -603,7 +609,10 @@ def _keep_env_lines(state_dir, rec, t0: datetime, t1: datetime, lines: list[str]
 
 @mc.check("#7", "终末地环境监测那一段的框架日志每趟都收下来（拿到真实样本、定下判据之前只收不判）", "B", "run")
 def _c7(ctx):
-    """Capture only. Whether 环境监测 did its job cannot be told yet: it writes no line
+    """Capture only. Whether 环境监测 did its job is #28's verdict since 10-16
+    (maaend_fwlog.task_verdict over TRAIL_TASKS, with #28's own 「没证据」 dedup and hold);
+    judging it here too would push one cause twice (audit 11-08 C-12 asked for it, declined).
+    When this was written it could not be told: it writes no line
     of its own in the AUTO-MAS log even on a run that took 110 s (2026-09-04), and the
     repo holds no framework-log sample and no pipeline of it (only its locale strings:
     per-route 「…任务失败」 and 「当前任务尚未适配，仅接取并追踪」). So each run's

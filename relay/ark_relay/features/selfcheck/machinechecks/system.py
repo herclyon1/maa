@@ -10,10 +10,12 @@ a group alarm is delivered), state.json, the make-up marker, the gathering retry
 stamp, and the traces the update flows and the watchdog now hand over.
 
 A relay.log session is one service process: from its 「服务模式启动」 line to the
-next one. Only sessions that logged CODE_MARK (boot_stages._stage_bootstrap) ran the
-code these checks know; older sessions are never judged. The session a boot judges
-is the last one before the current that did not end in a self-update restart - and
-the same session is not judged twice (its evidence is the same as the stored one).
+next one. The session a boot judges is the last one before the current that did not end
+in a self-update restart - and the same session is not judged twice (its evidence is the
+same as the stored one). Until 11-08 only a session that had logged CODE_MARK (the line
+right after 「服务模式启动」, boot_stages._stage_bootstrap) was judged, to leave out code
+from before these checks; every session of the installed relay logs it, so the rule only
+hid a relay that died before that line (audit 11-08 C-13).
 """
 from __future__ import annotations
 
@@ -109,11 +111,10 @@ def sessions(recs: list[Rec]) -> list[list[Rec]]:
 
 def previous_session(recs: list[Rec]) -> "list[Rec] | None":
     """The last session before the current one (the last) that did not end in a
-    self-update restart; None when there is none or it ran code from before CODE_MARK."""
+    self-update restart; None when there is none. A session that died before its
+    CODE_MARK line is one too: it ended without a stop, which #11 says."""
     found = sessions(recs)
     for s in reversed(found[:-1]):
-        if not any(r.msg.startswith(CODE_MARK) for r in s):
-            return None
         if any(r.msg.startswith(SELF_UPDATE) for r in s):
             continue
         return s
