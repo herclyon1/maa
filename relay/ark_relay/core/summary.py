@@ -18,6 +18,7 @@ from __future__ import annotations
 import http.client
 import json
 import logging
+import time
 import urllib.error
 import urllib.request
 
@@ -82,17 +83,40 @@ def _extract(cfg: Config, data: dict) -> str:
     return str((choices[0].get("message") or {}).get("content") or "").strip()
 
 
-# Set once the endpoint has failed in this process, so later calls skip it. The
-# wording is optional (the alert and the report are complete without it), and
-# each attempt against a dead endpoint can cost the full _TIMEOUT inside the path
-# that must finish before power-off. Process-lifetime only: the next boot tries
-# again.
-_endpoint_dead = False
+# When the endpoint last failed (time.monotonic), None while it answers. Calls within
+# REST_S of that skip it: the wording is optional (the alert and the report are complete
+# without it), and each attempt against a dead endpoint can cost the full _TIMEOUT inside
+# the path that must finish before power-off. Until 11-08 one failure closed it for the
+# whole process, so one blip at boot left a boot's alerts and its daily report without
+# wording (audit 11-08 B-D7).
+_endpoint_dead: "float | None" = None
+# Not measured: the number is Gemini's (dispatch relay-opt-round4-1108 R4-06, 11-08:
+# 「将 _endpoint_dead 改为带冷却时间（如 600 秒）的时间戳」). Ten _TIMEOUTs: a dead endpoint
+# costs at most one timeout in ten minutes.
+REST_S = 600
+_clock = time.monotonic
+# The group hears of a failing endpoint once per process, as before (every WARNING is a
+# push, errwatch): a try after the rest that fails again is INFO.
+_warned = [False]
+
+
+def _resting() -> bool:
+    return _endpoint_dead is not None and _clock() - _endpoint_dead < REST_S
+
+
+def _failed(msg: str, *args) -> None:
+    global _endpoint_dead  # noqa: PLW0603 - the breaker's state
+    if _warned[0]:
+        log.info(msg + "（之前已经报过，%d 分钟后再试）", *args, REST_S // 60)
+    else:
+        _warned[0] = True
+        log.warning(msg + "（%d 分钟内不再尝试措辞生成）", *args, REST_S // 60)
+    _endpoint_dead = _clock()
 
 
 def _ask(cfg: Config, prompt: str, max_tokens: int = 400) -> str:
-    global _endpoint_dead  # noqa: PLW0603 - process-lifetime circuit breaker
-    if not cfg.llm_key or _endpoint_dead:
+    global _endpoint_dead  # noqa: PLW0603 - the breaker's state
+    if not cfg.llm_key or _resting():
         return ""
     try:
         with urllib.request.urlopen(_request(cfg, prompt, max_tokens),
@@ -105,26 +129,26 @@ def _ask(cfg: Config, prompt: str, max_tokens: int = 400) -> str:
         # letting them escape aborted the whole tick that asked for wording -
         # deferring the very failure alert the wording was decorating.
         # Never let a flaky model call break the notification path.
-        log.warning("%s 调用失败，本次启动不再尝试措辞生成: %s",
-                    cfg.llm_provider, exc)
-        _endpoint_dead = True
+        _failed("%s 调用失败: %s", cfg.llm_provider, exc)
         return ""
     try:
-        return _extract(cfg, data)
+        out = _extract(cfg, data)
     except (AttributeError, TypeError, IndexError, KeyError):
-        # A shape we cannot read is as unusable as no answer, and it will be
-        # the same shape next time. An error body (a rejected key, a model
-        # that no longer exists) arrives here with HTTP 200 and lands in this
-        # branch, so the breaker belongs here too.
-        log.warning("模型返回格式看不懂，本次启动不再尝试: %s", str(data)[:200])
-        _endpoint_dead = True
+        # A shape we cannot read is as unusable as no answer. An error body (a rejected
+        # key, a model that no longer exists) arrives here with HTTP 200 and lands in
+        # this branch, so the breaker belongs here too.
+        _failed("模型返回格式看不懂: %s", str(data)[:200])
         return ""
+    if _endpoint_dead is not None:
+        log.info("%s 又能用了，措辞生成照常", cfg.llm_provider)
+        _endpoint_dead = None
+    return out
 
 
 def check(cfg: Config) -> tuple[bool, str]:
     """Verify the model endpoint actually answers. Used by `ark_relay check`."""
     global _endpoint_dead  # noqa: PLW0603 - an explicit check must really ask
-    _endpoint_dead = False
+    _endpoint_dead = None
     if not cfg.llm_key:
         return False, "未配置 API key（不影响运行，只是收不到人话解读）"
     out = _ask(cfg, "回复两个字：正常", max_tokens=20)

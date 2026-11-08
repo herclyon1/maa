@@ -67,7 +67,8 @@ def automas_dir(root: Path, *, stage="YW-4", stage_1="-", fight=True, mode="Fixe
     stage_items = {"Stage": stage, "Stage_1": stage_1, "Stage_2": "-", "Stage_3": "-",
                    "StageMode": mode, "MedicineNumb": 0}
     if beta3:
-        user = {"Info": {"Name": "arknights", "Base": "Shared"}, "Stage": {**stage_items, "SeriesNumb": "0"},
+        user = {"Info": {"Name": "arknights", "Base": "Shared", "Status": True, "RemainedDay": -1},
+                "Stage": {**stage_items, "SeriesNumb": "0"},
                 "Task": {"IfFight": fight, "Annihilation": "Annihilation", "IfActivityFirst": True,
                          "ActivityStageIndex": 1},
                 "Data": {"AnnihilationCompletedWeek": "2000-W01"}}

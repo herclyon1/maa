@@ -124,7 +124,11 @@ def main(argv: list[str]) -> int:
         print(USAGE)
         return 0 if args in (["--help"], ["-h"]) else 2
     cos = _client()
-    if reason := cos.probe():
+    try:
+        reason = cos.probe()
+    except OSError as exc:      # URLError is an OSError; probe() raises a failed connection (11-08)
+        reason = f"连不上 COS（{getattr(exc, 'reason', exc)}）"
+    if reason:
         print(f"✗ {reason}")
         return 1
     if "--check" in argv:

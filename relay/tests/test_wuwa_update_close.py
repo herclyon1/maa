@@ -86,7 +86,7 @@ bat = tmpdir() / "ark-okww-stop.bat"
 echofarm.STOP_BAT = str(bat)          # never the repo cwd
 alive = {"game": ["Client-Win64-Shipping.exe"], "procs": [PROCS[1]]}
 real_alive = echofarm.game_alive
-echofarm.game_alive = lambda: list(alive["game"])
+echofarm.game_alive = lambda timeout=None: list(alive["game"])
 calls.clear()
 
 
@@ -129,6 +129,31 @@ finally:
     subprocess.run = real_run
 check("都没关掉 → 点名", left, ["Client-Win64-Shipping.exe", "launcher_main.exe"])
 
+# Bounded as echofarm.stop_okww (audit 11-08 A-22: run_okww now waits on this before it puts
+# the switch back): a look that takes long uses the budget up and the looks stop.
+clock = [0.0]
+
+
+def run4(cmd, *a, **k):
+    calls.append(list(cmd))
+    if any("CimInstance" in str(x) and "launcher_main.exe" in str(x) for x in cmd):
+        clock[0] += 20                # a slow WMI answer
+        return R(0, json.dumps(alive["procs"]).encode())
+    return R(1) if cmd[:1] == ["taskkill"] else R()
+
+
+subprocess.run = run4
+looks = []
+real_left = pk._okww_left
+pk._okww_left = lambda r, t=None: looks.append(t) or real_left(r, t)
+try:
+    left = pk._okww_close(sleep=nosleep, launcher_root=root, clock=lambda: clock[0])
+finally:
+    subprocess.run, pk._okww_left = real_run, real_left
+check("限时：用完 STOP_OKWW_SECONDS 就不再看（不是看满十次）", 1 < len(looks) < 10, True)
+check("……每次给 PowerShell 的时间不超过剩下的", all(t is not None and t <= echofarm.STOP_OKWW_SECONDS for t in looks), True)
+check("……照实说还在", left, ["Client-Win64-Shipping.exe", "launcher_main.exe"])
+
 alive.update(game=[], procs=[])
 subprocess.run = lambda cmd, *a, **k: (_ for _ in ()).throw(OSError("no pwsh")) \
     if any("CimInstance" in str(x) and "launcher_main.exe" in str(x) for x in cmd) else R()
@@ -138,6 +163,20 @@ finally:
     subprocess.run = real_run
 check("启动器列表读不到 → 说读不到，不当没了", left, ["鸣潮启动器（查不到它还开没开着）"])
 check("…也没有 PID 可关", pids, [])
+
+print("[启动器列表：pwsh 里出错（没输出）不当成「启动器已关」（审计 11-08 A-22）]")
+for label, answer, want in (("返回码不是 0", R(1, b""), None),
+                            ("返回码 0、没输出、stderr 有错", R(0, b""), None),
+                            ("返回码 0、没输出、stderr 也空：真的一个都没有", None, []),
+                            ("返回码 0、有列表", R(0, json.dumps(PROCS[:1]).encode()), [(4242, PROCS[0]["ExecutablePath"])])):
+    if answer is None:
+        answer = R(0, b"")
+        answer.stderr = b""
+    subprocess.run = lambda cmd, *a, _r=answer, **k: _r
+    try:
+        check(label, pk._wuwa_launcher_procs(root), want)
+    finally:
+        subprocess.run = real_run
 echofarm.game_alive = real_alive
 
 print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))

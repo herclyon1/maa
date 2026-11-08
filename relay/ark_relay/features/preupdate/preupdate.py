@@ -27,7 +27,8 @@ from ark_relay.features.preupdate.preupdate_common import PWSH_GUARD_S, TASKKILL
 from ark_relay.features.preupdate.preupdate_automas import (
     _MAS_HTTP_TIMEOUT, MAS_BUDGET_SECONDS, MAS_INSTALL_WAIT_SECONDS, MAS_WAIT_SECONDS, run_automas)
 from ark_relay.features.preupdate.preupdate_okww import (
-    OKWW_BUDGET_SECONDS, OKWW_MIN_WAIT_SECONDS, OKWW_QUIESCE_MAX_SECONDS, restore_autostart_leftover, run_okww)
+    OKWW_BUDGET_SECONDS, OKWW_MIN_WAIT_SECONDS, OKWW_QUIESCE_MAX_SECONDS, okww_close_max_seconds,
+    restore_autostart_leftover, run_okww)
 
 # Only public names are re-exported. Callers that need a private name import it
 # from the module that defines it.
@@ -134,13 +135,14 @@ def worst_case_seconds() -> float:
 
     AUTO-MAS: the wait for its backend, plus one more HTTP try that began just before that
     wait ran out (a check and a version read), the download, the install. OK-WW: a quiesce
-    before and after, the scheduled-task launch, closing ok-ww.exe, its budget, and the
+    before, the close after (okww_close_max_seconds: until 11-08 a quiesce that did not look
+    again), the scheduled-task launch, closing ok-ww.exe, its budget, and the
     package check after it (preupdate_okww.ensure_okww_deps: an import, a pip install, the
     import again, each under PWSH_GUARD_S).
     boot_stages._once_more may run each item twice.
     """
     automas = (MAS_WAIT_SECONDS + 2 * _MAS_HTTP_TIMEOUT
                + MAS_BUDGET_SECONDS + MAS_INSTALL_WAIT_SECONDS)
-    okww = (2 * OKWW_QUIESCE_MAX_SECONDS + PWSH_GUARD_S + TASKKILL_GUARD_S + OKWW_BUDGET_SECONDS
-            + 3 * PWSH_GUARD_S)
+    okww = (OKWW_QUIESCE_MAX_SECONDS + okww_close_max_seconds() + PWSH_GUARD_S + TASKKILL_GUARD_S
+            + OKWW_BUDGET_SECONDS + 3 * PWSH_GUARD_S)
     return float(2 * (automas + okww))

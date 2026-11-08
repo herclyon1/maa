@@ -329,8 +329,35 @@ try:
     try:
         up.upload(zf); got = "no error"
     except ev.PermanentUploadError as exc:
-        got = str(exc)
-    check("探的时候连接就断：这一轮不传大文件，换路", (got.startswith("连不上 COS"), opened), (True, ["HEAD"]))
+        got = "permanent: " + str(exc)
+    except urllib.error.URLError as exc:
+        got = "raised: " + str(exc.reason)
+    # Audit 11-08 C-18: until then this was a refusal for the round (「连不上 COS…这一轮不传」),
+    # so one dropped HEAD lost the round's evidence. Now it is raised for the caller's tries.
+    check("探的时候连接就断：不传大文件，抛给外面再试（不算永久被拒）", (got, opened), ("raised: wobble", ["HEAD"]))
+    opened.clear()
+    heads = iter([urllib.error.URLError("wobble"), None])
+    def _head_once(req, timeout=0):
+        opened.append(req.get_method())
+        if req.get_method() == "HEAD" and (exc := next(heads, None)) is not None:
+            raise exc
+        class _R:
+            def read(self): return b""
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+        return _R()
+    urllib.request.urlopen = _head_once
+    _real_sleep = ev.time.sleep
+    ev.time.sleep = lambda s: None
+    try:
+        res_blip = ev.save_and_upload(C2, "MAA", "2026-11-08/arknights/MAA-09-00-00", window=ALL,
+                                      uploader=up, extra=[zf])
+    finally:
+        ev.time.sleep = _real_sleep
+    check("……证据包走一遍：第一次探断了，第二次探通、传上去了", ([u.get("store") for u in res_blip["uploaded"]],
+                                                    opened), (["cos"], ["HEAD", "HEAD", "PUT"]))
+    no_key = ev.Cos("", "", "b", "r")
+    check("COS 设置不全：不连网，说缺什么", no_key.probe().startswith("COS 设置不全"), True)
     opened.clear()
     def _put_403(req, timeout=0):
         opened.append(req.get_method())

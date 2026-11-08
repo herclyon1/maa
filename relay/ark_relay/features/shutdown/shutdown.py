@@ -113,6 +113,22 @@ LANDING_UNSEEN = "这趟跑完以后中继重启过，重启前后都没看到�
 RELAY_LOST_TRACK = (BOOT_UNKNOWN, LANDING_UNSEEN)
 
 
+def _current_shift(shift: list[dict]) -> list[dict]:
+    """The newest shift among the queues due on this boot: the latest-due queue and those due
+    within RETRY_LINK_H before the one after them. A boot the power-off skipped (debug mode,
+    「下次跑完不关机」) can hold the morning shift and the evening one; until 11-08 a script
+    the morning shift never recorded (one the evening queue does not run, so no later record
+    stands in for it) kept every decision of the evening at 「还差」 and the machine on for
+    good (audit 11-08 A-16). The morning's own alarms are not this function's: it is used
+    for the power-off and the after-shift check only (_shift_overdue still sees every queue).
+    """
+    out = sorted(shift, key=lambda q: q["due"], reverse=True)
+    for i in range(1, len(out)):
+        if out[i - 1]["due"] - out[i]["due"] > timedelta(hours=RETRY_LINK_H):
+            return out[:i]
+    return out
+
+
 def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict]) -> "tuple[str, str] | None":
     """Why this decision is not the one right after a morning / evening shift finished:
     (code, why), or None when it is (or the shift is still running). Code 「shift-held」:
@@ -127,6 +143,7 @@ def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict
     """
     if booted is None:
         return "not-shift", BOOT_UNKNOWN
+    shift = _current_shift(shift)
     if not shift:
         ahead = plan.recent_due_queues(eng.cfg.automas_dir, now + timedelta(minutes=SHIFT_AHEAD_MIN),
                                        window_minutes=SHIFT_AHEAD_MIN)

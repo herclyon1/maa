@@ -66,7 +66,7 @@ def announce(notes_text: "str | None"):
     lg.setLevel(logging.DEBUG)
     lg.propagate = False
     try:
-        boot_stages._stage_announce_update(Notes(), lg)
+        boot_stages._stage_announce_update(Notes(), lg, here / "state")
     finally:
         (boot_stages.HERE, selfupdate.take_failure, selfupdate.pending_announcement,
          report.remember_change) = saved

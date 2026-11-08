@@ -104,6 +104,9 @@ CONTRACT: tuple[Item, ...] = tuple([
             "commands.py:_set_stage (write)"),
     *_items("MAA", "user", "Stage", ("MedicineNumb",), "medicine",
             "plan.py:_stage_bits, snapshot.py:maa_fields, commands.py:_set_medicine (write)"),
+    # Whether AUTO-MAS runs the user at all (app/task/manager_base.py is_user_selected): the
+    # stage gate leaves out a user it does not run.
+    *_items("MAA", "user", "Info", ("Status", "RemainedDay"), "stage", "stagegate.py:_runs"),
     *_items("MAA", "user", "Task", ("IfFight",), "fight",
             "plan.py:_scripts, stagegate.py:run_verdict, snapshot.py:maa_fields"),
     *_items("MAA", "user", "Task", ("Annihilation",), "annihilation",

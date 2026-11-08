@@ -3,8 +3,10 @@ GUI program on the interactive desktop from the relay's service session."""
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 
@@ -59,6 +61,96 @@ def _close(exe: Path) -> None:
         log.warning("预更新：关闭 %s 失败", exe.name, exc_info=True)
 
 
+# The direct route. The installed relay (app_main.py) runs in the logged-on user's session,
+# elevated (\ArkRelay\main has highest privileges); the scheduled task below was for the
+# old service in session 0. From there a program is started directly, with no PowerShell and
+# no 3 s wait (audit 11-08 A-21). Two things the task route gave are kept:
+# * the user's own environment (CreateEnvironmentBlock), not the relay's (PYTHONUTF8 and the
+#   ARK_* variables would reach OK-WW's own Python);
+# * a life of its own: the relay is the process of the \ArkRelay\main task, and ending that
+#   task (schtasks /end, as estop.sh does) can end what runs in its job. Out of the job with
+#   CREATE_BREAKAWAY_FROM_JOB, as pkg_layout.restart_soon does for its helper; where the job
+#   does not allow that, the task route from then on.
+# Win32 values (learn.microsoft.com "Process Creation Flags", "STARTUPINFOA"); subprocess
+# names them on Windows only.
+_CREATE_NEW_CONSOLE = 0x00000010
+_CREATE_NEW_PROCESS_GROUP = 0x00000200
+_CREATE_BREAKAWAY_FROM_JOB = 0x01000000
+_CREATE_NO_WINDOW = 0x08000000
+_STARTF_USESHOWWINDOW = 0x00000001
+_SW_SHOWMINNOACTIVE = 7
+_TOKEN_ELEVATION = 20           # TOKEN_INFORMATION_CLASS TokenElevation
+_ERROR_ACCESS_DENIED = 5        # CreateProcess with CREATE_BREAKAWAY_FROM_JOB in a job that forbids it
+# Set once breakaway was refused: every later start takes the task route.
+_direct_refused = [False]
+
+
+def _here_in_console() -> bool:
+    """Whether this process runs elevated in the active console session (the installed
+    relay). False when it cannot be told: the scheduled task is the route then."""
+    try:
+        import win32api  # noqa: PLC0415
+        import win32security  # noqa: PLC0415
+        import win32ts  # noqa: PLC0415
+        session = win32ts.WTSGetActiveConsoleSessionId()
+        if session in (0, 0xFFFFFFFF) or win32ts.ProcessIdToSessionId(os.getpid()) != session:
+            return False
+        tok = win32security.OpenProcessToken(win32api.GetCurrentProcess(), win32security.TOKEN_QUERY)
+        return bool(win32security.GetTokenInformation(
+            tok, getattr(win32security, "TokenElevation", _TOKEN_ELEVATION)))
+    except Exception:  # not Windows, no pywin32, a call refused: the task route
+        log.debug("预更新：看不出中继是不是在桌面会话里，走计划任务", exc_info=True)
+        return False
+
+
+def _logon_env() -> "dict | None":
+    """The logged-on user's own environment (what a new logon gives a program), None when
+    it cannot be built."""
+    try:
+        import win32api  # noqa: PLC0415
+        import win32con  # noqa: PLC0415
+        import win32profile  # noqa: PLC0415
+        import win32security  # noqa: PLC0415
+        tok = win32security.OpenProcessToken(
+            win32api.GetCurrentProcess(),
+            win32con.TOKEN_QUERY | win32con.TOKEN_DUPLICATE | win32con.TOKEN_IMPERSONATE)
+        env = win32profile.CreateEnvironmentBlock(tok, False)
+        return {str(k): str(v) for k, v in dict(env).items() if k and "=" not in str(k)[1:]}
+    except Exception:  # the task route then
+        log.debug("预更新：取不到登录用户的环境变量，走计划任务", exc_info=True)
+        return None
+
+
+def _spawn_here(exe: Path, cwd: Path, args: tuple[str, ...] = (), *, minimized: bool = False,
+                hidden: bool = False, label: "str | None" = None) -> bool:
+    """Start exe from this process when it already runs elevated on the desktop. True when
+    started; False when not tried or refused - the caller takes the task route then."""
+    if _direct_refused[0] or not _here_in_console():
+        return False
+    env = _logon_env()
+    if env is None:
+        return False
+    flags = ((_CREATE_NO_WINDOW if hidden else _CREATE_NEW_CONSOLE)
+             | _CREATE_NEW_PROCESS_GROUP | _CREATE_BREAKAWAY_FROM_JOB)
+    startup = None
+    if minimized:
+        # A program may ignore this and show its window anyway (as _startup_info says).
+        startup = subprocess.STARTUPINFO()
+        startup.dwFlags |= _STARTF_USESHOWWINDOW
+        startup.wShowWindow = _SW_SHOWMINNOACTIVE
+    try:
+        subprocess.Popen([str(exe), *args], cwd=str(cwd), env=env, creationflags=flags, startupinfo=startup)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == _ERROR_ACCESS_DENIED:
+            _direct_refused[0] = True
+            log.info("预更新：中继所在的计划任务不许它启动的程序脱离出去，%s 和之后的程序都走计划任务启动", exe.name)
+        else:
+            log.info("预更新：直接启动 %s 没成（%s: %s），改走计划任务", exe.name, type(exc).__name__, exc)
+        return False
+    log.info("预更新：中继就在桌面会话里，直接启动了 %s", label or exe.name)
+    return True
+
+
 # The scheduled-task route. The relay's service host cannot get the console
 # user's token (WTSQueryUserToken fails with 1314, SE_TCB_NAME not enabled), so a
 # GUI program is started by the Task Scheduler service with an Interactive
@@ -83,11 +175,14 @@ def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = (),
                     *, task: "str | None" = None, label: "str | None" = None) -> bool:
     """Start exe in the interactive desktop session via a one-shot scheduled task. True on success.
 
-    `task` overrides the task name, `label` the program name in the log line.
+    `task` overrides the task name's stem, `label` the program name in the log line.
     """
-    # One task name per program, so two launches seconds apart do not replace
-    # each other's task (Register-ScheduledTask -Force stops a running instance).
-    task = task or _task_name(exe.stem)
+    # One task name per launch: Register-ScheduledTask -Force stops a running instance, and
+    # until 11-08 the name was one per program, so two launches of one program within the
+    # 3 s before the unregister (two threads taking pictures) replaced or unregistered each
+    # other's task (audit 11-08 A-21). A task left behind by a script killed inside those
+    # 3 s keeps its name and never runs again (it has no trigger).
+    task = f"{task or _task_name(exe.stem)}-{uuid.uuid4().hex[:8]}"
     quoted = subprocess.list2cmdline(list(args)) if args else ""
     ps = (
         f'$ErrorActionPreference="Stop";'
@@ -166,8 +261,11 @@ def hidden_plan(exe: Path, cwd: Path, args: tuple[str, ...],
 def _spawn_hidden_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = ()) -> bool:
     """_spawn_via_task for a console program that must not show or activate any window.
 
-    Without pythonw.exe it falls back to the plain task route, with a warning.
+    Started directly with CREATE_NO_WINDOW when this process already runs on the desktop
+    (_spawn_here). Without pythonw.exe it falls back to the plain task route, with a warning.
     """
+    if _spawn_here(exe, cwd, args, hidden=True, label=f"{exe.name}（无窗口）"):
+        return True
     pyw = _pythonw()
     if pyw is None:
         log.warning("预更新：找不到 pythonw.exe，%s 只能带窗口启动", exe.name)
@@ -336,7 +434,12 @@ def _spawn_interactive(exe: Path, cwd: Path,
     caller would read that as "no update".
     `hidden` starts a console program with CREATE_NO_WINDOW; `minimized` see
     _startup_info.
+
+    The installed relay already runs elevated on the desktop: it starts the program itself
+    (_spawn_here) and none of the above is needed.
     """
+    if _spawn_here(exe, cwd, args, minimized=minimized, hidden=hidden):
+        return True
     try:
         import win32con  # noqa: PLC0415
         import win32process  # noqa: PLC0415

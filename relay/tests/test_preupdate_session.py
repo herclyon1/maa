@@ -15,6 +15,9 @@ SRC_FILES = sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "feature
 # The functions that actually start a program.
 LAUNCHERS = {"run_okww"}
 ALLOWED = {"_spawn_detached"}   # the fallback is the one place Popen belongs
+# Popen only once _here_in_console said this process runs on the console session, not in
+# session 0 (the installed relay, 11-08 R4-02): checked below that it asks first.
+ON_CONSOLE = {"_spawn_here"}
 
 FAILED = []
 
@@ -56,8 +59,15 @@ def main() -> int:
         require(f"{name} 不直接 Popen", not lines, f"第 {lines} 行仍在直接启动")
         require(f"{name} 走 _spawn_interactive", calls_named(fn, "_spawn_interactive"))
 
+    for name in sorted(ON_CONSOLE):
+        fn = fns.get(name)
+        asked = [n.lineno for n in ast.walk(fn) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                 and n.func.id == "_here_in_console"] if fn else []
+        lines = popen_calls(fn) if fn else []
+        require(f"{name} 先问是不是在桌面会话里，才 Popen", bool(asked and lines) and max(asked) < min(lines),
+                f"_here_in_console 在第 {asked} 行，Popen 在第 {lines} 行")
     for name, fn in fns.items():
-        if name in ALLOWED or name in LAUNCHERS:
+        if name in ALLOWED or name in LAUNCHERS or name in ON_CONSOLE:
             continue
         lines = popen_calls(fn)
         if lines:

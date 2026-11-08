@@ -315,7 +315,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         boot_stages._stage_backfill_manual_stops(engine, log)
         if self._stop_in_boot(log):
             return
-        boot_stages._stage_announce_update(notifier, log)
+        boot_stages._stage_announce_update(notifier, log, cfg.state_dir)
         if self._stop_in_boot(log):
             return
         boot_stages._stage_evidence_sources(cfg, notifier, log)

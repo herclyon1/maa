@@ -48,7 +48,9 @@ With several stages in StagePlan, MAA's GUI (UseOptionalStage) picks the first o
 open today - not replicated - so the run is "no" only when every stage is "no"; a
 "no" first stage with a reachable alternate is "unknown" (logged at INFO). Weekly
 plans: when the weekday by the UTC+4 game day and by Beijing local time give
-different plans (around 04:00), "unknown". Several users: "no" only when all are.
+different plans (around 04:00), "unknown". Several users: "no" when any user AUTO-MAS runs
+is "no" (a user it does not run - Info.Status off, RemainedDay 0 - is not looked at); a pull
+(PULL_FROM_QUEUE) only when every one is, since it takes MAA out for all of them.
 
 **Where it runs.**
 1. commands._set_stage / commands._set_config (Info.Stage*): a stage that is a
@@ -304,10 +306,24 @@ def _maa_script(data: dict) -> tuple[str, dict] | None:
     return found[0] if len(found) == 1 else None
 
 
-def run_verdict(automas_dir, maa_dir, at: datetime, problems: list | None = None) -> tuple[str, str, str]:
+def _runs(info: dict) -> bool:
+    """Whether AUTO-MAS runs this user at all: app/task/manager_base.py is_user_selected
+    (AUTO-MAS-Project/AUTO-MAS 9e605ff7, 2026-10-13) takes a user only when Info.Status is
+    on and Info.RemainedDay is not 0 (defaults True and -1, app/models/config.py)."""
+    return bool(info.get("Status", True)) and info.get("RemainedDay", -1) != 0
+
+
+def run_verdict(automas_dir, maa_dir, at: datetime, problems: list | None = None,
+                every: list | None = None) -> tuple[str, str, str]:
     """Will MAA accept the Fight stage AUTO-MAS sends at `at`? (verdict, stage, reason).
 
-    problems: as in check - files that could not be read are added to it, not logged."""
+    problems: as in check - files that could not be read are added to it, not logged.
+    every: when given, gets each user's own (verdict, stage, reason), users AUTO-MAS
+    does not run left out.
+
+    "no" when any user AUTO-MAS runs is "no" (audit 11-08 B-D23: until then only when all
+    were, so a second account's stage that MAA cannot reach went unsaid while the first
+    one's could); the reason names that user when there are several."""
     cfg_dir = Path(automas_dir) / "config" if automas_dir else None
     try:
         data = _load(cfg_dir / "ScriptConfig.json") if cfg_dir else None
@@ -322,11 +338,12 @@ def run_verdict(automas_dir, maa_dir, at: datetime, problems: list | None = None
     if script is None:
         return UNKNOWN, "", "找不到唯一的 MAA 脚本"
     users = [u for u in ((script[1].get("SubConfigsInfo") or {}).get("UserData") or {}).values()
-             if isinstance(u, dict)]
+             if isinstance(u, dict) and _runs(masuser.info_view(u))]
     verdicts: list[tuple[str, str, str]] = []
     for u in users:
         # masuser: AUTO-MAS v5.7.0-beta.3 keeps the stage items in a Stage group, not Info.
         info, task = masuser.info_view(u), u.get("Task") or {}
+        n0 = len(verdicts)
         if "IfFight" not in task:
             verdicts.append((UNKNOWN, "", "用户设置里没有理智作战开关"))
             continue
@@ -351,10 +368,15 @@ def run_verdict(automas_dir, maa_dir, at: datetime, problems: list | None = None
             verdicts.append((UNKNOWN, first[0], first[2]))
         else:
             verdicts.append((YES, each[0][0], ""))
+        if len(users) > 1 and len(verdicts) > n0 and verdicts[-1][0] == NO:
+            v, stage, why = verdicts[-1]
+            verdicts[-1] = (v, stage, f"用户「{info.get('Name') or '?'}」：{why}")
+    if every is not None:
+        every.extend(verdicts)
     if not verdicts:
         return YES, "", "MAA 没有用户"
-    if all(v == NO for v, _s, _w in verdicts):
-        return verdicts[0]
+    if no := next((x for x in verdicts if x[0] == NO), None):
+        return no
     if all(v == YES for v, _s, _w in verdicts):
         return YES, verdicts[0][1], verdicts[0][2]
     return next((x for x in verdicts if x[0] == UNKNOWN), (UNKNOWN, "", "几个用户结论不一样"))
@@ -540,7 +562,8 @@ def _put_back(cfg, now: datetime, busy, restorer) -> None:
 
 def _gate_due(cfg, notifier, q: dict, maa_name: str, due: datetime, now: datetime, skipper) -> None:
     problems: list = []
-    v, stage, why = run_verdict(cfg.automas_dir, cfg.maa_dir, due, problems)
+    every: list = []
+    v, stage, why = run_verdict(cfg.automas_dir, cfg.maa_dir, due, problems, every)
     log.info("关卡门：%s %s 的 MAA 关卡 %s —— %s%s", q["name"], f"{due:%H:%M}", stage or "（当前关）",
              {YES: "走得到", NO: "走不到", UNKNOWN: "不知道，不拦"}[v], f"（{why}）" if why else "")
     # Files that could not be read: one WARNING per due (errwatch pushes each WARNING
@@ -562,7 +585,8 @@ def _gate_due(cfg, notifier, q: dict, maa_name: str, due: datetime, now: datetim
             _note_due(cfg.state_dir, due, q["name"], row)
         return
     from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-    if not PULL_FROM_QUEUE:
+    # Pulling MAA out takes it from every user: only when no user's stage is reachable.
+    if not PULL_FROM_QUEUE or not all(x[0] == NO for x in every):
         _note_due(cfg.state_dir, due, q["name"], {"verdict": NO, "alarm_only": True, "stage": stage, "why": why})
         title = texts.stage_gate_warn(q["name"])
         errs = notifier.send(title, texts.stage_gate_warn_body(q["name"], stage, why), alert=True)

@@ -121,37 +121,50 @@ def _okww_quiesce(sleep=time.sleep, launcher_root: Path | None = None, left=None
     sleep(_QUIESCE_SETTLE_S)
 
 
-def _okww_close(sleep=time.sleep, launcher_root: Path | None = None) -> list[str]:
+def _okww_close(sleep=time.sleep, launcher_root: Path | None = None, clock=time.monotonic) -> list[str]:
     """_okww_quiesce, then look again: what is still up afterwards ([] = clean).
 
     taskkill from session 0 does not reach the game under its anti-cheat, so
     whatever survives is killed again from the desktop session
     (echofarm._kill_on_desktop) and checked for up to 10 s.
+
+    Bounded as echofarm.stop_okww is, by its STOP_OKWW_SECONDS: each PowerShell call gets
+    only the time left (at least one second) and the looks stop when it runs out; the
+    taskkill / tasklist / schtasks calls keep their own guards (OKWW_CLOSE_MAX_SECONDS).
     """
-    from ark_relay.features.echofarm.echofarm import _kill_on_desktop  # noqa: PLC0415 - echofarm imports this module
-    _okww_quiesce(sleep=sleep, launcher_root=launcher_root)
-    left, pids = _okww_left(launcher_root)
+    from ark_relay.features.echofarm.echofarm import STOP_OKWW_SECONDS, _kill_on_desktop  # noqa: PLC0415 - echofarm imports this module
+    end = clock() + STOP_OKWW_SECONDS
+
+    def left_s() -> float:
+        return max(1.0, end - clock())
+
+    _okww_quiesce(sleep=sleep, launcher_root=launcher_root, left=left_s)
+    left, pids = _okww_left(launcher_root, left_s())
     if not left:
         return []
     log.warning("鸣潮：关完还在 %s，从桌面会话再关一次", "、".join(left))
     _kill_on_desktop(pids=pids)
     for _ in range(10):
+        if clock() >= end:
+            break
         sleep(1)
-        left, _pids = _okww_left(launcher_root)
+        left, _pids = _okww_left(launcher_root, left_s())
         if not left:
             return []
     return left
 
 
-def _okww_left(launcher_root: Path | None = None) -> tuple[list[str], list[int]]:
+def _okww_left(launcher_root: Path | None = None,
+               timeout: "float | None" = None) -> tuple[list[str], list[int]]:
     """(names still up, PIDs to kill by number): the game's processes, OK-WW's own
     python (game_alive) and the Kuro launcher at its path; the PIDs are the
     launcher's and OK-WW's python's, whose names are too common to kill by name.
-    An unreadable launcher list is named, not taken as gone."""
+    An unreadable launcher list is named, not taken as gone. `timeout` bounds each
+    PowerShell query (None: their guards)."""
     from ark_relay.features.echofarm.echofarm import game_alive  # noqa: PLC0415 - echofarm imports this module
-    left = list(game_alive())
-    py = (okww_python_pids() or []) if left else []
-    procs = _wuwa_launcher_procs(launcher_root)
+    left = list(game_alive(timeout))
+    py = (okww_python_pids(timeout) or []) if left else []
+    procs = _wuwa_launcher_procs(launcher_root, timeout)
     if procs is None:
         left.append("鸣潮启动器（查不到它还开没开着）")
         return left, py
@@ -176,6 +189,16 @@ _QUIESCE_SETTLE_S = 2
 OKWW_QUIESCE_MAX_SECONDS = (2 * PWSH_GUARD_S
                             + (len(_QUIESCE_EXES) + len(_WW_LAUNCHER_EXES)) * TASKKILL_GUARD_S
                             + _QUIESCE_SETTLE_S)
+
+
+def okww_close_max_seconds() -> float:
+    """The longest _okww_close can take: its budget (echofarm.STOP_OKWW_SECONDS, which also
+    bounds the quiesce's PowerShell calls), the quiesce's taskkills and settle, and past the
+    budget one look's tasklist (game_alive guards it at TASKKILL_GUARD_S's 30 s) with its three
+    PowerShell queries at their one-second floor. The desktop kill's schtasks calls have no
+    guard of their own and are not counted (as in echofarm.stop_okww)."""
+    from ark_relay.features.echofarm.echofarm import STOP_OKWW_SECONDS  # noqa: PLC0415 - echofarm imports this module
+    return float(STOP_OKWW_SECONDS + OKWW_QUIESCE_MAX_SECONDS - 2 * PWSH_GUARD_S + TASKKILL_GUARD_S + 3)
 
 
 def _norm(path) -> str:
@@ -204,11 +227,20 @@ def _wuwa_launcher_procs(root: Path | None = None,
     # 60 s is a hang guard. Not timed itself; the same pwsh + Get-CimInstance call
     # for OK-WW's python was measured on the game machine 2026-10-13 11:08 Beijing
     # at 0.39-0.54 s over 5 runs.
+    # As okww_python_pids: a query that failed inside pwsh prints nothing on stdout too, so
+    # a nonzero exit, or empty output with an error on stderr, is "could not read", never
+    # "no launcher" (audit 11-08 A-22).
     try:
         r = subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
                            capture_output=True, timeout=PWSH_GUARD_S if timeout is None else timeout)
-        data = json.loads((r.stdout or b"").decode("utf-8", "replace").strip() or "null")
-    except (OSError, subprocess.SubprocessError, ValueError):
+    except (OSError, subprocess.SubprocessError):
+        return None
+    text = (r.stdout or b"").decode("utf-8", "replace").strip()
+    if r.returncode != 0 or (not text and (r.stderr or b"").strip()):
+        return None
+    try:
+        data = json.loads(text or "null")
+    except ValueError:
         return None
     out = []
     for proc in [data] if isinstance(data, dict) else (data or []):
@@ -466,6 +498,10 @@ def restore_autostart_leftover(okww_dir: "Path | None", state_dir: "Path | None"
     if running is None or running:
         log.info("启动：OK-WW 的自动开游戏开关上次没放回，但 OK-WW %s，留到下次开机再放",
                  "在跑" if running else "在不在跑查不到")
+        return ""
+    if _okww_autostart_now(Path(okww_dir)) == was:
+        # Put back and kept (a run that could not see OK-WW close keeps the record, run_okww).
+        _memo_drop(memo)
         return ""
     if _okww_autostart(Path(okww_dir), was) is None:
         return ""
@@ -731,21 +767,38 @@ def run_okww(okww_dir: Path | None,
         # back). The ok-ww.exe killed here is the one started above: _okww_quiesce
         # ran before the spawn. It is also closed when the update is still running
         # (stuck); the problem note lets the relay retry later.
+        # Closed for real before the switch is put back (audit 11-08 A-22): a quiesce alone
+        # does not wait for ok-ww.exe to be gone, and one that exits slowly writes its
+        # in-memory settings - the switch off - over the restored file. A stopping relay
+        # has its 15 s hard exit: the quiesce only, as before.
+        clean = not launched
         try:
             if launched:
                 _close(exe)
-                _okww_quiesce()
-                if not stopping():
-                    # OK-WW closed: its own python may be run (ledger #115).
+                if stopping():
+                    _okww_quiesce()
+                    clean = True
+                else:
                     try:
-                        if fixed := ensure_okww_deps(root, problems):
-                            log.info("预更新：%s", fixed)
+                        still = _okww_close()
                     except Exception:  # noqa: BLE001 - the switch below must still be put back
-                        log.warning("预更新：核对 OK-WW 自带的 Python 包时出错", exc_info=True)
+                        log.warning("预更新：核实 OK-WW 关没关干净时出错", exc_info=True)
+                        still = ["（没能核实）"]
+                    clean = not still
+                    if still:
+                        log.warning("预更新：OK-WW 关完还在（%s），自动开游戏开关照样放回，"
+                                    "下次开机没有 OK-WW 在跑时再放一次", "、".join(still))
+                    else:
+                        # OK-WW closed: its own python may be run (ledger #115).
+                        try:
+                            if fixed := ensure_okww_deps(root, problems):
+                                log.info("预更新：%s", fixed)
+                        except Exception:  # noqa: BLE001 - the switch below must still be put back
+                            log.warning("预更新：核对 OK-WW 自带的 Python 包时出错", exc_info=True)
         finally:
             back = _okww_autostart(root, was)   # put it back as we found it
             if back is None:
                 from ark_relay.core import texts  # noqa: PLC0415
                 log.warning("%s", texts.okww_autostart_not_restored(bool(was)))
-            else:
+            elif clean:
                 _memo_drop(memo)

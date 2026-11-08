@@ -65,6 +65,10 @@ class QueueConfig(ConfigBase):
 
 class MaaUserConfig(ConfigBase):
     def __init__(self) -> None:
+        self.Info_Status = ConfigItem("Info", "Status", True, BoolValidator())
+        self.Info_RemainedDay = ConfigItem(
+            "Info", "RemainedDay", -1, RangeValidator(-1, 9999)
+        )
         self.Stage_StageMode = ConfigItem(
             "Stage",
             "StageMode",

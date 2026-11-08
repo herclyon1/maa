@@ -131,7 +131,7 @@ def run_automas(automas_dir: Path | None,
                 budget_s: float = MAS_BUDGET_SECONDS,
                 problems: list[str] | None = None,
                 after_update: "Callable[[str], object] | None" = None,
-                stopping=None) -> str:
+                stopping=None, carry: "dict | None" = None) -> str:
     """Check, download and apply an AUTO-MAS update now. Returns a note or "".
 
     after_update(new_version) is called once the restarted backend reports the new version,
@@ -141,7 +141,13 @@ def run_automas(automas_dir: Path | None,
 
     `stopping()` (default preupdate_common.going_down) is asked at every poll of the three
     waits; a stop ends the item at once with "" and no note, since nothing was judged and
-    the next boot runs the pre-update again."""
+    the next boot runs the pre-update again.
+
+    `carry` is one dict the caller hands to both tries of boot_stages._once_more: a try that
+    started an install it could not see land leaves {"from", "to"} there, and the next try,
+    finding the backend on "to", calls after_update and says 「已更新」. Until 11-08 that
+    try found nothing to do and said nothing, the first try's 「还没确认装成」 went out and
+    the settings check after an update never ran (audit 11-08 A-20)."""
     stopping = stopping or going_down
     if not automas_dir:
         return ""
@@ -179,6 +185,7 @@ def run_automas(automas_dir: Path | None,
                       "更新状态，**没有检查更新**")
                 return ""
             time.sleep(5)
+    landed = _landed(carry, version, after_update)
     failed = _mas_error(answer)
     if failed is None and not isinstance(answer.get("if_need_update"), bool):
         failed = "回答里没有 if_need_update"
@@ -186,10 +193,10 @@ def run_automas(automas_dir: Path | None,
         log.warning("预更新：AUTO-MAS 查更新没有结论（%s），本轮没有检查更新", failed)
         _note(problems, f"AUTO-MAS 预更新：查更新没有结论（{failed}），**没有检查更新**"
                         "（不是「无需更新」）")
-        return ""
+        return landed
     if not answer["if_need_update"]:
         log.info("预更新：AUTO-MAS 已是 %s（无需更新）", version)
-        return ""
+        return landed
 
     latest = answer.get("latest_version") or "新版本"
     log.info("预更新：AUTO-MAS 有更新 %s → %s，开始下载", version, latest)
@@ -202,20 +209,20 @@ def run_automas(automas_dir: Path | None,
     if failed is not None:
         log.warning("预更新：AUTO-MAS 下载没能启动（%s）", failed)
         _note(problems, f"AUTO-MAS 预更新：查到有 {latest}，但下载没能启动（{failed}）")
-        return ""
+        return landed
 
     pack = _wait_for_package(root, deadline, stopping)
     if pack is None and stopping():
         # The partial package stays; the next boot continues from it.
         log.info("预更新：中继正在停止，AUTO-MAS 的更新包留到下次开机再装")
-        return ""
+        return landed
     if pack is None:
         # The partial package stays; the next boot continues from it.
         log.warning("预更新：AUTO-MAS 更新包 %.0f 秒内没下完，留到下次开机再装", budget_s)
         _note(problems,
               f"AUTO-MAS 预更新：{latest} 的更新包 {budget_s:.0f} 秒内没下完，"
               "留到下次开机再装")
-        return ""
+        return landed
 
     log.info("预更新：更新包就绪（%s），开始安装", pack.name)
     try:
@@ -227,22 +234,42 @@ def run_automas(automas_dir: Path | None,
         log.warning("预更新：AUTO-MAS 安装没能启动（%s）", failed)
         _note(problems, f"AUTO-MAS 预更新：{latest} 的更新包已下好，但安装没能启动"
                         f"（{failed}），留到下次开机再装")
-        return ""
+        return landed
     # The backend restarts itself after install; wait for it to report the new version.
     got = _wait_for_version(latest, time.monotonic() + MAS_INSTALL_WAIT_SECONDS, stopping)
     if got != latest and stopping():
         log.info("预更新：中继正在停止，AUTO-MAS 的安装已启动，装没装上留到下次开机再看")
-        return ""
+        return landed
     if got == latest:
         log.info("预更新：AUTO-MAS 已更新到 %s（后端重启后自报）", latest)
-        if after_update is not None:
-            try:
-                after_update(latest)
-            except Exception:  # noqa: BLE001 - the update itself landed; the check says so in the log
-                log.exception("预更新：AUTO-MAS 更新后核对中继要读的设置时出错")
+        _after(after_update, latest)
         return f"AUTO-MAS 已更新：{_span(version, latest)}"
     log.warning("预更新：AUTO-MAS 装完 %.0f 秒内后端没有自报 %s（最后一次说的是 %s），留到下次开机再看",
                 MAS_INSTALL_WAIT_SECONDS, latest, got or "问不到")
     _note(problems, f"AUTO-MAS 预更新：{latest} 的安装已启动，但后端没有自报新版本"
                     f"（最后说的是 {got or '问不到'}），留到下次开机再看")
+    if carry is not None:
+        carry.update({"from": (carry.get("from") or version), "to": latest})
     return f"AUTO-MAS 有更新：{_span(version, latest)}（安装已启动，还没确认装成）"
+
+
+def _after(after_update, version: str) -> None:
+    """after_update(version), its failure logged: the update itself landed."""
+    if after_update is None:
+        return
+    try:
+        after_update(version)
+    except Exception:  # noqa: BLE001 - the update itself landed; the check says so in the log
+        log.exception("预更新：AUTO-MAS 更新后核对中继要读的设置时出错")
+
+
+def _landed(carry: "dict | None", live: str, after_update) -> str:
+    """「AUTO-MAS 已更新：…」 when an earlier try's install (carry) is what the backend runs
+    now, after_update called for it; '' otherwise. The record is used once."""
+    if not carry or not carry.get("to") or live != carry["to"]:
+        return ""
+    old = str(carry.get("from") or "")
+    carry.clear()
+    log.info("预更新：上一次装的 AUTO-MAS %s 已经装上了（后端现在自报 %s）", live, live)
+    _after(after_update, live)
+    return f"AUTO-MAS 已更新：{_span(old, live)}"

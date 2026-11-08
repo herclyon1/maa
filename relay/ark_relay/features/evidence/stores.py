@@ -118,7 +118,17 @@ class Cos:
     _REFUSED = {451: "腾讯云账号欠费，要充值", 403: "密钥不对或没有这个桶的权限", 401: "密钥不对"}
 
     def probe(self, timeout: int = 20) -> str:
-        """'' when the bucket accepts this key; otherwise the reason it never will."""
+        """'' when the bucket accepts this key; otherwise the reason it never will.
+
+        Only a refusal (_REFUSED) or a missing setting is such a reason. A connection that
+        fails is raised: the caller's tries (evidence.save_and_upload, three with a pause)
+        probe again before any PUT, so a big file is still never sent into a dead
+        connection. Until 11-08 any connection failure here (WinError 10053 is also how an
+        account in arrears can answer) was a refusal for the round, and one dropped HEAD
+        lost that round's evidence (audit 11-08 C-18).
+        """
+        if not (self.sid and self.skey and self.bucket and self.region):
+            return "COS 设置不全（.env 里缺 COS_SECRET_ID / COS_SECRET_KEY / COS_BUCKET / COS_REGION）"
         req = urllib.request.Request(f"https://{self.host}/", method="HEAD",
                                      headers={"Authorization": self.authorization("HEAD", "")})
         try:
@@ -127,10 +137,6 @@ class Cos:
         except urllib.error.HTTPError as exc:
             if exc.code in self._REFUSED:
                 return f"COS 回了 {exc.code}：{self._REFUSED[exc.code]}"
-        except (urllib.error.URLError, OSError) as exc:
-            # No connection (e.g. WinError 10053, as an account in arrears can
-            # answer): the PUT would fail the same way, so this round uploads nothing.
-            return f"连不上 COS（{getattr(exc, 'reason', exc)}），这一轮不传"
         return ""
 
     def upload(self, path: Path, timeout: int = 900) -> dict:

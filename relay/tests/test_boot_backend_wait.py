@@ -191,6 +191,24 @@ with tempfile.TemporaryDirectory() as td:
 check("the step did not wait again", now[0], t_after)
 check("its failure line says the 120 s", any("等了 120 秒" in w for w in rec.warnings()))
 
+print("\n[a wait ran out, then the backend answered, then went again: the next step waits again]")
+# Audit 11-08 A-20: the gave-up mark was never cleared, so after one timeout at boot every
+# later step that found the backend down gave up at once and said it had waited 120 s.
+lg = logging.getLogger("ark.test_boot_backend_wait")
+lg.handlers[:] = [_Rec()]
+lg.propagate = False
+now[0], back_at[0] = 1000.0, None
+boot_stages._backend_gave_up = [120.0]
+back_at[0] = now[0]                                  # answering now
+check("answering: (True, 0)", boot_stages.await_backend(lg, "测试"), (True, 0.0))
+check("……the earlier gave-up wait is forgotten", boot_stages._backend_gave_up[0], None)
+back_at[0] = None                                    # down again
+t0 = now[0]
+up, waited = boot_stages.await_backend(lg, "测试")
+check("down again: waits the whole limit again, not the old 120 s at once",
+      (up, waited, now[0] - t0 >= boot_stages.BACKEND_WAIT_SECONDS), (False, waited, True))
+check("……and says the time it waited this time", waited >= boot_stages.BACKEND_WAIT_SECONDS)
+
 print("\n[a stop mid-wait: the step neither waits on nor alarms]")
 now[0], back_at[0] = 1000.0, None
 boot_stages._backend_gave_up = [None]

@@ -36,13 +36,11 @@ from ark_relay.core.config import atomic_write_text, atomic_write_bytes
 log = logging.getLogger("ark.desktop")
 
 POWERSHELL = Path(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
-# One agent at a time in this process. Agents go through the same two
-# scheduled tasks (preupdate_common names them after the program:
-# 「ark-preupdate-launch-powershell」 for a run that brings a window to the front,
-# 「ark-preupdate-launch-powershell-hidden」 for the rest), and registering one
-# again stops the instance still running under it. task_shots.py takes its
-# pictures on a thread of its own, so it can overlap the launcher OCR
-# (gameupdate) or the banner OCR (banners).
+# One agent at a time in this process: two agents would take pictures and click on the
+# one desktop at once. task_shots.py takes its pictures on a thread of its own, so it can
+# overlap the launcher OCR (gameupdate) or the banner OCR (banners). (Until 11-08 the lock
+# also kept two agents from sharing one scheduled task; each launch now has a task of its
+# own, or none: preupdate_common._spawn_via_task / _spawn_here.)
 _RUN_LOCK = threading.Lock()
 
 # The agent script. Embedded here in full rather than as a separate .ps1,

@@ -169,11 +169,12 @@ def timeout_mid_download(root: Path) -> None:
 
     # run_okww end to end, with the machine-touching steps recorded instead of run.
     (d / "ok-ww.exe").write_text("", encoding="utf-8")
-    saved = {k: getattr(m, k) for k in ("_spawn_interactive", "_okww_quiesce", "_close",
+    saved = {k: getattr(m, k) for k in ("_spawn_interactive", "_okww_quiesce", "_okww_close", "_close",
                                         "_okww_await_update", "_okww_timeout_shot")}
     order = []
     try:
         m._okww_quiesce = lambda *a, **kw: order.append("quiesce")
+        m._okww_close = lambda *a, **kw: order.append("closed") or []
         m._close = lambda exe: order.append("close")
         m._okww_timeout_shot = lambda: order.append("shot") or Path("t.png")
         m._okww_await_update = lambda *a, **kw: ("", True, "", "downloading", ())
@@ -182,7 +183,7 @@ def timeout_mid_download(root: Path) -> None:
         check("超时下载中：不报已更新", m.run_okww(d, budget_s=240, problems=probs), "")
         check("超时下载中：问题里是没更新完", ["没更新完" in p for p in probs], [True])
         check("先停掉所有实例再启动我们自己的，截图在关之前，关的是我们启动的",
-              order, ["quiesce", "spawn", "shot", "close", "quiesce"])
+              order, ["quiesce", "spawn", "shot", "close", "closed"])
         check("开关放回原值", basic(d)["Auto Start Game When App Starts"], True)
 
         order.clear()
@@ -213,7 +214,7 @@ def timeout_mid_download(root: Path) -> None:
         except ZeroDivisionError:
             check("中途出错照样往外抛", True, True)
         check("中途出错：先关 OK-WW，再把开关放回原值",
-              order, ["quiesce", "set False", "spawn", "close", "quiesce", "set True"])
+              order, ["quiesce", "set False", "spawn", "close", "closed", "set True"])
         check("中途出错：开关是原值", basic(d)["Auto Start Game When App Starts"], True)
 
         # The switch cannot be put back: a WARNING (pushed to the group), naming it.
@@ -261,12 +262,13 @@ def baseline_unknown(root: Path) -> None:
     check("baseline unknown: a version read later is not settled as an update", out[0], "")
 
     (d / "ok-ww.exe").write_text("", encoding="utf-8")
-    saved = {k: getattr(m, k) for k in ("_spawn_interactive", "_okww_quiesce", "_close",
+    saved = {k: getattr(m, k) for k in ("_spawn_interactive", "_okww_quiesce", "_okww_close", "_close",
                                         "_okww_await_update", "_okww_state")}
     reads = []
     real_state = m._okww_state
     try:
         m._okww_quiesce = lambda *a, **kw: None
+        m._okww_close = lambda *a, **kw: []
         m._close = lambda exe: None
         m._spawn_interactive = lambda *a, **kw: True
         m._okww_await_update = fast_await
@@ -310,10 +312,11 @@ def newer_listed_not_installed(root: Path) -> None:
         now[0] = 0.0
         return real_await(*a, sleep=tick, clock=lambda: now[0], **kw)
 
-    saved = {k: getattr(m, k) for k in ("_spawn_interactive", "_okww_quiesce", "_close",
+    saved = {k: getattr(m, k) for k in ("_spawn_interactive", "_okww_quiesce", "_okww_close", "_close",
                                         "_okww_await_update")}
     try:
         m._okww_quiesce = lambda *a, **kw: None
+        m._okww_close = lambda *a, **kw: []
         m._close = lambda exe: None
         m._spawn_interactive = lambda *a, **kw: True
         m._okww_await_update = fast_await
@@ -359,11 +362,12 @@ def stop_and_switch_memo(root: Path) -> None:
     state = root / "stop-state"
     memo = state / m.AUTOSTART_MEMO
     real_await = m._okww_await_update
-    saved = {k: getattr(m, k) for k in ("_spawn_interactive", "_okww_quiesce", "_close",
+    saved = {k: getattr(m, k) for k in ("_spawn_interactive", "_okww_quiesce", "_okww_close", "_close",
                                         "_okww_await_update", "_okww_timeout_shot")}
     order = []
     try:
         m._okww_quiesce = lambda *a, **kw: order.append("quiesce")
+        m._okww_close = lambda *a, **kw: order.append("closed") or []
         m._close = lambda exe: order.append("close")
         m._okww_timeout_shot = lambda: order.append("shot") or Path("t.png")
         m._spawn_interactive = lambda *a, **kw: order.append("spawn") or True
@@ -397,11 +401,13 @@ def stop_and_switch_memo(root: Path) -> None:
         order.clear()
         flag = []
         m._okww_quiesce = lambda *a, **kw: order.append("quiesce") or flag.append(1)
+        m._okww_close = lambda *a, **kw: order.append("closed") or []
         got = m.run_okww(d, budget_s=240, problems=probs, state_dir=state, stopping=lambda: bool(flag))
         check("stop during the quiesce: OK-WW not launched", (got, order, probs), ("", ["quiesce"], []))
         check("stop during the quiesce: switch untouched, no record", (basic(d)["Auto Start Game When App Starts"],
                                                                        memo.exists()), (True, False))
         m._okww_quiesce = lambda *a, **kw: order.append("quiesce")
+        m._okww_close = lambda *a, **kw: order.append("closed") or []
 
         # (c) a hard exit left the switch off and the record on: the next run puts back "on".
         cfg = d / "data" / "apps" / "ok-ww" / "working" / "configs" / "Basic Options.json"
@@ -415,6 +421,25 @@ def stop_and_switch_memo(root: Path) -> None:
         m.run_okww(d, budget_s=240, problems=[], state_dir=state, stopping=lambda: False)
         check("(c) next run: the switch goes back to the recorded on, not the off it found",
               (basic(d)["Auto Start Game When App Starts"], memo.exists()), (True, False))
+
+        # (d) audit 11-08 A-22: OK-WW does not close for real after the run. The switch still
+        # goes back, but the record stays: a slow ok-ww.exe can write the switch off again on
+        # its way out, and the next boot puts it back while nothing runs.
+        m._okww_close = lambda *a, **kw: order.append("closed") or ["ok-ww.exe"]
+        order.clear()
+        m.run_okww(d, budget_s=240, problems=[], state_dir=state, stopping=lambda: False)
+        check("(d) not closed for real: the switch goes back anyway, the record stays",
+              (order[-1], basic(d)["Auto Start Game When App Starts"], memo.exists()), ("closed", True, True))
+        check("(d) the next boot finds the switch as recorded: record dropped, nothing said",
+              (m.restore_autostart_leftover(d, state, pids=lambda: []), memo.exists()), ("", False))
+        data = basic(d)
+        data["Auto Start Game When App Starts"] = False          # ok-ww.exe wrote it off on its way out
+        cfg.write_text(json.dumps(data), encoding="utf-8")
+        memo.write_text(json.dumps({"was": True}), encoding="utf-8")
+        line = m.restore_autostart_leftover(d, state, pids=lambda: [])
+        check("(d) ……or finds it written off again: put back on, said",
+              (basic(d)["Auto Start Game When App Starts"], memo.exists(), "放回" in line), (True, False, True))
+        m._okww_close = lambda *a, **kw: order.append("closed") or []
     finally:
         for k, v in saved.items():
             setattr(m, k, v)

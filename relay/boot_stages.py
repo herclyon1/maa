@@ -255,9 +255,14 @@ def await_backend(log, step: str, cfg=None) -> "tuple[bool, float]":
     `cfg` is nearer), stopping early when the service is told to stop. Not answering
     after that is (False, waited): the step then says what it says when AUTO-MAS does
     not answer, with how long it waited; this function raises no alarm of its own.
-    After one wait ran out, a step that finds no answer gets (False, that wait) at once."""
+    After one wait ran out, a step that finds no answer gets (False, that wait) at once,
+    until AUTO-MAS answers again."""
     from ark_relay.features.phone import commands  # noqa: PLC0415
     if commands.mas_up():
+        # Answering again: a later loss is waited for again, not answered at once with the
+        # old wait (audit 11-08 A-20: one timeout at boot made every later step give up
+        # without waiting and say it had waited that long).
+        _backend_gave_up[0] = None
         return True, 0.0
     if _backend_gave_up[0] is not None:
         return False, _backend_gave_up[0]
@@ -617,8 +622,12 @@ def _stage_evidence_sources(cfg, notifier, log) -> None:
         log.exception("核对上游导出代码时出错")
 
 
-def _stage_announce_update(notifier, log) -> None:
-    """First thing once the new code is up: announce either the failed update or the applied one."""
+def _stage_announce_update(notifier, log, state_dir: Path) -> None:
+    """First thing once the new code is up: announce either the failed update or the applied one.
+
+    `state_dir` is cfg.state_dir: until 11-08 this read HERE / "state", the code folder's
+    link to it in the packaged install and no state folder at all where .env names
+    another (audit 11-08 A-24)."""
     # We only reach here on a process that did NOT just apply an update -
     # which, after a self-restart, is the process running the new code. So
     # this is the first honest moment to say the update took effect, and
@@ -687,7 +696,7 @@ def _stage_announce_update(notifier, log) -> None:
             # nothing upstream can tell; the notes are what he actually reads, so
             # they are what gets compared. A changed line pushes as normal.
             from ark_relay.core.statestore import StateStore  # noqa: PLC0415
-            _st = StateStore(HERE / "state")
+            _st = StateStore(state_dir)
             _last = str(_st.get("versions", "announced_notes") or "")
             if notes and notes == _last:
                 log.info("这次更新的说明和上一条一模一样，不再推一遍（v%s）",
@@ -702,7 +711,7 @@ def _stage_announce_update(notifier, log) -> None:
             if notes:
                 try:
                     from ark_relay.features.report import report as _rp  # noqa: PLC0415
-                    _rp.remember_change(HERE / "state", notes, str(note.get("version") or ""))
+                    _rp.remember_change(state_dir, notes, str(note.get("version") or ""))
                     recorded = True
                 except Exception:
                     log.exception("更新说明没记进当天的日报")
@@ -939,6 +948,9 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             # with one line instead. OK-WW's pre-update does not go through AUTO-MAS.
             # It is waited for, not relaunched (await_backend: a backend restarting itself).
             up, waited = await_backend(log, "预更新", cfg)
+            # One record for both tries of the AUTO-MAS item: a first try whose install it
+            # could not see land leaves it, a second try that finds it landed says so.
+            carry: dict = {}
             if not up and _stop_requested():
                 log.info("服务正在停止，不做预更新")
                 return
@@ -948,7 +960,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
                     f"，又等了 {waited:.0f} 秒" if waited else "") + "），它的更新这次没查")
             elif note := _once_more(cfg, log, "AUTO-MAS", preupdate.MAS_BUDGET_SECONDS, problems,
                                     lambda problems: preupdate.run_automas(
-                                        cfg.automas_dir, problems=problems,
+                                        cfg.automas_dir, problems=problems, carry=carry,
                                         after_update=lambda version: _contract_after_update(
                                             cfg, notifier, log, version))):
                 notifier.send(texts.PREUPDATE, note)

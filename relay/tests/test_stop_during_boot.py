@@ -84,7 +84,9 @@ def boot(stop_during: str | None, updated: bool = False) -> list[str]:
         saved[name] = getattr(boot_stages, f"_stage_{name}", None)
         setattr(boot_stages, f"_stage_{name}", step(name))
     real_bootstrap, real_net, real_loop = boot_stages._stage_bootstrap, service._wait_for_network, service._loop
-    boot_stages._stage_bootstrap = lambda: (logging.getLogger("ark.test"), None, None, None)
+    # cfg: only state_dir is read outside the recorded steps (_stage_announce_update's argument).
+    boot_stages._stage_bootstrap = lambda: (logging.getLogger("ark.test"), types.SimpleNamespace(state_dir=None),
+                                            None, None)
     service._wait_for_network = lambda log: None
     service._loop = lambda *a, **k: ran.append("loop")
     try:

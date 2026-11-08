@@ -183,7 +183,7 @@ check("这一版 ok-script 没有 ok.core.plugins：不算缺包",
 
 print("\n[接在预更新里、算进最长时长]")
 src = inspect.getsource(po.run_okww)
-check("run_okww 关掉 OK-WW 之后核对", src.index("_okww_quiesce()") < src.index("ensure_okww_deps(root, problems)"), True)
+check("run_okww 关掉 OK-WW（核实关干净）之后核对", src.index("still = _okww_close()") < src.index("ensure_okww_deps(root, problems)"), True)
 check("worst_case_seconds 里有它的三次（试导入、pip、再试导入）",
       "+ 3 * PWSH_GUARD_S" in inspect.getsource(preupdate.worst_case_seconds), True)
 
