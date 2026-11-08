@@ -83,6 +83,16 @@ _TOKEN_ELEVATION = 20           # TOKEN_INFORMATION_CLASS TokenElevation
 _ERROR_ACCESS_DENIED = 5        # CreateProcess with CREATE_BREAKAWAY_FROM_JOB in a job that forbids it
 # Set once breakaway was refused: every later start takes the task route.
 _direct_refused = [False]
+# Why the last start did not go direct, said once per reason in relay.log (INFO): after a
+# deploy, 「直接启动了」 lines say the route runs; this says why it does not.
+_not_here_said = [""]
+
+
+def _not_here(why: str) -> bool:
+    if _not_here_said[0] != why:
+        _not_here_said[0] = why
+        log.info("预更新：%s，程序走计划任务启动", why)
+    return False
 
 
 def _here_in_console() -> bool:
@@ -93,14 +103,15 @@ def _here_in_console() -> bool:
         import win32security  # noqa: PLC0415
         import win32ts  # noqa: PLC0415
         session = win32ts.WTSGetActiveConsoleSessionId()
-        if session in (0, 0xFFFFFFFF) or win32ts.ProcessIdToSessionId(os.getpid()) != session:
-            return False
+        own = win32ts.ProcessIdToSessionId(os.getpid())
+        if session in (0, 0xFFFFFFFF) or own != session:
+            return _not_here(f"中继在会话 {own}，桌面在会话 {session}")
         tok = win32security.OpenProcessToken(win32api.GetCurrentProcess(), win32security.TOKEN_QUERY)
-        return bool(win32security.GetTokenInformation(
-            tok, getattr(win32security, "TokenElevation", _TOKEN_ELEVATION)))
-    except Exception:  # not Windows, no pywin32, a call refused: the task route
-        log.debug("预更新：看不出中继是不是在桌面会话里，走计划任务", exc_info=True)
-        return False
+        if not win32security.GetTokenInformation(tok, getattr(win32security, "TokenElevation", _TOKEN_ELEVATION)):
+            return _not_here("中继没有管理员权限")
+        return True
+    except Exception as exc:  # noqa: BLE001 - not Windows, no pywin32, a call refused: the task route
+        return _not_here(f"看不出中继是不是在桌面会话里（{type(exc).__name__}: {exc}）")
 
 
 def _logon_env() -> "dict | None":

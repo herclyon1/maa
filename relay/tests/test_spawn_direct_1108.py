@@ -128,6 +128,29 @@ finally:
     else:
         subprocess.STARTUPINFO = _si
 
+print("[走不了直接启动的原因：每个原因在日志里说一次（INFO），部署后看得见]")
+import logging  # noqa: E402
+said = []
+
+
+class _Rows(logging.Handler):
+    def emit(self, record):
+        said.append((record.levelname, record.getMessage()))
+
+
+h = _Rows()
+C.log.addHandler(h)
+level = C.log.level
+C.log.setLevel(logging.DEBUG)
+C._not_here_said[0] = ""
+try:
+    C._here_in_console()            # this Mac: no pywin32
+    C._here_in_console()
+finally:
+    C.log.removeHandler(h)
+    C.log.setLevel(level)
+check("说了一次、是 INFO、说了原因", [(lv, "看不出中继是不是在桌面会话里" in m) for lv, m in said], [("INFO", True)])
+
 print("\n[计划任务那条路：每次一个新任务名]")
 scripts = []
 real_run = subprocess.run
