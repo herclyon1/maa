@@ -1068,6 +1068,19 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
             log.warning("MaaEnd 设置格式迁移没做：%s", note)
     except Exception:
         log.exception("迁移 MaaEnd 设置格式出错")
+    # MAA's master can hold two entries of one task (MAA's nameless one and the
+    # named copy AUTO-MAS appended on a write-back); AUTO-MAS runs the named one
+    # while the phone page had been reading and writing the other (Gemini's
+    # 中继-App-MAA领奖励治本-1108). Folded back into one entry before anything runs.
+    try:
+        from ark_relay.core import mastercfg as _mc3  # noqa: PLC0415
+        folded, note = _mc3.heal_maa_master(cfg.automas_dir, getattr(cfg, "maa_dir", None))
+        if folded:
+            log.info("开机：%s", note)
+        elif note:
+            log.warning("MAA 母本重复任务合并没做：%s", note)
+    except Exception:
+        log.exception("合并 MAA 母本重复任务出错")
     # Route lists narrowed for an AUTO-MAS retry round must never survive a boot:
     # the next morning's gathering would walk only yesterday's failed routes.
     # Left over and put back here, before anything runs: a fault the relay got

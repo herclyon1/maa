@@ -545,10 +545,111 @@ burnt sanity potions. Nothing here had a test.
     check("本来就是开的", ok and "本来就是" in msg, True)
     ok, msg = mastercfg.write_maa(automas3, maa3, "Award/Mail", "yes")
     check("非布尔值拒绝", ok, False)
+    # 2026-11-08: all seven switches are open (the user's order via Gemini); a key
+    # MAA's AwardTask does not have is still refused.
     ok, msg = mastercfg.write_maa(automas3, maa3, "Award/FreeGacha", True)
-    check("免费单抽没开放，拒绝", ok, False)
-    check("其他开关也在", set(k for k in mastercfg.read_maa(automas3)["values"] if k.startswith("Award/")),
-          {"Award/Mail", "Award/Orundum", "Award/Mining", "Award/SpecialAccess"})
+    check("免费单抽现在开放，写得进去", ok, True)
+    ok, msg = mastercfg.write_maa(automas3, maa3, "Award/NoSuchSwitch", True)
+    check("没有的开关拒绝", ok, False)
+    check("七个开关都读得出来", set(k for k in mastercfg.read_maa(automas3)["values"] if k.startswith("Award/")),
+          {f"Award/{k}" for k in ("Award", "Mail", "FreeGacha", "Orundum", "Mining", "SpecialAccess", "SignInEvent")})
+
+    print("\n[同一个任务两条：无名的真设置＋AUTO-MAS 回写时补的有名空壳（11-08 领奖励实际全关）]")
+
+    def dup_tree():
+        """The machine's master as Gemini found it on 2026-11-08: MAA's nameless entries
+        hold the user's settings, the named copies appended at the end hold defaults."""
+        root = tmpdir()
+        master = root / "AUTO-MAS" / "data" / "abc123" / "Default" / "ConfigFile"
+        master.mkdir(parents=True)
+        award_off = {"Award": True, "Mail": False, "FreeGacha": False, "Orundum": False, "Mining": False,
+                     "SpecialAccess": False, "SignInEvent": False}
+        queue = [
+            {"$type": "StartUpTask", "TaskType": "StartUp", "Name": "", "IsEnable": True, "AccountName": "a"},
+            {"$type": "FightTask", "TaskType": "Fight", "Name": "理智作战", "IsEnable": True, "Stage": "1-7"},
+            {"$type": "InfrastTask", "TaskType": "Infrast", "Name": "", "IsEnable": True, "UsesOfDrones": "PureGold"},
+            {"$type": "MallTask", "TaskType": "Mall", "Name": "", "IsEnable": True,
+             "FirstList": "招聘许可", "BlackList": "碳;家具;加急许可"},
+            {"$type": "AwardTask", "TaskType": "Award", "Name": "", "IsEnable": True,
+             **award_off, "Mail": True, "Orundum": True, "Mining": True, "SpecialAccess": True},
+            {"$type": "FightTask", "TaskType": "Fight", "Name": "剿灭作战", "IsEnable": False, "Stage": "Annihilation"},
+            {"$type": "StartUpTask", "TaskType": "StartUp", "Name": "开始唤醒", "IsEnable": False},
+            {"$type": "InfrastTask", "TaskType": "Infrast", "Name": "基建换班", "IsEnable": False, "UsesOfDrones": "Money"},
+            {"$type": "MallTask", "TaskType": "Mall", "Name": "信用收支", "IsEnable": False, "Shopping": True,
+             "FirstList": "{{ HighPriorityDefault }}", "BlackList": "{{ BlacklistDefault }}"},
+            {"$type": "AwardTask", "TaskType": "Award", "Name": "领取奖励", "IsEnable": False, **award_off},
+        ]
+        doc = {"Current": "Default", "Configurations": {"Default": {"TaskQueue": queue}}}
+        for d in (master, root / "MAA" / "config"):
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "gui.new.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+        return root / "AUTO-MAS", root / "MAA", master / "gui.new.json"
+
+    def queue_of(path):
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+        return doc["Configurations"]["Default"]["TaskQueue"]
+
+    automas4, maa4, master4 = dup_tree()
+    untouched = [t for t in queue_of(master4) if t.get("TaskType") != "Award"]
+    shown = mastercfg.read_maa(automas4)["values"]
+    check("手机页读的是 AUTO-MAS 交给 MAA 的有名那条：邮件关", shown.get("Award/Mail"), False)
+    check("手机页读的是有名那条：无人机用在龙门币", shown.get("Infrast/UsesOfDrones"), "Money")
+    ok, msg = mastercfg.write_maa(automas4, maa4, "Award/SignInEvent", True)
+    check("写签到开关：成功", ok, True)
+    for f in (master4, maa4 / "config" / "gui.new.json"):
+        awards = [t for t in queue_of(f) if t.get("TaskType") == "Award"]
+        check(f"{f.parent.parent.name} 那份：两条领取奖励都写上了", [t["SignInEvent"] for t in awards], [True, True])
+        check(f"{f.parent.parent.name} 那份：别的任务一个字没动",
+              [t for t in queue_of(f) if t.get("TaskType") != "Award"] == untouched, True)
+    check("读回是开", mastercfg.read_maa(automas4)["values"].get("Award/SignInEvent"), True)
+    ok, msg = mastercfg.write_maa(automas4, maa4, "Infrast/UsesOfDrones", "Chip")
+    check("写无人机：两条基建都写上了",
+          [t["UsesOfDrones"] for t in queue_of(master4) if t.get("TaskType") == "Infrast"], ["Chip", "Chip"])
+
+    print("\n[开机合并：留下无名那条的真设置，占位符一个不留，名字改成 AUTO-MAS 认的]")
+    automas5, maa5, master5 = dup_tree()
+    before = master5.read_bytes()
+    folded, note = mastercfg.heal_maa_master(automas5, maa5)
+    check("合并了四种任务", sorted(folded), sorted(["开始唤醒（2 条合成 1 条）", "基建换班（2 条合成 1 条）",
+                                               "信用收支（2 条合成 1 条）", "领取奖励（2 条合成 1 条）"]))
+    check("报告说了两份都合了", "母本" in note and "MAA 自己那份" in note, True)
+    baks = list(master5.parent.parent.glob("gui.new.json.bak-dedup-*"))
+    check("母本先备份，放在 ConfigFile 外面（AUTO-MAS 会整个拷那个文件夹）", len(baks), 1)
+    check("备份是原样", bool(baks) and baks[0].read_bytes() == before, True)
+    for f in (master5, maa5 / "config" / "gui.new.json"):
+        q = queue_of(f)
+        who = f.parent.parent.name
+        for task_type, zh in mastercfg.MAA_SINGLETON_TASKS.items():
+            if task_type == "Recruit":   # not in this queue: nothing to fold, nothing made up
+                check(f"{who}：没有的自动公招不会凭空造一条", [t for t in q if t.get("TaskType") == task_type], [])
+                continue
+            same = [t for t in q if t.get("TaskType") == task_type]
+            check(f"{who}：{zh} 只剩一条，名字是 AUTO-MAS 认的", [t.get("Name") for t in same], [zh])
+            check(f"{who}：{zh} 的 $type 在第一位", next(iter(same[0])), "$type")
+        award = next(t for t in q if t.get("TaskType") == "Award")
+        check(f"{who}：领取奖励留的是真设置（幸运墙开）", award["Orundum"], True)
+        check(f"{who}：领取奖励的邮件开（任何一条开就开）", award["Mail"], True)
+        check(f"{who}：免费单抽两条都关，还是关", award["FreeGacha"], False)
+        mall = next(t for t in q if t.get("TaskType") == "Mall")
+        check(f"{who}：信用收支优先买的还是招聘许可", mall["FirstList"], "招聘许可")
+        check(f"{who}：空壳里有、真设置里没有的项补上了", mall.get("Shopping"), True)
+        check(f"{who}：文件里一个占位符都没剩", "{{" in f.read_text(encoding="utf-8"), False)
+        check(f"{who}：无人机还是真设置的赤金", next(t for t in q if t.get("TaskType") == "Infrast")["UsesOfDrones"],
+              "PureGold")
+        check(f"{who}：理智作战、剿灭作战两条都还在（不是一种一条的任务）",
+              [t["Name"] for t in q if t.get("TaskType") == "Fight"], ["理智作战", "剿灭作战"])
+        check(f"{who}：领取奖励留在原来的位置", [t.get("TaskType") for t in q].index("Award"), 4)
+    check("合并后手机页读到的就是真设置", mastercfg.read_maa(automas5)["values"].get("Award/Orundum"), True)
+    check("再开机一次：没有可合并的，什么都不写", mastercfg.heal_maa_master(automas5, maa5), ([], ""))
+    check("再开机一次：不再多备份", len(list(master5.parent.parent.glob("gui.new.json.bak-dedup-*"))), 1)
+
+    print("\n[合并：母本读不出来就不动，说清楚]")
+    automas6, maa6, master6 = dup_tree()
+    master6.write_text("{ broken", encoding="utf-8")
+    folded, note = mastercfg.heal_maa_master(automas6, maa6)
+    check("母本没合并", "读不出来" in note and str(master6) in note, True)
+    check("母本没被改", master6.read_text(encoding="utf-8"), "{ broken")
+    check("没有母本：什么都不做也不报", mastercfg.heal_maa_master(tmpdir(), None), ([], ""))
 
     print("\n[找不到母本时不许说成功]")
     ok, msg = mastercfg.write_maa(tmpdir(), None, "Infrast/UsesOfDrones", "Money")

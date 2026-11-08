@@ -1020,7 +1020,49 @@ Cases (a name on the command line runs only those cases):
             for t in want["Configurations"][want["Current"]]["TaskQueue"]:
                 if t.get("TaskType") == task_type:
                     t[key] = value
-            check(f"{path}={value!r}: nothing else in gui.new.json changed", doc, want)
+            check(f"{path}={value!r}: nothing else in gui.new.json changed", doc == want, True)
+
+        # 2026-11-08 (Gemini, 中继-App-MAA领奖励治本-1108): AUTO-MAS's write-back had
+        # appended named copies of the one-of-a-kind tasks, and _find_task_source hands
+        # MAA the named one. A value the phone writes must reach MAA through that copy,
+        # and after heal_maa_master folds the copies there is one entry it matches exactly.
+        shelled = json.loads(GUI_NEW)
+        squeue = shelled["Configurations"][shelled["Current"]]["TaskQueue"]
+        for task_type, name in mcfg.MAA_SINGLETON_TASKS.items():
+            require(f"AUTO-MAS names {task_type} {name!r}", zh.get(task_type) == name, zh.get(task_type))
+            squeue.append({"$type": f"{task_type}Task", "Name": name, "IsEnable": False, "TaskType": task_type,
+                           **({k: False for k, _ in mcfg.MAA_AWARD} if task_type == "Award" else {})})
+        for path, task_type, key, value in [("Award/Mail", "Award", "Mail", True),
+                                            ("Infrast/UsesOfDrones", "Infrast", "UsesOfDrones", "Chip")]:
+            root = TMP / "guinew-shelled" / path.replace("/", "-")
+            master = root / "AUTO-MAS" / "data" / MAA_SID / "Default" / "ConfigFile"
+            maa_config = root / "MAA" / "config"
+            for d in (master, maa_config):
+                d.mkdir(parents=True)
+                (d / "gui.new.json").write_text(json.dumps(shelled, ensure_ascii=False), encoding="utf-8")
+            ok, msg = mcfg.write_maa(root / "AUTO-MAS", root / "MAA", path, value)
+            require(f"named copies present: write_maa {path}={value!r} accepted", ok, msg)
+            copy_source(types.SimpleNamespace(maa_set_path=maa_config), master)
+            queue = json.loads((maa_config / "gui.new.json").read_text(encoding="utf-8"))
+            queue = queue["Configurations"][queue["Current"]]["TaskQueue"]
+            task = proxy["_find_task_source"](queue, zh[task_type], task_type) or {}
+            check(f"named copies present: AUTO-MAS hands MAA {path}={value!r}", task.get(key), value)
+            folded, note = mcfg.heal_maa_master(root / "AUTO-MAS", root / "MAA")
+            require("heal_maa_master folds all five one-of-a-kind tasks", len(folded) == 5, note)
+            copy_source(types.SimpleNamespace(maa_set_path=maa_config), master)
+            doc = json.loads((maa_config / "gui.new.json").read_text(encoding="utf-8"))
+            queue = doc["Configurations"][doc["Current"]]["TaskQueue"]
+            for t_type, name in mcfg.MAA_SINGLETON_TASKS.items():
+                same = [t for t in queue if t.get("TaskType") == t_type]
+                check(f"after heal: one {t_type}, named {name!r}, under a $type MAA deserialises",
+                      [(t.get("Name"), next(iter(t)), t.get("$type") in derived) for t in same], [(name, "$type", True)])
+            task = proxy["_find_task_source"](queue, zh[task_type], task_type) or {}
+            check(f"after heal: AUTO-MAS still hands MAA {path}={value!r}", task.get(key), value)
+            if task_type == "Award":
+                real = next(t for t in json.loads(GUI_NEW)["Configurations"]["Default"]["TaskQueue"]
+                            if t.get("TaskType") == "Award")
+                check("after heal: the machine's own Award settings survive (Orundum)", task.get("Orundum"),
+                      real.get("Orundum"))
 
 
     CASES = {"pin": case_pin, "yw4": case_yw4, "annihilation": case_annihilation,

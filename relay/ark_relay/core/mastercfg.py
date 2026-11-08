@@ -37,8 +37,9 @@ from ark_relay.core.config import atomic_write_text, master_config_dir
 # MAA and OK-WW config live in mastercfg_maa / mastercfg_okww; callers and tests
 # say mastercfg.<name>, so those names are importable from here too.
 from ark_relay.core.mastercfg_maa import (
-    MAA_AWARD, MAA_AWARD_PATHS, MAA_DRONES, MAA_DRONES_PATH, _maa_award, _maa_infrast, _maa_task,
-    _write_maa_award, _write_maa_copies, maa_master, read_maa, write_maa,
+    MAA_AWARD, MAA_AWARD_PATHS, MAA_DRONES, MAA_DRONES_PATH, MAA_SINGLETON_TASKS, _maa_award, _maa_awards,
+    _maa_infrast, _maa_infrasts, _maa_task, _maa_tasks, _write_maa_award, _write_maa_copies,
+    dedup_maa_task_queue, heal_maa_master, maa_master, read_maa, write_maa,
 )
 from ark_relay.core.mastercfg_okww import (
     OKWW_READONLY, OKWW_SHOWN, OKWW_SUBS, _LIST, _last_error, _okww_cases, _okww_doc, okww_file,
@@ -55,18 +56,24 @@ __all__ = [
     "MAA_AWARD_PATHS",
     "MAA_DRONES",
     "MAA_DRONES_PATH",
+    "MAA_SINGLETON_TASKS",
     "OKWW_READONLY",
     "OKWW_SHOWN",
     "OKWW_SUBS",
     "_LIST",
     "_last_error",
     "_maa_award",
+    "_maa_awards",
     "_maa_infrast",
+    "_maa_infrasts",
     "_maa_task",
+    "_maa_tasks",
     "_okww_cases",
     "_okww_doc",
     "_write_maa_award",
     "_write_maa_copies",
+    "dedup_maa_task_queue",
+    "heal_maa_master",
     "log",
     "maa_master",
     "maaend_master",
