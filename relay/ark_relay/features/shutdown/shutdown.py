@@ -876,16 +876,6 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
             modes.mark_shutdown_skipped(eng.state.dir, key, by_debug=True)
             log.info("🔧 调试模式：这一次关机已跳过（%s）；"
                      "到期后不会补关，等下一趟队列跑完再判", key)
-        # Debug mode skips the power-off only (his 08-31 words: 「我开了调试模式是指把一次队列的中继关机
-        # 指令跳过」), not the shift's own last step before it. decide() answers "debug" only past every
-        # other gate - the very moment the per-route gathering retry runs on the "go" path below - so it
-        # runs here too. 2026-11-09: debug on from 09:10, the 早班 MaaEnd left 采集协议纹石 unwalked at
-        # 11:01, and nothing re-ran it until a hand `collect-retry` at 11:36. Not for "skipped" (his own
-        # 「下次跑完不关机」 or an occasion already gone) nor "not-shift" (a boot or run by hand: a person
-        # may be on the desktop the retry would take over).
-        from ark_relay.features.makeup import collect_retry  # noqa: PLC0415
-        if collect_retry.maybe_run(eng, now):
-            log.info("补跑刚做完（调试模式开着，关机照旧跳过）")
     if not v.go:
         # "off": a shift that never records is a fault whether or not the relay powers off.
         if v.code in ("shift-running", "off"):

@@ -1251,25 +1251,14 @@ stays awake, and its wording read as though someone had ordered it to stay on.
     e.state.dir = tmpdir()
     e._last_wait_note = ""
     real_decide = shutdown.decide
-    from ark_relay.features.makeup import collect_retry
-    real_retry, retried = collect_retry.maybe_run, []
-    collect_retry.maybe_run = lambda eng_, now: retried.append(now) or False
     shutdown.decide = lambda eng, now: shutdown.Verdict(False, "debug", "调试模式开着，这一次关机跳过")
     try:
         got = shutdown._maybe_shutdown(e, NIGHT)
-        check("debug: no power-off", got, False)
-        check("debug: nothing pushed", e.sent, [])
-        check("…this occasion recorded as before (no late power-off)", shutdown.modes.shutdown_skipped(e.state.dir), f"{NIGHT:%Y-%m-%d}:3")
-        # 11-09: debug on, the 早班 left a gathering route unwalked and only a hand collect-retry re-ran it.
-        check("debug: the per-route gathering retry still runs at this moment", retried, [NIGHT])
-        for code, why in (("not-shift", "不是早班/晚班跑完，不关机（最近一轮是手动触发的）"),
-                          ("skipped", "这一次关机已经跳过了（调试模式，或者手机上点了「下次跑完不关机」）")):
-            retried.clear()
-            shutdown.decide = lambda eng, now, c=code, w=why: shutdown.Verdict(False, c, w)
-            shutdown._maybe_shutdown(e, NIGHT)
-            check(f"{code}: no gathering retry (a person may be on the desktop)", retried, [])
     finally:
-        shutdown.decide, collect_retry.maybe_run = real_decide, real_retry
+        shutdown.decide = real_decide
+    check("debug: no power-off", got, False)
+    check("debug: nothing pushed", e.sent, [])
+    check("…this occasion recorded as before (no late power-off)", shutdown.modes.shutdown_skipped(e.state.dir), f"{NIGHT:%Y-%m-%d}:3")
 
     print("[刷声骸那条要说清刷到几点，不能只说「在刷」]")
     check("理由里带收工时刻", "才收工" in src)
