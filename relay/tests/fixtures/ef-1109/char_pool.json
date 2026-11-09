@@ -1,0 +1,25 @@
+{
+ "list": [
+  {
+   "id": "15",
+   "name": "烟火邀星河",
+   "chars": [
+    {
+     "id": "0e691c08a09d81bc7f8fa14a1cb03561",
+     "pcLink": "https://wiki.skland.com/endfield/detail?mainTypeId=1&subTypeId=1&gameEntryId=2503",
+     "pic": "https://bbs.hycdn.cn/image/2026/10/08/75e7f3c9eb8152aef60cf40efe883fb5.png",
+     "rarity": "rarity_6",
+     "name": "",
+     "dotType": "label_type_up"
+    }
+   ],
+   "poolStartAtTs": "1794153600",
+   "sortId": 15,
+   "poolEndAtTs": "1795557600",
+   "startAtTs": "1794153600",
+   "endAtTs": "1795557600",
+   "europePoolStartAtTs": "1794106800",
+   "europePoolEndAtTs": "1795510800"
+  }
+ ]
+}

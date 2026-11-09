@@ -2104,11 +2104,17 @@ def _crosscheck_honest() -> None:
     # Arknights: PRTS 【限定寻访·夏季】 prefix and 07:00, the post 12:00 the same day.
     row = _b.Banner("明日方舟", "【限定寻访·夏季】海渊巡游", ("克莱门莎",),
                     datetime(2026, 10, 9, 7, 0), datetime(2026, 10, 23, 3, 59))
-    _out, tr, _recs = _ak_offline(datetime(2026, 10, 10, 12, 0), [row], _ak_site_1006(), {"克莱门莎": 5})
+    out, tr, _recs = _ak_offline(datetime(2026, 10, 10, 12, 0), [row], _ak_site_1006(), {"克莱门莎": 5})
     got = " ".join(tr.checks)
-    check("方舟：PRTS 名字带前缀、07:00 也对得上官网那帖",
-          ("找不到" in got, "池名" in got, "开始 PRTS 10-09 07:00 / 官网公告 10-09 12:00" in got),
-          (False, False, True))
+    # Since 11-09 (alarm #157, Gemini): the 07:00 PRTS lists is its own bookkeeping, the
+    # post's 12:00 is first-hand, so the opening is corrected and the line is a ✓.
+    check("方舟：PRTS 名字带前缀、07:00 也对得上官网那帖，开始按官网补正",
+          ("找不到" in got, "池名" in got, "✗" in got,
+           "开始不同（PRTS 10-09 07:00 / 官网公告 10-09 12:00），已按官网公告补正 ✓" in got),
+          (False, False, False, True))
+    check("方舟：返回的那一行开始也是官网的 12:00",
+          [(b.name, b.start) for b in out[0] if b.chars == ("克莱门莎",)],
+          [("【限定寻访·夏季】海渊巡游", datetime(2026, 10, 9, 12, 0))])
 
 
 def _sf_ef_brief_time() -> None:
@@ -2241,6 +2247,88 @@ def _ef_1107(now=EF_NOW, *, pages=None, bulletin=True, failed=None, sk=None):
     finally:
         _b._json, _b._text, _b.endfield_next_from_news = real
     return got, nxt, tr, recs
+
+
+EF1109 = FX / "ef-1109"
+
+
+def _ef_1109(end_ts: "str | None" = None):
+    """_endfield on 11-09 21:46 with Skland's char-pool as the game PC read it at 22:05
+    (EF1109/char_pool.json: 明河「烟火邀星河」 entered that day, poolStartAtTs 11-09
+    00:00, poolEndAtTs 11-25 06:00) and the official sources of _ef_1107 (the bulletin
+    opens it 11-05 12:00 and prints no end, the briefing closes it 11-26 06:00).
+    `end_ts` replaces Skland's poolEndAtTs."""
+    pool = json.loads((EF1109 / "char_pool.json").read_text(encoding="utf-8"))
+    if end_ts is not None:
+        pool["list"][0]["poolEndAtTs"] = end_ts
+
+    def sk(path):
+        if path == "/web/v1/wiki/char-pool":
+            return {"data": pool}
+        return {"data": {"item": {"name": "明河"}}}
+    return _ef_1107(datetime(2026, 11, 9, 21, 46), sk=sk)
+
+
+def _audit_1109_skland_backfill() -> None:
+    """Alarm #157 (Gemini, 2026-11-09): #66 failed on 「终末地：森空岛 和 公告 对不上 ✗
+    （开始 森空岛 11-09 00:00 / 公告 11-05 12:00）」. The opening is Skland's bookkeeping
+    and is corrected; the end Skland gives disagrees with the briefing by a day, which
+    nothing compared, and stays a ✗ (it is the report's countdown)."""
+    from ark_relay.features.selfcheck import machinecheck as mc  # noqa: PLC0415
+    from ark_relay.features.selfcheck.machinechecks import phone_banners as pb  # noqa: PLC0415
+    got, _nxt, tr, _recs = _ef_1109()
+    check("1109 ef: Skland's opening takes the bulletin's, the end stays Skland's",
+          [(b.name, b.chars, b.start, b.end) for b in got],
+          [("烟火邀星河", ("明河",), datetime(2026, 11, 5, 12, 0), datetime(2026, 11, 25, 6, 0))])
+    check("1109 ef: the opening is a ✓ correction naming both",
+          [c for c in tr.checks if "开始" in c],
+          ["终末地：森空岛 和 公告 开始不同（森空岛 11-09 00:00 / 公告 11-05 12:00），已按公告补正 ✓"
+           "（公告没写结束时刻，只核了开始）"])
+    check("1109 ef: the end against the briefing is a ✗ naming both and what the report printed",
+          [c for c in tr.checks if "结束" in c and "开始" not in c],
+          ["终末地：森空岛 和 新版本导览 结束对不上 ✗（森空岛 11-25 06:00 / 新版本导览 11-26 06:00；"
+           "日报当期按森空岛写 11-25 06:00 结束）"])
+    check("1109 ef: no official fill (Skland runs it)", [c for c in tr.checks if "补进当期" in c], [])
+    v = pb._no_open_mismatch({"trace": tr})
+    check("1109 #66: fails on the end, not on the opening",
+          (v.status, "结束对不上" in v.evidence, "开始 森空岛" in v.evidence), (mc.FAIL, True, False))
+    # Had Skland closed it at the briefing's 11-26 06:00, only the opening differs: #66 passes
+    # and counts the correction with what the official sources filled in.
+    got, _nxt, tr, _recs = _ef_1109(end_ts="1795644000")
+    check("1109 ef: the same end -> both lines ✓",
+          ([b.end for b in got], ["✗" in c for c in tr.checks if c.startswith("终末地")],
+           "终末地：森空岛和新版本导览的结束时刻对得上 ✓（11-26 06:00）" in tr.checks),
+          ([datetime(2026, 11, 26, 6, 0)], [False, False], True))
+    v = pb._no_open_mismatch({"trace": tr})
+    check("1109 #66: passes, the correction counted as filled",
+          (v.status, "官方来源补上的" in v.evidence, "已按公告补正" in v.evidence), (mc.PASS, True, True))
+
+
+def _crosscheck_fix_cases() -> None:
+    """crosscheck_fix corrects the opening alone, and only to a time already past."""
+    now = datetime(2026, 11, 9, 21, 46)
+    wiki = _b.Banner("终末地", "烟火邀星河", ("明河",), datetime(2026, 11, 9, 0, 0), datetime(2026, 11, 26, 6, 0))
+
+    def off(**kw):
+        base = dict(game="终末地", name="烟火邀星河", chars=("明河",),
+                    start=datetime(2026, 11, 5, 12, 0), end=datetime(2026, 11, 26, 6, 0))
+        return _b.Banner(**{**base, **kw})
+    b, line = _b.crosscheck_fix("终末地", "森空岛", wiki, "公告", off(), now)
+    check("fix: only the opening differs -> corrected ✓",
+          (b.start, b.end, line),
+          (datetime(2026, 11, 5, 12, 0), wiki.end,
+           "终末地：森空岛 和 公告 开始不同（森空岛 11-09 00:00 / 公告 11-05 12:00），已按公告补正 ✓"))
+    for label, other in (("the official opening still to come", off(start=datetime(2026, 11, 10, 12, 0))),
+                         ("the end differs too", off(end=datetime(2026, 11, 25, 6, 0))),
+                         ("the name differs too", off(name="另一个池")),
+                         ("a character the wiki lacks", off(chars=("祀",))),
+                         ("no such banner", None),
+                         ("the official side prints no opening", off(start=None, start_note="版本更新后"))):
+        b, line = _b.crosscheck_fix("终末地", "森空岛", wiki, "公告", other, now)
+        check(f"fix: {label} -> crosscheck's line, nothing corrected",
+              (b is wiki, line), (True, _b.crosscheck("终末地", "森空岛", wiki, "公告", other)))
+    check("fix: the end differs -> still a ✗",
+          "✗" in _b.crosscheck_fix("终末地", "森空岛", wiki, "公告", off(end=datetime(2026, 11, 25, 6, 0)), now)[1], True)
 
 
 def _recovered(recs: list, part: str) -> "list[bool]":
@@ -2672,6 +2760,8 @@ def main() -> int:
     _audit_1108_gate()
     _audit_1108_first_end_doors()
     _audit_1108_render()
+    _audit_1109_skland_backfill()
+    _crosscheck_fix_cases()
     print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
     return 0 if not FAILED else 1
 

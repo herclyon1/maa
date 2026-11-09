@@ -353,7 +353,8 @@ def _no_open_mismatch(ctx):
     if not checks:
         return None          # nothing was cross-checked this time
     bad = [c for c in checks if "✗" in c]
-    filled = [c for c in checks if ("补进当期" in c or "补回当期" in c) and "✗" not in c]
+    # 「已按公告补正」: a wiki's own bookkeeping opening replaced with the first-hand one (banners.crosscheck_fix)
+    filled = [c for c in checks if ("补进当期" in c or "补回当期" in c or "补正" in c) and "✗" not in c]
     if bad:
         return mc.Result(mc.FAIL, f"{len(bad)} 条对不上：" + "；".join(bad[:3]))
     return mc.Result(mc.PASS, f"{len(checks)} 条核对都对得上"

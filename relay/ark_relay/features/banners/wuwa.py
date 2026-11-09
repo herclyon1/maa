@@ -10,7 +10,7 @@ from datetime import datetime
 
 from ark_relay.features.banners import banners as hub
 from ark_relay.features.banners.banners import (
-    Banner, crosscheck, log, newest_version, _stamps, _SWAP, Trace, _UA_BROWSER,
+    Banner, crosscheck_fix, log, newest_version, _stamps, _SWAP, Trace, _UA_BROWSER,
     upcoming,
 )
 from ark_relay.features.banners.wuwa_posters import (
@@ -635,7 +635,7 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
         # the first line is quoted in the daily report: no Latin letters
         log.warning("鸣潮官方公告里读不出这一版的新角色（%s），分不出首发和复刻，在开的卡池全部照报", why)
     got = [b for b in pools if set(b.chars) & names] if split else pools
-    for b in got:
+    for i, b in enumerate(got):
         if b not in synth and b.start <= now <= b.end:
             tr.ends |= _stamps(b.end)
             tr.src("鸣潮", "当期", _KURO + "/wiki/core/homepage/getPage", f"{b.name} {'、'.join(b.chars)} {b.start:%Y-%m-%d %H:%M}~{b.end:%Y-%m-%d %H:%M}")
@@ -644,8 +644,9 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
                 tr.src("鸣潮", "游戏公告", _WW_NOTICE, f"{other.name} {'、'.join(other.chars)} "
                        + (f"{other.start:%Y-%m-%d %H:%M}" if other.start else other.start_note)
                        + f"~{other.end:%Y-%m-%d %H:%M}")
-            tr.checks.append(crosscheck("鸣潮", "库街区", b, "游戏公告", other) if notice_ok
-                             else "鸣潮：游戏公告取不到，只有库街区一个来源 ✗")
+            got[i], line = (crosscheck_fix("鸣潮", "库街区", b, "游戏公告", other, now) if notice_ok
+                            else (b, "鸣潮：游戏公告取不到，只有库街区一个来源 ✗"))
+            tr.checks.append(line)
 
     live = {c for b in pools for c in b.chars}
     rest = upcoming(debut, live) if end and end > now else []

@@ -49,7 +49,7 @@ import logging
 import re
 import time
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -523,25 +523,7 @@ def crosscheck(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None
     """
     if b is None:
         return f"{game}：{a_name} 有「{a.name}」，{b_name} 里找不到 ✗"
-    diffs = []
-    # PRTS prefixes some names with the banner kind (【限定寻访·夏季】海渊巡游)
-    bare = lambda n: re.sub(r"^【[^】]*】", "", n)  # noqa: E731
-    if a.name and b.name and bare(a.name) != bare(b.name):
-        diffs.append(f"池名 {a_name}「{a.name}」/ {b_name}「{b.name}」")
-    if b.chars and not set(b.chars) <= set(a.chars):
-        diffs.append(f"角色 {a_name} {'、'.join(a.chars)} / {b_name} {'、'.join(b.chars)}")
-    for label, x, y in (("开始", a.start, b.start), ("结束", a.end, b.end)):
-        if y is None:
-            # 「3.7版本更新后」 or a bulletin that prints no closing clock: nothing
-            # to compare on that side, the footer says which one was skipped
-            continue
-        if (x.hour, x.minute) == (0, 0) or (y.hour, y.minute) == (0, 0):
-            same = x.date() == y.date()
-        else:
-            # to the minute: Skland ends at 11:59:59, the bulletin writes 11:59
-            same = x.replace(second=0, microsecond=0) == y.replace(second=0, microsecond=0)
-        if not same:
-            diffs.append(f"{label} {a_name} {x:%m-%d %H:%M} / {b_name} {y:%m-%d %H:%M}")
+    diffs = [text for _kind, text in _xdiffs(a_name, a, b_name, b)]
     if diffs:
         return f"{game}：{a_name} 和 {b_name} 对不上 ✗（" + "；".join(diffs) + "）"
     if b.start is None and b.end is None:
@@ -551,6 +533,60 @@ def crosscheck(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None
     if b.end is None:
         return f"{game}：{a_name}={b_name} ✓（{b_name}没写结束时刻，只核了开始）"
     return f"{game}：{a_name}={b_name} ✓"
+
+
+def same_clock(x: datetime, y: datetime) -> bool:
+    """Two printed times of one banner agree: to the minute (Skland ends at 11:59:59,
+    the bulletin writes 11:59), or by date alone when either side gives a date with
+    no clock (00:00)."""
+    if (x.hour, x.minute) == (0, 0) or (y.hour, y.minute) == (0, 0):
+        return x.date() == y.date()
+    return x.replace(second=0, microsecond=0) == y.replace(second=0, microsecond=0)
+
+
+def _xdiffs(a_name: str, a: Banner, b_name: str, b: Banner) -> "list[tuple[str, str]]":
+    """crosscheck's differences as (kind, text): kind is 池名, 角色, 开始 or 结束."""
+    diffs = []
+    # PRTS prefixes some names with the banner kind (【限定寻访·夏季】海渊巡游)
+    bare = lambda n: re.sub(r"^【[^】]*】", "", n)  # noqa: E731
+    if a.name and b.name and bare(a.name) != bare(b.name):
+        diffs.append(("池名", f"池名 {a_name}「{a.name}」/ {b_name}「{b.name}」"))
+    if b.chars and not set(b.chars) <= set(a.chars):
+        diffs.append(("角色", f"角色 {a_name} {'、'.join(a.chars)} / {b_name} {'、'.join(b.chars)}"))
+    for label, x, y in (("开始", a.start, b.start), ("结束", a.end, b.end)):
+        if y is None:
+            # 「3.7版本更新后」 or a bulletin that prints no closing clock: nothing
+            # to compare on that side, the footer says which one was skipped
+            continue
+        if not same_clock(x, y):
+            diffs.append((label, f"{label} {a_name} {x:%m-%d %H:%M} / {b_name} {y:%m-%d %H:%M}"))
+    return diffs
+
+
+def crosscheck_fix(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None",
+                   now: datetime) -> "tuple[Banner, str]":
+    """crosscheck, and the one difference that is corrected rather than flagged: the
+    wiki `a` (Skland / PRTS / Kuro BBS) and the first-party `b` agree on the name, the
+    characters and the end (or `b` prints no end), `b` opens the banner at a time
+    already past, and only the opening differs. `a` then takes `b`'s opening and the
+    line is a ✓ that says so; #66 counts it with what the official sources filled in.
+    Anything else is crosscheck's line unchanged: a name, character or end
+    difference stays a ✗, and so does an official opening still to come (the wiki
+    says open, the official source says not yet).
+
+    Why (Gemini, 2026-11-09, alarm #157): Skland listed 明河「烟火邀星河」 on 11-09
+    with poolStartAtTs at 11-09 00:00, the day it was entered; the bulletin, the
+    banner notice and the version briefing all open it 11-05 12:00. The wiki's own
+    bookkeeping date is not a fact about the banner, and the bulletin is first-hand."""
+    if b is None or b.start is None:
+        return a, crosscheck(game, a_name, a, b_name, b)
+    diffs = _xdiffs(a_name, a, b_name, b)
+    if [kind for kind, _t in diffs] != ["开始"] or b.start > now:
+        return a, crosscheck(game, a_name, a, b_name, b)
+    tail = "" if b.end is not None else f"（{b_name}没写结束时刻，只核了开始）"
+    return (replace(a, start=b.start),
+            f"{game}：{a_name} 和 {b_name} 开始不同（{a_name} {a.start:%m-%d %H:%M} / "
+            f"{b_name} {b.start:%m-%d %H:%M}），已按{b_name}补正 ✓{tail}")
 
 
 def official_fill(game: str, main: str, b: Banner, by: str, tr: "Trace") -> None:
@@ -945,6 +981,7 @@ __all__ = [
     "ak_news_pages", "ak_post_text", "ak_rarity", "arknights_banner_posts",
     "arknights_comm_lead", "arknights_history",
     "bili_shape", "bili_sign", "bili_wbi_keys", "check_continuity", "collect", "crosscheck",
+    "crosscheck_fix",
     "debut_only", "ef_banner_posts", "ef_briefing_banners", "ef_briefing_fetch", "ef_briefing_next",
     "ef_cms_posts", "ef_next_banner", "ef_next_from_rows", "ef_official_pools",
     "endfield_history", "endfield_next_from_briefing", "endfield_next_from_news",
@@ -954,7 +991,7 @@ __all__ = [
     "parse_arknights_html", "parse_ef_yituliu", "parse_endfield",
     "parse_endfield_notice", "parse_wuwa", "parse_wuwa_calendar",
     "parse_wuwa_notice_banners", "parse_wuwa_poster", "parse_wuwa_poster_first_end",
-    "parse_wuwa_preview", "record_history", "render", "running", "save_trace", "split_who",
+    "parse_wuwa_preview", "record_history", "render", "running", "same_clock", "save_trace", "split_who",
     "six_star_only", "strip_plan", "upcoming", "update_arknights_history",
     "update_endfield_history", "update_history", "update_wuwa_history",
     "wuwa_bili_post", "wuwa_calendar_image", "wuwa_first_half_notice_end",

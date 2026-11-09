@@ -14,7 +14,7 @@ from typing import NamedTuple
 from ark_relay.features.banners import banners as hub
 from ark_relay.core.config import SERVER_TZ
 from ark_relay.features.banners.banners import (
-    Banner, crosscheck, debut_only, _ef_cms_text, log, _NOT_DEBUT, record_history,
+    Banner, crosscheck_fix, debut_only, _ef_cms_text, log, _NOT_DEBUT, record_history,
     _RERUN, _stamps, Trace, _UA_BROWSER, _UA_PLAIN, _yituliu_future,
 )
 
@@ -604,7 +604,7 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
     for st, who, posted, en, cid in posts:
         tr.src("明日方舟", "官网寻访公告", f"{_AK_NEWS}/{cid}", f"{who} {st:%Y-%m-%d %H:%M}~{en:%Y-%m-%d %H:%M}（{posted:%m-%d} 发）")
     live = [b for b in debut if b.start <= now <= b.end]
-    for b in live:
+    for i, b in enumerate(live):
         other = None
         for st, who, _p, en, _c in posts:
             m = re.match(r"(.*)「([^」]+)」$", who)
@@ -616,7 +616,12 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
                           and set(x for x in m.group(1).split("、") if x) & set(b.chars))):
                 other = Banner("明日方舟", m.group(2), tuple(x for x in m.group(1).split("、") if x), st, en)
                 break
-        tr.checks.append(crosscheck("明日方舟", "PRTS", b, "官网公告", other))
+        # PRTS listing a banner from 07:00 where the post opens it 12:00 is corrected
+        # to the post's time (crosscheck_fix), in `live` and in what is returned
+        fixed, line = crosscheck_fix("明日方舟", "PRTS", b, "官网公告", other, now)
+        tr.checks.append(line)
+        if fixed is not b:
+            live[i] = debut[debut.index(b)] = fixed
     # The other direction: a debut banner the official site has open goes in the
     # report even when PRTS has not listed it yet (the day it opens, PRTS can lag
     # the post; a missing row read as 「当期无新角色卡池」 before 2026-11-08).

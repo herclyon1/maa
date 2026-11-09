@@ -9,8 +9,8 @@ from datetime import datetime
 from ark_relay.features.banners import banners as hub
 from ark_relay.core.config import SERVER_TZ
 from ark_relay.features.banners.banners import (
-    _ak_article_text, _AK_NEWS_ITEM, Banner, crosscheck, _ef_cms_text, log,
-    newest_version, record_history, _stamps, Trace, _UA_BROWSER, upcoming,
+    _ak_article_text, _AK_NEWS_ITEM, Banner, crosscheck_fix, _ef_cms_text, log,
+    newest_version, record_history, same_clock, _stamps, Trace, _UA_BROWSER, upcoming,
     _yituliu_future,
 )
 
@@ -214,7 +214,7 @@ def _endfield(cred, sk_get, now: datetime, trace: "Trace | None" = None,
     offi = ef_official_pools(pools_n, ends_n, off.cms_rows, off.brief[1] if off.brief else [])
     opened = [r for r in offi
               if r["start"] is not None and r["start"] <= now and (r["end"] is None or now <= r["end"])]
-    _ef_crosscheck(got, now, pools_n, ends_n, notice_ok, tr)
+    _ef_crosscheck(got, now, pools_n, ends_n, notice_ok, opened, tr)
     _ef_fill(got, live, opened, now, tr)
     on = {c for b in live for c in b.chars} | {r["op"] for r in opened}
     nxt = _ef_next(now, on, debut, pools_n, off, notes, tr)
@@ -324,9 +324,12 @@ class _EfOfficial:
 
 
 def _ef_crosscheck(got: "list[Banner]", now: datetime, pools_n: list, ends_n: dict,
-                   notice_ok: bool, tr: "Trace") -> None:
-    """Each banner Skland has running, against what the version bulletin prints."""
-    for b in got:
+                   notice_ok: bool, opened: "list[dict]", tr: "Trace") -> None:
+    """Each banner Skland has running, against what the version bulletin prints
+    (crosscheck_fix: a Skland opening that is only Skland's bookkeeping takes the
+    bulletin's, in `got`); its end also against the other official sources when the
+    bulletin prints none (_ef_end_check)."""
+    for i, b in enumerate(got):
         if not b.start <= now <= b.end:
             continue
         tr.ends |= _stamps(b.end)
@@ -342,8 +345,36 @@ def _ef_crosscheck(got: "list[Banner]", now: datetime, pools_n: list, ends_n: di
                        f"{pname} {n} 开 {f'{w:%Y-%m-%d %H:%M}' if w else '版本更新后'}"
                        f" 止 {f'{en:%Y-%m-%d %H:%M}' if en else '没写'}")
                 break
-        tr.checks.append(crosscheck("终末地", "森空岛", b, "公告", other) if notice_ok
-                         else "终末地：公告取不到，只有森空岛一个来源 ✗")
+        if notice_ok:
+            got[i], line = crosscheck_fix("终末地", "森空岛", b, "公告", other, now)
+            tr.checks.append(line)
+        else:
+            tr.checks.append("终末地：公告取不到，只有森空岛一个来源 ✗")
+        if other is None or other.end is None:
+            _ef_end_check(b, opened, tr)
+
+
+def _ef_end_check(b: Banner, opened: "list[dict]", tr: "Trace") -> None:
+    """Skland's end for the running `b` against the end the official sources print
+    (ef_official_pools: the bulletin, the banner notice, the version briefing's row),
+    for the case the bulletin itself prints none (「版本更新维护前」). Nothing is
+    corrected here: the end is the report's countdown, so a disagreement is a ✗ that
+    names both values and the one the report printed.
+
+    Why: on 11-09 Skland listed 明河「烟火邀星河」 to 11-25 06:00 while the version
+    briefing closes it 11-26 06:00, and the report's countdown moved a day overnight
+    (11-08's printed the briefing's 11-26, taken from the official fill) with no
+    line anywhere, since the bulletin is the only source this was compared with."""
+    r = next((r for r in opened
+              if r.get("end") is not None and (r["op"] in b.chars or r["pool"] == b.name)), None)
+    if r is None:
+        return
+    by = "、".join(s for s, t in (r.get("ends") or {}).items() if same_clock(t, r["end"])) or "官方"
+    if same_clock(b.end, r["end"]):
+        tr.checks.append(f"终末地：森空岛和{by}的结束时刻对得上 ✓（{b.end:%m-%d %H:%M}）")
+        return
+    tr.checks.append(f"终末地：森空岛 和 {by} 结束对不上 ✗（森空岛 {b.end:%m-%d %H:%M} / "
+                     f"{by} {r['end']:%m-%d %H:%M}；日报当期按森空岛写 {b.end:%m-%d %H:%M} 结束）")
 
 
 def _ef_fill(got: "list[Banner]", live: "list[Banner]", opened: "list[dict]", now: datetime,
