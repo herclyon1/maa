@@ -323,6 +323,33 @@ def _weekly_gates(eng, rec: RunRecord) -> None:
     # (Data.AnnihilationCompletedWeek) since the 2026-10-11 hand-over, item 13.
 
 
+def _annihilation_sanity_short(eng, rec: RunRecord) -> None:
+    """An Annihilation pass AUTO-MAS booked as done that fought nothing for lack of sanity.
+
+    AUTO-MAS v5.8 books it 「Success!」: 2026-11-09 MAA-05-02-32 (09:03:16-09:04:55) read
+    「理智: 20/210」 against a cost of 25 and fought nothing, so the failure path's check in
+    _book never saw it and the day's 剿灭 went to the group as 「拿不出证据，已交给我们这边去查」.
+    Marked the same way (raw maa_sanity_short, the ledger line too), so the day's unverified
+    items leave it out (core.day_unverified_items) and the daily report says why; and said in
+    the group the way the failure path says it, every such run, with the two numbers. A pass
+    with a progress line fought, and one already marked has been said."""
+    raw = rec.raw
+    if (rec.script != "MAA" or not raw.get("annihilation") or raw.get("annihilation_progress")
+            or raw.get("maa_sanity_short")):
+        return
+    until = rec.finished + timedelta(minutes=5) if rec.duration_known else None
+    short = outcome.maa_sanity_short(_maa_app_log(eng.cfg.maa_dir, rec.started, until) or "")
+    if not short:
+        return
+    raw["maa_sanity_short"] = short
+    _mark_raw_on_ledger(eng, rec, "maa_sanity_short", short)
+    errs = _push_now(eng, run_day(rec), "理智", rec.run_id, texts.MAA_SANITY_SHORT,
+                     texts.maa_sanity_short_body(short["have"], short["cost"],
+                                                 rec.started.astimezone(SERVER_TZ).strftime("%H:%M"), booked_ok=True))
+    log.info("🟡 MAA 剿灭理智不够（%s/%s），没打，AUTO-MAS 记成成功，%s", short["have"], short["cost"],
+             "没推出去，下一轮再推" if errs else "已报群")
+
+
 def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
     """Everything to do after AUTO-MAS reports that this round exited normally.
 
@@ -343,6 +370,7 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
         log.info("↪️ %s %s（%s）跑成了，但压着的 %s 是%s失败，不算它自己好了，照旧等着报",
                  rec.script, rec.run_id, core.maa_mode(_job(rec)), held.run_id, core.maa_mode(_job(held)))
     _weekly_gates(eng, rec)
+    _annihilation_sanity_short(eng, rec)
     # AUTO-MAS saying 「这个脚本正常退出了」 does not mean it got the work done.
     # So check against the evidence before returning, and anything not done has
     # to be said out loud.

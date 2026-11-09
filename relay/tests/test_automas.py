@@ -1131,12 +1131,13 @@ rebuilds the venv drops them. features/host/automas_jobfix.py keeps them there.
     bare = tmpdir()
     check("AUTO-MAS without the venv", (jf.site_dir(bare), jf.heal(bare)), (None, []))
 
-    print("\n[heal: missing -> both put back; right -> untouched; one changed -> that one]")
+    print("\n[heal: missing -> all put back; right -> untouched; one changed -> that one]")
     root = tmpdir()
     site = root.joinpath(*jf.SITE_PACKAGES)
     site.mkdir(parents=True)
-    check("both missing: both written", jf.heal(root), ["zz_automas_job_fix.py", "zz_automas_job_fix.pth"])
-    check("……byte for byte", [(site / n).read_bytes() == jf.payload(n) for n in jf.FILES], [True, True])
+    check("all missing: all written", jf.heal(root),
+          ["zz_automas_job_fix.py", "zz_automas_job_fix.pth", "zz_automas_ld_adb.py", "zz_automas_ld_adb.pth"])
+    check("……byte for byte", [(site / n).read_bytes() == jf.payload(n) for n in jf.FILES], [True] * 4)
     os.utime(site / "zz_automas_job_fix.py", (1_000_000, 1_000_000))
     check("already right: nothing written", jf.heal(root), [])
     check("……mtime not touched", (site / "zz_automas_job_fix.py").stat().st_mtime, 1_000_000)
@@ -1192,5 +1193,96 @@ rebuilds the venv drops them. features/host/automas_jobfix.py keeps them there.
         lg.removeHandler(h)
 
 
+def _part_automas_ld_adb():
+    """AUTO-MAS hands MAA the LDPlayer instance's own ADB address, not another port its VM listens on (11-09).
+
+The 11-09 morning shift did not run: LDManager.getInfo took the first port the LDPlayer VM
+process listens on, and four of five tries handed MAA 127.0.0.1:11159 / 12508 / 12783 / 14245
+(app.log 09:01-09:08 「MAA 的 ADB 连接异常」). zz_automas_ld_adb.py, loaded from AUTO-MAS's venv by
+its .pth, rewrites a 127.0.0.1 port other than 5555+2*index to emulator-<5554+2*index>.
+    """
+    import ast
+    import dataclasses
+    import subprocess
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.host import automas_jobfix as jf
+
+    print("[the payload: a module, and a .pth that imports it after pywin32.pth]")
+    src = jf.payload("zz_automas_ld_adb.py").decode("utf-8")
+    check(".pth imports the module", jf.payload("zz_automas_ld_adb.pth"), b"import zz_automas_ld_adb\n")
+    tree = ast.parse(src)
+    check("the module imports only sys at its top",
+          [n.names[0].name for n in tree.body if isinstance(n, ast.Import | ast.ImportFrom)], ["sys"])
+    check(".pth sorts after pywin32.pth",
+          sorted(["_virtualenv.pth", "pywin32.pth", "zz_automas_ld_adb.pth"])[-1], "zz_automas_ld_adb.pth")
+
+    print("\n[fix: only a 127.0.0.1 port that is not the instance's own changes]")
+    ns: dict = {}
+    exec(compile(src.split("\nclass _Hook")[0], "zz_automas_ld_adb.py", "exec"), ns)
+    fix = ns["fix"]
+    check("11-09 09:04 port for instance 1000", fix("1000", "127.0.0.1:12508"), "emulator-7554")
+    check("11-09 09:01 port", fix("1000", "127.0.0.1:11159"), "emulator-7554")
+    check("its own port 7555 stays (11-08 21:54 connected on it)", fix("1000", "127.0.0.1:7555"), "127.0.0.1:7555")
+    check("emulator-7554 stays (11-09 09:03 connected on it)", fix("1000", "emulator-7554"), "emulator-7554")
+    check("instance 0's own 5555 stays", fix("0", "127.0.0.1:5555"), "127.0.0.1:5555")
+    check("instance 0 on another port", fix("0", "127.0.0.1:16384"), "emulator-5554")
+    check("an empty address stays", fix("1000", ""), "")
+
+    @dataclasses.dataclass
+    class Info:          # the shape of AUTO-MAS's app/models/emulator.py DeviceInfo (a dataclass, 11-09)
+        title: str
+        status: int
+        adb_address: str
+        app_launch: str = ""
+    old = Info("t", 0, "127.0.0.1:12508", "launched")
+    new = ns["_with_address"](old, "emulator-7554")
+    check("a dataclass is copied with the new address, the rest kept",
+          (new.adb_address, new.app_launch, old.adb_address), ("emulator-7554", "launched", "127.0.0.1:12508"))
+
+    print("\n[loaded the way AUTO-MAS loads it: the .pth patches LDManager.getInfo when ldplayer is imported]")
+    root = tmpdir()
+    site = root / "site"
+    site.mkdir()
+    for name in ("zz_automas_ld_adb.py", "zz_automas_ld_adb.pth"):
+        (site / name).write_bytes(jf.payload(name))
+    pkg = root / "proj" / "app" / "utils" / "common" / "emulator"
+    pkg.mkdir(parents=True)
+    for d in (root / "proj" / "app", root / "proj" / "app" / "utils" / "common", pkg):
+        (d / "__init__.py").write_text("")
+    (root / "proj" / "app" / "utils" / "__init__.py").write_text(
+        "import logging\ndef get_logger(n):\n    return logging.getLogger(n)\n")
+    (pkg / "ldplayer.py").write_text(
+        "import dataclasses\n"
+        "@dataclasses.dataclass\n"
+        "class DeviceInfo:\n    title: str\n    status: int\n    adb_address: str\n"
+        "class LDManager:\n"
+        "    def __init__(self, port):\n        self.port = port\n"
+        "    async def getInfo(self, idx):\n"
+        "        ids = [idx] if idx is not None else ['1000', '0']\n"
+        "        return {i: DeviceInfo('t', 1, f'127.0.0.1:{self.port}' if self.port else f'emulator-{5554 + int(i) * 2}')"
+        " for i in ids}\n"
+        "class LDPlayer14Manager(LDManager):\n"
+        "    async def getInfo(self, idx):\n        return await super().getInfo(idx)\n")
+    drive = (
+        "import asyncio, site, sys\n"
+        "site.addsitedir(sys.argv[1]); sys.path.insert(0, sys.argv[2])\n"
+        "from app.utils.common.emulator import ldplayer as m\n"
+        "async def go():\n"
+        "    out = [m.LDManager._automas_ld_adb_fix]\n"
+        "    for port in (12508, 7555, 0):\n"
+        "        out.append((await m.LDManager(port).getInfo('1000'))['1000'].adb_address)\n"
+        "    out.append({k: v.adb_address for k, v in (await m.LDManager(5555).getInfo(None)).items()})\n"
+        "    out.append((await m.LDPlayer14Manager(14245).getInfo('1000'))['1000'].adb_address)\n"
+        "    print(repr(out))\n"
+        "asyncio.run(go())\n")
+    r = subprocess.run([sys.executable, "-I", "-c", drive, str(site), str(root / "proj")],
+                       capture_output=True, text=True, timeout=60)
+    check("patched, the stray ports rewritten, the right ones kept, the LDPlayer 14 subclass too",
+          r.stdout.strip(), repr([True, "emulator-7554", "127.0.0.1:7555", "emulator-7554",
+                                  {"1000": "emulator-7554", "0": "127.0.0.1:5555"}, "emulator-7554"]))
+    check("……nothing on stderr", r.stderr, "")
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_automas_backend_match, _part_automas_boot_one_alarm, _part_automas_boot_revival, _part_automas_contract_watch, _part_automas_handover, _part_automas_jobfix]))
+    sys.exit(run_parts([_part_automas_backend_match, _part_automas_boot_one_alarm, _part_automas_boot_revival, _part_automas_contract_watch, _part_automas_handover, _part_automas_jobfix, _part_automas_ld_adb]))

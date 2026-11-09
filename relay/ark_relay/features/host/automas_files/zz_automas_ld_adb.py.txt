@@ -1,0 +1,125 @@
+# AUTO-MAS local fallback (2026-11-09, Claude for Gemini's #152-#154): the ADB address AUTO-MAS hands MAA
+# for an LDPlayer 9 instance. LDManager.getInfo takes get_adb_ports(vbox_pid) - the first port the LDPlayer
+# VM process listens on, other than 2222 - as the ADB port. That process listens on several, and which comes
+# first is chance: the 11-09 morning shift got 127.0.0.1:11159 / 12508 / 12783 / 14245 on four of five tries,
+# MAA could not connect and the shift did not run (app.log 09:01-09:08 「MAA 的 ADB 连接异常」); the try that
+# connected was handed emulator-7554. Upstream dev still does this on 11-09; only LDPlayer 14
+# (emulator2/ldplayer14.py) checks against adb devices.
+# One case is changed: a 127.0.0.1:<port> whose port is not the instance's own 5555+2*index becomes
+# emulator-<5554+2*index>, the address AUTO-MAS itself hands on when it finds no port (LDPlayer's fixed ADB
+# serial; _block_ads_via_adb in the same file builds it the same way). The own port, emulator-... and anything
+# else pass unchanged. Imported at interpreter start by zz_automas_ld_adb.pth next to it; LDManager.getInfo is
+# wrapped once the ldplayer module is imported. Every exception is swallowed: it must never stop AUTO-MAS
+# starting. Deleting the two files undoes it.
+import sys
+
+_TARGETS = ("app.utils.common.emulator.ldplayer", "app.utils.emulator.ldplayer")
+_said = {}  # instance -> the wrong address last logged; each wrong address is logged once (status polls call getInfo too)
+
+
+def _note(idx, wrong, right):
+    if _said.get(idx) == wrong:
+        return
+    _said[idx] = wrong
+    try:
+        from app.utils import get_logger
+
+        get_logger("雷电模拟器管理").info(
+            f"ADB 地址兜底：实例 {idx} 查出的 {wrong} 不是约定端口（那是雷电进程开着的别的端口），改交 {right}"
+        )
+    except Exception:
+        pass
+
+
+def fix(idx, address):
+    """The address to hand on for instance idx: a 127.0.0.1 port other than 5555+2*idx becomes emulator-<5554+2*idx>."""
+    want = 5555 + 2 * int(idx)
+    text = str(address or "")
+    if text.startswith("127.0.0.1:") and text != f"127.0.0.1:{want}":
+        return f"emulator-{want - 1}"
+    return address
+
+
+def _with_address(info, address):
+    """info with adb_address replaced: DeviceInfo is a dataclass (app/models/emulator.py, 11-09); a pydantic model is
+    copied the pydantic way."""
+    import dataclasses
+
+    if dataclasses.is_dataclass(info):
+        return dataclasses.replace(info, adb_address=address)
+    if hasattr(info, "model_copy"):
+        return info.model_copy(update={"adb_address": address})
+    info.adb_address = address
+    return info
+
+
+def _patch(module):
+    cls = getattr(module, "LDManager", None)
+    if cls is None or getattr(cls, "_automas_ld_adb_fix", False):
+        return
+    orig = cls.getInfo
+
+    async def getInfo(self, idx):
+        result = await orig(self, idx)
+        try:
+            for k, info in list(result.items()):
+                old = getattr(info, "adb_address", None)
+                new = fix(k, old)
+                if new == old:
+                    continue
+                result[k] = _with_address(info, new)
+                _note(k, old, new)
+        except Exception:
+            pass
+        return result
+
+    cls.getInfo = getInfo
+    cls._automas_ld_adb_fix = True
+
+
+class _Hook:
+    """Wrap the loader of the ldplayer module so LDManager is patched right after it runs."""
+
+    def find_spec(self, name, path=None, target=None):
+        if name not in _TARGETS:
+            return None
+        for finder in sys.meta_path:
+            if finder is self or not hasattr(finder, "find_spec"):
+                continue
+            try:
+                spec = finder.find_spec(name, path, target)
+            except Exception:
+                continue
+            if spec is not None:
+                break
+        else:
+            return None
+        real = spec.loader
+        if real is None or not hasattr(real, "exec_module"):
+            return spec
+
+        class _Loader:
+            def create_module(self, s):
+                return real.create_module(s)
+
+            def exec_module(self, module):
+                real.exec_module(module)
+                try:
+                    _patch(module)
+                except Exception:
+                    pass
+
+            def __getattr__(self, attr):
+                return getattr(real, attr)
+
+        spec.loader = _Loader()
+        return spec
+
+
+try:
+    for _name in _TARGETS:
+        if _name in sys.modules:
+            _patch(sys.modules[_name])
+    sys.meta_path.insert(0, _Hook())
+except Exception:
+    pass

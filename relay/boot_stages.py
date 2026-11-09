@@ -518,8 +518,8 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
 
 
 def _stage_automas_jobfix(cfg, log) -> None:
-    """Put AUTO-MAS's job-object fallback back in its venv when a file is missing or differs
-    (features/host/automas_jobfix.py). Before the inbox step: a backend the relay starts from
+    """Put AUTO-MAS's fallbacks (job object, LDPlayer ADB address) back in its venv when a file is
+    missing or differs (features/host/automas_jobfix.py). Before the inbox step: a backend the relay starts from
     there on (ensure_automas) reads the .pth."""
     _automas_jobfix(cfg, log, "开机")
 
@@ -527,17 +527,18 @@ def _stage_automas_jobfix(cfg, log) -> None:
 def _automas_jobfix(cfg, log, when: str) -> None:
     """automas_jobfix.heal, said in relay.log; a fallback it could not put in place is a
     WARNING (the group): without it AUTO-MAS's starts of MAA can fail again with
-    「拒绝访问」 (2026-11-08 21:30). Never raises."""
+    「拒绝访问」 (2026-11-08 21:30), or MAA be handed a wrong ADB port (2026-11-09 09:01). Never raises."""
     automas_dir = getattr(cfg, "automas_dir", None)
     try:
         from ark_relay.features.host import automas_jobfix  # noqa: PLC0415
         if put := automas_jobfix.heal(automas_dir):
-            log.info("%s：AUTO-MAS 的 Job 兜底文件补回去了：%s（AUTO-MAS 后端下次启动时生效）", when, "、".join(put))
+            log.info("%s：AUTO-MAS 的兜底文件补回去了：%s（AUTO-MAS 后端下次启动时生效）", when, "、".join(put))
         elif automas_dir and automas_jobfix.site_dir(automas_dir) is None:
-            log.info("%s：AUTO-MAS 自带的 Python 目录不在（%s），Job 兜底文件没地方放", when,
+            log.info("%s：AUTO-MAS 自带的 Python 目录不在（%s），兜底文件没地方放", when,
                      Path(automas_dir).joinpath(*automas_jobfix.SITE_PACKAGES))
     except Exception as exc:  # noqa: BLE001 - the boot goes on; the WARNING says what is missing
-        log.warning("%s：AUTO-MAS 的 Job 兜底文件没能放好（%s），AUTO-MAS 启动 MAA 时可能又报「拒绝访问」", when, exc)
+        log.warning("%s：AUTO-MAS 的兜底文件没能放好（%s），AUTO-MAS 启动 MAA 时可能又报「拒绝访问」，"
+                    "或交给 MAA 的模拟器端口不对、连不上", when, exc)
 
 
 # The installed relay runs app_main._packaged_selfupdate instead (app_main.py swaps it in); this body runs in tests/test_selfupdate.py.

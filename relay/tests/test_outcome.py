@@ -155,6 +155,15 @@ MaaEnd 卡在弹窗上自己关掉，两边都没报错，而中继报了「全�
         check("打了一次就不算", maa_sanity_short(sh.replace('"times_finished":0', '"times_finished":1')), None)
         check("理智够就不算", maa_sanity_short(sh.replace("Current Sanity: 17", "Current Sanity: 90")), None)
         check("没有这些行就不判", maa_sanity_short("TaskChainStart Fight\n"), None)
+        # 2026-11-09: the 09:01:37 attempt (Px12844) never connected, so it had no StartUp; its
+        # window (to 5 minutes past its end) held the 09:03 attempt's (Px2236) reading.
+        no_conn = ("[2026-11-09 09:01:43.100][INF][Px12844][Tx3] -----------------------------\n"
+                   "[2026-11-09 09:01:57.063][INF][Px12844][Tx11] connect return: false\n")
+        nxt = ("[2026-11-09 09:03:19.000][INF][Px2236][Tx5] -----------------------------\n"
+               + sh.replace("2026-09-14 09:02:17", "2026-11-09 09:04:43").replace("Px14564", "Px2236")
+                   .replace("Current Sanity: 17", "Current Sanity: 20"))
+        check("下一趟（另一个 MAA 进程）读的理智不算到没连上的这一趟", maa_sanity_short(no_conn + nxt), None)
+        check("那一趟自己读的照算", maa_sanity_short(nxt), {"have": 20, "cost": 25})
 
         print("\n[周本没领奖＝没干成（2026-09-14 09:19 真实行）]")
         wb = ("2026-09-14 10:02:00,000 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"

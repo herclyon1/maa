@@ -1085,17 +1085,28 @@ _MAA_CHAIN = re.compile(
 
 _MAA_STARTUP = re.compile(
     r'TaskChainStart\b.*?"taskchain":"StartUp"')
+# Every asst.log line names the MAA process that wrote it, and each launch is a new
+# process: 「[2026-11-09 09:04:43.712][INF][Px2236][Tx55856] ...」.
+_MAA_PROCESS = re.compile(r"^\[[^\]]*\]\[\w+\]\[Px(\d+)\]", re.M)
 
 
 def _one_run_only(text: str) -> str:
-    """Keep only this run: everything from the second StartUp on belongs to the
-    next run and is cut off.
+    """Keep only this run: from the first line another MAA process wrote, and from
+    the second StartUp, the rest belongs to the next run and is cut off.
 
     The caller's window is [start, end + 5 minutes], which can reach into a run that
-    started right after. Every MAA run begins with StartUp, so the second StartUp
-    marks the boundary. With only one StartUp (or none) the text is returned
-    unchanged.
+    started right after. Each AUTO-MAS attempt launches MAA anew (app.log: the old
+    MAA.exe 「进程已中止」 before 「启动MAA进程」, so the window opens on this run's
+    own process), and every line carries its process id. A run that never connected
+    has no StartUp: on 2026-11-09 the 09:01:37 attempt (Px12844, 「MAA 的 ADB 连接异常」)
+    kept the 09:03 attempt's (Px2236) 「Current Sanity: 20」 and was reported as the run
+    short of sanity, while the 09:03 one was reported as 剿灭 without evidence. Within
+    one process, every MAA run begins with StartUp, so the second StartUp marks the
+    boundary. With neither the text is returned unchanged.
     """
+    procs = list(_MAA_PROCESS.finditer(text))
+    if procs and (other := next((m for m in procs if m.group(1) != procs[0].group(1)), None)):
+        text = text[:other.start()].rstrip("\n")
     hits = list(_MAA_STARTUP.finditer(text))
     if len(hits) < 2:
         return text

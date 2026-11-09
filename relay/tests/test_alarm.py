@@ -1558,6 +1558,29 @@ that day he took the make-up that got past it back out of the group: 「报错�
     e = build()
     handle._handle(e, rec("MAA", at(9, 5), ok=True, raw={"annihilation": "Annihilation", "maa_sanity_short": True}))
     check("理智不够没打剿灭是正常状态：不推", alarms(e), [])
+    # 2026-11-09 MAA-05-02-32: AUTO-MAS v5.8 booked an Annihilation pass 「Success!」 that read
+    # 理智 20 against 25 and fought nothing; it went out as 「剿灭 拿不出证据」 (verify ledger #153).
+    real_short = outcome.maa_sanity_short
+    outcome.maa_sanity_short = lambda text: {"have": 20, "cost": 25}
+    try:
+        e = build()
+        r = rec("MAA", at(9, 3), ok=True, raw={"annihilation": "Annihilation"})
+        handle._handle(e, r)
+        check("剿灭记成功、其实理智不够：报理智不够，不报没证据", alarms(e), [texts.MAA_SANITY_SHORT])
+        check("…写着两个数、写明 AUTO-MAS 记成了成功",
+              "理智 20" in last_body(e) and "剿灭一次要 25" in last_body(e) and "记成成功" in last_body(e), True)
+        check("…记在这一趟上", r.raw.get("maa_sanity_short"), {"have": 20, "cost": 25})
+        handle._handle(e, rec("MAA", at(9, 3), ok=True, raw={"annihilation": "Annihilation"}))   # replayed
+        check("…同一条记录不推两次", len(alarms(e)), 1)
+        e = build()
+        handle._handle(e, rec("MAA", at(9, 3), ok=True,
+                              raw={"annihilation": "Annihilation", "annihilation_progress": [400, 400]}))
+        check("有进度行的剿灭不去读理智：不推", alarms(e), [])
+        e = build()
+        handle._handle(e, rec("MAA", at(9, 3), ok=True, raw={}))
+        check("不是剿灭那一趟：不读", alarms(e), [])
+    finally:
+        outcome.maa_sanity_short = real_short
     e = build()
     handle._handle(e, rec("MAA", at(9, 5), ok=True,
                           raw={"annihilation": "Annihilation", "annihilation_progress": "400/400"}))

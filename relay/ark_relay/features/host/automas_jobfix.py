@@ -16,6 +16,14 @@ try showed the hook loads; it did not reproduce the refusal (without the hook th
 into a terminated job also succeeded), so whether it cures the 21:30 failure is still open. A
 .pth is read at interpreter start: a file put back takes effect at AUTO-MAS's next backend
 start, not in the one already running.
+
+The same way, and in the same place, a second pair fixes the ADB address AUTO-MAS hands MAA for an
+LDPlayer instance (Gemini's #152-#154, 2026-11-09): LDManager.getInfo takes the first port the LDPlayer
+VM process listens on as the ADB port, and on the 11-09 morning shift four of five tries were handed
+127.0.0.1:11159 / 12508 / 12783 / 14245, so MAA could not connect and the shift did not run.
+zz_automas_ld_adb.py rewrites a 127.0.0.1 port other than the instance's 5555+2*index to
+emulator-<5554+2*index>, the address AUTO-MAS itself hands on when it finds no port. Tried on the
+machine on 11-09 in AUTO-MAS's own Python 3.12 against its real DeviceInfo (a dataclass).
 """
 from __future__ import annotations
 
@@ -25,7 +33,7 @@ from ark_relay.core.config import atomic_write_bytes
 
 # AUTO-MAS's own interpreter, under its install folder (cfg.automas_dir, D:\ark\automas).
 SITE_PACKAGES = ("runtime", "environment", "venv", "Lib", "site-packages")
-FILES = ("zz_automas_job_fix.py", "zz_automas_job_fix.pth")
+FILES = ("zz_automas_job_fix.py", "zz_automas_job_fix.pth", "zz_automas_ld_adb.py", "zz_automas_ld_adb.pth")
 _PAYLOAD = Path(__file__).with_name("automas_files")
 
 
@@ -43,7 +51,7 @@ def site_dir(automas_dir) -> Path | None:
 
 
 def heal(automas_dir) -> list[str]:
-    """Put back each of FILES that is missing or differs; the names put back, [] when both
+    """Put back each of FILES that is missing or differs; the names put back, [] when all
     were right or there is no site-packages to put them in.
 
     A file already right is not written (not even its mtime touched). Raises OSError when a

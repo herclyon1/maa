@@ -479,7 +479,8 @@ def makeup_passed(game: str, shift: str) -> str:
 
 
 # MAA read less sanity than the stage costs and fought nothing; AUTO-MAS booked the
-# run as failed (handle._handle, outcome.maa_sanity_short).
+# run as failed (handle._handle, outcome.maa_sanity_short), or an Annihilation pass as
+# done (handle._annihilation_sanity_short, 2026-11-09).
 MAA_SANITY_SHORT = "⚠️ 明日方舟理智不够，这一趟没打"
 # MaaEnd restarted itself to install a new build after its shift's round was already
 # done; AUTO-MAS booked that attempt as failed (handle._drop_update_after_done). Not
@@ -598,8 +599,12 @@ def restart_was_last(result: str, at: str) -> str:
             "这次之后没有再跑出一次记录。\n")
 
 
-def maa_sanity_short_body(have, cost, at: str) -> str:
-    """Body of MAA_SANITY_SHORT (outcome.maa_sanity_short read both numbers off MAA's log)."""
+def maa_sanity_short_body(have, cost, at: str, booked_ok: bool = False) -> str:
+    """Body of MAA_SANITY_SHORT (outcome.maa_sanity_short read both numbers off MAA's log).
+    booked_ok: an Annihilation pass AUTO-MAS booked 「Success!」 all the same (handle._annihilation_sanity_short)."""
+    if booked_ok:
+        return (f"{at} 开始的这一趟剿灭：MAA 读到理智 {have}，剿灭一次要 {cost}，一次都没打就停了，"
+                "AUTO-MAS 却把这一趟记成成功。")
     return (f"{at} 开始的这一趟：MAA 读到理智 {have}，要打的关一次要 {cost}，一次都没打就停了，"
             "AUTO-MAS 把这一趟记成失败。")
 
