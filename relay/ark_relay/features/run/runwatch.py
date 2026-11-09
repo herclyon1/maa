@@ -26,7 +26,8 @@ checks read live sources instead. Both run from the tick:
 * **Shift overrun.** A queue still unfinished in runtime-snapshot after its
   planned end + OVERRUN_SLACK_MIN. AUTO-MAS's QueueConfig.json has no planned end
   or duration, so the planned end is the longest finish of the last HISTORY_DAYS
-  days, recomputed from the ledger each time (planned_minutes).
+  days and of the same weekday SAME_WEEKDAY_BACK days back, recomputed from the ledger
+  each time (planned_minutes).
 """
 from __future__ import annotations
 
@@ -43,6 +44,13 @@ log = logging.getLogger("ark.runwatch")
 
 OVERRUN_SLACK_MIN = 30
 HISTORY_DAYS = 7
+# The same weekday this many days back counts too, when it was clean (Gemini's #155 ruling,
+# 2026-11-09). Measured (ledgers 10-26..11-08 through _chain): the Monday 早班 is long after the
+# 04:00 weekly reset - 10-26 142 min clean, 11-02 151 min not clean (an OK-WW attempt failed),
+# every other day 56-87 min - so on 11-09 the HISTORY_DAYS window held no clean Monday, the limit
+# was 11-04's 81 min, and 「⏰ 早班超时还没跑完」 went out at 10:51 with MaaEnd gathering on
+# normally (OK-WW 51 min against 11-12, the weekly boss and garden). 14 reaches 10-26.
+SAME_WEEKDAY_BACK = (7, 14)
 # Records of one queue run follow each other closely; a record more than this
 # after the previous one starts a different run. A hung attempt can leave a gap of
 # tens of minutes inside one run.
@@ -375,37 +383,45 @@ def run_minutes(entries: list[dict], due: datetime) -> int | None:
     return _chain(entries, due)[0]
 
 
+def _past_run(eng, today: datetime, back: int, hh: int, mm: int, names: list[str]) -> "tuple[int, bool] | None":
+    """(minutes, clean) of the queue run at hh:mm `back` days before `today` (_chain); None when
+    there was none, it timed out, or it raised an overrun alarm."""
+    from ark_relay.features.alarm import handle  # noqa: PLC0415
+    hhmm = f"{hh:02d}:{mm:02d}"
+    day = today - timedelta(days=back)
+    due = day.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    # An evening run can finish after midnight, in the next day's ledger.
+    entries = (eng.state.read_ledger(day.strftime("%Y-%m-%d"))
+               + eng.state.read_ledger((day + timedelta(days=1)).strftime("%Y-%m-%d")))
+    m, ok, timed_out = _chain(entries, due)
+    if m is None or timed_out:
+        return None
+    if any(handle._already_alerted(eng, day.strftime("%Y-%m-%d"), f"队列超时|{n}|{hhmm}") for n in names):
+        return None
+    return m, ok
+
+
 def planned_minutes(eng, hh: int, mm: int, today: datetime) -> tuple[int, int]:
     """(planned minutes for the queue at hh:mm, days it was taken from).
 
     The longest finish among the last HISTORY_DAYS days that were clean (each
-    script's last record ok, _chain). A day that timed out or raised an overrun
-    alarm never counts, so one overlong day does not raise the limit for a week. With fewer than
-    MIN_CLEAN_DAYS clean days, the longest of every day that did not time out is
-    used instead. FALLBACK_LIMIT_MIN only when there is no usable day at all.
+    script's last record ok, _chain), and among the same weekday SAME_WEEKDAY_BACK days
+    back when that day was clean (the Monday shift after the weekly reset). A day that
+    timed out or raised an overrun alarm never counts, so one overlong day does not raise
+    the limit for a week. With fewer than MIN_CLEAN_DAYS clean days, the longest of every
+    day that did not time out is used instead. FALLBACK_LIMIT_MIN only when there is no
+    usable day at all. The day count is the HISTORY_DAYS window's.
     """
-    from ark_relay.features.alarm import handle  # noqa: PLC0415
-    hhmm = f"{hh:02d}:{mm:02d}"
     names = [q["name"] for q in plan.schedule(eng.cfg.automas_dir)]
-    clean, usable = [], []
-    for back in range(1, HISTORY_DAYS + 1):
-        day = today - timedelta(days=back)
-        due = day.replace(hour=hh, minute=mm, second=0, microsecond=0)
-        # An evening run can finish after midnight, in the next day's ledger.
-        entries = (eng.state.read_ledger(day.strftime("%Y-%m-%d"))
-                   + eng.state.read_ledger((day + timedelta(days=1)).strftime("%Y-%m-%d")))
-        m, ok, timed_out = _chain(entries, due)
-        if m is None or timed_out:
-            continue
-        if any(handle._already_alerted(eng, day.strftime("%Y-%m-%d"), f"队列超时|{n}|{hhmm}") for n in names):
-            continue
-        usable.append(m)
-        if ok:
-            clean.append(m)
+    runs = [r for back in range(1, HISTORY_DAYS + 1) if (r := _past_run(eng, today, back, hh, mm, names))]
+    weekday = [r[0] for back in SAME_WEEKDAY_BACK if (r := _past_run(eng, today, back, hh, mm, names)) and r[1]]
+    clean = [m for m, ok in runs if ok]
     if len(clean) >= MIN_CLEAN_DAYS:
-        return max(clean), len(clean)
-    if usable:
-        return max(usable), len(usable)
+        return max(clean + weekday), len(clean)
+    if runs:
+        return max([m for m, _ in runs] + weekday), len(runs)
+    if weekday:
+        return max(weekday), len(weekday)
     return FALLBACK_LIMIT_MIN, 0
 
 

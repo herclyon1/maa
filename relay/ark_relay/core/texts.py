@@ -1188,7 +1188,7 @@ def _overrun_basis(limit_min: int, days: int) -> str:
     no day was usable and the fixed fallback stands in for a history there is not."""
     if not days:
         return f"没有可参考的记录，按 {limit_min} 分钟算"
-    return f"近 7 天最长 {limit_min} 分钟跑完"
+    return f"近 7 天和前两周同一天里最长 {limit_min} 分钟跑完"
 
 
 def _restart_note(restarted) -> str:
