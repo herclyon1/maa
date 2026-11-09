@@ -303,29 +303,6 @@ below are copied from the machine; the ledger shapes from 09-24..09-30.
         fail_day(e9.state, d, timeout=True)
     check("only when every day timed out -> 180", runwatch.planned_minutes(e9, 9, 0, at(9, 0)), (180, 0))
 
-    print("\n[11-09 (Monday): the same weekday back counts when clean - #155, 11-02 was not clean, 10-26 was]")
-    # Chains as _chain read them off the machine's ledgers 10-26..11-08: Mondays 142 (clean) and 151 (an
-    # OK-WW attempt failed), every other day 56-87; 11-09 was timed by 11-04's 81 and alarmed at 10:51.
-    em = build()
-    mins = {(10, 26): (142, True), (10, 27): (56, True), (10, 28): (63, True), (10, 29): (87, True),
-            (10, 30): (65, True), (10, 31): (62, True), (11, 1): (62, True), (11, 2): (151, False),
-            (11, 3): (80, False), (11, 4): (81, True), (11, 6): (68, True), (11, 7): (80, True), (11, 8): (60, True)}
-    for (mo, d), (m, ok) in mins.items():
-        start = datetime(2026, mo, d, 9, 0, 50, tzinfo=SERVER_TZ)
-        ledger(em.state, start, [("MAA", start, start + timedelta(minutes=10)),
-                                 ("OK-WW", start + timedelta(minutes=11), start + timedelta(minutes=m))])
-        if not ok:
-            pth = em.state.ledger_path(start.strftime("%Y-%m-%d"))
-            rows = [json.loads(x) for x in pth.read_text(encoding="utf-8").splitlines()]
-            rows[-1]["ok"], rows[-1]["failed_tasks"] = False, ["OK-WW 没打完周本"]
-            pth.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
-    monday = datetime(2026, 11, 9, 9, 0, tzinfo=SERVER_TZ)
-    check("Monday 11-09: 10-26's clean 142 (14 days back) is the limit, not 11-04's 81",
-          runwatch.planned_minutes(em, 9, 0, monday), (142, 4))   # 4 clean days in 11-02..11-08: 04, 06, 07, 08
-    check("……a 7-day window alone (11-02 not clean) would have given 81",
-          max(m for (mo, d), (m, ok) in mins.items() if ok and datetime(2026, mo, d, tzinfo=SERVER_TZ) >= datetime(2026, 11, 2, tzinfo=SERVER_TZ)), 81)
-    check("Tuesday 11-10: last Tuesday 11-03 was not clean, 10-27's 56 is below the week's 81",
-          runwatch.planned_minutes(em, 9, 0, datetime(2026, 11, 10, 9, 0, tzinfo=SERVER_TZ))[0], 81)
 
     print("\n[10-01: still running at 13:10 (09:00 + 220 + 30) -> one alarm]")
     real_win, real_snap = eng.config.IS_WINDOWS, eng._automas_snapshot
@@ -709,5 +686,56 @@ the machine's AUTO-MAS history (fixtures/automas-runprobe/).
           (collector._STAGE_LABELS, collector._UPDATE_LABEL, collector._UPDATE_FINE))
 
 
+def _part_same_weekday():
+    """The shift's planned end counts the same weekday one and two weeks back when that day was clean (#155, 11-09).
+
+Monday 11-09 「⏰ 早班超时还没跑完」 went out at 10:51 while MaaEnd gathered on normally: the Monday
+shift is long after the 04:00 weekly reset, last Monday 11-02 was not clean, so the 7-day window
+held no clean Monday and the limit was 11-04's 81 minutes. Chains as _chain read them off the
+machine's ledgers 10-26..11-08: Mondays 142 (clean) and 151 (an OK-WW attempt failed), every
+other day 56-87.
+    """
+    import json
+    import types
+    from datetime import datetime, timedelta
+
+    RELAY = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(RELAY))
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.core.ledger import State
+    from ark_relay.features.run import runwatch
+
+    em = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=None), state=State(tmpdir()))
+
+    def ledger(state, day, rows):
+        lines = [json.dumps({"run_id": f"r{i}", "script": s, "started": a.isoformat(),
+                             "finished": b.isoformat(), "ok": True}) for i, (s, a, b) in enumerate(rows)]
+        state.ledger_path(day.strftime("%Y-%m-%d")).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+    print("[11-09 (Monday): the same weekday back counts when clean - #155, 11-02 was not clean, 10-26 was]")
+    # Chains as _chain read them off the machine's ledgers 10-26..11-08: Mondays 142 (clean) and 151 (an
+    # OK-WW attempt failed), every other day 56-87; 11-09 was timed by 11-04's 81 and alarmed at 10:51.
+    mins = {(10, 26): (142, True), (10, 27): (56, True), (10, 28): (63, True), (10, 29): (87, True),
+            (10, 30): (65, True), (10, 31): (62, True), (11, 1): (62, True), (11, 2): (151, False),
+            (11, 3): (80, False), (11, 4): (81, True), (11, 6): (68, True), (11, 7): (80, True), (11, 8): (60, True)}
+    for (mo, d), (m, ok) in mins.items():
+        start = datetime(2026, mo, d, 9, 0, 50, tzinfo=SERVER_TZ)
+        ledger(em.state, start, [("MAA", start, start + timedelta(minutes=10)),
+                                 ("OK-WW", start + timedelta(minutes=11), start + timedelta(minutes=m))])
+        if not ok:
+            pth = em.state.ledger_path(start.strftime("%Y-%m-%d"))
+            rows = [json.loads(x) for x in pth.read_text(encoding="utf-8").splitlines()]
+            rows[-1]["ok"], rows[-1]["failed_tasks"] = False, ["OK-WW 没打完周本"]
+            pth.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    monday = datetime(2026, 11, 9, 9, 0, tzinfo=SERVER_TZ)
+    check("Monday 11-09: 10-26's clean 142 (14 days back) is the limit, not 11-04's 81",
+          runwatch.planned_minutes(em, 9, 0, monday), (142, 4))   # 4 clean days in 11-02..11-08: 04, 06, 07, 08
+    check("……a 7-day window alone (11-02 not clean) would have given 81",
+          max(m for (mo, d), (m, ok) in mins.items() if ok and datetime(2026, mo, d, tzinfo=SERVER_TZ) >= datetime(2026, 11, 2, tzinfo=SERVER_TZ)), 81)
+    check("Tuesday 11-10: last Tuesday 11-03 was not clean, 10-27's 56 is below the week's 81",
+          runwatch.planned_minutes(em, 9, 0, datetime(2026, 11, 10, 9, 0, tzinfo=SERVER_TZ))[0], 81)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_main, _part_runwatch_chain_retry, _part_run_limit, _part_run_probe]))
+    sys.exit(run_parts([_part_main, _part_runwatch_chain_retry, _part_run_limit, _part_run_probe, _part_same_weekday]))
