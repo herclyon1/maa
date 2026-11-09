@@ -644,7 +644,7 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
                 tr.src("鸣潮", "游戏公告", _WW_NOTICE, f"{other.name} {'、'.join(other.chars)} "
                        + (f"{other.start:%Y-%m-%d %H:%M}" if other.start else other.start_note)
                        + f"~{other.end:%Y-%m-%d %H:%M}")
-            got[i], line = (crosscheck_fix("鸣潮", "库街区", b, "游戏公告", other, now) if notice_ok
+            got[i], line = (crosscheck_fix("鸣潮", "库街区", b, "游戏公告", other, now, tr) if notice_ok
                             else (b, "鸣潮：游戏公告取不到，只有库街区一个来源 ✗"))
             tr.checks.append(line)
 

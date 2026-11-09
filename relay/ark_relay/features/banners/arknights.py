@@ -616,9 +616,10 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
                           and set(x for x in m.group(1).split("、") if x) & set(b.chars))):
                 other = Banner("明日方舟", m.group(2), tuple(x for x in m.group(1).split("、") if x), st, en)
                 break
-        # PRTS listing a banner from 07:00 where the post opens it 12:00 is corrected
-        # to the post's time (crosscheck_fix), in `live` and in what is returned
-        fixed, line = crosscheck_fix("明日方舟", "PRTS", b, "官网公告", other, now)
+        # PRTS listing a banner from 07:00 where the post opens it 12:00 (or closing it
+        # at another time) is corrected to the post's (crosscheck_fix), in `live` and
+        # in what is returned
+        fixed, line = crosscheck_fix("明日方舟", "PRTS", b, "官网公告", other, now, tr)
         tr.checks.append(line)
         if fixed is not b:
             live[i] = debut[debut.index(b)] = fixed

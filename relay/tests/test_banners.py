@@ -2271,64 +2271,97 @@ def _ef_1109(end_ts: "str | None" = None):
 
 def _audit_1109_skland_backfill() -> None:
     """Alarm #157 (Gemini, 2026-11-09): #66 failed on 「终末地：森空岛 和 公告 对不上 ✗
-    （开始 森空岛 11-09 00:00 / 公告 11-05 12:00）」. The opening is Skland's bookkeeping
-    and is corrected; the end Skland gives disagrees with the briefing by a day, which
-    nothing compared, and stays a ✗ (it is the report's countdown)."""
+    （开始 森空岛 11-09 00:00 / 公告 11-05 12:00）」. Both of Skland's times are its
+    bookkeeping: the opening differs from the bulletin, the end (11-25 06:00) from the
+    version briefing (11-26 06:00), which nothing compared. Her ruling: the first-hand
+    time wins, start and end, as ✓ corrections; the report counts down to 11-26 06:00
+    as it did on 11-08."""
     from ark_relay.features.selfcheck import machinecheck as mc  # noqa: PLC0415
     from ark_relay.features.selfcheck.machinechecks import phone_banners as pb  # noqa: PLC0415
-    got, _nxt, tr, _recs = _ef_1109()
-    check("1109 ef: Skland's opening takes the bulletin's, the end stays Skland's",
+    now = datetime(2026, 11, 9, 21, 46)
+    got, nxt, tr, _recs = _ef_1109()
+    check("1109 ef: Skland's opening and end take the official ones",
           [(b.name, b.chars, b.start, b.end) for b in got],
-          [("烟火邀星河", ("明河",), datetime(2026, 11, 5, 12, 0), datetime(2026, 11, 25, 6, 0))])
-    check("1109 ef: the opening is a ✓ correction naming both",
-          [c for c in tr.checks if "开始" in c],
+          [("烟火邀星河", ("明河",), datetime(2026, 11, 5, 12, 0), datetime(2026, 11, 26, 6, 0))])
+    check("1109 ef: two ✓ corrections naming both values, nothing else",
+          [c for c in tr.checks if c.startswith("终末地")],
           ["终末地：森空岛 和 公告 开始不同（森空岛 11-09 00:00 / 公告 11-05 12:00），已按公告补正 ✓"
-           "（公告没写结束时刻，只核了开始）"])
-    check("1109 ef: the end against the briefing is a ✗ naming both and what the report printed",
-          [c for c in tr.checks if "结束" in c and "开始" not in c],
-          ["终末地：森空岛 和 新版本导览 结束对不上 ✗（森空岛 11-25 06:00 / 新版本导览 11-26 06:00；"
-           "日报当期按森空岛写 11-25 06:00 结束）"])
-    check("1109 ef: no official fill (Skland runs it)", [c for c in tr.checks if "补进当期" in c], [])
+           "（公告没写结束时刻，只核了开始）",
+           "终末地：森空岛 和 新版本导览 结束不同（森空岛 11-25 06:00 / 新版本导览 11-26 06:00），已按新版本导览补正 ✓"])
+    out = render(got, now, {"终末地": nxt} if nxt else {}, {}, tr)
+    check("1109 ef: the report counts down to the briefing's end, as on 11-08",
+          ("· 当期：烟火邀星河 · 明河 · 北京 11-26 06:00 结束 · 剩 16 天 8 小时" in out, "11-26 06:00" in tr.ends),
+          (True, True))
     v = pb._no_open_mismatch({"trace": tr})
-    check("1109 #66: fails on the end, not on the opening",
-          (v.status, "结束对不上" in v.evidence, "开始 森空岛" in v.evidence), (mc.FAIL, True, False))
-    # Had Skland closed it at the briefing's 11-26 06:00, only the opening differs: #66 passes
-    # and counts the correction with what the official sources filled in.
+    check("1109 #66: passes, both corrections counted as filled",
+          (v.status, "其中 2 条是官方来源补上的" in v.evidence), (mc.PASS, True))
+    # Had Skland closed it at the briefing's 11-26 06:00, only the opening is corrected.
     got, _nxt, tr, _recs = _ef_1109(end_ts="1795644000")
-    check("1109 ef: the same end -> both lines ✓",
-          ([b.end for b in got], ["✗" in c for c in tr.checks if c.startswith("终末地")],
-           "终末地：森空岛和新版本导览的结束时刻对得上 ✓（11-26 06:00）" in tr.checks),
-          ([datetime(2026, 11, 26, 6, 0)], [False, False], True))
-    v = pb._no_open_mismatch({"trace": tr})
-    check("1109 #66: passes, the correction counted as filled",
-          (v.status, "官方来源补上的" in v.evidence, "已按公告补正" in v.evidence), (mc.PASS, True, True))
+    check("1109 ef: the same end -> the end line is a plain ✓",
+          ([b.end for b in got], "终末地：森空岛和新版本导览的结束时刻对得上 ✓（11-26 06:00）" in tr.checks,
+           ["✗" in c for c in tr.checks if c.startswith("终末地")]),
+          ([datetime(2026, 11, 26, 6, 0)], True, [False, False]))
+    from ark_relay.features.banners import endfield as _ef  # noqa: PLC0415
+    sk = _b.Banner("终末地", "烟火邀星河", ("明河",), datetime(2026, 11, 5, 12, 0), datetime(2026, 11, 25, 6, 0))
+    row = {"op": "明河", "pool": "烟火邀星河", "end": datetime(2026, 11, 26, 6, 0),
+           "ends": {"新版本导览": datetime(2026, 11, 26, 6, 0), "特许寻访说明": datetime(2026, 11, 27, 6, 0)}}
+    tr = _b.Trace.new()
+    check("1109 ef: official ends that disagree among themselves -> not corrected here (_ef_fill's ✗)",
+          (_ef._ef_end_check(sk, [row], now, tr), tr.checks), (sk, []))
+    tr = _b.Trace.new()
+    late = datetime(2026, 11, 26, 8, 0)
+    old = {**row, "ends": {"新版本导览": row["end"]}}
+    sk2 = _b.Banner("终末地", "烟火邀星河", ("明河",), datetime(2026, 11, 5, 12, 0), datetime(2026, 11, 27, 6, 0))
+    check("1109 ef: the official close already past while Skland has it open -> ✗, not corrected",
+          (_ef._ef_end_check(sk2, [old], late, tr), ["✗" in c and "官方已经结束" in c for c in tr.checks]),
+          (sk2, [True]))
 
 
 def _crosscheck_fix_cases() -> None:
-    """crosscheck_fix corrects the opening alone, and only to a time already past."""
+    """crosscheck_fix corrects the opening and the end to the first-hand times, and
+    only to an opening already past and a close still to come."""
     now = datetime(2026, 11, 9, 21, 46)
-    wiki = _b.Banner("终末地", "烟火邀星河", ("明河",), datetime(2026, 11, 9, 0, 0), datetime(2026, 11, 26, 6, 0))
+    wiki = _b.Banner("终末地", "烟火邀星河", ("明河",), datetime(2026, 11, 9, 0, 0), datetime(2026, 11, 25, 6, 0))
 
     def off(**kw):
         base = dict(game="终末地", name="烟火邀星河", chars=("明河",),
-                    start=datetime(2026, 11, 5, 12, 0), end=datetime(2026, 11, 26, 6, 0))
+                    start=datetime(2026, 11, 9, 0, 0), end=datetime(2026, 11, 25, 6, 0))
         return _b.Banner(**{**base, **kw})
-    b, line = _b.crosscheck_fix("终末地", "森空岛", wiki, "公告", off(), now)
+    tr = _b.Trace.new()
+    b, line = _b.crosscheck_fix("终末地", "森空岛", wiki, "公告", off(start=datetime(2026, 11, 5, 12, 0)), now, tr)
     check("fix: only the opening differs -> corrected ✓",
-          (b.start, b.end, line),
+          (b.start, b.end, line, tr.ends),
           (datetime(2026, 11, 5, 12, 0), wiki.end,
-           "终末地：森空岛 和 公告 开始不同（森空岛 11-09 00:00 / 公告 11-05 12:00），已按公告补正 ✓"))
+           "终末地：森空岛 和 公告 开始不同（森空岛 11-09 00:00 / 公告 11-05 12:00），已按公告补正 ✓", set()))
+    tr = _b.Trace.new()
+    b, line = _b.crosscheck_fix("终末地", "森空岛", wiki, "公告", off(end=datetime(2026, 11, 26, 6, 0)), now, tr)
+    check("fix: only the end differs -> corrected ✓, the new end a source stamp",
+          (b.start, b.end, line, "11-26 06:00" in tr.ends),
+          (wiki.start, datetime(2026, 11, 26, 6, 0),
+           "终末地：森空岛 和 公告 结束不同（森空岛 11-25 06:00 / 公告 11-26 06:00），已按公告补正 ✓", True))
+    b, line = _b.crosscheck_fix("终末地", "森空岛", wiki, "公告",
+                                off(start=datetime(2026, 11, 5, 12, 0), end=datetime(2026, 11, 26, 6, 0)), now)
+    check("fix: both differ -> both corrected, one ✓ line",
+          ((b.start, b.end), line),
+          ((datetime(2026, 11, 5, 12, 0), datetime(2026, 11, 26, 6, 0)),
+           "终末地：森空岛 和 公告 开始、结束都不同（开始 森空岛 11-09 00:00 / 公告 11-05 12:00；"
+           "结束 森空岛 11-25 06:00 / 公告 11-26 06:00），已按公告补正 ✓"))
+    b, line = _b.crosscheck_fix("终末地", "森空岛", wiki, "公告",
+                                off(start=None, start_note="版本更新后", end=datetime(2026, 11, 26, 6, 0)), now)
+    check("fix: the official side prints no opening -> the end alone is corrected, the line says so",
+          (b.start, b.end, line),
+          (wiki.start, datetime(2026, 11, 26, 6, 0),
+           "终末地：森空岛 和 公告 结束不同（森空岛 11-25 06:00 / 公告 11-26 06:00），已按公告补正 ✓"
+           "（公告开始写「版本更新后」，只核了结束）"))
     for label, other in (("the official opening still to come", off(start=datetime(2026, 11, 10, 12, 0))),
-                         ("the end differs too", off(end=datetime(2026, 11, 25, 6, 0))),
-                         ("the name differs too", off(name="另一个池")),
-                         ("a character the wiki lacks", off(chars=("祀",))),
+                         ("the official close already past", off(end=datetime(2026, 11, 9, 12, 0))),
+                         ("the name differs too", off(name="另一个池", start=datetime(2026, 11, 5, 12, 0))),
+                         ("a character the wiki lacks", off(chars=("祀",), end=datetime(2026, 11, 26, 6, 0))),
                          ("no such banner", None),
-                         ("the official side prints no opening", off(start=None, start_note="版本更新后"))):
+                         ("nothing differs", off())):
         b, line = _b.crosscheck_fix("终末地", "森空岛", wiki, "公告", other, now)
         check(f"fix: {label} -> crosscheck's line, nothing corrected",
               (b is wiki, line), (True, _b.crosscheck("终末地", "森空岛", wiki, "公告", other)))
-    check("fix: the end differs -> still a ✗",
-          "✗" in _b.crosscheck_fix("终末地", "森空岛", wiki, "公告", off(end=datetime(2026, 11, 25, 6, 0)), now)[1], True)
 
 
 def _recovered(recs: list, part: str) -> "list[bool]":

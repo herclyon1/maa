@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from datetime import datetime
 
 from ark_relay.features.banners import banners as hub
@@ -346,20 +347,23 @@ def _ef_crosscheck(got: "list[Banner]", now: datetime, pools_n: list, ends_n: di
                        f" 止 {f'{en:%Y-%m-%d %H:%M}' if en else '没写'}")
                 break
         if notice_ok:
-            got[i], line = crosscheck_fix("终末地", "森空岛", b, "公告", other, now)
+            got[i], line = crosscheck_fix("终末地", "森空岛", b, "公告", other, now, tr)
             tr.checks.append(line)
         else:
             tr.checks.append("终末地：公告取不到，只有森空岛一个来源 ✗")
         if other is None or other.end is None:
-            _ef_end_check(b, opened, tr)
+            got[i] = _ef_end_check(got[i], opened, now, tr)
 
 
-def _ef_end_check(b: Banner, opened: "list[dict]", tr: "Trace") -> None:
+def _ef_end_check(b: Banner, opened: "list[dict]", now: datetime, tr: "Trace") -> Banner:
     """Skland's end for the running `b` against the end the official sources print
     (ef_official_pools: the bulletin, the banner notice, the version briefing's row),
-    for the case the bulletin itself prints none (「版本更新维护前」). Nothing is
-    corrected here: the end is the report's countdown, so a disagreement is a ✗ that
-    names both values and the one the report printed.
+    for the case the bulletin itself prints none (「版本更新维护前」). A different end
+    is corrected to the official one and a ✓ naming both (crosscheck_fix's rule,
+    Gemini 2026-11-09: the first-hand time wins); returned is the banner the report
+    prints. Not corrected: official sources that disagree among themselves (_ef_fill
+    says so with a ✗) and an official close already past while Skland has it open (a
+    ✗: correcting it would take the banner off the report).
 
     Why: on 11-09 Skland listed 明河「烟火邀星河」 to 11-25 06:00 while the version
     briefing closes it 11-26 06:00, and the report's countdown moved a day overnight
@@ -368,13 +372,22 @@ def _ef_end_check(b: Banner, opened: "list[dict]", tr: "Trace") -> None:
     r = next((r for r in opened
               if r.get("end") is not None and (r["op"] in b.chars or r["pool"] == b.name)), None)
     if r is None:
-        return
-    by = "、".join(s for s, t in (r.get("ends") or {}).items() if same_clock(t, r["end"])) or "官方"
+        return b
+    clocks = {s: t.replace(second=0, microsecond=0) for s, t in (r.get("ends") or {}).items()}
+    if len(set(clocks.values())) > 1:
+        return b
+    by = "、".join(clocks) or "官方"
     if same_clock(b.end, r["end"]):
         tr.checks.append(f"终末地：森空岛和{by}的结束时刻对得上 ✓（{b.end:%m-%d %H:%M}）")
-        return
-    tr.checks.append(f"终末地：森空岛 和 {by} 结束对不上 ✗（森空岛 {b.end:%m-%d %H:%M} / "
-                     f"{by} {r['end']:%m-%d %H:%M}；日报当期按森空岛写 {b.end:%m-%d %H:%M} 结束）")
+        return b
+    if r["end"] < now:
+        tr.checks.append(f"终末地：森空岛 和 {by} 结束对不上 ✗（森空岛 {b.end:%m-%d %H:%M} / "
+                         f"{by} {r['end']:%m-%d %H:%M}，官方已经结束；日报当期按森空岛写 {b.end:%m-%d %H:%M} 结束）")
+        return b
+    tr.ends |= _stamps(r["end"])
+    tr.checks.append(f"终末地：森空岛 和 {by} 结束不同（森空岛 {b.end:%m-%d %H:%M} / "
+                     f"{by} {r['end']:%m-%d %H:%M}），已按{by}补正 ✓")
+    return replace(b, end=r["end"])
 
 
 def _ef_fill(got: "list[Banner]", live: "list[Banner]", opened: "list[dict]", now: datetime,

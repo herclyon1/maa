@@ -564,29 +564,40 @@ def _xdiffs(a_name: str, a: Banner, b_name: str, b: Banner) -> "list[tuple[str, 
 
 
 def crosscheck_fix(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | None",
-                   now: datetime) -> "tuple[Banner, str]":
-    """crosscheck, and the one difference that is corrected rather than flagged: the
-    wiki `a` (Skland / PRTS / Kuro BBS) and the first-party `b` agree on the name, the
-    characters and the end (or `b` prints no end), `b` opens the banner at a time
-    already past, and only the opening differs. `a` then takes `b`'s opening and the
-    line is a ✓ that says so; #66 counts it with what the official sources filled in.
-    Anything else is crosscheck's line unchanged: a name, character or end
-    difference stays a ✗, and so does an official opening still to come (the wiki
-    says open, the official source says not yet).
+                   now: datetime, tr: "Trace | None" = None) -> "tuple[Banner, str]":
+    """crosscheck, and the differences that are corrected rather than flagged: the
+    wiki `a` (Skland / PRTS / Kuro BBS) and the first-party `b` agree on the name and
+    the characters and differ only in the opening and/or the end that `b` prints.
+    `a` then takes `b`'s times and the line is a ✓ that names both values; #66 counts
+    it with what the official sources filled in, and a corrected end goes into
+    `tr.ends` (the report prints it). Anything else is crosscheck's line unchanged:
+    a name or character difference stays a ✗, and so does an official opening still
+    to come or an official close already past (the wiki says open, the official
+    source says not yet / no longer: correcting it would take a banner off the report
+    on one source's word).
 
     Why (Gemini, 2026-11-09, alarm #157): Skland listed 明河「烟火邀星河」 on 11-09
-    with poolStartAtTs at 11-09 00:00, the day it was entered; the bulletin, the
-    banner notice and the version briefing all open it 11-05 12:00. The wiki's own
-    bookkeeping date is not a fact about the banner, and the bulletin is first-hand."""
-    if b is None or b.start is None:
+    with poolStartAtTs 11-09 00:00, the day it was entered, and poolEndAtTs 11-25
+    06:00; the bulletin, the banner notice and the version briefing open it 11-05
+    12:00, the briefing closes it 11-26 06:00. Her ruling: the first-hand source's
+    time wins, start and end alike, and a wiki that differs from it is corrected and
+    a ✓, not an alarm."""
+    if b is None:
         return a, crosscheck(game, a_name, a, b_name, b)
-    diffs = _xdiffs(a_name, a, b_name, b)
-    if [kind for kind, _t in diffs] != ["开始"] or b.start > now:
+    diffs = dict(_xdiffs(a_name, a, b_name, b))
+    if (not diffs or not set(diffs) <= {"开始", "结束"}
+            or ("开始" in diffs and b.start > now) or ("结束" in diffs and b.end < now)):
         return a, crosscheck(game, a_name, a, b_name, b)
-    tail = "" if b.end is not None else f"（{b_name}没写结束时刻，只核了开始）"
-    return (replace(a, start=b.start),
-            f"{game}：{a_name} 和 {b_name} 开始不同（{a_name} {a.start:%m-%d %H:%M} / "
-            f"{b_name} {b.start:%m-%d %H:%M}），已按{b_name}补正 ✓{tail}")
+    fixed = replace(a, start=b.start if "开始" in diffs else a.start,
+                    end=b.end if "结束" in diffs else a.end)
+    if "结束" in diffs and tr is not None:
+        tr.ends |= _stamps(b.end)
+    said = ("、".join(diffs) + "都不同（" + "；".join(diffs.values()) + "）" if len(diffs) > 1
+            else next(iter(diffs)) + "不同（" + next(iter(diffs.values())).split(" ", 1)[1] + "）")
+    tail = ("" if b.start is not None and b.end is not None
+            else f"（{b_name}没写结束时刻，只核了开始）" if b.end is None
+            else f"（{b_name}开始写「{b.start_note}」，只核了结束）")
+    return fixed, f"{game}：{a_name} 和 {b_name} {said}，已按{b_name}补正 ✓{tail}"
 
 
 def official_fill(game: str, main: str, b: Banner, by: str, tr: "Trace") -> None:
