@@ -37,6 +37,28 @@ itself (FarmEchoTask.revive_action :92-106 -> BaseCombatTask.revive_action :227-
 cancel the revive popup, leave the realm to heal, do_run re-teleports, at most 3 times
 per run), where ours confirmed the popup and spent a revive item on every death.
 
+**The command-line task at start-up (2026-11-10, ledger #158)**: OK-WW updated itself to
+v3.7.20-beta.3 at 08:48 and the morning shift stood still from 09:23 to the 10:51 overtime alarm:
+the game was up, no task ran, OK-WW never exited. Both starts (09:21:04, 09:22:39) log
+`start_controller:<src.task.DailyTask.DailyTask object at 0x...> was cancelled while the game was starting`.
+Cause, in upstream's `ok/core/start_controller.py` (vendored under `working/ok/` since this
+version): the new pending list (`_pending`, `_add_pending`, `cancel_task`) lets a task asked for in
+the window be cancelled while the game launches, and `_do_start` drops a task that is not on the
+list - exempting an index (`not isinstance(task, int)`), but only after it has itself turned the
+index AUTO-MAS passes (`-t 1 -e`) into the task object. `_install_param_start` wraps
+`StartController._do_start`: an index is registered as pending first (`param_task_pending`), then
+upstream's own body runs; a launch that fails takes it off the list again. Where upstream
+registers it itself nothing is added (the list holds a task once); an upstream without the list is
+left alone. It is bound by hand with `override()`'s two checks (the method exists, ours takes
+upstream's calls) rather than through `@override`, because `test_gl_okww_contract.py` reads every
+`@override` against the fetched OK-WW copy and this class is ok-script's. Test:
+`tests/test_okww_overlay.py`, `_part_okww_overlay_param_start`, which executes upstream's file as
+it stood on the machine that morning (`tests/fixtures/okww-v3.7.20-beta.3-start_controller.py.txt`):
+alone it reproduces the line, with the override the daily task is enabled, queued once and keeps
+`exit_after_task`. That morning's run was started by one click on 「运行任务」 at 10:53:29 (not a
+verification); the first unattended proof is the next morning shift. The beta auto-update was not
+touched (D125).
+
 **Daily activity chests (2026-10-10)**: the user, 10-10 19:4x (relayed by 网页-验收):
 「鸣潮的每日为什么okww没有领，中继也不报错？」 `DailyTask.claim_daily` is wrapped by
 `claim_daily_after_farm`; when upstream's body still hashes to `2b4977b62f7c` it runs

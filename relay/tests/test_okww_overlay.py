@@ -1,6 +1,7 @@
 """OK-WW's overlay: the overlay, its faults, the install guard, pending.
 
 One part per former file, each run on its own (tests/_parts.py): test_okww_overlay.py, test_okww_overlay_faults.py, test_okww_overlay_install_guard.py, test_okww_overlay_pending.py.
+Added 2026-11-10: the command-line task at start-up (_part_okww_overlay_param_start).
 """
 # Each part imports the relay itself, after its own environment is set, as the file it was did at
 # its top.
@@ -330,7 +331,15 @@ reads it and says so.
 
     print("\n[the launch argument is OK-WW's own since v3.7.4: no hook on start_controller.execute]")
     src_now = okww_overlay.source_text()
-    check("no execute override", "start_controller" in src_now.split("# The launch-argument hook")[0], False)
+    # 2026-11-10: the file does name start_controller now (StartController._do_start, the command-line task,
+    # _part_okww_overlay_param_start), so this looks for what it is about - a hook on its `execute`.
+    import re as _re
+    hooked = _re.search(r"""start_controller\w*\s*\.\s*execute\b|override\([^)]*["']execute["']""",
+                        src_now.split("# The launch-argument hook")[0])
+    check("no execute override", bool(hooked), False)
+    check("that check still fires on a hook", bool(_re.search(
+        r"""start_controller\w*\s*\.\s*execute\b|override\([^)]*["']execute["']""",
+        "import ok.core.start_controller\nok.core.start_controller.execute = mine\n")), True)
     check("no _install_launch", "_install_launch" in src_now, False)
 
 
@@ -723,5 +732,219 @@ to the group).
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 
 
+def _part_okww_overlay_param_start():
+    """The task AUTO-MAS names on OK-WW's command line (`-t 1 -e`) is started, not dropped.
+
+2026-11-10 (ledger #158): OK-WW updated itself to v3.7.20-beta.3 at 08:48 and both starts of
+the morning shift logged 「<DailyTask> was cancelled while the game was starting」 (09:21:04,
+09:22:39); the game was up, no task ran, OK-WW never exited, the shift stood still until
+the 10:51 overtime alarm. Upstream's new pending list exempts an index, but _do_start has
+turned the index into the task object before it looks.
+
+Upstream is run, not imitated: fixtures/okww-v3.7.20-beta.3-start_controller.py.txt is
+ok/core/start_controller.py as it stood on the game PC that morning (sha256 3c4eb217…6d6521),
+executed here with stand-ins only for what it imports.
+    """
+    import threading
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.okww_patch import okww_overlay
+
+    FIXTURE = Path(__file__).resolve().parent / "fixtures" / "okww-v3.7.20-beta.3-start_controller.py.txt"
+    CANCELLED = "was cancelled while the game was starting"
+    NAMES = ("ok", "ok.device", "ok.device.capture", "ok.core", "ok.core.events", "ok.core.notifications",
+             "ok.util", "ok.util.process", "ok.core.start_controller")
+    saved = {n: sys.modules.get(n) for n in NAMES}
+
+    class Signal:
+        def __init__(self):
+            self.sent = []
+
+        def emit(self, *a):
+            self.sent.append(a)
+
+    class Log:
+        def __init__(self, lines):
+            self.lines = lines
+
+        def info(self, msg, *a):
+            self.lines.append(str(msg))
+
+        error = warning = debug = info
+
+    class Task:
+        def __init__(self, name, executor):
+            self.name, self.executor = name, executor
+            self._enabled = False
+            self.paused = False
+            self.exit_after_task = False
+
+        @property
+        def enabled(self):
+            return self._enabled
+
+        def info_clear(self):
+            pass
+
+        def __repr__(self):
+            return f"<{self.name}>"
+
+    class Executor:
+        def __init__(self):
+            self.onetime_tasks = [Task("DailyTask", self), Task("Other", self)]
+            self.current_task = None
+            self.paused = False
+            self.queued = []
+            self.started = 0
+
+        def get_all_tasks(self):
+            return list(self.onetime_tasks)
+
+        def enqueue_onetime_task(self, task):
+            self.queued.append(task)
+
+        def start(self):
+            self.started += 1
+
+    def world(fixture_text):
+        """Fresh stand-ins, the upstream file executed on them. -> (StartController, og, log lines)."""
+        lines = []
+        og = types.SimpleNamespace(executor=Executor(), app=None,
+                                   device_manager=types.SimpleNamespace(do_refresh=lambda *a: None))
+        ok = types.ModuleType("ok")
+        ok.og = og
+        ok.Handler = type("Handler", (), {"__init__": lambda self, *a: None, "post": lambda self, fn: fn()})
+        ok.Logger = type("Logger", (), {"get_logger": staticmethod(lambda name: Log(lines))})
+        mods = {"ok": ok}
+        for name, attrs in (("ok.device", {}), ("ok.core", {}), ("ok.util", {}),
+                            ("ok.device.capture", {"BaseWindowsCaptureMethod": object, "BrowserCaptureMethod": object}),
+                            ("ok.core.events", {"communicate": types.SimpleNamespace(starting_emulator=Signal(), task=Signal())}),
+                            ("ok.core.notifications", {"alert_error": lambda *a, **k: None, "alert_info": lambda *a, **k: None}),
+                            ("ok.util.process", {"is_admin": lambda: True, "execute": lambda *a, **k: None,
+                                                 "WINDOWS_START_METHOD_START": "start"})):
+            m = types.ModuleType(name)
+            m.__dict__.update(attrs)
+            mods[name] = m
+        sys.modules.update(mods)
+        sc = types.ModuleType("ok.core.start_controller")
+        sys.modules["ok.core.start_controller"] = sc
+        exec(compile(fixture_text, "start_controller.py", "exec"), sc.__dict__)
+        return sc.StartController, og, lines
+
+    def controller(cls, start_exe=False, device_ok=True):
+        sub = type("C", (cls,), {"check_auto_hdr": lambda self: None,
+                                 "check_gpu_driver_post_processing": lambda self: None,
+                                 "start_device": lambda self, initial_refresh_done=False: device_ok})
+        return sub({"windows": {"start_exe": start_exe}}, threading.Event())
+
+    def install():
+        """The overrides file executed in this world, as ok-script does at start-up."""
+        ns = {"__name__": "ark_overrides_test"}
+        exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+        return ns
+
+    text = FIXTURE.read_text(encoding="utf-8")
+    try:
+        print("[上游 v3.7.20-beta.3 自己：命令行带起的任务被它当成已取消]")
+        cls, og, lines = world(text)
+        c = controller(cls)
+        daily = og.executor.onetime_tasks[0]
+        check("upstream alone: do_start returns True all the same", c.do_start(0, True), True)
+        check("upstream alone: says it was cancelled", any(CANCELLED in x for x in lines), True)
+        check("upstream alone: the daily task is not enabled", (daily.enabled, og.executor.queued), (False, []))
+
+        print("[装上我们的改动：照常起跑]")
+        cls, og, lines = world(text)
+        ns = install()
+        check("listed as applied", "StartController._do_start" in ns["_applied"], True)
+        check("not listed as skipped", [x for x in ns["_skipped"] if "StartController" in x["what"]], [])
+        c = controller(cls)
+        daily, other = og.executor.onetime_tasks
+        check("do_start(0, exit_after)", c.do_start(0, True), True)
+        check("no 'was cancelled' line", [x for x in lines if CANCELLED in x], [])
+        check("the daily task is enabled and queued once", (daily.enabled, og.executor.queued), (True, [daily]))
+        check("exit after the task (-e) is kept", daily.exit_after_task, True)
+        check("the executor is started", og.executor.started, 1)
+        check("nothing left waiting", c._pending[1], [])
+        check("the other task is untouched", (other.enabled, other.exit_after_task), (False, False))
+        check("our line names the task", any(ns["PARAM_START"] in x and "DailyTask" in x for x in lines), True)
+
+        print("[上游自己的取消逻辑不受影响]")
+        cls, og, lines = world(text)
+        install()
+        c = controller(cls)
+        daily, other = og.executor.onetime_tasks
+        c._add_pending(other)
+        check("a task asked for in the window can still be cancelled", c.cancel_task(other), True)
+        check("its queued start is skipped", c.do_start(other, False, from_queue=True), False)
+        check("and it stays disabled", other.enabled, False)
+        c._do_start(other, False)                # reached directly, without being pending: upstream drops it
+        check("a non-pending task object is still dropped by upstream", (other.enabled, any(CANCELLED in x for x in lines)),
+              (False, True))
+        c._add_pending(other)
+        check("a pending one is started", (c.do_start(other, False, from_queue=True), other.enabled), (True, True))
+
+        print("[游戏没起来：不留一个「等着」的任务]")
+        cls, og, lines = world(text)
+        install()
+        c = controller(cls, start_exe=True, device_ok=False)
+        daily = og.executor.onetime_tasks[0]
+        check("a failed launch returns False", c.do_start(0, True), False)
+        check("the daily task is not left on the pending list", c._pending[1], [])
+        check("and is not enabled", daily.enabled, False)
+
+        print("[下标不对：照上游自己的报法]")
+        cls, og, lines = world(text)
+        install()
+        c = controller(cls)
+        check("a bad index is upstream's own failure", c.do_start(9, True), False)
+        check("nothing waiting, nothing queued", (c._pending[1], og.executor.queued), ([], []))
+
+        print("[没有待启动名单的旧版：不动它]")
+        old = text.replace("    def _pending(self):", "    def _pending_gone(self):")
+        cls, og, lines = world(old)
+        before = cls._do_start
+        ns = install()
+        check("not applied, not skipped", ("StartController._do_start" in ns["_applied"],
+                                           [x for x in ns["_skipped"] if "StartController" in x["what"]]), (False, []))
+        check("upstream's _do_start is still upstream's", cls._do_start is before, True)
+
+        print("[上游把 _do_start 改名或改了参数：不贴，记进没贴上]")
+        cls, og, lines = world(text.replace("    def _do_start(self, task=None, exit_after=False):",
+                                            "    def _do_start2(self, task=None, exit_after=False):")
+                               .replace("self._do_start(task, exit_after)", "self._do_start2(task, exit_after)"))
+        ns = install()
+        why = [x["why"] for x in ns["_skipped"] if "StartController" in x["what"]]
+        check("renamed away: skipped with the reason", ("StartController._do_start" in ns["_applied"], len(why),
+                                                        "没有这个方法" in (why or [""])[0]), (False, 1, True))
+        cls, og, lines = world(text.replace("    def _do_start(self, task=None, exit_after=False):",
+                                            "    def _do_start(self, task=None, exit_after=False, *, reason):"))
+        before = cls._do_start
+        ns = install()
+        why = [x["why"] for x in ns["_skipped"] if "StartController" in x["what"]]
+        check("a parameter ours cannot pass on: skipped, upstream's left in place",
+              ("StartController._do_start" in ns["_applied"], len(why), cls._do_start is before), (False, 1, True))
+
+        print("[param_task_pending 本身]")
+        ns = install()
+        fn = ns["param_task_pending"]
+        holder = types.SimpleNamespace(_pending=(threading.Lock(), []))
+        check("an index puts the task on the list", (fn(holder, 1, ["a", "b"]), holder._pending[1]), ("b", ["b"]))
+        check("twice is once", (fn(holder, 1, ["a", "b"]), holder._pending[1]), ("b", ["b"]))
+        for junk in (None, True, "1", object()):
+            check(f"{junk!r} is not an index", fn(holder, junk, ["a", "b"]), None)
+        check("no list on this upstream", fn(types.SimpleNamespace(), 0, ["a"]), None)
+    finally:
+        for n, m in saved.items():
+            if m is None:
+                sys.modules.pop(n, None)
+            else:
+                sys.modules[n] = m
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_main, _part_okww_overlay_faults, _part_okww_overlay_install_guard, _part_okww_overlay_pending]))
+    sys.exit(run_parts([_part_main, _part_okww_overlay_faults, _part_okww_overlay_install_guard, _part_okww_overlay_pending,
+                        _part_okww_overlay_param_start]))

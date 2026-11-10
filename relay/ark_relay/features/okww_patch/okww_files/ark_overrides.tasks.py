@@ -2129,6 +2129,82 @@ def _install_nest():
         return nest_entry(self, lambda: capture_run(self))
 
 
+# ---- the task named on the command line (-t N) is not dropped at start-up (2026-11-10) ----
+# OK-WW v3.7.20-beta.3 (ok/core/start_controller.py, on the machine since the update of 2026-11-10 08:48) gave
+# StartController a list of "pending" tasks, so that one asked for in the window while the game is still
+# launching can be cancelled; _do_start drops a task that is no longer on that list. The task AUTO-MAS names
+# on the command line (`-t 1 -e`: the daily task) never goes on the list - _add_pending leaves an index alone -
+# but _do_start has already turned the index into the task object by the time it looks, so its own exemption
+# for an index (`not isinstance(task, int)`) no longer applies, and the log reads
+#     start_controller:<src.task.DailyTask.DailyTask object at 0x...> was cancelled while the game was starting
+# The game starts, no task runs, OK-WW never exits. 2026-11-10: both starts of the morning shift (09:21:04,
+# 09:22:39) carry that line and the shift stood still from 09:23 until the 10:51 overtime alarm (ledger #158);
+# v3.7.20-beta.1 the day before has neither the list nor the line.
+# Put right by registering that task as pending just before upstream's own body runs - what StartController.start
+# does for a task asked for in the window. Where upstream registers it itself this adds nothing (the list holds
+# a task once), and an upstream without the list is left alone.
+PARAM_START = "命令行带起的任务登记成待启动"
+
+
+def param_task_pending(controller, task, onetime_tasks):
+    """Put the task the command line named (an index into `onetime_tasks`) on `controller`'s pending list.
+
+    -> the task object, or None when there was nothing to do: `task` is not an index, or this upstream has
+    no pending list. A bad index raises, as upstream's own lookup does a moment later."""
+    if isinstance(task, bool) or not isinstance(task, int):
+        return None
+    state = getattr(controller, "_pending", None)
+    if not (isinstance(state, tuple) and len(state) == 2):
+        return None
+    lock, tasks = state
+    obj = onetime_tasks[task]
+    with lock:
+        if obj not in tasks:
+            tasks.append(obj)
+    return obj
+
+
+def _install_param_start():
+    from ok import Logger, og
+    from ok.core.start_controller import StartController
+
+    log = Logger.get_logger("ark_overrides")
+    if not isinstance(inspect.getattr_static(StartController, "_pending", None), property):
+        return          # before v3.7.20-beta.3: no pending list, nothing drops the task
+    # Bound by hand, with override()'s own two checks, instead of through @override: StartController is
+    # ok-script's class (under ok/, not src/), outside the OK-WW copy that tests/test_gl_okww_contract.py reads
+    # every @override against. This hook's test runs upstream's start_controller.py itself
+    # (tests/test_okww_overlay.py, _part_okww_overlay_param_start).
+    label = "StartController._do_start"
+    upstream = getattr(StartController, "_do_start", None)
+    if upstream is None:
+        _skipped.append({"what": f"{label}（{PARAM_START}）", "why": "上游没有这个方法了（改名或删了）"})
+        return
+
+    def _do_start(self, task=None, exit_after=False):
+        obj = None
+        try:
+            obj = param_task_pending(self, task, og.executor.onetime_tasks)
+            if obj is not None:
+                log.info(f"ark: {PARAM_START} {obj}")
+        except Exception as e:  # noqa: BLE001 - upstream's own body reports a bad index itself
+            log.info(f"ark: {PARAM_START}没做成：{e!r}")
+        try:
+            return upstream(self, task, exit_after)
+        finally:
+            if obj is not None:
+                try:
+                    self._discard_pending(obj)      # a launch that failed must not leave it listed as waiting
+                except Exception:  # noqa: BLE001
+                    pass
+
+    if why := _sig_mismatch(upstream, _do_start):
+        _skipped.append({"what": f"{label}（{PARAM_START}）", "why": why})
+        return
+    StartController._do_start = _do_start
+    _applied.append(label)
+
+
 def _write_report(error=""):
     if os.name != "nt":
         return          # the relay's tests exec this file on a Mac; no report there
@@ -2144,6 +2220,12 @@ def _write_report(error=""):
 # `-krqlv=<Game Package>` itself (config.py:203 -> src/game_launcher.py:4-7, appended
 # by ok-script's start_controller.start_device), and the machine log of 10-06 09:19:34
 # reads `try execute D:\Wuthering Waves Game\Wuthering Waves.exe -krqlv=hd with start`.
+# On its own: it is about ok-script's start-up, not about any task, and neither it nor the installs below
+# may be skipped because the other raised.
+try:
+    _install_param_start()
+except Exception:  # noqa: BLE001 - never stop OK-WW from starting
+    _skipped.append({"what": f"StartController._do_start（{PARAM_START}）", "why": traceback.format_exc()[-300:]})
 try:
     _install_hooks()
     _install_teleport()
