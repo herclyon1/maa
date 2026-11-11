@@ -92,7 +92,11 @@ opened page gets upstream's clicks unchanged and 「战令：页面打开了，�
 not verified (no picture of the page to check against yet). Any other upstream hash: upstream's own body
 runs and the log says 「战令：没有重试，…」. The relay turns these lines (and upstream's sentence alone) into
 the item 「战令（先约电台）点了领取」 (`outcome.battle_pass_checks`, also in the 「dailies done before the run」
-branch); red goes to the group in 「⚠️ 这一轮没干完」. Test: `relay/tests/test_okww_daily.py`.
+branch); red goes to the group in 「⚠️ 这一轮没干完」. Between two seasons the game refuses the page with its own
+notice 「当前先约电台各频道暂未开播，请于下期先约电台频道开启时间段内进入。」 (first met 2026-11-11 09:32, run
+OK-WW-05-17-52, pushed as #164): when the overlay's final-miss line carries 「暂未开播」 in its screen dump the
+item is 「战令（先约电台）这期已结束、下期还没开播，没有可领的」, kind SKIPPED - not red, not pushed. The overlay itself
+is unchanged (it still tries twice, about 13 s). Test: `relay/tests/test_okww_daily.py`.
 
 **Tacet list groups (2026-09-30, WuWa 3.7; removed 2026-10-13):** upstream v3.7.4 sets
 `structure = [4, 5, 5, 7]` itself (TacetTask.py:18), so the wrapper below never changed anything

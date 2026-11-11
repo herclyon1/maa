@@ -1,0 +1,16 @@
+2026-11-11 09:31:40,992 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-11-11 09:31:40,992 INFO TaskExecutor DailyTask:info_set current task claim mail
+2026-11-11 09:31:44,926 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-11-11 09:31:51,556 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-11-11 09:31:52,571 INFO TaskExecutor DailyTask:battle pass
+2026-11-11 09:32:03,045 INFO TaskExecutor TaskExecutor:wait_until timeout <function OCR.wait_ocr.<locals>.<lambda> at 0x000001BD47AAE2A0> 10 seconds
+2026-11-11 09:32:03,313 INFO TaskExecutor DailyTask:战令：第一次没打开，回大世界再开一次。整屏读到 Box(name='提示', x=442, y=324, width=80, height=51, confidence=100) Box(name='当前先约电台各频道暂未开播，请于下期先约电台频道开启时间段内进入。', x=464, y=498, width=960, height=42, confidence=100) Box(name='确认', x=1224, y=655, width=70, height=46, confidence=100) Box(name='特征码:UIDREDACT_0', x=1686, y=1052, width=182, height=27, confidence=97)
+2026-11-11 09:32:03,313 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-11-11 09:32:05,873 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-11-11 09:32:16,352 INFO TaskExecutor TaskExecutor:wait_until timeout <function OCR.wait_ocr.<locals>.<lambda> at 0x000001BD72ABBD80> 10 seconds
+2026-11-11 09:32:16,524 ERROR TaskExecutor DailyTask:can not battle pass, maybe ended 
+2026-11-11 09:32:16,526 INFO TaskExecutor DailyTask:战令没领到：战令页开了两次都没读到等级数字（这期战令已经结束，或者页面没打开；截图 battle_pass_unopened_1/2）。整屏读到 Box(name='提示', x=444, y=328, width=76, height=45, confidence=100) Box(name='当前先约电台各频道暂未开播，请于下期先约电台频道开启时间段内进入。', x=464, y=498, width=960, height=42, confidence=100) Box(name='确认', x=1224, y=655, width=70, height=46, confidence=100) Box(name='特征码:UIDREDACT_0', x=1686, y=1052, width=182, height=27, confidence=97)
+2026-11-11 09:32:16,526 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-11-11 09:32:19,078 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-11-11 09:32:19,078 INFO TaskExecutor DailyTask:Daily Task Completed
+2026-11-11 09:32:19,081 INFO TaskExecutor TaskExecutor:Successfully Executed Task, Exiting Game and App!

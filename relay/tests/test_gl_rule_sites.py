@@ -124,7 +124,12 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
     ("features/verify/outcome.py", r"活跃奖励：没有核对，(.+)"): ("none", _OKWW_RARE),
     ("features/verify/outcome.py", r"周本领奖：回读次数没变（(\d+)/3），这次没领到"):
         ("none", _OKWW_RARE + "; no scenario claims without the count dropping"),
-    ("features/verify/outcome.py", "战令没领到："): ("none", _SCEN_STOPS + " (battle_pass_reopen opens it)"),
+    ("features/verify/outcome.py", "战令没领到："):
+        ("fixture", "only fixtures/okww-1111-battle-pass-closed.log (real ok-script.log lines 11-11 09:31-09:32 of "
+                    "OK-WW-05-17-52, ledger #164; the game UID in the screen dump is redacted); " + _SCEN_STOPS),
+    ("features/verify/outcome.py", "暂未开播"):
+        ("fixture", "the game's between-seasons notice inside the overlay's final-miss line; only "
+                    "fixtures/okww-1111-battle-pass-closed.log (same real lines, ledger #164)"),
     ("features/verify/outcome.py", "战令：没有重试，"): ("none", _SCEN_STOPS + " (battle_pass_reopen retries)"),
     ("features/verify/outcome.py", "指定点位的名字读到了，计数没读到"): ("none", _OKWW_RARE),
     ("features/verify/outcome.py", "只刷指定点位的改动没装上，这一轮不刷巢穴"):

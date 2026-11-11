@@ -975,6 +975,11 @@ OKWW_BATTLE_PASS_LABEL = "战令（先约电台）点了领取"
 OKWW_BATTLE_PASS_FAILED = "同一趟里重开了一次，战令页还是没打开，今天的战令点数没领到"
 OKWW_BATTLE_PASS_RETRIED = "第一次没打开，同一趟里重开一次领了"
 OKWW_BATTLE_PASS_UNCHECKED = "OK-WW 领战令的写法变了，这次照它原样领，没打开时不会重试"
+# Between two podcast seasons the game itself refuses the page with a notice (11-11 09:32:03,
+# run OK-WW-05-17-52, read twice at confidence 100): 「提示 / 当前先约电台各频道暂未开播，请于下期
+# 先约电台频道开启时间段内进入。 / 确认」. Nothing can be claimed until the next season opens,
+# so this is said under 「按周期今天不跑」, not as an item undone (alarm #164 was this).
+OKWW_BATTLE_PASS_CLOSED = "战令（先约电台）这期已结束、下期还没开播，没有可领的"
 
 
 # The last line of every 「🩺 中继自己报错了」 push (errwatch.py). Since 10-06 every
@@ -1406,6 +1411,7 @@ def samples() -> list[str]:
         shiftcheck_summary("晚班", 4, [], [], [(SHIFTCHECK_SKIP, SHIFTCHECK_SKIP_ON)]),
         shiftcheck_test_window_on(""), shiftcheck_broken("晚班"), OKWW_BATTLE_PASS_UNCLAIMED,
         OKWW_BATTLE_PASS_LABEL, OKWW_BATTLE_PASS_FAILED, OKWW_BATTLE_PASS_RETRIED, OKWW_BATTLE_PASS_UNCHECKED,
+        OKWW_BATTLE_PASS_CLOSED,
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
         EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED, EVIDENCE_UPLOAD_FAILED, LOST_ALARM_QUEUE,
         gamelog_unknown_errors("鸣潮"), gamelog_unknown_errors_body("鸣潮", "09:12", 2),

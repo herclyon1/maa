@@ -348,6 +348,51 @@ master had the same body that day).
                                                         texts.OKWW_BATTLE_PASS_RETRIED, texts.OKWW_BATTLE_PASS_UNCHECKED)],
           [[], [], [], []])
 
+    print("\n[between two seasons (11-11 09:32, alarm #164): the game says 暂未开播 - nothing owed]")
+    # The run's own lines, read off the game machine on 11-11: both tries met the game's
+    # notice (NOTICE below) and the run went on to "Daily Task Completed". It was pushed
+    # to the group as an item undone that morning.
+    REAL_1111 = (HERE / "fixtures" / "okww-1111-battle-pass-closed.log").read_text(encoding="utf-8")
+    NOTICE = "当前先约电台各频道暂未开播，请于下期先约电台频道开启时间段内进入。"
+    check("the sample holds the notice on both misses and upstream's ERROR line",
+          (REAL_1111.count(NOTICE), "can not battle pass, maybe ended" in REAL_1111, "战令没领到：" in REAL_1111),
+          (2, True, True))
+    c = outcome.battle_pass_checks(REAL_1111)
+    check("11-11: one item, passed, kind SKIPPED, the closed-season sentence",
+          [(x.label, x.ok, x.detail, x.kind) for x in c],
+          [(texts.OKWW_BATTLE_PASS_CLOSED, True, "", outcome.SKIPPED)])
+    checks = outcome.okww_checks(REAL_1111, expect_nest=False, expect_stamina=False)
+    check("11-11: nothing about the battle pass is red in the whole verdict",
+          [x.label for x in checks if not x.ok and ("战令" in x.label or "战令" in x.detail)], [])
+    check("11-11: the old red label is gone from the verdict",
+          texts.OKWW_BATTLE_PASS_LABEL in [x.label for x in checks], False)
+    check("11-11: no push for this run", outcome.summarize(checks, "OK-WW"), None)
+    other = outcome.Check("别的一项", False, "别的原因")
+    msg = outcome.summarize(checks + [other], "OK-WW")
+    check("with another item red: said under 按周期今天不跑, not as undone nor as 干成的",
+          ("有 1 项没干成" in msg, "按周期今天不跑：" + texts.OKWW_BATTLE_PASS_CLOSED in msg,
+           texts.OKWW_BATTLE_PASS_CLOSED in msg.split("干成的：")[-1] if "干成的：" in msg else False),
+          (True, True, False))
+    # The last miss decides. Notice on the first try only, a blank page on the second: still red.
+    lines = REAL_1111.splitlines()
+    last = [i for i, ln in enumerate(lines) if "战令没领到：" in ln][-1]
+    blank = "\n".join(lines[:last] + [lines[last].replace(NOTICE, "鸣潮")] + lines[last + 1:]) + "\n"
+    check("notice gone on the last try: red as before",
+          [(x.label, x.ok, x.detail) for x in outcome.battle_pass_checks(blank)],
+          [(texts.OKWW_BATTLE_PASS_LABEL, False, texts.OKWW_BATTLE_PASS_FAILED)])
+    # Notice on the first try, the page open on the second: claimed, said as a retry.
+    retry = [ln for ln in lines if "战令：第一次没打开" in ln][0]
+    opened = retry + "\n2026-11-11 09:32:16,526 INFO TaskExecutor DailyTask:" + ns["BATTLE_PASS_OK"] + "37）（第二次打开的）\n"
+    check("notice on the first try, opened on the second: green with the retry said",
+          [(x.label, x.ok, x.detail) for x in outcome.battle_pass_checks(opened)],
+          [(texts.OKWW_BATTLE_PASS_LABEL, True, texts.OKWW_BATTLE_PASS_RETRIED)])
+    # The word alone, away from the overlay's final-miss line, decides nothing.
+    check("upstream's sentence alone plus the word elsewhere: red (no overlay line to read the screen from)",
+          [(x.ok, x.detail) for x in outcome.battle_pass_checks(
+              REAL_0929 + "2026-09-29 09:29:00,000 INFO TaskExecutor DailyTask:暂未开播\n")],
+          [(False, texts.OKWW_BATTLE_PASS_UNCLAIMED)])
+    check("the closed-season sentence is plain language", texts.plain(texts.OKWW_BATTLE_PASS_CLOSED), [])
+
 
 def _part_okww_claim_readback():  # noqa: C901 - the whole body of the file this part was
     """Weekly boss claim: upstream's claim step with 确认 for its ESC, and the read-back.

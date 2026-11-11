@@ -205,6 +205,11 @@ _BATTLE_PASS_FAILED = "战令没领到："
 _BATTLE_PASS_UNCHECKED = "战令：没有重试，"
 # upstream's 「can not battle pass, maybe ended」
 _BATTLE_PASS_UPSTREAM_FAILED = "can not battle pass"
+# The game's own notice between two podcast seasons ("no channel is on air, come back when
+# the next season opens"; the full sentence is in tests/fixtures/okww-1111-battle-pass-closed.log),
+# as the overlay's final-miss line carries it in its screen dump (11-11 09:32:16, OK-WW-05-17-52).
+# Read only on the overlay's own final-miss line - the screen as it was on the last try.
+_BATTLE_PASS_CLOSED = "暂未开播"
 
 # ── weekly boss claims ──
 # 「周本领奖：已点确认」 is logged right after the click and proves nothing on its
@@ -561,12 +566,18 @@ def daily_reward_checks(text: str) -> list[Check]:
 def battle_pass_checks(text: str) -> list[Check]:
     """The battle-pass claim, from the overlay's lines or upstream's own (none: step not reached).
 
+    Not owed (SKIPPED) when the overlay's last miss shows the game's between-seasons notice.
     Red when the page did not open after the overlay's second try, or when upstream's
     「can not battle pass」 is there (a run without the overlay, or our fallback to
     upstream's body). The overlay logs that sentence too on its final miss, so it is
     read only after the overlay's own lines."""
     text = normalize_okww_log(text)
     if _BATTLE_PASS_FAILED in text:
+        # The last miss decides: with the game's 「暂未开播」 notice on that screen there is
+        # no season to claim from, which is not an item undone (alarm #164, 11-11).
+        last = [ln for ln in text.splitlines() if _BATTLE_PASS_FAILED in ln][-1]
+        if _BATTLE_PASS_CLOSED in last:
+            return [Check(texts.OKWW_BATTLE_PASS_CLOSED, True, kind=SKIPPED)]
         return [Check(texts.OKWW_BATTLE_PASS_LABEL, False, texts.OKWW_BATTLE_PASS_FAILED)]
     if _BATTLE_PASS_UPSTREAM_FAILED in text:
         return [Check(texts.OKWW_BATTLE_PASS_LABEL, False, texts.OKWW_BATTLE_PASS_UNCLAIMED)]
