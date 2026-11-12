@@ -546,6 +546,10 @@ def same_clock(x: datetime, y: datetime) -> bool:
 
 # How much of a banner name a wiki must print before 「the official name starts with
 # it」 is read as the same name cut short, not as two names that begin alike.
+# Measured: 2026-11-12 11:45, Kuro BBS homepage tabs: the cut name kept 8 of its 10
+# characters, the two whole names beside it were 6 and 7 long. The number itself is a
+# choice, not a measurement: half of that cut name, and the pair must already share
+# the character (crosscheck_fix), so a short common beginning alone corrects nothing.
 NAME_CUT_MIN = 4
 
 
