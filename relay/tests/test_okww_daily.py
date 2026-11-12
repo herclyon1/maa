@@ -1790,6 +1790,60 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
     check("返回 short", real_boss(t), "short")
     check("点了取消，没点确认", ("cancel" in t.steps, "confirm" in t.steps), (True, False))
 
+    print("\n[强敌领奖：波片够时备用读不清不要紧（11-13 05:27:12 读成「14）」）；波片不够时读不清就停]")
+
+    def odd_spare(t, spare_text):
+        real = t.ocr
+
+        def ocr(box=None, **kw):
+            got = real(box=box, **kw)
+            if t.state["screen"] == "dialog":
+                got = [B(spare_text, 1208, 48, 60, 35) if b.name == str(t.state["spare"]) else b for b in got]
+            return got
+        t.ocr = ocr
+        return t
+    t = odd_spare(fake_task(owned_now=40, wave=362, spare=14), "14）")
+    check("波片 362、备用读成「14）」：照样领", (real_boss(t), t.steps.count("confirm") >= 1), ("complete", True))
+    t = odd_spare(fake_task(owned_now=40, wave=30, spare=156), "156）")
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("波片 30、备用读不清：不点确认，留图抛出", ("没读全" in got, "confirm" in t.steps, "boss_material_bar_unread" in t.shots),
+          (True, False, True))
+
+    print("\n[强敌领奖：一圈没打成（11-13 05:44:49 角色倒下、复活没开成地图）——回塔回血，从培养目标页重进]")
+
+    def flaky(t, fails):
+        left = [fails]
+
+        def fight(**kw):
+            t.steps.append("fight")
+            if left[0] > 0:
+                left[0] -= 1
+                raise RuntimeError("combat check not in combat")
+        t.combat_once = fight
+        t.teleport_to_heal = lambda: t.steps.append("heal")
+        return t
+    t = flaky(fake_task(owned_now=40), 1)
+    check("失败一次后照样刷满", real_boss(t), "complete")
+    check("回了塔回血一次", t.steps.count("heal"), 1)
+    check("说了重进、留了图", (any("这一圈没打成" in m for m in t.logs), "boss_material_lap_failed" in t.shots), (True, True))
+    t = flaky(fake_task(owned_now=40), 3)
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("连着 3 圈没打成：停下", ("连着 3 圈没打成" in got, t.steps.count("heal")), (True, 2))
+    t = flaky(fake_task(owned_now=40), 1)
+
+    def no_heal():
+        raise RuntimeError("Can not find a teleport to heal")
+    t.teleport_to_heal = no_heal
+    check("回塔没成也照样重进", real_boss(t), "complete")
+
     print("\n[强敌领奖：按 F 没出「领取奖励」框——留图抛出（外面交给无音区）]")
     t = fake_task(claim_dialog=False)
     try:

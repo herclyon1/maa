@@ -153,7 +153,7 @@ _STAMINA_SHORT = re.compile(_STAMINA_TASK + r"(?:used all stamina|not enough sta
 # marker is there the tacet farm is off (the user: no tacet field before the material is done), so
 # its own lines are the 刷体力 item's outcome: a stop is red with its reason; the material read full,
 # or under one claim before any fight, is green with what it says.
-_BOSS_FAILED = re.compile(_STAMINA_TASK + r"强敌领奖：(出错，[^\n]*|培养目标不是[^\n]*|标记文件[^\n]*用不了[^\n]*|已经打了[^\n]*)")
+_BOSS_FAILED = re.compile(_STAMINA_TASK + r"强敌领奖：(出错，[^\n]*|培养目标不是[^\n]*|设置读不出[^\n]*|已经打了[^\n]*)")
 _BOSS_FULL = re.compile(_STAMINA_TASK + r"强敌领奖：(\S+?)的(\S+?)已经够了（(\d+)/(\d+)）")
 _BOSS_SHORT = re.compile(_STAMINA_TASK + r"强敌领奖：体力 -?\d+ \+ 备用 -?\d+ 不够领一次")
 # Three revives and upstream stops farming and returns quietly: TacetTask.py:79,

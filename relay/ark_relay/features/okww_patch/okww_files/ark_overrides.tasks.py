@@ -852,8 +852,9 @@ BOSS_MATERIAL_FILE = r"C:\ProgramData\ark-okww-boss-material.json"
 BOSS_LINE = "强敌领奖："
 _BOSS_ROW_DEFAULT = "共鸣者突破材料"
 _COUNT_RE = re.compile(r"(\d{1,3})\s*[/／]\s*(\d{1,3})")
-_BOSS_MAX_LAPS = 8          # 240 waveplates + backup at 60 a claim: a loop that never ends stops here
+_BOSS_MAX_LAPS = 12         # 240 waveplates + backup at 60 a claim, plus the retried laps: a loop that never ends stops here
 _BOSS_MAX_REVIVES = 3       # farm_tacet's own cap (TacetTask.py:52, max_recovery_retries)
+_BOSS_MAX_RETRIES = 2       # laps that end in an exception before the crystal: the same small cap as revives
 
 
 def _boss_material_want():
@@ -909,9 +910,9 @@ def _boss_material(task):
     if want is None:
         return "off"
     if "error" in want:
-        task.log_error(f"{BOSS_LINE}标记文件 {BOSS_MATERIAL_FILE} 用不了（{want['error']}），体力这趟不刷")
+        task.log_error(f"{BOSS_LINE}设置读不出（{BOSS_MATERIAL_FILE}：{want['error']}），体力这趟不刷")
         return "off"
-    revives = 0
+    revives = retries = 0
     for lap in range(_BOSS_MAX_LAPS + 1):
         task.openF2Book("gray_book_boss")
         task.click_relative(0.22, 0.17, after_sleep=2)          # 培养目标, top of the 素材获取 list
@@ -949,14 +950,34 @@ def _boss_material(task):
         try:
             task.wait_in_team_and_world(time_out=120)
             task.combat_once(target=True)
+            task.walk_to_treasure()
+            task.pick_f(handle_claim=False)
+        except TaskDisabledException:
+            raise
         except CharRevivedException:
             revives += 1
             if revives >= _BOSS_MAX_REVIVES:
                 raise RuntimeError(f"{BOSS_LINE}倒下复活了 {revives} 次，不再打")
             task.log_info(f"{BOSS_LINE}倒下复活了，从培养目标页重新进")
             continue
-        task.walk_to_treasure()
-        task.pick_f(handle_claim=False)
+        except Exception as exc:  # noqa: BLE001 - a lap that never reached the crystal
+            # 2026-11-13 05:44:49: a character fell (「raise_not_in_combat char dead」), upstream's
+            # revive could not open the map, and the lap ended in an exception with 302 waveplates
+            # still there. Before the second version that stopped the whole farm.
+            retries += 1
+            _shot(task, "boss_material_lap_failed")
+            if retries > _BOSS_MAX_RETRIES:
+                raise RuntimeError(f"{BOSS_LINE}连着 {retries} 圈没打成，停下：{exc!r}") from exc
+            task.log_info(f"{BOSS_LINE}这一圈没打成（{exc!r}），回塔回血后从培养目标页重进（第 {retries} 次）")
+            try:
+                task.ensure_main(time_out=180)
+            except Exception:  # noqa: BLE001 - the heal below or the next lap's book says
+                pass
+            try:
+                task.teleport_to_heal()
+            except Exception as heal:  # noqa: BLE001 - the next lap still starts from the book
+                task.log_info(f"{BOSS_LINE}回塔回血没成（{heal!r}），照样重进")
+            continue
         used = _boss_claim(task, owned, need)
         if not used:
             return "short"
@@ -980,10 +1001,13 @@ def _boss_claim(task, owned, need):
         raise RuntimeError(f"{BOSS_LINE}打完走到宝箱按 F，没出「领取奖励」框。整屏读到 {_screen_text(task)[:400]}")
     found, text = _screen_read(task)
     wave, spare = _waveplates(task, found)
-    if wave is None or spare is None:
+    # The backup only matters when the waveplates alone are short: 2026-11-13 05:27:12 the bar read
+    # 362/240 with the backup as 「14）」 (a stray bracket), and that claim was refused for nothing.
+    if wave is None or (spare is None and wave < _CLAIM_COST):
         _shot(task, "boss_material_bar_unread")
         raise RuntimeError(f"{BOSS_LINE}领奖框上顶栏的波片没读全（波片 {wave}，备用 {spare}），不点确认。整屏读到 {text[:400]}")
     task.log_info(f"{BOSS_LINE}领奖框：顶栏读到波片 {wave}/240，备用 {spare}")
+    spare = spare or 0
     if wave + spare < _CLAIM_COST:
         task.log_info(f"{BOSS_LINE}波片 {wave} + 备用 {spare} 不够领一次的 {_CLAIM_COST}，取消，不动备用体力")
         task.click_dialog_left_button()

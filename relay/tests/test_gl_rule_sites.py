@@ -77,6 +77,7 @@ RE_FUNCS = {"compile", "search", "match", "fullmatch", "findall", "finditer", "s
 _MAAEND = "no MaaEnd record in the corpora prints it (U13b's 17 cases; replay 10-10)"
 _OKWW_RARE = "no recorded OK-WW run (corpus okww 11 runs, replay 09-01..09-07) nor scenario prints it"
 _SCEN_STOPS = "its overlay line comes after the moment the scenario ends, or on a path no scenario plays"
+_BOSS_1113 = ("only fixtures/okww-1113-boss-material.log (real ok-script.log lines of 2026-11-13 04:42-05:15, the first runs of the overlay's boss-material farm)")
 GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
     ("core/collector.py", "未连接游戏客户端"):
         ("none", "AUTO-MAS AutoProxy.py _OKWW_DISCONNECT_MSG when OK-WW -e closes hwnd after completion "
@@ -135,6 +136,17 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
     ("features/verify/outcome.py", "只刷指定点位的改动没装上，这一轮不刷巢穴"):
         ("none", "in none of 131 recorded runs (U13a); the overlay leaves find_nest bound on v3.5.28..v3.7.5 (U9)"),
     ("features/verify/outcome.py", "列表里没找到指定的点位"): ("none", _OKWW_RARE),
+    # The overlay's boss-material farm, new 2026-11-13 (ark_overrides _boss_material): only today's
+    # real runs print it, kept as fixtures/okww-1113-boss-material.log.
+    ("features/verify/collector_okww.py", r"强敌领奖：(\S+?)的(\S+?) (\d+)/(\d+)"): ("fixture", _BOSS_1113),
+    ("features/verify/collector_okww.py", "强敌领奖：领了一次"): ("fixture", _BOSS_1113),
+    ("features/verify/outcome.py",
+     "_STAMINA_TASK + '强敌领奖：(出错，[^\\\\n]*|培养目标不是[^\\\\n]*|设置读不出[^\\\\n]*|已经打了[^\\\\n]*)'"):
+        ("fixture", _BOSS_1113 + "; the 04:45:59 stop is the first version's wording, the pattern reads the head"),
+    ("features/verify/outcome.py", "_STAMINA_TASK + '强敌领奖：(\\\\S+?)的(\\\\S+?)已经够了（(\\\\d+)/(\\\\d+)）'"):
+        ("none", "the boss-material farm reading the count full; no run has reached it yet"),
+    ("features/verify/outcome.py", "_STAMINA_TASK + '强敌领奖：体力 -?\\\\d+ \\\\+ 备用 -?\\\\d+ 不够领一次'"):
+        ("fixture", _BOSS_1113),
     ("features/verify/outcome.py", r"nightmare nest: 传送两次都不过去，这一轮不打了 \S+（([^）\n]*)）"):
         ("none", "the overlay's NEST_GAVE_UP_LINE, new 10-27 (eec080f3): no machine has printed it yet; "
                  "the real 10-27 run it answers is fixtures/okww-1027-nest-unreachable.log"),
