@@ -934,13 +934,21 @@ def _boss_material(task):
         # The page can still be drawing: 2026-11-13 05:59:19 the read came while it was blank and was
         # taken for 「培养目标不是莉莉」. Look until the row or the target shows (6 looks 1 s apart);
         # nothing of the page after that is a lap to retry, not another target.
+        # 2026-11-13 06:30:54, after the material filled up and its row left the list, the right
+        # panel took longer than 6 s to draw. So: up to 12 looks; once the panel header 所需材料 has
+        # been read 3 times without the row, the row is gone.
         found, text = [], ""
-        for look in range(6):
+        panel = 0
+        for look in range(12):
             if look:
                 task.sleep(1)
             found, text = _screen_read(task)
             if want["target"] in text and want["row"] in text:
                 break
+            if "所需材料" in text:
+                panel += 1
+                if panel >= 3:
+                    break
         if want["target"] not in text and want["row"] not in text:
             retries += 1
             _shot(task, "boss_material_page")
@@ -958,6 +966,13 @@ def _boss_material(task):
             task.back(after_sleep=1)
             return "off"
         owned, need, btn = _boss_row(found, want["row"])
+        if want["row"] not in text and "所需材料" in text:
+            # The page lists only what is still missing: 2026-11-13 06:25:08, right after the claim that
+            # took 共鸣者突破材料 from 44 to 46 or more, the row was gone from 莉莉's page.
+            task.log_info(f"{BOSS_LINE}{want['target']}的{want['row']}已经够了（培养目标页上不再列这一行），"
+                          f"体力先留着不刷（无音区关着，等定下一个刷什么）")
+            task.back(after_sleep=1)
+            return "complete"
         if owned is None or btn is None:
             _shot(task, "boss_material_row")
             raise RuntimeError(f"{BOSS_LINE}培养目标页上没认出「{want['row']}」那一行"

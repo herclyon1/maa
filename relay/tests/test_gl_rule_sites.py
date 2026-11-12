@@ -143,7 +143,7 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
     ("features/verify/outcome.py",
      "_STAMINA_TASK + '强敌领奖：(出错，[^\\\\n]*|培养目标不是[^\\\\n]*|设置读不出[^\\\\n]*|已经打了[^\\\\n]*)'"):
         ("fixture", _BOSS_1113 + "; the 04:45:59 stop is the first version's wording, the pattern reads the head"),
-    ("features/verify/outcome.py", "_STAMINA_TASK + '强敌领奖：(\\\\S+?)的(\\\\S+?)已经够了（(\\\\d+)/(\\\\d+)）'"):
+    ("features/verify/outcome.py", "_STAMINA_TASK + '强敌领奖：(\\\\S+?)的(\\\\S+?)已经够了（([^）\\\\n]*)）'"):
         ("none", "the boss-material farm reading the count full; no run has reached it yet"),
     ("features/verify/outcome.py", "_STAMINA_TASK + '强敌领奖：体力 -?\\\\d+ \\\\+ 备用 -?\\\\d+ 不够领一次'"):
         ("fixture", _BOSS_1113),

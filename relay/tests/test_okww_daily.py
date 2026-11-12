@@ -1907,6 +1907,37 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
     check("顶栏前两眼没读到、第三眼读到：照常领", real_boss(t), "complete")
     check("确认点了", "confirm" in t.steps)
 
+    print("\n[强敌领奖：刷够以后那一行从培养目标页上消失（11-13 06:25:08）——算够了，不算认不出]")
+    t = fake_task(owned_now=44)
+    real_ocr3 = t.ocr
+
+    def gone(box=None, **kw):
+        got = real_ocr3(box=box, **kw)
+        if t.state["screen"] == "page" and t.state["owned"] >= 46:
+            got = [b for b in got if b.name not in ("共鸣者突破材料", f"{t.state['owned']}/46")
+                   and not (b.name == "直接挑战" and b.y == 420)]
+        return got
+    t.ocr = gone
+    check("领到 48 后那一行没了：complete", real_boss(t), "complete")
+    check("说了够了、为什么", any("已经够了（培养目标页上不再列这一行）" in m for m in t.logs))
+
+    print("\n[强敌领奖：那一行没了以后右栏画得慢（11-13 06:30:54，6 眼都只有左上角）——多等几眼]")
+    t = fake_task(owned_now=46)
+    late = [8]
+    real_ocr4 = t.ocr
+
+    def slow_panel(box=None, **kw):
+        if t.state["screen"] == "page":
+            if late[0]:
+                late[0] -= 1
+                return [B("素材获取", 102, 50), B("17", 1112, 48), B("5/240", 1400, 48), B("当期", 200, 150),
+                        B("莉莉", 288, 190)]
+            return [b for b in real_ocr4(box=box, **kw) if b.name not in ("共鸣者突破材料", "46/46")
+                    and not (b.name == "直接挑战" and b.y == 420)]
+        return real_ocr4(box=box, **kw)
+    t.ocr = slow_panel
+    check("8 眼后右栏才出来、那一行没了：complete，不报错", real_boss(t), "complete")
+
     print("\n[强敌领奖：按 F 没出「领取奖励」框——留图抛出（外面交给无音区）]")
     t = fake_task(claim_dialog=False)
     try:
