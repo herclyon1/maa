@@ -544,6 +544,22 @@ def same_clock(x: datetime, y: datetime) -> bool:
     return x.replace(second=0, microsecond=0) == y.replace(second=0, microsecond=0)
 
 
+# How much of a banner name a wiki must print before 「the official name starts with
+# it」 is read as the same name cut short, not as two names that begin alike.
+NAME_CUT_MIN = 4
+
+
+def name_cut_short(wiki: str, official: str) -> bool:
+    """The wiki printed only the beginning of the official banner name.
+
+    Kuro BBS's homepage tab for 莉莉's banner read 「盛放于昨日梦土的」 on 2026-11-12
+    (tab.name, eight characters; its other tabs that day were six and seven long), the
+    in-game notice 「盛放于昨日梦土的花朵」: alarms #168 and #169."""
+    bare = lambda n: re.sub(r"^【[^】]*】", "", n)  # noqa: E731
+    w, o = bare(wiki), bare(official)
+    return len(w) >= NAME_CUT_MIN and len(o) > len(w) and o.startswith(w)
+
+
 def _xdiffs(a_name: str, a: Banner, b_name: str, b: Banner) -> "list[tuple[str, str]]":
     """crosscheck's differences as (kind, text): kind is 池名, 角色, 开始 or 结束."""
     diffs = []
@@ -570,8 +586,10 @@ def crosscheck_fix(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | 
     the characters and differ only in the opening and/or the end that `b` prints.
     `a` then takes `b`'s times and the line is a ✓ that names both values; #66 counts
     it with what the official sources filled in, and a corrected end goes into
-    `tr.ends` (the report prints it). Anything else is crosscheck's line unchanged:
-    a name or character difference stays a ✗, and so does an official opening still
+    `tr.ends` (the report prints it). A wiki name that is only the beginning of the
+    official one (name_cut_short) is corrected the same way: `a` takes `b`'s name.
+    Anything else is crosscheck's line unchanged: any other name difference or a
+    character difference stays a ✗, and so does an official opening still
     to come or an official close already past (the wiki says open, the official
     source says not yet / no longer: correcting it would take a banner off the report
     on one source's word).
@@ -585,10 +603,15 @@ def crosscheck_fix(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | 
     if b is None:
         return a, crosscheck(game, a_name, a, b_name, b)
     diffs = dict(_xdiffs(a_name, a, b_name, b))
-    if (not diffs or not set(diffs) <= {"开始", "结束"}
+    # 2026-11-12 (#168/#169): the first-hand source wins on the name as it does on the
+    # times, when the wiki's is the same name cut short - the pair is already matched
+    # on the character, and the report then prints the name the game uses.
+    cut = "池名" in diffs and name_cut_short(a.name, b.name)
+    if (not diffs or not set(diffs) <= ({"开始", "结束", "池名"} if cut else {"开始", "结束"})
             or ("开始" in diffs and b.start > now) or ("结束" in diffs and b.end < now)):
         return a, crosscheck(game, a_name, a, b_name, b)
-    fixed = replace(a, start=b.start if "开始" in diffs else a.start,
+    fixed = replace(a, name=b.name if cut else a.name,
+                    start=b.start if "开始" in diffs else a.start,
                     end=b.end if "结束" in diffs else a.end)
     if "结束" in diffs and tr is not None:
         tr.ends |= _stamps(b.end)

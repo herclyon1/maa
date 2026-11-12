@@ -2353,6 +2353,32 @@ def _crosscheck_fix_cases() -> None:
           (wiki.start, datetime(2026, 11, 26, 6, 0),
            "终末地：森空岛 和 公告 结束不同（森空岛 11-25 06:00 / 公告 11-26 06:00），已按公告补正 ✓"
            "（公告开始写「版本更新后」，只核了结束）"))
+    # 2026-11-12, alarms #168/#169: Kuro BBS printed only the beginning of the name.
+    from dataclasses import replace  # noqa: PLC0415
+    ww_now = datetime(2026, 11, 12, 11, 38)
+    kuro = _b.Banner("鸣潮", "盛放于昨日梦土的", ("莉莉",), datetime(2026, 11, 12, 11, 0), datetime(2026, 12, 3, 9, 59, 59))
+    game = _b.Banner("鸣潮", "盛放于昨日梦土的花朵", ("莉莉",), None, datetime(2026, 12, 3, 9, 59), start_note="版本更新后")
+    b, line = _b.crosscheck_fix("鸣潮", "库街区", kuro, "游戏公告", game, ww_now)
+    check("fix: the wiki cut the name short -> the official name, ✓",
+          (b.name, b.chars, b.start, b.end, line),
+          ("盛放于昨日梦土的花朵", ("莉莉",), kuro.start, kuro.end,
+           "鸣潮：库街区 和 游戏公告 池名不同（库街区「盛放于昨日梦土的」/ 游戏公告「盛放于昨日梦土的花朵」），已按游戏公告补正 ✓"
+           "（游戏公告开始写「版本更新后」，只核了结束）"))
+    b, line = _b.crosscheck_fix("鸣潮", "库街区", kuro, "游戏公告", replace(game, end=datetime(2026, 12, 4, 9, 59)), ww_now)
+    check("fix: cut short and another end -> both corrected in one ✓ line",
+          (b.name, b.end, line.endswith("，已按游戏公告补正 ✓（游戏公告开始写「版本更新后」，只核了结束）"), "池名、结束都不同" in line),
+          ("盛放于昨日梦土的花朵", datetime(2026, 12, 4, 9, 59), True, True))
+    for label, w, o in (("the official name is the shorter one", "盛放于昨日梦土的花朵", "盛放于昨日梦土的"),
+                        ("only three characters in common", "盛放于", "盛放于昨日梦土的花朵"),
+                        ("the names merely begin alike", "盛放于昨日的雪", "盛放于昨日梦土的花朵")):
+        x, y = replace(kuro, name=w), replace(game, name=o)
+        b, line = _b.crosscheck_fix("鸣潮", "库街区", x, "游戏公告", y, ww_now)
+        check(f"fix: {label} -> still a ✗, nothing corrected",
+              (b is x, line), (True, _b.crosscheck("鸣潮", "库街区", x, "游戏公告", y)))
+    b, line = _b.crosscheck_fix("鸣潮", "库街区", kuro, "游戏公告", replace(game, chars=("别人",)), ww_now)
+    check("fix: cut short but another character -> still a ✗", (b is kuro, "✗" in line), (True, True))
+    check("name_cut_short: a kind prefix in 【】 is not part of the name",
+          (_b.name_cut_short("【限定寻访】盛放于昨日", "盛放于昨日梦土"), _b.name_cut_short("盛放于昨日", "盛放于昨日")), (True, False))
     for label, other in (("the official opening still to come", off(start=datetime(2026, 11, 10, 12, 0))),
                          ("the official close already past", off(end=datetime(2026, 11, 9, 12, 0))),
                          ("the name differs too", off(name="另一个池", start=datetime(2026, 11, 5, 12, 0))),
