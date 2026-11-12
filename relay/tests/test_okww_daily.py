@@ -1892,6 +1892,21 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
     check("一直空着：重进 2 次后停下，不说换了人", ("没等到培养目标页" in got, any("培养目标不是" in m for m in t.logs)),
           (True, False))
 
+    print("\n[强敌领奖：领奖框刚出来时顶栏还没画好（11-13 06:11:26）——多看几眼]")
+    t = fake_task(owned_now=40)
+    torn = [2]
+    real_ocr2 = t.ocr
+
+    def drawing(box=None, **kw):
+        got = real_ocr2(box=box, **kw)
+        if t.state["screen"] == "dialog" and torn[0]:
+            torn[0] -= 1
+            return [b for b in got if "/240" not in b.name] + [B("城", 1386, 9)]
+        return got
+    t.ocr = drawing
+    check("顶栏前两眼没读到、第三眼读到：照常领", real_boss(t), "complete")
+    check("确认点了", "confirm" in t.steps)
+
     print("\n[强敌领奖：按 F 没出「领取奖励」框——留图抛出（外面交给无音区）]")
     t = fake_task(claim_dialog=False)
     try:

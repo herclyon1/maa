@@ -1034,8 +1034,15 @@ def _boss_claim(task, owned, need):
     if not task.wait_until(lambda: "领取奖励" in _screen_text(task), time_out=6, raise_if_not_found=False):
         _shot(task, "boss_material_no_claim")
         raise RuntimeError(f"{BOSS_LINE}打完走到宝箱按 F，没出「领取奖励」框。整屏读到 {_screen_text(task)[:400]}")
-    found, text = _screen_read(task)
-    wave, spare = _waveplates(task, found)
+    # The dialog and its bar can still be drawing: 2026-11-13 06:11:26 one read had neither (「城」,
+    # 「.189ms」) right after the title was seen. Look until both are there (5 looks 1 s apart).
+    for look in range(5):
+        if look:
+            task.sleep(1)
+        found, text = _screen_read(task)
+        wave, spare = _waveplates(task, found)
+        if "领取奖励" in text and wave is not None:
+            break
     # The backup only matters when the waveplates alone are short: 2026-11-13 05:27:12 the bar read
     # 362/240 with the backup as 「14）」 (a stray bracket), and that claim was refused for nothing.
     if wave is None or (spare is None and wave < _CLAIM_COST):
