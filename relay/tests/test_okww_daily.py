@@ -1869,6 +1869,29 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
         got = str(exc)
     check("一直打不开：试 3 次后停下", "连着 3 次没打开 F2 指南" in got)
 
+    print("\n[强敌领奖：培养目标页还没画出来（11-13 05:59:19 被当成换了人）——等一等，等不到就重进]")
+    t = fake_task(owned_now=40)
+    blank = [2]
+    real_ocr = t.ocr
+
+    def slow(box=None, **kw):
+        if t.state["screen"] == "page" and blank[0]:
+            blank[0] -= 1
+            return [B(".187ms", 1776, 79), B("1", 1736, 210)]
+        return real_ocr(box=box, **kw)
+    t.ocr = slow
+    check("前两眼是空的，第三眼出来了：照常刷满", real_boss(t), "complete")
+    check("没说换了人", any("培养目标不是" in m for m in t.logs), False)
+    t = fake_task(owned_now=40)
+    t.ocr = lambda box=None, **kw: [B(".187ms", 1776, 79)]
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("一直空着：重进 2 次后停下，不说换了人", ("没等到培养目标页" in got, any("培养目标不是" in m for m in t.logs)),
+          (True, False))
+
     print("\n[强敌领奖：按 F 没出「领取奖励」框——留图抛出（外面交给无音区）]")
     t = fake_task(claim_dialog=False)
     try:

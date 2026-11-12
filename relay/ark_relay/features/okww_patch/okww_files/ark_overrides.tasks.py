@@ -931,7 +931,27 @@ def _boss_material(task):
                 pass
             continue
         task.click_relative(0.22, 0.17, after_sleep=2)          # 培养目标, top of the 素材获取 list
-        found, text = _screen_read(task)
+        # The page can still be drawing: 2026-11-13 05:59:19 the read came while it was blank and was
+        # taken for 「培养目标不是莉莉」. Look until the row or the target shows (6 looks 1 s apart);
+        # nothing of the page after that is a lap to retry, not another target.
+        found, text = [], ""
+        for look in range(6):
+            if look:
+                task.sleep(1)
+            found, text = _screen_read(task)
+            if want["target"] in text and want["row"] in text:
+                break
+        if want["target"] not in text and want["row"] not in text:
+            retries += 1
+            _shot(task, "boss_material_page")
+            if retries > _BOSS_MAX_RETRIES:
+                raise RuntimeError(f"{BOSS_LINE}连着 {retries} 次没等到培养目标页，停下。整屏读到 {text[:300]}")
+            task.log_info(f"{BOSS_LINE}培养目标页没出来，回主界面再试（第 {retries} 次）")
+            try:
+                task.ensure_main(time_out=180)
+            except Exception:  # noqa: BLE001 - the next try says
+                pass
+            continue
         if want["target"] not in text:
             _shot(task, "boss_material_target")
             task.log_error(f"{BOSS_LINE}培养目标不是{want['target']}，不刷强敌，体力这趟不刷。整屏读到 {text[:300]}")
