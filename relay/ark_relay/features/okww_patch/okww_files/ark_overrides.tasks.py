@@ -831,6 +831,193 @@ _TEAM_CHALLENGE_SHA = "daeaf5a0f809"
 NO_STAMINA_FLAG = r"C:\ProgramData\ark-relay\state\no-stamina-farm.flag"
 _MAX_FARM_RETRIES = 3
 
+# ---------------------------------------------------------------------------
+# Stamina on the cultivation target's boss material. On 2026-11-13 the user asked for the daily stamina
+# to go to 莉莉's breakthrough material, with her set as the guidebook's cultivation target, and said to
+# keep at it until it is full: 「之后把它刷到满为止」. The guidebook's 素材获取 tab (the book
+# upstream opens for the tacet farm, openF2Book("gray_book_boss")) has 培养目标 on top of its list: the
+# target's material rows, each with its count under the icon (「1/46」) and a 「直接挑战」 button that
+# goes straight to the boss's team screen. Seen 2026-11-13 04:34-04:36: 培养目标 莉莉, row
+# 「共鸣者突破材料」 at 1/46 (the material 觊日者的指尖, which the boss 海维夏·觎星之使女 drops); its
+# 直接挑战 button opens the team screen for the realm 「影造圆庭·凝率」 with 开启挑战 - a realm, like
+# the tacet field. On only while the marker file is there and the page
+# names its target. Every lap starts from that page: the count is read before each claim, so the farm
+# stops by itself when it reads full and the stamina goes back to the tacet field with nobody switching
+# anything. Whatever is not recognised: a picture and an error line. While the marker is there the tacet
+# farm does not run at all - the user, 2026-11-13 04:5x: 「尽量避免没刷完角色突破材料就跑过去刷无音区，要么
+# 先把无音区关掉不刷也行，因为还有别的要刷，未定」: stamina left over (material full, a failure, under one
+# claim) stays unspent until he says what comes next. Without the marker nothing changes.
+# ---------------------------------------------------------------------------
+BOSS_MATERIAL_FILE = r"C:\ProgramData\ark-okww-boss-material.json"
+BOSS_LINE = "强敌领奖："
+_BOSS_ROW_DEFAULT = "共鸣者突破材料"
+_COUNT_RE = re.compile(r"(\d{1,3})\s*[/／]\s*(\d{1,3})")
+_BOSS_MAX_LAPS = 8          # 240 waveplates + backup at 60 a claim: a loop that never ends stops here
+_BOSS_MAX_REVIVES = 3       # farm_tacet's own cap (TacetTask.py:52, max_recovery_retries)
+
+
+def _boss_material_want():
+    """The marker's settings: None without the file, {"error": ...} when it cannot be used."""
+    try:
+        with open(BOSS_MATERIAL_FILE, encoding="utf-8") as fh:
+            got = json.load(fh)
+    except FileNotFoundError:
+        return None
+    except Exception as exc:  # noqa: BLE001 - said in the log as an error
+        return {"error": repr(exc)}
+    if not isinstance(got, dict) or not str(got.get("target") or "").strip():
+        return {"error": f"认不出的内容 {str(got)[:120]}"}
+    return {"target": str(got["target"]).strip(), "row": str(got.get("row") or _BOSS_ROW_DEFAULT).strip()}
+
+
+def _boss_row(found, row_name):
+    """(owned, need, 直接挑战 box) of the row labelled `row_name` on the 培养目标 page; None for each part
+    not seen. The label sits left, the count under the icon a little lower, the button right, all on
+    the label's line (2026-11-13 04:34:11 at 1280x720: label y 290, 「1/46」 y 312, button y 290;
+    the next row is 100 lower)."""
+    def name(b):
+        return str(getattr(b, "name", b)).strip()
+    label = next((b for b in found if name(b) == row_name), None)
+    if label is None:
+        return None, None, None
+    h = max(getattr(label, "height", 0) or 0, 1)
+
+    def on_line(b, below):
+        return b.x > label.x and label.y - h * 1.5 <= b.y <= label.y + h * below
+
+    counts = [(b, m) for b in found if (m := _COUNT_RE.fullmatch(name(b))) and on_line(b, 3.0)]
+    btns = [b for b in found if "直接挑战" in name(b) and on_line(b, 1.5)]
+    owned = need = btn = None
+    if counts:
+        _, m = min(counts, key=lambda c: abs(c[0].y - label.y))
+        owned, need = int(m.group(1)), int(m.group(2))
+    if btns:
+        btn = min(btns, key=lambda b: abs(b.y - label.y))
+    return owned, need, btn
+
+
+def _boss_material(task):
+    """Spend the stamina on the 培养目标's boss material, one claim per lap.
+
+    -> "off" (no marker / not this target), "complete" (the count reads full), "short" (under one
+    claim left), "laps" (the lap cap). Raises on a screen it does not know, after a picture; the
+    caller logs it; the stamina left stays unspent. Runs on the TacetTask object, so the way in and
+    the fight are upstream's own tacet-farm steps (TacetTask.py:62-90: the F2 book, the stamina read,
+    the team challenge, combat_once, walk_to_treasure, pick_f); the claim is _boss_claim's.
+    """
+    want = _boss_material_want()
+    if want is None:
+        return "off"
+    if "error" in want:
+        task.log_error(f"{BOSS_LINE}标记文件 {BOSS_MATERIAL_FILE} 用不了（{want['error']}），体力这趟不刷")
+        return "off"
+    revives = 0
+    for lap in range(_BOSS_MAX_LAPS + 1):
+        task.openF2Book("gray_book_boss")
+        task.click_relative(0.22, 0.17, after_sleep=2)          # 培养目标, top of the 素材获取 list
+        found, text = _screen_read(task)
+        if want["target"] not in text:
+            _shot(task, "boss_material_target")
+            task.log_error(f"{BOSS_LINE}培养目标不是{want['target']}，不刷强敌，体力这趟不刷。整屏读到 {text[:300]}")
+            task.back(after_sleep=1)
+            return "off"
+        owned, need, btn = _boss_row(found, want["row"])
+        if owned is None or btn is None:
+            _shot(task, "boss_material_row")
+            raise RuntimeError(f"{BOSS_LINE}培养目标页上没认出「{want['row']}」那一行"
+                               f"（数量 {owned}/{need}，直接挑战 {'有' if btn else '没有'}）。整屏读到 {text[:400]}")
+        task.info_set("boss material", f"{owned}/{need}")
+        task.log_info(f"{BOSS_LINE}{want['target']}的{want['row']} {owned}/{need}")
+        if owned >= need:
+            task.log_info(f"{BOSS_LINE}{want['target']}的{want['row']}已经够了（{owned}/{need}），体力先留着不刷（无音区关着，等定下一个刷什么）")
+            task.back(after_sleep=1)
+            return "complete"
+        current, back_up, total = task.get_stamina()
+        if total < 0:
+            _shot(task, "boss_material_stamina")
+            raise RuntimeError(f"{BOSS_LINE}培养目标页上没读到体力。整屏读到 {text[:300]}")
+        if total < _CLAIM_COST:
+            task.log_info(f"{BOSS_LINE}体力 {current} + 备用 {back_up} 不够领一次的 {_CLAIM_COST}，这趟刷完")
+            task.back(after_sleep=1)
+            return "short"
+        if lap >= _BOSS_MAX_LAPS:
+            task.log_error(f"{BOSS_LINE}已经打了 {lap} 圈还没停，停下，剩下的体力不刷")
+            task.back(after_sleep=1)
+            return "laps"
+        task.click_box(btn, after_sleep=3)
+        task.click_team_challenge()
+        try:
+            task.wait_in_team_and_world(time_out=120)
+            task.combat_once(target=True)
+        except CharRevivedException:
+            revives += 1
+            if revives >= _BOSS_MAX_REVIVES:
+                raise RuntimeError(f"{BOSS_LINE}倒下复活了 {revives} 次，不再打")
+            task.log_info(f"{BOSS_LINE}倒下复活了，从培养目标页重新进")
+            continue
+        task.walk_to_treasure()
+        task.pick_f(handle_claim=False)
+        used = _boss_claim(task, owned, need)
+        if not used:
+            return "short"
+        # The next lap reads the count again on the 培养目标 page before it claims again.
+    return "laps"
+
+
+def _boss_claim(task, owned, need):
+    """The boss's reward dialog after F at the crystal, then out of the realm. -> waveplates spent (0: short).
+
+    Not the tacet field's dialog (no 单倍/双倍, no stamina sign: has_claim_stamina missed it,
+    2026-11-13 04:45:58 picture boss_material_no_claim): 「领取奖励 / 领取奖励需消耗60点结晶波片，请确认
+    是否领取？ / 取消 / 确认」 - the weekly boss's dialog, so the weekly claim's way (_install_claim):
+    read the bar first, cancel when waveplates and backup together cannot pay, confirm, and answer the
+    game's top-up dialog with the backup only (two clicks at (0.70, 0.71), as upstream use_stamina does);
+    a top-up after a bar that read enough, or a second one, is cancelled. Then 「退出副本」 on the
+    settlement page. Anything else: a picture and an exception (the caller's ensure_main presses ESC,
+    which is 取消 on a dialog still open)."""
+    if not task.wait_until(lambda: "领取奖励" in _screen_text(task), time_out=6, raise_if_not_found=False):
+        _shot(task, "boss_material_no_claim")
+        raise RuntimeError(f"{BOSS_LINE}打完走到宝箱按 F，没出「领取奖励」框。整屏读到 {_screen_text(task)[:400]}")
+    found, text = _screen_read(task)
+    wave, spare = _waveplates(task, found)
+    if wave is None or spare is None:
+        _shot(task, "boss_material_bar_unread")
+        raise RuntimeError(f"{BOSS_LINE}领奖框上顶栏的波片没读全（波片 {wave}，备用 {spare}），不点确认。整屏读到 {text[:400]}")
+    task.log_info(f"{BOSS_LINE}领奖框：顶栏读到波片 {wave}/240，备用 {spare}")
+    if wave + spare < _CLAIM_COST:
+        task.log_info(f"{BOSS_LINE}波片 {wave} + 备用 {spare} 不够领一次的 {_CLAIM_COST}，取消，不动备用体力")
+        task.click_dialog_left_button()
+        task.sleep(1)
+        return 0
+    btn = task.click_dialog_right_button()
+    if task.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
+                         time_out=3, settle_time=0.5):
+        if wave >= _CLAIM_COST:
+            _shot(task, "boss_material_topup_unexpected")
+            task.back(after_sleep=1)
+            task.click_dialog_left_button()
+            raise RuntimeError(f"{BOSS_LINE}顶栏读到波片 {wave} 够领，游戏却弹了补充波片的框，不点补充（可能动结晶溶剂）")
+        task.log_info(f"{BOSS_LINE}波片不够，动用备用体力")
+        task.click_relative(0.70, 0.71, hcenter=True, after_sleep=1)
+        task.click_relative(0.70, 0.71, hcenter=True, after_sleep=1)
+        task.back(after_sleep=1)
+        task.click(btn, after_sleep=1)
+        if task.wait_feature("gem_add_stamina", horizontal_variance=0.4, vertical_variance=0.05,
+                             time_out=3, settle_time=0.5):
+            _shot(task, "boss_material_short")
+            task.log_info(f"{BOSS_LINE}备用体力用上了仍不够 {_CLAIM_COST}，取消，不点补充")
+            task.back(after_sleep=1)
+            task.click_dialog_left_button()
+            return 0
+    task.info_incr("used stamina", _CLAIM_COST)
+    _shot(task, "boss_material_claimed")
+    task.log_info(f"{BOSS_LINE}领了一次，花 {_CLAIM_COST} 波片（领之前 {owned}/{need}）")
+    if not task.wait_click_ocr(match=re.compile("退出副本"), time_out=15, raise_if_not_found=False, after_sleep=2):
+        _shot(task, "boss_material_no_settlement")
+        raise RuntimeError(f"{BOSS_LINE}点了确认后没等到结算页的「退出副本」。整屏读到 {_screen_text(task)[:400]}")
+    task.wait_in_team_and_world(time_out=120)
+    return _CLAIM_COST
+
 # Weekly boss, 「单人挑战」: where upstream's one blind click lands. The box is the
 # bottom-right strip the button sits in; on the 2026-09-21 screenshots (1920x1080,
 # 10-20-43.029_weekly_remaining / 10-20-58.624_no_start_btn) the text 「单人挑战」
@@ -1686,6 +1873,23 @@ def _install_hooks():
             # claim_daily's below.
             kw.pop("daily", None)
             kw.pop("used_stamina", None)
+            if cls is TacetTask and os.path.exists(BOSS_MATERIAL_FILE):
+                # The cultivation target's boss material only (_boss_material). The tacet farm
+                # stays off while the marker is there, whatever the boss farm ends with (the
+                # user, 2026-11-13: no tacet field before the material is done, other farms
+                # still to be decided): the stamina left is not spent.
+                try:
+                    got = _boss_material(self)
+                    self.log_info(f"{BOSS_LINE}这趟结束（{got}），无音区不刷（标记文件在）")
+                except TaskDisabledException:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - reported; the stamina stays unspent
+                    self.log_error(f"{BOSS_LINE}出错，剩下的体力不刷（无音区关着）: {exc}", exception=exc)
+                    try:
+                        self.ensure_main(time_out=180)
+                    except Exception:  # noqa: BLE001
+                        pass
+                return None
             return original(self, *a, **kw)
 
         override(cls, name)(hooked)

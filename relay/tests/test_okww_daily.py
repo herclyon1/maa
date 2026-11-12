@@ -1533,6 +1533,282 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
     check("书页上读一次：239 + 55", t.get_stamina(), (239, 55, 294))
     check("书页上只读一次", sum(m.startswith("体力读字原文") for m in t.logs), 1)
 
+    # ---------------------------------------------------------------------------
+    # 2026-11-13: the stamina on the cultivation target's boss material (莉莉, 共鸣者突破材料),
+    # on while the marker file is there; the tacet farm takes whatever is left.
+    boss_file = os.path.join(tmp, "ark-okww-boss-material.json")
+    ns["BOSS_MATERIAL_FILE"] = boss_file
+    real_boss = ns["_boss_material"]
+    boss_calls = []
+
+    def boss_stub(result=None, error=None):
+        def stub(task):
+            boss_calls.append(type(task).__name__)
+            EV.append("boss")
+            if error is not None:
+                raise error
+            return result
+        return stub
+
+    print("\n[强敌领奖：没有标记文件，一字不差照旧]")
+    ns["_boss_material"] = boss_stub("complete")
+    boss_calls.clear()
+    d = daily(USED_PART)
+    d.run()
+    check("没碰强敌那条", boss_calls, [])
+    check("照旧刷无音区", farm_calls(), [("farm_tacet", 0, d.config)])
+    check("没有强敌的话", any(ns["BOSS_LINE"] in m for m in d.farms[TacetTask].logs), False)
+
+    print("\n[强敌领奖：标记在，只刷强敌，无音区关着（他 11-13：没刷完别去刷无音区，下一个刷什么未定）]")
+    Path(boss_file).write_text('{"target": "莉莉"}', encoding="utf-8")
+    for got in ("complete", "short", "off", "laps"):
+        ns["_boss_material"] = boss_stub(got)
+        boss_calls.clear()
+        d = daily(USED_PART)
+        d.run()
+        check(f"{got}：强敌那条跑了一次，在 TacetTask 上", boss_calls, ["TacetTask"])
+        check(f"{got}：无音区没刷", farm_calls(), [])
+        check(f"{got}：说了这趟怎么结束、无音区不刷",
+              any(f"这趟结束（{got}），无音区不刷" in m for m in d.farms[TacetTask].logs))
+        check(f"{got}：日常照领", "claim_daily" in EV)
+    print("\n[强敌领奖：上游闸门关着（已用 180）时，补刷那条也只走强敌]")
+    ns["_boss_material"] = boss_stub("short")
+    boss_calls.clear()
+    d = daily(USED_FULL)
+    d.run()
+    check("补刷走的也是强敌，一次", (boss_calls, farm_calls()), (["TacetTask"], []))
+
+    print("\n[强敌领奖：出错不拖垮，回主界面，剩下的体力不刷（无音区关着）]")
+    ns["_boss_material"] = boss_stub(error=RuntimeError("培养目标页上没认出"))
+    d = daily(USED_PART)
+    d.run()
+    farm = d.farms[TacetTask]
+    check("记了错", any("出错，剩下的体力不刷（无音区关着）" in m for m in farm.logs))
+    check("回了主界面", "ensure_main" in EV)
+    check("无音区没刷、日常照领", (farm_calls(), "claim_daily" in EV), ([], True))
+
+    print("\n[强敌领奖：OK-WW 的停止信号照原样往上抛]")
+    ns["_boss_material"] = boss_stub(error=Disabled())
+    d = daily(USED_PART)
+    try:
+        d.run()
+        raised = False
+    except Disabled:
+        raised = True
+    check("往上抛", raised)
+    check("没再刷无音区", farm_calls(), [])
+
+    print("\n[强敌领奖：凝素领域 / 模拟领域不走强敌那条]")
+    ns["_boss_material"] = boss_stub("complete")
+    for target, name in ((SUPPORT[1], "farm_forgery"), (SUPPORT[2], "farm_simulation")):
+        boss_calls.clear()
+        d = daily(USED_PART, target=target)
+        d.run()
+        check(f"{name}：没碰强敌", boss_calls, [])
+        check(f"{name}：照旧", farm_calls(), [(name, 0, d.config)])
+
+    print("\n[强敌领奖：标记文件的内容]")
+    want = ns["_boss_material_want"]
+    check("莉莉，行名默认共鸣者突破材料", want(), {"target": "莉莉", "row": "共鸣者突破材料"})
+    Path(boss_file).write_text("{坏的", encoding="utf-8")
+    check("坏 JSON：说不能用，不当成开着", "error" in want())
+    Path(boss_file).write_text('{"row": "共鸣者突破材料"}', encoding="utf-8")
+    check("没写培养目标：说不能用", "error" in want())
+    os.remove(boss_file)
+    check("没有文件：None", want(), None)
+
+    class B:
+        """ok-script's Box as far as the overlay reads it: str() is its text (ok Box.__str__)."""
+        def __init__(self, name, x, y, w=120, h=33):
+            self.name, self.x, self.y, self.width, self.height = name, x, y, w, h
+
+        def __str__(self):
+            return self.name
+
+    # The 培养目标 page as seen 2026-11-13 04:34:11, scaled to 1920x1080: three rows 150 apart.
+    PAGE = [B("培养目标", 288, 155), B("莉莉", 288, 190), B("所需材料", 940, 155),
+            B("武器经验材料", 765, 270), B("106/106", 1085, 305, 60, 20), B("21/79", 1430, 305, 60, 20),
+            B("直接挑战", 1650, 270),
+            B("共鸣者突破材料", 765, 420), B("1/46", 1430, 455, 50, 20), B("直接挑战", 1650, 420),
+            B("武器与技能素材", 765, 570), B("1/31", 1085, 605, 50, 20), B("0/87", 1430, 605, 50, 20),
+            B("直接挑战", 1650, 570),
+            B("156", 1100, 50), B("152/240", 1340, 50)]
+    print("\n[强敌领奖：培养目标页上认那一行（真实截图的位置）]")
+    owned, need, btn = ns["_boss_row"](PAGE, "共鸣者突破材料")
+    check("数量读的是这一行的 1/46，不是上下两行", (owned, need), (1, 46))
+    check("直接挑战是这一行的", getattr(btn, "y", None), 420)
+    check("没有这一行：三个 None", ns["_boss_row"](PAGE[:3], "共鸣者突破材料"), (None, None, None))
+
+    print("\n[强敌领奖：整趟走一遍——差两个，领一次，再读够了就停]")
+    ns["_boss_material"] = real_boss
+    Path(boss_file).write_text('{"target": "莉莉"}', encoding="utf-8")
+
+    def page(owned_now, target="莉莉"):
+        out = [b for b in PAGE if b.name not in ("1/46", "莉莉")]
+        return out + [B(target, 288, 190), B(f"{owned_now}/46", 1430, 455, 50, 20)]
+
+    # The boss's reward dialog as seen 2026-11-13 04:45:58 (boss_material_no_claim, 1920x1080): the bar
+    # read 「156」 at x1186 y48 and 「154/240」 at x1410 y44; the dialog has the title 领取奖励, then the
+    # sentence that asks for 60 waveplates, then the two buttons 取消 (cancel) and 确认 (confirm).
+    def dialog(wave, spare):
+        return [B(str(spare), 1186, 48), B(f"{wave}/240", 1410, 44), B("领取奖励", 450, 350),
+                B("领取奖励需消耗60点结晶波片，请确认是否领取？", 630, 520), B("取消", 640, 678), B("确认", 1260, 678)]
+
+    def fake_task(owned_now=44, wave=152, spare=156, target="莉莉", topup=0, settle=True, claim_dialog=True):
+        t = wire(object.__new__(TacetTask))
+        t.state = {"owned": owned_now, "wave": wave, "spare": spare, "screen": "world", "topups": topup}
+        t.steps = []
+
+        def book(feature=""):
+            t.steps.append("book")
+            t.state["screen"] = "page"
+        t.openF2Book = book
+        t.click_relative = lambda x, y, **kw: t.steps.append(("click", x, y))
+        t.box_of_screen = lambda *a, **kw: None
+        t.height_of_screen = lambda f: int(1080 * f)
+
+        def ocr(box=None, **kw):
+            sc = t.state["screen"]
+            if sc == "page":
+                return page(t.state["owned"], target)
+            if sc == "dialog":
+                return dialog(t.state["wave"], t.state["spare"])
+            if sc == "settle":
+                return [B("挑战成功", 900, 200), B("退出副本", 700, 950), B("重新挑战", 1200, 950)]
+            return []
+        t.ocr = ocr
+        t.get_stamina = lambda: (t.state["wave"], t.state["spare"], t.state["wave"] + t.state["spare"])
+        t.back = lambda after_sleep=0: t.steps.append("back")
+        t.click_box = lambda b, after_sleep=0: t.steps.append(("box", b.name, b.y))
+        t.click_team_challenge = lambda: t.steps.append("challenge")
+        t.wait_in_team_and_world = lambda time_out=0: None
+        t.combat_once = lambda **kw: t.steps.append("fight")
+        t.walk_to_treasure = lambda: t.steps.append("walk")
+
+        def f(handle_claim=True):
+            t.steps.append(("f", handle_claim))
+            if claim_dialog:
+                t.state["screen"] = "dialog"
+        t.pick_f = f
+        t.info_incr = lambda k, v: t.info.__setitem__(k, t.info.get(k, 0) + v)
+        t.wait_until = lambda cond, time_out=0, raise_if_not_found=False, **kw: cond()
+
+        def left():
+            t.steps.append("cancel")
+            t.state["screen"] = "world"
+        t.click_dialog_left_button = left
+
+        def take():
+            t.state["owned"] += 4
+            t.state["wave"] -= 60
+            t.state["screen"] = "settle" if settle else "world"
+
+        def right():
+            # The game: under 60 waveplates (or a forced top-up) the 「补充结晶波片」 dialog comes first.
+            t.steps.append("confirm")
+            if t.state["topups"] > 0 or t.state["wave"] < 60:
+                t.state["screen"] = "topup"
+                return "btn"
+            take()
+            return "btn"
+        t.click_dialog_right_button = right
+
+        def wait_feature(name, **kw):
+            return t.state["screen"] == "topup"
+        t.wait_feature = wait_feature
+
+        def click(btn, after_sleep=0):
+            # After the two top-up clicks: the backup became waveplates, 确认 again.
+            t.steps.append(("again", btn))
+            t.state["topups"] = 0
+            t.state["wave"] += t.state["spare"]
+            t.state["spare"] = 0
+            if t.state["wave"] >= 60:
+                take()
+            else:
+                t.state["screen"] = "topup"
+        t.click = click
+
+        def wait_click_ocr(match=None, **kw):
+            if t.state["screen"] == "settle" and match.search("退出副本"):
+                t.steps.append("exit")
+                t.state["screen"] = "world"
+                return True
+            return None
+        t.wait_click_ocr = wait_click_ocr
+        return t
+
+    t = fake_task()
+    check("44/46：领一次（+4），48/46 后停在 complete", real_boss(t), "complete")
+    check("确认只点了一次", t.steps.count("confirm"), 1)
+    check("点的是莉莉那一行的直接挑战", ("box", "直接挑战", 420) in t.steps)
+    check("顺序：书 → 培养目标 → 直接挑战 → 开启挑战 → 打 → 走到宝箱 → F（不让上游取消）→ 确认 → 退出副本",
+          [s if not isinstance(s, tuple) else s[0] for s in t.steps][:9],
+          ["book", "click", "box", "challenge", "fight", "walk", "f", "confirm", "exit"])
+    check("按 F 时 handle_claim=False", ("f", False) in t.steps)
+    check("记了花的体力 60", t.info.get("used stamina"), 60)
+    check("留了领奖图", "boss_material_claimed" in t.shots)
+    check("每圈开头都读一次数量（44 → 48）", [m for m in t.logs if m.startswith(ns["BOSS_LINE"] + "莉莉的共鸣者突破材料 ")],
+          [ns["BOSS_LINE"] + "莉莉的共鸣者突破材料 44/46", ns["BOSS_LINE"] + "莉莉的共鸣者突破材料 48/46"])
+    check("领奖框上读了顶栏", any("领奖框：顶栏读到波片 152/240，备用 156" in m for m in t.logs))
+
+    t = fake_task(owned_now=10)
+    check("10/46、波片 152 + 备用 156：领到不够一次为止", real_boss(t), "short")
+    check("领了 5 次（152→92→32，补备用 188→128→68→8），补充框只出一次",
+          (t.info.get("used stamina"), t.steps.count(("again", "btn"))), (300, 1))
+    check("剩 8 停下，说了不够", any("体力 8 + 备用 0 不够领一次的 60" in m for m in t.logs))
+
+    t = fake_task(owned_now=46)
+    check("已经够了：一次不打", (real_boss(t), "fight" in t.steps), ("complete", False))
+    t = fake_task(wave=10, spare=20)
+    check("体力 + 备用不够 60：一次不打", (real_boss(t), "fight" in t.steps), ("short", False))
+    t = fake_task(target="锁暝")
+    check("培养目标换了人：不打，回 off", (real_boss(t), "fight" in t.steps), ("off", False))
+    check("培养目标换了人：留图、记错", ("boss_material_target" in t.shots,
+                                       any("培养目标不是莉莉" in m for m in t.logs)), (True, True))
+
+    print("\n[强敌领奖：波片 30 + 备用 156——游戏弹补充框，用备用，再点一次确认]")
+    t = fake_task(wave=30, spare=156, topup=1)
+    real_boss(t)
+    check("补充框：点了两下 (0.70, 0.71)、返回、再确认", (("click", 0.70, 0.71) in t.steps, ("again", "btn") in t.steps),
+          (True, True))
+    check("说了动用备用体力", any("动用备用体力" in m for m in t.logs))
+
+    print("\n[强敌领奖：波片读到 152 够领，游戏却弹补充框——不点补充，抛出]")
+    t = fake_task(wave=152, topup=1)
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("抛出并说清", "游戏却弹了补充波片的框" in got)
+    check("取消了，没点补充", ("cancel" in t.steps, ("click", 0.70, 0.71) in t.steps), (True, False))
+
+    print("\n[强敌领奖：波片 20 + 备用 20 不够一次——取消，不动备用]")
+    t = fake_task(wave=20, spare=20)
+    t.get_stamina = lambda: (80, 0, 80)          # the page read said enough; the dialog's bar says not
+    check("返回 short", real_boss(t), "short")
+    check("点了取消，没点确认", ("cancel" in t.steps, "confirm" in t.steps), (True, False))
+
+    print("\n[强敌领奖：按 F 没出「领取奖励」框——留图抛出（外面交给无音区）]")
+    t = fake_task(claim_dialog=False)
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("抛出", ("没出「领取奖励」框" in got, "boss_material_no_claim" in t.shots), (True, True))
+
+    print("\n[强敌领奖：确认后没等到「退出副本」——留图抛出]")
+    t = fake_task(settle=False)
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("抛出", ("没等到结算页的「退出副本」" in got, "boss_material_no_settlement" in t.shots), (True, True))
+    os.remove(boss_file)
+
     for k, v in _saved.items():
         if v is None:
             sys.modules.pop(k, None)

@@ -54,6 +54,10 @@ _OKWW_TACET_INDEX = re.compile(r"info_set Teleport to Tacet Suppression (\d+)")
 
 
 _LOG_DAY = re.compile(r"\d{4}-\d{2}-\d{2}(?= \d\d:\d\d)")
+# The overlay's boss-material lines (ark_overrides.tasks.py BOSS_LINE): a claim, and the count read
+# on the 培养目标 page before each lap (「强敌领奖：莉莉的共鸣者突破材料 1/46」).
+_OKWW_BOSS_CLAIM = "强敌领奖：领了一次"
+_OKWW_BOSS_COUNT = re.compile(r"强敌领奖：(\S+?)的(\S+?) (\d+)/(\d+)")
 
 
 def _okww_farm(text: str, info: dict | None = None) -> "tuple[str, str]":
@@ -69,6 +73,16 @@ def _okww_farm(text: str, info: dict | None = None) -> "tuple[str, str]":
         hits = _OKWW_FORGERY_INDEX.findall(text)
         idx = int(hits[-1]) + 1 if hits else 0
         return (_forgery_label(text), wuwa_forgery.reward(idx))
+    if _OKWW_BOSS_CLAIM in text:
+        # The overlay spent the stamina on the cultivation target's boss material first
+        # (ark_overrides _boss_material, 2026-11-13), inside the TacetTask run: say that, not
+        # 「无音区（日志里没有序号）」. The count is the last one read on the 培养目标 page.
+        hits = _OKWW_BOSS_COUNT.findall(text)
+        who, row, owned, need = hits[-1] if hits else ("", "共鸣者突破材料", "", "")
+        label = f"强敌·{who}{row}" + (f"（最后读到 {owned}/{need}）" if owned else "")
+        if "info_set Teleport to Tacet Suppression" in text:
+            label += "，余下的刷了无音区"
+        return (label, row)
     if "TacetTask:" in text:
         # Name and drop sets come from wuwa_tacet's table. The index is the one
         # OK-WW teleported to (info_set, from 0), else the last teleport line.

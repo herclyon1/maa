@@ -1297,6 +1297,42 @@ def _part_okww_structured():
                          "info_set Teleport to Tacet Suppression 3")
     check("上游报 3 就是第 4 个", collector_okww._okww_farm(faked)[0], "无音区·冰原运输港")
 
+    print("[体力先刷了培养目标的强敌材料（改动层 强敌领奖，2026-11-13）]")
+    boss = ("2026-11-13 04:43:20,100 INFO TaskExecutor TacetTask:强敌领奖：莉莉的共鸣者突破材料 1/46\n"
+            "2026-11-13 04:45:20,100 INFO TaskExecutor TacetTask:强敌领奖：领了一次，花 120 波片（领之前 1/46）\n"
+            "2026-11-13 04:46:20,100 INFO TaskExecutor TacetTask:强敌领奖：莉莉的共鸣者突破材料 9/46\n")
+    check("写成强敌·莉莉的材料，不写无音区", collector_okww._okww_farm(boss),
+          ("强敌·莉莉共鸣者突破材料（最后读到 9/46）", "共鸣者突破材料"))
+    check("后面又刷了无音区：带一句", collector_okww._okww_farm(
+        boss + "2026-11-13 04:50:00,000 INFO TaskExecutor TacetTask:info_set Teleport to Tacet Suppression 0\n")[0],
+          "强敌·莉莉共鸣者突破材料（最后读到 9/46），余下的刷了无音区")
+    check("只读了数量、没领：照旧按无音区", collector_okww._okww_farm(boss.splitlines()[0] + "\n")[0],
+          "无音区（日志里没有序号）")
+
+    print("[刷体力这一项：强敌那条的几种结局]")
+    from ark_relay.features.verify import outcome as _oc
+
+    def stamina(log):
+        got = [c for c in _oc.okww_checks(log, expect_nest=False, expect_daily=False) if c.label == "刷体力"]
+        return (got[0].ok, got[0].detail) if got else None
+    L = "2026-11-13 09:20:0{} INFO TaskExecutor TacetTask:{}\n"
+    fought = L.format(1, "强敌领奖：莉莉的共鸣者突破材料 1/46") + L.format(2, "enter combat None") + \
+        L.format(3, "强敌领奖：领了一次，花 60 波片（领之前 1/46）") + L.format(4, "强敌领奖：体力 8 + 备用 0 不够领一次的 60，这趟刷完")
+    check("打了、领了、体力用完：绿", stamina(fought), (True, ""))
+    full = L.format(1, "强敌领奖：莉莉的共鸣者突破材料 46/46") + \
+        L.format(2, "强敌领奖：莉莉的共鸣者突破材料已经够了（46/46），体力先留着不刷（无音区关着，等定下一个刷什么）")
+    check("材料够了、没打：绿，说体力留着", stamina(full),
+          (True, "莉莉的共鸣者突破材料已经够了（46/46），体力先留着不刷（无音区关着，等定下一个刷什么）"))
+    short = L.format(1, "强敌领奖：莉莉的共鸣者突破材料 9/46") + L.format(2, "强敌领奖：体力 30 + 备用 0 不够领一次的 60，这趟刷完")
+    check("体力不够一次、没打：绿，体力不足", stamina(short), (True, "体力不足，本来就没得刷"))
+    failed = fought.replace("领了一次", "领了一次") + \
+        "2026-11-13 09:25:00 ERROR TaskExecutor TacetTask:强敌领奖：出错，剩下的体力不刷（无音区关着）: 强敌领奖：打完走到宝箱按 F，没出「领取奖励」框。整屏读到 Box(...)\n"
+    ok_, why = stamina(failed)
+    check("出错：红，说刷到一半出错", (ok_, why.startswith("刷培养目标的突破材料没刷完：出错")), (False, True))
+    check("出错：不带整屏的字", "Box(" in why, False)
+    other = L.format(1, "强敌领奖：培养目标不是莉莉，不刷强敌，体力这趟不刷。整屏读到 x")
+    check("培养目标换了人：红", stamina(other)[0], False)
+
     print("[上游自己说「错误 …」时，照它说的写，不用刮 traceback]")
     said = ("2026-09-08 01:00:00,000 INFO TaskExecutor DailyTask:info_set current task farm echo\n"
             "2026-09-08 01:00:01,000 INFO TaskExecutor DailyTask:info_set 错误 combat check not in combat\n")

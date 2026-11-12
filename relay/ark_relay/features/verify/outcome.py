@@ -149,6 +149,13 @@ _STAMINA_SPENT = re.compile(_STAMINA_TASK + r"(?:enter combat|start walk_to_trea
 # Nothing (more) to farm: TacetTask.py:105 (not_enough_stamina, logged when the total
 # is under one run) and DomainTask.py:63 / :106.
 _STAMINA_SHORT = re.compile(_STAMINA_TASK + r"(?:used all stamina|not enough stamina)")
+# The overlay's boss-material farm (ark_overrides.tasks.py _boss_material, 2026-11-13). While its
+# marker is there the tacet farm is off (the user: no tacet field before the material is done), so
+# its own lines are the 刷体力 item's outcome: a stop is red with its reason; the material read full,
+# or under one claim before any fight, is green with what it says.
+_BOSS_FAILED = re.compile(_STAMINA_TASK + r"强敌领奖：(出错，[^\n]*|培养目标不是[^\n]*|标记文件[^\n]*用不了[^\n]*|已经打了[^\n]*)")
+_BOSS_FULL = re.compile(_STAMINA_TASK + r"强敌领奖：(\S+?)的(\S+?)已经够了（(\d+)/(\d+)）")
+_BOSS_SHORT = re.compile(_STAMINA_TASK + r"强敌领奖：体力 -?\d+ \+ 备用 -?\d+ 不够领一次")
 # Three revives and upstream stops farming and returns quietly: TacetTask.py:79,
 # DomainTask.py:73 (FarmEchoTask's own 「farm 4c: …」 is not stamina farming).
 _STAMINA_DIED = re.compile(_STAMINA_TASK + r"farm_(?:tacet|domain): exceeded recovery retries \((\d+)\)")
@@ -664,6 +671,8 @@ def stamina_failure(text: str) -> str:
     text = _task_lines(text)
     if _STAMINA_FLAGGED.search(text):
         return STAMINA_FLAG_SAY
+    if m := _BOSS_FAILED.search(text):
+        return "刷培养目标的突破材料没刷完：" + without_screen_dump(m.group(1))[:160]
     if m := _STAMINA_DIED.search(text):
         return f"刷体力时角色死了 {m.group(1)} 次，OK-WW 停止刷体力，体力没刷完"
     if _STAMINA_SPENT.search(text):
@@ -768,7 +777,10 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
             out.append(Check("刷体力", False, why))
         elif _STAMINA_SPENT.search(text):
             out.append(Check("刷体力", True, ""))
-        elif _STAMINA_SHORT.search(text):
+        elif m := _BOSS_FULL.search(text):
+            out.append(Check("刷体力", True, f"{m.group(1)}的{m.group(2)}已经够了（{m.group(3)}/{m.group(4)}），"
+                                            "体力先留着不刷（无音区关着，等定下一个刷什么）"))
+        elif _STAMINA_SHORT.search(text) or _BOSS_SHORT.search(text):
             out.append(Check("刷体力", True, "体力不足，本来就没得刷"))
         else:
             out.append(Check("刷体力", False, _no_farm_reason(text)))
