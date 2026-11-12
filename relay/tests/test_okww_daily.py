@@ -1844,6 +1844,31 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
     t.teleport_to_heal = no_heal
     check("回塔没成也照样重进", real_boss(t), "complete")
 
+    print("\n[强敌领奖：刚登录完 F2 指南没打开（11-13 05:49:39）——回主界面再试]")
+    t = fake_task(owned_now=40)
+    real_book = t.openF2Book
+    book_fails = [1]
+
+    def book(feature=""):
+        if book_fails[0]:
+            book_fails[0] -= 1
+            raise Exception("can't find gray_book_boss, make sure f2 is the hotkey for book")
+        real_book(feature)
+    t.openF2Book = book
+    check("没打开一次，再试就刷满", real_boss(t), "complete")
+    check("说了再试、留了图", (any("F2 指南没打开" in m for m in t.logs), "boss_material_book" in t.shots), (True, True))
+    t = fake_task(owned_now=40)
+
+    def never(feature=""):
+        raise Exception("can't find gray_book_boss")
+    t.openF2Book = never
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("一直打不开：试 3 次后停下", "连着 3 次没打开 F2 指南" in got)
+
     print("\n[强敌领奖：按 F 没出「领取奖励」框——留图抛出（外面交给无音区）]")
     t = fake_task(claim_dialog=False)
     try:

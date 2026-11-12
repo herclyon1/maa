@@ -914,7 +914,22 @@ def _boss_material(task):
         return "off"
     revives = retries = 0
     for lap in range(_BOSS_MAX_LAPS + 1):
-        task.openF2Book("gray_book_boss")
+        try:
+            task.openF2Book("gray_book_boss")
+        except TaskDisabledException:
+            raise
+        except Exception as exc:  # noqa: BLE001 - 2026-11-13 05:49:39, right after a login
+            # 「can't find gray_book_boss」: the book did not open over whatever the login left up.
+            retries += 1
+            _shot(task, "boss_material_book")
+            if retries > _BOSS_MAX_RETRIES:
+                raise RuntimeError(f"{BOSS_LINE}连着 {retries} 次没打开 F2 指南，停下：{exc!r}") from exc
+            task.log_info(f"{BOSS_LINE}F2 指南没打开（{exc!r}），回主界面再试（第 {retries} 次）")
+            try:
+                task.ensure_main(time_out=180)
+            except Exception:  # noqa: BLE001 - the next try says
+                pass
+            continue
         task.click_relative(0.22, 0.17, after_sleep=2)          # 培养目标, top of the 素材获取 list
         found, text = _screen_read(task)
         if want["target"] not in text:
