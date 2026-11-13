@@ -222,6 +222,7 @@
 "ledger_rows",
 "maaend_fwlog",
 "machinecheck",
+"macpush",
 "mailbox",
 "mainloop",
 "maintenance",
@@ -1450,6 +1451,11 @@
 "wuwa_posters",
 "wuwa_tacet"
 ],
+"test_farm_poweroff.py": [
+"__init__",
+"config",
+"shutdown_signs"
+],
 "test_gamelog_errors.py": [
 "__init__",
 "collector_maaend",
@@ -2463,6 +2469,7 @@
 "maaend_launch",
 "maaend_watchdog",
 "machinecheck",
+"macpush",
 "mailbox",
 "mainloop",
 "maintenance",
@@ -2962,6 +2969,7 @@
 "ledger_report",
 "ledger_rows",
 "maaend_fwlog",
+"macpush",
 "mailbox",
 "mas_client",
 "mas_labels",

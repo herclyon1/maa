@@ -120,6 +120,9 @@ def shutdown_requested(xmls: "list[str]") -> "dict | None":
 # left at most FARM_POWEROFF_MAX_LEAD_SECONDS before that request. Anything else is pushed as before.
 FARM_POWEROFF_MARK = "ark-farm-poweroff.json"
 FARM_POWEROFF_SCRIPTS = ("spa_run.py", "is_run.py")
+# Measured: 2026-11-13 relay.log 1074 at 08:20:06 for the farm's `shutdown /s /t 120`; the farm writes the mark
+# in the same second, right before that command. 1800 s is the cap Gemini set (2026-11-13 10:19), so a mark
+# from an earlier night or an earlier run never explains a later power-off.
 FARM_POWEROFF_MAX_LEAD_SECONDS = 1800
 
 

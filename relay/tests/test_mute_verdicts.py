@@ -47,6 +47,11 @@ def check(label, got, want=True):
 # Places that keep something from the group because it is not a fault at all - not
 # because it fixed itself. Adding one means editing this test, with its source.
 NOT_A_FAULT = {
+    "ark_relay/features/host/automas_keeper.py:_AutomasKeeper.stopping":
+        "only the farm's own deadline power-off: the mark the farm leaves right before shutdown /s, a normal "
+        "outcome and a shutdown.exe request at most 30 min later (ark_relay/features/host/shutdown_signs.py:"
+        "farm_poweroff_planned); relay.log 2026-11-13 08:20:06 / 08:22:20 is such a power-off. Every other "
+        "shutdown exit is still the WARNING in ark_relay/features/host/automas_keeper.py:_AutomasKeeper.stopping",
     "ark_relay/features/alarm/handle.py:_drop_update_after_done":
         "MaaEnd installing its own new build after the shift's round had done its work: the upstream "
         "update, no work left undone (ark_relay/features/alarm/unresolved.py:done_in_shift counts only a "
