@@ -212,5 +212,27 @@ class MacPush:
         return self.flush_async()
 
 
+# One MacPush per queue file, shared by the alarm path (notify.py) and the phone push (phone.py), so two
+# drains never run on the same queue at once.
+_SHARED: "dict[tuple[str, str], MacPush]" = {}
+_SHARED_LOCK = threading.Lock()
+
+
 def for_config(cfg) -> MacPush:
-    return MacPush(cfg.state_dir, getattr(cfg, "alert_push_url", ""))
+    key = (str(cfg.state_dir), str(getattr(cfg, "alert_push_url", "") or ""))
+    with _SHARED_LOCK:
+        mp = _SHARED.get(key)
+        if mp is None:
+            mp = _SHARED[key] = MacPush(cfg.state_dir, key[1])
+        return mp
+
+
+def flush_after_network_ok(cfg) -> "threading.Thread | None":
+    """Something else just reached the internet (a phone state push went out): send what is still
+    queued for the Mac now instead of waiting for the next alarm. 2026-11-13 08:22 an alarm queued as
+    Windows went down was retried at 08:45 boot before Tailscale was up (timed out) and then sat on
+    the machine until the next alarm. Rides on pushes the relay makes anyway - no timer of its own."""
+    mp = for_config(cfg)
+    if not mp.enabled or not mp.pending():
+        return None
+    return mp.flush_async()

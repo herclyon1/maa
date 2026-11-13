@@ -374,6 +374,12 @@ class _AutomasKeeper:
             from ark_relay.features.alarm import errwatch  # noqa: PLC0415
             before = time.monotonic() - self.gone["at"]
             asked = self.gone.get("shutdown")
+            planned = shutdown_signs.farm_poweroff_planned(asked)
+            if planned is not None:
+                self.log.info("Windows 关机是 %s 按计划发起的（收工 %s，%s 留的记号）：AUTO-MAS 后台跟着关机退出"
+                              "（%s 退出，退出码 %s），不算故障", planned["by"], planned["outcome"], planned["at"],
+                              self.gone["clock"], self.gone["said"])
+                return
             if asked is not None:
                 self.log.warning("Windows 关机（%s，账户 %s，于 %s 发起）：AUTO-MAS 后台在关机通知前 %s 被关掉"
                                  "（%s 退出，退出码 %s）", asked["process"] or "发起程序读不到",

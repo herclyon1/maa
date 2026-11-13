@@ -407,6 +407,11 @@ def send_state(box, cfg, why: str, log=log) -> "tuple[bool, dict | None, str]":
         return False, payload, f"{type(exc).__name__}: {exc}"[:160]
     if ok:
         log.info("📱 已上报状态到手机（%s；今天 ntfy 已用 %d 条）", why, box.quota.total())
+        try:
+            from ark_relay.features.alarm import macpush  # noqa: PLC0415
+            macpush.flush_after_network_ok(cfg)
+        except Exception:   # the phone push must not break on the Mac hand-off
+            log.info("报警直送 Mac 的补交没起来", exc_info=True)
         if why == STOP_WHY:
             try:
                 (Path(cfg.state_dir) / STOP_PUSHED_FILE).write_text(

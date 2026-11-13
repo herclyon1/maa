@@ -289,6 +289,30 @@ check("the queue reads as empty", _mp.pending(), [])
 check("one WARNING", _seen.count(_logging.WARNING), 1)
 check("the broken file is kept aside", len(list(_bad_dir.glob("*.corrupt-*"))), 1)
 
+print()
+print("\n[11-13: an alarm left queued is sent after the next phone push, not only with the next alarm]")
+
+
+class _Cfg:
+    def __init__(self, d, url):
+        self.state_dir, self.alert_push_url = d, url
+
+
+_got = []
+_cfg = _Cfg(TMP / "netok", "http://127.0.0.1:9/")
+check("for_config hands out one instance per queue", macpush.for_config(_cfg) is macpush.for_config(_Cfg(TMP / "netok", "http://127.0.0.1:9/")), True)
+check("another queue, another instance", macpush.for_config(_cfg) is macpush.for_config(_Cfg(TMP / "netok2", "http://127.0.0.1:9/")), False)
+check("nothing queued: no send", macpush.flush_after_network_ok(_cfg), None)
+_shared = macpush.for_config(_cfg)
+_shared._post = lambda row: (_got.append(row.get("title")), ("ok", ""))[1]
+_shared.add({"title": "08:22 queued"})
+_t = macpush.flush_after_network_ok(_cfg)
+if _t is not None:
+    _t.join(5)
+check("queued row sent after the network came back", _got, ["08:22 queued"])
+check("queue empty after", _shared.pending(), [])
+check("switched off (no URL): nothing", macpush.flush_after_network_ok(_Cfg(TMP / "netoff", "")), None)
+
 if fails:
     print("FAILED:", fails)
     sys.exit(1)

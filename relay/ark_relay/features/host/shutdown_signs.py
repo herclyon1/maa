@@ -112,6 +112,38 @@ def shutdown_requested(xmls: "list[str]") -> "dict | None":
     return None
 
 
+# Our own Arknights farm scripts (the Mac-side farm scripts spa_run.py, is_run.py) power the machine off at their
+# deadline (08:20, before the 08:40 plug cut) and leave this mark right before `shutdown /s`. 2026-11-13
+# 08:22:20 the AUTO-MAS exit that followed one went to the group as a relay fault. Gemini 10:19: such a
+# power-off is ours like the relay's own, so it stays out of the group - only when the mark names a farm
+# script, its outcome is a normal end (not "failed"), the request came from shutdown.exe, and the mark was
+# left at most FARM_POWEROFF_MAX_LEAD_SECONDS before that request. Anything else is pushed as before.
+FARM_POWEROFF_MARK = "ark-farm-poweroff.json"
+FARM_POWEROFF_SCRIPTS = ("spa_run.py", "is_run.py")
+FARM_POWEROFF_MAX_LEAD_SECONDS = 1800
+
+
+def farm_poweroff_planned(asked: "dict | None", base=None) -> "dict | None":
+    """The farm's own power-off mark that explains the standing request `asked` (shutdown_requested), else None.
+    -> {"by": script, "at": HH:MM:SS on the relay's clock, "outcome": ...}."""
+    import json  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+    from ark_relay.core.config import PROGRAMDATA  # noqa: PLC0415
+    if not asked or "shutdown.exe" not in str(asked.get("process") or "").lower() or asked.get("at") is None:
+        return None
+    try:
+        mark = json.loads((Path(base or PROGRAMDATA) / FARM_POWEROFF_MARK).read_text(encoding="utf-8"))
+        at = float(mark.get("at") or 0)
+        by, outcome = str(mark.get("by") or ""), str(mark.get("outcome") or "")
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+    lead = asked["at"].timestamp() - at
+    if by not in FARM_POWEROFF_SCRIPTS or not outcome or outcome == "failed" \
+            or not -SHUTDOWN_BEFORE_SLACK_SECONDS <= lead <= FARM_POWEROFF_MAX_LEAD_SECONDS:
+        return None
+    return {"by": by, "at": datetime.fromtimestamp(at, SERVER_TZ).strftime("%H:%M:%S"), "outcome": outcome}
+
+
 # A power-off request logged up to this long after the drop began still counts as
 # before it: the 1074 stamp and the monotonic drop time are read on different clocks.
 SHUTDOWN_BEFORE_SLACK_SECONDS = 2
