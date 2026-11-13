@@ -619,6 +619,17 @@ def _screen_text(task) -> str:
     return _screen_read(task)[1]
 
 
+def _names(found) -> str:
+    """Every name of one screen read, in the order read, short enough for one log line.
+
+    A Box prints as about 85 characters (「Box(name='素材获取', x=102, y=50, width=116, height=35,
+    confidence=100)」), so 「整屏读到 {text[:400]}」 is the first five boxes and no more. 2026-11-13
+    06:30:54 and 06:36:46 the boss-material farm stopped on a 培养目标 page it could not judge and
+    the line ended after 「素材获取 17 5/240 当期 莉莉」; that was read as 'the right panel was not
+    read at all', which the line cannot say. The names alone fit whole."""
+    return " | ".join(str(getattr(b, "name", b)).strip() for b in found)[:3000]
+
+
 _CLAIM_COST = 60       # the claim dialog asks for 60 crystal waveplates
 # 「41/240」, and 「240/240+」 when the waveplates are full (0921-weekly.log:18; the level
 # page 10-05 22:17:31 read 「0/240+」).
@@ -953,7 +964,7 @@ def _boss_material(task):
             retries += 1
             _shot(task, "boss_material_page")
             if retries > _BOSS_MAX_RETRIES:
-                raise RuntimeError(f"{BOSS_LINE}连着 {retries} 次没等到培养目标页，停下。整屏读到 {text[:300]}")
+                raise RuntimeError(f"{BOSS_LINE}连着 {retries} 次没等到培养目标页，停下。整屏读到 {_names(found) or text[:300]}")
             task.log_info(f"{BOSS_LINE}培养目标页没出来，回主界面再试（第 {retries} 次）")
             try:
                 task.ensure_main(time_out=180)
@@ -962,7 +973,7 @@ def _boss_material(task):
             continue
         if want["target"] not in text:
             _shot(task, "boss_material_target")
-            task.log_error(f"{BOSS_LINE}培养目标不是{want['target']}，不刷强敌，体力这趟不刷。整屏读到 {text[:300]}")
+            task.log_error(f"{BOSS_LINE}培养目标不是{want['target']}，不刷强敌，体力这趟不刷。整屏读到 {_names(found) or text[:300]}")
             task.back(after_sleep=1)
             return "off"
         owned, need, btn = _boss_row(found, want["row"])
@@ -976,7 +987,7 @@ def _boss_material(task):
         if owned is None or btn is None:
             _shot(task, "boss_material_row")
             raise RuntimeError(f"{BOSS_LINE}培养目标页上没认出「{want['row']}」那一行"
-                               f"（数量 {owned}/{need}，直接挑战 {'有' if btn else '没有'}）。整屏读到 {text[:400]}")
+                               f"（数量 {owned}/{need}，直接挑战 {'有' if btn else '没有'}）。整屏读到 {_names(found) or text[:400]}")
         task.info_set("boss material", f"{owned}/{need}")
         task.log_info(f"{BOSS_LINE}{want['target']}的{want['row']} {owned}/{need}")
         if owned >= need:

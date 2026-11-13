@@ -1938,6 +1938,31 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
     t.ocr = slow_panel
     check("8 眼后右栏才出来、那一行没了：complete，不报错", real_boss(t), "complete")
 
+    print("\n[强敌领奖：页面认不出时，报错行里是整屏读到的每一个名字，不是前几百个字（11-13 06:36:46）]")
+    t = fake_task(owned_now=46)
+    real_ocr5 = t.ocr
+
+    class Real(B):                          # prints the way ok-script's Box does: about 85 characters each
+        def __str__(self):
+            return f"Box(name='{self.name}', x={self.x}, y={self.y}, width=116, height=35, confidence=100)"
+
+    def no_header(box=None, **kw):
+        if t.state["screen"] == "page":
+            return [Real("素材获取", 102, 50), Real("17", 1112, 48), Real("5/240", 1400, 48), Real("当期", 200, 150),
+                    Real("莉莉", 288, 190), Real("武器经验材料", 765, 270), Real("106/106", 1085, 305),
+                    Real("直接挑战", 1650, 270), Real("突破材料", 765, 420), Real("0/60", 1430, 455),
+                    Real("前往", 1650, 420), Real("最后一行的字", 765, 870)]
+        return real_ocr5(box=box, **kw)
+    t.ocr = no_header
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("认不出那一行：停下", "没认出「共鸣者突破材料」那一行" in got, True)
+    check("整屏的名字都在报错行里，最后一个也在", ("武器经验材料" in got, "前往" in got, "最后一行的字" in got), (True, True, True))
+    check("名字之间不夹坐标", "confidence=" in got.split("整屏读到")[1], False)
+
     print("\n[强敌领奖：按 F 没出「领取奖励」框——留图抛出（外面交给无音区）]")
     t = fake_task(claim_dialog=False)
     try:
