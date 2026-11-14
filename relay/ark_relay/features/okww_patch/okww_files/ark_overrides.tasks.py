@@ -865,6 +865,7 @@ _BOSS_ROW_DEFAULT = "共鸣者突破材料"
 _COUNT_RE = re.compile(r"(\d{1,3})\s*[/／]\s*(\d{1,3})")
 _BOSS_MAX_LAPS = 12         # 240 waveplates + backup at 60 a claim, plus the retried laps: a loop that never ends stops here
 _BOSS_MAX_REVIVES = 3       # farm_tacet's own cap (TacetTask.py:52, max_recovery_retries)
+_BOOK_MENU = ("讨伐强敌", "无音清剿", "凝素领域", "模拟领域")   # the 素材获取 book's left menu, whatever is on top of it
 _BOSS_MAX_RETRIES = 2       # laps that end in an exception before the crystal: the same small cap as revives
 
 
@@ -952,13 +953,38 @@ def _boss_material(task):
             except Exception:  # noqa: BLE001 - the next try says
                 pass
             continue
-        task.click_relative(0.22, 0.17, after_sleep=2)          # 培养目标, top of the 素材获取 list
+        # 2026-11-14 (Gemini's review): find 培养目标 in the left menu and click that box, not a fixed spot.
+        # Once the target is finished or cleared, the 培养目标 entry leaves the menu and 模拟领域 moves up to
+        # (0.22, 0.17): the blind click would open 模拟领域 (no 所需材料) and, laps later, raise
+        # 「没等到培养目标页」 into the group. The menu is read up to 3 times, 1 s apart: 培养目标 seen ->
+        # click its box; the menu seen all 3 times without it -> no target is set, nothing to farm,
+        # "complete" (said in the words the relay's outcome knows: 已经够了（…）); no menu read at all ->
+        # the old spot and the retry loop below.
+        entry, menu_seen = None, 0
+        for look0 in range(3):
+            if look0:
+                task.sleep(1)
+            found0, text0 = _screen_read(task)
+            entry = next((b for b in found0 if "培养目标" in str(getattr(b, "name", b))), None)
+            if entry is not None:
+                break
+            if any(k in text0 for k in _BOOK_MENU):
+                menu_seen += 1
+        if entry is None and menu_seen >= 3:
+            task.log_info(f"{BOSS_LINE}{want['target']}的{want['row']}已经够了（素材获取左栏没有「培养目标」这一格，"
+                          f"{want['target']}练满了或培养目标已取消），体力先留着不刷（无音区关着，等定下一个刷什么）")
+            task.back(after_sleep=1)
+            return "complete"
+        if entry is not None:
+            task.click_box(entry, after_sleep=2)
+        else:
+            task.click_relative(0.22, 0.17, after_sleep=2)      # nothing of the menu was read: the old spot
         # The page can still be drawing: 2026-11-13 05:59:19 the read came while it was blank and was
-        # taken for 「培养目标不是莉莉」. Look until the row or the target shows (6 looks 1 s apart);
-        # nothing of the page after that is a lap to retry, not another target.
-        # 2026-11-13 06:30:54, after the material filled up and its row left the list, the right
-        # panel took longer than 6 s to draw. So: up to 12 looks; once the panel header 所需材料 has
-        # been read 3 times without the row, the row is gone.
+        # taken for 「培养目标不是莉莉」. Look until the row's own label or the target shows; nothing of
+        # the page after that is a lap to retry, not another target. Up to 12 looks; once the panel
+        # header 所需材料 has been read 3 times without the row's label, the row has left the list (full).
+        # (A note here used to blame a slow right panel for 2026-11-13 06:30:54. The screenshots show
+        # the panel was drawn; the judgement was wrong - see _row_listed.)
         found, text = [], ""
         panel = 0
         for look in range(12):

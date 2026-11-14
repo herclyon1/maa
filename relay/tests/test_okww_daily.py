@@ -1747,7 +1747,8 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
     check("点的是莉莉那一行的直接挑战", ("box", "直接挑战", 420) in t.steps)
     check("顺序：书 → 培养目标 → 直接挑战 → 开启挑战 → 打 → 走到宝箱 → F（不让上游取消）→ 确认 → 退出副本",
           [s if not isinstance(s, tuple) else s[0] for s in t.steps][:9],
-          ["book", "click", "box", "challenge", "fight", "walk", "f", "confirm", "exit"])
+          ["book", "box", "box", "challenge", "fight", "walk", "f", "confirm", "exit"])   # 11-14: 培养目标 is clicked by its box
+    check("第一下点的是「培养目标」那一格，第二下是直接挑战", [s[1] for s in t.steps if isinstance(s, tuple) and s[0] == "box"][:2], ["培养目标", "直接挑战"])
     check("按 F 时 handle_claim=False", ("f", False) in t.steps)
     check("记了花的体力 60", t.info.get("used stamina"), 60)
     check("留了领奖图", "boss_material_claimed" in t.shots)
@@ -1943,6 +1944,34 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
         return real_ocr4(box=box, **kw)
     t.ocr = slow_panel
     check("8 眼后右栏才出来、那一行没了：complete，不报错", real_boss(t), "complete")
+
+    print("\n[强敌领奖：按左栏读到的「培养目标」那一格去点，不点死坐标（11-14 双子星）]")
+    t = fake_task(owned_now=44)
+    real_boss(t)
+    check("点的是读到的那一格", (("box", "培养目标", 155) in t.steps, ("click", 0.22, 0.17) in t.steps), (True, False))
+
+    print("\n[强敌领奖：左栏已经没有「培养目标」（练满或取消了，模拟领域顶到最上面）——不点、不报错，算够了]")
+    t = fake_task(owned_now=44)
+    t.ocr = lambda box=None, **kw: ([B("素材获取", 102, 50), B("模拟领域", 342, 190), B("产出经验材料", 356, 226), B("讨伐强敌", 342, 430),
+                                    B("产出共鸣者突破材料", 392, 466), B("无音清剿", 342, 670)] if t.state["screen"] == "page" else [])
+    check("没有培养目标：complete", real_boss(t), "complete")
+    check("没点死坐标、没打、退出了指南", (("click", 0.22, 0.17) in t.steps, "fight" in t.steps, "back" in t.steps), (False, False, True))
+    check("说了为什么，用的是中继认得的那句（已经够了（…））",
+          any("已经够了（素材获取左栏没有「培养目标」这一格" in m for m in t.logs))
+
+    print("\n[强敌领奖：指南开了却一个字都没读到——照旧点老位置，走后面的重试]")
+    t = fake_task(owned_now=44)
+    real_ocr6 = t.ocr
+    blank = [3]
+
+    def nothing_first(box=None, **kw):
+        if t.state["screen"] == "page" and blank[0] > 0:
+            blank[0] -= 1
+            return []
+        return real_ocr6(box=box, **kw)
+    t.ocr = nothing_first
+    real_boss(t)
+    check("前三眼空白：点了老位置", ("click", 0.22, 0.17) in t.steps)
 
     print("\n[强敌领奖：页面认不出时，报错行里是整屏读到的每一个名字，不是前几百个字（11-13 06:36:46）]")
     t = fake_task(owned_now=46)
