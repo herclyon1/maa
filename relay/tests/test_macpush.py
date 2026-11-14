@@ -50,12 +50,19 @@ class Mac:
         self.got, self.paths, self.types = [], [], []
         self.status = 200
         self.delay = 0.0
+        # hold: the handler stops after reading the request until `release` is set (2 s at most);
+        # `entered` says the request arrived. For "push did not wait for the POST" without a stopwatch.
+        self.hold = False
+        self.entered, self.release = threading.Event(), threading.Event()
         mac = self
 
         class H(BaseHTTPRequestHandler):
             def do_POST(self):
                 n = int(self.headers.get("Content-Length") or 0)
                 body = self.rfile.read(n)
+                mac.entered.set()
+                if mac.hold:
+                    mac.release.wait(2.0)
                 if mac.delay:
                     time.sleep(mac.delay)
                 if mac.status == 200:
@@ -155,12 +162,22 @@ check("日报、普通信息、只记日志的不送；send_group 送", mac.titl
       [texts.ROUND_INCOMPLETE, "📣 明天开卡池"])
 
 print("\n[POST 超时（3 秒上限，测试里缩短）：进队列，推送不等它]")
+# 11-14: no stopwatch. The old check (push back within 0.5 s) went red once on the GitHub windows runner
+# when a thread started late. The fake Mac now holds the request on a latch: push is back here while the
+# sender thread is still waiting for the answer - that is what "POST 在自己的线程里" means.
+gate = Mac()
+gate.hold = True
+mp0 = macpush.MacPush(TMP / "gate", gate.url, timeout=5.0)
+th0 = mp0.push(alertlog.row("⚠️ 卡住的", "a"))
+check("push 立刻返回（POST 在自己的线程里）", (th0 is not None and th0.is_alive(), gate.release.is_set()), (True, False))
+check("请求已经发到假 Mac（它还没回话）", gate.entered.wait(5.0))
+gate.release.set()
+join(th0)
+check("放行后送到，队列空", (gate.titles(), mp0.pending()), (["⚠️ 卡住的"], []))
 slow = Mac()
 slow.delay = 1.0
 mp = macpush.MacPush(TMP / "slow", slow.url, timeout=0.3)
-t0 = time.monotonic()
 th = mp.push(alertlog.row("⚠️ 慢的", "a"))
-check("push 立刻返回（POST 在自己的线程里）", time.monotonic() - t0 < 0.5)
 join(th)
 check("超时的留在队列里", [x["title"] for x in mp.pending()], ["⚠️ 慢的"])
 check("落了盘", json.loads((TMP / "slow" / macpush.QUEUE_FILE).read_text("utf-8"))[0]["title"], "⚠️ 慢的")

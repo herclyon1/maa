@@ -44,6 +44,18 @@ if fails:
 
 import world as W  # noqa: E402
 
+# 11-14: the sim tree keeps the machine's own letter case. A path without a drive colon used to come back
+# all upper case (C/PROGRAMDATA/ARK-RELAY/RELAY.LOG): fine on macOS, not found on the Linux runner, where
+# the 2026-10-06 replay then failed #11 (the stop lines of the session before t0 were never written).
+_T = Path("/sim-tree")
+check("tpath: a drive path lands under <tree>/<DRIVE>/ with its own case",
+      W.tpath(_T, r"C:\ProgramData\ark-relay\relay.log").parts, (_T / "C" / "ProgramData" / "ark-relay" / "relay.log").parts)
+check("tpath: a lower-case drive letter is the only thing made upper case",
+      W.tpath(_T, "d:/ark/maa/debug").parts, (_T / "D" / "ark" / "maa" / "debug").parts)
+check("tpath: a path with no drive colon keeps its case too",
+      W.tpath(_T, W.DATA_REL + "/relay.log").parts, (_T / W.DATA_REL / "relay.log").parts)
+check("the data folder in the tree is spelled as on the machine", (_T / W.DATA_REL).parts[-2:], ("ProgramData", "ark-relay"))
+
 # ---- the boot plan
 events, seed = W.load_day("2026-10-12")
 boots = W.plan_boots(events, seed)

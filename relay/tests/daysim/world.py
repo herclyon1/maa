@@ -279,7 +279,13 @@ def plan_boots(events: list[dict], seed: dict, until: "float | None" = None) -> 
 def tpath(tree: Path, machine_path: str) -> Path:
     """C:/ProgramData/x or D:\\ark\\x -> <tree>/C/ProgramData/x."""
     p = machine_path.replace("\\", "/")
-    drive, _, rest = p.partition(":")
+    drive, sep, rest = p.partition(":")
+    if not sep:
+        # 11-14: a path with no drive colon (DATA_REL + "/relay.log") made `drive` the whole path, and
+        # .upper() turned it into C/PROGRAMDATA/ARK-RELAY/RELAY.LOG. macOS (case-insensitive) still found
+        # the file; the Linux runner did not, so the t0 stop lines were never written and the 10-06 replay
+        # failed #11 there only. Keep such a path as it is.
+        return tree / p.lstrip("/")
     return tree / drive.upper() / rest.lstrip("/")
 
 
@@ -365,7 +371,7 @@ def materialize(day: str, tree: Path, corpus: Path, code_src: Path) -> dict:
             dst.parent.mkdir(parents=True, exist_ok=True)
             dst.write_text(data, encoding="utf-8")
     t0 = epoch(seed["t0"])
-    if (lines := t0_stop_lines(seed)) and (log := tpath(tree, DATA_REL + "/relay.log")).is_file():
+    if (lines := t0_stop_lines(seed)) and (log := tree / DATA_REL / "relay.log").is_file():
         with open(log, "ab") as f:
             f.write(lines.encode("utf-8"))
         os.utime(log, (t0, t0))
