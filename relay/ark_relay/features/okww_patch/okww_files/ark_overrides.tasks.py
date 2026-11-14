@@ -882,6 +882,17 @@ def _boss_material_want():
     return {"target": str(got["target"]).strip(), "row": str(got.get("row") or _BOSS_ROW_DEFAULT).strip()}
 
 
+def _row_listed(found, row_name):
+    """True when the 培养目标 page lists a row labelled exactly `row_name`.
+
+    Not `row_name in text`: the left menu of the 素材获取 book always shows 「讨伐强敌 · 产出共鸣者突破材料」,
+    which contains the default row's name. 2026-11-13 06:25:07 / 06:30:54 / 06:36:45 (screenshots
+    boss_material_row): the row was gone after the last claim, the header 所需材料 and every other row were
+    on screen, yet "the row is gone = full" never fired because of that menu line, and the lap ended in
+    「没认出那一行」 three times. (A row 「突破材料 0/60 前往」 - the flower, gathered not fought - stays.)"""
+    return any(str(getattr(b, "name", b)).strip() == row_name for b in found)
+
+
 def _boss_row(found, row_name):
     """(owned, need, 直接挑战 box) of the row labelled `row_name` on the 培养目标 page; None for each part
     not seen. The label sits left, the count under the icon a little lower, the button right, all on
@@ -954,13 +965,13 @@ def _boss_material(task):
             if look:
                 task.sleep(1)
             found, text = _screen_read(task)
-            if want["target"] in text and want["row"] in text:
+            if want["target"] in text and _row_listed(found, want["row"]):
                 break
             if "所需材料" in text:
                 panel += 1
                 if panel >= 3:
                     break
-        if want["target"] not in text and want["row"] not in text:
+        if want["target"] not in text and not _row_listed(found, want["row"]) and "所需材料" not in text:
             retries += 1
             _shot(task, "boss_material_page")
             if retries > _BOSS_MAX_RETRIES:
@@ -977,7 +988,7 @@ def _boss_material(task):
             task.back(after_sleep=1)
             return "off"
         owned, need, btn = _boss_row(found, want["row"])
-        if want["row"] not in text and "所需材料" in text:
+        if not _row_listed(found, want["row"]) and "所需材料" in text:
             # The page lists only what is still missing: 2026-11-13 06:25:08, right after the claim that
             # took 共鸣者突破材料 from 44 to 46 or more, the row was gone from 莉莉's page.
             task.log_info(f"{BOSS_LINE}{want['target']}的{want['row']}已经够了（培养目标页上不再列这一行），"

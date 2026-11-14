@@ -1626,7 +1626,10 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
             return self.name
 
     # The 培养目标 page as seen 2026-11-13 04:34:11, scaled to 1920x1080: three rows 150 apart.
+    # 11-14: with the left menu as it really is (screenshots 11-13 06:25:07, 06:30:54): its 讨伐强敌 line reads
+    # 「产出共鸣者突破材料」, which contains the row's name - the fixture without it let "row in text" pass for "gone".
     PAGE = [B("培养目标", 288, 155), B("莉莉", 288, 190), B("所需材料", 940, 155),
+            B("讨伐强敌", 342, 528), B("产出共鸣者突破材料", 392, 564), B("无音清剿", 342, 768), B("产出声骸材料", 356, 804),
             B("武器经验材料", 765, 270), B("106/106", 1085, 305, 60, 20), B("21/79", 1430, 305, 60, 20),
             B("直接挑战", 1650, 270),
             B("共鸣者突破材料", 765, 420), B("1/46", 1430, 455, 50, 20), B("直接挑战", 1650, 420),
@@ -1916,8 +1919,11 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
         if t.state["screen"] == "page" and t.state["owned"] >= 46:
             got = [b for b in got if b.name not in ("共鸣者突破材料", f"{t.state['owned']}/46")
                    and not (b.name == "直接挑战" and b.y == 420)]
+            # what stays in its place on the real page: the gathered flower, same word in its label, 前往 not 直接挑战
+            got = got + [B("突破材料", 814, 420), B("0/60", 1490, 455, 50, 20), B("前往", 1698, 420)]
         return got
     t.ocr = gone
+    check("左栏那句「产出共鸣者突破材料」确实在屏上（旧判断就栽在它身上）", any(b.name == "产出共鸣者突破材料" for b in PAGE))
     check("领到 48 后那一行没了：complete", real_boss(t), "complete")
     check("说了够了、为什么", any("已经够了（培养目标页上不再列这一行）" in m for m in t.logs))
 
