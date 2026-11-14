@@ -123,7 +123,10 @@ boot_stages.await_backend (the steps asked once, at once).
         return _real_run(cfg, procs=lambda: [BACKEND] if _up() else [(1, "explorer.exe")],
                          run_ok=lambda cmd: (True, ""), schedule=lambda: [{"times": ["21:30"]}],
                          contract=lambda d: types.SimpleNamespace(missing=[], unreadable=[], judged=True),
-                         has_module=lambda m: True, **kw)
+                         # 11-14: the virtualization read is faked too. Unfaked it asked the real machine: the
+                         # Mac has no pwsh (not judged), but the GitHub windows runner is a Hyper-V guest, so
+                         # the self-check failed there on VIRT_NAME (relay-windows red since at least 11-10).
+                         has_module=lambda m: True, virt=lambda: "VBS=0 HV=False", **kw)
 
 
     selfcheck.run = _run

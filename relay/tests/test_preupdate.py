@@ -1234,7 +1234,9 @@ with subprocess faked (no Windows, no pip):
     (w / "ok" / "core" / "__init__.py").write_text("", encoding="utf-8")
     (w / "ok" / "core" / "plugins.py").write_text("import no_such_module_for_ark_test\n", encoding="utf-8")
     got = subprocess.run([sys.executable, "-c", po._DEPS_PROBE], cwd=str(w), capture_output=True, timeout=60)
-    lines = set(got.stdout.decode("utf-8", "replace").split("\n")) - {""}
+    # 11-14: splitlines, not split("\n") - on Windows the child prints CRLF and every line kept its \r,
+    # so "DIST ..." never matched (relay-windows red since at least 11-10).
+    lines = set(got.stdout.decode("utf-8", "replace").splitlines()) - {""}
     check("清单里没装的包：DIST 按包名报", "DIST no-such-dist-for-ark-test" in lines, True)
     check("装着的（ark-fake-dist）不报", any(x.startswith("DIST ark-fake-dist") for x in lines), False)
     check("ok.core.plugins 里缺的模块：MODULE 报出来（只导入 ok 碰不到它）",
@@ -1243,7 +1245,7 @@ with subprocess faked (no Windows, no pip):
     (w / "ok" / "core" / "plugins.py").unlink()
     got = subprocess.run([sys.executable, "-c", po._DEPS_PROBE], cwd=str(w), capture_output=True, timeout=60)
     check("这一版 ok-script 没有 ok.core.plugins：不算缺包",
-          any(x.startswith("MODULE ok") for x in got.stdout.decode("utf-8", "replace").split("\n")), False)
+          any(x.startswith("MODULE ok") for x in got.stdout.decode("utf-8", "replace").splitlines()), False)
 
     print("\n[接在预更新里、算进最长时长]")
     src = inspect.getsource(po.run_okww)
