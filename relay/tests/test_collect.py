@@ -835,6 +835,176 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     check("路线10 还是只交给补跑一次", [c.label for c in checks if c.kind == outcome.RETRY],
           [texts.collect_blocked_check(R10)])
 
+    print("\n[补跑时又撞上「战斗中无法使用」的路线，在同一次补跑里单独再走一轮，按第二轮的结果算（账本 #170）]")
+    # 11-12: the retry of 11:46 was blocked on 协议纹石 路线2 again and went to the group; the same route
+    # walked when the retry was run by hand at 11:59. Lines below are built in maafw.log's own form.
+    A, B = "AutoCollectRoute10", "AutoCollectRoute11"
+
+
+    def fwline(ts, msg, name=None):
+        det = ('{"name":"%s"}' % name) if name else '{"entry":"AutoCollectSchedule","hash":"","task_id":1,"uuid":""}'
+        return (f"[{ts}][INF][Px1][Tx1][Utils/EventDispatcher.hpp][L65][MaaNS::EventDispatcher::notify] "
+                f"!!!OnEventNotify!!! [handle=true] [msg={msg}] [details={det}]")
+
+
+    def walk(day_hm, rid, end="End"):
+        return [fwline(f"{day_hm}:05.000", "Node.Recognition.Succeeded", rid + "Start"),
+                fwline(f"{day_hm}:55.000", "Node.Action.Starting", rid + end)]
+
+
+    S1, S2 = "2026-11-12 11:40:00", "2026-11-12 11:45:20"
+    round1 = "\n".join(walk("2026-11-12 11:41", B) + walk("2026-11-12 11:43", A)
+                       + [fwline("2026-11-12 11:45:10.000", "Tasker.Task.Succeeded")])
+    hit1, hit2 = ONE.format("2026.11.12-11.43.30.000"), ONE.format("2026.11.12-11.46.30.000")
+    end2 = fwline("2026-11-12 11:48:10.000", "Tasker.Task.Succeeded")
+    walked2 = round1 + "\n" + "\n".join(walk("2026-11-12 11:46", A) + [end2])
+    check("只走一轮：撞上的那条判没走通，记下那张图", cr.final_verdict(round1, [B, A], S1, [], "", [hit1]),
+          ({B: True, A: False}, {A: [hit1]}))
+    check("第二轮走通：两条都算走通，没有再撞上的", cr.final_verdict(walked2, [B, A], S1, [A], S2, [hit1]),
+          ({B: True, A: True}, {}))
+    check("第二轮又撞上：还是没走通，记的是第二轮那张图", cr.final_verdict(walked2, [B, A], S1, [A], S2, [hit1, hit2]),
+          ({B: True, A: False}, {A: [hit2]}))
+    failed2 = round1 + "\n" + "\n".join(walk("2026-11-12 11:46", A, end="Failed") + [end2])
+    check("第二轮这条路线自己失败：没走通", cr.final_verdict(failed2, [B, A], S1, [A], S2, [hit1])[0], {B: True, A: False})
+    check("第二轮没留下这条路线的结果（比如超时停掉）：不拿第一轮的 End 当走通",
+          cr.final_verdict(round1, [B, A], S1, [A], S2, [hit1]), ({B: True, A: False}, {}))
+    check("两轮都够时间：中途停掉的判断留足两轮", cr.STAMP_STALE.total_seconds() >= (cr.ROUNDS * 20 + 12) * 60, True)
+
+    from ark_relay.features.gameupdate import efstart, maaend_launch
+    from ark_relay.features.verify import collector_maaend as cm2
+
+
+    def two_rounds(second_text, again, shots, start_fails=False):
+        """_bring_up_and_run over a fake MXU: returns (got_v, note, evidence, the overrides sent)."""
+        sent_over, fw_now = [], {"text": ""}
+        agents = {"n": 0}    # the agents the last task left attached, as MXU keeps them (#111)
+
+        def api(path, body=None, timeout=30):
+            if path.endswith("/agent/stop"):
+                agents["n"] = 0
+                return {}
+            if path.endswith("/tasks/start"):
+                if start_fails and sent_over:
+                    raise OSError("connection reset")
+                if agents["n"]:
+                    # mxu-tauri.log 10-22 21:56:40: a start beside the last task's agents fails
+                    raise urllib.error.HTTPError(path, 500, "agent failed to start", {}, None)
+                agents["n"] = 2
+                sent_over.append(json.loads(body["tasks"][0]["pipeline_override"]))
+                fw_now["text"] = round1 if len(sent_over) == 1 else second_text
+                return {}
+            if "/maa/windows" in path:
+                return [{"handle": 1}]
+            return {"instances": {"automas": {"connected": True, "resource_loaded": True, "is_running": False}}}
+
+        stamps = [S1, S2, "2026-11-12 11:49:00"]
+        clock = types.SimpleNamespace(sleep=lambda s: None, strftime=lambda fmt: stamps.pop(0) if stamps else "2026-11-12 11:59:00")
+        saved = (cr.api, cr._wait, cr._running, cr.mxu_port, cr.time, cr._close_game, cr._stop_agents, cr._maafw_text,
+                 efstart.run_on_desktop, maaend_launch.restore_override, cm2.obstacle_shots)
+        cr.api, cr._wait, cr._running, cr.mxu_port, cr.time = api, (lambda pred, seconds, step=3.0: pred()), \
+            (lambda names: {"MaaEnd.exe"}), (lambda d, default=12701: 12701), clock
+        cr._close_game, cr._maafw_text = (lambda *a: ""), (lambda d: fw_now["text"])     # _stop_agents is the real one
+        efstart.run_on_desktop = lambda *a, **k: types.SimpleNamespace(code=efstart.OK, reason="")
+        maaend_launch.restore_override = lambda d: ({"CloseGamePC": {}}, "")
+        cm2.obstacle_shots = lambda d: list(shots)
+        seen = {}
+        try:
+            got_v, note = cr._bring_up_and_run(tmpdir(), [B, A], {"first": True}, spawn=lambda *a: None, timeout=1200,
+                                                 evidence=seen, state_dir=tmpdir(), again=again)
+        finally:
+            (cr.api, cr._wait, cr._running, cr.mxu_port, cr.time, cr._close_game, cr._stop_agents, cr._maafw_text,
+             efstart.run_on_desktop, maaend_launch.restore_override, cm2.obstacle_shots) = saved
+        return got_v, note, seen, sent_over
+
+
+    got_v, note, seen, sent_over = two_rounds(walked2, lambda rs: {"only": rs}, [hit1])
+    check("第二轮只发撞上的那条路线", sent_over, [{"first": True}, {"only": [A]}])
+    check("第二轮走通：整次补跑算走通，记下补过第二轮", (got_v, "超时" in note, seen.get("second_round"), "blocked" in seen),
+          ({B: True, A: True}, False, [A], False))
+    got_v, _, seen, sent_over = two_rounds(walked2, lambda rs: {"only": rs}, [hit1, hit2])
+    check("第二轮又撞上：没走通，照报", (got_v, seen.get("blocked"), seen.get("second_round")),
+          ({B: True, A: False}, {A: [hit2]}, [A]))
+    got_v, _, seen, sent_over = two_rounds(walked2, lambda rs: {"only": rs}, [hit1], start_fails=True)
+    check("第二轮没起来：照第一轮的结果报（撞上、没走通）", (got_v, seen.get("blocked"), seen.get("second_round"), len(sent_over)),
+          ({B: True, A: False}, {A: [hit1]}, None, 1))
+    got_v, _, seen, sent_over = two_rounds(walked2, None, [hit1])
+    check("不给第二轮的参数：只走一轮", (got_v, len(sent_over), seen.get("second_round")), ({B: True, A: False}, 1, None))
+    got_v, _, seen, sent_over = two_rounds(walked2, lambda rs: {"only": rs}, [])
+    check("第一轮没撞上：不走第二轮", (got_v, len(sent_over), seen.get("second_round")), ({B: True, A: True}, 1, None))
+
+    print("\n[没干完的报警先问一句：这一趟哪几条路线会在关机前单独补（账本 #166 #170）]")
+    from ark_relay.features.modes import modes as _modes
+    sd_a, hist_a, md_a = tmpdir(), tmpdir(), maaend_dir(P1008A, P1008)
+    (hist_a / "2026-10-08" / "endfield").mkdir(parents=True)
+    (hist_a / "2026-10-08" / "endfield" / "MaaEnd-06-34-21.log").write_text(log("MaaEnd-06-34-21.log"), encoding="utf-8")
+    eng_a = types.SimpleNamespace(cfg=types.SimpleNamespace(state_dir=sd_a, maaend_dir=str(md_a), history_dir=str(hist_a),
+                                                             automas_dir=None))
+    rec_a = types.SimpleNamespace(run_id="2026-10-08/endfield/MaaEnd-06-34-21", script="MaaEnd", raw={},
+                                  started=datetime(2026, 10, 8, 10, 34, 21, tzinfo=SERVER_TZ))
+    saved_ahead = (cr._locale, _modes.debug_active)
+    cr._locale = lambda d: ZH
+    try:
+        check("这一趟撞上的路线10：会单独补", cr.retry_ahead(eng_a, rec_a), ([cr.route_label("AutoCollectRoute10", ZH)], cr.AHEAD))
+        _modes.debug_active = lambda sd, now=None: True
+        check("调试模式开着：点名路线，说还补不了", cr.retry_ahead(eng_a, rec_a)[1], cr.AHEAD_DEBUG)
+        _modes.debug_active = lambda sd, now=None: False
+        (sd_a / "collect-retry").mkdir(parents=True)
+        (sd_a / "collect-retry" / "2026-10-08.json").write_text(json.dumps({"started": "x"}), encoding="utf-8")
+        check("当天的补跑还没出结果：算还会补", cr.retry_ahead(eng_a, rec_a)[1], cr.AHEAD)
+        (sd_a / "collect-retry" / "2026-10-08.json").write_text(json.dumps({"started": "x", "finished": "y"}), encoding="utf-8")
+        check("当天的补跑已经出过结果：说这一次用过了", cr.retry_ahead(eng_a, rec_a)[1], cr.AHEAD_SPENT)
+        check("不是终末地的记录：不问", cr.retry_ahead(eng_a, types.SimpleNamespace(run_id="x", script="MAA", raw={}, started=rec_a.started)),
+              ([], ""))
+        check("找不到这一趟的日志：没有可说的", cr.retry_ahead(eng_a, types.SimpleNamespace(
+            run_id="2026-10-08/endfield/MaaEnd-09-09-09", script="MaaEnd", raw={}, started=rec_a.started)), ([], ""))
+    finally:
+        cr._locale, _modes.debug_active = saved_ahead
+
+    print("\n[补过第二轮：群里那条和当天的记号都写明]")
+    saved_rr = cr.run_retry
+
+
+    def fake_rr(verdict_of):
+        def rr(md, routes, *a, **k):
+            k["evidence"]["second_round"] = list(routes)
+            if not verdict_of:
+                k["evidence"]["blocked"] = {r: [hit2] for r in routes}
+            return {r: verdict_of for r in routes}, ""
+        return rr
+
+
+    def maybe_run2(verdict_of):
+        sd, hist, md = tmpdir(), tmpdir(), maaend_dir(P1008A, P1008)
+        (hist / "2026-10-08" / "endfield").mkdir(parents=True)
+        (hist / "2026-10-08" / "endfield" / "MaaEnd-06-34-21.log").write_text(log("MaaEnd-06-34-21.log"), encoding="utf-8")
+        sent = []
+        eng = types.SimpleNamespace(
+            cfg=types.SimpleNamespace(state_dir=sd, maaend_dir=str(md), history_dir=str(hist), automas_dir=None),
+            state=types.SimpleNamespace(read_ledger=lambda d: [{"script": "MaaEnd", "run_id": "2026-10-08/endfield/MaaEnd-06-34-21"}],
+                                        mark_incomplete=lambda *a: True, clear_incomplete_items=lambda *a: True),
+            notifier=types.SimpleNamespace(send=lambda t, b, **kw: sent.append((t, b, kw.get("alert", False))) or []),
+            _scripts_running=lambda: False)
+        from ark_relay.features.makeup import makeup
+        saved = (cr.run_retry, cr._locale, cr.restore_master, makeup._machinecheck)
+        cr.run_retry, cr._locale, cr.restore_master = fake_rr(verdict_of), (lambda d: ZH), (lambda cfg: "")
+        makeup._machinecheck = lambda *a, **k: None
+        try:
+            cr.maybe_run(eng, now=datetime(2026, 10, 8, 12, 0, tzinfo=SERVER_TZ), day="2026-10-08")
+        finally:
+            cr.run_retry, cr._locale, cr.restore_master, makeup._machinecheck = saved
+        return sent, json.loads((sd / "collect-retry" / "2026-10-08.json").read_text(encoding="utf-8"))
+
+
+    sent, stamp2 = maybe_run2(False)
+    check("第二轮仍没走通：进群", [(t, a) for t, _, a in sent], [(texts.COLLECT_RETRY_FAILED, True)])
+    check("正文写明单独又补了一轮、又撞上", (texts.collect_second_round([R10]) in sent[0][1], "补跑时又" in sent[0][1]), (True, True))
+    check("正文是人话", texts.plain(sent[0][1]), [])
+    check("当天的记号记了第二轮", stamp2.get("second_round"), ["AutoCollectRoute10"])
+    sent, stamp2 = maybe_run2(True)
+    check("第二轮走通：只进日报，不进群", [(t, route_of(t, alert=a)) for t, _, a in sent], [(texts.COLLECT_RETRY_OK, "log")])
+    check("……日报那条也写了补过第二轮", texts.collect_second_round([R10]) in sent[0][1], True)
+    cr.run_retry = saved_rr
+
     print("\nall checks passed" if not fails else f"\nFAILED: {len(fails)}")
 
 

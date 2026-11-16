@@ -233,7 +233,8 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
         check("INFO 不报", any("普通信息" in b for _, b, _ in n.sent), False)
         check("标题是 texts.RELAY_ERROR", [t for t, _, _ in n.sent], [texts.RELAY_ERROR] * 2)
         check("是报警（alert=True）", [a for _, _, a in n.sent], [True, True])
-        check("正文说出在哪一部分、原话有术语就说留在日志里", "主程序" in n.sent[0][1] and "留在中继日志里" in n.sent[0][1])
+        check("正文说出在哪一部分、中文原话照抄（里面有我们自己的术语也抄）",
+              "主程序" in n.sent[0][1] and "它说：AUTO-MAS 拉起后 45 秒内接口仍不通" in n.sent[0][1])
         check("正文带时刻", datetime.now(SERVER_TZ).strftime("%H:") in n.sent[0][1])
         check("正文不再说「只报这一次」", any("只报这一次" in b or "只记进日报" in b for _, b, _ in n.sent), False)
         lg.error("AUTO-MAS 拉起后 %.0f 秒内接口仍不通", 60)
@@ -267,7 +268,9 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
         lg.warning("鸣潮 3.7 版本活动日历读了 78 行，没找到日期")          # no failure word: still a WARNING
         _wait(n, 4)
         check("四条 WARNING 四条推送", len(n.sent), 4)
-        check("带异常名的那条把异常写进去（原话有术语，留日志）", "留在中继日志里" in n.sent[2][1])
+        check("带异常名的那条说的是原因，不抄英文、不说半截话（账本 #162）",
+              ("中途断开" in n.sent[2][1], "ConnectionResetError" in n.sent[2][1], "留在中继日志里" in n.sent[2][1]),
+              (True, False, False))
         check("人话原样说出来", "它说：鸣潮 3.7 版本活动日历读了 78 行，没找到日期" in n.sent[3][1])
         rows = faults(B)
         check("日报记下种类和次数", [(r["where"], r["count"], r["pushed"]) for r in rows],
@@ -760,6 +763,18 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
     check("原话是人话时照抄", "它说：日报没发出去" in texts.relay_error_body("ark.report", "日报没发出去", "10:47"))
     check("正文是人话（两种样例）", [texts.plain(x) for x in (texts.relay_error_body("ark.service", "ConnectionRefusedError: [WinError 10061]", "21:21"), texts.relay_error_body("ark.report", "日报没发出去", "10:47"))], [[], []])
     check("正文不再说「同一次开机只报这一条」", "同一次开机只报这一条" in texts.relay_error_body("ark.report", "x", ""), False)
+
+    print("\n[ledger #162: a long line cut for the queue keeps the cause its end names]")
+    _long = "维护公告：" + "很长的一段说明" * 30 + " ｜ URLError: <urlopen error [Errno 11001] getaddrinfo failed>"
+    _cut = errwatch._kept(_long, 160)
+    check("长行截到 160 字以内，末尾的原因还在", (len(_cut) <= 160, texts.fault_cause(_cut)),
+          (True, texts.fault_cause(_long)))
+    check("开头照旧是原话的开头", _cut.startswith("维护公告：很长的一段说明"), True)
+    check("截出来的那条推送说的是原因", "域名解析失败" in texts.relay_error_body("ark.maintenance", _cut, "05:20:16"), True)
+    check("短行原样", errwatch._kept("日报没发出去", 160), "日报没发出去")
+    check("开头就读得出原因的长行照旧只取开头", errwatch._kept("TimeoutError: timed out " + "x" * 400, 160),
+          ("TimeoutError: timed out " + "x" * 400)[:160])
+    check("读不出原因的长行照旧只取开头", errwatch._kept("长" * 400, 160), "长" * 160)
 
     for x in HANDLERS:
         drop(x)
@@ -1395,6 +1410,49 @@ that day he took the make-up that got past it back out of the group: 「报错�
     check("头一行只点名真没干成的那项，不把设置算进没干完", last_body(e).splitlines()[0],
           f"终末地早班跑完了但没干完：自动采集，这一类不补跑（证据包 {PAGE}）")
     check("设置那两行还在正文里", "· 自动采集的设置：" in last_body(e) and "· 其他的设置：" in last_body(e), True)
+
+    print("\n[终末地没干完的是自动采集：照样当场进群，第一句不再说「这一类不补跑」，说路线会单独补（账本 #166 #170）]")
+    from ark_relay.features.makeup import collect_retry as _cr
+    _only = outcome.summarize([outcome.Check("自动采集 真的走了路线", False, "路线2：协议纹石采集失败")], "MaaEnd")
+    _routes = ["采集血菌", "采集协议纹石（路线2）"]
+    _saved_ahead = _cr.retry_ahead
+    try:
+        for _state, _want in ((_cr.AHEAD, "中继会在关机前单独补一次，补的结果另报"),
+                              (_cr.AHEAD_DEBUG, "现在调试模式开着、中继不关机，所以还没有补"),
+                              (_cr.AHEAD_SPENT, "不再补：今天单独补路线的那一次已经用过")):
+            _cr.retry_ahead = lambda eng, r, _s=_state: (list(_routes), _s)
+            e = build()
+            e._verify_outcome = lambda r: _only
+            handle._handle(e, rec("MaaEnd", at(9, 5), ok=True))
+            _first = last_body(e).splitlines()[0]
+            check(f"{_state}：进群一条「没干完」，第一句说不整轮补、点名路线、说清会不会单独补",
+                  (alarms(e), "这一类不整轮补跑" in _first, "这一类不补跑" in _first, _want in _first, "采集协议纹石（路线2）" in _first),
+                  ([texts.unresolved_undone("终末地", "早班")], True, False, True, True))
+            check(f"{_state}：是人话", texts.plain(_first.replace(PAGE, "")), [])
+        _cr.retry_ahead = lambda eng, r: ([], "")
+        e = build()
+        e._verify_outcome = lambda r: _only
+        handle._handle(e, rec("MaaEnd", at(9, 5), ok=True))
+        check("日志里读不出没走通的路线（单独补没有可补的）：还是原来那句", last_body(e).splitlines()[0],
+              f"终末地早班跑完了但没干完：自动采集，这一类不补跑（证据包 {PAGE}）")
+        _cr.retry_ahead = lambda eng, r: (_ for _ in ()).throw(OSError("boom"))
+        e = build()
+        e._verify_outcome = lambda r: _only
+        handle._handle(e, rec("MaaEnd", at(9, 5), ok=True))
+        check("读路线时出错：报警照样进群，用原来那句", (alarms(e), last_body(e).splitlines()[0]),
+              ([texts.unresolved_undone("终末地", "早班")], f"终末地早班跑完了但没干完：自动采集，这一类不补跑（证据包 {PAGE}）"))
+        _asked = []
+        _cr.retry_ahead = lambda eng, r: _asked.append(r.script) or (list(_routes), _cr.AHEAD)
+        e = build()
+        e._verify_outcome = lambda r: outcome.summarize([outcome.Check("基建换班 真的换了", False, "没换")], "MAA")
+        handle._handle(e, rec("MAA", at(9, 5), ok=True))
+        check("明日方舟的没干完不问采集路线，照旧说这一类不补跑", (_asked, "这一类不补跑" in last_body(e).splitlines()[0]), ([], True))
+        e = build()
+        e._verify_outcome = lambda r: outcome.summarize([outcome.Check("基质刷取 真的刷了", False, "没刷")], "MaaEnd")
+        handle._handle(e, rec("MaaEnd", at(9, 5), ok=True))
+        check("终末地没干完的不是自动采集：也不问，照旧", (_asked, "这一类不补跑" in last_body(e).splitlines()[0]), ([], True))
+    finally:
+        _cr.retry_ahead = _saved_ahead
 
     print("\n[终末地只差自动采集 / 应急理智加强剂：照样进群]")
     e = build()

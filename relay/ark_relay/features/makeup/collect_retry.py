@@ -19,7 +19,8 @@ relay does it, from files MXU writes anyway:
   refused with a reason.
 * Did it work: MaaFW's log names the node that ran - `AutoCollectRoute15End`
   or `AutoCollectRoute15Failed`. A relay-device picture between a route's Start
-  node and the task's end fails it although End ran (retry_blocked).
+  node and the task's end fails it although End ran (retry_blocked); such a route
+  is walked once more on its own in the same retry (ROUNDS), and that round decides.
 
 A route that fails the retry is recorded per day; failing on RECURRENT_DAYS
 consecutive days makes it recurrent, and the alarm asks a person to file it
@@ -86,9 +87,12 @@ _TAG = re.compile(r"<[^>]+>")
 WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 # Consecutive days a route has to fail its retry to count as recurrent.
 RECURRENT_DAYS = 2
+# How many times a route is walked in one retry: once, and once more on its own when the
+# first walk hit the game's 「战斗中无法使用」 at a relay device (_bring_up_and_run).
+ROUNDS = 2
 # A retry stamp without `finished` older than this was cut off mid-retry: run_retry's
-# own timeout (1200 s) plus its start-up waits (about 12 min) plus an hour's margin.
-STAMP_STALE = timedelta(minutes=1200 // 60 + 12 + 60)
+# own timeout (1200 s) for each round plus its start-up waits (about 12 min) plus an hour's margin.
+STAMP_STALE = timedelta(minutes=ROUNDS * 1200 // 60 + 12 + 60)
 
 
 # ----------------------------------------------------------------- parsing
@@ -537,7 +541,7 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
     override = build_override(parts, routes, weekday)
     try:
         return _bring_up_and_run(maaend_dir, routes, override, spawn=spawn, timeout=timeout, evidence=evidence,
-                                 state_dir=state_dir)
+                                 state_dir=state_dir, again=lambda rs: build_override(parts, rs, weekday))
     finally:
         # Every way out, the early "gave up" returns and a raise included, closes
         # what this started (s16 #2): nothing else runs MaaEnd after the queue.
@@ -545,8 +549,31 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
         _kill("Endfield.exe")
 
 
+def final_verdict(maafw_log: str, routes: list[str], since: str, second: list[str], since2: str,
+                  shot_names: list[str]) -> "tuple[dict[str, bool | None], dict[str, list[str]]]":
+    """(verdict, blocked) of a retry whose routes `second` were walked once more from `since2`.
+
+    A route walked once is judged from `since` (judge, retry_blocked). A route of the second
+    round is judged by that round alone: its End node of the first round - MaaEnd ends a
+    blocked route normally - is not its result, so with no node after `since2` it stays
+    failed (the first round blocked it and the second gave no word), and it counts as
+    blocked again only on a relay-device picture inside its second window."""
+    verdict = judge(maafw_log, routes, since)
+    if not second:
+        blocked = retry_blocked(maafw_log, routes, since, shot_names)
+    else:
+        later = judge(maafw_log, second, since2)
+        for rid in second:
+            verdict[rid] = bool(later[rid])
+        blocked = retry_blocked(maafw_log, second, since2, shot_names)
+    for rid in blocked:
+        verdict[rid] = False
+    return verdict, blocked
+
+
 def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, spawn, timeout: int,
-                      evidence: "dict | None", state_dir=None) -> tuple[dict[str, bool | None], str]:
+                      evidence: "dict | None", state_dir=None, again=None) -> tuple[dict[str, bool | None], str]:
+    """`again(routes)` builds the override of the second round (run_retry); None: one round."""
     debug = maaend_dir / "debug"
     global MXU  # noqa: PLW0603 - the port is discovered per launch
     if "MaaEnd.exe" in _running(("MaaEnd.exe",)):
@@ -600,32 +627,63 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
     if not _state().get("resource_loaded"):
         api(f"/maa/instances/{inst}/resource/load", {"paths": [str(maaend_dir / "resource")]}, timeout=120)
         _wait(lambda: _state().get("resource_loaded"), 120)
-    since = time.strftime(STAMP_FMT)
-    api(f"/maa/instances/{inst}/tasks/start", {
-        "tasks": [{"entry": ENTRY, "pipeline_override": json.dumps(override, ensure_ascii=False)}],
+    from ark_relay.features.verify import collector_maaend  # noqa: PLC0415
+    start = lambda over: api(f"/maa/instances/{inst}/tasks/start", {  # noqa: E731 - one start, both rounds
+        "tasks": [{"entry": ENTRY, "pipeline_override": json.dumps(over, ensure_ascii=False)}],
         "agent_configs": AGENTS,
         "cwd": str(maaend_dir), "tcp_compat_mode": False, "pi_envs": None,
         "reset_state": True, "controller_info": None}, timeout=120)
-    done = _wait(lambda: not _state().get("is_running"), timeout, step=15)
-    if not done:
-        try:
-            api(f"/maa/instances/{inst}/tasks/stop", {})
-        except (urllib.error.URLError, OSError):
-            pass
+
+    def _run(over: dict) -> bool:
+        start(over)
+        finished = _wait(lambda: not _state().get("is_running"), timeout, step=15)
+        if not finished:
+            try:
+                api(f"/maa/instances/{inst}/tasks/stop", {})
+            except (urllib.error.URLError, OSError):
+                pass
+        return finished
+    since = time.strftime(STAMP_FMT)
+    done = _run(override)
+    # A route that hit 「战斗中无法使用」 at a relay device gathered nothing although MaaEnd ended
+    # it normally (retry_blocked). Whether the fight is over is only seen by walking the route
+    # again: 11-12 the retry of 11:46 was blocked on 协议纹石 路线2 and the one run by hand at
+    # 11:59 walked it (ledger #170). So those routes, and only those, get one more round here,
+    # with the game still open. A second round that cannot be started leaves the first round's
+    # verdict as it is: blocked, failed, said to the group.
+    second: list[str] = []
+    since2 = ""
+    if done and again is not None:
+        first = retry_blocked(_maafw_text(debug), routes, since, collector_maaend.obstacle_shots(maaend_dir))
+        if first:
+            log.info("自动采集补跑：%s 这一轮撞上「战斗中无法使用」没采到，单独再补一轮", "、".join(first))
+            # The first round's agents are stopped before the second start, as before
+            # CloseGamePC (_close_game): MXU starts a task's agents afresh and leaves the
+            # finished task's attached, and beside them the new go-service cannot connect
+            # (10-22 21:56:40, ledger #111 - tasks/start then answers 500).
+            _stop_agents(inst)
+            # STAMP_FMT counts whole seconds and _after compares with >=: started in the same
+            # second as the first round's last line, the second round would take that line for
+            # its own. One second is that resolution (not a wait that was tuned).
+            time.sleep(1)
+            started2 = time.strftime(STAMP_FMT)
+            try:
+                done = _run(again(list(first)))
+                second, since2 = list(first), started2
+            except (urllib.error.URLError, OSError, ValueError):
+                log.warning("自动采集补跑：单独再补的那一轮没起来，照第一轮的结果报", exc_info=True)
     closing = time.strftime(STAMP_FMT)
     closed = _close_game(inst, restore, _state, maaend_dir)
     _stop_agents(inst)
     text = _maafw_text(debug)
     closed = closed or _closed_verdict(text, closing)
-    verdict = judge(text, routes, since)
-    from ark_relay.features.verify import collector_maaend  # noqa: PLC0415
-    again = retry_blocked(text, routes, since, collector_maaend.obstacle_shots(maaend_dir))
-    for rid in again:
-        verdict[rid] = False
+    verdict, blocked = final_verdict(text, routes, since, second, since2, collector_maaend.obstacle_shots(maaend_dir))
     if evidence is not None:
         evidence["nodes"] = node_lines(text, routes, since)
-        if again:
-            evidence["blocked"] = again
+        if blocked:
+            evidence["blocked"] = blocked
+        if second:
+            evidence["second_round"] = second
     note = "补跑超时，已停掉" if not done else ""
     if closed:
         note = _not_restored(note, closed, evidence)
@@ -814,6 +872,53 @@ def _blocked_in(history_log: Path, maaend_dir, zh: dict) -> dict[str, list[str]]
     return blocked_route_ids(text, shots, zh)
 
 
+AHEAD, AHEAD_DEBUG, AHEAD_SPENT = "ahead", "debug", "spent"
+
+
+def retry_ahead(eng, rec) -> "tuple[list[str], str]":
+    """What maybe_run will do about `rec`, a MaaEnd round booked with gathering undone:
+    (the labels of the routes it would walk again, AHEAD / AHEAD_DEBUG / AHEAD_SPENT).
+
+    The routes are maybe_run's own reading of that round's log: the 「采集失败」 lines and
+    the routes a relay-device picture marks as blocked. ([], "") when the log names no such
+    route - gathering is undone for another reason and the per-route retry has nothing to
+    walk - or when any of it cannot be read. AHEAD_SPENT: the day's one retry has already
+    given its verdict. AHEAD_DEBUG: debug mode is on, so the shutdown decision that runs
+    the retry is not reached. Reads only; the alarm that says this goes out either way
+    (pushes._push_undone)."""
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
+    from ark_relay.features.modes import modes  # noqa: PLC0415
+    cfg = eng.cfg
+    maaend_dir, history_dir = getattr(cfg, "maaend_dir", None), getattr(cfg, "history_dir", None)
+    if not maaend_dir or not history_dir or getattr(rec, "script", "") != "MaaEnd":
+        return [], ""
+    zh = _locale(Path(maaend_dir))
+    labels = failed_labels_from_locale(zh)
+    if not labels:
+        return [], ""
+    entry = {"run_id": rec.run_id, "script": rec.script, "raw": dict(getattr(rec, "raw", None) or {})}
+    log_path = _history_log(history_dir, entry) or Path(history_dir) / (str(rec.run_id) + ".log")
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return [], ""
+    routes = failed_routes(text, labels)
+    routes += [r for r in _blocked_in(log_path, maaend_dir, zh) if r not in routes]
+    if not routes:
+        return [], ""
+    names = [route_label(r, zh) for r in routes]
+    day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+    stamp = Path(cfg.state_dir) / "collect-retry" / f"{day}.json"
+    try:
+        if "finished" in json.loads(stamp.read_text(encoding="utf-8")):
+            return names, AHEAD_SPENT
+    except (OSError, ValueError, TypeError):
+        pass
+    if modes.debug_active(Path(cfg.state_dir)):
+        return names, AHEAD_DEBUG
+    return names, AHEAD
+
+
 # maybe_run's locale problem currently said (at most one), so a lasting one is said
 # once, not per call. Mutated in place, like statestore's _CORRUPT_SAID.
 _LOCALE_SAID: set[str] = set()
@@ -959,7 +1064,8 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     done = {"run_id": last["run_id"], "routes": routes, "blocked": list(blocked), "passed": passed,
             "failed": failed, "unknown": unknown, "recurrent": rec,
             "note": note, "finished": datetime.now(tz=SERVER_TZ).isoformat(),
-            "nodes": seen.get("nodes") or {}, "blocked_again": seen.get("blocked") or {}}
+            "nodes": seen.get("nodes") or {}, "blocked_again": seen.get("blocked") or {},
+            "second_round": list(seen.get("second_round") or [])}
     atomic_write_text(stamp, json.dumps(done, ensure_ascii=False))
     # Hand the outcome to the machine checks: the retry ran and judged each route.
     from ark_relay.features.makeup import makeup  # noqa: PLC0415
@@ -968,6 +1074,8 @@ def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
     body = texts.collect_retry_body([route_label(r, zh) for r in passed],
                                     [route_label(r, zh) for r in failed],
                                     [route_label(r, zh) for r in unknown], note)
+    if seen.get("second_round"):
+        body += "\n" + texts.collect_second_round([route_label(r, zh) for r in seen["second_round"]])
     if seen.get("blocked"):
         body += "\n" + texts.collect_blocked_row([route_label(r, zh) for r in seen["blocked"]], again=True)
     # A route still failing (or without a verdict) goes to the group. All walked:

@@ -200,6 +200,12 @@ def collect_blocked_row(labels: list[str], again: bool = False, first: bool = Fa
     return ("补跑时又" if again else "第一趟" if first else "") + COLLECT_BLOCKED + "：" + "、".join(labels)
 
 
+def collect_second_round(labels: list[str]) -> str:
+    """One line of the retry's body: the routes its first round found blocked were walked
+    once more on their own (collect_retry._bring_up_and_run)."""
+    return "补跑第一轮" + COLLECT_BLOCKED + "，单独又补了一轮：" + "、".join(labels)
+
+
 def collect_retry_body(passed: list[str], failed: list[str], unknown: list[str], note: str) -> str:
     lines = []
     if passed:
@@ -377,9 +383,28 @@ def unresolved_head(game: str, shift: str, makeup: str, stuck: str, page: str) -
     return head + "\n"
 
 
-def unresolved_undone_head(game: str, shift: str, items: str, page: str) -> str:
-    """The first line of a 「没干完」 alarm; no make-up is run for these."""
-    head = f"{game}{shift}跑完了但没干完" + (f"：{items}" if items else "") + "，这一类不补跑"
+# What a 「没干完」 alarm says instead of 「这一类不补跑」 when gathering routes are among what
+# is undone: no whole make-up is run, and the routes are walked again one by one before the
+# power-off (collect_retry.maybe_run), whose outcome is its own message. Until 11-17 the head
+# said 「这一类不补跑」 and the retry followed a quarter of an hour later (ledger #166, #170).
+NO_WHOLE_MAKEUP = "这一类不整轮补跑"
+
+
+def collect_retry_ahead(labels: list[str], state: str = "ahead") -> str:
+    """The clause after NO_WHOLE_MAKEUP: which routes, and whether the per-route retry is
+    still to come (collect_retry.retry_ahead's answer)."""
+    routes = "没走通的路线（" + "、".join(labels) + "）"
+    if state == "debug":
+        return routes + "要到中继关机前才单独补一次；现在调试模式开着、中继不关机，所以还没有补"
+    if state == "spent":
+        return routes + "不再补：今天单独补路线的那一次已经用过"
+    return routes + "中继会在关机前单独补一次，补的结果另报"
+
+
+def unresolved_undone_head(game: str, shift: str, items: str, page: str, retry: str = "") -> str:
+    """The first line of a 「没干完」 alarm; no make-up is run for these. `retry` is what
+    is said in place of 「这一类不补跑」 when the gathering routes get their per-route retry."""
+    head = f"{game}{shift}跑完了但没干完" + (f"：{items}" if items else "") + "，" + (retry or "这一类不补跑")
     if page:
         head += f"（证据包 {page}）"
     return head + "\n"
@@ -993,7 +1018,7 @@ def relay_error_body(where: str, what: str, at: str = "") -> str:
     `at` when it was logged (errwatch.span).
 
     The record's own words are quoted only when they read as plain language;
-    a line full of class names or English is left in relay.log and said so,
+    a line full of class names or English is said by the cause it names (_said),
     never a bare 「出错」.
     """
     part = relay_part(where)
@@ -1040,8 +1065,56 @@ LOST_ALARM_QUEUE = "中继重启前还排着没送出去的群报警，这次开
 EVIDENCE_UPLOAD_FAILED = "当天日志这次没传上去，原因记在机器上的中继日志里，我们这边照着查。"
 
 
+# What a relay WARNING / ERROR quotes from Python, Windows or the network stack, said as
+# what happened. In order: the first pattern found in the line wins, so the specific ones
+# (name resolution, the file held by another program) come before the general ones.
+# 2026-11-11 05:20 (ledger #162): the game PC's line dropped, five 「停服维护公告」 warnings
+# ended in 「getaddrinfo failed」 and each reached the group as a sentence that named nothing.
+_FAULTS = (
+    (re.compile(r"getaddrinfo failed|Name or service not known|Temporary failure in name resolution"
+                r"|nodename nor servname|SuspectDnsProbeFailed|gaierror|NameResolutionError", re.I),
+     "域名解析失败，机器当时连不上外网"),
+    (re.compile(r"timed out|TimeoutError|ReadTimeout|ConnectTimeout|WinError 10060\b", re.I),
+     "连接或读写超时"),
+    (re.compile(r"Connection ?Refused|Connection ?Reset|Connection ?Aborted|RemoteDisconnected|IncompleteRead"
+                r"|EOF occurred|BrokenPipe|WinError 1005[34]\b|WinError 10061\b", re.I),
+     "对方拒绝连接，或者连上后中途断开了"),
+    (re.compile(r"WinError 32\b|being used by another process", re.I), "文件正被其他程序占用"),
+    (re.compile(r"PermissionError|WinError 5\b|Access is denied|Permission denied", re.I),
+     "没有权限读写要用的文件，或者文件正被其他程序占用"),
+    (re.compile(r"HTTP ?Error (\d{3})\b|HTTPError:? (\d{3})\b|\bstatus(?: code)?[ =:]+(\d{3})\b", re.I),
+     "对方服务器返回了状态码 {code}"),
+    (re.compile(r"FileNotFoundError|WinError [23]\b|No such file or directory", re.I), "找不到要用的文件"),
+    (re.compile(r"JSONDecodeError|Expecting value|Expecting property name|Unterminated string|Extra data", re.I),
+     "收到的数据格式是坏的"),
+    (re.compile(r"SSLError|CERTIFICATE_VERIFY_FAILED|\bSSL:", re.I), "加密连接没建立起来"),
+    (re.compile(r"URLError|urlopen error|ConnectionError|WinError 1006[45]\b|Network is unreachable", re.I),
+     "网络请求没发出去，或者没收到回答"),
+)
+# The words for a line no pattern above reads (rule 2 at the top of this module).
+RELAY_ERROR_UNREAD = "这种报错中继还不认识，原文已记日志"
+
+
+def fault_cause(what: str) -> str:
+    """The cause a relay WARNING / ERROR line names in Python's, Windows' or the network
+    stack's words, in plain Chinese; '' when it names none of _FAULTS."""
+    for pat, said in _FAULTS:
+        if m := pat.search(what or ""):
+            return said.format(code=next((g for g in m.groups() if g), ""))
+    return ""
+
+
 def _said(what: str) -> str:
-    return f"它说：{what}" if what and not plain(what) else "原话有术语没翻译，留在中继日志里"
+    """The record's own words when they hold no English: the relay's own Chinese is
+    quoted whole, its engineering words included (「AUTO-MAS 拉起后 45 秒内接口仍不通」
+    says more than any stand-in). A line with class names or English in it is never
+    quoted, in whole or in part: the cause it names is said in plain words
+    (fault_cause), and a line naming none says so outright."""
+    if what and not any(p.startswith("英文") for p in plain(what)):
+        return f"它说：{what}"
+    if cause := fault_cause(what):
+        return f"原因：{cause}，原文已记日志"
+    return RELAY_ERROR_UNREAD
 
 
 def relay_error_recurred(fixed_in: str) -> str:
@@ -1222,6 +1295,15 @@ def shift_overrun_body(queue: str, due, now, limit_min: int, slack_min: int,
     return body
 
 
+def own_turn_note(script: str, since, now, own_min: int, slack_min: int) -> str:
+    """One more line of the two shift alarms when they waited for the script whose turn it
+    was (runwatch.turn_deadline): since when it has had its turn and by which of its own
+    days the alarm still went out."""
+    ran = int((now - since).total_seconds() // 60)
+    return (f"轮到 {script} 是 {since:%H:%M}，到现在 {ran} 分钟；它自己单跑最长的一天是 {own_min} 分钟，"
+            f"按 {own_min} + {slack_min} 分钟算也过了。")
+
+
 def shift_no_result(queue: str) -> str:
     return f"⏰ {queue}有脚本一直没出结果"
 
@@ -1338,6 +1420,7 @@ def samples() -> list[str]:
         attempt_timeout_body(0, 0, None, t2),
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 13, 10), 220, 30,
                            "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
+        own_turn_note("MaaEnd", _dt(2026, 11, 16, 10, 12), _dt(2026, 11, 16, 11, 47), 64, 30),
         shift_no_result_body("早班", t0, _dt(2026, 10, 1, 12, 31), "MaaEnd", 180, 30),
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 12, 31), 180, 30, "", "", 0),
         shift_overrun_body("晚班", _dt(2026, 11, 8, 21, 30), _dt(2026, 11, 9, 1, 44), 21, 30,
@@ -1396,6 +1479,10 @@ def samples() -> list[str]:
         SKLAND_MULTI_ROLE, HAND_STARTED_NOTE, hand_fixed_note("12:05"), UPDATE_DAY_NOTE,
         skland_multi_role_body(["1234567", "7654321"]),
         relay_error_line("ark.report", "日报没发出去", "21:21:05 起共 3 次，最后一次 21:25:10"),
+        relay_error_body("ark.maintenance", "维护公告：终末地 官方公告取不到（官网：<urlopen error [Errno 11001] "
+                         "getaddrinfo failed>），这次不知道它有没有停服维护", "05:20:16"),
+        relay_error_line("ark.service", "Traceback: KeyError 'x'", "09:00:01"),
+        *(said.format(code=503) for _pat, said in _FAULTS),
         relay_error_line("ark.banners", "官方图转 PNG 失败，原样交给系统 OCR", "21:47:01", "20261005151027",
                          "游戏机缺读图组件，官方长图读不了"),
         AUTOMAS_CONTRACT, MAS_CONTRACT_CHECK,
@@ -1413,6 +1500,8 @@ def samples() -> list[str]:
         OKWW_BATTLE_PASS_LABEL, OKWW_BATTLE_PASS_FAILED, OKWW_BATTLE_PASS_RETRIED, OKWW_BATTLE_PASS_UNCHECKED,
         OKWW_BATTLE_PASS_CLOSED,
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
+        collect_second_round(["采集协议纹石（路线2）"]),
+        NO_WHOLE_MAKEUP, *(collect_retry_ahead(["采集血菌", "采集协议纹石（路线2）"], st) for st in ("ahead", "debug", "spent")),
         EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED, EVIDENCE_UPLOAD_FAILED, LOST_ALARM_QUEUE,
         gamelog_unknown_errors("鸣潮"), gamelog_unknown_errors_body("鸣潮", "09:12", 2),
         gamelog_unknown_errors_body("终末地", "", 1),

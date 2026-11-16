@@ -206,6 +206,43 @@ block's header.
     check("不一口咬定这一班跑不了", "后果：这一班跑不了" in body, False)
     check("分轻重说", "重的" in body and "轻的" in body, True)
 
+    print("\n[中继自己报错：原话里有英文时说它讲的原因，认不出就照规矩说还不认识（账本 #162）]")
+    cases = [
+        ("维护公告：终末地 官方公告取不到（官网：<urlopen error [Errno 11001] getaddrinfo failed>），这次不知道它有没有停服维护",
+         "域名解析失败"),
+        ("卡池信息这次没取到 ｜ TimeoutError: The read operation timed out", "连接或读写超时"),
+        ("发到手机信箱没成 ｜ ConnectionResetError: [WinError 10054] An existing connection was forcibly closed",
+         "中途断开"),
+        ("调度程序的设置没写进去 ｜ PermissionError: [WinError 32] The process cannot access the file because it is "
+         "being used by another process", "文件正被其他程序占用"),
+        ("状态没存上 ｜ PermissionError: [Errno 13] Permission denied: 'state.json'", "没有权限读写"),
+        ("公告取不到（HTTP Error 503: Service Unavailable）", "状态码 503"),
+        ("读不到脚本设置 ｜ FileNotFoundError: [WinError 2] The system cannot find the file specified", "找不到要用的文件"),
+        ("森空岛的回答读不出 ｜ JSONDecodeError: Expecting value: line 1 column 1 (char 0)", "数据格式是坏的"),
+        ("官网取不到 ｜ SSLError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed", "加密连接没建立起来"),
+        ("公告取不到 ｜ URLError: <urlopen error [WinError 10065] A socket operation was attempted>", "网络请求没发出去"),
+    ]
+    for what, want in cases:
+        body = texts.relay_error_body("ark.maintenance", what, "05:20:16")
+        check(f"说出原因：{want}", (want in body, texts.plain(body)), (True, []))
+        check(f"不抄带英文的原话：{want}", any(w in body for w in ("urlopen", "Error", "WinError", "Errno")), False)
+    check("同时占用和权限两种说法时，说占用", "没有权限" in texts.relay_error_body("ark.config", cases[3][0], ""), False)
+    check("带英文的原话一个字都不抄（半句也不抄）", "官方公告取不到" in texts.relay_error_body("ark.maintenance", cases[0][0], ""),
+          False)
+    unknown = texts.relay_error_body("ark.service", "Traceback: KeyError 'x'", "09:00:01")
+    check("认不出原因的：说中继还不认识、原文已记日志", (texts.RELAY_ERROR_UNREAD in unknown, texts.plain(unknown)), (True, []))
+    check("原话是人话时照抄", "它说：日报没发出去" in texts.relay_error_body("ark.report", "日报没发出去", "10:47"), True)
+    check("原话全是中文、只是带我们自己的术语：也照抄", "它说：AUTO-MAS 拉起后 45 秒内接口仍不通"
+          in texts.relay_error_body("ark.service", "AUTO-MAS 拉起后 45 秒内接口仍不通", "21:21"), True)
+    merged = texts.relay_error_line("ark.maintenance", cases[0][0], "05:20:16 起共 5 次，最后一次 05:20:31")
+    check("合并推送里的每一行也说原因", ("域名解析失败" in merged, texts.plain(merged)), (True, []))
+    again = texts.relay_error_recurred_body("ark.banners", cases[1][0], "21:47:01", "游戏机缺读图组件")
+    check("修过又出现的那种也说原因", ("连接或读写超时" in again, texts.plain(again)), (True, []))
+    old = "原话有术语" + "没翻译"
+    hits = [str(f.relative_to(ROOT)) for f in sorted((ROOT / "ark_relay").rglob("*.py")) if old in f.read_text(encoding="utf-8")]
+    check("代码里不再有那句半截话（collect_retry.py 的说明里提到它是历史）", hits,
+          ["ark_relay/features/makeup/collect_retry.py"])
+
 
 if __name__ == "__main__":
     sys.exit(run_parts([_part_main, _part_texts_wording]))

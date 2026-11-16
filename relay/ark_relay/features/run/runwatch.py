@@ -349,6 +349,31 @@ def _timed_out(e: dict) -> bool:
     return any("超时" in str(w) for w in words)
 
 
+def _chain_rows(entries: list[dict], due: datetime) -> list[tuple]:
+    """The records of the queue run that started at `due`, oldest first:
+    (started, finished, ok, timed out, script)."""
+    # A run a person started at AUTO-MAS (raw.hand_started, handle._book) is not the
+    # shift's, so it neither lengthens nor dirties the chain (10-12: OK-WW 11:41-11:49).
+    runs = sorted(((s, f, e.get("ok") is not False, _timed_out(e), str(e.get("script") or "")) for e in entries
+                   if not (e.get("raw") or {}).get("hand_started")
+                   and (s := _parse(e.get("started"))) and (f := _parse(e.get("finished")) or s)),
+                  key=lambda x: x[0])
+    rows: list[tuple] = []
+    end = None
+    for row in runs:
+        s, f = row[0], row[1]
+        if end is None:
+            if due - timedelta(minutes=5) <= s <= due + timedelta(minutes=CHAIN_START_MIN):
+                rows.append(row)
+                end = f
+            continue
+        if s > end + timedelta(minutes=CHAIN_GAP_MIN):
+            break
+        rows.append(row)
+        end = max(end, f)
+    return rows
+
+
 def _chain(entries: list[dict], due: datetime) -> tuple[int | None, bool, bool]:
     """For the run that started at `due`: (minutes from `due` to its end,
     every script's last record ok, any record a timeout).
@@ -357,25 +382,13 @@ def _chain(entries: list[dict], due: datetime) -> tuple[int | None, bool, bool]:
     failed script, and a retry that succeeds is a clean run (10-01..10-13 the 09:00
     run was clean on 2 of 13 days when any failed attempt counted - one MaaEnd attempt
     failing and its retry succeeding - so the limit fell back to the longest day)."""
-    # A run a person started at AUTO-MAS (raw.hand_started, handle._book) is not the
-    # shift's, so it neither lengthens nor dirties the chain (10-12: OK-WW 11:41-11:49).
-    runs = sorted(((s, f, e.get("ok") is not False, _timed_out(e), str(e.get("script") or "")) for e in entries
-                   if not (e.get("raw") or {}).get("hand_started")
-                   and (s := _parse(e.get("started"))) and (f := _parse(e.get("finished")) or s)),
-                  key=lambda x: x[0])
-    end, timeout, last_ok = None, False, {}
-    for s, f, ok, to, script in runs:
-        if end is None:
-            if due - timedelta(minutes=5) <= s <= due + timedelta(minutes=CHAIN_START_MIN):
-                end, timeout, last_ok = f, to, {script: ok}
-            continue
-        if s > end + timedelta(minutes=CHAIN_GAP_MIN):
-            break
-        end, timeout = max(end, f), timeout or to
-        last_ok[script] = ok
-    if end is None:
+    rows = _chain_rows(entries, due)
+    if not rows:
         return None, True, False
-    return max(0, int((end - due).total_seconds() // 60)), all(last_ok.values()), timeout
+    end = max(f for _s, f, _ok, _to, _script in rows)
+    last_ok = {script: ok for _s, _f, ok, _to, script in rows}
+    return (max(0, int((end - due).total_seconds() // 60)), all(last_ok.values()),
+            any(to for _s, _f, _ok, to, _script in rows))
 
 
 def run_minutes(entries: list[dict], due: datetime) -> int | None:
@@ -383,9 +396,11 @@ def run_minutes(entries: list[dict], due: datetime) -> int | None:
     return _chain(entries, due)[0]
 
 
-def _past_run(eng, today: datetime, back: int, hh: int, mm: int, names: list[str]) -> "tuple[int, bool] | None":
+def _past_run(eng, today: datetime, back: int, hh: int, mm: int, names: list[str], *,
+              alarmed_counts: bool = False) -> "tuple[int, bool] | None":
     """(minutes, clean) of the queue run at hh:mm `back` days before `today` (_chain); None when
-    there was none, it timed out, or it raised an overrun alarm."""
+    there was none, it timed out, or it raised an overrun alarm. With `alarmed_counts` a run
+    that raised the alarm is given all the same (planned_minutes: the same weekday)."""
     from ark_relay.features.alarm import handle  # noqa: PLC0415
     hhmm = f"{hh:02d}:{mm:02d}"
     day = today - timedelta(days=back)
@@ -396,7 +411,8 @@ def _past_run(eng, today: datetime, back: int, hh: int, mm: int, names: list[str
     m, ok, timed_out = _chain(entries, due)
     if m is None or timed_out:
         return None
-    if any(handle._already_alerted(eng, day.strftime("%Y-%m-%d"), f"队列超时|{n}|{hhmm}") for n in names):
+    if not alarmed_counts and any(handle._already_alerted(eng, day.strftime("%Y-%m-%d"), f"队列超时|{n}|{hhmm}")
+                                  for n in names):
         return None
     return m, ok
 
@@ -407,14 +423,22 @@ def planned_minutes(eng, hh: int, mm: int, today: datetime) -> tuple[int, int]:
     The longest finish among the last HISTORY_DAYS days that were clean (each
     script's last record ok, _chain), and among the same weekday SAME_WEEKDAY_BACK days
     back when that day was clean (the Monday shift after the weekly reset). A day that
-    timed out or raised an overrun alarm never counts, so one overlong day does not raise
-    the limit for a week. With fewer than MIN_CLEAN_DAYS clean days, the longest of every
-    day that did not time out is used instead. FALLBACK_LIMIT_MIN only when there is no
-    usable day at all. The day count is the HISTORY_DAYS window's.
+    timed out or raised an overrun alarm never counts among the HISTORY_DAYS, so one
+    overlong day does not raise the limit for a week. With fewer than MIN_CLEAN_DAYS clean
+    days, the longest of every day that did not time out is used instead.
+    FALLBACK_LIMIT_MIN only when there is no usable day at all. The day count is the
+    HISTORY_DAYS window's.
+
+    The same weekday counts although it raised the alarm, as long as it was clean (every
+    script's last record ok, none a timeout): the alarm on such a day was this limit being
+    too short for that weekday, and leaving the day out kept it too short the week after
+    (ledger #176: Monday 11-09 alarmed, so Monday 11-16 was timed by a weekday's 65
+    minutes and alarmed at 95 with a shift that takes 138).
     """
     names = [q["name"] for q in plan.schedule(eng.cfg.automas_dir)]
     runs = [r for back in range(1, HISTORY_DAYS + 1) if (r := _past_run(eng, today, back, hh, mm, names))]
-    weekday = [r[0] for back in SAME_WEEKDAY_BACK if (r := _past_run(eng, today, back, hh, mm, names)) and r[1]]
+    weekday = [r[0] for back in SAME_WEEKDAY_BACK
+               if (r := _past_run(eng, today, back, hh, mm, names, alarmed_counts=True)) and r[1]]
     clean = [m for m, ok in runs if ok]
     if len(clean) >= MIN_CLEAN_DAYS:
         return max(clean + weekday), len(clean)
@@ -423,6 +447,102 @@ def planned_minutes(eng, hh: int, mm: int, today: datetime) -> tuple[int, int]:
     if weekday:
         return max(weekday), len(weekday)
     return FALLBACK_LIMIT_MIN, 0
+
+
+# However long the script whose turn it is may still take by its own history, the two
+# shift alarms wait no longer than this from the shift's start (plus OVERRUN_SLACK_MIN).
+SHIFT_CAP_MIN = FALLBACK_LIMIT_MIN
+
+
+def _own_past(eng, today: datetime, back: int, hh: int, mm: int, script: str, names: list[str], *,
+              alarmed_counts: bool = False) -> "tuple[int, bool] | None":
+    """(minutes, clean) `script` took by itself in the queue run at hh:mm `back` days before
+    `today`: from its first record's start to its last record's end in that run (_chain_rows),
+    clean when its last record is ok. None when it has no record there, one of its records
+    was a timeout, or - unless `alarmed_counts` - the run raised the overrun alarm (as _past_run)."""
+    from ark_relay.features.alarm import handle  # noqa: PLC0415
+    hhmm = f"{hh:02d}:{mm:02d}"
+    day = today - timedelta(days=back)
+    due = day.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    entries = (eng.state.read_ledger(day.strftime("%Y-%m-%d"))
+               + eng.state.read_ledger((day + timedelta(days=1)).strftime("%Y-%m-%d")))
+    rows = [r for r in _chain_rows(entries, due) if r[4] == script]
+    if not rows or any(r[3] for r in rows):
+        return None
+    if not alarmed_counts and any(handle._already_alerted(eng, day.strftime("%Y-%m-%d"), f"队列超时|{n}|{hhmm}")
+                                  for n in names):
+        return None
+    took = max(r[1] for r in rows) - min(r[0] for r in rows)
+    return max(0, int(took.total_seconds() // 60)), rows[-1][2]
+
+
+def script_minutes(eng, script: str, hh: int, mm: int, today: datetime) -> "int | None":
+    """The longest `script` took by itself in the queue run at hh:mm on a clean day: among the
+    last HISTORY_DAYS days, and the same weekday SAME_WEEKDAY_BACK days back (MaaEnd gathers on
+    Mondays and Thursdays only: 23-26 minutes on the other days, 64 on 11-12 and 11-16). The
+    days are planned_minutes'. None when no such day has a clean record of it."""
+    names = [q["name"] for q in plan.schedule(eng.cfg.automas_dir)]
+    took = [r[0] for back in range(1, HISTORY_DAYS + 1)
+            if (r := _own_past(eng, today, back, hh, mm, script, names)) and r[1]]
+    took += [r[0] for back in SAME_WEEKDAY_BACK
+             if (r := _own_past(eng, today, back, hh, mm, script, names, alarmed_counts=True)) and r[1]]
+    return max(took) if took else None
+
+
+def own_turn(eng, due: datetime, start: datetime, kinds: list[str], entries: list[dict]) -> "tuple | None":
+    """(script, since, minutes) of the script whose turn it is in the queue run that started
+    at `due`: the first of the queue's `kinds` without a record since `due`, the moment the
+    run's last record ended (the shift's `start` when there is none yet, or when that is
+    later), and script_minutes of it. None when every script has its record or the script
+    has no clean day to go by."""
+    since, ran = start, set()
+    for e in entries:
+        s = _parse(e.get("started"))
+        if s is None or s < due - timedelta(minutes=5) or (e.get("raw") or {}).get("hand_started"):
+            continue
+        ran.add(str(e.get("script") or ""))
+        since = max(since, _parse(e.get("finished")) or s)
+    script = next((k for k in kinds if k not in ran), None)
+    if script is None:
+        return None
+    own = script_minutes(eng, script, due.hour, due.minute, due)
+    return (script, since, own) if own is not None else None
+
+
+def turn_deadline(eng, due: datetime, start: datetime, deadline: datetime, kinds: list[str],
+                  entries: list[dict]) -> "tuple[datetime, tuple | None]":
+    """(the moment the two shift alarms go by, own_turn's answer when it moved that moment).
+
+    `deadline` is the queue's: its start plus planned_minutes plus OVERRUN_SLACK_MIN. A queue
+    past it is not yet a script hanging when the scripts before took longer than on any
+    clean day: 11-16 (Monday) 鸣潮 took 54 minutes with the weekly boss, MaaEnd began at
+    10:15, and at 10:35 the alarm said the shift had run 95 minutes without a result from
+    MaaEnd, twenty minutes into its own hour (ledger #176). So once the queue's planned end
+    is past, the script whose turn it is still gets its own longest clean run plus the same
+    slack, counted from the end of the record before it - and no later than SHIFT_CAP_MIN
+    plus the slack from the shift's start. Never earlier than `deadline`: this only waits.
+    """
+    turn = own_turn(eng, due, start, kinds, entries)
+    if turn is None:
+        return deadline, None
+    own_end = turn[1] + timedelta(minutes=turn[2] + OVERRUN_SLACK_MIN)
+    cap = max(deadline, start + timedelta(minutes=SHIFT_CAP_MIN + OVERRUN_SLACK_MIN))
+    return (min(own_end, cap), turn) if own_end > deadline else (deadline, None)
+
+
+def queue_kinds(eng, q: dict, hhmm: str, due: datetime) -> list[str]:
+    """The scripts AUTO-MAS runs for queue `q` at `hhmm` that day, in the queue's order
+    (as plan.recent_due_queues lists them); [] when the config cannot be read."""
+    try:
+        scripts = plan._scripts(Path(eng.cfg.automas_dir) / "config")
+        kinds: list[str] = []
+        for uid in plan.runs_at(q, hhmm, due) or []:
+            kind = (scripts.get(uid) or {}).get("kind")
+            if kind and kind not in kinds:
+                kinds.append(kind)
+        return kinds
+    except Exception:  # noqa: BLE001 - without the list the queue's own deadline stands
+        return []
 
 
 def retry_clock(eng, due: datetime, limit: int) -> datetime | None:
@@ -574,6 +694,14 @@ def check_overrun(eng, now: datetime, snap) -> None:
         task = _queue_task(snap, uid)
         if task is None or not _engine._task_unfinished(task):
             continue
+        # The queue's planned end is past; the script whose turn it is may not have spent
+        # its own planned minutes yet (turn_deadline). The same moment shutdown._shift_overdue
+        # goes by, so neither alarm stands in for the other.
+        begun = deadline - timedelta(minutes=limit + OVERRUN_SLACK_MIN)
+        hold, turn = turn_deadline(eng, due, begun, deadline, queue_kinds(eng, q, hhmm, due),
+                                   shutdown._recent_entries(eng, now))
+        if now < hold:
+            continue
         app = _app_task(eng, task)
         seen = {"kind": "队列超时", "queue": q["name"], "hhmm": hhmm, "create": _created(app),
                 "task_id": str(task.get("taskId") or ""), "run_id": f"{q['name']} {hhmm}"}
@@ -593,6 +721,8 @@ def check_overrun(eng, now: datetime, snap) -> None:
         body = texts.shift_overrun_body(q["name"], due, now, limit, OVERRUN_SLACK_MIN,
                                         states, last_log_line(task.get("log")), days,
                                         restarted=restarted, started=started)
+        if turn is not None:
+            body += "\n" + texts.own_turn_note(turn[0], turn[1], now, turn[2], OVERRUN_SLACK_MIN)
         if errs := eng.notifier.send(texts.shift_overrun(q["name"]), body, alert=True):
             log.error("队列超时告警没推出去，下一轮再试：%s", q["name"])
             continue

@@ -35,11 +35,32 @@ def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> tuple[str, list]:
     note = "" if page else texts.EVIDENCE_NOT_SHIPPED + "\n"
     # Settings reset to defaults is said as such, not as 「没干完」 (outcome.summarize).
     if texts.outcome_settings_only(msg):
-        head, title = texts.unresolved_settings_head, texts.unresolved_settings(game, shift)
+        title = texts.unresolved_settings(game, shift)
+        first = texts.unresolved_settings_head(game, shift, unresolved.undone_label(msg), page)
     else:
-        head, title = texts.unresolved_undone_head, texts.unresolved_undone(game, shift)
-    body = head(game, shift, unresolved.undone_label(msg), page) + note + "\n" + msg
+        title = texts.unresolved_undone(game, shift)
+        first = texts.unresolved_undone_head(game, shift, unresolved.undone_label(msg), page,
+                                             _gathering_retry_note(eng, rec, msg))
+    body = first + note + "\n" + msg
     return title, _push_now(eng, day, unresolved.UNRESOLVED_KIND, rec.run_id, title, body)
+
+
+def _gathering_retry_note(eng, rec: RunRecord, msg: str) -> str:
+    """What the 「没干完」 head says in place of 「这一类不补跑」 for a MaaEnd round with
+    gathering among what is undone: no whole make-up, and what becomes of the routes that
+    did not walk (collect_retry.retry_ahead). '' - the usual words - for anything else, when
+    the round's log names no such route, and when that cannot be read: the alarm goes out
+    at once either way, this only keeps its first line true."""
+    from ark_relay.features.alarm import unresolved  # noqa: PLC0415
+    from ark_relay.features.makeup import collect_retry, makeup  # noqa: PLC0415
+    if rec.script != "MaaEnd" or makeup.GATHERING not in unresolved._undone_items(msg):
+        return ""
+    try:
+        names, state = collect_retry.retry_ahead(eng, rec)
+    except Exception:  # the alarm must go out; the usual words then
+        log.info("没读出 %s 哪几条采集路线会单独补，报警照旧用原来那句", rec.run_id, exc_info=True)
+        return ""
+    return texts.NO_WHOLE_MAKEUP + "，" + texts.collect_retry_ahead(names, state) if names else ""
 
 
 # Why an item does not count, by game (core.day_unverified_items says how each is found).
@@ -223,6 +244,9 @@ def _unresolved_title_head(game: str, shift: str, makeup_phrase: str, stuck: str
     no whole make-up under it - not as 「没跑成」."""
     if texts.MAKEUP_ONLY_GATHERING_MARK in makeup_phrase:
         from ark_relay.features.makeup import makeup  # noqa: PLC0415
+        # Its second line already says the routes are walked again before the power-off
+        # (texts.makeup_only_gathering); the first no longer says nothing is re-run.
         return (texts.unresolved_undone(game, shift),
-                texts.unresolved_undone_head(game, shift, makeup.GATHERING, page) + makeup_phrase + "\n")
+                texts.unresolved_undone_head(game, shift, makeup.GATHERING, page, texts.NO_WHOLE_MAKEUP)
+                + makeup_phrase + "\n")
     return texts.unresolved(game, shift), texts.unresolved_head(game, shift, makeup_phrase, stuck, page)

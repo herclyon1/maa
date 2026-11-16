@@ -17,7 +17,9 @@ Rules:
   DAY_MAX_BYTES and says so.
 * an upload that fails never blocks the push or the shutdown: the caller gets
   `errors` and decides how to say it (errwatch notes it in the daily report,
-  shutdown.py logs it as a plain WARNING, pushed: nothing uploads a past day again).
+  shutdown.py logs it as a plain WARNING, pushed);
+* a past day whose object is missing on COS or shorter than the machine's part is
+  sent again after the next relay start and after midnight (backfill_past_days).
 
 Reused: Cos and PermanentUploadError (stores.py), _line_ts (logslice.py).
 """
@@ -25,8 +27,9 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.core.config import SERVER_TZ
@@ -133,14 +136,9 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
         return result
     day = now.strftime("%Y-%m-%d")
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    srcs: list[tuple[str, Path]] = []
-    if relay_log := os.environ.get("ARK_LOG_FILE", ""):
-        srcs.append(("relay", Path(relay_log)))
-    if automas := getattr(cfg, "automas_dir", None):
-        srcs.append(("automas-app", Path(automas) / "debug" / "app.log"))
     tmp_dir = Path(cfg.state_dir) / "evidence" / "daily"
     tmp_dir.mkdir(parents=True, exist_ok=True)
-    for kind, src in srcs:
+    for kind, src in _sources(cfg):
         data, truncated = _day_tail(src, day_start, now, DAY_MAX_BYTES)
         if not data:
             continue
@@ -162,6 +160,117 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
     _last_attempt[0] = clock()
     _last_errors[:] = result["errors"]
     return result
+
+
+# ---------- back-fill: a past day whose object is missing on COS, or shorter than the machine's ----------
+# The day object goes up only when the relay pushes one of its own errors and right
+# before it powers the machine off (the rules at the top). A day the machine stayed
+# on (debug mode, 「下次跑完不关机」, a long farm) and pushed no error, or whose only
+# upload was cut by the line dropping or by Windows going down, never reached COS:
+# 11-11 and 11-13 answered 404, 11-12's object ended at 11:38 with the day going on
+# to 14:07. relay.log itself still holds those days (logfile.py: 16 MB a file), so the
+# relay looks back BACKFILL_DAYS days once after it starts and once after midnight.
+BACKFILL_DAYS = 3
+_backfill: dict = {"day": None, "thread": None}
+_backfill_lock = threading.Lock()
+
+
+def _sources(cfg) -> "list[tuple[str, Path]]":
+    """(kind, file) of the logs a day object is cut from: relay.log, AUTO-MAS's app.log."""
+    srcs: list[tuple[str, Path]] = []
+    if relay_log := os.environ.get("ARK_LOG_FILE", ""):
+        srcs.append(("relay", Path(relay_log)))
+    if automas := getattr(cfg, "automas_dir", None):
+        srcs.append(("automas-app", Path(automas) / "debug" / "app.log"))
+    return srcs
+
+
+def backfill_past_days(cfg, *, now: "datetime | None" = None, uploader=None, days: int = BACKFILL_DAYS) -> dict:
+    """For each of the `days` days before today: the day's lines still in relay.log and
+    app.log, put on COS when that day's object is not there (404) or holds fewer bytes
+    than the machine does. An object at least as long as the machine's part is left
+    alone, so a larger one is never replaced. Today is the daily upload's, not this.
+
+    Returns {"sent": [(day, kind, bytes on COS before or None, bytes sent)], "kept": n,
+    "errors": [...]}. Never raises. Nothing of the error path's throttle or last link
+    (_last_attempt, _last_ok, _last_errors) is touched: a relay-error push a moment later
+    must still carry today's link, not a past day's.
+    """
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    result: dict = {"sent": [], "kept": 0, "errors": []}
+    up = uploader if uploader is not None else _daily_uploader(cfg)
+    if up is None:
+        return result
+    tmp_dir = Path(cfg.state_dir) / "evidence" / "daily"
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    for back in range(1, days + 1):
+        day_start = today - timedelta(days=back)
+        day_end = day_start + timedelta(days=1) - timedelta(microseconds=1)
+        day = day_start.strftime("%Y-%m-%d")
+        for kind, src in _sources(cfg):
+            data, _truncated = _day_tail(src, day_start, day_end, DAY_MAX_BYTES)
+            if not data:
+                continue               # the machine holds nothing of that day (it was off, or the log moved on)
+            tmp = tmp_dir / f"{kind}-{day}.log"
+            try:
+                held = up.size(up.object_key(tmp))
+                if held is not None and held >= len(data):
+                    result["kept"] += 1
+                    continue
+                tmp_dir.mkdir(parents=True, exist_ok=True)
+                tmp.write_bytes(data)
+                up.upload(tmp, timeout=UPLOAD_TIMEOUT_S)
+            except PermanentUploadError as exc:
+                result["errors"].append(f"{day} {kind}: {exc}")
+                return result          # the key/bucket refuses: every other object would too
+            except Exception as exc:   # noqa: BLE001 - a failed back-fill must not raise
+                result["errors"].append(f"{day} {kind}: {type(exc).__name__}: {exc}")
+                if not hasattr(exc, "code"):
+                    return result      # no answer at all (the line is down): the next object would wait as long
+                continue
+            result["sent"].append((day, kind, held, len(data)))
+    return result
+
+
+def _run_backfill(cfg, now: datetime) -> None:
+    """One back-fill pass and its lines in relay.log. What it sent is an INFO line per
+    object; a pass that could not finish is one WARNING (the group hears a day's log is
+    still missing on COS), and the next start or midnight looks again."""
+    try:
+        got = backfill_past_days(cfg, now=now)
+    except Exception:  # belt and braces: a thread must not die without a word
+        log.warning("前几天的中继日志有没有传到云上，这次没查成，下次中继启动或过零点再查", exc_info=True)
+        return
+    for day, kind, held, sent in got["sent"]:
+        log.info("云上 %s 那天的%s日志%s，已把机器上这一天的 %d 字节补传上去", day[5:],
+                 "中继" if kind == "relay" else "调度程序",
+                 "没有" if held is None else f"只有 {held} 字节", sent)
+    if got["errors"]:
+        log.warning("前几天的日志有 %d 份没补传到云上，下次中继启动或过零点再补：%s",
+                    len(got["errors"]), "；".join(got["errors"])[:300])
+
+
+def backfill_step(cfg, now: "datetime | None" = None, *, start=None) -> bool:
+    """The main loop's step (day_roll._DayRoll.check): one back-fill pass on a thread of
+    its own, the first time it is called after the relay starts and the first time on
+    each new server day. True when one was started. No timer of its own: it rides the
+    loop's rounds. `start` replaces the thread in tests."""
+    at = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    today = at.strftime("%Y-%m-%d")
+    with _backfill_lock:
+        if _backfill.get("day") == today:
+            return False
+        t = _backfill.get("thread")
+        if t is not None and t.is_alive():
+            return False
+        _backfill["day"] = today
+        if start is not None:
+            start(lambda: _run_backfill(cfg, at))
+            return True
+        t = _backfill["thread"] = threading.Thread(target=_run_backfill, args=(cfg, at), name="daily-backfill",
+                                                   daemon=True)
+        t.start()
+    return True
 
 
 def _upload_ocr_samples(cfg, up, tmp_dir: Path, day: str) -> None:

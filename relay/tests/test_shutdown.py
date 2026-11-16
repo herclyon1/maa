@@ -1914,6 +1914,54 @@ The evening shift is the morning one moved to 21:30.
     e._scripts_running = lambda: False
     shutdown._alarm_shift_overdue(e, deadline + timedelta(minutes=5))
     check("every script recorded: no such alarm", e.notifier.sent, [])
+
+    print("\n[#176: the queue's planned end is past, the script whose turn it is has not spent its own minutes yet]")
+    # 11-16 (Monday): 鸣潮 took 54 minutes with the weekly boss, MaaEnd began at 10:15, and at 10:35 the
+    # alarm counted 95 minutes of shift against MaaEnd twenty minutes into its own run. Here: MAA and
+    # OK-WW recorded by 09:13:15, MaaEnd's turn since then; the queue's planned 20 + 30 ends 09:50,
+    # MaaEnd's own longest clean run is 64, so both alarms wait until 09:13:15 + 64 + 30 = 10:47:15.
+    from unittest import mock
+    ledger(MORNING[:4])
+    e.state.store.pop("marks", f"alerted:{due:%Y-%m-%d}")
+    e.notifier.sent.clear()
+    e._scripts_running = lambda: True
+    own_end = at(9, 13, 15) + timedelta(minutes=64 + runwatch.OVERRUN_SLACK_MIN)
+    unfinished = {"tasks": [{"queueId": "m", "taskId": "t1", "task_info": [{"name": "MaaEnd", "status": "运行"}]}]}
+    with mock.patch.object(runwatch, "planned_minutes", lambda *a: (20, 3)), \
+            mock.patch.object(runwatch, "script_minutes", lambda eng, script, hh, mm, today: {"MaaEnd": 64}.get(script)):
+        check("the loop is woken when MaaEnd's own time is up, not at the queue's 09:50",
+              [m for m, _ in shutdown.overdue_moments(e, at(9, 40))], [own_end])
+        shutdown._alarm_shift_overdue(e, at(9, 51))
+        runwatch.check_overrun(e, at(9, 51), unfinished)
+        check("09:51, past the queue's planned end: neither alarm goes out", e.notifier.sent, [])
+        shutdown._alarm_shift_overdue(e, own_end - timedelta(minutes=1))
+        runwatch.check_overrun(e, own_end - timedelta(minutes=1), unfinished)
+        check("a minute before MaaEnd's own time is up: still neither", e.notifier.sent, [])
+        shutdown._alarm_shift_overdue(e, own_end + timedelta(minutes=1))
+        check("past it: one alarm", len(e.notifier.sent), 1)
+        body = e.notifier.sent[0][1] if e.notifier.sent else ""
+        check("…it says since when MaaEnd has had its turn and by which of its own days it is late",
+              ("轮到 MaaEnd 是 09:13" in body, "64 + 30" in body, texts.plain(body)), (True, True, []))
+        runwatch.check_overrun(e, own_end + timedelta(minutes=2), unfinished)
+        check("…and check_overrun does not push the same run again", len(e.notifier.sent), 1)
+        e.state.store.pop("marks", f"alerted:{due:%Y-%m-%d}")
+        e.notifier.sent.clear()
+        runwatch.check_overrun(e, own_end + timedelta(minutes=1), unfinished)
+        two = (texts.shift_overrun("早班"), texts.shift_no_result("早班"))
+        check("the other way round: check_overrun is the one that goes out past it, with the same line",
+              [(t_, "轮到 MaaEnd 是 09:13" in b) for t_, b, _a in e.notifier.sent if t_ in two], [(two[0], True)])
+        shutdown._alarm_shift_overdue(e, own_end + timedelta(minutes=2))
+        check("…and the no-result alarm does not repeat it", [t_ for t_, _b, _a in e.notifier.sent if t_ in two], [two[0]])
+    with mock.patch.object(runwatch, "planned_minutes", lambda *a: (20, 3)), \
+            mock.patch.object(runwatch, "script_minutes", lambda eng, script, hh, mm, today: 900):
+        e.state.store.pop("marks", f"alerted:{due:%Y-%m-%d}")
+        check("a script with a very long day of its own: no later than the shift's cap (09:00 + 180 + 30)",
+              [m for m, _ in shutdown.overdue_moments(e, at(9, 40))],
+              [due + timedelta(minutes=runwatch.SHIFT_CAP_MIN + runwatch.OVERRUN_SLACK_MIN)])
+    e.state.store.pop("marks", f"alerted:{due:%Y-%m-%d}")
+    e.notifier.sent.clear()
+    ledger(MORNING)
+    e._scripts_running = lambda: False
     check("this section never reached the power-off", powered, [])
     e.notifier, e._scripts_running, e._power_off = saved_notifier, (lambda: False), saved_power_off
 
