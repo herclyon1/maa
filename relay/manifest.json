@@ -1,8 +1,8 @@
 {
- "version": 20261116015654,
- "ref": "relay-20261116015654",
+ "version": 20261116021639,
+ "ref": "relay-20261116021639",
  "files": {
-  "RELEASE-NOTES.md": "bad616a52b8c5ed097525921c33f74da96731325",
+  "RELEASE-NOTES.md": "82f65fa2d5f67cf7cb5995ca1b74a2d3398a7b45",
   "app_main.py": "7f7014277949b74eb24fd861a52eab853393e407",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "06ebb325bda947402f17227892ee6eeb4638a2bb",
@@ -167,7 +167,7 @@
   "ark_relay/features/verify/collector_maaend.py": "c37112afe8e0e0d24d9e8b9c40c8c376cb1c8d69",
   "ark_relay/features/verify/collector_okww.py": "5d75140b1cd3514c1d60c4c4e72f6f1f06ece083",
   "ark_relay/features/verify/gamelog_errors.py": "1b98935608d19869bb25f797a5e532a4b42a0d22",
-  "ark_relay/features/verify/gamelog_errors.txt": "a38b9ebbcbdd9208ed6367257139ebf5665a5f84",
+  "ark_relay/features/verify/gamelog_errors.txt": "d153c8d1bfefb2a15297b554ef3208dea969e922",
   "ark_relay/features/verify/maaend_fwlog.py": "f9cd99db657fb8992bafb036deb7a6c7299e74c1",
   "ark_relay/features/verify/okww_i18n.py": "649f81d5d97a9d9c7e7f463ab51cb329a7913617",
   "ark_relay/features/verify/outcome.py": "222fb6113f2811b9405351753b9eff5cf7dca02e",
@@ -184,7 +184,7 @@
   "watchdog_guard.py": "36b844f9c43d9e912ed48fd0168bdb0ad8c6ecb9"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "7fe8e80112aeb99591a1ab21c47f30cdae341d46c62dd4dfbb77c8e490ba7060",
+  "RELEASE-NOTES.md": "52ec7c9c5385e91e9fd887b1023d4480c51457e3d73f7ad3d40af10ef6d50870",
   "app_main.py": "43156c27a126e790253ba71c4918f6a10f940b927f7176d54322e7622278c22a",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "89e77a8a498719f4cac68e2319d3c856fba84802e3f26fad08a882a09122d6d1",
@@ -349,7 +349,7 @@
   "ark_relay/features/verify/collector_maaend.py": "80084d9a64a2de6d384e55fb4508532f65bde77ff1cb8e6f26d8fa7ab51fdbc4",
   "ark_relay/features/verify/collector_okww.py": "8ac57afea19228a5d19847c75f19e56023af432a1a059e7af866fcc1289f2605",
   "ark_relay/features/verify/gamelog_errors.py": "9eab7dabbce45f0099e8c4e951f395ebf758af434160c18927811fdb8e9be603",
-  "ark_relay/features/verify/gamelog_errors.txt": "76f7e0aae21d81c048fa5ef29d2f396665cdd10ec80c74f9af7ac5b41af1b88d",
+  "ark_relay/features/verify/gamelog_errors.txt": "4bc06a3ac0d4c705f4e6eba82614a582d36f8cd83556dc51dde66382ea6d6d80",
   "ark_relay/features/verify/maaend_fwlog.py": "b6796695a20874dacac94906685dd5688c480c4ea168d938e6e9d875ce2009aa",
   "ark_relay/features/verify/okww_i18n.py": "233b0f643c8396872d273d90966002182541dd041d7f66068872813889f395a6",
   "ark_relay/features/verify/outcome.py": "d2955abe60780d1795e5d0072ca2047f7a05352e885c5af1d21eb9b94e035677",

@@ -140,6 +140,12 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
     # real runs print it, kept as fixtures/okww-1113-boss-material.log.
     ("features/verify/collector_okww.py", r"强敌领奖：(\S+?)的(\S+?) (\d+)/(\d+)"): ("fixture", _BOSS_1113),
     ("features/verify/collector_okww.py", "强敌领奖：领了一次"): ("fixture", _BOSS_1113),
+    # A liberation still playing after 7 s ends OK-WW's fight (src/char/BaseChar.py:665); 11-16 the weekly
+    # boss died in one (ledger #175).
+    ("features/verify/gamelog_errors.txt",
+     "ERROR TaskExecutor BaseCombatTask:too long a liberation, the boss was killed by the liberation$"):
+        ("fixture", "only fixtures/okww-1116-liberation-boss-killed.log (real ok-script.log lines 11-16 09:58:33-09:59:13, "
+                    "the weekly boss killed during a liberation, then claimed; ledger #175)"),
     # MAA 6.22's terminal to-do check, new 2026-11-16: only that morning's real annihilation pass
     # printed it (ledger #174).
     ("features/verify/collector_maa.py", "未在终端待办中找到剿灭入口"):

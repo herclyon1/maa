@@ -68,6 +68,7 @@ SAMPLES = {
         "2026-09-27 09:21:24,985 ERROR TaskExecutor CombatCheck:target_enemy failed, try recheck break out of combat",
         "2026-09-27 09:21:24,986 ERROR TaskExecutor BaseCombatTask:combat check not in combat",
         "2026-09-30 18:01:49,174 ERROR TaskExecutor Denia:clicked liberation but no effect",
+        "2026-11-16 09:58:53,023 ERROR TaskExecutor BaseCombatTask:too long a liberation, the boss was killed by the liberation",
         "2026-10-10 09:06:42,695 ERROR TaskExecutor BaseCombatTask:not in_team while switching",
         "2026-10-15 09:20:31,117 ERROR ok.core.start_controller DeviceManager:refresh error Traceback (most recent call last):",
         "2026-10-15 09:20:31,127 ERROR ok.core.start_controller start_controller:check_device_error exception: 'NoneType' object is not subscriptable Traceback (most recent call last):",
@@ -116,6 +117,9 @@ MUST_PUSH = {
 }
 # Entries that may say not-a-fault (line-number free: matched by script and a sample they match).
 NOT_A_FAULT = {
+    ("OK-WW", "too long a liberation"):
+        "OK-WW leaves a fight when a liberation plays past 7 s, the target having died in it (src/char/BaseChar.py:665); "
+        "the task's own next step (the claim) checks the result - 11-16 09:59:13 the weekly boss claimed (ledger #175)",
     ("MAA", "Failed to set startup: No value exists with that name."):
         "MAA elevated removing a start-with-Windows value that is not there (BOARD 未进群报错-MAA-MaaEnd-1010)",
     ("MaaEnd", "templ size is too large"):
