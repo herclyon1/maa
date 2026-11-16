@@ -868,6 +868,53 @@ def _blocked_in(history_log: Path, maaend_dir, zh: dict) -> dict[str, list[str]]
     return blocked_route_ids(text, shots, zh)
 
 
+AHEAD, AHEAD_DEBUG, AHEAD_SPENT = "ahead", "debug", "spent"
+
+
+def retry_ahead(eng, rec) -> "tuple[list[str], str]":
+    """What maybe_run will do about `rec`, a MaaEnd round booked with gathering undone:
+    (the labels of the routes it would walk again, AHEAD / AHEAD_DEBUG / AHEAD_SPENT).
+
+    The routes are maybe_run's own reading of that round's log: the 「采集失败」 lines and
+    the routes a relay-device picture marks as blocked. ([], "") when the log names no such
+    route - gathering is undone for another reason and the per-route retry has nothing to
+    walk - or when any of it cannot be read. AHEAD_SPENT: the day's one retry has already
+    given its verdict. AHEAD_DEBUG: debug mode is on, so the shutdown decision that runs
+    the retry is not reached. Reads only; the alarm that says this goes out either way
+    (pushes._push_undone)."""
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
+    from ark_relay.features.modes import modes  # noqa: PLC0415
+    cfg = eng.cfg
+    maaend_dir, history_dir = getattr(cfg, "maaend_dir", None), getattr(cfg, "history_dir", None)
+    if not maaend_dir or not history_dir or getattr(rec, "script", "") != "MaaEnd":
+        return [], ""
+    zh = _locale(Path(maaend_dir))
+    labels = failed_labels_from_locale(zh)
+    if not labels:
+        return [], ""
+    entry = {"run_id": rec.run_id, "script": rec.script, "raw": dict(getattr(rec, "raw", None) or {})}
+    log_path = _history_log(history_dir, entry) or Path(history_dir) / (str(rec.run_id) + ".log")
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return [], ""
+    routes = failed_routes(text, labels)
+    routes += [r for r in _blocked_in(log_path, maaend_dir, zh) if r not in routes]
+    if not routes:
+        return [], ""
+    names = [route_label(r, zh) for r in routes]
+    day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+    stamp = Path(cfg.state_dir) / "collect-retry" / f"{day}.json"
+    try:
+        if "finished" in json.loads(stamp.read_text(encoding="utf-8")):
+            return names, AHEAD_SPENT
+    except (OSError, ValueError, TypeError):
+        pass
+    if modes.debug_active(Path(cfg.state_dir)):
+        return names, AHEAD_DEBUG
+    return names, AHEAD
+
+
 # maybe_run's locale problem currently said (at most one), so a lasting one is said
 # once, not per call. Mutated in place, like statestore's _CORRUPT_SAID.
 _LOCALE_SAID: set[str] = set()

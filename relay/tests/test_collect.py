@@ -924,6 +924,34 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     verdict, _, seen, sent_over = two_rounds(walked2, lambda rs: {"only": rs}, [])
     check("第一轮没撞上：不走第二轮", (verdict, len(sent_over), seen.get("second_round")), ({B: True, A: True}, 1, None))
 
+    print("\n[没干完的报警先问一句：这一趟哪几条路线会在关机前单独补（账本 #166 #170）]")
+    from ark_relay.features.modes import modes as _modes
+    sd_a, hist_a, md_a = tmpdir(), tmpdir(), maaend_dir(P1008A, P1008)
+    (hist_a / "2026-10-08" / "endfield").mkdir(parents=True)
+    (hist_a / "2026-10-08" / "endfield" / "MaaEnd-06-34-21.log").write_text(log("MaaEnd-06-34-21.log"), encoding="utf-8")
+    eng_a = types.SimpleNamespace(cfg=types.SimpleNamespace(state_dir=sd_a, maaend_dir=str(md_a), history_dir=str(hist_a),
+                                                             automas_dir=None))
+    rec_a = types.SimpleNamespace(run_id="2026-10-08/endfield/MaaEnd-06-34-21", script="MaaEnd", raw={},
+                                  started=datetime(2026, 10, 8, 10, 34, 21, tzinfo=SERVER_TZ))
+    saved_ahead = (cr._locale, _modes.debug_active)
+    cr._locale = lambda d: ZH
+    try:
+        check("这一趟撞上的路线10：会单独补", cr.retry_ahead(eng_a, rec_a), ([cr.route_label("AutoCollectRoute10", ZH)], cr.AHEAD))
+        _modes.debug_active = lambda sd, now=None: True
+        check("调试模式开着：点名路线，说还补不了", cr.retry_ahead(eng_a, rec_a)[1], cr.AHEAD_DEBUG)
+        _modes.debug_active = lambda sd, now=None: False
+        (sd_a / "collect-retry").mkdir(parents=True)
+        (sd_a / "collect-retry" / "2026-10-08.json").write_text(json.dumps({"started": "x"}), encoding="utf-8")
+        check("当天的补跑还没出结果：算还会补", cr.retry_ahead(eng_a, rec_a)[1], cr.AHEAD)
+        (sd_a / "collect-retry" / "2026-10-08.json").write_text(json.dumps({"started": "x", "finished": "y"}), encoding="utf-8")
+        check("当天的补跑已经出过结果：说这一次用过了", cr.retry_ahead(eng_a, rec_a)[1], cr.AHEAD_SPENT)
+        check("不是终末地的记录：不问", cr.retry_ahead(eng_a, types.SimpleNamespace(run_id="x", script="MAA", raw={}, started=rec_a.started)),
+              ([], ""))
+        check("找不到这一趟的日志：没有可说的", cr.retry_ahead(eng_a, types.SimpleNamespace(
+            run_id="2026-10-08/endfield/MaaEnd-09-09-09", script="MaaEnd", raw={}, started=rec_a.started)), ([], ""))
+    finally:
+        cr._locale, _modes.debug_active = saved_ahead
+
     print("\n[补过第二轮：群里那条和当天的记号都写明]")
     saved_rr = cr.run_retry
 

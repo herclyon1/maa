@@ -383,9 +383,28 @@ def unresolved_head(game: str, shift: str, makeup: str, stuck: str, page: str) -
     return head + "\n"
 
 
-def unresolved_undone_head(game: str, shift: str, items: str, page: str) -> str:
-    """The first line of a 「没干完」 alarm; no make-up is run for these."""
-    head = f"{game}{shift}跑完了但没干完" + (f"：{items}" if items else "") + "，这一类不补跑"
+# What a 「没干完」 alarm says instead of 「这一类不补跑」 when gathering routes are among what
+# is undone: no whole make-up is run, and the routes are walked again one by one before the
+# power-off (collect_retry.maybe_run), whose outcome is its own message. Until 11-17 the head
+# said 「这一类不补跑」 and the retry followed a quarter of an hour later (ledger #166, #170).
+NO_WHOLE_MAKEUP = "这一类不整轮补跑"
+
+
+def collect_retry_ahead(labels: list[str], state: str = "ahead") -> str:
+    """The clause after NO_WHOLE_MAKEUP: which routes, and whether the per-route retry is
+    still to come (collect_retry.retry_ahead's answer)."""
+    routes = "没走通的路线（" + "、".join(labels) + "）"
+    if state == "debug":
+        return routes + "要到中继关机前才单独补一次；现在调试模式开着、中继不关机，所以还没有补"
+    if state == "spent":
+        return routes + "不再补：今天单独补路线的那一次已经用过"
+    return routes + "中继会在关机前单独补一次，补的结果另报"
+
+
+def unresolved_undone_head(game: str, shift: str, items: str, page: str, retry: str = "") -> str:
+    """The first line of a 「没干完」 alarm; no make-up is run for these. `retry` is what
+    is said in place of 「这一类不补跑」 when the gathering routes get their per-route retry."""
+    head = f"{game}{shift}跑完了但没干完" + (f"：{items}" if items else "") + "，" + (retry or "这一类不补跑")
     if page:
         head += f"（证据包 {page}）"
     return head + "\n"
@@ -1482,6 +1501,7 @@ def samples() -> list[str]:
         OKWW_BATTLE_PASS_CLOSED,
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
         collect_second_round(["采集协议纹石（路线2）"]),
+        NO_WHOLE_MAKEUP, *(collect_retry_ahead(["采集血菌", "采集协议纹石（路线2）"], st) for st in ("ahead", "debug", "spent")),
         EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED, EVIDENCE_UPLOAD_FAILED, LOST_ALARM_QUEUE,
         gamelog_unknown_errors("鸣潮"), gamelog_unknown_errors_body("鸣潮", "09:12", 2),
         gamelog_unknown_errors_body("终末地", "", 1),
