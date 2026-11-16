@@ -383,9 +383,11 @@ def run_minutes(entries: list[dict], due: datetime) -> int | None:
     return _chain(entries, due)[0]
 
 
-def _past_run(eng, today: datetime, back: int, hh: int, mm: int, names: list[str]) -> "tuple[int, bool] | None":
+def _past_run(eng, today: datetime, back: int, hh: int, mm: int, names: list[str], *,
+              alarmed_counts: bool = False) -> "tuple[int, bool] | None":
     """(minutes, clean) of the queue run at hh:mm `back` days before `today` (_chain); None when
-    there was none, it timed out, or it raised an overrun alarm."""
+    there was none, it timed out, or it raised an overrun alarm. With `alarmed_counts` a run
+    that raised the alarm is given all the same (planned_minutes: the same weekday)."""
     from ark_relay.features.alarm import handle  # noqa: PLC0415
     hhmm = f"{hh:02d}:{mm:02d}"
     day = today - timedelta(days=back)
@@ -396,7 +398,8 @@ def _past_run(eng, today: datetime, back: int, hh: int, mm: int, names: list[str
     m, ok, timed_out = _chain(entries, due)
     if m is None or timed_out:
         return None
-    if any(handle._already_alerted(eng, day.strftime("%Y-%m-%d"), f"队列超时|{n}|{hhmm}") for n in names):
+    if not alarmed_counts and any(handle._already_alerted(eng, day.strftime("%Y-%m-%d"), f"队列超时|{n}|{hhmm}")
+                                  for n in names):
         return None
     return m, ok
 
@@ -407,14 +410,22 @@ def planned_minutes(eng, hh: int, mm: int, today: datetime) -> tuple[int, int]:
     The longest finish among the last HISTORY_DAYS days that were clean (each
     script's last record ok, _chain), and among the same weekday SAME_WEEKDAY_BACK days
     back when that day was clean (the Monday shift after the weekly reset). A day that
-    timed out or raised an overrun alarm never counts, so one overlong day does not raise
-    the limit for a week. With fewer than MIN_CLEAN_DAYS clean days, the longest of every
-    day that did not time out is used instead. FALLBACK_LIMIT_MIN only when there is no
-    usable day at all. The day count is the HISTORY_DAYS window's.
+    timed out or raised an overrun alarm never counts among the HISTORY_DAYS, so one
+    overlong day does not raise the limit for a week. With fewer than MIN_CLEAN_DAYS clean
+    days, the longest of every day that did not time out is used instead.
+    FALLBACK_LIMIT_MIN only when there is no usable day at all. The day count is the
+    HISTORY_DAYS window's.
+
+    The same weekday counts although it raised the alarm, as long as it was clean (every
+    script's last record ok, none a timeout): the alarm on such a day was this limit being
+    too short for that weekday, and leaving the day out kept it too short the week after
+    (ledger #176: Monday 11-09 alarmed, so Monday 11-16 was timed by a weekday's 65
+    minutes and alarmed at 95 with a shift that takes 138).
     """
     names = [q["name"] for q in plan.schedule(eng.cfg.automas_dir)]
     runs = [r for back in range(1, HISTORY_DAYS + 1) if (r := _past_run(eng, today, back, hh, mm, names))]
-    weekday = [r[0] for back in SAME_WEEKDAY_BACK if (r := _past_run(eng, today, back, hh, mm, names)) and r[1]]
+    weekday = [r[0] for back in SAME_WEEKDAY_BACK
+               if (r := _past_run(eng, today, back, hh, mm, names, alarmed_counts=True)) and r[1]]
     clean = [m for m, ok in runs if ok]
     if len(clean) >= MIN_CLEAN_DAYS:
         return max(clean + weekday), len(clean)

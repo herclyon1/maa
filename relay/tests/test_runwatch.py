@@ -736,6 +736,42 @@ other day 56-87.
     check("Tuesday 11-10: last Tuesday 11-03 was not clean, 10-27's 56 is below the week's 81",
           runwatch.planned_minutes(em, 9, 0, datetime(2026, 11, 10, 9, 0, tzinfo=SERVER_TZ))[0], 81)
 
+    print("\n[a Monday that raised 「队列超时」 and still finished clean is the next Monday's limit (#176)]")
+    # 11-09 (Monday) alarmed at 10:51 and finished; that alarm kept the day out of 11-16's limit, 11-02 was
+    # not clean, so 11-16 was timed by a weekday's 65 minutes and alarmed at 95 with a shift taking 138.
+    from unittest import mock
+    from ark_relay.features.alarm import handle
+    e2 = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=None), state=State(tmpdir()))
+    week = {(11, 2): (151, False), (11, 9): (123, True), (11, 10): (60, True), (11, 11): (62, True),
+            (11, 12): (65, True), (11, 13): (58, True), (11, 14): (58, True), (11, 15): (59, True)}
+    for (mo, d), (m, ok) in week.items():
+        start = datetime(2026, mo, d, 9, 0, 50, tzinfo=SERVER_TZ)
+        ledger(e2.state, start, [("MAA", start, start + timedelta(minutes=10)),
+                                 ("OK-WW", start + timedelta(minutes=11), start + timedelta(minutes=m))])
+        if not ok:
+            pth = e2.state.ledger_path(start.strftime("%Y-%m-%d"))
+            rows = [json.loads(x) for x in pth.read_text(encoding="utf-8").splitlines()]
+            rows[-1]["ok"], rows[-1]["failed_tasks"] = False, ["OK-WW 没打完周本"]
+            pth.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    monday16 = datetime(2026, 11, 16, 9, 0, tzinfo=SERVER_TZ)
+    with mock.patch.object(runwatch.plan, "schedule", lambda _dir: [{"name": "早班"}]):
+        check("before the alarm mark: 11-09's 123 is the Monday limit", runwatch.planned_minutes(e2, 9, 0, monday16), (123, 7))
+        handle._mark_alerted(e2, "2026-11-09", "队列超时|早班|09:00")
+        check("11-09 raised the alarm and was clean: still Monday 11-16's limit (was 65)",
+              runwatch.planned_minutes(e2, 9, 0, monday16), (123, 6))
+        check("……but not a weekday's: Tuesday 11-10 keeps its own days (no clean one yet in its window -> fallback)",
+              runwatch.planned_minutes(e2, 9, 0, datetime(2026, 11, 10, 9, 0, tzinfo=SERVER_TZ)), (180, 0))
+        check("……and Sunday 11-15's limit is the week's 65, not the alarmed Monday's 123",
+              runwatch.planned_minutes(e2, 9, 0, datetime(2026, 11, 15, 9, 0, tzinfo=SERVER_TZ))[0], 65)
+        handle._mark_alerted(e2, "2026-11-02", "队列超时|早班|09:00")
+        check("an alarmed Monday that was not clean (11-02) still does not count",
+              runwatch._past_run(e2, monday16, 14, 9, 0, ["早班"], alarmed_counts=True), (151, False))
+        pth = e2.state.ledger_path("2026-11-09")
+        rows = [json.loads(x) for x in pth.read_text(encoding="utf-8").splitlines()]
+        rows[-1]["raw"] = {"general_result": "OK-WW 运行超时"}
+        pth.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+        check("an alarmed Monday that timed out never counts", runwatch.planned_minutes(e2, 9, 0, monday16), (65, 6))
+
 
 if __name__ == "__main__":
     sys.exit(run_parts([_part_main, _part_runwatch_chain_retry, _part_run_limit, _part_run_probe, _part_same_weekday]))
