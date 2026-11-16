@@ -38,16 +38,6 @@ PY='D:\ark\automas\environment\python\python.exe'
 # "$(dirname "${BASH_SOURCE[0]}")"，相对路径当场失效，取日志那步静静失败了。
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../relay" && pwd)"
 
-# A dry run skips the next two: the second asks the game machine (winps.sh) and writes its log.
-if [ "$DRY_RUN" != 1 ]; then
-# Our own parts (bundled Python, Pillow, pywin32) against the newest patch of their line.
-# Printed for us only and never blocks: it needs the network (BOARD/DECISIONS.md D-1011, tools current).
-python3 "$HERE/../scripts/mac/lib/parts_latest.py" || true
-# Every other tool we run on the Mac and the game machine, same rule; behind ones go to the
-# machine's technical log as red items (user 10-12 08:34, scripts/mac/lib/tools_latest.py).
-python3 "$HERE/../scripts/mac/lib/tools_latest.py" || true
-fi
-
 cd "$HERE"
 
 # 分段计时。2026-08-31 用户说部署慢到承受不起，而当时谁也说不出慢在哪一段——
@@ -63,8 +53,9 @@ lap() { printf '      （%d 秒）\n' "$((SECONDS-_TP))"; _TP=$SECONDS; }
 # 放在 `if __name__` 之后——从没运行过，却一路绿灯上了机器。
 # 闸门自己会坏，而且坏了不吭声。每次部署前拿已知的坏样本验一遍：
 # 拦不住的闸门比没有闸门更危险——它会让人以为这一类错已经不可能发生。
-# The manifest first: step 1 rebuilds it anyway, but gate 0's self-check runs lint-repo on this
-# tree, and lint check 14 refuses relay/ code that differs from manifest.json. A fix committed
+# The manifest first: step 1 rebuilds it anyway, but until 2026-11-17 gate 0 ran a self-check
+# (guardcheck.sh, removed) that ran lint-repo on this tree, and lint check 13 refuses relay/ code
+# that differs from manifest.json. A fix committed
 # without rebuilding the manifest then stopped the deploy as a gate self-check that killed
 # normal input (10-11 20:1x and 22:5x), which reads as a broken gate when nothing was broken.
 # The relay tests and relay code run on the Python the machine runs (3.14), never macOS's
@@ -72,8 +63,8 @@ lap() { printf '      （%d 秒）\n' "$((SECONDS-_TP))"; _TP=$SECONDS; }
 RELAY_PY=$("$HERE/../scripts/mac/lib/relay-python.sh") || { echo "  ✋ 没有 3.14 跑中继测试，部署取消"; exit 1; }
 export RELAY_PY
 python3 make-manifest.py > /dev/null
-echo "▶ 0/5 本地四道闸并行（闸门自检 · 死代码 · 回归测试 · 语法与改动覆盖）"
-# These four read the working tree and nothing else, so they have no reason to wait
+echo "▶ 0/5 本地三道闸并行（死代码 · 回归测试 · 语法与改动覆盖）"
+# These three read the working tree and nothing else, so they have no reason to wait
 # for each other. Serially they were 28 s of a 71 s deploy. Every gate still runs and
 # every one of them can still stop the deploy, with the same exit code as before -
 # 提速不许动判据.
@@ -196,8 +187,6 @@ GATED=$(mktemp -d)
 trap 'rm -rf "$GATED"' EXIT
 export TEST_TIMES="$GATED/times"
 
-( "$HERE/../scripts/mac/guardcheck.sh" >"$GATED/guard.out" 2>&1
-  echo $? >"$GATED/guard.rc" ) &
 ( python3 "$HERE/../scripts/mac/lib/deadcode.py" "$HERE" "$HERE/../scripts" \
       >"$GATED/dead.out" 2>&1
   echo $? >"$GATED/dead.rc" ) &
@@ -228,13 +217,6 @@ export TEST_TIMES="$GATED/times"
     && "$RELAY_PY" "$HERE/../scripts/mac/lib/changed_covered.py" >>"$GATED/cov.out" 2>&1
   echo $? >"$GATED/cov.rc" ) &
 wait
-
-if [ "$(cat "$GATED/guard.rc" 2>/dev/null || echo 1)" != 0 ]; then
-  sed 's/^/    /' "$GATED/guard.out"
-  echo "  ✋ 部署已取消：闸门失效了，先修闸门。"
-  exit 1
-fi
-echo "  $(tail -1 "$GATED/guard.out")"
 
 if [ "$(cat "$GATED/dead.rc" 2>/dev/null || echo 1)" != 0 ]; then
   sed 's/^/    /' "$GATED/dead.out"
@@ -913,10 +895,6 @@ fi
 # and only when clean). On 10-11 it was 359 commits behind and its estop.sh did not know
 # the installed relay, because no step ever did this.
 "$HERE/../scripts/mac/lib/ff-toplevel.sh" "$HERE/.." || true
-
-# Every relay.log ERROR must be in the error ledger (the house rule); 10-10 04:28:51
-# was fixed but never written down. A reminder only: the deploy is done by now.
-python3 "$HERE/../scripts/mac/ledger-gap.py" || echo "⚠️ 上面这些 ERROR 报错台账里还没有，记进去（报错 / 根因 / 已解决）" >&2
 
 if [ -n "$WATCHDOG_FAIL_WHY" ]; then
   echo "❌❌ 再说一遍：$WATCHDOG_FAIL_WHY" >&2

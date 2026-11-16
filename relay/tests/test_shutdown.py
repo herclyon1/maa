@@ -2225,8 +2225,8 @@ Checks:
     # ---------- 1. one name ----------
     print("[one name for the mark in every human-read file]")
     OTHER_NAMES = re.compile(r"今晚别关机|这次别关机|下一次别关机|下次不关机|下一次跑完别关机")
-    WEB = REPO / "web"
-    ROOTS = [RELAY / "ark_relay", WEB, REPO / "docs", REPO / "scripts" / "windows", REPO / "scripts" / "mac"]
+    # The phone page (web/) was in this walk until it was removed on 2026-11-17.
+    ROOTS = [RELAY / "ark_relay", REPO / "docs", REPO / "scripts" / "windows", REPO / "scripts" / "mac"]
     TOP = [p for p in RELAY.glob("*.py")] + [RELAY / "README.md", REPO / "README.md"]
     EXTS = {".py", ".js", ".html", ".css", ".md", ".bat", ".ps1", ".sh", ".txt", ".json"}
     # Dated records: what was seen and said on that day, quoted as it was. Rewriting
@@ -2256,7 +2256,6 @@ Checks:
                 hits.append(f"{rel}:{n}: {line.strip()[:80]}")
     check("files scanned (sanity: the walk found the tree)", scanned > 300, True)
     check("no other name for the mark", hits, [])
-    check("web/ is in the walk", WEB.is_dir(), True)
 
 
     # ---------- 2. receipts ----------

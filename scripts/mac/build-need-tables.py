@@ -2,7 +2,8 @@
 """Build the need table by hand (the relay rebuilds it once a server day on its own;
 see relay/ark_relay/features/needtable/). Live reads SKLAND_TOKEN from ~/.config/ark/.env.
 
-    python3 scripts/mac/build-need-tables.py                          # live -> web/data/need.json
+    python3 scripts/mac/build-need-tables.py -o FILE                  # live -> FILE (the phone page's web/data/need.json,
+                                                                      # the default until 2026-11-17, went with the page)
     python3 scripts/mac/build-need-tables.py --save-fixtures DIR      # live, and keep the (trimmed) responses
     python3 scripts/mac/build-need-tables.py --offline DIR -o FILE    # rebuild from the saved responses
     python3 scripts/mac/build-need-tables.py --rarity 5               # the newest five-star instead
@@ -21,7 +22,6 @@ sys.path.insert(0, str(REPO / "relay"))
 from ark_relay.features.needtable import build  # noqa: E402
 
 ENV = Path.home() / ".config/ark/.env"
-OUT_DEFAULT = REPO / "web" / "data" / "need.json"
 
 
 def env_token() -> str:
@@ -39,7 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--weapon", default="", help="weapon name (must be in the calculator); default: her signature weapon")
     ap.add_argument("--rarity", default="6", choices=("6", "5", "4"), help="which rarity the newest operator is taken from (default 6)")
     ap.add_argument("--today", default="", help="server date YYYY-MM-DD for the 已实装/未实装 label (default: now, UTC+8)")
-    ap.add_argument("-o", "--out", type=Path, default=OUT_DEFAULT)
+    ap.add_argument("-o", "--out", type=Path, required=True)
     a = ap.parse_args(argv)
     src = build.RulesSource(a.offline, a.save_fixtures, "" if a.offline is not None else env_token())
     table = build.make(src, today=a.today, char_name=a.char, weapon_name=a.weapon, rarity=a.rarity)

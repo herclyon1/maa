@@ -1457,6 +1457,7 @@
 "config",
 "shutdown_signs"
 ],
+"test_ff_toplevel.py": [],
 "test_gamelog_errors.py": [
 "__init__",
 "collector_maaend",
@@ -3930,7 +3931,6 @@
 "wuwa_posters",
 "wuwa_tacet"
 ],
-"test_retire_legacy.py": [],
 "test_runwatch.py": [
 "__init__",
 "activity",
@@ -5097,7 +5097,6 @@
 "wuwa_posters",
 "wuwa_tacet"
 ],
-"test_tool_refs.py": [],
 "test_undefined_names.py": [],
 "test_unreachable.py": [
 "__init__",

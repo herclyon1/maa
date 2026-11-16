@@ -22,7 +22,7 @@ byte (design.md section 5, "maafw trimmed"):
 A pack is only as good as `compare`: the day replayed from it must give the same
 failure lines, pushes, power commands and ledger verdicts as from the full corpus.
 Every member is scanned with slice.secret_hits and the public-repo identity pattern
-(lint-repo item 12) before it is written; pack.json inside lists each member's
+(lint-repo item 11) before it is written; pack.json inside lists each member's
 original sha256 and what was done to it. A pack over MAX_BYTES is refused.
 """
 from __future__ import annotations
@@ -68,12 +68,12 @@ LINT = HERE.parents[2] / "scripts" / "mac" / "lint-repo.sh"
 
 
 def identity_pattern() -> "re.Pattern[bytes]":
-    """lint-repo.sh item 12's pattern (other people's identity / login details never reach
+    """lint-repo.sh item 11's pattern (other people's identity / login details never reach
     the public repo), read from there so there is one copy and this file does not hold it."""
     text = LINT.read_text(encoding="utf-8")
     m = re.search(r"公开仓库里不许有他人身份信息\"\n.*?^ID_RE='([^']+)'", text, re.S | re.M)
     if not m:
-        raise SystemExit(f"cannot find item 12's pattern in {LINT}")
+        raise SystemExit(f"cannot find item 11's pattern in {LINT}")
     return re.compile(m.group(1).encode())
 
 
@@ -126,7 +126,7 @@ def mask_uid(data: bytes) -> bytes:
     """The owner's game UID, as OK-WW's OCR dumps read it off the screen (the label, a colon,
     the digits), becomes UIDREDACT cut to the digits' length: the repo is public, and the same
     length keeps every offset the events' log_chunk slices use. The local corpus keeps the
-    recorded bytes (pack.json lists their sha256); lint-repo.sh item 12 refuses a UID in the
+    recorded bytes (pack.json lists their sha256); lint-repo.sh item 11 refuses a UID in the
     tree, build() refuses a member that still has one."""
     if UID_LABEL not in data:
         return data

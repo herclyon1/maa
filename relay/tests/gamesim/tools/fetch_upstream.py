@@ -13,7 +13,7 @@ tree is ~76 files with the whole import closure (every character class through
 CharFactory); this keeps it to the ~25 a contract check reads.
 
 Each file is stored verbatim under its repository path with `.txt` appended, so the
-repository's own Python linters (pyflakes, ruff, deadcode, zh_ratchet) never see
+repository's own Python linters (pyflakes, ruff, deadcode) never see
 upstream code. `materialize()` writes a copy back out under the real `.py` names.
 SOURCE.txt records the repository URL, tag, commit and the sha256 of every file.
 

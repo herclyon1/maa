@@ -1,95 +1,46 @@
 # Documentation index
 
-51 documents, grouped by "what are you trying to do right now". One line each,
-saying which question that document answers.
+Six documents and one list. One line each, saying which question that document answers.
 
-Rule: **a newly added document must be registered here**; gate 13 of
+Rule: **a newly added document must be registered here**; gate 12 of
 `scripts/mac/lint-repo.sh` checks it. A document with no entry point does not
 exist - the next session will never read it, so writing it was wasted.
 
-## Read before starting work
+On 2026-11-17 the other 48 documents (dated surveys, plans, per-game notes, the phone
+page's writing rules) were removed together with the phone page `web/`. They are in git
+history: `git show 1c8b5828:docs/<NAME>.md`, and `git show 1c8b5828:docs/README.md` for the
+index as it was. Comments in the code and the tests still point at some of them by name
+(PITFALLS.md, CODE-HISTORY.md, STATE-MODEL.md, SKLAND-API.md, ...); read those from history.
+
+## The documents
 
 | Document | Question it answers |
 |---|---|
 | [../CLAUDE.md](../CLAUDE.md) | Standing orders, the tool table; read this before every session |
-| [MAINTENANCE.md](MAINTENANCE.md) | How to deploy, how to change config, what to run before committing |
-| [TOOLING.md](TOOLING.md) | The rules for using the tools; the 21 pitfalls dug up on 826 |
-| [PITFALLS.md](PITFALLS.md) | Pitfalls already fallen into and the shape they have now (the longest one; search it first when something breaks) |
-| [RETROSPECTIVE.md](RETROSPECTIVE.md) | The mistakes made, and the gates that now stop them |
-| [UPSTREAM-ISSUE-RULES.md](UPSTREAM-ISSUE-RULES.md) | Read before filing an issue / PR upstream |
-| [EVIDENCE.md](EVIDENCE.md) | Evidence bundles in each upstream's export format, their cloud copy, and the per-route gathering retry |
-
-## Daily operations
-
-| Document | Question it answers |
-|---|---|
-| [OPERATIONS.md](OPERATIONS.md) | The operations master document: the schedule, power on/off, diagnostic paths (the most complete, and the longest) |
-| [ESTOP.md](ESTOP.md) | The red button: stop everything on the game machine in one command |
-| [CHANGE-CONFIG.md](CHANGE-CONFIG.md) | The procedure for changing the game machine's config (which copy to edit, how to verify) |
-| [STATE-MODEL.md](STATE-MODEL.md) | Where the relay keeps its state, and what each key means |
+| [OPERATIONS.md](OPERATIONS.md) | The operations master document: the schedule, power on/off, diagnostic paths |
 | [NOTIFICATIONS.md](NOTIFICATIONS.md) | Which notifications exist, when they are sent, what they look like |
-| [SILENT-FAILURES-AUDIT.md](SILENT-FAILURES-AUDIT.md) | Every caught-and-not-raised failure in the relay and scripts: does it reach the operator, keep or fix (2026-10-10) |
-| [ERROR-LEDGER-1010.md](ERROR-LEDGER-1010.md) | Every kind of relay WARNING/ERROR from 09-26 to 10-10 reconciled against the commit that fixed it (2026-10-10) |
-| [GAME-UPDATE.md](GAME-UPDATE.md) | What happens on a day a game client takes a major version update |
-| [NEXT-BOOT.md](NEXT-BOOT.md) | Things not yet figured out |
-| [BACKLOG.md](BACKLOG.md) | Things promised and not yet done |
-
-## Configuration and interfaces
-
-| Document | Question it answers |
-|---|---|
 | [CONFIG.md](CONFIG.md) | The config inventory: environment variables, each program's settings, and which copy actually takes effect |
 | [AUTOMAS.md](AUTOMAS.md) | AUTO-MAS: its screens, its configuration, and driving it without a UI |
-| [HEADLESS.md](HEADLESS.md) | How all three programs run with no UI at all |
-| [SKLAND-API.md](SKLAND-API.md) | The 森空岛 API (终末地) |
-| [BANNER-SOURCES.md](BANNER-SOURCES.md) | Where the banner data comes from |
+| [BACKLOG.md](BACKLOG.md) | Things promised and not yet done |
 
-## Knowledge specific to each of the three games
+`UNMERGED-REVIEWED.txt` is the list `scripts/mac/deploy-relay.sh` step 0.6 reads
+(`scripts/mac/lib/unmerged_fixes.py`): relay fixes on a branch that were looked at and are
+not going into main.
 
-| Document | Question it answers |
+## Scripts with no other entry point
+
+Gate 12 also wants every `scripts/mac/*.sh`, `scripts/windows/*.py` and `scripts/windows/*.bat`
+named in `CLAUDE.md` or here. These were named only in documents that are gone:
+
+| Script | What it does |
 |---|---|
-| [GAME.md](GAME.md) | Knowledge common to all three games |
-| [MAA-EVENTS-AND-SSS.md](MAA-EVENTS-AND-SSS.md) | 明日方舟: how to configure event stages and 保全派驻 |
-| [EVENT-AUTOPILOT-PLAN.md](EVENT-AUTOPILOT-PLAN.md) | 明日方舟: design for clearing event EX stages with no operator in the loop (proposal) |
-| [MAA-INFRAST-ZOOM.md](MAA-INFRAST-ZOOM.md) | 明日方舟: why the infrastructure 「双指滑动到总览」 gesture fails |
-| [ENDFIELD-GUIDES.md](ENDFIELD-GUIDES.md) | 终末地: external reference sources (look here first when you do not know something) |
-| [ENDFIELD-ITEMS.md](ENDFIELD-ITEMS.md) | 终末地: item ids, Chinese names, what they are for |
-| [ENDFIELD-STOCKPILE.md](ENDFIELD-STOCKPILE.md) | 终末地: how much a full set of upgrade materials costs, and how much to stockpile |
-| [ENDFIELD-SANITY-YIELD.md](ENDFIELD-SANITY-YIELD.md) | 终末地: what each sanity stage yields, what one five-star build needs, stock vs gap (2026-09-18) |
-| [ENDFIELD-ACTIVITIES.md](ENDFIELD-ACTIVITIES.md) | 终末地: the activity centre |
-| [MAAEND-TRIAL-SWORDMANCY.md](MAAEND-TRIAL-SWORDMANCY.md) | 终末地: why 选剑演武 fails |
-| [WUWA-DAILY.md](WUWA-DAILY.md) | 鸣潮: every step of the daily run, from power-on to finish |
-| [OKWW-WEEKLY-BOSS.md](OKWW-WEEKLY-BOSS.md) | 鸣潮: how the weekly boss is fought and how its reward is claimed |
-| [OKWW-NEST-MODES.md](OKWW-NEST-MODES.md) | 鸣潮: the difference between the two 残象聚落 modes |
-| [OKWW-PATCHES.md](OKWW-PATCHES.md) | 鸣潮: what the local patches change, and what counts as success |
-| [OKWW-STUCK-DIALOG.md](OKWW-STUCK-DIALOG.md) | 鸣潮: diagnosing a hang (the modal-dialog class of them) |
-| [WUWA-TACET-INDEX.md](WUWA-TACET-INDEX.md) | 鸣潮: 无音区 index mapping (unfinished) |
-| [AUTO-STORY.md](AUTO-STORY.md) | Findings on automating story playback / event stages |
-
-## This Mac and the network
-
-| Document | Question it answers |
-|---|---|
-| [HOME-NETWORK.md](HOME-NETWORK.md) | The home network in Tokyo: topology, cause and options |
-| [PLAY-MANUAL.md](PLAY-MANUAL.md) | Manual for playing remotely (streaming) |
-| [MAC-COMPAT.md](MAC-COMPAT.md) | How compatible the three helper programs are with the Mac |
-| [MAC-CHANGES.md](MAC-CHANGES.md) | What has been changed on this Mac and on ins |
-| [CLOUD-GENSHIN-WARP.md](CLOUD-GENSHIN-WARP.md) | Playing cloud Genshin through WARP from this Mac: the two-step routine and the desktop launcher (written 2026-09-09 by another session) |
-
-## Rules for writing
-
-| Document | Question it answers |
-|---|---|
-| [PHONE-COPY-RULES.md](PHONE-COPY-RULES.md) | How to write the copy on the phone remote page |
-- [HIG-CHECKLIST.md](HIG-CHECKLIST.md) - the phone page checked against Apple's Human Interface Guidelines, rule by rule
-- [PHONE-NATIVE-REFERENCES.md](PHONE-NATIVE-REFERENCES.md) - which Apple app each block of the phone page copies (simulator for numbers, Mac apps for patterns), surveyed 2026-09-15
-- [WEB-FREEZE.md](WEB-FREEZE.md) - the phone page is frozen since 2026-09-19: bug fixes only, batched into one release; what still counts as a bug and what does not
-
-## Archive (mind the dates when reading)
-
-| Document | What it is |
-|---|---|
-| [CODE-HISTORY.md](CODE-HISTORY.md) | The backstory lifted out of code comments; pointers in the code lead here |
-| [IMPROVEMENT-PLAN.md](IMPROVEMENT-PLAN.md) | The optimisation plan proposed on 2026-09-06 and the record of carrying it out |
-| [SWEEP-0830.md](SWEEP-0830.md) | One systematic sweep of the 08-29 evening run / 08-30 morning run |
-| [SURVEY-2026-09-08.md](SURVEY-2026-09-08.md) | 46 verified findings from a read-only survey of every piece of software here, ranked by what a silent failure costs |
+| `scripts/mac/confirm-off.sh` | Is the game machine powered off right now: prints measured evidence, not Tailscale's opinion |
+| `scripts/mac/pull-day.sh` | Pulls the game machine's record of one Beijing day and cuts it into the day-replay corpus (`relay/tests/daysim`) |
+| `scripts/mac/pull-replay.sh` | Pulls one day's AUTO-MAS run records back as a replay sample (redacted, with a draft `expected.json`) |
+| `scripts/windows/smoke.py` | The deploy's smoke test on the machine: imports every relay module with the machine's Python and reads back the log the service wrote after its restart, before "deployed" is printed |
+| `scripts/windows/copilot-run.py` | Runs a MAA copilot (auto-battle) file through MaaCore without the GUI |
+| `scripts/mac/make-stream-apps.sh` | Builds the desktop streaming launchers from `lib/moonlight-params.sh` (lint gate 17 checks they are current) |
+| `scripts/mac/make-cloud-genshin-app.sh` | Builds `~/Desktop/云原神.app` (turns WARP on, opens the cloud-game page) |
+| `scripts/mac/cn-route-pf.sh` | `sudo ... on / off / status`: rewrites the source address of UDP to Chinese ranges so it goes through the Tailscale tunnel |
+| `scripts/mac/proxy-monitor.sh` | Shows whether cloud Genshin's traffic goes through the ins tunnel while the game is running |
+| `scripts/mac/check-shell.sh` | Checked the phone page's shell stamp (`index.html` / `sw.js`); the page is gone, the script is left for whoever decides its fate |

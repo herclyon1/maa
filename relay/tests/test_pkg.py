@@ -1807,7 +1807,7 @@ echo "FAIL_WHY=$WATCHDOG_FAIL_WHY"
     # must come before the version is published).
     q = {k: sh.find(k) for k in ('\nWATCHDOG_FAIL_WHY=""\n', 'lib/deploy-pkg.sh"', "grep -q '^SMOKE_OK$'", 'publish-cos.py"',
                                  'if [ -n "$WATCHDOG_FAIL_WHY" ]; then\n  echo "❌❌ 中继已上线', 'echo "✅ 部署完成',
-                                 "push -q origin HEAD:refs/heads/main", "ledger-gap.py",
+                                 "push -q origin HEAD:refs/heads/main", "lib/ff-toplevel.sh",
                                  'if [ -n "$WATCHDOG_FAIL_WHY" ]; then\n  echo "❌❌ 再说一遍', "\n  exit 14\nfi")}
     check("deploy-relay.sh: every anchor there", [k for k, v in q.items() if v < 0], [])
     order = list(q.values())

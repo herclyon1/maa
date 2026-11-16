@@ -1,11 +1,12 @@
-"""The boss list on the phone page and the one in the relay must be the same list.
+"""The boss list the phone carries and the one in the relay must be the same list.
 
-The page cannot read the table from the state payload - ntfy caps a message at
+The phone cannot read the table from the state payload - ntfy caps a message at
 3900 bytes and adding it blew that on the first try - so, exactly as with the
-forgery table, the page carries a copy. Two copies of a list that decides which
-boss gets farmed will disagree eventually; this is the thing that stops them.
+forgery table, the phone carries a copy. Until 2026-11-17 this test read that copy out of
+the phone page (web/schema.js `const BOSSES`); the page was removed that day, so the copy
+is pinned here as it stood then. A change to wuwa_boss's list fails here until the pin, and
+the App's copy with it, follows.
 """
-import re
 import sys
 from pathlib import Path
 
@@ -22,11 +23,9 @@ def check(label, got, want):
         fails.append(label)
 
 
-app = (Path(__file__).resolve().parents[2] / "web" / "schema.js").read_text(encoding="utf-8")   # 表在 schema.js（app.js 2026-09-18 拆分）
-m = re.search(r"const BOSSES = \[(.*?)\];", app, re.S)
-check("页面里有这张表", bool(m), True)
-page = [] if not m else [(int(i), n) for i, n in re.findall(r'\[\s*(\d+)\s*,\s*"([^"]+)"\s*\]', m.group(1))]
-check("页面和中继一字不差", page, wuwa_boss.choices())
+# web/schema.js `const BOSSES` as of 2026-11-17 (git show 1c8b5828:web/schema.js).
+PAGE = [(1, "天傀劫煞"), (2, "万囿牢·朽躯"), (3, "梦魇亚当·重锤"), (4, "无铭探索者")]
+check("手机那份和中继一字不差", PAGE, wuwa_boss.choices())
 
 print("\n[没登记的位置只说「第 N 个」，不许猜]")
 check("登记过的给名字", wuwa_boss.label(1), "天傀劫煞")

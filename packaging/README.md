@@ -36,7 +36,7 @@ The installer copies files and calls `switch.py`; the order of everything else i
 that one file:
 
 The rule: whichever step fails, the machine is left with a relay that runs. The old
-relay (service `ark-relay`) was retired on 2026-10-11 (`scripts/windows/retire_legacy.py`),
+relay (service `ark-relay`) was retired on 2026-10-11 (by a one-off script, removed 2026-11-17),
 so nothing here switches it on or off any more.
 
 - `switch.py install`:

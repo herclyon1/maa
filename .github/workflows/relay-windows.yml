@@ -96,9 +96,9 @@ jobs:
           echo "NTFY_SERVER=$(cygpath -w "$exe")" >>"$GITHUB_ENV"
 
       # Excluded on Windows, one reason each:
-      #   test_need_table.py - runs web/inventory.js in macOS JavaScriptCore
-      #     (osascript -l JavaScript); there is no osascript on Windows, and the
-      #     code it checks is the web page's, not the relay's.
+      #   test_need_table.py - until 2026-11-17 it ran the phone page's inventory.js in macOS
+      #     JavaScriptCore (osascript -l JavaScript; none on Windows). That part went with the
+      #     page; the rest has not been run on Windows yet, so the file stays left out.
       # test_banners / test_notify_routing / test_tacet_shots build their image
       # fixtures with Pillow, test_okww_daily with NumPy as well; the Mac gate's
       # Python has both, a bare setup-python does not.
@@ -126,7 +126,7 @@ jobs:
         #                              (two files of their own until 11-08: ..._smoke_gate, ..._pkg_bash32);
         #   test_techlog_tool        - scripts/mac/techlog.py (shlex-splits its winrun
         #                              command) and scripts/mac/winrun.sh;
-        #   test_tool_refs           - the lint tools under scripts/mac/lib/ and ff-toplevel.sh;
+        #   test_ff_toplevel         - scripts/mac/lib/ff-toplevel.sh, run as a program (bash);
         #   test_disk_tidy           - scripts/mac/disk-tidy.py (fcntl, lsof, launchd; run
         #                              38415311583: ModuleNotFoundError: No module named 'fcntl').
         run: >-
@@ -136,7 +136,7 @@ jobs:
           --exclude test_estop_layout.py
           --exclude test_deploy.py
           --exclude test_techlog_tool.py
-          --exclude test_tool_refs.py
+          --exclude test_ff_toplevel.py
           --exclude test_disk_tidy.py
 
   # The day replay (relay/tests/daysim, design.md section 5) on a Linux runner: the World

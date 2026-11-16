@@ -879,24 +879,28 @@ def _part_okww_names_not_numbers():
     if "陨翼云渊" not in raw3.get("okww_farm", ""):
         fails.append(f"凝素领域应写副本名，得到 {raw3.get('okww_farm')!r}")
 
-    # 手机页能选到的每一个序号，报告都得叫得出名字。
+    # 手机能选到的每一个序号，报告都得叫得出名字。
     # 2026-09-08：手机页 FORGE 有 5 项、报告的表只有 4 条，选第 5 个就写成「凝素领域·#5」。
-    js = (pathlib.Path(__file__).resolve().parents[2] / "web" / "schema.js").read_text(encoding="utf-8")   # TACET/FORGE 在 schema.js（app.js 2026-09-18 拆分）
+    # Until 2026-11-17 the three checks below read the phone page's own lists (web/schema.js TACET /
+    # FORGE); the page was removed that day, so its lists are pinned here as they stood then
+    # (git show 1c8b5828:web/schema.js).
+    page_tacet = {1: ("衔梦照世之心", "茜染怀想之花"), 2: ("衔梦照世之心", "镜影流电之瞬"), 3: ("羽落空尘之歌", "冥途夜行之灯"),
+                  4: ("羽落空尘之歌", "清邪荡煞之心"), 5: ("雪落无声之愿", "剪心辑梦之影"), 6: ("听唤语义之愿", "长路启航之星"),
+                  7: ("长路启航之星", "斑驳粉饰之沫")}
+    page_forge = {1: "陨翼云渊", 2: "静灭云渊", 3: "裂斩云渊", 4: "碎蚀云渊", 5: "沉熄云渊"}
     for idx, (_, sets) in wuwa_tacet.TACET.items():
-        if f'[["{sets[0]}", "{sets[1]}"], {idx}]' not in js:
-            fails.append(f"手机页 TACET 里第 {idx} 项和 wuwa_tacet 对不上")
+        if page_tacet.get(idx) != (sets[0], sets[1]):
+            fails.append(f"手机 TACET 里第 {idx} 项和 wuwa_tacet 对不上")
 
     from ark_relay.core import wuwa_forgery
-    import re as _re
-    for m in _re.finditer(r'\["(\d+) · [^"]*（([^）"]+)）", (\d+)\]', js):
-        idx = int(m.group(3))
-        if wuwa_forgery.FORGERY.get(idx, ("",))[0] != m.group(2):
-            fails.append(f"手机页 FORGE 第 {idx} 项（{m.group(2)}）和 wuwa_forgery 对不上")
+    for idx, name in page_forge.items():
+        if wuwa_forgery.FORGERY.get(idx, ("",))[0] != name:
+            fails.append(f"手机 FORGE 第 {idx} 项（{name}）和 wuwa_forgery 对不上")
 
-    # 手机页给的每个序号都必须查得到名字，不许退化成「第 N 个」
-    for m in _re.finditer(r'\["\d+ · [^"]*", (\d+)\]', js):
-        if "没登记" in wuwa_forgery.label(int(m.group(1))):
-            fails.append(f"手机页能选第 {m.group(1)} 个凝素领域，但对照表里没有它")
+    # 手机给的每个序号都必须查得到名字，不许退化成「第 N 个」
+    for idx in page_forge:
+        if "没登记" in wuwa_forgery.label(idx):
+            fails.append(f"手机能选第 {idx} 个凝素领域，但对照表里没有它")
 
     # 明日安排那一支也不许退化成序号（plan.py 以前自己抄了一份只有 4 条的表）
     for i in (1, 5, 15):

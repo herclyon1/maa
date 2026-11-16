@@ -1813,22 +1813,20 @@ def _part_setup_tasks_verify():
 Its header and docs/OPERATIONS.md say it checks the scheduled tasks this system
 needs, but until 2026-10-13 it checked only AUTO-MAS_AutoStart: a machine without
 the installed relay's task (\\ArkRelay\\main) or its watchdog service
-(ArkRelayWatchdog) printed OK. The names come from retire_legacy.py, which checks
-exactly these before it retires the old service (new_relay_problems). No pwsh on
+(ArkRelayWatchdog) printed OK. The names came from retire_legacy.py, which checked
+exactly these before it retired the old service (new_relay_problems). No pwsh on
 the Mac, so the script is read as text.
 
     Formerly test_setup_tasks_verify.py.
     """
-    import importlib.util
     import re
 
     ROOT = Path(__file__).resolve().parents[2]
     PS1 = (ROOT / "scripts" / "windows" / "setup-tasks.ps1").read_text(encoding="utf-8")
-    spec = importlib.util.spec_from_file_location("retire_legacy", ROOT / "scripts" / "windows" / "retire_legacy.py")
-    rl = importlib.util.module_from_spec(spec)
-    sys.path.insert(0, str(ROOT / "scripts" / "windows"))
-    sys.modules["retire_legacy"] = rl
-    spec.loader.exec_module(rl)
+    # The names as scripts/windows/retire_legacy.py had them (NEW_TASK_FOLDER, NEW_TASK_NAME,
+    # NEW_WATCHDOG) until that one-off script was removed on 2026-11-17 (the old relay was
+    # retired with it on 2026-10-11); relay/pkg_layout.py is where the relay itself names them.
+    NEW_TASK_FOLDER, NEW_TASK_NAME, NEW_WATCHDOG = "\\ArkRelay", "main", "ArkRelayWatchdog"
 
 
     verify = PS1[PS1.find('"--- verify ---"'):]
@@ -1837,8 +1835,8 @@ the Mac, so the script is read as text.
     listed_tasks = re.findall(r'"([^"]+)"', tasks[0]) if tasks else []
     listed_services = re.findall(r'"([^"]+)"', services[0]) if services else []
     check("AUTO-MAS_AutoStart still checked", "AUTO-MAS_AutoStart" in listed_tasks, True)
-    check("the relay's task, as retire_legacy names it", f"{rl.NEW_TASK_FOLDER}\\{rl.NEW_TASK_NAME}" in listed_tasks, True)
-    check("the watchdog service, as retire_legacy names it", rl.NEW_WATCHDOG in listed_services, True)
+    check("the relay's task, as retire_legacy names it", f"{NEW_TASK_FOLDER}\\{NEW_TASK_NAME}" in listed_tasks, True)
+    check("the watchdog service, as retire_legacy names it", NEW_WATCHDOG in listed_services, True)
     check("a service that is there but not running is not OK", "-ne \"Running\"" in verify, True)
 
 
@@ -2083,7 +2081,7 @@ day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB pe
         st = fresh(bj(2026, 10, 12, 12))
         akid = "AK" + "ID" + "Ab1" * 11                        # built here so this file holds no key shape
         hook = "https://qyapi.weixin.qq.com/cgi-bin/" + "webhook/send?key=" + "1a2b3c4d-" * 4
-        uid = "\u7279\u5f81\u7801" + "\uff1a" + "123456789"        # the UID label, built here (lint item 12)
+        uid = "\u7279\u5f81\u7801" + "\uff1a" + "123456789"        # the UID label, built here (lint item 11)
         body = json.dumps({"link": f"x.zip?q-ak={akid}&q-signature={'ab' * 20}", "hook": hook,
                            "Password": "hunter2hunter2", "MirrorChyanCDK": "x" * 20, "ocr": f"id {uid}",
                            "keyword": "kept"}).encode()
@@ -2091,7 +2089,7 @@ day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB pe
         tape.answer("mas", "/api/x", body=("plain " + uid).encode())
         raw = (st / "tape" / "20261012.jsonl").read_bytes()
         check("no secret shape left (slice.secret_hits)", sl.secret_hits(raw), [])
-        require("no game UID left (lint item 12's pattern)", not identity_pattern().search(raw))
+        require("no game UID left (lint item 11's pattern)", not identity_pattern().search(raw))
         rec = [json.loads(x) for x in raw.decode().splitlines()][1]
         check("secret-named values masked, others kept",
               (rec["json"]["Password"], rec["json"]["MirrorChyanCDK"], rec["json"]["keyword"], rec["req"]["SendKey"]),

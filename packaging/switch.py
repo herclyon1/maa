@@ -25,7 +25,8 @@ rollback`. Exit code 1, and the installer exits non-zero too and says so (since
 e1033fb1; before, this switched the old relay back on).
 --skip-handover is for a machine without AUTO-MAS (the cloud test).
 
-The old relay (service ark-relay) was retired on 2026-10-11 (scripts/windows/retire_legacy.py,
+The old relay (service ark-relay) was retired on 2026-10-11 (by the one-off retire_legacy.py,
+removed from the repository 2026-11-17; git show 1c8b5828:scripts/windows/retire_legacy.py;
 BOARD DECISIONS 【现状 10-12】), so nothing here switches it on or off any more. install
 refuses while it is still present (exit 8): two relays would both push and power off.
 
@@ -349,7 +350,8 @@ def install(user: str, skip_handover: bool) -> int:
         # Stopping and disabling it was legacy.takeover(), removed with the old relay's
         # retirement; starting the new relay next to it would have both push and power off.
         print(f"没有切换：老中继（服务 {legacy.OLD_SERVICE}）还在这台电脑上，两个中继不能同时跑。"
-              "新中继没有打开；先撤掉老中继（scripts/windows/retire_legacy.py --go）再装。")
+              "新中继没有打开；先撤掉老中继再装（撤老中继的一次性脚本已从仓库删掉，要用就取回："
+              "git show 1c8b5828:scripts/windows/retire_legacy.py）。")
         return 8
     # An upgrade over an earlier install: the handover is done and its backup holds the
     # settings from before the first one; doing it again could only change more.

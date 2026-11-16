@@ -7,7 +7,8 @@ its source line or commit). This file only carries it out:
                          refuses while it does (two relays would both push and power off)
     remove()             at uninstall: delete every item marked `remove` or `takeover`
 
-scripts/windows/retire_legacy.py retired the old relay on 2026-10-11 (its service deleted,
+The one-off retire_legacy.py (removed from the repository 2026-11-17; git show 1c8b5828:scripts/windows/retire_legacy.py)
+retired the old relay on 2026-10-11 (its service deleted,
 its code moved to C:\\ProgramData\\ark-relay-retired-1011), so nothing here switches it on
 or off any more; remove() skips what is already gone.
 
@@ -34,7 +35,7 @@ OLD_CODE = ["ark_relay", "run.py", "service.py", "boot_stages.py", "app_main.py"
 # The old relay's service; switch.py install refuses while it exists.
 OLD_SERVICE = "ark-relay"
 # Written at install by packages from before the old relay's retirement (it recorded the
-# launcher task's state for a way back that no longer exists); kept by retire_legacy.py,
+# launcher task's state for a way back that no longer exists); kept by the retirement,
 # deleted at uninstall.
 TAKEOVER_RECORD = DATA / "state" / "legacy-takeover.json"
 ERROR_SERVICE_DOES_NOT_EXIST = 1060
@@ -55,7 +56,7 @@ def service_exists(name: str) -> bool:
 
 
 def old_relay_present() -> bool:
-    """False once the old relay is retired (retire_legacy.py) or uninstalled."""
+    """False once the old relay is retired (done 2026-10-11) or uninstalled."""
     return service_exists(OLD_SERVICE)
 
 

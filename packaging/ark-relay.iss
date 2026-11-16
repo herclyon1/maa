@@ -12,7 +12,7 @@
 ;                             (highest privileges, no time limit, normal priority)
 ;   C:\ProgramData\ark-relay  data (.env, state, logs): created here, kept on uninstall
 ;                             unless the user says otherwise
-;   the old relay             retired 2026-10-11 (scripts/windows/retire_legacy.py):
+;   the old relay             retired 2026-10-11 (one-off script, removed 2026-11-17):
 ;                             install refuses while its service still exists (two
 ;                             relays would both push and power off); what it left is
 ;                             deleted at uninstall (packaging/legacy.py remove, the

@@ -66,8 +66,8 @@ masked, how = pack.lighten("files/D/ark/automas/history/2026-10-12/wuwa/OK-WW-07
 check("a UID in an OCR dump is masked", (how, masked.count(b"UIDREDACT")), ("UID masked", 2))
 check("masking keeps the length and every line", [len(x) for x in masked.split(b"\n")],
       [len(x) for x in small.split(b"\n")])
-check("nothing left for lint-repo item 12", bool(pack.identity_pattern().search(masked)), False)
-check("the unmasked text is what item 12 refuses", bool(pack.identity_pattern().search(small)), True)
+check("nothing left for lint-repo item 11", bool(pack.identity_pattern().search(masked)), False)
+check("the unmasked text is what item 11 refuses", bool(pack.identity_pattern().search(small)), True)
 
 print("\n[the committed packs]")
 packs = sorted(pack.DAYS.glob("*/pack.tar.zst"))
@@ -82,7 +82,7 @@ for p in packs:
         carriers = sorted(m.name for m in tf.getmembers() if m.isfile() and ident.search(tf.extractfile(m).read()))
     check(f"{day}: pack.json lists every member", sorted(m["path"] for m in index["members"]),
           sorted(n for n in names if n != "pack.json"))
-    check(f"{day}: no member carries a UID or other identity (lint-repo item 12)", carriers, [])
+    check(f"{day}: no member carries a UID or other identity (lint-repo item 11)", carriers, [])
     refs = set()
     for ln in (pack.DAYS / day / "events.jsonl").read_text(encoding="utf-8").splitlines():
         ev = json.loads(ln)
