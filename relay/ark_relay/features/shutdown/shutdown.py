@@ -776,9 +776,11 @@ def _say_if_moment_passed(eng, now: datetime, v) -> None:
 
 
 def _shift_overdue(eng, now: datetime):
-    """(queue, due, missing scripts, limit, deadline, days) for each shift queue of this boot that
-    still lacks a record, and whose run check_overrun has not alarmed on. The limit is
-    check_overrun's: runwatch.planned_minutes + OVERRUN_SLACK_MIN from the queue's time."""
+    """(queue, due, missing scripts, limit, deadline, days, turn) for each shift queue of this boot
+    that still lacks a record, and whose run check_overrun has not alarmed on. The limit is
+    check_overrun's: runwatch.planned_minutes + OVERRUN_SLACK_MIN from the queue's time; the
+    deadline waits, as check_overrun does, until the script whose turn it is has spent its
+    own planned minutes (runwatch.turn_deadline; `turn` is its answer when it waited, else None)."""
     from ark_relay.features.alarm import handle, missed  # noqa: PLC0415
     from ark_relay.features.run import runwatch  # noqa: PLC0415
     booted = eng._boot_time(now)
@@ -799,7 +801,10 @@ def _shift_overdue(eng, now: datetime):
                 or handle._already_alerted(eng, day, f"队列超时|{q['name']}|{hhmm}")):
             continue
         limit, days = runwatch.planned_minutes(eng, due.hour, due.minute, due)
-        yield q, due, missing, limit, _overdue_from(eng, due, missing, limit) + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN), days
+        start = _overdue_from(eng, due, missing, limit)
+        deadline, turn = runwatch.turn_deadline(eng, due, start, start + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN),
+                                                list(q.get("kinds") or []), entries)
+        yield q, due, missing, limit, deadline, days, turn
 
 
 def _overdue_from(eng, due: datetime, missing: list[str], limit: int | None = None) -> datetime:
@@ -831,7 +836,7 @@ def overdue_moments(eng, now: datetime) -> list[tuple[datetime, str]]:
     if eng._shutdown_issued:
         return []
     return [(deadline, f"核对「{q['name']}」{due:%H:%M} 那趟有没有跑完")
-            for q, due, _, _, deadline, _ in _shift_overdue(eng, now) if deadline > now]
+            for q, due, _, _, deadline, _, _ in _shift_overdue(eng, now) if deadline > now]
 
 
 def _alarm_shift_overdue(eng, now: datetime) -> None:
@@ -848,14 +853,16 @@ def _alarm_shift_overdue(eng, now: datetime) -> None:
     """
     from ark_relay.features.alarm import errwatch, handle  # noqa: PLC0415
     from ark_relay.features.run import runwatch  # noqa: PLC0415
-    for q, due, missing, limit, deadline, days in list(_shift_overdue(eng, now)):
+    for q, due, missing, limit, deadline, days, turn in list(_shift_overdue(eng, now)):
         if now < deadline:
             continue
         title = texts.shift_no_result(q["name"])
-        start = deadline - timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN)
+        start = _overdue_from(eng, due, missing, limit)
         body = texts.shift_no_result_body(q["name"], due, now, "、".join(missing),
                                           limit, runwatch.OVERRUN_SLACK_MIN, days,
                                           restarted=start if start != due else None)
+        if turn is not None:
+            body += "\n" + texts.own_turn_note(turn[0], turn[1], now, turn[2], runwatch.OVERRUN_SLACK_MIN)
         if errs := eng.notifier.send(title, body, alert=True):
             log.error("班次没出结果的告警没推出去，下一轮再试：%s", q["name"])
             continue

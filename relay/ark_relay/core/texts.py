@@ -1276,6 +1276,15 @@ def shift_overrun_body(queue: str, due, now, limit_min: int, slack_min: int,
     return body
 
 
+def own_turn_note(script: str, since, now, own_min: int, slack_min: int) -> str:
+    """One more line of the two shift alarms when they waited for the script whose turn it
+    was (runwatch.turn_deadline): since when it has had its turn and by which of its own
+    days the alarm still went out."""
+    ran = int((now - since).total_seconds() // 60)
+    return (f"轮到 {script} 是 {since:%H:%M}，到现在 {ran} 分钟；它自己单跑最长的一天是 {own_min} 分钟，"
+            f"按 {own_min} + {slack_min} 分钟算也过了。")
+
+
 def shift_no_result(queue: str) -> str:
     return f"⏰ {queue}有脚本一直没出结果"
 
@@ -1392,6 +1401,7 @@ def samples() -> list[str]:
         attempt_timeout_body(0, 0, None, t2),
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 13, 10), 220, 30,
                            "MAA 完成、OK-WW 运行、MaaEnd 等待", "正在启动游戏..."),
+        own_turn_note("MaaEnd", _dt(2026, 11, 16, 10, 12), _dt(2026, 11, 16, 11, 47), 64, 30),
         shift_no_result_body("早班", t0, _dt(2026, 10, 1, 12, 31), "MaaEnd", 180, 30),
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 12, 31), 180, 30, "", "", 0),
         shift_overrun_body("晚班", _dt(2026, 11, 8, 21, 30), _dt(2026, 11, 9, 1, 44), 21, 30,

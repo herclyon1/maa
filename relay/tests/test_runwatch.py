@@ -772,6 +772,75 @@ other day 56-87.
         pth.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
         check("an alarmed Monday that timed out never counts", runwatch.planned_minutes(e2, 9, 0, monday16), (65, 6))
 
+    print("\n[#176, the 11-16 timeline: once the queue's planned minutes are spent, the script whose turn it is has its own]")
+    # relay.log 11-10..11-16: MAA 17 minutes, 鸣潮 11 (54 on Monday 11-16 with the weekly boss), MaaEnd
+    # 23-26 and 64 on Thursday 11-12 and Monday 11-16 (the gathering days). 11-12 was not a clean day
+    # (鸣潮 could not enter the game), so the queue's limit came from the other days: 65 + 30, and
+    # 「⏰ 早班有脚本一直没出结果」 went out at 10:35 with MaaEnd running since 10:15.
+    e3 = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=None), state=State(tmpdir()))
+
+    def shift_day(d, okww, maaend, okww_ok=True):
+        t0 = datetime(2026, 11, d, 9, 0, 30, tzinfo=SERVER_TZ)
+        a = t0 + timedelta(minutes=17)
+        b = a + timedelta(minutes=2) + timedelta(minutes=okww)
+        ledger(e3.state, t0, [("MAA", t0, a), ("OK-WW", a + timedelta(minutes=2), b),
+                              ("MaaEnd", b + timedelta(minutes=3), b + timedelta(minutes=3 + maaend))])
+        if not okww_ok:
+            pth = e3.state.ledger_path(t0.strftime("%Y-%m-%d"))
+            rows = [json.loads(x) for x in pth.read_text(encoding="utf-8").splitlines()]
+            rows[1]["ok"], rows[1]["failed_tasks"] = False, ["没进游戏"]
+            pth.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+
+    for d, okww, maaend, ok in ((10, 11, 25, True), (11, 11, 23, True), (12, 11, 64, False), (13, 11, 24, True),
+                                (14, 11, 23, True), (15, 11, 26, True)):
+        shift_day(d, okww, maaend, ok)
+    due16 = datetime(2026, 11, 16, 9, 0, tzinfo=SERVER_TZ)
+    kinds = ["MAA", "OK-WW", "MaaEnd"]
+    check("MaaEnd's own longest clean run of the week is Thursday's 64 (its own record was clean that day)",
+          runwatch.script_minutes(e3, "MaaEnd", 9, 0, due16), 64)
+    check("鸣潮's own: 11 (Thursday's failed one does not count)", runwatch.script_minutes(e3, "OK-WW", 9, 0, due16), 11)
+    check("a script never recorded: nothing to go by", runwatch.script_minutes(e3, "X", 9, 0, due16), None)
+    limit16 = runwatch.planned_minutes(e3, 9, 0, due16)[0]
+    check("the queue's limit that Monday is a weekday's (no clean Monday, Thursday not clean)", limit16 < 70, True)
+    queue_end = due16 + timedelta(minutes=limit16 + runwatch.OVERRUN_SLACK_MIN)
+
+    def rows16(*rows):
+        return [{"script": s_, "started": a.isoformat(), "finished": b.isoformat(), "ok": True} for s_, a, b in rows]
+
+    def hm(h, m, sec=0):
+        return datetime(2026, 11, 16, h, m, sec, tzinfo=SERVER_TZ)
+
+    at_1035 = rows16(("MAA", hm(9, 0, 30), hm(9, 17)), ("OK-WW", hm(9, 19), hm(10, 12, 48)))
+    hold, turn = runwatch.turn_deadline(e3, due16, due16, queue_end, kinds, at_1035)
+    check("11-16 at 10:35: it is MaaEnd's turn since 鸣潮's record ended at 10:12:48, its own day is 64",
+          turn, ("MaaEnd", hm(10, 12, 48), 64))
+    check("……so both alarms wait until 10:12:48 + 64 + 30 = 11:46:48, and MaaEnd finished at 11:19: no alarm that day",
+          (hold, hold > hm(11, 19, 14)), (hm(11, 46, 48), True))
+    e3.state.ledger_path("2026-11-12").unlink()
+    hold, turn = runwatch.turn_deadline(e3, due16, due16, queue_end, kinds, at_1035)
+    check("without a gathering day in its history (longest 26): 10:12:48 + 26 + 30 = 11:08:48, before its 11:19 end",
+          (hold, turn[2]), (hm(11, 8, 48), 26))
+    shift_day(12, 11, 64, False)
+    early = rows16(("MAA", hm(9, 0, 30), hm(9, 17)))
+    check("never earlier than the queue's own deadline: 鸣潮's turn since 09:17, 11 + 30 ends before it",
+          runwatch.turn_deadline(e3, due16, due16, queue_end, kinds, early), (queue_end, None))
+    check("every script recorded: the queue's deadline",
+          runwatch.turn_deadline(e3, due16, due16, queue_end, kinds, at_1035 + rows16(("MaaEnd", hm(10, 15), hm(11, 19)))),
+          (queue_end, None))
+    check("no record yet: the first script's turn runs from the shift's start",
+          runwatch.own_turn(e3, due16, due16, kinds, []), ("MAA", due16, 17))
+    by_hand = rows16(("MAA", hm(9, 0, 30), hm(9, 17)))
+    by_hand.append({"script": "OK-WW", "started": hm(9, 20).isoformat(), "finished": hm(9, 40).isoformat(), "ok": True,
+                    "raw": {"hand_started": True}})
+    check("a run somebody started by hand is not the queue's record", runwatch.own_turn(e3, due16, due16, kinds, by_hand)[:2],
+          ("OK-WW", hm(9, 17)))
+    with mock.patch.object(runwatch, "script_minutes", lambda *a: 900):
+        check("capped at the shift's start + 180 + 30 however long the script's own day was",
+              runwatch.turn_deadline(e3, due16, due16, queue_end, kinds, at_1035)[0],
+              due16 + timedelta(minutes=runwatch.SHIFT_CAP_MIN + runwatch.OVERRUN_SLACK_MIN))
+    check("the chain reads as before the split: 11-10 took 58 minutes, clean, no timeout",
+          runwatch._chain(e3.state.read_ledger("2026-11-10"), datetime(2026, 11, 10, 9, 0, tzinfo=SERVER_TZ)), (58, True, False))
+
 
 if __name__ == "__main__":
     sys.exit(run_parts([_part_main, _part_runwatch_chain_retry, _part_run_limit, _part_run_probe, _part_same_weekday]))
