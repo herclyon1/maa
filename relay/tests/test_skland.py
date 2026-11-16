@@ -436,5 +436,58 @@ session had refreshed first, the request was signed with the local clock
     print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
 
 
+def _part_skland_arknights_annihilation():
+    """arknights_uid picks the default Arknights role; arknights_annihilation reads campaign.reward.
+
+The response shape is the one measured 2026-11-16 09:20:38 from the Mac (code 0,
+data.campaign.reward {"current": 1800, "total": 1800}, data.status.storeTs), with
+made-up uids. Network is faked; no request leaves.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import skland
+
+    asked: list = []
+
+    def apps(*roles):
+        return [{"appCode": "endfield", "bindingList": [{"uid": "e1", "roles": []}]},
+                {"appCode": "arknights", "bindingList": list(roles)}]
+
+    def uid(listing):
+        skland.bindings = lambda cred: listing
+        try:
+            return skland.arknights_uid(None)
+        except skland.SklandError as exc:
+            return type(exc).__name__
+
+    print("[which role]")
+    check("the default role of two", uid(apps({"uid": "11", "isDefault": False}, {"uid": "22", "isDefault": True})), "22")
+    check("the only role, not marked default", uid(apps({"uid": "11"})), "11")
+    check("two roles, none default: refused", uid(apps({"uid": "11"}, {"uid": "22"})), "SklandError")
+    check("no Arknights role: refused", uid(apps()), "SklandError")
+
+    def read(answer):
+        skland.bindings = lambda cred: apps({"uid": "22", "isDefault": True})
+
+        def fake_get(cred, path):
+            asked.append(path)
+            return answer
+        skland.get = fake_get
+        try:
+            return skland.arknights_annihilation(None)
+        except skland.SklandError as exc:
+            return type(exc).__name__
+
+    print("\n[the reading]")
+    ok = {"code": 0, "message": "OK", "data": {"campaign": {"reward": {"current": 1800, "total": 1800}},
+                                               "status": {"storeTs": 1794791397}}}
+    check("full week, with when it was stored", read(ok), {"current": 1800, "total": 1800, "store_ts": 1794791397})
+    check("asked for the default role", asked[-1], "/api/v1/game/player/info?uid=22")
+    check("an error code: refused", read({"code": 10001, "message": "x"}), "SklandError")
+    check("no reward in the answer: refused", read({"code": 0, "data": {"campaign": {}}}), "SklandError")
+    no_ts = {"code": 0, "data": {"campaign": {"reward": {"current": 400, "total": 1800}}}}
+    check("no storeTs reads as 0 (the caller then refuses it)", read(no_ts), {"current": 400, "total": 1800, "store_ts": 0})
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_skland_api, _part_skland_http_error_body, _part_skland_role, _part_skland_sign, _part_skland_sync_guard]))
+    sys.exit(run_parts([_part_skland_api, _part_skland_http_error_body, _part_skland_role, _part_skland_sign, _part_skland_sync_guard,
+                        _part_skland_arknights_annihilation]))
