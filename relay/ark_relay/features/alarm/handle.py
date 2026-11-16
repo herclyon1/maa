@@ -323,6 +323,65 @@ def _weekly_gates(eng, rec: RunRecord) -> None:
     # (Data.AnnihilationCompletedWeek) since the 2026-10-11 hand-over, item 13.
 
 
+def _annihilation_checked_full(eng, rec: RunRecord) -> "dict | None":
+    """{'current', 'total', 'store_ts', 'read_at'} when an Annihilation pass that MAA skipped
+    because the terminal listed no annihilation (collector_maa annihilation_no_entry) is
+    backed by the game server's own figure: Skland's campaign reward full, stored in the
+    pass's own game-week (Monday 04:00 reset). None otherwise - Skland unreachable, token
+    missing or expired, a reading from before the reset, or not full - and the day's
+    unverified-annihilation alarm goes out as before. One read, no retry. Reads only; the
+    caller marks.
+
+    2026-11-16 09:02:19 MAA 6.22 skipped the Monday pass (the line is in
+    tests/fixtures/maa-annihilation-2026-11-16); with no progress line both of the
+    morning's MAA records went to the group as unverified. Skland read 1800/1800 (storeTs
+    09:09:57): the account had been played while the machine was off (sanity 1/210 at
+    11-15 21:36, 26/210 at 09:03 - about 89 spent overnight)."""
+    raw = rec.raw
+    if not (rec.script == "MAA" and raw.get("annihilation") and raw.get("annihilation_no_entry")
+            and not raw.get("annihilation_progress") and not raw.get("annihilation_official")):
+        return None
+    token = getattr(eng.cfg, "skland_token", "")
+    if not token:
+        log.info("剿灭：MAA 说终端里没有剿灭入口、跳过了；没有森空岛凭证，核对不了，照旧按没证据算")
+        return None
+    from ark_relay.core import skland  # noqa: PLC0415
+    from ark_relay.features.weekly.annihilation import week_key  # noqa: PLC0415
+    now = datetime.now(tz=SERVER_TZ)
+    try:
+        # The path banners.py takes and the one measured from the Mac on 11-16: player info
+        # needs no device fingerprint, and get() aligns the clock itself.
+        got = skland.arknights_annihilation(skland.login(token))
+    except Exception as exc:  # noqa: BLE001 - any doubt keeps the alarm; never raises
+        log.warning("剿灭：MAA 说终端里没有剿灭入口、跳过了；去森空岛核对没核成（%s），照旧按没证据算",
+                    type(exc).__name__)
+        return None
+    stored = datetime.fromtimestamp(got["store_ts"], tz=SERVER_TZ) if got["store_ts"] else None
+    # A reading stored in an earlier game-week is last week's figure, 1800/1800 or not.
+    if stored is None or week_key(stored) != week_key(rec.started):
+        log.info("剿灭：森空岛读到 %s/%s，但那是 %s 存的、不是这一周的数，不算；照旧按没证据算",
+                 got["current"], got["total"], stored.strftime("%m-%d %H:%M") if stored else "不知道什么时候")
+        return None
+    if got["total"] <= 0 or got["current"] < got["total"]:
+        log.info("剿灭：MAA 跳过了，可森空岛读到本周只有 %s/%s，没打满；照旧按没证据算",
+                 got["current"], got["total"])
+        return None
+    return {**got, "read_at": now.strftime("%Y-%m-%d %H:%M:%S")}
+
+
+def _say_annihilation_checked(eng, rec: RunRecord, got: dict) -> None:
+    """Put the Skland reading on the record and on its ledger line, so the day's unverified
+    items (core.day_unverified_items) count annihilation as backed for every record of the
+    day - the second 11-16 alarm came from the routine run re-reading the ledger - and the
+    daily report says where the figure came from."""
+    rec.raw["annihilation_official"] = got
+    _mark_raw_on_ledger(eng, rec, "annihilation_official", got)
+    log.info("🟢 剿灭：MAA 在终端待办里没找到剿灭入口、跳过了；森空岛官方数据 %s 读到本周 %s/%s"
+             "（游戏服务器 %s 存的），算本周已打满",
+             got["read_at"][11:], got["current"], got["total"],
+             datetime.fromtimestamp(got["store_ts"], tz=SERVER_TZ).strftime("%m-%d %H:%M:%S"))
+
+
 def _annihilation_sanity_short(eng, rec: RunRecord) -> "dict | None":
     """{'have', 'cost'} when an Annihilation pass AUTO-MAS booked as done fought nothing for
     lack of sanity; None otherwise. Reads only; _say_annihilation_short marks and pushes.
@@ -333,7 +392,7 @@ def _annihilation_sanity_short(eng, rec: RunRecord) -> "dict | None":
     A pass with a progress line fought; one already marked has been said."""
     raw = rec.raw
     if (rec.script == "MAA" and raw.get("annihilation") and not raw.get("annihilation_progress")
-            and not raw.get("maa_sanity_short")):
+            and not raw.get("maa_sanity_short") and not raw.get("annihilation_official")):
         until = rec.finished + timedelta(minutes=5) if rec.duration_known else None
         return outcome.maa_sanity_short(_maa_app_log(eng.cfg.maa_dir, rec.started, until) or "")
     return None
@@ -373,6 +432,8 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
         log.info("↪️ %s %s（%s）跑成了，但压着的 %s 是%s失败，不算它自己好了，照旧等着报",
                  rec.script, rec.run_id, core.maa_mode(_job(rec)), held.run_id, core.maa_mode(_job(held)))
     _weekly_gates(eng, rec)
+    if checked := _annihilation_checked_full(eng, rec):
+        _say_annihilation_checked(eng, rec, checked)
     if short := _annihilation_sanity_short(eng, rec):
         _say_annihilation_short(eng, rec, short)
     # AUTO-MAS saying 「这个脚本正常退出了」 does not mean it got the work done.

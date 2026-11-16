@@ -507,7 +507,8 @@ def day_unverified_items(entries: list[dict]) -> list[tuple[str, list[str]]]:
     evidence covers the same item in another). Runs stopped by hand are left out.
 
     MaaEnd: listed tasks (maaend_unverified). MAA: annihilation without a
-    「剿灭模式 x/y」 line. OK-WW: steps the parser marked unverified (UNVERIFIED_STEP).
+    「剿灭模式 x/y」 line, unless Skland's figure backs a pass MAA skipped
+    (annihilation_official). OK-WW: steps the parser marked unverified (UNVERIFIED_STEP).
     The report title counts these (day_unverified); handle._push_unverified sends
     the same items to the group."""
     end_listed: dict[str, None] = {}
@@ -536,7 +537,9 @@ def day_unverified_items(entries: list[dict]) -> list[tuple[str, list[str]]]:
             # Only where the report would otherwise say it was fought or already
             # full; a run short of sanity or a failed one is said as such.
             anni = True
-            anni_ok = anni_ok or bool(raw.get("annihilation_progress"))
+            # A pass MAA skipped (no annihilation in the terminal) is backed only by the game
+            # server's own figure (handle._annihilation_checked_full), never by MAA's guess.
+            anni_ok = anni_ok or bool(raw.get("annihilation_progress") or raw.get("annihilation_official"))
         elif script == "OK-WW":
             for step in raw.get("okww_steps") or []:
                 name = step.split("（", 1)[0]
@@ -704,6 +707,24 @@ def _incomplete_note(text: str) -> str:
     return ("没按你的设置跑：" if reset else "没干完：") + why
 
 
+def _annihilation_note(raw: dict) -> str:
+    """The daily row's note for an Annihilation pass: fought to the cap, short of it,
+    skipped with Skland's figure behind it (handle._annihilation_checked_full), or nothing
+    to show."""
+    prog = raw.get("annihilation_progress")
+    off = raw.get("annihilation_official") or {}
+    if prog and prog[0] >= prog[1]:
+        return f"本周剿灭已打满（{prog[0]}/{prog[1]}）"
+    if prog:
+        return f"⚠️ 剿灭只打到 {prog[0]}/{prog[1]}，本周还没满"
+    if off:
+        return (f"终端里没有剿灭入口，MAA 没打；森空岛官方数据本周剿灭已满"
+                f"（{off.get('current')}/{off.get('total')}，{str(off.get('read_at', ''))[11:16]} 读）")
+    # No progress line = no proof of anything fought (collector_maa);
+    # the gate stays open, so say exactly that.
+    return "没读到剿灭进度，本周按没打满算，下一轮再打"
+
+
 def format_daily(day: str, entries: list[dict], prose: str = "",
                  plan: str = "", tech: "list[str] | None" = None,
                  shifts: "list[tuple[str, str]] | None" = None) -> tuple[str, str]:
@@ -818,16 +839,7 @@ def format_daily(day: str, entries: list[dict], prose: str = "",
             lines.append("")
             continue
         if raw.get("annihilation"):
-            prog = raw.get("annihilation_progress")
-            if prog and prog[0] >= prog[1]:
-                note = f"本周剿灭已打满（{prog[0]}/{prog[1]}）"
-            elif prog:
-                note = f"⚠️ 剿灭只打到 {prog[0]}/{prog[1]}，本周还没满"
-            else:
-                # No progress line = no proof of anything fought (collector_maa);
-                # the gate stays open, so say exactly that.
-                note = "没读到剿灭进度，本周按没打满算，下一轮再打"
-            lines += [_row("备注", [note]), ""]
+            lines += [_row("备注", [_annihilation_note(raw)]), ""]
             continue
         did, cost, out, left, notes = _rows_for(e, finished, foot)
         if e.get("incomplete"):

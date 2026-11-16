@@ -353,6 +353,44 @@ def get(cred: Cred, path: str) -> dict:
     return _get(url, sign_headers(cred, url))
 
 
+ARKNIGHTS_INFO_PATH = "/api/v1/game/player/info"
+
+
+def arknights_uid(cred: Cred) -> str:
+    """The uid of the account's Arknights role: the binding marked isDefault, or
+    the only one. Several and none marked default is refused, not guessed - the
+    first would be another role's progress read as this one's."""
+    roles: list[dict] = []
+    for app in bindings(cred):
+        if app.get("appCode") == "arknights":
+            roles += [b for b in app.get("bindingList") or [] if b.get("uid")]
+    pick = [b for b in roles if b.get("isDefault")] or (roles if len(roles) == 1 else [])
+    if len(pick) != 1:
+        raise SklandError(f"这个账号绑了 {len(roles)} 个明日方舟角色，没有唯一的默认角色，没有读")
+    return str(pick[0]["uid"])
+
+
+def arknights_annihilation(cred: Cred) -> dict:
+    """This game-week's annihilation reward from Arknights' player info:
+    {'current', 'total', 'store_ts'} (`data.campaign.reward`, and `data.status.storeTs`,
+    the moment the game server last stored the account's data - a reading from
+    before Monday 04:00 still shows last week's figure).
+
+    Measured 2026-11-16 09:20:38 (Beijing): code 0, reward {"current": 1800,
+    "total": 1800}, storeTs 09:09:57, while MAA had found no annihilation entry in
+    the terminal at 09:02:19 and the account had spent ~89 sanity overnight."""
+    r = get(cred, f"{ARKNIGHTS_INFO_PATH}?uid={arknights_uid(cred)}")
+    if r.get("code") not in (0, None):
+        raise SklandError(f"取明日方舟账号数据失败：code={r.get('code')} {r.get('message')}")
+    data = r.get("data") or {}
+    reward = (data.get("campaign") or {}).get("reward") or {}
+    try:
+        return {"current": int(reward["current"]), "total": int(reward["total"]),
+                "store_ts": int((data.get("status") or {}).get("storeTs") or 0)}
+    except (KeyError, TypeError, ValueError):
+        raise SklandError("明日方舟账号数据里没有剿灭进度（campaign.reward）") from None
+
+
 def bindings(cred: Cred) -> list[dict]:
     """The list of bound game accounts (Endfield included)."""
     cred = _synced_cred(cred)

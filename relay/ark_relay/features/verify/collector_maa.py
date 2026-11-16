@@ -84,6 +84,11 @@ _ANNIHILATION = re.compile(r'GetFightStage: from \["Annihilation"\]')
 # "剿灭模式 : 1480 / 1800" - progress and the weekly cap. The pass is done when
 # progress reaches the cap; MAA reports Success! even when it stopped early.
 _ANNI_PROGRESS = re.compile(r"剿灭模式\s*[:：]\s*(\d+)\s*/\s*(\d+)")
+# MAA 6.22 first looks for annihilation in the terminal's to-do list and, finding none,
+# fights nothing and prints no progress line; the exact line is in
+# tests/fixtures/maa-annihilation-2026-11-16. MAA itself says the week is only "maybe"
+# done, so the line is never proof by itself (handle checks it on Skland).
+_ANNI_NO_ENTRY = re.compile(r"未在终端待办中找到剿灭入口")
 _MEDICINE = re.compile(r"已使用理智药\s*(\d+)")
 # Lines inside a drop block are bare "name : count"; anything with a log
 # timestamp has left the block.
@@ -183,8 +188,12 @@ def _maa_annihilation(text: str, out: dict) -> None:
             out["annihilation_done"] = got >= cap
         else:
             # No progress line: MAA prints it after any fight, even with the week
-            # already full, so no line means no fight. Not done.
+            # already full, so no line means no fight. Not done - also when MAA skipped
+            # because the terminal listed no annihilation (annihilation_no_entry): that
+            # only says where to look, and handle._annihilation_checked_full looks.
             out["annihilation_done"] = False
+            if _ANNI_NO_ENTRY.search(text):
+                out["annihilation_no_entry"] = True
 
 
 def _maa_fights(text: str) -> "int | None":

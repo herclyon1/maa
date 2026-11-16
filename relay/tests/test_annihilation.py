@@ -701,5 +701,132 @@ Plan text through next_plan with the machine's AUTO-MAS config
     sys.exit(1 if FAILED else 0)
 
 
+def _part_annihilation_skipped_checked_on_skland():
+    """A pass MAA skipped because the terminal listed no annihilation counts as done only on Skland's figure.
+
+2026-11-16 Beijing 09:02:19 MAA 6.22 found no annihilation entry in the terminal's to-do list,
+said the week was maybe done and fought nothing (fixtures/maa-annihilation-2026-11-16/
+MAA-05-00-29.log, the real evidence-bundle 0.log of that pass). No progress line, so both of
+the morning's MAA records went to the group as unverified (ledger #174). The week was in fact
+full: Skland read campaign.reward 1800/1800 at 09:20:38, storeTs 09:09:57, and the account had
+spent ~89 sanity while the machine was off (1/210 at 11-15 21:36, 26/210 at 09:03). Pinned here:
+
+* the parser marks the skip (annihilation_no_entry) and still says not done, no progress;
+* the 09-14 shape (no skip line) is not marked, so it never reaches Skland;
+* handle asks Skland once and backs the pass only when the figure is full and stored in
+  the pass's own game-week; stale, short, failing or missing-token readings give None and
+  the alarm goes out as before; a pass that is not a skip never calls Skland;
+* the backed pass's ledger line clears annihilation from the day's unverified items for every
+  record of the day, the routine run's included; without it annihilation stays on the list.
+    """
+    import os
+    from datetime import datetime, timedelta
+
+    os.environ.update(ARK_STATE_DIR=str(tmpdir() / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
+                      WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.verify import collector_maa
+    from ark_relay.features.alarm import handle
+    from ark_relay.core import skland
+    from ark_relay.core import ledger_report
+    from ark_relay.core.config import SERVER_TZ, RunRecord
+
+    FX = Path(__file__).parent / "fixtures" / "maa-annihilation-2026-11-16" / "MAA-05-00-29.log"
+    OLD = Path(__file__).parent / "fixtures" / "maa-annihilation-2026-09-21" / "MAA-17-30-02.log"
+
+    print("[真日志 11-16：终端里没剿灭入口，MAA 跳过]")
+    got = collector_maa.parse_maa_log(FX)
+    check("认出是剿灭", got.get("annihilation"), True)
+    check("认出是跳过", got.get("annihilation_no_entry"), True)
+    check("没有进度", got.get("annihilation_progress"), None)
+    check("MAA 的猜测不算完成", got.get("annihilation_done"), False)
+    old = collector_maa.parse_maa_log(OLD)
+    check("打过的那种不算跳过", old.get("annihilation_no_entry"), None)
+
+    MON = datetime(2026, 11, 16, 9, 0, 29, tzinfo=SERVER_TZ)
+
+    def rec(raw):
+        return RunRecord(run_id="2026-11-16/arknights/MAA-05-00-29", script="MAA", user="arknights",
+                         started=MON, finished=MON + timedelta(minutes=2), ok=True, raw=dict(raw))
+
+    class Cfg:
+        skland_token = "t"
+
+    class Eng:
+        def __init__(self, token="t"):
+            self.cfg = Cfg()
+            self.cfg.skland_token = token
+            self.marks = []
+
+            class St:
+                def mark_raw(st, day, run_id, key, value):
+                    self.marks.append((day, run_id, key, value))
+                    return True
+            self.state = St()
+
+    calls = []
+    reading = {}
+
+    def fake_login(token, d_id=""):
+        calls.append("login")
+        if reading.get("raise"):
+            raise skland.SklandError("boom")
+        return object()
+
+    def fake_anni(cred):
+        calls.append("info")
+        return dict(reading["value"])
+
+    real_login, real_anni = skland.login, skland.arknights_annihilation
+    skland.login, skland.arknights_annihilation = fake_login, fake_anni
+    try:
+        skip = {"annihilation": True, "annihilation_no_entry": True, "annihilation_done": False}
+        stored_now = int(datetime(2026, 11, 16, 9, 9, 57, tzinfo=SERVER_TZ).timestamp())
+        last_week = int(datetime(2026, 11, 16, 3, 50, tzinfo=SERVER_TZ).timestamp())
+
+        print("\n[森空岛：本周已满、数据是本周存的 → 算打满]")
+        reading.clear(); reading["value"] = {"current": 1800, "total": 1800, "store_ts": stored_now}
+        r = rec(skip)
+        full = handle._annihilation_checked_full(Eng(), r)
+        check("读到 1800/1800", (full or {}).get("current"), 1800)
+        e = Eng()
+        handle._say_annihilation_checked(e, r, full)
+        check("记在这一趟上", r.raw.get("annihilation_official", {}).get("total"), 1800)
+        check("写回账本", [m[2] for m in e.marks], ["annihilation_official"])
+        check("理智不够那条不再认它", handle._annihilation_sanity_short(e, r), None)
+
+        print("\n[其余情况一律照旧报没证据]")
+        reading["value"] = {"current": 1800, "total": 1800, "store_ts": last_week}
+        check("周一 04:00 前存的数 → 不算", handle._annihilation_checked_full(Eng(), rec(skip)), None)
+        reading["value"] = {"current": 1480, "total": 1800, "store_ts": stored_now}
+        check("1480/1800 → 不算", handle._annihilation_checked_full(Eng(), rec(skip)), None)
+        reading["value"] = {"current": 1800, "total": 1800, "store_ts": 0}
+        check("不知道哪天存的 → 不算", handle._annihilation_checked_full(Eng(), rec(skip)), None)
+        reading["raise"] = True
+        check("森空岛出错 → 不算、不抛", handle._annihilation_checked_full(Eng(), rec(skip)), None)
+        reading.clear(); reading["value"] = {"current": 1800, "total": 1800, "store_ts": stored_now}
+        check("没有凭证 → 不算", handle._annihilation_checked_full(Eng(token=""), rec(skip)), None)
+        calls.clear()
+        check("不是跳过（09-14 那种）→ 不算",
+              handle._annihilation_checked_full(Eng(), rec({"annihilation": True, "annihilation_done": False})), None)
+        check("不是跳过就不去问森空岛", calls, [])
+    finally:
+        skland.login, skland.arknights_annihilation = real_login, real_anni
+
+    print("\n[当天账本：剿灭那趟有官方读数 → 早班两趟都不再报剿灭没证据]")
+    anni_row = {"run_id": "2026-11-16/arknights/MAA-05-00-29", "script": "MAA", "ok": True,
+                "raw": {**skip, "annihilation_official": {"current": 1800, "total": 1800,
+                                                          "store_ts": stored_now,
+                                                          "read_at": "2026-11-16 09:17:15"}}}
+    routine_row = {"run_id": "2026-11-16/arknights/MAA-05-02-20", "script": "MAA", "ok": True,
+                   "raw": {"sanity_spent": 24}}
+    items = dict(ledger_report.day_unverified_items([anni_row, routine_row]))
+    check("MAA 没有没证据的项", items.get("MAA"), None)
+    bare = {**anni_row, "raw": dict(skip)}
+    items = dict(ledger_report.day_unverified_items([bare, routine_row]))
+    check("没有官方读数 → 剿灭照旧没证据", bool(items.get("MAA")), True)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_annihilation_no_progress, _part_annihilation_not_healed_by_routine, _part_annihilation_status, _part_annihilation_unreadable_none]))
+    sys.exit(run_parts([_part_annihilation_no_progress, _part_annihilation_not_healed_by_routine, _part_annihilation_status, _part_annihilation_unreadable_none,
+                        _part_annihilation_skipped_checked_on_skland]))

@@ -140,6 +140,11 @@ GAPS: "dict[tuple[str, str], tuple[str, str]]" = {
     # real runs print it, kept as fixtures/okww-1113-boss-material.log.
     ("features/verify/collector_okww.py", r"强敌领奖：(\S+?)的(\S+?) (\d+)/(\d+)"): ("fixture", _BOSS_1113),
     ("features/verify/collector_okww.py", "强敌领奖：领了一次"): ("fixture", _BOSS_1113),
+    # MAA 6.22's terminal to-do check, new 2026-11-16: only that morning's real annihilation pass
+    # printed it (ledger #174).
+    ("features/verify/collector_maa.py", "未在终端待办中找到剿灭入口"):
+        ("fixture", "only fixtures/maa-annihilation-2026-11-16 (the real evidence-bundle 0.log of "
+                    "MAA-05-00-29, 09:02:19, MAA 6.22's terminal to-do check, ledger #174)"),
     ("features/verify/outcome.py",
      "_STAMINA_TASK + '强敌领奖：(出错，[^\\\\n]*|培养目标不是[^\\\\n]*|设置读不出[^\\\\n]*|已经打了[^\\\\n]*)'"):
         ("fixture", _BOSS_1113 + "; the 04:45:59 stop is the first version's wording, the pattern reads the head"),
