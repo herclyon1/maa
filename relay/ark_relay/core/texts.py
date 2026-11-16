@@ -993,7 +993,7 @@ def relay_error_body(where: str, what: str, at: str = "") -> str:
     `at` when it was logged (errwatch.span).
 
     The record's own words are quoted only when they read as plain language;
-    a line full of class names or English is left in relay.log and said so,
+    a line full of class names or English is said by the cause it names (_said),
     never a bare 「出错」.
     """
     part = relay_part(where)
@@ -1040,8 +1040,56 @@ LOST_ALARM_QUEUE = "中继重启前还排着没送出去的群报警，这次开
 EVIDENCE_UPLOAD_FAILED = "当天日志这次没传上去，原因记在机器上的中继日志里，我们这边照着查。"
 
 
+# What a relay WARNING / ERROR quotes from Python, Windows or the network stack, said as
+# what happened. In order: the first pattern found in the line wins, so the specific ones
+# (name resolution, the file held by another program) come before the general ones.
+# 2026-11-11 05:20 (ledger #162): the game PC's line dropped, five 「停服维护公告」 warnings
+# ended in 「getaddrinfo failed」 and each reached the group as a sentence that named nothing.
+_FAULTS = (
+    (re.compile(r"getaddrinfo failed|Name or service not known|Temporary failure in name resolution"
+                r"|nodename nor servname|SuspectDnsProbeFailed|gaierror|NameResolutionError", re.I),
+     "域名解析失败，机器当时连不上外网"),
+    (re.compile(r"timed out|TimeoutError|ReadTimeout|ConnectTimeout|WinError 10060\b", re.I),
+     "连接或读写超时"),
+    (re.compile(r"Connection ?Refused|Connection ?Reset|Connection ?Aborted|RemoteDisconnected|IncompleteRead"
+                r"|EOF occurred|BrokenPipe|WinError 1005[34]\b|WinError 10061\b", re.I),
+     "对方拒绝连接，或者连上后中途断开了"),
+    (re.compile(r"WinError 32\b|being used by another process", re.I), "文件正被其他程序占用"),
+    (re.compile(r"PermissionError|WinError 5\b|Access is denied|Permission denied", re.I),
+     "没有权限读写要用的文件，或者文件正被其他程序占用"),
+    (re.compile(r"HTTP ?Error (\d{3})\b|HTTPError:? (\d{3})\b|\bstatus(?: code)?[ =:]+(\d{3})\b", re.I),
+     "对方服务器返回了状态码 {code}"),
+    (re.compile(r"FileNotFoundError|WinError [23]\b|No such file or directory", re.I), "找不到要用的文件"),
+    (re.compile(r"JSONDecodeError|Expecting value|Expecting property name|Unterminated string|Extra data", re.I),
+     "收到的数据格式是坏的"),
+    (re.compile(r"SSLError|CERTIFICATE_VERIFY_FAILED|\bSSL:", re.I), "加密连接没建立起来"),
+    (re.compile(r"URLError|urlopen error|ConnectionError|WinError 1006[45]\b|Network is unreachable", re.I),
+     "网络请求没发出去，或者没收到回答"),
+)
+# The words for a line no pattern above reads (rule 2 at the top of this module).
+RELAY_ERROR_UNREAD = "这种报错中继还不认识，原文已记日志"
+
+
+def fault_cause(what: str) -> str:
+    """The cause a relay WARNING / ERROR line names in Python's, Windows' or the network
+    stack's words, in plain Chinese; '' when it names none of _FAULTS."""
+    for pat, said in _FAULTS:
+        if m := pat.search(what or ""):
+            return said.format(code=next((g for g in m.groups() if g), ""))
+    return ""
+
+
 def _said(what: str) -> str:
-    return f"它说：{what}" if what and not plain(what) else "原话有术语没翻译，留在中继日志里"
+    """The record's own words when they hold no English: the relay's own Chinese is
+    quoted whole, its engineering words included (「AUTO-MAS 拉起后 45 秒内接口仍不通」
+    says more than any stand-in). A line with class names or English in it is never
+    quoted, in whole or in part: the cause it names is said in plain words
+    (fault_cause), and a line naming none says so outright."""
+    if what and not any(p.startswith("英文") for p in plain(what)):
+        return f"它说：{what}"
+    if cause := fault_cause(what):
+        return f"原因：{cause}，原文已记日志"
+    return RELAY_ERROR_UNREAD
 
 
 def relay_error_recurred(fixed_in: str) -> str:
@@ -1396,6 +1444,10 @@ def samples() -> list[str]:
         SKLAND_MULTI_ROLE, HAND_STARTED_NOTE, hand_fixed_note("12:05"), UPDATE_DAY_NOTE,
         skland_multi_role_body(["1234567", "7654321"]),
         relay_error_line("ark.report", "日报没发出去", "21:21:05 起共 3 次，最后一次 21:25:10"),
+        relay_error_body("ark.maintenance", "维护公告：终末地 官方公告取不到（官网：<urlopen error [Errno 11001] "
+                         "getaddrinfo failed>），这次不知道它有没有停服维护", "05:20:16"),
+        relay_error_line("ark.service", "Traceback: KeyError 'x'", "09:00:01"),
+        *(said.format(code=503) for _pat, said in _FAULTS),
         relay_error_line("ark.banners", "官方图转 PNG 失败，原样交给系统 OCR", "21:47:01", "20261005151027",
                          "游戏机缺读图组件，官方长图读不了"),
         AUTOMAS_CONTRACT, MAS_CONTRACT_CHECK,

@@ -210,6 +210,21 @@ def first_line(record: logging.LogRecord) -> str:
     return (text.splitlines() or [""])[0].strip()
 
 
+# How much of a long line's end survives the cut in _kept: an exception's own words
+# (「... getaddrinfo failed>」, 「[WinError 32] ...」) sit at the end of the line.
+CAUSE_TAIL = 60
+
+
+def _kept(line: str, n: int) -> str:
+    """`line` cut to `n` characters for the queued item. When the cut would lose the
+    cause the push says in plain words (texts.fault_cause reads it from the exception
+    appended at the end), the head is cut shorter and the line's end is kept."""
+    cut = line[:n]
+    if len(line) <= n or texts.fault_cause(cut) or not texts.fault_cause(line):
+        return cut
+    return line[:n - CAUSE_TAIL - 1] + "…" + line[-CAUSE_TAIL:]
+
+
 def strip_variable(text: str) -> str:
     """The message with what differs every time (times, numbers, paths, URLs, hex ids) blanked."""
     s = _URL.sub("<url>", text)
@@ -442,10 +457,10 @@ class ErrorKindAlert(logging.Handler):
             item = {"title": str(given[0]), "body": str(given[1])}
         elif fixed := fixed_entry(sig, self._known, self._running()):
             item = {"title": texts.relay_error_recurred(str(fixed.get("fixed_in", ""))),
-                    "where": record.name, "line": line[:300],
+                    "where": record.name, "line": _kept(line, 300),
                     "fixed_in": str(fixed.get("fixed_in", "")), "fixed_what": str(fixed.get("what", ""))}
         else:
-            item = {"title": texts.RELAY_ERROR, "where": record.name, "line": line[:160]}
+            item = {"title": texts.RELAY_ERROR, "where": record.name, "line": _kept(line, 160)}
         # Merged in a backlog by the whole first line, not its first 160 characters: two faults
         # alike that far were one queued item and the second one's tail was lost (audit C-05).
         item["key"] = json.dumps([item.get("title"), item.get("body"), item.get("where"), line], ensure_ascii=False)

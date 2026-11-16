@@ -233,7 +233,8 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
         check("INFO 不报", any("普通信息" in b for _, b, _ in n.sent), False)
         check("标题是 texts.RELAY_ERROR", [t for t, _, _ in n.sent], [texts.RELAY_ERROR] * 2)
         check("是报警（alert=True）", [a for _, _, a in n.sent], [True, True])
-        check("正文说出在哪一部分、原话有术语就说留在日志里", "主程序" in n.sent[0][1] and "留在中继日志里" in n.sent[0][1])
+        check("正文说出在哪一部分、中文原话照抄（里面有我们自己的术语也抄）",
+              "主程序" in n.sent[0][1] and "它说：AUTO-MAS 拉起后 45 秒内接口仍不通" in n.sent[0][1])
         check("正文带时刻", datetime.now(SERVER_TZ).strftime("%H:") in n.sent[0][1])
         check("正文不再说「只报这一次」", any("只报这一次" in b or "只记进日报" in b for _, b, _ in n.sent), False)
         lg.error("AUTO-MAS 拉起后 %.0f 秒内接口仍不通", 60)
@@ -267,7 +268,9 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
         lg.warning("鸣潮 3.7 版本活动日历读了 78 行，没找到日期")          # no failure word: still a WARNING
         _wait(n, 4)
         check("四条 WARNING 四条推送", len(n.sent), 4)
-        check("带异常名的那条把异常写进去（原话有术语，留日志）", "留在中继日志里" in n.sent[2][1])
+        check("带异常名的那条说的是原因，不抄英文、不说半截话（账本 #162）",
+              ("中途断开" in n.sent[2][1], "ConnectionResetError" in n.sent[2][1], "留在中继日志里" in n.sent[2][1]),
+              (True, False, False))
         check("人话原样说出来", "它说：鸣潮 3.7 版本活动日历读了 78 行，没找到日期" in n.sent[3][1])
         rows = faults(B)
         check("日报记下种类和次数", [(r["where"], r["count"], r["pushed"]) for r in rows],
@@ -760,6 +763,18 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
     check("原话是人话时照抄", "它说：日报没发出去" in texts.relay_error_body("ark.report", "日报没发出去", "10:47"))
     check("正文是人话（两种样例）", [texts.plain(x) for x in (texts.relay_error_body("ark.service", "ConnectionRefusedError: [WinError 10061]", "21:21"), texts.relay_error_body("ark.report", "日报没发出去", "10:47"))], [[], []])
     check("正文不再说「同一次开机只报这一条」", "同一次开机只报这一条" in texts.relay_error_body("ark.report", "x", ""), False)
+
+    print("\n[ledger #162: a long line cut for the queue keeps the cause its end names]")
+    _long = "维护公告：" + "很长的一段说明" * 30 + " ｜ URLError: <urlopen error [Errno 11001] getaddrinfo failed>"
+    _cut = errwatch._kept(_long, 160)
+    check("长行截到 160 字以内，末尾的原因还在", (len(_cut) <= 160, texts.fault_cause(_cut)),
+          (True, texts.fault_cause(_long)))
+    check("开头照旧是原话的开头", _cut.startswith("维护公告：很长的一段说明"), True)
+    check("截出来的那条推送说的是原因", "域名解析失败" in texts.relay_error_body("ark.maintenance", _cut, "05:20:16"), True)
+    check("短行原样", errwatch._kept("日报没发出去", 160), "日报没发出去")
+    check("开头就读得出原因的长行照旧只取开头", errwatch._kept("TimeoutError: timed out " + "x" * 400, 160),
+          ("TimeoutError: timed out " + "x" * 400)[:160])
+    check("读不出原因的长行照旧只取开头", errwatch._kept("长" * 400, 160), "长" * 160)
 
     for x in HANDLERS:
         drop(x)
