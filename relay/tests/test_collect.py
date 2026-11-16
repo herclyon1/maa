@@ -454,7 +454,8 @@ zh_cn locale.
           [p.read_text(encoding="utf-8") for p in _aside], ['{"AutoCollectRoute15": ["2026-09-11"'])
 
 
-def _part_collect_blocked():
+def _part_collect_blocked():  # noqa: C901
+    import urllib.error
     """A gathering route that hit 「战斗中无法使用」 is booked as not gathered and re-run (ledger #29).
 
 Route 10 (重红柱状菌) walks past a relay device; when a fight is on, the game says

@@ -417,7 +417,9 @@ def daily_lines(day: str, log_text: str) -> list[str]:
     if errors:
         hhmm, name, msg = errors[0]
         part = texts.relay_part(name)
-        said = texts._said(msg[:240])
+        said = (f"它说：{msg[:80]}" if not texts.plain(msg[:80])
+                else f"原因：{c}，原文已记日志" if (c := texts.fault_cause(msg[:240]))
+                else texts.RELAY_ERROR_UNREAD)
         out.append(f"· 中继今天报错 {len(errors)} 条，第一条 {hhmm} 出在「{part}」：{said}")
     else:
         out.append("· 中继今天没有报错")

@@ -1105,11 +1105,8 @@ def fault_cause(what: str) -> str:
 
 
 def _said(what: str) -> str:
-    """The record's own words when they hold no English: the relay's own Chinese is
-    quoted whole, its engineering words included (「AUTO-MAS 拉起后 45 秒内接口仍不通」
-    says more than any stand-in). A line with class names or English in it is never
-    quoted, in whole or in part: the cause it names is said in plain words
-    (fault_cause), and a line naming none says so outright."""
+    """The record's own words when they carry no raw English: quoted whole. Otherwise map
+    the fault cause into plain Chinese (fault_cause), or note that it is recorded in the log."""
     if what and not any(p.startswith("英文") for p in plain(what)):
         return f"它说：{what}"
     if cause := fault_cause(what):

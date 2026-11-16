@@ -249,7 +249,7 @@ tells on itself instead.
     lines = selfcheck.daily_lines("2026-09-17", log)
     check("两行", len(lines), 2)
     check("错误计数 2、第一条 10:48、出在主程序", "报错 2 条" in lines[0] and "10:48" in lines[0] and "主程序" in lines[0])
-    check("原话有术语就不照抄", "留在" in lines[0] or "见中继日志" in lines[0])
+    check("原话有术语就不照抄", any(k in lines[0] for k in ("留在", "见中继日志", "已记日志")))
     check("开机两次：重开后起来了 24 秒；重开后还是没应答", "24 秒" in lines[1] and "还是没应答" in lines[1])
     lines2 = selfcheck.daily_lines("2026-09-18", log)
     check("没报错就说没报错", lines2[0], "· 中继今天没有报错")
