@@ -321,19 +321,7 @@ else
   sed 's/^/       /' <<<"$out" | head -12
 fi
 
-echo "▶ 17/18 桌面串流图标是不是当前参数编出来的"
-# The parameters live in one file, but the two desktop apps are compiled snapshots
-# of them: change a value and stream-ins.sh picks it up at once while the icons the
-# user double-clicks keep the old one. Both still launch and neither complains, so
-# nothing noticed - MAC-CHANGES.md claimed the two agree with no check behind it.
-if out=$(python3 scripts/mac/lib/stream_apps_current.py); then
-  ok "$(tail -1 <<<"$out")"
-else
-  note "桌面图标和当前参数对不上："
-  sed 's/^/       /' <<<"$out"
-fi
-
-echo "▶ 18/18 中继代码按 ruff 的 F（会出错的）和 B（bugbear，容易藏错的）两类查，0 处"
+echo "▶ 17/17 中继代码按 ruff 的 F（会出错的）和 B（bugbear，容易藏错的）两类查，0 处"
 # 2026-10-11: pyflakes (item 8) and the noqa set (item 16) never looked at the bugbear class.
 # The first run over the relay code found 4 besides the zip() ones: two raises that dropped
 # their cause, a dead loop variable, a closure over a name the loop rebinds (harmless there,

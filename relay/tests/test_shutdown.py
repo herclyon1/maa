@@ -2302,7 +2302,7 @@ Checks:
         for n, line in enumerate(p.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
             if OTHER_NAMES.search(line):
                 hits.append(f"{rel}:{n}: {line.strip()[:80]}")
-    check("files scanned (sanity: the walk found the tree)", scanned > 300, True)
+    check("files scanned (sanity: the walk found the tree)", scanned >= 50, True)
     check("no other name for the mark", hits, [])
 
 

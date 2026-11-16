@@ -1,45 +1,30 @@
 # Documentation index
 
-Six documents and one list. One line each, saying which question that document answers.
+Rule: **a newly added document must be registered here**; gate 12 of `scripts/mac/lint-repo.sh` checks it.
 
-Rule: **a newly added document must be registered here**; gate 12 of
-`scripts/mac/lint-repo.sh` checks it. A document with no entry point does not
-exist - the next session will never read it, so writing it was wasted.
-
-On 2026-11-17 the other 48 documents (dated surveys, plans, per-game notes, the phone
-page's writing rules) were removed together with the phone page `web/`. They are in git
-history: `git show 1c8b5828:docs/<NAME>.md`, and `git show 1c8b5828:docs/README.md` for the
-index as it was. Comments in the code and the tests still point at some of them by name
-(PITFALLS.md, CODE-HISTORY.md, STATE-MODEL.md, SKLAND-API.md, ...); read those from history.
-
-## The documents
+## Documents
 
 | Document | Question it answers |
 |---|---|
-| [../CLAUDE.md](../CLAUDE.md) | Standing orders, the tool table; read this before every session |
-| [OPERATIONS.md](OPERATIONS.md) | The operations master document: the schedule, power on/off, diagnostic paths |
-| [NOTIFICATIONS.md](NOTIFICATIONS.md) | Which notifications exist, when they are sent, what they look like |
-| [CONFIG.md](CONFIG.md) | The config inventory: environment variables, each program's settings, and which copy actually takes effect |
-| [AUTOMAS.md](AUTOMAS.md) | AUTO-MAS: its screens, its configuration, and driving it without a UI |
-| [BACKLOG.md](BACKLOG.md) | Things promised and not yet done |
+| [../CLAUDE.md](../CLAUDE.md) | Standing orders and the active tool table |
+| [OPERATIONS.md](OPERATIONS.md) | Schedule, power on/off, and diagnostic paths |
+| [NOTIFICATIONS.md](NOTIFICATIONS.md) | Notification titles, channels, and triggers |
+| [CONFIG.md](CONFIG.md) | Environment variables and effective config locations |
+| [AUTOMAS.md](AUTOMAS.md) | AUTO-MAS configuration and API reference |
+| [BACKLOG.md](BACKLOG.md) | Tracked follow-ups |
 
-`UNMERGED-REVIEWED.txt` is the list `scripts/mac/deploy-relay.sh` step 0.6 reads
-(`scripts/mac/lib/unmerged_fixes.py`): relay fixes on a branch that were looked at and are
-not going into main.
+`UNMERGED-REVIEWED.txt` lists branch commits reviewed for `scripts/mac/deploy-relay.sh` step 0.6 (`scripts/mac/lib/unmerged_fixes.py`).
 
-## Scripts with no other entry point
+## Internal Windows / CI entry scripts
 
-Gate 12 also wants every `scripts/mac/*.sh`, `scripts/windows/*.py` and `scripts/windows/*.bat`
-named in `CLAUDE.md` or here. These were named only in documents that are gone:
-
-| Script | What it does |
+| Script | Role |
 |---|---|
-| `scripts/mac/confirm-off.sh` | Is the game machine powered off right now: prints measured evidence, not Tailscale's opinion |
-| `scripts/mac/pull-replay.sh` | Pulls one day's AUTO-MAS run records back as a replay sample (redacted, with a draft `expected.json`) |
-| `scripts/windows/smoke.py` | The deploy's smoke test on the machine: imports every relay module with the machine's Python and reads back the log the service wrote after its restart, before "deployed" is printed |
-| `scripts/windows/copilot-run.py` | Runs a MAA copilot (auto-battle) file through MaaCore without the GUI |
-| `scripts/mac/make-stream-apps.sh` | Builds the desktop streaming launchers from `lib/moonlight-params.sh` (lint gate 17 checks they are current) |
-| `scripts/mac/make-cloud-genshin-app.sh` | Builds `~/Desktop/云原神.app` (turns WARP on, opens the cloud-game page) |
-| `scripts/mac/cn-route-pf.sh` | `sudo ... on / off / status`: rewrites the source address of UDP to Chinese ranges so it goes through the Tailscale tunnel |
-| `scripts/mac/proxy-monitor.sh` | Shows whether cloud Genshin's traffic goes through the ins tunnel while the game is running |
-| `scripts/mac/check-shell.sh` | Checked the phone page's shell stamp (`index.html` / `sw.js`); the page is gone, the script is left for whoever decides its fate |
+| `scripts/windows/deploy.py` | Unpacks and verifies legacy relay tar streams during `deploy-relay.sh` |
+| `scripts/windows/deploy_watch.py` | Watches `relay.log` after restart to confirm boot self-check passes |
+| `scripts/windows/dispatch_guard.py` | Busy/idle guard shared by `run-one.sh`, `okww-task.sh`, and `estop.sh` |
+| `scripts/windows/machinecheck_wait.py` | Waits for machinecheck rows to settle after deploy |
+| `scripts/windows/okww-landed.py` | Verifies OK-WW settings took effect (`okww-check.sh`) |
+| `scripts/windows/pkg_deploy.py` | Stages version folders for installed relay (`deploy-pkg.sh`) |
+| `scripts/windows/run-probe.py` | Live run probe on the game PC (`watch-run.sh`) |
+| `scripts/windows/skip-shutdown.bat` | Desktop toggle writing `skip_next_shutdown` into `StateStore` |
+| `scripts/windows/smoke.py` | Post-deploy import and boot-line smoke check on the game PC |

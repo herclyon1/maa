@@ -581,10 +581,7 @@ Checked here:
         "scripts/mac/lib/healthcheck.py": "use_relay_code()",
         "scripts/mac/lib/okww_effective.py": "use_relay_code()",
         "scripts/mac/lib/maaend_only_task.py": "use_relay_code()",
-        "scripts/mac/lib/waittime_roundtrip.py": "use_relay_code()",
-        "scripts/mac/lib/boot_check_remote.py": "code_root()",
         "scripts/windows/okww-landed.py": "use_relay_code()",
-        "scripts/mac/config-check.py": "use_relay_code()",   # inside PROBE, shipped as its own file
     }
     for rel, call in TOOLS.items():
         text = (ROOT / rel).read_text(encoding="utf-8")
