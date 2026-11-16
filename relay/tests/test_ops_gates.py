@@ -288,7 +288,7 @@ runpy.run_path(sys.argv[0], run_name="__main__")
         check(f"{name}: winrun dry run lets it through", (r.returncode, "dry-run" in r.stdout), (0, True))
 
     print("[the format matches the relay's writer, when it is on this branch]")
-    writer = ROOT / "relay" / "ark_relay" / "core" / "techlog.py"
+    writer = ROOT / "relay" / "ark_relay" / "core" / "statestore.py"
     if writer.is_file():
         src = writer.read_text(encoding="utf-8")
         check("RED_LINE", f'RED_LINE = re.compile(r"{tool.RED_LINE.pattern}")' in src, True)
@@ -296,7 +296,7 @@ runpy.run_path(sys.argv[0], run_name="__main__")
         m = re.search(r'return f"\{DONE\} \{item_id\} (.*)"', src)
         check("handled_line", m and tool.handled_line("X", "Y") == f"✅ X {m.group(1)}".replace("{commit}", "Y"), True)
     else:
-        print("  - relay/ark_relay/core/techlog.py is not on this branch yet; compared once it lands")
+        print("  - relay/ark_relay/core/statestore.py is not on this branch yet; compared once it lands")
 
     print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
     sys.exit(1 if fails else 0)
@@ -426,7 +426,7 @@ Checked two ways: the names are not defined, and no relay or scripts source call
 
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
-    from ark_relay.core import desktop, notify, techlog
+    from ark_relay.core import desktop, notify, statestore as techlog
 
 
     print("[没人调用的辅助已删掉]")
@@ -624,7 +624,7 @@ def _part_release_notes():
 def _part_replay_gate():
     """Deploy gate E1: the offline replay of outcome / errwatch over the real 2026-10-06 logs.
 
-Before a deploy, ``scripts/mac/deploy-relay.sh`` runs ``ark_relay.features.selfcheck.replay`` over
+Before a deploy, ``scripts/mac/deploy-relay.sh`` runs ``ark_relay.features.selfcheck`` over
 the two checked-in fixtures - the OK-WW weekly-boss run whose update note once
 matched 「结晶波片不足」, and the relay.log fragment holding the banner calendar
 #2 and shutdown snapshot false alarms. This test pins what the replay must see:
@@ -638,8 +638,8 @@ genuine ERROR still pushes.
 
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
-    from ark_relay.features.verify import outcome
-    from ark_relay.features.selfcheck import replay
+    from ark_relay.features import outcome
+    from ark_relay.features import selfcheck as replay
 
     FIX = fx_dir(Path(__file__), "fixtures")
     OKWW = (FIX / "okww-1006-run.log").read_text(encoding="utf-8")
@@ -679,8 +679,8 @@ genuine ERROR still pushes.
     # The producers run again under the real errwatch handler, so breaking one of the
     # fixes brings its false alarm back into the replay (until 2026-10-13 the quiet lines
     # were a hand list of wordings and every one of these still passed).
-    from ark_relay.features.banners import banners as _hub
-    from ark_relay.features.weekly import annihilation as _ann
+    from ark_relay.features import banners as _hub
+    from ark_relay.features import annihilation as _ann
 
     _cal = _hub._wuwa_calendar_start
     _hub._wuwa_calendar_start = lambda n, p, now, end, ri, notes, tr: _cal(n, p, now, end, ri, {} if notes is None else notes, tr)
@@ -709,7 +709,7 @@ genuine ERROR still pushes.
         replay.main([str(FIX / "relay-1006-false-alarms.log")]),
         setattr(_ann, "_going_down", _down))[1], 1)
     check("the replay leaves no handler on the ark logger",
-          [type(h).__name__ for h in __import__("logging").getLogger(__import__("ark_relay.features.alarm.errwatch", fromlist=["ARK"]).ARK).handlers], [])
+          [type(h).__name__ for h in __import__("logging").getLogger(__import__("ark_relay.features.errwatch", fromlist=["ARK"]).ARK).handlers], [])
 
     print("[a genuine ERROR still pushes; INFO / diag / traceback lines do not]")
     check("a real ERROR line pushes",
@@ -1043,7 +1043,7 @@ origin/main is the baseline commit:
     deploy = (ROOT / "scripts/mac/deploy-relay.sh").read_text(encoding="utf-8")
     gate = deploy.find("lib/unmerged_fixes.py")
     check("deploy-relay.sh runs the gate before the pre-deploy replay",
-          0 < gate < deploy.find("ark_relay.features.selfcheck.replay"), True)
+          0 < gate < deploy.find("ark_relay.features.selfcheck"), True)
     check("a failed gate exits the deploy", "exit 1" in deploy[gate:gate + 600], True)
 
     if fails:

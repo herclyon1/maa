@@ -24,8 +24,8 @@ use_relay_code()
 
 from ark_relay.core.config import SERVER_TZ                      # noqa: E402
 from ark_relay.core.engine import Engine                          # noqa: E402
-from ark_relay.features.echofarm import echofarm                  # noqa: E402
-from ark_relay.features.makeup import collect_retry, makeup       # noqa: E402
+from ark_relay.features import echofarm                  # noqa: E402
+from ark_relay.features import collect_retry, makeup       # noqa: E402
 
 # The relay's tick is about a minute ("下一个闹钟"); two give the shutdown decision that
 # debug mode was holding back a turn to start what it was waiting to do.

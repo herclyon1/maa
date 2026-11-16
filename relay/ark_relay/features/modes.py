@@ -1,0 +1,712 @@
+"""Debug mode (调试模式) and skip mode (跳过模式) - the operator's two levers
+over what should NOT happen.
+
+Debug mode  The machine is being worked on: boot it, farm nothing, and above
+            all do not power it off. One file carries the whole state - the
+            moment the mode stops holding - so it survives restarts, applies
+            identically in local and service mode, and expires on its own
+            instead of relying on anyone remembering to turn it off. While it
+            holds, the engine will not power the machine off (the idle
+            checkpoint included) and will not raise missed-run alarms.
+
+            It ends ten minutes before the next scheduled power-on, not at
+            midnight: "leave it alone tonight" means until the next cycle is
+            about to start, and midnight falls in the middle of that. The ten
+            minutes let the ordinary cycle start with the mode already gone.
+
+Skip mode   One queue sits out one occasion. The first tick that sees the
+            flag disables that queue inside AUTO-MAS, and a restore marker
+            re-enables it once the occasion is over, so a skip does not
+            become a permanent stop. The queue's own times are
+            captured into the marker at disable time, because a disabled queue
+            disappears from plan.schedule and can no longer answer "when was
+            I due".
+"""
+from __future__ import annotations
+
+import sys as _sys
+
+import logging
+import threading
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import os
+
+from ark_relay.core import config as names, texts
+
+from ark_relay.core.config import SERVER_TZ
+
+log = logging.getLogger("ark.modes")
+
+# How long past the skipped queue's last time of day the restore may happen.
+# Generous on purpose: restoring while the occasion is arguably still in
+# progress would defeat the skip.
+RESTORE_GRACE_MIN = 30
+
+# Scheduled power-on times, server clock. The relay cannot read these from
+# anywhere: the morning one is a Mi Home plug cutting and restoring mains so
+# the board's "restore on AC" boots it, the evening one is the board's own RTC
+# alarm. Neither leaves a record on the machine. Override with ARK_BOOT_TIMES
+# ("HH:MM,HH:MM") if the plug or the BIOS alarm is moved.
+BOOT_TIMES = tuple(
+    s.strip() for s in os.environ.get("ARK_BOOT_TIMES", "08:40,21:20").split(",")
+    if s.strip())
+# How far ahead of a power-on debug mode releases, so the ordinary cycle starts
+# with the mode already gone rather than racing it.
+DEBUG_LEAD_MIN = 10
+# A power-on this close is the cycle already under way, not the next one. Asked
+# at 21:00 for "leave it alone tonight", releasing at 21:10 - ten minutes
+# before the 21:20 wake - would be an absurd reading of the request; the run it
+# is meant to cover has not even started. Comfortably longer than a queue
+# (~85 min) so the whole cycle is inside it.
+CURRENT_CYCLE_MIN = 150
+
+
+def next_boot(now: datetime, min_ahead_min: int = 0) -> datetime:
+    """The next scheduled power-on more than `min_ahead_min` away."""
+    now = now.astimezone(SERVER_TZ)
+    floor = now + timedelta(minutes=min_ahead_min)
+    cands = []
+    for day in (0, 1, 2):
+        for hhmm in BOOT_TIMES:
+            try:
+                hh, mm = (int(x) for x in hhmm.split(":"))
+            except ValueError:
+                continue
+            cands.append((now + timedelta(days=day)).replace(
+                hour=hh, minute=mm, second=0, microsecond=0))
+    future = sorted(c for c in cands if c > floor)
+    # No parseable entry at all -> fall back to tomorrow, which keeps the mode
+    # on rather than dropping it. Wrong in the safe direction.
+    return future[0] if future else now + timedelta(days=1)
+
+
+def _store(state_dir: Path):
+    from ark_relay.core.statestore import StateStore  # noqa: PLC0415 - avoids an import cycle
+    return StateStore(state_dir)
+
+
+def skip_armed(state_dir: Path) -> bool:
+    """Whether the one-shot 「下次跑完不关机」 mark is armed and not yet spent.
+
+    The control for a **human**: the phone page and the desktop
+    `中继关机开关.bat` both set it. It is a one-time mark, not a state, and it
+    carries no time. What happens to it (shutdown._maybe_shutdown, take_skip):
+
+    * It is spent at the first shutdown attempt that passes every gate, i.e.
+      when a scheduled 早班/晚班 queue run has finished. Spending it records that
+      shutdown occasion as skipped (mark_shutdown_skipped with the occasion's
+      key), so the machine does not power off.
+    * After that the periodic re-checks of the same occasion stop at
+      decide()'s "skipped" gate and never power off; the machine stays on until
+      the NEXT queue run finishes, and that one shuts down as usual.
+    * Once spent there is nothing left to cancel. Pulling it back
+      (set_skip_shutdown off) only means something before it is spent.
+    * Arming it again while the current occasion is already skipped carries it
+      to the next queue run (decide() stops at "skipped" before take_skip is
+      reached), so that run does not shut down either.
+
+    How it differs from debug mode: debug mode carries an expiry and is used
+    during maintenance; this mark has no time at all.
+    The user, 2026-08-31: 「你给一个人类好去调这个模式的方法，独立于你的。」
+    His 2026-10-11 15:25 correction of our misreading is quoted in
+    tests/test_shutdown.py.
+    """
+    return bool(_store(state_dir).get("modes", "skip_next_shutdown"))
+
+
+def set_skip_shutdown(state_dir: Path, on: bool) -> tuple[bool, str]:
+    """Arm the 「下次跑完不关机」 mark, or pull back one that is not yet spent.
+
+    Shared by the phone order and the desktop switch. The receipts reach the
+    user, so they say which run is meant. Turning it off cannot tell "never
+    armed" from "already spent" (there is no engine here), so the receipt for
+    that case is worded to be true either way. See skip_armed for the full
+    behaviour.
+    """
+    store = _store(state_dir)
+    if on:
+        store.set("modes", "skip_next_shutdown", True)
+        # One short sentence (App review 10-14: three lines said what the App's switch row says in one);
+        # it keeps the mark's one name, the run and 「只管一次」 (test_shutdown).
+        return True, "已记下「下次跑完不关机」：下一趟早班/晚班跑完不关机，只管一次"
+    if store.get("modes", "skip_next_shutdown"):
+        store.pop("modes", "skip_next_shutdown")
+        return True, "已撤回还没用上的「下次跑完不关机」：下一趟早班/晚班跑完照常关机"
+    return True, "没有还没用上的「下次跑完不关机」可撤回（没按过，或已经用掉了）；下一趟早班/晚班跑完照常关机"
+
+
+def take_skip(state_dir: Path) -> bool:
+    """Spend the 「下次跑完不关机」 mark; True if it was armed.
+
+    Called once per occasion, after every shutdown gate has passed (the queue
+    run has finished). The caller then records the occasion as skipped, so the
+    re-checks that follow do not power off; the next queue run shuts down as
+    usual. Afterwards the mark is gone - there is nothing left to cancel.
+    """
+    store = _store(state_dir)
+    if not store.get("modes", "skip_next_shutdown"):
+        return False
+    store.pop("modes", "skip_next_shutdown")
+    return True
+
+
+
+
+def shutdown_skipped(state_dir: Path) -> str:
+    """Key of the shutdown occasion that has been skipped; '' means none.
+
+    The key is shutdown._shutdown_key: the day plus its ledger entry count, so
+    it changes the moment another queue run finishes. Three things write it:
+
+    * debug mode, at the first attempt that passes every other gate (a scheduled
+      shift has just finished) while it is active (shutdown._maybe_shutdown,
+      verdict "debug"); while no such opportunity comes up it records nothing;
+    * spending the 「下次跑完不关机」 mark (take_skip, in shutdown._maybe_shutdown);
+    * pressing 「下次跑完不关机」 inside the relay's own 60-second power-off
+      countdown (shutdown.abort_countdown).
+
+    While the current key equals this value, decide() answers "skipped" whenever
+    every other gate passes, and the machine stays on - no catch-up shutdown when debug mode
+    expires, none on the periodic re-checks after the mark was spent. The next
+    queue run gives a new key and normal shutdown resumes.
+
+    One thing clears it: turning debug mode off by hand (set_debug off=True),
+    which means "maintenance is over, back to normal" - a skip debug mode wrote itself
+    (stored with DEBUG_SKIP_TAG) always, any skip when the order says so (release_skip:
+    the phone's / order-now.sh's debug_mode off). Through dispatch_guard's test-off
+    an occasion skipped by the 「下次跑完不关机」 mark or by a press inside the
+    countdown stays skipped: test-off turns debug mode off right after a test (10-13:
+    the test after a spent mark would otherwise end in a power-off). A natural debug
+    expiry clears nothing.
+
+    The user, 2026-08-31: 「我开了调试模式是指把一次队列的中继关机指令跳过，
+    而不是中继一直尝试关机，要不然人类没办法使用这个电脑。」
+    """
+    return str(_store(state_dir).get("modes", "shutdown_skipped") or "").split(DEBUG_SKIP_TAG)[0]
+
+
+# Appended to the stored key when debug mode wrote the skip (set_debug off clears only those).
+# A value without it - the mark, a press inside the countdown, or any older build - is kept.
+DEBUG_SKIP_TAG = "|debug"
+
+
+def mark_shutdown_skipped(state_dir: Path, key: str, by_debug: bool = False) -> None:
+    _store(state_dir).set("modes", "shutdown_skipped", key + (DEBUG_SKIP_TAG if by_debug else ""))
+
+
+
+
+def debug_until(state_dir: Path) -> str:
+    """The moment debug mode holds through, '' when off.
+
+    "YYYY-MM-DD HH:MM". A bare "YYYY-MM-DD" (the older format) is still
+    accepted and means end of that day; reading it as malformed would turn the
+    mode off under someone who had just switched it on.
+    """
+    return str(_store(state_dir).get("modes", "debug_until") or "")
+
+
+def debug_active(state_dir: Path, now: datetime | None = None) -> bool:
+    until = debug_until(state_dir)
+    if not until:
+        return False
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    try:
+        end = datetime.strptime(until, "%Y-%m-%d %H:%M").replace(tzinfo=SERVER_TZ)
+    except ValueError:
+        try:                                   # legacy: a bare date
+            end = (datetime.strptime(until, "%Y-%m-%d").replace(tzinfo=SERVER_TZ)
+                   + timedelta(days=1))
+        except ValueError:
+            # Anything unparseable fails towards "debug on": the operator
+            # explicitly asked for the machine to be left alone, and the wrong
+            # failure here powers off a box someone is working on.
+            return True
+    return now < end
+
+
+def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
+              now: datetime | None = None, release_skip: bool = False) -> tuple[bool, str]:
+    """Hold until ten minutes before a scheduled power-on.
+
+    `cycles=1` - the default and what "leave it alone tonight" means - releases
+    at the next power-on. `cycles=2` skips one more, and so on. Counting cycles
+    rather than days is the whole point: the boundary that matters is the start
+    of the next run, and midnight falls in the middle of the night with the
+    machine still being worked on.
+    """
+    store = _store(state_dir)
+    if off:
+        store.pop("modes", "debug_until")
+        # Turning it off by hand means "maintenance is over, back to normal", so
+        # the opportunity debug mode swallowed is cleared along with it; otherwise
+        # the machine idles powered on until the next queue finishes. **A
+        # natural expiry does not clear it**: that is the "skip this one time"
+        # in shutdown_skipped. Only debug mode's own skip is released: one the
+        # spent 「下次跑完不关机」 mark recorded stays (see shutdown_skipped).
+        # `release_skip` (the debug_mode order from the phone or order-now.sh, i.e. a person
+        # saying "done, back to normal") releases a skip the spent skip-next-shutdown mark
+        # recorded too, so the next re-check powers off: 10-14 the mark kept the PC on for
+        # a deploy after the morning shift, and without this it would have idled until the
+        # evening shift, which the owner rejected (10-14 10:3x Tokyo).
+        # dispatch_guard's test-off passes nothing and keeps releasing only debug mode's
+        # own skip (8bc5e2f6: a test after a spent mark must not end in a power-off).
+        skipped = str(store.get("modes", "shutdown_skipped") or "")
+        if skipped and (release_skip or skipped.endswith(DEBUG_SKIP_TAG)):
+            store.pop("modes", "shutdown_skipped")
+        # Debug mode stops no queue, so there is nothing for the reader to put back: the old
+        # 「（队列若被停用需另行恢复）」 asked for an action it did not name (App review 10-14).
+        return True, "调试模式已关闭"
+    try:
+        cycles = max(1, int(cycles))
+    except (TypeError, ValueError):
+        return False, f"轮数不是整数: {cycles!r}"
+    at = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    # The first hop skips a power-on that is already imminent; later hops are
+    # plain "the one after that".
+    boot = next_boot(at, CURRENT_CYCLE_MIN)
+    for _ in range(cycles - 1):
+        boot = next_boot(boot)
+    end = boot - timedelta(minutes=DEBUG_LEAD_MIN)
+    # Atomic write: by design a torn value falls towards "debug is on", i.e. the
+    # machine will not power itself off. That fallback is deliberate, but it must
+    # not be triggered by a power cut - the write of state.json is itself atomic.
+    store.set("modes", "debug_until", end.strftime("%Y-%m-%d %H:%M"))
+    return True, (f"🔧 调试模式已开启，至 {end:%m-%d %H:%M}"
+                  f"（下次预定开机 {boot:%m-%d %H:%M} 前 {DEBUG_LEAD_MIN} 分钟）："
+                  "不关机。注意：要让机器什么都不刷，还需停用相应队列。")
+
+
+# ---------- skip mode (跳过模式) ----------
+
+def _restore_markers(state_dir: Path) -> list:
+    """Skip mode's restore markers: per disabled queue, the day and its last time slot.
+
+    One queue out is stored as a single dict - the shape every earlier build
+    writes and reads, so a rollback still restores it - and two or more as a
+    list of dicts (the page has one skip switch per queue).
+    Entries are returned unchecked; _maybe_restore reports and drops bad ones.
+    """
+    d = _store(state_dir).get("queues", "skip_restore")
+    if isinstance(d, dict):
+        return [d] if d else []
+    return list(d) if isinstance(d, list) else []
+
+
+# Phone commands (unskip, skip_today) run on the phone-mailbox thread while
+# process_skip runs on the engine loop, and both rewrite whole list values.
+# Every read-modify-write of skip_day / skip_restore goes through this lock, so
+# a skip pressed while a queue is being disabled is not written over.
+_SKIP_LOCK = threading.RLock()
+
+
+def _drop_markers(state_dir: Path, gone: list) -> None:
+    with _SKIP_LOCK:
+        _save_markers(state_dir, [m for m in _restore_markers(state_dir) if m not in gone])
+
+
+def _drop_day_queue(store, day: str, queue: str) -> None:
+    with _SKIP_LOCK:
+        _set_day_queues(store, day, [q for q in _day_queues(store, day) if q != queue])
+
+
+def _save_markers(state_dir: Path, markers: list) -> None:
+    # Atomic set of the whole value: a torn marker strands a queue disabled.
+    store = _store(state_dir)
+    if not markers:
+        store.pop("queues", "skip_restore")
+    else:
+        store.set("queues", "skip_restore", markers[0] if len(markers) == 1 else markers)
+
+
+def _marker_queue(info) -> str | None:
+    if not isinstance(info, dict):
+        return None
+    return names.canonical(str(info.get("queue") or names.MORNING))
+
+
+def _day_queues(store, day: str) -> list[str]:
+    """Queues flagged to sit out `day`, not yet engaged.
+
+    Same storage rule as the markers: one name is a plain string (what earlier
+    builds wrote; an empty string still means the default queue), two or more
+    a list.
+    """
+    v = store.get("queues", f"skip_day:{day}")
+    if v is None:
+        return []
+    if not isinstance(v, list):
+        return [names.canonical(str(v).strip() or names.MORNING)]
+    out: list[str] = []
+    for x in v:
+        q = names.canonical(str(x).strip())
+        if q and q not in out:
+            out.append(q)
+    return out
+
+
+def _set_day_queues(store, day: str, queues: list[str]) -> None:
+    key = f"skip_day:{day}"
+    if not queues:
+        store.pop("queues", key)
+    else:
+        store.set("queues", key, queues[0] if len(queues) == 1 else list(queues))
+
+
+def add_day_queue(state_dir: Path, day: str, queue: str) -> None:
+    """Flag `queue` to sit out `day`, keeping any queue already flagged."""
+    store = _store(Path(state_dir))
+    with _SKIP_LOCK:
+        have = _day_queues(store, day)
+        if queue not in have:
+            _set_day_queues(store, day, [*have, queue])
+
+
+def process_skip(state_dir: Path, automas_dir: Path | None,
+                 now: datetime | None = None) -> list[str]:
+    """Advance the skip state machine by one step. Returns operator messages.
+
+    Cheap when idle - two existence checks - so the engine can call it every
+    tick and the flag takes effect at the first tick after it is written,
+    which on a boot means before the queue's scheduled time.
+    """
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    state_dir = Path(state_dir)
+    out: list[str] = []
+    out.extend(_maybe_restore(state_dir, automas_dir, now))
+    out.extend(_maybe_engage(state_dir, automas_dir, now))
+    return out
+
+
+def _is_day(text: str) -> bool:
+    """Whether that part of the key is a YYYY-MM-DD date.
+
+    Other features keep their keys in this same section, among them
+    skip_next_shutdown (the one-shot 「下次跑完不关机」 mark). The
+    stale-marker cleanup accepts only the date shape, so it never deletes
+    those.
+    """
+    try:
+        datetime.strptime(text, "%Y-%m-%d")
+    except ValueError:
+        return False
+    return True
+
+
+def _maybe_engage(state_dir: Path, automas_dir: Path | None,
+                  now: datetime) -> list[str]:
+    day = now.strftime("%Y-%m-%d")
+    store = _store(state_dir)
+    # Yesterday's flag with no marker means the skip never engaged (machine
+    # was off all day). Say so rather than silently applying it to the wrong
+    # day or leaving the file to confuse the next reader.
+    stale = sorted(k for k in store.section("queues")
+                   if k.startswith("skip_day:") and k != f"skip_day:{day}"
+                   and _is_day(k.split(":", 1)[1]))
+    out = []
+    for k in stale:
+        store.pop("queues", k)
+        out.append(f"过期的跳过标记 {k.split(':', 1)[1]} 未曾生效（当天机器没开机），已清除")
+    wanted = _day_queues(store, day)
+    if not wanted:
+        return out
+    if not automas_dir:
+        for q in wanted:
+            _drop_day_queue(store, day, q)
+            out.append(_engage_failed(state_dir, q, "没有 AUTO-MAS 目录"))
+        return out
+
+    from ark_relay.core import plan  # noqa: PLC0415
+    from ark_relay.features import queues  # noqa: PLC0415 - avoids an import cycle
+    schedule = plan.schedule(automas_dir)
+    for queue in wanted:
+        markers = _restore_markers(state_dir)
+        if any(_marker_queue(m) == queue for m in markers):
+            continue        # this queue's earlier skip must resolve first
+        times = next((q.get("times") or [] for q in schedule
+                      if q["name"] == queue), [])
+        if not times:
+            _drop_day_queue(store, day, queue)
+            msg = f"跳过「{queue}」：该队列本就没有启用的排期，无需处理"
+            _skip_receipt(state_dir, "skip_today", True, msg)
+            out.append(msg)
+            continue
+        # Marker BEFORE disable. A crash between a disable and its marker would
+        # leave the queue gone from plan.schedule, so the next tick would report
+        # "该队列本就没有启用的排期", drop the flag, and the queue would stay
+        # disabled. With the marker first, a crash before the disable leaves a
+        # marker whose restore re-enables an already-enabled queue: a no-op.
+        # Atomic: the machine is hard power-cut twice a day, and a torn marker
+        # makes _maybe_restore drop it and leave the queue disabled.
+        entry = {"queue": queue, "day": day, "last_time": max(times)}
+        with _SKIP_LOCK:
+            _save_markers(state_dir, [*_restore_markers(state_dir), entry])
+        ok, detail = queues.apply(Path(automas_dir), queue, enabled=False)
+        if not ok:
+            # Let go of the day: the snapshot shows the queue running today and
+            # a red receipt says why; pressing the switch again is the retry.
+            # Keeping the flag would leave 「今天跳过队列」 listing the queue,
+            # so the page would show the skip as applied while the queue runs.
+            _drop_markers(state_dir, [entry])
+            _drop_day_queue(store, day, queue)
+            out.append(_engage_failed(state_dir, queue, detail))
+            continue
+        _drop_day_queue(store, day, queue)
+        # The receipt carries queues.apply's own answer, which says
+        # 「调度程序已确认」 only when the backend read the value back.
+        _skip_receipt(state_dir, "skip_today", True,
+                      f"今天（{day}）跳过队列「{queue}」：{detail}，过后自动恢复")
+        out.append(f"今天（{day}）跳过队列「{queue}」：已临时停用，过后自动恢复")
+    return out
+
+
+def _engage_failed(state_dir: Path, queue: str, detail: str) -> str:
+    """The message for a skip that did not take, written as a red receipt too; returns it for the push."""
+    msg = f"跳过「{queue}」失败：{detail}——没生效，今天照常跑；要跳过请再按一次"
+    _skip_receipt(state_dir, "skip_today", False, msg)
+    return msg
+
+
+def _skip_receipt(state_dir: Path, action: str, ok: bool, text: str) -> None:
+    """Put a skip outcome on the phone page's receipts under the switch's own action.
+
+    `action` is what the page's skip switch sends (skip_today / unskip_today,
+    web/view.js QUEUE_SWITCHES), so the receipt reads as the answer to that
+    switch. A restore that keeps failing is retried every tick with the same
+    words; one receipt per day is enough, so an identical one already listed
+    for today is not added again. Never raises: the receipt is secondary to
+    the skip itself.
+    """
+    try:
+        today = datetime.now(tz=SERVER_TZ).strftime("%m-%d")
+        text = str(text)[:200]
+        if any(r.get("action") == action and r.get("ok") is bool(ok) and r.get("text") == text
+               and str(r.get("at", "")).startswith(today) for r in receipts(state_dir)):
+            return
+        add_receipt(state_dir, action, ok, text)
+    except Exception:
+        log.exception("跳过队列的回执没记下")
+        # engine.skip_failed tells a failure from an acknowledgement by its red
+        # receipt; a lost one must not turn a failed skip into a quiet 「已跳过」.
+        # Kept in memory, receipts() lists it for the rest of this process.
+        _UNWRITTEN.append((str(Path(state_dir)), {
+            "at": datetime.now(tz=SERVER_TZ).strftime("%m-%d %H:%M"), "action": action,
+            "ok": bool(ok), "text": str(text)[:200]}))
+        del _UNWRITTEN[:-RECEIPTS_KEEP]
+
+
+# Skip receipts add_receipt could not write: (state_dir, receipt), listed by receipts().
+_UNWRITTEN: list[tuple[str, dict]] = []
+
+
+def skipped_today_all(state_dir: Path, now: datetime | None = None) -> list[str]:
+    """Every queue sitting out today - flags not yet engaged, then engaged markers."""
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    day = now.strftime("%Y-%m-%d")
+    out = _day_queues(_store(Path(state_dir)), day)
+    for m in _restore_markers(Path(state_dir)):
+        q = _marker_queue(m)
+        if q and str(m.get("day")) == day and q not in out:
+            out.append(q)
+    return out
+
+
+def _mark_sat_out(state_dir: Path, day: str, queue: str) -> None:
+    """Remember that `queue` sat `day` out once its restore has dropped the marker.
+
+    The missed-run and overdue checks still ask about that day's slot after the
+    restore: 2026-11-01 晚班 was skipped, the machine stayed on, the restore ran at
+    22:03:45 (Beijing) and at 22:03:47 「🔌 晚班 没有运行」 went to the group.
+    """
+    store = _store(Path(state_dir))
+    key = f"skip_done:{day}"
+    with _SKIP_LOCK:
+        v = store.get("queues", key)
+        have = list(v) if isinstance(v, list) else ([str(v)] if v else [])
+        if queue not in have:
+            store.set("queues", key, [*have, queue])
+
+
+def sat_out(state_dir: Path, day: str) -> list[str]:
+    """Every queue that sits `day` out: flagged, engaged, or already restored after its slot.
+
+    For the checks that judge a slot of `day` (missed.py, shutdown.py). The phone
+    switch keeps reading skipped_today_all: once restored, the switch is off again.
+    """
+    noon = datetime.strptime(day, "%Y-%m-%d").replace(hour=12, tzinfo=SERVER_TZ)
+    out = skipped_today_all(state_dir, noon)
+    v = _store(Path(state_dir)).get("queues", f"skip_done:{day}")
+    for q in (v if isinstance(v, list) else [v] if v else []):
+        q = names.canonical(str(q))
+        if q and q not in out:
+            out.append(q)
+    return out
+
+
+def skipped_today(state_dir: Path, now: datetime | None = None) -> str | None:
+    """The first queue sitting out today, for readers that show one name.
+
+    Read by the phone snapshot so the page can show the skip as a switch that
+    reflects the machine; None when nothing is skipped today.
+    """
+    got = skipped_today_all(state_dir, now)
+    return got[0] if got else None
+
+
+def unskip(state_dir: Path, automas_dir: Path | None, queue: str,
+           now: datetime | None = None) -> tuple[bool, str]:
+    """Cancel today's skip for `queue`: drop the flag if it has not engaged, or
+    re-enable the queue right away if it has (the restore that the marker would
+    have done after the occasion, done now). The switch on the phone page
+    turns back on through this."""
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    day = now.strftime("%Y-%m-%d")
+    state_dir = Path(state_dir)
+    store = _store(state_dir)
+    queue = names.canonical(queue)
+    with _SKIP_LOCK:
+        flagged = _day_queues(store, day)
+        if queue in flagged:
+            _set_day_queues(store, day, [q for q in flagged if q != queue])
+    if queue in flagged:
+        return True, f"今天（{day}）不再跳过队列「{queue}」"
+    info = next((m for m in _restore_markers(state_dir)
+                 if _marker_queue(m) == queue and str(m.get("day")) == day), None)
+    if info is not None:
+        if not automas_dir:
+            return False, f"取消跳过「{queue}」失败：没有 AUTO-MAS 目录"
+        from ark_relay.features import queues  # noqa: PLC0415
+        ok, detail = queues.apply(Path(automas_dir), queue, enabled=True)
+        if not ok:
+            return False, f"取消跳过「{queue}」失败：{detail}"
+        _drop_markers(state_dir, [info])
+        return True, f"队列「{queue}」今天的跳过已取消，定时已恢复"
+    # Say what IS skipped: a bare 「本来就没有跳过」 reads as if the earlier skip
+    # had been lost.
+    others = skipped_today_all(state_dir, now)
+    if others:
+        named = "、".join(f"「{o}」" for o in others)
+        return False, f"队列「{queue}」今天本来就没有跳过（今天跳过的是{named}）"
+    return False, f"队列「{queue}」今天本来就没有跳过"
+
+
+def _maybe_restore(state_dir: Path, automas_dir: Path | None,
+                   now: datetime) -> list[str]:
+    markers = _restore_markers(state_dir)
+    if not markers:
+        return []
+    out: list[str] = []
+    gone: list = []
+    for info in markers:
+        try:
+            day, last_time = str(info["day"]), str(info.get("last_time") or "23:59")
+            queue = names.canonical(str(info["queue"]))
+            hh, mm = (int(x) for x in last_time.split(":"))
+            occasion_end = (datetime.strptime(day, "%Y-%m-%d")
+                            .replace(hour=hh, minute=mm, tzinfo=SERVER_TZ)
+                            + timedelta(minutes=RESTORE_GRACE_MIN))
+        except (KeyError, ValueError, TypeError, AttributeError):
+            # An unreadable marker must not strand the queue disabled forever.
+            gone.append(info)
+            msg = texts.SKIP_MARK_BROKEN
+            _skip_receipt(state_dir, "unskip_today", False, msg)
+            out.append(msg)
+            continue
+        if now < occasion_end or not automas_dir:
+            continue
+        from ark_relay.features import queues  # noqa: PLC0415
+        ok, detail = queues.apply(Path(automas_dir), queue, enabled=True)
+        if not ok:
+            msg = texts.skip_restore_failed(queue, detail)
+            _skip_receipt(state_dir, "unskip_today", False, msg)
+            out.append(msg)
+            continue
+        gone.append(info)
+        _mark_sat_out(state_dir, day, queue)
+        _skip_receipt(state_dir, "unskip_today", True, f"队列「{queue}」的跳过已结束：{detail}")
+        out.append(f"队列「{queue}」的跳过已结束，定时已恢复")
+    if gone:
+        _drop_markers(state_dir, gone)
+    return out
+
+
+# ── Tacet settlement screenshot push: a phone switch, off by default ─────────
+def tacet_shots_on(state_dir) -> bool:
+    return (Path(state_dir) / "tacet-shots.on").exists()
+
+
+def set_tacet_shots(state_dir, on: bool) -> str:
+    f = Path(state_dir) / "tacet-shots.on"
+    if on:
+        f.write_text("on\n", encoding="utf-8")
+        return "无音区结算截图：以后日报后面会带上"
+    f.unlink(missing_ok=True)
+    return "无音区结算截图：不发了"
+
+
+# ── Phone-order receipts ──────────────────────────────────────────────────────
+# The relay's answer to each phone order is shown on the phone page, not pushed
+# as a notification (the user, 2026-09-14: 「可以合并到遥控页里面」). Kept as a
+# short list in the state dir, newest last.
+_RECEIPTS = "phone-receipts.json"
+RECEIPTS_KEEP = 12
+# Two writers: the phone-mailbox thread (order answers) and the engine thread
+# (skip outcomes). The lock keeps the read-append-write below from dropping one
+# of two receipts landing together.
+_RECEIPTS_LOCK = threading.Lock()
+
+
+def add_receipt(state_dir, action: str, ok: bool, text: str, sent: "int | None" = None,
+                queued: bool = False, target: str = "") -> None:
+    """One answer on the phone page. `sent` is the phone's own time of the press
+    (the command envelope's ts), kept as "sent" beside "at" - the moment it was
+    acted on - so a receipt says when an order was sent, not only when it ran.
+
+    `queued` (D207): the order is waiting for the running script to end. The App
+    shows such a receipt as 「排队中 · 跑完执行」 instead of a failure, until the
+    final receipt (no "queued") for the same action and send time arrives. The
+    key is only written when set, so every other receipt keeps its shape.
+
+    "ts" (the send time to the second) and "target" (which setting or queue,
+    phone_channel.receipt_target) tell apart receipts of one action sent in one minute -
+    a save of several settings at once (audit 11-08 D-07, relay side). Both are only
+    written when there is one; every key before them is unchanged."""
+    import json  # noqa: PLC0415
+    from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
+    p = Path(state_dir) / _RECEIPTS
+    with _RECEIPTS_LOCK:
+        try:
+            items = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else []
+        except (OSError, ValueError):
+            items = []
+        if not isinstance(items, list):
+            items = []
+        item = {"at": datetime.now(tz=SERVER_TZ).strftime("%m-%d %H:%M"), "action": action,
+                "ok": bool(ok), "text": str(text)[:200]}
+        if isinstance(sent, int):
+            item["sent"] = datetime.fromtimestamp(sent, tz=SERVER_TZ).strftime("%m-%d %H:%M")
+            item["ts"] = sent
+        if target:
+            item["target"] = str(target)[:120]
+        if queued:
+            item["queued"] = True
+        items.append(item)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(p, json.dumps(items[-RECEIPTS_KEEP:], ensure_ascii=False))
+
+
+def receipts(state_dir) -> list[dict]:
+    """The phone page's receipts, plus any skip receipt this process could not write."""
+    import json  # noqa: PLC0415
+    p = Path(state_dir) / _RECEIPTS
+    try:
+        data = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else []
+        data = data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        data = []
+    key = str(Path(state_dir))
+    return data + [r for d, r in _UNWRITTEN if d == key]
+
+_sys.modules.setdefault(__name__ + ".modes", _sys.modules[__name__])

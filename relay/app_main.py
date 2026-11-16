@@ -120,14 +120,14 @@ def _packaged_selfupdate(log) -> bool:
     """boot_stages._stage_selfupdate for the packaged install: update a copy of the
     version folder, switch to it, restart through the scheduled task. True = exit now."""
     try:
-        from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415
+        from ark_relay.features import selfupdate  # noqa: PLC0415
         changed = pkg_layout.update(HERE, selfupdate.check)
     except Exception:
         log.exception("自更新出错，跳过")
         return False
     if not changed:
         return False
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    from ark_relay.features import errwatch  # noqa: PLC0415
     if errwatch.going_down():
         # Told to stop during the update (Windows going down, `app_main.py stop` from the
         # installer): no restart behind that stop (audit 11-08 A-23). current.txt already
@@ -270,7 +270,7 @@ def run() -> int:
     for t in threading.enumerate():
         if t.name == "phone-heartbeat":
             t.join(3)
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    from ark_relay.features import errwatch  # noqa: PLC0415
     errwatch.drain(2.0)
     logging.shutdown()
     _ = (mutex, stop_evt)            # held to the end; the system closes them at exit
@@ -382,7 +382,7 @@ def _log_line(msg: str) -> None:
     """One line in the relay's log from this separate process (`app_main.py stop`), in
     the relay's own format (ark_relay/__main__.py), through its rotation-safe handler."""
     try:
-        from ark_relay.core.logfile import RelayLogHandler  # noqa: PLC0415
+        from ark_relay.core.statestore import RelayLogHandler  # noqa: PLC0415
         path = os.environ.get("ARK_LOG_FILE") or str(DATA / "relay.log")
         h = RelayLogHandler(path)
         h.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s  %(message)s",
@@ -438,7 +438,7 @@ def stop_push(wait_s: float = STOP_PUSH_WAIT_S) -> int:
     from ark_relay.__main__ import _setup_logging  # noqa: PLC0415
     _setup_logging(verbose=False)
     from ark_relay.core.config import Config  # noqa: PLC0415
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    from ark_relay.features import errwatch  # noqa: PLC0415
     cfg = Config()
     _stop_push_errwatch(cfg)
     try:
@@ -465,8 +465,8 @@ def _stop_push_errwatch(cfg) -> None:
     try:
         from ark_relay.core.notify import Notifier  # noqa: PLC0415
         from ark_relay.core.statestore import StateStore  # noqa: PLC0415
-        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-        from ark_relay.features.shutdown import shutdown  # noqa: PLC0415
+        from ark_relay.features import errwatch  # noqa: PLC0415
+        from ark_relay.features import shutdown  # noqa: PLC0415
         if errwatch._handler[0] is not None:
             return          # one handler per process: a second one would push each line twice
         errwatch.install(Notifier(cfg), lambda: shutdown.relay_poweroff_recorded(cfg.state_dir),
@@ -479,7 +479,7 @@ def _stop_push_errwatch(cfg) -> None:
 def _stop_push_send(state, cfg, wait_s: float) -> int:
     """stop_push's send (its docstring); errwatch is installed around it."""
     log = logging.getLogger("ark.app.stop_push")
-    from ark_relay.features.phone import phone  # noqa: PLC0415
+    from ark_relay.features import phone  # noqa: PLC0415
     if phone.stop_pushed(state):
         log.info(STOP_PUSH_SKIP)
         return 2
@@ -505,8 +505,8 @@ def _stop_push_send(state, cfg, wait_s: float) -> int:
 def _stop_push_limits(box) -> None:
     """stop-push's per-step limits (stop_push docstring), on this process only."""
     from ark_relay.core import skland  # noqa: PLC0415
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
-    from ark_relay.features.maintenance import maintenance  # noqa: PLC0415
+    from ark_relay.features import errwatch  # noqa: PLC0415
+    from ark_relay.features import maintenance  # noqa: PLC0415
     errwatch.mark_stopping()
     # Run only at the watchdog's preshutdown notice: Windows is shutting down. Said as
     # such, since a plain service stop no longer keeps AUTO-MAS failures from the group

@@ -14,8 +14,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import http.client
 from pathlib import Path
-
 from ark_relay.core.config import Config
 
 log = logging.getLogger("ark.notify")
@@ -81,7 +81,7 @@ def _post(req: urllib.request.Request) -> dict:
             # group (USER-SWITCHES.txt, notify.py:_post). A send whose every attempt
             # failed raises below and the caller logs it (Notifier.send,
             # _announce_outage), which is pushed.
-            from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+            from ark_relay.features import errwatch  # noqa: PLC0415
             log.warning("推送传输失败 %d 次，第 %d 次送到了: %s", attempt, attempt + 1, last,
                         extra=errwatch.recovered())
         return data
@@ -371,7 +371,7 @@ class ServerChan:
                     # (USER-SWITCHES.txt, notify.py:ServerChan.send_text). The
                     # transport attempts in _post are INFO lines, so this is the
                     # line the daily report counts.
-                    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+                    from ark_relay.features import errwatch  # noqa: PLC0415
                     log.warning("Server酱 前面的地址没送到（%s），换 %s 送到了", "；".join(errors),
                                 url.split("/")[2], extra=errwatch.recovered())
                 return
@@ -488,13 +488,13 @@ class Notifier:
 
     def alert_log(self):
         if self._alerts is None:
-            from ark_relay.features.alarm import alertlog  # noqa: PLC0415
+            from ark_relay.features import errwatch as alertlog  # noqa: PLC0415
             self._alerts = alertlog.for_config(self._cfg)
         return self._alerts
 
     def mac_push(self):
         if self._mac is None:
-            from ark_relay.features.alarm import macpush  # noqa: PLC0415
+            from ark_relay.features import macpush  # noqa: PLC0415
             self._mac = macpush.for_config(self._cfg)
         return self._mac
 
@@ -516,7 +516,7 @@ class Notifier:
         except Exception:   # the copy must never break the alarm path
             log.warning("报警没能抄一份到本地/COS", exc_info=True)
         try:
-            from ark_relay.features.alarm import alertlog  # noqa: PLC0415
+            from ark_relay.features import errwatch as alertlog  # noqa: PLC0415
             self.mac_push().push(alertlog.row(title, body, version, now, channel))
         except Exception:   # nor may the push to the Mac
             log.warning("报警没能直送 Mac", exc_info=True)
@@ -653,7 +653,7 @@ class Notifier:
             self._copy_alarm(title, "\n".join(lines), sent)
         # The log line for each refusal. When the notice above reached the group
         # robot, errwatch does not push the line again (one fault, one push: this send).
-        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        from ark_relay.features import errwatch  # noqa: PLC0415
         extra = {errwatch.PUSHED: True} if "企业微信机器人" in sent else {}
         for name, err in failed.items():
             log.warning("%s推送失败: %s", name, err, extra=extra)
@@ -670,3 +670,55 @@ class Notifier:
             return [str(exc)]
         _say_delivered("group", ["企业微信机器人"], f"图片 {Path(path).name}")
         return []
+
+
+ATTEMPTS = _RETRIES
+
+
+_log_netretry = logging.getLogger("ark.netretry")
+
+GATEWAY = frozenset({502, 503, 504})
+# The pause between attempts goes through here, looked up at each call: the tests' door
+# (they set it to a no-op instead of patching time.sleep for every module).
+_sleep = time.sleep
+
+
+def transient(exc: BaseException) -> bool:
+    """`exc` is the network cutting a request short, worth another try (the module docstring)."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code in GATEWAY
+    return isinstance(exc, (TimeoutError, http.client.IncompleteRead, http.client.BadStatusLine,
+                            ConnectionError, urllib.error.URLError))
+
+
+def call(fn, what: str, limit: float, *, detail: str = "", clock=None, sleep=None):
+    """fn(seconds) -> its result: the first attempt gets `limit`, each later one what is left
+    of it. A transient failure is tried again while time is left after the pause; anything
+    else, the last attempt's failure, or no time left raises. `what` names the request in
+    plain words (the recovered WARNING's first line is quoted in the daily report); `detail`
+    (a key, a URL) and the first failure go on its second line. `clock` / `sleep` (default
+    time.monotonic / the module's _sleep, looked up at call time) are the tests' doors."""
+    clock = clock or time.monotonic
+    sleep = sleep or _sleep
+    start = clock()
+    first = ""
+    for attempt in range(ATTEMPTS):
+        left = limit - (clock() - start)
+        try:
+            got = fn(limit if attempt == 0 else left)
+        except Exception as exc:
+            pause = _backoff(attempt)
+            if (not transient(exc) or attempt + 1 >= ATTEMPTS
+                    or limit - (clock() - start) - pause <= 0):
+                raise
+            first = first or f"{type(exc).__name__}: {exc}"
+            _log_netretry.info("%s 第 %d 次没成（%s: %s），%.1f 秒后再试：%s", what, attempt + 1, type(exc).__name__, exc,
+                     pause, detail)
+            sleep(pause)
+            continue
+        if attempt:
+            from ark_relay.features import errwatch  # noqa: PLC0415 - avoid an import cycle
+            _log_netretry.warning("%s第一次没成，第 %d 次成了\n%s 第一次：%s", what, attempt + 1, detail, first,
+                        extra=errwatch.recovered())
+        return got
+    raise RuntimeError("unreachable")

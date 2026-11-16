@@ -1,0 +1,1108 @@
+"""Re-run only the gathering routes that failed, once a day, after the queue is done.
+
+MaaEnd runs its rare gathering routes in one task, so one failed route fails the
+task, and AUTO-MAS answers a failed task by running the whole script again.
+Neither MaaEnd nor AUTO-MAS retries a single route (MaaEnd/MaaEnd#5660), so the
+relay does it, from files MXU writes anyway:
+
+* Which routes failed: the AUTO-MAS history log carries MXU's focus lines,
+  「路线15：红矛叶采集失败」. The route id behind each label comes from MaaEnd's
+  own locale file (`option.AutoCollectRoute15.failed`). A route that hit the game's
+  「战斗中无法使用」 at a relay device has no such line - MaaEnd ends it normally -
+  but gathered nothing; its on_error picture inside the route's window of the
+  history log marks it (collector_maaend.blocked_routes, ledger #29), and its id
+  comes from `option.AutoCollectRoute10.label`.
+* What to send: MXU logs the pipeline override it built for the run
+  (`entry=AutoCollectSchedule, pipelineOverride=[...]` in its app log). That
+  override, with every other route's Start/Dispatch keys dropped and today's
+  weekday attached, is the retry. When that line cannot be found the retry is
+  refused with a reason.
+* Did it work: MaaFW's log names the node that ran - `AutoCollectRoute15End`
+  or `AutoCollectRoute15Failed`. A relay-device picture between a route's Start
+  node and the task's end fails it although End ran (retry_blocked); such a route
+  is walked once more on its own in the same retry (ROUNDS), and that round decides.
+
+A route that fails the retry is recorded per day; failing on RECURRENT_DAYS
+consecutive days makes it recurrent, and the alarm asks a person to file it
+upstream.
+
+The retry needs the game and MaaEnd on the interactive desktop, so it launches
+them with preupdate_common._spawn_interactive and drives MXU over its local HTTP
+API. The game is started the way AUTO-MAS's 「MaaEnd 启动」 starts it (10-17): MaaEnd's
+own pretask, run on the desktop by the relay's helper (gameupdate/efstart.py), opens it
+as a 1280x720 window through the official launcher, and after the gathering MaaEnd's
+CloseGamePC task closes it and writes fullscreen 1920x1080 back (maaend_launch.py), so
+the owner's own play is fullscreen again. It runs from the shutdown decision (or by hand
+from ark_relay.__main__), at most once per day, only when no script is running, and the
+power-off waits for it.
+"""
+from __future__ import annotations
+
+import json
+import logging
+import re
+import shutil
+import subprocess
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta
+from pathlib import Path
+
+log = logging.getLogger("ark.collect_retry")
+
+MXU = "http://127.0.0.1:12701/api"
+ENTRY = "AutoCollectSchedule"
+_ROUTE_KEY = re.compile(r"^(AutoCollect(?:Common)?Route\d+)(Start|Dispatch)$")
+_FAILED_LINE = re.compile(r"^\[[^\]]+\]\s*(.+?采集失败)\s*$")
+_OVERRIDE_LINE = re.compile(r"entry=" + ENTRY + r", pipelineOverride=(\[.*\])\s*$")
+# v2.36 (2026-10-29) names routes by item - AutoCollectValleyIVChrysodendra1Start/End, a Failed node with two
+# leading underscores, and per item __AutoCollect<Item>Dispatch/Skipped - so a route id is AutoCollect<name><n>
+_NEW_START = re.compile(r"^(AutoCollect(?!(?:Common)?Route\d)[A-Za-z]+\d+)Start$")
+_NEW_ITEM = re.compile(r"^__AutoCollect([A-Za-z]+)(Dispatch|Skipped)$")
+_NODE = re.compile(r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(?:__)?(AutoCollect[A-Za-z]*\d+)(End|Failed)\"")
+# A route's own node failing (its Goto when the navigator loses its place, its Start when the
+# world cannot be entered): no End and no Failed node runs, only this (maafw.log 2026-11-05
+# 11:43:56.702 「[msg=Node.PipelineNode.Failed] ... "name":"AutoCollectValleyIVPinkBolete1Goto"」).
+_NODE_FAILED = re.compile(r"\[msg=Node\.PipelineNode\.Failed\].*?\"name\":\"(AutoCollect[A-Za-z]+?\d+)[A-Z][A-Za-z]*\"")
+# A route node's recognition or action in maafw.log (retry_blocked): the Start
+# node's recognition is the moment the route is announced, its action 0.2 s later.
+_ROUTE_EVENT = re.compile(r"\[msg=Node\.(?:Recognition\.Succeeded|Action\.Starting)\]"
+                          r".*?\"name\":\"(?:__)?(AutoCollect[A-Za-z]*\d+)(Start|End|Failed)\"")
+# CloseGamePC's own end in maafw.log (_close_game): Succeeded once CloseGameAction killed the
+# game and wrote the display settings, Failed when either went wrong (action.go returns false).
+_CLOSE_END = re.compile(r'\[msg=Tasker\.Task\.(Succeeded|Completed|Failed)\].*?"entry":"CloseGamePC"')
+# CloseGamePC kills the game, waits up to 5 s for it to go and writes the registry
+# (https://github.com/MaaEnd/MaaEnd/blob/v2.33.0/agent/go-service/common/closegame/action.go
+# waitEndfieldExit); a minute is twelve times that. Measured on the machine 10-17: AUTO-MAS's
+# CloseGamePC took 2 s (go-service.log 11:33:29 「Endfield.exe killed」, 11:33:31 「applied」).
+CLOSE_TIMEOUT_S = 60
+# MaaEnd's two agents, as MaaEnd's interface.json declares them; every task start passes them.
+AGENTS = [{"child_exec": "agent/go-service"}, {"child_exec": "agent/cpp-algo", "child_args": []}]
+# The gathering task's own end in maafw.log (retry_blocked): the event the history
+# log's 「任务完成/任务失败: 自动采集」 line stamps. Succeeded is MaaFW's name for a
+# finished task (task_shots._EVENT); Completed is accepted as there. The entry is ENTRY.
+_TASK_END = re.compile(r'\[msg=Tasker\.Task\.(?:Succeeded|Completed|Failed)\].*?"entry":"AutoCollectSchedule"')
+_TAG = re.compile(r"<[^>]+>")
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+# Consecutive days a route has to fail its retry to count as recurrent.
+RECURRENT_DAYS = 2
+# How many times a route is walked in one retry: once, and once more on its own when the
+# first walk hit the game's 「战斗中无法使用」 at a relay device (_bring_up_and_run).
+ROUNDS = 2
+# A retry stamp without `finished` older than this was cut off mid-retry: run_retry's
+# own timeout (1200 s) for each round plus its start-up waits (about 12 min) plus an hour's margin.
+STAMP_STALE = timedelta(minutes=ROUNDS * 1200 // 60 + 12 + 60)
+
+
+# ----------------------------------------------------------------- parsing
+
+def failed_labels_from_locale(zh_cn: dict) -> dict[str, str]:
+    """{stripped failed text: route id} from MaaEnd's zh_cn locale.
+
+    `option.AutoCollectRoute15.failed` holds
+    `<span ...>路线15：红矛叶采集失败</span>`; the log line is the same text
+    without the tags. The route id is the key's middle segment.
+    """
+    out: dict[str, str] = {}
+    for key, val in zh_cn.items():
+        m = re.fullmatch(r"option\.(AutoCollect(?:Common)?Route\d+)\.failed", key)
+        # v2.36: task.AutoCollect.route.ValleyIVChrysodendra1.failed = 「纯晶多齿叶采集失败」
+        n = re.fullmatch(r"task\.AutoCollect\.route\.([A-Za-z]+\d+)\.failed", key)
+        if (m or n) and isinstance(val, str):
+            out[_TAG.sub("", val).strip()] = m.group(1) if m else f"AutoCollect{n.group(1)}"
+    return out
+
+
+def _item_of(rid: str) -> str | None:
+    """v2.36 route id → its item's name in the dispatch nodes (AutoCollectValleyIVChrysodendra1 → ValleyIVChrysodendra)."""
+    m = _NEW_START.match(rid + "Start")
+    return re.sub(r"\d+$", "", m.group(1)[len("AutoCollect"):]) if m else None
+
+
+def route_ids_by_label(zh_cn: dict) -> dict[str, str]:
+    """{route label as the history log prints it: route id} from `option.<id>.label` or `task.AutoCollect.route.<id>.label`.
+
+    By label, never by number: AutoCollectRoute1 and AutoCollectCommonRoute1 are both 线路1."""
+    out: dict[str, str] = {}
+    for key, val in zh_cn.items():
+        m = re.fullmatch(r"option\.(AutoCollect(?:Common)?Route\d+)\.label", key)
+        n = re.fullmatch(r"task\.AutoCollect\.route\.([A-Za-z]+\d+)\.label", key)
+        if (m or n) and isinstance(val, str):
+            out[_TAG.sub("", val).strip()] = m.group(1) if m else f"AutoCollect{n.group(1)}"
+    return out
+
+
+def blocked_route_ids(automas_log: str, shot_names: list[str], zh_cn: dict) -> dict[str, list[str]]:
+    """{route id: its relay-device pictures} for the routes of the run that hit 「战斗中无法使用」."""
+    from ark_relay.features import collector_maaend  # noqa: PLC0415
+    ids = route_ids_by_label(zh_cn)
+    out: dict[str, list[str]] = {}
+    for label, pics in collector_maaend.blocked_routes(automas_log, shot_names).items():
+        if rid := ids.get(label):
+            out[rid] = pics
+        elif label not in _UNKNOWN_SAID:
+            # Once per label: maybe_run is called every tick of the shutdown decision,
+            # and errwatch pushes each WARNING to the group.
+            _UNKNOWN_SAID.add(label)
+            log.warning("自动采集补跑：%s 撞上「战斗中无法使用」没采到，但 MaaEnd 的路线名里找不到它，补不了", label)
+    return out
+
+
+# Blocked route labels already said to have no route id (blocked_route_ids).
+_UNKNOWN_SAID: set[str] = set()
+
+
+# outcome.maaend_checks' undone item for gathering (「· 自动采集 真的走了路线：…」); the
+# settings item 「· 自动采集的设置：…」 is not the retry's to clear.
+GATHERING_UNDONE = "自动采集 真的"
+STAMP_FMT = "%Y-%m-%d %H:%M:%S"   # `since` for the maafw.log readers below (_after)
+
+
+def _after(line: str, since: str) -> bool:
+    """A stamped maafw.log line ([YYYY-MM-DD HH:MM:SS.mmm]...) at or after `since` (STAMP_FMT).
+
+    The full date is compared: _maafw_text reads the last two maafw*.log files, so a line of
+    an earlier day with a later clock time passed the old HH:MM:SS cut (line[12:20]), as did
+    nothing after midnight for a retry begun before it (audit 2026-11-08 B-01). Unstamped
+    lines are never after: every event these readers take is stamped."""
+    return len(line) >= 20 and line[0] == "[" and line[1:20] >= since
+
+
+def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: list[str]) -> dict[str, list[str]]:
+    """{route: relay-device pictures} for the retried routes that hit 「战斗中无法使用」 again.
+
+    Route windows after `since` (STAMP_FMT, as judge) by the history log's rule
+    (collector_maaend.spans) on the same event: a route opens where MaaFW recognises
+    its Start node - the moment MaaEnd announces 「路线10：重红柱状菌」, which AUTO-MAS
+    stamps into the history log some 25 ms later - and runs to the next route's
+    start, its Failed node or the task's end (Tasker.Task.Succeeded/Failed of
+    AutoCollectSchedule, which AUTO-MAS stamps 「任务完成: 自动采集」 - where the history
+    log ends its last route); its End node closes it only when none of these follows
+    (a retry stopped short). The last route's End comes some 25 s before the task's
+    end (maafw-attempt3 2026-09-14: Route17End 11:19:57.922, Task.Failed 11:20:23.065);
+    closed at End, a picture in that stretch was the route's in the daily row and
+    nobody's here. MaaEnd still runs End on such a route (maafw.log 2026-10-12
+    10:45:39 AutoCollectRoute10End, four pickups instead of 6-10). All to the
+    millisecond."""
+    from ark_relay.features import collector_maaend as cm  # noqa: PLC0415
+    events: list[tuple] = []
+    last = None
+    for line in maafw_log.splitlines():
+        if not _after(line, since):
+            continue
+        last = line
+        if "AutoCollect" not in line:
+            continue
+        if _TASK_END.search(line):
+            if (at := cm.line_time(line)) is not None:
+                events.append((at, "close", None))
+            continue
+        if not (m := _ROUTE_EVENT.search(line)) or (at := cm.line_time(line)) is None:
+            continue
+        rid, node = m.group(1), m.group(2)
+        if node == "Start":
+            events.append((at, "open", rid) if rid in routes else (at, "close", None))
+        else:
+            events.append((at, "tail" if node == "End" else "close", rid))
+    shots = [(t, n) for n in shot_names
+             if cm.is_obstacle_shot(n) and (t := cm.shot_time(n)) is not None]
+    out: dict[str, list[str]] = {}
+    for rid, start, end in cm.spans(events, cm.line_time(last) if last else None):
+        for t, n in shots:
+            if cm.in_window(t, start, end):
+                out.setdefault(rid, []).append(n)
+    return out
+
+
+def failed_routes(automas_log: str, labels: dict[str, str]) -> list[str]:
+    """Route ids whose 「…采集失败」 line appears in the run's AUTO-MAS log, in order, then those
+    the failure collector named without such a line (collector_maaend.collector_failed_routes:
+    a route whose Goto or Start node itself failed, 2026-11-05)."""
+    from ark_relay.features import collector_maaend  # noqa: PLC0415
+    found: list[str] = []
+    for line in automas_log.splitlines():
+        m = _FAILED_LINE.match(line.strip())
+        if not m:
+            continue
+        rid = labels.get(m.group(1).strip())
+        if rid and rid not in found:
+            found.append(rid)
+    for rid in collector_maaend.collector_failed_routes(automas_log):
+        if rid not in found:
+            found.append(rid)
+    return found
+
+
+def logged_override(app_log: str) -> list[dict] | None:
+    """The pipeline override MXU logged for the last AutoCollectSchedule run, as MXU sent it (a list)."""
+    last = None
+    for line in app_log.splitlines():
+        m = _OVERRIDE_LINE.search(line.strip())
+        if m:
+            last = m.group(1)
+    if last is None:
+        return None
+    try:
+        arr = json.loads(last)
+    except json.JSONDecodeError:
+        return None
+    return arr if isinstance(arr, list) else None
+
+
+def _merge(parts: list[dict]) -> dict:
+    """Fold MXU's list of override objects into one, merging `attach` maps instead of replacing them."""
+    out: dict = {}
+    for part in parts:
+        for node, spec in part.items():
+            if (isinstance(spec, dict) and isinstance(spec.get("attach"), dict)
+                    and isinstance(out.get(node), dict) and isinstance(out[node].get("attach"), dict)):
+                out[node]["attach"].update(spec["attach"])
+            else:
+                out[node] = spec
+    return out
+
+
+# A route that meets a relay device (息壤中继器) in its way stops before it to move or remove it
+# (MaaEnd assets/resource/pipeline/MapNavigator/ObstacleDevice.json); while a fight is on the game
+# answers the interact with 「战斗中无法使用」, no device dialog opens, __..._InteractPost's next
+# list times out after its 1 s and MaaEnd gives the route up (路线10 on 10-05, 10-08, 10-12, 10-22
+# and 10-26, the retry each time too; ledgers #29, #112). The retry waits instead: on that error it
+# stops 8 s and recognises the interact button again, at most 4 times (MaaFW max_hit, which MaaEnd's
+# coding standard asks for on a node that can loop), then gives up the way MaaEnd did (_NoHit).
+# Whether a fight ends while the operator stands still is what the next retry shows: its maafw.log
+# names ArkRelayObstacleCombatWait each time it ran.
+OBSTACLE_COMBAT_WAIT = {
+    "__MapNavigatorObstacleDevice_InteractPost": {
+        "on_error": ["ArkRelayObstacleCombatWait", "__MapNavigatorObstacleDevice_NoHit"],
+    },
+    "ArkRelayObstacleCombatWait": {
+        "pre_delay": 8000,
+        "max_hit": 4,
+        "next": ["__MapNavigatorObstacleDevice_WaitFreezes", "__MapNavigatorObstacleDevice_NoHit"],
+    },
+}
+
+
+def build_override(parts: list[dict], routes: list[str], weekday: str) -> dict:
+    """Keep the logged override but only the wanted routes, make today a gathering day, and wait out a
+    fight at a relay device (OBSTACLE_COMBAT_WAIT)."""
+    if weekday not in WEEKDAYS:
+        raise ValueError(f"not a weekday: {weekday}")
+    merged = _merge(parts)
+    wanted = set(routes)
+    out: dict = {}
+    items = {i for i in map(_item_of, routes) if i}
+    for node, spec in merged.items():
+        m = _ROUTE_KEY.match(node) or _NEW_START.match(node)
+        if m and m.group(1) not in wanted:
+            continue
+        n = _NEW_ITEM.match(node)
+        if n and n.group(1) not in items:
+            continue
+        out[node] = spec
+    for rid in routes:
+        out.setdefault(f"{rid}Start", {"enabled": True})
+        item = _item_of(rid)
+        out.setdefault(f"__AutoCollect{item}Dispatch" if item else f"{rid}Dispatch", {"enabled": True})
+    sched = out.setdefault("AutoCollectScheduleEnabled", {})
+    attach = sched.setdefault("attach", {}) if isinstance(sched, dict) else {}
+    attach[weekday] = True
+    for node, spec in OBSTACLE_COMBAT_WAIT.items():
+        out[node] = {**out.get(node, {}), **spec}
+    return out
+
+
+def judge(maafw_log: str, routes: list[str], since: str) -> dict[str, bool | None]:
+    """{route: True passed / False failed / None no verdict} from MaaFW node events after `since`
+    (YYYY-MM-DD HH:MM:SS, _after)."""
+    verdict: dict[str, bool | None] = {r: None for r in routes}
+    for line in maafw_log.splitlines():
+        if not _after(line, since):
+            continue
+        m = _NODE.search(line) or _NODE_FAILED.search(line)
+        if not m or m.group(1) not in verdict:
+            continue
+        verdict[m.group(1)] = m.re is _NODE and m.group(2) == "End"
+    return verdict
+
+
+def node_lines(maafw_log: str, routes: list[str], since: str) -> dict[str, str]:
+    """{route: the maafw.log line `judge` took its verdict from} - the evidence the
+    machine check of the retry (#32) quotes. Routes with no such line are left out."""
+    out: dict[str, str] = {}
+    for line in maafw_log.splitlines():
+        if not _after(line, since):
+            continue
+        m = _NODE.search(line) or _NODE_FAILED.search(line)
+        if m and m.group(1) in routes:
+            out[m.group(1)] = line.strip()[:300]
+    return out
+
+
+# --------------------------------------------------------- recurrence store
+
+# Route lists narrowed by older relay versions: those versions cut the master's
+# gathering route lists down to the failed routes and saved the originals in
+# state/collect-retry/narrow.json. No current code narrows them; restore_master
+# puts a leftover save back (called when a record lands, from the shutdown
+# decision via maybe_run, at boot, and from the live watch on an attempt's start).
+_ROUTE_OPT = re.compile(r"^AutoCollect.*Routes$")
+
+
+def _narrow_file(state_dir) -> Path:
+    return Path(state_dir) / "collect-retry" / "narrow.json"
+
+
+def _route_lists(doc: dict) -> "tuple[dict | None, dict[str, list[str]]]":
+    from ark_relay.core import mastercfg  # noqa: PLC0415
+    task = mastercfg._maaend_task(doc, ENTRY.replace("Schedule", ""))
+    if task is None:
+        return None, {}
+    ov = task.get("optionValues") or {}
+    lists = {k: list(v.get("caseNames") or []) for k, v in ov.items()
+             if isinstance(v, dict) and v.get("type") == "checkbox" and _ROUTE_OPT.match(k)}
+    return task, lists
+
+
+def restore_master(cfg) -> str:
+    """Put the saved route lists back. '' when there is nothing to restore."""
+    from ark_relay.core import mastercfg  # noqa: PLC0415
+    from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
+    nf = _narrow_file(cfg.state_dir)
+    if not nf.exists():
+        return ""
+    try:
+        saved = json.loads(nf.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        log.exception("收窄记录读不出来，母本路线没法自动改回")
+        return ""
+    f = mastercfg.maaend_master(cfg.automas_dir) if cfg.automas_dir else None
+    if not f or not f.is_file():
+        return ""
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    task, _ = _route_lists(doc)
+    if task is None:
+        return ""
+    for k, v in (saved.get("lists") or {}).items():
+        task.setdefault("optionValues", {}).setdefault(k, {"type": "checkbox"})["caseNames"] = list(v)
+    atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
+    _, after = _route_lists(json.loads(f.read_text(encoding="utf-8")))
+    if {k: after.get(k) for k in saved.get("lists") or {}} != saved.get("lists"):
+        log.error("母本路线改回后回读不对：%s", after)
+        return ""
+    nf.unlink()
+    total = sum(len(v) for v in (saved.get("lists") or {}).values())
+    return f"母本里的采集路线已改回原来的 {total} 条（{saved.get('run_id', '')} 那趟之后临时改过）"
+
+
+def record_failures(store: Path, day: str, routes: list[str]) -> dict[str, list[str]]:
+    """Append today's still-failing routes; returns {route: [days]} for all routes."""
+    data: dict[str, list[str]] = {}
+    if store.exists():
+        try:
+            data = json.loads(store.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError(f"not an object but {type(data).__name__}")
+        except (OSError, ValueError) as exc:
+            # Keep the unreadable file aside and say so; the streaks start over.
+            from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
+            aside = store.with_name(f"failures.unreadable-{datetime.now(tz=SERVER_TZ):%Y%m%d-%H%M%S}.json")
+            try:
+                shutil.copy2(store, aside)
+                kept = f"原文件另存为 {aside.name}"
+            except OSError as copy_exc:
+                kept = f"原文件另存也没成（{copy_exc}）"
+            log.warning("自动采集补跑：连续失败记录 failures.json 读不了（%s），连续几天的记录从今天重新算；%s",
+                        exc, kept)
+            data = {}
+    for rid in routes:
+        days = data.setdefault(rid, [])
+        if day not in days:
+            days.append(day)
+    store.parent.mkdir(parents=True, exist_ok=True)
+    from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
+    atomic_write_text(store, json.dumps(data, ensure_ascii=False, indent=1))
+    return data
+
+
+def clear_failures(store: Path, routes: list[str]) -> None:
+    """A route that passed its retry starts its streak over."""
+    if not store.exists():
+        return
+    try:
+        data = json.loads(store.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    for rid in routes:
+        data.pop(rid, None)
+    from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
+    atomic_write_text(store, json.dumps(data, ensure_ascii=False, indent=1))
+
+
+def recurrent(data: dict[str, list[str]], days: int = RECURRENT_DAYS) -> list[str]:
+    """Routes whose last `days` recorded failures fall on consecutive calendar days."""
+    out = []
+    for rid, dates in data.items():
+        if len(dates) < days:
+            continue
+        tail = sorted(dates)[-days:]
+        d = [datetime.strptime(x, "%Y-%m-%d").date() for x in tail]
+        if all((d[i + 1] - d[i]).days == 1 for i in range(len(d) - 1)):
+            out.append(rid)
+    return out
+
+
+# ------------------------------------------------------------- the run itself
+
+_LISTEN = re.compile(r"Web server listening on http://127\.0\.0\.1:(\d+)")
+
+
+def mxu_port(maaend_dir: Path, default: int = 12701) -> int:
+    """The port MXU's web server really bound - it falls back to 12702 when 12701 is held (its own log says so)."""
+    p = maaend_dir / "debug" / "mxu-tauri.log"
+    try:
+        lines = p.read_text(encoding="utf-8", errors="replace").splitlines()[-400:]
+    except OSError:
+        return default
+    port = default
+    for line in lines:
+        if m := _LISTEN.search(line):
+            port = int(m.group(1))
+    return port
+
+
+def api(path: str, body: dict | None = None, timeout: int = 30):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(MXU + path, data=data,
+                                 headers={"Content-Type": "application/json"} if data else {},
+                                 method="POST" if data is not None else "GET")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        raw = r.read().decode("utf-8", "replace")
+    return json.loads(raw) if raw.strip() else {}
+
+
+def _running(names: tuple[str, ...]) -> set[str]:
+    out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True,
+                         encoding="utf-8", errors="replace").stdout
+    have = {ln.split('","')[0].lstrip('"').lower() for ln in out.splitlines() if ln}
+    return {n for n in names if n.lower() in have}
+
+
+def _kill(name: str) -> None:
+    subprocess.run(["taskkill", "/f", "/im", name], capture_output=True, timeout=30, check=False)
+
+
+def _game_exe(maaend_dir: Path) -> Path | None:
+    """The game path MXU itself has saved (`savedDevice.connectedProgramPath`), never a guess."""
+    try:
+        doc = json.loads((maaend_dir / "config" / "mxu-MaaEnd.json").read_text(encoding="utf-8"))
+        for inst in doc.get("instances") or []:
+            p = (inst.get("savedDevice") or {}).get("connectedProgramPath")
+            if p:
+                return Path(p)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def _wait(pred, seconds: int, step: float = 3.0) -> bool:
+    t0 = time.time()
+    while time.time() - t0 < seconds:
+        try:
+            if pred():
+                return True
+        except Exception:  # noqa: BLE001 - polling, the failure mode is "not yet"
+            pass
+        time.sleep(step)
+    return False
+
+
+def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeout: int = 1200,
+              evidence: "dict | None" = None, state_dir=None) -> tuple[dict[str, bool | None], str]:
+    """Bring up MXU and the game, send the override, wait, judge. Returns (verdict, note).
+
+    `spawn(exe: Path, cwd: Path, args: tuple)` launches on the interactive
+    desktop (the pre-update's helper in production, a stub in tests). The game is
+    started by the helper in `state_dir` (gameupdate/efstart.py) through MaaEnd's own
+    launcher pretask, windowed, never as Endfield.exe: client 1.6.3 refuses a start that
+    is not the official launcher's. Fullscreen is written back before MaaEnd is closed.
+    `evidence`, when given, gets "nodes": {route: the maafw.log line of its verdict}.
+    """
+    debug = maaend_dir / "debug"
+    app_logs = sorted(debug.glob("20??-??-??-*.log"), key=lambda p: p.stat().st_mtime)
+    parts = None
+    for p in reversed(app_logs):
+        parts = logged_override(p.read_text(encoding="utf-8", errors="replace"))
+        if parts:
+            break
+    if not parts:
+        return {r: None for r in routes}, "MaaEnd 的日志里找不到上一趟采集的参数，不敢自己编，这次不补跑"
+    override = build_override(parts, routes, weekday)
+    try:
+        return _bring_up_and_run(maaend_dir, routes, override, spawn=spawn, timeout=timeout, evidence=evidence,
+                                 state_dir=state_dir, again=lambda rs: build_override(parts, rs, weekday))
+    finally:
+        # Every way out, the early "gave up" returns and a raise included, closes
+        # what this started (s16 #2): nothing else runs MaaEnd after the queue.
+        _kill("MaaEnd.exe")
+        _kill("Endfield.exe")
+
+
+def final_verdict(maafw_log: str, routes: list[str], since: str, second: list[str], since2: str,
+                  shot_names: list[str]) -> "tuple[dict[str, bool | None], dict[str, list[str]]]":
+    """(verdict, blocked) of a retry whose routes `second` were walked once more from `since2`.
+
+    A route walked once is judged from `since` (judge, retry_blocked). A route of the second
+    round is judged by that round alone: its End node of the first round - MaaEnd ends a
+    blocked route normally - is not its result, so with no node after `since2` it stays
+    failed (the first round blocked it and the second gave no word), and it counts as
+    blocked again only on a relay-device picture inside its second window."""
+    verdict = judge(maafw_log, routes, since)
+    if not second:
+        blocked = retry_blocked(maafw_log, routes, since, shot_names)
+    else:
+        later = judge(maafw_log, second, since2)
+        for rid in second:
+            verdict[rid] = bool(later[rid])
+        blocked = retry_blocked(maafw_log, second, since2, shot_names)
+    for rid in blocked:
+        verdict[rid] = False
+    return verdict, blocked
+
+
+def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, spawn, timeout: int,
+                      evidence: "dict | None", state_dir=None, again=None) -> tuple[dict[str, bool | None], str]:
+    """`again(routes)` builds the override of the second round (run_retry); None: one round."""
+    debug = maaend_dir / "debug"
+    global MXU  # noqa: PLW0603 - the port is discovered per launch
+    if "MaaEnd.exe" in _running(("MaaEnd.exe",)):
+        MXU = f"http://127.0.0.1:{mxu_port(maaend_dir)}/api"
+        if not _wait(lambda: api("/maa/state", timeout=5) is not None, 10, step=2):
+            # Running but deaf: a leftover instance whose port is gone. Start over.
+            _kill("MaaEnd.exe")
+            time.sleep(3)
+    if "MaaEnd.exe" not in _running(("MaaEnd.exe",)):
+        spawn(maaend_dir / "MaaEnd.exe", maaend_dir, ())
+        time.sleep(8)
+    MXU = f"http://127.0.0.1:{mxu_port(maaend_dir)}/api"
+    if not _wait(lambda: api("/maa/state", timeout=5) is not None, 60):
+        return {r: None for r in routes}, "MaaEnd 起来 60 秒了还不响应"
+    if state_dir is None:
+        return {r: None for r in routes}, "不知道开游戏助手在哪，游戏没开"
+    from ark_relay.features import efstart, maaend_launch  # noqa: PLC0415 - pulls the desktop code
+    restore, why = maaend_launch.restore_override(maaend_dir)
+    if restore is None:
+        # Not started at all: a window the relay could not put back to fullscreen afterwards
+        # would be the owner's next own play.
+        return {r: None for r in routes}, f"游戏没开：{why}，开成窗口后没法改回全屏"
+    started = efstart.run_on_desktop(state_dir, spawn, maaend_dir)
+    if started.code != efstart.OK:
+        note = f"游戏没经官方启动器开起来：{started.reason}"
+        if started.code in efstart.RAN:
+            # The pretask writes the window settings before it starts the launcher, so a
+            # failed start leaves them too; with no game window there is no controller
+            # for CloseGamePC.
+            note = _not_restored(note, "游戏没开起来", evidence)
+        return {r: None for r in routes}, note
+    hwnd = {}
+
+    def _window():
+        wins = api("/maa/windows?class_regex=UnityWndClass&window_regex=Endfield")
+        wins = wins if isinstance(wins, list) else (wins or {}).get("windows") or []
+        if wins:
+            hwnd["h"] = wins[0].get("handle") or wins[0].get("hwnd")
+        return bool(hwnd)
+    if not _wait(_window, 180):
+        return {r: None for r in routes}, _not_restored("游戏窗口 3 分钟没出现", "没有游戏窗口", evidence)
+    time.sleep(10)
+    inst = next(iter((api("/maa/state").get("instances") or {}).keys()), "automas")
+
+    def _state() -> dict:
+        return (api("/maa/state").get("instances") or {}).get(inst, {})
+    api(f"/maa/instances/{inst}/connect", {"type": "Win32", "handle": int(hwnd["h"]),
+                                         "screencap_method": 32, "mouse_method": 1, "keyboard_method": 1}, timeout=60)
+    if not _wait(lambda: _state().get("connected"), 60):
+        return {r: None for r in routes}, _not_restored("控制器没连上游戏窗口", "控制器没连上", evidence)
+    if not _state().get("resource_loaded"):
+        api(f"/maa/instances/{inst}/resource/load", {"paths": [str(maaend_dir / "resource")]}, timeout=120)
+        _wait(lambda: _state().get("resource_loaded"), 120)
+    from ark_relay.features import collector_maaend  # noqa: PLC0415
+    start = lambda over: api(f"/maa/instances/{inst}/tasks/start", {  # noqa: E731 - one start, both rounds
+        "tasks": [{"entry": ENTRY, "pipeline_override": json.dumps(over, ensure_ascii=False)}],
+        "agent_configs": AGENTS,
+        "cwd": str(maaend_dir), "tcp_compat_mode": False, "pi_envs": None,
+        "reset_state": True, "controller_info": None}, timeout=120)
+
+    def _run(over: dict) -> bool:
+        start(over)
+        finished = _wait(lambda: not _state().get("is_running"), timeout, step=15)
+        if not finished:
+            try:
+                api(f"/maa/instances/{inst}/tasks/stop", {})
+            except (urllib.error.URLError, OSError):
+                pass
+        return finished
+    since = time.strftime(STAMP_FMT)
+    done = _run(override)
+    # A route that hit 「战斗中无法使用」 at a relay device gathered nothing although MaaEnd ended
+    # it normally (retry_blocked). Whether the fight is over is only seen by walking the route
+    # again: 11-12 the retry of 11:46 was blocked on 协议纹石 路线2 and the one run by hand at
+    # 11:59 walked it (ledger #170). So those routes, and only those, get one more round here,
+    # with the game still open. A second round that cannot be started leaves the first round's
+    # verdict as it is: blocked, failed, said to the group.
+    second: list[str] = []
+    since2 = ""
+    if done and again is not None:
+        first = retry_blocked(_maafw_text(debug), routes, since, collector_maaend.obstacle_shots(maaend_dir))
+        if first:
+            log.info("自动采集补跑：%s 这一轮撞上「战斗中无法使用」没采到，单独再补一轮", "、".join(first))
+            # The first round's agents are stopped before the second start, as before
+            # CloseGamePC (_close_game): MXU starts a task's agents afresh and leaves the
+            # finished task's attached, and beside them the new go-service cannot connect
+            # (10-22 21:56:40, ledger #111 - tasks/start then answers 500).
+            _stop_agents(inst)
+            # STAMP_FMT counts whole seconds and _after compares with >=: started in the same
+            # second as the first round's last line, the second round would take that line for
+            # its own. One second is that resolution (not a wait that was tuned).
+            time.sleep(1)
+            started2 = time.strftime(STAMP_FMT)
+            try:
+                done = _run(again(list(first)))
+                second, since2 = list(first), started2
+            except (urllib.error.URLError, OSError, ValueError):
+                log.warning("自动采集补跑：单独再补的那一轮没起来，照第一轮的结果报", exc_info=True)
+    closing = time.strftime(STAMP_FMT)
+    closed = _close_game(inst, restore, _state, maaend_dir)
+    _stop_agents(inst)
+    text = _maafw_text(debug)
+    closed = closed or _closed_verdict(text, closing)
+    verdict, blocked = final_verdict(text, routes, since, second, since2, collector_maaend.obstacle_shots(maaend_dir))
+    if evidence is not None:
+        evidence["nodes"] = node_lines(text, routes, since)
+        if blocked:
+            evidence["blocked"] = blocked
+        if second:
+            evidence["second_round"] = second
+    note = "补跑超时，已停掉" if not done else ""
+    if closed:
+        note = _not_restored(note, closed, evidence)
+    return verdict, note
+
+
+def _maafw_text(debug: Path) -> str:
+    text = ""
+    for p in sorted(debug.glob("maafw*.log"), key=lambda q: q.stat().st_mtime)[-2:]:
+        text += p.read_text(encoding="utf-8", errors="replace")
+    return text
+
+
+def _stop_agents(inst: str) -> None:
+    try:
+        api(f"/maa/instances/{inst}/agent/stop", {})
+    except (urllib.error.URLError, OSError):
+        pass
+
+
+def _close_game(inst: str, override: dict, state, maaend_dir: Path) -> str:
+    """Run MaaEnd's CloseGamePC with `override` (maaend_launch.restore_override): the game
+    closed and fullscreen 1920x1080 written back. "" when MXU took the task and it ended
+    in time (maafw.log then says how it ended, _closed_verdict); else why not.
+
+    The gathering's agents are stopped first. MXU starts a task's agents afresh and leaves
+    the ones a finished task attached: on 10-22 21:56:40 CloseGamePC's go-service could not
+    connect beside the gathering's (mxu-tauri.log 「[agent#0] Connection failed: MaaFramework
+    internal error: status 0」, then 「Stopping 2 agent client(s)」 - the gathering's two) and
+    the game stayed windowed (ledger #111). With none attached, as at the gathering's own
+    start (21:49:55 「Connected successfully!」), the new ones connect."""
+    _stop_agents(inst)
+    try:
+        # Same body as the gathering's start; MaaEnd's agents again, since CloseGameAction
+        # lives in go-service.
+        api(f"/maa/instances/{inst}/tasks/start", {
+            "tasks": [{"entry": "CloseGamePC", "pipeline_override": json.dumps(override, ensure_ascii=False)}],
+            "agent_configs": AGENTS,
+            "cwd": str(maaend_dir), "tcp_compat_mode": False, "pi_envs": None,
+            "reset_state": True, "controller_info": None}, timeout=CLOSE_TIMEOUT_S)
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        return f"MaaEnd 没接下关游戏这一步（{type(exc).__name__}）"
+    if not _wait(lambda: not state().get("is_running"), CLOSE_TIMEOUT_S, step=3):
+        try:
+            api(f"/maa/instances/{inst}/tasks/stop", {})
+        except (urllib.error.URLError, OSError):
+            pass
+        return f"MaaEnd 关游戏 {CLOSE_TIMEOUT_S} 秒没做完"
+    return ""
+
+
+def _closed_verdict(maafw_log: str, since: str) -> str:
+    """'' when maafw.log after `since` (YYYY-MM-DD HH:MM:SS, _after) has CloseGamePC succeeded; else why not."""
+    last = None
+    for line in maafw_log.splitlines():
+        if _after(line, since) and (m := _CLOSE_END.search(line)):
+            last = m.group(1)
+    if last in ("Succeeded", "Completed"):
+        return ""
+    return "MaaEnd 关游戏时没能把显示设置写回" if last == "Failed" else "MaaEnd 的日志里没有关游戏的结果"
+
+
+def _not_restored(note: str, why: str, evidence: "dict | None") -> str:
+    """The retry's note plus one line that fullscreen was not written back: the owner's own
+    play would start in the 1280x720 window until AUTO-MAS's next MaaEnd run writes
+    fullscreen back at its end (Game.RestoreDisplayType, efstart_setup). The note reaches
+    the group with the retry's alarm; when every route passed there is none, and maybe_run
+    says it on its own (evidence["not_restored"])."""
+    log.info("自动采集补跑：游戏开成窗口后没改回全屏（%s）", why)
+    if evidence is not None:
+        evidence["not_restored"] = why
+    tail = f"游戏开成窗口后没改回全屏（{why}），下次调度程序跑完终末地会改回"
+    return f"{note}；{tail}" if note else tail
+
+
+# ------------------------------------------------------------------ glue
+
+_VERDICT = re.compile(r"任务(完成|失败)[:：]\s*\S*自动采集")
+
+
+_GATHER_END_LINE = re.compile(r"任务(?:完成|失败)[:：]\s*\S*自动采集")
+
+
+def walked_routes(automas_log: str, by_label: dict[str, str], failed_by_text: dict[str, str] | None = None) -> set[str]:
+    """Route ids a run walked through: a 「采集…」 line followed by the next route's line or the
+    gathering task's end, and no failure of that route anywhere in the run - neither the failure
+    collector naming it (collector_maaend.collector_failed_routes, by id) nor its 「…采集失败」 line
+    (by `failed_by_text`, failed_labels_from_locale; a text it does not hold fails the route whose
+    line came last). The route still open when a run was cut is not counted. `by_label` is
+    route_ids_by_label."""
+    from ark_relay.features import collector_maaend  # noqa: PLC0415
+    closed: set[str] = set()
+    failed: set[str] = set(collector_maaend.collector_failed_routes(automas_log))
+    cur = None
+    for line in automas_log.splitlines():
+        s = line.strip()
+        if m := collector_maaend._V236_ROUTE_START.match(s):
+            if cur:
+                closed.add(cur)
+            cur = by_label.get("采集" + m.group(1))
+        elif m := _FAILED_LINE.match(s):
+            if rid := (failed_by_text or {}).get(m.group(1).strip()) or cur:
+                failed.add(rid)
+        elif _GATHER_END_LINE.search(s):
+            if cur:
+                closed.add(cur)
+            cur = None
+    return closed - failed
+
+
+def _history_log(history_dir, entry: dict) -> Path | None:
+    """collector.resolve_history_log: old <run_id>.log or AUTO-MAS v5.8's <date>/<record id>/0.log."""
+    from ark_relay.core.collector import resolve_history_log  # noqa: PLC0415
+    return resolve_history_log(history_dir, entry)
+
+
+def walked_today(ledger_entries: list[dict], history_dir: Path, by_label: dict[str, str],
+                 maaend_dir=None, zh_cn: dict | None = None) -> set[str]:
+    """Route ids walked through by any of the day's MaaEnd runs (walked_routes over each run's
+    history log), less those a run walked but gathered nothing on (「战斗中无法使用」, _blocked_in).
+
+    2026-11-05: the 10:24 attempt walked 16 of 17 routes; the 11:26 and 12:02 attempts, logged out
+    mid-run, failed 15 and 13 of them. The retry took the routes of the last run with a verdict,
+    so it would have re-walked 12 routes gathered in the morning for the one that never made it.
+
+    Known limit: when no run of the day walked a route (every attempt cut before its gathering got
+    going), the retry gets every route against run_retry's 1200 s; those it does not reach in time
+    are booked as no verdict (没拿到结果), not as failed."""
+    out: set[str] = set()
+    for e in ledger_entries:
+        if e.get("script") != "MaaEnd" or not e.get("run_id"):
+            continue
+        p = _history_log(history_dir, e)
+        if p is None:
+            continue
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        walked = walked_routes(text, by_label, failed_labels_from_locale(zh_cn or {}))
+        if walked and maaend_dir:
+            walked -= set(_blocked_in(p, maaend_dir, zh_cn or {}))
+        out |= walked
+    return out
+
+
+def latest_gathering_run(ledger_entries: list[dict], history_dir: Path, labels: dict[str, str]) -> tuple[dict | None, list[str]]:
+    """Walk the day's MaaEnd records from the last one back to the first whose log reached a gathering verdict.
+
+    AUTO-MAS's own retries come later in the ledger, and a retry that was
+    stopped by hand leaves a log with 「任务开始」 and no verdict (2026-09-11
+    10:46 and 10:48). Such a run says nothing about the routes, so the one
+    before it is the one that counts. Returns (record, failed route ids).
+    """
+    runs = [e for e in ledger_entries if e.get("script") == "MaaEnd" and e.get("run_id")]
+    for rec in reversed(runs):
+        p = _history_log(history_dir, rec)
+        if p is None:
+            continue
+        text = p.read_text(encoding="utf-8", errors="replace")
+        if not _VERDICT.search(text):
+            continue
+        return rec, failed_routes(text, labels)
+    return None, []
+
+
+def route_label(rid: str, zh_cn: dict) -> str:
+    """The route's own words: option.<id>.label, or for a v2.36 id task.AutoCollect.route.<name>.label
+    (AutoCollectWulingProtocolith2 -> 「采集协议纹石（路线2）」); the id when neither is there."""
+    val = zh_cn.get(f"option.{rid}.label")
+    if val is None and rid.startswith("AutoCollect"):
+        val = zh_cn.get(f"task.AutoCollect.route.{rid[len('AutoCollect'):]}.label")
+    return _TAG.sub("", str(val or rid)).strip()
+
+
+def _blocked_in(history_log: Path, maaend_dir, zh: dict) -> dict[str, list[str]]:
+    """blocked_route_ids for one run's history log; {} when the log or pictures are not there."""
+    from ark_relay.features import collector_maaend  # noqa: PLC0415
+    shots = collector_maaend.obstacle_shots(maaend_dir)
+    if not shots:
+        return {}
+    try:
+        text = history_log.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    return blocked_route_ids(text, shots, zh)
+
+
+AHEAD, AHEAD_DEBUG, AHEAD_SPENT = "ahead", "debug", "spent"
+
+
+def retry_ahead(eng, rec) -> "tuple[list[str], str]":
+    """What maybe_run will do about `rec`, a MaaEnd round booked with gathering undone:
+    (the labels of the routes it would walk again, AHEAD / AHEAD_DEBUG / AHEAD_SPENT).
+
+    The routes are maybe_run's own reading of that round's log: the 「采集失败」 lines and
+    the routes a relay-device picture marks as blocked. ([], "") when the log names no such
+    route - gathering is undone for another reason and the per-route retry has nothing to
+    walk - or when any of it cannot be read. AHEAD_SPENT: the day's one retry has already
+    given its verdict. AHEAD_DEBUG: debug mode is on, so the shutdown decision that runs
+    the retry is not reached. Reads only; the alarm that says this goes out either way
+    (pushes._push_undone)."""
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
+    from ark_relay.features import modes  # noqa: PLC0415
+    cfg = eng.cfg
+    maaend_dir, history_dir = getattr(cfg, "maaend_dir", None), getattr(cfg, "history_dir", None)
+    if not maaend_dir or not history_dir or getattr(rec, "script", "") != "MaaEnd":
+        return [], ""
+    zh = _locale(Path(maaend_dir))
+    labels = failed_labels_from_locale(zh)
+    if not labels:
+        return [], ""
+    entry = {"run_id": rec.run_id, "script": rec.script, "raw": dict(getattr(rec, "raw", None) or {})}
+    log_path = _history_log(history_dir, entry) or Path(history_dir) / (str(rec.run_id) + ".log")
+    try:
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return [], ""
+    routes = failed_routes(text, labels)
+    routes += [r for r in _blocked_in(log_path, maaend_dir, zh) if r not in routes]
+    if not routes:
+        return [], ""
+    names = [route_label(r, zh) for r in routes]
+    day = rec.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
+    stamp = Path(cfg.state_dir) / "collect-retry" / f"{day}.json"
+    try:
+        if "finished" in json.loads(stamp.read_text(encoding="utf-8")):
+            return names, AHEAD_SPENT
+    except (OSError, ValueError, TypeError):
+        pass
+    if modes.debug_active(Path(cfg.state_dir)):
+        return names, AHEAD_DEBUG
+    return names, AHEAD
+
+
+# maybe_run's locale problem currently said (at most one), so a lasting one is said
+# once, not per call. Mutated in place, like statestore's _CORRUPT_SAID.
+_LOCALE_SAID: set[str] = set()
+
+
+def _locale(maaend_dir: Path) -> dict:
+    p = maaend_dir / "locales" / "interface" / "zh_cn.json"
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _clock(iso) -> str:
+    """A stamp's ISO time as 「10-22 16:44」 on the machine's clock. These WARNINGs reach the
+    group as written, and only when they read as plain words (texts.plain): the ISO form's
+    「T16」 turned the 10-22 21:48 alarm into 「原话有术语没翻译」 (ledger #110)."""
+    from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
+    try:
+        return datetime.fromisoformat(str(iso)).astimezone(SERVER_TZ).strftime("%m-%d %H:%M")
+    except ValueError:
+        return str(iso)
+
+def maybe_run(eng, now: datetime | None = None, day: str | None = None) -> bool:
+    """Once per day, after the queue is idle: retry that day's failed routes. True if a retry ran.
+
+    Called from the shutdown decision so a power-off waits for it. It reads
+    only files the run already produced and refuses (with a logged reason)
+    rather than guess when any of them is missing. `day` names the ledger to
+    read (default today); the weekday attached to the retry is always the
+    real one, since that is the game's clock.
+    """
+    from ark_relay.core import texts  # noqa: PLC0415
+    from ark_relay.core.config import SERVER_TZ, atomic_write_text  # noqa: PLC0415
+    from ark_relay.features.preupdate import _spawn_interactive  # noqa: PLC0415
+
+    cfg = eng.cfg
+    now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+    day = day or now.strftime("%Y-%m-%d")
+    state_dir = Path(cfg.state_dir)
+    stamp = state_dir / "collect-retry" / f"{day}.json"
+    if back := restore_master(cfg):
+        log.info("自动采集补跑：%s", back)
+    cut_off = ""
+    if stamp.exists():
+        try:
+            prev = json.loads(stamp.read_text(encoding="utf-8"))
+            begun = datetime.fromisoformat(prev["started"])
+        except (OSError, ValueError, TypeError, KeyError):
+            prev, begun = {"finished": "?"}, now
+        # The stamp is written before the retry runs. One without `finished` long past
+        # any retry's length means the relay stopped mid-retry (s16 #2): MaaEnd and
+        # the game were left up and no verdict was ever given. Run it once more.
+        if "finished" in prev or now - begun < STAMP_STALE:
+            log.info("自动采集补跑：%s 已经跑过（%s）", day, stamp)
+            return False
+        if prev.get("cut_off"):
+            # passed/failed/unknown make report.retry_line read it as a result, not 「还没有结果」.
+            atomic_write_text(stamp, json.dumps(dict(prev, finished=now.isoformat(), passed=[], failed=[],
+                                                     unknown=list(prev.get("routes") or []),
+                                                     note="补跑两次都没跑完"), ensure_ascii=False))
+            # Routes by MaaEnd's own names: the stamp keeps ids (AutoCollectRoute15), which keep the
+            # WARNING from reaching the group as plain words.
+            zh0 = _locale(Path(cfg.maaend_dir)) if cfg.maaend_dir else {}
+            log.warning("自动采集补跑：%s 开始的补跑又没跑完（中继中途停了），今天不再补；没走通的路线：%s",
+                        _clock(prev.get("started")),
+                        "、".join(route_label(r, zh0) for r in prev.get("routes") or []))
+            return False
+        cut_off = str(prev.get("started"))
+        if not prev.get("closed"):
+            # Said and closed once: the early returns below (no routes, scripts
+            # running, ...) leave the stamp as it is and this is called every tick.
+            log.warning("自动采集补跑：%s 开始的补跑没跑完（中继中途停了），关掉留下的 MaaEnd 和游戏，再补一次",
+                        _clock(cut_off))
+            _kill("MaaEnd.exe")
+            _kill("Endfield.exe")
+            atomic_write_text(stamp, json.dumps(dict(prev, closed=now.isoformat()), ensure_ascii=False))
+    if not cfg.maaend_dir or not cfg.history_dir:
+        log.info("自动采集补跑：没配 MaaEnd 目录或历史目录，不跑")
+        return False
+    zh = _locale(Path(cfg.maaend_dir))
+    labels = failed_labels_from_locale(zh)
+    if not labels:
+        # Without MaaEnd's failed-route texts no failure can be recognised. Logged
+        # once per condition: the shutdown decision calls this every tick.
+        if "no-labels" not in _LOCALE_SAID:
+            log.warning("自动采集补跑：读不出 MaaEnd 的路线失败文案（%s），认不出哪条路线没走通，不补跑",
+                        Path(cfg.maaend_dir) / "locales" / "interface" / "zh_cn.json")
+            _LOCALE_SAID.add("no-labels")
+        return False
+    _LOCALE_SAID.clear()
+    entries = eng.state.read_ledger(day)
+    last, routes = latest_gathering_run(entries, Path(cfg.history_dir), labels)
+    if not last:
+        log.info("自动采集补跑：%s 没有带采集结论的终末地记录", day)
+        return False
+    blocked = _blocked_in(_history_log(cfg.history_dir, last) or Path(cfg.history_dir) / (str(last["run_id"]) + ".log"),
+                          cfg.maaend_dir, zh)
+    if extra := [r for r in blocked if r not in routes]:
+        routes = list(routes) + extra
+        log.info("自动采集补跑：%s 里 %s %s，算没走通一起补", last["run_id"],
+                 "、".join(route_label(r, zh) for r in extra), texts.COLLECT_BLOCKED)
+    if routes and (earlier := walked_today(entries, Path(cfg.history_dir), route_ids_by_label(zh),
+                                           cfg.maaend_dir, zh)):
+        if done_before := [r for r in routes if r in earlier]:
+            routes = [r for r in routes if r not in earlier]
+            log.info("自动采集补跑：%s 今天别的那几遍已经走通，不再补", "、".join(route_label(r, zh) for r in done_before))
+    if not routes:
+        log.info("自动采集补跑：%s 全部路线走通，没有要补的", last["run_id"])
+        return False
+    if eng._scripts_running():
+        log.info("自动采集补跑：脚本或游戏还在跑，这次不补（%s）", "、".join(routes))
+        return False
+    stamp.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(stamp, json.dumps({"run_id": last["run_id"], "routes": routes, "blocked": list(blocked),
+                                         "started": now.isoformat(), "cut_off": cut_off}))
+    names = "、".join(route_label(r, zh) for r in routes)
+    # The start is logged, not pushed (USER-SWITCHES.txt, collect_retry.py:maybe_run):
+    # routes still failing after the retry go to the group below; all walked goes to
+    # the daily report only (report.retry_line).
+    log.info("%s：%s（来自 %s），只进日报，补跑的结果再定进不进群", texts.COLLECT_RETRY_START, names, last["run_id"])
+    seen: dict = {}
+    try:
+        verdict, note = run_retry(Path(cfg.maaend_dir), routes, WEEKDAYS[now.weekday()],
+                                  spawn=_spawn_interactive, evidence=seen, state_dir=state_dir)
+    except Exception as exc:  # the retry must never take the service down
+        log.exception("补跑本身出错")
+        verdict, note = {r: None for r in routes}, f"补跑没跑起来：{type(exc).__name__}"
+    from ark_relay.features.preupdate import going_down  # noqa: PLC0415
+    if going_down():
+        # A stop cut the retry short (efstart.run_on_desktop stops waiting, STOPPED): nothing
+        # was judged. The stamp stays without `finished`, so the next start closes what is
+        # left and runs it once more (the stale-stamp branch above); no verdict, no alarm.
+        log.info("自动采集补跑：中继正在停止，补跑停在一半（%s），下次启动再补", note or "没有结论")
+        return True
+    passed = [r for r, v in verdict.items() if v is True]
+    failed = [r for r, v in verdict.items() if v is False]
+    unknown = [r for r, v in verdict.items() if v is None]
+    store = state_dir / "collect-retry" / "failures.json"
+    clear_failures(store, passed)
+    data = record_failures(store, day, failed) if failed else {}
+    rec = recurrent(data) if failed else []
+    done = {"run_id": last["run_id"], "routes": routes, "blocked": list(blocked), "passed": passed,
+            "failed": failed, "unknown": unknown, "recurrent": rec,
+            "note": note, "finished": datetime.now(tz=SERVER_TZ).isoformat(),
+            "nodes": seen.get("nodes") or {}, "blocked_again": seen.get("blocked") or {},
+            "second_round": list(seen.get("second_round") or [])}
+    atomic_write_text(stamp, json.dumps(done, ensure_ascii=False))
+    # Hand the outcome to the machine checks: the retry ran and judged each route.
+    from ark_relay.features import makeup  # noqa: PLC0415
+    makeup._machinecheck(eng, {"kind": "采集路线", "script": "MaaEnd", "result": done,
+                               "labels": {r: route_label(r, zh) for r in routes}})
+    body = texts.collect_retry_body([route_label(r, zh) for r in passed],
+                                    [route_label(r, zh) for r in failed],
+                                    [route_label(r, zh) for r in unknown], note)
+    if seen.get("second_round"):
+        body += "\n" + texts.collect_second_round([route_label(r, zh) for r in seen["second_round"]])
+    if seen.get("blocked"):
+        body += "\n" + texts.collect_blocked_row([route_label(r, zh) for r in seen["blocked"]], again=True)
+    # A route still failing (or without a verdict) goes to the group. All walked:
+    # COLLECT_RETRY_OK takes notify's log route (daily report only). The daily
+    # report carries every outcome (report.retry_line).
+    from ark_relay.features import errwatch  # noqa: PLC0415
+    if not failed and not unknown and seen.get("not_restored"):
+        # The routes are fine (daily report only), the display is not: the group hears that.
+        log.warning("自动采集补跑：路线都走通了，但游戏开成窗口后没改回全屏（%s）；下次调度程序跑完终末地会改回",
+                    seen["not_restored"])
+    if not failed and not unknown:
+        # Only the gathering's own undone item: another task's (基质刷取 ...) still stands.
+        eng.state.clear_incomplete_items(day, last["run_id"], GATHERING_UNDONE)
+        eng.notifier.send(texts.COLLECT_RETRY_OK, body)
+        # Healed by the retry, so not pushed - and one red item, so a session looks at
+        # why the routes failed the first time (techlog.self_heal).
+        from ark_relay.core import statestore as techlog  # noqa: PLC0415
+        techlog.self_heal(f"MaaEnd {last['run_id']} 自动采集", "补跑走通了，第一次没走通的路线："
+                          + "、".join(route_label(r, zh) for r in routes), state_dir=state_dir)
+    elif rec:
+        errs = eng.notifier.send(texts.COLLECT_RECURRENT,
+                                 body + "\n" + texts.collect_recurrent_body([route_label(r, zh) for r in rec]),
+                                 alert=True)
+        log.warning("自动采集补跑：%s 连续两天补跑失败（复发性）", "、".join(route_label(r, zh) for r in rec),
+                    extra=errwatch.group_pushed(texts.COLLECT_RECURRENT, errs, eng.notifier))
+    else:
+        errs = eng.notifier.send(texts.COLLECT_RETRY_FAILED, body, alert=True)
+        log.warning("自动采集补跑：仍有路线没走通（%s）", "、".join(route_label(r, zh) for r in failed + unknown),
+                    extra=errwatch.group_pushed(texts.COLLECT_RETRY_FAILED, errs, eng.notifier))
+    return True

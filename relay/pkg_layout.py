@@ -147,7 +147,7 @@ def record_running_version(here: Path) -> None:
     current (the switch raised, or power went before it), and announcing it would say
     「中继已更新」 while the old code runs (audit s24 F1). A note for the folder in use is
     the first boot after a real switch and stays."""
-    from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415
+    from ark_relay.features import selfupdate  # noqa: PLC0415
     running = version_key(here.name)[0]
     if running and selfupdate._applied_version(here) != running:
         log.info("记录的代码版本改成 %s（正在用的文件夹 %s）", running, here.name)
@@ -288,7 +288,7 @@ def update(here: Path, check) -> list[str]:
         # changing; no switch happened, so the record goes back to the folder in use.
         record_running_version(here)
         return []
-    from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415
+    from ark_relay.features import selfupdate  # noqa: PLC0415
     version = "0"
     try:
         version = str(selfupdate._applied_version(staging) or 0)

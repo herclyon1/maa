@@ -1,27 +1,296 @@
-"""The relay's state: one file, one field table (root fix #3; design in docs/STATE-MODEL.md).
+"""relay.log: rotated by size, and read across the rotation.
 
-`state/state.json` has sections: marks / modes / weekly / versions / updates / queues.
-Every key must be registered in FIELDS; an unregistered key cannot be written -
-the same rule as the phone page's "only change fields that already exist",
-guarding against inventing fields out of thin air the way 826 did.
+Until 2026-10-07 relay.log was a plain FileHandler that only ever grew: the
+copy fetched on 2026-10-06 held every line since 08-15, 2.38 MB over 52 days.
+That is slow (about 46 KB a day; the busiest day in it, 10-05, wrote 90 KB),
+but it never stops, and one error loop that logs every second would fill the
+disk at a rate nothing watches.
 
-Old files (garden.json, annihilation.json, weeklyboss.json ...) are migrated in
-automatically on first start; after migration the old file is kept rather than
-deleted (renamed to .migrated) and cleaned up after three stable days.
+Sizes. MAX_BYTES = 16 MB is about a year of ordinary days at that rate and
+still 180 of the busiest one, so a rotation is a rare event - the forensics in
+this codebase read months of relay.log at a time (selfupdate.py quotes 521
+rounds from 08-16 to 09-18). BACKUPS = 3 bounds the whole thing at 64 MB.
+
+Readers. Five places read relay.log by seeking to its tail: the daily upload
+(error_evidence._day_tail), the evidence slice (evidence.slice_log), the
+machine checks (machinechecks/system.read_tail, runs._relay_today) and the
+daily self-check (selfcheck.daily_section). Right after a rotation the tail
+they want is partly in relay.log.1 - the boot checks' "previous session" would
+be cut in two - so they all read through tail_bytes, which reaches into
+relay.log.1 when the current file is shorter than what was asked for. One
+older file is enough: each holds MAX_BYTES, far more than any reader's window.
+
+Windows. A rotation renames relay.log, and Windows refuses to rename a file
+another handle holds open without FILE_SHARE_DELETE - Python's own open(),
+PowerShell's Get-Content, scp. RotatingFileHandler then drops the record that
+triggered the rotation, and every record after it (each one retries the
+rename and fails again) until the other handle closes. RelayLogHandler keeps
+writing to the current file instead and tries again RETRY_SECONDS later. It
+says so through logging (ark.logfile), so errwatch sees it: a WARNING at the
+first failure of a streak, INFO at each failed retry. That record is logged
+after the handler's own handle() has returned and released its lock - logged
+from inside, it would re-enter this handler. The service is the only writer: ARK_LOG_FILE is set inside
+its own process (boot_stages._stage_bootstrap), and the command-line entry
+(__main__.main) sets up logging before it reads .env, so a hand-run command
+never opens relay.log for writing.
 """
 from __future__ import annotations
 
+import logging.handlers
+import os
+import threading
+import time
+import re
 import copy
 import fnmatch
 import json
-import logging
 import shutil
-import threading
-import time
-from datetime import datetime
 from pathlib import Path
+from datetime import datetime, timedelta
+from ark_relay.core.config import SERVER_TZ, atomic_write_text
 
-from ark_relay.core.config import atomic_write_text
+_log_logfile = logging.getLogger("ark.logfile")
+
+MAX_BYTES = 16 * 1024 * 1024
+BACKUPS = 3
+RETRY_SECONDS = 300.0
+
+
+class RelayLogHandler(logging.handlers.RotatingFileHandler):
+    """RotatingFileHandler that never loses a record to a failed rotation (see the module docstring)."""
+
+    def __init__(self, filename, max_bytes: int = MAX_BYTES, backups: int = BACKUPS) -> None:
+        super().__init__(filename, maxBytes=max_bytes, backupCount=backups, encoding="utf-8")
+        self._retry_at = 0.0
+        self._path = os.fspath(filename)
+        self._failing = False                 # inside a streak of failed rotations
+        self._pending: "tuple[int, str] | None" = None   # (level, message) to log after handle()
+        self._reporting = False
+        self._pending_lock = threading.Lock()
+
+    def handle(self, record):
+        rv = super().handle(record)
+        if self._pending is not None and not self._reporting:
+            with self._pending_lock:
+                pending, self._pending = self._pending, None
+            if pending is not None:
+                self._reporting = True
+                try:
+                    _log_logfile.log(*pending)
+                finally:
+                    self._reporting = False
+        return rv
+
+    def shouldRollover(self, record) -> bool:  # noqa: N802 - logging's name
+        if self._retry_at and time.monotonic() < self._retry_at:
+            return False
+        return bool(super().shouldRollover(record))
+
+    def _roll(self) -> None:
+        """RotatingFileHandler.doRollover with the steps reordered so a refused
+        rename of relay.log moves nothing.
+
+        The stdlib shifts .2 -> .3 and .1 -> .2 first and renames relay.log last.
+        When Windows refuses that last rename, every retry shifted the backups once
+        more and the oldest fell off: with .1/.2/.3 = A/B/C, two failed retries left
+        only .3 = A (review of 2026-10-13, s5 #1). Here relay.log is renamed first,
+        to HOLD; only then do the backups shift and HOLD become .1. A shift that
+        fails puts HOLD back as relay.log, so nothing has moved but the oldest
+        backup that a successful rotation drops anyway.
+        """
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+        if self.backupCount > 0:
+            base = self.baseFilename
+            hold = base + self.HOLD
+            if os.path.exists(hold):
+                # A rotation interrupted between its steps (the service killed):
+                # finish it before starting this one, so the held lines are kept.
+                self._shift_in(hold)
+            # self.rotate is the stdlib's hook for the rename (a test makes it refuse).
+            self.rotate(base, hold)
+            if os.path.exists(hold):
+                try:
+                    self._shift_in(hold)
+                except OSError:
+                    os.replace(hold, base)
+                    raise
+        if not self.delay:
+            self.stream = self._open()
+
+    HOLD = ".rotating"
+
+    def _shift_in(self, hold: str) -> None:
+        """.N-1 -> .N down to .1 -> .2, then `hold` -> .1."""
+        base = self.baseFilename
+        for i in range(self.backupCount - 1, 0, -1):
+            src, dst = f"{base}.{i}", f"{base}.{i + 1}"
+            if os.path.exists(src):
+                os.replace(src, dst)
+        os.replace(hold, f"{base}.1")
+
+    def doRollover(self) -> None:  # noqa: N802 - logging's name
+        try:
+            self._roll()
+        except OSError as exc:
+            self._retry_at = time.monotonic() + RETRY_SECONDS
+            if self.stream is None:
+                self.stream = open(self._path, "a", encoding="utf-8")
+            # Logged by handle() once this record is written (see the module
+            # docstring): the group hears it once per streak, not every retry.
+            if not self._failing:
+                self._failing = True
+                self._pending = (logging.WARNING,
+                                 f"relay.log 轮转没成（{exc}），接着写在原文件里，"
+                                 f"{RETRY_SECONDS / 60:.0f} 分钟后再试；一直不成的话它会一直变大")
+            else:
+                self._pending = (logging.INFO, f"relay.log 轮转还是没成（{exc}），"
+                                               f"{RETRY_SECONDS / 60:.0f} 分钟后再试")
+        else:
+            self._retry_at = 0.0
+            self._failing = False
+
+
+def tail_bytes(path, nbytes: int) -> "tuple[bytes, bool]":
+    """The last `nbytes` of the log at `path`, reaching into `<path>.1` when the
+    current file holds fewer (it was rotated recently).
+
+    Returns (data, cut): `cut` is True when older bytes exist before `data`, so
+    its first line may be partial. Raises OSError when the current file cannot
+    be read, as open() would; a missing or unreadable `<path>.1` is no older part.
+    """
+    p = Path(path)
+    with p.open("rb") as fh:
+        fh.seek(0, 2)
+        size = fh.tell()
+        start = max(0, size - nbytes)
+        fh.seek(start)
+        data = fh.read()
+    if start > 0:
+        return data, True
+    need = nbytes - len(data)
+    try:
+        with Path(f"{p}.1").open("rb") as fh:
+            fh.seek(0, 2)
+            osize = fh.tell()
+            ostart = max(0, osize - need)
+            fh.seek(ostart)
+            older = fh.read()
+    except OSError:
+        return data, False
+    if older and not older.endswith(b"\n"):
+        older += b"\n"
+    return older + data, ostart > 0
+
+
+_log_techlog = logging.getLogger("ark.techlog")
+
+RED = "🔴"
+DONE = "✅"
+RED_LINE = re.compile(r"^🔴 (R-\d{8}-\d{4}-\d+) (.*)$")
+DONE_LINE = re.compile(r"^✅ (R-\d{8}-\d{4}-\d+) 已处理（(.+?)）")
+
+
+def tech_dir(state_dir: "Path | str | None" = None) -> Path:
+    """<state dir>/../tech - next to state/ and relay.log on the machine."""
+    base = Path(state_dir or os.environ.get("ARK_STATE_DIR", "./ark-state"))
+    return base.resolve().parent / "tech"
+
+
+def path_for(day: str, state_dir=None) -> Path:
+    return tech_dir(state_dir) / f"{day}.md"
+
+
+def append(day: str, heading: str, text: str, *, state_dir=None, now: "datetime | None" = None) -> bool:
+    """Append one section to the day's file. False (and a log line) when it cannot be written."""
+    text = (text or "").strip()
+    if not text:
+        return True
+    at = (now or datetime.now(tz=SERVER_TZ)).strftime("%H:%M")
+    try:
+        p = path_for(day, state_dir)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "a", encoding="utf-8") as fh:
+            fh.write(f"\n## {at} {heading}\n{text}\n")
+        return True
+    except OSError as exc:
+        # A WARNING, so the group hears it (the user, 2026-10-11 17:43: nothing that
+        # did not fix itself stays out of the group): a red item that cannot be
+        # written is a fault nobody would otherwise look at. The report still goes out.
+        _log_techlog.warning("技术日志写不进 %s：%s", day, type(exc).__name__)
+        return False
+
+
+_ids = threading.Lock()
+
+
+def add_red(day: str, heading: str, texts: "list[str]", *, state_dir=None,
+            now: "datetime | None" = None) -> list[str]:
+    """Append one section of red items, each with an id not used yet.
+
+    Numbering from 1 on every call would write the same id twice for two calls in
+    the same minute, and one `handled` would clear both; this continues after the
+    highest number already written for that minute. Returns the ids written ([]
+    when nothing was written)."""
+    at = now or datetime.now(tz=SERVER_TZ)
+    texts = [" ".join(str(t).split())[:400] for t in texts if str(t).strip()]
+    if not texts:
+        return []
+    stamp = at.strftime("%Y%m%d-%H%M")
+    with _ids:
+        # The stamp comes from `at` but the item goes into `day`'s file, and the two
+        # differ for a round that started before midnight and is handled after it
+        # (gamelog_errors passes the round's start day). scripts/mac/techlog.py joins
+        # every day's file by id, so the numbers already used for this stamp are read
+        # from `day`, `at`'s own day and the day before it (review 2026-10-13, s5 #2).
+        old = ""
+        at_day = at.strftime("%Y-%m-%d")
+        prev_day = (at - timedelta(days=1)).strftime("%Y-%m-%d")
+        for d in dict.fromkeys((day, at_day, prev_day)):
+            try:
+                old += path_for(d, state_dir).read_text(encoding="utf-8") + "\n"
+            except OSError:
+                pass
+        used = [int(m.group(1)) for m in re.finditer(rf"^{RED} R-{stamp}-(\d+) ", old, re.M)]
+        start = max(used, default=0)
+        lines = [f"{RED} R-{stamp}-{start + i} {t}" for i, t in enumerate(texts, 1)]
+        if not append(day, heading, "\n".join(lines), state_dir=state_dir, now=at):
+            return []
+    return [ln.split(" ", 2)[1] for ln in lines]
+
+
+SELF_HEAL = "自愈待查"
+
+
+def self_heal(where: str, why: str, *, state_dir=None, now: "datetime | None" = None) -> list[str]:
+    """One red item for a fault that fixed itself and so stayed out of the group.
+
+    The user, 2026-10-11 17:44 (Tokyo; his words are in relay/USER-SWITCHES.txt's header):
+    what stays out of the group because it fixed itself must still be looked at by us. Every way a fault leaves the group because it
+    recovered (errwatch.recovered(), handle's heals, the gathering retry that walked)
+    writes one of these, with where it happened and the first reason, and it counts
+    as unhandled until scripts/mac/techlog.py handled marks it."""
+    at = now or datetime.now(tz=SERVER_TZ)
+    return add_red(at.strftime("%Y-%m-%d"), SELF_HEAL, [f"{SELF_HEAL}：{where}：{why or '没记下原因'}"],
+                   state_dir=state_dir, now=at)
+
+
+def unhandled(text: str) -> list[tuple[str, str]]:
+    """(id, text) of every red item in `text` without a handled line for it."""
+    reds: dict[str, str] = {}
+    done: set[str] = set()
+    for line in text.splitlines():
+        if m := RED_LINE.match(line.strip()):
+            reds.setdefault(m.group(1), m.group(2))
+        elif m := DONE_LINE.match(line.strip()):
+            done.add(m.group(1))
+    return [(i, t) for i, t in reds.items() if i not in done]
+
+
+def handled_line(item_id: str, commit: str) -> str:
+    return f"{DONE} {item_id} 已处理（{commit}）"
+
 
 log = logging.getLogger("ark.statestore")
 

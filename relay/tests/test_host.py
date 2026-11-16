@@ -35,8 +35,8 @@ into any function of app_main, service or boot_stages, as deep as it goes.
     # The files the host travels through, by the name the code calls them by. service.py's main
     # loop and boot_stages' phone channel moved into the package on 2026-10-11.
     MODULES = {"app_main": "app_main.py", "service": "service.py", "boot_stages": "boot_stages.py",
-               "mainloop": "ark_relay/features/host/mainloop.py",
-               "phone_channel": "ark_relay/features/phone/phone_channel.py"}
+               "automas_keeper": "ark_relay/features/automas_keeper.py",
+               "phone_channel": "ark_relay/features/phone.py"}
 
 
     def cls(tree: ast.Module, name: str) -> ast.ClassDef:
@@ -183,7 +183,7 @@ into any function of app_main, service or boot_stages, as deep as it goes.
 
     print("[the real AppHost covers everything the host reaches]")
     _, _, reached = walk_host(trees)
-    for fn in ("service.main", "mainloop._loop", "boot_stages._stage_inbox_and_phone",
+    for fn in ("service.main", "automas_keeper._loop", "boot_stages._stage_inbox_and_phone",
                "phone_channel._start_phone_channel", "app_main._end_session_window", "app_main._stop_requests"):
         require(f"walk reaches {fn}", fn in reached)
     gaps = missing(trees)
@@ -192,7 +192,7 @@ into any function of app_main, service or boot_stages, as deep as it goes.
     require("AppHost borrows ArkRelayService.main (else this test reads the wrong thing)", "main" in borrowed)
 
     print("[a host attribute AppHost lacks is caught wherever the host travels]")
-    for mod, fn, param in (("mainloop", "_loop", "svc"),
+    for mod, fn, param in (("automas_keeper", "_loop", "svc"),
                            ("phone_channel", "_start_phone_channel", "svc"),
                            ("app_main", "_stop_requests", "host"),
                            ("service", "main", "self")):
@@ -210,7 +210,7 @@ into any function of app_main, service or boot_stages, as deep as it goes.
 
     print("[the first version missed the round-8 case: service._loop(svc) reading svc.xxx]")
     require("borrowed-methods-only reading misses it",
-          "_not_on_host" not in borrowed_only(plant(trees, "mainloop", "_loop", "svc", "_not_on_host")))
+          "_not_on_host" not in borrowed_only(plant(trees, "automas_keeper", "_loop", "svc", "_not_on_host")))
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 
@@ -237,9 +237,9 @@ So: verify, retry once, and tell the truth either way.
 
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.phone import commands
+    from ark_relay.features import commands
     # estop() reads its stop steps and _mas from redbutton, so the fakes go there.
-    from ark_relay.features.phone import redbutton
+    from ark_relay.features import redbutton
 
 
     print("[要杀要查的名单里必须有鸣潮的三个真名——08-26 的假确认就漏在这里]")
@@ -491,8 +491,8 @@ So: verify, retry once, and tell the truth either way.
     print("\n[查活着谁：认名字不分大小写，一个不落]")
     import subprocess as _sp
     from ark_relay.core import config as _config
-    from ark_relay.features.okww_patch import okww_overlay as _ov
-    from ark_relay.features.phone import snapshot as _snap
+    from ark_relay.features import okww_overlay as _ov
+    from ark_relay.features import snapshot as _snap
     real_okww_running = _ov.okww_running
     real_run, real_win = _sp.run, _config.IS_WINDOWS
     _config.IS_WINDOWS = True     # the machine: the red button lists processes
@@ -564,7 +564,7 @@ log pointing at the window. `start ""` hands OK-WW off and lets the .bat end.
     import os
     import subprocess
 
-    from ark_relay.features.echofarm import echofarm
+    from ark_relay.features import echofarm
 
 
     root = tmpdir()
@@ -637,7 +637,7 @@ its command line (CommandLineToArgvW), and must give back the exact arguments.
     from pathlib import Path, PureWindowsPath
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.preupdate import preupdate_common as C
+    from ark_relay.features import preupdate as C
 
 
     def ps_statements(script: str) -> list[list[str]]:
@@ -850,7 +850,7 @@ Where the screens come from:
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.gameupdate import gameupdate_games as gug
+    from ark_relay.features import gameupdate_games as gug
     from ark_relay.core.desktop import Line, Screen
 
 
@@ -1113,7 +1113,7 @@ CoUninitialize runs (the 16:27 retry crashed pythonservice.exe that way).
     import weakref
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.core import procs
+    from ark_relay.core import desktop as procs
 
 
     class _ComError(Exception):
@@ -1194,8 +1194,8 @@ CoUninitialize runs (the 16:27 retry crashed pythonservice.exe that way).
 
 
     logs = _Logs()
-    procs.log.addHandler(logs)
-    procs.log.setLevel(logging.DEBUG)
+    procs._log_procs.addHandler(logs)
+    procs._log_procs.setLevel(logging.DEBUG)
     slept = []
     procs._sleep = slept.append
 
@@ -1209,7 +1209,7 @@ CoUninitialize runs (the 16:27 retry crashed pythonservice.exe that way).
     print("\n[一次失败后读到：等一下再试，不进群，但记一条自己好了（「自愈待查」红项）]")
     # Until 2026-10-12 the retry that read the list was an INFO line only: a fault that
     # fixed itself with no red item (audit 10-12 #7). errwatch.recovered() writes it.
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
     plan[:] = ["cancel", "ok"]
     logs.records.clear()
     rows = procs.python_processes()
@@ -1563,7 +1563,7 @@ turned "cannot tell" into a definite answer; the one left here
         sys.modules.setdefault(_name, _Stub(_name))
 
     import boot_stages
-    from ark_relay.features.host import automas_keeper, automas_procs
+    from ark_relay.features import automas_keeper, automas_keeper as automas_procs
 
 
     def _boom(*a, **k):
@@ -2020,8 +2020,8 @@ subscription code (_AsyncSubscription) running on fake COM / win32event:
     sys.modules.update(FAKES)
     sys.modules.pop("service", None)
     import service  # a fresh copy built on the fakes above
-    from ark_relay.features.host import automas_keeper, dirwatch, mainloop, procwatch, shutdown_signs, wmi_diag
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import automas_keeper, automas_keeper as dirwatch, automas_keeper as mainloop, procwatch, procwatch as shutdown_signs, procwatch as wmi_diag
+    from ark_relay.features import errwatch
     from ark_relay.core import texts
 
 
@@ -2522,8 +2522,8 @@ code take exactly the same path and nothing waits for real.
     sys.modules.update(FAKES)
     sys.modules.pop("service", None)
     import service  # a fresh copy built on the fakes above
-    from ark_relay.features.host import automas_keeper, dirwatch, mainloop, procwatch, shutdown_signs
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import automas_keeper, automas_keeper as dirwatch, automas_keeper as mainloop, procwatch, procwatch as shutdown_signs
+    from ark_relay.features import errwatch
     from ark_relay.core import texts
 
 
@@ -2859,8 +2859,8 @@ def _part_wmi_listener():  # noqa: C901
     sys.modules.update(FAKES)
     sys.modules.pop("service", None)
     import service
-    from ark_relay.features.host import automas_keeper, dirwatch, mainloop, procwatch, shutdown_signs, wmi_diag
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import automas_keeper, automas_keeper as dirwatch, automas_keeper as mainloop, procwatch, procwatch as shutdown_signs, procwatch as wmi_diag
+    from ark_relay.features import errwatch
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -3140,7 +3140,7 @@ def _part_procnames():
     check("急停脚本按命令行找 OK-WW 真身", "ok-ww" in est and "CommandLine" in est, True)
 
     print("\n[手机页那份进程表由同一个名单生成]")
-    snap = text("relay/ark_relay/features/phone/snapshot.py")
+    snap = text("relay/ark_relay/features/snapshot.py")
     check("snapshot 用的是 config 里那一份", "BUSY_PROCS" in snap, True)
     check("snapshot 不再自己写死名字",
           re.search(r'for n in \("AUTO-MAS", "MAA"', snap) is None, True)
@@ -3538,7 +3538,7 @@ starter deleting it, and app_main starting the thread in the packaged install on
     print("[a watchdog found stopped that nobody stopped: WARNING to the group (audit 10-12 #6)]")
     # Until 2026-10-12 a stop the relay then undid was one INFO line: the watchdog going
     # down with no stop marker has no known cause, so it is not a normal state.
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
 
 
     class WarnLogs(Logs):

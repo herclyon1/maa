@@ -76,8 +76,8 @@ morning's real history.db and the five 0.log files it points to.
     print("\n[audit 11-08 B-01: readers of a ledger entry's log find v5.8's <date>/<record id>/0.log]")
     if True:
         from ark_relay.core.ledger import State, strip_incomplete_items
-        from ark_relay.features.makeup import collect_retry as cr
-        from ark_relay.features.verify import outcome
+        from ark_relay.features import collect_retry as cr
+        from ark_relay.features import outcome
         end = by.get("2026-10-28/endfield/MaaEnd-05-33-08")
         entry = {"script": "MaaEnd", "run_id": end.run_id, "raw": dict(end.raw)} if end else {}
         got = collector.resolve_history_log(history, entry)
@@ -192,7 +192,7 @@ zh_cn locale.
     import threading
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.makeup import collect_retry as cr
+    from ark_relay.features import collect_retry as cr
 
 
     FX = fx_dir(Path(__file__), "fixtures") / "collect-retry-2026-09-11"
@@ -228,7 +228,7 @@ zh_cn locale.
         return sent, sd
 
 
-    from ark_relay.features.report import report as _report
+    from ark_relay.features import report as _report
     from ark_relay.core import texts as _texts
     from ark_relay.core.notify import route_of as _route_of
     got, _ = _retry_outcome({"AutoCollectRoute15": False})
@@ -482,13 +482,13 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
                       WECOM_BOT_URL="", ARK_PHONE_TOPIC="", ARK_LOG_FILE=str(TMP / "relay.log"))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.core import ledger_rows, texts
+    from ark_relay.core import ledger as ledger_rows, texts
     from ark_relay.core.config import SERVER_TZ, RunRecord
     from ark_relay.core.notify import route_of
-    from ark_relay.features.makeup import collect_retry as cr
-    from ark_relay.features.report import report
-    from ark_relay.features.selfcheck import machinecheck as mc
-    from ark_relay.features.verify import collector_maaend as cm, outcome
+    from ark_relay.features import collect_retry as cr
+    from ark_relay.features import report
+    from ark_relay.features import machinecheck as mc
+    from ark_relay.features import collector_maaend as cm, outcome
 
     FX = fx_dir(Path(__file__), "fixtures") / "collect-blocked-1005-1012"
     ZH = json.loads((fx_dir(Path(__file__), "fixtures") / "collect-retry-2026-09-11" / "zh_cn.json")
@@ -589,7 +589,7 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
         saved = (cr.run_retry, cr._locale, cr.restore_master)
         cr.run_retry = lambda md, routes, *a, **k: (asked.append(list(routes)) or {r: verdict for r in routes}, "")
         cr._locale, cr.restore_master = (lambda d: ZH), (lambda cfg: "")
-        from ark_relay.features.makeup import makeup
+        from ark_relay.features import makeup
         saved_mc = makeup._machinecheck
         makeup._machinecheck = lambda *a, **k: None
         try:
@@ -725,7 +725,7 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     # The outcome check used to take the round's pictures by file time and #29 by name
     # time: a picture whose file time is off (copied, touched later) was #29's and not the
     # check's, and #29 then failed 「核对没把它记成没采到」 on a picture the check never saw.
-    from ark_relay.features.alarm import runchecks, verdict
+    from ark_relay.features import handle as runchecks, handle as verdict
 
     hist = tmpdir() / "MaaEnd-06-58-38.log"
     hist.write_text(log("MaaEnd-06-58-38.log"), encoding="utf-8")
@@ -866,8 +866,8 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
           cr.final_verdict(round1, [B, A], S1, [A], S2, [hit1]), ({B: True, A: False}, {}))
     check("两轮都够时间：中途停掉的判断留足两轮", cr.STAMP_STALE.total_seconds() >= (cr.ROUNDS * 20 + 12) * 60, True)
 
-    from ark_relay.features.gameupdate import efstart, maaend_launch
-    from ark_relay.features.verify import collector_maaend as cm2
+    from ark_relay.features import efstart, maaend_launch
+    from ark_relay.features import collector_maaend as cm2
 
 
     def two_rounds(second_text, again, shots, start_fails=False):
@@ -929,7 +929,7 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     check("第一轮没撞上：不走第二轮", (got_v, len(sent_over), seen.get("second_round")), ({B: True, A: True}, 1, None))
 
     print("\n[没干完的报警先问一句：这一趟哪几条路线会在关机前单独补（账本 #166 #170）]")
-    from ark_relay.features.modes import modes as _modes
+    from ark_relay.features import modes as _modes
     sd_a, hist_a, md_a = tmpdir(), tmpdir(), maaend_dir(P1008A, P1008)
     (hist_a / "2026-10-08" / "endfield").mkdir(parents=True)
     (hist_a / "2026-10-08" / "endfield" / "MaaEnd-06-34-21.log").write_text(log("MaaEnd-06-34-21.log"), encoding="utf-8")
@@ -980,7 +980,7 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
                                         mark_incomplete=lambda *a: True, clear_incomplete_items=lambda *a: True),
             notifier=types.SimpleNamespace(send=lambda t, b, **kw: sent.append((t, b, kw.get("alert", False))) or []),
             _scripts_running=lambda: False)
-        from ark_relay.features.makeup import makeup
+        from ark_relay.features import makeup
         saved = (cr.run_retry, cr._locale, cr.restore_master, makeup._machinecheck)
         cr.run_retry, cr._locale, cr.restore_master = fake_rr(verdict_of), (lambda d: ZH), (lambda cfg: "")
         makeup._machinecheck = lambda *a, **k: None
@@ -1020,8 +1020,8 @@ run_retry's early 「gave up」 returns also left both running.
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.makeup import collect_retry as cr
-    from ark_relay.features.preupdate import preupdate_common as pc
+    from ark_relay.features import collect_retry as cr
+    from ark_relay.features import preupdate as pc
 
 
     FX = fx_dir(Path(__file__), "fixtures") / "collect-retry-2026-09-11"
@@ -1078,7 +1078,7 @@ run_retry's early 「gave up」 returns also left both running.
     check("写上结束，后面不再每次都说", "finished" in after, True)
     # Review of c6922283: the give-up stamp had no passed/failed, so the daily report said
     # 「开始了，还没有结果」 for a retry that was given up.
-    from ark_relay.features.report import report
+    from ark_relay.features import report
     gs = tmpdir()
     (gs / "collect-retry").mkdir(parents=True)
     (gs / "collect-retry" / "2026-09-12.json").write_text(json.dumps(after, ensure_ascii=False), encoding="utf-8")
@@ -1197,7 +1197,7 @@ where Route10 failed and AUTO-MAS retried all 17 routes at 11:21:43.
     import time
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.run import collect_watch
+    from ark_relay.features import collect_watch
 
 
     # Every 「目录监听掉了」 the watcher logs while the test runs. It must stay empty:
@@ -1293,7 +1293,7 @@ where Route10 failed and AUTO-MAS retried all 17 routes at 11:21:43.
     check("没有收窄记录", (Path(cfg.state_dir) / "collect-retry" / "narrow.json").exists(), False)
     check("记住了没走通的", w.failed, ["Route10"])
     check("不单独推送（失败从记录和补跑那里报）", n.sent, [])
-    check("收窄的函数没了", (hasattr(collect_watch.Watcher, "_narrow"), hasattr(__import__("ark_relay.features.makeup.collect_retry").features.makeup.collect_retry, "narrow_master")),
+    check("收窄的函数没了", (hasattr(collect_watch.Watcher, "_narrow"), hasattr(__import__("ark_relay.features.collect_retry").features.collect_retry, "narrow_master")),
           (False, False))
 
     print("\n[两条路线先后失败：都记下，母本还是不动]")
@@ -1442,16 +1442,16 @@ among them, switched off) and failures of only 自动采集 / 应急理智加强
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.alarm import handle
-    from ark_relay.features.makeup import makeup
-    from ark_relay.features.report import report
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import handle
+    from ark_relay.features import makeup
+    from ark_relay.features import report
+    from ark_relay.features import shutdown
     from ark_relay.core import texts
     from ark_relay.core import ledger as core
     from ark_relay.core import engine as eng_mod
-    from ark_relay.features.verify.collector_maaend import BAG_FULL
+    from ark_relay.features.collector_maaend import BAG_FULL
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
-    from ark_relay.features.selfcheck import machinecheck as _mc
+    from ark_relay.features import machinecheck as _mc
     _mc.load()
     _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
     _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc.py
@@ -1735,7 +1735,7 @@ among them, switched off) and failures of only 自动采集 / 应急理智加强
         check(f"{script} 账本记了没干完", e.state.read_ledger(f"{earlier:%Y-%m-%d}")[0].get("incomplete"), "有 1 项没干成")
 
     print("\n[自动采集补跑没走通、复发：进群（2026-10-06 起：每个报错都进群），日报那行也带上]")
-    src = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "makeup" / "collect_retry.py").read_text(encoding="utf-8")
+    src = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "collect_retry.py").read_text(encoding="utf-8")
     check("collect_retry 发报警（alert=True）", "alert=True" in src, True)
     check("补跑仍没走通：进群", route_of(texts.COLLECT_RETRY_FAILED, alert=True), "group")
     check("复发：进群", route_of(texts.COLLECT_RECURRENT, alert=True), "group")
@@ -1856,8 +1856,8 @@ among them, switched off) and failures of only 自动采集 / 应急理智加强
         eng_mod._SCRIPTS_CACHE.update(at=-1e9, val=False)
 
     print("\n[调试模式开着：不补跑，失败马上进群，不是一直压着等（2026-10-06）]")
-    from ark_relay.features.modes import modes as _modes_dbg
-    from ark_relay.features.alarm import unresolved as _unres_dbg
+    from ark_relay.features import modes as _modes_dbg
+    from ark_relay.features import handle as _unres_dbg
     _real_dbg = _modes_dbg.debug_active
     _modes_dbg.debug_active = lambda *a, **k: True
     try:
@@ -2048,8 +2048,8 @@ among them, switched off) and failures of only 自动采集 / 应急理智加强
                "servicemanager", "win32process", "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
         sys.modules.setdefault(_n, _Stub(_n))
     import boot_stages
-    from ark_relay.features.makeup import collect_retry
-    from ark_relay.features.gameupdate import gameupdate
+    from ark_relay.features import collect_retry
+    from ark_relay.features import gameupdate
     from ark_relay.core import mastercfg
     saved_fns = (gameupdate.spmed_check, mastercfg.prune_maaend_orphans,
                  mastercfg.migrate_maaend_options, collect_retry.restore_master, eng_mod._automas_snapshot)
@@ -2080,8 +2080,8 @@ among them, switched off) and failures of only 自动采集 / 应急理智加强
          mastercfg.migrate_maaend_options, collect_retry.restore_master, eng_mod._automas_snapshot) = saved_fns
 
     print("\n[补跑算中继自己派的：commands.run_script 记下「脚本 MaaEnd」，关机判断读它，不靠更新重跑的时刻]")
-    from ark_relay.features.phone import commands
-    from ark_relay.features.guard import trigger
+    from ark_relay.features import commands
+    from ark_relay.features import trigger
     sd8 = tmpdir()
     old_env = os.environ.get("ARK_STATE_DIR")
     os.environ["ARK_STATE_DIR"] = str(sd8)
@@ -2259,9 +2259,9 @@ make-up is only for a failure of today, so the no-make-up checks mean something)
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
-    from ark_relay.features.alarm import handle
-    from ark_relay.features.makeup import collect_retry, makeup, marker
-    from ark_relay.features.selfcheck import machinecheck as _mc
+    from ark_relay.features import handle
+    from ark_relay.features import collect_retry, makeup, makeup as marker
+    from ark_relay.features import machinecheck as _mc
 
     _mc.load()
     _mc_real = dict(_mc.CHECKS)
@@ -2517,7 +2517,7 @@ on_record likewise tied only 10-03's failures to a successful make-up.
 
     from ark_relay.core.config import RunRecord
     from ark_relay.core.ledger import State
-    from ark_relay.features.makeup import makeup
+    from ark_relay.features import makeup
 
     FX = fx_dir(Path(__file__), "fixtures")
 
@@ -2612,9 +2612,9 @@ trigger.py reads who created each task; the relay notes its own starts, because
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.alarm import handle
-    from ark_relay.features.run import runwatch
-    from ark_relay.features.guard import trigger
+    from ark_relay.features import handle
+    from ark_relay.features import runwatch
+    from ark_relay.features import trigger
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
@@ -2693,7 +2693,7 @@ trigger.py reads who created each task; the relay notes its own starts, because
     # Held until the task's later attempts decide (handle._hold_hand_started, 2026-10-16
     # task c6d40887: tests/test_makeup.py), pushed by the flush.
     from ark_relay.core import texts
-    from ark_relay.features.makeup import marker
+    from ark_relay.features import makeup as marker
     e = build()
     r = rec("m1", at(3, 0, 20))
     e._handle(r)

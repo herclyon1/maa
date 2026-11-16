@@ -1,0 +1,357 @@
+"""The config **actually in effect** on the machine: read in one place, used in two.
+
+The user, 2026-08-31, on why the phone must match the machine:
+「手机上的所有状态必须和机器保持一致， (everything on the phone must match the machine,
+否则你动了配置不同步到我这边会造成麻烦。」 (or a config change you make that never reaches
+me causes trouble).
+
+So what the phone shows and what `scripts/mac/config-check.py` shows come out of
+**the same code**: two readers would sooner or later disagree. config-check calls
+read() here.
+
+The data comes from AUTO-MAS's own backend API, not from its config files: while the
+backend is running it overwrites those files from its in-memory copy, so reading a file
+gets you a value that is about to be flushed away. OK-WW's own config is outside
+AUTO-MAS's reach, so that one can only be read from file.
+"""
+from __future__ import annotations
+
+import contextlib
+import json
+import logging
+import os
+import subprocess
+import threading
+import time
+from pathlib import Path
+from ark_relay.core import mastercfg as masconfig, mastercfg as masuser
+
+log = logging.getLogger("ark.snapshot")
+
+# read() runs on every phone-state publish and a WARNING is a group message: a
+# queue whose item list cannot be read is said once per condition (queue -> the
+# error last said, as WeeklyBossGate._last_error), forgotten once it reads again.
+_last_error: dict[str, str] = {}
+
+# OK-WW's python is found from the process command lines (redbutton._okww_python_alive),
+# and an unreadable list retries 3 x 3 s (procs.python_processes): asked on every
+# publish it stalled the 停止前 push inside SvcStop's 15 s timer. One answer serves
+# OKWW_ALIVE_TTL seconds; the stop / power-off pushes never ask and report the last one.
+OKWW_ALIVE_TTL = 30.0
+_okww_alive: dict = {"at": None, "alive": None}
+_no_query = threading.local()
+
+
+@contextlib.contextmanager
+def no_process_query():
+    """Inside it, _runtime does not ask for OK-WW's python (the 停止前 / 关机前 pushes)."""
+    _no_query.on = True
+    try:
+        yield
+    finally:
+        _no_query.on = False
+
+
+def _okww_python_cached() -> "bool | None":
+    """Whether OK-WW's python is up: cached for OKWW_ALIVE_TTL; inside no_process_query
+    the last answer of any age, None when there is none yet (not asked)."""
+    at = _okww_alive["at"]
+    if getattr(_no_query, "on", False):
+        return _okww_alive["alive"] if at is not None else None
+    if at is None or time.monotonic() - at >= OKWW_ALIVE_TTL:
+        from ark_relay.features.redbutton import _okww_python_alive  # noqa: PLC0415
+        _okww_alive.update(alive=_okww_python_alive(), at=time.monotonic())
+    return _okww_alive["alive"]
+
+# Read the **master copy**, not OK-WW's own. Before every run AUTO-MAS copies the
+# master over wholesale (see the comment on config.master_config_dir), so the copy in
+# the script directory reflects the config used on the **previous** round, not the one
+# in effect now.
+OKWW_FILES = ("NightmareNestTask.json", "DailyTask.json", "FarmEchoTask.json",
+              "TacetTask.json", "ForgeryTask.json")
+
+
+def _post(path: str, body: "dict | None" = None, timeout: int = 15) -> dict:
+    """POST to the AUTO-MAS backend (commands.mas_post) with a 15-second default timeout."""
+    from ark_relay.features.commands import mas_post  # noqa: PLC0415
+    return mas_post(path, body, timeout)
+
+
+def _mas(out: dict) -> None:
+    scripts = _post("/api/scripts/get")["data"]
+    for uid, sc in scripts.items():
+        info = sc.get("Info", {})
+        name = info.get("Name") or info.get("RootPath", uid)
+        try:
+            users = _post("/api/scripts/user/get", {"scriptId": uid}).get("data") or {}
+        except Exception as exc:  # noqa: BLE001 - said in the section, as _queues does
+            # Without a mark the script's section just vanished, as if it had no
+            # user (audit 11 #5); _queues marks the same case 「脚本读不到」.
+            out[_section_of(name)] = {"用户读不到": f"{type(exc).__name__}: {exc}"}
+            continue
+        # One user per script, the one the phone's changes go to (masuser.pick; until 11-08
+        # every user was written in turn and the last one shown, audit 11-08 D-11).
+        for _, u in [got] if (got := masuser.pick(users)) else []:
+            if name == "MAA":
+                out["MAA"] = maa_fields(masuser.info_view(u), u.get("Task", {}))
+            elif name == "MaaEnd":
+                t = u.get("Task", {})
+                st = t.get("SanityTaskType")
+                # Info.IfQuickConfig off means AUTO-MAS never pushes these fields
+                # down: MaaEnd runs from its own mxu-MaaEnd.json and this section
+                # is a dead copy, so it is not printed under the 「真实生效」 heading.
+                quick = bool((u.get("Info") or {}).get("IfQuickConfig"))
+                out["MaaEnd"] = {
+                    "这些设置生效吗": "生效" if quick else
+                        "❌ 不生效：快速配置是关的，真正跑的是 mxu-MaaEnd.json（母本）",
+                    "理智任务": st,
+                    "详细": t.get(st) if st else None,
+                    "开理智": t.get("IfSanity"),
+                    "自动吃药": t.get("IfAutoUseSpMedication"),
+                    "基质地点": t.get("AutoEssenceSpecifiedLocation"),
+                }
+            elif "OK-WW" in str(name) or "ok-ww" in str(name):
+                quick = bool((u.get("Info") or {}).get("IfQuickConfig"))
+                out["OK-WW(MAS侧)"] = {
+                    "这些设置生效吗": "生效" if quick else
+                        "❌ 不生效：快速配置是关的，真正跑的是 OK-WW 自己的母本配置",
+                    **(u.get("Task", {}) or {}),
+                }
+
+
+def _section_of(name) -> str:
+    """The snapshot key _mas writes a script's user under."""
+    if name in ("MAA", "MaaEnd"):
+        return str(name)
+    return "OK-WW(MAS侧)" if "ok-ww" in str(name).lower() else str(name)
+
+
+def maa_fields(i: dict, t: dict) -> dict:
+    """The Arknights section from one MAA user's Info / Task, whichever side
+    they were read from (the backend in _mas, the file in maa_from_files)."""
+    return {
+        "关卡": i.get("Stage"),
+        "关卡链": [i.get(f"Stage_{n}") for n in (1, 2, 3)],
+        "理智药": i.get("MedicineNumb"),
+        "连战": i.get("SeriesNumb"),
+        "关卡模式": i.get("StageMode"),
+        "剿灭": i.get("Annihilation"),
+        "活动关优先": t.get("IfActivityFirst"),
+        "活动关序号": t.get("ActivityStageIndex"),
+        "活动关理智药": t.get("ActivityMedicineNumb"),
+        "作战开关": t.get("IfFight"),
+    }
+
+
+def maa_from_files(automas_dir) -> dict:
+    """The Arknights section read from AUTO-MAS's ScriptConfig.json, the file
+    the plan text reads (plan._scripts). Raises when it cannot be read or holds
+    no MAA user, so the phone state says so instead of sending {}.
+
+    The file is current: AUTO-MAS saves it on every committed set
+    (app/models/ConfigBase.py set -> _commit_changes -> save). Unlike _mas it
+    needs no backend, which read() skips once the machine is going down (the
+    service-stop push)."""
+    if not automas_dir:
+        raise FileNotFoundError("没配 AUTO-MAS 目录")
+    data = masconfig.read(Path(automas_dir) / "config" / "ScriptConfig.json")   # or v5.8's YAML
+    found = None
+    for inst in data.get("instances", []):
+        node = data.get(inst.get("uid")) or {}
+        if (node.get("Info") or {}).get("Name") != "MAA":
+            continue
+        # The user _mas shows and the phone's changes go to (masuser.pick).
+        if got := masuser.pick((node.get("SubConfigsInfo") or {}).get("UserData")):
+            u = got[1]
+            found = maa_fields(masuser.info_view(u), u.get("Task") or {})
+    if found is None:
+        raise LookupError("ScriptConfig.json 里没有 MAA 脚本的用户")
+    return found
+
+
+def _queues(out: dict) -> None:
+    # Use .get: field names differ between AUTO-MAS versions, and one missing key
+    # would otherwise take out the whole queue section.
+    # Which scripts each shift runs. The phone filters config by shift with this.
+    # The user, 2026-09-04, show only the current shift: 「早班晚班切换的时候应该只显示
+    # 当次班次的游戏，否则极容易和早班混淆。」 - or it is easily confused with the
+    # morning shift.
+    names = {sid: str((v.get("Info") or {}).get("Name") or "")
+             for sid, v in _post("/api/scripts/get")["data"].items()}
+    from ark_relay.features.annihilation import _backend_unreachable, _going_down  # noqa: PLC0415
+    from ark_relay.core.plan import _startup_runs  # noqa: PLC0415 - the one reading of StartUpMode
+    out["队列"] = {}
+    for qid, c in _post("/api/queue/get")["data"].items():
+        info = c.get("Info") or {}
+        why = ""
+        try:
+            items = _post("/api/queue/item/get", {"queueId": qid})["data"].values()
+            scripts = [names.get(str((i.get("Info") or {}).get("ScriptId")), "")
+                       for i in items]
+            _last_error.pop(str(qid), None)
+        except Exception as exc:  # don't sink the queue section for one queue
+            if _backend_unreachable(exc):
+                raise           # the backend is gone: read() reports the section
+            # [] alone reads as a shift that runs no games: mark it.
+            scripts, why = [], f"{type(exc).__name__}: {exc}"
+            if _going_down():
+                log.info("机器在关机，队列 %s 的脚本名单没读到", info.get("Name") or qid)
+            elif _last_error.get(str(qid)) != why:
+                log.warning("队列 %s 的脚本名单读不到（%s），快照里那一班的脚本是空的",
+                            info.get("Name") or qid, why)
+                _last_error[str(qid)] = why
+        row = {
+            "定时": info.get("TimeEnabled"),
+            "开机跑": _startup_runs(info),
+            "脚本": [x for x in scripts if x],
+        }
+        if why:
+            row["脚本读不到"] = why
+        out["队列"][str(info.get("Name") or "?")] = row
+
+
+def _automas_dir() -> "str | None":
+    """AUTO-MAS root directory. Environment variable first, then the relay's .env.
+
+    This module is imported by the service process (where the environment is complete)
+    and also run by config-check.py as a standalone probe (where nothing is set), so
+    os.environ alone is not enough.
+    """
+    if v := os.environ.get("ARK_AUTOMAS_DIR"):
+        return v
+    env = Path(r"C:\ProgramData\ark-relay\.env")
+    try:
+        for line in env.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("ARK_AUTOMAS_DIR=") and not line.startswith("#"):
+                return line.split("=", 1)[1].strip() or None
+    except OSError:
+        pass
+    return None
+
+
+def _okww(out: dict) -> None:
+    from ark_relay.core.config import master_config_dir  # noqa: PLC0415 - avoid an import cycle
+
+    d = master_config_dir(_automas_dir(), "DailyTask.json")
+    if d is None:
+        out["OK-WW(母本)"] = "找不到母本目录（ARK_AUTOMAS_DIR 没设或结构变了）"
+        return
+    ok: dict = {}
+    for f in OKWW_FILES:
+        p = d / f
+        if not p.exists():
+            continue
+        try:
+            ok[f[:-5]] = json.loads(p.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            ok[f[:-5]] = f"读不了: {exc}"
+    out["OK-WW(母本·生效的)"] = ok
+
+
+# Held by the packaged relay's main program for as long as it runs (app_main.MUTEX; the
+# watchdog, packaging/watchdog/ark_watchdog.py, looks for the same name). Not called
+# *_MUTEX here: tests/test_user_switches.py reads any *_MUTE* name as a muted alarm.
+_MAIN_LOCK_NAME = "Global\\ArkRelayMain"
+_SYNCHRONIZE = 0x00100000
+
+
+def _relay_state() -> str:
+    """RUNNING / STOPPED / ?. The packaged relay (scheduled task \\ArkRelay\\main) is
+    running exactly while its mutex exists; without it, the old Windows service ark-relay
+    is asked, for a machine not switched over yet or rolled back to it."""
+    import pywintypes  # noqa: PLC0415 - Windows only
+    import win32api  # noqa: PLC0415
+    import win32event  # noqa: PLC0415
+
+    try:
+        win32api.CloseHandle(win32event.OpenMutex(_SYNCHRONIZE, False, _MAIN_LOCK_NAME))
+        return "RUNNING"
+    except pywintypes.error as exc:
+        if exc.winerror == 5:        # access denied: it exists, held by an elevated process
+            return "RUNNING"
+        if exc.winerror != 2:        # anything but "no such mutex" says nothing
+            return "?"
+    q = subprocess.run(["sc", "query", "ark-relay"], capture_output=True,
+                       text=True, errors="replace", timeout=15)
+    if "RUNNING" in q.stdout:
+        return "RUNNING"
+    # STOPPED, or no such service (1060): either way nothing is running the relay.
+    return "STOPPED" if "STOPPED" in q.stdout or q.returncode == 1060 else "?"
+
+
+def _runtime(out: dict) -> None:
+    try:
+        out["ark-relay"] = _relay_state()
+    except Exception:  # noqa: BLE001
+        out["ark-relay"] = "?"
+    try:
+        tl = subprocess.run(["tasklist"], capture_output=True, text=True,
+                            errors="replace", timeout=20).stdout
+        # One list of busy processes, in config.py (it includes Wuthering Waves'
+        # own process and the emulator), shared with the rest of the relay.
+        from ark_relay.core.config import BUSY_PROCS, ORCHESTRATOR_PROC  # noqa: PLC0415
+        names = (ORCHESTRATOR_PROC,) + BUSY_PROCS
+        progs = {n[:-4] if n.endswith(".exe") else n: n in tl for n in names}
+        # OK-WW runs as pythonw.exe (config.py, "process names"), so the names above
+        # are blind to it: the red button's check asks the command lines, and an
+        # unread list counts as running there and here (audit 11 #3).
+        py = _okww_python_cached()
+        if py is None:
+            out["OK-WW python"] = "没查"
+        progs["ok-ww"] = progs.get("ok-ww", False) or bool(py)
+        out["程序"] = progs
+    except Exception:  # noqa: BLE001
+        pass
+    # A hand-set one-shot switch with no display anywhere is a switch that gets
+    # forgotten. This one stops all stamina spending, so forgetting it means
+    # waveplates sit at the cap overflowing while every other surface says farming
+    # is happening.
+    from ark_relay.core.config import no_stamina_farm  # noqa: PLC0415
+    if no_stamina_farm():
+        out["⚠️ 不刷体力"] = "开着（一次性开关，关掉它才恢复）"
+
+
+def read_runtime() -> dict:
+    """Only the runtime section (_runtime): the relay service's state and the running
+    programs, which is all of a snapshot the phone shows (phone.state_payload).
+
+    The phone's queues and config come from the files (plan.queue_rows,
+    maa_from_files), so a publish does not call the AUTO-MAS backend: every
+    publish used to run _mas / _queues / _okww and throw them away, and their
+    failures reached the group as 「快照的 _MAS错误 这一段读不到」 (audit 11 #2;
+    relay.log 10-06 and 10-10)."""
+    return read(only=("_运行时错误",))
+
+
+def read(only: "tuple[str, ...] | None" = None) -> dict:
+    """Read one full snapshot (config-check.py); `only` limits it to the sections
+    with those error labels. A section that fails records an error; the rest is unaffected.
+
+    Once the machine is going down - the relay's own power-off, or Windows shutting down,
+    whoever started it (annihilation._going_down) - the AUTO-MAS backend is being torn
+    down, so the `_MAS错误`/`_队列错误` sections would fail for no reason but the shutdown:
+    skip them then. They only reflect the AUTO-MAS side that is going away;
+    `_OKWW错误`/`_运行时错误` stay because they read files and Windows services, which are
+    still there. A section that fails while the machine is going down is logged at INFO,
+    not pushed. A plain service stop (`sc stop`, the self-update restart) leaves the
+    machine and AUTO-MAS up: read as usual, a failure warns (until 2026-10-12 any service
+    stop counted)."""
+    out: dict = {}
+    from ark_relay.features.annihilation import _going_down as down  # noqa: PLC0415
+
+    for label, fn in (("_MAS错误", _mas), ("_队列错误", _queues),
+                      ("_OKWW错误", _okww), ("_运行时错误", _runtime)):
+        if only is not None and label not in only:
+            continue
+        if label in ("_MAS错误", "_队列错误") and down():
+            continue
+        try:
+            fn(out)
+        except Exception as exc:
+            out[label] = f"{type(exc).__name__}: {exc}"
+            if down():   # the shutdown began while this section was being read
+                log.info("机器在关机，快照的 %s 这一段没读到", label)
+            else:
+                log.warning("快照的 %s 这一段读不到", label, exc_info=True)
+    return out

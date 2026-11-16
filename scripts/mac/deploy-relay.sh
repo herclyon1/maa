@@ -296,7 +296,7 @@ lap
 # false-alarm classes verbatim, and the bar is exact: this version must not push
 # these lines again. Extra logs for one run: REPLAY_LOGS="a.log b.log" scripts/mac/deploy-relay.sh
 echo "▶ 0.75/5 部署前回放（outcome / errwatch 离线跑这一版，有推送就拒绝）"
-if REPLAY_OUT=$("$RELAY_PY" -m ark_relay.features.selfcheck.replay \
+if REPLAY_OUT=$("$RELAY_PY" -m ark_relay.features.selfcheck \
       tests/fixtures/okww-1006-run.log \
       tests/fixtures/relay-1006-false-alarms.log \
       ${REPLAY_LOGS:-} 2>&1); then

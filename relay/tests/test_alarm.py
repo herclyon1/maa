@@ -57,7 +57,7 @@ line, the same record handled twice) and for the self-heal notice.
     import os
     from datetime import datetime, timedelta
     from ark_relay.core import engine as eng_mod
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import handle
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
 
@@ -125,7 +125,7 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
                       COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.alarm import alertlog, errwatch, known_fixed
+    from ark_relay.features import errwatch as alertlog, errwatch, errwatch as known_fixed
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core import notify as notify_mod
@@ -655,7 +655,7 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
         # notify.py:_post logs a transport failure that went through on a later attempt
         # with errwatch.recovered(); on the errwatch push thread that record used to be
         # dropped by the thread-name filter before the recovered check (audit 10-12 #8).
-        from ark_relay.core import techlog
+        from ark_relay.core import statestore as techlog
         R = TMP / "recovered-push" / "state"
         n = _Notifier()
         h = make(n, R)
@@ -711,7 +711,7 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
 
 
     print("\n[这一段进技术日志，不进日报（D-1010；report.write_daily_techlog）]")
-    from ark_relay.features.report import report
+    from ark_relay.features import report
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import Config
     from ark_relay.core.ledger import State
@@ -904,7 +904,7 @@ leaves short and two-part texts exactly as before.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import notify, texts
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.run import runwatch
+    from ark_relay.features import runwatch
 
 
     # A task log shaped like the 11-05 one: 343 lines, about 38000 characters, mostly Chinese.
@@ -1041,7 +1041,7 @@ the cache and the previous day's unsaved repeat was lost, so the daily report's
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
 
 
     class Notes:
@@ -1088,7 +1088,7 @@ ark_relay/.
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
 
-    from ark_relay.features.alarm import known_fixed
+    from ark_relay.features import errwatch as known_fixed
 
 
     CALL = re.compile(r"\.(warning|error|exception|critical|info|debug)\(\s*(f?\"[^\"]*\"|f?'[^']*')", re.S)
@@ -1155,16 +1155,16 @@ that day he took the make-up that got past it back out of the group: 「报错�
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
 
-    from ark_relay.features.alarm import handle, unresolved
-    from ark_relay.features.makeup import makeup
-    from ark_relay.features.verify import outcome
-    from ark_relay.features.report import report
+    from ark_relay.features import handle, handle as unresolved
+    from ark_relay.features import makeup
+    from ark_relay.features import outcome
+    from ark_relay.features import report
     from ark_relay.core import texts
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
     from ark_relay.core.notify import route_of
-    from ark_relay.features.selfcheck import machinecheck as _mc
+    from ark_relay.features import machinecheck as _mc
     _mc.load()
     _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
     _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc.py
@@ -1407,7 +1407,7 @@ that day he took the make-up that got past it back out of the group: 「报错�
     check("设置那两行还在正文里", "· 自动采集的设置：" in last_body(e) and "· 其他的设置：" in last_body(e), True)
 
     print("\n[终末地没干完的是自动采集：照样当场进群，第一句不再说「这一类不补跑」，说路线会单独补（账本 #166 #170）]")
-    from ark_relay.features.makeup import collect_retry as _cr
+    from ark_relay.features import collect_retry as _cr
     _only = outcome.summarize([outcome.Check("自动采集 真的走了路线", False, "路线2：协议纹石采集失败")], "MaaEnd")
     _routes = ["采集血菌", "采集协议纹石（路线2）"]
     _saved_ahead = _cr.retry_ahead
@@ -1701,8 +1701,8 @@ def _part_silent_green_guards():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.verify import outcome
-    from ark_relay.features.alarm.handle import _maa_app_log, _okww_nest_expected
+    from ark_relay.features import outcome
+    from ark_relay.features.handle import _maa_app_log, _okww_nest_expected
 
     FAILED = []
 
@@ -1787,8 +1787,8 @@ nothing in this file talks to COS.
         os.environ.update(TZ="Asia/Tokyo")
         time.tzset()
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.alarm import alertlog
-    from ark_relay.features.phone import phone
+    from ark_relay.features import errwatch as alertlog
+    from ark_relay.features import phone
     from ark_relay.core import texts
     from ark_relay.core.config import Config
     from ark_relay.core.notify import Notifier
@@ -1901,8 +1901,8 @@ nothing in this file talks to COS.
 
 
     grab = _Grab()
-    alertlog.log.addHandler(grab)
-    alertlog.log.setLevel(logging.INFO)
+    alertlog._log_alertlog.addHandler(grab)
+    alertlog._log_alertlog.setLevel(logging.INFO)
     cos = FakeCos()
     cos.put_fail = "回 503"
     al = alertlog.AlertLog(TMP / "s2", put=cos.put, get=cos.get)
@@ -1918,7 +1918,7 @@ nothing in this file talks to COS.
     n_puts = len(cos.puts)
     al2.sync()
     check("都上去了以后，开机补传什么都不做", len(cos.puts), n_puts)
-    alertlog.log.removeHandler(grab)
+    alertlog._log_alertlog.removeHandler(grab)
 
     print("\n[本地没有这一天（状态目录被清过）：先读回 COS 上的，读不回来就不写，免得盖掉]")
     cos = FakeCos()
@@ -2047,8 +2047,8 @@ alerts-20261013-old-row.jsonl) must still read and merge fine.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import Config
     from ark_relay.core.notify import Notifier
-    from ark_relay.features.alarm import alertlog
-    from ark_relay.features.selfcheck import machinecheck as mc
+    from ark_relay.features import errwatch as alertlog
+    from ark_relay.features import machinecheck as mc
 
     FIX = fx_dir(Path(__file__), "fixtures") / "alerts-20261013-old-row.jsonl"
 
@@ -2175,7 +2175,7 @@ failure was ever said.
 
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.alarm import alertlog, errwatch
+    from ark_relay.features import errwatch as alertlog, errwatch
 
 
     print("[a slow PUT does not hold record() up, and what it records is not lost]")
@@ -2222,14 +2222,14 @@ failure was ever said.
 
 
     grab = Grab()
-    logging.getLogger(alertlog.log.name).addHandler(grab)
+    logging.getLogger(alertlog._log_alertlog.name).addHandler(grab)
     al = alertlog.AlertLog(tmpdir(), put=lambda key, data: "COS 503", get=lambda key: (None, ""))
     al.record("❌ MAA 失败", "x")
     t = threading.Thread(target=al.sync, name=f"{errwatch.PUSH_THREAD}-copy")
     t.start()
     t.join(5)
     al.sync()          # on this (non-push) thread: errwatch would take this WARNING
-    logging.getLogger(alertlog.log.name).removeHandler(grab)
+    logging.getLogger(alertlog._log_alertlog.name).removeHandler(grab)
     said = [n for n, m in grab.lines if "COS 没成" in m]
     check("the failure is said off the push path too", said, [f"{errwatch.PUSH_THREAD}-copy", "MainThread"])
 
@@ -2255,7 +2255,7 @@ def _part_macpush():  # noqa: C901
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
                       COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.alarm import alertlog, macpush
+    from ark_relay.features import errwatch as alertlog, macpush
     from ark_relay.core import texts
     from ark_relay.core.config import Config
     from ark_relay.core.notify import Notifier
@@ -2602,17 +2602,17 @@ def _part_every_failure_pushed():
         sys.modules.setdefault(_name, _Stub(_name))
 
     import boot_stages
-    from ark_relay.features.gameupdate import gameupdate
-    from ark_relay.features.alarm import handle
-    from ark_relay.features.makeup import makeup
-    from ark_relay.features.okww_patch import okww_overlay
-    from ark_relay.features.preupdate import preupdate
+    from ark_relay.features import gameupdate
+    from ark_relay.features import handle
+    from ark_relay.features import makeup
+    from ark_relay.features import okww_overlay
+    from ark_relay.features import preupdate
     from ark_relay.core import texts
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
     from ark_relay.core.notify import route_of
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
 
     # The stubbed win32api would make GetSystemMetrics read as "Windows is going down", and the
     # boot pre-update stops at once for a stopping relay (boot_stages._stage_preupdate, 10-16).
@@ -2796,14 +2796,14 @@ def _part_recovered_daily_only():  # noqa: C901
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.alarm import errwatch, handle
-    from ark_relay.features.makeup import makeup
+    from ark_relay.features import errwatch, handle
+    from ark_relay.features import makeup
     from ark_relay.core import notify, texts
-    from ark_relay.features.report import report
+    from ark_relay.features import report
     from ark_relay.core import ledger as core
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
-    from ark_relay.features.selfcheck import machinecheck as _mc
+    from ark_relay.features import machinecheck as _mc
     _mc.load()
     _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
     _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc.py
@@ -3181,9 +3181,9 @@ The report is rendered through report._compose_daily, the same function the
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.phone import commands
-    from ark_relay.features.alarm import handle
-    from ark_relay.features.report import report
+    from ark_relay.features import commands
+    from ark_relay.features import handle
+    from ark_relay.features import report
     handle._screenshot_to = lambda out: False   # the real one waits up to 10 s for a Windows screenshot file
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
@@ -3445,9 +3445,9 @@ earlier failures.
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.makeup import collect_retry
-    from ark_relay.features.phone import commands
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import collect_retry
+    from ark_relay.features import commands
+    from ark_relay.features import handle
     from ark_relay.core import ledger as core
     handle._screenshot_to = lambda out: False   # the real one waits up to 10 s for a Windows screenshot file
     from ark_relay.core import engine as eng_mod
@@ -3600,7 +3600,7 @@ earlier failures.
     check("手动停止排在重试后成功之前", title.endswith("其余全绿 ✅（有一趟被手动停止）"), True)
 
     print("\n[记分牌不算停掉的那趟]")
-    from ark_relay.features.report import scoreboard
+    from ark_relay.features import report as scoreboard
     calls = []
     real_record = scoreboard.record
     scoreboard.record = lambda *a, **k: calls.append(a)
@@ -3780,7 +3780,7 @@ Server酱 排在第一位不是随手定的：它没有 IP 白名单，用户实
         check(f"主表里没有它（它不再有路由）：{cell}", any(c == cell for c, _ in _rows), False)
     check("中途重启那一行在（压着，后面那次定）", any(c.startswith("(an attempt AUTO-MAS recorded as a restart") for c in _rec_rows), True)
     check("推送重试那一行在", any("推送传输失败" in c for c in _rec_rows), True)
-    _src = "\n".join(f.read_text(encoding="utf-8") for f in sorted([p for p in (_P(__file__).resolve().parents[1] / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks"} & set(p.parts)]))
+    _src = "\n".join(f.read_text(encoding="utf-8") for f in sorted([p for p in (_P(__file__).resolve().parents[1] / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks", "machinechecks.py"} & set(p.parts)]))
     for cell, name in NOT_SENT.items():
         sent = re.findall(r"(?:\.send|\.send_group|_push_now|unresolved\.send)\((?:[^()]|\([^()]*\))*?texts\." + name + r"\b", _src)
         check(f"没有哪个 send 发它：texts.{name}", sent, [])

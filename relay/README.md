@@ -19,84 +19,76 @@ above.
 
 ## Modules
 
-Shared parts are in `ark_relay/core/`, each feature in `ark_relay/features/<name>/`
-(one folder per cell of the relay map).
+Shared parts live in `ark_relay/core/`, feature modules live flat in `ark_relay/features/`.
 
 | File | Responsibility |
 |---|---|
-| `service.py` | the boot sequence's order (`ArkRelayService.main`) and the stop handling (`SvcStop`, `SvcShutdown`), which the app host (app_main.py) reuses; its Windows-service host (`SvcDoRun`, `install`) is no longer installed on the machine (old service removed 2026-10-11) |
-| `mainloop.py` + `dirwatch.py` / `day_roll.py` / `automas_keeper.py` (features/host/) | the main loop (wait for an event or the alarm clock, run tick) / AUTO-MAS history-directory change notifications / local midnight: put back the day's queue-command skips / keep the AUTO-MAS backend alive (handle, revival with backoff, alert after repeated failures) |
-| `procwatch.py` + `wmi_subscription.py` / `wmi_diag.py` (features/host/) | the python.exe start listener that wakes the loop / its cancellable asynchronous WMI subscription / what is logged when it drops (winmgmt PID and hosts, SCM events, HRESULT) |
-| `automas_procs.py` / `shutdown_signs.py` (features/host/) | the AUTO-MAS processes as tasklist and OpenProcess see them / is the machine going down (the relay's own power-off, the System log's 1074 / 1075) |
-| `automas_jobfix.py` (features/host/, payload in `automas_files/`) | keep two fallbacks (each a module and the `.pth` importing it) in AUTO-MAS's venv site-packages - the job-object one and the LDPlayer ADB-address one: put back at boot and after an AUTO-MAS update when missing or changed |
-| `phone_channel.py` (features/phone/) | a phone button press at the relay's end: run now or queue while a script runs, the boot backlog, the long-lived connection and heartbeat |
-| `ledger.py` + `ledger_rows.py` / `ledger_report.py` | the ledger (`State`: one JSON line per run, marks) / one entry as report rows per tool / failure message and daily report text |
-| `engine.py` | the round: reports, shutdown, catch-up, manual-round detection |
-| `collector.py`（聚合）+ `collector_maa.py` / `collector_maaend.py` / `collector_okww.py` | 扫 AUTO-MAS 的 history 记录、判成败；三个游戏的日志解析按游戏分文件；`maaend_fwlog.py` 读 MaaEnd 的框架日志和 MXU 自己的日志（collector_maaend 原名转出）；`gamelog_errors.py` 把跑成功那一趟游戏日志里没登记的报错报进群（清单 `gamelog_errors.txt`） |
-| `watch.py` | directory-change notification (Windows ctypes / macOS kqueue) |
-| `plan.py` | read AUTO-MAS's schedule; there is no second copy of it |
-| `masuser.py` | where an AUTO-MAS MAA user keeps each setting (Info before v5.7.0-beta.3, Stage / Task after) |
-| `activity.py` | an OK-WW daily activity short of 100 because the waveplates ran out: a word in the group, the evening shift tops it up, an alarm if it does not |
-| `masconfig.py` / `miniyaml.py` | AUTO-MAS's ScriptConfig / QueueConfig / PlanConfig in the v5.7 JSON shape, read from the JSON or from v5.8's scripts / queues / plans.yaml (times back to local), with the YAML subset reader that needs |
-| `mascontract.py` | every AUTO-MAS setting the relay reads or writes, and the check that each is still there (boot self-check, after an AUTO-MAS update; `scripts/mac/lib/automas_contract_watch.py` against a release) |
-| `notify.py` / `transport.py` | channels and HTTP with the right retry policy |
-| `netretry.py` | another try, inside the caller's own time limit, for a request the network cut short (COS, the Endfield bulletin) |
-| `summary.py` | wording, including the optional LLM line |
-| `inbox.py` | fetch and apply `queue/config.json` |
-| `logfile.py` | relay.log size rotation (16 MB × 3 backups) that never stops the relay when Windows refuses the rename; `tail_bytes` reads across the rotated files |
-| `selfupdate.py` | fetch and apply `relay/manifest.json` |
-| `commands.py` + `redbutton.py` / `mas_client.py` / `config_fields.py` | the command whitelist and its gates / the red button (estop) and its press windows / the AUTO-MAS API client / config field helpers (flatten, dig, nest, plain-words change) |
-| `queues.py` / `modes.py` / `sanity_plan.py` / `mastercfg.py` (MaaEnd) + `mastercfg_maa.py` / `mastercfg_okww.py` | config writers |
-| `run_limit.py` | keeps Endfield's failure retry limit in AUTO-MAS (Run.RunTimesLimit) at 1, his 2026-11-05 decision: read every engine tick, written back and read back when an AUTO-MAS update or a click put it back; refused while the script runs (the next tick retries); one Server酱 line a day when it wrote, one group alarm after 3 failures for another reason |
-| `statestore.py` | 唯一的状态档案 `state/state.json`：六段、字段表登记过才能写、旧文件自动迁入 |
-| `texts.py` | 所有通知文案。标题不许写死在别处，闸门盯着 |
-| `techlog.py` | the technical log `<state>/../tech/<day>.md`: what the daily report leaves out (D-1010), one `## HH:MM <heading>` section each, red items with ids |
-| `handle.py` / `missed.py` / `report.py` / `shutdown.py` | 从 engine 拆出来的四块：记账告警 / 漏跑缺项 / 日报 / 关机决策 |
-| `gamelogs.py` / `records.py` / `runchecks.py` / `verdict.py` / `pushes.py` / `manualstops.py` / `daymarks.py` | handle.py's helpers: the games' own logs for one run / facts and marks on one record / what the machine checks get about a handled record / what a run actually got done / alarms pushed at once instead of held / runs an emergency stop cut short, booked at boot / per-day marks (update window, alarm keys already sent) |
-| `runwatch.py` | 在跑巡查：读 AUTO-MAS 的 app.log，脚本每次超时都立刻报（手动开的那趟也报，并写明是手动开的）；队列超过近 7 天最长收尾 + 30 分钟还没跑完报一次（有人在 AUTO-MAS 上手动开的那个任务不算这一班） |
-| `trigger.py` | 谁开的这趟：读 AUTO-MAS app.log 的「触发来源」，加上中继自己发起的记账；有人在 AUTO-MAS 上手动开的照样报警（写明是手动开的），只是不补跑、不算这一班 |
-| `scoreboard.py` | 每个代码版本跑过几趟、失败几趟。数在 `append_ledger` 里记，日报末尾贴一行——我写的字动不了它 |
-| `annihilation.py` / `garden.py` / `weeklyboss.py` (+ `weekgate.py`: the week bookkeeping garden and weeklyboss share) | 三个「一周一次」的门，同一套接口（剿灭只读 AUTO-MAS 记的本周进度，一周一次由 AUTO-MAS 管） |
-| `preupdate.py`（聚合）+ `preupdate_common.py` / `preupdate_automas.py` / `preupdate_okww.py` | 开机窗口里把 AUTO-MAS、OK-WW 更新掉，按程序分文件（MaaEnd、MAA 的更新交给 AUTO-MAS） |
-| `gameupdate.py`（聚合）+ `gameupdate_games.py` + `gameupdate_maaend.py` (MaaEnd switch-off records, sanity-booster check) | After the queue: updates the Endfield client through its launcher and re-runs MaaEnd on its own; Arknights and WuWa clients are updated by AUTO-MAS (items 10a, 10b), the relay only re-runs them after a maintenance window |
-| `okww_overlay.py` | 装进 OK-WW 自己的 `ok_tasks/` 扩展目录，不改它的源文件；装完读回报告，有没贴上的就报出来；开机和预更新后按盘上源码核钉住的几处，对不上开跑前就说 |
-| `wuwa_tacet.py` / `wuwa_forgery.py` | 鸣潮副本序号 → 名字 → 掉落，手机页与此同源 |
-| `echofarm.py` | 刷 4C 声骸：改配置、在 session 1 起 OK-WW、到点收工并还原配置 |
-| `monthcard.py` | 月卡到期提示：存手机登记的充值次数 / 剩余天数，算最后一次领取日，前 5 天起每天一条 Server酱 |
-| `needtable.py` (+ `build.py`: the table itself) | App 库存页的「最新六星满练要多少」表：每个服务器日在单独线程里重算一次，放到 COS 上手机状态旁边（`state/<同一哈希>.need.json`） |
-| `essence.py` | 终末地基质刷取：「目标选择」勾的武器基质都齐了以后，等没有任务在跑时自己切成随机地区刷垫子、关掉刻写券、地区全勾，日报说一句；另有手动用的勾武器工具（scripts/mac/lib/maaend_essence_pick.py） |
-| `wuwa_boss.py` | 鸣潮「讨伐强敌」列表序号 → boss 名字，手机页的下拉与此同源 |
-| `banners.py` (shared parts) + `arknights.py` / `endfield.py` / `wuwa.py` / `wuwa_posters.py` / `wuwa_history.py` (per game) / `efstatus.py` / `snapshot.py` / `desktop.py` / `phone.py` (+ `mailbox.py` / `heartbeat.py` / `quota.py` / `cmdqueue.py` / `wire.py` / `cos_store.py`: its parts; `mas_labels.py`: AUTO-MAS option labels) | 卡池播报 / 终末地开服状态 / 配置快照 / 桌面助手 / 手机通道 |
-| `outcome.py` | 跑完核对「到底干成了什么」，没干成必须出声 |
-| `okww_i18n.py` | 读游戏机上鸣潮脚本（ok.po）和它底下框架（ok-script 的 zh_CN.ts）自带的翻译文件，把变成中文的整句日志翻回英文，`outcome.normalize_okww_log` 先用它、再用手写对照表；脚本升级多翻了句子不用改代码 |
-| `efstart.py` + `efstart_setup.py` + `maaend_launch.py` (gameupdate/) | Endfield 1.6.3 runs only when the official launcher starts it, and since 10-17 it runs windowed (1280x720, below the desktop) for script runs so the launcher's DirectX 11 box can stay unticked. At every relay start and after an AUTO-MAS update `efstart_setup` puts MaaEnd Game.Path back on Endfield.exe, sets AUTO-MAS v5.7.0-beta.5's 「MaaEnd 启动」 (LaunchMode `MaaEnd`, SetResolution, CloseOnFinish, RestoreDisplayType `Fullscreen`, RestoreResolution `1920x1080`) when `maaend_launch.check` finds MaaEnd's LaunchGamePC pretask, its options and CloseGamePC's restore (else LaunchMode `Launcher` and a group WARNING), and removes the relay's helper preAction from the MaaEnd master. The helper (relay pythonw on the desktop) runs the same pretask for the relay's own gathering retry and reports its exit code; it never touches the DirectX 11 box |
-| `collect_retry.py` | 自动采集只补跑失败的路线（上游 #5660 不做）；连续两天仍败＝复发，请人工提 issue。游戏由 MaaEnd 开成 1280×720 窗口，补跑完用 MaaEnd 的关游戏任务改回 1920×1080 全屏，改不回就说 |
-| `collect_watch.py` | 盯 MaaEnd 的 maafw.log：记下哪条采集路线没走通（不改母本，2026-10-06 起不再收窄路线）；旧版本收窄过的母本在下一趟开始时改回；喂任务截图和卡死看门狗 |
-| `display_wake.py` | 盯 AUTO-MAS 的 app.log：它经官方启动器开终末地（「启动器启动」或「MaaEnd 启动」）的那一刻叫醒游戏机屏幕（屏幕关着时启动器不显示窗口），之后每分钟再叫一次，游戏开起来或满 5 分钟就停；不改电源设置 |
-| `stagegate.py` | Stage gate: replicates MAA's own check (FightTask.cpp / StageNavigationTask.cpp) on resource/tasks + cache/resource/tasks for the stage AUTO-MAS will send; refuses setting a stage MAA cannot navigate to (「MAA 走不到，修改失败」, nothing saved), and before each MAA queue time sends one group alarm (`PULL_FROM_QUEUE` off as shipped; on, it pulls MAA from that queue run and puts it back afterwards). Unreadable files never block |
-| `makeup.py` (+ `marker.py`: the day marker) | 明日方舟 / 终末地失败后，队列空了补跑一次（终末地按你自己的设置整轮再跑、先关游戏，不关你开着的任何一项；背包满了先开「存放背包」排到最前，跑完改回）；补跑走通只进日报 |
-| `unresolved.py` | 明日方舟 / 终末地没处理好就进群：补跑后仍没成、没补跑、或跑完了但没干完（自动采集、应急理智加强剂也一样），每一次都响；同一条记录不重复推 |
-| `maa_start_watchdog.py` | Arknights game-start watchdog (#137), its own thread every 30 s: while AUTO-MAS says MAA is 「运行」 and the open StartUp in MAA's debug\asst.log has gone 5 minutes without a download or resource-check screen (GameStartUpdateOCR / GameStartCheckResourceOCR), ends that MAA.exe by PID (never the emulator or the game) so AUTO-MAS counts the attempt failed and restarts the emulator and MAA; one group alarm per hung start |
-| `maaend_watchdog.py` | MaaEnd hang watchdog, ticked by collect_watch's thread at least once a minute: while AUTO-MAS says MaaEnd is 「运行」, a go-service plugin crash or 10 minutes without a maafw.log line ends MaaEnd.exe (never the game) so AUTO-MAS retries at once, and alarms the group |
-| `task_shots.py` | A desktop picture at every MaaEnd task end (and before a launch's first task), driven by collect_watch's maafw.log events and taken on its own thread; state/shots/<day>/, kept 3 days; MaaEnd evidence bundles carry the pictures inside the run's window |
-| `errwatch.py` | 中继自己记下的每一条 WARNING / ERROR 都立刻报群，每次都报；修过的（`known_fixed.py`）又出现标「复发」；群里没收下的存盘排队、过后再发，一条不丢（积压时合成一条发）；推送途中自己记的不再回来报 |
-| `known_fixed.py` | 修好过的报错种类和修好的版本，errwatch 拿它给复发打标记；只登记有部署标签能查到的修复 |
-| `alertlog.py` | 每条送到群的报警抄一份：先记 state/alerts/<北京日期>.jsonl，再把这一天整份私有地传到 COS 的 alerts/<北京日期>.jsonl（北京时间、游戏、标题、正文、版本、运行编号）；传不上下条报警或开机再补 |
-| `macpush.py` | 每条送到群的报警，把 COS 那同一行 JSON 直接 POST 给 Mac（默认 http://100.110.87.36:8931/alert，.env 的 ARK_ALERT_PUSH_URL 可改，空=不送；3 秒超时，不走代理）；没送到的记在 state/mac-push-queue.json，下条报警或开机按先后补发，送到才删；Mac 没开只记 INFO，不进群 |
-| `machinecheck.py` + `machinechecks/` | 上机核对：部署后没在机器上确认过的改动，机器自己核——正常跑完一趟（A 类）或某个触发自然发生时（B 类）判一次，过了只进日报「上机核对」一段，没过每次都报群（🔬）；核不了的写明原因 |
-| `selfcheck.py` | 开机自检：进程表、系统 WMI、调度程序接口/后端/任务计划、交给它的两个客户端更新设置（交接 10a、10b）、排期、目录可写、通知通道逐项验，不成立当场群报；同时给日报「中继体检」两行 |
-| `shiftcheck.py` | 收工体检：每趟早班/晚班跑完查一次手跑体检里中继原来没查的四项（剿灭开关、「下次跑完不关机」标记、调试模式、测试窗口），结果一行记中继日志、进日报「中继体检」，不报群 |
-| `procs.py` | 用系统 WMI 读 python.exe 的进程号和命令行（wmic 在 25H2 已删） |
-| `error_evidence.py` | 每次中继自己的报错推送前、以及关机令之前，把当天整份 relay.log 和 AUTO-MAS app.log 各传一个带日期的 COS 对象（同一天覆盖同一份，一次上传最多等 60 秒）；报错推送末尾带「日志：<链接>」，机器关着也能取（scripts/mac/evidence.sh daily） |
-| `tape.py` | The day tape (the day replay that read it, relay/tests/daysim, was removed on 2026-11-17): what AUTO-MAS, the System log and the information sources answered, and AUTO-MAS's config when a day begins, in state/tape/<Beijing YYYYMMDD>.jsonl; secrets masked, 4 MB a day at most, 14 days kept; never pushes, never read by any decision |
-| `replay.py` | 发版前回放闸（deploy-relay.sh 的 0.75 步）：把检入的真日志片段用这一版代码离线跑一遍，会往群里推一条就拒绝部署 |
-| `evidence.py` + `bundles.py` / `sources.py` / `stores.py` / `logslice.py` | 按三家上游导出按钮的规则打证据包（永远按时间窗取，截图去重封顶）、钉住其源码、只传腾讯云 COS |
-| `maintenance.py` | 三个游戏官方停服维护公告的机器可读来源 |
-| `skland.py` | 森空岛客户端，拿终末地的角色练度 |
-| `resources.py` | 手机页数字磁贴要的两样：森空岛会话（cred/签名 token/设备号/账号 id，一个进程登一次，网页拿去自己签名去读理智）和今天跑了几趟；波片、理智的数字是网页自己问游戏的 |
-| `config.py` / `names.py` / `__main__.py` | 配置读取与地址出处 / 队列名归一 / 命令行入口 |
+| `service.py` | 开机阶段编排（`ArkRelayService.main`）与停止收尾（`SvcStop` / `SvcShutdown`），供应用宿主复用 |
+| `automas_keeper.py` | 主循环唤醒、历史目录监听、跨零点恢复与历史日志补传、AUTO-MAS 后端保活与补丁维护（`automas_files/`） |
+| `procwatch.py` | WMI 进程启动监听、订阅异常诊断、系统关机事件（1074 / 1075）识别 |
+| `config.py` | 环境变量与路径配置读取、原子落盘工具、队列名归一 |
+| `statestore.py` | 唯一状态档案 `state/state.json`、`relay.log` 大小轮转与跨卷读取、每日技术日志 `tech/<day>.md` |
+| `ledger.py` | 运行账本（`State`）、各游戏记录行转换、失败消息与日报正文拼装 |
+| `summary.py` | 摘要文案整理（含可选补充行） |
+| `collector.py` | 扫描 AUTO-MAS 的 `history` 目录、汇总各游戏日志解析器与 HTTP 读取辅助 |
+| `engine.py` | 核心轮次推进：记账、阶段播报、日报时点、自动关机与延迟更新衔接 |
+| `mastercfg.py` | AUTO-MAS 配置契约核对（含 v5.8 YAML 读取）与 MaaEnd / MAA / OK-WW 母本安全读写 |
+| `plan.py` | 直接读取 AUTO-MAS 排班与队列定义 |
+| `notify.py` | 企业微信机器人与 Server酱通知发送、路由分流及短时网络截断重试 |
+| `desktop.py` | 桌面会话截图、窗口读屏助手与 WMI `python.exe` 进程表查询 |
+| `skland.py` | 森空岛客户端与终末地角色练度读取 |
+| `texts.py` | 全部群通知与日报固定文案、报错原因大白话翻译 |
+| `watch.py` | 目录变更原生通知（Windows ctypes / macOS kqueue） |
+| `wuwa_tables.py` | 鸣潮周本、凝素领域、无音区序号与名称掉落对照表 |
+| `handle.py` | 运行结果记账、自愈核销、漏跑核对、未决故障告警与紧急停止补记 |
+| `errwatch.py` | 中继自身 WARNING / ERROR 实时转群、已修故障复发标记、报警抄送落盘与上传 |
+| `macpush.py` | 群报警同步直送 Mac 收件端与离线补发队列 |
+| `banners.py` | 三游戏卡池抓取公共框架、连续性与官方兜底核对 |
+| `arknights.py` | 明日方舟卡池与官方通讯解析 |
+| `endfield.py` | 终末地特许寻访卡池与公告解析 |
+| `wuwa.py` | 鸣潮卡池、版本资讯海报读图与历史台账核对 |
+| `echofarm.py` | 鸣潮 4C 声骸定时刷取与配置自动还原 |
+| `essence.py` | 终末地基质刷取目标集齐后自动切刷垫子模式 |
+| `evidence.py` | 运行故障证据包打包上传与每日完整日志备份上传 |
+| `task_shots.py` | 终末地每个子任务结束时的桌面截图留档 |
+| `gameupdate.py` | 队列后游戏客户端更新调度与终末地母本开关核对 |
+| `gameupdate_games.py` | 三游戏客户端启动器更新动作实现 |
+| `efstart.py` | 终末地启动器辅助拉起与 AUTO-MAS 启动方式对齐 |
+| `maaend_launch.py` | 终末地 1280×720 窗口启动与收工恢复全屏设置核对 |
+| `trigger.py` | 识别脚本触发来源（排班队列、中继补跑、人工手动运行） |
+| `maintenance.py` | 三游戏官方停服维护公告与终末地开服状态读取 |
+| `makeup.py` | 明日方舟与终末地失败后的自动补跑及当天标记 |
+| `activity.py` | 鸣潮每日活跃度不足 100 时的晚班补齐与告警 |
+| `collect_retry.py` | 终末地自动采集失败路线单独补跑（最多两轮） |
+| `modes.py` | 调试模式与「下次跑完不关机」开关读写 |
+| `needtable.py` | App 库存页最新六星满练需求表重算与上传 |
+| `okww_overlay.py` | 鸣潮 `ok_tasks/` 扩展补丁安装与上游源码锚点核对（`okww_files/`） |
+| `phone.py` | 手机遥控状态组装、信箱长连接与命令队列、开机 `queue/config.json` 收件、COS 与 ntfy 同步、心跳与月卡提醒 |
+| `resources.py` | 手机页森空岛会话与当日运行次数统计 |
+| `commands.py` | 远端命令白名单、参数校验与结构化回滚保护 |
+| `redbutton.py` | 紧急停止按钮（estop）执行与 AUTO-MAS 接口调用封装 |
+| `snapshot.py` | 手机端展示用的全量脚本与队列配置快照 |
+| `preupdate.py` | 开机窗口预更新总控、AUTO-MAS 自更新与鸣潮 OK-WW 脚本更新及依赖补齐 |
+| `report.py` | 每日战报汇总发送与各代码版本战绩计分板 |
+| `runwatch.py` | 在跑任务超时巡查与整条队列超时告警 |
+| `collect_watch.py` | 实时盯 MaaEnd 框架日志记录采集路线成败并驱动截图与看门狗 |
+| `display_wake.py` | 启动器拉起终末地期间定时唤醒显示器防止黑屏卡窗 |
+| `maa_start_watchdog.py` | 明日方舟开游戏卡死 5 分钟看门狗 |
+| `maaend_watchdog.py` | 终末地插件崩溃或框架日志停更 10 分钟看门狗 |
+| `queues.py` | 队列开关改写与终末地失败重试次数固定守护 |
+| `stagegate.py` | 明日方舟关卡导航可达性预检门 |
+| `selfcheck.py` | 开机 12 项自检、早晚班收工体检、运行输入留档与发版前误报回放闸 |
+| `machinecheck.py` | 部署后上机自动核对注册与触发框架（核对项见 machinechecks） |
+| `selfupdate.py` | 按 `relay/manifest.json` 比对哈希自更新代码 |
+| `shutdown.py` | 早晚班收工自动关机判定与关机被取消告警 |
+| `collector_maa.py` | 明日方舟 MAA 运行日志与掉落解析 |
+| `collector_maaend.py` | 终末地 MaaEnd 历史日志与框架日志任务轨迹解析 |
+| `outcome.py` | 运行结果逐项核对、鸣潮中英文日志归一与游戏日志未知报错拦截 |
+| `annihilation.py` | 明日方舟剿灭与鸣潮周常乐园每周一次开关门 |
+| `weeklyboss.py` | 鸣潮周本每周一次计数与波片预留开关 |
+| `sanity_plan.py` | 明日方舟理智刷取计划写入 |
 
-模块表和实际文件由 `tests/test_module_table.py` 盯着，加文件不登记会红。
+模块表和实际文件由 `tests/test_evidence.py` 盯着，加文件不登记会红。
 
 ## Running it
 
@@ -149,11 +141,11 @@ JSON patch.
 | `set_config` | no, writes config | **yes** - 改 MAS 侧用户配置，**只改已存在的字段**，凭空造的会被拒 |
 | `set_master` | no, writes config | **yes** - 改脚本自己的母本配置（MaaEnd / OK-WW / MAA）。这两个脚本的快速配置是关的，MAS 侧改了不生效，所以手机页那两段走的是这条 |
 
-`sanity_plan` and `queue` are handled in `inbox.py` before the
+`sanity_plan` and `queue` are handled in `phone.py` before the
 whitelist, as all-or-nothing batches, because their fields depend on each other.
 
 The confirmation gate exists for the model path. Commands arriving through the
-inbox are confirmed by the act of editing the repo file, so `inbox.py` supplies
+inbox are confirmed by the act of editing the repo file, so `phone.py` supplies
 `confirmed: True` itself.
 
 Applying any of them: back up → write → `json.loads` → structural diff → **roll

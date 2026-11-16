@@ -39,9 +39,9 @@ boot_stages.await_backend (the steps asked once, at once).
 
     import boot_stages
     from ark_relay.core import texts
-    from ark_relay.features.gameupdate import efstart_setup
-    from ark_relay.features.phone import commands
-    from ark_relay.features.selfcheck import selfcheck
+    from ark_relay.features import efstart as efstart_setup
+    from ark_relay.features import commands
+    from ark_relay.features import selfcheck
 
 
     class _Rec(logging.Handler):
@@ -261,8 +261,8 @@ a recording notifier in place of the real channels.
 
     import boot_stages
     from ark_relay.core import notify
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.evidence import error_evidence
+    from ark_relay.features import errwatch
+    from ark_relay.features import evidence as error_evidence
 
 
     class Recorder:
@@ -396,9 +396,9 @@ stage's logger shows what is pushed and what the daily report lists.
         sys.modules.setdefault(name, _Stub(name))
 
     import boot_stages
-    from ark_relay.features.makeup import collect_retry, makeup
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.gameupdate import gameupdate
+    from ark_relay.features import collect_retry, makeup
+    from ark_relay.features import errwatch
+    from ark_relay.features import gameupdate
     from ark_relay.core import mastercfg
     from ark_relay.core.config import SERVER_TZ
 
@@ -528,8 +528,8 @@ once at INFO.
     import time
 
     import boot_stages
-    from ark_relay.features.host import automas_keeper, automas_procs, procwatch
-    from ark_relay.features.phone import commands
+    from ark_relay.features import automas_keeper, automas_keeper as automas_procs, procwatch
+    from ark_relay.features import commands
 
 
     # The machine's state, read from its own self-check lines.
@@ -710,8 +710,8 @@ keeper's logger shows what is pushed and what the daily report lists.
     sys.modules.pop("service", None)
     import boot_stages
     import service  # a fresh copy built on the fakes above
-    from ark_relay.features.host import automas_keeper, automas_procs, dirwatch, mainloop, procwatch, shutdown_signs
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import automas_keeper, automas_keeper as automas_procs, automas_keeper as dirwatch, automas_keeper as mainloop, procwatch, procwatch as shutdown_signs
+    from ark_relay.features import errwatch
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
 
@@ -1355,8 +1355,8 @@ WARNING the first time, at INFO while it lasts; a real revival says it again.
     import time
 
     import boot_stages
-    from ark_relay.features.host import automas_keeper, automas_procs, procwatch
-    from ark_relay.features.phone import commands
+    from ark_relay.features import automas_keeper, automas_keeper as automas_procs, procwatch
+    from ark_relay.features import commands
 
 
     clock = [1000.0]
@@ -1468,7 +1468,7 @@ def _part_stop_during_boot():  # noqa: C901
     import boot_stages
     import service
     from _tmp import tmpdir
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
 
     fails = []
 
@@ -1584,9 +1584,9 @@ def _part_stop_during_boot():  # noqa: C901
     # ended the AUTO-MAS wait would go straight on to launch OK-WW (boot_stages forbids a
     # stopping process to start programs), and a pre-update cut short must be neither marked
     # done nor reported as 「没能确认」: the next boot runs it again.
-    from ark_relay.features.okww_patch import okww_overlay
-    from ark_relay.features.phone import commands
-    from ark_relay.features.preupdate import preupdate
+    from ark_relay.features import okww_overlay
+    from ark_relay.features import commands
+    from ark_relay.features import preupdate
 
 
     class _Notifier:
@@ -1703,7 +1703,7 @@ def _part_stop_during_boot():  # noqa: C901
 
 
     print("[every boot puts back a switch a killed pre-update left off]")
-    from ark_relay.features.preupdate import preupdate_okww
+    from ark_relay.features import preupdate as preupdate_okww
     asked = []
     saved = (preupdate_okww.restore_autostart_leftover, okww_overlay.install, okww_overlay.write_master_pointer,
              okww_overlay.report_line, okww_overlay.drift_line)
@@ -1794,7 +1794,7 @@ announcement has to be derivable from the version file alone.
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.selfupdate import selfupdate as su
+    from ark_relay.features import selfupdate as su
 
 
     def fresh():
@@ -1930,8 +1930,8 @@ longer happen and is gone.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     import boot_stages
-    from ark_relay.features.report import report
-    from ark_relay.features.selfupdate import selfupdate
+    from ark_relay.features import report
+    from ark_relay.features import selfupdate
 
 
     class Lines(logging.Handler):

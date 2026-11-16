@@ -21,7 +21,7 @@ python3 -c "import json,sys; json.loads(sys.argv[1])" "$BODY"
 RELAY_DIR="$(cd "$(dirname "$0")/../../relay" && pwd)"
 PYTHONPATH="$RELAY_DIR" python3 - "$BODY" <<'PY' || exit 1
 import json, sys
-from ark_relay.features.phone.commands import MUTATING
+from ark_relay.features.commands import MUTATING
 b = json.loads(sys.argv[1])
 if b.get("action") in MUTATING and not b.get("confirmed"):
     sys.exit(f'✗ {b["action"]} changes something and needs "confirmed": true; without it the relay '

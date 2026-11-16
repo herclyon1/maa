@@ -1,95 +1,1175 @@
-"""Reading and writing each script's own config (the master copy), and MaaEnd's.
+"""Read the YAML AUTO-MAS writes - and only that much YAML.
 
-With AUTO-MAS's "quick config" off (`IfQuickConfig=False`, how both MaaEnd and
-OK-WW run), the fields in the MAS user config are not pushed down to the scripts:
+AUTO-MAS v5.8.0-beta.1 (installed on the machine 2026-10-23 08:48 Beijing) keeps its settings in
+config/scripts.yaml, queues.yaml and plans.yaml instead of the JSON files the relay read
+(masconfig). The relay's own Python has no YAML library (Python, Pillow and pywin32 only), so
+this reads the subset PyYAML's block-style dump produces there:
 
-* `app/task/Okww/AutoProxy.py:320` `if not ...get("Info","IfQuickConfig"): return`,
-  so `Which to Farm` / `Material Selection` and the rest never reach OK-WW;
-* after `app/task/MaaEnd/AutoProxy.py:537`, the sanity tasks are read from MAS
-  only while it is on.
+* block mappings and sequences, including a sequence at its parent key's indent;
+* plain scalars (null / ~, YAML 1.1 booleans, ints, floats, else strings), folded over lines;
+* single- and double-quoted scalars, folded over lines (scripts.yaml folds long JSON strings);
+* the empty flow collections {} and [].
 
-So a change takes effect only in the master copy, which AUTO-MAS copies over the
-script's own config before each run (see `config.master_config_dir`).
-
-MAA is different: AUTO-MAS has no quick-config concept for MAA (`IfQuickConfig`
-exists only on the MaaEnd and OK-WW config classes), and stage, sanity potions,
-series count and annihilation are written into gui.new.json on every dispatch
-(`app/task/Maa/AutoProxy.py:796-845`), so those go through MAS and not through
-this module. MAA's drones and Award switches are in mastercfg_maa.py; OK-WW is in
-mastercfg_okww.py.
-
-**Chinese names are never invented**: every MaaEnd option and value carries a
-language-pack key `"$xxx.yyy"` in its own task definition, resolved to the
-official translation (_Locale). Same for OK-WW, via its `ok.po`.
+Anything else - a non-empty flow collection, a block scalar (| or >), an anchor or a tag - is
+refused with ValueError rather than guessed at. Keys are always strings, as they were in the
+JSON. Checked against PyYAML on the machine's own files (relay/tests/test_mas.py
+has synthetic copies of every construct; the repo is public, so not the files themselves).
 """
 from __future__ import annotations
 
+import sys as _sys
+import re
 import json
 import logging
-import re
 from datetime import datetime
 from pathlib import Path
-
-from ark_relay.features.alarm import errwatch
-from ark_relay.core import texts
+from dataclasses import dataclass
 from ark_relay.core.config import atomic_write_text, master_config_dir
+from ark_relay.features import errwatch
+from ark_relay.core import texts
+miniyaml = _sys.modules[__name__]
+masconfig = _sys.modules[__name__]
+masuser = _sys.modules[__name__]
+
+_BOOL = {"yes": True, "true": True, "on": True, "no": False, "false": False, "off": False}
+_INT = re.compile(r"[-+]?[0-9]+")
+_FLOAT = re.compile(r"[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?")
+_ESCAPES = {"0": "\0", "a": "\a", "b": "\b", "t": "\t", "\t": "\t", "n": "\n", "v": "\v", "f": "\f",
+            "r": "\r", "e": "\x1b", " ": " ", '"': '"', "/": "/", "\\": "\\", "N": "\x85",
+            "_": "\xa0", "L": " ", "P": " "}
+_HEX = {"x": 2, "u": 4, "U": 8}
+
+
+def loads(text: str):
+    """The document in `text` as dicts, lists and scalars."""
+    p = _Parser(text.splitlines())
+    p.skip()
+    if p.i >= len(p.lines):
+        return None
+    value = p.node(p.indent())
+    p.skip()
+    if p.i < len(p.lines):
+        raise ValueError(f"line {p.i + 1}: unexpected content after the document")
+    return value
+
+
+def _miniyaml_plain(s: str):
+    if s in ("", "~") or s.lower() == "null":
+        return None
+    if s.lower() in _BOOL:
+        return _BOOL[s.lower()]
+    if _INT.fullmatch(s):
+        return int(s)
+    if _FLOAT.fullmatch(s) and any(c.isdigit() for c in s):
+        return float(s)
+    if s.lower() in (".inf", "+.inf"):
+        return float("inf")
+    if s.lower() == "-.inf":
+        return float("-inf")
+    if s.lower() == ".nan":
+        return float("nan")
+    return s
+
+
+class _Parser:
+    def __init__(self, lines: list[str]):
+        self.lines = list(lines)
+        self.i = 0
+
+    def skip(self) -> None:
+        while self.i < len(self.lines) and (not self.lines[self.i].strip()
+                                            or self.lines[self.i].lstrip().startswith("#")):
+            self.i += 1
+
+    def indent(self) -> int:
+        line = self.lines[self.i]
+        return len(line) - len(line.lstrip(" "))
+
+    def body(self) -> str:
+        return self.lines[self.i].strip()
+
+    def node(self, ind: int):
+        b = self.body()
+        if b == "-" or b.startswith("- "):
+            return self.sequence(ind)
+        if self.split_key(b) is not None:
+            return self.mapping(ind)
+        return self.scalar(b, ind - 1)
+
+    def split_key(self, b: str) -> "tuple[str, str] | None":
+        """(key, rest) when `b` is a mapping entry, else None."""
+        if b[:1] in ("'", '"'):
+            q = b[0]
+            j = 1
+            while j < len(b):
+                if b[j] == q:
+                    if q == "'" and b[j + 1:j + 2] == "'":
+                        j += 2
+                        continue
+                    break
+                j += 2 if (q == '"' and b[j] == "\\") else 1
+            after = b[j + 1:]
+            if after == ":" or after.startswith(": "):
+                return _Parser([b[1:j + 1]]).quoted_line(q), after[1:].strip()
+            return None
+        if b[:1] in ("{", "[", "|", ">", "&", "*", "!"):
+            return None
+        if b.endswith(":") and ": " not in b:
+            return b[:-1], ""
+        k = b.find(": ")
+        return (b[:k], b[k + 2:].strip()) if k > 0 else None
+
+    def quoted_line(self, q: str) -> str:
+        # A quoted key: the text up to and including its closing quote, on one line.
+        return self.quoted(self.lines[0], q, consume=False)
+
+    def mapping(self, ind: int) -> dict:
+        out: dict = {}
+        while True:
+            self.skip()
+            if self.i >= len(self.lines) or self.indent() != ind:
+                break
+            b = self.body()
+            if b == "-" or b.startswith("- "):
+                break
+            kv = self.split_key(b)
+            if kv is None:
+                raise ValueError(f"line {self.i + 1}: expected 'key: value', got {b[:40]!r}")
+            key, rest = kv
+            if rest:
+                out[str(key)] = self.scalar(rest, ind)
+                continue
+            self.i += 1
+            self.skip()
+            if self.i < len(self.lines) and self.indent() > ind:
+                out[str(key)] = self.node(self.indent())
+            elif self.i < len(self.lines) and self.indent() == ind and (
+                    self.body() == "-" or self.body().startswith("- ")):
+                out[str(key)] = self.sequence(ind)
+            else:
+                out[str(key)] = None
+        return out
+
+    def sequence(self, ind: int) -> list:
+        out: list = []
+        while True:
+            self.skip()
+            if self.i >= len(self.lines) or self.indent() != ind:
+                break
+            b = self.body()
+            if not (b == "-" or b.startswith("- ")):
+                break
+            content = b[2:].strip()
+            if not content:
+                self.i += 1
+                self.skip()
+                out.append(self.node(self.indent()) if self.i < len(self.lines)
+                           and self.indent() > ind else None)
+                continue
+            # The item's own content, re-read as if it started on a line of its own at ind + 2.
+            self.lines[self.i] = " " * (ind + 2) + content
+            out.append(self.node(ind + 2))
+        return out
+
+    def scalar(self, rest: str, parent: int):
+        """The value `rest` begins on the current line; consumes it and any continuation."""
+        if rest[:1] in ("'", '"'):
+            return self.quoted(rest[1:], rest[0])
+        if rest == "{}":
+            self.i += 1
+            return {}
+        if rest == "[]":
+            self.i += 1
+            return []
+        if rest[:1] in ("{", "[", "|", ">", "&", "*", "!"):
+            raise ValueError(f"line {self.i + 1}: unsupported YAML construct {rest[:20]!r}")
+        if " #" in rest:
+            rest = rest[:rest.index(" #")].rstrip()
+        parts = [rest]
+        self.i += 1
+        while self.i < len(self.lines):
+            line = self.lines[self.i]
+            if not line.strip():
+                # A blank line inside a plain scalar is a line break, if the scalar goes on.
+                j = self.i
+                while j < len(self.lines) and not self.lines[j].strip():
+                    j += 1
+                if j < len(self.lines) and len(self.lines[j]) - len(self.lines[j].lstrip(" ")) > parent:
+                    parts.append("\n" * (j - self.i))
+                    self.i = j
+                    continue
+                break
+            if len(line) - len(line.lstrip(" ")) <= parent or line.lstrip().startswith("#"):
+                break
+            parts.append(" " + line.strip() if not parts[-1].endswith("\n") else line.strip())
+            self.i += 1
+        return _miniyaml_plain("".join(parts)) if len(parts) == 1 else "".join(parts)
+
+    def quoted(self, text: str, q: str, consume: bool = True) -> str:
+        """A quoted scalar whose text after the opening quote is `text`, folded over lines."""
+        out: list[str] = []
+        while True:
+            j, escaped_break = 0, False
+            while j < len(text):
+                c = text[j]
+                if c == q:
+                    if q == "'" and text[j + 1:j + 2] == "'":
+                        out.append("'")
+                        j += 2
+                        continue
+                    if consume:
+                        tail = text[j + 1:].strip()
+                        if tail and not tail.startswith("#"):
+                            raise ValueError(f"line {self.i + 1}: text after a closing quote")
+                        self.i += 1
+                    return "".join(out)
+                if q == '"' and c == "\\":
+                    if j + 1 == len(text):
+                        escaped_break = True
+                        break
+                    e = text[j + 1]
+                    if e in _HEX:
+                        n = _HEX[e]
+                        out.append(chr(int(text[j + 2:j + 2 + n], 16)))
+                        j += 2 + n
+                        continue
+                    if e not in _ESCAPES:
+                        raise ValueError(f"line {self.i + 1}: unknown escape \\{e}")
+                    out.append(_ESCAPES[e])
+                    j += 2
+                    continue
+                out.append(c)
+                j += 1
+            if not consume:
+                raise ValueError("unterminated quoted key")
+            if not escaped_break:
+                while out and out[-1] in " \t":
+                    out.pop()
+            self.i += 1
+            blanks = 0
+            while self.i < len(self.lines) and not self.lines[self.i].strip():
+                blanks += 1
+                self.i += 1
+            if self.i >= len(self.lines):
+                raise ValueError("unterminated quoted scalar")
+            out.append("\n" * blanks if blanks else ("" if escaped_break else " "))
+            text = self.lines[self.i].lstrip(" \t")
+
+
+# key -> the group AUTO-MAS v5.7.0-beta.3 keeps it in (Info before that).
+MOVED = {
+    "Stage": "Stage", "Stage_1": "Stage", "Stage_2": "Stage", "Stage_3": "Stage",
+    "StageMode": "Stage", "MedicineNumb": "Stage", "SeriesNumb": "Stage",
+    "Annihilation": "Task", "AnnihilationStartWeekday": "Task",
+    "InfrastMode": "Task", "InfrastName": "Task",
+}
+
+
+def group_of(user: dict, key: str) -> str:
+    """The group that holds `key` for this user: its new group when the user has it there,
+    else Info (an AUTO-MAS from before v5.7.0-beta.3)."""
+    new = MOVED.get(key)
+    if new and isinstance(user.get(new), dict) and key in user[new]:
+        return new
+    return "Info"
+
+
+def get(user: dict, key: str, default=None):
+    """The value of `key` wherever this user keeps it."""
+    return (user.get(group_of(user, key)) or {}).get(key, default)
+
+
+def resolve(user: dict, old_path: str) -> str:
+    """An "Info.<key>" path rewritten to where this user keeps the key now; other paths as is."""
+    group, _, key = old_path.partition(".")
+    if group == "Info" and key in MOVED:
+        return f"{group_of(user, key)}.{key}"
+    return old_path
+
+
+def info_view(user: dict) -> dict:
+    """The user's Info as an AUTO-MAS from before v5.7.0-beta.3 had it: Info plus the moved
+    items taken from their new groups."""
+    out = dict(user.get("Info") or {})
+    for key, group in MOVED.items():
+        src = user.get(group)
+        if isinstance(src, dict) and key in src:
+            out[key] = src[key]
+    return out
+
+
+def runs(info: dict) -> bool:
+    """Whether AUTO-MAS runs this user at all: app/task/manager_base.py is_user_selected
+    (AUTO-MAS-Project/AUTO-MAS 9e605ff7, 2026-10-13) takes a user only when Info.Status is
+    on and Info.RemainedDay is not 0 (defaults True and -1, app/models/config.py)."""
+    return bool(info.get("Status", True)) and info.get("RemainedDay", -1) != 0
+
+
+def pick(users) -> "tuple[str, dict] | None":
+    """(user id, user) of a script's UserData (the file) or /api/scripts/user/get reply
+    (the backend): the first user AUTO-MAS runs, else the first user; None when there is
+    none. One choice for every reader and writer (audit 11-08 D-11: the phone's changes
+    went to the first user while its snapshot and the plan showed the last). The file's
+    "instances" list and any other non-user entry are skipped."""
+    found = [(str(k), v) for k, v in (users or {}).items() if k != "instances" and isinstance(v, dict)]
+    return next((x for x in found if runs(info_view(x[1]))), found[0] if found else None)
+
+
+# The JSON file a reader asks for -> the YAML file v5.8 keeps the same settings in.
+YAML_OF = {"ScriptConfig.json": "scripts.yaml", "QueueConfig.json": "queues.yaml",
+           "PlanConfig.json": "plans.yaml"}
+# v5.8 also writes every time as UTC ISO ('2000-01-01T01:00:00Z' for the 09:00 morning queue),
+# where v5.7 wrote the machine's local time in a per-field form (legacy-json/QueueConfig.json of
+# the same machine, 2026-10-23: "Time": "09:00", "LastTimedStart": "2026-10-22 09:00",
+# "LastStartupTime": "2000-01-01", "LastProxyDate": "2026-10-22", "NextRunAt":
+# "2000-01-01 00:00:00"). plan._hhmm reads "HH:MM" and found no time in the ISO form, so the
+# times go back to those forms; any other key gets the date and time.
+_ISO_Z = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z")
+_TIME_FORM = {"Time": "%H:%M", "LastTimedStart": "%Y-%m-%d %H:%M", "LastStartupTime": "%Y-%m-%d",
+              "LastProxyDate": "%Y-%m-%d"}
+
+
+def source(path: Path) -> Path:
+    """The file that holds what `path` names: the JSON while it exists, else its YAML."""
+    path = Path(path)
+    alt = YAML_OF.get(path.name)
+    if alt and not path.exists() and (path.parent / alt).exists():
+        return path.parent / alt
+    return path
+
+
+def parse_text(src: Path, text: str) -> dict:
+    """Parse `text` from `src` (.json or .yaml) into the v5.7 JSON shape."""
+    if Path(src).suffix == ".json":
+        return json.loads(text)
+    doc = miniyaml.loads(text)
+    if not isinstance(doc, dict):
+        raise ValueError(f"{Path(src).name}: not a mapping")
+    return legacy(doc)
+
+
+def read(path: Path) -> dict:
+    """The settings `path` names, in the v5.7 JSON shape.
+
+    Raises what reading the JSON would (OSError, ValueError) when neither file can be read,
+    so a reader's error handling stays as it was."""
+    src = source(path)
+    return parse_text(src, Path(src).read_text(encoding="utf-8"))
+
+
+def legacy(node: dict) -> dict:
+    """v5.8's {"order", "data"} collection as v5.7's {"instances", <uid>: ...}."""
+    out: dict = {"instances": list(node.get("order") or [])}
+    for uid, item in (node.get("data") or {}).items():
+        out[str(uid)] = _item(item)
+    return out
+
+
+def _item(item):
+    if not isinstance(item, dict):
+        return item
+    plain, subs = {}, {}
+    for k, v in item.items():
+        if _collection(v):
+            subs[k] = legacy(v)
+        else:
+            plain[k] = _local(v, k)
+    if subs:
+        plain["SubConfigsInfo"] = subs
+    return plain
+
+
+def _local(v, key: str = ""):
+    """`v` with v5.8's UTC ISO times put back into v5.7's local forms (_TIME_FORM)."""
+    if isinstance(v, dict):
+        return {k: _local(x, k) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_local(x, key) for x in v]
+    if isinstance(v, str) and _ISO_Z.fullmatch(v):
+        from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415 - config imports a lot
+        at = datetime.fromisoformat(v.replace("Z", "+00:00")).astimezone(SERVER_TZ)
+        return at.strftime(_TIME_FORM.get(key, "%Y-%m-%d %H:%M:%S"))
+    return v
+
+
+def _collection(v) -> bool:
+    return isinstance(v, dict) and set(v) == {"order", "data"}
+
+
+@dataclass(frozen=True)
+class Item:
+    kind: str       # "MAA" | "MaaEnd" | "OK-WW" | "queue" | "plan"
+    level: str      # "script" | "user" | "queue" | "timeset" | "queueitem" | "plan"
+    group: str
+    key: str
+    use: str        # feature id: texts.MAS_SETTING_WHAT / MAS_SETTING_BREAKS
+    source: str     # where the relay reads (or writes) it
+    since: str = "" # the AUTO-MAS version that brought it in; judged only from that version on
+
+    @property
+    def owner(self) -> str:
+        """The AUTO-MAS model class that defines it (app/models/config.py)."""
+        return OWNER[(self.kind, self.level)]
+
+    @property
+    def path(self) -> str:
+        return f"{self.group}.{self.key}"
+
+
+OWNER = {
+    ("MAA", "script"): "MaaConfig", ("MAA", "user"): "MaaUserConfig",
+    ("MaaEnd", "script"): "MaaEndConfig", ("MaaEnd", "user"): "MaaEndUserConfig",
+    ("OK-WW", "script"): "OkwwConfig", ("OK-WW", "user"): "OkwwUserConfig",
+    ("queue", "queue"): "QueueConfig", ("queue", "timeset"): "TimeSet",
+    ("queue", "queueitem"): "QueueItem", ("plan", "plan"): "MaaPlanConfig",
+}
+# A ScriptConfig.json instance's "type" -> script kind (the machine's file has it; older test
+# layouts do not, then the install path decides, as plan._script_kind does).
+TYPE_KIND = {"MaaConfig": "MAA", "MaaEndConfig": "MaaEnd", "OkwwConfig": "OK-WW"}
+
+
+def _items(kind, level, group, keys, use, source, since=""):
+    return [Item(kind, level, group, k, use, source, since) for k in keys]
+
+
+CONTRACT: tuple[Item, ...] = tuple([
+    # ---- script level (ScriptConfig.json <script uid>.<group>)
+    *_items("MAA", "script", "Info", ("Path",), "script_path",
+            "plan.py:_scripts/_script_kind, stagegate.py:_maa_script, annihilation.py:_maa_users"),
+    *_items("MaaEnd", "script", "Info", ("Path",), "script_path",
+            "plan.py:_scripts/_script_kind, plan.py:script_dir, sanity_plan.py"),
+    *_items("OK-WW", "script", "Info", ("RootPath",), "script_path",
+            "plan.py:_scripts/_script_kind, plan.py:script_dir"),
+    *_items("MAA", "script", "Info", ("Name",), "script_name",
+            "snapshot.py:maa_from_files, commands.py:_find_user"),
+    *_items("MaaEnd", "script", "Info", ("Name",), "script_name", "commands.py:_find_user"),
+    *_items("OK-WW", "script", "Info", ("Name",), "script_name",
+            "plan.py:_okww_quick_overrides, commands.py:_find_user"),
+    *_items("MAA", "script", "Run", ("IfCheckGameUpdate", "IfAutoInstallGameApk"), "client_update",
+            "selfcheck.py:_handed_updates_gaps"),
+    *_items("OK-WW", "script", "Game", ("Enabled", "Path", "IfAutoUpdate"), "client_update",
+            "selfcheck.py:_handed_updates_gaps"),
+    *_items("MaaEnd", "script", "Game", ("WaitTime",), "maaend_wait",
+            "commands.py:_set_wait_time (write)"),
+    # LaunchMode / LauncherPath: AUTO-MAS v5.7.0-beta.4 (PR #1394); its pre-run check finds the
+    # launcher from Game.Path (10-16 09:34 it refused the relay's .cmd there).
+    *_items("MaaEnd", "script", "Game", ("Path",), "maaend_launch",
+            "efstart_setup.py:install/launcher_for (write)"),
+    *_items("MaaEnd", "script", "Game", ("LaunchMode", "LauncherPath"), "maaend_launch",
+            "efstart_setup.py:install/launcher_for (write LaunchMode)", since="v5.7.0-beta.4"),
+    # 「MaaEnd 启动」 (10-17): LaunchMode "MaaEnd" only when MaaEnd's launcher pretask supports
+    # Game.ControllerType (maaend_launch.check), and the four settings that make it start the
+    # game as a 1280x720 window and write fullscreen 1920x1080 back after the run. All five
+    # are in MaaEndConfig since v5.7.0-beta.2 at least (fixtures/automas-models/config.py.txt).
+    *_items("MaaEnd", "script", "Game", ("ControllerType",), "maaend_launch",
+            "efstart_setup.py:install (maaend_launch.check)"),
+    *_items("MaaEnd", "script", "Game", ("SetResolution", "CloseOnFinish", "RestoreDisplayType",
+                                         "RestoreResolution"), "maaend_window",
+            "efstart_setup.py:install/restore (write)"),
+    # ---- MAA user (SubConfigsInfo.UserData.<uid>); Stage.* and Task.Annihilation via masuser
+    *_items("MAA", "user", "Stage", ("StageMode", "Stage", "Stage_1", "Stage_2", "Stage_3", "SeriesNumb"),
+            "stage", "plan.py:_scripts, stagegate.py:run_verdict, snapshot.py:maa_fields, "
+            "commands.py:_set_stage (write)"),
+    *_items("MAA", "user", "Stage", ("MedicineNumb",), "medicine",
+            "plan.py:_stage_bits, snapshot.py:maa_fields, commands.py:_set_medicine (write)"),
+    # Whether AUTO-MAS runs the user at all (app/task/manager_base.py is_user_selected): the
+    # stage gate leaves out a user it does not run, and the phone and the plan take the
+    # first one it does run (masuser.pick).
+    *_items("MAA", "user", "Info", ("Status", "RemainedDay"), "stage",
+            "masuser.py:runs/pick, stagegate.py:run_verdict, commands.py:_find_user, snapshot.py"),
+    *_items("MAA", "user", "Task", ("IfFight",), "fight",
+            "plan.py:_scripts, stagegate.py:run_verdict, snapshot.py:maa_fields"),
+    *_items("MAA", "user", "Task", ("Annihilation",), "annihilation",
+            "plan.py:_scripts, annihilation.py:WeeklyGate._status, snapshot.py:maa_fields"),
+    *_items("MAA", "user", "Data", ("AnnihilationCompletedWeek",), "annihilation",
+            "annihilation.py:WeeklyGate._status"),
+    *_items("MAA", "user", "Task", ("IfActivityFirst", "ActivityStageIndex"), "activity",
+            "snapshot.py:maa_fields, phone.py:state_payload"),
+    # ---- MaaEnd user: the items the phone shows and changes (mas_labels.SHOWN)
+    *_items("MaaEnd", "user", "Task", ("IfSanity", "IfAutoUseSpMedication", "SanityTaskType",
+                                       "AutoEssenceSpecifiedLocation"), "maaend_phone",
+            "snapshot.py:_mas, mas_labels.py:SHOWN, commands.py:_set_config (write)"),
+    # ---- OK-WW user: the quick config the plan shows instead of OK-WW's own file
+    *_items("OK-WW", "user", "Info", ("IfQuickConfig",), "okww_quick", "plan.py:_okww_quick_overrides"),
+    *_items("OK-WW", "user", "Task", ("WhichToFarm", "WhichTacetSuppressionToFarm",
+                                      "WhichForgeryChallengeToFarm", "MaterialSelection",
+                                      "FarmNightmareNestForDailyEcho", "AdditionalTasks"), "okww_quick",
+            "plan.py:_okww_quick_overrides, mas_labels.py:SHOWN"),
+    # ---- QueueConfig.json
+    *_items("queue", "queue", "Info", ("Name", "TimeEnabled", "CycleEnabled"), "queue_timer",
+            "plan.py:_queues/queue_rows, queues.py:apply (write TimeEnabled), commands.py:skip_script_in_queue"),
+    *_items("queue", "queue", "Info", ("AfterAccomplish",), "queue_after", "plan.py:_queues/next_plan"),
+    *_items("queue", "queue", "Info", ("StartUpMode",), "queue_startup", "plan.py:_startup_runs"),
+    *_items("queue", "timeset", "Info", ("Enabled", "Time", "Days"), "queue_timer",
+            "plan.py:_queues/_queue_times"),
+    *_items("queue", "queueitem", "Info", ("ScriptId",), "queue_items",
+            "plan.py:_queues/queue_rows, commands.py:skip_script_in_queue, snapshot.py"),
+    *_items("queue", "queueitem", "Schedule", ("Days",), "queue_items",
+            "plan.py:_queues, commands.py:skip_script_in_queue (write)"),
+    # ---- PlanConfig.json (the MAA stage plan a user's StageMode may point at)
+    *_items("plan", "plan", "Info", ("Mode",), "plan_table", "plan.py:_stage_bits, stagegate.py"),
+    *_items("plan", "plan", "ALL", ("Stage", "Stage_1", "Stage_2", "Stage_3", "MedicineNumb"),
+            "plan_table", "plan.py:_stage_bits, stagegate.py"),
+])
+
+
+@dataclass
+class Result:
+    missing: list          # [Item] not found where the relay reads it
+    unreadable: list       # [file name] that could not be read as JSON
+    judged: int            # how many items had at least one node to be judged on
+
+
+def _load(path: Path):
+    """The file's settings - the JSON, or AUTO-MAS v5.8's YAML in the same shape (masconfig,
+    ledger #113); None when it is not there; raises ValueError / OSError otherwise."""
+    try:
+        return masconfig.read(path)
+    except FileNotFoundError:
+        return None
+
+
+def _nodes(data) -> list[tuple[dict, dict]]:
+    """[(instance, node)] of a MultipleConfig file / SubConfigsInfo block, in instance order."""
+    if not isinstance(data, dict):
+        return []
+    out = []
+    for inst in data.get("instances") or []:
+        node = data.get(inst.get("uid")) if isinstance(inst, dict) else None
+        if isinstance(node, dict):
+            out.append((inst, node))
+    return out
+
+
+def _entries(block) -> list[dict]:
+    """The entries of a TimeSet / QueueItem block: every dict value but the instances list."""
+    if not isinstance(block, dict):
+        return []
+    return [v for k, v in block.items() if k != "instances" and isinstance(v, dict)]
+
+
+def _script_kind(inst: dict, node: dict) -> str:
+    from ark_relay.core import plan  # noqa: PLC0415 - plan imports config; keep this module light
+    kind = TYPE_KIND.get(str(inst.get("type") or ""))
+    if kind:
+        return kind
+    info = node.get("Info") or {}
+    return plan._script_kind(info.get("Path") or info.get("RootPath") or "")
+
+
+def _has(node: dict, group: str, key: str) -> bool:
+    g = node.get(group)
+    return isinstance(g, dict) and key in g
+
+
+def _user_has(user: dict, item: Item) -> bool:
+    if masuser.MOVED.get(item.key) == item.group:
+        return _has(user, masuser.group_of(user, item.key), item.key)
+    return _has(user, item.group, item.key)
+
+
+def nodes_by_level(cfg_dir: Path, unreadable: list) -> dict[tuple[str, str], list[dict]]:
+    """{(kind, level): [node]} from the three files; a file that cannot be read goes to
+    `unreadable` and gives no nodes."""
+    def load(name):
+        try:
+            return _load(cfg_dir / name)
+        except (OSError, ValueError):
+            unreadable.append(name)
+            return None
+    out: dict = {k: [] for k in OWNER}
+    for inst, node in _nodes(load("ScriptConfig.json")):
+        kind = _script_kind(inst, node)
+        if not kind:
+            continue
+        out[(kind, "script")].append(node)
+        users = (node.get("SubConfigsInfo") or {}).get("UserData")
+        out[(kind, "user")] += [u for _, u in _nodes(users)] or _entries(users)
+    for _, node in _nodes(load("QueueConfig.json")):
+        out[("queue", "queue")].append(node)
+        sub = node.get("SubConfigsInfo") or {}
+        out[("queue", "timeset")] += _entries(sub.get("TimeSet"))
+        out[("queue", "queueitem")] += _entries(sub.get("QueueItem"))
+    plans = load("PlanConfig.json")
+    for inst, node in _nodes(plans) or [({}, v) for v in _entries(plans)]:
+        # Only the MAA stage plans: the file may hold MaaEnd / BAAH / MSS plans as well.
+        if inst.get("type", "MaaPlanConfig") == "MaaPlanConfig" and isinstance(node.get("ALL"), dict):
+            out[("plan", "plan")].append(node)
+    return out
+
+
+_VERSION = re.compile(r"v?(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$")
+
+
+def version_key(version: str) -> "tuple[int, ...] | None":
+    """v5.7.0-beta.4 -> (5, 7, 0, 0, 4); v5.7.0 -> (5, 7, 0, 1, 0), after its betas; None
+    when it does not read as an AUTO-MAS version."""
+    m = _VERSION.match(str(version or "").strip())
+    if not m:
+        return None
+    major, minor, patch, beta = m.groups()
+    return (int(major), int(minor), int(patch), 0 if beta else 1, int(beta or 0))
+
+
+def check(automas_dir, version: str = "") -> Result:
+    """Every CONTRACT item a node of its kind does not have, read from <automas_dir>/config.
+
+    `version` is the installed AUTO-MAS's own (the backend's /api/core/health; its
+    res/version.json is not rewritten by newer builds). An item with `since` is judged only
+    when that version is known and not older: an older AUTO-MAS never had it, and the
+    recorded days of the day simulator run v5.6.2 to v5.7.0-beta.3."""
+    cfg_dir = Path(automas_dir) / "config" if automas_dir else None
+    if cfg_dir is None or not cfg_dir.is_dir():
+        return Result([], ["config"], 0)
+    unreadable: list = []
+    by_level = nodes_by_level(cfg_dir, unreadable)
+    have = version_key(version)
+    missing, judged = [], 0
+    for item in CONTRACT:
+        nodes = by_level.get((item.kind, item.level)) or []
+        if not nodes:
+            continue
+        if item.since and (have is None or have < version_key(item.since)):
+            continue
+        judged += 1
+        if item.level == "user":
+            ok = all(_user_has(n, item) for n in nodes)
+        else:
+            ok = all(_has(n, item.group, item.key) for n in nodes)
+        if not ok:
+            missing.append(item)
+    return Result(missing, unreadable, judged)
+
+
+log = logging.getLogger("ark.mastercfg")
+
+# read_maa runs on every phone publish and a WARNING is a group message
+# (errwatch): each condition is said once and forgotten once it clears.
+_maa_said: dict[str, str] = {}
+
+
+def _maa_warn_once(site: str, why: str, msg: str, *args, exc_info: bool = False) -> None:
+    if _maa_said.get(site) != why:
+        log.warning(msg, *args, exc_info=exc_info)
+        _maa_said[site] = why
+
+# Drone targets: keys and Chinese names from MAA's
+# InfrastSettingsUserControlModel.UsesOfDronesList and docs/protocol/integration.md
+# (checked 2026-09-07, v6.17).
+MAA_DRONES: tuple[tuple[str, str], ...] = (
+    ("_NotUse", "不使用"),
+    ("Money", "贸易站 · 龙门币"),
+    ("SyntheticJade", "贸易站 · 合成玉"),
+    ("CombatRecord", "制造站 · 作战记录"),
+    ("PureGold", "制造站 · 赤金"),
+    ("OriginStone", "制造站 · 源石碎片"),
+    ("Chip", "制造站 · 芯片"),
+)
+
+
+MAA_DRONES_PATH = "Infrast/UsesOfDrones"
+
+
+# The 领取奖励 (Award) task's switches: every bool property of MAA's
+# Configuration/Single/MaaTask/AwardTask.cs, labels from AsstAwardTask.cs
+# (checked 2026-11-08, v6.19.0). All seven are open since 2026-11-08 (the
+# user's order, relayed by Gemini in 中继-App-MAA领奖励治本-1108); until then
+# Award, FreeGacha and SignInEvent were not offered, and FreeGacha was held back
+# because MAA asks for confirmation before turning it on.
+MAA_AWARD: tuple[tuple[str, str], ...] = (
+    ("Award", "领取每日/每周任务奖励"),
+    ("Mail", "领取所有邮件奖励"),
+    ("FreeGacha", "每日免费单抽"),
+    ("Orundum", "领取幸运墙的每日合成玉奖励"),
+    ("Mining", "领取限时开采许可的每日合成玉奖励"),
+    ("SpecialAccess", "领取周年赠送月卡奖励"),
+    ("SignInEvent", "限时签到活动领取"),
+)
+
+# MAA's one-of-a-kind tasks and the names AUTO-MAS gives them (MAA_TASKS /
+# MAA_TASKS_ZH in app/utils/constants.py, pinned by test_gl's guinew case).
+MAA_SINGLETON_TASKS: dict[str, str] = {
+    "StartUp": "开始唤醒",
+    "Infrast": "基建换班",
+    "Recruit": "自动公招",
+    "Mall": "信用收支",
+    "Award": "领取奖励",
+}
+
+
+MAA_AWARD_PATHS = {f"Award/{k}": zh for k, zh in MAA_AWARD}
+
+
+def maa_master(automas_dir) -> Path | None:
+    root = Path(automas_dir) / "data" if automas_dir else None
+    return next((f for f in (root.glob("*/Default/ConfigFile/gui.new.json") if root else [])), None)
+
+
+def _maa_tasks(doc: dict, match, canonical_name: str = "") -> list[dict]:
+    """Every task in the current configuration's TaskQueue that `match` accepts,
+    the one named `canonical_name` first: the entry AUTO-MAS hands MAA
+    (_find_task_source returns an exact (TaskType, Name) match before anything else).
+    """
+    cfgs = doc.get("Configurations") or {}
+    c = cfgs.get(doc.get("Current") or "Default") or cfgs.get("Default") or {}
+    found = [t for t in c.get("TaskQueue") or [] if isinstance(t, dict) and match(t)]
+    if canonical_name:
+        found.sort(key=lambda t: t.get("Name") != canonical_name)   # stable: queue order otherwise
+    return found
+
+
+def _maa_task(doc: dict, match, canonical_name: str = "") -> dict | None:
+    """The task AUTO-MAS would hand MAA: see _maa_tasks."""
+    return next(iter(_maa_tasks(doc, match, canonical_name)), None)
+
+
+def _is_type(t: dict, task_type: str) -> bool:
+    return t.get("TaskType") == task_type or t.get("Type") == task_type
+
+
+def _infrast_match(t: dict) -> bool:
+    return _is_type(t, "Infrast") or "UsesOfDrones" in t
+
+
+def _award_match(t: dict) -> bool:
+    return _is_type(t, "Award") or ("Mail" in t and "FreeGacha" in t)
+
+
+def _maa_infrast(doc: dict) -> dict | None:
+    return _maa_task(doc, _infrast_match, MAA_SINGLETON_TASKS["Infrast"])
+
+
+def _maa_award(doc: dict) -> dict | None:
+    return _maa_task(doc, _award_match, MAA_SINGLETON_TASKS["Award"])
+
+
+def _maa_infrasts(doc: dict) -> list[dict]:
+    return _maa_tasks(doc, _infrast_match, MAA_SINGLETON_TASKS["Infrast"])
+
+
+def _maa_awards(doc: dict) -> list[dict]:
+    return _maa_tasks(doc, _award_match, MAA_SINGLETON_TASKS["Award"])
+
+
+def read_maa(automas_dir) -> dict:
+    out: dict = {"values": {}, "options": {}, "labels": {}}
+    f = maa_master(automas_dir)
+    if not f or not f.is_file():
+        # Said, so the phone page's missing section has a cause in the log.
+        _maa_warn_once("master", f"missing: {f}", "母本配置文件不在：%s（手机页那一段会标成读不到）", f or "没找到路径")
+        return out
+    try:
+        doc = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        _maa_warn_once("master", f"unreadable: {type(exc).__name__}: {exc}", "母本 gui.new.json 读不出来",
+                   exc_info=True)
+        return out
+    _maa_said.pop("master", None)
+    task = _maa_infrast(doc)
+    if task is not None:
+        out["values"][MAA_DRONES_PATH] = str(task.get("UsesOfDrones") or "")
+        out["options"][MAA_DRONES_PATH] = [[label, key] for key, label in MAA_DRONES]
+        out["labels"][MAA_DRONES_PATH] = "基建无人机用在哪"
+    award = _maa_award(doc)
+    if award is not None:
+        for key, zh in MAA_AWARD:
+            out["values"][f"Award/{key}"] = bool(award.get(key, False))
+            out["labels"][f"Award/{key}"] = zh
+    return out
+
+
+def write_maa(automas_dir, maa_dir, path: str, value) -> tuple[bool, str]:
+    """Change what the infrastructure drones are used on. Both the master copy
+    and the copy in the MAA directory are written; only the seven values MAA
+    itself declares are accepted.
+    """
+    if str(path) in MAA_AWARD_PATHS:
+        return _write_maa_award(automas_dir, maa_dir, str(path), value)
+    if str(path) != MAA_DRONES_PATH:
+        return False, f"MAA 只开放 {MAA_DRONES_PATH} 和 {sorted(MAA_AWARD_PATHS)} 这几项，已拒绝 {path!r}"
+    keys = {k for k, _ in MAA_DRONES}
+    if str(value) not in keys:
+        return False, f"无人机用途不认识取值 {value!r}，它只接受 {sorted(keys)}"
+    err, before, written = _write_maa_copies(
+        automas_dir, maa_dir, _maa_infrasts, "UsesOfDrones", str(value),
+        "里找不到带 UsesOfDrones 的基建任务，已拒绝", lambda t: t.get("UsesOfDrones"))
+    if err:
+        return False, err
+    zh = dict(MAA_DRONES)
+    if before == str(value):
+        return True, f"基建无人机本来就用在{zh[str(value)]}"
+    return True, f"基建无人机用在哪：{zh.get(str(before), before)} → {zh[str(value)]}（写了 {len(written)} 份）"
+
+
+def _write_maa_award(automas_dir, maa_dir, path: str, value) -> tuple[bool, str]:
+    """Flip one switch of the 领取奖励 task in both copies of gui.new.json."""
+    if not isinstance(value, bool):
+        return False, f"{path} 只接受开/关，已拒绝 {value!r}"
+    key = path.split("/", 1)[1]
+    zh = MAA_AWARD_PATHS[path]
+    err, before, written = _write_maa_copies(
+        automas_dir, maa_dir, _maa_awards, key, value,
+        "里找不到领取奖励任务，已拒绝", lambda t: bool(t.get(key, False)))
+    if err:
+        return False, err
+    state = "开" if value else "关"
+    if before is value:
+        return True, f"「{zh}」本来就是{state}的"
+    return True, f"「{zh}」：{'开' if before else '关'} → {state}（写了 {len(written)} 份）"
+
+
+def _write_maa_copies(automas_dir, maa_dir, find_all, key: str, value, no_task: str,
+                      read_before) -> "tuple[str, object, list[str]]":
+    """Set t[key] = value for every t in find_all(doc), in the master gui.new.json
+    and in MAA's own copy. find_all puts the entry AUTO-MAS uses first; every
+    copy of the task is written, so whichever one is used carries the value.
+
+    The master copy is the one that counts: AUTO-MAS copies
+    data/<script>/<user>/ConfigFile over MAA's config dir before each run
+    (task/MAA/AutoProxy.py _copy_source_config), so without it nothing is
+    written. Both files are parsed and checked before either is written, so a
+    refusal leaves both untouched. Each file is written atomically and read
+    back. `read_before(task)` gives the old value, from the master's first entry.
+    Returns (error, old value, names of the files written); error is "" on
+    success and, when it is not, names the files already written.
+    """
+    master = maa_master(automas_dir)
+    if not master or not master.is_file():
+        return ("找不到 AUTO-MAS 里 MAA 的母本配置，没改（只改 MAA 自己那份，"
+                "下次开跑前会被母本盖掉）"), None, []
+    targets = [master]
+    if maa_dir and (own := Path(maa_dir) / "config" / "gui.new.json").is_file():
+        targets.append(own)
+    docs = []
+    for f in targets:
+        try:
+            doc = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return f"{f} 读不出来（{type(exc).__name__}），两份都没改", None, []
+        if not find_all(doc):
+            return f"{f.name} {no_task}（两份都没改）", None, []
+        docs.append(doc)
+    before = read_before(find_all(docs[0])[0])
+    written: list[str] = []
+    for f, doc in zip(targets, docs, strict=True):
+        for t in find_all(doc):
+            t[key] = value
+        try:
+            atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=4))
+            back = find_all(json.loads(f.read_text(encoding="utf-8")))
+        except (OSError, ValueError) as exc:
+            back, problem = [], f"写的时候出错（{type(exc).__name__}）"
+        else:
+            problem = "写进去之后读出来和写的不一样"
+        if not back or any(t.get(key) != value for t in back):
+            # Only the master can come before: it is already changed, and
+            # AUTO-MAS copies it over MAA's own file before the next run.
+            done = "；母本已经改好，下次开跑会照它覆盖 MAA 自己那份" if written else ""
+            return f"{f} {problem}{done}", before, written
+        written.append(f)
+    return "", before, [w.name for w in written]
+
+
+def _placeholder(v) -> bool:
+    """MAA's unfilled default, e.g. "{{ HighPriorityDefault }}" (see AutoProxy.py's
+    comment where it fills a missing source from the preset)."""
+    return isinstance(v, str) and "{{" in v
+
+
+def dedup_maa_task_queue(doc: dict) -> list[str]:
+    """Fold each one-of-a-kind task's copies into one entry, in every configuration.
+
+    The first entry of the type is kept in its place; a later copy only fills a
+    key the first lacks or holds as a placeholder ("Name" and "IsEnable" are not
+    taken, placeholders never are). The Award switches are on when any copy has
+    them on. The kept entry is named as AUTO-MAS names it, so its exact match
+    finds it and its write-back no longer appends a copy, and "$type" stays the
+    first key (MAA's System.Text.Json reads it from there; AutoProxy.py
+    _with_type_first). Returns what was folded, e.g. ["领取奖励（2 条合成 1 条）"].
+    """
+    folded: list[str] = []
+    award_keys = [k for k, _ in MAA_AWARD]
+    for scheme, c in (doc.get("Configurations") or {}).items():
+        queue = c.get("TaskQueue") if isinstance(c, dict) else None
+        if not isinstance(queue, list):
+            continue
+        for task_type, zh in MAA_SINGLETON_TASKS.items():
+            idxs = [i for i, t in enumerate(queue) if isinstance(t, dict) and _is_type(t, task_type)]
+            if len(idxs) < 2:
+                continue
+            merged = dict(queue[idxs[0]])
+            for i in idxs[1:]:
+                for k, v in queue[i].items():
+                    if k in ("Name", "IsEnable") or _placeholder(v):
+                        continue
+                    if k not in merged or _placeholder(merged[k]):
+                        merged[k] = v
+            if task_type == "Award":
+                for k in award_keys:
+                    merged[k] = any(bool(queue[i].get(k, False)) for i in idxs)
+            merged["Name"] = zh
+            merged["TaskType"] = task_type
+            queue[idxs[0]] = {"$type": merged.get("$type") or f"{task_type}Task", **merged}
+            for i in reversed(idxs[1:]):
+                del queue[i]
+            where = "" if scheme == "Default" else f"「{scheme}」方案的"
+            folded.append(f"{where}{zh}（{len(idxs)} 条合成 1 条）")
+    return folded
+
+
+def heal_maa_master(automas_dir, maa_dir=None) -> tuple[list[str], str]:
+    """Run dedup_maa_task_queue on the master gui.new.json and on MAA's own copy.
+
+    Returns (what was folded, note); ([], "") when there was nothing to fold or
+    no master (read_maa already says that one). The master is backed up first,
+    one level above ConfigFile: AUTO-MAS copies that whole folder into MAA's
+    config dir before every run. Each file is read back after writing.
+    """
+    master = maa_master(automas_dir)
+    if not master or not master.is_file():
+        return [], ""
+    targets = [master]
+    if maa_dir and (own := Path(maa_dir) / "config" / "gui.new.json").is_file():
+        targets.append(own)
+    folded: list[str] = []
+    notes: list[str] = []
+    for f in targets:
+        try:
+            raw = f.read_bytes()
+            doc = json.loads(raw.decode("utf-8"))
+        except (OSError, ValueError) as exc:
+            notes.append(f"{f} 读不出来（{type(exc).__name__}），没去重")
+            continue
+        merged = dedup_maa_task_queue(doc)
+        if not merged:
+            continue
+        bak = None
+        if f == master:
+            bak = f.parent.parent / f"{f.name}.bak-dedup-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+            bak.write_bytes(raw)
+        try:
+            atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=4))
+            left = dedup_maa_task_queue(json.loads(f.read_text(encoding="utf-8")))
+        except (OSError, ValueError) as exc:
+            notes.append(f"{f} 写的时候出错（{type(exc).__name__}）" + (f"，{bak.name} 是原样" if bak else ""))
+            continue
+        if left:
+            notes.append(f"{f} 写进去之后再读还有重复：{'、'.join(left)}" + (f"，{bak.name} 是原样" if bak else ""))
+            continue
+        which = "母本" if f == master else "MAA 自己那份"
+        folded += [m for m in merged if m not in folded]
+        notes.append(f"MAA {which}里重复的任务合并了：{'、'.join(merged)}" + (f"（原文件备份为 {bak.name}）" if bak else ""))
+    return folded, "；".join(notes)
+
+
+# read_okww runs on every phone-state publish and a WARNING is a group message:
+# a config file that exists but cannot be read is said once per condition (file
+# -> the error last said), forgotten once it reads again.
+_last_error: dict[str, str] = {}
+
+
+OKWW_SHOWN: dict[str, tuple[str, ...]] = {
+    "DailyTask.json": (
+        "Which to Farm",
+        "Material Selection",
+        "Which Forgery Challenge to Farm",
+        "Which Tacet Suppression to Farm",
+    ),
+}
+
+
+# Shown on the phone page but not editable: the Nightmare Nest locations are a
+# standing order from the user (10-12 11:2x: the first two nests of the list).
+OKWW_READONLY: dict[str, tuple[str, ...]] = {
+    "NightmareNestTask.json": ("Only Farm These Nests",),
+}
+# The nests that order names, in list order; the master's value is these joined by ",".
+ONLY_NESTS: tuple[str, ...] = ("梦枢天罗", "落渊南丘")
+
+
+def nest_names(raw) -> list[str]:
+    """The setting split the way the overrides split it: on ASCII or full-width commas."""
+    return [n.strip() for n in re.split(r"[,，]", str(raw or "")) if n.strip()]
+
+
+def okww_file(automas_dir, name: str) -> Path | None:
+    d = master_config_dir(automas_dir, "DailyTask.json")
+    return (d / name) if d else None
+
+
+# Which sub-setting appears below depends on which entry of "what to farm" is
+# selected. Taken from OK-WW's own sub_configs.
+OKWW_SUBS = {
+    "Tacet Suppression": ["DailyTask.json/Which Tacet Suppression to Farm"],
+    "Forgery Challenge": ["DailyTask.json/Which Forgery Challenge to Farm"],
+    "Simulation Challenge": ["DailyTask.json/Material Selection"],
+}
+
+
+_LIST = {
+    "Which to Farm": r"support_tasks\s*=\s*\[([^\]]*)\]",
+    "Material Selection": r"material_option_list\s*=\s*\[([^\]]*)\]",
+}
+
+
+def _okww_cases(okww_dir) -> dict[str, list[str]]:
+    """The dropdown candidates are read from OK-WW's **own source**, never invented here."""
+    out: dict[str, list[str]] = {}
+    if not okww_dir:
+        return out
+    f = (Path(okww_dir) / "data" / "apps" / "ok-ww" / "working" / "src"
+         / "task" / "DailyTask.py")
+    try:
+        text = f.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return out
+    for key, pat in _LIST.items():
+        m = re.search(pat, text, re.S)
+        if m:
+            vals = re.findall(r"""['"]([^'"]+)['"]""", m.group(1))
+            if vals:
+                out[key] = vals
+    return out
+
+
+# The serial keys and the task file whose `self.structure = [...]` sums to the list
+# length; upstream raises IndexError past it (v3.7.4: TacetTask.py:18 [4, 5, 5, 7]
+# and :69 / :111-112, index = serial - 1 must be < 21; ForgeryTask.py:23
+# [5, 5, 5, 5] and :39 / :63-64, serial must be <= 20). The fallback is those sums,
+# used only when OK-WW's source cannot be read.
+_SERIAL = {
+    "Which Tacet Suppression to Farm": ("TacetTask.py", 21),
+    "Which Forgery Challenge to Farm": ("ForgeryTask.py", 20),
+}
+_STRUCTURE = re.compile(r"self\.structure\s*=\s*\[([\d,\s]+)\]")
+
+
+def _okww_serial_max(okww_dir, key: str) -> "int | None":
+    """How many entries OK-WW's list for `key` has, read from its own source; the
+    v3.7.4 fallback when that cannot be read; None for a key that is not a serial."""
+    if key not in _SERIAL:
+        return None
+    name, fallback = _SERIAL[key]
+    if okww_dir:
+        f = (Path(okww_dir) / "data" / "apps" / "ok-ww" / "working" / "src" / "task" / name)
+        try:
+            m = _STRUCTURE.search(f.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            m = None
+        if m:
+            return sum(int(x) for x in re.findall(r"\d+", m.group(1)))
+    return fallback
+
+
+def _okww_doc(f: Path) -> "dict | None":
+    """One existing OK-WW config file, or None (said once) when it cannot be read:
+    its rows would otherwise just vanish from the phone page."""
+    try:
+        doc = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        why = f"{type(exc).__name__}: {exc}"
+        if _last_error.get(str(f)) != why:
+            log.warning("鸣潮母本 %s 读不到（%s），手机页上它那几项这次不显示", f.name, why)
+            _last_error[str(f)] = why
+        return None
+    _last_error.pop(str(f), None)
+    return doc
+
+
+def read_okww(automas_dir, okww_dir) -> dict:
+    """Values, candidates and Chinese names. Every Chinese name comes from the
+    ok.po that ships with OK-WW (`Forgery Challenge` is officially 「凝素领域」,
+    `Tacet Suppression` 「无音区」).
+    """
+    out: dict = {"values": {}, "options": {}, "labels": {}, "readonly": {},
+                 "subs": OKWW_SUBS}
+    try:
+        from ark_relay.core import plan  # noqa: PLC0415
+        zh = plan._okww_zh(Path(okww_dir) if okww_dir else None)
+    except Exception:  # noqa: BLE001
+        zh = {}
+    cases = _okww_cases(okww_dir)
+    for name, wanted in OKWW_SHOWN.items():
+        f = okww_file(automas_dir, name)
+        if not f or not f.is_file():
+            continue
+        if (doc := _okww_doc(f)) is None:
+            continue
+        for key in wanted:
+            if key not in doc:
+                continue
+            path = f"{name}/{key}"
+            out["values"][path] = doc[key]
+            if zh.get(key):
+                out["labels"][path] = zh[key]
+            if key in cases:
+                out["options"][path] = [[zh.get(v, v), v] for v in cases[key]]
+    for name, wanted in OKWW_READONLY.items():
+        f = okww_file(automas_dir, name)
+        if not f or not f.is_file():
+            continue
+        if (doc := _okww_doc(f)) is None:
+            continue
+        for key in wanted:
+            if key in doc:
+                out["readonly"][f"{name}/{key}"] = doc[key]
+                if zh.get(key):
+                    out["labels"][f"{name}/{key}"] = zh[key]
+    return out
+
+
+def write_okww(automas_dir, path: str, value, okww_dir=None) -> tuple[bool, str]:
+    """Write one phone-editable OK-WW master value. A dropdown key (_LIST) only takes
+    one of the candidates read from OK-WW's own source (`okww_dir`): upstream sends
+    any 「Which to Farm」 that is not Tacet or Forgery to the simulation domain
+    (v3.7.4, DailyTask.py:125-127), so a stray string would farm the wrong thing
+    without a word. When the source cannot be read, nothing is checked, as before."""
+    name, _, key = str(path).partition("/")
+    if name in OKWW_READONLY and key in OKWW_READONLY[name]:
+        return False, f"{key} 在手机上是只读的（死命令：残象聚落只刷梦枢天罗、落渊南丘）"
+    if key not in OKWW_SHOWN.get(name, ()):
+        return False, f"{path} 不在手机可改的清单里，已拒绝"
+    f = okww_file(automas_dir, name)
+    if not f or not f.is_file():
+        return False, f"找不到 OK-WW 的母本 {name}"
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    if key not in doc:
+        return False, (f"{name} 里没有「{key}」这一项，已拒绝"
+                       "（设置里本来没有它，中继不会自己新建）")
+    before = doc[key]
+    if isinstance(before, bool):
+        new: object = bool(value)
+    elif isinstance(before, int) and not isinstance(before, bool):
+        try:
+            new = int(value)
+        except (TypeError, ValueError):
+            return False, f"「{key}」要一个整数，收到 {value!r}"
+        top = _okww_serial_max(okww_dir, key)
+        if top is not None and not 1 <= new <= top:
+            return False, f"「{key}」只能是 1 到 {top}（OK-WW 的列表就这么多个），收到 {new}，已拒绝"
+    else:
+        new = str(value)
+        allowed = _okww_cases(okww_dir).get(key)
+        if allowed and new not in allowed:
+            return False, f"「{key}」只能是 {'、'.join(allowed)} 之一，收到 {new!r}，已拒绝"
+    if before == new:
+        return True, f"「{key}」本来就是 {before!r}，没有改动"
+    doc[key] = new
+    atomic_write_text(f, json.dumps(doc, ensure_ascii=False, indent=2))
+    now = json.loads(f.read_text(encoding="utf-8")).get(key)
+    if now != new:
+        return False, f"写了但没生效：「{key}」现在是 {now!r}"
+    return True, f"「{key}」：{before!r} → {now!r}"
+
 
 # MAA and OK-WW config live in mastercfg_maa / mastercfg_okww; callers and tests
 # say mastercfg.<name>, so those names are importable from here too.
-from ark_relay.core.mastercfg_maa import (
-    MAA_AWARD, MAA_AWARD_PATHS, MAA_DRONES, MAA_DRONES_PATH, MAA_SINGLETON_TASKS, _maa_award, _maa_awards,
-    _maa_infrast, _maa_infrasts, _maa_task, _maa_tasks, _write_maa_award, _write_maa_copies,
-    dedup_maa_task_queue, heal_maa_master, maa_master, read_maa, write_maa,
-)
-from ark_relay.core.mastercfg_okww import (
-    OKWW_READONLY, OKWW_SHOWN, OKWW_SUBS, _LIST, _last_error, _okww_cases, _okww_doc, okww_file,
-    read_okww, write_okww,
-)
+
+
 
 # This module's public names plus every name re-exported from the modules above
 # (callers and tests say mastercfg.<name>); pyflakes and ruff count a listed name as used.
-__all__ = [
-    "MAAEND_SHOWN",
-    "MAAEND_TREE_GROUP",
-    "MAAEND_TREE_TASKS",
-    "MAA_AWARD",
-    "MAA_AWARD_PATHS",
-    "MAA_DRONES",
-    "MAA_DRONES_PATH",
-    "MAA_SINGLETON_TASKS",
-    "OKWW_READONLY",
-    "OKWW_SHOWN",
-    "OKWW_SUBS",
-    "_LIST",
-    "_last_error",
-    "_maa_award",
-    "_maa_awards",
-    "_maa_infrast",
-    "_maa_infrasts",
-    "_maa_task",
-    "_maa_tasks",
-    "_okww_cases",
-    "_okww_doc",
-    "_write_maa_award",
-    "_write_maa_copies",
-    "dedup_maa_task_queue",
-    "heal_maa_master",
-    "log",
-    "maa_master",
-    "maaend_master",
-    "migrate_maaend_options",
-    "okww_file",
-    "prune_maaend_orphans",
-    "read_maa",
-    "read_maaend",
-    "read_okww",
-    "set_maaend_enabled",
-    "write_maa",
-    "write_maaend",
-    "write_okww",
-]
 
-log = logging.getLogger("ark.mastercfg")
 
 # A WARNING is a group message (errwatch), and read_maaend runs on every phone
 # publish: each condition is said once (site -> what was said) and forgotten
@@ -978,3 +2058,5 @@ def migrate_maaend_options(automas_dir, maaend_dir) -> tuple[list[str], str]:
     return changes, ("MaaEnd 换了版本后旧设置的写法它不认了，母本已按原意改写：\n"
                      + "\n".join(f"· {c}" for c in changes)
                      + f"\n（原文件备份为 {bak.name}）")
+
+__all__ = ['MAAEND_SHOWN', 'MAAEND_TREE_GROUP', 'MAAEND_TREE_TASKS', 'MAA_AWARD', 'MAA_AWARD_PATHS', 'MAA_DRONES', 'MAA_DRONES_PATH', 'MAA_SINGLETON_TASKS', 'OKWW_READONLY', 'OKWW_SHOWN', 'OKWW_SUBS', '_LIST', '_last_error', '_maa_award', '_maa_awards', '_maa_infrast', '_maa_infrasts', '_maa_task', '_maa_tasks', '_okww_cases', '_okww_doc', '_write_maa_award', '_write_maa_copies', 'dedup_maa_task_queue', 'heal_maa_master', 'log', 'maa_master', 'maaend_master', 'migrate_maaend_options', 'okww_file', 'prune_maaend_orphans', 'read_maa', 'read_maaend', 'read_okww', 'set_maaend_enabled', 'write_maa', 'write_maaend', 'write_okww']

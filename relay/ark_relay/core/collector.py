@@ -26,18 +26,19 @@ parsers' public names are re-exported, so callers write collector.<name>.
 """
 from __future__ import annotations
 
+import sys as _sys
 import json
 import logging
 import re
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-
-from ark_relay.features.verify.collector_maa import never_started as _maa_never_started, parse_maa_log
-from ark_relay.features.verify.collector_maaend import _END_SANITY_SEC_PER_POINT, CLAIM_UNCONFIRMED, maaend_unreachable, parse_maaend_log, _maaend_all_done, _split_failed
-from ark_relay.features.verify.collector_okww import _okww_error, okww_info, parse_okww_log
-from ark_relay.features.verify.outcome import normalize_okww_log
-from ark_relay.core.config import SERVER_TZ, RunRecord
+from ark_relay.features.collector_maa import never_started as _maa_never_started, parse_maa_log
+from ark_relay.features.collector_maaend import _END_SANITY_SEC_PER_POINT, CLAIM_UNCONFIRMED, maaend_unreachable, parse_maaend_log, _maaend_all_done, _split_failed
+from ark_relay.features.outcome import _okww_error, okww_info, parse_okww_log, normalize_okww_log
+from ark_relay.core.config import SERVER_TZ, RunRecord, Config
+from typing import Protocol
+collector = _sys.modules[__name__]
 
 log = logging.getLogger("ark.collector")
 
@@ -52,20 +53,6 @@ _unparsed_new: list[str] = []          # found, not said yet
 # Only public names are re-exported. `_maaend_all_done` and `_split_failed` are
 # imported because `_judge_result` calls them; other private names are imported
 # from the module that defines them.
-__all__ = [
-    "AUTOMAS_NAME_TZ",
-    "flatten_drops",
-    "log_tail",
-    "maaend_unreachable",
-    "okww_info",
-    "parse_maa_log",
-    "parse_maaend_log",
-    "parse_okww_log",
-    "parse_db_record",
-    "parse_record",
-    "refresh_raw",
-    "scan",
-]
 
 # AUTO-MAS names history folders and files on a UTC+4 clock (`self.curdate =
 # datetime.now(tz=UTC4)` in its AutoProxy); the machine runs on UTC+8. The
@@ -823,3 +810,70 @@ def log_tail(rec: RunRecord, lines: int = 60) -> str:
         if ln.strip() and "TemplateMatcher.cpp" not in ln
     ]
     return "\n".join(keep[-lines:])
+
+
+class Source(Protocol):
+    """Where new run records come from."""
+
+    def fetch(self, seen: set[str]) -> list[RunRecord]: ...
+
+
+class LocalSource:
+    """Read AUTO-MAS history straight off the local disk."""
+
+    def __init__(self, cfg: Config):
+        if not cfg.history_dir:
+            raise ValueError("local 模式需要 ARK_HISTORY_DIR")
+        self.root = cfg.history_dir
+        # MaaEnd's install: its framework log proves a full bag
+        # (collector_maaend._maaend_fail_causes). Config resolves it from
+        # AUTO-MAS when ARK_MAAEND_DIR is unset.
+        self.maaend_dir = cfg.maaend_dir
+
+    def fetch(self, seen: set[str]) -> list[RunRecord]:
+        return collector.scan(self.root, seen, self.maaend_dir)
+
+
+def record_to_payload(rec: RunRecord) -> dict:
+    """Serialise a record for the wire."""
+    return {
+        "run_id": rec.run_id,
+        "script": rec.script,
+        "user": rec.user,
+        "started": rec.started.isoformat(),
+        "finished": rec.finished.isoformat(),
+        "ok": rec.ok,
+        "failed_tasks": rec.failed_tasks,
+        "raw": rec.raw,
+        # Carried so a held failure reloaded after a restart (pending is kept on
+        # disk) still knows its times came from the filename (UTC+4 clock, hours
+        # off), not from the log.
+        "duration_known": rec.duration_known,
+        # Carried so a record superseded by the next attempt stays one (not a
+        # failure) in replays and in the daily report.
+        "transitional": rec.transitional,
+        "log_tail": "" if (rec.ok or rec.transitional)
+                    else collector.log_tail(rec),
+    }
+
+
+def payload_to_record(p: dict) -> RunRecord:
+    """Rebuild a record on the receiving side. Log tail rides along separately."""
+    rec = RunRecord(
+        run_id=str(p["run_id"]),
+        script=str(p.get("script") or "未知"),
+        user=str(p.get("user") or ""),
+        started=datetime.fromisoformat(p["started"]).astimezone(SERVER_TZ),
+        finished=datetime.fromisoformat(p["finished"]).astimezone(SERVER_TZ),
+        ok=bool(p.get("ok")),
+        failed_tasks=list(p.get("failed_tasks") or []),
+        raw=dict(p.get("raw") or {}),
+        log_path=None,
+        # Absent in older payloads: default True.
+        duration_known=bool(p.get("duration_known", True)),
+        # Absent in older payloads: default False.
+        transitional=bool(p.get("transitional", False)),
+    )
+    return rec
+
+__all__ = ['AUTOMAS_NAME_TZ', 'flatten_drops', 'log_tail', 'maaend_unreachable', 'okww_info', 'parse_maa_log', 'parse_maaend_log', 'parse_okww_log', 'parse_db_record', 'parse_record', 'refresh_raw', 'scan']

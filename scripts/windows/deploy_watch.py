@@ -96,7 +96,7 @@ def preupdate_cap_s(root: "str | Path | None") -> tuple[float, str]:
     boot pre-update runs - the started code's own preupdate.worst_case_seconds().
 
     The handle line is logged only once the main loop starts, after every boot stage
-    (relay/ark_relay/features/host/mainloop.py), and the pre-update runs before it once a
+    (relay/ark_relay/features/automas_keeper.py), and the pre-update runs before it once a
     day. 2026-10-16 02:33 a deploy restart was the day's first boot: AUTO-MAS really
     updated (72 s), OK-WW took its 45 s minimum, the 120 s watch failed, the rollback's
     stop hard-exited the relay mid pre-update, and the old version ran the pre-update
@@ -105,7 +105,7 @@ def preupdate_cap_s(root: "str | Path | None") -> tuple[float, str]:
         return 0.0, "没给中继代码目录"
     try:
         sys.path.insert(0, str(root))
-        from ark_relay.features.preupdate import preupdate  # noqa: PLC0415 - the machine's own copy
+        from ark_relay.features import preupdate  # noqa: PLC0415 - the machine's own copy
         return float(preupdate.worst_case_seconds()), ""
     except Exception as exc:  # noqa: BLE001 - an unreadable cap must not cost the watch itself
         return 0.0, f"{type(exc).__name__}: {exc}"

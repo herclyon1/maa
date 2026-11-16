@@ -36,10 +36,10 @@ def _part_stop_push_slow_network():
     import urllib.request
 
     import app_main
-    from ark_relay.features.phone import phone
+    from ark_relay.features import phone
     from ark_relay.core import skland
-    from ark_relay.features.maintenance import maintenance
-    from ark_relay.features.phone import commands, mailbox, mas_client
+    from ark_relay.features import maintenance
+    from ark_relay.features import commands, phone as mailbox, redbutton as mas_client
 
     fails = []
 
@@ -119,7 +119,7 @@ def _part_stop_push_slow_network():
         real_limits = app_main._stop_push_limits
         # The send's own time only: the errwatch drain after it is a bounded step of its
         # own (errwatch.drain, inside the watchdog's margin).
-        from ark_relay.features.alarm import errwatch
+        from ark_relay.features import errwatch
         errwatch.drain = lambda timeout=0: None
         if not limits:
             app_main._stop_push_limits = lambda box: None

@@ -129,7 +129,7 @@ print(f"SMOKE 启动后日志 {len(after)} 行，报错 {len(hits)} 行")
 # called complete while the machine cannot reach the address the service uses.
 try:
     import re as _re
-    from ark_relay.features.phone import inbox as _inbox
+    from ark_relay.features import phone as _inbox
     _env = (DATA / ".env").read_text(encoding="utf-8", errors="replace")
     _m = _re.search(r"^ARK_INBOX_URL=(.*)$", _env, _re.M)
     _url = (_m.group(1).strip().strip('"') if _m else "") or _inbox.DEFAULT_URL

@@ -31,11 +31,11 @@ def _run_mc28_one_alarm():
     from ark_relay.core import engine as eng_mod, texts
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
-    from ark_relay.features.alarm import handle, runchecks, unresolved
-    from ark_relay.features.makeup import makeup
-    from ark_relay.features.selfcheck import machinecheck as mc
-    from ark_relay.features.selfcheck.machinechecks import runs
-    from ark_relay.features.verify import collector_maaend
+    from ark_relay.features import handle, handle as runchecks, handle as unresolved
+    from ark_relay.features import makeup
+    from ark_relay.features import machinecheck as mc
+    from ark_relay.features import machinechecks as runs
+    from ark_relay.features import collector_maaend
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-task-trail"
     fails = []
@@ -264,10 +264,10 @@ held abort of test_mc28_one_alarm.py whose retries never get through.
     base = _run_mc28_one_alarm()  # its own scenarios run on import
 
     from ark_relay.core import config as config_mod
-    from ark_relay.features.alarm import handle, unresolved
-    from ark_relay.features.makeup import makeup
-    from ark_relay.features.selfcheck import machinecheck as mc
-    from ark_relay.features.selfcheck.machinechecks import runs
+    from ark_relay.features import handle, handle as unresolved
+    from ark_relay.features import makeup
+    from ark_relay.features import machinecheck as mc
+    from ark_relay.features import machinechecks as runs
 
 
     class Errors(logging.Handler):
@@ -282,7 +282,7 @@ held abort of test_mc28_one_alarm.py whose retries never get through.
 
 
     ERRORS = Errors()
-    runs.log.addHandler(ERRORS)
+    runs._log_runs.addHandler(ERRORS)
 
     REAL_AFTER, REAL_REFUSE = unresolved.after_makeup, makeup.refuse_rejected
     REAL_WRITE_TEXT, REAL_MC_WRITE = config_mod.atomic_write_text, mc._write
@@ -437,9 +437,9 @@ Review of 87b9ee74 (10-17):
 
     from ark_relay.core import statestore, texts
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.alarm import handle, pushes, runchecks
-    from ark_relay.features.selfcheck import machinecheck as mc
-    from ark_relay.features.selfcheck.machinechecks import runs
+    from ark_relay.features import handle, handle as pushes, handle as runchecks
+    from ark_relay.features import machinecheck as mc
+    from ark_relay.features import machinechecks as runs
 
     DAY = "2026-10-08"
     R1, R2, R3 = (f"{DAY}/endfield/MaaEnd-0{h}-00-00" for h in (1, 2, 3))
@@ -1114,14 +1114,14 @@ really sat in); and the pictures' real capture times from the evidence bundles
 
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ, RunRecord
-    from ark_relay.features.selfcheck import machinecheck as mc
-    from ark_relay.features.verify import collector_maaend, maaend_fwlog
+    from ark_relay.features import machinecheck as mc
+    from ark_relay.features import collector_maaend, collector_maaend as maaend_fwlog
     from types import SimpleNamespace
 
     from ark_relay.core import ledger as core
-    from ark_relay.core import ledger_rows
-    from ark_relay.features.alarm import handle, pushes
-    from ark_relay.features.selfcheck.machinechecks import runs
+    from ark_relay.core import ledger as ledger_rows
+    from ark_relay.features import handle, handle as pushes
+    from ark_relay.features import machinechecks as runs
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-task-trail"
     SHOT_TIMES = {k: v for k, v in json.loads((FIX / "shot-times.json").read_text(encoding="utf-8")).items()
@@ -1241,7 +1241,7 @@ really sat in); and the pictures' real capture times from the evidence bundles
     heal_state.mkdir()
     st, ev, pushed = judge("2026-10-08_MaaEnd-06-31-06.log", fw08, heal_state, ledger=day08)
     check("06-31-06's abort is healed by that run: no FAIL, nothing pushed", (st, pushed), ("PASS", []))
-    from ark_relay.core import techlog
+    from ark_relay.core import statestore as techlog
     reds = techlog.unhandled("\n".join(f.read_text(encoding="utf-8")
                                        for f in techlog.tech_dir(heal_state).glob("*.md")))
     check("…but one 「自愈待查」 red item says a session has to look at why it stopped itself",
@@ -1354,7 +1354,7 @@ really sat in); and the pictures' real capture times from the evidence bundles
 
     FOUR = ["赠送干员礼物", "装备制造", "转交委托", "环境监测"]
     state, empty, book = tmpdir(), tmpdir(), Ledger()
-    from ark_relay.features.alarm import records
+    from ark_relay.features import handle as records
 
     levels, hlog = Levels(), records.log
     old_level = hlog.level
@@ -1758,8 +1758,8 @@ history 日志，出现 0 次——也就是这条判据恒为假。当天 MaaEn
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.alarm import handle
-    from ark_relay.features.verify import outcome
+    from ark_relay.features import handle
+    from ark_relay.features import outcome
 
     FAILED = []
 
@@ -1904,7 +1904,7 @@ AUTO-MAS 已经知道了」——只是 `service.py` 用了，`Engine` 没用。
         print("\n=== 解析不出来时必须喊，不许静默 return ===")
         import logging
         from ark_relay.core import engine as E
-        from ark_relay.features.alarm import handle as H
+        from ark_relay.features import handle as H
 
         class _Rec:
             run_id = "r/1"
@@ -1954,7 +1954,7 @@ The user's words, on why a false green is worse than a false red: 「明明没�
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
-    from ark_relay.features.verify.outcome import maaend_checks, summarize
+    from ark_relay.features.outcome import maaend_checks, summarize
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-10"
 
@@ -2054,8 +2054,8 @@ real lines). The alarm said gathering failed and nothing more. Checked, on those
 
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.core.ledger_rows import _with_causes
-    from ark_relay.features.verify import collector_maaend as C
+    from ark_relay.core.ledger import _with_causes
+    from ark_relay.features import collector_maaend as C
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-11-05"
     HISTORY = (FIX / "history-MaaEnd-07-24-54-gathering.log").read_text(encoding="utf-8")
@@ -2134,9 +2134,9 @@ lines themselves could not be fetched.
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.alarm import errwatch, handle
-    from ark_relay.features.run import maaend_watchdog
-    from ark_relay.core import techlog, texts
+    from ark_relay.features import errwatch, handle
+    from ark_relay.features import maaend_watchdog
+    from ark_relay.core import statestore as techlog, texts
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
 
@@ -2437,9 +2437,9 @@ Inputs are real files:
         sys.modules.setdefault(_n, _Stub(_n))
 
     import boot_stages
-    from ark_relay.features.makeup import collect_retry
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.gameupdate import gameupdate
+    from ark_relay.features import collect_retry
+    from ark_relay.features import errwatch
+    from ark_relay.features import gameupdate
     from ark_relay.core import mastercfg, notify, texts
     from ark_relay.core.statestore import StateStore
 
@@ -2757,8 +2757,8 @@ stopped-between-tasks logs are real prefixes of 2026-09-28a.log.
     check("an entry already marked ok is left ok", (fresh.get("ok"), fresh.get("failed_tasks")), (True, []))
 
     print("\n[audit 11-08 B-02/B-03: a closing task does not excuse tasks that never started]")
-    from ark_relay.features.verify.collector_maaend import _maaend_all_done
-    from ark_relay.features.verify import outcome
+    from ark_relay.features.collector_maaend import _maaend_all_done
+    from ark_relay.features import outcome
     full = "".join(LOG_0928)
     check("the real 09-28 round, closing task last: done", _maaend_all_done(full), True)
     no_proto = "".join(x for x in LOG_0928 if "⚔️协议空间" not in x)
@@ -2803,8 +2803,8 @@ be explained from those two files and neither was in any bundle.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
-    from ark_relay.features.evidence import evidence
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import evidence
+    from ark_relay.features import handle
     from ark_relay.core import ledger as core
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-18"
@@ -2924,10 +2924,10 @@ whatever else made it fail can be read off them.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.verify import collector_maaend as cm
+    from ark_relay.features import collector_maaend as cm
     from ark_relay.core import texts
     from ark_relay.core import ledger as core
-    from ark_relay.features.verify.collector_maaend import CLAIM_UNCONFIRMED, parse_maaend_log
+    from ark_relay.features.collector_maaend import CLAIM_UNCONFIRMED, parse_maaend_log
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
     FAILED: list[str] = []
@@ -3101,12 +3101,12 @@ wiped its debug folder.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import collector, texts
-    from ark_relay.features.makeup import makeup
-    from ark_relay.features.report import report
+    from ark_relay.features import makeup
+    from ark_relay.features import report
     from ark_relay.core import ledger as core
-    from ark_relay.features.verify.collector_maaend import BAG_FULL, CLAIM_UNCONFIRMED
+    from ark_relay.features.collector_maaend import BAG_FULL, CLAIM_UNCONFIRMED
     from ark_relay.core.config import Config
-    from ark_relay.core.transport import LocalSource
+    from ark_relay.core.collector import LocalSource
 
     FIX = fx_dir(Path(__file__), "fixtures")
     FAILED: list[str] = []
@@ -3248,7 +3248,7 @@ was not recognised as gathering-only either.
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.core import ledger_report, ledger_rows
+    from ark_relay.core import ledger as ledger_report, ledger as ledger_rows
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -3281,8 +3281,8 @@ the gathering retry stopped recognising failures (账本 #122). Checked here:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import mastercfg
-    from ark_relay.features.makeup import collect_retry as cr
-    from ark_relay.features.verify import collector_maaend as cm, outcome
+    from ark_relay.features import collect_retry as cr
+    from ark_relay.features import collector_maaend as cm, outcome
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-10-29"
 
@@ -3432,7 +3432,7 @@ check accepted only 「路线N：」, so a day with routes 1-3 alone would be re
     #!/usr/bin/env python3
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify.outcome import maaend_checks
+    from ark_relay.features.outcome import maaend_checks
 
     text = (fx_dir(Path(__file__), "fixtures") / "maaend-collect-xianlu-1012.log").read_text(encoding="utf-8")
     got = {c.label: c.ok for c in maaend_checks(text, []) if "自动采集" in c.label}
@@ -3457,7 +3457,7 @@ Every log below is a real, unedited MaaEnd log from the machine
     """
     import pathlib
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_maaend
+    from ark_relay.features import collector_maaend
 
     D = fx_dir(pathlib.Path(__file__), "fixtures") / "maaend-farm-drops"
 
@@ -3580,7 +3580,7 @@ Before 2026-10-06 only the first was read: the essence runs and drops vanished.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.verify import collector_maaend as cm
+    from ark_relay.features import collector_maaend as cm
 
     FAILED: list[str] = []
     D = fx_dir(Path(__file__), "fixtures") / "maaend-farm-drops"
@@ -3663,9 +3663,9 @@ relay/tests has the shape at all (0 of 80), so this is the nearest real round.
     sys.path.insert(0, str(ROOT))
 
     from ark_relay.core import collector, texts
-    from ark_relay.features.gameupdate import gameupdate
-    from ark_relay.features.alarm import handle
-    from ark_relay.features.makeup import makeup
+    from ark_relay.features import gameupdate
+    from ark_relay.features import handle
+    from ark_relay.features import makeup
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
@@ -3869,7 +3869,7 @@ the notices could not be read), as the held alarm does.
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import handle
 
 
     class Notes:

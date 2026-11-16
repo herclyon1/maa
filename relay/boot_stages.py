@@ -15,7 +15,7 @@ reading either one meant scrolling through the other.
 order is the whole of what it says.
 
 `_revive_automas` and `ensure_automas` live here too, although the
-`_AutomasKeeper` in `ark_relay/features/host/automas_keeper.py` uses
+`_AutomasKeeper` in `ark_relay/features/automas_keeper.py` uses
 `_revive_automas` as well: the boot steps call the pair five times between them,
 and keeping them on the keeper's side would mean this module importing the keeper
 while the keeper imports this one. The dependency runs one way only - `service.py`
@@ -86,7 +86,7 @@ def _revive_automas() -> None:
     # behind (the keeper revives only when none is found, but one it cannot see
     # through an unreadable process list would still hold the API port) is ended
     # by its pid: a new backend could not open port 36163 next to it (清单-1108 A-06).
-    from ark_relay.features.host import automas_procs  # noqa: PLC0415
+    from ark_relay.features import automas_keeper as automas_procs  # noqa: PLC0415
     leftover = [["taskkill", "/PID", str(pid), "/F", "/T"]
                 for pid, cmd in (automas_procs._python_processes() or []) if automas_procs.is_backend(cmd)]
     for cmd in (
@@ -131,14 +131,14 @@ def _stop_requested() -> bool:
     「先等它自己起来」 sleep, SvcStop waited 15 s and the hard guard had to
     force-exit the process. A wait that cannot hear the stop is a hang.
     """
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    from ark_relay.features import errwatch  # noqa: PLC0415
     return errwatch.going_down()
 
 
 def _wait_for_api(deadline: float) -> "float | None":
     """Poll the API until `deadline` (monotonic). Returns seconds waited on success,
     None on timeout - or at once, still None, when the service is stopping."""
-    from ark_relay.features.phone import commands  # noqa: PLC0415
+    from ark_relay.features import commands  # noqa: PLC0415
     t0 = time.monotonic()
     while time.monotonic() < deadline:
         if _stop_requested():
@@ -173,7 +173,7 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE, not
     words: keep 「杀掉重」, 「AUTO-MAS 已…秒）」 and 「秒内…仍不通」.
     """
     import logging  # noqa: PLC0415
-    from ark_relay.features.phone import commands  # noqa: PLC0415
+    from ark_relay.features import commands  # noqa: PLC0415
     log = logging.getLogger("ark.service")
     if commands.mas_up():
         return True
@@ -198,7 +198,7 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE, not
     log.info("AUTO-MAS 接口不在，拉起它；起来了报到群里（没应答的原因还没查清），%.0f 秒还不通也报到群里", timeout)
     _revive_automas()
     waited = _wait_for_api(time.monotonic() + timeout)
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    from ark_relay.features import errwatch  # noqa: PLC0415
     if waited is not None:
         # Why it was not answering is not known: pushed (until 2026-10-10 daily-report-only).
         log.warning("AUTO-MAS 已由中继重新打开（%s，打开后等了 %.0f 秒）", why, waited)
@@ -257,7 +257,7 @@ def await_backend(log, step: str, cfg=None) -> "tuple[bool, float]":
     not answer, with how long it waited; this function raises no alarm of its own.
     After one wait ran out, a step that finds no answer gets (False, that wait) at once,
     until AUTO-MAS answers again."""
-    from ark_relay.features.phone import commands  # noqa: PLC0415
+    from ark_relay.features import commands  # noqa: PLC0415
     if commands.mas_up():
         # Answering again: a later loss is waited for again, not answered at once with the
         # old wait (audit 11-08 A-20: one timeout at boot made every later step give up
@@ -349,7 +349,7 @@ def _relay_poweroff_live(engine, now=None) -> bool:
     if at is None:
         return True
     from datetime import datetime as _dt, timedelta as _td  # noqa: PLC0415
-    from ark_relay.features.shutdown import shutdown as _sd  # noqa: PLC0415
+    from ark_relay.features import shutdown as _sd  # noqa: PLC0415
     from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
     return (now or _dt.now(tz=SERVER_TZ)) - at < _td(minutes=_sd.ISSUED_STUCK_MIN)
 
@@ -395,20 +395,20 @@ def _stage_bootstrap():
     from ark_relay.core import State  # noqa: PLC0415
     from ark_relay.core.engine import Engine  # noqa: PLC0415
     from ark_relay.core.notify import Notifier  # noqa: PLC0415
-    from ark_relay.core.transport import LocalSource  # noqa: PLC0415
+    from ark_relay.core.collector import LocalSource  # noqa: PLC0415
 
     log = logging.getLogger("ark.service")
     cfg = Config()
     # The day's tape of what AUTO-MAS, the System log and the information sources
     # answer (selfcheck/tape.py), for the day replay; it never stops or changes the relay.
-    from ark_relay.features.selfcheck import tape  # noqa: PLC0415
+    from ark_relay.features import selfcheck as tape  # noqa: PLC0415
     tape.install(cfg.state_dir, cfg.automas_dir)
     # From here on every WARNING / ERROR any module logs reaches the group (see
     # errwatch). Installed before the config check: it needs only the notifier and the
     # state folder, and until 10-13 the check's 「配置提醒」 warnings and the reasons of a
     # bad-config exit were logged before it and reached relay.log only (audit s23 F1).
     notifier = Notifier(cfg)
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    from ark_relay.features import errwatch  # noqa: PLC0415
     from ark_relay.core.statestore import StateStore  # noqa: PLC0415
     built: list = []          # the engine, once there is one: the power-off probe reads it
     errwatch.install(notifier, lambda: bool(built) and _relay_poweroff_live(built[0]),
@@ -417,7 +417,7 @@ def _stage_bootstrap():
     # Each relay-error push uploads today's relay.log first, so the push ends with
     # 「日志：<链接>，出事时刻 HH:MM」 (error_evidence.py, fix bill L) - the bad-config
     # push below too, whose details are in that log.
-    from ark_relay.features.evidence import error_evidence  # noqa: PLC0415
+    from ark_relay.features import evidence as error_evidence  # noqa: PLC0415
     errwatch.set_evidence_uploader(lambda: error_evidence.upload_daily_logs(cfg))
     if problems := cfg.validate():
         # One record, so one group message. Its first line is what the push quotes,
@@ -480,10 +480,10 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
         # its final state, and read back so an override that did not take is audible.
         # Local import: a module-level one would be evaluated during service
         # installation, when ark_relay may not be on sys.path yet.
-        from ark_relay.features.okww_patch import okww_overlay as _overlay  # noqa: PLC0415
+        from ark_relay.features import okww_overlay as _overlay  # noqa: PLC0415
         # A pre-update killed before its `finally` (10-16 02:35, the 15 s hard exit) left
         # OK-WW's auto-start switch off; put it back on every boot, pre-update or not.
-        from ark_relay.features.preupdate import preupdate_okww  # noqa: PLC0415
+        from ark_relay.features import preupdate as preupdate_okww  # noqa: PLC0415
         try:
             if line := preupdate_okww.restore_autostart_leftover(okww_at_boot, cfg.state_dir):
                 log.info("启动：%s", line)
@@ -530,7 +530,7 @@ def _automas_jobfix(cfg, log, when: str) -> None:
     「拒绝访问」 (2026-11-08 21:30), or MAA be handed a wrong ADB port (2026-11-09 09:01). Never raises."""
     automas_dir = getattr(cfg, "automas_dir", None)
     try:
-        from ark_relay.features.host import automas_jobfix  # noqa: PLC0415
+        from ark_relay.features import automas_keeper as automas_jobfix  # noqa: PLC0415
         if put := automas_jobfix.heal(automas_dir):
             log.info("%s：AUTO-MAS 的兜底文件补回去了：%s（AUTO-MAS 后端下次启动时生效）", when, "、".join(put))
         elif automas_dir and automas_jobfix.site_dir(automas_dir) is None:
@@ -545,7 +545,7 @@ def _automas_jobfix(cfg, log, when: str) -> None:
 def _stage_selfupdate(log) -> bool:
     """Pull new code; when something really updated, trigger a restart and return True so the caller exits at once."""
     try:
-        from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415
+        from ark_relay.features import selfupdate  # noqa: PLC0415
 
         if changed := selfupdate.check(HERE):
             # Take effect now, not next boot. The files are on disk but this
@@ -585,7 +585,7 @@ def _stage_backfill_manual_stops(engine, log) -> None:
     memory. Never fatal: a failure here only costs the ⏹ on those rows.
     """
     try:
-        from ark_relay.features.alarm import handle  # noqa: PLC0415
+        from ark_relay.features import handle  # noqa: PLC0415
         if n := handle.backfill_manual_stops(engine):
             log.info("⏹ 开机补记：%d 趟被停一切停掉的运行已记成手动停止", n)
     except Exception:
@@ -602,7 +602,7 @@ def _stage_evidence_sources(cfg, notifier, log) -> None:
     compares hashes. Unreachable is only logged: that is the CDN, not a change.
     """
     try:
-        from ark_relay.features.evidence import evidence  # noqa: PLC0415
+        from ark_relay.features import evidence  # noqa: PLC0415
         from ark_relay.core import texts  # noqa: PLC0415
         changed, unreachable = evidence.check_sources()
         # One upstream change is one notice. Every boot compared again and
@@ -624,7 +624,7 @@ def _stage_evidence_sources(cfg, notifier, log) -> None:
             # (scripts/mac/techlog.py red), instead of a Server酱 notice to him. The
             # WARNING above still goes to the group every boot until it is re-pinned.
             from datetime import datetime as _dt  # noqa: PLC0415
-            from ark_relay.core import techlog  # noqa: PLC0415
+            from ark_relay.core import statestore as techlog  # noqa: PLC0415
             techlog.add_red(_dt.now(tz=SERVER_TZ).strftime("%Y-%m-%d"), "上游导出代码变了",
                             [f"{texts.EVIDENCE_SOURCE_CHANGED}：{texts.evidence_source_changed_body(new)}"],
                             state_dir=cfg.state_dir)
@@ -657,7 +657,7 @@ def _stage_announce_update(notifier, log, state_dir: Path) -> None:
     # this is the first honest moment to say the update took effect, and
     # the operator asked to be told the moment it does.
     try:
-        from ark_relay.features.selfupdate import selfupdate  # noqa: PLC0415 - see the block above
+        from ark_relay.features import selfupdate  # noqa: PLC0415 - see the block above
 
         # An update that was available and did not land must be as loud
         # as one that did. Otherwise the machine quietly runs old code
@@ -734,7 +734,7 @@ def _stage_announce_update(notifier, log, state_dir: Path) -> None:
             recorded = False
             if notes:
                 try:
-                    from ark_relay.features.report import report as _rp  # noqa: PLC0415
+                    from ark_relay.features import report as _rp  # noqa: PLC0415
                     _rp.remember_change(state_dir, notes, str(note.get("version") or ""))
                     recorded = True
                 except Exception:
@@ -798,8 +798,8 @@ def _make_collect(inbox, engine, notifier, log, deferred_inbox):
 
 def _stage_inbox_and_phone(svc, cfg, engine, notifier, log):
     """Todo mailbox plus phone channel. Returns (inbox, collect, deferred_inbox), which the main loop needs."""
-    from ark_relay.features.phone.inbox import Inbox  # noqa: PLC0415
-    from ark_relay.features.phone import phone_channel  # noqa: PLC0415 - it imports boot_stages
+    from ark_relay.features.phone import Inbox  # noqa: PLC0415
+    from ark_relay.features import phone as phone_channel  # noqa: PLC0415 - it imports boot_stages
 
     inbox = Inbox(cfg.state_dir, cfg.inbox_url, automas_dir=cfg.automas_dir)
 
@@ -859,7 +859,7 @@ def _once_more(cfg, log, name: str, budget_s: float, problems: list[str], step):
         return out
     if len(problems) == n0:
         # The second try gave a verdict: the first try's problem fixed itself, one red item.
-        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        from ark_relay.features import errwatch  # noqa: PLC0415
         log.warning("预更新：%s 第一次没给出结论，再试一次给出了结论\n%s", name, first,
                     extra=errwatch.recovered())
     return out
@@ -872,7 +872,7 @@ def _preupdate_okww(cfg, notifier, log, problems) -> None:
     replaces the whole of src, so right after it the pinned copies in the overrides
     are compared with the new source (okww_overlay.drift_line).
     """
-    from ark_relay.features.preupdate import preupdate  # noqa: PLC0415
+    from ark_relay.features import preupdate  # noqa: PLC0415
 
     # OK-WW last: it is the newest of the four and the only one whose
     # update comes from a CNB git mirror rather than MirrorChyan.
@@ -890,7 +890,7 @@ def _preupdate_okww(cfg, notifier, log, problems) -> None:
     patch_notes: list[str] = []
     # The pre-update closed OK-WW: put a skipped overlay in place now (a relay
     # restart mid-run left it pending; a WARNING when it still cannot be).
-    from ark_relay.features.okww_patch import okww_overlay  # noqa: PLC0415
+    from ark_relay.features import okww_overlay  # noqa: PLC0415
     okww_overlay.retry_pending("预更新后")
     # Right after the update and before any queue: does each pinned copy still match
     # the source now on disk? Until 10-05 the first to notice was the result check,
@@ -906,7 +906,7 @@ def _preupdate_okww(cfg, notifier, log, problems) -> None:
 
 def _stage_selfcheck(cfg, notifier, log) -> None:
     """Verify every assumption the relay stands on, once, and tell the group about any that fails (selfcheck.py)."""
-    from ark_relay.features.selfcheck import selfcheck  # noqa: PLC0415
+    from ark_relay.features import selfcheck  # noqa: PLC0415
     # Before the process table is read too: a backend that is restarting has no process.
     up, waited = await_backend(log, "开机自检", cfg)
     if not up and _stop_requested():
@@ -918,7 +918,7 @@ def _stage_selfcheck(cfg, notifier, log) -> None:
 def _contract_after_update(cfg, notifier, log, version: str) -> None:
     """A new AUTO-MAS just came up: are the settings the relay reads still where it looks?
     (selfcheck.report_contract; the boot self-check ran before this install.)"""
-    from ark_relay.features.selfcheck import selfcheck  # noqa: PLC0415
+    from ark_relay.features import selfcheck  # noqa: PLC0415
     try:
         selfcheck.report_contract(cfg, notifier, version, log)
     finally:
@@ -943,7 +943,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
         log.info("服务正在停止，不做预更新")
         return
     try:
-        from ark_relay.features.preupdate import preupdate  # noqa: PLC0415
+        from ark_relay.features import preupdate  # noqa: PLC0415
 
         # Once a day is enough: re-running on every service restart would
         # launch the programs one by one to check for updates all over
@@ -1013,7 +1013,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
                 # checks for updates itself when it starts; the text says so. The
                 # WARNING line comes after the push and is not pushed a second time
                 # when the alarm reached the group (errwatch.group_pushed).
-                from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+                from ark_relay.features import errwatch  # noqa: PLC0415
                 body = "\n".join(f"· {p}" for p in problems)
                 title = texts.unconfirmed("预更新", len(problems))
                 errs = notifier.send(title, body + texts.preupdate_unconfirmed_tail(), alert=True)
@@ -1037,7 +1037,7 @@ def _stage_endfield_start(cfg, notifier, log) -> None:
 
 def _endfield_launch(cfg, log, when: str) -> None:
     try:
-        from ark_relay.features.gameupdate import efstart_setup  # noqa: PLC0415
+        from ark_relay.features import efstart as efstart_setup  # noqa: PLC0415
         # install() reads and writes the MaaEnd script through the AUTO-MAS API (await_backend).
         up, waited = await_backend(log, f"{when}核对终末地开游戏方式", cfg)
         if not up and _stop_requested():
@@ -1062,7 +1062,7 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
     # know rings the group at every boot that sees it. The user, 2026-10-06, on it:
     # 「那个要一直开着，如果上游maaend改了导致没生效就要报警」 - every time it is seen, he wants the alarm.
     try:
-        from ark_relay.features.gameupdate import gameupdate as _gu3  # noqa: PLC0415
+        from ark_relay.features import gameupdate as _gu3  # noqa: PLC0415
         if shape := _gu3.spmed_check(cfg):
             notifier.send(texts.SPMED_UNRECOGNISED, texts.spmed_unrecognised_body(shape), alert=True)
     except Exception:
@@ -1112,9 +1112,9 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
     # Left over and put back here, before anything runs: a fault the relay got
     # over by itself - the daily report only (why: USER-SWITCHES.txt at
     # boot_stages.py:_stage_reenable_maaend). What cannot be put back is pushed.
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    from ark_relay.features import errwatch  # noqa: PLC0415
     try:
-        from ark_relay.features.makeup import collect_retry as _cr  # noqa: PLC0415
+        from ark_relay.features import collect_retry as _cr  # noqa: PLC0415
         if back := _cr.restore_master(cfg):
             log.warning("开机：%s（上次关机前没改回，这次开机改回了）", back, extra=errwatch.recovered())
     except Exception:
@@ -1126,7 +1126,7 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
     # AUTO-MAS's retries of it would run every task. Its record puts it back
     # (handle._handle).
     try:
-        from ark_relay.features.makeup import makeup as _mk  # noqa: PLC0415
+        from ark_relay.features import makeup as _mk  # noqa: PLC0415
         if _mk.maaend_still_running(cfg.state_dir):
             log.info("开机：终末地补跑还在跑，母本等它的记录出来再改回")
         else:
@@ -1142,7 +1142,7 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
 def _stage_collect_watch(cfg, notifier, log) -> None:
     """Arm the live watch on MaaEnd's log: records failed gathering routes, puts back a narrowing left by old code."""
     try:
-        from ark_relay.features.run import collect_watch  # noqa: PLC0415
+        from ark_relay.features import collect_watch  # noqa: PLC0415
         collect_watch.start(cfg, notifier)
     except Exception:
         log.exception("挂 MaaEnd 日志监听出错，采集路线失败记不下来")
@@ -1151,7 +1151,7 @@ def _stage_collect_watch(cfg, notifier, log) -> None:
 def _stage_display_wake(cfg, notifier, log) -> None:
     """Arm the watch on AUTO-MAS's log that wakes the display while Endfield's launcher starts."""
     try:
-        from ark_relay.features.run import display_wake  # noqa: PLC0415
+        from ark_relay.features import display_wake  # noqa: PLC0415
         display_wake.start(cfg)
     except Exception:
         log.exception("挂调度程序日志监听出错，终末地开游戏时不会叫醒屏幕")
@@ -1160,7 +1160,7 @@ def _stage_display_wake(cfg, notifier, log) -> None:
 def _stage_maa_start_watch(cfg, notifier, log) -> None:
     """Arm the watch on MAA's asst.log that ends a hung Arknights start so AUTO-MAS restarts it (#137)."""
     try:
-        from ark_relay.features.run import maa_start_watchdog  # noqa: PLC0415
+        from ark_relay.features import maa_start_watchdog  # noqa: PLC0415
         maa_start_watchdog.start(cfg, notifier)
     except Exception:
         log.exception("挂明日方舟开游戏看门狗出错，开游戏卡住时要等 AUTO-MAS 自己的时限")
@@ -1175,7 +1175,7 @@ def _stage_gameupdate(cfg, notifier, log) -> None:
     # downloads go here. The budget is however long there is until the next
     # queue.
     try:
-        from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
+        from ark_relay.features import gameupdate  # noqa: PLC0415
         _gu_now = datetime.now(tz=SERVER_TZ)
         _boot_id = _boot_stamp(_gu_now)
         if gameupdate.should_run(cfg.state_dir, _gu_now, boot_id=_boot_id):
@@ -1190,7 +1190,7 @@ def _stage_gameupdate(cfg, notifier, log) -> None:
             if gproblems:
                 # A group alarm, each time (until 2026-10-06 demoted to Server酱); the
                 # WARNING line is not pushed again when the alarm reached the group.
-                from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+                from ark_relay.features import errwatch  # noqa: PLC0415
                 body = "\n".join(f"· {x}" for x in gproblems)
                 title = texts.unconfirmed("游戏更新", len(gproblems))
                 errs = notifier.send(title, body, alert=True)
@@ -1212,7 +1212,7 @@ def _stage_stagegate(engine, log) -> None:
     answers (the pull goes through its API) and before the pre-update, which may take
     the boot window up to 90 s before the queue (stagegate.py, "Where it runs")."""
     try:
-        from ark_relay.features.schedule import stagegate  # noqa: PLC0415
+        from ark_relay.features import stagegate  # noqa: PLC0415
         await_backend(log, "开机关卡门", getattr(engine, "cfg", None))
         engine._stage_gate(lead_min=stagegate.BOOT_LEAD_MIN)
     except Exception:
@@ -1273,7 +1273,7 @@ def _annihilation_switch_off(engine, notifier, log) -> None:
         return
     if not line:
         return
-    from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+    from ark_relay.features import errwatch  # noqa: PLC0415
     errs = notifier.send(texts.ANNIHILATION_OFF, line, alert=True)
     log.warning("剿灭：%s", line, extra=errwatch.group_pushed(texts.ANNIHILATION_OFF, errs, notifier))
 
@@ -1284,7 +1284,7 @@ def _machinecheck(cfg, notifier, log, event: str, ctx: dict) -> None:
     if not getattr(cfg, "state_dir", None):
         return                  # nowhere to keep a verdict
     try:
-        from ark_relay.features.selfcheck import machinecheck  # noqa: PLC0415
+        from ark_relay.features import machinecheck  # noqa: PLC0415
         from ark_relay.core.statestore import StateStore  # noqa: PLC0415
         machinecheck.judge(cfg.state_dir, event, ctx, notifier=notifier,
                            version=str(StateStore(cfg.state_dir).get("versions", "code") or ""))

@@ -570,7 +570,7 @@ fake curl that only records that it was called and answers 200.
     ROOT = Path(__file__).resolve().parents[2]
     SCRIPT = ROOT / "scripts" / "mac" / "order-now.sh"
     sys.path.insert(0, str(ROOT / "relay"))
-    from ark_relay.features.phone.commands import MUTATING
+    from ark_relay.features.commands import MUTATING
 
 
     def run(body: dict, home: str) -> tuple[int, str, bool]:
@@ -652,11 +652,11 @@ ends non-zero there, after the part under test.
         (work / "scripts" / "mac").mkdir(parents=True)
         shutil.copy(SCRIPT, work / "scripts" / "mac" / "order.sh")
         # scripts/mac/order.sh imports ark_relay.features.phone.commands
-        phone = work / "relay" / "ark_relay" / "features" / "phone"
-        phone.mkdir(parents=True)
-        for pkg in (phone.parents[1], phone.parent, phone):
+        features = work / "relay" / "ark_relay" / "features"
+        features.mkdir(parents=True)
+        for pkg in (features.parent, features):
             (pkg / "__init__.py").write_text("")
-        (phone / "commands.py").write_text("ALLOWED = {'skip_shutdown': None}\n")
+        (features / "commands.py").write_text("ALLOWED = {'skip_shutdown': None}\n")
         (work / "queue").mkdir()
         (work / "queue" / "config.json").write_text(json.dumps(
             {"version": 1, "name": "空（安全状态）", "note": "", "commands": []}, ensure_ascii=False) + "\n")

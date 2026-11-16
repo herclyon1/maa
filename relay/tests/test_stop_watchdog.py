@@ -109,11 +109,11 @@ def _part_stop_push_watchdog():  # noqa: C901
 
     import ark_watchdog as W
     import app_main
-    from ark_relay.features.selfcheck import machinecheck as mc
-    from ark_relay.features.phone import phone
+    from ark_relay.features import machinecheck as mc
+    from ark_relay.features import phone
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.selfcheck.machinechecks import system as sysmc
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import machinechecks as sysmc
+    from ark_relay.features import errwatch
 
     # ---------------------------------------------------------------- relay.log and #11
 
@@ -186,7 +186,7 @@ def _part_stop_push_watchdog():  # noqa: C901
     held = []
     hook = logging.Handler()
     hook.emit = lambda rec: held.append(rec)
-    sysmc.log.addHandler(hook)
+    sysmc._log_system.addHandler(hook)
 
     print("[d. a service stop's push cut off, the restarted relay's boot push went out -> passes, recovered]")
     r = judge11(SVC_STOP + BOOT_PUSHED)
@@ -202,7 +202,7 @@ def _part_stop_push_watchdog():  # noqa: C901
     print("[d. a service stop's push cut off and no boot push after it -> fails]")
     r = judge11(SVC_STOP + BOOT_NOW)
     check("#11 failed", r and r.status, mc.FAIL)
-    sysmc.log.removeHandler(hook)
+    sysmc._log_system.removeHandler(hook)
 
     print("[a+b. the real stop_push writes the line #11 reads into relay.log]")
     LOG.write_text("\n".join(BEFORE) + "\n", encoding="utf-8")
@@ -269,7 +269,7 @@ def _part_stop_push_watchdog():  # noqa: C901
 
     print("[b. boot_stages clears the marker when the phone channel comes up]")
     # The phone channel moved out of boot_stages.py into features/phone/phone_channel.py (2026-10-11).
-    src = (RELAY / "ark_relay" / "features" / "phone" / "phone_channel.py").read_text(encoding="utf-8")
+    src = (RELAY / "ark_relay" / "features" / "phone.py").read_text(encoding="utf-8")
     body = src[src.index("def _start_phone_channel"):src.index("def publish_state")]
     check("clear_stop_pushed(cfg.state_dir) in _start_phone_channel", "clear_stop_pushed(cfg.state_dir)" in body, True)
     check("publish_state goes through phone.send_state", "send_state(box, cfg, why, log)" in src, True)
@@ -495,7 +495,7 @@ def _part_deploy_watch():
     check("读不到中继代码：上限 0，说清原因", (_bad[0], "ModuleNotFoundError" in _bad[1]), (0.0, True))
     CAP, CAP_WHY = dw.preupdate_cap_s(ROOT / "relay")
     sys.path.insert(0, str(ROOT / "relay"))
-    from ark_relay.features.preupdate import preupdate as _pre
+    from ark_relay.features import preupdate as _pre
     check("预更新时长上限读的是中继自己的 worst_case_seconds()", (CAP, CAP_WHY), (_pre.worst_case_seconds(), ""))
     check("上限比两分钟长得多（AUTO-MAS 下载 600 秒、OK-WW 240 秒都在里面）", CAP > 600 + 240, True)
     S1016 = "2026-10-16 02:33:28"
@@ -546,18 +546,18 @@ def _part_deploy_watch():
         root, backup = Path(td) / "ark-relay", Path(td) / "prev"
         (root / "ark_relay" / "__pycache__").mkdir(parents=True)
         (root / "ark_relay" / "core").mkdir()
-        (root / "ark_relay" / "core" / "procs.py").write_text("old procs", encoding="utf-8")
+        (root / "ark_relay" / "core" / "desktop.py").write_text("old procs", encoding="utf-8")
         (root / "service.py").write_text("old service", encoding="utf-8")
         (root / "ark_relay" / "__pycache__" / "procs.cpython-314.pyc").write_bytes(b"x")
         (root / ".env").write_text("secret", encoding="utf-8")
-        info = dw.snapshot(root, backup, ["ark_relay/core/procs.py", "service.py", "ark_relay/brand_new.py"], "v1")
+        info = dw.snapshot(root, backup, ["ark_relay/core/desktop.py", "service.py", "ark_relay/brand_new.py"], "v1")
         check("存下两份旧文件、记下一份新文件", (sorted(info["kept"]), info["new"]),
-              (["ark_relay/core/procs.py", "service.py"], ["ark_relay/brand_new.py"]))
-        (root / "ark_relay" / "core" / "procs.py").write_text("new procs", encoding="utf-8")
+              (["ark_relay/core/desktop.py", "service.py"], ["ark_relay/brand_new.py"]))
+        (root / "ark_relay" / "core" / "desktop.py").write_text("new procs", encoding="utf-8")
         (root / "service.py").write_text("crashing service", encoding="utf-8")
         (root / "ark_relay" / "brand_new.py").write_text("new file", encoding="utf-8")
         info = dw.restore(root, backup)
-        check("旧文件放回", ((root / "ark_relay" / "core" / "procs.py").read_text(encoding="utf-8"),
+        check("旧文件放回", ((root / "ark_relay" / "core" / "desktop.py").read_text(encoding="utf-8"),
                            (root / "service.py").read_text(encoding="utf-8")), ("old procs", "old service"))
         check("新加的文件删掉", (root / "ark_relay" / "brand_new.py").exists(), False)
         check("旧的 .pyc 清掉", (root / "ark_relay" / "__pycache__").exists(), False)

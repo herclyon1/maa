@@ -38,8 +38,8 @@ selected, chain started and finished, no fight, no progress - the 09-14 shape.
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_maa
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import collector_maa
+    from ark_relay.features import handle
     from ark_relay.core import ledger as core
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
@@ -177,13 +177,13 @@ handle._flush_pending). Pinned here:
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.alarm import handle
-    from ark_relay.features.alarm import records
-    from ark_relay.features.verify import outcome
-    from ark_relay.features.makeup import makeup
+    from ark_relay.features import handle
+    from ark_relay.features import handle as records
+    from ark_relay.features import outcome
+    from ark_relay.features import makeup
     from ark_relay.core import texts
     from ark_relay.core import engine as eng_mod
-    from ark_relay.core import ledger_report
+    from ark_relay.core import ledger as ledger_report
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
 
@@ -309,7 +309,7 @@ handle._flush_pending). Pinned here:
     check("no failure alarm", [t for t, _ in alarms(e) if "没跑成" in t], [])
 
     print("\n[audit 11-08 B-04: the daily report's retry notes keep the two jobs apart too]")
-    from ark_relay.core import ledger_report as _lr
+    from ark_relay.core import ledger as _lr
     _ann = {"run_id": "d/arknights/MAA-05-00-00", "script": "MAA", "user": "arknights", "ok": False,
             "started": "2026-10-26T05:00:00+08:00", "failed_tasks": ["MAA 运行超时"], "raw": {"annihilation": True}}
     _rou = {"run_id": "d/arknights/MAA-06-00-00", "script": "MAA", "user": "arknights", "ok": True,
@@ -351,8 +351,8 @@ Sources for the shapes used:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     os.environ["ARK_MAS_PORT"] = "36163"   # config.mas_base(); the fake below answers only there
-    from ark_relay.features.weekly import annihilation as A
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import annihilation as A
+    from ark_relay.features import errwatch
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -533,7 +533,7 @@ Sources for the shapes used:
         print("\n[machine going down: the backend is not asked, the file is read, nothing warned]")
         # 10-11 21:46:43 (relay.log): SvcStop's last state push asked the backend while Windows
         # was killing AUTO-MAS -> ConnectionResetError 10054 -> WARNING -> group push.
-        from ark_relay.features.alarm import errwatch
+        from ark_relay.features import errwatch
         A._READ_SAID.clear()
         CAP.lines.clear()
         g, be = world(user("2026-W40"), file_user=user("2026-W41"), mode="up")
@@ -606,7 +606,7 @@ Plan text through next_plan with the machine's AUTO-MAS config
 
     from ark_relay.core import plan
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.weekly import annihilation as A
+    from ark_relay.features import annihilation as A
 
     AUTOMAS_FX = fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11" / "config"
     # next_plan's maintenance notices come from the official sites; nothing here is about
@@ -718,10 +718,10 @@ spent ~89 sanity while the machine was off (1/210 at 11-15 21:36, 26/210 at 09:0
     os.environ.update(ARK_STATE_DIR=str(tmpdir() / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_maa
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import collector_maa
+    from ark_relay.features import handle
     from ark_relay.core import skland
-    from ark_relay.core import ledger_report
+    from ark_relay.core import ledger as ledger_report
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
     FX = fx_dir(Path(__file__), "fixtures") / "maa-annihilation-2026-11-16" / "MAA-05-00-29.log"
@@ -842,9 +842,9 @@ follows whenever the read at the pass's own landing misses. Pinned here:
     os.environ.update(ARK_STATE_DIR=str(tmpdir() / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import handle
     from ark_relay.core import skland
-    from ark_relay.core import ledger_report
+    from ark_relay.core import ledger as ledger_report
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
     MORNING = datetime(2026, 11, 16, 9, 0, 29, tzinfo=SERVER_TZ)
@@ -998,7 +998,7 @@ the ones sanity_plan writes since the relay2-patchC-1005 version was chosen
     import json
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.weekly import sanity_plan
+    from ark_relay.features import sanity_plan
 
     FX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-10" / "master-before.json"
 
@@ -1066,7 +1066,7 @@ def _part_sanity_plan_master():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.weekly import sanity_plan
+    from ark_relay.features import sanity_plan
 
     FAILED = []
 
@@ -1247,8 +1247,8 @@ the v2.30.0-rc.1 definition fixture.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import mastercfg
-    from ark_relay.features.phone import inbox
-    from ark_relay.features.weekly import sanity_plan
+    from ark_relay.features import phone as inbox
+    from ark_relay.features import sanity_plan
 
     FX = fx_dir(Path(__file__), "fixtures")
     MASTER = FX / "maaend-2026-09-10" / "master-before.json"
@@ -1401,7 +1401,7 @@ a temp install.
 
     from ark_relay.core import plan
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.core.names import GAME_ZH
+    from ark_relay.core.config import GAME_ZH
 
     FX = fx_dir(Path(__file__), "fixtures")
     MASTER = FX / "maaend-2026-09-10" / "master-before.json"
@@ -1504,7 +1504,7 @@ a temp install.
     check("Tuesday names essence farming", sanity_lines(am, TUESDAY), ["理智用于 基质刷取 → 藏剑谷 → 清波寨"])
 
     print("\n[the default_case itself comes from MaaEnd's definition]")
-    from ark_relay.features.weekly import sanity_plan
+    from ark_relay.features import sanity_plan
     bare = {"taskName": "AutoEssence", "optionValues": {}}
     check("all seven days from tasks/AutoEssence", sanity_plan._ticked_days(bare, MAAEND_FX), list(range(7)))
     check("no definition -> unknown (kept by read)", sanity_plan._ticked_days(bare, None), None)
@@ -1532,8 +1532,8 @@ def _part_sanity_span():
     """
     import sys, pathlib
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_maaend, collector_okww
-    from ark_relay.features.report import report
+    from ark_relay.features import collector_maaend, outcome as collector_okww
+    from ark_relay.features import report
 
 
     def chk(name, got, want):
@@ -1596,7 +1596,7 @@ The weekly reward is claimed after the fight, 60 waveplates per claim (entering 
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.weekly import weeklyboss as W
+    from ark_relay.features import weeklyboss as W
     from ark_relay.core.config import SERVER_TZ
 
     TMP = tmpdir()
@@ -1707,7 +1707,7 @@ def _part_weeklyboss_cycle():
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.weekly import weeklyboss as W
+    from ark_relay.features import weeklyboss as W
     from ark_relay.core.config import SERVER_TZ
 
     TMP = tmpdir()
@@ -1854,7 +1854,7 @@ def _part_weeklyboss_reopen():
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.weekly import weeklyboss as W
+    from ark_relay.features import weeklyboss as W
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -1964,8 +1964,8 @@ def _part_garden_gate():
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.weekly import garden
-    from ark_relay.features.weekly.annihilation import week_key
+    from ark_relay.features import annihilation as garden
+    from ark_relay.features.annihilation import week_key
     from ark_relay.core.config import SERVER_TZ
 
     FAILED = []
@@ -2104,8 +2104,8 @@ on Monday 10-05; boot at 08:46:03.
     import boot_stages
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.weekly import garden as G
-    from ark_relay.features.weekly.annihilation import week_key
+    from ark_relay.features import annihilation as G
+    from ark_relay.features.annihilation import week_key
 
     FAILED: list[str] = []
 
@@ -2205,7 +2205,7 @@ def _part_garden_unified():
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.weekly import garden as G
+    from ark_relay.features import annihilation as G
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -2260,8 +2260,8 @@ not be applied shared its title with one that went on cleanly.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
-    from ark_relay.features.okww_patch import okww_overlay
-    from ark_relay.features.okww_patch.okww_overlay import nest_patch_present
+    from ark_relay.features import okww_overlay
+    from ark_relay.features.okww_overlay import nest_patch_present
 
 
     def okww(_body):
@@ -2347,7 +2347,7 @@ copy itself was removed 2026-10-12 with the code that restored it.
     import tempfile
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.okww_patch import okww_overlay as O
+    from ark_relay.features import okww_overlay as O
 
 
     UPSTREAM = b"class NightmareNestTask:\n    def run(self):\n        pass\n"
@@ -2395,7 +2395,7 @@ def _part_nest_strings_pinned():
 outcome.py and collector_okww.py decide whether the nests were farmed by looking
 for two sentences in OK-WW's log (the "all full, skipping" one and the "spot not
 found in the list" one). Both are printed by
-relay/ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py - our file, not
+relay/ark_relay/features/okww_files/ark_overrides.tasks.py - our file, not
 upstream's (until 2026-09-09 the whole-file NightmareNestTask replacement printed them).
 Nothing tied the two sides together: change a character in the override and 99 tests
 stay green while the daily report starts saying, every day, that the nests were opened
@@ -2405,10 +2405,10 @@ and never fought.
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_okww, outcome
+    from ark_relay.features import outcome as collector_okww, outcome
 
 
-    patched = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "okww_patch" / "okww_files"
+    patched = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "okww_files"
                / "ark_overrides.tasks.py").read_text(encoding="utf-8")
 
     print("[读的那两句话，写的一侧必须还在补丁源码里]")
@@ -2441,8 +2441,8 @@ def _part_wuwa_bulletin():
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    import ark_relay.features.banners.banners as _b
-    from ark_relay.features.banners import wuwa as W
+    import ark_relay.features.banners as _b
+    from ark_relay.features import wuwa as W
 
 
     print("[collaboration and memory banners: 联动 / 忆旅 as well as 活动]")
@@ -2578,8 +2578,8 @@ rerun and its line vanished without a warning. Runs _wuwa itself with fakes.
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    import ark_relay.features.banners.banners as _b
-    from ark_relay.features.banners import wuwa as W
+    import ark_relay.features.banners as _b
+    from ark_relay.features import wuwa as W
 
 
     WIKI = "秧秧·玄翎"       # U+00B7, as the wiki writes it
@@ -2655,8 +2655,8 @@ client before an OK-WW run (item 10b).
     from pathlib import Path, PureWindowsPath
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.echofarm import echofarm
-    from ark_relay.features.preupdate import preupdate_okww as pk
+    from ark_relay.features import echofarm
+    from ark_relay.features import preupdate as pk
 
 
     nosleep = lambda s: None  # noqa: E731
@@ -2813,7 +2813,7 @@ def _part_boss_table_matches():
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.core import wuwa_boss
+    from ark_relay.core.wuwa_tables import wuwa_boss
 
     fails = []
 
@@ -2837,7 +2837,7 @@ def _part_boss_table_matches():
     check("天傀劫煞 is listed under 瑝珑·梦州 (2026-09-30 re-read)", wuwa_boss.BOSSES[1], ("天傀劫煞", "瑝珑·梦州"))
 
     print("\n[状态包里不许再带这张表——放进去当天就撑爆了 ntfy 的上限]")
-    phone = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "phone" / "phone.py").read_text(encoding="utf-8")
+    phone = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "phone.py").read_text(encoding="utf-8")
     check("phone.py 不发 bosses", '"bosses"' in phone, False)
 
     print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))

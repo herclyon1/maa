@@ -585,8 +585,8 @@ failed case, not a crash.
 
     ms = _make_maaend_schema()
     from ark_relay.core import mastercfg
-    from ark_relay.features.makeup import makeup
-    from ark_relay.features.weekly import sanity_plan
+    from ark_relay.features import makeup
+    from ark_relay.features import sanity_plan
 
     FX = fx_dir(HERE, "fixtures") / "maaend-v2.33-essence"
     MASTER = json.loads((FX / "master-1016.json").read_text(encoding="utf-8"))
@@ -1424,7 +1424,7 @@ three real lines with the task-start line of the real 09-27 协议空间 run
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.verify.collector_maaend import parse_maaend_log
+    from ark_relay.features.collector_maaend import parse_maaend_log
 
     FAILED: list[str] = []
     HERE = Path(__file__).resolve().parent
@@ -1496,7 +1496,7 @@ The skip lines are the real ones from tests/replay/2026-09-05 MaaEnd-05-27-42.lo
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import ledger as core
-    from ark_relay.features.verify.collector_maaend import parse_maaend_log
+    from ark_relay.features.collector_maaend import parse_maaend_log
     from ark_relay.core.config import SERVER_TZ
 
     FAILED: list[str] = []
@@ -1657,7 +1657,7 @@ process.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.run import collect_watch, maaend_watchdog
+    from ark_relay.features import collect_watch, maaend_watchdog
     from ark_relay.core import texts
     from ark_relay.core.notify import route_of
 
@@ -1971,7 +1971,7 @@ process.
         texts.maaend_stuck_body = _real_body
 
     print("\n[not one maafw.log line read for this MaaEnd: report once, never kill]")
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
 
 
     class _Warns(logging.Handler):
@@ -2074,9 +2074,9 @@ Direct3D 11 made the old check warn):
     sys.path.insert(0, str(RELAY))
 
     import boot_stages
-    from ark_relay.features.makeup import collect_retry
-    from ark_relay.features.alarm import handle
-    from ark_relay.features.gameupdate import efstart_setup
+    from ark_relay.features import collect_retry
+    from ark_relay.features import handle
+    from ark_relay.features import efstart as efstart_setup
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
@@ -2165,7 +2165,7 @@ Direct3D 11 made the old check warn):
 
 
     print("[the capture sees a WARNING from the relay's loggers at all]")
-    efstart_setup.log.warning("probe")
+    efstart_setup._log_efstart_setup.warning("probe")
     check("a WARNING from efstart_setup's logger is caught", WARNED.lines, ["ark.efstart_setup: probe"])
     WARNED.lines.clear()
 
@@ -2186,7 +2186,7 @@ Direct3D 11 made the old check warn):
     _t = player.stat().st_mtime + 60
     os.utime(player, (_t, _t))
     boot_stages._endfield_launch = lambda cfg, log, when: None
-    boot_stages._stage_endfield_start(Config(), Notes(), efstart_setup.log)
+    boot_stages._stage_endfield_start(Config(), Notes(), efstart_setup._log_efstart_setup)
     check("no WARNING at boot", WARNED.lines, [])
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
@@ -2222,8 +2222,8 @@ alert.
     from ark_relay.core import ledger as core
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.verify.collector_maaend import parse_maaend_log
-    from ark_relay.features.verify.outcome import maaend_checks, summarize
+    from ark_relay.features.collector_maaend import parse_maaend_log
+    from ark_relay.features.outcome import maaend_checks, summarize
 
     REC = fx_dir(Path(__file__), "replay") / "2026-10-16" / "endfield"
     HIST = (REC / "MaaEnd-09-53-33.log").read_text(encoding="utf-8")
@@ -2330,8 +2330,8 @@ The negative case keeps the same segment without the stop line: a quick
     #!/usr/bin/env python3
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify.collector_maaend import parse_maaend_log
-    from ark_relay.features.verify.outcome import maaend_checks
+    from ark_relay.features.collector_maaend import parse_maaend_log
+    from ark_relay.features.outcome import maaend_checks
 
     LOG_PATH = fx_dir(Path(__file__), "fixtures") / "maaend-2026-10-19" / "MaaEnd-07-14-29.log"
     LOG = LOG_PATH.read_text(encoding="utf-8")
@@ -2357,8 +2357,8 @@ The negative case keeps the same segment without the stop line: a quick
 
     # 协议空间 and machine check #20 read the same v2.34 ending (dispatch relay-opt-round3-1108 O-04):
     # until then both knew only 理智不足, which #106 had replaced.
-    from ark_relay.features.verify import outcome
-    from ark_relay.features.selfcheck.machinechecks import runs
+    from ark_relay.features import outcome
+    from ark_relay.features import machinechecks as runs
     proto = dict((name, rx) for name, rx, _ in outcome._MAAEND_WORK)["协议空间"]
     require("协议空间 counts 「体力不足，任务结束」 as its ending", bool(proto.search(STOP)))
     require("协议空间 still counts the old 理智不足", bool(proto.search("理智不足")))
@@ -2438,7 +2438,7 @@ a picture taken inside the second round. Audit 2026-10-13 s8 #2.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ, RunRecord
-    from ark_relay.features.alarm import gamelogs, verdict
+    from ark_relay.features import handle as gamelogs, handle as verdict
 
 
     def at(h, m, s=0):
@@ -2531,7 +2531,7 @@ def _part_maaend_sanity():
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
-    from ark_relay.features.verify import collector_maaend
+    from ark_relay.features import collector_maaend
 
 
     def parse(text):
@@ -2644,9 +2644,9 @@ With that one 「补充理智」 line taken out the same readings no longer fit
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.core import ledger_rows
+    from ark_relay.core import ledger as ledger_rows
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.verify.collector_maaend import parse_maaend_log
+    from ark_relay.features.collector_maaend import parse_maaend_log
 
     LOG = fx_dir(Path(__file__), "fixtures") / "maaend-sanity-1013" / "2026-10-08_MaaEnd-05-29-15.log"
 
@@ -2696,9 +2696,9 @@ and the report row said 「理智不足，一次没开成」 on a run that claim
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.core import ledger_rows
+    from ark_relay.core import ledger as ledger_rows
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.verify.collector_maaend import parse_maaend_log
+    from ark_relay.features.collector_maaend import parse_maaend_log
 
     D = fx_dir(Path(__file__), "fixtures") / "maaend-sanity-1013"
 
@@ -2778,8 +2778,8 @@ land 09:51:26; 10-05 10:39:48 + 49 min ends 11:28, restart 11:30:14, land 11:30:
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.makeup import collect_retry
-    from ark_relay.features.alarm import handle, unresolved
+    from ark_relay.features import collect_retry
+    from ark_relay.features import handle, handle as unresolved
     from ark_relay.core import ledger as core
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
@@ -3014,7 +3014,7 @@ land 09:51:26; 10-05 10:39:48 + 49 min ends 11:28, restart 11:30:14, land 11:30:
 
     def reds(e, fragment):
         """Red items in e's technical log whose text names `fragment`."""
-        from ark_relay.core import techlog
+        from ark_relay.core import statestore as techlog
         return [x for f in sorted(techlog.tech_dir(e.cfg.state_dir).glob("*.md"))
                 for _, x in techlog.unhandled(f.read_text(encoding="utf-8")) if fragment in x]
 
@@ -3117,12 +3117,12 @@ update_restart_version's window, as relay log line 475 shows they did.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import collector
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
-    from ark_relay.features.alarm import handle, records
-    from ark_relay.features.makeup import collect_retry
+    from ark_relay.features import handle, handle as records
+    from ark_relay.features import collect_retry
 
 
     class Grab(logging.Handler):
@@ -3351,10 +3351,10 @@ D:\\ark\\maaend\\debug\\2026-10-01-3.log / -4.log.
                       WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.makeup import collect_retry
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import collect_retry
+    from ark_relay.features import handle
     from ark_relay.core import engine as eng_mod
-    from ark_relay.features.verify.collector_maaend import update_restart_version
+    from ark_relay.features.collector_maaend import update_restart_version
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
 
@@ -3500,7 +3500,7 @@ D:\\ark\\maaend\\debug\\2026-10-01-3.log / -4.log.
     check("据点交易 done later -> retried", bool(core.retried_notes(mixed)), True)
 
     print("\n[all tasks done, MaaEnd did not exit: not 「没干完」, named as such]")
-    from ark_relay.features.verify import outcome
+    from ark_relay.features import outcome
     own = "2026-10-01 16:12:28 INFO  [Task] 实例 AUTO-MAS: 开始执行任务, 数量: 2\n"
     hung_log = own + ("[2026-10-01 16:12:29] 任务开始: 🎁赠送干员礼物\n[2026-10-01 16:14:10] 任务完成: 🎁赠送干员礼物\n"
                       "[2026-10-01 16:58:19] 任务开始: ❌关闭游戏（PC）\n[2026-10-01 16:58:22] 任务完成: ❌关闭游戏（PC）\n")
@@ -3607,10 +3607,10 @@ Red on the code that sent those two alarms.
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.makeup import collect_retry
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import collect_retry
+    from ark_relay.features import handle
     try:   # absent from the code that sent the two alarms (8f8250ea); the test still runs there
-        from ark_relay.features.alarm import unresolved
+        from ark_relay.features import handle as unresolved
     except ImportError:
         unresolved = None
     from ark_relay.core import engine as eng_mod
@@ -3851,8 +3851,8 @@ check of its own pushed every time it is judged (docs/NOTIFICATIONS.md 🔬 row)
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.run import maaend_watchdog
+    from ark_relay.features import errwatch
+    from ark_relay.features import maaend_watchdog
 
 
     CRASH_LINE = "Exception 0xc0000005 0x0 0xffffffffffffffff 0x7ffc630b5456"
@@ -4055,8 +4055,8 @@ master (fixtures/maaend-2026-09-10/master-before.json) with the booster task on.
         sys.modules.setdefault(name, _Stub(name))
 
     import boot_stages
-    from ark_relay.features.makeup import collect_retry
-    from ark_relay.features.gameupdate import gameupdate as gu
+    from ark_relay.features import collect_retry
+    from ark_relay.features import gameupdate as gu
     from ark_relay.core import mastercfg, notify, texts
 
 
@@ -4159,7 +4159,7 @@ machine would have rung 「⚠️ 终末地应急理智加强剂：中继确认�
         sys.modules.setdefault(_name, _Stub(_name))
 
     import boot_stages
-    from ark_relay.features.gameupdate import gameupdate
+    from ark_relay.features import gameupdate
     from ark_relay.core import mastercfg, texts
 
     LIVE = fx_dir(Path(__file__), "fixtures") / "maaend-v2.32-spmed"
@@ -4270,7 +4270,7 @@ tests/fixtures/maaend-v2.33.0-rc.1-spmed (the live node, verbatim).
         sys.modules.setdefault(_name, _Stub(_name))
 
     import boot_stages
-    from ark_relay.features.gameupdate import gameupdate
+    from ark_relay.features import gameupdate
     from ark_relay.core import mastercfg, texts
 
     LIVE = fx_dir(Path(__file__), "fixtures") / "maaend-v2.33.0-rc.1-spmed"
@@ -4425,8 +4425,8 @@ the machine.
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
-    from ark_relay.features.alarm import errwatch, handle
-    from ark_relay.features.verify.collector_maaend import parse_maaend_log
+    from ark_relay.features import errwatch, handle
+    from ark_relay.features.collector_maaend import parse_maaend_log
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-v2.33-essence"
     REC = fx_dir(Path(__file__), "replay") / "2026-10-16" / "endfield"
@@ -4525,7 +4525,7 @@ the machine.
 
 
     def main() -> int:
-        from ark_relay.features.essence import essence  # missing before this change
+        from ark_relay.features import essence  # missing before this change
         shutil.copyfile(FIX / "master-1016.json", MASTER)
         real = master()
         cfg = build().cfg
@@ -4704,7 +4704,7 @@ def _part_essence_filler_pushes_state():
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.essence import essence
+    from ark_relay.features import essence
 
     FAILED = []
 

@@ -440,7 +440,7 @@ into the version it had rolled away from.
 
     # 清单-1108 A-07: after a rollback the record names the code that runs, and the pin is
     # the floor selfupdate.check compares against (the version rolled away from is not new).
-    from ark_relay.features.selfupdate import selfupdate
+    from ark_relay.features import selfupdate
     root = tmpdir()
     here = root / "20261012111426"
     (here / "state").mkdir(parents=True)
@@ -1054,7 +1054,7 @@ pkg_deploy's idea of the relay's state folder (STATEDIR=) agrees.
     import app_main
     import pkg_deploy
     import pkg_layout
-    from ark_relay.features.selfupdate import selfupdate
+    from ark_relay.features import selfupdate
     from ark_relay.core.config import Config
     from ark_relay.core.statestore import StateStore
 
@@ -1182,7 +1182,7 @@ Also checked here:
         os.environ.pop(k, None)
 
     import pkg_layout
-    from ark_relay.features.selfupdate import selfupdate
+    from ark_relay.features import selfupdate
 
 
     app = TMP / "app"
@@ -1273,7 +1273,7 @@ Also checked here:
     check("process exits so the watchdog starts the switched folder", got, True)
 
     print("told to stop during the update: switched, exits, no restart behind the stop (audit 11-08 A-23)")
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
     restarts = []
     pkg_layout.update = lambda _here, _check: ["x.py"]
     pkg_layout.restart_soon = lambda a: restarts.append(a)
@@ -1336,7 +1336,7 @@ is fsynced before the switch.
         os.environ.pop(k, None)
 
     import pkg_layout
-    from ark_relay.features.selfupdate import selfupdate
+    from ark_relay.features import selfupdate
 
 
     app = TMP / "app"
@@ -1452,7 +1452,7 @@ running. update now puts the record back on the running folder in that case.
         os.environ.pop(k, None)
 
     import pkg_layout
-    from ark_relay.features.selfupdate import selfupdate
+    from ark_relay.features import selfupdate
 
 
     app = TMP / "app"
@@ -2001,9 +2001,9 @@ Review of e20dc77f + 7c1ba65c (audit 2026-10-13 s5):
     import app_main
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.phone import phone
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import errwatch
+    from ark_relay.features import phone
+    from ark_relay.features import shutdown
 
     STOP_PUSH_LOG = "ark.app.stop_push"   # app_main's logger for the watchdog's stop push
 
@@ -2063,8 +2063,8 @@ Review of e20dc77f + 7c1ba65c (audit 2026-10-13 s5):
     t1 = time.monotonic()
     # A fresh interpreter importing what stop_push imports (this process has them loaded already).
     subprocess.run([sys.executable, "-c", "import app_main, ark_relay.__main__, ark_relay.core.notify, "
-                    "ark_relay.core.statestore, ark_relay.features.alarm.errwatch, ark_relay.features.phone.phone, "
-                    "ark_relay.features.shutdown.shutdown"], cwd=RELAY, check=True, capture_output=True)
+                    "ark_relay.core.statestore, ark_relay.features.errwatch, ark_relay.features.phone, "
+                    "ark_relay.features.shutdown"], cwd=RELAY, check=True, capture_output=True)
     start = time.monotonic() - t1
     total = app_main.STOP_PUSH_WAIT_S + around + start
     check(f"{app_main.STOP_PUSH_WAIT_S} s send + {around:.2f} s drain and the rest + {start:.2f} s start"
@@ -2530,7 +2530,7 @@ Fakes for every Windows call; no Windows needed.
     # the real list, the real remove() and the real _delete_path.
     sys.path.insert(0, str(RELAY))
     from pathlib import PureWindowsPath
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import okww_overlay
 
     OKWW_ROOT = PureWindowsPath(r"D:\ark\okww")     # the machine's OK-WW folder (legacy-items.json)
     want = PureWindowsPath(*okww_overlay._WORKING, okww_overlay.TASKS_DIR, okww_overlay.FILE_NAME)

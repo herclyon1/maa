@@ -35,7 +35,7 @@ from ark_relay.core.config import SERVER_TZ, Config, both_clocks
 from ark_relay.core.ledger import State
 from ark_relay.core.engine import Engine
 from ark_relay.core.notify import Notifier
-from ark_relay.core.transport import LocalSource
+from ark_relay.core.collector import LocalSource
 
 
 def _force_utf8_console() -> None:
@@ -76,7 +76,7 @@ def _setup_logging(verbose: bool) -> None:
     is rotated by size (logfile.py: why the sizes, and how the readers see
     across a rotation); a plain FileHandler let it grow without end.
     """
-    from ark_relay.core.logfile import RelayLogHandler  # noqa: PLC0415
+    from ark_relay.core.statestore import RelayLogHandler  # noqa: PLC0415
     handlers: list[logging.Handler] = [logging.StreamHandler()]
     _LOG_FILE_ERROR[0] = None
     if path := os.environ.get("ARK_LOG_FILE"):
@@ -195,7 +195,7 @@ def cmd_report(cfg: Config, mark: bool = True) -> int:
 
 def cmd_collect_retry(cfg: Config, day: str = "") -> int:
     """Run the per-route gathering retry now (the same code the shutdown path calls); `day` picks the ledger."""
-    from ark_relay.features.makeup import collect_retry  # noqa: PLC0415
+    from ark_relay.features import collect_retry  # noqa: PLC0415
     eng = _build_local_engine(cfg)
     ran = collect_retry.maybe_run(eng, day=day or None)
     print("补跑已执行" if ran else "今天没有要补跑的路线（或已经补跑过）")
@@ -229,7 +229,7 @@ def evidence_window(cfg: Config, script: str, run_id: str = "", hours: float = 0
     """
     from datetime import datetime, timedelta  # noqa: PLC0415
 
-    from ark_relay.features.evidence import evidence  # noqa: PLC0415
+    from ark_relay.features import evidence  # noqa: PLC0415
     from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
     now = datetime.now(tz=SERVER_TZ)
     if hours and hours > 0:
@@ -258,7 +258,7 @@ def evidence_window(cfg: Config, script: str, run_id: str = "", hours: float = 0
 
 def cmd_evidence(cfg: Config, script: str, run_id: str, hours: float = 0.0, since: str = "") -> int:
     """Build and upload the upstream-format evidence bundle for one time window."""
-    from ark_relay.features.evidence import evidence  # noqa: PLC0415
+    from ark_relay.features import evidence  # noqa: PLC0415
     run_id, window = evidence_window(cfg, script, run_id, hours, since)
     extra = []
     if cfg.history_dir and not run_id.startswith("manual/"):
@@ -281,7 +281,7 @@ def cmd_banners(cfg: Config) -> int:
     and the cross-check results - the audit view of that section."""
     from datetime import datetime  # noqa: PLC0415
 
-    from ark_relay.features.banners import banners  # noqa: PLC0415
+    from ark_relay.features import banners  # noqa: PLC0415
     from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
     now = datetime.now(tz=SERVER_TZ).replace(tzinfo=None)
     failed: list[str] = []
@@ -385,17 +385,17 @@ def cmd_local(cfg: Config) -> int:
     wake = threading.Event()
     watching = watch.start(cfg.history_dir, wake)
     try:
-        from ark_relay.features.run import collect_watch  # noqa: PLC0415
+        from ark_relay.features import collect_watch  # noqa: PLC0415
         collect_watch.start(cfg, engine.notifier)
     except Exception:
         log.exception("挂 MaaEnd 日志监听出错，MaaEnd 卡死看门狗和任务截图不工作")
     try:
-        from ark_relay.features.run import display_wake  # noqa: PLC0415
+        from ark_relay.features import display_wake  # noqa: PLC0415
         display_wake.start(cfg)
     except Exception:
         log.exception("挂调度程序日志监听出错，终末地开游戏时不会叫醒屏幕")
     try:
-        from ark_relay.features.run import maa_start_watchdog  # noqa: PLC0415
+        from ark_relay.features import maa_start_watchdog  # noqa: PLC0415
         maa_start_watchdog.start(cfg, engine.notifier)
     except Exception:
         log.exception("挂明日方舟开游戏看门狗出错，开游戏卡住时要等 AUTO-MAS 自己的时限")

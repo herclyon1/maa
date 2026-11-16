@@ -221,7 +221,7 @@ The daily report is for the user; everything technical (deploys of the day, the
 relay's WARNING / ERROR lines, machine checks, the boot self-check, evenings the
 relay did not power off, the post-shift health check) goes to one Markdown file
 per Beijing day, `C:\ProgramData\ark-relay\tech\<YYYY-MM-DD>.md`, written by the
-relay's `ark_relay/core/techlog.py` (format in its docstring and in
+relay's `ark_relay/core/statestore.py` (format in its docstring and in
 `scripts/mac/techlog.py`'s). Red items carry an id, `R-YYYYMMDD-HHMM-n`, and stay
 red until a handled line for that id is appended.
 

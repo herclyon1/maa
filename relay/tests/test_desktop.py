@@ -222,7 +222,7 @@ CREATE_NO_WINDOW. No Windows here: spawns are faked.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.desktop import POWERSHELL, Desktop
-    from ark_relay.features.preupdate import preupdate_common as C
+    from ark_relay.features import preupdate as C
 
 
     def fake(tag, calls):
@@ -302,7 +302,7 @@ CREATE_NO_WINDOW. No Windows here: spawns are faked.
         check("plain route with PowerShell itself", (seen[0][0], seen[0][2]), ("powershell.exe", {}))
 
         print("\n[the OK-WW failure screenshot goes windowless too]")
-        from ark_relay.features.alarm import handle
+        from ark_relay.features import handle
         used = []
         saved_h = C._spawn_hidden_via_task
 
@@ -505,7 +505,7 @@ unregistered each other's task. Pinned here, with Windows faked:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.preupdate import preupdate_common as C
+    from ark_relay.features import preupdate as C
 
 
     class SI:
@@ -670,7 +670,7 @@ attempt 2 hand-off 13:23:36.799, game up 13:26:14.036) and 13:53:00-13:54:52 (at
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import config, desktop, watch
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.run import display_wake as dw
+    from ark_relay.features import display_wake as dw
 
 
     FIX = fx_dir(Path(__file__), "fixtures") / "display-wake-2026-10-16" / "app.log"
@@ -910,7 +910,7 @@ Two gaps were left after the download-everything-first rule:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import os
-    from ark_relay.features.selfupdate import selfupdate as su
+    from ark_relay.features import selfupdate as su
     from ark_relay.core.statestore import StateStore
 
     os.environ[su.GITHUB_FALLBACK_ENV] = "1"     # the GitHub doors, as in test_selfupdate_doors.py
@@ -1102,7 +1102,7 @@ No network: _get_once and _cos_get are replaced.
     import zipfile
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.selfupdate import selfupdate as su
+    from ark_relay.features import selfupdate as su
     from ark_relay.core.statestore import StateStore
 
 
@@ -1367,7 +1367,7 @@ def _part_selfupdate_doors():
     import time
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.selfupdate import selfupdate as su
+    from ark_relay.features import selfupdate as su
     from ark_relay.core.statestore import StateStore
 
     # Everything here is the GitHub fallback, which is off by default since
@@ -1689,7 +1689,7 @@ def _part_selfupdate_doors():
     # would never try again. Half an update is far more dangerous than none - so a
     # new source file is staged with the rest (all or nothing), and a new file that
     # is not source still abandons the round.
-    import ark_relay.features.selfupdate.selfupdate as SU
+    import ark_relay.features.selfupdate as SU
 
     _root = tmpdir()
     (_root / "state").mkdir()          # 失败记录写在 state/ 下，机器上一直有这个目录
@@ -1745,8 +1745,8 @@ launch" and no further gui.log line; 08:49:14 「180 秒内没给出更新结论
         sys.modules.setdefault(name, _Stub(name))
 
     import boot_stages
-    from ark_relay.features.preupdate import preupdate
-    from ark_relay.features.selfupdate import selfupdate
+    from ark_relay.features import preupdate
+    from ark_relay.features import selfupdate
 
 
     class _Log:
@@ -1759,7 +1759,7 @@ launch" and no further gui.log line; 08:49:14 「180 秒内没给出更新结论
         print("自更新拉到新代码：返回 True，让 service.py 立刻退出")
         real_check, real_popen = selfupdate.check, boot_stages.subprocess.Popen
         spawned = []
-        selfupdate.check = lambda here: ["ark_relay/features/report/report.py"]
+        selfupdate.check = lambda here: ["ark_relay/features/report.py"]
         boot_stages.subprocess.Popen = lambda *a, **k: spawned.append(a)
         for flag in ("CREATE_NEW_PROCESS_GROUP", "DETACHED_PROCESS"):   # Windows-only
             if not hasattr(boot_stages.subprocess, flag):

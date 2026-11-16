@@ -326,7 +326,7 @@ task instead:
 | `<that tab>` | which line, e.g. `OperatorProgression` → `OperatorEXP` |
 | `<line>RewardsSetOption` | which item, one MaaEnd case per line (e.g. `OperatorEXPRewardsSetOption`: `CognitiveCarriers` / `AdvancedCombatRecord`); AUTO-MAS's `RewardsSetA` / `RewardsSetB` are not values MaaEnd holds |
 
-`relay/ark_relay/features/weekly/sanity_plan.py` writes all three together and
+`relay/ark_relay/features/sanity_plan.py` writes all three together and
 refuses a reward set MaaEnd does not define for that line, because half a plan
 farms something nobody asked for.
 

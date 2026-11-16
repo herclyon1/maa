@@ -89,7 +89,7 @@ def main() -> int:
         if nest:
             only = nest.get("Only Farm These Nests", "")
             adds = daily.get("Additional Tasks to Run After Daily Task") or []
-            from ark_relay.core.mastercfg_okww import ONLY_NESTS, nest_names  # noqa: PLC0415
+            from ark_relay.core.mastercfg import ONLY_NESTS, nest_names  # noqa: PLC0415
             if nest_names(only) != list(ONLY_NESTS):
                 print(f"  ❌ 只刷{'、'.join(ONLY_NESTS)}没设上：Only Farm These Nests = {only!r}")
                 bad += 1
@@ -117,7 +117,7 @@ def main() -> int:
 
 def last_run_filter_verdict() -> int:
     """Print what the last run actually did about the nest filter; 1 when it broke the rule."""
-    from ark_relay.features.verify import outcome  # noqa: PLC0415
+    from ark_relay.features import outcome  # noqa: PLC0415
     got = outcome.latest_okww_run_log(r"D:\ark\automas\history")
     if got is None:
         print("  ⚠️ 没有任何 OK-WW 运行日志，上一趟到底刷了哪些点位无从核对")
@@ -128,7 +128,7 @@ def last_run_filter_verdict() -> int:
         return 0
     # The configured names, not a literal: since 2a7ff78d (10-12) two nests are farmed, and a
     # hard-coded 「落渊南丘」 here failed every correct two-nest run (alarm f7a4bb6a, 10-15).
-    from ark_relay.core.mastercfg_okww import ONLY_NESTS  # noqa: PLC0415
+    from ark_relay.core.mastercfg import ONLY_NESTS  # noqa: PLC0415
     checks = outcome.nest_filter_checks(text, ",".join(ONLY_NESTS))
     bad = [c for c in checks if not c.ok]
     for c in bad:

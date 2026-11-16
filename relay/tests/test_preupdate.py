@@ -50,7 +50,7 @@ job since the 2026-10-11 switch-over. The launching itself is Windows-only.
     os.environ.update(ARK_HISTORY_DIR=str(TMP), ARK_AUTOMAS_DIR=str(AUTOMAS),
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.preupdate import preupdate
+    from ark_relay.features import preupdate
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -98,8 +98,8 @@ Pinned here, through the real _once_more with AUTO-MAS's HTTP faked:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     import boot_stages
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.preupdate import preupdate_automas as P
+    from ark_relay.features import errwatch
+    from ark_relay.features import preupdate as P
 
 
     class Rows(logging.Handler):
@@ -206,7 +206,7 @@ def _part_preupdate_mas_force():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.preupdate import preupdate_automas as P  # run_automas 住在这个模块里，猴子补丁要打在它身上
+    from ark_relay.features import preupdate as P  # run_automas 住在这个模块里，猴子补丁要打在它身上
 
     FAILED = []
 
@@ -436,12 +436,12 @@ every time (「不论多少次什么错误都要发」), reverses that. Pinned:
         sys.modules.setdefault(name, _Stub(name))
 
     import boot_stages
-    from ark_relay.features.gameupdate import gameupdate
-    from ark_relay.features.okww_patch import okww_overlay
-    from ark_relay.features.preupdate import preupdate
-    from ark_relay.features.phone import commands
+    from ark_relay.features import gameupdate
+    from ark_relay.features import okww_overlay
+    from ark_relay.features import preupdate
+    from ark_relay.features import commands
     from ark_relay.core import texts
-    from ark_relay.features.alarm.errwatch import ARK
+    from ark_relay.features.errwatch import ARK
     from ark_relay.core.notify import route_of
 
 
@@ -527,7 +527,7 @@ every time (「不论多少次什么错误都要发」), reverses that. Pinned:
     check("no 「没能确认」 notice", [t for t, _, _ in notes.sent if "没能确认" in t], [])
     check("the day's pre-update is clean", marks, [True])
     check("nothing at ERROR", errors(), [])
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
     healed = [r for r in REC.records if r.levelno == logging.WARNING and getattr(r, errwatch.RECOVERED, False)]
     # 2026-10-12 (mute audit item 5): the first try's problem was deleted with only an INFO
     # line; a fault that fixed itself writes one red item (errwatch.recovered()) each time.
@@ -548,7 +548,7 @@ every time (「不论多少次什么错误都要发」), reverses that. Pinned:
     check("it says nobody has to act", "队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查" in body)
     warn = [r for r in REC.records if r.levelno == logging.WARNING and "预更新有 1 项没能确认" in r.getMessage()]
     check("a WARNING line in the log", len(warn), 1)
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
     check("…marked as already in the group (errwatch does not push it twice)",
           bool(warn) and getattr(warn[0], errwatch.PUSHED, False), True)
     check("nothing at ERROR (errwatch stays quiet)", errors(), [])
@@ -612,8 +612,8 @@ is the same hazard MAA's RunDirectly and MaaEnd's autostart already taught us.
     import tempfile
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.preupdate import preupdate
-    from ark_relay.features.preupdate import preupdate_okww
+    from ark_relay.features import preupdate
+    from ark_relay.features import preupdate as preupdate_okww
 
     FAILED = []
 
@@ -673,7 +673,7 @@ is the same hazard MAA's RunDirectly and MaaEnd's autostart already taught us.
               basic(d)["Auto Start Game When App Starts"], True)
         check("目录为 None 时也安全", preupdate.run_okww(None), "")
 
-        src = "".join(q.read_text(encoding="utf-8") for q in sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "preupdate").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
+        src = "".join(q.read_text(encoding="utf-8") for q in sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
         # 2026-08-25：控制台令牌拿不到时退回 session 0，OK-WW 的更新流程根本不跑，
         # 而未变的版本文件被读成"无需更新"——那天 v3.6.5 已经发布十四小时。
         # 拿不到桌面就必须拒绝启动，并把这件事报上去。
@@ -710,7 +710,7 @@ is the same hazard MAA's RunDirectly and MaaEnd's autostart already taught us.
         # removed test_okww_patch_on_update.py, 2026-10-12).
         check("the minimum wait covers OK-WW's 30 s update check", preupdate.OKWW_MIN_WAIT_SECONDS >= 40, True)
         pre_src = "".join(q.read_text(encoding="utf-8") for q in sorted(
-            (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "preupdate").glob("preupdate*.py")))
+            (Path(__file__).resolve().parents[1] / "ark_relay" / "features").glob("preupdate*.py")))
         check("the 「checked」 verdict waits at least that long",
               "clock() - launched >= OKWW_MIN_WAIT_SECONDS" in pre_src, True)
 
@@ -1098,9 +1098,9 @@ with subprocess faked (no Windows, no pip):
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.preupdate import preupdate, preupdate_okww as po
-    from ark_relay.features.preupdate.preupdate_common import PWSH_GUARD_S
+    from ark_relay.features import errwatch
+    from ark_relay.features import preupdate, preupdate as po
+    from ark_relay.features.preupdate import PWSH_GUARD_S
 
 
     class Rows(logging.Handler):
@@ -1269,7 +1269,7 @@ MAA / MaaEnd / OK-WW 挨个拉起来查更新。那天上午部署了三次，�
 
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.statestore import StateStore
-    from ark_relay.features.preupdate.preupdate import RETRY_MIN, mark_run, should_run
+    from ark_relay.features.preupdate import RETRY_MIN, mark_run, should_run
 
     FAILED: list[str] = []
 
@@ -1340,7 +1340,7 @@ user's order of 2026-10-06 (「不论多少次什么错误都要发」) it is a 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.preupdate import preupdate
+    from ark_relay.features import preupdate
 
 
     print("[每个 run_* 都收得下 problems]")
@@ -1397,7 +1397,7 @@ user's order of 2026-10-06 (「不论多少次什么错误都要发」) it is a 
           and "队列照常跑，明日方舟、终末地、鸣潮开跑时自己会查" in (Path(__file__).resolve().parents[1] / "ark_relay" / "core" / "texts.py").read_text(encoding="utf-8"))
 
     print("\n[没有回到旧的「安静即成功」写法]")
-    p = "".join(q.read_text(encoding="utf-8") for q in sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "preupdate").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
+    p = "".join(q.read_text(encoding="utf-8") for q in sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
     check("不再用「45 秒还是 idle 就算没更新」", "+ 45" not in p)
     check("靠版本列表判断检查过没有", "before_avail" in p)
 
@@ -1416,7 +1416,7 @@ token, may start them.
     """
     import ast
 
-    SRC_FILES = sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "preupdate").glob("preupdate*.py"))  # 拆成了五个文件
+    SRC_FILES = sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features").glob("preupdate*.py"))  # 拆成了五个文件
     # The functions that actually start a program.
     LAUNCHERS = {"run_okww"}
     ALLOWED = {"_spawn_detached"}   # the fallback is the one place Popen belongs
@@ -1514,7 +1514,7 @@ token, may start them.
         src_all = src
         require("等包的实现在", "def _wait_for_package" in src_all)
         # The gate that makes this safe lives in the relay's AUTO-MAS process probes, not here.
-        svc = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "host" / "automas_procs.py").read_text(
+        svc = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "automas_keeper.py").read_text(
             encoding="utf-8")
         require("中继在安装器运行时不抢着拉起 AUTO-MAS",
               "auto-mas-setup" in svc and "_installer_running" in svc)
@@ -1538,7 +1538,7 @@ def _part_preupdate_span():
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.preupdate import preupdate_common
+    from ark_relay.features import preupdate as preupdate_common
 
 
     print("[_span：旧 → 新，缺旧版明说]")
@@ -1590,7 +1590,7 @@ comment). Other failures stay WARNINGs, and the fallback is still taken in both 
         fake["win32ts"].WTSGetActiveConsoleSessionId = lambda: 1
         saved = {n: sys.modules.get(n) for n in fake}
         sys.modules.update(fake)
-        from ark_relay.features.preupdate import preupdate_common as pc
+        from ark_relay.features import preupdate as pc
 
         def boom(session):
             raise WinErr(code)
@@ -1665,9 +1665,9 @@ Run: python3 relay/tests/test_preupdate_unknown_not_fine.py
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.preupdate import preupdate_common as C
-    from ark_relay.features.preupdate import preupdate_okww as O
-    from ark_relay.features.preupdate import preupdate_automas as A
+    from ark_relay.features import preupdate as C
+    from ark_relay.features import preupdate as O
+    from ark_relay.features import preupdate as A
 
 
     # ── 1. pywin32 import failure must not bypass require_console ──────────────
@@ -1849,7 +1849,7 @@ self.tr; comments and layout are not in the tree) is checked next to the hash. P
     sys.path.insert(0, str(HERE))
 
     from ark_relay.core import texts
-    from ark_relay.features.okww_patch import okww_overlay as ov
+    from ark_relay.features import okww_overlay as ov
 
 
     INST = fx_dir(HERE, "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task"
@@ -1952,8 +1952,8 @@ def _part_gameupdate_main():  # noqa: C901
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.gameupdate import gameupdate as gu
-    from ark_relay.features.gameupdate import gameupdate_games as gug
+    from ark_relay.features import gameupdate as gu
+    from ark_relay.features import gameupdate_games as gug
     from ark_relay.core.desktop import Line, Screen
 
 
@@ -2288,7 +2288,7 @@ def _part_gameupdate_main():  # noqa: C901
     check("终末地公告读挂 → 不再写「今天没有版本更新」",
           [m for _l, m, _e in keep.recs if "终末地公告——今天没有版本更新" in m], [])
     check("公告读挂的警告不说「当作」", [m for _l, m, _e in keep.recs if "当作今天" in m], [])
-    import ark_relay.features.maintenance.maintenance as _mt
+    import ark_relay.features.maintenance as _mt
     _mt_today = _mt.today
     _mt.today = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("维护模块坏了"))
     keep.recs.clear()
@@ -2342,7 +2342,7 @@ def _part_gameupdate_main():  # noqa: C901
     check("两字以下不容错", Screen([Line("确人", 0, 0, 10, 10)]).find("确认") is None, True)
 
     print("[2026-10-06 审计：读不到 ≠ 没事]")
-    from ark_relay.features.maintenance import efstatus as _efs
+    from ark_relay.features import maintenance as _efs
     gu.log.addHandler(keep)
     A = tmpdir()
     acfg = Cfg(); acfg.state_dir = A; acfg.maa_dir = A / "maa"; acfg.maaend_dir = None; acfg.okww_dir = None
@@ -2428,7 +2428,7 @@ def _part_gameupdate_main():  # noqa: C901
     # game says its client is outdated) is the expected wait; anything else that a later
     # round got past is a fault that fixed itself: one WARNING marked errwatch.recovered().
     # Not ready by the deadline: the earlier rounds' problems are reported with the last one's.
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
     from ark_relay.core import texts
 
 
@@ -2536,7 +2536,7 @@ not keep it out.
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.gameupdate import gameupdate as gu
+    from ark_relay.features import gameupdate as gu
 
 
     def _cfg():
@@ -2615,8 +2615,8 @@ AUTO-MAS (its launcher discovery rule, the relay's old preAction, Game.Path and 
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.gameupdate import efstart as ef
-    from ark_relay.features.gameupdate import efstart_setup as setup
+    from ark_relay.features import efstart as ef
+    from ark_relay.features import efstart as setup
 
 
     FX = fx_dir(Path(__file__), "fixtures") / "maaend-v2.33.0-launch"
@@ -2678,7 +2678,7 @@ AUTO-MAS (its launcher discovery rule, the relay's old preAction, Game.Path and 
     check("PID 不在", ef.helper_alive(sd, [("MaaEnd.exe", 1)]), False)
     check("PID 被别的程序用了", ef.helper_alive(sd, [("notepad.exe", 4242)]), False)
 
-    from ark_relay.features.run import maaend_watchdog
+    from ark_relay.features import maaend_watchdog
 
     RUNNING = {"tasks": [{"task_info": [{"name": "MaaEnd", "status": "运行"}]}]}
     procs = [("MaaEnd.exe", 100), ("pythonw.exe", 4242)]          # no go-service yet: tasks not started
@@ -2708,7 +2708,7 @@ AUTO-MAS (its launcher discovery rule, the relay's old preAction, Game.Path and 
     check("助手结束后照旧判（插件一直没起来 → 杀）", killed, [100])
 
     print("\n[收集补跑：游戏由开游戏助手开，不再直接起 Endfield.exe]")
-    from ark_relay.features.makeup import collect_retry as cr
+    from ark_relay.features import collect_retry as cr
     import types
 
     md = tmpdir() / "maaend"
@@ -2796,7 +2796,7 @@ AUTO-MAS (its launcher discovery rule, the relay's old preAction, Game.Path and 
     # helper entry had kept the replaced entry's id jw75pty. AUTO-MAS's pre-run check found no
     # launcher from the .cmd: 09:34:05 「未找到终末地官方启动器」, the 早班 MaaEnd never ran.
     from ark_relay.core import texts
-    from ark_relay.features.phone import commands
+    from ark_relay.features import commands
 
     pyw = "C:\\Program Files\\ArkRelay\\runtime\\python\\pythonw.exe"
     orig = {"id": "jw75pty", "customName": "▶️ 启动 Endfield.exe", "enabled": True,
@@ -2929,7 +2929,7 @@ AUTO-MAS (its launcher discovery rule, the relay's old preAction, Game.Path and 
     import boot_stages
     seen = []
     saved = (setup.install, boot_stages.selfcheck if hasattr(boot_stages, "selfcheck") else None)
-    from ark_relay.features.selfcheck import selfcheck
+    from ark_relay.features import selfcheck
     saved_rc = selfcheck.report_contract
     setup.install = lambda c, **k: (seen.append(c) or (True, []))
     selfcheck.report_contract = lambda *a, **k: None
@@ -3000,12 +3000,12 @@ Pinned here:
     sys.path.insert(0, str(HERE.parent))
 
     from ark_relay.core import texts
-    from ark_relay.features.gameupdate import efstart as ef
-    from ark_relay.features.gameupdate import efstart_setup as setup
-    from ark_relay.features.makeup import collect_retry as cr
-    from ark_relay.features.phone import commands
+    from ark_relay.features import efstart as ef
+    from ark_relay.features import efstart as setup
+    from ark_relay.features import collect_retry as cr
+    from ark_relay.features import commands
     try:
-        from ark_relay.features.gameupdate import maaend_launch as ml
+        from ark_relay.features import maaend_launch as ml
     except ImportError:                 # the code before this change
         ml = None
 
@@ -3523,8 +3523,8 @@ test_procs.py): `D:\\ark\\automas\\runtime\\environment\\venv\\Scripts\\python.e
                   "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
         sys.modules.setdefault(_name, _Stub(_name))
 
-    from ark_relay.features.host import automas_procs
-    from ark_relay.features.phone import commands
+    from ark_relay.features import automas_keeper as automas_procs
+    from ark_relay.features import commands
 
 
     line = (fx_dir(Path(__file__), "fixtures") / "okww_argv_20261012.log").read_text(encoding="utf-8")
@@ -3619,10 +3619,10 @@ problem line instead of waiting again; OK-WW's item does not need AUTO-MAS and r
 
     import boot_stages
     from ark_relay.core import texts
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.okww_patch import okww_overlay
-    from ark_relay.features.phone import commands, phone, phone_channel
-    from ark_relay.features.preupdate import preupdate
+    from ark_relay.features import errwatch
+    from ark_relay.features import okww_overlay
+    from ark_relay.features import commands, phone, phone as phone_channel
+    from ark_relay.features import preupdate
 
 
     class Records(logging.Handler):
@@ -3831,9 +3831,9 @@ never tries again; 21:30 the queue does not run; 21:55 「该跑没跑」.
 
     import boot_stages
     import service
-    from ark_relay.features.host import automas_procs
-    from ark_relay.features.phone import commands
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import automas_keeper as automas_procs
+    from ark_relay.features import commands
+    from ark_relay.features import errwatch
     from ark_relay.core import texts
 
 
@@ -3933,7 +3933,7 @@ never tries again; 21:30 the queue does not run; 21:55 「该跑没跑」.
     check("plain words, and selfcheck still reads it (「AUTO-MAS 已…秒）」)",
           bool(rec_lines) and not texts.plain(rec_lines[0]) and rec_lines[0].startswith("AUTO-MAS 已")
           and rec_lines[0].endswith("秒）"), True)
-    from ark_relay.features.selfcheck import selfcheck
+    from ark_relay.features import selfcheck
     day_line = "09-30 08:40:10 WARNING  ark.service  " + (rec_lines[0] if rec_lines else "")
     check("selfcheck's daily lines still count it as 「重开后起来了」",
           any("重开后起来了" in x for x in selfcheck.daily_lines("2026-09-30", day_line)), True)
@@ -4009,7 +4009,7 @@ never tries again; 21:30 the queue does not run; 21:55 「该跑没跑」.
     check("有 main.py → 在", automas_procs._automas_running(), True)
 
     print("\n[AUTO-MAS 的收尾记录不当成一趟运行核对]")
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import handle
     check("识别文本来自真实记录", handle.MAAEND_NOTHING_TO_RUN in handle.MAAEND_NOTHING_TO_RUN_LOG)
     import tempfile
     from datetime import datetime
@@ -4039,7 +4039,7 @@ the relay reads before the game machine installs it.
 AUTO-MAS v5.7.0-beta.3 was published 2026-10-13 07:23 UTC and installed on the machine 10-14
 08:46 Beijing; it moved the MAA user's stage items from Info to Stage. With the relay's list as it
 stood before masuser (every MAA user item in Info), the tool must name that move from the release's
-app/models/config.py alone; with the current list (ark_relay/core/mascontract.py + masuser) it must
+app/models/config.py alone; with the current list (ark_relay/core/mastercfg.py + masuser) it must
 report nothing for v5.7.0-beta.4, and for v5.7.0-beta.3 and v5.7.0-beta.2 only the two MaaEnd
 launcher settings beta.4 brought in (Game.LaunchMode, Game.LauncherPath; read since 10-16).
 
@@ -4057,10 +4057,10 @@ GitHub itself is not asked here (main() is given the file); the exit codes are c
     HERE = Path(__file__).resolve().parent
     sys.path.insert(0, str(HERE.parents[1] / "scripts" / "mac" / "lib"))
     sys.path.insert(0, str(HERE.parent))
-    from ark_relay.core import masuser  # after the sys.path lines above
+    from ark_relay.core import mastercfg as masuser  # after the sys.path lines above
     try:
         import automas_contract_watch as w
-        from ark_relay.core import mascontract
+        from ark_relay.core import mastercfg as mascontract
     except ImportError:          # the code before this change
         w = mascontract = None
 
@@ -4182,7 +4182,7 @@ Endpoints and bodies as relay/ark_relay/commands.py and annihilation.py use them
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     os.environ["ARK_MAS_PORT"] = "36163"
     import automas_handover as H
-    from ark_relay.core import masuser
+    from ark_relay.core import mastercfg as masuser
 
     H.this_week = lambda: "2026-W41"   # the game week every case below is run in
 
@@ -4576,7 +4576,7 @@ rebuilds the venv drops them. features/host/automas_jobfix.py keeps them there.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import boot_stages
-    from ark_relay.features.host import automas_jobfix as jf
+    from ark_relay.features import automas_keeper as jf
 
     print("[the payload: the two files session 2499 tried on the machine, byte for byte]")
     # SHA-256 of zz_automas_job_fix.py / .pth as installed on 2026-11-09 (2499's scratchpad ex/jobfix).
@@ -4646,7 +4646,7 @@ rebuilds the venv drops them. features/host/automas_jobfix.py keeps them there.
         lines.clear()
 
         print("\n[after the pre-update installs a new AUTO-MAS: put back too]")
-        from ark_relay.features.selfcheck import selfcheck
+        from ark_relay.features import selfcheck
         cfg = types.SimpleNamespace(automas_dir=root)
         with mock.patch.object(selfcheck, "report_contract", lambda *a: None), \
                 mock.patch.object(boot_stages, "_endfield_launch", lambda *a: None):
@@ -4670,7 +4670,7 @@ its .pth, rewrites a 127.0.0.1 port other than 5555+2*index to emulator-<5554+2*
     import subprocess
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.host import automas_jobfix as jf
+    from ark_relay.features import automas_keeper as jf
 
     print("[the payload: a module, and a .pth that imports it after pywin32.pth]")
     src = jf.payload("zz_automas_ld_adb.py").decode("utf-8")
@@ -4770,7 +4770,7 @@ def _part_mas_address():
 
     print("[地址只有一处出处]")
     hard = []
-    for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks"} & set(p.parts)]):
+    for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks", "machinechecks.py"} & set(p.parts)]):
         if p.name == "config.py":
             continue
         for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
@@ -4869,7 +4869,7 @@ this file (only schema.py Field descriptions): no `##` label exists for them.
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.phone import mas_labels
+    from ark_relay.features import phone as mas_labels
 
 
     # Kept as .txt so the repo's Python tools (ruff, the comment ratchet) do not read
@@ -4957,8 +4957,8 @@ changed the other. Pinned here, with two MAA users:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.core import masuser, plan
-    from ark_relay.features.phone import commands, snapshot
+    from ark_relay.core import mastercfg as masuser, plan
+    from ark_relay.features import commands, snapshot
 
 
     def user(stage, **info):
@@ -5036,7 +5036,7 @@ plan._scripts, plan.next_plan and mascontract.check gave the same answers as fro
     import json
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.core import masconfig, miniyaml, plan
+    from ark_relay.core import mastercfg as masconfig, mastercfg as miniyaml, plan
 
 
     print("[miniyaml: the constructs AUTO-MAS's files use]")
@@ -5165,8 +5165,8 @@ data:
 
     print("\n[offline file-edit fallback on v5.8 YAML (11-08 [D-05])]")
     import os
-    from ark_relay.features.phone import commands
-    from ark_relay.features.schedule import queues
+    from ark_relay.features import commands
+    from ark_relay.features import queues
 
     yroot = tmpdir()
     ycfg = yroot / "config"
@@ -5234,7 +5234,7 @@ the MAA user's stage items from Info to a new Stage group. The relay read Info, 
 treated it as "no stage set" (stage gate placeholder at 08:55:27), and nothing reached the
 group for 13 hours: the boot self-check had run at 08:45, on the old version.
 
-* ark_relay/core/mascontract.py lists every AUTO-MAS setting the relay reads, and check()
+* ark_relay/core/mastercfg.py lists every AUTO-MAS setting the relay reads, and check()
   finds each one in the config files (through masuser for the moved keys);
 * the boot self-check has it as one item, and a miss reaches the group with the self-check;
 * right after the pre-update installs a new AUTO-MAS (and only then) the check runs again and
@@ -5253,11 +5253,11 @@ Each part fails on the code before it (no list, no item, no hook).
     os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
-    from ark_relay.features.phone import commands
-    from ark_relay.features.preupdate import preupdate_automas as P
-    from ark_relay.features.selfcheck import selfcheck
+    from ark_relay.features import commands
+    from ark_relay.features import preupdate as P
+    from ark_relay.features import selfcheck
     try:
-        from ark_relay.core import mascontract
+        from ark_relay.core import mastercfg as mascontract
     except ImportError:          # the code before this change
         mascontract = None
 
@@ -5278,7 +5278,7 @@ Each part fails on the code before it (no list, no item, no hook).
 
 
     print("[the list of AUTO-MAS settings the relay reads]")
-    check("ark_relay/core/mascontract.py exists", mascontract is not None)
+    check("ark_relay/core/mastercfg.py exists", mascontract is not None)
     if mascontract is not None:
         items = mascontract.CONTRACT
         check("it lists the moved stage items at their new group",
@@ -5501,7 +5501,7 @@ AUTO-MAS v5.7.0-beta.3 (its own updater, game machine 10-14 08:46 Beijing) moved
 items into a Stage group and Annihilation into Task, and stopped keeping them in Info. From
 then on the relay saw nothing: the stage gate logged its "current stage" placeholder at
 08:55:27 instead of YW-4, and the snapshot, the plan, the annihilation switch and the phone's
-stage / sanity-potion writes all used Info.* (ark_relay/core/masuser.py has the details).
+stage / sanity-potion writes all used Info.* (ark_relay/core/mastercfg.py has the details).
 Each check below fails on the code before the fix and holds for both layouts.
 
     Formerly test_masuser_beta3.py.
@@ -5514,10 +5514,10 @@ Each check below fails on the code before the fix and holds for both layouts.
 
     os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.core import masuser, plan
+    from ark_relay.core import mastercfg as masuser, plan
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.schedule import stagegate as sg
-    from ark_relay.features.phone import snapshot, commands
+    from ark_relay.features import stagegate as sg
+    from ark_relay.features import snapshot, commands
 
 
     OLD = {"Info": {"Stage": "YW-4", "MedicineNumb": 3, "Annihilation": "Close"}, "Task": {}}

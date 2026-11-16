@@ -33,7 +33,7 @@ definite no - never on "could not tell".
 
     os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.schedule import stagegate as sg
+    from ark_relay.features import stagegate as sg
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
 
@@ -347,7 +347,7 @@ picks the first stage open today, which the relay does not replicate.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.schedule import stagegate as sg
+    from ark_relay.features import stagegate as sg
 
 
     SAT9 = datetime(2026, 10, 10, 9, 0, tzinfo=SERVER_TZ)
@@ -471,8 +471,8 @@ refused before anything is written, the receipt is a failure whose text contains
     AUTOMAS = fx.automas_dir(TMP / "AUTO-MAS", stage="1-7")
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_AUTOMAS_DIR=str(AUTOMAS), ARK_MAA_DIR=str(MORNING),
                       SERVERCHAN_KEY="", ARK_LLM_KEY="")
-    from ark_relay.features.phone import phone_channel
-    from ark_relay.features.phone import commands, inbox
+    from ark_relay.features import phone as phone_channel
+    from ark_relay.features import commands, phone as inbox
     from ark_relay.core import texts
 
     USER_SAID = ("2026-10-10 16:58 (Osaka): 「我自己在离线设定的时候，就是手机遥控器那边一定一定要提示我maa走不到，"
@@ -592,15 +592,15 @@ machine power off instead of waiting for a run that was cancelled on purpose.
     os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS), ARK_STATE_DIR=str(STATE),
                       ARK_MAA_DIR=str(MORNING), SERVERCHAN_KEY="", ARK_LLM_KEY="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.phone import commands
+    from ark_relay.features import commands
     from ark_relay.core.config import Config, SERVER_TZ
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import shutdown
     from ark_relay.core.ledger import State
     from ark_relay.core.engine import Engine
     from ark_relay.core.notify import Notifier
 
     try:
-        sg = importlib.import_module("ark_relay.features.schedule.stagegate")
+        sg = importlib.import_module("ark_relay.features.stagegate")
     except ImportError:
         sg = None
 
@@ -738,7 +738,7 @@ machine power off instead of waiting for a run that was cancelled on purpose.
     check("the boot stage runs the gate (boot_stages needs pywin32, read as text)",
           ("def _stage_stagegate(engine, log)" in _boot, "engine._stage_gate(lead_min=stagegate.BOOT_LEAD_MIN)" in _boot),
           (True, True))
-    _rep = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "report" / "report.py").read_text(encoding="utf-8")
+    _rep = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "report.py").read_text(encoding="utf-8")
     check("the daily report template appends the gate's lines", "stagegate.report_line(eng.cfg.state_dir, day)" in _rep,
           True)
 
@@ -935,7 +935,7 @@ Config: tests/fixtures/automas-config-2026-10-11 (the machine's own, see SOURCE.
     from ark_relay.core.engine import Engine
     from ark_relay.core.ledger import State
     from ark_relay.core.notify import Notifier
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import shutdown
 
     QC = AUTOMAS / "config" / "QueueConfig.json"
     PRISTINE = QC.read_text(encoding="utf-8")
@@ -1118,7 +1118,7 @@ read fine in between.
     fresh()
     weekly = farm_dir(json.dumps({"Teleport to Boss": "Weekly Challenge", "Boss Level": "90",
                                   "Which Weekly Boss to Teleport": 2}))
-    broken = mock.patch("ark_relay.features.weekly.weeklyboss.WeeklyBossGate.settings", side_effect=OSError("state.json locked"))
+    broken = mock.patch("ark_relay.features.weeklyboss.WeeklyBossGate.settings", side_effect=OSError("state.json locked"))
     with broken:
         got = plan._okww_extra_bit(weekly, ["Teleport and Farm 4C Echo"], {})
         check("unknown -> says it cannot tell, not 「明天会打」", got,
@@ -1126,7 +1126,7 @@ read fine in between.
         check("unknown -> one WARNING", len(grab.warnings()), 1)
         plan._okww_extra_bit(weekly, ["Teleport and Farm 4C Echo"], {})
         check("same condition again -> no second WARNING", len(grab.warnings()), 0)
-    with mock.patch("ark_relay.features.weekly.weeklyboss.WeeklyBossGate.settings",
+    with mock.patch("ark_relay.features.weeklyboss.WeeklyBossGate.settings",
                     return_value={"本周已打": False, "名字": ""}):
         check("readable -> 明天会打",
               plan._okww_extra_bit(weekly, ["Teleport and Farm 4C Echo"], {}).endswith("明天会打"), True)
@@ -1166,17 +1166,17 @@ read fine in between.
 
     print("[row 4: annihilation weekly status unreadable]")
     fresh()
-    with mock.patch("ark_relay.features.weekly.annihilation.WeeklyGate.settings", side_effect=RuntimeError("gate broke")):
+    with mock.patch("ark_relay.features.annihilation.WeeklyGate.settings", side_effect=RuntimeError("gate broke")):
         check("unreadable -> unknown (None), not reported as done or as running",
               plan._annihilation_done_tomorrow(None), None)
         w = grab.warnings()
         check("unreadable -> one WARNING with the traceback", (len(w), bool(w and w[0].exc_info)), (1, True))
         plan._annihilation_done_tomorrow(None)
         check("same condition again -> no second WARNING", len(grab.warnings()), 0)
-    with mock.patch("ark_relay.features.weekly.annihilation.WeeklyGate.settings", return_value={"本周已完成": False, "当前": ""}):
+    with mock.patch("ark_relay.features.annihilation.WeeklyGate.settings", return_value={"本周已完成": False, "当前": ""}):
         plan._annihilation_done_tomorrow(None)
         check("readable -> no WARNING", len(grab.warnings()), 0)
-    with mock.patch("ark_relay.features.weekly.annihilation.WeeklyGate.settings", side_effect=RuntimeError("gate broke")):
+    with mock.patch("ark_relay.features.annihilation.WeeklyGate.settings", side_effect=RuntimeError("gate broke")):
         plan._annihilation_done_tomorrow(None)
         check("broken again after a good read -> WARNING again", len(grab.warnings()), 1)
 
@@ -1184,16 +1184,16 @@ read fine in between.
     fresh()
     import datetime as _dt
     day = _dt.date(2026, 10, 11)
-    with mock.patch("ark_relay.features.maintenance.maintenance.today", side_effect=KeyError("window")):
+    with mock.patch("ark_relay.features.maintenance.today", side_effect=KeyError("window")):
         check("error -> no line (as before)", plan.maintenance_lines(day), [])
         w = grab.warnings()
         check("error -> one WARNING with the traceback", (len(w), bool(w and w[0].exc_info)), (1, True))
         plan.maintenance_lines(day)
         check("same condition again -> no second WARNING", len(grab.warnings()), 0)
-    with mock.patch("ark_relay.features.maintenance.maintenance.today", return_value={}):
+    with mock.patch("ark_relay.features.maintenance.today", return_value={}):
         plan.maintenance_lines(day)
         check("works -> no WARNING", len(grab.warnings()), 0)
-    with mock.patch("ark_relay.features.maintenance.maintenance.today", side_effect=KeyError("window")):
+    with mock.patch("ark_relay.features.maintenance.today", side_effect=KeyError("window")):
         plan.maintenance_lines(day)
         check("broken again after it worked -> WARNING again", len(grab.warnings()), 1)
 
@@ -1367,9 +1367,9 @@ queues.apply now goes through /api/queue/update and only reports success once
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.phone import commands
-    from ark_relay.features.modes import modes
-    from ark_relay.features.schedule import queues
+    from ark_relay.features import commands
+    from ark_relay.features import modes
+    from ark_relay.features import queues
     from ark_relay.core import plan as _plan
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.statestore import StateStore
@@ -1525,8 +1525,8 @@ commands._run_now 里各留着一个叫 names 的局部列表。Python 把它当
     os.environ["ARK_STATE_DIR"] = str(tmpdir() / "state")
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.phone import commands
-    from ark_relay.features.schedule import queues
+    from ark_relay.features import commands
+    from ark_relay.features import queues
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 
@@ -1602,8 +1602,8 @@ def _part_queue_names():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     STATE = tmpdir()
     os.environ["ARK_STATE_DIR"] = str(STATE)
-    from ark_relay.features.phone import commands
-    from ark_relay.core import names
+    from ark_relay.features import commands
+    from ark_relay.core import config as names
     from ark_relay.core.statestore import StateStore
 
 
@@ -1704,10 +1704,10 @@ The clock is pinned through each module's `datetime`.
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.phone import commands
-    from ark_relay.features.schedule import queues
+    from ark_relay.features import commands
+    from ark_relay.features import queues
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.gameupdate import gameupdate
+    from ark_relay.features import gameupdate
 
 
     ALL = list(commands.WEEKDAYS)
@@ -1852,9 +1852,9 @@ test_queue_skip_holders.py; `fail` makes one call raise after the write.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.gameupdate import gameupdate
-    from ark_relay.features.phone import commands
-    from ark_relay.features.schedule import queues
+    from ark_relay.features import gameupdate
+    from ark_relay.features import commands
+    from ark_relay.features import queues
 
 
     ALL = list(commands.WEEKDAYS)
@@ -2000,8 +2000,8 @@ one of test_queue_skip_holders.py; here the update of the OK-WW item fails.
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.phone import commands
-    from ark_relay.features.schedule import queues
+    from ark_relay.features import commands
+    from ark_relay.features import queues
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -2114,10 +2114,10 @@ item/update) and app/models/schema.py QueueItem_Schedule.Days.
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.phone import commands
-    from ark_relay.features.schedule import queues
+    from ark_relay.features import commands
+    from ark_relay.features import queues
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.gameupdate import gameupdate
+    from ark_relay.features import gameupdate
 
 
     ALL = list(commands.WEEKDAYS)
@@ -2254,10 +2254,10 @@ update's own hold is left to run_deferred.
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
         sys.modules.setdefault(name, _Stub(name))
 
-    from ark_relay.features.host import day_roll
+    from ark_relay.features import automas_keeper as day_roll
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.gameupdate import gameupdate
-    from ark_relay.features.phone import commands
+    from ark_relay.features import gameupdate
+    from ark_relay.features import commands
 
 
     class Log:
@@ -2326,7 +2326,7 @@ update's own hold is left to run_deferred.
     check("…and logs it", any("过了零点" in line for line in log.lines), True)
 
     print("\n[every round hands the loop's moment to the log back-fill, which starts once per start and per day]")
-    from ark_relay.features.evidence import error_evidence
+    from ark_relay.features import evidence as error_evidence
     calls = []
     real_step = error_evidence.backfill_step
     error_evidence.backfill_step = lambda c, now=None, **kw: calls.append((c is cfg, now)) or True
@@ -2391,10 +2391,10 @@ Config: tests/fixtures/automas-config-2026-10-11 (the machine's own, see SOURCE.
     from ark_relay.core.engine import Engine
     from ark_relay.core.ledger import State
     from ark_relay.core.notify import Notifier
-    from ark_relay.features.gameupdate import gameupdate
-    from ark_relay.features.preupdate import preupdate
-    from ark_relay.features.run import runwatch
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import gameupdate
+    from ark_relay.features import preupdate
+    from ark_relay.features import runwatch
+    from ark_relay.features import shutdown
 
     # next_plan's maintenance notices come from the official sites; nothing here is about
     # them, and no relay test may reach the internet (run 38363145659 sat in those
@@ -2527,8 +2527,8 @@ start from it; without a retry everything is as before, texts included.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.run import runwatch
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import runwatch
+    from ark_relay.features import shutdown
 
 
     class Store:
@@ -2634,8 +2634,8 @@ checked; the line reaches the daily report's relay section and is never pushed.
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.statestore import StateStore
-    from ark_relay.features.selfcheck import selfcheck, shiftcheck
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import selfcheck, selfcheck as shiftcheck
+    from ark_relay.features import shutdown
 
 
     def by_name(checks, name):
@@ -2708,8 +2708,8 @@ checked; the line reaches the daily report's relay section and is never pushed.
 
 
     rec = Rec()
-    shiftcheck.log.addHandler(rec)
-    shiftcheck.log.setLevel(logging.DEBUG)
+    shiftcheck._log_shiftcheck.addHandler(rec)
+    shiftcheck._log_shiftcheck.setLevel(logging.DEBUG)
 
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
@@ -2838,7 +2838,7 @@ checked; the line reaches the daily report's relay section and is never pushed.
     check("no shift line -> still the two lines", len(selfcheck.daily_lines("2026-10-09", log)), 2)
 
     print("\n[audit 11-08 C-07: a test window left open does not take later scheduled runs out of the report]")
-    from ark_relay.core import ledger_report as _lr
+    from ark_relay.core import ledger as _lr
     _open = [{"since": "2026-10-12T04:50:00+08:00", "until": None}]
     _test_run = {"run_id": "t", "started": "2026-10-12T05:10:00+08:00"}
     _shift_run = {"run_id": "s", "started": "2026-10-12T09:00:00+08:00"}
@@ -2860,7 +2860,7 @@ minutes from 09:00. Checks shutdown._overdue_from, the clock start _shift_overdu
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import shutdown
 
 
     class Eng:
@@ -2945,7 +2945,7 @@ it" is covered too.
     from ark_relay.core import engine as eng
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
-    from ark_relay.features.alarm.missed import MISSED_GRACE_MIN
+    from ark_relay.features.handle import MISSED_GRACE_MIN
 
 
     class Notes:
@@ -3023,7 +3023,7 @@ it" is covered too.
 
     print("\n[关机令发出后只醒一次：到点核对关机有没有关下去（audit s2 F2）]")
     e4._shutdown_issued_at = at(9, 0)
-    from ark_relay.features.shutdown.shutdown import ISSUED_STUCK_MIN
+    from ark_relay.features.shutdown import ISSUED_STUCK_MIN
     got = e4.next_deadline(at(9, 1))
     check("醒在发令后 ISSUED_STUCK_MIN 分钟", got and got[0], at(9, 0) + timedelta(minutes=ISSUED_STUCK_MIN))
     check("那一刻过了就不再给过去的时刻", e4.next_deadline(at(9, 0) + timedelta(minutes=ISSUED_STUCK_MIN)), None)
@@ -3054,7 +3054,7 @@ it" is covered too.
     # 2026-09-09: neither of the farm's moments was registered here, so the loop
     # slept until the next queue alarm - 21 minutes measured. OK-WW stopped at
     # 06:45 and nothing looked at it until 07:06.
-    from ark_relay.features.echofarm import echofarm
+    from ark_relay.features import echofarm
     e7 = build()
     _store = echofarm._store(e7.cfg.state_dir)
     _store.set("queues", "echo_farm", {"boss": 1, "name": "天傀劫煞",
@@ -3410,7 +3410,7 @@ test_off turns it off again only if this window turned it on.
     sys.path.insert(0, str(ROOT / "relay" / "tests"))
     sys.path.insert(0, str(ROOT / "scripts" / "windows"))
     import dispatch_guard as g
-    from ark_relay.features.modes import modes
+    from ark_relay.features import modes
 
 
     def setup():
@@ -3557,9 +3557,9 @@ hand-started (no make-up, no overrun alarm).
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.guard import trigger
-    from ark_relay.features.okww_patch import okww_overlay as ov
-    from ark_relay.features.phone import commands
+    from ark_relay.features import trigger
+    from ark_relay.features import okww_overlay as ov
+    from ark_relay.features import commands
 
 
     clock = {"t": datetime(2026, 10, 13, 8, 0, 0, tzinfo=SERVER_TZ)}
@@ -3643,7 +3643,7 @@ below are copied from the machine; the ledger shapes from 09-24..09-30.
     from ark_relay.core import engine as eng
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
-    from ark_relay.features.selfcheck import machinecheck as _mc
+    from ark_relay.features import machinecheck as _mc
     _mc.load()
     _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
     _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc.py
@@ -3762,7 +3762,7 @@ below are copied from the machine; the ledger shapes from 09-24..09-30.
 
     print("\n[an alarm still unsent when it goes stale: one WARNING, not dropped silently (audit s18 F3)]")
     import logging as _logging
-    from ark_relay.features.run import runwatch
+    from ark_relay.features import runwatch
     _said = []
     _h = type("H", (_logging.Handler,), {"emit": lambda self, r: _said.append((r.levelno, r.getMessage()))})()
     runwatch.log.addHandler(_h)
@@ -3794,7 +3794,7 @@ below are copied from the machine; the ledger shapes from 09-24..09-30.
     check("timeout found in the new file", len(alarms(e4)), 1)
 
     # ---------------------------------------------------------------- shift overrun
-    from ark_relay.features.run import runwatch
+    from ark_relay.features import runwatch
 
 
     def ledger(state, day, rows):
@@ -3934,8 +3934,8 @@ below are copied from the machine; the ledger shapes from 09-24..09-30.
         # 2026-11-09 00:52:21 session 2499 re-ran the evening shift through the phone's run_now;
         # 7 s later the overrun alarm said the 21:30 run had gone 202 minutes. Same shape on this
         # seed: 21:30 + 19 + 30 is 22:19; the late task is created 10-02 00:52:21.
-        from ark_relay.features.alarm import handle as _handle
-        from ark_relay.features.guard import trigger as _trigger
+        from ark_relay.features import handle as _handle
+        from ark_relay.features import trigger as _trigger
         late_at = datetime(2026, 10, 2, 0, 52, 21, tzinfo=SERVER_TZ)
 
         def late_engine(noted_at=late_at, created="2026-10-02 00:52:21.335", source="manual_task"):
@@ -4005,7 +4005,7 @@ below are copied from the machine; the ledger shapes from 09-24..09-30.
     import logging
     from unittest import mock
     from ark_relay.core import plan as _plan
-    from ark_relay.features.run import runwatch as _rw
+    from ark_relay.features import runwatch as _rw
 
     odd = TMP / "odd-automas"
     (odd / "config").mkdir(parents=True)
@@ -4053,7 +4053,7 @@ Fixtures: the morning lines of the machine's ledgers 10-05, 10-08, 10-12.
     sys.path.insert(0, str(RELAY))
 
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.run import runwatch
+    from ark_relay.features import runwatch
 
     FIX = fx_dir(RELAY, "fixtures") / "runwatch-chain-1005-1012"
 
@@ -4099,8 +4099,8 @@ read and write are stand-ins here. Checked:
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.notify import route_of
-    from ark_relay.features.phone import commands
-    from ark_relay.features.schedule import run_limit as R
+    from ark_relay.features import commands
+    from ark_relay.features import queues as R
 
 
     class Notifier:
@@ -4290,7 +4290,7 @@ other day 56-87.
     sys.path.insert(0, str(RELAY))
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.ledger import State
-    from ark_relay.features.run import runwatch
+    from ark_relay.features import runwatch
 
     em = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=None), state=State(tmpdir()))
 
@@ -4327,7 +4327,7 @@ other day 56-87.
     # 11-09 (Monday) alarmed at 10:51 and finished; that alarm kept the day out of 11-16's limit, 11-02 was
     # not clean, so 11-16 was timed by a weekday's 65 minutes and alarmed at 95 with a shift taking 138.
     from unittest import mock
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import handle
     e2 = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=None), state=State(tmpdir()))
     week = {(11, 2): (151, False), (11, 9): (123, True), (11, 10): (60, True), (11, 11): (62, True),
             (11, 12): (65, True), (11, 13): (58, True), (11, 14): (58, True), (11, 15): (59, True)}
@@ -4573,7 +4573,7 @@ new process disqualify itself and swallow a real missed run.
     check("漏跑告警走双通道", [a for _, a in sent], [True])
 
     print("\n[调试模式开着也照报漏跑（2026-10-06：只要是报错都要发）]")
-    from ark_relay.features.modes import modes as _modes
+    from ark_relay.features import modes as _modes
     reset()
     _modes.debug_active = lambda *a, **k: True
     try:
@@ -4751,8 +4751,8 @@ def _part_debug_window():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.modes import modes
-    from ark_relay.features.phone.commands import apply_command
+    from ark_relay.features import modes
+    from ark_relay.features.commands import apply_command
     from ark_relay.core.statestore import StateStore
     from ark_relay.core.config import SERVER_TZ
 

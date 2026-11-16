@@ -57,10 +57,10 @@ def _part_phone_mailbox_e2e():  # noqa: C901
     os.environ["ARK_STATE_DIR"] = str(STATE_ROOT / "unused")
     os.environ["ARK_AUTOMAS_DIR"] = str(STATE_ROOT / "unused-mas")
 
-    from ark_relay.features.phone import phone_channel
-    from ark_relay.features.phone import commands, phone
-    from ark_relay.features.modes import modes
-    from ark_relay.features.phone import cmdqueue as phone_cmdqueue, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota, wire as phone_wire
+    from ark_relay.features import phone as phone_channel
+    from ark_relay.features import commands, phone
+    from ark_relay.features import modes
+    from ark_relay.features import phone as phone_cmdqueue, phone as phone_heartbeat, phone as phone_mailbox, phone as phone_quota, phone as phone_wire
     from ark_relay.core.statestore import StateStore
 
     PIN = "8964"

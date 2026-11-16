@@ -25,12 +25,8 @@ def _part_banners():  # noqa: C901
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _tmp import fx_dir
 
-    import ark_relay.features.banners.banners as _b
-    from ark_relay.features.banners.banners import (
-        _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights,
-        group_notice, newest_version, opening_tomorrow, parse_endfield,
-        parse_endfield_notice, parse_wuwa, parse_wuwa_preview, render, upcoming,
-    )
+    import ark_relay.features.banners as _b
+    from ark_relay.features.banners import _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights, group_notice, newest_version, opening_tomorrow, parse_endfield, parse_endfield_notice, parse_wuwa, parse_wuwa_preview, render, upcoming
 
     FX = fx_dir(Path(__file__), "fixtures")
     FAILED: list[str] = []
@@ -397,7 +393,7 @@ def _part_banners():  # noqa: C901
 
     def _top_rarity_only() -> None:
         """只报最高稀有度（用户 2026-09-03）。"""
-        from ark_relay.features.banners import banners as _b
+        from ark_relay.features import banners as _b
         notice_html = "<p>■ 全新干员 6星干员【提弗洛斯】、5星干员【噗切娜】 ■ 全新武器 …</p><p>1.「冬猎」特许寻访 · 寻访说明：6星干员【提弗洛斯】获取概率提升</p>"
         check("终末地公告：5 星赠送角色不进首发名单", parse_endfield_notice(notice_html), [("提弗洛斯", "冬猎")])
         import json as _json
@@ -2262,8 +2258,8 @@ def _part_banners():  # noqa: C901
     version briefing (11-26 06:00), which nothing compared. Her ruling: the first-hand
     time wins, start and end, as ✓ corrections; the report counts down to 11-26 06:00
     as it did on 11-08."""
-        from ark_relay.features.selfcheck import machinecheck as mc
-        from ark_relay.features.selfcheck.machinechecks import phone_banners as pb
+        from ark_relay.features import machinecheck as mc
+        from ark_relay.features import machinechecks as pb
         now = datetime(2026, 11, 9, 21, 46)
         got, nxt, tr, _recs = _ef_1109()
         check("1109 ef: Skland's opening and end take the official ones",
@@ -2287,7 +2283,7 @@ def _part_banners():  # noqa: C901
               ([b.end for b in got], "终末地：森空岛和新版本导览的结束时刻对得上 ✓（11-26 06:00）" in tr.checks,
                ["✗" in c for c in tr.checks if c.startswith("终末地")]),
               ([datetime(2026, 11, 26, 6, 0)], True, [False, False]))
-        from ark_relay.features.banners import endfield as _ef
+        from ark_relay.features import endfield as _ef
         sk = _b.Banner("终末地", "烟火邀星河", ("明河",), datetime(2026, 11, 5, 12, 0), datetime(2026, 11, 25, 6, 0))
         row = {"op": "明河", "pool": "烟火邀星河", "end": datetime(2026, 11, 26, 6, 0),
                "ends": {"新版本导览": datetime(2026, 11, 26, 6, 0), "特许寻访说明": datetime(2026, 11, 27, 6, 0)}}
@@ -2378,13 +2374,13 @@ def _part_banners():  # noqa: C901
 
     def _recovered(recs: list, part: str) -> "list[bool]":
         """For each WARNING carrying `part`: is it marked recovered (daily report only)?"""
-        from ark_relay.features.alarm import errwatch
+        from ark_relay.features import errwatch
         return [bool(getattr(r, errwatch.RECOVERED, False)) for r in recs
                 if r.levelno == logging.WARNING and part in r.getMessage()]
 
 
     def _audit_1108_endfield() -> None:
-        from ark_relay.features.banners import endfield as _ef
+        from ark_relay.features import endfield as _ef
         got, nxt, tr, recs = _ef_1107()
         out = render(got, EF_NOW, {"终末地": nxt} if nxt else {}, {}, tr)
         check("1108 ef: 明河 is running from the official sources while Skland is empty",
@@ -2844,8 +2840,8 @@ the failure is a plain WARNING, pushed. A real errwatch handler shows both.
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.banners import banners as _b
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import banners as _b
+    from ark_relay.features import errwatch
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.desktop import Line
@@ -3089,8 +3085,8 @@ on the page's NEWEST item.
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    import ark_relay.features.banners.banners as _b
-    from ark_relay.features.banners import wuwa_posters as P
+    import ark_relay.features.banners as _b
+    from ark_relay.features import wuwa as P
 
 
     fx = json.loads((fx_dir(Path(__file__), "fixtures") / "ww-bili-feed-2026-10-05.json").read_text(encoding="utf-8"))
@@ -3735,15 +3731,15 @@ skland-endfield-1014 until the 2026-10-15 two-standard caliber), the PUT is a re
 
 
     try:
-        from ark_relay.features.needtable import build, needtable
+        from ark_relay.features import needtable as build, needtable
     except ImportError as exc:
         check("the relay has a need-table step (ark_relay.features.needtable)", str(exc), "")
         done()
-    from ark_relay.core import engine, techlog
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.core import engine, statestore as techlog
+    from ark_relay.features import errwatch
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.phone.cos_store import state_key
-    from ark_relay.features.phone.mailbox import Mailbox
+    from ark_relay.features.phone import state_key
+    from ark_relay.features.phone import Mailbox
 
     FIX15 = fx_dir(HERE, "fixtures") / "skland-endfield-1015"
     D1 = datetime(2026, 10, 14, 9, 0, tzinfo=SERVER_TZ)
@@ -3998,7 +3994,7 @@ trim must drop, and checks exactly what is kept.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.needtable import build
+    from ark_relay.features import needtable as build
 
 
     cat = {"catalog": [{"typeSub": [
@@ -4141,7 +4137,7 @@ def _part_need_table():
         sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _tmp import fx_dir
 
-    from ark_relay.features.needtable import build as bnt
+    from ark_relay.features import needtable as bnt
 
     fails = []
 

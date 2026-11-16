@@ -27,8 +27,8 @@ fails too. The lines below are that morning's own (ok-script.log 09:28:40-09:29:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.makeup import activity, makeup
-    from ark_relay.features.verify import outcome
+    from ark_relay.features import activity, makeup
+    from ark_relay.features import outcome
 
 
     MORNING = """\
@@ -219,7 +219,7 @@ evening run failed once, the old count (every row of the day) said 5 (audit
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import RunRecord
-    from ark_relay.features.alarm import records
+    from ark_relay.features import handle as records
 
     FIX = fx_dir(Path(__file__), "fixtures") / "ledger-2026-10-10-maa.jsonl"
 
@@ -282,8 +282,8 @@ tested on the overlay that actually runs.
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.echofarm import echofarm
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import echofarm
+    from ark_relay.features import okww_overlay
 
 
     class FarmEchoTask:
@@ -492,7 +492,7 @@ never closed and the tests passed without exercising the real path.
     # The stage-drop pattern `(\S+)\s*掉落统计` backtracked quadratically over a long run
     # of non-blanks: 1.3 s for one such line, 6.6 s for this file (2026-09-07 morning).
     import time
-    from ark_relay.features.verify import collector_maa
+    from ark_relay.features import collector_maa
     REPLAY = fx_dir(Path(__file__), "replay") / "2026-09-07" / "arknights" / "MAA-05-03-55.log"
     real = REPLAY.read_text(encoding="utf-8", errors="replace")
     body = max(real.splitlines(), key=len)
@@ -529,7 +529,7 @@ def _part_episodes():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
-    from ark_relay.features.maintenance import efstatus
+    from ark_relay.features import maintenance as efstatus
     from ark_relay.core import ledger as core
     from ark_relay.core.config import SERVER_TZ
 
@@ -807,10 +807,10 @@ Checked here, with the line shapes of that morning:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
-    from ark_relay.features.makeup import collect_retry as cr
-    from ark_relay.features.makeup import makeup
-    from ark_relay.features.run import collect_watch
-    from ark_relay.features.verify import collector_maaend as cm
+    from ark_relay.features import collect_retry as cr
+    from ark_relay.features import makeup
+    from ark_relay.features import collect_watch
+    from ark_relay.features import collector_maaend as cm
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-10-29"
 
@@ -982,8 +982,8 @@ Checked here, with the line shapes of that morning:
           texts.makeup_only_gathering("10:24"))
 
     print("[the alarm: 「没干完」, not 「没跑成」]")
-    from ark_relay.features.alarm import pushes
-    from ark_relay.features.alarm.unresolved import _gave_up_phrase
+    from ark_relay.features import handle as pushes
+    from ark_relay.features.handle import _gave_up_phrase
     phrase = _gave_up_phrase("不补跑：" + texts.makeup_only_gathering("10:24"))
     title, head = pushes._unresolved_title_head("终末地", "早班", phrase, "自动采集", "https://example.test/x")
     check("title", title, "⚠️ 终末地早班没干完")
@@ -1016,7 +1016,7 @@ loaded here (by AST, without running the script's top level).
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.weekly.annihilation import week_key
+    from ark_relay.features.annihilation import week_key
 
     SRC = Path(__file__).resolve().parents[2] / "scripts" / "mac" / "lib" / "healthcheck.py"
 
@@ -1083,10 +1083,10 @@ KuroAnswerProblem into that place's existing failure path.
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    import ark_relay.features.banners.banners as _b
-    from ark_relay.features.banners import wuwa as W
-    from ark_relay.features.banners import wuwa_history as H
-    from ark_relay.features.banners import wuwa_posters as P
+    import ark_relay.features.banners as _b
+    from ark_relay.features import wuwa as W
+    from ark_relay.features import wuwa as H
+    from ark_relay.features import wuwa as P
 
 
     class Grab(logging.Handler):
@@ -1207,7 +1207,7 @@ that relay.log had stopped rotating.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.core import logfile
+    from ark_relay.core import statestore as logfile
 
 
     class Grab(logging.Handler):
@@ -1230,7 +1230,7 @@ that relay.log had stopped rotating.
     # As in production (__main__._setup_logging puts it on the root logger): the
     # lines of every ark.* logger, ark.logfile included, reach this handler.
     src = logging.getLogger("ark.test_verify_maa")
-    lf = logfile.log
+    lf = logfile._log_logfile
     saved_prop = src.propagate, lf.propagate
     src.propagate = lf.propagate = False
     src.addHandler(h)
@@ -1301,7 +1301,7 @@ s17, low item).
         time.tzset()
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.evidence.logslice import slice_log
+    from ark_relay.features.evidence import slice_log
 
 
     d = tmpdir()
@@ -1445,7 +1445,7 @@ and a push that reached nobody must be tried again rather than lost for the day.
     from datetime import date
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.phone import monthcard
+    from ark_relay.features import phone as monthcard
     from ark_relay.core.notify import route_of
 
 
@@ -1556,7 +1556,7 @@ and a push that reached nobody must be tried again rather than lost for the day.
     print("\n[经手机指令正门]")
     import os
     os.environ["ARK_STATE_DIR"] = str(tmpdir())
-    from ark_relay.features.phone import commands
+    from ark_relay.features import commands
     check("白名单、免确认", "monthcard" in commands.REVERSIBLE, True)
     p2 = tmpdir()
     monthcard.apply(p2, {"game": "终末地", "add": 1, "at": "2026-09-25T15:30:00Z"}, today=D)
@@ -1629,7 +1629,7 @@ looking.
 
     print("\n[the path the OK-WW override reads is the one read here]")
     import re
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import okww_overlay
     got = re.findall(r'^NO_STAMINA_FLAG = r"([^"]+)"', okww_overlay.source_text(), re.M)
     check("the override's path string equals NO_STAMINA_FARM_FLAG", got, [config.NO_STAMINA_FARM_FLAG])
     ns = {}
@@ -1701,7 +1701,7 @@ was stopped.
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
         sys.modules.setdefault(name, _Stub(name))
 
-    from ark_relay.features.host import automas_keeper, automas_procs
+    from ark_relay.features import automas_keeper, automas_keeper as automas_procs
 
 
     class _Out:
@@ -1836,7 +1836,7 @@ the Mac, so the script is read as text.
 
 
 def _part_tape():  # noqa: C901
-    """The relay's day tape (ark_relay/features/selfcheck/tape.py, daysim W8).
+    """The relay's day tape (ark_relay/features/selfcheck.py, daysim W8).
 
 * the hooks: mas_client.mas_post, engine._automas_snapshot, shutdown.shutdown_event_xml,
   maintenance._get, efstatus.update_hint and banners._json / _text each put what they
@@ -1874,7 +1874,7 @@ day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB pe
     os.environ["ARK_MAS_PORT"] = "36163"
 
     try:
-        from ark_relay.features.selfcheck import tape
+        from ark_relay.features import selfcheck as tape
     except ImportError:          # the code before W8: every check below fails at its assertion
         tape = None
 
@@ -1952,10 +1952,10 @@ day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB pe
     def check_hooks() -> None:
         print("\n[each hook puts what it received on the tape and behaves as before]")
         from ark_relay.core import engine
-        from ark_relay.features.banners import banners
-        from ark_relay.features.maintenance import efstatus, maintenance
-        from ark_relay.features.phone import mas_client
-        from ark_relay.features.shutdown import shutdown
+        from ark_relay.features import banners
+        from ark_relay.features import maintenance as efstatus, maintenance
+        from ark_relay.features import redbutton as mas_client
+        from ark_relay.features import shutdown
 
         st = fresh(bj(2026, 10, 12, 10, 0, 0))
         base = "http://127.0.0.1:36163"
@@ -2052,7 +2052,7 @@ day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB pe
 
     def check_never_in_the_way() -> None:
         print("\n[a broken tape changes nothing the relay sees]")
-        from ark_relay.features.phone import mas_client
+        from ark_relay.features import redbutton as mas_client
         blocker = tmpdir() / "state-is-a-file"
         blocker.write_text("x")
         Clock.at = bj(2026, 10, 12, 11)
@@ -2208,7 +2208,7 @@ def _part_transitional():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.core import collector, transport
+    from ark_relay.core import collector, collector as transport
 
     FAILED = []
 
@@ -2296,7 +2296,7 @@ undone items were cut off and the line went out under the relay-error title.
     from ark_relay.core import engine as eng_mod, texts
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
-    from ark_relay.features.alarm import errwatch, handle
+    from ark_relay.features import errwatch, handle
 
 
     class Notes:
@@ -2383,7 +2383,7 @@ every .json, so no real record shows it yet; the rule follows the code.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ, RunRecord
-    from ark_relay.features.alarm import verdict
+    from ark_relay.features import handle as verdict
 
 
     START = datetime(2026, 10, 12, 10, 59, 40, tzinfo=SERVER_TZ)
@@ -2431,8 +2431,8 @@ laps after the claim ran in the open world where nothing is claimed.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
-    from ark_relay.features.okww_patch import okww_overlay
-    from ark_relay.features.weekly import weeklyboss
+    from ark_relay.features import okww_overlay
+    from ark_relay.features import weeklyboss
 
 
     REPLAY = fx_dir(Path(__file__), "replay") / "2026-09-07" / "wuwa"
@@ -2636,8 +2636,8 @@ def _part_maa_checks():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.alarm.handle import _maa_app_log
-    from ark_relay.features.verify.outcome import maa_checks, summarize
+    from ark_relay.features.handle import _maa_app_log
+    from ark_relay.features.outcome import maa_checks, summarize
 
     FAILED = []
 
@@ -2757,7 +2757,7 @@ dangling chain, and any other dangling chain still fails.
     #!/usr/bin/env python3
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify.outcome import maa_checks
+    from ark_relay.features.outcome import maa_checks
 
     LOG = (fx_dir(Path(__file__), "fixtures") / "maa-2026-10-21" / "asst-callbacks.log").read_text(encoding="utf-8")
 
@@ -2830,12 +2830,12 @@ with MAA's own refill sentence) as the control.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import collector, summary, texts
-    from ark_relay.features.alarm import handle
-    from ark_relay.features.makeup import makeup
+    from ark_relay.features import handle
+    from ark_relay.features import makeup
     from ark_relay.core import ledger as core
     from ark_relay.core import engine as eng_mod
-    from ark_relay.features.selfcheck import machinecheck as _mc
-    from ark_relay.features.verify.collector_maa import parse_maa_log
+    from ark_relay.features import machinecheck as _mc
+    from ark_relay.features.collector_maa import parse_maa_log
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
 
@@ -3005,7 +3005,7 @@ the kill and the log file are stand-ins; nothing touches a real process. Checked
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
     from ark_relay.core.notify import route_of
-    from ark_relay.features.run import maa_start_watchdog as W
+    from ark_relay.features import maa_start_watchdog as W
 
 
     T0 = datetime(2026, 11, 5, 9, 3, 23)
@@ -3212,7 +3212,7 @@ the kill and the log file are stand-ins; nothing touches a real process. Checked
     import types
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.statestore import StateStore
-    from ark_relay.features.run import runwatch
+    from ark_relay.features import runwatch
     w = World("mark")
     w.dog.state_dir = w.dir / "state"
     w.dog.state_dir.mkdir()
@@ -3319,7 +3319,7 @@ def _part_maa_window_overlap():
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import outcome
+    from ark_relay.features import outcome
 
 
     def ev(ts, kind, chain):
@@ -3474,9 +3474,9 @@ def _part_maa_unreachable():
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import Config
     from ark_relay.core.ledger import State
-    from ark_relay.features.gameupdate import gameupdate
-    from ark_relay.features.makeup import makeup
-    from ark_relay.features.selfcheck import machinecheck as mc
+    from ark_relay.features import gameupdate
+    from ark_relay.features import makeup
+    from ark_relay.features import machinecheck as mc
 
     CORPUS = fx_dir(HERE, "gamesim") / "corpus" / "maa" / "history"
     fails: list[str] = []
@@ -3710,7 +3710,7 @@ def _part_maa_unreachable():
     print("\n[维护日：补跑刚派下去还没落地，队列后更新先不起，不会把同一趟明日方舟再派一次]")
     from datetime import datetime
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.makeup import marker as mk
+    from ark_relay.features import makeup as mk
 
     now = datetime.now(tz=SERVER_TZ)
     day = now.strftime("%Y-%m-%d")
@@ -3757,7 +3757,7 @@ MaaEnd 卡在弹窗上自己关掉，两边都没报错，而中继报了「全�
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.verify.outcome import maa_sanity_short, maaend_checks, okww_checks, patch_effect_checks, summarize
+    from ark_relay.features.outcome import maa_sanity_short, maaend_checks, okww_checks, patch_effect_checks, summarize
 
     FAILED = []
 
@@ -4057,7 +4057,7 @@ unreachable, skip this run」 a second later: not one nest farmed.
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import outcome
+    from ark_relay.features import outcome
 
 
     # Real lines, ok-script.log 2026-10-05 (the filter was skipped: v3.7.3 find_nest).
@@ -4099,7 +4099,7 @@ unreachable, skip this run」 a second later: not one nest farmed.
     check("残象聚落判没干成", by["残象聚落"].ok, False)
     check("说传送不过去、一次没打", "一次没打" in by["残象聚落"].detail)
     check("没打就不写「没进别的点位」", "残象聚落没进别的点位" in by, False)
-    from ark_relay.features.verify import collector_okww
+    from ark_relay.features import outcome as collector_okww
     check("错误翻译不再说「打了」", "打了" in collector_okww._okww_error(
         "DailyTask:NightmareNestTask Failed Traceback (most recent call last):\nException: boom"), False)
 
@@ -4123,7 +4123,7 @@ unreachable, skip this run」 a second later: not one nest farmed.
     got = {x.label: x.ok for x in outcome.nest_filter_checks(THREE, "梦枢天罗，落渊南丘")}
     check("设置两个却进了三个：判进了别的", got.get("残象聚落没进别的点位"), False)
 
-    from ark_relay.core import mastercfg_okww
+    from ark_relay.core import mastercfg as mastercfg_okww
     check("他定的两个", list(mastercfg_okww.ONLY_NESTS), ["梦枢天罗", "落渊南丘"])
     check("全角逗号也认", mastercfg_okww.nest_names(" 梦枢天罗，落渊南丘 "), ["梦枢天罗", "落渊南丘"])
 
@@ -4223,10 +4223,10 @@ def _part_gamelog_errors():
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="")
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY))
-    from ark_relay.core import techlog, texts
+    from ark_relay.core import statestore as techlog, texts
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.verify import gamelog_errors as ge
+    from ark_relay.features import errwatch
+    from ark_relay.features import outcome as ge
 
     fails = []
 
@@ -4443,7 +4443,7 @@ TypeError: 'NoneType' object is not subscriptable
         ARK.removeHandler(h)
 
     print("[handle's success path calls it]")
-    src = (RELAY / "ark_relay" / "features" / "alarm" / "handle.py").read_text(encoding="utf-8")
+    src = (RELAY / "ark_relay" / "features" / "handle.py").read_text(encoding="utf-8")
     body = src[src.index("def _handle_success"):src.index("def _retry_healed")]
     check("_handle_success calls gamelog_errors.check_round", "gamelog_errors.check_round(eng, rec)" in body, True)
     check("after the outcome check's early return", body.index("gamelog_errors.check_round") > body.index("_verify_outcome"),
@@ -4480,9 +4480,9 @@ def _part_m6_counts():
     from datetime import datetime, timedelta
     from unittest import mock
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_maa, collector_maaend
+    from ark_relay.features import collector_maa, collector_maaend
     from ark_relay.core import plan
-    from ark_relay.features.weekly import annihilation
+    from ark_relay.features import annihilation
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -4582,7 +4582,7 @@ fixtures/m6-okww, cut from the 09-21 and 09-22 runs pulled back on 09-23).
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_okww as c, outcome as o
+    from ark_relay.features import outcome as c, outcome as o
 
     FX = fx_dir(Path(__file__), "fixtures") / "m6-okww"
     bad = []

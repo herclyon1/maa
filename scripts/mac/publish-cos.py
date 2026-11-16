@@ -4,7 +4,7 @@
     scripts/mac/publish-cos.py            # after make-manifest.py: PUT relay/<version>/{manifest.json,bundle.zip} and relay/latest.json
     scripts/mac/publish-cos.py --check    # GET latest.json and say which version the machine would see
 
-The machine's self-update (relay/ark_relay/features/selfupdate/selfupdate.py) asks this bucket first:
+The machine's self-update (relay/ark_relay/features/selfupdate.py) asks this bucket first:
 latest.json (a hundred bytes), then relay/<version>/manifest.json, then the bundle -
 every file in it verified against the manifest's SHA-1, so a wrong or half-written
 object can only mean "COS has nothing", never wrong code. The four GitHub doors stay
@@ -32,8 +32,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "relay"))
-from ark_relay.features.evidence.evidence import Cos  # noqa: E402
-from ark_relay.features.selfupdate.selfupdate import COS_BUNDLE, COS_LATEST, COS_PREFIX  # noqa: E402
+from ark_relay.features.evidence import Cos  # noqa: E402
+from ark_relay.features.selfupdate import COS_BUNDLE, COS_LATEST, COS_PREFIX  # noqa: E402
 
 RELAY = ROOT / "relay"
 

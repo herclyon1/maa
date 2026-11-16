@@ -29,7 +29,7 @@ are checked against the rules read from their source.
     from datetime import datetime as _dt
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.evidence import evidence as ev
+    from ark_relay.features import evidence as ev
 
 
     FX = fx_dir(Path(__file__), "fixtures") / "collect-retry-2026-09-11"
@@ -501,7 +501,7 @@ reaches the group as ❌. So it is INFO now, and only a crashed check stays WARN
     from types import SimpleNamespace
 
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.alarm import errwatch, handle
+    from ark_relay.features import errwatch, handle
 
 
     class _Grab(logging.Handler):
@@ -631,7 +631,7 @@ reaches the group as ❌. So it is INFO now, and only a crashed check stays WARN
 
     # 存档函数必须把 history 的两个后缀都带上
     src = (pathlib.Path(__file__).resolve().parents[1]
-           / "ark_relay" / "features" / "alarm" / "handle.py").read_text(encoding="utf-8")
+           / "ark_relay" / "features" / "handle.py").read_text(encoding="utf-8")
     body = src[src.index("def _archive_maaend_evidence"):]
     body = body[:body.index("\ndef ", 10)] if "\ndef " in body[10:] else body
     # Since audit 11-08 C-08 the history files come from _history_files (old <run_id>.log/.json,
@@ -672,7 +672,7 @@ script in the ledger. The user, 2026-09-18: 「证据包永远按时间窗取」
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay import __main__ as cli
-    from ark_relay.features.evidence import evidence
+    from ark_relay.features import evidence
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -827,7 +827,7 @@ has its own maafw, go-service.log is JSON lines, mxu-tauri.log stamps
         time.tzset()
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.evidence import evidence as ev
+    from ark_relay.features import evidence as ev
 
 
     def at(hms: str, day: str = "2026-10-12") -> float:
@@ -984,7 +984,7 @@ WARNING still reaches the group on every boot until the pin is renewed (the user
         sys.modules.setdefault(name, _Stub(name))
 
     import boot_stages
-    from ark_relay.features.evidence import evidence
+    from ark_relay.features import evidence
 
 
     class _Log:
@@ -1014,7 +1014,7 @@ WARNING still reaches the group on every boot until the pin is renewed (the user
             evidence.check_sources = saved
 
 
-    from ark_relay.core import techlog
+    from ark_relay.core import statestore as techlog
 
 
     def new_reds(d, before):
@@ -1068,8 +1068,8 @@ the ledger and never written back, so the daily report's 证据包 row was alway
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.evidence import evidence
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import evidence
+    from ark_relay.features import handle
     from ark_relay.core import texts
     from ark_relay.core import ledger as core
     from ark_relay.core.config import SERVER_TZ, RunRecord
@@ -1254,8 +1254,8 @@ said 「里面 1 个文件」 (audit s17 F2). The count is res["files"].
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
-    from ark_relay.features.alarm import handle
-    from ark_relay.features.evidence import evidence
+    from ark_relay.features import handle
+    from ark_relay.features import evidence
 
 
     class Notes:
@@ -1386,8 +1386,8 @@ The uploader is a fake; nothing here touches the real COS bucket.
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.evidence import error_evidence
+    from ark_relay.features import errwatch
+    from ark_relay.features import evidence as error_evidence
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ, Config
 
@@ -1477,7 +1477,7 @@ The uploader is a fake; nothing here touches the real COS bucket.
                                            clock=lambda: 1000.0, uploader=SignedUp())
     check("the signed page is what the push carries",
           got["url"], f"https://host/daily/relay-{DAY:%Y-%m-%d}.log?q-signature=abc")
-    from ark_relay.features.evidence.evidence import Cos
+    from ark_relay.features.evidence import Cos
     cos = Cos("AKID", "secret", "b-1", "ap-shanghai")
     link = cos.signed_get("daily/relay-x.log", ttl=60)
     check("Cos.signed_get: same object URL plus a GET signature",
@@ -1710,7 +1710,7 @@ The uploader is a fake; nothing here touches the real COS bucket.
 
     print("\n[past days COS lacks, or holds shorter than the machine does, are sent again (11-11 / 11-13 answered 404)]")
     import urllib.error
-    from ark_relay.features.evidence.stores import PermanentUploadError
+    from ark_relay.features.evidence import PermanentUploadError
 
 
     class FakeCos:
@@ -1811,9 +1811,9 @@ The uploader is a fake; nothing here touches the real COS bucket.
 
 
     catch = Catch()
-    error_evidence.log.addHandler(catch)
-    level_was = error_evidence.log.level
-    error_evidence.log.setLevel(logging.INFO)
+    error_evidence._log_error_evidence.addHandler(catch)
+    level_was = error_evidence._log_error_evidence.level
+    error_evidence._log_error_evidence.setLevel(logging.INFO)
     real_uploader = error_evidence._daily_uploader
     try:
         ok_cos = FakeCos()
@@ -1828,8 +1828,8 @@ The uploader is a fake; nothing here touches the real COS bucket.
         check("……and its push names the cause in plain words", "域名解析失败" in texts.relay_error_body("ark.error_evidence", seen[0][1], "09:52"), True)
     finally:
         error_evidence._daily_uploader = real_uploader
-        error_evidence.log.removeHandler(catch)
-        error_evidence.log.setLevel(level_was)
+        error_evidence._log_error_evidence.removeHandler(catch)
+        error_evidence._log_error_evidence.setLevel(level_was)
         error_evidence._backfill.update(day=None, thread=None)
 
 
@@ -1857,8 +1857,8 @@ and the day's title is no longer 全绿 for it. No alarm is raised for it.
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector, texts
-    from ark_relay.features.verify import collector_maaend, collector_okww, outcome
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import collector_maaend, outcome as collector_okww, outcome
+    from ark_relay.features import handle
     from ark_relay.core import ledger as core
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
@@ -2071,7 +2071,7 @@ failure a 停一切 cut off) had the same flaw. Each capture is counted per run 
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.alarm import handle, manualstops
+    from ark_relay.features import handle, handle as manualstops
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
@@ -2181,10 +2181,10 @@ dispatcher and once echoed by the agent); entries, task numbers and times are
                       COS_BUCKET="", COS_REGION="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.makeup import collect_retry
-    from ark_relay.features.run import collect_watch
-    from ark_relay.features.evidence import evidence, task_shots
-    from ark_relay.features.alarm import handle
+    from ark_relay.features import collect_retry
+    from ark_relay.features import collect_watch
+    from ark_relay.features import evidence, task_shots
+    from ark_relay.features import handle
     from ark_relay.core import texts
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
@@ -2514,7 +2514,7 @@ def _part_tacet_shots():
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.report import report
+    from ark_relay.features import report
     from ark_relay.core import notify
     from ark_relay.core.config import SERVER_TZ
 
@@ -2564,7 +2564,7 @@ def _part_tacet_shots():
     print("[开关默认关：一张都不发（用户 2026-09-14：先关掉）]")
     check("默认不发", report._attach_tacet_shots(e, day), [])
     check("默认没发说明", e.notifier.groups, [])
-    from ark_relay.features.modes import modes
+    from ark_relay.features import modes
     check("打开的回话", modes.set_tacet_shots(state, True), "无音区结算截图：以后日报后面会带上")
     check("读回是开", modes.tacet_shots_on(state), True)
     print("[只发最新那一张，带说明]")
@@ -2835,9 +2835,9 @@ item) is tests/test_mute_verdicts.py.
                       SERVERCHAN_KEY="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY))
-    from ark_relay.core import techlog
+    from ark_relay.core import statestore as techlog
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.alarm import errwatch, handle
+    from ark_relay.features import errwatch, handle
 
 
     def reds(state_dir, day):
@@ -2950,7 +2950,7 @@ item) is tests/test_mute_verdicts.py.
                 bad.append(f"{path.relative_to(RELAY)}:{node.lineno}")
     check("found the calls", seen > 10, True)
     check("none outside a log call's extra=", bad, [])
-    src = (RELAY / "ark_relay" / "features" / "alarm" / "errwatch.py").read_text(encoding="utf-8")
+    src = (RELAY / "ark_relay" / "features" / "errwatch.py").read_text(encoding="utf-8")
     check("errwatch has no daily-only door any more", "def note_daily" in src, False)
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
@@ -3101,7 +3101,7 @@ def _part_module_table():
 
     ROOT = Path(__file__).resolve().parents[1]
     doc = (ROOT / "README.md").read_text(encoding="utf-8")
-    mods = {p.stem for p in [p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks"} & set(p.parts)]
+    mods = {p.stem for p in [p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks", "machinechecks.py"} & set(p.parts)]
             if not p.stem.startswith("_")} | {"service"}
 
     listed = set(re.findall(r"`(\w+)\.py`", doc))
@@ -3276,13 +3276,13 @@ it. This walks each script's AST, resolves `from ark_relay import m as x`,
     check("every ark_relay name the scripts use exists", bad, {})
 
     # The 05:26 crash, from the pre-fix okww-landed.py:7 and :14 (import path moved to the new name).
-    old = ("from ark_relay.features.weekly import weeklyboss as W  # noqa: E402\n"
+    old = ("from ark_relay.features import weeklyboss as W  # noqa: E402\n"
            'o = json.loads(W._okww_file(name).read_text(encoding="utf-8"))\n')
-    check("the 10-10 okww-check line is caught", missing_names(old), ["ark_relay.features.weekly.weeklyboss._okww_file"])
+    check("the 10-10 okww-check line is caught", missing_names(old), ["ark_relay.features.weeklyboss._okww_file"])
     check("names that exist pass",
-          missing_names("from ark_relay.features.weekly import weeklyboss as W\nW.DAILY\nW._file\nW.name_from_log\n"), [])
+          missing_names("from ark_relay.features import weeklyboss as W\nW.DAILY\nW._file\nW.name_from_log\n"), [])
     check("a missing from-import is caught",
-          missing_names("from ark_relay.features.weekly.weeklyboss import nope\n"), ["ark_relay.features.weekly.weeklyboss.nope"])
+          missing_names("from ark_relay.features.weeklyboss import nope\n"), ["ark_relay.features.weeklyboss.nope"])
 
 
 def _part_scripts_running_asks_automas():

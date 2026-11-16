@@ -24,6 +24,6 @@ SOFTWARE.
 
 Third-party code vendored in this repository keeps its own licence:
 
-* `relay/ark_relay/features/okww_patch/okww_files/*.py` — derived from
+* `relay/ark_relay/features/okww_files/*.py` — derived from
   ok-oldking/ok-wuthering-waves, licensed AGPL-3.0. See
-  `relay/ark_relay/features/okww_patch/okww_files/README.md`.
+  `relay/ark_relay/features/okww_files/README.md`.

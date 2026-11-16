@@ -64,7 +64,7 @@ print("=== 1. OK-WW 本地改动（都在 ok_tasks/ark_overrides.py 里，源文
 # markers inside the source files and went red on every boot after the move
 # (2026-09-12) - the truth is the overlay report plus a pristine source tree.
 work = Path(r"D:\ark\okww\data\apps\ok-ww\working\src\task")
-from ark_relay.features.okww_patch import okww_overlay                 # noqa: E402
+from ark_relay.features import okww_overlay                 # noqa: E402
 _ov = okww_overlay.target(r"D:\ark\okww")
 check("覆盖文件在位且和仓库一致",
       _ov is not None and _ov.is_file()
@@ -101,13 +101,13 @@ from ark_relay.core.config import master_config_dir            # noqa: E402
 _mdir = master_config_dir(r"D:\ark\automas", "DailyTask.json")
 cfg = json.loads((_mdir / "NightmareNestTask.json").read_text(encoding="utf-8"))
 daily = json.loads((_mdir / "DailyTask.json").read_text(encoding="utf-8"))
-from ark_relay.core.mastercfg_okww import ONLY_NESTS, nest_names  # noqa: E402
+from ark_relay.core.mastercfg import ONLY_NESTS, nest_names  # noqa: E402
 check(f"巢穴：只刷{'、'.join(ONLY_NESTS)}",
       nest_names(cfg.get("Only Farm These Nests")) == list(ONLY_NESTS),
       f"实际 {cfg.get('Only Farm These Nests')!r}")
 # What the master says is the intent; whether the last run obeyed it is a
 # separate fact (09-10..09-13: master right, every run farmed all four nests).
-from ark_relay.features.verify import outcome                          # noqa: E402
+from ark_relay.features import outcome                          # noqa: E402
 _last = outcome.latest_okww_run_log(r"D:\ark\automas\history")
 _ftxt = _last[1] if _last else ""
 _fbad = [c for c in outcome.nest_filter_checks(_ftxt, ",".join(ONLY_NESTS)) if not c.ok]

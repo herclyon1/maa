@@ -3,7 +3,7 @@
 AUTO-MAS installs its own updates on the game machine from the beta channel (the relay's
 pre-update asks its backend, boot_stages._stage_preupdate). v5.7.0-beta.3, published
 2026-10-13 07:23 UTC and installed there 10-14 08:46 Beijing, moved the MAA user's stage items
-from Info to a new Stage group (relay/ark_relay/core/masuser.py); the relay read nothing for
+from Info to a new Stage group (relay/ark_relay/core/mastercfg.py); the relay read nothing for
 13 hours. This tool looks at a release before the machine installs it, from this Mac:
 
 1. asks GitHub for the newest release of AUTO-MAS-Project/AUTO-MAS, prereleases included
@@ -12,7 +12,7 @@ from Info to a new Stage group (relay/ark_relay/core/masuser.py); the relay read
    ConfigItem("Group", "Key", ..., legacy_group=..., legacy_name=...) per config class, with
    the module-level helpers a class calls with itself (init_maaend_task_config(self)) and
    the items of its base class;
-3. compares them with the relay's list (relay/ark_relay/core/mascontract.py CONTRACT) and
+3. compares them with the relay's list (relay/ark_relay/core/mastercfg.py CONTRACT) and
    prints every listed item the release no longer defines where the relay looks, and items
    that moved (the release defines the key elsewhere with legacy_group / legacy_name
    pointing at the old place).
@@ -248,7 +248,7 @@ def fetch_config(tag: str) -> str:
 
 def _relay_contract():
     sys.path.insert(0, str(_RELAY))
-    from ark_relay.core import masuser, mascontract  # noqa: PLC0415
+    from ark_relay.core import mastercfg as masuser, mastercfg as mascontract  # noqa: PLC0415
     return mascontract.CONTRACT, masuser.MOVED
 
 

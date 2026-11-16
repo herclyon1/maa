@@ -11,7 +11,7 @@ target-version = "py314"
 line-length = 100
 extend-exclude = [
     # Runs inside OK-WW and copies upstream method bodies verbatim; not held to our style
-    "relay/ark_relay/features/okww_patch/okww_files",
+    "relay/ark_relay/features/okww_files",
 ]
 
 [lint]
@@ -19,7 +19,7 @@ extend-exclude = [
 # log through banners.log, imported from it. Without this ruff does not know that name
 # is a logger, so an `except Exception` that logs with exc_info=True reads as a blind
 # catch (BLE001) there, while the same code in banners.py itself does not.
-logger-objects = ["ark_relay.features.banners.banners.log"]
+logger-objects = ["ark_relay.features.banners.log"]
 # **只选仓库里已经写了 noqa 的那些规则**，外加 RUF100。
 # 目的不是给这个仓库套一套新风格，而是让已有的 255 条豁免真的成立、
 # 让写错的规则号露出来。多选规则只会一次冒出上千条与本次无关的风格意见。

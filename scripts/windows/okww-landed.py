@@ -7,7 +7,7 @@ for line in (root / ".env").read_text(encoding="utf-8").splitlines():
     line=line.strip()
     if line and not line.startswith("#") and "=" in line:
         k,v=line.split("=",1); os.environ.setdefault(k.strip(), v.strip())
-from ark_relay.features.weekly import weeklyboss as W  # noqa: E402
+from ark_relay.features import weeklyboss as W  # noqa: E402
 ok = lambda b: "✅" if b else "❌"  # noqa: E731
 A = os.environ.get("ARK_AUTOMAS_DIR")
 
@@ -62,7 +62,7 @@ for name in (W.DAILY, W.FARM):
 print(f"  last run log, weekly boss name: {W.name_from_log()!r}")
 
 print("\n=== 2. Relay changes: overlay installed and bound, upstream files untouched ===")
-from ark_relay.features.okww_patch import okww_overlay  # noqa: E402
+from ark_relay.features import okww_overlay  # noqa: E402
 _ov = okww_overlay.target(r"D:\ark\okww")
 _bad = overlay_problems(_ov.read_text(encoding="utf-8") if _ov is not None and _ov.is_file() else None,
                         okww_overlay.source_text(), okww_overlay.last_report())

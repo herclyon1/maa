@@ -97,7 +97,7 @@ def _settle(s: dict) -> None:
                     h.close()
                 except Exception:  # noqa: BLE001 - a handler that cannot close is dropped all the same
                     pass
-    ew = sys.modules.get("ark_relay.features.alarm.errwatch")
+    ew = sys.modules.get("ark_relay.features.errwatch")
     h = (getattr(ew, "_handler", None) or [None])[0] if ew is not None else None
     if h is not None:
         try:

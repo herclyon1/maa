@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import re
 
-from ark_relay.core.names import GAME_ZH
+from ark_relay.core.config import GAME_ZH
 
 # English that is allowed: product names, common in-game terms, and commands a
 # person has to copy verbatim.
@@ -756,7 +756,7 @@ def spmed_unrecognised_body(shape: str) -> str:
 def known_cause(causes: dict) -> str:
     """「基质刷取：背包满了，…」 for each failure with a known cause; "" if none. A
     CLAIM_UNCONFIRMED cause (older ledger lines) says nothing."""
-    from ark_relay.features.verify.collector_maaend import CLAIM_UNCONFIRMED  # noqa: PLC0415
+    from ark_relay.features.collector_maaend import CLAIM_UNCONFIRMED  # noqa: PLC0415
     return "\n".join(f"{name}：{_CAUSE_ADVICE.get(c, c)}" for name, c in (causes or {}).items()
                      if c != CLAIM_UNCONFIRMED)
 

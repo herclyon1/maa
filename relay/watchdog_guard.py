@@ -98,7 +98,7 @@ class Guard:
             if self.fails and not self.alerted and not self.stop_pushed:
                 # Only looks that raised, and this one worked: fixed itself, not
                 # pushed, one red item (errwatch).
-                from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+                from ark_relay.features import errwatch  # noqa: PLC0415
                 log.warning("看门服务在跑；之前连续 %d 次查不了它在不在跑，这次查到了", self.fails,
                             extra=errwatch.recovered())
             elif self.fails:

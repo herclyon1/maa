@@ -25,7 +25,7 @@ def _part_phone_main():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.phone.phone import MAX_AGE, pack, unpack
+    from ark_relay.features.phone import MAX_AGE, pack, unpack
 
     PIN = "8964"
     FAILED: list[str] = []
@@ -114,8 +114,8 @@ the heartbeat and win32; no network, no thread left running.
         sys.modules.setdefault(name, _Stub(name))
 
     import boot_stages
-    from ark_relay.features.phone import phone_channel
-    from ark_relay.features.phone import phone
+    from ark_relay.features import phone as phone_channel
+    from ark_relay.features import phone
 
 
     class Logs(logging.Handler):
@@ -275,9 +275,9 @@ Every other order pressed during a run waits on disk for the run to end
     import os
     # cfg_state_dir is None below, so the queue falls back to ARK_STATE_DIR.
     os.environ["ARK_STATE_DIR"] = str(tmpdir())
-    import ark_relay.features.phone.commands as C
+    import ark_relay.features.commands as C
     import boot_stages
-    from ark_relay.features.phone import phone_channel
+    from ark_relay.features import phone as phone_channel
     from ark_relay.core import texts
 
 
@@ -327,7 +327,7 @@ Every other order pressed during a run waits on disk for the run to end
     n = run("set_config", busy=True, applied=applied)
     check("没有真去改", applied, [])
     check("什么也没推（不再叫他「跑完再按一次」）", n.sent, [])
-    from ark_relay.features.phone import phone as _ph
+    from ark_relay.features import phone as _ph
     _q = _ph.CmdQueue(os.environ["ARK_STATE_DIR"])
     check("排进了队列", [i["body"]["action"] for i in _q._read()["items"]], ["set_config"])
     _q.path.unlink()
@@ -370,7 +370,7 @@ Every other order pressed during a run waits on disk for the run to end
     # refreshes pressed while the machine was off replayed one by one at boot
     # (09-30 08:46:03-08:47:44, eleven states).
     import time as _time
-    from ark_relay.features.phone import phone as _phone
+    from ark_relay.features import phone as _phone
     _pushed = []
     _pusher = _phone.StatePusher(lambda why: _pushed.append(why) or True)
     _real_ensure = boot_stages.ensure_automas
@@ -482,10 +482,10 @@ boot ever ran it - while the App told the user the change was
     os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 
-    import ark_relay.features.phone.commands as C
-    from ark_relay.features.phone import phone_channel
-    from ark_relay.features.modes import modes
-    from ark_relay.features.phone import phone
+    import ark_relay.features.commands as C
+    from ark_relay.features import phone as phone_channel
+    from ark_relay.features import modes
+    from ark_relay.features import phone
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -847,7 +847,7 @@ boot ever ran it - while the App told the user the change was
 
     print("\n[D207：排队回执原样进推给 App 的状态（relay.最近指令），queued 跟着出去]")
     from ark_relay.core import plan as _plan
-    from ark_relay.features.phone import snapshot as _snap
+    from ark_relay.features import snapshot as _snap
     _saved = (_snap.read, _plan.next_plan)
     _snap.read, _plan.next_plan = (lambda: {}), (lambda automas_dir: "")
     try:
@@ -903,10 +903,10 @@ the answer.
     os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 
-    import ark_relay.features.phone.commands as C
-    from ark_relay.features.phone import phone_channel
-    from ark_relay.features.modes import modes
-    from ark_relay.features.phone import phone
+    import ark_relay.features.commands as C
+    from ark_relay.features import phone as phone_channel
+    from ark_relay.features import modes
+    from ark_relay.features import phone
     from ark_relay.core import texts
     from ark_relay.core.notify import route_of
 
@@ -987,7 +987,7 @@ def _part_phone_gzip():
     import json, sys, time
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.phone import phone
+    from ark_relay.features import phone
 
 
     PIN = "8964"
@@ -1055,7 +1055,7 @@ so it went to Server酱 only.
 
     import os
     os.environ["ARK_STATE_DIR"] = str(tmpdir())
-    from ark_relay.features.phone import phone_channel
+    from ark_relay.features import phone as phone_channel
     from ark_relay.core import texts
     from ark_relay.core.notify import route_of
 
@@ -1142,13 +1142,13 @@ Fake network throughout; nothing waits for real.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.phone import phone
+    from ark_relay.features import errwatch
+    from ark_relay.features import phone
     from ark_relay.core import texts
-    from ark_relay.features.phone import cos_store as phone_cos_store, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota
+    from ark_relay.features import phone as phone_cos_store, phone as phone_heartbeat, phone as phone_mailbox, phone as phone_quota
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.core import netretry
-    from ark_relay.features.evidence.evidence import Cos
+    from ark_relay.core import notify as netretry
+    from ark_relay.features.evidence import Cos
     from datetime import datetime
 
     # A COS write or read the network cut short is tried again inside its own 8 s (netretry,
@@ -1315,10 +1315,10 @@ Fake network throughout; nothing waits for real.
     phone.log.setLevel(logging.DEBUG)
     phone.log.propagate = False
     # The COS retry logs on its own logger (netretry.call).
-    netretry.log.addHandler(logs)
-    netretry.log.addHandler(WATCH)
-    netretry.log.setLevel(logging.DEBUG)
-    netretry.log.propagate = False
+    netretry._log_netretry.addHandler(logs)
+    netretry._log_netretry.addHandler(WATCH)
+    netretry._log_netretry.setLevel(logging.DEBUG)
+    netretry._log_netretry.propagate = False
 
 
     def ntfy_error(http: int, code: int = 0, text: str = "", headers=None):
@@ -1661,7 +1661,7 @@ def _part_phone_receipts():
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.modes import modes
+    from ark_relay.features import modes
 
 
     print("[回执：记下来、最新在后、只留最近几条]")
@@ -1716,10 +1716,10 @@ time and id; the receipt stores "sent" and keeps its text plain (the page shows
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
         sys.modules.setdefault(name, _Stub(name))
 
-    import ark_relay.features.phone.commands as C
-    from ark_relay.features.phone import phone_channel
-    from ark_relay.features.modes import modes
-    from ark_relay.features.phone import phone
+    import ark_relay.features.commands as C
+    from ark_relay.features import phone as phone_channel
+    from ark_relay.features import modes
+    from ark_relay.features import phone
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -1846,8 +1846,8 @@ message, so each is said once per condition; the payload keeps its shape
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.modes import modes
-    from ark_relay.features.phone import phone, snapshot
+    from ark_relay.features import modes
+    from ark_relay.features import phone, snapshot
     from ark_relay.core import plan
 
 
@@ -1931,8 +1931,8 @@ the held stream (Mailbox.listen). Fake network; nothing waits for real.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.phone import mailbox as phone_mailbox
-    from ark_relay.features.phone import phone
+    from ark_relay.features import phone as phone_mailbox
+    from ark_relay.features import phone
 
     PIN = "8964"
     TOPIC = "topic-abc"
@@ -2063,8 +2063,8 @@ test_heartbeat.py（有人看才跳）覆盖的部分这里不重复。
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.phone import phone
-    from ark_relay.features.phone import cos_store as phone_cos_store, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota
+    from ark_relay.features import phone
+    from ark_relay.features import phone as phone_cos_store, phone as phone_heartbeat, phone as phone_mailbox, phone as phone_quota
 
     PIN = "8964"
 
@@ -2218,7 +2218,7 @@ class OkwwUserConfig(ConfigBase):
                                 okww_dir=str(tmpdir()))
 
     from ark_relay.core import plan
-    from ark_relay.features.phone import snapshot
+    from ark_relay.features import snapshot
 
     saved_read, saved_plan = snapshot.read_runtime, plan.next_plan
     snapshot.read_runtime = lambda: dict(FULL)
@@ -2265,7 +2265,7 @@ class OkwwUserConfig(ConfigBase):
           ["09:00" in both["plan"], "21:30" in both["plan"], [q["名"] for q in both["queues"]]],
           [True, True, ["早班", "晚班"]])
 
-    from ark_relay.features.modes import modes as _modes
+    from ark_relay.features import modes as _modes
     _modes._store(STATE).set("modes", "debug_until", "2000-01-01 00:00")
     snapshot.read_runtime, plan.next_plan = (lambda: dict(FULL)), (lambda automas_dir: "")
     try:
@@ -2323,7 +2323,7 @@ class OkwwUserConfig(ConfigBase):
     print("\n[queues / relay that cannot be built carry `_错误`, not [] / {} (status-channel audit A3)]")
     # [] read on the App as "every game in the shift", {} as switches off, weekly not
     # done, no month cards - as if real.
-    from ark_relay.features.weekly import weeklyboss
+    from ark_relay.features import weeklyboss
     saved_rows, saved_wb = plan.queue_rows, weeklyboss.WeeklyBossGate.settings
     plan.queue_rows = lambda automas_dir: (_ for _ in ()).throw(OSError("ScriptConfig 读不了"))
     weeklyboss.WeeklyBossGate.settings = lambda self: (_ for _ in ()).throw(ValueError("坏了"))
@@ -2936,9 +2936,9 @@ Fake network throughout.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.phone import phone
-    from ark_relay.features.phone import cos_store as phone_cos_store, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota
-    from ark_relay.features.evidence.evidence import Cos
+    from ark_relay.features import phone
+    from ark_relay.features import phone as phone_cos_store, phone as phone_heartbeat, phone as phone_mailbox, phone as phone_quota
+    from ark_relay.features.evidence import Cos
 
     PIN = "8964"
     TOPIC = "topic-abc"
@@ -3066,7 +3066,7 @@ Fake network throughout.
     print("\n[COS 存不上：照旧切片发，什么都不丢]")
     # A connection that is down is tried again inside the 8 s (netretry, dispatch
     # relay-opt-round3-1108 O-03); COS's own answers (403, 302) are not.
-    from ark_relay.core import netretry
+    from ark_relay.core import notify as netretry
     netretry._sleep = lambda s: None
     for label, errs, puts in (("COS 拒绝（403）", [urllib.error.HTTPError(
             f"https://{COS.host}/{key}", 403, "Forbidden", {}, io.BytesIO(b""))], 1),
@@ -3121,8 +3121,8 @@ could not tell apart. Pinned here:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.modes import modes
-    from ark_relay.features.phone import phone_channel
+    from ark_relay.features import modes
+    from ark_relay.features import phone as phone_channel
 
 
     T = 1762570800     # 2026-11-08 11:00:00 Beijing
@@ -3194,7 +3194,7 @@ only when the group robot took the notice (errwatch does not push it twice).
     cfg = Config()
 
     import logging
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
     from ark_relay.core import notify as _notify_mod
 
     lines = []
@@ -3249,7 +3249,7 @@ verification path is gone and nobody notices until the next incident.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay import __main__ as cli
-    from ark_relay.features.makeup import collect_retry
+    from ark_relay.features import collect_retry
     import argparse
 
 
@@ -3281,7 +3281,7 @@ verification path is gone and nobody notices until the next incident.
     check("退出码 0", rc, 0)
 
     print("\n[banners 命令：打印那一段、来源和核对，扣下的行让退出码变 1]")
-    from ark_relay.features.banners import banners as _bn
+    from ark_relay.features import banners as _bn
     from datetime import datetime, timedelta
     import io, contextlib
     def fake_collect(now, *, skland_token="", failed=None, notes=None, trace=None, **_):
@@ -3393,7 +3393,7 @@ def _part_command_table():
     import re
 
     ROOT = Path(__file__).resolve().parents[1]
-    code = (ROOT / "ark_relay" / "features" / "phone" / "commands.py").read_text(encoding="utf-8")
+    code = (ROOT / "ark_relay" / "features" / "commands.py").read_text(encoding="utf-8")
     doc = (ROOT / "README.md").read_text(encoding="utf-8")
 
     allowed = set()
@@ -3448,8 +3448,8 @@ def _part_commands_gates():  # noqa: C901
     os.environ["ARK_AUTOMAS_DIR"] = str(AUTOMAS)
 
     from datetime import datetime
-    from ark_relay.features.phone import commands
-    from ark_relay.features.modes import modes
+    from ark_relay.features import commands
+    from ark_relay.features import modes
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.statestore import StateStore
 
@@ -4230,8 +4230,8 @@ shutdown() before close()." (https://docs.python.org/3/library/socket.html#socke
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.phone import phone
-    from ark_relay.features.phone import mailbox as phone_mailbox
+    from ark_relay.features import phone
+    from ark_relay.features import phone as phone_mailbox
 
     KEEPALIVE = 5.0          # seconds between keepalive lines (ntfy.sh: 45 s)
     LIMIT = 1.0              # close() and the listener's exit must each take less
@@ -4321,7 +4321,7 @@ for every selfupdate, so this path runs far more often than it used to.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import RunRecord, SERVER_TZ
-    from ark_relay.core.transport import record_to_payload, payload_to_record
+    from ark_relay.core.collector import record_to_payload, payload_to_record
 
 
     T0 = datetime(2026, 8, 21, 21, 30, tzinfo=SERVER_TZ)
@@ -4418,7 +4418,7 @@ def _part_heartbeat_main():
     import time
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.phone import phone
+    from ark_relay.features import phone
 
 
     def wait_for(pred, limit=10.0):
@@ -4509,9 +4509,9 @@ Fake network throughout.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.phone import phone
-    from ark_relay.features.phone import cos_store as phone_cos_store, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota
-    from ark_relay.features.evidence.evidence import Cos
+    from ark_relay.features import phone
+    from ark_relay.features import phone as phone_cos_store, phone as phone_heartbeat, phone as phone_mailbox, phone as phone_quota
+    from ark_relay.features.evidence import Cos
 
     TOPIC = "topic-abc"
     COS = Cos("AKIDtest", "secret", "ark-evidence-1", "ap-shanghai")
@@ -4709,7 +4709,7 @@ def _part_resources():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from ark_relay.features.phone import resources
+    from ark_relay.features import resources
 
     fails = []
 
@@ -4800,7 +4800,7 @@ def _part_resources():
     import logging
     import time
     from _tmp import fx_dir, tmpdir
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
     from ark_relay.core import texts
 
 
@@ -4988,8 +4988,8 @@ def _part_snapshot():
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.phone import snapshot
+    from ark_relay.features import errwatch
+    from ark_relay.features import snapshot
 
     fails: list[str] = []
 
@@ -5108,7 +5108,7 @@ def _part_snapshot():
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _tmp import tmpdir
-    from ark_relay.features.phone import phone
+    from ark_relay.features import phone
 
 
     def runtime(out):
@@ -5244,7 +5244,7 @@ def _part_inbox_poll():  # noqa: C901
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from ark_relay.features.phone import inbox
+    from ark_relay.features import phone as inbox
     from _tmp import tmpdir
 
     fails = []
@@ -5392,7 +5392,7 @@ def _part_inbox_poll():  # noqa: C901
     # retry: one WARNING marked errwatch.recovered() (daily report only); every
     # round failing: a plain WARNING (pushed).
     import logging
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
 
 
     class _Lines(logging.Handler):
@@ -5406,7 +5406,7 @@ def _part_inbox_poll():  # noqa: C901
 
 
     _lines = _Lines()
-    inbox.log.addHandler(_lines)
+    inbox._log_inbox.addHandler(_lines)
     _real_once, _real_sleep = inbox._fetch_once, inbox.time.sleep
     inbox.time.sleep = lambda s: None
     _answers: list = []
@@ -5444,7 +5444,7 @@ def _part_inbox_poll():  # noqa: C901
     finally:
         inbox._fetch_once, inbox.time.sleep = _real_once, _real_sleep
         inbox._cos_client = _real_cos_client
-        inbox.log.removeHandler(_lines)
+        inbox._log_inbox.removeHandler(_lines)
 
     # ---- The COS door (2026-10-07) ----
     # order.sh writes the file to GitHub and then to COS; jsDelivr caches a branch
@@ -5479,7 +5479,7 @@ def _part_inbox_poll():  # noqa: C901
 
 
     _gh_answer: list = [None]
-    inbox.log.addHandler(_lines)
+    inbox._log_inbox.addHandler(_lines)
     _real_cos_once = inbox._fetch_cos_once
     inbox._fetch_cos_once, inbox._fetch_once = _fake_cos_once, _gh_once
     inbox._cos_client = lambda: _FakeCos()
@@ -5508,7 +5508,7 @@ def _part_inbox_poll():  # noqa: C901
     finally:
         inbox._fetch_cos_once, inbox._fetch_once = _real_cos_once, _real_once
         inbox._cos_client, inbox.time.sleep = _real_cos_client, _real_sleep
-        inbox.log.removeHandler(_lines)
+        inbox._log_inbox.removeHandler(_lines)
 
     print("\n[COS not configured (no COS_* in the environment): no COS door]")
     import os
@@ -5555,13 +5555,13 @@ def _part_inbox_poll():  # noqa: C901
         inbox.urllib.request.urlopen = _urlopen_404
         errs: list = []
         _lines.got.clear()
-        inbox.log.addHandler(_lines)
+        inbox._log_inbox.addHandler(_lines)
         check("no object yet: None", inbox._fetch_cos_once(_FakeCos(), errors=errs), None)
         check("noted for the all-doors warning", len(errs) == 1 and errs[0].startswith("cos:"), True)
         check("one door failing logs nothing above debug", _lines.got, [])
     finally:
         inbox.urllib.request.urlopen = _real_urlopen
-        inbox.log.removeHandler(_lines)
+        inbox._log_inbox.removeHandler(_lines)
 
     print("\n[the receipt of an order.sh batch: all through -> log only; any ✗ -> the group, with the ✗ lines]")
     # CLAUDE.md 「测试不进他眼」 and docs/NOTIFICATIONS.md (the 「Config command applied」 row, de038830):

@@ -101,7 +101,7 @@ run_ps() {
 # (packaging/watchdog/ark_watchdog.py CHECK_S), so it has to be stopped first.
 # The relay holds the mutex Global\ArkRelayMain for as long as it runs (relay/app_main.py
 # MUTEX), which is how "running" is told - the same test as the phone page
-# (relay/ark_relay/features/phone/snapshot.py _relay_state). The install folder is read
+# (relay/ark_relay/features/snapshot.py _relay_state). The install folder is read
 # off the task, not assumed: the installer lets it be chosen.
 # The installed relay is the one in use while its task or its watchdog is enabled.
 # With both disabled or missing the machine is reported as legacy (the old service

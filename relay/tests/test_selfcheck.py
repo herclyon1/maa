@@ -15,7 +15,7 @@ def _part_mc_phone_banners():  # noqa: C901
     """Machine checks of the phone channel, the phone orders and the banner section.
 
 The user, 2026-10-06 04:59: the machine has to confirm by itself, after a deploy,
-what nobody had confirmed on it (ark_relay/features/selfcheck/machinechecks/phone_banners.py).
+what nobody had confirmed on it (ark_relay/features/machinechecks.py).
 Each check here gets a realistic input - recorded fixtures, the real code path
 that produces the evidence (the trace, the receipts, the queue file, the
 relay's own WARNING lines through errwatch) - that PASSes, and a broken one that
@@ -63,21 +63,21 @@ No network, no thread left running.
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 
     import boot_stages
-    from ark_relay.features.phone import phone_channel
-    import ark_relay.features.banners.banners as _b
-    import ark_relay.features.phone.commands as C
-    from ark_relay.features.phone import redbutton  # estop() reads its stop steps here
+    from ark_relay.features import phone as phone_channel
+    import ark_relay.features.banners as _b
+    import ark_relay.features.commands as C
+    from ark_relay.features import redbutton  # estop() reads its stop steps here
     import ark_relay.core.desktop as _desktop_mod
-    from ark_relay.features.alarm import alertlog, errwatch
-    from ark_relay.features.selfcheck import machinecheck as mc
-    from ark_relay.features.maintenance import maintenance
-    from ark_relay.features.modes import modes
-    from ark_relay.features.phone import phone, resources
+    from ark_relay.features import errwatch as alertlog, errwatch
+    from ark_relay.features import machinecheck as mc
+    from ark_relay.features import maintenance
+    from ark_relay.features import modes
+    from ark_relay.features import phone, resources
     from ark_relay.core import plan, skland, texts
-    from ark_relay.features.schedule import queues
+    from ark_relay.features import queues
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.desktop import Line
-    from ark_relay.features.phone import heartbeat as phone_heartbeat
+    from ark_relay.features import phone as phone_heartbeat
 
     FX = fx_dir(Path(__file__), "fixtures")
     PASS, FAIL = mc.PASS, mc.FAIL
@@ -983,7 +983,7 @@ No network, no thread left running.
 
 
 def _part_mc_runs():
-    """Machine checks judged from a run record (ark_relay/features/selfcheck/machinechecks/runs.py, event 「run」).
+    """Machine checks judged from a run record (ark_relay/features/machinechecks.py, event 「run」).
 
 The user, 2026-10-06 04:59: the open ledger items must be confirmed by the machine
 after a deploy, not by a person reading logs. Each check here gets a recorded or
@@ -1006,13 +1006,13 @@ in state/machinecheck.json right after the record is booked.
                       WECOM_BOT_URL="", ARK_PHONE_TOPIC="", ARK_LOG_FILE=str(TMP / "relay.log"))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.alarm import alertlog, handle
-    from ark_relay.features.makeup import collect_retry
-    from ark_relay.features.verify import collector_maaend, outcome
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import errwatch as alertlog, handle
+    from ark_relay.features import collect_retry
+    from ark_relay.features import collector_maaend, outcome
+    from ark_relay.features import okww_overlay
     from ark_relay.core import texts
     from ark_relay.core import engine as eng_mod
-    from ark_relay.features.selfcheck import machinecheck as mc
+    from ark_relay.features import machinecheck as mc
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
     from ark_relay.core.notify import route_of
@@ -1606,8 +1606,8 @@ copied aside and replaced.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import texts
-    from ark_relay.features.selfcheck import machinecheck as mc
-    from ark_relay.features.selfcheck.machinechecks import runs
+    from ark_relay.features import machinecheck as mc
+    from ark_relay.features import machinechecks as runs
 
     DAY = "2026-10-08"
     R1, R2, R3 = (f"{DAY}/endfield/MaaEnd-0{h}-00-00" for h in (1, 2, 3))
@@ -1625,7 +1625,7 @@ copied aside and replaced.
 
 
     ERRORS = Errors()
-    runs.log.addHandler(ERRORS)
+    runs._log_runs.addHandler(ERRORS)
 
 
     class Notes:
@@ -1849,7 +1849,7 @@ copied aside and replaced.
 
 
 def _part_mc_system():  # noqa: C901
-    """Machine checks of the relay's own machinery (ark_relay/features/selfcheck/machinechecks/system.py).
+    """Machine checks of the relay's own machinery (ark_relay/features/machinechecks.py).
 
 The user, 2026-10-06 04:59: the machine must check the open ledger items by itself
 after a deploy, instead of a person reading logs. Each check here gets a realistic
@@ -1889,9 +1889,9 @@ log (quoted next to each constant in system.py).
         sys.modules.setdefault(_name, _Stub(_name))
 
     import boot_stages
-    from ark_relay.features.selfcheck import machinecheck as mc
+    from ark_relay.features import machinecheck as mc
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.selfcheck.machinechecks import system as sysmc
+    from ark_relay.features import machinechecks as sysmc
 
 
     class N:
@@ -1906,7 +1906,7 @@ log (quoted next to each constant in system.py).
         def send(self, title, body="", alert=False, **kw):
             self.sent.append((title, body, alert))
             if self.copies and alert and self.state_dir:
-                from ark_relay.features.alarm import alertlog
+                from ark_relay.features import errwatch as alertlog
                 alertlog.AlertLog(self.state_dir).record(title, body)
             return []
 
@@ -2229,7 +2229,7 @@ log (quoted next to each constant in system.py).
                                                                note="MaaEnd 起来 60 秒了还不响应"), "labels": labels}, tmpdir())
     check("#32 没结论：没过，推了", (got["#32"].status, len(n.fails("#32"))), (mc.FAIL, 1))
 
-    from ark_relay.features.makeup import collect_retry as cr
+    from ark_relay.features import collect_retry as cr
     maafw = ("[2026-10-06 21:20:00.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute15End\"}\n"
              "[2026-10-06 21:40:01.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute16End\"}\n"
              "[2026-10-06 21:41:00.000][INF] x [msg=Node.Action.Starting] {\"name\":\"AutoCollectRoute15Failed\"}\n")
@@ -2338,7 +2338,7 @@ log (quoted next to each constant in system.py).
 
     print("\n[接线：unresolved.send 推出去后判 #21/#34（真抄送）]")
     from ark_relay.core import engine as eng_mod
-    from ark_relay.features.alarm import unresolved
+    from ark_relay.features import handle as unresolved
     from ark_relay.core.config import Config
     from ark_relay.core.ledger import State
 
@@ -2370,7 +2370,7 @@ log (quoted next to each constant in system.py).
     check("…并且进群", len(n.fails("#34")), 1)
 
     print("\n[接线：班次超时检查——有人手动开的任务不报，#55 记过（依据是 app.log 那一行）]")
-    from ark_relay.features.run import runwatch
+    from ark_relay.features import runwatch
     sd = tmpdir()
     automas = tmpdir()
     (automas / "debug").mkdir()
@@ -2396,7 +2396,7 @@ log (quoted next to each constant in system.py).
     check("依据是 app.log 的 manual_task 那一行", "触发来源 manual_task" in row.get("evidence", ""), True)
 
     print("\n[接线：明日方舟没进游戏、记录上没有 maa_unreachable → 存下 MAA 自己的 gui.log / asst.log 那一段，#65 没过并进群，同一条只一次（写了标记的真样本见 test_maa_unreachable.py）]")
-    from ark_relay.features.makeup import makeup
+    from ark_relay.features import makeup
     from ark_relay.core.config import RunRecord
     sd = tmpdir()
     maa = tmpdir()
@@ -2437,7 +2437,7 @@ log (quoted next to each constant in system.py).
     check("#33 记了过", mc.read(sd).get("#33", {}).get("status"), "PASS")
 
     print("\n[接线：看门狗结束 MaaEnd 说成功了，下一眼进程表里它还在 → 警告 + #31 没过进群]")
-    from ark_relay.features.run import maaend_watchdog as wd
+    from ark_relay.features import maaend_watchdog as wd
     sd = tmpdir()
     debug = tmpdir() / "debug"
     debug.mkdir()
@@ -2473,7 +2473,7 @@ log (quoted next to each constant in system.py).
 
     print("\n[接线：桌面助手每次运行都记进 trace；更新流程把读到的启动器画面记下 → #60/#61 判得出]")
     from ark_relay.core import desktop as dk
-    from ark_relay.features.gameupdate import gameupdate, gameupdate_games as gg
+    from ark_relay.features import gameupdate, gameupdate_games as gg
 
 
     def agent(results):
@@ -2719,7 +2719,7 @@ def _part_mc_system_fixes():
 
     cwd = os.getcwd()
     import service  # it changes the working directory to relay/
-    from ark_relay.features.host import procwatch, wmi_diag
+    from ark_relay.features import procwatch, procwatch as wmi_diag
     os.chdir(cwd)
 
 
@@ -2838,7 +2838,7 @@ def _part_mc_system_fixes():
         wmi_diag.subprocess.run = real_run
 
     print("\n[4. 看门狗：结束命令说成功了，下一眼 MaaEnd 还在 → 说出来（WARNING）]")
-    from ark_relay.features.run import maaend_watchdog as wd
+    from ark_relay.features import maaend_watchdog as wd
     debug = tmpdir() / "debug"
     debug.mkdir()
     (debug / "go-service.stderr.log").write_text("", encoding="utf-8")
@@ -2883,10 +2883,10 @@ tells on itself instead.
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.selfcheck import selfcheck
-    from ark_relay.core import mascontract, texts
+    from ark_relay.features import selfcheck
+    from ark_relay.core import mastercfg as mascontract, texts
     from ark_relay.core.notify import route_of
-    from ark_relay.features.phone import commands
+    from ark_relay.features import commands
 
 
     # The machine's AUTO-MAS as /api/scripts/get answers it: the script ids and names of
@@ -3049,7 +3049,7 @@ tells on itself instead.
 
         print("\n[report：不成立就群报一条，全成立不报]")
         import logging
-        from ark_relay.features.alarm import errwatch
+        from ark_relay.features import errwatch
 
         class _Rec(logging.Handler):
             def __init__(self):
@@ -3085,7 +3085,7 @@ tells on itself instead.
               [getattr(r, errwatch.PUSHED, False) for r in rec.records if "✗" in r.getMessage()], [False] * 3)
 
     print("\n[进程表读取：没有系统 WMI 的机器上返回「读不到」，不假装活着]")
-    from ark_relay.core import procs
+    from ark_relay.core import desktop as procs
     check("这台没有 pywin32 的 Mac 上返回 None", procs.python_processes(), None)
 
     print("\n[日报两行：从当天 relay.log 来]")
@@ -3110,7 +3110,7 @@ tells on itself instead.
     missing = selfcheck.daily_section("2026-09-18", "/nonexistent/relay.log")
     check("missing log -> the section says it is missing", missing, "中继体检\n· 中继日志读不到（文件不在）")
     import unittest.mock as _mock
-    with _mock.patch("ark_relay.core.logfile.tail_bytes", side_effect=PermissionError(13, "locked")):
+    with _mock.patch("ark_relay.core.statestore.tail_bytes", side_effect=PermissionError(13, "locked")):
         check("locked log -> the section says it cannot be opened",
               selfcheck.daily_section("2026-09-18", "/locked/relay.log"),
               "中继体检\n· 中继日志读不到（被占用或没有权限）")
@@ -3173,8 +3173,8 @@ not marked and errwatch carries it instead (still one push).
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
     from ark_relay.core import texts
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.selfcheck import selfcheck
+    from ark_relay.features import errwatch
+    from ark_relay.features import selfcheck
 
 
     class _Notifier:
@@ -3238,7 +3238,7 @@ every time it is judged; PASS and still-waiting go to the daily report only.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.selfcheck import machinecheck as mc
+    from ark_relay.features import machinecheck as mc
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.notify import route_of
 
@@ -3641,7 +3641,7 @@ def _part_replay():
     def verdict_judge(js: Path, day_root: Path, spec: dict) -> dict:
         """What the outcome check makes of one record, with its sidecar files where the relay reads them."""
         from ark_relay.core.ledger import State
-        from ark_relay.features.alarm import handle, verdict
+        from ark_relay.features import handle, handle as verdict
         rec = collector.parse_record(js, day_root)
         with tempfile.TemporaryDirectory() as tmp:
             maaend = Path(tmp) / "maaend"

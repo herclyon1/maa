@@ -14,10 +14,10 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from ark_relay.core import masconfig, mastercfg
+from ark_relay.core import mastercfg as masconfig, mastercfg
 from ark_relay.core.config import SERVER_TZ, USER_TZ, atomic_write_text
-from ark_relay.core.names import GAME_ZH
-from ark_relay.core import masuser
+from ark_relay.core.config import GAME_ZH
+from ark_relay.core import mastercfg as masuser
 
 log = logging.getLogger("ark.plan")
 
@@ -326,7 +326,7 @@ def _okww_farm_bit(daily: dict, zh: dict[str, str]) -> str:
     """The stamina line: which instance tomorrow's stamina goes into, and what it
     yields. "" means the line is omitted.
     """
-    from ark_relay.features.verify import collector_okww  # noqa: PLC0415 - reuse of the forgery name table, kept in one place
+    from ark_relay.features import outcome as collector_okww  # noqa: PLC0415 - reuse of the forgery name table, kept in one place
     # The hand-set "no stamina farm" flag wins over every configured value: the
     # patched OK-WW skips stamina entirely while it is there.
     from ark_relay.core.config import no_stamina_farm  # noqa: PLC0415
@@ -335,7 +335,7 @@ def _okww_farm_bit(daily: dict, zh: dict[str, str]) -> str:
     which = daily.get("Which to Farm") or ""
     # Forgery and tacet names come from the shared tables (wuwa_forgery /
     # wuwa_tacet), always 1-based like the in-game F2 list.
-    from ark_relay.core import wuwa_forgery, wuwa_tacet  # noqa: PLC0415 - avoids an import cycle
+    from ark_relay.core.wuwa_tables import wuwa_forgery, wuwa_tacet  # noqa: PLC0415 - avoids an import cycle
     if which == "Forgery Challenge":
         idx = int(daily.get("Which Forgery Challenge to Farm") or 1)
         return f"体力刷 {wuwa_forgery.label(idx)}，出 {wuwa_forgery.reward(idx)}"
@@ -368,7 +368,7 @@ def _okww_nest_bit(daily: dict, nest: dict, adds: list[str],
     # 「Only Farm These Nests」 is read only by our OK-WW override: when it is not
     # bound, every nest is farmed whatever the config says, and the line says that.
     import os as _os  # noqa: PLC0415
-    from ark_relay.features.okww_patch.okww_overlay import nest_patch_present  # noqa: PLC0415
+    from ark_relay.features.okww_overlay import nest_patch_present  # noqa: PLC0415
     patched = nest_patch_present(_os.environ.get("ARK_OKWW_DIR"))
     if scope and patched is False:
         where = f"⚠️ 本该只打{scope}，但巢穴补丁没贴上，这一轮不会刷巢穴"
@@ -478,7 +478,7 @@ def _weekly_boss_state() -> "tuple[bool | None, str]":
     neither 「明天会打」 nor 「本周已打满」."""
     try:
         import os  # noqa: PLC0415
-        from ark_relay.features.weekly.weeklyboss import WeeklyBossGate  # noqa: PLC0415
+        from ark_relay.features.weeklyboss import WeeklyBossGate  # noqa: PLC0415
         state = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
         v = WeeklyBossGate(state).settings()
     except Exception as exc:  # noqa: BLE001
@@ -634,7 +634,7 @@ def _annihilation_done_tomorrow(automas_dir) -> "bool | None":
     top-level list: AttributeError in annihilation._maa_users), which is logged
     once here. The plan then writes 「本周打没打满读不到」, as for the weekly boss.
     """
-    from ark_relay.features.weekly.annihilation import WeeklyGate  # noqa: PLC0415
+    from ark_relay.features.annihilation import WeeklyGate  # noqa: PLC0415
     tomorrow_noon = _tomorrow().replace(hour=12, minute=0, second=0, microsecond=0)
     try:
         done = WeeklyGate(None, automas_dir).settings(tomorrow_noon)["本周已完成"]
@@ -678,7 +678,7 @@ def maintenance_lines(day) -> list[str]:
     """Server-maintenance notices for `day`, for tomorrow's plan."""
     try:
         from datetime import datetime as _dt  # noqa: PLC0415
-        from ark_relay.features.maintenance import maintenance  # noqa: PLC0415
+        from ark_relay.features import maintenance  # noqa: PLC0415
         from ark_relay.core.config import SERVER_TZ  # noqa: PLC0415
         at = _dt(day.year, day.month, day.day, 8, 46, tzinfo=SERVER_TZ)
         unread: list[str] = []
@@ -820,7 +820,7 @@ def next_plan(automas_dir: Path | None) -> str:
             if s.get("kind") == "MaaEnd":
                 # AUTO-MAS's SanityTaskType is only the tab; sanity_plan resolves
                 # which item the chain actually farms.
-                from ark_relay.features.weekly import sanity_plan  # noqa: PLC0415 - avoids a cycle
+                from ark_relay.features import sanity_plan  # noqa: PLC0415 - avoids a cycle
                 # Tomorrow's weekday ticks count, as _maaend_extra_bits does for AutoCollect.
                 sp = sanity_plan.read(automas_dir, when=_tomorrow(), maaend_dir=s.get("path"))
                 if label := sp.get("label"):

@@ -52,7 +52,7 @@ import win32serviceutil  # noqa: E402
 # sys.path line above is what makes that work, so this import has to follow
 # it. The dependency is one-way: boot_stages never imports service.
 import boot_stages  # noqa: E402
-from ark_relay.features.host.mainloop import _loop  # noqa: E402
+from ark_relay.features.automas_keeper import _loop  # noqa: E402
 
 # The module logger, so tests can capture it as <module>.log (scripts/mac/lib/loggernames.py).
 log = logging.getLogger("ark.service")
@@ -156,7 +156,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
     def SvcStop(self):  # noqa: N802 - name required by the framework
         # pywin32 routes SERVICE_CONTROL_SHUTDOWN to SvcShutdown, which calls
         # this, so this is also where a Windows shutdown first shows up.
-        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        from ark_relay.features import errwatch  # noqa: PLC0415
         # Once per process. The installed relay (app_main.py) reaches this from two
         # threads that can both fire - WM_ENDSESSION and the stop request - and a
         # second run pushed the state again and armed a second hard exit (BOARD list A-07).
@@ -212,7 +212,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         the main loop ends happened on a power-off.
         """
         self._stop_how = "Windows 关机"
-        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        from ark_relay.features import errwatch  # noqa: PLC0415
         errwatch.mark_os_shutdown()
         self.SvcStop()
 
@@ -270,7 +270,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         # The errwatch push thread is a daemon: a batch it has just delivered to the
         # group must be persisted (queue emptied) before the hard exit, or the next
         # boot re-sends it (2026-10-06 06:21:36 came back at 08:45).
-        from ark_relay.features.alarm import errwatch  # noqa: PLC0415
+        from ark_relay.features import errwatch  # noqa: PLC0415
         errwatch.drain(2.0)
         logging.shutdown()
         os._exit(0)

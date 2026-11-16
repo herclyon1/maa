@@ -84,7 +84,7 @@ during the queue.
     run = {"script": "MAA", "started": at(21, 31).isoformat(),
            "finished": at(22, 15).isoformat(), "ok": True, "run_id": "x"}
 
-    from ark_relay.features.shutdown import shutdown as sd
+    from ark_relay.features import shutdown as sd
     E.state.report_sent = lambda d: True          # the report gate is not what is tested here
 
 
@@ -207,7 +207,7 @@ during the queue.
     skipped_clear()
 
     print("\n[手动关调试] 明确关掉要恢复正常，自然到期不恢复")
-    from ark_relay.features.modes import modes
+    from ark_relay.features import modes
     # 2026-08-31：我维护完手动关掉调试模式，机器却因为「这次已跳过」的标记
     # 还在，准备空开一整夜到早班跑完。明确说「关掉」＝维护结束，标记要一起清。
     dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
@@ -278,7 +278,7 @@ during the queue.
     # 用户 2026-08-31：「我要的是手机上面操作」。中继本来就有「公开仓库放一个
     # 文件、手机网页编辑」的收信通道，这里把开关接进那条通道。
     os.environ["ARK_STATE_DIR"] = str(STATE)
-    from ark_relay.features.phone.commands import apply_command, ALLOWED
+    from ark_relay.features.commands import apply_command, ALLOWED
 
     check("动作在白名单里", "skip_shutdown" in ALLOWED, True)
     skipped_clear(); store.pop("modes", "skip_next_shutdown")
@@ -338,7 +338,7 @@ during the queue.
         return __import__("subprocess").CompletedProcess(args, rc, b"", b"")
     eng.subprocess = type("X", (), {"run": staticmethod(fake_run),
                                     "CompletedProcess": __import__("subprocess").CompletedProcess})()
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
     skipped_clear(); store.pop("modes", "skip_next_shutdown")
     ledger(run)
     E._shutdown_issued = False; calls.clear()
@@ -575,7 +575,7 @@ The ledger below is that day's, copied from the machine (start / end as written)
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import shutdown
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
 
@@ -663,8 +663,8 @@ The ledger below is that day's, copied from the machine (start / end as written)
     check("17:55, records landed in this process -> go", shutdown.decide(e, at(17, 55)).code, "go")
 
     print("\n[2026-10-11: the last upload before power-off failing is a plain WARNING (pushed)]")
-    from ark_relay.features.evidence import error_evidence
-    from ark_relay.features.makeup import collect_retry
+    from ark_relay.features import evidence as error_evidence
+    from ark_relay.features import collect_retry
     _saved = (error_evidence.upload_daily_logs, collect_retry.maybe_run, e._power_off)
     error_evidence.upload_daily_logs = lambda cfg, **kw: {"errors": ["relay: ConnectionError: COS down"]}
     collect_retry.maybe_run = lambda eng_, now: False
@@ -750,7 +750,7 @@ The user's rule (10-10 18:31, DECISIONS D-1010-关机): only a finished 早班/�
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import plan
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import shutdown
 
     FIX = fx_dir(Path(__file__), "fixtures") / "shutdown-1010-1013"
 
@@ -884,11 +884,11 @@ the queue time 08:50 stands for the morning shift's.
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
     from ark_relay.core.statestore import StateStore
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.evidence import error_evidence
-    from ark_relay.features.makeup import collect_retry, makeup
-    from ark_relay.features.phone import heartbeat
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import errwatch
+    from ark_relay.features import evidence as error_evidence
+    from ark_relay.features import collect_retry, makeup
+    from ark_relay.features import phone as heartbeat
+    from ark_relay.features import shutdown
 
 
     class Notes:
@@ -990,7 +990,7 @@ the queue time 08:50 stands for the morning shift's.
     # The after-shift check still counts the shift as finished: the hold took only its
     # power-off. Before, a restart after the hold logged 「收工体检（早班）这班没查」 for a shift
     # that had been checked (daysim 10-09, 10:29:21 after the 10:19 restart).
-    from ark_relay.features.selfcheck import shiftcheck
+    from ark_relay.features import selfcheck as shiftcheck
     check("shiftcheck: the held shift is a finished shift", (shiftcheck.finished_shift(e, at(13, 20)) or {}).get("name"), "早班")
     e.state.store.pop("marks", "handled_boot")
 
@@ -1086,7 +1086,7 @@ stays awake, and its wording read as though someone had ordered it to stay on.
 
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import shutdown
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
 
@@ -1259,7 +1259,7 @@ stays awake, and its wording read as though someone had ordered it to stay on.
     check("理由里带收工时刻", "才收工" in src)
 
     print("[关机没成之后：发出状态清掉，定时报警和下一班关机恢复（11-08 之前一直卡到重启）]")
-    _ew = __import__("ark_relay.features.alarm.errwatch", fromlist=["x"])
+    _ew = __import__("ark_relay.features.errwatch", fromlist=["x"])
     shutdown.shutdown_event_xml = lambda s, ids=(1074, 1075): None
     e = engine(NIGHT + timedelta(hours=3))
     e._shutdown_issued, e._shutdown_issued_at = True, NIGHT
@@ -1297,7 +1297,7 @@ plus a 晚班 on 10-13 (MAA 21:30, MaaEnd 21:46, shaped like the 10-12 / 10-11 o
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import plan
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import shutdown
 
     FIX = fx_dir(Path(__file__), "fixtures") / "shutdown-1010-1013"
 
@@ -1412,7 +1412,7 @@ hand-started afternoon run must still read as manual, that is the gate's job.
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import shutdown
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -1478,7 +1478,7 @@ hand-started afternoon run must still read as manual, that is the gate's job.
     print("\n[中继自己派的补跑（commands.run_script 记下「脚本 MaaEnd」）：隔了三小时也不算手动，到点照常关机]")
     import json
     import types
-    from ark_relay.features.guard import trigger
+    from ark_relay.features import trigger
     sd = tmpdir()
     eng_sd = Eng()
     eng_sd.cfg = types.SimpleNamespace(state_dir=sd)
@@ -1554,8 +1554,8 @@ Pinned here:
     from ark_relay.core import engine as eng
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
-    from ark_relay.features.selfcheck import shiftcheck
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import selfcheck as shiftcheck
+    from ark_relay.features import shutdown
 
 
     class Notes:
@@ -1628,8 +1628,8 @@ say nothing about why.
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.echofarm import echofarm
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import echofarm
+    from ark_relay.features import shutdown
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -1718,7 +1718,7 @@ The evening shift is the morning one moved to 21:30.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import shutdown
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
 
@@ -1845,8 +1845,8 @@ The evening shift is the morning one moved to 21:30.
     # line: runwatch.check_overrun needs AUTO-MAS to show the task unfinished, and
     # missed._check_partial_queues stays quiet while a game process is up.
     from ark_relay.core import texts
-    from ark_relay.features.alarm import handle
-    from ark_relay.features.run import runwatch
+    from ark_relay.features import handle
+    from ark_relay.features import runwatch
 
 
     class Rec:
@@ -2004,9 +2004,9 @@ started, docs/OPERATIONS.md "6005 boot") newer than it ends it.
                   "win32evtlog", "win32gui"):
         sys.modules.setdefault(_name, _Stub(_name))
 
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.host import automas_keeper, automas_procs, shutdown_signs
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import errwatch
+    from ark_relay.features import automas_keeper, automas_keeper as automas_procs, procwatch as shutdown_signs
+    from ark_relay.features import shutdown
 
 
     REAL_1074 = (fx_dir(Path(__file__), "fixtures") /
@@ -2111,7 +2111,7 @@ proof the relay powered the machine off.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import engine
-    from ark_relay.features.selfcheck.machinechecks.system import POWER_OFF
+    from ark_relay.features.machinechecks import POWER_OFF
 
 
     class _Grab(logging.Handler):
@@ -2185,7 +2185,7 @@ person's power-off must not cut, the first two being that afternoon's.
     sys.path.insert(0, str(ROOT / "scripts" / "mac" / "lib"))
     import poweroff_ok
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.echofarm import echofarm
+    from ark_relay.features import echofarm
 
 
     NOW = datetime(2026, 10, 22, 16, 44, 50, tzinfo=SERVER_TZ)
@@ -2254,7 +2254,7 @@ Checks:
     REPO = RELAY.parent
     sys.path.insert(0, str(RELAY))
 
-    from ark_relay.features.modes import modes
+    from ark_relay.features import modes
 
     USER_1011 = (
         "10-11 15:25「跑完不关机是一次标记，标记下一次跑完不关机，他不是状态，跑完了哪来的取消？」",
@@ -2343,10 +2343,10 @@ queues.apply (AUTO-MAS's answer) and plan.schedule are faked.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng_mod
-    from ark_relay.features.modes import modes
+    from ark_relay.features import modes
     from ark_relay.core import texts
     from ark_relay.core import plan as _plan
-    from ark_relay.features.schedule import queues as _q
+    from ark_relay.features import queues as _q
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
     from ark_relay.core.notify import route_of
@@ -2453,8 +2453,8 @@ skip-next-shutdown.flag，两者住同一个 state 目录。process_skip 每一�
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.modes import modes
-    from ark_relay.features.schedule import queues as _q
+    from ark_relay.features import modes
+    from ark_relay.features import queues as _q
     from ark_relay.core import plan as _plan
     from ark_relay.core.statestore import StateStore
     from ark_relay.core.config import SERVER_TZ
@@ -2612,7 +2612,7 @@ the phone page kept showing the press's green 「已记下」.
 
 
     from ark_relay.core import engine
-    from ark_relay.features.modes import modes
+    from ark_relay.features import modes
 
 
     sd = tmpdir()
@@ -2667,9 +2667,9 @@ after a skip step so the receipt reaches the page without waiting for a refresh.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.features.modes import modes
+    from ark_relay.features import modes
     from ark_relay.core import plan as _plan
-    from ark_relay.features.schedule import queues as _q
+    from ark_relay.features import queues as _q
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.statestore import StateStore
@@ -2887,9 +2887,9 @@ the overdue check and the shutdown wait also still counted 晚班 as missing MAA
     from ark_relay.core.ledger import State
     from ark_relay.core.notify import Notifier
     from ark_relay.core.engine import Engine
-    from ark_relay.features.modes import modes
-    from ark_relay.features.schedule import queues as _q
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import modes
+    from ark_relay.features import queues as _q
+    from ark_relay.features import shutdown
 
     sent = []
 
@@ -2992,7 +2992,7 @@ def _part_farm_poweroff():
     from _tmp import tmpdir
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.host import shutdown_signs as S
+    from ark_relay.features import procwatch as S
 
     fails = []
 
@@ -3053,7 +3053,7 @@ def _part_place_desktop_bat():
     ROOT = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(ROOT / "relay"))
     from ark_relay.core.statestore import StateStore
-    from ark_relay.features.modes import modes
+    from ark_relay.features import modes
 
     fails = []
 
@@ -3284,7 +3284,7 @@ Review of 99999b8e (10-17), one scenario per finding:
 
     from ark_relay.core import statestore
     from ark_relay.core.statestore import StateStore
-    from ark_relay.features.alarm import handle, unresolved
+    from ark_relay.features import handle, handle as unresolved
 
     DAY = "2026-10-08"
     MARK = f"alerted:{DAY}"
@@ -3559,8 +3559,8 @@ place in next_deadline are pinned here too.
     from ark_relay.core import engine as eng
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.needtable import needtable
+    from ark_relay.features import errwatch
+    from ark_relay.features import needtable
 
 
     class Rows(logging.Handler):
@@ -3635,7 +3635,7 @@ place in next_deadline are pinned here too.
 
     print("\n[连着 10 分钟读不出来：一条进群的 WARNING，同一段里不再重复]")
     check("和别的中断报警同一个时长", (statestore.UNREAD_WARN_S, statestore.UNREAD_RETRY_S), (600, 45))
-    from ark_relay.features.phone.mailbox import Mailbox
+    from ark_relay.features.phone import Mailbox
     check("就是 Mailbox.OUTAGE_SEC", float(statestore.UNREAD_WARN_S), float(Mailbox.OUTAGE_SEC))
     clock[0] = 1000.0 + 599
     st.get("weekly", "garden")
@@ -3800,8 +3800,8 @@ or kill can land mid-write too.
 
     # 3. 写配置的模块都在用它（抽查那五个改过的）
     # (paths after ark_relay/ was split into core/ and features/<name>/)
-    for name in ("features/weekly/garden.py", "features/weekly/weeklyboss.py",
-                 "features/preupdate/preupdate_okww.py", "core/desktop.py"):
+    for name in ("features/annihilation.py", "features/weeklyboss.py",
+                 "features/preupdate.py", "core/desktop.py"):
         src = (ROOT / "ark_relay" / name).read_text(encoding="utf-8")
         check(f"{name} 走的是共用实现",
               bool(re.search(r"atomic_write_(text|bytes)\(", src)), True)
@@ -3817,13 +3817,13 @@ or kill can land mid-write too.
     DIRECT_OVERWRITE = re.compile(
         r"\.write_text\(|\.write_bytes\(|\bopen\([^)\n]*[\"'](?:w|wb|w\+|wb\+|x|xb)[\"']")
     STATE_WRITERS = (
-        "ark_relay/features/makeup/collect_retry.py",   # collect-retry/failures.json, <day>.json
-        "ark_relay/features/report/report.py",          # tacet-shots-<day>.sent
+        "ark_relay/features/collect_retry.py",   # collect-retry/failures.json, <day>.json
+        "ark_relay/features/report.py",          # tacet-shots-<day>.sent
         "boot_stages.py",                               # evidence-source-notified.json
-        "ark_relay/features/phone/quota.py",            # ntfy-<utc day>.json
-        "ark_relay/features/alarm/alertlog.py",         # alert day file re-seeded from COS
-        "ark_relay/features/evidence/stores.py",        # evidence/gofile.json
-        "ark_relay/features/banners/banners.py",        # banners/<day>.json
+        "ark_relay/features/phone.py",            # ntfy-<utc day>.json
+        "ark_relay/features/errwatch.py",         # alert day file re-seeded from COS
+        "ark_relay/features/evidence.py",        # evidence/gofile.json
+        "ark_relay/features/banners.py",        # banners/<day>.json
     )
     for name in STATE_WRITERS:
         src = (ROOT / name).read_text(encoding="utf-8")
@@ -3852,7 +3852,7 @@ def _part_state_pending():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ, RunRecord
     from ark_relay.core.ledger import State
-    from ark_relay.core.transport import record_to_payload, payload_to_record
+    from ark_relay.core.collector import record_to_payload, payload_to_record
 
 
     def rec(run_id="2026-09-08/wuwa/OK-WW-05-22-26"):

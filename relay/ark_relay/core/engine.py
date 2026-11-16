@@ -18,17 +18,17 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from ark_relay.core import config, texts
-from ark_relay.features.alarm import handle, missed
-from ark_relay.features.modes import modes
-from ark_relay.features.selfcheck import tape
+from ark_relay.features import handle, handle as missed
+from ark_relay.features import modes
+from ark_relay.features import selfcheck as tape
 from ark_relay.core import plan
-from ark_relay.features.report import report
-from ark_relay.features.shutdown import shutdown
+from ark_relay.features import report
+from ark_relay.features import shutdown
 from ark_relay.core.config import SERVER_TZ, Config, RunRecord
 from ark_relay.core.ledger import State
-from ark_relay.features.alarm.missed import MISSED_GRACE_MIN
+from ark_relay.features.handle import MISSED_GRACE_MIN
 from ark_relay.core.notify import Notifier
-from ark_relay.core.transport import Source
+from ark_relay.core.collector import Source
 
 log = logging.getLogger("ark.engine")
 # Short-lived cache for `_scripts_running`; see the comment on that method.
@@ -138,7 +138,7 @@ def _okww_up() -> bool:
     wait_until of 120 s (10-27 09:23:04-09:25:04, the nest travel); combat logs every
     few seconds. A log that cannot be read leaves the process counted.
     """
-    from ark_relay.features.okww_patch.okww_overlay import okww_running  # noqa: PLC0415 - import cycle
+    from ark_relay.features.okww_overlay import okww_running  # noqa: PLC0415 - import cycle
     if okww_running() is not True:
         return False
     logs = config.okww_root() / "data" / "apps" / "ok-ww" / "working" / "logs"
@@ -187,7 +187,7 @@ def _note_other_modes(snap, busy: bool, now: "datetime | None" = None) -> None:
 
 def _note_other_modes_in(state_dir: Path, automas_dir, snap, busy: bool, now: datetime) -> None:
     import json  # noqa: PLC0415
-    from ark_relay.features.guard import trigger  # noqa: PLC0415
+    from ark_relay.features import trigger  # noqa: PLC0415
     from ark_relay.core.config import atomic_write_text  # noqa: PLC0415
     at = now.strftime("%m-%d %H:%M:%S")
     found: list[dict] = []
@@ -294,17 +294,17 @@ class Engine:
         # Annihilation's weekly status, read from AUTO-MAS: running it once a week is
         # AUTO-MAS's job since the 2026-10-11 switch-over (hand-over item 13); this
         # only feeds the shared new-week line (boot_stages._stage_annihilation).
-        from ark_relay.features.weekly.annihilation import WeeklyGate  # noqa: PLC0415 - optional feature
+        from ark_relay.features.annihilation import WeeklyGate  # noqa: PLC0415 - optional feature
         self._annihilation = WeeklyGate(state.dir, cfg.automas_dir)
         # The weekly garden and annihilation are the same shape of problem: something
         # that only needs doing once a week should not be visited every day. The only
         # difference is which switch gets turned off - annihilation's is MAA's, this
         # one's is OK-WW's "Check Weekly Garden" additional task.
-        from ark_relay.features.weekly.garden import GardenGate  # noqa: PLC0415 - optional feature
+        from ark_relay.features.annihilation import GardenGate  # noqa: PLC0415 - optional feature
         # Writes the OK-WW master copy directly, not through the MAS API (that path
         # needs quick-config on, and quick-config is off).
         self._garden = GardenGate(state.dir, cfg.automas_dir)
-        from ark_relay.features.weekly.weeklyboss import WeeklyBossGate  # noqa: PLC0415 - avoid import cycle
+        from ark_relay.features.weeklyboss import WeeklyBossGate  # noqa: PLC0415 - avoid import cycle
         self._weeklyboss = WeeklyBossGate(state.dir, cfg.automas_dir)
 
     # ---------- operator modes ----------
@@ -363,7 +363,7 @@ class Engine:
 
     def _restore_pending(self) -> None:
         """Reload alerts that were queued but never delivered."""
-        from ark_relay.core.transport import payload_to_record  # noqa: PLC0415 - avoid cycle
+        from ark_relay.core.collector import payload_to_record  # noqa: PLC0415 - avoid cycle
         data = self.state.load_pending()
         dropped = []
         for bucket, target in (("pending", self._pending), ("recovered", self._recovered)):
@@ -399,7 +399,7 @@ class Engine:
                      len(self._pending) + len(self._recovered) + len(self._unsent_unresolved))
 
     def _persist_pending(self) -> None:
-        from ark_relay.core.transport import record_to_payload  # noqa: PLC0415 - avoid cycle
+        from ark_relay.core.collector import record_to_payload  # noqa: PLC0415 - avoid cycle
         def payload(r: RunRecord) -> dict:
             p = record_to_payload(r)
             # A record restored from disk has no log file to read: keep the tail it came with.
@@ -543,7 +543,7 @@ class Engine:
         that says something went wrong (echofarm.tick_result) is a group alarm; until
         2026-10-12 it went to Server酱 inside the plain 「刷声骸收工」 text.
         """
-        from ark_relay.features.echofarm import echofarm  # noqa: PLC0415
+        from ark_relay.features import echofarm  # noqa: PLC0415
         note, failed = echofarm.tick_result(self.cfg)
         if not note:
             return
@@ -552,26 +552,26 @@ class Engine:
 
     def _run_limit_guard(self) -> None:
         """Endfield's failure retry limit in AUTO-MAS kept at 1 (run_limit.py)."""
-        from ark_relay.features.schedule import run_limit  # noqa: PLC0415
+        from ark_relay.features import queues as run_limit  # noqa: PLC0415
         run_limit.step(self)
 
     def _monthcard_notice(self) -> None:
         """From five days before a monthly card's last claim day, one Server酱 line a day."""
-        from ark_relay.features.phone import monthcard  # noqa: PLC0415
+        from ark_relay.features import phone as monthcard  # noqa: PLC0415
         due = monthcard.due_notice(self.state.dir)
         if due and not self.notifier.send(*due):
             monthcard.mark_sent(self.state.dir)
 
     def _need_table(self) -> None:
         """Once a server day, on a thread of its own: the App's need table rebuilt and put on COS (needtable.py)."""
-        from ark_relay.features.needtable import needtable  # noqa: PLC0415
+        from ark_relay.features import needtable  # noqa: PLC0415
         needtable.step(self.cfg)
 
     def _stage_gate(self, now: datetime | None = None, lead_min: int | None = None) -> None:
         """Before each MAA due: pull MAA from that queue run when its stage cannot be
         navigated to; put it back afterwards (stagegate.py). Local files only.
         lead_min: the boot pass looks further ahead (stagegate.BOOT_LEAD_MIN)."""
-        from ark_relay.features.schedule import stagegate  # noqa: PLC0415
+        from ark_relay.features import stagegate  # noqa: PLC0415
         stagegate.step(self.cfg, self.notifier, now, busy=self._scripts_running,
                        lead_min=lead_min or stagegate.LEAD_MIN)
 
@@ -597,8 +597,8 @@ class Engine:
         re-run is a script dispatched by AUTO-MAS, so once it starts
         _scripts_running blocks shutdown as usual. At most once a day.
         """
-        from ark_relay.features.gameupdate import gameupdate  # noqa: PLC0415
-        from ark_relay.features.makeup import marker as makeup_marker  # noqa: PLC0415
+        from ark_relay.features import gameupdate  # noqa: PLC0415
+        from ark_relay.features import makeup as makeup_marker  # noqa: PLC0415
         if self._deferred_update_busy() or not gameupdate.pending(self.state.dir):
             return
         now = datetime.now(tz=SERVER_TZ)
@@ -633,7 +633,7 @@ class Engine:
         games = "、".join(gameupdate.pending(self.state.dir))
 
         def work() -> None:
-            from ark_relay.features.phone import commands  # noqa: PLC0415
+            from ark_relay.features import commands  # noqa: PLC0415
             try:
                 def _dispatch(name: str):
                     self._gu_rerun_at = datetime.now(tz=SERVER_TZ)
@@ -674,7 +674,7 @@ class Engine:
         if not getattr(self.cfg, "state_dir", None):
             return
         try:
-            from ark_relay.features.selfcheck import machinecheck  # noqa: PLC0415
+            from ark_relay.features import machinecheck  # noqa: PLC0415
             from ark_relay.core.statestore import StateStore  # noqa: PLC0415
             machinecheck.judge(self.cfg.state_dir, event, ctx, notifier=self.notifier,
                                version=str(StateStore(self.cfg.state_dir).get("versions", "code") or ""))
@@ -751,7 +751,7 @@ class Engine:
         second try (needtable.next_moment). Each waited for the hour backstop before
         (dispatch relay-audit-round2-1108 N-02 / N-05)."""
         from ark_relay.core import collector, statestore  # noqa: PLC0415
-        from ark_relay.features.needtable import needtable  # noqa: PLC0415
+        from ark_relay.features import needtable  # noqa: PLC0415
         out = []
         state_file = getattr(getattr(self.state, "store", None), "path", None)
         if state_file is not None and statestore.refused_since(state_file) is not None:
@@ -780,7 +780,7 @@ class Engine:
             # shutdown.decide calls a machine still up 「not-down」 and the group
             # hears 「关机被取消」. Sleeping to the hour backstop made that up to
             # 50 minutes late (audit s2 F2).
-            from ark_relay.features.shutdown.shutdown import ISSUED_STUCK_MIN  # noqa: PLC0415
+            from ark_relay.features.shutdown import ISSUED_STUCK_MIN  # noqa: PLC0415
             at = getattr(self, "_shutdown_issued_at", None)
             if at is not None and (check := at + timedelta(minutes=ISSUED_STUCK_MIN)) > now:
                 return (check, "核对关机有没有关下去")
@@ -794,7 +794,7 @@ class Engine:
 
         # An echo farm: its deadline, and a look every RESTART_QUIET_MINUTES while
         # it runs to notice the task has died.
-        from ark_relay.features.echofarm import echofarm  # noqa: PLC0415
+        from ark_relay.features import echofarm  # noqa: PLC0415
         if rec := echofarm.current(self.cfg.state_dir):
             if until := echofarm.deadline_of(rec):
                 cands.append((until, "刷声骸到点收工"))
@@ -836,7 +836,7 @@ class Engine:
         # A running queue is only visible through AUTO-MAS's own log and snapshot,
         # neither of which wakes the loop (runwatch.next_moments).
         try:
-            from ark_relay.features.run import runwatch  # noqa: PLC0415
+            from ark_relay.features import runwatch  # noqa: PLC0415
             cands.extend(runwatch.next_moments(self, now, self._scripts_running()))
         except Exception:
             log.exception("算在跑巡查的时刻出错，跳过")
@@ -859,10 +859,10 @@ class Engine:
         # that never produced a record is closed out after a while; both are
         # moments nothing else wakes the loop for.
         try:
-            from ark_relay.features.makeup import makeup  # noqa: PLC0415
+            from ark_relay.features import makeup  # noqa: PLC0415
             if moment := makeup.next_moment(self.cfg.state_dir, now):
                 cands.append(moment)
-            from ark_relay.features.makeup import activity  # noqa: PLC0415
+            from ark_relay.features import activity  # noqa: PLC0415
             if moment := activity.next_moment(self.cfg.state_dir, now):
                 cands.append(moment)
         except Exception:
@@ -947,21 +947,21 @@ class Engine:
 
     def _essence_filler(self, now: datetime | None = None) -> None:
         """A target-met essence run switches 基质刷取 to filler mode (features/essence)."""
-        from ark_relay.features.essence import essence  # noqa: PLC0415
+        from ark_relay.features import essence  # noqa: PLC0415
         essence.step(self, now)
 
     def _maybe_activity_topup(self, now: datetime | None = None) -> bool:
-        from ark_relay.features.makeup import activity  # noqa: PLC0415
+        from ark_relay.features import activity  # noqa: PLC0415
         return activity.maybe_run(self, now)
 
     def _maybe_makeup(self, now: datetime | None = None) -> bool:
-        from ark_relay.features.makeup import makeup  # noqa: PLC0415
+        from ark_relay.features import makeup  # noqa: PLC0415
         return makeup.maybe_run(self, now)
 
     def _run_watch(self, now: datetime | None = None) -> None:
         """Every timeout of each script, a script AUTO-MAS refused at its config check, and a
         shift running past its planned end (runwatch)."""
-        from ark_relay.features.run import runwatch  # noqa: PLC0415
+        from ark_relay.features import runwatch  # noqa: PLC0415
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         if self._applog is None:
             self._applog = runwatch.AppLog(runwatch.applog_path(self.cfg.automas_dir))
@@ -992,7 +992,7 @@ class Engine:
 
     def _shift_check(self, now: datetime | None = None) -> None:
         """The after-shift check, once per finished morning / evening shift (selfcheck/shiftcheck.py)."""
-        from ark_relay.features.selfcheck import shiftcheck  # noqa: PLC0415
+        from ark_relay.features import selfcheck as shiftcheck  # noqa: PLC0415
         shiftcheck.maybe_run(self, (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ))
 
     def _compose_daily(self, day: str, entries: list[dict]) -> tuple[str, str]:

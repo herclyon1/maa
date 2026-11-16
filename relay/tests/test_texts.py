@@ -23,8 +23,8 @@ def _part_texts_gate_main():  # noqa: C901
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
     from ark_relay.core import texts
-    from ark_relay.features.verify import collector_okww
-    from ark_relay.features.weekly import garden, annihilation, weeklyboss
+    from ark_relay.features import outcome as collector_okww
+    from ark_relay.features import annihilation as garden, annihilation, weeklyboss
     from ark_relay.core import ledger as core
 
 
@@ -98,7 +98,7 @@ def _part_texts_gate_main():  # noqa: C901
     _HEDGE_ONLY = [v for v in texts.VAGUE if v not in ("未知错误", "这一步", "有问题", "出错")] + list(texts.JARGON)
     vague_hits = []
     _scanned_literals = 0
-    for f in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks"} & set(p.parts)]) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
+    for f in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks", "machinechecks.py"} & set(p.parts)]) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
         if f.name == "summary.py":
             continue                            # the model prompt, abandoned path; not a notification
         for ln, val in _user_facing_literals(f):
@@ -118,7 +118,7 @@ def _part_texts_gate_main():  # noqa: C901
     print("[代码里不许再出现写死的通知标题]")
     bad = []
     pat = re.compile(r"notifier\.send(?:_group)?\(\s*f?\"")
-    for f in list([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks"} & set(p.parts)]) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
+    for f in list([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks", "machinechecks.py"} & set(p.parts)]) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
         if f.name == "texts.py":
             continue
         for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
@@ -126,7 +126,7 @@ def _part_texts_gate_main():  # noqa: C901
                 bad.append(f"{f.name}:{i}: {line.strip()[:80]}")
     check("写死的标题为零", bad, [])
     # 地板：glob 扫到 0 个文件也会「零违规」，闸门成摆设。2026-09-08 回放测试栽过一次。
-    _scanned = len(list([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks"} & set(p.parts)])) + 2
+    _scanned = len(list([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks", "machinechecks.py"} & set(p.parts)])) + 2
     check("确实扫到了文件（至少 20 个）", _scanned >= 20, True)
 
     print("[plain() 本身认得出问题]")
@@ -151,7 +151,7 @@ block's header.
     from ark_relay.core import texts
 
     # automas_keeper imports win32api at module level, so read its constants from source.
-    _KEEPER = ast.parse((ROOT / "ark_relay/features/host/automas_keeper.py").read_text(encoding="utf-8"))
+    _KEEPER = ast.parse((ROOT / "ark_relay/features/automas_keeper.py").read_text(encoding="utf-8"))
     KEEPER = {t.id: n.value.value for n in _KEEPER.body if isinstance(n, ast.Assign)
               for t in n.targets if isinstance(t, ast.Name) and isinstance(n.value, ast.Constant)}
 
@@ -236,7 +236,7 @@ block's header.
     old = "原话有术语" + "没翻译"
     hits = [str(f.relative_to(ROOT)) for f in sorted((ROOT / "ark_relay").rglob("*.py")) if old in f.read_text(encoding="utf-8")]
     check("代码里不再有那句半截话（collect_retry.py 的说明里提到它是历史）", hits,
-          ["ark_relay/features/makeup/collect_retry.py"])
+          ["ark_relay/features/collect_retry.py"])
 
 
 def _part_user_switches():  # noqa: C901
@@ -254,7 +254,7 @@ def _part_user_switches():  # noqa: C901
     # 2026-10-06 also debug_mode (modes.debug_active) and, as rules 2a / 2b, the debug
     # verdict and the red button's manual_stop: those kept errors out of the group.
     COMMAND_RECORDS = {
-        "skip_today": "ark_relay/features/modes/modes.py:_day_queues",
+        "skip_today": "ark_relay/features/modes.py:_day_queues",
     }
 
     # R3: the marker, and the names that make a dedupe key one occurrence.
@@ -264,11 +264,9 @@ def _part_user_switches():  # noqa: C901
     # R4: the relay's own power-off, the one signal that may keep a line from the group,
     # and the service host's one wrapper of it (checked: it may only wait for that signal).
     # The host is service.py and what was split out of it into features/host/ (2026-10-11).
-    R4_FILES = {"service.py", *(f"ark_relay/features/host/{m}.py" for m in (
-        "automas_keeper", "automas_procs", "day_roll", "dirwatch", "mainloop", "procwatch",
-        "shutdown_signs", "wmi_diag", "wmi_subscription"))}
-    RELAY_POWER_OFF = "ark_relay/features/alarm/errwatch.py:relay_shutdown_issued"
-    R4_WRAPPER = "ark_relay/features/host/shutdown_signs.py:_going_down_soon"
+    R4_FILES = {"service.py", "ark_relay/features/automas_keeper.py", "ark_relay/features/procwatch.py"}
+    RELAY_POWER_OFF = "ark_relay/features/errwatch.py:relay_shutdown_issued"
+    R4_WRAPPER = "ark_relay/features/procwatch.py:_going_down_soon"
     WRAPPER_PLAIN_CALLS = {"monotonic", "sleep", "min"}
 
     # R7: the one log line of the log route, and the function that picks the route.
@@ -676,6 +674,12 @@ def _part_user_switches():  # noqa: C901
             if not isinstance(f, ast.Attribute):
                 return None
             base = f.value
+            if not hasattr(m, "_self_aliases"):
+                m._self_aliases = {t.id for x in ast.walk(m.tree) if isinstance(x, ast.Assign)
+                                   and isinstance(x.value, ast.Subscript) and _ref(x.value.value) == "modules"
+                                   for t in x.targets if isinstance(t, ast.Name)}
+            if isinstance(base, ast.Name) and base.id in m._self_aliases:
+                return (m.rel, f.attr) if f.attr in m.fns else None
             if isinstance(base, ast.Name) and base.id in m.imports:
                 tm = self.by_stem.get(m.imports[base.id])
                 return (tm.rel, f.attr) if tm and f.attr in tm.fns else None
@@ -1193,7 +1197,7 @@ def _part_user_switches():  # noqa: C901
                 if not isinstance(n, ast.If) or n.lineno >= last or not n.body \
                         or not isinstance(n.body[-1], (ast.Return, ast.Continue, ast.Break)):
                     continue
-                if any(self.is_alarm_call(m, x, fn) for b in n.body for x in ast.walk(b)):
+                if any(self.is_alarm_call(m, x, fn) or (isinstance(x, ast.Call) and self.resolve(m, x, fn) in self.alarms) for b in n.body for x in ast.walk(b)):
                     continue      # it alarms on its own way out (an info send there is a demotion: still a hit)
                 if isinstance(n.body[-1], (ast.Continue, ast.Break)):
                     # skipping an item only matters when the alarm is inside that loop
@@ -1802,7 +1806,7 @@ def _part_user_switches():  # noqa: C901
     def command_records_hold(scan: Scan) -> list[str]:
         """Rule 2's readers are what COMMAND_RECORDS says: whitelisted, dispatched, present."""
         out = []
-        cm = scan.mods.get("ark_relay/features/phone/commands.py")
+        cm = scan.mods.get("ark_relay/features/commands.py")
         if cm is None:
             return ["commands.py not found: rule 2 cannot be checked"]
         allowed = set()
@@ -1830,7 +1834,7 @@ def _part_user_switches():  # noqa: C901
     # such a pull is named here: while its switch is on, the place is a hit like any
     # other and needs its line with the user's words. Read from the source (a literal
     # True / False at module level), not by importing the module.
-    SWITCHED_PULLS = {"ark_relay/features/schedule/stagegate.py:_gate_due": "PULL_FROM_QUEUE"}
+    SWITCHED_PULLS = {"ark_relay/features/stagegate.py:_gate_due": "PULL_FROM_QUEUE"}
 
 
     def switched_pulls(sources: dict[str, str]) -> tuple[list[Hit], list[str]]:
@@ -1896,20 +1900,20 @@ def _part_user_switches():  # noqa: C901
         return was
     ''')
     COMMAND_SAMPLE_BASE = {
-        "ark_relay/features/phone/commands.py": ('REVERSIBLE = {"debug_mode", "skip_today"}\nMUTATING = set()\n'
+        "ark_relay/features/commands.py": ('REVERSIBLE = {"debug_mode", "skip_today"}\nMUTATING = set()\n'
                               'def apply_command(cmd):\n    action = cmd["action"]\n'
                               '    if action == "debug_mode":\n        return 1\n'
                               '    if action == "skip_today":\n        return 2\n'),
-        "ark_relay/features/modes/modes.py": ('from . import queues\ndef debug_active(d):\n    return False\n'
+        "ark_relay/features/modes.py": ('from . import queues\ndef debug_active(d):\n    return False\n'
                            'def _day_queues(store, day):\n    return []\n'
                            'def _maybe_engage(store, d, day):\n    wanted = _day_queues(store, day)\n'
                            '    for queue in wanted:\n        queues.apply(d, queue, enabled=False)\n'),
-        "ark_relay/features/schedule/queues.py": 'def apply(d, name, enabled=None):\n    pass\n',
+        "ark_relay/features/queues.py": 'def apply(d, name, enabled=None):\n    pass\n',
     }
     # Shaped like commands.py / handle.py / boot_stages.py: the red button's chain that
     # rule 2b checked until 2026-10-06. Now its manual_stop exit is a hit like any other.
     ESTOP_SAMPLE = {
-        "ark_relay/features/phone/commands.py": dedent('''\
+        "ark_relay/features/commands.py": dedent('''\
         ESTOP_SEED = ({"start": "2026-09-30T09:46:28+08:00", "end": "2026-09-30T09:47:22+08:00"},)
         def _estop_windows_path(d):
             return d
@@ -1925,7 +1929,7 @@ def _part_user_switches():  # noqa: C901
             _estop_window_mark(state_dir, "now")
             return True, ""
         '''),
-        "ark_relay/features/alarm/handle.py": dedent('''\
+        "ark_relay/features/handle.py": dedent('''\
         from . import commands
         def _estop_overlap(eng, rec):
             try:
@@ -2157,20 +2161,20 @@ def _part_user_switches():  # noqa: C901
             eng.notifier.send(t, b, alert=True)
         '''), "MUTE-once"),
         # R4: only service.py, only relay_shutdown_issued(), only its true branch, only below WARNING
-        "the relay's power-off outside service.py": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "ark_relay/_sample.py": LOG + dedent('''\
+        "the relay's power-off outside service.py": ({"ark_relay/features/errwatch.py": ERRWATCH, "ark_relay/_sample.py": LOG + dedent('''\
         from . import errwatch
         def f(eng):
             if errwatch.relay_shutdown_issued():
                 log.info("按关机处理，不算故障")
                 return
         ''')}, "MUTE-log"),
-        "the relay's power-off negated": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+        "the relay's power-off negated": ({"ark_relay/features/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay.features.alarm import errwatch
             if not errwatch.relay_shutdown_issued():
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-        "the else of the relay's power-off": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+        "the else of the relay's power-off": ({"ark_relay/features/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay.features.alarm import errwatch
             if errwatch.relay_shutdown_issued():
@@ -2178,20 +2182,20 @@ def _part_user_switches():  # noqa: C901
             else:
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-        "the relay's power-off asked with an argument": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+        "the relay's power-off asked with an argument": ({"ark_relay/features/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay.features.alarm import errwatch
             if errwatch.relay_shutdown_issued(lambda: True):
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-        "a WARNING kept from the group at the relay's power-off": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH,
+        "a WARNING kept from the group at the relay's power-off": ({"ark_relay/features/errwatch.py": ERRWATCH,
                                                                     "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay.features.alarm import errwatch
             if errwatch.relay_shutdown_issued():
                 log.warning("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-        "a wrapper that asks something besides the relay's power-off": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH,
+        "a wrapper that asks something besides the relay's power-off": ({"ark_relay/features/errwatch.py": ERRWATCH,
                                                                            "service.py": LOG + dedent('''\
         def _going_down_soon():
             from ark_relay.features.alarm import errwatch
@@ -2201,13 +2205,13 @@ def _part_user_switches():  # noqa: C901
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
         # until 2026-10-06 these passed R4: Windows going down for any reason is not the relay's power-off
-        "Windows going down": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+        "Windows going down": ({"ark_relay/features/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay.features.alarm import errwatch
             if errwatch.going_down():
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-        "a wrapper that asks Windows going down": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+        "a wrapper that asks Windows going down": ({"ark_relay/features/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         import time
         def _going_down_soon(seconds=15.0):
             from ark_relay.features.alarm import errwatch
@@ -2261,13 +2265,13 @@ def _part_user_switches():  # noqa: C901
             disable(cfg, set(rec.get("tasks") or []))
         '''), "OFF-keep"),
         # until 2026-10-06 rule 2 / 2a / 2b let these through; each keeps an error out of the group
-        "debug mode keeping an alarm away": ({**COMMAND_SAMPLE_BASE, "ark_relay/features/alarm/missed.py": (
+        "debug mode keeping an alarm away": ({**COMMAND_SAMPLE_BASE, "ark_relay/features/handle.py": (
             'from . import modes\ndef check(eng):\n    if modes.debug_active(eng.d):\n'
         '        return\n    eng.notifier.send("t", "b", alert=True)\n')}, "MUTE-guard"),
         "debug mode's 不报漏跑 line": ({**COMMAND_SAMPLE_BASE, "ark_relay/core/engine.py": LOG + (
             'from . import modes\ndef tick(eng):\n    if modes.debug_active(eng.d):\n'
         '        log.info("调试模式生效：不关机、不报漏跑")\n')}, "MUTE-log"),
-        "the debug verdict's early exit": ({**COMMAND_SAMPLE_BASE, "ark_relay/features/shutdown/shutdown.py": dedent('''\
+        "the debug verdict's early exit": ({**COMMAND_SAMPLE_BASE, "ark_relay/features/shutdown.py": dedent('''\
         from . import modes
         def decide(eng):
             if modes.debug_active(eng.d):
@@ -2439,7 +2443,7 @@ def _part_user_switches():  # noqa: C901
                     eng.notifier.send("t", "b", alert=True)
                     eng._missed_alerted.add(key)
         '''), "R3"),
-        "the relay's own power-off, in service.py": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
+        "the relay's own power-off, in service.py": ({"ark_relay/features/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         class K:
             def exited(self):
                 from ark_relay.features.alarm import errwatch
@@ -2453,8 +2457,8 @@ def _part_user_switches():  # noqa: C901
                     return
                 self.notifier.send("❌ 起不来", "b", alert=True)
         ''')}, "R4"),
-        "the relay's own power-off, waited for in service.py": ({"ark_relay/features/alarm/errwatch.py": ERRWATCH,
-                                                                "ark_relay/features/host/shutdown_signs.py": dedent('''\
+        "the relay's own power-off, waited for in service.py": ({"ark_relay/features/errwatch.py": ERRWATCH,
+                                                                "ark_relay/features/procwatch.py": dedent('''\
         import time
         def _going_down_soon(seconds=15.0):
             from ark_relay.features.alarm import errwatch
@@ -2466,7 +2470,7 @@ def _part_user_switches():  # noqa: C901
                 time.sleep(min(0.5, left))
             return True
         '''),
-                                                                "ark_relay/features/host/automas_keeper.py": LOG + dedent('''\
+                                                                "ark_relay/features/automas_keeper.py": LOG + dedent('''\
         from ark_relay.features.host import shutdown_signs
         class K:
             def exited(self):
@@ -2560,13 +2564,13 @@ def _part_user_switches():  # noqa: C901
                      f"got {sorted(listed)} {bad}")
         if not verdict([], {"ark_relay/x.py:f": "x"}):
             fails.append("a listed key with no hit must fail")
-        on, probs = switched_pulls({"ark_relay/features/schedule/stagegate.py": "PULL_FROM_QUEUE = True\ndef _gate_due():\n    pass\n"})
-        if [h.key for h in on] != ["ark_relay/features/schedule/stagegate.py:_gate_due"] or probs:
+        on, probs = switched_pulls({"ark_relay/features/stagegate.py": "PULL_FROM_QUEUE = True\ndef _gate_due():\n    pass\n"})
+        if [h.key for h in on] != ["ark_relay/features/stagegate.py:_gate_due"] or probs:
             fails.append(f"a switched-on queue pull must be a hit, got {on} {probs}")
-        off, probs = switched_pulls({"ark_relay/features/schedule/stagegate.py": "PULL_FROM_QUEUE = False\ndef _gate_due():\n    pass\n"})
+        off, probs = switched_pulls({"ark_relay/features/stagegate.py": "PULL_FROM_QUEUE = False\ndef _gate_due():\n    pass\n"})
         if off or probs:
             fails.append(f"a switched-off queue pull must not be a hit, got {off} {probs}")
-        _, probs = switched_pulls({"ark_relay/features/schedule/stagegate.py": "PULL_FROM_QUEUE = bool(1)\ndef _gate_due():\n    pass\n"})
+        _, probs = switched_pulls({"ark_relay/features/stagegate.py": "PULL_FROM_QUEUE = bool(1)\ndef _gate_due():\n    pass\n"})
         if not probs:
             fails.append("a switch that is not a literal must be refused")
         return fails
@@ -2639,27 +2643,27 @@ def _part_mute_verdicts():  # noqa: C901
     # Places that keep something from the group because it is not a fault at all - not
     # because it fixed itself. Adding one means editing this test, with its source.
     NOT_A_FAULT = {
-        "ark_relay/features/host/automas_keeper.py:_AutomasKeeper.stopping":
+        "ark_relay/features/automas_keeper.py:_AutomasKeeper.stopping":
             "only the farm's own deadline power-off: the mark the farm leaves right before shutdown /s, a normal "
-        "outcome and a shutdown.exe request at most 30 min later (ark_relay/features/host/shutdown_signs.py:"
+        "outcome and a shutdown.exe request at most 30 min later (ark_relay/features/procwatch.py:"
         "farm_poweroff_planned); relay.log 2026-11-13 08:20:06 / 08:22:20 is such a power-off. Every other "
-        "shutdown exit is still the WARNING in ark_relay/features/host/automas_keeper.py:_AutomasKeeper.stopping",
-        "ark_relay/features/alarm/handle.py:_drop_update_after_done":
+        "shutdown exit is still the WARNING in ark_relay/features/automas_keeper.py:_AutomasKeeper.stopping",
+        "ark_relay/features/handle.py:_drop_update_after_done":
             "MaaEnd installing its own new build after the shift's round had done its work: the upstream "
-        "update, no work left undone (ark_relay/features/alarm/unresolved.py:done_in_shift counts only a "
-        "round that started before the restart; ark_relay/features/alarm/handle.py:_update_restart_done "
-        "checks the done round; without one ark_relay/features/alarm/handle.py:_flush_pending pushes the restart)",
-        "ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py:_skip_short":
+        "update, no work left undone (ark_relay/features/handle.py:done_in_shift counts only a "
+        "round that started before the restart; ark_relay/features/handle.py:_update_restart_done "
+        "checks the done round; without one ark_relay/features/handle.py:_flush_pending pushes the restart)",
+        "ark_relay/features/okww_files/ark_overrides.tasks.py:_skip_short":
             "only the skip is normal: no fight for no reward and no AUTO-MAS retry that would find no more "
-        "waveplates; the shortage itself is red and pushed (ark_relay/features/verify/outcome.py:okww_checks)",
-        "ark_relay/features/shutdown/shutdown.py:_say_if_moment_passed":
+        "waveplates; the shortage itself is red and pushed (ark_relay/features/outcome.py:okww_checks)",
+        "ark_relay/features/shutdown.py:_say_if_moment_passed":
             "why the machine stays on past its moment: each reason is a state whose fault pushes on its own path "
-        "(ark_relay/features/run/runwatch.py:check_timeouts, ark_relay/features/alarm/handle.py:_flush_pending); "
-        "the relay losing track is a WARNING (ark_relay/features/shutdown/shutdown.py:RELAY_LOST_TRACK)",
-        "ark_relay/features/host/procwatch.py:_ProcessWatch._push_open_drop":
+        "(ark_relay/features/runwatch.py:check_timeouts, ark_relay/features/handle.py:_flush_pending); "
+        "the relay losing track is a WARNING (ark_relay/features/shutdown.py:RELAY_LOST_TRACK)",
+        "ark_relay/features/procwatch.py:_ProcessWatch._push_open_drop":
             "Windows tearing WMI down after a power-off request it logged is the shutdown itself (System log "
         "1074 at 10-10 04:27:24, the drop at 04:28:45); a drop before the request still pushes "
-        "(ark_relay/features/host/procwatch.py:_ProcessWatch._push_open_drop)",
+        "(ark_relay/features/procwatch.py:_ProcessWatch._push_open_drop)",
     }
     # What writes the red item for a fault that fixed itself (techlog.self_heal).
     RED_WRITERS = re.compile(r"\brecovered\(\)|\btechlog\.self_heal\(|\b_self_heal_red\(")
@@ -2826,7 +2830,7 @@ def _part_mute_verdicts():  # noqa: C901
           True)
     check("not-a-fault for a place not on NOT_A_FAULT",
           bool(problems(GOOD + " | verdict: normal-state - not-a-fault: the daily report says it, that is enough")), True)
-    DROP = "ark_relay/features/host/procwatch.py:_ProcessWatch._push_open_drop"
+    DROP = "ark_relay/features/procwatch.py:_ProcessWatch._push_open_drop"
     check("not-a-fault for a place on NOT_A_FAULT passes",
           problems(DROP + " | x | 「他的话」 | 2026-10-10 13:35 | verdict: normal-state - not-a-fault: Windows tearing "
                       "WMI down after a power-off request it logged (System log 1074 at 10-10 04:27:24)"), [])
@@ -2836,7 +2840,7 @@ def _part_mute_verdicts():  # noqa: C901
           bool(problems(GOOD + " | verdict: normal-state - not-a-fault: the weekly boss short on crystal waveplates is the "
                            "game's resources, not a fault (his 10-06 10:34 words)")), True)
     check("not-a-fault on NOT_A_FAULT resting on what he asked for (10-10 stay-on line)",
-          bool(problems("ark_relay/features/shutdown/shutdown.py:_say_if_moment_passed | x | 「他的话」 | 2026-10-10 23:22"
+          bool(problems("ark_relay/features/shutdown.py:_say_if_moment_passed | x | 「他的话」 | 2026-10-10 23:22"
                     " | verdict: normal-state - not-a-fault: he asked for that one message only; see "
                     "ark_relay/core/notify.py:route_of")), True)
     check("recovered with a reason but no source",
@@ -3022,7 +3026,7 @@ def _part_daily_format():
     check("日常那趟单独一行", b4.count("明日方舟　"), 1)
 
     print("\n[audit 11-08 C-02: a task left unjudged (MaaEnd's own record unread once) keeps the title off 全绿]")
-    from ark_relay.core import ledger_report as _lr
+    from ark_relay.core import ledger as _lr
     _e = {"run_id": "2026-11-08/endfield/MaaEnd-05-30-00", "script": "MaaEnd", "user": "endfield", "ok": True,
           "started": "2026-11-08T09:30:00+08:00", "finished": "2026-11-08T10:20:00+08:00", "failed_tasks": [],
           "raw": {"tasks_done": ["赠送干员礼物", "日常奖励领取"], "tasks_trail_miss": 1,
@@ -3157,10 +3161,10 @@ No network: banners and the report-writing model are stubbed as in the _part_rep
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.report import report
+    from ark_relay.features import errwatch
+    from ark_relay.features import report
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.core import ledger as core, techlog
+    from ark_relay.core import ledger as core, statestore as techlog
     from ark_relay.core.ledger import State
 
 
@@ -3382,7 +3386,7 @@ No network: banners and the report-writing model are stubbed as in the _part_rep
     e = machine()
     e.state.ledger_path(TODAY).write_text(
         "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in day10), encoding="utf-8")
-    from ark_relay.features.makeup import makeup, marker
+    from ark_relay.features import makeup, makeup as marker
     marker._write_marker(e.cfg.state_dir, TODAY, {"MAA": {
         "result": makeup.GAVE_UP, "run_id": f"{TODAY}/x/m3",
         "note": "不补跑：失败的不只是开始唤醒或连模拟器（MAA 在完成任务前中止），拿不准有没有打过仗"}})
@@ -3465,7 +3469,7 @@ runs in the report) and the retry / make-up / stage-gate lines.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import summary
-    from ark_relay.features.report import report
+    from ark_relay.features import report
 
     for label, ok in (("summary.daily_report removed", not hasattr(summary, "daily_report")),
                       ("_compose_daily has no model branch", "日报由模型撰写" not in inspect.getsource(report._compose_daily))):
@@ -3507,7 +3511,7 @@ report.py 的 10 个函数里 5 个从来没被执行过，`_maybe_daily_report`
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.report import report, scoreboard
+    from ark_relay.features import report, report as scoreboard
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.ledger import State
 
@@ -4011,7 +4015,7 @@ def _part_scoreboard_main():
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.report import scoreboard
+    from ark_relay.features import report as scoreboard
     from ark_relay.core.config import SERVER_TZ, RunRecord
     from ark_relay.core.ledger import State
 
@@ -4100,7 +4104,7 @@ def _part_scoreboard_main():
     check("记分牌照样数了这一趟", st5.store.get("versions", "scoreboard")["v10"]["runs"], 1)
 
     print("\n[照算照记进日志，但不再印进日报（用户 2026-09-14）]")
-    src = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "report" / "report.py").read_text(encoding="utf-8")
+    src = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "report.py").read_text(encoding="utf-8")
     check("日报流程里仍然算它", "scoreboard.line(" in src, True)
     check("不再拼进正文", "(act, pool, score)" in src, False)
 
@@ -4117,7 +4121,7 @@ for since 2026-10-12T11:38:15+08:00: the Tokyo clock inside a Beijing log.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.ledger import State
-    from ark_relay.features.report import scoreboard
+    from ark_relay.features import report as scoreboard
 
     d = tmpdir()
     st = State(Path(d))
@@ -4145,7 +4149,7 @@ of the daily report; the scoreboard now does the same.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.ledger import State
-    from ark_relay.features.report import scoreboard
+    from ark_relay.features import report as scoreboard
 
 
     V = "20261013030327"
@@ -4356,7 +4360,7 @@ and the evening report still said 全绿 for a run that walked zero routes.
         check("好的那趟还是 ✅", "✅ 终末地" in body)
 
         print("\n[只是设置被新版本重置：日报说没按你的设置跑，不说没干完（2026-10-12）]")
-        from ark_relay.features.verify import outcome
+        from ark_relay.features import outcome
         reset = outcome.summarize([outcome.Check("任务全部完成（跑完没自己退出）", True),
                                    *outcome._dropped_checks(["AutoStockBuyDailyGoodsValleyIV"])], "MaaEnd")
         title3, body3 = core.format_daily(day, [e1, dict(e2, incomplete=reset)])
@@ -4705,13 +4709,13 @@ relay.log was a plain FileHandler and only ever grew. Pinned here:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay import __main__ as relay_main
-    from ark_relay.features.evidence import error_evidence, evidence
-    from ark_relay.features.selfcheck import selfcheck
+    from ark_relay.features import evidence as error_evidence, evidence
+    from ark_relay.features import selfcheck
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.selfcheck.machinechecks import runs as mc_runs, system as mc_system
+    from ark_relay.features import machinechecks as mc_runs, machinechecks as mc_system
 
     try:
-        from ark_relay.core import logfile
+        from ark_relay.core import statestore as logfile
     except ImportError:          # before the fix: there is no rotating handler at all
         logfile = None
 
@@ -4762,7 +4766,7 @@ relay.log was a plain FileHandler and only ever grew. Pinned here:
         lg.addHandler(h)
         # The failure is said through ark.logfile (logfile.RelayLogHandler.handle);
         # in production this handler sits on the root logger and gets that line.
-        lf = logfile.log
+        lf = logfile._log_logfile
         lf_prop, lf.propagate = lf.propagate, False
         lf.addHandler(h)
         real_rotate = h.rotate
@@ -4914,8 +4918,8 @@ is that test; boot_stages._relay_poweroff_live feeds it from the engine.
         sys.modules.setdefault(_name, _Stub(_name))
 
     import boot_stages
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.shutdown import shutdown
+    from ark_relay.features import errwatch
+    from ark_relay.features import shutdown
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -5153,10 +5157,10 @@ the relay.log timeline is relay-1016.log 220-254 (09:34:07 tick, 10:34:12 backst
     from ark_relay.core import ledger as core, texts
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
-    from ark_relay.features.alarm import errwatch, missed
-    from ark_relay.features.run import runwatch
-    from ark_relay.features.shutdown import shutdown
-    from ark_relay.features.selfcheck import machinecheck as _mc
+    from ark_relay.features import errwatch, handle as missed
+    from ark_relay.features import runwatch
+    from ark_relay.features import shutdown
+    from ark_relay.features import machinecheck as _mc
     _mc.load()
     _mc_real = dict(_mc.CHECKS)
     _mc.CHECKS.clear()
@@ -5277,7 +5281,7 @@ the relay.log timeline is relay-1016.log 220-254 (09:34:07 tick, 10:34:12 backst
     print("\n[the interim / daily title is not 全绿]")
     # The same steps report._compose_daily runs before format_daily (no history log for the row).
     from ark_relay.core import collector
-    from ark_relay.features.report import report
+    from ark_relay.features import report
     entries = [collector.refresh_raw(r, HIST, None) for r in e.state.read_ledger("2026-10-16")]
     report._fill_single_run_sanity(entries)
     entries, _tests = core.split_test(entries, [])
@@ -5323,11 +5327,11 @@ the relay.log timeline is relay-1016.log 220-254 (09:34:07 tick, 10:34:12 backst
 
 
     h = _H()
-    missed.log.addHandler(h)
+    missed._log_missed.addHandler(h)
     try:
         e4._check_missed_runs(at(10, 15, 5))
     finally:
-        missed.log.removeHandler(h)
+        missed._log_missed.removeHandler(h)
     check("the 10:15 alarm went out", [t for t, _ in alarms(e4)], ["🔌 MaaEnd 没有运行（早班）"])
     check("its log line is marked as already in the group (no 🩺 copy)",
           [bool(getattr(r, errwatch.PUSHED, False)) for r in cap if r.levelno >= logging.WARNING], [True])
@@ -5396,7 +5400,7 @@ A condition that clears and comes back is said again.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.core import mastercfg, mastercfg_maa, plan
+    from ark_relay.core import mastercfg, mastercfg as mastercfg_maa, plan
 
     FAILED: list[str] = []
 
@@ -5508,7 +5512,7 @@ burnt sanity potions. Nothing here had a test.
     import json
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.gameupdate import gameupdate
+    from ark_relay.features import gameupdate
     from ark_relay.core import mastercfg
 
 
@@ -5805,7 +5809,7 @@ def _part_engine_pending():  # noqa: C901
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng
-    from ark_relay.features.modes import modes
+    from ark_relay.features import modes
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
 
@@ -5899,7 +5903,7 @@ def _part_engine_pending():  # noqa: C901
     print("\n[盘上有一条残缺记录，不许连累好的那条]")
     sdir2 = tmpdir()
     st = State(sdir2)
-    from ark_relay.core.transport import record_to_payload
+    from ark_relay.core.collector import record_to_payload
     try:
         st.save_pending({"pending": [record_to_payload(rec("2026-09-08/wuwa/OK-WW-1")),
                                      {"run_id": "缺时间字段"}],
@@ -6038,7 +6042,7 @@ def _part_engine_pending():  # noqa: C901
             check(f"进程表里只有 {name.decode()}", eng.Engine._scripts_running(), want)
 
         print("\n[OK-WW counts too, however it was started (10-27: a make-up run outside AUTO-MAS was 「nothing running」)]")
-        from ark_relay.features.okww_patch import okww_overlay
+        from ark_relay.features import okww_overlay
         real_okww, real_env = okww_overlay.okww_running, os.environ.get("ARK_OKWW_DIR")
         okww_dir = tmpdir()
         logs = okww_dir / "data" / "apps" / "ok-ww" / "working" / "logs"
@@ -6173,7 +6177,7 @@ def _part_engine_pending():  # noqa: C901
     check("成功的两条记成已处理", sorted(e12.state.seen), ["r1", "r3"])
 
     print("\n[一条记录次次处理都出错：重试 HANDLE_TRIES 轮就放弃，群里只收到一条（audit s2 F3）]")
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import errwatch
 
 
     class GroupCount(errwatch.ErrorKindAlert):
@@ -6283,7 +6287,7 @@ def _part_loop_parts():  # noqa: C901
         sys.modules.setdefault(name, _Stub(name))
 
     import service
-    from ark_relay.features.host import automas_keeper, automas_procs, dirwatch, mainloop, procwatch, shutdown_signs
+    from ark_relay.features import automas_keeper, automas_keeper as automas_procs, automas_keeper as dirwatch, automas_keeper as mainloop, procwatch, procwatch as shutdown_signs
 
 
     def set_time(t):
@@ -6342,7 +6346,7 @@ def _part_loop_parts():  # noqa: C901
             self.lines = []
 
         def _add(self, level, fmt, *a, **k):
-            from ark_relay.features.alarm import errwatch
+            from ark_relay.features import errwatch
             rec = bool((k.get("extra") or {}).get(errwatch.RECOVERED))
             self.lines.append((level, fmt % a if a else fmt, rec))
 
@@ -6588,11 +6592,11 @@ Pinned here:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    from ark_relay.core import netretry, notify
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.maintenance import efstatus
-    from ark_relay.features.needtable import build
-    from ark_relay.features.phone import cos_store
+    from ark_relay.core import notify as netretry, notify
+    from ark_relay.features import errwatch
+    from ark_relay.features import maintenance as efstatus
+    from ark_relay.features import needtable as build
+    from ark_relay.features import phone as cos_store
 
 
     class Rows(logging.Handler):
@@ -6605,9 +6609,9 @@ Pinned here:
 
 
     rows = Rows()
-    netretry.log.addHandler(rows)
-    netretry.log.setLevel(logging.DEBUG)
-    netretry.log.propagate = False
+    netretry._log_netretry.addHandler(rows)
+    netretry._log_netretry.setLevel(logging.DEBUG)
+    netretry._log_netretry.propagate = False
     notify._rng.seed(7)
 
 
@@ -6720,7 +6724,7 @@ Pinned here:
         print("\n[心跳：平时一跳只写一次（下一跳就是重试），关机那一跳在 8 秒里再写一次]")
         # dispatch relay-opt-round3b-1108: a 30 s beat retried in the call wrote one 自愈待查 red
         # item per healed beat on a flaky link; the bye has no next beat.
-        from ark_relay.features.phone import phone
+        from ark_relay.features import phone
         from _tmp import tmpdir
         hb = phone.Heartbeat("ark-test-topic", tmpdir(), post=lambda p, t: None, cos=cos)
         urllib.request.urlopen, calls = scripted([ConnectionResetError(54, "reset"), Resp(status=200)])

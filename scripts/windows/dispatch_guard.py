@@ -220,7 +220,7 @@ def _modes():
     off (「本轮已处理完毕，60 秒后关机」) - a powered-off machine cannot be started
     remotely. So the test dispatch turns debug mode on itself, before dispatching."""
     relay_code.use_relay_code()
-    from ark_relay.features.modes import modes  # noqa: PLC0415 - the machine's relay code
+    from ark_relay.features import modes  # noqa: PLC0415 - the machine's relay code
     return modes
 
 

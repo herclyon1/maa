@@ -26,7 +26,7 @@ pushes (phone.send_state) never ask: they report the last answer, or 「没查�
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.phone import phone, redbutton, snapshot
+    from ark_relay.features import phone, redbutton, snapshot
 
     # getattr: on the old code (no cache) the test reaches its assertions and fails there.
     CACHE = getattr(snapshot, "_okww_alive", {"at": 0.0, "alive": None})
@@ -108,7 +108,7 @@ mismatch is a line at boot, said once - not an alarm after the run.
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import okww_overlay
 
 
     V373 = (fx_dir(Path(__file__), "fixtures")
@@ -221,7 +221,7 @@ Audit 2026-10-13 item 7: grouped by timestamp now (headers within 2 s = one even
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_okww as co
+    from ark_relay.features import outcome as co
 
 
     print("[the real 09-01 log: the weekly claim's own wait, not the wrapper]")
@@ -354,15 +354,15 @@ ok.task.exceptions.WaitFailedException
     check("不漏英文", bool(_re.search(r"[A-Za-z]", u.get("okww_error") or "")), False)
 
     print("[中继自己的覆盖层按失败结束：原因本来就是中文，照用，不说不认识]")
-    from ark_relay.features.verify import collector_okww as _cok
+    from ark_relay.features import outcome as _cok
     _said = []
     _h = type("H", (__import__("logging").Handler,), {"emit": lambda self, r: _said.append(r.getMessage())})()
-    _cok.log.addHandler(_h)
+    _cok._log_collector_okww.addHandler(_h)
     why = _cok._okww_say("FarmEchoTask", "这一趟按失败结束：周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」）", "ArkStopped")
     check("原因照用", why, "周本：结晶波片不够领奖（游戏提示「结晶波片不足，无法获取奖励」）")
     check("不说不认识", "不认识" in why, False)
     check("不记「还没有翻译」的警告", [m for m in _said if "还没有翻译" in m], [])
-    _cok.log.removeHandler(_h)
+    _cok._log_collector_okww.removeHandler(_h)
 
     print("[原文和异常都不认识：明说不认识，并且**把原文抄进来**]")
     # 2026-09-08 改的：原来这里只说「原文已记进日志，要补翻译」。那天 OK-WW 早班连败三次，
@@ -384,14 +384,14 @@ ok.task.exceptions.WaitFailedException
     # 原文「📅 Daily Task exception stopped」」. That wrapper only says the daily list
     # stopped; the reason is in the innermost traceback. Leaving it untranslated meant
     # the notification could only say it did not recognise the error.
-    from ark_relay.features.verify.collector_okww import _okww_say
+    from ark_relay.features.outcome import _okww_say
 
     _said = _okww_say("TaskExecutor", "📅 Daily Task exception stopped", "Exception")
     check("这条真实日志行翻得出来", "还不认识" in _said, False)
     check("说的是日常清单停了", "日常清单整个停了" in _said, True)
     check("指到真正的原因在哪", "真正的原因" in _said, True)
     check("不许抢掉更靠谱的那条：回放里 09-01 那条仍报「等一个画面没等到」",
-          "Daily Task exception stopped" in str(__import__("ark_relay.features.verify.collector_okww", fromlist=["x"])._OKWW_MSG_ZH), False)
+          "Daily Task exception stopped" in str(__import__("ark_relay.features.outcome", fromlist=["x"])._OKWW_MSG_ZH), False)
     check("不认识的错还是照旧说不认识",
           "还不认识" in _okww_say("TaskExecutor", "完全没见过的错", "WeirdError"), True)
     check("v3.7.14-beta.2 zh_CN 请在大世界并在队伍中开始 翻得出人话",
@@ -411,7 +411,7 @@ ok.task.exceptions.WaitFailedException
 
     print("\n[「游戏即将重启」弹窗：看客户端到底换没换文件（2026-09-12 09:21 只是反作弊刷新）]")
     import os as _os
-    from ark_relay.features.verify import collector_okww as _co
+    from ark_relay.features import outcome as _co
     g = tmpdir()
     root = g / "Wuthering Waves Game"
     (root / "Client" / "Binaries" / "Win64" / "AntiCheatExpert").mkdir(parents=True)
@@ -542,7 +542,7 @@ Audit 2026-10-13 item 14, two real lines of 2026-10-12 (machine-okww-logs):
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_okww as co, outcome
+    from ark_relay.features import outcome as co, outcome
 
 
     L1 = ("2026-10-12 09:52:20,812 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束：周本领奖：这一步没做成 "
@@ -597,8 +597,8 @@ unknown error because only a hand-written pair would have turned it back. Checke
     TMP = tmpdir()
     HERE = Path(__file__).resolve().parent
     sys.path.insert(0, str(HERE.parent))
-    from ark_relay.features.verify import okww_i18n as I
-    from ark_relay.features.verify import outcome
+    from ark_relay.features import outcome as I
+    from ark_relay.features import outcome
 
 
     def root_with(po_text=None, ts_text=None, name="r"):
@@ -809,7 +809,7 @@ machine's .env), so its pure helpers are pulled out of the AST and run here.
               and any(a.name == "NO_STAMINA_FARM_FLAG" for a in n.names) for n in ast.walk(tree)), True)
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import config
-    overrides = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "okww_patch" / "okww_files"
+    overrides = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "okww_files"
                  / "ark_overrides.tasks.py").read_text(encoding="utf-8")
     check("the same path the override obeys", f'NO_STAMINA_FLAG = r"{config.NO_STAMINA_FARM_FLAG}"' in overrides, True)
 
@@ -827,7 +827,8 @@ def _part_okww_names_not_numbers():
     import re
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-    from ark_relay.core import collector, wuwa_tacet
+    from ark_relay.core import collector
+    from ark_relay.core.wuwa_tables import wuwa_tacet
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
     BAD = re.compile(r"#\s*\d|声骸与角色突破材料|武器突破材料$|副本奖励")
@@ -885,7 +886,7 @@ def _part_okww_names_not_numbers():
         if page_tacet.get(idx) != (sets[0], sets[1]):
             fails.append(f"手机 TACET 里第 {idx} 项和 wuwa_tacet 对不上")
 
-    from ark_relay.core import wuwa_forgery
+    from ark_relay.core.wuwa_tables import wuwa_forgery
     for idx, name in page_forge.items():
         if wuwa_forgery.FORGERY.get(idx, ("",))[0] != name:
             fails.append(f"手机 FORGE 第 {idx} 项（{name}）和 wuwa_forgery 对不上")
@@ -940,7 +941,7 @@ exit, or empty output with an error on stderr, is now None.
     import re
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.preupdate import preupdate_okww as P
+    from ark_relay.features import preupdate as P
 
 
     def is_okww(cmdline: str, ps: str = P._OKWW_PY) -> bool:
@@ -1007,7 +1008,7 @@ with `pythonw.exe` so no console window covers the game.
     import subprocess
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.preupdate import preupdate_okww as pk
+    from ark_relay.features import preupdate as pk
 
 
     calls = []
@@ -1135,7 +1136,7 @@ OK-WW 是纯图像识别的战斗脚本，从不读结算界面，所以没有 M
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
-    from ark_relay.features.verify import collector_okww
+    from ark_relay.features import outcome as collector_okww
     from ark_relay.core import ledger as core
 
 
@@ -1240,7 +1241,7 @@ OK-WW 是纯图像识别的战斗脚本，从不读结算界面，所以没有 M
              "duration_min": 15, "failed": [], "drops": {}, "recruits": {}}
     body = "\n".join(core._render_entries([entry])) if hasattr(core, "_render_entries") else ""
     if not body:                      # 渲染函数名不同就退回源码检查
-        src = (Path(__file__).resolve().parents[1] / "ark_relay" / "core" / "ledger_rows.py").read_text(encoding="utf-8")
+        src = (Path(__file__).resolve().parents[1] / "ark_relay" / "core" / "ledger.py").read_text(encoding="utf-8")
         # 2026-08-29 用户要求删掉的两项：
         #   消耗量——「我不需要啊，不要再塞进去了」
         #   活跃度/日常进度——读数被实测证伪（活跃度实际 160 报成 40，
@@ -1272,7 +1273,7 @@ def _part_okww_structured():
 
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
-    from ark_relay.features.verify import collector_okww
+    from ark_relay.features import outcome as collector_okww
 
 
     REAL = (fx_dir(ROOT, "replay") / "2026-09-07" / "wuwa" / "OK-WW-07-27-50.log"
@@ -1307,7 +1308,7 @@ def _part_okww_structured():
           "无音区（日志里没有序号）")
 
     print("[刷体力这一项：强敌那条的几种结局]")
-    from ark_relay.features.verify import outcome as _oc
+    from ark_relay.features import outcome as _oc
 
     def stamina(log):
         got = [c for c in _oc.okww_checks(log, expect_nest=False, expect_daily=False) if c.label == "刷体力"]
@@ -1364,7 +1365,7 @@ there; the claim is skipped and the run goes on. The relay's table read it as
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
-    from ark_relay.features.verify import collector_okww
+    from ark_relay.features import outcome as collector_okww
 
 
     REAL = """2026-09-29 09:28:42,334 INFO TaskExecutor DailyTask:info_set current task in main esc=True
@@ -1419,8 +1420,8 @@ master had the same body that day).
     HERE = Path(__file__).resolve().parent
     sys.path.insert(0, str(HERE.parent))
     from ark_relay.core import texts
-    from ark_relay.features.okww_patch import okww_overlay
-    from ark_relay.features.verify import outcome
+    from ark_relay.features import okww_overlay
+    from ark_relay.features import outcome
 
 
     # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.4 until 2026-11-02.
@@ -1751,7 +1752,7 @@ upstream's own call order, with the game's real text:
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import okww_overlay
 
 
     class Disabled(Exception):
@@ -2273,8 +2274,8 @@ tick. That run's screenshot is fixtures/ww-daily-140-1011-row.png (the bottom of
 
     HERE = Path(__file__).resolve().parent
     sys.path.insert(0, str(HERE.parent))
-    from ark_relay.features.okww_patch import okww_overlay
-    from ark_relay.features.verify import outcome
+    from ark_relay.features import okww_overlay
+    from ark_relay.features import outcome
 
 
     ns = {"__name__": "ark_overrides_test"}
@@ -2522,7 +2523,7 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import okww_overlay
 
 
     REPLAY = fx_dir(Path(__file__), "replay") / "2026-09-07" / "wuwa"
@@ -3371,7 +3372,7 @@ alarm (audit 2026-10-13 item 16). The label is gone; the garden's 「不算完�
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_okww as co
+    from ark_relay.features import outcome as co
 
 
     T = "2026-10-12 10:{:02d}:00,000 {} TaskExecutor {}"
@@ -3502,7 +3503,7 @@ re-teleport) and checks:
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import okww_overlay
 
 
     REPLAY = fx_dir(Path(__file__), "replay")
@@ -3959,7 +3960,7 @@ Three holes found 10-13 against upstream OK-WW v3.7.4 (on the game PC since 10-0
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_okww, outcome
+    from ark_relay.features import outcome as collector_okww, outcome
 
     FX = fx_dir(Path(__file__), "fixtures")
 
@@ -4127,7 +4128,7 @@ audit 2026-10-13 item 22). Lines below are in upstream's and the overlay's forma
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import outcome
+    from ark_relay.features import outcome
 
 
     T = "2026-10-14 09:{:02d}:00,000 {} TaskExecutor {}"
@@ -4187,8 +4188,8 @@ Runs upstream's real v3.7.3 NightmareNestTask (fixture) against the overlay.
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_okww, outcome
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import outcome as collector_okww, outcome
+    from ark_relay.features import okww_overlay
 
 
     # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.3/v3.7.4 body until 2026-11-02.
@@ -4415,7 +4416,7 @@ daily-reward part is the log's (outcome.okww_checks), not the config's.
     import json
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.alarm.gamelogs import _okww_nest_expected
+    from ark_relay.features.handle import _okww_nest_expected
 
 
     def automas(daily=None, nest=None):
@@ -4457,7 +4458,7 @@ daily-reward part is the log's (outcome.okww_checks), not the config's.
     print("\n[the verdict's 「cannot read the config」 item names the file that decides (item 19)]")
     import types
 
-    from ark_relay.features.alarm import verdict
+    from ark_relay.features import handle as verdict
 
     seen = {}
     real_judged = verdict._judged
@@ -4490,7 +4491,7 @@ nests full before any fight is a skip.
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_okww as co, outcome
+    from ark_relay.features import outcome as co, outcome
 
 
     T = "2026-10-13 09:27:{:02d},000 INFO TaskExecutor NightmareNestTask:{}"
@@ -4529,7 +4530,7 @@ rule over every click, named or 「?」, and per wanted name no two different ca
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import outcome
+    from ark_relay.features import outcome
 
 
     T = "2026-10-14 09:00:{:02d},000 INFO TaskExecutor NightmareNestTask:{}"
@@ -4582,7 +4583,7 @@ rule over every click, named or 「?」, and per wanted name no two different ca
     # okww_effective.py and healthcheck.py passed 「落渊南丘」 after 2a7ff78d moved to two nests,
     # so the 10-15 09:20 run - 梦枢天罗 48 then 落渊南丘 41, exactly the setting - printed ❌.
     import re
-    from ark_relay.core.mastercfg_okww import ONLY_NESTS
+    from ark_relay.core.mastercfg import ONLY_NESTS
     text = lines(("name", "梦枢天罗残象聚落"), ("click", 48), ("name", "落渊南丘残象聚落"), ("click", 41),
                  only=",".join(ONLY_NESTS))
     check("the 10-15 run under the configured names: green", [ok for ok, _ in scope(text, ",".join(ONLY_NESTS))], [True])
@@ -4612,8 +4613,8 @@ second try fails too (test_okww_nest_v373.py); this is the relay reading that li
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.okww_patch import okww_overlay
-    from ark_relay.features.verify import collector_okww as co, outcome
+    from ark_relay.features import okww_overlay
+    from ark_relay.features import outcome as co, outcome
 
 
     REAL = (fx_dir(Path(__file__), "fixtures") / "okww-1027-nest-unreachable.log").read_text(encoding="utf-8")
@@ -4687,7 +4688,7 @@ the override:
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import okww_overlay
 
 
     # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.3/v3.7.4 body until 2026-11-02.
@@ -5079,7 +5080,7 @@ window only for a header line without a timestamp. Lines in upstream's format.
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_okww as co
+    from ark_relay.features import outcome as co
 
 
     STACK = "".join(f'  File "x{i}.py", line {i}, in f\n    g()\n' for i in range(200))   # ~5.5 KB
@@ -5167,7 +5168,7 @@ handle 里找「4C声骸 已完成」自然找不到，周本状态一直是「�
     # A verified claim with no counter reading anywhere: unknown, never 「本周已领满」.
     no_read = HEAD + CLAIM + "2026-09-07 10:00:35,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读确认领到，本周剩余 ?/3→?/3\n"
     check("这种行不会被当成回读确认", steps(no_read), ["周本（点了确认 1 次、领完没再读次数，没核实领到）"])
-    from ark_relay.features.verify import outcome
+    from ark_relay.features import outcome
     orig = outcome.weekly_left
     outcome.weekly_left = lambda text: None
     try:
@@ -5226,7 +5227,7 @@ and the two deliberate stops on the way in: 0/3 claims left, short on waveplates
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import okww_overlay
 
 
     class Disabled(Exception):
@@ -5737,7 +5738,7 @@ verified claim now adds 60, unless a drop between two readings already shows it.
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.verify import collector_okww as co
+    from ark_relay.features import outcome as co
 
 
     def spent(*lines):
@@ -5794,7 +5795,7 @@ verified claim now adds 60, unless a drop between two readings already shows it.
     check("the two topped-up claims counted as unread", got.get("okww_weekly_topup_unread"), 2)
     from datetime import datetime
 
-    from ark_relay.core import ledger_rows
+    from ark_relay.core import ledger as ledger_rows
     cost = ledger_rows._block_okww(got, datetime(2026, 10, 12, 15, 33))[1]
     check("the daily report says so", any("另有周本领奖 2 次用备用体力补足" in c for c in cost), True)
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
@@ -5817,7 +5818,7 @@ reads it and says so.
     import json
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import okww_overlay
 
 
     print("[装到 OK-WW 自己的扩展目录里，不碰它的源文件]")
@@ -6097,7 +6098,7 @@ reads it and says so.
     check("改动文件里读的是同一个路径", 'r"C:\\ProgramData\\ark-okww-master.txt"' in okww_overlay.source_text())
 
     print("\n[最新一趟 OK-WW 日志：按修改时间取最新，一周内]")
-    from ark_relay.features.verify import outcome
+    from ark_relay.features import outcome
     hist = tmpdir()
     check("没有历史目录", outcome.latest_okww_run_log(hist / "nope"), None)
     check("目录空着", outcome.latest_okww_run_log(hist), None)
@@ -6173,7 +6174,7 @@ to the group; the healthy install stays 🩹 / log.
     import boot_stages
     from ark_relay.core import texts
     from ark_relay.core.notify import route_of
-    from ark_relay.features.okww_patch import okww_overlay as ov
+    from ark_relay.features import okww_overlay as ov
 
 
     class Notes:
@@ -6283,9 +6284,9 @@ wraps our wrappers again. So:
     import os
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.core import procs, texts
+    from ark_relay.core import desktop as procs, texts
     from ark_relay.core import config as C
-    from ark_relay.features.okww_patch import okww_overlay as ov
+    from ark_relay.features import okww_overlay as ov
 
 
     REAL_RUNNING = getattr(ov, "okww_running", None)
@@ -6422,10 +6423,10 @@ to the group).
         sys.modules.setdefault(_name, _Stub(_name))
 
     import boot_stages
-    from ark_relay.features.okww_patch import okww_overlay as ov
-    from ark_relay.features.phone import commands
-    from ark_relay.features.preupdate import preupdate
-    from ark_relay.features.alarm import errwatch
+    from ark_relay.features import okww_overlay as ov
+    from ark_relay.features import commands
+    from ark_relay.features import preupdate
+    from ark_relay.features import errwatch
 
     # The stubbed win32api would make GetSystemMetrics read as "Windows is going down", and the
     # boot pre-update stops at once for a stopping relay (boot_stages._stage_preupdate, 10-16).
@@ -6532,7 +6533,7 @@ executed here with stand-ins only for what it imports.
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import okww_overlay
 
     FIXTURE = fx_dir(Path(__file__), "fixtures") / "okww-v3.7.20-beta.3-start_controller.py.txt"
     CANCELLED = "was cancelled while the game was starting"
@@ -6734,7 +6735,7 @@ def _part_okww_overlay_copies():
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features import okww_overlay
 
     fails = []
 
@@ -6809,7 +6810,7 @@ def _part_okww_overlay_copies():
     # check (PATCH_COVERAGE) or a behaviour test file that drives the method.
     # Naming the method in that file is the cheapest proof the file is about it; for
     # 「run」 the name alone says little, the mapping itself is the claim.
-    from ark_relay.features.verify import outcome
+    from ark_relay.features import outcome
     TESTS = Path(__file__).resolve().parent
     bound = set(re.findall(r'@override\((\w+), "(\w+)"', src))
     bound |= set(re.findall(r'_farm_hook\((\w+), "(\w+)"\)', src))
@@ -6849,7 +6850,7 @@ launch must not leave the config pointed somewhere else.
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.echofarm import echofarm
+    from ark_relay.features import echofarm
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -7019,7 +7020,7 @@ launch must not leave the config pointed somewhere else.
         return c
 
 
-    import ark_relay.features.weekly.weeklyboss as _wbw
+    import ark_relay.features.weeklyboss as _wbw
     _wrap_log = tmpdir() / "wrap.log"
     _wrap_real = _wbw._okww_log
     _wbw._okww_log = lambda: _wrap_log
@@ -7204,7 +7205,7 @@ launch must not leave the config pointed somewhere else.
     # 2026-09-09: the game exited mid-farm and OK-WW sat against a window that was no
     # longer there - six minutes without a single line and not one word about it.
     # Silence that long now ends the run and says so.
-    import ark_relay.features.weekly.weeklyboss as _wb
+    import ark_relay.features.weeklyboss as _wb
     _real_log = _wb._okww_log
     _logfile = tmpdir() / "ok-ww.log"
     _logfile.write_text("2026-09-09 04:30:00 INFO farm echo on the face\n", encoding="utf-8")
@@ -7266,7 +7267,7 @@ launch must not leave the config pointed somewhere else.
     # busy log and never fired, and restarting the script against a wedged game did
     # nothing twice over.
     _noisy = tmpdir() / "noisy.log"
-    _wb2 = __import__("ark_relay.features.weekly.weeklyboss", fromlist=["x"])
+    _wb2 = __import__("ark_relay.features.weeklyboss", fromlist=["x"])
     _real2 = _wb2._okww_log
     _wb2._okww_log = lambda: _noisy
     try:
@@ -7347,7 +7348,7 @@ launch must not leave the config pointed somewhere else.
     # (lines 168, 226, 275), the overrides' copied from their log_info calls.
     _replay = (fx_dir(Path(__file__), "replay") / "2026-09-07" / "wuwa"
                / "OK-WW-06-00-55.log").read_text(encoding="utf-8")
-    from ark_relay.features.okww_patch import okww_overlay as _ov
+    from ark_relay.features import okww_overlay as _ov
     _overrides = _ov.source_text()
     for _k in echofarm.PROGRESS:
         check(f"「{_k}」今天还有人写（上游真实日志或覆盖层）", _k in _replay or _k in _overrides, True)
@@ -7371,7 +7372,7 @@ launch must not leave the config pointed somewhere else.
     ]
     for _line in _NOT:
         check(f"不算进度：{_line.split('FarmEchoTask:', 1)[1][:30]}", any(k in _line for k in echofarm.PROGRESS), False)
-    _wb3 = __import__("ark_relay.features.weekly.weeklyboss", fromlist=["x"])
+    _wb3 = __import__("ark_relay.features.weeklyboss", fromlist=["x"])
     _real3, _f3 = _wb3._okww_log, tmpdir() / "kw.log"
     _wb3._okww_log = lambda: _f3
     try:
@@ -7393,7 +7394,7 @@ launch must not leave the config pointed somewhere else.
     # ten times with each PowerShell call free to run to its 60 s guard, and an
     # unreadable list closed the game at once. Now the step has STOP_SCRIPT_SECONDS in
     # all, an unreadable list is asked again once, and the caller is told why.
-    import ark_relay.features.preupdate.preupdate_okww as _pko
+    import ark_relay.features.preupdate as _pko
     import logging as _lg
 
 
@@ -7498,7 +7499,7 @@ launch must not leave the config pointed somewhere else.
     print("\n[收工那一步本身：先停计划任务，再把 OK-WW 的进程停干净]")
     # The real function, not the stub - it is what actually ends the run on the machine.
     import subprocess as _sp
-    import ark_relay.features.preupdate.preupdate_okww as _pk
+    import ark_relay.features.preupdate as _pk
     _ran, _quiesced = [], []
     _real_run, _real_q = _sp.run, _pk._okww_quiesce
     class _Done:
@@ -7512,7 +7513,7 @@ launch must not leave the config pointed somewhere else.
     try:
         # The stub above replaced the module attribute; reload to get the real one back.
         import importlib
-        _mod = importlib.reload(sys.modules["ark_relay.features.echofarm.echofarm"])
+        _mod = importlib.reload(sys.modules["ark_relay.features.echofarm"])
         _mod.STOP_BAT = str(tmpdir() / "ark-okww-stop.bat")   # never the repo cwd
         _mod.stop_okww()
         check("结束了计划任务", any("schtasks" in c and "/end" in c for c in _ran), True)
@@ -7533,7 +7534,7 @@ launch must not leave the config pointed somewhere else.
         # docs/SILENT-FAILURES-AUDIT.md echofarm.py:250 - a process list that cannot be
         # read is not a clean desktop.
         print("\n[tasklist fails: never read as 「the game is closed」]")
-        _mod = importlib.reload(sys.modules["ark_relay.features.echofarm.echofarm"])
+        _mod = importlib.reload(sys.modules["ark_relay.features.echofarm"])
         _mod.STOP_BAT = str(tmpdir() / "ark-okww-stop.bat")
         _sp.run = lambda *a, **k: (_ for _ in ()).throw(OSError("tasklist missing"))
         left = _mod.game_alive()
@@ -7578,7 +7579,7 @@ launch must not leave the config pointed somewhere else.
     print("\n[the wrap-up stop is bounded in time, and out of time it never says clean]")
     # 2026-10-13 review: after the desktop kill, ten looks each ran a process query free
     # to take its 60 s guard - one tick could last over ten minutes.
-    _mod = importlib.reload(sys.modules["ark_relay.features.echofarm.echofarm"])
+    _mod = importlib.reload(sys.modules["ark_relay.features.echofarm"])
     _mod.STOP_BAT = str(tmpdir() / "ark-okww-stop.bat")
     _BOUND2 = getattr(_mod, "STOP_OKWW_SECONDS", None)   # None before the bound: checks fail, not crash
 
@@ -7680,11 +7681,11 @@ Both from the 0.4.4 review (BOARD/0.4.4-审查/指令与显示.txt):
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
         sys.modules.setdefault(name, _Stub(name))
 
-    from ark_relay.features.phone import commands
-    from ark_relay.features.echofarm import echofarm
-    from ark_relay.features.phone import redbutton  # estop() reads its stop steps here
+    from ark_relay.features import commands
+    from ark_relay.features import echofarm
+    from ark_relay.features import redbutton  # estop() reads its stop steps here
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.phone import phone_channel
+    from ark_relay.features import phone as phone_channel
 
 
     ORIGINAL = {"Teleport to Boss": "Weekly Challenge", "Which Boss Challenge to Teleport": 1,

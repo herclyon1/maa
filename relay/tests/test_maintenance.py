@@ -22,7 +22,7 @@ def _part_maintenance_deadline():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ
-    from ark_relay.features.maintenance import maintenance as M
+    from ark_relay.features import maintenance as M
 
     fails: list[str] = []
 
@@ -211,12 +211,12 @@ def _part_maintenance_main():
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.maintenance import maintenance as M
+    from ark_relay.features import maintenance as M
     from ark_relay.core.config import SERVER_TZ, USER_TZ
 
     FX = fx_dir(Path(__file__), "fixtures") / "maint"
 
-    from ark_relay.features.banners import banners as B
+    from ark_relay.features import banners as B
 
     FXT = FX.parent
     # The JSON endpoints, recorded 2026-10-07 (the Wuthering Waves site's article
@@ -365,8 +365,8 @@ pushed (a real errwatch handler shows both).
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from ark_relay.features.alarm import errwatch
-    from ark_relay.features.maintenance import maintenance as M
+    from ark_relay.features import errwatch
+    from ark_relay.features import maintenance as M
     from ark_relay.core.config import SERVER_TZ
 
 
@@ -611,9 +611,9 @@ are not booked ⏸ nor re-run by the relay.
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
-    from ark_relay.features.alarm import handle
-    from ark_relay.features.gameupdate import gameupdate
-    from ark_relay.features.makeup import collect_retry
+    from ark_relay.features import handle
+    from ark_relay.features import gameupdate
+    from ark_relay.features import collect_retry
 
 
     class Notes:
