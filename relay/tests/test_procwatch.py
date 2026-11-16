@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_procwatch_cancel():  # noqa: C901 - the whole body of the file this part was
@@ -868,7 +868,7 @@ code take exactly the same path and nothing waits for real.
         # Real System log event: 1074 at 2026-10-09T20:27:24Z (04:27:24 Beijing), shutdown.exe as
         # INS\\Administrator. relay.log: 04:28:45 the stop notice (Windows shutdown), 04:28:51 the ERROR
         # "listener down 6 s (RPC failed, 0x800706BE), not back when the relay stopped" - pushed.
-        REAL_0427 = (Path(__file__).resolve().parent / "fixtures" /
+        REAL_0427 = (fx_dir(Path(__file__), "fixtures") /
                      "system-1010-0427-manual-shutdown.xml").read_text(encoding="utf-8").splitlines()
         orig_xml = shutdown_signs._shutdown_event_xml
 

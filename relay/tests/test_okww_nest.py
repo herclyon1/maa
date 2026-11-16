@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_okww_nest_capture():
@@ -41,7 +41,7 @@ Runs upstream's real v3.7.3 NightmareNestTask (fixture) against the overlay.
 
 
     # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.3/v3.7.4 body until 2026-11-02.
-    UPSTREAM = (Path(__file__).resolve().parent / "gamesim" / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
+    UPSTREAM = (fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
 
 
     def upstream_class(text=UPSTREAM):
@@ -465,7 +465,7 @@ second try fails too (test_okww_nest_v373.py); this is the relay reading that li
     from ark_relay.features.verify import collector_okww as co, outcome
 
 
-    REAL = (Path(__file__).resolve().parent / "fixtures" / "okww-1027-nest-unreachable.log").read_text(encoding="utf-8")
+    REAL = (fx_dir(Path(__file__), "fixtures") / "okww-1027-nest-unreachable.log").read_text(encoding="utf-8")
     ns = {}
     exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
     GAVE_UP = ns["NEST_GAVE_UP_LINE"]
@@ -540,7 +540,7 @@ the override:
 
 
     # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.3/v3.7.4 body until 2026-11-02.
-    UPSTREAM = (Path(__file__).resolve().parent / "gamesim" / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
+    UPSTREAM = (fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
 
 
     def upstream_class(text=UPSTREAM):
@@ -944,7 +944,7 @@ window only for a header line without a timestamp. Lines in upstream's format.
     SAY = "选了等级后没等到「开启挑战」"
 
     print("[the real fixture still reads as no challenge button]")
-    real = (Path(__file__).resolve().parent / "fixtures" / "m6-okww" / "0921-weekly.log").read_text(encoding="utf-8")
+    real = (fx_dir(Path(__file__), "fixtures") / "m6-okww" / "0921-weekly.log").read_text(encoding="utf-8")
     check("0921-weekly", SAY in co._okww_error(real), True)
 
     print("\n[the line 0.02 s before, but more than 3000 characters back: found]")

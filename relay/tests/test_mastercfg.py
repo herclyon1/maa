@@ -11,11 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():
@@ -281,7 +281,7 @@ Fixture: tests/fixtures/maaend-v2.32-autostock (upstream excerpt, see SOURCE.txt
 
     from ark_relay.core import mastercfg
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "maaend-v2.32-autostock"
+    FX = fx_dir(Path(__file__), "fixtures") / "maaend-v2.32-autostock"
     FAILED: list[str] = []
 
 
@@ -377,7 +377,7 @@ references; the master entry is the one on the game machine that day
     from ark_relay.core import mastercfg
 
     FAILED: list[str] = []
-    DEFS = Path(__file__).resolve().parent / "fixtures" / "maaend-protocolspace-v2.30.0-rc.1"
+    DEFS = fx_dir(Path(__file__), "fixtures") / "maaend-protocolspace-v2.30.0-rc.1"
 
 
     def require(name: str, ok: bool, detail: str = "") -> None:

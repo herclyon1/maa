@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_build_notes_at_deploy_tip():
@@ -355,7 +355,7 @@ genuine ERROR still pushes.
     from ark_relay.features.verify import outcome
     from ark_relay.features.selfcheck import replay
 
-    FIX = Path(__file__).resolve().parent / "fixtures"
+    FIX = fx_dir(Path(__file__), "fixtures")
     OKWW = (FIX / "okww-1006-run.log").read_text(encoding="utf-8")
     RELAY = (FIX / "relay-1006-false-alarms.log").read_text(encoding="utf-8")
 

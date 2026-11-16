@@ -44,6 +44,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE.parent))
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import fx_dir  # noqa: E402
 
 from ark_relay.features.needtable import build as bnt  # noqa: E402
 
@@ -86,7 +89,7 @@ UNUSED = ["三相纳米片", "超距辉映管", "受蚀玉化叶", "岩天使叶
 PURRCHENA = {"超距辉映管": 116, "三相纳米片": 116, "D96钢样品四": 20, "岩天使叶": 84, "塔罗斯菌": 8,
              "协议圆盘组": 60, "协议圆盘": 33, "存续的痕迹": 24, "纯晶多齿叶": 16, "至晶多齿叶": 16, "晶化多齿叶": 12,
              "协议棱柱组": 562, "协议棱柱": 461}
-FIX = HERE / "fixtures" / "skland-endfield"
+FIX = fx_dir(HERE, "fixtures") / "skland-endfield"
 TODAY = "2026-09-18"
 
 
@@ -240,7 +243,7 @@ check("coverage 标出她未实装", (g5["coverage"]["status"], g5["coverage"]["
       ("未实装", "待定", "噗切娜 2026-09-24（未实装）"))
 
 print("\n[10-14：两个未实装六星、预览表里四个六星条目，照样认出明河]")
-FIX14 = HERE / "fixtures" / "skland-endfield-1014"
+FIX14 = fx_dir(HERE, "fixtures") / "skland-endfield-1014"
 src14 = bnt.RulesSource(FIX14, None)
 ops14 = bnt.wiki_entries(src14, "干员", "6")
 top14, ranked14 = bnt.newest(ops14)
@@ -284,7 +287,7 @@ names14 = naming(fs14["chr_0037_minghe"], src14.get_url("client-item-names", "",
 check("预览表的新材料按计算器 id（md5）取名，MaaEnd 还没有它", names14.get("item_char_skill_specialize_6"), "跃迁浆体涂片")
 
 print("\n[10-15：祀上线当天 —— 当前 = 已上线最新的祀，下一位 = 已公布的明河；专武附基质建议]")
-FIX15 = HERE / "fixtures" / "skland-endfield-1015"
+FIX15 = fx_dir(HERE, "fixtures") / "skland-endfield-1015"
 src15 = bnt.RulesSource(FIX15, None)
 t15 = bnt.make(src15)
 g15, rows15 = rows_by_name(t15)

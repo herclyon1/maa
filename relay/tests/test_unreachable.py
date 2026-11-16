@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_unreachable_evidence():
@@ -60,7 +60,7 @@ relay/tests has the shape at all (0 of 80), so this is the nearest real round.
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
 
-    FIX = ROOT / "tests" / "fixtures" / "maaend_shape_local_fault_2026-09-25.log"
+    FIX = fx_dir(ROOT, "fixtures") / "maaend_shape_local_fault_2026-09-25.log"
 
 
     class Notes:

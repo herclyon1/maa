@@ -95,7 +95,7 @@ print("\n[森空岛给了不止一个终末地角色：不读，报群]")
 import inspect  # noqa: E402
 import logging  # noqa: E402
 import time  # noqa: E402
-from _tmp import tmpdir  # noqa: E402
+from _tmp import fx_dir, tmpdir  # noqa: E402
 from ark_relay.features.alarm import errwatch  # noqa: E402
 from ark_relay.core import texts  # noqa: E402
 
@@ -170,7 +170,7 @@ import shutil  # noqa: E402
 from _tmp import tmpdir  # noqa: E402
 from ark_relay.core.ledger import State  # noqa: E402
 
-LEDGERS = Path(__file__).resolve().parent / "fixtures" / "phone-ledgers"
+LEDGERS = fx_dir(Path(__file__), "fixtures") / "phone-ledgers"
 real_dir = tmpdir()
 for f in LEDGERS.glob("ledger-*.jsonl"):
     shutil.copy(f, real_dir / f.name)

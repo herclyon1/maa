@@ -17,11 +17,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir
+from _tmp import fx_dir, tmpdir
 
 ROOT = Path(__file__).resolve().parents[2]
 SMOKE = ROOT / "scripts" / "windows" / "smoke.py"
-FIX = Path(__file__).resolve().parent / "fixtures" / "relay-0909-boot-smoke.log"
+FIX = fx_dir(Path(__file__), "fixtures") / "relay-0909-boot-smoke.log"
 
 fails = []
 

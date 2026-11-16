@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_mc28_settle_once():
@@ -898,7 +898,7 @@ really sat in); and the pictures' real capture times from the evidence bundles
     from ark_relay.features.alarm import handle, pushes
     from ark_relay.features.selfcheck.machinechecks import runs
 
-    FIX = Path(__file__).resolve().parent / "fixtures" / "maaend-task-trail"
+    FIX = fx_dir(Path(__file__), "fixtures") / "maaend-task-trail"
     SHOT_TIMES = {k: v for k, v in json.loads((FIX / "shot-times.json").read_text(encoding="utf-8")).items()
                   if not k.startswith("_")}
 

@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():
@@ -309,7 +309,7 @@ a judged boot.
     # The real rows: 10-13 10:00 the 🖼️ 无音区产出 the owner asked for (version 20261012131940;
     # the old gate printed MCWAIT_ALARM 1 on it), and 10-12 08:46 a 🩺 中继自己报错了 alarm.
     DOC = str(ROOT.parent / "docs" / "NOTIFICATIONS.md")
-    real = [json.loads(ln) for ln in (ROOT / "tests" / "fixtures" / "alerts-e2-report-push.jsonl")
+    real = [json.loads(ln) for ln in (fx_dir(ROOT, "fixtures") / "alerts-e2-report-push.jsonl")
             .read_text(encoding="utf-8").splitlines() if ln.strip()]
     tacet, fault = real
     e = tmpdir()

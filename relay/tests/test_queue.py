@@ -11,11 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_queue_apply_backend():
@@ -318,7 +318,7 @@ queues only, so the phone's row of a skipped shift had no time to show (App revi
     from ark_relay.core import plan
 
     FAILED: list[str] = []
-    REAL = Path(__file__).resolve().parent / "fixtures" / "automas-config-2026-10-11"
+    REAL = fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11"
 
 
     def require(name: str, ok: bool, detail: str = "") -> None:

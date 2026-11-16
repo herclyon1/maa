@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_desktop_focus():
@@ -678,7 +678,7 @@ attempt 2 hand-off 13:23:36.799, game up 13:26:14.036) and 13:53:00-13:54:52 (at
     from ark_relay.features.run import display_wake as dw
 
 
-    FIX = Path(__file__).resolve().parent / "fixtures" / "display-wake-2026-10-16" / "app.log"
+    FIX = fx_dir(Path(__file__), "fixtures") / "display-wake-2026-10-16" / "app.log"
     LINES = FIX.read_text(encoding="utf-8").splitlines()
 
 

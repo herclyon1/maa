@@ -11,11 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_maa_checks():
@@ -157,7 +157,7 @@ dangling chain, and any other dangling chain still fails.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features.verify.outcome import maa_checks
 
-    LOG = (Path(__file__).parent / "fixtures" / "maa-2026-10-21" / "asst-callbacks.log").read_text(encoding="utf-8")
+    LOG = (fx_dir(Path(__file__), "fixtures") / "maa-2026-10-21" / "asst-callbacks.log").read_text(encoding="utf-8")
 
 
     def bad(checks):
@@ -241,7 +241,7 @@ with MAA's own refill sentence) as the control.
     _mc_real = dict(_mc.CHECKS)
     _mc.CHECKS.clear()     # machine checks have their own tests (tests/test_mc.py)
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "maa-2026-10-10"
+    FX = fx_dir(Path(__file__), "fixtures") / "maa-2026-10-10"
     SANITY_UNREAD = getattr(texts, "SANITY_UNREAD", "理智没读到")   # getattr: the red run predates it
 
 

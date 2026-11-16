@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_collect_history_db():
@@ -33,7 +33,7 @@ morning's real history.db and the five 0.log files it points to.
     from ark_relay.core import collector
 
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "automas-58-history-2026-10-28"
+    FX = fx_dir(Path(__file__), "fixtures") / "automas-58-history-2026-10-28"
     BJ = timezone(timedelta(hours=8))
 
     if True:
@@ -200,7 +200,7 @@ zh_cn locale.
     from ark_relay.features.makeup import collect_retry as cr
 
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "collect-retry-2026-09-11"
+    FX = fx_dir(Path(__file__), "fixtures") / "collect-retry-2026-09-11"
     zh = json.loads((FX / "zh_cn.json").read_text(encoding="utf-8"))
     labels = cr.failed_labels_from_locale(zh)
 
@@ -495,8 +495,8 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     from ark_relay.features.selfcheck import machinecheck as mc
     from ark_relay.features.verify import collector_maaend as cm, outcome
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "collect-blocked-1005-1012"
-    ZH = json.loads((Path(__file__).resolve().parent / "fixtures" / "collect-retry-2026-09-11" / "zh_cn.json")
+    FX = fx_dir(Path(__file__), "fixtures") / "collect-blocked-1005-1012"
+    ZH = json.loads((fx_dir(Path(__file__), "fixtures") / "collect-retry-2026-09-11" / "zh_cn.json")
                     .read_text(encoding="utf-8"))
     R10 = "路线10：重红柱状菌"
     PIC = "{}___MapNavigatorObstacleDevice_InteractPost.png"
@@ -1029,7 +1029,7 @@ run_retry's early 「gave up」 returns also left both running.
     from ark_relay.features.preupdate import preupdate_common as pc
 
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "collect-retry-2026-09-11"
+    FX = fx_dir(Path(__file__), "fixtures") / "collect-retry-2026-09-11"
     zh = json.loads((FX / "zh_cn.json").read_text(encoding="utf-8"))
     NOW = datetime(2026, 9, 12, 12, 0).astimezone()
     killed, ran = [], []
@@ -1222,7 +1222,7 @@ where Route10 failed and AUTO-MAS retried all 17 routes at 11:21:43.
     _watch.log.addHandler(_drops)
 
 
-    FIX = Path(__file__).resolve().parent / "fixtures" / "collect-watch-2026-09-14" / "maafw-attempt3.log"
+    FIX = fx_dir(Path(__file__), "fixtures") / "collect-watch-2026-09-14" / "maafw-attempt3.log"
     LINES = FIX.read_text(encoding="utf-8").splitlines()
 
 

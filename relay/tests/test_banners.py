@@ -38,6 +38,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import fx_dir
 
 import ark_relay.features.banners.banners as _b
 from ark_relay.features.banners.banners import (
@@ -46,7 +48,7 @@ from ark_relay.features.banners.banners import (
     parse_endfield_notice, parse_wuwa, parse_wuwa_preview, render, upcoming,
 )
 
-FX = Path(__file__).parent / "fixtures"
+FX = fx_dir(Path(__file__), "fixtures")
 FAILED: list[str] = []
 
 
@@ -1175,7 +1177,7 @@ def _ww_news_poster() -> None:
     check("放大后超过 8000 像素的不放大", _b.strip_plan(2400, 4400), (1.0, [(0, 4400)]))
     # The machine's real Windows OCR of the 3.7 calendar (notice 50868), 2026-10-06 16:07: read at its
     # own size the second-half label is garbled, read at two times the date comes out.
-    _fx = Path(__file__).resolve().parent / "fixtures"
+    _fx = fx_dir(Path(__file__), "fixtures")
     _l1 = [Line(**o) for o in json.loads((_fx / "ww-3.7-calendar-ocr-win-1x.json").read_text(encoding="utf-8"))]
     _l2 = [Line(**o) for o in json.loads((_fx / "ww-3.7-calendar-ocr-win-2x.json").read_text(encoding="utf-8"))]
     _now = datetime(2026, 10, 6)

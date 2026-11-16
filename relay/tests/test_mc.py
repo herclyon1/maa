@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_mc_phone_banners():  # noqa: C901 - the whole body of the file this part was
@@ -84,7 +84,7 @@ No network, no thread left running.
     from ark_relay.core.desktop import Line
     from ark_relay.features.phone import heartbeat as phone_heartbeat
 
-    FX = Path(__file__).parent / "fixtures"
+    FX = fx_dir(Path(__file__), "fixtures")
     PASS, FAIL = mc.PASS, mc.FAIL
 
 
@@ -1022,7 +1022,7 @@ in state/machinecheck.json right after the record is booked.
     from ark_relay.core.ledger import State
     from ark_relay.core.notify import route_of
 
-    FIX = Path(__file__).resolve().parent / "fixtures"
+    FIX = fx_dir(Path(__file__), "fixtures")
 
 
     class N:

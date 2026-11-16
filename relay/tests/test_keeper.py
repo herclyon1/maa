@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_keeper_blind_backoff():
@@ -67,7 +67,7 @@ once at INFO.
 
 
     # The machine's state, read from its own self-check lines.
-    lines = (Path(__file__).parent / "fixtures" / "keeper_blind_20261010.log").read_text(encoding="utf-8").splitlines()
+    lines = (fx_dir(Path(__file__), "fixtures") / "keeper_blind_20261010.log").read_text(encoding="utf-8").splitlines()
     procs_unreadable = any("读得到每个程序是怎么启动的" in ln and "读不到" in ln for ln in lines)
     api_answers = any("✓ 调度程序有应答" in ln for ln in lines)
     check("record: process table unreadable", procs_unreadable, True)

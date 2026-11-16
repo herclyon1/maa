@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_activity_topup():
@@ -226,7 +226,7 @@ evening run failed once, the old count (every row of the day) said 5 (audit
     from ark_relay.core.config import RunRecord
     from ark_relay.features.alarm import records
 
-    FIX = Path(__file__).parent / "fixtures" / "ledger-2026-10-10-maa.jsonl"
+    FIX = fx_dir(Path(__file__), "fixtures") / "ledger-2026-10-10-maa.jsonl"
 
 
     def rec_of(e: dict) -> RunRecord:
@@ -498,7 +498,7 @@ never closed and the tests passed without exercising the real path.
     # of non-blanks: 1.3 s for one such line, 6.6 s for this file (2026-09-07 morning).
     import time
     from ark_relay.features.verify import collector_maa
-    REPLAY = Path(__file__).resolve().parent / "replay" / "2026-09-07" / "arknights" / "MAA-05-03-55.log"
+    REPLAY = fx_dir(Path(__file__), "replay") / "2026-09-07" / "arknights" / "MAA-05-03-55.log"
     real = REPLAY.read_text(encoding="utf-8", errors="replace")
     body = max(real.splitlines(), key=len)
     check("the real line is a long Request body", (len(body) > 9000, "Request body:" in body), (True, True))
@@ -636,7 +636,7 @@ def _part_episodes():
     check("更新重启后最终没成功→仍是失败", core.episode_kinds(streak_no_success), {})
 
     print("[官方公告：今天是不是版本更新日]")
-    data = json.loads((Path(__file__).parent / "fixtures" / "ef_bulletin_2026-09-02.json").read_text(encoding="utf-8"))
+    data = json.loads((fx_dir(Path(__file__), "fixtures") / "ef_bulletin_2026-09-02.json").read_text(encoding="utf-8"))
     hint = efstatus.update_hint(datetime(2026, 9, 2, 10, 30, tzinfo=SERVER_TZ), fetch=lambda: data)
     check("认出今天 10:00 版本更新", hint, "官方公告：今天 09:00 「雪凇幽梦」版本更新")
     check("别的日子→空", efstatus.update_hint(datetime(2026, 9, 3, 10, 30, tzinfo=SERVER_TZ), fetch=lambda: data), "")
@@ -817,7 +817,7 @@ Checked here, with the line shapes of that morning:
     from ark_relay.features.run import collect_watch
     from ark_relay.features.verify import collector_maaend as cm
 
-    FIX = Path(__file__).parent / "fixtures" / "maaend-2026-10-29"
+    FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-10-29"
 
 
     def collector_line(t, node):
@@ -918,7 +918,7 @@ Checked here, with the line shapes of that morning:
 
 
     print("[the real 11-05 lines (fixtures/maaend-2026-11-05)]")
-    REAL = Path(__file__).parent / "fixtures" / "maaend-2026-11-05"
+    REAL = fx_dir(Path(__file__), "fixtures") / "maaend-2026-11-05"
     real_hist = (REAL / "history-MaaEnd-07-24-54-gathering.log").read_text(encoding="utf-8")
     check("15 routes named by the failure collector", len(cm.collector_failed_routes(real_hist)), 15)
     with tempfile.TemporaryDirectory() as d2:
@@ -1158,7 +1158,7 @@ KuroAnswerProblem into that place's existing failure path.
         _b._json, _b._text = real
     check("homepage error body raises (collect records it as not read)", "/wiki/core/homepage/getPage" in (why or ""), True)
 
-    home = json.loads((Path(__file__).parent / "fixtures" / "wuwa_home.json").read_text(encoding="utf-8"))
+    home = json.loads((fx_dir(Path(__file__), "fixtures") / "wuwa_home.json").read_text(encoding="utf-8"))
     g = Grab()
     _b.log.addHandler(g)
     _b._json = lambda url, *a, **k: (home if url.endswith("/homepage/getPage")
@@ -1658,7 +1658,7 @@ the original's first 8 and last 5 lines.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
 
-    D = Path(__file__).parent / "fixtures" / "refresh-unread-1009"
+    D = fx_dir(Path(__file__), "fixtures") / "refresh-unread-1009"
     e = json.loads((D / "ledger.jsonl").read_text(encoding="utf-8"))
     out = collector.refresh_raw(e, D)
     got = (out.get("sanity"), out["raw"].get("sanity"), out["raw"].get("sanity_unread"))
@@ -2440,7 +2440,7 @@ laps after the claim ran in the open world where nothing is claimed.
     from ark_relay.features.weekly import weeklyboss
 
 
-    REPLAY = Path(__file__).resolve().parent / "replay" / "2026-09-07" / "wuwa"
+    REPLAY = fx_dir(Path(__file__), "replay") / "2026-09-07" / "wuwa"
 
     print("[真实日志：09-07 那三次是报错重试凑的，每次调用只领 1 次]")
     first = (REPLAY / "OK-WW-06-00-55.log").read_text(encoding="utf-8", errors="replace")

@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_needtable_publish():
@@ -71,7 +71,7 @@ skland-endfield-1014 until the 2026-10-15 two-standard caliber), the PUT is a re
     from ark_relay.features.phone.cos_store import state_key
     from ark_relay.features.phone.mailbox import Mailbox
 
-    FIX15 = HERE / "fixtures" / "skland-endfield-1015"
+    FIX15 = fx_dir(HERE, "fixtures") / "skland-endfield-1015"
     D1 = datetime(2026, 10, 14, 9, 0, tzinfo=SERVER_TZ)
     D2, D3, D4, D5, D6, D7, D8, D9 = (datetime(2026, 10, d, 9, 0, tzinfo=SERVER_TZ) for d in range(15, 23))
 

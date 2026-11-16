@@ -183,13 +183,10 @@ else
 fi
 
 echo "▶ 9/18 测试语料必须入库"
-# 2026-09-08：.gitignore 的 *.log 把 relay/tests 下的 12 个日志样本挡在库外，
-# 新克隆里 10 条回放全判失败、两个测试直接崩，而代码一个字没错。
-# 语料不入库 = 闸门在别的机器上失效，且失效得像「代码坏了」。
 missing=0
 while IFS= read -r f; do
   git ls-files --error-unmatch "$f" >/dev/null 2>&1 || { note "测试语料没入库：$f"; missing=1; }
-done < <(find relay/tests/fixtures relay/tests/replay -name '*.log' -o -name '*.json' 2>/dev/null)
+done < <(find relay/tests/fixtures -type f 2>/dev/null; ls relay/tests/fx_*.json 2>/dev/null)
 [ "$missing" = 0 ] && ok "测试语料都在库里"
 
 echo "▶ 10/18 中继的状态只能由中继自己写"

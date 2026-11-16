@@ -24,9 +24,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _tmp import fx_dir  # noqa: E402
 from ark_relay.core import collector  # noqa: E402
 
-REPLAY = ROOT / "tests" / "replay"
+REPLAY = fx_dir(ROOT, "replay")
 FLOOR = 40          # minimum corpus size, see main()
 # Raised from 10 to 40 on 2026-09-08 when the corpus grew from 1 day (10 records)
 # to 4 days (42): the 09-01 weekly boss stuck on its results page, the 09-04/09-05

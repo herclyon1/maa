@@ -11,11 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_maaend_bagfull():
@@ -54,7 +54,7 @@ whatever else made it fail can be read off them.
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
     FAILED: list[str] = []
-    FIX = Path(__file__).resolve().parent / "fixtures"
+    FIX = fx_dir(Path(__file__), "fixtures")
     # Two framework lines in the shape of fixtures/collect-watch-2026-09-14/maafw-attempt3.log
     # (an event line and the same event from the second process), moved to the seconds
     # between the 09-24 click (10:16:26) and its failure (10:16:51); plus one line of a
@@ -231,7 +231,7 @@ wiped its debug folder.
     from ark_relay.core.config import Config
     from ark_relay.core.transport import LocalSource
 
-    FIX = Path(__file__).resolve().parent / "fixtures"
+    FIX = fx_dir(Path(__file__), "fixtures")
     FAILED: list[str] = []
     STEM = "MaaEnd-05-47-21"
 
@@ -375,7 +375,7 @@ was not recognised as gathering-only either.
     from ark_relay.core.config import SERVER_TZ
 
 
-    e = json.loads((Path(__file__).parent / "fixtures" / "ledger-1012-maaend-close-game.jsonl").read_text(encoding="utf-8"))
+    e = json.loads((fx_dir(Path(__file__), "fixtures") / "ledger-1012-maaend-close-game.jsonl").read_text(encoding="utf-8"))
     raw = e["raw"]
     check("not unverified", ledger_rows.maaend_unverified(raw), [])
     check("not listed", ledger_rows._maaend_listed(raw), ["日常奖励领取"])
@@ -407,7 +407,7 @@ the gathering retry stopped recognising failures (账本 #122). Checked here:
     from ark_relay.features.makeup import collect_retry as cr
     from ark_relay.features.verify import collector_maaend as cm, outcome
 
-    FIX = Path(__file__).parent / "fixtures" / "maaend-2026-10-29"
+    FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-10-29"
 
 
     with tempfile.TemporaryDirectory() as d:
@@ -557,7 +557,7 @@ check accepted only 「路线N：」, so a day with routes 1-3 alone would be re
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features.verify.outcome import maaend_checks
 
-    text = (Path(__file__).parent / "fixtures" / "maaend-collect-xianlu-1012.log").read_text(encoding="utf-8")
+    text = (fx_dir(Path(__file__), "fixtures") / "maaend-collect-xianlu-1012.log").read_text(encoding="utf-8")
     got = {c.label: c.ok for c in maaend_checks(text, []) if "自动采集" in c.label}
     ok = got.get("自动采集 真的走了路线") is True
     print(("  ✓ " if ok else "  ✗ ") + f"线路1-3 count as walked routes: {got}")
@@ -582,7 +582,7 @@ Every log below is a real, unedited MaaEnd log from the machine
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
     from ark_relay.features.verify import collector_maaend
 
-    D = pathlib.Path(__file__).resolve().parent / "fixtures" / "maaend-farm-drops"
+    D = fx_dir(pathlib.Path(__file__), "fixtures") / "maaend-farm-drops"
 
 
     def chk(name, got, want):
@@ -706,7 +706,7 @@ Before 2026-10-06 only the first was read: the essence runs and drops vanished.
     from ark_relay.features.verify import collector_maaend as cm
 
     FAILED: list[str] = []
-    D = Path(__file__).resolve().parent / "fixtures" / "maaend-farm-drops"
+    D = fx_dir(Path(__file__), "fixtures") / "maaend-farm-drops"
 
 
     def require(name: str, ok: bool, detail: str = "") -> None:

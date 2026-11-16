@@ -10,11 +10,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():
@@ -751,7 +751,7 @@ executed here with stand-ins only for what it imports.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features.okww_patch import okww_overlay
 
-    FIXTURE = Path(__file__).resolve().parent / "fixtures" / "okww-v3.7.20-beta.3-start_controller.py.txt"
+    FIXTURE = fx_dir(Path(__file__), "fixtures") / "okww-v3.7.20-beta.3-start_controller.py.txt"
     CANCELLED = "was cancelled while the game was starting"
     NAMES = ("ok", "ok.device", "ok.device.capture", "ok.core", "ok.core.events", "ok.core.notifications",
              "ok.util", "ok.util.process", "ok.core.start_controller")

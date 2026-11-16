@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_m6_counts():
@@ -135,7 +135,7 @@ fixtures/m6-okww, cut from the 09-21 and 09-22 runs pulled back on 09-23).
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features.verify import collector_okww as c, outcome as o
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "m6-okww"
+    FX = fx_dir(Path(__file__), "fixtures") / "m6-okww"
     bad = []
 
 

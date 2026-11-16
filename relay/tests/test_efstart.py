@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():
@@ -38,8 +38,8 @@ AUTO-MAS (its launcher discovery rule, the relay's old preAction, Game.Path and 
     from ark_relay.features.gameupdate import efstart_setup as setup
 
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "maaend-v2.33.0-launch"
-    BETA2 = Path(__file__).resolve().parent / "gamesim" / "upstream" / "maaend-v2.33.0-beta.2"
+    FX = fx_dir(Path(__file__), "fixtures") / "maaend-v2.33.0-launch"
+    BETA2 = fx_dir(Path(__file__), "gamesim") / "upstream" / "maaend-v2.33.0-beta.2"
 
 
     class Probe:
@@ -433,8 +433,8 @@ Pinned here:
     PRETASK = getattr(ef, "PRETASK", -5)
 
 
-    FX = HERE / "fixtures" / "maaend-v2.33.0-launch"
-    BETA2 = HERE / "gamesim" / "upstream" / "maaend-v2.33.0-beta.2"     # still the old GameSetting pretask
+    FX = fx_dir(HERE, "fixtures") / "maaend-v2.33.0-launch"
+    BETA2 = fx_dir(HERE, "gamesim") / "upstream" / "maaend-v2.33.0-beta.2"     # still the old GameSetting pretask
     # go-service.log on the machine, 2026-10-17 11:31:05 (AUTO-MAS v5.7.0-beta.5, 「Pretask invoked」 args).
     MACHINE_ARGS = ('{"LaunchGamePCRegion":"CN","LaunchGamePCLauncherPath":"Auto","LaunchGamePCGameSetting":"Yes",'
                     '"LaunchGamePCLanguage":"Unchanged","LaunchGamePCDisplayType":"Window","LaunchGamePCResolution":"1280x720",'
@@ -867,7 +867,7 @@ Pinned here:
     def outcome(not_restored):
         from datetime import datetime as _dt
         sd = tmpdir()
-        zh = json.loads((HERE / "fixtures" / "collect-retry-2026-09-11" / "zh_cn.json").read_text(encoding="utf-8"))
+        zh = json.loads((fx_dir(HERE, "fixtures") / "collect-retry-2026-09-11" / "zh_cn.json").read_text(encoding="utf-8"))
         sent = []
         eng = types.SimpleNamespace(
             cfg=types.SimpleNamespace(state_dir=sd, maaend_dir=str(sd), history_dir=str(sd), automas_dir=None),

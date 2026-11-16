@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_mas_address():
@@ -142,7 +142,7 @@ this file (only schema.py Field descriptions): no `##` label exists for them.
 
     # Kept as .txt so the repo's Python tools (ruff, the comment ratchet) do not read
     # upstream code as ours; laid out as AUTO-MAS's app/models for the run.
-    SRC = Path(__file__).resolve().parent / "fixtures" / "automas-models" / "config.py.txt"
+    SRC = fx_dir(Path(__file__), "fixtures") / "automas-models" / "config.py.txt"
     AM = tmpdir()
     (AM / "app" / "models").mkdir(parents=True)
     (AM / "app" / "models" / "config.py").write_bytes(SRC.read_bytes())

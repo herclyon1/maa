@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():
@@ -757,7 +757,7 @@ The user's rule (10-10 18:31, DECISIONS D-1010-关机): only a finished 早班/�
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features.shutdown import shutdown
 
-    FIX = Path(__file__).resolve().parent / "fixtures" / "shutdown-1010-1013"
+    FIX = fx_dir(Path(__file__), "fixtures") / "shutdown-1010-1013"
 
 
     def ledger(day):
@@ -1163,7 +1163,7 @@ stays awake, and its wording read as though someone had ordered it to stay on.
 
     print("[关机命令被取消了：取消前后有人在用 -> 只记日报；看不出有人 -> 进群（2026-10-10）]")
     NS = "http://schemas.microsoft.com/win/2004/08/events/event"
-    FIX = Path(__file__).resolve().parent / "fixtures"
+    FIX = fx_dir(Path(__file__), "fixtures")
     # Real System log events read on the machine 2026-10-10 (newest first, as shutdown_event_xml returns them):
     # 10-01: 1074 13:48:52Z (the relay), 566 13:49:36Z (Reason 32, input woke the display), 1075 13:49:52Z by INS\Administrator.
     # 10-02: 1074 13:49:01Z (the relay), 1075 13:49:08Z by INS\Administrator, no 566.
@@ -1304,7 +1304,7 @@ plus a 晚班 on 10-13 (MAA 21:30, MaaEnd 21:46, shaped like the 10-12 / 10-11 o
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features.shutdown import shutdown
 
-    FIX = Path(__file__).resolve().parent / "fixtures" / "shutdown-1010-1013"
+    FIX = fx_dir(Path(__file__), "fixtures") / "shutdown-1010-1013"
 
     EVENING = [
         {"run_id": "2026-10-13/arknights/MAA-17-30-20", "script": "MAA", "user": "arknights",
@@ -2014,7 +2014,7 @@ started, docs/OPERATIONS.md "6005 boot") newer than it ends it.
     from ark_relay.features.shutdown import shutdown
 
 
-    REAL_1074 = (Path(__file__).resolve().parent / "fixtures" /
+    REAL_1074 = (fx_dir(Path(__file__), "fixtures") /
                  "system-1010-0427-manual-shutdown.xml").read_text(encoding="utf-8").strip()
     NS = "http://schemas.microsoft.com/win/2004/08/events/event"
 

@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_okww_battle_pass():
@@ -92,7 +92,7 @@ master had the same body that day).
 
 
     # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.4 until 2026-11-02.
-    UPSTREAM = (HERE / "gamesim" / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "DailyTask.py.txt").read_text(encoding="utf-8")
+    UPSTREAM = (fx_dir(HERE, "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "DailyTask.py.txt").read_text(encoding="utf-8")
 
 
     def overlay():
@@ -333,7 +333,7 @@ master had the same body that day).
     done_before = "2026-09-29 09:21:00,000 INFO TaskExecutor DailyTask:info_set total daily points 100\n" + REAL_0929
     bp = [x for x in outcome.okww_checks(done_before, expect_nest=False) if x.label == texts.OKWW_BATTLE_PASS_LABEL]
     check("dailies already done before the run: the battle pass is still checked", [x.ok for x in bp], [False])
-    OLD = (HERE / "fixtures" / "okww-1006-run.log").read_text(encoding="utf-8", errors="replace")
+    OLD = (fx_dir(HERE, "fixtures") / "okww-1006-run.log").read_text(encoding="utf-8", errors="replace")
     check("a clean run from before the overlay line: no battle-pass item, no false red",
           outcome.battle_pass_checks(OLD), [])
     LABEL = "战令改动在跑（没打开时同一趟再开一次）"
@@ -352,7 +352,7 @@ master had the same body that day).
     # The run's own lines, read off the game machine on 11-11: both tries met the game's
     # notice (NOTICE below) and the run went on to "Daily Task Completed". It was pushed
     # to the group as an item undone that morning.
-    REAL_1111 = (HERE / "fixtures" / "okww-1111-battle-pass-closed.log").read_text(encoding="utf-8")
+    REAL_1111 = (fx_dir(HERE, "fixtures") / "okww-1111-battle-pass-closed.log").read_text(encoding="utf-8")
     NOTICE = "当前先约电台各频道暂未开播，请于下期先约电台频道开启时间段内进入。"
     check("the sample holds the notice on both misses and upstream's ERROR line",
           (REAL_1111.count(NOTICE), "can not battle pass, maybe ended" in REAL_1111, "战令没领到：" in REAL_1111),
@@ -948,7 +948,7 @@ tick. That run's screenshot is fixtures/ww-daily-140-1011-row.png (the bottom of
     ns = {"__name__": "ark_overrides_test"}
     exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
 
-    ROW = np.array(Image.open(HERE / "fixtures" / "ww-daily-80-1010-row.png").convert("RGB"))
+    ROW = np.array(Image.open(fx_dir(HERE, "fixtures") / "ww-daily-80-1010-row.png").convert("RGB"))
     H, W = ROW.shape[:2]
     # The tier labels' glyph boxes in the fixture (x0, y0, x1, y1), measured on the picture.
     GLYPHS = {20: (592, 93, 615, 112), 40: (884, 93, 907, 112), 60: (1177, 93, 1201, 112),
@@ -1080,7 +1080,7 @@ tick. That run's screenshot is fixtures/ww-daily-140-1011-row.png (the bottom of
     check("said", any(m.startswith("活跃奖励没领到：活跃度的分数没读到") for m in g.logs), True)
 
     print("\n[10-11 09:29: all five claimed, the reward preview over the 100 chest -> checked, nothing clicked]")
-    ROW11 = np.array(Image.open(HERE / "fixtures" / "ww-daily-140-1011-row.png").convert("RGB"))
+    ROW11 = np.array(Image.open(fx_dir(HERE, "fixtures") / "ww-daily-140-1011-row.png").convert("RGB"))
     # Glyph boxes of the tier labels in that picture (x0, y0, x1, y1), and where each tick is
     # (the best match of the tick, searched over +-40 px): 「100」 is 45 px wide, the rest 29-31.
     GLYPHS11 = {20: (683, 174, 711, 193), 40: (937, 174, 967, 193), 60: (1193, 174, 1222, 193),
@@ -1193,7 +1193,7 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
     from ark_relay.features.okww_patch import okww_overlay
 
 
-    REPLAY = Path(__file__).resolve().parent / "replay" / "2026-09-07" / "wuwa"
+    REPLAY = fx_dir(Path(__file__), "replay") / "2026-09-07" / "wuwa"
 
 
     def logged(path, lineno, pattern):
@@ -2173,7 +2173,7 @@ re-teleport) and checks:
     from ark_relay.features.okww_patch import okww_overlay
 
 
-    REPLAY = Path(__file__).resolve().parent / "replay"
+    REPLAY = fx_dir(Path(__file__), "replay")
 
 
     class Disabled(Exception):
@@ -2629,7 +2629,7 @@ Three holes found 10-13 against upstream OK-WW v3.7.4 (on the game PC since 10-0
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features.verify import collector_okww, outcome
 
-    FX = Path(__file__).resolve().parent / "fixtures"
+    FX = fx_dir(Path(__file__), "fixtures")
 
 
     def line(t, who, msg):

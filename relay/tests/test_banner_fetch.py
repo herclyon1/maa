@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_banner_post_miss():
@@ -51,7 +51,7 @@ the failure is a plain WARNING, pushed. A real errwatch handler shows both.
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.desktop import Line
 
-    FX = Path(__file__).parent / "fixtures"
+    FX = fx_dir(Path(__file__), "fixtures")
 
 
     class Logs(logging.Handler):
@@ -294,7 +294,7 @@ on the page's NEWEST item.
     from ark_relay.features.banners import wuwa_posters as P
 
 
-    fx = json.loads((Path(__file__).parent / "fixtures" / "ww-bili-feed-2026-10-05.json").read_text(encoding="utf-8"))
+    fx = json.loads((fx_dir(Path(__file__), "fixtures") / "ww-bili-feed-2026-10-05.json").read_text(encoding="utf-8"))
     pages = [p["response"] for p in fx["pages"]]
     nav = fx["nav"]["response"]
     by_offset = {"": pages[0], pages[0]["data"]["offset"]: pages[1], pages[1]["data"]["offset"]: pages[2]}

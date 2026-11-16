@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():
@@ -314,7 +314,7 @@ alerts-20261013-old-row.jsonl) must still read and merge fine.
     from ark_relay.features.alarm import alertlog
     from ark_relay.features.selfcheck import machinecheck as mc
 
-    FIX = Path(__file__).resolve().parent / "fixtures" / "alerts-20261013-old-row.jsonl"
+    FIX = fx_dir(Path(__file__), "fixtures") / "alerts-20261013-old-row.jsonl"
 
 
     class Fake:

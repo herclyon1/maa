@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():  # noqa: C901 - the whole body of the file this part was
@@ -37,7 +37,7 @@ are checked against the rules read from their source.
     from ark_relay.features.evidence import evidence as ev
 
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "collect-retry-2026-09-11"
+    FX = fx_dir(Path(__file__), "fixtures") / "collect-retry-2026-09-11"
     official = json.loads((FX / "mxu-export-namelist.json").read_text(encoding="utf-8"))
 
     print("[MaaEnd：和 🗄️ 按钮导出的 108 个文件同序同分卷]")
@@ -164,7 +164,7 @@ are checked against the rules read from their source.
 
     print("\n[只钉打包那几个函数：别处改一行日志不报，函数体改一个字才报]")
     # Fixture copies of the three upstream files as pinned (MAA at 7c4edb83, 09-20).
-    FXP = Path(__file__).resolve().parent / "fixtures" / "source-pins"
+    FXP = fx_dir(Path(__file__), "fixtures") / "source-pins"
     files = {"IssueReportUserControlModel.cs": "MAA 生成日志压缩包（IssueReportUserControlModel.cs）",
              "file_ops.rs": "MaaEnd 导出（MXU file_ops.rs）",
              "diagnostics.py": "OK-WW Export Logs（ok-script diagnostics.py）"}
@@ -1868,7 +1868,7 @@ and the day's title is no longer 全绿 for it. No alarm is raised for it.
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
 
-    FX = Path(__file__).parent / "fixtures"
+    FX = fx_dir(Path(__file__), "fixtures")
     FULL = (FX / "maaend_full_2026-09-01.log").read_text(encoding="utf-8")
 
     print("[每一项的证据：开始和完成之间 MaaEnd 自己写的别的行]")

@@ -34,7 +34,7 @@ if "--relay" in sys.argv:
 sys.path.insert(0, str(RELAY))
 sys.path.insert(0, str(HERE))
 
-from _tmp import tmpdir  # noqa: E402
+from _tmp import fx_dir, tmpdir  # noqa: E402
 from ark_relay.core import collector  # noqa: E402
 from ark_relay.core import engine as eng_mod  # noqa: E402
 from ark_relay.core.config import Config  # noqa: E402
@@ -43,7 +43,7 @@ from ark_relay.features.gameupdate import gameupdate  # noqa: E402
 from ark_relay.features.makeup import makeup  # noqa: E402
 from ark_relay.features.selfcheck import machinecheck as mc  # noqa: E402
 
-CORPUS = HERE / "gamesim" / "corpus" / "maa" / "history"
+CORPUS = fx_dir(HERE, "gamesim") / "corpus" / "maa" / "history"
 fails: list[str] = []
 
 

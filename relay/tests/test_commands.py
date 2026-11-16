@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_channel_down():
@@ -1226,7 +1226,7 @@ killed runs, one gathering-only run with two retries).
     from ark_relay.core import ledger as core
 
 
-    FIX = Path(__file__).resolve().parent / "fixtures" / "ledger-2026-09-14" / "ledger.jsonl"
+    FIX = fx_dir(Path(__file__), "fixtures") / "ledger-2026-09-14" / "ledger.jsonl"
     entries = [json.loads(x) for x in FIX.read_text(encoding="utf-8").splitlines() if x.strip()]
     check("样本 16 条", len(entries), 16)
 

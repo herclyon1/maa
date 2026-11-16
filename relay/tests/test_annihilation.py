@@ -11,11 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_annihilation_no_progress():
@@ -50,7 +50,7 @@ selected, chain started and finished, no fight, no progress - the 09-14 shape.
     from ark_relay.core import ledger as core
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
-    FX = Path(__file__).parent / "fixtures" / "maa-annihilation-2026-09-21" / "MAA-17-30-02.log"
+    FX = fx_dir(Path(__file__), "fixtures") / "maa-annihilation-2026-09-21" / "MAA-17-30-02.log"
 
 
     TMP = tmpdir()
@@ -131,7 +131,7 @@ selected, chain started and finished, no fight, no progress - the 09-14 shape.
     # a progress line below the cap is "not done", and the ledger rows this fix is
     # about really are the no-progress, sanity-short shape.
     print("\n[真日志 09-07 截到 1480/1800：有进度但没满]")
-    REAL0907 = Path(__file__).parent / "replay" / "2026-09-07" / "arknights" / "MAA-05-00-00.log"
+    REAL0907 = fx_dir(Path(__file__), "replay") / "2026-09-07" / "arknights" / "MAA-05-00-00.log"
     lines0907 = REAL0907.read_text(encoding="utf-8").splitlines(keepends=True)
     cut = next(i for i, l in enumerate(lines0907) if "剿灭模式 : 1480 / 1800" in l)
     partial = TMP / "MAA-partial.log"
@@ -145,7 +145,7 @@ selected, chain started and finished, no fight, no progress - the 09-14 shape.
     check("打满的日报写已打满", "本周剿灭已打满（1800/1800）" in body, True)
 
     print("\n[09-14 账本 1-3 行就是这个形状：理智不够、没有进度、却记成完成]")
-    LEDGER = Path(__file__).parent / "fixtures" / "ledger-2026-09-14" / "ledger.jsonl"
+    LEDGER = fx_dir(Path(__file__), "fixtures") / "ledger-2026-09-14" / "ledger.jsonl"
     old = [json.loads(x) for x in LEDGER.read_text(encoding="utf-8").splitlines()[:3]]
     check("三行都是理智 17/25、没有进度",
           all(r["raw"].get("maa_sanity_short") == {"have": 17, "cost": 25}
@@ -615,7 +615,7 @@ Plan text through next_plan with the machine's AUTO-MAS config
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features.weekly import annihilation as A
 
-    AUTOMAS_FX = Path(__file__).resolve().parent / "fixtures" / "automas-config-2026-10-11" / "config"
+    AUTOMAS_FX = fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11" / "config"
     # next_plan's maintenance notices come from the official sites; nothing here is about
     # them, and no relay test may reach the internet (run 38363145659 sat in those
     # fetches on Windows until the 180 s limit).
@@ -731,8 +731,8 @@ spent ~89 sanity while the machine was off (1/210 at 11-15 21:36, 26/210 at 09:0
     from ark_relay.core import ledger_report
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
-    FX = Path(__file__).parent / "fixtures" / "maa-annihilation-2026-11-16" / "MAA-05-00-29.log"
-    OLD = Path(__file__).parent / "fixtures" / "maa-annihilation-2026-09-21" / "MAA-17-30-02.log"
+    FX = fx_dir(Path(__file__), "fixtures") / "maa-annihilation-2026-11-16" / "MAA-05-00-29.log"
+    OLD = fx_dir(Path(__file__), "fixtures") / "maa-annihilation-2026-09-21" / "MAA-17-30-02.log"
 
     print("[真日志 11-16：终端里没剿灭入口，MAA 跳过]")
     got = collector_maa.parse_maa_log(FX)

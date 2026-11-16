@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():  # noqa: C901 - the whole body of the file this part was
@@ -509,7 +509,7 @@ launch must not leave the config pointed somewhere else.
     # STALL_MINUTES, a failed stop for a farm 10 minutes old.
     import gzip as _gz
     _day = tmpdir() / "ok-script.2026-10-12.log"
-    _day.write_bytes(_gz.decompress((Path(__file__).resolve().parent / "fixtures"
+    _day.write_bytes(_gz.decompress((fx_dir(Path(__file__), "fixtures")
                                      / "ok-script-2026-10-12-cut-152532.log.gz").read_bytes()))
     _real4 = _wbw._okww_log
     _wbw._okww_log = lambda: _day
@@ -527,7 +527,7 @@ launch must not leave the config pointed somewhere else.
     print("\n[进度关键词：只认今天真的会写出来的句子]")
     # Real lines: OK-WW v3.7.3's from tests/replay/2026-09-07/wuwa/OK-WW-06-00-55.log
     # (lines 168, 226, 275), the overrides' copied from their log_info calls.
-    _replay = (Path(__file__).resolve().parent / "replay" / "2026-09-07" / "wuwa"
+    _replay = (fx_dir(Path(__file__), "replay") / "2026-09-07" / "wuwa"
                / "OK-WW-06-00-55.log").read_text(encoding="utf-8")
     from ark_relay.features.okww_patch import okww_overlay as _ov
     _overrides = _ov.source_text()

@@ -11,11 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_automas_backend_match():
@@ -63,7 +63,7 @@ test_procs.py): `D:\\ark\\automas\\runtime\\environment\\venv\\Scripts\\python.e
     from ark_relay.features.phone import commands
 
 
-    line = (Path(__file__).parent / "fixtures" / "okww_argv_20261012.log").read_text(encoding="utf-8")
+    line = (fx_dir(Path(__file__), "fixtures") / "okww_argv_20261012.log").read_text(encoding="utf-8")
     okww_script = ast.literal_eval(re.search(r"(\[.*?\])", line).group(1))[0]
     OKWW = rf"D:\ark\okww\data\apps\ok-ww\python\python.exe {okww_script}"
     BACKEND = r"D:\ark\automas\runtime\environment\venv\Scripts\python.exe main.py"
@@ -600,9 +600,9 @@ GitHub itself is not asked here (main() is given the file); the exit codes are c
     except ImportError:          # the code before this change
         w = mascontract = None
 
-    BETA2 = HERE / "fixtures" / "automas-models" / "config.py.txt"
-    BETA3 = HERE / "fixtures" / "automas-models" / "config-v5.7.0-beta.3-excerpt.py.txt"
-    BETA4 = HERE / "fixtures" / "automas-models" / "config-v5.7.0-beta.4-excerpt.py.txt"
+    BETA2 = fx_dir(HERE, "fixtures") / "automas-models" / "config.py.txt"
+    BETA3 = fx_dir(HERE, "fixtures") / "automas-models" / "config-v5.7.0-beta.3-excerpt.py.txt"
+    BETA4 = fx_dir(HERE, "fixtures") / "automas-models" / "config-v5.7.0-beta.4-excerpt.py.txt"
     # The two MaaEnd settings AUTO-MAS v5.7.0-beta.4 brought in (PR #1394, the launcher start);
     # the relay reads them since 10-16 (efstart_setup), so an older release lacks them.
     NEW_IN_BETA4 = ["MaaEndConfig Game.LaunchMode", "MaaEndConfig Game.LauncherPath"]

@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_daily_format():
@@ -36,7 +36,7 @@ def _part_daily_format():
     from ark_relay.core import ledger as core
     from ark_relay.core.config import SERVER_TZ
 
-    FX = Path(__file__).parent / "fixtures"
+    FX = fx_dir(Path(__file__), "fixtures")
 
     def ent(run_id, script, hh, mm, dur, ok=True, **kw):
         st = datetime(2026, 9, 2, hh, mm, tzinfo=SERVER_TZ)
@@ -198,7 +198,7 @@ in fact gone fine. His words: 「这终末地通知就是一坨屎吧」.
     from ark_relay.core import ledger as core
 
 
-    entries = json.loads((Path(__file__).parent / "fixtures" / "daily-2026-09-09.json")
+    entries = json.loads((fx_dir(Path(__file__), "fixtures") / "daily-2026-09-09.json")
                          .read_text(encoding="utf-8"))
     # The 09-09 ledger predates the evidence rule (2026-10-05): no task has an
     # evidence line on record, so as booked every listed task is unverified.
@@ -257,7 +257,7 @@ naming tasks it never did.
     from ark_relay.core import ledger as core
 
 
-    es = [json.loads(x) for x in (Path(__file__).parent / "fixtures" / "ledger-1008-maaend-two-lists.jsonl").read_text(encoding="utf-8").splitlines()]
+    es = [json.loads(x) for x in (fx_dir(Path(__file__), "fixtures") / "ledger-1008-maaend-two-lists.jsonl").read_text(encoding="utf-8").splitlines()]
     _t, body = core.format_daily("2026-10-08", es, "", "")
     blocks = body.split("\n\n")
     late = next(b for b in blocks if "10:35→11:12" in b)

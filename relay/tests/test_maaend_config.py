@@ -11,11 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_maaend_controller_cache():  # noqa: C901 - the whole body of the file this part was
@@ -50,14 +50,13 @@ failed case, not a crash.
     HERE = Path(__file__).resolve().parent
     sys.path.insert(0, str(HERE.parent))
     sys.path.insert(0, str(HERE))
-    sys.path.insert(0, str(HERE / "gamesim" / "lib"))
 
-    import maaend_schema as ms
+    import _maaend_schema as ms
     from ark_relay.core import mastercfg
     from ark_relay.features.makeup import makeup
     from ark_relay.features.weekly import sanity_plan
 
-    FX = HERE / "fixtures" / "maaend-v2.33-essence"
+    FX = fx_dir(HERE, "fixtures") / "maaend-v2.33-essence"
     MASTER = json.loads((FX / "master-1016.json").read_text(encoding="utf-8"))
     CTRL = "Win32-Front"
     FAILED: list[str] = []
@@ -282,7 +281,7 @@ setting.
     HAN = re.compile(r"[一-鿿]")
 
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "maaend228"
+    FX = fx_dir(Path(__file__), "fixtures") / "maaend228"
     root = tmpdir()
     automas = root / "AUTO-MAS"
     cf = automas / "data" / "x" / "Default" / "ConfigFile"
@@ -445,7 +444,7 @@ the location list of 基质刷取 needs the AutoEssenceMenu key it now hangs und
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import mastercfg
 
-    FIX = Path(__file__).parent / "fixtures" / "maaend-2026-09-10"
+    FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-10"
 
 
     with tempfile.TemporaryDirectory() as d:
@@ -548,7 +547,7 @@ new `<key>Items` checkbox, with the switch on when anything was picked.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import mastercfg
 
-    FIX = Path(__file__).parent / "fixtures" / "maaend-2026-10-10"
+    FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-10-10"
     KEYS = ("AutoStockBuyDailyGoodsValleyIV", "AutoStockBuyStockFactoryGoodsValleyIV",
             "AutoStockBuyCulturalGoodsValleyIV", "AutoStockBuyDailyGoodsWuling",
             "AutoStockBuyStockFactoryGoodsWuling", "AutoStockBuyCulturalGoodsWuling")
@@ -739,9 +738,9 @@ while the real run was booked failed (e539a57f).
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
     HERE = pathlib.Path(__file__).resolve().parent
-    REAL_0906 = (HERE / "gamesim" / "corpus" / "maaend" / "v3-0906-automas-misjudged" / "automas" / "history"
+    REAL_0906 = (fx_dir(HERE, "gamesim") / "corpus" / "maaend" / "v3-0906-automas-misjudged" / "automas" / "history"
                  / "2026-09-06" / "endfield" / "MaaEnd-05-40-21")
-    REAL_0918 = HERE / "fixtures" / "maaend-2026-09-18" / "MaaEnd-05-26-03"
+    REAL_0918 = fx_dir(HERE, "fixtures") / "maaend-2026-09-18" / "MaaEnd-05-26-03"
 
 
     log_0906 = REAL_0906.with_suffix(".log").read_text(encoding="utf-8")
@@ -827,7 +826,7 @@ every new key to appear with a Chinese name, real choices and the picks kept.
     HAN = re.compile(r"[一-鿿]")
 
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "maaend-2026-09-10"
+    FX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-10"
     root = tmpdir()
     automas = root / "AUTO-MAS"
     cf = automas / "data" / "x" / "Default" / "ConfigFile"
@@ -906,7 +905,7 @@ three real lines with the task-start line of the real 09-27 协议空间 run
 
 
     def main() -> int:
-        r = parse_maaend_log(HERE / "replay" / "2026-09-05" / "endfield" / "MaaEnd-05-27-42.log")
+        r = parse_maaend_log(fx_dir(HERE, "replay") / "2026-09-05" / "endfield" / "MaaEnd-05-27-42.log")
         require("skipped gathering is not listed as done", "自动采集" not in (r.get("tasks_done") or []),
                 repr(r.get("tasks_done")))
         require("... it is listed as skipped with its weekday",
@@ -925,7 +924,7 @@ three real lines with the task-start line of the real 09-27 协议空间 run
                 repr(p.get("maaend_tasks_skipped")))
         require("... and no 「刷 协议空间 ×0」 farming section", not p.get("maaend_farm"), repr(p.get("maaend_farm")))
 
-        full = parse_maaend_log(HERE / "fixtures" / "maaend-farm-drops" / "2026-09-27.log")
+        full = parse_maaend_log(fx_dir(HERE, "fixtures") / "maaend-farm-drops" / "2026-09-27.log")
         require("a run that really farmed is unchanged", full.get("maaend_farm") == "协议空间"
                 and "协议空间" in (full.get("tasks_done") or []) and not full.get("maaend_tasks_skipped"),
                 repr((full.get("maaend_farm"), full.get("maaend_tasks_skipped"))))
@@ -1015,7 +1014,7 @@ The skip lines are the real ones from tests/replay/2026-09-05 MaaEnd-05-27-42.lo
         require("the daily list does not count it", "协议空间" not in foot and "据点交易" in foot, foot)
 
         # 自动采集 keeps its own sentence, said once (not again in the generic one).
-        gather = parse_maaend_log(HERE / "replay" / "2026-09-05" / "endfield" / "MaaEnd-05-27-42.log")
+        gather = parse_maaend_log(fx_dir(HERE, "replay") / "2026-09-05" / "endfield" / "MaaEnd-05-27-42.log")
         _t3, b3 = core.format_daily("2026-09-05", [ent(gather)])
         require("a skipped 自动采集 keeps its own sentence", "自动采集 今天周六不是采集日" in b3, b3)
         require("... and is not repeated in the generic one", "按排班跳过、没有做：自动采集" not in b3, b3)
@@ -1049,7 +1048,7 @@ Fixture: tests/fixtures/maaend-v2.32-autostock (upstream excerpt, see SOURCE.txt
 
     from ark_relay.core import mastercfg
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "maaend-v2.32-autostock"
+    FX = fx_dir(Path(__file__), "fixtures") / "maaend-v2.32-autostock"
     PATH = "AutoStockStaple/AutoStockReserveWuling"
     FAILED: list[str] = []
 

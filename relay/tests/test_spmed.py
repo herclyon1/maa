@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_spmed_kept_off_push():
@@ -82,7 +82,7 @@ master (fixtures/maaend-2026-09-10/master-before.json) with the booster task on.
     mastercfg.prune_maaend_orphans = lambda *a: ([], "")
     mastercfg.migrate_maaend_options = lambda *a: ([], "")
     collect_retry.restore_master = lambda cfg: ""
-    FIX = Path(__file__).resolve().parent / "fixtures"
+    FIX = fx_dir(Path(__file__), "fixtures")
     TITLE = getattr(texts, "SPMED_UNRECOGNISED", "<no such title>")
 
     root = tmpdir()
@@ -169,7 +169,7 @@ machine would have rung 「⚠️ 终末地应急理智加强剂：中继确认�
     from ark_relay.features.gameupdate import gameupdate
     from ark_relay.core import mastercfg, texts
 
-    LIVE = Path(__file__).resolve().parent / "fixtures" / "maaend-v2.32-spmed"
+    LIVE = fx_dir(Path(__file__), "fixtures") / "maaend-v2.32-spmed"
 
 
     def maaend_with(nodes: dict) -> Path:
@@ -280,8 +280,8 @@ tests/fixtures/maaend-v2.33.0-rc.1-spmed (the live node, verbatim).
     from ark_relay.features.gameupdate import gameupdate
     from ark_relay.core import mastercfg, texts
 
-    LIVE = Path(__file__).resolve().parent / "fixtures" / "maaend-v2.33.0-rc.1-spmed"
-    V232 = Path(__file__).resolve().parent / "fixtures" / "maaend-v2.32-spmed"
+    LIVE = fx_dir(Path(__file__), "fixtures") / "maaend-v2.33.0-rc.1-spmed"
+    V232 = fx_dir(Path(__file__), "fixtures") / "maaend-v2.32-spmed"
 
 
     def maaend_with(nodes: dict) -> Path:

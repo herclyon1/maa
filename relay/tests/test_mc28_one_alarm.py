@@ -27,7 +27,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _tmp import tmpdir
+from _tmp import fx_dir, tmpdir
 
 TMP = tmpdir()
 os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_HISTORY_DIR=str(TMP / "history"),
@@ -45,7 +45,7 @@ from ark_relay.features.selfcheck import machinecheck as mc  # noqa: E402
 from ark_relay.features.selfcheck.machinechecks import runs  # noqa: E402
 from ark_relay.features.verify import collector_maaend      # noqa: E402
 
-FIX = Path(__file__).resolve().parent / "fixtures" / "maaend-task-trail"
+FIX = fx_dir(Path(__file__), "fixtures") / "maaend-task-trail"
 fails = []
 
 

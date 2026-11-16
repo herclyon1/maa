@@ -11,11 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_sanity_plan_both_on():
@@ -43,7 +43,7 @@ the ones sanity_plan writes since the relay2-patchC-1005 version was chosen
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features.weekly import sanity_plan
 
-    FX = Path(__file__).parent / "fixtures" / "maaend-2026-09-10" / "master-before.json"
+    FX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-10" / "master-before.json"
 
 
     def automas_with(data: dict, name: str) -> Path:
@@ -293,7 +293,7 @@ the v2.30.0-rc.1 definition fixture.
     from ark_relay.features.phone import inbox
     from ark_relay.features.weekly import sanity_plan
 
-    FX = Path(__file__).resolve().parent / "fixtures"
+    FX = fx_dir(Path(__file__), "fixtures")
     MASTER = FX / "maaend-2026-09-10" / "master-before.json"
     MAAEND = FX / "maaend-protocolspace-v2.30.0-rc.1"
     AUTOMAS_FX = FX / "automas-config-2026-10-11" / "config"
@@ -446,7 +446,7 @@ a temp install.
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.names import GAME_ZH
 
-    FX = Path(__file__).resolve().parent / "fixtures"
+    FX = fx_dir(Path(__file__), "fixtures")
     MASTER = FX / "maaend-2026-09-10" / "master-before.json"
     MAAEND_FX = FX / "maaend-2026-09-10"
     AUTOMAS_FX = FX / "automas-config-2026-10-11" / "config"

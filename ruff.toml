@@ -12,8 +12,6 @@ line-length = 100
 extend-exclude = [
     # Runs inside OK-WW and copies upstream method bodies verbatim; not held to our style
     "relay/ark_relay/features/okww_patch/okww_files",
-    # Verbatim upstream files the source pins are tested against
-    "relay/tests/fixtures/source-pins",
 ]
 
 [lint]

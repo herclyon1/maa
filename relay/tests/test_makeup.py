@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():  # noqa: C901 - the whole body of the file this part was
@@ -72,7 +72,7 @@ among them, switched off) and failures of only 自动采集 / 应急理智加强
     from ark_relay.core.notify import route_of
 
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "maaend-2026-09-10"
+    FX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-10"
     MASTER = json.loads((FX / "master-before.json").read_text(encoding="utf-8"))
     THREE = ["赠送干员礼物", "基质刷取", "日常奖励领取"]          # 2026-09-25, as MaaEnd prints them, emoji stripped
     # Noon today: every stamp below stays on today's date whatever the hour the suite runs.
@@ -853,7 +853,7 @@ make-up is only for a failure of today, so the no-make-up checks mean something)
     from datetime import datetime, timedelta
 
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "hand-started-1016"
+    FX = fx_dir(Path(__file__), "fixtures") / "hand-started-1016"
     REAL_DAY = "2026-10-16"
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
@@ -1132,7 +1132,7 @@ on_record likewise tied only 10-03's failures to a successful make-up.
     from ark_relay.core.ledger import State
     from ark_relay.features.makeup import makeup
 
-    FX = Path(__file__).resolve().parent / "fixtures"
+    FX = fx_dir(Path(__file__), "fixtures")
 
 
     class Eng:
@@ -1433,7 +1433,7 @@ own line reads 「10:35→11:12 … 东京 11:35→12:12」.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger as core
 
-    es = [json.loads(x) for x in (Path(__file__).parent / "fixtures" / "ledger-1008-maaend-two-lists.jsonl").read_text(encoding="utf-8").splitlines()]
+    es = [json.loads(x) for x in (fx_dir(Path(__file__), "fixtures") / "ledger-1008-maaend-two-lists.jsonl").read_text(encoding="utf-8").splitlines()]
     notes = core.retried_notes(es)
     got = notes.get("2026-10-08/endfield/MaaEnd-05-29-15", "")
     ok = got == "自动采集　后来在 10:35（东京 11:35）开始的那趟重试里做成了"

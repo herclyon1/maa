@@ -39,9 +39,9 @@ from pathlib import Path
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tmp import tmpdir  # after the path, as every test file imports it
+from _tmp import fx_dir, tmpdir  # after the path, as every test file imports it
 
-__all__ = ["check", "fails", "require", "run_parts", "tmpdir"]
+__all__ = ["check", "fails", "fx_dir", "require", "run_parts", "tmpdir"]
 
 # The failed checks of the part running now; emptied before each part.
 fails: list[str] = []

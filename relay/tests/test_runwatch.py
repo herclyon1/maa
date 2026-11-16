@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():
@@ -468,7 +468,7 @@ Fixtures: the morning lines of the machine's ledgers 10-05, 10-08, 10-12.
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features.run import runwatch
 
-    FIX = RELAY / "tests" / "fixtures" / "runwatch-chain-1005-1012"
+    FIX = fx_dir(RELAY, "fixtures") / "runwatch-chain-1005-1012"
 
 
     def morning(day):
@@ -649,7 +649,7 @@ the machine's AUTO-MAS history (fixtures/automas-runprobe/).
     import json
 
     ROOT = Path(__file__).resolve().parents[2]
-    FIX = Path(__file__).resolve().parent / "fixtures" / "automas-runprobe"
+    FIX = fx_dir(Path(__file__), "fixtures") / "automas-runprobe"
     spec = importlib.util.spec_from_file_location("run_probe", ROOT / "scripts" / "windows" / "run-probe.py")
     probe = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(probe)

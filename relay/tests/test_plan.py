@@ -11,11 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_plan_after_accomplish():
@@ -43,7 +43,7 @@ hibernate showed no line at all. Base data: the real 10-11 config (NoAction).
     plan.maintenance_lines = lambda day: []
 
     FAILED: list[str] = []
-    REAL = Path(__file__).resolve().parent / "fixtures" / "automas-config-2026-10-11"
+    REAL = fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11"
 
 
     def require(name: str, ok: bool, detail: str = "") -> None:
@@ -106,8 +106,8 @@ config (tests/fixtures/automas-config-2026-10-11) pointing MaaEnd at a temp dir.
     plan.maintenance_lines = lambda day: []
 
     FAILED: list[str] = []
-    FIX = Path(__file__).resolve().parent / "fixtures" / "maaend-2026-09-10" / "tasks" / "AutoCollect.json"
-    AUTOMAS_FX = Path(__file__).resolve().parent / "fixtures" / "automas-config-2026-10-11" / "config"
+    FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-10" / "tasks" / "AutoCollect.json"
+    AUTOMAS_FX = fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11" / "config"
 
 
     def require(name: str, ok: bool, detail: str = "") -> None:
@@ -195,7 +195,7 @@ Config: tests/fixtures/automas-config-2026-10-11 (the machine's own, see SOURCE.
     from datetime import datetime
 
 
-    FX = Path(__file__).resolve().parent / "fixtures" / "automas-config-2026-10-11"
+    FX = fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11"
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
     shutil.copytree(FX / "config", AUTOMAS / "config")
@@ -500,7 +500,7 @@ Base data: the real 10-11 AUTO-MAS config (YW-4, Fixed, 999).
     plan.maintenance_lines = lambda day: []
 
     FAILED: list[str] = []
-    REAL = Path(__file__).resolve().parent / "fixtures" / "automas-config-2026-10-11"
+    REAL = fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11"
     PLAN_UID = "c88cfe9e-6617-4fb8-9225-183ca571e3ae"
 
 
@@ -596,7 +596,7 @@ relay still read StartUpEnabled, so on the real 10-11 config every queue said
     from ark_relay.core import plan
 
     FAILED: list[str] = []
-    REAL = Path(__file__).resolve().parent / "fixtures" / "automas-config-2026-10-11"
+    REAL = fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11"
 
 
     def require(name: str, ok: bool, detail: str = "") -> None:

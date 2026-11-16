@@ -11,11 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():
@@ -610,7 +610,7 @@ alert.
     from ark_relay.features.verify.collector_maaend import parse_maaend_log
     from ark_relay.features.verify.outcome import maaend_checks, summarize
 
-    REC = Path(__file__).resolve().parent / "replay" / "2026-10-16" / "endfield"
+    REC = fx_dir(Path(__file__), "replay") / "2026-10-16" / "endfield"
     HIST = (REC / "MaaEnd-09-53-33.log").read_text(encoding="utf-8")
     APP = "\n" + (REC / "2026-10-16-3.log").read_text(encoding="utf-8")
     MET_LINE = "勾选武器的基质均已满足"
@@ -718,7 +718,7 @@ The negative case keeps the same segment without the stop line: a quick
     from ark_relay.features.verify.collector_maaend import parse_maaend_log
     from ark_relay.features.verify.outcome import maaend_checks
 
-    LOG_PATH = Path(__file__).parent / "fixtures" / "maaend-2026-10-19" / "MaaEnd-07-14-29.log"
+    LOG_PATH = fx_dir(Path(__file__), "fixtures") / "maaend-2026-10-19" / "MaaEnd-07-14-29.log"
     LOG = LOG_PATH.read_text(encoding="utf-8")
     STOP = "😴**体力不足，任务结束**"
 
@@ -783,7 +783,7 @@ claim gives -20, floored to 0: no time. Before, both lost the time.
 
 
     fin = datetime(2026, 10, 12, 10, 58, 40, tzinfo=SERVER_TZ)
-    log = Path(__file__).parent / "fixtures" / "maaend-sanity-1013" / "2026-10-12_MaaEnd-06-04-00.log"
+    log = fx_dir(Path(__file__), "fixtures") / "maaend-sanity-1013" / "2026-10-12_MaaEnd-06-04-00.log"
     raw: dict = {}
     collector._enrich_record(raw, "MaaEnd", log, True, [], fin)
     check("full at from the reading's time", raw.get("sanity_full_at"), "理智将在 2026-10-13 19:45 回满。")
@@ -792,7 +792,7 @@ claim gives -20, floored to 0: no time. Before, both lost the time.
     collector._enrich_record(raw, "MaaEnd", Path("/nonexistent/MaaEnd.log"), True, [], fin)
     check("exhausted and 0: no sentence", raw.get("sanity_full_at") or "", "")
 
-    src = (Path(__file__).parent / "fixtures" / "maaend-sanity-1013" / "2026-10-13_MaaEnd-05-36-57.log").read_text(encoding="utf-8")
+    src = (fx_dir(Path(__file__), "fixtures") / "maaend-sanity-1013" / "2026-10-13_MaaEnd-05-36-57.log").read_text(encoding="utf-8")
     fin = datetime(2026, 10, 13, 9, 54, tzinfo=SERVER_TZ)
     for first, want_left, want in ((160, 0, "理智将在 2026-10-15 05:05 回满。"), (60, 0, "")):
         with tempfile.TemporaryDirectory() as d:
@@ -990,7 +990,7 @@ def _part_maaend_sanity():
     check("鸣潮 6 分钟", collector._OKWW_SEC_PER_POINT, 360)
 
     print("\n[自动采集：没走通的路线要点名，不只数个数（2026-09-11 那趟真实日志）]")
-    real = Path(__file__).resolve().parent / "fixtures" / "collect-retry-2026-09-11" / "automas-MaaEnd-06-17-17.log"
+    real = fx_dir(Path(__file__), "fixtures") / "collect-retry-2026-09-11" / "automas-MaaEnd-06-17-17.log"
     got = collector.parse_maaend_log(real)
     check("走通 15/17（线路1-3 和 路线4-17 两种写法都算）", (got.get("maaend_collect_done"), got.get("maaend_collect_total")), (15, 17))
     check("没走通的名字", got.get("maaend_collect_failed"), ["路线15：红矛叶", "路线16：协议纹石"])
@@ -1000,7 +1000,7 @@ def _part_maaend_sanity():
     # records at the end of the task, so a record can never precede the retry); the
     # live-log version is tested in test_collect.py.
     print("\n[自动采集：不是采集日的 0 分钟不算「做了」（2026-09-05 周六真实日志）]")
-    real = Path(__file__).resolve().parent / "replay" / "2026-09-05" / "endfield" / "MaaEnd-05-27-42.log"
+    real = fx_dir(Path(__file__), "replay") / "2026-09-05" / "endfield" / "MaaEnd-05-27-42.log"
     got = collector.parse_maaend_log(real)
     check("记下是哪天被排班跳过的", got.get("maaend_collect_skipped"), "周六")
     check("跳过的那天没有路线计数", "maaend_collect_total" in got, False)
@@ -1033,7 +1033,7 @@ With that one 「补充理智」 line taken out the same readings no longer fit
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features.verify.collector_maaend import parse_maaend_log
 
-    LOG = Path(__file__).resolve().parent / "fixtures" / "maaend-sanity-1013" / "2026-10-08_MaaEnd-05-29-15.log"
+    LOG = fx_dir(Path(__file__), "fixtures") / "maaend-sanity-1013" / "2026-10-08_MaaEnd-05-29-15.log"
 
 
     fin = datetime(2026, 10, 8, 9, 57, tzinfo=SERVER_TZ)
@@ -1085,7 +1085,7 @@ and the report row said 「理智不足，一次没开成」 on a run that claim
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features.verify.collector_maaend import parse_maaend_log
 
-    D = Path(__file__).resolve().parent / "fixtures" / "maaend-sanity-1013"
+    D = fx_dir(Path(__file__), "fixtures") / "maaend-sanity-1013"
 
 
     CASES = [

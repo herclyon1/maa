@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_okww_alive_cache():
@@ -118,13 +118,13 @@ mismatch is a line at boot, said once - not an alarm after the run.
     from ark_relay.features.okww_patch import okww_overlay
 
 
-    V373 = (Path(__file__).resolve().parent / "fixtures"
+    V373 = (fx_dir(Path(__file__), "fixtures")
             / "okww-NightmareNestTask-v3.7.3.py.txt").read_text(encoding="utf-8")
     # v3.7.2's find_nest differs from v3.7.3's in the box top only (diff of the two releases).
     V372 = V373.replace("counts = self.ocr(0.35, 0.25, 1, 0.96, match=self.count_re)",
                         "counts = self.ocr(0.35, 0.13, 1, 0.96, match=self.count_re)")
     # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED): the pins are its bodies.
-    INST = Path(__file__).resolve().parent / "gamesim" / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task"
+    INST = fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task"
     VINST = (INST / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
     DAILY_INST = (INST / "DailyTask.py.txt").read_text(encoding="utf-8")
 
@@ -232,7 +232,7 @@ Audit 2026-10-13 item 7: grouped by timestamp now (headers within 2 s = one even
 
 
     print("[the real 09-01 log: the weekly claim's own wait, not the wrapper]")
-    real = (Path(__file__).resolve().parent / "replay" / "2026-09-01" / "wuwa" / "OK-WW-06-35-43.log"
+    real = (fx_dir(Path(__file__), "replay") / "2026-09-01" / "wuwa" / "OK-WW-06-35-43.log"
             ).read_text(encoding="utf-8", errors="replace")
     err = co._okww_error(real)
     check("names the task", err.startswith("周本："), True)
@@ -272,7 +272,7 @@ Audit 2026-10-13 item 7: grouped by timestamp now (headers within 2 s = one even
     print("\n[how long it waited: the timeout line of the same raise, found by time (item 8)]")
     # Measured over every real log on 2026-10-13: the timeout line is at most 0.62 s
     # before its header, but up to 2558 characters back; the old window was 600.
-    real = (Path(__file__).resolve().parent / "fixtures" / "m6-okww" / "0921-weekly.log").read_text(encoding="utf-8")
+    real = (fx_dir(Path(__file__), "fixtures") / "m6-okww" / "0921-weekly.log").read_text(encoding="utf-8")
     check("09-21: the 10 s wait is said", co._okww_error(real).endswith("（等了 10 秒）"), True)
     wait = "2026-09-01 10:50:13,335 INFO TaskExecutor TaskExecutor:wait_until timeout <f> 10 seconds\n"
     far = wait + STACK[:5000] + "\n" + head("10:50:13,900", "FarmEchoTask", "farm 4c error, try handle monthly card")
@@ -716,8 +716,8 @@ msgstr ""
     real = TMP / "real"
     (real / I.PO_REL).parent.mkdir(parents=True)
     (real / I.TS_REL).parent.mkdir(parents=True)
-    shutil.copy(HERE / "fixtures" / "okww-i18n" / "ok-v3.7.19.po", real / I.PO_REL)
-    shutil.copy(HERE / "fixtures" / "okww-i18n" / "okscript-3.0.3-zh_CN.ts", real / I.TS_REL)
+    shutil.copy(fx_dir(HERE, "fixtures") / "okww-i18n" / "ok-v3.7.19.po", real / I.PO_REL)
+    shutil.copy(fx_dir(HERE, "fixtures") / "okww-i18n" / "okscript-3.0.3-zh_CN.ts", real / I.TS_REL)
     rt = I.tables(real)
     check("hundreds of whole messages read", len(rt.exact) > 1000, True)
     check("ledger #136: the framework's line from zh_CN.ts",
@@ -1282,7 +1282,7 @@ def _part_okww_structured():
     from ark_relay.features.verify import collector_okww
 
 
-    REAL = (ROOT / "tests" / "replay" / "2026-09-07" / "wuwa" / "OK-WW-07-27-50.log"
+    REAL = (fx_dir(ROOT, "replay") / "2026-09-07" / "wuwa" / "OK-WW-07-27-50.log"
             ).read_text(encoding="utf-8", errors="replace")
 
     print("[真实日志：读出上游自己报的状态]")

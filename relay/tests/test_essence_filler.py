@@ -11,11 +11,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():
@@ -68,8 +68,8 @@ the machine.
     from ark_relay.features.alarm import errwatch, handle
     from ark_relay.features.verify.collector_maaend import parse_maaend_log
 
-    FIX = Path(__file__).resolve().parent / "fixtures" / "maaend-v2.33-essence"
-    REC = Path(__file__).resolve().parent / "replay" / "2026-10-16" / "endfield"
+    FIX = fx_dir(Path(__file__), "fixtures") / "maaend-v2.33-essence"
+    REC = fx_dir(Path(__file__), "replay") / "2026-10-16" / "endfield"
     HIST_LOG = (REC / "MaaEnd-09-53-33.log").read_text(encoding="utf-8")
     MET_LINE = "勾选武器的基质均已满足"
     GENERIC = "基质目标已满足或任务结束"

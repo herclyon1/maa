@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():
@@ -235,7 +235,7 @@ MaaEnd 卡在弹窗上自己关掉，两边都没报错，而中继报了「全�
         # 「结晶波片不够领奖」 into the group. The fix reads only the TaskExecutor's
         # own lines. The regression uses the evidence-package lines verbatim (do not
         # edit them; fixture okww-1006-weekly-full.log holds lines 104/153/175/176).
-        weekly_full = (Path(__file__).resolve().parent / "fixtures"
+        weekly_full = (fx_dir(Path(__file__), "fixtures")
                        / "okww-1006-weekly-full.log").read_text(encoding="utf-8")
         wfull = okww_checks(weekly_full, expect_nest=False, expect_daily=False, expect_stamina=False)
         check("更新说明里的「结晶波片不足」不再判没干完", "周本领到了奖励" not in bad_labels(wfull), True)

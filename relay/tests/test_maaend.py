@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_maaend_app_log():
@@ -236,7 +236,7 @@ The user's words, on why a false green is worse than a false red: 「明明没�
     from ark_relay.core import texts
     from ark_relay.features.verify.outcome import maaend_checks, summarize
 
-    FIX = Path(__file__).parent / "fixtures" / "maaend-2026-09-10"
+    FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-10"
 
 
     def bad(checks):
@@ -295,7 +295,7 @@ The user's words, on why a false green is worse than a false red: 「明明没�
     # 「选项 "AutoStockBuy…" 的类型已从 "checkbox" 变更为 "switch"，已重置为默认值」 and
     # bought by the defaults instead of the per-item lists in the master; this
     # check stayed green because it only knew the 「已丢弃保存值」 wording.
-    app1010 = (Path(__file__).parent / "fixtures" / "maaend-2026-10-10" / "app-2026-10-10-3.log").read_text(encoding="utf-8")
+    app1010 = (fx_dir(Path(__file__), "fixtures") / "maaend-2026-10-10" / "app-2026-10-10-3.log").read_text(encoding="utf-8")
     b3 = bad(maaend_checks(app1010, [], own_log=True))
     check("类型变了被重置 被判为故障", "自动囤货的设置" in b3)
     check("说清是 6 个购买选项、没按设置买", "6 个购买选项被 MaaEnd 新版本重置成默认值，今天没按你的设置买"
@@ -303,7 +303,7 @@ The user's words, on why a false green is worse than a false red: 「明明没�
     check("点名囤货那几项", "AutoStockBuyCulturalGoodsValleyIV" in b3.get("自动囤货的设置", ""))
     # 2026-10-12: this alone was said as 「MaaEnd 这一轮有 1 项没干成」 - the work was done, by defaults.
     # With AUTO-MAS's own record of that run (tests/replay/2026-10-10), every task finished.
-    hist1010 = (Path(__file__).parent / "replay" / "2026-10-10" / "endfield" / "MaaEnd-05-13-19.log").read_text(encoding="utf-8")
+    hist1010 = (fx_dir(Path(__file__), "replay") / "2026-10-10" / "endfield" / "MaaEnd-05-13-19.log").read_text(encoding="utf-8")
     msg3 = summarize(maaend_checks(hist1010 + "\n" + app1010, [], own_log=True), "MaaEnd") or ""
     check("只有设置被重置：不说「没干成」", "没干成" not in msg3)
     check("只有设置被重置：开头说没按你的设置跑", msg3.splitlines()[0],
@@ -337,7 +337,7 @@ real lines). The alarm said gathering failed and nothing more. Checked, on those
     from ark_relay.core.ledger_rows import _with_causes
     from ark_relay.features.verify import collector_maaend as C
 
-    FIX = Path(__file__).resolve().parent / "fixtures" / "maaend-2026-11-05"
+    FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-11-05"
     HISTORY = (FIX / "history-MaaEnd-07-24-54-gathering.log").read_text(encoding="utf-8")
     FW_LINE = (FIX / "maafw-logged-out-ocr.log").read_text(encoding="utf-8")
     TMP = tmpdir()
@@ -723,7 +723,7 @@ Inputs are real files:
     from ark_relay.core import mastercfg, notify, texts
     from ark_relay.core.statestore import StateStore
 
-    FIX = Path(__file__).resolve().parent / "fixtures"
+    FIX = fx_dir(Path(__file__), "fixtures")
     MASTER = FIX / "maaend-2026-09-10" / "master-before.json"
     V_BETA4 = FIX / "maaend228" / "interface.json"                       # v2.28.0-beta.4
     V_BETA5 = FIX / "maaend-2026-09-10" / "interface.json"                 # v2.28.0-beta.5
@@ -949,7 +949,7 @@ stopped-between-tasks logs are real prefixes of 2026-09-28a.log.
 
     HERE = pathlib.Path(__file__).resolve().parent
 
-    FIX = HERE / "fixtures"
+    FIX = fx_dir(HERE, "fixtures")
     LOG_0928 = (FIX / "maaend-farm-drops" / "2026-09-28a.log").read_text(encoding="utf-8").splitlines(keepends=True)
     LOG_0901 = (FIX / "maaend_full_2026-09-01.log").read_text(encoding="utf-8")
     # Line 164 starts 环境监测, line 165 completes it, and line 166 starts the next task.
@@ -1087,7 +1087,7 @@ be explained from those two files and neither was in any bundle.
     from ark_relay.features.alarm import handle
     from ark_relay.core import ledger as core
 
-    FIX = Path(__file__).parent / "fixtures" / "maaend-2026-09-18"
+    FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-18"
 
 
     with tempfile.TemporaryDirectory() as td:

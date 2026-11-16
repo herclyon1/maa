@@ -9,11 +9,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
 
 # What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
 # still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_main():
@@ -44,7 +44,7 @@ tells on itself instead.
     # True in switch.log 10-11 10:04:30; 10b set and read back 10-12 (commit a0a7b7f2:
     # Game.Enabled true, Game.Path D:\Wuthering Waves\launcher.exe; Game.IfAutoUpdate is
     # AUTO-MAS's default true, fixtures/automas-models/config.py.txt OkwwConfig).
-    _CFG = json.loads((Path(__file__).resolve().parent / "fixtures" / "automas-config-2026-10-11" / "config"
+    _CFG = json.loads((fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11" / "config"
                        / "ScriptConfig.json").read_text(encoding="utf-8"))
     MACHINE_SCRIPTS = {sid: {"Info": dict(sc["Info"])} for sid, sc in _CFG.items() if sid != "instances"}
     for _sc in MACHINE_SCRIPTS.values():
@@ -268,7 +268,7 @@ tells on itself instead.
     print("\n[a start that died before the self-check is not 「开机时已经在」 (real 10-10 16:28-17:22)]")
     # relay.log 10-10 16:28-16:32: 15 starts about 18 s apart, none reaching the boot
     # self-check (the AUTO-MAS step runs before it), then boots that did reach it.
-    crash = (Path(__file__).resolve().parent / "fixtures" / "relay-1010-crashloop-boots.log").read_text(encoding="utf-8")
+    crash = (fx_dir(Path(__file__), "fixtures") / "relay-1010-crashloop-boots.log").read_text(encoding="utf-8")
     boots = selfcheck.daily_lines("2026-10-10", crash)[1].removeprefix("· 调度程序开机：").split("；")
     check("22 starts", len(boots), 22)
     check("the 15 crash-loop starts read as stopped before the AUTO-MAS step",
@@ -281,7 +281,7 @@ tells on itself instead.
     print("\n[a self-update restart is not a crash (real 10-05 21:20, 10-07 08:45 / 21:20, 10-08 20:05)]")
     # Each of these starts fetched a new version and restarted before the boot
     # self-check; the restarted start that follows reached it.
-    upd = (Path(__file__).resolve().parent / "fixtures" / "relay-selfupdate-restart-boots.log").read_text(encoding="utf-8")
+    upd = (fx_dir(Path(__file__), "fixtures") / "relay-selfupdate-restart-boots.log").read_text(encoding="utf-8")
     got = {d: selfcheck.daily_lines(d, upd)[1] for d in ("2026-10-05", "2026-10-07", "2026-10-08")}
     check("10-05", got["2026-10-05"], "· 调度程序开机：21:20 装新版后自己重启了；21:20 开机时已经在")
     check("10-07", got["2026-10-07"], "· 调度程序开机：08:45 装新版后自己重启了；08:45 自己起来了（等了 19 秒）；"
