@@ -200,6 +200,12 @@ def collect_blocked_row(labels: list[str], again: bool = False, first: bool = Fa
     return ("补跑时又" if again else "第一趟" if first else "") + COLLECT_BLOCKED + "：" + "、".join(labels)
 
 
+def collect_second_round(labels: list[str]) -> str:
+    """One line of the retry's body: the routes its first round found blocked were walked
+    once more on their own (collect_retry._bring_up_and_run)."""
+    return "补跑第一轮" + COLLECT_BLOCKED + "，单独又补了一轮：" + "、".join(labels)
+
+
 def collect_retry_body(passed: list[str], failed: list[str], unknown: list[str], note: str) -> str:
     lines = []
     if passed:
@@ -1465,6 +1471,7 @@ def samples() -> list[str]:
         OKWW_BATTLE_PASS_LABEL, OKWW_BATTLE_PASS_FAILED, OKWW_BATTLE_PASS_RETRIED, OKWW_BATTLE_PASS_UNCHECKED,
         OKWW_BATTLE_PASS_CLOSED,
         COLLECT_RETRY_START, COLLECT_RETRY_OK, COLLECT_RETRY_FAILED, COLLECT_RECURRENT,
+        collect_second_round(["采集协议纹石（路线2）"]),
         EVIDENCE_SAVED, EVIDENCE_SOURCE_CHANGED, EVIDENCE_UPLOAD_FAILED, LOST_ALARM_QUEUE,
         gamelog_unknown_errors("鸣潮"), gamelog_unknown_errors_body("鸣潮", "09:12", 2),
         gamelog_unknown_errors_body("终末地", "", 1),
