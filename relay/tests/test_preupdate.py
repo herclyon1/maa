@@ -1,22 +1,17 @@
-"""The boot pre-update: AUTO-MAS (forced check, a second try that finds the first install landed), OK-WW and its packages, once a day, problems, the session, the span, the expected token failure, unknown is not fine; and OK-WW copies that survive a words-only upstream change.
+"""Pre-shift updates, game client updates, Endfield windowed launch, and AUTO-MAS contract."""
+from __future__ import annotations
 
-One part per former file, each run on its own (tests/_parts.py): test_preupdate.py, test_preupdate_automas_carry.py, test_preupdate_mas_force.py, test_preupdate_not_alarm.py, test_preupdate_okww.py, test_preupdate_once.py, test_preupdate_problems.py, test_preupdate_session.py, test_preupdate_span.py, test_preupdate_token.py, test_preupdate_unknown_not_fine.py, test_okww_shape.py.
-"""
-# Each part imports the relay itself, after its own environment is set, as the file it was did at
-# its top.
 # ruff: noqa: PLC0415
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
-# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
-# still reads as using all of it.
 _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
-def _part_main():
+def _part_preupdate_main():
     """When the boot-window pre-update is wanted: only before a queue still to come
 today that runs OK-WW, the one program it still launches (its update overwrites
 the local patches, re-applied right after). MaaEnd's own update is AUTO-MAS's
@@ -1374,7 +1369,7 @@ user's order of 2026-10-06 (「不论多少次什么错误都要发」) it is a 
         preupdate.run_okww(empty, budget_s=1)
         preupdate.run_automas(empty, budget_s=1)
         check("默认不传也安全", True)
-    except Exception as e:                      # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         check(f"默认不传也安全（炸了：{e}）", False)
 
     # Since 2026-10-05 an unconfirmed item is tried once more; what is still
@@ -1948,5 +1943,3638 @@ self.tr; comments and layout are not in the tree) is checked next to the hash. P
         print("  · (the fixture names no gray_book_quest feature in DailyTask)")
 
 
+def _part_gameupdate_main():  # noqa: C901
+    """大版本更新自动化：决策逻辑用假桌面/假命令跑一遍，不碰网络不碰机器。
+
+    Formerly test_gameupdate.py.
+    """
+    import json
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.gameupdate import gameupdate as gu
+    from ark_relay.features.gameupdate import gameupdate_games as gug
+    from ark_relay.core.desktop import Line, Screen
+
+
+    class FakeDesk:
+        """按顺序回放屏幕；记录点了什么。"""
+        def __init__(self, screens):
+            self.screens = list(screens); self.clicks = []
+        def _scr(self):
+            texts = self.screens.pop(0) if len(self.screens) > 1 else self.screens[0]
+            return Screen([Line(t, 100, 100 + 30 * i, 80, 20) for i, t in enumerate(texts)], Path("x.png"))
+        def read(self, focus=None, settle_ms=0):
+            return self._scr()
+        def click_text(self, text, focus=None):
+            self.clicks.append(text); return True
+        def click(self, x, y, focus=None):
+            self.clicks.append((x, y)); return True
+
+    # 打桩要打在名字真正被查找的那个模块上：2026-09-08 三家游戏的更新流程搬进了
+    # gameupdate_games，update_endfield 查的是那边的 _spawn/kill；run_deferred 还在
+    # gameupdate 里，它用的 kill 得单独打一份。
+    spawned = []
+    gug._spawn = lambda exe, cwd=None: spawned.append(exe.name) or True
+    gug.kill = lambda *names: None
+    gu.kill = lambda *names: None
+    nosleep = lambda s: None  # noqa: E731
+
+    print("[终末地：已是「开始游戏」就什么都不做]")
+    d = FakeDesk([["登录", "开始游戏"]])
+    out = gu.update_endfield(d, Path("Endfield.exe"), Path("Launcher.exe"), sleep=nosleep)
+    check("不更新", out, ""); check("没点任何东西", d.clicks, [])
+
+    print("[终末地：更新→装完→拉游戏→重启→标题画面]")
+    d = FakeDesk([["登录", "更新游戏"], ["正在下载"], ["安装中"], ["开始游戏"],
+                  ["资源初始化更新完成，请重启游戏", "确认"], ["正在编译着色器"], ["点击任意位置继续"]])
+    probs = []
+    out = gu.update_endfield(d, Path("Endfield.exe"), Path("Launcher.exe"), poll_s=0, problems=probs, sleep=nosleep)
+    check("报了更新", out, "终末地 客户端已通过启动器更新")
+    # Client 1.6.3 (2026-10-15) runs only when the launcher starts it: the restart is a
+    # second 「开始游戏」 on the launcher, never Endfield.exe itself.
+    check("点击顺序", d.clicks, ["更新游戏", "开始游戏", "确认", "开始游戏"])
+    check("重启经启动器，没直接拉 Endfield.exe", "Endfield.exe" in spawned, False)
+    check("没有问题", probs, [])
+
+    print("[终末地：读不到按钮要报问题]")
+    d = FakeDesk([["登录", "公告"]]); probs = []
+    out = gu.update_endfield(d, Path("Endfield.exe"), Path("Launcher.exe"), problems=probs, sleep=nosleep)
+    check("空", out, ""); check("问题里说没读到", any("没读到按钮" in x for x in probs), True)
+
+    ST = tmpdir()
+
+    print("[登记：哪个游戏要更新]")
+    from datetime import datetime as _dt
+    check("空", gu.pending(ST), {})
+    check("登记", gu.mark_pending(ST, "终末地", "公告说今天版本更新"), True)
+    check("重复登记不算", gu.mark_pending(ST, "终末地", "又来"), False)
+    check("读回", gu.pending(ST), {"终末地": "公告说今天版本更新"})
+    gu.clear_pending(ST, "终末地"); check("清掉", gu.pending(ST), {})
+
+    print("[开机只做便宜判断：不开启动器，只登记]")
+    class Cfg: pass
+    cfg = Cfg(); cfg.state_dir = ST; cfg.maa_dir = None; cfg.maaend_dir = None; cfg.okww_dir = None
+    now = _dt(2026, 9, 2, 8, 46)
+    notes, probs = gu.boot_check(cfg, budget_s=600, now=now, maint_sources={}, hint=lambda n: "官方公告：今天 09:00 版本更新")
+    check("公告有版本更新 → 登记终末地", gu.pending(ST), {"终末地": "官方公告：今天 09:00 版本更新"})
+    check("开机不发更新通知", notes, [])
+    gu.clear_pending(ST, "终末地")
+    notes, probs = gu.boot_check(cfg, budget_s=600, now=now, maint_sources={}, hint=lambda n: "")
+    check("公告没说 → 不登记", gu.pending(ST), {})
+
+    print("[队列跑完后：更新 + 只在当天没跑成时重跑]")
+    cfg.maaend_dir = ST / "maaend"; (cfg.maaend_dir / "config").mkdir(parents=True, exist_ok=True)
+    game = ST / "hg" / "games" / "Endfield Game" / "Endfield.exe"; game.parent.mkdir(parents=True, exist_ok=True); game.write_bytes(b"")
+    (ST / "hg" / "Launcher.exe").write_bytes(b"")
+    (cfg.maaend_dir / "config" / "mxu-MaaEnd.json").write_text(json.dumps({"connectedProgramPath": str(game)}), encoding="utf-8")
+    (ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "MaaEnd", "ok": False, "raw": {"maaend_unreachable": True}}) + "\n", encoding="utf-8")
+    gu.mark_pending(ST, "终末地", "今天 MaaEnd 进不了游戏")
+    dispatched = []
+    d = FakeDesk([["登录", "更新游戏"], ["正在下载"], ["开始游戏"], ["请重启游戏", "确认"], ["点击任意位置继续"]])
+    notes, probs, reran = gu.run_deferred(cfg, now=now, desk=d, dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=nosleep)
+    check("更新通知带依据", notes, ["终末地 客户端已通过启动器更新（依据：今天 MaaEnd 进不了游戏）"])
+    check("当天因客户端过时没跑成 → 重跑 MaaEnd", reran, ["MaaEnd"])
+    check("登记已清", gu.pending(ST), {})
+    # 当天已经成功过：启动器说已是最新，不重跑
+    (ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "MaaEnd", "ok": True, "raw": {}}) + "\n", encoding="utf-8")
+    gu.mark_pending(ST, "终末地", "公告说今天版本更新")
+    dispatched.clear()
+    notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=nosleep)
+    check("已是最新 → 不发更新通知", notes, [])
+    check("当天成功过 → 不重跑", reran, [])
+    check("登记也清了", gu.pending(ST), {})
+
+    print("[普通任务失败不重跑（09-02 晚上把用户挤下线的教训）]")
+    (ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "MaaEnd", "ok": False, "failed_tasks": ["赠送干员礼物"], "raw": {}}) + "\n", encoding="utf-8")
+    gu.mark_pending(ST, "终末地", "公告说今天版本更新")
+    dispatched.clear()
+    notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=nosleep)
+    check("普通失败 → 不重跑", reran, [])
+    check("登记清掉", gu.pending(ST), {})
+    notes, probs = gu.boot_check(cfg, budget_s=600, now=now, maint_sources={}, hint=lambda n: "官方公告：今天 09:00 版本更新")
+    check("普通失败的日子开机仍会登记（由 needs_rerun 拦）", gu.pending(ST), {"终末地": "官方公告：今天 09:00 版本更新"})
+    gu.clear_pending(ST, "终末地")
+    (ST / "gameupdate-off.flag").write_text("", encoding="utf-8")
+    gu.mark_pending(ST, "终末地", "x")
+    check("总开关关着 → 什么都不做", gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=nosleep), ([], [], []))
+    (ST / "gameupdate-off.flag").unlink(); gu.clear_pending(ST, "终末地")
+
+    print("[鸣潮：客户端交给 AUTO-MAS 更新（10b），中继不开启动器，只在等不到窗口时重跑]")
+    (ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "OK-WW", "ok": False, "raw": {"okww_unreachable": True}}) + "\n", encoding="utf-8")
+    gu.mark_pending(ST, "鸣潮", "官方公告：今天更新维护")
+    dispatched.clear(); spawned.clear()
+    d = FakeDesk([["公告", "立即更新"]])
+    notes, probs, reran = gu.run_deferred(cfg, now=now, desk=d, dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=nosleep)
+    check("没开启动器", spawned, [])
+    check("没点任何东西", d.clicks, [])
+    check("没有更新通知、没有问题", (notes, probs), ([], []))
+    check("等不到窗口那种失败 → 重跑 OK-WW（AUTO-MAS 在这趟里更新）", reran, ["OK-WW"])
+    check("登记已清", gu.pending(ST), {})
+    (ST / "ledger-2026-09-02.jsonl").write_text(json.dumps({"script": "OK-WW", "ok": False, "raw": {}}) + "\n", encoding="utf-8")
+    gu.mark_pending(ST, "鸣潮", "x")
+    notes, probs, reran = gu.run_deferred(cfg, now=now, desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=nosleep)
+    check("普通失败 → 不重跑 OK-WW", reran, [])
+    check("鸣潮的旧更新流程已删", any(hasattr(m, n) for m in (gu, gug)
+                                       for n in ("update_wuwa", "wuwa_launcher", "wuwa_update_day")), False)
+
+    print("[维护日：窗口落盘、撞上算维护、队列后等开服再补跑]")
+    from datetime import timedelta as _td
+    w_start = _dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ); w_end = _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ)
+    gu.save_windows(ST, {"明日方舟": (w_start, w_end, "官方公告：09-04 06:00–12:00 停机维护")})
+    check("09:00 的 MAA 撞上维护", bool(gu.in_maintenance(ST, "MAA", _dt(2026, 9, 4, 9, 0, tzinfo=gu.SERVER_TZ))), True)
+    check("开服 45 分钟内仍算（客户端还没更新）", bool(gu.in_maintenance(ST, "MAA", _dt(2026, 9, 4, 12, 30, tzinfo=gu.SERVER_TZ))), True)
+    check("下午就不算", gu.in_maintenance(ST, "MAA", _dt(2026, 9, 4, 15, 0, tzinfo=gu.SERVER_TZ)), "")
+    check("别的游戏不受影响", gu.in_maintenance(ST, "MaaEnd", _dt(2026, 9, 4, 9, 0, tzinfo=gu.SERVER_TZ)), "")
+    # The row as the collector books it: the round rule (makeup.maa_round_work_done)
+    # reads run_id / started / finished, and a maintenance attempt clears only when its
+    # log shows no fight (fight_count 0).
+    (ST / "ledger-2026-09-04.jsonl").write_text(json.dumps({
+        "script": "MAA", "run_id": "2026-09-04/maa/MAA-09-00-01", "started": "2026-09-04T09:00:01+08:00",
+        "finished": "2026-09-04T09:03:10+08:00", "ok": False, "failed_tasks": ["MAA 在完成任务前中止"],
+        "raw": {"maintenance": "官方公告", "fight_count": 0}}) + "\n", encoding="utf-8")
+    check("撞上维护的失败 → 该补跑", gu.needs_rerun(ST, _dt(2026, 9, 4, 13, 0), "MAA"), True)
+    cfg.maa_dir = None
+    gu.mark_pending(ST, "明日方舟", "官方公告")
+    slept = []
+    ticks0 = [_dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ)]
+    def clk0():
+        ticks0.append(ticks0[-1] + _td(minutes=10)); return ticks0[-1]
+    notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=lambda s: slept.append(s), clock=clk0)
+    # Since the 2026-10-11 hand-over AUTO-MAS updates the Arknights client before the MAA
+    # run, so there is nothing to prepare: servers back -> re-run MAA at once.
+    check("明日方舟不用准备客户端：开服后直接补跑 MAA", (reran, 600 in slept, probs), (["MAA"], False, []))
+    # 终末地：客户端准备好了、离开服还远 → 关游戏、一分钟一分钟等到开服、缓 2 分钟、再补跑
+    gu.save_windows(ST, {"终末地": (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告")})
+    (ST / "ledger-2026-09-04.jsonl").write_text(json.dumps({"script": "MaaEnd", "ok": False, "raw": {"maintenance": "官方公告"}}) + "\n", encoding="utf-8")
+    gu.mark_pending(ST, "终末地", "官方公告")
+    slept.clear(); dispatched.clear()
+    killed = []
+    gu.kill = lambda *names: killed.append(names)
+    ticks1 = [_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ)]
+    def clk1():
+        ticks1.append(ticks1[-1] + _td(minutes=1)); return ticks1[-1]
+    notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=lambda s: slept.append(s), clock=clk1)
+    check("先准备好再等开服：一分钟一分钟等，开服后缓 2 分钟，然后补跑", (slept.count(60) >= 1, 120 in slept, reran), (True, True, ["MaaEnd"]))
+    check("离开服还远：只关终末地，不碰鸣潮（s18 F2）", killed, [("Endfield.exe",)])
+    gu.save_windows(ST, {})
+    gu.clear_pending(ST, "明日方舟")
+
+    print("[白天维护 10:00–16:00，早班 09:00 在开服前就跑完了：不等到 16:02，早班照常关机（清单-1108 A-03）]")
+    _ledger_0904 = (ST / "ledger-2026-09-04.jsonl").read_text(encoding="utf-8")
+    (ST / "ledger-2026-09-04.jsonl").write_text(json.dumps({
+        "script": "MAA", "run_id": "2026-09-04/maa/MAA-09-00-01", "started": "2026-09-04T09:00:01+08:00",
+        "finished": "2026-09-04T09:40:10+08:00", "ok": True, "raw": {}}) + "\n", encoding="utf-8")
+    gu.save_windows(ST, {"明日方舟": (_dt(2026, 9, 4, 10, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 16, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 10:00–16:00")})
+    gu.mark_pending(ST, "明日方舟", "官方公告")
+    slept.clear(); dispatched.clear()
+    ticks3 = [_dt(2026, 9, 4, 9, 45, tzinfo=gu.SERVER_TZ)]
+    def clk3():
+        ticks3.append(ticks3[-1] + _td(minutes=1)); return ticks3[-1]
+    notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 9, 45, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["x"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=lambda s: slept.append(s), clock=clk3)
+    check("早班已跑完、不用补跑 → 一分钟都不等", (slept, dispatched, reran, probs), ([], [], [], []))
+    check("……登记清掉，线程马上结束，早班的关机不被扣住", "明日方舟" in gu.pending(ST), False)
+    check("终末地照旧由中继更新客户端（这条不放过它）", (gu.relay_updates_client("终末地"), gu.relay_updates_client("明日方舟")), (True, False))
+    gu.save_windows(ST, {})
+    (ST / "ledger-2026-09-04.jsonl").write_text(_ledger_0904, encoding="utf-8")
+
+    print("[维护日：队列时刻落在窗口里 → 摘掉；补跑完加回]")
+    gu.save_windows(ST, {})
+    (ST / "queue-skips.json").unlink(missing_ok=True)
+    import ark_relay.core.plan as _plan
+    _plan_backup = _plan.schedule
+    _plan.schedule = lambda d: [{"name": "早班", "times": ["09:00"], "items": ["s1"]}, {"name": "晚班", "times": ["21:30"], "items": ["s1"]}]
+    cfg.automas_dir = ST
+    skipped = []
+    src_ak = {"明日方舟": lambda n: (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 06:00–12:00")}
+    notes, probs = gu.boot_check(cfg, budget_s=600, now=_dt(2026, 9, 4, 8, 46, tzinfo=gu.SERVER_TZ), maint_sources=src_ak, hint=lambda n: "",
+                                 skipper=lambda q, sc: skipped.append((q, sc)) or {"queue": q, "queueId": "Q", "script": sc, "scriptId": "S", "position": 0, "queueItemId": "I", "days": ["Friday"]})
+    check("早班 09:00 在窗口里 → 从早班摘掉 MAA", skipped, [("早班", "MAA")])
+    check("晚班 21:30 不在窗口里 → 不摘", len(skipped), 1)
+    check("登记了明日方舟", "明日方舟" in gu.pending(ST), True)
+    check("摘掉的记在案", [r["script"] for r in gu.skips(ST)], ["MAA"])
+    check("被摘掉的即使没失败记录也要补跑", gu.needs_rerun(ST, _dt(2026, 9, 4, 13, 0), "MAA"), True)
+    restored = []
+    dispatched.clear()
+    ticks = [_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ)]
+    def clk2():
+        ticks.append(ticks[-1] + _td(minutes=1)); return ticks[-1]
+    gu.save_windows(ST, {"明日方舟": (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告：09-04 06:00–12:00")})
+    notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["x"]]), dispatch=lambda s: dispatched.append(s) or (True, "ok"), sleep=lambda s: None, clock=clk2)
+    check("明日方舟：等到开服再补跑被摘掉的 MAA（客户端交给 AUTO-MAS）", (reran, dispatched, probs), (["MAA"], ["MAA"], []))
+    check("明日方舟等开服：什么游戏都不关（终末地、鸣潮可能是他自己开的，s18 F2）", killed, [("Endfield.exe",)])
+    gu.kill = lambda *names: None
+    gu.save_windows(ST, {})
+    gu.clear_pending(ST, "明日方舟")
+    done = gu.restore_skips(ST, restorer=lambda rec: restored.append(rec["script"]) or True)
+    check("加回", (done, restored, gu.skips(ST)), (["MAA→「早班」"], ["MAA"], []))
+    _plan.schedule = _plan_backup
+
+    print("[停一切停掉的那趟既不算成功也不算失败（2026-09-30 鸣潮 3.7 维护日漏接）]")
+    import logging
+
+
+    class _Keep(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.INFO); self.recs = []
+        def emit(self, record):
+            self.recs.append((record.levelno, record.getMessage(), record.exc_info is not None))
+
+
+    keep = _Keep(); gu.log.addHandler(keep); gu.log.setLevel(logging.INFO)
+    T = gu.SERVER_TZ
+    # The machine's ledger-2026-09-30.jsonl, in order (run_id is the path-like form handle.py books)
+    L930 = [
+        {"script": "MAA", "run_id": "2026-09-30/maa/MAA-05-01-02", "started": "2026-09-30T05:01:02+08:00",
+         "finished": "2026-09-30T05:39:10+08:00", "ok": True, "raw": {}},
+        {"script": "OK-WW", "run_id": "2026-09-30/wuwa/OK-WW-09-19-00", "started": "2026-09-30T09:19:00+08:00",
+         "finished": "2026-09-30T09:20:00+08:00", "ok": False,
+         "raw": {"evidence_page": "x", "general_result": "失败", "okww_error": "进不了游戏"}},
+        {"script": "OK-WW", "run_id": "2026-09-30/wuwa/OK-WW-09-30-00", "started": "2026-09-30T09:30:00+08:00",
+         "finished": "2026-09-30T09:31:00+08:00", "ok": False,
+         "raw": {"evidence_page": "x", "general_result": "失败", "okww_error": "进不了游戏"}},
+        {"script": "OK-WW", "run_id": "2026-09-30/wuwa/OK-WW-05-40-56", "started": "2026-09-30T09:40:56+08:00",
+         "finished": "2026-09-30T09:47:00+08:00", "ok": True,
+         "raw": {"evidence_page": "x", "general_result": "Success!", "manual_stop": "09:46 停一切"}},
+        {"script": "MaaEnd", "run_id": "2026-09-30/endfield/MaaEnd-05-46-45", "started": "2026-09-30T09:46:45+08:00",
+         "finished": "2026-09-30T09:47:10+08:00", "ok": False,
+         "raw": {"maaend_result": "中止", "manual_stop": "09:46 停一切"}},
+    ]
+
+
+    def _ledger930(rows):
+        (ST / "ledger-2026-09-30.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
+                                                     encoding="utf-8")
+
+
+    _ledger930(L930)
+    n930 = _dt(2026, 9, 30, 8, 49, 50, tzinfo=T)
+    check("last_run_ok(OK-WW)：跳过停一切那趟，看前一趟 → False", gu.last_run_ok(ST, n930, "OK-WW"), False)
+    check("last_run_ok(MaaEnd)：唯一一趟是停一切 → 等于今天没跑过", gu.last_run_ok(ST, n930, "MaaEnd"), None)
+    check("last_run_ok(MAA) 不受影响", gu.last_run_ok(ST, n930, "MAA"), True)
+    check("needs_rerun(OK-WW)：前一趟是普通失败 → 不补跑", gu.needs_rerun(ST, n930, "OK-WW"), False)
+    check("needs_rerun(MaaEnd)：只有停一切那趟 → 不补跑", gu.needs_rerun(ST, n930, "MaaEnd"), False)
+    # Settled 2026-09-30 18:04: a script the red button stopped is not re-run after the update that day (this used to be True)
+    _ledger930(L930[:3] + [dict(L930[2], raw={"okww_unreachable": True})] + L930[3:])
+    check("needs_rerun(OK-WW)：停一切之前那趟是进不了游戏，但今天被停一切停过 → 不补跑",
+          gu.needs_rerun(ST, n930, "OK-WW"), False)
+    _ledger930(L930[:3] + [dict(L930[2], raw={"maintenance": "官方公告：维护"})] + L930[3:])
+    check("needs_rerun(OK-WW)：前一趟带维护标记 + 最后一趟停一切 → 不补跑",
+          gu.needs_rerun(ST, n930, "OK-WW"), False)
+    check("stopped_today 给出按下的时刻", gu.stopped_today(ST, n930, "OK-WW"), "09:46 停一切")
+    check("stopped_today：没被停过的脚本 → 空", gu.stopped_today(ST, n930, "MAA"), "")
+    # A hard power-off can tear the last appended line. Until 2026-10-10 that one line
+    # emptied the whole day here, so the red-button stop above was forgotten.
+    with (ST / "ledger-2026-09-30.jsonl").open("a", encoding="utf-8") as _f:
+        _f.write('{"script": "MAA", "ok": tr\n[1, 2]\n')
+    check("账目最后一行撕裂：stopped_today 仍记得停一切", gu.stopped_today(ST, n930, "OK-WW"), "09:46 停一切")
+    check("账目最后一行撕裂：last_run_ok 仍看得到前面的趟", gu.last_run_ok(ST, n930, "OK-WW"), False)
+    _ledger930(L930)
+    _ledger930([r for r in L930 if r["script"] != "MaaEnd"][:3]
+               + [dict(L930[2], run_id="2026-09-30/wuwa/OK-WW-09-35-00", raw={"okww_unreachable": True})])
+    check("needs_rerun(OK-WW)：没被停过、最后一趟进不了游戏 → 照旧补跑", gu.needs_rerun(ST, n930, "OK-WW"), True)
+    _ledger930(L930)
+    print("[被停一切停过的脚本：run_deferred 不补跑，通知里写「已停，未补」]")
+    _calls, _reran, _probs, _notes = [], [], [], []
+    gu._rerun_script(types.SimpleNamespace(state_dir=ST), n930, lambda sc: _calls.append(sc) or (True, "ok"),
+                     "OK-WW", _reran, _probs, _notes)
+    check("没派", (_calls, _reran, _probs), ([], [], []))
+    check("通知写已停未补", _notes, ["OK-WW：今天 09:46 停一切停过，已停，未补"])
+
+    src_ww = {"鸣潮": lambda n: (_dt(2026, 9, 30, 4, 0, tzinfo=T), _dt(2026, 9, 30, 11, 0, tzinfo=T),
+                                 "官方公告：「甲」3.7版本内容说明（09-30 04:00–11:00）")}
+    _plan.schedule = lambda d: [{"name": "早班", "times": ["09:00"], "items": ["s1"]}, {"name": "晚班", "times": ["21:30"], "items": ["s1"]}]
+    (ST / "queue-skips.json").unlink(missing_ok=True)
+    for g in list(gu.pending(ST)):
+        gu.clear_pending(ST, g)
+    gu._store(ST).set("updates", "queue_skips", [])
+    skipped = []; keep.recs.clear()
+    notes, probs = gu.boot_check(cfg, budget_s=600, now=n930, maint_sources=src_ww, hint=lambda n: "",
+                                 skipper=lambda q, sc: skipped.append((q, sc)) or {"queue": q, "queueId": "Q", "script": sc, "scriptId": "S", "position": 0, "queueItemId": "I", "days": ["Friday"]})
+    check("今天的 5 条账本 + 鸣潮维护 → 登记鸣潮", "鸣潮" in gu.pending(ST), True)
+    check("早班 09:00 在维护窗口里 → 从早班摘掉 OK-WW", skipped, [("早班", "OK-WW")])
+    msgs = [m for _l, m, _e in keep.recs]
+    check("日志：终末地公告说了今天没有版本更新", any("终末地公告——今天没有版本更新" in m for m in msgs), True)
+    check("日志：维护公告列出鸣潮窗口", any("维护公告——鸣潮 04:00–11:00" in m for m in msgs), True)
+    check("日志：维护公告登记了鸣潮", any(m.startswith("游戏更新：已登记 鸣潮 待更新（官方公告：「甲」3.7版本内容说明") for m in msgs), True)
+
+    print("[对照：最后一趟 OK-WW 是真成功 → 不登记，日志写明原因]")
+    for g in list(gu.pending(ST)):
+        gu.clear_pending(ST, g)
+    gu._store(ST).set("updates", "queue_skips", [])
+    _ledger930(L930[:3] + [dict(L930[3], raw={"evidence_page": "x", "general_result": "Success!"})] + L930[4:])
+    skipped = []; keep.recs.clear()
+    notes, probs = gu.boot_check(cfg, budget_s=600, now=n930, maint_sources=src_ww, hint=lambda n: "",
+                                 skipper=lambda q, sc: skipped.append((q, sc)) or None)
+    check("今天真成功过 → 不登记鸣潮", "鸣潮" in gu.pending(ST), False)
+    check("也不从队列摘", skipped, [])
+    msgs = [m for _l, m, _e in keep.recs]
+    check("日志：维护那条写「已成功过，不登记」", any("鸣潮维护——" in m and "OK-WW 今天已成功过，不登记" in m for m in msgs), True)
+
+    print("[开机检查：公告读不到要说出来]")
+    # 2026-10-06 audit: an unreadable notice used to be only a log line - "no update
+    # today" as far as anyone reading the pushes could tell. boot_check's problems
+    # (pushed as 「⚠️ 游戏更新没能确认」) now say so; checked just below.
+    keep.recs.clear()
+    gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=lambda n: "")
+    check("开机检查：没有维护也写一行", any("维护公告——今天没有游戏停服维护" in m for _l, m, _e in keep.recs), True)
+    keep.recs.clear()
+    def _hint_boom(n):
+        raise OSError("终末地公告连不上")
+    _n, _p = gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=_hint_boom)
+    check("终末地公告读挂 → warning", sum(1 for l, m, _e in keep.recs if l == logging.WARNING and "终末地公告读不到" in m), 1)
+    check("终末地公告读挂 → 进 problems", _p, ["终末地：官方公告读不到，今天有没有版本更新不知道"])
+    # The log must not contradict the problem: unreadable is not "no update today"
+    check("终末地公告读挂 → 不再写「今天没有版本更新」",
+          [m for _l, m, _e in keep.recs if "终末地公告——今天没有版本更新" in m], [])
+    check("公告读挂的警告不说「当作」", [m for _l, m, _e in keep.recs if "当作今天" in m], [])
+    import ark_relay.features.maintenance.maintenance as _mt
+    _mt_today = _mt.today
+    _mt.today = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("维护模块坏了"))
+    keep.recs.clear()
+    gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=lambda n: "")
+    check("维护公告整体读挂 → warning", sum(1 for l, m, _e in keep.recs if l == logging.WARNING and "维护公告整体读不到" in m), 1)
+    _mt.today = _mt_today
+
+    print("[维护公告读不到：保留今天早先存的窗口，不写「今天没有维护」]")
+    W_WW = (_dt(2026, 9, 30, 4, 0, tzinfo=T), _dt(2026, 9, 30, 11, 0, tzinfo=T), "官方公告：鸣潮 3.7")
+    W_OLD = (_dt(2026, 9, 28, 4, 0, tzinfo=T), _dt(2026, 9, 28, 11, 0, tzinfo=T), "官方公告：前天的")
+    gu.save_windows(ST, {"鸣潮": W_WW, "终末地": W_OLD})
+    keep.recs.clear()
+    gu.boot_check(cfg, budget_s=600, now=n930, hint=lambda n: "",
+                  maint_sources={"鸣潮": lambda n: (_ for _ in ()).throw(OSError("连不上")),
+                                 "明日方舟": lambda n: None})
+    check("鸣潮读挂 → 今天的窗口还在", gu.windows(ST).get("鸣潮"), W_WW)
+    check("前天的窗口不沿用", "终末地" in gu.windows(ST), False)
+    msgs = [m for _l, m, _e in keep.recs]
+    check("日志说读不到、沿用", any("维护公告读不到（鸣潮），沿用已存窗口：鸣潮 04:00–11:00" in m for m in msgs), True)
+    check("日志不说今天没有维护", any("今天没有游戏停服维护" in m for m in msgs), False)
+    check("沿用的窗口不再走登记（早先登记过）", "鸣潮" in gu.pending(ST), False)
+    gu.save_windows(ST, {"鸣潮": W_WW})
+    _mt.today = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("维护模块坏了"))
+    keep.recs.clear()
+    gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=lambda n: "")
+    _mt.today = _mt_today
+    check("整体读挂 → 窗口也还在", gu.windows(ST).get("鸣潮"), W_WW)
+    check("整体读挂 → 日志说全部读不到", any("维护公告读不到（全部），沿用已存窗口：鸣潮" in m for _l, m, _e in keep.recs), True)
+    gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={"鸣潮": lambda n: None}, hint=lambda n: "")
+    check("读到了、确实没有 → 窗口清掉", gu.windows(ST), {})
+    for g in list(gu.pending(ST)):
+        gu.clear_pending(ST, g)
+    gu._store(ST).set("updates", "queue_skips", [])
+    gu.save_windows(ST, {})
+    _plan.schedule = _plan_backup
+    gu.log.removeHandler(keep)
+
+    print("[每次开机只跑一遍]")
+    from datetime import datetime
+    check("没记录→跑", gu.should_run(ST, datetime.now(), boot_id="b1"), True)
+    gu.mark_run(ST, datetime.now(), boot_id="b1")
+    check("同一次开机→不跑", gu.should_run(ST, datetime.now(), boot_id="b1"), False)
+    check("下一次开机→跑", gu.should_run(ST, datetime.now(), boot_id="b2"), True)
+
+    print("[桌面 Screen 匹配忽略空格]")
+    s = Screen([Line("更 新 游 戏", 10, 10, 50, 20)])
+    check("有", s.has("更新游戏"), True); check("中心", s.find("更新游戏").center, (35, 20))
+    s3 = Screen([Line("@丹始游戏", 1324, 782, 200, 40)])
+    check("错一个字仍命中（OCR 把开认成丹）", s3.find("开始游戏") is not None, True)
+    check("错一个字不会串到别的按钮", s3.find("更新游戏") is None, True)
+    check("两字以下不容错", Screen([Line("确人", 0, 0, 10, 10)]).find("确认") is None, True)
+
+    print("[2026-10-06 审计：读不到 ≠ 没事]")
+    from ark_relay.features.maintenance import efstatus as _efs
+    gu.log.addHandler(keep)
+    A = tmpdir()
+    acfg = Cfg(); acfg.state_dir = A; acfg.maa_dir = A / "maa"; acfg.maaend_dir = None; acfg.okww_dir = None
+    acfg.automas_dir = A
+    # 2. Endfield, default hint: efstatus.update_hint swallowed every error and returned "",
+    #    so boot_check's own except never ran and an unreachable bulletin read as "no update".
+    import urllib.request as _ur
+    _uo = _ur.urlopen
+    def _no_net(*a, **k):
+        raise OSError("bulletin unreachable")
+    _ur.urlopen = _no_net
+    keep.recs.clear()
+    try:
+        _n, _p = gu.boot_check(acfg, budget_s=600, now=n930, maint_sources={})
+    finally:
+        _ur.urlopen = _uo
+    check("终末地默认公告接口连不上 → problems", [x for x in _p if x.startswith("终末地")],
+          ["终末地：官方公告读不到，今天有没有版本更新不知道"])
+    check("efstatus 非 strict 仍返回空（handle.py 只拿它当旁证）",
+          _efs.update_hint(fetch=_no_net), "")
+    # 3. MAA's unreachable flag: needs_rerun("MAA") could only be true via skips / maintenance.
+    _ledger_rows = [{"script": "MAA", "run_id": "2026-09-30/maa/MAA-05-01-02", "started": "2026-09-30T05:01:02+08:00",
+                     "finished": "2026-09-30T05:09:10+08:00", "ok": False,
+                     "failed_tasks": ["MAA 未能正确登录 PRTS"], "raw": {"maa_unreachable": True}}]
+    (A / "ledger-2026-09-30.jsonl").write_text("".join(json.dumps(r) + "\n" for r in _ledger_rows), encoding="utf-8")
+    check("MAA 失败且 raw 带 maa_unreachable → needs_rerun", gu.needs_rerun(A, n930, "MAA"), True)
+    _ledger_rows[0]["raw"] = {"maa_error": "关卡失败"}
+    (A / "ledger-2026-09-30.jsonl").write_text("".join(json.dumps(r) + "\n" for r in _ledger_rows), encoding="utf-8")
+    check("MAA 普通失败 → 不重跑", gu.needs_rerun(A, n930, "MAA"), False)
+    # 4. spmed. The user, 2026-10-06, on the sanity booster: 「那个要一直开着，如果上游maaend改了导致没生效就要报警」
+    #    and 「我开的任务是谁说要关的」. The node shape only decides the group alarm; the task is
+    #    never switched (the leftover-record re-enable went with s18 F5).
+    E = A / "maaend"; (E / "resource" / "pipeline").mkdir(parents=True)
+    (E / "interface.json").write_text(json.dumps({"version": "v2.28.0-beta.4"}), encoding="utf-8")
+    master = A / "data" / "u1" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"; master.parent.mkdir(parents=True)
+    def _master(on):
+        master.write_text(json.dumps({"instances": [{"tasks": [{"taskName": "AutoUseSpMedication", "enabled": on}]}]}),
+                          encoding="utf-8")
+    def _sp_on():
+        return json.loads(master.read_text(encoding="utf-8"))["instances"][0]["tasks"][0]["enabled"]
+    acfg.maaend_dir = E
+    def _nodes(node):
+        (E / "resource" / "pipeline" / "nodes.json").write_text(json.dumps({"AutoUseSpMedicationQuickUse": node}),
+                                                                encoding="utf-8")
+    for _label, _node, _shape in (
+            ("认不出的写法（没有 recognition）", {"next": ["AutoUseSpMedicationRewardsConfirm"], "action": "Click"}, "unknown"),
+            ("坏的写法（beta.5，原样摘自 gameupdate.py 的注释）",
+             {"recognition": {"param": {"all_of": ["YellowConfirmButtonType2", {"param": {}, "type": "OCR"}]}}}, "broken"),
+            ("修好的写法（PR #5453）",
+             {"recognition": {"param": {"all_of": ["YellowConfirmButtonType2", {"recognition": {"param": {}, "type": "OCR"}}]}}},
+             "")):
+        _nodes(_node)
+        _master(True)
+        check(f"{_label} → 每次开机都查，要报的就报", (gu.spmed_check(acfg), gu.spmed_check(acfg)), (_shape, _shape))
+        check(f"{_label} → 任务开着就不动", _sp_on(), True)
+    gu.log.removeHandler(keep)
+
+    print("[终末地：更新后说客户端过时，下一轮启动器「开始游戏」不能算就绪]")
+    # The problem string is the one update_endfield notes after the install
+    # (gameupdate_games.py 「终末地：更新后游戏仍说客户端已过时」); round two is what the
+    # launcher then shows, 「开始游戏」 -> prepare returns (True, "") = "no update needed".
+    _rounds = iter([
+        lambda pr: (pr.append("终末地：更新后游戏仍说客户端已过时"), (False, ""))[1],
+        lambda pr: (True, ""),
+        lambda pr: (True, ""),
+    ])
+    _orig_prep = gu._prepare_client
+    gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: next(_rounds)(problems)
+    _ticks = iter(range(100))
+    from datetime import datetime as _dt, timedelta as _tdl
+    _t0 = _dt(2026, 10, 6, 9, 0)
+    _pr: list = []
+    _ready, _note = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=25),
+                                            clock=lambda: _t0 + _tdl(minutes=10 * next(_ticks)),
+                                            sleep=lambda s: None, problems=_pr)
+    gu._prepare_client = _orig_prep
+    check("过时之后的「无需更新」不算就绪", _ready, False)
+    check("留一条问题说清楚", any("客户端已过时" in x and "没准备好" in x for x in _pr), True)
+
+    print("[a round that was not ready for another reason, then a ready one: one recovered red item (2026-10-12)]")
+    # Mute audit 10-12 item 12: every problem of a round that was not ready was deleted when
+    # a later round was ready, with no trace. Only 「the update package is not out yet」 (the
+    # game says its client is outdated) is the expected wait; anything else that a later
+    # round got past is a fault that fixed itself: one WARNING marked errwatch.recovered().
+    # Not ready by the deadline: the earlier rounds' problems are reported with the last one's.
+    from ark_relay.features.alarm import errwatch
+    from ark_relay.core import texts
+
+
+    class _AllRecords(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.DEBUG)
+            self.records = []
+
+        def emit(self, r):
+            self.records.append(r)
+
+
+    def _retry(rounds, minutes=60):
+        it = iter(rounds)
+        t = [_t0]                # each round takes 10 minutes; the clock reads, never advances
+        def _round(problems):
+            t[0] += _tdl(minutes=10)
+            return next(it, lambda pr: (False, ""))(problems)
+        gu._prepare_client = lambda cfg, desk, game, problems, sleep, **k: _round(problems)
+        keep = _AllRecords()
+        gu.log.addHandler(keep)
+        pr: list = []
+        try:
+            ready, _ = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=minutes),
+                                               clock=lambda: t[0], sleep=lambda s: None, problems=pr)
+        finally:
+            gu.log.removeHandler(keep)
+            gu._prepare_client = _orig_prep
+        healed = [r.getMessage() for r in keep.records if getattr(r, errwatch.RECOVERED, False)]
+        for r in keep.records:
+            if getattr(r, errwatch.RECOVERED, False):
+                check("the recovered line's first line reads as plain words", texts.plain(errwatch.first_line(r)), [])
+        return ready, pr, healed
+
+
+    _CLICK = "终末地：点「更新游戏」没点上"
+    _ready, _pr, _healed = _retry([lambda pr: (pr.append(_CLICK), (False, ""))[1],
+                                   lambda pr: (True, "终末地 客户端已通过启动器更新")])
+    check("click missed, next round ready: ready, nothing left to push", (_ready, _pr), (True, []))
+    check("…one recovered WARNING naming the first round's problem", [(_CLICK in m) for m in _healed], [True])
+    _ready, _pr, _healed = _retry([lambda pr: (pr.append("终末地：更新后游戏仍说客户端已过时"), (False, ""))[1],
+                                   lambda pr: (True, "终末地 客户端已通过启动器更新")])
+    check("package not out yet, then updated: no red item (the expected wait)", (_ready, _pr, _healed), (True, [], []))
+    _SHOT = "终末地：启动器画面没读到按钮（截图 x）：…"
+    _ready, _pr, _healed = _retry([lambda pr: (pr.append(_CLICK), (False, ""))[1],
+                                   lambda pr: (pr.append(_SHOT), (False, ""))[1]], minutes=25)
+    check("not ready by the deadline: the earlier round's problem is reported too",
+          (_ready, any(_CLICK in x for x in _pr), any(_SHOT in x for x in _pr), _healed), (False, True, True, []))
+
+    print("[终末地：一轮更新等下载的时间不超过离截止还剩的时间（s18 F6）]")
+    _budgets = []
+    _saved_f6 = (gu.endfield_paths, gu.update_endfield)
+    gu.endfield_paths = lambda d: (Path("Endfield.exe"), Path("Launcher.exe"))
+    gu.update_endfield = lambda desk, g, l, budget_s=2400, problems=None, sleep=None: _budgets.append(budget_s) or ""
+    try:
+        _t0 = _dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ)
+        _ready, _ = gu._prepare_until_ready(cfg, FakeDesk([["x"]]), "终末地", deadline=_t0 + _td(minutes=25),
+                                            clock=lambda: _t0, sleep=nosleep, problems=[])
+        check("离截止还剩 25 分钟：这一轮最多等 25 分钟", _budgets, [1500.0])
+        _budgets.clear()
+        gu._prepare_until_ready(cfg, FakeDesk([["x"]]), "终末地", deadline=_t0 + _td(hours=3),
+                                clock=lambda: _t0, sleep=nosleep, problems=[])
+        check("还剩 3 小时：照旧最多 40 分钟", _budgets, [2400.0])
+    finally:
+        gu.endfield_paths, gu.update_endfield = _saved_f6
+
+    print("[终末地：等 10 分钟后已过截止，就不再跑一轮 0 预算的更新]")
+    # Review of 838eb436: round 1 ends 10 minutes in with a 15-minute deadline; the old loop
+    # slept 600 s and ran round 2 with budget 0, which wrote a bogus 「0 分钟内没等到」.
+    _rb = []
+    _t = [_t0]
+
+
+    def _round_f6(cfg, desk, game, problems, sleep, budget_s=2400.0):
+        _rb.append(budget_s)
+        _t[0] += _tdl(minutes=10)
+        problems.append(f"终末地：{budget_s / 60:.0f} 分钟内没等到下载完")
+        return False, ""
+
+
+    gu._prepare_client = _round_f6
+    try:
+        _pr = []
+        _ready, _ = gu._prepare_until_ready(None, None, "终末地", deadline=_t0 + _tdl(minutes=15),
+                                            clock=lambda: _t[0], sleep=lambda s: None, problems=_pr)
+    finally:
+        gu._prepare_client = _orig_prep
+    check("只跑一轮（15 分钟预算），没有 0 预算的第二轮", _rb, [900.0])
+    check("报的是那一轮的问题，不是「0 分钟内没等到」", _pr, ["终末地：15 分钟内没等到下载完"])
+
+
+def _part_gameupdate_restore_paths():
+    """A script pulled from a queue for a game update goes back on every path.
+
+The user, 2026-09-03: 「当天队列里不跑他」 - today's queue only. A pull that is not
+put back takes his task out of every later day, which nobody asked for
+(「我开的任务是谁说要关的」, 2026-10-06). So: the after-queue job puts it back on
+every way out (an exception included), the boot check puts back a pull from an
+earlier day before it does anything else, and the update switch being off does
+not keep it out.
+
+    Formerly test_gameupdate_restore_paths.py.
+    """
+    import types
+    from datetime import datetime
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.gameupdate import gameupdate as gu
+
+
+    def _cfg():
+        st = tmpdir()
+        return types.SimpleNamespace(state_dir=st, automas_dir=None, maa_dir=None, maaend_dir=None, okww_dir=None)
+
+
+    REC = {"queue": "早班", "queueId": "Q", "script": "MAA", "scriptId": "S", "position": 1}
+    restored = []
+    saved = gu.restore_skips
+
+
+    def _fake_restorer(rec):
+        restored.append((rec["script"], rec.get("day")))
+        return True
+
+
+    def _restore(state_dir, restorer=None, **kw):
+        return saved(state_dir, restorer=_fake_restorer, **kw)
+
+
+    gu.restore_skips = _restore
+    try:
+        print("[队列后那一步中途出错：摘掉的照样加回]")
+        cfg = _cfg()
+        gu._add_skip(cfg.state_dir, dict(REC, day="2026-09-04"))
+        gu.mark_pending(cfg.state_dir, "明日方舟", "维护")
+        real_prep = gu._prepare_until_ready
+        gu._prepare_until_ready = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))
+        try:
+            gu.run_deferred(cfg, now=datetime(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ), desk=object(),
+                            dispatch=lambda s: (True, "ok"), sleep=lambda s: None)
+            check("异常照样往外抛（由调用方报）", False, True)
+        except RuntimeError:
+            check("异常照样往外抛（由调用方报）", True, True)
+        finally:
+            gu._prepare_until_ready = real_prep
+        check("出错也加回了", (restored, gu.skips(cfg.state_dir)), ([("MAA", "2026-09-04")], []))
+
+        print("\n[总开关关着 / 没登记了：摘掉的也加回]")
+        restored.clear()
+        cfg = _cfg()
+        gu._add_skip(cfg.state_dir, dict(REC, day="2026-09-04"))
+        gu.run_deferred(cfg, now=datetime(2026, 9, 4, 10, 30, tzinfo=gu.SERVER_TZ), desk=object())
+        check("没登记：加回", [r[0] for r in restored], ["MAA"])
+
+        print("\n[开机：之前哪天摘掉没加回的先加回；今天摘的不动]")
+        restored.clear()
+        cfg = _cfg()
+        gu._add_skip(cfg.state_dir, dict(REC, day="2026-09-04"))
+        gu._add_skip(cfg.state_dir, dict(REC, queueId="Q2", queue="晚班", day="2026-09-05"))
+        gu._add_skip(cfg.state_dir, dict(REC, queueId="Q3", queue="午班"))          # written before records had a day
+        gu.boot_check(cfg, budget_s=0, now=datetime(2026, 9, 5, 8, 40, tzinfo=gu.SERVER_TZ),
+                      hint=lambda n: "", maint_sources={})
+        check("前一天的和没写日期的加回了", sorted(restored, key=str), sorted([("MAA", "2026-09-04"), ("MAA", None)], key=str))
+        check("今天摘的留着", [r["queue"] for r in gu.skips(cfg.state_dir)], ["晚班"])
+    finally:
+        gu.restore_skips = saved
+
+
+def _part_efstart_main():
+    """Endfield is started through the official launcher, never as Endfield.exe (2026-10-15).
+
+Client 1.6.3 refuses a start whose parent is not the Hypergryph launcher: on 2026-10-15
+15:14 AUTO-MAS started Endfield.exe directly, the game showed 「游戏启动失败」
+「请通过官方启动器打开游戏」 and every MaaEnd task failed. Measured by the parent session.
+
+Since 10-17 the relay's own start (efstart, for the gathering retry) runs MaaEnd's launcher
+pretask, windowed; test_maaend_windowed_start.py pins that flow. Here: the helper's lock
+and running.json, the watchdog's view of it, run_on_desktop, and efstart_setup's convergence of
+AUTO-MAS (its launcher discovery rule, the relay's old preAction, Game.Path and the wait).
+
+    Formerly test_efstart.py.
+    """
+    import json
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.features.gameupdate import efstart as ef
+    from ark_relay.features.gameupdate import efstart_setup as setup
+
+
+    FX = fx_dir(Path(__file__), "fixtures") / "maaend-v2.33.0-launch"
+    BETA2 = fx_dir(Path(__file__), "gamesim") / "upstream" / "maaend-v2.33.0-beta.2"
+
+
+    class Probe:
+        """A start with nothing to do: the game is not running and the pretask exits 0."""
+
+        def __init__(self):
+            self.ran = []
+
+        def probes(self):
+            return ef.Probes(running=lambda names: set(), kill=lambda *n: True,
+                             run=lambda argv, cwd, timeout: (self.ran.append(argv), (0, ""))[1],
+                             wake=lambda: True, sleep=lambda s: None)
+
+
+    print("\n[一次开游戏：running.json 只在开的时候有；没说 MaaEnd 在哪 → 2]")
+    home = tmpdir() / "efstart"
+    home.mkdir()
+    md = tmpdir() / "maaend"
+    import shutil
+    shutil.copytree(FX, md)
+    (md / "agent").mkdir()
+    (md / "agent" / "go-service.exe").write_bytes(b"")
+    w = Probe()
+    seen = []
+
+
+    class _Lock:
+        def __init__(self, got):
+            self.got = got
+
+        def __call__(self, wait_s):
+            return self
+
+        def __enter__(self):
+            seen.append((home / ef.RUNNING).exists())
+            return self.got
+
+        def __exit__(self, *a):
+            return False
+
+
+    r = ef.run_once(home, "test", "", probes=w.probes(), single=_Lock(True))
+    check("没说 MaaEnd 在哪就是 2", r.code, ef.SETUP)
+    r = ef.run_once(home, "test", md, probes=w.probes(), single=_Lock(True))
+    check("说了就开（预任务退出 0 → 0）", (r.code, len(w.ran)), (ef.OK, 1))
+    check("结束后 running.json 没了", (home / ef.RUNNING).exists(), False)
+    r = ef.run_once(home, "test", md, probes=w.probes(), single=_Lock(False))
+    check("锁一直被别人占着 → 9", (r.code, len(w.ran)), (ef.BUSY, 1))
+
+    print("\n[看门狗：开游戏助手在等（running.json 的 PID 是 pythonw）→ 认得出]")
+    sd = tmpdir()
+    (sd / "efstart").mkdir()
+    (sd / "efstart" / ef.RUNNING).write_text(json.dumps({"pid": 4242}), encoding="utf-8")
+    check("PID 在、是 pythonw", ef.helper_alive(sd, [("pythonw.exe", 4242), ("MaaEnd.exe", 1)]), True)
+    check("PID 不在", ef.helper_alive(sd, [("MaaEnd.exe", 1)]), False)
+    check("PID 被别的程序用了", ef.helper_alive(sd, [("notepad.exe", 4242)]), False)
+
+    from ark_relay.features.run import maaend_watchdog
+
+    RUNNING = {"tasks": [{"task_info": [{"name": "MaaEnd", "status": "运行"}]}]}
+    procs = [("MaaEnd.exe", 100), ("pythonw.exe", 4242)]          # no go-service yet: tasks not started
+    clock = {"t": 1000.0}
+    killed = []
+    dbg = sd / "debug"
+    dbg.mkdir()
+    (dbg / "go-service.stderr.log").write_text("", encoding="utf-8")
+
+
+    class _N:
+        def send(self, *a, **k):
+            return []
+
+
+    dog = maaend_watchdog.Watchdog(_N(), dbg, clock=lambda: clock["t"], snapshot=lambda: RUNNING,
+                                   processes=lambda: procs, kill=lambda pid, img: killed.append(pid) or (True, ""),
+                                   plugin_paths=lambda: {}, active=True, state_dir=sd)
+    for _ in range(20):                       # 20 minutes waiting on the helper, no plugin, no log line
+        clock["t"] += 60
+        dog.tick(0, "")
+    check("助手在等的 20 分钟里不杀 MaaEnd", killed, [])
+    (sd / "efstart" / ef.RUNNING).unlink()
+    for _ in range(20):
+        clock["t"] += 60
+        dog.tick(0, "")
+    check("助手结束后照旧判（插件一直没起来 → 杀）", killed, [100])
+
+    print("\n[收集补跑：游戏由开游戏助手开，不再直接起 Endfield.exe]")
+    from ark_relay.features.makeup import collect_retry as cr
+    import types
+
+    md = tmpdir() / "maaend"
+    (md / "debug").mkdir(parents=True)
+    started = []
+    saved = (cr._running, cr._wait, cr.api, cr.mxu_port, cr.time, ef.run_on_desktop)
+    cr._running = lambda names: {"MaaEnd.exe"}
+    cr._wait = lambda pred, seconds, step=3.0: pred() if seconds != 60 else True
+    cr.api = lambda path, body=None, timeout=30: {"instances": {}} if "state" in path else []
+    cr.mxu_port = lambda d: 12701
+    cr.time = types.SimpleNamespace(sleep=lambda s: None, strftime=lambda f: "00:00:00", time=lambda: 0)
+    ef.run_on_desktop = lambda state_dir, spawn, *a, **k: started.append(state_dir) or ef.Result(ef.SETUP, "开游戏的助手没装好")
+    spawned = []
+    try:
+        verdict, note = cr._bring_up_and_run(FX, ["AutoCollectRoute15"], {}, spawn=lambda exe, cwd, args: spawned.append(exe),
+                                             timeout=10, evidence=None, state_dir=sd)
+    finally:
+        cr._running, cr._wait, cr.api, cr.mxu_port, cr.time, ef.run_on_desktop = saved
+    check("经开游戏助手开", started, [sd])
+    check("没直接起任何程序", spawned, [])
+    check("助手没开起来就不补，说原因", note, "游戏没经官方启动器开起来：开游戏的助手没装好")
+
+    print("\n[run_on_desktop：用中继的 pythonw 起助手入口，等它的结果文件]")
+    sd2 = tmpdir()
+    (sd2 / "efstart").mkdir()
+    (sd2 / "efstart" / ef.TRAMPOLINE).write_text("# trampoline\n", encoding="utf-8")
+    calls = []
+
+
+    def fake_spawn(exe, cwd, args):
+        calls.append((Path(exe).name, args[0], args[1:3]))
+        res = Path(args[args.index("--result") + 1])
+        res.write_text(json.dumps({"code": 0, "reason": "终末地已经开着，没再开"}), encoding="utf-8")
+        return True
+
+
+    r = ef.run_on_desktop(sd2, fake_spawn, md, pythonw=Path("pythonw.exe"), sleep=lambda s: None)
+    check("起的是 pythonw 跑入口", calls, [("pythonw.exe", str(sd2 / "efstart" / ef.TRAMPOLINE), ("--caller", "relay"))])
+    check("拿到助手的结果", (r.code, r.reason), (ef.OK, "终末地已经开着，没再开"))
+    check("结果文件用完删掉", list((sd2 / "efstart").glob("result-*.json")), [])
+
+    print("\n[run_on_desktop：中继要停了就不再等助手（审计 11-08 A-23：这一等在主循环里，停机会被拖到强退）]")
+    polls = []
+    r = ef.run_on_desktop(sd2, lambda exe, cwd, args: True, md, pythonw=Path("pythonw.exe"),
+                          sleep=lambda s_: polls.append(s_), stopping=lambda: len(polls) >= 2)
+    check("停了：不判结论，回 STOPPED", (r.code, r.code in ef.RAN, len(polls)), (ef.STOPPED, False, 2))
+    check("STOPPED 不和助手的退出码撞号", ef.STOPPED not in (ef.OK, ef.SETUP, ef.PRETASK, ef.LAUNCHER, ef.TIMED_OUT,
+                                                          ef.UNREADABLE, ef.BUSY), True)
+
+    print("\n[_single：互斥锁用完，句柄关掉（PyHANDLE 自己的 Close）]")
+
+
+    class _H:
+        closed = False
+
+        def Close(self):  # noqa: N802
+            self.closed = True
+
+
+    h = _H()
+    fake_ev = types.SimpleNamespace(CreateMutex=lambda *a: h, WaitForSingleObject=lambda hh, ms: 0, WAIT_OBJECT_0=0,
+                                    WAIT_ABANDONED=0x80, ReleaseMutex=lambda hh: released.append(hh))
+    released = []
+    saved_mod = sys.modules.get("win32event")
+    sys.modules["win32event"] = fake_ev
+    try:
+        with ef._single(1) as got:
+            pass
+        check("拿到锁、放了锁、关了句柄", (got, released == [h], h.closed), (True, True, True))
+        h2 = _H()
+        fake_ev.CreateMutex = lambda *a: h2
+        fake_ev.WaitForSingleObject = lambda hh, ms: 0x102          # WAIT_TIMEOUT
+        with ef._single(1) as got:
+            pass
+        check("没等到锁：不放锁，照样关句柄", (got, h2.closed), (False, True))
+    finally:
+        if saved_mod is None:
+            sys.modules.pop("win32event", None)
+        else:
+            sys.modules["win32event"] = saved_mod
+
+    print("\n[10-16：开游戏交还给调度程序自己的官方启动器方式（AUTO-MAS v5.7.0-beta.4 / #1394）]")
+    # The machine on 10-16 (AUTO-MAS API read, mxu-MaaEnd.json, state/efstart/target.json): Game.Path
+    # was the relay's .cmd, LaunchMode Launcher, LauncherPath empty, WaitTime 180; the master's
+    # helper entry had kept the replaced entry's id jw75pty. AUTO-MAS's pre-run check found no
+    # launcher from the .cmd: 09:34:05 「未找到终末地官方启动器」, the 早班 MaaEnd never ran.
+    from ark_relay.core import texts
+    from ark_relay.features.phone import commands
+
+    pyw = "C:\\Program Files\\ArkRelay\\runtime\\python\\pythonw.exe"
+    orig = {"id": "jw75pty", "customName": "▶️ 启动 Endfield.exe", "enabled": True,
+            "program": "D:\\endfield\\Hypergryph Launcher\\games\\Endfield Game\\Endfield.exe", "args": "",
+            "waitForExit": False, "skipIfRunning": True, "useCmd": False}
+    mas_entry = {"id": "automas-endfield", "program": "D:\\endfield\\Endfield.exe", "waitForExit": False}
+    ours = {"id": "jw75pty", "customName": "▶️ 经官方启动器启动终末地（中继）", "enabled": True, "program": pyw,
+            "args": '"C:\\ProgramData\\ark-relay\\state\\efstart\\efstart.py" --caller maaend',
+            "waitForExit": True, "skipIfRunning": False, "useCmd": False}
+    doc = {"instances": [{"name": "automas", "preActions": [dict(mas_entry), dict(ours)]}]}
+    changed, removed = setup.remove_preactions(doc)
+    check("母本里中继那条（id 是 jw75pty，不是 ark-efstart）删掉了", (changed, [a["id"] for a in removed]), (True, ["jw75pty"]))
+    check("调度程序自己那条原样留着", doc["instances"][0]["preActions"], [mas_entry])
+    check("再删一次不变", setup.remove_preactions(doc), (False, []))
+    check("没有往母本里加任何东西的入口了", hasattr(setup, "rewrite_preactions"), False)
+
+    root = tmpdir()
+    lroot = root / "endfield" / "Hypergryph Launcher"
+    game_dir = lroot / "games" / "Endfield Game"
+    game_dir.mkdir(parents=True)
+    (game_dir / "Endfield.exe").write_text("", encoding="utf-8")
+    (lroot / "Launcher.exe").write_text("", encoding="utf-8")
+    (lroot / "1.6.0").mkdir()
+    (lroot / "1.6.0" / "Games.exe").write_text("", encoding="utf-8")
+    game_exe = str(game_dir / "Endfield.exe")
+    setup._is_file = lambda p: Path(str(p).replace("\\", "/")).is_file()
+    setup._subdirs = lambda p: [str(x) for x in Path(str(p).replace("\\", "/")).iterdir() if x.is_dir()] \
+        if Path(str(p).replace("\\", "/")).is_dir() else []
+
+    print("\n[调度程序找启动器的规矩，照它 endfield_launcher.py 的写法]")
+    check("游戏本体：往上找到 Launcher.exe 加带 Games.exe 的版本文件夹",
+          Path(str(setup.launcher_for(game_exe)).replace("\\", "/")), lroot / "Launcher.exe")
+    home = root / "state" / "efstart"
+    home.mkdir(parents=True)
+    cmd = home / "start-endfield.cmd"
+    cmd.write_text("@echo off\r\n", encoding="utf-8")
+    check("10-16 那样指着批处理：找不到（调度程序就是这样拒绝的）", setup.launcher_for(str(cmd)), None)
+    check("指定 Games.exe：换成上两层的 Launcher.exe",
+          Path(str(setup.launcher_for(str(cmd), str(lroot / "1.6.0" / "Games.exe"))).replace("\\", "/")),
+          lroot / "Launcher.exe")
+    check("指定别的程序：不算", setup.launcher_for(game_exe, str(game_dir / "Endfield.exe")), None)
+    (lroot / "1.6.0" / "Games.exe").unlink()
+    check("没有版本文件夹：不认（Launcher.exe 这个名字太常见）", setup.launcher_for(game_exe), None)
+    (lroot / "1.6.0" / "Games.exe").write_text("", encoding="utf-8")
+
+    print("\n[install：路径改回游戏本体、由 MaaEnd 开窗口（10-17）、等待改回、母本里的助手删掉；再跑不写；restore 不放回直接开]")
+    automas = root / "automas"
+    cfgdir = automas / "data" / "59da8762" / "Default" / "ConfigFile"
+    cfgdir.mkdir(parents=True)
+    master = cfgdir / "mxu-MaaEnd.json"
+    master.write_text(json.dumps({"instances": [{"name": "automas", "tasks": [],
+                                                  "preActions": [dict(mas_entry), dict(ours)]}]},
+                                 ensure_ascii=False, indent=2), encoding="utf-8")
+    (home / ef.TARGET).write_text(json.dumps({
+        "game": game_exe, "launcher": str(lroot / "Launcher.exe"), "cmd": str(cmd),
+        "trampoline": str(home / ef.TRAMPOLINE),
+        "original": {"preactions": [dict(orig, program=game_exe)], "game_path": game_exe, "wait_time": 60}}),
+        encoding="utf-8")
+    mas = {"data": {"s1": {"Info": {"Name": "MaaEnd", "Path": str(FX)},
+                           "Game": {"Path": str(cmd), "LaunchMode": "Launcher", "LauncherPath": "",
+                                    "Arguments": "", "WaitTime": 180, "ControllerType": "Win32-Front",
+                                    "SetResolution": True, "CloseOnFinish": True, "RestoreDisplayType": "Fullscreen",
+                                    "RestoreResolution": "1920x1080"}}}}
+    writes = []
+
+
+    def fake_mas(path, body=None, timeout=20):
+        if path == "/api/scripts/get":
+            return json.loads(json.dumps(mas))
+        if path == "/api/scripts/update":
+            writes.append(body)
+            for k, v in body["data"].items():
+                mas["data"][body["scriptId"]][k].update(v)
+            return {"code": 200}
+        raise AssertionError(path)
+
+
+    cfg = types.SimpleNamespace(state_dir=root / "state", automas_dir=automas, maaend_dir=None)
+    saved_mas = commands._mas
+    commands._mas = fake_mas
+    try:
+        ok, notes = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+        g = mas["data"]["s1"]["Game"]
+        check("全部对上", ok, True)
+        check("调度程序的终末地路径改回游戏本体（不再是批处理）", g["Path"], game_exe)
+        check("启动方式是由 MaaEnd 开（窗口设置本来就对）", g["LaunchMode"], "MaaEnd")
+        check("启动器路径留空，让调度程序自己找", g["LauncherPath"], "")
+        check("等待改回原来的 60 秒（不再提到 180）", g["WaitTime"], 60)
+        check("写的只有路径、启动方式和等待（窗口设置本来就对，没写）",
+              sorted(k for w in writes for k in w["data"]["Game"]), ["LaunchMode", "Path", "WaitTime"])
+        back = json.loads(master.read_text(encoding="utf-8"))["instances"][0]["preActions"]
+        check("母本读回来：只剩调度程序自己那条，没有助手，也没放回直接开 Endfield.exe", back, [mas_entry])
+        check("批处理删了", cmd.exists(), False)
+        check("开游戏助手的入口还在（中继自己的补采集要用）",
+              repr(str(Path("C:/relay/versions/7"))) in (home / ef.TRAMPOLINE).read_text(encoding="utf-8"), True)
+        tgt = json.loads((home / ef.TARGET).read_text(encoding="utf-8"))
+        check("记录里不再有批处理", "cmd" in tgt, False)
+        check("原来的值一个没丢", tgt["original"]["game_path"], game_exe)
+        n_writes, master_text = len(writes), master.read_text(encoding="utf-8")
+        ok2, notes2 = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+        check("再跑一次：照样全好、什么都不说", (ok2, notes2), (True, []))
+        check("再跑一次：调度程序没再写", len(writes), n_writes)
+        check("再跑一次：母本没再写", master.read_text(encoding="utf-8"), master_text)
+
+        g["LaunchMode"] = "Client"
+        ok3, _ = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+        check("启动方式被改成直接开：改回由 MaaEnd 开", (ok3, g["LaunchMode"]), (True, "MaaEnd"))
+
+        # 「启动器启动」 (MaaEnd without its launcher pretask: the fallback) needs AUTO-MAS's own rule to find it.
+        mas["data"]["s1"]["Info"]["Path"] = str(BETA2)
+        (lroot / "1.6.0" / "Games.exe").unlink()
+        ok4, notes4 = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+        check("经官方启动器开、调度程序找不到启动器：不算好，说清楚它会拒绝开终末地",
+              (ok4, g["LaunchMode"], any(texts.ENDFIELD_NO_LAUNCHER in n for n in notes4)), (False, "Launcher", True))
+        check("这句是人话", texts.plain(texts.ENDFIELD_NO_LAUNCHER), [])
+        (lroot / "1.6.0" / "Games.exe").write_text("", encoding="utf-8")
+        mas["data"]["s1"]["Info"]["Path"] = str(FX)
+
+        master.write_text(json.dumps({"instances": [{"name": "automas", "preActions": [dict(mas_entry), dict(ours)]}]}),
+                          encoding="utf-8")
+        g["WaitTime"] = 180
+        okr, _ = setup.restore(cfg)
+        back = json.loads(master.read_text(encoding="utf-8"))["instances"][0]["preActions"]
+        check("restore：母本里没有直接开 Endfield.exe 的那条，也没有助手", back, [mas_entry])
+        check("restore：路径还是游戏本体（不放回批处理）、等待改回", (okr, g["Path"], g["WaitTime"]), (True, game_exe, 60))
+    finally:
+        commands._mas = saved_mas
+
+    print("\n[开机和调度程序升级后都核对一遍]")
+    import boot_stages
+    seen = []
+    saved = (setup.install, boot_stages.selfcheck if hasattr(boot_stages, "selfcheck") else None)
+    from ark_relay.features.selfcheck import selfcheck
+    saved_rc = selfcheck.report_contract
+    setup.install = lambda c, **k: (seen.append(c) or (True, []))
+    selfcheck.report_contract = lambda *a, **k: None
+    # The backend answers here (boot_stages.await_backend asks it before install()).
+    saved_up = commands.mas_up
+    commands.mas_up = lambda: True
+
+
+    class _L:
+        def __init__(self):
+            self.warned = []
+
+        def info(self, *a, **k):
+            pass
+
+        def warning(self, msg, *a, **k):
+            self.warned.append(msg % a)
+
+        def exception(self, *a, **k):
+            self.warned.append(a[0])
+
+
+    try:
+        boot_stages._contract_after_update("CFG", None, _L(), "v5.7.0-beta.4")
+        check("调度程序升级后（开机那次核对是对着旧版的）再核对一遍", seen, ["CFG"])
+        setup.install = lambda c, **k: (False, ["一句"])
+        lg = _L()
+        boot_stages._contract_after_update("CFG", None, lg, "v5.7.0-beta.4")
+        check("没对上：一条 WARNING（进群）", len(lg.warned), 1)
+    finally:
+        setup.install, selfcheck.report_contract = saved[0], saved_rc
+        commands.mas_up = saved_up
+    print("\nPASS" if not fails else f"\nFAILED: {fails}")
+
+
+def _part_maaend_windowed_start():  # noqa: C901
+    """Endfield starts windowed through MaaEnd's own launcher pretask, and goes back to fullscreen (10-17).
+
+DECISIONS D-1016-终末地等AUTO-MAS新版 (the owner said 「好」 on 10-16): the launcher's
+「DirectX 11 启动」 box is to be unticked, so the game must run windowed below the 1920x1080
+desktop, which MaaEnd reads on any graphics API. AUTO-MAS v5.7.0-beta.5's Game.LaunchMode
+"MaaEnd" does that: MaaEnd's pretask LaunchGamePC writes a 1280x720 window, starts the real
+launcher and clicks 「开始游戏」 (Games.exe stays the parent), and CloseGamePC writes Fullscreen
+1920x1080 back after the run. The machine ran it once on 2026-10-17 11:31-11:35 Beijing:
+go-service.log 11:31:05 「Pretask invoked」 with MACHINE_ARGS below, 11:33:31 「CloseGameAction:
+applied game settings」 Fullscreen 1920x1080.
+
+Pinned here:
+* maaend_launch builds exactly the pretask arguments AUTO-MAS sent that day from MaaEnd
+  v2.33.0's own files (fixtures/maaend-v2.33.0-launch), and refuses, in plain Chinese, a MaaEnd
+  that no longer declares a name it needs;
+* efstart_setup puts AUTO-MAS on 「MaaEnd 启动」 with the four window settings (written before the
+  mode, each read back), and when MaaEnd cannot do it, keeps 「启动器启动」 with a WARNING (the
+  group): with the box unticked every run of that mode fails;
+* the relay's own start (the gathering retry, efstart) runs the same pretask on the desktop,
+  checks its exit code and never touches the DirectX 11 box; collect_retry puts fullscreen back
+  through CloseGamePC before MaaEnd is closed, and says so when it could not.
+
+    Formerly test_maaend_windowed_start.py.
+    """
+    import json
+    import logging
+    import shutil
+    import types
+
+    HERE = Path(__file__).resolve().parent
+    sys.path.insert(0, str(HERE))
+    sys.path.insert(0, str(HERE.parent))
+
+    from ark_relay.core import texts
+    from ark_relay.features.gameupdate import efstart as ef
+    from ark_relay.features.gameupdate import efstart_setup as setup
+    from ark_relay.features.makeup import collect_retry as cr
+    from ark_relay.features.phone import commands
+    try:
+        from ark_relay.features.gameupdate import maaend_launch as ml
+    except ImportError:                 # the code before this change
+        ml = None
+
+    # Names this change brings in, looked up so the file runs (and fails check by check) on the code before it.
+    NO_MAAEND_START = getattr(texts, "ENDFIELD_NO_MAAEND_START", "\0 not defined")
+    PRETASK = getattr(ef, "PRETASK", -5)
+
+
+    FX = fx_dir(HERE, "fixtures") / "maaend-v2.33.0-launch"
+    BETA2 = fx_dir(HERE, "gamesim") / "upstream" / "maaend-v2.33.0-beta.2"     # still the old GameSetting pretask
+    # go-service.log on the machine, 2026-10-17 11:31:05 (AUTO-MAS v5.7.0-beta.5, 「Pretask invoked」 args).
+    MACHINE_ARGS = ('{"LaunchGamePCRegion":"CN","LaunchGamePCLauncherPath":"Auto","LaunchGamePCGameSetting":"Yes",'
+                    '"LaunchGamePCLanguage":"Unchanged","LaunchGamePCDisplayType":"Window","LaunchGamePCResolution":"1280x720",'
+                    '"LaunchGamePCGraphicsQuality":"Unchanged","LaunchGamePCFrameRate":"Unchanged","LaunchGamePCAutoHDR":"Unchanged"}')
+    RESTORE = {"CloseGamePC": {"attach": {"ApplyGameSetting": True, "GameSettingRegion": "CN",
+                                          "GameSettingLanguage": "Unchanged", "GameSettingDisplayType": "Fullscreen",
+                                          "ResolutionWidth": 1920, "ResolutionHeight": 1080}}}
+
+
+    def maaend_copy(edit=None) -> Path:
+        """The fixture MaaEnd in a temp folder, with go-service.exe where AUTO-MAS finds it."""
+        d = tmpdir() / "maaend"
+        shutil.copytree(FX, d)
+        (d / "agent").mkdir()
+        (d / "agent" / "go-service.exe").write_bytes(b"")
+        if edit:
+            edit(d)
+        return d
+
+
+    def edit_json(path: Path, fn) -> None:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        fn(data)
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
+    print("[maaend_launch: MaaEnd v2.33.0's own files give exactly what AUTO-MAS sent on 10-17]")
+    check("maaend_launch exists", ml is not None)
+    if ml is not None:
+        plan, why = ml.launch_plan(FX, "Win32-Front")
+        check("the pretask's program as declared", (plan or {}).get("exec"), "agent/go-service")
+        check("arguments: --pretask LaunchGamePC + the machine's 11:31:05 options, byte for byte",
+              (plan or {}).get("args"), ["--pretask", "LaunchGamePC", MACHINE_ARGS])
+        d = maaend_copy()
+        check("its program: agent/go-service.exe in the MaaEnd folder (.exe added as AUTO-MAS adds it)",
+              ml.executable(d, "agent/go-service"), d / "agent" / "go-service.exe")
+        check("no program there: None", ml.executable(tmpdir(), "agent/go-service"), None)
+        check("CloseGamePC override: fullscreen 1920x1080, both sizes, region/language as its defaults",
+              ml.restore_override(FX), (RESTORE, ""))
+        check("the machine's controller Win32-Front: everything there", ml.check(FX, "Win32-Front"), "")
+
+        print("\n[a MaaEnd that cannot do it: refused with a plain reason, nothing guessed]")
+        reasons = {
+            "controller ADB": ml.check(FX, "ADB"),
+            "no controller set": ml.check(FX, ""),
+            "v2.33.0-beta.2 (GameSetting, no LaunchGamePC)": ml.check(BETA2, "Win32-Front"),
+            "no MaaEnd folder": ml.check(tmpdir() / "nothing", "Win32-Front"),
+            "1280x720 renamed": ml.check(maaend_copy(lambda d: edit_json(
+                d / "tasks" / "pretasks" / "LaunchGamePC.json",
+                lambda j: j["option"]["LaunchGamePCResolution"]["cases"][0].update(name="1280*720"))), "Win32-Front"),
+            "Window case gone": ml.check(maaend_copy(lambda d: edit_json(
+                d / "tasks" / "pretasks" / "LaunchGamePC.json",
+                lambda j: j["option"]["LaunchGamePCDisplayType"]["cases"].pop(0))), "Win32-Front"),
+            "CloseGamePC without the height attach": ml.check(maaend_copy(lambda d: edit_json(
+                d / "tasks" / "CloseGamePC.json",
+                lambda j: j["option"]["CloseGamePCGameSettingResolution"]["pipeline_override"]["CloseGamePC"]["attach"]
+                .pop("ResolutionHeight"))), "Win32-Front"),
+            "CloseGamePC gone": ml.check(maaend_copy(lambda d: edit_json(
+                d / "interface.json", lambda j: j["import"].pop())), "Win32-Front"),
+        }
+        # AUTO-MAS sends only LaunchGamePCGameSetting (AutoProxy.py:2199-2207 @fdfb0fd); every other
+        # option is LaunchGamePC.json's default case, so a default that is not the window case starts
+        # the game that way even though the case still exists.
+        for opt, other in (("LaunchGamePCDisplayType", "Fullscreen"), ("LaunchGamePCResolution", "1920x1080"),
+                           ("LaunchGamePCRegion", "Global"), ("LaunchGamePCLauncherPath", "Manual")):
+            reasons[f"{opt} default {other}"] = ml.check(maaend_copy(lambda d, o=opt, v=other: edit_json(
+                d / "tasks" / "pretasks" / "LaunchGamePC.json",
+                lambda j: j["option"][o].update(default_case=v))), "Win32-Front")
+        reasons["(the relay's own start sends the values itself: still planned with DisplayType default Fullscreen)"] = (
+            "" if ml.launch_plan(maaend_copy(lambda d: edit_json(
+                d / "tasks" / "pretasks" / "LaunchGamePC.json",
+                lambda j: j["option"]["LaunchGamePCDisplayType"].update(default_case="Fullscreen"))))[0] else "refused")
+        planned = reasons.pop("(the relay's own start sends the values itself: still planned with DisplayType default Fullscreen)")
+        check("the relay's own start sends every value itself: a changed default does not stop it", planned, "")
+        for what, why in reasons.items():
+            check(f"{what}: refused", bool(why), True)
+        check("every reason is plain Chinese", {w: texts.plain(r) for w, r in reasons.items() if texts.plain(r)}, {})
+
+        print("\n[a stored __MXU_PRETASK__LaunchGamePC entry in AUTO-MAS's MaaEnd config overrides the defaults]")
+        stored = getattr(ml, "stored_override", None)
+        check("maaend_launch.stored_override exists", callable(stored))
+        if callable(stored):
+            def doc(*ovs):
+                return {"instances": [{"id": f"i{n}", "tasks": [{"taskName": "__MXU_PRETASK__LaunchGamePC",
+                                                                "optionValues": ov}]} for n, ov in enumerate(ovs)]}
+            check("no entry (AUTO-MAS adds an empty one): fine", stored({"instances": [{"tasks": []}]}), "")
+            check("only the switch AUTO-MAS writes itself: fine",
+                  stored(doc({"LaunchGamePCGameSetting": {"type": "switch", "value": False}})), "")
+            check("the same window values stored: fine", stored(doc({
+                "LaunchGamePCDisplayType": {"type": "select", "caseName": "Window"},
+                "LaunchGamePCResolution": {"type": "select", "caseName": "1280x720"},
+                "LaunchGamePCRegion": {"type": "select", "caseName": "CN"},
+                "LaunchGamePCLauncherPath": {"type": "select", "caseName": "Auto"}})), "")
+            overrides = {
+                "DisplayType Fullscreen stored": stored(doc({"LaunchGamePCDisplayType": {"type": "select", "caseName": "Fullscreen"}})),
+                "Resolution 1920x1080 stored as value": stored(doc({"LaunchGamePCResolution": {"type": "select", "value": "1920x1080"}})),
+                "Region Global in a second instance": stored(doc({}, {"LaunchGamePCRegion": {"type": "select", "caseName": "Global"}})),
+                "LauncherPath Manual stored": stored(doc({"LaunchGamePCLauncherPath": {"type": "select", "caseName": "Manual"}})),
+                "an entry AUTO-MAS cannot read": stored(doc({"LaunchGamePCDisplayType": "Window"})),
+                "no config to read": stored(None),
+            }
+            for what, why in overrides.items():
+                check(f"{what}: refused", bool(why), True)
+            check("every reason is plain Chinese", {w: texts.plain(r) for w, r in overrides.items() if texts.plain(r)}, {})
+
+    # ─────────────────────────── efstart_setup.install ───────────────────────────
+
+    print("\n[efstart_setup: AUTO-MAS on 「MaaEnd 启动」 with the four window settings, written before the mode]")
+    root = tmpdir()
+    lroot = root / "endfield" / "Hypergryph Launcher"
+    game_dir = lroot / "games" / "Endfield Game"
+    game_dir.mkdir(parents=True)
+    (game_dir / "Endfield.exe").write_text("", encoding="utf-8")
+    (lroot / "Launcher.exe").write_text("", encoding="utf-8")
+    (lroot / "1.6.0").mkdir()
+    (lroot / "1.6.0" / "Games.exe").write_text("", encoding="utf-8")
+    game_exe = str(game_dir / "Endfield.exe")
+    setup._is_file = lambda p: Path(str(p).replace("\\", "/")).is_file()
+    setup._subdirs = lambda p: [str(x) for x in Path(str(p).replace("\\", "/")).iterdir() if x.is_dir()] \
+        if Path(str(p).replace("\\", "/")).is_dir() else []
+    automas = root / "automas"
+    cfgdir = automas / "data" / "59da8762" / "Default" / "ConfigFile"
+    cfgdir.mkdir(parents=True)
+    (cfgdir / "mxu-MaaEnd.json").write_text(json.dumps({"instances": [{"name": "automas", "preActions": []}]}),
+                                            encoding="utf-8")
+    home = root / "state" / "efstart"
+    home.mkdir(parents=True)
+    (home / ef.TARGET).write_text(json.dumps({"game": game_exe, "original": {"game_path": game_exe, "wait_time": 60}}),
+                                  encoding="utf-8")
+    # AUTO-MAS's MaaEnd script as the API read it on the machine 10-17 10:2x (Game section).
+    BEFORE = {"ControllerType": "Win32-Front", "LaunchMode": "Launcher", "Path": game_exe, "LauncherPath": "",
+              "WaitTime": 60, "SetResolution": False, "CloseOnFinish": True, "RestoreDisplayType": "Window",
+              "RestoreResolution": "Off", "RestoreResolutionWidth": 1920, "RestoreResolutionHeight": 1080,
+              "IfAutoUpdate": False}
+    mas = {"data": {"59da8762": {"Info": {"Name": "MaaEnd", "Path": str(FX)}, "Game": dict(BEFORE)}}}
+    writes, refuse = [], set()
+
+
+    def fake_mas(path, body=None, timeout=20):
+        if path == "/api/queue/get":    # commands.mas_up: the backend answers (boot_stages.await_backend)
+            return {"code": 200, "data": {}}
+        if path == "/api/scripts/get":
+            return json.loads(json.dumps(mas))
+        if path == "/api/scripts/update":
+            (k, v), = body["data"]["Game"].items()
+            if k in refuse:
+                return {"code": 500, "message": "正在运行, 无法更新配置项"}
+            writes.append((k, v))
+            mas["data"][body["scriptId"]]["Game"][k] = v
+            return {"code": 200}
+        raise AssertionError(path)
+
+
+    cfg = types.SimpleNamespace(state_dir=root / "state", automas_dir=automas, maaend_dir=None)
+    game = mas["data"]["59da8762"]["Game"]
+    saved_mas = commands._mas
+    commands._mas = fake_mas
+    try:
+        ok, notes = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+        check("all done", ok, True)
+        check("LaunchMode MaaEnd and the four settings as run on 10-17",
+              {k: game[k] for k in ("LaunchMode", "SetResolution", "CloseOnFinish", "RestoreDisplayType", "RestoreResolution")},
+              {"LaunchMode": "MaaEnd", "SetResolution": True, "CloseOnFinish": True,
+               "RestoreDisplayType": "Fullscreen", "RestoreResolution": "1920x1080"})
+        check("written: the three that differed, then the mode last",
+              writes, [("SetResolution", True), ("RestoreDisplayType", "Fullscreen"), ("RestoreResolution", "1920x1080"),
+                       ("LaunchMode", "MaaEnd")])
+        check("nothing else touched (path, launcher path, wait, the custom size)",
+              {k: game[k] for k in BEFORE if k not in ("LaunchMode", "SetResolution", "RestoreDisplayType", "RestoreResolution")},
+              {k: v for k, v in BEFORE.items() if k not in ("LaunchMode", "SetResolution", "RestoreDisplayType",
+                                                             "RestoreResolution")})
+        n = len(writes)
+        check("run again: all done, nothing said", setup.install(cfg, code_root=Path("C:/relay/versions/7")), (True, []))
+        check("run again: nothing written", len(writes), n)
+
+        (lroot / "1.6.0" / "Games.exe").unlink()
+        ok, notes = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+        check("「MaaEnd 启动」 and AUTO-MAS's own launcher rule finds nothing: fine (MaaEnd finds it itself)",
+              (ok, [x for x in notes if texts.ENDFIELD_NO_LAUNCHER in x]), (True, []))
+        (lroot / "1.6.0" / "Games.exe").write_text("", encoding="utf-8")
+
+        print("\n[MaaEnd cannot start it windowed: back to 「启动器启动」, and the group hears it]")
+        mas["data"]["59da8762"]["Info"]["Path"] = str(BETA2)
+        ok, notes = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+        check("not done", ok, False)
+        check("LaunchMode back to Launcher", game["LaunchMode"], "Launcher")
+        check("said why, naming what an unticked box then does", any(NO_MAAEND_START in x for x in notes))
+        check("that sentence is plain", texts.plain(NO_MAAEND_START), [])
+        import boot_stages
+
+        class _Log:
+            def __init__(self):
+                self.warned = []
+
+            def info(self, *a, **k):
+                pass
+
+            def warning(self, msg, *a, **k):
+                self.warned.append(msg % a)
+
+            def exception(self, msg, *a, **k):
+                self.warned.append("EXC " + msg % a)
+        lg = _Log()
+        boot_stages._endfield_launch(cfg, lg, "开机")
+        check("at boot: one WARNING (errwatch pushes it to the group) naming it",
+              (len(lg.warned), NO_MAAEND_START in (lg.warned or [""])[0]), (1, True))
+        check("…said again at the next boot while it lasts (not an INFO note)",
+              (boot_stages._endfield_launch(cfg, lg, "开机"), len(lg.warned)), (None, 2))
+
+        print("\n[MaaEnd's default is not the window: AUTO-MAS would start it fullscreen, so 「启动器启动」 stays]")
+        game.update(BEFORE)
+        lg.warned.clear()
+        mas["data"]["59da8762"]["Info"]["Path"] = str(maaend_copy(lambda d: edit_json(
+            d / "tasks" / "pretasks" / "LaunchGamePC.json",
+            lambda j: j["option"]["LaunchGamePCDisplayType"].update(default_case="Fullscreen"))))
+        ok, notes = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+        check("DisplayType default Fullscreen: not done, still 「启动器启动」", (ok, game["LaunchMode"]), (False, "Launcher"))
+        check("…and said", any(NO_MAAEND_START in x for x in notes))
+        boot_stages._endfield_launch(cfg, lg, "开机")
+        check("…as a WARNING at boot", (len(lg.warned), NO_MAAEND_START in (lg.warned or [""])[0]), (1, True))
+
+        print("\n[AUTO-MAS's MaaEnd config stores a fullscreen pretask value: 「启动器启动」 stays]")
+        mas["data"]["59da8762"]["Info"]["Path"] = str(FX)
+        mfile = cfgdir / "mxu-MaaEnd.json"
+        plain_master = mfile.read_text(encoding="utf-8")
+
+        def stored_master(ov):
+            mfile.write_text(json.dumps({"instances": [{"name": "automas", "preActions": [], "tasks": [
+                {"taskName": "__MXU_PRETASK__LaunchGamePC", "enabled": False, "optionValues": ov}]}]}), encoding="utf-8")
+        stored_master({"LaunchGamePCDisplayType": {"type": "select", "caseName": "Fullscreen"}})
+        ok, notes = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+        check("stored DisplayType Fullscreen: not done, still 「启动器启动」", (ok, game["LaunchMode"]), (False, "Launcher"))
+        check("…and said", any(NO_MAAEND_START in x for x in notes))
+        stored_master({"LaunchGamePCDisplayType": {"type": "select", "caseName": "Window"},
+                       "LaunchGamePCGameSetting": {"type": "switch", "value": False}})
+        ok, notes = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+        check("stored Window (the same as the default): 「MaaEnd 启动」", (ok, game["LaunchMode"]), (True, "MaaEnd"))
+        mfile.write_text(plain_master, encoding="utf-8")
+
+        print("\n[a window setting AUTO-MAS refuses: the mode is not switched]")
+        mas["data"]["59da8762"]["Info"]["Path"] = str(FX)
+        game.update(BEFORE)
+        refuse.add("RestoreResolution")
+        ok, notes = setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+        check("not done, still 「启动器启动」", (ok, game["LaunchMode"]), (False, "Launcher"))
+        check("…and said", any(NO_MAAEND_START in x for x in notes))
+        refuse.clear()
+
+        print("\n[restore (by hand): back to 「启动器启动」 and the values before]")
+        setup.install(cfg, code_root=Path("C:/relay/versions/7"))
+        okr, _ = setup.restore(cfg)
+        check("restore", (okr, {k: game[k] for k in ("LaunchMode", "SetResolution", "CloseOnFinish",
+                                                     "RestoreDisplayType", "RestoreResolution")}),
+              (True, {"LaunchMode": "Launcher", "SetResolution": False, "CloseOnFinish": True,
+                      "RestoreDisplayType": "Window", "RestoreResolution": "Off"}))
+    finally:
+        commands._mas = saved_mas
+
+    # ─────────────────────────── efstart: the relay's own start ───────────────────────────
+
+    print("\n[efstart: the relay's own start runs MaaEnd's pretask on the desktop and checks its exit code]")
+    has_flow = hasattr(ef, "start_via_maaend")
+    check("efstart starts the game through MaaEnd's pretask", has_flow)
+    check("nothing in efstart ticks the DirectX 11 box any more",
+          [n for n in ("_ensure_d3d11", "_toggle_d3d11", "D3D11_BOX_FROM_START", "box_brightness") if hasattr(ef, n)], [])
+
+
+    class Desk:
+        """The machine as the helper sees it: processes, the pretask's exit code, the display."""
+
+        def __init__(self, *, game=False, code=0):
+            self.game, self.code, self.events = game, code, []
+
+        def running(self, names):
+            return {n for n in names if n == "Endfield.exe" and self.game}
+
+        def kill(self, *names):
+            self.events.append(("kill",) + names)
+            self.game = self.game and "Endfield.exe" not in names
+            return True
+
+        def run(self, argv, cwd, timeout):
+            self.events.append(("run", argv, cwd, timeout))
+            if self.code == 0:
+                self.game = True
+            return self.code, "launcher pipeline failed" if self.code else ""
+
+        def wake(self):
+            self.events.append(("wake",))
+            return True
+
+        def probes(self):
+            return ef.Probes(running=self.running, kill=self.kill, run=self.run, wake=self.wake, sleep=lambda s: None)
+
+
+    if has_flow:
+        md = maaend_copy()
+        w = Desk()
+        r = ef.start_via_maaend(md, w.probes())
+        check("exit 0: OK", r.code, ef.OK)
+        check("woke the display, then ran go-service.exe --pretask LaunchGamePC <the 10-17 options> "
+              "from the MaaEnd folder with AUTO-MAS's 240 s",
+              w.events, [("wake",), ("run", [str(md / "agent" / "go-service.exe"), "--pretask", "LaunchGamePC", MACHINE_ARGS],
+                                    str(md), 240)])
+        w = Desk(game=True)
+        r = ef.start_via_maaend(md, w.probes())
+        check("game already open: closed first (the pretask would skip the window), then started",
+              ([e[0] for e in w.events], r.code), (["kill", "wake", "run"], ef.OK))
+        w = Desk(code=1)
+        r = ef.start_via_maaend(md, w.probes())
+        check("exit 1: failed, and counted as a start that ran (window settings written)",
+              (r.code, r.code in ef.RAN), (ef.PRETASK, True))
+        w = Desk(code=None)
+        check("past 240 s: timed out, also counted as ran", (lambda x: (x.code, x.code in ef.RAN))(
+            ef.start_via_maaend(md, w.probes())), (ef.TIMED_OUT, True))
+        w = Desk()
+        r = ef.start_via_maaend(maaend_copy(lambda d: (d / "agent" / "go-service.exe").unlink()), w.probes())
+        check("no go-service.exe: refused before anything runs", (r.code, r.code in ef.RAN, w.events), (ef.SETUP, False, []))
+        r = ef.start_via_maaend(BETA2, Desk().probes())
+        check("a MaaEnd without the pretask: refused", r.code, ef.SETUP)
+        check("every reason is plain", [texts.plain(x) for x in (r.reason,) if texts.plain(x)], [])
+        check("no MaaEnd folder given: refused", ef.run_once(tmpdir(), "relay", "", probes=Desk().probes()).code, ef.SETUP)
+
+        sd = tmpdir()
+        (sd / "efstart").mkdir()
+        (sd / "efstart" / ef.TRAMPOLINE).write_text("# trampoline\n", encoding="utf-8")
+        calls = []
+
+        def fake_spawn(exe, cwd, args):
+            calls.append(args)
+            Path(args[args.index("--result") + 1]).write_text(json.dumps({"code": 0, "reason": "ok"}), encoding="utf-8")
+            return True
+        r = ef.run_on_desktop(sd, fake_spawn, md, pythonw=Path("pythonw.exe"), sleep=lambda s: None)
+        check("run_on_desktop hands the helper the MaaEnd folder",
+              (r.code, calls[0][calls[0].index("--maaend") + 1] if calls and "--maaend" in calls[0] else None),
+              (ef.OK, str(md)))
+
+    # ─────────────────────────── collect_retry ───────────────────────────
+
+    print("\n[collect_retry: the game starts the same way, and fullscreen is written back before MaaEnd closes]")
+    CLOSE_LINE = ('[2026-10-17 11:33:31.200][INF][Px1][Tx2][Utils/EventDispatcher.hpp][L65][MaaNS::EventDispatcher::notify] '
+                  '!!!OnEventNotify!!! [handle=true] [msg=Tasker.Task.{}] '
+                  '[details={{"entry":"CloseGamePC","hash":"","task_id":200000002,"uuid":""}}]')
+
+
+    class MXU:
+        def __init__(self, md, close="Succeeded"):
+            self.md, self.close, self.calls = md, close, []
+            (md / "debug").mkdir(exist_ok=True)
+            (md / "debug" / "maafw.log").write_text("", encoding="utf-8")
+
+        def __call__(self, path, body=None, timeout=30):
+            self.calls.append((path, body))
+            if path == "/maa/state":
+                return {"instances": {"automas": {"connected": True, "resource_loaded": True, "is_running": False}}}
+            if path.startswith("/maa/windows"):
+                return [{"handle": 4242}]
+            if path.endswith("/tasks/start") and body["tasks"][0]["entry"] == "CloseGamePC" and self.close:
+                with (self.md / "debug" / "maafw.log").open("a", encoding="utf-8") as fh:
+                    fh.write(CLOSE_LINE.format(self.close) + "\n")
+            return {}
+
+        def entries(self):
+            return [(p.rsplit("/", 1)[-1], b["tasks"][0]["entry"] if p.endswith("/tasks/start") else None)
+                    for p, b in self.calls if p.endswith(("/tasks/start", "/agent/stop"))]
+
+
+    def retry(md, mxu, started=None):
+        seen, got = [], {}
+        saved = (cr._running, cr._wait, cr.api, cr.mxu_port, cr.time, ef.run_on_desktop)
+        cr._running = lambda names: {"MaaEnd.exe"}
+        cr._wait = lambda pred, seconds, step=3.0: bool(pred())
+        cr.api = mxu
+        cr.mxu_port = lambda d: 12701
+        cr.time = types.SimpleNamespace(sleep=lambda s: None, strftime=lambda f: "00:00:00", time=lambda: 0)
+        ef.run_on_desktop = lambda state_dir, spawn, *a, **k: (seen.append((state_dir,) + a) or
+                                                               (started or ef.Result(ef.OK, "开了")))
+        try:
+            verdict, note = cr._bring_up_and_run(md, ["AutoCollectRoute15"], {}, spawn=lambda *a: None, timeout=10,
+                                                 evidence=got, state_dir="SD")
+        finally:
+            cr._running, cr._wait, cr.api, cr.mxu_port, cr.time, ef.run_on_desktop = saved
+        return seen, note, got
+
+
+    md = maaend_copy()
+    mxu = MXU(md)
+    seen, note, got = retry(md, mxu)
+    check("the helper is given the MaaEnd folder", seen, [("SD", md)])
+    # The gathering's agents stop before CloseGamePC starts its own: MXU does not stop them, and
+    # beside them the new go-service could not connect (10-22 21:56:40, ledger #111).
+    check("gathering, the gathering's agents stop, CloseGamePC, then its agents stop",
+          mxu.entries(), [("start", "AutoCollectSchedule"), ("stop", None), ("start", "CloseGamePC"), ("stop", None)])
+    close_body = next((b for p, b in mxu.calls if p.endswith("/tasks/start") and b["tasks"][0]["entry"] == "CloseGamePC"), None)
+    check("CloseGamePC carries the fullscreen 1920x1080 override",
+          json.loads(close_body["tasks"][0]["pipeline_override"]) if close_body else None, RESTORE)
+    check("…with MaaEnd's agents (CloseGameAction lives in go-service)",
+          [a["child_exec"] for a in (close_body or {}).get("agent_configs", [])], ["agent/go-service", "agent/cpp-algo"])
+    check("succeeded: nothing to add", (note, got.get("not_restored")), ("", None))
+
+    md = maaend_copy()
+    seen, note, got = retry(md, MXU(md, close="Failed"))
+    check("CloseGamePC failed: the note says fullscreen was not written back", "没改回全屏" in note)
+    check("…and maybe_run hears of it", bool(got.get("not_restored")))
+    check("…in plain words", texts.plain(note), [])
+
+    md = maaend_copy()
+    seen, note, got = retry(md, MXU(md), ef.Result(PRETASK, "MaaEnd 开游戏没成功（退出码 1）"))
+    check("the pretask ran and failed: no window, nothing to close it with; said", ("没改回全屏" in note, bool(got)),
+          (True, True))
+    md = maaend_copy()
+    seen, note, got = retry(md, MXU(md), ef.Result(ef.SETUP, "开游戏的助手没装好"))
+    check("the pretask never ran: nothing about fullscreen", ("没改回全屏" in note, got), (False, {}))
+    md = maaend_copy(lambda d: edit_json(d / "interface.json", lambda j: j["import"].pop()))
+    seen, note, got = retry(md, MXU(md))
+    check("a MaaEnd that cannot write fullscreen back: the game is not started at all", (seen, bool(note)), ([], True))
+
+    print("\n[maybe_run: every route walked but fullscreen not back → a WARNING (the group); otherwise none]")
+
+
+    class _Warn(logging.Handler):
+        def __init__(self):
+            super().__init__(level=logging.WARNING)
+            self.lines = []
+
+        def emit(self, record):
+            self.lines.append(record.getMessage())
+
+
+    def outcome(not_restored):
+        from datetime import datetime as _dt
+        sd = tmpdir()
+        zh = json.loads((fx_dir(HERE, "fixtures") / "collect-retry-2026-09-11" / "zh_cn.json").read_text(encoding="utf-8"))
+        sent = []
+        eng = types.SimpleNamespace(
+            cfg=types.SimpleNamespace(state_dir=sd, maaend_dir=str(sd), history_dir=str(sd), automas_dir=None),
+            state=types.SimpleNamespace(read_ledger=lambda d: [], mark_incomplete=lambda *a: True,
+                                        clear_incomplete_items=lambda *a: True),
+            notifier=types.SimpleNamespace(send=lambda t, b, **kw: sent.append((t, kw.get("alert", False))) or []),
+            _scripts_running=lambda: False)
+
+        def fake_retry(*a, evidence=None, **k):
+            if not_restored and evidence is not None:
+                evidence["not_restored"] = "MaaEnd 关游戏时没能把显示设置写回"
+            return {"AutoCollectRoute15": True}, ""
+        saved = (cr.latest_gathering_run, cr.run_retry, cr._locale, cr.restore_master)
+        cr.latest_gathering_run = lambda entries, hist, labels: ({"run_id": "r1"}, ["AutoCollectRoute15"])
+        cr.run_retry, cr._locale, cr.restore_master = fake_retry, (lambda d: zh), (lambda cfg: "")
+        h = _Warn()
+        cr.log.addHandler(h)
+        try:
+            cr.maybe_run(eng, now=_dt(2026, 10, 17, 21, 0).astimezone(), day="2026-10-17")
+        finally:
+            cr.log.removeHandler(h)
+            cr.latest_gathering_run, cr.run_retry, cr._locale, cr.restore_master = saved
+        return [x for x in h.lines if "全屏" in x], sent
+
+
+    warned, sent = outcome(True)
+    check("not back: one WARNING", len(warned), 1)
+    check("the routes still count as walked (daily report only)", sent, [(texts.COLLECT_RETRY_OK, False)])
+    check("back: no WARNING", outcome(False)[0], [])
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_automas_backend_match():
+    """Only AUTO-MAS's own main.py is the backend; a failed OpenProcess tries the next match (audit s15 #3).
+
+_automas_running / _automas_handle took any python.exe with "main.py" on its command
+line. OK-WW runs `D:\\ark\\okww\\data\\apps\\ok-ww\\working\\main.py`
+(tests/fixtures/okww_argv_20261012.log, ok-script.2026-10-12.log line 1) and may run
+as python.exe (preupdate_okww.py). Then a dead backend read as alive while OK-WW ran
+(nothing revived), and with no handle held an OK-WW start was adopted as the backend
+(its exit logged as 「AUTO-MAS 后台意外退出了」). And the first match whose OpenProcess
+failed ended the search, so a live backend listed after it was never attached.
+
+The backend's command line as WMI returned it on the machine (2026-10-10, see
+test_procs.py): `D:\\ark\\automas\\runtime\\environment\\venv\\Scripts\\python.exe main.py`.
+
+    Formerly test_automas_backend_match.py.
+    """
+    import ast
+    import re
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+
+    for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
+                  "win32con", "win32file", "servicemanager", "win32process",
+                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
+        sys.modules.setdefault(_name, _Stub(_name))
+
+    from ark_relay.features.host import automas_procs
+    from ark_relay.features.phone import commands
+
+
+    line = (fx_dir(Path(__file__), "fixtures") / "okww_argv_20261012.log").read_text(encoding="utf-8")
+    okww_script = ast.literal_eval(re.search(r"(\[.*?\])", line).group(1))[0]
+    OKWW = rf"D:\ark\okww\data\apps\ok-ww\python\python.exe {okww_script}"
+    BACKEND = r"D:\ark\automas\runtime\environment\venv\Scripts\python.exe main.py"
+    check("record: OK-WW runs a main.py", okww_script.endswith("main.py"), True)
+
+    commands.mas_up = lambda: (_ for _ in ()).throw(AssertionError("the list was readable"))
+
+    print("[后台没在跑、只有鸣潮脚本在跑：不算后台在跑]")
+    automas_procs._python_processes = lambda: [(25244, OKWW)]
+    check("_automas_running", automas_procs._automas_running(), False)
+    opened = []
+
+
+    def _open(access, inherit, pid):
+        opened.append(pid)
+        return f"handle:{pid}"
+
+
+    automas_procs.win32api.OpenProcess = _open
+    check("_automas_handle does not adopt OK-WW", automas_procs._automas_handle(), None)
+    check("OK-WW's pid never opened", opened, [])
+
+    print("[后台在跑：认得出]")
+    automas_procs._python_processes = lambda: [(25244, OKWW), (5088, BACKEND)]
+    check("_automas_running", automas_procs._automas_running(), True)
+    check("_automas_handle takes the backend", automas_procs._automas_handle(), "handle:5088")
+    automas_procs._python_processes = lambda: [(6000, "d:/ARK/AutoMAS/repo/Main.py")]
+    check("forward slashes and case do not matter", automas_procs._automas_running(), True)
+
+    print("[第一个匹配打不开：接着试下一个]")
+    opened.clear()
+
+
+    def _open_second(access, inherit, pid):
+        opened.append(pid)
+        if pid == 4100:
+            raise OSError("access denied / gone")
+        return f"handle:{pid}"
+
+
+    automas_procs.win32api.OpenProcess = _open_second
+    automas_procs._python_processes = lambda: [(4100, BACKEND), (5088, BACKEND)]
+    check("the second match is attached", automas_procs._automas_handle(), "handle:5088")
+
+
+def _part_automas_boot_one_alarm():  # noqa: C901
+    """One AUTO-MAS start failure at boot is one group message (audit s23 F2, 10-13).
+
+Before: ensure_automas logged 「AUTO-MAS 拉起后 120 秒内接口仍不通」 as a plain ERROR
+(errwatch pushes it: 🩺), then the boot caller phone_channel._start_phone_channel sent
+「🔌 AUTO-MAS 启动不起来」 for the same fault; on the morning boot _stage_preupdate
+called ensure_automas() again - another 150 s wait, kill, 120 s wait and the same
+ERROR (a second 🩺) - before its own 「预更新没能确认」. Last real cases: 09-04 22:49:26
+and 09-17 21:21:28.
+
+Now the boot caller hands ensure_automas the notifier: 🔌 goes out and the ERROR line
+is marked as already in the group (errwatch.group_pushed). The pre-update asks
+mas_up() and, when AUTO-MAS is still not answering, skips its AUTO-MAS item with one
+problem line instead of waiting again; OK-WW's item does not need AUTO-MAS and runs.
+
+    Formerly test_automas_boot_one_alarm.py.
+    """
+    import logging
+    import time
+    import types
+    from datetime import datetime, timezone
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+
+    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+                 "win32con", "win32file", "servicemanager", "win32process",
+                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
+                 "win32com", "win32com.client"):
+        sys.modules.setdefault(name, _Stub(name))
+
+    import boot_stages
+    from ark_relay.core import texts
+    from ark_relay.features.alarm import errwatch
+    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features.phone import commands, phone, phone_channel
+    from ark_relay.features.preupdate import preupdate
+
+
+    class Records(logging.Handler):
+        """Every record under the "ark" logger, as errwatch sees them."""
+
+        def __init__(self):
+            super().__init__(level=logging.DEBUG)
+            self.recs: list[logging.LogRecord] = []
+
+        def emit(self, record):
+            self.recs.append(record)
+
+        def pushed_by_errwatch(self) -> list[str]:
+            """WARNING / ERROR lines errwatch would push: not marked as already in the group."""
+            return [r.getMessage() for r in self.recs if r.levelno >= logging.WARNING
+                    and not getattr(r, errwatch.PUSHED, False) and not getattr(r, errwatch.RECOVERED, False)]
+
+
+    class Notes:
+        def __init__(self):
+            self.sent: list[tuple[str, bool]] = []
+
+        def send(self, title, body="", **kw):
+            self.sent.append((title, bool(kw.get("alert"))))
+            return []
+
+        def went_to_group(self):
+            return True
+
+        def alarms(self) -> list[str]:
+            return [t for t, alert in self.sent if alert]
+
+
+    REC = Records()
+    ARK = logging.getLogger(errwatch.ARK)
+    ARK.addHandler(REC)
+    ARK_LEVEL = ARK.level
+    ARK.setLevel(logging.DEBUG)
+
+    # AUTO-MAS never answers; a fake clock so the 120 s wait costs nothing.
+    clock = {"t": 0.0}
+    real_sleep, real_monotonic = boot_stages.time.sleep, boot_stages.time.monotonic
+    saved = (commands.mas_up, boot_stages.shell_running, boot_stages._revive_automas,
+             boot_stages._stop_requested, phone.Mailbox, phone.Heartbeat, phone.state_payload,
+             phone_channel._make_phone_cmd)
+
+
+    def advance(s):
+        clock["t"] += s
+
+
+    class FakeBox:
+        def __init__(self, topic, pin, state_dir, cos=None):
+            self.topic, self.cos, self.enabled = topic, cos, True
+            self.quota = phone.Quota(state_dir)
+            self.last_error = ""
+
+        def publish(self, body):
+            return True
+
+        def fetch(self):
+            return []
+
+        def listen(self, on_cmd, stop, **kw):
+            pass
+
+
+    class FakeHb:
+        def __init__(self, *a, **k): pass
+        def loop(self, stop): return None
+        def watch(self): pass
+
+
+    def fake_make_phone_cmd(*a, **k):
+        def run(body):
+            pass
+        run.drain = lambda: None
+        return run
+
+
+    try:
+        boot_stages.time.sleep = advance
+        boot_stages.time.monotonic = lambda: clock["t"]
+        commands.mas_up = lambda: False
+        boot_stages.shell_running = lambda: False
+        boot_stages._revive_automas = lambda: None
+        boot_stages._stop_requested = lambda: False
+        phone.Mailbox, phone.Heartbeat = FakeBox, FakeHb
+        phone.state_payload = lambda cfg, state_dir: {"at": 1}
+        phone_channel._make_phone_cmd = fake_make_phone_cmd
+
+        print("[boot: AUTO-MAS does not come up after the revival]")
+        sd = tmpdir()
+        cfg = types.SimpleNamespace(phone_topic="topic-abc", phone_pin="8964", state_dir=sd,
+                                    cos_secret_id="", cos_secret_key="", cos_bucket="", cos_region="")
+        engine = types.SimpleNamespace(scripts_running=lambda: False, _started_at=datetime.now(timezone.utc))
+        notes = Notes()
+        log = logging.getLogger("ark.test_preupdate")
+        phone_channel._start_phone_channel(types.SimpleNamespace(stop_event=None), cfg, engine, notes, log)
+        time.sleep(0.05)               # the listener thread
+        # Only the AUTO-MAS ones: the fake state payload fails a machine check of its own.
+        down = [t for t in notes.alarms() if "AUTO-MAS" in t]
+        loud = [m for m in REC.pushed_by_errwatch() if "AUTO-MAS" in m]
+        check("the 🔌 alarm went out once", down, [texts.AUTOMAS_DOWN])
+        check("errwatch has nothing more to push for it", loud, [])
+        check("so the group gets one message", len(down) + len(loud), 1)
+        check("the ERROR line is still in relay.log (selfcheck reads 「秒内…仍不通」)",
+              any("秒内接口仍不通" in r.getMessage() for r in REC.recs), True)
+
+        print("[the morning pre-update right after: no second wait, one problem line]")
+        REC.recs.clear()
+        ensured: list[int] = []
+        real_ensure = boot_stages.ensure_automas
+        boot_stages.ensure_automas = lambda *a, **k: ensured.append(1) or real_ensure(*a, **k)
+        asked = {"automas": 0, "okww": 0}
+
+        def run_automas(*a, problems=None, **k):
+            asked["automas"] += 1
+            problems.append("AUTO-MAS 预更新：接口不通，没查到版本")
+            return ""
+
+        def run_okww(*a, problems=None, **k):
+            asked["okww"] += 1
+            return ""
+
+        saved_pre = (preupdate.wanted_today, preupdate.should_run, preupdate.mark_run,
+                     preupdate.run_automas, preupdate.run_okww, okww_overlay.retry_pending,
+                     okww_overlay.drift_line, boot_stages._seconds_to_next_queue)
+        preupdate.wanted_today = lambda *a, **k: True
+        preupdate.should_run = lambda *a, **k: True
+        marks: list[bool] = []
+        preupdate.mark_run = lambda state_dir, now, clean: marks.append(clean)
+        preupdate.run_automas, preupdate.run_okww = run_automas, run_okww
+        okww_overlay.retry_pending = lambda *a, **k: None
+        okww_overlay.drift_line = lambda *a, **k: ""
+        boot_stages._seconds_to_next_queue = lambda automas_dir, now: 3600.0
+        t0 = clock["t"]
+        notes = Notes()
+        pcfg = types.SimpleNamespace(automas_dir=None, okww_dir=Path("okww"), state_dir=None)
+        try:
+            boot_stages._stage_preupdate(pcfg, notes, log)
+        finally:
+            (preupdate.wanted_today, preupdate.should_run, preupdate.mark_run,
+             preupdate.run_automas, preupdate.run_okww, okww_overlay.retry_pending,
+             okww_overlay.drift_line, boot_stages._seconds_to_next_queue) = saved_pre
+            boot_stages.ensure_automas = real_ensure
+        check("no second ensure_automas", ensured, [])
+        check("no second 150 + 120 s wait", clock["t"] - t0, 0.0)
+        check("the AUTO-MAS item is skipped, OK-WW still runs", asked, {"automas": 0, "okww": 1})
+        check("no second 「仍不通」 ERROR", any("仍不通" in r.getMessage() for r in REC.recs), False)
+        unconfirmed = [t for t in notes.alarms() if t.startswith(texts.unconfirmed("预更新", 1)[:6])]
+        check("one 「没能确认」 alarm with one line", unconfirmed, [texts.unconfirmed("预更新", 1)])
+        check("the day's pre-update is not clean (tried again next boot)", marks, [False])
+    finally:
+        boot_stages.time.sleep, boot_stages.time.monotonic = real_sleep, real_monotonic
+        (commands.mas_up, boot_stages.shell_running, boot_stages._revive_automas,
+         boot_stages._stop_requested, phone.Mailbox, phone.Heartbeat, phone.state_payload,
+         phone_channel._make_phone_cmd) = saved
+        ARK.removeHandler(REC)
+        ARK.setLevel(ARK_LEVEL)
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_automas_boot_revival():
+    """The boot-time revival must wait for a shell that is already starting, kill the
+runtime as well when it does restart, and the keeper must not go blind without wmic.
+
+Real sequence, 2026-09-17 21:20 (first evening boot after AUTO-MAS v5.5.0-beta.6):
+21:20:28 the logon task starts AUTO-MAS.exe, which begins its bootstrap
+(repo sync, managed Python, locked dependencies); 21:20:39 the relay finds no
+API, runs `taskkill /IM AUTO-MAS.exe` at once, `schtasks /run`; the bootstrap
+child `auto-mas-runtime.exe` (pid 19116) survives and keeps the environment
+lock; 21:20:45 the new shell fails with MUTATION_IN_PROGRESS and parks on
+「等待用户处理」; 21:21:28 the relay gives up after 45 s with one ERROR line and
+no alarm; the keeper (wmic gone since 25H2) reads "cannot tell" as alive and
+never tries again; 21:30 the queue does not run; 21:55 「该跑没跑」.
+
+    Formerly test_automas_boot_revival.py.
+    """
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+
+    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+                 "win32con", "win32file", "servicemanager", "win32process",
+                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
+                 "win32com", "win32com.client"):
+        sys.modules.setdefault(name, _Stub(name))
+
+    import logging
+
+    import boot_stages
+    import service
+    from ark_relay.features.host import automas_procs
+    from ark_relay.features.phone import commands
+    from ark_relay.features.alarm import errwatch
+    from ark_relay.core import texts
+
+
+    # boot_stages.time is the time module itself: put both back at the end, or every
+    # test the coverage driver runs after this one in the same process sees a frozen
+    # clock (10-05: gameupdate_games.update_wuwa's 40-minute wait never ended).
+    _real_sleep, _real_monotonic = boot_stages.time.sleep, boot_stages.time.monotonic
+    boot_stages.time.sleep = lambda s: None
+    clock = {"t": 0.0}
+    boot_stages.time.monotonic = lambda: clock["t"]
+
+
+    def _tick(seconds):
+        """Every sleep(3) inside _wait_for_api advances the fake clock."""
+        def sleep(s):
+            clock["t"] += s
+        boot_stages.time.sleep = sleep
+
+
+    _tick(3)
+    # The win32 stubs above answer every call with a truthy object, which would make
+    # errwatch.system_shutting_down() read "going down"; the stop signal is driven
+    # explicitly by the cases below.
+    boot_stages._stop_requested = lambda: False
+    revived = []
+    boot_stages._revive_automas = lambda: revived.append(clock["t"])
+
+
+    class _Levels(logging.Handler):
+        """ensure_automas's lines (logger ark.service): (level, first line, marked recovered)."""
+
+        def __init__(self):
+            super().__init__(logging.DEBUG)
+            self.got = []
+
+        def emit(self, record):
+            self.got.append((record.levelname, record.getMessage().splitlines()[0],
+                             bool(getattr(record, errwatch.RECOVERED, False))))
+
+        def loud(self):
+            """WARNING / ERROR lines errwatch pushes to the group (not marked recovered)."""
+            return [m for lv, m, rec in self.got if lv in ("WARNING", "ERROR") and not rec]
+
+        def recovered(self):
+            return [m for lv, m, rec in self.got if lv == "WARNING" and rec]
+
+
+    _levels = _Levels()
+    _svc_log = service.log
+    _svc_log.addHandler(_levels)
+    _svc_log.setLevel(logging.DEBUG)
+
+
+    def _api(up_after):
+        """mas_up() answers True once the fake clock passes `up_after` seconds."""
+        return lambda: clock["t"] >= up_after
+
+
+    print("[窗口已在、接口还没开：等它，不杀]")
+    clock["t"] = 0; revived.clear()
+    boot_stages.shell_running = lambda: True
+    commands.mas_up = _api(30)
+    check("等到接口开了就返回 True", boot_stages.ensure_automas(timeout=120, grace=150), True)
+    check("没有杀过一次", revived, [])
+    check("等了约 30 秒", 27 <= clock["t"] <= 33)
+
+    print("\n[窗口在但宽限期内接口一直不开：宽限期满才杀、再等 timeout]")
+    clock["t"] = 0; revived.clear(); _levels.got.clear()
+    commands.mas_up = _api(10**9)
+    check("最终返回 False", boot_stages.ensure_automas(timeout=120, grace=150), False)
+    check("杀了一次", len(revived), 1)
+    check("是在宽限期（150 秒）之后才杀的", revived[0] >= 150)
+    check("杀完又等了 timeout", clock["t"] >= 150 + 120)
+    # Not back: the ERROR (pushed), and only that - the steps before it are INFO.
+    check("not recovered: one line for the group, the ERROR", _levels.loud(),
+          ["AUTO-MAS 拉起后 120 秒内接口仍不通"])
+    check("nothing marked recovered", _levels.recovered(), [])
+
+    print("\n[窗口在、宽限期满才杀、杀后起来了：进群（没应答的原因不明，2026-10-10 前只进日报）]")
+    clock["t"] = 0; revived.clear(); _levels.got.clear()
+    commands.mas_up = _api(170)
+    check("returns True", boot_stages.ensure_automas(timeout=120, grace=150), True)
+    check("one line for the group, naming the wait that failed",
+          [("窗口开着、等了 150 秒还没应答" in m) for m in _levels.loud()], [True])
+    check("nothing marked recovered", _levels.recovered(), [])
+
+    print("\n[窗口根本不在：立刻拉起]")
+    clock["t"] = 0; revived.clear(); _levels.got.clear()
+    boot_stages.shell_running = lambda: False
+    commands.mas_up = _api(20)
+    check("拉起后接口开了返回 True", boot_stages.ensure_automas(timeout=120, grace=150), True)
+    check("立刻杀/拉起，没有先等宽限期", revived == [0.0])
+    # Why AUTO-MAS was not answering is not known: pushed (2026-10-10; daily-report-only before).
+    check("nothing marked recovered", _levels.recovered(), [])
+    rec_lines = _levels.loud()
+    check("one WARNING for the group", len(rec_lines), 1)
+    check("plain words, and selfcheck still reads it (「AUTO-MAS 已…秒）」)",
+          bool(rec_lines) and not texts.plain(rec_lines[0]) and rec_lines[0].startswith("AUTO-MAS 已")
+          and rec_lines[0].endswith("秒）"), True)
+    from ark_relay.features.selfcheck import selfcheck
+    day_line = "09-30 08:40:10 WARNING  ark.service  " + (rec_lines[0] if rec_lines else "")
+    check("selfcheck's daily lines still count it as 「重开后起来了」",
+          any("重开后起来了" in x for x in selfcheck.daily_lines("2026-09-30", day_line)), True)
+
+    print("\n[拉起后、等它起来时服务停了（不是中继自己关机）：没确认起来，报群]")
+    clock["t"] = 0; revived.clear(); _levels.got.clear()
+    commands.mas_up = _api(10**9)
+    boot_stages._stop_requested = lambda: clock["t"] >= 9
+    check("returns False", boot_stages.ensure_automas(timeout=120, grace=150), False)
+    check("one WARNING for the group", [("服务就停了" in m) for m in _levels.loud()], [True])
+    clock["t"] = 0; revived.clear(); _levels.got.clear()
+    errwatch._relay_poweroff[0] = lambda: True
+    check("the relay's own power-off: returns False", boot_stages.ensure_automas(timeout=120, grace=150), False)
+    errwatch._relay_poweroff[0] = lambda: False
+    check("... and nothing for the group", _levels.loud(), [])
+    boot_stages._stop_requested = lambda: False
+
+    print("\n[等待中收到停止信号：立刻返回，不杀不拉，不发「AUTO-MAS 没起来」]")
+    # 2026-09-18 23:10: the self-update restarted the service inside this 150 s wait;
+    # SvcStop waited 15 s and the hard guard force-exited the process.
+    clock["t"] = 0; revived.clear()
+    boot_stages.shell_running = lambda: True
+    commands.mas_up = _api(10**9)
+    boot_stages._stop_requested = lambda: clock["t"] >= 9
+    check("停止一到就返回 False", boot_stages.ensure_automas(timeout=120, grace=150), False)
+    check("在停止后一次轮询内退出（不到 15 秒）", clock["t"] < 15, True)
+    check("没有杀过 AUTO-MAS", revived, [])
+    clock["t"] = 0; revived.clear()
+    boot_stages.shell_running = lambda: False
+    boot_stages._stop_requested = lambda: True
+    check("窗口不在但正在停止：也不拉", boot_stages.ensure_automas(timeout=120, grace=150), False)
+    check("确实没拉", revived, [])
+    boot_stages._stop_requested = lambda: False
+
+    print("\n[接口本来就通：什么都不做]")
+    clock["t"] = 0; revived.clear()
+    commands.mas_up = lambda: True
+    check("直接 True", boot_stages.ensure_automas(), True)
+    check("没动手", revived, [])
+
+    print("\n[_revive_automas 连 auto-mas-runtime.exe 一起杀]")
+    ran = []
+    import importlib
+    importlib.reload(boot_stages)
+    boot_stages.time.sleep = lambda s: None
+    boot_stages.subprocess.run = lambda cmd, **kw: (ran.append(" ".join(cmd)),
+                                                    types.SimpleNamespace(returncode=0, stdout=b""))[1]
+    boot_stages._revive_automas()
+    check("先杀窗口", any("taskkill /IM AUTO-MAS.exe /F" in c for c in ran))
+    check("再杀 runtime（不杀它，新窗口会卡在 MUTATION_IN_PROGRESS）",
+          any("taskkill /IM auto-mas-runtime.exe /F" in c for c in ran))
+    check("然后 /end 再 /run", ran[-2].startswith("schtasks /end") and ran[-1].startswith("schtasks /run"))
+    check("杀窗口在杀 runtime 之前",
+          [i for i, c in enumerate(ran) if "AUTO-MAS.exe" in c][0]
+          < [i for i, c in enumerate(ran) if "auto-mas-runtime.exe" in c][0])
+
+    print("\n[开机拉不起来要立刻报警（群）]")
+    check("文案在 texts 里且是人话", texts.plain(texts.automas_boot_down_body()), [])
+    from ark_relay.core.notify import route_of
+    check("走群机器人", route_of(texts.AUTOMAS_DOWN, alert=True), "group")
+
+    print("\n[没有 wmic 的机器上 keeper 不许装瞎]")
+    automas_procs._python_processes = lambda: None          # the query itself failed
+    commands.mas_up = lambda: False
+    check("进程表读不到、接口不通 → 不在（以前是「假定活着」）", automas_procs._automas_running(), False)
+    commands.mas_up = lambda: True
+    check("进程表读不到、接口通 → 在", automas_procs._automas_running(), True)
+    automas_procs._python_processes = lambda: [(4132, r'"C:\Program Files\Python314\python.exe" C:\ProgramData\x.py')]
+    commands.mas_up = lambda: True
+    check("有 python 但不是 main.py → 不在（接口不算，句柄要挂在进程上）",
+          automas_procs._automas_running(), False)
+    automas_procs._python_processes = lambda: [(21932, r'"D:\ark\automas\runtime\environment\python\python.exe" D:\ark\automas\repo\main.py')]
+    check("有 main.py → 在", automas_procs._automas_running(), True)
+
+    print("\n[AUTO-MAS 的收尾记录不当成一趟运行核对]")
+    from ark_relay.features.alarm import handle
+    check("识别文本来自真实记录", handle.MAAEND_NOTHING_TO_RUN in handle.MAAEND_NOTHING_TO_RUN_LOG)
+    import tempfile
+    from datetime import datetime
+    from ark_relay.core.config import RunRecord, SERVER_TZ
+    with tempfile.TemporaryDirectory() as td:
+        lp = Path(td) / "MaaEnd-06-32-49.log"
+        lp.write_text("MaaEnd 没有可执行任务，请检查任务配置, 无日志记录", encoding="utf-8")
+        rec = RunRecord(run_id="2026-09-17/endfield/MaaEnd-06-32-49", script="MaaEnd", user="endfield",
+                        started=datetime(2026, 9, 17, 10, 32, 49, tzinfo=SERVER_TZ),
+                        finished=datetime(2026, 9, 17, 10, 32, 49, tzinfo=SERVER_TZ), ok=True,
+                        raw={"maaend_result": "[自动采集] MaaEnd 没有可执行任务，请检查任务配置"}, log_path=lp)
+        eng = types.SimpleNamespace(cfg=types.SimpleNamespace(maaend_dir=td, automas_dir=td, maa_dir=td))
+        check("收尾记录 → 不报「没干完」", handle._verify_outcome(eng, rec), None)
+
+    boot_stages.time.sleep, boot_stages.time.monotonic = _real_sleep, _real_monotonic
+
+    print()
+    if fails:
+        print("FAILED:", fails); sys.exit(1)
+    print("all checks passed")
+
+
+def _part_automas_contract_watch():
+    """scripts/mac/lib/automas_contract_watch.py: a new AUTO-MAS release is compared with the settings
+the relay reads before the game machine installs it.
+
+AUTO-MAS v5.7.0-beta.3 was published 2026-10-13 07:23 UTC and installed on the machine 10-14
+08:46 Beijing; it moved the MAA user's stage items from Info to Stage. With the relay's list as it
+stood before masuser (every MAA user item in Info), the tool must name that move from the release's
+app/models/config.py alone; with the current list (ark_relay/core/mascontract.py + masuser) it must
+report nothing for v5.7.0-beta.4, and for v5.7.0-beta.3 and v5.7.0-beta.2 only the two MaaEnd
+launcher settings beta.4 brought in (Game.LaunchMode, Game.LauncherPath; read since 10-16).
+
+Fixtures (public upstream source): fixtures/automas-models/config.py.txt is v5.7.0-beta.2's whole
+config.py (already used by test_mas.py); config-v5.7.0-beta.3-excerpt.py.txt holds only the
+ConfigItem statements of the listed settings from v5.7.0-beta.3, verbatim, under their classes;
+config-v5.7.0-beta.4-excerpt.py.txt the same from v5.7.0-beta.4.
+GitHub itself is not asked here (main() is given the file); the exit codes are checked on that path.
+
+    Formerly test_automas_contract_watch.py.
+    """
+    import io
+    from contextlib import redirect_stdout
+
+    HERE = Path(__file__).resolve().parent
+    sys.path.insert(0, str(HERE.parents[1] / "scripts" / "mac" / "lib"))
+    sys.path.insert(0, str(HERE.parent))
+    from ark_relay.core import masuser  # after the sys.path lines above
+    try:
+        import automas_contract_watch as w
+        from ark_relay.core import mascontract
+    except ImportError:          # the code before this change
+        w = mascontract = None
+
+    BETA2 = fx_dir(HERE, "fixtures") / "automas-models" / "config.py.txt"
+    BETA3 = fx_dir(HERE, "fixtures") / "automas-models" / "config-v5.7.0-beta.3-excerpt.py.txt"
+    BETA4 = fx_dir(HERE, "fixtures") / "automas-models" / "config-v5.7.0-beta.4-excerpt.py.txt"
+    # The two MaaEnd settings AUTO-MAS v5.7.0-beta.4 brought in (PR #1394, the launcher start);
+    # the relay reads them since 10-16 (efstart_setup), so an older release lacks them.
+    NEW_IN_BETA4 = ["MaaEndConfig Game.LaunchMode", "MaaEndConfig Game.LauncherPath"]
+
+
+    def run_main(*argv):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            code = w.main(list(argv))
+        return code, buf.getvalue()
+
+
+    check("the tool and the relay's list exist", w is not None and mascontract is not None)
+    if w is not None and mascontract is not None:
+        beta2, beta3 = w.parse(BETA2.read_text(encoding="utf-8")), w.parse(BETA3.read_text(encoding="utf-8"))
+        beta4 = w.parse(BETA4.read_text(encoding="utf-8"))
+
+        def named(gaps):
+            return [g.split(":")[0] for g in gaps]
+        # The list as it stood before masuser: the moved MAA user items read from Info only.
+        before = [mascontract.Item(i.kind, i.level, "Info", i.key, i.use, i.source)
+                  if i.level == "user" and i.key in masuser.MOVED else i for i in mascontract.CONTRACT]
+
+        print("[v5.7.0-beta.3 against the list before masuser: the 10-14 move is named]")
+        gaps = w.compare(beta3, before)
+        moved = sorted(g.split(":")[0] + " -> " + g.split("moved to ")[1].split(" (")[0]
+                       for g in gaps if "moved to" in g)
+        check("every MAA user item the relay read from Info is reported moved", moved, [
+            "MaaUserConfig Info.Annihilation -> Task.Annihilation",
+            "MaaUserConfig Info.MedicineNumb -> Stage.MedicineNumb",
+            "MaaUserConfig Info.SeriesNumb -> Stage.SeriesNumb",
+            "MaaUserConfig Info.Stage -> Stage.Stage",
+            "MaaUserConfig Info.StageMode -> Stage.StageMode",
+            "MaaUserConfig Info.Stage_1 -> Stage.Stage_1",
+            "MaaUserConfig Info.Stage_2 -> Stage.Stage_2",
+            "MaaUserConfig Info.Stage_3 -> Stage.Stage_3",
+        ])
+        check("nothing else is reported but the two settings beta.4 brought in",
+              sorted(set(named(gaps)) - {m.split(" -> ")[0] for m in moved}), NEW_IN_BETA4)
+        check("v5.7.0-beta.2 against that same list: only those two (it still kept the rest in Info)",
+              named(w.compare(beta2, before)), NEW_IN_BETA4)
+
+        print("\n[the current list (mascontract + masuser)]")
+        check("v5.7.0-beta.4: nothing changed", w.compare(beta4, mascontract.CONTRACT, masuser.MOVED), [])
+        check("v5.7.0-beta.3: only the two settings beta.4 brought in",
+              named(w.compare(beta3, mascontract.CONTRACT, masuser.MOVED)), NEW_IN_BETA4)
+        check("v5.7.0-beta.2: the same two", named(w.compare(beta2, mascontract.CONTRACT, masuser.MOVED)), NEW_IN_BETA4)
+
+        print("\n[a key a release drops is reported, a whole class too]")
+        fake = [mascontract.Item("MAA", "user", "Stage", "NoSuchKey", "stage", "x.py:f"),
+                mascontract.Item("plan", "plan", "Info", "Mode", "plan_table", "x.py:f")]
+        no_plan = {k: v for k, v in beta3.items() if k != "MaaPlanConfig"}
+        out = w.compare(no_plan, fake, masuser.MOVED)
+        check("a dropped key", any(g.startswith("MaaUserConfig Stage.NoSuchKey: no longer defined") for g in out))
+        check("a dropped class", any(g.startswith("MaaPlanConfig Info.Mode: class MaaPlanConfig is gone") for g in out))
+
+        print("\n[parsing: helpers called with self, f-string keys, loop rows]")
+        check("MaaEnd's helper items count for MaaEndUserConfig",
+              ("Task", "SanityTaskType") in beta3["MaaEndUserConfig"])
+        check("f\"If{task}\" becomes the pattern If*", ("Task", "If*") in beta3["MaaEndUserConfig"])
+        check("legacy_group is read", beta3["MaaUserConfig"][("Stage", "Stage")], ("Info", "Stage"))
+
+        print("\n[exit codes]")
+        code, text = run_main("--file", str(BETA4))
+        check("nothing changed: exit 0", code, 0)
+        orig = mascontract.CONTRACT
+        mascontract.CONTRACT = tuple(before)
+        try:
+            code, text = run_main("--file", str(BETA4))
+        finally:
+            mascontract.CONTRACT = orig
+        check("something changed: exit 2", code, 2)
+        check("and it is printed", "Info.Stage: moved to Stage.Stage" in text)
+        real_http = w._http
+        w._gh = lambda path: None
+
+        def offline(url):
+            raise w.urllib.error.URLError("offline")
+        w._http = offline
+        try:
+            code, text = run_main()
+        finally:
+            w._http = real_http
+        check("GitHub cannot be read: exit 3", code, 3)
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_automas_handover():
+    """relay/handover/automas_handover.py against a fake AUTO-MAS at the HTTP layer.
+
+Only `urllib.request.urlopen` is replaced. The config shapes are the ones the
+handover reads on the machine (BOARD/新中继-重叠可撤核对.md, values read
+2026-10-11 02:45-02:55 Beijing): MAA user Info.Annihilation "Close",
+Info.IfQuickConfig true, Info.Server "Official"; MAA script
+Run.IfCheckGameUpdate / Run.IfAutoInstallGameApk false; Start.IfSelfStart true.
+Endpoints and bodies as relay/ark_relay/commands.py and annihilation.py use them
+(every endpoint POST; /api/scripts/update {"scriptId","data"},
+/api/scripts/user/update {"scriptId","userId","data"}); /api/setting/get and
+/update {"data"} as AUTO-MAS app/api/setting.py (v5.7.0 line, 699de5a).
+
+    Formerly test_automas_handover.py.
+    """
+
+    import io
+    import json
+    import os
+    import urllib.error
+    import urllib.request
+    from contextlib import nullcontext
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "handover"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    os.environ["ARK_MAS_PORT"] = "36163"
+    import automas_handover as H
+    from ark_relay.core import masuser
+
+    H.this_week = lambda: "2026-W41"   # the game week every case below is run in
+
+
+    MAA, END, OKWW, UID = "s-maa", "s-end", "s-okww", "u-1"
+
+
+    def merge(dst: dict, src: dict) -> None:
+        for k, v in src.items():
+            if isinstance(v, dict) and isinstance(dst.get(k), dict):
+                merge(dst[k], v)
+            else:
+                dst[k] = v
+
+
+    class Backend:
+        """mode: "up" | "down" (connection refused) | "running" (updates answer
+    code 500 「正在运行, 无法更新配置项」, the message commands._refused cites)."""
+
+        def __init__(self, mode="up", annihilation="Close", quick=True, server="Official", selfstart=True,
+                     beta3=False):
+            self.mode = mode
+            self.beta3 = beta3
+            self.calls = []
+            self.scripts = {
+                MAA: {"Info": {"Name": "MAA"}, "Run": {"IfCheckGameUpdate": False, "IfAutoInstallGameApk": False,
+                                                      "HardTimeLimit": 120}},
+                END: {"Info": {"Name": "MaaEnd"}, "Run": {"HardTimeLimit": 120}},
+                OKWW: {"Info": {"Name": "OK-WW"}, "Run": {"HardTimeLimit": 120, "RunTimeLimit": 120},
+                       "Game": {"Enabled": False, "Path": "", "IfAutoUpdate": True}},
+            }
+            self.users = {
+                MAA: {UID: {"Info": {"Annihilation": annihilation, "IfQuickConfig": quick, "Server": server,
+                                     "AnnihilationStartWeekday": "Monday"},
+                            "Data": {"AnnihilationCompletedWeek": "2026-W41"}}},
+                END: {UID: {"Info": {}}},
+                OKWW: {UID: {"Info": {}}},
+            }
+            self.setting = {"Start": {"IfSelfStart": selfstart}}
+            if beta3:
+                # AUTO-MAS v5.7.0-beta.3 after its first start: the two annihilation items live
+                # in Task only (app/models/config.py of that tag, Task_Annihilation and
+                # Task_AnnihilationStartWeekday with legacy_group="Info").
+                info = self.users[MAA][UID]["Info"]
+                self.users[MAA][UID]["Task"] = {k: info.pop(k) for k in ("Annihilation", "AnnihilationStartWeekday")}
+
+        def urlopen(self, req, timeout=None):
+            path = req.full_url[len("http://127.0.0.1:36163"):]
+            body = json.loads((req.data or b"{}").decode())
+            self.calls.append((path, body))
+            if self.mode == "down":
+                raise urllib.error.URLError(ConnectionRefusedError(61, "Connection refused"))
+            if path.endswith("/update") and self.mode == "running":
+                return _Resp({"code": 500, "status": "error", "message": "正在运行, 无法更新配置项"})
+            if path == "/api/scripts/get":
+                return _Resp({"code": 200, "data": self.scripts})
+            if path == "/api/scripts/user/get":
+                return _Resp({"code": 200, "data": self.users[body["scriptId"]]})
+            if path == "/api/setting/get":
+                return _Resp({"code": 200, "data": self.setting})
+            if path == "/api/scripts/update":
+                merge(self.scripts[body["scriptId"]], body["data"])
+                return _Resp({"code": 200})
+            if path == "/api/scripts/user/update":
+                moved = set((body["data"].get("Info") or {})) & set(masuser.MOVED)
+                if self.beta3 and moved:
+                    # beta.3's backend has no Info.Annihilation item any more and refuses it.
+                    return _Resp({"code": 500, "status": "error", "message": f"未知配置项 Info.{sorted(moved)[0]}"})
+                merge(self.users[body["scriptId"]][body["userId"]], body["data"])
+                return _Resp({"code": 200})
+            if path == "/api/setting/update":
+                merge(self.setting, body["data"])
+                return _Resp({"code": 200})
+            raise AssertionError(f"endpoint not prepared by this test: {path}")
+
+        def updates(self):
+            return [p for p, _ in self.calls if p.endswith("/update")]
+
+
+    class _Resp:
+        def __init__(self, obj):
+            self._raw = json.dumps(obj, ensure_ascii=False).encode()
+
+        def read(self):
+            return self._raw
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+
+    _real = urllib.request.urlopen
+
+
+    def run(be, *argv):
+        urllib.request.urlopen = be.urlopen
+        out = io.StringIO()
+        old, sys.stdout = sys.stdout, out
+        try:
+            code = H.main(list(argv))
+        finally:
+            sys.stdout = old
+        return code, out.getvalue()
+
+
+    try:
+        with nullcontext(tmpdir()) as d:   # tmpdir() is a plain Path, removed at exit
+            state = Path(d) / "state"
+            state.mkdir()
+            (state / "state.json").write_text(json.dumps(
+                {"weekly": {"annihilation": {"done_week": "2026-W40", "restore_to": "Chernobog@Annihilation"}}}),
+                encoding="utf-8")
+            sd = ["--state-dir", str(state), "--okww-dir", str(Path(d) / "okww")]
+
+            print("plan reads only (the relay closed it last week; the week has rolled)")
+            be = Backend()
+            code, out = run(be, "plan", *sd)
+            check("plan exit 0", code, 0)
+            check("plan sends no update", be.updates(), [])
+            check("plan shows the annihilation map it would restore",
+                  "'Close' -> 'Chernobog@Annihilation'" in out, True)
+            check("plan prints the hard limit fact", "Run.HardTimeLimit = 120" in out, True)
+
+            print("apply changes, reads back, saves the old values")
+            code, out = run(be, "apply", *sd)
+            check("apply exit 0", code, 0)
+            check("annihilation restored to the saved map",
+                  be.users[MAA][UID]["Info"]["Annihilation"], "Chernobog@Annihilation")
+            check("arknights client update on", be.scripts[MAA]["Run"]["IfCheckGameUpdate"], True)
+            check("arknights apk install on", be.scripts[MAA]["Run"]["IfAutoInstallGameApk"], True)
+            check("wuwa untouched without --with-wuwa-update", be.scripts[OKWW]["Game"]["Enabled"], False)
+            saved = json.loads((state / H.BACKUP_FILE).read_text(encoding="utf-8"))["old"]
+            check("old annihilation value saved", saved.get("user:MAA:Info.Annihilation"), "Close")
+            check("old update switch saved", saved.get("script:MAA:Run.IfCheckGameUpdate"), False)
+
+            print("apply again is a no-op and keeps the first old values")
+            n = len(be.updates())
+            code, _ = run(be, "apply", *sd)
+            check("second apply exit 0", code, 0)
+            check("second apply sends no update", len(be.updates()), n)
+            saved2 = json.loads((state / H.BACKUP_FILE).read_text(encoding="utf-8"))["old"]
+            check("backup still holds the pre-handover values", saved2, saved)
+
+            print("rollback puts exactly the old values back")
+            code, out = run(be, "rollback", "--state-dir", str(state))
+            check("rollback exit 0", code, 0)
+            check("annihilation back to Close", be.users[MAA][UID]["Info"]["Annihilation"], "Close")
+            check("update switch back off", be.scripts[MAA]["Run"]["IfCheckGameUpdate"], False)
+            check("backup removed after a full rollback", (state / H.BACKUP_FILE).exists(), False)
+
+        print("the moved keys are the same here as in the relay (this file cannot import it)")
+        check("MOVED equals ark_relay.core.masuser.MOVED", getattr(H, "MOVED", None), masuser.MOVED)
+
+        with nullcontext(tmpdir()) as d:   # tmpdir() is a plain Path, removed at exit
+            state = Path(d)
+            (state / "state.json").write_text(json.dumps(
+                {"weekly": {"annihilation": {"done_week": "2026-W40", "restore_to": "Chernobog@Annihilation"}}}),
+                encoding="utf-8")
+            sd = ["--state-dir", str(state), "--okww-dir", str(Path(d) / "okww")]
+
+            print("AUTO-MAS v5.7.0-beta.3 (annihilation under Task): apply and rollback use Task")
+            be = Backend(beta3=True)
+            code, out = run(be, "plan", *sd)
+            check("plan reads the Close from Task", "'Close' -> 'Chernobog@Annihilation'" in out, True)
+            check("plan reads the start weekday from Task", "Info.AnnihilationStartWeekday = 'Monday'" in out, True)
+            code, out = run(be, "apply", *sd)
+            check("apply exit 0", code, 0)
+            check("annihilation restored in Task", be.users[MAA][UID]["Task"]["Annihilation"], "Chernobog@Annihilation")
+            check("no Info.Annihilation written back", "Annihilation" in be.users[MAA][UID]["Info"], False)
+            saved = json.loads((state / H.BACKUP_FILE).read_text(encoding="utf-8"))["old"]
+            check("backup keeps the old key", saved.get("user:MAA:Info.Annihilation"), "Close")
+            code, out = run(be, "rollback", "--state-dir", str(state))
+            check("rollback exit 0", code, 0)
+            check("rollback puts Close back in Task", be.users[MAA][UID]["Task"]["Annihilation"], "Close")
+
+        with nullcontext(tmpdir()) as d:   # tmpdir() is a plain Path, removed at exit
+            state = Path(d)
+            sd = ["--state-dir", str(state), "--okww-dir", str(Path(d) / "okww")]
+
+            print("a Close the relay never set (no done_week) stays Close")
+            be = Backend()
+            code, out = run(be, "apply", *sd)
+            check("exit 0", code, 0)
+            check("annihilation left Close", be.users[MAA][UID]["Info"]["Annihilation"], "Close")
+            check("no write to annihilation", [b for p, b in be.calls if p == "/api/scripts/user/update"], [])
+            check("says why", "no done_week" in out, True)
+
+            print("done_week without a saved map: AUTO-MAS's own default, as the old relay did")
+            (state / "state.json").write_text(json.dumps(
+                {"weekly": {"annihilation": {"done_week": "2026-W40"}}}), encoding="utf-8")
+            be = Backend()
+            code, _ = run(be, "apply", *sd)
+            check("restored to the default map", be.users[MAA][UID]["Info"]["Annihilation"], "Annihilation")
+
+            print("done this week, AUTO-MAS has no record of it: hand the record over, then open")
+            (state / "state.json").write_text(json.dumps(
+                {"weekly": {"annihilation": {"done_week": "2026-W41", "restore_to": "Chernobog@Annihilation"}}}),
+                encoding="utf-8")
+            be = Backend()
+            be.users[MAA][UID]["Data"]["AnnihilationCompletedWeek"] = "2026-W40"
+            code, out = run(be, "plan", *sd)
+            check("plan exit 0", code, 0)
+            check("plan sends no update", be.updates(), [])
+            check("plan shows the record it would write", "'2026-W40' -> '2026-W41'" in out, True)
+            check("plan shows the map it would then restore", "'Close' -> 'Chernobog@Annihilation'" in out, True)
+            code, out = run(be, "apply", *sd)
+            check("apply exit 0", code, 0)
+            check("AUTO-MAS now knows this week is done",
+                  be.users[MAA][UID]["Data"]["AnnihilationCompletedWeek"], "2026-W41")
+            check("annihilation restored", be.users[MAA][UID]["Info"]["Annihilation"], "Chernobog@Annihilation")
+            writes = [b["data"] for p, b in be.calls if p == "/api/scripts/user/update"]
+            check("the record is written before the switch opens",
+                  writes[:2], [{"Data": {"AnnihilationCompletedWeek": "2026-W41"}},
+                               {"Info": {"Annihilation": "Chernobog@Annihilation"}}])
+            code, _ = run(be, "rollback", "--state-dir", str(state))
+            check("rollback puts the old record back", be.users[MAA][UID]["Data"]["AnnihilationCompletedWeek"], "2026-W40")
+            check("rollback closes it again", be.users[MAA][UID]["Info"]["Annihilation"], "Close")
+
+            print("done this week but the record write is refused: the switch stays Close")
+            be = Backend(mode="running")
+            be.users[MAA][UID]["Data"]["AnnihilationCompletedWeek"] = "2026-W40"
+            code, out = run(be, "apply", *sd)
+            check("exit 1", code, 1)
+            check("annihilation left Close", be.users[MAA][UID]["Info"]["Annihilation"], "Close")
+            check("says it needs the record", "Data.AnnihilationCompletedWeek='2026-W41'" in out, True)
+            (state / "state.json").unlink()
+
+            print("quick config off: annihilation is not handed over")
+            be = Backend(quick=False)
+            code, out = run(be, "apply", *sd)
+            check("exit 1", code, 1)
+            check("annihilation left Close", be.users[MAA][UID]["Info"]["Annihilation"], "Close")
+            check("says why", "Info.IfQuickConfig" in out, True)
+
+            print("not the official server: client update not handed over")
+            be = Backend(server="Bilibili")
+            code, out = run(be, "apply", *sd)
+            check("exit 1", code, 1)
+            check("update switch left off", be.scripts[MAA]["Run"]["IfCheckGameUpdate"], False)
+
+            print("a task running: the backend refuses, nothing reported as done")
+            be = Backend(mode="running")
+            code, out = run(be, "apply", *sd)
+            check("exit 1", code, 1)
+            check("refusal reported", "正在运行" in out, True)
+
+            print("backend down")
+            be = Backend(mode="down")
+            code, out = run(be, "apply", *sd)
+            check("exit 2", code, 2)
+
+            print("self start off is switched on")
+            be = Backend(selfstart=False)
+            code, _ = run(be, "apply", *sd)
+            check("IfSelfStart true", be.setting["Start"]["IfSelfStart"], True)
+
+            print("--with-wuwa-update without a launcher: refuses, does not enable")
+            be = Backend()
+            code, out = run(be, "apply", "--with-wuwa-update", *sd)
+            check("exit 1", code, 1)
+            check("Game.Enabled still off", be.scripts[OKWW]["Game"]["Enabled"], False)
+            check("says the launcher was not found", "launcher.exe not found" in out, True)
+
+            print("--with-wuwa-update with the launcher next to the game folder")
+            game = Path(d) / "Wuthering Waves Game" / "Wuthering Waves.exe"
+            game.parent.mkdir()
+            game.write_text("")
+            launcher = Path(d) / "Wuthering Waves" / "launcher.exe"
+            launcher.parent.mkdir()
+            launcher.write_text("")
+            cfg = Path(d) / "okww" / "data" / "apps" / "ok-ww" / "working" / "configs"
+            cfg.mkdir(parents=True)
+            (cfg / "Game.json").write_text(json.dumps({"path": str(game)}), encoding="utf-8")
+            be = Backend()
+            code, out = run(be, "plan", "--with-wuwa-update", *sd)
+            check("plan with wuwa exit 0", code, 0)
+            check("plan with wuwa sends no update", be.updates(), [])
+            check("plan shows the three wuwa lines", out.count("[10b]"), 3)
+            code, out = run(be, "apply", "--with-wuwa-update", *sd)
+            check("exit 0", code, 0)
+            check("launcher path set", be.scripts[OKWW]["Game"]["Path"], str(launcher))
+            check("game start handed over", be.scripts[OKWW]["Game"]["Enabled"], True)
+
+        with nullcontext(tmpdir()) as d:
+            state = Path(d)
+            sd = ["--state-dir", str(state), "--okww-dir", str(Path(d) / "okww")]
+            (state / "state.json").write_text(json.dumps(
+                {"weekly": {"annihilation": {"done_week": "2026-W40", "restore_to": "Chernobog@Annihilation"}}}),
+                encoding="utf-8")
+
+            print("the relay closed it once but the switch is open now: left as it is")
+            be = Backend(annihilation="Annihilation")
+            code, _ = run(be, "apply", *sd)
+            check("exit 0", code, 0)
+            check("annihilation untouched", be.users[MAA][UID]["Info"]["Annihilation"], "Annihilation")
+            (state / H.BACKUP_FILE).unlink(missing_ok=True)
+
+            print("--only 13: annihilation only, the other AUTO-MAS settings neither read nor changed")
+            be = Backend(selfstart=False)
+            code, out = run(be, "plan", "--only", "13", *sd)
+            check("plan exit 0", code, 0)
+            check("plan prints only step 13", sorted({l.split("]")[0] for l in out.splitlines() if l.startswith("[")}),
+                  ["[13"])
+            code, out = run(be, "apply", "--only", "13", *sd)
+            check("apply exit 0", code, 0)
+            check("annihilation restored", be.users[MAA][UID]["Info"]["Annihilation"], "Chernobog@Annihilation")
+            check("arknights update switch untouched", be.scripts[MAA]["Run"]["IfCheckGameUpdate"], False)
+            check("self start untouched", be.setting["Start"]["IfSelfStart"], False)
+            check("setting never read", [p for p, _ in be.calls if p.startswith("/api/setting/")], [])
+            (state / H.BACKUP_FILE).unlink(missing_ok=True)
+
+            print("--only 10a --only 20: those two, annihilation left Close")
+            be = Backend(selfstart=False)
+            code, _ = run(be, "apply", "--only", "10a", "--only", "20", *sd)
+            check("exit 0", code, 0)
+            check("annihilation left Close", be.users[MAA][UID]["Info"]["Annihilation"], "Close")
+            check("arknights update switch on", be.scripts[MAA]["Run"]["IfCheckGameUpdate"], True)
+            check("self start on", be.setting["Start"]["IfSelfStart"], True)
+
+            print("--only with an unknown step is refused, nothing done")
+            be = Backend()
+            err, sys.stderr = sys.stderr, io.StringIO()
+            try:
+                run(be, "apply", "--only", "99", *sd)
+                code = 0
+            except SystemExit as exc:
+                code = exc.code
+            finally:
+                sys.stderr = err
+            check("argparse exit 2", code, 2)
+            check("no call made", be.calls, [])
+        with nullcontext(tmpdir()) as d:   # tmpdir() is a plain Path, removed at exit
+            state = Path(d)
+            sd = ["--state-dir", str(state), "--okww-dir", str(Path(d) / "okww")]
+            print("uninstall with the old relay gone: 13, 10a, 10b stay with AUTO-MAS, the rest goes back")
+            # s26 audit 2026-10-13: the old relay was retired 10-11 22:33; putting back its
+            # Close and the update switches it owned would leave nobody doing those jobs.
+            (state / "state.json").write_text(json.dumps(
+                {"weekly": {"annihilation": {"done_week": "2026-W41", "restore_to": "Chernobog@Annihilation"}}}),
+                encoding="utf-8")
+            launcher = Path(d) / "Wuthering Waves" / "launcher.exe"
+            real_launcher, H.wuwa_launcher = H.wuwa_launcher, lambda okww_dir: launcher
+            try:
+                be = Backend(selfstart=False)
+                be.users[MAA][UID]["Data"]["AnnihilationCompletedWeek"] = "2026-W40"
+                be.scripts[OKWW]["Game"]["IfAutoUpdate"] = False
+                code, _ = run(be, "apply", "--with-wuwa-update", *sd)
+                check("apply exit 0", code, 0)
+                saved = json.loads((state / H.BACKUP_FILE).read_text(encoding="utf-8"))["old"]
+                handed = {st["target"].key for st in H.steps(state, Path(d), True) if st["id"] in ("13", "10a", "10b")}
+                check("every 13 / 10a / 10b setting the handover changes is kept with AUTO-MAS",
+                      sorted(handed - set(getattr(H, "KEPT_WITHOUT_OLD_RELAY", ()))), [])
+                check("the backup holds all of them and 20", sorted(saved), sorted(handed | {"setting::Start.IfSelfStart"}))
+                try:
+                    code, out = run(be, "rollback", "--old-relay-gone", "--state-dir", str(state))
+                except SystemExit as exc:      # the old argparse: no such option
+                    code, out = exc.code, ""
+                check("rollback exit 0", code, 0)
+                check("annihilation stays open", be.users[MAA][UID]["Info"]["Annihilation"], "Chernobog@Annihilation")
+                check("this week's record stays", be.users[MAA][UID]["Data"]["AnnihilationCompletedWeek"], "2026-W41")
+                check("arknights client update stays on",
+                      (be.scripts[MAA]["Run"]["IfCheckGameUpdate"], be.scripts[MAA]["Run"]["IfAutoInstallGameApk"]),
+                      (True, True))
+                check("wuwa update stays on", be.scripts[OKWW]["Game"],
+                      {"Enabled": True, "Path": str(launcher), "IfAutoUpdate": True})
+                check("20 (not the old relay's job) is put back", be.setting["Start"]["IfSelfStart"], False)
+                check("says what it left", out.count("left with AUTO-MAS"), 7)
+                check("backup removed", (state / H.BACKUP_FILE).exists(), False)
+            finally:
+                H.wuwa_launcher = real_launcher
+    finally:
+        urllib.request.urlopen = _real
+
+
+def _part_automas_jobfix():
+    """AUTO-MAS's job-object fallback is put back in its venv at boot and after an AUTO-MAS update (11-09).
+
+From 2026-11-08 21:30 AUTO-MAS's starts of MAA failed with (5, 'AssignProcessToJobObject',
+'拒绝访问。'). auto-mas-runtime puts its repo back to upstream at every start, so session 2499's
+fallback lives in the venv's site-packages (a module and the .pth importing it); an update that
+rebuilds the venv drops them. features/host/automas_jobfix.py keeps them there.
+    """
+    import ast
+    import hashlib
+    import logging
+    import os
+    import types
+    from unittest import mock
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    import boot_stages
+    from ark_relay.features.host import automas_jobfix as jf
+
+    print("[the payload: the two files session 2499 tried on the machine, byte for byte]")
+    # SHA-256 of zz_automas_job_fix.py / .pth as installed on 2026-11-09 (2499's scratchpad ex/jobfix).
+    check("module unchanged", hashlib.sha256(jf.payload("zz_automas_job_fix.py")).hexdigest(),
+          "979bea5fe532c281e6a843018fc48dd14b8a79e9ff3423beb0094f27d623a7b2")
+    check(".pth imports the module", jf.payload("zz_automas_job_fix.pth"), b"import zz_automas_job_fix\n")
+    tree = ast.parse(jf.payload("zz_automas_job_fix.py").decode("utf-8"))
+    check("the module is Python and imports only sys at its top",
+          [n.names[0].name for n in tree.body if isinstance(n, ast.Import)], ["sys"])
+    # site.addsitedir reads .pth files in sorted order: after pywin32.pth, so win32job imports.
+    check(".pth sorts after pywin32.pth and _virtualenv.pth",
+          sorted(["_virtualenv.pth", "pywin32.pth", "zz_automas_job_fix.pth"])[-1], "zz_automas_job_fix.pth")
+
+    print("\n[heal: no AUTO-MAS, or no venv in it -> nothing written]")
+    check("no AUTO-MAS folder", (jf.site_dir(None), jf.heal(None)), (None, []))
+    bare = tmpdir()
+    check("AUTO-MAS without the venv", (jf.site_dir(bare), jf.heal(bare)), (None, []))
+
+    print("\n[heal: missing -> all put back; right -> untouched; one changed -> that one]")
+    root = tmpdir()
+    site = root.joinpath(*jf.SITE_PACKAGES)
+    site.mkdir(parents=True)
+    check("all missing: all written", jf.heal(root),
+          ["zz_automas_job_fix.py", "zz_automas_job_fix.pth", "zz_automas_ld_adb.py", "zz_automas_ld_adb.pth"])
+    check("……byte for byte", [(site / n).read_bytes() == jf.payload(n) for n in jf.FILES], [True] * 4)
+    os.utime(site / "zz_automas_job_fix.py", (1_000_000, 1_000_000))
+    check("already right: nothing written", jf.heal(root), [])
+    check("……mtime not touched", (site / "zz_automas_job_fix.py").stat().st_mtime, 1_000_000)
+    (site / "zz_automas_job_fix.pth").write_bytes(b"import something_else\n")
+    check("the .pth changed: only it is put back", jf.heal(root), ["zz_automas_job_fix.pth"])
+    check("……and reads right", (site / "zz_automas_job_fix.pth").read_bytes(), jf.payload("zz_automas_job_fix.pth"))
+    (site / "zz_automas_job_fix.py").unlink()
+    with mock.patch.object(jf, "atomic_write_bytes", lambda path, data: path.write_bytes(data[:-1])):
+        try:
+            jf.heal(root)
+            raised = None
+        except OSError as exc:
+            raised = str(exc)
+    check("a read-back that differs raises", bool(raised) and "读回来不一样" in raised, True)
+
+    print("\n[the boot stage says it: put back is INFO, not placed is a WARNING (the group)]")
+    lines: list[tuple[int, str]] = []
+    lg = logging.getLogger("ark.test_preupdate")
+    lg.propagate = False
+    lg.setLevel(logging.INFO)
+    h = type("H", (logging.Handler,), {"emit": lambda self, r: lines.append((r.levelno, r.getMessage()))})()
+    lg.addHandler(h)
+    try:
+        (site / "zz_automas_job_fix.py").unlink(missing_ok=True)
+        boot_stages._stage_automas_jobfix(types.SimpleNamespace(automas_dir=root), lg)
+        check("put back: one INFO naming it", [(lv, "补回去了" in m and "zz_automas_job_fix.py" in m) for lv, m in lines],
+              [(logging.INFO, True)])
+        lines.clear()
+        boot_stages._stage_automas_jobfix(types.SimpleNamespace(automas_dir=root), lg)
+        check("already right: silent", lines, [])
+        boot_stages._stage_automas_jobfix(types.SimpleNamespace(automas_dir=None), lg)
+        boot_stages._stage_automas_jobfix(types.SimpleNamespace(), lg)
+        check("no AUTO-MAS in the config: silent", lines, [])
+        boot_stages._stage_automas_jobfix(types.SimpleNamespace(automas_dir=bare), lg)
+        check("no venv: one INFO", [(lv, "没地方放" in m) for lv, m in lines], [(logging.INFO, True)])
+        lines.clear()
+        (site / "zz_automas_job_fix.py").unlink()
+        with mock.patch.object(jf, "atomic_write_bytes", mock.Mock(side_effect=PermissionError(13, "denied"))):
+            boot_stages._stage_automas_jobfix(types.SimpleNamespace(automas_dir=root), lg)
+        check("a write refused: one WARNING saying what it risks",
+              [(lv, "没能放好" in m and "拒绝访问" in m) for lv, m in lines], [(logging.WARNING, True)])
+        lines.clear()
+
+        print("\n[after the pre-update installs a new AUTO-MAS: put back too]")
+        from ark_relay.features.selfcheck import selfcheck
+        cfg = types.SimpleNamespace(automas_dir=root)
+        with mock.patch.object(selfcheck, "report_contract", lambda *a: None), \
+                mock.patch.object(boot_stages, "_endfield_launch", lambda *a: None):
+            boot_stages._contract_after_update(cfg, None, lg, "v5.2.0")
+        check("the file is back", (site / "zz_automas_job_fix.py").read_bytes() == jf.payload("zz_automas_job_fix.py"), True)
+        check("……said with the version", [("调度程序升级到 v5.2.0 后" in m) for _, m in lines], [True])
+    finally:
+        lg.removeHandler(h)
+
+
+def _part_automas_ld_adb():
+    """AUTO-MAS hands MAA the LDPlayer instance's own ADB address, not another port its VM listens on (11-09).
+
+The 11-09 morning shift did not run: LDManager.getInfo took the first port the LDPlayer VM
+process listens on, and four of five tries handed MAA 127.0.0.1:11159 / 12508 / 12783 / 14245
+(app.log 09:01-09:08 「MAA 的 ADB 连接异常」). zz_automas_ld_adb.py, loaded from AUTO-MAS's venv by
+its .pth, rewrites a 127.0.0.1 port other than 5555+2*index to emulator-<5554+2*index>.
+    """
+    import ast
+    import dataclasses
+    import subprocess
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.host import automas_jobfix as jf
+
+    print("[the payload: a module, and a .pth that imports it after pywin32.pth]")
+    src = jf.payload("zz_automas_ld_adb.py").decode("utf-8")
+    check(".pth imports the module", jf.payload("zz_automas_ld_adb.pth"), b"import zz_automas_ld_adb\n")
+    tree = ast.parse(src)
+    check("the module imports only sys at its top",
+          [n.names[0].name for n in tree.body if isinstance(n, ast.Import | ast.ImportFrom)], ["sys"])
+    check(".pth sorts after pywin32.pth",
+          sorted(["_virtualenv.pth", "pywin32.pth", "zz_automas_ld_adb.pth"])[-1], "zz_automas_ld_adb.pth")
+
+    print("\n[fix: only a 127.0.0.1 port that is not the instance's own changes]")
+    ns: dict = {}
+    exec(compile(src.split("\nclass _Hook")[0], "zz_automas_ld_adb.py", "exec"), ns)
+    fix = ns["fix"]
+    check("11-09 09:04 port for instance 1000", fix("1000", "127.0.0.1:12508"), "emulator-7554")
+    check("11-09 09:01 port", fix("1000", "127.0.0.1:11159"), "emulator-7554")
+    check("its own port 7555 stays (11-08 21:54 connected on it)", fix("1000", "127.0.0.1:7555"), "127.0.0.1:7555")
+    check("emulator-7554 stays (11-09 09:03 connected on it)", fix("1000", "emulator-7554"), "emulator-7554")
+    check("instance 0's own 5555 stays", fix("0", "127.0.0.1:5555"), "127.0.0.1:5555")
+    check("instance 0 on another port", fix("0", "127.0.0.1:16384"), "emulator-5554")
+    check("an empty address stays", fix("1000", ""), "")
+
+    @dataclasses.dataclass
+    class Info:          # the shape of AUTO-MAS's app/models/emulator.py DeviceInfo (a dataclass, 11-09)
+        title: str
+        status: int
+        adb_address: str
+        app_launch: str = ""
+    old = Info("t", 0, "127.0.0.1:12508", "launched")
+    new = ns["_with_address"](old, "emulator-7554")
+    check("a dataclass is copied with the new address, the rest kept",
+          (new.adb_address, new.app_launch, old.adb_address), ("emulator-7554", "launched", "127.0.0.1:12508"))
+
+    print("\n[loaded the way AUTO-MAS loads it: the .pth patches LDManager.getInfo when ldplayer is imported]")
+    root = tmpdir()
+    site = root / "site"
+    site.mkdir()
+    for name in ("zz_automas_ld_adb.py", "zz_automas_ld_adb.pth"):
+        (site / name).write_bytes(jf.payload(name))
+    pkg = root / "proj" / "app" / "utils" / "common" / "emulator"
+    pkg.mkdir(parents=True)
+    for d in (root / "proj" / "app", root / "proj" / "app" / "utils" / "common", pkg):
+        (d / "__init__.py").write_text("")
+    (root / "proj" / "app" / "utils" / "__init__.py").write_text(
+        "import logging\ndef get_logger(n):\n    return logging.getLogger(n)\n")
+    (pkg / "ldplayer.py").write_text(
+        "import dataclasses\n"
+        "@dataclasses.dataclass\n"
+        "class DeviceInfo:\n    title: str\n    status: int\n    adb_address: str\n"
+        "class LDManager:\n"
+        "    def __init__(self, port):\n        self.port = port\n"
+        "    async def getInfo(self, idx):\n"
+        "        ids = [idx] if idx is not None else ['1000', '0']\n"
+        "        return {i: DeviceInfo('t', 1, f'127.0.0.1:{self.port}' if self.port else f'emulator-{5554 + int(i) * 2}')"
+        " for i in ids}\n"
+        "class LDPlayer14Manager(LDManager):\n"
+        "    async def getInfo(self, idx):\n        return await super().getInfo(idx)\n")
+    drive = (
+        "import asyncio, site, sys\n"
+        "site.addsitedir(sys.argv[1]); sys.path.insert(0, sys.argv[2])\n"
+        "from app.utils.common.emulator import ldplayer as m\n"
+        "async def go():\n"
+        "    out = [m.LDManager._automas_ld_adb_fix]\n"
+        "    for port in (12508, 7555, 0):\n"
+        "        out.append((await m.LDManager(port).getInfo('1000'))['1000'].adb_address)\n"
+        "    out.append({k: v.adb_address for k, v in (await m.LDManager(5555).getInfo(None)).items()})\n"
+        "    out.append((await m.LDPlayer14Manager(14245).getInfo('1000'))['1000'].adb_address)\n"
+        "    print(repr(out))\n"
+        "asyncio.run(go())\n")
+    r = subprocess.run([sys.executable, "-I", "-c", drive, str(site), str(root / "proj")],
+                       capture_output=True, text=True, timeout=60)
+    check("patched, the stray ports rewritten, the right ones kept, the LDPlayer 14 subclass too",
+          r.stdout.strip(), repr([True, "emulator-7554", "127.0.0.1:7555", "emulator-7554",
+                                  {"1000": "emulator-7554", "0": "127.0.0.1:5555"}, "emulator-7554"]))
+    check("……nothing on stderr", r.stderr, "")
+
+
+def _part_mas_address():
+    """AUTO-MAS 的地址只有一处出处，而且 ARK_MAS_PORT 真的管得住全部。
+
+2026-09-08 审出来：地址在 relay 里有 4 份（commands / snapshot / engine 各自写死
+36163，只有预更新那份读 ARK_MAS_PORT），改端口只有四分之一生效——而「四分之一生效」
+比「完全不生效」难查得多。
+
+还有一条：出处**必须是函数**。config.py 顶部那段注释写着，模块级读 os.environ 会在
+.env 加载之前求值，做成常量等于让这个变量「设了也不生效」。
+
+    Formerly test_mas_address.py.
+    """
+    import ast
+    import os
+    import re
+
+    ROOT = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(ROOT))
+
+
+    print("[地址只有一处出处]")
+    hard = []
+    for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks"} & set(p.parts)]):
+        if p.name == "config.py":
+            continue
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            if line.lstrip().startswith("#"):
+                continue
+            if re.search(r"127\.0\.0\.1:\s*\{?36163|:36163", line):
+                hard.append(f"{p.name}:{i}")
+    check("别处不许再写死", hard, [])
+
+    print("[出处是函数，不是模块级常量]")
+    cfg = ast.parse((ROOT / "ark_relay" / "core" / "config.py").read_text(encoding="utf-8"))
+    names = {n.name for n in cfg.body if isinstance(n, ast.FunctionDef)}
+    check("config.mas_base 存在且是函数", "mas_base" in names, True)
+    consts = [t.id for n in cfg.body if isinstance(n, ast.Assign)
+              for t in n.targets if isinstance(t, ast.Name)]
+    check("没有模块级的地址常量", [c for c in consts if "MAS" in c.upper()], [])
+
+    print("[ARK_MAS_PORT 真的管用]")
+    from ark_relay.core.config import mas_base
+    old = os.environ.get("ARK_MAS_PORT")
+    try:
+        os.environ["ARK_MAS_PORT"] = "39999"
+        check("改端口立刻生效", mas_base(), "http://127.0.0.1:39999")
+        del os.environ["ARK_MAS_PORT"]
+        check("不设时回落到 36163", mas_base(), "http://127.0.0.1:36163")
+    finally:
+        if old is None:
+            os.environ.pop("ARK_MAS_PORT", None)
+        else:
+            os.environ["ARK_MAS_PORT"] = old
+
+
+def _part_mas_api_silent():
+    """mas-api.py must exit non-zero when AUTO-MAS answered with an HTTP error.
+
+Silent-failure audit rows scripts/mac/mas-api.py:50 and :58: an HTTP 4xx/5xx
+came back as {"__status", "__detail"} or {"__status", "__body"}, was printed,
+and the tool exited 0.
+
+    Formerly test_mas_api_silent.py.
+    """
+    import contextlib
+    import importlib.util
+    import io
+
+    ROOT = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location("mas_api", ROOT / "scripts" / "mac" / "mas-api.py")
+    mas = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mas)
+
+
+    def run(answer):
+        mas.call = lambda path, body=None, method="POST": answer
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = mas.main(["post", "/api/scripts/get"])
+        return rc, out.getvalue()
+
+
+    print("[HTTP error with a JSON body]")
+    rc, out = run({"__status": 422, "__detail": {"detail": "field required"}})
+    check("the detail is printed", "field required" in out, True)
+    check("exit 1", rc, 1)
+
+    print("[HTTP error with a non-JSON body]")
+    rc, out = run({"__status": 500, "__body": "Internal Server Error"})
+    check("the body is printed", "Internal Server Error" in out, True)
+    check("exit 1 (non-JSON body)", rc, 1)
+
+    print("[normal answers stay 0]")
+    check("a dict answer exits 0", run({"code": 200, "data": {}})[0], 0)
+    check("a list answer exits 0", run([{"a": 1}])[0], 0)
+
+
+def _part_mas_labels():
+    """AUTO-MAS field labels: every labelled ConfigItem is read (audit 11 #4, 2026-10-13).
+
+mas_labels matched `## 中文名` + `self.X = ConfigItem(` lazily up to a `
+)`. A
+one-line ConfigItem(...) has no such line of its own, so the match swallowed
+the next field and its label went to the wrong key or nowhere; the MaaEnd
+sanity-task fields are declared as `config.X = ConfigItem` in the module-level
+init_maaend_task_config(config), which MaaEndUserConfig calls with itself, and
+were not read at all. Of the 19 SHOWN fields 7 had no label.
+
+The fixture is AUTO-MAS app/models/config.py at v5.7.0-beta.2 (ff285a39), the version
+the machine runs since 2026-10-11 08:48 (relay.log 「AUTO-MAS 已更新到 v5.7.0-beta.2」),
+byte-identical to gamesim/upstream/maa-v6.19.0/automas/app/models/config.py.txt. Audit 11
+ran on an older copy that lacked beta.2's Info_IfScriptBeforeTask / ScriptAfterTask,
+Update_*, Embedded_FollowSource and Run_LoopGuard; the labels below are the same on both.
+Of the 7, Task.TaskIndex (OK-WW) carries only a `#`
+comment and Task.IfSanity / Task.IfAutoUseSpMedication are no ConfigItem in
+this file (only schema.py Field descriptions): no `##` label exists for them.
+
+    Formerly test_mas_labels.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.phone import mas_labels
+
+
+    # Kept as .txt so the repo's Python tools (ruff, the comment ratchet) do not read
+    # upstream code as ours; laid out as AUTO-MAS's app/models for the run.
+    SRC = fx_dir(Path(__file__), "fixtures") / "automas-models" / "config.py.txt"
+    AM = tmpdir()
+    (AM / "app" / "models").mkdir(parents=True)
+    (AM / "app" / "models" / "config.py").write_bytes(SRC.read_bytes())
+    out = mas_labels._mas_labels(AM)
+
+
+    def label(game, path):
+        return (out[game].get(path) or {}).get("label")
+
+
+    print("[the AUTO-MAS source audit 11 ran on]")
+    check("MAA Info.MedicineNumb (one-line ConfigItem before it)", label("MAA", "Info.MedicineNumb"), "理智药数量")
+    check("MAA Task.IfFight (one-line ConfigItem)", label("MAA", "Task.IfFight"), "是否理智作战")
+    check("MAA Task.IfStartUp keeps its own label (not swallowed)", label("MAA", "Task.IfStartUp"), "是否自动唤醒")
+    check("MAA Info.Notes (one line) keeps its own label", label("MAA", "Info.Notes"), "备注")
+    check("MaaEnd Task.SanityTaskType (config. in init_maaend_task_config)",
+          label("MaaEnd", "Task.SanityTaskType"), "理智任务类型")
+    check("MaaEnd Task.AutoEssenceSpecifiedLocation", label("MaaEnd", "Task.AutoEssenceSpecifiedLocation"), "基质刷取地点")
+    check("multi-line items still read: MAA Info.Annihilation options",
+          (label("MAA", "Info.Annihilation"), (out["MAA"].get("Info.Annihilation") or {}).get("options", [])[:2]),
+          ("剿灭模式", ["Close", "Annihilation"]))
+    check("OK-WW Task.WhichToFarm", label("OK-WW", "Task.WhichToFarm"), "每日任务体力用途")
+    shown = sorted(f"{g}|{p}" for g in out for p in mas_labels.SHOWN if p in out[g])
+    check("SHOWN fields labelled: 16 of 19 (TaskIndex, IfSanity, IfAutoUseSpMedication have none)", len(shown), 16)
+    # No label may land on a field other than its own: each `##` line is the line
+    # right above its ConfigItem in the source.
+    src = SRC.read_text(encoding="utf-8")
+    wrong = [f"{g}|{p}" for g, items in out.items() for p, info in items.items()
+             if f'## {info["label"]}\n' not in src]
+    check("every label is a `## ` line of the source", wrong, [])
+
+    print("\n[a wrapped one-line call and a comment with a parenthesis]")
+    d = tmpdir()
+    (d / "app" / "models").mkdir(parents=True)
+    (d / "app" / "models" / "config.py").write_text('''
+def init_x(config) -> None:
+    ## 甲
+    config.Task_A = ConfigItem("Task", "A", 0)  # a (comment
+    ## 乙
+    config.Task_B = ConfigItem(
+        "Task",
+        "B",
+        "x)",  # a ) in a string and a comment
+        OptionsValidator(["p", "q"]),
+    )
+
+
+class MaaEndUserConfig(ConfigBase):
+    def __init__(self):
+        ## 丙
+        self.Info_C = ConfigItem("Info", "C", f(1, 2))
+        ## 丁
+        self.Info_D = ConfigItem("Info", "D", 1)
+        init_x(self)
+''', encoding="utf-8")
+    got = mas_labels._mas_labels(d)["MaaEnd"]
+    check("labels", {k: v["label"] for k, v in got.items()},
+          {"Info.C": "丙", "Info.D": "丁", "Task.A": "甲", "Task.B": "乙"})
+    check("options inside a wrapped call", got.get("Task.B", {}).get("options"), ["p", "q"])
+
+
+def _part_mas_user_pick():
+    """The phone's changes, its snapshot and the plan look at one and the same AUTO-MAS user
+(audit 11-08 D-11; dispatch relay-opt-round6-1108 R6-01; masuser.pick).
+
+Before: commands._find_user (every phone change through the backend) took the first user,
+snapshot._mas / maa_from_files (what the phone shows) and plan._scripts (the plan text)
+went through every user and kept the last. With two users the phone showed one account and
+changed the other. Pinned here, with two MAA users:
+
+* both run: the first, everywhere;
+* the first one AUTO-MAS does not run (Info.Status off, or RemainedDay 0 -
+  manager_base.is_user_selected): the second, everywhere;
+* neither runs: the first, everywhere;
+* the backend's reply or the file's UserData holding an "instances" list: skipped.
+
+    Formerly test_mas_user_pick_1108.py.
+    """
+    import json
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.core import masuser, plan
+    from ark_relay.features.phone import commands, snapshot
+
+
+    def user(stage, **info):
+        return {"Info": {"Name": stage, "Stage": stage, "Stage_1": "-", "Stage_2": "-", "Stage_3": "-",
+                         "StageMode": "Fixed", "MedicineNumb": 0, **info}, "Task": {"IfFight": True}}
+
+
+    def world(first_info=None, second_info=None):
+        users = {"instances": [{"uid": "U1"}, {"uid": "U2"}],
+                 "U1": user("1-7", **(first_info or {})), "U2": user("CE-6", **(second_info or {}))}
+        d = tmpdir()
+        (d / "config").mkdir()
+        (d / "config" / "ScriptConfig.json").write_text(json.dumps(
+            {"instances": [{"uid": "S"}], "S": {"Info": {"Name": "MAA", "Path": "D:\\ark\\maa"},
+                                                "SubConfigsInfo": {"UserData": users}}}, ensure_ascii=False),
+            encoding="utf-8")
+        return d, users
+
+
+    def answers(d, users):
+        """(phone change goes to, phone shows from the backend, phone shows from the file, plan shows)."""
+        def mas(path, body=None, timeout=15):
+            if path == "/api/scripts/get":
+                return {"data": {"S": {"Info": {"Name": "MAA"}}}}
+            if path == "/api/scripts/user/get":
+                return {"data": users}
+            raise AssertionError(path)
+        saved = (commands._mas, snapshot._post)
+        commands._mas = mas
+        snapshot._post = lambda path, body=None, timeout=15: mas(path, body)
+        try:
+            uid = commands._find_user("MAA")[1]
+            out = {}
+            snapshot._mas(out)
+            shown = (out.get("MAA") or {}).get("关卡")
+        finally:
+            commands._mas, snapshot._post = saved
+        files = snapshot.maa_from_files(d)["关卡"]
+        planned = next(iter(plan._scripts(d / "config").values())).get("stage_info", {}).get("Stage")
+        return users[uid]["Info"]["Stage"], shown, files, planned
+
+
+    print("[两个账号都会跑：都看第一个]")
+    check("改的、显示的（后台）、显示的（文件）、安排里的", answers(*world()), ("1-7",) * 4)
+
+    print("\n[第一个停用（Status 关）：都看第二个]")
+    check("同一个账号", answers(*world(first_info={"Status": False})), ("CE-6",) * 4)
+
+    print("\n[第一个剩余天数 0：都看第二个]")
+    check("同一个账号", answers(*world(first_info={"RemainedDay": 0})), ("CE-6",) * 4)
+
+    print("\n[两个都不跑：退回第一个]")
+    check("同一个账号", answers(*world(first_info={"Status": False}, second_info={"Status": False})), ("1-7",) * 4)
+
+    print("\n[pick 本身]")
+    check("没有用户", masuser.pick({}), None)
+    check("只有 instances 列表", masuser.pick({"instances": [{"uid": "U1"}]}), None)
+    check("后台的回答里先列 instances 也跳过", masuser.pick({"instances": [], "U9": {"Info": {}}})[0], "U9")
+
+
+def _part_masconfig_yaml():
+    """AUTO-MAS v5.8's YAML settings read like v5.7's JSON (core/masconfig.py, core/miniyaml.py).
+
+Ledger #113 (2026-10-23 08:48 Beijing): AUTO-MAS updated itself to v5.8.0-beta.1, moved
+config/QueueConfig.json, ScriptConfig.json and PlanConfig.json into config/legacy-json and kept
+the settings in queues.yaml, scripts.yaml and plans.yaml, with every time as UTC ISO. The relay
+then found 「设置里一个脚本、队列都没有」 and 「读取 QueueConfig.json 失败: [Errno 2]」.
+The YAML here is written in the shape of that machine's own files (indentless sequences, long
+JSON strings folded in single quotes, quoted UTC times); the files themselves are not in this
+public repo. Against the real files, miniyaml matched PyYAML on all four and plan.schedule,
+plan._scripts, plan.next_plan and mascontract.check gave the same answers as from the JSON.
+
+    Formerly test_masconfig_yaml.py.
+    """
+    import json
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import masconfig, miniyaml, plan
+
+
+    print("[miniyaml: the constructs AUTO-MAS's files use]")
+    doc = miniyaml.loads("""\
+order:
+- uid: aaa
+  type: QueueConfig
+- uid: bbb
+  type: QueueConfig
+data:
+  aaa:
+    Info:
+      Name: 早班
+      TimeEnabled: true
+      Delay: 0
+      Ratio: 1.5
+      ScriptAfterTask: null
+      Note: ~
+    Pipeline: '{"Data": {"Week": "2026-W42",
+      "Notes": "it''s", "Tag": "[{\\"text\\": \\"日常\\"}]"},
+      "Run": 2}'
+    Quoted: "a\\tb \\u4e2d
+      c"
+    Long: a plain line
+      that folds
+    Empty: {}
+    None: []
+    '2026-10-22': date key
+""")
+    check("an indentless sequence under its key", [x["uid"] for x in doc["order"]], ["aaa", "bbb"])
+    info = doc["data"]["aaa"]["Info"]
+    check("true / int / float / null / ~", (info["TimeEnabled"], info["Delay"], info["Ratio"],
+                                            info["ScriptAfterTask"], info["Note"]), (True, 0, 1.5, None, None))
+    check("a single-quoted string folded over three lines, '' kept as one quote",
+          json.loads(doc["data"]["aaa"]["Pipeline"]), {"Data": {"Week": "2026-W42", "Notes": "it's",
+                                                                "Tag": '[{"text": "日常"}]'}, "Run": 2})
+    check("a double-quoted string: escapes and folding", doc["data"]["aaa"]["Quoted"], "a\tb 中 c")
+    check("a plain scalar folded over lines", doc["data"]["aaa"]["Long"], "a plain line that folds")
+    check("{} and []", (doc["data"]["aaa"]["Empty"], doc["data"]["aaa"]["None"]), ({}, []))
+    check("a quoted key stays a string", doc["data"]["aaa"]["2026-10-22"], "date key")
+    for bad in ("a: [1, 2]\n", "a: |\n  text\n", "a: &x 1\n", "a: !!str 1\n"):
+        try:
+            miniyaml.loads(bad)
+            check(f"refuses {bad.strip()!r}", "parsed", "ValueError")
+        except ValueError:
+            check(f"refuses {bad.strip()!r}", True)
+
+    print("\n[masconfig: v5.8's layout read in v5.7's shape]")
+    QUEUES = """\
+order:
+- uid: q1
+  type: QueueConfig
+data:
+  q1:
+    Data:
+      LastTimedStart: '2026-10-22T01:00:00Z'
+    Info:
+      Name: 早班
+      TimeEnabled: true
+      StartUpMode: Never
+      AfterAccomplish: NoAction
+    TimeSet:
+      order:
+      - uid: t1
+        type: TimeSet
+      data:
+        t1:
+          Info:
+            Days:
+            - Monday
+            - Tuesday
+            - Wednesday
+            - Thursday
+            - Friday
+            - Saturday
+            - Sunday
+            Enabled: true
+            Time: '2000-01-01T01:00:00Z'
+    QueueItem:
+      order:
+      - uid: i1
+        type: QueueItem
+      data:
+        i1:
+          Info:
+            ScriptId: s1
+          Schedule:
+            Days:
+            - Monday
+            - Tuesday
+            - Wednesday
+            - Thursday
+            - Friday
+            - Saturday
+            - Sunday
+            Enabled: true
+            Mode: fixed_time
+            Time: '1999-12-31T16:00:00Z'
+"""
+    old = masconfig.legacy(miniyaml.loads(QUEUES))
+    check("order -> instances", old["instances"], [{"uid": "q1", "type": "QueueConfig"}])
+    check("sub-collections go under SubConfigsInfo", sorted(old["q1"]["SubConfigsInfo"]), ["QueueItem", "TimeSet"])
+    ts = old["q1"]["SubConfigsInfo"]["TimeSet"]["t1"]["Info"]
+    check("09:00 Beijing written as 2000-01-01T01:00:00Z reads back as 09:00 (v5.7's form)", ts["Time"], "09:00")
+    check("LastTimedStart in v5.7's form", old["q1"]["Data"]["LastTimedStart"], "2026-10-22 09:00")
+    check("a queue item's time too",
+          old["q1"]["SubConfigsInfo"]["QueueItem"]["i1"]["Schedule"]["Time"], "00:00")
+
+    print("\n[the reader finds the YAML only when the JSON is gone]")
+    root = tmpdir()
+    cfg = root / "config"
+    cfg.mkdir()
+    (cfg / "queues.yaml").write_text(QUEUES, encoding="utf-8")
+    check("no JSON: the YAML", masconfig.source(cfg / "QueueConfig.json").name, "queues.yaml")
+    sched = plan.schedule(root)
+    check("plan.schedule sees the 09:00 morning queue (10-23 it saw none)",
+          [(q["name"], q["times"], q["items"]) for q in sched], [("早班", ["09:00"], ["s1"])])
+    (cfg / "QueueConfig.json").write_text(json.dumps(old, ensure_ascii=False), encoding="utf-8")
+    check("JSON there (AUTO-MAS before v5.8): the JSON", masconfig.source(cfg / "QueueConfig.json").name,
+          "QueueConfig.json")
+    try:
+        masconfig.read(cfg / "ScriptConfig.json")
+        check("neither file: the error reading the JSON gives", "read", "FileNotFoundError")
+    except FileNotFoundError:
+        check("neither file: the error reading the JSON gives", True)
+
+    print("\n[offline file-edit fallback on v5.8 YAML (11-08 [D-05])]")
+    import os
+    from ark_relay.features.phone import commands
+    from ark_relay.features.schedule import queues
+
+    yroot = tmpdir()
+    ycfg = yroot / "config"
+    ycfg.mkdir()
+    (ycfg / "queues.yaml").write_text(QUEUES, encoding="utf-8")
+    SCRIPTS_YAML = """\
+order:
+- uid: s1
+  type: ScriptConfig
+- uid: s2
+  type: ScriptConfig
+data:
+  s1:
+    Info:
+      Name: MAA
+    UserData:
+      order:
+      - uid: u1
+        type: MAAUserConfig
+      data:
+        u1:
+          Info:
+            Name: 默认用户
+            Stage: CE-6
+            MedicineNumb: 0
+  s2:
+    Info:
+      Name: MaaEnd
+    Game:
+      WaitTime: 60
+"""
+    (ycfg / "scripts.yaml").write_text(SCRIPTS_YAML, encoding="utf-8")
+    os.environ["ARK_AUTOMAS_DIR"] = str(yroot)
+    orig_backend = commands._backend_scripts
+    orig_refusal = commands._stage_refusal
+    orig_q_backend = queues._enabled_via_backend
+    commands._backend_scripts = lambda: (None, "")
+    commands._stage_refusal = lambda s: ""
+    queues._enabled_via_backend = lambda name, enabled: None
+    try:
+        ok_s, msg_s = commands._set_stage("1-7")
+        check("YAML _set_stage ok", ok_s, True)
+        check("YAML _set_stage read back", masconfig.read(ycfg / "ScriptConfig.json")["s1"]["SubConfigsInfo"]["UserData"]["u1"]["Info"]["Stage"], "1-7")
+        ok_m, msg_m = commands._set_medicine(5)
+        check("YAML _set_medicine ok", ok_m, True)
+        check("YAML _set_medicine read back", masconfig.read(ycfg / "ScriptConfig.json")["s1"]["SubConfigsInfo"]["UserData"]["u1"]["Info"]["MedicineNumb"], 5)
+        ok_w, msg_w = commands._set_wait_time(120)
+        check("YAML _set_wait_time ok", ok_w, True)
+        check("YAML _set_wait_time read back", masconfig.read(ycfg / "ScriptConfig.json")["s2"]["Game"]["WaitTime"], 120)
+        ok_q, msg_q = queues.apply(yroot, "早班", enabled=False)
+        check("YAML queues.apply ok", ok_q, True)
+        check("YAML queues.apply read back", masconfig.read(ycfg / "QueueConfig.json")["q1"]["Info"]["TimeEnabled"], False)
+        check("no stray JSON written next to YAML", (ycfg / "QueueConfig.json").exists() or (ycfg / "ScriptConfig.json").exists(), False)
+    finally:
+        commands._backend_scripts = orig_backend
+        commands._stage_refusal = orig_refusal
+        queues._enabled_via_backend = orig_q_backend
+
+
+def _part_mascontract():
+    """The relay notices at once when an AUTO-MAS update moves a setting it reads.
+
+10-14: AUTO-MAS v5.7.0-beta.3, installed by the relay's own pre-update at 08:46 Beijing, moved
+the MAA user's stage items from Info to a new Stage group. The relay read Info, got nothing,
+treated it as "no stage set" (stage gate placeholder at 08:55:27), and nothing reached the
+group for 13 hours: the boot self-check had run at 08:45, on the old version.
+
+* ark_relay/core/mascontract.py lists every AUTO-MAS setting the relay reads, and check()
+  finds each one in the config files (through masuser for the moved keys);
+* the boot self-check has it as one item, and a miss reaches the group with the self-check;
+* right after the pre-update installs a new AUTO-MAS (and only then) the check runs again and
+  a miss goes to the group under its own title.
+Each part fails on the code before it (no list, no item, no hook).
+
+    Formerly test_mascontract.py.
+    """
+    import inspect
+    import json
+    import os
+    import types
+
+    from _tmp import stagegate_fx; fx = stagegate_fx()
+
+    os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import texts
+    from ark_relay.features.phone import commands
+    from ark_relay.features.preupdate import preupdate_automas as P
+    from ark_relay.features.selfcheck import selfcheck
+    try:
+        from ark_relay.core import mascontract
+    except ImportError:          # the code before this change
+        mascontract = None
+
+
+    def edit_user(root: Path, fn) -> Path:
+        """Apply fn to the MAA user of the fixture's ScriptConfig.json."""
+        f = root / "config" / "ScriptConfig.json"
+        data = json.loads(f.read_text(encoding="utf-8"))
+        fn(data["S-MAA"]["SubConfigsInfo"]["UserData"]["U1"])
+        f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return root
+
+
+    def drop_stage(user):
+        """A later AUTO-MAS that keeps the main stage neither in Stage nor in Info."""
+        user["Stage"].pop("Stage")
+        user["Info"].pop("Stage", None)
+
+
+    print("[the list of AUTO-MAS settings the relay reads]")
+    check("ark_relay/core/mascontract.py exists", mascontract is not None)
+    if mascontract is not None:
+        items = mascontract.CONTRACT
+        check("it lists the moved stage items at their new group",
+              {("Stage", k) for k in ("Stage", "StageMode", "MedicineNumb")} <= {(i.group, i.key) for i in items})
+        check("each item names its reader and a feature with plain words",
+              [i.path for i in items if not i.source or i.use not in texts.MAS_SETTING_WHAT
+               or i.use not in texts.MAS_SETTING_BREAKS], [])
+        check("every script kind, the queue and the plan table are covered",
+              {i.kind for i in items}, {"MAA", "MaaEnd", "OK-WW", "queue", "plan"})
+
+    print("\n[the check on AUTO-MAS v5.7.0-beta.3's layout]")
+    if mascontract is not None:
+        beta3 = fx.automas_dir(tmpdir(), beta3=True)
+        res = mascontract.check(beta3)
+        check("beta.3 layout: nothing missing", [i.path for i in res.missing], [])
+        check("beta.3 layout: the items were judged, not skipped", res.judged >= 30)
+        check("beta.3 layout: no file unreadable", res.unreadable, [])
+
+        def to_info(user):
+            """The same user as an AUTO-MAS before beta.3 keeps it: the moved items in Info."""
+            for k, g in mascontract.masuser.MOVED.items():
+                if k in (user.get(g) or {}):
+                    user["Info"][k] = user[g].pop(k)
+        old = edit_user(fx.automas_dir(tmpdir(), beta3=True), to_info)
+        check("the same items kept in Info (before beta.3) also pass", [i.path for i in mascontract.check(old).missing], [])
+
+        gone = edit_user(fx.automas_dir(tmpdir(), beta3=True), drop_stage)
+        res = mascontract.check(gone)
+        check("a stage kept in neither Stage nor Info fails and names it",
+              [(i.kind, i.path) for i in res.missing], [("MAA", "Stage.Stage")])
+        lines = texts.mas_contract_lines(res.missing)
+        check("the plain line says which setting and which column",
+              lines, ["中继读不到方舟的关卡设置（关卡一栏里找不到），开跑前查关卡、明日安排、手机上显示和修改关卡都不对了"])
+        check("that line is plain words", [p for x in lines for p in texts.plain(x)], [])
+
+    print("\n[settings new in AUTO-MAS v5.7.0-beta.4: MaaEnd's launcher start (10-16)]")
+    # 10-16: beta.4 (PR #1394) brought Game.LaunchMode / Game.LauncherPath, and its pre-run check
+    # found no launcher from the relay's .cmd in Game.Path; the 早班 MaaEnd never ran. The relay
+    # now reads and writes all three (efstart_setup). The two new ones are judged only on beta.4
+    # or later: the recorded days of the day simulator run v5.6.2 to beta.3.
+    if mascontract is not None:
+        launch = {(i.kind, i.path) for i in mascontract.CONTRACT if i.use == "maaend_launch"}
+        check("MaaEnd Game.Path, Game.LaunchMode, Game.LauncherPath, Game.ControllerType are listed",
+              launch, {("MaaEnd", "Game.Path"), ("MaaEnd", "Game.LaunchMode"), ("MaaEnd", "Game.LauncherPath"),
+                       ("MaaEnd", "Game.ControllerType")})
+        check("version order: beta.4 after beta.3, the release after its betas",
+              (mascontract.version_key("v5.7.0-beta.3") < mascontract.version_key("v5.7.0-beta.4")
+               < mascontract.version_key("v5.7.0") < mascontract.version_key("v5.7.1-beta.1"),
+               mascontract.version_key("nonsense")), (True, None))
+        b3 = fx.automas_dir(tmpdir(), beta3=True)
+        new_keys = [("MaaEnd", "Game.LaunchMode"), ("MaaEnd", "Game.LauncherPath")]
+        check("beta.4 installed, the two new keys absent: both named",
+              [(i.kind, i.path) for i in mascontract.check(b3, "v5.7.0-beta.4").missing], new_keys)
+        check("beta.3 installed: they are not judged", mascontract.check(b3, "v5.7.0-beta.3").missing, [])
+        check("version unknown: not judged either", mascontract.check(b3, "").missing, [])
+
+        def add_launch(root):
+            f = root / "config" / "ScriptConfig.json"
+            data = json.loads(f.read_text(encoding="utf-8"))
+            data["S-END"]["Game"].update(LaunchMode="Launcher", LauncherPath="")
+            f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            return root
+        check("beta.4 with them in place: nothing missing",
+              mascontract.check(add_launch(fx.automas_dir(tmpdir(), beta3=True)), "v5.7.0-beta.4").missing, [])
+
+        def drop_path(root):
+            f = root / "config" / "ScriptConfig.json"
+            data = json.loads(f.read_text(encoding="utf-8"))
+            data["S-END"]["Game"].pop("Path")
+            f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            return root
+        check("Game.Path is judged on every version",
+              [(i.kind, i.path) for i in mascontract.check(drop_path(fx.automas_dir(tmpdir(), beta3=True))).missing],
+              [("MaaEnd", "Game.Path")])
+
+    print("\n[「MaaEnd 启动」's window settings, written by the relay since 10-17]")
+    # efstart_setup sets Game.SetResolution / CloseOnFinish / RestoreDisplayType / RestoreResolution
+    # and reads Game.ControllerType (maaend_launch.check). An AUTO-MAS that drops one must be
+    # reported: listed, judged on every version (MaaEndConfig has them since v5.7.0-beta.2 at
+    # least), and a missing one named in one plain line.
+    if mascontract is not None:
+        WINDOW_KEYS = ("SetResolution", "CloseOnFinish", "RestoreDisplayType", "RestoreResolution")
+        window = [(i.kind, i.path, i.since) for i in mascontract.CONTRACT if i.use == "maaend_window"]
+        check("the four window settings are listed, judged on every version",
+              window, [("MaaEnd", f"Game.{k}", "") for k in WINDOW_KEYS])
+
+        def drop_window(root):
+            f = root / "config" / "ScriptConfig.json"
+            data = json.loads(f.read_text(encoding="utf-8"))
+            for k in (*WINDOW_KEYS, "ControllerType"):
+                data["S-END"]["Game"].pop(k)
+            f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+            return root
+        gone = mascontract.check(drop_window(fx.automas_dir(tmpdir(), beta3=True)))
+        check("an AUTO-MAS that drops them: all five named",
+              sorted((i.kind, i.path) for i in gone.missing),
+              sorted([("MaaEnd", f"Game.{k}") for k in (*WINDOW_KEYS, "ControllerType")]))
+        lines = texts.mas_contract_lines(gone.missing)
+        check("plain lines for them, one per feature", (len(lines), [p for x in lines for p in texts.plain(x)]), (2, []))
+        check("the fixture as on the machine: nothing missing",
+              mascontract.check(fx.automas_dir(tmpdir(), beta3=True)).missing, [])
+
+    print("\n[the boot self-check has it as one item, routed like the others]")
+    SELF_GOOD = dict(procs=lambda: [(1, r"D:\ark\automas\repo\main.py")], mas_up=lambda: True,
+                     schedule=lambda: [{"name": "早班", "times": ["09:00"]}], channels=lambda: ["群"],
+                     run_ok=lambda cmd: (True, ""), has_module=lambda m: True)
+
+
+    class _Notifier:
+        channels = ["企业微信机器人"]
+
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body, *, alert=False, daily=False):
+            self.sent.append((title, body, alert))
+            return []
+
+
+    def self_items(root):
+        cfg = types.SimpleNamespace(automas_dir=str(root), state_dir=Path(root) / "state", history_dir=str(root),
+                                    phone_topic="ark-x", phone_pin="1234")
+        # The update settings are read from the backend; it is not asked in this test.
+        orig = selfcheck._handed_updates_gaps
+        orig_mas = commands._mas
+        commands._mas = lambda *a, **k: {"data": {}}
+        selfcheck._handed_updates_gaps = lambda scripts: []
+        try:
+            return selfcheck.run(cfg, **SELF_GOOD)
+        finally:
+            selfcheck._handed_updates_gaps, commands._mas = orig, orig_mas
+
+
+    name = getattr(texts, "MAS_CONTRACT_CHECK", "中继要读的调度程序设置都在原处")
+    os.environ["ARK_LOG_FILE"] = str(tmpdir() / "log" / "relay.log")
+    good = [c for c in self_items(fx.automas_dir(tmpdir(), beta3=True)) if c.name == name]
+    check("the self-check has the item", len(good), 1)
+    check("it holds on the beta.3 layout", [c.ok for c in good], [True])
+    bad = [c for c in self_items(edit_user(fx.automas_dir(tmpdir(), beta3=True), drop_stage)) if c.name == name]
+    check("it fails when the stage cannot be found", [c.ok for c in bad], [False])
+    check("its detail names the setting", bool(bad) and "方舟的关卡设置" in bad[0].detail)
+    empty = [c for c in self_items(tmpdir()) if c.name == name]
+    check("no settings folder: not judged (the queue line says it), not a second failure",
+          [c.ok for c in empty], [None])
+
+    print("\n[right after the pre-update installed a new AUTO-MAS, and only then]")
+    has_hook = "after_update" in inspect.signature(P.run_automas).parameters
+    check("run_automas takes an after_update hook", has_hook)
+
+
+    def update_run(*, need: bool, confirmed: bool) -> list:
+        """run_automas against a fake backend; the versions after_update was called with."""
+        seen: list = []
+        orig = (P._mas_post, P._automas_version, P._live_version, P._wait_for_package, P._wait_for_version)
+
+        def post(path, body=None):
+            if path == "/api/update/check":
+                return {"if_need_update": need, "latest_version": "v5.7.0-beta.3"}
+            return {}
+        P._mas_post, P._automas_version, P._live_version = post, (lambda _r: "v5.7.0-beta.2"), (lambda: "v5.7.0-beta.2")
+        P._wait_for_package = lambda _root, _deadline, *_a: Path("UpdatePack_v5.7.0-beta.3.zip")
+        P._wait_for_version = (lambda want, _d, *_a: want) if confirmed else (lambda want, _d, *_a: "v5.7.0-beta.2")
+        try:
+            kw = {"after_update": seen.append} if has_hook else {}
+            P.run_automas(Path("."), budget_s=1, problems=[], **kw)
+        finally:
+            (P._mas_post, P._automas_version, P._live_version, P._wait_for_package, P._wait_for_version) = orig
+        return seen
+
+
+    check("a new version came up: the check runs once, with it", update_run(need=True, confirmed=True), ["v5.7.0-beta.3"])
+    check("no update: no check", update_run(need=False, confirmed=False), [])
+    check("install not confirmed (version unchanged): no check", update_run(need=True, confirmed=False), [])
+    boot = (Path(__file__).resolve().parents[1] / "boot_stages.py").read_text(encoding="utf-8")
+    check("the boot's pre-update passes the hook", "after_update=" in boot and "report_contract" in boot)
+
+    print("\n[the post-update check pushes a miss to the group, under its own title]")
+    report = getattr(selfcheck, "report_contract", None)
+    check("selfcheck.report_contract exists", report is not None)
+    if report is not None:
+        n = _Notifier()
+        cfg = types.SimpleNamespace(automas_dir=str(edit_user(fx.automas_dir(tmpdir(), beta3=True), drop_stage)))
+        c = report(cfg, n, "v5.7.0-beta.3")
+        check("a miss: one alarm", [(t, a) for t, _, a in n.sent], [(texts.AUTOMAS_CONTRACT, True)])
+        body = n.sent[0][1] if n.sent else ""
+        check("it says the version and what stops working",
+              "v5.7.0-beta.3" in body and "方舟的关卡设置" in body and "开跑前查关卡" in body)
+        check("the alarm is plain words", texts.plain(texts.AUTOMAS_CONTRACT + body), [])
+        check("returns the failed check", c.ok, False)
+        n = _Notifier()
+        report(types.SimpleNamespace(automas_dir=str(fx.automas_dir(tmpdir(), beta3=True))), n, "v5.7.0-beta.3")
+        check("nothing missing: nothing pushed", n.sent, [])
+        n = _Notifier()
+        report(types.SimpleNamespace(automas_dir=str(fx.automas_dir(tmpdir(), beta3=True))), n, "v5.7.0-beta.4")
+        check("just updated to beta.4 and its launcher settings are not there: the alarm names them",
+              bool(n.sent) and "终末地的游戏位置和开游戏方式" in n.sent[0][1])
+        check("that alarm is plain words", texts.plain(n.sent[0][1] if n.sent else ""), [])
+
+        class _Log:
+            def __init__(self):
+                self.warned = []
+
+            def warning(self, msg, *args, **kw):
+                self.warned.append(msg % args)
+
+            def info(self, msg, *args, **kw):
+                pass
+        lg = _Log()
+        c = report(types.SimpleNamespace(automas_dir=str(tmpdir())), _Notifier(), "v5.7.0-beta.3", lg)
+        check("files unreadable after an update: not judged, and said as a WARNING (errwatch pushes it)",
+              (c.ok, len(lg.warned)), (None, 1))
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_masuser_beta3():
+    """The relay reads and writes the MAA user's settings where AUTO-MAS keeps them.
+
+AUTO-MAS v5.7.0-beta.3 (its own updater, game machine 10-14 08:46 Beijing) moved the stage
+items into a Stage group and Annihilation into Task, and stopped keeping them in Info. From
+then on the relay saw nothing: the stage gate logged its "current stage" placeholder at
+08:55:27 instead of YW-4, and the snapshot, the plan, the annihilation switch and the phone's
+stage / sanity-potion writes all used Info.* (ark_relay/core/masuser.py has the details).
+Each check below fails on the code before the fix and holds for both layouts.
+
+    Formerly test_masuser_beta3.py.
+    """
+    import json
+    import os
+    from datetime import datetime
+
+    from _tmp import stagegate_fx; fx = stagegate_fx()
+
+    os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import masuser, plan
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features.schedule import stagegate as sg
+    from ark_relay.features.phone import snapshot, commands
+
+
+    OLD = {"Info": {"Stage": "YW-4", "MedicineNumb": 3, "Annihilation": "Close"}, "Task": {}}
+    NEW = {"Info": {"Name": "x"}, "Stage": {"Stage": "YW-4", "MedicineNumb": 3},
+           "Task": {"Annihilation": "Close"}}
+
+    print("[masuser]")
+    for name, u in (("old (Info)", OLD), ("beta.3 (Stage / Task)", NEW)):
+        check(f"{name}: Stage", masuser.get(u, "Stage"), "YW-4")
+        check(f"{name}: MedicineNumb", masuser.get(u, "MedicineNumb"), 3)
+        check(f"{name}: Annihilation", masuser.get(u, "Annihilation"), "Close")
+        check(f"{name}: info_view has the stage", masuser.info_view(u).get("Stage"), "YW-4")
+    check("old: Info.MedicineNumb stays", masuser.resolve(OLD, "Info.MedicineNumb"), "Info.MedicineNumb")
+    check("beta.3: Info.MedicineNumb -> Stage.MedicineNumb", masuser.resolve(NEW, "Info.MedicineNumb"), "Stage.MedicineNumb")
+    check("beta.3: Info.Annihilation -> Task.Annihilation", masuser.resolve(NEW, "Info.Annihilation"), "Task.Annihilation")
+    check("an item that did not move keeps its path", masuser.resolve(NEW, "Task.IfFight"), "Task.IfFight")
+
+    SAT9 = datetime(2026, 10, 10, 9, 0, tzinfo=SERVER_TZ)
+    MORNING = fx.maa_dir(tmpdir())
+    print("[stage gate on a beta.3 config]")
+    check("beta.3: the gate reads Stage.Stage (YW-4 is a definite no on the 10-10 files)",
+          sg.run_verdict(fx.automas_dir(tmpdir(), beta3=True), MORNING, SAT9)[:2], (sg.NO, "YW-4"))
+    check("old layout unchanged", sg.run_verdict(fx.automas_dir(tmpdir()), MORNING, SAT9)[:2], (sg.NO, "YW-4"))
+
+    print("[plan and snapshot on a beta.3 config]")
+    d = fx.automas_dir(tmpdir(), beta3=True)
+    maa = next(s for s in plan._scripts(d / "config").values() if s.get("kind") == "MAA")
+    check("plan: stage mode", maa.get("stage_mode"), "Fixed")
+    check("plan: stage", (maa.get("stage_info") or {}).get("Stage"), "YW-4")
+    check("plan: annihilation from Task", maa.get("annihilation"), "Annihilation")
+    snap = snapshot.maa_from_files(d)
+    check("snapshot: 关卡", snap.get("关卡"), "YW-4")
+    check("snapshot: 理智药", snap.get("理智药"), 0)
+    check("snapshot: 剿灭", snap.get("剿灭"), "Annihilation")
+
+    print("[phone writes go where the user keeps the item]")
+    sent = []
+    real = commands._find_user, commands._mas
+    try:
+        user = json.loads(json.dumps(NEW))
+        commands._find_user = lambda script: ("S", "U", user)
+
+        def fake_mas(route, payload):
+            if route.endswith("/update"):
+                sent.append(payload["data"])
+                for g, items in payload["data"].items():
+                    user.setdefault(g, {}).update(items)
+                return {"code": 200}
+            return {"data": {"U": user}}
+        commands._mas = fake_mas
+        failed, before, now = commands._user_item_via_api("MAA", "Info.MedicineNumb", 5)
+        check("beta.3: the write goes to Stage.MedicineNumb and reads back 5", (failed, before, now, sent), ("", 3, 5, [{"Stage": {"MedicineNumb": 5}}]))
+    finally:
+        commands._find_user, commands._mas = real
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_main, _part_preupdate_automas_carry, _part_preupdate_mas_force, _part_preupdate_not_alarm, _part_main_2, _part_okww_deps, _part_preupdate_once, _part_preupdate_problems, _part_preupdate_session, _part_preupdate_span, _part_preupdate_token, _part_preupdate_unknown_not_fine, _part_okww_shape]))
+    sys.exit(run_parts([_part_preupdate_main, _part_preupdate_automas_carry, _part_preupdate_mas_force, _part_preupdate_not_alarm, _part_main_2, _part_okww_deps, _part_preupdate_once, _part_preupdate_problems, _part_preupdate_session, _part_preupdate_span, _part_preupdate_token, _part_preupdate_unknown_not_fine, _part_okww_shape, _part_gameupdate_main, _part_gameupdate_restore_paths, _part_efstart_main, _part_maaend_windowed_start, _part_automas_backend_match, _part_automas_boot_one_alarm, _part_automas_boot_revival, _part_automas_contract_watch, _part_automas_handover, _part_automas_jobfix, _part_automas_ld_adb, _part_mas_address, _part_mas_api_silent, _part_mas_labels, _part_mas_user_pick, _part_masconfig_yaml, _part_mascontract, _part_masuser_beta3]))

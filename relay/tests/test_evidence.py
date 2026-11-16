@@ -1,22 +1,17 @@
-"""Evidence: bundles and uploads, the archive, the CLI window, a quiet daily upload, MaaEnd's live logs, one notice, the relay log after a run, saved counts, unreachable sources; error and game evidence, a held push keeps its evidence, task shots.
+"""Diagnostic evidence bundles, screenshots, static attribute/name checks, and module table."""
+from __future__ import annotations
 
-One part per former file, each run on its own (tests/_parts.py): test_evidence.py, test_error_evidence.py, test_game_evidence.py, test_held_push_keeps_evidence.py, test_task_shots.py.
-"""
-# Each part imports the relay itself, after its own environment is set, as the file it was did at
-# its top.
 # ruff: noqa: PLC0415
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
-# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
-# still reads as using all of it.
 _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
-def _part_main():  # noqa: C901 - the whole body of the file this part was
+def _part_evidence_main():  # noqa: C901
     """Evidence bundles must match what the projects' own export buttons produce.
 
 The MaaEnd check replays the real export of 2026-09-11 12:23 (108 files in
@@ -472,7 +467,7 @@ are checked against the rules read from their source.
     check("群机器人也不切段", "20 MB" in big_got, True)
 
 
-def _part_evidence_archive():  # noqa: C901 - the whole body of the file this part was
+def _part_evidence_archive():  # noqa: C901
     """失败证据要存对：AUTO-MAS 那一轮的记录必须带上，日志对不上要出声。
 
 2026-09-05：MaaEnd 基质刷取第一次失败、重试成功。中继 10:00:45 才落账，
@@ -2513,5 +2508,816 @@ dispatcher and once echoed by the agent); entries, task numbers and times are
     handle._ship_evidence = real_ship
 
 
+def _part_tacet_shots():
+    import json, os, sys, types
+    from datetime import datetime
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.report import report
+    from ark_relay.core import notify
+    from ark_relay.core.config import SERVER_TZ
+
+    fails = []
+    def check(label, got, want):
+        ok = got == want
+        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
+        if not ok:
+            fails.append(label)
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _tmp import tmpdir
+    TMP = tmpdir()
+    shots = TMP / "okww" / "data" / "apps" / "ok-ww" / "working" / "screenshots"; shots.mkdir(parents=True)
+    state = TMP / "state"; state.mkdir()
+    cfgdir = TMP / "automas" / "data" / "sid" / "Default" / "ConfigFile"; cfgdir.mkdir(parents=True)
+    (cfgdir / "DailyTask.json").write_text(json.dumps({"Which Tacet Suppression to Farm": 2}), encoding="utf-8")
+
+    from PIL import Image
+    def png(path, w=1920, h=1080, noisy=False):
+        im = Image.new("RGB", (w, h), (30, 40, 50))
+        if noisy:
+            im = Image.frombytes("RGB", (w, h), os.urandom(w * h * 3))
+        im.save(path, format="PNG")
+
+    png(shots / "10-58-35.184_tacet_drops_original.png")
+    png(shots / "11-02-10.000_tacet_drops_original.png")
+    png(shots / "09-58-35.184_weekly_remaining_original.png")   # 别的截图不发
+
+    class N:
+        def __init__(self): self.groups, self.images = [], []
+        def send(self, title, body, **k): return []
+        def send_group(self, title, body): self.groups.append((title, body)); return []
+        def send_group_image(self, p): self.images.append(Path(p).name); return []
+    class St:
+        def __init__(self, ledger=None): self.dir = state; self._ledger = ledger or []
+        def read_ledger(self, day): return self._ledger
+    class Eng:
+        def __init__(self):
+            self.cfg = types.SimpleNamespace(okww_dir=TMP / "okww", automas_dir=TMP / "automas")
+            self.state = St(LEDGER); self.notifier = N()
+
+    day = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
+    # 账本里带着 OK-WW 自己报的「实际传送到第 3 个（0 起算）」= 第 4 个无音区（3.7 起的玄幽东岳，wuwa_tacet.NEW_LIST_FROM）
+    LEDGER = [{"script": "OK-WW", "raw": {"okww_info": {"Teleport to Tacet Suppression": 3}}}]
+    e = Eng()
+    print("[开关默认关：一张都不发（用户 2026-09-14：先关掉）]")
+    check("默认不发", report._attach_tacet_shots(e, day), [])
+    check("默认没发说明", e.notifier.groups, [])
+    from ark_relay.features.modes import modes
+    check("打开的回话", modes.set_tacet_shots(state, True), "无音区结算截图：以后日报后面会带上")
+    check("读回是开", modes.tacet_shots_on(state), True)
+    print("[只发最新那一张，带说明]")
+    done = report._attach_tacet_shots(e, day)
+    check("只发最新一张", done, ["11-02-10.000_tacet_drops_original.png"])
+    check("先发一条说明", e.notifier.groups[0][0], "🖼️ 无音区产出")
+    check("说明里有实际序号、名字、套装", all(k in e.notifier.groups[0][1] for k in ("实际刷了第 4 个", "玄幽东岳", "羽落空尘之歌", "清邪荡煞之心")), True)
+    check("说明写清是结算页", "刷完的结算页" in e.notifier.groups[0][1], True)
+    check("别的截图不发", "09-58-35.184_weekly_remaining_original.png" in e.notifier.images, False)
+
+    print("[同一天再发日报：已发过的不重复]")
+    e2 = Eng()
+    check("第二次什么都不发", report._attach_tacet_shots(e2, day), [])
+    check("也不发说明", e2.notifier.groups, [])
+    png(shots / "12-30-00.000_tacet_drops_original.png")
+    check("新拍的那张会发", report._attach_tacet_shots(e2, day), ["12-30-00.000_tacet_drops_original.png"])
+
+    print("[说明没送到：图也不发、不记已发，下一次两样一起再发]")
+    png(shots / "13-00-00.000_tacet_drops_original.png")
+    e6 = Eng()
+    e6.notifier.send_group = lambda title, body: (e6.notifier.groups.append((title, body)), ["群机器人: 假装挂了"])[1]
+    check("说明失败时不发图", report._attach_tacet_shots(e6, day), [])
+    check("图一张没发", e6.notifier.images, [])
+    e7 = Eng()
+    check("下一次说明和图一起发", report._attach_tacet_shots(e7, day), ["13-00-00.000_tacet_drops_original.png"])
+    check("下一次先发了说明", [t for t, _ in e7.notifier.groups], ["🖼️ 无音区产出"])
+
+    print("[没配 OK-WW 目录：安静]")
+    e3 = Eng(); e3.cfg.okww_dir = None
+    check("不发", report._attach_tacet_shots(e3, day), [])
+
+    print("[大图缩到群机器人上限以内]")
+    big = TMP / "big.png"; png(big, noisy=True)
+    raw = big.stat().st_size
+    out = notify._image_bytes_for_wecom(big)
+    check("原图确实超限", raw > notify._WECOM_IMAGE_LIMIT, True)
+    check("缩后在上限内", len(out) <= notify._WECOM_IMAGE_LIMIT, True)
+    check("缩后是 JPEG", out[:2] == b"\xff\xd8", True)
+    small = TMP / "small.png"; png(small, 200, 100)
+    check("小图原样发", notify._image_bytes_for_wecom(small) == small.read_bytes(), True)
+
+    print("[设置和实际不一样时，两个都说出来]")
+    e4 = Eng(); e4.state._ledger = [{"raw": {"okww_info": {"Teleport to Tacet Suppression": 4}}}]
+    cap = report._tacet_caption(e4, day)
+    check("说实际刷的是第 5 个", "实际刷了第 5 个" in cap, True)
+    check("并指出设置写的是第 2 个", "设置里写的是第 2 个" in cap, True)
+
+    print("[读不到实际序号时，明说那是设置值]")
+    e5 = Eng(); e5.state._ledger = []
+    check("明说", "（实际序号没读到）" in report._tacet_caption(e5, day), True)
+
+    print("[关掉之后又不发了]")
+    check("关的回话", modes.set_tacet_shots(state, False), "无音区结算截图：不发了")
+    check("读回是关", modes.tacet_shots_on(state), False)
+    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
+
+
+def _part_self_attrs_main():  # noqa: C901
+    """Every `self.x` used in the relay must actually exist.
+
+2026-08-23: `Engine._boot_time` was called from three places and never
+defined. Python does not complain until the line runs, and the line only runs
+on a boot where a queue's time has already passed - so it sat undetected from
+2026-08-21 until the morning it swallowed the daily report and the power-off.
+
+The service loop catches exceptions so one bad tick cannot kill the relay.
+That is right, and it is also why this went unnoticed: the relay stayed up,
+logged an AttributeError, and quietly did none of the work that follows.
+
+A whole class of bug - typo'd attribute, method renamed at one call site,
+method planned and never written - is a static fact about the source. This
+checks it, so it can never again depend on a particular morning to surface.
+
+    Formerly test_self_attrs.py.
+    """
+    import ast
+
+    ROOT = Path(__file__).resolve().parents[1]
+
+    # Names that genuinely come from somewhere this file cannot see.
+    INHERITED = {
+        "ArkRelayService": {
+            # win32serviceutil.ServiceFramework
+            "ReportServiceStatus", "SvcStop", "SvcDoRun", "stop_event",
+        },
+        "RelayLogHandler": {
+            # logging.handlers.RotatingFileHandler (logfile.py doRollover)
+            "stream", "_open", "backupCount", "baseFilename", "delay", "rotate",
+        },
+        "_WordsOut": {
+            # ast.NodeTransformer (okww_overlay.py, the shape of an OK-WW method)
+            "generic_visit",
+        },
+    }
+
+
+    def defined_names(cls: ast.ClassDef) -> set[str]:
+        out = set()
+        for node in ast.walk(cls):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                out.add(node.name)
+            elif isinstance(node, ast.Assign):
+                for tgt in node.targets:
+                    # 一行赋多个属性也算定义：`self.a, self.b = x, y`。
+                    # 2026-09-08 漏过这种写法，把 _DirWatch 正常的三个属性报成「没定义」。
+                    for t in (tgt.elts if isinstance(tgt, (ast.Tuple, ast.List)) else [tgt]):
+                        if (isinstance(t, ast.Attribute)
+                                and isinstance(t.value, ast.Name) and t.value.id == "self"):
+                            out.add(t.attr)
+                        elif isinstance(t, ast.Name):
+                            out.add(t.id)        # class-level attribute
+            elif isinstance(node, ast.AnnAssign):
+                tgt = node.target
+                if (isinstance(tgt, ast.Attribute)
+                        and isinstance(tgt.value, ast.Name) and tgt.value.id == "self"):
+                    out.add(tgt.attr)
+                elif isinstance(tgt, ast.Name):
+                    out.add(tgt.id)
+            elif isinstance(node, ast.For):
+                tgt = node.target
+                if (isinstance(tgt, ast.Attribute)
+                        and isinstance(tgt.value, ast.Name) and tgt.value.id == "self"):
+                    out.add(tgt.attr)
+        return out
+
+
+    def used_names(cls: ast.ClassDef) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for node in ast.walk(cls):
+            if (isinstance(node, ast.Attribute)
+                    and isinstance(node.value, ast.Name) and node.value.id == "self"
+                    and isinstance(node.ctx, ast.Load)):
+                out.setdefault(node.attr, node.lineno)
+        return out
+
+
+    def module_name(f: Path) -> str:
+        """Dotted import name of a scanned file: ark_relay/core/config.py -> ark_relay.core.config."""
+        parts = list(f.relative_to(ROOT).with_suffix("").parts)
+        if parts[-1] == "__init__":
+            parts.pop()
+        return ".".join(parts)
+
+
+    class Index:
+        """Top-level classes and `from ... import` bindings of every scanned module.
+
+    A subclass may use `self.x` defined only on its base class (GardenGate and
+    WeeklyBossGate inherit `_load`, `_save`, `automas_dir` from weekgate.WeekGate).
+    The base is looked up in the scanned source - same module, or followed through
+    `from <module> import <name>` (relative imports and re-exports included). A base
+    that cannot be found in the scanned files (stdlib, third-party, `import x` then
+    `x.Base`) adds nothing, so those classes are checked exactly as before.
+    """
+
+        def __init__(self, trees: dict[str, tuple[ast.Module, bool]]):
+            self.classes: dict[str, dict[str, ast.ClassDef]] = {}
+            self.imports: dict[str, dict[str, tuple[str, str]]] = {}
+            for mod, (tree, is_pkg) in trees.items():
+                self.classes[mod] = {n.name: n for n in tree.body if isinstance(n, ast.ClassDef)}
+                imps: dict[str, tuple[str, str]] = {}
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.ImportFrom):
+                        src = node.module or ""
+                        if node.level:
+                            pkg = mod.split(".") if is_pkg else mod.split(".")[:-1]
+                            pkg = pkg[:len(pkg) - (node.level - 1)]
+                            src = ".".join(pkg + ([src] if src else []))
+                        for a in node.names:
+                            imps[a.asname or a.name] = (src, a.name)
+                self.imports[mod] = imps
+
+        def lookup(self, mod: str, name: str, depth: int = 0) -> "tuple[str, ast.ClassDef] | None":
+            if depth > 10:
+                return None
+            if name in self.classes.get(mod, {}):
+                return mod, self.classes[mod][name]
+            src = self.imports.get(mod, {}).get(name)
+            if src is None:
+                return None
+            return self.lookup(src[0], src[1], depth + 1)
+
+        def inherited(self, mod: str, cls: ast.ClassDef, seen=None) -> set[str]:
+            """Names defined on every base class reachable in the scanned source."""
+            seen = set() if seen is None else seen
+            out: set[str] = set()
+            for b in cls.bases:
+                if not isinstance(b, ast.Name):
+                    continue
+                hit = self.lookup(mod, b.id)
+                if hit is None or id(hit[1]) in seen:
+                    continue
+                seen.add(id(hit[1]))
+                out |= defined_names(hit[1]) | INHERITED.get(hit[1].name, set())
+                out |= self.inherited(hit[0], hit[1], seen)
+            return out
+
+
+    def main() -> int:
+        files = sorted(list([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files"} & set(p.parts)])
+                       + [ROOT / "service.py", ROOT / "boot_stages.py"])
+        # 地板：glob 扫到 0 个文件也会打印「通过」，闸门就成了摆设——
+        # 目录改名、路径写错都会静默失效。2026-09-08 回放测试栽过一次。
+        if len(files) < 20:
+            print(f"  ✗ 只扫到 {len(files)} 个文件，至少该有 20 个——路径不对或目录改名了")
+            return 1
+        problems = []
+        checked = 0
+        trees = {module_name(f): (ast.parse(f.read_text(encoding="utf-8"), filename=str(f)),
+                                  f.name == "__init__.py")
+                 for f in files}
+        index = Index(trees)
+        for f in files:
+            mod = module_name(f)
+            tree = trees[mod][0]
+            for cls in [n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]:
+                checked += 1
+                known = (defined_names(cls) | INHERITED.get(cls.name, set())
+                         | index.inherited(mod, cls))
+                for attr, line in sorted(used_names(cls).items()):
+                    if attr.startswith("__") or attr in known:
+                        continue
+                    problems.append(f"{f.relative_to(ROOT)}:{line} {cls.name}.{attr} 用了但没定义")
+        print(f"  检查了 {len(files)} 个文件、{checked} 个类")
+        for p in problems:
+            print(f"  FAIL {p}")
+        if problems:
+            print("FAILED")
+            return 1
+        print("all checks passed")
+        return 0
+
+
+    if __name__ == "__main__":
+        raise SystemExit(main())
+
+
+def _part_self_heal_red():
+    """Every fault that fixed itself, and so stays out of the group, leaves a red item in the technical log.
+
+The user, 2026-10-11 17:44 (Tokyo; his words are in relay/USER-SWITCHES.txt's header): what fixed
+itself may stay out of the group, but we must look at it. So:
+
+* techlog.add_red never hands out an id twice in one day's file (red_items numbers from 1 on
+  every call: two calls in one minute gave the same id, and one `handled` cleared both);
+* errwatch's one door for a record marked errwatch.recovered() writes one 「自愈待查」 red item
+  with where and what the record said, every time; a plain WARNING writes none (it goes to the group);
+* every errwatch.recovered() in the relay sits in the `extra=` of a log call, so it can only
+  reach errwatch through that door (nothing marks a record recovered some other way);
+* handle's heals (_self_heal_red) write one too;
+* scripts/mac/techlog.py's patterns read these red items as unhandled until `handled`.
+The USER-SWITCHES side (every `normal-state - recovered:` place has code that writes the red
+item) is tests/test_mute_verdicts.py.
+
+    Formerly test_self_heal_red.py.
+    """
+    import ast
+    import importlib.util
+    import logging
+    import os
+    import types
+    from datetime import datetime
+
+
+    TMP = tmpdir()
+    os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="", ARK_STATE_DIR=str(TMP / "state"),
+                      SERVERCHAN_KEY="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
+    RELAY = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(RELAY))
+    from ark_relay.core import techlog
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features.alarm import errwatch, handle
+
+
+    def reds(state_dir, day):
+        try:
+            text = techlog.path_for(day, state_dir).read_text(encoding="utf-8")
+        except OSError:
+            return []
+        return techlog.unhandled(text)
+
+
+    print("[add_red: ids stay unique within a day, across calls in the same minute]")
+    d = TMP / "a" / "state"
+    when = datetime(2026, 10, 11, 17, 50, tzinfo=SERVER_TZ)
+    first = techlog.add_red("2026-10-11", "x", ["one", "two"], state_dir=d, now=when)
+    second = techlog.add_red("2026-10-11", "y", ["three"], state_dir=d, now=when)
+    check("first call", first, ["R-20261011-1750-1", "R-20261011-1750-2"])
+    check("second call in the same minute goes on after them", second, ["R-20261011-1750-3"])
+    check("all three unhandled", [i for i, _ in reds(d, "2026-10-11")], first + second)
+    check("nothing to write writes nothing", techlog.add_red("2026-10-11", "z", ["  "], state_dir=d, now=when), [])
+    check("a text over several lines stays one red line",
+          techlog.add_red("2026-10-11", "z", ["a\nb"], state_dir=TMP / "a2" / "state", now=when) != []
+          and [t for _, t in reds(TMP / "a2" / "state", "2026-10-11")] == ["a b"], True)
+
+    print("[the Mac reader sees them, and `handled` clears exactly one]")
+    spec = importlib.util.spec_from_file_location("techlog_tool", RELAY.parent / "scripts" / "mac" / "techlog.py")
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    text = techlog.path_for("2026-10-11", d).read_text(encoding="utf-8")
+    check("the reader's red pattern matches every red line",
+          sum(1 for ln in text.splitlines() if tool.RED_LINE.match(ln)), 3)
+    text += "\n" + tool.handled_line("R-20261011-1750-2", "abc1234") + "\n"
+    check("one handled line clears that one only", [i for i, _ in techlog.unhandled(text)],
+          ["R-20261011-1750-1", "R-20261011-1750-3"])
+
+    print("[errwatch: a recovered record writes one 「自愈待查」 red item, a plain WARNING none]")
+
+
+    class _N:
+        channels = ()
+
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body, *, alert=False, daily=False):
+            self.sent.append((title, body))
+            return []
+
+
+    ARK = logging.getLogger(errwatch.ARK)
+    ARK.setLevel(logging.INFO)
+    sd = TMP / "b" / "state"
+    sd.mkdir(parents=True)
+    n = _N()
+    h = errwatch.ErrorKindAlert(n, state_dir=sd, known={}, pace=0, retry=(0.05,))
+    ARK.addHandler(h)
+    try:
+        lg = logging.getLogger("ark.test_evidence")
+        lg.warning("手机通道断了 20 秒，自己重新连上了", extra=errwatch.recovered())
+        lg.warning("手机通道断了 30 秒，自己重新连上了", extra=errwatch.recovered())
+        lg.warning("这个没好")
+        h.drain(timeout=5.0)
+    finally:
+        ARK.removeHandler(h)
+        h.close()
+    today = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
+    got = reds(sd, today)
+    check("two recovered records, two red items", len(got), 2)
+    check("each says 自愈待查, where, and what it said",
+          [(t.startswith(techlog.SELF_HEAL), "ark.test_evidence" in t, "自己重新连上了" in t) for _, t in got],
+          [(True, True, True)] * 2)
+    check("their ids differ", len({i for i, _ in got}), 2)
+    check("the plain WARNING went to the group and wrote no red item",
+          (len(n.sent), any("这个没好" in t for _, t in got)), (1, False))
+
+    print("[handle's heals write one too]")
+    eng = types.SimpleNamespace(cfg=types.SimpleNamespace(state_dir=str(TMP / "c" / "state")))
+    handle._self_heal_red(eng, "MaaEnd 2026-10-11/endfield/MaaEnd-05-30-34 中途失败过，重试后成功", "自动采集")
+    got = reds(TMP / "c" / "state", today)
+    check("one red item naming the run and the first failure",
+          [("MaaEnd-05-30-34" in t, "自动采集" in t) for _, t in got], [(True, True)])
+
+    print("[every errwatch.recovered() in the relay is the extra= of a log call]")
+    LOG_METHODS = {"debug", "info", "warning", "error", "exception", "critical", "log"}
+    bad, seen = [], 0
+    for path in sorted(RELAY.rglob("*.py")):
+        if "tests" in path.relative_to(RELAY).parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        parents = {}
+        for node in ast.walk(tree):
+            for child in ast.iter_child_nodes(node):
+                parents[child] = node
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "recovered" and not node.args and not node.keywords):
+                continue
+            seen += 1
+            up, ok = node, False
+            while up in parents:
+                par = parents[up]
+                if isinstance(par, ast.keyword) and par.arg == "extra":
+                    call = parents.get(par)
+                    ok = (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                          and call.func.attr in LOG_METHODS)
+                    break
+                if isinstance(par, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Module)):
+                    break
+                up = par
+            if not ok and path.name != "errwatch.py":
+                bad.append(f"{path.relative_to(RELAY)}:{node.lineno}")
+    check("found the calls", seen > 10, True)
+    check("none outside a log call's extra=", bad, [])
+    src = (RELAY / "ark_relay" / "features" / "alarm" / "errwatch.py").read_text(encoding="utf-8")
+    check("errwatch has no daily-only door any more", "def note_daily" in src, False)
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_undefined_names():  # noqa: C901
+    import ast
+    import builtins
+    import sys
+    from pathlib import Path
+
+    ROOT = Path(__file__).resolve().parents[1]
+    BUILTINS = set(dir(builtins)) | {
+        "__file__", "__name__", "__doc__", "__package__", "__spec__", "__debug__",
+    }
+
+    FAILED = []
+
+
+    def _bound_by(node: ast.AST) -> set[str]:
+        """这个节点直接绑定了哪些名字（不下钻到子作用域）。"""
+        out: set[str] = set()
+
+        def targets(t):
+            if isinstance(t, ast.Name):
+                out.add(t.id)
+            elif isinstance(t, (ast.Tuple, ast.List)):
+                for e in t.elts:
+                    targets(e)
+            elif isinstance(t, ast.Starred):
+                targets(t.value)
+            # Attribute / Subscript 赋值不产生新名字
+
+        if isinstance(node, (ast.Assign,)):
+            for t in node.targets:
+                targets(t)
+        elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
+            targets(node.target)
+        elif isinstance(node, ast.NamedExpr):          # walrus
+            targets(node.target)
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            targets(node.target)
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            for it in node.items:
+                if it.optional_vars is not None:
+                    targets(it.optional_vars)
+        elif isinstance(node, ast.ExceptHandler):
+            if node.name:
+                out.add(node.name)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for a in node.names:
+                out.add((a.asname or a.name).split(".")[0])
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            out.add(node.name)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            out.update(node.names)
+        elif isinstance(node, ast.comprehension):
+            targets(node.target)
+        return out
+
+
+    def _scope_binds(scope: ast.AST) -> set[str]:
+        """一个作用域里绑定的全部名字。子作用域的函数体不算，但它们的**名字**算。"""
+        out: set[str] = set()
+        if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            a = scope.args
+            for arg in (*a.posonlyargs, *a.args, *a.kwonlyargs):
+                out.add(arg.arg)
+            for arg in (a.vararg, a.kwarg):
+                if arg is not None:
+                    out.add(arg.arg)
+
+        body = [scope] if isinstance(scope, ast.Lambda) else list(
+            ast.iter_child_nodes(scope))
+
+        def walk(n, top=False):
+            out.update(_bound_by(n))
+            # 不下钻进子作用域的函数体——那是它自己的事
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef,
+                              ast.Lambda, ast.ClassDef)) and not top:
+                return
+            for c in ast.iter_child_nodes(n):
+                walk(c)
+
+        for n in body:
+            walk(n, top=True)
+        return out
+
+
+    def _check_scope(scope: ast.AST, visible: set[str], path: Path) -> None:
+        here = visible | _scope_binds(scope)
+
+        # 推导式在 Python 3 里自成作用域，但它的目标名字对内部可见。
+        def loads(n):
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda,
+                              ast.ClassDef)) and n is not scope:
+                _check_scope(n, here, path)
+                # 装饰器和默认值在**外层**求值
+                for d in getattr(n, "decorator_list", []):
+                    loads(d)
+                return
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load):
+                if n.id not in here:
+                    FAILED.append(f"{path.relative_to(ROOT)}:{n.lineno} 读取了未定义的名字 `{n.id}`")
+            for c in ast.iter_child_nodes(n):
+                loads(c)
+
+        for c in ast.iter_child_nodes(scope):
+            loads(c)
+
+
+    def main() -> int:
+        # ark_relay/ was split into core/ and features/<name>/ packages, so scan it
+        # recursively. Same exclusion as test_self_attrs.py: the OK-WW payload
+        # (okww_files), which runs inside OK-WW.
+        files = sorted(p for p in (ROOT / "ark_relay").rglob("*.py")
+                       if not {"okww_files"} & set(p.parts))
+        files += [ROOT / "service.py", ROOT / "boot_stages.py", ROOT / "run.py"]
+        # 地板：glob 扫到 0 个文件也会打印「通过」，闸门就成了摆设——
+        # 目录改名、路径写错都会静默失效。2026-09-08 回放测试栽过一次。
+        if len(files) < 20:
+            print(f"  ✗ 只扫到 {len(files)} 个文件，至少该有 20 个——路径不对或目录改名了")
+            return 1
+        files = [f for f in files if f.exists()]
+        print(f"[裸名字检查] {len(files)} 个文件")
+        for f in files:
+            tree = ast.parse(f.read_text(encoding="utf-8"), filename=str(f))
+            _check_scope(tree, BUILTINS, f)
+
+        if FAILED:
+            for m in FAILED:
+                print("  FAIL", m)
+            print(f"FAILED: {len(FAILED)} 处")
+            return 1
+        print("  ok   没有未定义的裸名字")
+        print("all checks passed")
+        return 0
+
+
+    if __name__ == "__main__":
+        sys.exit(main())
+
+
+def _part_module_table():
+    import re
+    import sys
+    from pathlib import Path
+
+    ROOT = Path(__file__).resolve().parents[1]
+    doc = (ROOT / "README.md").read_text(encoding="utf-8")
+    mods = {p.stem for p in [p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks"} & set(p.parts)]
+            if not p.stem.startswith("_")} | {"service"}
+
+    listed = set(re.findall(r"`(\w+)\.py`", doc))
+    missing = sorted(mods - listed)
+    extra = sorted(n for n in listed - mods if n not in ("run", "make-manifest") and not n.startswith("_"))
+
+    fails = []
+    print(f"  模块 {len(mods)} 个，表里提到 {len(listed & mods)} 个")
+    if missing:
+        fails.append(f"表里没提到：{missing}")
+        print(f"  ✗ 表里没提到：{missing}")
+    if extra:
+        fails.append(f"表里提到了不存在的：{extra}")
+        print(f"  ✗ 表里提到了不存在的：{extra}")
+
+    # 拆出去的四块不许还写成在 engine 里
+    for name in ("shutdown", "report", "missed", "handle"):
+        if re.search(rf"engine\.py[^|\n]*{name}", doc):
+            fails.append(f"{name} 已经从 engine 拆出来了，表里还说在 engine 里")
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
+
+
+def _part_parts():
+    import logging
+    import os
+    import sys
+    import urllib.request
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import _parts
+    from _parts import run_parts
+    from _tmp import tmpdir
+
+    fails = []
+
+
+    def check(label, got, want):
+        ok = got == want
+        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" + ("" if ok else f" (want {want!r})"))
+        if not ok:
+            fails.append(label)
+
+
+    REAL = urllib.request.urlopen
+    # A variable of this test only (not a setting of the relay, so not in docs/CONFIG.md).
+    VAR = "PARTS_TEST_VARIABLE"
+    CWD = os.getcwd()
+    seen = {}
+
+
+    def _part_changes_everything():
+        os.environ[VAR] = "1"
+        urllib.request.urlopen = lambda *a, **k: None
+        logging.getLogger("ark.test_evidence").propagate = False
+        import colorsys
+        colorsys.rgb_to_hsv(0, 0, 0)
+        os.chdir(tmpdir())
+        sys.exit(1)
+
+
+    def _part_sees_nothing_of_it():
+        seen["env"] = VAR in os.environ
+        seen["urlopen"] = urllib.request.urlopen is REAL
+        seen["propagate"] = logging.getLogger("ark.test_evidence").propagate
+        seen["module"] = "colorsys" in sys.modules
+        seen["cwd"] = os.getcwd()
+
+
+    def _part_raises():
+        raise RuntimeError("a part that crashes")
+
+
+    print("[three parts: one exits 1, one checks, one raises]")
+    check("the run fails", run_parts([_part_changes_everything, _part_sees_nothing_of_it, _part_raises]), 1)
+    check("……and every part ran", "cwd" in seen, True)
+    check("the next part does not see the first one's environment variable", seen.get("env"), False)
+    check("……nor its fake urlopen", seen.get("urlopen"), True)
+    check("……nor its logger flag", seen.get("propagate"), True)
+    check("……nor the module it imported", seen.get("module"), False)
+    check("……nor its working directory", seen.get("cwd"), CWD)
+    check("all passing parts: 0", run_parts([_part_sees_nothing_of_it]), 0)
+
+
+    print("\n[the shared check (_parts.check): a failed one fails its part only]")
+    later = {}
+
+
+    def _part_fails_a_shared_check():
+        _parts.check("one equals two", 1, 2)
+
+
+    def _part_after_it():
+        later["fails"] = list(_parts.fails)
+        _parts.require("still true", True)
+
+
+    check("a part with a failed shared check fails the run", run_parts([_part_fails_a_shared_check, _part_after_it]), 1)
+    check("……the next part starts with no failed check", later.get("fails"), [])
+    check("passing shared checks: 0", run_parts([_part_after_it]), 0)
+
+    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
+
+
+def _part_scripts_relay_attrs():
+    """Every name the helper scripts read off an ark_relay module still exists there.
+
+The scripts under scripts/windows/ and scripts/mac/lib/ are shipped to the game
+machine by winrun and import ark_relay at run time, so no relay test ever imports
+them. On 2026-10-10 05:26 okww-check.sh died with
+
+    AttributeError: module 'ark_relay.weeklyboss' has no attribute '_okww_file'
+
+because 7425eff4 (2026-09-08) removed that helper and okww-landed.py still called
+it. This walks each script's AST, resolves `from ark_relay import m as x`,
+`import ark_relay.m as x` and `from ark_relay.m import a`, and requires every
+`x.attr` / imported name to exist on the real module.
+
+    Formerly test_scripts_relay_attrs.py.
+    """
+    import ast
+    import importlib
+    import inspect
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    ROOT = Path(__file__).resolve().parents[2]
+    DIRS = [ROOT / "scripts" / "windows", ROOT / "scripts" / "mac" / "lib"]
+
+
+    def missing_names(src: str) -> list:
+        tree = ast.parse(src)
+        alias = {}
+        out = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "ark_relay":
+                for a in node.names:
+                    alias[a.asname or a.name] = f"ark_relay.{a.name}"
+            elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith("ark_relay."):
+                mod = importlib.import_module(node.module)
+                for a in node.names:
+                    if not hasattr(mod, a.name):
+                        try:     # a submodule not imported yet: `from ark_relay.core import notify`
+                            importlib.import_module(f"{node.module}.{a.name}")
+                        except ModuleNotFoundError:
+                            out.append(f"{node.module}.{a.name}")
+                            continue
+                    if inspect.ismodule(getattr(mod, a.name, None)):
+                        alias[a.asname or a.name] = f"{node.module}.{a.name}"
+            elif isinstance(node, ast.Import):
+                for a in node.names:
+                    if a.name.startswith("ark_relay.") and a.asname:
+                        alias[a.asname] = a.name
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+                    and node.value.id in alias):
+                mod = importlib.import_module(alias[node.value.id])
+                if not hasattr(mod, node.attr):
+                    out.append(f"{alias[node.value.id]}.{node.attr}")
+        return out
+
+
+    bad = {}
+    for d in DIRS:
+        for f in sorted(d.glob("*.py")):
+            miss = missing_names(f.read_text(encoding="utf-8"))
+            if miss:
+                bad[str(f.relative_to(ROOT))] = miss
+    check("every ark_relay name the scripts use exists", bad, {})
+
+    # The 05:26 crash, from the pre-fix okww-landed.py:7 and :14 (import path moved to the new name).
+    old = ("from ark_relay.features.weekly import weeklyboss as W  # noqa: E402\n"
+           'o = json.loads(W._okww_file(name).read_text(encoding="utf-8"))\n')
+    check("the 10-10 okww-check line is caught", missing_names(old), ["ark_relay.features.weekly.weeklyboss._okww_file"])
+    check("names that exist pass",
+          missing_names("from ark_relay.features.weekly import weeklyboss as W\nW.DAILY\nW._file\nW.name_from_log\n"), [])
+    check("a missing from-import is caught",
+          missing_names("from ark_relay.features.weekly.weeklyboss import nope\n"), ["ark_relay.features.weekly.weeklyboss.nope"])
+
+
+def _part_scripts_running_asks_automas():
+    """「有脚本在跑吗」先问 AUTO-MAS，不只看进程名。
+
+2026-09-07 10:15：OK-WW 09:19 起跑了三趟（AUTO-MAS 整段结束 10:16 才写记录），
+_scripts_running 的进程名单里没有 OK-WW，中继以为什么都没在跑，
+75 分钟一到就发了「OK-WW 没有运行」「MaaEnd 没有运行」两条假报警。
+runtime-snapshot 是 AUTO-MAS 自己的口径：每个脚本 完成/异常/运行/等待。
+
+    Formerly test_scripts_running_asks_automas.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import engine
+
+
+    # 2026-09-07 10:18 机器上拿到的真实样本（MAA 完成、OK-WW 异常、MaaEnd 运行）
+    REAL = {"tasks": [{"taskId": "8cebb1be", "mode": "AutoProxy", "stopping": False,
+                       "task_info": [
+                           {"name": "MAA", "status": "完成", "userList": [{"name": "arknights", "status": "完成"}]},
+                           {"name": "OK-WW", "status": "异常", "userList": [{"name": "wuwa", "status": "异常"}]},
+                           {"name": "MaaEnd", "status": "运行", "userList": [{"name": "endfield", "status": "运行"}]}]}],
+            "scheduledScripts": []}
+    check("MaaEnd 运行中 → 在跑", engine._judge_snapshot(REAL), True)
+
+    waiting = {"tasks": [{"task_info": [{"name": "MAA", "status": "完成"}, {"name": "OK-WW", "status": "等待"}]}]}
+    check("OK-WW 还在等待 → 在跑（假报警就是这一格）", engine._judge_snapshot(waiting), True)
+    check("刚派下去、还没有状态 → 在跑", engine._judge_snapshot({"tasks": [{"task_info": []}]}), True)
+    done = {"tasks": [{"task_info": [{"name": "MAA", "status": "完成"}, {"name": "OK-WW", "status": "异常"}]}]}
+    check("全部终态 → 没在跑", engine._judge_snapshot(done), False)
+    check("没有任务 → 没在跑", engine._judge_snapshot({"tasks": []}), False)
+    check("空回复 → 没在跑", engine._judge_snapshot(None), False)
+    check("没见过的状态 → 当作在跑", engine._judge_snapshot({"tasks": [{"task_info": [{"status": "重试中"}]}]}), True)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_main, _part_evidence_archive, _part_evidence_cli_window, _part_evidence_daily_silent, _part_evidence_maaend_live_logs, _part_evidence_notify_once, _part_evidence_relay_after_run, _part_evidence_saved_count, _part_evidence_sources_unreachable, _part_error_evidence, _part_game_evidence, _part_held_push_keeps_evidence, _part_task_shots]))
+    sys.exit(run_parts([_part_evidence_main, _part_evidence_archive, _part_evidence_cli_window, _part_evidence_daily_silent, _part_evidence_maaend_live_logs, _part_evidence_notify_once, _part_evidence_relay_after_run, _part_evidence_saved_count, _part_evidence_sources_unreachable, _part_error_evidence, _part_game_evidence, _part_held_push_keeps_evidence, _part_task_shots, _part_tacet_shots, _part_self_attrs_main, _part_self_heal_red, _part_undefined_names, _part_module_table, _part_parts, _part_scripts_relay_attrs, _part_scripts_running_asks_automas]))

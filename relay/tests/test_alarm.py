@@ -1,19 +1,14 @@
-"""Alarms and the error watch: dedup, the first error, failures, long alarms split, uptime, midnight counts, known-fixed lines, unresolved, silent greens.
+"""WeChat group alarms, error forwarding, alert log, Mac push, and notification routing."""
+from __future__ import annotations
 
-One part per former file, each run on its own (tests/_parts.py): test_alert_dedup.py, test_first_error_alert.py, test_failure_alert.py, test_group_long_alarm.py, test_uptime_alarm.py, test_errwatch_midnight_counts.py, test_known_fixed_live.py, test_unresolved.py, test_silent_green_guards.py.
-"""
-# Each part imports the relay itself, after its own environment is set, as the file it was did at
-# its top.
 # ruff: noqa: PLC0415
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
-# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
-# still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_alert_dedup():
@@ -99,7 +94,7 @@ line, the same record handled twice) and for the self-heal notice.
     check("two final alarms, same step", [x for x in eng.notifier.sent if x[1]], [("❌ OK-WW 失败", True)] * 2)
 
 
-def _part_first_error_alert():  # noqa: C901 - the whole body of the file this part was
+def _part_first_error_alert():  # noqa: C901
     """Every WARNING / ERROR the relay logs is pushed to the group, every time, at once;
 nothing is dropped when the group refuses; nothing loops back from the push path.
 
@@ -1757,5 +1752,2549 @@ def _part_silent_green_guards():
         raise SystemExit(main())
 
 
+def _part_alertlog_main():
+    """Every group alarm is also kept in COS alerts/<Beijing YYYYMMDD>.jsonl, one JSON line each.
+
+The user, 2026-10-06 00:23, asked for a copy to his Mac of every alarm the relay sends to
+the group, at the moment it sends it (「中继每往群里发一条报警，就同时抄一份给 Mac」).
+Fields exactly ts (Beijing, from UTC, whatever the machine's zone), game, title,
+text, version, evidence_run; "" when unknown. The uploader is a fake here -
+nothing in this file talks to COS.
+
+    Formerly test_alertlog.py.
+    """
+    import io
+    import json
+    import logging
+    import os
+    import time
+    import urllib.error
+    import urllib.request
+    from datetime import datetime, timezone
+
+
+    TMP = tmpdir()
+    os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
+                      ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
+                      WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
+                      COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="")
+    # The Mac is in Tokyo; the copy must not care. time.tzset() exists on Unix only
+    # ("Availability: Unix", docs.python.org/3/library/time.html#time.tzset), so on
+    # Windows the zone stays the machine's own - UTC on the GitHub runner, which is
+    # not +8 either, so "computed from UTC, whatever the machine's zone" is still
+    # what the checks below exercise there (test_banners.py guards it the same way).
+    if hasattr(time, "tzset"):
+        os.environ.update(TZ="Asia/Tokyo")
+        time.tzset()
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.alarm import alertlog
+    from ark_relay.features.phone import phone
+    from ark_relay.core import texts
+    from ark_relay.core.config import Config
+    from ark_relay.core.notify import Notifier
+    from ark_relay.core.statestore import StateStore
+
+
+    class FakeCos:
+        """put/get the way alertlog.for_config wires phone.cos_put / cos_get."""
+
+        def __init__(self):
+            self.objects = {}
+            self.puts = []
+            self.put_fail = ""
+            self.get_fail = ""
+            self.delay = 0.0
+
+        def put(self, key, data):
+            time.sleep(self.delay)
+            self.puts.append(key)
+            if self.put_fail:
+                return self.put_fail
+            self.objects[key] = data
+            return None
+
+        def get(self, key):
+            if self.get_fail:
+                return None, self.get_fail
+            return self.objects.get(key), ""
+
+
+    def lines(cos, key):
+        return [json.loads(x) for x in cos.objects.get(key, b"").decode("utf-8").splitlines()]
+
+
+    def wait_puts(cos, n, secs=3.0):
+        t0 = time.monotonic()
+        while len(cos.puts) < n and time.monotonic() - t0 < secs:
+            time.sleep(0.02)
+        time.sleep(0.05)
+
+
+    # relay3.log:27539-27545, the 10-05 10:39 鸣潮 round that did not finish.
+    WW_BODY = ("OK-WW 2026-10-05/wuwa/OK-WW-05-39-25 有项目没干成：\n"
+               "· 周本领到了奖励：周本打了，但没有领奖那一步：奖励没拿到\n"
+               "干成的：每日任务跑完、刷体力")
+    END_BODY = texts.unresolved_head("终末地", "早班", "补跑也没成", "基质刷取",
+                                     "https://ark-1250000000.cos.ap-shanghai.myqcloud.com/"
+                                     "2026-10-05_endfield_MaaEnd-07-30-14/MaaEnd.zip")
+
+    print("[一行正好七个字段；ts 是北京时间，从 UTC 算，机器在东京也一样]")
+    at = datetime(2026, 10, 5, 14, 39, 0, tzinfo=timezone.utc)          # Beijing 22:39, Tokyo 23:39
+    r = alertlog.row(texts.ROUND_INCOMPLETE, WW_BODY, "20261005153900", now=at)
+    check("字段", list(r), ["ts", "game", "title", "text", "version", "evidence_run", "channel"])
+    check("北京时间", r["ts"], "2026-10-05 22:39:00")
+    check("鸣潮认得出", r["game"], "鸣潮")
+    check("运行编号", r["evidence_run"], "2026-10-05/wuwa/OK-WW-05-39-25")
+    check("正文原样（含换行）", r["text"], WW_BODY)
+    check("版本", r["version"], "20261005153900")
+    now_bj = datetime.now(timezone.utc).timestamp() + 8 * 3600
+    got = datetime.strptime(alertlog.row("x", "y")["ts"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
+    check("不传时间：用当前 UTC + 8 小时（不是东京钟）", abs(got - now_bj) < 3)
+
+
+    def _raises(f):
+        try:
+            f()
+        except ValueError:
+            return True
+        return False
+
+
+    check("裸时间（不知道时区）不收", _raises(lambda: alertlog.beijing(datetime(2026, 10, 5, 12, 0))))
+    r2 = alertlog.row(texts.RELAY_ERROR, texts.relay_error_body("ark.report", "日报没发出去", "21:21"), "", now=at)
+    check("中继自己的报错：游戏、运行编号、版本都空", (r2["game"], r2["evidence_run"], r2["version"]), ("", "", ""))
+    r3 = alertlog.row(texts.unresolved("终末地", "早班"), END_BODY, "v", now=at)
+    check("终末地认得出", r3["game"], "终末地")
+    check("证据链接里的运行编号也认得出", r3["evidence_run"], "2026-10-05/endfield/MaaEnd-07-30-14")
+    check("MAA 失败认成明日方舟", alertlog.row(texts.failed("MAA"), "", now=at)["game"], "明日方舟")
+    check("MaaEnd 不会被认成明日方舟", alertlog.row(texts.failed("MaaEnd"), "", now=at)["game"], "终末地")
+    check("标题没说、正文提到两个游戏：空", alertlog.row("早班 没有运行", "明日方舟 和 鸣潮 都没跑", now=at)["game"], "")
+    check("东京 00:30 = 北京前一天 23:30：放前一天的对象",
+          alertlog.row("x", "", now=datetime(2026, 10, 5, 15, 30, tzinfo=timezone.utc))["ts"][:10], "2026-10-05")
+    check("对象名", alertlog.key_for("20261005"), "alerts/20261005.jsonl")
+
+    # The day files below are kept by AlertLog.sync(), which prunes synced local days
+    # older than KEEP_DAYS on the real clock (alertlog._prune). A fixed 10-05 day was
+    # pruned from 10-13 on and 「本地也有这一天」 failed; these sections use today.
+    TODAY_BJ = alertlog.beijing()
+    AT_TODAY = TODAY_BJ.replace(hour=22, minute=39, second=0, microsecond=0)
+    DAY_TODAY = AT_TODAY.strftime("%Y%m%d")
+    KEY_TODAY = alertlog.key_for(DAY_TODAY)
+
+    print("\n[本地先记一行，再把整天的文件 PUT 上去；第二条追加在后面]")
+    cos = FakeCos()
+    al = alertlog.AlertLog(TMP / "s1", put=cos.put, get=cos.get)
+    al.copy(texts.ROUND_INCOMPLETE, WW_BODY, "1", now=AT_TODAY).join(3)
+    al.copy(texts.unresolved("终末地", "早班"), END_BODY, "1", now=AT_TODAY).join(3)
+    got = lines(cos, KEY_TODAY)
+    check("两行都在、顺序对", [x["title"] for x in got], [texts.ROUND_INCOMPLETE, texts.unresolved("终末地", "早班")])
+    check("每行都是 FIELDS 那几个字段", all(list(x) == list(alertlog.FIELDS) for x in got))
+    check("本地也有这一天", (TMP / "s1" / "alerts" / f"{DAY_TODAY}.jsonl").exists())
+
+    print("\n[COS 写不进：行留在本地、只记一条 WARNING；下一条报警把前面的一起补上]")
+    records = []
+
+
+    class _Grab(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+
+    grab = _Grab()
+    alertlog.log.addHandler(grab)
+    alertlog.log.setLevel(logging.INFO)
+    cos = FakeCos()
+    cos.put_fail = "回 503"
+    al = alertlog.AlertLog(TMP / "s2", put=cos.put, get=cos.get)
+    al.copy("⚠️ 一", "a", now=AT_TODAY).join(3)
+    al.copy("⚠️ 二", "b", now=AT_TODAY).join(3)
+    check("COS 上还没有", cos.objects, {})
+    check("只记了一条 WARNING（不是每条报警一条）", [x.levelname for x in records], ["WARNING"])
+    cos.put_fail = ""
+    al.copy("⚠️ 三", "c", now=AT_TODAY).join(3)
+    check("三条一起上去了", [x["title"] for x in lines(cos, KEY_TODAY)], ["⚠️ 一", "⚠️ 二", "⚠️ 三"])
+    check("恢复时记一条 INFO", records[-1].levelname, "INFO")
+    al2 = alertlog.AlertLog(TMP / "s2", put=cos.put, get=cos.get)
+    n_puts = len(cos.puts)
+    al2.sync()
+    check("都上去了以后，开机补传什么都不做", len(cos.puts), n_puts)
+    alertlog.log.removeHandler(grab)
+
+    print("\n[本地没有这一天（状态目录被清过）：先读回 COS 上的，读不回来就不写，免得盖掉]")
+    cos = FakeCos()
+    cos.objects[KEY_TODAY] = (json.dumps(alertlog.row("⚠️ 早上的", "", now=AT_TODAY), ensure_ascii=False)
+                              + "\n").encode("utf-8")
+    cos.get_fail = "timed out"
+    al = alertlog.AlertLog(TMP / "s3", put=cos.put, get=cos.get)
+    al.copy("⚠️ 晚上的", "", now=AT_TODAY).join(3)
+    check("读不回来：没有 PUT", cos.puts, [])
+    cos.get_fail = ""
+    al.sync()
+    check("读回来以后：早上的在前，晚上的在后", [x["title"] for x in lines(cos, KEY_TODAY)],
+          ["⚠️ 早上的", "⚠️ 晚上的"])
+
+    print("\n[Notifier：送到群的报警才抄；日报、普通信息、只记日志的、没送到的都不抄；COS 慢不拖推送]")
+    cfg = Config()
+    cfg.state_dir = TMP / "n1"
+    StateStore(cfg.state_dir).set("versions", "code", "20261005153900")
+    n = Notifier(cfg)
+    n._fan_out = lambda title, body, **kw: (["企业微信机器人"], {})
+    fake = FakeCos()
+    fake.delay = 0.8
+    n._alerts = alertlog.AlertLog(cfg.state_dir, put=fake.put, get=fake.get)
+    t0 = time.monotonic()
+    check("报警送达", n.send(texts.ROUND_INCOMPLETE, WW_BODY, alert=True), [])
+    check("COS 慢 0.8 秒，推送不等它", time.monotonic() - t0 < 0.5)
+    n.send("📋 10-05 · 全绿 ✅", "正文", daily=True)
+    n.send("🆕 游戏更新", "正文")
+    n.send("🔄 中继已更新", "正文", alert=True)
+    n.send_group("📣 明天开卡池", "正文")
+    fake.delay = 0.0
+    wait_puts(fake, 2)
+    time.sleep(0.3)
+    key = alertlog.key_for(alertlog.beijing().strftime("%Y%m%d"))
+    got = lines(fake, key)
+    check("群报警和 send_group 抄了，日报、普通信息、只记日志的没抄", [x["title"] for x in got],
+          [texts.ROUND_INCOMPLETE, "📣 明天开卡池"])
+    check("版本是这台机器正在跑的代码版本", got and got[0]["version"], "20261005153900")
+    n._fan_out = lambda title, body, **kw: ([], {"企业微信机器人": "60020"})
+    n.send("❌ OK-WW 失败", "没送到", alert=True)
+    time.sleep(0.3)
+    check("没送到的报警不抄（调用方每轮重发，抄了就是一串重复）",
+          [x["title"] for x in lines(fake, key)][-1], "📣 明天开卡池")
+
+    print("\n[这台机器没配 COS：照常送达，只在本地记]")
+    cfg2 = Config()
+    cfg2.state_dir = TMP / "n2"
+    n2 = Notifier(cfg2)
+    n2._fan_out = lambda title, body, **kw: (["企业微信机器人"], {})
+    check("照常送达", n2.send(texts.RELAY_ERROR, "x", alert=True), [])
+    check("没有上传器", n2.alert_log()._put, None)
+    check("本地有一行", len(list((TMP / "n2" / "alerts").glob("*.jsonl"))), 1)
+
+    print("\n[真的 PUT：私有（不带 public-read），404 当成还没有]")
+
+
+    class _Resp(io.BytesIO):
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+
+    seen = []
+
+
+    def fake_urlopen(req, timeout=None):
+        seen.append((req.get_method(), req.full_url, {k.lower(): v for k, v in req.header_items()}))
+        if req.get_method() == "GET":
+            raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+        return _Resp(b"")
+
+
+    class _Cos:
+        host = "bucket.cos.ap-shanghai.myqcloud.com"
+
+        def authorization(self, method, key, now=None, ttl=3600):
+            return f"sig-{method}-{key}"
+
+
+    real = urllib.request.urlopen
+    urllib.request.urlopen = fake_urlopen
+    try:
+        check("404：没有这个对象，不算出错", phone.cos_get(_Cos(), "alerts/20261006.jsonl", 5), (None, ""))
+        check("私有 PUT 成功", phone.cos_put(_Cos(), "alerts/20261006.jsonl", b"{}\n", 5, public=False,
+                                        content_type="application/x-ndjson; charset=utf-8"), None)
+        check("不带 x-cos-acl", "x-cos-acl" in seen[-1][2], False)
+        check("带签名", seen[-1][2].get("authorization"), "sig-PUT-alerts/20261006.jsonl")
+        phone.cos_put(_Cos(), "state/x.json", b"{}", 5)
+        check("手机状态照旧 public-read", seen[-1][2].get("x-cos-acl"), "public-read")
+    finally:
+        urllib.request.urlopen = real
+
+    print()
+    if fails:
+        print("FAILED:", fails)
+        sys.exit(1)
+    print("all checks passed")
+
+
+def _part_alertlog_channel():
+    """The alarm copy (alertlog row) names the channel that actually delivered it.
+
+Review 2026-10-13 s5 #4: an alarm the group robot refused and Server酱 took left a
+row that looked like any group alarm, so the Mac could not tell where it went.
+The channel comes from what Notifier._fan_out reports as delivered; "" when not
+known. Rows written before the field existed (a real machine row, fixture
+alerts-20261013-old-row.jsonl) must still read and merge fine.
+
+    Formerly test_alertlog_channel.py.
+    """
+    import json
+    import os
+    import threading
+
+
+    TMP = tmpdir()
+    os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
+                      ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
+                      WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
+                      COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="",
+                      ARK_ALERT_PUSH_URL="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core.config import Config
+    from ark_relay.core.notify import Notifier
+    from ark_relay.features.alarm import alertlog
+    from ark_relay.features.selfcheck import machinecheck as mc
+
+    FIX = fx_dir(Path(__file__), "fixtures") / "alerts-20261013-old-row.jsonl"
+
+
+    class Fake:
+        def __init__(self, name, broken=False):
+            self.name, self.broken, self.enabled = name, broken, True
+
+        def send_text(self, *a):
+            if self.broken:
+                raise RuntimeError(f"{self.name} down")
+
+
+    class Pushes:
+        """Stands in for macpush: keeps the rows instead of POSTing them."""
+
+        def __init__(self):
+            self.rows = []
+
+        def push(self, row):
+            self.rows.append(row)
+
+
+    def build(name, broken=()):
+        cfg = Config()
+        cfg.state_dir = TMP / name
+        n = Notifier(cfg)
+        n.serverchan = Fake("Server酱", "Server酱" in broken)
+        n.wecom_bot = Fake("企业微信机器人", "企业微信机器人" in broken)
+        n.wecom = Fake("企业微信", "企业微信" in broken)
+        n._alerts = alertlog.AlertLog(cfg.state_dir)       # local only, no COS
+        n._mac = Pushes()
+        return n
+
+
+    def rows(n):
+        day = alertlog.beijing().strftime("%Y%m%d")
+        return mc.alert_rows(n._cfg.state_dir, day)
+
+
+    print("[group robot takes the alarm: channel 企业微信机器人]")
+    n = build("ok")
+    check("delivered", n.send("⚠️ 出错了", "正文", alert=True), [])
+    got = rows(n)
+    check("one row", len(got), 1)
+    check("channel", got and got[0].get("channel"), "企业微信机器人")
+    check("the Mac gets the same row", n._mac.rows, got)
+
+    print("\n[group robot refuses, Server酱 takes it: channel Server酱]")
+    n = build("fallback", broken=("企业微信机器人",))
+    n._announcing = True          # no outage notice in this case
+    check("delivered", n.send("⚠️ 出错了", "正文", alert=True), [])
+    got = rows(n)
+    check("channel is the fallback", [r.get("channel") for r in got], ["Server酱"])
+
+    print("\n[with the outage notice: each row names its own channel]")
+    n = build("outage", broken=("企业微信机器人",))
+    n.send("⚠️ 出错了", "正文", alert=True)
+    got = rows(n)
+    check("alarm and notice copied", [r["title"].startswith(("⚠️ 出错了", "🔌")) for r in got], [True, True])
+    check("both went by Server酱", [r.get("channel") for r in got], ["Server酱", "Server酱"])
+
+    print("\n[send_group: 企业微信机器人]")
+    n = build("group")
+    n.send_group("📣 明天开卡池", "正文")
+    check("channel", [r.get("channel") for r in rows(n)], ["企业微信机器人"])
+
+    print("\n[unknown channel: empty]")
+    check("row() default", alertlog.row("t", "x").get("channel"), "")
+    check("FIELDS ends with channel", alertlog.FIELDS[-1], "channel")
+
+    print("\n[a day file with a pre-channel machine row still reads and merges]")
+    old = FIX.read_bytes()
+    check("fixture row has no channel field", "channel" in json.loads(old), False)
+
+
+    class Cos:
+        def __init__(self):
+            self.objects = {}
+
+        def put(self, key, data):
+            self.objects[key] = data
+
+        def get(self, key):
+            return self.objects.get(key), ""
+
+
+    cos = Cos()
+    day = alertlog.beijing().strftime("%Y%m%d")
+    cos.objects[alertlog.key_for(day)] = old
+    n = build("merge", broken=("企业微信机器人",))
+    n._announcing = True
+    n._alerts = alertlog.AlertLog(TMP / "merge", put=cos.put, get=cos.get)
+    n.send("⚠️ 新的", "正文", alert=True)
+    for th in threading.enumerate():
+        if th.name == "alarm-copy":
+            th.join(5)
+    merged = [json.loads(x) for x in cos.objects[alertlog.key_for(day)].decode("utf-8").splitlines()]
+    check("old row kept first, new row after", [r["title"] for r in merged], ["🖼️ 无音区产出", "⚠️ 新的"])
+    check("old row reads as unknown channel", merged[0].get("channel", ""), "")
+    check("new row has it", merged[1]["channel"], "Server酱")
+    check("machinecheck reads both", len(mc.alert_rows(TMP / "merge", day)), 2)
+
+    for th in threading.enumerate():
+        if th.name in ("alarm-copy", "alarm-mac"):
+            th.join(5)
+    print(f"\n{'FAIL: ' + ', '.join(fails) if fails else 'all passed'}")
+
+
+def _part_alertlog_no_lock_on_cos():
+    """alertlog: no lock held across a COS call; a failure first met on the push path
+does not silence the next one.
+
+Audit 2026-10-13 s7 #8: sync held _lock across GET and PUT (15 s each), and
+record() takes the same lock on the alarm caller's thread, so a slow COS stalled
+the caller after every delivered alarm. And self._ok was shared: a failure on
+errwatch's copy thread (whose WARNING errwatch drops) set it, and no later
+failure was ever said.
+
+    Formerly test_alertlog_no_lock_on_cos.py.
+    """
+    import logging
+    import threading
+
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.alarm import alertlog, errwatch
+
+
+    print("[a slow PUT does not hold record() up, and what it records is not lost]")
+    cos: dict[str, bytes] = {}
+    in_put, release = threading.Event(), threading.Event()
+
+
+    def slow_put(key, data):
+        in_put.set()
+        release.wait(5)
+        cos[key] = data
+        return None
+
+
+    al = alertlog.AlertLog(tmpdir(), put=slow_put, get=lambda key: (None, ""))
+    al.record("❌ MAA 失败", "第一条")
+    syncer = threading.Thread(target=al.sync, daemon=True)
+    syncer.start()
+    in_put.wait(5)
+    rec = threading.Thread(target=al.record, args=("❌ MaaEnd 失败", "第二条"), daemon=True)
+    rec.start()
+    rec.join(1)
+    check("record() returns while the PUT is still out", rec.is_alive(), False)
+    release.set()
+    syncer.join(5)
+    rec.join(5)
+    in_put.clear()
+    release.set()
+    al.sync()
+    lines = b"".join(cos.values()).decode("utf-8")
+    check("both lines reach COS", ("第一条" in lines, "第二条" in lines), (True, True))
+
+
+    print("\n[a failure first met on the push path does not silence the next one]")
+
+
+    class Grab(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.WARNING)
+            self.lines = []
+
+        def emit(self, r):
+            self.lines.append((r.threadName, r.getMessage()))
+
+
+    grab = Grab()
+    logging.getLogger(alertlog.log.name).addHandler(grab)
+    al = alertlog.AlertLog(tmpdir(), put=lambda key, data: "COS 503", get=lambda key: (None, ""))
+    al.record("❌ MAA 失败", "x")
+    t = threading.Thread(target=al.sync, name=f"{errwatch.PUSH_THREAD}-copy")
+    t.start()
+    t.join(5)
+    al.sync()          # on this (non-push) thread: errwatch would take this WARNING
+    logging.getLogger(alertlog.log.name).removeHandler(grab)
+    said = [n for n, m in grab.lines if "COS 没成" in m]
+    check("the failure is said off the push path too", said, [f"{errwatch.PUSH_THREAD}-copy", "MainThread"])
+
+    print(f"\n{'all passed' if not fails else f'{len(fails)} failed: {fails}'}")
+
+
+def _part_macpush():  # noqa: C901
+    import json
+    import os
+    import socket
+    import sys
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _tmp import tmpdir
+
+    TMP = tmpdir()
+    os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
+                      ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
+                      WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
+                      COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.alarm import alertlog, macpush
+    from ark_relay.core import texts
+    from ark_relay.core.config import Config
+    from ark_relay.core.notify import Notifier
+    from ark_relay.core.statestore import StateStore
+
+    fails = []
+
+
+    def check(label, got, want=True):
+        ok = got == want
+        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
+        if not ok:
+            fails.append(label)
+
+
+    class Mac:
+        """A stand-in for the Mac's listener: keeps every body it was POSTed."""
+
+        def __init__(self):
+            self.got, self.paths, self.types = [], [], []
+            self.status = 200
+            self.delay = 0.0
+            # hold: the handler stops after reading the request until `release` is set (2 s at most);
+            # `entered` says the request arrived. For "push did not wait for the POST" without a stopwatch.
+            self.hold = False
+            self.entered, self.release = threading.Event(), threading.Event()
+            mac = self
+
+            class H(BaseHTTPRequestHandler):
+                def do_POST(self):
+                    n = int(self.headers.get("Content-Length") or 0)
+                    body = self.rfile.read(n)
+                    mac.entered.set()
+                    if mac.hold:
+                        mac.release.wait(2.0)
+                    if mac.delay:
+                        time.sleep(mac.delay)
+                    if mac.status == 200:
+                        mac.got.append(json.loads(body.decode("utf-8")))
+                        mac.paths.append(self.path)
+                        mac.types.append(self.headers.get("Content-Type"))
+                    self.send_response(mac.status)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+
+                def log_message(self, *a):
+                    pass
+
+            self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+            self.srv.daemon_threads = True
+            threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+            self.url = f"http://127.0.0.1:{self.srv.server_address[1]}/alert"
+
+        def titles(self):
+            return [x.get("title") for x in self.got]
+
+
+    def closed_port_url():
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        return f"http://127.0.0.1:{port}/alert"
+
+
+    def join(t):
+        if t is not None:
+            t.join(10)
+
+
+    class FakeCos:
+        def __init__(self):
+            self.puts = []
+
+        def put(self, key, data):
+            self.puts.append((key, data))
+            return None
+
+        def get(self, key):
+            return None, ""
+
+
+    def notifier(name, url):
+        cfg = Config()
+        cfg.state_dir = TMP / name
+        cfg.alert_push_url = url
+        StateStore(cfg.state_dir).set("versions", "code", "20261011190000")
+        n = Notifier(cfg)
+        n._fan_out = lambda title, body, **kw: (["企业微信机器人"], {})
+        cos = FakeCos()
+        n._alerts = alertlog.AlertLog(cfg.state_dir, put=cos.put, get=cos.get)
+        return n, cos
+
+
+    def last_threads(n):
+        """Wait for the Mac push and the COS copy threads this notifier started."""
+        for t in threading.enumerate():
+            if t.name in ("alarm-mac", "alarm-copy"):
+                t.join(10)
+
+
+    print("\n[默认地址：Mac 的 Tailscale 地址、验收端口 8931；.env 可改；测试里一律关着]")
+    saved = os.environ.pop("ARK_ALERT_PUSH_URL", None)
+    check("默认地址", Config().alert_push_url, "http://100.110.87.36:8931/alert")
+    os.environ["ARK_ALERT_PUSH_URL"] = "http://10.0.0.9:1/x"
+    check(".env 覆盖", Config().alert_push_url, "http://10.0.0.9:1/x")
+    os.environ["ARK_ALERT_PUSH_URL"] = saved if saved is not None else ""
+    check("测试环境里默认关着（_tmp.py），测试报警不会发到真的 Mac", Config().alert_push_url, "")
+    check("关着时不排队、不发", macpush.MacPush(TMP / "off", "").push({"title": "x"}), None)
+    check("关着时没有队列文件", (TMP / "off" / macpush.QUEUE_FILE).exists(), False)
+
+    print("\n[POST 成功：送的就是 COS 那一行，一字不差；送到就从队列里删]")
+    mac = Mac()
+    n, cos = notifier("ok", mac.url)
+    check("群报警照常送达", n.send(texts.ROUND_INCOMPLETE, "鸣潮 OK-WW 这一轮没干完", alert=True), [])
+    last_threads(n)
+    check("Mac 收到一条", mac.titles(), [texts.ROUND_INCOMPLETE])
+    check("路径 /alert", mac.paths, ["/alert"])
+    check("Content-Type 是 JSON", mac.types, ["application/json; charset=utf-8"])
+    cos_row = json.loads(cos.puts[-1][1].decode("utf-8").splitlines()[-1]) if cos.puts else {}
+    check("字段正好是 COS 那几个", mac.got and tuple(mac.got[0]), alertlog.FIELDS)
+    check("和 COS 那一行完全一样（同一个 ts）", mac.got and mac.got[0], cos_row)
+    check("版本是本机代码版本", mac.got and mac.got[0]["version"], "20261011190000")
+    check("送到后队列空了", n.mac_push().pending(), [])
+    check("队列文件删掉了", (TMP / "ok" / macpush.QUEUE_FILE).exists(), False)
+    n.send("📋 10-11 · 全绿 ✅", "正文", daily=True)
+    n.send("🆕 游戏更新", "正文")
+    n.send("🔄 中继已更新", "正文", alert=True)
+    n.send_group("📣 明天开卡池", "正文")
+    last_threads(n)
+    check("日报、普通信息、只记日志的不送；send_group 送", mac.titles(),
+          [texts.ROUND_INCOMPLETE, "📣 明天开卡池"])
+
+    print("\n[POST 超时（3 秒上限，测试里缩短）：进队列，推送不等它]")
+    # 11-14: no stopwatch. The old check (push back within 0.5 s) went red once on the GitHub windows runner
+    # when a thread started late. The fake Mac now holds the request on a latch: push is back here while the
+    # sender thread is still waiting for the answer - that is what "POST 在自己的线程里" means.
+    gate = Mac()
+    gate.hold = True
+    mp0 = macpush.MacPush(TMP / "gate", gate.url, timeout=5.0)
+    th0 = mp0.push(alertlog.row("⚠️ 卡住的", "a"))
+    check("push 立刻返回（POST 在自己的线程里）", (th0 is not None and th0.is_alive(), gate.release.is_set()), (True, False))
+    check("请求已经发到假 Mac（它还没回话）", gate.entered.wait(5.0))
+    gate.release.set()
+    join(th0)
+    check("放行后送到，队列空", (gate.titles(), mp0.pending()), (["⚠️ 卡住的"], []))
+    slow = Mac()
+    slow.delay = 1.0
+    mp = macpush.MacPush(TMP / "slow", slow.url, timeout=0.3)
+    th = mp.push(alertlog.row("⚠️ 慢的", "a"))
+    join(th)
+    check("超时的留在队列里", [x["title"] for x in mp.pending()], ["⚠️ 慢的"])
+    check("落了盘", json.loads((TMP / "slow" / macpush.QUEUE_FILE).read_text("utf-8"))[0]["title"], "⚠️ 慢的")
+    check("超时上限默认 3 秒", macpush.TIMEOUT, 3.0)
+
+    print("\n[Mac 没人听（积极拒绝）：进队列；下一条报警时先补旧的再发新的，按先后]")
+    down = closed_port_url()
+    mp = macpush.MacPush(TMP / "later", down)
+    join(mp.push(alertlog.row("⚠️ 一", "a")))
+    join(mp.push(alertlog.row("⚠️ 二", "b")))
+    check("两条都留着", [x["title"] for x in mp.pending()], ["⚠️ 一", "⚠️ 二"])
+    mac2 = Mac()
+    mp.url = mac2.url                      # the Mac's listener is up again
+    join(mp.push(alertlog.row("⚠️ 三", "c")))
+    check("下一条报警时三条按先后送到", mac2.titles(), ["⚠️ 一", "⚠️ 二", "⚠️ 三"])
+    check("全送到后队列空了", mp.pending(), [])
+
+    print("\n[开机补发：新进程读回盘上的队列，开机那一下全送出去；送到才删]")
+    mp = macpush.MacPush(TMP / "boot", down)
+    join(mp.push(alertlog.row("⚠️ 关机前没送到", "x")))
+    check("关机前没送到的在盘上", (TMP / "boot" / macpush.QUEUE_FILE).exists())
+    mac3 = Mac()
+    cfg = Config()
+    cfg.state_dir = TMP / "boot"
+    cfg.alert_push_url = mac3.url
+    fresh = Notifier(cfg)                  # the process after the reboot
+    check("新进程读回了队列", [x["title"] for x in fresh.mac_push().pending()], ["⚠️ 关机前没送到"])
+    join(fresh.mac_push().flush_async())   # what boot_stages.py does at start
+    check("开机补发送到了", mac3.titles(), ["⚠️ 关机前没送到"])
+    check("送到后才删", (TMP / "boot" / macpush.QUEUE_FILE).exists(), False)
+    src = (Path(__file__).resolve().parents[1] / "boot_stages.py").read_text(encoding="utf-8")
+    check("boot_stages.py 开机时调了补发", "notifier.mac_push().flush_async()" in src)
+
+    print("\n[Mac 拒收（4xx）：丢掉，不卡住后面的；5xx 留着]")
+    picky = Mac()
+    picky.status = 400
+    mp = macpush.MacPush(TMP / "picky", picky.url)
+    join(mp.push(alertlog.row("⚠️ 拒收的", "x")))
+    check("4xx 丢掉", mp.pending(), [])
+    picky.status = 503
+    join(mp.push(alertlog.row("⚠️ 忙", "x")))
+    check("5xx 留着", [x["title"] for x in mp.pending()], ["⚠️ 忙"])
+    picky.status = 429
+    join(mp.flush_async())
+    check("429 也留着", len(mp.pending()), 1)
+
+    print("\n[POST 失败不影响群报警，也不影响 COS 那份；不出 WARNING（WARNING 会进群）]")
+    import logging
+    seen = []
+
+
+    class Grab(logging.Handler):
+        def emit(self, record):
+            seen.append(record)
+
+
+    grab = Grab(level=logging.DEBUG)
+    logging.getLogger("ark.test_alarm").parent.addHandler(grab)
+    logging.getLogger("ark.test_alarm").parent.setLevel(logging.DEBUG)
+    n, cos = notifier("down", down)
+    check("Mac 连不上，群报警照常送达", n.send(texts.RELAY_ERROR, "x", alert=True), [])
+    last_threads(n)
+    check("COS 那份照常写了", len(cos.puts), 1)
+    check("没送到的留着", [x["title"] for x in n.mac_push().pending()], [texts.RELAY_ERROR])
+    check("第二条报警时也照常送达", n.send(texts.RELAY_ERROR, "x2", alert=True), [])
+    last_threads(n)
+    check("两条都留着", len(n.mac_push().pending()), 2)
+    mine = [r for r in seen if r.name == "ark.macpush"]
+    check("Mac 没开是正常状态：只记 INFO，没有 WARNING", sorted({r.levelname for r in mine}), ["INFO"])
+    check("连续两次不通只说一次", len(mine), 1)
+
+
+    class Boom:
+        def push(self, row):
+            raise RuntimeError("boom")
+
+
+    n._mac = Boom()
+    seen.clear()
+    check("直送 Mac 这段抛异常，群报警照常送达", n.send(texts.RELAY_ERROR, "y", alert=True), [])
+    last_threads(n)
+    check("COS 那份照常写了（抛异常时）", len(cos.puts), 3)
+    check("真出错（代码坏了）才是 WARNING", [r.getMessage() for r in seen if r.levelno >= logging.WARNING],
+          ["报警没能直送 Mac"])
+    logging.getLogger("ark.test_alarm").parent.removeHandler(grab)
+
+    print("\n[同时来几条：只有一个在发，后来的不丢]")
+    mac4 = Mac()
+    mac4.delay = 0.2
+    mp = macpush.MacPush(TMP / "burst", mac4.url)
+    ts = [mp.push(alertlog.row(f"⚠️ {i}", "")) for i in range(5)]
+    for t in ts:
+        join(t)
+    check("五条都送到，按先后", mac4.titles(), [f"⚠️ {i}" for i in range(5)])
+    check("队列空了", mp.pending(), [])
+
+    print("\n[队列最多留 MAX_QUEUE 条（留新的）；坏掉的队列文件按空处理]")
+    mp = macpush.MacPush(TMP / "cap", down)
+    for i in range(macpush.MAX_QUEUE + 3):
+        mp.add({"title": str(i)})
+    check("留最新的 MAX_QUEUE 条", (len(mp.pending()), mp.pending()[0]["title"]),
+          (macpush.MAX_QUEUE, "3"))
+    (TMP / "bad").mkdir()
+    (TMP / "bad" / macpush.QUEUE_FILE).write_text("{not json", encoding="utf-8")
+    check("坏文件按空队列", macpush.MacPush(TMP / "bad", down).pending(), [])
+
+    print()
+    print("\n[audit 11-08 C-09: a corrupt queue file is kept aside and said at WARNING, not read as empty]")
+    import logging as _logging
+    _bad_dir = TMP / "corrupt"
+    _bad_dir.mkdir()
+    (_bad_dir / macpush.QUEUE_FILE).write_text("[{not json", encoding="utf-8")
+    _seen = []
+
+
+    class _H(_logging.Handler):
+        def emit(self, r):
+            _seen.append(r.levelno)
+
+
+    _h = _H()
+    macpush.log.addHandler(_h)
+    _mp = macpush.MacPush(_bad_dir, "http://127.0.0.1:9/")
+    macpush.log.removeHandler(_h)
+    check("the queue reads as empty", _mp.pending(), [])
+    check("one WARNING", _seen.count(_logging.WARNING), 1)
+    check("the broken file is kept aside", len(list(_bad_dir.glob("*.corrupt-*"))), 1)
+
+    print()
+    print("\n[11-13: an alarm left queued is sent after the next phone push, not only with the next alarm]")
+
+
+    class _Cfg:
+        def __init__(self, d, url):
+            self.state_dir, self.alert_push_url = d, url
+
+
+    _got = []
+    _cfg = _Cfg(TMP / "netok", "http://127.0.0.1:9/")
+    check("for_config hands out one instance per queue", macpush.for_config(_cfg) is macpush.for_config(_Cfg(TMP / "netok", "http://127.0.0.1:9/")), True)
+    check("another queue, another instance", macpush.for_config(_cfg) is macpush.for_config(_Cfg(TMP / "netok2", "http://127.0.0.1:9/")), False)
+    check("nothing queued: no send", macpush.flush_after_network_ok(_cfg), None)
+    _shared = macpush.for_config(_cfg)
+    _shared._post = lambda row: (_got.append(row.get("title")), ("ok", ""))[1]
+    _shared.add({"title": "08:22 queued"})
+    _t = macpush.flush_after_network_ok(_cfg)
+    if _t is not None:
+        _t.join(5)
+    check("queued row sent after the network came back", _got, ["08:22 queued"])
+    check("queue empty after", _shared.pending(), [])
+    check("switched off (no URL): nothing", macpush.flush_after_network_ok(_Cfg(TMP / "netoff", "")), None)
+
+    if fails:
+        print("FAILED:", fails)
+        sys.exit(1)
+    print("all checks passed")
+
+
+def _part_every_failure_pushed():
+    import json
+    import logging
+    import os
+    import sys
+    import types
+    from datetime import datetime, timedelta
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _tmp import tmpdir
+
+    TMP = tmpdir()
+    os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
+                      WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
+    RELAY = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(RELAY))
+
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+
+    for _name in ("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
+                  "servicemanager", "win32process", "win32security", "win32ts", "win32profile", "wmi",
+                  "pythoncom", "win32com", "win32com.client"):
+        sys.modules.setdefault(_name, _Stub(_name))
+
+    import boot_stages
+    from ark_relay.features.gameupdate import gameupdate
+    from ark_relay.features.alarm import handle
+    from ark_relay.features.makeup import makeup
+    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features.preupdate import preupdate
+    from ark_relay.core import texts
+    from ark_relay.core import engine as eng_mod
+    from ark_relay.core.config import SERVER_TZ, Config, RunRecord
+    from ark_relay.core.ledger import State
+    from ark_relay.core.notify import route_of
+    from ark_relay.features.alarm import errwatch
+
+    # The stubbed win32api would make GetSystemMetrics read as "Windows is going down", and the
+    # boot pre-update stops at once for a stopping relay (boot_stages._stage_preupdate, 10-16).
+    errwatch.system_shutting_down = lambda: False
+
+    fails = []
+
+
+    def check(label, got, want=True):
+        ok = got == want
+        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
+        if not ok:
+            fails.append(label)
+
+
+    def automas_dir(queues) -> Path:
+        """An AUTO-MAS config dir: queues = [(name, [times], [script kinds])]."""
+        root = tmpdir()
+        (root / "config").mkdir()
+        paths = {"MAA": r"D:\ark\MAA", "MaaEnd": r"D:\ark\MaaEnd", "OK-WW": r"D:\ark\okww"}
+        sc = {"instances": [{"uid": f"s-{k}"} for k in paths]}
+        for k, p in paths.items():
+            sc[f"s-{k}"] = {"Info": {"Name": k, "Path": p}}
+        qc = {"instances": []}
+        for n, (name, times, kinds) in enumerate(queues):
+            uid = f"q{n}"
+            qc["instances"].append({"uid": uid})
+            ts = {"instances": [], **{f"t{i}": {"Info": {"Enabled": True, "Time": t}} for i, t in enumerate(times)}}
+            items = {"instances": [], **{f"i{i}": {"Info": {"ScriptId": f"s-{k}"}} for i, k in enumerate(kinds)}}
+            qc[uid] = {"Info": {"Name": name, "TimeEnabled": True},
+                       "SubConfigsInfo": {"TimeSet": ts, "QueueItem": items}}
+        (root / "config" / "ScriptConfig.json").write_text(json.dumps(sc), encoding="utf-8")
+        (root / "config" / "QueueConfig.json").write_text(json.dumps(qc), encoding="utf-8")
+        return root
+
+
+    AUTOMAS = automas_dir([("早班", ["09:00"], ["MAA", "MaaEnd", "OK-WW"]), ("晚班", ["21:30"], ["MAA"])])
+    DAY = datetime.now(tz=SERVER_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    D = f"{DAY:%Y-%m-%d}"
+
+
+    def at(hh, mm=0):
+        return DAY.replace(hour=hh, minute=mm)
+
+
+    class Notes:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body="", **kw):
+            self.sent.append((title, body, kw.get("alert", False)))
+            return []
+
+        def went_to_group(self):
+            return True
+
+
+    class Src:
+        def fetch(self, seen):
+            return []
+
+
+    def build():
+        cfg = Config()
+        cfg.state_dir = tmpdir()
+        cfg.automas_dir = AUTOMAS
+        cfg.maa_dir = None
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e._scripts_running = lambda: False
+        e._script_running = lambda name: False
+        e._unfinished_queues = lambda now, entries: []
+        e._deferred_update_busy = lambda: False
+        e._verify_outcome = lambda r: None
+        e._archive_maaend_evidence = lambda r: None
+        e._maintenance_today = lambda game: False
+        return e
+
+
+    def rec(script, started, ok=False, failed=None, raw=None, transitional=False):
+        user = {"MAA": "arknights", "MaaEnd": "endfield", "OK-WW": "wuwa"}[script]
+        return RunRecord(run_id=f"{started:%Y-%m-%d}/{user}/{script}-{started:%H-%M-%S}", script=script, user=user,
+                         started=started, finished=started + timedelta(minutes=20), ok=ok,
+                         failed_tasks=list(failed if failed is not None else ([] if ok or transitional else ["日常"])),
+                         raw=dict(raw or {}), transitional=transitional)
+
+
+    def alarms(e):
+        return [t for t, _, a in e.notifier.sent if a]
+
+
+    handle._ship_evidence = lambda eng, r: ""
+    handle._archive_okww_evidence = lambda eng, r: None
+    handle._weekly_gates = lambda eng, r: None
+
+
+    class Lines(logging.Handler):
+        def __init__(self):
+            super().__init__(level=logging.DEBUG)
+            self.lines = []
+
+        def emit(self, record):
+            self.lines.append(record.getMessage())
+
+
+    LINES = Lines()
+    for name in ("ark.handle", "ark.makeup", "ark.engine"):
+        logging.getLogger(name).addHandler(LINES)
+        logging.getLogger(name).setLevel(logging.DEBUG)
+
+
+    print("[OK-WW overrides that did not bind: alert=True from both boot stages]")
+    BAD = ["OK-WW 升级后，中继的改动有 1 处和新版对不上：NightmareNestTask.find_nest 这一处先按 OK-WW 新版跑，等我们重抄"]
+    GOOD = ["中继给 OK-WW 的改动文件已装到 D:\\ark\\okww"]
+    check("the title routes to the group", route_of(texts.patches(1, BAD), alert=True), "group")
+    check("the healthy title stays log-only even with alert=True", route_of(texts.patches(1, GOOD), alert=True), "log")
+    # okww_overlay.report_line() wording: a skipped override and a crashed override file are trouble too
+    for line in ["OK-WW 有改动没贴上（上游源码和登记的不一致）：x（y）", "中继给 OK-WW 的改动文件自己报错了，改动一条都没生效：boom"]:
+        check(f"report_line trouble routes to the group: {line[:12]}", route_of(texts.patches(1, [line]), alert=True), "group")
+
+    LOG = boot_stages.log
+    CFG = types.SimpleNamespace(automas_dir=None, maaend_dir=Path("maaend"), okww_dir=Path("okww"), state_dir=TMP)
+    real = (okww_overlay.install, okww_overlay.write_master_pointer,
+            okww_overlay.report_line, okww_overlay.drift_line, preupdate.run_okww)
+    okww_overlay.install = lambda okww: ""
+    okww_overlay.write_master_pointer = lambda automas_dir: ""
+    okww_overlay.report_line = lambda: ""
+    okww_overlay.drift_line = lambda okww, state_dir: BAD[0]
+    preupdate.run_okww = lambda okww, problems=None, **_k: ""
+    notes = Notes()
+    boot_stages._stage_patch_okww(CFG, notes, LOG)
+    check("boot: sent as an alarm", [(t, a) for t, _, a in notes.sent], [(texts.patches(1, BAD), True)])
+    notes = Notes()
+    boot_stages._preupdate_okww(CFG, notes, LOG, [])
+    check("pre-update: sent as an alarm", [(t, a) for t, _, a in notes.sent], [(texts.patches(1, BAD), True)])
+    (okww_overlay.install, okww_overlay.write_master_pointer,
+     okww_overlay.report_line, okww_overlay.drift_line, preupdate.run_okww) = real
+
+    print("\n[the game update after the queue could not confirm: alert=True]")
+    e = build()
+    e.state.append_ledger(rec("OK-WW", datetime.now(tz=SERVER_TZ), ok=True))
+    real_gu = (gameupdate.pending, gameupdate.run_deferred)
+    gameupdate.pending = lambda state_dir: {"终末地": "今天 MaaEnd 进不了游戏"}
+    gameupdate.run_deferred = lambda cfg, now, dispatch: ([], ["终末地：启动器没响应，没能确认有没有新版本"], [])
+    e._maybe_deferred_update()
+    e._gu_thread.join(10)
+    gameupdate.pending, gameupdate.run_deferred = real_gu
+    check("sent as an alarm", [(t, a) for t, _, a in e.notifier.sent], [(texts.unconfirmed("游戏更新", 1), True)])
+    check("…the title routes to the group", route_of(texts.unconfirmed("游戏更新", 1), alert=True), "group")
+
+    print("\n[a MAA failure that had fought gets no make-up: the log does not say 「只进日报」, the group hears it]")
+    e = build()
+    LINES.lines.clear()
+    handle._handle(e, rec("MAA", at(9, 5), raw={"sanity_spent": 120}))
+    e._flush_pending()
+    makeup.maybe_run(e, at(10, 5))
+    check("no make-up", makeup.read_marker(e.cfg.state_dir, D)["MAA"]["result"], makeup.GAVE_UP)
+    check("the log line does not say 「只进日报」", any("只进日报" in ln for ln in LINES.lines), False)
+    check("…it says the failure goes to the group", any("明日方舟这次不补" in ln and "进群" in ln for ln in LINES.lines))
+    e._flush_pending()
+    check("the failure reached the group", alarms(e), [texts.unresolved("明日方舟", "早班")])
+
+    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
+
+
+def _part_recovered_daily_only():  # noqa: C901
+    import json
+    import logging
+    import os
+    import sys
+    import urllib.error
+    import urllib.request
+    from datetime import datetime, timedelta
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _tmp import tmpdir
+
+    TMP = tmpdir()
+    os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
+                      WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.features.alarm import errwatch, handle
+    from ark_relay.features.makeup import makeup
+    from ark_relay.core import notify, texts
+    from ark_relay.features.report import report
+    from ark_relay.core import ledger as core
+    from ark_relay.core import engine as eng_mod
+    from ark_relay.core.config import SERVER_TZ, Config, RunRecord
+    from ark_relay.features.selfcheck import machinecheck as _mc
+    _mc.load()
+    _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
+    _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc.py
+    from ark_relay.core.ledger import State
+
+    fails = []
+
+
+    def check(label, got, want=True):
+        ok = got == want
+        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
+        if not ok:
+            fails.append(label)
+
+
+    def automas_dir() -> Path:
+        """AUTO-MAS's config with one 早班 09:00 queue running all three scripts."""
+        root = tmpdir()
+        (root / "config").mkdir()
+        paths = {"MAA": r"D:\ark\MAA", "MaaEnd": r"D:\ark\MaaEnd", "OK-WW": r"D:\ark\okww"}
+        sc = {"instances": [{"uid": f"s-{k}"} for k in paths], **{f"s-{k}": {"Info": {"Name": k, "Path": p}}
+                                                                for k, p in paths.items()}}
+        qc = {"instances": [{"uid": "q0"}],
+              "q0": {"Info": {"Name": "早班", "TimeEnabled": True},
+                     "SubConfigsInfo": {"TimeSet": {"instances": [], "t0": {"Info": {"Enabled": True, "Time": "09:00"}}},
+                                        "QueueItem": {"instances": [], **{f"i{i}": {"Info": {"ScriptId": f"s-{k}"}}
+                                                                          for i, k in enumerate(paths)}}}}}
+        (root / "config" / "ScriptConfig.json").write_text(json.dumps(sc), encoding="utf-8")
+        (root / "config" / "QueueConfig.json").write_text(json.dumps(qc), encoding="utf-8")
+        return root
+
+
+    AUTOMAS = automas_dir()
+    # Today (real clock): makeup.eligible and _flush_pending read today's date.
+    DAY = datetime.now(tz=SERVER_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    D = f"{DAY:%Y-%m-%d}"
+    UPDATE = "游戏更新成功，即将重启任务"
+
+
+    def at(hh, mm=0):
+        return DAY.replace(hour=hh, minute=mm)
+
+
+    class Notes:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body="", **kw):
+            self.sent.append((title, body, kw.get("alert", False)))
+            return []
+
+        def went_to_group(self):
+            return True
+
+
+    class Src:
+        def fetch(self, seen):
+            return []
+
+
+    def build():
+        cfg = Config()
+        cfg.state_dir = tmpdir()
+        cfg.automas_dir = AUTOMAS
+        cfg.maa_dir = None
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e._scripts_running = lambda: False
+        e._script_running = lambda name: False
+        e._unfinished_queues = lambda now, entries: []
+        e._deferred_update_busy = lambda: False
+        e._verify_outcome = lambda r: None
+        e._archive_maaend_evidence = lambda r: None
+        e._maintenance_today = lambda game: False
+        return e
+
+
+    def rec(script, started, ok=False, failed=None, raw=None, transitional=False):
+        user = {"MAA": "arknights", "MaaEnd": "endfield", "OK-WW": "wuwa"}[script]
+        return RunRecord(run_id=f"{started:%Y-%m-%d}/{user}/{script}-{started:%H-%M-%S}", script=script, user=user,
+                         started=started, finished=started + timedelta(minutes=20), ok=ok,
+                         failed_tasks=list(failed if failed is not None else ([] if ok or transitional else ["日常"])),
+                         raw=dict(raw or {}), transitional=transitional)
+
+
+    def restart(script, started):
+        """An attempt AUTO-MAS recorded as a restart (collector._TRANSITIONAL)."""
+        key = {"MAA": "maa_result", "MaaEnd": "maaend_result", "OK-WW": "general_result"}[script]
+        return rec(script, started, raw={key: UPDATE if script == "OK-WW" else "未捕获到日志"}, transitional=True)
+
+
+    def alarms(e):
+        return [t for t, _, a in e.notifier.sent if a]
+
+
+    def body_of(e, title):
+        return next((b for t, b, a in e.notifier.sent if a and t == title), "")
+
+
+    def daily(e):
+        return core.format_daily(D, e.state.read_ledger(D))
+
+
+    handle._ship_evidence = lambda eng, r: ""
+    handle._archive_okww_evidence = lambda eng, r: None
+    handle._weekly_gates = lambda eng, r: None
+    makeup._dispatch = lambda script: (True, "已开跑")
+    makeup._kill_game = lambda: None
+
+
+    class Lines(logging.Handler):
+        def __init__(self):
+            super().__init__(level=logging.DEBUG)
+            self.records = []
+
+        def emit(self, record):
+            self.records.append(record)
+
+        def said(self, *parts):
+            return any(all(p in r.getMessage() for p in parts) for r in self.records)
+
+
+    LINES = Lines()
+    for _name in ("ark.handle", "ark.notify"):
+        logging.getLogger(_name).addHandler(LINES)
+        logging.getLogger(_name).setLevel(logging.DEBUG)
+
+
+    print("[AUTO-MAS 自己重试过去了：什么都不发，日报那一行说重试做成了]")
+    e = build()
+    handle._handle(e, rec("OK-WW", at(9, 10), failed=["日常"]))
+    handle._handle(e, rec("OK-WW", at(9, 40), ok=True, raw={"tasks_done": ["日常"]}))
+    e._flush_pending()
+    check("什么都没发（群、Server酱都没有）", e.notifier.sent, [])
+    check("放下了", (dict(e._pending), dict(e._recovered)), ({}, {}))
+    check("日志：自愈那句，只进日报", LINES.said(texts.self_healed("OK-WW"), "只进日报"))
+    title, body = daily(e)
+    check("日报那一行：后来在 09:40（东京 10:40）开始的那趟重试里做成了", "日常　后来在 09:40（东京 10:40）开始的那趟重试里做成了" in body)
+    check("日报标题不算鸣潮失败", "鸣潮失败" in title, False)
+    print("  …没有后来那次成功：照样进群")
+    e = build()
+    handle._handle(e, rec("OK-WW", at(9, 10), failed=["日常"]))
+    e._flush_pending()
+    check("最终失败进群", alarms(e), [texts.failed("OK-WW")])
+
+    print("\n[中继补跑走通了：什么都不发，日报的补跑那一行说失败过、补跑后走通了]")
+    e = build()
+    handle._handle(e, rec("MAA", at(9, 5), failed=["开始唤醒"]))
+    e._flush_pending()
+    makeup.maybe_run(e, at(10, 5))
+    handle._handle(e, rec("MAA", at(10, 6), ok=True))
+    e._flush_pending()
+    check("补跑记成走通", makeup.read_marker(e.cfg.state_dir, D)["MAA"]["result"], makeup.OK)
+    check("什么都没发", e.notifier.sent, [])
+    check("放下了", (dict(e._pending), dict(e._recovered)), ({}, {}))
+    check("日志：补跑走通，只进日报", LINES.said(texts.makeup_passed("明日方舟", "早班"), "只进日报"))
+    check("日报的补跑那一行", report.makeup_line(e.cfg.state_dir, D),
+          "明日方舟失败后自动补跑，走通了（原来失败于：开始唤醒）")
+    check("日报那一行：后来在补跑里做成了", "后来在 10:26 那趟补跑里做成了" in daily(e)[1])
+    print("  …补跑也没成：进群")
+    e = build()
+    handle._handle(e, rec("MAA", at(9, 5), failed=["开始唤醒"]))
+    e._flush_pending()
+    makeup.maybe_run(e, at(10, 5))
+    handle._handle(e, rec("MAA", at(10, 6), failed=["开始唤醒"]))
+    e._flush_pending()
+    check("没跑成进群", alarms(e), [texts.unresolved("明日方舟", "早班")])
+
+    print("\n[更新那一串后面有一次成功：什么都不发，日报是 ↪️]")
+    e = build()
+    handle._handle(e, rec("OK-WW", at(9, 10), failed=["日常"]))
+    handle._handle(e, restart("OK-WW", at(9, 18)))
+    check("前面压着的失败还是它（重启不顶替它）", e._pending[("OK-WW", "wuwa")].started, at(9, 10))
+    handle._handle(e, rec("OK-WW", at(9, 28), ok=True))
+    e._flush_pending()
+    check("什么都没发", e.notifier.sent, [])
+    check("日志：更新时失败过，只进日报", LINES.said(texts.healed_after_update("OK-WW"), "只进日报"))
+    title, body = daily(e)
+    check("日报里这一串是更新，不算失败", ("鸣潮失败" in title, body.count("↪️ 鸣潮"), body.count("更新后重跑")), (False, 2, 2))
+    print("  …那一串后面没有成功：照样进群，报的是前面那次失败")
+    e = build()
+    handle._handle(e, rec("OK-WW", at(9, 10), failed=["日常"]))
+    handle._handle(e, restart("OK-WW", at(9, 18)))
+    e._flush_pending()
+    check("最终失败进群", alarms(e), [texts.failed("OK-WW")])
+    check("…说的是 09:10 那次的日常", "· 失败于：日常" in body_of(e, texts.failed("OK-WW")))
+
+    print("\n[AUTO-MAS 记成重启的那一次：落地时不发，压着，后面那次定]")
+    e = build()
+    handle._handle(e, restart("OK-WW", at(9, 18)))
+    check("落地时什么都没发", e.notifier.sent, [])
+    check("压着", list(e._pending), [("OK-WW", "wuwa")])
+    check("日志：先压着", LINES.said("是中途重启", "先压着"))
+    handle._handle(e, rec("OK-WW", at(9, 28), ok=True))
+    e._flush_pending()
+    check("后面成功了：什么都没发", e.notifier.sent, [])
+    check("放下了", (dict(e._pending), dict(e._recovered)), ({}, {}))
+    check("日报里是 ↪️ 更新后重跑", ("↪️ 鸣潮" in daily(e)[1], "更新后重跑" in daily(e)[1]), (True, True))
+    print("  …后面没有再跑：最终失败进群，写着 AUTO-MAS 记的什么")
+    e = build()
+    handle._handle(e, restart("OK-WW", at(9, 18)))
+    e._flush_pending()
+    check("最终失败进群", alarms(e), [texts.failed("OK-WW")])
+    got = body_of(e, texts.failed("OK-WW"))
+    check("…写着那次的时间和结果", f"09:18 开始的这一次，AUTO-MAS 记的结果是「{UPDATE}」" in got)
+    check("…写着之后没有再跑出记录", "这次之后没有再跑出一次记录" in got)
+    check("放下了", dict(e._pending), {})
+    print("  …后面那次失败了：报的是后面那次")
+    e = build()
+    handle._handle(e, restart("OK-WW", at(9, 18)))
+    handle._handle(e, rec("OK-WW", at(9, 20), failed=["周常乐园"]))
+    e._flush_pending()
+    check("一条最终失败进群", alarms(e), [texts.failed("OK-WW")])
+    got = body_of(e, texts.failed("OK-WW"))
+    check("…说的是 09:20 那次（周常乐园），不带重启那句", ("周常乐园" in got, "这次之后没有再跑出一次记录" in got), (True, False))
+    print("  …重启那条比后面成功的那条晚落地：已经好了，不压着、不发")
+    e = build()
+    handle._handle(e, rec("OK-WW", at(9, 28), ok=True))
+    handle._handle(e, restart("OK-WW", at(9, 18)))
+    e._flush_pending()
+    check("什么都没发", e.notifier.sent, [])
+    check("不压着", (dict(e._pending), dict(e._recovered)), ({}, {}))
+    check("日志：后面那次已经成功，只进日报", LINES.said("是中途重启", "已经成功", "只进日报"))
+    check("日报里是 ↪️ 更新后重跑", "↪️ 鸣潮" in daily(e)[1])
+    print("  …终末地的空壳记录（未捕获到日志）也一样：落地不发，压着")
+    e = build()
+    handle._handle(e, restart("MaaEnd", at(10, 1)))
+    check("落地时什么都没发", e.notifier.sent, [])
+    check("压着", list(e._pending), [("MaaEnd", "endfield")])
+
+
+    print("\n[推送传输：后一次送到了 → 一条标「自己好了」的 WARNING，只进日报；全没送到 → 照样报]")
+
+
+    class Resp:
+        def __init__(self, data):
+            self.data = data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return json.dumps(self.data).encode("utf-8")
+
+
+    def fake_urlopen(script):
+        """urlopen that, for each URL in turn, raises (an Exception in `script`) or answers (a dict)."""
+        calls = []
+
+        def urlopen(req, timeout=None):
+            url = req.full_url if hasattr(req, "full_url") else str(req)
+            calls.append(url)
+            step = script.pop(0)
+            if isinstance(step, Exception):
+                raise step
+            return Resp(step)
+        urlopen.calls = calls
+        return urlopen
+
+
+    class Refuses:
+        """errwatch's notifier: the group refuses, so whatever it queues stays queued."""
+        def send_group(self, title, body):
+            return ["企业微信机器人：拒收"]
+
+        def send(self, title, body, **kw):
+            return ["拒收"]
+
+
+    def watch():
+        sd = tmpdir()
+        h = errwatch.ErrorKindAlert(Refuses(), state_dir=sd, known={}, retry=(3600.0,), fallback_after=1e9)
+        logging.getLogger(errwatch.ARK).addHandler(h)
+        LINES.records.clear()
+        return h, sd
+
+
+    def unwatch(h):
+        logging.getLogger(errwatch.ARK).removeHandler(h)
+        h.close()
+
+
+    def warnings():
+        return [r for r in LINES.records if r.levelno >= logging.WARNING]
+
+
+    real_urlopen, real_sleep = urllib.request.urlopen, notify.time.sleep
+    notify.time.sleep = lambda s: None
+    REQ = urllib.request.Request("https://push.example/send", data=b"{}")
+    try:
+        h, sd = watch()
+        urllib.request.urlopen = fake_urlopen([urllib.error.URLError("handshake timed out"), {"errcode": 0}])
+        check("第二次送到了", notify._post(REQ), {"errcode": 0})
+        check("失败的那一次是 INFO", [r.levelname for r in LINES.records if "推送传输失败（第 1/3 次）" in r.getMessage()],
+              ["INFO"])
+        check("送到时一条 WARNING，标着自己好了", [(r.getMessage().split(":")[0], getattr(r, errwatch.RECOVERED, False))
+                                                for r in warnings()], [("推送传输失败 1 次，第 2 次送到了", True)])
+        check("没排进推群的队", h.pending(), [])
+        rows = errwatch.day_faults(sd, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
+        check("日报「中继自己记下的报错」里有它，标自己好了", [(r.get("recovered"), r.get("level")) for r in rows],
+              [(True, "WARNING")])
+        unwatch(h)
+
+        print("  …三次都没送到：_post 抛出去，调用方报 ERROR，errwatch 排进推群的队")
+        h, sd = watch()
+        urllib.request.urlopen = fake_urlopen([urllib.error.URLError("down")] * 3)
+        try:
+            notify._post(REQ)
+            raised = False
+        except urllib.error.URLError:
+            raised = True
+        check("抛出去了", raised)
+        check("_post 自己没写「送到了」", any(getattr(r, errwatch.RECOVERED, False) for r in LINES.records), False)
+        cfg = Config()
+        cfg.state_dir = tmpdir()
+        cfg.wecom_bot_url = "https://bot.example/send"
+        cfg.serverchan_key = ""
+        cfg.wecom_corpid = ""
+        n = notify.Notifier(cfg)
+        urllib.request.urlopen = fake_urlopen([urllib.error.URLError("down")] * 3)
+        check("一条渠道都没送到：返回错误", bool(n.send("❌ OK-WW 失败", "正文", alert=True)), True)
+        check("…调用方的 ERROR 没标自己好了", [(r.levelname, getattr(r, errwatch.RECOVERED, False)) for r in warnings()],
+              [("ERROR", False)])
+        check("…排进了推群的队", len(h.pending()), 1)
+        unwatch(h)
+
+        print("  …Server酱 第一个地址没送到、第二个送到了：一条标自己好了的 WARNING")
+        h, sd = watch()
+        sc = notify.ServerChan(type("C", (), {"serverchan_key": "sctp123tabc"})())
+        urllib.request.urlopen = fake_urlopen([urllib.error.URLError("down")] * 3 + [{"code": 0}])
+        sc.send_text("📋 日报", "正文")
+        check("两个地址都试了", len(urllib.request.urlopen.calls), 4)
+        check("一条 WARNING，标着自己好了", [(r.getMessage().startswith("Server酱 前面的地址没送到"),
+                                             getattr(r, errwatch.RECOVERED, False)) for r in warnings()], [(True, True)])
+        check("没排进推群的队", h.pending(), [])
+        unwatch(h)
+    finally:
+        urllib.request.urlopen, notify.time.sleep = real_urlopen, real_sleep
+
+    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+    _mc.CHECKS.update(_mc_real)
+    sys.exit(1 if fails else 0)
+
+
+def _part_manual_stop_backfill():
+    """Runs the red button cut short before the press was recorded get ⏹ at the next boot.
+
+2026-09-30 09:46:28-09:47:22 (Beijing) the red button was pressed through a
+one-off script, before commands.estop wrote estop-windows.json. The ledger
+already held the OK-WW run it stopped (ok=True, which AUTO-MAS wrote as
+Success!) and the MaaEnd run it stopped (ok=False), neither with
+raw.manual_stop, so the evening report would show ✅ and ❌ for two runs nobody
+let finish.
+
+At boot, after the self-update, handle.backfill_manual_stops marks every ledger
+line of today and yesterday that overlaps a press recorded in estop-windows.json,
+and drops held alarms for those runs the way _handle does at record time. (The
+09-30 window was shipped as a seed merged at boot until 10-03; removed 10-13.)
+The report is rendered through report._compose_daily, the same function the
+`python -m ark_relay report --again` command pushes.
+
+    Formerly test_manual_stop_backfill.py.
+    """
+    import json
+    import os
+    import types
+    from datetime import datetime
+
+
+    TMP = tmpdir()
+    os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
+                      ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
+                      WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.features.phone import commands
+    from ark_relay.features.alarm import handle
+    from ark_relay.features.report import report
+    handle._screenshot_to = lambda out: False   # the real one waits up to 10 s for a Windows screenshot file
+    from ark_relay.core import engine as eng_mod
+    from ark_relay.core.config import SERVER_TZ, Config, RunRecord
+    from ark_relay.core.ledger import State
+
+
+    # No network: the banner section and the report-writing model are stubbed, as in
+    # test_daily.py.
+    report.plan = types.SimpleNamespace(next_plan=lambda d: "", activity_countdown=lambda d: "",
+                                        schedule=lambda d: [])
+    report.banners = types.SimpleNamespace(
+        collect=lambda now, skland_token="", failed=None, notes=None, trace=None, versions=None, leads=None,
+        read_image=None, state_dir=None: ([], {}),
+        image_reader=lambda state_dir: None,
+        render=lambda rows, now, nxt, notes=None, trace=None, failed=None, leads=None: "",
+        Trace=types.SimpleNamespace(new=lambda: None),
+        save_trace=lambda state_dir, now, text, tr: None,
+        update_history=lambda state_dir, now: [],
+        opening_tomorrow=lambda now, nxt: [],
+    )
+    report.summary = types.SimpleNamespace(daily_report=lambda cfg, entries, plan="": "")
+
+
+    class Notes:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body="", **kw):
+            self.sent.append((title, body))
+            return []
+
+        def send_group(self, title, body):
+            return []
+
+
+    class Src:
+        def fetch(self, seen):
+            return []
+
+
+    def at(d, hh, mm, ss=0):
+        return datetime(2026, 9, d, hh, mm, ss, tzinfo=SERVER_TZ)
+
+
+    def line(rid, script, user, s, f, ok, failed=None):
+        return {"run_id": rid, "script": script, "user": user, "started": s.isoformat(),
+                "finished": f.isoformat(), "ok": ok, "failed_tasks": failed or [],
+                "duration_known": True, "transitional": False, "raw": {"tasks_done": ["日常"]} if ok else {}}
+
+
+    OKWW = line("OK-WW-05-40-56", "OK-WW", "wuwa", at(30, 9, 38), at(30, 9, 46, 58), True)
+    MAAEND = line("MaaEnd-05-46-45", "MaaEnd", "endfield", at(30, 9, 46, 58), at(30, 9, 47, 10), False,
+                  ["据点交易"])
+    MAA = line("MAA-09-00-00", "MAA", "ark", at(30, 9, 0), at(30, 9, 30), True)
+    TORN = '{"run_id": "half'
+
+
+    def build(windows=None):
+        cfg = Config()
+        cfg.state_dir = tmpdir()
+        cfg.history_dir = None
+        cfg.automas_dir = None
+        st = State(cfg.state_dir)
+        p = st.ledger_path("2026-09-30")
+        p.write_text("\n".join([json.dumps(MAA, ensure_ascii=False), json.dumps(OKWW, ensure_ascii=False),
+                                TORN, json.dumps(MAAEND, ensure_ascii=False)]) + "\n", encoding="utf-8")
+        if windows is not None:
+            (Path(cfg.state_dir) / commands.ESTOP_WINDOWS_FILE).write_text(json.dumps(windows), encoding="utf-8")
+        e = eng_mod.Engine(cfg, source=Src(), state=st, notifier=Notes())
+        e._scripts_running = lambda: False
+        return e
+
+
+    def stops(e, day="2026-09-30"):
+        return {x["run_id"]: (x.get("raw") or {}).get("manual_stop") for x in e.state.read_ledger(day)}
+
+
+    def kind_line(body, script):
+        return next((ln for ln in body.splitlines() if f" {script}" in ln and ln[:1] in "✅❌⏹↻⚠"), "")
+
+
+    EVENING = at(30, 21, 25)
+
+    print("[改前的日报：两趟被停掉的显示成 ✅ / ❌]")
+    e = build(windows=[])
+    _, body0 = e._compose_daily("2026-09-30", e.state.read_ledger("2026-09-30"))
+    check("OK-WW 原来是 ✅", kind_line(body0, "鸣潮")[:1], "✅")
+    check("MaaEnd 原来是 ❌", kind_line(body0, "终末地")[:1], "❌")
+
+    print("\n[窗口文件里有这次按下：两趟补记，窗口外的不动，第二次是空操作]")
+    e = build(windows=[{"start": "2026-09-30T09:46:28+08:00", "end": "2026-09-30T09:47:22+08:00"}])
+    n = handle.backfill_manual_stops(e, EVENING)
+    got = stops(e)
+    check("补了两趟", n, 2)
+    check("OK-WW 记停一切", got.get("OK-WW-05-40-56"), "09:46 停一切")
+    check("MaaEnd 记停一切", got.get("MaaEnd-05-46-45"), "09:46 停一切")
+    check("窗口外的 MAA 不动", got.get("MAA-09-00-00"), None)
+    raw_text = e.state.ledger_path("2026-09-30").read_text(encoding="utf-8")
+    check("残行原样保留", TORN in raw_text.splitlines(), True)
+    check("行数不变", len(raw_text.splitlines()), 4)
+    before = raw_text
+    check("再跑一次什么都不补", handle.backfill_manual_stops(e, EVENING), 0)
+    check("文件逐字节不变", e.state.ledger_path("2026-09-30").read_text(encoding="utf-8"), before)
+
+    print("\n[日报走 _compose_daily（report 命令同一个函数）：两趟都是 ⏹]")
+    title, body = e._compose_daily("2026-09-30", e.state.read_ledger("2026-09-30"))
+    check("OK-WW 那行是 ⏹", kind_line(body, "鸣潮")[:1], "⏹")
+    check("MaaEnd 那行是 ⏹", kind_line(body, "终末地")[:1], "⏹")
+    check("有被停一切停掉的备注", "被停一切中途停掉，不算成功也不算失败" in body, True)
+    check("标题不算失败", "失败" in title, False)
+    check("两趟都写「已停，未补」", body.count("已停，未补"), 2)
+
+    print("\n[停掉之后同一脚本又跑过一趟：那趟停的不写「未补」]")
+    later = line("OK-WW-10-30-00", "OK-WW", "wuwa", at(30, 10, 30), at(30, 10, 50), True)
+    title, body = e._compose_daily("2026-09-30", e.state.read_ledger("2026-09-30") + [later])
+    check("只剩 MaaEnd 那条写「已停，未补」", body.count("已停，未补"), 1)
+    from ark_relay.core import ledger as _core
+    check("共用判定：有 manual_stop 才算", [_core.manual_stop(x) for x in (
+        {"raw": {"manual_stop": "09:46 停一切"}}, {"raw": {}}, {"raw": None}, {})], [True, False, False, False])
+
+    # The 09-30 press, as estop-windows.json holds it.
+    W0930 = [{"start": "2026-09-30T09:46:28+08:00", "end": "2026-09-30T09:47:22+08:00"}]
+
+    print("\n[no press recorded: nothing is booked (the shipped seed went, audit 11 #7)]")
+    # ESTOP_SEED / merge_estop_seed carried the 09-30 window for three days after
+    # 2026-09-30 and did nothing after 10-03; they and their boot call are gone.
+    e = build(windows=None)
+    check("no window file: nothing booked", handle.backfill_manual_stops(e, EVENING), 0)
+    check("and no window file written", (Path(e.cfg.state_dir) / commands.ESTOP_WINDOWS_FILE).exists(), False)
+    check("the seed's names are gone", [n for n in ("ESTOP_SEED", "merge_estop_seed") if hasattr(commands, n)], [])
+
+    print("\n[another press on record: the file is left as it is]")
+    e = build(windows=[{"start": "2026-09-30T20:00:00+08:00", "end": "2026-09-30T20:01:00+08:00"}])
+    handle.backfill_manual_stops(e, EVENING)
+    w = json.loads((Path(e.cfg.state_dir) / commands.ESTOP_WINDOWS_FILE).read_text(encoding="utf-8"))
+    check("only that press", [x.get("start")[11:16] for x in w], ["20:00"])
+
+    print("\n[过了午夜（北京时间）：昨天的账本照样补]")
+    e = build(windows=W0930)
+    check("10-01 00:30 开机也补了两趟", handle.backfill_manual_stops(e, datetime(2026, 10, 1, 0, 30, tzinfo=SERVER_TZ)), 2)
+
+    print("\n[压着的告警：被停掉的两趟相关的清掉，别的不动]")
+
+
+    def rec_of(d, **over):
+        x = dict(d, **over)
+        return RunRecord(run_id=x["run_id"], script=x["script"], user=x["user"],
+                         started=datetime.fromisoformat(x["started"]),
+                         finished=datetime.fromisoformat(x["finished"]), ok=x["ok"],
+                         failed_tasks=x["failed_tasks"], raw=dict(x["raw"]))
+
+
+    e = build(windows=W0930)
+    # 09:30 OK-WW failure moved to _recovered when the stopped OK-WW run read as a success.
+    fail930 = rec_of(OKWW, run_id="OK-WW-05-21-00", started=at(30, 9, 21).isoformat(),
+                     finished=at(30, 9, 30).isoformat(), ok=False, failed_tasks=["日常"], raw={})
+    e._recovered[("OK-WW", "wuwa")] = fail930
+    # The stopped MaaEnd run itself, held for the final alarm.
+    e._pending[("MaaEnd", "endfield")] = rec_of(MAAEND)
+    # Something unrelated that must stay.
+    other = rec_of(MAA, run_id="MAA-08-00-00", ok=False, failed_tasks=["x"], raw={})
+    e._pending[("MAA", "ark")] = other
+    e._persist_pending()
+    handle.backfill_manual_stops(e, EVENING)
+    check("OK-WW 不算重试后成功", list(e._recovered), [])
+    check("MaaEnd 不再等着重试", ("MaaEnd", "endfield") in e._pending, False)
+    check("MAA 的照旧压着", list(e._pending), [("MAA", "ark")])
+    # 2026-10-06: both failures are pushed now, not dropped (「只要是报错…都要发」).
+    check("两条失败都进群", sorted(t for t, _ in e.notifier.sent), ["❌ MaaEnd 失败", "❌ OK-WW 失败"])
+    check("都说明后面那趟是停一切停掉的", all("停一切停掉" in b for _, b in e.notifier.sent), True)
+    disk = State(e.cfg.state_dir).load_pending()
+    check("磁盘上也清掉了（重启读回一致）",
+          (len(disk.get("pending") or []), len(disk.get("recovered") or [])), (1, 0))
+
+    print("\n[被停掉那趟之后的新失败：不清]")
+    e = build(windows=W0930)
+    late = rec_of(MAAEND, run_id="MaaEnd-10-30-00", started=at(30, 10, 30).isoformat(),
+                  finished=at(30, 10, 50).isoformat())
+    e._pending[("MaaEnd", "endfield")] = late
+    handle.backfill_manual_stops(e, EVENING)
+    check("10:30 的失败还压着", ("MaaEnd", "endfield") in e._pending, True)
+
+    print("\n[自愈之后又有真成功：那次自愈是真的，不清]")
+    e = build(windows=W0930)
+    real_ok = line("OK-WW-09-35-00", "OK-WW", "wuwa", at(30, 9, 32), at(30, 9, 36), True)
+    p = e.state.ledger_path("2026-09-30")
+    p.write_text(p.read_text(encoding="utf-8") + json.dumps(real_ok, ensure_ascii=False) + "\n", encoding="utf-8")
+    e._recovered[("OK-WW", "wuwa")] = fail930
+    handle.backfill_manual_stops(e, EVENING)
+    check("09:36 真成功治好的自愈通知还在", list(e._recovered), [("OK-WW", "wuwa")])
+
+    print("\n[开机阶段：出错不抛、写一行日志]")
+    sys.modules.setdefault("win32event", types.ModuleType("win32event"))
+    import boot_stages
+
+
+    class Log:
+        def __init__(self):
+            self.lines = []
+
+        def info(self, *a, **k):
+            self.lines.append(a)
+
+        def exception(self, *a, **k):
+            self.lines.append(("EXC",) + a)
+
+
+    lg = Log()
+    e = build(windows=W0930)
+    # The stage passes no clock, and backfill looks at yesterday and today only: pin "now" to the
+    # evening of the fixture day, or this check starts failing two days after the fixture (2026-10-02).
+    _real_backfill = handle.backfill_manual_stops
+    handle.backfill_manual_stops = lambda eng, now=None: _real_backfill(eng, now or EVENING)
+    try:
+        boot_stages._stage_backfill_manual_stops(e, lg)
+    finally:
+        handle.backfill_manual_stops = _real_backfill
+    check("阶段跑完两趟有停一切", sorted(v for v in stops(e).values() if v), ["09:46 停一切", "09:46 停一切"])
+    real = handle.backfill_manual_stops
+    handle.backfill_manual_stops = lambda *a, **k: 1 / 0
+    try:
+        boot_stages._stage_backfill_manual_stops(e, lg)
+        check("出错不抛", True, True)
+        check("记了异常", any(x and x[0] == "EXC" for x in lg.lines), True)
+    finally:
+        handle.backfill_manual_stops = real
+
+
+def _part_manual_stop_not_selfheal():
+    """A run the red button (停一切) cut short is a manual stop, not the retry that healed the day.
+
+2026-09-30 morning: OK-WW failed at 09:19 and 09:30 (both held in _pending). At
+09:46:58 the phone's red button stopped the third attempt; AUTO-MAS recorded that
+stopped run as Success!, and the relay took it as 「重试后成功」 - a self-heal
+notice for a run nobody let finish, and a green row in the daily report.
+
+commands.estop now writes when it was pressed (estop-windows.json); handle._handle
+marks any run overlapping that window raw.manual_stop, books it, drops the held
+failures' final alarm (they stay in the ledger) and does nothing else. The daily
+report shows it as ⏹, never ✅, and never as the later run that 「做成了」 the
+earlier failures.
+
+    Formerly test_manual_stop_not_selfheal.py.
+    """
+    import json
+    import os
+    from datetime import datetime
+
+
+    TMP = tmpdir()
+    AUTOMAS = TMP / "AUTO-MAS"
+    (AUTOMAS / "config").mkdir(parents=True)
+    (AUTOMAS / "config" / "QueueConfig.json").write_text(json.dumps({"instances": []}), encoding="utf-8")
+    (AUTOMAS / "config" / "ScriptConfig.json").write_text(json.dumps({"instances": []}), encoding="utf-8")
+    HIST = TMP / "history"
+    HIST.mkdir()
+    os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
+                      ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
+                      WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.features.makeup import collect_retry
+    from ark_relay.features.phone import commands
+    from ark_relay.features.alarm import handle
+    from ark_relay.core import ledger as core
+    handle._screenshot_to = lambda out: False   # the real one waits up to 10 s for a Windows screenshot file
+    from ark_relay.core import engine as eng_mod
+    from ark_relay.core.config import SERVER_TZ, Config, RunRecord
+    from ark_relay.core.ledger import State
+
+
+    class Notes:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body="", **kw):
+            self.sent.append((title, body))
+            return False
+
+
+    class Src:
+        def fetch(self, seen):
+            return []
+
+
+    def at(hh, mm, ss=0):
+        return datetime(2026, 9, 30, hh, mm, ss, tzinfo=SERVER_TZ)
+
+
+    def rec(run_id, started, finished, script="OK-WW", user="wuwa", ok=False):
+        return RunRecord(run_id=run_id, script=script, user=user, started=started, finished=finished,
+                         ok=ok, failed_tasks=[] if ok else ["任务执行：卡在对话框"],
+                         raw={"tasks_done": ["日常"]} if ok else {})
+
+
+    def build():
+        cfg = Config()
+        cfg.state_dir = tmpdir()
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e._scripts_running = lambda: False
+        e._verify_outcome = lambda r: None
+        return e
+
+
+    def press(e, start, end):
+        (Path(e.cfg.state_dir) / commands.ESTOP_WINDOWS_FILE).write_text(
+            json.dumps([{"start": start.isoformat(timespec="seconds"),
+                         "end": end.isoformat(timespec="seconds")}]), encoding="utf-8")
+
+
+    gates = []
+    handle._weekly_gates = lambda eng, r: gates.append(r.run_id)
+
+
+    def morning(e):
+        """The two genuine failures of 09-30, booked and held the way _hold_for_retry leaves them."""
+        for rid, s, f in (("2026-09-30/wuwa/09-19-00", at(9, 12), at(9, 19)),
+                          ("2026-09-30/wuwa/09-30-00", at(9, 21), at(9, 30))):
+            r = rec(rid, s, f)
+            e.state.append_ledger(r)
+            e._pending[("OK-WW", "wuwa")] = r
+        e._persist_pending()
+
+
+    print("[09-30 原样：两次失败在等，第三趟被停一切停掉、AUTO-MAS 记成功]")
+    e = build()
+    morning(e)
+    press(e, at(9, 46, 40), at(9, 47, 30))
+    stopped = rec("2026-09-30/wuwa/09-47-05", at(9, 38), at(9, 47, 5), ok=True)
+    e._handle(stopped)
+    check("不进自愈", dict(e._recovered), {})
+    check("前面的失败不再等着重试", dict(e._pending), {})
+    check("重启读回来也是空的", dict(State(e.cfg.state_dir).load_pending() or {}).get("pending") or [], [])
+    check("没走成功那条路（周常门没碰）", gates, [])
+    # 2026-10-06: the failure before the stop is pushed, not dropped (「只要是报错…都要发」).
+    check("停一切之前那次失败进群一条", [t for t, _ in e.notifier.sent], ["❌ OK-WW 失败"])
+    check("说明后面那趟是停一切停掉的", all("停一切停掉" in b for _, b in e.notifier.sent), True)
+    ledger = e.state.read_ledger("2026-09-30")
+    row = [x for x in ledger if x["run_id"] == stopped.run_id]
+    check("账本记了这一趟", len(row), 1)
+    check("账本那行记着是停一切停掉的", (row[0]["raw"] or {}).get("manual_stop"), "09:46 停一切")
+    check("前两次失败还在账本里", sum(1 for x in ledger if not x["ok"]), 2)
+
+    print("\n[被停掉的那趟 AUTO-MAS 记成失败：也不当新失败压着等推]")
+    e = build()
+    press(e, at(9, 46, 40), at(9, 47, 30))
+    e._handle(rec("2026-09-30/endfield/09-47-10", at(9, 47, 0), at(9, 47, 12),
+                  script="MaaEnd", user="endfield"))
+    check("没进待推", dict(e._pending), {})
+    check("AUTO-MAS 记的失败照报一条（2026-10-06）", [t for t, _ in e.notifier.sent], ["❌ MaaEnd 失败"])
+    check("说明是停一切停掉的", all("停一切停掉" in b for _, b in e.notifier.sent), True)
+
+    print("\n[MaaEnd 被停掉：母本路线照样改回]")
+    restored = []
+    real_restore = collect_retry.restore_master
+    collect_retry.restore_master = lambda cfg: restored.append(1) or ""
+    e = build()
+    press(e, at(9, 46, 40), at(9, 47, 30))
+    e._handle(rec("2026-09-30/endfield/09-47-11", at(9, 47, 0), at(9, 47, 12),
+                  script="MaaEnd", user="endfield", ok=True))
+    check("restore_master 跑了", restored, [1])
+    collect_retry.restore_master = real_restore
+
+    print("\n[回归：窗口外的成功照旧算重试后成功（自愈）]")
+    gates.clear()
+    e = build()
+    morning(e)
+    press(e, at(8, 0), at(8, 1))
+    ok_later = rec("2026-09-30/wuwa/09-47-05", at(9, 38), at(9, 47, 5), ok=True)
+    e._handle(ok_later)
+    check("进了自愈", list(e._recovered), [("OK-WW", "wuwa")])
+    check("走了成功那条路", gates, [ok_later.run_id])
+    row = [x for x in e.state.read_ledger("2026-09-30") if x["run_id"] == ok_later.run_id]
+    check("账本那行没有手动停止记号", (row[0]["raw"] or {}).get("manual_stop"), None)
+
+    print("\n[没有按过红按钮（没有文件）：照旧]")
+    e = build()
+    morning(e)
+    e._handle(rec("2026-09-30/wuwa/09-47-05", at(9, 38), at(9, 47, 5), ok=True))
+    check("进了自愈", list(e._recovered), [("OK-WW", "wuwa")])
+
+    print("\n[日报：停掉的那趟是 ⏹ 不是 ✅，标题不说重试后成功]")
+
+
+    def entry(rid, s, f, ok, raw=None, failed=None):
+        return {"run_id": rid, "script": "OK-WW", "user": "wuwa",
+                "started": s.isoformat(), "finished": f.isoformat(), "ok": ok,
+                "failed_tasks": failed or [], "duration_known": True, "transitional": False,
+                "raw": raw or {}}
+
+
+    fail1 = entry("r1", at(9, 12), at(9, 19), False, failed=["日常"])
+    fail2 = entry("r2", at(9, 21), at(9, 30), False, failed=["日常"])
+    manual = entry("r3", at(9, 38), at(9, 47, 5), True,
+                   raw={"manual_stop": "09:46 停一切", "tasks_done": ["日常"]})
+    entries = [fail1, fail2, manual]
+    check("episode_kinds 把它记成 manual", core.episode_kinds(entries).get("r3"), "manual")
+    check("retried_notes 不把它当后来做成了", core.retried_notes(entries), {})
+    title, body = core.format_daily("2026-09-30", entries)
+    row3 = [ln for ln in body.splitlines() if "09:38" in ln]
+    check("那一行的图标是 ⏹", bool(row3) and row3[0].startswith("⏹"), True)
+    check("那一行不是 ✅", bool(row3) and row3[0].startswith("✅"), False)
+    check("有备注说明被停一切停掉", "被停一切中途停掉，不算成功也不算失败" in body, True)
+    check("标题不含「重试后成功」", "重试后成功" in title, False)
+    # Since 2026-10-11 (验收) two bare failures in a row are one line and one title item.
+    check("前两次仍按失败算（合成一行：连试 2 次没跑成）", ("鸣潮没跑成" in title, "连试 2 次没跑成" in body), (True, True))
+
+    title, body = core.format_daily("2026-09-30", [manual])
+    check("只有停掉的那趟：标题说有一趟被手动停止", title.endswith("其余全绿 ✅（有一趟被手动停止）"), True)
+
+    ok_run = entry("r4", at(10, 0), at(10, 20), True, raw={"tasks_done": ["日常"]})
+    retried = [fail1, ok_run, dict(manual, run_id="r5", started=at(11, 0).isoformat())]
+    title, _ = core.format_daily("2026-09-30", retried)
+    check("手动停止排在重试后成功之前", title.endswith("其余全绿 ✅（有一趟被手动停止）"), True)
+
+    print("\n[记分牌不算停掉的那趟]")
+    from ark_relay.features.report import scoreboard
+    calls = []
+    real_record = scoreboard.record
+    scoreboard.record = lambda *a, **k: calls.append(a)
+    st = State(tmpdir())
+    st.append_ledger(rec("x/1", at(9, 38), at(9, 47), ok=True))
+    m = rec("x/2", at(9, 38), at(9, 47), ok=True)
+    m.raw["manual_stop"] = "09:46 停一切"
+    st.append_ledger(m)
+    check("只记了正常那趟", len(calls), 1)
+    scoreboard.record = real_record
+
+
+def _part_notify_routing_main():
+    """日常消息只发一个渠道，报警才全发。
+
+2026-08-24 用户的原话："中继也不要同时发两边通知，只允许在一侧不通的时候采用
+另一侧……除了报警之外（报警的时候用双通道全发），其他时候都默认走一个通知。"
+
+同一份日报落到微信和 Server酱 两处只是烦，不会更可靠；冗余的价值在报警。把两者
+混为一谈的代价是真告警被日常噪声淹掉。
+
+Server酱 排在第一位不是随手定的：它没有 IP 白名单，用户实测"长期稳定，从来没出过
+问题"；企业微信在家宽后面，公网 IP 一转就 60020 全拒。
+
+    Formerly test_notify_routing.py.
+    """
+    import os, sys
+
+    TMP = tmpdir()
+    os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
+                      SERVERCHAN_KEY="", WECOM_CORPID="", ARK_LLM_KEY="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core.config import Config
+    from ark_relay.core.notify import Notifier
+
+
+    class Fake:
+        """一个够用的假通道：记下被调用过、可以被设成必然失败。"""
+        def __init__(self, log, name, broken=False):
+            self.log, self.name, self.broken = log, name, broken
+            self.enabled = True
+        def send_text(self, *a):
+            # 企业微信收的是 "标题\n\n正文" 拼好的一串，Server酱 收的是分开的两段。
+            # 只记标题那一段，调用方才好按标题筛。
+            self.log.append((self.name, a[0].split("\n")[0]))
+            if self.broken:
+                raise RuntimeError(f"{self.name} 挂了")
+
+
+    def build(broken=()):
+        log = []
+        n = Notifier(Config())
+        n.serverchan = Fake(log, "Server酱", "Server酱" in broken)
+        n.wecom_bot = Fake(log, "企业微信机器人", "企业微信机器人" in broken)
+        n.wecom = Fake(log, "企业微信", "企业微信" in broken)
+        return n, log
+
+
+    print("[三个通道各司其职：真报警进群，日报和其余走 Server酱，私聊永远不自动发]")
+    n, log = build()
+    check("日报发出去了", n.send("📋 日报", "正文", daily=True), [])
+    check("日报只走 Server酱（群机器人 2048 字节就截断成好几条）", [c for c, _ in log], ["Server酱"])
+    n, log = build()
+    check("报警发出去了", n.send("⚠️ 出错了", "正文", alert=True), [])
+    check("报警只进群机器人", [c for c, _ in log], ["企业微信机器人"])
+    n, log = build()
+    check("其余通知发出去了", n.send("🆕 游戏更新", "正文"), [])
+    check("其余通知只走 Server酱", [c for c, _ in log], ["Server酱"])
+
+    print("\n[Server酱 挂了：日报回退到群机器人（分条也比没有强），绝不落到私聊]")
+    n, log = build(broken=("Server酱",))
+    n._announcing = True
+    check("日报仍算送达", n.send("📋 日报", "正文", daily=True), [])
+    check("先试 Server酱，回退到群机器人", [c for c, t in log if t == "📋 日报"], ["Server酱", "企业微信机器人"])
+
+    print("\n[群机器人挂了：报警回退到 Server酱，绝不落到私聊]")
+    n, log = build(broken=("企业微信机器人",))
+    n._announcing = True
+    check("仍算送达", n.send("⚠️ 出错了", "正文", alert=True), [])
+    check("试了群机器人，回退到 Server酱", [c for c, t in log if t == "⚠️ 出错了"], ["企业微信机器人", "Server酱"])
+    check("企业微信私聊没被惊动", any(c == "企业微信" for c, _ in log), False)
+
+    print("\n[这条报警到底进没进群（errwatch 据此决定那行日志要不要再推）]")
+    n, log = build()
+    n.send("⚠️ 出错了", "正文", alert=True)
+    check("群机器人收了：进了群", n.went_to_group(), True)
+    n, log = build(broken=("企业微信机器人",))
+    n._announcing = True
+    n.send("⚠️ 出错了", "正文", alert=True)
+    check("群机器人没收、Server酱 收了：没进群", n.went_to_group(), False)
+    n, log = build()
+    n.send("🆕 游戏更新", "正文")
+    check("普通通知：没进群", n.went_to_group(), False)
+    check("只发群机器人的：进了群", (n.send_group("⚠️ 出错了", "正文"), n.went_to_group()), ([], True))
+
+    print("\n[Server酱 挂了：普通通知不往群里塞，也不进私聊，返回没送到]")
+    n, log = build(broken=("Server酱",))
+    n._announcing = True
+    check("返回失败", bool(n.send("🆕 游戏更新", "正文")), True)
+    check("只试了 Server酱", sorted({c for c, _ in log}), ["Server酱"])
+
+    print("\n[日报或手机页已经有的不再推：只记日志，算送达]")
+    from ark_relay.core.notify import route_of
+    for t in ("🔄 中继已更新（3 个文件）", "🗓️ 周常", "⏭️ 跳过模式", "🛑 已停一切", "📱 配置已修改",
+              "🗂️ 证据包已送出机器", "✅ 自动采集：补跑后全部走完",
+              "🩹 OK-WW 补丁（18 条）", "🥚 开始刷声骸", "✅ 无音区结算截图：不发了"):
+        check(f"只记日志：{t}", route_of(t, alert=t.startswith("⚠️")), "log")
+    # Success and acknowledgements only: a healthy patch round is log-only even when
+    # the caller sends texts.patches() with alert=True for its failure variant.
+    check("补丁全贴上（alert=True 也只记日志）", route_of("🩹 OK-WW 补丁（18 条）", alert=True), "log")
+    n, log = build()
+    check("只记日志的返回空（调用方不再重推）", n.send("🔄 中继已更新", "正文"), [])
+    check("一个通道都没碰", log, [])
+
+    print("\n[还会推的：报警进群，其余进 Server酱]")
+    for t in ("❌ OK-WW 失败", "⚠️ 这一轮没干完", "早班 没有运行", "🔌 AUTO-MAS 启动不起来", "⚠️ 中继自更新没成功",
+              "🛑 没能停干净",
+              "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走", "⚠️ 终末地 MaaEnd 卡死，没能结束",
+              "⏱️ 鸣潮（OK-WW）跑超时，AUTO-MAS 正在重试", "⏰ 早班超时还没跑完",
+              "❌ 明日方舟早班没跑成", "⚠️ 终末地晚班没干完",
+              # failures, so the group (the user, 2026-10-06: every error, every time)
+              "⚠️ 自动采集：补跑仍有路线没走通", "🚩 自动采集：有路线连续两天补跑失败，是复发性问题",
+              "⚠️ 森空岛给了不止一个终末地角色，没有读",
+              "🩺 中继自己报错了（3 条）",
+              # 2026-10-06 (「不论多少次什么错误都要发」): these left the log list / the
+              # Server酱 demotion, or are new
+              "⚠️ 明日方舟理智不够，这一趟没打",
+              "⏸ MaaEnd 进不了游戏，稍后补跑", "📱 配置没改成", "🧹 终末地配置清掉了死条目", "⚠️ 终末地配置里的死条目没能清", "⚠️ 预更新没能确认（1 项）", "⚠️ 游戏更新没能确认（2 项）",
+              "⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）", "🔌 推送通道故障：企业微信机器人"):
+        check(f"进群：{t}", route_of(t, alert=True), "group")
+    for t in ("🆕 预更新", "🆕 游戏更新", "🔁 更新后重跑", "🥚 刷声骸收工", "⏸ MaaEnd 进不了游戏，稍后补跑", "🌙 关机被取消",
+              "📱 配置没改成", "✗ set_stage: 找不到", "🔓 终末地日常已开回", "🗓️ 新的一周", "⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）",
+              "🔌 推送通道故障：企业微信", "💳 月卡快到期"):
+        check(f"Server酱：{t}", route_of(t), "info")
+    check("预更新没能确认：带 alert 就进群，不再降到 Server酱", route_of("⚠️ 预更新没能确认（1 项）", alert=True), "group")
+    check("日报走 Server酱", route_of("📋 09-14 · 全绿 ✅", daily=True), "daily")
+
+    print("\n[docs/NOTIFICATIONS.md 的表和代码一致]")
+    import re
+    from pathlib import Path as _P
+    _doc = (_P(__file__).resolve().parents[2] / "docs" / "NOTIFICATIONS.md").read_text(encoding="utf-8")
+    _rows = re.findall(r"^\| (.+?) \| (group|daily|info|log) \| ", _doc, flags=re.M)
+    check("表里至少 25 行", len(_rows) >= 25, True)
+    _probe = {"📋 日报 / 🔎 临时查看 / （补发）": ("📋 09-14 · 全绿", True, False),
+              "❌ <script> 失败": ("❌ OK-WW 失败", False, True),
+              "<队列> 没有运行 / 机器没开机": ("早班 没有运行", False, True),
+              "⏸ <script> 进不了游戏，稍后补跑": ("⏸ MaaEnd 进不了游戏，稍后补跑", False, True),
+              "📱 配置没改成 / ✗ …": ("✗ set_stage: 没有这个字段", False, True),
+              "⏭️ 跳过模式 / 🛑 已停一切 / 📱 配置已修改 / ✅ …": ("✅ 刷取关卡：TO-5 → 1-7", False, False),
+              "🩹 OK-WW 补丁（N 条）": ("🩹 OK-WW 补丁（18 条）", False, False),
+              "⚠️ OK-WW 补丁有 N 条没贴上": ("⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）", False, True),
+              "⚠️ 预更新没能确认 / ⚠️ 游戏更新没能确认": ("⚠️ 预更新没能确认（1 项）", False, True)}
+    for cell, want in _rows:
+        if cell in _probe:
+            title, daily, alert = _probe[cell]
+        else:
+            title, daily, alert = cell.split(" / ")[0], False, want == "group"
+        check(f"表：{cell} → {want}", route_of(title, alert=alert, daily=daily), want)
+
+    print("\n[自己好了的：一条都不发，日报里有（用户 2026-10-06 05:07）]")
+    # The user, 2026-10-06 05:07, on faults that fixed themselves: 「报错后自己好了的，只进日报、
+    # 不进群。本来不就这样吗？」 The doc's table 「Recovered by itself」 lists them; route_of cannot carry them (a
+    # failure-shaped title on the log list breaks R7 of test_user_switches), so the callers
+    # do not send them at all. Checked two ways: the table holds every one of them, and no
+    # send / push call in the relay names their texts.* title.
+    _sec = _doc.split("### Recovered by itself", 1)
+    check("文档有「Recovered by itself」那张表", len(_sec), 2)
+    _rec_rows = re.findall(r"^\| ([^|]+?) \| [^|]+ \| [^|]+ \|$", _sec[1].split("\n### ", 1)[0], flags=re.M) if len(_sec) == 2 else []
+    _rec_rows = [c for c in _rec_rows if not c.startswith(("Title", "---"))]
+    NOT_SENT = {"⚠️ <script> 中途失败过，重试后成功": "self_healed",
+                "⚠️ <script> 更新时失败过，重跑后成功": "healed_after_update",
+                "⚠️ <游戏><班>失败过，补跑后走通了": "makeup_passed",
+                "⚠️ 终末地装新版重启了这一趟（前面那趟已做完）": "MAAEND_UPDATE_AFTER_DONE",
+                "🔁 自动采集：只补跑失败的路线": "COLLECT_RETRY_START"}
+    for cell in NOT_SENT:
+        check(f"表里有：{cell}", cell in _rec_rows, True)
+        check(f"主表里没有它（它不再有路由）：{cell}", any(c == cell for c, _ in _rows), False)
+    check("中途重启那一行在（压着，后面那次定）", any(c.startswith("(an attempt AUTO-MAS recorded as a restart") for c in _rec_rows), True)
+    check("推送重试那一行在", any("推送传输失败" in c for c in _rec_rows), True)
+    _src = "\n".join(f.read_text(encoding="utf-8") for f in sorted([p for p in (_P(__file__).resolve().parents[1] / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks"} & set(p.parts)]))
+    for cell, name in NOT_SENT.items():
+        sent = re.findall(r"(?:\.send|\.send_group|_push_now|unresolved\.send)\((?:[^()]|\([^()]*\))*?texts\." + name + r"\b", _src)
+        check(f"没有哪个 send 发它：texts.{name}", sent, [])
+    from ark_relay.core import texts as _texts
+    check("只补跑失败的路线：不再被 route_of 硬塞进群", route_of(_texts.COLLECT_RETRY_START), "info")
+
+    print("\n[通道坏了：每一次被拒都报，不是每种故障报一次（2026-10-06）]")
+    n, log = build(broken=("企业微信机器人",))
+    check("第一条报警送到了（Server酱）", n.send("⚠️ 出错了", "正文", alert=True), [])
+    check("第二条报警送到了（Server酱）", n.send("⚠️ 又出错了", "正文", alert=True), [])
+    check("两次被拒，两条通道故障", len([t for c, t in log if t.startswith("🔌") and c == "Server酱"]), 2)
+    check("故障通知试的也是群的顺序：先群机器人，再 Server酱",
+          [c for c, t in log if t.startswith("🔌")][:2], ["企业微信机器人", "Server酱"])
+
+    print("\n[每条送到的推送记一行：走哪一路、哪个渠道收下（审查 10-13 s5 #4）]")
+    import logging
+
+
+    class _Grab(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.lines = []
+
+        def emit(self, record):
+            self.lines.append((record.levelno, record.getMessage()))
+
+
+    _g = _Grab()
+    from ark_relay.core import notify as _notify_mod
+    _nlog = _notify_mod.log
+    _nlog.addHandler(_g)
+    _lvl = _nlog.level
+    _nlog.setLevel(logging.INFO)
+    try:
+        n, log = build(broken=("Server酱",))
+        n._announcing = True
+        n.send("📋 日报", "正文", daily=True)
+        n, log = build()
+        n.send("⚠️ 出错了", "正文", alert=True)
+        n.send("🆕 游戏更新", "正文")
+        n.send_group("🎴 明天开新卡池：鸣潮", "正文")
+    finally:
+        _nlog.removeHandler(_g)
+        _nlog.setLevel(_lvl)
+    _info = [m for lv, m in _g.lines if lv == logging.INFO and "送到" in m]
+    check("日报回退到群机器人：这一行写了 daily 路和群机器人",
+          any("daily" in m and "企业微信机器人" in m and "📋 日报" in m for m in _info), True)
+    check("报警：group 路、群机器人", any("group" in m and "企业微信机器人" in m and "⚠️ 出错了" in m for m in _info), True)
+    check("其余通知：info 路、Server酱", any("info" in m and "Server酱" in m and "🆕 游戏更新" in m for m in _info), True)
+    check("只发群的：group 路、群机器人", any("group" in m and "企业微信机器人" in m and "🎴" in m for m in _info), True)
+    check("一条送到的推送只记一行", len(_info), 4)
+
+    print("\n[一个线程正在报通道故障时，另一个线程的被拒照样报（审查 10-13 s5 #5）]")
+    # The flag was one per Notifier: while errwatch's push thread announced an outage,
+    # a refusal on the main loop was only a WARNING line.
+    import threading
+    n, log = build(broken=("企业微信机器人",))
+    inside, release = threading.Event(), threading.Event()
+    _sc_send = n.serverchan.send_text
+
+
+    def _slow(title, body=""):
+        if title.startswith("🔌") and not inside.is_set():
+            inside.set()                     # thread A is now inside its announcement
+            release.wait(5)
+        return _sc_send(title, body)
+
+
+    n.serverchan.send_text = _slow
+    ta = threading.Thread(target=lambda: n.send("⚠️ 甲线程的报警", "正文", alert=True))
+    ta.start()
+    check("甲线程进了通道故障通知", inside.wait(5), True)
+    n.send("⚠️ 乙线程的报警", "正文", alert=True)
+    release.set()
+    ta.join(5)
+    check("两条报警各报了一次通道故障（Server酱 收到两条 🔌）",
+          len([t for c, t in log if c == "Server酱" and t.startswith("🔌")]), 2)
+
+    print("\n[默认就是日常，不是报警]")
+    n, log = build()
+    n.send("🆕 预更新", "")
+    check("预更新只走一处", [c for c, _ in log], ["Server酱"])
+
+
+def _part_notify_channels():  # noqa: C901
+    """推送通道自己那一层：一个挂了不能拖垮其余，失败原因必须回到调用方手里。
+
+`tests/test_notify_routing.py` 钉的是 `Notifier` 的**路由**（日常只走一处、报警全发），
+它底下挂的是假通道。这个文件钉的是**真通道类和它们的 HTTP 契约**——notify.py 的
+35 个函数里 22 个从来没被执行过，而这条路是「出了事你会不会知道」的唯一通道。
+
+这里防的损失，每一条都实际发生过（docs/PITFALLS.md）：
+
+* 企业微信因 60020（家宽公网 IP 一转就不在可信 IP 名单里）长期不可用。那天
+  `send()` 只要有一个通道报错就算失败，于是告警每 30 秒重推一次、`mark_report_sent`
+  永远不被调用、日报整夜重发，而关机要等日报——**机器一夜没关**。
+* 从日本连 sctapi.ftqq.com 偶尔在 TLS 握手中超时，下一次一秒就通。告警是一次性的、
+  没人补发，所以**传输失败必须重试**；而 HTTP 状态码是服务器的回答，403 问一百遍还是
+  403，必须立刻抛出去换下一个端点或通道，不许干等退避。
+* 企业微信文本上限是 2048 **字节**不是字数：自建应用悄悄截断（日报尾巴没了），群机器人
+  直接整条拒收——而正文是原样重试的，于是模型写出的一个超长段落能让日报每一次重试都
+  失败，关机路径就在那儿等一整夜。
+* 通道报错时把原因吞掉，调用方就没法判断要不要重试、更没法把「这条通道坏了」说给人听。
+
+所有 HTTP 都是假的：`urllib.request.urlopen` 在本进程里被换掉，没挂假响应的 URL 直接
+断言失败，任何一次真的联网都会当场变红。
+
+    Formerly test_notify_channels.py.
+    """
+    import json
+    import os
+    import types
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    TMP = tmpdir()
+    os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
+                      SERVERCHAN_KEY="", WECOM_CORPID="", WECOM_BOT_URL="",
+                      ARK_LLM_KEY="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import notify
+    from ark_relay.core.config import Config
+    from ark_relay.core.notify import (
+        Notifier, ServerChan, WeCom, WeComBot, _image_bytes_for_wecom,
+    )
+
+
+    def _short(v):
+        # 这个文件里有整段日报那么长的值，原样打出来会把屏幕刷满，反而看不见哪条红了。
+        text = repr(v)
+        return text if len(text) <= 120 else text[:117] + "..."
+
+
+    # ---------------------------------------------------------------- fake HTTP
+    # Replaces urlopen for this process only. An unrouted URL is a hard failure:
+    # a test that quietly reaches the real sctapi.ftqq.com is worse than no test.
+
+    class _Resp:
+        def __init__(self, text: str):
+            self._b = text.encode("utf-8")
+
+        def read(self):
+            return self._b
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+
+    ROUTES: list = []       # [(url fragment, handler)]
+    CALLS: list = []        # [(url, decoded request body)]
+
+
+    def route(fragment, handler):
+        ROUTES.append((fragment, handler))
+
+
+    def reset(*routes):
+        ROUTES.clear()
+        CALLS.clear()
+        for frag, handler in routes:
+            route(frag, handler)
+
+
+    def once(*results):
+        """A handler that hands back one result per call, then repeats the last."""
+        box = list(results)
+
+        def handler(_req):
+            return box.pop(0) if len(box) > 1 else box[0]
+        return handler
+
+
+    def fake_urlopen(req, timeout=None):
+        url = req if isinstance(req, str) else req.full_url
+        body = ""
+        if not isinstance(req, str) and req.data:
+            body = req.data.decode("utf-8", "replace")
+        CALLS.append((url, body))
+        for frag, handler in ROUTES:
+            if frag in url:
+                out = handler(req)
+                if isinstance(out, BaseException):
+                    raise out
+                return _Resp(json.dumps(out) if isinstance(out, dict) else out)
+        raise AssertionError(f"没挂假响应的 URL，测试差点真的联网: {url}")
+
+
+    urllib.request.urlopen = fake_urlopen
+
+
+    class _Clock:
+        """Stand-in for the `time` module inside notify: records the backoff sleeps
+    instead of actually waiting, so a 3-attempt retry test stays instant."""
+
+        def __init__(self):
+            self.slept: list = []
+            self.now = 1_000_000.0
+
+        def time(self):
+            return self.now
+
+        def sleep(self, seconds):
+            self.slept.append(seconds)
+
+
+    CLOCK = _Clock()
+    notify.time = CLOCK
+
+
+    def posted(fragment):
+        return [b for u, b in CALLS if fragment in u]
+
+
+    def urls(fragment=""):
+        return [u for u, _ in CALLS if fragment in u]
+
+
+    OK = {"errcode": 0, "errmsg": "ok"}
+    TOKEN = {"errcode": 0, "access_token": "tok-1", "expires_in": 7200}
+
+
+    def transport_error(_req):
+        return urllib.error.URLError("TLS handshake timed out")
+
+
+    def http_403(_req):
+        return urllib.error.HTTPError("https://x/", 403, "Forbidden", {}, None)
+
+
+    # --------------------------------------------------- _post: 什么该重试什么不该
+    print("[传输失败要重试：告警是一次性的，没人补发]")
+    reset(("fake.test", once(transport_error(None), transport_error(None), OK)))
+    CLOCK.slept.clear()
+    check("第三次通了就算成功", notify._post_json("https://fake.test/send", {}), OK)
+    check("一共试了 3 次", len(CALLS), 3)
+    check("退避了 2 次", len(CLOCK.slept), 2)
+    check("每次都在 [0, 上限] 里随机（full jitter）",
+          all(0 <= w <= hi for w, hi in zip(CLOCK.slept, (1.5, 3.0), strict=True)), True)
+
+
+    class _Edge:
+        """Stand-in for notify._rng that always draws one end of the interval."""
+
+        def __init__(self, top):
+            self.top = top
+
+        def uniform(self, lo, hi):
+            return hi if self.top else lo
+
+
+    print("\n[退避上限按指数翻倍、封顶；随机从 0 起，几台一起失败也不会一起重试]")
+    real_rng = notify._rng
+    notify._rng = _Edge(True)
+    reset(("fake.test", once(transport_error(None), transport_error(None), OK)))
+    CLOCK.slept.clear()
+    notify._post_json("https://fake.test/send", {})
+    check("上限依次 1.5、3.0 秒（指数）", CLOCK.slept, [1.5, 3.0])
+    check("上限封顶", notify._backoff(20), notify._BACKOFF_CAP)
+    notify._rng = _Edge(False)
+    check("下限是 0", notify._backoff(1), 0.0)
+    notify._rng = real_rng
+    draws = {round(notify._backoff(1), 6) for _ in range(50)}
+    check("真随机：50 次不全一样", len(draws) > 1, True)
+
+    print("\n[errcode -1「系统繁忙」：文档说稍候重试、不超过 3 次]")
+    reset(("fake.test", once({"errcode": -1, "errmsg": "system busy"}, OK)))
+    CLOCK.slept.clear()
+    check("第二次通了", notify._post_json("https://fake.test/send", {}), OK)
+    check("试了 2 次", len(CALLS), 2)
+    reset(("fake.test", once({"errcode": -1, "errmsg": "system busy"})))
+    got = notify._post_json("https://fake.test/send", {})
+    check("三次都忙：把 -1 原样交回调用方", (got.get("errcode"), len(CALLS)), (-1, 3))
+
+    print("\n[三次都失败：把传输失败的原因抛给调用方，不许悄悄返回空]")
+    reset(("fake.test", once(transport_error(None))))
+    try:
+        notify._post_json("https://fake.test/send", {})
+        check("必须抛异常", "没抛", "抛了")
+    except Exception as exc:  # noqa: BLE001
+        check("抛的是传输失败本身", "TLS handshake timed out" in str(exc), True)
+    check("试满 3 次才放弃", len(CALLS), 3)
+
+    print("\n[HTTP 状态码是服务器的回答，不是传输失败：立刻抛，不许干等退避]")
+    reset(("fake.test", once(http_403(None))))
+    CLOCK.slept.clear()
+    try:
+        notify._post_form("https://fake.test/send", {"a": "b"})
+        check("必须抛异常", "没抛", "抛了")
+    except urllib.error.HTTPError as exc:
+        check("原样把状态码抛出去", exc.code, 403)
+    check("只试了 1 次", len(CALLS), 1)
+    check("一秒都没等", CLOCK.slept, [])
+
+    # ------------------------------------------------------------- Server酱
+    print("\n[Server酱：sctp 是三代，多一个 uid 端点；SCT 是 Turbo，只有一个]")
+    check("SCT 只有一个端点",
+          ServerChan(types.SimpleNamespace(serverchan_key="SCTabc"))._endpoints(),
+          ["https://sctapi.ftqq.com/SCTabc.send"])
+    sctp = ServerChan(types.SimpleNamespace(serverchan_key="sctp123t456"))
+    check("sctp 两个端点，sctapi 在前",
+          [u.split("/")[2] for u in sctp._endpoints()],
+          ["sctapi.ftqq.com", "123.push.ft07.com"])
+
+    print("\n[第一个端点挂了就换第二个，一样算送达]")
+    reset(("sctapi.ftqq.com", once(http_403(None))),
+          ("push.ft07.com", once({"code": 0})))
+    sctp.send_text("⚠️ OK-WW 失败", "正文")
+    check("两个端点都试过", len(CALLS), 2)
+
+    print("\n[两个都失败：抛出来的原因里两个主机、两条理由都在]")
+    reset(("sctapi.ftqq.com", once(http_403(None))),
+          ("push.ft07.com", once({"code": 40001, "message": "bad pushkey"})))
+    try:
+        sctp.send_text("⚠️ 失败", "正文")
+        check("必须抛异常", "没抛", "抛了")
+    except RuntimeError as exc:
+        msg = str(exc)
+        check("第一个主机在里面", "sctapi.ftqq.com" in msg, True)
+        check("第二个主机也在", "123.push.ft07.com" in msg, True)
+        check("403 这条理由没被吞", "403" in msg, True)
+        check("40001 这条理由也没被吞", "40001" in msg, True)
+
+    print("\n[code 非 0 不许当成功：0 只代表 API 收下了，本来就不保证送达]")
+    reset(("sctapi.ftqq.com", once({"code": 40001, "message": "bad pushkey"})))
+    sct = ServerChan(types.SimpleNamespace(serverchan_key="SCTabc"))
+    try:
+        sct.send_text("标题", "正文")
+        check("必须抛异常", "没抛", "抛了")
+    except RuntimeError as exc:
+        check("原因里带着返回码", "40001" in str(exc), True)
+
+    print("\n[正文换行要加倍：Server酱 按 Markdown 渲染，单换行会被吃掉，日报糊成一坨]")
+    reset(("sctapi.ftqq.com", once({"code": 0})))
+    sct.send_text("标" * 200, "第一行\n第二行")
+    form = urllib.parse.parse_qs(posted("sctapi.ftqq.com")[0])
+    check("换行变成空行", form["desp"][0], "第一行\n\n第二行")
+    check("标题截到 100 字", len(form["title"][0]), 100)
+
+    # ------------------------------------------- 企业微信 2048 字节上限的切分
+    print("\n[短消息原样一条，不加「（1/1）」这种噪声]")
+    check("原样返回", WeCom._split("今天全绿"), ["今天全绿"])
+
+    # 企业微信 text 消息的真实硬上限。`_LIMIT` 比它小，留出「（1/3）」那个序号的位置——
+    # 序号是**打包之后**才贴上去的，所以要验的是成品，不是打包时用的那个数。
+    API_CAP = 2048
+
+
+    def widest(parts):
+        return max(len(p.encode("utf-8")) for p in parts)
+
+
+    print("\n[中文长日报：按 utf-8 **字节**算上限（按字数算，中文会整段漏过去）]")
+    # 这一段是专门挑的：字数**没到**上限，字节数早就超了。判据写成 len(text) 的话，
+    # 它会被原样当成一条发出去——自建应用悄悄截断尾巴，群机器人整条拒收。
+    long_zh = "\n".join(f"第 {i} 行：明日方舟今天刷了理智，掉落记在账上" for i in range(40))
+    check("字数没到 1800，字节数超过 2048",
+          (len(long_zh) <= WeCom._LIMIT, len(long_zh.encode("utf-8")) > API_CAP),
+          (True, True))
+    parts = WeCom._split(long_zh)
+    check("确实切开了", len(parts) > 1, True)
+    check("每段都进得了 2048 字节", widest(parts) <= API_CAP, True)
+    check("带序号", parts[0].startswith(f"（1/{len(parts)}）"), True)
+    rejoined = "\n".join(p.split("\n", 1)[1] for p in parts)
+    check("一行不丢、一行不改", rejoined, long_zh)
+
+    print("\n[没有换行的超长单行也必须切得开——群机器人是整条拒收，重试一万次也过不去]")
+    one_line = "刷" * 3000
+    parts = WeCom._split(one_line)
+    check("切开了", len(parts) > 1, True)
+    check("每段都进得了 2048 字节", widest(parts) <= API_CAP, True)
+    check("一个字都没丢",
+          "".join(p.split("\n", 1)[1].replace("\n", "") for p in parts), one_line)
+    check("_hard_wrap 按字节切，不按字数",
+          max(len(c.encode("utf-8")) for c in WeCom._hard_wrap(one_line, 50)) <= 50,
+          True)
+
+    # ------------------------------------------------------ 企业微信自建应用
+    WECOM_CFG = types.SimpleNamespace(
+        wecom_corpid="cid", wecom_secret="sec", wecom_agentid="1000002",
+        wecom_touser="@all")
+
+    print("\n[发送要带上 token；errcode 非 0 抛出，错误码必须留在原因里]")
+    reset(("gettoken", once(TOKEN)),
+          ("message/send", once({"errcode": 60020,
+                                 "errmsg": "not allow to access from your ip"})))
+    w = WeCom(WECOM_CFG)
+    try:
+        w.send_text("⚠️ 失败")
+        check("必须抛异常", "没抛", "抛了")
+    except RuntimeError as exc:
+        check("原因里有 60020", "60020" in str(exc), True)
+    check("请求带上了 token", "access_token=tok-1" in urls("message/send")[0], True)
+
+    print("\n[token 缓存住：连发两条只换一次 token]")
+    reset(("gettoken", once(TOKEN)), ("message/send", once(OK)))
+    w2 = WeCom(WECOM_CFG)
+    w2.send_text("第一条")
+    w2.send_text("第二条")
+    check("只取了一次 token", len(urls("gettoken")), 1)
+    check("两条都发出去了", len(urls("message/send")), 2)
+
+    print("\n[取 token 本身失败就抛，不许拿着空 token 去发]")
+    # message/send 也挂上假响应：万一真的被调用了，要红在「没有硬着头皮去发」这条上，
+    # 而不是红成一个看不懂的「URL 没挂假响应」。
+    reset(("gettoken", once({"errcode": 40001, "errmsg": "invalid secret",
+                             "access_token": ""})),
+          ("message/send", once(OK)))
+    try:
+        WeCom(WECOM_CFG).send_text("正文")
+        check("必须抛异常", "没抛", "抛了")
+    except RuntimeError as exc:
+        check("说清是 gettoken 失败", "gettoken" in str(exc) and "40001" in str(exc), True)
+    check("没有硬着头皮去发", urls("message/send"), [])
+
+    # ------------------------------------------------------------ 群机器人
+    print("\n[群机器人：errcode 非 0 抛出；它的字节上限比自建应用更严]")
+    check("上限 1800", WeComBot._LIMIT, 1800)
+    reset(("qyapi.weixin.qq.com/cgi-bin/webhook",
+           once({"errcode": 93000, "errmsg": "invalid webhook url"})))
+    bot = WeComBot(types.SimpleNamespace(
+        wecom_bot_url="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=k"))
+    try:
+        bot.send_text("正文")
+        check("必须抛异常", "没抛", "抛了")
+    except RuntimeError as exc:
+        check("原因里有 93000", "93000" in str(exc), True)
+
+    print("\n[超长日报按段发出去，不是一整条撞上限被拒]")
+    reset(("webhook", once(OK)))
+    bot.send_text("刷" * 3000)
+    check("拆成了多条", len(posted("webhook")) > 1, True)
+    check("每条正文都进得了 2048 字节",
+          max(len(json.loads(b)["text"]["content"].encode("utf-8"))
+              for b in posted("webhook")) <= API_CAP, True)
+
+    # ------------------------------------ Notifier：一个挂了不能拖垮其余
+    print("\n[真通道走完整条 HTTP 路径：日报进群、其余进 Server酱、自建应用不碰]")
+    cfg = Config()
+    cfg.serverchan_key = "SCTabc"
+    cfg.wecom_corpid, cfg.wecom_secret = "cid", "sec"
+    cfg.wecom_agentid, cfg.wecom_touser = "1000002", "@all"
+    cfg.wecom_bot_url = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=k"
+    reset(("gettoken", once(TOKEN)),
+          ("message/send", once({"errcode": 0})),
+          ("sctapi.ftqq.com", once({"code": 0})),
+          ("webhook", once({"errcode": 0})))
+    n = Notifier(cfg)
+    check("三个通道都算配好了", n.channels, ["企业微信", "企业微信机器人", "Server酱"])
+    check("日报算送达", n.send("📋 日报", "正文", daily=True), [])
+    check("Server酱 收到了日报（群机器人 2048 字节就截成好几条）", len(posted("sctapi.ftqq.com")), 1)
+    check("群机器人没收到日报", posted("webhook"), [])
+    check("普通通知算送达", n.send("🆕 游戏更新", "正文"), [])
+    check("Server酱 收到了普通通知", len(posted("sctapi.ftqq.com")), 2)
+    check("群机器人还是没收到", posted("webhook"), [])
+    check("自建应用从头到尾没被碰", posted("message/send"), [])
+
+    print("\n[群机器人拒收报警：回退到 Server酱；自建应用仍然不碰]")
+    reset(("gettoken", once(TOKEN)),
+          ("message/send", once({"errcode": 0})),
+          ("sctapi.ftqq.com", once({"code": 0})),
+          ("webhook", once({"errcode": 45009, "errmsg": "api freq out of limit"})))
+    n2 = Notifier(cfg)
+    check("报警仍算送达", n2.send("⚠️ OK-WW 失败", "正文", alert=True), [])
+    check("Server酱 接住了", len(posted("sctapi.ftqq.com")) >= 1, True)
+    check("自建应用没被碰", posted("message/send"), [])
+
+    print("\n[群通知没配机器人时必须报错，不能返回空当作发过了]")
+    # 卡池播报靠这个非空返回值决定「先别落记号，下轮再播」；返回空的话明天开的卡池就永远
+    # 不会有人知道。
+    cfg_nobot = Config()
+    cfg_nobot.serverchan_key = "SCTabc"
+    reset(("sctapi.ftqq.com", once({"code": 0})))
+    check("说清是机器人没开", Notifier(cfg_nobot).send_group("📣 明天开卡池", "正文"),
+          ["企业微信机器人没开"])
+    check("绝不偷偷改走 Server酱", posted("sctapi.ftqq.com"), [])
+
+    print("\n[发图出错要把原因返回，不许抛——它跑在日报发出之后，抛出去会把那一轮带走]")
+    check("没配机器人时说清楚",
+          Notifier(cfg_nobot).send_group_image(Path("/nonexistent.png")),
+          ["群机器人未配置"])
+    cfg_bot = Config()
+    cfg_bot.wecom_bot_url = "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=k"
+    reset(("webhook", once({"errcode": 40006, "errmsg": "invalid media size"})))
+    got = Notifier(cfg_bot).send_group_image(TMP / "shot.png")
+    check("发图失败返回原因而不是抛出", len(got), 1)
+    check("原因里有真东西", got[0] != "", True)
+
+    print("\n[一个通道都没配：配置闸门挡在启动之前，send 自己也不许报绿]")
+    blank = Config()
+    check("闸门认得出「没有任何推送渠道」",
+          any("推送渠道" in p for p in blank.validate()), True)
+    # 2026-09-08 补测试时发现的不对称：send_group 早就兜住了这一格，send 没有——
+    # 一个通道都没配时 failed 是空的，返回空列表就等于告诉调用方「送到了」。
+    # 生产上这条路够不到（上面那道配置闸门先拦），但「够不到所以无所谓」错一次就够了。
+    got = Notifier(blank).send("标题", "正文")
+    check("没有通道时 send() 必须报「没送到」，不许返回空", got != [], True)
+    check("原因说的是没配渠道", any("渠道" in x for x in got), True)
+
+    # ---------------------------------------------------- 发图前的体积处理
+    print("\n[超过 2MB 的截图要压下去，否则无音区结算截图整张发不出去]")
+    from PIL import Image
+    big = TMP / "big.png"
+    Image.frombytes("RGB", (1920, 1080), os.urandom(1920 * 1080 * 3)).save(big, "PNG")
+    check("原图确实超限", big.stat().st_size > 1_800_000, True)
+    check("压完在限内", len(_image_bytes_for_wecom(big)) <= 1_800_000, True)
+    small = TMP / "small.png"
+    Image.new("RGB", (64, 64), (10, 20, 30)).save(small, "PNG")
+    check("没超限的原样返回（重编码会让 md5 对不上）",
+          _image_bytes_for_wecom(small), small.read_bytes())
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_alert_dedup, _part_first_error_alert, _part_failure_alert, _part_group_long_alarm, _part_uptime_alarm, _part_errwatch_midnight_counts, _part_known_fixed_live, _part_unresolved, _part_silent_green_guards]))
+    sys.exit(run_parts([_part_alert_dedup, _part_first_error_alert, _part_failure_alert, _part_group_long_alarm, _part_uptime_alarm, _part_errwatch_midnight_counts, _part_known_fixed_live, _part_unresolved, _part_silent_green_guards, _part_alertlog_main, _part_alertlog_channel, _part_alertlog_no_lock_on_cos, _part_macpush, _part_every_failure_pushed, _part_recovered_daily_only, _part_manual_stop_backfill, _part_manual_stop_not_selfheal, _part_notify_routing_main, _part_notify_channels]))

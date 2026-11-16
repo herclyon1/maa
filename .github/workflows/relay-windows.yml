@@ -131,10 +131,5 @@ jobs:
         #                              38415311583: ModuleNotFoundError: No module named 'fcntl').
         run: >-
           scripts/ci/relay-tests.sh
-          --exclude test_need_table.py
-          --exclude test_order.py
-          --exclude test_estop_layout.py
-          --exclude test_deploy.py
-          --exclude test_techlog_tool.py
-          --exclude test_ff_toplevel.py
-          --exclude test_disk_tidy.py
+          --exclude test_ops_mac.py
+          --exclude test_ops_gates.py

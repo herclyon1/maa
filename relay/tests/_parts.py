@@ -140,6 +140,7 @@ def _restore(s: dict) -> None:
 
 def run_parts(parts) -> int:
     """Run each part in turn; 0 when every part passed, else 1. Never stops at a failed part."""
+    saved_outer = list(fails)
     failed = []
     for part in parts:
         print(f"\n===== {part.__name__}", flush=True)
@@ -164,5 +165,6 @@ def run_parts(parts) -> int:
             code = code or 1
         if code:
             failed.append(part.__name__)
+    fails[:] = saved_outer
     print("\n" + (f"FAILED parts: {', '.join(failed)}" if failed else f"all {len(parts)} parts passed"))
     return 1 if failed else 0

@@ -64,7 +64,7 @@ ALLOW = {
     "relay/app_main.py": ("ark.app", "ark.app.stop", "ark.app.stop_push"),
     "relay/pkg_layout.py": "ark.pkg",
     # Throwaway loggers a test builds for itself; nothing outside the test reads them.
-    "relay/tests/test_stop_during_boot.py": ("ark.test", "ark.test.stopwake"),
+    "relay/tests/test_boot.py": ("ark.test", "ark.test.stopwake"),
 }
 PAT = re.compile(r'getLogger\("([^"]+)"\)')
 

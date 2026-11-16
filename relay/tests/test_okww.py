@@ -1,18 +1,11 @@
-"""OK-WW's runs: the alive cache, drift, error events and reasons, the exit race, failed reasons, i18n, landed, names not numbers, the Python filter, the quiesce order, the report, structured lines.
-
-One part per former file, each run on its own (tests/_parts.py): test_okww_alive_cache.py, test_okww_drift.py, test_okww_error_event.py, test_okww_error_reason.py, test_okww_exit_race.py, test_okww_failed_reason.py, test_okww_i18n.py, test_okww_landed.py, test_okww_names_not_numbers.py, test_okww_python_filter.py, test_okww_quiesce_order.py, test_okww_report.py, test_okww_structured.py.
-"""
-# Each part imports the relay itself, after its own environment is set, as the file it was did at
-# its top.
+"""OK-WW collector, daily/nest/echo-farm overrides, and upstream patch pins."""
 # ruff: noqa: PLC0415
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
-# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
-# still reads as using all of it.
 _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
@@ -1355,5 +1348,6532 @@ def _part_okww_structured():
           collector_okww._okww_error(wrapped), "残象聚落：没打成")
 
 
+def _part_okww_battle_pass():
+    """OK-WW's battle-pass line is about the battle pass, not about a fight.
+
+DailyTask.claim_battle_pass (upstream src/task/DailyTask.py) opens the battle-pass
+page and logs 「can not battle pass, maybe ended」 when no level digits are read
+there; the claim is skipped and the run goes on. The relay's table read it as
+「没能进入战斗」 until 10-11 (found by the 游戏-中继二 session on 10-10, BOARD
+被指出.txt line 742). The lines below are the real ones of the 2026-09-29 09:28 run
+(D:\\ark\\automas\\history\\2026-09-29\\wuwa\\OK-WW-05-20-18.log, the ERROR line at
+09:28:53 and its neighbours), read off the game machine on 10-11.
+
+    Formerly test_okww_battle_pass.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import texts
+    from ark_relay.features.verify import collector_okww
+
+
+    REAL = """2026-09-29 09:28:42,334 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-29 09:28:43,334 INFO TaskExecutor DailyTask:battle pass
+2026-09-29 09:28:53,798 INFO TaskExecutor TaskExecutor:wait_until timeout <function OCR.wait_ocr.<locals>.<lambda> at 0x000002BC775F9C60> 10 seconds
+2026-09-29 09:28:53,798 ERROR TaskExecutor DailyTask:can not battle pass, maybe ended
+2026-09-29 09:28:53,807 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+"""
+    REAL = REAL.replace("maybe ended\n", "maybe ended \n")    # upstream's line ends in a space
+    WANT = f"日常清单：{texts.OKWW_BATTLE_PASS_UNCLAIMED}"
+
+    print("[the battle-pass line is translated as the battle pass]")
+    said = collector_okww._okww_say("DailyTask", "can not battle pass, maybe ended", "")
+    check("the sentence for the raw line", said, WANT)
+    check("it names 战令", "战令" in said)
+    check("it no longer says 没能进入战斗", "没能进入战斗" in said, False)
+    check("plain language", texts.plain(said), [])
+    # When OK-WW records the line as the run's 错误 (info_set), the report takes this path.
+    recorded = REAL.replace(
+        "maybe ended \n",
+        "maybe ended \n2026-09-29 09:28:53,799 INFO TaskExecutor DailyTask:info_set 错误 can not battle pass, maybe ended\n")
+    recorded = "2026-09-29 09:27:30,000 INFO TaskExecutor DailyTask:info_set current task claim mail\n" + recorded
+    check("recorded as the run's reason -> the same battle-pass sentence", collector_okww._okww_error(recorded), WANT)
+    check("the 「not in combat」 line keeps its own fight wording",
+          collector_okww._okww_say("BaseCombatTask", "combat check not in combat", ""), "战斗：没有进入战斗")
+
+
+def _part_okww_battle_pass_claim():
+    """OK-WW's battle pass (先约电台): a page that did not open is tried once more, then reported.
+
+Upstream's DailyTask.claim_battle_pass presses Alt, clicks the podcast icon and waits
+10 s for the level number; with none it logs 「can not battle pass, maybe ended」 and
+the run ends 「Daily Task Completed」. 2026-09-29 09:28 that happened, the day's podcast
+points went unclaimed, and the relay said nothing (BOARD 未进群报错-OKWW-AUTOMAS-1010.md).
+The user (10-11 17:36) on the daily podcast points lost: 「鸣潮战令没领会导致每日的战令点数丢失，
+为什么你不去查清楚？」 (he asked why nobody had looked into it).
+
+The overlay now photographs the miss, goes back to the world and opens the page once
+more in the same run; a second miss is an item undone in 「⚠️ 这一轮没干完」
+(outcome.battle_pass_checks). Upstream's real method is the one in
+fixtures/okww-DailyTask-v3.7.4.py.txt (read off the game machine on 10-11; upstream
+master had the same body that day).
+
+    Formerly test_okww_battle_pass_claim.py.
+    """
+    import ast
+    import re
+    import tempfile
+    import textwrap
+    import types
+
+    HERE = Path(__file__).resolve().parent
+    sys.path.insert(0, str(HERE.parent))
+    from ark_relay.core import texts
+    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features.verify import outcome
+
+
+    # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.4 until 2026-11-02.
+    UPSTREAM = (fx_dir(HERE, "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "DailyTask.py.txt").read_text(encoding="utf-8")
+
+
+    def overlay():
+        """A fresh copy of the overrides file. Its own install block fails here (no OK-WW) and is caught."""
+        ns = {"__name__": "ark_overrides_test"}
+        exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+        ns["_applied"].clear()
+        ns["_skipped"].clear()
+        return ns
+
+
+    def upstream_method(text=UPSTREAM):
+        """Upstream's claim_battle_pass as a plain function of self, cut out of the file."""
+        tree = ast.parse(text)
+        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "DailyTask")
+        fn = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "claim_battle_pass")
+        lines = text.splitlines(keepends=True)[fn.lineno - 1:fn.end_lineno]
+        scope = {"re": re}
+        exec(compile(textwrap.dedent("".join(lines)), "DailyTask.py", "exec"), scope)
+        return scope["claim_battle_pass"]
+
+
+    class Box:
+        def __init__(self, name):
+            self.name = name
+
+
+    class Game:
+        """The world and the podcast page. `opens` says, per Alt+click, whether the page comes up."""
+
+        def __init__(self, opens, level="37", icon=(0.86, 0.05)):
+            self.opens = list(opens)
+            self.icon = icon
+            self.level = level
+            self.page = False
+            self.acts, self.logs, self.errors, self.shots = [], [], [], []
+
+        # input
+        def send_key_down(self, key):
+            self.acts.append(("down", key))
+
+        def send_key_up(self, key):
+            self.acts.append(("up", key))
+
+        def sleep(self, s):
+            self.acts.append(("sleep", s))
+
+        def click_relative(self, x, y, **kw):
+            self.acts.append(("click_relative", x, y, tuple(sorted(kw.items()))))
+            if (x, y) == self.icon:
+                self.page = self.opens.pop(0) if self.opens else False
+
+        def click(self, x, y, **kw):
+            self.acts.append(("click", x, y, tuple(sorted(kw.items()))))
+
+        # reading
+        def wait_ocr(self, x, y, to_x, to_y, match=None, post_action=None, **kw):
+            self.acts.append(("wait_ocr", x, y, to_x, to_y, match.pattern if match else None,
+                              post_action is not None, tuple(sorted(kw.items()))))
+            if post_action is not None and self.page:
+                post_action()
+            return [Box(self.level)] if self.page else None
+
+        def ocr(self, *a, **kw):
+            return [Box("先约电台" if self.page else "大世界")]
+
+        def box_of_screen(self, *a):
+            return a
+
+        def screenshot(self, name):
+            self.shots.append(name)
+
+        def ensure_main(self, *a, **kw):
+            self.page = False
+            self.acts.append(("ensure_main",))
+
+        # logging
+        def log_info(self, msg, **kw):
+            self.logs.append(msg)
+
+        def log_error(self, msg, *a, **kw):
+            self.errors.append(msg)
+
+        # ok-script's translation (v3.7.14-beta.2 wraps log sentences in it); English here
+        def tr(self, msg):
+            return msg
+
+
+    def as_log(game):
+        """The lines as OK-WW writes them for the task executor (what the relay reads)."""
+        out = [f"2026-10-12 09:30:{i:02d},000 INFO TaskExecutor DailyTask:{m}" for i, m in enumerate(game.logs)]
+        out += [f"2026-10-12 09:31:{i:02d},000 ERROR TaskExecutor DailyTask:{m} " for i, m in enumerate(game.errors)]
+        return "\n".join(out) + "\n"
+
+
+    def no_logs(acts):
+        return [a for a in acts if a[0] != "sleep"]
+
+
+    ns = overlay()
+
+    print("[the pin is upstream's real body]")
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "DailyTask.py").write_text(UPSTREAM, encoding="utf-8")
+        got = okww_overlay._method_sha(okww_overlay._classes(Path(d)), "DailyTask", "claim_battle_pass")
+    check("sha of claim_battle_pass in the installed v3.7.14-beta.2 == _BATTLE_PASS_SHA", got, ns["_BATTLE_PASS_SHA"])
+    check("the overlay reads the same level box upstream does",
+          "self.wait_ocr(0.2, 0.13, 0.32, 0.22" in UPSTREAM and ns["BATTLE_PASS_LEVEL_BOX"] == (0.2, 0.13, 0.32, 0.22), True)
+    check("the overlay's line markers are the ones outcome reads",
+          (ns["BATTLE_PASS_OK"], ns["BATTLE_PASS_RETRY"], ns["BATTLE_PASS_FAILED"], ns["BATTLE_PASS_UNCHECKED"]),
+          (outcome._BATTLE_PASS_OK, outcome._BATTLE_PASS_RETRY, outcome._BATTLE_PASS_FAILED,
+           outcome._BATTLE_PASS_UNCHECKED))
+
+    print("\n[page opens at once: upstream's clicks, nothing more]")
+    up = Game([True])
+    upstream_method()(up)
+    ours = Game([True])
+    ns["_claim_battle_pass_checked"](ours)
+    check("same inputs and reads as upstream, in the same order", no_logs(ours.acts), no_logs(up.acts))
+    check("no screenshot, no error", (ours.shots, ours.errors), ([], []))
+    check("the green line names the level read", ours.logs[-1], f"{ns['BATTLE_PASS_OK']}37）")
+    c = outcome.battle_pass_checks(as_log(ours))
+    check("relay: one green battle-pass item", [(x.label, x.ok, x.detail) for x in c],
+          [(texts.OKWW_BATTLE_PASS_LABEL, True, "")])
+
+    print("\n[first try misses (09-29 09:28), second opens: claimed in the same run]")
+    g = Game([False, True])
+    ns["_claim_battle_pass_checked"](g)
+    opens = [a for a in g.acts if a[:3] == ("click_relative", 0.86, 0.05)]
+    check("the page was opened exactly twice", len(opens), 2)
+    check("a screenshot of the miss", g.shots, ["battle_pass_unopened_1"])
+    check("back to the world between the two tries",
+          g.acts.index(("ensure_main",)) < [i for i, a in enumerate(g.acts) if a[:3] == ("click_relative", 0.86, 0.05)][1],
+          True)
+    check("the miss says what the screen showed", any(m.startswith(ns["BATTLE_PASS_RETRY"]) and "整屏读到" in m
+                                                       for m in g.logs), True)
+    check("no ERROR line once the retry worked", g.errors, [])
+    check("the claim clicks ran after the second open",
+          ("click_relative", 0.04, 0.3, (("after_sleep", 1),)) in g.acts, True)
+    c = outcome.battle_pass_checks(as_log(g))
+    check("relay: green, saying it took a second try", [(x.ok, x.detail) for x in c],
+          [(True, texts.OKWW_BATTLE_PASS_RETRIED)])
+
+    print("\n[both tries miss: reported, nothing clicked blind]")
+    g = Game([False, False])
+    ns["_claim_battle_pass_checked"](g)
+    check("opened twice, no third time", len([a for a in g.acts if a[:3] == ("click_relative", 0.86, 0.05)]), 2)
+    check("two screenshots", g.shots, ["battle_pass_unopened_1", "battle_pass_unopened_2"])
+    check("upstream's own sentence is still logged", g.errors, ["can not battle pass, maybe ended"])
+    check("the failed line", any(m.startswith(ns["BATTLE_PASS_FAILED"]) for m in g.logs), True)
+    check("no claim clicks on a page that is not there",
+          [a for a in g.acts if a[0] == "click_relative" and a[1:3] != (0.86, 0.05)], [])
+    check("ends back in the world", g.acts[-1], ("ensure_main",))
+    c = outcome.battle_pass_checks(as_log(g))
+    check("relay: one red item, the plain sentence", [(x.label, x.ok, x.detail) for x in c],
+          [(texts.OKWW_BATTLE_PASS_LABEL, False, texts.OKWW_BATTLE_PASS_FAILED)])
+
+    print("\n[installed on DailyTask: our copy when the body matches, upstream's otherwise]")
+
+
+    def install(text):
+        mod = types.ModuleType("src.task.DailyTask")
+        mod.DailyTask = type("DailyTask", (), {})
+        # inspect.getsource needs the function to come from a file; give it the fixture's text.
+        with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as fh:
+            fh.write("import re\n\n\nclass DailyTask:\n" + "".join(
+                text.splitlines(keepends=True)[_span(text)[0]:_span(text)[1]]))
+        scope = {}
+        exec(compile(Path(fh.name).read_text(encoding="utf-8"), fh.name, "exec"), scope)
+        mod.DailyTask.claim_battle_pass = scope["DailyTask"].claim_battle_pass
+        sys.modules.update({"src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+                            "src.task.DailyTask": mod})
+        n = overlay()
+        n["_install_battle_pass"]()
+        return n, mod.DailyTask
+
+
+    def _span(text):
+        tree = ast.parse(text)
+        cls = next(x for x in tree.body if isinstance(x, ast.ClassDef) and x.name == "DailyTask")
+        fn = next(x for x in cls.body if isinstance(x, ast.FunctionDef) and x.name == "claim_battle_pass")
+        return fn.lineno - 1, fn.end_lineno
+
+
+    n, cls = install(UPSTREAM)
+    check("applied, nothing skipped", (n["_applied"], n["_skipped"]), (["DailyTask.claim_battle_pass"], []))
+    g = Game([False, True])
+    cls.claim_battle_pass(g)
+    check("the installed method retries", len([a for a in g.acts if a[:3] == ("click_relative", 0.86, 0.05)]), 2)
+
+    # Only words changed (ledger #130's kind: v3.7.13 -> v3.7.14-beta.2 wrapped the log text in
+    # self.tr): another text, the same shape - our copy goes on, listed as adapted, not skipped
+    # (dispatch relay-opt-round3-1108 O-02).
+    WORDED = re.sub(r"self\.tr\(('[^']*')\)", r"\1", UPSTREAM)
+    check("the worded body really differs from the pin", WORDED != UPSTREAM, True)
+    n, cls = install(WORDED)
+    check("words only: applied, nothing skipped", (n["_applied"], n["_skipped"]), (["DailyTask.claim_battle_pass"], []))
+    check("words only: listed as adapted, saying the structure is unchanged",
+          [(a["what"], "代码结构没变" in a["why"]) for a in n["_adapted"]], [("DailyTask.claim_battle_pass", True)])
+    g = Game([False, True])
+    cls.claim_battle_pass(g)
+    check("words only: our copy runs (it retries)",
+          len([a for a in g.acts if a[:3] == ("click_relative", 0.86, 0.05)]), 2)
+
+    CHANGED = UPSTREAM.replace("self.click_relative(0.86, 0.05)", "self.click_relative(0.87, 0.05)")
+    n, cls = install(CHANGED)
+    check("changed upstream body: listed as skipped", [s["what"] for s in n["_skipped"]],
+          ["DailyTask.claim_battle_pass（战令没打开时再开一次）"])
+    g = Game([False])
+    cls.claim_battle_pass(g)
+    check("changed upstream body: upstream's own runs (its click, one try)",
+          [a for a in g.acts if a[0] == "click_relative"], [("click_relative", 0.87, 0.05, ())])
+    check("changed upstream body: the log says so", any(m.startswith(ns["BATTLE_PASS_UNCHECKED"]) for m in g.logs), True)
+    check("changed upstream body + miss: still red (upstream's sentence)",
+          [(x.ok, x.detail) for x in outcome.battle_pass_checks(as_log(g))],
+          [(False, texts.OKWW_BATTLE_PASS_UNCLAIMED)])
+    g = Game([True], icon=(0.87, 0.05))
+    cls.claim_battle_pass(g)
+    check("changed upstream body + page opened: green, saying no retry was there",
+          [(x.ok, x.detail) for x in outcome.battle_pass_checks(as_log(g))],
+          [(True, texts.OKWW_BATTLE_PASS_UNCHECKED)])
+
+    print("\n[the relay: the real 09-29 run is an item undone]")
+    REAL_0929 = """2026-09-29 09:28:31,805 INFO TaskExecutor DailyTask:info_set current task claim mail
+2026-09-29 09:28:42,334 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-29 09:28:43,334 INFO TaskExecutor DailyTask:battle pass
+2026-09-29 09:28:53,798 INFO TaskExecutor TaskExecutor:wait_until timeout <function OCR.wait_ocr.<locals>.<lambda> at 0x000002BC775F9C60> 10 seconds
+2026-09-29 09:28:53,798 ERROR TaskExecutor DailyTask:can not battle pass, maybe ended
+2026-09-29 09:28:53,807 INFO TaskExecutor DailyTask:info_set current task wait main esc=True
+2026-09-29 09:28:56,346 INFO TaskExecutor DailyTask:info_set current task in main esc=True
+2026-09-29 09:28:56,346 INFO TaskExecutor DailyTask:Daily Task Completed
+"""
+    checks = outcome.okww_checks(REAL_0929, expect_nest=False)
+    bp = [x for x in checks if x.label == texts.OKWW_BATTLE_PASS_LABEL]
+    check("09-29: a red battle-pass item", [(x.ok, x.detail) for x in bp], [(False, texts.OKWW_BATTLE_PASS_UNCLAIMED)])
+    msg = outcome.summarize(checks, "OK-WW")
+    check("09-29: the push names the battle pass", msg is not None and texts.OKWW_BATTLE_PASS_LABEL in msg, True)
+    done_before = "2026-09-29 09:21:00,000 INFO TaskExecutor DailyTask:info_set total daily points 100\n" + REAL_0929
+    bp = [x for x in outcome.okww_checks(done_before, expect_nest=False) if x.label == texts.OKWW_BATTLE_PASS_LABEL]
+    check("dailies already done before the run: the battle pass is still checked", [x.ok for x in bp], [False])
+    OLD = (fx_dir(HERE, "fixtures") / "okww-1006-run.log").read_text(encoding="utf-8", errors="replace")
+    check("a clean run from before the overlay line: no battle-pass item, no false red",
+          outcome.battle_pass_checks(OLD), [])
+    LABEL = "战令改动在跑（没打开时同一趟再开一次）"
+    ran = {c.label: c.ok for c in outcome.patch_effect_checks(as_log(ours))}
+    check("patch check: our copy ran where upstream's step began", ran.get(LABEL), True)
+    check("patch check: upstream's line alone (09-29) = our copy did not run",
+          {c.label: c.ok for c in outcome.patch_effect_checks(REAL_0929)}.get(LABEL), False)
+    check("patch check: upstream's ERROR line is not the trigger",
+          LABEL in {c.label for c in outcome.patch_effect_checks(
+              "2026-09-29 09:28:53,798 ERROR TaskExecutor DailyTask:can not battle pass, maybe ended \n")}, False)
+    check("plain language", [texts.plain(t) for t in (texts.OKWW_BATTLE_PASS_LABEL, texts.OKWW_BATTLE_PASS_FAILED,
+                                                        texts.OKWW_BATTLE_PASS_RETRIED, texts.OKWW_BATTLE_PASS_UNCHECKED)],
+          [[], [], [], []])
+
+    print("\n[between two seasons (11-11 09:32, alarm #164): the game says 暂未开播 - nothing owed]")
+    # The run's own lines, read off the game machine on 11-11: both tries met the game's
+    # notice (NOTICE below) and the run went on to "Daily Task Completed". It was pushed
+    # to the group as an item undone that morning.
+    REAL_1111 = (fx_dir(HERE, "fixtures") / "okww-1111-battle-pass-closed.log").read_text(encoding="utf-8")
+    NOTICE = "当前先约电台各频道暂未开播，请于下期先约电台频道开启时间段内进入。"
+    check("the sample holds the notice on both misses and upstream's ERROR line",
+          (REAL_1111.count(NOTICE), "can not battle pass, maybe ended" in REAL_1111, "战令没领到：" in REAL_1111),
+          (2, True, True))
+    c = outcome.battle_pass_checks(REAL_1111)
+    check("11-11: one item, passed, kind SKIPPED, the closed-season sentence",
+          [(x.label, x.ok, x.detail, x.kind) for x in c],
+          [(texts.OKWW_BATTLE_PASS_CLOSED, True, "", outcome.SKIPPED)])
+    checks = outcome.okww_checks(REAL_1111, expect_nest=False, expect_stamina=False)
+    check("11-11: nothing about the battle pass is red in the whole verdict",
+          [x.label for x in checks if not x.ok and ("战令" in x.label or "战令" in x.detail)], [])
+    check("11-11: the old red label is gone from the verdict",
+          texts.OKWW_BATTLE_PASS_LABEL in [x.label for x in checks], False)
+    check("11-11: no push for this run", outcome.summarize(checks, "OK-WW"), None)
+    other = outcome.Check("别的一项", False, "别的原因")
+    msg = outcome.summarize(checks + [other], "OK-WW")
+    check("with another item red: said under 按周期今天不跑, not as undone nor as 干成的",
+          ("有 1 项没干成" in msg, "按周期今天不跑：" + texts.OKWW_BATTLE_PASS_CLOSED in msg,
+           texts.OKWW_BATTLE_PASS_CLOSED in msg.split("干成的：")[-1] if "干成的：" in msg else False),
+          (True, True, False))
+    # The last miss decides. Notice on the first try only, a blank page on the second: still red.
+    lines = REAL_1111.splitlines()
+    last = [i for i, ln in enumerate(lines) if "战令没领到：" in ln][-1]
+    blank = "\n".join(lines[:last] + [lines[last].replace(NOTICE, "鸣潮")] + lines[last + 1:]) + "\n"
+    check("notice gone on the last try: red as before",
+          [(x.label, x.ok, x.detail) for x in outcome.battle_pass_checks(blank)],
+          [(texts.OKWW_BATTLE_PASS_LABEL, False, texts.OKWW_BATTLE_PASS_FAILED)])
+    # Notice on the first try, the page open on the second: claimed, said as a retry.
+    retry = [ln for ln in lines if "战令：第一次没打开" in ln][0]
+    opened = retry + "\n2026-11-11 09:32:16,526 INFO TaskExecutor DailyTask:" + ns["BATTLE_PASS_OK"] + "37）（第二次打开的）\n"
+    check("notice on the first try, opened on the second: green with the retry said",
+          [(x.label, x.ok, x.detail) for x in outcome.battle_pass_checks(opened)],
+          [(texts.OKWW_BATTLE_PASS_LABEL, True, texts.OKWW_BATTLE_PASS_RETRIED)])
+    # The word alone, away from the overlay's final-miss line, decides nothing.
+    check("upstream's sentence alone plus the word elsewhere: red (no overlay line to read the screen from)",
+          [(x.ok, x.detail) for x in outcome.battle_pass_checks(
+              REAL_0929 + "2026-09-29 09:29:00,000 INFO TaskExecutor DailyTask:暂未开播\n")],
+          [(False, texts.OKWW_BATTLE_PASS_UNCLAIMED)])
+    check("the closed-season sentence is plain language", texts.plain(texts.OKWW_BATTLE_PASS_CLOSED), [])
+
+
+def _part_okww_claim_readback():  # noqa: C901
+    """Weekly boss claim: upstream's claim step with 确认 for its ESC, and the read-back.
+
+Runs the real overlay (claim hook, level-page read, 开启挑战 split) against
+upstream's own call order, with the game's real text:
+
+  (E) crystal -> F -> claim dialog -> 确认 (not ESC) -> 「波片不够，动用备用体力」 ->
+      确认 again -> settlement page -> 「退出副本」
+  backup used and still short (10-12 11:44): 取消, skipped as short, no solute
+  read-back: the way back in reads the counter on the level page, which has to be
+      one less - ok-script.log 2026-10-05 22:13:04 3/3, 22:15:19 2/3, 22:17:31 1/3,
+      22:39:48 0/3; unchanged / unread / some other number stops
+  no crystal / the walk to it fails (10-12 09:52:20, OK-WW-05-18-47.log:1103-1109):
+      no stop, the lap goes back to upstream
+  a dialog that is not the claim dialog, or not the weekly boss: upstream's ESC
+  unread 「本周剩余可收取次数」 before entering: stop, not 「enter anyway」
+  开启挑战: a dialog that is up but not recognised is never confirmed (the
+      「无法获取奖励」 reminder comes after 单人挑战 under v3.7.4, see
+      test_okww_weekly_entry_paths.py)
+
+    Formerly test_okww_claim_readback.py.
+    """
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.okww_patch import okww_overlay
+
+
+    class Disabled(Exception):
+        """ok.TaskDisabledException."""
+
+
+    class Revived(Exception):
+        """src.task.BaseCombatTask.CharRevivedException."""
+
+
+    class _Any(type):
+        """A stand-in upstream class: any method _install_hooks reads exists and does nothing."""
+        def __getattr__(cls, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+
+            def anything(self, *a, **kw):
+                return None
+            return anything
+
+
+    class BaseWWTask(metaclass=_Any):
+        # Upstream v3.7.4 BaseWWTask.py:520-526, verbatim: ESC, i.e. 取消.
+        def handle_claim_button(self):
+            while self.wait_until(self.has_claim, raise_if_not_found=False, time_out=1.5):
+                self.sleep(0.5)
+                self.send_key('esc')
+                self.sleep(0.5)
+                return True
+
+        # Upstream v3.7.4 BaseWWTask.py:584-590, with find_one('pick_up_f...') as `f_up`.
+        def pick_f(self, handle_claim=True):
+            if self.f_up:
+                self.send_key('f', after_sleep=1)
+                if not handle_claim:
+                    return True
+                if not self.handle_claim_button():
+                    return True
+
+        def click_on_book_target(self, serial_number, total_number, structure=None):
+            self.events.append("book")
+            return True                 # the team screen, no spoiler dialog
+
+        # Upstream v3.7.3 BaseWWTask.py:1115-1117, verbatim: the overlay replaces it
+        # only while its source still hashes to the pin.
+        def click_team_challenge(self):
+            self.wait_click_feature('team_start_challenge', raise_if_not_found=True, click_after_delay=0.5, after_sleep=1)
+            self.wait_click_skip_dialog_confirm()
+
+
+    class FarmEchoTask(BaseWWTask):
+        def teleport_to_configured_boss(self):
+            # Upstream v3.7.4 FarmEchoTask.py:273-308, reduced to the steps after the book.
+            self.entries += 1
+            is_team = self.click_on_book_target(1, 9)
+            if is_team and not self.arena:
+                self.click_configured_boss_level()
+                self.click_solo_challenge()
+                self.click_team_challenge()
+            self.wait_in_team_and_world(time_out=120)
+            return is_team
+
+        def teleport_to_configured_boss_and_prepare(self):
+            # Upstream v3.7.3 FarmEchoTask.py:243-266, reduced.
+            try:
+                self.teleport_to_configured_boss()
+            except Exception as e:
+                raise RuntimeError("Teleport to boss failed") from e
+            self.prepared = "realm"
+
+        def click_configured_boss_level(self):
+            self.events.append("level")
+
+        # Upstream v3.7.4 FarmEchoTask.py:374-378, verbatim.
+        def click_solo_challenge(self):
+            self.click(0.880, 0.911, after_sleep=2)
+            self.wait_click_skip_dialog_confirm(time_out=1)
+
+        def combat_once(self, wait_combat_time=200, raise_if_not_found=True, target=False):
+            return True
+
+        def incr_drop(self, dropped):
+            self.events.append("incr")
+
+
+    mods = {
+        "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
+                                    Logger=types.SimpleNamespace(get_logger=lambda n: types.SimpleNamespace(
+                                        info=lambda *a, **k: None, error=lambda *a, **k: None))),
+        "src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+        "src.task.BaseCombatTask": types.SimpleNamespace(CharRevivedException=Revived),
+        "src.task.BaseWWTask": types.SimpleNamespace(BaseWWTask=BaseWWTask),
+        "src.task.FarmEchoTask": types.SimpleNamespace(FarmEchoTask=FarmEchoTask),
+    }
+    for name in ("DailyTask", "ForgeryTask", "SimulationTask", "TacetTask"):
+        mods[f"src.task.{name}"] = types.SimpleNamespace(**{name: _Any(name, (), {})})
+    _saved = {k: sys.modules.get(k) for k in mods}
+    sys.modules.update(mods)
+
+    ns = {}
+    exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+    if "FarmEchoTask.incr_drop" not in ns["_applied"]:
+        ns["_install_claim"]()
+    check("领奖、走去结晶、读次数、开启挑战四处都换上了", all(x in ns["_applied"] for x in (
+        "FarmEchoTask.handle_claim_button", "FarmEchoTask.incr_drop", "FarmEchoTask.click_configured_boss_level",
+        "FarmEchoTask.click_team_challenge")))
+    ns["NO_CLAIM"] = str(Path(__file__).resolve().parent / "no-such-no-claim-flag")
+
+    # Real text. The claim dialog: the old patch's own note of the full-screen OCR
+    # (okww_patches/claim.py, removed 2026-10-12); the counter: ok-script.log 2026-10-05 (see the docstring).
+    CLAIM_DIALOG = ["领取奖励需消耗60点结晶波片，请确认是否领取？", "取消", "确认"]
+    SETTLEMENT = ["挑战成功", "退出副本", "重新挑战"]
+    PAGE = {3: ["本周剩余可收取次数：3/3_1.00", "x60_0.79"], 2: ["本周剩余可收取次数：2/3_1.00", "x60_0.79"],
+            1: ["本周剩余可收取次数：1/3_1.00", "x60_0.79"], 0: ["本周剩余可收取次数：0/3_0.99", "x60_0.79"]}
+    UNREAD = ["x60_0.79"]
+
+
+    class _At:
+        """An OCR box with a place on the 1920x1080 screen."""
+        def __init__(self, name, x, y):
+            self.name, self.x, self.y, self.width, self.height = name, x, y, 40, 30
+
+        def __str__(self):
+            # ok-script's Box repr as the 10-12 log prints it
+            return (f"Box(name='{self.name}', x={self.x}, y={self.y}, width={self.width}, "
+                    f"height={self.height}, confidence=100)")
+
+
+    def claim_screen(wave, spare, cap="240"):
+        """The claim dialog over the top bar (10-12 11:44:41: backup 24 at x=1208, y=50)."""
+        return [_At(str(spare), 1208, 50), _At(f"{wave}/{cap}", 1480, 50), _At("15652", 1800, 50),
+                _At(CLAIM_DIALOG[0], 700, 500), _At("取消", 640, 700), _At("确认", 1280, 700)]
+
+
+    # The claim dialog with a readable bar: 240 full (「240/240+」, 0921-weekly.log:18), and
+    # 41 + backup 24 (enough with the backup, 10-12 11:44 numbers moved up by 24).
+    FULL = claim_screen(240, 0, cap="240+")
+    TOPUP = claim_screen(41, 24)
+
+
+    def task(left=None, pages=(), screens=(), after=(), dialogs=(), gems=0, arena_at=None, crystal=True,
+             walk_error=None, claim_up=True, boss="Weekly Challenge"):
+        t = object.__new__(FarmEchoTask)
+        t.events, t.logs, t.errors, t.shots = [], [], [], []
+        t.entries, t.arena, t.reads_after = 0, False, 0
+        t.pages, t.screens, t.after, t.dialogs = list(pages), list(screens), list(after), list(dialogs)
+        t.gems, t.arena_at, t.crystal, t.walk_error = gems, arena_at, crystal, walk_error
+        t.claim_up, t.f_up = claim_up, True
+        t.config = {"Teleport to Boss": boss}
+        t._in_realm = True
+        if left is not None:
+            t._ark_weekly_left = left
+
+        def ocr(box=None, **kw):
+            if box == (0.58, 0.80):
+                return t.pages.pop(0) if t.pages else UNREAD
+            if box == (0.20, 0.35):
+                t.reads_after += 1
+                return t.after.pop(0) if t.after else []
+            if box == (0.0, 0.0):
+                return t.screens.pop(0) if t.screens else ["某个没见过的画面"]
+            return []
+        t.ocr = ocr
+        t.box_of_screen = lambda x, y, to_x, to_y: (x, y)
+        t.height_of_screen = lambda r: r * 1080
+        t.in_world = lambda: False
+        t.in_team_and_world = lambda: t.arena_at is not None and t.reads_after >= t.arena_at
+        t.log_info = lambda msg, notify=False: t.logs.append(msg)
+        t.log_error = lambda msg, notify=False: t.errors.append((msg, notify))
+        t.screenshot = lambda name: t.shots.append(name)
+        t.sleep = lambda s: None
+        t.wait_until = lambda cond, **kw: cond()
+        t.has_claim = lambda: t.claim_up
+        t.find_treasure_icon = lambda: t.crystal
+
+        def walk():
+            t.events.append("walk")
+            if t.walk_error:
+                raise t.walk_error
+        t.walk_to_treasure = walk
+
+        def right():
+            t.events.append("confirm")
+            return "confirm-btn"
+        t.click_dialog_right_button = right
+        t.click_dialog_left_button = lambda: t.events.append("cancel")
+
+        def click(*a, **kw):
+            t.events.append("solo" if a[:2] == (0.880, 0.911) else f"click:{a[0]}")
+        t.click = click
+        t.click_relative = lambda x, y, **kw: t.events.append(f"rel:{x},{y}")
+        t.back = lambda after_sleep=0: t.events.append("back")
+        t.send_key = lambda key, **kw: t.events.append(f"key:{key}")
+        t.ensure_main = lambda time_out=30: t.events.append("main")
+        t.wait_in_team_and_world = lambda time_out=10, raise_if_not_found=True, esc=False: True
+
+        def wait_feature(feature, **kw):
+            if feature == "gem_add_stamina":
+                if t.gems > 0:
+                    t.gems -= 1
+                    return "gem"
+                return None
+            return True                 # team_start_challenge is there
+        t.wait_feature = wait_feature
+
+        def wait_click_ocr(match=None, **kw):
+            seen = t.screens.pop(0) if t.screens else ["某个没见过的画面"]
+            hit = [b for b in seen if match.search(str(b))]
+            if hit:
+                t.events.append(f"click:{hit[0]}")
+                return hit
+            return None
+        t.wait_click_ocr = wait_click_ocr
+        t.wait_click_feature = lambda feature, **kw: t.events.append("start")
+        t.wait_click_skip_dialog_confirm = lambda *a, **kw: t.events.append("skip-confirm")
+        t.find_one = lambda *a, **kw: t.dialogs.pop(0) if t.dialogs else None
+        return t
+
+
+    def lap(t):
+        """One lap's end: the fight is over, upstream calls incr_drop. 'stop' on a deliberate stop."""
+        try:
+            t.incr_drop(True)
+        except Disabled:
+            return "stop"
+        return "on"
+
+
+    print("[(E) 结晶按 F→领奖弹窗点确认（不按 ESC）→波片不够动用备用体力→确认→结算页「退出副本」→回去读到 2/3]")
+    t = task(left=3, pages=[PAGE[2]], screens=[TOPUP, SETTLEMENT], gems=1)
+    check("没停", lap(t), "on")
+    claim = t.events[:t.events.index("click:退出副本") + 1]
+    check("走去结晶、按 F、确认、备用体力两下、返回、再确认、点退出副本", claim,
+          ["incr", "walk", "key:f", "confirm", "rel:0.7,0.71", "rel:0.7,0.71", "back", "click:confirm-btn",
+           "click:退出副本"])
+    check("领奖弹窗上没按 ESC（上游那一下换成了确认）", "key:esc" in t.events, False)
+    check("认出弹窗那句照旧（中继认它算打过一场）", any(m.startswith("周本领奖：认出弹窗，点确认") for m in t.logs))
+    check("说了动用备用体力", "周本领奖：波片不够，动用备用体力" in t.logs)
+    check("截了领奖那一刻", "weekly_claimed" in t.shots)
+    check("说了已点确认（中继数点击次数）", "周本领奖：已点确认" in t.logs)
+    check("结算页点了退出副本", "周本领奖：结算页点了「退出副本」" in t.logs)
+    check("回读确认 3/3→2/3", "周本领奖：回读确认领到，本周剩余 3/3→2/3" in t.logs)
+    check("重进了本（选等级→单人挑战→开启挑战）", [e for e in t.events if e in ("level", "solo", "start")],
+          ["level", "solo", "start"])
+    check("开启挑战后什么都没确认", "skip-confirm" in t.events, False)
+    check("没报错", t.errors, [])
+    check("这次的读数记下当下一次的「领前」", t._ark_weekly_left, 2)
+
+    print("\n[波片够、不弹补体力：确认一下就到结算页]")
+    t = task(left=3, pages=[PAGE[2]], screens=[FULL, SETTLEMENT])
+    check("没停", lap(t), "on")
+    check("确认一次就退出副本", t.events[:5], ["incr", "walk", "key:f", "confirm", "click:退出副本"])
+    check("没碰备用体力", [e for e in t.events if e.startswith("rel:") or e == "back"], [])
+
+    print("\n[周一一趟三次：3/3→2/3→1/3→0/3，最后那次只读数，0/3 不进本]")
+    t = task(left=3, pages=[PAGE[2], PAGE[1], PAGE[0]], screens=[FULL, SETTLEMENT] * 3)
+    got = [lap(t), lap(t), lap(t)]
+    check("前两圈接着打，第三圈领完停（有意跳过）", got, ["on", "on", "stop"])
+    check("三次回读都对上", [m for m in t.logs if "回读确认" in m],
+          ["周本领奖：回读确认领到，本周剩余 3/3→2/3", "周本领奖：回读确认领到，本周剩余 2/3→1/3",
+           "周本领奖：回读确认领到，本周剩余 1/3→0/3"])
+    check("开启挑战只点了两次", t.events.count("start"), 2)
+    check("读到 0/3 退回主界面", t.events[-1], "main")
+    check("说了已领满", "本周周本次数已领满（0/3），不进本，跳过" in t.logs)
+    check("一次 ESC 都没按", "key:esc" in t.events, False)
+    check("没报错", t.errors, [])
+
+    def on_screen(t):
+        t.height_of_screen = lambda r: r * 1080
+        return t
+
+
+    print("\n[领奖弹窗：波片 17 + 备用 24 不够 60（10-12 11:44）：先读顶栏，点取消、按波片不足跳过，不动备用体力]")
+    t = on_screen(task(left=3, screens=[claim_screen(17, 24)], gems=2))
+    check("跳过（结束这趟周本）", lap(t), "stop")
+    check("按 F 后直接点取消", t.events[:4], ["incr", "walk", "key:f", "cancel"])
+    check("没点确认、没碰备用体力", [e for e in t.events if e in ("confirm", "back") or e.startswith("rel:")], [])
+    check("说了波片不足那句（中继认它是波片不足）",
+          any(m.startswith("结晶波片不足，取消并跳过本次周本") for m in t.logs))
+    check("没说认出弹窗点确认（中继不当它领过）", any(m.startswith("周本领奖：认出弹窗") for m in t.logs), False)
+    check("留图", "weekly_short_claim" in t.shots)
+    check("按跳过结束：没留失败原因", getattr(t, "_ark_failed", None), None)
+    check("没当报错推送", t.errors, [])
+
+    print("\n[领奖弹窗：波片 41 + 备用 24 够 60：照旧确认、动用备用体力一次、领到]")
+    t = on_screen(task(left=3, pages=[PAGE[2]], screens=[claim_screen(41, 24), SETTLEMENT], gems=1))
+    check("没停", lap(t), "on")
+    check("确认后动用备用体力", t.events[3:6], ["confirm", "rel:0.7,0.71", "rel:0.7,0.71"])
+    check("回读确认 3/3→2/3", "周本领奖：回读确认领到，本周剩余 3/3→2/3" in t.logs)
+
+    print("\n[领奖弹窗：波片 60 够：照旧确认一下就到结算页]")
+    t = on_screen(task(left=3, pages=[PAGE[2]], screens=[claim_screen(60, 0), SETTLEMENT]))
+    check("没停", lap(t), "on")
+    check("确认一次就退出副本", t.events[:5], ["incr", "walk", "key:f", "confirm", "click:退出副本"])
+
+    print("\n[the claim dialog's bar: 「240/240+」 (0921-weekly.log:18) reads as 240, backup 0]")
+    check("240/240+", ns["_waveplates"](on_screen(task()), claim_screen(240, 0, cap="240+")), (240, 0))
+    check("41/240", ns["_waveplates"](on_screen(task()), claim_screen(41, 24)), (41, 24))
+    check("0/240+ with a backup of 136 (the level page, 10-05 22:17:31)",
+          ns["_waveplates"](on_screen(task()), claim_screen(0, 136, cap="240+")), (0, 136))
+    t = task(left=3, pages=[PAGE[2]], screens=[FULL, SETTLEMENT])
+    check("240/240+: not stopped", lap(t), "on")
+    check("240/240+: the two values are in the log", "周本领奖：顶栏读到波片 240/240，备用 0" in t.logs)
+    check("the claim line shows the /240 token", any(m.startswith("周本领奖：认出弹窗") and "240/240+" in m for m in t.logs))
+
+    print("\n[bar not read: no blind 确认 (10-12 11:44 spent the backup that way) - picture, phone, stop]")
+    t = task(left=3, pages=[PAGE[2]], screens=[[_At(CLAIM_DIALOG[0], 700, 500)], SETTLEMENT], gems=2)
+    check("stopped", lap(t), "stop")
+    check("nothing confirmed, backup untouched", [e for e in t.events if e in ("confirm", "back") or e.startswith("rel:")], [])
+    check("picture", "weekly_claim_bar_unread" in t.shots)
+    check("pushed to the phone, as a failure", len(t.errors) == 1 and t.errors[0][1] and "顶栏的波片没读全" in t.errors[0][0])
+    check("ends as failed (a reason is kept)", "顶栏的波片没读全" in (getattr(t, "_ark_failed", None) or ""))
+
+    print("\n[顶栏读到够（41+24）、备用体力用上了仍不够（又弹补体力）：返回、点取消、按波片不足跳过，不动结晶溶剂]")
+    t = task(left=3, screens=[TOPUP], gems=2)
+    check("跳过（结束这趟周本）", lap(t), "stop")
+    check("备用体力一轮之后返回、取消，没再确认",
+          t.events[3:], ["confirm", "rel:0.7,0.71", "rel:0.7,0.71", "back", "click:confirm-btn", "back", "cancel"])
+    check("说了波片不足那句（中继认它是波片不足）",
+          any(m.startswith("结晶波片不足，取消并跳过本次周本") for m in t.logs))
+    check("没说已点确认", "周本领奖：已点确认" in t.logs, False)
+    check("留图", "weekly_short_claim" in t.shots)
+    check("按跳过结束：没留失败原因", getattr(t, "_ark_failed", None), None)
+    check("没当报错推送", t.errors, [])
+
+    print("\n[10-12 15:29 / 15:31: backup 0, waveplates short -> cancelled before 确认; the top-up (solute) is never clicked]")
+    t = task(left=3, screens=[claim_screen(17, 0)], gems=2)
+    check("skipped as short", lap(t), "stop")
+    check("no confirm, no top-up clicks", [e for e in t.events if e in ("confirm", "back") or e.startswith("rel:")], [])
+    check("the shortage line", any(m.startswith("结晶波片不足，取消并跳过本次周本") for m in t.logs))
+
+    print("\n[bar reads 240 but the game still opens the top-up dialog -> cancel, picture, stop; no top-up clicks]")
+    t = task(left=3, screens=[FULL, SETTLEMENT], gems=1)
+    check("stopped", lap(t), "stop")
+    check("confirm, then back + cancel, no top-up clicks", t.events[3:], ["confirm", "back", "cancel"])
+    check("picture of the dialog", "weekly_topup_unexpected" in t.shots)
+    check("pushed, as a failure", len(t.errors) == 1 and t.errors[0][1] and "不点补充" in t.errors[0][0])
+    check("not counted as clicked", "周本领奖：已点确认" in t.logs, False)
+
+    print("\n[a claim made through upstream's own pickup (pick_f in walk_find_echo) leaves us in the world: still read back and re-entered]")
+    t = task(left=3, pages=[PAGE[2]], screens=[FULL, SETTLEMENT])
+    check("upstream's pick_f took the claim and clicked 退出副本", t.pick_f(), None)
+    check("the claim flag is set", getattr(t, "_ark_claimed", False), True)
+    t.in_world = lambda: True                    # 退出副本 put us in the open world
+    check("incr_drop does not stop", lap(t), "on")
+    check("read back 3/3->2/3", "周本领奖：回读确认领到，本周剩余 3/3→2/3" in t.logs)
+    check("went back in (level page)", "level" in t.events)
+    check("flag cleared", t._ark_claimed, False)
+    check("no second walk to a crystal", t.events.count("walk"), 0)
+
+    print("\n[回读次数没变：这次没领到，截图报手机，停下不再进本]")
+    t = task(left=2, pages=[PAGE[2]], screens=[FULL, SETTLEMENT])
+    check("停下", lap(t), "stop")
+    check("报到手机", t.errors, [("周本领奖：回读次数没变（2/3），这次没领到", True)])
+    check("留图", "weekly_claim_unchanged" in t.shots)
+    check("没点上游的选等级、没点开启挑战", [e for e in t.events if e in ("level", "start")], [])
+
+    print("\n[回读没读到：截图报手机，停下]")
+    t = task(left=3, pages=[UNREAD], screens=[FULL, SETTLEMENT])
+    check("停下", lap(t), "stop")
+    check("报到手机", t.errors, [("周本领奖：回读没读到本周剩余次数", True)])
+    check("原文进日志", any("回读时选等级页读到" in m and "x60_0.79" in m for m in t.logs))
+    check("留图", "weekly_readback_unread" in t.shots)
+
+    print("\n[重进没经过选等级页（直接落在场地里）：次数没回读，停下]")
+    t = task(left=3, screens=[FULL, SETTLEMENT])
+    t.arena = True
+    check("停下", lap(t), "stop")
+    check("报回读没读到", t.errors, [("周本领奖：回读没读到本周剩余次数", True)])
+    check("回读的账清掉，下一趟不拿它比", t._ark_claim_before, None)
+
+    print("\n[no 「退出副本」 after 确认 (10-05 10:34:50 farm 4c error): picture, phone, stop - no ESC, no re-entry]")
+    t = task(left=3, screens=[FULL])
+    check("stopped", lap(t), "stop")
+    check("pushed with the screen's text",
+          len(t.errors) == 1 and t.errors[0][1] and "没等到结算页" in t.errors[0][0] and "某个没见过的画面" in t.errors[0][0])
+    check("picture", "weekly_no_settlement" in t.shots)
+    check("no ESC, no back", [e for e in t.events if e in ("key:esc", "back")], [])
+    check("no re-entry", t.entries, 0)
+    check("ends as failed", "没等到结算页" in (getattr(t, "_ark_failed", None) or ""))
+
+    print("\n[10-12 09:51:50: the fight check broke first and the walk to the crystal failed (WaitFailedException): picture, phone, stop]")
+    # ev OK-WW-05-18-47.log:1102-1109 - 「farm echo walk_find_echo None」, 「去结晶按 F」,
+    # walk_to_treasure, 09:52:20 WaitFailedException. Handing it back (a8cc86b6) let
+    # upstream's next lap ESC out of the realm with the reward not taken.
+
+
+    class WaitFailedException(Exception):
+        """ok.WaitFailedException."""
+
+
+    t = task(left=3, walk_error=WaitFailedException())
+    check("stopped", lap(t), "stop")
+    check("walked once, no F", [e for e in t.events if e in ("walk", "key:f")], ["walk"])
+    check("pushed with the reason", len(t.errors) == 1 and t.errors[0][1]
+          and "没走到结晶" in t.errors[0][0] and "WaitFailedException" in t.errors[0][0])
+    check("picture", t.shots, ["weekly_walk_failed"])
+    check("ends as failed", "没走到结晶" in (getattr(t, "_ark_failed", None) or ""))
+    check("nothing confirmed, no ESC", [e for e in t.events if e in ("confirm", "cancel", "key:esc")], [])
+
+    print("\n[no crystal after the lap: picture, phone, stop - no walk]")
+    t = task(left=3, crystal=False)
+    check("stopped", lap(t), "stop")
+    check("no walk, no F", [e for e in t.events if e in ("walk", "key:f")], [])
+    check("pushed with the reason", len(t.errors) == 1 and t.errors[0][1] and "没看到结晶" in t.errors[0][0])
+    check("picture", t.shots, ["weekly_no_crystal"])
+
+    print("\n[领奖钩子遇到的不是领奖弹窗（退出副本的确认框也是这个取消按钮）：照上游按 ESC，不点确认]")
+    t = task(screens=[["是否退出副本？", "取消", "确认"]])
+    check("返回 True（上游的语义）", t.handle_claim_button(), True)
+    check("按的是 ESC，没点确认", [e for e in t.events if e in ("key:esc", "confirm")], ["key:esc"])
+
+    print("\n[没有弹窗：什么都不点，返回 None（上游的语义）]")
+    t = task(claim_up=False)
+    check("返回 None", t.handle_claim_button(), None)
+    check("什么都没点", t.events, [])
+
+    print("\n[不是周本（刷声骸走的是强敌）：领奖弹窗照上游按 ESC]")
+    t = task(boss="Boss Challenge", screens=[CLAIM_DIALOG])
+    check("返回 True", t.handle_claim_button(), True)
+    check("按的是 ESC，没点确认", [e for e in t.events if e in ("key:esc", "confirm")], ["key:esc"])
+
+    print("\n[进本前选等级页没读到本周剩余次数：截图报手机，停下不进本]")
+    t = task(pages=[UNREAD])
+    try:
+        t.teleport_to_configured_boss_and_prepare()
+        got = "in"
+    except Disabled:
+        got = "stop"
+    check("停下（有意跳过，不算失败）", got, "stop")
+    check("报到手机、带原文", len(t.errors) == 1 and t.errors[0][1] and "x60_0.79" in t.errors[0][0])
+    check("留图", "weekly_left_unread" in t.shots)
+    check("没点上游的选等级、没点单人挑战", [e for e in t.events if e in ("level", "solo", "start")], [])
+
+    print("\n[进本前读到 3/3（22:13:04）：照常进本，记下 3]")
+    t = task(pages=[PAGE[3]])
+    t.teleport_to_configured_boss_and_prepare()
+    check("进了本", t.prepared, "realm")
+    check("记下 3", t._ark_weekly_left, 3)
+
+    print("\n[开启挑战后有对话框、字一直认不出：不点确认，截图报手机，停下]")
+    t = task(dialogs=["btn"] * 6)
+    try:
+        t.click_team_challenge()
+        got = "on"
+    except Disabled:
+        got = "stop"
+    check("停下", got, "stop")
+    check("看满了整段（6 眼）", t.reads_after, 6)
+    check("没点确认也没点取消", [e for e in t.events if e in ("cancel", "confirm", "skip-confirm")], [])
+    check("留图", "challenge_dialog_unknown" in t.shots)
+    check("报到手机", len(t.errors) == 1 and t.errors[0][1] and "认不出的对话框" in t.errors[0][0])
+
+    print("\n[开启挑战后没有对话框、到了场地：不再看，也不点任何确认]")
+    t = task(arena_at=2)
+    t.click_team_challenge()
+    check("看到进场就停（2 眼）", t.reads_after, 2)
+    check("什么都没确认", [e for e in t.events if e in ("cancel", "confirm", "skip-confirm")], [])
+    check("没报错", t.errors, [])
+
+    print("\n[开启挑战后一直加载中、没有对话框：看满整段，不点确认，接着走]")
+    t = task()
+    t.click_team_challenge()
+    check("看满 6 眼", t.reads_after, 6)
+    check("什么都没确认", [e for e in t.events if e in ("cancel", "confirm", "skip-confirm")], [])
+
+    print("\n[2026-11-03 账本 #135：Boss 转阶段 walk_find_echo 检测到还在战斗（_in_combat=True）返回 False：接着打完再领结晶，不误报没看到结晶]")
+    t = task(left=3, pages=[PAGE[2]], screens=[FULL, SETTLEMENT])
+    t._in_combat = True
+    def _resume_combat(**kw):
+        t.events.append("resume-combat")
+        t._in_combat = False
+    t.combat_once = _resume_combat
+    t.pick_echo = lambda: False
+    t.walk_find_echo = lambda: (t.events.append("pick-echo"), True)[1]
+    t.incr_drop(False)
+    check("先接着打完再捡声骸再领奖", t.events[:7], ["incr", "resume-combat", "pick-echo", "incr", "walk", "key:f", "confirm"])
+    check("领完剩余次数变 2", t._ark_weekly_left, 2)
+    check("BaseWWTask.tr 返回英文原句（不让 zh_CN 破坏 AUTO-MAS 完成判定）",
+          t.tr("Daily Task Completed"), "Daily Task Completed")
+
+    # The coverage driver runs every test in one process: leave sys.modules as found.
+    for k, v in _saved.items():
+        if v is None:
+            sys.modules.pop(k, None)
+        else:
+            sys.modules[k] = v
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_daily_chests():
+    """OK-WW's daily activity chests: every chest up to the points is claimed, and checked.
+
+2026-10-10 the run ended at 80 points with the 20-80 chests unclaimed and
+「Daily Task Completed」 in the log, and the relay said nothing (the user's words, 10-10
+19:4x and 19:55, are quoted in docs/OKWW-PATCHES.md and docs/NOTIFICATIONS.md).
+Upstream's claim_daily clicks one fixed point, the 100 chest, and never looks again
+(DailyTask.py claim_daily, sha 2b4977b62f7c).
+
+The sample is his own screenshot of the chest row (fixtures/ww-daily-80-1010-row.png,
+from BOARD/evidence/ww-daily-80-1010.png): 80 points, 20-80 claimed (he claimed them
+by hand), 100 not. The 「80 points, 20-80 not claimed」 state of that morning is the
+same row with the 100 chest's unclaimed picture put over the 20-80 chests.
+
+2026-10-11 09:29 all five were claimed (140 points), yet 「100 档点了没领到」 went out:
+the 100 chest was looked for by its label's box centre, and 「100」 is a digit wider
+than 「20」-「80」, so the look landed 14 px left of the tick (0.35; 0.96 where the tick
+is). The reward preview the click opens was on screen too, but it stops above the
+tick. That run's screenshot is fixtures/ww-daily-140-1011-row.png (the bottom of the
+1920x1080 frame, y 800-1010, preview included).
+
+    Formerly test_okww_daily_chests.py.
+    """
+    import types
+
+    import numpy as np
+    from PIL import Image
+
+    HERE = Path(__file__).resolve().parent
+    sys.path.insert(0, str(HERE.parent))
+    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features.verify import outcome
+
+
+    ns = {"__name__": "ark_overrides_test"}
+    exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+
+    ROW = np.array(Image.open(fx_dir(HERE, "fixtures") / "ww-daily-80-1010-row.png").convert("RGB"))
+    H, W = ROW.shape[:2]
+    # The tier labels' glyph boxes in the fixture (x0, y0, x1, y1), measured on the picture.
+    GLYPHS = {20: (592, 93, 615, 112), 40: (884, 93, 907, 112), 60: (1177, 93, 1201, 112),
+              80: (1471, 93, 1493, 112), 100: (1749, 93, 1787, 112)}
+
+
+    def box(name, x0, y0, x1, y1, pad=0):
+        return types.SimpleNamespace(name=name, x=x0 - pad, y=y0 - pad, width=x1 - x0 + 1 + 2 * pad,
+                                     height=y1 - y0 + 1 + 2 * pad)
+
+
+    LABELS = [box(str(t), *g, pad=4) for t, g in GLYPHS.items()]
+    # What else the OCR reads as a tier number: the big points 「80」 at the left, above the row,
+    # and a quest row's 「20」 further up.
+    DECOYS = [box("80", 225, 15, 280, 65), box("20", 180, 2, 205, 14)]
+
+    print("[the row: labels, step, where the chests are]")
+    labels = ns["tier_labels"](LABELS + DECOYS, H)
+    check("five tiers, decoys dropped", sorted(labels), [20, 40, 60, 80, 100])
+    check("the 80 kept is the row's", labels[80][1] > 90, True)
+    step = ns["tier_step"](labels)
+    check("one tier step ~ 293 px", abs(step - 293) <= 1, True)
+    chest = {t: ns["chest_at"](labels, step, t) for t in labels}
+    check("the 20 chest is the circle at (663, 75), within a pixel",
+          abs(chest[20][0] - 663) <= 1 and abs(chest[20][1] - 75) <= 1, True)
+
+    print("\n[his screenshot: 20-80 claimed, 100 not]")
+    gray = ROW.mean(axis=2)
+    scores = ns["tier_scores"](gray, labels, step)
+    print("    scores:", scores)
+    check("20-80 read as claimed", all(scores[t] >= ns["_CHECKED_MIN"] for t in (20, 40, 60, 80)), True)
+    check("100 reads as not claimed", scores[100] < ns["_CHECKED_MIN"], True)
+    small = np.array(Image.fromarray(ROW).resize((W * 3 // 5, H * 3 // 5))).mean(axis=2)
+    lab_s = {t: (x * 0.6, y * 0.6) for t, (x, y) in labels.items()}
+    sc_s = ns["tier_scores"](small, lab_s, ns["tier_step"](lab_s))
+    check("the same at 0.6 of the size", [sc_s[t] >= ns["_CHECKED_MIN"] for t in (20, 40, 60, 80, 100)],
+          [True, True, True, True, False])
+
+    # The morning's state: the 100 chest's unclaimed picture over 20-80.
+    R = 46
+    cx100, cy100 = (round(v) for v in chest[100])
+    UNCLAIMED = ROW[cy100 - R:cy100 + R, cx100 - R:cx100 + R].copy()
+    CLAIMED = {t: ROW[round(chest[t][1]) - R:round(chest[t][1]) + R, round(chest[t][0]) - R:round(chest[t][0]) + R].copy()
+               for t in (20, 40, 60, 80)}
+
+
+    def morning():
+        img = ROW.copy()
+        for t in (20, 40, 60, 80):
+            x, y = (round(v) for v in chest[t])
+            img[y - R:y + R, x - R:x + R] = UNCLAIMED
+        return img
+
+
+    class Game:
+        """The dailies page: OCR answers, clicks claim a chest (when the game takes them)."""
+
+        def __init__(self, frame, points="80", takes=True, ocr_labels=None, chests=None):
+            self.frame, self.points, self.takes = frame, points, takes
+            self.ocr_labels = LABELS + DECOYS if ocr_labels is None else ocr_labels
+            self.chests = chest if chests is None else chests
+            self.clicks, self.logs, self.keys = [], [], []
+
+        def next_frame(self):
+            return self.frame
+
+        def ocr(self, *a, match=None, **k):
+            if match is not None and "100" in match.pattern:
+                return self.ocr_labels
+            return [box(self.points, 225, 15, 280, 65)] if self.points else []
+
+        def click_relative(self, rx, ry, **k):
+            x, y = rx * self.frame.shape[1], ry * self.frame.shape[0]
+            for t, (cx, cy) in self.chests.items():
+                if abs(x - cx) < 30 and abs(y - cy) < 30:
+                    self.clicks.append(t)
+                    if self.takes and t in CLAIMED:
+                        ix, iy = round(cx), round(cy)
+                        self.frame = self.frame.copy()
+                        self.frame[iy - R:iy + R, ix - R:ix + R] = CLAIMED[t]
+                    return
+            self.clicks.append(("miss", round(x), round(y)))
+
+        def log_info(self, msg, **k):
+            self.logs.append(msg)
+
+        def send_key(self, key, **k):
+            self.keys.append(key)
+
+        def openF2Book(self, *a):  # noqa: N802
+            self.keys.append("book")
+
+        def click(self, *a, **k):
+            pass
+
+        def screenshot(self, name):
+            self.logs.append(f"[shot {name}]")
+
+
+    print("\n[the morning: 80 points, 20-80 not claimed -> each clicked, each checked]")
+    g = Game(morning())
+    check("before: 20-80 read as not claimed",
+          [v < ns["_CHECKED_MIN"] for t, v in ns["tier_scores"](g.frame.mean(axis=2), labels, step).items() if t != 100],
+          [True] * 4)
+    ns["_claim_tiers"](g)
+    check("clicked 20, 40, 60, 80 - not 100", g.clicks, [20, 40, 60, 80])
+    check("the points line for the relay", "活跃奖励：活跃度 80" in g.logs, True)
+    check("checked: all claimed", any(m.startswith("活跃奖励：领完核对通过") for m in g.logs), True)
+    check("no ESC needed", g.keys, [])
+
+    print("\n[the game does not take the clicks -> tried twice, then said, with a screenshot]")
+    g = Game(morning(), takes=False)
+    ns["_claim_tiers"](g)
+    check("each chest tried twice", sorted(g.clicks), sorted([20, 40, 60, 80] * 2))
+    failed = [m for m in g.logs if m.startswith("活跃奖励没领到：")]
+    check("one 「没领到」 line naming 20-80", bool(failed) and "20、40、60、80 档点了没领到" in failed[0], True)
+    check("screenshot taken", "[shot daily_reward_unclaimed]" in g.logs, True)
+
+    print("\n[already claimed (his screenshot) -> nothing clicked, checked]")
+    g = Game(ROW.copy())
+    ns["_claim_tiers"](g)
+    check("nothing clicked", g.clicks, [])
+    check("checked", any(m.startswith("活跃奖励：领完核对通过") for m in g.logs), True)
+
+    print("\n[points not read -> said, nothing clicked]")
+    g = Game(morning(), points="")
+    ns["_claim_tiers"](g)
+    check("nothing clicked", g.clicks, [])
+    check("said", any(m.startswith("活跃奖励没领到：活跃度的分数没读到") for m in g.logs), True)
+
+    print("\n[10-11 09:29: all five claimed, the reward preview over the 100 chest -> checked, nothing clicked]")
+    ROW11 = np.array(Image.open(fx_dir(HERE, "fixtures") / "ww-daily-140-1011-row.png").convert("RGB"))
+    # Glyph boxes of the tier labels in that picture (x0, y0, x1, y1), and where each tick is
+    # (the best match of the tick, searched over +-40 px): 「100」 is 45 px wide, the rest 29-31.
+    GLYPHS11 = {20: (683, 174, 711, 193), 40: (937, 174, 967, 193), 60: (1193, 174, 1222, 193),
+                80: (1449, 174, 1478, 193), 100: (1690, 174, 1734, 193)}
+    TICKS11 = {80: (1520, 159), 100: (1776, 159)}
+    LABELS11 = [box(str(t), *g, pad=4) for t, g in GLYPHS11.items()]
+    lab11 = ns["tier_labels"](LABELS11, ROW11.shape[0])
+    step11 = ns["tier_step"](lab11)
+    ch11 = {t: ns["chest_at"](lab11, step11, t) for t in lab11}
+    check("80 and 100 looked for within 5 px of their ticks",
+          [abs(ch11[t][0] - x) <= 5 and abs(ch11[t][1] - y) <= 5 for t, (x, y) in TICKS11.items()], [True, True])
+    gray11 = ROW11.mean(axis=2)
+    sc11 = ns["tier_scores"](gray11, lab11, step11)
+    print("    scores:", sc11)
+    check("all five read as claimed, preview and all", [sc11[t] >= ns["_CHECKED_MIN"] for t in ns["DAILY_TIERS"]],
+          [True] * 5)
+    # The cause, kept on record: placed by the box centre (the code before), 100 misses its tick.
+    by_centre = {int(b.name): (b.x + b.width / 2, b.y + b.height / 2) for b in LABELS11}
+    old = ns["tier_scores"](gray11, by_centre, ns["tier_step"](by_centre))
+    check("by the box centre the 100 tick is missed (the false alarm)",
+          [old[t] >= ns["_CHECKED_MIN"] for t in ns["DAILY_TIERS"]], [True, True, True, True, False])
+    g = Game(ROW11.copy(), points="140", takes=False, ocr_labels=LABELS11, chests=ch11)
+    ns["_claim_tiers"](g)
+    check("nothing clicked", g.clicks, [])
+    check("checked: 领完核对通过", any(m.startswith("活跃奖励：领完核对通过") for m in g.logs), True)
+    check("no 「没领到」", any(m.startswith("活跃奖励没领到") for m in g.logs), False)
+
+    print("\n[the row is not found again after a click -> its own failure, no verdict from the frame before the click]")
+
+
+    class LostRow(Game):
+        def ocr(self, *a, match=None, **k):
+            if match is not None and "100" in match.pattern and self.clicks:
+                return []
+            return super().ocr(*a, match=match, **k)
+
+
+    g = LostRow(morning())
+    ns["_claim_tiers"](g)
+    check("stopped after the first click", g.clicks, [20])
+    failed = [m for m in g.logs if m.startswith("活跃奖励没领到：")]
+    check("one line: the row was lost after clicking 20", len(failed) == 1 and "点了 20 档宝箱后那一排宝箱认不出来了" in failed[0], True)
+    check("not 「点了没领到」 for chests the game may have taken", any("点了没领到" in m for m in g.logs), False)
+    check("screenshot daily_reward_row_lost", "[shot daily_reward_row_lost]" in g.logs, True)
+
+    print("\n[a due tier whose label OCR missed was never clicked -> 「没点」, not 「点了没领到」]")
+    g = Game(morning(), ocr_labels=[b for b in LABELS if b.name != "40"] + DECOYS)
+    ns["_claim_tiers"](g)
+    check("20, 60, 80 clicked; 40 not", g.clicks, [20, 60, 80])
+    failed = [m for m in g.logs if m.startswith("活跃奖励没领到：")]
+    check("40 said as not clicked", len(failed) == 1 and "40 档的数字没认出来，没点" in failed[0], True)
+    check("40 not said as clicked", "40 档点了没领到" in failed[0] if failed else True, False)
+
+    print("\n[points read too low: a claimed tick above them -> failure, not 「领完核对通过」]")
+    g = Game(ROW.copy(), points="40")
+    ns["_claim_tiers"](g)
+    check("nothing clicked (20 and 40 already claimed)", g.clicks, [])
+    failed = [m for m in g.logs if m.startswith("活跃奖励没领到：")]
+    check("said: 60 and 80 claimed above 40", len(failed) == 1 and "活跃度读成 40，可 60、80 档已显示领过" in failed[0], True)
+    check("no 「领完核对通过」", any(m.startswith("活跃奖励：领完核对通过") for m in g.logs), False)
+    g = Game(ROW.copy(), points="80")
+    ns["_claim_tiers"](g)
+    check("the tier at the points read, claimed, is fine", any(m.startswith("活跃奖励：领完核对通过") for m in g.logs), True)
+
+    print("\n[the relay: the overlay's lines -> items undone (pushed as 「这一轮没干完」)]")
+    LOG_OK = "活跃奖励：活跃度 80\n活跃奖励：领完核对通过（活跃度 80，已领 20、40、60、80）\nDaily Task Completed"
+    got = {c.label: (c.ok, c.detail) for c in outcome.daily_reward_checks(LOG_OK)}
+    check("claimed: green", got.get("每日活跃奖励领到了"), (True, ""))
+    check("80 points: red, says how many", got.get("每日活跃满 100"), (False, "今天活跃 80 分，没满 100"))
+    LOG_BAD = "活跃奖励：活跃度 80\n活跃奖励没领到：20、40、60、80 档点了没领到（活跃度 80）\nDaily Task Completed"
+    got = {c.label: (c.ok, c.detail) for c in outcome.daily_reward_checks(LOG_BAD)}
+    check("not claimed: red, says which", got.get("每日活跃奖励领到了"), (False, "20、40、60、80 档点了没领到（活跃度 80）"))
+    LOG_FULL = "活跃奖励：活跃度 100\n活跃奖励：领完核对通过（…）"
+    check("100 points: both green", [c.ok for c in outcome.daily_reward_checks(LOG_FULL)], [True, True])
+    LOG_UP = "活跃奖励：没有核对，上游领奖正文变了（现在 abc，我们照着 2b4977b62f7c 抄的），照上游点 100 档"
+    check("upstream changed: red", [(c.label, c.ok) for c in outcome.daily_reward_checks(LOG_UP)],
+          [("每日活跃奖励领到了", False)])
+    check("an old log says nothing new", outcome.daily_reward_checks("Daily Task Completed"), [])
+
+
+def _part_okww_farm_hook():  # noqa: C901
+    """Daily task: additional tasks first, the stamina farm to empty, one settlement shot.
+
+Runs the real overlay against a stand-in for upstream v3.7.3 DailyTask.run
+(DailyTask.py:77-136, reduced to its calls) and the three farm_* methods, with the
+numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
+
+  open_daily_first      the weekly boss (additional tasks) runs before the daily's
+                        stamina read; its error does not take the daily down; the
+                        trailing run_additional_tasks is a no-op; the next run resets
+  _farm_hook            farm_tacet / farm_forgery / farm_simulation lose daily= and
+                        used_stamina= (must_use 0: farm to empty); the no-farm flag
+                        file stops all three
+  claim_daily           upstream farms only when `not daily_reward_ready and
+                        used_stamina < 180` (DailyTask.py:88-89). After the weekly
+                        boss spent 180 the gate is shut and the rest of the stamina
+                        sat unused; the overlay farms it before claim_daily
+  use_stamina           the tacet settlement keeps one screenshot (tacet_drops) when
+                        the farm stops there
+  get_stamina           the 数/数 read, with the real OCR text, in and out of the
+                        reward dialog
+
+    Formerly test_okww_farm_hook.py.
+    """
+    import os
+    import re
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.okww_patch import okww_overlay
+
+
+    REPLAY = fx_dir(Path(__file__), "replay") / "2026-09-07" / "wuwa"
+
+
+    def logged(path, lineno, pattern):
+        """The integer `pattern` captures on line `lineno` of a replay log (1-based)."""
+        # Bytes, not read_text: the logs mix CRLF with bare CR, and universal newlines
+        # would count the bare CRs as lines and shift every number grep -n gives.
+        line = path.read_bytes().decode("utf-8").split("\n")[lineno - 1].rstrip("\r")
+        m = re.search(pattern, line)
+        assert m, f"{path.name}:{lineno} no longer reads {pattern!r}: {line}"
+        return int(m.group(1))
+
+
+    # Real numbers. OK-WW-07-27-50.log:410-411 read the daily after the farm had spent
+    # 180 (the old copy farmed on anyway: :419-420 read 75 + 26 and went in);
+    # OK-WW-06-08-44.log:131 read 120 earlier that morning.
+    DAY = REPLAY / "OK-WW-07-27-50.log"
+    USED_FULL = logged(DAY, 410, r"DailyTask:info_set current daily progress (\d+)$")
+    POINTS = logged(DAY, 411, r"DailyTask:info_set total daily points (\d+)$")
+    CURRENT = logged(DAY, 419, r"TacetTask:info_set current_stamina (\d+)$")
+    BACK_UP = logged(DAY, 420, r"TacetTask:info_set back_up_stamina (\d+)$")
+    USED_PART = logged(REPLAY / "OK-WW-06-08-44.log", 131, r"current daily progress (\d+)$")
+
+
+    class Disabled(Exception):
+        """ok.TaskDisabledException."""
+
+
+    class Revived(Exception):
+        """src.task.BaseCombatTask.CharRevivedException."""
+
+
+    class _Any(type):
+        """A stand-in upstream class: any method the overlay reads exists and does nothing."""
+        def __getattr__(cls, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+
+            def anything(self, *a, **kw):
+                return None
+            return anything
+
+
+    number_re = re.compile(r"^(\d+)$")
+    stamina_re = re.compile(r"^(\d+)/(\d+)$")
+    EV = []          # one call order across every task object
+
+
+    class Box:
+        def __init__(self, name, x=0):
+            self.name, self.x = name, x
+
+
+    class BaseWWTask(metaclass=_Any):
+        # Upstream v3.7.3 BaseWWTask.py:409-424, verbatim: the overlay replaces it only
+        # while its source still hashes to the pin (8ba6c1344ff8).
+        def get_stamina(self):
+            boxes = self.wait_ocr(0.49, 0.0, 0.92, 0.10, raise_if_not_found=False,
+                                  match=[number_re, stamina_re])
+            if not boxes:
+                self.screenshot('stamina_error')
+                return -1, -1, -1
+            current = 0
+            back_up = 0
+            for box in boxes:
+                if match := stamina_re.search(box.name):
+                    current = int(match.group(1))
+                elif match := number_re.search(box.name):
+                    back_up = int(match.group(1))
+            self.info_set('current_stamina', current)
+            self.info_set('back_up_stamina', back_up)
+            return current, back_up, current + back_up
+
+
+    class TacetTask(BaseWWTask):
+        def farm_tacet(self, daily=False, used_stamina=0, config=None, max_recovery_retries=3):
+            # TacetTask.py:48-55: must_use is how much the daily step insists on spending.
+            must_use = 180 - used_stamina if daily else 0
+            EV.append(("farm_tacet", must_use, config))
+            if self.farm_error:
+                raise self.farm_error
+
+        def use_stamina(self, once, must_use=0):
+            # Upstream reads the stamina inside the reward dialog; the overlay's
+            # get_stamina keys on this caller's name.
+            self.read = self.get_stamina()
+            return self.result
+
+
+    class ForgeryTask(BaseWWTask):
+        def farm_forgery(self, daily=False, used_stamina=0, config=None):
+            EV.append(("farm_forgery", 180 - used_stamina if daily else 0, config))
+
+
+    class SimulationTask(BaseWWTask):
+        def farm_simulation(self, daily=False, used_stamina=0, config=None):
+            EV.append(("farm_simulation", 180 - used_stamina if daily else 0, config))
+
+
+    class DailyTask(BaseWWTask):
+        def run(self):
+            # Upstream v3.7.3 DailyTask.py:77-136, the calls in order (validation, login
+            # and the nightmare nest left out).
+            used_stamina, daily_reward_ready = self.open_daily()
+            need_stamina = not daily_reward_ready and used_stamina < 180
+            if need_stamina:
+                target = self.config.get('Which to Farm', self.support_tasks[0])
+                if target == self.support_tasks[0]:
+                    self.get_task_by_class(TacetTask).farm_tacet(daily=True, used_stamina=used_stamina,
+                                                                 config=self.config)
+                elif target == self.support_tasks[1]:
+                    self.get_task_by_class(ForgeryTask).farm_forgery(daily=True, used_stamina=used_stamina,
+                                                                     config=self.config)
+                else:
+                    self.get_task_by_class(SimulationTask).farm_simulation(daily=True, used_stamina=used_stamina,
+                                                                           config=self.config)
+                self.sleep(4)
+            self.claim_daily()
+            self.claim_mail()
+            self.sleep(1)
+            self.claim_battle_pass()
+            self.run_additional_tasks()
+            self.log_info('Daily Task Completed', notify=True)
+
+        def open_daily(self):
+            EV.append("open_daily")
+            return self.used, self.points >= 100
+
+        def run_additional_tasks(self):
+            EV.append("additional")
+            if self.additional_error:
+                raise self.additional_error
+
+        def claim_daily(self):
+            EV.append("claim_daily")
+
+        def claim_mail(self):
+            EV.append("claim_mail")
+
+        def claim_battle_pass(self):
+            EV.append("claim_battle_pass")
+
+
+    mods = {
+        "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
+                                    Logger=types.SimpleNamespace(get_logger=lambda n: types.SimpleNamespace(
+                                        info=lambda *a, **k: None, error=lambda *a, **k: None))),
+        "src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+        "src.task.BaseCombatTask": types.SimpleNamespace(CharRevivedException=Revived),
+        "src.task.BaseWWTask": types.SimpleNamespace(BaseWWTask=BaseWWTask),
+        "src.task.FarmEchoTask": types.SimpleNamespace(FarmEchoTask=_Any("FarmEchoTask", (), {})),
+        "src.task.DailyTask": types.SimpleNamespace(DailyTask=DailyTask),
+        "src.task.TacetTask": types.SimpleNamespace(TacetTask=TacetTask),
+        "src.task.ForgeryTask": types.SimpleNamespace(ForgeryTask=ForgeryTask),
+        "src.task.SimulationTask": types.SimpleNamespace(SimulationTask=SimulationTask),
+    }
+    _saved = {k: sys.modules.get(k) for k in mods}
+    sys.modules.update(mods)
+
+    ns = {}
+    exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+    print("[绑定都换上了]")
+    for b in ("DailyTask.run", "DailyTask.open_daily", "DailyTask.run_additional_tasks", "DailyTask.claim_daily",
+              "TacetTask.farm_tacet", "ForgeryTask.farm_forgery", "SimulationTask.farm_simulation",
+              "TacetTask.use_stamina", "BaseWWTask.get_stamina"):
+        check(f"{b} 已换上", b in ns["_applied"])
+
+    tmp = str(tmpdir("ark-farm-hook-"))
+    no_farm = os.path.join(tmp, "no-stamina-farm.flag")
+    ns["NO_STAMINA_FLAG"] = no_farm
+    SUPPORT = ["Tacet Suppression", "Forgery Challenge", "Simulation Challenge"]
+
+
+    def wire(t):
+        t.logs, t.shots, t.sleeps, t.info = [], [], [], {}
+        t.log_info = lambda msg, notify=False: t.logs.append(msg)
+        t.log_error = lambda msg, exception=None: t.logs.append(msg)
+        t.screenshot = lambda name: t.shots.append(name)
+        t.sleep = lambda s: t.sleeps.append(s)
+        t.info_set = lambda k, v: t.info.__setitem__(k, v)
+        t.ensure_main = lambda time_out=30: EV.append("ensure_main")
+        return t
+
+
+    def daily(used, points=POINTS, target=SUPPORT[0], additional_error=None, farm_error=None):
+        EV.clear()
+        farms = {c: wire(object.__new__(c)) for c in (TacetTask, ForgeryTask, SimulationTask)}
+        farms[TacetTask].farm_error = farm_error
+        d = wire(object.__new__(DailyTask))
+        d.used, d.points, d.additional_error = used, points, additional_error
+        d.config = {"Which to Farm": target}
+        d.support_tasks = SUPPORT
+        d.get_task_by_class = lambda cls: farms[cls]
+        d.farms = farms
+        return d
+
+
+    def farm_calls():
+        return [e for e in EV if isinstance(e, tuple)]
+
+
+    # ---------------------------------------------------------------------------
+    print(f"\n[附加任务（周本）排在读日常之前；尾巴上那次是空操作。已用 {USED_PART}/180]")
+    d = daily(USED_PART)
+    d.run()
+    check("顺序：附加任务 → 读日常 → 刷体力 → 领日常", EV,
+          ["additional", "open_daily", ("farm_tacet", 0, d.config), "claim_daily", "claim_mail",
+           "claim_battle_pass"])
+    check("附加任务只跑了一次（上游尾巴那次没再跑）", EV.count("additional"), 1)
+    check("刷体力丢掉了 daily=/used_stamina=：must_use 0，刷到空", farm_calls()[0][1], 0)
+    check("上游自己刷了，就不补刷", any("上游这趟不刷体力" in m for m in d.logs), False)
+    check("上游读到的数留着", getattr(d, "_ark_daily_read", None), (USED_PART, False))
+
+    print("\n[同一个实例跑第二趟：附加任务照样先跑]")
+    d.run()
+    check("第二趟也有附加任务", EV.count("additional"), 2)
+    check("第二趟附加任务仍在读日常之前", EV.index("additional", 6) < EV.index("open_daily", 6))
+
+    print("\n[附加任务出错不拖垮当趟日常]")
+    d = daily(USED_PART, additional_error=RuntimeError("Teleport to boss failed"))
+    d.run()
+    check("记了错", any("附加任务出错，不拖垮当趟日常" in m for m in d.logs))
+    check("留了图", d.shots, ["additional_tasks_error"])
+    check("日常照跑：刷体力、领日常都在", farm_calls() != [] and "claim_daily" in EV)
+    check("尾巴上没有再跑一次", EV.count("additional"), 1)
+
+    print("\n[a TaskDisabledException (OK-WW's stop) from the additional tasks ends the daily, as upstream does]")
+    d = daily(USED_PART, additional_error=Disabled())
+    try:
+        d.run()
+        got = "ran on"
+    except Disabled:
+        got = "stopped"
+    check("goes up, not swallowed", got, "stopped")
+    check("not logged as an additional-task error", any("附加任务出错" in m for m in d.logs), False)
+    check("the daily did not carry on", "claim_daily" in EV, False)
+
+    # ---------------------------------------------------------------------------
+    print(f"\n[周本花掉 {USED_FULL}：上游的闸门关了，剩下的 {CURRENT} + {BACK_UP} 照样刷掉]")
+    d = daily(USED_FULL)
+    d.run()
+    check(f"读到已用 {USED_FULL}/180、活跃度 {POINTS}（OK-WW-07-27-50.log:410-411）",
+          getattr(d, "_ark_daily_read", None), (USED_FULL, False))
+    check("补刷了一次无音区，must_use 0", farm_calls(), [("farm_tacet", 0, d.config)])
+    check("补刷在领日常之前", EV.index(("farm_tacet", 0, d.config)) < EV.index("claim_daily"))
+    check("说了为什么补刷", any(f"上游这趟不刷体力（已用 {USED_FULL}/180" in m for m in d.logs))
+    check("补刷后照上游那样等 4 秒", 4 in d.sleeps)
+    check("「Daily Task Completed」在补刷之后（中继拿它当收尾）",
+          d.logs.index("Daily Task Completed") > next(i for i, m in enumerate(d.logs) if "上游这趟不刷体力" in m))
+
+    print("\n[活跃度已满 100：上游也不刷，照样补刷]")
+    d = daily(0, points=100)
+    d.run()
+    check("补刷了一次", farm_calls(), [("farm_tacet", 0, d.config)])
+    check("只刷了一次", len(farm_calls()), 1)
+
+    print("\n[凝素领域 / 模拟领域：上游刷时丢参数，上游不刷时补刷的是同一个]")
+    for target, name in ((SUPPORT[1], "farm_forgery"), (SUPPORT[2], "farm_simulation")):
+        d = daily(USED_PART, target=target)
+        d.run()
+        check(f"{name}：上游刷，must_use 0", farm_calls(), [(name, 0, d.config)])
+        d = daily(USED_FULL, target=target)
+        d.run()
+        check(f"{name}：上游不刷，补刷的也是它", farm_calls(), [(name, 0, d.config)])
+
+    print("\n[补刷出错：记一笔、回主界面，日常奖励照领]")
+    d = daily(USED_FULL, farm_error=RuntimeError("can't find gray_book_boss"))
+    d.run()
+    check("记了错", any("补刷体力出错，照常领日常奖励" in m for m in d.logs))
+    check("留了图", d.shots, ["leftover_farm_error"])
+    check("回了主界面再领", EV.index("ensure_main") < EV.index("claim_daily"))
+    check("日常奖励照领", "claim_daily" in EV)
+
+    print("\n[补刷时主动停（TaskDisabledException）照原样往上抛]")
+    d = daily(USED_FULL, farm_error=Disabled())
+    try:
+        d.run()
+        raised = False
+    except Disabled:
+        raised = True
+    check("往上抛", raised)
+    check("没领日常", "claim_daily" in EV, False)
+
+    print("\n[标记文件在：三种刷体力都不花波片，补刷那条也不花]")
+    Path(no_farm).write_text("")
+    for used in (USED_PART, USED_FULL):
+        d = daily(used)
+        d.run()
+        farm = d.farms[TacetTask]
+        check(f"已用 {used}：一次都没进本", farm_calls(), [])
+        check(f"已用 {used}：说了刷体力已禁用", any("刷体力已禁用（标记文件在）" in m for m in farm.logs))
+        check(f"used {used}: the flag line once, not again from claim_daily",
+              sum("刷体力已禁用" in m for m in farm.logs), 1)
+        if used == USED_PART:
+            check(f"used {used}: upstream reached the farm, so no 「按刷到空」 top-up line",
+                  any("上游这趟不刷体力" in m for m in d.logs), False)
+    check("补刷那条没有重复禁用的话", sum("刷体力已禁用" in m for m in d.farms[TacetTask].logs), 1)
+    for cls, name in ((ForgeryTask, "farm_forgery"), (SimulationTask, "farm_simulation")):
+        EV.clear()
+        t = wire(object.__new__(cls))
+        check(f"{name} 也挡住", getattr(t, name)(daily=True, used_stamina=0, config={}), None)
+        check(f"{name} 没进本", farm_calls(), [])
+    os.remove(no_farm)
+
+    # ---------------------------------------------------------------------------
+    print("\n[无音区结算：刷不动了停在结算页，留一张 tacet_drops]")
+    t = wire(object.__new__(TacetTask))
+    t.wait_ocr = lambda *a, **kw: [Box(str(BACK_UP), 1), Box(f"{CURRENT}/240", 2)]
+    t.result = (False, 60)
+    check("返回值原样", t.use_stamina(once=60, must_use=0), (False, 60))
+    check("留了图", t.shots, ["tacet_drops"])
+    t.result = (True, 60)
+    t.shots = []
+    check("还能接着刷：返回值原样", t.use_stamina(once=60, must_use=0), (True, 60))
+    check("还能接着刷：不留图", t.shots, [])
+
+    print("\n[体力读数：领奖框里读字原文进日志，真实文本]")
+    t.result = (False, 60)
+    t.use_stamina(once=60)
+    check(f"读到 {CURRENT}+{BACK_UP}（OK-WW-07-27-50.log:419-420）", t.read, (CURRENT, BACK_UP, CURRENT + BACK_UP))
+    check("current_stamina 照上游记", t.info.get("current_stamina"), CURRENT)
+    check("读字原文进了日志（领奖框）", any(m.startswith("体力读字原文领奖框（第 1 次）") for m in t.logs))
+
+    # 2026-09-21 10:25:49 (test_m6_okww.py:52): the reward dialog showed 剩余180 with no
+    # 数/数 at all; upstream took that as 0. Five reads 1 s apart, then unknown, not 0.
+    t = wire(object.__new__(TacetTask))
+    t.wait_ocr = lambda *a, **kw: [Box("挑战成功", 1), Box("剩余180", 2)]
+    t.result = (True, 60)
+    t.use_stamina(once=60)
+    check("一直没有 数/数：-1，不当 0", t.read, (-1, -1, -1))
+    check("领奖框里读了 5 次", sum(m.startswith("体力读字原文领奖框") for m in t.logs), 5)
+    check("每次之间睡 1 秒", t.sleeps, [1, 1, 1, 1])
+    check("留了 stamina_error 图", "stamina_error" in t.shots)
+
+    # 2026-09-13 09:33:01 (test_outcome.py:127): outside the dialog, one read.
+    t = wire(object.__new__(TacetTask))
+    t.wait_ocr = lambda *a, **kw: [Box("55", 1), Box("239/240", 2), Box("+", 3)]
+    check("书页上读一次：239 + 55", t.get_stamina(), (239, 55, 294))
+    check("书页上只读一次", sum(m.startswith("体力读字原文") for m in t.logs), 1)
+
+    # ---------------------------------------------------------------------------
+    # 2026-11-13: the stamina on the cultivation target's boss material (莉莉, 共鸣者突破材料),
+    # on while the marker file is there; the tacet farm takes whatever is left.
+    boss_file = os.path.join(tmp, "ark-okww-boss-material.json")
+    ns["BOSS_MATERIAL_FILE"] = boss_file
+    real_boss = ns["_boss_material"]
+    boss_calls = []
+
+    def boss_stub(result=None, error=None):
+        def stub(task):
+            boss_calls.append(type(task).__name__)
+            EV.append("boss")
+            if error is not None:
+                raise error
+            return result
+        return stub
+
+    print("\n[强敌领奖：没有标记文件，一字不差照旧]")
+    ns["_boss_material"] = boss_stub("complete")
+    boss_calls.clear()
+    d = daily(USED_PART)
+    d.run()
+    check("没碰强敌那条", boss_calls, [])
+    check("照旧刷无音区", farm_calls(), [("farm_tacet", 0, d.config)])
+    check("没有强敌的话", any(ns["BOSS_LINE"] in m for m in d.farms[TacetTask].logs), False)
+
+    print("\n[强敌领奖：标记在，只刷强敌，无音区关着（他 11-13：没刷完别去刷无音区，下一个刷什么未定）]")
+    Path(boss_file).write_text('{"target": "莉莉"}', encoding="utf-8")
+    for got in ("complete", "short", "off", "laps"):
+        ns["_boss_material"] = boss_stub(got)
+        boss_calls.clear()
+        d = daily(USED_PART)
+        d.run()
+        check(f"{got}：强敌那条跑了一次，在 TacetTask 上", boss_calls, ["TacetTask"])
+        check(f"{got}：无音区没刷", farm_calls(), [])
+        check(f"{got}：说了这趟怎么结束、无音区不刷",
+              any(f"这趟结束（{got}），无音区不刷" in m for m in d.farms[TacetTask].logs))
+        check(f"{got}：日常照领", "claim_daily" in EV)
+    print("\n[强敌领奖：上游闸门关着（已用 180）时，补刷那条也只走强敌]")
+    ns["_boss_material"] = boss_stub("short")
+    boss_calls.clear()
+    d = daily(USED_FULL)
+    d.run()
+    check("补刷走的也是强敌，一次", (boss_calls, farm_calls()), (["TacetTask"], []))
+
+    print("\n[强敌领奖：出错不拖垮，回主界面，剩下的体力不刷（无音区关着）]")
+    ns["_boss_material"] = boss_stub(error=RuntimeError("培养目标页上没认出"))
+    d = daily(USED_PART)
+    d.run()
+    farm = d.farms[TacetTask]
+    check("记了错", any("出错，剩下的体力不刷（无音区关着）" in m for m in farm.logs))
+    check("回了主界面", "ensure_main" in EV)
+    check("无音区没刷、日常照领", (farm_calls(), "claim_daily" in EV), ([], True))
+
+    print("\n[强敌领奖：OK-WW 的停止信号照原样往上抛]")
+    ns["_boss_material"] = boss_stub(error=Disabled())
+    d = daily(USED_PART)
+    try:
+        d.run()
+        raised = False
+    except Disabled:
+        raised = True
+    check("往上抛", raised)
+    check("没再刷无音区", farm_calls(), [])
+
+    print("\n[强敌领奖：凝素领域 / 模拟领域不走强敌那条]")
+    ns["_boss_material"] = boss_stub("complete")
+    for target, name in ((SUPPORT[1], "farm_forgery"), (SUPPORT[2], "farm_simulation")):
+        boss_calls.clear()
+        d = daily(USED_PART, target=target)
+        d.run()
+        check(f"{name}：没碰强敌", boss_calls, [])
+        check(f"{name}：照旧", farm_calls(), [(name, 0, d.config)])
+
+    print("\n[强敌领奖：标记文件的内容]")
+    want = ns["_boss_material_want"]
+    check("莉莉，行名默认共鸣者突破材料", want(), {"target": "莉莉", "row": "共鸣者突破材料"})
+    Path(boss_file).write_text("{坏的", encoding="utf-8")
+    check("坏 JSON：说不能用，不当成开着", "error" in want())
+    Path(boss_file).write_text('{"row": "共鸣者突破材料"}', encoding="utf-8")
+    check("没写培养目标：说不能用", "error" in want())
+    os.remove(boss_file)
+    check("没有文件：None", want(), None)
+
+    class B:
+        """ok-script's Box as far as the overlay reads it: str() is its text (ok Box.__str__)."""
+        def __init__(self, name, x, y, w=120, h=33):
+            self.name, self.x, self.y, self.width, self.height = name, x, y, w, h
+
+        def __str__(self):
+            return self.name
+
+    # The 培养目标 page as seen 2026-11-13 04:34:11, scaled to 1920x1080: three rows 150 apart.
+    # 11-14: with the left menu as it really is (screenshots 11-13 06:25:07, 06:30:54): its 讨伐强敌 line reads
+    # 「产出共鸣者突破材料」, which contains the row's name - the fixture without it let "row in text" pass for "gone".
+    PAGE = [B("培养目标", 288, 155), B("莉莉", 288, 190), B("所需材料", 940, 155),
+            B("讨伐强敌", 342, 528), B("产出共鸣者突破材料", 392, 564), B("无音清剿", 342, 768), B("产出声骸材料", 356, 804),
+            B("武器经验材料", 765, 270), B("106/106", 1085, 305, 60, 20), B("21/79", 1430, 305, 60, 20),
+            B("直接挑战", 1650, 270),
+            B("共鸣者突破材料", 765, 420), B("1/46", 1430, 455, 50, 20), B("直接挑战", 1650, 420),
+            B("武器与技能素材", 765, 570), B("1/31", 1085, 605, 50, 20), B("0/87", 1430, 605, 50, 20),
+            B("直接挑战", 1650, 570),
+            B("156", 1100, 50), B("152/240", 1340, 50)]
+    print("\n[强敌领奖：培养目标页上认那一行（真实截图的位置）]")
+    owned, need, btn = ns["_boss_row"](PAGE, "共鸣者突破材料")
+    check("数量读的是这一行的 1/46，不是上下两行", (owned, need), (1, 46))
+    check("直接挑战是这一行的", getattr(btn, "y", None), 420)
+    check("没有这一行：三个 None", ns["_boss_row"](PAGE[:3], "共鸣者突破材料"), (None, None, None))
+
+    print("\n[强敌领奖：整趟走一遍——差两个，领一次，再读够了就停]")
+    ns["_boss_material"] = real_boss
+    Path(boss_file).write_text('{"target": "莉莉"}', encoding="utf-8")
+
+    def page(owned_now, target="莉莉"):
+        out = [b for b in PAGE if b.name not in ("1/46", "莉莉")]
+        return out + [B(target, 288, 190), B(f"{owned_now}/46", 1430, 455, 50, 20)]
+
+    # The boss's reward dialog as seen 2026-11-13 04:45:58 (boss_material_no_claim, 1920x1080): the bar
+    # read 「156」 at x1186 y48 and 「154/240」 at x1410 y44; the dialog has the title 领取奖励, then the
+    # sentence that asks for 60 waveplates, then the two buttons 取消 (cancel) and 确认 (confirm).
+    def dialog(wave, spare):
+        return [B(str(spare), 1186, 48), B(f"{wave}/240", 1410, 44), B("领取奖励", 450, 350),
+                B("领取奖励需消耗60点结晶波片，请确认是否领取？", 630, 520), B("取消", 640, 678), B("确认", 1260, 678)]
+
+    def fake_task(owned_now=44, wave=152, spare=156, target="莉莉", topup=0, settle=True, claim_dialog=True):
+        t = wire(object.__new__(TacetTask))
+        t.state = {"owned": owned_now, "wave": wave, "spare": spare, "screen": "world", "topups": topup}
+        t.steps = []
+
+        def book(feature=""):
+            t.steps.append("book")
+            t.state["screen"] = "page"
+        t.openF2Book = book
+        t.click_relative = lambda x, y, **kw: t.steps.append(("click", x, y))
+        t.box_of_screen = lambda *a, **kw: None
+        t.height_of_screen = lambda f: int(1080 * f)
+
+        def ocr(box=None, **kw):
+            sc = t.state["screen"]
+            if sc == "page":
+                return page(t.state["owned"], target)
+            if sc == "dialog":
+                return dialog(t.state["wave"], t.state["spare"])
+            if sc == "settle":
+                return [B("挑战成功", 900, 200), B("退出副本", 700, 950), B("重新挑战", 1200, 950)]
+            return []
+        t.ocr = ocr
+        t.get_stamina = lambda: (t.state["wave"], t.state["spare"], t.state["wave"] + t.state["spare"])
+        t.back = lambda after_sleep=0: t.steps.append("back")
+        t.click_box = lambda b, after_sleep=0: t.steps.append(("box", b.name, b.y))
+        t.click_team_challenge = lambda: t.steps.append("challenge")
+        t.wait_in_team_and_world = lambda time_out=0: None
+        t.combat_once = lambda **kw: t.steps.append("fight")
+        t.walk_to_treasure = lambda: t.steps.append("walk")
+
+        def f(handle_claim=True):
+            t.steps.append(("f", handle_claim))
+            if claim_dialog:
+                t.state["screen"] = "dialog"
+        t.pick_f = f
+        t.info_incr = lambda k, v: t.info.__setitem__(k, t.info.get(k, 0) + v)
+        t.wait_until = lambda cond, time_out=0, raise_if_not_found=False, **kw: cond()
+
+        def left():
+            t.steps.append("cancel")
+            t.state["screen"] = "world"
+        t.click_dialog_left_button = left
+
+        def take():
+            t.state["owned"] += 4
+            t.state["wave"] -= 60
+            t.state["screen"] = "settle" if settle else "world"
+
+        def right():
+            # The game: under 60 waveplates (or a forced top-up) the 「补充结晶波片」 dialog comes first.
+            t.steps.append("confirm")
+            if t.state["topups"] > 0 or t.state["wave"] < 60:
+                t.state["screen"] = "topup"
+                return "btn"
+            take()
+            return "btn"
+        t.click_dialog_right_button = right
+
+        def wait_feature(name, **kw):
+            return t.state["screen"] == "topup"
+        t.wait_feature = wait_feature
+
+        def click(btn, after_sleep=0):
+            # After the two top-up clicks: the backup became waveplates, 确认 again.
+            t.steps.append(("again", btn))
+            t.state["topups"] = 0
+            t.state["wave"] += t.state["spare"]
+            t.state["spare"] = 0
+            if t.state["wave"] >= 60:
+                take()
+            else:
+                t.state["screen"] = "topup"
+        t.click = click
+
+        def wait_click_ocr(match=None, **kw):
+            if t.state["screen"] == "settle" and match.search("退出副本"):
+                t.steps.append("exit")
+                t.state["screen"] = "world"
+                return True
+            return None
+        t.wait_click_ocr = wait_click_ocr
+        return t
+
+    t = fake_task()
+    check("44/46：领一次（+4），48/46 后停在 complete", real_boss(t), "complete")
+    check("确认只点了一次", t.steps.count("confirm"), 1)
+    check("点的是莉莉那一行的直接挑战", ("box", "直接挑战", 420) in t.steps)
+    check("顺序：书 → 培养目标 → 直接挑战 → 开启挑战 → 打 → 走到宝箱 → F（不让上游取消）→ 确认 → 退出副本",
+          [s if not isinstance(s, tuple) else s[0] for s in t.steps][:9],
+          ["book", "box", "box", "challenge", "fight", "walk", "f", "confirm", "exit"])   # 11-14: 培养目标 is clicked by its box
+    check("第一下点的是「培养目标」那一格，第二下是直接挑战", [s[1] for s in t.steps if isinstance(s, tuple) and s[0] == "box"][:2], ["培养目标", "直接挑战"])
+    check("按 F 时 handle_claim=False", ("f", False) in t.steps)
+    check("记了花的体力 60", t.info.get("used stamina"), 60)
+    check("留了领奖图", "boss_material_claimed" in t.shots)
+    check("每圈开头都读一次数量（44 → 48）", [m for m in t.logs if m.startswith(ns["BOSS_LINE"] + "莉莉的共鸣者突破材料 ")],
+          [ns["BOSS_LINE"] + "莉莉的共鸣者突破材料 44/46", ns["BOSS_LINE"] + "莉莉的共鸣者突破材料 48/46"])
+    check("领奖框上读了顶栏", any("领奖框：顶栏读到波片 152/240，备用 156" in m for m in t.logs))
+
+    t = fake_task(owned_now=10)
+    check("10/46、波片 152 + 备用 156：领到不够一次为止", real_boss(t), "short")
+    check("领了 5 次（152→92→32，补备用 188→128→68→8），补充框只出一次",
+          (t.info.get("used stamina"), t.steps.count(("again", "btn"))), (300, 1))
+    check("剩 8 停下，说了不够", any("体力 8 + 备用 0 不够领一次的 60" in m for m in t.logs))
+
+    t = fake_task(owned_now=46)
+    check("已经够了：一次不打", (real_boss(t), "fight" in t.steps), ("complete", False))
+    t = fake_task(wave=10, spare=20)
+    check("体力 + 备用不够 60：一次不打", (real_boss(t), "fight" in t.steps), ("short", False))
+    t = fake_task(target="锁暝")
+    check("培养目标换了人：不打，回 off", (real_boss(t), "fight" in t.steps), ("off", False))
+    check("培养目标换了人：留图、记错", ("boss_material_target" in t.shots,
+                                       any("培养目标不是莉莉" in m for m in t.logs)), (True, True))
+
+    print("\n[强敌领奖：波片 30 + 备用 156——游戏弹补充框，用备用，再点一次确认]")
+    t = fake_task(wave=30, spare=156, topup=1)
+    real_boss(t)
+    check("补充框：点了两下 (0.70, 0.71)、返回、再确认", (("click", 0.70, 0.71) in t.steps, ("again", "btn") in t.steps),
+          (True, True))
+    check("说了动用备用体力", any("动用备用体力" in m for m in t.logs))
+
+    print("\n[强敌领奖：波片读到 152 够领，游戏却弹补充框——不点补充，抛出]")
+    t = fake_task(wave=152, topup=1)
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("抛出并说清", "游戏却弹了补充波片的框" in got)
+    check("取消了，没点补充", ("cancel" in t.steps, ("click", 0.70, 0.71) in t.steps), (True, False))
+
+    print("\n[强敌领奖：波片 20 + 备用 20 不够一次——取消，不动备用]")
+    t = fake_task(wave=20, spare=20)
+    t.get_stamina = lambda: (80, 0, 80)          # the page read said enough; the dialog's bar says not
+    check("返回 short", real_boss(t), "short")
+    check("点了取消，没点确认", ("cancel" in t.steps, "confirm" in t.steps), (True, False))
+
+    print("\n[强敌领奖：波片够时备用读不清不要紧（11-13 05:27:12 读成「14）」）；波片不够时读不清就停]")
+
+    def odd_spare(t, spare_text):
+        real = t.ocr
+
+        def ocr(box=None, **kw):
+            got = real(box=box, **kw)
+            if t.state["screen"] == "dialog":
+                got = [B(spare_text, 1208, 48, 60, 35) if b.name == str(t.state["spare"]) else b for b in got]
+            return got
+        t.ocr = ocr
+        return t
+    t = odd_spare(fake_task(owned_now=40, wave=362, spare=14), "14）")
+    check("波片 362、备用读成「14）」：照样领", (real_boss(t), t.steps.count("confirm") >= 1), ("complete", True))
+    t = odd_spare(fake_task(owned_now=40, wave=30, spare=156), "156）")
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("波片 30、备用读不清：不点确认，留图抛出", ("没读全" in got, "confirm" in t.steps, "boss_material_bar_unread" in t.shots),
+          (True, False, True))
+
+    print("\n[强敌领奖：一圈没打成（11-13 05:44:49 角色倒下、复活没开成地图）——回塔回血，从培养目标页重进]")
+
+    def flaky(t, fails):
+        left = [fails]
+
+        def fight(**kw):
+            t.steps.append("fight")
+            if left[0] > 0:
+                left[0] -= 1
+                raise RuntimeError("combat check not in combat")
+        t.combat_once = fight
+        t.teleport_to_heal = lambda: t.steps.append("heal")
+        return t
+    t = flaky(fake_task(owned_now=40), 1)
+    check("失败一次后照样刷满", real_boss(t), "complete")
+    check("回了塔回血一次", t.steps.count("heal"), 1)
+    check("说了重进、留了图", (any("这一圈没打成" in m for m in t.logs), "boss_material_lap_failed" in t.shots), (True, True))
+    t = flaky(fake_task(owned_now=40), 3)
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("连着 3 圈没打成：停下", ("连着 3 圈没打成" in got, t.steps.count("heal")), (True, 2))
+    t = flaky(fake_task(owned_now=40), 1)
+
+    def no_heal():
+        raise RuntimeError("Can not find a teleport to heal")
+    t.teleport_to_heal = no_heal
+    check("回塔没成也照样重进", real_boss(t), "complete")
+
+    print("\n[强敌领奖：刚登录完 F2 指南没打开（11-13 05:49:39）——回主界面再试]")
+    t = fake_task(owned_now=40)
+    real_book = t.openF2Book
+    book_fails = [1]
+
+    def book(feature=""):
+        if book_fails[0]:
+            book_fails[0] -= 1
+            raise Exception("can't find gray_book_boss, make sure f2 is the hotkey for book")
+        real_book(feature)
+    t.openF2Book = book
+    check("没打开一次，再试就刷满", real_boss(t), "complete")
+    check("说了再试、留了图", (any("F2 指南没打开" in m for m in t.logs), "boss_material_book" in t.shots), (True, True))
+    t = fake_task(owned_now=40)
+
+    def never(feature=""):
+        raise Exception("can't find gray_book_boss")
+    t.openF2Book = never
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("一直打不开：试 3 次后停下", "连着 3 次没打开 F2 指南" in got)
+
+    print("\n[强敌领奖：培养目标页还没画出来（11-13 05:59:19 被当成换了人）——等一等，等不到就重进]")
+    t = fake_task(owned_now=40)
+    blank = [2]
+    real_ocr = t.ocr
+
+    def slow(box=None, **kw):
+        if t.state["screen"] == "page" and blank[0]:
+            blank[0] -= 1
+            return [B(".187ms", 1776, 79), B("1", 1736, 210)]
+        return real_ocr(box=box, **kw)
+    t.ocr = slow
+    check("前两眼是空的，第三眼出来了：照常刷满", real_boss(t), "complete")
+    check("没说换了人", any("培养目标不是" in m for m in t.logs), False)
+    t = fake_task(owned_now=40)
+    t.ocr = lambda box=None, **kw: [B(".187ms", 1776, 79)]
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("一直空着：重进 2 次后停下，不说换了人", ("没等到培养目标页" in got, any("培养目标不是" in m for m in t.logs)),
+          (True, False))
+
+    print("\n[强敌领奖：领奖框刚出来时顶栏还没画好（11-13 06:11:26）——多看几眼]")
+    t = fake_task(owned_now=40)
+    torn = [2]
+    real_ocr2 = t.ocr
+
+    def drawing(box=None, **kw):
+        got = real_ocr2(box=box, **kw)
+        if t.state["screen"] == "dialog" and torn[0]:
+            torn[0] -= 1
+            return [b for b in got if "/240" not in b.name] + [B("城", 1386, 9)]
+        return got
+    t.ocr = drawing
+    check("顶栏前两眼没读到、第三眼读到：照常领", real_boss(t), "complete")
+    check("确认点了", "confirm" in t.steps)
+
+    print("\n[强敌领奖：刷够以后那一行从培养目标页上消失（11-13 06:25:08）——算够了，不算认不出]")
+    t = fake_task(owned_now=44)
+    real_ocr3 = t.ocr
+
+    def gone(box=None, **kw):
+        got = real_ocr3(box=box, **kw)
+        if t.state["screen"] == "page" and t.state["owned"] >= 46:
+            got = [b for b in got if b.name not in ("共鸣者突破材料", f"{t.state['owned']}/46")
+                   and not (b.name == "直接挑战" and b.y == 420)]
+            # what stays in its place on the real page: the gathered flower, same word in its label, 前往 not 直接挑战
+            got = got + [B("突破材料", 814, 420), B("0/60", 1490, 455, 50, 20), B("前往", 1698, 420)]
+        return got
+    t.ocr = gone
+    check("左栏那句「产出共鸣者突破材料」确实在屏上（旧判断就栽在它身上）", any(b.name == "产出共鸣者突破材料" for b in PAGE))
+    check("领到 48 后那一行没了：complete", real_boss(t), "complete")
+    check("说了够了、为什么", any("已经够了（培养目标页上不再列这一行）" in m for m in t.logs))
+
+    print("\n[强敌领奖：那一行没了以后右栏画得慢（11-13 06:30:54，6 眼都只有左上角）——多等几眼]")
+    t = fake_task(owned_now=46)
+    late = [8]
+    real_ocr4 = t.ocr
+
+    def slow_panel(box=None, **kw):
+        if t.state["screen"] == "page":
+            if late[0]:
+                late[0] -= 1
+                return [B("素材获取", 102, 50), B("17", 1112, 48), B("5/240", 1400, 48), B("当期", 200, 150),
+                        B("莉莉", 288, 190)]
+            return [b for b in real_ocr4(box=box, **kw) if b.name not in ("共鸣者突破材料", "46/46")
+                    and not (b.name == "直接挑战" and b.y == 420)]
+        return real_ocr4(box=box, **kw)
+    t.ocr = slow_panel
+    check("8 眼后右栏才出来、那一行没了：complete，不报错", real_boss(t), "complete")
+
+    print("\n[强敌领奖：按左栏读到的「培养目标」那一格去点，不点死坐标（11-14 双子星）]")
+    t = fake_task(owned_now=44)
+    real_boss(t)
+    check("点的是读到的那一格", (("box", "培养目标", 155) in t.steps, ("click", 0.22, 0.17) in t.steps), (True, False))
+
+    print("\n[强敌领奖：左栏已经没有「培养目标」（练满或取消了，模拟领域顶到最上面）——不点、不报错，算够了]")
+    t = fake_task(owned_now=44)
+    t.ocr = lambda box=None, **kw: ([B("素材获取", 102, 50), B("模拟领域", 342, 190), B("产出经验材料", 356, 226), B("讨伐强敌", 342, 430),
+                                    B("产出共鸣者突破材料", 392, 466), B("无音清剿", 342, 670)] if t.state["screen"] == "page" else [])
+    check("没有培养目标：complete", real_boss(t), "complete")
+    check("没点死坐标、没打、退出了指南", (("click", 0.22, 0.17) in t.steps, "fight" in t.steps, "back" in t.steps), (False, False, True))
+    check("说了为什么，用的是中继认得的那句（已经够了（…））",
+          any("已经够了（素材获取左栏没有「培养目标」这一格" in m for m in t.logs))
+
+    print("\n[强敌领奖：指南开了却一个字都没读到——照旧点老位置，走后面的重试]")
+    t = fake_task(owned_now=44)
+    real_ocr6 = t.ocr
+    blank = [3]
+
+    def nothing_first(box=None, **kw):
+        if t.state["screen"] == "page" and blank[0] > 0:
+            blank[0] -= 1
+            return []
+        return real_ocr6(box=box, **kw)
+    t.ocr = nothing_first
+    real_boss(t)
+    check("前三眼空白：点了老位置", ("click", 0.22, 0.17) in t.steps)
+
+    print("\n[强敌领奖：页面认不出时，报错行里是整屏读到的每一个名字，不是前几百个字（11-13 06:36:46）]")
+    t = fake_task(owned_now=46)
+    real_ocr5 = t.ocr
+
+    class Real(B):                          # prints the way ok-script's Box does: about 85 characters each
+        def __str__(self):
+            return f"Box(name='{self.name}', x={self.x}, y={self.y}, width=116, height=35, confidence=100)"
+
+    def no_header(box=None, **kw):
+        if t.state["screen"] == "page":
+            return [Real("素材获取", 102, 50), Real("17", 1112, 48), Real("5/240", 1400, 48), Real("当期", 200, 150),
+                    Real("莉莉", 288, 190), Real("武器经验材料", 765, 270), Real("106/106", 1085, 305),
+                    Real("直接挑战", 1650, 270), Real("突破材料", 765, 420), Real("0/60", 1430, 455),
+                    Real("前往", 1650, 420), Real("最后一行的字", 765, 870)]
+        return real_ocr5(box=box, **kw)
+    t.ocr = no_header
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("认不出那一行：停下", "没认出「共鸣者突破材料」那一行" in got, True)
+    check("整屏的名字都在报错行里，最后一个也在", ("武器经验材料" in got, "前往" in got, "最后一行的字" in got), (True, True, True))
+    check("名字之间不夹坐标", "confidence=" in got.split("整屏读到")[1], False)
+
+    print("\n[强敌领奖：按 F 没出「领取奖励」框——留图抛出（外面交给无音区）]")
+    t = fake_task(claim_dialog=False)
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("抛出", ("没出「领取奖励」框" in got, "boss_material_no_claim" in t.shots), (True, True))
+
+    print("\n[强敌领奖：确认后没等到「退出副本」——留图抛出]")
+    t = fake_task(settle=False)
+    try:
+        real_boss(t)
+        got = "went on"
+    except RuntimeError as exc:
+        got = str(exc)
+    check("抛出", ("没等到结算页的「退出副本」" in got, "boss_material_no_settlement" in t.shots), (True, True))
+    os.remove(boss_file)
+
+    for k, v in _saved.items():
+        if v is None:
+            sys.modules.pop(k, None)
+        else:
+            sys.modules[k] = v
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_merge_step():
+    """The step list does not claim 「声骸五合一」 from the line logged before the merge.
+
+collector_okww._okww_steps added 「声骸五合一」 whenever 「check discarded echo」 was in
+the log - a line upstream writes before merging. When MergeEchoTask then fails,
+upstream logs 「… Failed」 and carries on; the failure reaches the group through
+gamelog_errors.check_round, while the report listed the merge as done beside that
+alarm (audit 2026-10-13 item 16). The label is gone; the garden's 「不算完成」 stays.
+
+    Formerly test_okww_merge_step.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.verify import collector_okww as co
+
+
+    T = "2026-10-12 10:{:02d}:00,000 {} TaskExecutor {}"
+    MERGE_FAILED = "\n".join([
+        T.format(1, "INFO", "MergeEchoTask:check discarded echo"),
+        T.format(2, "ERROR", "MergeEchoTask:MergeEchoTask Failed"),
+    ])
+    GARDEN = T.format(3, "INFO", "GardenTask:garden counter 2/3")
+
+    print("[merge started and failed: not listed as done]")
+    steps = co._okww_steps(MERGE_FAILED, 0)
+    check("no 声骸五合一", any("五合一" in s for s in steps), False)
+
+    print("\n[the garden's 「不算完成」 marking is unchanged]")
+    check("garden ran, not read as done", co._okww_steps(GARDEN, 0), ["周常乐园（没读到做完，不算完成）"])
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_plan_bits():
+    """Tomorrow's OK-WW plan lines, read from the master config that takes effect.
+
+plan._okww_plan_bits and plan._okww_extra_bit had no test (audit 2026-10-05,
+E). They are not dead code - plan.py:665 and :365 call them - so they get
+behaviour tests instead of deletion. Pinned here: the master DailyTask.json is
+read, quick config overrides it when on, the weekly-boss commandeering of
+「Teleport and Farm 4C Echo」 is reported as the weekly boss, and nothing at all
+is said when there is nothing to read.
+
+    Formerly test_okww_plan_bits.py.
+    """
+    import json
+    import os
+    from unittest import mock
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    os.environ["ARK_STATE_DIR"] = str(tmpdir())        # no no-stamina-farm flag
+    os.environ.pop("ARK_OKWW_DIR", None)
+    from ark_relay.core import plan
+
+
+    def automas(daily, *, farm=None, quick=None):
+        root = tmpdir()
+        d = root / "data" / "okww-sid" / "Default" / "ConfigFile"
+        d.mkdir(parents=True)
+        (d / "DailyTask.json").write_text(json.dumps(daily), encoding="utf-8")
+        if farm is not None:
+            (d / "FarmEchoTask.json").write_text(json.dumps(farm), encoding="utf-8")
+        if quick is not None:
+            (root / "config").mkdir()
+            (root / "config" / "ScriptConfig.json").write_text(json.dumps({
+                "s9": {"Info": {"Name": "OK-WW"},
+                       "SubConfigsInfo": {"UserData": {"u1": {
+                           "Info": {"IfQuickConfig": True}, "Task": quick}}}}}), encoding="utf-8")
+        return root, d
+
+
+    print("[_okww_plan_bits]")
+    check("no AUTO-MAS dir -> nothing", plan._okww_plan_bits(None), [])
+    check("no data dir -> nothing", plan._okww_plan_bits(tmpdir()), [])
+
+    root, _ = automas({"Which to Farm": "Simulation Challenge", "Material Selection": "Shell Credit",
+                       "Additional Tasks to Run After Daily Task": ["Auto Farm all Nightmare Nest"]})
+    bits = plan._okww_plan_bits(root)
+    check("master read: stamina line", bits[0], "体力刷 模拟领域·贝币")
+    check("master read: nest farmed to full", any("全部点位，刷到打满" in b for b in bits), True)
+    check("nest-full is not repeated as an extra task", any(b.startswith("附加") for b in bits), False)
+
+    root, _ = automas({"Which to Farm": "Simulation Challenge", "Material Selection": "Shell Credit",
+                       "Additional Tasks to Run After Daily Task": []},
+                      quick={"WhichToFarm": "Simulation Challenge", "MaterialSelection": "Weapon EXP",
+                             "WhichTacetSuppressionToFarm": 1, "WhichForgeryChallengeToFarm": 1,
+                             "FarmNightmareNestForDailyEcho": False, "AdditionalTasks": []})
+    check("quick config on -> its value wins over the master",
+          plan._okww_plan_bits(root)[0], "体力刷 模拟领域·武器经验")
+
+    print("[_okww_extra_bit]")
+    _, d = automas({}, farm={"Teleport to Boss": "Weekly Challenge", "Boss Level": "90",
+                             "Which Weekly Boss to Teleport": 2})
+    with mock.patch.object(plan, "_weekly_boss_state", lambda: (False, "")):
+        check("weekly-boss commandeered, not done -> fought tomorrow",
+              plan._okww_extra_bit(d, ["Teleport and Farm 4C Echo"], {}),
+              "附加 周本 战歌重奏第 2 个（90 级），明天会打")
+    with mock.patch.object(plan, "_weekly_boss_state", lambda: (True, "鸣式·利维亚坦")):
+        check("weekly-boss quota full -> says not fought",
+              plan._okww_extra_bit(d, ["Teleport and Farm 4C Echo"], {}),
+              "附加 周本 鸣式·利维亚坦（90 级），本周已打满，明天不打")
+    _, d2 = automas({}, farm={"Teleport to Boss": "Normal"})
+    check("not commandeered -> named as the echo task (translated when the pack has it)",
+          plan._okww_extra_bit(d2, ["Teleport and Farm 4C Echo"], {"Teleport and Farm 4C Echo": "传送刷4C声骸"}),
+          "附加 传送刷4C声骸")
+    check("more than two -> first two and a count",
+          plan._okww_extra_bit(d2, ["A", "B", "C"], {}), "附加 A、B 等 3 项")
+    check("only nest-full / nothing -> no line",
+          (plan._okww_extra_bit(d2, ["Auto Farm all Nightmare Nest"], {}), plan._okww_extra_bit(d2, [], {})),
+          ("", ""))
+
+
+def _part_okww_revive_and_retry():  # noqa: C901
+    """Echo farm and weekly boss: deaths go to upstream, and retries stop after three failures.
+
+Runs the real overlay against stand-ins for upstream v3.7.4 (FarmEchoTask.py:92-106
+revive_action, :108-125 run, :182-183 the is_revived continue, :216-229 the do_run
+re-teleport) and checks:
+
+  revive_action   not overridden any more (2026-10-13). Ours confirmed the revive
+                  popup inside a realm while farming echoes and spent a revive item
+                  per death; v3.7.4 hands a realm death to BaseCombatTask.revive_action
+                  (:227-240), which cancels the popup and leaves the realm to heal,
+                  and do_run re-teleports (at most 3 times per run)
+  combat_once     swallows CharRevivedException only when the revive put us back at
+                  the boss (is_revived: upstream's overworld revive), so the loop takes
+                  its `if self.is_revived: continue`; a realm death (echo farm or
+                  weekly boss) goes up to upstream's do_run handler, which re-teleports
+  FarmEchoTask.run  upstream v3.7.4 retries by calling self.run(retries - 1) from its
+                  own except (FarmEchoTask.py:122-123), so the wrapper must take and
+                  pass on `retries` (10-13: it took none, and the retry was a
+                  TypeError); it stops at _MAX_FARM_RETRIES and leaves the depth
+                  counter at 0 for the next run
+  scope           the one realm death on record (tests/replay/2026-09-01) was raised
+                  from inside combat_once, which is where the overlay looks at it
+
+    Formerly test_okww_revive_and_retry.py.
+    """
+    import os
+    import re
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.okww_patch import okww_overlay
+
+
+    REPLAY = fx_dir(Path(__file__), "replay")
+
+
+    class Disabled(Exception):
+        """ok.TaskDisabledException."""
+
+
+    class Revived(Exception):
+        """src.task.BaseCombatTask.CharRevivedException."""
+
+
+    class _Any(type):
+        """A stand-in upstream class: any method the overlay reads exists and does nothing."""
+        def __getattr__(cls, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+
+            def anything(self, *a, **kw):
+                return None
+            return anything
+
+
+    class Box:
+        """ok-script's OCR box: the overlay reads .name and str()."""
+        def __init__(self, name, x=0, y=0, width=10, height=10):
+            self.name, self.x, self.y, self.width, self.height = name, x, y, width, height
+
+        def __str__(self):
+            return f"Box(name='{self.name}', x={self.x}, y={self.y}, width={self.width}, height={self.height})"
+
+
+    class BaseWWTask(metaclass=_Any):
+        pass
+
+
+    class FarmEchoTask(BaseWWTask):
+        def revive_action(self):
+            # Upstream v3.7.4 FarmEchoTask.py:92-106, reduced: in a realm it hands over to
+            # BaseCombatTask.revive_action (:227-240: close_revive_popup cancels the popup,
+            # then leave and heal; returns True, is_revived untouched); in the overworld it
+            # walks back to the boss and sets is_revived.
+            if not self._in_realm:
+                self.events.append("upstream-revive")
+                self.is_revived = True
+                return True
+            self.events.append("cancel-popup")
+            return True
+
+        def run(self, retries=3):
+            # Upstream v3.7.4 FarmEchoTask.py:108-125, verbatim apart from the stand-ins
+            # (start_time and WWOneTimeTask.run left out): the retry is self.run(retries - 1)
+            # from its own except, i.e. through whatever FarmEchoTask.run is bound to.
+            self.retries_seen.append(retries)
+            try:
+                return self.do_run()
+            except Disabled:
+                pass
+            except Exception:
+                self.log_info("farm 4c error, try handle monthly card")
+                if retries > 0 and (self.handle_claim_button() or self.handle_monthly_card()):
+                    self.run(retries - 1)
+                else:
+                    raise
+
+        def do_run(self):
+            self.bodies += 1
+            if self.bodies <= self.failures:
+                raise RuntimeError("Teleport to boss failed")
+            return "farmed"
+
+        def handle_claim_button(self):
+            return self.claim_button
+
+        def handle_monthly_card(self):
+            return False
+
+        def combat_once(self, wait_combat_time=200, raise_if_not_found=True, target=False):
+            # What BaseCombatTask.raise_not_in_combat (:310-332) does on a death: call
+            # revive_action, then raise CharRevivedException when it returned True.
+            if self.dies:
+                if self.revive_action():
+                    raise Revived("combat check not in combat")
+                raise RuntimeError("revive failed")
+            return True
+
+
+    mods = {
+        "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
+                                    Logger=types.SimpleNamespace(get_logger=lambda n: types.SimpleNamespace(
+                                        info=lambda *a, **k: None, error=lambda *a, **k: None))),
+        "src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+        "src.task.BaseCombatTask": types.SimpleNamespace(CharRevivedException=Revived),
+        "src.task.BaseWWTask": types.SimpleNamespace(BaseWWTask=BaseWWTask),
+        "src.task.FarmEchoTask": types.SimpleNamespace(FarmEchoTask=FarmEchoTask),
+    }
+    for name in ("DailyTask", "ForgeryTask", "SimulationTask", "TacetTask"):
+        mods[f"src.task.{name}"] = types.SimpleNamespace(**{name: _Any(name, (), {})})
+    _saved = {k: sys.modules.get(k) for k in mods}
+    sys.modules.update(mods)
+
+    # The function itself, not its name: a class made inside a part is named
+    # "_part_okww_revive_and_retry.<locals>.FarmEchoTask".
+    upstream_revive = FarmEchoTask.__dict__["revive_action"]
+    ns = {}
+    exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+    print("[绑定都换上了]")
+    for b in ("FarmEchoTask.combat_once", "FarmEchoTask.run"):
+        check(f"{b} 已换上", b in ns["_applied"])
+    print("[revive_action is upstream's own again]")
+    check("revive_action not in the applied list", "FarmEchoTask.revive_action" in ns["_applied"], False)
+    check("FarmEchoTask.revive_action is still upstream's function",
+          FarmEchoTask.__dict__["revive_action"] is upstream_revive, True)
+    check("the overlay source has no revive_action override",
+          '@override(FarmEchoTask, "revive_action")' in okww_overlay.source_text(), False)
+
+    # farming_echoes() is 「the no-claim flag file exists」; point it at a temp file.
+    tmp = str(tmpdir("ark-revive-"))
+    flag = os.path.join(tmp, "ark-okww-farm.no-claim")
+    ns["NO_CLAIM"] = flag
+
+    def task(in_realm=True):
+        t = object.__new__(FarmEchoTask)
+        t.events, t.logs, t.clicks, t.waits = [], [], [], []
+        t._in_realm = in_realm
+        t.is_revived = False
+        t.dies = False
+        t.bodies, t.failures, t.claim_button = 0, 0, True
+        t.retries_seen = []
+        t.log_info = lambda msg, notify=False: t.logs.append(msg)
+        t.log_error = lambda msg, notify=False, **kw: t.logs.append(msg)
+        t.click = lambda target, after_sleep=0: t.clicks.append(str(getattr(target, "name", target)))
+        t.wait_in_team_and_world = lambda time_out=10, **kw: t.waits.append(time_out) or True
+        return t
+
+
+    # ---------------------------------------------------------------------------
+    print("\n[revive_action: a realm death while farming echoes runs upstream's revive (cancel the popup), no revive item]")
+    Path(flag).write_text("")
+    t = task()
+    check("returns upstream's result", t.revive_action(), True)
+    check("upstream cancelled the popup", t.events, ["cancel-popup"])
+    check("nothing clicked by the overlay (no 「确认」, no revive item)", t.clicks, [])
+    check("is_revived not set (do_run re-teleports)", t.is_revived, False)
+    os.remove(flag)
+
+    # ---------------------------------------------------------------------------
+    print("\n[combat_once: a realm death while farming echoes goes up to upstream's do_run re-teleport]")
+    Path(flag).write_text("")
+    t = task()
+    t.dies = True
+    try:
+        t.combat_once(wait_combat_time=5, raise_if_not_found=False)
+        raised = False
+    except Revived:
+        raised = True
+    check("CharRevivedException goes up (do_run: re-teleport, cap 3)", raised)
+    check("did not say it carries on in place", any("复活成功" in m for m in t.logs), False)
+    os.remove(flag)
+
+    print("\n[combat_once：上游的复活（周本）照样往上抛，交给 do_run 重新传送]")
+    t = task()
+    t.dies = True
+    try:
+        t.combat_once(wait_combat_time=5, raise_if_not_found=False)
+        raised = False
+    except Revived:
+        raised = True
+    check("CharRevivedException 往上抛", raised)
+    check("没说「接着刷」", any("复活成功" in m for m in t.logs), False)
+
+    print("\n[combat_once：上游大世界那份复活也回到了 boss 跟前（is_revived），同样接着刷、不受 3 次上限]")
+    t = task(in_realm=False)
+    t.dies = True
+    check("返回 None，不往上抛", t.combat_once(), None)
+    check("走的是上游的复活", t.events, ["upstream-revive"])
+    check("is_revived 留着", t.is_revived, True)
+
+    print("\n[combat_once：没死就原样返回]")
+    t = task()
+    check("返回上游的结果", t.combat_once(), True)
+
+    # ---------------------------------------------------------------------------
+    print("\n[FarmEchoTask.run：上游自己的 except 里无限重试，包一层数到 3 就停——按失败结束，不是跳过]")
+    cap = ns["_MAX_FARM_RETRIES"]
+    check("上限是 3", cap, 3)
+    t = task()
+    t.failures = 99
+    got = None
+    try:
+        t.run()
+    except Exception as e:  # noqa: BLE001
+        got = e
+    check("连续失败：任务按失败结束（OK-WW 记失败的普通异常）", type(got).__name__, "ArkStopped")
+    check("不是 OK-WW 的「跳过」（TaskDisabledException）", isinstance(got, Disabled), False)
+    check("失败原因写在异常里", str(got), f"连续 {cap} 次失败，退出本次任务，不再重试")
+    check("上游正文只跑了 3 次", t.bodies, cap)
+    check("日志：连续 3 次失败", any(f"连续 {cap} 次失败，退出本次任务，不再重试" in m for m in t.logs))
+    check("日志：按失败结束", any(m.startswith(ns["FAILED_MARK"]) for m in t.logs))
+    check("上游每次都记了 farm 4c error", sum("farm 4c error" in m for m in t.logs), cap)
+    check("深度计数归零", t._ark_depth, 0)
+
+    print("\n[FarmEchoTask.run：下一次运行从 0 数起]")
+    t.bodies = 0
+    try:
+        t.run()
+    except ns["ArkStopped"]:
+        pass
+    check("又是 3 次", t.bodies, cap)
+    check("深度计数归零", t._ark_depth, 0)
+
+    print("\n[FarmEchoTask.run：中途认不出的画面停下（_stop）——上游 run() 照常收尾，最外层按失败结束]")
+    t = task()
+    t.screenshot = lambda name: t.events.append(f"shot {name}")
+
+
+    def _odd_lap(self=t):
+        self.bodies += 1
+        ns["_stop"](self, "weekly_claim_unchanged", "周本领奖：回读次数没变（2/3），这次没领到")
+    t.do_run = _odd_lap
+    got = None
+    try:
+        t.run()
+    except Exception as e:  # noqa: BLE001
+        got = e
+    check("按失败结束", (type(got).__name__, str(got)), ("ArkStopped", "周本领奖：回读次数没变（2/3），这次没领到"))
+    check("上游的 except TaskDisabledException 收了这一停：没重试、没 farm 4c error",
+          (t.bodies, any("farm 4c error" in m for m in t.logs)), (1, False))
+    check("留了图", "shot weekly_claim_unchanged" in t.events, True)
+    check("深度计数归零、原因清掉", (t._ark_depth, t._ark_failed), (0, None))
+
+    print("\n[FarmEchoTask.run: a waveplate shortage (_skip_short) is a normal state - returns, no FAILED_MARK, no ArkStopped]")
+    t = task()
+
+
+    def _short_lap(self=t):
+        self.bodies += 1
+        self.log_info("波片不足挡住开启挑战，点取消跳过本次周本")
+        ns["_skip_short"](self)
+    t.do_run = _short_lap
+    got = "returned"
+    try:
+        t.run()
+    except Exception as e:  # noqa: BLE001
+        got = e
+    check("缺波片：正常返回，不抛 ArkStopped", got, "returned")
+    check("缺波片：日志没有按失败结束", any(m.startswith(ns["FAILED_MARK"]) for m in t.logs), False)
+    check("缺波片：上游收了这一停，没重试", (t.bodies, any("farm 4c error" in m for m in t.logs)), (1, False))
+    check("缺波片：深度归零、没留原因", (t._ark_depth, t._ark_failed), (0, None))
+
+    print("\n[FarmEchoTask.run: a non-waveplate stop right after still raises ArkStopped]")
+    t = task()
+    t.screenshot = lambda name: t.events.append(f"shot {name}")
+
+
+    def _odd_lap2(self=t):
+        self.bodies += 1
+        ns["_stop"](self, "weekly_claim_unchanged", "周本领奖：回读次数没变（2/3），这次没领到")
+    t.do_run = _odd_lap2
+    got = None
+    try:
+        t.run()
+    except Exception as e:  # noqa: BLE001
+        got = e
+    check("非波片停下仍按失败结束", (type(got).__name__, str(got)), ("ArkStopped", "周本领奖：回读次数没变（2/3），这次没领到"))
+    check("非波片停下：日志写了按失败结束", any(m.startswith(ns["FAILED_MARK"]) for m in t.logs), True)
+
+    print("\n[FarmEchoTask.run：真没事可做（上游自己的跳过）照旧是跳过]")
+    t = task()
+
+
+    def _done_lap(self=t):
+        self.bodies += 1
+        raise Disabled()
+    t.do_run = _done_lap
+    got = "returned"
+    try:
+        t.run()
+    except Exception as e:  # noqa: BLE001
+        got = e
+    check("上游的跳过：正常返回，不算失败", got, "returned")
+
+    print("\n[FarmEchoTask.run：第 2 次成了就不再报停]")
+    t = task()
+    t.failures = 1
+    try:
+        t.run()
+        stopped = False
+    except Disabled:
+        stopped = True
+    check("没抛", stopped, False)
+    check("跑了 2 次", t.bodies, 2)
+    check("没说连续失败", any("连续" in m for m in t.logs), False)
+    check("深度计数归零", t._ark_depth, 0)
+    check("v3.7.4 retry count passed through the wrapper: 3, then 2", t.retries_seen, [3, 2])
+
+    print("\n[FarmEchoTask.run: v3.7.4 self.run(retries - 1) goes through the wrapper without a TypeError]")
+    t = task()
+    t.failures = 1
+    got = None
+    try:
+        got = t.run()
+    except TypeError as e:  # the 10-13 bug: the wrapper was def run(self)
+        got = f"TypeError: {e}"
+    check("retry after one failure returns upstream's result", got, None)
+    check("upstream body ran twice", t.bodies, 2)
+    check("each retry reached upstream with one less", t.retries_seen, [3, 2])
+    t = task()
+    t.failures = 0
+    check("run(retries=1) reaches upstream as 1", (t.run(1), t.retries_seen), ("farmed", [1]))
+
+    print("\n[FarmEchoTask.run：上游自己放弃（没领奖按钮也没月卡）时原样抛]")
+    t = task()
+    t.failures, t.claim_button = 99, False
+    try:
+        t.run()
+        got = None
+    except RuntimeError as e:
+        got = str(e)
+    check("上游的错原样上来", got, "Teleport to boss failed")
+    check("只跑了 1 次", t.bodies, 1)
+    check("深度计数归零", t._ark_depth, 0)
+
+    # ---------------------------------------------------------------------------
+    print("\n[有记录的那次副本里阵亡，是在 combat_once 里抛的（覆盖面就在那儿）]")
+    log = (REPLAY / "2026-09-01" / "wuwa" / "OK-WW-02-01-22.log").read_text(encoding="utf-8")
+    dead = log.index("FarmEchoTask:raise_not_in_combat char dead")
+    check("2026-09-01 06:03:27 阵亡", "2026-09-01 06:03:27,238 INFO TaskExecutor FarmEchoTask:raise_not_in_combat char dead" in log)
+    check("上游当时复活失败", "06:03:27,239 INFO TaskExecutor FarmEchoTask:info_set Revive Failed" in log)
+    trace = log[dead:dead + 1500]
+    check("报错的那一圈停在 farm 4c error", "farm 4c error, try handle monthly card" in trace)
+    check("调用栈里是 do_run → combat_once", bool(re.search(r"in do_run\s+self\.combat_once\(", trace)))
+
+    for k, v in _saved.items():
+        if v is None:
+            sys.modules.pop(k, None)
+        else:
+            sys.modules[k] = v
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_stamina_end():
+    """结束时的剩余波片要认 OK-WW 自己报的那个数。
+
+2026-08-28 那轮实际把体力刷到 0，报告却写「剩余波片 80/240」。
+原因是我们取 `info_set current_stamina` 的最后一条，而那是**每轮开打前**
+记的；之后又刷了一轮但不再记数，所以永远多算一轮。
+
+用户当场指出两件事：一是这轮其实刷干净了、是我们误报；二是「用尽」并不等于 0，
+OK-WW 的判定是「剩余不足以再开一次」，而单次消耗还会在 40/80 之间自动切换，
+外部根本推算不出来。
+
+好在 OK-WW 停手时自己会打一行 `current stamina: N not enough to continue`，
+那才是结束时的真实余量。下面这段日志是 2026-08-28 的原文。
+
+    Formerly test_okww_stamina_end.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.core import collector
+
+    FAILED = []
+
+
+    def check(name, got, want):
+        ok = got == want
+        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
+        if not ok:
+            FAILED.append(name)
+
+
+    REAL = """
+2026-08-28 13:40:57,971 INFO TaskExecutor ForgeryTask:info_set current_stamina 240
+2026-08-28 13:41:59,293 INFO TaskExecutor BaseWWTask:当前体力大于等于双倍, 240 >= 80
+2026-08-28 13:42:49,641 INFO TaskExecutor ForgeryTask:info_set current_stamina 160
+2026-08-28 13:42:49,641 INFO TaskExecutor BaseWWTask:当前体力大于等于双倍, 160 >= 80
+2026-08-28 13:43:40,617 INFO TaskExecutor ForgeryTask:info_set current_stamina 80
+2026-08-28 13:43:40,618 INFO TaskExecutor BaseWWTask:当前体力大于等于双倍, 80 >= 80
+2026-08-28 13:43:44,857 INFO TaskExecutor BaseWWTask:current stamina: 0 not enough to continue
+2026-08-28 13:43:48,859 INFO TaskExecutor ForgeryTask:used all stamina
+2026-08-28 13:44:57,176 INFO TaskExecutor DailyTask:Daily Task Completed
+"""
+
+    NO_END_LINE = "\n".join(
+        l for l in REAL.splitlines() if "not enough to continue" not in l)
+
+    NEST = """
+2026-08-29 00:21:27,418 INFO TaskExecutor NightmareNestTask:Box(name='已击败残象：26/41', x=890) is not complete
+2026-08-29 00:23:27,182 INFO TaskExecutor NightmareNestTask:nightmare nest: 指定点位都已打满，跳过
+"""
+
+
+    def _parse(text):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            f = Path(td) / "OK-WW.log"
+            f.write_text(text, encoding="utf-8")
+            return collector.parse_okww_log(f)
+
+
+    def main() -> int:
+        print("=== 08-28 的真实日志 ===")
+        out = _parse(REAL)
+        check("剩余取 OK-WW 自己报的 0，不是开打前的 80",
+              out.get("okww_stamina_left"), 0)
+        check("标明这是精确值", out.get("okww_stamina_left_exact"), True)
+
+        print("\n=== 没有收尾那行时，退回旧读数但要标明不精确 ===")
+        out2 = _parse(NO_END_LINE)
+        check("退回最后一条开打前读数", out2.get("okww_stamina_left"), 80)
+        check("标明不是结束余量", out2.get("okww_stamina_left_exact"), False)
+
+        print("\n=== 残象聚落进度 ===")
+        out3 = _parse(NEST)
+        check("no okww_nest field (dropped 2026-10-13, read by nothing)", "okww_nest" in out3, False)
+        check("抓到已打满", out3.get("okww_nest_full"), True)
+
+        print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")
+        return 0 if not FAILED else 1
+
+
+    if __name__ == "__main__":
+        raise SystemExit(main())
+
+
+def _part_okww_stamina_nest_verdict():
+    """刷体力 and the nest item are judged from the lines of the task that did the work.
+
+Three holes found 10-13 against upstream OK-WW v3.7.4 (on the game PC since 10-06):
+
+  stamina (a)  「enter combat」 is CombatCheck.py:181, logged by every fighting task. The
+               weekly boss and the nest (both run before stamina farming) print it,
+               so a run that spent no stamina passed 刷体力. Only TacetTask /
+               ForgeryTask / SimulationTask lines count now.
+  stamina (b)  farm_tacet / farm_domain give up after three revives and return
+               quietly (TacetTask.py:79, DomainTask.py:73, 「exceeded recovery
+               retries (3), stop farming」): that is a failed 刷体力 now.
+  stamina (c)  when our get_stamina override cannot read 数/数 it returns -1 and logs
+               「按没读到处理（-1）」; upstream then says 「used all stamina」
+               (TacetTask.py:63-66, :105) or 「not enough stamina」 (DomainTask.py:61-63)
+               though nothing was read. With no stamina fight that is a failure.
+  nest         「click_team_challenge」, 「wait_in_team_and_world」 and 「echo captured」 are
+               never logged by upstream (BaseWWTask.py:678-683, :1115-1117 have no log
+               call; 「echo captured」 is only an argument at NightmareNestTask.py:74,
+               stored without logging at CombatCheck.py:58-61). They appear only in
+               traceback frames of other tasks' errors (fixtures/m6-okww/0921-weekly.log:
+               27-28), which booked an unreachable nest as fought. The daily-report
+               step and the verdict now read one classifier, outcome.nest_state.
+
+    Formerly test_okww_stamina_nest_verdict.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.verify import collector_okww, outcome
+
+    FX = fx_dir(Path(__file__), "fixtures")
+
+
+    def line(t, who, msg):
+        return f"2026-10-13 10:{t},000 INFO TaskExecutor {who}:{msg}\n"
+
+
+    def stamina(text):
+        got = [c for c in outcome.okww_checks(text, expect_nest=False, expect_daily=False) if c.label == "刷体力"]
+        return (got[0].ok, got[0].detail) if got else None
+
+
+    def stopped(text):
+        out = {}
+        collector_okww._okww_progress(text, out)
+        return out.get("okww_stopped")
+
+
+    # Read with a fallback so that the checks run, and fail, on code without them.
+    UNREAD_SAY = getattr(outcome, "STAMINA_UNREAD_SAY", "体力读不出来，没刷")
+    nest_state = getattr(outcome, "nest_state", lambda text: None)
+    UNREAD = "体力读了 1 次都没有「数/数」，按没读到处理（-1），不当 0"
+
+    print("[stamina (a): the weekly boss's and the nest's fights are not stamina farming]")
+    weekly_only = (line("00:01", "FarmEchoTask", "teleport_to_boss prepared as realm")
+                   + line("00:20", "FarmEchoTask", "enter combat None")
+                   + line("01:30", "FarmEchoTask", "start walk_to_treasure")
+                   + line("02:00", "NightmareNestTask", "enter combat None"))
+    ok, why = stamina(weekly_only)
+    check("weekly boss + nest fights only: 刷体力 not passed", ok, False)
+    check("…and it says nothing was entered", "既没进本" in why)
+    ok, _ = stamina(weekly_only + line("05:00", "TacetTask", "enter combat None"))
+    check("a TacetTask fight passes", ok, True)
+    ok, _ = stamina(weekly_only + line("05:00", "SimulationTask", "start walk_to_treasure"))
+    check("a SimulationTask walk to the treasure passes", ok, True)
+    ok, why = stamina(weekly_only + line("05:00", "ForgeryTask", "not enough stamina"))
+    check("ForgeryTask 「not enough stamina」 with no fight: passed as a shortage", (ok, why), (True, "体力不足，本来就没得刷"))
+
+    print("\n[stamina (d): the 「不刷体力」 flag file was there - not farmed, and said why]")
+    flagged = (weekly_only
+               + line("04:00", "TacetTask", "刷体力已禁用（标记文件在），这一趟不花波片")
+               + line("06:00", "DailyTask", "Daily Task Completed"))
+    ok, why = stamina(flagged)
+    check("the flag line: 刷体力 not passed, with the flag as the reason", (ok, why), (False, "不刷体力的标记还在"))
+    check("the daily report's stop reason says the same", stopped(flagged), "不刷体力的标记还在")
+    ok, why = stamina(weekly_only + line("04:00", "ForgeryTask", "刷体力已禁用（标记文件在），这一趟不花波片"))
+    check("ForgeryTask prefix too", (ok, why), (False, "不刷体力的标记还在"))
+
+    print("\n[stamina (b): three revives and upstream stops farming - a failure]")
+    died = (line("05:00", "TacetTask", "info_set current_stamina 180")
+            + line("05:10", "TacetTask", "enter combat None")
+            + line("05:40", "TacetTask", "farm_tacet: death recovered, re-enter from F2 book")
+            + line("06:10", "TacetTask", "enter combat None")
+            + line("06:40", "TacetTask", "farm_tacet: death recovered, re-enter from F2 book")
+            + line("07:10", "TacetTask", "enter combat None")
+            + line("07:40", "TacetTask", "farm_tacet: exceeded recovery retries (3), stop farming"))
+    ok, why = stamina(died)
+    check("farm_tacet exceeded recovery retries: 刷体力 failed", ok, False)
+    check("…says the character died 3 times and farming stopped", ("死了 3 次" in why, "停止刷体力" in why), (True, True))
+    check("daily report does not say 「体力不够再开一局」", stopped(died) == "体力不够再开一局", False)
+    check("daily report gives the same reason", stopped(died), why)
+    ok, _ = stamina(line("05:00", "ForgeryTask", "enter combat None")
+                    + line("07:40", "ForgeryTask", "farm_domain: exceeded recovery retries (3), stop farming"))
+    check("farm_domain exceeded recovery retries: failed too", ok, False)
+    ok, _ = stamina(line("05:00", "TacetTask", "enter combat None")
+                    + line("07:40", "FarmEchoTask", "farm 4c: exceeded recovery retries (3), stop farming"))
+    check("the echo farm's own give-up is not a stamina failure", ok, True)
+
+    print("\n[stamina (c): -1 read, then upstream's 「used all stamina」 / 「not enough stamina」]")
+    tacet_unread = (line("05:00", "TacetTask", UNREAD)
+                    + line("05:00", "TacetTask", "info_set current_stamina -1")
+                    + line("05:02", "TacetTask", UNREAD)
+                    + line("05:02", "TacetTask", "info_set current_stamina -1")
+                    + line("05:03", "TacetTask", "used all stamina"))
+    ok, why = stamina(weekly_only + tacet_unread)
+    check("tacet: -1 twice then 「used all stamina」, no tacet fight: failed", ok, False)
+    check("…says stamina could not be read", why, UNREAD_SAY)
+    check("daily report says the same, not 「体力不够再开一局」", stopped(weekly_only + tacet_unread), UNREAD_SAY)
+    domain_unread = (line("05:00", "SimulationTask", UNREAD)
+                     + line("05:00", "SimulationTask", "info_set current_stamina -1")
+                     + line("05:01", "SimulationTask", "not enough stamina"))
+    ok, why = stamina(domain_unread)
+    check("simulation: -1 then 「not enough stamina」: failed, not 「体力不足」", (ok, why), (False, UNREAD_SAY))
+    check("daily report does not say 「一局都没开成」", stopped(domain_unread), UNREAD_SAY)
+    reread = (line("05:00", "TacetTask", UNREAD)
+              + line("05:00", "TacetTask", "info_set current_stamina -1")
+              + line("05:02", "TacetTask", "info_set current_stamina 30")
+              + line("05:03", "TacetTask", "used all stamina"))
+    ok, why = stamina(reread)
+    check("tacet: -1, then the click-and-reread got 30, then 「used all stamina」: a real shortage", (ok, why),
+          (True, "体力不足，本来就没得刷"))
+    check("…and the daily report keeps its usual wording", stopped(reread), "体力不够再开一局")
+    after_fight = (line("05:00", "TacetTask", "info_set current_stamina 180")
+                   + line("05:10", "TacetTask", "enter combat None")
+                   + line("06:00", "TacetTask", "体力领奖框读了 3 次都没有「数/数」，按没读到处理（-1），不当 0"))
+    ok, _ = stamina(after_fight)
+    check("a -1 in the reward dialog after a tacet fight still passes", ok, True)
+    ok, _ = stamina(line("05:00", "DailyTask", UNREAD) + line("05:03", "TacetTask", "info_set current_stamina 20")
+                    + line("05:03", "TacetTask", "used all stamina"))
+    check("a -1 logged by another task does not taint the tacet shortage", ok, True)
+
+    print("\n[nest: an unreachable nest plus another task's traceback is not a fight]")
+    weekly_err = (FX / "m6-okww" / "0921-weekly.log").read_text(encoding="utf-8")
+    check("the 0921 log carries click_team_challenge only in traceback frames",
+          ("self.click_team_challenge()" in weekly_err, "NightmareNestTask:" in weekly_err), (True, False))
+    unreachable = (line("00:01", "NightmareNestTask", "opened gray_book_boss")
+                   + line("00:05", "NightmareNestTask", "nightmare nest unreachable, skip this run: go_nest:48:18")
+                   + weekly_err)
+    check("_NEST_ENGAGED does not match", bool(outcome._NEST_ENGAGED.search(unreachable)), False)
+    got = {c.label: c for c in outcome.okww_checks(unreachable, expect_nest=True, expect_daily=False, expect_stamina=False)}
+    check("verdict: 残象聚落 not done", got["残象聚落"].ok, False)
+    check("verdict: says travel failed", "传送不过去" in got["残象聚落"].detail)
+    step = collector_okww._nest_step(unreachable)
+    check("daily step is not the bare name (booked as farmed)", step in ("残象聚落", "梦魇巢穴"), False)
+    check("daily step says travel failed", "传送不过去" in step)
+    for frame in ("    self.wait_in_team_and_world(time_out=120)\n",
+                  "    return self.reset_to_false(reason='echo captured')\n"):
+        t = line("00:05", "NightmareNestTask", "nightmare nest unreachable, skip this run") + frame
+        check(f"a traceback frame {frame.strip()[:30]!r} is no fight", nest_state(t), "unreachable")
+
+    print("\n[nest: the step and the verdict read one classifier, in every state]")
+    SAMPLES = {
+        "filter_missing": line("00:01", "NightmareNestTask", outcome._NEST_FILTER_MISSING),
+        "not_found": line("00:01", "NightmareNestTask", "nightmare nest: 列表里没找到指定的点位 ['落渊南丘']"),
+        "count_unread": line("00:01", "NightmareNestTask", "nightmare nest: " + outcome._NEST_COUNT_UNREAD),
+        "full": line("00:01", "NightmareNestTask", "nightmare nest: 指定点位都已打满，跳过"),
+        "fought": line("00:01", "NightmareNestTask", "enter combat None"),
+        "partly": line("00:01", "NightmareNestTask", "enter combat None")
+                  + line("00:02", "NightmareNestTask",
+                         "nightmare nest: 传送两次都不过去，这一轮不打了 go_nest:48:18（梦枢天罗残象聚落）"),
+        "unreachable": line("00:01", "NightmareNestTask", "nightmare nest unreachable, skip this run"),
+        "failed": line("00:01", "NightmareNestTask", "opened gray_book_boss")
+                  + "2026-10-13 10:00:02,000 ERROR TaskExecutor DailyTask:NightmareNestTask Failed\n",
+        "quit": line("00:01", "NightmareNestTask", "opened gray_book_boss"),
+    }
+    for key, text in SAMPLES.items():
+        check(f"{key}: nest_state", nest_state(text), key)
+        verdict = [c for c in outcome.okww_checks(text, expect_nest=True, expect_daily=False, expect_stamina=False)
+                   if c.label.startswith("残象聚落") and not c.label.startswith(("残象聚落只刷", "残象聚落没进"))]
+        step = collector_okww._nest_step(text)
+        bare = step in ("残象聚落", "梦魇巢穴")
+        check(f"{key}: step booked as farmed ⇔ verdict 「残象聚落」 ok", bare,
+              bool(verdict) and verdict[0].ok and verdict[0].label == "残象聚落")
+        check(f"{key}: step and verdict agree on done / not done", ("已刷满" in step or bare), verdict[0].ok)
+    check("fought, then the task failed: still booked as fought by both",
+          (nest_state(SAMPLES["fought"] + SAMPLES["failed"]),
+           collector_okww._nest_step(SAMPLES["fought"] + SAMPLES["failed"])), ("fought", "梦魇巢穴"))
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_upstream_no_farm():
+    """When upstream's own gate skips the stamina farm, the verdict says so.
+
+Upstream v3.7.4 DailyTask.run farms stamina only while open_daily reads the
+180-waveplate daily task under 180 and the activity points under 100
+(DailyTask.py:86-93); at 180 the farm block (:117-128) is skipped without a line.
+The overlay's claim_daily then farms it anyway (the standing order 「刷到空」) and
+says 「上游这趟不刷体力（…）」 first. A run with no stamina fight and no
+「not enough stamina」 said only 「既没进本，也没说体力不足」 (audit 3 item 11 /
+audit 2026-10-13 item 22). Lines below are in upstream's and the overlay's format.
+
+    Formerly test_okww_upstream_no_farm.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.verify import outcome
+
+
+    T = "2026-10-14 09:{:02d}:00,000 {} TaskExecutor {}"
+    OPEN = [T.format(27, "INFO", "DailyTask:open_daily"),
+            T.format(27, "INFO", "DailyTask:info_set current daily progress 180"),
+            T.format(27, "INFO", "DailyTask:info_set total daily points 60")]
+    LEFTOVER = T.format(28, "INFO", "DailyTask:上游这趟不刷体力（已用 180/180，活跃度满 False），按「刷到空」把剩下的体力刷掉")
+    DONE = T.format(40, "INFO", "DailyTask:Daily Task Completed")
+
+
+    def stamina(*lines):
+        got = [c for c in outcome.okww_checks("\n".join([*OPEN, *lines, DONE]) + "\n", expect_nest=False)
+               if c.label == "刷体力"]
+        return [(c.ok, c.detail) for c in got]
+
+
+    print("[180/180, the overlay's leftover farm fought: green]")
+    check("green", stamina(LEFTOVER, T.format(29, "INFO", "TacetTask:enter combat None")), [(True, "")])
+
+    print("\n[180/180, the leftover farm raised: red, saying so]")
+    got = stamina(LEFTOVER, T.format(29, "ERROR", "DailyTask:补刷体力出错，照常领日常奖励: Teleport failed"))
+    check("red", [ok for ok, _ in got], [False])
+    check("names upstream's skip and the error",
+          bool(got) and "上游这趟不刷体力" in got[0][1] and "补刷时出错：Teleport failed" in got[0][1], True)
+
+    print("\n[180/180, no leftover line at all: red, upstream's gate named]")
+    got = stamina()
+    check("red", [ok for ok, _ in got], [False])
+    check("says upstream read 180/180 and the leftover farm did not run",
+          bool(got) and "180/180" in got[0][1] and "补刷没有跑到" in got[0][1], True)
+
+    print("\n[under 180, nothing: the old wording]")
+    text = "\n".join([T.format(27, "INFO", "DailyTask:info_set current daily progress 0"), DONE]) + "\n"
+    check("unchanged", [c.detail for c in outcome.okww_checks(text, expect_nest=False) if c.label == "刷体力"],
+          ["既没进本，也没说体力不足"])
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_nest_capture():
+    """Nest overrides, part two: both entries, an unread count, an adapted install.
+
+* DailyTask's 「Farm Nightmare Nest for Daily Echo」 calls run_capture_mode directly
+  (upstream v3.7.3 DailyTask.py:106), which went round our run(): no filter gate, no
+  「列表里没找到」 alarm, no per-run resets. Both entries now share one wrapper.
+* A row whose nest name was read and whose 「已击败残象：x/y」 was not used to be skipped
+  without a word - with two wanted nests, the other one being full, the log said
+  「都已打满」. Now: screenshot nest_count_unread, the raw read in the log, an alarm.
+* find_nest installed adapted to a changed upstream body says so in OK-WW's log on
+  every run, and the run's report carries it beside the nest.
+
+Runs upstream's real v3.7.3 NightmareNestTask (fixture) against the overlay.
+
+    Formerly test_okww_nest_capture.py.
+    """
+    import re
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.verify import collector_okww, outcome
+    from ark_relay.features.okww_patch import okww_overlay
+
+
+    # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.3/v3.7.4 body until 2026-11-02.
+    UPSTREAM = (fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
+
+
+    def upstream_class(text=UPSTREAM):
+        class WWOneTimeTask:
+            def run(self):
+                pass
+
+            def tr(self, msg):          # ok-script's translation, English here
+                return msg
+
+        ok = types.ModuleType("ok")
+        ok.Logger = types.SimpleNamespace(get_logger=lambda name: types.SimpleNamespace(info=lambda *a: None))
+        ok.run_task = lambda *a, **kw: None
+        combat = types.ModuleType("src.task.BaseCombatTask")
+        combat.BaseCombatTask = type("BaseCombatTask", (), {})
+        combat.CharRevivedException = type("CharRevivedException", (Exception,), {})
+        onetime = types.ModuleType("src.task.WWOneTimeTask")
+        onetime.WWOneTimeTask = WWOneTimeTask
+        sys.modules.update({"ok": ok, "cv2": types.ModuleType("cv2"), "config": types.SimpleNamespace(config={}),
+                            "src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+                            "src.task.BaseCombatTask": combat, "src.task.WWOneTimeTask": onetime})
+        path = tmpdir() / "NightmareNestTask.py"
+        path.write_text(text, encoding="utf-8")
+        mod = types.ModuleType("src.task.NightmareNestTask")
+        mod.__file__ = str(path)
+        exec(compile(text, str(path), "exec"), mod.__dict__)
+        sys.modules["src.task.NightmareNestTask"] = mod
+        return mod.NightmareNestTask
+
+
+    def overlay(cls_text=UPSTREAM):
+        cls = upstream_class(cls_text)
+        ns = {}
+        exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+        for k in ("_applied", "_skipped", "_adapted"):
+            ns[k].clear()
+        ns["TaskDisabledException"] = type("TaskDisabledException", (Exception,), {})
+        ns["_install_nest"]()
+        return cls, ns
+
+
+    class Box:
+        def __init__(self, name, y, height=30):
+            self.name, self.x, self.y, self.width, self.height = name, 889, y, 198, height
+
+
+    def fake(cls, pages, ns, only="落渊南丘", capture=False):
+        """A task whose screen is pages[page]; a page may be a list of reads, used in turn."""
+        t = object.__new__(cls)
+        t.config = {ns["ONLY_NESTS"]: only, "Which to Farm": ["Tacet Discord Nest"]}
+        t.count_re = re.compile(r"(\d{1,2})/(\d{1,2})")
+        t._unreachable_nests, t._nest_deaths, t.queues = set(), {}, []
+        t._nest_tab_of_current_nest = "go_nest"
+        t._capture_mode = t._capture_success = False
+        t.page, t.reads, t.events, t.errors, t.infos, t.fought, t.shots = 0, 0, [], [], [], [], []
+
+        def ocr(x, y, to_x, to_y, match=None):
+            screen = pages[t.page]
+            if screen and isinstance(screen[0], list):          # successive reads of one page
+                screen = screen[min(t.reads, len(screen) - 1)]
+                if match:
+                    t.reads += 1
+            return [Box(b.name, b.y, b.height) for b in screen if not match or match.search(b.name)]
+        t.ocr = ocr
+        t.open_boss_book = lambda name: setattr(t, "page", 0)
+        t.click = lambda *a, **kw: setattr(t, "page", 1) if a and a[0] == 0.9730 else None
+        t.openF2Book = lambda name: t.events.append("book")
+        # DailyTask replaces ensure_main with a no-op before run_capture_mode (DailyTask.py:98).
+        t.ensure_main = (lambda *a, **kw: None) if capture else (lambda time_out=0: t.events.append("main"))
+        t.log_info = lambda msg, notify=False: t.infos.append(msg)
+        t.log_error = lambda msg, notify=False: t.errors.append((msg, notify))
+        t.screenshot = lambda name: t.shots.append(name)
+        t.sleep = lambda s: None
+        t.width_of_screen = lambda f: f * 1920
+        t.height_of_screen = lambda f: f * 1080
+
+        def combat_nest(nest):
+            t.fought.append(nest.cache_key)
+            t._capture_success = capture       # a capture lap that got its echo ends the loop
+        t.combat_nest = combat_nest
+        return t
+
+
+    NAME_NEW, NAME_NANQIU = Box("新区残象聚落", 300), Box("落渊南丘残象聚落", 450)
+    PAGE2 = [Box("别的残象聚落", 300), Box("已击败残象：3/24", 374)]
+
+
+    def page1(nanqiu):
+        return [NAME_NEW, Box("已击败残象：0/48", 374), NAME_NANQIU, Box(f"已击败残象：{nanqiu}", 524)]
+
+
+    # 南丘's count box centre is (524 + 15) / 1080 = 0.499 of the screen: row slot 25.
+    NANQIU_KEY = "go_nest:41:25"
+
+    Nest, ns = overlay()
+
+    print("\n[两个入口都换上了]")
+    check("run 与 run_capture_mode 都换上了", all(f"NightmareNestTask.{m}" in ns["_applied"]
+                                                for m in ("run", "run_capture_mode")))
+    check("没有跳过的", ns["_skipped"], [])
+
+    for entry in ("run", "run_capture_mode"):
+        capture = entry == "run_capture_mode"
+        print(f"\n[{entry}：上一轮留下的状态先清掉]")
+        t = fake(Nest, [page1("10/41"), PAGE2], ns, capture=capture)
+        # Left over from a previous call on the same instance (DailyTask keeps one):
+        # without the reset this stamp reads as 「tried, no progress」 and 南丘 is skipped.
+        t._ark_nest_tried = {f"{NANQIU_KEY}@10"}
+        t._ark_nest_progress = {NANQIU_KEY: "10"}
+        t._ark_nest_seen, t._ark_nest_missed = True, ["旧的"]
+        getattr(t, entry)()
+        check("进了南丘", t.fought[:1], [NANQIU_KEY])
+        if capture:
+            check("抓到声骸就收手（只打一局）", len(t.fought), 1)
+        check("过滤来源本轮说了", any("nightmare nest: 只刷 ['落渊南丘']" in m for m in t.infos))
+        check("没报错", t.errors, [])
+
+        print(f"\n[{entry}：两屏都没有南丘，结束时报一次]")
+        t = fake(Nest, [[NAME_NEW, Box("已击败残象：0/48", 374)], PAGE2], ns, capture=capture)
+        getattr(t, entry)()
+        check("一局没打", t.fought, [])
+        check("报了一次列表里没找到，并推送", [("列表里没找到指定的点位" in e[0], e[1]) for e in t.errors],
+              [(True, True)])
+
+    print("\n[find_nest 换不上：两个入口都不刷]")
+    gone = UPSTREAM.replace("    def find_nest(self):", "    def find_nest_renamed(self):")
+    check("样本确实改到了", gone != UPSTREAM)
+    Nest3, ns3 = overlay(gone)
+    check("find_nest 记为没贴上", [s["what"] for s in ns3["_skipped"]], ["NightmareNestTask.find_nest"])
+    for entry in ("run", "run_capture_mode"):
+        t = fake(Nest3, [page1("10/41"), PAGE2], ns3, capture=entry == "run_capture_mode")
+        getattr(t, entry)()
+        check(f"{entry} 一局没打", t.fought, [])
+        check(f"{entry} 说了这一轮不刷", any("这一轮不刷巢穴" in m for m in t.infos))
+
+    print("\n[南丘的名字读到了、计数没读到：停下、截图、报警，不说打满]")
+    misread = [NAME_NEW, Box("已击败残象：0/48", 374), NAME_NANQIU, Box("已击败残象：1O/41", 524)]
+    t = fake(Nest, [misread, PAGE2], ns)
+    t.run()
+    check("一局没打（也没去打上面那个 0/48）", t.fought, [])
+    check("截了 nest_count_unread", t.shots, ["nest_count_unread"])
+    check("报警一次，并推送", [e[1] for e in t.errors], [True])
+    msg = t.errors[0][0] if t.errors else ""
+    check("报警写明计数没读到", ns["NEST_COUNT_UNREAD"] in msg)
+    check("报警带着识字原文", "1O/41" in msg)
+    check("报警写明不是打满", "不是打满" in msg)
+    check("没说已打满", any("都已打满" in m for m in t.infos), False)
+
+    print("\n[两个指定点位：一个满了、一个计数没读到 → 不能报「都已打满」]")
+    two = [Box("落渊南丘残象聚落", 300), Box("已击败残象：41/41", 374),
+           Box("别处残象聚落", 450), Box("已击败", 524)]
+    t = fake(Nest, [two, PAGE2], ns, only="落渊南丘,别处")
+    t.run()
+    check("一局没打", t.fought, [])
+    check("没说已打满", any("都已打满" in m for m in t.infos), False)
+    check("报的是计数没读到", [ns["NEST_COUNT_UNREAD"] in e[0] for e in t.errors], [True])
+
+    print("\n[计数那一行一时没渲染出来：再看一眼，读到了就照常刷，不报警]")
+    late = [[NAME_NEW, Box("已击败残象：0/48", 374), NAME_NANQIU],      # wanted_rows' wait: one count is up
+            [NAME_NEW, Box("已击败残象：0/48", 374), NAME_NANQIU],      # find_nest's first read: 南丘 not yet
+            page1("10/41")]                                              # the second look
+    t = fake(Nest, [late, PAGE2], ns)
+    t.run()
+    check("进了南丘", t.fought[:1], [NANQIU_KEY])
+    check("没报警", t.errors, [])
+    check("没截计数没读到的图", "nest_count_unread" in t.shots, False)
+
+    print("\n[上游改了 find_nest、按新版适配装上：每轮在 OK-WW 日志里说一句]")
+    changed = UPSTREAM.replace("counts = self.ocr(0.35, 0.25, 1, 0.96, match=self.count_re)",
+                               "counts = self.ocr(0.35, 0.3, 1, 0.96, match=self.count_re)  # moved again")
+    check("样本确实改到了", changed != UPSTREAM)
+    Nest2, ns2 = overlay(changed)
+    check("记在已适配里", [a["what"] for a in ns2["_adapted"]], ["NightmareNestTask.find_nest"])
+    for entry in ("run", "run_capture_mode"):
+        t = fake(Nest2, [page1("10/41"), PAGE2], ns2, capture=entry == "run_capture_mode")
+        getattr(t, entry)()
+        check(f"{entry} 说了过滤是适配装上的", any(ns2["NEST_ADAPTED"] in m for m in t.infos))
+        check(f"{entry} 照样只进南丘", t.fought[:1], [NANQIU_KEY])
+    t = fake(Nest, [page1("10/41"), PAGE2], ns)
+    t.run()
+    check("没适配时不说", any(ns["NEST_ADAPTED"] in m for m in t.infos), False)
+
+    print("\n[中继读日志：两句新话进了结果判定和日报]")
+    check("计数没读到：覆盖层与判定用同一句", ns["NEST_COUNT_UNREAD"], outcome._NEST_COUNT_UNREAD)
+    check("已适配：覆盖层与判定用同一句", ns["NEST_ADAPTED"], outcome._NEST_ADAPTED)
+    # Lines as OK-WW writes them: ok-script prefixes log_info / log_error with the task name.
+    head = ("2026-10-06 09:20:01 INFO TaskExecutor NightmareNestTask:open_boss_book canxiang\n"
+            "2026-10-06 09:20:02 INFO TaskExecutor NightmareNestTask:nightmare nest: 只刷 ['落渊南丘']（设置来自母本）\n")
+    unread_log = head + ("2026-10-06 09:20:05 ERROR TaskExecutor NightmareNestTask:nightmare nest: "
+                         f"{ns['NEST_COUNT_UNREAD']}（名字所在行 [465]），这一屏不刷——**不是打满**。\n")
+    steps = collector_okww._okww_steps(unread_log, 0)
+    check("日报：计数没读到", [s for s in steps if "残象聚落" in s], ["残象聚落（计数没读到，停下没刷）"])
+    verdict = [k for k in outcome.okww_checks(unread_log, expect_nest=True) if "残象聚落" in k.label]
+    check("判定：残象聚落不算过", [(k.ok, "计数没读到" in k.detail) for k in verdict], [(False, True)])
+    adapted_log = head + (f"2026-10-06 09:20:02 INFO TaskExecutor NightmareNestTask:nightmare nest: "
+                          f"{ns['NEST_ADAPTED']}，这一轮请核对只进了指定点位\n"
+                          "2026-10-06 09:21:00 INFO TaskExecutor NightmareNestTask:enter combat None\n")
+    steps = collector_okww._okww_steps(adapted_log, 0)
+    check("日报：残象聚落旁写着按新版适配", [s for s in steps if "残象聚落" in s],
+          ["残象聚落（只刷指定点位的过滤按 OK-WW 新版适配，请核对）"])
+    plain = head + "2026-10-06 09:21:00 INFO TaskExecutor NightmareNestTask:enter combat None\n"
+    check("没适配时日报照旧", [s for s in collector_okww._okww_steps(plain, 0) if "残象聚落" in s], ["残象聚落"])
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_nest_expected():
+    """Whether a run should have farmed nests follows upstream's own condition.
+
+OK-WW v3.7.4 DailyTask.py:84-93 runs the nests when 「Auto Farm all Nightmare
+Nest」 is an additional task, or when 「Farm Nightmare Nest for Daily Echo」 (default
+True, :37) is on, the farm target is not Tacet Suppression (the default) and the
+daily reward is not ready. gamelogs._okww_nest_expected also said True for a
+leftover 「Only Farm These Nests」 text or the echo flag alone, so unticking 「Auto
+Farm all Nightmare Nest」 turned every daily red (audit 2026-10-13 item 9). The
+daily-reward part is the log's (outcome.okww_checks), not the config's.
+
+    Formerly test_okww_nest_expected.py.
+    """
+    import json
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.alarm.gamelogs import _okww_nest_expected
+
+
+    def automas(daily=None, nest=None):
+        root = tmpdir()
+        d = root / "data" / "okww-id" / "Default" / "ConfigFile"
+        d.mkdir(parents=True)
+        if daily is not None:
+            (d / "DailyTask.json").write_text(json.dumps(daily), encoding="utf-8")
+        if nest is not None:
+            (d / "NightmareNestTask.json").write_text(json.dumps(nest), encoding="utf-8")
+        return root
+
+
+    ADDS = "Additional Tasks to Run After Daily Task"
+    ECHO = "Farm Nightmare Nest for Daily Echo"
+    AUTO = "Auto Farm all Nightmare Nest"
+
+    print("[Auto Farm all Nightmare Nest: nests run]")
+    check("in the additional tasks", _okww_nest_expected(automas({ADDS: [AUTO], ECHO: False})), True)
+
+    print("\n[the daily-echo flag: only when the farm target is not Tacet Suppression]")
+    check("flag on, farming Tacet (upstream skips the nest)",
+          _okww_nest_expected(automas({ECHO: True, "Which to Farm": "Tacet Suppression", ADDS: []})), False)
+    check("flag on, farming Forgery", _okww_nest_expected(automas({ECHO: True, "Which to Farm": "Forgery Challenge"})), True)
+    check("flag absent = default on; target absent = default Tacet", _okww_nest_expected(automas({ADDS: []})), False)
+    check("flag absent = default on, farming Simulation",
+          _okww_nest_expected(automas({"Which to Farm": "Simulation Challenge"})), True)
+    check("flag off, farming Forgery", _okww_nest_expected(automas({ECHO: False, "Which to Farm": "Forgery Challenge"})), False)
+
+    print("\n[a leftover nest filter does not make nests run]")
+    check("filter text, Auto Farm unticked, farming Tacet",
+          _okww_nest_expected(automas({ECHO: True, ADDS: []}, {"Only Farm These Nests": "落渊南丘"})), False)
+
+    print("\n[the config cannot be read: None, never a guess]")
+    check("no automas dir", _okww_nest_expected(None), None)
+    check("no DailyTask.json (only the nest config)",
+          _okww_nest_expected(automas(None, {"Only Farm These Nests": "落渊南丘"})), None)
+
+    print("\n[the verdict's 「cannot read the config」 item names the file that decides (item 19)]")
+    import types
+
+    from ark_relay.features.alarm import verdict
+
+    seen = {}
+    real_judged = verdict._judged
+    verdict._judged = lambda rec, checks, *a, **k: seen.setdefault("checks", checks)
+    try:
+        log = tmpdir() / "OK-WW.log"
+        log.write_text("Daily Task Completed\n", encoding="utf-8")
+        rec = types.SimpleNamespace(script="OK-WW", log_path=log)
+        eng = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=automas(None, {"Only Farm These Nests": "x"})))
+        verdict._verify_outcome(eng, rec)
+    finally:
+        verdict._judged = real_judged
+    detail = next((c.detail for c in seen.get("checks", []) if c.label == "能读到 OK-WW 生效中的配置"), "")
+    check("names DailyTask.json", "DailyTask.json" in detail, True)
+    check("no longer names NightmareNestTask.json", "NightmareNestTask.json" in detail, False)
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_nest_fought_then_full():
+    """A nest fought until full is 「fought」, not 「full, skipped」 (audit 2026-10-13 item 11).
+
+outcome.nest_state checked 「指定点位都已打满，跳过」 before the fight lines, so the
+usual morning run - fight the nest, then find every chosen nest full - was
+reported as a skip: verdict 「残象聚落（已满，跳过）」 and step 「残象聚落（已刷满）」
+on every real run 10-06 .. 10-13 (machine-okww-logs). Only a run that found the
+nests full before any fight is a skip.
+
+    Formerly test_okww_nest_fought_then_full.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.verify import collector_okww as co, outcome
+
+
+    T = "2026-10-13 09:27:{:02d},000 INFO TaskExecutor NightmareNestTask:{}"
+    CLICK = T.format(34, "left_click 已击败残象：0/48 (1729, 348) after_sleep 2")
+    FIGHT = T.format(46, "enter combat None")
+    FULL = T.format(59, "nightmare nest: 指定点位都已打满，跳过（截图 nest_all_full）")
+
+    print("[fought, then all full: fought]")
+    both = "\n".join([CLICK, FIGHT, FULL])
+    check("nest_state", outcome.nest_state(both), "fought")
+    check("the step does not say 已刷满", "已刷满" in co._nest_step(both), False)
+    got = [c for c in outcome.okww_checks(both, expect_nest=True) if c.label.startswith("残象聚落")]
+    check("the verdict item", [(c.label, c.ok) for c in got], [("残象聚落", True)])
+
+    print("\n[full before any fight: a skip]")
+    check("nest_state", outcome.nest_state(FULL), "full")
+    got = [c for c in outcome.okww_checks(FULL, expect_nest=True) if c.label.startswith("残象聚落")]
+    check("the verdict item", [(c.label, c.ok) for c in got], [("残象聚落（已满，跳过）", True)])
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_nest_names():
+    """「Only these nests」: the cap rule and the overlay's nest names, both must pass.
+
+outcome.nest_filter_checks told nests apart by the denominator of 「已击败残象 N/D」
+(more different caps than names asked for = a nest outside the setting). The
+overlay now logs 「nightmare nest: nest name: <name>」 for each nest it enters, just
+before the count box is clicked (「?」 when no name was read). With the filter on,
+the overlay only clicks a row beside a wanted name and logs that name, so the names
+alone never go red; 5352dfd8 let them replace the cap rule, which is what catches a
+click on the neighbouring row (review 2026-10-13, item 17). Now both run: the cap
+rule over every click, named or 「?」, and per wanted name no two different caps.
+
+    Formerly test_okww_nest_names.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.verify import outcome
+
+
+    T = "2026-10-14 09:00:{:02d},000 INFO TaskExecutor NightmareNestTask:{}"
+
+
+    def lines(*events, only="落渊南丘"):
+        out = [T.format(0, f"nightmare nest: 只刷 {[n for n in only.split(',')]}")]
+        for i, (kind, val) in enumerate(events, 1):
+            out.append(T.format(i, f"left_click 已击败残象：0/{val} (1729, 347) after_sleep 2" if kind == "click"
+                                else f"nightmare nest: nest name: {val}"))
+        out.append(T.format(59, "enter combat None"))          # a fight, so the scope item is said
+        return "\n".join(out) + "\n"
+
+
+    def scope(text, only):
+        return [(c.ok, c.detail) for c in outcome.nest_filter_checks(text, only) if c.label == "残象聚落没进别的点位"]
+
+
+    print("[review case: two clicks both logged 落渊南丘, caps 48 and 41 -> red]")
+    text = lines(("click", 48), ("name", "落渊南丘残象聚落"), ("click", 41), ("name", "落渊南丘残象聚落"))
+    got = scope(text, "落渊南丘")
+    check("red", [ok for ok, _ in got], [False])
+    check("says the two caps", "48、41" in (got[0][1] if got else ""), True)
+
+    print("\n[real order (name, then click), both wanted nests: green]")
+    text = lines(("name", "梦枢天罗残象聚落"), ("click", 48), ("name", "落渊南丘残象聚落"), ("click", 41),
+                 only="梦枢天罗,落渊南丘")
+    check("green", [ok for ok, _ in scope(text, "梦枢天罗,落渊南丘")], [True])
+    check("each click gets the name logged before it", outcome._nest_clicks(text),
+          [("48", "梦枢天罗残象聚落"), ("41", "落渊南丘残象聚落")])
+
+    print("\n[two wanted nests, a third click on the neighbouring 48 row under 落渊南丘's name: red]")
+    text = lines(("name", "梦枢天罗残象聚落"), ("click", 48), ("name", "落渊南丘残象聚落"), ("click", 41),
+                 ("name", "落渊南丘残象聚落"), ("click", 48), only="梦枢天罗,落渊南丘")
+    got = scope(text, "梦枢天罗,落渊南丘")
+    check("red although only two caps in all", [ok for ok, _ in got], [False])
+    check("names the name with two caps", "「落渊南丘」" in (got[0][1] if got else ""), True)
+
+    print("\n[a 「?」 click still counts for the cap rule]")
+    text = lines(("name", "落渊南丘残象聚落"), ("click", 41), ("name", "?"), ("click", 48))
+    check("named 41 + unnamed 48 for one wanted name: red", [ok for ok, _ in scope(text, "落渊南丘")], [False])
+
+    print("\n[old logs without name lines: the cap rule as before]")
+    text = lines(("click", 48), ("click", 48))
+    check("same cap twice: green", [ok for ok, _ in scope(text, "落渊南丘")], [True])
+    text = lines(("click", 48), ("click", 41))
+    check("two caps for one name: red", [ok for ok, _ in scope(text, "落渊南丘")], [False])
+
+    print("\n[the Mac-side checkers pass the configured names, not a literal (10-15, alarm f7a4bb6a)]")
+    # okww_effective.py and healthcheck.py passed 「落渊南丘」 after 2a7ff78d moved to two nests,
+    # so the 10-15 09:20 run - 梦枢天罗 48 then 落渊南丘 41, exactly the setting - printed ❌.
+    import re
+    from ark_relay.core.mastercfg_okww import ONLY_NESTS
+    text = lines(("name", "梦枢天罗残象聚落"), ("click", 48), ("name", "落渊南丘残象聚落"), ("click", 41),
+                 only=",".join(ONLY_NESTS))
+    check("the 10-15 run under the configured names: green", [ok for ok, _ in scope(text, ",".join(ONLY_NESTS))], [True])
+    LIB = Path(__file__).resolve().parents[2] / "scripts" / "mac" / "lib"
+    literal = re.compile(r"nest_filter_checks\(\s*[^,()]+,\s*([\"'])[^\"']*\1\s*\)")
+    for name in ("okww_effective.py", "healthcheck.py"):
+        src = (LIB / name).read_text(encoding="utf-8")
+        check(f"{name} calls nest_filter_checks", "nest_filter_checks(" in src, True)
+        check(f"{name}: no literal nest name passed to it", literal.findall(src), [])
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_nest_travel_retry():
+    """A nest given up after two failed travels is 「not done」 in the verdict and the report, even when another nest was fought.
+
+10-27 the 快速旅行 click on 梦枢天罗 took no effect (someone was connected over
+TeamViewer at 09:22:44-09:23:51), the nest was cached as unreachable, 落渊南丘 was
+fought, and nest_state read the fight and booked the run 「fought」: the report said
+鸣潮 ran fine while one of the two nests he asked for was never farmed
+(fixtures/okww-1027-nest-unreachable.log, the real task lines 09:22:58-09:25:32).
+
+The overlay now retries a failed travel once and logs NEST_GAVE_UP_LINE only when the
+second try fails too (test_okww_nest_v373.py); this is the relay reading that line.
+
+    Formerly test_okww_nest_travel_retry.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.okww_patch import okww_overlay
+    from ark_relay.features.verify import collector_okww as co, outcome
+
+
+    REAL = (fx_dir(Path(__file__), "fixtures") / "okww-1027-nest-unreachable.log").read_text(encoding="utf-8")
+    ns = {}
+    exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+    GAVE_UP = ns["NEST_GAVE_UP_LINE"]
+
+
+    def verdict(text):
+        got = [c for c in outcome.okww_checks(text, expect_nest=True, expect_daily=False, expect_stamina=False)
+               if c.label == "残象聚落"]
+        return (got[0].ok, got[0].detail) if got else None
+
+
+    def after(text, at, msg):
+        """`text` with one NightmareNestTask line inserted before the line stamped `at`."""
+        line = f"2026-10-27 {at},000 INFO TaskExecutor NightmareNestTask:{msg}\n"
+        i = text.index(f"2026-10-27 {at}")
+        return text[:i] + line + text[i:]
+
+
+    print("[the real 10-27 log, before the overlay retried: booked 「fought」 - the gap]")
+    check("nest_state", outcome.nest_state(REAL), "fought")
+    check("no nest given up (the line did not exist yet)", outcome.nests_given_up(REAL), [])
+
+    print("\n[retried and travelled: still 「fought」, nothing named]")
+    retried = after(REAL, "09:25:05,676", "nightmare nest: 传送不过去，马上再试一次 go_nest:48:18")
+    check("nest_state", outcome.nest_state(retried), "fought")
+    check("verdict ok", verdict(retried), (True, "有进本/战斗记录"))
+    check("step is the bare name", co._nest_step(retried), "残象聚落")
+
+    print("\n[the second try failed too: 「partly」, red, the nest named]")
+    both = after(retried, "09:25:18,365", f"{GAVE_UP}go_nest:48:18（梦枢天罗残象聚落）")
+    check("the relay's pattern reads the overlay's own line", outcome.nests_given_up(both), ["梦枢天罗残象聚落"])
+    check("nest_state", outcome.nest_state(both), "partly")
+    check("verdict red, names the nest", verdict(both),
+          (False, "有一处点位传送两次都不过去，那一处没打（梦枢天罗残象聚落）"))
+    check("step says which one was not farmed", co._nest_step(both), "残象聚落（有一处传送两次都不过去，那一处没打）（梦枢天罗残象聚落）")
+
+    print("\n[given up and nothing else fought: 「unreachable」 as before]")
+    alone = REAL[:REAL.index("2026-10-27 09:25:05,676")] + f"2026-10-27 09:25:05,700 INFO TaskExecutor NightmareNestTask:{GAVE_UP}go_nest:48:18（梦枢天罗残象聚落）\n"
+    check("nest_state", outcome.nest_state(alone), "unreachable")
+    check("verdict red", verdict(alone)[0], False)
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_nest_v373():
+    """OK-WW v3.7.3 changed find_nest; the 「only 落渊南丘」 filter must survive that and the next one.
+
+10-03 upstream moved the nest list's OCR box from 0.13 to 0.25 and added a second,
+scrolled page (go_nest_scroll). Our find_nest was pinned to the old body, so the
+mornings of 10-04 and 10-05 skipped it: upstream picked the top 0/48 nest, called it
+unreachable a second after clicking travel, left the map open, and died on
+「can't find gray_book_boss」 (ok-script.log 10-05 10:35:14 - 10:35:22). The relay then
+pushed 「这一轮没干完」 twice.
+
+This runs upstream's real v3.7.3 NightmareNestTask (fixture, stored as shipped) against
+the override:
+* the pin matches v3.7.3, and a changed body is adapted to, not skipped;
+* the box top is read from upstream (0.25), not hard-coded;
+* a page without 南丘 is not an error - only 「no page had it」 is, once, at the end;
+* after 「nightmare nest unreachable」 the map is closed once before the book is opened
+  again - also inside the daily, where upstream replaces the nest task's ensure_main
+  with a do-nothing lambda (v3.7.4 DailyTask.py:98-99), so ensure_main cannot do it.
+
+    Formerly test_okww_nest_v373.py.
+    """
+    import re
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import texts
+    from ark_relay.features.okww_patch import okww_overlay
+
+
+    # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.3/v3.7.4 body until 2026-11-02.
+    UPSTREAM = (fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
+
+
+    def upstream_class(text=UPSTREAM):
+        """Upstream's NightmareNestTask, loaded from a real file so inspect.getsource works."""
+        class WWOneTimeTask:
+            def run(self):
+                pass
+
+            def tr(self, msg):          # ok-script's translation, English here
+                return msg
+
+        ok = types.ModuleType("ok")
+        ok.Logger = types.SimpleNamespace(get_logger=lambda name: types.SimpleNamespace(info=lambda *a: None))
+        combat = types.ModuleType("src.task.BaseCombatTask")
+        combat.BaseCombatTask = type("BaseCombatTask", (), {})
+        combat.CharRevivedException = type("CharRevivedException", (Exception,), {})
+        onetime = types.ModuleType("src.task.WWOneTimeTask")
+        onetime.WWOneTimeTask = WWOneTimeTask
+        sys.modules.update({"ok": ok, "cv2": types.ModuleType("cv2"), "config": types.SimpleNamespace(config={}),
+                            "src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+                            "src.task.BaseCombatTask": combat, "src.task.WWOneTimeTask": onetime})
+        ok.run_task = lambda *a, **kw: None
+        path = tmpdir() / "NightmareNestTask.py"
+        path.write_text(text, encoding="utf-8")
+        mod = types.ModuleType("src.task.NightmareNestTask")
+        mod.__file__ = str(path)
+        exec(compile(text, str(path), "exec"), mod.__dict__)
+        sys.modules["src.task.NightmareNestTask"] = mod
+        return mod.NightmareNestTask
+
+
+    def overlay():
+        ns = {}
+        exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+        for k in ("_applied", "_skipped", "_adapted"):
+            ns[k].clear()
+        ns["TaskDisabledException"] = type("TaskDisabledException", (Exception,), {})
+        return ns
+
+
+    class Box:
+        def __init__(self, name, y, height=30):
+            self.name, self.x, self.y, self.width, self.height = name, 889, y, 198, height
+
+        def __repr__(self):
+            return self.name
+
+
+    def fake(cls, pages, ns, only="落渊南丘"):
+        """A task whose screen is `pages[page]`; go_nest_scroll's click turns the page."""
+        t = object.__new__(cls)
+        t.config = {ns["ONLY_NESTS"]: only, "Which to Farm": ["Tacet Discord Nest"]}   # the master's value
+        t.count_re = re.compile(r"(\d{1,2})/(\d{1,2})")
+        t._unreachable_nests, t._nest_deaths, t.queues = set(), {}, []
+        t._nest_tab_of_current_nest = "go_nest"
+        t.page, t.tops, t.events, t.errors, t.infos, t.fought = 0, [], [], [], [], []
+
+        def ocr(x, y, to_x, to_y, match=None):
+            t.tops.append(y)
+            # Fresh boxes every read, as OCR gives: find_nest moves the one it returns.
+            return [Box(b.name, b.y, b.height) for b in pages[t.page] if not match or match.search(b.name)]
+        t.ocr = ocr
+        t.open_boss_book = lambda name: setattr(t, "page", 0)
+        t.click = lambda *a, **kw: setattr(t, "page", 1) if a and a[0] == 0.9730 else None
+        t.openF2Book = lambda name: t.events.append("book")
+        t.ensure_main = lambda time_out=0: t.events.append("main")
+        t.log_info = lambda msg, notify=False: t.infos.append(msg)
+        t.log_error = lambda msg, notify=False: t.errors.append(msg)
+        t.sleep = lambda s: None
+        t.width_of_screen = lambda f: f * 1920
+        t.height_of_screen = lambda f: f * 1080
+        t.combat_nest = lambda nest: t.fought.append(nest.cache_key)
+        return t
+
+
+    Nest = upstream_class()
+    ns = overlay()
+
+    print("\n[钉的是 v3.7.3 的 find_nest]")
+    check("上游（机器上装的版本）find_nest 的哈希就是我们钉的", ns["_src_sha"](Nest.find_nest), ns["_NEST_FIND_SHA"])
+    check("识字区上沿从上游读出来是 0.25", ns["_upstream_nest_top"](Nest.find_nest), 0.25)
+    ns["_install_nest"]()
+    check("find_nest 换上了", "NightmareNestTask.find_nest" in ns["_applied"])
+    check("没有跳过的", ns["_skipped"], [])
+    check("也没有要适配的", ns["_adapted"], [])
+
+    # 南丘 (/41) is the second row since 3.7; a new /48 nest sits on top (10-05 10:35:14 read 0/48 at y=374).
+    NAME_NEW, NAME_NANQIU = Box("新区残象聚落", 300), Box("落渊南丘残象聚落", 450)
+
+
+    def page1(nanqiu):
+        return [NAME_NEW, Box("已击败残象：0/48", 374), NAME_NANQIU, Box(f"已击败残象：{nanqiu}", 524)]
+
+
+    PAGE2 = [Box("别的残象聚落", 300), Box("已击败残象：3/24", 374)]
+
+    print("\n[南丘没满：只进南丘，不碰上面那个 0/48]")
+    t = fake(Nest, [page1("10/41"), PAGE2], ns)
+    t.run()
+    check("打了一局", len(t.fought), 1)
+    check("进的是 /41 那一行（南丘）", ":41:" in (t.fought or [""])[0])
+    check("识字区一律用 0.25", set(t.tops), {0.25})
+    check("no extra ensure_main between the books when nothing was unreachable", t.events[:3], ["main", "book", "book"])
+    check("计数没涨就不再进", any("no progress after an attempt" in m for m in t.infos))
+    check("没报错", t.errors, [])
+
+    print("\n[南丘满了：第二屏没有南丘也不报错]")
+    t = fake(Nest, [page1("41/41"), PAGE2], ns)
+    t.run()
+    check("一局没打", t.fought, [])
+    check("说了已打满", any("指定点位都已打满" in m for m in t.infos))
+    check("第二屏找不到南丘不算错", t.errors, [])
+
+    print("\n[两屏都没有南丘：结束时报一次]")
+    t = fake(Nest, [[NAME_NEW, Box("已击败残象：0/48", 374)], PAGE2], ns)
+    t.run()
+    check("一局没打", t.fought, [])
+    check("只报一次", len(t.errors), 1)
+    check("报的是列表里没找到", "列表里没找到指定的点位" in (t.errors or [""])[0])
+
+    print("\n[上游下次再改 find_nest：照样换上并按新版读识字区，不跳过]")
+    changed = UPSTREAM.replace("counts = self.ocr(0.35, 0.25, 1, 0.96, match=self.count_re)",
+                               "counts = self.ocr(0.35, 0.3, 1, 0.96, match=self.count_re)  # moved again")
+    check("样本确实改到了", changed != UPSTREAM)
+    Nest2 = upstream_class(changed)
+    ns2 = overlay()
+    ns2["_install_nest"]()
+    check("find_nest 仍然换上了", "NightmareNestTask.find_nest" in ns2["_applied"])
+    check("记在「已适配」里", [a["what"] for a in ns2["_adapted"]], ["NightmareNestTask.find_nest"])
+    check("不在「没贴上」里", ns2["_skipped"], [])
+    t = fake(Nest2, [page1("10/41"), PAGE2], ns2)
+    t.run()
+    check("识字区跟着上游改成 0.3", set(t.tops), {0.3})
+    check("照样只进南丘", ":41:" in (t.fought or [""])[0])
+
+    print("\n[进点位和传送不过去都留图（中继二 10-05 23:3x）]")
+    check("进点位、传送两处都换上了", all(x in ns["_applied"] for x in (
+        "NightmareNestTask.combat_nest", "NightmareNestTask._travel_to_nest_or_skip")))
+    t = fake(Nest, [page1("10/41"), PAGE2], ns)
+    del t.combat_nest
+    t.shots, t.backs = [], []
+    t.screenshot = lambda name: t.shots.append(name)
+    t.wait_feature = lambda *a, **kw: (_ for _ in ()).throw(Exception("wait_feature timeout"))
+    try:
+        Nest.combat_nest(t, Box("落渊南丘残象聚落", 450))
+    except Exception:  # noqa: BLE001
+        pass
+    check("点进点位前截了列表", t.shots[:1], ["nest_go"])
+    check("日志说了点进点位", any("点进点位" in m for m in t.infos))
+    t.shots = []
+    t.wait_until = lambda *a, **kw: None          # no 快速旅行 button: unreachable
+    t.back = lambda after_sleep=0: t.backs.append(1)
+    nest = types.SimpleNamespace(cache_key="落渊南丘:41:450")
+    check("传送不过去照上游返回 False", Nest._travel_to_nest_or_skip(t, nest), False)
+    check("传送前后各一张图", t.shots, ["nest_travel", "nest_unreachable"])
+    check("上游那句 unreachable 照样写", any("nightmare nest unreachable" in m for m in t.infos))
+    check("我们那句「传送不过去」也写了（日报靠它核这层在跑）", any("nightmare nest: 传送不过去" in m for m in t.infos))
+
+    print("\n[find_nest 根本换不上：这一轮不刷，绝不按上游刷全部]")
+    gone = UPSTREAM.replace("    def find_nest(self):", "    def find_nest_renamed(self):")
+    Nest3 = upstream_class(gone)
+    Nest3.find_nest = Nest3.find_nest_renamed
+    del Nest3.find_nest
+    ns3 = overlay()
+    ns3["_install_nest"]()
+    check("find_nest 记为没贴上", [s["what"] for s in ns3["_skipped"]], ["NightmareNestTask.find_nest"])
+    check("原因说的是方法没了，不是上沿读不出", ["没有这个方法了" in s["why"] for s in ns3["_skipped"]], [True])
+    t = fake(Nest3, [page1("10/41"), PAGE2], ns3)
+    t.run()
+    check("一局没打", t.fought, [])
+    check("说了这一轮不刷", any("这一轮不刷巢穴" in m for m in t.infos))
+
+    print("\n[上游的识字区上沿读不出来：不猜 0.25，记为没贴上进群，这一轮不刷]")
+    # 10-03 v3.7.3 moved the box from 0.13 to 0.25 and an unreachable 0/48 nest was clicked
+    # without a word. A guessed top is that failure again, so an unreadable or implausible
+    # one keeps find_nest out and goes through the not-applied report like any skip.
+    OCR_LINE = "counts = self.ocr(0.35, 0.25, 1, 0.96, match=self.count_re)"
+    unreadable = UPSTREAM.replace(OCR_LINE, "box = (0.35, 0.25, 1, 0.96)\n"
+                                  "        counts = self.ocr(*box, match=self.count_re)")
+    too_low = UPSTREAM.replace(OCR_LINE, "counts = self.ocr(0.35, 0.7, 1, 0.96, match=self.count_re)")
+    check("样本确实改到了", unreadable != UPSTREAM and too_low != UPSTREAM)
+    for label, text in (("正则对不上", unreadable), ("读到的值不像样（0.7）", too_low)):
+        Nest4 = upstream_class(text)
+        ns4 = overlay()
+        check(f"{label}：读不出上沿", ns4["_upstream_nest_top"](Nest4.find_nest), None)
+        ns4["_install_nest"]()
+        check(f"{label}：find_nest 没换上", "NightmareNestTask.find_nest" in ns4["_applied"], False)
+        check(f"{label}：记为没贴上", [s["what"] for s in ns4["_skipped"]], ["NightmareNestTask.find_nest"])
+        check(f"{label}：不记为已适配", ns4["_adapted"], [])
+        check(f"{label}：别的巢穴改动照样换上", all(x in ns4["_applied"] for x in (
+            "NightmareNestTask.run", "NightmareNestTask.get_nest_to_go")))
+        t = fake(Nest4, [page1("10/41"), PAGE2], ns4)
+        t.run()
+        check(f"{label}：一局没打", t.fought, [])
+        check(f"{label}：没拿任何上沿去识字（不猜 0.25）", t.tops, [])
+        check(f"{label}：说了这一轮不刷", any("这一轮不刷巢穴" in m for m in t.infos))
+        # The existing not-applied path, end to end: the overrides' own report file ->
+        # okww_overlay.report_line -> the boot push title (boot_stages: alert=True, group).
+        report = tmpdir() / "ark-okww-overlay.json"
+        real_os, real_report = ns4["os"], okww_overlay.REPORT
+        ns4["os"], ns4["REPORT"] = types.SimpleNamespace(name="nt"), str(report)
+        try:
+            ns4["_write_report"]()
+        finally:
+            ns4["os"] = real_os
+        okww_overlay.REPORT = report
+        try:
+            line = okww_overlay.report_line()
+        finally:
+            okww_overlay.REPORT = real_report
+        check(f"{label}：开机推送里有 find_nest 没贴上",
+              "没贴上" in line and "NightmareNestTask.find_nest" in line and "上沿" in line)
+        check(f"{label}：推送标题是没贴上", texts.patches(1, [line]), "⚠️ OK-WW 补丁有 1 条没贴上（共 1 条）")
+
+    print("\n[daily: ensure_main is upstream's no-op lambda; an unreachable nest leaves the map open -> one back before the book]")
+    ns5 = overlay()
+    ns5["_install_nest"]()
+    t = fake(Nest, [page1("10/41"), PAGE2], ns5)
+    t.ensure_main = lambda *a, **kw: None            # DailyTask.py:99, verbatim shape
+    t.world, t.shots = False, []
+    t.in_team_and_world = lambda: t.world
+
+
+    def _back(after_sleep=0):
+        t.events.append("back")
+        t.world = len([e for e in t.events if e == "back"]) >= 2   # upstream's back, then ours
+
+
+    t.back = _back
+    t.screenshot = lambda name: t.shots.append(name)
+    t.find_one = lambda *a, **kw: None
+    t._find_travel_button = lambda: None
+    t.wait_until = lambda cond, **kw: None if cond == t._find_travel_button else cond()
+    nest = types.SimpleNamespace(cache_key="落渊南丘:41:450")
+    check("travel fails as upstream's does", Nest._travel_to_nest_or_skip(t, nest), False)
+    check("upstream's own back ran, the map is still open", (t.events, t.world), (["back"], False))
+    Nest.get_nest_to_go(t)
+    check("one more back, then the book", t.events[:3], ["back", "back", "book"])
+    check("no picture of a stuck map", "nest_map_still_open" in t.shots, False)
+
+    print("\n[the world is already on screen after the unreachable nest -> no back (it would open the game menu)]")
+    t = fake(Nest, [page1("10/41"), PAGE2], ns5)
+    t.ensure_main = lambda *a, **kw: None
+    t.in_team_and_world = lambda: True
+    t.back = lambda after_sleep=0: t.events.append("back")
+    t._ark_close_map = True
+    Nest.get_nest_to_go(t)
+    check("straight to the book", t.events[:1], ["book"])
+
+    print("\n[the back did not bring the world back -> picture and a log line, the book is tried anyway]")
+    t = fake(Nest, [page1("10/41"), PAGE2], ns5)
+    t.ensure_main = lambda *a, **kw: None
+    t.in_team_and_world = lambda: False
+    t.back = lambda after_sleep=0: t.events.append("back")
+    t.wait_until = lambda cond, **kw: cond()
+    t.shots = []
+    t.screenshot = lambda name: t.shots.append(name)
+    t.box_of_screen = lambda *a: a
+    t.ocr = lambda *a, **kw: []
+    t._ark_close_map = True
+    Nest.get_nest_to_go(t)
+    check("one back, then the book", t.events[:2], ["back", "book"])
+    check("picture of the stuck map", t.shots, ["nest_map_still_open"])
+    check("said so in the log", any("关了一次地图，还是没回到大世界" in m for m in t.infos))
+
+    print("\n[nothing unreachable -> get_nest_to_go never presses back]")
+    t = fake(Nest, [page1("10/41"), PAGE2], ns5)
+    t.in_team_and_world = lambda: False
+    t.back = lambda after_sleep=0: t.events.append("back")
+    Nest.get_nest_to_go(t)
+    check("no back", "back" in t.events, False)
+
+    print("\n[the nest clicked is logged by name as well as by key: 「nightmare nest: nest name: <name>」]")
+    t = fake(Nest, [page1("10/41"), PAGE2], ns)
+    t.run()
+    key = t.fought[0]
+    t.shots = []
+    t.screenshot = lambda name: t.shots.append(name)
+    t.wait_feature = lambda *a, **kw: (_ for _ in ()).throw(Exception("wait_feature timeout"))
+    try:
+        Nest.combat_nest(t, types.SimpleNamespace(cache_key=key))
+    except Exception:  # noqa: BLE001
+        pass
+    check("the key line as before", any(m == f"nightmare nest: 点进点位 {key}（截图 nest_go）" for m in t.infos))
+    check("the name line, as OCR read it beside the count",
+          [m for m in t.infos if m.startswith("nightmare nest: nest name: ")], ["nightmare nest: nest name: 落渊南丘残象聚落"])
+    check("the prefix is a constant the relay can import", ns["NEST_NAME_LINE"], "nightmare nest: nest name: ")
+    t.infos = []
+    try:
+        Nest.combat_nest(t, types.SimpleNamespace(cache_key="go_nest:48:999"))
+    except Exception:  # noqa: BLE001
+        pass
+    check("a key with no name read: 「?」", [m for m in t.infos if m.startswith("nightmare nest: nest name: ")],
+          ["nightmare nest: nest name: ?"])
+
+    print("\n[without the 只刷 filter the name is read too (one more read of the list), not 「?」]")
+    t = fake(Nest, [page1("10/41"), PAGE2], ns, only="")
+    t.run()
+    key = t.fought[0]
+    t.screenshot = lambda name: None
+    t.wait_feature = lambda *a, **kw: (_ for _ in ()).throw(Exception("wait_feature timeout"))
+    try:
+        Nest.combat_nest(t, types.SimpleNamespace(cache_key=key))
+    except Exception:  # noqa: BLE001
+        pass
+    check("no filter: the first row's name, 「新区残象聚落」", [m for m in t.infos if m.startswith("nightmare nest: nest name: ")],
+          ["nightmare nest: nest name: 新区残象聚落"])
+
+    print("\n[10-27: a travel that failed once is tried again at once; only a second failure gives the nest up]")
+    # ok-script.log 10-27 09:23:00-09:25:18: 梦枢天罗 0/48 clicked, 快速旅行 at 09:23:03 took no
+    # effect (TeamViewer connected 09:22:44-09:23:51), 「unreachable, skip this run」 at
+    # 09:25:04, then 「skip cached unreachable nightmare nest: go_nest:48:18」 and 落渊南丘 only.
+    NestTarget = sys.modules["src.task.NightmareNestTask"].NestTarget
+    MENGSHU = [Box("梦枢天罗残象聚落", 300), Box("已击败残象：0/48", 374),
+               Box("落渊南丘残象聚落", 450), Box("已击败残象：10/41", 524)]
+
+
+    def travel_fake(ns_, results):
+        """A nest run whose 快速旅行 works or not by `results`, in order (True = travelled; then always works)."""
+        t = fake(Nest, [MENGSHU, PAGE2], ns_, only="梦枢天罗,落渊南丘")
+        tries = iter(results)
+        t.shots = []
+        t.screenshot = lambda name: t.shots.append(name)
+        t.in_team_and_world = lambda: True               # the map closed: no extra back
+        t.back = lambda after_sleep=0: t.events.append("back")
+        t._find_first_feature = lambda names, threshold: None
+        t.find_one = lambda *a, **kw: None
+        t.wait_in_team_and_world = lambda **kw: True
+        # Upstream's travel: no 快速旅行 button found = unreachable, as a click that did nothing.
+        t.wait_until = lambda cond, **kw: (Box("gray_teleport", 1007) if next(tries, True) else None) \
+            if cond == t._find_travel_button else cond()
+        t.combat_nest = lambda nest: t.fought.append(nest.cache_key) if Nest._travel_to_nest_or_skip(t, nest) else None
+        return t
+
+
+    ns6 = overlay()
+    ns6["_install_nest"]()
+    t = travel_fake(ns6, [False, True])
+    t.run()
+    mengshu = [k for k in t.fought if k.endswith(":48:18")]
+    check("fail, then travel: 梦枢天罗 fought on the second try", len(mengshu), 1)
+    check("落渊南丘 still fought after it", len(t.fought), 2)
+    check("said it tries again", [m for m in t.infos if "马上再试一次" in m], [f"nightmare nest: 传送不过去，马上再试一次 {mengshu[0]}"])
+    check("no give-up line", any(m.startswith(ns6["NEST_GAVE_UP_LINE"]) for m in t.infos), False)
+
+    t = travel_fake(ns6, [False, False, True])
+    t.run()
+    check("fail twice: 梦枢天罗 not fought, 落渊南丘 still is", [k.split(":")[1] for k in t.fought], ["41"])
+    gave_up = [m for m in t.infos if m.startswith(ns6["NEST_GAVE_UP_LINE"])]
+    check("the give-up line names the nest", [m.endswith("（梦枢天罗残象聚落）") for m in gave_up], [True])
+    check("then cached as upstream does", any("skip cached unreachable nightmare nest" in m for m in t.infos), True)
+    check("tried exactly twice", sum("nightmare nest unreachable" in m for m in t.infos), 2)
+
+    print("\n[the retry is per run: the next run tries again, then retries again]")
+    t2 = travel_fake(ns6, [False, True])
+    t2.__dict__.update(_ark_travel_retried={"go_nest:48:18"})   # left over from an earlier run
+    t2.run()
+    check("a new run starts with nothing retried", [k.split(":")[1] for k in t2.fought], ["48", "41"])
+
+    print("\n[a nest whose travel failed once is not cached: its key and no-progress stamp are dropped]")
+    t = travel_fake(ns6, [False])
+    key = "go_nest:48:18"
+    t._ark_nest_progress, t._ark_nest_tried, t._ark_travel_retried = {key: "0"}, {f"{key}@0"}, set()
+    t._unreachable_nests.add(key)                          # what upstream does for a NestTarget
+    check("travel fails as upstream's", Nest._travel_to_nest_or_skip(t, NestTarget(Box("x", 0), key)), False)
+    check("un-cached", key in t._unreachable_nests, False)
+    check("stamp dropped", t._ark_nest_tried, set())
+    check("both pictures as before", t.shots, ["nest_travel", "nest_unreachable"])
+
+    print("\n" +("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_no_challenge_window():
+    """The no-challenge-button reason is told from the line of the same raise, by time.
+
+collector_okww._okww_say turned 「Teleport to boss failed」 into the reason that the
+challenge button never came when the overlay's 「找不到开启挑战」 line was within
+3000 characters before the traceback header - a guess about stack lengths. On every
+real log with both (2026-09-01 05:43, 06:35; fixtures/m6-okww/0921-weekly.log) the
+line is 0.001-0.02 s before its header. Now: within 2 s before the header's own
+timestamp (audit 2026-10-13 item 24, the rule of 29a44215 / bec95a17), the old
+window only for a header line without a timestamp. Lines in upstream's format.
+
+    Formerly test_okww_no_challenge_window.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.verify import collector_okww as co
+
+
+    STACK = "".join(f'  File "x{i}.py", line {i}, in f\n    g()\n' for i in range(200))   # ~5.5 KB
+    NO_BTN = "2026-09-21 10:20:58,624 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [失坠困咎之庭_1.00]\n"
+
+
+    def head(ts):
+        return (f"2026-09-21 {ts} ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card "
+                "Traceback (most recent call last):\n")
+
+
+    TAIL = "    raise RuntimeError('Teleport to boss failed') from e\nRuntimeError: Teleport to boss failed\n"
+    SAY = "选了等级后没等到「开启挑战」"
+
+    print("[the real fixture still reads as no challenge button]")
+    real = (fx_dir(Path(__file__), "fixtures") / "m6-okww" / "0921-weekly.log").read_text(encoding="utf-8")
+    check("0921-weekly", SAY in co._okww_error(real), True)
+
+    print("\n[the line 0.02 s before, but more than 3000 characters back: found]")
+    text = NO_BTN + STACK + head("10:20:58,644") + TAIL
+    check("found by time", SAY in co._okww_error(text), True)
+
+    print("\n[the line a minute before, close in the text: another event]")
+    text = NO_BTN.replace("10:20:58,624", "10:19:50,000") + head("10:20:58,644") + TAIL
+    check("not this raise", SAY in co._okww_error(text), False)
+
+    print("\n[header without a timestamp: the 3000-character window]")
+    text = NO_BTN + " ERROR TaskExecutor FarmEchoTask:farm 4c error Traceback (most recent call last):\n" + TAIL
+    check("near in the text: found", co._said_before(text, text.index(" ERROR"), co._NO_CHALLENGE), True)
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_weekly_boss_step():
+    """周本要进 OK-WW 的步骤清单，否则「领满记账、周一恢复」永远触发不了。
+
+2026-09-07：三趟各领一次（3/3→0），手动补跑碰上「次数已达上限」正常退出，
+账本步骤里只有「无音区 ×1、残象聚落、周常乐园」，周本一个字没有，
+handle 里找「4C声骸 已完成」自然找不到，周本状态一直是「本周还没领满」。
+
+    Formerly test_okww_weekly_boss_step.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import collector
+
+
+    d = tmpdir()
+    def steps(text):
+        f = d / "x.log"; f.write_text(text, encoding="utf-8")
+        return collector.parse_okww_log(f).get("okww_steps") or []
+
+    HEAD = "2026-09-07 11:28:57,378 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"
+    OCR = "2026-09-07 11:29:12,120 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：{k}/3_0.99, x60_0.79]\n"
+    CLAIM = "2026-09-07 10:00:32,309 INFO TaskExecutor FarmEchoTask:周本领奖：已点确认\n"
+    CAP = "2026-09-07 11:31:04,847 INFO TaskExecutor FarmEchoTask:周本领奖：没认出领奖弹窗，整屏读到 [提示_1.00, 收取物资次数已达到上限，是否退出副本？_0.99, 退出副本_1.00]\n"
+    ERR = "2026-09-07 10:00:43,366 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):\n"
+
+    # The overlay's read-back after a claim (format fixed with the overlay; see outcome.WEEKLY_CLAIM_OK).
+    BACK = "2026-09-07 10:00:35,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读确认领到，本周剩余 {k}/3→{n}/3\n"
+    SAME = "2026-09-07 10:00:35,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读次数没变（{k}/3），这次没领到\n"
+    UNREAD = "2026-09-07 10:00:35,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读没读到本周剩余次数\n"
+    LAND = "2026-09-07 10:06:50,862 INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm\n"
+    FIGHT = "2026-09-07 10:06:52,779 INFO TaskExecutor FarmEchoTask:enter combat None\n"
+
+    check("领满后进本：已完成、已领满", steps(HEAD + OCR.format(k=0) + CAP), ["周本（已完成，本周已领满）"])
+    check("领了一次、回读确认：正常退出", steps(HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2)),
+          ["周本（已完成，领了 1 次，本周还剩 2 次）"])
+    check("领了一次但卡结算页（09-07 早）、回读确认", steps(HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2) + ERR),
+          ["周本（领了 1 次，之后出错，原因见失败于）"])
+
+    print("\n[「已点确认」只是点了，回读确认才算领到]")
+    check("旧日志只有「已点确认」：不算领到、不写已完成", steps(HEAD + OCR.format(k=3) + CLAIM),
+          ["周本（点了确认 1 次、领完没再读次数，没核实领到）"])
+    check("旧日志只有「已点确认」又出错（09-07 早的原样）", steps(HEAD + OCR.format(k=3) + CLAIM + ERR),
+          ["周本（点了确认 1 次、领完没再读次数，没核实领到，之后出错，原因见失败于）"])
+    check("回读次数没变：没领到", steps(HEAD + OCR.format(k=2) + CLAIM + SAME.format(k=2)),
+          ["周本（领完再读次数没变 1 次，没领到）"])
+    check("回读没读到：不算领到", steps(HEAD + OCR.format(k=2) + CLAIM + UNREAD),
+          ["周本（领完再读没读到剩余次数 1 次，没核实领到）"])
+    check("一次确认、一次没变：领了 1 次另说那次", steps(HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2) + CLAIM + SAME.format(k=2)),
+          ["周本（已完成，领了 1 次，本周还剩 2 次；另有领完再读次数没变 1 次，没领到）"])
+
+    print("\n[剩余次数没读到不等于领满]")
+    # A verified claim with no counter reading anywhere: unknown, never 「本周已领满」.
+    no_read = HEAD + CLAIM + "2026-09-07 10:00:35,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读确认领到，本周剩余 ?/3→?/3\n"
+    check("这种行不会被当成回读确认", steps(no_read), ["周本（点了确认 1 次、领完没再读次数，没核实领到）"])
+    from ark_relay.features.verify import outcome
+    orig = outcome.weekly_left
+    outcome.weekly_left = lambda text: None
+    try:
+        check("领到了但读不到剩余：说没读到，不说领满", steps(HEAD + CLAIM + BACK.format(k=3, n=2)),
+              ["周本（已完成，领了 1 次，本周剩余次数没读到）"])
+    finally:
+        outcome.weekly_left = orig
+
+    print("\n[没有开打的记录就不说「打了」]")
+    check("打了没领（有 enter combat）", steps(HEAD + OCR.format(k=3) + LAND + FIGHT), ["周本（打了，没领到奖励）"])
+    check("进了本没打（10-05 早：只有 prepared as）", steps(HEAD + OCR.format(k=3) + LAND), ["周本（进了本，没打起来，没领到奖励）"])
+    check("没进本", steps(HEAD + OCR.format(k=3)), ["周本（没进本，一次没打）"])
+    # Real line, replay 2026-09-01 OK-WW-06-58-23 (11:01:39): used to read 「打了，没领到奖励」.
+    NOWAVE = "2026-09-01 11:01:39,518 INFO TaskExecutor FarmEchoTask:波片不足挡住开启挑战，点取消跳过本次周本\n"
+    check("波片不够跳过：说奖励没领、没打", steps(HEAD + OCR.format(k=1) + NOWAVE), ["周本（奖励没领：结晶波片不足，这一趟没打）"])
+    # On 2026-10-06 the overlay also ended the run as failed right after the skip line
+    # (since 2026-10-07 it ends as skipped, _skip_short); old logs keep that line.
+    # Constructed from that day's click_team_challenge wording.
+    NOWAVE_END = ("2026-09-01 11:01:40,000 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束：周本：结晶波片不够领奖"
+              "（游戏提示「结晶波片不足，无法获取奖励」），点了取消，这一趟没打\n")
+    check("波片不够跳过＋按失败结束：日报同一行", steps(HEAD + OCR.format(k=1) + NOWAVE + NOWAVE_END),
+          ["周本（奖励没领：结晶波片不足，这一趟没打）"])
+    check("领到一次后波片不够：日报说剩下的没领", steps(HEAD + OCR.format(k=3) + CLAIM + BACK.format(k=3, n=2) + NOWAVE + NOWAVE_END),
+          ["周本（已完成，领了 1 次，本周还剩 2 次；剩下的奖励没领：结晶波片不足）"])
+    check("没开周本就不写", steps("2026-09-07 11:34:06,670 INFO TaskExecutor DailyTask:open_daily\n"), [])
+    check("剩余 0 次、没弹上限对话（09-02 的样本）：也算已领满", steps(HEAD + OCR.format(k=0)), ["周本（已完成，本周已领满）"])
+
+    print("\n[周常乐园：上游现在记的是中文「乐园任务完成, 已达到上限」（GardenTask.run，2026-09-14 读的源码）]")
+    G = "2026-09-14 10:02:11,001 INFO TaskExecutor GardenTask:Garden current: [Box(name='2000/2000')]\n"
+    check("做完了（中文）", steps(G + "2026-09-14 10:02:12,001 INFO TaskExecutor GardenTask:乐园任务完成, 已达到上限\n"), ["周常乐园（本周已完成）"])
+    check("做完了（旧英文）", steps("x GardenTask:weekly garden already completed\n"), ["周常乐园（本周已完成）"])
+    # Only the counter read, no 「乐园任务完成」: not shown as done (2026-10-05 evidence rule).
+    check("跑了但没有完成那句：不算完成", steps(G), ["周常乐园（没读到做完，不算完成）"])
+
+
+def _part_okww_weekly_entry_paths():  # noqa: C901
+    """Weekly boss entry: one path that looks at every screen, for every screen seen so far.
+
+The entry broke one shape at a time: first only the plain entry was known, then a
+「限时提前开放」 spoiler dialog that dropped us in the arena (2026-09-09 天傀劫煞),
+then a dialog that opened the boss's level page (2026-10-05 22:05, 天演溯心) - which
+the 10-05 morning run took for the arena and the 22:05 run walked the open world
+for. This file runs every known screen through the real overlay, upstream's own
+call order around it, and the real text the game showed:
+
+  (a) dialog -> level page   ok-script.log 2026-10-05 22:17:26 / 22:17:31
+  (b) dialog -> arena        bosstip.py (2026-09-09)
+  (c) no dialog -> level page   tests/replay/2026-09-07/wuwa/OK-WW-06-00-55.log:160-168
+  (c') the travel / team screen comes after upstream's 10 s
+  anything else -> screenshot, the screen's text in the log, stop; never a walk
+
+and the two deliberate stops on the way in: 0/3 claims left, short on waveplates.
+
+    Formerly test_okww_weekly_entry_paths.py.
+    """
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.okww_patch import okww_overlay
+
+
+    class Disabled(Exception):
+        """ok.TaskDisabledException."""
+
+
+    class Revived(Exception):
+        """src.task.BaseCombatTask.CharRevivedException."""
+
+
+    class _Any(type):
+        """A stand-in upstream class: any method _install_hooks reads exists and does nothing."""
+        def __getattr__(cls, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+
+            def anything(self, *a, **kw):
+                return None
+            return anything
+
+
+    class BaseWWTask(metaclass=_Any):
+        def click_on_book_target(self, serial_number, total_number, structure=None):
+            # Upstream (v3.7.3 BaseWWTask.py:1070-1112): click 前往, then wait 10 s for
+            # the travel or team screen; True means the team screen.
+            self.events.append("book")
+            if self.book == "team":
+                return True
+            raise Exception("wait_feature timeout")
+
+        # Upstream v3.7.3 BaseWWTask.py:1115-1117, verbatim: the overlay replaces it
+        # only while its source still hashes to the pin.
+        def click_team_challenge(self):
+            self.wait_click_feature('team_start_challenge', raise_if_not_found=True, click_after_delay=0.5, after_sleep=1)
+            self.wait_click_skip_dialog_confirm()
+
+
+    class FarmEchoTask(BaseWWTask):
+        def teleport_to_configured_boss(self):
+            # Upstream v3.7.4 FarmEchoTask.py:273-308, reduced to the steps after the book.
+            is_team = self.click_on_book_target(1, 4)
+            self.events.append("after-book")
+            if is_team:
+                if self.config.get('Teleport to Boss', 'No') == 'Weekly Challenge':
+                    self.click_configured_boss_level()
+                    self.click_solo_challenge()
+                self.click_team_challenge()
+            else:
+                self.realm_entry_at_heal_point = False
+                self.events.append("travel")
+            self.wait_in_team_and_world(time_out=120)
+            self.sleep(2)
+            return is_team
+
+        def teleport_to_configured_boss_and_prepare(self):
+            # Upstream v3.7.3 FarmEchoTask.py:243-266, reduced.
+            try:
+                if self.teleport_to_configured_boss():
+                    walk = "realm"
+                else:
+                    walk = self.walk_after_boss_teleport()
+            except Exception as e:
+                raise RuntimeError("Teleport to boss failed") from e
+            self.prepared = walk
+
+        def walk_after_boss_teleport(self):
+            self.events.append("walk")
+            return "realm"
+
+        def click_configured_boss_level(self):
+            # Upstream's level click; the overlay reads the claims left before it.
+            if getattr(self, "level_missing", False):
+                raise RuntimeError("Can not find boss level 80")   # upstream's own raise (:370)
+            self.events.append("level")
+
+        # Upstream v3.7.4 FarmEchoTask.py:374-378, verbatim.
+        def click_solo_challenge(self):
+            self.click(0.880, 0.911, after_sleep=2)
+            self.wait_click_skip_dialog_confirm(time_out=1)
+
+        def combat_once(self, wait_combat_time=200, raise_if_not_found=True, target=False):
+            if self.revive:
+                raise Revived()
+            return self.combat
+
+        def incr_drop(self, dropped):
+            self.events.append("incr")
+
+
+    mods = {
+        "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
+                                    Logger=types.SimpleNamespace(get_logger=lambda n: types.SimpleNamespace(
+                                        info=lambda *a, **k: None, error=lambda *a, **k: None))),
+        "src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
+        "src.task.BaseCombatTask": types.SimpleNamespace(CharRevivedException=Revived),
+        "src.task.BaseWWTask": types.SimpleNamespace(BaseWWTask=BaseWWTask),
+        "src.task.FarmEchoTask": types.SimpleNamespace(FarmEchoTask=FarmEchoTask),
+    }
+    for name in ("DailyTask", "ForgeryTask", "SimulationTask", "TacetTask"):
+        mods[f"src.task.{name}"] = types.SimpleNamespace(**{name: _Any(name, (), {})})
+    _saved = {k: sys.modules.get(k) for k in mods}
+    sys.modules.update(mods)
+
+    ns = {}
+    # Loading the file installs everything it can, as on the machine; the nest part
+    # finds no NightmareNestTask here and stops the chain before the claim, so the
+    # claim is installed by hand - once, or the wrappers would wrap each other.
+    exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+    if "FarmEchoTask.incr_drop" not in ns["_applied"]:
+        ns["_install_claim"]()
+    check("进本这几处都换上了", all(x in ns["_applied"] for x in (
+        "BaseWWTask.click_on_book_target", "FarmEchoTask.teleport_to_configured_boss",
+        "FarmEchoTask.click_configured_boss_level", "FarmEchoTask.combat_once", "FarmEchoTask.incr_drop")))
+    check("开启挑战那段的钉值对得上上游 3.7.3 原文（daeaf5a0f809）",
+          "FarmEchoTask.click_team_challenge" in ns["_applied"])
+    check("不再有「认不出就去大世界走路」那条", "_EarlyLanded" in ns, False)
+
+    # Real text. ok-script.log 2026-10-05 22:17:26 (the dialog box) and 22:17:31 (the
+    # whole screen after 确认, as logged - the first 300 characters).
+    DIALOG = ["Box(name='提前到达目标位置可能影响剧情体验，是否确认前往？', x=600, y=502, width=693, height=33, confidence=99)"]
+    LEVEL_PAGE = ("Box(name='定序诸理之律', x=102, y=52, width=168, height=33, confidence=100) "
+                  "Box(name='136', x=1326, y=42, width=72, height=43, confidence=100) "
+                  "Box(name='0/240+', x=1584, y=40, width=254, height=45, confidence=97) "
+                  "Box(name='推荐等级40', x=206, y=169, width=150, height=39, confidence=100) Box(name='天演溯心', x=121")
+    LEFT_2 = ["本周剩余可收取次数：2/3_1.00", "x60_0.79"]          # replay 09-07 :160
+    LEFT_1 = ["本周剩余可收取次数：1/3_1.00", "x60_0.79"]          # ok-script.log 10-05 22:17:31
+    LEFT_0 = ["本周剩余可收取次数：0/3_1.00", "x60_0.79"]
+    LOADING = ("", False, False)
+    ARENA = ("Lv.90", True, True)
+    WORLD = ("终端", True, False)
+
+
+    class Late:
+        name = "team_close"
+
+
+    def task(book="dialog", looks=(LOADING,), left=LEFT_1, start=True, after=(), late=None):
+        t = object.__new__(FarmEchoTask)
+        t.events, t.logs, t.shots, t.waits, t.clicks = [], [], [], [], []
+        t.book, t.looks, t.i, t.left, t.start, t.after, t.late = book, list(looks), 0, left, start, list(after), late
+        t.combat, t.revive = True, False
+        t.config = {"Teleport to Boss": "Weekly Challenge"}
+        t._in_realm = True
+
+        def look():
+            return t.looks[min(max(t.i - 1, 0), len(t.looks) - 1)]
+
+        def ocr(box=None, **kw):
+            if box == (0.25, 0.40):
+                return DIALOG if t.book == "dialog" else ["Box(name='传送', x=1, y=1)"]
+            if box == (0.58, 0.80):
+                return t.left
+            if box == (0.20, 0.35):
+                return t.after
+            if box == (0.0, 0.0):
+                t.i += 1
+                return [look()[0]]
+            return []
+        t.ocr = ocr
+        t.box_of_screen = lambda x, y, to_x, to_y: (x, y)
+        t.in_team_and_world = lambda: look()[1]
+        t.in_realm = lambda: look()[2]
+        t.in_world = lambda: look()[1] and not look()[2]
+        t.log_info = lambda msg, notify=False: t.logs.append(msg)
+        t.log_error = lambda msg, notify=False: t.logs.append(msg)
+        t.find_one = lambda *a, **kw: None          # no dialog after 开启挑战
+        t.click_dialog_right_button = lambda: t.events.append("confirm")
+        t.click_dialog_left_button = lambda: t.events.append("cancel")
+        t.wait_in_team_and_world = lambda time_out=10, raise_if_not_found=True, esc=False: t.waits.append(time_out) or True
+        t.screenshot = lambda name: t.shots.append(name)
+        t.click = lambda *a, **kw: t.clicks.append(a)
+        t.ensure_main = lambda time_out=30: t.events.append("main")
+
+        def wait_feature(feature, **kw):
+            if feature == "team_start_challenge":
+                return t.start
+            return t.late
+        t.wait_feature = wait_feature
+
+        def wait_click_feature(feature, **kw):
+            if not t.start:
+                raise Exception("no team_start_challenge")
+            t.events.append("start")
+        t.wait_click_feature = wait_click_feature
+        t.wait_click_skip_dialog_confirm = lambda **kw: t.events.append("skip-confirm")
+        t.wait_until = lambda cond, **kw: cond()
+        t.walk_to_treasure = lambda: t.events.append("treasure")
+        t.pick_f = lambda handle_claim=True: t.events.append("f")
+        t.sleep = lambda s: None
+        return t
+
+
+    def entered(t):
+        return [e for e in t.events if e in ("confirm", "level", "start", "walk", "travel")]
+
+
+    def stopped(t):
+        try:
+            t.teleport_to_configured_boss_and_prepare()
+        except ns["_ArkStop"]:
+            # The overlay's own stop: FarmEchoTask.run ends the run as FAILED when a
+            # reason was kept, as SKIPPED when none was (_skip_short).
+            why = getattr(t, "_ark_failed", None)
+            return f"fail: {why}" if why else "skip"
+        except Disabled:
+            return "skip"
+        except RuntimeError as exc:
+            return f"stop: {exc}"
+        return "in"
+
+
+    print("\n[(a) 有框→确认后是选等级页（10-05 22:17 天演溯心）：交回上游原路，选等级→单人挑战→开启挑战]")
+    t = task(looks=[LOADING, (LEVEL_PAGE, False, False)])
+    check("进了本", stopped(t), "in")
+    check("点确认→选等级→开启挑战", entered(t), ["confirm", "level", "start"])
+    check("单人挑战点的是上游那个位置", t.clicks, [(0.880, 0.911)])
+    check("走的是上游开书之后的原路", "after-book" in t.events)
+    check("当成已进本", t.prepared, "realm")
+    check("加载慢一拍也等到了（看了两眼）", t.i, 2)
+    check("截了选等级页", "early_open_team" in t.shots)
+    check("说了是选等级页、框里读到什么", any("选等级页" in m for m in t.logs)
+          and any("框里读到：" in m and "剧情体验" in m for m in t.logs))
+    check("读了本周剩余次数", t._ark_weekly_left, 1)
+
+    print("\n[(b) 有框→确认后直接在 Boss 场地里（09-09 天傀劫煞）：当已进本，不点选等级]")
+    t = task(looks=[LOADING, LOADING, ARENA])
+    check("进了本", stopped(t), "in")
+    check("只点了确认", entered(t), ["confirm"])
+    check("当成已进本", t.prepared, "realm")
+    check("截了落地图", "early_open_landed" in t.shots)
+    check("说了直接进场", any("直接进场" in m for m in t.logs))
+
+    print("\n[the same arena drop reached from TacetTask / ForgeryTask (click_on_book_target is bound on BaseWWTask): no _EarlyOpen]")
+    t = task(looks=[LOADING, LOADING, ARENA])
+    t.config = {"Which Tacet Suppression to Farm": 1}
+    try:
+        got = t.click_on_book_target(1, 21, [4, 5, 5, 7])
+    except ns["_EarlyOpen"]:
+        got = "raised _EarlyOpen"
+    check("returns upstream's team-screen answer, True", got, True)
+    check("the boss teleport flag is not left set", getattr(t, "_ark_boss_teleport", False), False)
+
+    print("\n[(c) 没有框（09-07 正常进本）：上游原路，选等级→单人挑战→开启挑战]")
+    t = task(book="team", left=LEFT_2)
+    check("进了本", stopped(t), "in")
+    check("选等级→开启挑战，没点确认", entered(t), ["level", "start"])
+    check("单人挑战点的是上游那个位置", t.clicks, [(0.880, 0.911)])
+    check("读了本周剩余次数 2/3", t._ark_weekly_left, 2)
+    check("没截认不出的图", "weekly_entry_unknown" in t.shots, False)
+
+    print("\n[(c') 没有框、传送界面过了上游的 10 秒才来：多等 15 秒等到队伍界面，照常进本]")
+    t = task(book="slow", late=Late())
+    check("进了本", stopped(t), "in")
+    check("选等级→开启挑战", entered(t), ["level", "start"])
+    check("说了多等到了", any("多等 15 秒等到了" in m for m in t.logs))
+
+    class Map:
+        name = "fast_travel_custom"
+
+
+    print("\n[有框→确认后是传送地图（09-09 868d09f5 处理过、cfdd4f04 丢了）：讨伐强敌按上游传送原路走]")
+    t = task(late=Map())
+    t.config = {"Teleport to Boss": "Boss Challenge"}
+    check("进了本", stopped(t), "in")
+    check("走的是上游传送那条（不是队伍界面）", entered(t), ["confirm", "travel", "walk"])
+    check("截了地图", "early_open_map" in t.shots)
+
+    print("\n[有框→周本却出了传送地图：周本没有地图这一屏，截图停下，不走路]")
+    t = task(late=Map())
+    check("停下了", stopped(t).startswith("stop:"))
+    check("没走路", "walk" in t.events, False)
+    check("截了认不出的图", "weekly_entry_unknown" in t.shots)
+
+    print("\n[有框→确认后是队伍界面：按上游原路进本]")
+    t = task(late=Late())
+    check("进了本", stopped(t), "in")
+    check("选等级→开启挑战", entered(t), ["confirm", "level", "start"])
+
+    print("\n[有框→确认后落在大世界：认不出，截图停下，不走路]")
+    t = task(looks=[LOADING, WORLD, WORLD, WORLD])
+    got = stopped(t)
+    check("停下了（上游的 Teleport to boss failed）", got.startswith("stop: Teleport to boss failed"))
+    check("没去大世界走路", "walk" in t.events, False)
+    check("没点选等级", "level" in t.events, False)
+    check("截了认不出的图", "weekly_entry_unknown" in t.shots)
+    check("日志写了认不出和整屏的字", any("认不出" in m and "终端" in m and "in_world=True" in m for m in t.logs))
+
+    print("\n[有框→确认后两分钟都没认出的画面：截图停下]")
+    t = task(looks=[("加载中", False, False)])
+    check("停下了", stopped(t).startswith("stop:"))
+    check("看满了两分钟（60 眼）", t.i, 60)
+    check("截了认不出的图", "weekly_entry_unknown" in t.shots)
+    check("没走路", "walk" in t.events, False)
+
+    print("\n[没有框、多等 15 秒也没来：截图停下，不走路]")
+    t = task(book="slow", late=None, looks=[("某个没见过的界面", False, False)])
+    check("停下了", stopped(t).startswith("stop:"))
+    check("截了认不出的图", "weekly_entry_unknown" in t.shots)
+    check("日志写了整屏的字", any("认不出" in m and "某个没见过的界面" in m for m in t.logs))
+    check("没走路", "walk" in t.events, False)
+
+    print("\n[选等级页上读到 0/3：不进本，跳过（不算失败）]")
+    t = task(looks=[LOADING, (LEVEL_PAGE, False, False)], left=LEFT_0)
+    check("跳过", stopped(t), "skip")
+    check("没点开启挑战", "start" in t.events, False)
+    check("退回主界面", "main" in t.events)
+    check("说了已领满", any("已领满（0/3）" in m for m in t.logs))
+
+    class _At:
+        """An OCR box with a place on the 1920x1080 screen."""
+        def __init__(self, name, x, y):
+            self.name, self.x, self.y, self.width, self.height = name, x, y, 40, 30
+
+        def __str__(self):
+            return f"Box(name='{self.name}', x={self.x}, y={self.y}, width=40, height=30, confidence=100)"
+
+
+    # The reminder after 单人挑战 (v3.7.4 FarmEchoTask.py:375-376: 「无法获取奖励, 是否继续进入」;
+    # the game's wording, docs/OKWW-WEEKLY-BOSS.md), over the top bar (backup, waveplates/240).
+    REMINDER = "结晶波片不足，无法获取奖励，请确认是否继续进入？"
+
+
+    def solo_dialog(t, wave, spare, text=REMINDER):
+        """After the click on 单人挑战 a dialog is up, until 取消 or 确认 is clicked."""
+        t.height_of_screen = lambda r: r * 1080
+        t.dialog_up = False
+        bar = ([_At(str(spare), 1208, 50)] if spare is not None else []) + \
+              ([_At(f"{wave}/240", 1480, 50)] if wave is not None else [])
+        screen = bar + [_At(text, 700, 500), _At("取消", 640, 700), _At("确认", 1280, 700)]
+        base_ocr, base_click = t.ocr, t.click
+
+        def ocr(box=None, **kw):
+            if box == (0.0, 0.0) and t.dialog_up:
+                return list(screen)
+            return base_ocr(box=box, **kw)
+
+        def click(*a, **kw):
+            base_click(*a, **kw)
+            if a[:2] == (0.880, 0.911):
+                t.dialog_up = True
+
+        def answer(name):
+            t.events.append(name)
+            t.dialog_up = False
+        t.ocr, t.click = ocr, click
+        t.find_one = lambda *a, **kw: "confirm-btn" if t.dialog_up else None
+        t.click_dialog_left_button = lambda: answer("cancel")
+        t.click_dialog_right_button = lambda: answer("confirm")
+        return t
+
+
+    print("\n[v3.7.4: after 单人挑战 the 「无法获取奖励」 reminder, waveplates 17 + backup 24 < 60 -> 取消, skipped as short]")
+    t = solo_dialog(task(book="team"), 17, 24)
+    check("skipped", stopped(t), "skip")
+    check("no reason kept (a shortage, not a failure)", getattr(t, "_ark_failed", None), None)
+    check("取消 clicked, never 确认, 开启挑战 never clicked", [e for e in t.events if e in ("cancel", "confirm", "start")], ["cancel"])
+    check("upstream's confirm-and-tick never ran", "skip-confirm" in t.events, False)
+    check("the shortage line the relay reads", any(m.startswith("结晶波片不足，取消并跳过本次周本") for m in t.logs))
+    check("the two values in the log", any("顶栏读到波片 17/240，备用 24" in m for m in t.logs))
+    check("picture", "nowave_dialog" in t.shots)
+    check("no failed mark", any(ns["FAILED_MARK"] in m for m in t.logs), False)
+
+    print("\n[the reminder with waveplates 41 + backup 24 >= 60 contradicts the game (it shows only when short) -> 取消, picture, stop]")
+    t = solo_dialog(task(book="team"), 41, 24)
+    got = stopped(t)
+    check("stopped as failed, saying the read and the game disagree", got.startswith("fail:") and "读数和游戏对不上" in got)
+    check("取消 clicked, never 确认, 开启挑战 never clicked", [e for e in t.events if e in ("cancel", "confirm", "start")], ["cancel"])
+    check("no tick (upstream's wait_click_skip_dialog_confirm not called)", "skip-confirm" in t.events, False)
+    check("picture of the dialog", "solo_dialog_contradicts" in t.shots)
+    check("not the shortage line (not a skip)", any(m.startswith("结晶波片不足") for m in t.logs), False)
+
+    print("\n[a dialog after 单人挑战 that is not the reminder -> picture, phone, stop; nothing clicked]")
+    t = solo_dialog(task(book="team"), 41, 24, text="某个没见过的对话框")
+    got = stopped(t)
+    check("stopped as failed", got.startswith("fail:") and "认不出的对话框" in got)
+    check("nothing answered, 开启挑战 not clicked", [e for e in t.events if e in ("cancel", "confirm", "start")], [])
+    check("picture", "solo_dialog_unknown" in t.shots)
+
+    print("\n[the reminder but the top bar is not read -> no blind 确认: picture, stop]")
+    t = solo_dialog(task(book="team"), None, None)
+    got = stopped(t)
+    check("stopped as failed", got.startswith("fail:") and "顶栏的波片没读全" in got)
+    check("nothing answered", [e for e in t.events if e in ("cancel", "confirm", "start")], [])
+    check("picture", "solo_dialog_bar_unread" in t.shots)
+
+    print("\n[no dialog after 单人挑战 -> straight on to 开启挑战, nothing answered]")
+    t = task(book="team", left=LEFT_2)
+    check("went in", stopped(t), "in")
+    check("level, 开启挑战; no 确认/取消", entered(t), ["level", "start"])
+
+    print("\n[echo farm on the weekly config (no-claim flag): upstream's click_solo_challenge runs, tick and all]")
+    import tempfile
+    flag = Path(tempfile.mkdtemp(prefix="ark-entry-")) / "ark-okww-farm.no-claim"
+    flag.write_text("")
+    real_flag, ns["NO_CLAIM"] = ns["NO_CLAIM"], str(flag)
+    try:
+        t = solo_dialog(task(book="team"), 17, 24)
+        t.wait_click_skip_dialog_confirm = lambda **kw: t.events.append(f"skip-confirm {kw}")
+        t.click_solo_challenge()
+    finally:
+        flag.unlink()
+        flag.parent.rmdir()
+        ns["NO_CLAIM"] = real_flag
+    check("upstream's own: the click, then confirm-and-tick within 1 s",
+          (t.clicks, [e for e in t.events if e.startswith("skip-confirm")]), ([(0.880, 0.911)], ["skip-confirm {'time_out': 1}"]))
+
+    print("\n[echo farm (Boss Challenge): a 4C boss's level page has no weekly counter -> upstream's level click, no stop]")
+    t = task(left=["Box(name='推荐等级50', x=206, y=169)"])
+    t.config = {"Teleport to Boss": "Boss Challenge"}
+    got = "on"
+    try:
+        t.click_configured_boss_level()
+    except Exception as exc:  # noqa: BLE001
+        got = f"stop: {exc!r} {getattr(t, '_ark_failed', None)}"
+    check("not stopped", got, "on")
+    check("upstream's level click ran", t.events, ["level"])
+    check("no weekly screenshot, no weekly read", (t.shots, any("周本本周剩余次数原文" in m for m in t.logs)), ([], False))
+
+    print("\n[echo farm (Boss Challenge) through the book onto the level page -> Boss Level picked, 单人挑战, then 开启挑战]")
+    LEVEL_PAGE = ["Box(name='推荐等级80', x=206, y=169)", "Box(name='推荐等级90', x=206, y=609)", "Box(name='单人挑战', x=1650, y=980)"]
+
+
+    def boss_challenge(screen, start_btn=False, missing=False):
+        t = task(book="team")
+        t.config = {"Teleport to Boss": "Boss Challenge", "Boss Level": "80"}
+        base = t.ocr
+
+        def ocr(box=None, **kw):
+            if box == (0.0, 0.0):
+                return list(screen)
+            if box == (0.030, 0.113):
+                return [b for b in screen if "推荐等级" in b]
+            return base(box=box, **kw)
+        t.ocr = ocr
+        t.find_one = lambda feature, **kw: "start-btn" if start_btn and feature == "team_start_challenge" else None
+        t.level_missing = missing
+        t.wait_click_skip_dialog_confirm = lambda **kw: t.events.append("skip-confirm")
+        return t
+
+
+    t = boss_challenge(LEVEL_PAGE)
+    check("went in", stopped(t), "in")
+    check("level, then upstream's 单人挑战 (click and confirm-and-tick), then 开启挑战",
+          ([e for e in t.events if e in ("level", "skip-confirm", "start")], (0.880, 0.911) in t.clicks),
+          (["level", "skip-confirm", "start"], True))
+    check("logged the level clicked and what the page listed",
+          any(m.startswith("刷声骸选等级：选等级页点了 Lv.80。读到 ") and "推荐等级90" in m for m in t.logs))
+
+    print("\n[echo farm (Boss Challenge) through the book onto a team screen with no level list -> logged once, on as upstream]")
+    t = boss_challenge(["Box(name='开启挑战', x=1750, y=980)"], start_btn=True)
+    check("went in", stopped(t), "in")
+    check("no level click, no 单人挑战; 开启挑战", ([e for e in t.events if e in ("level", "skip-confirm", "start")],
+                                              (0.880, 0.911) in t.clicks), (["start"], False))
+    check("one line, with the screen", [m for m in t.logs if m.startswith("刷声骸选等级：")],
+          ["刷声骸选等级：前往后是队伍界面（没有选等级页），不选等级，按游戏记住的等级进（设置 Lv.80）。"
+           "整屏读到 Box(name='开启挑战', x=1750, y=980)"])
+
+    print("\n[the level page without the configured level -> no raise: logged, 单人挑战, 开启挑战]")
+    t = boss_challenge(LEVEL_PAGE, missing=True)
+    check("went in", stopped(t), "in")
+    check("单人挑战 and 开启挑战 still", [e for e in t.events if e in ("level", "skip-confirm", "start")], ["skip-confirm", "start"])
+    check("said the level was not found", any("选等级页上没找到 Lv.80" in m for m in t.logs))
+
+    print("\n[nothing known after 前往 -> logged once, on as upstream (no raise from here)]")
+    t = boss_challenge(["Box(name='加载中', x=1, y=1)"])
+    check("went in", stopped(t), "in")
+    check("one 「认不出的画面」 line", sum(m.startswith("刷声骸选等级：前往后是认不出的画面") for m in t.logs), 1)
+
+    print("\n[the weekly boss keeps upstream's own level and 单人挑战 calls: no second level pick]")
+    t = solo_dialog(task(book="team", left=LEFT_2), 0, 0)
+    t.find_one = lambda *a, **kw: None
+    stopped(t)
+    check("no 刷声骸选等级 line on the weekly path", any(m.startswith("刷声骸选等级") for m in t.logs), False)
+
+    print("\n[周本的复活交给上游 do_run 重新传送]")
+    # The weekly boss is not the echo farm, so the revive is upstream's tower revive and
+    # the exception goes up to do_run (v3.7.3 FarmEchoTask.py:204-216); the in-place
+    # revive that combat_once swallows is in test_okww_revive_and_retry.py.
+    t = task()
+    t.revive = True
+    try:
+        t.combat_once()
+        went_up = False
+    except Revived:
+        went_up = True
+    check("周本的复活往上抛给上游", went_up)
+
+    # The coverage driver runs every test in one process: leave sys.modules as found.
+    for k, v in _saved.items():
+        if v is None:
+            sys.modules.pop(k, None)
+        else:
+            sys.modules[k] = v
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_weekly_spend():
+    """Verified weekly-boss claims count in 「消耗 波片」 (audit 2026-10-13 item 12).
+
+okww_stamina_spent was summed only from the drops between get_stamina readings
+(`info_set current_stamina`). The weekly claim does not take a reading, so its
+60 waveplates per claim were missing: 10-12 11:41 (okww-task.sh 2) claimed three
+times, read back 3->2->1->0, and the run showed no waveplates spent at all. Each
+verified claim now adds 60, unless a drop between two readings already shows it.
+
+    Formerly test_okww_weekly_spend.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.verify import collector_okww as co
+
+
+    def spent(*lines):
+        p = tmpdir() / "OK-WW.log"
+        p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return co.parse_okww_log(p).get("okww_stamina_spent")
+
+
+    def claim(before):
+        return (f"2026-10-12 11:5{before},000 INFO TaskExecutor FarmEchoTask:"
+                f"周本领奖：回读确认领到，本周剩余 {before}/3→{before - 1}/3")
+
+
+    def reading(n, task="TacetTask"):
+        return f"2026-10-12 11:40:00,000 INFO TaskExecutor {task}:info_set current_stamina {n}"
+
+
+    print("[claims with no reading around them: 60 each]")
+    check("three verified claims", spent(claim(3), claim(2), claim(1)), 180)
+
+    print("\n[a claim between two readings whose drop shows it: not counted twice]")
+    check("240 -> claim -> 180", spent(reading(240, "FarmEchoTask"), claim(3), reading(180, "FarmEchoTask")), 60)
+    check("240 -> claim -> 240 (no drop shown): still 60", spent(reading(240), claim(3), reading(240)), 60)
+
+    print("\n[stamina farm and claims in one run: both]")
+    check("tacet 240 -> 120, then one claim", spent(reading(240), reading(120), claim(1)), 180)
+
+    print("\n[a claim that did not read back as taken costs nothing here]")
+    same = "2026-10-12 11:50,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读次数没变（2/3），这次没领到"
+    check("unchanged count", spent(same), None)
+
+    print("\n[a drop a little short of 60 is the claim plus regeneration (item 18)]")
+    # review-C/wk.py: 100 -> claim -> 42 twelve minutes later reported 118.
+    t = ("2026-10-14 09:00:00,000 INFO TaskExecutor TacetTask:info_set current_stamina 100\n"
+         "2026-10-14 09:10:00,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读确认领到，本周剩余 3/3→2/3\n"
+         "2026-10-14 09:12:00,000 INFO TaskExecutor TacetTask:info_set current_stamina 42\n")
+    check("100 -> claim -> 42: 58, not 118", spent(t), 58)
+
+
+    def full(*lines):
+        p = tmpdir() / "OK-WW.log"
+        p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return co.parse_okww_log(p)
+
+
+    TOPUP = "2026-10-12 15:29:47,649 INFO TaskExecutor FarmEchoTask:周本领奖：波片不够，动用备用体力"
+    print("\n[a claim topped up with backup: the backup is counted (item 18)]")
+    bar = "2026-10-12 15:29:44,000 INFO TaskExecutor FarmEchoTask:周本领奖：顶栏读到波片 20/240，备用 100"
+    got = full(bar, TOPUP, claim(3))
+    check("top bar read: 20 waveplates, 40 backup", (got.get("okww_stamina_spent"), got.get("okww_backup_spent")), (20, 40))
+    print("\n[10-12 15:29 / 15:31 shape: topped up, top bar not logged - said, not guessed]")
+    got = full(claim(3), TOPUP, claim(2), TOPUP, claim(1))
+    check("only the plain claim in 波片", got.get("okww_stamina_spent"), 60)
+    check("the two topped-up claims counted as unread", got.get("okww_weekly_topup_unread"), 2)
+    from datetime import datetime
+
+    from ark_relay.core import ledger_rows
+    cost = ledger_rows._block_okww(got, datetime(2026, 10, 12, 15, 33))[1]
+    check("the daily report says so", any("另有周本领奖 2 次用备用体力补足" in c for c in cost), True)
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_overlay_main():
+    """Ark's OK-WW changes live in OK-WW's own extension point, not in its source.
+
+ok-script executes every .py under `<working>/ok_tasks/` at startup, so our changes
+can rebind methods on upstream's classes without a single upstream file being
+edited. That removes the whole family of failures the text patches kept producing:
+half-applied, applied twice, or reverted to the wrong previous version - all silent.
+
+What must not become silent in exchange: an override that did not take because
+upstream renamed the method. The file writes a report; this pins that the relay
+reads it and says so.
+
+    Formerly test_okww_overlay.py.
+    """
+    import json
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.okww_patch import okww_overlay
+
+
+    print("[装到 OK-WW 自己的扩展目录里，不碰它的源文件]")
+    root = tmpdir()
+    dest = okww_overlay.target(root)
+    check("路径在 ok_tasks 下", dest.parent.name, "ok_tasks")
+    check("装之前没有", dest.is_file(), False)
+    line = okww_overlay.install(root)
+    check("装上了", dest.is_file())
+    check("说了装到哪", "ok_tasks" in line)
+    check("内容一字不差", dest.read_text(encoding="utf-8"), okww_overlay.source_text())
+    check("再装一次什么都不做", okww_overlay.install(root), "")
+    try:
+        okww_overlay.install(None)
+        check("目录是 None 时直说", False)
+    except okww_overlay.OverlayTrouble as exc:     # a failure by construction (the _part_okww_overlay_faults part)
+        check("目录是 None 时直说", "找不到" in str(exc))
+
+    print("[没有目录也要自己建，不能因为缺个文件夹就装不上]")
+    root2 = tmpdir()
+    okww_overlay.install(root2)
+    check("建好了目录并写进去", okww_overlay.target(root2).is_file())
+
+    print("[ok-script 只执行「文件里有类」的 .py，所以那个类必须在]")
+    src = okww_overlay.source_text()
+    check("文件里有顶层类", "\nclass " in src)
+    check("重绑之前先检查方法还在不在", "上游没有这个方法了" in src)
+    check("抄整段的要比对上游正文", "expect_sha" in src)
+    # 2026-09-09 pilot: the tacet teleport's team screen arrived just after upstream's
+    # 10-second wait ran out. 19 runs across five days had already died there.
+    check("传送界面等不到时会多等一次", "多等 15 秒" in src)
+    check("多等那次不许自己抛，找不到才抛", "raise_if_not_found=False" in src)
+    # 2026-09-09, the user asked the right question: if we replace a method outright and
+    # upstream later changes theirs, we would never know. Only a pin catches that, so
+    # every whole-method replacement must carry one.
+    whole = [l for l in src.splitlines() if "@override(" in l]
+    pinned = [l for l in whole if "expect_sha=" in l]
+    check("整段替换的都钉住了上游哈希", len(pinned) >= 1)
+    # revive_action is no longer overridden at all (2026-10-13, upstream v3.7.4 handles
+    # the realm death); the whole-method replacements are the pinned ones below.
+    check("被替换的是那两个小方法", any("click_team_challenge" in l or "find_nest" in l
+                                        for l in pinned))
+
+    print("[没贴上必须报出来，不许闷着]")
+    real = okww_overlay.REPORT
+    try:
+        okww_overlay.REPORT = tmpdir() / "report.json"
+        check("没有报告时不说话", okww_overlay.report_line(), "")
+        okww_overlay.REPORT.write_text(json.dumps({"applied": ["A.b"], "skipped": []}),
+                                       encoding="utf-8")
+        check("全贴上了也不说话", okww_overlay.report_line(), "")
+        okww_overlay.REPORT.write_text(json.dumps(
+            {"applied": [], "skipped": [{"what": "FarmEchoTask.revive_action",
+                                         "why": "上游没有这个方法了（改名或删了）"}]}),
+            encoding="utf-8")
+        line = okww_overlay.report_line()
+        check("点名是哪一条没贴上", "revive_action" in line)
+        check("说了为什么", "改名" in line)
+        okww_overlay.REPORT.write_text(json.dumps({"error": "Traceback ... ImportError"}),
+                                       encoding="utf-8")
+        check("整个文件炸了也要说", "一条都没生效" in okww_overlay.report_line())
+        # Raised part-way (audit 2026-10-13, A5): the overrides are applied one by
+        # one, so the ones before the error are live - say which.
+        okww_overlay.REPORT.write_text(json.dumps(
+            {"applied": ["FarmEchoTask.revive_action", "FarmEchoTask.handle_claim_button"],
+             "skipped": [], "error": "Traceback ... KeyError"}), encoding="utf-8")
+        line = okww_overlay.report_line()
+        check("part-way: not 「一条都没生效」", "一条都没生效" in line, False)
+        check("part-way: names what applied", "已生效 2 条" in line and "handle_claim_button" in line, True)
+        check("part-way: names what did not", "没生效" in line and "NightmareNestTask.find_nest" in line, True)
+        check("part-way: an applied one is not listed as not applied",
+              "revive_action" not in line.split("没生效")[1], True)
+        check("part-way: still the error and its trouble words", "KeyError" in line and "自己报错了" in line, True)
+    finally:
+        okww_overlay.REPORT = real
+
+    print("[闸门本身：拿坏样本喂它，必须拦住]")
+    # The gate is the whole reason this is safer than editing upstream's files. A gate
+    # that does not fire is worse than none, so it is fed known-bad input here.
+    ns = {}
+    exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+    ns["_applied"].clear()
+    ns["_skipped"].clear()
+
+
+    class Upstream:
+        def still_here(self):
+            return "上游的"
+
+
+    @ns["override"](Upstream, "still_here")
+    def _mine(self):
+        return "我们的"
+
+
+    check("方法在就换掉", Upstream().still_here(), "我们的")
+    check("记到已贴上里", ns["_applied"], ["Upstream.still_here"])
+
+    ns["_applied"].clear()
+    ns["_skipped"].clear()
+
+
+    @ns["override"](Upstream, "上游改名之后就没有的方法")
+    def _orphan(self):
+        return "不该生效"
+
+
+    check("上游没这个方法就不贴", ns["_applied"], [])
+    check("而且要记下来", len(ns["_skipped"]), 1)
+    check("说清了原因", "上游没有这个方法了" in ns["_skipped"][0]["why"])
+
+    ns["_applied"].clear()
+    ns["_skipped"].clear()
+
+
+    @ns["override"](Upstream, "still_here", expect_sha="0123456789ab")
+    def _stale(self):
+        return "照着旧正文抄的"
+
+
+    check("上游正文变了就不贴", ns["_applied"], [])
+    check("并且说明是正文对不上", "正文变了" in ns["_skipped"][0]["why"])
+    check("原来那份没被换掉", Upstream().still_here(), "我们的")
+
+    real_sha = ns["_src_sha"](Upstream.still_here)
+    ns["_applied"].clear()
+    ns["_skipped"].clear()
+
+
+    @ns["override"](Upstream, "still_here", expect_sha=real_sha)
+    def _fresh(self):
+        return "对得上就贴"
+
+
+    check("正文对得上就照贴", Upstream().still_here(), "对得上就贴")
+    check("没有被跳过的", ns["_skipped"], [])
+
+    print("\n[the gate compares call shapes: a copy that does not take upstream's parameters is not bound]")
+
+
+    class Up2:
+        def run(self, retries=3):
+            return f"upstream {retries}"
+
+        def pick(self, box, *, near=None):
+            return "upstream pick"
+
+        def free(self, *a, **kw):  # how the test fakes look: no constraint from upstream
+            return "upstream free"
+
+
+    def gate(name, fn):
+        ns["_applied"].clear()
+        ns["_skipped"].clear()
+        ns["override"](Up2, name)(fn)
+        return list(ns["_applied"]), [x["why"] for x in ns["_skipped"]]
+
+
+    # The 10-13 case: v3.7.4 retries with self.run(retries - 1); a run(self) copy made that a TypeError.
+    applied, why = gate("run", lambda self: "ours")
+    check("ours run(self) vs upstream run(self, retries=3): not bound", applied, [])
+    check("listed as skipped, naming the parameter", len(why) == 1 and "参数变了" in why[0] and "retries" in why[0], True)
+    check("upstream's own run left in place", Up2().run(2), "upstream 2")
+    applied, _ = gate("run", lambda self, *a, **kw: "wrapper")
+    check("a (self, *a, **kw) wrapper is bound", applied, ["Up2.run"])
+    applied, _ = gate("run", lambda self, retries=3: "same")
+    check("the same shape is bound", applied, ["Up2.run"])
+    applied, why = gate("pick", lambda self, b, *, near=None: "renamed")
+    check("a renamed parameter (box -> b) is not bound: callers may pass box=", applied, [])
+    applied, why = gate("pick", lambda self, box: "no near")
+    check("a dropped keyword-only parameter is not bound", applied, [])
+    applied, why = gate("pick", lambda self, box, extra, *, near=None: "needs more")
+    check("ours requiring a parameter upstream lacks is not bound", applied, [])
+    applied, _ = gate("run", lambda self, retries: "required")
+    check("ours requiring what upstream leaves optional is not bound", applied, [])
+    applied, _ = gate("free", lambda self: "plain")
+    check("upstream *a/**kw constrains nothing (the fakes' shape)", applied, ["Up2.free"])
+
+    print("\n[体力读数：数/数 没读到是「没读到」，不是 0]")
+    parse = ns["_parse_stamina"]
+    # The strip as OCR reads it on the 2026-09-21 screenshots (10-20-43.029 and two more):
+    check("09-21 截图原样", parse(["55", "240/240", "+"]), (240, 55))
+    check("240/240 拆成两块也拼得回", parse(["55", "240", "/240"]), (240, 55))
+    check("拆成三块也拼得回", parse(["55", "240", "/", "240"]), (240, 55))
+    check("备用只取数/数左边那块，右边的数不覆盖", parse(["55", "240/240", "120"]), (240, 55))
+    check("左边不是纯数字就没有备用", parse(["+", "120/240"]), (120, 0))
+    check("一块数/数都拼不出来 = 没读到（上游这里当 0）", parse(["240", "55"]), None)
+    check("什么都没读到", parse([]), None)
+    check("真读到 0/240 就是 0", parse(["0/240"]), (0, 0))
+
+
+    class _Box:
+        def __init__(self, name, x=0, y=0, width=10, height=10):
+            self.name, self.x, self.y, self.width, self.height = name, x, y, width, height
+
+        def __str__(self):
+            return f"Box(name='{self.name}')"
+
+
+    class FakeTask:
+        """Plays back a script of screens; records what the override does."""
+
+        def __init__(self, frames, start_after=None, strip=None):
+            self.frames, self.start_after, self.strip = frames, start_after, strip or []
+            self.clicks, self.logs, self.shots, self.slept = [], [], [], 0
+
+        def wait_feature(self, name, **kw):
+            return self.start_after is not None and len(self.clicks) >= self.start_after
+
+        def box_of_screen(self, *xy):
+            return xy
+
+        def ocr(self, box=None):
+            return self.frames(box)
+
+        def wait_ocr(self, *box, **kw):
+            return self.strip.pop(0) if self.strip else []
+
+        def click_box(self, b, after_sleep=0):
+            self.clicks.append((b.x + b.width // 2, b.y + b.height // 2))
+
+        def screenshot(self, name):
+            self.shots.append(name)
+
+        def log_info(self, msg):
+            self.logs.append(msg)
+
+        def sleep(self, s):
+            self.slept += s
+
+
+    solo_btn = _Box("单人挑战", 1474, 965, 124, 36)
+    still_solo = lambda box: [solo_btn]  # noqa: E731
+    confirm = ns["_confirm_solo"]
+    t = FakeTask(still_solo, start_after=0)
+    check("开启挑战已经在：一下都不补", (confirm(t), t.clicks), (0, []))
+    t = FakeTask(still_solo, start_after=1)
+    check("09-21 那种：仍是单人挑战就点它读到的位置", (confirm(t), t.clicks), (1, [(1536, 983)]))
+    check("补点前截图", t.shots, ["solo_retry_1"])
+    check("补点写日志", any("补点第 1 次 (1536,983)" in m for m in t.logs), True)
+    t = FakeTask(still_solo)
+    check("最多补 3 次", (confirm(t), len(t.clicks)), (3, 3))
+    check("3 次都没进要说", any("3 次都没进开启挑战" in m for m in t.logs), True)
+    t = FakeTask(lambda box: [_Box("结晶波片不足，无法获取奖励")])
+    check("波片不足弹窗不补点，交给原来那段", (confirm(t), t.clicks), (0, []))
+    t = FakeTask(lambda box: [_Box("别的画面")] if box == (0.0, 0.0, 1.0, 1.0) else [])
+    check("屏上没有单人挑战不乱点", (confirm(t), t.clicks), (0, []))
+
+    read = ns["_read_stamina"]
+    t = FakeTask(None, strip=[[_Box("55", 1351), _Box("/240", 1600), _Box("240", 1551)]])
+    check("按横坐标排好再拼", read(t, False), (240, 55))
+    check("读字原文进日志", any("['55', '240', '/240']" in m for m in t.logs), True)
+    t = FakeTask(None, strip=[[_Box("240")], [_Box("55"), _Box("240/240", 5)]])
+    check("领奖框没读到隔 1 秒再读", (read(t, True), t.slept), ((240, 55), 1))
+    t = FakeTask(None, strip=[[_Box("240")]])
+    check("F2 书页只读一次，没读到交回上游（-1 分支）", (read(t, False), t.slept), (None, 0))
+    t = FakeTask(None, strip=[])
+    check("领奖框读 5 次都没有就算没读到", (read(t, True), t.slept, t.shots), (None, 4, ["stamina_error"]))
+
+    print("\n[母本指路文件：改动文件靠它读「只刷落渊南丘」]")
+    # ok-script rewrites configs/ at load and drops the key (09-10..09-13 farmed all
+    # four nests), so the value is only ever readable from AUTO-MAS's master.
+    automas = tmpdir()
+    mdir = automas / "data" / "c5e9-okww" / "Default" / "ConfigFile"
+    mdir.mkdir(parents=True)
+    (mdir / "DailyTask.json").write_text("{}", encoding="utf-8")
+    pointer = tmpdir() / "ark-okww-master.txt"
+    okww_overlay.MASTER_POINTER = pointer
+    try:
+        okww_overlay.write_master_pointer(tmpdir())
+        check("母本找不到就说清楚", False)
+    except okww_overlay.OverlayTrouble as exc:     # a failure by construction (the _part_okww_overlay_faults part)
+        check("母本找不到就说清楚", "找不到" in str(exc))
+    check("写好了不吭声", okww_overlay.write_master_pointer(automas), "")
+    check("指向母本目录", pointer.read_text(encoding="utf-8"), str(mdir))
+    check("已是这个值就不重写", okww_overlay.write_master_pointer(automas), "")
+    check("改动文件里读的是同一个路径", 'r"C:\\ProgramData\\ark-okww-master.txt"' in okww_overlay.source_text())
+
+    print("\n[最新一趟 OK-WW 日志：按修改时间取最新，一周内]")
+    from ark_relay.features.verify import outcome
+    hist = tmpdir()
+    check("没有历史目录", outcome.latest_okww_run_log(hist / "nope"), None)
+    check("目录空着", outcome.latest_okww_run_log(hist), None)
+    d1 = hist / "2026-09-12" / "wuwa"; d1.mkdir(parents=True)
+    d2 = hist / "2026-09-13" / "wuwa"; d2.mkdir(parents=True)
+    (d1 / "OK-WW-05-20-09.log").write_text("old\n", encoding="utf-8")
+    (d2 / "OK-WW-05-19-22.log").write_text("new NightmareNestTask\n", encoding="utf-8")
+    import os as _os
+    import time as _time
+    _os.utime(d1 / "OK-WW-05-20-09.log", (_time.time() - 86400, _time.time() - 86400))
+    got = outcome.latest_okww_run_log(hist)
+    check("取到最新那趟", got[0].name if got else None, "OK-WW-05-19-22.log")
+    check("连正文一起给", got[1] if got else None, "new NightmareNestTask\n")
+
+    print("\n[the launch argument is OK-WW's own since v3.7.4: no hook on start_controller.execute]")
+    src_now = okww_overlay.source_text()
+    # 2026-11-10: the file does name start_controller now (StartController._do_start, the command-line task,
+    # _part_okww_overlay_param_start), so this looks for what it is about - a hook on its `execute`.
+    import re as _re
+    hooked = _re.search(r"""start_controller\w*\s*\.\s*execute\b|override\([^)]*["']execute["']""",
+                        src_now.split("# The launch-argument hook")[0])
+    check("no execute override", bool(hooked), False)
+    check("that check still fires on a hook", bool(_re.search(
+        r"""start_controller\w*\s*\.\s*execute\b|override\([^)]*["']execute["']""",
+        "import ok.core.start_controller\nok.core.start_controller.execute = mine\n")), True)
+    check("no _install_launch", "_install_launch" in src_now, False)
+
+
+def _part_okww_overlay_faults():
+    """An overlay that is not in place reaches the group, whatever its words.
+
+Audit 2026-10-13 (A1): when the overrides could not be installed, or the master
+pointer could not be written, the lines said 没装上 / 装不上 / 写不了 / 找不到 -
+none of them in texts._PATCH_TROUBLE - so the push title was the healthy
+「🩹 OK-WW 补丁」, which notify.route_of keeps in the log. OK-WW ran as plain
+upstream while every report stayed green.
+
+install() and write_master_pointer() now raise OverlayTrouble on each failure path,
+and boot_stages._stage_patch_okww counts those as failures by construction. Each
+path is driven through the boot stage here and must end with the ⚠️ title routed
+to the group; the healthy install stays 🩹 / log.
+
+    Formerly test_okww_overlay_faults.py.
+    """
+    import os
+    import types
+
+
+    TMP = tmpdir()
+    os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
+                      WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+
+    for _name in ("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
+                  "servicemanager", "win32process", "win32security", "win32ts", "win32profile", "wmi",
+                  "pythoncom", "win32com", "win32com.client"):
+        sys.modules.setdefault(_name, _Stub(_name))
+
+    import boot_stages
+    from ark_relay.core import texts
+    from ark_relay.core.notify import route_of
+    from ark_relay.features.okww_patch import okww_overlay as ov
+
+
+    class Notes:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body="", **kw):
+            self.sent.append((title, body, kw.get("alert", False)))
+            return []
+
+
+    REAL = {k: getattr(ov, k) for k in ("atomic_write_text", "master_config_dir", "MASTER_POINTER", "REPORT")}
+    MASTER = TMP / "master"
+    MASTER.mkdir()
+
+
+    def boot(okww_dir, *, write=None, master="ok"):
+        """Run the boot stage once with a fresh pointer and no report; ([(title, alert)], [body])."""
+        ov.MASTER_POINTER = tmpdir() / "pointer.txt"
+        ov.REPORT = tmpdir() / "report.json"           # absent: report_line says nothing
+        ov.master_config_dir = lambda automas_dir, marker: MASTER if master == "ok" else None
+        ov.atomic_write_text = write or REAL["atomic_write_text"]
+        cfg = types.SimpleNamespace(okww_dir=okww_dir, automas_dir=None, state_dir=tmpdir())
+        notes = Notes()
+        try:
+            boot_stages._stage_patch_okww(cfg, notes, boot_stages.log)
+        finally:
+            for k, v in REAL.items():
+                setattr(ov, k, v)
+        return [(t, a) for t, _, a in notes.sent], [b for _, b, _ in notes.sent]
+
+
+    def is_alarm(label, sent):
+        check(f"{label}: one push", len(sent), 1)
+        title, alert = sent[0] if sent else ("", False)
+        check(f"{label}: ⚠️ title", title.startswith("⚠️"), True)
+        check(f"{label}: routed to the group", route_of(title, alert=alert), "group")
+
+
+    def raising(name):
+        """atomic_write_text that raises OSError for the file called `name`."""
+        def w(path, text, newline=None):
+            if Path(path).name == name:
+                raise OSError(13, "Access is denied")
+            return REAL["atomic_write_text"](path, text, newline)
+        return w
+
+
+    def garbling(name):
+        """atomic_write_text that writes something else into the file called `name`."""
+        def w(path, text, newline=None):
+            return REAL["atomic_write_text"](path, text + "x" if Path(path).name == name else text, newline)
+        return w
+
+
+    print("[healthy: installed once -> 🩹, log only]")
+    sent, bodies = boot(tmpdir())
+    check("one push", len(sent), 1)
+    check("🩹 title", sent[0][0].startswith("🩹") if sent else False, True)
+    check("log only", route_of(sent[0][0], alert=sent[0][1]) if sent else "", "log")
+    check("says where it went", "ok_tasks" in (bodies[0] if bodies else ""), True)
+
+    print("\n[every failure path: ⚠️, group]")
+    sent, _ = boot(None)
+    is_alarm("no OK-WW directory", sent)
+    sent, _ = boot(tmpdir(), write=garbling(ov.FILE_NAME))
+    is_alarm("overrides read back different", sent)
+    sent, _ = boot(tmpdir(), write=raising(ov.FILE_NAME))
+    is_alarm("overrides cannot be written", sent)
+    sent, _ = boot(tmpdir(), master=None)
+    is_alarm("no master directory", sent)
+    sent, _ = boot(tmpdir(), write=raising("pointer.txt"))
+    is_alarm("pointer cannot be written", sent)
+    sent, _ = boot(tmpdir(), write=garbling("pointer.txt"))
+    is_alarm("pointer reads back different", sent)
+
+    print("\n[the raise itself, not the words, makes it a failure]")
+    try:
+        ov.install(None)
+        check("install(None) raises", False, True)
+    except ov.OverlayTrouble as exc:
+        check("install(None) raises OverlayTrouble with a plain line", "OK-WW" in str(exc), True)
+    check("a fault counts even when no trouble word matches",
+          texts.patches(1, ["随便什么话"], ["随便什么话"]).startswith("⚠️"), True)
+    check("a fault that also has a trouble word is counted once",
+          "1 条没贴上" in texts.patches(1, ["OK-WW 有改动没贴上"], ["OK-WW 有改动没贴上"]), True)
+    check("the old two-argument call is unchanged", texts.patches(2, ["a", "b"]), "🩹 OK-WW 补丁（2 条）")
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_overlay_install_guard():
+    """install() leaves ok_tasks/ark_overrides.py alone unless it must change, and never
+rewrites it under a running OK-WW (audit 2026-10-13, A2).
+
+ok-script watches ok_tasks/ while OK-WW runs and executes again any .py there that
+changes (ok-script task_manager.py _on_debug_dir_changed, which hands a file it has
+not recorded as a task to load_single_user_task). Executing the overrides twice
+wraps our wrappers again. So:
+
+* identical bytes -> nothing is written and no process list is asked for;
+* different bytes while OK-WW runs -> not written, a logged line says so;
+* different bytes and OK-WW not running, or no way to tell -> written.
+
+    Formerly test_okww_overlay_install_guard.py.
+    """
+    import os
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import procs, texts
+    from ark_relay.core import config as C
+    from ark_relay.features.okww_patch import okww_overlay as ov
+
+
+    REAL_RUNNING = getattr(ov, "okww_running", None)
+    asked = []
+
+
+    def running(answer):
+        def f():
+            asked.append(answer)
+            return answer
+        return f
+
+
+    WANT = ov.source_text().encode("utf-8")
+
+    print("[CRLF copy on disk (same text, other bytes): rewritten to the exact bytes]")
+    root = tmpdir()
+    dest = ov.target(root)
+    dest.parent.mkdir(parents=True)
+    dest.write_bytes(WANT.replace(b"\n", b"\r\n"))
+    ov.okww_running = running(False)
+    try:
+        line = ov.install(root)
+        check("rewritten", dest.read_bytes(), WANT)
+        check("says where", "ok_tasks" in line)
+
+        print("\n[identical bytes: nothing written, no process list asked for]")
+        asked.clear()
+        os.utime(dest, (1_000_000_000, 1_000_000_000))
+        check("returns ''", ov.install(root), "")
+        check("process list not asked", asked, [])
+        check("file not touched (mtime kept)", int(dest.stat().st_mtime), 1_000_000_000)
+
+        print("\n[different bytes while OK-WW runs: left alone, a logged line]")
+        dest.write_bytes(b"# an older overlay\n")
+        ov.okww_running = running(True)
+        line = ov.install(root)
+        check("file unchanged", dest.read_bytes(), b"# an older overlay\n")
+        check("says OK-WW is running", "正在运行" in line)
+        check("not a fault: 🩹 title", texts.patches(1, [line]).startswith("🩹"))
+
+        print("\n[different bytes, cannot tell whether OK-WW runs: written]")
+        ov.okww_running = running(None)
+        ov.install(root)
+        check("written", dest.read_bytes(), WANT)
+    finally:
+        ov.okww_running = REAL_RUNNING
+
+    print("\n[okww_running: pythonw.exe with ok-ww on its command line is OK-WW]")
+    real_pp, real_win = procs.python_processes, C.IS_WINDOWS
+    seen = {}
+
+
+    def pp(rows):
+        def f(**kw):
+            seen.update(kw)
+            return rows
+        return f
+
+
+    try:
+        C.IS_WINDOWS = True
+        procs.python_processes = pp([(1, r"D:\ark\automas\runtime\environment\venv\Scripts\python.exe main.py"),
+                                     (2, r"D:\ark\okww\data\apps\ok-ww\python\pythonw.exe "
+                                         r"D:\ark\okww\data\apps\ok-ww\working\main.py -t 1 -e")])
+        check("OK-WW up", ov.okww_running(), True)
+        check("asks for python.exe and pythonw.exe", seen.get("hosts"), C.PYTHON_HOSTS)
+        check("leaves the outage alarm to the boot self-check", seen.get("warn"), False)
+        procs.python_processes = pp([(1, r"D:\ark\automas\runtime\environment\venv\Scripts\python.exe main.py")])
+        check("only AUTO-MAS: not up", ov.okww_running(), False)
+        procs.python_processes = pp(None)
+        check("list unreadable: cannot tell", ov.okww_running(), None)
+    finally:
+        C.IS_WINDOWS = real_win
+        procs.python_processes = real_pp
+    check("not Windows: cannot tell", ov.okww_running(), None)
+
+    print("\n[procs.python_processes(hosts=...) queries every host name]")
+    queries = []
+    real_q = procs._query_once
+    procs._query_once = lambda query=procs._QUERY: (queries.append(query), ([], ""))[1]
+    try:
+        procs.python_processes(hosts=C.PYTHON_HOSTS)
+        procs.python_processes()
+    finally:
+        procs._query_once = real_q
+    check("pythonw.exe and python.exe both in the query",
+          bool(queries) and "Name='pythonw.exe'" in queries[0] and "Name='python.exe'" in queries[0])
+    check("the default query is unchanged", queries[1:], [procs._QUERY])
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_overlay_pending():
+    """An overlay install skipped because OK-WW was running is tried again before the
+relay next starts a run itself, and is said to the group if it still cannot be done.
+
+Review 2026-10-13 item 20: install() skips while OK-WW runs (a relay restart
+mid-run, e.g. a deploy). Until then the old overlay stayed until the next relay
+start - normally the next boot - with one 🩹 log line. Now okww_overlay.retry_pending
+runs after the pre-update closed OK-WW and right before phone.commands dispatches a
+script or a queue; still running there -> a WARNING (errwatch pushes every WARNING
+to the group).
+
+    Formerly test_okww_overlay_pending.py.
+    """
+    import logging
+    import os
+    import types
+
+
+    TMP = tmpdir()
+    os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
+                      WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+
+    for _name in ("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
+                  "servicemanager", "win32process", "win32security", "win32ts", "win32profile", "wmi",
+                  "pythoncom", "win32com", "win32com.client"):
+        sys.modules.setdefault(_name, _Stub(_name))
+
+    import boot_stages
+    from ark_relay.features.okww_patch import okww_overlay as ov
+    from ark_relay.features.phone import commands
+    from ark_relay.features.preupdate import preupdate
+    from ark_relay.features.alarm import errwatch
+
+    # The stubbed win32api would make GetSystemMetrics read as "Windows is going down", and the
+    # boot pre-update stops at once for a stopping relay (boot_stages._stage_preupdate, 10-16).
+    errwatch.system_shutting_down = lambda: False
+
+
+    class Warnings(logging.Handler):
+        def __init__(self):
+            super().__init__(level=logging.WARNING)
+            self.lines = []
+
+        def emit(self, record):
+            self.lines.append(record.getMessage())
+
+
+    W = Warnings()
+    ov.log.addHandler(W)
+    REAL_RUNNING = ov.okww_running
+    running = {"now": True}
+    ov.okww_running = lambda: running["now"]
+    WANT = ov.source_text().encode("utf-8")
+
+    try:
+        print("[skipped at boot while OK-WW runs: pending]")
+        root = tmpdir()
+        dest = ov.target(root)
+        dest.parent.mkdir(parents=True)
+        dest.write_bytes(b"# old overlay\n")
+        ov.install(root)
+        check("file left alone", dest.read_bytes(), b"# old overlay\n")
+        check("pending", ov._pending.get("dir"), root)
+
+        print("\n[tried again while OK-WW still runs: a WARNING (to the group), file left alone]")
+        W.lines.clear()
+        line = ov.retry_pending("单独开跑「OK-WW」前")
+        check("one warning", len(W.lines), 1)
+        check("says where and that the old overlay runs", "单独开跑「OK-WW」前" in line and "旧" in line, True)
+        check("file still the old one", dest.read_bytes(), b"# old overlay\n")
+
+        print("\n[tried again once OK-WW stopped: installed, no warning, nothing pending]")
+        running["now"] = False
+        W.lines.clear()
+        ov.retry_pending("预更新后")
+        check("installed", dest.read_bytes(), WANT)
+        check("no warning", W.lines, [])
+        check("nothing pending", ov._pending, {})
+        check("nothing pending: no-op", ov.retry_pending("x"), "")
+
+        print("\n[the relay's own dispatch tries it before starting]")
+        order = []
+        real = (ov.retry_pending, commands._mas, commands._note_dispatch)
+        ov.retry_pending = lambda where: order.append(("retry", where)) or ""
+        commands._note_dispatch = lambda what: None
+
+        def mas(path, body=None):
+            if path == "/api/scripts/get":
+                return {"data": {"s1": {"Info": {"Name": "OK-WW"}}}}
+            if path == "/api/queue/get":
+                return {"data": {"q1": {"Info": {"Name": "早班"}}}}
+            order.append(("dispatch", body["taskId"]))
+            return {"status": "success"}
+        commands._mas = mas
+        try:
+            commands.run_script("OK-WW")
+            check("script: retry before dispatch", [k for k, _ in order], ["retry", "dispatch"])
+            order.clear()
+            commands._run_now("早班")
+            check("queue: retry before dispatch", [k for k, _ in order], ["retry", "dispatch"])
+            print("\n[the pre-update tries it after closing OK-WW]")
+            order.clear()
+            real_pre = (preupdate.run_okww, ov.drift_line)
+            preupdate.run_okww = lambda okww, problems=None, **_k: order.append(("preupdate", "")) or ""
+            ov.drift_line = lambda okww, state_dir: ""
+            try:
+                notes = types.SimpleNamespace(send=lambda *a, **k: [])
+                cfg = types.SimpleNamespace(okww_dir=root, automas_dir=None, state_dir=tmpdir())
+                boot_stages._preupdate_okww(cfg, notes, boot_stages.log, [])
+            finally:
+                preupdate.run_okww, ov.drift_line = real_pre
+            check("pre-update, then retry", [k for k, _ in order], ["preupdate", "retry"])
+        finally:
+            ov.retry_pending, commands._mas, commands._note_dispatch = real
+    finally:
+        ov.okww_running = REAL_RUNNING
+        ov._pending.clear()
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_overlay_param_start():
+    """The task AUTO-MAS names on OK-WW's command line (`-t 1 -e`) is started, not dropped.
+
+2026-11-10 (ledger #158): OK-WW updated itself to v3.7.20-beta.3 at 08:48 and both starts of
+the morning shift logged 「<DailyTask> was cancelled while the game was starting」 (09:21:04,
+09:22:39); the game was up, no task ran, OK-WW never exited, the shift stood still until
+the 10:51 overtime alarm. Upstream's new pending list exempts an index, but _do_start has
+turned the index into the task object before it looks.
+
+Upstream is run, not imitated: fixtures/okww-v3.7.20-beta.3-start_controller.py.txt is
+ok/core/start_controller.py as it stood on the game PC that morning (sha256 3c4eb217…6d6521),
+executed here with stand-ins only for what it imports.
+    """
+    import threading
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.okww_patch import okww_overlay
+
+    FIXTURE = fx_dir(Path(__file__), "fixtures") / "okww-v3.7.20-beta.3-start_controller.py.txt"
+    CANCELLED = "was cancelled while the game was starting"
+    NAMES = ("ok", "ok.device", "ok.device.capture", "ok.core", "ok.core.events", "ok.core.notifications",
+             "ok.util", "ok.util.process", "ok.core.start_controller")
+    saved = {n: sys.modules.get(n) for n in NAMES}
+
+    class Signal:
+        def __init__(self):
+            self.sent = []
+
+        def emit(self, *a):
+            self.sent.append(a)
+
+    class Log:
+        def __init__(self, lines):
+            self.lines = lines
+
+        def info(self, msg, *a):
+            self.lines.append(str(msg))
+
+        error = warning = debug = info
+
+    class Task:
+        def __init__(self, name, executor):
+            self.name, self.executor = name, executor
+            self._enabled = False
+            self.paused = False
+            self.exit_after_task = False
+
+        @property
+        def enabled(self):
+            return self._enabled
+
+        def info_clear(self):
+            pass
+
+        def __repr__(self):
+            return f"<{self.name}>"
+
+    class Executor:
+        def __init__(self):
+            self.onetime_tasks = [Task("DailyTask", self), Task("Other", self)]
+            self.current_task = None
+            self.paused = False
+            self.queued = []
+            self.started = 0
+
+        def get_all_tasks(self):
+            return list(self.onetime_tasks)
+
+        def enqueue_onetime_task(self, task):
+            self.queued.append(task)
+
+        def start(self):
+            self.started += 1
+
+    def world(fixture_text):
+        """Fresh stand-ins, the upstream file executed on them. -> (StartController, og, log lines)."""
+        lines = []
+        og = types.SimpleNamespace(executor=Executor(), app=None,
+                                   device_manager=types.SimpleNamespace(do_refresh=lambda *a: None))
+        ok = types.ModuleType("ok")
+        ok.og = og
+        ok.Handler = type("Handler", (), {"__init__": lambda self, *a: None, "post": lambda self, fn: fn()})
+        ok.Logger = type("Logger", (), {"get_logger": staticmethod(lambda name: Log(lines))})
+        mods = {"ok": ok}
+        for name, attrs in (("ok.device", {}), ("ok.core", {}), ("ok.util", {}),
+                            ("ok.device.capture", {"BaseWindowsCaptureMethod": object, "BrowserCaptureMethod": object}),
+                            ("ok.core.events", {"communicate": types.SimpleNamespace(starting_emulator=Signal(), task=Signal())}),
+                            ("ok.core.notifications", {"alert_error": lambda *a, **k: None, "alert_info": lambda *a, **k: None}),
+                            ("ok.util.process", {"is_admin": lambda: True, "execute": lambda *a, **k: None,
+                                                 "WINDOWS_START_METHOD_START": "start"})):
+            m = types.ModuleType(name)
+            m.__dict__.update(attrs)
+            mods[name] = m
+        sys.modules.update(mods)
+        sc = types.ModuleType("ok.core.start_controller")
+        sys.modules["ok.core.start_controller"] = sc
+        exec(compile(fixture_text, "start_controller.py", "exec"), sc.__dict__)
+        return sc.StartController, og, lines
+
+    def controller(cls, start_exe=False, device_ok=True):
+        sub = type("C", (cls,), {"check_auto_hdr": lambda self: None,
+                                 "check_gpu_driver_post_processing": lambda self: None,
+                                 "start_device": lambda self, initial_refresh_done=False: device_ok})
+        return sub({"windows": {"start_exe": start_exe}}, threading.Event())
+
+    def install():
+        """The overrides file executed in this world, as ok-script does at start-up."""
+        ns = {"__name__": "ark_overrides_test"}
+        exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
+        return ns
+
+    text = FIXTURE.read_text(encoding="utf-8")
+    try:
+        print("[上游 v3.7.20-beta.3 自己：命令行带起的任务被它当成已取消]")
+        cls, og, lines = world(text)
+        c = controller(cls)
+        daily = og.executor.onetime_tasks[0]
+        check("upstream alone: do_start returns True all the same", c.do_start(0, True), True)
+        check("upstream alone: says it was cancelled", any(CANCELLED in x for x in lines), True)
+        check("upstream alone: the daily task is not enabled", (daily.enabled, og.executor.queued), (False, []))
+
+        print("[装上我们的改动：照常起跑]")
+        cls, og, lines = world(text)
+        ns = install()
+        check("listed as applied", "StartController._do_start" in ns["_applied"], True)
+        check("not listed as skipped", [x for x in ns["_skipped"] if "StartController" in x["what"]], [])
+        c = controller(cls)
+        daily, other = og.executor.onetime_tasks
+        check("do_start(0, exit_after)", c.do_start(0, True), True)
+        check("no 'was cancelled' line", [x for x in lines if CANCELLED in x], [])
+        check("the daily task is enabled and queued once", (daily.enabled, og.executor.queued), (True, [daily]))
+        check("exit after the task (-e) is kept", daily.exit_after_task, True)
+        check("the executor is started", og.executor.started, 1)
+        check("nothing left waiting", c._pending[1], [])
+        check("the other task is untouched", (other.enabled, other.exit_after_task), (False, False))
+        check("our line names the task", any(ns["PARAM_START"] in x and "DailyTask" in x for x in lines), True)
+
+        print("[上游自己的取消逻辑不受影响]")
+        cls, og, lines = world(text)
+        install()
+        c = controller(cls)
+        daily, other = og.executor.onetime_tasks
+        c._add_pending(other)
+        check("a task asked for in the window can still be cancelled", c.cancel_task(other), True)
+        check("its queued start is skipped", c.do_start(other, False, from_queue=True), False)
+        check("and it stays disabled", other.enabled, False)
+        c._do_start(other, False)                # reached directly, without being pending: upstream drops it
+        check("a non-pending task object is still dropped by upstream", (other.enabled, any(CANCELLED in x for x in lines)),
+              (False, True))
+        c._add_pending(other)
+        check("a pending one is started", (c.do_start(other, False, from_queue=True), other.enabled), (True, True))
+
+        print("[游戏没起来：不留一个「等着」的任务]")
+        cls, og, lines = world(text)
+        install()
+        c = controller(cls, start_exe=True, device_ok=False)
+        daily = og.executor.onetime_tasks[0]
+        check("a failed launch returns False", c.do_start(0, True), False)
+        check("the daily task is not left on the pending list", c._pending[1], [])
+        check("and is not enabled", daily.enabled, False)
+
+        print("[下标不对：照上游自己的报法]")
+        cls, og, lines = world(text)
+        install()
+        c = controller(cls)
+        check("a bad index is upstream's own failure", c.do_start(9, True), False)
+        check("nothing waiting, nothing queued", (c._pending[1], og.executor.queued), ([], []))
+
+        print("[没有待启动名单的旧版：不动它]")
+        old = text.replace("    def _pending(self):", "    def _pending_gone(self):")
+        cls, og, lines = world(old)
+        before = cls._do_start
+        ns = install()
+        check("not applied, not skipped", ("StartController._do_start" in ns["_applied"],
+                                           [x for x in ns["_skipped"] if "StartController" in x["what"]]), (False, []))
+        check("upstream's _do_start is still upstream's", cls._do_start is before, True)
+
+        print("[上游把 _do_start 改名或改了参数：不贴，记进没贴上]")
+        cls, og, lines = world(text.replace("    def _do_start(self, task=None, exit_after=False):",
+                                            "    def _do_start2(self, task=None, exit_after=False):")
+                               .replace("self._do_start(task, exit_after)", "self._do_start2(task, exit_after)"))
+        ns = install()
+        why = [x["why"] for x in ns["_skipped"] if "StartController" in x["what"]]
+        check("renamed away: skipped with the reason", ("StartController._do_start" in ns["_applied"], len(why),
+                                                        "没有这个方法" in (why or [""])[0]), (False, 1, True))
+        cls, og, lines = world(text.replace("    def _do_start(self, task=None, exit_after=False):",
+                                            "    def _do_start(self, task=None, exit_after=False, *, reason):"))
+        before = cls._do_start
+        ns = install()
+        why = [x["why"] for x in ns["_skipped"] if "StartController" in x["what"]]
+        check("a parameter ours cannot pass on: skipped, upstream's left in place",
+              ("StartController._do_start" in ns["_applied"], len(why), cls._do_start is before), (False, 1, True))
+
+        print("[param_task_pending 本身]")
+        ns = install()
+        fn = ns["param_task_pending"]
+        holder = types.SimpleNamespace(_pending=(threading.Lock(), []))
+        check("an index puts the task on the list", (fn(holder, 1, ["a", "b"]), holder._pending[1]), ("b", ["b"]))
+        check("twice is once", (fn(holder, 1, ["a", "b"]), holder._pending[1]), ("b", ["b"]))
+        for junk in (None, True, "1", object()):
+            check(f"{junk!r} is not an index", fn(holder, junk, ["a", "b"]), None)
+        check("no list on this upstream", fn(types.SimpleNamespace(), 0, ["a"]), None)
+    finally:
+        for n, m in saved.items():
+            if m is None:
+                sys.modules.pop(n, None)
+            else:
+                sys.modules[n] = m
+
+    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
+def _part_okww_overlay_copies():
+    import re
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.okww_patch import okww_overlay
+
+    fails = []
+
+
+    def check(label, got, want=True):
+        ok = got == want
+        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
+        if not ok:
+            fails.append(label)
+
+
+    src = okww_overlay.source_text()
+
+    # Everything we change, and the marker that proves it is still in the file.
+    CHANGES = {
+        "复活之后接着刷下一趟": "刷声骸模式：复活成功，接着刷下一趟",
+        "连败三次就收手": "次失败，退出本次任务，不再重试",
+        "周本进本前读剩余次数": "本周周本次数已领满（0/3）",
+        "波片不足就跳过周本": "单人挑战后的提醒框",
+        "无音区结算页留一张图": "tacet_drops",
+        "附加任务提到刷体力之前": "附加任务出错，不拖垮当趟日常",
+        "标记文件在就不刷体力": "刷体力已禁用（标记文件在）",
+        "附加任务一趟只跑一次": "makes their trailing call a no-op",
+        "每趟开始时把那个标记清零": "self._ark_additional_ran = False",
+        "限时提前开放的剧情提示框": "限时提前开放的剧情提示框",
+        "限时提前开放后直接进场": "限时提前开放：确认后直接进场",
+        "主动跳过的信号照原样抛": "isinstance(exc.__cause__, TaskDisabledException)",
+        "传送界面来晚了再等一次": "多等 15 秒",
+        "巢穴只刷指定点位": "Only Farm These Nests",
+        "周本打完按 F 领奖": "周本领奖：已点确认",
+        "周本领完点退出副本": "退出副本",
+        "巢穴没打满就接着打": "is not complete",
+        "巢穴白打一局就拉黑": "no progress after an attempt",
+        "周本单人挑战没接就补点": "补点第",
+        "体力数/数没读到不当 0": "不当 0",
+    }
+
+    print("[每一条改动都还在]")
+    for name, marker in CHANGES.items():
+        check(name, marker in src)
+
+    # A replacement stops upstream's body from running, so it must be pinned.
+    # Everything else wraps.
+    REPLACEMENTS = {"click_team_challenge", "find_nest", "get_stamina"}
+
+    print("[只有三处整段替换，而且都钉了指纹]")
+    bound = re.findall(r'@override\((\w+), "(\w+)"([^)]*)\)', src)
+    bound += [(c, m, r) for c, m, r in re.findall(r'override\((\w+), "(\w+)"([^)]*)\)\(', src)]
+    names = {m for _, m, _ in bound}
+    check("绑上的方法数不为零", len(names) > 0)
+    for cls, meth, rest in bound:
+        if meth in REPLACEMENTS:
+            check(f"{cls}.{meth} 钉了指纹", "expect_sha" in rest)
+        else:
+            check(f"{cls}.{meth} 不是整段替换", "expect_sha" in rest, False)
+
+    print("[不许再出现整段抄件：抄件里必然带着上游的循环和分支]")
+    for banned in ("def farm_do_run(", "def farm_teleport(", "def daily_run(",
+                   "def tacet_farm(", "def farm_run("):
+        check(f"没有 {banned.strip('def (')}", banned in src, False)
+
+    print("[包一层的必须真的调用上游那份]")
+    for captured in ("nest_run(self", "capture_run(self", "next_nest(self", "daily_run(self", "farm_run(self", "farm_combat(self", "pick_level(self", "tacet_stamina(self",
+                     "open_daily(self", "run_additional(self", "original(self",
+                     "inner(self", "outer(self", "prepare(self"):
+        check(f"调用了 {captured.split('(')[0]}", captured in src)
+
+    print("\n[每一条绑定都要么有「触发→痕迹」核对，要么有一个真的去跑它的测试]")
+    # The nest filter was bound and reported applied for four days while doing
+    # nothing (09-10..09-13). A binding without a way to see it ran is not allowed,
+    # and a written reason is not a way: each binding either has a log trigger→trace
+    # check (PATCH_COVERAGE) or a behaviour test file that drives the method.
+    # Naming the method in that file is the cheapest proof the file is about it; for
+    # 「run」 the name alone says little, the mapping itself is the claim.
+    from ark_relay.features.verify import outcome
+    TESTS = Path(__file__).resolve().parent
+    bound = set(re.findall(r'@override\((\w+), "(\w+)"', src))
+    bound |= set(re.findall(r'_farm_hook\((\w+), "(\w+)"\)', src))
+    bound = {f"{c}.{m}" for c, m in bound}
+    labels = {lbl for lbl, *_ in outcome._PATCH_EFFECTS} | {"无音区改动在跑（结算页留图）"}
+    check("旧的「写个理由就算」那张表已经删了", hasattr(outcome, "PATCH_NO_TRIGGER"), False)
+    for key in sorted(bound):
+        covered = key in outcome.PATCH_COVERAGE
+        tested = key in outcome.BEHAVIOUR_TESTS
+        check(f"{key} 有核对或有测试", covered or tested)
+        if covered:
+            check(f"{key} 指向的核对真的存在", outcome.PATCH_COVERAGE[key] in labels)
+        if tested:
+            f = TESTS / outcome.BEHAVIOUR_TESTS[key]
+            check(f"{key} 的测试文件在", f.is_file())
+            meth = key.split(".")[1]
+            check(f"{key} 的测试文件提到 {meth}", f.is_file() and meth in f.read_text(encoding="utf-8"))
+    stale = (set(outcome.PATCH_COVERAGE) | set(outcome.BEHAVIOUR_TESTS)) - bound
+    check("登记表里没有已经不存在的绑定", sorted(stale), [])
+
+    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
+
+
+def _part_echo_farm_main():  # noqa: C901
+    """Farm a boss until a wall-clock time, then put everything back.
+
+Asked for on 2026-09-09 as 「刷的时候不要按次数，而是时间来」 - to a clock time, not a
+repeat count. OK-WW only counts runs, so the clock lives in the relay. Two things must hold or
+this quietly costs him tomorrow's morning run: the FarmEchoTask config is shared
+with the daily's weekly-boss step and has to be restored exactly, and a failure to
+launch must not leave the config pointed somewhere else.
+
+    Formerly test_echo_farm.py.
+    """
+    import json
+    from datetime import datetime
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.echofarm import echofarm
+    from ark_relay.core.config import SERVER_TZ
+
+
+    ORIGINAL = {"Teleport to Boss": "Weekly Challenge", "Boss Level": "90",
+                "Which Boss Challenge to Teleport": 1, "Which Weekly Boss to Teleport": 1,
+                "Repeat Farm Count": 3, "Echo Pickup Method": "Walk"}
+
+
+    class Cfg:
+        def __init__(self, root):
+            self.okww_dir = root
+            self.state_dir = root / "state"
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+
+
+    def fresh():
+        """An OK-WW tree shaped the way the machine's is: the live config sits under
+    the pyappify working directory, not at the install root. The first attempt on
+    2026-09-09 looked at the root and the command answered 「找不到」."""
+        root = tmpdir()
+        d = root.joinpath(*echofarm._WORKING, "configs")
+        d.mkdir(parents=True)
+        (d / "FarmEchoTask.json").write_text(json.dumps(ORIGINAL, ensure_ascii=False), encoding="utf-8")
+        return Cfg(root)
+
+
+    def cfg_now(c):
+        return json.loads(echofarm._cfg_path(c.okww_dir).read_text(encoding="utf-8"))
+
+
+    launched = []
+    echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
+    echofarm.stop_okww = lambda: launched.append("stop")
+    _real_stop_script = echofarm.stop_okww_script
+    echofarm.stop_okww_script = lambda: launched.append("script") or ""
+    # The marker file lives in C:\ProgramData on the machine. Point it at a temp path so
+    # the tests never write into the repo (and never into a real machine path either).
+    echofarm.NO_CLAIM = str(tmpdir() / "no-claim")
+
+    print("[配置路径：按机器上的真实布局找，找不到就说找不到]")
+    _empty = tmpdir()
+    check("没有配置文件时不假装有", echofarm._cfg_path(_empty).is_file(), False)
+    check("目录是 None 时返回 None", echofarm._cfg_path(None), None)
+
+    print("[结束时刻：认得 08:30，认不出的一律拒绝]")
+    now = datetime(2026, 9, 9, 4, 0, tzinfo=SERVER_TZ)
+    NOW = now
+    check("今天还没到就是今天", echofarm.resolve_until("08:30", now).strftime("%m-%d %H:%M"), "09-09 08:30")
+    check("已经过了就是明天", echofarm.resolve_until("03:00", now).strftime("%m-%d %H:%M"), "09-10 03:00")
+    for bad in ("25:00", "8点半", "", None, "08:70"):
+        check(f"拒绝 {bad!r}", echofarm.resolve_until(bad, now), None)
+
+    print("\n[开跑：配置改成打指定 boss，原来那份完整存下来]")
+    c = fresh()
+    ok, msg = echofarm.start(c, 1, "08:30", "天傀劫煞", now=NOW)
+    check("开跑了", ok, True)
+    # the receipt says the phone's clock (Tokyo, an hour ahead): machine 08:30 is 09:30 there (App review 10-14)
+    check("话里有目标和时刻（手机的时间）", "天傀劫煞" in msg and "09:30" in msg and "机器时间" not in msg, True)
+    check("真的启动了一次", len(launched), 1)
+    after = cfg_now(c)
+    check("改成了打强敌", after["Teleport to Boss"], "Boss Challenge")
+    check("第几个", after["Which Boss Challenge to Teleport"], 1)
+    check("次数交给时钟，不再是 3", after["Repeat Farm Count"], echofarm.BIG_COUNT)
+    check("等级是会掉声骸的最低一档 80（50 级不掉声骸）", after["Boss Level"], "80")
+    check("配置里写的就是 FARM_LEVEL", after["Boss Level"], echofarm.FARM_LEVEL)
+    check("不是原来那个 90", echofarm.FARM_LEVEL != ORIGINAL["Boss Level"], True)
+    check("原配置一字不落地存着", echofarm.current(c.state_dir)["saved"], ORIGINAL)
+
+    print("\n[正在刷的时候不许再开一趟]")
+    ok2, msg2 = echofarm.start(c, 2, "09:00", "别的")
+    check("被拒", ok2, False)
+    check("说清在刷什么、刷到几点", "天傀劫煞" in msg2 and "09:30" in msg2, True)
+
+    print("\n[没到点什么都不做]")
+    check("还早", echofarm.tick(c, datetime(2026, 9, 9, 7, 0, tzinfo=SERVER_TZ)), "")
+    check("还在记录里", bool(echofarm.current(c.state_dir)), True)
+
+    print("\n[到点：停掉、原样还原、状态清空]")
+    note = echofarm.tick(c, datetime(2026, 9, 9, 8, 30, tzinfo=SERVER_TZ))
+    check("出了收工的话", "到点了" in note and "天傀劫煞" in note, True)
+    check("停过了", "stop" in launched, True)
+    check("配置一字不差地还原", cfg_now(c), ORIGINAL)
+    check("状态清空", echofarm.current(c.state_dir), {})
+    check("再 tick 一次什么都不做", echofarm.tick(c, datetime(2026, 9, 9, 9, 0, tzinfo=SERVER_TZ)), "")
+
+    print("\n[跑到一半改收工时刻：提前或延后都行，别的不动]")
+    c = fresh()
+    echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
+    echofarm.start(c, 1, "08:30", "天傀劫煞", now=NOW)
+    _before = dict(echofarm.current(c.state_dir))
+    ok, msg = echofarm.retime(c, "21:00", now=NOW)
+    check("改成功", ok, True)
+    check("话里有新旧两个时刻（手机的时间）", "09:30" in msg and "22:00" in msg, True)
+    check("话里说了还剩多久", "还剩" in msg, True)
+    check("记录里的收工时刻真的变了", echofarm.current(c.state_dir)["until"][11:], "21:00")
+    check("原配置一字没动", echofarm.current(c.state_dir)["saved"], _before["saved"])
+    check("开跑时刻没被改掉", echofarm.current(c.state_dir)["started"], _before["started"])
+    check("提前也行", echofarm.retime(c, "05:00", now=NOW)[1].count(":") >= 2, True)
+    # A time already past rolls to tomorrow, the same rule as starting a farm.
+    check("已经过去的时刻算明天的，和开跑时同一条规则",
+          echofarm.retime(c, "03:00", now=datetime(2026, 9, 9, 4, 0, tzinfo=SERVER_TZ))[0], True)
+    check("确实记成了明天", echofarm.current(c.state_dir)["until"][:10], "2026-09-10")
+    for bad in ("25:00", "九点", ""):
+        check(f"看不懂的时刻拒绝 {bad!r}", echofarm.retime(c, bad, now=NOW)[0], False)
+    echofarm.finish(c, "收尾")
+    check("没在刷的时候改不了", echofarm.retime(c, "21:00", now=NOW)[0], False)
+    check("而且说清是没在刷", "没有在刷" in echofarm.retime(c, "21:00", now=NOW)[1], True)
+
+
+    print("\n[刷的时候手机改了母本：收工按现在的母本还原，五项都核（11-08 [D-06]）]")
+    c = fresh()
+    echofarm.start(c, 3, "08:30", "第 3 个")
+    _changed = dict(ORIGINAL, **{"Which Weekly Boss to Teleport": 7})
+    _saved_truth = echofarm._truth
+    echofarm._truth = lambda cfg, working: dict(_changed)
+    echofarm.finish(c, "手动停止")
+    echofarm._truth = _saved_truth
+    check("刷的时候改的周本序号还在", cfg_now(c).get("Which Weekly Boss to Teleport"), 7)
+    c = fresh()
+    echofarm.start(c, 3, "08:30", "第 3 个")
+    echofarm._truth = lambda cfg, working: json.loads(working.read_text(encoding="utf-8"))
+    echofarm.finish(c, "手动停止")
+    echofarm._truth = _saved_truth
+    check("母本读不到时（拿到的是刷声骸那份）：还用开刷时记下的", cfg_now(c), ORIGINAL)
+
+    print("\n[手动停：一样还原]")
+    c = fresh()
+    echofarm.start(c, 3, "08:30", "第 3 个")
+    note = echofarm.finish(c, "手动停止")
+    check("话里说是手动停的", "手动停止" in note, True)
+    check("配置还原", cfg_now(c), ORIGINAL)
+
+    # 2026-10-12 (mute audit item 9): a wrap-up that says something went wrong (the farm
+    # stopped because OK-WW could not be relaunched or farmed nothing, the end time unreadable,
+    # the game left open, the boss setting not put back) went to Server酱 only, inside the
+    # 「🥚 刷声骸收工」 text. A fault still there reaches the group; a clean wrap-up stays info.
+    print("\n[the engine's wrap-up: a failed one is a group alarm, a clean one is not]")
+    import types
+    from datetime import timedelta
+    from ark_relay.core import texts
+    from ark_relay.core.engine import Engine
+    from ark_relay.core.notify import route_of
+
+
+    class _Sent:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body="", **kw):
+            self.sent.append((title, body, kw.get("alert", False)))
+            return []
+
+
+    def _wrapup(c):
+        """The engine's tick step on the real clock; (route, is a wrap-up title) of each push."""
+        eng = types.SimpleNamespace(cfg=c, notifier=_Sent())
+        Engine._echo_farm_deadline(eng)
+        return [(route_of(t, alert=a), "收工" in t) for t, _, a in eng.notifier.sent]
+
+
+    def _farm(**fields):
+        c = fresh()
+        echofarm.start(c, 1, "08:30", "天傀劫煞", now=NOW)      # until 2026-09-09 08:30: long past
+        rec = echofarm.current(c.state_dir)
+        rec.update(fields)
+        echofarm._store(c.state_dir).set("queues", "echo_farm", rec)
+        return c
+
+
+    import ark_relay.features.weekly.weeklyboss as _wbw
+    _wrap_log = tmpdir() / "wrap.log"
+    _wrap_real = _wbw._okww_log
+    _wbw._okww_log = lambda: _wrap_log
+    _wrap_log.write_text("2026-09-09 04:01:00,000 INFO TaskExecutor FarmEchoTask:enter combat None\n"
+                         "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n",
+                         encoding="utf-8")
+    check("on time, all put back, OK-WW farmed: one info wrap-up", _wrapup(_farm()), [("info", True)])
+    # 2026-10-13 audit: a night that farmed nothing ended as a clean 「到点了」.
+    _wrap_log.write_text("2026-09-09 03:00:00,000 INFO TaskExecutor FarmEchoTask:farm echo before the start\n"
+                         + "".join(f"2026-09-09 04:{m:02d}:00,000 INFO hwnd_window changed\n" for m in range(1, 50)),
+                         encoding="utf-8")
+    check("on time but nothing farmed since the start: the group", _wrapup(_farm()), [("group", True)])
+    _c0 = _farm()
+    _note0, _bad0 = echofarm.tick_result(_c0)
+    check("…and the line says nothing was farmed", ("一次都没刷到" in _note0, _bad0), (True, True))
+    _wrap_log.write_text("2026-09-09 04:01:00,000 INFO TaskExecutor FarmEchoTask:enter combat None\n"
+                         "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n",
+                         encoding="utf-8")
+    _c1 = _farm()
+    _note1, _bad1 = echofarm.tick_result(_c1)
+    check("a farmed night's line gives the count", ("有 2 次进展" in _note1, _bad1), (True, False))
+    # App review 10-14: no log name, no 「配置已还原」, the span on the phone's clock
+    check("…without the log name or 「配置已还原」", ("OK-WW 日志" in _note1 or "配置已还原" in _note1, "从 " in _note1), (False, True))
+
+    print("\n[the wrap-up names the level the game showed, never the configured one]")
+    # The owner's own order on 10-13 at 13:0x, quoted: 「把日报和收工消息改成写游戏里实际读到的等级」.
+    # The 10-13 run: FarmEchoTask.json said "Boss Level": "80", but boss 1's book entry opens the team
+    # screen with no level page, and every lap logged boss_string [Lv.90天傀劫煞_0.97].
+    # Line formats below are OK-WW's own: [Lv.90天傀劫煞_0.97] and [Lv.90.天傀劫煞_0.97]
+    # (10-13), [] (2026-10-05 log), [Lv.90天演溯心·衍律化形_0.92] (ok-script.2026-10-12.log).
+    _BS = "INFO TaskExecutor FarmEchoTask:boss_string is "
+    _wrap_log.write_text(
+        f"2026-09-09 03:50:00,000 {_BS}[Lv.90天演溯心·衍律化形_0.92]\n"     # an earlier session
+        f"2026-09-09 04:01:00,000 {_BS}[]\n"
+        f"2026-09-09 04:01:30,000 {_BS}[Lv.90.天傀劫煞_0.97]\n"
+        "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n"
+        f"2026-09-09 04:03:00,000 {_BS}[Lv.90天傀劫煞_0.97]\n"
+        f"2026-09-09 04:04:00,000 {_BS}[]\n", encoding="utf-8")
+    _level_since = getattr(echofarm, "level_since", lambda started: None)   # absent before: fail, not crash
+    check("the newest level read since the start",
+          _level_since(echofarm._started_at(echofarm.current(_farm().state_dir))), ("90", "天傀劫煞"))
+    _n5, _b5 = echofarm.tick_result(_farm())
+    check("…is in the wrap-up line", "刷天傀劫煞（游戏里 Lv.90）结束" in _n5, True)
+    check("…and the configured level is not", "80" in _n5, False)
+    _wrap_log.write_text(
+        f"2026-09-09 03:50:00,000 {_BS}[Lv.90天演溯心·衍律化形_0.92]\n"
+        f"2026-09-09 04:01:00,000 {_BS}[]\n"
+        "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n", encoding="utf-8")
+    _n6, _b6 = echofarm.tick_result(_farm())
+    check("no level read in this farm: 「等级没读到」, not the configured 80",
+          ("刷天傀劫煞（等级没读到）结束" in _n6, "80" in _n6), (True, False))
+    _wrap_log.write_text(
+        f"2026-09-09 04:01:30,000 {_BS}[Lv.90天演溯心·衍律化形_0.92]\n"
+        "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n", encoding="utf-8")
+    _n7, _b7 = echofarm.tick_result(_farm())
+    check("a different boss read off the screen is named as read",
+          "刷天傀劫煞（游戏里读到的是 Lv.90 天演溯心·衍律化形）结束" in _n7, True)
+    _wrap_log.write_text(
+        "2026-09-09 04:01:00,000 INFO TaskExecutor FarmEchoTask:enter combat None\n"
+        "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n", encoding="utf-8")
+    _wbw._okww_log = lambda: None
+    check("on time, OK-WW log unreadable: the group (unknown is not fine)", _wrapup(_farm()), [("group", True)])
+    _c2 = fresh()
+    echofarm.start(_c2, 1, "08:30", "天傀劫煞", now=NOW)
+    _note2, _bad2 = echofarm._finish(_c2, "手动停止")
+    check("a stop by hand is not judged on progress", _bad2, False)
+    _wbw._okww_log = lambda: _wrap_log
+    check("end time unreadable, farm stopped: the group", _wrapup(_farm(until="坏的")), [("group", True)])
+    _launch_was, _quiet_was = echofarm._launch, echofarm.quiet_minutes
+    echofarm._launch = lambda: (False, "启动计划任务失败")
+    echofarm.quiet_minutes = lambda now=None, since=None: 30.0
+    try:
+        tomorrow = (datetime.now(tz=SERVER_TZ) + timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
+        got = _wrapup(_farm(until=tomorrow, started="2026-09-09 04:00"))
+    finally:
+        echofarm._launch, echofarm.quiet_minutes = _launch_was, _quiet_was
+    check("OK-WW stopped and the relaunch failed: the group", got, [("group", True)])
+    _stop_was = echofarm.stop_okww
+    echofarm.stop_okww = lambda: texts.echo_farm_game_left(["Client-Win64-Shipping.exe"])
+    try:
+        got = _wrapup(_farm())
+    finally:
+        echofarm.stop_okww = _stop_was
+    check("on time but the game left open: the group", got, [("group", True)])
+    _wbw._okww_log = _wrap_real
+
+    # docs/SILENT-FAILURES-AUDIT.md echofarm.py:423 - a failed restore used to replace
+    # the note, so 「游戏没关掉」 from stop_okww never reached the receipt.
+    print("\n[finish: every warning reaches the receipt, none overwrites another]")
+    _stub_stop = echofarm.stop_okww
+    echofarm.stop_okww = lambda: "；**游戏没关掉（Client-Win64-Shipping.exe），已交给我们这边去关**"
+    try:
+        c = fresh()
+        echofarm.start(c, 3, "08:30", "第 3 个")
+        echofarm._cfg_path(c.okww_dir).unlink()
+        note = echofarm.finish(c, "手动停止")
+        check("config missing: says so", "找不到配置文件" in note, True)
+        check("…and still says the game is up", "游戏没关掉" in note, True)
+        c = fresh()
+        echofarm.start(c, 3, "08:30", "第 3 个")
+        _real_write = echofarm.atomic_write_text
+        echofarm.atomic_write_text = lambda *a, **k: (_ for _ in ()).throw(OSError("disk"))
+        try:
+            note = echofarm.finish(c, "手动停止")
+        finally:
+            echofarm.atomic_write_text = _real_write
+        check("restore failed: says so", "没能改回去" in note, True)
+        check("…and still says the game is up", "游戏没关掉" in note, True)
+    finally:
+        echofarm.stop_okww = _stub_stop
+
+    print("\n[还原的是母本那份，不是 working 里上一次刷声骸留下的]")
+    # 2026-09-09: the working file already held a farm's 「Boss Challenge / 30」 when
+    # the next farm started, so 「配置已还原」 restored a farm config.
+    c = fresh()
+    leftover = dict(ORIGINAL, **{"Teleport to Boss": "Boss Challenge", "Repeat Farm Count": 30})
+    echofarm._cfg_path(c.okww_dir).write_text(json.dumps(leftover, ensure_ascii=False), encoding="utf-8")
+    c.automas_dir = tmpdir()
+    _md = c.automas_dir / "data" / "sid" / "Default" / "ConfigFile"; _md.mkdir(parents=True)
+    (_md / "DailyTask.json").write_text("{}", encoding="utf-8")
+    (_md / "FarmEchoTask.json").write_text(json.dumps(ORIGINAL, ensure_ascii=False), encoding="utf-8")
+    echofarm.start(c, 3, "08:30", "第 3 个")
+    check("刷的时候是刷声骸的设置", cfg_now(c)["Which Boss Challenge to Teleport"], 3)
+    echofarm.finish(c, "手动停止")
+    check("停了以后是母本的周本设置，不是 working 里的残留", cfg_now(c), ORIGINAL)
+
+    print("\n[启动失败时不许把配置留在改过的样子]")
+    c = fresh()
+    echofarm._launch = lambda: (False, "计划任务起不来")
+    ok3, msg3 = echofarm.start(c, 1, "08:30", "天傀劫煞")
+    check("报失败", ok3, False)
+    check("话里说了已还原", "已还原" in msg3, True)
+    check("配置确实没动", cfg_now(c), ORIGINAL)
+    check("没留下半个状态", echofarm.current(c.state_dir), {})
+
+    print("\n[「第几个」只收 1..30 的数字]")
+    echofarm._launch = lambda: (True, "")
+    for bad in (0, 31, "一", None):
+        c2 = fresh()
+        check(f"拒绝 {bad!r}", echofarm.start(c2, bad, "08:30")[0], False)
+        check(f"拒绝 {bad!r} 后配置没动", cfg_now(c2), ORIGINAL)
+
+
+    print("\n[weekly boss farm (2026-10-22): Weekly Challenge, its own index key, level 90, no-claim marker on]")
+    echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
+    cw = fresh()
+    okw, msgw = echofarm.start(cw, 2, "08:30", "周本第 2 个", now=NOW, weekly=True)
+    check("weekly farm started", okw, True)
+    w = cfg_now(cw)
+    check("teleport mode is the weekly one", w["Teleport to Boss"], "Weekly Challenge")
+    check("weekly index written", w["Which Weekly Boss to Teleport"], 2)
+    check("overworld index untouched", w["Which Boss Challenge to Teleport"], ORIGINAL["Which Boss Challenge to Teleport"])
+    check("weekly level 90", w["Boss Level"], "90")
+    check("count handed to the clock", w["Repeat Farm Count"], echofarm.BIG_COUNT)
+    check("no-claim marker on", echofarm.no_claim_on(), True)
+    check("record says weekly", echofarm.current(cw.state_dir).get("weekly"), True)
+    echofarm.finish(cw, "手动停止")
+    check("config restored after a weekly farm", cfg_now(cw), ORIGINAL)
+    check("marker off after a weekly farm", echofarm.no_claim_on(), False)
+    for bad in (0, 10):
+        cb = fresh()
+        check(f"weekly index {bad} refused (OK-WW lists 1..9)", echofarm.start(cb, bad, "08:30", weekly=True, now=NOW)[0], False)
+        check(f"config untouched after weekly {bad}", cfg_now(cb), ORIGINAL)
+
+    print("\n[刷声骸期间必须挂着「不领奖」标记：领一次奖 60 波片，通宵刷会掏空账号]")
+    echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
+    c = fresh()
+    check("开跑前没有标记", echofarm.no_claim_on(), False)
+    echofarm.start(c, 1, "08:30", "天傀劫煞")
+    check("开跑后标记挂上了", echofarm.no_claim_on(), True)
+    echofarm.finish(c, "手动停止")
+    check("收工后标记撤了", echofarm.no_claim_on(), False)
+
+    print("\n[启动失败也不许把标记留在机器上]")
+    c = fresh()
+    echofarm._launch = lambda: (False, "计划任务起不来")
+    echofarm.start(c, 1, "08:30", "天傀劫煞")
+    check("失败后没留标记", echofarm.no_claim_on(), False)
+    echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
+
+    print("\n[OK-WW 长时间一行日志都不写就自己停下来并说话]")
+    # 2026-09-09: the game exited mid-farm and OK-WW sat against a window that was no
+    # longer there - six minutes without a single line and not one word about it.
+    # Silence that long now ends the run and says so.
+    import ark_relay.features.weekly.weeklyboss as _wb
+    _real_log = _wb._okww_log
+    _logfile = tmpdir() / "ok-ww.log"
+    _logfile.write_text("2026-09-09 04:30:00 INFO farm echo on the face\n", encoding="utf-8")
+    _wb._okww_log = lambda: _logfile
+    try:
+        check("读不出日志时不猜", echofarm.quiet_minutes(datetime(2026, 9, 9, 5, 0, tzinfo=SERVER_TZ)) is not None, True)
+        c = fresh()
+        echofarm.start(c, 1, "08:30", "天傀劫煞", now=NOW)
+        _rec = echofarm.current(c.state_dir)
+        _rec["started"] = "2026-09-09 04:00"
+        echofarm._store(c.state_dir).set("queues", "echo_farm", _rec)
+        import os as _os
+        _quiet_since = datetime(2026, 9, 9, 4, 30, tzinfo=SERVER_TZ).timestamp()
+        _os.utime(_logfile, (_quiet_since, _quiet_since))
+        check("刚开跑一分钟不算停", echofarm.tick(c, datetime(2026, 9, 9, 4, 1, tzinfo=SERVER_TZ)), "")
+        _before = len(launched)
+        check("五分钟没刷到东西就自己重开", echofarm.tick(c, datetime(2026, 9, 9, 4, 36, tzinfo=SERVER_TZ)), "")
+        check("真的重开了一次", launched[_before:].count(1), 1)
+        check("重开次数记下来了", echofarm.current(c.state_dir)["restarts"], 1)
+        check("刚重开完不重复开", echofarm.tick(c, datetime(2026, 9, 9, 4, 38, tzinfo=SERVER_TZ)), "")
+        check("还是只开过一次", launched[_before:].count(1), 1)
+        check("第一次只重开脚本，不动游戏", "stop" in launched[_before:], False)
+        # 2026-10-13 audit: nothing was stopped before the first relaunch, so a live
+        # OK-WW and a new `pythonw main.py -t 2 -e` could both drive one game.
+        check("first relaunch: the old OK-WW script is stopped before the new one starts",
+              launched[_before:], ["script", 1])
+
+        # 2026-09-09: the game itself wedged on a loading screen and restarting the
+        # script against it did nothing, twice, while the farm stood still.
+        _rec3 = echofarm.current(c.state_dir)
+        _rec3["restarted"] = "2026-09-09 04:36"
+        echofarm._store(c.state_dir).set("queues", "echo_farm", _rec3)
+        _mid = len(launched)
+        check("还是没进展就再来一次", echofarm.tick(c, datetime(2026, 9, 9, 4, 42, tzinfo=SERVER_TZ)), "")
+        check("第二次连游戏一起重启", "stop" in launched[_mid:], True)
+        check("重开次数记到 2", echofarm.current(c.state_dir)["restarts"], 2)
+        check("这时还在刷，没收工", bool(echofarm.current(c.state_dir)), True)
+
+        print("\n[重开了还是不写日志就别硬撑，收工并说清重开过几次]")
+        _rec2 = echofarm.current(c.state_dir)
+        _rec2["restarts"] = echofarm.MAX_RESTARTS
+        echofarm._store(c.state_dir).set("queues", "echo_farm", _rec2)
+        note = echofarm.tick(c, datetime(2026, 9, 9, 4, 55, tzinfo=SERVER_TZ))
+        check("收工了", "天傀劫煞" in note and "重开" in note, True)
+        check("配置还原了", cfg_now(c), ORIGINAL)
+        check("状态清空", echofarm.current(c.state_dir), {})
+        check("标记也撤了", echofarm.no_claim_on(), False)
+        _wb._okww_log = lambda: None
+        c = fresh()
+        echofarm.start(c, 1, "08:30", "天傀劫煞")
+        check("读不到日志时不许乱停", echofarm.tick(c, datetime(2026, 9, 9, 5, 0, tzinfo=SERVER_TZ)), "")
+        echofarm.finish(c, "收尾")
+    finally:
+        _wb._okww_log = _real_log
+
+    print("\n[判据是「有没有刷到东西」，不是「日志有没有在写」]")
+    # 2026-09-09: the game hung on a loading screen for sixteen minutes while OK-WW kept
+    # writing window-size and update-check lines. A watchdog that measured silence saw a
+    # busy log and never fired, and restarting the script against a wedged game did
+    # nothing twice over.
+    _noisy = tmpdir() / "noisy.log"
+    _wb2 = __import__("ark_relay.features.weekly.weeklyboss", fromlist=["x"])
+    _real2 = _wb2._okww_log
+    _wb2._okww_log = lambda: _noisy
+    try:
+        _noisy.write_text(
+            "2026-09-09 04:00:00 INFO farm echo on the face\n"
+            + "".join(f"2026-09-09 04:{m:02d}:00 INFO hwnd_window:do_update_window_size changed\n"
+                     for m in range(1, 40)),
+            encoding="utf-8")
+        stuck = echofarm.quiet_minutes(datetime(2026, 9, 9, 4, 40, tzinfo=SERVER_TZ))
+        check("日志一直在写，但四十分钟没刷到东西 → 算卡住", round(stuck), 40)
+        _noisy.write_text(
+            "2026-09-09 04:00:00 INFO hwnd_window:do_update_window_size changed\n"
+            "2026-09-09 04:39:00 INFO FarmEchoTask:farm echo walk_find_echo True\n",
+            encoding="utf-8")
+        fresh_ = echofarm.quiet_minutes(datetime(2026, 9, 9, 4, 40, tzinfo=SERVER_TZ))
+        check("刚刷到东西就不算卡住", round(fresh_), 1)
+        check("阈值给到五分钟（一趟约一分钟，死一次约两分钟）",
+              echofarm.RESTART_QUIET_MINUTES, 5)
+
+        # 2026-10-13 audit: a game in a retry loop logs 20-39 KB a minute, so the last
+        # progress line falls out of the 300 KB tail. The fallback was the file's mtime -
+        # "now" for a log that keeps growing - so quiet read 0 and nothing ever fired.
+        import os as _os2
+        _noise = "".join(f"2026-09-09 05:{m // 60:02d}:{m % 60:02d},000 INFO TaskExecutor retry loop "
+                         + "x" * 200 + "\n" for m in range(0, 3000))
+        _noisy.write_text("2026-09-09 04:00:00,000 INFO FarmEchoTask:farm echo on the face\n" + _noise,
+                          encoding="utf-8")
+        check("fixture: the progress line is beyond the 300 KB tail",
+              _noisy.stat().st_size - len("2026-09-09 04:00:00,000 INFO FarmEchoTask:farm echo on the face\n")
+              > echofarm._TAIL_BYTES, True)
+        _t = datetime(2026, 9, 9, 5, 50, tzinfo=SERVER_TZ)
+        _os2.utime(_noisy, (_t.timestamp(), _t.timestamp()))
+        check("no progress in the tail: measured from the launch, not the fresh mtime",
+              round(echofarm.quiet_minutes(_t, datetime(2026, 9, 9, 5, 20, tzinfo=SERVER_TZ))), 30)
+        check("no launch time: measured from the tail's first line (a floor)",
+              echofarm.quiet_minutes(_t) >= 5, True)
+        _c3 = fresh()
+        echofarm.start(_c3, 1, "08:30", "天傀劫煞", now=NOW)
+        _r3 = echofarm.current(_c3.state_dir)
+        _r3["started"] = "2026-09-09 05:20"
+        echofarm._store(_c3.state_dir).set("queues", "echo_farm", _r3)
+        _was3 = echofarm._launch
+        _l3 = []
+        echofarm._launch = lambda: (_l3.append(1), (True, ""))[1]
+        try:
+            echofarm.tick(_c3, _t)
+        finally:
+            echofarm._launch = _was3
+        check("a noisy stuck farm gets its restart", (len(_l3), echofarm.current(_c3.state_dir).get("restarts")), (1, 1))
+        echofarm.finish(_c3, "收尾")
+    finally:
+        _wb2._okww_log = _real2
+
+    print("\n[an earlier session's progress in the same file does not count for this launch]")
+    # 2026-10-13 review replay: the machine's real ok-script.2026-10-12.log, cut at
+    # 15:25:32 (the farm launched 15:23 after a morning run whose last progress line is
+    # 11:47:53). Read with a 15:28 restart at 15:33:30, quiet was 225.6 minutes - past
+    # STALL_MINUTES, a failed stop for a farm 10 minutes old.
+    import gzip as _gz
+    _day = tmpdir() / "ok-script.2026-10-12.log"
+    _day.write_bytes(_gz.decompress((fx_dir(Path(__file__), "fixtures")
+                                     / "ok-script-2026-10-12-cut-152532.log.gz").read_bytes()))
+    _real4 = _wbw._okww_log
+    _wbw._okww_log = lambda: _day
+    try:
+        _q = echofarm.quiet_minutes(datetime(2026, 10, 12, 15, 33, 30, tzinfo=SERVER_TZ),
+                                    datetime(2026, 10, 12, 15, 28, tzinfo=SERVER_TZ))
+        check("measured from the 15:28 restart, not the 11:47 line", round(_q, 1), 5.5)
+        check("…so below the stall stop", _q < echofarm.STALL_MINUTES, True)
+        _q0 = echofarm.quiet_minutes(datetime(2026, 10, 12, 15, 25, 40, tzinfo=SERVER_TZ),
+                                     datetime(2026, 10, 12, 15, 23, tzinfo=SERVER_TZ))
+        check("two minutes into the launch reads two minutes", round(_q0, 1), 2.7)
+    finally:
+        _wbw._okww_log = _real4
+
+    print("\n[进度关键词：只认今天真的会写出来的句子]")
+    # Real lines: OK-WW v3.7.3's from tests/replay/2026-09-07/wuwa/OK-WW-06-00-55.log
+    # (lines 168, 226, 275), the overrides' copied from their log_info calls.
+    _replay = (fx_dir(Path(__file__), "replay") / "2026-09-07" / "wuwa"
+               / "OK-WW-06-00-55.log").read_text(encoding="utf-8")
+    from ark_relay.features.okww_patch import okww_overlay as _ov
+    _overrides = _ov.source_text()
+    for _k in echofarm.PROGRESS:
+        check(f"「{_k}」今天还有人写（上游真实日志或覆盖层）", _k in _replay or _k in _overrides, True)
+    _REAL = [
+        "2026-09-07 10:06:50,862 INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm",
+        "2026-09-07 10:06:52,779 INFO TaskExecutor FarmEchoTask:enter combat None",
+        "2026-09-07 10:07:53,984 INFO TaskExecutor FarmEchoTask:farm echo on the face",
+        "2026-09-09 04:39:00,000 INFO TaskExecutor FarmEchoTask:限时提前开放：确认后直接进场，in_realm=True，整屏读到 []",
+        "2026-09-09 04:39:00,000 INFO TaskExecutor FarmEchoTask:刷声骸模式：复活成功，接着刷下一趟",
+    ]
+    for _line in _REAL:
+        _msg = _line.split("FarmEchoTask:", 1)[1]
+        check(f"真有人写：{_msg[:30]}", _line in _replay or _msg.split("，")[0] in _overrides, True)
+        check(f"算进度：{_msg[:30]}", any(k in _line for k in echofarm.PROGRESS), True)
+    _NOT = [
+        # The retired bosstip text patch's sentence: nothing writes it any more.
+        "2026-09-09 04:39:00,000 INFO TaskExecutor FarmEchoTask:限时提前开放：已经在场地里，跳过队伍和传送这两步",
+        # The overrides when the death dialog is not one they know: stuck, not moving.
+        "2026-09-09 04:39:00,000 INFO TaskExecutor FarmEchoTask:刷声骸模式：这不像死亡弹窗，不乱点。整屏读到 []",
+        "2026-09-09 04:39:00,000 INFO TaskExecutor FarmEchoTask:刷声骸模式：复活这一步没做成 TimeoutError()",
+    ]
+    for _line in _NOT:
+        check(f"不算进度：{_line.split('FarmEchoTask:', 1)[1][:30]}", any(k in _line for k in echofarm.PROGRESS), False)
+    _wb3 = __import__("ark_relay.features.weekly.weeklyboss", fromlist=["x"])
+    _real3, _f3 = _wb3._okww_log, tmpdir() / "kw.log"
+    _wb3._okww_log = lambda: _f3
+    try:
+        _f3.write_text(_REAL[0] + "\n" + "\n".join(_NOT) + "\n", encoding="utf-8")
+        check("卡在认不出的死亡弹窗上：从最后一次真进度算起",
+              round(echofarm.quiet_minutes(datetime(2026, 9, 9, 4, 40, tzinfo=SERVER_TZ))),
+              round((datetime(2026, 9, 9, 4, 40) - datetime(2026, 9, 7, 10, 6, 50)).total_seconds() / 60))
+        _f3.write_text("\n".join(_NOT) + "\n" + _REAL[3] + "\n", encoding="utf-8")
+        check("确认后直接进场算刚动过", round(echofarm.quiet_minutes(datetime(2026, 9, 9, 4, 40, tzinfo=SERVER_TZ))), 1)
+    finally:
+        _wb3._okww_log = _real3
+
+    print("\n[开跑时刻读不出来也不当成卡死]")
+    check("读不出开跑时刻返回 None", echofarm._started_at({"started": "不是时间"}), None)
+    check("读得出就是那个时刻", echofarm._started_at({"started": "2026-09-09 04:00"}).hour, 4)
+
+    print("\n[stopping only the old script: bounded in time, confirmed gone, or the full stop]")
+    # 2026-10-13: the old script was given a blind two seconds; then it was looked for
+    # ten times with each PowerShell call free to run to its 60 s guard, and an
+    # unreadable list closed the game at once. Now the step has STOP_SCRIPT_SECONDS in
+    # all, an unreadable list is asked again once, and the caller is told why.
+    import ark_relay.features.preupdate.preupdate_okww as _pko
+    import logging as _lg
+
+
+    class _Clock:
+        """A monotonic clock that pwsh calls and sleeps move forward."""
+        def __init__(self):
+            self.t = 1000.0
+
+        def __call__(self):
+            return self.t
+
+
+    def _stop_run(answers, pwsh_secs=0.5):
+        """Run the real stop_okww_script against fake pwsh: `answers` are what each
+    list call returns (a list, None, or "slow" for a call that runs to its timeout).
+    (result, seconds taken, timeouts handed to pwsh, naps)."""
+        clk, timeouts, naps, seq = _Clock(), [], [], iter(answers)
+
+        def stop(timeout=None):
+            timeouts.append(timeout)
+            clk.t += min(pwsh_secs, timeout)
+
+        def pids(timeout=None):
+            timeouts.append(timeout)
+            got = next(seq)
+            if got == "slow":
+                clk.t += timeout
+                return None
+            clk.t += min(pwsh_secs, timeout)
+            return got
+
+        def nap(n):
+            naps.append(n)
+            clk.t += n
+        real = _pko._stop_okww_python, _pko.okww_python_pids
+        _pko._stop_okww_python, _pko.okww_python_pids = stop, pids
+        try:
+            t0 = clk.t
+            try:
+                res = _real_stop_script(sleep=nap, clock=clk)
+            except (TypeError, StopIteration) as e:    # an older signature or an endless loop
+                res = f"crashed: {type(e).__name__}"
+            return res, clk.t - t0, timeouts, naps
+        finally:
+            _pko._stop_okww_python, _pko.okww_python_pids = real
+
+
+    # None before this bound existed, so the checks below fail rather than crash.
+    _BOUND = getattr(echofarm, "STOP_SCRIPT_SECONDS", None)
+    _res, _took, _to, _naps = _stop_run([[4242], [4242], []])
+    check("gone on the third look: ''", _res, "")
+    check("…after two one-second naps", _naps, [1, 1])
+    _res, _took, _to, _naps = _stop_run([[4242]] * 100)
+    check("still listed at the end: 'running'", _res, "running")
+    check("…within the step's time", _BOUND is not None and _took <= _BOUND + 1, True)
+    _res, _took, _to, _naps = _stop_run([None, []])
+    check("unreadable once, then empty: '' (asked again, not given up)", _res, "")
+    check("…asked again at once, no nap", _naps, [])
+    _res, _took, _to, _naps = _stop_run([None, None, []])
+    check("unreadable twice in a row: 'unreadable'", _res, "unreadable")
+    _res, _took, _to, _naps = _stop_run(["slow", "slow", []], pwsh_secs=0.5)
+    check("a hung pwsh: 'unreadable'", _res, "unreadable")
+    check("…and the step still ends in about STOP_SCRIPT_SECONDS",
+          _BOUND is not None and _took <= _BOUND + 2, True)
+    check("…every pwsh call got only the time left, never its 60 s guard",
+          _BOUND is not None and all(x is not None and x <= _BOUND for x in _to), True)
+
+
+    class _Warn(_lg.Handler):
+        def __init__(self):
+            super().__init__(_lg.WARNING)
+            self.msgs = []
+
+        def emit(self, record):
+            self.msgs.append(record.getMessage())
+
+
+    for _why, _says, _want in (("running", "停不掉", ["script", "stop", 1]),
+                               ("unreadable", "查了两次都查不到", ["script", "stop", 1]),
+                               ("", None, ["script", 1])):
+        _c3 = fresh()
+        echofarm.start(_c3, 1, "08:30", "天傀劫煞", now=NOW)
+        _r3 = echofarm.current(_c3.state_dir)
+        _r3["started"] = "2026-09-09 04:00"
+        echofarm._store(_c3.state_dir).set("queues", "echo_farm", _r3)
+        _wb._okww_log = lambda: _logfile
+        echofarm.stop_okww_script = lambda w=_why: (launched.append("script"), w)[1]
+        _h = _Warn()
+        echofarm.log.addHandler(_h)
+        try:
+            _b3 = len(launched)
+            echofarm.tick(_c3, datetime(2026, 9, 9, 4, 36, tzinfo=SERVER_TZ))
+            check(f"first relaunch, old script {_why or 'gone'}: {_want}", launched[_b3:], _want)
+            check(f"…the warning says why ({_says})",
+                  any("连游戏一起关了" in m and _says in m for m in _h.msgs) if _says
+                  else not any("连游戏一起关了" in m for m in _h.msgs), True)
+        finally:
+            echofarm.log.removeHandler(_h)
+            echofarm.stop_okww_script = lambda: launched.append("script") or ""
+            _wb._okww_log = _real_log
+
+    print("\n[收工那一步本身：先停计划任务，再把 OK-WW 的进程停干净]")
+    # The real function, not the stub - it is what actually ends the run on the machine.
+    import subprocess as _sp
+    import ark_relay.features.preupdate.preupdate_okww as _pk
+    _ran, _quiesced = [], []
+    _real_run, _real_q = _sp.run, _pk._okww_quiesce
+    class _Done:
+        returncode = 0
+        stdout = b""
+        stderr = b""
+
+
+    _sp.run = lambda *a, **k: (_ran.append(list(a[0]) if a else []), _Done())[1]
+    _pk._okww_quiesce = lambda *a, **k: _quiesced.append(1)
+    try:
+        # The stub above replaced the module attribute; reload to get the real one back.
+        import importlib
+        _mod = importlib.reload(sys.modules["ark_relay.features.echofarm.echofarm"])
+        _mod.STOP_BAT = str(tmpdir() / "ark-okww-stop.bat")   # never the repo cwd
+        _mod.stop_okww()
+        check("结束了计划任务", any("schtasks" in c and "/end" in c for c in _ran), True)
+        check("任务名对得上", any(_mod.TASK_NAME in c for c in _ran), True)
+        check("把 OK-WW 的进程也停了", _quiesced, [1])
+        check("游戏也关干净了就不多话", _mod.stop_okww(sleep=lambda _s: None), "")
+
+        print("\n[游戏关不掉就必须说出来，不许报「已收工」]")
+        # 2026-09-09: 收工 said 「配置已还原」 twice while 鸣潮 was still on screen. The
+        # relay is a service in session 0 and taskkill from there does not reach the game.
+        _mod.game_alive = lambda timeout=None: ["Client-Win64-Shipping.exe"]
+        _ran.clear()
+        _note = _mod.stop_okww(sleep=lambda _s: None)
+        check("话里点名还活着的进程", "Client-Win64-Shipping.exe" in _note, True)
+        check("话里说了没关掉、已交给我们这边去关", ("没关掉" in _note, "已交给我们这边去关" in _note), (True, True))
+        check("从交互桌面那边补了一刀", any(_mod.STOP_TASK in c for c in _ran), True)
+
+        # docs/SILENT-FAILURES-AUDIT.md echofarm.py:250 - a process list that cannot be
+        # read is not a clean desktop.
+        print("\n[tasklist fails: never read as 「the game is closed」]")
+        _mod = importlib.reload(sys.modules["ark_relay.features.echofarm.echofarm"])
+        _mod.STOP_BAT = str(tmpdir() / "ark-okww-stop.bat")
+        _sp.run = lambda *a, **k: (_ for _ in ()).throw(OSError("tasklist missing"))
+        left = _mod.game_alive()
+        check("not empty", bool(left), True)
+        check("names no real process (nothing gets killed by that name)",
+              any(x in _mod.GAME_PROCS for x in left), False)
+        _sp.run = lambda *a, **k: (_ran.append(list(a[0]) if a else []), _Done())[1] \
+            if a and a[0] and a[0][0] != "tasklist" else (_ for _ in ()).throw(OSError("tasklist missing"))
+        _note = _mod.stop_okww(sleep=lambda _s: None)
+        check("stop does not say 收工 cleanly", _note != "" and "程序列表" in _note, True)
+
+        # 2026-10-13 audit: game_alive looked only at the game's process names, so a
+        # stop could say clean while OK-WW (pythonw.exe) lived on and later wrote its
+        # in-memory config over the restored FarmEchoTask.json.
+        print("\n[OK-WW's own pythonw counts as still up]")
+        class _Py(_Done):
+            stdout = b'[{"ProcessId": 777}]'
+        _ran.clear()
+        _sp.run = lambda *a, **k: (_ran.append(list(a[0]) if a else []),
+                                   _Py() if a and any("pythonw.exe" in str(x) for x in a[0]) else _Done())[1]
+        check("a live OK-WW script is named, in plain words", _mod.game_alive(), ["OK-WW 脚本"])
+        _note = _mod.stop_okww(sleep=lambda _s: None)
+        check("stop does not report clean while it lives", "OK-WW 脚本" in _note, True)
+        # 2026-10-13 review: the owner read 「OK-WW 脚本（pythonw.exe，编号 777）」.
+        check("…without the program file or its number", ("pythonw" in _note, "777" in _note, "编号" in _note),
+              (False, False, False))
+        class _Py2(_Done):
+            stdout = b'[{"ProcessId": 777}, {"ProcessId": 778}]'
+        _sp.run = lambda *a, **k: (_ran.append(list(a[0]) if a else []),
+                                   _Py2() if a and any("pythonw.exe" in str(x) for x in a[0]) else _Done())[1]
+        check("two of them are still named once", _mod.game_alive(), ["OK-WW 脚本"])
+        check("the desktop kill takes it by PID",
+              "taskkill /F /PID 777" in Path(_mod.STOP_BAT).read_text(encoding="utf-8"), True)
+        _sp.run = lambda *a, **k: (_ for _ in ()).throw(OSError("no pwsh")) \
+            if a and any("pythonw.exe" in str(x) for x in a[0]) else _Done()
+        check("python list unreadable: not read as gone", _mod.game_alive(), [_mod.UNREADABLE_SCRIPT])
+        _sp.run = lambda *a, **k: _Done()
+        check("nothing up: clean", _mod.game_alive(), [])
+    finally:
+        _sp.run, _pk._okww_quiesce = _real_run, _real_q
+
+    print("\n[the wrap-up stop is bounded in time, and out of time it never says clean]")
+    # 2026-10-13 review: after the desktop kill, ten looks each ran a process query free
+    # to take its 60 s guard - one tick could last over ten minutes.
+    _mod = importlib.reload(sys.modules["ark_relay.features.echofarm.echofarm"])
+    _mod.STOP_BAT = str(tmpdir() / "ark-okww-stop.bat")
+    _BOUND2 = getattr(_mod, "STOP_OKWW_SECONDS", None)   # None before the bound: checks fail, not crash
+
+
+    def _wrapup_stop(alive, query_secs):
+        """The real stop_okww with fake time: `alive` gives each look's answer, and every
+    query runs `query_secs`, or to its timeout when None (a hung pwsh).
+    (note, seconds taken, timeouts handed out, looks)."""
+        clk = _Clock()
+        handed, looks = [], []
+
+        def spend(timeout):
+            handed.append(timeout)
+            clk.t += timeout if query_secs is None else min(query_secs, timeout or 60)
+
+        def quiesce(sleep=None, launcher_root=None, left=None):
+            spend(left() if left else 60)
+            spend(left() if left else 60)
+            clk.t += 2
+
+        def alive_now(timeout=None):
+            spend(timeout if timeout is not None else 60)
+            looks.append(1)
+            return alive(len(looks))
+
+        def pids(timeout=None):
+            spend(timeout if timeout is not None else 60)
+            return None if query_secs is None else [4242]
+
+        def nap(n):
+            clk.t += n
+        real = (_sp.run, _pk._okww_quiesce, _pk.okww_python_pids, _mod.game_alive, _mod._kill_on_desktop)
+        _sp.run = lambda *a, **k: _Done()
+        _pk._okww_quiesce, _pk.okww_python_pids = quiesce, pids
+        _mod.game_alive, _mod._kill_on_desktop = alive_now, (lambda pids=(): None)
+        try:
+            t0 = clk.t
+            try:
+                note = _mod.stop_okww(sleep=nap, clock=clk)
+            except TypeError as e:          # an older signature
+                note = f"crashed: {type(e).__name__}"
+            return note, clk.t - t0, handed, looks
+        finally:
+            (_sp.run, _pk._okww_quiesce, _pk.okww_python_pids, _mod.game_alive, _mod._kill_on_desktop) = real
+
+
+    _note, _took, _handed, _looks = _wrapup_stop(lambda n: [_mod.UNREADABLE_SCRIPT], None)
+    # Past the bound each remaining call still gets its one-second minimum: two in the
+    # quiesce, the look, the PID query, plus the quiesce's 2 s pause.
+    check("every query hangs: the stop still ends near its bound (at most 6 s past)",
+          _BOUND2 is not None and _took <= _BOUND2 + 6, True)
+    check("…instead of the ten minutes it could take", _took < 120, True)
+    check("…every query got only the time left", _BOUND2 is not None and all(x <= _BOUND2 for x in _handed), True)
+    check("…and the line does not say clean", (_note != "", "关干净" in _note, "已交给我们这边去关" in _note), (True, True, True))
+    check("…it names what was last seen", _mod.UNREADABLE_SCRIPT in _note, True)
+    _note, _took, _handed, _looks = _wrapup_stop(lambda n: ["Client-Win64-Shipping.exe"] if n < 3 else [], 0.5)
+    check("a normal stop: clean on the third look", (_note, len(_looks)), ("", 3))
+    _note, _took, _handed, _looks = _wrapup_stop(lambda n: ["Client-Win64-Shipping.exe"], 0.5)
+    check("a game that stays up with quick queries: ten looks after the first, as before", len(_looks), 11)
+    check("…the old 「没关掉」 line naming it", ("没关掉" in _note, "Client-Win64-Shipping.exe" in _note), (True, True))
+    check("…inside the bound", _BOUND2 is not None and _took <= _BOUND2, True)
+
+
+def _part_echo_farm_stop_and_backlog():
+    """The red button ends an echo farm, and a farm order that waited out its deadline is refused.
+
+Both from the 0.4.4 review (BOARD/0.4.4-审查/指令与显示.txt):
+* :38 estop stopped AUTO-MAS and killed processes only. The farm's record stayed,
+  and echofarm.tick relaunched OK-WW minutes later (from the second try with the
+  game), farming until the deadline and holding off the shutdown.
+* :31 a 「刷到 08:30」 pressed while the machine was off waited in the mailbox; read
+  against the boot time it rolled to the next day's 08:30 - a whole day of farming.
+
+    Formerly test_echo_farm_stop_and_backlog.py.
+    """
+    import json
+    import os
+    import types
+    from datetime import datetime, timedelta
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+
+    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+                 "win32con", "win32file", "servicemanager", "win32process",
+                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
+        sys.modules.setdefault(name, _Stub(name))
+
+    from ark_relay.features.phone import commands
+    from ark_relay.features.echofarm import echofarm
+    from ark_relay.features.phone import redbutton  # estop() reads its stop steps here
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.features.phone import phone_channel
+
+
+    ORIGINAL = {"Teleport to Boss": "Weekly Challenge", "Which Boss Challenge to Teleport": 1,
+                "Repeat Farm Count": 3}
+
+
+    class Cfg:
+        def __init__(self, root):
+            self.okww_dir = root
+            self.state_dir = root / "state"
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+
+
+    def fresh():
+        root = tmpdir()
+        d = root.joinpath(*echofarm._WORKING, "configs")
+        d.mkdir(parents=True)
+        (d / "FarmEchoTask.json").write_text(json.dumps(ORIGINAL), encoding="utf-8")
+        return Cfg(root)
+
+
+    launched = []
+    echofarm._launch = lambda: (launched.append("launch"), (True, ""))[1]
+    echofarm.stop_okww = lambda: launched.append("stop")
+    echofarm.NO_CLAIM = str(tmpdir() / "no-claim")
+
+
+    def at(d, hh, mm):
+        return datetime(2026, 10, d, hh, mm, tzinfo=SERVER_TZ)
+
+
+    print("\n[关机时 22:00 按「刷到 08:30」、第二天 08:45 开机才收到：不开刷]")
+    c, launched[:] = fresh(), []
+    ok, msg = echofarm.start(c, 1, "08:30", "天傀劫煞", now=at(6, 8, 45), sent=at(5, 22, 0))
+    check("拒收", ok, False)
+    check("没开 OK-WW", launched, [])
+    check("没留刷声骸记录", echofarm.current(c.state_dir), {})
+    check("配置没动", json.loads(echofarm._cfg_path(c.okww_dir).read_text(encoding="utf-8")), ORIGINAL)
+    check("说了是几点发的、已经过了", "10-05 22:00 发的" in msg and "已经过了 08:30" in msg)
+
+    print("\n[同一条、08:00 开机就收到：照常刷到当天 08:30，不顺延到后天]")
+    c, launched[:] = fresh(), []
+    ok, msg = echofarm.start(c, 1, "08:30", "天傀劫煞", now=at(6, 8, 0), sent=at(5, 22, 0))
+    check("开刷了", ok)
+    check("刷到 10-06 08:30", echofarm.current(c.state_dir).get("until"), "2026-10-06 08:30")
+
+    print("\n[在线按的（几秒前发出）：和以前一样]")
+    c, launched[:] = fresh(), []
+    ok, _ = echofarm.start(c, 1, "21:00", "天傀劫煞", now=at(5, 20, 0), sent=at(5, 20, 0) - timedelta(seconds=3))
+    check("开刷了", ok)
+    check("刷到当天 21:00", echofarm.current(c.state_dir).get("until"), "2026-10-05 21:00")
+    c, launched[:] = fresh(), []
+    ok, _ = echofarm.start(c, 1, "08:30", "天傀劫煞", now=at(5, 20, 0))
+    check("不知道发出时刻的：按现在算，顺延到明天", (ok, echofarm.current(c.state_dir).get("until")),
+          (True, "2026-10-06 08:30"))
+
+    print("\n[指令带来的发出时刻（unix 秒）交给 echofarm.start]")
+    got = {}
+    real_start = echofarm.start
+    echofarm.start = lambda cfg, boss, until, name, sent=None, **kw: (got.update(sent=sent), (True, ""))[1]
+    commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 1, "until": "08:30",
+                            "sent": int(at(5, 22, 0).timestamp())})
+    check("换成了机器时区的时刻", got.get("sent"), at(5, 22, 0))
+    commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 1, "until": "08:30"})
+    check("没带就是 None", got.get("sent"), None)
+
+    print("\n[weekly: true from the App reaches echofarm.start, with a weekly name when none is sent (2026-10-22)]")
+    echofarm.start = lambda cfg, boss, until, name, sent=None, weekly=False, **kw: (
+        got.update(boss=boss, name=name, weekly=weekly), (True, ""))[1]
+    commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 1, "until": "08:30", "weekly": True})
+    check("weekly passed on", got.get("weekly"), True)
+    check("default name says weekly, not 讨伐强敌's 1", got.get("name"), "周本第 1 个")
+    commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 1, "until": "08:30"})
+    check("no weekly key = overworld", got.get("weekly"), False)
+    check("overworld default name from wuwa_boss", got.get("name"), "天傀劫煞")
+    commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 1, "until": "08:30", "weekly": "yes"})
+    check("only a real true means weekly", got.get("weekly"), False)
+    echofarm.start = real_start
+
+
+    class Eng:
+        def scripts_running(self):
+            return False
+
+
+    class Notes:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body="", **kw):
+            self.sent.append((title, kw.get("alert", False)))
+            return False
+
+
+    class Log:
+        def info(self, *a, **k): pass
+        def warning(self, *a, **k): pass
+        def exception(self, *a, **k): pass
+
+
+    print("\n[开机读到的 echo_farm：发出时刻按 ntfy 收到的时间带进去，回执失败不报警]")
+    bodies = []
+    real_apply = commands.apply_command
+    commands.apply_command = lambda body: (bodies.append(dict(body)), (False, "过期了"))[1]
+    notes = Notes()
+    fn = phone_channel._make_phone_cmd(Eng(), notes, Log(), types.SimpleNamespace(watch=lambda: None),
+                                     lambda *_: None, tmpdir())
+    fn({"action": "echo_farm", "boss": 1, "until": "08:30",
+        "_meta": {"sent": 1759672800, "ntfy_time": 1759672805, "via": "backlog"}})
+    fn({"action": "echo_farm", "boss": 1, "until": "08:30", "_meta": {"sent": 1759672800, "via": "backlog"}})
+    fn({"action": "set_stage", "value": "1-7", "_meta": {"sent": 1759672800, "ntfy_time": 1759672805}})
+    commands.apply_command = real_apply
+    check("ntfy 的时间优先（手机钟可能快几分钟）", bodies[0].get("sent"), 1759672805)
+    check("没有 ntfy 时间就用手机的", bodies[1].get("sent"), 1759672800)
+    check("别的指令不加这个字段", "sent" in bodies[2], False)
+    # A phone order that did not take is an error: the group, every time (the user,
+    # 2026-10-06 02:46: every error to the group; phone_channel._phone_execute alert=not ok).
+    check("失败回执报群（每一条都带 alert=True）", [a for _, a in notes.sent], [True, True, True])
+
+    print("\n[刷声骸进行中按「停止一切」：刷声骸一起结束，tick 不再把它开起来]")
+    c, launched[:] = fresh(), []
+    os.environ["ARK_OKWW_DIR"] = str(c.okww_dir)
+    echofarm.start(c, 1, "23:00", "天傀劫煞", now=at(5, 20, 0))
+    redbutton._estop_stop_via_mas = lambda: ["早班"]
+    redbutton._estop_kill = lambda: None
+    redbutton._estop_alive = lambda: []
+    redbutton._estop_live_tasks = lambda: []
+    launched[:] = []
+    ok, msg = commands.estop(sleep=lambda n: None, state_dir=c.state_dir)
+    check("说停了", ok)
+    check("回执写了刷声骸也停了", "刷声骸也停了：刷天傀劫煞（等级没读到）结束" in msg)
+    check("刷声骸记录没了", echofarm.current(c.state_dir), {})
+    check("配置还原了", json.loads(echofarm._cfg_path(c.okww_dir).read_text(encoding="utf-8")), ORIGINAL)
+    check("之后的 tick 不再开 OK-WW", (echofarm.tick(c, now=at(5, 20, 30)), launched), ("", ["stop"]))
+
+    print("\n[没在刷声骸：回执和以前一样]")
+    ok, msg = commands.estop(sleep=lambda n: None, state_dir=c.state_dir)
+    check("没提刷声骸", (ok, "刷声骸" in msg), (True, False))
+
+    print("\n[结束刷声骸出错：不说「已停一切」]")
+    real_finish = echofarm.finish
+    echofarm.finish = lambda cfg, why: (_ for _ in ()).throw(OSError("磁盘满"))
+    ok, msg = commands.estop(sleep=lambda n: None, state_dir=c.state_dir)
+    echofarm.finish = real_finish
+    check("算没停干净", ok, False)
+    check("说了刷声骸没结束、怎么办", "刷声骸没结束" in msg and "结束刷声骸" in msg)
+
+    # The owner, 2026-10-12 20:04: an error left unreported is worse than the error.
+    # A wrap-up that went wrong on a stop by hand (the phone's stop-farm order, red button) is the
+    # same group alarm as at the deadline (engine._echo_farm_deadline); until then it was
+    # only on the phone receipt.
+    print("\n[手动停刷声骸 / 红按钮：收工出问题报群，干净收工不报群]")
+    from ark_relay.core import texts
+
+
+    def troubles(n):
+        return [a for t, a in n.sent if t == texts.ECHO_FARM_TROUBLE]
+
+
+    def farm_then(press, game_left):
+        c = fresh()
+        os.environ.update(ARK_OKWW_DIR=str(c.okww_dir), ARK_STATE_DIR=str(c.state_dir))
+        echofarm.stop_okww = lambda: launched.append("stop")
+        echofarm.start(c, 1, "23:00", "天傀劫煞", now=at(5, 20, 0))
+        if game_left:
+            echofarm.stop_okww = lambda: "；**游戏还开着**"
+        n = Notes()
+        phone_channel._make_phone_cmd(Eng(), n, Log(), types.SimpleNamespace(watch=lambda: None),
+                                      lambda *_: None, c.state_dir)(press)
+        echofarm.stop_okww = lambda: launched.append("stop")
+        check("刷声骸记录没了", echofarm.current(c.state_dir), {})
+        return n
+
+
+    n = farm_then({"action": "echo_farm_stop", "confirmed": True}, game_left=True)
+    check("手机停、游戏还开着：报群一条", troubles(n), [True])
+    n = farm_then({"action": "echo_farm_stop", "confirmed": True}, game_left=False)
+    check("手机停、干净收工：不报群", troubles(n), [])
+    # The red button's real estop waits between its steps; the stop steps are stubbed
+    # above, so the waits are skipped too (phone_channel calls commands.estop).
+    _real_estop = commands.estop
+    commands.estop = lambda sleep=None, state_dir=None: _real_estop(sleep=lambda _n: None, state_dir=state_dir)
+    n = farm_then({"action": "estop"}, game_left=True)
+    check("红按钮、游戏还开着：报群一条", troubles(n), [True])
+    n = farm_then({"action": "estop"}, game_left=False)
+    check("红按钮、干净收工：不报群", troubles(n), [])
+
+    print("\n" +("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_okww_alive_cache, _part_okww_drift, _part_okww_error_event, _part_okww_error_reason, _part_okww_exit_race, _part_okww_failed_reason, _part_okww_i18n, _part_okww_landed, _part_okww_names_not_numbers, _part_okww_python_filter, _part_okww_quiesce_order, _part_okww_report, _part_okww_structured]))
+    sys.exit(run_parts([_part_okww_alive_cache, _part_okww_drift, _part_okww_error_event, _part_okww_error_reason, _part_okww_exit_race, _part_okww_failed_reason, _part_okww_i18n, _part_okww_landed, _part_okww_names_not_numbers, _part_okww_python_filter, _part_okww_quiesce_order, _part_okww_report, _part_okww_structured, _part_okww_battle_pass, _part_okww_battle_pass_claim, _part_okww_claim_readback, _part_okww_daily_chests, _part_okww_farm_hook, _part_okww_merge_step, _part_okww_plan_bits, _part_okww_revive_and_retry, _part_okww_stamina_end, _part_okww_stamina_nest_verdict, _part_okww_upstream_no_farm, _part_okww_nest_capture, _part_okww_nest_expected, _part_okww_nest_fought_then_full, _part_okww_nest_names, _part_okww_nest_travel_retry, _part_okww_nest_v373, _part_okww_no_challenge_window, _part_okww_weekly_boss_step, _part_okww_weekly_entry_paths, _part_okww_weekly_spend, _part_okww_overlay_main, _part_okww_overlay_faults, _part_okww_overlay_install_guard, _part_okww_overlay_pending, _part_okww_overlay_param_start, _part_okww_overlay_copies, _part_echo_farm_main, _part_echo_farm_stop_and_backlog]))

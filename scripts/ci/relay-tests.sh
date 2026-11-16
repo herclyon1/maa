@@ -99,14 +99,7 @@ export -f timed_test gate_run_one_test run_one_test
 cd "$ROOT/relay" || exit 1
 echo "python3: $(command -v python3) ($(python3 -c 'import sys; print(sys.version.split()[0])')); limit ${TEST_TIMEOUT_S} s per test file"
 
-if ! run_one_test tests/test_manifest_covers_tree.py; then
-  echo "✗ test_manifest_covers_tree.py failed"
-  exit 1
-fi
-
-for f in tests/test_*.py; do
-  [ "$f" = tests/test_manifest_covers_tree.py ] || echo "$f"
-done >"$GATED/all"
+printf '%s\n' tests/test_*.py >"$GATED/all"
 : >"$GATED/skip"
 for x in ${EXCLUDE[@]+"${EXCLUDE[@]}"}; do
   if ! grep -qxF "tests/$x" "$GATED/all"; then
@@ -117,16 +110,13 @@ for x in ${EXCLUDE[@]+"${EXCLUDE[@]}"}; do
 done
 grep -vxF -f "$GATED/skip" "$GATED/all" >"$GATED/run"
 
-# run_tests_timed's line, except that the test lines go straight to this
-# script's stdout instead of into a file printed at the end; the wall seconds
-# still go to the file test_speed_gate reads.
 rc=0
 TIMEFORMAT=%2R
 { time xargs -P 8 -I{} bash -c 'run_one_test "$1"' _ {} 2>&1; } 2>"$GATED/tests.wall" <"$GATED/run" || rc=$?
-n=$(($(wc -l <"$GATED/run") + 1))
+n=$(wc -l <"$GATED/run" | tr -d ' ')
 if [ "$rc" != 0 ]; then
   echo "✗ some of the $n tests failed or timed out (see the FAIL / TIMEOUT lines above)"
   exit 1
 fi
-echo "$n tests passed (test_manifest_covers_tree.py + $((n - 1)) more); excluded: ${EXCLUDE[*]:-none}"
+echo "$n tests passed; excluded: ${EXCLUDE[*]:-none}"
 test_speed_gate "$TEST_TIMES" "$GATED/tests.wall" || exit 1

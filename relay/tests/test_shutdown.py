@@ -1,22 +1,17 @@
-"""The shutdown decision: after a restart, runs by hand and test runs, holds past the shift, the notice, an open test window, rounds, a morning gap on the evening, a farm, the whitelist; the exit window, the power-off return code, a power-off that went through, the skip wording.
+"""Post-shift power-off, skip-next-shutdown mark, farm waits, and persistent StateStore."""
+from __future__ import annotations
 
-One part per former file, each run on its own (tests/_parts.py): test_shutdown.py, test_exit_shutdown_window.py, test_power_off_returncode.py, test_poweroff_ok.py, test_skip_shutdown_wording.py.
-"""
-# Each part imports the relay itself, after its own environment is set, as the file it was did at
-# its top.
 # ruff: noqa: PLC0415
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, fx_dir, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
-# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
-# still reads as using all of it.
 _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
-def _part_main():
+def _part_shutdown_main():
     """Exercise the shutdown gate against a fake AUTO-MAS + ledger.
 
 Since the user's rule of 2026-10-10 18:31 (Tokyo; quoted at shutdown.py:_say_if_moment_passed in
@@ -2194,7 +2189,7 @@ person's power-off must not cut, the first two being that afternoon's.
 
 
     NOW = datetime(2026, 10, 22, 16, 44, 50, tzinfo=SERVER_TZ)
-    idle = lambda: False   # noqa: E731
+    idle = lambda: False  # noqa: E731
 
 
     def why(sd, running=idle, lines=()):
@@ -2328,5 +2323,1706 @@ Checks:
     check("nothing to pull back: says it may already be spent", "已经用掉" in none, True)
 
 
+def _part_skip_failed_pushed():
+    """A skip of a queue that did not take effect, or whose restore failed, reaches the group.
+
+engine._observe_modes sent every message of modes.process_skip under texts.SKIP_MODE,
+which notify.route_of sends to the log only - so 「跳过「早班」失败：…——没生效，今天
+照常跑」 (the queue the user wanted skipped runs anyway) and 「跳过「早班」后恢复失败：…」
+(the queue stays switched off) never reached anyone. The user's rule, 2026-10-06:
+「不论多少次什么错误都要发」 - a failure that did not recover goes to the group every
+time. The acknowledgements of a skip that took stay on the log route.
+
+Driven through a real Engine tick step with modes.process_skip's real code; only
+queues.apply (AUTO-MAS's answer) and plan.schedule are faked.
+
+    Formerly test_skip_failed_pushed.py.
+    """
+    from datetime import datetime
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.core import engine as eng_mod
+    from ark_relay.features.modes import modes
+    from ark_relay.core import texts
+    from ark_relay.core import plan as _plan
+    from ark_relay.features.schedule import queues as _q
+    from ark_relay.core.config import SERVER_TZ, Config
+    from ark_relay.core.ledger import State
+    from ark_relay.core.notify import route_of
+
+
+    class Notes:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body="", alert=False, **kw):
+            self.sent.append((title, body, alert))
+            return []
+
+
+    class Src:
+        def fetch(self, seen):
+            return []
+
+
+    ANSWER = {"早班": (True, "调度程序已确认")}
+    live = {"早班": True}
+
+
+    def fake_apply(d, q, enabled):
+        ok, detail = ANSWER[q]
+        if ok:
+            live[q] = enabled
+        return ok, detail
+
+
+    _real = _q.apply, _plan.schedule
+    _q.apply = fake_apply
+    _plan.schedule = lambda d: [{"name": q, "times": ["09:00"]} for q in live if live[q]]
+
+
+    def engine():
+        sd = tmpdir()
+        cfg = Config()
+        cfg.state_dir = sd
+        cfg.automas_dir = tmpdir()
+        live["早班"] = True
+        return eng_mod.Engine(cfg, source=Src(), state=State(sd), notifier=Notes())
+
+
+    def pushed(e):
+        return [(t, a, route_of(t, alert=a)) for t, b, a in e.notifier.sent]
+
+
+    today = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
+    try:
+        print("[跳过没生效（调度程序没接受）：进群一条，说今天照常跑]")
+        e = engine()
+        ANSWER["早班"] = (False, "队列「早班」定时关闭没生效：调度程序里它仍是开启")
+        modes.add_day_queue(e.state.dir, today, "早班")
+        e._observe_modes()
+        got = pushed(e)
+        check("一条报警，走群", [(a, r) for _, a, r in got], [(True, "group")])
+        check("正文就是那句失败", any("没生效，今天照常跑" in b for _, b, _ in e.notifier.sent), True)
+        e._observe_modes()
+        check("下一轮同一句不再推（同一个错，一次）", len(e.notifier.sent), 1)
+
+        print("[跳过生效了：确认那条照旧只进日志]")
+        e = engine()
+        ANSWER["早班"] = (True, "调度程序已确认")
+        modes.add_day_queue(e.state.dir, today, "早班")
+        e._observe_modes()
+        got = pushed(e)
+        check("一条，标题是跳过模式，不带报警", [(t, a) for t, a, _ in got], [(texts.SKIP_MODE, False)])
+        check("走日志", [r for _, _, r in got], ["log"])
+
+        print("[推送没送出去：记一条 WARNING，带原话]")
+        e = engine()
+        ANSWER["早班"] = (False, "调度程序没有应答")
+        modes.add_day_queue(e.state.dir, today, "早班")
+        tries = []
+        e.notifier.send = lambda t, b="", alert=False, **k: (tries.append((t, alert)), ["群机器人发送失败"])[1]
+        import logging
+        seen = []
+        h = type("H", (logging.Handler,), {"emit": lambda self, r: seen.append((r.levelno, r.getMessage()))})()
+        eng_mod.log.addHandler(h)
+        try:
+            e._observe_modes()
+        finally:
+            eng_mod.log.removeHandler(h)
+        check("推了，没送出", tries, [(eng_mod.SKIP_FAILED, True)])
+        check("记一条 WARNING，带那句失败（错误推送会把它补推进群）",
+              [lvl for lvl, m in seen if "没生效，今天照常跑" in m and "没推出去" in m], [logging.WARNING])
+    finally:
+        _q.apply, _plan.schedule = _real
+
+
+def _part_skip_flag_collision():
+    """两个功能共用「skip-」这个前缀，清理陈旧标记时把对方扫掉了。
+
+「某天跳过队列」写 skip-<YYYY-MM-DD>.flag，「下次跑完不关机」写
+skip-next-shutdown.flag，两者住同一个 state 目录。process_skip 每一拍
+（30 秒）都会清理「不是今天的」skip-*.flag，glob 把后者也匹配上，于是
+人在手机上按下开关，半分钟内就被删掉，日志还写「未曾生效（当天机器
+没开机）」——而机器正开着。发现于 2026-08-31：按下后回读 True，40 秒后
+再读已经没了。
+
+    Formerly test_skip_flag_collision.py.
+    """
+    from datetime import datetime
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.modes import modes
+    from ark_relay.features.schedule import queues as _q
+    from ark_relay.core import plan as _plan
+    from ark_relay.core.statestore import StateStore
+    from ark_relay.core.config import SERVER_TZ
+
+    STATE = tmpdir() / "state"; STATE.mkdir(parents=True)
+    NOW = datetime(2026, 8, 31, 12, 44, tzinfo=SERVER_TZ)
+
+
+    print("\n[the bug] 清理陈旧队列标记不许碰「下次跑完不关机」")
+    modes.set_skip_shutdown(STATE, True)
+    check("按下之后确实开着", modes.skip_armed(STATE), True)
+    modes.process_skip(STATE, None, NOW)
+    check("扫过一拍还在", modes.skip_armed(STATE), True)
+    for _ in range(5):                      # 引擎每 30 秒一拍，多扫几次
+        modes.process_skip(STATE, None, NOW)
+    check("扫过六拍还在", modes.skip_armed(STATE), True)
+    check("用掉之后才消失", modes.take_skip(STATE), True)
+    check("用完就没了", modes.skip_armed(STATE), False)
+
+    print("\n[没有回归] 真正过期的队列标记照旧清掉")
+    store = StateStore(STATE)
+    store.set("queues", "skip_day:2026-08-20", "Evening-MAA")
+    modes.set_skip_shutdown(STATE, True)
+    msgs = modes.process_skip(STATE, None, NOW)
+    check("过期的队列标记被清除", store.get("queues", "skip_day:2026-08-20"), None)
+    check("而且说了这件事", any("过期的跳过标记" in m for m in msgs), True)
+    check("关机标记没受牵连", modes.skip_armed(STATE), True)
+
+    print("\n[边界] 名字长得像日期但不是日期的，不当队列标记处理")
+    for bogus in ("next_shutdown", "2026-13-40", "", "pending"):
+        check(f"{bogus!r} 不是日期", modes._is_day(bogus), False)
+    check("2026-08-20 是日期", modes._is_day("2026-08-20"), True)
+
+    print("\n[2026-09-30] 同一天跳两个队列：两个都停、取消其一不动另一个、过点各自恢复、跨日清空")
+    S3 = tmpdir() / "state"; S3.mkdir(parents=True)
+    AM = Path("/tmp/automas")
+    T0 = datetime(2026, 9, 30, 8, 50, tzinfo=SERVER_TZ)
+    D3 = T0.strftime("%Y-%m-%d")
+    live = {"早班": True, "晚班": True}
+    def fake_apply(d, q, enabled):
+        live[q] = enabled
+        return True, "ok"
+    _real_apply, _real_sched = _q.apply, _plan.schedule
+    _q.apply = fake_apply
+    _plan.schedule = lambda d: [{"name": q, "times": {"早班": ["09:00"], "晚班": ["21:00"]}[q]}
+                               for q in live if live[q]]
+    try:
+        # the machine's state at deploy time: 早班 engaged in the old one-dict shape
+        StateStore(S3).set("queues", "skip_restore", {"queue": "早班", "day": D3, "last_time": "09:00"})
+        live["早班"] = False
+        check("旧格式恢复标记照读", modes.skipped_today_all(S3, T0), ["早班"])
+        modes.add_day_queue(S3, D3, "晚班")
+        check("再跳晚班：两个都算今天跳过", modes.skipped_today_all(S3, T0), ["晚班", "早班"])
+        check("存的还是单个字符串（只有一个未生效）",
+              StateStore(S3).get("queues", f"skip_day:{D3}"), "晚班")
+        msgs = modes.process_skip(S3, AM, T0)
+        check("晚班停用了", live["晚班"], False)
+        check("早班没被提前恢复", live["早班"], False)
+        check("两条恢复标记都在（列表）",
+              sorted(m["queue"] for m in StateStore(S3).get("queues", "skip_restore")), ["早班", "晚班"])
+        check("晚班的跳过标记用掉了", StateStore(S3).get("queues", f"skip_day:{D3}"), None)
+        ok, _ = modes.unskip(S3, AM, "晚班", T0)
+        check("取消晚班：晚班立刻恢复、早班仍停", (ok, live["晚班"], live["早班"]), (True, True, False))
+        check("剩下早班一条，存回单个 dict（旧版也读得懂）",
+              StateStore(S3).get("queues", "skip_restore"), {"queue": "早班", "day": D3, "last_time": "09:00"})
+        # two flags, same tick
+        modes.add_day_queue(S3, D3, "晚班")
+        ok, msg = modes.unskip(S3, AM, "中班", T0)
+        check("取消没跳过的：两个名字都说出来", (ok, "早班" in msg and "晚班" in msg), (False, True))
+        modes.process_skip(S3, AM, T0)
+        check("又停了晚班", live["晚班"], False)
+        modes.process_skip(S3, AM, datetime(2026, 9, 30, 9, 31, tzinfo=SERVER_TZ))
+        check("早班过点恢复，晚班还没到点", (live["早班"], live["晚班"]), (True, False))
+        modes.process_skip(S3, AM, datetime(2026, 9, 30, 21, 31, tzinfo=SERVER_TZ))
+        check("晚班过点也恢复，标记清空",
+              (live["晚班"], StateStore(S3).get("queues", "skip_restore")), (True, None))
+        # two flags engage in one tick; a bad entry in the list is dropped alone
+        StateStore(S3).set("queues", f"skip_day:{D3}", ["早班", "晚班"])
+        modes.process_skip(S3, AM, T0)
+        check("同一拍两个都停", (live["早班"], live["晚班"]), (False, False))
+        StateStore(S3).set("queues", "skip_restore",
+                           [*StateStore(S3).get("queues", "skip_restore"), "坏的"])
+        msgs = modes.process_skip(S3, AM, datetime(2026, 9, 30, 9, 31, tzinfo=SERVER_TZ))
+        check("坏的那条单独清掉并说了", any("损坏" in m for m in msgs), True)
+        check("晚班的标记没被一起清掉", modes.skipped_today_all(S3, T0), ["晚班"])
+        # cross-day: yesterday's unengaged list is cleared
+        StateStore(S3).set("queues", "skip_day:2026-09-29", ["早班", "晚班"])
+        msgs = modes.process_skip(S3, AM, T0)
+        check("跨日：昨天没生效的一串清掉",
+              (StateStore(S3).get("queues", "skip_day:2026-09-29"), any("2026-09-29" in m for m in msgs)),
+              (None, True))
+        StateStore(S3).set("queues", f"skip_day:{D3}", [])
+        check("空列表不当默认队列", modes.skipped_today_all(S3, T0), ["晚班"])
+        # a skip pressed on the phone while the engine is disabling another queue
+        S4 = tmpdir() / "state"; S4.mkdir(parents=True)
+        live.update({"早班": True, "晚班": True})
+        def apply_while_pressed(d, q, enabled):
+            live[q] = enabled
+            if q == "早班" and not enabled:
+                modes.add_day_queue(S4, D3, "晚班")
+            return True, "ok"
+        _q.apply = apply_while_pressed
+        StateStore(S4).set("queues", f"skip_day:{D3}", "早班")
+        modes.process_skip(S4, AM, T0)
+        check("停早班途中拨了晚班：晚班的跳过没被写掉",
+              StateStore(S4).get("queues", f"skip_day:{D3}"), "晚班")
+        modes.process_skip(S4, AM, T0)
+        check("下一拍晚班也停了", (live["早班"], live["晚班"]), (False, False))
+    finally:
+        _q.apply, _plan.schedule = _real_apply, _real_sched
+
+
+    print("\n[2026-09-15] skipped_today / unskip：手机页的队列开关要能读到、也能关回去")
+    S2 = tmpdir() / "state"; S2.mkdir(parents=True)
+    DAY = NOW.strftime("%Y-%m-%d")
+    check("没跳过时是 None", modes.skipped_today(S2, NOW), None)
+    StateStore(S2).set("queues", f"skip_day:{DAY}", "早班")
+    check("标记写下就读得到", modes.skipped_today(S2, NOW), "早班")
+    ok, msg = modes.unskip(S2, None, "晚班", NOW)
+    check("取消别的队列不算", ok, False)
+    ok, msg = modes.unskip(S2, None, "早班", NOW)
+    check("标记阶段取消：成功", ok, True)
+    check("标记没了", modes.skipped_today(S2, NOW), None)
+    # engaged stage: marker present, queue disabled in AUTO-MAS - the restore goes through queues.apply
+    calls = []
+    _real_apply = _q.apply
+    _q.apply = lambda d, q, enabled: (calls.append((q, enabled)) or (True, "ok"))
+    try:
+        StateStore(S2).set("queues", "skip_restore", {"queue": "早班", "day": DAY, "last_time": "09:00"})
+        check("已生效阶段也读得到", modes.skipped_today(S2, NOW), "早班")
+        ok, msg = modes.unskip(S2, Path("/tmp/automas"), "早班", NOW)
+        check("已生效阶段取消：成功", ok, True)
+        check("立刻把队列重新启用", calls, [("早班", True)])
+        check("恢复标记清掉了", modes.skipped_today(S2, NOW), None)
+        ok, msg = modes.unskip(S2, Path("/tmp/automas"), "早班", NOW)
+        check("再取消一次：如实说本来就没跳过", ok, False)
+    finally:
+        _q.apply = _real_apply
+
+
+def _part_skip_receipt_lost():
+    """A skip that failed stays a failure when its red receipt could not be written.
+
+Audit s1 (outside its scope, modes.py:467, 10-13): engine.skip_failed tells a failed
+skip from an acknowledgement only by the red receipt modes writes with the same words.
+_skip_receipt swallowed a write failure, so the failure went out on the quiet
+acknowledgement route (texts.SKIP_MODE) instead of the SKIP_FAILED group alarm, and
+the phone page kept showing the press's green 「已记下」.
+
+    Formerly test_skip_receipt_lost.py.
+    """
+
+    RELAY = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(RELAY))
+
+
+    from ark_relay.core import engine
+    from ark_relay.features.modes import modes
+
+
+    sd = tmpdir()
+    other = tmpdir()
+    real_add = modes.add_receipt
+
+
+    def broken_add(*a, **k):
+        raise OSError(28, "No space left on device")
+
+
+    modes.add_receipt = broken_add
+    try:
+        msg = modes._engage_failed(sd, "早班", "调度程序没回应")
+    finally:
+        modes.add_receipt = real_add
+
+    check("nothing reached the receipts file", (sd / modes._RECEIPTS).exists(), False)
+    check("the failure is still a failure for the engine", engine.skip_failed(sd, msg), True)
+    check("the phone page lists it as red", [r["ok"] for r in modes.receipts(sd) if r["text"] == msg], [False])
+    check("another state folder does not see it", engine.skip_failed(other, msg), False)
+
+    ok_msg = "今天（2026-10-13）跳过队列「晚班」：已临时停用，过后自动恢复"
+    modes._skip_receipt(sd, "skip_today", True, ok_msg)
+    check("a written green receipt is still an acknowledgement", engine.skip_failed(sd, ok_msg), False)
+
+    if fails:
+        print("FAIL:", fails)
+        sys.exit(1)
+    print("all checks passed")
+
+
+def _part_skip_receipts():
+    """Skip-queue outcomes reach the phone page's receipts, and a failed skip lets go of the day.
+
+2026-09-30 (检查, BOARD/evidence/回执显示-0930 row 2a): process_skip only returned
+strings, which the engine pushed as notifications. Nothing went to the receipts
+the phone page shows, and on failure _maybe_engage kept the day flag "to retry on
+the next tick", so the snapshot's 「今天跳过队列」 still listed the queue and the
+page showed the switch as skipped and applied while the queue was going to run.
+
+Now: a failed engage drops the flag and writes a red receipt saying the skip did
+not take and the queue runs today; a successful one writes a green receipt whose
+text is queues.apply's own answer (「调度程序已确认」 only when the backend read
+the value back). Restores write receipts too. The engine pushes a fresh snapshot
+after a skip step so the receipt reaches the page without waiting for a refresh.
+
+    Formerly test_skip_receipts.py.
+    """
+    import os
+    from datetime import datetime
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.features.modes import modes
+    from ark_relay.core import plan as _plan
+    from ark_relay.features.schedule import queues as _q
+    from ark_relay.core import texts
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.core.statestore import StateStore
+
+
+    T0 = datetime(2026, 9, 30, 8, 51, tzinfo=SERVER_TZ)
+    DAY = T0.strftime("%Y-%m-%d")
+    AM = Path("/tmp/automas-not-used")
+    ANSWER = {"早班": (True, ""), "晚班": (True, "")}
+    live = {"早班": True, "晚班": True}
+
+
+    def fake_apply(d, q, enabled):
+        ok, detail = ANSWER[q]
+        if ok:
+            live[q] = enabled
+        return ok, detail
+
+
+    _real_apply, _real_sched = _q.apply, _plan.schedule
+    _q.apply = fake_apply
+    _plan.schedule = lambda d: [{"name": q, "times": {"早班": ["09:00"], "晚班": ["21:00"]}[q]}
+                               for q in live if live[q]]
+
+
+    def fresh():
+        s = tmpdir() / "state"
+        s.mkdir(parents=True)
+        live.update({"早班": True, "晚班": True})
+        return s
+
+
+    def rcpt(s):
+        return [(r["action"], r["ok"], r["text"]) for r in modes.receipts(s)]
+
+
+    try:
+        print("[a] 生效时失败：回执红、说今天照常跑、当天跳过标记清掉、快照不再列它")
+        S = fresh()
+        ANSWER["早班"] = (False, "队列「早班」定时关闭没生效：调度程序里它仍是开启")
+        modes.add_day_queue(S, DAY, "早班")
+        msgs = modes.process_skip(S, AM, T0)
+        r = rcpt(S)
+        check("一条回执", len(r), 1)
+        check("动作是 skip_today（手机开关发的那个）", r and r[0][0], "skip_today")
+        check("ok=false", r and r[0][1], False)
+        check("回执带队列名、说没生效、今天照常跑",
+              bool(r) and all(w in r[0][2] for w in ("「早班」", "没生效", "今天照常跑")), True)
+        check("回执带上调度程序的原话", bool(r) and "仍是开启" in r[0][2], True)
+        check("推送也是同一句", bool(r) and r[0][2] in msgs, True)
+        check("当天跳过标记没了", StateStore(S).get("queues", f"skip_day:{DAY}"), None)
+        check("快照的今天跳过队列不再列它", modes.skipped_today_all(S, T0), [])
+        check("没留恢复标记", StateStore(S).get("queues", "skip_restore"), None)
+        check("队列还开着", live["早班"], True)
+        msgs2 = modes.process_skip(S, AM, T0)
+        check("下一拍不再重试、不再出消息", msgs2, [])
+        check("下一拍不多写回执", len(modes.receipts(S)), 1)
+
+        print("\n[a2] 没有 AUTO-MAS 目录：同样红回执、标记清掉")
+        S = fresh()
+        modes.add_day_queue(S, DAY, "晚班")
+        msgs = modes.process_skip(S, None, T0)
+        r = rcpt(S)
+        check("一条红回执", [(a, ok) for a, ok, _ in r], [("skip_today", False)])
+        check("说了今天照常跑", bool(r) and "今天照常跑" in r[0][2] and "「晚班」" in r[0][2], True)
+        check("标记清掉", modes.skipped_today_all(S, T0), [])
+
+        print("\n[a3] 两个队列一个成一个败：只丢败的那个")
+        S = fresh()
+        ANSWER["早班"] = (False, "队列「早班」定时关闭失败：调度程序报错（超时）")
+        ANSWER["晚班"] = (True, "队列「晚班」：定时关闭（调度程序已确认）")
+        modes.add_day_queue(S, DAY, "早班")
+        modes.add_day_queue(S, DAY, "晚班")
+        modes.process_skip(S, AM, T0)
+        check("今天跳过的只剩晚班", modes.skipped_today_all(S, T0), ["晚班"])
+        check("两条回执：早班红、晚班绿", [(ok, "早班" in t) for _, ok, t in rcpt(S)],
+              [(False, True), (True, False)])
+
+        print("\n[b] 生效成功：绿回执，文字是 queues.apply 自己的话")
+        S = fresh()
+        ANSWER["早班"] = (True, "队列「早班」：定时关闭（调度程序已确认）")
+        modes.add_day_queue(S, DAY, "早班")
+        modes.process_skip(S, AM, T0)
+        r = rcpt(S)
+        check("一条绿回执 skip_today", [(a, ok) for a, ok, _ in r], [("skip_today", True)])
+        check("带「调度程序已确认」", bool(r) and "队列「早班」：定时关闭（调度程序已确认）" in r[0][2], True)
+        check("仍算今天跳过（恢复标记在）", modes.skipped_today_all(S, T0), ["早班"])
+
+        print("\n[b2] 走改文件那条路（调度程序没开）：不说调度程序已确认")
+        S = fresh()
+        ANSWER["早班"] = (True, "队列「早班」：定时关闭（备份 QueueConfig.bak-20260930-085100.json）")
+        modes.add_day_queue(S, DAY, "早班")
+        modes.process_skip(S, AM, T0)
+        r = rcpt(S)
+        check("绿回执", [(a, ok) for a, ok, _ in r], [("skip_today", True)])
+        check("没有「调度程序已确认」", bool(r) and "调度程序已确认" in r[0][2], False)
+        check("带备份文件名（apply 的原话）", bool(r) and "备份" in r[0][2], True)
+
+        print("\n[c] 过点恢复成功：unskip_today 绿回执")
+        ANSWER["早班"] = (True, "队列「早班」：定时开启（调度程序已确认）")
+        modes.process_skip(S, AM, datetime(2026, 9, 30, 9, 31, tzinfo=SERVER_TZ))
+        r = rcpt(S)
+        check("第二条是 unskip_today 绿", r[-1][:2] if r else None, ("unskip_today", True))
+        check("文字带队列名和 apply 的原话", bool(r) and "「早班」" in r[-1][2] and "调度程序已确认" in r[-1][2], True)
+
+        print("\n[c2] 过点恢复失败：unskip_today 红回执，每拍重试但回执只写一次")
+        S = fresh()
+        ANSWER["早班"] = (True, "队列「早班」：定时关闭（调度程序已确认）")
+        modes.add_day_queue(S, DAY, "早班")
+        modes.process_skip(S, AM, T0)
+        ANSWER["早班"] = (False, "队列「早班」定时开启没生效：调度程序里它仍是关闭")
+        later = datetime(2026, 9, 30, 9, 31, tzinfo=SERVER_TZ)
+        for _ in range(5):
+            modes.process_skip(S, AM, later)
+        r = rcpt(S)
+        check("一绿一红", [(a, ok) for a, ok, _ in r], [("skip_today", True), ("unskip_today", False)])
+        check("红的说了恢复失败和原话", bool(r) and "恢复失败" in r[-1][2] and "仍是关闭" in r[-1][2], True)
+        check("恢复标记还在（下拍再试）", modes.skipped_today_all(S, T0), ["早班"])
+        ANSWER["早班"] = (True, "队列「早班」：定时开启（调度程序已确认）")
+        modes.process_skip(S, AM, later)
+        check("再试成功补一条绿", rcpt(S)[-1][:2], ("unskip_today", True))
+
+        print("\n[d] 回执文字过人话闸门")
+        for _, _, t in rcpt(S):
+            check(t[:30], texts.plain(t), [])
+    finally:
+        _q.apply, _plan.schedule = _real_apply, _real_sched
+
+    print("\n[e] 引擎：跳过这一步有新消息就把状态推给手机页，同一句不重复推")
+    TMP = tmpdir()
+    os.environ.update(ARK_HISTORY_DIR=str(TMP / "h"), ARK_AUTOMAS_DIR="",
+                      ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
+                      WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
+    from ark_relay.core import engine as eng_mod
+    from ark_relay.core.config import Config
+    from ark_relay.core.ledger import State
+
+
+    class Notes:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body="", **kw):
+            self.sent.append((title, body))
+            return []
+
+
+    class Src:
+        def fetch(self, seen):
+            return []
+
+
+    cfg = Config()
+    cfg.state_dir = tmpdir()
+    e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+    e._scripts_running = lambda: False
+    pushed = []
+    e._push_state = lambda why: pushed.append(why)
+    real_ps = modes.process_skip
+    modes.process_skip = lambda *a, **k: ["跳过「早班」失败：x——没生效，今天照常跑；要跳过请再按一次"]
+    try:
+        e._observe_modes()
+        check("推了一次状态", len(pushed), 1)
+        e._observe_modes()
+        check("同一句第二拍不再推", len(pushed), 1)
+        modes.process_skip = lambda *a, **k: []
+        e._observe_modes()
+        check("没消息不推", len(pushed), 1)
+        e._push_state = None
+        modes.process_skip = lambda *a, **k: ["另一句"]
+        e._observe_modes()
+        check("没接手机通道（None）也不出错", len(e.notifier.sent), 2)
+    finally:
+        modes.process_skip = real_ps
+
+
+def _part_skip_sat_out():
+    """A queue skipped on purpose stays skipped for that day's checks after its restore.
+
+2026-11-01: 晚班 was skipped (skip_today), the machine stayed on, the restore re-enabled the
+queue at 22:03:45 (Beijing) and at 22:03:47 the missed-run check pushed 「🔌 晚班 没有运行」;
+the overdue check and the shutdown wait also still counted 晚班 as missing MAA.
+
+    Formerly test_skip_sat_out_1101.py.
+    """
+    import json
+    import os
+    from datetime import datetime
+
+    TMP = tmpdir()
+    AUTOMAS = TMP / "AUTO-MAS"
+    (AUTOMAS / "config").mkdir(parents=True)
+    STATE = TMP / "state"
+    STATE.mkdir()
+    HIST = TMP / "history"
+    HIST.mkdir()
+
+    (AUTOMAS / "config" / "QueueConfig.json").write_text(json.dumps({
+        "instances": [{"uid": "q1"}],
+        "q1": {"Info": {"Name": "晚班", "TimeEnabled": True},
+               "SubConfigsInfo": {
+                   "TimeSet": {"t1": {"Info": {"Enabled": True, "Time": "21:30"}}},
+                   "QueueItem": {"i1": {"Info": {"ScriptId": "s1"}}}}}}), encoding="utf-8")
+    (AUTOMAS / "config" / "ScriptConfig.json").write_text(json.dumps({
+        "instances": [{"uid": "s1"}],
+        "s1": {"Info": {"Name": "arknights", "Path": "D:\\MAA-v5.1.0-win-x64"},
+               "SubConfigsInfo": {"UserData": {"u1": {"Info": {"Name": "arknights"}}}}}}),
+        encoding="utf-8")
+
+    os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
+                      ARK_STATE_DIR=str(STATE), SERVERCHAN_KEY="", ARK_LLM_KEY="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.core.config import Config, SERVER_TZ
+    from ark_relay.core.ledger import State
+    from ark_relay.core.notify import Notifier
+    from ark_relay.core.engine import Engine
+    from ark_relay.features.modes import modes
+    from ark_relay.features.schedule import queues as _q
+    from ark_relay.features.shutdown import shutdown
+
+    sent = []
+
+
+    class FakeNotifier(Notifier):
+        def send(self, title, body, *, alert=False, daily=False):
+            sent.append((title, alert))
+            return []
+
+
+    cfg = Config()
+    E = Engine(cfg, source=None, state=State(cfg.state_dir), notifier=FakeNotifier(cfg))
+    E._boot_time = lambda now: at(8, 0)
+
+
+    def at(hh, mm):
+        return datetime(2026, 11, 1, hh, mm, 45, tzinfo=SERVER_TZ)
+
+
+    DAY = "2026-11-01"
+
+
+    def reset():
+        sent.clear()
+        E._missed_alerted.clear()
+        E.state.store.pop("marks", f"alerted:{DAY}")
+        E.state.store.pop("queues", f"skip_done:{DAY}")
+
+
+    print("[control] not skipped: 22:03 with no 21:30 record still alarms")
+    reset()
+    E._check_missed_runs(at(22, 3))
+    check("alarms", len(sent), 1)
+
+    print("\n[the 11-01 false alarm] skipped, engaged, restored after the slot: silent")
+    reset()
+    real_apply = _q.apply
+    _q.apply = lambda d, q, enabled: (True, "")
+    try:
+        modes.add_day_queue(STATE, DAY, "晚班")
+        modes.process_skip(STATE, AUTOMAS, at(21, 8))     # engages: marker for today
+        check("engaged", modes.skipped_today_all(STATE, at(21, 9)), ["晚班"])
+        modes.process_skip(STATE, AUTOMAS, at(22, 3))     # past the slot: restored, marker dropped
+        check("phone switch is off again", modes.skipped_today_all(STATE, at(22, 4)), [])
+        check("but the day remembers it sat out", modes.sat_out(STATE, DAY), ["晚班"])
+    finally:
+        _q.apply = real_apply
+    E._check_missed_runs(at(22, 3))
+    check("no 「没有运行」", sent, [])
+
+    print("\n[overdue and shutdown] the skipped queue owes no script")
+    q = {"name": "晚班", "due": at(21, 30).replace(second=0), "kinds": ["MAA"]}
+    check("missing kinds", shutdown._missing_kinds(E, q, []), [])
+
+    print("\n[only that day] tomorrow's 21:30 is checked as usual")
+    check("tomorrow not sat out", modes.sat_out(STATE, "2026-11-02"), [])
+
+    print("\nall checks passed" if not fails else f"\n{len(fails)} FAILED: {fails}")
+
+
+def _part_skip_shutdown_bat_error():
+    """skip-shutdown.bat shows Python's own error when the status read gives nothing.
+
+The status read sent stderr to nul (`2^>nul`), so every failure - an import error
+after a version change, an unreadable state.json - showed the same 「读不出来 ——
+中继没装好，或者 Python 路径不对」. Now stderr goes to a temp file that is typed
+when the read gives nothing (and the missing-Python case says that). STATE is
+also cleared before each read: a menu redraw after a failed read showed the
+previous value. No cmd.exe on the Mac, so the file is read as text.
+
+    Formerly test_skip_shutdown_bat_error.py.
+    """
+    import re
+
+    ROOT = Path(__file__).resolve().parents[2]
+    bat = (ROOT / "scripts" / "windows" / "skip-shutdown.bat").read_bytes().decode("utf-8").replace("\r\n", "\n")
+
+
+    read = next((ln for ln in bat.splitlines() if ln.startswith("for /f") and "skip_armed" in ln), "")
+    check("the status read is there", bool(read), True)
+    check("its stderr is not thrown away", "2^>nul" in read, False)
+    m = re.search(r'2\^>"(%\w+%)"', read)
+    check("its stderr goes to a file", bool(m), True)
+    var = m.group(1) if m else "%ERRF%"
+    empty = bat[bat.find('if "%STATE%"==""'):bat.find(") else (", bat.find('if "%STATE%"==""'))]
+    check("an empty read types that file", f'type "{var}"' in empty, True)
+    check("the old blanket reason is gone", "中继没装好，或者 Python 路径不对" in empty, False)
+    before = bat[:bat.find(read)] if read else ""
+    check("STATE is cleared before each read", 'set "STATE="' in before[before.rfind(":menu"):], True)
+    check("the error file is cleared before each read", f'del "{var}"' in before[before.rfind(":menu"):], True)
+
+
+def _part_farm_poweroff():
+    import json
+    import sys
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _tmp import tmpdir
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.host import shutdown_signs as S
+
+    fails = []
+
+
+    def check(label, got, want=True):
+        ok = got == want
+        print(("  ✓ " if ok else "  ✗ ") + label + ("" if ok else f"  got {got!r} want {want!r}"))
+        if not ok:
+            fails.append(label)
+
+
+    TMP = tmpdir()
+    REQ_AT = datetime(2026, 11, 13, 0, 20, 6, tzinfo=timezone.utc)      # 08:20:06 on the relay's clock
+    ASKED = {"clock": "08:20:06", "at": REQ_AT, "process": r"C:\WINDOWS\system32\shutdown.exe (INS)", "user": r"INS\Administrator"}
+
+
+    def mark(**kw):
+        d = TMP / f"m{len(list(TMP.iterdir()))}"
+        d.mkdir()
+        body = {"at": REQ_AT.timestamp() - 1, "by": "is_run.py", "outcome": "deadline"}
+        body.update(kw)
+        (d / S.FARM_POWEROFF_MARK).write_text(json.dumps(body), encoding="utf-8")
+        return d
+
+
+    print("[the farm's own deadline power-off is recognised]")
+    got = S.farm_poweroff_planned(ASKED, base=mark())
+    check("is_run.py deadline mark 1 s before the request", bool(got))
+    check("names the script", (got or {}).get("by"), "is_run.py")
+    check("the mark's time on the relay's clock", (got or {}).get("at"), "08:20:05")
+    check("spa_run.py counts too", bool(S.farm_poweroff_planned(ASKED, base=mark(by="spa_run.py", outcome="maxrounds"))))
+
+    print("[anything else is pushed as before]")
+    check("no mark", S.farm_poweroff_planned(ASKED, base=TMP / "nothing-here"), None)
+    check("no request standing", S.farm_poweroff_planned(None, base=mark()), None)
+    check("request not from shutdown.exe", S.farm_poweroff_planned(dict(ASKED, process=r"C:\Windows\explorer.exe"), base=mark()), None)
+    check("mark from another script", S.farm_poweroff_planned(ASKED, base=mark(by="someone.py")), None)
+    check("the farm failed", S.farm_poweroff_planned(ASKED, base=mark(outcome="failed")), None)
+    check("no outcome", S.farm_poweroff_planned(ASKED, base=mark(outcome="")), None)
+    check("mark 31 minutes before the request", S.farm_poweroff_planned(ASKED, base=mark(at=REQ_AT.timestamp() - 31 * 60)), None)
+    check("mark after the request (a later run)", S.farm_poweroff_planned(ASKED, base=mark(at=REQ_AT.timestamp() + 60)), None)
+    bad = TMP / "bad"
+    bad.mkdir()
+    (bad / S.FARM_POWEROFF_MARK).write_text("{not json", encoding="utf-8")
+    check("unreadable mark", S.farm_poweroff_planned(ASKED, base=bad), None)
+
+    if fails:
+        print("FAILED:", fails)
+        sys.exit(1)
+    print("all checks passed")
+
+
+def _part_place_desktop_bat():
+    import sys
+    import tempfile
+    from pathlib import Path
+
+    ROOT = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(ROOT / "relay"))
+    from ark_relay.core.statestore import StateStore
+    from ark_relay.features.modes import modes
+
+    fails = []
+
+
+    def require(name, ok, detail=""):
+        print(("ok   " if ok else "FAIL ") + name + ("" if ok or not detail else f": {detail}"))
+        if not ok:
+            fails.append(name)
+
+
+    with tempfile.TemporaryDirectory() as tmp:
+        st = Path(tmp)
+        relay_store = StateStore(st)
+        relay_store.set("versions", "code", "1")
+        ok, msg = modes.set_skip_shutdown(st, True)
+        require("switch receipt is the relay's own wording",
+                ok and msg.startswith("已记下「下次跑完不关机」"), msg)
+        require("a running relay sees the mark at once (skip_armed, fresh store)", modes.skip_armed(st))
+        require("... and through its long-lived store", relay_store.get("modes", "skip_next_shutdown") is True)
+        relay_store.set("versions", "code", "2")
+        require("the relay's next write keeps the mark", modes.skip_armed(st)
+                and StateStore(st).get("versions", "code") == "2")
+        modes.set_skip_shutdown(st, False)
+        require("pulling it back is seen at once too", not modes.skip_armed(st)
+                and relay_store.get("modes", "skip_next_shutdown") is None)
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
+
+
+def _part_statestore_main():
+    """state.json：一个文件、登记过的字段才能写、原子落盘、旧文件自动迁入。
+
+    Formerly test_statestore.py.
+    """
+    import json, logging, sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core.statestore import StateStore
+
+
+    class Warns(logging.Handler):
+        """Collects the WARNING lines of one logger (each one is a group message)."""
+
+        def __init__(self, name):
+            super().__init__(logging.WARNING)
+            self.lines = []
+            logging.getLogger(name).addHandler(self)
+
+        def emit(self, record):
+            self.lines.append(record.getMessage())
+
+
+    d = tmpdir()
+    s = StateStore(d)
+    print("[空目录：读到空段，不落盘]")
+    check("weekly 空", s.section("weekly"), {})
+    check("还没有文件", (d / "state.json").exists(), False)
+
+    print("[登记过的能写，没登记的拒绝]")
+    s.set("weekly", "garden", {"done_week": "2026-W37"})
+    check("写进去", s.get("weekly", "garden"), {"done_week": "2026-W37"})
+    check("落盘了", json.loads((d / "state.json").read_text(encoding="utf-8"))["weekly"]["garden"], {"done_week": "2026-W37"})
+    try:
+        s.set("weekly", "made_up", 1); check("未登记键被拒", False, True)
+    except KeyError as e:
+        check("未登记键被拒", "没在字段表里登记" in str(e), True)
+    s.set("marks", "report:2026-09-07", "2026-09-07T22:00:00")
+    check("通配键", s.get("marks", "report:2026-09-07"), "2026-09-07T22:00:00")
+    s.pop("weekly", "garden")
+    check("pop", s.get("weekly", "garden"), None)
+
+    print("[另一个实例看到同一份（按 mtime 重读）]")
+    s2 = StateStore(d)
+    check("读到", s2.get("marks", "report:2026-09-07"), "2026-09-07T22:00:00")
+    s2.set("versions", "okww", "v3.6.7")
+    check("第一个实例也看到", s.get("versions", "okww"), "v3.6.7")
+
+    print("[旧文件迁入]")
+    d2 = tmpdir()
+    (d2 / "garden.json").write_text(json.dumps({"done_week": "2026-W36"}), encoding="utf-8")
+    (d2 / "weeklyboss.json").write_text(json.dumps({"index": 1, "name": "千傀重楼", "done_week": "2026-W37"}), encoding="utf-8")
+    (d2 / "okww-version.txt").write_text("v3.6.7", encoding="utf-8")
+    (d2 / "annihilation.json").write_text("{}", encoding="utf-8")   # 空的不迁
+    t = StateStore(d2)
+    check("garden 迁入", t.get("weekly", "garden"), {"done_week": "2026-W36"})
+    check("boss 迁入", t.get("weekly", "boss")["name"], "千傀重楼")
+    check("版本迁入", t.get("versions", "okww"), "v3.6.7")
+    check("空文件不迁", t.get("weekly", "annihilation"), None)
+    check("旧文件改名保留", (d2 / "garden.json.migrated").exists() and not (d2 / "garden.json").exists(), True)
+    check("再来一个实例不重复迁", StateStore(d2).get("weekly", "garden"), {"done_week": "2026-W36"})
+
+    print("[按天/按卡池的旧标记也迁：一次全搬]")
+    d3 = tmpdir()
+    (d3 / "report-2026-09-06.sent").write_text("", encoding="utf-8")
+    (d3 / "interim-2026-09-06.sent").write_text("7", encoding="utf-8")
+    (d3 / "interim-2026-09-05.sent").write_text("", encoding="utf-8")     # 旧空标记
+    (d3 / "banner-明日方舟-202609041200.sent").write_text("", encoding="utf-8")
+    (d3 / "skip-next-shutdown.flag").write_text("skip", encoding="utf-8")
+    (d3 / "shutdown-skipped.txt").write_text("2026-09-06:1", encoding="utf-8")
+    (d3 / "pending.json").write_text(json.dumps({"MaaEnd|endfield": {"run_id": "x"}}), encoding="utf-8")
+    u = StateStore(d3)
+    check("日报标记", u.get("marks", "report:2026-09-06"), True)
+    check("临时日报带条数", u.get("marks", "interim:2026-09-06"), "7")
+    check("旧空标记原样保留（条数不详）", u.get("marks", "interim:2026-09-05"), "")
+    check("卡池标记", u.get("marks", "banner:明日方舟-202609041200"), True)
+    check("别关机开关", u.get("modes", "skip_next_shutdown"), True)
+    check("被吃掉的关机机会", u.get("modes", "shutdown_skipped"), "2026-09-06:1")
+    check("告警队列", u.get("queues", "pending"), {"MaaEnd|endfield": {"run_id": "x"}})
+    check("旧文件都改名了", sorted(p.name for p in d3.glob("*.sent")), [])
+
+    print("[State 读回来的语义没变]")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core.ledger import State
+    st = State(d3)
+    check("report_sent", st.report_sent("2026-09-06"), True)
+    check("没发过的那天", st.report_sent("2026-09-07"), False)
+    check("interim_covered 带条数", st.interim_covered("2026-09-06"), 7)
+    check("旧空标记 → 不再重播", st.interim_covered("2026-09-05"), 10**6)
+    check("没发过 → 0", st.interim_covered("2026-09-07"), 0)
+    # A non-numeric marker for a day still being judged is a bug (writes are atomic):
+    # it silently suppresses every further interim that day, so it is said - once,
+    # since the interim check runs every tick.
+    cw = Warns("ark.core")
+    st.store.set("marks", "interim:2026-09-08", "abc")
+    check("非数字标记仍按「已发、条数不详」", [st.interim_covered("2026-09-08") for _ in range(3)], [10**6] * 3)
+    check("非数字标记说一声，只说一次", len([ln for ln in cw.lines if "interim:2026-09-08" in ln]), 1)
+    st.store.set("marks", "interim:2026-09-08", "3")
+    check("改好后照常", st.interim_covered("2026-09-08"), 3)
+    st.store.set("marks", "interim:2026-09-08", "")
+    st.interim_covered("2026-09-08")
+    check("又坏了再说一次", len([ln for ln in cw.lines if "interim:2026-09-08" in ln]), 2)
+    check("卡池", st.banner_announced("明日方舟-202609041200"), True)
+    check("告警队列", st.load_pending(), {"MaaEnd|endfield": {"run_id": "x"}})
+    st.mark_report_sent("2026-09-07")
+    check("写完能读回", st.report_sent("2026-09-07"), True)
+
+    print("[state.json 已存在时，后来才补的旧文件也要迁——不能只在首次建档时迁]")
+    d4 = tmpdir()
+    import ark_relay.core.statestore as SS
+    SS._SWEPT.clear()
+    first = StateStore(d4)
+    first.set("weekly", "garden", {"done_week": "2026-W37"})    # 先有了 state.json
+    (d4 / "report-2026-09-07.sent").write_text("", encoding="utf-8")
+    (d4 / "pending.json").write_text(json.dumps({"MaaEnd|endfield": {"run_id": "y"}}), encoding="utf-8")
+    (d4 / "gameupdate-pending.json").write_text(json.dumps({"鸣潮": "客户端待更新"}), encoding="utf-8")
+    SS._SWEPT.clear()                                            # 模拟下一次进程启动
+    later = StateStore(d4)
+    check("后补的日报标记迁进来了", later.get("marks", "report:2026-09-07"), True)
+    check("后补的告警队列迁进来了", later.get("queues", "pending"), {"MaaEnd|endfield": {"run_id": "y"}})
+    check("后补的待更新登记迁进来了", later.get("updates", "gameupdate_pending"), {"鸣潮": "客户端待更新"})
+    check("原有的值没被动", later.get("weekly", "garden"), {"done_week": "2026-W37"})
+    check("旧文件收走了", sorted(p.name for p in d4.glob("*.sent")), [])
+
+    print("[state.json 里已有值时，旧文件不许覆盖它]")
+    d5 = tmpdir()
+    SS._SWEPT.clear()
+    s5 = StateStore(d5)
+    s5.set("versions", "okww", "v3.6.7")
+    (d5 / "okww-version.txt").write_text("v3.6.5", encoding="utf-8")   # 陈旧的遗留
+    SS._SWEPT.clear()
+    check("以 state.json 为准", StateStore(d5).get("versions", "okww"), "v3.6.7")
+    check("陈旧文件也收走", (d5 / "okww-version.txt").exists(), False)
+
+    print("[state.json unreadable: copied aside before anything overwrites it, said once per mtime]")
+    # Until 2026-10-10 the WARNING said the old content was untouched on disk, and the
+    # next set() overwrote state.json with the near-empty dict it fell back to.
+    import os
+    d6 = tmpdir()
+    SS._SWEPT.clear()
+    SS._CORRUPT_SAID.clear()
+    (d6 / "state.json").write_text('{"weekly": {"garden": {"done_week": "2026-W4', encoding="utf-8")
+    os.utime(d6 / "state.json", (1_790_000_000, 1_790_000_000))
+    sw = Warns("ark.statestore")
+    check("读不出来按空", StateStore(d6).section("weekly"), {})
+    check("别的实例再读不再说", [StateStore(d6).get("modes", "debug_until") for _ in range(3)], [None] * 3)
+    copies = sorted(d6.glob("state.json.corrupt-*"))
+    check("另存了一份", len(copies), 1)
+    check("另存的是原样", copies and copies[0].read_text(encoding="utf-8"), '{"weekly": {"garden": {"done_week": "2026-W4')
+    check("只说一次，说出另存的文件名", [copies[0].name in ln for ln in sw.lines] if copies else sw.lines, [True])
+    StateStore(d6).set("versions", "okww", "v3.6.7")
+    check("写入后另存的还在", copies and copies[0].exists(), True)
+    (d6 / "state.json").write_text("{bad", encoding="utf-8")
+    os.utime(d6 / "state.json", (1_790_000_100, 1_790_000_100))
+    StateStore(d6).get("versions", "okww")
+    check("又坏了（新的 mtime）再说一次、再存一份", (len(sw.lines), len(list(d6.glob("state.json.corrupt-*")))), (2, 2))
+
+    print("\n[清单-1108 A-07：同一进程里另一个实例刚写过，mtime 碰巧一样也不读旧缓存；写的副本是深拷贝]")
+    d7 = tmpdir()
+    a, b = StateStore(d7), StateStore(d7)
+    a.set("updates", "queue_skips", [{"script": "MAA"}])
+    check("b 先读一遍", b.get("updates", "queue_skips"), [{"script": "MAA"}])
+    st = (d7 / "state.json").stat()
+    a.set("updates", "queue_skips", [])
+    os.utime(d7 / "state.json", ns=(st.st_atime_ns, st.st_mtime_ns))     # the same mtime as b's copy
+    check("a 写过之后，b 读到的是新的（不是 mtime 相同的旧缓存）", b.get("updates", "queue_skips"), [])
+    c = StateStore(d7)
+    c.set("updates", "queue_skips", [{"script": "OK-WW"}])
+    data = c._writable()
+    data["updates"]["queue_skips"].append({"script": "MaaEnd"})
+    check("改写副本里的列表，不动缓存", c.get("updates", "queue_skips"), [{"script": "OK-WW"}])
+
+
+def _part_state_read_lock():  # noqa: C901
+    """state.json reads that a Windows lock refuses, and alarm day marks written by two
+writers: no alarm pushed twice, no mark lost, no relay state lost.
+
+Review of 99999b8e (10-17), one scenario per finding:
+  1. A plain read of state.json that hit a lock (PermissionError, or any OSError)
+     copied the healthy file aside as state.json.corrupt-* and cached {} until the
+     file's mtime changed: every alarm day mark answered "not sent", so an alarm going
+     through unresolved.send was pushed a second time. A write that met an OSError
+     other than a lock on its read put the near-empty fallback over the file; the
+     legacy sweep did the same after a plain read that a lock refused; a state.json
+     holding JSON that is not a table crashed every read.
+  2. daymarks._mark_alerted built the day's list from a read outside the write lock
+     (served from the cached copy) and set() wrote it whole: a mark another writer
+     made in between was dropped.
+
+    Formerly test_state_read_lock_1017.py.
+    """
+    import json
+    import logging
+    import os
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.core import statestore
+    from ark_relay.core.statestore import StateStore
+    from ark_relay.features.alarm import handle, unresolved
+
+    DAY = "2026-10-08"
+    MARK = f"alerted:{DAY}"
+    REAL_READ_TEXT = Path.read_text
+    NO_WAITS = (0.0, 0.0, 0.0)
+
+
+    class Lines(logging.Handler):
+        """WARNING and up on ark.statestore: each such line is a group message."""
+
+        def __init__(self, logger):
+            super().__init__(logging.WARNING)
+            self.lines = []
+            logger.addHandler(self)
+
+        def emit(self, record):
+            self.lines.append(record.getMessage())
+
+
+    LINES = Lines(statestore.log)
+
+
+    class read_fails:
+        """Path.read_text of state.json raises `exc` (default: the PermissionError a
+    Windows sharing violation becomes) while inside, every time."""
+
+        def __init__(self, exc=None):
+            self.exc = exc or PermissionError(13, "state.json being scanned (test)")
+            self.tries = 0
+
+        def __enter__(self):
+            self.waits = statestore.LOCK_WAITS
+            statestore.LOCK_WAITS = NO_WAITS
+
+            def _read(path, *a, **kw):
+                if Path(path).name == statestore.FILE:
+                    self.tries += 1
+                    raise self.exc
+                return REAL_READ_TEXT(path, *a, **kw)
+            Path.read_text = _read
+            return self
+
+        def __exit__(self, *a):
+            Path.read_text = REAL_READ_TEXT
+            statestore.LOCK_WAITS = self.waits
+
+
+    class Notes:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body="", alert=False, **kw):
+            self.sent.append(title)
+            return []
+
+
+    class Eng:
+        """What unresolved.send and daymarks use of the engine: one long-lived store."""
+
+        def __init__(self, d):
+            self.state = types.SimpleNamespace(dir=d, store=StateStore(d))
+            self.notifier = Notes()
+
+        def _already_alerted(self, day, key):
+            return handle._already_alerted(self, day, key)
+
+        def _mark_alerted(self, day, key):
+            return handle._mark_alerted(self, day, key)
+
+
+    def folder(data=None):
+        d = tmpdir()
+        if data is not None:
+            (d / statestore.FILE).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return d
+
+
+    def bump(d, by=5):
+        """Move state.json's mtime on, as a write by another writer does."""
+        st = (d / statestore.FILE).stat()
+        os.utime(d / statestore.FILE, (st.st_atime, st.st_mtime + by))
+
+
+    def on_disk(d):
+        return json.loads(REAL_READ_TEXT(d / statestore.FILE, encoding="utf-8"))
+
+
+    def corrupt_copies(d):
+        return sorted(p.name for p in d.glob(statestore.FILE + ".corrupt-*"))
+
+
+    def forget(d):
+        """This process has read nothing of `d` yet (a relay just started)."""
+        getattr(statestore, "_LAST_GOOD", {}).pop(str(d / statestore.FILE), None)
+
+
+    def section(title, fn):
+        print(f"\n[{title}]")
+        LINES.lines.clear()
+        try:
+            fn()
+        except Exception as exc:  # noqa: BLE001
+            check(f"{title}: ran to the end", f"{type(exc).__name__}: {exc}", "")
+        finally:
+            Path.read_text = REAL_READ_TEXT
+
+
+    def item1a():
+        d = folder()
+        eng = Eng(d)
+        title = "明日方舟 没跑成（test）"
+        check("first push goes out", unresolved.send(eng, DAY, "未解决", "run-1", title, "body"), True)
+        StateStore(d).set("versions", "okww", "v9")     # another writer: the file's mtime moves on
+        bump(d)
+        with read_fails():
+            again = unresolved.send(eng, DAY, "未解决", "run-1", title, "body")
+            marked = handle._already_alerted(eng, DAY, unresolved._key("未解决", "run-1"))
+        check("state.json locked: the replayed record is not pushed again",
+              (again, eng.notifier.sent.count(title)), (True, 1))
+        check("state.json locked: its day mark still reads as sent", marked, True)
+        check("a healthy file a lock refused is not copied aside", corrupt_copies(d), [])
+        check("no WARNING / ERROR (group message) for a lock on a plain read", LINES.lines, [])
+        check("the lock gone, the next read sees what the other writer wrote",
+              eng.state.store.get("versions", "okww"), "v9")
+
+
+    def item1b():
+        d = folder({"marks": {MARK: ["k"]}, "modes": {"debug_until": "2026-10-08 23:00"}})
+        before = (d / statestore.FILE).read_bytes()
+        forget(d)
+        cold = StateStore(d)
+        with read_fails() as lock:
+            cold.get("marks", MARK)
+        check("a first read waits the lock out before giving up", lock.tries, len(NO_WAITS) + 1)
+        check("the lock gone, the same instance reads the file (nothing cached from the lock)",
+              cold.get("marks", MARK), ["k"])
+        check("the file is left as it was", (d / statestore.FILE).read_bytes(), before)
+        check("and not copied aside", corrupt_copies(d), [])
+        check("no WARNING / ERROR", LINES.lines, [])
+
+
+    def item1c():
+        d = folder({"marks": {MARK: ["k"]}, "modes": {"skip_next_shutdown": True}})
+        StateStore(d).get("marks", MARK)                # read once in this process
+        bump(d)
+        with read_fails() as lock:
+            got = (StateStore(d).get("marks", MARK), StateStore(d).get("modes", "skip_next_shutdown"))
+        check("a store built per call answers with what this process read last", got, (["k"], True))
+        check("and does not sleep through the lock waits for it", lock.tries, 2)
+
+
+    def item1d():
+        d = folder({"marks": {MARK: ["k"]}, "weekly": {"garden": {"done_week": "2026-W41"}}})
+        store = StateStore(d)
+        store.get("marks", MARK)
+        bump(d)
+        try:
+            with read_fails(OSError(5, "Input/output error (test)")):
+                store.set("versions", "okww", "v9")
+            raised = ""
+        except OSError as exc:
+            raised = type(exc).__name__
+        check("a write whose read meets another OSError raises", raised, "OSError")
+        check("and leaves everything on file", on_disk(d),
+              {"marks": {MARK: ["k"]}, "weekly": {"garden": {"done_week": "2026-W41"}}})
+        check("not copied aside", corrupt_copies(d), [])
+
+
+    def item1e():
+        d = folder()
+        (d / statestore.FILE).write_text("[1, 2]", encoding="utf-8")
+        try:
+            got = StateStore(d).get("marks", MARK)
+        except Exception as exc:  # noqa: BLE001
+            got = f"{type(exc).__name__}: {exc}"
+        check("state.json holding a list (not a table) reads as empty", got, None)
+        check("and is copied aside before anything overwrites it", len(corrupt_copies(d)), 1)
+
+
+    def item1f():
+        d = folder({"versions": {"code": "20261017"}, "marks": {MARK: ["k"]}})
+        (d / "okww-version.txt").write_text("v3.6.5", encoding="utf-8")
+        forget(d)
+        statestore._SWEPT.discard(str(d))
+        with read_fails():
+            StateStore(d)
+        check("legacy sweep with state.json locked leaves it as it was", on_disk(d),
+              {"versions": {"code": "20261017"}, "marks": {MARK: ["k"]}})
+        check("and moves no legacy file", (d / "okww-version.txt").exists(), True)
+        StateStore(d)
+        check("the lock gone, the next StateStore sweeps it in",
+              (on_disk(d)["versions"].get("okww"), on_disk(d)["marks"].get(MARK)), ("v3.6.5", ["k"]))
+
+
+    def item2():
+        d = folder({"marks": {}})
+        one, two = Eng(d), Eng(d)
+        one.state.store.get("marks", MARK)              # one's cached copy: no marks yet
+        m0 = (d / statestore.FILE).stat().st_mtime
+        two._mark_alerted(DAY, "b")
+        # The second write lands within the clock's resolution: the mtime reads as it
+        # did when `one` cached the file (put back by hand here).
+        os.utime(d / statestore.FILE, (m0, m0))
+        one._mark_alerted(DAY, "a")
+        check("two writers marking the same day: both marks are on file",
+              sorted(on_disk(d)["marks"].get(MARK) or []), ["a", "b"])
+        check("and each reads both back", (one._already_alerted(DAY, "b"), two._already_alerted(DAY, "a")),
+              (True, True))
+
+
+    for title, fn in (("1a: state.json locked after an alarm went out: not pushed again", item1a),
+                      ("1b: the first read of state.json locked", item1b),
+                      ("1c: a store built per call while state.json is locked", item1c),
+                      ("1d: a write whose read meets an OSError other than a lock", item1d),
+                      ("1e: state.json that is JSON but not a table", item1e),
+                      ("1f: the legacy sweep while state.json is locked", item1f),
+                      ("2: two writers marking one day's alarms", item2)):
+        section(title, fn)
+
+    print()
+    if fails:
+        print(f"✗ {len(fails)} 条没过：{fails}")
+        sys.exit(1)
+    print("all checks passed")
+
+
+def _part_state_unread():
+    """Reads put off with nothing to bring them back (dispatch relay-audit-round2-1108 N-02 / N-05).
+
+N-02, the running half of 08635a7b (its boot half stays shelved, BOARD D-1017): state.json
+refusing reads (a lock outlasting LOCK_WAITS, any OSError) was one INFO line per refused read
+and nothing else - a lock that never let go kept every write failing, the relay silent and the
+machine on. Pinned here:
+
+* a refused read starts a run: one INFO line, statestore.refused_since names when; a plain
+  read still answers with the last good copy, a write still raises;
+* while the run lasts every read tries the file again (the cached copy is not served);
+* UNREAD_WARN_S (600 s, the relay's other outage marks) after the first refusal: one WARNING
+  (the group), not repeated while the same run lasts; a read that gets through ends the run
+  with one INFO line, and a later lock is a new run;
+* engine.next_deadline wakes the loop UNREAD_RETRY_S (45 s) later while the run lasts.
+
+N-05: the need table's same-day second try (「过半小时再试一次」) and AUTO-MAS records the
+last scan put off (a missing log, a history.db read that failed) had no moment either; the
+loop slept to the hour backstop. needtable.next_moment / collector.next_moment and their
+place in next_deadline are pinned here too.
+
+    Formerly test_state_unread_1108.py.
+    """
+    import json
+    import logging
+    import os
+    from datetime import datetime, timedelta
+    from types import SimpleNamespace
+
+    HERE = Path(__file__).resolve().parent
+    sys.path.insert(0, str(HERE))
+
+    TMP = tmpdir()
+    AUTOMAS = TMP / "AUTO-MAS"
+    (AUTOMAS / "config").mkdir(parents=True)
+    (AUTOMAS / "config" / "QueueConfig.json").write_text(json.dumps({"instances": []}), encoding="utf-8")
+    (AUTOMAS / "config" / "ScriptConfig.json").write_text(json.dumps({"instances": []}), encoding="utf-8")
+    (TMP / "history").mkdir()
+    os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR=str(AUTOMAS),
+                      ARK_STATE_DIR=str(TMP / "state"),
+                      SERVERCHAN_KEY="", ARK_LLM_KEY="", WECOM_CORPID="", WECOM_SECRET="",
+                      WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
+    sys.path.insert(0, str(HERE.parent))
+
+    from ark_relay.core import collector, statestore
+    from ark_relay.core import engine as eng
+    from ark_relay.core.config import SERVER_TZ, Config
+    from ark_relay.core.ledger import State
+    from ark_relay.features.alarm import errwatch
+    from ark_relay.features.needtable import needtable
+
+
+    class Rows(logging.Handler):
+        def __init__(self):
+            super().__init__(level=logging.DEBUG)
+            self.rows = []
+
+        def emit(self, record):
+            self.rows.append((record.levelname, record.getMessage(), bool(getattr(record, errwatch.RECOVERED, False))))
+
+
+    rows = Rows()
+    statestore.log.addHandler(rows)
+    statestore.log.setLevel(logging.DEBUG)
+    # errwatch's handler sits on the "ark" logger (errwatch.install): what reaches it there is
+    # what the group hears. It writes errkinds/ and the technical log, never state.json, so the
+    # push does not die in the outage it reports.
+    at_errwatch = []
+    _ark = logging.getLogger(errwatch.ARK)
+    _ark_rows = Rows()
+    _ark_rows.emit = lambda r: at_errwatch.append(r.levelname) if r.name == statestore.log.name else None
+    _ark.addHandler(_ark_rows)
+
+    clock = [1000.0]
+    import time as _time
+    statestore.time = SimpleNamespace(monotonic=lambda: clock[0], sleep=lambda s: None, time=_time.time)
+    REAL_READ = Path.read_text
+    lock = {"on": False, "tries": 0}
+
+
+    def read_text(self, *a, **kw):
+        if lock["on"] and self.name == statestore.FILE:
+            lock["tries"] += 1
+            raise PermissionError(13, "being used by another process (test)")
+        return REAL_READ(self, *a, **kw)
+
+
+    Path.read_text = read_text
+
+
+    def levels():
+        return [lv for lv, _, _ in rows.rows]
+
+
+    d = tmpdir() / "state"
+    st = statestore.StateStore(d)
+    st.update("weekly", "garden", lambda _: {"done_week": "2026-W45"})
+    path = d / statestore.FILE
+
+    print("[读不出来：一条 INFO，接着用上次读到的，写照样报错]")
+    rows.rows.clear()
+    lock["on"] = True
+    lock["tries"] = 0
+    check("同一个实例、文件没变：直接用它手上那份，不去读", (st.get("weekly", "garden"), lock["tries"]),
+          ({"done_week": "2026-W45"}, 0))
+    check("…不算读不出来", statestore.refused_since(path), None)
+    # Most call sites build a StateStore per call: that one reads the file.
+    check("新建的实例读不出来：拿到的是上次读到的那份", statestore.StateStore(d).get("weekly", "garden"),
+          {"done_week": "2026-W45"})
+    check("记下了从什么时候开始读不出来", statestore.refused_since(path), 1000.0)
+    check("一条 INFO", levels(), ["INFO"])
+    raised = ""
+    try:
+        st.update("weekly", "garden", lambda _: {"done_week": "2026-W46"})
+    except OSError as exc:
+        raised = type(exc).__name__
+    check("写不进去就报错（不拿空的盖上去）", raised, "PermissionError")
+    lock["tries"] = 0
+    st.get("weekly", "garden")
+    check("读不出来期间每次读都再去读文件（不用缓存）", lock["tries"], 1)
+    check("还是只有那一条 INFO", levels(), ["INFO"])
+
+    print("\n[连着 10 分钟读不出来：一条进群的 WARNING，同一段里不再重复]")
+    check("和别的中断报警同一个时长", (statestore.UNREAD_WARN_S, statestore.UNREAD_RETRY_S), (600, 45))
+    from ark_relay.features.phone.mailbox import Mailbox
+    check("就是 Mailbox.OUTAGE_SEC", float(statestore.UNREAD_WARN_S), float(Mailbox.OUTAGE_SEC))
+    clock[0] = 1000.0 + 599
+    st.get("weekly", "garden")
+    check("599 秒：还没有 WARNING", "WARNING" in levels(), False)
+    clock[0] = 1000.0 + 600
+    st.get("weekly", "garden")
+    w = [(m, r) for lv, m, r in rows.rows if lv == "WARNING"]
+    check("600 秒：一条 WARNING，没标自己好了，说 10 分钟、带原因",
+          [(r, "10 分钟" in m, "PermissionError" in m) for m, r in w], [(False, True, True)])
+    check("这条 WARNING 到了 errwatch 挂的那个 logger（会进群）", at_errwatch.count("WARNING"), 1)
+    clock[0] = 1000.0 + 1800
+    st.get("weekly", "garden")
+    check("再过 20 分钟：不再发第二条", levels().count("WARNING"), 1)
+
+    print("\n[读回来了：一条 INFO，说之前报过；再锁住是新的一段]")
+    lock["on"] = False
+    rows.rows.clear()
+    check("读得到", st.get("weekly", "garden"), {"done_week": "2026-W45"})
+    check("不再记着读不出来", statestore.refused_since(path), None)
+    check("一条 INFO，说持续了多久、之前报过",
+          [(lv, "30 分钟" in m and "已报过" in m) for lv, m, _ in rows.rows], [("INFO", True)])
+    st.update("weekly", "garden", lambda _: {"done_week": "2026-W46"})
+    check("又写得进去", json.loads(REAL_READ(path, encoding="utf-8"))["weekly"]["garden"], {"done_week": "2026-W46"})
+    lock["on"] = True
+    clock[0] = 5000.0
+    rows.rows.clear()
+    statestore.StateStore(d).get("weekly", "garden")
+    check("再锁住：新的一段从这次算起", statestore.refused_since(path), 5000.0)
+    clock[0] = 5000.0 + 600
+    st.get("weekly", "garden")
+    check("新的一段到 10 分钟：又一条 WARNING", levels().count("WARNING"), 1)
+    lock["on"] = False
+    st.get("weekly", "garden")
+
+    print("\n[主循环：读不出来时 45 秒后再醒一次]")
+
+
+    def build():
+        cfg = Config()
+        cfg.state_dir = tmpdir()
+        e = eng.Engine(cfg, source=SimpleNamespace(fetch=lambda seen: []), state=State(cfg.state_dir),
+                       notifier=SimpleNamespace(send=lambda *a, **k: False))
+        e._scripts_running = lambda: False
+        return e
+
+
+    NOW = datetime(2026, 11, 8, 10, 0, tzinfo=SERVER_TZ)
+    e = build()
+    got = e.next_deadline(NOW)
+    check("读得到时：没有重读的闹钟", "重读 state.json" in (got[1] if got else ""), False)
+    e.state.store.update("weekly", "garden", lambda _: {"done_week": "2026-W45"})
+    lock["on"] = True
+    statestore.StateStore(e.cfg.state_dir).get("weekly", "garden")
+    got = e.next_deadline(NOW)
+    check("读不出来时：45 秒后重读", got, (NOW + timedelta(seconds=45), "重读 state.json"))
+    lock["on"] = False
+    e.state.store.get("weekly", "garden")
+    check("读回来后闹钟就没了", "重读 state.json" in (e.next_deadline(NOW) or (None, ""))[1], False)
+    Path.read_text = REAL_READ
+
+    print("\n[需求表：当天第一次没成，半小时后叫醒主循环去试第二次]")
+    needtable._running.clear()
+    nd = tmpdir()
+    check("今天还没建过：没有这个闹钟", needtable.next_moment(nd, NOW), None)
+    (nd / needtable.MARK).write_text(json.dumps({"day": "2026-11-08", "ok": False, "skip": False, "tries": 1,
+                                                 "last_at": (NOW - timedelta(minutes=5)).isoformat()}),
+                                     encoding="utf-8")
+    check("第一次没成：失败后 30 分钟", needtable.next_moment(nd, NOW),
+          (NOW + timedelta(minutes=25), "终末地需求表当天第二次重算"))
+    check("到点之后不再给过去的时刻（这一轮就会去试）", needtable.next_moment(nd, NOW + timedelta(minutes=26)), None)
+    e2 = build()
+    e2.cfg.state_dir = nd
+    check("next_deadline 里有这个闹钟", e2.next_deadline(NOW), (NOW + timedelta(minutes=25), "终末地需求表当天第二次重算"))
+    for done in ({"ok": True}, {"skip": True}, {"tries": 2}, {"day": "2026-11-07"}):
+        m = {"day": "2026-11-08", "ok": False, "skip": False, "tries": 1,
+             "last_at": (NOW - timedelta(minutes=5)).isoformat(), **done}
+        (nd / needtable.MARK).write_text(json.dumps(m), encoding="utf-8")
+        check(f"不用再试（{done}）：没有闹钟", needtable.next_moment(nd, NOW), None)
+
+
+    class Alive:
+        def is_alive(self):
+            return True
+
+
+    needtable._running.update(thread=Alive(), day="2026-11-08", count=1)
+    check("正在建：最晚 30 分钟后看一眼", needtable.next_moment(nd, NOW), (NOW + timedelta(minutes=30), "看终末地需求表重算完没有"))
+    needtable._running.clear()
+
+    print("\n[AUTO-MAS 记录：缺日志等着补记、history.db 读不了，都要叫醒主循环]")
+    collector._put_off.clear()
+    collector._db_fail_streak[0] = 0
+    check("没有等着的：没有闹钟", collector.next_moment(NOW), None)
+    collector._put_off.extend([(NOW + timedelta(seconds=90)).timestamp(), (NOW + timedelta(seconds=30)).timestamp(),
+                               (NOW - timedelta(seconds=5)).timestamp()])
+    check("缺日志的：最早那条到点时（过去的不算）", collector.next_moment(NOW), (NOW + timedelta(seconds=30), "补记缺日志的运行记录"))
+    collector._put_off.clear()
+    collector._db_fail_streak[0] = 1
+    check("history.db 读不了：45 秒后再读", collector.next_moment(NOW), (NOW + timedelta(seconds=45), "重读 AUTO-MAS 的 history.db"))
+    e3 = build()
+    check("next_deadline 里有它", e3.next_deadline(NOW), (NOW + timedelta(seconds=45), "重读 AUTO-MAS 的 history.db"))
+    collector._db_fail_streak[0] = 0
+
+    hist = TMP / "history2"
+    young = hist / "2026-11-08" / "MAA" / "10-00-00.json"
+    young.parent.mkdir(parents=True)
+    young.write_text("{}", encoding="utf-8")
+    collector.scan(hist, set())
+    check("扫到一条没日志的新记录：记下它 120 秒后补记", len(collector._put_off), 1)
+    check("…时刻就是它写下后 120 秒", round(collector._put_off[0] - young.stat().st_mtime), 120)
+    (young.with_suffix(".log")).write_text("", encoding="utf-8")
+    collector.scan(hist, set())
+    check("日志来了：不再等", collector._put_off, [])
+
+
+def _part_atomic_write():
+    """落盘只能走 config.atomic_write_*，不许自己手抄「临时文件 + replace」。
+
+2026-09-08 数出来的：仓库里有 5 处手抄的原子写，各写各的——有的漏 fsync、有的
+失败了不清理临时文件、报错方式还各不相同。同一件事五种写法，改一处别处不会跟着改，
+而它们写的都是 AUTO-MAS / OK-WW / MaaEnd 没有就起不来的配置。
+
+（当初我给的理由是「机器每天硬断电两次」，操作者纠正：一天只有一次，而且那一刻
+机器已经关着。这条测试守的是「实现只有一份」，不是防断电。）
+
+这条测试盯两件事：实现只有一份、别处不许再抄。
+
+Section 4 (added 2026-10-12) is about power cuts after all, for state files
+the relay reads back: the 08:40 socket cut takes the machine down whether
+it is on or off (memory queue-schedule-what-runs.md), and a forced shutdown
+or kill can land mid-write too.
+
+    Formerly test_atomic_write.py.
+    """
+    import re
+
+    ROOT = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(ROOT))
+
+
+    # 1. 唯一的实现在 config.py，而且带 fsync
+    cfg = (ROOT / "ark_relay" / "core" / "config.py").read_text(encoding="utf-8")
+    check("config.atomic_write_bytes 存在", "def atomic_write_bytes" in cfg, True)
+    body = cfg[cfg.index("def atomic_write_bytes"):]
+    body = body[:body.index("\ndef ", 1)] if "\ndef " in body[1:] else body
+    check("它 fsync 了", "os.fsync" in body, True)
+    check("它用 os.replace", "os.replace" in body, True)
+
+    # 2. 别处不许再出现「.tmp 然后 replace」这一对
+    offenders = []
+    for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files"} & set(p.parts)]) + [ROOT / "service.py", ROOT / "boot_stages.py"]:
+        if p.name == "config.py":
+            continue
+        src = p.read_text(encoding="utf-8")
+        for m in re.finditer(r'^\s*(\w+)\s*=\s*.*with_suffix\([^\n]*\.tmp', src, re.M):
+            var = m.group(1)
+            after = src[m.end():m.end() + 600]
+            if re.search(rf"\b(os\.replace\(\s*{var}|{var}\.replace\()", after):
+                line = src[:m.start()].count("\n") + 1
+                offenders.append(f"{p.name}:{line}")
+    check("没有别处再手抄原子写", offenders, [])
+
+    # 3. 写配置的模块都在用它（抽查那五个改过的）
+    # (paths after ark_relay/ was split into core/ and features/<name>/)
+    for name in ("features/weekly/garden.py", "features/weekly/weeklyboss.py",
+                 "features/preupdate/preupdate_okww.py", "core/desktop.py"):
+        src = (ROOT / "ark_relay" / name).read_text(encoding="utf-8")
+        check(f"{name} 走的是共用实现",
+              bool(re.search(r"atomic_write_(text|bytes)\(", src)), True)
+
+    # 4. State files the relay reads back must not be written in place.
+    # The game PC can lose power or be killed mid-write (the 08:40 socket cut when
+    # the machine was left on, a forced shutdown). A half-written state file is
+    # read as empty: retry failure streaks reset, sent markers are lost (the tacet
+    # shot / upstream-change notice goes out again), the ntfy day count drops to
+    # zero. These modules write such files and must go through atomic_write_*;
+    # a direct write_text / write_bytes / open("w") in them fails here.
+    # Appends (open "a" / "ab") are allowed: a cut loses at most the last line.
+    DIRECT_OVERWRITE = re.compile(
+        r"\.write_text\(|\.write_bytes\(|\bopen\([^)\n]*[\"'](?:w|wb|w\+|wb\+|x|xb)[\"']")
+    STATE_WRITERS = (
+        "ark_relay/features/makeup/collect_retry.py",   # collect-retry/failures.json, <day>.json
+        "ark_relay/features/report/report.py",          # tacet-shots-<day>.sent
+        "boot_stages.py",                               # evidence-source-notified.json
+        "ark_relay/features/phone/quota.py",            # ntfy-<utc day>.json
+        "ark_relay/features/alarm/alertlog.py",         # alert day file re-seeded from COS
+        "ark_relay/features/evidence/stores.py",        # evidence/gofile.json
+        "ark_relay/features/banners/banners.py",        # banners/<day>.json
+    )
+    for name in STATE_WRITERS:
+        src = (ROOT / name).read_text(encoding="utf-8")
+        direct = [f"{name}:{src[:m.start()].count(chr(10)) + 1}"
+                  for m in DIRECT_OVERWRITE.finditer(src)]
+        check(f"{name} has no direct state-file overwrite", direct, [])
+        check(f"{name} writes via atomic_write_*",
+              bool(re.search(r"atomic_write_(text|bytes)\(", src)), True)
+
+
+def _part_state_pending():
+    """待推告警的存/取。**这条路没有测试过，结果炸在生产上。**
+
+2026-09-08 上午：`core.State.save_pending` 上面被贴了一行多余的 `@property`。
+后果不是「保存失败」这么轻——属性访问本身就抛 TypeError（getter 缺 payload），
+于是 `_persist_pending` 每一轮都炸，三条鸣潮失败记录永远落不了账；
+中继下一轮扫到它们，当成**新**失败又推一遍，每十几秒一条，把用户的群轰炸了半小时。
+
+88 个测试里没有任何一个调用过 save_pending，静态检查也没有「@property 带参数」
+这条规则，所以这行改动一路绿灯上了机器。这个文件补的就是那条路。
+
+    Formerly test_state_pending.py.
+    """
+    from datetime import datetime, timedelta
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core.config import SERVER_TZ, RunRecord
+    from ark_relay.core.ledger import State
+    from ark_relay.core.transport import record_to_payload, payload_to_record
+
+
+    def rec(run_id="2026-09-08/wuwa/OK-WW-05-22-26"):
+        now = datetime.now(tz=SERVER_TZ)
+        return RunRecord(run_id=run_id, script="OK-WW", user="wuwa",
+                         started=now - timedelta(minutes=10), finished=now,
+                         ok=False, failed_tasks=["任务执行：某个错"], raw={})
+
+
+    print("[save_pending 是方法，不是属性——这正是 09-08 那次的原形]")
+    check("是普通函数", type(State.__dict__["save_pending"]).__name__, "function")
+    check("不是 property", isinstance(State.__dict__["save_pending"], property), False)
+
+    print("\n[存进去、另起一个实例读回来，内容一样]")
+    d = tmpdir()
+    st = State(d)
+    payload = {"pending": [record_to_payload(rec())], "recovered": []}
+    st.save_pending(payload)
+    back = State(d).load_pending()
+    check("pending 条数", len(back.get("pending") or []), 1)
+    check("run_id 对得上", back["pending"][0]["run_id"], "2026-09-08/wuwa/OK-WW-05-22-26")
+    check("recovered 空", back.get("recovered"), [])
+
+    print("\n[读回来能还原成记录，告警才发得出去]")
+    r2 = payload_to_record(back["pending"][0])
+    check("脚本名", r2.script, "OK-WW")
+    check("失败任务", r2.failed_tasks, ["任务执行：某个错"])
+    check("不是成功", r2.ok, False)
+
+    print("\n[空的也存得下：清空待推队列走的就是这条路]")
+    st.save_pending({"pending": [], "recovered": []})
+    check("清空后读回来是空的", State(d).load_pending(), {"pending": [], "recovered": []})
+
+    print("\n[没存过时读回空字典，不抛异常]")
+    check("空目录", State(tmpdir()).load_pending(), {})
+
+
+def _part_statestore_threads():
+    """Two threads writing state.json must not lose each other's key.
+
+Audit s9 A2 (2026-10-13): the phone listen thread writes queues.phone_seen and,
+through live commands, modes.* (set_debug, set_skip_shutdown ...), while the
+engine thread writes the same file. StateStore.set/pop did load-modify-write with
+no lock, and config.atomic_write_bytes always used the same temp name
+(state.json.tmp). Run with two threads: 200/200 trials lost one update, 199 raised
+FileNotFoundError on the rename. A lost modes.skip_next_shutdown means the reply
+says 「已记下」 and the machine powers off anyway.
+
+Both halves are made deterministic here: the first writer is held between its read
+and its write while the second writer runs.
+
+    Formerly test_statestore_threads.py.
+    """
+    import os
+    import threading
+    import time
+
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import config, statestore
+    from ark_relay.core.statestore import StateStore
+
+
+    print("[a second writer runs while the first is between its read and its write]")
+    d = tmpdir()
+    StateStore(d).set("queues", "phone_seen", [])
+    real_write = statestore.atomic_write_text
+    errors: list = []
+    other: list = []
+
+
+    def slow_first_write(path, text, *a, **k):
+        # Only the first write is slowed down: the engine-thread writer below.
+        if not other:
+            def phone_thread():
+                try:
+                    StateStore(d).set("queues", "phone_seen", ["ntfy-1"])
+                except Exception as exc:  # noqa: BLE001
+                    errors.append(exc)
+            t = threading.Thread(target=phone_thread)
+            other.append(t)
+            t.start()
+            time.sleep(0.3)          # the phone thread gets every chance to write now
+        return real_write(path, text, *a, **k)
+
+
+    statestore.atomic_write_text = slow_first_write
+    try:
+        StateStore(d).set("modes", "debug_until", "2026-10-13 21:10")
+    finally:
+        statestore.atomic_write_text = real_write
+    other[0].join(5)
+    s = StateStore(d)
+    check("the engine thread's key is there", s.get("modes", "debug_until"), "2026-10-13 21:10")
+    check("the phone thread's key is there", s.get("queues", "phone_seen"), ["ntfy-1"])
+    check("no writer raised", errors, [])
+
+    print("\n[pop is under the same lock]")
+    other.clear()
+
+
+    def slow_first_write2(path, text, *a, **k):
+        if not other:
+            t = threading.Thread(target=lambda: StateStore(d).set("queues", "phone_seen", ["ntfy-2"]))
+            other.append(t)
+            t.start()
+            time.sleep(0.3)
+        return real_write(path, text, *a, **k)
+
+
+    statestore.atomic_write_text = slow_first_write2
+    try:
+        StateStore(d).pop("modes", "debug_until")
+    finally:
+        statestore.atomic_write_text = real_write
+    other[0].join(5)
+    s = StateStore(d)
+    check("the popped key is gone", s.get("modes", "debug_until"), None)
+    check("the other thread's write survived the pop", s.get("queues", "phone_seen"), ["ntfy-2"])
+
+    print("\n[two writes of the same file never share a temp file]")
+    d2 = tmpdir()
+    target = d2 / "state.json"
+    real_fsync = config.os.fsync
+    inner_err: list = []
+    nested = []
+
+
+    def fsync_then_second_write(fd):
+        real_fsync(fd)
+        if not nested:
+            nested.append(1)
+            # A second writer of the same path while the first one's temp file is open.
+            try:
+                config.atomic_write_bytes(target, b'{"b": 1}')
+            except OSError as exc:
+                inner_err.append(exc)
+
+
+    config.os.fsync = fsync_then_second_write
+    outer_err = None
+    try:
+        config.atomic_write_bytes(target, b'{"a": 1}')
+    except OSError as exc:
+        outer_err = exc
+    finally:
+        config.os.fsync = real_fsync
+    check("the inner write did not fail", inner_err, [])
+    check("the outer write did not fail", repr(outer_err) if outer_err else None, None)
+    check("the last write wins, whole", target.read_bytes(), b'{"a": 1}')
+    check("no temp file left behind", sorted(p.name for p in d2.iterdir()), ["state.json"])
+
+    print("\n[a temp file a power cut left behind is removed at the next start once it is a day old]")
+    d3 = tmpdir()
+    (d3 / "state.json").write_text("{}", encoding="utf-8")
+    old_tmp = d3 / "state.json.abc123.tmp"
+    fresh_tmp = d3 / "state.json.def456.tmp"
+    legacy_tmp = d3 / "state.json.tmp"
+    other_tmp = d3 / "ledger-2026-10-13.jsonl.xyz.tmp"
+    for f in (old_tmp, fresh_tmp, legacy_tmp, other_tmp):
+        f.write_text("{", encoding="utf-8")
+    two_days_ago = time.time() - 2 * 86400
+    for f in (old_tmp, legacy_tmp, other_tmp):
+        os.utime(f, (two_days_ago, two_days_ago))
+    statestore._SWEPT.discard(str(d3))
+    statestore.StateStore(d3)
+    check("old state.json temp files are gone, a fresh one (a live write) and other files stay",
+          sorted(p.name for p in d3.iterdir()),
+          sorted(["state.json", fresh_tmp.name, other_tmp.name]))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_main, _part_shutdown_after_restart, _part_shutdown_hand_and_test_runs, _part_shutdown_held_past_shift, _part_shutdown_notice, _part_shutdown_open_test_window, _part_shutdown_round, _part_shutdown_stale_shift, _part_shutdown_waits_for_farm, _part_shutdown_whitelist, _part_exit_shutdown_window, _part_power_off_returncode, _part_poweroff_ok, _part_skip_shutdown_wording]))
+    sys.exit(run_parts([_part_shutdown_main, _part_shutdown_after_restart, _part_shutdown_hand_and_test_runs, _part_shutdown_held_past_shift, _part_shutdown_notice, _part_shutdown_open_test_window, _part_shutdown_round, _part_shutdown_stale_shift, _part_shutdown_waits_for_farm, _part_shutdown_whitelist, _part_exit_shutdown_window, _part_power_off_returncode, _part_poweroff_ok, _part_skip_shutdown_wording, _part_skip_failed_pushed, _part_skip_flag_collision, _part_skip_receipt_lost, _part_skip_receipts, _part_skip_sat_out, _part_skip_shutdown_bat_error, _part_farm_poweroff, _part_place_desktop_bat, _part_statestore_main, _part_state_read_lock, _part_state_unread, _part_atomic_write, _part_state_pending, _part_statestore_threads]))

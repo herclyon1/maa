@@ -1,22 +1,17 @@
-"""The phone channel: boot, the command gate and queue, drained and failed orders, gzip, the mailbox end to end, quiet hours, receipts and their target, sent times, stale commands, the state and its COS copy.
+"""Phone remote state, commands, heartbeat, resources, runtime snapshot, and inbox polling."""
+from __future__ import annotations
 
-One part per former file, each run on its own (tests/_parts.py): test_phone.py, test_phone_channel_boot.py, test_phone_cmd_gate.py, test_phone_cmd_queue.py, test_phone_drained_failure_pushed.py, test_phone_gzip.py, test_phone_order_failed_pushed.py, test_phone_quiet.py, test_phone_receipts.py, test_phone_sent.py, test_phone_silent.py, test_phone_stale_cmd.py, test_phone_state.py, test_phone_state_cos.py, test_receipt_target.py.
-"""
-# Each part imports the relay itself, after its own environment is set, as the file it was did at
-# its top.
 # ruff: noqa: PLC0415
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
-# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
-# still reads as using all of it.
-_SHARED = (check, fails, require, tmpdir)
+_SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
-def _part_main():
+def _part_phone_main():
     """手机通道：PIN 对不上、太老的指令、状态和指令别混。
 
 凭证就一个 PIN（用户 2026-08-31：「留一个 pin 就行了，那那么多事」）。
@@ -778,7 +773,7 @@ boot ever ran it - while the App told the user the change was
     try:
         E.tick()
         check("tick 没把异常抛出去", True, True)
-    except Exception as exc:                     # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         check(f"tick 没把异常抛出去（抛了 {exc}）", False, True)
     check("后面照样到了关机判断", calls, ["modes", "shutdown"])
 
@@ -1093,7 +1088,7 @@ so it went to Server酱 only.
     check("不带 alert", [a for _, _, a in good], [False])
 
 
-def _part_phone_quiet():  # noqa: C901 - the whole body of the file this part was
+def _part_phone_quiet():  # noqa: C901
     """The phone channel says WARNING only when something is wrong (2026-10-06).
 
 Every WARNING the relay logs is now pushed to the group. The user, 10-06:
@@ -2039,7 +2034,7 @@ the held stream (Mailbox.listen). Fake network; nothing waits for real.
     check("on disk too", phone.Mailbox(TOPIC, PIN, state)._seen, ["s-old"])
 
 
-def _part_phone_state():  # noqa: C901 - the whole body of the file this part was
+def _part_phone_state():  # noqa: C901
     """手机页那一份状态包：形状、大小、去重、额度。全程注入假网络。
 
 这个文件防的是**一类损失：用户唯一的日常操作界面变成一张白纸**，
@@ -2438,7 +2433,7 @@ class OkwwUserConfig(ConfigBase):
     broke = False
     try:
         _gz.decompress(_b64.b64decode(blob2 + "=" * (-len(blob2) % 4)))
-    except Exception:  # noqa: BLE001 - any failure to decode is the point
+    except Exception:  # noqa: BLE001
         broke = True
     check("缺一片就解不开，不会解出半份", broke, True)
     check("总数写在每一片上，凑没凑齐一看便知", short[0]["n"] > len(short), True)
@@ -3168,5 +3163,2479 @@ could not tell apart. Pinned here:
     check("回执带上了目标", seen, [("set_config", T, "MAA:Stage.Stage")])
 
 
+def _part_channel_down():
+    """A channel that refuses a send is announced every time it refuses one.
+
+From 2026-08-22 until 2026-10-06 the same fault was announced once (a record on
+disk, keyed by the error with 企业微信's hint and egress IP stripped, so that a
+day of relay restarts did not repeat it). The user's order of 2026-10-06, every
+error to the group, every time (「不论多少次什么错误都要发」), ended that.
+Pinned: each refused send is announced over the channels still
+working; the per-channel log line comes with it, marked as already in the group
+only when the group robot took the notice (errwatch does not push it twice).
+
+    Formerly test_channel_down.py.
+    """
+    import json, os, sys
+
+    TMP = tmpdir()
+    os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
+                      SERVERCHAN_KEY="", WECOM_CORPID="", ARK_LLM_KEY="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core.config import Config
+    from ark_relay.core.notify import Notifier
+
+
+    ERR1 = ("企业微信发送失败: 60020 not allow to access from your ip, "
+            "hint: [1787373915609110759172198], from ip: 112.43.40.209")
+    ERR2 = ("企业微信发送失败: 60020 not allow to access from your ip, "
+            "hint: [9999999999999999999999999], from ip: 112.43.40.77")
+
+    cfg = Config()
+
+    import logging
+    from ark_relay.features.alarm import errwatch
+    from ark_relay.core import notify as _notify_mod
+
+    lines = []
+    class _Lines(logging.Handler):
+        def emit(self, record):
+            lines.append((record.getMessage(), getattr(record, errwatch.PUSHED, False)))
+    _notify_mod.log.addHandler(_Lines())
+
+    print("[every refused send is announced - the same fault again included]")
+    sent = []
+    class Cap(Notifier):
+        # Keyword names must match the real signature, or a routing change goes astray here silently.
+        def _fan_out(self, title, body, *, order=None, stop_on_first=False):
+            sent.append(title)
+            return list(self.took), {}
+
+    n = Cap(cfg)
+    n.took = ["Server酱"]
+    n._announce_outage({"企业微信": ERR1}, ["Server酱"])
+    check("first refusal announced", len(sent), 1)
+    n._announce_outage({"企业微信": ERR2}, ["Server酱"])
+    check("the same fault again: announced again", len(sent), 2)
+    n2 = Cap(cfg)
+    n2.took = ["Server酱"]
+    n2._announce_outage({"企业微信": ERR1}, ["Server酱"])
+    check("after a restart too", len(sent), 3)
+    check("nothing kept on disk to stay quiet with",
+          "channels_down" in json.loads((TMP / "state.json").read_text(encoding="utf-8")).get("queues", {})
+          if (TMP / "state.json").exists() else False, False)
+    check("the title names the channel", sent[-1], "🔌 推送通道故障：企业微信")
+
+    print("\n[the log line for each refusal]")
+    lines.clear()
+    n._announce_outage({"企业微信机器人": "boom"}, ["Server酱"])
+    check("one line per refusal", [m for m, _ in lines], ["企业微信机器人推送失败: boom"])
+    check("the notice went by Server酱 only: errwatch still pushes the line", lines[0][1], False)
+    lines.clear()
+    n.took = ["企业微信机器人"]
+    n._announce_outage({"Server酱": "boom"}, ["企业微信机器人"])
+    check("the group robot took the notice: the line is marked as already in the group", lines[0][1], True)
+
+
+def _part_cli_commands():
+    """The two new CLI commands exist, parse, and hand off to the right code.
+
+`collect-retry` and `evidence` are what I run by hand to verify the relay's
+new work on the machine; if the parser or the dispatch breaks, the manual
+verification path is gone and nobody notices until the next incident.
+
+    Formerly test_cli_commands.py.
+    """
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay import __main__ as cli
+    from ark_relay.features.makeup import collect_retry
+    import argparse
+
+
+    print("[evidence 命令：没配置的脚本什么也传不了，退出码 1，但不炸]")
+    class Cfg:
+        state_dir = tmpdir() / "state"; maaend_dir = None; maa_dir = None; okww_dir = None; history_dir = None
+    Cfg.state_dir.mkdir(parents=True)
+    rc = cli.cmd_evidence(Cfg, "MaaEnd", "", hours=2)     # a window is mandatory: the last two hours
+    check("没东西可传就是 1", rc, 1)
+    try:
+        cli.cmd_evidence(Cfg, "MaaEnd", "2026-09-11/endfield/MaaEnd-06-17-17"); no_run = "accepted"
+    except SystemExit as exc:
+        no_run = str(exc)
+    check("账本里没有那趟就拒绝，不悄悄全量", "--hours" in no_run)
+    check("索引仍然写了一行", (Cfg.state_dir / "evidence" / "index.jsonl").exists())
+
+    print("\n[collect-retry 命令：走的是 maybe_run，没有失败路线就说没有]")
+    calls = []
+    class FakeEng:
+        pass
+    cli._build_local_engine = lambda cfg: FakeEng()
+    orig = collect_retry.maybe_run
+    collect_retry.maybe_run = lambda eng, day=None: calls.append((eng, day)) or False
+    try:
+        rc = cli.cmd_collect_retry(Cfg, "2026-09-11")
+    finally:
+        collect_retry.maybe_run = orig
+    check("调用了一次 maybe_run，带指定的日期", calls and calls[0][1] == "2026-09-11" and len(calls) == 1)
+    check("退出码 0", rc, 0)
+
+    print("\n[banners 命令：打印那一段、来源和核对，扣下的行让退出码变 1]")
+    from ark_relay.features.banners import banners as _bn
+    from datetime import datetime, timedelta
+    import io, contextlib
+    def fake_collect(now, *, skland_token="", failed=None, notes=None, trace=None, **_):
+        # The end is relative: a fixed 09-29 11:59:59 made this fail from that noon on,
+        # when the pool was no longer current (2026-09-29).
+        b = _bn.Banner("鸣潮", "身赴三途", ("景燃",), datetime(2026, 9, 10, 10, 0),
+                       datetime.now().replace(microsecond=0) + timedelta(days=10))
+        trace.ends |= _bn._stamps(b.end)
+        trace.src("鸣潮", "当期", "库街区", "身赴三途 景燃")
+        trace.checks.append("鸣潮：库街区=游戏公告 ✓")
+        trace.problems.append("鸣潮｜版本资讯｜B 站｜BiliFeedProblem: page 1 listed nothing")
+        notes["明日方舟"] = "09-18 03:59 之后开（还有 5 天）　下一池官方还没公告"
+        return [b], {}
+    orig_collect = _bn.collect
+    _bn.collect = fake_collect
+    Cfg.skland_token = ""
+    buf = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buf):
+            rc = cli.cmd_banners(Cfg)
+    finally:
+        _bn.collect = orig_collect
+    out = buf.getvalue()
+    check("打印了当期行", "身赴三途 · 景燃" in out)
+    check("打印了来源", "库街区｜身赴三途 景燃" in out)
+    check("编出来的预告被扣下并列出", "扣下的行" in out and "09-18 03:59 之后开" in out)
+    check("有扣下的行时退出码 1", rc, 1)
+    check("来源问题单列出来", "--- source problems" in out and "BiliFeedProblem: page 1 listed nothing" in out)
+
+    print("\n[参数表认得这几个命令]")
+    p = argparse.ArgumentParser()
+    p.add_argument("command", choices=["local", "check", "test", "report", "collect-retry", "evidence", "banners"])
+    check("choices 里有", set(p._actions[1].choices) >= {"collect-retry", "evidence", "banners"})
+
+
+def _part_cmd_test_channels():
+    """`python -m ark_relay test` must try every channel and name only the ones that took it.
+
+Audit s5 #3 (2026-10-13): cmd_test called send(alert=True), which stops at the first
+channel that accepts, yet printed 「✅ 已通过 <every configured channel> 发出」; and it
+filed the test as a real group alarm (alerts/ copy). Channels are faked here.
+
+    Formerly test_cmd_test_channels.py.
+    """
+    import contextlib
+    import io
+    import os
+
+
+    os.environ.update(ARK_STATE_DIR=str(tmpdir()), ARK_HISTORY_DIR=str(tmpdir()))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay import __main__ as relay_main
+    from ark_relay.core import notify
+    from ark_relay.core.config import Config
+
+
+    class Chan:
+        def __init__(self, ok):
+            self.enabled, self.ok, self.got = True, ok, []
+
+        def send_text(self, *a):
+            if not self.ok:
+                raise RuntimeError("refused")
+            self.got.append(a)
+
+
+    bot, sc = Chan(True), Chan(False)
+    copied: list = []
+    real_init = notify.Notifier.__init__
+
+
+    def fake_init(self, cfg):
+        real_init(self, cfg)
+        self.wecom_bot, self.serverchan = bot, sc
+        self.wecom = Chan(True)
+        self.wecom.enabled = False
+
+
+    notify.Notifier.__init__ = fake_init
+    notify.Notifier._copy_alarm = lambda self, t, b: copied.append(t)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        rc = relay_main.cmd_test(Config())
+    text = out.getvalue()
+    print(text)
+
+    print("[the robot takes it, Server酱 refuses]")
+    check("Server酱 was tried too", (len(bot.got), "Server酱: refused" in text), (1, True))
+    check("success names only the robot", "✅ 已通过 企业微信机器人 发出" in text, True)
+    check("Server酱 is not named as delivered", "企业微信机器人、Server酱" in text, False)
+    check("a refused channel fails the self-test", rc, 1)
+    check("not filed as a group alarm", copied, [])
+
+    print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
+
+
+def _part_command_table():
+    """relay/README.md 的命令表必须和代码里的白名单一一对上。
+
+2026-09-08 审出来的：表里说 `run_now` 是「没实现、会明确拒绝」，代码里它真会调
+`/api/dispatch/start` 派发一趟队列；`skip_shutdown`、`weekly_boss`、`set_config`、
+`set_master` 四个命令干脆不在表里——其中 skip_shutdown 就是「吃掉下一次关机机会
+且不带时效」的那个开关，已经让机器白开两夜，而唯一一张说明表里找不到它。
+
+文档和代码分头维护，早晚会分家。这条测试让它们分不了家。
+
+    Formerly test_command_table.py.
+    """
+    import re
+
+    ROOT = Path(__file__).resolve().parents[1]
+    code = (ROOT / "ark_relay" / "features" / "phone" / "commands.py").read_text(encoding="utf-8")
+    doc = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    allowed = set()
+    for m in re.finditer(r"^(REVERSIBLE|MUTATING) = \{([^}]*)\}", code, re.M | re.S):
+        allowed |= {x.strip().strip('"') for x in m.group(2).split(",") if x.strip()}
+    listed = set(re.findall(r"^\| `(\w+)` \|", doc, re.M))
+
+    if not allowed:
+        fails.append("没从 commands.py 里读出白名单——正则该跟着代码改")
+    missing = sorted(allowed - listed)
+    extra = sorted(listed - allowed)
+    if missing:
+        fails.append(f"命令表漏了：{missing}（代码认，文档没写）")
+    if extra:
+        fails.append(f"命令表多了：{extra}（文档写了，代码不认）")
+
+    print(f"  代码白名单 {len(allowed)} 个，文档表 {len(listed)} 个")
+    for f in fails:
+        print(f"  ✗ {f}")
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_commands_gates():  # noqa: C901
+    """往生产配置里写东西的那条路——四道闸门一道都不许塌。
+
+这个文件防的是**一类损失：配置被写坏，于是刷错关卡、烧掉理智药**。
+826 就是这么来的：凭空造了一个字段、编了一个下标的含义，写进去，第二天早班
+按错的配置跑了一整趟。`commands.py` 25 个函数里 19 个从来没有被任何测试调用过，
+包括「结构化 diff 不符预期就回滚」这道唯一能拦住 826 的闸门本身。
+
+四道闸门（relay/README.md「命令的四道闸门」）：
+  ① 白名单——不在表里的动作直接拒，模型不许自己发 JSON patch
+  ② 人工确认——会写盘的动作没确认不动手
+  ③ 落地校验——备份→改→解析→结构化 diff，多改一个字段就整个放弃并回滚
+  ④ 回报——成功、失败、拒绝都要说出来，而且要说人话
+
+外加一条同样致命的：白名单里有名字、apply_command 里却没有分支，
+手机上按下去什么也不会发生，而屏幕上一片绿。
+
+全程用临时目录里的假配置，`_mas` 换成假的，不碰网络、不碰真机。
+
+    Formerly test_commands_gates.py.
+    """
+    import json
+    import os
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    STATE = tmpdir()
+    AUTOMAS = tmpdir()
+    os.environ["ARK_STATE_DIR"] = str(STATE)
+    os.environ["ARK_AUTOMAS_DIR"] = str(AUTOMAS)
+
+    from datetime import datetime
+    from ark_relay.features.phone import commands
+    from ark_relay.features.modes import modes
+    from ark_relay.core.config import SERVER_TZ
+    from ark_relay.core.statestore import StateStore
+
+
+    # The real config's shape, cut down to what these gates touch: one script uuid,
+    # one user uuid, Info/* per user and Game/WaitTime per script (docs/CONFIG.md).
+    SID = "59da8762-8fa7-4f2b-9c1e-000000000001"
+    UID = "b0c1d2e3-0000-0000-0000-000000000002"
+
+
+    def sample() -> dict:
+        return {SID: {
+            "Info": {"Name": "MAA"},
+            "Game": {"WaitTime": 60},
+            "SubConfigsInfo": {"UserData": {UID: {"Info": {
+                "Stage": "AT-4", "StageMode": "Fixed", "MedicineNumb": 0,
+                "Annihilation": "Close", "RunTimesLimit": 3}}}}}}
+
+
+    CFG = AUTOMAS / "config" / "ScriptConfig.json"
+
+
+    def reset_cfg(data: "dict | None" = None) -> str:
+        CFG.parent.mkdir(parents=True, exist_ok=True)
+        for old in CFG.parent.glob("ScriptConfig.json.bak-*"):
+            old.unlink()
+        raw = json.dumps(data if data is not None else sample(),
+                         ensure_ascii=False, indent=2)
+        CFG.write_text(raw, encoding="utf-8")
+        return raw
+
+
+    def cfg_raw() -> str:
+        return CFG.read_text(encoding="utf-8")
+
+
+    def backups() -> list[Path]:
+        return sorted(CFG.parent.glob("ScriptConfig.json.bak-*"))
+
+
+    # ---------------------------------------------------------------- 闸门 ①
+
+    print("[闸门① 白名单：不在表里的动作一律拒绝]")
+    for bad in ("format_disk", "poweroff_now", "", "SET_STAGE", "set stage",
+                "run_now; rm -rf", "set_config2", None, 123):
+        ok, msg = commands.apply_command({"action": bad, "confirmed": True})
+        check(f"拒绝 {bad!r}", (ok, "不在允许的清单里" in msg), (False, True))
+        check(f"拒绝 {bad!r} 的话里不带原样的输入", bool(bad) and isinstance(bad, str) and bad in msg, False)
+    check("完全没有 action 字段也拒绝",
+          commands.apply_command({"confirmed": True})[0], False)
+    # Trimmed, not rejected: a name with stray whitespace is still that action.
+    check("前后空格会被去掉，不当成陌生动作",
+          "不在允许的清单里" in commands.apply_command({"action": " set_stage "})[1], False)
+
+    check("ALLOWED 就是两张表的并集",
+          commands.ALLOWED, commands.REVERSIBLE | commands.MUTATING)
+    # An action in both tables would take the reversible path and skip gate ②.
+    check("两张表不许有交集（同名会绕过人工确认）",
+          commands.REVERSIBLE & commands.MUTATING, set())
+
+    print("\n[白名单里有名字，apply_command 里就必须有分支]")
+    # Otherwise the button exists on the phone, does nothing, and reports nothing.
+
+
+    def offline_mas(path, body=None, timeout=20):
+        # What urlopen raises when nothing listens: the one shape that means "AUTO-MAS
+        # is down" (annihilation._backend_unreachable); any other error means it is up.
+        raise __import__("urllib.error").error.URLError(ConnectionRefusedError(61, "Connection refused"))
+
+
+    commands._mas = offline_mas
+    minimal = {
+        "set_stage": {"value": ""}, "set_medicine": {"value": None},
+        "set_wait_time": {"value": None}, "toggle_task": {"name": "x"},
+        "set_config": {}, "set_master": {}, "run_now": {},
+        "skip_today": {}, "unskip_today": {}, "debug_mode": {"off": True}, "weekly_boss": {},
+        "echo_farm": {"boss": 1, "until": "08:30"}, "echo_farm_stop": {},
+        "echo_farm_until": {"until": "21:00"},
+        "skip_shutdown": {"off": True},
+        "tacet_shots": {"on": False},
+        "monthcard": {"game": "明日方舟", "left": 3},
+    }
+    check("每个白名单动作都准备了样例指令",
+          sorted(minimal), sorted(commands.ALLOWED))
+    for action in sorted(commands.ALLOWED):
+        reset_cfg()
+        _, msg = commands.apply_command({"action": action, "confirmed": True,
+                                         **minimal[action]})
+        check(f"{action} 有人接手（不是「未处理的动作」）",
+              msg.startswith("未处理的动作"), False)
+    # Left installed on purpose: set_stage / set_medicine / set_wait_time now ask the
+    # backend first and edit the file only when it does not answer. The file-path
+    # checks below must test that branch deliberately, not because nothing happens
+    # to listen on 127.0.0.1:36163. Sections that want a backend use with_mas().
+
+    # ---------------------------------------------------------------- 闸门 ②
+
+    print("\n[闸门② 会写盘的动作，没有人工确认就不许动]")
+    for action in sorted(commands.MUTATING):
+        before = reset_cfg()
+        ok, msg = commands.apply_command({"action": action, "value": "1-7",
+                                          "queue": "早班", "script": "MAA",
+                                          "path": "Info.Stage", "game": "MAA"})
+        check(f"{action} 未确认被拒", (ok, "人工确认" in msg), (False, True))
+        # alerts 20261010 04:16:13: 「📱 配置没改成」 reached the group as 「动作 set_master 需要人工确认…」.
+        check(f"{action} 拒绝的话里不带动作原名", action in msg, False)
+        check(f"{action} 未确认时配置文件一个字节没动", cfg_raw(), before)
+        check(f"{action} 未确认时不留备份", backups(), [])
+
+    reset_cfg()
+    ok, msg = commands.apply_command({"action": "skip_shutdown"})
+    check("可逆动作不需要确认，直接放行", ok, True)
+
+    # ---------------------------------------------------------------- _STAGE_RE
+
+    print("\n[关卡号形状：不认识就拒，绝不「猜一个」]")
+    for good in ("TO-5", "CE-6", "1-7", "LS-6", "AT-4", "S4-1", "H8-4"):
+        check(f"{good} 是合法形状", bool(commands._STAGE_RE.match(good)), True)
+    for bad in ("", "TO5", "TO-", "-5", "1-7-3", "TO-5 ", " TO-5",
+                "ANNIHILATION-1", "1-7; rm -rf /", "剿灭-1", "TOOOO-5",
+                'AT-4","MedicineNumb":99'):
+        check(f"{bad!r} 不是合法形状", bool(commands._STAGE_RE.match(bad)), False)
+
+    before = reset_cfg()
+    ok, msg = commands._set_stage('AT-4","MedicineNumb":99')
+    check("注入形状的关卡号被拒", (ok, "不合法" in msg), (False, True))
+    check("被拒时配置没动", cfg_raw(), before)
+
+    ok, msg = commands._set_stage("to-5")
+    check("小写自动转大写后写入", ok, True)
+    check("写进去的是大写",
+          json.loads(cfg_raw())[SID]["SubConfigsInfo"]["UserData"][UID]["Info"]["Stage"],
+          "TO-5")
+    check("回报是人话，不是路径", msg, "刷取关卡：AT-4 → TO-5")
+    check("写之前留了备份", len(backups()), 1)
+    check("备份里是原来的内容", backups()[0].read_text(encoding="utf-8"), before)
+
+    reset_cfg()
+    ok, msg = commands._set_stage("AT-4")
+    check("写成和现在一样的值算成功，不算 diff 报警", (ok, msg),
+          (True, "已经是这个状态，无需改动"))
+    check("没改动就不留备份", backups(), [])
+
+    # Two users in the file: which one did the operator mean? The regex would hit
+    # the first one silently.
+    two = sample()
+    two[SID]["SubConfigsInfo"]["UserData"]["another-uid"] = {"Info": {"Stage": "1-7"}}
+    before = reset_cfg(two)
+    ok, msg = commands._set_stage("CE-6")
+    check("文件里有两处 Stage 时拒绝改，不挑一个下手",
+          (ok, "预期恰好 1 处" in msg), (False, True))
+    check("拒绝时文件没动", cfg_raw(), before)
+
+    CFG.unlink()
+    check("配置文件不存在时拒绝", commands._set_stage("1-7")[0], False)
+
+    # ---------------------------------------------------------------- 数值范围
+
+    print("\n[理智药和等待秒数的范围：越界必须拒，不许写进去让别人改回来]")
+    for bad in (None, "很多", "3.5", [3]):
+        check(f"理智药 {bad!r} 不是整数",
+              (commands._set_medicine(bad)[0], "不是整数" in commands._set_medicine(bad)[1]),
+              (False, True))
+    for bad in (-1, 1000, 99999):
+        check(f"理智药 {bad} 越界", commands._set_medicine(bad)[0], False)
+    reset_cfg()
+    check("理智药 0 合法（本来就是 0，报「无需改动」）",
+          commands._set_medicine(0), (True, "已经是这个状态，无需改动"))
+    reset_cfg()
+    ok, msg = commands._set_medicine(3)
+    check("理智药 3 写得进去", (ok, msg), (True, "理智药上限：0 个 → 3 个"))
+
+    # AUTO-MAS's own schema declares ge=60 and silently clamps anything smaller.
+    for bad in (0, 30, 59, 601, "六十"):
+        check(f"等待秒数 {bad!r} 被拒", commands._set_wait_time(bad)[0], False)
+    check("拒 59 秒时说清楚是 AUTO-MAS 的下限",
+          "60" in commands._set_wait_time(59)[1], True)
+    reset_cfg()
+    check("等待 60 秒合法", commands._set_wait_time(60)[0], True)
+    reset_cfg()
+    ok, msg = commands._set_wait_time(600)
+    check("等待 600 秒合法且回报是人话", (ok, msg),
+          (True, "终末地启动后等待：60 秒 → 600 秒"))
+
+    # docs/SILENT-FAILURES-AUDIT.md commands.py:315 - a backend that times out or errors
+    # is up: editing the file then is undone from its memory while the phone hears success.
+    print("\n[backend slow or erroring: stage / medicine / wait-time are refused, file untouched]")
+    for label, exc in (("timeout", TimeoutError("timed out")),
+                       ("HTTP 500", __import__("urllib.error").error.HTTPError("http://x", 500, "err", {}, None))):
+        def broken(path, body=None, timeout=20, exc=exc):
+            raise exc
+        commands._mas = broken
+        for what, call in (("stage", lambda: commands._set_stage("CE-6")),
+                           ("medicine", lambda: commands._set_medicine(3)),
+                           ("wait time", lambda: commands._set_wait_time(120))):
+            before = reset_cfg()
+            ok, msg = call()
+            check(f"{label}: {what} not claimed", ok, False)
+            check(f"{label}: {what} says the scheduler did not answer", "调度程序没应答" in msg, True)
+            check(f"{label}: {what} file untouched, no backup", (cfg_raw() == before, backups()), (True, []))
+    commands._mas = offline_mas
+
+    print("\n[toggle_task 明确拒绝，不猜任务名]")
+    ok, msg = commands._toggle_task("自动战斗", True)
+    check("toggle_task 一律拒绝", (ok, "set_config" in msg), (False, True))
+
+    # ---------------------------------------------------------------- 闸门 ③
+
+    print("\n[闸门③ 结构化 diff：多改一个字段就整个放弃——826 唯一能被拦住的地方]")
+    before = reset_cfg()
+
+    ok, msg = commands._safe_rewrite(CFG, lambda raw: raw.replace('"Fixed"', '"Auto"'),
+                                     expect_changed=2)
+    check("只改了 1 处但预期 2 处，放弃", (ok, "和预期不符" in msg), (False, True))
+    check("放弃时文件没动", cfg_raw(), before)
+
+    ok, msg = commands._safe_rewrite(
+        CFG, lambda raw: raw.replace('"AT-4"', '"1-7"').replace('"MedicineNumb": 0',
+                                                                '"MedicineNumb": 99'),
+        expect_changed=1)
+    check("正则误伤了第二个字段，放弃", (ok, "改动 2" in msg), (False, True))
+    check("误伤时理智药没被烧", cfg_raw(), before)
+
+    def add_key(raw: str) -> str:
+        d = json.loads(raw)
+        d[SID]["Info"]["凭空造的"] = 1
+        return json.dumps(d, ensure_ascii=False, indent=2)
+
+
+    ok, msg = commands._safe_rewrite(CFG, add_key, expect_changed=1)
+    check("凭空多出一个字段，放弃", (ok, "新增 1" in msg), (False, True))
+    check("多字段时文件没动", cfg_raw(), before)
+
+
+    def drop_key(raw: str) -> str:
+        d = json.loads(raw)
+        del d[SID]["Game"]["WaitTime"]
+        return json.dumps(d, ensure_ascii=False, indent=2)
+
+
+    ok, msg = commands._safe_rewrite(CFG, drop_key, expect_changed=0)
+    check("少了一个字段，放弃", (ok, "删除 1" in msg), (False, True))
+    check("少字段时文件没动", cfg_raw(), before)
+
+
+    def boom(raw: str) -> str:
+        raise ValueError("正则没匹配上")
+
+
+    ok, msg = commands._safe_rewrite(CFG, boom, expect_changed=1)
+    check("生成改动时抛异常，不碰盘", (ok, "生成改动失败" in msg), (False, True))
+    check("抛异常时文件没动", cfg_raw(), before)
+
+    ok, msg = commands._safe_rewrite(CFG, lambda raw: raw[:-3], expect_changed=1)
+    check("改完不是合法 JSON，放弃", (ok, "JSON 非法" in msg), (False, True))
+    check("非法 JSON 时文件没动", cfg_raw(), before)
+
+    CFG.write_text("{这不是 JSON", encoding="utf-8")
+    ok, msg = commands._safe_rewrite(CFG, lambda raw: raw, expect_changed=1)
+    check("原文件就不是 JSON 时拒绝改（不许在坏文件上叠改动）",
+          (ok, "不是合法 JSON" in msg), (False, True))
+
+    before = reset_cfg()
+    saved_write = commands.atomic_write_text
+
+
+    def cannot_write(path, text, newline=None):
+        raise OSError("磁盘满了")
+
+
+    commands.atomic_write_text = cannot_write
+    ok, msg = commands._safe_rewrite(CFG, lambda raw: raw.replace('"Fixed"', '"Auto"'),
+                                     expect_changed=1)
+    commands.atomic_write_text = saved_write
+    check("写盘失败要回滚并说出来", (ok, "已回滚" in msg), (False, True))
+    check("回滚后内容和原来一模一样", cfg_raw(), before)
+
+    # ---------------------------------------------------------------- _flatten
+
+    print("\n[_flatten：diff 的地基，漏掉一层就等于那一层没有闸门]")
+    check("嵌套字典摊平成路径",
+          commands._flatten({"a": {"b": 1}}), {"/a/b": 1})
+    check("列表按下标摊平（两个下标互换必须被看见）",
+          commands._flatten({"a": [10, 20]}), {"/a[0]": 10, "/a[1]": 20})
+    check("列表里的字典也摊得到底",
+          commands._flatten({"a": [{"b": True}]}), {"/a[0]/b": True})
+    check("空字典摊出来是空", commands._flatten({}), {})
+    check("None 也是一个值，不许被吞", commands._flatten({"a": None}), {"/a": None})
+    a = commands._flatten({"x": [1, 2]})
+    b = commands._flatten({"x": [2, 1]})
+    check("列表顺序变了会被 diff 看见",
+          {k for k in a.keys() & b.keys() if a[k] != b[k]}, {"/x[0]", "/x[1]"})
+
+    # ---------------------------------------------------------------- 闸门 ④
+
+    print("\n[闸门④ 回报要说人话：路径里的 uuid 不许出现在推送里]")
+    # The operator reads this on a phone; `/59da8762-.../Game/WaitTime` says nothing
+    # (operator feedback, 2026-08-20).
+    check("等待秒数带单位",
+          commands._humanize(f"/{SID}/Game/WaitTime", 60, 120),
+          "终末地启动后等待：60 秒 → 120 秒")
+    check("理智药带单位",
+          commands._humanize(f"/{SID}/Info/MedicineNumb", 0, 3),
+          "理智药上限：0 个 → 3 个")
+    check("关卡不带单位",
+          commands._humanize(f"/{SID}/Info/Stage", "AT-4", "TO-5"),
+          "刷取关卡：AT-4 → TO-5")
+    check("布尔值说开关，不说 True/False",
+          commands._humanize("/x/TimeEnabled", True, False), "队列定时：开 → 关")
+    check("没登记的字段退回字段名，不吐整条路径",
+          commands._humanize(f"/{SID}/Info/SomethingNew", 1, 2),
+          "SomethingNew：1 → 2")
+    for field in ("Stage", "MedicineNumb", "WaitTime", "Annihilation",
+                  "TimeEnabled", "Enabled", "RunTimesLimit", "StageMode"):
+        line = commands._humanize(f"/{SID}/Info/{field}", 1, 2)
+        check(f"{field} 的回报里没有 uuid", SID in line, False)
+
+    # ---------------------------------------------------------------- set_config
+
+    print("\n[set_config：读现值、路径必须已存在、写完回读——826 缺的就是这三条]")
+
+
+    class FakeMas:
+        """The AUTO-MAS backend, in memory. Records every call so «没写盘» is provable."""
+
+        def __init__(self, *, honour_writes=True):
+            self.calls: list[tuple[str, dict]] = []
+            self.honour_writes = honour_writes
+            self.scripts = {SID: {"Info": {"Name": "MAA"}}}
+            self.users = {SID: {UID: {"Info": {"Stage": "AT-4", "MedicineNumb": 0}}}}
+
+        def __call__(self, path, body=None, timeout=20):
+            body = body or {}
+            self.calls.append((path, body))
+            if path == "/api/scripts/get":
+                return {"data": self.scripts}
+            if path == "/api/scripts/user/get":
+                return {"data": self.users.get(body["scriptId"], {})}
+            if path == "/api/scripts/user/update":
+                if self.honour_writes:
+                    self._merge(self.users[body["scriptId"]][body["userId"]],
+                                body["data"])
+                return {"status": "success"}
+            if path == "/api/dispatch/start":
+                return {"status": "success"}
+            raise AssertionError(f"测试没准备这个端点: {path}")
+
+        def _merge(self, dst, src):
+            for k, v in src.items():
+                if isinstance(v, dict) and isinstance(dst.get(k), dict):
+                    self._merge(dst[k], v)
+                else:
+                    dst[k] = v
+
+        def wrote(self):
+            return [c for c in self.calls if c[0] == "/api/scripts/user/update"]
+
+
+    def with_mas(fake, fn):
+        saved, commands._mas = commands._mas, fake
+        try:
+            return fn()
+        finally:
+            commands._mas = saved
+
+
+    check("缺 script/path 就拒",
+          with_mas(FakeMas(), lambda: commands._set_config({"script": "MAA"}))[0],
+          False)
+    check("缺 value 就拒（不许把「没给」当成 None 写进去）",
+          with_mas(FakeMas(),
+                   lambda: commands._set_config({"script": "MAA", "path": "Info.Stage"}))[1],
+          "set_config 需要 value")
+
+    f = FakeMas()
+    ok, msg = with_mas(f, lambda: commands._set_config(
+        {"script": "MAA", "path": "Info.凭空造的", "value": 1}))
+    check("路径不存在就拒（说清中继不会自己新建）", (ok, "已拒绝" in msg and "不会自己新建" in msg), (False, True))
+    check("拒绝时一次写请求都没发出去", f.wrote(), [])
+
+    f = FakeMas()
+    ok, msg = with_mas(f, lambda: commands._set_config(
+        {"script": "没这个脚本", "path": "Info.Stage", "value": "1-7"}))
+    check("脚本不存在就拒", (ok, "找不到脚本" in msg), (False, True))
+    check("找不到脚本时不写", f.wrote(), [])
+
+    f = FakeMas()
+    ok, msg = with_mas(f, lambda: commands._set_config(
+        {"script": "MAA", "path": "Info.Stage", "value": "AT-4"}))
+    check("值本来就一样：算成功且不写", (ok, f.wrote()), (True, []))
+
+    f = FakeMas()
+    ok, msg = with_mas(f, lambda: commands._set_config(
+        {"script": "maa", "path": "Info.Stage", "value": "1-7"}))
+    check("脚本名大小写不敏感，改得动", ok, True)
+    check("回报带上「原值 → 新值」", msg, "maa 的 Info.Stage：'AT-4' → '1-7'")
+    check("确实只写了一次", len(f.wrote()), 1)
+    check("写的是嵌套结构，不是拍平的键",
+          f.wrote()[0][1]["data"], {"Info": {"Stage": "1-7"}})
+
+    f = FakeMas(honour_writes=False)
+    ok, msg = with_mas(f, lambda: commands._set_config(
+        {"script": "MAA", "path": "Info.Stage", "value": "1-7"}))
+    check("写了但回读还是老值：必须报失败，不许报绿",
+          (ok, "写了但没生效" in msg), (False, True))
+
+    print("\n[后端在：关卡 / 理智药 / 等待秒数走调度程序，不碰文件（2026-09-30 早班停用被内存写回盖掉的同一个坑）]")
+    MAAEND_SID = "3e5d0000-0000-0000-0000-0000000maaend"
+
+
+    class BackendMas(FakeMas):
+        """FakeMas plus the script-level endpoints and AUTO-MAS's failure shape."""
+
+        def __init__(self, *, honour_writes=True, refuse=None):
+            super().__init__(honour_writes=honour_writes)
+            self.refuse = refuse          # a message: updates answer HTTP 200 + code 500
+            self.scripts[MAAEND_SID] = {"Info": {"Name": "MaaEnd"},
+                                        "Game": {"WaitTime": 60, "Path": "D:/x"},
+                                        "Run": {"RunTimesLimit": 3}}
+
+        def __call__(self, path, body=None, timeout=20):
+            if self.refuse and path in ("/api/scripts/update", "/api/scripts/user/update"):
+                self.calls.append((path, body or {}))
+                return {"code": 500, "status": "error", "message": self.refuse}
+            if path == "/api/scripts/get":
+                self.calls.append((path, body or {}))
+                return {"code": 200, "data": json.loads(json.dumps(self.scripts))}
+            if path == "/api/scripts/update":
+                self.calls.append((path, body))
+                if self.honour_writes:
+                    self._merge(self.scripts[body["scriptId"]], body["data"])
+                return {"code": 200, "status": "success"}
+            return super().__call__(path, body, timeout)
+
+        def script_writes(self):
+            return [c for c in self.calls if c[0] == "/api/scripts/update"]
+
+
+    before = reset_cfg()
+    b = BackendMas()
+    ok, msg = with_mas(b, lambda: commands._set_stage("to-5"))
+    check("关卡：后端在时成功", ok, True)
+    check("关卡：写的是 MAA 用户的 Info.Stage",
+          [c[1] for c in b.wrote()],
+          [{"scriptId": SID, "userId": UID, "data": {"Info": {"Stage": "TO-5"}}}])
+    check("关卡：调度程序里现在是 TO-5", b.users[SID][UID]["Info"]["Stage"], "TO-5")
+    check("关卡：回报是人话并说调度程序已确认", msg, "刷取关卡：AT-4 → TO-5（调度程序已确认）")
+    check("关卡：配置文件一个字节没动", cfg_raw(), before)
+    check("关卡：没留 ScriptConfig 备份", backups(), [])
+
+    b = BackendMas()
+    ok, msg = with_mas(b, lambda: commands._set_stage("AT-4"))
+    check("关卡：和现在一样 → 成功且一次都不写", (ok, msg, b.wrote()),
+          (True, "已经是这个状态，无需改动", []))
+
+    before = reset_cfg()
+    b = BackendMas()
+    ok, msg = with_mas(b, lambda: commands._set_medicine(3))
+    check("理智药：后端在时成功", (ok, msg), (True, "理智药上限：0 个 → 3 个（调度程序已确认）"))
+    check("理智药：写的是 Info.MedicineNumb",
+          [c[1]["data"] for c in b.wrote()], [{"Info": {"MedicineNumb": 3}}])
+    check("理智药：配置文件没动、没备份", (cfg_raw(), backups()), (before, []))
+
+    before = reset_cfg()
+    b = BackendMas()
+    ok, msg = with_mas(b, lambda: commands._set_wait_time(120))
+    check("等待秒数：后端在时成功", (ok, msg), (True, "终末地启动后等待：60 秒 → 120 秒（调度程序已确认）"))
+    check("等待秒数：只发 MaaEnd 脚本的 Game.WaitTime 这一叶",
+          [c[1] for c in b.script_writes()],
+          [{"scriptId": MAAEND_SID, "data": {"Game": {"WaitTime": 120}}}])
+    check("等待秒数：Game 其余的键还在（合并，不是整组替换）",
+          b.scripts[MAAEND_SID]["Game"], {"WaitTime": 120, "Path": "D:/x"})
+    check("等待秒数：没碰用户那一层", b.wrote(), [])
+    check("等待秒数：配置文件没动、没备份", (cfg_raw(), backups()), (before, []))
+
+    b = BackendMas()
+    ok, msg = with_mas(b, lambda: commands._set_wait_time(60))
+    check("等待秒数：和现在一样 → 成功且不写", (ok, msg, b.script_writes()),
+          (True, "已经是这个状态，无需改动", []))
+
+    b = BackendMas()
+    del b.scripts[MAAEND_SID]["Game"]["WaitTime"]
+    ok, msg = with_mas(b, lambda: commands._set_wait_time(120))
+    check("等待秒数：调度程序里没有这一项 → 拒绝，不新建",
+          (ok, "已拒绝" in msg and "不会自己新建" in msg, b.script_writes()), (False, True, []))
+
+    b = BackendMas()
+    del b.scripts[MAAEND_SID]
+    ok, msg = with_mas(b, lambda: commands._set_wait_time(120))
+    check("等待秒数：没有 MaaEnd 脚本 → 失败，不退回写文件",
+          (ok, "MaaEnd" in msg, cfg_raw() == before, backups()), (False, True, True, []))
+
+    print("\n[后端在但没生效 / 拒收：报失败，绝不退回去写文件]")
+    for label, fn in (("关卡", lambda: commands._set_stage("TO-5")),
+                      ("理智药", lambda: commands._set_medicine(5)),
+                      ("等待秒数", lambda: commands._set_wait_time(200))):
+        before = reset_cfg()
+        ok, msg = with_mas(BackendMas(honour_writes=False), fn)
+        check(f"{label}：写了读出来还是老值 → 失败", (ok, "写了但没生效" in msg), (False, True))
+        check(f"{label}：没生效时配置文件没动、没备份", (cfg_raw(), backups()), (before, []))
+        busy = "脚本 MaaEnd 正在运行, 无法更新配置项"
+        ok, msg = with_mas(BackendMas(refuse=busy), fn)
+        check(f"{label}：回复体 code=500 → 失败且原话带回", (ok, busy in msg), (False, True))
+        check(f"{label}：拒收时配置文件没动、没备份", (cfg_raw(), backups()), (before, []))
+
+    before = reset_cfg()
+    b = BackendMas()
+    b.scripts = {}
+    ok, msg = with_mas(b, lambda: commands._set_stage("TO-5"))
+    check("关卡：后端在但找不到 MAA → 失败，不退回写文件",
+          (ok, "找不到脚本" in msg, cfg_raw(), backups()), (False, True, before, []))
+
+    print("\n[后端不在（连不上）：走原来的文件路]")
+    from urllib.error import URLError
+
+
+    def refused(path, body=None, timeout=20):
+        raise URLError(ConnectionRefusedError(61, "Connection refused"))
+
+
+    reset_cfg()
+    ok, msg = with_mas(refused, lambda: commands._set_stage("TO-5"))
+    check("关卡：连不上 → 改文件", (ok, msg, len(backups())), (True, "刷取关卡：AT-4 → TO-5", 1))
+    reset_cfg()
+    ok, msg = with_mas(refused, lambda: commands._set_wait_time(90))
+    check("等待秒数：连不上 → 改文件", (ok, msg), (True, "终末地启动后等待：60 秒 → 90 秒"))
+    check("等待秒数：文件里真的是 90", json.loads(cfg_raw())[SID]["Game"]["WaitTime"], 90)
+
+    print("\n[set_config 同样认回复体里的 code]")
+    f = BackendMas(refuse="配置被锁")
+    ok, msg = with_mas(f, lambda: commands._set_config(
+        {"script": "MAA", "path": "Info.Stage", "value": "1-7"}))
+    check("set_config：code=500 → 失败且带原话", (ok, "配置被锁" in msg), (False, True))
+
+    print("\n[_dig / _nest：路径解析本身]")
+    check("_dig 取得到嵌套值",
+          commands._dig({"Info": {"Stage": "AT-4"}}, "Info.Stage"), "AT-4")
+    for bad in ("Info.Nope", "Nope.Stage", "Info.Stage.More"):
+        try:
+            commands._dig({"Info": {"Stage": "AT-4"}}, bad)
+            check(f"_dig 对 {bad} 应该抛 KeyError", "没抛", "KeyError")
+        except KeyError:
+            check(f"_dig 对不存在的 {bad} 抛 KeyError", True, True)
+    check("_nest 造出嵌套写入体",
+          commands._nest("Task.IfFight", True), {"Task": {"IfFight": True}})
+    check("_nest 单层也行", commands._nest("Stage", "1-7"), {"Stage": "1-7"})
+
+    # ---------------------------------------------------------------- skip_today
+
+    print("\n[skip_today：过期的指令不许生效，老队列名要认得]")
+    today = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
+    # The dispatch sweep above already ran skip_today once; start from a clean slate.
+    StateStore(STATE).pop("queues", f"skip_day:{today}")
+    ok, msg = commands._skip_today("早班", "2020-01-01")
+    check("指定日期已经过去：拒绝，别跳掉没人要跳的那天",
+          (ok, "过期" in msg), (False, True))
+    check("过期指令没写进状态",
+          StateStore(STATE).get("queues", f"skip_day:{today}"), None)
+
+    ok, msg = commands._skip_today("新队列")
+    check("老队列名映射成现名", ok, True)
+    check("状态里存的是现名",
+          StateStore(STATE).get("queues", f"skip_day:{today}"), "早班")
+    ok, msg = commands._skip_today("晚班", today)
+    check("今天已跳过别的队列：两个都存下，原来的不许被换掉（2026-09-30）",
+          (ok, StateStore(STATE).get("queues", f"skip_day:{today}")),
+          (True, ["早班", "晚班"]))
+    ok, msg = commands._skip_today("早班", today)
+    check("同一个队列再跳一次照样成功，不重复存",
+          (ok, "已经" in msg, StateStore(STATE).get("queues", f"skip_day:{today}")),
+          (True, True, ["早班", "晚班"]))
+    ok, msg = modes.unskip(STATE, None, "早班")
+    check("取消其中一个：只删它，另一个还在",
+          (ok, StateStore(STATE).get("queues", f"skip_day:{today}")), (True, "晚班"))
+    StateStore(STATE).pop("queues", f"skip_day:{today}")
+    ok, _ = commands._skip_today("晚班", today)
+    check("带上今天的日期照样生效",
+          StateStore(STATE).get("queues", f"skip_day:{today}"), "晚班")
+    ok, msg = modes.unskip(STATE, None, "早班")
+    check("取消没跳过的队列：说出今天跳过的是哪个", (ok, "晚班" in msg), (False, True))
+    StateStore(STATE).pop("queues", f"skip_day:{today}")
+
+    # ---------------------------------------------------------------- 队列进出
+
+    print("\n[skip a script in a queue for today: only Schedule.Days changes, and it goes back verbatim]")
+    # Since the 2026-10-11 hand-over (item 16) the item stays in the queue; today's
+    # weekday leaves its Schedule.Days (AUTO-MAS schema.py QueueItem_Schedule.Days,
+    # task_manager.py _is_script_scheduled_today) and the saved list is written back.
+    ALL_DAYS = list(commands.WEEKDAYS)
+    TODAY = commands.WEEKDAYS[datetime.now(tz=SERVER_TZ).weekday()]
+
+
+    class FakeQueueMas(FakeMas):
+        def __init__(self):
+            super().__init__()
+            self.qid = "queue-0001"
+            # OK-WW exists as a script but is not in this queue - the "nothing to
+            # skip" case.
+            self.scripts["s-okww"] = {"Info": {"Name": "OK-WW"}}
+            self.queues = {self.qid: {"Info": {"Name": "早班"}}}
+            self.items = {"u1": {"Info": {"ScriptId": "s-endfield"}, "Schedule": {"Days": list(ALL_DAYS)}},
+                          "u2": {"Info": {"ScriptId": SID}, "Schedule": {"Days": list(ALL_DAYS)}},
+                          "u3": {"Info": {"ScriptId": "s-wuwa"}}}
+            self.order = ["u1", "u2", "u3"]
+            self.writes = []
+
+        def __call__(self, path, body=None, timeout=20):
+            body = body or {}
+            if path == "/api/queue/get":
+                self.calls.append((path, body))
+                return {"data": self.queues}
+            if path == "/api/queue/item/get":
+                self.calls.append((path, body))
+                return {"index": [{"uid": u} for u in self.order], "data": json.loads(json.dumps(self.items))}
+            if path in ("/api/queue/item/delete", "/api/queue/item/add", "/api/queue/item/order"):
+                raise AssertionError(f"a today-only skip must not call {path}")
+            if path == "/api/queue/item/update":
+                self.writes.append(body["data"])
+                item = self.items[body["queueItemId"]]
+                for sec, val in body["data"].items():
+                    item.setdefault(sec, {}).update(val)
+                return {"status": "success"}
+            return super().__call__(path, body, timeout)
+
+
+    q = FakeQueueMas()
+    rec = with_mas(q, lambda: commands.skip_script_in_queue("早班", "MAA"))
+    check("the record keeps the item, its position and its original days",
+          rec and (rec["queueItemId"], rec["position"], rec["days"]), ("u2", 1, ALL_DAYS))
+    check("the item is still in the queue", q.order, ["u1", "u2", "u3"])
+    check("only today left its days", q.items["u2"]["Schedule"]["Days"], [d for d in ALL_DAYS if d != TODAY])
+    check("only Schedule was sent (no Info, so AUTO-MAS's running-queue guard does not refuse it)",
+          [list(w) for w in q.writes], [["Schedule"]])
+    check("the other items are untouched", q.items["u1"]["Schedule"]["Days"], ALL_DAYS)
+    check("the record says which server day it was made on",
+          rec and rec.get("day"), datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
+    check("a second skip the same day: None, so the trimmed list is never saved as the original",
+          with_mas(q, lambda: commands.skip_script_in_queue("早班", "MAA")), None)
+    ok = with_mas(q, lambda: commands.restore_script_in_queue(rec))
+    check("restore succeeds", ok, True)
+    check("the original days are back verbatim", q.items["u2"]["Schedule"]["Days"], ALL_DAYS)
+    check("restoring again is a no-op success", with_mas(q, lambda: commands.restore_script_in_queue(rec)), True)
+    check("…and writes nothing more", len(q.writes), 2)
+
+    q4 = FakeQueueMas()
+    q4.items["u3"]["Info"]["ScriptId"] = "s-okww"      # an item that never set Schedule.Days runs every day
+    rec4 = with_mas(q4, lambda: commands.skip_script_in_queue("早班", "OK-WW"))
+    check("no Schedule.Days means every day; today is dropped from all seven",
+          (rec4 and rec4["days"], q4.items["u3"]["Schedule"]["Days"]), (ALL_DAYS, [d for d in ALL_DAYS if d != TODAY]))
+
+    q5 = FakeQueueMas()
+    q5.items["u2"]["Schedule"]["Days"] = [d for d in ALL_DAYS if d != TODAY]
+    check("the user's own days already leave out today: None, nothing written",
+          (with_mas(q5, lambda: commands.skip_script_in_queue("早班", "MAA")), q5.writes), (None, []))
+
+
+    class StuckQueueMas(FakeQueueMas):
+        """AUTO-MAS accepts item/update but the days never change."""
+
+        def __call__(self, path, body=None, timeout=20):
+            if path == "/api/queue/item/update":
+                self.writes.append(body["data"])
+                return {"status": "success"}            # accepted, not applied
+            return super().__call__(path, body, timeout)
+
+
+    import logging
+    _warned = []
+
+
+    class _Grab(logging.Handler):
+        def emit(self, record):
+            _warned.append((record.levelno, record.getMessage()))
+
+
+    _h = _Grab()
+    commands.log.addHandler(_h)
+    q3 = StuckQueueMas()
+    try:
+        with_mas(q3, lambda: commands.skip_script_in_queue("早班", "MAA"))
+        raised = ""
+    except RuntimeError as exc:
+        raised = str(exc)
+    check("skip not applied on read-back: raises, so the caller reports it", TODAY in raised, True)
+    q3.items["u2"]["Schedule"]["Days"] = [d for d in ALL_DAYS if d != TODAY]
+    ok3 = with_mas(q3, lambda: commands.restore_script_in_queue(rec))
+    check("restore not applied on read-back: False (record kept, retried)", ok3, False)
+    check("…and a WARNING (to the group) naming the queue and the script",
+          [lv for lv, m in _warned if "没能把 MAA 的运行日改回去" in m and "早班" in m], [logging.WARNING])
+    _warned.clear()
+    legacy = {"queue": "早班", "queueId": "queue-0001", "script": "MAA", "scriptId": SID, "position": 1, "day": "2026-10-10"}
+    check("a record from the item/delete days: dropped (True) ...",
+          with_mas(FakeQueueMas(), lambda: commands.restore_script_in_queue(legacy)), True)
+    check("... with a WARNING saying our side adds the item back",
+          [lv for lv, m in _warned if "把它加回" in m and "整项删掉" in m], [logging.WARNING])
+    _warned.clear()
+    q6 = FakeQueueMas()
+    q6.order.remove("u2")
+    check("the item is gone from the queue: False, with a WARNING",
+          (with_mas(q6, lambda: commands.restore_script_in_queue(rec)),
+           [lv for lv, m in _warned if "找不到 MAA" in m]), (False, [logging.WARNING]))
+    commands.log.removeHandler(_h)
+
+    q2 = FakeQueueMas()
+    check("the script is not in the queue at all: None, no raise",
+          with_mas(q2, lambda: commands.skip_script_in_queue("早班", "OK-WW")), None)
+    check("None leaves the queue untouched", q2.writes, [])
+
+    print("\n[单跑一个脚本：不许因为找不到就去派发整条队列]")
+    f = FakeMas()
+    ok, msg = with_mas(f, lambda: commands.run_script("MAA"))
+    check("找得到就单独派发", (ok, "单独开跑" in msg), (True, True))
+    check("派发的是脚本 id、模式 AutoProxy",
+          [c[1] for c in f.calls if c[0] == "/api/dispatch/start"],
+          [{"taskId": SID, "mode": "AutoProxy"}])
+    f = FakeMas()
+    ok, msg = with_mas(f, lambda: commands.run_script("终末地"))
+    check("找不到脚本就明说，且什么也不派发",
+          (ok, [c for c in f.calls if c[0] == "/api/dispatch/start"]), (False, []))
+
+    print("\n[run_now：接口挂了要说人话，不许静默]")
+    ok, msg = with_mas(offline_mas, lambda: commands._run_now("早班"))
+    check("拿不到队列列表时明确失败", (ok, "取不到队列列表" in msg), (False, True))
+
+
+    class NoSuchQueueMas(FakeMas):
+        def __call__(self, path, body=None, timeout=20):
+            if path == "/api/queue/get":
+                return {"data": {"q1": {"Info": {"Name": "早班"}}}}
+            return super().__call__(path, body, timeout)
+
+
+    ok, msg = with_mas(NoSuchQueueMas(), lambda: commands._run_now("不存在的班"))
+    check("队列名不存在时把现有的列出来（人才知道该按哪个）",
+          (ok, "早班" in msg), (False, True))
+
+    print("\n[apply_command 永远不抛：抛出去就没人回报了]")
+
+
+    def explode(*a, **k):
+        raise RuntimeError("底下炸了")
+
+
+    saved, commands._set_stage = commands._set_stage, explode
+    ok, msg = commands.apply_command({"action": "set_stage", "value": "1-7",
+                                      "confirmed": True})
+    commands._set_stage = saved
+    check("底层抛异常也被兜住并回报", (ok, "执行出错" in msg), (False, True))
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_mailbox_close_windows():
+    """Mailbox.close() cuts the held stream at once, on macOS and on Windows.
+
+The service stop (SvcStop) calls Mailbox.close() while the listener thread is
+blocked reading the ntfy stream. Until 2026-10-07 close() returned only with
+the next line the server sent - a keepalive, 45 s apart on ntfy.sh - because
+r.close() waits for the read the listener holds; the fix shuts the socket down
+first (see Mailbox.close). test_phone_mailbox_e2e.py checks this against a
+real ntfy; this file checks the same thing with nothing but the standard
+library, so it runs wherever Python runs (the Windows CI job included, the
+machine the relay really lives on being Windows).
+
+The server below holds a GET open and writes one ntfy-shaped keepalive line
+every KEEPALIVE seconds. KEEPALIVE is well over the 1 s limit, so a close()
+that waits for the next line cannot pass by luck.
+
+Basis: "If you want to close the connection in a timely fashion, call
+shutdown() before close()." (https://docs.python.org/3/library/socket.html#socket.socket.close)
+
+    Formerly test_mailbox_close_windows.py.
+    """
+    import json
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.features.phone import phone
+    from ark_relay.features.phone import mailbox as phone_mailbox
+
+    KEEPALIVE = 5.0          # seconds between keepalive lines (ntfy.sh: 45 s)
+    LIMIT = 1.0              # close() and the listener's exit must each take less
+
+
+    stopping = threading.Event()
+    held = threading.Event()           # the server has sent the headers and the open line
+
+
+    class Stream(BaseHTTPRequestHandler):
+        """GET /<topic>/json?...: what ntfy sends a subscriber - an open line, then a
+    keepalive every KEEPALIVE seconds - until the client goes away."""
+
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+            self.end_headers()
+            try:
+                self._line("open")
+                held.set()
+                while not stopping.wait(KEEPALIVE):
+                    self._line("keepalive")
+            except OSError:          # the client shut the socket down: done
+                return
+
+        def _line(self, event):
+            body = {"id": f"k{time.time_ns()}", "time": int(time.time()), "event": event,
+                    "topic": self.path.split("/")[1]}
+            self.wfile.write((json.dumps(body) + "\n").encode("utf-8"))
+            self.wfile.flush()
+
+        def log_message(self, *a):   # no per-request lines on stderr
+            pass
+
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Stream)
+    srv.daemon_threads = True
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    # Mailbox reads NTFY from mailbox.py; phone keeps the re-exported name in step.
+    phone.NTFY = phone_mailbox.NTFY = f"http://127.0.0.1:{srv.server_address[1]}"
+
+    t0 = time.time()
+    try:
+        print(f"[a local stream server on {phone.NTFY}, keepalive every {KEEPALIVE:.0f} s]")
+        box = phone.Mailbox("close-test", "8964", tmpdir())
+        stop = threading.Event()
+        listener = threading.Thread(target=box.listen, args=(lambda body: None, stop.is_set),
+                                    daemon=True)
+        listener.start()
+        check("the server holds the stream", held.wait(5), True)
+        until = time.time() + 5
+        while not box.connected and time.time() < until:
+            time.sleep(0.01)
+        check("the mailbox says it is connected", box.connected, True)
+        time.sleep(0.3)              # the listener is now blocked reading the next line
+
+        # SvcStop: the stop flag first, then close().
+        stop.set()
+        t = time.time()
+        box.close()
+        took = time.time() - t
+        check(f"Mailbox.close() returned in under {LIMIT:.0f} s (keepalive every {KEEPALIVE:.0f} s)",
+              took < LIMIT or round(took, 2), True)
+        listener.join(LIMIT)
+        check(f"the listener thread ended within {LIMIT:.0f} s after it", listener.is_alive(), False)
+    except Exception as exc:  # noqa: BLE001
+        import traceback
+        traceback.print_exc()
+        fails.append(type(exc).__name__)
+    finally:
+        stopping.set()
+        srv.shutdown()
+        srv.server_close()
+        print(f"  ({time.time() - t0:.1f} s)")
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_payload_roundtrip():
+    """A held failure survives a relay restart through pending.json. Everything the
+alert wording depends on has to survive with it - the relay now restarts itself
+for every selfupdate, so this path runs far more often than it used to.
+
+    Formerly test_payload_roundtrip.py.
+    """
+    from datetime import datetime
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core.config import RunRecord, SERVER_TZ
+    from ark_relay.core.transport import record_to_payload, payload_to_record
+
+
+    T0 = datetime(2026, 8, 21, 21, 30, tzinfo=SERVER_TZ)
+    T1 = datetime(2026, 8, 21, 22, 15, tzinfo=SERVER_TZ)
+
+    def rec(**kw):
+        base = dict(run_id="2026-08-21/arknights/21-30-00", script="MAA",
+                    user="arknights", started=T0, finished=T1, ok=False,
+                    failed_tasks=["协议空间"], raw={"sanity": 6})
+        base.update(kw)
+        return RunRecord(**base)
+
+    print("[an untrustworthy duration must stay untrustworthy]")
+    # The filename is on a UTC+4 clock, so a run with no timestamped log has times
+    # that are hours off. duration_known=False is what stops the alert presenting
+    # that as fact - and it used to be dropped on the way to disk.
+    back = payload_to_record(record_to_payload(rec(duration_known=False)))
+    check("duration_known", back.duration_known, False)
+
+    print("\n[a trustworthy one stays trustworthy]")
+    check("duration_known", payload_to_record(record_to_payload(rec())).duration_known, True)
+
+    print("\n[payloads written before this field existed]")
+    check("defaults to True", payload_to_record({
+        "run_id": "z", "script": "MAA", "started": T0.isoformat(),
+        "finished": T1.isoformat(), "ok": False}).duration_known, True)
+
+    print("\n[everything else the alert needs]")
+    back = payload_to_record(record_to_payload(rec()))
+    for field in ("run_id", "script", "user", "started", "finished", "ok",
+                  "failed_tasks", "raw"):
+        check(field, getattr(back, field), getattr(rec(), field))
+    check("duration_min", back.duration_min, 45)
+    check("sanity", back.sanity, 6)
+
+
+def _part_test_windows():
+    """Records inside a marked test window stay out of the daily report's rows.
+
+Fixture: the real ledger of 2026-09-14 - the 09:00 queue (rows 0-9, retries
+included, running until 11:49) and then my test dispatches from 12:57 (two
+killed runs, one gathering-only run with two retries).
+
+    Formerly test_test_windows.py.
+    """
+    import json
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.core import ledger as core
+
+
+    FIX = fx_dir(Path(__file__), "fixtures") / "ledger-2026-09-14" / "ledger.jsonl"
+    entries = [json.loads(x) for x in FIX.read_text(encoding="utf-8").splitlines() if x.strip()]
+    check("样本 16 条", len(entries), 16)
+
+    print("[真实账本 + 标记的测试窗口：窗口里的六条收起，其余全是正常行]")
+    windows = [{"since": "2026-09-14T12:50:00+08:00", "until": "2026-09-14T13:50:00+08:00", "what": "MaaEnd"}]
+    queue, tests = core.split_test(entries, windows)
+    check("正常 10 条", len(queue), 10)
+    check("测试 6 条", [m["run_id"].rsplit("/", 1)[-1] for m in tests],
+          ["MaaEnd-08-57-04", "MaaEnd-09-03-54", "MaaEnd-09-06-20", "MaaEnd-09-08-10", "MaaEnd-09-37-59", "MaaEnd-09-43-32"])
+    check("队列里的重试照旧是正常行", any(e["run_id"].endswith("MaaEnd-07-20-27") for e in queue), True)
+
+    print("\n[没有标记窗口：手动跑的也是正常行（版本更新后的手动重跑必须进日报）]")
+    q2, t2 = core.split_test(entries, [])
+    check("全部是正常行", (len(q2), t2), (16, []))
+    q3, t3 = core.split_test(entries, [{"since": "bad"}])
+    check("坏窗口当没有", (len(q3), t3), (16, []))
+
+    print("\n[窗口没关（until 为空）：从 since 起全算测试——所以测完必须 test-off]")
+    q4, t4 = core.split_test(entries, [{"since": "2026-09-14T12:50:00+08:00", "until": None}])
+    check("12:50 以后的全收起", len(t4), 6)
+
+    print("\n[日报只列正常的，测试那几趟不成行]")
+    title, body = core.format_daily("2026-09-14", queue)
+    check("没有 12:57 那趟", "12:58→13:03" in body, False)
+    check("早班的终末地还在", "终末地" in body, True)
+    t_all, b_all = core.format_daily("2026-09-14", entries)
+    check("不标记的话它们本来会出现", "12:58→13:03" in b_all, True)
+
+    print("\n[AUTO-MAS 自己没拉起模拟器的那一秒不成行（10:51 那条）]")
+    check("旧记录里 transitional 还是 False", next(e for e in entries if e["run_id"].endswith("06-51-56"))["transitional"], False)
+    check("日报里没有「模拟器启动失败」", "模拟器启动失败" in body, False)
+    check("也没有那条 10:51 时长未知", "10:51　时长未知" in body, False)
+    check("标题不因它算失败", "失败" in title, False)
+
+
+def _part_heartbeat_main():
+    """心跳：有人看才跳、看了立刻跳（刚跳过就不重跳）、停服务发 bye、今天发得多了就放慢。不碰网络。
+
+    Formerly test_heartbeat.py.
+    """
+    import threading
+    import time
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.phone import phone
+
+
+    def wait_for(pred, limit=10.0):
+        """Poll until pred() holds or `limit` seconds pass. A fixed 0.2 s sleep went red on a
+    loaded Windows runner (relay-windows runs 38391031443 and 38409766185, 2026-10-13: the
+    beat thread had not woken yet); a beat that is due still lands at once here."""
+        end = time.monotonic() + limit
+        while not pred() and time.monotonic() < end:
+            time.sleep(0.01)
+
+
+    sent = []
+    STATE = tmpdir()
+    hb = phone.Heartbeat("t", STATE, post=lambda payload, title: sent.append(title))
+    # 把等待切片缩到 20 毫秒：这个测试验的是「有人看才跳」的逻辑，不是真的计时。
+    # 2026-09-08 之前它真等 4 秒，而部署每次都跑整套测试。
+    hb._slice_s = 0.02
+    stop = {"v": False}
+    th = threading.Thread(target=hb.loop, args=(lambda: stop["v"],), daemon=True)
+    th.start()
+
+    wait_for(lambda: sent)
+    check("刚起来先报一次在线", sent, ["hb"])
+    sent.clear()
+    check("之后没人看就不跳了", sent, [])
+    hb.watch()
+    time.sleep(0.2)
+    # On open the page reads the last 90 s of beats itself (probeHb since=90s), so a
+    # beat that just went out already answers a watch; no extra message for it
+    # (10-02 the quota ran out and 196 of the messages were beats).
+    check("刚跳过（不到 HB_KICK_GAP）：说「我在看」不再多跳", sent, [])
+    hb._last = time.time() - phone.HB_KICK_GAP - 1
+    hb.watch()
+    wait_for(lambda: sent)
+    check("上一跳已经旧了：说「我在看」立刻跳", sent, ["hb"])
+    check("计数落盘", hb.sent_today(), 2)
+    check("有人看时的间隔", hb.interval(), phone.HEARTBEAT_SEC)
+
+    hb.quota.add("state", phone.HB_FAST_UNTIL)
+    check("今天发的总数过了快档线就放慢", hb.interval(), phone.HB_SLOW_SEC)
+
+    stop["v"] = True
+    th.join(5)
+    check("线程 5 秒内退出", th.is_alive(), False)
+    check("退出发 bye", sent[-1], "bye")
+
+    # 发不出去不炸
+    bad = phone.Heartbeat("t", STATE, post=lambda *_: (_ for _ in ()).throw(OSError("net")))
+    check("post 失败返回 False 不抛", bad.beat(), False)
+
+    # loop() run on this thread as well: the coverage gate (changed_covered.py) does
+    # not trace the thread above, so without this it counts loop() as never run.
+    direct_sent = []
+    direct = phone.Heartbeat("t", tmpdir(), post=lambda payload, title: direct_sent.append(title))
+    direct.loop(lambda: True)
+    check("loop() on the caller's thread: one beat in, bye out", direct_sent, ["hb", "bye"])
+
+
+def _part_heartbeat_cos():
+    """The heartbeat on COS too (the user, 10-03 00:12: the online verdict must not
+rest on the mailbox's heartbeat alone).
+
+The loss this guards against: 2026-10-02 19:19 ntfy's 250 a day ran out, every
+beat after that was refused, and at 23:58 the App showed
+「关机 · 最后心跳 22:34」 while the machine was running and writing its state to
+COS. Now every beat also PUTs `state/<hash>.hb.json`.
+
+Pinned here:
+* the object sits next to the state (same hash, `.hb.json`), public-read,
+  never cached, {"at", "every", "cos_every"};
+* written whether or not the ntfy beat went out, and while the quota has
+  stopped the ntfy beats (then `every` is at least HB_SLOW_SEC);
+* a COS failure is one log line and the ntfy beat still goes out;
+* a service stop writes it once more with "bye": true, after the ntfy bye;
+* while watched, the loop rewrites it every HB_COS_SEC and at once on a watch,
+  even when the ntfy beat is not due or the quota stopped it;
+* no COS -> exactly the old ntfy beat, no request.
+Fake network throughout.
+
+    Formerly test_heartbeat_cos.py.
+    """
+    import json
+    import logging
+    import threading
+    import time
+    import types
+    import urllib.error
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+    from ark_relay.features.phone import phone
+    from ark_relay.features.phone import cos_store as phone_cos_store, heartbeat as phone_heartbeat, mailbox as phone_mailbox, quota as phone_quota
+    from ark_relay.features.evidence.evidence import Cos
+
+    TOPIC = "topic-abc"
+    COS = Cos("AKIDtest", "secret", "ark-evidence-1", "ap-shanghai")
+
+
+    class FakeResp:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b""
+
+
+    class FakeNet:
+        """Records every COS request (url, method, body, headers); `fail` makes them raise."""
+
+        def __init__(self):
+            self.sent: list[tuple[str, str, bytes, dict]] = []
+            self.fail: "Exception | None" = None
+
+        def urlopen(self, req, timeout=None):
+            self.sent.append((req.full_url, req.get_method(), req.data or b"",
+                              {k.lower(): v for k, v in req.header_items()}))
+            if self.fail is not None:
+                raise self.fail
+            return FakeResp()
+
+        def bodies(self):
+            return [json.loads(b) for _, _, b, _ in self.sent]
+
+
+    net = FakeNet()
+    fake_urllib = types.SimpleNamespace(
+        request=types.SimpleNamespace(Request=urllib.request.Request, urlopen=net.urlopen),
+        error=urllib.error)
+    # phone.py's network code lives in these sibling modules; each reads its own urllib.
+    for _m in (phone_quota, phone_cos_store, phone_mailbox, phone_heartbeat):
+        _m.urllib = fake_urllib
+
+
+    class Logs(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.lines: list[str] = []
+            self.recovered: list[bool] = []
+
+        def emit(self, record):
+            if record.levelno >= logging.INFO:
+                self.lines.append(record.getMessage())
+            if record.levelno >= logging.WARNING:
+                self.recovered.append(bool(getattr(record, "ark_recovered", False)))
+
+
+    logs = Logs()
+    phone.log.addHandler(logs)
+    phone.log.setLevel(logging.DEBUG)
+
+    print("[对象名：和状态对象同一个哈希，后缀 .hb.json]")
+    key = phone.hb_key(TOPIC)
+    check("state_key 去掉 .json 换成 .hb.json", key, phone.state_key(TOPIC)[:-5] + ".hb.json")
+    check("大小写、首尾空格不影响（和 state_key 一样）", phone.hb_key("  TOPIC-ABC \n"), key)
+
+    print("\n[一跳：COS 和 ntfy 各一次]")
+    posted: list[str] = []
+    hb = phone.Heartbeat(TOPIC, tmpdir(), post=lambda payload, title: posted.append(title), cos=COS)
+    t0 = int(time.time())
+    check("ntfy 心跳照旧发出", hb.beat(), True)
+    check("ntfy 收到一条 hb", posted, ["hb"])
+    check("COS 一次 PUT", [m for _, m, _, _ in net.sent], ["PUT"])
+    url, _, body, h = net.sent[0]
+    check("PUT 到 hb_key", url, f"https://{COS.host}/{key}")
+    check("公开读（App 没有 COS 密钥）", h.get("x-cos-acl"), "public-read")
+    check("不许缓存（不然 App 读到旧心跳）", h.get("cache-control"), "no-store")
+    check("带签名", h.get("authorization", "").startswith("q-sign-algorithm=sha1&q-ak=AKIDtest"), True)
+    b = json.loads(body)
+    check("at 是现在（秒）", t0 <= b["at"] <= int(time.time()), True)
+    check("every = 当前 ntfy 心跳间隔", b["every"], phone.HEARTBEAT_SEC)
+    check("cos_every = COS 心跳间隔 30 秒", b["cos_every"], phone.HB_COS_SEC)
+    check("平时不带 bye", "bye" in b, False)
+
+    print("\n[ntfy 发不出去：COS 照写]")
+    net.sent.clear()
+    bad = phone.Heartbeat(TOPIC, tmpdir(), post=lambda *_: (_ for _ in ()).throw(OSError("net")), cos=COS)
+    check("ntfy 失败返回 False 不抛", bad.beat(), False)
+    check("COS 还是写了一次", len(net.sent), 1)
+
+    print("\n[ntfy 额度用完（42908）：ntfy 不再发，COS 照写，every 至少 5 分钟]")
+    net.sent.clear()
+    posted.clear()
+    full = phone.Heartbeat(TOPIC, tmpdir(), post=lambda payload, title: posted.append(title), cos=COS)
+    full.quota.mark_full()
+    check("ntfy 不发（发了也是 429）", full.beat(), False)
+    check("ntfy 一条没发", posted, [])
+    check("COS 写了", len(net.sent), 1)
+    check("every 至少 HB_SLOW_SEC（App 下次读在 8 分钟的续看）", net.bodies()[0]["every"], phone.HB_SLOW_SEC)
+    full.quota.add("hb", phone.HB_SLOW_UNTIL)
+    net.sent.clear()
+    full.beat()
+    check("额度用完且总数过了慢档线：every = HB_CRAWL_SEC", net.bodies()[0]["every"], phone.HB_CRAWL_SEC)
+
+    print("\n[COS 失败：一行日志，ntfy 照发，不抛]")
+    net.sent.clear()
+    posted.clear()
+    logs.lines.clear()
+    net.fail = urllib.error.URLError("网断了")
+    flaky = phone.Heartbeat(TOPIC, tmpdir(), post=lambda payload, title: posted.append(title), cos=COS)
+    check("ntfy 心跳照旧发出", flaky.beat(), True)
+    check("ntfy 收到 hb", posted, ["hb"])
+    flaky.beat()
+    flaky.beat()
+    cos_lines = [l for l in logs.lines if "腾讯云 COS" in l]
+    check("连失败三次只记一行", len(cos_lines), 1)
+    check("那一行说了原因", "网断了" in (cos_lines or [""])[0], True)
+    net.fail = urllib.error.HTTPError(f"https://{COS.host}/{key}", 403, "Forbidden", None, None)
+    check("COS 回 403 也不抛", flaky.cos_beat(), False)
+    net.fail = None
+    logs.lines.clear()
+    logs.recovered.clear()
+    check("恢复后写得进", flaky.cos_beat(), True)
+    # Since 2026-10-06 the recovery is one WARNING marked errwatch.recovered()
+    # (daily report only), saying how long it was down and the first reason.
+    check("恢复记一行", [l.splitlines()[0].split("（")[0] for l in logs.lines if "腾讯云" in l],
+          ["心跳又写得进腾讯云了"])
+    check("……marked recovered (not pushed)", logs.recovered, [True])
+    check("……the first reason on its second line", "网断了" in (logs.lines or [""])[-1], True)
+
+    print("\n[停服务：ntfy 发 bye 之后，COS 写一次带 bye 的]")
+    order: list[str] = []
+    net.sent.clear()
+    stopper = phone.Heartbeat(TOPIC, tmpdir(), post=lambda payload, title: order.append("ntfy:" + title), cos=COS)
+    orig = net.urlopen
+    net.urlopen = lambda req, timeout=None: (order.append("cos"), orig(req, timeout))[1]
+    fake_urllib.request.urlopen = net.urlopen
+    stopper.bye()
+    check("先 ntfy bye，再 COS", order, ["ntfy:bye", "cos"])
+    check("COS 的心跳带 bye", net.bodies()[-1].get("bye"), True)
+    net.urlopen = orig
+    fake_urllib.request.urlopen = orig
+    net.sent.clear()
+    broke = phone.Heartbeat(TOPIC, tmpdir(), post=lambda *_: (_ for _ in ()).throw(OSError("net")), cos=COS)
+    broke.bye()
+    check("ntfy bye 失败也照写 COS bye", net.bodies()[-1].get("bye"), True)
+
+    print("\n[循环：有人看时每 30 秒写一次 COS；说「我在看」立刻写，哪怕 ntfy 不到点或额度停了]")
+    net.sent.clear()
+    posted.clear()
+    lp = phone.Heartbeat(TOPIC, tmpdir(), post=lambda payload, title: posted.append(title), cos=COS)
+    lp._slice_s = 0.01
+    stop = {"v": False}
+    th = threading.Thread(target=lp.loop, args=(lambda: stop["v"],), daemon=True)
+    th.start()
+    time.sleep(0.15)
+    check("起来先跳一次：ntfy 一条、COS 一次", (posted, len(net.sent)), (["hb"], 1))
+    lp.watch()
+    time.sleep(0.15)
+    check("刚跳过：ntfy 不重跳", posted, ["hb"])
+    check("但 COS 立刻再写一次（App 几秒后来读）", len(net.sent), 2)
+    # The loop sleeps up to HB_COS_SEC slices (0.3 s here) before it looks again.
+    lp._cos_last = time.time() - phone.HB_COS_SEC - 1
+    # Wait for the write rather than a fixed 0.5 s: 30 slices of time.sleep(0.01) ran
+    # past 0.5 s on a loaded Mac (load 10-29, 2026-10-10 00:45) and the check failed.
+    _until = time.time() + 5
+    while len(net.sent) < 3 and time.time() < _until:
+        time.sleep(0.05)
+    check("COS 到 30 秒就再写，ntfy 不到点不发", (posted, len(net.sent) >= 3), (["hb"], True))
+    lp.quota.mark_full()
+    n = len(net.sent)
+    lp.watch()
+    time.sleep(0.15)
+    check("额度停了：说「我在看」COS 照写，ntfy 不发", (posted, len(net.sent) > n), (["hb"], True))
+    stop["v"] = True
+    th.join(5)
+    check("线程 5 秒内退出", th.is_alive(), False)
+    check("退出时 COS 写 bye", net.bodies()[-1].get("bye"), True)
+
+    print("\n[没配 COS：老样子，一个 COS 请求都没有]")
+    net.sent.clear()
+    posted.clear()
+    plain = phone.Heartbeat(TOPIC, tmpdir(), post=lambda payload, title: posted.append(title))
+    plain.beat()
+    plain.bye()
+    check("ntfy 照旧 hb、bye", posted, ["hb", "bye"])
+    check("不碰 COS", net.sent, [])
+    check("cos_beat 直接 False", plain.cos_beat(), False)
+
+
+def _part_resources():
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from ark_relay.features.phone import resources
+
+    fails = []
+
+
+    def check(label, got, want):
+        ok = got == want
+        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
+        if not ok:
+            fails.append(label)
+
+
+    print("[森空岛会话：没配 token 就是一句说明]")
+
+
+    class NoTok:
+        skland_token = ""
+
+
+    check("没配", resources.skland_session(NoTok), {"错误": "没配森空岛 token"})
+
+    print("\n[有 token：登录一次、找出两个游戏的账号，第二次直接复用]")
+    from ark_relay.core import skland
+
+    calls = {"login": 0}
+
+
+    class Cred:
+        cred, token = "c1", "t1"
+
+
+    def fake_login(token, did=""):
+        calls["login"] += 1
+        return Cred()
+
+
+    # Put the real functions back at the end: the coverage pass runs many test files in one
+    # process, and a later file (test_skland, its part skland_api) must reach the real skland functions.
+    _REAL = (skland.get_did, skland.login, skland.refresh, skland.bindings)
+    skland.get_did, skland.login, skland.refresh = (lambda: "Bdev"), fake_login, (lambda c: c)
+    skland.bindings = lambda c: [
+        {"appCode": "endfield", "bindingList": [{"uid": "247481631", "channelMasterId": "1",
+                                                  "roles": [{"roleId": "1234567890", "serverId": "1"}]}]},
+        {"appCode": "arknights", "bindingList": [{"uid": "19237299", "channelMasterId": "1"}]},
+    ]
+
+
+    class Tok:
+        skland_token = "sk-token"
+
+
+    resources._session["sk"] = None
+    got = resources.skland_session(Tok)
+    check("会话齐全（终末地用 roles[] 的 roleId，不是 uid）", got, {"cred": "c1", "token": "t1", "dId": "Bdev", "uid": "19237299", "efRole": "1234567890", "efServer": "1"})
+    resources.skland_session(Tok)
+    check("只登录一次", calls["login"], 1)
+
+
+    def boom(c):
+        raise RuntimeError("HTTP Error 401")
+
+
+    resources._session["sk"] = None
+    skland.bindings = boom
+    check("失败给原因", resources.skland_session(Tok)["错误"].startswith("RuntimeError: HTTP Error 401"), True)
+    check("失败后不留半个会话", resources._session["sk"], None)
+
+
+    print("\n[终末地角色这次没读到：过一阵重做会话，不一直缺（11-08 [D-04]）]")
+    _saved_role, _saved_bind = skland.endfield_role, skland.bindings
+    skland.bindings = lambda c: []
+    def _ef_timeout(c):
+        raise TimeoutError("timed out")
+    skland.endfield_role = _ef_timeout
+    resources._session["sk"] = None; resources._session.pop("ef_retry_at", None)
+    got = resources.skland_session(Tok)
+    check("先给缺角色的会话", "efRole" in got, False)
+    skland.endfield_role = lambda c: ("999", "1")
+    check("没到重试时间：还用旧的", "efRole" in resources.skland_session(Tok), False)
+    resources._session["ef_retry_at"] = 0
+    check("到点了重做：角色补上", resources.skland_session(Tok).get("efRole"), "999")
+    skland.endfield_role, skland.bindings = _saved_role, _saved_bind
+    resources._session["sk"] = None
+
+    print("\n[森空岛给了不止一个终末地角色：不读，报群]")
+    # The account has exactly one Endfield role (checked 2026-10-06); more than one
+    # in an answer is a refusal (skland.endfield_role) the group has to hear of.
+    import inspect
+    import logging
+    import time
+    from _tmp import fx_dir, tmpdir
+    from ark_relay.features.alarm import errwatch
+    from ark_relay.core import texts
+
+
+    class Group:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body, *, alert=False, daily=False):
+            self.sent.append((title, body, alert))
+            return []
+
+
+    grp = Group()
+    takes = inspect.signature(errwatch.ErrorKindAlert.__init__).parameters
+    hw = errwatch.ErrorKindAlert(grp, lambda: False, tmpdir(),
+                                 **{k: v for k, v in {"known": {}, "pace": 0}.items() if k in takes})
+    logging.getLogger(errwatch.ARK).addHandler(hw)
+    skland.bindings = lambda c: [
+        {"appCode": "endfield", "bindingList": [{"uid": "1", "roles": [{"roleId": "1001", "serverId": "1"},
+                                                                        {"roleId": "2002", "serverId": "2"}]}]},
+        {"appCode": "arknights", "bindingList": [{"uid": "19237299"}]},
+    ]
+    resources._session["sk"] = None
+    got = resources.skland_session(Tok)
+    t0 = time.monotonic()
+    while not grp.sent and time.monotonic() - t0 < 3:
+        time.sleep(0.02)
+    time.sleep(0.1)
+    logging.getLogger(errwatch.ARK).removeHandler(hw)
+    hw.close()
+    check("没猜：会话里没有终末地角色", ("efRole" in got, got.get("uid")), (False, "19237299"))
+    MULTI = getattr(texts, "SKLAND_MULTI_ROLE", "⚠️ 森空岛给了不止一个终末地角色，没有读")
+    check("报群一条，标题是它自己的", [(t, a) for t, _, a in grp.sent], [(MULTI, True)])
+    check("正文说几个、编号，没读", bool(grp.sent) and "森空岛这次给了 2 个终末地角色（角色编号 1001、2002）" in grp.sent[0][1], True)
+    check("正文不说「服务器」", bool(grp.sent) and "服务器" in grp.sent[0][1], False)
+    check("正文是人话", [texts.plain(b) for _, b, _ in grp.sent], [[]])
+    check("拒绝是单独的一类（按类型认，不按字）", issubclass(getattr(skland, "SklandMultiRole", RuntimeError),
+                                                    skland.SklandError), True)
+
+    print("\n[今天：从账目数]")
+
+
+    class St:
+        def read_ledger(self, day):
+            return [{"run_id": "a", "script": "MAA", "ok": True}, {"run_id": "b", "script": "OK-WW", "ok": False},
+                    {"run_id": "c", "script": "MaaEnd", "ok": True}]
+
+
+    check("跑了 3 失败 1 最近 MaaEnd", resources.today(St(), "2026-09-15"), {"跑了": 3, "失败": 1, "最近": "MaaEnd"})
+
+
+    class StStop:
+        """2026-09-30: the 停一切 press stopped MaaEnd (ok=False) - not a failure."""
+
+        def read_ledger(self, day):
+            return [{"run_id": "a", "script": "OK-WW", "ok": False, "raw": {"okww_error": "x"}},
+                    {"run_id": "b", "script": "OK-WW", "ok": True, "raw": {"manual_stop": "09:46 停一切"}},
+                    {"run_id": "c", "script": "MaaEnd", "ok": False, "raw": {"manual_stop": "09:46 停一切"}}]
+
+
+    check("停一切停掉的不算失败（跑了 3 失败 1）", resources.today(StStop(), "2026-09-30"),
+          {"跑了": 3, "失败": 1, "最近": "MaaEnd"})
+
+    print("\n[today: failures by the daily headline's rule, on the machine's ledgers]")
+    # Audit 11 (2026-10-13): the App showed 「失败 1 趟」 on 10-06 and 10-07 for a MaaEnd
+    # self-update restart (transitional; episode_kinds 「update」) while the daily
+    # report said all green. Ledgers copied from the machine's state/ on 10-13.
+    import json
+    import shutil
+
+    from _tmp import tmpdir
+    from ark_relay.core.ledger import State
+
+    LEDGERS = fx_dir(Path(__file__), "fixtures") / "phone-ledgers"
+    real_dir = tmpdir()
+    for f in LEDGERS.glob("ledger-*.jsonl"):
+        shutil.copy(f, real_dir / f.name)
+    check("10-06: 5 runs, the update restart is not a failure",
+          resources.today(State(real_dir), "2026-10-06"), {"跑了": 5, "失败": 0, "最近": "MAA"})
+    check("10-07: 5 runs, the update restart is not a failure",
+          resources.today(State(real_dir), "2026-10-07"), {"跑了": 5, "失败": 0, "最近": "MAA"})
+    # A real failure on the same day is still counted.
+    day06 = [json.loads(x) for x in (LEDGERS / "ledger-2026-10-06.jsonl").read_text(encoding="utf-8").splitlines()]
+    bad = dict(day06[1], run_id="2026-10-06/wuwa/OK-WW-12-00-00", started="2026-10-06T12:00:00+08:00",
+               ok=False, failed_tasks=["每日任务"])
+    (real_dir / "ledger-2026-10-06.jsonl").write_text(
+        "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in [*day06, bad]), encoding="utf-8")
+    check("a real failure still counts", resources.today(State(real_dir), "2026-10-06")["失败"], 1)
+    # The same failure inside a run-one.sh --test window is not the day's failure.
+    (real_dir / "test-windows.json").write_text(json.dumps(
+        [{"since": "2026-10-06T11:55:00+08:00", "until": "2026-10-06T12:30:00+08:00", "what": "OK-WW"}]),
+        encoding="utf-8")
+    check("a failure inside a test window does not count",
+          resources.today(State(real_dir), "2026-10-06")["失败"], 0)
+
+    print("\n[开机推送和停止前推送同时要会话：#10 不会读到做了一半的体力]")
+    # 2026-10-10 16:32:53 the stop notice came 7 s after boot: the boot state and the
+    # 停止前 state both asked for the session while none existed yet, both logged in and
+    # both ran _probe_stamina; check #10 read probe() between one call's 「at」 and its
+    # dungeon and pushed 「终末地体力没读到：没读」 (relay.log 16:32:55-16:32:58).
+    import threading
+
+    calls["login"] = 0
+    reads = {"n": 0}
+    skland.bindings = lambda c: [
+        {"appCode": "endfield", "bindingList": [{"uid": "1", "roles": [{"roleId": "1001", "serverId": "1"}]}]},
+        {"appCode": "arknights", "bindingList": [{"uid": "19237299"}]},
+    ]
+    _REAL_CARD = getattr(skland, "endfield_card", None)
+
+
+    def slow_card(cred, role, server):
+        reads["n"] += 1
+        time.sleep(0.3)
+        return {"detail": {"dungeon": {"curStamina": 1, "maxStamina": 360, "maxTs": 2}}}
+
+
+    skland.endfield_card = slow_card
+    resources._session["sk"] = None
+    seen = []
+
+
+    def watch():
+        t_end = time.monotonic() + 1.5
+        while time.monotonic() < t_end:
+            p = resources.probe()
+            if p.get("at") and "dungeon" not in p and "错误" not in p:
+                seen.append(p)
+            time.sleep(0.005)
+
+
+    w = threading.Thread(target=watch)
+    w.start()
+    ts = [threading.Thread(target=resources.skland_session, args=(Tok,)) for _ in range(2)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    w.join()
+    check("没有哪一刻是「有时间、没体力也没原因」", seen[:1], [])
+    check("读完 probe 里有体力", "dungeon" in resources.probe(), True)
+    if _REAL_CARD is not None:
+        skland.endfield_card = _REAL_CARD
+
+    skland.get_did, skland.login, skland.refresh, skland.bindings = _REAL
+
+    print("[today: the ledger cannot be read]")
+    import logging
+
+
+    class _Grab(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.WARNING)
+            self.n = 0
+
+        def emit(self, record):
+            self.n += 1
+
+
+    class StBroken:
+        def read_ledger(self, day):
+            raise OSError("ledger locked")
+
+
+    _g = _Grab()
+    resources.log.addHandler(_g)
+    getattr(resources, "_last_error", {}).clear()
+    got = resources.today(StBroken(), "2026-10-10")
+    check("unreadable -> no counts (no fake 0 failures), an error key", (got.get("失败"), "错误" in got), (None, True))
+    check("unreadable -> one WARNING", _g.n, 1)
+    resources.today(StBroken(), "2026-10-10")
+    check("same condition again -> no second WARNING", _g.n, 1)
+    resources.today(St(), "2026-09-15")
+    resources.today(StBroken(), "2026-10-10")
+    check("broken again after a good read -> WARNING again", _g.n, 2)
+    resources.log.removeHandler(_g)
+
+    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
+
+
+def _part_snapshot():
+    import logging
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.alarm import errwatch
+    from ark_relay.features.phone import snapshot
+
+    fails: list[str] = []
+
+
+    def check(label, got, want):
+        ok = got == want
+        print(f"  ✓ {label}" if ok else f"  ✗ {label}: 得到 {got!r}，应为 {want!r}")
+        if not ok:
+            fails.append(label)
+
+
+    class Grab(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.warned: list[str] = []
+
+        def emit(self, record):
+            if record.levelno >= logging.WARNING:
+                self.warned.append(record.getMessage())
+
+
+    grab = Grab()
+    snapshot.log.addHandler(grab)
+    snapshot.log.propagate = False
+
+    calls: list[str] = []
+
+
+    def fake(label):
+        def f(out):
+            calls.append(label)
+            out[label] = "ok"
+        return f
+
+
+    saved = (snapshot._mas, snapshot._queues, snapshot._okww, snapshot._runtime,
+             errwatch.relay_shutdown_issued, errwatch.os_shutdown)
+    errwatch.os_shutdown = lambda: False
+
+    snapshot._mas, snapshot._queues = fake("_mas"), fake("_queues")
+    snapshot._okww, snapshot._runtime = fake("_okww"), fake("_runtime")
+
+    errwatch.relay_shutdown_issued = lambda: False
+    calls.clear()
+    out = snapshot.read()
+    check("没关机：四个都读", calls, ["_mas", "_queues", "_okww", "_runtime"])
+    check("没关机：无 WARNING", grab.warned, [])
+
+    errwatch.relay_shutdown_issued = lambda: True
+    calls.clear()
+    grab.warned.clear()
+    out = snapshot.read()
+    check("关机令已发：只读 _okww/_runtime，不碰 _mas/_queues", calls, ["_okww", "_runtime"])
+    check("关机令已发：无 WARNING", grab.warned, [])
+    check("_mas/_queues 不再写进结果", all(k not in out for k in ("_mas", "_queues")), True)
+    check("_okww/_runtime 还在", ("_okww" in out, "_runtime" in out), (True, True))
+
+    print("[10-10 04:28:47: Windows shutdown by hand, not the relay's own (SvcShutdown ran)]")
+    errwatch.relay_shutdown_issued = lambda: False
+    errwatch.os_shutdown = lambda: True
+    calls.clear()
+    grab.warned.clear()
+    out = snapshot.read()
+    check("手动关机：不碰 _mas/_queues", calls, ["_okww", "_runtime"])
+    check("手动关机：无 WARNING", grab.warned, [])
+
+    print("[a plain service stop (sc stop, the self-update restart): the machine stays up, so it is read]")
+    errwatch.os_shutdown = lambda: False
+    errwatch.mark_stopping()
+    try:
+        calls.clear()
+        grab.warned.clear()
+        out = snapshot.read()
+        check("service stop only: all four read", calls, ["_mas", "_queues", "_okww", "_runtime"])
+        snapshot._mas = lambda out: (_ for _ in ()).throw(ConnectionRefusedError("x"))
+        grab.warned.clear()
+        snapshot.read()
+        check("service stop only: a section that fails still warns (pushed)", len(grab.warned), 1)
+        snapshot._mas = fake("_mas")
+    finally:
+        errwatch.clear_stopping()
+
+    print("[the shutdown begins while a section is being read]")
+    state = {"down": False}
+    errwatch.os_shutdown = lambda: state["down"]
+
+
+    def gone(out):
+        state["down"] = True
+        raise ConnectionRefusedError("AUTO-MAS backend gone")
+
+
+    snapshot._mas = gone
+    grab.warned.clear()
+    out = snapshot.read()
+    check("读到一半开始关机：无 WARNING", grab.warned, [])
+    check("读到一半开始关机：错误仍记进结果", "_MAS错误" in out, True)
+
+    print("[not shutting down: a failing section still warns]")
+    state["down"] = False
+
+
+    def refused(out):
+        raise ConnectionRefusedError("x")
+
+
+    snapshot._mas = refused
+    grab.warned.clear()
+    out = snapshot.read()
+    check("没关机时读不到：照样 WARNING", len(grab.warned), 1)
+
+    print("[a phone publish reads only the runtime section (audit 11 #2)]")
+    # relay.log 10-06 / 10-10: every phone publish ran _mas / _queues / _okww, kept only
+    # 「ark-relay」 and 「程序」 (from _runtime), and an AUTO-MAS hiccup reached the group.
+    import types
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from _tmp import tmpdir
+    from ark_relay.features.phone import phone
+
+
+    def runtime(out):
+        calls.append("_runtime")
+        out["ark-relay"], out["程序"] = "RUNNING", {"MAA": True}
+
+
+    snapshot._runtime = runtime
+    calls.clear()
+    grab.warned.clear()
+    pcfg = types.SimpleNamespace(automas_dir=str(tmpdir()), maaend_dir=str(tmpdir()), okww_dir=str(tmpdir()))
+    st = phone.state_payload(pcfg, tmpdir())
+    check("the publish calls only _runtime", calls, ["_runtime"])
+    check("an AUTO-MAS that does not answer is not a WARNING from the publish", grab.warned, [])
+    check("the phone still gets the runtime", st.get("run"), {"服务": "RUNNING", "在跑的": ["MAA"]})
+    calls.clear()
+    snapshot.read()
+    check("config-check's full read still reads every section", calls, ["_queues", "_okww", "_runtime"])
+
+    (snapshot._mas, snapshot._queues, snapshot._okww, snapshot._runtime,
+     errwatch.relay_shutdown_issued, errwatch.os_shutdown) = saved
+    snapshot.log.removeHandler(grab)
+
+    print("[_queues: one queue's item list unreadable]")
+    import urllib.error
+    from unittest import mock
+
+    item_err = {"exc": None}
+    queue_info = {"q1": {"Info": {"Name": "早班", "TimeEnabled": True, "StartUpEnabled": False}}}
+
+
+    def fake_post(path, body=None, timeout=15):
+        if path == "/api/scripts/get":
+            return {"data": {"s1": {"Info": {"Name": "MAA"}}}}
+        if path == "/api/queue/get":
+            return {"data": queue_info}
+        if item_err["exc"] is not None:
+            raise item_err["exc"]
+        return {"data": {"i1": {"Info": {"ScriptId": "s1"}}}}
+
+
+    class Grab2(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.DEBUG)
+            self.warned = []
+
+        def emit(self, record):
+            if record.levelno >= logging.WARNING:
+                self.warned.append(record)
+
+
+    g2 = Grab2()
+    snapshot.log.addHandler(g2)
+    getattr(snapshot, "_last_error", {}).clear()
+    with mock.patch.object(snapshot, "_post", fake_post), \
+            mock.patch.object(errwatch, "relay_shutdown_issued", lambda: False), \
+            mock.patch.object(errwatch, "os_shutdown", lambda: False):
+        item_err["exc"] = urllib.error.HTTPError("u", 500, "boom", {}, None)
+        out = {}
+        snapshot._queues(out)
+        q = out["队列"]["早班"]
+        check("unreadable -> 脚本 stays [] (shape) and is marked", (q["脚本"], "脚本读不到" in q), ([], True))
+        check("unreadable -> one WARNING", len(g2.warned), 1)
+        snapshot._queues({})
+        check("same condition again -> no second WARNING", len(g2.warned), 1)
+        item_err["exc"] = None
+        out = {}
+        snapshot._queues(out)
+        check("readable -> the list, no mark", (out["队列"]["早班"]["脚本"], "脚本读不到" in out["队列"]["早班"]),
+              (["MAA"], False))
+        item_err["exc"] = urllib.error.HTTPError("u", 500, "boom", {}, None)
+        snapshot._queues({})
+        check("broken again after a good read -> WARNING again", len(g2.warned), 2)
+        item_err["exc"] = urllib.error.URLError(ConnectionRefusedError(61, "refused"))
+        raised = False
+        try:
+            snapshot._queues({})
+        except Exception:  # noqa: BLE001
+            raised = True
+        check("backend gone (connection refused) -> the section fails as before", raised, True)
+        # AUTO-MAS v5.7 replaced the bool StartUpEnabled with StartUpMode (Never / Always /
+        # DailyFirst; app/models/config.py, tests/fixtures/automas-models/config.py.txt).
+        item_err["exc"] = None
+        got = {}
+        for mode in ("Never", "Always", "DailyFirst"):
+            queue_info["q1"]["Info"] = {"Name": "早班", "TimeEnabled": True, "StartUpMode": mode}
+            out = {}
+            snapshot._queues(out)
+            got[mode] = out["队列"]["早班"]["开机跑"]
+        check("v5.7 StartUpMode -> 开机跑", got, {"Never": False, "Always": True, "DailyFirst": True})
+    snapshot.log.removeHandler(g2)
+
+    print("\n[_mas: one script's user unreadable is marked, not dropped (audit 11 #5)]")
+
+
+    def users_post(path, body=None, timeout=15):
+        if path == "/api/scripts/get":
+            return {"data": {"s1": {"Info": {"Name": "MAA"}}, "s2": {"Info": {"Name": "MaaEnd"}},
+                             "s3": {"Info": {"Name": "OK-WW"}}}}
+        if path == "/api/scripts/user/get" and body["scriptId"] == "s2":
+            raise TimeoutError("timed out")
+        if path == "/api/scripts/user/get" and body["scriptId"] == "s3":
+            raise urllib.error.URLError("refused")
+        return {"data": {"u1": {"Info": {"Stage": "1-7"}, "Task": {}}}}
+
+
+    o = {}
+    with mock.patch.object(snapshot, "_post", users_post):
+        snapshot._mas(o)
+    check("the readable script is there", (o.get("MAA") or {}).get("关卡"), "1-7")
+    check("MaaEnd's section says its user could not be read", o.get("MaaEnd"), {"用户读不到": "TimeoutError: timed out"})
+    check("OK-WW's too, under its usual key", sorted(o.get("OK-WW(MAS侧)") or {}), ["用户读不到"])
+
+    print("\n[the phone page's relay state looks for the mutex the packaged main program holds]")
+    import re
+    _relay = Path(__file__).resolve().parents[1]
+    _held = re.search(r'^MUTEX = "([^"]+)"', (_relay / "app_main.py").read_text(encoding="utf-8"), re.M)
+    _watched = re.search(r'^MUTEX = "([^"]+)"',
+                         (_relay.parent / "packaging" / "watchdog" / "ark_watchdog.py").read_text(encoding="utf-8"), re.M)
+    check("snapshot, app_main and the watchdog name the same mutex",
+          (snapshot._MAIN_LOCK_NAME, _held and _held.group(1).replace("\\\\", "\\"),
+           _watched and _watched.group(1).replace("\\\\", "\\")),
+          (snapshot._MAIN_LOCK_NAME,) * 3)
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
+
+
+def _part_inbox_poll():  # noqa: C901
+    import json
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from ark_relay.features.phone import inbox
+    from _tmp import tmpdir
+
+    fails = []
+
+
+    def check(label, got, want):
+        ok = got == want
+        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" if not ok else f"  ✓ {label}")
+        if not ok:
+            fails.append(label)
+
+
+    class FakeInbox(inbox.Inbox):
+        """不联网：把「取回来的那份 JSON」直接塞进来。"""
+
+        payload = None
+
+        def _fetch_or_none(self):
+            return self.payload
+
+
+    def box(payload):
+        b = FakeInbox(tmpdir())
+        b.payload = payload
+        return b
+
+
+    print("[版本号严格变大才执行]")
+    b = box({"version": 5, "name": "第一批", "commands": []})
+    ver, msgs = b.poll()
+    check("第一次收到就执行", ver, 5)
+    check("推送里带了名字", "第一批" in msgs[0], True)
+
+    b.payload = {"version": 5, "name": "同一版", "commands": []}
+    ver, msgs = b.poll()
+    check("同一个版本号不重放", msgs, [])
+    check("版本号没退回去", ver, 5)
+
+    b.payload = {"version": 4, "name": "更旧的（CDN 发的旧副本）", "commands": []}
+    ver, msgs = b.poll()
+    check("更旧的版本不执行", msgs, [])
+    check("版本号还是 5", ver, 5)
+
+    b.payload = {"version": 6, "name": "第二批", "commands": []}
+    ver, msgs = b.poll()
+    check("更新的版本才执行", ver, 6)
+
+    print("\n[取不到 ≠ 没有新东西：调用方要能分辨]")
+    b = box({"version": 9, "commands": []})
+    b.poll()
+    check("取到了", b.last_fetch_ok, True)
+    b.payload = None
+    ver, msgs = b.poll()
+    check("取不到时说取不到", b.last_fetch_ok, False)
+    check("取不到时不动版本号", ver, 9)
+    check("取不到时不推送", msgs, [])
+
+    print("\n[文件本身不成形要拒绝，而且不能记账]")
+    b = box({"version": "不是整数", "commands": []})
+    ver, msgs = b.poll()
+    check("版本号不是整数 → 忽略", (ver, msgs), (0, []))
+    b.payload = {"version": 3, "commands": "不是数组"}
+    ver, msgs = b.poll()
+    check("commands 不是数组 → 忽略", (ver, msgs), (0, []))
+    check("忽略之后版本号仍是 0（没记账）", b.applied_version, 0)
+
+    print("\n[应用中途炸了：要说清楚，而且必须记账，不许下次开机整批重放]")
+    b = box({"version": 11, "name": "会炸的一批", "commands": [{"action": "queue"}]})
+    b._apply = lambda cmds: (_ for _ in ()).throw(OSError("盘满了"))
+    ver, msgs = b.poll()
+    check("版本号照样记下", b.applied_version, 11)
+    check("说了是中途出错", any("应用中途出错" in m for m in msgs), True)
+    check("说了这批指令不会再执行一遍", any("不会再执行一遍" in m for m in msgs), True)
+
+    print("\n[记账落在 state.json 里，换一个实例也读得到]")
+    d = tmpdir()
+    b1 = FakeInbox(d)
+    b1.payload = {"version": 21, "commands": []}
+    b1.poll()
+    b2 = FakeInbox(d)
+    check("另一个实例读到同一个版本号", b2.applied_version, 21)
+    saved = json.loads((d / "state.json").read_text(encoding="utf-8"))
+    check("存在 queues/inbox_version 里", saved["queues"]["inbox_version"], "21")
+
+    print("\n[用户写的 note 要原样出现在推送正文里]")
+    b = box({"version": 31, "name": "改基质地点", "note": "换成清波寨，VFTheHub 刷不出来",
+             "commands": []})
+    _, msgs = b.poll()
+    body = "\n".join(msgs)
+    check("note 在正文里", "换成清波寨" in body, True)
+    check("名字在标题里", "改基质地点" in msgs[0], True)
+
+    print("\n[没有 automas 路径时，明说跳过而不是假装做了]")
+    b = box({"version": 41, "commands": [
+        {"action": "queue", "name": "早班", "enabled": True},
+        {"action": "sanity_plan", "tab": "x"},
+    ]})
+    _, msgs = b.poll()
+    body = "\n".join(msgs)
+    check("队列那条说了跳过", "✗ 队列：找不到 AUTO-MAS 目录" in body, True)
+    check("理智方案那条说了跳过", "✗ 理智方案：找不到 AUTO-MAS 目录" in body, True)
+
+    print("\n[maaend_option is gone (audit 11 #8): refused, nothing written]")
+    # Nothing sends it since 08-20 (order.sh refuses an action outside commands.ALLOWED,
+    # the App never had it); maaend.apply_changes and its inbox branch are deleted.
+    d = tmpdir()
+    mfile = d / "automas" / "data" / "sid1" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"
+    mfile.parent.mkdir(parents=True)
+    mfile.write_text(json.dumps({"instances": [{"tasks": [{"taskName": "T", "optionValues": {
+        "O": {"type": "switch", "value": False}}}]}]}), encoding="utf-8")
+    before = mfile.read_text(encoding="utf-8")
+    b = FakeInbox(d / "state", automas_dir=d / "automas")
+    b.payload = {"version": 43, "commands": [
+        {"action": "maaend_option", "task": "T", "option": "O", "value": "false"}]}
+    _, msgs = b.poll()
+    check("refused by the whitelist", any(m.startswith("✗ maaend_option") for m in msgs), True)
+    check("the master copy is untouched", mfile.read_text(encoding="utf-8"), before)
+    check("the writer module is gone", (Path(inbox.__file__).parent / "maaend.py").exists(), False)
+
+    # ---- A stale configured address must fall back to the built-in one ----
+    # 2026-09-08 I deleted inbox/todo.json while the machine's .env still pointed at
+    # it. Every order after that 404-ed on all four doors and only the relay's own
+    # log knew. The command channel must not die over one stale line in .env.
+    _calls = []
+    def _fake_fetch(url, *a, **k):
+        _calls.append(url)
+        return None if "todo.json" in url else {"version": 5, "commands": [], "name": "x"}
+    _real_fetch = inbox._fetch
+    inbox._fetch = _fake_fetch
+    try:
+        _ib = inbox.Inbox(tmpdir(), "https://raw.githubusercontent.com/herclyon1/maa/main/inbox/todo.json")
+        _got = _ib._fetch_or_none()
+        check("过期地址取不到时退回内置地址", _got is not None and _got.get("version"), 5)
+        check("先试了配置的，再试内置的", [("todo.json" in u) for u in _calls], [True, False])
+        check("之后直接用内置地址", _ib.url, inbox.DEFAULT_URL)
+        _calls.clear()
+        _ib2 = inbox.Inbox(tmpdir(), inbox.DEFAULT_URL)
+        _ib2._fetch_or_none()
+        check("本来就是内置地址时不重复试", len(_calls), 1)
+    finally:
+        inbox._fetch = _real_fetch
+
+    # ---- A round in which no door answered, then a later round that got it ----
+    # The user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群」 - recovered on the
+    # retry: one WARNING marked errwatch.recovered() (daily report only); every
+    # round failing: a plain WARNING (pushed).
+    import logging
+    from ark_relay.features.alarm import errwatch
+
+
+    class _Lines(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.DEBUG)
+            self.got = []
+
+        def emit(self, record):
+            if record.levelno >= logging.WARNING:
+                self.got.append((record.getMessage(), bool(getattr(record, errwatch.RECOVERED, False))))
+
+
+    _lines = _Lines()
+    inbox.log.addHandler(_lines)
+    _real_once, _real_sleep = inbox._fetch_once, inbox.time.sleep
+    inbox.time.sleep = lambda s: None
+    _answers: list = []
+
+
+    def _fake_once(url, timeout=20, errors=None):
+        got = _answers.pop(0) if _answers else None
+        if got is None and errors is not None:
+            errors.append(f"{inbox._netloc(url)}: timed out")
+        return got
+
+
+    print("\n[a round with no door answering, then a later round got it: daily report only]")
+    inbox._fetch_once = _fake_once
+    _real_cos_client = inbox._cos_client
+    inbox._cos_client = lambda: None     # GitHub doors only in this section
+    try:
+        doors = len(inbox._alternates(inbox.DEFAULT_URL))
+        _answers[:] = [None] * doors + [{"version": 7, "commands": []}] + [None] * (doors - 1)
+        _lines.got.clear()
+        got = inbox._fetch(inbox.DEFAULT_URL)
+        check("round 1 no door, round 2 got it", (got or {}).get("version"), 7)
+        check("one WARNING, marked recovered (daily report only)", [r for _, r in _lines.got], [True])
+        check("it says which round got it, plain first line",
+              [m.splitlines()[0] for m, _ in _lines.got], ["待办文件前 1 轮一扇门都没取到，第 2 轮取到了"])
+        _answers[:] = []
+        _lines.got.clear()
+        check("every round fails: None", inbox._fetch(inbox.DEFAULT_URL), None)
+        check("a plain WARNING (pushed), nothing marked recovered",
+              [("一扇门都没取到（试了" in m, r) for m, r in _lines.got], [(True, False)])
+        _answers[:] = [{"version": 8, "commands": []}] + [None] * (doors - 1)
+        _lines.got.clear()
+        inbox._fetch(inbox.DEFAULT_URL)
+        check("first round got it (other doors failing is not a fault): nothing said", _lines.got, [])
+    finally:
+        inbox._fetch_once, inbox.time.sleep = _real_once, _real_sleep
+        inbox._cos_client = _real_cos_client
+        inbox.log.removeHandler(_lines)
+
+    # ---- The COS door (2026-10-07) ----
+    # order.sh writes the file to GitHub and then to COS; jsDelivr caches a branch
+    # file for up to 12 hours, COS has no cache. COS is asked first, but every door
+    # is still asked and the highest version wins: a COS that missed a write, or a
+    # file edited on GitHub by hand, must not hold back a newer copy elsewhere.
+
+
+    class _FakeCos:
+        prefix = "relay"
+        host = "bucket.cos.ap-shanghai.myqcloud.com"
+
+        def authorization(self, method, key):
+            return f"sig {method} {key}"
+
+
+    _cos_answer: list = []
+    _order: list = []
+
+
+    def _fake_cos_once(cos, timeout=20, errors=None):
+        _order.append("cos")
+        got = _cos_answer[0] if _cos_answer else None
+        if got is None and errors is not None:
+            errors.append("cos: timed out")
+        return got
+
+
+    def _gh_once(url, timeout=20, errors=None):
+        _order.append(inbox._netloc(url))
+        return _gh_answer[0]
+
+
+    _gh_answer: list = [None]
+    inbox.log.addHandler(_lines)
+    _real_cos_once = inbox._fetch_cos_once
+    inbox._fetch_cos_once, inbox._fetch_once = _fake_cos_once, _gh_once
+    inbox._cos_client = lambda: _FakeCos()
+    inbox.time.sleep = lambda s: None
+    print("\n[COS door: asked first, highest version of all doors wins]")
+    try:
+        _cos_answer[:], _gh_answer[:], _order[:] = [{"version": 12, "commands": []}], [{"version": 11, "commands": []}], []
+        _lines.got.clear()
+        check("COS newer than the CDN copies: COS's copy", (inbox._fetch(inbox.DEFAULT_URL) or {}).get("version"), 12)
+        check("COS was asked first", _order[:1], ["cos"])
+        check("the GitHub doors were still asked", len(_order), 1 + len(inbox._alternates(inbox.DEFAULT_URL)))
+        _cos_answer[:], _gh_answer[:] = [{"version": 10, "commands": []}], [{"version": 11, "commands": []}]
+        check("GitHub newer (edited by hand, COS never saw it): GitHub's copy",
+              (inbox._fetch(inbox.DEFAULT_URL) or {}).get("version"), 11)
+        _cos_answer[:], _order[:] = [], []
+        check("COS down: the GitHub doors still deliver", (inbox._fetch(inbox.DEFAULT_URL) or {}).get("version"), 11)
+        check("COS down while another door answered: nothing said", _lines.got, [])
+        _gh_answer[:] = [None]
+        _lines.got.clear()
+        check("COS and every GitHub door down: None", inbox._fetch(inbox.DEFAULT_URL), None)
+        check("the WARNING names the COS door too", any("cos: timed out" in m for m, _ in _lines.got), True)
+        inbox._cos_client = lambda: None
+        _gh_answer[:], _order[:] = [{"version": 11, "commands": []}], []
+        inbox._fetch(inbox.DEFAULT_URL)
+        check("COS not configured on the machine: COS not asked", "cos" in _order, False)
+    finally:
+        inbox._fetch_cos_once, inbox._fetch_once = _real_cos_once, _real_once
+        inbox._cos_client, inbox.time.sleep = _real_cos_client, _real_sleep
+        inbox.log.removeHandler(_lines)
+
+    print("\n[COS not configured (no COS_* in the environment): no COS door]")
+    import os
+
+    _saved = {k: os.environ.pop(k) for k in ("COS_SECRET_ID", "COS_SECRET_KEY", "COS_BUCKET", "COS_REGION")
+              if k in os.environ}
+    try:
+        check("no client", inbox._cos_client(), None)
+    finally:
+        os.environ.update(_saved)
+
+    print("\n[the COS door's own request: signed GET of relay/queue/config.json]")
+    import io
+    import urllib.error
+
+    _seen: list = []
+
+
+    class _Resp(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+
+    def _urlopen_ok(req, timeout=None):
+        _seen.append((req.full_url, req.get_header("Authorization")))
+        return _Resp(json.dumps({"version": 2026100701, "commands": []}).encode())
+
+
+    def _urlopen_404(req, timeout=None):
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+
+
+    _real_urlopen = inbox.urllib.request.urlopen
+    try:
+        inbox.urllib.request.urlopen = _urlopen_ok
+        got = inbox._fetch_cos_once(_FakeCos())
+        check("reads the version", (got or {}).get("version"), 2026100701)
+        check("object key under relay/ (kept by the lifecycle rule)",
+              _seen[0][0], "https://bucket.cos.ap-shanghai.myqcloud.com/relay/queue/config.json")
+        check("signed for that key", _seen[0][1], "sig GET relay/queue/config.json")
+        inbox.urllib.request.urlopen = _urlopen_404
+        errs: list = []
+        _lines.got.clear()
+        inbox.log.addHandler(_lines)
+        check("no object yet: None", inbox._fetch_cos_once(_FakeCos(), errors=errs), None)
+        check("noted for the all-doors warning", len(errs) == 1 and errs[0].startswith("cos:"), True)
+        check("one door failing logs nothing above debug", _lines.got, [])
+    finally:
+        inbox.urllib.request.urlopen = _real_urlopen
+        inbox.log.removeHandler(_lines)
+
+    print("\n[the receipt of an order.sh batch: all through -> log only; any ✗ -> the group, with the ✗ lines]")
+    # CLAUDE.md 「测试不进他眼」 and docs/NOTIFICATIONS.md (the 「Config command applied」 row, de038830):
+    # our own order.sh orders are not his business when they went through. Until 2026-10-13 every
+    # receipt went to his Server酱 (route info; day replay 2026-10-12 / 10-13, BACKLOG daysim-R2).
+    # A failed one takes the phone's failure route (texts.CONFIG_FAILED, alert=True, the group),
+    # never the log list's 「⚙️ 配置已更新」 title, which route_of would keep out of the group.
+    import types as _types
+
+
+    class _Stub(_types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return lambda *a, **k: None
+
+
+    for _name in ("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
+                  "servicemanager", "win32process", "pythoncom"):
+        sys.modules.setdefault(_name, _Stub(_name))
+    import logging
+
+    import boot_stages
+    from ark_relay.core import texts
+    from ark_relay.core.notify import route_of
+
+
+    class _Note:
+        def __init__(self):
+            self.sent = []
+
+        def send(self, title, body="", alert=False, **_k):
+            self.sent.append((title, body, alert))
+            return []
+
+
+    def collected(payload, lines):
+        """One collect('boot') over a batch whose commands answer `lines` (None: _apply raises)."""
+        b = box(payload)
+        if lines is None:
+            b._apply = lambda cmds: (_ for _ in ()).throw(OSError("盘满了"))
+        else:
+            b._apply = lambda cmds: list(lines)
+        n = _Note()
+        engine = _types.SimpleNamespace(scripts_running=lambda: False)
+        boot_stages._make_collect(b, engine, n, logging.getLogger("ark.test_phone"), [False])("boot")
+        check("one send", len(n.sent), 1)
+        return n.sent[0] if n.sent else ("", "", False)
+
+
+    # relay.log 10-12 08:46 (day replay 2026-10-12 events.jsonl line 15): the debug-mode order, through.
+    DEBUG_OK = ("✅ 🔧 调试模式已开启，至 10-12 21:10（下次预定开机 10-12 21:20 前 10 分钟）：不关机。"
+            "注意：要让机器什么都不刷，还需停用相应队列。")
+    title, body, alert = collected({"version": 2026101201, "name": "调试模式", "note": "从电脑发来的指令：调试模式",
+                                    "commands": [{"action": "debug_mode"}]}, [DEBUG_OK])
+    check("all through: the title is the receipt", title, "⚙️ 配置已更新：调试模式")
+    check("all through: log only, not his Server酱", route_of(title, alert=alert), "log")
+    # relay.log 10-12 12:10 (events.jsonl line 461): an empty batch, the safe state.
+    title, body, alert = collected({"version": 2026101202, "name": "空（安全状态）", "commands": []}, [])
+    check("an empty batch: log only", route_of(title, alert=alert), "log")
+    FAILED = "✗ set_stage: 「YW-4」MAA 走不到，修改失败"
+    title, body, alert = collected({"version": 2026101203, "name": "改关卡", "commands": [{}, {}]}, [DEBUG_OK, FAILED])
+    check("a ✗ line: the phone's failure title, with the batch name", title, f"{texts.CONFIG_FAILED}：改关卡")
+    check("a ✗ line: the group", route_of(title, alert=alert), "group")
+    check("the push carries the failed line", FAILED in body, True)
+    title, body, alert = collected({"version": 2026101204, "name": "会炸的一批", "commands": [{}]}, None)
+    check("broken mid-batch: the group", route_of(title, alert=alert), "group")
+    check("broken mid-batch: says so", "应用中途出错" in body, True)
+    check("the receipt title is log only even with alert=True, so a failure must not use it",
+          route_of("⚙️ 配置已更新：x", alert=True), "log")
+
+    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_main, _part_phone_channel_boot, _part_phone_cmd_gate, _part_phone_cmd_queue, _part_phone_drained_failure_pushed, _part_phone_gzip, _part_phone_order_failed_pushed, _part_phone_quiet, _part_phone_receipts, _part_phone_sent, _part_phone_silent, _part_phone_stale_cmd, _part_phone_state, _part_phone_state_cos, _part_receipt_target]))
+    sys.exit(run_parts([_part_phone_main, _part_phone_channel_boot, _part_phone_cmd_gate, _part_phone_cmd_queue, _part_phone_drained_failure_pushed, _part_phone_gzip, _part_phone_order_failed_pushed, _part_phone_quiet, _part_phone_receipts, _part_phone_sent, _part_phone_silent, _part_phone_stale_cmd, _part_phone_state, _part_phone_state_cos, _part_receipt_target, _part_channel_down, _part_cli_commands, _part_cmd_test_channels, _part_command_table, _part_commands_gates, _part_mailbox_close_windows, _part_payload_roundtrip, _part_test_windows, _part_heartbeat_main, _part_heartbeat_cos, _part_resources, _part_snapshot, _part_inbox_poll]))

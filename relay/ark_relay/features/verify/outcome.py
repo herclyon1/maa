@@ -406,16 +406,16 @@ PATCH_COVERAGE = {
 # behaviour test instead: the file named here drives that method with a fake task.
 # The gate checks the file exists and names the method.
 BEHAVIOUR_TESTS = {
-    "FarmEchoTask.combat_once": "test_okww_nest.py",
-    "FarmEchoTask.click_team_challenge": "test_okww_nest.py",
-    "FarmEchoTask.click_solo_challenge": "test_okww_nest.py",
-    "BaseWWTask.click_on_book_target": "test_okww_nest.py",
-    "FarmEchoTask.teleport_to_configured_boss": "test_okww_nest.py",
-    "FarmEchoTask.teleport_to_configured_boss_and_prepare": "test_okww_nest.py",
-    "FarmEchoTask.run": "test_okww_daily.py",
-    "TacetTask.farm_tacet": "test_okww_daily.py",
-    "ForgeryTask.farm_forgery": "test_okww_daily.py",
-    "SimulationTask.farm_simulation": "test_okww_daily.py",
+    "FarmEchoTask.combat_once": "test_okww.py",
+    "FarmEchoTask.click_team_challenge": "test_okww.py",
+    "FarmEchoTask.click_solo_challenge": "test_okww.py",
+    "BaseWWTask.click_on_book_target": "test_okww.py",
+    "FarmEchoTask.teleport_to_configured_boss": "test_okww.py",
+    "FarmEchoTask.teleport_to_configured_boss_and_prepare": "test_okww.py",
+    "FarmEchoTask.run": "test_okww.py",
+    "TacetTask.farm_tacet": "test_okww.py",
+    "ForgeryTask.farm_forgery": "test_okww.py",
+    "SimulationTask.farm_simulation": "test_okww.py",
 }
 
 

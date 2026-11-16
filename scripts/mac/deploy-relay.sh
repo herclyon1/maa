@@ -196,15 +196,10 @@ export TEST_TIMES="$GATED/times"
 # invisible because the output was being filtered. Since 2026-09-23 it runs the
 # generator on a temp copy and asserts the real file is byte-identical; it still
 # runs on its own, first.
-( timed_test tests/test_manifest_covers_tree.py "$GATED/manifest.out"
-  echo $? >"$GATED/manifest.rc"
-  # Every test file, every time. Until 2026-11-17 a selector (scripts/mac/lib/changed_covered.py
-  # --tests-for, with relay/tests/test-map.json) ran only the tests a change reached; it was
-  # removed with the map, so nothing has to be kept in step with the tests any more.
-  printf '%s\n' tests/test_*.py | grep -v test_manifest_covers_tree.py \
+( printf '%s\n' tests/test_*.py \
     | run_tests_timed "$GATED/tests.out" "$GATED/tests.wall"
   echo $? >"$GATED/tests.rc"
-  printf '%s\n' tests/test_*.py | grep -vc test_manifest_covers_tree.py | tr -d ' ' >"$GATED/tests.n" ) &
+  printf '%s\n' tests/test_*.py | grep -c . | tr -d ' ' >"$GATED/tests.n" ) &
 ( "$RELAY_PY" -m py_compile ark_relay/*.py service.py boot_stages.py run.py \
       >"$GATED/cov.out" 2>&1
   echo $? >"$GATED/cov.rc" ) &
@@ -217,11 +212,6 @@ if [ "$(cat "$GATED/dead.rc" 2>/dev/null || echo 1)" != 0 ]; then
 fi
 echo "  $(tail -1 "$GATED/dead.out")"
 
-if [ "$(cat "$GATED/manifest.rc" 2>/dev/null || echo 1)" != 0 ]; then
-  cat "$GATED/manifest.out" 2>/dev/null
-  echo "  ✋ 清单覆盖那道测试没过（它会改 manifest.json，所以单独先跑）。"
-  exit 1
-fi
 if [ "$(cat "$GATED/tests.rc" 2>/dev/null || echo 1)" != 0 ]; then
   cat "$GATED/tests.out"
   echo "  ✋ 有测试没过（见上）。"

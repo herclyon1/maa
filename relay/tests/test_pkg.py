@@ -1,18 +1,13 @@
-"""The packaged install: app files update, install messages, layout names, pin writes, runtime update, the state folder, a failed switch's announcement, flushed switches, an update that changes nothing, the watchdog's update.
+"""Packaged installation layout, service stop loop, switchover, and manifest coverage."""
+from __future__ import annotations
 
-One part per former file, each run on its own (tests/_parts.py): test_pkg_appfiles_update.py, test_pkg_install_messages.py, test_pkg_layout_names.py, test_pkg_pin_whole_write.py, test_pkg_runtime_update.py, test_pkg_state_dir.py, test_pkg_switch_failed_announce.py, test_pkg_switch_flushed.py, test_pkg_update_nothing_changed.py, test_pkg_watchdog_update.py.
-"""
-# Each part imports the relay itself, after its own environment is set, as the file it was did at
-# its top.
 # ruff: noqa: PLC0415
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _parts import check, fails, require, run_parts, tmpdir  # after the path
+from _parts import check, fails, require, run_parts, tmpdir
 
-# What the parts share (tests/_parts.py), named here so a file whose parts use only some of it
-# still reads as using all of it.
 _SHARED = (check, fails, require, tmpdir)
 
 
@@ -458,7 +453,7 @@ into the version it had rolled away from.
     print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 
 
-def _part_pkg_runtime_update():  # noqa: C901 - the whole body of the file this part was
+def _part_pkg_runtime_update():  # noqa: C901
     """A relay deploy swaps the installed relay's runtime when it is not what the repo builds.
 
 Until 2026-10-11 only setup.exe replaced {app}\\runtime\\python, and a deploy whose
@@ -1821,5 +1816,851 @@ echo "FAIL_WHY=$WATCHDOG_FAIL_WHY"
     print("all checks passed")
 
 
+def _part_stop_denied():
+    """app_main.stop(): a stop event this account may not set ends the task at once.
+
+2026-10-11: on the cloud runner the relay ran as SYSTEM and the runner's admin could
+not open its stop event (winerror 5). stop() took that for "event not made yet" and
+waited its 40 s, exit 1, relay still up (package-windows runs 38095462157 and
+38095838036). Now access denied ends the task (schtasks /end) straight away; only a
+missing event (winerror 2, the relay still starting) is waited for.
+
+    Formerly test_stop_denied.py.
+    """
+
+    RELAY = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(RELAY))
+
+    import app_main
+
+
+    class Relay:
+        """A fake relay: `answers` is what each ask() gets; it exits `exit_after` s after a
+    stop that reached it (asked or the task ended)."""
+
+        def __init__(self, answers, exit_after=3.0):
+            self.t = 0.0
+            self.answers = list(answers)
+            self.exit_after = exit_after
+            self.stop_at = None
+            self.asks = 0
+            self.ended_at = None
+
+        def clock(self):
+            return self.t
+
+        def sleep(self, s):
+            self.t += s
+
+        def running(self):
+            return self.stop_at is None or self.t < self.stop_at + self.exit_after
+
+        def ask(self):
+            self.asks += 1
+            got = self.answers.pop(0) if self.answers else self.answers_last
+            self.answers_last = got
+            if got == "asked":
+                self.stop_at = self.t
+            return got
+
+        def end_task(self):
+            self.ended_at = self.t
+            self.stop_at = self.t
+
+
+    def stop(r):
+        return app_main._stop(r.running, r.ask, r.end_task, sleep=r.sleep, clock=r.clock)
+
+
+    print("[access denied: the task is ended at once, no 40 s wait]")
+    r = Relay(["denied"], exit_after=1.0)
+    check("result", stop(r), 0)
+    check("task ended at the first ask", r.ended_at, 0.0)
+    check("done in seconds", r.t <= 3.0, True)
+    check("asked once", r.asks, 1)
+
+    print("[event not made yet (relay starting): asked again, no task end]")
+    r = Relay(["not yet", "not yet", "asked"])
+    check("result", stop(r), 0)
+    check("no task end", r.ended_at, None)
+    check("asks", r.asks, 3)
+
+    print("[normal stop]")
+    r = Relay(["asked"])
+    check("result", stop(r), 0)
+    check("no task end", r.ended_at, None)
+
+    print("[access denied and the task end does not take: 1 after STOP_WAIT_S, one end only]")
+    r = Relay(["denied"], exit_after=10_000)
+    ends = []
+    r.end_task = lambda: ends.append(r.t)
+    check("result", stop(r), 1)
+    check("task ended once", len(ends), 1)
+    check("gave up at STOP_WAIT_S", app_main.STOP_WAIT_S <= r.t <= app_main.STOP_WAIT_S + 1, True)
+
+    print("[not running at all]")
+    r = Relay([], exit_after=0)
+    r.stop_at = -1.0
+    check("result", stop(r), 0)
+    check("never asked", r.asks, 0)
+
+    print("[the hard end is written to the relay's log first (review round 9 #25)]")
+    order = []
+    r = Relay(["denied"], exit_after=1.0)
+    real_end = r.end_task
+    r.end_task = lambda: (order.append("end"), real_end())
+    app_main._stop(r.running, r.ask, r.end_task, sleep=r.sleep, clock=r.clock,
+                   note=lambda msg: order.append(("note", msg)))
+    check("note before the end", [o if o == "end" else o[0] for o in order], ["note", "end"])
+    check("note names the task and the account", app_main.MAIN_TASK in order[0][1] and "账号" in order[0][1],
+          True)
+
+    import os
+    log = tmpdir() / "relay.log"
+    log.write_text("10-11 08:00:00 INFO    ark.app  earlier line\n", encoding="utf-8")
+    os.environ["ARK_LOG_FILE"] = str(log)
+    app_main._log_line("停止请求被拒：测试")
+    lines = log.read_text(encoding="utf-8").splitlines()
+    check("earlier line kept", lines[0].endswith("earlier line"), True)
+    check("one line added", len(lines), 2)
+    check("relay's format, WARNING", " WARNING ark.app.stop  停止请求被拒：测试" in lines[1], True)
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_stop_event_manual_reset():
+    """停服务的事件必须是手动复位的（CreateEvent 第二个参数为 1）。
+
+2026-09-07 09:02 部署停服务时，relay.log 里手机通道打了一整段 traceback
+（AttributeError: 'NoneType' object has no attribute 'peek'）。
+它的 except 里明明先问了 stop()，可 stop_event 是自动复位事件：
+主循环、手机通道、心跳三个线程都用 WaitForSingleObject(…, 0) 轮它，
+谁先看到谁把信号吃掉，其余线程看到的就是「没停」。手机通道于是把
+被 close() 掐断的连接当成意外断线；心跳同理可能发不出下线。
+2026-08-31 几次「卡在 STOP_PENDING」也是同一个根：主循环没抢到信号。
+
+    Formerly test_stop_event_manual_reset.py.
+    """
+    import re
+
+    SRC = Path(__file__).resolve().parents[1] / "service.py"
+    text = SRC.read_text(encoding="utf-8")
+    # 只盯 stop_event；proc_evt（进程退出）只有主循环一个消费者，自动复位是对的。
+    hits = re.findall(r"self\.stop_event\s*=\s*win32event\.CreateEvent\(None,\s*(\d)\s*,", text)
+    print("  stop_event 的 CreateEvent 第二个参数：", hits)
+    ok = hits == ["1"]
+
+    # 第二道：main() 返回后必须自己报告 STOPPED 并 os._exit，不能交给解释器收尾。
+    # 2026-09-07 实测：主流程 09:16:42 返回、剩下的全是 daemon 线程，SCM 却 27.5 秒后
+    # 才看到停止，15 秒硬保险一次都没触发（Timer 线程在收尾阶段拿不到 GIL）。
+    run = text[text.index("def SvcDoRun"):text.index("\n    def ", text.index("def SvcDoRun") + 10)]
+    tail_ok = ("ReportServiceStatus(win32service.SERVICE_STOPPED)" in run
+               and run.rstrip().endswith("os._exit(0)"))
+    print("  SvcDoRun 以 ReportServiceStatus(STOPPED) + os._exit 收尾：", tail_ok)
+    ok = ok and tail_ok
+    print("all checks passed" if ok else "FAILED: stop_event 不是手动复位（CreateEvent 第二个参数要是 1）")
+    sys.exit(0 if ok else 1)
+
+
+def _part_stop_push_errwatch_budget():
+    """stop-push's errwatch: the relay's power-off probe, and the whole run inside the watchdog's time.
+
+Review of e20dc77f + 7c1ba65c (audit 2026-10-13 s5):
+  1. `app_main.py stop-push` installed errwatch without the relay's power-off probe, so
+     errwatch.relay_shutdown_issued() was always false in that process. The engine that
+     knows lives in the relay's process; the relay now keeps the moment in state.json
+     (shutdown._record_poweroff) and stop-push's probe reads it
+     (shutdown.relay_poweroff_recorded), cleared when the countdown is cancelled and
+     stale after ISSUED_STUCK_MIN, as boot_stages._relay_poweroff_live.
+  2. The lint commit moved stop-push's drain from 2 s to errwatch.drain's default (3 s);
+     the slow-network test stubs the drain out. Here the real stop_push runs with the
+     send hanging and a WARNING the group never acknowledges, the drain as it is, and
+     STOP_PUSH_WAIT_S + what stop_push adds around the send + a Python start must stay
+     inside the watchdog's PUSH_TIMEOUT_S (packaging/watchdog/ark_watchdog.py).
+
+    Formerly test_stop_push_errwatch_budget.py.
+    """
+    import logging
+    import os
+    import re
+    import subprocess
+    import threading
+    import time
+    from datetime import datetime, timedelta
+
+    RELAY = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(RELAY))
+
+    DATA = tmpdir()
+    (DATA / "state").mkdir()
+    os.environ.update(ARK_HOME=str(DATA), ARK_PHONE_TOPIC="arktest-topic", ARK_PHONE_PIN="1234",
+                      SERVERCHAN_KEY="", WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="")
+    for _k in ("ARK_LOG_FILE", "ARK_STATE_DIR", "ARK_AUTOMAS_DIR"):
+        os.environ.pop(_k, None)
+
+    import app_main
+    from ark_relay.core.config import SERVER_TZ, Config
+    from ark_relay.core.ledger import State
+    from ark_relay.features.alarm import errwatch
+    from ark_relay.features.phone import phone
+    from ark_relay.features.shutdown import shutdown
+
+    STOP_PUSH_LOG = "ark.app.stop_push"   # app_main's logger for the watchdog's stop push
+
+
+    class Eng:
+        def __init__(self, state_dir):
+            self.state = State(state_dir)
+
+
+    STATE = app_main._relay_env()      # what stop_push and its Config() use
+    record = getattr(shutdown, "_record_poweroff", lambda eng, at: None)
+    recorded = getattr(shutdown, "relay_poweroff_recorded", lambda sd, now=None: False)
+    now = datetime.now(tz=SERVER_TZ)
+
+    print("[1. the relay's own power-off, seen from stop-push's process]")
+    eng = Eng(STATE)
+    record(eng, now - timedelta(minutes=1))
+    check("recorded a minute ago: the relay's own power-off", recorded(STATE, now), True)
+    check(f"recorded {shutdown.ISSUED_STUCK_MIN} min ago: stale, not ours any more",
+          recorded(STATE, now + timedelta(minutes=shutdown.ISSUED_STUCK_MIN)), False)
+    app_main._stop_push_errwatch(Config())
+    check("stop-push's errwatch asks it: relay_shutdown_issued() is true", errwatch.relay_shutdown_issued(), True)
+    record(eng, None)
+    check("countdown cancelled: not the relay's power-off", errwatch.relay_shutdown_issued(), False)
+    check("nothing recorded at all: not ours", recorded(DATA / "elsewhere", now), False)
+
+    print("[2. the whole stop-push path inside the watchdog's time]")
+    src = (RELAY.parent / "packaging" / "watchdog" / "ark_watchdog.py").read_text(encoding="utf-8")
+    PUSH_TIMEOUT_S = int(re.search(r"^PUSH_TIMEOUT_S\s*=\s*(\d+)", src, re.M).group(1))
+    release = threading.Event()
+
+
+    class Hang:
+        """The group never answers: errwatch's push is in flight for the whole drain."""
+        _state_dir = STATE
+
+        def send(self, *a, **k):
+            release.wait(120)
+            return []
+
+        def __getattr__(self, name):
+            return lambda *a, **k: []
+
+
+    h = errwatch._handler[0]
+    h._notifier = Hang()
+    logging.getLogger(STOP_PUSH_LOG).warning("a WARNING the group does not acknowledge")
+    phone.state_cos = lambda cfg: object()
+    phone.send_state = lambda box, cfg, why, log: release.wait(120) or (False, "")   # the send hangs
+    WAIT = 0.5
+    t0 = time.monotonic()
+    code = app_main.stop_push(wait_s=WAIT)
+    took = time.monotonic() - t0
+    around = took - WAIT
+    check("the send ran out its time: exit code 1", code, 1)
+    check(f"the drain is in it ({around:.2f} s around the send, drain default 3 s)", around >= 2.5, True)
+    t1 = time.monotonic()
+    # A fresh interpreter importing what stop_push imports (this process has them loaded already).
+    subprocess.run([sys.executable, "-c", "import app_main, ark_relay.__main__, ark_relay.core.notify, "
+                    "ark_relay.core.statestore, ark_relay.features.alarm.errwatch, ark_relay.features.phone.phone, "
+                    "ark_relay.features.shutdown.shutdown"], cwd=RELAY, check=True, capture_output=True)
+    start = time.monotonic() - t1
+    total = app_main.STOP_PUSH_WAIT_S + around + start
+    check(f"{app_main.STOP_PUSH_WAIT_S} s send + {around:.2f} s drain and the rest + {start:.2f} s start"
+          f" = {total:.1f} s < the watchdog's {PUSH_TIMEOUT_S} s", total < PUSH_TIMEOUT_S, True)
+    release.set()
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_switch_resume():
+    """An upgrade that is cancelled after it stopped the relay starts the previous version again.
+
+2026-10-11 (review round 10 #28): the installer's PrepareToInstall runs `switch.py stop`
+(watchdog, restart helper, relay; stop marker written). When Setup then ended before
+ssPostInstall - Cancel, or a file that could not be replaced (Abort) - nothing started
+the relay again until the next logon. Now DeinitializeSetup runs `switch.py resume
+--current=<the name current.txt held before>`: current.txt goes back to that folder when
+the rollback left it on another one (Inno Setup keeps files it already replaced), then
+the watchdog and the task start as uninstall's way back does (switch.start).
+
+    Formerly test_switch_resume.py.
+    """
+    import re
+    import tempfile
+
+    RELAY = Path(__file__).resolve().parents[1]
+    ROOT = RELAY.parent
+    sys.path.insert(0, str(ROOT / "packaging"))
+
+    import switch
+
+
+    def resume_in(app: Path, current: str, *, watchdog_rc=0):
+        """switch.resume(current) with APP = app and nothing run; the steps taken and its code."""
+        steps = []
+        saved = switch.APP, switch.run, switch.start_watchdog
+        switch.APP = app
+        switch.run = lambda *cmd: steps.append(" ".join(map(str, cmd))) or 0
+        switch.start_watchdog = lambda: steps.append("start_watchdog") or watchdog_rc
+        try:
+            rc = switch.resume(current)
+        finally:
+            switch.APP, switch.run, switch.start_watchdog = saved
+        return steps, rc
+
+
+    def make_app(root: Path, current: "str | None", folders: list[str]) -> Path:
+        app = root / "ArkRelay"
+        for name in folders:
+            (app / "versions" / name).mkdir(parents=True)
+            (app / "versions" / name / "app_main.py").write_text("", encoding="ascii")
+        app.mkdir(exist_ok=True)
+        if current is not None:
+            (app / "current.txt").write_text(current + "\r\n", encoding="ascii")
+        return app
+
+
+    def current_of(app: Path) -> str:
+        p = app / "current.txt"
+        return p.read_text(encoding="ascii").strip() if p.exists() else "(none)"
+
+
+    TASK_RUN = f"schtasks.exe /run /tn {switch.TASK_PATH}{switch.TASK_NAME}"
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+
+        print("[cancelled before current.txt was copied: start what is there]")
+        app = make_app(tmp / "a", "1300", ["1300"])
+        steps, rc = resume_in(app, "1300")
+        check("current.txt unchanged", current_of(app), "1300")
+        check("watchdog started, then the task run", steps, ["start_watchdog", TASK_RUN])
+        check("exit 0", rc, 0)
+
+        print("[cancelled after current.txt was copied, new folder rolled back]")
+        app = make_app(tmp / "b", "1310", ["1300"])
+        steps, rc = resume_in(app, "1300")
+        check("current.txt back on the version that ran", current_of(app), "1300")
+        check("no temp file left", (app / "current.txt.tmp").exists(), False)
+        check("then watchdog and task", steps, ["start_watchdog", TASK_RUN])
+
+        print("[cancelled after current.txt was copied, new folder still there]")
+        app = make_app(tmp / "c", "1310", ["1300", "1310"])
+        resume_in(app, "1300")
+        check("current.txt back on the version that ran", current_of(app), "1300")
+
+        print("[the previous folder is not complete: current.txt left alone]")
+        app = make_app(tmp / "d", "1310", ["1310"])
+        (app / "versions" / "1300").mkdir()
+        steps, rc = resume_in(app, "1300")
+        check("current.txt unchanged", current_of(app), "1310")
+        check("still started", steps, ["start_watchdog", TASK_RUN])
+
+        print("[no name from the installer (no current.txt before): left alone]")
+        app = make_app(tmp / "e", "1310", ["1310"])
+        resume_in(app, "")
+        check("current.txt unchanged", current_of(app), "1310")
+
+        print("[watchdog did not come up: the task still runs, exit says so]")
+        app = make_app(tmp / "f", "1300", ["1300"])
+        steps, rc = resume_in(app, "1300", watchdog_rc=1)
+        check("task run anyway", steps, ["start_watchdog", TASK_RUN])
+        check("exit 1", rc, 1)
+
+    print("[uninstall's way back is the same start()]")
+    src = (ROOT / "packaging" / "switch.py").read_text(encoding="utf-8")
+    body = src.split("def uninstall()", 1)[1].split("\ndef ", 1)[0]
+    check("uninstall calls start() when AUTO-MAS is not put back", "start()" in body, True)
+    check("switch.py dispatches resume with --current=",
+          'args[:1] == ["resume"]' in src and '"--current="' in src, True)
+
+    print("[the installer: DeinitializeSetup resumes only between stop and the switch-over]")
+    iss = (ROOT / "packaging" / "ark-relay.iss").read_text(encoding="utf-8-sig")
+    code = iss.split("[Code]", 1)[1]
+
+
+    def proc(name: str) -> str:
+        m = re.search(rf"\n(?:procedure|function) {name}\b.*?\nend;", code, re.S)
+        return m.group(0) if m else ""
+
+
+    prep, step, deinit = proc("PrepareToInstall"), proc("CurStepChanged"), proc("DeinitializeSetup")
+    check("PrepareToInstall sets the flag before switch.py stop",
+          0 <= prep.find("StoppedForUpgrade := True") < prep.find("stop',"), True)
+    check("ssPostInstall clears it before switch.py install",
+          0 <= step.find("StoppedForUpgrade := False") < step.find("RunSwitch(Args)"), True)
+    check("DeinitializeSetup exists and is guarded by the flag",
+          "if not StoppedForUpgrade then" in deinit, True)
+    check("DeinitializeSetup runs switch.py resume with the old current.txt",
+          "RunSwitch('resume \"--current=' + OldCurrent + '\"')" in deinit, True)
+    files = iss.split("[Files]", 1)[1].split("\n[", 1)[0]
+    sources = re.findall(r'^Source: "([^"]+)"', files, re.M)
+    check("switch.py and legacy.py are copied before everything else",
+          sources[:2], ["legacy.py", "switch.py"])
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_switch_run_encoding():
+    """switch.run decodes Windows tools' output in the console code page, not UTF-8.
+
+2026-10-13 (audit of the install / switch-over block, item 4): the machine's switch.log
+(the install of 2026-10-11 10:04) has `[SC] ChangeServiceConfig �ɹ�` where sc.exe wrote
+成功 in code page 936; switch.run decoded every tool's output as UTF-8. Now "oem".
+The codec exists only on Windows, so this checks what run() passes to subprocess.run
+and that 936 bytes decode cleanly under the code page "oem" maps to on his machine.
+
+    Formerly test_switch_run_encoding.py.
+    """
+
+    RELAY = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(RELAY.parent / "packaging"))
+
+    import switch
+
+
+    class Done:
+        returncode, stdout, stderr = 0, "", ""
+
+
+    seen = {}
+
+
+    def fake_run(cmd, **kw):
+        seen.update(kw)
+        return Done()
+
+
+    had_flag = hasattr(switch.subprocess, "CREATE_NO_WINDOW")
+    saved = switch.subprocess.run
+    switch.subprocess.run = fake_run
+    if not had_flag:
+        switch.subprocess.CREATE_NO_WINDOW = 0
+    try:
+        switch.run("sc.exe", "config", "ArkRelayWatchdog", "start=", "auto")
+    finally:
+        switch.subprocess.run = saved
+        if not had_flag:
+            del switch.subprocess.CREATE_NO_WINDOW
+
+    print("[switch.run]")
+    check("decodes in the console code page", seen.get("encoding"), "oem")
+    check("never raises on a byte it cannot map", seen.get("errors"), "replace")
+    sc_ok = "[SC] ChangeServiceConfig 成功".encode("cp936")
+    check("the machine's bytes read back under cp936 (what oem is there)",
+          sc_ok.decode("cp936"), "[SC] ChangeServiceConfig 成功")
+    check("and were mojibake under UTF-8", "成功" in sc_ok.decode("utf-8", "replace"), False)
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_switch_stop():
+    """switch.py stop() - before an upgrade, at uninstall and at revert - ends the update's
+restart helper before it stops the relay.
+
+2026-10-11 (review round 8 #23): stop() stopped the watchdog and the relay but not
+`launch.py relaunch` (pkg_layout.restart_soon). Within two minutes of a self-update or
+rollback the helper started the relay again under the installer, or left one running
+after an uninstall. a8c22829's launch.py gives up once a running watchdog stops, but not
+a helper that started while the watchdog was down, nor one from an older package; stop()
+now ends it as scripts/mac/estop.sh does.
+
+    Formerly test_switch_stop.py.
+    """
+    import fnmatch
+    import subprocess
+
+    RELAY = Path(__file__).resolve().parents[1]
+    ROOT = RELAY.parent
+    sys.path.insert(0, str(RELAY))
+    sys.path.insert(0, str(ROOT / "packaging"))
+
+    import pkg_layout
+    import switch
+
+
+    def like(text: str, pattern: str) -> bool:
+        """PowerShell -like: wildcards * ? [], case-insensitive."""
+        return fnmatch.fnmatchcase(text.lower(), pattern.lower())
+
+
+    print("[stop(): watchdog, then the helper, then the relay]")
+    steps = []
+    real_run, real_wd = switch.run, switch.stop_watchdog
+    switch.run = lambda *cmd: steps.append(("run", tuple(map(str, cmd)))) or 0
+    switch.stop_watchdog = lambda: steps.append(("watchdog",))
+    try:
+        switch.stop()
+    finally:
+        switch.run, switch.stop_watchdog = real_run, real_wd
+
+
+    def kind(step):
+        if step[0] == "watchdog":
+            return "watchdog"
+        cmd = step[1]
+        if cmd[0] == "powershell.exe" and switch.HELPER_LIKE in cmd[-1]:
+            return "helper"
+        if cmd[-2:] == (str(switch.APP / "launch.py"), "stop"):
+            return "relay"
+        return "other: " + " ".join(cmd)
+
+
+    check("order", [kind(s) for s in steps], ["watchdog", "helper", "relay"])
+    ps = next((s[1][-1] for s in steps if kind(s) == "helper"), "")
+    check("looks only at pythonw.exe (restart_soon starts the helper with it)",
+          "Name='pythonw.exe'" in ps, True)
+    check("ends what it finds", "Stop-Process" in ps, True)
+
+    print("[the match: the helper restart_soon starts, and nothing else]")
+    calls = []
+    pkg_layout.restart_soon(Path("C:/Program Files/ArkRelay"), popen=lambda cmd, creationflags=0: calls.append(cmd))
+    helper_line = subprocess.list2cmdline(calls[0])
+    check("restart_soon's helper matches", like(helper_line, switch.HELPER_LIKE), True)
+    check("same match as estop.sh",
+          f"-like '{switch.HELPER_LIKE}'" in (ROOT / "scripts" / "mac" / "estop.sh").read_text(encoding="utf-8"),
+          True)
+    relay_line = subprocess.list2cmdline([r"C:\Program Files\ArkRelay\runtime\python\pythonw.exe",
+                                          r"C:\Program Files\ArkRelay\launch.py"])
+    check("the relay itself (task \\ArkRelay\\main) does not match", like(relay_line, switch.HELPER_LIKE), False)
+    stop_line = subprocess.list2cmdline([str(switch.PY), str(switch.APP / "launch.py"), "stop"])
+    check("launch.py stop does not match", like(stop_line, switch.HELPER_LIKE), False)
+
+    print("[uninstall(): the task, then its \\ArkRelay\\ folder in Task Scheduler]")
+    # schtasks /delete removes the task and leaves its folder (found comparing the install with the old service, 2026-10-11).
+
+
+    class FakeScheduler:
+        """Schedule.Service as delete_task_folder uses it; `fail` makes DeleteFolder raise."""
+
+        def __init__(self, fail=False):
+            self.fail, self.calls = fail, []
+
+        def GetFolder(self, path):  # noqa: N802
+            self.calls.append(("GetFolder", path))
+            return self
+
+        def DeleteFolder(self, name, flags):  # noqa: N802
+            self.calls.append(("DeleteFolder", name, flags))
+            if self.fail:
+                raise OSError("the folder still holds a task")
+
+
+    steps = []
+    saved = (switch.stop, switch._handover_rollback, switch.run, switch._mark_watchdog_stopped,
+             switch.legacy.remove, switch.delete_task_folder)
+    sched = FakeScheduler()
+    real_delete = switch.delete_task_folder
+    switch.stop = lambda: steps.append("stop")
+    switch._handover_rollback = lambda: 0
+    switch.run = lambda *cmd: steps.append(" ".join(map(str, cmd[:2]))) or 0
+    switch._mark_watchdog_stopped = lambda on: None
+    switch.legacy.remove = lambda: steps.append("legacy")
+    switch.delete_task_folder = lambda: steps.append("folder") or real_delete(connect=lambda: sched)
+    try:
+        rc = switch.uninstall()
+    finally:
+        (switch.stop, switch._handover_rollback, switch.run, switch._mark_watchdog_stopped,
+         switch.legacy.remove, switch.delete_task_folder) = saved
+    check("uninstall exit", rc, 0)
+    check("folder deleted after the task", steps.index("folder") > steps.index("schtasks.exe /delete"), True)
+    check("the root folder deletes ArkRelay with flags 0", sched.calls, [("GetFolder", "\\"), ("DeleteFolder", "ArkRelay", 0)])
+    check("a folder that cannot go does not fail the uninstall",
+          switch.delete_task_folder(connect=lambda: FakeScheduler(fail=True)), False)
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_switch_uninstall():
+    """An uninstall that fails part way still does every other step and says what is left.
+
+2026-10-13 (audit of the install / switch-over block, item 2): after `switch.py
+uninstall` had stopped the relay and put AUTO-MAS back, any exception (a state link that
+would not go, a locked leftover file, an unreadable legacy-items.json) ended Python with
+exit 1, skipping the rest; the uninstaller treated every non-zero exit as "AUTO-MAS not
+put back" and said 「中继已经重新开起来，什么都没删」 - with no relay, no watchdog and
+nothing restarted. Now each step after the rollback runs on its own, legacy.remove()
+tries each item on its own, a partial uninstall exits 7 with the failed steps in
+uninstall-left.txt, and the installer script shows that message only for exit 3.
+Fakes for every Windows call; no Windows needed.
+
+    Formerly test_switch_uninstall.py.
+    """
+    import contextlib
+    import io
+    import re
+    import tempfile
+
+    RELAY = Path(__file__).resolve().parents[1]
+    ROOT = RELAY.parent
+    sys.path.insert(0, str(ROOT / "packaging"))
+
+    import legacy
+    import switch
+
+
+    def quiet(fn, *args):
+        """fn's result with its prints swallowed; an exception becomes its name (a failed
+    check, not a crash)."""
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                return fn(*args)
+        except Exception as exc:  # noqa: BLE001
+            return f"raised {type(exc).__name__}"
+
+
+    NAMES = ("APP", "stop", "start", "_handover_rollback", "run", "delete_task_folder",
+             "_mark_watchdog_stopped")
+
+
+    def uninstall_in(tmp: Path, *, rollback_rc=0, raise_in=""):
+        """switch.uninstall() with every Windows call faked; the steps taken, its code and
+    the uninstall-left.txt text ('' = none)."""
+        steps = []
+        app = tmp / "ArkRelay"
+        (app / "versions" / "1300").mkdir(parents=True, exist_ok=True)
+        left_file = tmp / "uninstall-left.txt"
+
+        def maybe_raise(name):
+            steps.append(name)
+            if name == raise_in:
+                raise OSError(f"{name} is locked")
+
+        def fake_run(*cmd):
+            name = "watchdog remove" if "ark_watchdog.py" in " ".join(map(str, cmd)) else "task delete"
+            maybe_raise(name)
+            return 0
+
+        saved = [getattr(switch, n) for n in NAMES] + [legacy.remove, getattr(switch, "UNINSTALL_LEFT", None)]
+        switch.APP = app
+        switch.stop = lambda: steps.append("stop") or 0
+        switch.start = lambda: steps.append("start") or 0
+        switch._handover_rollback = lambda: steps.append("rollback") or rollback_rc
+        switch.run = fake_run
+        switch.delete_task_folder = lambda: maybe_raise("task folder") or True
+        switch._mark_watchdog_stopped = lambda on: maybe_raise("marker")
+        legacy.remove = lambda: maybe_raise("legacy remove") or []
+        switch.UNINSTALL_LEFT = left_file
+        try:
+            rc = quiet(switch.uninstall)
+        finally:
+            for n, v in zip(NAMES, saved[:len(NAMES)], strict=True):
+                setattr(switch, n, v)
+            legacy.remove = saved[len(NAMES)]
+            if saved[-1] is None:
+                del switch.UNINSTALL_LEFT
+            else:
+                switch.UNINSTALL_LEFT = saved[-1]
+        left = left_file.read_text(encoding="utf-8") if left_file.exists() else ""
+        return steps, rc, left
+
+
+    ALL = ["stop", "rollback", "watchdog remove", "marker", "task delete", "task folder",
+           "legacy remove"]
+
+    with tempfile.TemporaryDirectory() as t:
+        t = Path(t)
+        print("[everything works: exit 0, nothing listed]")
+        steps, rc, left = uninstall_in(t / "a")
+        check("every step", steps, ALL)
+        check("exit 0", rc, 0)
+        check("no uninstall-left.txt", left, "")
+
+        print("[AUTO-MAS not put back: nothing removed, relay started, exit 3]")
+        steps, rc, left = uninstall_in(t / "b", rollback_rc=1)
+        check("steps", steps, ["stop", "rollback", "start"])
+        check("exit 3", rc, 3)
+
+        for broken in ("watchdog remove", "marker", "task delete", "task folder", "legacy remove"):
+            print(f"[{broken} raises: every other step still runs, exit 7, listed]")
+            steps, rc, left = uninstall_in(t / broken.replace(" ", "-"), raise_in=broken)
+            check(f"{broken}: every step tried", steps, ALL)
+            check(f"{broken}: exit 7 (not 0, not 3)", rc, 7)
+            check(f"{broken}: listed in uninstall-left.txt", f"{broken} is locked" in left, True)
+
+    print("[legacy.remove: one item that fails does not stop the rest]")
+    deleted, runs = [], []
+    saved = (legacy.items, legacy._delete_path, legacy._run, legacy._task_names,
+             legacy.service_exists, legacy.TAKEOVER_RECORD)
+
+
+    def fake_delete(p):
+        if "locked" in str(p):
+            raise PermissionError(f"{p} in use")
+        deleted.append(str(p))
+        return []
+
+
+    legacy.items = lambda: [
+        {"kind": "file", "path": "C:\\locked.bat", "action": "remove"},
+        {"kind": "file", "path": "C:\\free.bat", "action": "remove"},
+        {"kind": "task", "name": "ark-old", "action": "remove"},
+        {"kind": "service", "name": "ark-svc", "action": "takeover"},
+        {"kind": "file", "path": "C:\\kept.txt", "action": "keep"},
+    ]
+    legacy._delete_path = fake_delete
+    legacy._run = lambda *cmd: runs.append(" ".join(cmd)) or (5 if cmd[:2] == ("sc", "delete") else 0)
+    legacy._task_names = lambda: ["ark-old"]
+    legacy.service_exists = lambda name: True
+    with tempfile.TemporaryDirectory() as t:
+        legacy.TAKEOVER_RECORD = Path(t) / "legacy-takeover.json"
+        try:
+            out = quiet(legacy.remove)
+        finally:
+            (legacy.items, legacy._delete_path, legacy._run, legacy._task_names,
+             legacy.service_exists, legacy.TAKEOVER_RECORD) = saved
+    check("the items after the locked one still removed",
+          (deleted, "schtasks /delete /tn ark-old /f" in runs), (["C:\\free.bat"], True))
+    check("returns what was not removed (the locked file, the failed sc delete)",
+          isinstance(out, list) and len(out) == 2 and "locked.bat" in out[0] and "ark-svc" in out[1], True)
+    legacy.items = lambda: (_ for _ in ()).throw(ValueError("bad json"))
+    try:
+        out = quiet(legacy.remove)
+    finally:
+        legacy.items = saved[0]
+    check("an unreadable list is one failure, not an exception",
+          isinstance(out, list) and len(out) == 1 and "bad json" in out[0], True)
+
+    print("[uninstall removes the OK-WW overlay file, and nothing else in OK-WW]")
+    # gamesim U9 reported that no code removes ok_tasks/ark_overrides.py (its install cycle
+    # deleted the file itself). It is removed: legacy-items.json lists it as a `file` item with
+    # action `takeover`, and legacy.remove() deletes every remove/takeover item. Pinned here with
+    # the real list, the real remove() and the real _delete_path.
+    sys.path.insert(0, str(RELAY))
+    from pathlib import PureWindowsPath
+    from ark_relay.features.okww_patch import okww_overlay
+
+    OKWW_ROOT = PureWindowsPath(r"D:\ark\okww")     # the machine's OK-WW folder (legacy-items.json)
+    want = PureWindowsPath(*okww_overlay._WORKING, okww_overlay.TASKS_DIR, okww_overlay.FILE_NAME)
+    saved_items_file = legacy.ITEMS
+    legacy.ITEMS = RELAY / "handover" / "legacy-items.json"     # handover\ next to legacy.py when packaged
+    real_items = legacy.items()
+    ours = [it for it in real_items if it.get("kind") == "file"
+            and PureWindowsPath(it["path"]).name == okww_overlay.FILE_NAME]
+    check("legacy-items.json lists the overlay file once, as removed at uninstall",
+          [(it["action"] in ("remove", "takeover"), PureWindowsPath(it["path"]) == OKWW_ROOT / want) for it in ours],
+          [(True, True)])
+    asked = []
+    saved = (legacy.items, legacy._delete_path, legacy._run, legacy._task_names,
+             legacy.service_exists, legacy.TAKEOVER_RECORD)
+    legacy._delete_path = lambda p: asked.append(PureWindowsPath(str(p))) or []
+    legacy._run = lambda *cmd: 0
+    legacy._task_names = lambda: []
+    legacy.service_exists = lambda name: False
+    with tempfile.TemporaryDirectory() as t:
+        legacy.TAKEOVER_RECORD = Path(t) / "legacy-takeover.json"
+        try:
+            quiet(legacy.remove)
+        finally:
+            (legacy.items, legacy._delete_path, legacy._run, legacy._task_names,
+             legacy.service_exists, legacy.TAKEOVER_RECORD) = saved
+            legacy.ITEMS = saved_items_file
+    check("remove() with the real list deletes the overlay file", OKWW_ROOT / want in asked, True)
+    check("and nothing else under OK-WW's folder",
+          [str(p) for p in asked if str(p).lower().startswith(str(OKWW_ROOT).lower() + "\\")
+           and not (p.match("*.py.bak-*") and p.parent.name == "task")], [str(OKWW_ROOT / want)])
+    with tempfile.TemporaryDirectory() as t:
+        root = Path(t) / "okww"
+        dest = okww_overlay.target(root)
+        dest.parent.mkdir(parents=True)
+        dest.write_text("# ours\n", encoding="utf-8")
+        theirs = dest.parent / "user_task.py"           # a task the owner put there himself
+        theirs.write_text("# his\n", encoding="utf-8")
+        upstream = root.joinpath(*okww_overlay._WORKING, "src", "task", "DailyTask.py")
+        upstream.parent.mkdir(parents=True)
+        upstream.write_text("# upstream\n", encoding="utf-8")
+        local = {**ours[0], "path": str(root.joinpath(*PureWindowsPath(ours[0]["path"]).relative_to(OKWW_ROOT).parts))} \
+            if ours else {}
+        failed, _ = quiet(legacy._remove_one, local, None) if ours else ([], None)
+        check("the real removal of that item: our file gone, his task and upstream's file kept",
+              (failed, dest.exists(), theirs.exists(), upstream.exists()), ([], False, True, True))
+
+    print("[the uninstaller: 「中继已经重新开起来，什么都没删」 only for exit 3]")
+    iss = (ROOT / "packaging" / "ark-relay.iss").read_text(encoding="utf-8-sig")
+    m = re.search(r"\nprocedure CurUninstallStepChanged\b.*?\nend;", iss, re.S)
+    body = m.group(0) if m else ""
+    branches = re.split(r"\n    (?:else )?if Rc ", body)
+    restarted = [b.split("\n", 1)[0] for b in branches if "中继已经重新开起来，什么都没删" in b]
+    check("that message sits only in the Rc = 3 branch", restarted, ["= 3 then"])
+    seven = next((b for b in branches if b.startswith("= 7 then")), "")
+    check("exit 7 shows what is left (uninstall-left.txt) and does not abort",
+          ("UninstallLeft()" in seven, "RaiseException" in seven), (True, False))
+    check("the left list is read from the file switch.py writes",
+          "uninstall-left.txt" in iss and switch.UNINSTALL_LEFT.name == "uninstall-left.txt"
+          if hasattr(switch, "UNINSTALL_LEFT") else False, True)
+    other = next((b for b in branches if b.startswith("<> 0 then")), "")
+    check("any other code starts the relay again before aborting",
+          0 <= other.find("RunSwitch('start')") < other.find("RaiseException"), True)
+
+    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
+
+
+def _part_manifest_covers_tree():
+    import json
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+    from pathlib import Path
+
+    RELAY = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(RELAY))
+    fails = []
+
+
+    def check(label, got, want):
+        ok = got == want
+        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" if not ok else f"  ✓ {label}")
+        if not ok:
+            fails.append(label)
+
+
+    # The generator stamps a fresh version and ref every time it runs, so the
+    # probe below must never run it against the real tree. Restoring the bytes in a
+    # `finally` was not enough: a run killed mid-way (or one from an older checkout)
+    # still left a version nobody deployed in the shared tree - 2026-09-23 10:55:04,
+    # maa-automation-controls, version 20260923001824, which exists on no branch.
+    # The probe now runs on a throwaway copy; the real file is only read.
+    original = (RELAY / "manifest.json").read_bytes()
+    man = json.loads(original.decode("utf-8"))
+    listed = set(man["files"])
+
+    print("[顶层每个 .py 都在清单里]")
+    top = {p.name for p in RELAY.glob("*.py")} - {"make-manifest.py"}
+    check("顶层 .py 全覆盖", sorted(top - listed), [])
+    check("service.py 在", "service.py" in listed, True)
+    check("boot_stages.py 在（就是它没进清单，服务起不来）", "boot_stages.py" in listed, True)
+
+    print("\n[ark_relay 包里每个 .py 都在清单里]")
+    pkg = {p.relative_to(RELAY).as_posix() for p in (RELAY / "ark_relay").rglob("*.py")}
+    check("包内 .py 全覆盖", sorted(pkg - listed), [])
+
+    print("\n[清单里的每个文件都真的存在——否则部署会推一个空气]")
+    check("清单无幽灵条目",
+          sorted(f for f in listed if f != "RELEASE-NOTES.md" and not (RELAY / f).exists()), [])
+
+    print("\n[新放一个文件进去，重新生成的清单必须收它]")
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "relay"
+        shutil.copytree(RELAY, copy,
+                        ignore=shutil.ignore_patterns("tests", "state", "__pycache__"))
+        (copy / "zz_manifest_probe.py").write_text("# 临时探针，测完就删\n", encoding="utf-8")
+        out = subprocess.run([sys.executable, "make-manifest.py"], cwd=copy,
+                             capture_output=True, text=True)
+        check("生成器跑得起来", out.returncode, 0)
+        again = json.loads((copy / "manifest.json").read_text(encoding="utf-8"))
+        check("新文件被收进清单", "zz_manifest_probe.py" in again["files"], True)
+        check("副本里的清单和真清单文件集一致（除探针）",
+              sorted(set(again["files"]) - {"zz_manifest_probe.py"}), sorted(listed))
+
+    check("真树里没留下探针", (RELAY / "zz_manifest_probe.py").exists(), False)
+    check("真清单测试前后逐字节不变", (RELAY / "manifest.json").read_bytes() == original, True)
+
+    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_pkg_appfiles_update, _part_pkg_install_messages, _part_pkg_layout_names, _part_pkg_pin_whole_write, _part_pkg_runtime_update, _part_pkg_state_dir, _part_pkg_switch_failed_announce, _part_pkg_switch_flushed, _part_pkg_update_nothing_changed, _part_pkg_watchdog_update]))
+    sys.exit(run_parts([_part_pkg_appfiles_update, _part_pkg_install_messages, _part_pkg_layout_names, _part_pkg_pin_whole_write, _part_pkg_runtime_update, _part_pkg_state_dir, _part_pkg_switch_failed_announce, _part_pkg_switch_flushed, _part_pkg_update_nothing_changed, _part_pkg_watchdog_update, _part_stop_denied, _part_stop_event_manual_reset, _part_stop_push_errwatch_budget, _part_switch_resume, _part_switch_run_encoding, _part_switch_stop, _part_switch_uninstall, _part_manifest_covers_tree]))
