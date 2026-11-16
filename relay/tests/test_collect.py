@@ -877,11 +877,19 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     def two_rounds(second_text, again, shots, start_fails=False):
         """_bring_up_and_run over a fake MXU: returns (got_v, note, evidence, the overrides sent)."""
         sent_over, fw_now = [], {"text": ""}
+        agents = {"n": 0}    # the agents the last task left attached, as MXU keeps them (#111)
 
         def api(path, body=None, timeout=30):
+            if path.endswith("/agent/stop"):
+                agents["n"] = 0
+                return {}
             if path.endswith("/tasks/start"):
                 if start_fails and sent_over:
                     raise OSError("connection reset")
+                if agents["n"]:
+                    # mxu-tauri.log 10-22 21:56:40: a start beside the last task's agents fails
+                    raise urllib.error.HTTPError(path, 500, "agent failed to start", {}, None)
+                agents["n"] = 2
                 sent_over.append(json.loads(body["tasks"][0]["pipeline_override"]))
                 fw_now["text"] = round1 if len(sent_over) == 1 else second_text
                 return {}
@@ -895,7 +903,7 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
                  efstart.run_on_desktop, maaend_launch.restore_override, cm2.obstacle_shots)
         cr.api, cr._wait, cr._running, cr.mxu_port, cr.time = api, (lambda pred, seconds, step=3.0: pred()), \
             (lambda names: {"MaaEnd.exe"}), (lambda d, default=12701: 12701), clock
-        cr._close_game, cr._stop_agents, cr._maafw_text = (lambda *a: ""), (lambda inst: None), (lambda d: fw_now["text"])
+        cr._close_game, cr._maafw_text = (lambda *a: ""), (lambda d: fw_now["text"])     # _stop_agents is the real one
         efstart.run_on_desktop = lambda *a, **k: types.SimpleNamespace(code=efstart.OK, reason="")
         maaend_launch.restore_override = lambda d: ({"CloseGamePC": {}}, "")
         cm2.obstacle_shots = lambda d: list(shots)

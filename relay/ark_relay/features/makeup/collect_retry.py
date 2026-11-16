@@ -657,6 +657,11 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
         first = retry_blocked(_maafw_text(debug), routes, since, collector_maaend.obstacle_shots(maaend_dir))
         if first:
             log.info("自动采集补跑：%s 这一轮撞上「战斗中无法使用」没采到，单独再补一轮", "、".join(first))
+            # The first round's agents are stopped before the second start, as before
+            # CloseGamePC (_close_game): MXU starts a task's agents afresh and leaves the
+            # finished task's attached, and beside them the new go-service cannot connect
+            # (10-22 21:56:40, ledger #111 - tasks/start then answers 500).
+            _stop_agents(inst)
             # STAMP_FMT counts whole seconds and _after compares with >=: started in the same
             # second as the first round's last line, the second round would take that line for
             # its own. One second is that resolution (not a wait that was tuned).
