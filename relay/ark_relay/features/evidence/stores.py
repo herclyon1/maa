@@ -139,6 +139,19 @@ class Cos:
                 return f"COS 回了 {exc.code}：{self._REFUSED[exc.code]}"
         return ""
 
+    def size(self, key: str, timeout: int = 20) -> "int | None":
+        """The bytes of the object `key` as the bucket holds it (HEAD, Content-Length);
+        None when there is no such object (404). Any other answer is raised."""
+        url = f"https://{self.host}/" + urllib.parse.quote(key, safe="/")
+        req = urllib.request.Request(url, method="HEAD", headers={"Authorization": self.authorization("HEAD", key)})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return int(r.headers.get("Content-Length") or 0)
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                return None
+            raise
+
     def upload(self, path: Path, timeout: int = 900) -> dict:
         if reason := self.probe():
             raise PermanentUploadError(reason)

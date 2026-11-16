@@ -1713,6 +1713,130 @@ The uploader is a fake; nothing here touches the real COS bucket.
           (True, first["errors"]))
     error_evidence._last_attempt[0] = 0.0
 
+    print("\n[past days COS lacks, or holds shorter than the machine does, are sent again (11-11 / 11-13 answered 404)]")
+    import urllib.error
+    from ark_relay.features.evidence.stores import PermanentUploadError
+
+
+    class FakeCos:
+        """A COS store that knows what it holds: `held` is key -> bytes."""
+
+        def __init__(self, held=None, size_fail=None, upload_fail=None):
+            self.held = dict(held or {})
+            self.asked, self.puts = [], []
+            self.size_fail, self.upload_fail = size_fail, upload_fail
+
+        def object_key(self, path):
+            return f"daily/{path.name}"
+
+        def size(self, key, timeout=20):
+            self.asked.append(key)
+            if self.size_fail is not None:
+                raise self.size_fail(key) if callable(self.size_fail) else self.size_fail
+            return len(self.held[key]) if key in self.held else None
+
+        def upload(self, path, timeout=900):
+            if self.upload_fail is not None:
+                raise self.upload_fail
+            key = self.object_key(path)
+            self.held[key] = path.read_bytes()
+            self.puts.append(key)
+            return {"name": path.name, "url": f"https://host/{key}", "store": "cos", "key": key}
+
+
+    def key_of(day, kind="relay"):
+        return f"daily/{kind}-{day:%Y-%m-%d}.log"
+
+
+    D1, D2, D3, D4 = (DAY - timedelta(days=n) for n in (1, 2, 3, 4))
+    bf_log = tmpdir() / "relay.log"
+    bf_log.write_text("".join(f"{stamp(d, hh, mm)} INFO    ark.test  {text}\n" for d, hh, mm, text in (
+        (D4, 9, 0, "four days back"), (D3, 9, 0, "d3 morning"), (D3, 21, 40, "d3 evening"),
+        (D2, 9, 0, "d2 morning"), (D2, 14, 7, "d2 afternoon"), (D1, 9, 0, "d1 morning"),
+        (D1, 23, 59, "d1 last minute"), (DAY, 0, 0, "today midnight"), (DAY, 9, 0, "today"))), encoding="utf-8")
+    d3_bytes = "".join(f"{stamp(D3, hh, mm)} INFO    ark.test  {t}\n" for hh, mm, t in ((9, 0, "d3 morning"), (21, 40, "d3 evening"))).encode()
+    cos = FakeCos({key_of(D3): d3_bytes, key_of(D2): f"{stamp(D2, 9, 0)} INFO    ark.test  d2 morning\n".encode()})
+    before = (error_evidence._last_attempt[0], dict(error_evidence._last_ok), list(error_evidence._last_errors))
+    got = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=cos)
+    check("yesterday (no object) and the day before (a shorter object) are sent; three days back is whole and stays",
+          (cos.puts, got["kept"], got["errors"]), ([key_of(D1), key_of(D2)], 1, []))
+    check("what was sent says what COS held before", [(d, k, h) for d, k, h, _n in got["sent"]],
+          [(f"{D1:%Y-%m-%d}", "relay", None), (f"{D2:%Y-%m-%d}", "relay", len(f"{stamp(D2, 9, 0)} INFO    ark.test  d2 morning\n"))])
+    check("yesterday's object is that day's lines to its last minute, nothing of today or the day before",
+          (b"d1 morning" in cos.held[key_of(D1)], b"d1 last minute" in cos.held[key_of(D1)],
+           b"today" in cos.held[key_of(D1)], b"d2" in cos.held[key_of(D1)]), (True, True, False, False))
+    check("the shorter object is now the machine's whole day", b"d2 afternoon" in cos.held[key_of(D2)], True)
+    check("four days back is outside the look-back, today is the daily upload's: neither is asked about",
+          (key_of(D4) in cos.asked, key_of(DAY) in cos.asked), (False, False))
+    check("the error path's throttle and last link are untouched",
+          (error_evidence._last_attempt[0], dict(error_evidence._last_ok), list(error_evidence._last_errors)), before)
+    again_bf = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=cos)
+    check("a second pass finds every object as long as the machine's part: nothing sent", (again_bf["sent"], again_bf["kept"]), ([], 3))
+    longer = FakeCos({key_of(D1): b"x" * 5000})
+    error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=longer, days=1)
+    check("an object longer than the machine's part is never replaced", (longer.puts, len(longer.held[key_of(D1)])), ([], 5000))
+
+    empty_log = tmpdir() / "relay.log"
+    write_day_log(empty_log, DAY, [(9, 0, "only today")])
+    none = FakeCos()
+    got = error_evidence.backfill_past_days(cfg_with(empty_log, None, tmpdir()), now=NOW, uploader=none)
+    check("days the machine holds nothing of: not asked about, nothing sent", (none.asked, none.puts, got["errors"]), ([], [], []))
+
+    down = FakeCos(size_fail=OSError("getaddrinfo failed"))
+    got = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=down)
+    check("the line is down: one error, and the other objects are not waited for", (len(got["errors"]), len(down.asked)), (1, 1))
+    http = FakeCos(size_fail=lambda key: urllib.error.HTTPError("u", 500, "x", None, None) if key == key_of(D1) else None)
+    http.size = lambda key, timeout=20, _f=http.size_fail: (_ for _ in ()).throw(_f(key)) if _f(key) else None
+    got = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=http)
+    check("one object answered 500: said, and the other days still go up", (len(got["errors"]), http.puts), (1, [key_of(D2), key_of(D3)]))
+    refused = FakeCos(upload_fail=PermanentUploadError("COS 回了 403：密钥不对或没有这个桶的权限"))
+    got = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=refused)
+    check("the bucket refuses: one error and it stops there", (len(got["errors"]), len(refused.asked)), (1, 1))
+    no_cos = Config()
+    no_cos.state_dir, no_cos.automas_dir = tmpdir(), None
+    no_cos.cos_secret_id = no_cos.cos_secret_key = no_cos.cos_bucket = no_cos.cos_region = ""
+    check("no COS configured: nothing to do, no error", error_evidence.backfill_past_days(no_cos, now=NOW),
+          {"sent": [], "kept": 0, "errors": []})
+
+    print("\n[the back-fill runs once after the relay starts and once on each new day, on a thread of its own]")
+    started = []
+    error_evidence._backfill.update(day=None, thread=None)
+    cfg_bf = cfg_with(bf_log, None, tmpdir())
+    check("the first round after the start: started", error_evidence.backfill_step(cfg_bf, NOW, start=started.append), True)
+    check("later rounds of the same day: not again", error_evidence.backfill_step(cfg_bf, NOW + timedelta(hours=3), start=started.append), False)
+    check("the first round of the next day: started", error_evidence.backfill_step(cfg_bf, NOW + timedelta(days=1), start=started.append), True)
+    check("two passes were handed to the thread", len(started), 2)
+
+    seen = []
+
+
+    class Catch(logging.Handler):
+        def emit(self, record):
+            seen.append((record.levelname, record.getMessage()))
+
+
+    catch = Catch()
+    error_evidence.log.addHandler(catch)
+    level_was = error_evidence.log.level
+    error_evidence.log.setLevel(logging.INFO)
+    real_uploader = error_evidence._daily_uploader
+    try:
+        ok_cos = FakeCos()
+        error_evidence._daily_uploader = lambda cfg: ok_cos
+        error_evidence._run_backfill(cfg_bf, NOW)
+        check("each object sent is one INFO line saying what COS lacked", [(lv, "没有" in m and "补传上去" in m) for lv, m in seen],
+              [("INFO", True)] * 3)
+        del seen[:]
+        error_evidence._daily_uploader = lambda cfg: FakeCos(size_fail=OSError("getaddrinfo failed"))
+        error_evidence._run_backfill(cfg_bf, NOW)
+        check("a pass that could not finish is one WARNING (the group hears it)", [lv for lv, _m in seen], ["WARNING"])
+        check("……and its push names the cause in plain words", "域名解析失败" in texts.relay_error_body("ark.error_evidence", seen[0][1], "09:52"), True)
+    finally:
+        error_evidence._daily_uploader = real_uploader
+        error_evidence.log.removeHandler(catch)
+        error_evidence.log.setLevel(level_was)
+        error_evidence._backfill.update(day=None, thread=None)
+
 
 def _part_game_evidence():
     """The daily report counts a task as done only with evidence from the game.

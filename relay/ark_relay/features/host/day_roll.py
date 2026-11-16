@@ -1,4 +1,5 @@
-"""Local midnight in the main loop: put back the queue-command skips of the day before (_DayRoll).
+"""Local midnight in the main loop: put back the queue-command skips of the day before (_DayRoll),
+and send past days' logs COS lacks (after the relay starts and after each midnight).
 
 Split out of relay/service.py (2026-10-11); behaviour unchanged.
 """
@@ -46,8 +47,20 @@ class _DayRoll:
             wait_s = min(wait_s, self.RETRY_S)
         return wait_s
 
+    def _backfill_logs(self, now: datetime) -> None:
+        """The first round after the relay starts and the first one of each new day: past
+        days' logs COS lacks go up on a thread of their own (error_evidence.backfill_step)."""
+        if not getattr(self.cfg, "state_dir", None):
+            return
+        try:
+            from ark_relay.features.evidence import error_evidence  # noqa: PLC0415
+            error_evidence.backfill_step(self.cfg, now)
+        except Exception:
+            self.log.exception("补传前几天日志这一步没起来，下次醒来再试")
+
     def check(self, now: datetime | None = None) -> list[str]:
         now = now or datetime.now(tz=SERVER_TZ)
+        self._backfill_logs(now)
         if now.date() != self.day:
             self.day, self.pending = now.date(), True
         if not self.pending or not getattr(self.cfg, "state_dir", None):

@@ -123,6 +123,25 @@ update's own hold is left to run_deferred.
     check("the next wake puts it back", (roll.check(n1 + timedelta(minutes=5)), put),
           (["MaaEnd→「早班」"], ["MaaEnd"]))
     check("…and logs it", any("过了零点" in line for line in log.lines), True)
+
+    print("\n[every round hands the loop's moment to the log back-fill, which starts once per start and per day]")
+    from ark_relay.features.evidence import error_evidence
+    calls = []
+    real_step = error_evidence.backfill_step
+    error_evidence.backfill_step = lambda c, now=None, **kw: calls.append((c is cfg, now)) or True
+    try:
+        at = D + timedelta(hours=2)
+        roll.check(at)
+        roll.check(at + timedelta(minutes=1))
+        check("each check calls the step with this relay's config and the round's moment",
+              calls, [(True, at), (True, at + timedelta(minutes=1))])
+        error_evidence.backfill_step = lambda c, now=None, **kw: (_ for _ in ()).throw(RuntimeError("boom"))
+        said = log.lines.count("exception")
+        check("a step that breaks does not break the midnight put-back", roll.check(at + timedelta(minutes=2)), [])
+        check("……and it is said (one log.exception)", log.lines.count("exception") - said, 1)
+    finally:
+        error_evidence.backfill_step = real_step
+        error_evidence._backfill.update(day=None, thread=None)
     left = sorted((r["script"], tuple(sorted(gameupdate._sources(r)))) for r in gameupdate.skips(state))
     check("the update's holds stay (MAA keeps the update's, loses the queue's)", left,
           [("MAA", ("update",)), ("OK-WW", ("update",))])
