@@ -827,6 +827,161 @@ spent ~89 sanity while the machine was off (1/210 at 11-15 21:36, 26/210 at 09:0
     check("没有官方读数 → 剿灭照旧没证据", bool(items.get("MAA")), True)
 
 
+def _part_annihilation_day_rechecked():
+    """A later MAA record of the day backs an earlier skipped pass the first Skland read missed.
+
+2026-11-16 21:53 Beijing (ledger #177): the evening Routine record MAA-17-34-36 had no annihilation
+in it - AUTO-MAS logged that it skipped the pass with the week booked as 2026-W47 - yet the day's
+ledger still held the 09:00 pass with no Skland reading, so 剿灭 went to the group again under
+「明日方舟晚班」. That 09:00 line was booked by the code before the Skland check; the same repeat
+follows whenever the read at the pass's own landing misses. Pinned here:
+
+* the Routine record reads Skland once and marks the earlier row (its own run_id, its own week);
+  the day's unverified items then hold no annihilation;
+* Skland failing, or a reading from last week, marks nothing and the item stays (alarm as before);
+* no unbacked skip that day, or a non-MAA record, never calls Skland; failed, hand-stopped and
+  sanity-short rows are not candidates;
+* the hand-started path runs the same checks before pushing the day's unverified items.
+    """
+    import os
+    from datetime import datetime, timedelta
+
+    os.environ.update(ARK_STATE_DIR=str(tmpdir() / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
+                      WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ark_relay.features.alarm import handle
+    from ark_relay.core import skland
+    from ark_relay.core import ledger_report
+    from ark_relay.core.config import SERVER_TZ, RunRecord
+
+    MORNING = datetime(2026, 11, 16, 9, 0, 29, tzinfo=SERVER_TZ)
+    EVENING = datetime(2026, 11, 16, 21, 34, 36, tzinfo=SERVER_TZ)
+    skip = {"annihilation": True, "annihilation_no_entry": True, "annihilation_done": False}
+    stored_now = int(datetime(2026, 11, 16, 9, 9, 57, tzinfo=SERVER_TZ).timestamp())
+    last_week = int(datetime(2026, 11, 16, 3, 50, tzinfo=SERVER_TZ).timestamp())
+
+    def rows(extra=()):
+        return [{"run_id": "2026-11-16/arknights/MAA-05-00-29", "script": "MAA", "user": "arknights",
+                 "started": MORNING.isoformat(), "ok": True, "raw": dict(skip)},
+                {"run_id": "2026-11-16/arknights/MAA-05-02-20", "script": "MAA", "user": "arknights",
+                 "started": (MORNING + timedelta(minutes=2)).isoformat(), "ok": True,
+                 "raw": {"sanity_spent": 24}}, *extra]
+
+    class Eng:
+        def __init__(self, ledger, token="t"):
+            class Cfg:
+                skland_token = token
+            self.cfg = Cfg()
+            self.ledger = ledger
+            self.marks = []
+            outer = self
+
+            class St:
+                def read_ledger(st, day):
+                    return outer.ledger if day == "2026-11-16" else []
+
+                def mark_raw(st, day, run_id, key, value):
+                    outer.marks.append((day, run_id, key))
+                    for e in outer.ledger:
+                        if e["run_id"] == run_id:
+                            e["raw"][key] = value
+                    return True
+            self.state = St()
+
+    evening = RunRecord(run_id="2026-11-16/arknights/MAA-17-34-36", script="MAA", user="arknights",
+                        started=EVENING, finished=EVENING + timedelta(minutes=18), ok=True,
+                        raw={"sanity_spent": 204})
+    calls = []
+    reading = {}
+
+    def fake_login(token, d_id=""):
+        calls.append("login")
+        if reading.get("raise"):
+            raise skland.SklandError("boom")
+        return object()
+
+    def fake_anni(cred):
+        calls.append("info")
+        return dict(reading["value"])
+
+    real_login, real_anni = skland.login, skland.arknights_annihilation
+    skland.login, skland.arknights_annihilation = fake_login, fake_anni
+    try:
+        print("[11-16 晚班：Routine 那趟落地，早班跳过的剿灭还没读数 → 读一次森空岛，标在早班那行]")
+        reading["value"] = {"current": 1800, "total": 1800, "store_ts": stored_now}
+        e = Eng(rows())
+        check("补核前当天有剿灭没证据", bool(dict(ledger_report.day_unverified_items(e.ledger)).get("MAA")), True)
+        calls.clear()
+        handle._annihilation_verdicts(e, evening)
+        check("只读一次森空岛", calls, ["login", "info"])
+        check("标在早班那一行", e.marks, [("2026-11-16", "2026-11-16/arknights/MAA-05-00-29", "annihilation_official")])
+        check("晚班自己不沾", evening.raw.get("annihilation_official"), None)
+        check("当天没有没证据的项了", dict(ledger_report.day_unverified_items(e.ledger)).get("MAA"), None)
+
+        print("\n[森空岛出错 / 上周的数 → 不标，照旧报]")
+        reading["raise"] = True
+        e = Eng(rows())
+        handle._annihilation_checked_day(e, evening)
+        check("出错不标", e.marks, [])
+        check("出错照旧没证据", bool(dict(ledger_report.day_unverified_items(e.ledger)).get("MAA")), True)
+        reading.clear(); reading["value"] = {"current": 1800, "total": 1800, "store_ts": last_week}
+        e = Eng(rows())
+        handle._annihilation_checked_day(e, evening)
+        check("上周存的数不标", e.marks, [])
+        e = Eng(rows(), token="")
+        calls.clear()
+        handle._annihilation_checked_day(e, evening)
+        check("没凭证不去问", calls, [])
+
+        print("\n[不需要核的情况都不去问森空岛]")
+        reading["value"] = {"current": 1800, "total": 1800, "store_ts": stored_now}
+        backed = rows()
+        backed[0]["raw"]["annihilation_official"] = {"current": 1800, "total": 1800, "store_ts": stored_now}
+        for name, ledger, r in (
+                ("早班已有读数", backed, evening),
+                ("跳过那趟失败了", [{**rows()[0], "ok": False}], evening),
+                ("跳过那趟被红按钮停了", [{**rows()[0], "raw": {**skip, "manual_stop": True}}], evening),
+                ("跳过那趟理智不够", [{**rows()[0], "raw": {**skip, "maa_sanity_short": {"have": 20, "cost": 25}}}], evening),
+                ("账本行坏了", [{"run_id": "x", "script": "MAA", "ok": True, "raw": dict(skip)}], evening),
+                ("不是 MAA", rows(), RunRecord(run_id="2026-11-16/endfield/MaaEnd-06-12-46", script="MaaEnd",
+                                              user="endfield", started=EVENING, finished=EVENING, ok=True))):
+            calls.clear()
+            e = Eng(ledger)
+            handle._annihilation_checked_day(e, r)
+            check(f"{name} → 不问", calls, [])
+
+        print("\n[落地这趟自己就是跳过的剿灭 → 标在它自己身上]")
+        own = RunRecord(run_id="2026-11-16/arknights/MAA-05-00-29", script="MAA", user="arknights",
+                        started=MORNING, finished=MORNING + timedelta(minutes=2), ok=True, raw=dict(skip))
+        e = Eng(rows())
+        calls.clear()
+        handle._annihilation_checked_day(e, own)
+        check("还是只读一次", calls, ["login", "info"])
+        check("标一次、标在它自己", e.marks, [("2026-11-16", "2026-11-16/arknights/MAA-05-00-29", "annihilation_official")])
+        check("记录上也有", own.raw.get("annihilation_official", {}).get("total"), 1800)
+    finally:
+        skland.login, skland.arknights_annihilation = real_login, real_anni
+
+    print("\n[有人手动开的那趟：推没证据之前同样先核剿灭]")
+    order = []
+    saved = handle._weekly_gates, handle._annihilation_verdicts, handle._push_unverified
+
+    class HandEng:
+        _pending = {}
+
+        def _verify_outcome(self, rec):
+            return ""
+    try:
+        handle._weekly_gates = lambda eng, rec: order.append("gates")
+        handle._annihilation_verdicts = lambda eng, rec: order.append("annihilation")
+        handle._push_unverified = lambda eng, rec: order.append("unverified")
+        got = handle._hand_started_alarm(HandEng(), evening, ("MAA", "arknights"))
+    finally:
+        handle._weekly_gates, handle._annihilation_verdicts, handle._push_unverified = saved
+    check("先核剿灭再推没证据", order, ["gates", "annihilation", "unverified"])
+    check("跑完了不报", got, None)
+
+
 if __name__ == "__main__":
     sys.exit(run_parts([_part_annihilation_no_progress, _part_annihilation_not_healed_by_routine, _part_annihilation_status, _part_annihilation_unreadable_none,
-                        _part_annihilation_skipped_checked_on_skland]))
+                        _part_annihilation_skipped_checked_on_skland, _part_annihilation_day_rechecked]))

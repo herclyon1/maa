@@ -337,16 +337,28 @@ def _annihilation_checked_full(eng, rec: RunRecord) -> "dict | None":
     morning's MAA records went to the group as unverified. Skland read 1800/1800 (storeTs
     09:09:57): the account had been played while the machine was off (sanity 1/210 at
     11-15 21:36, 26/210 at 09:03 - about 89 spent overnight)."""
-    raw = rec.raw
-    if not (rec.script == "MAA" and raw.get("annihilation") and raw.get("annihilation_no_entry")
-            and not raw.get("annihilation_progress") and not raw.get("annihilation_official")):
+    if not _unbacked_skip(rec):
         return None
+    got = _read_skland_annihilation(eng)
+    return _skland_backs(got, rec) if got else None
+
+
+def _unbacked_skip(rec: RunRecord) -> bool:
+    """An Annihilation pass MAA skipped because the terminal listed no annihilation
+    (collector_maa annihilation_no_entry), with no progress line and no Skland reading on it yet."""
+    raw = rec.raw
+    return bool(rec.script == "MAA" and raw.get("annihilation") and raw.get("annihilation_no_entry")
+                and not raw.get("annihilation_progress") and not raw.get("annihilation_official"))
+
+
+def _read_skland_annihilation(eng) -> "dict | None":
+    """Skland's {'current', 'total', 'store_ts', 'read_at'} for the account, or None when there
+    is no token or the read fails. One read, no retry; never raises."""
     token = getattr(eng.cfg, "skland_token", "")
     if not token:
         log.info("剿灭：MAA 说终端里没有剿灭入口、跳过了；没有森空岛凭证，核对不了，照旧按没证据算")
         return None
     from ark_relay.core import skland  # noqa: PLC0415
-    from ark_relay.features.weekly.annihilation import week_key  # noqa: PLC0415
     now = datetime.now(tz=SERVER_TZ)
     try:
         # The path banners.py takes and the one measured from the Mac on 11-16: player info
@@ -356,6 +368,13 @@ def _annihilation_checked_full(eng, rec: RunRecord) -> "dict | None":
         log.warning("剿灭：MAA 说终端里没有剿灭入口、跳过了；去森空岛核对没核成（%s），照旧按没证据算",
                     type(exc).__name__)
         return None
+    return {**got, "read_at": now.strftime("%Y-%m-%d %H:%M:%S")}
+
+
+def _skland_backs(got: dict, rec: RunRecord) -> "dict | None":
+    """`got` when that Skland reading is full and was stored in `rec`'s own game-week
+    (Monday 04:00 reset); None otherwise."""
+    from ark_relay.features.weekly.annihilation import week_key  # noqa: PLC0415
     stored = datetime.fromtimestamp(got["store_ts"], tz=SERVER_TZ) if got["store_ts"] else None
     # A reading stored in an earlier game-week is last week's figure, 1800/1800 or not.
     if stored is None or week_key(stored) != week_key(rec.started):
@@ -366,7 +385,65 @@ def _annihilation_checked_full(eng, rec: RunRecord) -> "dict | None":
         log.info("剿灭：MAA 跳过了，可森空岛读到本周只有 %s/%s，没打满；照旧按没证据算",
                  got["current"], got["total"])
         return None
-    return {**got, "read_at": now.strftime("%Y-%m-%d %H:%M:%S")}
+    return got
+
+
+def _day_unbacked_skips(eng, rec: RunRecord) -> list:
+    """`rec` and the other records of its day (the ledger) that are a skipped Annihilation pass
+    nothing backs yet - the rows core.day_unverified_items lists as annihilation. Runs that failed, were
+    stopped by hand or were short of sanity are left out, as that list leaves them out."""
+    out = [rec] if rec.ok and _unbacked_skip(rec) else []
+    try:
+        rows = eng.state.read_ledger(run_day(rec))
+    except Exception:  # noqa: BLE001 - an unreadable ledger only means nothing more to check
+        rows = []
+    for e in rows:
+        raw = e.get("raw") if isinstance(e.get("raw"), dict) else {}
+        if (e.get("run_id") == rec.run_id or not e.get("ok") or core.manual_stop(e)
+                or raw.get("maa_sanity_short")):
+            continue
+        try:
+            started = datetime.fromisoformat(e["started"])
+            row = RunRecord(run_id=e["run_id"], script=e.get("script", ""), user=e.get("user", ""),
+                            started=started, finished=started, ok=True, raw=dict(raw))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if _unbacked_skip(row):
+            out.append(row)
+    return out
+
+
+def _annihilation_checked_day(eng, rec: RunRecord) -> None:
+    """When an MAA record lands, back with Skland every skipped Annihilation pass of its day
+    that nothing backs yet - its own, and an earlier one whose read at its own landing missed
+    (Skland down, or the figure not stored yet). One read for all of them, and only when there
+    is one; each is judged against its own game-week and marked on its own ledger line.
+
+    2026-11-16 21:53 (ledger #177): the 09:00 pass had been booked by the code before the Skland
+    check, so its line carried no reading, and the evening Routine record - no annihilation in
+    it, AUTO-MAS had skipped the pass with the week already booked as 2026-W47 - re-read the
+    day's ledger and sent annihilation to the group again. Checking only the landing record
+    could not have backed that line."""
+    if rec.script != "MAA":
+        return
+    todo = _day_unbacked_skips(eng, rec)
+    if not todo:
+        return
+    got = _read_skland_annihilation(eng)
+    if not got:
+        return
+    for row in todo:
+        if backed := _skland_backs(got, row):
+            _say_annihilation_checked(eng, row, backed)
+
+
+def _annihilation_verdicts(eng, rec: RunRecord) -> None:
+    """The two annihilation checks a normally-exited record gets before its day's unverified
+    items are pushed, on the scheduled and the hand-started path alike: Skland backing a
+    skipped pass, and a pass that fought nothing for lack of sanity."""
+    _annihilation_checked_day(eng, rec)
+    if short := _annihilation_sanity_short(eng, rec):
+        _say_annihilation_short(eng, rec, short)
 
 
 def _say_annihilation_checked(eng, rec: RunRecord, got: dict) -> None:
@@ -432,10 +509,7 @@ def _handle_success(eng, rec: RunRecord, key: tuple) -> None:
         log.info("↪️ %s %s（%s）跑成了，但压着的 %s 是%s失败，不算它自己好了，照旧等着报",
                  rec.script, rec.run_id, core.maa_mode(_job(rec)), held.run_id, core.maa_mode(_job(held)))
     _weekly_gates(eng, rec)
-    if checked := _annihilation_checked_full(eng, rec):
-        _say_annihilation_checked(eng, rec, checked)
-    if short := _annihilation_sanity_short(eng, rec):
-        _say_annihilation_short(eng, rec, short)
+    _annihilation_verdicts(eng, rec)
     # AUTO-MAS saying 「这个脚本正常退出了」 does not mean it got the work done.
     # So check against the evidence before returning, and anything not done has
     # to be said out loud.
@@ -694,6 +768,7 @@ def _hand_started_alarm(eng, rec: RunRecord, key: tuple) -> "tuple[str, str, str
             log.info("🖐 %s 之前压着的失败 %s，后来有人手动跑成了，%s", rec.script, held.run_id,
                      "没推出去，下一轮再推" if errs else "照报进群")
         _weekly_gates(eng, rec)
+        _annihilation_verdicts(eng, rec)
         _push_unverified(eng, rec)
         if msg := eng._verify_outcome(rec):
             eng.state.mark_incomplete(day, rec.run_id, msg)

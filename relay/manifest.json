@@ -1,8 +1,8 @@
 {
- "version": 20261116022403,
- "ref": "relay-20261116022403",
+ "version": 20261116140630,
+ "ref": "relay-20261116140630",
  "files": {
-  "RELEASE-NOTES.md": "82f65fa2d5f67cf7cb5995ca1b74a2d3398a7b45",
+  "RELEASE-NOTES.md": "291cece94c3027e48365c6ef869b040be9cac99d",
   "app_main.py": "7f7014277949b74eb24fd861a52eab853393e407",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "06ebb325bda947402f17227892ee6eeb4638a2bb",
@@ -43,7 +43,7 @@
   "ark_relay/features/alarm/daymarks.py": "ec3b5ba03d2549d848e7c53b28aabd81931056c6",
   "ark_relay/features/alarm/errwatch.py": "4907f776aaf36a1f780223bef5726c850edd8bf0",
   "ark_relay/features/alarm/gamelogs.py": "38408e5a8aff325fa5fc885ebb66accbf0da46d1",
-  "ark_relay/features/alarm/handle.py": "20272c5cf59f76c01e91f1d29fcaba1e435d6e38",
+  "ark_relay/features/alarm/handle.py": "a6a325663d5f0906fa66e44a8359e6f7f35a98d7",
   "ark_relay/features/alarm/known_fixed.py": "1764cd8141637d4b490bf5db1d29bdbd3d4dedd9",
   "ark_relay/features/alarm/macpush.py": "7d87121d190ff13b90ba85efca7f5c1b59f842e2",
   "ark_relay/features/alarm/manualstops.py": "5d5c1f984edbe27970f1cfcfcb695313845b5745",
@@ -184,7 +184,7 @@
   "watchdog_guard.py": "36b844f9c43d9e912ed48fd0168bdb0ad8c6ecb9"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "52ec7c9c5385e91e9fd887b1023d4480c51457e3d73f7ad3d40af10ef6d50870",
+  "RELEASE-NOTES.md": "1f82cc391742767a9d6953819c20bbd0c888676d0e038f6efbc4d7f1f5e80c3b",
   "app_main.py": "43156c27a126e790253ba71c4918f6a10f940b927f7176d54322e7622278c22a",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "89e77a8a498719f4cac68e2319d3c856fba84802e3f26fad08a882a09122d6d1",
@@ -225,7 +225,7 @@
   "ark_relay/features/alarm/daymarks.py": "a3d7c6ede2af1bc95932e2995809bdf5b12e87c32b9407808d4147b102537320",
   "ark_relay/features/alarm/errwatch.py": "25a7d541c6838ec2b8154628ca677ff2afc4c952a66234ca74023cd763651c8b",
   "ark_relay/features/alarm/gamelogs.py": "ee29b42f638ddbfd55e7a437c1ff89cbb9c74171679952466d96a5ec38b3cdbb",
-  "ark_relay/features/alarm/handle.py": "008df39d60f510fd42084d7d0a98c1f8cc51e616d84aaa86b2800382dec6c640",
+  "ark_relay/features/alarm/handle.py": "5b40b163e954e6c83cdae563dc57f7d54d57334a67136bb5cf7d3ec2c6cfab47",
   "ark_relay/features/alarm/known_fixed.py": "c41004027d3aba7299498e9ca874b824b4f06d82cfc5b8287add2db073474fb6",
   "ark_relay/features/alarm/macpush.py": "f66f4110a83799abb849922083dd42ee2358080a59893d84942b8a1b0d9ba25c",
   "ark_relay/features/alarm/manualstops.py": "e92406adb02ee3a51f0d1684fa9ec7c0d0e6755bfcdd42dd05f711f9a0d1c47c",
