@@ -572,6 +572,7 @@ claiming a check exists when it does not is worse than having none.)
 | `ARK_LOG_FILE` | where the relay logs; `service.py` sets it itself, because the service does not run `ark-relay.ps1` |
 | `ARK_PARTIAL_WINDOW_MIN` / `ARK_PARTIAL_GRACE_MIN` | how long a partially-complete round may stay open before it is judged |
 | `ARK_HOST` | the machine's Tailscale address; used by the Mac-side scripts, not by the relay |
+| `ARK_SHUTDOWN_OVERRIDE` | read by `scripts/mac/winps.sh`: lets a shutdown / restart script through its guard (refused, exit 5, while MAA, MaaEnd, Endfield, OK-WW, the WuWa client or LDPlayer runs); the value is the user's own words, echoed to stderr |
 | `ARK_POLL_SECONDS` | fallback scan interval, default 300 - **only used if the directory watch cannot be established**; the production path never reaches it |
 | `SERVERCHAN_KEY` | Server酱 |
 | `WECOM_CORPID` / `WECOM_SECRET` / `WECOM_AGENTID` | WeCom self-built app - dies with `60020` whenever the home IP changes |

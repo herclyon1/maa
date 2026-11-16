@@ -22,6 +22,14 @@ on:
       - 'relay-*'
   workflow_dispatch: {}
 
+# A newer push to the same branch cancels this run (11-16: two pushes to main four minutes apart queued
+# 2 x 57 Windows jobs against GitHub's 20 concurrent; neither started until the older run was cancelled by
+# hand at 10:50, then the newer one finished in 6 minutes). ci_green.py only ever needs the run of the commit
+# being deployed, which is the newest; an older commit's cancelled run stops a deploy of that commit (rule 2).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

@@ -41,6 +41,22 @@ if grep -qE '\bssh\b|\bwmic\b' <<<"$SCRIPT"; then
   exit 3
 fi
 
+# Shutdown guard (11-16, Gemini's fix after I nearly shut the machine down while the morning shift was still running
+# OK-WW / MaaEnd): a script that powers the machine off or restarts it first checks, on the machine, whether
+# any game or automation process is up; if one is, it refuses before anything runs and winps exits 5.
+# The relay shuts the machine down itself once the shift is done (debug mode only skips that one shutdown).
+# shutdown /a (abort) is never stopped. ARK_SHUTDOWN_OVERRIDE='<his own words>' lets a shutdown through anyway.
+BUSY_NAMES='MAA,MaaEnd,Endfield,ok-ww,Client-Win64-Shipping,dnplayer'
+if grep -qiE '(^|[^a-z])shutdown(\.exe)?[^;|]*[/-][sr]([^a-z]|$)|Stop-Computer|Restart-Computer' <<<"$SCRIPT"; then
+  if [ -n "${ARK_SHUTDOWN_OVERRIDE:-}" ]; then
+    echo "winps: shutdown guard overridden: ${ARK_SHUTDOWN_OVERRIDE}" >&2
+  else
+    SCRIPT="\$__busy = @(Get-Process -Name ${BUSY_NAMES} -ErrorAction SilentlyContinue | ForEach-Object { \$_.ProcessName } | Sort-Object -Unique)
+if (\$__busy.Count) { 'WINPS_REFUSED: ' + (\$__busy -join ', '); return }
+${SCRIPT}"
+  fi
+fi
+
 # 输出落 UTF-8 文件再整体取回。直接读 stdout 会经过 936 的控制台，中文必碎。
 RUN_ID="$$-$(date +%s)"
 OUT="C:/ProgramData/winps-${RUN_ID}.out"
@@ -74,6 +90,12 @@ if [ -z "$OUTB64" ]; then
 fi
 printf '%s' "$OUTB64" | base64 -d > "$TMP" 2>/dev/null || {
   echo "winps: 输出解码失败，远端可能中途被打断" >&2; exit 4; }
+
+if grep -q 'WINPS_REFUSED: ' "$TMP"; then
+  busy=$(sed -n 's/.*WINPS_REFUSED: //p' "$TMP" | tr -d '\r' | head -1)
+  echo "winps: 拒绝关机——机器上还有任务在跑：${busy}。早晚班没跑完不许手动关机：关掉调试模式，中继跑完会自己关。" >&2
+  exit 5
+fi
 
 # 去 BOM、统一换行；空输出如实说明，不当成成功。
 python3 - "$TMP" <<'PY'

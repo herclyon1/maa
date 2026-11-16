@@ -1303,5 +1303,63 @@ origin/main is the baseline commit:
     print("all checks passed")
 
 
+def _part_winps_shutdown_guard():
+    """winps.sh refuses to power the machine off while a game or automation process is up.
+
+2026-11-16 10:4x a Claude session told the user it would shut the machine down after a deploy while the
+morning shift was still running OK-WW / MaaEnd; the relay powers the machine off itself once the shift
+is done (debug mode skips only that one shutdown). Gemini's fix: the entry point checks first. Here
+`ssh` is a fake on PATH that decodes the PowerShell winps.sh would send and answers as the machine would.
+    """
+    import os
+    import re
+    import stat
+    import subprocess
+
+    root = Path(__file__).resolve().parents[2]
+    winps = root / "scripts" / "mac" / "winps.sh"
+    tmp = tmpdir()
+    sent = tmp / "sent.ps1"
+    fake = tmp / "ssh"
+    fake.write_text("""#!/usr/bin/env python3
+import base64, os, re, sys
+here = os.path.dirname(os.path.abspath(__file__))
+cmd = sys.argv[-1]
+ps = base64.b64decode(re.search(r"-EncodedCommand (\\S+)", cmd).group(1)).decode("utf-16-le")
+open(os.path.join(here, "sent.ps1"), "w", encoding="utf-8").write(ps)
+busy = open(os.path.join(here, "busy.txt"), encoding="utf-8").read().strip()
+out = ("WINPS_REFUSED: " + busy) if busy and "WINPS_REFUSED" in ps else "ran"
+print("WINPS_B64=" + base64.b64encode(out.encode()).decode())
+""", encoding="utf-8")
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+
+    def run(script, busy="", override=""):
+        (tmp / "busy.txt").write_text(busy, encoding="utf-8")
+        env = dict(os.environ, PATH=f"{tmp}:{os.environ['PATH']}", ARK_HOST="127.0.0.1")
+        env.pop("ARK_SHUTDOWN_OVERRIDE", None)
+        if override:
+            env["ARK_SHUTDOWN_OVERRIDE"] = override
+        p = subprocess.run(["bash", str(winps), script], capture_output=True, text=True, env=env, timeout=30)
+        return p.returncode, sent.read_text(encoding="utf-8") if sent.exists() else ""
+
+    print("[a shutdown while OK-WW runs: refused, exit 5]")
+    code, ps = run("shutdown /s /t 60", busy="Client-Win64-Shipping")
+    check("exit 5", code, 5)
+    check("the check went first", ps.index("WINPS_REFUSED") < ps.index("shutdown /s /t 60"), True)
+    for script in ("Stop-Computer -Force", "Restart-Computer", "shutdown.exe -r -t 0"):
+        check(f"{script}: checked too", "WINPS_REFUSED" in run(script, busy="MAA")[1], True)
+    print("\n[nothing running: the shutdown goes through]")
+    check("exit 0", run("shutdown /s /t 60")[0], 0)
+    print("\n[never in the way]")
+    code, ps = run("shutdown /a")
+    check("abort not checked", (code, "WINPS_REFUSED" in ps), (0, False))
+    check("an ordinary script not checked", "WINPS_REFUSED" in run("Get-Date")[1], False)
+    code, ps = run("shutdown /s /t 60", busy="MAA", override="他 11-16 说现在关")
+    check("his own words override", (code, "WINPS_REFUSED" in ps), (0, False))
+    check("the names checked are the relay's game processes",
+          sorted(re.search(r"BUSY_NAMES='([^']+)'", winps.read_text(encoding="utf-8")).group(1).split(",")),
+          sorted(["MAA", "MaaEnd", "Endfield", "ok-ww", "Client-Win64-Shipping", "dnplayer"]))
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_build_notes_at_deploy_tip, _part_ci_green, _part_dead_helpers_gone, _part_diag_pull_silent, _part_gamesim_fetch_retry, _part_lint_pick_tests, _part_num_source, _part_release_notes, _part_replay_gate, _part_tests_for_selector, _part_tools_import_installed_relay, _part_unmerged_fixes]))
+    sys.exit(run_parts([_part_build_notes_at_deploy_tip, _part_ci_green, _part_dead_helpers_gone, _part_diag_pull_silent, _part_gamesim_fetch_retry, _part_lint_pick_tests, _part_num_source, _part_release_notes, _part_replay_gate, _part_tests_for_selector, _part_tools_import_installed_relay, _part_unmerged_fixes, _part_winps_shutdown_guard]))
