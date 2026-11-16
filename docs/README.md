@@ -35,7 +35,6 @@ named in `CLAUDE.md` or here. These were named only in documents that are gone:
 | Script | What it does |
 |---|---|
 | `scripts/mac/confirm-off.sh` | Is the game machine powered off right now: prints measured evidence, not Tailscale's opinion |
-| `scripts/mac/pull-day.sh` | Pulls the game machine's record of one Beijing day and cuts it into the day-replay corpus (`relay/tests/daysim`) |
 | `scripts/mac/pull-replay.sh` | Pulls one day's AUTO-MAS run records back as a replay sample (redacted, with a draft `expected.json`) |
 | `scripts/windows/smoke.py` | The deploy's smoke test on the machine: imports every relay module with the machine's Python and reads back the log the service wrote after its restart, before "deployed" is printed |
 | `scripts/windows/copilot-run.py` | Runs a MAA copilot (auto-battle) file through MaaCore without the GUI |

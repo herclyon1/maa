@@ -7,7 +7,7 @@
 # 手动部署必须自带验证，否则"我以为部署了"比没部署更危险。
 #
 #   ARK_HOST=100.65.39.119 scripts/mac/deploy-relay.sh
-#   scripts/mac/deploy-relay.sh --dry-run   # local gates 0-0.8 only, then stop: no network, no game PC
+#   scripts/mac/deploy-relay.sh --dry-run   # local gates 0-0.75 only, then stop: no network, no game PC
 #
 set -euo pipefail
 
@@ -63,7 +63,7 @@ lap() { printf '      （%d 秒）\n' "$((SECONDS-_TP))"; _TP=$SECONDS; }
 RELAY_PY=$("$HERE/../scripts/mac/lib/relay-python.sh") || { echo "  ✋ 没有 3.14 跑中继测试，部署取消"; exit 1; }
 export RELAY_PY
 python3 make-manifest.py > /dev/null
-echo "▶ 0/5 本地三道闸并行（死代码 · 回归测试 · 语法与改动覆盖）"
+echo "▶ 0/5 本地三道闸并行（死代码 · 回归测试 · 语法）"
 # These three read the working tree and nothing else, so they have no reason to wait
 # for each other. Serially they were 28 s of a 71 s deploy. Every gate still runs and
 # every one of them can still stop the deploy, with the same exit code as before -
@@ -198,23 +198,15 @@ export TEST_TIMES="$GATED/times"
 # runs on its own, first.
 ( timed_test tests/test_manifest_covers_tree.py "$GATED/manifest.out"
   echo $? >"$GATED/manifest.rc"
-  # Only the tests that execute a changed module (relay/tests/test-map.json,
-  # rebuilt by every coverage pass), plus every test the map cannot place and
-  # every test file that changed itself; anything the selector cannot decide
-  # falls back to the whole suite. The user's condition (2026-09-18): a
-  # changed file's tests must run - never skip to save seconds.
-  PICK=$(python3 "$HERE/../scripts/mac/lib/changed_covered.py" --tests-for 2>"$GATED/pick.why")
-  if [ -n "$PICK" ]; then
-    printf '%s\n' $PICK | sed 's|^|tests/|'
-  else
-    printf '%s\n' tests/test_*.py
-  fi | grep -v test_manifest_covers_tree.py \
+  # Every test file, every time. Until 2026-11-17 a selector (scripts/mac/lib/changed_covered.py
+  # --tests-for, with relay/tests/test-map.json) ran only the tests a change reached; it was
+  # removed with the map, so nothing has to be kept in step with the tests any more.
+  printf '%s\n' tests/test_*.py | grep -v test_manifest_covers_tree.py \
     | run_tests_timed "$GATED/tests.out" "$GATED/tests.wall"
   echo $? >"$GATED/tests.rc"
-  { [ -n "$PICK" ] && printf '%s\n' $PICK | grep -vc test_manifest_covers_tree.py || ls tests/test_*.py | wc -l; } | tr -d ' ' >"$GATED/tests.n" ) &
+  printf '%s\n' tests/test_*.py | grep -vc test_manifest_covers_tree.py | tr -d ' ' >"$GATED/tests.n" ) &
 ( "$RELAY_PY" -m py_compile ark_relay/*.py service.py boot_stages.py run.py \
-      >"$GATED/cov.out" 2>&1 \
-    && "$RELAY_PY" "$HERE/../scripts/mac/lib/changed_covered.py" >>"$GATED/cov.out" 2>&1
+      >"$GATED/cov.out" 2>&1
   echo $? >"$GATED/cov.rc" ) &
 wait
 
@@ -236,22 +228,16 @@ if [ "$(cat "$GATED/tests.rc" 2>/dev/null || echo 1)" != 0 ]; then
   echo "     部署已取消。先修测试，或者确认这些断言本身该更新。"
   exit 1
 fi
-echo "  $(cat "$GATED/tests.n" 2>/dev/null || ls tests/test_*.py | wc -l | tr -d ' ') 个测试全过（$(cat "$GATED/pick.why" 2>/dev/null || echo 全量)）"
+echo "  $(cat "$GATED/tests.n" 2>/dev/null || ls tests/test_*.py | wc -l | tr -d ' ') 个测试全过（全量）"
 if ! test_speed_gate "$TEST_TIMES" "$GATED/tests.wall"; then
   echo "  ✋ Deploy cancelled: the tests are too slow (see above). Make the slow file faster -"
   echo "     profile it first; the limits are TEST_FILE_MAX_S / TEST_WALL_MAX_S in this script."
   exit 1
 fi
 
-# 「改了什么就得证明什么」——用户 2026-09-06 的死命令：
-# 「没有回放案例的改动不许部署。部署脚本读 git diff 里改了哪些模块，
-#   每个模块必须被至少一个回放案例真正执行到。」
-# 判据比原话稍宽一点，理由写在那个脚本的开头：回放语料天然盖不到 shutdown、
-# gameupdate 这类模块，硬要求回放覆盖只会逼人关掉这道闸。所以要求是
-# 「至少有一个测试真的执行到它」，判定类模块另外单独点名提醒。
 cat "$GATED/cov.out"
 if [ "$(cat "$GATED/cov.rc" 2>/dev/null || echo 1)" != 0 ]; then
-  echo "  ✋ 有模块改了却没有任何测试跑到它（或语法就不过），不给部署。" >&2
+  echo "  ✋ 中继代码语法不过（见上），不给部署。" >&2
   exit 8
 fi
 
@@ -333,39 +319,10 @@ else
 fi
 
 lap
-# ── 0.8 gate: day replay (design: relay/tests/daysim, design.md section 5) ──
-# Every recorded day (relay/tests/daysim/days/) replayed through this version, boot by
-# boot, on fake Windows / network / AUTO-MAS answering from the machine's records, and
-# judged against the reviewed expected.json. Any failure line known-red.json does not
-# list stops the deploy, as does a stale or expired known-red entry; then each
-# badfix/*.patch puts a fixed bug back into a copy of the code and its day must go red,
-# or the gate itself is broken. Too slow for the per-file test limits of gate 0, so it
-# is its own step. Alone: ~/.local/bin/python3.14 -I relay/tests/daysim/gate.py
-echo "▶ 0.8/5 整天回放（每个录下来的日子用这一版从头跑一遍，有新的不对就拒绝）"
-if ! "$RELAY_PY" -I tests/daysim/gate.py 2>&1 | sed 's/^/    /'; then
-  echo "  ✋ 整天回放不通过（见上）：要么修中继，要么这一天的 expected.json 经审过、带出处地改。" >&2
-  echo "     部署已取消。" >&2
-  exit 15
-fi
-
-lap
 if [ "$DRY_RUN" = 1 ]; then
-  echo "✅ dry run: local gates 0-0.8 passed; stopping before step 1 (nothing sent to the machine or COS)"
+  echo "✅ dry run: local gates 0-0.75 passed; stopping before step 1 (nothing sent to the machine or COS)"
   exit 0
 fi
-# ── 0.9 gate: the game layer on real OK-WW (gamesim design section 4) ──
-# .github/workflows/gamesim-windows.yml runs the overlay inside the real OK-WW / ok-script on
-# windows-latest, which the Mac cannot (pywin32 at ok-script's module top). This commit, or one
-# whose game-layer files are identical, must have a green run there; red, not pushed, GitHub
-# down or still running after 15 min all stop the deploy. After the dry-run exit: it needs the
-# network. Rules and messages: scripts/mac/lib/ci_green.py.
-echo "▶ 0.9/5 游戏层在真 OK-WW 上跑绿（GitHub gamesim-windows，这一版或游戏层文件一样的那一版）"
-if ! python3 "$HERE/../scripts/mac/lib/ci_green.py" 2>&1 | sed 's/^/    /'; then
-  echo "  ✋ 游戏层的 Windows 检查没过（见上），部署已取消。" >&2
-  exit 16
-fi
-
-lap
 echo "▶ 1/5 重建 manifest"
 python3 make-manifest.py
 

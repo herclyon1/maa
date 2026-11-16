@@ -14,7 +14,7 @@ FAIL=0
 note() { printf '  ✗ %s\n' "$1"; FAIL=1; }
 ok()   { printf '  ✅ %s\n' "$1"; }
 
-echo "▶ 1/19 shellcheck"
+echo "▶ 1/18 shellcheck"
 if command -v shellcheck >/dev/null || [ -x "$HOME/.local/bin/shellcheck" ]; then
   SC="$(command -v shellcheck || echo "$HOME/.local/bin/shellcheck")"
   bad=""
@@ -28,7 +28,7 @@ fi
 
 # 2026-08-26：我在 winrun.sh 的清理逻辑里用了 `powershell`（5.1），每次都失败。
 # 5.1 默认不是 UTF-8，读中文 JSON 必挂。规矩立完当轮就违反了，所以要机器来查。
-echo "▶ 2/19 不许用 powershell 5.1（要用 pwsh 7）"
+echo "▶ 2/18 不许用 powershell 5.1（要用 pwsh 7）"
 # grep -rn 的输出是 `文件:行号:内容`，所以过滤注释要跳过前两段，
 # 不能直接 `^\s*#`——2026-08-26 第一版就是这么写的，注释全都漏了过去。
 # 2026-09-06：原正则只认 `powershell ` 带空格，`["powershell", "-NoProfile"` 这种
@@ -44,14 +44,14 @@ hits=$(grep -rn "['\"\` ]powershell[ '\",]" scripts/ relay/ 2>/dev/null \
 
 # 2026-08-26：`pwsh -c "... \"A|B\" ..."` 被 bash/ssh/cmd 三层引号吃掉，
 # 报 `'Wuthering' 不是内部或外部命令`。正解是 base64 -EncodedCommand。
-echo "▶ 3/19 ssh 送 PowerShell 必须走 base64"
+echo "▶ 3/18 ssh 送 PowerShell 必须走 base64"
 hits=$(grep -rn 'ssh .*pwsh -\(NoProfile \)\?-\?[Cc]ommand' scripts/ 2>/dev/null \
        | grep -v EncodedCommand | grep -v "^\s*#" || true)
 [ -z "$hits" ] && ok "没有内联拼接的远端 PowerShell" || { note "有内联 -Command（应改 -EncodedCommand）"; echo "$hits" | head -5 | sed 's/^/       /'; }
 
 # 2026-08-26：deploy-relay.sh 在 `cd` 之后才解析 $(dirname "${BASH_SOURCE[0]}")，
 # 相对路径当场失效，取日志那步静默失败。当天 cwd 类问题共撞 37 次。
-echo "▶ 4/19 脚本目录必须在 cd 之前算好"
+echo "▶ 4/18 脚本目录必须在 cd 之前算好"
 hits=""
 while IFS= read -r f; do
   cdline=$(grep -n '^cd ' "$f" | head -1 | cut -d: -f1)
@@ -64,7 +64,7 @@ done < <(find scripts -name '*.sh' ! -path "*/lint-repo.sh")
 [ -z "$hits" ] && ok "没有 cd 之后才解析脚本目录的写法" || note "在 cd 之后解析路径: $hits"
 
 # 2026-08-26：RELEASE-NOTES.md 忘了加进清单，部署报成功而机器上根本没这个文件。
-echo "▶ 5/19 部署清单要包含更新说明"
+echo "▶ 5/18 部署清单要包含更新说明"
 if grep -q 'RELEASE-NOTES.md' relay/make-manifest.py 2>/dev/null; then
   ok "make-manifest 会带上 RELEASE-NOTES.md"
 else
@@ -74,10 +74,10 @@ fi
 # 2026-08-26：新写的测试函数被 `>>` 追加到了 `main()` 之后，调用时还没定义。
 # 测试跑一遍就会 NameError，所以这条直接用「全部测试能跑通」兜住。
 if [ -n "${LINT_SKIP_TESTS:-}" ]; then
-  echo "▶ 6/19 中继测试全绿"
+  echo "▶ 6/18 中继测试全绿"
   echo "  ⏭ 已跳过（调用方自己会跑一遍，这里再跑是重复）"
 else
-echo "▶ 6/19 中继测试全绿"
+echo "▶ 6/18 中继测试全绿"
 # Criteria: exit code 0 and the last line says passed.
 # 失败时把**报错内容**打出来，不是只报一个文件名。原来只吐文件名，人还得自己
 # 再跑一遍才知道错在哪；而收进变量再 tr '\n' ' ' 会把 traceback 压成一整行，
@@ -110,17 +110,12 @@ esac
 if bare=$(grep -nE '(^|[^"$A-Za-z_])python3 +("?\$\{?TEST_DIR|"?\$1"? *>|"?tests/|-m +(py_compile +ark_relay|ark_relay))' scripts/mac/lint-repo.sh scripts/mac/deploy-relay.sh); then
   note "跑中继测试 / 中继代码的地方又用了系统自带的 python3："; sed 's/^/       /' <<<"$bare"
 fi
-# Only the tests this change reaches (scripts/mac/lib/lint_pick_tests.py: the deploy selector, plus
-# tests that name a changed script; every test when it cannot decide). LINT_ALL_TESTS=1 runs all.
+# Every test file, every time (until 2026-11-17 scripts/mac/lib/lint_pick_tests.py picked the ones a
+# change reached; it was removed with relay/tests/test-map.json).
 LINT_TESTS=$(mktemp)
-pick_why=$(mktemp)
-if [ -n "${LINT_ALL_TESTS:-}" ] || ! picked=$("${RELAY_PY:-false}" scripts/mac/lib/lint_pick_tests.py 2>"$pick_why") || [ "$picked" = ALL ]; then
-  printf '%s\n' relay/tests/test_*.py >"$LINT_TESTS"; scope="全部"
-else
-  [ -n "$picked" ] && printf 'relay/tests/%s\n' $picked >"$LINT_TESTS"; scope="这次改动影响到的"
-fi
+printf '%s\n' relay/tests/test_*.py >"$LINT_TESTS"; scope="全部"
 cnt=$(grep -c . "$LINT_TESTS" || true)
-echo "  · 跑${scope} ${cnt} 个测试（$(head -c 200 "$pick_why")）"
+echo "  · 跑${scope} ${cnt} 个测试"
 # Eight at a time, but every test first waits while macOS runs this check at background priority:
 # on this Mac's macOS 27.2 beta a background-priority process that starts programs can lock the
 # kernel (09-23 04:19 panic; 10-14 19:52 the Mac froze 62 s after Game Mode put Claude and all it
@@ -141,7 +136,7 @@ fi
 # 它永远不会被调用，测试照样打印 "all checks passed"、闸门照样放行。
 # 上面那条「测试全绿」拦不住：那个函数根本没被执行，谈不上红不红。
 # 所以这里查的是「定义了却没人调用」这一整类，而不是某一次的写法。
-echo "▶ 7/19 没有永远不会被执行的代码"
+echo "▶ 7/18 没有永远不会被执行的代码"
 if out=$(python3 scripts/mac/lib/deadcode.py relay scripts 2>&1); then
   ok "$(tail -1 <<<"$out")"
 else
@@ -155,7 +150,7 @@ fi
 # （它只看名字有没有绑定过，不看先读后绑定）。pyflakes 的 F823 一行就报。
 # 顺带用机器上那个版本的 Python（3.14）严格编译：`'\d'` 这类非法转义在 3.12+
 # 是 SyntaxWarning、将来是 SyntaxError，本地 3.9 一声不吭。
-echo "▶ 8/19 静态检查（pyflakes + 3.14 严格编译）"
+echo "▶ 8/18 静态检查（pyflakes + 3.14 严格编译）"
 PY314="$HOME/.local/bin/python3.14"
 if ! command -v uvx >/dev/null; then
   note "uvx 没装（brew install uv），pyflakes 跑不了"
@@ -187,7 +182,7 @@ else
   note "找不到 $PY314，没法按机器的 Python 版本编译"
 fi
 
-echo "▶ 9/19 测试语料必须入库"
+echo "▶ 9/18 测试语料必须入库"
 # 2026-09-08：.gitignore 的 *.log 把 relay/tests 下的 12 个日志样本挡在库外，
 # 新克隆里 10 条回放全判失败、两个测试直接崩，而代码一个字没错。
 # 语料不入库 = 闸门在别的机器上失效，且失效得像「代码坏了」。
@@ -197,7 +192,7 @@ while IFS= read -r f; do
 done < <(find relay/tests/fixtures relay/tests/replay -name '*.log' -o -name '*.json' 2>/dev/null)
 [ "$missing" = 0 ] && ok "测试语料都在库里"
 
-echo "▶ 10/19 中继的状态只能由中继自己写"
+echo "▶ 10/18 中继的状态只能由中继自己写"
 # 2026-09-08：状态收口把开关搬进 state.json，桌面那个 .bat 还在写旧的
 # skip-next-shutdown.flag——按下去界面显示「不关机」，中继照常关机，一声不吭。
 # 凡是中继会读的状态，外部脚本只能调它的函数，不许自己写文件。
@@ -210,14 +205,14 @@ else
   ok "没有外部脚本直接写状态文件"
 fi
 
-echo "▶ 11/19 公开仓库里不许有他人身份信息"
+echo "▶ 11/18 公开仓库里不许有他人身份信息"
 # 仓库是 public 的。别人的姓名、主机名、登录方式一旦提交就等于公开挂出去。
 # The owner's game UID too: OK-WW's OCR dumps read it off the screen as the UID label followed
 # by digits (the last alternative of ID_RE), and until 2026-10-13 it sat in plain text in eight
 # committed files (now UIDREDACT, same length so offsets hold). Machine logs are committed as
 # .log / .jsonl / .json and gzip / zstd, so the scan covers those and the compressed files'
-# contents. ID_RE is the one copy of the pattern (relay/tests/daysim/pack.py identity_pattern()
-# reads it from this line); never put the UID itself here.
+# contents. ID_RE is the one copy of the pattern (relay/tests/test_verify.py reads it from this
+# line); never put the UID itself here.
 # .claude/worktrees is git-ignored, so nothing there is public; a worktree older than 10-13 still holds the
 # unredacted logs and failed the scan on 10-29 / 10-31 (95 lines in relay1-skipabort, none of them in the repo).
 ID_RE='卢智超|Administrator[^a-zA-Z].{0,20}(空密码|无密码|自动登录)|特征码(:|：) *[0-9]'
@@ -241,7 +236,7 @@ else
   ok "没有他人身份信息"
 fi
 
-echo "▶ 12/19 文档和脚本都要有入口"
+echo "▶ 12/18 文档和脚本都要有入口"
 # 2026-09-08：40 篇文档没有任何索引，只有 5 篇能从 CLAUDE.md 走到；
 # 66 个脚本里只有 18 个在工具表里，包括「手动派发唯一入口」run-one.sh。
 # 没有入口 = 下一次会话读不到 = 写了白写，而且会重复造一个。
@@ -261,7 +256,7 @@ for f in scripts/mac/*.sh scripts/windows/*.py scripts/windows/*.bat; do
 done
 [ "$miss" = 0 ] && ok "每个入口脚本都有文档提到"
 
-echo "▶ 13/19 部署清单要和代码对得上"
+echo "▶ 13/18 部署清单要和代码对得上"
 # 2026-09-08 审出来：历史上 546 个带 manifest 的提交里，174 个改了真代码却和清单
 # 对不上（32%）。后果是**静默的**：机器开机比哈希，发现「本机文件都和清单一致」，
 # 不下载、不写日志、不播报，还照样把版本号刻上去——那次修改永远上不了机器。
@@ -289,7 +284,7 @@ else
   sed 's/^/       /' <<<"$out"
 fi
 
-echo "▶ 14/19 日志名要和模块名对得上"
+echo "▶ 14/18 日志名要和模块名对得上"
 # 2026-09-08 审出来：selfupdate.py 的日志名叫 ark.update、statestore.py 叫 ark.state、
 # sanity_plan.py 叫 ark.sanity。翻日志时按模块名 grep 一无所获，会得出「这个模块没跑」
 # 的错误结论——PITFALLS.md 里那条 WinError 10054 当时就是这么被找了半天。
@@ -301,7 +296,7 @@ else
   sed 's/^/       /' <<<"$out"
 fi
 
-echo "▶ 15/19 测试里的 check() 只准有一个意思"
+echo "▶ 15/18 测试里的 check() 只准有一个意思"
 # 2026-09-08：66 个测试各写各的 check()，其中两个把第二、第三个参数的意思写反了
 # （名字, 成立与否, 补充说明）。在那两个文件里按大多数人的习惯写一句比较，
 # 期望值会被当成说明打出来，断言退化成「实际值是不是真的」——永远通过，一声不吭。
@@ -313,7 +308,7 @@ else
   sed 's/^/       /' <<<"$out"
 fi
 
-echo "▶ 16/19 ruff（让那些 noqa 真的有人验）"
+echo "▶ 16/18 ruff（让那些 noqa 真的有人验）"
 # 2026-09-08: the repo held 521 `# noqa:` comments while there was no ruff config and
 # nothing - no script, no CI - had ever run ruff. Not one of them had been checked.
 # One named the rule PLC4015 (the real one is PLC0415) and had been quietly wrong ever
@@ -329,7 +324,7 @@ else
   sed 's/^/       /' <<<"$out" | head -12
 fi
 
-echo "▶ 17/19 桌面串流图标是不是当前参数编出来的"
+echo "▶ 17/18 桌面串流图标是不是当前参数编出来的"
 # The parameters live in one file, but the two desktop apps are compiled snapshots
 # of them: change a value and stream-ins.sh picks it up at once while the icons the
 # user double-clicks keep the old one. Both still launch and neither complains, so
@@ -341,7 +336,7 @@ else
   sed 's/^/       /' <<<"$out"
 fi
 
-echo "▶ 18/19 中继代码按 ruff 的 F（会出错的）和 B（bugbear，容易藏错的）两类查，0 处"
+echo "▶ 18/18 中继代码按 ruff 的 F（会出错的）和 B（bugbear，容易藏错的）两类查，0 处"
 # 2026-10-11: pyflakes (item 8) and the noqa set (item 16) never looked at the bugbear class.
 # The first run over the relay code found 4 besides the zip() ones: two raises that dropped
 # their cause, a dead loop variable, a closure over a name the loop rebinds (harmless there,
@@ -356,35 +351,6 @@ elif out=$(uvx ruff check --config ruff.toml --select F,B relay/ark_relay relay/
 else
   note "ruff F/B 有报告："
   sed 's/^/       /' <<<"$out" | head -12
-fi
-
-echo "▶ 19/19 整天回放：每天的 expected.json 审过带出处，known-red 清单有效，10-13 这一天跑得过"
-# The day replay (relay/tests/daysim, design.md section 5). The schema check refuses an
-# unreviewed or unsourced expected.json entry (oracle.py); run.py refuses an expired or
-# closed known-red entry before it runs a day. One day only here (10-13, the shortest:
-# 8 boots, 23 CPU-s measured 2026-10-13 19:3x); deploy-relay.sh step 0.8 runs every day plus
-# the bad-patch self-check, which is why a deploy's own lint (LINT_SKIP_TESTS) skips the day.
-# Each run gets its own out folder: every session lints in its own worktree at the same time.
-# RELAY_PY is set by item 6, which LINT_SKIP_TESTS skips.
-DPY="${RELAY_PY:-}"
-[ -n "$DPY" ] || DPY=$(scripts/mac/lib/relay-python.sh 2>/dev/null) || DPY=false
-if out=$(cd relay && "$DPY" -I tests/daysim/oracle.py schema 2>&1); then
-  ok "expected.json：$(grep -c '^ok ' <<<"$out") 天都审过、带出处"
-else
-  note "expected.json 有没审过或没出处的条目："
-  sed 's/^/       /' <<<"$out" | head -20
-fi
-if [ -n "${LINT_SKIP_TESTS:-}" ]; then
-  echo "  ⏭ 10-13 回放已跳过（部署第 0.8 步会把每天都跑一遍）"
-else
-  DAY_OUT=$(mktemp -d "${TMPDIR:-/tmp}/lint-daysim.XXXXXX")
-  if out=$("$DPY" -I relay/tests/daysim/run.py --day 2026-10-13 --out "$DAY_OUT" 2>&1); then
-    ok "10-13 回放：$(grep -E '^  verdict ' <<<"$out" | sed 's/^  verdict //')"
-  else
-    note "10-13 回放不通过："
-    grep -vE '^  ok   |^       why:' <<<"$out" | sed 's/^/       /' | head -20
-  fi
-  rm -rf "$DAY_OUT"
 fi
 
 echo

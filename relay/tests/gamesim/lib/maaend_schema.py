@@ -149,22 +149,6 @@ def verify(d: Path) -> list[str]:
     return bad
 
 
-def materialize(d: Path, into: Path) -> Path:
-    """A full install-shaped directory for a stored tag: an overlay's base files
-    plus its own. Returns `into`."""
-    d = Path(d)
-    src = read_source(d)
-    if src["same"]:
-        base = UPSTREAM / src["meta"]["base"]
-        for path in src["same"]:
-            (into / path).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(base / path, into / path)
-    for path in list(src["file"]) + list(src["derived"]):
-        (into / path).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(d / path, into / path)
-    return into
-
-
 # ---------------------------------------------------------------- definitions
 
 class Defs:
@@ -248,20 +232,6 @@ PORTS = {
     "save: task flags": ("src/stores/appStore.ts", "function generateConfig(): MxuConfig {",
                          "inst.controllerName,\n            t.enabled,\n          ),"),
 }
-
-
-def port_region(name: str, mxu_dir: Path = MXU_DIR) -> str:
-    """The text of the MXU code a port follows (PORTS); '' when an anchor is gone."""
-    rel, start, end = PORTS[name]
-    text = (Path(mxu_dir) / rel).read_text(encoding="utf-8")
-    i = text.find(start)
-    if i < 0:
-        return ""
-    if end is not None:
-        j = text.find(end, i)
-        return "" if j < 0 else text[i:j + len(end)]
-    m = re.compile(r"\n\};?\n").search(text, i)
-    return "" if not m else text[i:m.end()]
 
 
 YES =("Yes", "yes", "Y", "y")            # optionHelpers.ts YES_CASE_NAMES
@@ -350,38 +320,6 @@ def mxu_load_save_flags(doc: dict) -> dict:
             else:
                 t["enabledByController"] = cache
     return out
-
-
-def special_task_names(mxu_dir: Path = MXU_DIR) -> set[str]:
-    """MXU's built-in task names (specialTasks.ts MXU_*_TASK_NAME constants)."""
-    text = (Path(mxu_dir) / "src/types/specialTasks.ts").read_text(encoding="utf-8")
-    return set(re.findall(r"export const MXU_\w+_TASK_NAME = '([^']+)'", text))
-
-
-def mxu_load(doc: dict, defs: Defs, mxu_dir: Path = MXU_DIR) -> list[str]:
-    """Every warning MXU logs when it loads this config (appStore.ts, config load):
-    instances' tasks it does not know are removed (one line per instance); every
-    other task's optionValues, every recentlyClosed task's, and globalOptionValues
-    go through sanitizeOptionValue. MXU's own tasks are left alone."""
-    special = special_task_names(mxu_dir)
-    warn: list[str] = []
-    valid = set(defs.tasks) | special
-    for inst in doc.get("instances") or []:
-        bad = [t.get("taskName") for t in inst.get("tasks") or [] if t.get("taskName") not in valid]
-        if bad:
-            warn.append(f'实例 "{inst.get("name")}" 中有 {len(bad)} 个无效任务被移除: {bad}')
-        for t in inst.get("tasks") or []:
-            if t.get("taskName") in valid and t.get("taskName") not in special:
-                for k, v in (t.get("optionValues") or {}).items():
-                    sanitize_option_value(k, v, defs.options, warn)
-    for rc in doc.get("recentlyClosed") or []:
-        for t in rc.get("tasks") or []:
-            if t.get("taskName") not in special:
-                for k, v in (t.get("optionValues") or {}).items():
-                    sanitize_option_value(k, v, defs.options, warn)
-    for k, v in (doc.get("globalOptionValues") or {}).items():
-        sanitize_option_value(k, v, defs.options, warn)
-    return warn
 
 
 def _hotkey_table(mxu_dir: Path, controller_type: str) -> dict[str, int]:
@@ -489,69 +427,6 @@ class Resolver:
         for key in td.get("option") or []:
             self._collect(key, values, out, reached, controller, resource, ctype)
         return out, reached
-
-
-def entry_check(defs: Defs, task_name: str, key: str, value: dict) -> "str | None":
-    """Why a saved option value is not one MaaEnd defines for this task, or None.
-
-    The checks MXU applies at load (sanitize) plus what the ProjectInterface V2
-    document requires of a value (docs/en_us/3.3-ProjectInterfaceV2.md): an input
-    box's text must fullmatch its `verify` pattern, and the option must be one
-    this task's option tree can reach.
-    """
-    warn: list[str] = []
-    kept = sanitize_option_value(key, value, defs.options, warn)
-    if warn or kept != value:
-        return "; ".join(warn) or f'选项 "{key}" 的值被 MXU 改写为 {kept!r}'
-    od = defs.options[key]
-    if od.get("type") == "input":
-        for box in od.get("inputs") or []:
-            text = (value.get("values") or {}).get(box["name"])
-            if text is not None and box.get("verify") and not re.fullmatch(box["verify"], str(text)):
-                return f"{key}.{box['name']} = {text!r} does not match verify {box['verify']!r}"
-    if key not in option_tree(defs, task_name):
-        return f"{key} is not in task {task_name}'s option tree"
-    return None
-
-
-def option_tree(defs: Defs, task_name: str) -> set[str]:
-    """Every option a task can reach through any case (select / switch nesting),
-    plus the interface's global, resource and controller options."""
-    seen: set[str] = set()
-    stack = list((defs.tasks.get(task_name) or {}).get("option") or [])
-    stack += list(defs.global_option)
-    for r in defs.iface.get("resource") or []:
-        stack += list(r.get("option") or [])
-    for c in defs.iface.get("controller") or []:
-        stack += list(c.get("option") or [])
-    while stack:
-        o = stack.pop()
-        if o in seen:
-            continue
-        seen.add(o)
-        for c in (defs.options.get(o) or {}).get("cases") or []:
-            stack.extend(c.get("option") or [])
-    return seen
-
-
-def override_nodes(overrides) -> set[str]:
-    """Node names a pipeline override (list of objects, or one object) touches."""
-    parts = overrides if isinstance(overrides, list) else [overrides]
-    return {str(k) for p in parts if isinstance(p, dict) for k in p}
-
-
-def logged_overrides(log_text: str) -> dict[str, list]:
-    """{entry: override list} from MXU app log lines
-    `任务[i]: entry=<entry>, pipelineOverride=[...]` (last one per entry)."""
-    out: dict[str, list] = {}
-    for m in re.finditer(r"entry=(\S+?), pipelineOverride=(\[.*\])\s*$", log_text, re.M):
-        out[m.group(1)] = json.loads(m.group(2))
-    return out
-
-
-def mxu_warnings(log_text: str) -> list[str]:
-    """The `WARN  [Config] ...` messages of one MXU app log, without timestamps."""
-    return re.findall(r"^\S+ \S+ WARN  \[Config\] (.+?)\s*$", log_text, re.M)
 
 
 # ---------------------------------------------------------------- fetch (network)

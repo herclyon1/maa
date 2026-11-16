@@ -4,6 +4,10 @@
 Conversations get compacted, and a todo that lives only in my head is guaranteed to fall out.
 **Write down what you promised the moment you promise it, and cross it off the moment it is done.**
 
+**2026-11-17:** the phone page (`web/`), the day replay (`relay/tests/daysim`), the game-layer simulator lanes and the
+gates `guardcheck.sh` / `check-docs.py` / `changed_covered.py` were removed from the repository. Entries below that name
+them are the record of what was done then; `scripts/mac/deploy-web.sh` in particular no longer exists.
+
 **Todos live in exactly one place.** Before 2026-09-08, the WeCom 60020 problem and the three
 watchdog secrets were written up both here and in `OPERATIONS.md`; edit one and the other became
 wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change", and
@@ -217,7 +221,7 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
       cmyyx/cep's `src/data/banner.ts`: 艾尔黛拉、余烬、黎风、别礼、骏卫.
 
 - [x] Results of pre-updating the four programs (08-27)
-- [x] The complete Wuthering Waves daily flow from wake to finish → [WUWA-DAILY.md](WUWA-DAILY.md)
+- [x] The complete Wuthering Waves daily flow from wake to finish → WUWA-DAILY.md (removed; `git show 1c8b5828:docs/WUWA-DAILY.md`)
 - [x] Endfield character investment levels → four Excel sheets + Server酱 push; reissued as "six-stars
       only" per request
 - [x] Character investment plan: 11 of the six-stars are below 90, existing materials are **enough for
@@ -241,7 +245,7 @@ wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change"
       waiting for the next boot)
 - [x] "Farm 落渊南丘 only" written into the master config that actually takes effect →
       [maa-config-master-copy memory] (since 10-12: first two nests 梦枢天罗,落渊南丘)
-- [x] All 森空岛 APIs working → [SKLAND-API.md](SKLAND-API.md)
+- [x] All 森空岛 APIs working → SKLAND-API.md (removed; `git show 1c8b5828:docs/SKLAND-API.md`)
 - [x] `winrun.sh --put` (fixes hand-written scp using the wrong username)
 - [x] MaaEnd update notification carries the old version number
 - [x] OK-WW launch error 740

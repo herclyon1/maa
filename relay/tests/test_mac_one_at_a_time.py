@@ -51,7 +51,6 @@ Checks:
     # the text that shows it; the check fails if that text goes away.
     FORK_ONLY = {
         "scripts/mac/relay-judge-diff.py": 'mp_context=multiprocessing.get_context("fork")',
-        "relay/tests/test_daysim_clock.py": "fut = pool.submit(lambda: (time.sleep(3), simclock.now() - base)[1])",
     }
 
     # 1. shell: every xargs -P <n> above 1 under scripts/mac/ runs a function that waits first

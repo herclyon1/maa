@@ -178,7 +178,7 @@ this deployment's key belongs to is not recorded here; the key lives in
 `relay/.env` on the machine and in `~/.config/ark/push.env` on the Mac.
 
 Delivery rule: **one channel delivering counts as delivered.** See
-[PITFALLS.md](PITFALLS.md) for why that sentence exists.
+PITFALLS.md (removed; `git show 1c8b5828:docs/PITFALLS.md`) for why that sentence exists.
 
 Every delivered send leaves one INFO line in relay.log naming its route and the
 channel that took it, 「推送已送到：<group|daily|info> 路，<channel> 收下 ｜ <title>」

@@ -1,3 +1,0 @@
-# The repository root ignores *.png; the recorded frames of the gamesim library are test
-# inputs and must be committed (UID strip blacked out, see frames.json).
-!*.png

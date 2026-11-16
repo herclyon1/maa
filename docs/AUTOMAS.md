@@ -4,9 +4,9 @@ Written 2026-08-25. **The purpose of this document is that nobody has to work th
 Every conclusion here was checked that day on the real machine, either by reading source or by
 calling the API. None of it is guesswork.
 
-Related: [HEADLESS.md](HEADLESS.md) (headless entry points for each program),
+Related: HEADLESS.md (removed; `git show 1c8b5828:docs/HEADLESS.md`) (headless entry points for each program),
 [CONFIG.md](CONFIG.md) (the individual config items, and master copy vs working copy),
-[PITFALLS.md](PITFALLS.md).
+PITFALLS.md (removed; `git show 1c8b5828:docs/PITFALLS.md`).
 
 ---
 
@@ -128,7 +128,7 @@ OK-WW is an ok-script family program. Its task list can be read straight off the
 
 ### Weekly bosses: upstream OK-WW cannot claim them; the relay adds the claim
 
-The relay runs the weekly boss (since 2026-08-31, [OKWW-WEEKLY-BOSS.md](OKWW-WEEKLY-BOSS.md)):
+The relay runs the weekly boss (since 2026-08-31, OKWW-WEEKLY-BOSS.md (removed; `git show 1c8b5828:docs/OKWW-WEEKLY-BOSS.md`)):
 `relay/ark_relay/features/weekly/weeklyboss.py` switches it on in OK-WW's config each week and
 off once the three claims are used, and the OK-WW overlay
 (`relay/ark_relay/features/okww_patch/okww_files/ark_overrides.tasks.py`, `_install_claim`) inserts the claim step upstream lacks.
@@ -165,7 +165,7 @@ The user caught it on the spot.)
 
 **The route in use**: the daily's own hook - `DailyTask.json` `Additional Tasks to Run After Daily
 Task` gets `Teleport and Farm 4C Echo`, so the 日常 AUTO-MAS already launches runs it (set by
-`weeklyboss.py`; details in [OKWW-WEEKLY-BOSS.md](OKWW-WEEKLY-BOSS.md)). Running it from the
+`weeklyboss.py`; details in OKWW-WEEKLY-BOSS.md (removed; `git show 1c8b5828:docs/OKWW-WEEKLY-BOSS.md`)). Running it from the
 command line (`python.exe -m ok run_task <task name> -e`, see HEADLESS.md) also works.
 
 ### There is no "maintain inventory" feature

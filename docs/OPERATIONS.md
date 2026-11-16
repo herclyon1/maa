@@ -16,9 +16,9 @@
 How to do things to the running system. Facts only; if a line cannot be checked
 against the machine or the code, it does not belong here.
 
-`scripts/mac/check-docs.py` verifies the checkable claims on this page and its
+Until 2026-11-17 `scripts/mac/check-docs.py` verified the checkable claims on this page and its
 siblings - paths, the service, the scheduled tasks, config values - against the
-live machine. Run it after any change to the system or to these docs, and
+live machine; it was removed that day, so nothing checks them now. It was run after any change to the system or to these docs, and
 believe it over this page.
 
 Reviewed 2026-08-21. Claims carried over from older documents have been wrong
@@ -107,7 +107,7 @@ The installed relay runs on its own embedded Python,
 `C:\Program Files\ArkRelay\runtime\python\` (packaging/ark-relay.iss): only a new
 installer changes it, and a deploy refuses a runtime that is not what the repo builds
 (relay/pkg_layout.py). There is no service to re-point: the old relay's Windows service
-`ark-relay` was deleted on 2026-10-11 (scripts/windows/retire_legacy.py).
+`ark-relay` was deleted on 2026-10-11 (by a one-off script, removed 2026-11-17).
 
 ### Stopping and starting the installed relay
 
@@ -135,7 +135,7 @@ scripts/mac/winps.sh '& "C:\Program Files\ArkRelay\runtime\python\python.exe" "C
 The code the relay runs is `C:\Program Files\ArkRelay\versions\<current.txt>\`
 (relay/pkg_layout.py); `C:\ProgramData\ark-relay` holds only its data (.env, `state\`,
 `relay.log`). The old relay's `ark_relay` folder that used to lie there was moved to
-`C:\ProgramData\ark-relay-retired-1011` on 2026-10-11 (scripts/windows/retire_legacy.py
+`C:\ProgramData\ark-relay-retired-1011` on 2026-10-11 (a one-off script, removed 2026-11-17
 `OLD_CODE`). A script sent with `winrun.sh --py` gets the right folder from
 `scripts/mac/lib/relay_code.py`:
 
@@ -556,7 +556,7 @@ scripts/mac/winrun.sh --py /tmp/ark-debug-off.py
 ```
 
 Day to day, the switch on the phone page is easier, or drop a `debug_mode` command into the
-inbox. For what the state looks like, see [STATE-MODEL.md](STATE-MODEL.md).
+inbox. For what the state looks like, see STATE-MODEL.md (removed; `git show 1c8b5828:docs/STATE-MODEL.md`).
 
 `modes.set_debug(state_dir, cycles=1)` computes that moment. A power-on less
 than 150 minutes away counts as the cycle already under way and is skipped -
@@ -617,7 +617,7 @@ documents for hand edits. Verify with a read-back after the restore fires.
 
 ## Driving all three without a window
 
-**The full method now lives in [HEADLESS.md](HEADLESS.md)** - the API client,
+**The full method now lives in HEADLESS.md (removed; `git show 1c8b5828:docs/HEADLESS.md`)** - the API client,
 the request-shape traps, MAA's binding, MaaEnd's inventory file, and an audit of
 what the relay can and cannot hand over. What follows is the summary.
 
@@ -1099,7 +1099,7 @@ in the user's session, `relay/app_main.py`) kept alive by the `ArkRelayWatchdog`
 
 The old relay's Windows service `ark-relay` and its logon task were retired on 2026-10-11 22:33:
 both deleted, the old code moved to `C:\ProgramData\ark-relay-retired-1011`
-(scripts/windows/retire_legacy.py). The way back from a broken version is now the previous
+(a one-off script, removed 2026-11-17). The way back from a broken version is now the previous
 version folder: `launch.py rollback` (`relay/app_main.py rollback()`: `pkg_layout.rollback`
 switches `current.txt` to the version before, then the relay is stopped and started again);
 `switch.py revert` only says the old relay is retired and exits 6.
@@ -1206,7 +1206,7 @@ to settle (`更新检查完成: ... 有更新=false` in `MaaEnd/debug/<date>-<n>
 then closes it. If an update landed, the operator is told.
 
 It exists because MaaEnd restarts its own process after updating, which kills
-whatever round AUTO-MAS had just started - see [PITFALLS.md](PITFALLS.md).
+whatever round AUTO-MAS had just started - see PITFALLS.md (removed; `git show 1c8b5828:docs/PITFALLS.md`).
 Auto-update is deliberately left on; only its timing moved.
 
 Skipped when the day's remaining queues are MAA-only, so the evening boot does
@@ -1248,8 +1248,7 @@ t-strings (PEP 750). Nothing here is CPU-bound or templating-heavy.
   PITFALLS.md ends where it does. 5.1 reads files as ANSI (CP936 here) unless a
   BOM says otherwise; 7 reads and writes UTF-8. `scripts/mac/winrun.sh` still
   writes a BOM, because it must survive whichever host picks the script up.
-- **`ForEach-Object -Parallel`** (7.0) for bulk remote checks. `check-docs.py`
-  does its own fan-out, so this is for ad-hoc work.
+- **`ForEach-Object -Parallel`** (7.0) for bulk remote checks, ad-hoc work.
 - **`&&` / `||` pipeline chain operators, `?:`, `??`, `??=`** (7.0). These make
   one-liners over SSH shorter, which matters when every character has to
   survive bash quoting on the way in.
@@ -1299,7 +1298,7 @@ nothing can ever be uploaded from the machine.
   changed, all-or-nothing, inside a 240s budget, then restarts itself. The wait
   is not optional: the relay is logon-triggered and comes up before Windows has
   a resolver, so without it every boot-window update failed with
-  `getaddrinfo failed` before reaching any door - see [PITFALLS.md](PITFALLS.md). **At service start specifically, never at the end of a
+  `getaddrinfo failed` before reaching any door - see PITFALLS.md (removed; `git show 1c8b5828:docs/PITFALLS.md`). **At service start specifically, never at the end of a
   queue** - the machine boots at 21:20 for a 21:30 queue, and that gap is the
   window this is meant to use. Once the new code is running it pushes a notice
   saying so; see [NOTIFICATIONS.md](NOTIFICATIONS.md).
@@ -1495,7 +1494,6 @@ outside the machine - silently, which is the whole hazard this file is about.
 | `scripts/mac/watch-run.sh` | follow a run from the Mac until DONE or OFFLINE |
 | `scripts/mac/purge-cdn.py` | purge jsDelivr and wait for the new version to be served |
 | `scripts/mac/edit-json.py` | safe remote JSON edit: locate → replace → validate → structural diff |
-| `scripts/mac/check-docs.py` | verify the facts in these docs against repo and machine |
 | `scripts/mac/mem-sample.sh` | memory-pressure sampler. **The collection period is over (2026-08-17 to 09-08, 3169 samples), the LaunchAgent has been removed, and running it now produces output nobody reads**. Findings and data are in `data/README.md` and `data/mem-pressure.csv`; the script is kept so that another stretch of sampling would not have to be rewritten |
 | `scripts/mac/push.py` | manual push to the notification channels |
 | `scripts/mac/make-app.sh` | wrap a script as a double-clickable .app |
@@ -1511,7 +1509,6 @@ outside the machine - silently, which is the whole hazard this file is about.
 <!-- check: repo scripts/mac/watch-run.sh -->
 <!-- check: repo scripts/mac/purge-cdn.py -->
 <!-- check: repo scripts/mac/edit-json.py -->
-<!-- check: repo scripts/mac/check-docs.py -->
 <!-- check: repo scripts/mac/mem-sample.sh -->
 <!-- check: repo scripts/mac/push.py -->
 <!-- check: repo scripts/mac/make-app.sh -->

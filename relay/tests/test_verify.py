@@ -1849,14 +1849,10 @@ def _part_tape():  # noqa: C901 - the whole body of the file this part was
 * recording never gets in the way: a broken tape folder or a failing write changes
   nothing the caller sees; before install() nothing is written at all;
 * masking: the secret shapes, key-name masking and the game UID label never reach the
-  file (the lists are the ones scripts/mac/redact.py and slice.py use);
+  file (the lists are the ones scripts/mac/redact.py uses);
 * the day cap (one `truncated` line, then nothing, also after a restart), pruning of old
   day files, the Beijing day boundary, and repeats written once (also across a restart);
-* round trip: the 2026-10-09 maintenance notice, hand-written in days/2026-10-09/
-  outside.jsonl, is served to the real maintenance reader with the tape on; slice.py
-  turns that tape into `web` events at the same times with the same answers, and the
-  World's own handler (World.state_effect) replays both into the same window. The
-  config read at boot becomes the t0 `mas_config` in place of the reconstructed one.
+* (until 2026-11-17 also the round trip into the day replay, relay/tests/daysim: removed with it.)
 
 Sizes behind DAY_CAP_BYTES / BODY_CAP, measured 2026-10-14 by replaying every recorded
 day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB per day
@@ -1877,7 +1873,7 @@ day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB pe
 
     HERE = Path(__file__).resolve().parent
     ROOT = HERE.parents[1]
-    sys.path[:0] = [str(ROOT / "relay"), str(HERE), str(HERE / "daysim"), str(ROOT / "scripts" / "mac")]
+    sys.path[:0] = [str(ROOT / "relay"), str(HERE), str(ROOT / "scripts" / "mac")]
 
     os.environ["ARK_STATE_DIR"] = str(tmpdir())
     os.environ["ARK_MAS_PORT"] = "36163"
@@ -2007,7 +2003,24 @@ day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB pe
             urllib.request.urlopen = real
 
         # The System log: the real reader through a stand-in win32evtlog.
-        from fake_proc import SysEvent
+        # One System-log event as Windows renders it (the shape the day replay's fake_proc.SysEvent
+        # built until relay/tests/daysim was removed on 2026-11-17).
+        def esc(v) -> str:
+            return (str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                    .replace("'", "&apos;").replace('"', "&quot;"))
+
+        class SysEvent:
+            def __init__(self, t: float, event_id: int, provider: str, data: dict) -> None:
+                self.t, self.event_id, self.provider, self.data = t, event_id, provider, data
+
+            def xml(self) -> str:
+                when = datetime.fromtimestamp(self.t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "0Z"
+                data = "".join(f"<Data Name='{esc(k)}'>{esc(v)}</Data>" for k, v in self.data.items())
+                return (f"<Event xmlns='http://schemas.microsoft.com/win/2004/08/events/event'><System>"
+                        f"<Provider Name='{esc(self.provider)}'/><EventID>{self.event_id}</EventID>"
+                        f"<TimeCreated SystemTime='{when}'/><Channel>System</Channel><Computer>INS</Computer></System>"
+                        f"<EventData>{data}</EventData></Event>")
+
         ev = SysEvent(bj(2026, 10, 12, 9, 59, 1).timestamp(), 1074, "User32",
                       {"param1": r"C:\WINDOWS\system32\shutdown.exe (INS)", "param7": "NT AUTHORITY\\SYSTEM"})
         evtlog = SimpleNamespace(EvtQueryChannelPath=1, EvtQueryReverseDirection=0x200, EvtRenderEventXml=1,
@@ -2071,12 +2084,15 @@ day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB pe
 
     def check_masking() -> None:
         print("\n[secrets never reach the file]")
+        import re
+
         import redact
-        import slice as sl
-        from pack import identity_pattern
+
+        # The game UID label, read from the one copy of the pattern (lint-repo.sh, the identity check).
+        lint = (ROOT / "scripts" / "mac" / "lint-repo.sh").read_text(encoding="utf-8")
+        identity = re.compile(re.search(r"^ID_RE='([^']+)'", lint, re.M).group(1).encode())
         check("key-name hints are scripts/mac/redact.py's", tape.KEY_HINTS, redact.SECRET_KEY_HINTS)
         check("key-name exceptions are scripts/mac/redact.py's", tape.KEY_ALLOW, redact.SECRET_KEY_ALLOW)
-        check("slice.py masks the tape's shapes", sl.SECRET_PATTERNS, tape.SECRET_PATTERNS)
         check("tape's mask is redact.py's", tape.MASK, redact.MASK)
         st = fresh(bj(2026, 10, 12, 12))
         akid = "AK" + "ID" + "Ab1" * 11                        # built here so this file holds no key shape
@@ -2088,8 +2104,9 @@ day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB pe
         tape.answer("web", hook, req={"SendKey": "SCT" + "q" * 20}, body=body)
         tape.answer("mas", "/api/x", body=("plain " + uid).encode())
         raw = (st / "tape" / "20261012.jsonl").read_bytes()
-        check("no secret shape left (slice.secret_hits)", sl.secret_hits(raw), [])
-        require("no game UID left (lint item 11's pattern)", not identity_pattern().search(raw))
+        # A COS signature alone opens nothing and committed recordings keep it, so it is not counted.
+        check("no secret shape left", [n for n, pat, _r in tape.SECRET_PATTERNS if n != "cos-signature" and re.search(pat, raw)], [])
+        require("no game UID left (lint item 11's pattern)", not identity.search(raw))
         rec = [json.loads(x) for x in raw.decode().splitlines()][1]
         check("secret-named values masked, others kept",
               (rec["json"]["Password"], rec["json"]["MirrorChyanCDK"], rec["json"]["keyword"], rec["req"]["SendKey"]),
@@ -2162,152 +2179,6 @@ day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB pe
         check("10-13 has one config snapshot (the restart found it)", [r["kind"] for r in d13].count("config"), len(cfg3))
 
 
-    def check_round_trip() -> None:
-        print("\n[round trip: 10-09's maintenance notice, recorded by the real reader, replays as hand-written]")
-        import fake_net
-        import slice as sl
-        import world as W
-        from ark_relay.features.maintenance import maintenance
-
-        day = "2026-10-09"
-        hand = [e for e in W.load_outside(day) if e["kind"] == "web"]
-        check("10-09 has the two hand-written web answers", len(hand), 2)
-        t_read = bj(2026, 10, 9, 8, 48, 56)                   # relay.log:29955, the relay's first look
-
-        class Sched:
-            def __init__(self, t):
-                self.t, self.outs = t, []
-
-            def now(self):
-                return self.t
-
-            def park(self, timeout, ready):
-                return ready()
-
-            def out(self, kind, **f):
-                self.outs.append((kind, f))
-
-            wake = kick = lambda self: None
-
-        def world_net(events):
-            """A FakeNet given `events` through the World's own handler (state_effect)."""
-            net = fake_net.FakeNet(Sched(t_read.timestamp())).install()
-            stand_in = SimpleNamespace(net=net)
-            for it in W.timeline(events):
-                W.World.state_effect(stand_in, it, live=True)
-            return net
-
-        def window():
-            win = maintenance.arknights_window(now=t_read, get=maintenance._get)
-            return (win[0].isoformat(), win[1].isoformat(), win[2]) if win else None
-
-        # 1. Record: the hand-written answers served, the real reader runs with the tape on.
-        automas = tmpdir()
-        (automas / "config").mkdir()
-        qc = automas / "config" / "QueueConfig.json"
-        qc.write_text(json.dumps({"QueueConfig": {"Name": "q"}, "SecretKey": "s3cr3t-value"}), encoding="utf-8")
-        os.utime(qc, (bj(2026, 10, 8, 22).timestamp(),) * 2)
-        st = fresh(bj(2026, 10, 9, 8, 30), automas)         # the day's first boot
-        Clock.at = t_read
-        try:
-            world_net(hand)
-            got_hand = window()
-        finally:
-            fake_net.FakeNet.uninstall()
-        check("the hand-written answers give the logged window", got_hand,
-              ("2026-10-09T06:00:00+08:00", "2026-10-09T12:00:00+08:00", got_hand and got_hand[2]))
-
-        # 2. Slice the tape as the pull would hold it.
-        dd = tmpdir()
-        (dd / sl.TAPE).mkdir(parents=True)
-        (dd / sl.TAPE / "20261009.jsonl").write_bytes((st / "tape" / "20261009.jsonl").read_bytes())
-        t0 = sl.day_start(day)
-        ctx = sl.Day(day, t0, t0 + 86400, dd, tmpdir())
-        taped = sl.do_tape(ctx)
-        evs = [ev for _t, _s, ev in sorted(ctx.events, key=lambda e: (e[0], e[1]))]
-        web = [e for e in evs if e["kind"] == "web"]
-        check("the tape gives as many web answers as were hand-written", len(web), len(hand))
-        check("same times (from 00:00) and same answers", [(e["t"], e["answer"]) for e in web],
-              [(e["t"], e["answer"]) for e in hand])
-        require("each tape URL starts with the hand-written prefix",
-                all(w["prefix"].startswith(h["prefix"]) for w, h in zip(web, hand, strict=True)),
-                [(w["prefix"], h["prefix"]) for w, h in zip(web, hand, strict=False)])
-
-        # 3. Replay: the World's handler with the tape's events gives the same window.
-        try:
-            world_net(web)
-            got_tape = window()
-        finally:
-            fake_net.FakeNet.uninstall()
-        check("replayed from the tape: the same window", got_tape, got_hand)
-
-        # 4. The config the relay found at boot is the day's t0 config.
-        cfg = [e for e in evs if e["kind"] == "mas_config"]
-        check("one t0 mas_config from the tape", [(e["t"], e["path"], e.get("from_tape")) for e in cfg],
-              [("2026-10-09T00:00:00+08:00", "D:/ark/automas/config/QueueConfig.json", True)])
-        check("... which replaces the reconstructed one", taped, {"QueueConfig.json"})
-        data = json.loads((ctx.corpus / cfg[0]["file"]).read_text(encoding="utf-8"))
-        check("... with the recorded content, secret masked", data,
-              {"QueueConfig": {"Name": "q"}, "SecretKey": tape.MASK})
-
-
-    def check_cut_line_and_restart_times() -> None:
-        print("\n[a line cut by a power-off; a change first seen after a restart]")
-        import slice as sl
-        st = tmpdir()
-        (st / "tape").mkdir()
-        cut = '{"t":"2026-10-12T21:40:00.000+08:00","kind":"web","url":"https://x.invalid/a","status":200,"len":2,"sha'
-        (st / "tape" / "20261012.jsonl").write_text(
-            '{"t":"2026-10-12T08:00:00.000+08:00","kind":"boot","pid":1}\n' + cut, encoding="utf-8")
-        Clock.at = bj(2026, 10, 12, 21, 45)
-        tape.install(st)
-        check("no tape in a pull without one", sl.read_tape(tmpdir(), "2026-10-12"), ("", []))
-        text = (st / "tape" / "20261012.jsonl").read_text(encoding="utf-8")
-        check("the cut line is ended where it was cut", text.splitlines()[1], cut)
-        dd = tmpdir()
-        (dd / sl.TAPE).mkdir(parents=True)
-        (dd / sl.TAPE / "20261012.jsonl").write_text(text, encoding="utf-8")
-        check("slice skips the cut line and reads the next boot", [(n, r["kind"]) for n, r in sl.read_tape(dd, "2026-10-12")[1]],
-              [(1, "boot"), (3, "boot")])
-
-        dd = tmpdir()
-        (dd / sl.TAPE).mkdir(parents=True)
-        rows = [{"t": "2026-10-12T08:00:00.000+08:00", "kind": "boot", "pid": 1},
-                {"t": "2026-10-12T08:01:00.000+08:00", "kind": "web", "url": "https://x.invalid/n", "status": 200,
-                 "len": 1, "sha256": "a", "json": 1},
-                {"t": "2026-10-12T12:00:00.000+08:00", "kind": "boot", "pid": 2},
-                {"t": "2026-10-12T12:01:00.000+08:00", "kind": "web", "url": "https://x.invalid/n", "status": 200,
-                 "len": 1, "sha256": "b", "json": 2, "prev_seen": "2026-10-12T08:01:00.000+08:00", "repeats": 0},
-                {"t": "2026-10-12T12:31:00.000+08:00", "kind": "web", "url": "https://x.invalid/n", "status": 200,
-                 "len": 1, "sha256": "c", "json": 3, "prev_seen": "2026-10-12T12:21:00.000+08:00", "repeats": 20}]
-        (dd / sl.TAPE / "20261012.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
-        t0 = sl.day_start("2026-10-12")
-        ctx = sl.Day("2026-10-12", t0, t0 + 86400, dd, tmpdir())
-        sl.do_tape(ctx)
-        check("first answer from 00:00; after a restart from the boot; else halfway",
-              [(e["t"], e["answer"]) for _t, _s, e in sorted(ctx.events, key=lambda e: e[0]) if e["kind"] == "web"],
-              [("2026-10-12T00:00:00+08:00", 1), ("2026-10-12T12:00:00+08:00", 2), ("2026-10-12T12:26:00+08:00", 3)])
-
-
-    def check_syslog_slice() -> None:
-        print("\n[a System log event on the tape becomes a syslog event at its own time]")
-        import slice as sl
-        from fake_proc import SysEvent
-        ev = SysEvent(bj(2026, 10, 12, 21, 31, 5).timestamp(), 1075, "User32",
-                      {"param1": "INS", "param2": "INS\\Administrator"})
-        st = fresh(bj(2026, 10, 12, 21, 32))
-        tape.syslog((1074, 1075), 600, [ev.xml()])
-        dd = tmpdir()
-        (dd / sl.TAPE).mkdir(parents=True)
-        (dd / sl.TAPE / "20261012.jsonl").write_bytes((st / "tape" / "20261012.jsonl").read_bytes())
-        t0 = sl.day_start("2026-10-12")
-        ctx = sl.Day("2026-10-12", t0, t0 + 86400, dd, tmpdir())
-        sl.do_tape(ctx)
-        got = [(e["t"], e["event_id"], e["provider"], e["data"]) for _t, _s, e in ctx.events if e["kind"] == "syslog"]
-        check("event id, provider, data and time as logged", got,
-              [("2026-10-12T21:31:05+08:00", 1075, "User32", {"param1": "INS", "param2": "INS\\Administrator"})])
-
-
     if tape is None:
         require("ark_relay.features.selfcheck.tape exists", False, "no tape module")
     else:
@@ -2318,9 +2189,6 @@ day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB pe
         check_masking()
         check_cap_and_prune()
         check_day_boundary_and_repeats()
-        check_round_trip()
-        check_cut_line_and_restart_times()
-        check_syslog_slice()
         tape.uninstall()
         require("no thread left behind", threading.active_count() <= 2, threading.enumerate())
 

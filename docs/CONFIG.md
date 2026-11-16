@@ -2,7 +2,7 @@
 
 Every setting that was deliberately changed, plus the traps around it. When a
 value here disagrees with the machine, the machine is right and this page is a
-bug - fix it, or run `scripts/mac/check-docs.py` which will say so first.
+bug - fix it (`scripts/mac/check-docs.py`, which used to say so first, was removed on 2026-11-17).
 
 Values below verified 2026-08-21.
 
@@ -439,8 +439,8 @@ below now cover the master copy.
 are the normal state** - MAA is launched by AUTO-MAS, runs, and closes the game
 and itself. Opening MAA by hand therefore starts a run and then shuts the game
 down, which makes the 小工具 tools (仓库识别 etc.) hard to reach. To use them,
-flip both temporarily and **put them back**; check-docs.py will catch it if you
-forget, which is how the 2026-08-22 depot run was caught.
+flip both temporarily and **put them back**; nothing checks this for you any more (check-docs.py,
+which caught the 2026-08-22 depot run, was removed on 2026-11-17).
 
 **`config/gui.new.json` is the live file. `config/gui.json` is a dead older
 format** - reading it yields confidently outdated answers, e.g. "external
@@ -522,12 +522,11 @@ have no Mac copy; the next time the machine is up, copy them into push.env and t
 | `ARK_OKWW_DIR` | OK-WW root (`D:\ark\okww`). The weekly boss master/copy configs and OK-WW's own logs are all derived from this |
 | `ARK_PROGRAMDATA` | never set on the machine: moves Windows' `C:\ProgramData` for the relay's fixed hand-off files (`no-stamina-farm.flag`, the echo-farm `.bat` files and no-claim mark, the OK-WW overlay report and master pointer; `config.PROGRAMDATA`). Only the day simulator sets it, to keep those files inside its own tree |
 | `ARK_OKWW_LOG` | names OK-WW's log file directly. Unset, it takes the newest file under `ARK_OKWW_DIR`'s `data/apps/ok-ww/working/logs` |
-| `DAYSIM_CORPUS` | affects the day replay only (`relay/tests/daysim`): the corpus root, default `~/Claude/daysim-corpus`. The Windows CI unpacks the committed light packs elsewhere and points this at them (`pack.py unpack`) |
 | `DISK_TIDY_TMP_ROOT` / `DISK_TIDY_TMPDIR` / `DISK_TIDY_BREW_PREFIX` / `DISK_TIDY_OPEN_PATHS` / `DISK_TIDY_PROCS` / `DISK_TIDY_FREE_BYTES` | not relay settings; read by `scripts/mac/disk-tidy.py` and set only by `relay/tests/test_disk_tidy.py`: the session tmp root (default `/private/tmp/claude-501`), `$TMPDIR`, the Homebrew prefix (default `/opt/homebrew`), a file of in-use paths used instead of `lsof`, a file of process names used instead of `ps`, and the free bytes used instead of measuring the disk |
 | `ARK_KEEP_TMP` | affects tests only: set it to 1 and temporary directories are not cleaned up, so the scene is left intact for investigation |
 | `ESTOP_SH` / `FAKE_LOG` / `FAKE_LAYOUT` | affects tests only, read by `relay/tests/test_estop_layout.py`: another copy of `scripts/mac/estop.sh` to run (default the repo's; used to show the test fails on an older copy), and, for the fake ssh it puts on PATH, the file it records commands in and its answer to the relay-layout question (`pkg`, `legacy`, `timeout`, `garbage`) |
 | `NTFY_SERVER` | affects tests only, on the Mac: the path of the local ntfy server binary that `relay/tests/test_phone_mailbox_e2e.py` starts to run the phone mailbox end to end. Unset, it uses `~/.local/bin/ntfy-server` |
-| `RELAY_PY` | affects tests only: the relay's Python 3.14. `scripts/mac/lint-repo.sh` sets it (`scripts/mac/lib/relay-python.sh`) to run every relay test; in the Windows job `gamesim-windows.yml` its Interpreters step writes it to `GITHUB_ENV`, and `relay/tests/gamesim/okww/test_install_lane.py` (run by OK-WW's Python) starts the install cycle `relay/tests/gamesim/install/test_install_cycle.py` with it |
+| `RELAY_PY` | affects tests only: the relay's Python 3.14. `scripts/mac/lint-repo.sh` sets it (`scripts/mac/lib/relay-python.sh`) to run every relay test |
 | `TZ` | not a relay setting: no code under `relay/` or `scripts/` reads it outside two tests. `relay/tests/test_banners.py` and `relay/tests/test_alertlog.py` set it to `Asia/Tokyo` (the Mac's zone) and call `time.tzset()`, to prove that banner post times are read on the server clock (+8) and that the alert log (`alerts/<date>.jsonl`) stamps Beijing time, whatever the local zone; `test_banners.py` restores the old value afterwards |
 
 | `ARK_PHONE_TOPIC` | the ntfy topic the phone remote uses. **Without it the whole phone page is deaf** - the machine receives no commands and the page sees no status |
@@ -553,8 +552,8 @@ GitHub Actions:
 **There is no `.env.example`.** It was deleted on 2026-09-08: the code read none of the four
 variables it listed, and none of the thirty-odd that actually have to be set were in it -
 filling it in was the same as setting nothing. This table is the authority on what to set,
-and it is watched by the `[env]` section of `scripts/mac/check-docs.py`, which goes red if a
-variable is missing from it.
+and until 2026-11-17 it was watched by the `[env]` section of `scripts/mac/check-docs.py` (removed),
+which went red if a variable was missing from it.
 (On 2026-09-08 that gate itself was fixed: it used to recognize only the `ARK_` prefix, only
 scan `relay/`, and only recognize the `environ("X")` spelling, so 13 variables slipped
 through the cracks while this very sentence claimed "it goes red if one is missing" -
@@ -587,9 +586,6 @@ Read on the Mac by `scripts/mac/` tools, never on the machine.
 
 | Variable | Meaning |
 |---|---|
-| `ACCEPT_REGISTER` | the red-row register `scripts/mac/attribute-red.py` appends to (A16: a red row that nothing in the batch can reach is recorded there, not re-run, not messaged). Default `~/Money/styl-work/BOARD/A16-register.md` (attribute-red.py:51); `--register <file>` overrides both |
-| `ACCEPT_RUN_CHILD` | set to `1` by `scripts/mac/accept-run.py` itself for the extra wall-clock `&lensworker=1` tab-bar run it starts after its own (accept-run.py:119, :375): the child skips the run lock the parent already holds. Not for manual use |
-| `CC_CDP_PORT` | the Chrome DevTools port `scripts/mac/content-check.py` hands to sweep-chrome.py as its `PORT` (one headless Chrome, SHARDS=1). Default `9319`; pick one no other session is using |
 | `TECHLOG_WINRUN` / `TECHLOG_REMOTE_DIR` / `TECHLOG_FETCH_TIMEOUT` | tests only, read by `scripts/mac/techlog.py`: a fake command instead of `winrun.sh`, the tech directory (default `C:\ProgramData\ark-relay\tech`), seconds one read may take (default 15) |
 | `TECHLOG_PROBE` / `TECHLOG_PROBE_TIMEOUT` | read by `scripts/mac/techlog.py`: the host:port its reachability probe connects to (default `ARK_HOST`:22, as winrun.sh) and the seconds it may take (default 3); exit 3 when it cannot connect |
 | `TECHLOG_TOOL` / `TECHLOG_HOOK_BUDGET` | tests only, read by `~/.claude/hooks/techlog-red-remind.py` (outside the repo; that SessionStart hook is off since 2026-10-12, like every Claude Code hook on the Mac except `record-check.py`): the techlog.py it runs and its time budget in seconds (default 4, under its 5 s SessionStart timeout) |

@@ -1,7 +1,0 @@
-# 「从没被任何测试执行过」的公开函数。这是历史欠账的登记表，**只准变短**。
-# 新增未测函数会被 changed_covered.py 直接拒掉——2026-09-08 那个把群
-# 轰炸半小时的 bug，就落在这张表里（State.save_pending 一次都没被调用过）。
-# 重新生成：python3 scripts/mac/lib/changed_covered.py --update-baseline
-__main__.cmd_check
-__main__.cmd_local
-__main__.cmd_report
