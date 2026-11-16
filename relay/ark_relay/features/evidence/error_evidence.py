@@ -171,7 +171,6 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
 # to 14:07. relay.log itself still holds those days (logfile.py: 16 MB a file), so the
 # relay looks back BACKFILL_DAYS days once after it starts and once after midnight.
 BACKFILL_DAYS = 3
-SIZE_TIMEOUT_S = 20
 _backfill: dict = {"day": None, "thread": None}
 _backfill_lock = threading.Lock()
 
@@ -214,7 +213,7 @@ def backfill_past_days(cfg, *, now: "datetime | None" = None, uploader=None, day
                 continue               # the machine holds nothing of that day (it was off, or the log moved on)
             tmp = tmp_dir / f"{kind}-{day}.log"
             try:
-                held = up.size(up.object_key(tmp), timeout=SIZE_TIMEOUT_S)
+                held = up.size(up.object_key(tmp))
                 if held is not None and held >= len(data):
                     result["kept"] += 1
                     continue
@@ -239,7 +238,7 @@ def _run_backfill(cfg, now: datetime) -> None:
     still missing on COS), and the next start or midnight looks again."""
     try:
         got = backfill_past_days(cfg, now=now)
-    except Exception:  # noqa: BLE001 - belt and braces: a thread must not die without a word
+    except Exception:  # belt and braces: a thread must not die without a word
         log.warning("前几天的中继日志有没有传到云上，这次没查成，下次中继启动或过零点再查", exc_info=True)
         return
     for day, kind, held, sent in got["sent"]:

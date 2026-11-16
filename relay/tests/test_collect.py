@@ -875,7 +875,7 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
 
 
     def two_rounds(second_text, again, shots, start_fails=False):
-        """_bring_up_and_run over a fake MXU: returns (verdict, note, evidence, the overrides sent)."""
+        """_bring_up_and_run over a fake MXU: returns (got_v, note, evidence, the overrides sent)."""
         sent_over, fw_now = [], {"text": ""}
 
         def api(path, body=None, timeout=30):
@@ -901,28 +901,28 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
         cm2.obstacle_shots = lambda d: list(shots)
         seen = {}
         try:
-            verdict, note = cr._bring_up_and_run(tmpdir(), [B, A], {"first": True}, spawn=lambda *a: None, timeout=1200,
+            got_v, note = cr._bring_up_and_run(tmpdir(), [B, A], {"first": True}, spawn=lambda *a: None, timeout=1200,
                                                  evidence=seen, state_dir=tmpdir(), again=again)
         finally:
             (cr.api, cr._wait, cr._running, cr.mxu_port, cr.time, cr._close_game, cr._stop_agents, cr._maafw_text,
              efstart.run_on_desktop, maaend_launch.restore_override, cm2.obstacle_shots) = saved
-        return verdict, note, seen, sent_over
+        return got_v, note, seen, sent_over
 
 
-    verdict, note, seen, sent_over = two_rounds(walked2, lambda rs: {"only": rs}, [hit1])
+    got_v, note, seen, sent_over = two_rounds(walked2, lambda rs: {"only": rs}, [hit1])
     check("第二轮只发撞上的那条路线", sent_over, [{"first": True}, {"only": [A]}])
-    check("第二轮走通：整次补跑算走通，记下补过第二轮", (verdict, "超时" in note, seen.get("second_round"), "blocked" in seen),
+    check("第二轮走通：整次补跑算走通，记下补过第二轮", (got_v, "超时" in note, seen.get("second_round"), "blocked" in seen),
           ({B: True, A: True}, False, [A], False))
-    verdict, _, seen, sent_over = two_rounds(walked2, lambda rs: {"only": rs}, [hit1, hit2])
-    check("第二轮又撞上：没走通，照报", (verdict, seen.get("blocked"), seen.get("second_round")),
+    got_v, _, seen, sent_over = two_rounds(walked2, lambda rs: {"only": rs}, [hit1, hit2])
+    check("第二轮又撞上：没走通，照报", (got_v, seen.get("blocked"), seen.get("second_round")),
           ({B: True, A: False}, {A: [hit2]}, [A]))
-    verdict, _, seen, sent_over = two_rounds(walked2, lambda rs: {"only": rs}, [hit1], start_fails=True)
-    check("第二轮没起来：照第一轮的结果报（撞上、没走通）", (verdict, seen.get("blocked"), seen.get("second_round"), len(sent_over)),
+    got_v, _, seen, sent_over = two_rounds(walked2, lambda rs: {"only": rs}, [hit1], start_fails=True)
+    check("第二轮没起来：照第一轮的结果报（撞上、没走通）", (got_v, seen.get("blocked"), seen.get("second_round"), len(sent_over)),
           ({B: True, A: False}, {A: [hit1]}, None, 1))
-    verdict, _, seen, sent_over = two_rounds(walked2, None, [hit1])
-    check("不给第二轮的参数：只走一轮", (verdict, len(sent_over), seen.get("second_round")), ({B: True, A: False}, 1, None))
-    verdict, _, seen, sent_over = two_rounds(walked2, lambda rs: {"only": rs}, [])
-    check("第一轮没撞上：不走第二轮", (verdict, len(sent_over), seen.get("second_round")), ({B: True, A: True}, 1, None))
+    got_v, _, seen, sent_over = two_rounds(walked2, None, [hit1])
+    check("不给第二轮的参数：只走一轮", (got_v, len(sent_over), seen.get("second_round")), ({B: True, A: False}, 1, None))
+    got_v, _, seen, sent_over = two_rounds(walked2, lambda rs: {"only": rs}, [])
+    check("第一轮没撞上：不走第二轮", (got_v, len(sent_over), seen.get("second_round")), ({B: True, A: True}, 1, None))
 
     print("\n[没干完的报警先问一句：这一趟哪几条路线会在关机前单独补（账本 #166 #170）]")
     from ark_relay.features.modes import modes as _modes

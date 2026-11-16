@@ -57,7 +57,7 @@ def _gathering_retry_note(eng, rec: RunRecord, msg: str) -> str:
         return ""
     try:
         names, state = collect_retry.retry_ahead(eng, rec)
-    except Exception:  # noqa: BLE001 - the alarm must go out; the usual words then
+    except Exception:  # the alarm must go out; the usual words then
         log.info("没读出 %s 哪几条采集路线会单独补，报警照旧用原来那句", rec.run_id, exc_info=True)
         return ""
     return texts.NO_WHOLE_MAKEUP + "，" + texts.collect_retry_ahead(names, state) if names else ""

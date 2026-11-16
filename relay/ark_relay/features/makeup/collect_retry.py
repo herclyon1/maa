@@ -549,15 +549,6 @@ def run_retry(maaend_dir: Path, routes: list[str], weekday: str, *, spawn, timeo
         _kill("Endfield.exe")
 
 
-def _start_gathering(inst: str, override: dict, maaend_dir: Path) -> None:
-    """Start the gathering task with `override` on MXU's instance `inst`."""
-    api(f"/maa/instances/{inst}/tasks/start", {
-        "tasks": [{"entry": ENTRY, "pipeline_override": json.dumps(override, ensure_ascii=False)}],
-        "agent_configs": AGENTS,
-        "cwd": str(maaend_dir), "tcp_compat_mode": False, "pi_envs": None,
-        "reset_state": True, "controller_info": None}, timeout=120)
-
-
 def final_verdict(maafw_log: str, routes: list[str], since: str, second: list[str], since2: str,
                   shot_names: list[str]) -> "tuple[dict[str, bool | None], dict[str, list[str]]]":
     """(verdict, blocked) of a retry whose routes `second` were walked once more from `since2`.
@@ -637,9 +628,14 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
         api(f"/maa/instances/{inst}/resource/load", {"paths": [str(maaend_dir / "resource")]}, timeout=120)
         _wait(lambda: _state().get("resource_loaded"), 120)
     from ark_relay.features.verify import collector_maaend  # noqa: PLC0415
+    start = lambda over: api(f"/maa/instances/{inst}/tasks/start", {  # noqa: E731 - one start, both rounds
+        "tasks": [{"entry": ENTRY, "pipeline_override": json.dumps(over, ensure_ascii=False)}],
+        "agent_configs": AGENTS,
+        "cwd": str(maaend_dir), "tcp_compat_mode": False, "pi_envs": None,
+        "reset_state": True, "controller_info": None}, timeout=120)
 
     def _run(over: dict) -> bool:
-        _start_gathering(inst, over, maaend_dir)
+        start(over)
         finished = _wait(lambda: not _state().get("is_running"), timeout, step=15)
         if not finished:
             try:
@@ -661,7 +657,10 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
         first = retry_blocked(_maafw_text(debug), routes, since, collector_maaend.obstacle_shots(maaend_dir))
         if first:
             log.info("自动采集补跑：%s 这一轮撞上「战斗中无法使用」没采到，单独再补一轮", "、".join(first))
-            time.sleep(2)      # the second round's lines carry a later second than the first round's last
+            # STAMP_FMT counts whole seconds and _after compares with >=: started in the same
+            # second as the first round's last line, the second round would take that line for
+            # its own. One second is that resolution (not a wait that was tuned).
+            time.sleep(1)
             started2 = time.strftime(STAMP_FMT)
             try:
                 done = _run(again(list(first)))
