@@ -73,7 +73,6 @@ def _part_activity_topup():
     from ark_relay.features import activity, makeup
     from ark_relay.features import outcome
 
-
     MORNING = """\
 2026-10-23 09:28:35,899 INFO TaskExecutor BaseWWTask:当前体力大于等于双倍, 99 >= 80
 2026-10-23 09:28:40,123 INFO TaskExecutor BaseWWTask:current stamina: 19 not enough to continue
@@ -136,7 +135,6 @@ data:
     def at(hh, mm):
         return datetime(2026, 10, 23, hh, mm, tzinfo=SERVER_TZ)
 
-
     def setup():
         root = tmpdir()
         (root / "config").mkdir()
@@ -149,10 +147,8 @@ data:
                 send=lambda t, b, alert=False: (group.append(("ALARM " + t if alert else t, b)), [])[1]))
         return eng, group
 
-
     def rec(run_id, start, end):
         return types.SimpleNamespace(script="OK-WW", run_id=run_id, started=start, finished=end)
-
 
     print("[早班：波片用完、活跃 80 → 不报警，群里说一声，记下晚班 21:30 补]")
     eng, group = setup()
@@ -257,14 +253,12 @@ def _part_attempts_streak():
 
     FIX = fx_dir(Path(__file__), "fixtures") / "ledger-2026-10-10-maa.jsonl"
 
-
     def rec_of(e: dict) -> RunRecord:
         return RunRecord(run_id=e["run_id"], script=e["script"], user=e["user"], ok=e["ok"],
                          started=datetime.fromisoformat(e["started"]),
                          finished=datetime.fromisoformat(e["finished"]),
                          failed_tasks=list(e["failed_tasks"]), raw=dict(e["raw"]),
                          transitional=e["transitional"])
-
 
     real = [json.loads(line) for line in FIX.read_text(encoding="utf-8").splitlines()]
     with tempfile.TemporaryDirectory() as td:
@@ -305,7 +299,6 @@ def _part_claim_no_claim_gate():
     from ark_relay.features import echofarm
     from ark_relay.features import okww_overlay
 
-
     class FarmEchoTask:
         def incr_drop(self, dropped):
             self.events.append("upstream-incr")
@@ -314,7 +307,6 @@ def _part_claim_no_claim_gate():
             # Upstream's own (BaseWWTask.handle_claim_button): ESC, i.e. 取消.
             self.events.append("upstream-esc")
             return True
-
 
     _mods = {"src": types.ModuleType("src"), "src.task": types.ModuleType("src.task"),
              "src.task.FarmEchoTask": types.SimpleNamespace(FarmEchoTask=FarmEchoTask)}
@@ -329,7 +321,6 @@ def _part_claim_no_claim_gate():
         else:
             sys.modules[k] = v
 
-
     class Task(FarmEchoTask):
         """Inside the weekly realm right after a fight: everything the claim would touch."""
         def __init__(self, boss="Weekly Challenge"):
@@ -342,7 +333,6 @@ def _part_claim_no_claim_gate():
             self.wait_until = lambda cond, **kw: cond()
             self.find_treasure_icon = lambda: True
             self.log_info = lambda msg: self.events.append(f"log:{msg}")
-
 
     print("[改动文件里的闸：挂着标记时，打完周本什么都不碰]")
     flag = tmpdir() / "ark-okww-farm.no-claim"
@@ -401,7 +391,6 @@ to get wrong, and both have been wrong in production.
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
-
 
     P = "[INF][TaskQueueViewModel]     <2>"
     def ts(hhmmss: str, rest: str) -> str:
@@ -530,7 +519,6 @@ def _part_episodes():
     from ark_relay.core import ledger as core
     from ark_relay.core.config import SERVER_TZ
 
-
     print("[maaend_unreachable：任务全部秒败、零完成]")
     def maaend_log(gap_s=20, done_at=None, n=4):
         t = datetime(2026, 9, 2, 9, 56, 23)
@@ -636,7 +624,6 @@ def _part_flush_waits_own_script():
     import os
     from datetime import datetime
 
-
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
     (AUTOMAS / "config").mkdir(parents=True)
@@ -653,7 +640,6 @@ def _part_flush_waits_own_script():
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
 
-
     def snap(okww, maaend):
         """The runtime-snapshot read on the machine at 2026-10-01 16:11, two statuses swapped in."""
         return {"tasks": [{"taskId": "8f47a684", "mode": "AutoProxy", "stopping": False,
@@ -663,9 +649,7 @@ def _part_flush_waits_own_script():
                                {"name": "MaaEnd", "status": maaend, "userList": [{"name": "endfield", "status": maaend}]}]}],
                 "scheduledScripts": []}
 
-
     TODAY = snap("异常", "运行")
-
 
     def okww_rounds():
         """That day's three rounds: two hours each, written together at 15:23:06."""
@@ -679,7 +663,6 @@ def _part_flush_waits_own_script():
                                  ok=False, failed_tasks=["OK-WW 运行超时"], raw={}))
         return out
 
-
     def build(snapshot):
         cfg = Config()
         cfg.state_dir = tmpdir()
@@ -690,7 +673,6 @@ def _part_flush_waits_own_script():
         for r in okww_rounds():
             e._pending[(r.script, r.user)] = r          # a later round replaces the earlier one, as in _hold_for_retry
         return e
-
 
     real_win, real_snapshot = eng.config.IS_WINDOWS, getattr(eng, "_automas_snapshot", None)
     try:
@@ -760,11 +742,9 @@ def _part_gathering_route_node_failed():
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-10-29"
 
-
     def collector_line(t, node):
         return (f"[2026-11-05 {t}.737] 2026-11-05T{t}+08:00 ERR github.com/MaaXYZ/MaaEnd/agent/go-service/"
                 f"common/failurecollector/action.go:60 > FailureCollector subtask failed task={node}")
-
 
     LOG = "\n".join([
         "[2026-11-05 11:39:04.400] 任务开始: 🧺自动采集",
@@ -855,7 +835,6 @@ def _part_gathering_route_node_failed():
         m = collect_watch._ROUTE_FAILED.search(line)
         return (m.group(1) or m.group(2)) if m else None
 
-
     print("[the real 11-05 lines (fixtures/maaend-2026-11-05)]")
     REAL = fx_dir(Path(__file__), "fixtures") / "maaend-2026-11-05"
     real_hist = (REAL / "history-MaaEnd-07-24-54-gathering.log").read_text(encoding="utf-8")
@@ -882,7 +861,6 @@ def _part_gathering_route_node_failed():
 
     print("[collect_watch: the live line names the route]")
 
-
     check("a failed Goto node", watched(FW.splitlines()[1]), "WulingProtocolith2")
     check("the old Failed node", watched('[msg=Node.Action.Starting] [details={"name":"AutoCollectRoute10Failed"}]'), "Route10")
     check("v2.36's __…Failed node", watched('[msg=Node.Action.Starting] [details={"name":"__AutoCollectValleyIVChrysodendra1Failed"}]'),
@@ -900,10 +878,8 @@ def _part_gathering_route_node_failed():
          "raw": {"maaend_result": "运行超过 120 分钟，已终止"}},
     ]
 
-
     def ledger_of(rows):
         return lambda day: list(rows)
-
 
     why = makeup.maaend_round_only_gathering(ledger_of(ROWS), ROWS[2])
     check("the 11-05 round: no whole make-up, because of the 10:24 attempt", why, texts.makeup_only_gathering("10:24"))
@@ -916,10 +892,8 @@ def _part_gathering_route_node_failed():
     other_user = [dict(ROWS[0], user="someone")] + ROWS[1:]
     check("another account's attempt does not count", makeup.maaend_round_only_gathering(ledger_of(other_user), ROWS[2]), "")
 
-
     def broken(day):
         raise OSError("unreadable")
-
 
     check("an unreadable ledger: make-up as before", makeup.maaend_round_only_gathering(broken, ROWS[2]), "")
     check("the held attempt itself left only gathering", makeup.maaend_round_only_gathering(ledger_of(ROWS[:1]), ROWS[0]),
@@ -951,7 +925,6 @@ def _part_healthcheck_annihilation():
     from ark_relay.features.annihilation import week_key
 
     SRC = Path(__file__).resolve().parents[2] / "scripts" / "mac" / "lib" / "healthcheck.py"
-
 
     text = SRC.read_text(encoding="utf-8")
     tree = ast.parse(text)
@@ -1011,7 +984,6 @@ def _part_kuro_error_code():
     from ark_relay.features import wuwa as H
     from ark_relay.features import wuwa as P
 
-
     class Grab(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -1020,10 +992,8 @@ def _part_kuro_error_code():
         def emit(self, record):
             self.recs.append((record.levelno, record.getMessage()))
 
-
     ERR = {"code": 1511, "msg": "系统繁忙", "data": None}
     NOW = datetime(2026, 10, 13, 12, 0)
-
 
     def raises(fn):
         try:
@@ -1033,7 +1003,6 @@ def _part_kuro_error_code():
         except Exception as e:  # noqa: BLE001
             return f"other {type(e).__name__}"
         return None
-
 
     print("[the check itself]")
     ok_body = {"code": 200, "data": {"list": []}}
@@ -1064,10 +1033,8 @@ def _part_kuro_error_code():
     print("[_wuwa: the wiki homepage error is \"not read\", an entry error is warned]")
     real = _b._json, _b._text
 
-
     def offline(url, *a, **k):
         raise OSError("offline")
-
 
     _b._json, _b._text = (lambda url, *a, **k: ERR if url.endswith("/homepage/getPage") else offline(url)), offline
     try:
@@ -1126,7 +1093,6 @@ failure streak (audit docs/SILENT-FAILURES-AUDIT.md, logfile.py:63).
 
     from ark_relay.core import statestore as logfile
 
-
     class Grab(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -1139,7 +1105,6 @@ failure streak (audit docs/SILENT-FAILURES-AUDIT.md, logfile.py:63).
             out = [m for lv, m in self.records if lv == level]
             self.records.clear()
             return out
-
 
     d = tmpdir()
     h = logfile.RelayLogHandler(d / "relay.log", max_bytes=2000, backups=2)
@@ -1156,10 +1121,8 @@ failure streak (audit docs/SILENT-FAILURES-AUDIT.md, logfile.py:63).
     lf.addHandler(grab)
     real_rotate = h.rotate
 
-
     def locked(src_, dst):
         raise PermissionError(32, "being used by another process")
-
 
     try:
         print("[rotation keeps failing: one WARNING through logging]")
@@ -1212,7 +1175,6 @@ def _part_logslice_new_year():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features.evidence import slice_log
 
-
     d = tmpdir()
     src = d / "relay.log"
     src.write_text("12-31 23:40:00 INFO before the window\n"
@@ -1246,12 +1208,10 @@ docs/SILENT-FAILURES-AUDIT.md, __main__.py:75).
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-
     _stub_pywin32()
 
     import boot_stages
     from ark_relay import __main__ as relay_main
-
 
     print("[_setup_logging keeps the OSError when relay.log cannot be created]")
     root = logging.getLogger()
@@ -1319,7 +1279,6 @@ def _part_monthcard():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import phone as monthcard
     from ark_relay.core.notify import route_of
-
 
     D = date(2026, 9, 26)
     s = tmpdir()
@@ -1455,7 +1414,6 @@ def _part_nofarm_visible():
     FLAG = tmpdir() / "no-stamina-farm.flag"
     config.NO_STAMINA_FARM_FLAG = str(FLAG)
 
-
     DAILY = {"Which to Farm": "Simulation Domain"}
 
     print("[没挂开关时，一切照旧]")
@@ -1519,10 +1477,8 @@ def _part_revive_gates():
 
     from ark_relay.features import automas_keeper, automas_keeper as automas_procs
 
-
     class _Out:
         def __init__(self, data): self.stdout = data
-
 
     def _fake_run(mapping):
         def run(cmd, **kw):
@@ -1532,7 +1488,6 @@ def _part_revive_gates():
                     return _Out(data)
             return _Out(b"")
         return run
-
 
     def main():
         orig = automas_procs.subprocess.run
@@ -1567,7 +1522,6 @@ def _part_revive_gates():
 
         automas_procs.subprocess.run = orig
 
-
     main()
 
 
@@ -1601,7 +1555,6 @@ def _part_setup_tasks_verify():
     ROOT = Path(__file__).resolve().parents[2]
     PS1 = (ROOT / "scripts" / "windows" / "setup-tasks.ps1").read_text(encoding="utf-8")
     NEW_TASK_FOLDER, NEW_TASK_NAME, NEW_WATCHDOG = "\\ArkRelay", "main", "ArkRelayWatchdog"
-
 
     verify = PS1[PS1.find('"--- verify ---"'):]
     tasks = re.findall(r'foreach \(\$t in @\(([^)]*)\)\)', verify)
@@ -1639,10 +1592,8 @@ def _part_tape():  # noqa: C901
 
     BJ = timezone(timedelta(hours=8))
 
-
     def bj(*a) -> datetime:
         return datetime(*a, tzinfo=BJ)
-
 
     class Clock:
         """tape's `datetime`, with now() pinned to `at` (Beijing)."""
@@ -1653,11 +1604,9 @@ def _part_tape():  # noqa: C901
             def now(cls, tz=None):
                 return Clock.at.astimezone(tz) if tz else Clock.at.replace(tzinfo=None)
 
-
     def lines(state: Path, day: str) -> list[dict]:
         p = state / "tape" / f"{day}.jsonl"
         return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines()] if p.exists() else []
-
 
     class Resp:
         """What urlopen hands back: a context manager with read() and a status."""
@@ -1672,7 +1621,6 @@ def _part_tape():  # noqa: C901
 
         def read(self, *a):
             return self.body
-
 
     def serve(table: dict):
         """A urlopen answering by URL prefix: bytes -> 200, an exception -> raised."""
@@ -1690,13 +1638,11 @@ def _part_tape():  # noqa: C901
         urlopen.calls = calls
         return urlopen
 
-
     def fresh(day_at: datetime, automas: "Path | None" = None) -> Path:
         Clock.at = day_at
         st = tmpdir()
         tape.install(st, automas)
         return st
-
 
     # ---------------------------------------------------------------------------------
     def check_noop_before_install() -> None:
@@ -1706,7 +1652,6 @@ def _part_tape():  # noqa: C901
         tape.answer("mas", "/api/queue/get", body=b"{}")
         tape.syslog((1074,), 60, [])
         require("no tape folder appears", not (st / "tape").exists(), list(st.iterdir()))
-
 
     def check_hooks() -> None:
         print("\n[each hook puts what it received on the tape and behaves as before]")
@@ -1805,7 +1750,6 @@ def _part_tape():  # noqa: C901
         check("the System log event as read", recs[9]["events"], [ev.xml()])
         check("the unreadable read", recs[10]["error"].split(":")[0], "ModuleNotFoundError")
 
-
     def check_never_in_the_way() -> None:
         print("\n[a broken tape changes nothing the relay sees]")
         from ark_relay.features import redbutton as mas_client
@@ -1831,7 +1775,6 @@ def _part_tape():  # noqa: C901
                     or all(json.loads(x) for x in (st / "tape" / "20261012.jsonl").read_text().splitlines()))
         finally:
             urllib.request.urlopen = real
-
 
     def check_masking() -> None:
         print("\n[secrets never reach the file]")
@@ -1866,7 +1809,6 @@ def _part_tape():  # noqa: C901
         require("UID digits masked to their length", "UIDREDACT" in rec["json"]["ocr"], rec["json"]["ocr"])
         check("hash is of the received bytes", rec["sha256"], hashlib.sha256(body).hexdigest())
 
-
     def check_cap_and_prune() -> None:
         print("\n[day cap, restart after it, old days pruned]")
         cap = tape.DAY_CAP_BYTES
@@ -1895,7 +1837,6 @@ def _part_tape():  # noqa: C901
         tape.install(st)
         check("days before the 14 kept are deleted, other files kept", sorted(p.name for p in d.iterdir()),
               ["20260930.jsonl", "20261011.jsonl", "20261013.jsonl", "notes.txt"])
-
 
     def check_day_boundary_and_repeats() -> None:
         print("\n[Beijing day boundary; a repeat is written once, also across a restart]")
@@ -1929,7 +1870,6 @@ def _part_tape():  # noqa: C901
               (changed["json"], changed["prev_seen"], changed["repeats"]), ({"a": 2}, "2026-10-13T00:05:00.000+08:00", 1))
         check("10-13 has one config snapshot (the restart found it)", [r["kind"] for r in d13].count("config"), len(cfg3))
 
-
     if tape is None:
         require("ark_relay.features.selfcheck.tape exists", False, "no tape module")
     else:
@@ -1962,7 +1902,6 @@ def _part_transitional():
         f.write_text(json.dumps({"general_result": result}, ensure_ascii=False),
                      encoding="utf-8")
         return f
-
 
     def main() -> None:
         with tempfile.TemporaryDirectory() as t:
@@ -1999,8 +1938,6 @@ def _part_transitional():
             check("老 payload 没这个键时默认 False（不改判历史）",
                   transport.payload_to_record(old).transitional, False)
 
-
-
     main()
 
 
@@ -2010,7 +1947,6 @@ whole message, not its first line.
     """
     import os
     from datetime import datetime, timedelta
-
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_HISTORY_DIR=str(TMP / "history"),
@@ -2023,7 +1959,6 @@ whole message, not its first line.
     from ark_relay.core.ledger import State
     from ark_relay.features import errwatch, handle
 
-
     class Notes:
         def __init__(self, errs):
             self.sent, self.errs = [], errs
@@ -2032,7 +1967,6 @@ whole message, not its first line.
             self.sent.append((title, body))
             return list(self.errs)
 
-
     handle._ship_evidence = lambda eng, rec: "https://cos.example/okww.zip"
     handle._hand_started = lambda eng, rec: ""
     handle._weekly_gates = lambda eng, rec: None
@@ -2040,7 +1974,6 @@ whole message, not its first line.
 
     MSG = "OK-WW 这一轮有 2 项没干成，但它自己没报错：\n· 刷体力：没进本\n· 每日任务：活跃度 80/100"
     START = datetime(2026, 10, 11, 9, 0, 5, tzinfo=SERVER_TZ)
-
 
     def run(errs):
         cfg = Config()
@@ -2059,7 +1992,6 @@ whole message, not its first line.
         finally:
             handle.log.removeHandler(grab)
         return [r for r in grab.records if "有项目没干成" in r.getMessage()]
-
 
     print("[the push failed: errwatch gets the whole message under the alarm's title]")
     lines = run(["group robot down"])
@@ -2082,23 +2014,19 @@ def _part_verdict_no_history_log():
     import types
     from datetime import datetime, timedelta
 
-
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ, RunRecord
     from ark_relay.features import handle as verdict
-
 
     START = datetime(2026, 10, 12, 10, 59, 40, tzinfo=SERVER_TZ)
     root = tmpdir()
     eng = types.SimpleNamespace(cfg=types.SimpleNamespace(maaend_dir=root, maa_dir=None, automas_dir=None,
                                                           state_dir=root))
 
-
     def rec(script, log_path=None):
         user = {"MAA": "arknights", "MaaEnd": "endfield", "OK-WW": "wuwa"}[script]
         return RunRecord(run_id=f"2026-10-12/{user}/{script}-06-58-38", script=script, user=user,
                          started=START, finished=START + timedelta(minutes=40), ok=True, log_path=log_path)
-
 
     for script in ("MaaEnd", "OK-WW"):
         print(f"[{script}: no history .log]")
@@ -2125,7 +2053,6 @@ def _part_weekly_three_claims():
     from ark_relay.features import okww_overlay
     from ark_relay.features import weeklyboss
 
-
     REPLAY = fx_dir(Path(__file__), "replay") / "2026-09-07" / "wuwa"
 
     print("[真实日志：09-07 那三次是报错重试凑的，每次调用只领 1 次]")
@@ -2141,10 +2068,8 @@ def _part_weekly_three_claims():
     ns = {}
     exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
 
-
     class Skip(Exception):
         """Stands in for ok's TaskDisabledException."""
-
 
     ns["TaskDisabledException"] = Skip
     # What _install_hooks does inside OK-WW: the stop that ends a run as failed unwinds
@@ -2158,7 +2083,6 @@ def _part_weekly_three_claims():
     check("读不到就是 None", left_of("[x60_0.79]"), None)
 
     PAGE = {2: "本周剩余可收取次数：2/3_1.00", 1: "本周剩余可收取次数：1/3_1.00", 0: "本周剩余可收取次数：0/3_0.99"}
-
 
     class Task:
         def __init__(self, left, reads=(), fail=None):
@@ -2188,7 +2112,6 @@ def _part_weekly_three_claims():
             if now == 0:
                 raise Skip()            # the 0/3 skip: no 单人挑战
 
-
     def run(start, reads):
         """Upstream's loop, reduced: every lap ends in a claim inside the realm and
     _after_claim takes the way back in, until a deliberate stop ends the task."""
@@ -2202,14 +2125,12 @@ def _part_weekly_three_claims():
             pass
         return claims, t.entries, t
 
-
     def stops(t):
         try:
             after(t)
         except Skip:
             return True
         return False
-
 
     c, e, t = run(3, [PAGE[2], PAGE[1], PAGE[0]])
     check("周一 3/3：一趟领 3 次，进选等级页 3 次（最后一次只读数，0/3 不进本）", (c, e), (3, 3))
@@ -2264,23 +2185,19 @@ def _part_weekly_three_claims():
     print("\n[日报与开关：按游戏计数的最后一次读数（进本前或领完回读）]")
     d = tmpdir()
 
-
     def steps(text):
         f = d / "x.log"
         f.write_text(text, encoding="utf-8")
         return collector.parse_okww_log(f).get("okww_steps") or []
-
 
     HEAD = "2026-10-05 10:01:00,000 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"
     OCR = "2026-10-05 10:02:00,000 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：{k}/3_0.99, x60_0.79]\n"
     CLAIM = "2026-10-05 10:03:00,000 INFO TaskExecutor FarmEchoTask:周本领奖：已点确认\n"
     BACK = "2026-10-05 10:03:05,000 INFO TaskExecutor FarmEchoTask:周本领奖：回读确认领到，本周剩余 {k}/3→{n}/3\n"
 
-
     def claim(k):
         """One claim the overlay re-read the counter for: k left before it."""
         return CLAIM + BACK.format(k=k, n=k - 1)
-
 
     three = HEAD + OCR.format(k=3) + claim(3) + OCR.format(k=2) + claim(2) + OCR.format(k=1) + claim(1)
     check("一趟三次：日报写本周已领满", steps(three), ["周本（已完成，领了 3 次，本周已领满）"])
@@ -2318,7 +2235,6 @@ def _part_maa_checks():
 
     CHAINS = ["StartUp", "Fight", "Infrast", "Recruit", "Mall", "Award", "CloseDown"]
 
-
     def run(chains=CHAINS, *, drop_end=(), error=(), stopped=(), extra=""):
         """造一段 asst.log：每条链一对 Start/Completed，可指定谁不收尾/谁报错。"""
         out = []
@@ -2335,7 +2251,6 @@ def _part_maa_checks():
                 out.append(f'[2026-08-30 09:10:00][INF] TaskChainCompleted '
                            f'{{"taskchain":"{c}","taskid":1}}')
         return "\n".join(out) + extra
-
 
     def main():
         print("正常一轮：七条链各一对，不许推送")
@@ -2397,8 +2312,6 @@ def _part_maa_checks():
             check("窗口内一行都没有也返回 None",
                   _maa_app_log(d, datetime(2030, 1, 1)), None)
 
-
-
     main()
 
 
@@ -2411,10 +2324,8 @@ def _part_maa_closedown_postaction():
 
     LOG = (fx_dir(Path(__file__), "fixtures") / "maa-2026-10-21" / "asst-callbacks.log").read_text(encoding="utf-8")
 
-
     def bad(checks):
         return {c.label: c.detail for c in checks if not c.ok}
-
 
     require("the real record ends with a CloseDown start and no receipt",
             LOG.rstrip().endswith('"taskchain":"CloseDown","taskid":7,"uuid":"d912769d7cb0ae0a"}')
@@ -2439,7 +2350,6 @@ def _part_maa_config_rejected():
     import os
     import shutil
     from datetime import datetime
-
 
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
@@ -2470,7 +2380,6 @@ def _part_maa_config_rejected():
     FX = fx_dir(Path(__file__), "fixtures") / "maa-2026-10-10"
     SANITY_UNREAD = getattr(texts, "SANITY_UNREAD", "理智没读到")   # getattr: the red run predates it
 
-
     def history(day: str) -> Path:
         """The fixture records under history/<day>/arknights/, log dates moved to `day`
     (a make-up is only for a failure of today, makeup.eligible)."""
@@ -2482,7 +2391,6 @@ def _part_maa_config_rejected():
             else:
                 shutil.copy(f, d / f.name)
         return d
-
 
     print("[MAA 自己不接受配置：从这一趟自己的日志里认出来，写明哪个任务、哪一关]")
     bad = parse_maa_log(FX / "MAA-05-02-18.log")
@@ -2517,7 +2425,6 @@ def _part_maa_config_rejected():
     _, body_first = core.format_failure(r_first)
     check("日志都没有的那一趟：不说一仗都没打", "一仗都没打" in body_first, False)
 
-
     def build():
         cfg = Config()
         cfg.state_dir = tmpdir()
@@ -2529,7 +2436,6 @@ def _part_maa_config_rejected():
         e._unfinished_queues = lambda now, entries: []
         e._deferred_update_busy = lambda: False
         return e
-
 
     handle._ship_evidence = lambda eng, rec: ""
     summary.diagnose = lambda *a, **k: ""
@@ -2597,25 +2503,20 @@ def _part_maa_start_watchdog():
     """
     from datetime import datetime, timedelta
 
-
     TMP = tmpdir()
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
     from ark_relay.core.notify import route_of
     from ark_relay.features import maa_start_watchdog as W
 
-
     T0 = datetime(2026, 11, 5, 9, 3, 23)
     PID = 16328
-
 
     def line(at, rest, pid=PID):
         return f"[{at:%Y-%m-%d %H:%M:%S}.760][INF][Px{pid}][Tx43461] {rest}\n"
 
-
     def chain(kind, name="StartUp"):
         return f'Assistant::append_callback | {kind} {{"taskchain":"{name}","taskid":1,"uuid":"d912769d7cb0ae0a"}}'
-
 
     def sub(task, n=1, name="StartUp", kind="SubTaskStart"):
         return ('Assistant::append_callback | ' + kind + ' {"class":"asst::ProcessTask","details":{"action":"ClickSelf",'
@@ -2625,10 +2526,8 @@ def _part_maa_start_watchdog():
                 '"StartUpBegin"],"pre_task":"StartUpBegin","subtask":"ProcessTask",'
                 f'"taskchain":"{name}","taskid":0,"uuid":"d912769d7cb0ae0a"}}')
 
-
     CUR_TASK = '{"class":"asst::ProcessTask","cur_task":"StartUp@GameStart","details":{"cur_retry":0,"retry_times":50}}'
     BANNER = ["-----------------------------", "MaaCore Process Start", "Version v6.21.4"]
-
 
     class World:
         """The machine as the watchdog sees it."""
@@ -2663,7 +2562,6 @@ def _part_maa_start_watchdog():
             self.clock = t
             return self.dog.tick()
 
-
     def hang_until(w, end, start=T0, pid=PID, every=4.4):
         """The 11-05 shape up to `end`: start, the resource check at +22 s, presses every 4.4 s."""
         w.write(line(start, chain("TaskChainStart"), pid))
@@ -2677,7 +2575,6 @@ def _part_maa_start_watchdog():
             w.write(line(t + timedelta(seconds=4), CUR_TASK, pid))
             t += timedelta(seconds=every)
         return n
-
 
     print("[the 11-05 hang]")
     w = World("hang")
@@ -2865,7 +2762,6 @@ def _part_maa_unreachable_cleared_notes():
     RELAY = HERE.parent
     sys.path.insert(0, str(HERE))
 
-
     print("[部署后更新说明被清空：明日方舟进不了游戏那套测试照样跑完]")
     shadow = tmpdir()
     # A copy, not a symlink: the relay tests also run on Windows CI.
@@ -2891,7 +2787,6 @@ def _part_maa_window_overlap():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome
-
 
     def ev(ts, kind, chain):
         return (f'[2026-08-31 {ts}][INF][Px][Tx] '
@@ -2943,10 +2838,8 @@ def _part_maa_write_master_first():
     DOC = {"Current": "Default", "Configurations": {"Default": {"TaskQueue": [
         {"Type": "StartUp"}, {"Type": "Infrast", "UsesOfDrones": "Money"}]}}}
 
-
     def drones(f: Path) -> str:
         return mastercfg._maa_infrast(json.loads(f.read_text(encoding="utf-8")))["UsesOfDrones"]
-
 
     def tree(master_doc=DOC, own_doc=DOC):
         root = tmpdir()
@@ -2960,14 +2853,12 @@ def _part_maa_write_master_first():
         own.write_text(own_doc if isinstance(own_doc, str) else json.dumps(own_doc), encoding="utf-8")
         return automas, maa, mf, own
 
-
     def write(automas, maa):
         """write_maa's reply; an exception escaping it is a failure, kept as text."""
         try:
             return mastercfg.write_maa(automas, maa, "Infrast/UsesOfDrones", "PureGold")
         except Exception as exc:  # noqa: BLE001
             return None, f"raised {type(exc).__name__}: {exc}"
-
 
     print("[no master copy, MAA's own copy present]")
     automas, maa, mf, own = tree(master_doc=None)
@@ -2991,12 +2882,10 @@ def _part_maa_write_master_first():
     automas, maa, mf, own = tree()
     real = mastercfg._write_maa_copies.__globals__["atomic_write_text"]
 
-
     def fail_own(path, text):
         if Path(path) == own:
             raise PermissionError("locked")
         real(path, text)
-
 
     mastercfg._write_maa_copies.__globals__["atomic_write_text"] = fail_own
     try:
@@ -3028,7 +2917,6 @@ def _part_maa_unreachable():
 
     CORPUS = fx_dir(HERE, "gamesim") / "corpus" / "maa" / "history"
 
-
     class N:
         def __init__(self):
             self.sent = []
@@ -3040,7 +2928,6 @@ def _part_maa_unreachable():
         def alert_log(self):
             return None
 
-
     def booked(day: str, stem: str):
         """The corpus record as the collector books it: AUTO-MAS's layout
     <history>/<date>/<user>/<stem>.json + .log, parsed by parse_record."""
@@ -3051,14 +2938,12 @@ def _part_maa_unreachable():
         (dest / f"{stem}.log").write_bytes(gzip.decompress((CORPUS / day / f"{stem}.log.gz").read_bytes()))
         return collector.parse_record(dest / f"{stem}.json", root)
 
-
     def engine(sd: Path):
         cfg = Config()
         cfg.state_dir = sd
         cfg.automas_dir = None
         cfg.maa_dir = tmpdir()            # MAA's own debug logs: none kept for the corpus runs
         return eng_mod.Engine(cfg, source=_NoSource(), state=State(sd), notifier=N())
-
 
     print("\n[没进游戏：2026-09-23 MAA-05-00-01「MAA 未能正确登录 PRTS」]")
     rec = booked("2026-09-23", "MAA-05-00-01")
@@ -3108,7 +2993,6 @@ def _part_maa_unreachable():
     from datetime import datetime
     from ark_relay.core.config import SERVER_TZ
 
-
     def today_round(*picks, maintenance=False):
         """Book the corpus records onto today's ledger one hour apart from 05:00; the
     last is the round's latest attempt. Returns (state dir, engine, last record)."""
@@ -3127,7 +3011,6 @@ def _part_maa_unreachable():
                 r.raw["maintenance"] = "05:00-10:00"
             e.state.append_ledger(r)
         return sd, e, last
-
 
     A, B, OK = ("2026-08-26", "MAA-05-16-47"), ("2026-09-23", "MAA-05-00-01"), ("2026-09-23", "MAA-05-03-07")
     a = booked(*A)
@@ -3208,12 +3091,10 @@ def _part_maa_unreachable():
     e._unfinished_queues = lambda *a, **k: []
     e._scripts_running = lambda *a, **k: False
 
-
     def _deferred(cfg, now=None, dispatch=None, **k):
         out: list = []
         gameupdate._rerun_script(cfg, now, lambda s: (True, "ok"), "MAA", [], [], out)
         return out, [], []
-
 
     real_gu = (gameupdate.pending, gameupdate.run_deferred)
     gameupdate.pending = lambda state_dir: {"明日方舟": "今天官方维护"}
@@ -3283,7 +3164,6 @@ def _part_outcome_main():
 
     def bad_labels(checks):
         return sorted(c.label for c in checks if not c.ok)
-
 
     def main() -> None:
         print("[三轮真实日志：任务起来了但一场没打]")
@@ -3528,8 +3408,6 @@ def _part_outcome_main():
         check("过滤生效且只进一个点位", bad_labels(got6), [])
         check("没配过滤就不加这两条", [c.label for c in okww_checks(text6, expect_nest=True) if "指定点位" in c.label or "别的点位" in c.label], [])
 
-
-
     main()
 
 
@@ -3538,7 +3416,6 @@ def _part_outcome_nest_words():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome
-
 
     DAY_1005 = """\
 2026-10-05 10:35:06,057 INFO TaskExecutor NightmareNestTask:opened gray_book_boss
@@ -3696,7 +3573,6 @@ def _part_gamelog_errors():
     from ark_relay.features import errwatch
     from ark_relay.features import outcome as ge
 
-
     # One real line per known shape, as the machine wrote it.
     SAMPLES = {
         "MAA": [
@@ -3834,7 +3710,6 @@ TypeError: 'NoneType' object is not subscriptable
 
     print("[check_round: one alarm per round, plain words, raw lines to the technical log]")
 
-
     ARK = logging.getLogger(errwatch.ARK)
     h = _Warnings()
     ARK.addHandler(h)
@@ -3914,7 +3789,6 @@ def _part_m6_counts():
     from ark_relay.core import plan
     from ark_relay.features import annihilation
     from ark_relay.core.config import SERVER_TZ
-
 
     maa = """[2026-09-20 09:02:43.459][INF][TaskQueueViewModel]     <2> 开始行动 1~10 次, -60理智
 理智: 117/210

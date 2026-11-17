@@ -48,13 +48,11 @@ def _part_mc_phone_banners():  # noqa: C901
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-
     for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
                   "win32con", "win32file", "servicemanager", "win32process",
                   "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
                   "win32com", "win32com.client"):
         sys.modules.setdefault(_name, _Stub(_name))
-
 
     os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
@@ -79,7 +77,6 @@ def _part_mc_phone_banners():  # noqa: C901
     FX = fx_dir(Path(__file__), "fixtures")
     PASS, FAIL = mc.PASS, mc.FAIL
 
-
     class N:
         """The relay's notifier as judge sees it."""
 
@@ -92,7 +89,6 @@ def _part_mc_phone_banners():  # noqa: C901
 
         def failed(self, cid):
             return [(t, b, a) for t, b, a in self.sent if t.startswith(f"{texts.MACHINECHECK_FAIL}：{cid} ")]
-
 
     class Group:
         """errwatch's side of the notifier: the group robot, with the copy of every
@@ -109,7 +105,6 @@ def _part_mc_phone_banners():  # noqa: C901
 
         def send(self, title, body="", alert=False, **kw):
             return self.send_group(title, body)
-
 
     class Watch:
         """errwatch on the "ark" logger for one state dir: the day's error kinds, its
@@ -131,21 +126,17 @@ def _part_mc_phone_banners():  # noqa: C901
             logging.getLogger(errwatch.ARK).removeHandler(self.h)
             self.h.close()
 
-
     def judged(d, event, ctx, n=None):
         """{id: Result} of the checks that judged."""
         return dict(mc.judge(d, event, ctx, notifier=n if n is not None else N()))
-
 
     def status(v, cid):
         r = v.get(cid)
         return r.status if r else None
 
-
     def ev(v, cid):
         r = v.get(cid)
         return r.evidence if r else ""
-
 
     mc.load()
     MINE = ("#2", "#3", "#8", "#9", "#10", "#15", "#16", "#23", "#39", "#40", "#41", "#45", "#50", "#56", "#58")
@@ -213,7 +204,6 @@ def _part_mc_phone_banners():  # noqa: C901
     IMG3 = "https://i0.hdslb.com/bfs/new_dyn/e1826ff7fe229d2f29d8a715a4ee4eee1955897084.jpg"
     win = [Line(**o) for o in json.loads((FX / "ww-3.7-news-4-winocr.json").read_text(encoding="utf-8"))]
 
-
     def bili(feed):
         def get(url, cookie):
             if "finger/spi" in url:
@@ -224,10 +214,8 @@ def _part_mc_phone_banners():  # noqa: C901
             return feed(dict(urllib.parse.parse_qsl(url.split("?", 1)[1], keep_blank_values=True))["offset"])
         return get
 
-
     def no_kuro_post(path, payload):
         return {"data": {"list": []}}          # the list reads fine, the post is not in it
-
 
     feb = datetime(2026, 10, 5, 12, 0)
     d = tmpdir()
@@ -285,13 +273,11 @@ def _part_mc_phone_banners():  # noqa: C901
     check("新三项听卡池那一段", {c: mc.CHECKS[c].triggers for c in NEW3 if c in mc.CHECKS}, {c: ("banners",) for c in NEW3})
     check("新三项写的是人话", {c: texts.plain(mc.CHECKS[c].what) for c in NEW3 if c in mc.CHECKS}, {c: [] for c in NEW3})
 
-
     def doors(kuro, bili):
         tr = _b.Trace.new()
         tr.src("鸣潮", "版本资讯门", "库街区", kuro)
         tr.src("鸣潮", "版本资讯门", "B 站", bili)
         return tr
-
 
     v = judged(tmpdir(), "banners", {"trace": doors("没有这一帖", "没有这一帖"), "text": "", "now": feb})
     check("#3 库街区和哔哩哔哩都还没这一帖：过（11-08 前每晚误报）", (status(v, "#3"), "官方还没发这一帖" in ev(v, "#3")), (PASS, True))
@@ -346,11 +332,9 @@ def _part_mc_phone_banners():  # noqa: C901
     print("\n[#8 明日方舟下期「官方通讯」一行：该出就出，过期就撤，取不到不过]")
     page = (FX / "prts_limited_page.html").read_text(encoding="utf-8")
 
-
     NEWS = {"NEWS": [{"cid": "7366", "title": "《明日方舟》制作组通讯#69期", "displayTime": 1790326800}]}
     COMM = ("<p>●SideStory「昨日海」限时活动将于10月上旬开启，该活动除包含全新活动关卡与剧情外，"
             "新干员和新时装以及相关主题家具也将伴随本次活动登场及上架。</p>")
-
 
     def ak_site(url):
         if url.startswith("https://ak.hypergryph.com/api/news?"):
@@ -359,7 +343,6 @@ def _part_mc_phone_banners():  # noqa: C901
         if url == _b._AK_POST.format(cid="7366"):
             return json.dumps({"code": 0, "data": {"data": COMM}}, ensure_ascii=False)
         return None
-
 
     def ak_section(now, *, news_ok=True, with_leads=True):
         """The Arknights block as report._compose_daily builds it, against recorded pages."""
@@ -386,7 +369,6 @@ def _part_mc_phone_banners():  # noqa: C901
             _b._rarity_cache.clear()
             _b._rarity_cache.update(cache)
         return tr, out
-
 
     oct6 = datetime(2026, 10, 6, 21, 40)
     d = tmpdir()
@@ -424,12 +406,10 @@ def _part_mc_phone_banners():  # noqa: C901
           (True, True))
     real_opening = _b.opening_tomorrow
 
-
     def opening_before_0929(now, nxt):          # 30eb8b41's parent: dates only, no name filter
         day = (now + timedelta(days=1)).date()
         return sorted(((g, w, who) for g, (w, who) in nxt.items() if w is not None and w.date() == day),
                       key=lambda x: x[1])
-
 
     _b.opening_tomorrow = opening_before_0929
     try:
@@ -446,10 +426,8 @@ def _part_mc_phone_banners():  # noqa: C901
     print("\n[#10 森空岛会话交到手机，终末地体力那几项的名字认得出]")
     saved_sk = (skland.get_did, skland.login, skland.refresh, skland.bindings, skland.endfield_card)
 
-
     class Cred:
         cred, token = "c-secret", "t-secret"
-
 
     _REAL_SKLAND = (skland.get_did, skland.login, skland.refresh, skland.bindings)   # put back at the end (shared process in the coverage pass)
     skland.get_did, skland.login, skland.refresh = (lambda: "Bdev"), (lambda tok, did="": Cred()), (lambda c: c)
@@ -489,7 +467,6 @@ def _part_mc_phone_banners():  # noqa: C901
     saved_q = (plan.schedule, queues.apply)
     plan.schedule = lambda automas_dir: [{"name": "晚班", "times": ["21:30"]}]
 
-
     def engage(answer):
         d = tmpdir()
         queues.apply = lambda automas_dir, name, enabled=None, scripts=None: answer(name)
@@ -497,7 +474,6 @@ def _part_mc_phone_banners():  # noqa: C901
         modes.add_day_queue(d, today.strftime("%Y-%m-%d"), "晚班")
         modes.process_skip(d, tmpdir(), today)
         return d, {"relay": {"最近指令": modes.receipts(d), "今天跳过队列": modes.skipped_today_all(d)}}
-
 
     try:
         d, state = engage(lambda name: (True, f"队列「{name}」：定时关闭（调度程序已确认）"))
@@ -521,14 +497,12 @@ def _part_mc_phone_banners():  # noqa: C901
 
     # ------------------------------------------------------------------ the phone orders (#16, #23)
 
-
     class Eng:
         def __init__(self, busy):
             self.busy = busy
 
         def scripts_running(self):
             return self.busy
-
 
     class Log:
         def __init__(self):
@@ -542,11 +516,9 @@ def _part_mc_phone_banners():  # noqa: C901
         def exception(self, fmt, *a, **k):
             self.lines.append("EXC " + (fmt % a if a else fmt))
 
-
     class HB:
         def watch(self):
             pass
-
 
     def order(action, mid, sent=None, **kw):
         body = {"action": action, "confirmed": True, **kw}
@@ -554,15 +526,12 @@ def _part_mc_phone_banners():  # noqa: C901
                          "ntfy_time": int(time.time()), "ntfy_id": mid, "via": "live"}
         return body
 
-
     def make(engine, d, n):
         return phone_channel._make_phone_cmd(engine, n, Log(), HB(), phone.StatePusher(lambda why: True), d)
-
 
     print("\n[#16 红按钮：游戏、脚本和调度程序里的任务都没了才回「已停一切」（经 run_phone_cmd）]")
     real_estop = C.estop
     saved_e = (redbutton._estop_stop_via_mas, redbutton._estop_kill, redbutton._estop_alive, redbutton._estop_live_tasks)
-
 
     def rig(alive_rounds, task_rounds):
         alive_rounds, task_rounds = list(alive_rounds), list(task_rounds)
@@ -571,7 +540,6 @@ def _part_mc_phone_banners():  # noqa: C901
         redbutton._estop_alive = lambda: alive_rounds.pop(0) if alive_rounds else []
         redbutton._estop_live_tasks = lambda: task_rounds.pop(0) if task_rounds else []
         C.estop = functools.partial(real_estop, sleep=lambda s: None)
-
 
     try:
         rig([[]], [[]])
@@ -637,7 +605,6 @@ def _part_mc_phone_banners():  # noqa: C901
 
     # ------------------------------------------------------------------ #39 through publish_state
 
-
     class FakeBox:
         """The mailbox as _start_phone_channel uses it; `ok` decides each publish."""
         ok = [True]
@@ -663,7 +630,6 @@ def _part_mc_phone_banners():  # noqa: C901
         def listen(self, on_cmd, stop, **kw):
             return None
 
-
     class FakeHb:
         def __init__(self, *a, **k):
             pass
@@ -674,9 +640,7 @@ def _part_mc_phone_banners():  # noqa: C901
         def cos_report(self):
             return {"cos": False}
 
-
     STATE = [{"at": 1}]       # what the faked state_payload hands out
-
 
     def channel(d, n, results, state=None):
         """_start_phone_channel with the fakes; the push_state it returns."""
@@ -688,12 +652,10 @@ def _part_mc_phone_banners():  # noqa: C901
                                                 types.SimpleNamespace(scripts_running=lambda: False),
                                                 n, boot_stages.log)
 
-
     saved_channel = (phone.Mailbox, phone.Heartbeat, phone.state_payload, boot_stages.ensure_automas)
     phone.Mailbox, phone.Heartbeat = FakeBox, FakeHb
     phone.state_payload = lambda cfg, state_dir: dict(STATE[0])
     boot_stages.ensure_automas = lambda *a, **k: True
-
 
     print("\n[#39 每一份状态都送到了手机（经 publish_state，关机前那份时判）]")
     d, n = tmpdir(), N()
@@ -755,11 +717,9 @@ def _part_mc_phone_banners():  # noqa: C901
     q.add("state", 40)
     q.add("bye", 2)
 
-
     def quota_ctx(q, since):
         return {"why": "关机前", "tally": {"since": since},
                 "quota": {"day": q.day(), "total": q.total(), "own": q.own(), "full": q.full(), "raw": q.read()}}
-
 
     t0 = time.time() - 5
     v = judged(d, "phone_state", quota_ctx(q, t0))
@@ -780,10 +740,8 @@ def _part_mc_phone_banners():  # noqa: C901
     t0 = time.time() - 5
     box = phone.Mailbox("topic-x", "8964", d)
 
-
     def timed_out(since="24h"):
         raise TimeoutError("timed out")
-
 
     box._read_backlog = timed_out
     check("开机读信箱超时：先不丢", (box.fetch(), box.backlog_missed), ([], True))
@@ -818,7 +776,6 @@ def _part_mc_phone_banners():  # noqa: C901
     t0 = time.time() - 5
     done = {"stop": False, "n": 0}
 
-
     class Resp:
         def __enter__(self):
             return self
@@ -833,13 +790,11 @@ def _part_mc_phone_banners():  # noqa: C901
         def close(self):
             pass
 
-
     def flaky_urlopen(req, timeout=None):
         done["n"] += 1
         if done["n"] == 1:
             raise urllib.error.URLError(ConnectionResetError(10054, "远程主机强迫关闭了一个现有的连接。"))
         return Resp()
-
 
     real_urlopen = urllib.request.urlopen
     urllib.request.urlopen = flaky_urlopen
@@ -874,7 +829,6 @@ def _part_mc_phone_banners():  # noqa: C901
     maintenance._STATS.clear()
     tries = {"n": 0}
 
-
     class Page:
         def __enter__(self):
             return self
@@ -885,13 +839,11 @@ def _part_mc_phone_banners():  # noqa: C901
         def read(self):
             return "<html>news</html>".encode()
 
-
     def slow_once(req, timeout=None):
         tries["n"] += 1
         if tries["n"] == 1:
             raise TimeoutError("timed out")
         return Page()
-
 
     d = tmpdir()
     w = Watch(d)
@@ -983,7 +935,6 @@ def _part_mc_runs():
     import os
     from datetime import datetime, timedelta
 
-
     TMP = tmpdir()
     (TMP / "history").mkdir()
     os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_STATE_DIR=str(TMP / "state"),
@@ -1004,7 +955,6 @@ def _part_mc_runs():
 
     FIX = fx_dir(Path(__file__), "fixtures")
 
-
     class N:
         """A notifier that keeps a copy of every group alarm, as notify.Notifier does (alertlog.py)."""
 
@@ -1024,10 +974,8 @@ def _part_mc_runs():
         def send_group(self, title, body=""):
             return self.send(title, body, alert=True)
 
-
     mc.load()
     NOW = datetime(2026, 10, 6, 21, 40, tzinfo=SERVER_TZ)
-
 
     def judge(cid, ctx, state=None):
         """(status, evidence, pushed titles) of check `cid` on `ctx`; status None when it said nothing."""
@@ -1040,24 +988,19 @@ def _part_mc_runs():
             print(f"    {cid} {r.status}: {r.evidence}")
         return (r.status if r else None), (r.evidence if r else ""), pushed
 
-
     def rec(script, run_id, started, ok=True, raw=None, minutes=30, failed=None):
         return RunRecord(run_id=run_id, script=script, user={"MaaEnd": "endfield", "OK-WW": "wuwa"}.get(script, "ark"),
                          started=started, finished=started + timedelta(minutes=minutes), ok=ok,
                          failed_tasks=list(failed or []), raw=dict(raw or {}))
 
-
     def ww(lines, day="2026-10-06"):
         """OK-WW log lines as AUTO-MAS keeps them (tests/replay/2026-09-07/wuwa)."""
         return "\n".join(f"{day} 09:{20 + i // 60:02d}:{i % 60:02d},100 INFO TaskExecutor {x}" for i, x in enumerate(lines))
 
-
     WWREC = rec("OK-WW", "2026-10-06/wuwa/OK-WW-05-19-17", datetime(2026, 10, 6, 9, 19, 17, tzinfo=SERVER_TZ))
-
 
     def wwctx(lines, **kw):
         return dict({"rec": WWREC, "raw": {}, "log_text": ww(lines)}, **kw)
-
 
     # ------------------------------------------------------------------ #4
     print("\n[#4 周本领奖：领完回读到少了一次才算]")
@@ -1149,7 +1092,6 @@ def _part_mc_runs():
     rep_dir = tmpdir()
     okww_overlay.REPORT = rep_dir / "ark-okww-overlay.json"
 
-
     def report(applied, adapted=(), skipped=(), at=None):
         okww_overlay.REPORT.write_text(json.dumps({"applied": list(applied), "adapted": [{"what": w, "why": "x"} for w in adapted],
                                                    "skipped": [{"what": w, "why": "x"} for w in skipped], "error": ""},
@@ -1157,7 +1099,6 @@ def _part_mc_runs():
         t = (at or WWREC.started + timedelta(seconds=20)).timestamp()
         os.utime(okww_overlay.REPORT, (t, t))
         return okww_overlay.report_snapshot()
-
 
     snap = report(["NightmareNestTask.find_nest", "NightmareNestTask.run"])
     check("report_snapshot reads the report and when it was written",
@@ -1182,17 +1123,14 @@ def _part_mc_runs():
     END_LOG = (FIX / "maaend-farm-drops" / "2026-09-27.log").read_text(encoding="utf-8")
     ENDREC = rec("MaaEnd", "2026-09-27/endfield/MaaEnd-05-35-00", datetime(2026, 9, 27, 9, 35, tzinfo=SERVER_TZ), minutes=40)
 
-
     def endctx(text=END_LOG, raw=None, **kw):
         return dict({"rec": ENDREC, "raw": raw if raw is not None else collector_maaend.parse_maaend_log(write(text)),
                      "log_text": text}, **kw)
-
 
     def write(text):
         f = tmpdir() / "MaaEnd.log"
         f.write_text(text, encoding="utf-8")
         return f
-
 
     print("\n[#20 产出和剩余理智按游戏结算记（09-27 协议空间：两次进入、一次到账）]")
     raw = collector_maaend.parse_maaend_log(write(END_LOG))
@@ -1439,11 +1377,9 @@ def _part_mc_runs():
     # ------------------------------------------------------------------ wiring through handle._handle
     print("\n[handle._handle: the checks are judged right after the record is booked]")
 
-
     handle._ship_evidence = lambda eng, r: ""
     handle._weekly_gates = lambda eng, r: None
     collect_retry.restore_master = lambda cfg: ""
-
 
     def build(notifier_refuses=False):
         cfg = Config()
@@ -1454,7 +1390,6 @@ def _part_mc_runs():
         e._script_running = lambda name: False
         e._archive_maaend_evidence = lambda r: None
         return e
-
 
     e = build()
     e._verify_outcome = lambda rr: None
@@ -1541,7 +1476,6 @@ def _part_mc_runs_state_read_fails():  # noqa: C901
     import logging
     import os
 
-
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_HISTORY_DIR=str(TMP / "history"),
                       ARK_AUTOMAS_DIR=str(TMP / "nowhere"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -1558,7 +1492,6 @@ def _part_mc_runs_state_read_fails():  # noqa: C901
     REAL_READ_TEXT, REAL_REPLACE = Path.read_text, os.replace
     MC28 = texts.machinecheck_failed("#28", "")
 
-
     class Errors(logging.Handler):
         def __init__(self):
             super().__init__(logging.ERROR)
@@ -1567,10 +1500,8 @@ def _part_mc_runs_state_read_fails():  # noqa: C901
         def emit(self, record):
             self.lines.append(record.getMessage())
 
-
     ERRORS = Errors()
     runs._log_runs.addHandler(ERRORS)
-
 
     class Notes:
         def __init__(self):
@@ -1580,16 +1511,13 @@ def _part_mc_runs_state_read_fails():  # noqa: C901
             self.sent.append((title, body))
             return []
 
-
     class Rec:
         def __init__(self, rid):
             self.run_id, self.script, self.user = rid, "MaaEnd", "endfield"
 
-
     def entry(rid):
         return {"script": "MaaEnd", "user": "endfield", "day": DAY, "tasks": ["装备制造"],
                 "evidence": f"{rid} 装备制造没做成", "covered": []}
-
 
     def fresh(*held):
         """A state folder whose machinecheck-runs.json holds `held` and the other keys."""
@@ -1600,16 +1528,13 @@ def _part_mc_runs_state_read_fails():  # noqa: C901
         (state / runs.SEEN_FILE).write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         return state
 
-
     def marks():
         got = set()
         return got, (lambda day, key: (day, key) in got, lambda day, key: got.add((day, key)))
 
-
     def ctx(state, rid, alerted):
         return {"rec": Rec(rid), "held": [rid], "state_dir": state, "day": DAY, "alerted": alerted,
                 "unverified_alarm": []}
-
 
     class read_fails:
         """Reads of machinecheck-runs.json fail `n` times with `exc` (a string: read as that text)."""
@@ -1631,7 +1556,6 @@ def _part_mc_runs_state_read_fails():  # noqa: C901
         def __exit__(self, *a):
             Path.read_text = REAL_READ_TEXT
 
-
     class replace_locked:
         """os.replace onto machinecheck-runs.json fails as Windows does while another
     handle has it open (ERROR_SHARING_VIOLATION -> PermissionError)."""
@@ -1648,20 +1572,16 @@ def _part_mc_runs_state_read_fails():  # noqa: C901
         def __exit__(self, *a):
             os.replace = REAL_REPLACE
 
-
     def raw(state):
         return (state / runs.SEEN_FILE).read_bytes()
 
-
     def held(state):
         return sorted(runs._state_get(state, runs.HELD_28) or {})
-
 
     def settle(state, alerted, notes):
         """settle_28 with every hold over; the run ids #28 pushed so far."""
         runs.settle_28(state, lambda script, user: True, lambda day: [], notes, alerted=alerted)
         return sorted(rid for rid in (R1, R2, R3) for t, b in notes.sent if t.startswith(MC28) and rid in b)
-
 
     def r28(state, rid, alerted):
         """_fail_28, then what judge does once the push went out (Result.after_push)."""
@@ -1669,7 +1589,6 @@ def _part_mc_runs_state_read_fails():  # noqa: C901
         if r.after_push:
             r.after_push()
         return r
-
 
     class no_waits:
         """A lock that outlasts every wait, without the test sleeping through the waits."""
@@ -1680,7 +1599,6 @@ def _part_mc_runs_state_read_fails():  # noqa: C901
 
         def __exit__(self, *a):
             mc.LOCK_WAITS = self.was
-
 
     mc.load()
     BAD_READS = [("OSError (Windows sharing violation on read)", PermissionError(13, "locked (test)")),
@@ -1795,7 +1713,6 @@ def _part_mc_system():  # noqa: C901
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-
     for _name in ("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
                   "servicemanager", "win32process", "pythoncom"):
         sys.modules.setdefault(_name, _Stub(_name))
@@ -1804,7 +1721,6 @@ def _part_mc_system():  # noqa: C901
     from ark_relay.features import machinecheck as mc
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import machinechecks as sysmc
-
 
     class N:
         """A notifier that keeps what was sent; with `copies`, it also writes the alarm
@@ -1828,24 +1744,19 @@ def _part_mc_system():  # noqa: C901
         def fails(self, cid):
             return [b for t, b, a in self.sent if t.startswith(f"🔬 上机核对没过：{cid} ") and a]
 
-
     NOW = datetime(2026, 10, 7, 8, 50, tzinfo=SERVER_TZ)
-
 
     def judge(event, ctx, d, n=None):
         n = n or N()
         got = dict(mc.judge(d, event, ctx, notifier=n, now=NOW))
         return got, n
 
-
     def logline(stamp, msg, level="INFO", name="ark.service", more=()):
         return "\n".join([f"{stamp} {level:<7} {name}  {msg}", *more])
-
 
     START = "服务模式启动，监视 D:\\ark\\automas\\history（变更即处理，兜底 30 秒）"
     MARK = "中继代码版本 v20261006120000"
     BOOT_NOW = [logline("10-07 08:46:10", START), logline("10-07 08:46:10", MARK)]
-
 
     def write_log(lines):
         d = tmpdir()
@@ -1853,14 +1764,12 @@ def _part_mc_system():  # noqa: C901
         f.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return d, f
 
-
     def at_boot(lines, d=None):
         """Judge the boot event against a relay.log made of `lines` (then this boot)."""
         sd, f = write_log(list(lines) + BOOT_NOW)
         sd = d or sd
         got, n = judge("boot", {"log_file": str(f)}, sd)
         return got, n, sd, f
-
 
     EVENING = [
         logline("10-06 21:20:05", START), logline("10-06 21:20:05", MARK),
@@ -1991,7 +1900,6 @@ def _part_mc_system():  # noqa: C901
     WMI_HELD = ("系统的程序启动通知断过 640 秒（远程过程调用失败，0x800706BE），已经自己重新订上（期间报过群）")
     wmi_session = EVENING[:3] + [logline("10-06 21:25:00", WMI, level="WARNING", more=[DIAG])] + EVENING[3:]
 
-
     def errkinds(sd, line, recovered=True):
         (sd / "errkinds").mkdir(parents=True, exist_ok=True)
         (sd / "errkinds" / "2026-10-06.json").write_text(json.dumps(
@@ -2000,7 +1908,6 @@ def _part_mc_system():  # noqa: C901
                                **({"recovered": True} if recovered else {})}},
             ensure_ascii=False), encoding="utf-8")
 
-
     def pushed(sd, *hms):
         (sd / "alerts").mkdir(exist_ok=True)
         with (sd / "alerts" / "20261006.jsonl").open("a", encoding="utf-8") as f:
@@ -2008,7 +1915,6 @@ def _part_mc_system():  # noqa: C901
                 f.write(json.dumps({"ts": f"2026-10-06 {at}", "title": "🩺 中继自己报错了",
                                     "text": f"中继自己报错了（{at}），出在「主程序」。它说：{WMI}\n已交给我们这边去修。"},
                                    ensure_ascii=False) + "\n")
-
 
     sd, f = write_log(wmi_session + BOOT_NOW)
     errkinds(sd, WMI, recovered=False)
@@ -2198,7 +2104,6 @@ def _part_mc_system():  # noqa: C901
     got, n = judge("gameupdate", {"screens": [waiting, unknown, waiting]}, tmpdir())
     check("#61 夹在中间的一帧认不出：过了，不推", (got["#61"].status, len(n.fails("#61"))), (mc.PASS, 0))
 
-
     print("\n[#64 终末地公告读不到：报警进了群 → 过；抄送里没有 → 没过]")
     sd = tmpdir()
     n = N()
@@ -2244,13 +2149,11 @@ def _part_mc_system():  # noqa: C901
     from ark_relay.core.config import Config
     from ark_relay.core.ledger import State
 
-
     def engine(sd, n):
         cfg = Config()
         cfg.state_dir = sd
         cfg.automas_dir = None
         return eng_mod.Engine(cfg, source=_NoSource(), state=State(sd), notifier=n)
-
 
     sd = tmpdir()
     n = N()
@@ -2372,14 +2275,12 @@ def _part_mc_system():  # noqa: C901
     from ark_relay.core import desktop as dk
     from ark_relay.features import gameupdate, gameupdate_games as gg
 
-
     def agent(results):
         def spawn(exe, cwd, args):
             res = Path(args[-1])
             res.write_text(json.dumps(results.pop(0), ensure_ascii=False), encoding="utf-8")
             return True
         return spawn
-
 
     desk = dk.Desktop(tmpdir(), spawn=agent([
         {"ok": True, "focus_missing": True, "clicked": [], "ocr": [], "log": ["focus: 没有 Games 的窗口"]},
@@ -2393,7 +2294,6 @@ def _part_mc_system():  # noqa: C901
     got, _ = judge("gameupdate", {"screens": desk.trace}, tmpdir())
     check("#60 判过", got["#60"].status, mc.PASS)
     check("脚本里点之前会说点了哪一行", "click_text: 点了「$($hit.text)」" in dk.AGENT_PS, True)
-
 
     class Desk:
         """A launcher that is downloading, then ready."""
@@ -2416,10 +2316,8 @@ def _part_mc_system():  # noqa: C901
         def click(self, x, y, focus=None):
             return True
 
-
     def scr(*texts):
         return dk.Screen([dk.Line(t, 0, i * 30, 100, 20) for i, t in enumerate(texts)], Path("shot.png"))
-
 
     d = Desk([scr("更新游戏"), scr("正在下载 1.2GB/8.5GB", "暂停"), scr("开始游戏")])
     saved = (gg.kill, gg._spawn)
@@ -2437,11 +2335,9 @@ def _part_mc_system():  # noqa: C901
     print("\n[#61 重放 10-15 12:32-12:49 那一轮：没认出字的帧不到连着 3 帧不报，连着 3 帧才报；「系统提示」那一帧算认出]")
     ICONS = ["控]面板", "Clashfor", "Windows", "EPIC", "EPICGames", "Launcher", "0", "ToDesk"]
 
-
     def frame(stamp, *extra, icons=ICONS):
         lines = [dk.Line(t, 90, 61 + 17 * i, 50, 11) for i, t in enumerate(icons)] + list(extra)
         return dk.Screen(lines, Path(f"shot-{stamp}.png"))
-
 
     DL = dk.Line("正在下载", 1376, 788, 64, 16)
     INST = dk.Line("安装中", 1384, 788, 47, 16)
@@ -2457,7 +2353,6 @@ def _part_mc_system():  # noqa: C901
                      frame("124909", icons=["控]面板", "Clashfor", "Windows", "EPIC"])]  # 12:49:09
                   + [frame("ready", dk.Line("开始游戏", 1376, 788, 64, 16))])
 
-
     def replay(screens):
         d = Desk([frame("123213", *SPACE)] + screens)
         saved = (gg.kill, gg._spawn)
@@ -2468,7 +2363,6 @@ def _part_mc_system():  # noqa: C901
         finally:
             gg.kill, gg._spawn = saved
         return d, out
-
 
     d, out = replay(list(waits_1015))
     check("这一轮装完了", out, "终末地 客户端已通过启动器更新")
@@ -2562,14 +2456,12 @@ def _part_mc_system_fixes():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-
     class ServiceFramework:
         def __init__(self, args):
             self.args = args
 
         def ReportServiceStatus(self, status):  # noqa: N802
             pass
-
 
     w32su = _Stub("win32serviceutil")
     w32su.ServiceFramework = ServiceFramework
@@ -2583,7 +2475,6 @@ def _part_mc_system_fixes():
     from ark_relay.features import procwatch, procwatch as wmi_diag
     os.chdir(cwd)
 
-
     class Lines(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -2592,17 +2483,14 @@ def _part_mc_system_fixes():
         def emit(self, r):
             self.got.append((r.levelno, r.getMessage()))
 
-
     print("[1. Windows 关机：SvcShutdown → SvcStop 说是关机；主线程等停止前那份状态推完再结束进程]")
     svc = service.ArkRelayService(["ark-relay"])
     events = []
-
 
     def slow_push(why):
         time.sleep(0.4)
         events.append(("pushed", why))
         return True
-
 
     svc._push_state = slow_push
     svc.main = lambda: None
@@ -2664,14 +2552,12 @@ def _part_mc_system_fixes():
     print("\n[2b. WMI drop: the System log's SCM lines for winmgmt, picked out of wevtutil /f:xml]")
     NS = "xmlns='http://schemas.microsoft.com/win/2004/08/events/event'"
 
-
     def _ev(eid, when, data, binary=""):
         d = "".join(f"<Data Name='param{i}'>{v}</Data>" for i, v in enumerate(data, 1))
         b = f"<Binary>{binary}</Binary>" if binary else ""
         return (f"<Event {NS}><System><Provider Name='Service Control Manager'/>"
                 f"<EventID Qualifiers='16384'>{eid}</EventID><TimeCreated SystemTime='{when}'/></System>"
                 f"<EventData>{d}{b}</EventData></Event>")
-
 
     # 「winmgmt/4」 as UTF-16LE hex, the way 7036 carries the service key name.
     WINMGMT_BIN = "winmgmt/4".encode("utf-16-le").hex().upper() + "0000"
@@ -2743,7 +2629,6 @@ once; the daily report gets the two relay lines a person used to run by hand.
     from ark_relay.core.notify import route_of
     from ark_relay.features import commands
 
-
     _CFG = json.loads((fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11" / "config"
                        / "ScriptConfig.json").read_text(encoding="utf-8"))
     MACHINE_SCRIPTS = {sid: {"Info": dict(sc["Info"])} for sid, sc in _CFG.items() if sid != "instances"}
@@ -2755,7 +2640,6 @@ once; the daily report gets the two relay lines a person used to run by hand.
                            "IfAutoUpdate": True}
     mas_scripts = {"data": MACHINE_SCRIPTS}
 
-
     def _fake_mas(path, body=None, timeout=20):
         if path != "/api/scripts/get":
             raise AssertionError(f"endpoint not prepared by this test: {path}")
@@ -2763,11 +2647,9 @@ once; the daily report gets the two relay lines a person used to run by hand.
             raise mas_scripts
         return {"code": 200, **mas_scripts}
 
-
     commands._mas = _fake_mas
     launchers = {"D:\\Wuthering Waves\\launcher.exe"}      # the files that exist on the fake machine
     selfcheck._is_file = lambda p: p in launchers
-
 
     class _Notifier:
         channels = ["企业微信机器人"]
@@ -2778,7 +2660,6 @@ once; the daily report gets the two relay lines a person used to run by hand.
         def send(self, title, body, *, alert=False, daily=False):
             self.sent.append((title, body, alert))
             return []
-
 
     with tempfile.TemporaryDirectory() as td:
         import os
@@ -2999,7 +2880,6 @@ def _part_selfcheck_one_push():
     from ark_relay.features import errwatch
     from ark_relay.features import selfcheck
 
-
     class _Notifier:
         channels = ["企业微信机器人"]
 
@@ -3010,12 +2890,10 @@ def _part_selfcheck_one_push():
             self.sent.append(title)
             return self._errs
 
-
     CHECKS = [selfcheck.Check("看得到机器上在跑哪些程序", True),
               selfcheck.Check("调度程序的后台程序在跑", False, "没找到 AUTO-MAS 的后台进程"),
               selfcheck.Check("状态目录能写", True)]
     selfcheck.run = lambda cfg, **kw: list(CHECKS)
-
 
     def pushes(notifier):
         """(what the self-check sent itself, what errwatch took) for one report()."""
@@ -3030,7 +2908,6 @@ def _part_selfcheck_one_push():
             finally:
                 ark.removeHandler(h)
         return notifier.sent, [r.getMessage() for r in taken]
-
 
     print("[one failing check, the alarm went out: one push in all]")
     sent, taken = pushes(_Notifier())
@@ -3058,7 +2935,6 @@ def _part_machinecheck_main():
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.notify import route_of
 
-
     class N:
         def __init__(self):
             self.sent = []
@@ -3066,7 +2942,6 @@ def _part_machinecheck_main():
         def send(self, title, body, alert=False, **kw):
             self.sent.append((title, body, alert))
             return []
-
 
     mc.load()
     real = dict(mc.CHECKS), dict(mc.CANNOT)
@@ -3191,20 +3066,17 @@ def _part_machinecheck_wait():
     sys.path.insert(0, str(ROOT.parent / "scripts" / "windows"))
     from machinecheck_wait import alerts_with_version, boot_judged, main, read_rows, verdict
 
-
     def mc_row(**kw):
         base = {"status": "PASS", "evidence": "x", "at": "2026-10-06 06:20:00",
                 "version": "", "event": "", "passes": 1}
         base.update(kw)
         return base
 
-
     def alert_row(**kw):
         base = {"ts": "2026-10-06 06:20:00", "game": "鸣潮", "title": "t",
                 "text": "x", "version": "", "evidence_run": ""}
         base.update(kw)
         return base
-
 
     d = tmpdir()
 
@@ -3252,13 +3124,11 @@ def _part_machinecheck_wait():
     check("one good row survives the junk",
           [a["title"] for a in alerts_with_version(str(d), "v1")], ["good"])
 
-
     def run_main(state_dir, version):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             rc = main([state_dir, version, "0"])
         return rc, out.getvalue()
-
 
     print("[a torn last line (a push being appended) is not read as quiet]")
     (ad / "20261006.jsonl").write_text(
@@ -3329,7 +3199,6 @@ def _part_machinecheck_wait():
     (e / "machinecheck.json").write_text(json.dumps({"#63": mc_row(version="20261012131940", event="boot")}),
                                          encoding="utf-8")
 
-
     def run_doc(state_dir, version, *rows):
         (Path(state_dir) / "alerts" / "20261013.jsonl").write_text(
             "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
@@ -3337,7 +3206,6 @@ def _part_machinecheck_wait():
         with contextlib.redirect_stdout(out):
             rc = main([state_dir, version, "0", DOC])
         return rc, out.getvalue()
-
 
     rc, out = run_doc(str(e), "20261012131940", tacet)
     check("无音区产出 only: exit 0", rc, 0)
@@ -3378,7 +3246,6 @@ def _part_replay():
               "okww_stamina_spent", "okww_stamina_left", "maaend_name_mismatch", "tasks_failed",
               "tasks_done", "okww_exit_race", "maaend_unreachable", "maaend_unreachable_shape")
 
-
     # The os module has PRIO_DARWIN_PROCESS from Python 3.12 on; deploy-relay.sh runs some of these scripts with
     # the system python3 (3.9), where reading it raised AttributeError. 4 is its value in <sys/resource.h>.
 
@@ -3389,7 +3256,6 @@ def _part_replay():
             if k in rec.raw:
                 out[k] = rec.raw[k]
         return out
-
 
     def cases() -> list[tuple[str, Path, Path, object]]:
         """(label, record json, day root, expected) for every record, in the order they are checked."""
@@ -3402,16 +3268,13 @@ def _part_replay():
                             day_root, want))
         return out
 
-
     def judge(js: Path, day_root: Path):
         """What the collector makes of one record, as compared with expected.json."""
         rec = collector.parse_record(js, day_root)
         return snapshot(rec) if rec else None
 
-
     def judge_all(todo: list[tuple[str, Path, Path, object]]) -> list:
         return [judge(js, day_root) for _, js, day_root, _ in todo]
-
 
     def verdict_cases() -> list[tuple[str, Path, Path, dict, dict]]:
         """(label, record json, day root, sidecar, expected) for every record a verdict.json names.
@@ -3422,7 +3285,6 @@ def _part_replay():
                 out.append((f"{vf.parent.relative_to(REPLAY)}/{stem} (verdict)", vf.parent / f"{stem}.json",
                             vf.parents[2], spec, spec.get("want") or {}))
         return out
-
 
     def verdict_judge(js: Path, day_root: Path, spec: dict) -> dict:
         """What the outcome check makes of one record, with its sidecar files where the relay reads them."""
@@ -3454,7 +3316,6 @@ def _part_replay():
         return {"says": says.splitlines()[0] if says else None,
                 "maaend_no_self_exit": "maaend_no_self_exit" in rec.raw}
 
-
     def main() -> int:
         fails = []
         todo = cases()
@@ -3481,7 +3342,6 @@ def _part_replay():
             print(f"  ✗ 语料库只找到 {n} 条，期望至少 {FLOOR} 条")
         print(f"\n回放 {n} 条，" + (f"FAILED: {len(fails)}" if fails else "all checks passed"))
         return 1 if fails else 0
-
 
     if __name__ == "__main__":
         sys.exit(main())
