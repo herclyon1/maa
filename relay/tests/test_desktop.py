@@ -1193,6 +1193,16 @@ def _part_selfupdate_cos():
     root = workdir({"ark_relay/a.py": OLD_A, "ark_relay/b.py": b"b v1\n"}, 20260917000000)
     check("照常更新", sorted(su.check(root, "https://raw.githubusercontent.com/herclyon1/maa/main/relay/")), ["ark_relay/a.py", "ark_relay/b.py"])
 
+    print("\n[清单里已经没有的旧包文件夹：check 这一轮把它清掉，算进改动（不清的话 Python 先认文件夹，跑的还是旧代码）]")
+    net = Net({"fastly.jsdelivr.net": {"manifest.json": MAN_V2, "ark_relay/a.py": NEW_A, "ark_relay/b.py": NEW_B}}); su._get_once = net.get; su._last_good = ""
+    root = workdir({"ark_relay/a.py": OLD_A, "ark_relay/b.py": b"b v1\n"}, 20260917000000)
+    (root / "ark_relay" / "old" / "__pycache__").mkdir(parents=True)
+    (root / "ark_relay" / "old" / "__init__.py").write_bytes(b"OLD = 1\n")
+    (root / "ark_relay" / "old" / "__pycache__" / "__init__.cpython-314.pyc").write_bytes(b"pyc")
+    check("旧文件夹算进这一轮的改动", sorted(su.check(root, "https://raw.githubusercontent.com/herclyon1/maa/main/relay/")),
+          ["ark_relay/a.py", "ark_relay/b.py", "ark_relay/old/"])
+    check("旧文件夹连同里面的字节码整个没了", (root / "ark_relay" / "old").exists(), False)
+
     print("\n[GitHub 回退是并发的，而且仍然全有或全无]")
     many = {f"ark_relay/m{i}.py": f"m{i} v2\n".encode() for i in range(12)}
     man = json.dumps({"version": 20260918030000, "files": {k: sha(v) for k, v in many.items()}}).encode()
