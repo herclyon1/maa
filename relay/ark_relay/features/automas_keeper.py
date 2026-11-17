@@ -19,6 +19,7 @@ from ark_relay.core.config import atomic_write_bytes, SERVER_TZ
 from datetime import datetime, timedelta
 from ark_relay.features import procwatch, procwatch as wmi_diag, procwatch as shutdown_signs
 from ark_relay.core import texts
+# Tests reach the loop's parts as <module>.automas_keeper / .day_roll / .dirwatch.
 automas_keeper = _sys.modules[__name__]
 day_roll = _sys.modules[__name__]
 dirwatch = _sys.modules[__name__]
@@ -402,9 +403,9 @@ def _loop(svc, cfg, engine, notifier, inbox, collect, deferred_inbox, log) -> No
     the boot checkpoint), and the loop sleeps until exactly that moment. Local
     midnight is one such moment too (_DayRoll: the queue-command skips end).
     """
-    watch = dirwatch._DirWatch(cfg, notifier, log)
-    keeper = automas_keeper._AutomasKeeper(log, notifier)
-    dayroll = day_roll._DayRoll(cfg, log)
+    watch = _DirWatch(cfg, notifier, log)
+    keeper = _AutomasKeeper(log, notifier)
+    dayroll = _DayRoll(cfg, log)
     # If every alarm is far away (or there are none), still wake
     # occasionally: an alarm-clock with a bug in it must degrade into
     # lateness, not into a relay that sleeps forever.

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from ark_relay.core.config import atomic_write_text, master_config_dir
 from ark_relay.features import errwatch
 from ark_relay.core import texts
-masuser = _sys.modules[__name__]
+masuser = _sys.modules[__name__]  # tests read mastercfg.masuser
 
 _BOOL = {"yes": True, "true": True, "on": True, "no": False, "false": False, "off": False}
 _INT = re.compile(r"[-+]?[0-9]+")
@@ -544,8 +544,8 @@ def _has(node: dict, group: str, key: str) -> bool:
 
 
 def _user_has(user: dict, item: Item) -> bool:
-    if masuser.MOVED.get(item.key) == item.group:
-        return _has(user, masuser.group_of(user, item.key), item.key)
+    if MOVED.get(item.key) == item.group:
+        return _has(user, group_of(user, item.key), item.key)
     return _has(user, item.group, item.key)
 
 
