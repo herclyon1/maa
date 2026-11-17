@@ -14,15 +14,6 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 def _part_desktop_focus():
     """Desktop focus and short-word matching. No Windows here: the spawn is faked to
 write the result JSON the way agent.ps1 does.
-
-1. When the window asked for (focus=) is not found, the agent still screenshots
-   and OCRs whatever is in front. That text must not come back as the launcher's
-   screen, and nothing may be clicked: read() gives an empty Screen with
-   focus_missing=True, click()/click_text() give False.
-2. Words of two characters or fewer must be the whole OCR line: 「更新」 must not
-   hit a news headline 「版本更新公告」.
-
-    Formerly test_desktop_focus.py.
     """
     import json
 
@@ -96,8 +87,6 @@ write the result JSON the way agent.ps1 does.
     check("位置参数构造默认 False", getattr(s, "focus_missing", None), False)
 
     print("\n[桌面助手自己失败（ok 为 false）：读屏给空屏、带 error，部分行不算数]")
-    # relay.log 5356-5397 (09-02): 「桌面助手 … 超时没有结果」. A throw part-way (the
-    # catch in AGENT_PS) can leave OCR lines in the result with ok false.
     sp = agent({"ok": False, "clicked": [], "ocr": OTHER_WINDOW,
                 "log": ["focus: Games 「Hypergryph Launcher」", "ERR 读屏出错"]})
     scr = Desktop(tmpdir() / "state", spawn=sp, timeout=5).read(focus="Games")
@@ -135,16 +124,7 @@ write the result JSON the way agent.ps1 does.
 
 
 def _part_desktop_kill():
-    """desktop.kill says when taskkill did not end a program (review 2026-10-13, s5 #8).
-
-kill() dropped every taskkill result, so 「access denied」 (exit code 1) looked to
-its callers (the game-update flows, the make-up) exactly like a kill that worked.
-Now: exit 0 (ended) and 128 (no such program running) are fine; anything else, or
-a taskkill that could not run, is a WARNING and kill() returns False.
-No Windows here: subprocess.run is faked.
-
-    Formerly test_desktop_kill.py.
-    """
+    """desktop.kill says when taskkill did not end a program (review 2026-10-13, s5 #8)."""
     import logging
     import types
 
@@ -202,20 +182,7 @@ No Windows here: subprocess.run is faked.
 
 
 def _part_desktop_no_window():
-    """A desktop picture never puts a window on the screen.
-
-2026-10-11 09:39 (evidence 2026-10-11_endfield_MaaEnd-05-30-34): the task-end
-picture after 信用点购物 started PowerShell through the Interactive scheduled
-task; its console window took the foreground from Endfield, which MaaEnd drives
-with its foreground controller. The game stayed behind the taskbar for 25 s
-(maafw.log: 159 x 「Failed to ensure foreground window before screencap」), the
-taskbar covered the 「ENDFIELD」 mark MaaEnd's InMenuList check reads, and
-转交委托 failed. Every picture or read that does not bring a window to the front
-must go through the windowless route: pythonw.exe starting PowerShell with
-CREATE_NO_WINDOW. No Windows here: spawns are faked.
-
-    Formerly test_desktop_no_window.py.
-    """
+    """A desktop picture never puts a window on the screen."""
     import ast
     import json
     from pathlib import Path, PureWindowsPath
@@ -327,8 +294,6 @@ def _part_desktop_screenshot():
 agent, None when the agent does not come back with a file. No Windows here:
 the spawn is faked to behave like the agent (write the result JSON, drop the
 png the request names).
-
-    Formerly test_desktop_screenshot.py.
     """
     import json
     import threading
@@ -418,15 +383,6 @@ png the request names).
 
 def _part_desktop_workfiles():
     """The desktop agent's working files do not pile up in state/desktop/ (review 2026-10-13, s5 #7).
-
-Every read(), click_text() and screenshot() left req-<id>.json, res-<id>.json,
-shot-<id>.png and shot-<id>-x2.png behind, and nothing removed them. Now the
-request and result go as soon as the answer is read, and screenshots older than
-Desktop.WORK_KEEP_SECONDS go at the next run (a fresh one is kept: its path is
-quoted in problem notes and in the machine checks' trace). Files of other
-features in the same folder are never touched. No Windows here: spawns are faked.
-
-    Formerly test_desktop_workfiles.py.
     """
     import json
     import os
@@ -482,23 +438,6 @@ features in the same folder are never touched. No Windows here: spawns are faked
 def _part_spawn_direct():
     """The installed relay starts programs itself; each scheduled-task launch has a name of its own
 (audit 11-08 A-21; dispatch relay-opt-round4-1108 R4-02; preupdate_common._spawn_here).
-
-The relay now runs in the logged-on user's session (app_main.py, \\ArkRelay\\main, highest
-privileges), yet every picture, click and launcher start still went through PowerShell
-building a scheduled task and waiting 3 s, and that task was named after the program only,
-so two launches of one program within those 3 s (two threads taking pictures) replaced or
-unregistered each other's task. Pinned here, with Windows faked:
-
-* elevated on the console session: Popen, no PowerShell; out of the relay task's job
-  (CREATE_BREAKAWAY_FROM_JOB), the logged-on user's environment, a console window or
-  CREATE_NO_WINDOW as asked, SW_SHOWMINNOACTIVE when minimized; the hidden route writes no
-  pythonw launcher;
-* breakaway refused (access denied): the task route, now and for every later start;
-* another start failure, or not on the console / not elevated / no environment: the task
-  route, as before;
-* the task route: a new task name on every launch, under the program's stem.
-
-    Formerly test_spawn_direct.py.
     """
     import subprocess
     from types import SimpleNamespace
@@ -646,21 +585,7 @@ unregistered each other's task. Pinned here, with Windows faked:
 
 
 def _part_display_wake():
-    """display_wake: the display is woken while AUTO-MAS starts Endfield through its launcher.
-
-2026-10-16 13:21 (a hand-started make-up), attempt 1: the game PC's display had been
-off (power plan, 300 s idle), the Hypergryph launcher kept its main window hidden
-(games.log 13:21:31.615 bMainWndHide:true / 13:21:31.616 「display off」), AUTO-MAS
-only wakes a running screensaver, and at 13:23:36 it gave up: 「游戏启动失败: 等待终末地
-游戏窗口超时」. Nothing in the relay woke the display.
-
-Fixture: the real app.log lines of that day (HTTP request lines left out):
-09:33:54-09:34:05 (OK-WW finishing, then MaaEnd refused at its config check: no
-launch), 13:21:13-13:26:14 (attempt 1 hand-off 13:21:28.423, timeout 13:23:36.444,
-attempt 2 hand-off 13:23:36.799, game up 13:26:14.036) and 13:53:00-13:54:52 (attempt 3).
-
-    Formerly test_display_wake.py.
-    """
+    """display_wake: the display is woken while AUTO-MAS starts Endfield through its launcher."""
     import json
     import logging
     import threading
@@ -765,10 +690,6 @@ attempt 2 hand-off 13:23:36.799, game up 13:26:14.036) and 13:53:00-13:54:52 (at
     check("tried at 13:21:29 and again at 13:22:29", calls, [at("13:21:29"), at("13:22:29")])
 
     print("\n[AUTO-MAS v5.7.0-beta.5: the bare mode line arms it, for 「MaaEnd 启动」 too (10-17)]")
-    # beta.5 AutoProxy.py:496/503/521 log the mode alone, no 「，将由 MAS ...」 (the machine's app.log
-    # 2026-10-17 11:31:03.832: 「启动方式为「MaaEnd 启动」」); efstart_setup sets 「MaaEnd 启动」 since
-    # 10-17, whose pretask starts Launcher.exe and finds it by its window. Same logger and layout
-    # as the 10-16 lines above; the times are this fixture's own.
     B5 = "2026-10-16 15:00:03.832 | INFO     | MaaEnd 自动代理 | "
     B5_UP = "2026-10-16 15:01:30.100 | INFO     | MaaEnd 自动代理 | 运行脚本任务: D:\\ark\\maaend\\MaaEnd.exe"
     for mode in ("MaaEnd 启动", "启动器启动"):
@@ -881,25 +802,6 @@ attempt 2 hand-off 13:23:36.799, game up 13:26:14.036) and 13:53:00-13:54:52 (at
 
 def _part_selfupdate_atomic_sha256():
     """Self-update lands all files or none, and checks them by SHA-256 (review of 2026-10-07, item 4).
-
-Two gaps were left after the download-everything-first rule:
-
-* _write_staged wrote the targets one by one. A disk or permission error on the
-  second file left the first one new and the rest old - and check() then
-  cleared the failure it had just recorded and announced an update, and
-  service.py restarted into the mixed version. Now every file is written to a
-  staging directory first, and only when all of them are there are they swapped
-  in; a failure while swapping puts back the ones already swapped. Either way
-  the originals are what is on disk after a failure, and the failure stays
-  recorded.
-* Files were checked by SHA-1 only, which hashlib lists as a legacy algorithm.
-  make-manifest.py now writes a `sha256` map next to `files`; the relay checks
-  by it when it is there. `files` stays SHA-1 for one version, so a machine
-  still on the old code (which only reads `files`) updates normally onto this
-  one; a manifest with no `sha256` (one made before this change) is still
-  checked by SHA-1.
-
-    Formerly test_selfupdate_atomic_sha256.py.
     """
     import hashlib
     import json
@@ -1074,25 +976,7 @@ Two gaps were left after the download-everything-first rule:
 
 
 def _part_selfupdate_cos():
-    """selfupdate.py's first door is the COS bucket; GitHub's four stay as the fallback.
-
-2026-09-18: a manifest pushed at 02:31 was still the old one on the machine's
-jsDelivr node at 08:45 (per-node caches), and the fix only landed by a hand
-deploy. COS has no cache layer. What this file pins:
-
-* latest.json is read first; when its version is not newer, no manifest and no
-  bundle are fetched (one tiny request per boot).
-* A newer version on COS: manifest + bundle from COS, every wanted file
-  verified against the manifest's SHA-1, nothing asked of GitHub.
-* Anything wrong on COS (missing object - the lifecycle rule -, bad hash in the
-  bundle, latest/manifest disagreeing, the client itself failing) falls back to
-  the GitHub doors silently - never an abandoned round because of COS.
-* Without COS credentials nothing changes: the GitHub path as before.
-* The GitHub fallback fetches files concurrently and still lands all-or-nothing.
-No network: _get_once and _cos_get are replaced.
-
-    Formerly test_selfupdate_cos.py.
-    """
+    """selfupdate.py's first door is the COS bucket; GitHub's four stay as the fallback."""
     import hashlib
     import io
     import json
@@ -1190,10 +1074,6 @@ No network: _get_once and _cos_get are replaced.
     check("版本号记下了", StateStore(root / "state").get("versions", "code"), "20260918020000")
 
     print("\n[COS 上不比本机新：只读一次 latest.json，到此为止——GitHub 一扇门都不问]")
-    # 2026-09-18 19:14, right after a deploy: COS said "this very version", yet the old
-    # logic went on to GitHub, waited 20 s on a reset from raw, then warned "manifest
-    # older than local, cache probably stale" about a manifest that was simply the
-    # previous one. Every deploy writes COS last, so GitHub can never be ahead of it.
     net, cos, root = setup(
         {"latest.json": b'{"version": 20260917000000}'},
         {"fastly.jsdelivr.net": {"manifest.json": MAN_V2, "ark_relay/a.py": NEW_A, "ark_relay/b.py": NEW_B}},
@@ -1206,7 +1086,6 @@ No network: _get_once and _cos_get are replaced.
     check("磁盘没动", (root / "ark_relay/a.py").read_bytes(), OLD_A)
     check("已是最新 = 没有未完成的事，旧的失败报告清掉", su.take_failure(root), None)
 
-    # ---- GitHub doors off by default (operator decision 2026-09-18 evening) ----
     print("\n[默认不开备用线路：COS 的清单拿不到 → 记失败、一扇 GitHub 门都不问、磁盘不动]")
     os.environ.pop(su.GITHUB_FALLBACK_ENV, None)
     net, cos, root = setup(
@@ -1322,9 +1201,6 @@ No network: _get_once and _cos_get are replaced.
     updated = su.check(root, "https://raw.githubusercontent.com/herclyon1/maa/main/relay/")
     check("12 个文件全更新", len(updated), 12)
     check("确实并发了（峰值 >1）", net.peak > 1)
-    # Width, not wall time: a 50 ms time.sleep on this Mac measured 130-150 ms on
-    # 2026-09-23 06:06 (OS timer slack), which turned the old "under 0.45 s" into a
-    # test of the clock. Full pool width is what makes the fallback faster.
     check(f"并发宽度用满（峰值 = PARALLEL_FETCHES = {su.PARALLEL_FETCHES}）", net.peak, min(su.PARALLEL_FETCHES, 12))
     missing_one = dict(many); missing_one.pop("ark_relay/m7.py")
     net = SlowNet({"fastly.jsdelivr.net": {"manifest.json": man, **missing_one}}); su._get_once = net.get; su._last_good = ""
@@ -1339,30 +1215,7 @@ No network: _get_once and _cos_get are replaced.
 
 
 def _part_selfupdate_doors():
-    """selfupdate.py 的四扇门、粘性、拒绝旧清单、对不上哈希就一个字节都不落盘。
-
-这个文件防的损失只有一种，但它是最难发现的一种：**推上去的修复到不了机器，
-而屏幕上一片绿**。中继自己不会喊「我没更新成」，日志照常打「已更新 N 个文件」，
-人在另一个国家，只能等下一次事故才发现机器还在跑旧代码。
-
-具体钉四件事：
-
-* **四扇门的顺序**（fastly → cdn → gcore → raw）。2026-08-21 在机器上量过 8 轮：
-  fastly 8/8 平均 426ms，raw 2/8 平均 38 秒。顺序被人「顺手整理」一下，
-  开机那 8 分钟的窗口就全耗在最慢的门上，更新赶不上 09:00 的队列。
-* **粘性**：上次哪扇门成了，下次先问它。raw 整晚整晚地黑（08-17、08-20 各一次），
-  没有粘性的话，一次多文件更新的每个文件都要先在死门上耗满超时。
-* **拿到的清单比本机旧就必须拒绝**。2026-08-21 出过一次：CDN 缓存着上一版的
-  「旧清单 + 旧 .py」，两者自洽、哈希也对得上，机器被静默降级回旧代码，
-  日志写着「已更新 1 个文件」，一切正常。判据不许写成 `remote and local and ...`
-  ——没有版本号的旧清单 remote_ver 是 0，那种写法会直接放行。
-* **哈希对不上，一个字节都不许落盘**。半个更新比不更新危险得多：service.py
-  一看到文件变了就重启，于是重启进一个「新 engine.py + 旧 core.py」的中继。
-
-全程不联网：`_get_once` 被换成假的，重试之间的等待也跳过。
-
-    Formerly test_selfupdate_doors.py.
-    """
+    """selfupdate.py 的四扇门、粘性、拒绝旧清单、对不上哈希就一个字节都不落盘。"""
     import json
     import time
 
@@ -1370,9 +1223,6 @@ def _part_selfupdate_doors():
     from ark_relay.features import selfupdate as su
     from ark_relay.core.statestore import StateStore
 
-    # Everything here is the GitHub fallback, which is off by default since
-    # 2026-09-18 (see selfupdate.GITHUB_FALLBACK_ENV); switch it on for this file.
-    # The default-off behaviour is pinned in test_selfupdate_cos.py.
     import os
     os.environ[su.GITHUB_FALLBACK_ENV] = "1"
 
@@ -1454,9 +1304,6 @@ def _part_selfupdate_doors():
           ["https://raw.githubusercontent.com/herclyon1/maa"])
 
     print("\n[_pinned_base：文件按清单自己的标签取，不按分支——标签不会动，哪扇门答都是对的字节]")
-    # Evening of 2026-09-18: eight hours after the push and the purge, cdn and gcore still
-    # served the previous RELEASE-NOTES.md, raw and fastly were reset or timed out, one
-    # file ate the whole 240 s budget, the round was abandoned, the machine ran old code.
     check("有 ref 就换成标签", su._pinned_base(BASE, {"ref": "relay-20260918111328"}),
           "https://raw.githubusercontent.com/herclyon1/maa/relay-20260918111328/relay/")
     check("四扇门都跟着标签走",
@@ -1575,8 +1422,6 @@ def _part_selfupdate_doors():
     check("留了播报记号", note and note["files"], ["a.py"])
 
     print("\n[清单带 ref：清单从分支取，文件从标签取；分支上的旧副本碰不到这一轮]")
-    # The branch doors still hold last version's a.py (cdn/gcore on the evening of
-    # 2026-09-18); only the tag has the right one.
     class RefNet(Net):
         def get(self, url, timeout=20):
             host = su._netloc(url)
@@ -1681,14 +1526,6 @@ def _part_selfupdate_doors():
     check("本机没有的非源码文件不算（它不会被创建）",
           su._wanted_files(root, {"nope.exe": sha}), [])
 
-    # ---- A manifest file this machine does not have ----
-    # 2026-09-08: banners.py was split into five files and pushed to main. The old
-    # behaviour was to write the edited banners.py, skip the four new modules it
-    # imports, stamp the version as up to date, and restart the process - which then
-    # died on ModuleNotFoundError, and because the version was already stamped it
-    # would never try again. Half an update is far more dangerous than none - so a
-    # new source file is staged with the rest (all or nothing), and a new file that
-    # is not source still abandons the round.
     import ark_relay.features.selfupdate as SU
 
     _root = tmpdir()
@@ -1705,19 +1542,7 @@ def _part_selfupdate_doors():
 
 
 def _part_selfupdate_exit():
-    """A self-update restart must stop the old process before the boot stages run.
-
-Real sequence, 2026-09-29 (machine clock, Beijing):
-08:45:23 「代码已更新，重启以立即生效」 - the detached restarter is started, but
-_stage_selfupdate returned None (a bare return since 25b76dd4 on 09-08), so
-service.py carried on; 08:45:51 the dying process launched MAA for the
-pre-update; 08:45:57 the stop hard guard force-exited it, with MAA still open;
-08:46:00 that MAA logged "current version is latest"; 08:46:14 the new process
-launched MAA again, got "Existing instance window activated by a secondary
-launch" and no further gui.log line; 08:49:14 「180 秒内没给出更新结论」.
-
-    Formerly test_selfupdate_exit.py.
-    """
+    """A self-update restart must stop the old process before the boot stages run."""
     import ast
     import types
 

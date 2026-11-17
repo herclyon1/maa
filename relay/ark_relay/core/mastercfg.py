@@ -1,10 +1,5 @@
 """Read the YAML AUTO-MAS writes - and only that much YAML.
 
-AUTO-MAS v5.8.0-beta.1 (installed on the machine 2026-10-23 08:48 Beijing) keeps its settings in
-config/scripts.yaml, queues.yaml and plans.yaml instead of the JSON files the relay read
-(masconfig). The relay's own Python has no YAML library (Python, Pillow and pywin32 only), so
-this reads the subset PyYAML's block-style dump produces there:
-
 * block mappings and sequences, including a sequence at its parent key's indent;
 * plain scalars (null / ~, YAML 1.1 booleans, ints, floats, else strings), folded over lines;
 * single- and double-quoted scalars, folded over lines (scripts.yaml folds long JSON strings);
@@ -318,12 +313,6 @@ def pick(users) -> "tuple[str, dict] | None":
 # The JSON file a reader asks for -> the YAML file v5.8 keeps the same settings in.
 YAML_OF = {"ScriptConfig.json": "scripts.yaml", "QueueConfig.json": "queues.yaml",
            "PlanConfig.json": "plans.yaml"}
-# v5.8 also writes every time as UTC ISO ('2000-01-01T01:00:00Z' for the 09:00 morning queue),
-# where v5.7 wrote the machine's local time in a per-field form (legacy-json/QueueConfig.json of
-# the same machine, 2026-10-23: "Time": "09:00", "LastTimedStart": "2026-10-22 09:00",
-# "LastStartupTime": "2000-01-01", "LastProxyDate": "2026-10-22", "NextRunAt":
-# "2000-01-01 00:00:00"). plan._hhmm reads "HH:MM" and found no time in the ISO form, so the
-# times go back to those forms; any other key gets the date and time.
 _ISO_Z = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z")
 _TIME_FORM = {"Time": "%H:%M", "LastTimedStart": "%Y-%m-%d %H:%M", "LastStartupTime": "%Y-%m-%d",
               "LastProxyDate": "%Y-%m-%d"}
@@ -451,16 +440,10 @@ CONTRACT: tuple[Item, ...] = tuple([
             "selfcheck.py:_handed_updates_gaps"),
     *_items("MaaEnd", "script", "Game", ("WaitTime",), "maaend_wait",
             "commands.py:_set_wait_time (write)"),
-    # LaunchMode / LauncherPath: AUTO-MAS v5.7.0-beta.4 (PR #1394); its pre-run check finds the
-    # launcher from Game.Path (10-16 09:34 it refused the relay's .cmd there).
     *_items("MaaEnd", "script", "Game", ("Path",), "maaend_launch",
             "efstart_setup.py:install/launcher_for (write)"),
     *_items("MaaEnd", "script", "Game", ("LaunchMode", "LauncherPath"), "maaend_launch",
             "efstart_setup.py:install/launcher_for (write LaunchMode)", since="v5.7.0-beta.4"),
-    # 「MaaEnd 启动」 (10-17): LaunchMode "MaaEnd" only when MaaEnd's launcher pretask supports
-    # Game.ControllerType (maaend_launch.check), and the four settings that make it start the
-    # game as a 1280x720 window and write fullscreen 1920x1080 back after the run. All five
-    # are in MaaEndConfig since v5.7.0-beta.2 at least (fixtures/automas-models/config.py.txt).
     *_items("MaaEnd", "script", "Game", ("ControllerType",), "maaend_launch",
             "efstart_setup.py:install (maaend_launch.check)"),
     *_items("MaaEnd", "script", "Game", ("SetResolution", "CloseOnFinish", "RestoreDisplayType",
@@ -653,9 +636,6 @@ def _maa_warn_once(site: str, why: str, msg: str, *args, exc_info: bool = False)
         log.warning(msg, *args, exc_info=exc_info)
         _maa_said[site] = why
 
-# Drone targets: keys and Chinese names from MAA's
-# InfrastSettingsUserControlModel.UsesOfDronesList and docs/protocol/integration.md
-# (checked 2026-09-07, v6.17).
 MAA_DRONES: tuple[tuple[str, str], ...] = (
     ("_NotUse", "不使用"),
     ("Money", "贸易站 · 龙门币"),
@@ -670,12 +650,6 @@ MAA_DRONES: tuple[tuple[str, str], ...] = (
 MAA_DRONES_PATH = "Infrast/UsesOfDrones"
 
 
-# The 领取奖励 (Award) task's switches: every bool property of MAA's
-# Configuration/Single/MaaTask/AwardTask.cs, labels from AsstAwardTask.cs
-# (checked 2026-11-08, v6.19.0). All seven are open since 2026-11-08 (the
-# user's order, relayed by Gemini in 中继-App-MAA领奖励治本-1108); until then
-# Award, FreeGacha and SignInEvent were not offered, and FreeGacha was held back
-# because MAA asks for confirmation before turning it on.
 MAA_AWARD: tuple[tuple[str, str], ...] = (
     ("Award", "领取每日/每周任务奖励"),
     ("Mail", "领取所有邮件奖励"),
@@ -978,8 +952,6 @@ OKWW_SHOWN: dict[str, tuple[str, ...]] = {
 }
 
 
-# Shown on the phone page but not editable: the Nightmare Nest locations are a
-# standing order from the user (10-12 11:2x: the first two nests of the list).
 OKWW_READONLY: dict[str, tuple[str, ...]] = {
     "NightmareNestTask.json": ("Only Farm These Nests",),
 }
@@ -1166,7 +1138,6 @@ def write_okww(automas_dir, path: str, value, okww_dir=None) -> tuple[bool, str]
 # say mastercfg.<name>, so those names are importable from here too.
 
 
-
 # This module's public names plus every name re-exported from the modules above
 # (callers and tests say mastercfg.<name>); pyflakes and ruff count a listed name as used.
 
@@ -1193,9 +1164,6 @@ MAAEND_SHOWN: dict[str, tuple[str, ...]] = {
         "@enabled",
         # Besides the switch: which days and which routes it gathers.
         "AutoCollectSchedule",          # Which days to gather (哪几天采)
-        # From v2.28.0-beta.5 routes are per region: a switch for the region,
-        # then its rare and common lists (the old AutoCollectRoutes is gone).
-        # v2.36.0-beta.5 (2026-10-29) picks by item: *Routes became *Items.
         "AutoCollectValleyIV",
         "AutoCollectValleyIVRareItems",
         "AutoCollectValleyIVCommonItems",
@@ -1821,18 +1789,6 @@ def _prune_refused(note: str) -> tuple[list[str], str]:
     return [], note
 
 
-# ── Option format changes between MaaEnd versions ───────────────────────────
-# v2.28.0-beta.5 split 自动采集's one route list into a per-region switch plus
-# rare/common checkboxes, and made 基质刷取's location a sub-option of a new
-# AutoEssenceMenu. MaaEnd discards a saved value whose option no longer exists and
-# runs on defaults, and AUTO-MAS copies the master over before every run, so old
-# keys in the master are rewritten here. Each entry: old key -> how to rewrite it.
-# Only observed changes are translated; any other dead key is removed and named
-# in the note.
-# v2.36.0-beta.5 (installed 2026-10-29 10:27 Beijing) picks gathering by item instead of by route: the four
-# *Routes checkboxes became *Items checkboxes whose cases are item ids. Each old route gathered one item (route 7
-# gathered two), named in MaaEnd's own zh_cn locale on both sides (beta.4 「路线4：纯晶多齿叶」, beta.5 item
-# 「纯晶多齿叶」), so this table is read off those two files, not guessed. A route not in it is dropped and named.
 _COLLECT_ITEMS = {
     "AutoCollectValleyIVRareRoutes": ("AutoCollectValleyIVRareItems", {
         "Route4": ["item_plant_crylplant_1_2"], "Route5": ["item_plant_spcstone_1_1"],

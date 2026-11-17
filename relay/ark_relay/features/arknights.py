@@ -16,13 +16,6 @@ from ark_relay.core.config import SERVER_TZ
 from ark_relay.features.banners import Banner, crosscheck_fix, debut_only, _ef_cms_text, log, _NOT_DEBUT, record_history, _RERUN, _stamps, Trace, _UA_BROWSER, _UA_PLAIN, _yituliu_future
 
 
-# ── Arknights: PRTS ────────────────────────────────────────────
-# One row looks like this (as observed):
-#   |[[文件:X.jpg|400px|link=Y]]<br/>[[Y|【限定寻访·夏季】车辙与风的归所]]
-#   |2026-08-01 12:00~<br/>2026-08-15 03:59
-#   |{{干员头像|予愿安洁莉娜|limited=1}}{{干员头像|珊比}}
-# PRTS also writes a one-digit day or month: 「2022-12-1 16:00~<br/>2022-12-15 03:59」
-# (雪融之诺 复刻); strptime takes both.
 _AK_TIME = re.compile(r"(\d{4}-\d{1,2}-\d{1,2} \d{1,2}:\d\d)\s*~\s*<br\s*/?>\s*"
                       r"(\d{4}-\d{1,2}-\d{1,2} \d{1,2}:\d\d)")
 # Both spellings must be recognised: [[page|shown]] and [[page]]; image links are
@@ -60,17 +53,6 @@ def parse_arknights(wt: str) -> list[Banner]:
     return out
 
 
-# The same table as the rendered page, for when PRTS's API is down. 2026-09-26 21:53-23:05
-# the API, index.php?action=raw and the front page all answered 503 "Backend fetch
-# failed" from the machine and from the Mac alike, while /w/卡池一览/限时寻访 came back
-# 200 from PRTS's CDN cache. A row of that page, as observed:
-#   <td>...<a href="/w/BANNER" title="BANNER">BANNER</a></td>     (BANNER = 石白深蓝之夜)
-#   <td>2026-09-04 12:00~<br />2026-09-18 03:59</td>
-#   <td>...<a href="/w/结城理" title="结城理"><span ...><img id="charicon" .../>
-#       <img id="levlicon" ... src=".../稀有度_黄_5.png..." />...
-# The levlicon number is the same 0-based rarity as the operator page's 稀有度 field:
-# on that page 1017 icons, every name always the same number, 5 for the six-stars
-# 予愿安洁莉娜 / 结城理 and 4 for the five-stars 埃癸斯 / 嘉辛塔.
 _PRTS_PAGE = "https://prts.wiki/w/"
 _AK_HTML_TIME = _AK_TIME
 _AK_HTML_NAME = re.compile(r'<a href="/w/[^"]*" title="[^"]*">([^<]+)</a>')
@@ -113,10 +95,6 @@ def parse_arknights_html(page: str) -> "tuple[list[Banner], dict[str, int]]":
 # urlencode leaves the string ending in "&page=", so the page title is appended as is.
 _PRTS = "https://prts.wiki/api.php?" + urllib.parse.urlencode(
     {"action": "parse", "prop": "wikitext", "format": "json", "page": ""})
-# Only the limited-banner page. 「卡池一览/常驻标准寻访」 is the operator rotation pool:
-# its table has no banner name (it parses to zero rows here), and every operator on it
-# debuted earlier in a limited banner (checked 2026-08-31). A debut on another page
-# would need that page added here.
 _AK_PAGES = ("卡池一览/限时寻访",)
 
 
@@ -163,34 +141,6 @@ def six_star_only(b: Banner, fetch=None, failed: "list[str] | None" = None) -> B
     return Banner(b.game, b.name, tuple(keep), b.start, b.end)
 
 
-# The official site. Its news page is Next.js-rendered; the relay reads the two
-# JSON endpoints behind it instead (both measured 2026-10-07):
-#  * the list, one tab at a time, newest first, 6 a page:
-#    /api/news?category=ACTIVITY|ANNOUNCEMENT|NEWS&page=N ->
-#    {"code":0,"data":{"list":[{cid,title,displayTime,brief…}],"end":bool}}
-#    (ACTIVITY = 活动 tab with the banner posts, ANNOUNCEMENT = 公告 tab with the
-#    maintenance notices, NEWS = 新闻 tab with the 制作组通讯);
-#  * one post, from the bulletin backend Endfield's site uses too (code=arknights):
-#    web-news.hypergryph.com/api/bulletin/<cid> -> {"code":0,"data":{…,"data":"<p>…"}},
-#    the article HTML escaped once (read by _ef_cms_text). On all 12 sample posts
-#    (2019-05 to 2026-10) parse_ak_post reads the same banners from it as from
-#    the page (test_banners._ak_history).
-# _AK_NEWS stays the address people open (sources, traces); the page reader below
-# (_AK_NEWS_ITEM, _ak_article_text) is left for the Endfield page fallback and for
-# post texts cached from the page before 2026-10-07 (update_arknights_history).
-# Compared 2026-10-12 with gacha-calendar-core 0.11.3 (npm, MIT), i.e.
-# EastMG/dsh-gacha-calendar src/client/30-game-hypergryph.js @ 8070578:
-#  * post body: the same endpoint (web-news.../api/bulletin/<cid>?code=arknights).
-#  * list: upstream reads one unfiltered page of web-news.../api/bulletin and
-#    keeps only titles 「【X】限时寻访」 with the brief's 活动时间. That misses
-#    every regular debut, which is announced only as a numbered section of an
-#    event preview post (cid 5101 「二、【海渊巡游】限时寻访开启」), so the
-#    ACTIVITY-tab list + parse_ak_post here is kept. (The same backend also
-#    filters by tab with tabs[]=1, total 240 = this list's; upstream does not
-#    use it and it would save no code, so not adopted.)
-#  * PRTS: upstream parses the 卡池一览 summary (rotation pools included);
-#    the full 卡池一览/限时寻访 table below is what the debut check and the
-#    history need, so it is kept.
 _AK_NEWS = "https://ak.hypergryph.com/news"
 _AK_NEWS_API = "https://ak.hypergryph.com/api/news?category={cat}&page={page}"
 _AK_POST = "https://web-news.hypergryph.com/api/bulletin/{cid}?lang=zh-cn&code=arknights"
@@ -231,16 +181,6 @@ def ak_post_text(get, cid: str) -> str:
     return _ef_cms_text(str((d.get("data") or {}).get("data") or ""))
 
 
-# A banner is announced in one of two places, both in the site's ACTIVITY tab:
-#  * a post of its own (cid 6247, title ending 【车辙与风的归所】限时寻访即将开启);
-#    only limited and collab banners get one;
-#  * a numbered section of the event's preview post. Every regular debut banner
-#    is announced only this way: cid 5101 (10-03) has section 「二、【海渊巡游】限时寻访开启」
-#    with its span and six-star line. Reading post titles alone misses these.
-# The heading wordings met in all 239 ACTIVITY posts (2019-05 to 2026-10) are
-# pinned one by one in test_banners._ak_history: a section heading names the
-# banner in 【】 right before 寻访…开启, 限时复刻开启 or, in 2019, after 限时卡池.
-# 「复刻」 and 「返场」 (2020) in the heading mark a rerun.
 _AK_BANNER_HEAD = re.compile(r"【([^】]+)】(?:[^【】\s]{0,10}?寻访(?:即将|限时)*(?:复刻)?|限时复刻)开启"
                              r"|限时卡池【([^】]+)】开启")
 _AK_RERUN_HEAD = ("复刻", "返场")
@@ -253,9 +193,6 @@ _AK_SECTION = re.compile(r"(?:^|\s|活动)[一二三四五六七八九十]{1,3}�
 _AK_SIX_LINE = re.compile(r"★{6}\s*[：:]?\s*([^（(★\s\"][^（(★\"]*)")
 _AK_NAME_SPLIT = re.compile(r"[/、\\]")
 _AK_TAG = re.compile(r"\[[^\]]*\]")
-# The span is month/day hh:mm - month/day hh:mm, and was also written with the
-# year (cid 2021120792, across the new year), with 版本更新后 for the opening clock
-# (cid 6262, 2025-10-25) and with 上午 before the clock (2019).
 _AK_SPAN = re.compile(
     r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日\s*(?:(上午|下午)?(\d{1,2}):(\d{2})|(版本更新后))\s*[-~～]\s*"
     r"(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日\s*(上午|下午)?(\d{1,2}):(\d{2})")
@@ -395,19 +332,11 @@ def arknights_history(get=None, prts_rows: "list[Banner] | None" = None,
                       post_text=None) -> "list[AkPast]":
     """Every banner the official site and PRTS still hold, oldest first.
 
-    The same sources and the same readers as the next-banner line
+The same sources and the same readers as the next-banner line
     (`_arknights`): the official site's posts read by `parse_ak_post` - every
     page of the ACTIVITY tab, through the site's own list endpoint
     (`ak_news_pages`, 6 a page), each post's text from `post_text(cid)`
     (default `ak_post_text`) - and the PRTS table read by `parse_arknights`.
-
-    A post's banner is matched to a PRTS row by start and name; `source` names
-    both, and `check` says where they differ (empty when they agree, or when
-    only one has the banner). A PRTS row no post matches comes last in its
-    place with the operators PRTS lists (PRTS does not mark six-stars): pools
-    without an UP six-star (定向甄选, 联合行动, 跨年欢庆) and banners whose post is gone.
-    Asked for by the user on 2026-10-06 at 18:55, who said past banners should be
-    read the way the next one is: 「你们怎么查到下期数据应当能查到往期的数据」.
     """
     tr = trace if trace is not None else Trace.new()
     get = get or (lambda u: hub._text(u, _UA_BROWSER))
@@ -620,9 +549,6 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
         tr.checks.append(line)
         if fixed is not b:
             live[i] = debut[debut.index(b)] = fixed
-    # The other direction: a debut banner the official site has open goes in the
-    # report even when PRTS has not listed it yet (the day it opens, PRTS can lag
-    # the post; a missing row read as 「当期无新角色卡池」 before 2026-11-08).
     prts_running = [r for r in rows if r.start <= now <= r.end]
     for st, who, _p, en, cid in posts:
         # a post that gives the opening day only (「版本更新后」) counts from the next day
@@ -639,12 +565,9 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
         live.append(b)
         tr.src("明日方舟", "当期", f"{_AK_NEWS}/{cid}", f"{pool} {chars} {st:%Y-%m-%d %H:%M}~{en:%Y-%m-%d %H:%M}")
         hub.official_fill("明日方舟", "资料站", b, "官网寻访公告", tr)
-    # The earliest announced one not yet open, whichever post it is in: one post
-    # can announce two (cid 2019084798: 深夏的守夜人 08-27, then 久铸尘铁 09-10).
     if fut := [(st, who, en) for st, who, _p, en, _c in posts if st > now]:
         st, who, en = min(fut)
         tr.starts |= _stamps(st)
-        # the post prints the end too (cid 5101: 10-09 12:00 - 10-23 03:59), so the line says it
         tr.ends |= _stamps(en)
         tr.until["明日方舟"] = en
         return debut, (st, who)
@@ -663,8 +586,6 @@ def _arknights(now: datetime, trace: "Trace | None" = None,
         tr.ends |= _stamps(nxt.end)
         tr.until["明日方舟"] = nxt.end
         return debut, (nxt.start, f"{'、'.join(nxt.chars)}「{nxt.name}」")
-    # Last, the Yituliu table - only an entry it marks as announced. Its
-    # predictions are recorded in the trace and never printed (2026-09-30).
     fut = _yituliu_future("明日方舟", now, tr)
     if ok := next(((n, st) for n, st, flag in fut if flag), None):
         tr.starts |= _stamps(ok[1])
@@ -703,9 +624,6 @@ def update_arknights_history(state_dir, get=None, prts_rows=None, budget: int = 
     left = [budget]
 
     def post_text(cid: str) -> str:
-        # Keyed by the post's page address, as since the cache began: the texts
-        # cached before 2026-10-07 were read off that page (_ak_article_text) and
-        # parse to the same banners as the backend's (test_banners._ak_history).
         key = f"{_AK_NEWS}/{cid}"
         if key not in cache:
             if left[0] <= 0:

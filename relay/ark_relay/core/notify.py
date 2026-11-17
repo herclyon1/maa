@@ -251,11 +251,6 @@ class WeComBot:
     # Plain text, not markdown: the group is a WeChat group and WeChat shows a
     # robot's markdown as 「暂不支持此消息类型」. The text cap is 2048 bytes.
     _LIMIT = 1800
-    # 2026-11-05 北京 10:56: runwatch's overrun alarm carried AUTO-MAS's whole task log (38151
-    # characters) as its 「最后一句」 and went out as 20 of 44 parts before the robot's 20-a-minute
-    # cap refused the 21st (45009) - the group was flooded and every other alarm of that minute
-    # failed. A group message is for a person to act on: past MAX_PARTS parts the rest is cut with
-    # a note, and the cut is logged so the text that grew that long gets fixed.
     MAX_PARTS = 3
 
     def __init__(self, cfg: Config):
@@ -273,9 +268,6 @@ class WeComBot:
             return text
         budget = cls._LIMIT * cls.MAX_PARTS - 400     # room for the 「（i/N）」 prefixes and the note
         lines = text.split("\n")
-        # The evidence / log links sit at the end; cut from the middle so they survive (audit
-        # 2026-11-08 C-04: the cut from the end dropped exactly them). At most a quarter of
-        # the budget, the last few such lines.
         tail_idx = [i for i, ln in enumerate(lines) if _LINK_LINE.search(ln)][-3:]
         tail = [lines[i] for i in tail_idx]
         tail_size = sum(len(ln.encode("utf-8")) + 1 for ln in tail)
@@ -419,11 +411,7 @@ _LOG_ONLY_PREFIXES = (
 
 
 def _say_delivered(route: str, delivered: "list[str]", title: str) -> None:
-    """One INFO line per delivered send: which route it took and which channel took it.
-
-    Before this only group alarms left a record (alerts/), so a daily report that
-    fell back to the group robot, or an alarm that fell back to Server酱, left no
-    trace of where it went (review 2026-10-13, s5 #4)."""
+    """One INFO line per delivered send: which route it took and which channel took it."""
     log.info("推送已送到：%s 路，%s 收下 ｜ %s", route, "、".join(delivered), title)
 
 
@@ -465,11 +453,7 @@ class Notifier:
 
     @property
     def _announcing(self) -> bool:
-        """This thread is sending an outage notice (its own sends must not announce again).
-
-        Per thread: shared, it made a channel refusal on another thread - errwatch's
-        push thread, the main loop - during an announcement only a WARNING, and
-        breaks the 🔌 row's 「every send it refused」 (review 2026-10-13, s5 #5)."""
+        """This thread is sending an outage notice (its own sends must not announce again)."""
         return getattr(self._busy, "announcing", False)
 
     @_announcing.setter

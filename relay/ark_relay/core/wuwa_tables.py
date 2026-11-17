@@ -82,15 +82,6 @@ FORGERY = wuwa_forgery.FORGERY
 
 def _make_wuwa_tacet():
 
-    # index -> (tacet field name, (set one, set two)); the sets in the order of the
-    # two icons on the row, top first.
-    #
-    # Wuthering Waves 3.7 (2026-09-30) put 沉心域 / 烬心域 at the top of 瑝珑·梦州 and
-    # every older index moved down by 2 (F2 list and 合鸣筛选 read in game by 中继一
-    # 2026-09-30, BOARD/evidence/鸣潮3.7-选项-0930). A log from before that day was
-    # farmed under the old list, so label()/reward() take the log's day and read the
-    # table in force then. No OK-WW run happened on 09-30 before the update (that
-    # morning's 早班 was skipped; 晚班 has only MAA), so the day itself is new-list.
     NEW_LIST_FROM = "2026-09-30"
     TACET: dict[int, tuple[str, tuple[str, str]]] = {
         1: ("沉心域", ("衔梦照世之心", "茜染怀想之花")),
@@ -101,7 +92,6 @@ def _make_wuwa_tacet():
         6: ("冰原运输港", ("听唤语义之愿", "长路启航之星")),
         7: ("加拉尔冠阶", ("长路启航之星", "斑驳粉饰之沫")),
     }
-    # Before 3.7 (verified 2026-09-04): the same fields, two places higher.
     TACET_BEFORE_3_7: dict[int, tuple[str, tuple[str, str]]] = {i - 2: v for i, v in TACET.items() if i > 2}
 
 

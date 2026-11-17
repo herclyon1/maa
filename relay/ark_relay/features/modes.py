@@ -90,11 +90,11 @@ def _store(state_dir: Path):
 def skip_armed(state_dir: Path) -> bool:
     """Whether the one-shot 「下次跑完不关机」 mark is armed and not yet spent.
 
-    The control for a **human**: the phone page and the desktop
+The control for a **human**: the phone page and the desktop
     `中继关机开关.bat` both set it. It is a one-time mark, not a state, and it
     carries no time. What happens to it (shutdown._maybe_shutdown, take_skip):
 
-    * It is spent at the first shutdown attempt that passes every gate, i.e.
+* It is spent at the first shutdown attempt that passes every gate, i.e.
       when a scheduled 早班/晚班 queue run has finished. Spending it records that
       shutdown occasion as skipped (mark_shutdown_skipped with the occasion's
       key), so the machine does not power off.
@@ -106,12 +106,6 @@ def skip_armed(state_dir: Path) -> bool:
     * Arming it again while the current occasion is already skipped carries it
       to the next queue run (decide() stops at "skipped" before take_skip is
       reached), so that run does not shut down either.
-
-    How it differs from debug mode: debug mode carries an expiry and is used
-    during maintenance; this mark has no time at all.
-    The user, 2026-08-31: 「你给一个人类好去调这个模式的方法，独立于你的。」
-    His 2026-10-11 15:25 correction of our misreading is quoted in
-    tests/test_shutdown.py.
     """
     return bool(_store(state_dir).get("modes", "skip_next_shutdown"))
 
@@ -128,8 +122,6 @@ def set_skip_shutdown(state_dir: Path, on: bool) -> tuple[bool, str]:
     store = _store(state_dir)
     if on:
         store.set("modes", "skip_next_shutdown", True)
-        # One short sentence (App review 10-14: three lines said what the App's switch row says in one);
-        # it keeps the mark's one name, the run and 「只管一次」 (test_shutdown).
         return True, "已记下「下次跑完不关机」：下一趟早班/晚班跑完不关机，只管一次"
     if store.get("modes", "skip_next_shutdown"):
         store.pop("modes", "skip_next_shutdown")
@@ -152,27 +144,25 @@ def take_skip(state_dir: Path) -> bool:
     return True
 
 
-
-
 def shutdown_skipped(state_dir: Path) -> str:
     """Key of the shutdown occasion that has been skipped; '' means none.
 
-    The key is shutdown._shutdown_key: the day plus its ledger entry count, so
+The key is shutdown._shutdown_key: the day plus its ledger entry count, so
     it changes the moment another queue run finishes. Three things write it:
 
-    * debug mode, at the first attempt that passes every other gate (a scheduled
+* debug mode, at the first attempt that passes every other gate (a scheduled
       shift has just finished) while it is active (shutdown._maybe_shutdown,
       verdict "debug"); while no such opportunity comes up it records nothing;
     * spending the 「下次跑完不关机」 mark (take_skip, in shutdown._maybe_shutdown);
     * pressing 「下次跑完不关机」 inside the relay's own 60-second power-off
       countdown (shutdown.abort_countdown).
 
-    While the current key equals this value, decide() answers "skipped" whenever
+While the current key equals this value, decide() answers "skipped" whenever
     every other gate passes, and the machine stays on - no catch-up shutdown when debug mode
     expires, none on the periodic re-checks after the mark was spent. The next
     queue run gives a new key and normal shutdown resumes.
 
-    One thing clears it: turning debug mode off by hand (set_debug off=True),
+One thing clears it: turning debug mode off by hand (set_debug off=True),
     which means "maintenance is over, back to normal" - a skip debug mode wrote itself
     (stored with DEBUG_SKIP_TAG) always, any skip when the order says so (release_skip:
     the phone's / order-now.sh's debug_mode off). Through dispatch_guard's test-off
@@ -180,9 +170,6 @@ def shutdown_skipped(state_dir: Path) -> str:
     countdown stays skipped: test-off turns debug mode off right after a test (10-13:
     the test after a spent mark would otherwise end in a power-off). A natural debug
     expiry clears nothing.
-
-    The user, 2026-08-31: 「我开了调试模式是指把一次队列的中继关机指令跳过，
-    而不是中继一直尝试关机，要不然人类没办法使用这个电脑。」
     """
     return str(_store(state_dir).get("modes", "shutdown_skipped") or "").split(DEBUG_SKIP_TAG)[0]
 
@@ -194,8 +181,6 @@ DEBUG_SKIP_TAG = "|debug"
 
 def mark_shutdown_skipped(state_dir: Path, key: str, by_debug: bool = False) -> None:
     _store(state_dir).set("modes", "shutdown_skipped", key + (DEBUG_SKIP_TAG if by_debug else ""))
-
-
 
 
 def debug_until(state_dir: Path) -> str:
@@ -240,24 +225,9 @@ def set_debug(state_dir: Path, cycles: int = 1, off: bool = False,
     store = _store(state_dir)
     if off:
         store.pop("modes", "debug_until")
-        # Turning it off by hand means "maintenance is over, back to normal", so
-        # the opportunity debug mode swallowed is cleared along with it; otherwise
-        # the machine idles powered on until the next queue finishes. **A
-        # natural expiry does not clear it**: that is the "skip this one time"
-        # in shutdown_skipped. Only debug mode's own skip is released: one the
-        # spent 「下次跑完不关机」 mark recorded stays (see shutdown_skipped).
-        # `release_skip` (the debug_mode order from the phone or order-now.sh, i.e. a person
-        # saying "done, back to normal") releases a skip the spent skip-next-shutdown mark
-        # recorded too, so the next re-check powers off: 10-14 the mark kept the PC on for
-        # a deploy after the morning shift, and without this it would have idled until the
-        # evening shift, which the owner rejected (10-14 10:3x Tokyo).
-        # dispatch_guard's test-off passes nothing and keeps releasing only debug mode's
-        # own skip (8bc5e2f6: a test after a spent mark must not end in a power-off).
         skipped = str(store.get("modes", "shutdown_skipped") or "")
         if skipped and (release_skip or skipped.endswith(DEBUG_SKIP_TAG)):
             store.pop("modes", "shutdown_skipped")
-        # Debug mode stops no queue, so there is nothing for the reader to put back: the old
-        # 「（队列若被停用需另行恢复）」 asked for an action it did not name (App review 10-14).
         return True, "调试模式已关闭"
     try:
         cycles = max(1, int(cycles))
@@ -514,12 +484,7 @@ def skipped_today_all(state_dir: Path, now: datetime | None = None) -> list[str]
 
 
 def _mark_sat_out(state_dir: Path, day: str, queue: str) -> None:
-    """Remember that `queue` sat `day` out once its restore has dropped the marker.
-
-    The missed-run and overdue checks still ask about that day's slot after the
-    restore: 2026-11-01 晚班 was skipped, the machine stayed on, the restore ran at
-    22:03:45 (Beijing) and at 22:03:47 「🔌 晚班 没有运行」 went to the group.
-    """
+    """Remember that `queue` sat `day` out once its restore has dropped the marker."""
     store = _store(Path(state_dir))
     key = f"skip_done:{day}"
     with _SKIP_LOCK:
@@ -646,10 +611,6 @@ def set_tacet_shots(state_dir, on: bool) -> str:
     return "无音区结算截图：不发了"
 
 
-# ── Phone-order receipts ──────────────────────────────────────────────────────
-# The relay's answer to each phone order is shown on the phone page, not pushed
-# as a notification (the user, 2026-09-14: 「可以合并到遥控页里面」). Kept as a
-# short list in the state dir, newest last.
 _RECEIPTS = "phone-receipts.json"
 RECEIPTS_KEEP = 12
 # Two writers: the phone-mailbox thread (order answers) and the engine thread

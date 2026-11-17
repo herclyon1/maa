@@ -1,15 +1,5 @@
 """Leave Endfield's start to AUTO-MAS's 「MaaEnd 启动」 mode, windowed; run at each relay start.
 
-Since client 1.6.3 (2026-10-15) the game runs only when the official launcher starts it
-(efstart.py has the evidence). From 10-15 to 10-16 the relay pointed AUTO-MAS's MaaEnd
-Game.Path at its own helper (state/efstart/start-endfield.cmd) and put the helper in the
-MaaEnd master as a preAction; AUTO-MAS v5.7.0-beta.4's pre-run check found no launcher from
-the .cmd, and the morning MaaEnd run was skipped (its app.log, 10-16 09:34:05:
-「未通过配置检查: 未找到终末地官方启动器」). From 10-16 to 10-17 the relay kept AUTO-MAS on
-Game.LaunchMode "Launcher" (AUTO-MAS clicks 「开始游戏」 itself), with the launcher's 「DirectX 11 启动」 box ticked by hand: MaaEnd reads a fullscreen non-DX11 game
-as 「当前环境识别异常」, and the launcher remembers the tick, so the owner's own play started
-in DX11 too.
-
 Since 10-17 (DECISIONS D-1016-终末地等AUTO-MAS新版; the owner said 「好」 on 10-16) the game
 runs windowed below the desktop for script runs instead, which MaaEnd reads on any graphics
 API, and the box is to be unticked. AUTO-MAS v5.7.0-beta.5's Game.LaunchMode "MaaEnd" runs
@@ -82,11 +72,8 @@ def _subdirs(path: str) -> "list[str]":
 AUTOMAS_PREACTION_ID = "automas-endfield"     # AUTO-MAS's own entry (AutoProxy.py:301-327)
 LAUNCH_MODE = "MaaEnd"                        # AUTO-MAS v5.7.0-beta.5 Game.LaunchMode 「MaaEnd 启动」
 FALLBACK_MODE = "Launcher"                    # 「启动器启动」 (v5.7.0-beta.4, PR #1394)
-# Script-level Game settings 「MaaEnd 启动」 needs (AUTO-MAS v5.7.0-beta.5 app/models/config.py
-# MaaEndConfig; values as set and run on the machine 10-17 11:31). Written before LaunchMode.
 WINDOWED = {"SetResolution": True, "CloseOnFinish": True,
             "RestoreDisplayType": "Fullscreen", "RestoreResolution": "1920x1080"}
-# Their values before the relay set them (AUTO-MAS API read 10-17 10:2x Beijing): restore().
 WINDOWED_BEFORE = {"SetResolution": False, "CloseOnFinish": True,
                    "RestoreDisplayType": "Window", "RestoreResolution": "Off"}
 # MaaEnd's declarations, read from its folder; the day simulator answers it from its sim tree.
@@ -377,11 +364,6 @@ STOPPED = 10
 # launcher, so the caller has fullscreen to put back even though the start failed.
 RAN = (PRETASK, TIMED_OUT)
 
-# AUTO-MAS v5.7.0-beta.5 gives the launching pretask 240 s (AutoProxy.py
-# _apply_launcher_game_settings, https://github.com/AUTO-MAS-Project/AUTO-MAS/blob/v5.7.0-beta.5/app/task/MaaEnd/AutoProxy.py);
-# the pretask itself waits up to 60 s for the launcher and 120 s for the game window
-# (launchgamepc.go launcherWindowTimeout / gameWindowTimeout). Measured on the machine 10-17:
-# 25 s from 「Pretask invoked」 11:31:05 to 「Pretask succeeded」 11:31:30 (go-service.log).
 PRETASK_TIMEOUT_S = 240
 # After closing a running game: MaaEnd's own close waits up to 5 s for Endfield.exe to go
 # (https://github.com/MaaEnd/MaaEnd/blob/v2.33.0/agent/go-service/common/closegame/action.go
@@ -463,8 +445,6 @@ WHOLE_S = PRETASK_TIMEOUT_S + GAME_EXIT_S + 30
 
 def _tasklist(names: tuple) -> "set[str] | None":
     try:
-        # Measured 10-13 on the game PC (desktop.kill): taskkill answers in 0.05 s; tasklist
-        # gets the same 30 s cap the relay gives those calls.
         out = subprocess.run(["tasklist", "/fo", "csv", "/nh"], capture_output=True, text=True,
                              encoding="utf-8", errors="replace", timeout=30, check=False).stdout
     except (OSError, subprocess.SubprocessError):
@@ -533,9 +513,6 @@ def _single(wait_s: float):
             if got:
                 win32event.ReleaseMutex(h)
         finally:
-            # The PyHANDLE's own Close (not kernel32.CloseHandle, which would leave it to
-            # close the handle again when collected). The helper process is short-lived,
-            # so the handle was only ever held until it exited (audit 11-08 A-23).
             h.Close()
 
 

@@ -1,10 +1,6 @@
 """Wake the game PC's display while AUTO-MAS brings Endfield up through its launcher.
 
-Why: the power plan turns the display off after 300 s without input (powercfg AC
-VIDEOIDLE 0x12c on the game PC), and the Hypergryph launcher keeps its main window
-hidden while the display is off. Its own log, games.log, 2026-10-16 attempt 1:
-
-    [10-16 13:21:31.615] ... bMainWndHide:true
+[10-16 13:21:31.615] ... bMainWndHide:true
     [10-16 13:21:31.616] ... [syspa] System display event: display off
 
 and no 「display on」 / bMainWndHide:false before AUTO-MAS gave up at 13:23:36
@@ -46,11 +42,6 @@ from pathlib import Path
 
 log = logging.getLogger("ark.display_wake")
 
-# Measured 2026-10-16 (app.log): AUTO-MAS gave up 128 s after the hand-off
-# (13:21:28.423 -> 13:23:36.444), so a wake whose agent failed is retried once
-# inside that wait. The game came up 158 s and 79 s after the hand-off in attempts
-# 2 and 3 (13:26:14.036, 13:54:52.502); the window is the display's own idle time
-# (powercfg AC VIDEOIDLE 0x12c = 300 s), after which the wake has long done its job.
 REWAKE_SECONDS = 60
 WINDOW_SECONDS = 300
 # Measured: the launcher checks the display 3 s after the hand-off (games.log
@@ -59,10 +50,6 @@ POLL_SECONDS = 10.0
 COALESCE_SECONDS = 0.5
 
 _STAMP = r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ \|[^|]*\| MaaEnd 自动代理 \| "
-# beta.4 logged 「启动方式为「启动器启动」，将由 MAS ...」; v5.7.0-beta.5 logs the bare mode
-# (AutoProxy.py:496 「启动方式为「启动器启动」」, :503 「启动方式为「MaaEnd 启动」」, the mode
-# efstart_setup sets since 10-17). In 「MaaEnd 启动」 MaaEnd's pretask starts Launcher.exe and
-# finds it by its window just the same. 「MAS 启动」 starts Endfield.exe itself, no launcher window.
 _HANDOFF = re.compile(_STAMP + r"启动方式为「(?:启动器启动|MaaEnd 启动)」")
 _GAME_UP = re.compile(_STAMP + r"运行脚本任务")
 _LAUNCH_FAILED = re.compile(_STAMP + r".*游戏启动失败")

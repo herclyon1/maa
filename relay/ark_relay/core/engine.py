@@ -50,13 +50,6 @@ def forget_scripts_cache() -> None:
     _SCRIPTS_CACHE["at"], _SCRIPTS_CACHE["val"] = -1e9, False
 
 _RUNTIME_PATH = "/api/dispatch/runtime-snapshot"   # the only confirmed GET endpoint
-# Terminal states AUTO-MAS marks on a script/user. Anything not listed here
-# (running, waiting, and anything we have never seen) counts as still running.
-# Settled from AUTO-MAS source (beta ff285a3, 2026-10-10; audit s2 F6): ScriptItem /
-# UserItem.status is a free str, only ever set to 等待, 运行 (MAA users: 「运行 - <mode>」),
-# 完成, 异常, 跳过 (core/task_manager.py, task/*/manager.py, task/*/AutoProxy.py).
-# The three terminal ones are here; 失败 / 中止 / 取消 are never set on these items and
-# stay only as a harmless margin.
 _SNAPSHOT_DONE = {"完成", "异常", "失败", "跳过", "中止", "取消"}
 
 
@@ -155,10 +148,6 @@ _BUSY_SEEN: dict = {"state_dir": None, "automas_dir": None}
 BUSY_FILE = "machinecheck-busy.json"      # read by machinechecks/system.py (#18)
 # An app.log task with no end line counts as open for this long after its start.
 OTHER_MODE_OPEN_MIN = 30
-# Ticks a record may make _handle raise before the relay gives up on it (tick). Measured in
-# relay.log 08-15..10-13: 4 records made _handle raise; the one passing failure (08-26
-# 17:04:04) went through on the next tick 29 s later, the other three (09-08) failed 33
-# times each until the fix.
 HANDLE_TRIES = 3
 # A given-up record (queues.given_up) is dropped from that list after this many days.
 GIVEN_UP_KEEP_DAYS = 30
@@ -291,9 +280,6 @@ class Engine:
         self._last_wait_note = ""  # so the guard does not repeat itself every poll
         self._mode_notified: set[str] = set()  # skip-mode messages already pushed
         self._debug_last: bool | None = None  # log mode transitions, not every tick
-        # Annihilation's weekly status, read from AUTO-MAS: running it once a week is
-        # AUTO-MAS's job since the 2026-10-11 switch-over (hand-over item 13); this
-        # only feeds the shared new-week line (boot_stages._stage_annihilation).
         from ark_relay.features.annihilation import WeeklyGate  # noqa: PLC0415 - optional feature
         self._annihilation = WeeklyGate(state.dir, cfg.automas_dir)
         # The weekly garden and annihilation are the same shape of problem: something
@@ -378,14 +364,8 @@ class Engine:
                                    or "（认不出是哪条）")
                     continue
                 target[(rec.script, rec.user)] = rec
-                # payload_to_record drops the tail (log_path=None); without this the
-                # alarm sent after a restart carried no diagnosis (audit s2 F4).
                 if tail := item.get("log_tail"):
                     self.log_tails[rec.run_id] = str(tail)
-        # 「没干完」 / 「没证据」 / 「停一切前」 alarms whose push failed (pushes._push_now):
-        # memory only until 2026-10-13, so a restart - the relay's own power-off
-        # included - lost them (audit s8 #1/#3). A copy already pushed is held back by
-        # the day marks in unresolved.send.
         for item in data.get("unsent", []):
             if isinstance(item, list) and len(item) == 5 and all(isinstance(x, str) for x in item):
                 self._unsent_unresolved.append(tuple(item))
@@ -468,13 +448,6 @@ class Engine:
             try:
                 self._handle(rec)
             except Exception:
-                # A record that always raises was retried on every tick with no end
-                # (09-08: 99 lines in half an hour), and never counted as landed for
-                # shutdown. A failed try is INFO (errwatch pushes WARNING and up, so
-                # the traceback stays in the log only); after HANDLE_TRIES one ERROR
-                # line is the one group alarm. The record is not marked seen but kept
-                # in queues.given_up with the code version, so the next deploy books
-                # it if the fix took. Audit s2 F3.
                 n = self._handle_fails[rec.run_id] = self._handle_fails.get(rec.run_id, 0) + 1
                 if n < HANDLE_TRIES:
                     log.info("处理运行记录失败（第 %d 次，下一轮再试）: %s", n, rec.run_id, exc_info=True)
@@ -536,13 +509,7 @@ class Engine:
         return len(records)
 
     def _echo_farm_deadline(self) -> None:
-        """End a 「farm until HH:MM」 run when its moment arrives.
-
-        OK-WW counts runs, not minutes, so the clock has to live here. Checked on
-        every tick, which is event-driven already - no timer of its own. A wrap-up
-        that says something went wrong (echofarm.tick_result) is a group alarm; until
-        2026-10-12 it went to Server酱 inside the plain 「刷声骸收工」 text.
-        """
+        """End a 「farm until HH:MM」 run when its moment arrives."""
         from ark_relay.features import echofarm  # noqa: PLC0415
         note, failed = echofarm.tick_result(self.cfg)
         if not note:
@@ -776,10 +743,6 @@ class Engine:
         """
         now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
         if self._shutdown_issued:
-            # Only one clock moment is left: ISSUED_STUCK_MIN after the command,
-            # shutdown.decide calls a machine still up 「not-down」 and the group
-            # hears 「关机被取消」. Sleeping to the hour backstop made that up to
-            # 50 minutes late (audit s2 F2).
             from ark_relay.features.shutdown import ISSUED_STUCK_MIN  # noqa: PLC0415
             at = getattr(self, "_shutdown_issued_at", None)
             if at is not None and (check := at + timedelta(minutes=ISSUED_STUCK_MIN)) > now:
@@ -819,9 +782,6 @@ class Engine:
                     if moment > now and key not in self._missed_alerted:
                         cands.append((moment, f"核对队列「{q['name']}」{hhmm} 是否漏跑"))
 
-        # A queue that ran but still lacks a script becomes reportable at due + partial_grace
-        # (missed._check_partial_queues). Without this moment it waited for the hour backstop
-        # (10-16: due 10:15, pushed 10:34).
         try:
             entries = self._recent_entries(now)
             for q in plan.recent_due_queues(self.cfg.automas_dir, now, window_minutes=self.cfg.partial_window):

@@ -12,12 +12,7 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_texts_gate_main():  # noqa: C901
-    """通知文案的闸门：标题只能来自 texts.py，文案必须是人话、不模糊。
-
-用户 2026-09-07：「你写进通知的任何东西都要是人话」「描述模糊是第一大禁止」。
-
-    Formerly test_texts_gate.py.
-    """
+    """通知文案的闸门：标题只能来自 texts.py，文案必须是人话、不模糊。"""
     import re
 
     ROOT = Path(__file__).resolve().parents[1]
@@ -75,9 +70,6 @@ def _part_texts_gate_main():  # noqa: C901
             check(s[:40], texts.plain(s), [])
 
     print("[每个模块里所有会送到人眼前的中文句子都过 plain()：不只是 texts.py]")
-    # The user, 2026-09-12: 「你不是有工具在拦截吗，搞毛呢？」 - a hedged sentence sat in
-    # core.py, which this gate never read. Now every Chinese string literal in every
-    # module is checked, except log calls (they are for me) and docstrings.
     import ast
     _HAN = re.compile(r"[\u4e00-\u9fff]")
     def _user_facing_literals(path):
@@ -125,7 +117,6 @@ def _part_texts_gate_main():  # noqa: C901
             if pat.search(line) and not line.strip().startswith("#"):
                 bad.append(f"{f.name}:{i}: {line.strip()[:80]}")
     check("写死的标题为零", bad, [])
-    # 地板：glob 扫到 0 个文件也会「零违规」，闸门成摆设。2026-09-08 回放测试栽过一次。
     _scanned = len(list([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks", "machinechecks.py"} & set(p.parts)])) + 2
     check("确实扫到了文件（至少 20 个）", _scanned >= 20, True)
 
@@ -137,13 +128,7 @@ def _part_texts_gate_main():  # noqa: C901
 
 
 def _part_texts_wording():
-    """Copy that said more than the code does (review 2026-10-13, s1).
-
-Each block pins one sentence against the code it describes; the reason is in the
-block's header.
-
-    Formerly test_texts_wording.py.
-    """
+    """Copy that said more than the code does (review 2026-10-13, s1)."""
     import ast
 
     ROOT = Path(__file__).resolve().parents[1]
@@ -157,8 +142,6 @@ block's header.
 
 
     print("[AUTO-MAS 开机没起来：重拉的间隔写的是翻倍，不是每 3 分钟（s1 #9）]")
-    # automas_keeper: the first wait is REVIVE_FIRST_WAIT (180 s), then it doubles up to
-    # REVIVE_MAX_WAIT; relay.log 08-22 23:12:56 -> 23:16:06 -> 23:22:16 shows the doubling.
     body = texts.automas_boot_down_body()
     check("第一次等 3 分钟（代码里也是 180 秒）", (KEEPER["REVIVE_FIRST_WAIT"], "3 分钟后" in body), (180, True))
     check("说了之后翻倍", "翻倍" in body, True)
@@ -166,8 +149,6 @@ block's header.
     check("连拉几次再报，和代码一致", f"连拉 {KEEPER['REVIVE_ALERT_AFTER']} 次" in body, True)
 
     print("\n[中继报错推送的结尾不再说「这不代表脚本没跑」（s1 #10）]")
-    # relay.log 2026-10-10 16:14:14: the push for 「开机自检 ✗ 调度程序的后台程序在跑」 (AUTO-MAS
-    # backend down, so the shift cannot run) ended with 「这不代表脚本没跑…」.
     body = texts.relay_error_body("ark.selfcheck", "开机自检 ✗ 调度程序的后台程序在跑", "16:14")
     check("结尾不打包票说脚本照跑", "不代表脚本没跑" in body, False)
     check("仍说交给我们修", body.endswith("已交给我们这边去修。"), True)
@@ -250,9 +231,6 @@ def _part_user_switches():  # noqa: C901
     RELAY = Path(__file__).resolve().parents[1]
     LIST_FILE = RELAY / "USER-SWITCHES.txt"
 
-    # The user's stored command, and the function that reads it back (rule 2). Until
-    # 2026-10-06 also debug_mode (modes.debug_active) and, as rules 2a / 2b, the debug
-    # verdict and the red button's manual_stop: those kept errors out of the group.
     COMMAND_RECORDS = {
         "skip_today": "ark_relay/features/modes.py:_day_queues",
     }
@@ -261,9 +239,6 @@ def _part_user_switches():  # noqa: C901
     ONE_PUSH = re.compile(r"#\s*one fault, one push:\s*(\S.*)$")
     IDENTITY = re.compile(r"(?:^|_)(?:run_?id|rid|record_?id|rec_?id|pid|due|slot|hhmm|at|line|text)(?:_|$)", re.I)
 
-    # R4: the relay's own power-off, the one signal that may keep a line from the group,
-    # and the service host's one wrapper of it (checked: it may only wait for that signal).
-    # The host is service.py and what was split out of it into features/host/ (2026-10-11).
     R4_FILES = {"service.py", "ark_relay/features/automas_keeper.py", "ark_relay/features/procwatch.py"}
     RELAY_POWER_OFF = "ark_relay/features/errwatch.py:relay_shutdown_issued"
     R4_WRAPPER = "ark_relay/features/procwatch.py:_going_down_soon"
@@ -684,9 +659,6 @@ def _part_user_switches():  # noqa: C901
                 tm = self.by_stem.get(m.imports[base.id])
                 return (tm.rel, f.attr) if tm and f.attr in tm.fns else None
             if isinstance(base, ast.Name) and base.id in m.from_imports:
-                # `from ark_relay.features.alarm import unresolved` then `unresolved.send(...)`:
-                # since the 2026-10-11 move into core/ and features/ a module comes in this way
-                # too, not only as `from . import unresolved`.
                 tm = self.by_stem.get(m.from_imports[base.id][1])
                 if tm and f.attr in tm.fns:
                     return (tm.rel, f.attr)
@@ -1051,8 +1023,6 @@ def _part_user_switches():  # noqa: C901
                                 if isinstance(c, ast.Constant) and isinstance(c.value, str))
                 if hit := MUTE_LOG.search(text):
                     self.add(m, n, "MUTE-log", hit.group(0), fn=fn)
-                # errwatch.recovered(): a fault the relay recovered from, daily report only
-                # (the user, 2026-10-06 05:07). Every use needs its line, like any other.
                 for kw in n.keywords:
                     if kw.arg == "extra" and any(isinstance(c, ast.Call) and _call_name(c).split(".")[-1] == "recovered"
                                                  for c in ast.walk(kw.value)):
@@ -1910,8 +1880,6 @@ def _part_user_switches():  # noqa: C901
                            '    for queue in wanted:\n        queues.apply(d, queue, enabled=False)\n'),
         "ark_relay/features/queues.py": 'def apply(d, name, enabled=None):\n    pass\n',
     }
-    # Shaped like commands.py / handle.py / boot_stages.py: the red button's chain that
-    # rule 2b checked until 2026-10-06. Now its manual_stop exit is a hit like any other.
     ESTOP_SAMPLE = {
         "ark_relay/features/commands.py": dedent('''\
         ESTOP_SEED = ({"start": "2026-09-30T09:46:28+08:00", "end": "2026-09-30T09:47:22+08:00"},)
@@ -2204,7 +2172,6 @@ def _part_user_switches():  # noqa: C901
             if _going_down_soon():
                 log.info("按关机处理，不算故障")
         ''')}, "MUTE-log"),
-        # until 2026-10-06 these passed R4: Windows going down for any reason is not the relay's power-off
         "Windows going down": ({"ark_relay/features/errwatch.py": ERRWATCH, "service.py": LOG + dedent('''\
         def f(eng):
             from ark_relay.features.alarm import errwatch
@@ -2264,7 +2231,6 @@ def _part_user_switches():  # noqa: C901
             enable(cfg, set())
             disable(cfg, set(rec.get("tasks") or []))
         '''), "OFF-keep"),
-        # until 2026-10-06 rule 2 / 2a / 2b let these through; each keeps an error out of the group
         "debug mode keeping an alarm away": ({**COMMAND_SAMPLE_BASE, "ark_relay/features/handle.py": (
             'from . import modes\ndef check(eng):\n    if modes.debug_active(eng.d):\n'
         '        return\n    eng.notifier.send("t", "b", alert=True)\n')}, "MUTE-guard"),
@@ -2682,10 +2648,6 @@ def _part_mute_verdicts():  # noqa: C901
 
 
     REPO = RELAY.parent
-    # A normal-state why says why the thing is not a fault. The user's words say what result he
-    # wants (column 3); they are not evidence that something is normal. The user, 2026-10-11 18:07,
-    # had every decision that rested on his words marked lazy and re-decided on reasons. So a why
-    # that leans on him fails, and a why must name at least one source that can be checked.
     LAZY_RE = re.compile(r"his words|his own words|he asked|he did not want|he wants|his order|his rule|he said|"
                      r"on his\b|\bhis \d{1,2}:\d{2}|\bhis \d{2}-\d{2}|(?:the user|user|他)\W{0,3}(?:\d{4}-)?\d{2}-\d{2}|"
                      r"原话|按他|照他|他说|用户说", re.I)
@@ -2880,18 +2842,7 @@ def _part_mute_verdicts():  # noqa: C901
 
 
 def _part_daily_format():
-    """日报三家一个语义模板，以 MAA 为样板（用户 2026-09-02）：
-
-  做了　刷（什么）×次数
-  消耗　理智 N，吃药 N（鸣潮：波片 N，备用体力 N；终末地：理智 N，加强剂 N）
-  产出　这次刷本的掉落
-  剩余　理智 N/上限，回满时刻
-  备注　额外任务
-
-鸣潮和终末地的数字全部从它们的真实日志里算出来（夹具是 09-02 / 09-01 实录）。
-
-    Formerly test_daily_format.py.
-    """
+    """日报三家一个语义模板，以 MAA 为样板（用户 2026-09-02）："""
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -2967,21 +2918,13 @@ def _part_daily_format():
         "· 消耗　理智 160，加强剂 0",
         "· 产出　无暇基质×6 高纯基质×4",
         "· 剩余　理智 74/360，本日 21:00 回满（东京 22:00）",
-        # 2026-10-05 rule: a task counts as done only with something from the game in
-        # the log (or a task-end picture); this log has nothing but 任务开始/任务完成
-        # for these four, so they are named as unverified, not counted.
         "· 备注　日常 1-5 项完成；没证据，不算完成（只有程序自己说做完了）：赠送干员礼物、装备制造、拜访好友、自动采集"])
-    # 2026-10-11 (验收): a failure with nothing to show is one line saying why, no rows,
-    # and names the game, not the tool.
     check("失败的只有一行，说清为什么", blocks[3], "❌ 鸣潮 21:30–21:35（东京 22:30–22:35）没跑成（鸣潮 流程产生错误）")
     check("「体力不够再开一局」不再出现", "体力不够" in body, False)
     foot = core.daily_footnote(entries)
     check("名单当注释放最末（只列有证据的）", foot, "———————\n日常：1.基建任务 2.信用点购物 3.应急理智加强剂 4.选剑演武 5.日常奖励领取")
     check("标题不说全绿，点名没证据的项数", title.endswith("终末地 4 项没证据 ⚠️"), True)
     check("没有终末地成功记录就没有注释", core.daily_footnote(entries[:2]), "")
-    # 作战关掉的那一趟：不能五行全横杠，也不能把「没读过理智」印成「理智 0」。
-    # 2026-09-04 补跑就是这个形状：做了/消耗/产出/备注 四个横杠 + 一句「剩余 理智 0」，
-    # 而账号里明明还有理智——那个 0 是 MAA 没读时的默认值，不是余量。
     _nf = {"script": "MAA", "ok": True, "sanity": 0,
            "started": "2026-09-04T12:41:00+08:00", "finished": "2026-09-04T12:52:00+08:00",
            "raw": {}, "drops": {}, "recruits": {}}
@@ -3042,19 +2985,7 @@ def _part_daily_format():
 
 
 def _part_daily_partial_failure():
-    """A run that failed one task still has to report the nineteen it finished.
-
-Real data, 2026-09-09. Endfield ran for 1h20m: it farmed 基质 18 times, spent 1422
-sanity, collected the whole daily and the pass rewards, and 据点交易 failed. AUTO-MAS
-retried that one step two minutes later and it worked.
-
-What the user received was a red run carrying one line, 「失败于：据点交易」, and a
-green two-minute run with four 「—」 rows and 「日常 1-1 项完成」. Everything the long
-run did was thrown away by the renderer, and there was no way to tell the day had
-in fact gone fine. His words: 「这终末地通知就是一坨屎吧」.
-
-    Formerly test_daily_partial_failure.py.
-    """
+    """A run that failed one task still has to report the nineteen it finished."""
     import json
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -3063,8 +2994,6 @@ in fact gone fine. His words: 「这终末地通知就是一坨屎吧」.
 
     entries = json.loads((fx_dir(Path(__file__), "fixtures") / "daily-2026-09-09.json")
                          .read_text(encoding="utf-8"))
-    # The 09-09 ledger predates the evidence rule (2026-10-05): no task has an
-    # evidence line on record, so as booked every listed task is unverified.
     bare_title, _ = core.format_daily("2026-09-09", entries)
     check("账上没有证据：标题不说全绿，说没证据", ("全绿" in bare_title, "项没证据" in bare_title), (False, True))
     # What this test is about is the rendering of a partial failure; give each task
@@ -3104,15 +3033,7 @@ in fact gone fine. His words: 「这终末地通知就是一坨屎吧」.
 
 
 def _part_daily_range_prefix():
-    """「日常 1-N 项完成」 only when the run's list is the footnote's first N names.
-
-The fixture is the two real 2026-10-08 Endfield ledger records. The footnote key
-comes from 05-29-15 (13 tasks, starting 赠送干员礼物、装备制造); the 10:35 run
-06-34-21 did 12 others plus 自动采集. Before, its row said 「日常 1-13 项完成」,
-naming tasks it never did.
-
-    Formerly test_daily_range_prefix.py.
-    """
+    """「日常 1-N 项完成」 only when the run's list is the footnote's first N names."""
     #!/usr/bin/env python3
     import json
 
@@ -3133,26 +3054,6 @@ naming tasks it never did.
 
 def _part_daily_techlog():
     """The daily report keeps what a person reads; the technical parts go to the technical log.
-
-Decision D-1010 (the user, 2026-10-10 22:47 Osaka; quoted in BOARD/DECISIONS.md and
-docs/NOTIFICATIONS.md): the report is for a person to read; what we read goes
-somewhere of our own (core/techlog.py, <state>/../tech/<day>.md).
-
-Every technical source is seeded here, so each marker is first shown to land in the
-technical log (proving the fixture produced it) and then shown to be absent from the
-report body. With the change reverted, the body carries them again and this goes red:
-* the deploy notes (remember_change) -> one sentence with their number in the report;
-* the relay's own faults (errwatch day file), the machine checks, the boot self-check;
-* the test-window count;
-* a failed row's evidence link, MaaEnd's version, OK-WW's changed client files;
-* rows name the game, not the script.
-Also: written where the day's report is sent and marked, never by an interim look,
-not twice on a retried send, and a technical log that cannot be written leaves the
-report exactly as it was and still sends it.
-
-No network: banners and the report-writing model are stubbed as in the _part_report_due part.
-
-    Formerly test_daily_techlog.py.
     """
     import json
     import os
@@ -3372,9 +3273,6 @@ No network: banners and the report-writing model are stubbed as in the _part_rep
     check("技术日志那一行带趟号", tech_rows, [f"{TODAY}/x/ef9 终末地任务全完成，但跑完没自己退出（空等 1 分钟）"])
 
     print("\n[正文里不出现工具名，工具自己的话换成人话（验收 10-11）]")
-    # 10-10's shape: MAA stopped three times at 09:00 (the stage it could not reach),
-    # nothing done; no make-up (unsure whether it fought); a hand-started run at 12:15 got it
-    # (12:15, not 12:05: machine() marks 11:59-12:10 as a test window).
     def maa_stop(rid, hhmm):
         return run(rid, "MAA", hhmm, 1, False, failed=["MAA 在完成任务前中止"], fight_count=0,
                    maa_result="MAA 在完成任务前中止", maa_config_rejected="理智作战 序列化失败，关卡 YW-4")
@@ -3455,15 +3353,7 @@ No network: banners and the report-writing model are stubbed as in the _part_rep
 
 
 def _part_no_model_daily_report():
-    """The model-written daily report is gone; the template is the only path.
-
-Retired on 08-30 (66711d4f: 「模型写日报是废除的规划（太贵）」) yet report.py still
-tried summary.daily_report first; relay.log has 0 「日报由模型撰写」 lines and 129
-「日报用结构化模板」. Had it run, it would have skipped split_test (test-window
-runs in the report) and the retry / make-up / stage-gate lines.
-
-    Formerly test_no_model_daily_report.py.
-    """
+    """The model-written daily report is gone; the template is the only path."""
     #!/usr/bin/env python3
     import inspect
 
@@ -3479,32 +3369,7 @@ runs in the report) and the retry / make-up / stage-gate lines.
 
 
 def _part_report_due():
-    """日报什么时候该发、什么时候不许发，以及发出去的那份里必须有什么。
-
-**这里坏了的后果不是「少了一条通知」，是机器整夜不关。** `_maybe_shutdown` 的前提之一
-就是 `report_sent(今天)`，日报发不出去 → 关机永远等不到条件 → 机器开一整夜
-（docs/PITFALLS.md 里那次是判据写错：条件用「最后一趟的**结束时刻**」和 21:30 比，
-队列挪到 21:25、21:28 跑完之后这个条件**永远为真**，日报永远发不出，机器永远不关）。
-
-report.py 的 10 个函数里 5 个从来没被执行过，`_maybe_daily_report`、`_compose_daily`、
-`_maybe_interim_report` 都在里面。这个文件补的就是这几条路，钉住六件事：
-
-1. 昨天的日报没发出去，过了零点只剩今天这一次机会——必须先补昨天；
-2. 同一天不许发两遍（记号是 `marks: report:<日期>`），但**推送失败时不许落记号**，
-   否则那一天就永远丢了；
-3. 一天里一条记录都没有时不发也不落记号（落了记号，晚到的那趟就永远不会被报）；
-4. 到点之前、脚本还在跑、队列还没跑完，一律再等——尤其最后一条：cutoff 就是晚班的
-   **发车时刻**，那几秒游戏还在启动，只看早班记录会写出一份「今天就这些」的假日报，
-   还把当天记号落掉，晚班从此无人过问；
-5. 末尾那行版本记分（`scoreboard.line`）必须真的挂上去，而且在我写的任何字之后——
-   用户 2026-09-06：「我说『修好了』而它写『失败 1 趟』，谎话当场现形。」；
-6. 模型撰写不可用时走结构化模板，那是**正常路径不是故障**，不许在日志里留假伤
-   （天天一条假 WARNING，真的那条就没人看了）。
-
-不联网：卡池和撰写模型都换成了本地假货，AUTO-MAS 目录一律 None。
-
-    Formerly test_report_due.py.
-    """
+    """日报什么时候该发、什么时候不许发，以及发出去的那份里必须有什么。"""
     import json
     import logging
     import types
@@ -3698,7 +3563,7 @@ report.py 的 10 个函数里 5 个从来没被执行过，`_maybe_daily_report`
           e.state.store.get("marks", f"report:{TODAY}") is not None, True)
 
     print("\n[当天部署过的更新说明进技术日志，日报只留一句次数（D-1010；更新通知本身不再推）]")
-    from _tmp import tmpdir as _tmpd0
+    from _parts import tmpdir as _tmpd0
 
 
     def _tmpd():
@@ -3889,8 +3754,6 @@ can cost the full 60 s timeout, inside the path that must finish before the
 machine may power off. After a failure it rests summary.REST_S, then is asked again
 (audit 11-08 B-D7: until then one failure closed it for the whole process); the group
 hears of it once per process.
-
-    Formerly test_llm_breaker.py.
     """
     import logging
     import sys, time
@@ -3997,20 +3860,7 @@ hears of it once per process.
 
 
 def _part_scoreboard_main():
-    """版本记分牌：每个代码版本跑过几趟、失败几趟，由中继自己数。
-
-**为什么有这一项**（用户 2026-09-06 的原话）：
-「设计一个彻底让你不能偷懒的东西。」
-「下一趟真实班次自动给这版打分。日报末尾固定一行：『代码 v…，这版跑过 N 趟，失败 M 趟』。
- 这行由中继算，不经我手。我说『修好了』而它写『失败 1 趟』，谎话当场现形。」
-
-所以这里要钉死三件事：
-1. 计数发生在 `append_ledger` 里——**每趟跑完都必经的那一行**，我写进日报的任何字都动不了它；
-2. 被重试取代的那趟（`transitional`）不算失败，否则这个数会天天喊狼来了，然后没人再看它；
-3. 记分牌自己出错**不许拖垮记账**：账本是主线。
-
-    Formerly test_scoreboard.py.
-    """
+    """版本记分牌：每个代码版本跑过几趟、失败几趟，由中继自己数。"""
     import json
     from datetime import datetime, timedelta
 
@@ -4082,10 +3932,6 @@ def _part_scoreboard_main():
         st4.append_ledger(rec(run_id="boom"))
     finally:
         scoreboard.record = orig
-    # append_ledger files a record under the day of `started` (core.py), and rec()
-    # starts five minutes before now - so between 00:00 and 00:05 server time the
-    # file is yesterday's. Reading "today's" file here made this test fail on
-    # 2026-09-19 00:04 (and would every night); read the same day the code wrote.
     boom = rec(run_id="boom")
     day = boom.started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
     lines = [json.loads(x) for x in (d4 / f"ledger-{day}.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
@@ -4110,13 +3956,7 @@ def _part_scoreboard_main():
 
 
 def _part_scoreboard_log_time():
-    """The scoreboard's 「自 … 起」 is on the machine clock, like the rest of relay.log.
-
-relay.log:33229, written at 10-12 11:49:59 Beijing, said 「自 10-12 12:38 起」
-for since 2026-10-12T11:38:15+08:00: the Tokyo clock inside a Beijing log.
-
-    Formerly test_scoreboard_log_time.py.
-    """
+    """The scoreboard's 「自 … 起」 is on the machine clock, like the rest of relay.log."""
     #!/usr/bin/env python3
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -4134,14 +3974,7 @@ for since 2026-10-12T11:38:15+08:00: the Tokyo clock inside a Beijing log.
 
 
 def _part_scoreboard_test_window():
-    """A run inside a test window does not count on the scoreboard (like the report rows).
-
-10-13: the 11:07 test OK-WW run (test window 11:05:49 open) was counted as
-「20261013030327: runs 1」 in state.json. split_test already keeps such runs out
-of the daily report; the scoreboard now does the same.
-
-    Formerly test_scoreboard_test_window.py.
-    """
+    """A run inside a test window does not count on the scoreboard (like the report rows)."""
     #!/usr/bin/env python3
     import json
     from datetime import datetime
@@ -4169,15 +4002,7 @@ of the daily report; the scoreboard now does the same.
 
 
 def _part_ledger_bad_times():
-    """账本里一条时间不合法的记录，不能让整天的日报发不出去。
-
-read_ledger 原来只查键在不在。日报和关机判定都要拿 started/finished 去
-fromisoformat，值不合法照样 ValueError → 日报发不出 → 关机等日报 → 机器开一夜。
-账本是一行一条追加写的，写到一半被关机打断就会留下半行——一天两次关机，
-这是能发生的事。
-
-    Formerly test_ledger_bad_times.py.
-    """
+    """账本里一条时间不合法的记录，不能让整天的日报发不出去。"""
     import json
     import pathlib
     from datetime import datetime
@@ -4215,16 +4040,7 @@ fromisoformat，值不合法照样 ValueError → 日报发不出 → 关机等�
 
 
 def _part_ledger_guard():
-    """A malformed ledger line must not be able to keep the machine powered on.
-
-The ledger is line-delimited JSON on a box that is hard power-cut twice a day.
-A line can end up valid JSON yet incomplete, and a dozen call sites read these
-fields directly - including the deterministic report layout, which is the last
-fallback when the wording model is down. A KeyError there means the daily
-report is never sent, and the shutdown path waits for a sent report.
-
-    Formerly test_ledger_guard.py.
-    """
+    """A malformed ledger line must not be able to keep the machine powered on."""
     import json, logging, sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -4254,8 +4070,6 @@ report is never sent, and the shutdown path waits for a sent report.
     check("dropped", len(ledger(json.dumps(GOOD), "{not json").read_ledger("2026-08-21")), 1)
 
     print("\n[unparseable line is said once, not on every read]")
-    # Until 2026-10-10 the torn line vanished silently while its siblings (missing
-    # keys, bad times) warned. read_ledger runs every tick, so once per line.
 
 
     class _Warn(logging.Handler):
@@ -4304,13 +4118,7 @@ report is never sent, and the shutdown path waits for a sent report.
 
 
 def _part_ledger_incomplete():
-    """A failed outcome check must reach the ledger and the daily headline.
-
-Before 2026-09-10 the check only produced a push; the ledger line kept `ok: true`
-and the evening report still said 全绿 for a run that walked zero routes.
-
-    Formerly test_ledger_incomplete.py.
-    """
+    """A failed outcome check must reach the ledger and the daily headline."""
     import json
     import tempfile
 
@@ -4329,7 +4137,6 @@ and the evening report still said 全绿 for a run that walked zero routes.
         e1 = {"run_id": f"{day}/endfield/MaaEnd-05-38-38", "script": "MaaEnd", "user": "endfield",
               "started": "2026-09-10T09:38:38", "finished": "2026-09-10T10:08:38", "ok": True,
               "failed_tasks": [], "raw": {"tasks_done": ["赠送干员礼物", "装备制造", "拜访好友", "基建任务"],
-                                          # each task with a line of its own in the log (2026-10-05 rule)
                                           "tasks_evidence": {"赠送干员礼物": "获得 信用 ×400", "装备制造": "获得 嵌晶玉 ×25",
                                                              "拜访好友": "获得 信用 ×200", "基建任务": "获得 燎石子簇 ×1"}}}
         e2 = {"run_id": f"{day}/endfield/MaaEnd-06-08-39", "script": "MaaEnd", "user": "endfield",
@@ -4376,18 +4183,7 @@ and the evening report still said 全绿 for a run that walked zero routes.
 
 
 def _part_ledger_once_per_run():
-    """One run is one ledger line, however many times its record is handled.
-
-Follow-up to 359fea45 (2026-10-13): a record whose handling raises after its
-ledger line is written is handled again on every retry tick, and once more
-after a deploy if it was given up. handle._append_ledger_once skips the append
-when read_ledger already has the run, but that check sits outside the ledger
-lock and any other caller of State.append_ledger had no guard at all, so the
-same run could be booked twice. State.append_ledger now keeps the existing
-line for a (day, run_id) already in the ledger.
-
-    Formerly test_ledger_once_per_run.py.
-    """
+    """One run is one ledger line, however many times its record is handled."""
     import json
     from datetime import datetime, timedelta
 
@@ -4443,18 +4239,7 @@ line for a (day, run_id) already in the ledger.
 
 
 def _part_ledger_rewrite_race():
-    """An append landing during a ledger rewrite must not be lost.
-
-Audit s4 A6 (2026-10-13): State._rewrite_entry (mark_incomplete / mark_raw /
-mark_evidence) reads the day's ledger, edits one line and replaces the whole file.
-append_ledger runs on another thread (the engine's next record) with no lock; an
-append between the read and the replace vanished from the day, so the daily report
-and the boot-check missed that run.
-
-Made deterministic: the rewrite is held just before its replace while the append runs.
-
-    Formerly test_ledger_rewrite_race.py.
-    """
+    """An append landing during a ledger rewrite must not be lost."""
     import threading
     import time
     from datetime import datetime, timedelta
@@ -4503,16 +4288,7 @@ Made deterministic: the rewrite is held just before its replace while the append
 
 
 def _part_ledger_scoreboard_started():
-    """append_ledger hands the run's start time to the scoreboard when it takes one.
-
-Follow-up to d1bc5721 (2026-10-13): scoreboard.record takes an optional start
-time and otherwise judges a test run by now; append_ledger did not pass it, so a
-run booked after its test window closed was scored. append_ledger now passes
-started=rec.started when scoreboard.record accepts it, and still calls the
-older signature without it.
-
-    Formerly test_ledger_scoreboard_started.py.
-    """
+    """append_ledger hands the run's start time to the scoreboard when it takes one."""
     from datetime import datetime, timedelta
 
 
@@ -4559,18 +4335,7 @@ older signature without it.
 
 
 def _part_ledger_truth():
-    """The ledger tells the truth about killed runs: their verdict and their end.
-
-2026-10-01, seven records. Two were wrong in the ledger and so in the daily
-report: MaaEnd's 15:24 attempt (plugin crashed, AUTO-MAS killed it for
-「MaaEnd 进程超时」) read as a success, and every timed-out attempt ended at its
-log's last line - OK-WW at 09:19 / 11:21 / 13:22 - instead of when AUTO-MAS
-killed it (11:20 / 13:21 / 15:23). The JSON verdicts and app.log result lines
-below are verbatim from the machine; the run logs keep their real first and
-last stamps.
-
-    Formerly test_ledger_truth_1001.py.
-    """
+    """The ledger tells the truth about killed runs: their verdict and their end."""
     import json
     from datetime import datetime
 
@@ -4687,19 +4452,6 @@ last stamps.
 
 def _part_relay_log_rotation():
     """relay.log is rotated by size, and every reader still sees across the rotation (review of 2026-10-07, item 3).
-
-relay.log was a plain FileHandler and only ever grew. Pinned here:
-
-* _setup_logging gives relay.log a rotating handler with a size limit.
-* A rotation that Windows refuses (another handle holds relay.log open) loses no
-  record: the handler keeps writing to the current file, says so, and rotates
-  on a later try.
-* The five readers that seek to the tail of relay.log (daily upload, evidence
-  slice, the two machine-check readers, the daily self-check) still find lines
-  that a rotation just moved into relay.log.1 - the boot checks' "previous
-  session" is exactly the part a rotation at boot would cut off.
-
-    Formerly test_relay_log_rotation.py.
     """
     import logging
     import logging.handlers
@@ -4871,9 +4623,6 @@ relay.log was a plain FileHandler and only ever grew. Pinned here:
     print("\n[没轮转过：照旧只读 relay.log，不多也不少]")
     d = tmpdir()
     only = d / "relay.log"
-    # Bytes, not text: tail_bytes returns the file's bytes as they are, and a text-mode
-    # write translates each "\n" to os.linesep (docs.python.org/3/library/io.html#io.TextIOWrapper),
-    # \r\n on Windows - both checks below failed there (Windows CI 2026-10-07, run 37519943859).
     only.write_bytes(newer.encode("utf-8"))
     if logfile is not None:
         got, cut = logfile.tail_bytes(only, 10_000)
@@ -4886,12 +4635,6 @@ relay.log was a plain FileHandler and only ever grew. Pinned here:
 
 def _part_relay_poweroff_live():
     """Only the power-off the relay itself issued may keep a teardown out of the group (2026-10-06).
-
-The user, 2026-10-06: only the planned machine power-off teardown may skip the
-group, and only when the relay itself started the shutdown. errwatch.relay_shutdown_issued()
-is that test; boot_stages._relay_poweroff_live feeds it from the engine.
-
-    Formerly test_relay_poweroff_live.py.
     """
     import types
     from datetime import datetime, timedelta
@@ -5062,15 +4805,7 @@ def _part_record_names():
 
 
 def _part_config_no_bot():
-    """A config with Server酱 but no group robot must start, with a warning.
-
-Audit s6 #2 (2026-10-13): Config.validate reported a missing WECOM_BOT_URL as a
-problem (「没有它一条都送不到」), and a problem stops the relay at boot
-(boot_stages / cmd_local). Group alarms fall back to Server酱
-(notify._GROUP_ORDER), so that setup works; it is a warning now.
-
-    Formerly test_config_no_bot.py.
-    """
+    """A config with Server酱 but no group robot must start, with a warning."""
     import logging
     import os
 
@@ -5102,23 +4837,7 @@ problem (「没有它一条都送不到」), and a problem stops the relay at bo
 
 
 def _part_config_skip():
-    """AUTO-MAS refused to start a script of a running queue: said at once, with its reason.
-
-Replays 2026-10-16. The morning shift (早班 09:00: MAA, OK-WW, MaaEnd) ran MAA and
-OK-WW; at 09:34:05 AUTO-MAS's own config check refused MaaEnd (it could not find the
-official Endfield launcher) and moved on, writing no history record. The relay said
-nothing until the hour backstop: 10:34 「🔌 MaaEnd 没有运行（早班）」 without the
-reason, a 🩺 copy of it, 12:08 「⏰ 一直没出结果」 for the same thing, a 全绿 interim
-report at 11:34, and the shutdown held on 「还差 MaaEnd」 for the rest of the boot.
-
-Sources: app.log lines 291-306 below are verbatim from D:\\ark\\automas\\debug\\app.log
-(10-16), except the 09:00 「创建任务」 line, which is built from the task id in
-line 306 in the shape trigger.py documents. The ledger rows are the machine's
-ledger-2026-10-16.jsonl (run_id, script, user, started, finished, ok, transitional);
-the relay.log timeline is relay-1016.log 220-254 (09:34:07 tick, 10:34:12 backstop).
-
-    Formerly test_config_skip_1016.py.
-    """
+    """AUTO-MAS refused to start a script of a running queue: said at once, with its reason."""
     import json
     import logging
     import os
@@ -5208,7 +4927,6 @@ the relay.log timeline is relay-1016.log 220-254 (09:34:07 tick, 10:34:12 backst
     ]
     SKIP_AT = 12          # index of the 未通过配置检查 line
 
-    # ledger-2026-10-16.jsonl, as on the machine.
     LEDGER = [("2026-10-16/arknights/MAA-05-00-24", "MAA", "arknights", at(9, 0, 27), at(9, 18, 20), True, False),
               ("2026-10-16/wuwa/OK-WW-05-18-27", "OK-WW", "wuwa", at(9, 19, 47), at(9, 20, 1), False, True),
               ("2026-10-16/wuwa/OK-WW-05-20-13", "OK-WW", "wuwa", at(9, 21, 26), at(9, 33, 54), True, False)]
@@ -5384,15 +5102,7 @@ the relay.log timeline is relay-1016.log 220-254 (09:34:07 tick, 10:34:12 backst
 
 
 def _part_config_warn_once():
-    """Warnings from the config readers are said once per condition, not on every call.
-
-errwatch pushes every WARNING to the group, and read_maaend / read_maa / the plan
-run on every phone publish (50-80 a day on 10-10..10-12) and every engine tick;
-relay.log 09-10 shows the same 「AutoCollectRoutes 没有中文名」 three times.
-A condition that clears and comes back is said again.
-
-    Formerly test_config_warn_once.py.
-    """
+    """Warnings from the config readers are said once per condition, not on every call."""
     #!/usr/bin/env python3
 
     import json
@@ -5492,22 +5202,6 @@ A condition that clears and comes back is said again.
 def _part_config_writers():
     """The writers that touch production config, and the reader of the
 sanity-booster step.
-
-This is the 826 class of code: it edits the files the scripts actually run
-from. The accident that day was a value written into production whose meaning
-had been inferred rather than confirmed - it changed which stage was farmed and
-burnt sanity potions. Nothing here had a test.
-
-* `mastercfg.write_maa` may only ever accept the seven values MAA itself
-  declares, must write **both** copies (the master and MAA's own, which the
-  master overwrites at launch), and must read back what it wrote before
-  reporting success. 「写完就说设好了」 is forbidden.
-* `gameupdate.spmed_shape` reads the sanity-booster's confirm node. It no longer
-  decides whether the task may run (it always runs); a shape other than the
-  fixed one rings the group at boot. It looks at the shape, not at a version
-  number: on 2026-09-03 the upstream fix was still unmerged.
-
-    Formerly test_config_writers.py.
     """
     import json
 
@@ -5588,8 +5282,6 @@ burnt sanity potions. Nothing here had a test.
     check("本来就是开的", ok and "本来就是" in msg, True)
     ok, msg = mastercfg.write_maa(automas3, maa3, "Award/Mail", "yes")
     check("非布尔值拒绝", ok, False)
-    # 2026-11-08: all seven switches are open (the user's order via Gemini); a key
-    # MAA's AwardTask does not have is still refused.
     ok, msg = mastercfg.write_maa(automas3, maa3, "Award/FreeGacha", True)
     check("免费单抽现在开放，写得进去", ok, True)
     ok, msg = mastercfg.write_maa(automas3, maa3, "Award/NoSuchSwitch", True)
@@ -5725,11 +5417,6 @@ burnt sanity potions. Nothing here had a test.
 
 def _part_dotenv_hash():
     """The relay's .env loader must not cut a value at a '#' inside quotes or inside the value.
-
-Audit s2 F7 (2026-10-13): _load_dotenv did value.split("#")[0] on every line, so
-KEY="abc#def" loaded as 'abc'. Comments still end an unquoted value at ' #'.
-
-    Formerly test_dotenv_hash.py.
     """
     import os
 
@@ -5770,25 +5457,7 @@ KEY="abc#def" loaded as 'abc'. Comments still end an unquoted value at ' #'.
 
 
 def _part_engine_pending():  # noqa: C901
-    """engine.py 里没人碰过的四段：告警落盘、首启接管历史、在跑判断的缓存、tick 逐段兜底。
-
-这个文件防的是四类损失，每一类都真的发生过或者差一点发生：
-
-* **告警重复推 → 群里被轰炸**。2026-09-08 上午 `_persist_pending` 这一行炸了
-  （它调的 `State.save_pending` 被贴了个 `@property`），失败记录永远落不了账，
-  同一条每十几秒重推一次，推了半小时。`test_statestore.py` _part_state_pending 钉的是 State 那一层，
-  这里钉的是 Engine 这一层：存进去、换个进程读回来，`_pending` / `_recovered` 还在。
-* **中继重启就丢告警**。机器一天硬断电两次，压在内存里的告警等于没有。
-* **首次启动把几百条历史当新失败推一遍**。`bootstrap` 没有任何测试调用过。
-* **写配置撞上正在跑的脚本**（826 那一类）。`scripts_running` 是「现在能不能写配置」
-  的唯一判据，它的三秒缓存要是把「在跑」缓存成「没在跑」，配置就会写进 AUTO-MAS
-  正在读的那一份，然后被内存副本冲掉——刷错关卡、烧理智药。
-* **一段出错带走后面的段**。2026-09-04 明日安排那段的 ImportError 把日报和关机
-  一起带走，机器整夜没关。`test_tick_isolation.py` 只试了「漏跑检查」这一段，
-  这里把八段逐个弄坏一遍，确认剩下七段照跑。
-
-    Formerly test_engine_pending.py.
-    """
+    """engine.py 里没人碰过的四段：告警落盘、首启接管历史、在跑判断的缓存、tick 逐段兜底。"""
     import json
     import os
     import time
@@ -5930,8 +5599,6 @@ def _part_engine_pending():  # noqa: C901
         eng.log.removeHandler(_w)
     check("好的那条读回来了", [r.run_id for r in e4._pending.values()],
           ["2026-09-08/wuwa/OK-WW-1"])
-    # Until 2026-10-10 the broken one was dropped with no word (only an INFO count of
-    # the ones that did restore): an alarm held across a restart vanished.
     check("丢掉的那条说了一声（WARNING，带 run_id）",
           [ln for ln in _w.lines if "恢复不出来" in ln and "缺时间字段" in ln] != [], True)
 
@@ -5956,9 +5623,6 @@ def _part_engine_pending():  # noqa: C901
     check("seen 文件已落盘", e5.state.seen_path.exists(), True)
 
     print("\n[接管完再跑一轮，一条都不许推出去]")
-    # The two wall-clock steps are held still: this check is about records. Left live, a run
-    # after the evening shutdown point (Beijing) pushed 「🌙 今晚不关机」 and failed it
-    # (2026-10-10 00:40 JST, nothing to do with bootstrap).
     e5._maybe_shutdown = lambda *a, **k: False
     e5._maybe_daily_report = lambda *a, **k: False
     before = len(e5.notifier.sent)
@@ -6088,12 +5752,7 @@ def _part_engine_pending():  # noqa: C901
 
 
     def arm(engine, broken):
-        """把八段全换成记录器，其中一段改成会炸的。
-
-    只写一个 `step`，坏不坏由闭包里的 name 决定——原来写成 if/else 里各一个
-    同名 def，死代码闸门会判成「后一个把前一个盖掉」。那道闸门看不懂分支，
-    而它拦住的那类错（同作用域重名，后者静静覆盖前者）值得留着，所以改测试。
-    """
+        """把八段全换成记录器，其中一段改成会炸的。"""
         ran = []
 
         def make(name):
@@ -6256,13 +5915,7 @@ def _part_engine_pending():  # noqa: C901
 
 
 def _part_loop_parts():  # noqa: C901
-    """主循环拆出来的两个部件：目录监听的退避、AUTO-MAS 保活的睡眠上限与退避。
-
-2026-09-08 把 241 行的 `_loop` 拆成 `_DirWatch` + `_AutomasKeeper` + 一段短循环。
-拆之前这些状态是循环里的十来个局部变量，没法单独测，只能靠上机跑一整轮。
-
-    Formerly test_loop_parts.py.
-    """
+    """主循环拆出来的两个部件：目录监听的退避、AUTO-MAS 保活的睡眠上限与退避。"""
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -6295,13 +5948,8 @@ def _part_loop_parts():  # noqa: C901
         for m in (service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop):
             m.time = t
 
-    # Real numbers for the flags _DirWatch ORs together: the stub's class placeholder
-    # only ORs on Python 3.10+, and the Mac's python3 is 3.9 (the deploy gate failed on
-    # it 2026-10-06: every rebuild raised TypeError there, so none ever "worked").
     dirwatch.win32con.FILE_NOTIFY_CHANGE_FILE_NAME = 0x1
     dirwatch.win32con.FILE_NOTIFY_CHANGE_LAST_WRITE = 0x10
-    # `_revive_automas` 2026-09-08 随开机流程搬去了 boot_stages.py，
-    # `_AutomasKeeper._revive` 现在调的是那一份，所以要替换的也是那一份。
     import boot_stages
 
 
@@ -6383,7 +6031,6 @@ def _part_loop_parts():  # noqa: C901
     dirwatch.win32file = ok_file
     now[0] = w.retry_at
     w.maybe_rebuild()
-    # Why the watch is lost is not known: the rebuild is pushed (2026-10-10; daily report only before).
     check("rebuilt: one WARNING for the group, none marked recovered", (len(lg.loud()), lg.recovered()), (1, []))
     check("it says how long and that results are handled at once again",
           bool(lg.loud()) and "目录变更通知断过" in lg.loud()[0] and "马上处理" in lg.loud()[0], True)
@@ -6406,8 +6053,6 @@ def _part_loop_parts():  # noqa: C901
     now[0] += 61
     w.retry_at = now[0]
     w.maybe_rebuild()
-    # Audit s15 #2 (2026-10-13): these were WARNINGs, which errwatch pushes - about 50
-    # an hour after the one alarm, each with different numbers so none merged.
     check("a failed rebuild after the alarm: INFO (not pushed), no second alarm",
           (len(lg.loud()), n.sent), (0, [dirwatch.texts.WATCH_LOST]))
     check("the failed rebuild is still in the log", [lv for lv, m, _ in lg.lines if "重建失败" in m][-1:], ["INFO"])
@@ -6570,19 +6215,6 @@ def _part_loop_parts():  # noqa: C901
 def _part_netretry():
     """Another try, inside the caller's own limit, for a request the network cut short
 (dispatch relay-opt-round3-1108 O-03; core/netretry.py).
-
-Pinned here:
-* transient(): timeouts, short bodies, resets, DNS failures and the gateway statuses
-  502 / 503 / 504 are tried again; any other HTTP status (404, 403, 500) is not;
-* call(): at most notify._RETRIES attempts, the first with the whole limit and each later one
-  with what is left; no retry once the pause would use the rest (an 8 s COS write that timed
-  out is not tried again, so the 30 s service stop still fits); INFO per failed attempt, one
-  WARNING marked recovered when a later one went through, the last failure raised;
-* cos_put / cos_get: a reset is tried again, a 404 / 403 is not, and they still never raise;
-* efstatus.update_hint: a gateway 503 is tried again within its 8 s;
-* needtable build._retry: a 404 is raised at once, a 503 or a reset is asked again.
-
-    Formerly test_netretry.py.
     """
     import http.client
     import logging
@@ -6722,10 +6354,8 @@ Pinned here:
                                               len(calls)), (True, 1))
 
         print("\n[心跳：平时一跳只写一次（下一跳就是重试），关机那一跳在 8 秒里再写一次]")
-        # dispatch relay-opt-round3b-1108: a 30 s beat retried in the call wrote one 自愈待查 red
-        # item per healed beat on a flaky link; the bye has no next beat.
         from ark_relay.features import phone
-        from _tmp import tmpdir
+        from _parts import tmpdir
         hb = phone.Heartbeat("ark-test-topic", tmpdir(), post=lambda p, t: None, cos=cos)
         urllib.request.urlopen, calls = scripted([ConnectionResetError(54, "reset"), Resp(status=200)])
         check("平时那一跳：断了就算这一跳没写上，只写一次", (hb.cos_beat(), len(calls)), (False, 1))
@@ -6775,7 +6405,7 @@ def _part_tick_isolation():
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
+    from _parts import tmpdir
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"; (AUTOMAS / "config").mkdir(parents=True)
     STATE = TMP / "state"; STATE.mkdir()

@@ -21,10 +21,6 @@ from ark_relay.features.gameupdate_games import READY_WORDS, _store, endfield_pa
 log = logging.getLogger("ark.gameupdate")
 
 
-# state.json records (section "updates") that once named MaaEnd tasks the relay
-# switched off. Nothing writes them any more and the machine holds none (audit s18
-# F5), so the boot step that switched their tasks back on is gone; machine check
-# #63 (machinechecks/system.py) still confirms none is left.
 _OFF_RECORDS = ("maaend_disabled_1_5_3", "maaend_reenable_next_boot", "maaend_disabled_spmed")
 
 
@@ -38,11 +34,6 @@ _OFF_RECORDS = ("maaend_disabled_1_5_3", "maaend_reenable_next_boot", "maaend_di
 # tests/fixtures/maaend-v2.32-spmed (SPMED_NODE_V232),
 # tests/fixtures/maaend-v2.33.0-rc.1-spmed (SPMED_NODE_V232, "ocr").
 SPMED_NODE = "AutoUseSpMedicationQuickUse"
-# The node from v2.32 on: the click on the detail page's use button; its all_of
-# holds only node names. From v2.33.0-rc.1 (upstream PR #6476, commit cfd2e875) the
-# same node clicks the restore-sanity dialog's confirm button found by its own OCR
-# in a fixed region ("ocr"): game 1.6 changed that button's icon, so
-# YellowConfirmButtonType2 no longer matched it.
 SPMED_NODE_V232 = "__AutoUseSpMedicationUseEmergencySpBooster"
 SPMED_NODES = (SPMED_NODE, SPMED_NODE_V232)
 
@@ -87,8 +78,6 @@ def spmed_shape(maaend_dir) -> str:
     return "fixed" if all(isinstance(x, str) or "recognition" in x for x in all_of) else "broken"
 
 
-# The v2.33.0-rc.1 confirm node, as shipped by upstream PR #6476 (commit cfd2e875),
-# and v2.36.0-rc.1+ after PR #6933 (commit 45ba41caec) widened the box to [860, 465, 390, 120].
 SPMED_OCR_ROI = [860, 465, 300, 90]
 SPMED_OCR_ROIS = (SPMED_OCR_ROI, [860, 465, 390, 120])
 SPMED_OCR_WORDS = frozenset({"确认", "確定", "(?i)Confirm", "확인"})
@@ -144,9 +133,6 @@ def spmed_check(cfg) -> str:
 # Public names of gameupdate_games and gameupdate_maaend are re-exported; the
 # private names imported here are used by this module (_store) or by callers
 # (_OFF_RECORDS: machinechecks/system.py).
-
-
-
 
 
 # ─────────────────────────── scheduling ───────────────────────────
@@ -468,11 +454,6 @@ def skips(state_dir: Path) -> list[dict]:
     return list(d) if isinstance(d, list) else []
 
 
-# Who holds a skip record: "queue" (a queue command, queues.apply(scripts=...))
-# and/or "update" (a game update or maintenance, boot_check). One record per queue
-# item holds both when both want the item out today, so neither undoes the
-# other's skip: the item gets its days back only when no holder is left.
-# Records written before 2026-10-11 carry only "source" ("queue" or none).
 def _sources(rec: dict) -> set[str]:
     got = rec.get("sources")
     if isinstance(got, list) and got:
@@ -653,14 +634,6 @@ def _prepare_until_ready(cfg, desk: Desktop, game: str, *, deadline: datetime, c
                          problems: list[str]) -> tuple[bool, str]:
     """Update every 10 minutes until the client is ready or the deadline passes.
     Returns (ready, every round's notification sentence joined).
-
-    A round that is not ready has the problems it wrote taken out before the next
-    round. 「The update package is not out yet」 (NOT_OUT_YET: the game says its
-    client is outdated) is the wait this loop is for and is dropped. Any other
-    problem is kept aside: a later ready round makes it a fault that fixed itself,
-    one WARNING marked errwatch.recovered() naming each (until 2026-10-12 it was
-    dropped with no trace); not ready by the deadline, it is reported with the last
-    round's problems.
     """
     ready, note = False, ""
     outdated = False

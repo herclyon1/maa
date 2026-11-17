@@ -12,16 +12,7 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_evidence_main():  # noqa: C901
-    """Evidence bundles must match what the projects' own export buttons produce.
-
-The MaaEnd check replays the real export of 2026-09-11 12:23 (108 files in
-three volumes, made with MXU's 🗄️ button on v2.28.0-rc.1): the same tree,
-rebuilt from the export's file list with the recorded sizes and mtimes, has
-to come out in the same order and split into the same volumes. MAA and OK-WW
-are checked against the rules read from their source.
-
-    Formerly test_evidence.py.
-    """
+    """Evidence bundles must match what the projects' own export buttons produce."""
     import json
     import os
     import random
@@ -158,7 +149,6 @@ are checked against the rules read from their source.
     check("三处钉的都有提交号和哈希", all(len(p.commit) == 40 and len(p.sha256) == 64 for p in ev.PINS))
 
     print("\n[只钉打包那几个函数：别处改一行日志不报，函数体改一个字才报]")
-    # Fixture copies of the three upstream files as pinned (MAA at 7c4edb83, 09-20).
     FXP = fx_dir(Path(__file__), "fixtures") / "source-pins"
     files = {"IssueReportUserControlModel.cs": "MAA 生成日志压缩包（IssueReportUserControlModel.cs）",
              "file_ops.rs": "MaaEnd 导出（MXU file_ops.rs）",
@@ -175,7 +165,6 @@ are checked against the rules read from their source.
           all("<missing" not in ev.region_text((FXP / f).read_text(encoding="utf-8"), f, pinned[next(p.path for p in ev.PINS if p.path.endswith(f))].regions)
               for f in files))
     cs = (FXP / "IssueReportUserControlModel.cs").read_text(encoding="utf-8")
-    # The 09-12 upstream change, replayed: a logging call outside the packaging code.
     elsewhere = cs.replace('_logger.Error(ex, "Failed to open debug folder");', 'Log.Error(ex, "Failed to open debug folder");', 1)
     check("改了别处的日志调用", elsewhere != cs)
     changed, _ = ev.check_sources(fetch=lambda url: elsewhere.encode() if url.endswith(".cs") else from_fixtures(url))
@@ -306,8 +295,6 @@ are checked against the rules read from their source.
     hs = "put\n/2026-09-12_endfield_MaaEnd-10-05-40/a.zip\n\nhost=ark-evidence-1250000000.cos.ap-shanghai.myqcloud.com\n"
     sts = f"sha1\n{kt}\n{hashlib.sha1(hs.encode()).hexdigest()}\n"
     check("和官方算法逐步算出来的一致", auth.rsplit("=", 1)[-1], hmac.new(sk.encode(), sts.encode(), hashlib.sha1).hexdigest())
-    # An account in arrears answers 451 (2026-09-13); on 09-14 the 132 MB PUT was cut
-    # off three times before the chain moved on. The bucket is asked first.
     import urllib.error, urllib.request
     _real_open = urllib.request.urlopen
     opened = []
@@ -335,8 +322,6 @@ are checked against the rules read from their source.
             got = "permanent: " + str(exc)
         except urllib.error.URLError as exc:
             got = "raised: " + str(exc.reason)
-        # Audit 11-08 C-18: until then this was a refusal for the round (「连不上 COS…这一轮不传」),
-        # so one dropped HEAD lost the round's evidence. Now it is raised for the caller's tries.
         check("探的时候连接就断：不传大文件，抛给外面再试（不算永久被拒）", (got, opened), ("raised: wobble", ["HEAD"]))
         opened.clear()
         heads = iter([urllib.error.URLError("wobble"), None])
@@ -379,8 +364,6 @@ are checked against the rules read from their source.
         check("探通了照传；传的时候被拒也换路不重试", (got, opened), ("COS 回了 403：密钥不对或没有这个桶的权限", ["HEAD", "PUT"]))
     finally:
         urllib.request.urlopen = _real_open
-    # One file per run, never pieces (the user, 2026-09-12): over WeCom's cap the store
-    # refuses and the chain moves on.
     big = b"x" * (ev.WeComFiles.LIMIT + 5)
     f = tmpdir() / "MaaEnd-logs-part001.zip"; f.write_bytes(big)
     calls = []
@@ -468,26 +451,7 @@ are checked against the rules read from their source.
 
 
 def _part_evidence_archive():  # noqa: C901
-    """失败证据要存对：AUTO-MAS 那一轮的记录必须带上，日志对不上要出声。
-
-2026-09-05：MaaEnd 基质刷取第一次失败、重试成功。中继 10:00:45 才落账，
-那时 MaaEnd 已经重启过、debug 目录被它自己清空重写，于是存下来的
-maafw.log 只覆盖 09:57–09:59——**那是重试成功那次**，证据目录名却是失败那次
-（MaaEnd-05-27-42）。查了半天才发现拿错了日志。
-
-两条修复：
-1. 同时存 AUTO-MAS `history/<run_id>.log/.json`——它按 run_id 取，必然对得上，
-   当天正是靠那份 .json 才看出失败的是「基质刷取」。
-2. 存下来的 debug 日志若最后写入时刻早于这一轮开始时刻，就是别轮的，记一行说明。
-
-2026-10-15 16:34 / 18:18: that note was a WARNING, and errwatch pushes every ark.*
-WARNING to the group as 「🩺 中继自己报错了」 - two pushes per failed run that wrote
-no debug log of its own (handle.py archives the two newest debug logs, both from
-an earlier round). The note is correct and not a relay fault; the failure itself
-reaches the group as ❌. So it is INFO now, and only a crashed check stays WARNING.
-
-    Formerly test_evidence_archive.py.
-    """
+    """失败证据要存对：AUTO-MAS 那一轮的记录必须带上，日志对不上要出声。"""
     import pathlib
 
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -515,9 +479,7 @@ reaches the group as ❌. So it is INFO now, and only a crashed check stays WARN
 
     def _run_check(started, files, ew=None):
         """Records _warn_if_evidence_stale logs for debug logs {name: mtime}, captured from INFO up.
-
-    `ew`, when given, is an errwatch handler attached to the "ark" logger for the call,
-    as the relay attaches it (errwatch.install)."""
+        """
         d = pathlib.Path(tempfile.mkdtemp(prefix="arktest-stale-"))
         for name, mtime in files.items():
             f = d / name
@@ -553,11 +515,6 @@ reaches the group as ❌. So it is INFO now, and only a crashed check stays WARN
         return [m for _, m in got]
 
 
-    # The run_id stem is AUTO-MAS's clock (UTC+4: collector.AUTOMAS_NAME_TZ), not the
-    # server's: MaaEnd-06-58-38 started 2026-10-12 10:59:40 Beijing (ledger-2026-10-12).
-    # A debug log last written 10:58:09 - the round before - must be flagged. Until
-    # 2026-10-13 the check compared the stem's 06:58:38 with 10:58:09 and said nothing
-    # (audit s7 #3).
     START = datetime(2026, 10, 12, 10, 59, 40, tzinfo=SERVER_TZ)
     got = _stale_notes(START, datetime(2026, 10, 12, 10, 58, 9, tzinfo=SERVER_TZ))
     if not any("别的轮次" in x for x in got):
@@ -575,10 +532,6 @@ reaches the group as ❌. So it is INFO now, and only a crashed check stays WARN
     if got:
         fails.append(f"按 run_id 取的 AUTO-MAS 日志被误标：{got}")
 
-    # The 2026-10-15 16:34 shape (COS daily/relay-2026-10-15.log:1204-1205): MaaEnd found
-    # no task and wrote no debug log, so both archived debug logs were the previous
-    # round's. Two INFO notes, nothing at WARNING - before this, two WARNINGs and two
-    # 「🩺 中继自己报错了」 pushes 3 s apart.
     START_1015 = datetime(2026, 10, 15, 16, 34, 25, tzinfo=SERVER_TZ)
     SHAPE_1015 = {"go-service.log": datetime(2026, 10, 15, 16, 28, 30, tzinfo=SERVER_TZ),
                   "maafw.log": datetime(2026, 10, 15, 16, 28, 29, tzinfo=SERVER_TZ),
@@ -592,9 +545,6 @@ reaches the group as ❌. So it is INFO now, and only a crashed check stays WARN
         fails.append(f"说明里还有「多半」（时间比过了，就是别轮的）：{got}")
 
 
-    # End to end with errwatch attached the way the relay attaches it: the 10-15 shape
-    # queues nothing for the group; a crashed check (still a WARNING) is queued - the
-    # positive control that shows this harness would see a push.
     class _Refuses:
         """errwatch's notifier: the group refuses, so whatever it queues stays readable in pending()."""
 
@@ -634,8 +584,6 @@ reaches the group as ❌. So it is INFO now, and only a crashed check stays WARN
            / "ark_relay" / "features" / "handle.py").read_text(encoding="utf-8")
     body = src[src.index("def _archive_maaend_evidence"):]
     body = body[:body.index("\ndef ", 10)] if "\ndef " in body[10:] else body
-    # Since audit 11-08 C-08 the history files come from _history_files (old <run_id>.log/.json,
-    # else v5.8's 0.log); the archive must call it, and it must read both suffixes.
     if "_history_files(" in body:
         hf = src[src.index("def _history_files"):]
         body += hf[:hf.index("\ndef ", 10)]
@@ -662,8 +610,6 @@ def _part_evidence_cli_window():
     """`python -m ark_relay evidence` never builds without a window: --hours, --since,
 --run-id (that run's own window) or, with nothing given, the latest run of the
 script in the ledger. The user, 2026-09-18: 「证据包永远按时间窗取」.
-
-    Formerly test_evidence_cli_window.py.
     """
     import json
     import tempfile
@@ -744,21 +690,14 @@ script in the ledger. The user, 2026-09-18: 「证据包永远按时间窗取」
 
 
 def _part_evidence_daily_silent():
-    """evidence_daily.py must exit non-zero when a day log could not be fetched.
-
-Silent-failure audit row scripts/mac/lib/evidence_daily.py:90: a failed COS
-fetch printed 「✗ … 取不到」 and main still returned 0, so a session that checks
-the exit code saw success even with both logs missing.
-
-    Formerly test_evidence_daily_silent.py.
-    """
+    """evidence_daily.py must exit non-zero when a day log could not be fetched."""
     import contextlib
     import io
 
     ROOT = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(ROOT / "relay" / "tests"))
     sys.path.insert(0, str(ROOT / "scripts" / "mac" / "lib"))
-    import evidence_daily as ed
+    import evidence_pull as ed
 
 
     def run(missing):
@@ -767,12 +706,12 @@ the exit code saw success even with both logs missing.
                 raise RuntimeError("HTTP 404 NoSuchKey")
             (dest / u["name"]).write_text("10-10 01:00:00 INFO x\n", encoding="utf-8")
 
-        ed.DEST_ROOT = tmpdir() / "daily"
-        ed.evidence_pull.env = lambda _p: {"COS_SECRET_ID": "i", "COS_SECRET_KEY": "k",
+        ed.DAILY_DEST_ROOT = tmpdir() / "daily"
+        ed.env = lambda _p: {"COS_SECRET_ID": "i", "COS_SECRET_KEY": "k",
                                            "COS_BUCKET": "b-1", "COS_REGION": "ap-shanghai"}
-        ed.evidence_pull.cos_get = cos_get
+        ed.cos_get = cos_get
         old = sys.argv
-        sys.argv = ["evidence_daily.py", "2026-10-10"]
+        sys.argv = ["evidence_pull.py", "--daily", "2026-10-10"]
         out = io.StringIO()
         try:
             with contextlib.redirect_stdout(out):
@@ -797,22 +736,7 @@ the exit code saw success even with both logs missing.
 
 
 def _part_evidence_maaend_live_logs():
-    """A MaaEnd bundle keeps the logs that were still being written at the end of its window.
-
-The case is 2026-10-12 (ledger-2026-10-12.jsonl): MaaEnd-06-04-00 failed, run
-10:05:05-10:58:09 (+08:00); its retry MaaEnd-06-58-38 ran 10:59:40-11:38:12 and
-kept writing the same logs, so when the bundle was built at 11:38:15 maafw.log,
-the MXU day log, go-service.log and mxu-tauri.log all had mtimes near 11:38,
-past t1 = 11:03:09. The old rule (mtime inside the window) dropped every one of
-them and shipped only the config and the screenshot (audit s17 F1).
-
-The file layout below mirrors the real debug/ tree of 2026-10-11 (staged copy
-of MaaEnd-05-30-34): maafw rotates into maafw.bak.<time>.log, cpp-algo/debug
-has its own maafw, go-service.log is JSON lines, mxu-tauri.log stamps
-`[YYYY-MM-DD][HH:MM:SS]`. The first lines below are in those formats.
-
-    Formerly test_evidence_maaend_live_logs.py.
-    """
+    """A MaaEnd bundle keeps the logs that were still being written at the end of its window."""
     import os
     import time
     import zipfile
@@ -944,21 +868,7 @@ has its own maafw, go-service.log is JSON lines, mxu-tauri.log stamps
 
 
 def _part_evidence_notify_once():
-    """An upstream export change is announced once, not on every boot.
-
-boot_stages._stage_evidence_sources compared the pinned upstream files on each
-boot and pushed 「上游导出代码变了」 each time, so one upstream commit reached the
-user again every morning and evening until the pin was updated. The stage now
-records the fingerprint it announced in state/evidence-source-notified.json;
-the same fingerprint stays quiet, a new one is announced again.
-
-Since 2026-10-11 the announcement is a red item in the technical log (our work: the
-evidence bundling has to be re-checked), not a Server酱 notice to him; the stage's
-WARNING still reaches the group on every boot until the pin is renewed (the user,
-2026-10-11 17:44; his words are in relay/USER-SWITCHES.txt's header).
-
-    Formerly test_evidence_notify_once.py.
-    """
+    """An upstream export change is announced once, not on every boot."""
     import tempfile
     import types
 
@@ -1051,16 +961,6 @@ WARNING still reaches the group on every boot until the pin is renewed (the user
 
 def _part_evidence_relay_after_run():
     """A failure bundle carries what the relay did about the run, and its link reaches the ledger.
-
-Replayed from the 2026-09-24 morning (bucket ark-evidence, 2026-09-24_arknights_MAA-05-00-02):
-MAA failed 09:03:08, the record's window is 08:58:06-09:08:08, and the relay
-handled it at 09:20 (bundle upload 01:20 UTC) - AUTO-MAS writes the record at the
-end of the whole script. The relay.log slice held two lines, both 09:02:01, and
-two MaaEnd bundles that day held no relay.log at all; the relay's own handling
-was never in any of them. And the link was set on rec.raw after the run was on
-the ledger and never written back, so the daily report's 证据包 row was always empty.
-
-    Formerly test_evidence_relay_after_run.py.
     """
     import json
     import os
@@ -1092,7 +992,6 @@ the ledger and never written back, so the daily report's 证据包 row was alway
     T = tmpdir()
     relay_log = T / "relay.log"
     relay_log.write_text(
-        # the two lines the real bundle held, both 09-24 09:02:01
         f"{at_(9, 2, 1)} INFO    ark.shutdown  不关机：本次开机还没有跑完任何队列\n"
         f"{at_(9, 2, 1)} INFO    ark.service  下一个闹钟 09:25 核对队列「早班」09:00 是否漏跑\n"
         # what the relay did once the record landed (09:20:03, 09:20:04)
@@ -1232,15 +1131,7 @@ the ledger and never written back, so the daily report's 证据包 row was alway
 
 
 def _part_evidence_saved_count():
-    """The 🗂️ evidence line counts the files inside the bundle, not the uploads.
-
-The bundle goes up as one archive (evidence.save_and_upload packs every file into
-one zip), so res["uploaded"] always holds one link. relay.log 2026-10-12 11:38:15
-archived 14 files for MaaEnd-06-04-00, and the 11:38:26 line plus the 🗂️ message
-said 「里面 1 个文件」 (audit s17 F2). The count is res["files"].
-
-    Formerly test_evidence_saved_count.py.
-    """
+    """The 🗂️ evidence line counts the files inside the bundle, not the uploads."""
     import os
     from datetime import datetime, timedelta
 
@@ -1293,15 +1184,7 @@ said 「里面 1 个文件」 (audit s17 F2). The count is res["files"].
 
 
 def _part_evidence_sources_unreachable():
-    """The upstream-source check says why it could not fetch, and when it tries again.
-
-relay.log since 2026-10-11 10:04 has the boot line 「上游导出代码核对：3 个文件今天拉不到，
-明天再比」 on almost every boot: sources.check_sources swallowed the exception, so
-nobody could tell a DNS failure from a timeout or a jsDelivr refusal, and 「明天再比」
-was wrong - the stage runs on every boot (audit s17 F5).
-
-    Formerly test_evidence_sources_unreachable.py.
-    """
+    """The upstream-source check says why it could not fetch, and when it tries again."""
     import tempfile
     import types
     import urllib.error
@@ -1362,19 +1245,7 @@ was wrong - the stage runs on every boot (audit s17 F5).
 
 
 def _part_error_evidence():
-    """The 2026-10-06 fix bill L: today's relay.log to COS, one object per day.
-
-Four things pinned here, per the bill:
-* a relay-error push ends with 「日志：<链接>，出事时刻 HH:MM」 when the upload
-  landed; a failed upload does not block the push and is noted daily-report-only;
-* the shutdown moment uploads the final copy before the power-off command;
-* the error path uploads at most once a minute (the same key overwrites anyway);
-* the whole-day log is capped: a bigger day uploads its last part and says so.
-
-The uploader is a fake; nothing here touches the real COS bucket.
-
-    Formerly test_error_evidence.py.
-    """
+    """The 2026-10-06 fix bill L: today's relay.log to COS, one object per day."""
     import json
     import logging
     import os
@@ -1549,9 +1420,6 @@ The uploader is a fake; nothing here touches the real COS bucket.
         check("the tail survived", b"line9" in data, True)
         check("the head was cut", b"line0" in data, False)
 
-        # The cut right at the start of a line keeps that line (Windows CI 2026-10-07:
-        # \r\n lines exactly as long as the cap left nothing, and nothing went up).
-        # Bytes, so every platform sees the same lengths.
         lines = [f"{stamp(DAY, 9, i)} INFO    ark.test  line{i}\n".encode() for i in range(10)]
         big.write_bytes(b"".join(lines))
         error_evidence.DAY_MAX_BYTES = len(lines[-1])
@@ -1614,7 +1482,6 @@ The uploader is a fake; nothing here touches the real COS bucket.
         unwatch(h)
 
         print("  …a failed upload does not block the push, and the push says it (not the daily report)")
-        # Until 2026-10-11 the failure was a daily-only row; the user, 17:43: 「如果不是自己好了禁止只进日报」.
         h, sd = watch()
         errwatch.set_evidence_uploader(lambda: {"url": "", "at": "09:52", "truncated": False,
                                                 "errors": ["relay: RuntimeError: boom"]})
@@ -1834,18 +1701,7 @@ The uploader is a fake; nothing here touches the real COS bucket.
 
 
 def _part_game_evidence():
-    """The daily report counts a task as done only with evidence from the game.
-
-2026-10-05: four MaaEnd tasks (gifts, gear assembly, delivery jobs, environment
-monitoring) had nothing in the log but 「任务开始」 / 「任务完成」 and were counted
-as done - the program's own word. Evidence is a line the run wrote between a
-task's start and its finish (an item gained, a sanity reading, ...), a
-task-end picture (task_shots.py), or for the weekly items the game's own
-counter. A task without any is named 「没证据，不算完成」: neither done nor failed,
-and the day's title is no longer 全绿 for it. No alarm is raised for it.
-
-    Formerly test_game_evidence.py.
-    """
+    """The daily report counts a task as done only with evidence from the game."""
     import os
     from datetime import datetime, timedelta
     from types import SimpleNamespace
@@ -2002,10 +1858,6 @@ and the day's title is no longer 全绿 for it. No alarm is raised for it.
     check("标题那句", texts.plain("终末地 1 项没证据，不算完成 ❔"), [])
 
     print("\n[MaaEnd 自己的「停止任务」不是游戏里的任务（10-08 日报「终末地 1 项没证据」就是它）]")
-    # The 10:32 attempt of 2026-10-08 (evidence bundle MaaEnd-06-31-06): two tasks, then
-    # MaaEnd stopped itself after its failed scene check (__SceneCheckAbortPipeline) and
-    # the log says 「任务完成: 停止任务」. A record booked before raw['tasks_trail'] (no such
-    # key, as here) keeps the picture rule; the trail rule is in test_mc28.py.
     stop = collector.parse_maaend_log(FX / "maaend_stop_task_2026-10-08.log")
     check("日志里解析出了停止任务", "停止任务" in (stop.get("tasks_done") or []), True)
     stop["tasks_shot"] = ["赠送干员礼物", "装备制造"]   # 103411 / 103416 in that bundle
@@ -2014,9 +1866,6 @@ and the day's title is no longer 全绿 for it. No alarm is raised for it.
     check("日常清单里也不列停止任务", "停止任务" in core._maaend_listed(stop), False)
 
     print("\n[the stop task after the closing task does not change whether the round closed]")
-    # MaaTaskerPostStop is an EmptyTask whose run() returns true (MaaFramework
-    # v5.14.2 Task/EmptyTask.h), so MXU prints 「任务开始/任务完成: 停止任务」 whenever
-    # MaaEnd is asked to stop (shape: fixtures/maaend_stop_task_2026-10-08.log lines 20-21).
     base = (FX / "maaend-farm-drops" / "2026-09-28a.log").read_text(encoding="utf-8")
     check("the 09-28 round as it is: all done", collector_maaend._maaend_all_done(base), True)
     stopped = base.rstrip("\n") + ("\n[2026-09-28 11:22:40.413] 任务开始: 停止任务"
@@ -2042,16 +1891,7 @@ and the day's title is no longer 全绿 for it. No alarm is raised for it.
 
 
 def _part_held_push_keeps_evidence():
-    """A held failure pushed later is pushed with the evidence captured when it was held.
-
-Audit 2026-10-13 review of s7 #2 (fdc53123): a held OK-WW / MaaEnd failure pushed
-after a person's hand-started success went through handle._failure_alarm, which
-captured evidence again into the held run's folder - the person's screen, log tail
-and MaaEnd debug logs over the real ones. manualstops._push_before_stop (a held
-failure a 停一切 cut off) had the same flaw. Each capture is counted per run here.
-
-    Formerly test_held_push_keeps_evidence.py.
-    """
+    """A held failure pushed later is pushed with the evidence captured when it was held."""
     import json
     import os
     from collections import Counter
@@ -2143,22 +1983,7 @@ failure a 停一切 cut off) had the same flaw. Each capture is counted per run 
 
 
 def _part_task_shots():
-    """MaaEnd task-end screenshots, and the evidence bundle every MAA / MaaEnd alarm carries.
-
-2026-10-05: four MaaEnd tasks (gifts, gear assembly, delivery jobs, environment
-monitoring) leave only 「任务开始」 / 「任务完成」 in the AUTO-MAS log, so whether they did anything could not be
-checked; and the 12:30 MaaEnd alarm (an update restart, MaaEnd-07-30-14) went
-out without a bundle, because the update-restart branch held the record before
-_hold_for_retry could ship one.
-
-The maafw.log lines are built in the shape of the real ones
-(fixtures/collect-watch-2026-09-14/maafw-attempt3.log, each event once from the
-dispatcher and once echoed by the agent); entries, task numbers and times are
-2026-10-05's: entries and task_ids from MXU's debug/2026-10-05-2.log (10:41:05 /
-10:41:07), times from AUTO-MAS history MaaEnd-06-39-48.log.
-
-    Formerly test_task_shots.py.
-    """
+    """MaaEnd task-end screenshots, and the evidence bundle every MAA / MaaEnd alarm carries."""
     import json
     import logging
     import os
@@ -2191,8 +2016,6 @@ dispatcher and once echoed by the agent); entries, task numbers and times are
     from ark_relay.core.ledger import State
 
 
-    # --------------------------------------------------------------- 10-05's round
-    # (start time, end time, label as AUTO-MAS prints it, MaaFW entry)
     ROUND = [
         ("10:41:07", "10:43:33", "🎁赠送干员礼物", "GiftOperatorMain"),
         ("10:43:33", "10:43:53", "🔧装备制造", "GearAssemblyStart"),
@@ -2395,7 +2218,6 @@ dispatcher and once echoed by the agent); entries, task numbers and times are
         return datetime(2026, 10, 1, hh, mm, ss, tzinfo=SERVER_TZ)
 
 
-    # MXU's own log of the attempt that installed v2.31.0-beta.6 (verbatim, 2026-10-01-4.log)
     (MAAEND / "debug" / "2026-10-01-4.log").write_text("\n".join([
         "2026-10-01 16:11:06 INFO  [App] 检测到待安装更新: v2.31.0-beta.6",
         "2026-10-01 16:11:06 INFO  [App] 开始安装更新: D:/ark/maaend/cache\\10697.zip -> D:\\ark\\maaend",
@@ -2526,7 +2348,7 @@ def _part_tacet_shots():
             fails.append(label)
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
+    from _parts import tmpdir
     TMP = tmpdir()
     shots = TMP / "okww" / "data" / "apps" / "ok-ww" / "working" / "screenshots"; shots.mkdir(parents=True)
     state = TMP / "state"; state.mkdir()
@@ -2624,23 +2446,7 @@ def _part_tacet_shots():
 
 
 def _part_self_attrs_main():  # noqa: C901
-    """Every `self.x` used in the relay must actually exist.
-
-2026-08-23: `Engine._boot_time` was called from three places and never
-defined. Python does not complain until the line runs, and the line only runs
-on a boot where a queue's time has already passed - so it sat undetected from
-2026-08-21 until the morning it swallowed the daily report and the power-off.
-
-The service loop catches exceptions so one bad tick cannot kill the relay.
-That is right, and it is also why this went unnoticed: the relay stayed up,
-logged an AttributeError, and quietly did none of the work that follows.
-
-A whole class of bug - typo'd attribute, method renamed at one call site,
-method planned and never written - is a static fact about the source. This
-checks it, so it can never again depend on a particular morning to surface.
-
-    Formerly test_self_attrs.py.
-    """
+    """Every `self.x` used in the relay must actually exist."""
     import ast
 
     ROOT = Path(__file__).resolve().parents[1]
@@ -2669,8 +2475,6 @@ checks it, so it can never again depend on a particular morning to surface.
                 out.add(node.name)
             elif isinstance(node, ast.Assign):
                 for tgt in node.targets:
-                    # 一行赋多个属性也算定义：`self.a, self.b = x, y`。
-                    # 2026-09-08 漏过这种写法，把 _DirWatch 正常的三个属性报成「没定义」。
                     for t in (tgt.elts if isinstance(tgt, (ast.Tuple, ast.List)) else [tgt]):
                         if (isinstance(t, ast.Attribute)
                                 and isinstance(t.value, ast.Name) and t.value.id == "self"):
@@ -2711,15 +2515,7 @@ checks it, so it can never again depend on a particular morning to surface.
 
 
     class Index:
-        """Top-level classes and `from ... import` bindings of every scanned module.
-
-    A subclass may use `self.x` defined only on its base class (GardenGate and
-    WeeklyBossGate inherit `_load`, `_save`, `automas_dir` from weekgate.WeekGate).
-    The base is looked up in the scanned source - same module, or followed through
-    `from <module> import <name>` (relative imports and re-exports included). A base
-    that cannot be found in the scanned files (stdlib, third-party, `import x` then
-    `x.Base`) adds nothing, so those classes are checked exactly as before.
-    """
+        """Top-level classes and `from ... import` bindings of every scanned module."""
 
         def __init__(self, trees: dict[str, tuple[ast.Module, bool]]):
             self.classes: dict[str, dict[str, ast.ClassDef]] = {}
@@ -2767,8 +2563,6 @@ checks it, so it can never again depend on a particular morning to surface.
     def main() -> int:
         files = sorted(list([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files"} & set(p.parts)])
                        + [ROOT / "service.py", ROOT / "boot_stages.py"])
-        # 地板：glob 扫到 0 个文件也会打印「通过」，闸门就成了摆设——
-        # 目录改名、路径写错都会静默失效。2026-09-08 回放测试栽过一次。
         if len(files) < 20:
             print(f"  ✗ 只扫到 {len(files)} 个文件，至少该有 20 个——路径不对或目录改名了")
             return 1
@@ -2805,22 +2599,6 @@ checks it, so it can never again depend on a particular morning to surface.
 
 def _part_self_heal_red():
     """Every fault that fixed itself, and so stays out of the group, leaves a red item in the technical log.
-
-The user, 2026-10-11 17:44 (Tokyo; his words are in relay/USER-SWITCHES.txt's header): what fixed
-itself may stay out of the group, but we must look at it. So:
-
-* techlog.add_red never hands out an id twice in one day's file (red_items numbers from 1 on
-  every call: two calls in one minute gave the same id, and one `handled` cleared both);
-* errwatch's one door for a record marked errwatch.recovered() writes one 「自愈待查」 red item
-  with where and what the record said, every time; a plain WARNING writes none (it goes to the group);
-* every errwatch.recovered() in the relay sits in the `extra=` of a log call, so it can only
-  reach errwatch through that door (nothing marks a record recovered some other way);
-* handle's heals (_self_heal_red) write one too;
-* scripts/mac/techlog.py's patterns read these red items as unhandled until `handled`.
-The USER-SWITCHES side (every `normal-state - recovered:` place has code that writes the red
-item) is tests/test_mute_verdicts.py.
-
-    Formerly test_self_heal_red.py.
     """
     import ast
     import importlib.util
@@ -3069,8 +2847,6 @@ def _part_undefined_names():  # noqa: C901
         files = sorted(p for p in (ROOT / "ark_relay").rglob("*.py")
                        if not {"okww_files"} & set(p.parts))
         files += [ROOT / "service.py", ROOT / "boot_stages.py", ROOT / "run.py"]
-        # 地板：glob 扫到 0 个文件也会打印「通过」，闸门就成了摆设——
-        # 目录改名、路径写错都会静默失效。2026-09-08 回放测试栽过一次。
         if len(files) < 20:
             print(f"  ✗ 只扫到 {len(files)} 个文件，至少该有 20 个——路径不对或目录改名了")
             return 1
@@ -3136,7 +2912,7 @@ def _part_parts():
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import _parts
     from _parts import run_parts
-    from _tmp import tmpdir
+    from _parts import tmpdir
 
     fails = []
 
@@ -3210,21 +2986,7 @@ def _part_parts():
 
 
 def _part_scripts_relay_attrs():
-    """Every name the helper scripts read off an ark_relay module still exists there.
-
-The scripts under scripts/windows/ and scripts/mac/lib/ are shipped to the game
-machine by winrun and import ark_relay at run time, so no relay test ever imports
-them. On 2026-10-10 05:26 okww-check.sh died with
-
-    AttributeError: module 'ark_relay.weeklyboss' has no attribute '_okww_file'
-
-because 7425eff4 (2026-09-08) removed that helper and okww-landed.py still called
-it. This walks each script's AST, resolves `from ark_relay import m as x`,
-`import ark_relay.m as x` and `from ark_relay.m import a`, and requires every
-`x.attr` / imported name to exist on the real module.
-
-    Formerly test_scripts_relay_attrs.py.
-    """
+    """Every name the helper scripts read off an ark_relay module still exists there."""
     import ast
     import importlib
     import inspect
@@ -3286,21 +3048,12 @@ it. This walks each script's AST, resolves `from ark_relay import m as x`,
 
 
 def _part_scripts_running_asks_automas():
-    """「有脚本在跑吗」先问 AUTO-MAS，不只看进程名。
-
-2026-09-07 10:15：OK-WW 09:19 起跑了三趟（AUTO-MAS 整段结束 10:16 才写记录），
-_scripts_running 的进程名单里没有 OK-WW，中继以为什么都没在跑，
-75 分钟一到就发了「OK-WW 没有运行」「MaaEnd 没有运行」两条假报警。
-runtime-snapshot 是 AUTO-MAS 自己的口径：每个脚本 完成/异常/运行/等待。
-
-    Formerly test_scripts_running_asks_automas.py.
-    """
+    """「有脚本在跑吗」先问 AUTO-MAS，不只看进程名。"""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import engine
 
 
-    # 2026-09-07 10:18 机器上拿到的真实样本（MAA 完成、OK-WW 异常、MaaEnd 运行）
     REAL = {"tasks": [{"taskId": "8cebb1be", "mode": "AutoProxy", "stopping": False,
                        "task_info": [
                            {"name": "MAA", "status": "完成", "userList": [{"name": "arknights", "status": "完成"}]},

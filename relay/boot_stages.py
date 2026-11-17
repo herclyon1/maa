@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 """The boot sequence: one function per step, in the order `service.py` runs them.
 
-Split out of `service.py` (2026-09-08, moved verbatim). What is left there is
-the Windows-service plumbing and the main loop; everything that happens exactly
-once, between the service starting and that loop being entered, is here.
-
 Why this is a block of its own: the boot sequence is a list of steps that runs
 top to bottom once and is then over, while the rest of `service.py` is
 machinery that keeps running for as long as the machine is on - answering the
@@ -63,24 +59,15 @@ def shell_running() -> bool:
 def _revive_automas() -> None:
     """Restart AUTO-MAS through its scheduled task, which owns session 1.
 
-    Three steps, and skipping any of them makes this silently do nothing:
+Three steps, and skipping any of them makes this silently do nothing:
 
-    The Electron shell outlives its own Python backend - the window sits there
+The Electron shell outlives its own Python backend - the window sits there
     looking healthy while nothing is scheduling runs, which is the exact state
     the machine was found in. So the shell has to go first.
 
-    The task also still counts as running while that shell is alive, and
+The task also still counts as running while that shell is alive, and
     `schtasks /run` on an already-running task returns 0x41301 and starts
     nothing. `/end` clears that before `/run` can take.
-
-    Since v5.5.0-beta.6 (2026-09-17) the shell does its start-up through a
-    separate `auto-mas-runtime.exe` ("Runtime managed" mode: sync the backend
-    repo, prepare the managed Python, sync the locked dependencies, then
-    supervise the backend). That process survives `taskkill AUTO-MAS.exe` and
-    keeps holding the environment lock; the shell started next then fails its
-    own bootstrap with MUTATION_IN_PROGRESS and parks on the initialisation page
-    「等待用户处理」 - no backend, no queue, until a person clicks. That is what
-    took out the 21:30 queue on 2026-09-17. So the runtime goes too.
     """
     # /T takes each one's child processes too, and a backend python.exe left
     # behind (the keeper revives only when none is found, but one it cannot see
@@ -112,25 +99,11 @@ def _revive_automas() -> None:
                  (r.stdout or b"").decode("gbk", "replace").strip()[:200])
 
 
-# How long an AUTO-MAS shell that is already up gets to open its API before it
-# is killed and restarted. The logon task starts the shell seconds after the
-# relay service starts, and since v5.5.0-beta.6 the shell first runs a
-# bootstrap (repo sync, managed Python, locked dependencies) before the backend
-# even starts: 20-25 s measured on 2026-09-17 with the mirrors answering, and
-# longer the first time after an update or on a slow mirror (0.12 MB/s that
-# evening). On 2026-09-17 21:20 the relay checked 11 s after the shell started,
-# found no API, killed the shell mid-bootstrap, and the evening queue never ran.
 SHELL_STARTUP_GRACE = 150
 
 
 def _stop_requested() -> bool:
-    """The service has been told to stop (SvcStop, or Windows going down).
-
-    Checked inside every wait here: on 2026-09-18 23:10 the self-update
-    restarted the service while ensure_automas() was in its 150 s
-    「先等它自己起来」 sleep, SvcStop waited 15 s and the hard guard had to
-    force-exit the process. A wait that cannot hear the stop is a hang.
-    """
+    """The service has been told to stop (SvcStop, or Windows going down)."""
     from ark_relay.features import errwatch  # noqa: PLC0415
     return errwatch.going_down()
 
@@ -150,28 +123,7 @@ def _wait_for_api(deadline: float) -> "float | None":
 
 
 def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE, notifier=None) -> bool:
-    """Start AUTO-MAS if its API is not answering, then wait for it to come up.
-
-    The user, 2026-09-03: 「MAS 不在的时候你要拉起他，
-    不希望见到任何理由开机时检测不到配置，而且要快。」
-
-    Order matters: a shell that is already up is given `grace` seconds to open
-    its API on its own before anything is killed - killing it earlier is what
-    lost the 2026-09-17 evening queue (see _revive_automas). Only a shell that
-    is absent, or one that has used up its grace, is force-restarted, and the
-    restart itself gets `timeout` seconds.
-
-    AUTO-MAS not answering is INFO when found, and decided by the restart: up
-    again -> one WARNING, pushed since 2026-10-10 (why it was not answering is not
-    known; daily report only before);
-    still not answering after `timeout` -> ERROR, pushed. Given `notifier` (the boot
-    caller, phone_channel._start_phone_channel), that ERROR is 「🔌 AUTO-MAS 启动不起来」
-    instead: the alarm goes first and the ERROR line is marked as already in the group
-    (errwatch.group_pushed), so one fault is one message - until 10-13 it was the 🩺
-    push of this line plus the caller's own 🔌 (audit s23 F2).
-    selfcheck.daily_lines reads these lines back for the daily report by their
-    words: keep 「杀掉重」, 「AUTO-MAS 已…秒）」 and 「秒内…仍不通」.
-    """
+    """Start AUTO-MAS if its API is not answering, then wait for it to come up."""
     import logging  # noqa: PLC0415
     from ark_relay.features import commands  # noqa: PLC0415
     log = logging.getLogger("ark.service")
@@ -185,9 +137,6 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE, not
             log.info("AUTO-MAS 自己起来了（等了 %.0f 秒）", waited)
             return True
         if _stop_requested():
-            # A stop (the self-update restart, a shutdown) arrived mid-wait: leave
-            # the shell alone - killing a healthy, still-bootstrapping AUTO-MAS is
-            # the 2026-09-17 incident - and let the next process pick it up.
             log.info("服务正在停止，不再等 AUTO-MAS，也不动它")
             return False
         log.info("AUTO-MAS 等了 %.0f 秒接口还是不通，杀掉重拉", grace)
@@ -200,7 +149,6 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE, not
     waited = _wait_for_api(time.monotonic() + timeout)
     from ark_relay.features import errwatch  # noqa: PLC0415
     if waited is not None:
-        # Why it was not answering is not known: pushed (until 2026-10-10 daily-report-only).
         log.warning("AUTO-MAS 已由中继重新打开（%s，打开后等了 %.0f 秒）", why, waited)
         return True
     if _stop_requested():
@@ -221,23 +169,6 @@ def ensure_automas(timeout: float = 120, grace: float = SHELL_STARTUP_GRACE, not
     return False
 
 
-# How long a boot step that needs the AUTO-MAS backend waits for it to answer, right
-# before that step. ensure_automas (the phone channel step) waits for the first answer,
-# but one answer is not "up for the rest of the boot": 2026-10-17 21:20 the backend
-# answered at 21:20:55 (ensure_automas: up by itself after 24 s), refused the
-# connection at 21:21:25 (efstart_setup, a group alarm) and 21:21:30 (the boot
-# self-check: no answer, no backend process), and its runtime and python processes then
-# on the machine had started at 21:21:34; it answered again by 21:23. Nothing in the
-# relay restarted it (the keeper only runs from the main loop on). AUTO-MAS restarted its
-# own backend. So each such step asks again right before it runs, and waits. 180 s
-# covers that gap (about 1.5 min down) twice over and the slowest cold start seen
-# (backend about 84 s after power-on that evening, about 50 s on mornings 10-10..10-16).
-# The step is reached about 70 s after power-on and the machine boots 10-15 min before
-# its queue (stagegate.BOOT_LEAD_MIN), so the wait is over minutes before the queue. It
-# is also cut to the time left before the next queue (_seconds_to_next_queue, which
-# already keeps QUEUE_MARGIN_S back).
-# Measured: relay-2026-10-17.log (down 21:21:25, processes 21:21:34, answering by 21:23)
-# and the AUTO-MAS logs 10-10..10-16; the 3 s poll is _wait_for_api's.
 BACKEND_WAIT_SECONDS = 180
 BACKEND_POLL_SECONDS = 3
 # The seconds of a wait that ran out, once one did: AUTO-MAS is down for this process,
@@ -259,9 +190,6 @@ def await_backend(log, step: str, cfg=None) -> "tuple[bool, float]":
     until AUTO-MAS answers again."""
     from ark_relay.features import commands  # noqa: PLC0415
     if commands.mas_up():
-        # Answering again: a later loss is waited for again, not answered at once with the
-        # old wait (audit 11-08 A-20: one timeout at boot made every later step give up
-        # without waiting and say it had waited that long).
         _backend_gave_up[0] = None
         return True, 0.0
     if _backend_gave_up[0] is not None:
@@ -300,13 +228,6 @@ def _boot_stamp(now: datetime) -> str:
         return now.strftime("%Y%m%d%H")
 
 
-# _seconds_to_next_queue's three numbers. Their one reader that decides anything is
-# _once_more (a second pre-update try only when left >= its budget + 60); the game
-# update logs the figure and no longer uses it (gameupdate.boot_check).
-# The margin kept before the queue: the boot steps after the last pre-update item
-# (closing it, the remaining stages, the main loop hooked up) took 2-11 s on 85
-# mornings 08-25..10-13 and 33 s once (09-08), measured in relay.log from the OK-WW
-# verdict to 「已挂上目录变更通知」; 90 s is that worst case with room.
 QUEUE_MARGIN_S = 90.0
 # The floor and the no-queue-left figure are derived, not measured: any floor below
 # the smallest budget + 60 (preupdate.OKWW_BUDGET_SECONDS 240 -> 300) means "no
@@ -354,9 +275,6 @@ def _relay_poweroff_live(engine, now=None) -> bool:
     return (now or _dt.now(tz=SERVER_TZ)) - at < _td(minutes=_sd.ISSUED_STUCK_MIN)
 
 
-# How long a bad-config exit waits for its alarm to leave. Measured: the 21 🩺 pushes in
-# state/alerts 10-06..10-13 reached the group 0-7 s after their record was logged
-# (median 3 s, 7 s for the second of a burst); twice the slowest.
 BAD_CONFIG_PUSH_WAIT_S = 15.0
 
 
@@ -403,10 +321,6 @@ def _stage_bootstrap():
     # answer (selfcheck/tape.py), for the day replay; it never stops or changes the relay.
     from ark_relay.features import selfcheck as tape  # noqa: PLC0415
     tape.install(cfg.state_dir, cfg.automas_dir)
-    # From here on every WARNING / ERROR any module logs reaches the group (see
-    # errwatch). Installed before the config check: it needs only the notifier and the
-    # state folder, and until 10-13 the check's 「配置提醒」 warnings and the reasons of a
-    # bad-config exit were logged before it and reached relay.log only (audit s23 F1).
     notifier = Notifier(cfg)
     from ark_relay.features import errwatch  # noqa: PLC0415
     from ark_relay.core.statestore import StateStore  # noqa: PLC0415
@@ -444,10 +358,7 @@ def _stage_bootstrap():
 def _stage_flush_copies(notifier, log) -> None:
     """Alarm copies a shutdown cut off before they reached COS go up now (alertlog.py),
     and the ones the Mac did not take are POSTed to it again (macpush.py).
-
-    After the self-update, not in _stage_bootstrap: on a self-update boot the outgoing
-    process ran both, then the new one ran them again (relay.log 10-05 21:20:19 /
-    21:20:27, audit s23 F3)."""
+    """
     try:
         notifier.alert_log().flush_async()
     except Exception:   # the copy never stops the boot
@@ -459,11 +370,7 @@ def _stage_flush_copies(notifier, log) -> None:
 
 
 def _stage_patch_okww(cfg, notifier, log) -> None:
-    """Install the OK-WW overrides once per startup (idempotent).
-
-    Runs after the self-update, in the process that stays: before it, a self-update
-    boot sent the same 🩹 note twice, 8 s apart, from the outgoing and the new process
-    (relay.log 10-05 21:20:19 / 21:20:27; audit s23 F3)."""
+    """Install the OK-WW overrides once per startup (idempotent)."""
     # Idempotent: it writes nothing at all when they are already in place.
     # Here, not only in the boot pre-update block: after a deploy the machine
     # should already be in its final state, with no "takes effect next boot"
@@ -474,15 +381,7 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
             Path(cfg.automas_dir).parent / "okww" if cfg.automas_dir else None)
         notes: list[str] = []
         faults: list[str] = []
-        # The overrides live in OK-WW's own ok_tasks/ folder; nothing edits its
-        # source files (the last source patches and the code that restored them
-        # were removed 2026-10-12). Installed here so a deploy leaves the machine in
-        # its final state, and read back so an override that did not take is audible.
-        # Local import: a module-level one would be evaluated during service
-        # installation, when ark_relay may not be on sys.path yet.
         from ark_relay.features import okww_overlay as _overlay  # noqa: PLC0415
-        # A pre-update killed before its `finally` (10-16 02:35, the 15 s hard exit) left
-        # OK-WW's auto-start switch off; put it back on every boot, pre-update or not.
         from ark_relay.features import preupdate as preupdate_okww  # noqa: PLC0415
         try:
             if line := preupdate_okww.restore_autostart_leftover(okww_at_boot, cfg.state_dir):
@@ -506,11 +405,6 @@ def _stage_patch_okww(cfg, notifier, log) -> None:
             notes.append(line)
         for note in notes:
             log.info("启动：%s", note)
-        # One push per startup. It used to push one message per patch, so a
-        # single OK-WW update dumped eight of them on the phone at once
-        # (the user, 2026-09-06: 「你这个通知一直在轰炸我」). alert=True: a patch that
-        # did not bind goes to the group, each time (until 2026-10-06 Server酱 only);
-        # the healthy 「🩹 OK-WW 补丁」 stays log-only (notify.route_of).
         if notes:
             notifier.send(texts.patches(len(notes), notes, faults), "\n".join(f"· {n}" for n in notes), alert=True)
     except Exception:
@@ -564,12 +458,6 @@ def _stage_selfupdate(log) -> bool:
                               "net stop ark-relay & net start ark-relay"],
                 creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP
                                | subprocess.DETACHED_PROCESS))
-            # True, not a bare return: service.py exits on it. From 09-08
-            # (25b76dd4 moved this out of main) to 09-29 it returned None, so
-            # the dying process ran the boot stages anyway - on 09-29 08:45 it
-            # launched MAA, got force-exited with MAA still open, and the new
-            # process's MAA became a "secondary launch" that never logged a
-            # verdict: 180 s wasted and a false 「没能确认」.
             return True
     except Exception:
         log.exception("自更新出错，跳过")
@@ -713,12 +601,6 @@ def _stage_announce_update(notifier, log, state_dir: Path) -> None:
                              else "（改动清单由上一版代码写入，本次没有）")
             lines += ["", "更新在开机后、队列开跑前落地，本轮直接使用新代码。"]
             body = "\n".join(lines)
-            # Two deploys of the same change - one refused by a gate, fixed, and
-            # deployed again - are one change to the person reading his phone, and
-            # he got the same paragraph twice within five minutes on 2026-09-09 and
-            # asked why the identical update ships twice. The version differs, so
-            # nothing upstream can tell; the notes are what he actually reads, so
-            # they are what gets compared. A changed line pushes as normal.
             from ark_relay.core.statestore import StateStore  # noqa: PLC0415
             _st = StateStore(state_dir)
             _last = str(_st.get("versions", "announced_notes") or "")
@@ -727,10 +609,6 @@ def _stage_announce_update(notifier, log, state_dir: Path) -> None:
                          note.get("version") or "?")
                 selfupdate._remember_announced(HERE, int(note.get("version") or 0))
                 return
-            # The notes are what he reads; since 2026-09-14 the push itself is
-            # log-only (docs/NOTIFICATIONS.md), so they go into the day's report
-            # instead (「今天中继改了」 at the end of the daily). Appended per
-            # deploy; the report reads the day's file.
             recorded = False
             if notes:
                 try:
@@ -745,8 +623,6 @@ def _stage_announce_update(notifier, log, state_dir: Path) -> None:
             if recorded:
                 log.info("更新说明已记入当天日报（v%s）", note.get("version") or "?")
             elif not notes:
-                # Said only when it happened: until 10-13 the line above was logged with
-                # no notes and nothing recorded (audit s23 F6).
                 log.info("中继已更新到 v%s，这次没有更新说明，当天日报里不记", note.get("version") or "?")
             if notes:
                 _st.set("versions", "announced_notes", notes)
@@ -892,9 +768,6 @@ def _preupdate_okww(cfg, notifier, log, problems) -> None:
     # restart mid-run left it pending; a WARNING when it still cannot be).
     from ark_relay.features import okww_overlay  # noqa: PLC0415
     okww_overlay.retry_pending("预更新后")
-    # Right after the update and before any queue: does each pinned copy still match
-    # the source now on disk? Until 10-05 the first to notice was the result check,
-    # after the run, as a group alarm (okww_overlay.drift).
     if line := okww_overlay.drift_line(okww, cfg.state_dir):
         patch_notes.append(line)
     for note in patch_notes:
@@ -922,21 +795,13 @@ def _contract_after_update(cfg, notifier, log, version: str) -> None:
     try:
         selfcheck.report_contract(cfg, notifier, version, log)
     finally:
-        # _stage_endfield_start ran on the version before this install (10-16: beta.4 came
-        # in at 02:34, right after it): converge and check Endfield's start on the new one.
         _endfield_launch(cfg, log, f"调度程序升级到 {version} 后")
         # A new AUTO-MAS can bring a rebuilt venv without the job-object fallback.
         _automas_jobfix(cfg, log, f"调度程序升级到 {version} 后")
 
 
 def _stage_preupdate(cfg, notifier, log) -> None:
-    """Do the program updates inside the boot window (once a day).
-
-    MaaEnd and MAA are not among them: since the 2026-10-11 switch-over AUTO-MAS
-    updates MaaEnd at the start of a MaaEnd run, and has MAA download its update
-    during a run and installs it after each account (items 9a and 9b of the
-    hand-over list).
-    """
+    """Do the program updates inside the boot window (once a day)."""
     # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
     if _stop_requested():
         # A stopping process must not start programs it will not live to close.
@@ -945,16 +810,7 @@ def _stage_preupdate(cfg, notifier, log) -> None:
     try:
         from ark_relay.features import preupdate  # noqa: PLC0415
 
-        # Once a day is enough: re-running on every service restart would
-        # launch the programs one by one to check for updates all over
-        # again. On 2026-08-31 I deployed three times in one morning, it ran
-        # three times, and on the third MAA did not answer within 180 seconds
-        # and we reported 「没能确认」.
         _pre_now = datetime.now(tz=SERVER_TZ)
-        # AUTO-MAS's own update check is wanted before any queue still to come
-        # today; OK-WW's update only before one that runs OK-WW. Until 2026-11-08
-        # both waited on an OK-WW queue, so on a day of MAA / MaaEnd queues alone
-        # AUTO-MAS's update was not checked either (清单-1108 A-07).
         okww_wanted = preupdate.wanted_today(cfg.automas_dir)
         if ((okww_wanted or any(preupdate.wanted_today(cfg.automas_dir, kind=k) for k in ("MAA", "MaaEnd")))
                 and preupdate.should_run(cfg.state_dir, _pre_now)):
@@ -966,13 +822,6 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             # reported as normal.
             # 来龙去脉见 docs/CODE-HISTORY.md「service.py:_stage_preupdate」
             problems: list[str] = []
-            # AUTO-MAS is asked, not launched: the phone-channel step just before
-            # (_stage_inbox_and_phone) has brought it up, or said in the group that it
-            # could not. A second ensure_automas() here (09-03 01:08: AUTO-MAS was shut
-            # down and the pre-update asked it for 180 s) waited 150 + 120 s again and
-            # pushed the same ERROR a second time (audit s23 F2); the item is skipped
-            # with one line instead. OK-WW's pre-update does not go through AUTO-MAS.
-            # It is waited for, not relaunched (await_backend: a backend restarting itself).
             up, waited = await_backend(log, "预更新", cfg)
             # One record for both tries of the AUTO-MAS item: a first try whose install it
             # could not see land leaves it, a second try that finds it landed says so.
@@ -991,9 +840,6 @@ def _stage_preupdate(cfg, notifier, log) -> None:
                                             cfg, notifier, log, version))):
                 notifier.send(texts.PREUPDATE, note)
             if _stop_requested():
-                # 2026-10-16 02:35: a stop during the AUTO-MAS item must not go on to launch
-                # OK-WW (the rule above), and a pre-update cut short is neither marked done
-                # nor reported as unconfirmed: the next boot runs it again.
                 log.info("服务正在停止，预更新停在 AUTO-MAS 之后，下次开机重做")
                 return
             if okww_wanted:
@@ -1006,13 +852,6 @@ def _stage_preupdate(cfg, notifier, log) -> None:
             preupdate.mark_run(cfg.state_dir, _pre_now,
                                clean=not problems)
             if problems:
-                # A group alarm, each time. From 10-05 until 2026-10-06 it was said
-                # on Server酱 and not alarmed (the user, 10-05 13:07, on stopping at every
-                # small hitch: 「几乎就是遇到一点小毛病就停下来报错」); his order of
-                # 10-06, every error every time (「不论多少次什么错误都要发」), reverses that. The queue still runs as usual and every program
-                # checks for updates itself when it starts; the text says so. The
-                # WARNING line comes after the push and is not pushed a second time
-                # when the alarm reached the group (errwatch.group_pushed).
                 from ark_relay.features import errwatch  # noqa: PLC0415
                 body = "\n".join(f"· {p}" for p in problems)
                 title = texts.unconfirmed("预更新", len(problems))
@@ -1058,20 +897,12 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
     """Check the sanity-booster step and prune master entries for tasks MaaEnd no
     longer has. (Switching back on tasks the relay once switched off went with
     the last such record, audit s18 F5.)"""
-    # The sanity booster (应急理智加强剂) stays on; a booster step the relay does not
-    # know rings the group at every boot that sees it. The user, 2026-10-06, on it:
-    # 「那个要一直开着，如果上游maaend改了导致没生效就要报警」 - every time it is seen, he wants the alarm.
     try:
         from ark_relay.features import gameupdate as _gu3  # noqa: PLC0415
         if shape := _gu3.spmed_check(cfg):
             notifier.send(texts.SPMED_UNRECOGNISED, texts.spmed_unrecognised_body(shape), alert=True)
     except Exception:
         log.exception("检查应急理智加强剂那段出错")
-    # Entries for tasks this MaaEnd no longer has are removed (the user,
-    # 2026-09-09 03:49: 「另外手机遥控里还有黄色警告，你光报警不去修吗？」; listed in
-    # relay/USER-SWITCHES.txt), and every removal is pushed to the group naming
-    # them: mastercfg.prune_maaend_orphans logs that WARNING itself under its own
-    # title (texts.MAAEND_PRUNED), and its refusals too, so nothing is sent here.
     try:
         from ark_relay.core import mastercfg as _mc  # noqa: PLC0415
         removed, note = _mc.prune_maaend_orphans(cfg.automas_dir, cfg.maaend_dir)
@@ -1081,9 +912,6 @@ def _stage_reenable_maaend(cfg, notifier, log) -> None:
             log.info("开机：MaaEnd 死条目清理没做（上面那条 WARNING 已报群）：%s", note)
     except Exception:
         log.exception("清理 MaaEnd 死条目出错")
-    # Same reasoning one level down: option *values* the new version no longer
-    # reads. Left alone, MaaEnd drops them on load and runs the task on its
-    # defaults - 2026-09-10 that was 自动采集 with no routes, reported green.
     try:
         from ark_relay.core import mastercfg as _mc2  # noqa: PLC0415
         changed, note = _mc2.migrate_maaend_options(cfg.automas_dir, cfg.maaend_dir)
@@ -1168,12 +996,6 @@ def _stage_maa_start_watch(cfg, notifier, log) -> None:
 
 def _stage_gameupdate(cfg, notifier, log) -> None:
     """Major version update days: register the game clients that need updating."""
-    # On major update days, update the game clients too (asked for by the user
-    # on 2026-09-02). Once per boot: the morning window is short, only enough
-    # for Arknights to install its package or for a launcher to be clicked; the
-    # evening run is MAA only, so the large Endfield and Wuthering Waves
-    # downloads go here. The budget is however long there is until the next
-    # queue.
     try:
         from ark_relay.features import gameupdate  # noqa: PLC0415
         _gu_now = datetime.now(tz=SERVER_TZ)
@@ -1188,8 +1010,6 @@ def _stage_gameupdate(cfg, notifier, log) -> None:
                 log.info("游戏更新：%s", n)
                 notifier.send(texts.GAME_UPDATE, n)
             if gproblems:
-                # A group alarm, each time (until 2026-10-06 demoted to Server酱); the
-                # WARNING line is not pushed again when the alarm reached the group.
                 from ark_relay.features import errwatch  # noqa: PLC0415
                 body = "\n".join(f"· {x}" for x in gproblems)
                 title = texts.unconfirmed("游戏更新", len(gproblems))
@@ -1220,16 +1040,7 @@ def _stage_stagegate(engine, log) -> None:
 
 
 def _stage_annihilation(engine, notifier, log) -> None:
-    """Restore the once-a-week switches for a new week, and say the week's state once.
-
-    The weekly garden and the weekly boss share one piece of logic and one
-    notification with annihilation's status line (the user, 2026-09-07: 「逻辑上一致的
-    东西就应该强统一」). When either rolls over into a new week, this week's state
-    of all three is sent together. Annihilation itself no longer rolls over here:
-    AUTO-MAS keeps its weekly record and switch since the 2026-10-11 hand-over
-    (item 13), so it only contributes its status line, read from AUTO-MAS, and
-    the alarm when its switch is off (_annihilation_switch_off).
-    """
+    """Restore the once-a-week switches for a new week, and say the week's state once."""
     rolling = [("周常乐园", engine._garden), ("周本", engine._weeklyboss)]
     rolled: dict[str, str] = {}
     for name, gate in rolling:
@@ -1256,13 +1067,7 @@ def _stage_annihilation(engine, notifier, log) -> None:
 
 
 def _annihilation_switch_off(engine, notifier, log) -> None:
-    """Alarm when MAA's annihilation switch is "Close" and this game-week is not done.
-
-    AUTO-MAS keeps the switch and the week record since the 2026-10-11 hand-over
-    (item 13) and never turns the switch back on; the relay no longer writes it.
-    So a switch left off means no annihilation from now on: one group alarm per
-    boot, and the setting is not touched.
-    """
+    """Alarm when MAA's annihilation switch is "Close" and this game-week is not done."""
     gate = getattr(engine, "_annihilation", None)
     if gate is None:
         return

@@ -26,9 +26,6 @@ _FW_META = re.compile(r"^(\[[^\]]+\]\[[A-Z]{3}\])(?:\[Px\d+\]\[Tx\d+\](?:\[[^\]]
 # Framework event lines and ERR / WRN lines.
 _FW_PICK = re.compile(r"\[msg=|^\[[^\]]+\]\[(?:ERR|WRN)\]")
 
-# MXU app log lines, e.g. 2026-10-01-4.log:
-#   2026-10-01 16:11:06 INFO  [App] 检测到待安装更新: v2.31.0-beta.6
-#   2026-10-01 16:11:07 INFO  [App] 更新安装完成
 _MXU_STAMP = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) ")
 _MXU_PENDING = re.compile(r"检测到待安装更新: (\S+)")
 _MXU_INSTALLED = "更新安装完成"
@@ -164,13 +161,8 @@ def update_restart_version(maaend_dir, started) -> str:
     return ""
 
 
-
-# One MaaFW event line: [msg=Tasker.Task.Starting] [details={...}] (maafw.log, 2026-10-16:
-# 「[msg=Tasker.Task.Succeeded] [details={"entry":"GiftOperatorMain",...,"task_id":200000001,...}]」).
 _FW_EVENT = re.compile(r"\[msg=(Tasker\.Task\.\w+|Node\.PipelineNode\.Succeeded)\]\s*\[details=(\{.*\})\]\s*$")
 _FW_AT = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d(?:\.\d+)?)\]")
-# AUTO-MAS prints 「任务开始」 up to a second after MaaFW's Tasker.Task.Starting
-# (2026-10-16: 13:54:59.034 against 13:54:58.249), so windows are read this much wider.
 TRAIL_SLACK_S = 5
 
 
@@ -206,23 +198,10 @@ def task_trail(events: list, entry: str, t0: datetime, t1: datetime) -> "dict | 
     whose start is nearest t0 (AUTO-MAS's 「任务开始」) within TRAIL_SLACK_S of the
     window t0..t1 (its 「任务完成」).
 
-    Returns {"started", "ended" (datetimes, ended None when no end event),
+Returns {"started", "ended" (datetimes, ended None when no end event),
     "result" ("Succeeded" / "Failed" / ""), "nodes" ({node name: times it
     succeeded})} or None when there is no start of `entry` in the window.
-
-    The nodes are every Node.PipelineNode.Succeeded between that start and end,
-    whatever task_id they carry: a custom action runs its work as a sub-task of its
-    own (environment monitoring, 2026-10-08 09:41: task 200000008 was posted, the
-    photo job ran as 200000559 - EternalSunsetExecute, AcceptEternalSunset,
-    EnvironmentMonitoringTakePhoto). MaaEnd runs one task at a time, so the stretch
-    holds only this task's work. The second process repeats every event line;
-    (task_id, node_id) counts it once.
-
-    A step is named by node_details.name, the node that was hit and acted. The
-    top-level "name" is the node whose next list was being tried: on 2026-10-13
-    09:41:34-36 GiftOperatorConfirmGift clicked once (node_details) and was the
-    top-level name three times, for the two [JumpBack]GiftOperatorGiftDialog skips
-    and GiftOperatorLeave after it (its next list, GiftOperatorGiftFlow.json)."""
+    """
     lo = t0 - timedelta(seconds=TRAIL_SLACK_S)
     hi = t1 + timedelta(seconds=TRAIL_SLACK_S)
     starts = [(abs((w - t0).total_seconds()), w, d.get("task_id")) for w, msg, d in events
@@ -239,10 +218,6 @@ def task_trail(events: list, entry: str, t0: datetime, t1: datetime) -> "dict | 
     # Without an end event the stretch stops at the window's edge, not at the end of
     # `events`, which holds the later tasks of the run too.
     last = ended if ended is not None else hi
-    # ... and before the next task's start inside that slack: its first nodes are not this
-    # task's work (audit 2026-11-08 B-07). Only top-level tasks post Tasker.Task.Starting -
-    # a custom action's sub-task (200000559 on 10-08) logs node events only - so this
-    # never cuts this task's own sub-tasks short.
     nxt = None
     if ended is None:
         nxt = min((w for w, msg, d in events if msg == "Tasker.Task.Starting" and w > started
@@ -267,48 +242,6 @@ def task_trail(events: list, entry: str, t0: datetime, t1: datetime) -> "dict | 
 # (machinechecks/runs.py) and by the ledger's 「没证据」 rule (core.maaend_unverified,
 # through raw['tasks_trail'] booked by alarm.records._mark_task_trails).
 TRAIL_TASKS = ("赠送干员礼物", "装备制造", "转交委托", "环境监测")
-# What each task's own run in MaaFW's log has to show. Steps from MaaEnd's pipeline
-# (github.com/MaaEnd/MaaEnd, tag v2.33.0-beta.3 - the version on the machine -
-# assets/resource/pipeline/):
-#   entry  - the task MXU posts (Tasker.Task.Starting "entry");
-#   did    - (step, what it means): the task did its job when one of these succeeded;
-#   end    - (step, what it means): a step with no way on but the task's end, reached
-#            when there is nothing to do - a normal end (资源不足 / 已领满 are normal
-#            states, not failures). Read before `did`: the gear task's bag-full end
-#            comes right after its produce click;
-#   none   - for tasks whose nothing-to-do is told by the steps that ran: what it
-#            means, when every step of `needs` succeeded and no `did` step did.
-# Gift: GiftOperatorGiftFlow.json - GiftOperatorConfirmGift 「点击赠送按钮」 (once on
-#   every 10-08..10-16 run). GiftOperatorGiftFull 「赠送已满」 is one operator, not the
-#   end: its next is GiftFullLeave -> GiftFullBackInWorld -> GiftFullRetry (max_hit 5,
-#   back to GiftOperatorEntry for another operator) and only then GiftOperatorGiftFullFail
-#   (StopTask; the pipeline's own desc: 「重试五次也只能找到送满的干员，正常失败」).
-#   A StopTask node is logged like any other and its task booked Succeeded: maafw.bak.
-#   2026.10.16-14.00.46.901.log 13:58:58.769 has Node.PipelineNode.Succeeded for
-#   CreditShoppingBuyItemStop (action "StopTask") and Tasker.Task.Succeeded for
-#   CreditShoppingMain at the same instant; MaaFramework's Actuator::stop_task returns
-#   success and PipelineTask::run_next notifies the node before its loop checks
-#   need_to_stop. So an all-full run ends in a logged GiftFullFail. A trail whose last
-#   step is GiftFull with nothing after it is no end: GiftFull's next is GiftFullLeave,
-#   and when that is not hit MaaFW takes on_error and books the task Failed.
-# Gear: GearAssembly/GearAssembly.json - GearAssemblyClickProduceBtn 「点击制作按钮」
-#   (once a run, followed by SceneNoticeRewardsConfirm on 10-07..10-16). Its next is
-#   [GearAssemblyCheckMaterialEnough 「检测背包是否已满，背包已满直接结束」,
-#   SceneNoticeRewardsConfirm]; GearAssemblyCheckFailedAndFinish 「检查制作失败，退出任务」
-#   (recognises NotEnough or NotUnlocked) is reached from GearAssemblyGearListScrollEnd.
-#   10-08 10:34:11-10:34:16 ran only the scene check, which failed and stopped MaaEnd (ABORT_STEP).
-#   GiftFullFail, CheckMaterialEnough and CheckFailedAndFinish appear in no run we
-#   hold (corpus pull 2026-10-13, 10-16 bundle): read from the pipeline only
-#   (tests/test_mc28.py builds those trails from it).
-# Delivery: DeliveryJobs/TransferJob.json - DeliveryJobsConfirmTaskTransfer (5 a run in the
-#   mornings); a region loop (Region/ValleyIV.json, Wuling.json) tries every depot's
-#   job and cargo and falls back to DeliveryJobsLoop when none is there: the re-runs
-#   of 10-08 10:37 and 10-12 11:03 ran both region loops and transferred nothing.
-# Environment: EnvironmentMonitoring/TakePhoto.json - EnvironmentMonitoringTakePhoto
-#   (10-08 09:42, 10-10, 10-12 10:1x took one job each; the step succeeds twice a job,
-#   so no count is said); Terminals.json - each
-#   terminal's loop tries all its jobs; on 10-08 10:38, 10-11, 10-12 11:04, 10-13 and
-#   10-16 both terminal loops ran, no job was taken and the task ended in 6-8 s.
 TRAIL_RULES = {
     "赠送干员礼物": {"entry": "GiftOperatorMain",
                  "did": (("GiftOperatorConfirmGift", "点了「赠送」{n} 次"),),
@@ -326,15 +259,6 @@ TRAIL_RULES = {
               "none": "两个监测终端都看过了，没有可接的委托",
               "needs": ("OutskirtsMonitoringTerminalLoop", "MarkerStoneMonitoringTerminalLoop")},
 }
-# MaaEnd's own abort: a failed scene check (SceneImageCheck.json, e.g.
-# __SceneImageCheckModFailedFinish) goes next to this node, which stops the whole task
-# chain through MaaFW's PostStop (SceneLoading.json 「运用 poststop 接口停止整个任务链」).
-# 2026-10-08 10:34:16 (MaaEnd-06-31-06): 装备制造's check found the UID line cut short,
-# MaaEnd said so in its own log (「UID显示不完整，…影响识别」), MaaFW logged
-# __SceneImageCheckModFailedFinish -> __SceneCheckAbortPipeline, GearAssemblyStart
-# Succeeded, MaaTaskerPostStop; MXU logged 「自动执行任务完成，关闭自身」 and the
-# 「停止任务」 lines are that stop. AUTO-MAS sent no stop (its MaaEnd update had ended at
-# 10:30:43). MaaFW books the task Succeeded, so the abort is read from this step.
 ABORT_STEP = "__SceneCheckAbortPipeline"
 
 
@@ -405,10 +329,7 @@ def trail_unread(e: dict) -> bool:
     raw['tasks_trail_miss'] is above 0 - which the callers ask first."""
     return bool(e.get("unread", not e.get("found", True)))
 
-# AUTO-MAS's run-log line: 「[2026-10-08 10:34:16.230] UID显示不完整，…」.
 _RUN_LINE = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\] (.+)$", re.M)
-# MaaEnd's own lines in a task's window that are not its reason: the task's start and
-# end, and the scene check's standing note (2026-10-08 10:34:14.623).
 _NOT_REASON = re.compile(r"^任务(开始|完成)[:：]|^正在检查画面")
 # MaaEnd's reasons said in plain words, where its own line carries English
 # (texts.plain): (part of its line, what it means).
@@ -520,33 +441,13 @@ def _maaend_all_done(text: str, failed: "list[str] | None" = None) -> bool:
     「任务完成」with the same name, there is no 「任务失败」at all, at least one
     task ran, and either the round reached its closing task (`_maaend_round_closed`)
     or every task AUTO-MAS lists as failed (`failed`) is one it could not name.
-
-    The closing task is what tells "finished" from "stopped between tasks": a
-    MaaEnd that died or was killed right after one task's 「任务完成」 leaves a log
-    in which every started task also completed, while the tasks AUTO-MAS lists as
-    failed never started at all (2026-10-08 06:31: 13 display names, none started).
-
-    Not every round has a closing task: the real 2026-09-06 05:40 run ended after
-    「任务完成: 📅日常奖励领取」 with no 关闭游戏 / 结束进程 line at all, 16 of 16 tasks
-    complete, and AUTO-MAS failed it only on 「SellProduct」. That is AUTO-MAS's
-    fallback for a task whose display name it could not look up (MaaEnd v2.28.0-beta.1
-    relabelled it 据点交易), a bare MaaEnd key that matches no 「任务开始」 whether the
-    task ran or not. When every listed name is such a key, the log's own verdict
-    stands without a closing task; a listed display name that never started still
-    needs one. Not covered: a rename AUTO-MAS lists under a stale Chinese name - no
-    record shows one.
     """
     started = [_strip_emoji(m.group(1)) for m in _END_TASK_START.finditer(text)]
     done = Counter(_strip_emoji(m.group(1)) for m in _END_TASK_DONE.finditer(text))
     if not started or _END_TASK_FAIL.search(text):
         return False
-    # By count: a task started twice and completed once did not complete (audit 2026-11-08 B-02).
     if Counter(started) - done:
         return False
-    # A display name AUTO-MAS lists as failed that never started is a round that stopped
-    # short, closing task or not: checked before the closing task, which alone booked such
-    # a round ok (audit 2026-11-08 B-02). A bare key (SellProduct) is AUTO-MAS's own
-    # naming gap and says nothing either way.
     if failed and any(not _AUTOMAS_KEY.fullmatch(n) and n not in started for n in failed):
         return False
     if _maaend_round_closed(text):
@@ -554,19 +455,10 @@ def _maaend_all_done(text: str, failed: "list[str] | None" = None) -> bool:
     return bool(failed) and all(_AUTOMAS_KEY.fullmatch(n) for n in failed)
 
 
-# How AUTO-MAS names a MaaEnd task it found no display name for: the task's key
-# (2026-09-06 「MaaEnd 部分任务执行失败: SellProduct」). Display names are Chinese
-# with an emoji in front (「🛒据点交易」), stripped to 「据点交易」 by _split_failed.
 _AUTOMAS_KEY = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 
 
-# The tasks that end a round: AUTO-MAS appends MaaEnd's CloseGamePC
-# 「❌关闭游戏（PC）」 (tests/fixtures/maaend-farm-drops/2026-09-28a.log lines
-# 811-812); older logs end with the MXU task 「⛔ 结束进程」
-# (tests/fixtures/maaend_full_2026-09-01.log lines 49-50).
 _END_CLOSING_TASKS = ("关闭游戏", "结束进程")
-# What MXU prints for MaaFramework's MaaTaskerPostStop task (an EmptyTask that
-# always succeeds): tests/fixtures/maaend_stop_task_2026-10-08.log lines 20-21.
 _END_STOP_MARK = "停止任务"
 
 
@@ -577,11 +469,6 @@ def _maaend_round_closed(text: str) -> bool:
     this says no. CloseGamePC is only appended when no later stage follows
     (docs/PITFALLS.md), so a stage followed by another one never qualifies.
     """
-    # MaaEnd's own stop marker (MaaTaskerPostStop, printed 「停止任务」) is not a
-    # task of the round: MXU prints it whenever the task chain is stopped, which can
-    # land after 关闭游戏. On 2026-10-08 10:34:16 MaaEnd stopped itself: its scene
-    # check failed and __SceneCheckAbortPipeline PostStops the whole chain (MaaFW log;
-    # AUTO-MAS sent no stop, its MaaEnd update had ended at 10:30:43).
     starts = [m for m in _END_TASK_START.finditer(text) if _strip_emoji(m.group(1)) != _END_STOP_MARK]
     if not starts:
         return False
@@ -610,36 +497,12 @@ def _split_failed(text: str) -> list[str]:
 _END_GAIN = re.compile(r"获得\s+(\S.*?)\s*[×x]\s*(\d+)")
 # Endfield's sanity reading, e.g. 「当前理智 920/360」 (it can exceed the cap).
 _END_SANITY = re.compile(r"当前理智\s*(\d+)\s*/\s*(\d+)")
-# MaaEnd's line when it stops a task because sanity ran out.
-# MaaEnd v2.34 words it 「😴**体力不足，任务结束**」 (2026-10-19 MaaEnd-07-14-29.log).
 _END_SANITY_OUT = re.compile(r"理智不足[，,]\s*结束任务|体力不足[，,]\s*任务结束")
-# Sanity one Protocol Space settlement costs, used only when the log shows no
-# drop between two readings (measured 241 -> 81 in a 2026-08-25 log). A drop
-# seen in the log is used instead.
 _END_PS_COST = 160
 # Endfield regenerates 1 sanity every 7m12s, 200 points per 24 hours (official
 # figure); also used for the full-again time (core/collector.py).
 _END_SANITY_SEC_PER_POINT = 432
-# 「尝试使用理智消耗许可」 picks the double reward: MaaEnd's ProtocolSpaceRewardUsePermit
-# clicks the 理智消耗许可 (item_bp_double_reward) option, and its fallback node
-# ProtocolSpaceRewardFallbackSingle switches a double claim the sanity cannot pay
-# for to the single one without the permit (MaaEnd
-# assets/resource/pipeline/ProtocolSpace/InSpace.json). A double claim costs
-# _END_PS_COST; when sanity on hand is below that the game pays out a single
-# reward (half the items) for half the cost: 10-07 277 -> 117 -> half claim, and the
-# next day's first reading fits 37 left, not 0.
 _END_SANITY_SPENT = re.compile(r"尝试使用理智消耗许可")
-# 「补充理智」 is MaaEnd using one 应急理智加强剂: in MaaEnd
-# assets/resource/pipeline/Common/Private/AutoUseSpMedication/Main.json the node
-# __AutoUseSpMedicationSelectEmergencySanityBooster clicks one booster and goes
-# next to __AutoUseSpMedicationUseEmergencySpBooster, whose focus
-# task.AutoUseSpMedication.focus.restore_sanity is 「补充理智」 (zh_cn.json): one
-# booster per line.
-# One gives 40 sanity. No source states the amount; it is measured by five
-# checks in 10-08 MaaEnd-05-29-15.log (fixtures/maaend-sanity-1013): 237 - 160 +
-# 1 x 40 = 117, read 79 s later; four times 4 boosters + one double claim keep
-# 117/118; 78 left, and the 06:34 log reads 85 after 45 min. _claims_fit checks
-# every log against it.
 _END_POTION = re.compile(r"补充理智")
 _END_POTION_SANITY = 40
 _END_SANITY_REFUSED = re.compile(r"理智不足[，,]\s*尝试不使用理智消耗许可")
@@ -666,35 +529,11 @@ _END_SCHEDULE_SKIP = re.compile(
     r"任务开始[:：]\s*(\S.+?)\s*\n[^\n]*?现在游戏时间是(周[一二三四五六日天])，根据执行周期跳过任务")
 _END_COLLECT_ROUTES = re.compile(r"(\d+)\s*条路线")
 
-# A gathering route that reaches a relay device (息壤中继器) while a fight is on
-# gets the game's toast 「战斗中无法使用，请脱离战斗后尝试」. MaaEnd writes no line
-# for it and still ends the route normally (maafw.log 2026-10-12 10:45:39
-# AutoCollectRoute10End), so the history log reads the route as walked - but it
-# gathered nothing: 路线10 picked up 2 (10-05), 0 (10-08) and 4 (10-12) against
-# 6-10 on good runs (ledger #29). The only trace is the on_error picture of that
-# node, named by its own time:
-#   2026.10.12-10.44.55.895___MapNavigatorObstacleDevice_InteractPost.png
-# The toast text itself is in no log (0 hits in 202 maafw logs, ledger #29).
 OBSTACLE_SHOT = "MapNavigatorObstacleDevice_InteractPost"
 _SHOT_NAME = re.compile(r"^(\d{4}\.\d\d\.\d\d-\d\d\.\d\d\.\d\d)\.(\d+)_+(.+)\.png$")
-# A line's stamp to the millisecond, as the history log and maafw.log write it
-# (「[2026-10-12 10:45:39.489][INF]…」; the history log's route line below).
 _LINE_TIME = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)(?:\.(\d{1,6}))?")
-# A route's line in the AUTO-MAS history log, written when MaaEnd starts it:
-# 「[2026-10-12 10:43:58.226] 路线10：重红柱状菌」 (MaaEnd spells routes 1-3 线路),
-# or in MaaEnd v2.36+ (2026-10-29, ledger #122/#134) 「[2026-11-02 11:03:05.320] 采集纯晶多齿叶」.
-# It is the focus text of the route's Start node, which MaaFW announces in maafw.log
-# as Node.Recognition.Succeeded of AutoCollectRoute10Start at 10:43:58.201 (25 ms
-# before AUTO-MAS stamps it; the Action.Starting line comes 0.2 s later, at .410).
-# Its 「…采集失败」 and 「… 库存已达目标，本次跳过」 lines close a window but open none.
 _ROUTE_LINE = re.compile(r"^\[[^\]]+\]\s*((?:路线|线路)\d+[：:].*?|(?:采集(?!失败$)[^\s：:]+|\S+(?:采集失败| 库存已达目标，本次跳过)))\s*$")
 _ROUTE_NOT_START = re.compile(r"采集失败$|本次跳过$")
-# v2.36+: a route whose own node fails - Goto when the map navigator loses its position, Start
-# when the game cannot be brought back into the world (behind a 「登录认证已失效」 dialog) - has
-# no 「…采集失败」 line; the plugin's failure collector names its node instead. AUTO-MAS history
-# log 2026-11-05 11:43:56 (MaaEnd-07-24-54): 「FailureCollector subtask failed
-# task=AutoCollectValleyIVPinkBolete1Start」, then 14 more such lines while that run booked
-# 17 of 17 routes walked. The route id is the node without its step (AutoCollectValleyIVPinkBolete1).
 _COLLECTOR_FAILED = re.compile(r"FailureCollector subtask failed task=(AutoCollect[A-Za-z]+?\d+)[A-Z][A-Za-z]*\b")
 _COLLECT_END = re.compile(r"任务(?:完成|失败)[:：]\s*\S*自动采集")
 
@@ -881,14 +720,7 @@ def obstacle_shots(maaend_dir) -> list[str]:
 
 
 def route_windows(text: str) -> list[tuple[str, datetime, datetime]]:
-    """(route label, start, end) for every route a history log shows MaaEnd starting.
-
-    A route runs from its own line to the next route line of any kind or the end of
-    自动采集. The last route of a run cut short (no 「任务完成/任务失败: 自动采集」) ends
-    at the log's last stamped line: nothing later is this run's. Left open, it took in
-    every later relay-device picture still in on_error (they stay for days), so a run
-    cut short in the morning was booked with a later run's 「战斗中无法使用」 (the real
-    2026-09-11 MaaEnd-06-47-30, cut short after its 「路线5：轻黯石」 line)."""
+    """(route label, start, end) for every route a history log shows MaaEnd starting."""
     events: list[tuple] = []
     last = None
     for line in text.splitlines():
@@ -929,7 +761,6 @@ _END_FW_LINE = re.compile(r"^\[[^\]]+\]\[(?:ERR|WRN|DBG|INF|TRC)\]")
 _END_STAMP = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
 _STORAGE_FULL_AFTER_S = 120
 BAG_FULL = "背包满了"
-# Not produced any more; kept because ledger lines written before 2026-10-06 carry it.
 CLAIM_UNCONFIRMED = "点了确认领取后失败，没看到仓储已满的提示"
 # How many raw lines go with a claim failure, per log: the first and last lines
 # of the stretch, each cut to CLAIM_LINE_CHARS.
@@ -987,10 +818,6 @@ def _maaend_fail_causes(text: str, fw_text: str = "") -> dict:
     return causes
 
 
-# 2026-11-05 11:43:57 the account was logged in on another device (his brother: 「登录是我 bro 在登录」,
-# 11-05 13:0x Tokyo). The game put 「登录认证已失效，请重新登录」 over everything, MaaFW's batch OCR logged it
-# in maafw.log (tests/fixtures/maaend-2026-11-05/maafw-logged-out-ocr.log), and every route after it failed;
-# the alarm said gathering failed. A task that failed at or after that dialog names it as the cause.
 LOGGED_OUT_TEXT = "登录认证已失效"
 LOGGED_OUT = "这个号在别的设备上登录了，游戏弹「登录认证已失效」，之后进不了游戏"
 
@@ -1065,12 +892,6 @@ def _strip_emoji(name: str) -> str:
     return re.sub(r"^[^\w一-鿿]+", "", name).strip()
 
 
-# A claim's items are printed as a block: the header line (_END_ITEMS_HEAD), then
-# one 「<item> ×<n>」 line per item, without 「获得」, so _END_GAIN does not see them
-# (tests/fixtures/maaend-farm-drops/2026-09-27.log lines 320-323). The block ends
-# at the first line that is not an item. Framework lines ("[ts][ERR]...", no space
-# after the stamp) are not MaaEnd messages and end a block too.
-# A stamped MaaEnd message line: (stamp, message).
 _LINE_STAMP = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\] (.*)$")
 _END_ITEMS_HEAD = re.compile(r"^获得以下物品[:：]\s*$")
 _END_ITEM = re.compile(r"^([^\[\s].*?)\s*[×x]\s*(\d+)\s*$")
@@ -1107,14 +928,7 @@ def _prints_item_blocks(text: str) -> bool:
 
 
 def _claim_landed(tail: list[str]) -> bool:
-    """In a block-era log: did the claim after the last sanity reading land?
-
-    It landed when an item block follows the claim before any 「理智不足」
-    line or the end of the task. The stop line (_END_SANITY_OUT) also ends a task
-    after a claim that landed, so it is not read as refused on its own
-    (fixtures/maaend-farm-drops 2026-09-28a.log lines 341-354: landed;
-    2026-09-27.log lines 352-353: refused).
-    """
+    """In a block-era log: did the claim after the last sanity reading land?"""
     tried = False
     for line in tail:
         msg = _msg(line).strip()
@@ -1157,12 +971,7 @@ def _claims_fit(text: str) -> bool:
     (_claim_costs), give or take what regenerated in between (one point per
     _END_SANITY_SEC_PER_POINT, plus one for a partly regenerated point)?
 
-    Only steps with a claim click (_END_SANITY_SPENT) are checked: the rule
-    prices Protocol Space claims, and a 基质刷取 run between two readings is not
-    one (fixtures/maaend-farm-drops 2026-09-24_MaaEnd-06-07-50.log: 1 + 2 potions
-    -> 1 after an essence run).
-
-    False means the per-claim rule does not describe this run, so the spent and
+False means the per-claim rule does not describe this run, so the spent and
     left it gives are not reported as figures.
     """
     lines = text.splitlines()
@@ -1189,13 +998,6 @@ def _claims_fit(text: str) -> bool:
 def _farm_segment(lines: list[str]) -> tuple[str, int, "int | None"]:
     """(task name, first line, last line or None) of the farming task, or
     ("", -1, None) when there is none.
-
-    First by name (_END_FARM_TASKS). When no task carries either name, the
-    first task whose own lines hold a 「当前理智 N/M」 reading is taken instead.
-    Name first because a failed 基质刷取 run can end before any reading
-    (tests/fixtures/maaend-2026-09-18, tests/replay/2026-09-07). In the logs under
-    tests/replay and tests/fixtures the reading appears only inside 基质刷取 and
-    协议空间.
     """
     start = end = None
     farm = ""
@@ -1299,8 +1101,6 @@ def _farm_one(text: str, lines: list[str], farm: str, start: int, end, skipped: 
     seg = lines[start:(end + 1) if end is not None else None]
     body = "\n".join(seg)
     if _END_ESSENCE_MET.search(body) and not _END_ESSENCE_DONE.search(body):
-        # Target mode found every ticked weapon's essence owned and farmed nothing
-        # (2026-10-16 14:10): said as such, not as a farm of 0 runs.
         return {"maaend_essence_met": True}
     out["maaend_farm"] = farm
     if m := _END_PLACE.search(body):
@@ -1349,8 +1149,6 @@ def _farm_one(text: str, lines: list[str], farm: str, start: int, end, skipped: 
     return out
 
 
-# The shape of a round that never got into the game (seen during Endfield server
-# maintenance on 2026-09-02): every task fails within seconds, none completes.
 _TASK_START = re.compile(r"\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\]\s*任务开始:\s*(.+)")
 _TASK_END = re.compile(r"\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)[.\d]*\]\s*任务(完成|失败):\s*(.+)")
 _UNREACHABLE_QUICK_SEC = 30
@@ -1423,10 +1221,6 @@ def task_evidence(text: str) -> dict[str, str]:
     return out
 
 
-# Lines MaaEnd writes whether or not a task does anything: its scene check and the
-# warnings / failure dumps around it. On 2026-10-08 10:34 the only lines inside one task
-# were the scene-check note and the UID warning, and that task was aborted
-# (fixtures/maaend_stop_task_2026-10-08.log) - neither is evidence (audit 2026-11-08 B-07).
 _NOT_EVIDENCE = re.compile(r"^正在检查画面|^UID显示不完整|\[(?:ERR|WRN)\]|FailureCollector")
 
 

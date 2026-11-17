@@ -12,28 +12,10 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_apphost_covers_service():  # noqa: C901
-    """app_main.AppHost has every attribute the code it runs reads off it.
-
-2026-10-11: 971a1a27 made service.main call self._stop_in_boot, which AppHost did not
-borrow; the installed relay died at every start with "'AppHost' object has no attribute
-'_stop_in_boot'" and every switch-over went back to the old relay (cloud run
-38094295924). Read from the source (pywin32 is not on the Mac).
-
-Review round 8 #24: the first version of this test read only the borrowed methods'
-own `self.xxx`. The host also travels as an argument - service.main passes it to
-service._loop(svc, ...) and boot_stages._stage_inbox_and_phone(svc, ...), which hands it
-on to _start_phone_channel; app_main gives it to two threads - and a `svc.xxx` there
-that AppHost lacks fails the same way. The walk below follows the host through those
-calls (a plain or module-qualified call, or threading.Thread(target=f, args=(...)))
-into any function of app_main, service or boot_stages, as deep as it goes.
-
-    Formerly test_apphost_covers_service.py.
-    """
+    """app_main.AppHost has every attribute the code it runs reads off it."""
     import ast
 
     RELAY = Path(__file__).resolve().parents[1]
-    # The files the host travels through, by the name the code calls them by. service.py's main
-    # loop and boot_stages' phone channel moved into the package on 2026-10-11.
     MODULES = {"app_main": "app_main.py", "service": "service.py", "boot_stages": "boot_stages.py",
                "automas_keeper": "ark_relay/features/automas_keeper.py",
                "phone_channel": "ark_relay/features/phone.py"}
@@ -216,23 +198,7 @@ into any function of app_main, service or boot_stages, as deep as it goes.
 
 
 def _part_estop_verifies():
-    """The red button on the phone must not say 「已停一切」 unless it checked.
-
-The conclusion of 2026-08-26, in the user's own words, was 「你没有进行任何有效的停止
-行为，全是我手动关的」. The phone button kept that shape: stop through the AUTO-MAS
-API, run taskkill twice, then return a hard-coded success - no look at what was
-actually left, and the message went straight out as a push.
-
-Two things make that worse than doing nothing. AUTO-MAS retries the whole queue when
-one of its members is killed under it, so "killed it twice" says nothing about the
-state half a minute later; and the process list it did surface never contained
-Wuthering Waves' real process names, which is exactly how the 08-26 check passed
-while the game was running.
-
-So: verify, retry once, and tell the truth either way.
-
-    Formerly test_estop_verifies.py.
-    """
+    """The red button on the phone must not say 「已停一切」 unless it checked."""
     import json
 
 
@@ -252,10 +218,7 @@ So: verify, retry once, and tell the truth either way.
 
     class Rig:
         """Stands in for the four actions: API stop, kill, who is alive, which AUTO-MAS tasks are unfinished.
-
-    task_rounds are the successive answers to the AUTO-MAS task check (None =
-    unreadable); when omitted the answer is "no tasks", so the older scenarios
-    exercise the process check alone."""
+        """
 
         def __init__(self, alive_rounds, task_rounds=()):
             self.alive_rounds = list(alive_rounds)
@@ -549,16 +512,7 @@ So: verify, retry once, and tell the truth either way.
 
 
 def _part_farm_launcher():
-    """The farm launcher must not leave a console window on top of the game.
-
-2026-09-09: the .bat ran pythonw in the foreground, so cmd.exe's console stayed open
-over the middle of the screen for the whole run. OK-WW screenshots the game window,
-read the black console where the confirm dialog should have been, and every teleport
-failed with 「Teleport to boss failed」. Three runs, no echoes, and not one line in the
-log pointing at the window. `start ""` hands OK-WW off and lets the .bat end.
-
-    Formerly test_farm_launcher.py.
-    """
+    """The farm launcher must not leave a console window on top of the game."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import os
@@ -616,23 +570,7 @@ log pointing at the window. `start ""` hands OK-WW off and lets the .bat end.
 
 
 def _part_hidden_launch_quoting():  # noqa: C901
-    """The windowless launch builds a PowerShell command that survives a path with a space.
-
-2026-10-11 (07d90b11) the windowless route moved the program path into the task's
-arguments. `subprocess.list2cmdline` puts double quotes round any argument with a
-space, and `_spawn_via_task` pasted that string inside a double-quoted PowerShell
-string (`-Argument "..."`): the first inner quote closed it. The OK-WW failure
-screenshot starts C:\\Program Files\\PowerShell\\7\\pwsh.exe (handle.py, `_PWSH7`), so
-its task action got a cut-off argument string plus loose words, and the picture was
-never taken. relay.log has no 「pwsh.exe（无窗口）」 line since that change.
-
-No PowerShell here: the command `_spawn_via_task` hands to pwsh is captured and
-parsed with PowerShell's argument-mode quoting rules (about_Quoting_Rules,
-about_Parsing), then the -Argument value is split the way a Windows program splits
-its command line (CommandLineToArgvW), and must give back the exact arguments.
-
-    Formerly test_hidden_launch_quoting.py.
-    """
+    """The windowless launch builds a PowerShell command that survives a path with a space."""
     import subprocess
     from pathlib import Path, PureWindowsPath
 
@@ -641,12 +579,7 @@ its command line (CommandLineToArgvW), and must give back the exact arguments.
 
 
     def ps_statements(script: str) -> list[list[str]]:
-        """Statements of a PowerShell command line, each a list of argument-mode tokens.
-
-    Quoting as PowerShell reads it: '...' is literal ('' is one quote); "..." ends at
-    the next unescaped " (`x and "" escape); a token that starts with a quote ends at
-    its closing quote, a bare token runs on through embedded quoted parts until white
-    space or ';'. Enough for the one statement under test; not a full parser."""
+        """Statements of a PowerShell command line, each a list of argument-mode tokens."""
         out, cur, i, n = [], [], 0, len(script)
         while i < n:
             c = script[i]
@@ -819,34 +752,7 @@ its command line (CommandLineToArgvW), and must give back the exact arguments.
 
 
 def _part_launcher_states():
-    """Launcher screens the update flows must not misread (audit 2026-10-06).
-
-When the game screen is unknown or unreadable, update_endfield must not claim
-"up to date", must not click blindly and must not kill a launcher that is
-downloading. (update_wuwa went on 2026-10-12: AUTO-MAS updates Wuthering Waves,
-item 10b.) Fake desktop only: no Windows, no processes.
-
-Where the screens come from:
-* The words 正在下载 / 安装中 (Hypergryph) were read off the machine on 2026-09-02
-  and are quoted in gameupdate_games.py; no relay.log line carries a whole launcher screen, so those
-  screens are built from those words.
-* relay-log-1006/relay.log lines 5356-5397 (09-02 15:48-15:50): the desktop agent
-  timed out (「桌面助手 … 超时没有结果」) and both launchers were reported as
-  「启动器画面没读到按钮」 with an empty or garbage dump - the "unreadable" case.
-* relay-log-1006/relay.log lines 10430-10437 (09-04 12:38:55-12:40:17): a real
-  Arknights prewarm, three bottom taps and then 「开始唤醒」. Replayed below.
-* The focus-missing screen is built from AGENT_PS's fields (the agent logs
-  「focus: 没有 $f 的窗口」 and, since this audit, sets focus_missing); no real line.
-* SPACE_DIALOG: the launcher's 「系统提示」 disk-space confirm after 「更新游戏」, 2026-10-15
-  (relay.log 09:33:18 「已点「更新游戏」」, then 40 minutes of desktop-icon dumps; the
-  relay's own screenshot shot-0956fb2a.png 09:33:52). The lines are what the agent's
-  two OCR passes read off that screenshot, coordinates on the 1920x1080 screen; the
-  desktop-icon lines are cut down to three neutral ones (the others are file names
-  on his desktop). CONFIRM_BOX is the white 「确认」 button measured on the same
-  screenshot's pixels - neither OCR pass reads its text.
-
-    Formerly test_launcher_states.py.
-    """
+    """Launcher screens the update flows must not misread (audit 2026-10-06)."""
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -964,8 +870,6 @@ Where the screens come from:
     d = FakeDesk([["更新游戏"], ["开始游戏"], ["资源初始化更新完成，请重启游戏", "确认"], ["点击任意位置继续"]],
                  click_ok=lambda w: w != "确认")
     out = gug.update_endfield(d, *EF, problems=probs, sleep=fake_sleep)
-    # Client 1.6.3 (2026-10-15) runs only when the launcher starts it: the restart clicks
-    # 「开始游戏」 on the launcher again and never starts Endfield.exe itself.
     check("经启动器重开了游戏（又点了开始游戏）", d.clicks.count("开始游戏"), 2)
     check("没直接起 Endfield.exe", ("spawn", "Endfield.exe") in events, False)
     check("报了更新", out, "终末地 客户端已通过启动器更新")
@@ -990,7 +894,6 @@ Where the screens come from:
     check("终末地：没说成「没读到按钮」", any("没读到按钮" in p for p in probs), False)
     check("终末地：什么都没点", d.clicks, [])
     check("终末地：没杀 Games.exe", [e for e in events if e[0] == "kill" and "Games.exe" in e], [])
-    # ── 2026-10-15: the disk-space confirm that nothing clicked ──
     SPACE_DIALOG = [
         Line("控]面板", 90, 61, 48, 11), Line("Clashfor", 163, 61, 52, 10), Line("Windows", 163, 78, 53, 10),
         # whole-screen pass
@@ -1091,22 +994,7 @@ Where the screens come from:
 
 
 def _part_procs_wmi():
-    """procs.python_processes on the machine as it was after 2026-10-10 16:05.
-
-16:05:10 the relay's DispatchWithEvents generated pywin32's early-bound wrapper
-of the WMI scripting library. From then on every Win32_Process row came back as
-an early-bound SWbemObject: `row.ProcessId` raised AttributeError, the process
-table was unreadable, the 16:14:07 boot self-check went red and the keeper never
-attached its handle to AUTO-MAS. Reproduced on the machine 16:40 (AttributeError
-"ISWbemObject ... has no attribute 'ProcessId'", then "Win32 exception occurred
-releasing IUnknown" for the rows the traceback had kept past CoUninitialize).
-
-The fakes below behave the same way: rows without the attributes, only
-Properties_; and every COM object records whether it is still alive when
-CoUninitialize runs (the 16:27 retry crashed pythonservice.exe that way).
-
-    Formerly test_procs_wmi.py.
-    """
+    """procs.python_processes on the machine as it was after 2026-10-10 16:05."""
     import gc
     import logging
     import types
@@ -1207,8 +1095,6 @@ CoUninitialize runs (the 16:27 retry crashed pythonservice.exe that way).
     check("没报警", [r for r in logs.records if r.levelno >= logging.WARNING], [])
 
     print("\n[一次失败后读到：等一下再试，不进群，但记一条自己好了（「自愈待查」红项）]")
-    # Until 2026-10-12 the retry that read the list was an INFO line only: a fault that
-    # fixed itself with no red item (audit 10-12 #7). errwatch.recovered() writes it.
     from ark_relay.features import errwatch
     plan[:] = ["cancel", "ok"]
     logs.records.clear()
@@ -1261,21 +1147,6 @@ CoUninitialize runs (the 16:27 retry crashed pythonservice.exe that way).
 def _part_relaunch():
     """After an update or a rollback the relay starts again within seconds, not with the
 watchdog's next check.
-
-2026-10-11 (review round 7 #22, round 2 #13): restart_soon ran `cmd /c timeout /t 3 &
-schtasks /run` detached. timeout.exe needs console input and returns at once in a
-detached process, so the task run came while the relay still held the task and was
-ignored (MultipleInstances IgnoreNew); only the watchdog brought it back, up to 30 s
-later. Now packaging/launch.py `relaunch` waits for the relay's mutex to go before it
-runs the task, and runs it again if the relay does not show.
-
-2026-10-11 (review round 8 #23): switch.py stop() - before an upgrade, at uninstall and
-at revert - stopped the watchdog and the relay but not this helper; within two minutes
-of an update it started the relay again under the installer. The helper now gives up
-once a watchdog it saw running stops, and still restarts when the watchdog was already
-down (package_smoke stage 4c).
-
-    Formerly test_relaunch.py.
     """
     import re
 
@@ -1463,17 +1334,7 @@ down (package_smoke stage 4c).
 
 
 def _part_rollback_stop_failed():
-    """`app_main.py rollback` says so and exits 1 when the relay does not stop.
-
-Audit s24 F4 (10-13): rollback() switched current.txt, printed `current -> <prev>`,
-ignored stop()'s result and returned 0. When the relay did not stop within stop()'s
-40 s, `launch.py relaunch` waited its 120 s and gave up, and the version rolled away
-from ran on until the next restart while current.txt and the pin named the earlier one.
-Now a failed stop prints what is true (current.txt changed, the relay still running,
-the earlier version starts at the next restart), skips the restart helper, exits 1.
-
-    Formerly test_rollback_stop_failed.py.
-    """
+    """`app_main.py rollback` says so and exits 1 when the relay does not stop."""
     import contextlib
     import io
 
@@ -1522,21 +1383,6 @@ the earlier version starts at the next restart), skips the restart helper, exits
 
 def _part_unknown_process_list():
     """A process list that cannot be read is "unknown", never a yes (review of 2026-10-07, item 2).
-
-procs.py records the incident this guards against: from 2026-08-28 to 09-17 the
-keeper read "cannot tell" as "alive" and went blind for three weeks - no
-revival, no alarm, and the evening queue of the 17th was lost. Two probes still
-turned "cannot tell" into a definite answer; the one left here
-(gameupdate_games._alive / wait_ready went with the WuWa launcher update on
-2026-10-12, AUTO-MAS item 10b):
-
-* automas_procs._installer_running answered True ("an installer is on screen") when
-  tasklist failed, and _revive then logged 「安装程序正在运行」 - a sentence that
-  was not true. Now it answers None; _revive still keeps its hands off (killing
-  a window mid-install is the worse mistake, see test_verify.py) but says
-  what actually happened: the process list could not be read.
-
-    Formerly test_unknown_process_list.py.
     """
     import subprocess
     import types
@@ -1621,12 +1467,6 @@ def _part_wait_network():
 2026-08-21 21:20:19 - one second after service start, all four update doors
 answered `[Errno 11001] getaddrinfo failed`, and the boot-window update was
 abandoned before the doors were ever reachable.
-
-2026-09-08：这个测试原来真去解析 raw.githubusercontent.com、真 sleep，跑一次 12 秒，
-是全套里最慢的一个（第二名的两倍），而且没网就挂。现在用假时钟和假解析器——
-不碰网络、瞬间跑完，等待时长也变成可精确断言的。
-
-    Formerly test_wait_network.py.
     """
     import socket, types
 
@@ -1719,8 +1559,6 @@ abandoned before the doors were ever reachable.
         check("最后一次等待被预算截断，不是整轮翻倍", clock.end(), [2.0, 4.0])
         warns = [m for lv, m in lg.lines if lv == "warn"]
         check("warned", len(warns), 1)
-        # service.main runs the self-update whatever this returns (audit s23 F5): the
-        # warning must not say the fetch is skipped.
         check("does not claim the fetch is skipped", any("跳过取件" in m for m in warns), False)
         check("says it still tries the fetch", any("照样试一次取件" in m for m in warns), True)
 
@@ -1738,15 +1576,7 @@ abandoned before the doors were ever reachable.
 
 
 def _part_watch_handle_close():
-    """watch._windows must close a dropped change handle before opening a new one.
-
-Audit s2 F5 (2026-10-13): when WaitForSingleObject / FindNextChangeNotification
-failed, the loop dropped the handle and called FindFirstChangeNotificationW again
-without FindCloseChangeNotification, leaking one kernel handle per rebuild.
-kernel32 is faked here so the Windows path runs on any machine.
-
-    Formerly test_watch_handle_close.py.
-    """
+    """watch._windows must close a dropped change handle before opening a new one."""
     import ctypes
     import threading
     import types
@@ -1805,35 +1635,6 @@ kernel32 is faked here so the Windows path runs on any machine.
 
 def _part_procwatch_cancel():  # noqa: C901
     """The process-start listener never leaves a live WMI subscription behind when the relay exits.
-
-The incident (relay.log and the machine's event logs, 2026-10-06, Beijing time):
-    18:07:28 the stop line 「主流程已返回…还活着的线程：…、proc-watch」
-             - the process exits with the listener still blocked in
-             SWbemEventSource.NextEvent() on a live semisynchronous subscription
-    18:07:47 the new relay process subscribes again
-    18:08:04 System log 7031: the Windows Management Instrumentation service
-             terminated unexpectedly (Application Error 1000: svchost.exe_Winmgmt,
-             ntdll.dll, 0xc0000005, the same WER bucket every time)
-    18:08:22 the relay's own drop line, with Windows' error 0x800706BE:
-             「…程序启动通知断了（远程过程调用失败…）」 (remote procedure call failed)
-11 of the 12 Winmgmt crashes since 08-24 came 6-100 s after such a restart.
-
-Pinned here, with the real listener thread and the real asynchronous
-subscription code (_AsyncSubscription) running on fake COM / win32event:
-1. stopping() cancels the live subscription (SWbemSink.Cancel, on the
-   listener's own thread), the listener drops it, uninitialises COM on that
-   thread, and the thread has ended before stopping() returns - one INFO line;
-2. a dropped subscription (OnCompleted with 0x800706BE) is cancelled and
-   released, then resubscribed exactly as before, with the same drop line;
-3. OnObjectReady sets the wake-up event the main loop waits on;
-4. the WMI service host exiting under the subscription is a drop as well;
-5. a stop during the backoff waits for nothing and subscribes nothing new;
-6. a cancel that cannot finish within the bound is one WARNING, and the stop
-   goes on;
-7. a stop while the WMI hosts are read before a subscribe waits for nothing;
-8. DispatchWithEvents failing (makepy) takes the failed-subscribe path.
-
-    Formerly test_procwatch_cancel.py.
     """
     import gc
     import logging
@@ -2156,8 +1957,6 @@ subscription code (_AsyncSubscription) running on fake COM / win32event:
         check("the drop is the same INFO line, with Windows' words and code",
               bool(drop) and "远程过程调用失败，0x800706BE" in drop[0].splitlines()[0])
         check("its diag line carries the scode", bool(drop) and "scode 0x800706BE" in drop[0])
-        # Levels as main has them since 2026-10-10 (another session's change): a drop
-        # that came back by itself is still pushed while its cause is not shown fixed.
         check("back by itself: one WARNING, said as before (pushed, not marked recovered)",
               wait_for(lambda: len(rec.at(logging.WARNING)) == 1)
               and not getattr([r for r in rec.records if r.levelno == logging.WARNING][0], errwatch.RECOVERED, False))
@@ -2295,30 +2094,6 @@ subscription code (_AsyncSubscription) running on fake COM / win32event:
 
 def _part_procwatch_drop():  # noqa: C901
     """The process-start listener: a shutdown is not a fault; a real drop is INFO with its evidence and decided by whether it comes back.
-
-Real records:
-* 2026-09-17 10:48:40 and 2026-09-18 02:20 (a `shutdown /s` typed by hand): the
-  listener logged ERROR when Windows took WMI down at shutdown; the second one
-  rang the group. The fix of the day relied on SERVICE_CONTROL_SHUTDOWN
-  reaching SvcStop, but pywin32 (311, ServiceFramework.GetAcceptedControls)
-  only accepts that control when the class defines SvcShutdown - it did not,
-  so the SCM never sent it.
-* 2026-10-05 22:45:46, 37 s after a service restart: 「进程启动事件监听中断」, the
-  74th since August, com_error scode 0x800706BE 「远程过程调用失败」; resubscribed
-  5 s later. Every ERROR and WARNING now reaches the group (2026-10-06), so the
-  line has to read as plain Chinese and carry what tells its causes apart.
-
-* the user, 2026-10-06 05:07, on faults the relay recovered from by itself:
-  「报错后自己好了的，只进日报、不进群」. So the drop is INFO with its evidence;
-  resubscribed by itself it is ONE WARNING marked errwatch.recovered() (daily
-  report only) carrying that evidence; still down after 10 minutes, or when
-  the service stops (a shutdown by hand), it is an ERROR (pushed).
-
-Everything runs on the main thread: threading.Thread is swapped for one that
-runs its target in start(), and time is a virtual clock, so the old and the new
-code take exactly the same path and nothing waits for real.
-
-    Formerly test_procwatch_drop.py.
     """
     import gc
     import logging
@@ -2450,11 +2225,7 @@ code take exactly the same path and nothing waits for real.
         """What WMI does with one asynchronous subscription: `events` OnObjectReady
     callbacks, then the pump raises a fresh `then()` (what ended the old
     semisynchronous NextEvent - the drop's com_error, a Python error, or _Stop).
-
-    Fresh, and not kept here: an exception stored on the source would hold the
-    source through its own traceback, and the release check would see a cycle
-    rather than the listener's reference.
-    """
+        """
         made = []
 
         def __init__(self, events, then, on_raise=None):
@@ -2640,8 +2411,6 @@ code take exactly the same path and nothing waits for real.
                   for r in rec.at(logging.INFO)))
 
         print("\n[a shutdown NOT started by the relay (by hand / sc stop, 2026-09-18 02:20): pushed at the stop]")
-        # The user, 2026-10-06: only the planned power-off the relay itself started may
-        # stay out of the group.
         rec, alive, _ = scenario([
             lambda: Source(2, lambda: com_error(*RPC_FAILED),
                            on_raise=lambda: procwatch.time.at(0.3, errwatch.mark_stopping)),
@@ -2652,9 +2421,6 @@ code take exactly the same path and nothing waits for real.
         check("not called 「not a fault」", any("不算故障" in r.getMessage() for r in rec.records), False)
 
         print("\n[Windows shutting down by hand (10-10 04:28:51): the power-off request came first - INFO, not pushed]")
-        # Real System log event: 1074 at 2026-10-09T20:27:24Z (04:27:24 Beijing), shutdown.exe as
-        # INS\\Administrator. relay.log: 04:28:45 the stop notice (Windows shutdown), 04:28:51 the ERROR
-        # "listener down 6 s (RPC failed, 0x800706BE), not back when the relay stopped" - pushed.
         REAL_0427 = (fx_dir(Path(__file__), "fixtures") /
                      "system-1010-0427-manual-shutdown.xml").read_text(encoding="utf-8").splitlines()
         orig_xml = shutdown_signs._shutdown_event_xml
@@ -2706,10 +2472,6 @@ code take exactly the same path and nothing waits for real.
                                  before=lambda vt: relay_poweroff())
         check("no ERROR or WARNING through the whole outage", [first(r) for r in rec.faults()], [])
 
-        # Mute audit 10-12 item 10: a drop put down to the relay's own power-off set the outage
-        # to "already pushed" and dropped its record, so when that power-off was cancelled
-        # (「下次跑完不关机」, shutdown.abort_countdown) a listener that never came back raised
-        # neither the 10-minute alarm nor the stop-time one.
         print("\n[the relay's power-off cancelled while the listener is still down: the outage alarms again]")
 
         def cancel_later(vt):
@@ -2969,8 +2731,6 @@ def _part_wmi_listener():  # noqa: C901
         check("it is not marked recovered (daily report only)", bool(warns) and getattr(warns[0], errwatch.RECOVERED, False), False)
         check("it says how long it was down and why", "断过" in msg and "秒" in msg and "远程过程调用失败" in msg)
         check("it carries the diag line", "\ndiag: hresult" in msg)
-        # 10-06 16:16:59 / 18:08:22: H1 (winmgmt pid changed) but not why - the System
-        # log's SCM lines for winmgmt now ride on the same diag line.
         check("the diag line carries the System log's winmgmt events", SCM in msg)
         settle(h, pushes, 1)
         check("it reached the group, once", [("系统的程序启动通知断过" in b) for _, b in pushes.sent], [True])
@@ -3122,7 +2882,7 @@ def _part_procnames():
     # Only a quoted occurrence counts, i.e. the name actually being matched on.
     # Mentioning it in prose is allowed and useful: saying why it was removed beats
     # erasing every trace of it.
-    for rel in ("relay/ark_relay/core/config.py", "scripts/mac/lib/queue_events.py",
+    for rel in ("relay/ark_relay/core/config.py", 
                 "scripts/mac/watch-run.sh", "scripts/mac/estop.sh"):
         body = text(rel)
         check(f"{rel} 不再拿 MuMuPlayer 当判据",
@@ -3130,7 +2890,7 @@ def _part_procnames():
 
     print("\n[各处的名单都看得见鸣潮本体和模拟器——看不见就等于报「闲着」]")
     must = ("Client-Win64-Shipping", "dnplayer")
-    for rel in ("scripts/mac/lib/queue_events.py", "scripts/mac/watch-run.sh"):
+    for rel in ("scripts/mac/watch-run.sh",):
         body = text(rel)
         for m in must:
             check(f"{rel} 认得 {m}", m in body, True)
@@ -3156,19 +2916,7 @@ def _part_procnames():
 
 
 def _part_watchdog_copy():
-    """The watchdog's three group-bot messages read as plain words, like every relay push.
-
-packaging/watchdog/ark_watchdog.py imports pywin32, so its texts are read with ast,
-not imported. Every title must also be a row of docs/NOTIFICATIONS.md's route table
-(test_notify_routing.py then checks that they route to the group).
-
-The other way round, relay/watchdog_guard.py's two ERRORs go to the group as they are,
-through errwatch (「🩺 中继自己报错了」), so they are held to the same plain words (review
-round 10 #29: 「拉起」 got through because log lines skip plain()). Every Chinese line the
-guard logs is checked too.
-
-    Formerly test_watchdog_copy.py.
-    """
+    """The watchdog's three group-bot messages read as plain words, like every relay push."""
     import ast
 
     ROOT = Path(__file__).resolve().parents[2]
@@ -3222,23 +2970,7 @@ guard logs is checked too.
 
 
 def _part_watchdog_crashloop():
-    """The watchdog says why the relay does not start, and rings when it keeps crashing.
-
-Two gaps between the installed relay and the old service, 2026-10-11:
-  a. A relay that dies before its log is open (an import error, a broken .env) left
-     no trace: the scheduled task runs pythonw.exe, which has no console, and the
-     watchdog's 「重开 3 次都没起来」 alarm said nothing about why. packaging/launch.py now
-     appends the traceback to <data>\\start-error.txt, and the watchdog puts its last
-     lines into the alarm when it was written in that stretch.
-  b. A relay that comes up and dies again a while later never reached FAIL_LIMIT: each
-     look that found it running reset the count (2026-10-10 16:28: 15 restarts, no
-     alarm). The watchdog now rings once when it had to start the relay LOOP_STARTS
-     times within LOOP_WINDOW_S, at most once per LOOP_QUIET_S, not during a shutdown.
-
-Runs on any OS: pywin32 is faked, the watchdog's Windows calls are replaced.
-
-    Formerly test_watchdog_crashloop.py.
-    """
+    """The watchdog says why the relay does not start, and rings when it keeps crashing."""
     import os
     import time
     import types
@@ -3314,8 +3046,6 @@ Runs on any OS: pywin32 is faked, the watchdog's Windows calls are replaced.
     check("no record for SystemExit", (DATA / launch.START_ERROR).exists(), False)
 
     print("[launch.py: only a start leaves a record; a stop / stop-push / rollback that dies does not]")
-    # s26 audit 2026-10-13: the watchdog quotes this file as 「最后一次起不来时留下的记录」,
-    # so a stop-push that died at shutdown read as a failed start.
     (code / "app_main.py").write_text("raise RuntimeError('stop-push blew up')\n", encoding="utf-8")
     launch._code_folder = lambda: code
     for cmd in (["stop"], ["stop-push"], ["rollback"], [], ["run"]):
@@ -3449,15 +3179,6 @@ Runs on any OS: pywin32 is faked, the watchdog's Windows calls are replaced.
 
 def _part_watchdog_guard():  # noqa: C901
     """The relay starts its watchdog again (watchdog_guard.py), except when it was stopped on purpose.
-
-2026-10-11 (收尾1011): the watchdog starts the relay again, but nothing started the
-watchdog again - Windows starts it once at boot (cloud run 38095391114: one start
-ended during START_PENDING and stayed stopped). Now each guards the other. Checked:
-the decisions (Guard.tick), the stop marker being scoped to this boot, every stopper
-(switch.py stop_watchdog, estop.sh) writing the marker before `sc stop` and every
-starter deleting it, and app_main starting the thread in the packaged install only.
-
-    Formerly test_watchdog_guard.py.
     """
     import os
     import re
@@ -3536,8 +3257,6 @@ starter deleting it, and app_main starting the thread in the packaged install on
           "查不了" in logs.lines[-1][1] and "看门服务停了" not in logs.lines[-1][1], True)
 
     print("[a watchdog found stopped that nobody stopped: WARNING to the group (audit 10-12 #6)]")
-    # Until 2026-10-12 a stop the relay then undid was one INFO line: the watchdog going
-    # down with no stop marker has no known cause, so it is not a normal state.
     from ark_relay.features import errwatch
 
 
@@ -3778,18 +3497,7 @@ starter deleting it, and app_main starting the thread in the packaged install on
 
 
 def _part_watchdog_guard_missing():
-    """A watchdog service that vanishes after the relay saw it installed is pushed once.
-
-Audit s24 F3 (10-13): Guard.tick returned "missing" with no log line at every look,
-right for a machine where the service was never installed (a dev run, the old relay),
-but on the game machine the service is installed (switch.log 10-11 10:04:35). If it
-were deleted, nothing would start the relay again and nobody would hear of it. Now the
-first look that finds it MISSING after a look that found it installed logs one WARNING
-(errwatch pushes it), unless a stop marker from this boot says it was taken down on
-purpose (switch.py uninstall stops it with the marker before removing it).
-
-    Formerly test_watchdog_guard_missing.py.
-    """
+    """A watchdog service that vanishes after the relay saw it installed is pushed once."""
 
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY))
@@ -3851,24 +3559,7 @@ purpose (switch.py uninstall stops it with the marker before removing it).
 
 
 def _part_watchdog_push_delivery():
-    """The watchdog's own group alarm counts as sent only when the group bot took it.
-
-s26 audit, finding 1 (2026-10-13): packaging/watchdog/ark_watchdog.py `push` sent once,
-caught only OSError and logged 「进群」 on any HTTP 200, and every caller marked its
-alarm as sent whatever happened. So:
-  a. a WeCom refusal inside HTTP 200 (errcode != 0, the way relay/ark_relay/core/notify.py
-     reads it) or a transport error right after boot (relay.log 10-12 08:45:26
-     WinError 10051, the network not up yet) lost the one 「中继停了」 alarm for good;
-  b. http.client.HTTPException is not an OSError: it escaped push(), the tick logged
-     「检查出错」, the flag stayed False and the alarm was re-sent every 30 s with no end.
-Now push() returns whether the bot answered errcode 0, an undelivered alarm is tried
-again on the next looks, and after PUSH_TRIES failed pushes in one stretch the
-watchdog gives up and says so in watchdog.log.
-
-Runs on any OS: pywin32 is faked, urlopen is replaced at the HTTP layer.
-
-    Formerly test_watchdog_push_delivery.py.
-    """
+    """The watchdog's own group alarm counts as sent only when the group bot took it."""
     import http.client
     import io
     import json
@@ -4061,14 +3752,6 @@ def _part_gh_watchdog():
     """The GitHub Actions boot watchdog (scripts/watchdog.py; queue/watchdog.json has it off since
 08-20): a daytime run by hand judges tonight's checks as not due, and a watchdog that cannot
 ask Tailscale says so (audit 11-08 A-25; dispatch relay-opt-round5-1108 R5-02).
-
-Pinned here:
-* today_at: 00:30 (a 23:10 check run late past midnight) still means last night's 23:10;
-  10:00 by hand means tonight's 23:10 (until 11-08: last night's, so 「还在线」 was judged);
-* main(): Tailscale's API failing is one 「🔌 开机监督自身异常」 alert and exit 1 on a
-  scheduled run, a print only on a run by hand (no CHECK_CRON).
-
-    Formerly test_gh_watchdog.py.
     """
     import importlib.util
     import json

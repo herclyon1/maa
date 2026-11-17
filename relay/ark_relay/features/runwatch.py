@@ -6,20 +6,10 @@ checks read live sources instead. Both run from the tick:
 * **Attempt timeout.** AUTO-MAS's own log, `<automas>/debug/app.log`, logs a line
   the moment an attempt is killed for running too long:
 
-      2026-10-01 16:10:00.012 | INFO | MaaEnd 自动代理 | MaaEnd 任务结果: MaaEnd 进程超时, 日志锁已释放
-
-  (OK-WW's line ends in 运行超时.) Every such line is pushed, hand-started runs
-  included (user 2026-10-06: 「不论多少次什么错误都要发」). Lines older than
-  FRESH_MINUTES are skipped, and a line already pushed is not pushed again
-  (app.log is read from its start after a restart).
-
 * **Config-check skip.** AUTO-MAS checks a script's settings before it starts it;
   a refusal is one app.log line and no history record, and the queue moves on:
 
-      2026-10-16 09:34:04.988 | INFO     | 业务调度 | 任务开始: 59da8762-8fa7-4260-8aee-10f9ca00097a
-      2026-10-16 09:34:05.023 | WARNING  | MaaEnd 调度器 | 未通过配置检查: <AUTO-MAS's reason>
-
-  The 任务开始 line names the script by its uid (the queue item), so the skip is
+The 任务开始 line names the script by its uid (the queue item), so the skip is
   matched to its scheduled run by uid. It is pushed at once with AUTO-MAS's reason,
   and booked as that script's failed run of the shift (check_config_skips).
 
@@ -44,12 +34,6 @@ log = logging.getLogger("ark.runwatch")
 
 OVERRUN_SLACK_MIN = 30
 HISTORY_DAYS = 7
-# The same weekday this many days back counts too, when it was clean (Gemini's #155 ruling,
-# 2026-11-09). Measured (ledgers 10-26..11-08 through _chain): the Monday 早班 is long after the
-# 04:00 weekly reset - 10-26 142 min clean, 11-02 151 min not clean (an OK-WW attempt failed),
-# every other day 56-87 min - so on 11-09 the HISTORY_DAYS window held no clean Monday, the limit
-# was 11-04's 81 min, and 「⏰ 早班超时还没跑完」 went out at 10:51 with MaaEnd gathering on
-# normally (OK-WW 51 min against 11-12, the weekly boss and garden). 14 reaches 10-26.
 SAME_WEEKDAY_BACK = (7, 14)
 # Records of one queue run follow each other closely; a record more than this
 # after the previous one starts a different run. A hung attempt can leave a gap of
@@ -64,9 +48,6 @@ MIN_CLEAN_DAYS = 3
 FRESH_MINUTES = 30
 # While anything runs, the loop comes back this often to read app.log.
 RUNNING_RECHECK_S = 60
-# After running goes false, one more read this soon. Measured: AUTO-MAS wrote the refusal line
-# 117 ms after the record before it (app.log 10-16 09:34:04.906 / 09:34:05.023), and an answer of
-# "running" may be up to engine._SCRIPTS_TTL (3 s) old; 10 s covers both, well inside the minute.
 STOPPED_RECHECK_S = 10
 
 _STAMP = r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+ \|[^|]*\| (\S+) 自动代理 \| "
@@ -352,8 +333,6 @@ def _timed_out(e: dict) -> bool:
 def _chain_rows(entries: list[dict], due: datetime) -> list[tuple]:
     """The records of the queue run that started at `due`, oldest first:
     (started, finished, ok, timed out, script)."""
-    # A run a person started at AUTO-MAS (raw.hand_started, handle._book) is not the
-    # shift's, so it neither lengthens nor dirties the chain (10-12: OK-WW 11:41-11:49).
     runs = sorted(((s, f, e.get("ok") is not False, _timed_out(e), str(e.get("script") or "")) for e in entries
                    if not (e.get("raw") or {}).get("hand_started")
                    and (s := _parse(e.get("started"))) and (f := _parse(e.get("finished")) or s)),
@@ -550,14 +529,6 @@ def retry_clock(eng, due: datetime, limit: int) -> datetime | None:
     retried it: the 「超时|<script>|<HH:MM:SS>」 marks check_timeouts leaves once the timeout
     alarm is out, between `due` and the shift's planned end (due + limit + OVERRUN_SLACK_MIN).
     None when there is none (or no state to read).
-
-    2026-11-05: in the 09:00 早班 MAA's first attempt hung at StartUp for 46 minutes until
-    AUTO-MAS's timeout at 09:48 and a retry; MaaEnd started only at 10:22, and at 10:57 both the
-    overrun alarm and the no-result alarm counted 87 + 30 minutes from 09:00 (ledger #138) - on
-    top of the timeout alarm already pushed for MAA. A retried timeout restarts the shift's
-    clock: the rest of the shift is timed from it with the same planned minutes, so a script
-    that hangs after the retry is still caught. A timeout after the planned end moves nothing:
-    the overrun was due by then.
     """
     end = due + timedelta(minutes=limit + OVERRUN_SLACK_MIN)
     try:
@@ -605,12 +576,7 @@ def overrun_moments(eng, now: datetime):
 
 
 def last_log_line(log_text, limit: int = 200) -> str:
-    """The last non-empty line of AUTO-MAS's task log, at most `limit` characters.
-
-    runtime-snapshot's task `log` is the task's whole log, not its last line: 2026-11-05 the
-    早班 MaaEnd task's was 38151 characters in 343 lines, and the overrun alarm put all of it
-    into the group text as 「AUTO-MAS 最后一句」 (44 robot messages, see notify.WeComBot.MAX_PARTS).
-    """
+    """The last non-empty line of AUTO-MAS's task log, at most `limit` characters."""
     for line in reversed(str(log_text or "").splitlines()):
         line = line.strip()
         if line:
@@ -658,16 +624,7 @@ def _created(t) -> str:
 
 
 def _late_start(app, due: datetime) -> datetime | None:
-    """When the running task was created after its due minute: its creation time, else None.
-
-    2026-11-09 00:52:21 session 2499 re-ran the evening shift through the phone's run_now; at 00:52:28
-    the overrun alarm (ledger #151) said the 21:30 run had been going for 202 minutes and was
-    due to end by 22:21. The relay's own late start of the whole queue (the phone's run_now:
-    phone/commands.py notes it, so _not_the_shift keeps it in the shift) is timed from its own
-    start. A make-up or a re-run after an update dispatches one script, not the queue, so its
-    task is not the queue's and this check never sees it. AUTO-MAS's timer creates the shift's
-    task inside its due minute (21:30:00.780 in app.log), so that one keeps the due time.
-    """
+    """When the running task was created after its due minute: its creation time, else None."""
     if app is None or app.created.replace(second=0, microsecond=0) <= due:
         return None
     return app.created

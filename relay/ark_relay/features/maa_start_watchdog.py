@@ -1,12 +1,5 @@
 """End MAA.exe when Arknights' game start hangs, so AUTO-MAS restarts it now (ledger #137).
 
-2026-11-05 早班: MAA began starting the game at 09:03:23 (asst.log, TaskChainStart StartUp) and
-pressed the title screen's 「开始唤醒」 609 times (SubTaskStart GameStart, exec_times 1..609, one
-press every 4.4 s) while the game stayed at 「正在提交反馈至神经」. Nothing ended it until
-AUTO-MAS's own limit for MAA at 09:48:24 (app.log 「MAA 任务结果: MAA 进程超时」); the retry was in
-the game 101 s after its start (09:49:43 -> 09:51:24), and the whole morning shift slid by 46
-minutes.
-
 What AUTO-MAS does once MAA.exe is gone (app/task/MAA/AutoProxy.py on the machine): its log
 monitor calls check_log at least once a minute even while MAA's gui.log does not change
 (app/utils/LogMonitor.py, 「日志无变化超时调用回调」), and check_log turns a MAA that is no longer
@@ -61,19 +54,13 @@ log = logging.getLogger("ark.maa_start_watchdog")
 SCRIPT = "MAA"                     # the script's name in AUTO-MAS's task_info
 RUNNING = "运行"
 MAA_EXE = "maa.exe"
-# Measured: every StartUp in MAA's asst.bak.log and asst.log (11-01 23:10 .. 11-05) took
-# 58-66 s, nine runs, and the 11-05 retry 101 s. The user agreed to restart a hung start with
-# the limit taken from the longest normal one (11-05, 「我建议加」); this is three times that.
 STARTUP_LIMIT_SECONDS = 5 * 60
 CHECK_EVERY_SECONDS = maaend_watchdog.CHECK_EVERY_SECONDS
-# Read back on the first look, so a relay that starts in the middle of a hang still finds its
-# TaskChainStart. Measured: the 11-05 hang wrote 2.28 MB in 46 minutes (9305 lines).
 BACKLOG_BYTES = 4 * 1024 * 1024
 PROGRESS_TASKS = (b"GameStartUpdateOCR", b"GameStartCheckResourceOCR")
 PRESS_TASK = b"GameStart"          # 「开始唤醒」 on the title screen
 _HEAD_BYTES = 64
 
-# 「[2026-11-05 09:03:23.760][INF][Px16328][Tx43461] Assistant::append_callback | TaskChainStart {...}」
 _LINE = re.compile(rb"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)\.\d+\]\[[A-Z]+\]\[Px(\d+)\]\[Tx\d+\] (.*)$")
 _CALLBACK = re.compile(rb"Assistant::append_callback \| "
                        rb"(TaskChainStart|TaskChainCompleted|TaskChainError|TaskChainStopped|SubTaskStart) ")
@@ -199,10 +186,6 @@ class Watchdog:
         if not cb:
             return
         if _STARTUP not in rest:
-            # Another task chain of the same MAA began (Fight, Infrast ...): its StartUp is
-            # over, even if the completion line was lost (asst.log rotated between reads) -
-            # left open, the start ran out its limit during the fight and MAA was killed
-            # mid-stage (audit 2026-11-08 B-05).
             s = self.start
             if s is not None and cb.group(1) == b"TaskChainStart" and int(m.group(2)) == s.pid:
                 self.start = None

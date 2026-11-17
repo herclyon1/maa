@@ -268,8 +268,6 @@ def check_sources(fetch=None, timeout: int = 30) -> tuple[list[str], list[str]]:
 # can tell "the same change as yesterday" from a new one.
 LAST_SEEN: dict[str, str] = {}
 
-# Why each unreachable pin could not be fetched in the last check_sources(),
-# for the boot log line (audit s17 F5: the reason was swallowed).
 LAST_ERRORS: dict[str, str] = {}
 
 
@@ -339,11 +337,6 @@ class Cos:
     answers 403 to anyone tapping it in a push.
     """
 
-    # As long as the bucket keeps the object: the lifecycle rule
-    # expire-30d-not-relay deletes evidence after 30 days, counted in whole
-    # days, so one more day covers its lag. COS sets no maximum on a
-    # permanent key's signature (the SDK demo: 「过期时间请根据自身场景定义」;
-    # a 3650-day GET answered 206 on 2026-10-13). Audit s17 F3.
     PAGE_TTL_S = 31 * 86400
 
     def __init__(self, secret_id: str, secret_key: str, bucket: str, region: str, prefix: str = ""):
@@ -487,14 +480,7 @@ def _in_window(p: Path, window: "tuple[float, float] | None") -> bool:
 
 
 def _log_in_window(p: Path, window: "tuple[float, float]") -> bool:
-    """A MaaEnd .log that holds part of the window.
-
-    Modified before t0: no. Modified inside the window: yes. Modified after t1
-    (still written then - a retry carries on in the same files): yes when it
-    was already being written by t1, i.e. its first stamped line is not after
-    t1, or that line cannot be read. Of a rotated family (maafw.log ->
-    maafw.bak.<time>.log) that keeps the file that was open at t1 and drops the
-    later ones, which hold only what came after (audit s17 F1, 2026-10-12)."""
+    """A MaaEnd .log that holds part of the window."""
     try:
         mtime = p.stat().st_mtime
     except OSError:
@@ -1148,8 +1134,6 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
     """
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     if not force and clock() - _last_attempt[0] < THROTTLE_S:
-        # The last attempt's errors come with it: a throttled call after a failed upload
-        # read as a clean one, with the older link (audit 2026-11-08 C-08).
         return {"url": _last_ok.get("url", ""), "at": now.strftime("%H:%M"),
                 "truncated": bool(_last_ok.get("truncated")), "errors": list(_last_errors),
                 "skipped": True}
@@ -1189,14 +1173,6 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
     return result
 
 
-# ---------- back-fill: a past day whose object is missing on COS, or shorter than the machine's ----------
-# The day object goes up only when the relay pushes one of its own errors and right
-# before it powers the machine off (the rules at the top). A day the machine stayed
-# on (debug mode, 「下次跑完不关机」, a long farm) and pushed no error, or whose only
-# upload was cut by the line dropping or by Windows going down, never reached COS:
-# 11-11 and 11-13 answered 404, 11-12's object ended at 11:38 with the day going on
-# to 14:07. relay.log itself still holds those days (logfile.py: 16 MB a file), so the
-# relay looks back BACKFILL_DAYS days once after it starts and once after midnight.
 BACKFILL_DAYS = 3
 _backfill: dict = {"day": None, "thread": None}
 _backfill_lock = threading.Lock()

@@ -81,7 +81,87 @@ def wecom_get(e: dict, u: dict, dest: Path, token: str) -> None:
     print(f"  ✓ {u['name']}（企业微信）")
 
 
+
+
+DAILY_DEST_ROOT = Path.home() / "Claude" / "ark-evidence" / "daily"
+_DAILY_TS = __import__("re").compile(r"^(?:(\d{4})-)?(\d\d)-(\d\d)[ T](\d\d):(\d\d):(\d\d)")
+
+
+def _hhmm(s: str):
+    from datetime import timedelta  # noqa: PLC0415
+    try:
+        h, m = s.split(":")
+        return timedelta(hours=int(h), minutes=int(m))
+    except ValueError:
+        raise SystemExit(f"时刻写错了：{s}（要 HH:MM）")
+
+
+def parse_window(date: str, span: list[str]) -> tuple[float, float]:
+    from datetime import datetime, timedelta  # noqa: PLC0415
+    year = int(date[:4])
+    start = datetime(year, int(date[5:7]), int(date[8:10]))
+    end = start + timedelta(days=1)
+    if span:
+        if len(span) != 2:
+            raise SystemExit("时间窗要给两个时刻：HH:MM HH:MM")
+        return (start + _hhmm(span[0])).timestamp(), (start + _hhmm(span[1])).timestamp()
+    return start.timestamp(), end.timestamp()
+
+
+def slice_lines(path: Path, window: tuple[float, float]) -> str:
+    from datetime import datetime  # noqa: PLC0415
+    year = datetime.fromtimestamp(window[0]).year
+    keep = False
+    out = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = _DAILY_TS.match(line)
+        if m:
+            y = int(m.group(1)) if m.group(1) else year
+            try:
+                ts = datetime(y, int(m.group(2)), int(m.group(3)),
+                              int(m.group(4)), int(m.group(5)), int(m.group(6))).timestamp()
+            except ValueError:
+                ts = None
+            if ts is not None:
+                keep = window[0] <= ts <= window[1]
+        if keep:
+            out.append(line)
+    return "\n".join(out) + ("\n" if out else "")
+
+
+def daily_main(argv: list[str] | None = None) -> int:
+    args = argv if argv is not None else sys.argv[1:]
+    if not args:
+        raise SystemExit("usage: evidence_pull.py --daily <YYYY-MM-DD> [HH:MM HH:MM]")
+    date = args[0]
+    window = parse_window(date, args[1:])
+    e = env(Path.home() / ".config" / "ark" / "push.env")
+    if not all(e.get(k) for k in ("COS_SECRET_ID", "COS_SECRET_KEY", "COS_BUCKET", "COS_REGION")):
+        raise SystemExit("push.env 里缺 COS_SECRET_ID / COS_SECRET_KEY / COS_BUCKET / COS_REGION")
+    dest = DAILY_DEST_ROOT / date
+    dest.mkdir(parents=True, exist_ok=True)
+    failed = 0
+    for key, name in (("relay", "relay"), ("automas-app", "automas-app")):
+        u = {"key": f"daily/{key}-{date}.log", "name": f"{name}-{date}.log"}
+        try:
+            cos_get(e, u, dest)
+        except Exception as exc:  # noqa: BLE001 - one missing object must not lose the other
+            print(f"  ✗ {u['name']}：取不到（{exc}）")
+            failed += 1
+            continue
+        sliced = slice_lines(dest / u["name"], window)
+        if not sliced.strip():
+            print(f"  {u['name']}：这一天在窗口里没有行")
+        else:
+            print(f"  {u['name']}：窗口里 {len(sliced.splitlines())} 行 → {dest / ('window-' + u['name'])}")
+            (dest / f"window-{u['name']}").write_text(sliced, encoding="utf-8")
+    print(f"文件在 {dest}/")
+    return 1 if failed else 0
+
+
 def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "--daily":
+        return daily_main(sys.argv[2:])
     idx, frag, root = Path(sys.argv[1]), sys.argv[2], Path(sys.argv[3])
     entries = [json.loads(ln) for ln in idx.read_text(encoding="utf-8").splitlines() if ln.strip()]
     hit = [e for e in entries if frag in str(e.get("run_id", ""))]

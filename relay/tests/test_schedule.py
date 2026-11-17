@@ -12,24 +12,14 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_stagegate_main():
-    """Stage gate: can MAA navigate to the stage AUTO-MAS will hand it?
-
-2026-10-10: the stage was set to YW-4 at 04:25; MAA's stages.json knew it, but its
-navigation file resource/tasks/Stages/YW.json had no YW-4 key yet, so MAA core
-refused the Fight task (asst.log lines in _stagegate_fx.py) and the whole 09:00 run
-stopped. The gate replicates MAA's own decision (FightTask.cpp / StageNavigationTask.cpp)
-on the same task files, and pulls MAA from that one queue run when the answer is a
-definite no - never on "could not tell".
-
-    Formerly test_stagegate.py.
-    """
+    """Stage gate: can MAA navigate to the stage AUTO-MAS will hand it?"""
     import logging
     import os
     import time
     import types
     from datetime import datetime
 
-    from _tmp import stagegate_fx; fx = stagegate_fx()
+    from _parts import stagegate_fx; fx = stagegate_fx()
 
     os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -323,25 +313,13 @@ def _part_stagegate_users():
     """Several MAA users: one user's stage MAA cannot reach is said, users AUTO-MAS does not run
 are not looked at, and a pull never takes MAA from a user whose stage is reachable
 (audit 11-08 B-D23; dispatch relay-opt-round4-1108 R4-06; stagegate.run_verdict / _gate_due).
-
-Before: run_verdict answered "no" only when every user was "no", so with a second account on
-a reachable stage the first account's unreachable one went unsaid (its MAA run then stops at
-「Cannot set stage」), and a user AUTO-MAS skips (Info.Status off, RemainedDay 0 -
-app/task/manager_base.py is_user_selected) counted like the others.
-
-Not changed, on purpose: several stages for one user, the first unreachable and another
-reachable, stays "unknown" - AUTO-MAS sends the Routine fight with UseOptionalStage True
-(app/task/MAA/AutoProxy.py ~1883, the v6.19.0 copy under gamesim/upstream) and MAA's GUI
-picks the first stage open today, which the relay does not replicate.
-
-    Formerly test_stagegate_users_1108.py.
     """
     import json
     import os
     import types
     from datetime import datetime
 
-    from _tmp import stagegate_fx; fx = stagegate_fx()
+    from _parts import stagegate_fx; fx = stagegate_fx()
 
     os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -421,21 +399,7 @@ picks the first stage open today, which the relay does not replicate.
 
 
 def _part_stage_set_refused():
-    """Every way of setting MAA's stage refuses a stage MAA cannot navigate to, and says so.
-
-What the user asked for is USER_SAID below (2026-10-10 16:58, Osaka), verbatim.
-
-All of them end in commands.apply_command: the phone page and the App (live, or
-queued while a script runs and drained afterwards, or read from the mailbox backlog
-at boot), scripts/mac/order-now.sh (the same ntfy channel) - all through
-phone_channel._phone_execute, whose receipt is what the phone shows - and
-scripts/mac/order.sh (the repo inbox, inbox.Inbox._apply). The stage arrives as
-set_stage (Info.Stage) or set_config (Info.Stage / Stage_1..3). A definite "no" is
-refused before anything is written, the receipt is a failure whose text contains
-「MAA 走不到，修改失败」, the stage and why; "could not tell" goes through.
-
-    Formerly test_stage_set_refused.py.
-    """
+    """Every way of setting MAA's stage refuses a stage MAA cannot navigate to, and says so."""
     import json
     import logging
     import os
@@ -463,7 +427,7 @@ refused before anything is written, the receipt is a failure whose text contains
                   "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
         sys.modules.setdefault(_name, _Stub(_name))
 
-    from _tmp import stagegate_fx; fx = stagegate_fx()
+    from _parts import stagegate_fx; fx = stagegate_fx()
 
     TMP = tmpdir()
     MORNING = fx.maa_dir(TMP / "maa-morning")
@@ -564,22 +528,13 @@ refused before anything is written, the receipt is a failure whose text contains
 def _part_stagegate_hooks():
     """Where the stage gate is wired in: setting a stage, and what a stage-gate pull means
 for the missed-run checks and the shutdown decision.
-
-2026-10-10 04:25 the stage was set to YW-4, a stage MAA had no navigation for
-(resource/tasks/Stages/YW.json lacked the key; asst.log in _stagegate_fx.py), and
-the 09:00 MAA run stopped at its first task. Setting such a stage is refused now.
-A queue run the gate took MAA out of is not "a run that never happened": the missed
-checks stay quiet about MAA for it, and an MAA-only shift that was pulled lets the
-machine power off instead of waiting for a run that was cancelled on purpose.
-
-    Formerly test_stagegate_hooks.py.
     """
     import importlib
     import json
     import os
     from datetime import datetime
 
-    from _tmp import stagegate_fx; fx = stagegate_fx()
+    from _parts import stagegate_fx; fx = stagegate_fx()
 
     TMP = tmpdir()
     MORNING = fx.maa_dir(TMP / "maa-morning")
@@ -744,15 +699,7 @@ machine power off instead of waiting for a run that was cancelled on purpose.
 
 
 def _part_plan_after_accomplish():
-    """「明日安排」 names every AUTO-MAS after-run action, not only "Shutdown".
-
-AUTO-MAS v5.7 QueueConfig Info.AfterAccomplish takes NoAction, Shutdown,
-ShutdownForce, Reboot, Hibernate, Sleep, KillSelf, Logoff (models/config.py).
-The plan only recognised "Shutdown", so a queue set to force shut down or
-hibernate showed no line at all. Base data: the real 10-11 config (NoAction).
-
-    Formerly test_plan_after_accomplish.py.
-    """
+    """「明日安排」 names every AUTO-MAS after-run action, not only "Shutdown"."""
     #!/usr/bin/env python3
 
     import json
@@ -801,19 +748,7 @@ hibernate showed no line at all. Base data: the real 10-11 config (NoAction).
 
 
 def _part_plan_collect_days_master():
-    """The plan's gathering-day line reads the master copy, not MaaEnd's own file.
-
-Phone edits go to the master copy only (mastercfg.write_maaend); AUTO-MAS copies
-it over MaaEnd's config/mxu-MaaEnd.json before each run. Reading MaaEnd's file
-showed a phone change in 「明日安排」 only after the next run. With no
-AutoCollectSchedule saved, MaaEnd runs on the option's default_case (all seven
-days in tasks/AutoCollect.json), so the plan must not drop the line.
-Days below are the real master copy's (10-11: Monday, Thursday).
-Checked through next_plan (the 「明日安排」 text), with the machine's own AUTO-MAS
-config (tests/fixtures/automas-config-2026-10-11) pointing MaaEnd at a temp dir.
-
-    Formerly test_plan_collect_days_master.py.
-    """
+    """The plan's gathering-day line reads the master copy, not MaaEnd's own file."""
     #!/usr/bin/env python3
 
     import json
@@ -898,20 +833,7 @@ config (tests/fixtures/automas-config-2026-10-11) pointing MaaEnd at a temp dir.
 
 
 def _part_plan_queue_weekdays():
-    """The relay's view of which scripts a queue runs follows AUTO-MAS v5.7's own rules.
-
-AUTO-MAS (v5.7.0-beta.2) skips a queue item whose Schedule.Days leave out the
-day (app/core/task_manager.py _is_script_scheduled_today), fires a time only on
-its TimeSet's Info.Days and never times a cycle queue (app/core/timer.py
-_due_timed_slots), and an item with ScriptId "-" is not a script
-(_queue_script_entries). The relay's one-day skip writes exactly Schedule.Days,
-so before this a skipped MaaEnd still raised 「MaaEnd 没有运行（早班）」 and held
-off the power-off for two hours.
-
-Config: tests/fixtures/automas-config-2026-10-11 (the machine's own, see SOURCE.txt).
-
-    Formerly test_plan_queue_weekdays.py.
-    """
+    """The relay's view of which scripts a queue runs follows AUTO-MAS v5.7's own rules."""
     #!/usr/bin/env python3
 
     import json
@@ -1046,12 +968,6 @@ Config: tests/fixtures/automas-config-2026-10-11 (the machine's own, see SOURCE.
 def _part_plan_silent():
     """Tomorrow's plan says when a source it needs could not be read (audit
 docs/SILENT-FAILURES-AUDIT.md, plan.py rows).
-
-The plan is rebuilt on every phone-state publish, and a WARNING is a group
-message: each unreadable source is said once per condition, again only after it
-read fine in between.
-
-    Formerly test_plan_silent.py.
     """
     import json
     import logging
@@ -1199,17 +1115,7 @@ read fine in between.
 
 
 def _part_plan_stage_modes():
-    """「明日安排」 shows MAA's stages the way AUTO-MAS v5.7 hands them to MAA.
-
-task/MAA/AutoProxy.py: StageMode "Fixed" takes Stage/Stage_1..3/MedicineNumb
-from the user's settings, any other StageMode is a PlanConfig uid; "-" is an
-empty slot, "*" becomes "" (MAA: current / last stage). The old plan printed
-「理智 -（固定）」 for an empty stage, the raw "*", the plan uid as the mode,
-ignored Stage_1..3, and called 999 potions "unlimited" with no source.
-Base data: the real 10-11 AUTO-MAS config (YW-4, Fixed, 999).
-
-    Formerly test_plan_stage_modes.py.
-    """
+    """「明日安排」 shows MAA's stages the way AUTO-MAS v5.7 hands them to MAA."""
     #!/usr/bin/env python3
 
     import json
@@ -1302,15 +1208,7 @@ Base data: the real 10-11 AUTO-MAS config (YW-4, Fixed, 999).
 
 
 def _part_plan_startup_mode():
-    """queue_rows' 「开机跑」 comes from AUTO-MAS v5.7's StartUpMode.
-
-v5.7 replaced the bool StartUpEnabled with StartUpMode (Never / Always /
-DailyFirst; app/models/config.py migrates True -> Always, False -> Never). The
-relay still read StartUpEnabled, so on the real 10-11 config every queue said
-「开机跑」: None.
-
-    Formerly test_plan_startup_mode.py.
-    """
+    """queue_rows' 「开机跑」 comes from AUTO-MAS v5.7's StartUpMode."""
     #!/usr/bin/env python3
 
     import json
@@ -1351,17 +1249,7 @@ relay still read StartUpEnabled, so on the real 10-11 config every queue said
 
 
 def _part_queue_apply_backend():
-    """A queue switch must reach the running AUTO-MAS, not just the file.
-
-2026-09-30: "skip today" disabled the morning queue by editing QueueConfig.json
-at 08:51:34 while AUTO-MAS was up (timer armed 08:48:59). AUTO-MAS never
-re-read the file, started the queue at 09:00:00 and wrote its in-memory copy
-back; the relay log said the queue was disabled. With the backend up,
-queues.apply now goes through /api/queue/update and only reports success once
-/api/queue/get reads the new value back.
-
-    Formerly test_queue_apply_backend.py.
-    """
+    """A queue switch must reach the running AUTO-MAS, not just the file."""
     import json
     import urllib.error
     from datetime import datetime
@@ -1506,22 +1394,11 @@ queues.apply now goes through /api/queue/update and only reports success once
 
 
 def _part_queue_apply_runnow():
-    """队列启停和「现在跑一趟」不能一调用就崩。
-
-2026-09-02 加 names 模块（队列改名早班/晚班）时，queues.apply 和
-commands._run_now 里各留着一个叫 names 的局部列表。Python 把它当整个函数的
-局部变量，函数第一行 names.canonical() 就 UnboundLocalError——四天里
-跳过队列、待办里的队列开关、手机上的「现在跑一趟」每次都崩。
-61 个测试全绿，因为没有一个测试真的调用过这两个函数。
-
-    Formerly test_queue_apply_runnow.py.
-    """
+    """队列启停和「现在跑一趟」不能一调用就崩。"""
     import json
     import os
     import pathlib
 
-    # _run_now writes the relay's state; until round 3 of the slimming (2026-11-08) nothing set
-    # where, and it went to ./ark-state under whatever folder the test ran from.
     os.environ["ARK_STATE_DIR"] = str(tmpdir() / "state")
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -1590,13 +1467,7 @@ commands._run_now 里各留着一个叫 names 的局部列表。Python 把它当
 
 
 def _part_queue_names():
-    """队列改名「早班/晚班」后，旧名字（新队列 / Evening-MAA）仍然被认。
-
-排队中的手机指令、跳过标记、恢复标记里都可能还是旧名；改名不能让它们
-变成「没有这个队列」。
-
-    Formerly test_queue_names.py.
-    """
+    """队列改名「早班/晚班」后，旧名字（新队列 / Evening-MAA）仍然被认。"""
     import os
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1632,14 +1503,7 @@ def _part_queue_names():
 
 
 def _part_queue_rows_times():
-    """queue_rows gives each queue its start times (「时刻」), also while its timer is off.
-
-A skip for today turns the queue's timer off (modes.py), and next_plan lists timed
-queues only, so the phone's row of a skipped shift had no time to show (App review
-10-14, 状态 page). Base data: the real 10-11 AUTO-MAS config (早班 09:00, 晚班 21:30).
-
-    Formerly test_queue_rows_times.py.
-    """
+    """queue_rows gives each queue its start times (「时刻」), also while its timer is off."""
     #!/usr/bin/env python3
 
     import json
@@ -1681,25 +1545,7 @@ queues only, so the phone's row of a skipped shift had no time to show (App revi
 
 
 def _part_queue_skip_holders():
-    """Today-only queue skips held by two sources, across days, and over repeated items.
-
-Review of the 2026-10-11 hand-over (Schedule.Days skips, item 16) found three ways
-a skip was lost or a weekday stayed removed:
-
-1. A queue command replayed at the next boot skipped again while the earlier
-   day's record was still open; the new record was dropped (same item) and the
-   boot restore of the earlier day's record then gave today back.
-4. A queue command listing a script the game update had skipped for maintenance
-   undid the maintenance skip; and a queue command skipping a script the update
-   already held was lost when the update's re-run put the item back.
-5. A script that sits in one queue twice had only its first item skipped.
-
-The fake below is AUTO-MAS's backend as commands._mas sees it (shapes from
-AUTO-MAS app/api/queue.py item/get, item/update), as in test_queue_skip_scripts.py.
-The clock is pinned through each module's `datetime`.
-
-    Formerly test_queue_skip_holders.py.
-    """
+    """Today-only queue skips held by two sources, across days, and over repeated items."""
     import json
     from datetime import datetime, timedelta
 
@@ -1833,20 +1679,7 @@ The clock is pinned through each module's `datetime`.
 
 
 def _part_queue_skip_partial():
-    """A today-only queue skip that fails part-way keeps its undo record.
-
-Audit 9 (2026-10-13, A1): skip_script_in_queue wrote Schedule.Days first and
-built the undo record only after the read-back; a read-back that raised lost the
-record of a write that had landed. skip_script_all_items threw away the record
-of the first item when the second failed. Both callers (queues.apply and the
-maintenance skip in gameupdate.boot_check) then had nothing to put back, and
-the item lost that weekday for good.
-
-The fake is AUTO-MAS's backend as commands._mas sees it, as in
-test_queue_skip_holders.py; `fail` makes one call raise after the write.
-
-    Formerly test_queue_skip_partial.py.
-    """
+    """A today-only queue skip that fails part-way keeps its undo record."""
     import json
     from datetime import datetime, timedelta
 
@@ -1986,16 +1819,7 @@ test_queue_skip_holders.py; `fail` makes one call raise after the write.
 
 
 def _part_queue_skip_partial_receipt():
-    """A queue's today-only script list that fails part-way names what it had already changed.
-
-queues._scripts_via_backend restores the listed scripts it had skipped and then skips
-the rest. When a later step failed it returned only that step's error, so the phone's
-receipt read as "nothing changed" while AUTO-MAS had already been changed (audit s19 #4,
-2026-10-13; relay.log 08-15..10-13 has no use of this path). The fake backend is the
-one of test_queue_skip_holders.py; here the update of the OK-WW item fails.
-
-    Formerly test_queue_skip_partial_receipt.py.
-    """
+    """A queue's today-only script list that fails part-way names what it had already changed."""
     import json
     from datetime import datetime
 
@@ -2097,19 +1921,7 @@ one of test_queue_skip_holders.py; here the update of the OK-WW item fails.
 
 
 def _part_queue_skip_scripts():
-    """A queue command's script list skips the rest for today, through Schedule.Days.
-
-Since the 2026-10-11 hand-over (item 16) queues.apply(scripts=[...]) deletes no
-queue item and writes no removed-*.json: each unlisted item loses today's weekday
-(commands.skip_script_in_queue), the record goes into updates.queue_skips with
-source "queue", and the boot-time gameupdate.restore_skips(before_day=...) gives
-the day back the next morning. The game-update re-run neither undoes such a skip
-nor re-runs the script because of it. The fake below is AUTO-MAS's backend as
-commands._mas sees it; shapes from AUTO-MAS app/api/queue.py (item/get,
-item/update) and app/models/schema.py QueueItem_Schedule.Days.
-
-    Formerly test_queue_skip_scripts.py.
-    """
+    """A queue command's script list skips the rest for today, through Schedule.Days."""
     import json
     from datetime import datetime, timedelta
 
@@ -2220,16 +2032,7 @@ item/update) and app/models/schema.py QueueItem_Schedule.Days.
 
 
 def _part_dayroll_skips():
-    """A machine left on past midnight puts back the queue-command skips of the day before.
-
-Review fix 6 of the 2026-10-11 hand-over: the put-back of a phone queue command's
-today-only skip (gameupdate.restore_skips(before_day=...)) ran only at boot, so on
-a machine left running for days the queue item kept that weekday off. The main
-loop's _DayRoll wakes just past local midnight and puts them back; the game
-update's own hold is left to run_deferred.
-
-    Formerly test_dayroll_skips.py.
-    """
+    """A machine left on past midnight puts back the queue-command skips of the day before."""
     import types
     from datetime import datetime, timedelta
 
@@ -2355,17 +2158,6 @@ def _part_due_weekdays_everywhere():
     """Every place that reads a queue's times asks plan.runs_at whether the time runs anything
 that day (audit 10-13: raw queue times were read without the weekday rule in five places,
 and the daily report's 「明日安排」 listed skipped items).
-
-AUTO-MAS fires a time only on its TimeSet Days and skips an item whose Schedule.Days leave
-out the day (the relay's own one-day skip writes exactly that); test_plan.py
-covers plan itself. Here: the shift / hand-start split (shutdown._near_due), the loop's
-missed-run wake-up (Engine.next_deadline), the overrun watch (runwatch.overrun_moments),
-the pre-update's 「a queue still to come runs OK-WW」 (preupdate.wanted_today), the
-maintenance skip (gameupdate._queues_today) and plan.next_plan.
-
-Config: tests/fixtures/automas-config-2026-10-11 (the machine's own, see SOURCE.txt).
-
-    Formerly test_due_weekdays_everywhere.py.
     """
     #!/usr/bin/env python3
 
@@ -2504,18 +2296,6 @@ Config: tests/fixtures/automas-config-2026-10-11 (the machine's own, see SOURCE.
 
 def _part_shift_clock_after_retry():
     """A script that timed out and was retried by AUTO-MAS restarts the shift's clock (ledger #138).
-
-2026-11-05 09:00 早班: MAA's first attempt hung at StartUp (asst.log: 609 clicks of 开始唤醒) until
-AUTO-MAS's timeout at 09:48 and a retry, which then passed StartUp at 09:51 and finished at 10:08.
-MaaEnd started only at 10:22, and at 10:57 both runwatch's overrun alarm and shutdown's no-result
-alarm counted 87 + 30 minutes from 09:00 - on top of the timeout alarm already pushed for MAA.
-
-Checked here: runwatch.retry_clock reads the 「超时|<script>|<HH:MM:SS>」 marks check_timeouts leaves;
-only a timeout between the shift's time and its planned end counts; the latest one wins; the
-no-result clock (shutdown._overdue_from) and the overrun deadline (runwatch.overrun_moments) both
-start from it; without a retry everything is as before, texts included.
-
-    Formerly test_shift_clock_after_retry.py.
     """
     import json
     import types
@@ -2613,15 +2393,6 @@ start from it; without a retry everything is as before, texts included.
 def _part_shiftcheck():
     """After-shift check (selfcheck/shiftcheck.py): the four sign-off items the relay had no
 check for, judged once after every finished morning / evening shift.
-
-The four come from scripts/mac/lib/healthcheck.py sections 3 and 6 (the 游戏-中继二
-scope cut of 10-10 23:3x, less MAA's IfActivityFirst and IfFight - his own phone
-settings, dropped by 验收 on 10-11). Each item has a red and a green case; the run is tied to
-the shutdown decision's own "this shift finished" test (shutdown._not_shift), so a
-round started by hand or a shift whose records this boot never saw land is not
-checked; the line reaches the daily report's relay section and is never pushed.
-
-    Formerly test_shiftcheck.py.
     """
     import inspect
     import json
@@ -2656,7 +2427,6 @@ checked; the line reaches the daily report's relay section and is never pushed.
     check("annihilation Close, week not done -> red with the boot alarm's words",
           (by_name(red, texts.SHIFTCHECK_ANNIHILATION).ok, by_name(red, texts.SHIFTCHECK_ANNIHILATION).detail),
           (False, texts.annihilation_off_body("明日方舟 · 剿灭")))
-    # Audit s13 #2 (10-13 10:00:31 「4 项里 1 项不对…「下次跑完不关机」」): his own switches are notes.
     check("「下次跑完不关机」 armed -> holds, with a note", by_name(red, texts.SHIFTCHECK_SKIP).ok, True)
     check("debug mode on -> holds, the note says until when",
           (by_name(red, texts.SHIFTCHECK_DEBUG).ok, "2026-10-11 20:50" in by_name(red, texts.SHIFTCHECK_DEBUG).detail),
@@ -2753,7 +2523,6 @@ checked; the line reaches the daily report's relay section and is never pushed.
             check("next shift, faults red and switches noted, read from the state files", got and [c.ok for c in got],
                   [False, True, True, False])
             check("switch notes read from the state files", got and [bool(c.detail) for c in got][1:3], [True, True])
-            # D210 / audit 11-08 C-07: a red item is a WARNING, so errwatch takes it to the group.
             check("red goes out as a WARNING (errwatch takes it to the group)",
                   [r.levelno for r in rec.records], [logging.WARNING])
             check("red line names the morning shift", rec.records[0].getMessage().startswith("收工体检（早班）4 项里 2 项不对"),
@@ -2773,7 +2542,6 @@ checked; the line reaches the daily report's relay section and is never pushed.
                                                for k in ("MAA", "OK-WW")]
             eng._last_round_manual = lambda now, entries: True
             check("last round started by hand -> not checked", shiftcheck.maybe_run(eng, due3 + timedelta(hours=1)), None)
-            # Audit s13 #1 (10-12 21:45): the evening shift went unchecked and nothing said so.
             check("a due shift not judged says so once at INFO, in words the daily report quotes",
                   [(r.levelno, r.getMessage()) for r in rec.records],
                   [(logging.INFO, "收工体检（晚班）这班没查：最近一轮是手动触发的")])
@@ -2849,12 +2617,6 @@ checked; the line reaches the daily report's relay section and is never pushed.
 
 def _part_overdue_after_update_rerun():
     """「⏰ 一直没出结果」 after a client update: the scripts the relay re-ran itself are timed from the re-run.
-
-2026-11-01: 明日方舟 updated, MAA was skipped in the 09:00 早班 and re-run at 12:02 (relay.log
-12:02:15 「补跑 MAA → 脚本「MAA」已单独开跑」); at 12:04:27 the overdue alarm counted 142 + 30
-minutes from 09:00. Checks shutdown._overdue_from, the clock start _shift_overdue uses.
-
-    Formerly test_overdue_after_update_rerun.py.
     """
     from datetime import datetime
 
@@ -2886,22 +2648,6 @@ minutes from 09:00. Checks shutdown._overdue_from, the clock start _shift_overdu
 def _part_next_deadline():
     """When the loop is allowed to sleep until - the one number that decides
 whether the relay wakes up at all.
-
-`Engine.next_deadline` replaced polling: instead of waking every few minutes to
-ask the clock, the loop sleeps until the exact moment a purely time-based
-decision can change. That makes it the single point where two opposite failures
-live, and no test had ever called it.
-
-* Return a moment that is already past and the loop busy-spins.
-* Return None, or a moment too late, and the relay sleeps through the daily
-  report - and because shutdown waits for the report, the machine stays on all
-  night. That exact outcome happened on 2026-09-04 through a different route.
-
-The queue times here are read from a fake AUTO-MAS config on disk, the same way
-the real one reads them, so "moving a queue in AUTO-MAS moves the deadline with
-it" is covered too.
-
-    Formerly test_next_deadline.py.
     """
     import json
     import os
@@ -2971,8 +2717,6 @@ it" is covered too.
 
 
     print("[08:00: the next moment is 「早班漏没漏跑」 (09:25); no wake-up checkpoint since 2026-10-10]")
-    # The 09:02 / 21:32 checkpoints judged 「woken with nothing scheduled -> power off」; under
-    # the user's 2026-10-10 18:31 rule only a finished shift powers off, so nothing wakes for them.
     e = build()
     when, why = e.next_deadline(at(8, 0))
     check("时刻", when, at(9, 0) + timedelta(minutes=MISSED_GRACE_MIN))
@@ -3051,9 +2795,6 @@ it" is covered too.
     check("坏的那档被跳过，好的还在", got is not None, True)
 
     print("\n[正在刷声骸时，收工时刻和「看一眼还活着没」都要能把循环叫醒]")
-    # 2026-09-09: neither of the farm's moments was registered here, so the loop
-    # slept until the next queue alarm - 21 minutes measured. OK-WW stopped at
-    # 06:45 and nothing looked at it until 07:06.
     from ark_relay.features import echofarm
     e7 = build()
     _store = echofarm._store(e7.cfg.state_dir)
@@ -3075,17 +2816,7 @@ it" is covered too.
 
 
 def _part_next_plan_imports():
-    """next_plan 能不能被调起来——2026-09-04 就是这里断的。
-
-那天 phone.py 瘦身删掉了 plan.py 还在 import 的一个函数，
-`next_plan` 一调就 ImportError，把 tick() 里排在它后面的补更新、日报、
-自动关机全带走，一上午没人发现。**当时没有任何测试调过 next_plan。**
-
-这个测试不断言排版，只断言「调得起来、不抛异常」——跨模块引用断掉、
-少个 import、名字改了，都会在这里红。
-
-    Formerly test_next_plan_imports.py.
-    """
+    """next_plan 能不能被调起来——2026-09-04 就是这里断的。"""
     import sys, tempfile, pathlib
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
     from ark_relay.core import plan
@@ -3104,15 +2835,6 @@ def _part_next_plan_imports():
 
 def _part_next_queue_weekdays():
     """boot_stages._seconds_to_next_queue skips a queue time that runs nothing today (audit s23 F4, 10-13).
-
-232948ba moved five readers of queue times to plan.runs_at (a time fires only on its
-weekdays, and only when some item does not sit the day out) and missed this one. Run
-by the audit on a schedule of 09:00 Saturday-only plus 21:30 daily, at Tuesday 08:40:
-the budget aimed at the 09:00 queue that does not fire (1110 s) instead of 21:30. The
-budget decides whether a pre-update item gets its second try (_once_more).
-The real QueueConfig has both times on all seven days, so this did not bite yet.
-
-    Formerly test_next_queue_weekdays.py.
     """
     from datetime import datetime
 
@@ -3172,11 +2894,6 @@ The real QueueConfig has both times on all seven days, so this did not bite yet.
 
 def _part_dispatch_guard_idle():
     """run-one.sh wait-idle waits on dispatch_guard.py idle's exit code, not on the status wording.
-
-2026-10-24 a hand-written wait grepped 「脚本在跑: []」 while the status line says 「脚本在跑: 无」,
-and kept waiting long after the morning shift had ended (he asked 「不是已经跑完了吗？」).
-
-    Formerly test_dispatch_guard_idle.py.
     """
     import runpy
     import subprocess
@@ -3215,16 +2932,7 @@ and kept waiting long after the morning shift had ended (he asked 「不是已�
 
 
 def _part_dispatch_guard_self():
-    """The busy gate must not mistake itself for a running script.
-
-2026-09-09: `run-one.sh OK-WW` refused every dispatch with 「ok-ww 还在跑」 while
-`run-one.sh status` reported the machine idle. The gate looked for 「ok-ww」 anywhere
-in a python process's command line, PowerShell's -like is case-insensitive, and the
-gate's own argument is the string OK-WW. It was seeing itself. A gate that blocks
-everything is as broken as one that blocks nothing.
-
-    Formerly test_dispatch_guard_self.py.
-    """
+    """The busy gate must not mistake itself for a running script."""
     import re
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -3262,19 +2970,7 @@ everything is as broken as one that blocks nothing.
 
 
 def _part_dispatch_guard_silent():
-    """dispatch_guard.py must not read "cannot ask" as "nothing there".
-
-Silent-failure audit rows:
-* scripts/windows/dispatch_guard.py:98 - live_tasks returned [] when AUTO-MAS's
-  runtime-snapshot was unreachable, timed out or not JSON. stop then printed
-  「AUTO-MAS 没有在跑的任务」 and went straight to taskkill: the 2026-09-01 chain
-  (taskkill read as a crash, AUTO-MAS retries the queue) the module exists to
-  prevent.
-* scripts/windows/dispatch_guard.py:164 - a corrupt test-windows.json read as
-  "no window open": test-status exited 0 and test_on overwrote the history.
-
-    Formerly test_dispatch_guard_silent.py.
-    """
+    """dispatch_guard.py must not read "cannot ask" as "nothing there"."""
     import contextlib
     import io
     import json
@@ -3388,17 +3084,6 @@ Silent-failure audit rows:
 
 def _part_dispatch_guard_test_debug():
     """A test dispatch turns debug mode on first, and test-off turns off only what it turned on.
-
-2026-10-13 11:05 (Beijing) `run-one.sh OK-WW --test` ran after the morning shift
-had spent the one-shot 「下次跑完不关机」 mark; when the run ended the relay logged
-11:13:55 「本轮已处理完毕，60 秒后关机」 and powered the machine off, which cannot be
-undone remotely. The rule 「临时跑不改排班；维护先开调试模式」 was a habit with
-nothing enforcing it. dispatch_guard.start(test=True) now writes the relay's debug
-mode (modes.set_debug, the state the debug_mode command writes) before dispatching,
-records in the test window that it did, refuses the dispatch when it cannot, and
-test_off turns it off again only if this window turned it on.
-
-    Formerly test_dispatch_guard_test_debug.py.
     """
     import contextlib
     import inspect
@@ -3538,14 +3223,6 @@ test_off turns it off again only if this window turned it on.
 def _part_dispatch_note_timing():
     """The relay notes "this run is mine" right before the dispatch call, after the
 OK-WW overlay step.
-
-Evidence audit 2026-10-13: commands.run_script / _run_now called _note_dispatch
-first and okww_overlay.retry_pending second. The overlay step has no time limit,
-so a slow one let AUTO-MAS create the task more than trigger.MATCH_AFTER_S (60 s)
-after the note, and trigger.hand_started_task then booked the relay's own run as
-hand-started (no make-up, no overrun alarm).
-
-    Formerly test_dispatch_note_timing.py.
     """
     import os
     from datetime import datetime, timedelta
@@ -3604,17 +3281,7 @@ hand-started (no make-up, no overrun alarm).
 
 
 def _part_runwatch_main():
-    """Watch a running queue: push every timeout at once, and a shift that overruns.
-
-Every timeout, not only the first of the day: the rule the user set on 2026-10-06 reads 「不论多少次什么错误都要发」.
-
-Replays 2026-10-01: OK-WW timed out at 11:20, 13:21 and 15:23 (two hours each),
-MaaEnd at 16:10, and the morning shift that normally ends within an hour was
-still running past 16:00. Not one alarm went out that day. The app.log lines
-below are copied from the machine; the ledger shapes from 09-24..09-30.
-
-    Formerly test_runwatch.py.
-    """
+    """Watch a running queue: push every timeout at once, and a shift that overruns."""
     import json
     import os
     import types
@@ -3667,7 +3334,6 @@ below are copied from the machine; the ledger shapes from 09-24..09-30.
 
 
     APPLOG = AUTOMAS / "debug" / "app.log"
-    # Verbatim from D:\ark\automas\debug\app.log, 2026-10-01.
     LINES = [
         "2026-10-01 09:18:20.376 | INFO     | OK-WW 自动代理 | 用户 wuwa - 尝试次数: 1/3",
         "2026-10-01 09:18:20.701 | INFO     | OK-WW 自动代理 | 启动 OK-WW 进程: D:\\ark\\okww\\ok-ww.exe -t 1 -e",
@@ -3817,7 +3483,6 @@ below are copied from the machine; the ledger shapes from 09-24..09-30.
                 rows.append(("MaaEnd", t(d, 15, 33), t(d, 15, 48)))
             rows.append(("MAA", t(d, 21, 30, 50), t(d, 21, 45 + d % 5)))
             ledger(state, t(d, 0, 0), rows)
-        # 09-28 verbatim: a 41-minute hole between two MaaEnd records of the same shift
         ledger(state, t(28, 0, 0), [
             ("MAA", t(28, 9, 0, 52), t(28, 9, 4, 4)), ("MAA", t(28, 9, 4, 8), t(28, 9, 27, 32)),
             ("OK-WW", t(28, 9, 27, 53), t(28, 10, 28, 37)), ("MaaEnd", t(28, 10, 29, 47), t(28, 11, 22, 10)),
@@ -3931,9 +3596,6 @@ below are copied from the machine; the ledger shapes from 09-24..09-30.
         check("22:19: alarm", [x[0] for x in alarms(e7)], ["⏰ 晚班超时还没跑完"])
 
         print("\n[a 晚班 the relay starts late (the phone's run_now) is timed from its own start (11-09 #151)]")
-        # 2026-11-09 00:52:21 session 2499 re-ran the evening shift through the phone's run_now;
-        # 7 s later the overrun alarm said the 21:30 run had gone 202 minutes. Same shape on this
-        # seed: 21:30 + 19 + 30 is 22:19; the late task is created 10-02 00:52:21.
         from ark_relay.features import handle as _handle
         from ark_relay.features import trigger as _trigger
         late_at = datetime(2026, 10, 2, 0, 52, 21, tzinfo=SERVER_TZ)
@@ -4036,15 +3698,6 @@ below are copied from the machine; the ledger shapes from 09-24..09-30.
 
 def _part_runwatch_chain_retry():
     """The overrun limit counts a shift whose failed attempt AUTO-MAS retried successfully as clean.
-
-Audit s18 F1 (10-13): _chain called a run unclean when any record failed, even when
-AUTO-MAS's retry of that script then succeeded, so the 09:00 shift was clean on only
-2 of 13 days (10-01..10-13) and planned_minutes fell back to the longest of all
-days. Each script is now judged by its last record in the chain, and a run a person
-started at AUTO-MAS (raw.hand_started) is not part of the shift's chain.
-Fixtures: the morning lines of the machine's ledgers 10-05, 10-08, 10-12.
-
-    Formerly test_runwatch_chain_retry.py.
     """
     import json
     from datetime import datetime
@@ -4078,21 +3731,7 @@ Fixtures: the morning lines of the machine's ledgers 10-05, 10-08, 10-12.
 
 
 def _part_run_limit():
-    """Endfield's failure retry limit in AUTO-MAS kept at 1 (run_limit.py).
-
-2026-11-05 morning one failed Endfield round ran three times under AUTO-MAS's
-Run.RunTimesLimit=3, five with the make-up. The limit went to 1 that day, through
-AUTO-MAS's API: an AUTO-MAS update or one click in its window puts it back. The backend's
-read and write are stand-ins here. Checked:
-* at 1: no write, nothing said;
-* back at 3: written back to 1, one Server酱 line (not the group), once a day however often;
-* refused while the script runs (「正在运行」): no count, the next tick writes it;
-* refused for another reason ALARM_AFTER ticks in a row: one group alarm, not repeated;
-* backend down or no such script: nothing;
-* a replayed day before 2026-11-05 (the decision's day): nothing.
-
-    Formerly test_run_limit.py.
-    """
+    """Endfield's failure retry limit in AUTO-MAS kept at 1 (run_limit.py)."""
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -4220,15 +3859,6 @@ read and write are stand-ins here. Checked:
 
 def _part_run_probe():
     """run-probe.py (watch-run.sh's probe on the game machine): a MaaEnd update install is UPD, not FAIL.
-
-Run over the real records of 2026-10-06..13, 6 of 38 came out `ok=0` with
-「[更新] Success!」 (10-13 MaaEnd-05-59-12 among them), so watch-run.sh printed a FAIL
-for every MaaEnd update the relay itself logs as 「不算一趟运行」 (collector.py
-_judge_result). The records here are real results (10-13 05-59-12 and MAA-05-00-23,
-10-10 05-13-19, 10-08 05-29-15), gathered under one day folder, copied from
-the machine's AUTO-MAS history (fixtures/automas-runprobe/).
-
-    Formerly test_run_probe.py.
     """
     import contextlib
     import importlib.util
@@ -4275,12 +3905,6 @@ the machine's AUTO-MAS history (fixtures/automas-runprobe/).
 
 def _part_same_weekday():
     """The shift's planned end counts the same weekday one and two weeks back when that day was clean (#155, 11-09).
-
-Monday 11-09 「⏰ 早班超时还没跑完」 went out at 10:51 while MaaEnd gathered on normally: the Monday
-shift is long after the 04:00 weekly reset, last Monday 11-02 was not clean, so the 7-day window
-held no clean Monday and the limit was 11-04's 81 minutes. Chains as _chain read them off the
-machine's ledgers 10-26..11-08: Mondays 142 (clean) and 151 (an OK-WW attempt failed), every
-other day 56-87.
     """
     import json
     import types
@@ -4301,8 +3925,6 @@ other day 56-87.
 
 
     print("[11-09 (Monday): the same weekday back counts when clean - #155, 11-02 was not clean, 10-26 was]")
-    # Chains as _chain read them off the machine's ledgers 10-26..11-08: Mondays 142 (clean) and 151 (an
-    # OK-WW attempt failed), every other day 56-87; 11-09 was timed by 11-04's 81 and alarmed at 10:51.
     mins = {(10, 26): (142, True), (10, 27): (56, True), (10, 28): (63, True), (10, 29): (87, True),
             (10, 30): (65, True), (10, 31): (62, True), (11, 1): (62, True), (11, 2): (151, False),
             (11, 3): (80, False), (11, 4): (81, True), (11, 6): (68, True), (11, 7): (80, True), (11, 8): (60, True)}
@@ -4324,8 +3946,6 @@ other day 56-87.
           runwatch.planned_minutes(em, 9, 0, datetime(2026, 11, 10, 9, 0, tzinfo=SERVER_TZ))[0], 81)
 
     print("\n[a Monday that raised 「队列超时」 and still finished clean is the next Monday's limit (#176)]")
-    # 11-09 (Monday) alarmed at 10:51 and finished; that alarm kept the day out of 11-16's limit, 11-02 was
-    # not clean, so 11-16 was timed by a weekday's 65 minutes and alarmed at 95 with a shift taking 138.
     from unittest import mock
     from ark_relay.features import handle
     e2 = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=None), state=State(tmpdir()))
@@ -4360,10 +3980,6 @@ other day 56-87.
         check("an alarmed Monday that timed out never counts", runwatch.planned_minutes(e2, 9, 0, monday16), (65, 6))
 
     print("\n[#176, the 11-16 timeline: once the queue's planned minutes are spent, the script whose turn it is has its own]")
-    # relay.log 11-10..11-16: MAA 17 minutes, 鸣潮 11 (54 on Monday 11-16 with the weekly boss), MaaEnd
-    # 23-26 and 64 on Thursday 11-12 and Monday 11-16 (the gathering days). 11-12 was not a clean day
-    # (鸣潮 could not enter the game), so the queue's limit came from the other days: 65 + 30, and
-    # 「⏰ 早班有脚本一直没出结果」 went out at 10:35 with MaaEnd running since 10:15.
     e3 = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=None), state=State(tmpdir()))
 
     def shift_day(d, okww, maaend, okww_ok=True):
@@ -4432,12 +4048,6 @@ other day 56-87.
 def _part_missed_runs_main():
     """A queue that was due and produced nothing must alarm - and must not alarm
 when the machine simply was not awake for it.
-
-The distinction used to be made with the relay's own start time, which every
-selfupdate resets. An update that ran past the queue's time therefore made the
-new process disqualify itself and swallow a real missed run.
-
-    Formerly test_missed_runs.py.
     """
     import json, os, sys
     from datetime import datetime
@@ -4627,19 +4237,7 @@ new process disqualify itself and swallow a real missed run.
 
 
 def _part_missed_weekdays():
-    """「🔌 晚班 没有运行」 follows AUTO-MAS v5.7's weekday rules.
-
-AUTO-MAS fires a time only on its TimeSet's Info.Days (app/core/timer.py
-_due_timed_slots) and skips an item whose Schedule.Days leave out the day
-(app/core/task_manager.py _is_script_scheduled_today). 77d7ed98 taught the plan
-(plan.runs_at), but _check_missed_runs still walked every time every day, so a
-day off for the queue, or a day its only item (MAA in 晚班) was skipped, still
-raised the missed-run alarm.
-
-Config: tests/fixtures/automas-config-2026-10-11 (the machine's own, see SOURCE.txt).
-
-    Formerly test_missed_weekdays.py.
-    """
+    """「🔌 晚班 没有运行」 follows AUTO-MAS v5.7's weekday rules."""
     #!/usr/bin/env python3
 
     import json
@@ -4813,9 +4411,6 @@ def _part_debug_window():
         check("关闭后不再生效",
               modes.debug_active(tmp, at("2026-08-22 22:00")), False)
 
-        # 10-14: off by hand releases the occasion the spent skip-next-shutdown mark skipped
-        # (release_skip, the debug_mode order); dispatch_guard's test-off (no release_skip)
-        # still releases only debug mode's own skip.
         store = StateStore(tmp)
         store.set("modes", "shutdown_skipped", "2026-10-14:3")
         modes.set_debug(tmp, off=True)

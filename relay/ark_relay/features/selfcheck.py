@@ -24,15 +24,6 @@ the line, and the 「下次跑完不关机」 mark is read before the shutdown s
 A due shift whose scripts all recorded but that _not_shift rules out (started by
 hand, records not seen landing) gets one INFO line 「收工体检（晚班）这班没查：<why>」
 instead, so the daily report says the shift went unchecked.
-
-Route: one relay.log line per shift (texts.shiftcheck_summary), which
-selfcheck.daily_lines quotes in the daily report's relay section: INFO when every
-item holds, WARNING (errwatch pushes it) when one does not (audit 2026-11-08 C-07). Items 2 and 3 are recorded normal states (USER-SWITCHES.txt,
-shutdown.py:_say_if_moment_passed), 4 is ours; the annihilation switch already rings the group once per boot
-(boot_stages._annihilation_switch_off). A crash inside the check is a relay fault of
-its own: logged at ERROR (errwatch pushes it, as every other broken relay step in
-engine.tick), and that line - which says the shift was not checked - is what the
-daily report quotes for the shift.
 """
 from __future__ import annotations
 
@@ -155,9 +146,6 @@ def maybe_run(eng, now: datetime) -> "list[Check] | None":
     except Exception:  # noqa: BLE001
         _log_shiftcheck.exception(texts.shiftcheck_broken(shift))
         return []
-    # An item that is not right reaches the group, every shift it stays so (D210; audit
-    # 2026-11-08 C-07: at INFO a test window left open sat in relay.log only). The notes
-    # (items 2 and 3, ok with a detail) stay INFO.
     if any(c.ok is False for c in checks):
         _log_shiftcheck.warning(summary(shift, checks))
     else:
@@ -169,11 +157,6 @@ _log_tape = logging.getLogger("ark.tape")
 
 BEIJING = timezone(timedelta(hours=8))
 DIR = "tape"
-# A day's tape stops at this size. Measured 2026-10-14 by replaying the seven recorded
-# days (10-06 .. 10-13, relay/tests/daysim/run.py --all --keep) with the hooks in place:
-# 448-458 KB a day, 94 % of it information-source answers (test_verify.py lists each day).
-# The cap is nine times that, for a day whose AUTO-MAS answers change far more often
-# than the replay's; 14 full days are 56 MB.
 DAY_CAP_BYTES = 4 * 1024 * 1024
 # Day files kept, today included: two weeks of days to pull and replay.
 KEEP_DAYS = 14
@@ -617,13 +600,6 @@ def _has_module(name: str) -> bool:
 NEEDED_MODULES = (("PIL", "Pillow", "读官方长图（卡池几点几分）、压缩报警截图"),)
 
 
-# 11-06: at 11-04 21:25:26 (machine time) the system turned on virtualization-based security
-# by itself: DeviceGuard EnableVirtualizationBasedSecurity=1 while the console session was
-# still locked, with no logon and no update in that minute. LDPlayer then lost VT-x and fell
-# back to the hypervisor (VBox.log "HMR3Init: Attempting fall back to NEM"): the morning's
-# first cold boot went from 22 s to 71-78 s and Android's not-responding box covered the game,
-# so MAA clicked into it (group alarm #145). Turned off 11-06 12:27; the next cold boot took
-# 12 s on VT-x. This line names it at the first boot after it comes back.
 VIRT_NAME = "雷电模拟器能用上硬件加速（系统没开「基于虚拟化的安全」）"
 _VIRT_PS = ("$d = Get-CimInstance -Namespace root\\Microsoft\\Windows\\DeviceGuard -ClassName Win32_DeviceGuard "
             "-ErrorAction Stop; $c = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop; "
@@ -752,8 +728,6 @@ def run(cfg, *, procs=None, mas_up=None, schedule=None, channels=None,
     else:
         why = "" if sched else "没有一条开着定时的队列"
     out.append(Check("队列的排期读得到、至少一条开着定时", bool(sched), why))
-    # 10-14: AUTO-MAS v5.7.0-beta.3 moved the stage items out of Info and every reader
-    # took the empty result for "not set" for 13 hours (mascontract.py).
     out.append(contract_check(cfg, contract))
     log_file = os.environ.get("ARK_LOG_FILE", "")
     ok, why = (False, "没配置") if not log_file else _writable(Path(log_file).parent)
@@ -854,13 +828,6 @@ def daily_lines(day: str, log_text: str) -> list[str]:
     errors: list[tuple[str, str, str]] = []
     boots: list[str] = []
     shifts: list[str] = []      # the after-shift check's one line per shift (shiftcheck.py)
-    # Each service start opens a boot. A boot where AUTO-MAS answered at once logs
-    # none of the four outcome lines below; one that closes without an outcome
-    # line is reported as "already up" - when it got that far. The AUTO-MAS step
-    # runs before the boot self-check (phone_channel, then _stage_selfcheck), so a
-    # start followed by the next start with no 「开机自检」 line in between died
-    # before it: 10-10 16:28-16:32 a crash loop of 15 starts, each gone after
-    # about 18 s, read as 15 「开机时已经在」 until 2026-10-13.
     pending = ""
     reached = False
     for line in log_text.splitlines():
@@ -881,9 +848,6 @@ def daily_lines(day: str, log_text: str) -> list[str]:
             continue
         if msg.startswith("开机自检"):
             reached = True
-        # Neither of these reaches the self-check either, but it is no crash:
-        # 10-05 21:20, 10-07 08:45 and 21:20, 10-08 20:05 each installed a new
-        # version and restarted, and read as a crash until 2026-10-13.
         if pending and not reached and msg.startswith(_SELF_UPDATE):
             boots.append(f"{pending} 装新版后自己重启了")
             pending = ""
@@ -949,13 +913,10 @@ def daily_section(day: str, log_file: "str | None" = None) -> str:
 # bare 「diag:」 and traceback lines have no leading timestamp and are skipped.
 _LINE = re.compile(r"^\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s+(WARNING|ERROR)\s+(ark\.[\w.]+)\s+(.*)$")
 
-# The 10-06 lines of the WuWa calendar read (all three come out of one
-# _wuwa_calendar_start call, and the #2 machine check judges its trace).
 _CAL_MISS = re.compile(r"^鸣潮 (\S+) 版本活动日历读了 \d+ 行，没找到「(.+?)」的日期：(.*)$")
 _CAL_IMG = re.compile(r"^这条公告只有图，没读到字：.*activity id=(\d+)「(\S+?)版本活动日历」(\S+)")
 _CAL_FAIL = re.compile(r"^鸣潮版本活动日历读图失败")
 _MC2 = re.compile(r"^🔬 上机核对没过：#2\b")
-# The 10-06 06:21 shutdown snapshot lines, written after the relay's own power-off.
 _SNAP = re.compile(r"^快照的 (_MAS错误|_队列错误) 这一段读不到")
 
 

@@ -11,14 +11,6 @@ The JSON says which script ran and whether it succeeded:
 The filename is the start time (UTC+4, see AUTOMAS_NAME_TZ); the times inside
 the log are preferred when there are any (_log_span).
 
-From v5.8.0-beta.2 (the machine updated itself 2026-10-28 08:47) AUTO-MAS writes
-no JSON: each run is a row of data/history.db `records` (id, time with its +04:00
-offset, username, script_name, status, message, data, log_path) and its log is
-history/<YYYY-MM-DD>/<id>/0.log; the old dated folders were removed. scan() reads
-both layouts (_db_rows / parse_db_record): reading only the JSON one, the relay
-booked nothing of that morning's three runs and pushed 「早班 没有运行」 at 10:04,
-the minute the scripts stopped (ledger #120).
-
 This module walks the history directory, works out which program a record
 belongs to, judges success or failure, and hands the log to that game's parser
 (features/verify: collector_maa / collector_maaend / collector_okww). The
@@ -60,16 +52,8 @@ _unparsed_new: list[str] = []          # found, not said yet
 AUTOMAS_NAME_TZ = timezone(timedelta(hours=4))
 
 
-# MAA/MaaEnd write "[2026-08-25 09:37:25.186]"; OK-WW writes
-# "2026-08-25 12:31:32,941 INFO ..." (no brackets). This matches both.
 _LOG_TS = re.compile(r"^\[?(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 _MAA_SUCCESS = "Success!"
-# AUTO-MAS (app/task/Okww/AutoProxy.py) records OK-WW as 「在完成任务前退出」
-# ("exited before finishing") or 「未连接游戏客户端」 (from 2026-11-03, when
-# AutoProxy added "connected:0" to _OKWW_DISCONNECT_LOG while _OKWW_SUCCESS_LOG
-# stayed English-only and OK-WW -e logs "hwnd changed,connected:0" on stop_hwnd
-# seconds after finishing) when it did not see English success in the log.
-# _OKWW_DONE is the line OK-WW writes at the end of DailyTask.run().
 _OKWW_EXITED = ("在完成任务前退出", "未连接游戏客户端")
 _OKWW_DONE = "Daily Task Completed"
 
@@ -197,13 +181,7 @@ _OKWW_SEC_PER_POINT = 360
 
 
 def resolve_history_log(history_root, entry: dict) -> Path | None:
-    """The AUTO-MAS history log of one ledger entry; None when it is not on disk.
-
-    Old layout: history/<run_id>.log (run_id = <date>/<user>/<stem>). AUTO-MAS v5.8.0-beta.2
-    on: history/<date>/<automas_record_id>/0.log, the id kept in raw.automas_record_id
-    (_db_identity). Every reader of a ledger entry's log goes through here: collect_retry
-    built only the old path, found no log for any run since 2026-10-28, and so never
-    retried a gathering route (audit 2026-11-08 B-01)."""
+    """The AUTO-MAS history log of one ledger entry; None when it is not on disk."""
     if not history_root or not entry:
         return None
     run_id = str(entry.get("run_id") or "")
@@ -433,10 +411,6 @@ def _db_rows(history_root: Path) -> list[tuple]:
         finally:
             con.close()
     except sqlite3.Error as e:
-        # INFO, not WARNING (a WARNING is a group message): AUTO-MAS holding the file for
-        # a moment is read on the next scan, which next_moment wakes the loop for. A read failing
-        # DB_FAIL_WARN_AFTER times in a row is no moment: nothing is booked meanwhile, and
-        # until 2026-11-08 nobody heard it (audit B-07).
         _db_fail_streak[0] += 1
         if str(e) not in _db_said:
             _db_said.add(str(e))
@@ -732,11 +706,6 @@ def scan(history_root: Path, seen: set[str], maaend_dir: Path | None = None) -> 
         rec = parse_record(path, history_root, maaend_dir)
         if rec and rec.run_id not in seen:
             out.append(rec)
-    # AUTO-MAS v5.8.0-beta.2 on: the rows of data/history.db. A row is written when its run
-    # ends, after its 0.log, so there is no half-written record to wait out here.
-    # Two rows of one user and script in the same second would share a run_id, and the second
-    # would read as seen and never be booked: the later one gets its record id's head as a
-    # suffix (audit 2026-11-08 B-07). Rows come oldest first, so a run_id once given stays.
     taken: set[str] = set()
     for row in _db_rows(history_root):
         got = _db_identity(row, history_root)

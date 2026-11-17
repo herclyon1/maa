@@ -130,23 +130,11 @@ def versions(app: Path) -> list[str]:
 def record_running_version(here: Path) -> None:
     """Make selfupdate's recorded version the version of the folder that is running.
 
-    The record lives in the shared state folder, the code in per-version folders, and
+The record lives in the shared state folder, the code in per-version folders, and
     the two can part: a switch that failed after check recorded the new version, a
     rollback, or an install over the old relay whose record is newer than the installed
     code. selfupdate.check trusts the record, so each start sets it from the folder.
-
-    After a rollback too the record is the running version: every machine check, run
-    record and report stamps it as the code that ran (until 2026-11-08 it was the
-    version rolled away from, so a rolled-back relay's verdicts carried the version it
-    had left - 清单-1108 A-07). selfupdate.check keeps from updating straight back into
-    that version by taking the pin (PIN_FILE) as the floor of what counts as new; the
-    pin holds until a higher version is deployed (update clears it).
-
-    The "code was updated" note goes the same way when it names a version newer than the
-    folder in use: check wrote it into the shared state for a copy that never became
-    current (the switch raised, or power went before it), and announcing it would say
-    「中继已更新」 while the old code runs (audit s24 F1). A note for the folder in use is
-    the first boot after a real switch and stays."""
+    """
     from ark_relay.features import selfupdate  # noqa: PLC0415
     running = version_key(here.name)[0]
     if running and selfupdate._applied_version(here) != running:
@@ -304,10 +292,6 @@ def update(here: Path, check) -> list[str]:
         if _pinned(here):
             _pin(here, 0)            # a newer version than the one rolled away from
     except Exception:
-        # Not switched: the record must keep naming the folder in use, and check's
-        # 「已更新」 note goes with it (record_running_version). check cleared
-        # update-failed.json for a round that landed in the copy, so the owner hears
-        # 「更新没生效」 only if it is written again here (audit s24 F1).
         record_running_version(here)
         selfupdate._record_failure(
             here, "新版本的文件已经下载好，换到新版本文件夹那一步出错了（原因见日志）",
@@ -345,15 +329,7 @@ def restart_soon(app: Path, popen=subprocess.Popen) -> None:
     """Start the relay again once this process has exited: `launch.py relaunch`, detached,
     waits for the relay's mutex to go and then runs the task (a `schtasks /run` while
     this process lives is ignored).
-
-    Until 2026-10-11 this was `cmd /c timeout /t 3 & schtasks /run` in a detached cmd.
-    It was not timeout returning early: a detached `timeout /t 3` took 2.7 s on the
-    cloud runner (package-windows run 38095462157). Likely the fixed 3 s was shorter
-    than the relay takes to exit after an update (its last push, the phone channel;
-    SvcStop's hard exit is at 15 s), so the task run came while it still lived and was
-    ignored (unmeasured); the relay came back only with the watchdog's next check, up
-    to 30 s later (review rounds 2 #13 and 7 #22). Waiting for the mutex works however
-    long the exit takes."""
+    """
     cmd = [str(app / "runtime" / "python" / "pythonw.exe"), str(app / "launch.py"), "relaunch"]
     flags = (getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
              | getattr(subprocess, "DETACHED_PROCESS", 0))

@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 """Run the relay as a Windows service, so the OS keeps it alive.
 
-Why a service and not a scheduled task: a task starts the relay once and then
-forgets it. Nothing notices when the process dies - which is exactly what
-happened on 2026-08-15, when the relay and AUTO-MAS both stopped mid-evening
-and the 21:30 run was lost with no alert, because the thing that alerts was
-the thing that died.
-
 A service is different in kind, not degree. The Service Control Manager holds
 the process handle, so the kernel tells it the instant the process exits -
 there is no poll interval to wait out. Paired with failure actions
@@ -17,7 +11,7 @@ This file adds nothing to the relay but the ability to answer the SCM. The
 engine, the polling loop and every decision it makes are unchanged; see
 __main__.cmd_local for the same loop without the service plumbing.
 
-    install:  python service.py install
+install:  python service.py install
     start:    python service.py start
     remove:   python service.py stop && python service.py remove
 
@@ -72,13 +66,7 @@ def _wait_for_network(log, timeout: float = 90.0) -> bool:
     """Block until DNS answers, or give up. True if the network came up; False when it
     did not within `timeout`, or at once when the service is stopping.
 
-    The caller runs the self-update either way: a fetch that finds no network fails on
-    its own and is tried again next boot, and DNS may come up a second after the wait.
-    The wait hears a stop (boot_stages._stop_requested) between one-second sleeps: up
-    to 90 s of deaf sleeps was the hang boot_stages._stop_requested describes, ending
-    in SvcStop's 15 s hard exit (audit s23 F5).
-
-    来龙去脉见 docs/CODE-HISTORY.md「service.py:_wait_for_network」。
+来龙去脉见 docs/CODE-HISTORY.md「service.py:_wait_for_network」。
     """
     import socket  # noqa: PLC0415 - only needed on this path
 
@@ -165,14 +153,6 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             return
         errwatch.mark_stopping()
         self._stop_asked.set()
-        # Hard backstop first: force the process to exit if it has not shut down
-        # cleanly within 15 seconds. Hanging in STOP_PENDING is far worse than a
-        # forced exit, and every piece of this process's state is written to
-        # disk atomically, so a forced exit cannot corrupt anything. Armed before
-        # the last state push (until 2026-11-08 after it), so a push that hangs
-        # cannot hold the process past it either; the main thread gives that push
-        # STOP_PUSH_WAIT_S (10 s) before its own exit.
-        # 来龙去脉见 docs/CODE-HISTORY.md「service.py:SvcStop」
         killer = threading.Timer(15, _force_exit)
         killer.daemon = True     # it must not itself hold up the exit
         killer.start()
@@ -181,12 +161,6 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         logging.getLogger("ark.service").info("%s（%s）", STOP_NOTICE, self._stop_how)
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         win32event.SetEvent(self.stop_event)
-        # The phone channel's long-lived connection has to be cut deliberately,
-        # otherwise it stays blocked on a socket read and the service cannot
-        # stop - on 2026-08-31 it hung in STOP_PENDING several times running.
-        # One last state report while the channel is still open: config edits
-        # made by scripts and a shutdown issued by hand never went through
-        # push_state, so the page showed hours-old state after a power-off.
         push = getattr(self, "_push_state", None)
         try:
             if push is not None:
@@ -200,17 +174,7 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             box.close()
 
     def SvcShutdown(self):  # noqa: N802 - name required by the framework
-        """Windows is shutting down: stop exactly as for `sc stop`.
-
-        pywin32's ServiceFramework advertises SERVICE_ACCEPT_SHUTDOWN only when
-        the class defines this method (GetAcceptedControls: `hasattr(self,
-        "SvcShutdown")`, pywin32 311) and routes SERVICE_CONTROL_SHUTDOWN here,
-        never to SvcStop. Before 2026-10-06 it was not defined, so the SCM never
-        told this service the machine was going down: a shutdown issued by hand
-        set no going-down flag (the WMI listener's ERROR at 2026-09-18 02:20),
-        and neither SvcStop's last state push nor the offline heartbeat sent as
-        the main loop ends happened on a power-off.
-        """
+        """Windows is shutting down: stop exactly as for `sc stop`."""
         self._stop_how = "Windows 关机"
         from ark_relay.features import errwatch  # noqa: PLC0415
         errwatch.mark_os_shutdown()
@@ -220,16 +184,12 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
         """When a stop ended the main loop, let SvcStop's last state push finish
         (STOP_PUSH_WAIT_S at most) before the process is ended.
 
-        SvcStop sets the stop event and only then pushes, on the SCM's thread; the
+SvcStop sets the stop event and only then pushes, on the SCM's thread; the
         main thread came out of the loop at once and went straight on to
         os._exit, so the 「停止前」 state was cut off unless it took under the
         heartbeat's 3 s join. Not waited for when no stop was asked (the
         self-update restart returns from main by itself).
-
-        A cut-off push is logged, not pushed: a process being torn down cannot tell
-        whether the phone is left behind, so boot check #11 judges it at the next
-        start (machinechecks/system.py:_stop_push) - 2026-10-29 22:11:56 a deploy's
-        stop rang the group although the restarted relay pushed at 22:12:48."""
+        """
         if not self._stop_asked.is_set() or self._stop_pushed.wait(STOP_PUSH_WAIT_S):
             return
         logging.getLogger("ark.service").info(
@@ -248,42 +208,21 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             import traceback  # noqa: PLC0415
             servicemanager.LogErrorMsg(traceback.format_exc())
             raise
-        # The gap between this line and 「收到停止信号」, and between it and the
-        # stop time the SCM records, is the evidence for where stopping the
-        # service actually goes (measured 2026-09-07: sc stop -> STOPPED took
-        # about 20 seconds).
         logging.getLogger("ark.service").info(
             "主流程已返回，向 SCM 报告已停止；还活着的线程：%s",
             "、".join(t.name for t in threading.enumerate() if t is not threading.current_thread()))
         self._wait_stop_push()
-        # Do the last step ourselves rather than leaving it to the interpreter's
-        # shutdown. The remaining threads are all daemons, but they are stuck
-        # inside C calls (SSL reads, WMI waits) and Py_Finalize waits for them;
-        # the 15-second backstop Timer cannot get the GIL during finalization
-        # and never fires. Measured 2026-09-07: sc stop -> STOPPED took 20-27
-        # seconds.
-        # 来龙去脉见 docs/CODE-HISTORY.md「service.py:stop_event」
         for t in threading.enumerate():
             if t.name == "phone-heartbeat":
                 t.join(3)          # time for it to send the offline heartbeat (bye)
         self.ReportServiceStatus(win32service.SERVICE_STOPPED)
-        # The errwatch push thread is a daemon: a batch it has just delivered to the
-        # group must be persisted (queue emptied) before the hard exit, or the next
-        # boot re-sends it (2026-10-06 06:21:36 came back at 08:45).
         from ark_relay.features import errwatch  # noqa: PLC0415
         errwatch.drain(2.0)
         logging.shutdown()
         os._exit(0)
 
     def _stop_in_boot(self, log) -> bool:
-        """A stop has arrived while the boot sequence is still running: skip the rest.
-
-        The boot steps push, fetch and start programs; none of them looks at the
-        stop event, which only _loop waits on. A stop one second after start (the
-        cloud package smoke, 2026-10-10 22:30:11 and 22:37:42) left the main thread
-        in boot pushes until SvcStop's 15-second hard exit killed the process; at a
-        logoff Windows does not wait that long. Checked between steps, so a stop
-        costs at most the one step in progress."""
+        """A stop has arrived while the boot sequence is still running: skip the rest."""
         asked = getattr(self, "_stop_asked", None)
         if asked is None or not asked.is_set():
             return False
@@ -306,8 +245,6 @@ class ArkRelayService(win32serviceutil.ServiceFramework):
             return
         if self._stop_in_boot(log):         # a stop that came while it fetched
             return
-        # Only in the process that stays: on a self-update boot the outgoing one used
-        # to run these too, and the 🩹 note went out twice (audit s23 F3).
         boot_stages._stage_flush_copies(notifier, log)
         boot_stages._stage_patch_okww(cfg, notifier, log)
         if self._stop_in_boot(log):

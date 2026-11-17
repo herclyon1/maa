@@ -40,13 +40,7 @@ def _make_maaend_schema():
 
 
 def _part_mastercfg_main():
-    """母本配置的读写。
-
-守的是这次重构的前提：终末地和鸣潮改的必须是**脚本自己那份**，
-而且写之前要挡住三样东西——不存在的任务、不存在的选项、不认识的取值。
-
-    Formerly test_mastercfg.py.
-    """
+    """母本配置的读写。"""
     #!/usr/bin/env python3
 
     import json
@@ -194,8 +188,6 @@ def _part_mastercfg_main():
         require("只读项→拒绝（死命令：只刷落渊南丘）", not ok, msg)
         ok, msg = mastercfg.write_okww(automas, "DailyTask.json/Not A Key", 1)
         require("不存在的键→拒绝", not ok, msg)
-        # 2026-10-13 audit: any string was written; upstream sends anything that is not
-        # Tacet or Forgery to the simulation domain (DailyTask.py:125-127).
         okww = automas.parent / "okww"
         src = okww / "data" / "apps" / "ok-ww" / "working" / "src" / "task"
         src.mkdir(parents=True)
@@ -211,8 +203,6 @@ def _part_mastercfg_main():
         require("Which to Farm: a listed value is written",
                 ok and now["DailyTask.json/Which to Farm"] == "Forgery Challenge", msg)
         mastercfg.write_okww(automas, "DailyTask.json/Which to Farm", "Simulation Challenge", okww)
-        # 2026-10-13 audit: a serial past OK-WW's list was written and upstream raised
-        # IndexError on the day (TacetTask.py:111-112, ForgeryTask.py:63-64).
         (src / "TacetTask.py").write_text("        self.structure = [4, 5, 5, 7]\n", encoding="utf-8")
         (src / "ForgeryTask.py").write_text("        self.structure = [5, 5, 5, 5]\n", encoding="utf-8")
         for key, bad, good in (("Which Tacet Suppression to Farm", (0, 22), (1, 21)),
@@ -284,15 +274,7 @@ def _part_mastercfg_main():
 
 
 def _part_mastercfg_jsonc_strings():
-    """MaaEnd definitions are JSONC: comments and trailing commas go, string contents stay.
-
-The old trailing-comma regex also ran inside strings and turned the `\\d{6,}` of
-AutoStockStaple.json's verify rule into `\\d{6}`, so writing 12000000 (a value
-MaaEnd's own rule accepts) to 自动囤货's reserve was refused as 「不合格式」.
-Fixture: tests/fixtures/maaend-v2.32-autostock (upstream excerpt, see SOURCE.txt).
-
-    Formerly test_mastercfg_jsonc_strings.py.
-    """
+    """MaaEnd definitions are JSONC: comments and trailing commas go, string contents stay."""
     #!/usr/bin/env python3
 
     import json
@@ -347,9 +329,6 @@ Fixture: tests/fixtures/maaend-v2.32-autostock (upstream excerpt, see SOURCE.txt
     ok, msg = mastercfg.write_maaend(automas, FX, "AutoStockStaple/AutoStockReserveWuling", "1000")
     require("write 1000 (below the rule) is refused", not ok, msg)
 
-    # 5. _jsonc takes a file that is already JSON as it is (the walker cost 0.33 s per
-    #    _read_maaend_defs, about five a boot: daysim 10-12, 2026-10-16) and gives the
-    #    walker's result for every file, plain or not.
     walked: list[str] = []
     real_strip = mastercfg._strip_jsonc
     mastercfg._strip_jsonc = lambda t: (walked.append(t), real_strip(t))[1]
@@ -378,16 +357,7 @@ Fixture: tests/fixtures/maaend-v2.32-autostock (upstream excerpt, see SOURCE.txt
 
 
 def _part_mastercfg_protocolspace():
-    """The phone can read and write MaaEnd's ProtocolSpace (the other sanity sink).
-
-Until 2026-09-25 the phone had essence farming only, so there was no way to pick
-T-Creds (OperatorProgression = T-Creds). The definitions here are MaaEnd
-v2.30.0-rc.1 `assets/tasks/ProtocolSpace.json` verbatim, with the zh_cn strings it
-references; the master entry is the one on the game machine that day
-(`mxu-MaaEnd.json`, ProtocolSpace disabled, several keys not yet present).
-
-    Formerly test_mastercfg_protocolspace.py.
-    """
+    """The phone can read and write MaaEnd's ProtocolSpace (the other sanity sink)."""
     #!/usr/bin/env python3
 
     import json
@@ -551,29 +521,7 @@ references; the master entry is the one on the game machine that day
 
 
 def _part_maaend_controller_cache():  # noqa: C901
-    """Every relay write of a MaaEnd task's switch leaves the master as MXU's UI saves it.
-
-MXU keeps a per-controller copy of each task's switch (`enabledByController`) and
-on every save writes `cacheTaskEnabledForController(cache, inst.controllerName,
-enabled)` (MXU src/utils/taskControllerCache.ts, src/stores/appStore.ts
-generateConfig; ported in gamesim/lib/maaend_schema.py with its source pinned by
-test_gl_maaend_config.py). Until 2026-10-17 two of the three relay writers set only
-`enabled` (mastercfg.write_maaend "@enabled", sanity_plan._toggle_sanity_tasks), and
-makeup._set_flag flipped every key of the cache. The master read off the game PC on
-2026-10-16 (fixtures/maaend-v2.33-essence/master-1016.json) carries such stale
-copies: ProtocolSpace enabled=False with {"Win32-Front": true}; AutoEssence a bare
-`true`.
-
-Checked here, on that master: after each relay write the touched task has
-`enabled == enabledByController["Win32-Front"]` with the cache a dict, and an MXU
-load + save of the written file changes no flag; the relay's setter agrees with the
-port of MXU's function on every shape of cache.
-
-Old code runs this file too (the red-before-green proof): a missing function is a
-failed case, not a crash.
-
-    Formerly test_maaend_controller_cache.py.
-    """
+    """Every relay write of a MaaEnd task's switch leaves the master as MXU's UI saves it."""
     #!/usr/bin/env python3
 
     import json
@@ -789,21 +737,7 @@ failed case, not a crash.
 
 
 def _part_maaend_defs_228():
-    """The phone page must show Chinese names and real choices on MaaEnd v2.28.
-
-On 2026-09-09 the user's phone showed AutoEssenceDoOverride, AutoEssenceObtainMode
-and friends as raw keys, with the claim-mode select collapsed into a text box.
-v2.28.0-beta.4 had moved tasks/AutoEssence.json into a subfolder, the relay read
-definitions by file name, found nothing, and fell back to the key - silently.
-He asked: 「不是说强制要求了人话界面吗？」 This test runs read_maaend over the real
-v2.28 files (fetched off the machine that night) and refuses any raw key.
-
-The same release removed the standalone AutoUseSpMedication task; the config
-still carries it. That has to be reported as an orphan, not shown as a live
-setting.
-
-    Formerly test_maaend_defs_228.py.
-    """
+    """The phone page must show Chinese names and real choices on MaaEnd v2.28."""
     import json
     import re
 
@@ -959,16 +893,7 @@ setting.
 
 
 def _part_maaend_migrate_options():
-    """The master config must be rewritten when MaaEnd changes an option's format.
-
-Real files, 2026-09-10: the AUTO-MAS master as it was that morning, and the
-v2.28.0-beta.5 definitions of AutoCollect and AutoEssence. MaaEnd discards a
-saved value whose option it no longer has, so the old 自动采集 route list has to
-become the per-region lists it replaced - with the same routes picked - and
-the location list of 基质刷取 needs the AutoEssenceMenu key it now hangs under.
-
-    Formerly test_maaend_migrate_options.py.
-    """
+    """The master config must be rewritten when MaaEnd changes an option's format."""
     import json
     import shutil
     import tempfile
@@ -1061,17 +986,7 @@ the location list of 基质刷取 needs the AutoEssenceMenu key it now hangs und
 
 
 def _part_maaend_migrate_stock_switch():
-    """自动囤货's buy lists must survive MaaEnd turning them from checkbox into switch.
-
-Real files, 2026-10-10: the AUTO-MAS master (only the AutoStockStaple task and
-one untouched task kept) and MaaEnd's AutoStockStaple.json of that day. From
-10-03 every MaaEnd launch logged 「选项 "AutoStockBuy…" 的类型已从 "checkbox" 变更为
-"switch"，已重置为默认值」 six times and bought by the defaults, not by the
-per-item lists the master holds. The migration carries each list over to the
-new `<key>Items` checkbox, with the switch on when anything was picked.
-
-    Formerly test_maaend_migrate_stock_switch.py.
-    """
+    """自动囤货's buy lists must survive MaaEnd turning them from checkbox into switch."""
     import json
     import shutil
     import tempfile
@@ -1157,14 +1072,6 @@ new `<key>Items` checkbox, with the switch on when anything was picked.
 
 def _part_maaend_migrate_unread_defs():
     """migrate_maaend_options does not drop a live value because a definition file was unreadable.
-
-MaaEnd v2.32: 9 of its 46 tasks take options from another file (AutoCollect and
-four others from StashBackpack.json, AutoEssence from Location/*.json). When such
-a file did not parse, its options looked dead and the migration deleted their
-values from the master copy - MaaEnd then runs on defaults. prune_maaend_orphans
-already refused on the same blind spots (8dbd1d3b); now the migration does too.
-
-    Formerly test_maaend_migrate_unread_defs.py.
     """
     #!/usr/bin/env python3
 
@@ -1243,24 +1150,7 @@ already refused on the same blind spots (8dbd1d3b); now the migration does too.
 
 
 def _part_maaend_name_mismatch():
-    """When AUTO-MAS cannot name a renamed MaaEnd task, the relay judges by MaaEnd's own log.
-
-2026-09-06 05:40: MaaEnd v2.28.0-beta.1 relabelled SellProduct as 「据点交易」. The
-run's log has 16 of 16 tasks 「任务完成」 and no 「任务失败」, and it ends after
-「任务完成: 📅日常奖励领取」 with no closing task (no 关闭游戏 / 结束进程 line). AUTO-MAS
-still recorded 「部分任务执行失败: SellProduct」 (its English fallback when it finds no
-task file for the name, AUTO-MAS#573) and ran two retry rounds.
-
-Every input here is a real machine record, read as it is:
-  - the 09-06 05:40 record from the T9 corpus
-    (gamesim/corpus/maaend/v3-0906-automas-misjudged/, U13b), whole and as a real prefix;
-  - the 09-18 05:26 record (fixtures/maaend-2026-09-18/), a real 「任务失败」.
-An earlier version of this test used a hand-typed 09-06 log with an invented
-「⛔ 结束进程」 line the machine log does not have (grep -c 结束进程 = 0), so it passed
-while the real run was booked failed (e539a57f).
-
-    Formerly test_maaend_name_mismatch.py.
-    """
+    """When AUTO-MAS cannot name a renamed MaaEnd task, the relay judges by MaaEnd's own log."""
     import json
     import pathlib
     import shutil
@@ -1317,8 +1207,6 @@ while the real run was booked failed (e539a57f).
     rec2 = collector.parse_record(d18 / "MaaEnd-05-26-03.json", root)
     check("a real failure stays a failure", (rec2.ok, rec2.failed_tasks) if rec2 else None, (False, ["基质刷取"]))
 
-    # AUTO-MAS's own emulator-launch miss (2026-09-14 10:51:56, verbatim): a one-line
-    # log, superseded one second later. Neither a failure nor a success.
     print("\n[AUTO-MAS's 模拟器启动失败 stub]")
     (d / "MaaEnd-06-51-56.json").write_text(json.dumps({"maaend_result": "[自动采集] 模拟器启动失败"}, ensure_ascii=False),
                                             encoding="utf-8")
@@ -1339,17 +1227,7 @@ while the real run was booked failed (e539a57f).
 
 
 def _part_maaend_phone_page_beta5():
-    """The phone page must show the per-region gathering lists MaaEnd v2.28.0-beta.5 uses.
-
-On 2026-09-10 the relay had already rewritten the master for the new format, but
-the page's whitelist still asked for the removed AutoCollectRoutes key, so the
-gathering section showed only the schedule. The user: 「手机遥控器页面你也没修啊。
-按照他新版本格式去修。」 This runs read_maaend over the real beta.5 definitions and
-locale (fetched off the machine that day) with the migrated master, and requires
-every new key to appear with a Chinese name, real choices and the picks kept.
-
-    Formerly test_maaend_phone_page_beta5.py.
-    """
+    """The phone page must show the per-region gathering lists MaaEnd v2.28.0-beta.5 uses."""
     import re
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1375,7 +1253,6 @@ every new key to appear with a Chinese name, real choices and the picks kept.
                 "AutoCollectWuling", "AutoCollectWulingRareRoutes", "AutoCollectWulingCommonRoutes"):
         check(f"{opt} 有值", A + opt in r["values"], True)
         check(f"{opt} 有中文名", bool(HAN.search(r["labels"].get(A + opt) or "")), True)
-    # Only this test's task: the fixture's 09-10 definitions predate what other shown tasks ask for.
     check("没有列进「没翻译」的", [k for k in r.get("untranslated") or [] if k.startswith(A)], [])
     check("旧的 AutoCollectRoutes 不再出现", A + "AutoCollectRoutes" in r["values"], False)
 
@@ -1408,17 +1285,7 @@ every new key to appear with a Chinese name, real choices and the picks kept.
 
 
 def _part_maaend_schedule_skip():
-    """A task MaaEnd skips by its weekday schedule is reported as skipped, not done.
-
-MaaEnd prints 「任务完成」 for it anyway. Real case: tests/replay/2026-09-05
-MaaEnd-05-27-42.log lines 534-536 (自动采集 opened, then the line
-「现在游戏时间是周六，根据执行周期跳过任务」 is printed in the log, and the task closed). The same 执行周期 checkbox sits on ProtocolSpace and AutoEssence
-(tests/fixtures/maaend228/tasks/*.json), so the 协议空间 case below is those
-three real lines with the task-start line of the real 09-27 协议空间 run
-(fixtures/maaend-farm-drops/2026-09-27.log) - no real log of that skip exists yet.
-
-    Formerly test_maaend_schedule_skip.py.
-    """
+    """A task MaaEnd skips by its weekday schedule is reported as skipped, not done."""
     #!/usr/bin/env python3
 
 
@@ -1475,19 +1342,6 @@ three real lines with the task-start line of the real 09-27 协议空间 run
 def _part_maaend_skipped_report():
     """The daily report says a weekday-skipped MaaEnd task was skipped: not done,
 not missing.
-
-collector_maaend puts every task followed by 「现在游戏时间是周X，根据执行周期跳过任务」
-into raw["maaend_tasks_skipped"] ({task: weekday}) and leaves it out of
-tasks_done. The report (core._block_maaend, core.daily_footnote) has to read
-that field: before, only 自动采集 had a sentence, so a skipped 协议空间 simply
-vanished from the report - neither done nor said to be skipped.
-
-The skip lines are the real ones from tests/replay/2026-09-05 MaaEnd-05-27-42.log
-(lines 534-536) with the task-start line of the real 09-27 协议空间 run
-(fixtures/maaend-farm-drops/2026-09-27.log); no real log of a skipped
-协议空间 exists yet. The other lines are verbatim task lines of 2026-09-06.
-
-    Formerly test_maaend_skipped_report.py.
     """
     #!/usr/bin/env python3
 
@@ -1563,15 +1417,7 @@ The skip lines are the real ones from tests/replay/2026-09-05 MaaEnd-05-27-42.lo
 
 
 def _part_maaend_write_readback():
-    """write_maaend reads back the very item it wrote and compares it with what it wrote.
-
-The old read-back went through read_maaend, which covers only the items the phone
-page shows: a valid write of 自动囤货's reserve said 「'240000' → None」, and a file
-that came back different from what was written still answered success.
-Fixture: tests/fixtures/maaend-v2.32-autostock (upstream excerpt, see SOURCE.txt).
-
-    Formerly test_maaend_write_readback.py.
-    """
+    """write_maaend reads back the very item it wrote and compares it with what it wrote."""
     #!/usr/bin/env python3
 
     import json
@@ -1634,21 +1480,7 @@ Fixture: tests/fixtures/maaend-v2.32-autostock (upstream excerpt, see SOURCE.txt
 
 
 def _part_maaend_watchdog_main():
-    """MaaEnd hung -> end MaaEnd.exe so AUTO-MAS retries now, not 45 minutes later.
-
-2026-10-01 15:30:03: MaaEnd was on 「信用点购物」 when its plugin
-D:\\ark\\maaend\\agent\\go-service.exe crashed. go-service.stderr.log line 1 was
-`Exception 0xc0000005 0x0 0xffffffffffffffff 0x7ffc630b5456`; maafw.log never
-gained another line, MaaEnd.exe sat there alive, and only AUTO-MAS's 45-minute
-limit ended it at 16:10:00. 2026-09-28 11:22:10 had the same 41-minute gap.
-Normal runs never go more than 65 s between two maafw.log lines.
-
-Replayed here with that day's shape. The clock, the AUTO-MAS snapshot, the
-process list, the kill and the files are all stand-ins; nothing touches a real
-process.
-
-    Formerly test_maaend_watchdog.py.
-    """
+    """MaaEnd hung -> end MaaEnd.exe so AUTO-MAS retries now, not 45 minutes later."""
     import logging
     import os
     import threading
@@ -1662,9 +1494,6 @@ process.
     from ark_relay.core.notify import route_of
 
 
-    # Every 「目录监听掉了」 the watcher logs while the test runs. It must stay empty:
-    # the line Windows CI showed after the result line (2026-10-07) is the watcher
-    # seeing its directory removed by _tmp's cleanup at exit, not a drop mid-test.
     class _Drops(logging.Handler):
         def __init__(self):
             super().__init__(logging.WARNING)
@@ -1994,10 +1823,6 @@ process.
     # s1: the WARNING repeating it was a second group push (every WARNING goes to the group).
     check("the WARNING repeating it is marked as already in the group, not pushed again",
           [bool(getattr(x, errwatch.PUSHED, False)) for x in _warns.recs if "读不到 maafw.log" in x.getMessage()], [True])
-    # One fault, one push - per MaaEnd, not per PID number for ever: once MaaEnd is gone,
-    # a later one that drew the same PID (Windows reuses them) and cannot be read either
-    # is a second fault and rings again (until 2026-10-06 the blind mark was never
-    # forgotten, so it stayed silent).
     r.procs = [p for p in ALL_UP if p[0] != "MaaEnd.exe"]
     r.step(60)
     r.procs = ALL_UP
@@ -2038,24 +1863,6 @@ process.
 
 def _part_maaend_no_d3d11_alarm():
     """A game started without Direct3D 11 is normal now: no group alarm after a MaaEnd record or at boot.
-
-Until 10-17 the official launcher's 「DirectX 11 启动」 box was ticked so MaaEnd could read the
-fullscreen game, and the launcher remembers it, so the owner's own play started in DX11 too. Since
-10-17 the game runs windowed below the desktop for script runs (AUTO-MAS v5.7.0-beta.5
-「MaaEnd 启动」, set by efstart_setup; the relay's own retry starts it the same way), which MaaEnd
-reads on any graphics API, and the box is to be unticked (DECISIONS D-1016-终末地等AUTO-MAS新版).
-
-Until then the relay read line 6 of the game's Player.log after every MaaEnd record
-(handle._book) and at boot (boot_stages._stage_endfield_start), and logged a WARNING when it was
-not 「Forcing GfxDevice: Direct3D 11」. errwatch pushes every WARNING to the group, so with the box
-unticked that would have been a false alarm every day. Pinned here with a Player.log whose line 6
-names another device (the Vulkan line has never been seen on the machine; any line that is not
-Direct3D 11 made the old check warn):
-
-* a MaaEnd record booked through handle._handle: no WARNING, nothing to the group;
-* the boot stage: no WARNING either.
-
-    Formerly test_maaend_no_d3d11_alarm.py.
     """
     import json
     import logging
@@ -2096,7 +1903,6 @@ Direct3D 11 made the old check warn):
     WARNED = Warned()
     logging.getLogger().addHandler(WARNED)
 
-    # The game's own log, line 6 not Direct3D 11 (the first five lines as on the machine 10-16).
     player = TMP / "Administrator" / "Player.log"
     player.parent.mkdir()
     player.write_text("\n".join([
@@ -2195,23 +2001,6 @@ Direct3D 11 made the old check warn):
 def _part_maaend_essence_met():
     """Essence target mode with nothing left to farm is its own ending: not a
 false green, not work done.
-
-Real record, 2026-10-16: AUTO-MAS history MaaEnd-09-53-33 and MaaEnd's own app
-log 2026-10-16-3.log, both read from the game PC unchanged into
-replay/2026-10-16/endfield/ (test_replay.py replays the same record through the
-outcome check, verdict.json: says nothing). Only 玉中身 is ticked in
-target mode; its essence was already owned, so 基质刷取 spent 180 s on the
-inventory scan and ended with 「🎯目标模式：勾选武器的基质均已满足，结束任务」
-(upstream autoessence/plan_action.go "all targets satisfied"). The relay knew
-only 「已完成一次基质刷取|理智不足」 as work and 「根据执行周期跳过」 as a skip, so at
-14:12:12 it pushed a group alert saying the task had reported done after 180 s
-with no trace of farming in the log.
-
-The negative case keeps the generic 「基质目标已满足或任务结束」 line that
-AutoEssenceOnComplete prints on any target-mode ending: alone, it must still
-alert.
-
-    Formerly test_maaend_essence_met.py.
     """
     #!/usr/bin/env python3
 
@@ -2311,22 +2100,7 @@ alert.
 
 
 def _part_maaend_essence_stamina_out():
-    """MaaEnd v2.34's 「体力不足，任务结束」 is the out-of-sanity ending of 基质刷取.
-
-Real record, 2026-10-19 (fixtures/maaend-2026-10-19/MaaEnd-07-14-29.log, the
-AUTO-MAS history log of the morning run's second attempt, unchanged). MaaEnd had
-updated itself to v2.34.0-rc.1 at 11:14:04 between the two attempts. The first
-attempt had farmed sanity 242 -> 2 already; in the retry 基质刷取 read 「当前理智
-9/360」 and stopped after 76 s with 「😴**体力不足，任务结束**」. The relay knew only
-「已完成一次基质刷取|理智不足」 as the trace of farming, so at 11:57:16 it pushed
-「⚠️ 终末地早班没干完」 to the group (ledger #106): a normal state (out of sanity)
-reported as work left undone.
-
-The negative case keeps the same segment without the stop line: a quick
-「任务完成」 with no trace must still alert.
-
-    Formerly test_maaend_essence_stamina_out.py.
-    """
+    """MaaEnd v2.34's 「体力不足，任务结束」 is the out-of-sanity ending of 基质刷取."""
     #!/usr/bin/env python3
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -2355,8 +2129,6 @@ The negative case keeps the same segment without the stop line: a quick
     require("the sanity collector reads the new stop line as sanity exhausted",
           parse_maaend_log(LOG_PATH).get("sanity_exhausted") is True)
 
-    # 协议空间 and machine check #20 read the same v2.34 ending (dispatch relay-opt-round3-1108 O-04):
-    # until then both knew only 理智不足, which #106 had replaced.
     from ark_relay.features import outcome
     from ark_relay.features import machinechecks as runs
     proto = dict((name, rx) for name, rx, _ in outcome._MAAEND_WORK)["协议空间"]
@@ -2373,21 +2145,7 @@ The negative case keeps the same segment without the stop line: a quick
 
 
 def _part_maaend_full_at_anchor():
-    """Endfield's full-again time counts from the reading, and a floor 0 gets none.
-
-fixtures/maaend-sanity-1013/2026-10-12_MaaEnd-06-04-00.log is that run's 协议空间
-task: last reading 242 at 10:23:32, one double claim, 82 left. Skland at
-10:24:03 read curStamina=82 with maxTs 1791891939 = 10-13 19:45:39 (relay.log
-上机核对 #10). Anchored on the record's finish (10:58) the sentence said 20:19.
-A 0 after 「理智不足，结束任务」 is max(0, …) of a subtraction, not a reading; a
-time from it was 1.4-4.5 h late on 10-11 and 10-12.
-An exact 0 from the per-claim rule is a reading and keeps its time: the 10-13
-05:36 log with 198 changed to 160 (one double claim, 160 -> 0, then 「理智不足，
-结束任务」) is full 360 x 7m12s after 09:53:22. With 198 changed to 60 the half
-claim gives -20, floored to 0: no time. Before, both lost the time.
-
-    Formerly test_maaend_full_at_anchor.py.
-    """
+    """Endfield's full-again time counts from the reading, and a floor 0 gets none."""
     #!/usr/bin/env python3
     import tempfile
     from datetime import datetime
@@ -2422,14 +2180,6 @@ claim gives -20, floored to 0: no time. Before, both lost the time.
 def _part_maaend_round_upper_bound():
     """A MaaEnd round is judged on its own error pictures and app-log lines only,
 not on those of the rounds after it.
-
-Real case, 2026-10-01 (ledger-2026-10-01.jsonl; relay.log 24567-24571): round
-MaaEnd-11-23-07 ran 15:24:12-15:29:59, round MaaEnd-12-11-12 ran
-16:12:15-16:58:22; both were judged at 17:27:45, and the first was failed with
-「有 1 张出错截图：2026.10.01-16.44.46.960___MapNavigatorObstacleDevice_InteractPost.png」,
-a picture taken inside the second round. Audit 2026-10-13 s8 #2.
-
-    Formerly test_maaend_round_upper_bound.py.
     """
     import os
     import types
@@ -2506,25 +2256,7 @@ a picture taken inside the second round. Audit 2026-10-13 s8 #2.
 
 
 def _part_maaend_sanity():
-    """MaaEnd 的「剩余理智」报的是扣费之前的数字。
-
-终末地协议空间的流程是：打完 → 奖励结算界面 → 花理智领取。MaaEnd 的
-「当前理智 x/360」是在**结算界面**打的，而扣费发生在紧随其后的
-「确认领取奖励」。所以日志里最后一条读数是**扣费之前**的值——只要最后一次
-真的扣成了，直接报它就会高出整整一次的消耗。
-
-运营 2026-08-25 指出：「MAAEND的剩余理智一直显示的是消耗之前的理智量」。
-复查两天的真机日志，确认如此：
-
-    08-24  当前理智 201 → 尝试使用理智消耗许可 → 理智不足，结束任务
-           报出来是 201，真实剩余 41
-    08-25  当前理智 241 → 扣 → 当前理智 81 → 理智不足，尝试不使用 → 结束
-           报出来是 81，真实剩余也是 81（最后一次没扣）
-
-两天的差别正是判断依据：**只看最后一次结算扣没扣**，而不是整段里扣过几次。
-
-    Formerly test_maaend_sanity.py.
-    """
+    """MaaEnd 的「剩余理智」报的是扣费之前的数字。"""
     import os, sys
 
     TMP = tmpdir()
@@ -2541,7 +2273,6 @@ def _part_maaend_sanity():
 
 
     print("[最后一次扣成了 —— 要减掉一次消耗]")
-    # 08-24 的形状：两条读数都一样，日志里看不到下降，只能用兜底常量。
     got = parse("""\
 [2026-08-24 09:36:31.345] 当前理智 201/360
 [2026-08-24 09:36:32.000] 进入协议空间成功
@@ -2554,7 +2285,6 @@ def _part_maaend_sanity():
     check("上限照报", got.get("sanity_cap"), 360)
 
     print("\n[最后一次被拒了 —— 读数就是终值]")
-    # 08-25 的形状：中间有一次真实下降，可以自标定；但最后一次没扣。
     got = parse("""\
 [2026-08-25 09:38:08.067] 当前理智 241/360
 [2026-08-25 09:38:25.358] 进入协议空间成功
@@ -2611,9 +2341,6 @@ def _part_maaend_sanity():
     check("没走通的名字", got.get("maaend_collect_failed"), ["路线15：红矛叶", "路线16：协议纹石"])
     check("没走通的路线号（给收窄用）", got.get("maaend_collect_failed_ids"), ["Route15", "Route16"])
 
-    # Narrowing from records was removed on 2026-09-14 (AUTO-MAS writes all attempts'
-    # records at the end of the task, so a record can never precede the retry); the
-    # live-log version is tested in test_collect.py.
     print("\n[自动采集：不是采集日的 0 分钟不算「做了」（2026-09-05 周六真实日志）]")
     real = fx_dir(Path(__file__), "replay") / "2026-09-05" / "endfield" / "MaaEnd-05-27-42.log"
     got = collector.parse_maaend_log(real)
@@ -2629,13 +2356,6 @@ def _part_maaend_sanity():
 def _part_maaend_sanity_fit():
     """Endfield sanity is reported as a figure only when the log's readings fit the
 per-claim rule (40 per 「补充理智」 booster, collector_maaend._claims_fit).
-
-The real 10-08 MaaEnd-05-29-15.log fits: 237 - 160 + 1 booster = 117 read next.
-With that one 「补充理智」 line taken out the same readings no longer fit
-(237 - 160 = 77, yet 117 is read 79 s later): the report must say
-「理智消耗没读到」, not a number. Before: 「理智 720，加强剂 13」.
-
-    Formerly test_maaend_sanity_fit.py.
     """
     #!/usr/bin/env python3
 
@@ -2675,21 +2395,7 @@ With that one 「补充理智」 line taken out the same readings no longer fit
 
 
 def _part_maaend_sanity_one_formula():
-    """Endfield sanity spent and left come from one rule, checked on real logs.
-
-Fixtures (fixtures/maaend-sanity-1013/) are the 协议空间 task of real machine
-logs, movement and template-matcher lines dropped. Each expected 「left」 is
-checked against the next run's first reading at ~1 sanity per 7.2 minutes:
-  10-13 05:36  198, one double claim            -> 160 spent, 38 left
-  10-07 05:29  277, double + half claim         -> 240 spent, 37 left (10-08 reads 237)
-  10-08 05:29  237, 4 double + 1 half, 14 potions (「补充理智」, 40 each)
-                                                -> 720 spent, 78 left (06:34 reads 85)
-  10-08 06:34  85, one half claim               -> 80 spent, 5 left (10-09 reads 194)
-Before: spent 0 for one run (two equal readings), 0 left after a half claim,
-and the report row said 「理智不足，一次没开成」 on a run that claimed its reward.
-
-    Formerly test_maaend_sanity_one_formula.py.
-    """
+    """Endfield sanity spent and left come from one rule, checked on real logs."""
     #!/usr/bin/env python3
 
     from datetime import datetime
@@ -2732,36 +2438,6 @@ and the report row said 「理智不足，一次没开成」 on a run that claim
 
 def _part_maaend_update_after_done():
     """MaaEnd restarting itself into a new build after its shift's round was done: no make-up, no push.
-
-relay.log, 10-04 09:51:26 (and the same shape 10-05 11:30:44), three lines in one
-second: the round 2026-10-04/endfield/MaaEnd-05-26-41 booked as done (静默记账),
-the attempt MaaEnd-05-50-53 held as MaaEnd's restart into v2.32.0-beta.1, then
-the final failure pushed to the group (「最终失败，告警已推送（尝试 2 次）」).
-
-The round had got everything done; the next attempt was only MaaEnd installing
-v2.32.0-beta.1 and restarting. With no success after it, it was pushed as the
-final failure; with the make-up rules it would have been held, given no make-up
-and pushed to the group as unresolved. The user, 10-05 13:07: 「中继我就要求一个，
-他不要再报错了」 - from then until 2026-10-06 such an attempt was a log line only.
-His order of 2026-10-06, 「不论多少次什么错误都要发」, put it in the group under its
-own title (「⚠️ 终末地装新版重启了这一趟（前面那趟已做完）」); at 05:07 that day he
-took that back for what had recovered: 「报错后自己好了的，只进日报、不进群。」 The
-round was done, so nothing is left broken. Pinned here:
-
-* success first, then the update restart, in the same shift -> not held, no
-  make-up, nothing pushed, one log line saying 「只进日报」; the ledger keeps it,
-  and the daily report books it as the update (a ↪️ row naming the build), not
-  as a failure;
-* the same pair arriving the other way round -> the same;
-* the success was in another shift -> the restart is held and rings as before;
-* a success that left work undone does not count;
-* 10-05's pair (06-39-48 / 07-30-14, v2.32.0-beta.2) -> dropped as well.
-
-Started times are the run ids + 4 h, which matches every number in relay.log:
-10-04 09:26:41 + 23 min ends 09:49, the restart starts 09:50:53, the records
-land 09:51:26; 10-05 10:39:48 + 49 min ends 11:28, restart 11:30:14, land 11:30:44.
-
-    Formerly test_maaend_update_after_done.py.
     """
     import json
     import logging
@@ -3019,11 +2695,6 @@ land 09:51:26; 10-05 10:39:48 + 49 min ends 11:28, restart 11:30:14, land 11:30:
                 for _, x in techlog.unhandled(f.read_text(encoding="utf-8")) if fragment in x]
 
 
-    # 2026-10-12, relay.log 11:38:52 (machine check #6): MaaEnd-06-58-11 restarted into
-    # v2.33.0-beta.2 and MaaEnd-06-58-38, started 27 s AFTER it, got everything done.
-    # done_in_shift used to count that later round as "already done before the restart",
-    # so the restart was let go as not-a-fault with no red item. A round after the restart
-    # is the retry that healed it: the self-heal path, one red item, nothing pushed.
     mxu_install(t(12, 10, 58, 11), "v2.33.0-beta.2")
     R12 = restart(12, "06-58-11", t(12, 10, 58, 11))
     S12 = success(12, "06-58-38", t(12, 10, 58, 38), 30)
@@ -3049,9 +2720,6 @@ land 09:51:26; 10-05 10:39:48 + 49 min ends 11:28, restart 11:30:14, land 11:30:
     check("nothing left held", (dict(e._pending), dict(e._recovered)), ({}, {}))
     check("one 「自愈待查」 red item naming the restart", len(reds(e, R12.run_id)), 1)
 
-    # 2026-10-12, relay.log lines 468-483: MaaEnd-06-04-00 failed on 协议空间 and was held;
-    # the update restart MaaEnd-06-58-11 then replaced it in _pending, and the red item at
-    # 11:38:52 named only 「装新版 v2.33.0-beta.2」 - the real failed task was lost.
     F12 = RunRecord(run_id="2026-10-12/endfield/MaaEnd-06-04-00", script="MaaEnd", user="endfield",
                     started=t(12, 10, 4, 0), finished=t(12, 10, 40, 0), ok=False, failed_tasks=["协议空间"],
                     raw={"maaend_result": "MaaEnd 部分任务执行失败: 协议空间"})
@@ -3070,32 +2738,7 @@ land 09:51:26; 10-05 10:39:48 + 49 min ends 11:28, restart 11:30:14, land 11:30:
 
 
 def _part_maaend_update_record():
-    """AUTO-MAS's own MaaEnd update record is not a run; stage prefixes are not failures.
-
-AUTO-MAS v5.7.0-beta.2 installs a MaaEnd update between stages and writes that
-step as a history record of its own (app/task/MaaEnd/AutoProxy.py
-_update_after_first_stage, the 「更新」 phase label at ~2203; Config.save_maaend_log
-in app/core/config.py ~4387 puts 「[<label>] 」 in front of the result). Stage runs
-get the same prefix: 「[送货]」「[日常]」「[自动采集]」 (app/utils/constants.py
-MAAEND_RUN_MOOD_BOOK).
-
-2026-10-12 Endfield, machine time (AUTO-MAS app.log lines 601-668 of
-ark-evidence/daily/2026-10-12/automas-app-2026-10-12.log):
-  10:04:00 MaaEnd-06-04-00  「MaaEnd 部分任务执行失败: ⚔️协议空间」  (Source stage, no prefix)
-  10:58:11 MaaEnd-06-58-11  「[更新] Success!」  4 log lines, 「MaaEnd 已更新到 v2.33.0-beta.2」
-  10:58:38 MaaEnd-06-58-38  「Success!」  (Source stage, attempt 2/3)
-The relay booked the update record as a failed run, labelled it 「装新版 v2.33.0-beta.2
-后自己重启，这一次重试被用掉」 and said 「跑了 3 次」 (relay-2026-10-12.log lines 472-483).
-Should be: 2 runs, the first recovered by the retry, the update in the technical log only.
-
-The raw history JSON/logs of that day are not on this Mac (the update record went to the
-cloud evidence pack MaaEnd-06-58-11 only). The JSONs below are rebuilt from AUTO-MAS's
-result lines and its save_maaend_log format; the update log is the four status lines
-AUTO-MAS logged at 10:58:11-10:58:15; the MXU install lines are reconstructed to sit in
-update_restart_version's window, as relay log line 475 shows they did.
-
-    Formerly test_maaend_update_record.py.
-    """
+    """AUTO-MAS's own MaaEnd update record is not a run; stage prefixes are not failures."""
     import json
     import logging
     import os
@@ -3323,14 +2966,6 @@ update_restart_version's window, as relay log line 475 shows they did.
 
 def _part_maaend_update_restart():
     """A MaaEnd attempt spent installing its own update is not a game failure; healed, it is not pushed.
-
-2026-10-01: the 15:24 attempt found v2.31.0-beta.6 and only downloaded it
-(「已保存待安装更新信息」). The next launch, 16:11:06, installed it and restarted
-MaaEnd; the process AUTO-MAS watched exited and all 15 tasks were booked failed.
-The 16:12 attempt then succeeded. MXU log lines below are verbatim from
-D:\\ark\\maaend\\debug\\2026-10-01-3.log / -4.log.
-
-    Formerly test_maaend_update_restart.py.
     """
     import json
     import os
@@ -3457,10 +3092,6 @@ D:\\ark\\maaend\\debug\\2026-10-01-3.log / -4.log.
     check("transitional in the ledger", mid.get("transitional"), True)
     check("its failure names the update, not 15 tasks", mid.get("failed_tasks"),
           ["MaaEnd 装新版 v2.31.0-beta.6 后自己重启，这一次重试被用掉"])
-    # The rerun went through, so the day healed: nothing is pushed, the daily report
-    # below carries the update attempt (↪️) and the 15:24 timeout (↻). The user, 2026-10-06
-    # 05:07, on what fixed itself: 「报错后自己好了的，只进日报、不进群。」 From the morning of
-    # 2026-10-06 until 05:07 it was pushed as 「⚠️ MaaEnd 更新时失败过，重跑后成功」.
     check("nothing pushed (the rerun went through: daily report only)", e.notifier.sent, [])
     check("nothing left held", (dict(e._pending), dict(e._recovered)), ({}, {}))
 
@@ -3489,7 +3120,6 @@ D:\\ark\\maaend\\debug\\2026-10-01-3.log / -4.log.
     done = dict(entries[-1], incomplete="MaaEnd 这一轮有 2 项没干成")
     t_full, _ = core.format_daily("2026-10-01", okww + entries[:-1] + [done])
     print("    " + t_full)
-    # 2026-10-11 (验收): the three bare 鸣潮 failures in a row are one title item.
     check("title", t_full, "📋 10-01 · 鸣潮没跑成、终末地 1 项没干完 ⚠️")
 
     print("\n[a timeout clears only itself: a named task still undone keeps the record failed]")
@@ -3543,9 +3173,6 @@ D:\\ark\\maaend\\debug\\2026-10-01-3.log / -4.log.
     check("16:58:22 -> 17:27:43 = 29 minutes on the ledger", (row.get("raw") or {}).get("maaend_no_self_exit"), 29)
 
     print("\n[the update ate the last attempt -> nothing got it done: one alarm for the shift; the ledger says it]")
-    # A MaaEnd failure gets one make-up run (makeup.py); a day that has rolled over
-    # is past its make-up, and the failure is still not fixed: the group hears of it
-    # once (unresolved.py, the user 2026-10-05 15:38: 「你们不是没处理好吗？」).
     e = build()
     for r in runs(with_success=False):
         handle._handle(e, r)
@@ -3573,24 +3200,6 @@ D:\\ark\\maaend\\debug\\2026-10-01-3.log / -4.log.
 
 def _part_maaend_update_restart_never_final():  # noqa: C901
     """A done MaaEnd round followed by MaaEnd restarting into its new build never ends in an alarm.
-
-The operator, 2026-10-06: the only two group alarms of three days were both false,
-10-04 09:51:26 and 10-05 11:30:44 (Beijing), each 「❌ MaaEnd 最终失败，告警已推送（尝试
-2 次）」 right after 「✅ MaaEnd … 静默记账」 and 「↪️ … 是装新版 v2.32.0-beta.x 后的自重启，
-先压着看后面的重试」. The user on it, 10-05 13:07: 「他不要再报错了」. Main fixed it on
-10-05 (handle._drop_update_after_done, unresolved.done_in_shift); this drives the
-same records through handle and the push step and pins that nothing reaches the
-group - no alarm, no 「最终失败」, no WARNING / ERROR line (errwatch pushes those):
-
-* the records as they landed (success, then the restart, then the push step);
-* the restart landing while the shift could not be looked up (it is held), the
-  push step then finds the done round and lets it go (handle._update_restart_done);
-* the restart landing first, the success after it;
-* a restart whose every task failed at once (the 「never got into the game」 shape):
-  no 「像没进游戏…按普通失败处理」 WARNING about it (handle._confirm_unreachable).
-Red on the code that sent those two alarms.
-
-    Formerly test_maaend_update_restart_never_final.py.
     """
     import json
     import logging
@@ -3819,28 +3428,7 @@ Red on the code that sent those two alarms.
 
 
 def _part_maaend_watchdog_onepush():
-    """One MaaEnd hang the watchdog ends, one group message (验收 2026-10-11 22:5x).
-
-Watchdog._end sent the ⚠️ group alarm for a crash / stall / plugin-gone, or a kill
-that did not take, and logged the 「MaaEnd 卡死」 WARNING right before it, which
-errwatch pushed to the group too: one event, two group messages (three for a crash: the crash line itself was a
-WARNING too). The crash line is INFO now (the kill's push names the crash and
-its code), and the 「卡死」 WARNING now
-follows the send and carries errwatch.group_pushed, so it stays out of the group
-only when the ⚠️ really reached the group robot; a refused send, or one that fell
-back to Server酱, leaves the WARNING to errwatch and the fault still reaches the
-group once.
-
-Replayed with test_maaend_watchdog.py's shapes (the 2026-10-01 15:30:03 go-service
-crash, maafw.log standing still 10 minutes, go-service gone twice 60 s apart) and
-errwatch attached (its group robot refuses, so what it would push stays readable
-in pending()). Group messages per event, before -> after (A/B of the code before
-and after this change on these shapes): crash 3 -> 1, stall 2 -> 1, plugin gone
-2 -> 1, kill that did not take 4 -> 2 - the second is machine check #31's FAIL, a
-check of its own pushed every time it is judged (docs/NOTIFICATIONS.md 🔬 row).
-
-    Formerly test_maaend_watchdog_onepush.py.
-    """
+    """One MaaEnd hang the watchdog ends, one group message (验收 2026-10-11 22:5x)."""
     import logging
     import os
 
@@ -4012,22 +3600,6 @@ check of its own pushed every time it is judged (docs/NOTIFICATIONS.md 🔬 row)
 def _part_spmed_kept_off_push():
     """应急理智加强剂 is never kept off; a booster step the relay cannot recognise rings the
 group at every boot (2026-10-06).
-
-Until 2026-10-06 boot_stages._stage_reenable_maaend kept the task off while
-gameupdate could not tell whether upstream had fixed the booster's confirm node, and
-said so under 「⚠️ 游戏更新没能确认」 (info route), once per MaaEnd version. The user,
-2026-10-06, on the sanity booster: 「那个要一直开着，如果上游maaend改了导致没生效就要报警」,
-and on who switched it off: 「我开的任务是谁说要关的」. Now the task is not touched, and every boot that finds the step in a shape the
-relay does not know to work pushes texts.SPMED_UNRECOGNISED to the group
-(docs/NOTIFICATIONS.md). (The file keeps its old name: the test map lists it.)
-
-Input: the real v2.30.0-beta.4 nodes.json (fixtures/maaend-v2.30.0-beta.4-spmed) with
-the confirm step removed under both of its names (AutoUseSpMedicationQuickUse and,
-from v2.30/v2.32, __AutoUseSpMedicationUseEmergencySpBooster) - the real file has the
-new one in the fixed shape and rings nothing (test_spmed_v232.py) - and the machine's
-master (fixtures/maaend-2026-09-10/master-before.json) with the booster task on.
-
-    Formerly test_spmed_kept_off_push.py.
     """
     import json
     import shutil
@@ -4122,17 +3694,7 @@ master (fixtures/maaend-2026-09-10/master-before.json) with the booster task on.
 
 
 def _part_spmed_v232():
-    """The booster's confirm step under its v2.32 name is the fixed shape: no boot alarm.
-
-The operator read the machine's live nodes.json on 2026-10-06 (MaaEnd v2.32 beta):
-AutoUseSpMedicationQuickUse is gone, the confirm step is now
-__AutoUseSpMedicationUseEmergencySpBooster, whose all_of holds only a node name -
-the 09-03 bug (an inline OCR without its own recognition block) cannot occur there.
-Until this change the relay looked for the old name only, so every boot on the
-machine would have rung 「⚠️ 终末地应急理智加强剂：中继确认不了…」 for nothing.
-
-    Formerly test_spmed_v232.py.
-    """
+    """The booster's confirm step under its v2.32 name is the fixed shape: no boot alarm."""
     import json
     import shutil
     import types
@@ -4234,15 +3796,6 @@ machine would have rung 「⚠️ 终末地应急理智加强剂：中继确认�
 
 def _part_spmed_v233_rc1():
     """The booster's confirm step in MaaEnd v2.33.0-rc.1 (OCR on the dialog's button region) is known-good.
-
-MaaEnd updated itself on the machine to v2.33.0-rc.1 at 2026-10-16 13:53 Beijing. Upstream PR #6476
-(commit cfd2e875): game 1.6 changed the restore-sanity dialog's confirm icon, so
-YellowConfirmButtonType2 no longer matched; __AutoUseSpMedicationUseEmergencySpBooster now clicks the
-text 确认 its own OCR finds inside roi [860,465,300,90]. The relay only knew the all_of shapes, so the
-16:42 Tokyo boot rang 「⚠️ 终末地应急理智加强剂：中继确认不了…」 for a step that works. Fixture:
-tests/fixtures/maaend-v2.33.0-rc.1-spmed (the live node, verbatim).
-
-    Formerly test_spmed_v233_rc1.py.
     """
     import json
     import shutil
@@ -4381,20 +3934,6 @@ tests/fixtures/maaend-v2.33.0-rc.1-spmed (the live node, verbatim).
 def _part_essence_filler_main():
     """基质刷取: tick 唤月 next to 玉中身 (target mode), and once every ticked weapon's
 essence is owned, switch to filler mode (刷垫子) by itself.
-
-The owner's order, 2026-10-16 16:29 Tokyo (confirmed 17:01; quoted in full in
-relay/USER-SWITCHES.txt): farm 唤月 next to 玉中身, and once both are complete switch to
-filler mode (刷垫子) with engraving off and any region - the upstream note naming the best
-regions is outdated.
-
-Real data only: the 2026-10-16 record MaaEnd-09-53-33 (replay/2026-10-16/endfield, read
-from the game PC unchanged; target mode ended with 「勾选武器的基质均已满足，结束任务」), the
-AUTO-MAS MaaEnd master as it was that day (fixtures/maaend-v2.33-essence/master-1016.json,
-cut down, see SOURCE.txt) and MaaEnd v2.33.0-rc.1's own AutoEssence definitions. The
-record goes through Engine._handle and the switch through the engine's tick step, as on
-the machine.
-
-    Formerly test_essence_filler.py.
     """
     #!/usr/bin/env python3
 
@@ -4698,8 +4237,6 @@ the machine.
 
 def _part_essence_filler_pushes_state():
     """After essence.step switches MaaEnd to filler mode, the phone page is told (11-08 [D-08]).
-
-    Formerly test_essence_filler_pushes_state.py.
     """
     import types
 

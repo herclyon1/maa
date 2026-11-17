@@ -26,7 +26,7 @@ def _part_stop_push_watchdog():  # noqa: C901
     sys.path.insert(0, str(RELAY))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     sys.path.insert(0, str(ROOT / "packaging" / "watchdog"))
-    from _tmp import tmpdir
+    from _parts import tmpdir
 
     DATA = tmpdir()
     (DATA / "state").mkdir()
@@ -179,7 +179,6 @@ def _part_stop_push_watchdog():  # noqa: C901
     r = judge11(BEFORE[:3] + BOOT_NOW)
     check("without it: still the old failure", r and r.status, mc.FAIL)
 
-    # 2026-10-29 22:11:46 a deploy's stop: the push was not done in 10 s, the restarted relay pushed at 22:12:48.
     CUT = logline("10-11 14:25:20", "停止前那份状态 10 秒还没发完，中继不再等，手机上可能还是上一份状态")
     SVC_STOP = BEFORE[:3] + [logline("10-11 14:25:10", "收到停止通知（停止中继）"), CUT]
     BOOT_PUSHED = BOOT_NOW + [logline("10-11 14:26:50", "📱 已上报状态到手机（开机；今天 ntfy 已用 32 条）")]
@@ -251,7 +250,6 @@ def _part_stop_push_watchdog():  # noqa: C901
     check("no marker after a failed push", phone.stop_pushed(DATA / "state"), False)
     check("the failure line #11 reads",
           "状态没能上报到手机（停止前）：COS 403" in LOG.read_text(encoding="utf-8"), True)
-    # Audit 2026-10-13 s5: stop-push had no errwatch, so this WARNING never reached the group.
     _today = datetime.now(tz=__import__("ark_relay.core.config", fromlist=["SERVER_TZ"]).SERVER_TZ).strftime("%Y-%m-%d")
     check("errwatch took the failure line (it goes to the group)",
           any("状态没能上报到手机" in str(r.get("line")) for r in errwatch.day_faults(DATA / "state", _today)), True)
@@ -268,7 +266,6 @@ def _part_stop_push_watchdog():  # noqa: C901
           "状态没能上报到手机（停止前）：看门服务等了 0 秒还没发完" in LOG.read_text(encoding="utf-8"), True)
 
     print("[b. boot_stages clears the marker when the phone channel comes up]")
-    # The phone channel moved out of boot_stages.py into features/phone/phone_channel.py (2026-10-11).
     src = (RELAY / "ark_relay" / "features" / "phone.py").read_text(encoding="utf-8")
     body = src[src.index("def _start_phone_channel"):src.index("def publish_state")]
     check("clear_stop_pushed(cfg.state_dir) in _start_phone_channel", "clear_stop_pushed(cfg.state_dir)" in body, True)
@@ -448,10 +445,6 @@ def _part_deploy_watch():
     check("一行都没有：两分钟到了算失败", j("", "2026-10-10 16:05:29")[0], "fail")
 
     print("\n[10-16 02:33 部署重启正好是当天第一次开机：预更新在跑，句柄要等它跑完才挂]")
-    # relay.log 10-16 02:33:29-02:35:07 as written (v20261015183310): boot, version, self-check all
-    # green, then the pre-update - AUTO-MAS really updated (72 s), OK-WW launched with its 45 s
-    # minimum - and no handle line yet. The 120 s watch failed here, the rollback's stop came
-    # while the pre-update could not hear it, and the 15 s hard exit fired (the 02:35 「主程序」 alarm).
     PREUPDATE_1016 = r"""10-16 02:33:29 INFO    ark.service  服务模式启动，监视 D:\ark\automas\history（变更即处理，兜底 30 秒）
 10-16 02:33:29 INFO    ark.service  中继代码版本 v20261015183310
 10-16 02:33:30 INFO    ark.selfupdate  COS 上最新一次部署是 v20261015101332，本机 v20261015183310，已是最新，不再问 GitHub
@@ -579,8 +572,6 @@ def _part_deploy_watch():
 
     print()
     print("[deploy-relay.sh sets WATCH_S before the installed-relay steps read it]")
-    # 10-11 13:24: lib/deploy-pkg.sh used WATCH_S, set only further down for the old layout;
-    # under `set -u` the deploy died right after the restart, so no watch and no COS.
     _sh = (ROOT / "scripts/mac/deploy-relay.sh").read_text(encoding="utf-8")
     check("WATCH_S default comes before lib/deploy-pkg.sh is sourced",
           0 <= _sh.find('WATCH_S="${WATCH_S:-') < _sh.find('lib/deploy-pkg.sh"'), True)
@@ -592,14 +583,7 @@ def _part_deploy_watch():
 
 
 def _part_publish_cos_args():
-    """publish-cos.py: only a bare call publishes.
-
-2026-10-10 18:04 `publish-cos.py --help` was run to read the usage; the script took
-every argument but --check as "publish" and put a branch on COS as the machine's
-next version.
-
-    Formerly test_publish_cos_args.py.
-    """
+    """publish-cos.py: only a bare call publishes."""
     import importlib.util
 
     ROOT = Path(__file__).resolve().parents[2]
@@ -640,16 +624,7 @@ next version.
 
 
 def _part_publish_cos_notes():
-    """The COS bundle must hold the bytes the manifest names.
-
-deploy-relay.sh emptied RELEASE-NOTES.md before calling publish-cos.py, so the
-bundle carried an empty file under the filled file's hash (v20260929013233 on
-COS: 0 bytes). The machine drops the whole bundle when one file it needs is
-off (selfupdate._cos_bundle): harmless while it gets the code over ssh, fatal
-for a machine that was off and has to fetch it.
-
-    Formerly test_publish_cos_notes.py.
-    """
+    """The COS bundle must hold the bytes the manifest names."""
     import hashlib
     import importlib.util
 

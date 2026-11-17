@@ -27,19 +27,6 @@ _STAGE_DROPS = re.compile(r"(\S+)\s*掉落统计[:：]")
 # backtracks quadratically over a long run of non-blanks (MAA writes lines of
 # ~9000 characters).
 _STAGE_DROPS_WORD = "掉落统计"
-# Real drops always carry the "(+N)" delta; the block's trailing
-# "当前次数 : 6" (how many times the stage was run) does not. That suffix is
-# the only thing separating an item from the run counter, so it is required.
-#
-# MAA prints both numbers through FormatNumber(false) (MaaWpfGui AsstProxy.cs
-# "StageDrops", v6.19.0 :2285-2288; the same at v6.16.8 and v6.17.0-beta.6, the
-# versions of 08-14 and 08-26): from 10000 up a number is rounded to one decimal
-# with a unit, `{n / 1000.0:#.#}k` (Extensions/NumberExtensions.cs :25; M and B
-# above). Both files are pinned in relay/tests/gamesim/upstream/maa-v6.19.0, and
-# test_gl.py `pin` fails if a new pin prints otherwise. Real LMD lines,
-# 2026-08-26 15:19:37 and 2026-08-14 07:08:04 (gamesim/corpus/maa/history):
-#   <LMD> : 10.1k (+1440)
-#   <LMD> : 13k (+1440)
 _MAA_NUMBER = r"\d+(?:\.\d+)?[kMB]?"
 _DROP_ITEM = re.compile(rf"^\s*(\S[^:：]*?)\s*[:：]\s*({_MAA_NUMBER})\s*\(\+({_MAA_NUMBER})\)\s*$")
 _RUN_TIMES = re.compile(r"^\s*当前次数\s*[:：]\s*(\d+)\s*$")
@@ -84,22 +71,12 @@ _ANNIHILATION = re.compile(r'GetFightStage: from \["Annihilation"\]')
 # "剿灭模式 : 1480 / 1800" - progress and the weekly cap. The pass is done when
 # progress reaches the cap; MAA reports Success! even when it stopped early.
 _ANNI_PROGRESS = re.compile(r"剿灭模式\s*[:：]\s*(\d+)\s*/\s*(\d+)")
-# MAA 6.22 first looks for annihilation in the terminal's to-do list and, finding none,
-# fights nothing and prints no progress line; the exact line is in
-# tests/fixtures/maa-annihilation-2026-11-16. MAA itself says the week is only "maybe"
-# done, so the line is never proof by itself (handle checks it on Skland).
 _ANNI_NO_ENTRY = re.compile(r"未在终端待办中找到剿灭入口")
 _MEDICINE = re.compile(r"已使用理智药\s*(\d+)")
 # Lines inside a drop block are bare "name : count"; anything with a log
 # timestamp has left the block.
 _HAS_TS = re.compile(r"^\[\d{4}-\d{2}-\d{2}")
 
-# MAA refusing a task of its own queue, which stops the whole queue
-# (tests/fixtures/maa-2026-10-10/MAA-05-02-18.log):
-#   [..][ERR][TaskQueueViewModel]     <2> 理智作战: 理智作战 序列化失败
-#   [..][INF][TaskQueueViewModel]     <2> 已停止
-# The words searched for are the keys of texts.MAA_REJECT_WHY, each as a plain
-# substring first (one MAA line can be ~9000 characters).
 _REJECT_LINE = re.compile(r"<\d+>\s*(?:[^:：\s]+[:：]\s*)?(\S*?)\s*(?:序列化失败|添加任务失败)")
 _REJECT_STAGE = re.compile(r"Cannot set stage\W*([A-Za-z0-9\-]+)")
 # The queue as MAA lists it before starting: 「Index 1, Type "Fight", Name 理智作战, IsEnable true」.

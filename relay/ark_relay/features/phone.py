@@ -69,12 +69,7 @@ def pack(pin: str, body: dict, kind: str = "cmd", *, gz: bool = False) -> str:
     """The envelope. With `gz=True` the body becomes a gzip+base64 string under
     the field name `gz`.
 
-    Why compress: a packet over the size limit goes down the degradation path
-    (first tomorrow's plan is dropped, then the options table that fills the
-    phone's dropdowns), and that loss is silent. Measured 2026-08-31: 3783 bytes
-    plain, 2464 compressed.
-
-    The sending side compresses only when **the plaintext would exceed the
+The sending side compresses only when **the plaintext would exceed the
     limit**, so ordinarily it stays plaintext; the receiving side accepts both.
     That way an old page still running on the phone cannot suddenly fail to read
     it.
@@ -189,23 +184,6 @@ def stamp(msg: dict, env: dict, via: str) -> dict:
     return body
 
 
-# ---------- the whole state on Tencent COS ----------
-#
-# The state is kept off ntfy's 250 a day (the user's decision, 2026-10-02 22:22):
-# a state is ~13 KB gzipped, four ntfy messages. Every state push PUTs the same
-# envelope pack()
-# makes (plain or gz, exactly what would have gone to ntfy, PIN inside) to the
-# evidence bucket, and only a one-line notice `state <ts> <bytes>` goes to the
-# topic. The App GETs the object on that notice, on open and on refresh.
-#
-# The object is readable by anyone who has its URL (public-read ACL), and its
-# name comes from the topic: whoever can read the topic on ntfy.sh today can
-# read the state, nobody else - the same exposure as the topic. sha256 so the
-# name does not give the topic back (and with it the command channel).
-#
-# The bucket's lifecycle rule (expire-30d-not-relay, docs/OPERATIONS.md)
-# covers state/: COS counts Days from the object's last modification, and
-# every push rewrites it, so only a machine silent for 30 days loses it.
 STATE_PREFIX = "state"
 
 
@@ -283,39 +261,10 @@ def state_cos(cfg):
 # same logger as phone.py: log lines keep their name
 
 
-# ---------- heartbeat (ToDesk-style online status) ----------
-#
-# The user, 2026-09-02: 「像 ToDesk 一样，打开就是在线或离线，不用手动刷新，
-# 能不能不用轮询实现？手动刷新作为兜底选项而不是经常行为。」
-# (Like ToDesk: open it and it is online or offline, no manual refresh - can that
-# be done without polling? Manual refresh as a fallback, not a routine.)
-#
-# How: opening the page sends a "I am watching" (watch) message, and for the next
-# 10-minute lease the machine beats to <topic>-hb every 30 seconds; with nobody
-# watching it beats not at all. The page receives them live over SSE: a heartbeat
-# flips it to "powered on", a bye (graceful service stop) flips it to "powered
-# off" instantly, and a hard power cut is caught by the 90-second timeout.
-# The page itself never polls - one long-lived connection and a local timer.
-#
-# Why it must not beat blindly: the anonymous ntfy.sh tier allows **250 messages
-# per IP per day** (confirmed 2026-09-02 against /v1/account). Beating blindly
-# every 60 seconds is 270 a day, which would shut out state pushes and command
-# replies alike. Hence: beat only while someone is watching, and slow down as
-# the day's messages run low. One ledger (Quota) counts every message the relay
-# posts - beats, states, notices, bye - and the cadence follows that total.
-
 HEARTBEAT_SEC = 30       # interval while someone is watching
 WATCH_LEASE_SEC = 600    # one "I am watching" lasts 10 min; a foreground page renews it
 HB_SLOW_SEC = 300        # interval once the day's total passes HB_FAST_UNTIL
 HB_CRAWL_SEC = 1800      # interval once it passes HB_SLOW_UNTIL
-# Thresholds on the day's total (all kinds), not on beats alone. Up to 100 the
-# page gets its live 30 s beat; up to 180 one every 5 minutes; past that one
-# every 30 minutes, so the last 70 of the 250 stay for what the user asked for:
-# states (1 message each: the machine's ntfy-2026-10-13.json counts state 15
-# for 15 states), the shutdown state and bye. The page reads the
-# cadence from the beat itself ("hb 1800") and widens its window to match
-# (web/live.js hbWindowMs, ark-remote Live.swift hbWindowMs), so a slow beat
-# still reads 「开机中 · 每 30 分钟报一次」, not a false 「关机」.
 HB_FAST_UNTIL = 100
 HB_SLOW_UNTIL = 180
 # A "watch" asks for a beat at once, so a page that has just opened learns the
@@ -537,12 +486,6 @@ def _retry_after(exc) -> float:
 # same logger as phone.py: log lines keep their module name
 
 
-# The start of one labelled field: a `## 中文名` line, then `self.X = ConfigItem(` in a
-# class body or `config.X = ConfigItem(` in a module-level helper the class calls
-# with itself (init_maaend_task_config(self): the MaaEnd sanity-task fields). The
-# call's arguments are cut out with balanced parentheses (_call_args): a one-line
-# ConfigItem(...) has no `\n)` of its own, and a lazy match up to one swallowed
-# the next field (audit 11 #4, 2026-10-13: 7 of the 19 SHOWN fields unlabelled).
 _ITEM_HEAD = re.compile(r"##\s*(?P<label>[^\n]+)\n\s*(?:self|config)\.\w+\s*=\s*ConfigItem\(")
 _SEC_KEY = re.compile(r'\s*"(?P<sec>\w+)"\s*,\s*"(?P<key>\w+)"\s*(?:,|$)')
 _DEF = re.compile(r"^def\s+(\w+)\s*\(", re.M)
@@ -685,24 +628,6 @@ def _options(cfg) -> dict:
 # same logger as phone.py: log lines keep their name
 
 
-# The heartbeat on COS as well (the user, 10-03 00:12: the online verdict must
-# not rest on the mailbox's heartbeat alone): once ntfy refuses the day, no ntfy
-# beat reaches the App. So every beat also PUTs `state/<hash>.hb.json` = {"at", "every",
-# "cos_every"} (+ "bye": true on a service stop), whether or not the ntfy
-# beat went out and whether or not the quota has stopped it. The App reads it
-# on open, on refresh and on return to the foreground - no timer.
-#   at        - when it was written (seconds);
-#   every     - the window the App should keep a beat alive for: the ntfy
-#               cadence (interval()); once ntfy has refused the day nothing
-#               live reaches the App, so at least HB_SLOW_SEC - its next read
-#               (the 8-minute watch renewal) comes before 2 x 300 + 30 s;
-#   cos_every - how often this object is rewritten while someone watches
-#               (HEARTBEAT_SEC), so a reader can tell a stale object (power
-#               cut, nobody watching) from a live one at once;
-#   off       - on the bye only: who stopped the machine and why,
-#               {"by": "relay" | "windows" | "service", "why", "at"}
-#               (shutdown.poweroff_note).
-# A PUT costs 0.01 yuan per 10,000; 30 s for a 10-minute lease is 20 of them.
 HB_COS_SEC = HEARTBEAT_SEC
 
 
@@ -817,9 +742,6 @@ class Heartbeat:
             except Exception:  # the bye goes out without it
                 log.debug("下线心跳的关机原因没整理出来", exc_info=True)
         try:
-            # One try between beats: the next beat, HB_COS_SEC on, is the retry, and an
-            # outage has its own WARNING (below). The bye has no next beat: it is tried
-            # again inside its COS_TIMEOUT (netretry; dispatch relay-opt-round3b-1108).
             why = cos_put(self.cos, hb_key(self.topic), json.dumps(body).encode("utf-8"),
                           Mailbox.COS_TIMEOUT, retry=bye)
         except Exception as exc:  # noqa: BLE001 - e.g. signing; never reaches the ntfy beat
@@ -1033,19 +955,7 @@ def _when(v) -> "datetime | None":
 
 
 def apply(state_dir, cmd: dict, today: "date | None" = None) -> tuple[bool, str]:
-    """The phone's `monthcard` order: `{"game", "add": N}` or `{"game", "left": X}`.
-
-    The phone computes the date itself and shows it at once (the user, 2026-09-26,
-    asked why it needs the game machine at all: 「为什么月卡功能要绑定游戏机？
-    我刚登记还跟我提示说要等电脑开机」 - he had just registered and was told to
-    wait for the PC to boot), so the order also
-    carries `last` (the last claim day it computed) and `at` (when he registered).
-    The machine may read the order the next morning, and counting from that day would
-    put the dates days apart; so `last` is taken as is when present, `at` is stored as
-    the registration time, and an order older than the stored registration (a resend
-    arriving after a newer one) changes nothing. add / left are still checked, and
-    still used when `last` is absent.
-    """
+    """The phone's `monthcard` order: `{"game", "add": N}` or `{"game", "left": X}`."""
     today = today or _today()
     game = str(cmd.get("game") or "").strip()
     if game not in DAYS:
@@ -1355,16 +1265,6 @@ def _alternates(url: str) -> list[str]:
         return [url]
     owner, repo, branch, path = parts
     ref = f"gh/{owner}/{repo}@{branch}/{path}"
-    # The order comes from measurements on the game machine in the early hours
-    # of 2026-08-21 (8 attempts per door):
-    #   fastly.jsdelivr  8/8  average 426ms      <- best
-    #   cdn.jsdelivr     7/8  average 1956ms
-    #   gcore.jsdelivr   7/8  average 2398ms
-    #   raw.github       2/8  average 38179ms    <- worst, but always freshest
-    # So raw goes last: it is the only door that serves no CDN cache, kept as a
-    # fallback rather than a first choice.
-    # (jsDelivr's cache is purged globally by scripts/mac/purge-cdn.py after
-    # every push.)
     return [
         f"https://fastly.jsdelivr.net/{ref}",
         f"https://cdn.jsdelivr.net/{ref}",
@@ -1650,13 +1550,8 @@ class Inbox:
 
     def _apply(self, commands: list) -> list[str]:
         out: list[str] = []
-        # maaend_option (the MaaEnd option writer, maaend.apply_changes) is gone
-        # since 2026-10-13: nothing sends it (order.sh refuses an action outside
-        # commands.ALLOWED, the App never had it), so apply_command refuses it.
         others = [c for c in commands if isinstance(c, dict)]
 
-        # In the order they were written (11-08 [D-08]): queue and sanity_plan orders
-        # used to run first, so a later order could be undone by an earlier one.
         for cmd in others:
             act = cmd.get("action")
             if act == "queue":
@@ -1832,21 +1727,6 @@ class Mailbox:
 
     # ---------- publishing ----------
 
-    # A single ntfy message has a size limit and anything past it is **truncated**
-    # - truncated JSON fails to parse on the phone, which shows up as "state never
-    # updates, so it is judged powered off", while the sending side looks
-    # perfectly fine. So measure before sending, and when it is over, drop the
-    # expendable parts and say so out loud.
-    # ntfy's real limit is 4096 bytes; the margin below it is 200 bytes.
-    # ntfy turns anything over 4096 bytes into an attachment and hands back a URL,
-    # so this is not a ceiling on what can be sent - it is the point where the
-    # message stops travelling inline. Measured on 2026-09-09: a 9046-byte body
-    # posted fine and came back byte-for-byte from its attachment URL.
-    # ntfy keeps messages for 12 hours and attachments for only 3. A state pushed
-    # before the machine shuts down at night has to still be readable the next
-    # morning, so it must never travel as an attachment - which is what anything
-    # over 4096 bytes turns into. Over that, it is split into ordinary messages
-    # instead: they last as long as any other message, and nothing is dropped.
     INLINE_MAX = 4096
     MAX_BODY = INLINE_MAX      # old name, kept for callers and tests
     # Room for the envelope around each slice.
@@ -1958,8 +1838,6 @@ class Mailbox:
             self._carried_by_cos("notice")
             self.last_error = ""
 
-    # 8 s: the machine reached COS in 0.3 s (09-18, 4/4); on a miss the pieces still
-    # have to fit in the 30 s a Windows service stop allows.
     COS_TIMEOUT = 8
 
     def _cos_put(self, data: bytes) -> str:
@@ -1980,10 +1858,6 @@ class Mailbox:
     RETRY_AFTER = 3.0
     RETRY_AFTER_MAX = 30.0
     ATTEMPTS = 2
-    # Per socket operation of one POST. app_main.stop_push (the watchdog's push at a
-    # Windows shutdown) lowers it and ATTEMPTS on its own Mailbox: 2026-10-11 15:42:09
-    # its notice reached ntfy but the answer did not come back, and waiting out these
-    # 20 s ran its whole time limit out with the state already on COS.
     POST_TIMEOUT = 20
 
     def _post(self, data: bytes, kind: str) -> bool:
@@ -2115,34 +1989,7 @@ class Mailbox:
     def close(self) -> None:
         """Sever the held connection so listen() comes out of its blocking read
         immediately.
-
-        The socket is shut down first. r.close() alone waits for the read the
-        listener thread is blocked in (the response's buffered reader is locked
-        by it) and returned only with the next line ntfy sent - a keepalive, 45 s
-        apart on ntfy.sh - so SvcStop sat in it before arming its 15 s backstop
-        (measured 2026-10-07 against a real ntfy server, CPython 3.9.6 and
-        3.14.7: close() took 4.5 s with a 5 s keepalive, 11.5 s with 12 s; after
-        shutdown(), 0.00 s, and the listener came out at once).
-        "If you want to close the connection in a timely fashion, call
-        shutdown() before close()." (https://docs.python.org/3/library/socket.html#socket.socket.close)
-        The socket is reached through http.client's response file (fp.raw._sock,
-        no public accessor); when that is not there, close() is all there is.
-
-        Windows: shutdown() does not wake a read another thread is blocked in
-        (measured 2026-10-07 on the GitHub Windows runner, run 37519943859,
-        CPython 3.14.7: close() took 5.3 s against a server that sends a line
-        every 5 s and does not answer the FIN - a real ntfy closes its end on
-        the FIN, which is why test_phone_mailbox_e2e.py passed there). The
-        socket is closed there as well: "Any pending blocking, asynchronous
-        calls issued by any thread in this process are canceled"
-        (https://learn.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-closesocket).
-        It is detached first: sock.close() only drops a reference while the
-        response file holds the socket (makefile), and a detached socket object
-        answers the listener's next call with an error instead of reading a
-        handle that may already belong to something else. socket.close(fd) is
-        the call for that: "On some platforms (most noticeable Windows)
-        os.close() does not work for socket file descriptors."
-        (https://docs.python.org/3/library/socket.html#socket.close)"""
+        """
         r, self._resp = self._resp, None
         self._save_mark(force=True)
         if r is not None:
@@ -2337,15 +2184,7 @@ class Mailbox:
 _log_phone_channel = logging.getLogger("ark.service")
 
 
-# Phone commands that only mean something while the machine is running. A
-# backlog of them is read once at boot (Mailbox.fetch, the last 24 h); a red
-# button pressed at 17:5x on a machine that had been off since 14:47
-# (2026-09-19) would otherwise fire at the 21:20 boot: stop every AUTO-MAS
-# task, taskkill every game, push 「已停一切」 - all against nothing, minutes
-# before the 21:30 queue. Nothing was running when it was pressed and nothing
-# is running at boot; the press is stale by definition.
 LIVE_ONLY_ACTIONS = ("estop",)
-
 
 
 def receipt_target(body: "dict | None") -> str:
@@ -2465,16 +2304,11 @@ def _phone_execute(apply_command, notifier, log, push_state, receipt,
     # decision of the same tick, which would otherwise reuse a 「nothing runs」
     # read from up to three seconds before.
     _engine_mod.forget_scripts_cache()
-    # The answer goes onto the phone page (state snapshot) - the user reads
-    # it where he pressed the button (2026-09-14); a failed order also goes
-    # to the group.
     try:
         receipt(action, sent, ok, msg, target=receipt_target(body))
     except Exception:
         log.exception("手机指令回执没记下")
     if notify or not ok:
-        # A failed order is an error: the group (the user, 2026-10-06: every error, every time),
-        # drained after the run too - until 10-06 a queued order that failed was only a receipt.
         notifier.send(texts.CONFIG_CHANGED if ok else texts.CONFIG_FAILED, msg, alert=not ok)
     _machine_check(state_dir, "phone_cmd", {"action": action, "ok": ok, "msg": msg, "receipt": (ok, msg),
                                             "via": via, "queued_at": queued_at, "sent": sent}, notifier, log)
@@ -2626,8 +2460,6 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
             # so it must not be blocked by the gate below.
             from ark_relay.features import commands as _cmd  # noqa: PLC0415
             ok, msg = _cmd.estop(state_dir=cfg_state_dir)
-            # Only a stop that could not get the machine quiet is a fault: at WARNING every press also reached the group
-            # as 「中继自己报错了」 (10-31 10:05:51, a press that worked on an idle machine).
             (log.info if ok else log.warning)("🛑 红按钮：%s", msg)
             _push_farm_trouble(notifier, log)
             try:
@@ -2642,14 +2474,6 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
                            notifier, log)
             push_state("红按钮")
             return
-        # These two write the relay's own StateStore and nothing else, so the
-        # AUTO-MAS in-memory copy cannot clobber them and the gate below does not
-        # apply. 「下次跑完不关机」 in particular is only ever pressed **while** a
-        # run is going - that is the whole point of it - and it was the one command
-        # the gate reliably threw away.
-        # The echo-farm, monthly-card and tacet-screenshot orders touch only OK-WW's own
-        # file or relay state too: queued behind a farm they waited for the farm to end
-        # (「现在收工」 could not stop it, 11-08 [D-01]).
         if action not in ("skip_shutdown", "debug_mode", "echo_farm_stop", "echo_farm_until",
                           "monthcard", "tacet_shots"):
             # Config changed while a script is running gets clobbered by
@@ -2755,9 +2579,6 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     # already answered and folds the boot backlog's pushes into one.
     push_state = StatePusher(publish_state)
 
-    # SvcStop pushes one last state before the mailbox is cut, so a shutdown
-    # issued by hand (not by the relay) still leaves the phone page current.
-    # 2026-09-11 the page said 「最后状态 1 小时 38 分前」 after such a shutdown.
     svc._push_state = push_state
     # A skip that engages, fails or is restored writes a receipt on the engine
     # thread; this sends the page the snapshot that carries it.
@@ -2771,18 +2592,10 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
     # that finds nothing running - before that tick's shutdown decision.
     engine._phone_drain = run_phone_cmd.drain
 
-    # Not up after the revival: 「🔌 AUTO-MAS 启动不起来」 to the group now, from inside
-    # ensure_automas, which then marks its own ERROR line as already pushed (one fault,
-    # one message; audit s23 F2). With no backend the next queue will not run, and the
-    # keeper's own alarm only fires after its third failed revival (2026-09-17: 45 s of
-    # silence in the log, then nothing until 21:55). Not when the service is stopping:
-    # that False means "did not wait", not "down", and the restarted process checks again.
     boot_stages.ensure_automas(notifier=notifier)
     started = getattr(getattr(engine, "_started_at", None), "timestamp", lambda: None)()
 
     def run_backlog(cmds) -> None:
-        # One state for the whole backlog, after it: each order used to push
-        # its own (09-30 08:46: 5 orders + 11 refreshes = 64 messages).
         with push_state.held():
             for body in boot_backlog(cmds, log, started):
                 run_phone_cmd(body)
@@ -2798,10 +2611,6 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
                 # a boot read that timed out is read again once ntfy answers
                 on_backlog=run_backlog),
             name="phone-mailbox", daemon=True).start()
-        # ToDesk-style presence: it only beats while the page says it is
-        # watching, and sends bye when the service stops. The page uses it to
-        # flip between powered on and off by itself, with no manual refresh
-        # (asked for by the user on 2026-09-02).
         threading.Thread(
             target=lambda: hb.loop(
                 lambda: win32event.WaitForSingleObject(svc.stop_event, 0)
@@ -2815,13 +2624,6 @@ def _start_phone_channel(svc, cfg, engine, notifier, log):
 # mailbox, heartbeat, cmdqueue); callers and tests say phone.<name>, so every
 # name stays importable from here. A test that rebinds a module global such as
 # urllib, time, NTFY or cos_put has to rebind it in the module whose code reads it.
-
-
-
-
-
-
-
 
 
 # state_payload runs on every phone-state publish and a WARNING is a group
@@ -2879,10 +2681,6 @@ class StatePusher:
             return True
         return False
 
-    # Never put off: the last state before a stop or a power-off. Folded into a held
-    # batch it lost its exact label (the stop marker, machinecheck #11 and the
-    # watchdog's 关机前 test match it) and went out later on the holding thread,
-    # inside SvcStop's 15 s kill timer (audit status-channel A1).
     NEVER_HELD = ("停止前", "关机前")
 
     def __call__(self, why: str) -> bool:
@@ -3077,14 +2875,7 @@ def clear_stop_pushed(state_dir) -> None:
 
 
 def send_state(box, cfg, why: str, log=log) -> "tuple[bool, dict | None, str]":
-    """Build the state and send it through `box`: (reached the phone, payload, why not).
-
-    The one place a state goes out and the two lines saying how it went are written:
-    the relay's own pushes (boot_stages publish_state) and the watchdog's push at a
-    Windows shutdown (app_main.py stop-push) both come here, and the machine checks
-    match these exact words (machinechecks/system.py PUSHED / NOT_PUSHED, #11).
-    The day's count rides along: on 2026-10-02 nobody could see the 250 running out
-    until it had (phone.Quota; ntfy's own count once synced)."""
+    """Build the state and send it through `box`: (reached the phone, payload, why not)."""
     payload = None
     from ark_relay.features import snapshot  # noqa: PLC0415
     # The last state before a stop / power-off must not wait on the process list.
@@ -3110,10 +2901,6 @@ def send_state(box, cfg, why: str, log=log) -> "tuple[bool, dict | None, str]":
             except OSError:
                 log.warning("停止前那份送到了，记号没写下，关机时看门服务会再发一次", exc_info=True)
         return True, payload, ""
-    # Only when the phone cannot see this state at all: neither COS nor ntfy carried
-    # it (a state on COS is delivered even when the ntfy notice is refused - 10-02
-    # 22:56 that was logged here as a failure, with 「今天 ntfy 已发 0 条」 beside
-    # ntfy's own 42908).
     log.warning("状态没能上报到手机（%s）：%s；手机上留着上一份状态", why, box.last_error or "原因没说")
     return False, payload, box.last_error or "原因没说"
 

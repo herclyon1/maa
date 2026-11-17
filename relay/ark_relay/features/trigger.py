@@ -2,9 +2,6 @@
 
 AUTO-MAS writes one line per task it creates, in its own debug/app.log:
 
-    2026-10-03 00:19:50.991 | INFO     | 业务调度 | 创建任务: 68b6e221-…, 模式: AutoProxy, 触发来源: manual_task
-    2026-09-25 21:30:00.780 | INFO     | 业务调度 | 创建任务: e715210d-…, 模式: AutoProxy, 触发来源: scheduled_task
-
 and later 「任务结束: <id>」, 「任务 <id> 已结束」 or 「中止任务: <id>」. The id is the
 taskId that runtime-snapshot reports.
 
@@ -12,15 +9,6 @@ taskId that runtime-snapshot reports.
 /api/dispatch/start (a rerun after a game update, the phone's 「run now」). The relay
 records each start it makes (`note_dispatch`); a task is **hand-started** when it is
 manual_task and no relay start matches it.
-
-Callers use this to keep a hand-started run out of the shift: it gets no shift overrun
-alarm (runwatch._not_the_shift) and no make-up, stays in the daily report, and its
-failures are pushed like any other run's, labelled as started by hand (the user's
-order of 2026-10-06 for that last part: 「不论多少次什么错误都要发」). Attempts inside
-one task fold as a shift's do since 2026-10-16 (handle._hold_hand_started): a later
-success of the same task heals an earlier failure (daily report only, the
-USER-SWITCHES entry for handle._flush_pending), and only the task's last failure is
-pushed.
 
 scripts/mac/run-one.sh (dispatch_guard.py) does not note its starts (state file:
 only phone/commands.py writes it). A session's own run is not the shift either, so it

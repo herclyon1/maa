@@ -269,11 +269,6 @@ def _set_wait_time(value: Any) -> tuple[bool, str]:
         n = int(value)
     except (TypeError, ValueError):
         return False, f"等待秒数不是整数: {value!r}"
-    # AUTO-MAS's own schema declares this field as `ge=60`
-    # (app/models/schema.py). Anything smaller is not rejected loudly - it is
-    # accepted, written to disk, and then silently clamped back to 60 the next
-    # time AUTO-MAS starts (measured 2026-08-21: 30 became 60 on the next
-    # launch). Refusing here turns an invisible revert into a clear message.
     if not 60 <= n <= 600:
         return False, f"等待秒数超出范围 60–600: {n}（AUTO-MAS 最小值就是 60，写小了会被它改回去）"
 
@@ -315,8 +310,6 @@ def _find_user(script: str) -> "tuple[str, str, dict]":
         if name.lower() != script.lower():
             continue
         users = _mas("/api/scripts/user/get", {"scriptId": sid}).get("data") or {}
-        # The user the snapshot and the plan show (masuser.pick): until 11-08 this took the
-        # first and they the last (audit 11-08 D-11).
         if (got := masuser.pick(users)) is None:
             raise KeyError(f"脚本「{script}」下面没有用户")
         uid, user = got
@@ -451,12 +444,7 @@ def _script_item_via_api(reply: Any, script: str, path: str,
 def _set_config(cmd: dict) -> tuple[bool, str]:
     """Change any single config item. Every setting on the phone goes through this.
 
-    Measured 2026-08-31: `/api/scripts/user/update` has **merge semantics** -
-    it writes only the keys passed in and leaves the rest untouched (verified by
-    saving the whole config, writing back the same value, and diffing the whole
-    config).
-
-    Three things are mandatory here and none may be skipped:
+Three things are mandatory here and none may be skipped:
       * read the **current value** before changing it, so the report says
         "A -> B" rather than just B;
       * the path must actually exist in the current config, and is refused if it
@@ -593,19 +581,7 @@ class SkipError(RuntimeError):
 def skip_script_in_queue(queue: str, script: str, uid: str = "") -> dict | None:
     """Skip one script in a queue for today only; returns the record needed to undo it.
 
-    Used on maintenance days for "do not run it in today's queue" - the user,
-    2026-09-03: 「当天队列里不跑他」. The item stays in the queue: today's weekday is
-    dropped from its Schedule.Days, and AUTO-MAS skips an item whose days do not
-    include the weekday it froze when the queue task was created
-    (task_manager.py _is_script_scheduled_today; machine-local time, which is
-    server time). None when the script is not in the queue or already does not
-    run today - then there is nothing of ours to undo, and a second skip the
-    same day (stage gate after a game update) cannot record an already-trimmed
-    list as the original. The record carries the server day and the original
-    days, so restore_script_in_queue writes them back verbatim, even on a later
-    day (relay crash, power-off before the re-run).
-
-    This skips one item: the one with id `uid`, else the first item of the
+This skips one item: the one with id `uid`, else the first item of the
     script. skip_script_all_items skips every item of the script in the queue.
     """
     qid, sid = _queue_id(queue), _script_id(script)
@@ -665,10 +641,6 @@ def skip_script_all_items(queue: str, script: str) -> list[dict]:
 def restore_script_in_queue(rec: dict) -> bool:
     """Write back the run days the skip_script_in_queue record saved, and read them back."""
     if not isinstance(rec.get("days"), list):
-        # A record from before 2026-10-11, when a skip deleted the item
-        # (item/delete). There is no item to give its days back to; a WARNING
-        # reaches the group so the item can be added back by hand, and True drops
-        # the record instead of failing on it at every boot.
         log.warning("%s", texts.queue_item_deleted_old_way(str(rec.get("queue")), str(rec.get("script"))))
         return True
     qid, want = rec["queueId"], list(rec["days"])
@@ -797,9 +769,6 @@ def _weekly_boss(cmd: dict) -> tuple[bool, str]:
     ok, msg = gate.configure(index=cmd.get("index"))
     if ok:
         gate.enforce()
-        # enforce answers "changed", not "worked": a write that failed leaves
-        # _last_error. Never report ok then (11-08 [D-03]); put the old
-        # number back so state.json matches what OK-WW really has.
         if gate._last_error:
             s = gate._load()
             s["index"] = before
@@ -859,11 +828,6 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
         if action == "set_master":
             return _set_master(cmd)
         if action == "weekly_boss":
-            # The Wuthering Waves weekly boss (战歌重奏). Same setup as
-            # annihilation and the weekly garden: once the quota is full it is
-            # removed automatically and hung back on Monday at 04:00.
-            # The only thing that can be changed is which one to fight: 3 times a
-            # week at level 90 is fixed (per the user, 2026-09-07).
             return _weekly_boss(cmd)
         if action == "echo_farm":
             # Farm one boss for its 4-cost echoes until a wall-clock time: an overworld
@@ -899,15 +863,6 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
             return True, set_tacet_shots(state_dir, bool(cmd.get("on", False)))
         if action == "skip_shutdown":
-            # The one-shot 「下次跑完不关机」 mark (phone switch, desktop .bat). No
-            # expiry: it is spent when the next 早班/晚班 run finishes, that
-            # occasion is skipped (re-checks after it do not power off), and the
-            # run after that shuts down as usual. Once spent there is nothing to
-            # cancel; "off" only pulls back a mark not yet spent. See
-            # modes.skip_armed.
-            # The user, 2026-08-31, wanting a control a human can use without me:
-            # 「你给一个人类好去调这个模式的方法， (a way for a person to set this mode,
-            # 独立于你的」「我要的是手机上面操作」 (independent of me, operated on the phone).
             from ark_relay.features.modes import set_skip_shutdown  # noqa: PLC0415
             state_dir = Path(os.environ.get("ARK_STATE_DIR", "./ark-state"))
             # Both spellings of "pull back" are accepted. The canonical form is

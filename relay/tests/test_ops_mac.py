@@ -23,7 +23,7 @@ def _part_disk_tidy():  # noqa: C901
 
     ROOT = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(ROOT / "relay" / "tests"))
-    from _tmp import tmpdir
+    from _parts import tmpdir
 
     TOOL = ROOT / "scripts" / "mac" / "disk-tidy.py"
     spec = importlib.util.spec_from_file_location("disk_tidy", TOOL)
@@ -146,11 +146,6 @@ def _part_disk_tidy():  # noqa: C901
         write(HOME / f".claude/projects/-Users-x/{U['live']}.jsonl",
               f'{{"m": "read the full transcript at: {HOME}/.claude/projects/-Users-x/{U["pred"]}.jsonl\\nContinue"}}\n')
         write(HOME / f".claude/projects/-Users-x/{U['transcript']}.jsonl", "{}\n")
-        # Workflows, in the real layout (10-16 review: 81 journals on this Mac hold only type / key /
-        # agentId / label / phase / result, never a prompt). A run's script lives under whichever
-        # project dir the session started the workflow from; its agents' prompts open their
-        # agent-*.jsonl. wf_1 is running, wf_2 is in a 5 h phase (journal idle, agents writing),
-        # wf_0 finished 3 days ago and its script names sp-old.
         runs = HOME / f".claude/projects/-Users-x/{U['journal']}/subagents/workflows"
         scripts = HOME / f".claude/projects/-Users-y/{U['journal']}/workflows/scripts"
         spx = f"/tmp/claude-501/-Users-x/{U['live']}/scratchpad"
@@ -172,8 +167,6 @@ def _part_disk_tidy():  # noqa: C901
         # A plain subagent (no workflow) that is still writing its transcript.
         write(HOME / f".claude/projects/-Users-x/{U['live']}/subagents/agent-d1.jsonl",
               f'{{"parentUuid": null, "type": "user", "message": {{"content": "use {spx}/sp-plain"}}}}\n')
-        # 10-18: two map scripts named one folder (and one file) inside the acceptance session's
-        # scratchpad, and the whole 11 GB scratchpad stayed. A reference keeps only the entry it names.
         write(HOME / ".claude/hooks/h.py",
               f'SRC = "/private/tmp/claude-501/-Users-x/{U["reused"]}/scratchpad/r-1.txt"\n'
           f'TREE = "{WT / "wt-named"}"\n'
@@ -204,8 +197,6 @@ def _part_disk_tidy():  # noqa: C901
         write(app / "build/Release/x")
         write(HOME / "Money/styl-work/remote-ref/tools/bugexam/xcr-dd/Build/x")
         write(HOME / "Money/styl-work/BOARD/OPEN.md", "his board")
-        # Xcode DerivedData folders left inside ~/Money/styl-work evidence (10-18 inventory, A5): the
-        # folder goes, the screenshots beside it stay.
         ev = HOME / "Money/styl-work/evidence"
         for x in ("x", "named", "fresh", "deep/a/b"):
             write(ev / x / "dd/Build/Products/app")
@@ -242,8 +233,6 @@ def _part_disk_tidy():  # noqa: C901
             age_wt(HOME / p, 72)
         write(dd / "Proj-new/Build/x", "fresh")
 
-        # Inside a running session's scratchpad (10-16: the acceptance session ran for days and its
-        # finished subagents' copies grew to 8.8 GB): created after the 72 h aging above.
         sp = proj / U["live"] / "scratchpad"
         for name in ("sp-old", "sp-open", "sp-journal", "sp-prompt", "sp-longrun", "sp-plain", "sp-gitlink",
                      "sp-named", "sp-ro/M4"):
@@ -465,10 +454,6 @@ fi
         check(f"guard refuses {p.relative_to(BASE)}", want in got, True)
     check("guard allows a dead session dir", dt.guard(env, ctx, str(proj / U["cwd"])), None)
 
-    # 10-16 review: a tree unpacked into a running session's scratchpad keeps its old mtimes
-    # (tar -x, unzip, ditto, cp -Rp, rsync -a), so on mtime alone it looked idle the moment it landed
-    # and the next hourly run could delete it under a subagent still reading it. ctime cannot be set
-    # back: the real clock here, not the simulated one.
     pkg = BASE / "pkg"
     write(pkg / "src/a.txt", "a")
     old = time.mktime((2026, 9, 1, 0, 0, 0, 0, 0, -1))
@@ -505,8 +490,6 @@ fi
     check("unknown Gradle version in use: nothing goes",
           sorted({i.keep for i in items}), ["cannot tell which Gradle version is in use"])
 
-    # 10-13 23:30 the tool uninstalled swift 6.4.0 while the Android SDK bundle built for it was
-    # installed, and the App's Android build stopped. A toolchain an SDK bundle needs stays.
     write(HOME / ".swiftly/config.json", json.dumps({"inUse": "6.4.1", "installedToolchains": ["6.4.1", "6.4.0"]}))
     write(HOME / "Library/Developer/Toolchains/swift-6.4.0-RELEASE.xctoolchain/usr/bin/swift")
     write(HOME / "Library/org.swift.swiftpm/swift-sdks/swift-6.4.0-RELEASE_android.artifactbundle/info.json")
@@ -515,8 +498,6 @@ fi
           (items["swift-6.4.0-RELEASE.xctoolchain"].action, items["swift-6.4.0-RELEASE.xctoolchain"].keep),
           ("rm", "needed by the Swift SDK swift-6.4.0-RELEASE_android.artifactbundle"))
 
-    # 10-18: a reference that names the session dir or scratchpad/ itself - or an entry the scan
-    # cannot read, like an f-string placeholder - still keeps the whole scratchpad.
     for label, ref in (("the session dir", f"/private/tmp/claude-501/-Users-x/{U['live']}/"),
                        ("scratchpad/ itself", f"/private/tmp/claude-501/-Users-x/{U['live']}/scratchpad"),
                        ("an f-string entry", f"/private/tmp/claude-501/-Users-x/{U['live']}/scratchpad/sp-{{name}}")):
@@ -526,8 +507,6 @@ fi
               (list(got), "names this session" in got.get(str(SP), "")), ([str(SP)], True))
     write(HOME / ".claude/hooks/h2.py", "\n")
 
-    # 10-18: Gradle's transform cache goes only while no Gradle process runs and once idle. `ps -o
-    # comm` shows a daemon as `java`, so the check reads the command line.
     tf = HOME / ".gradle/caches/9.8.1/transforms"
     write(tf / "t/f")
     age(tf, 72, NOW)
@@ -549,19 +528,7 @@ fi
 
 
 def _part_order_now_confirmed():
-    """scripts/mac/order-now.sh refuses a changing order without "confirmed": true.
-
-2026-10-10 04:16:12 a set_master sent with order-now.sh carried no "confirmed";
-the relay refused it (commands.py gate 2) and pushed 「📱 配置没改成」 to the
-group. The script now stops before
-sending such an order. The list of changing actions is read from the relay
-(commands.MUTATING).
-
-Nothing here reaches ntfy: HOME holds a made-up push.env and PATH starts with a
-fake curl that only records that it was called and answers 200.
-
-    Formerly test_order_now_confirmed.py.
-    """
+    """scripts/mac/order-now.sh refuses a changing order without "confirmed": true."""
     import json
     import os
     import subprocess
@@ -615,21 +582,7 @@ fake curl that only records that it was called and answers 200.
 
 
 def _part_order_push_main():
-    """scripts/mac/order.sh writes the inbox to main only.
-
-2026-10-10 03:0x a ``--clear`` run from a worktree on branch acc-yw-manual-1009
-ended in ``git push -q origin HEAD``: the inbox commit (d47c1998) went to that
-branch, and main - the one the relay reads - never got it. The script now stops
-before writing anything unless the checkout sits exactly on origin/main, commits
-only queue/config.json, and pushes ``HEAD:main``.
-
-Each case runs the real script in a throwaway clone of a throwaway bare repo.
-The stub ``ark_relay`` there has no ``evidence`` module and there is no
-purge-cdn.py, so nothing after the push can reach COS or the CDN; the script
-ends non-zero there, after the part under test.
-
-    Formerly test_order_push_main.py.
-    """
+    """scripts/mac/order.sh writes the inbox to main only."""
     import json
     import os
     import shutil
@@ -729,20 +682,7 @@ ends non-zero there, after the part under test.
 
 
 def _part_deploy_pkg_bash32():
-    """deploy-pkg.sh under macOS /bin/bash 3.2, a UTF-8 locale and set -u.
-
-bash 3.2 reads the bytes of a full-width character right after `$NAME` (for example
-`$PREV（`) as part of the variable name, so under set -u the line dies with
-"PREVï: unbound variable" (exit 127). Until 2026-10-13 seven lines of
-scripts/mac/lib/deploy-pkg.sh were written that way, one of them on the way back
-after a failed deploy. Every variable touching a non-ASCII character is ${NAME} now.
-
-No deploy runs here: the way-back block is run in /bin/bash with ssh, scp and the
-script's helpers (pkg_py, pkg_py_at, pkg_restart) stood in, and every other echo line
-that names a variable next to a non-ASCII character is run on its own.
-
-    Formerly test_deploy_pkg_bash32.py.
-    """
+    """deploy-pkg.sh under macOS /bin/bash 3.2, a UTF-8 locale and set -u."""
     import os
     import re
     import subprocess
@@ -808,21 +748,7 @@ pkg_restart() { STATE=Running; CURRENT=$PREV; }
 
 
 def _part_deploy_smoke_gate():
-    """deploy-relay.sh: the smoke runs before COS, and a failed smoke takes the way back.
-
-Until 2026-10-13 the order was watch, publish-cos.py, smoke: on SMOKE_FAIL the relay
-kept running code that failed the import check and COS already carried it as the
-newest version; only a watch failure put the previous version back. Now the smoke
-sits right after the watch, before the notes stamp and COS, and SMOKE_FAIL runs the
-same way back as a watch failure (exit 7 when the previous version holds, 13 when not).
-
-No deploy runs here. The `# >>> smoke gate` block is run in bash with ssh, scp and the
-installed relay's helpers (pkg_py, pkg_restart) and the old service's restart_service
-stood in; what the machine would answer is given per case. The position of the block
-in the script is checked on the text.
-
-    Formerly test_deploy_smoke_gate.py.
-    """
+    """deploy-relay.sh: the smoke runs before COS, and a failed smoke takes the way back."""
     import os
     import subprocess
     import tempfile

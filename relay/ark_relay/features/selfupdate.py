@@ -67,11 +67,6 @@ RAW_TIMEOUT = 45
 
 # How many files are fetched at once from the GitHub doors.
 PARALLEL_FETCHES = 6
-# The GitHub doors are used only when the machine's .env sets this to 1
-# (docs/OPERATIONS.md). Off by default since 2026-09-18 (the user's decision).
-# relay.log from 08-16 to 09-18, 521 rounds: raw.githubusercontent failed the
-# manifest fetch 206 times; the jsDelivr mirrors served a stale copy of a file
-# 29 times across the 33 rounds that needed files.
 GITHUB_FALLBACK_ENV = "SELFUPDATE_GITHUB_FALLBACK"
 COS_PREFIX = "relay"
 COS_LATEST = "latest.json"
@@ -198,11 +193,6 @@ def _alternates(url: str) -> list[str]:
         return [url]
     owner, repo, branch, path = parts
     ref = f"gh/{owner}/{repo}@{branch}/{path}"
-    # Order measured from the game machine on 2026-08-21, 8 attempts per door:
-    #   fastly.jsdelivr  8/8  average 426ms
-    #   cdn.jsdelivr     7/8  average 1956ms
-    #   gcore.jsdelivr   7/8  average 2398ms
-    #   raw.github       2/8  average 38179ms (no CDN cache, so always freshest)
     return [
         f"https://fastly.jsdelivr.net/{ref}",
         f"https://cdn.jsdelivr.net/{ref}",
@@ -505,10 +495,6 @@ def _is_downgrade(remote_ver: int, local_ver: int) -> bool:
     return bool(local_ver and remote_ver < local_ver)
 
 
-# A manifest file this machine does not have yet is created when it has one of
-# these suffixes (paths stay confined by _safe_target); any other new file stops
-# the round. Allowed since 2026-09-15 by the user's decision, so a new module lands
-# without a manual deploy.
 _NEW_FILE_SUFFIXES = (".py", ".md", ".txt", ".json")
 # Where _write_staged lands a round before swapping it in. Under root, so the
 # swap is a rename on the same volume; make-manifest.py never lists it.

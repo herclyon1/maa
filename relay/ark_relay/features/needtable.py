@@ -1,16 +1,6 @@
 """Build the need table: what the **newest six-star operator's** full build
 (with her signature weapon) needs, per material - already before her banner opens.
 
-The App's 库存 page (ark-remote Inventory.swift, ported from the phone page's 库存 tab)
-shows, per material, 库存 | 单个角色满练所需 | 人份 (stock ÷ need). Stock is live (the
-App asks Skland itself); need is this table. The user's caliber (2026-09-19): the
-newest six-star in the official wiki - **including one announced for a future date** -
-so the table shows her materials before the banner. Refined 2026-10-15, when the
-table built that morning showed only the announced 明河 while 祀 went live at noon; he
-said 「app库存那边没有及时更新上新角色的数据」 (the stock page missed the new operator)
-and 「养成只按照最新的一个一个来，就是玉中身」 (raise the newest only, one at a time;
-玉中身 is the signature weapon of 祀). So there are two standards (next section).
-
 ## Standards (`games[].standards[]`)
 
 1. `role: "current"` - the newest entry whose 上线时间 is today or earlier (server date):
@@ -23,52 +13,12 @@ and 「养成只按照最新的一个一个来，就是玉中身」 (raise the n
    current one with no code change. A failure building her does not fail the table:
    it is written to `coverage.nextError` and the table ships with the current one.
 
-`--char` builds one standard, `role: "named"`. Every standard carries its own `rows`,
-`caliber`, `footnote`, `sources`, `weapon`, plus (additive, 2026-10-15) `role`, `label`,
-`groups` (its section order: a standard whose numbers are not from the calculator has
-per-owner sections 干员养成 / 武器养成 / 多处共用, not the step groups), `useSource` and `originMissing`.
-`coverage.next` is `{name, releasedAt, status, weapon}` of the second standard, or null.
-
-## Essence advice (`standards[].weapon.essence`, additive 2026-10-15)
-
-For the signature weapon, the three essence terms it wants and the energy points that
-can drop all three (user 2026-10-15: 「顺带加上基质刷取建议」). Data is MaaEnd's own
-(`essence_advice`): the installed copy on the game PC (`<maaend_dir>/data/EssenceFilter/`,
-`tasks/AutoEssence/Target/Target.json`, `locales/interface/zh_cn.json` - what MaaEnd will
-actually farm with), else the same files on MaaEnd's GitHub `v2` branch (the Mac). Shape:
-
-    {"weapon": "玉中身", "code": "wpn_claym_0018",
-     "terms": [{"slot": "基础属性", "id": "s1_5", "name": "智识提升"},
-               {"slot": "附加属性", "id": "s2_1", "name": "寒冷伤害提升"},
-               {"slot": "技能属性", "id": "s3_7", "name": "效益"}],
-     "points": [{"name": "枢纽区", "full": "重度能量淤积点·枢纽区"}, ...],
-     "engrave": "...", "inMaaEndTarget": true, "maaend": "...",
-     "dataVersion": "2026-10-08 08:40:17 UTC", "source": "...", "reason": ""}
-
-* weapon: `weapons_output.json`, the entry whose `names.CN` is the weapon's wiki name.
-* term ids: each of its three `skills.CN` up to the `·`, matched to `skill_pools.json`
-  slot 1 / 2 / 3 by the longest pool name it starts with - MaaEnd's own
-  `cleanDisplayToCanonical` (agent/go-service/essencefilter/matchapi/loader.go).
-* term names: MaaEnd's `option.AutoEssenceSkill.s<slot>_<id>` strings - the essence's own
-  wording, which differs from the weapon's skill bar for two terms (源石技艺提升 /
-  法术伤害提升, see scripts/mac/gem-check.py); the text before `·` when a string is missing.
-* points: `locations.json` entries whose `slot2_ids` hold the 附加 id and `slot3_ids` the
-  技能 id. Base terms are not per point: MaaEnd's planner (autoessence/plan.go) offers
-  the full slot-1 pool everywhere, and its option text says to pick three of the five.
-* `inMaaEndTarget`: the weapon code is a case of a checkbox in Target.json, i.e. MaaEnd's
-  「目标选择」 mode can be told to farm it (that mode picks the point and the
-  pre-engraving itself, plan.go `SelectBestPlan`); `maaend` is the one line saying so.
-* Anything missing gives `terms: null, points: null` and a `reason`; it never fails the
-  table. Cross-checked 2026-10-15 against CEP (github.com/cmyyx/cep src/data/weapons.ts +
-  dungeons.ts): the same three terms and the same five points for the weapon of 祀, and
-  for the one of 明河 (relay/tests/test_need_table.py pins both).
-
 Who runs it: the relay, once a server day (needtable.py: rebuilt and put next to the
 phone state on COS, where the App reads it), so a new six-star, and her numbers moving
 from the wiki cards to the calculator, reach the App without anyone rerunning anything.
 By hand, from the Mac (the wrapper reads SKLAND_TOKEN from ~/.config/ark/.env):
 
-    python3 scripts/mac/build-need-tables.py                          # live -> web/data/need.json
+python3 scripts/mac/build-need-tables.py                          # live -> web/data/need.json
     python3 scripts/mac/build-need-tables.py --save-fixtures DIR      # live, and keep the (trimmed) responses
     python3 scripts/mac/build-need-tables.py --offline DIR -o FILE    # rebuild from the saved responses
     python3 scripts/mac/build-need-tables.py --rarity 5               # the newest five-star instead
@@ -94,27 +44,10 @@ game, `standards[]` holds the build standards (above) and `rows` mirrors the fir
 
 ## Where the numbers come from, in order of preference
 
-1. The calculator: `rules?charIds=<one id>` (breakthroughs + skills to 12, talents
-   excluded) and `rules?weaponIds=<one id>`. Only listed after release.
-2. The wiki entry itself: the 能力扩延 chapter's 精英化 and 战斗技能 widgets embed every
-   material as an `entry` card (`{"kind":"entry","entry":{"id":<wiki item id>,"count":N}}`,
-   names via the catalog's 物品 listings); the 天赋阵列 widget is left out, matching the
-   caliber. For 提弗洛斯 these cards equal her rules number for number (checked
-   2026-09-19). Weapons: the 武器总览 › 武器信息 widget, likewise equal to the rules.
-3. The client's own preview table (`ForesightCharGrowthTable.json`, stage 4 = the full
-   build, mirrored at github.com/rmxlinux/EndfieldData; item names from MaaEnd's
-   `iconRecognition.name.*` strings). **Its 协议棱柱 / 协议棱柱组 / 折金票 include the talent
-   tree**, which the caliber excludes - rows from it say so, and are replaced the moment
-   source 1 or 2 has her.
-
 Level-up gold and exp (1 -> 90) come with any `rules` response; they are read from
 hers, else her weapon's, else the first listed weapon's (`coverage.sources.levels`).
 
 ## Read-off traps (each pinned by `relay/tests/test_need_table.py`)
-
-* `charLevelRules[89]` (level 90) is `gold: "-1", exp: "-1"`: a sentinel, not a cost.
-* `material-list` names carried a trailing newline on 2026-08-28. Always `strip()`.
-* A material the account holds none of is absent from `itemCount`, not 0.
 """
 from __future__ import annotations
 
@@ -164,8 +97,6 @@ GAME, GAME_ID = "终末地", "endfield"
 SOURCE = ("最新六星与其专武按森空岛百科的「上线时间」「类型」「主要获取方式」定；用量优先森空岛养成计算器 rules，"
           "计算器未收录时读百科词条里的养成材料卡片，两者都没有时读客户端预览表；名字和图标取自 material-list。"
           "方法见 docs/SKLAND-API.md §8")
-# Skills to 12: measured in the calculator's rules pulled 2026-09-19 (fixtures/skland-endfield,
-# rules-char-9de117d5...): every skill's levels[].targetLevel runs 2..12.
 MAX_SKILL_LEVEL = 12
 EXP_CHAR, EXP_WEAPON = "exp:char", "exp:weapon"
 RARITY_TAG = {"6": "10006", "5": "10005", "4": "10004"}   # brief.subTypeList[subTypeId=10000].value
@@ -192,8 +123,6 @@ STAGE = {
     "高阶培养自选箱Ⅰ": "通行证（不耗理智）",
 }
 GATHER = "采集 / 帝江号仓库（不耗理智）"
-# `ItemTable.obtainWayIds` = item_obtain_gather_* for every leaf, mushroom and stone
-# (client table of 2026-09-04, rmxlinux/EndfieldData; 协议纹石 = item_plant_spcstone_2_3).
 GATHERED = {"纯晶多齿叶", "至晶多齿叶", "晶化多齿叶", "受蚀玉化叶", "岩天使叶", "红矛叶",
             "重红柱状菌", "中红柱状菌", "轻红柱状菌", "星门菌", "血菌", "塔罗斯菌",
             "中黯石", "重黯石", "轻黯石", "武陵石", "燎石", "协议纹石"}
@@ -204,65 +133,28 @@ SECTIONS = ("通用", "高阶素材", "采集", "经验与货币")
 HIGH_TIER = {"D96钢样品四", "超距辉映管", "快子遴捡晶格", "象限拟合液", "三相纳米片", "跃迁浆体涂片", "高阶培养自选箱Ⅰ"}
 # Skland's own figure, https://game.skland.com/tools/endfield/cost-calculator (quoted below).
 LAG_MINUTES = 30
-# The official calculator page's own words (game.skland.com/tools/endfield/cost-calculator,
-# quoted in scripts/mac/lib/snapshot.py on 2026-08-28): 「仓库资源和干员数据等信息的同步，
-# 会有 30 分钟左右的延迟」. Stated by Skland, not measured here.
 LAG_NOTE = "森空岛的仓库数比游戏里晚，官方养成计算器页面写的是 30 分钟"
 # The preview table's lists that carry the full build (stage 4) and the talent-tainted ones.
 FORESIGHT_LISTS = ("skNur", "skCol", "skPreItm", "skPreMat", "upAdv", "upCol", "upPre")
 FORESIGHT_WITH_TALENTS = {"协议棱柱", "协议棱柱组", "折金票"}
-# The preview table keys by internal code (chr_0037_minghe) and names nobody; MaaEnd's
-# strings name items, not operators. Hers is found by elimination: an entry whose code
-# the calculator lists (its ids are md5 of the code: chr_0017_yvonne, chr_0027_tangtang
-# and chr_0038_purrche all are, 2026-10-14) is someone released, not her; of the rest,
-# the one whose weapons (`weaponIds`, wpn_<kind>_NNNN) are of her weapon type. Code kind
-# -> the wiki's weapon type, measured 2026-10-14 over every six-star weapon: MaaEnd's
-# `iconRecognition.name.wpn_*` names against the wiki entries' 「类型」 (claym 18 / funnel 22
-# / lance 14 / pistol 12 / sword 26 names, no exception).
 WEAPON_KIND = {"claym": "双手剑", "funnel": "施术单元", "lance": "长柄武器", "pistol": "手铳", "sword": "单手剑"}
-# The catalog's tag group for an operator's weapon type (`filterTagTree` 10208, titled 「武器」;
-# wiki entry 2503 carries tag 10219 and 2338 tag 10216 on 2026-10-14).
 WEAPON_TAG_GROUP = "10208"
 
-# Sections by use (the rows' `group`, user 2026-09-23: 「按用途分类…哪些是角色，哪些是武器」).
-# Which step a material serves is read off the calculator rules (charBreak* nodes,
-# skills[].levels[].targetLevel, weapon breakthroughs, the two level tables); each
-# section name is the official wiki's own wording, quoted with its entry (wiki ids 217,
-# 755, 1809, 19) in USE_SOURCE. Skill levels up to SKILL_UP_MAX are upgrades - the
-# wiki's own limit for them - and 10-12 are mastery.
-# A material one build uses at more than one step goes to USE_SHARED, with every step
-# and its count in `uses`. Only calculator rules say which step; a build read from the
-# wiki cards or the preview table gets per-owner sections 干员养成 / 武器养成 / 多处共用.
 USE_ELITE, USE_SKILL_UP, USE_SKILL_MASTER, USE_CHAR_LV = "干员精英化", "干员技能升级", "干员技能专精", "干员等级提升"
 USE_WEAPON_BREAK, USE_WEAPON_LV, USE_SHARED = "武器突破", "武器等级提升", "多处共用"
 USE_ORDER = (USE_ELITE, USE_SKILL_UP, USE_SKILL_MASTER, USE_CHAR_LV, USE_WEAPON_BREAK, USE_WEAPON_LV, USE_SHARED)
 # Sections for a build without calculator step rules: by whom it serves, still named by use.
 OWNER_CHAR, OWNER_WEAPON = "干员养成", "武器养成"
-# 2-9 are upgrades, 10-12 mastery: the official wiki's own line, quoted in USE_SOURCE from its
-# entry for that leaf material: 「作为干员升级等级不高于9级的技能时的消耗素材」 (read 2026-09-23).
 SKILL_UP_MAX = 9
 USE_SOURCE = ("用途按森空岛养成计算器 rules 里每种材料出现在哪一步（精英化各步 charBreak*、技能 2–9 / 10–12 级、武器突破、等级表）；"
               "步骤名取官方百科原文：三相纳米片「用于干员精英化、武器突破、干员技能专精」、至晶多齿叶「作为干员升级等级不高于9级的技能时的消耗素材」、"
               "折金票「干员及武器等级提升」；一种材料用在两步及以上的放「多处共用」，每步用量见 uses")
 
-# Where each material comes from (user 2026-09-23: 「哪些是采集物哪些是体力消耗的产出物需要做区分」):
-# the material's own official wiki entry, chapter 物品来源, one line per way. A line
-# naming the protocol space (协议空间) is a sanity stage, per the wiki's sanity entry
-# (id 17) quoted in ORIGIN_SOURCE; a line saying 采集 is gathering; the rest stay verbatim.
 ORIGIN_CHAPTER = "物品来源"
 ORIGIN_GATHER, ORIGIN_STAGE, ORIGIN_OTHER = "采集物", "理智关卡产出", "其它来源"
 ORIGIN_SOURCE = ("怎么来取自森空岛百科每种材料词条的「物品来源」原文，逐条：含「采集」的算采集，含「协议空间」的算理智关卡"
                  "（百科「理智」词条：完成协议空间等玩法的战斗后，需要消耗理智领取奖励），其余原文放「其它」；"
                  "kind 按 采集物 → 理智关卡产出 → 其它来源 的先后取第一个有的")
-# The self-select box. Which item is the box and which materials it can open come from
-# material-list: materialSpecials type SELFSELECT_* (高阶培养自选箱Ⅰ) and priorities[RARE]
-# (the five high-tier materials). What one box gives comes from the official calculator's
-# own script (game.skland.com/tools/endfield/cost-calculator, CostCalculator-BGMqCZak.js +
-# share_bottom_decorator-cN9de4XQ.js, read 2026-09-23 - BOARD/M4d-资源箱与分节.md): the
-# box it offers is ⌈RARE total ÷ 2⌉ capped by what is held, and the pop-up's
-# cost_calc_box_acquisition_tip takes count = boxes × 2, so one box = 2 of one RARE material.
-# How the page spends them is the user's rule (2026-09-23 09:05): only materials short of
-# one build, the shortest first, until covered or out of boxes; still short -> still 差 N.
 BOX_PER = 2
 BOX_SOURCE = ("箱子与可选材料取自森空岛养成计算器 material-list（materialSpecials 的 SELFSELECT 项、priorities 的 RARE 五种）；"
               "一箱开出任选一种 2 个，按官方养成计算器页面脚本（箱数 = ⌈高阶素材总需 ÷ 2⌉，说明句参数 count = 箱数 × 2）")
@@ -386,8 +278,6 @@ class RulesSource:
         url = f"{ZONAI}{path}" + (f"?{query}" if query else "")
 
         def once():
-            # 30 s: a whole build is 55 s for about 115 requests (measured from the Mac 2026-10-14),
-            # so one answer slower than 30 s is a stall, retried by _retry.
             req = urllib.request.Request(url, headers=self.skland.sign_headers(self.cred, url))
             with urllib.request.urlopen(req, timeout=30) as r:
                 raw = r.read()
@@ -413,10 +303,6 @@ class RulesSource:
             return self._memo[name]
 
         def once():
-            # The jsDelivr doors first: from the game PC in Shanghai a TLS handshake with
-            # raw.githubusercontent.com was reset (relay.log 2026-10-14 10:30:06, WinError
-            # 10054), the same route selfupdate._alternates measured at 2/8. 60 s each: the
-            # MaaEnd strings are 217 KB, 0.24 s from the Mac (measured 2026-10-14).
             err: Exception = RuntimeError("no door answered")
             for door in github_doors(url):
                 try:
@@ -1109,9 +995,6 @@ def build_standard(src: RulesSource, ctx: dict, ops: list[dict], who: str, role:
     char_gold, char_exp = level_totals(lv["charLevelRules"])
     weap_gold, weap_exp = level_totals(lv["weaponLevelRules"])
     gold_total = op_gold + char_gold + w_gold + weap_gold
-    # Fallback sections when the calculator has no step rules for her yet (the next one, read
-    # from the preview table): named by use, not by her name - user 2026-09-23 「按用途分类…
-    # 哪些是角色，哪些是武器」; the App shows the same three names (Stockpile.groupTitle).
     who_group, weapon_group = OWNER_CHAR, OWNER_WEAPON
     wuses = weapon_uses(wneed)
     wiki_ids = wiki_material_ids(src)
@@ -1236,9 +1119,6 @@ def summary(table: dict) -> str:
 log = logging.getLogger("ark.needtable")
 
 MARK = "needtable.json"
-# The routing numbers are the review's ceiling for this step (2026-10-14, needtable branch),
-# not measurements: one more try the same day for a passing Skland or COS fault, spaced so a
-# short outage can end first.
 BUILDS_A_DAY = 2
 SECOND_TRY_AFTER = timedelta(minutes=30)
 _lock = threading.Lock()

@@ -1,24 +1,13 @@
 """A desktop picture at the end of every MaaEnd task, kept as evidence.
 
-Why: some MaaEnd tasks (赠送干员礼物, 装备制造, 转交委托, 环境监测) leave nothing in
-any log but 「任务开始」 / 「任务完成」 (sample: AUTO-MAS history
-2026-10-05/endfield/MaaEnd-06-39-48.log). Whether they did anything cannot be
-checked afterwards; a picture of the screen at the moment each one finished can.
-
 Where the moment comes from: not the AUTO-MAS history log - AUTO-MAS writes
 it only once the whole script run is over (collect_watch.py's docstring,
 docs/CODE-HISTORY.md「engine.py:_scripts_running」). MaaFW's own
 `<maaend>/debug/maafw.log` is live and is already tailed by collect_watch; every
 task MXU posts shows up there as
 
-    [msg=Tasker.Task.Starting]  [details={"entry":"GiftOperatorMain","task_id":200000001,...}]
+[msg=Tasker.Task.Starting]  [details={"entry":"GiftOperatorMain","task_id":200000001,...}]
     [msg=Tasker.Task.Succeeded] [details={"entry":"GiftOperatorMain","task_id":200000001,...}]
-
-and MXU's own log of 2026-10-05 (debug/2026-10-05-2.log, 10:41:05) lists the
-16 entries it posted. The entry is turned back into the name AUTO-MAS prints
-(「🎁赠送干员礼物」) through the task declarations interface.json imports and
-locales/interface/zh_cn.json - all 16 of that round map to exactly the names in
-the AUTO-MAS log.
 
 One picture per Succeeded / Failed, and one at the first Starting of each
 MaaEnd launch (the 'before' picture), saved as
@@ -26,24 +15,6 @@ MaaEnd launch (the 'before' picture), saved as
 The folder cannot carry AUTO-MAS's own run name (MaaEnd-06-39-48): that is
 only known when the record lands. Bundles pick shots by time instead
 (`in_window`).
-
-The collect-watch thread only queues; a thread of its own takes the pictures.
-A picture goes through the desktop agent (desktop.py: an interactive scheduled
-task, polled up to 45 s), and that thread also narrows the gathering routes and
-ticks the MaaEnd watchdog, both of which must not wait on it. So a picture
-lands 5-8 s after its log line (the watcher's 2 s coalescing plus the agent's
-start-up; file times against file names in the evidence bundles of 2026-10-08,
--11 and -16), while MaaEnd posts the next task within 2 ms of a task's end and
-that task's first input lands 0.1-1.5 s later (maafw.log 2026-10-16). A picture
-therefore shows the next task, never the finished task's result screen (the
-verify ledger's #28: 093302-赠送干员礼物.png of 10-08 shows the 装备制造 page).
-Showing that screen needs a desktop agent already running when the task ends,
-which cannot be built or checked off the machine. Machine check #28 judges the
-four tasks from MaaFW's own steps instead (maaend_fwlog.task_trail) and names the
-picture with how late it was. The file name carries the log line's time, the
-file time when it was really taken. The
-entry -> name table is read once at service start: an entry added by a MaaEnd
-update mid-day is named by its entry until the next start.
 
 PNG, ~1.5 MB per 1280x720 picture: the desktop agent can only save PNG today
 and changing its PowerShell cannot be checked off the machine. Three days are
@@ -63,11 +34,6 @@ from pathlib import Path
 log = logging.getLogger("ark.task_shots")
 
 KEEP_DAYS = 3
-# A new MaaEnd launch is told by MaaFW numbering its tasks from 200000001 again
-# (MXU's log, 2026-10-05 10:41:07: task_ids 200000001..200000016). Not by a quiet
-# spell: 自动采集 alone ran 26 minutes without a task event (10:01:54-11:28:22).
-# The agent echoes every event from a second process within milliseconds
-# (fixtures/collect-watch-2026-09-14, Px7172 / Px18500); a repeat this close is that echo.
 ECHO_SECONDS = 5
 
 # MaaFW names a finished task Tasker.Task.Succeeded (MaaEnd's own log-analysis

@@ -10,16 +10,7 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_okww_alive_cache():
-    """OK-WW's python check on a phone publish: cached, and never asked by the stop push.
-
-snapshot._runtime asked redbutton._okww_python_alive on every publish (f6a8e515);
-an unreadable process list retries 3 x 3 s (procs.python_processes), so the
-停止前 push, which must land inside SvcStop's 15 s timer, could stall 6 s+.
-Now one answer serves snapshot.OKWW_ALIVE_TTL seconds, and the 停止前 / 关机前
-pushes (phone.send_state) never ask: they report the last answer, or 「没查」.
-
-    Formerly test_okww_alive_cache.py.
-    """
+    """OK-WW's python check on a phone publish: cached, and never asked by the stop push."""
     import contextlib
     import subprocess
     import tempfile
@@ -96,16 +87,7 @@ pushes (phone.send_state) never ask: they report the last answer, or 「没查�
 
 
 def _part_okww_drift():
-    """Before the run, the relay knows whether OK-WW's update broke a pinned copy.
-
-10-03 OK-WW went to v3.7.3 and changed find_nest. Nothing looked until the morning
-run's result check, which pushed 「这一轮没干完」 to the group on 10-04 and 10-05.
-okww_overlay.drift() reads the source on disk after the pre-update (and at boot) and
-hashes each pinned method the way the overrides do (inspect.getsource), so the
-mismatch is a line at boot, said once - not an alarm after the run.
-
-    Formerly test_okww_drift.py.
-    """
+    """Before the run, the relay knows whether OK-WW's update broke a pinned copy."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import okww_overlay
@@ -140,9 +122,6 @@ mismatch is a line at boot, said once - not an alarm after the run.
     check("体力读数钉住", "BaseWWTask.get_stamina" in got)
 
     print("\n[the two copies that check their own fingerprint are pinned too (audit 2026-10-13, A3)]")
-    # claim_daily and claim_battle_pass compare _src_sha with a constant inside the
-    # overrides instead of through expect_sha=; until 10-13 pins() read only the
-    # expect_sha= form, so the pre-run drift check covered 3 of 5.
     check("five pins in all", len(okww_overlay.pins()), 5)
     check("claim_daily pinned to v3.7.14-beta.2, not adapted", got.get("DailyTask.claim_daily"), ("555de9348dc7", False))
     check("claim_battle_pass pinned to v3.7.14-beta.2, not adapted",
@@ -163,8 +142,6 @@ mismatch is a line at boot, said once - not an alarm after the run.
     check("算出来的就是旧版哈希", d[0]["got"] if d else "", "3b0271924cac")
     state = tmpdir()
     line = okww_overlay.drift_line(okww(V372), state)
-    # find_nest is adapted automatically: logged, but not worded as a fault (audit
-    # 2026-10-13, A5 - 「对不上」 made the title ⚠️ for a copy that needs nothing).
     check("adapted only: no 对不上", "对不上" in line, False)
     check("说了会适配", "按新版适配" in line)
     check("names the method", "NightmareNestTask.find_nest" in line)
@@ -173,8 +150,6 @@ mismatch is a line at boot, said once - not an alarm after the run.
     check("同一处第二次开机不再说", okww_overlay.drift_line(okww(V372), state), "")
 
     print("\n[skipped pin (no adapt): said at every boot - its override stays off until copied again]")
-    # The user, 2026-10-06: 「不论多少次什么错误都要发」. Until then a skipped copy was said
-    # once per distinct mismatch, like an adapted one.
     farm = ("class FarmEchoTask:\n    def click_team_challenge(self):\n"
             "        return 'changed upstream'\n")
     state = tmpdir()
@@ -207,18 +182,7 @@ mismatch is a line at boot, said once - not an alarm after the run.
 
 
 def _part_okww_error_event():
-    """The reason a run failed is read from the last event's own tracebacks, grouped by time.
-
-OK-WW prints one raise as several tracebacks (the task, DailyTask.run_task_by_class,
-TaskExecutor's 「Daily Task exception stopped」); the innermost one carries the
-reason. collector_okww._okww_error grouped them by distance in the text (6000
-characters). On 2026-09-01 06:35 (tests/replay/2026-09-01/wuwa/OK-WW-06-35-43.log)
-the stacks between one event's headers were 36352 / 36937 characters long, so the
-task's own header fell out and the reason became the wrapper's 「任务执行：等一个画面没等到」.
-Audit 2026-10-13 item 7: grouped by timestamp now (headers within 2 s = one event).
-
-    Formerly test_okww_error_event.py.
-    """
+    """The reason a run failed is read from the last event's own tracebacks, grouped by time."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as co
@@ -263,8 +227,6 @@ Audit 2026-10-13 item 7: grouped by timestamp now (headers within 2 s = one even
           len(co._last_event(text, list(co._OKWW_TB_HEAD.finditer(text)))), 2)
 
     print("\n[how long it waited: the timeout line of the same raise, found by time (item 8)]")
-    # Measured over every real log on 2026-10-13: the timeout line is at most 0.62 s
-    # before its header, but up to 2558 characters back; the old window was 600.
     real = (fx_dir(Path(__file__), "fixtures") / "m6-okww" / "0921-weekly.log").read_text(encoding="utf-8")
     check("09-21: the 10 s wait is said", co._okww_error(real).endswith("（等了 10 秒）"), True)
     wait = "2026-09-01 10:50:13,335 INFO TaskExecutor TaskExecutor:wait_until timeout <f> 10 seconds\n"
@@ -278,15 +240,7 @@ Audit 2026-10-13 item 7: grouped by timestamp now (headers within 2 s = one even
 
 
 def _part_okww_error_reason():
-    """OK-WW 失败原因要写真的，「进不了游戏」只给真没进去的那种。
-
-2026-09-07 早班三趟：开头一句「waiting for game to start error … is not connected」
-（几秒后就连上了），跑了 41 分钟，倒在周本结算页（FarmEchoTask 抛 WaitFailedException），
-没开过无音区的局。日报把三趟都写成「进不了游戏（服务器维护／客户端待更新），今天跳过」。
-用户：「这三次报错可不是因为他没进去游戏。这个检查报错原因的机制有问题。」
-
-    Formerly test_okww_error_reason.py.
-    """
+    """OK-WW 失败原因要写真的，「进不了游戏」只给真没进去的那种。"""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
@@ -365,10 +319,6 @@ ok.task.exceptions.WaitFailedException
     _cok._log_collector_okww.removeHandler(_h)
 
     print("[原文和异常都不认识：明说不认识，并且**把原文抄进来**]")
-    # 2026-09-08 改的：原来这里只说「原文已记进日志，要补翻译」。那天 OK-WW 早班连败三次，
-    # 通知就是这么写的——而机器跑完早班就断电了，日志要等到 21:20 那趟开机才够得着。
-    # 人看着告警想知道出了什么事的那一刻，恰恰是日志最够不着的那一刻。
-    # 所以现在原文照抄进通知：英文一行看得懂，总比「不知道发生了什么」强。
     UNK2 = UNKNOWN.replace("ok.task.exceptions.WaitFailedException", "ok.task.exceptions.SomethingNewException")
     (d / "unk2.log").write_text(UNK2, encoding="utf-8")
     u2 = collector.parse_okww_log(d / "unk2.log")
@@ -379,11 +329,6 @@ ok.task.exceptions.WaitFailedException
     check("不出现「出错」「这一步」这类模糊词",
           any(k in got.split("原文照抄")[0] for k in ("这一步", "出错", "异常", "错误")), False)
 
-    # ---- The outermost of the three tracebacks (real line, 2026-09-08 21:50) ----
-    # The relay logged 「OK-WW 报错中继还没有翻译…任务 TaskExecutor，异常 Exception，
-    # 原文「📅 Daily Task exception stopped」」. That wrapper only says the daily list
-    # stopped; the reason is in the innermost traceback. Leaving it untranslated meant
-    # the notification could only say it did not recognise the error.
     from ark_relay.features.outcome import _okww_say
 
     _said = _okww_say("TaskExecutor", "📅 Daily Task exception stopped", "Exception")
@@ -436,10 +381,6 @@ ok.task.exceptions.WaitFailedException
     (root / "Client" / "Saved" / "LocalStorage.db").write_text("save")
     r = _co.parse_okww_log(log)
     check("弹窗记下了", r.get("okww_restart_dialog"), True)
-    # The paths are as the OS spells them: _client_change reports str() of the path
-    # relative to the game root, 「AntiCheatExpert\pld.dat」 on the machine (the user's
-    # own words, 2026-09-12, in its docstring) and "/" on the Mac. Both checks failed
-    # on the Windows CI runner (run 37519943859) against the "/" spelling.
     check("只有反作弊和存档变了 → 反作弊组件，带文件名", (r.get("okww_client_change"), r.get("okww_client_files")),
           ("anticheat", [str(Path("AntiCheatExpert") / "pld.dat")]))
     (root / "Client" / "Content" / "Paks.pak").write_text("new pak")
@@ -452,14 +393,7 @@ ok.task.exceptions.WaitFailedException
 
 
 def _part_okww_exit_race():
-    """AUTO-MAS 说「OK-WW 在完成任务前退出」，但 OK-WW 自己写了 Daily Task Completed → 这趟是做完的。
-
-2026-09-06 早班：09:36:18 Completed，09:36:24 进程退出，AUTO-MAS 只看见进程没了，
-记成失败；重试那趟无事可做记成 ✅、五行全是「—」。日报因此 ❌ + 空 ✅，用户问是不是代码改坏了。
-以证据（OK-WW 自己的日志）为准。
-
-    Formerly test_okww_exit_race.py.
-    """
+    """AUTO-MAS 说「OK-WW 在完成任务前退出」，但 OK-WW 自己写了 Daily Task Completed → 这趟是做完的。"""
     import json
     import pathlib
 
@@ -487,9 +421,6 @@ def _part_okww_exit_race():
     if rec2 is None or rec2.ok:
         fails.append("没有 Completed 的退出应仍判失败")
 
-    # 2026-11-03 ledger #135: OK-WW v3.7.14-beta.2 logged zh_CN completion then -e closed
-    # the hwnd; AUTO-MAS saw connected:0 and recorded disconnect. The start-of-round
-    # 4C farm prompt must not be mistaken for end-of-round completion.
     d1103 = root / "2026-11-03" / "5e401e6c"; d1103.mkdir(parents=True)
     (d1103 / "0.log").write_text(
         "2026-11-03 09:36:14,193 INFO TaskExecutor DailyTask:每日任务已完成，开始传送并刷取4C声骸\n"
@@ -529,17 +460,7 @@ def _part_okww_exit_race():
 
 
 def _part_okww_failed_reason():
-    """A run the overlay ended as failed is pushed with its reason once, without the OCR dump.
-
-Audit 2026-10-13 item 14, two real lines of 2026-10-12 (machine-okww-logs):
-* 09:52 the overlay's reason started with the step 「周本领奖：」, but the prefix
-  check looked for 「周本：」 only, so the pushed reason named the step twice;
-* 11:45 the reason ended in 「整屏读到 [0_1.00, 41/240_1.00, …]」, a whole screen of
-  OCR fragments, and that went into the alert and the verdict's detail. It stays in
-  the log only.
-
-    Formerly test_okww_failed_reason.py.
-    """
+    """A run the overlay ended as failed is pushed with its reason once, without the OCR dump."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as co, outcome
@@ -574,20 +495,6 @@ Audit 2026-10-13 item 14, two real lines of 2026-10-12 (machine-okww-logs):
 
 def _part_okww_i18n():
     """OK-WW's zh_CN log lines are turned back into English from the machine's own catalogs (okww_i18n).
-
-Ledger #136 (2026-11-04): ok-script's 「当前游戏或模拟器不支持选择的截图方式!」 reached the group as an
-unknown error because only a hand-written pair would have turned it back. Checked here:
-* the .po and .ts readers (multi-line strings, escapes, obsolete / plural / unfinished entries);
-* the tables: exact whole messages, concatenated prefixes, placeholders ({}, {name}, %s, %1),
-  ambiguous translations dropped;
-* normalize only touches a whole OK-WW log message: our own Chinese lines, OCR text and a short
-  catalog word inside a longer message stay as they were, English logs are returned unchanged;
-* with the real catalogs (OK-WW v3.7.19 ok.po, ok-script 3.0.3 zh_CN.ts, fixtures/okww-i18n) the
-  #136 line and full upstream messages come back in English, and outcome.normalize_okww_log still
-  applies the hand-written pairs for what the catalogs do not hold;
-* a changed catalog is read again.
-
-    Formerly test_okww_i18n.py.
     """
     import os
     import shutil
@@ -745,17 +652,7 @@ msgstr ""
 
 
 def _part_okww_landed():
-    """scripts/windows/okww-landed.py judges the OK-WW install the right way round.
-
-Since 2026-09-09 the relay's OK-WW changes live in ok_tasks/ark_overrides.py and no
-upstream file is edited (okww_overlay.py). The checker still expected 4 changed
-spots in FarmEchoTask.py, so a clean install showed a red cross, and it passed
-DailyTask.py / NightmareNestTask.py whatever their content (want=None). It also
-never looked at the overlay itself. The script runs on import (it reads the
-machine's .env), so its pure helpers are pulled out of the AST and run here.
-
-    Formerly test_okww_landed.py.
-    """
+    """scripts/windows/okww-landed.py judges the OK-WW install the right way round."""
     import ast
 
     SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "windows" / "okww-landed.py"
@@ -801,8 +698,6 @@ machine's .env), so its pure helpers are pulled out of the AST and run here.
               for n in tree.body if not isinstance(n, ast.FunctionDef) for c in ast.walk(n)), True)
 
     print("[the no-stamina flag: the override's own fixed path]")
-    # 2026-10-13 audit: the checker built the flag path from the data folder, so it could
-    # read a different file from the one the OK-WW override obeys.
     check("no flag path built from the data folder", "no-stamina-farm.flag" in src, False)
     check("reads config.NO_STAMINA_FARM_FLAG",
           any(isinstance(n, ast.ImportFrom) and n.module == "ark_relay.core.config"
@@ -815,14 +710,7 @@ machine's .env), so its pure helpers are pulled out of the AST and run here.
 
 
 def _part_okww_names_not_numbers():
-    """日报里鸣潮刷的本和产出必须是人话，不许只有序号或一句笼统的类别。
-
-用户 2026-09-06 看到「刷 无音区 #2 ×2 / 产出 声骸与角色突破材料」：
-「井号二是什么玩意儿？产出也是一坨屎」。08-26 凝素领域那一支已经改成写名字，
-无音区这一支当时漏了。这条测试把两支一起钉死，以后再加第三种本也得过它。
-
-    Formerly test_okww_names_not_numbers.py.
-    """
+    """日报里鸣潮刷的本和产出必须是人话，不许只有序号或一句笼统的类别。"""
     import pathlib
     import re
 
@@ -851,7 +739,6 @@ def _part_okww_names_not_numbers():
         if BAD.search(s):
             fails.append(f"还是笼统写法：{s!r}")
 
-    # From WuWa 3.7 (2026-09-30) the list moved down by 2: read an index against the list of the log's own day (F2 read on the machine 09-30)
     for got, want in ((wuwa_tacet.label(2), "无音区·烬心域"), (wuwa_tacet.label(2, "2026-09-30"), "无音区·烬心域"),
                       (wuwa_tacet.label(2, "2026-09-29"), "无音区·玄幽东岳"), (wuwa_tacet.label(4), "无音区·玄幽东岳")):
         if got != want:
@@ -873,11 +760,6 @@ def _part_okww_names_not_numbers():
     if "陨翼云渊" not in raw3.get("okww_farm", ""):
         fails.append(f"凝素领域应写副本名，得到 {raw3.get('okww_farm')!r}")
 
-    # 手机能选到的每一个序号，报告都得叫得出名字。
-    # 2026-09-08：手机页 FORGE 有 5 项、报告的表只有 4 条，选第 5 个就写成「凝素领域·#5」。
-    # Until 2026-11-17 the three checks below read the phone page's own lists (web/schema.js TACET /
-    # FORGE); the page was removed that day, so its lists are pinned here as they stood then
-    # (git show 1c8b5828:web/schema.js).
     page_tacet = {1: ("衔梦照世之心", "茜染怀想之花"), 2: ("衔梦照世之心", "镜影流电之瞬"), 3: ("羽落空尘之歌", "冥途夜行之灯"),
                   4: ("羽落空尘之歌", "清邪荡煞之心"), 5: ("雪落无声之愿", "剪心辑梦之影"), 6: ("听唤语义之愿", "长路启航之星"),
                   7: ("长路启航之星", "斑驳粉饰之沫")}
@@ -902,9 +784,6 @@ def _part_okww_names_not_numbers():
         if "#" in line or "没登记" in line:
             fails.append(f"明日安排第 {i} 个凝素领域退化成序号：{line}")
 
-    # All 20 forgery instances (in-game list re-read 2026-09-30; upstream ForgeryTask
-    # structure [5, 5, 5, 5]): every index names its instance, and every region lists
-    # the five weapon types in the same order.
     if sorted(wuwa_forgery.FORGERY) != list(range(1, 21)):
         fails.append(f"凝素领域对照表应是 1..20，得到 {sorted(wuwa_forgery.FORGERY)}")
     for i in range(1, 21):
@@ -922,21 +801,7 @@ def _part_okww_names_not_numbers():
 
 
 def _part_okww_python_filter():
-    """Which pythons count as OK-WW's own, and what an unreadable list means.
-
-The filter (preupdate_okww._OKWW_PY) decides what game_alive reports, what
-stop_okww_script stops, what _okww_left kills by number and what the full stop
-takes down. It matched a bare '*ok-ww*', and PowerShell's -like ignores case, so
-any python with "OK-WW" among its arguments was taken for OK-WW:
-`dispatch_guard.py start OK-WW` matched itself (scripts/windows/dispatch_guard.py).
-It now matches OK-WW's install folder. The -like patterns are run here with
-fnmatch on lowered strings, which is what -like does for '*' and '?'.
-
-okww_python_pids read a failed query (empty stdout) as "none running"; a nonzero
-exit, or empty output with an error on stderr, is now None.
-
-    Formerly test_okww_python_filter.py.
-    """
+    """Which pythons count as OK-WW's own, and what an unreadable list means."""
     import fnmatch
     import re
 
@@ -951,7 +816,6 @@ exit, or empty output with an error on stderr, is now None.
 
 
     print("[the filter: OK-WW's install folder, nothing else]")
-    # OK-WW's real line, ok-script.2026-10-12.log 15:23:30, run by echofarm._launch's pythonw.
     REAL = r'"D:\ark\okww\data\apps\ok-ww\python\pythonw.exe" D:\ark\okww\data\apps\ok-ww\working\main.py -t 2 -e'
     check("OK-WW as the echo farm starts it", is_okww(REAL), True)
     check("OK-WW's own python running -m ok",
@@ -967,8 +831,6 @@ exit, or empty output with an error on stderr, is now None.
           re.findall(r'CommandLine -like "([^"]*)"', estop), [r"*\ok-ww\*"])
 
     print("[an unreadable list is None (unknown), never [] (none left)]")
-    # 2026-10-13 review: pwsh started, the query failed, stdout was empty - and empty
-    # read as "no OK-WW running", so the relaunch went ahead and game_alive said clean.
 
 
     class Done:
@@ -995,16 +857,7 @@ exit, or empty output with an error on stderr, is now None.
 
 
 def _part_okww_quiesce_order():
-    """Stopping OK-WW has to kill the script before the game.
-
-2026-09-09: the user stopped the echo farm from his phone, the relay reported it
-stopped and put the config back - and 鸣潮 was still on screen. Two reasons, both
-here: the game was killed first, so OK-WW was still alive to start it again; and the
-process filter only matched `python.exe`, while the echo farm is deliberately launched
-with `pythonw.exe` so no console window covers the game.
-
-    Formerly test_okww_quiesce_order.py.
-    """
+    """Stopping OK-WW has to kill the script before the game."""
     import subprocess
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1117,19 +970,7 @@ with `pythonw.exe` so no console window covers the game.
 
 
 def _part_okww_report():
-    """鸣潮的运行结果要能进日报——即使它给不出掉落物。
-
-OK-WW 是纯图像识别的战斗脚本，从不读结算界面，所以没有 MAA 那种
-`drop_statistics` 可抄。它唯一公布的数字来自 ok-script 的 `info_set`
-（该函数每次调用都会写日志），能拿到的是：投进去多少波片、换来几次进本、
-日常任务停在哪里。运营 2026-08-25 的原话是「虽然它没有掉落物的显示，
-但只能说够用了」。
-
-另一处要点：AUTO-MAS 把 OK-WW 归在 `general_result` 这个通用键下，
-和「通用脚本」共用，**光看键名认不出是哪个脚本**——只能靠文件名前缀。
-
-    Formerly test_okww_report.py.
-    """
+    """鸣潮的运行结果要能进日报——即使它给不出掉落物。"""
     import json, os, sys
 
     TMP = tmpdir()
@@ -1175,9 +1016,6 @@ OK-WW 是纯图像识别的战斗脚本，从不读结算界面，所以没有 M
     check("进本次数 = 每次消耗体力各一条", got.get("okww_runs"), 5)
     check("no okww_daily field (dropped 2026-10-13, read by nothing)", "okww_daily" in got, False)
     check("活跃度带上限、满了要标出来", got.get("okww_points"), "100/100（已满）")
-    # 2026-08-29 改口径：OK-WW 的 used all stamina 不是「剩 0」，是**剩下的不够
-    # 再开一局**（凝素领域单次 40，剩 37 就进不去）。用户点名「用尽不是零吗？
-    # 还剩 20 多」——原来那句直译是事实错误。
     check("为什么停下", got.get("okww_stopped"), "体力不够再开一局")
     # 只报有信息量的项，而且按实际成败标注——出现在日志里不等于做成了。
     check("跑完还剩多少波片", got.get("okww_stamina_left"), 0)
@@ -1197,9 +1035,6 @@ OK-WW 是纯图像识别的战斗脚本，从不读结算界面，所以没有 M
           "体力不够，一局都没开成")
 
     print("\n[凝素领域要报人话名字，不是序号]")
-    # 用户 2026-08-26：「他那个凝素领域第一个机器看得懂，人看不懂是什么啊」。
-    # 序号→名字的表是实拍游戏内列表抄的，认不出的序号必须退回「第 N 个」，
-    # 宁可少说也不能报错名字——列表顺序会随筛选和版本变。
     fl = collector_okww._forgery_label
     check("0 → 陨翼云渊", fl("info_set Teleport to Forgery Challenge 0"),
           "凝素领域·陨翼云渊（迅刀）")
@@ -1242,13 +1077,6 @@ OK-WW 是纯图像识别的战斗脚本，从不读结算界面，所以没有 M
     body = "\n".join(core._render_entries([entry])) if hasattr(core, "_render_entries") else ""
     if not body:                      # 渲染函数名不同就退回源码检查
         src = (Path(__file__).resolve().parents[1] / "ark_relay" / "core" / "ledger.py").read_text(encoding="utf-8")
-        # 2026-08-29 用户要求删掉的两项：
-        #   消耗量——「我不需要啊，不要再塞进去了」
-        #   活跃度/日常进度——读数被实测证伪（活跃度实际 160 报成 40，
-        #   日常进度读成 0/180 而这一轮明明刷了）。错的数字比没有数字更糟，
-        #   在把屏幕和日志对上之前不报。
-        # 只看代码不看注释：注释里正写着「为什么不再报消耗量」，
-        # 连注释一起搜必然误报。（同一个坑今天踩过第二次了。）
         src_code = "\n".join(l.split("#", 1)[0] for l in src.splitlines())
         check("不再渲染消耗量", "消耗波片" in src_code, False)
         check("不再渲染活跃度/日常进度",
@@ -1262,14 +1090,7 @@ OK-WW 是纯图像识别的战斗脚本，从不读结算界面，所以没有 M
 
 
 def _part_okww_structured():
-    """判断改用 OK-WW 自己写的结构化状态（info_set），散文只做兜底。
-
-根治第 1 项：上游自己报的状态才是判据。2026-09-08 之前，「实际刷了哪个无音区」
-「哪一步出的错」都是从提示语里刮的，上游一改措辞就失效——今天修的一串 bug
-全是这么来的。OK-WW 每一步都写 `info_set 键 值`，那是它自己的状态。
-
-    Formerly test_okww_structured.py.
-    """
+    """判断改用 OK-WW 自己写的结构化状态（info_set），散文只做兜底。"""
 
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
@@ -1350,18 +1171,7 @@ def _part_okww_structured():
 
 
 def _part_okww_battle_pass():
-    """OK-WW's battle-pass line is about the battle pass, not about a fight.
-
-DailyTask.claim_battle_pass (upstream src/task/DailyTask.py) opens the battle-pass
-page and logs 「can not battle pass, maybe ended」 when no level digits are read
-there; the claim is skipped and the run goes on. The relay's table read it as
-「没能进入战斗」 until 10-11 (found by the 游戏-中继二 session on 10-10, BOARD
-被指出.txt line 742). The lines below are the real ones of the 2026-09-29 09:28 run
-(D:\\ark\\automas\\history\\2026-09-29\\wuwa\\OK-WW-05-20-18.log, the ERROR line at
-09:28:53 and its neighbours), read off the game machine on 10-11.
-
-    Formerly test_okww_battle_pass.py.
-    """
+    """OK-WW's battle-pass line is about the battle pass, not about a fight."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
@@ -1394,23 +1204,7 @@ there; the claim is skipped and the run goes on. The relay's table read it as
 
 
 def _part_okww_battle_pass_claim():
-    """OK-WW's battle pass (先约电台): a page that did not open is tried once more, then reported.
-
-Upstream's DailyTask.claim_battle_pass presses Alt, clicks the podcast icon and waits
-10 s for the level number; with none it logs 「can not battle pass, maybe ended」 and
-the run ends 「Daily Task Completed」. 2026-09-29 09:28 that happened, the day's podcast
-points went unclaimed, and the relay said nothing (BOARD 未进群报错-OKWW-AUTOMAS-1010.md).
-The user (10-11 17:36) on the daily podcast points lost: 「鸣潮战令没领会导致每日的战令点数丢失，
-为什么你不去查清楚？」 (he asked why nobody had looked into it).
-
-The overlay now photographs the miss, goes back to the world and opens the page once
-more in the same run; a second miss is an item undone in 「⚠️ 这一轮没干完」
-(outcome.battle_pass_checks). Upstream's real method is the one in
-fixtures/okww-DailyTask-v3.7.4.py.txt (read off the game machine on 10-11; upstream
-master had the same body that day).
-
-    Formerly test_okww_battle_pass_claim.py.
-    """
+    """OK-WW's battle pass (先约电台): a page that did not open is tried once more, then reported."""
     import ast
     import re
     import tempfile
@@ -1424,7 +1218,6 @@ master had the same body that day).
     from ark_relay.features import outcome
 
 
-    # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.4 until 2026-11-02.
     UPSTREAM = (fx_dir(HERE, "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "DailyTask.py.txt").read_text(encoding="utf-8")
 
 
@@ -1616,9 +1409,6 @@ master had the same body that day).
     cls.claim_battle_pass(g)
     check("the installed method retries", len([a for a in g.acts if a[:3] == ("click_relative", 0.86, 0.05)]), 2)
 
-    # Only words changed (ledger #130's kind: v3.7.13 -> v3.7.14-beta.2 wrapped the log text in
-    # self.tr): another text, the same shape - our copy goes on, listed as adapted, not skipped
-    # (dispatch relay-opt-round3-1108 O-02).
     WORDED = re.sub(r"self\.tr\(('[^']*')\)", r"\1", UPSTREAM)
     check("the worded body really differs from the pin", WORDED != UPSTREAM, True)
     n, cls = install(WORDED)
@@ -1682,9 +1472,6 @@ master had the same body that day).
           [[], [], [], []])
 
     print("\n[between two seasons (11-11 09:32, alarm #164): the game says 暂未开播 - nothing owed]")
-    # The run's own lines, read off the game machine on 11-11: both tries met the game's
-    # notice (NOTICE below) and the run went on to "Daily Task Completed". It was pushed
-    # to the group as an item undone that morning.
     REAL_1111 = (fx_dir(HERE, "fixtures") / "okww-1111-battle-pass-closed.log").read_text(encoding="utf-8")
     NOTICE = "当前先约电台各频道暂未开播，请于下期先约电台频道开启时间段内进入。"
     check("the sample holds the notice on both misses and upstream's ERROR line",
@@ -1728,27 +1515,7 @@ master had the same body that day).
 
 
 def _part_okww_claim_readback():  # noqa: C901
-    """Weekly boss claim: upstream's claim step with 确认 for its ESC, and the read-back.
-
-Runs the real overlay (claim hook, level-page read, 开启挑战 split) against
-upstream's own call order, with the game's real text:
-
-  (E) crystal -> F -> claim dialog -> 确认 (not ESC) -> 「波片不够，动用备用体力」 ->
-      确认 again -> settlement page -> 「退出副本」
-  backup used and still short (10-12 11:44): 取消, skipped as short, no solute
-  read-back: the way back in reads the counter on the level page, which has to be
-      one less - ok-script.log 2026-10-05 22:13:04 3/3, 22:15:19 2/3, 22:17:31 1/3,
-      22:39:48 0/3; unchanged / unread / some other number stops
-  no crystal / the walk to it fails (10-12 09:52:20, OK-WW-05-18-47.log:1103-1109):
-      no stop, the lap goes back to upstream
-  a dialog that is not the claim dialog, or not the weekly boss: upstream's ESC
-  unread 「本周剩余可收取次数」 before entering: stop, not 「enter anyway」
-  开启挑战: a dialog that is up but not recognised is never confirmed (the
-      「无法获取奖励」 reminder comes after 单人挑战 under v3.7.4, see
-      test_okww_weekly_entry_paths.py)
-
-    Formerly test_okww_claim_readback.py.
-    """
+    """Weekly boss claim: upstream's claim step with 确认 for its ESC, and the read-back."""
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1861,8 +1628,6 @@ upstream's own call order, with the game's real text:
         "FarmEchoTask.click_team_challenge")))
     ns["NO_CLAIM"] = str(Path(__file__).resolve().parent / "no-such-no-claim-flag")
 
-    # Real text. The claim dialog: the old patch's own note of the full-screen OCR
-    # (okww_patches/claim.py, removed 2026-10-12); the counter: ok-script.log 2026-10-05 (see the docstring).
     CLAIM_DIALOG = ["领取奖励需消耗60点结晶波片，请确认是否领取？", "取消", "确认"]
     SETTLEMENT = ["挑战成功", "退出副本", "重新挑战"]
     PAGE = {3: ["本周剩余可收取次数：3/3_1.00", "x60_0.79"], 2: ["本周剩余可收取次数：2/3_1.00", "x60_0.79"],
@@ -1876,7 +1641,6 @@ upstream's own call order, with the game's real text:
             self.name, self.x, self.y, self.width, self.height = name, x, y, 40, 30
 
         def __str__(self):
-            # ok-script's Box repr as the 10-12 log prints it
             return (f"Box(name='{self.name}', x={self.x}, y={self.y}, width={self.width}, "
                     f"height={self.height}, confidence=100)")
 
@@ -1887,8 +1651,6 @@ upstream's own call order, with the game's real text:
                 _At(CLAIM_DIALOG[0], 700, 500), _At("取消", 640, 700), _At("确认", 1280, 700)]
 
 
-    # The claim dialog with a readable bar: 240 full (「240/240+」, 0921-weekly.log:18), and
-    # 41 + backup 24 (enough with the backup, 10-12 11:44 numbers moved up by 24).
     FULL = claim_screen(240, 0, cap="240+")
     TOPUP = claim_screen(41, 24)
 
@@ -2245,28 +2007,7 @@ upstream's own call order, with the game's real text:
 
 
 def _part_okww_daily_chests():
-    """OK-WW's daily activity chests: every chest up to the points is claimed, and checked.
-
-2026-10-10 the run ended at 80 points with the 20-80 chests unclaimed and
-「Daily Task Completed」 in the log, and the relay said nothing (the user's words, 10-10
-19:4x and 19:55, are quoted in docs/OKWW-PATCHES.md and docs/NOTIFICATIONS.md).
-Upstream's claim_daily clicks one fixed point, the 100 chest, and never looks again
-(DailyTask.py claim_daily, sha 2b4977b62f7c).
-
-The sample is his own screenshot of the chest row (fixtures/ww-daily-80-1010-row.png,
-from BOARD/evidence/ww-daily-80-1010.png): 80 points, 20-80 claimed (he claimed them
-by hand), 100 not. The 「80 points, 20-80 not claimed」 state of that morning is the
-same row with the 100 chest's unclaimed picture put over the 20-80 chests.
-
-2026-10-11 09:29 all five were claimed (140 points), yet 「100 档点了没领到」 went out:
-the 100 chest was looked for by its label's box centre, and 「100」 is a digit wider
-than 「20」-「80」, so the look landed 14 px left of the tick (0.35; 0.96 where the tick
-is). The reward preview the click opens was on screen too, but it stops above the
-tick. That run's screenshot is fixtures/ww-daily-140-1011-row.png (the bottom of the
-1920x1080 frame, y 800-1010, preview included).
-
-    Formerly test_okww_daily_chests.py.
-    """
+    """OK-WW's daily activity chests: every chest up to the points is claimed, and checked."""
     import types
 
     import numpy as np
@@ -2495,29 +2236,7 @@ tick. That run's screenshot is fixtures/ww-daily-140-1011-row.png (the bottom of
 
 
 def _part_okww_farm_hook():  # noqa: C901
-    """Daily task: additional tasks first, the stamina farm to empty, one settlement shot.
-
-Runs the real overlay against a stand-in for upstream v3.7.3 DailyTask.run
-(DailyTask.py:77-136, reduced to its calls) and the three farm_* methods, with the
-numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
-
-  open_daily_first      the weekly boss (additional tasks) runs before the daily's
-                        stamina read; its error does not take the daily down; the
-                        trailing run_additional_tasks is a no-op; the next run resets
-  _farm_hook            farm_tacet / farm_forgery / farm_simulation lose daily= and
-                        used_stamina= (must_use 0: farm to empty); the no-farm flag
-                        file stops all three
-  claim_daily           upstream farms only when `not daily_reward_ready and
-                        used_stamina < 180` (DailyTask.py:88-89). After the weekly
-                        boss spent 180 the gate is shut and the rest of the stamina
-                        sat unused; the overlay farms it before claim_daily
-  use_stamina           the tacet settlement keeps one screenshot (tacet_drops) when
-                        the farm stops there
-  get_stamina           the 数/数 read, with the real OCR text, in and out of the
-                        reward dialog
-
-    Formerly test_okww_farm_hook.py.
-    """
+    """Daily task: additional tasks first, the stamina farm to empty, one settlement shot."""
     import os
     import re
     import types
@@ -2849,8 +2568,6 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
     check("current_stamina 照上游记", t.info.get("current_stamina"), CURRENT)
     check("读字原文进了日志（领奖框）", any(m.startswith("体力读字原文领奖框（第 1 次）") for m in t.logs))
 
-    # 2026-09-21 10:25:49 (test_m6_okww.py:52): the reward dialog showed 剩余180 with no
-    # 数/数 at all; upstream took that as 0. Five reads 1 s apart, then unknown, not 0.
     t = wire(object.__new__(TacetTask))
     t.wait_ocr = lambda *a, **kw: [Box("挑战成功", 1), Box("剩余180", 2)]
     t.result = (True, 60)
@@ -2860,15 +2577,11 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
     check("每次之间睡 1 秒", t.sleeps, [1, 1, 1, 1])
     check("留了 stamina_error 图", "stamina_error" in t.shots)
 
-    # 2026-09-13 09:33:01 (test_outcome.py:127): outside the dialog, one read.
     t = wire(object.__new__(TacetTask))
     t.wait_ocr = lambda *a, **kw: [Box("55", 1), Box("239/240", 2), Box("+", 3)]
     check("书页上读一次：239 + 55", t.get_stamina(), (239, 55, 294))
     check("书页上只读一次", sum(m.startswith("体力读字原文") for m in t.logs), 1)
 
-    # ---------------------------------------------------------------------------
-    # 2026-11-13: the stamina on the cultivation target's boss material (莉莉, 共鸣者突破材料),
-    # on while the marker file is there; the tacet farm takes whatever is left.
     boss_file = os.path.join(tmp, "ark-okww-boss-material.json")
     ns["BOSS_MATERIAL_FILE"] = boss_file
     real_boss = ns["_boss_material"]
@@ -2958,9 +2671,6 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
         def __str__(self):
             return self.name
 
-    # The 培养目标 page as seen 2026-11-13 04:34:11, scaled to 1920x1080: three rows 150 apart.
-    # 11-14: with the left menu as it really is (screenshots 11-13 06:25:07, 06:30:54): its 讨伐强敌 line reads
-    # 「产出共鸣者突破材料」, which contains the row's name - the fixture without it let "row in text" pass for "gone".
     PAGE = [B("培养目标", 288, 155), B("莉莉", 288, 190), B("所需材料", 940, 155),
             B("讨伐强敌", 342, 528), B("产出共鸣者突破材料", 392, 564), B("无音清剿", 342, 768), B("产出声骸材料", 356, 804),
             B("武器经验材料", 765, 270), B("106/106", 1085, 305, 60, 20), B("21/79", 1430, 305, 60, 20),
@@ -2983,9 +2693,6 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
         out = [b for b in PAGE if b.name not in ("1/46", "莉莉")]
         return out + [B(target, 288, 190), B(f"{owned_now}/46", 1430, 455, 50, 20)]
 
-    # The boss's reward dialog as seen 2026-11-13 04:45:58 (boss_material_no_claim, 1920x1080): the bar
-    # read 「156」 at x1186 y48 and 「154/240」 at x1410 y44; the dialog has the title 领取奖励, then the
-    # sentence that asks for 60 waveplates, then the two buttons 取消 (cancel) and 确认 (confirm).
     def dialog(wave, spare):
         return [B(str(spare), 1186, 48), B(f"{wave}/240", 1410, 44), B("领取奖励", 450, 350),
                 B("领取奖励需消耗60点结晶波片，请确认是否领取？", 630, 520), B("取消", 640, 678), B("确认", 1260, 678)]
@@ -3360,16 +3067,7 @@ numbers the game showed on 2026-09-07 (tests/replay/2026-09-07/wuwa):
 
 
 def _part_okww_merge_step():
-    """The step list does not claim 「声骸五合一」 from the line logged before the merge.
-
-collector_okww._okww_steps added 「声骸五合一」 whenever 「check discarded echo」 was in
-the log - a line upstream writes before merging. When MergeEchoTask then fails,
-upstream logs 「… Failed」 and carries on; the failure reaches the group through
-gamelog_errors.check_round, while the report listed the merge as done beside that
-alarm (audit 2026-10-13 item 16). The label is gone; the garden's 「不算完成」 stays.
-
-    Formerly test_okww_merge_step.py.
-    """
+    """The step list does not claim 「声骸五合一」 from the line logged before the merge."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as co
@@ -3393,17 +3091,7 @@ alarm (audit 2026-10-13 item 16). The label is gone; the garden's 「不算完�
 
 
 def _part_okww_plan_bits():
-    """Tomorrow's OK-WW plan lines, read from the master config that takes effect.
-
-plan._okww_plan_bits and plan._okww_extra_bit had no test (audit 2026-10-05,
-E). They are not dead code - plan.py:665 and :365 call them - so they get
-behaviour tests instead of deletion. Pinned here: the master DailyTask.json is
-read, quick config overrides it when on, the weekly-boss commandeering of
-「Teleport and Farm 4C Echo」 is reported as the weekly boss, and nothing at all
-is said when there is nothing to read.
-
-    Formerly test_okww_plan_bits.py.
-    """
+    """Tomorrow's OK-WW plan lines, read from the master config that takes effect."""
     import json
     import os
     from unittest import mock
@@ -3474,29 +3162,6 @@ is said when there is nothing to read.
 
 def _part_okww_revive_and_retry():  # noqa: C901
     """Echo farm and weekly boss: deaths go to upstream, and retries stop after three failures.
-
-Runs the real overlay against stand-ins for upstream v3.7.4 (FarmEchoTask.py:92-106
-revive_action, :108-125 run, :182-183 the is_revived continue, :216-229 the do_run
-re-teleport) and checks:
-
-  revive_action   not overridden any more (2026-10-13). Ours confirmed the revive
-                  popup inside a realm while farming echoes and spent a revive item
-                  per death; v3.7.4 hands a realm death to BaseCombatTask.revive_action
-                  (:227-240), which cancels the popup and leaves the realm to heal,
-                  and do_run re-teleports (at most 3 times per run)
-  combat_once     swallows CharRevivedException only when the revive put us back at
-                  the boss (is_revived: upstream's overworld revive), so the loop takes
-                  its `if self.is_revived: continue`; a realm death (echo farm or
-                  weekly boss) goes up to upstream's do_run handler, which re-teleports
-  FarmEchoTask.run  upstream v3.7.4 retries by calling self.run(retries - 1) from its
-                  own except (FarmEchoTask.py:122-123), so the wrapper must take and
-                  pass on `retries` (10-13: it took none, and the retry was a
-                  TypeError); it stops at _MAX_FARM_RETRIES and leaves the depth
-                  counter at 0 for the next run
-  scope           the one realm death on record (tests/replay/2026-09-01) was raised
-                  from inside combat_once, which is where the overlay looks at it
-
-    Formerly test_okww_revive_and_retry.py.
     """
     import os
     import re
@@ -3848,21 +3513,7 @@ re-teleport) and checks:
 
 
 def _part_okww_stamina_end():
-    """结束时的剩余波片要认 OK-WW 自己报的那个数。
-
-2026-08-28 那轮实际把体力刷到 0，报告却写「剩余波片 80/240」。
-原因是我们取 `info_set current_stamina` 的最后一条，而那是**每轮开打前**
-记的；之后又刷了一轮但不再记数，所以永远多算一轮。
-
-用户当场指出两件事：一是这轮其实刷干净了、是我们误报；二是「用尽」并不等于 0，
-OK-WW 的判定是「剩余不足以再开一次」，而单次消耗还会在 40/80 之间自动切换，
-外部根本推算不出来。
-
-好在 OK-WW 停手时自己会打一行 `current stamina: N not enough to continue`，
-那才是结束时的真实余量。下面这段日志是 2026-08-28 的原文。
-
-    Formerly test_okww_stamina_end.py.
-    """
+    """结束时的剩余波片要认 OK-WW 自己报的那个数。"""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -3933,31 +3584,7 @@ OK-WW 的判定是「剩余不足以再开一次」，而单次消耗还会在 4
 
 
 def _part_okww_stamina_nest_verdict():
-    """刷体力 and the nest item are judged from the lines of the task that did the work.
-
-Three holes found 10-13 against upstream OK-WW v3.7.4 (on the game PC since 10-06):
-
-  stamina (a)  「enter combat」 is CombatCheck.py:181, logged by every fighting task. The
-               weekly boss and the nest (both run before stamina farming) print it,
-               so a run that spent no stamina passed 刷体力. Only TacetTask /
-               ForgeryTask / SimulationTask lines count now.
-  stamina (b)  farm_tacet / farm_domain give up after three revives and return
-               quietly (TacetTask.py:79, DomainTask.py:73, 「exceeded recovery
-               retries (3), stop farming」): that is a failed 刷体力 now.
-  stamina (c)  when our get_stamina override cannot read 数/数 it returns -1 and logs
-               「按没读到处理（-1）」; upstream then says 「used all stamina」
-               (TacetTask.py:63-66, :105) or 「not enough stamina」 (DomainTask.py:61-63)
-               though nothing was read. With no stamina fight that is a failure.
-  nest         「click_team_challenge」, 「wait_in_team_and_world」 and 「echo captured」 are
-               never logged by upstream (BaseWWTask.py:678-683, :1115-1117 have no log
-               call; 「echo captured」 is only an argument at NightmareNestTask.py:74,
-               stored without logging at CombatCheck.py:58-61). They appear only in
-               traceback frames of other tasks' errors (fixtures/m6-okww/0921-weekly.log:
-               27-28), which booked an unreachable nest as fought. The daily-report
-               step and the verdict now read one classifier, outcome.nest_state.
-
-    Formerly test_okww_stamina_nest_verdict.py.
-    """
+    """刷体力 and the nest item are judged from the lines of the task that did the work."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as collector_okww, outcome
@@ -4114,18 +3741,7 @@ Three holes found 10-13 against upstream OK-WW v3.7.4 (on the game PC since 10-0
 
 
 def _part_okww_upstream_no_farm():
-    """When upstream's own gate skips the stamina farm, the verdict says so.
-
-Upstream v3.7.4 DailyTask.run farms stamina only while open_daily reads the
-180-waveplate daily task under 180 and the activity points under 100
-(DailyTask.py:86-93); at 180 the farm block (:117-128) is skipped without a line.
-The overlay's claim_daily then farms it anyway (the standing order 「刷到空」) and
-says 「上游这趟不刷体力（…）」 first. A run with no stamina fight and no
-「not enough stamina」 said only 「既没进本，也没说体力不足」 (audit 3 item 11 /
-audit 2026-10-13 item 22). Lines below are in upstream's and the overlay's format.
-
-    Formerly test_okww_upstream_no_farm.py.
-    """
+    """When upstream's own gate skips the stamina farm, the verdict says so."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome
@@ -4169,21 +3785,7 @@ audit 2026-10-13 item 22). Lines below are in upstream's and the overlay's forma
 
 
 def _part_okww_nest_capture():
-    """Nest overrides, part two: both entries, an unread count, an adapted install.
-
-* DailyTask's 「Farm Nightmare Nest for Daily Echo」 calls run_capture_mode directly
-  (upstream v3.7.3 DailyTask.py:106), which went round our run(): no filter gate, no
-  「列表里没找到」 alarm, no per-run resets. Both entries now share one wrapper.
-* A row whose nest name was read and whose 「已击败残象：x/y」 was not used to be skipped
-  without a word - with two wanted nests, the other one being full, the log said
-  「都已打满」. Now: screenshot nest_count_unread, the raw read in the log, an alarm.
-* find_nest installed adapted to a changed upstream body says so in OK-WW's log on
-  every run, and the run's report carries it beside the nest.
-
-Runs upstream's real v3.7.3 NightmareNestTask (fixture) against the overlay.
-
-    Formerly test_okww_nest_capture.py.
-    """
+    """Nest overrides, part two: both entries, an unread count, an adapted install."""
     import re
     import types
 
@@ -4192,7 +3794,6 @@ Runs upstream's real v3.7.3 NightmareNestTask (fixture) against the overlay.
     from ark_relay.features import okww_overlay
 
 
-    # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.3/v3.7.4 body until 2026-11-02.
     UPSTREAM = (fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
 
 
@@ -4401,18 +4002,7 @@ Runs upstream's real v3.7.3 NightmareNestTask (fixture) against the overlay.
 
 
 def _part_okww_nest_expected():
-    """Whether a run should have farmed nests follows upstream's own condition.
-
-OK-WW v3.7.4 DailyTask.py:84-93 runs the nests when 「Auto Farm all Nightmare
-Nest」 is an additional task, or when 「Farm Nightmare Nest for Daily Echo」 (default
-True, :37) is on, the farm target is not Tacet Suppression (the default) and the
-daily reward is not ready. gamelogs._okww_nest_expected also said True for a
-leftover 「Only Farm These Nests」 text or the echo flag alone, so unticking 「Auto
-Farm all Nightmare Nest」 turned every daily red (audit 2026-10-13 item 9). The
-daily-reward part is the log's (outcome.okww_checks), not the config's.
-
-    Formerly test_okww_nest_expected.py.
-    """
+    """Whether a run should have farmed nests follows upstream's own condition."""
     import json
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -4479,16 +4069,7 @@ daily-reward part is the log's (outcome.okww_checks), not the config's.
 
 
 def _part_okww_nest_fought_then_full():
-    """A nest fought until full is 「fought」, not 「full, skipped」 (audit 2026-10-13 item 11).
-
-outcome.nest_state checked 「指定点位都已打满，跳过」 before the fight lines, so the
-usual morning run - fight the nest, then find every chosen nest full - was
-reported as a skip: verdict 「残象聚落（已满，跳过）」 and step 「残象聚落（已刷满）」
-on every real run 10-06 .. 10-13 (machine-okww-logs). Only a run that found the
-nests full before any fight is a skip.
-
-    Formerly test_okww_nest_fought_then_full.py.
-    """
+    """A nest fought until full is 「fought」, not 「full, skipped」 (audit 2026-10-13 item 11)."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as co, outcome
@@ -4515,19 +4096,7 @@ nests full before any fight is a skip.
 
 
 def _part_okww_nest_names():
-    """「Only these nests」: the cap rule and the overlay's nest names, both must pass.
-
-outcome.nest_filter_checks told nests apart by the denominator of 「已击败残象 N/D」
-(more different caps than names asked for = a nest outside the setting). The
-overlay now logs 「nightmare nest: nest name: <name>」 for each nest it enters, just
-before the count box is clicked (「?」 when no name was read). With the filter on,
-the overlay only clicks a row beside a wanted name and logs that name, so the names
-alone never go red; 5352dfd8 let them replace the cap rule, which is what catches a
-click on the neighbouring row (review 2026-10-13, item 17). Now both run: the cap
-rule over every click, named or 「?」, and per wanted name no two different caps.
-
-    Formerly test_okww_nest_names.py.
-    """
+    """「Only these nests」: the cap rule and the overlay's nest names, both must pass."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome
@@ -4580,8 +4149,6 @@ rule over every click, named or 「?」, and per wanted name no two different ca
     check("two caps for one name: red", [ok for ok, _ in scope(text, "落渊南丘")], [False])
 
     print("\n[the Mac-side checkers pass the configured names, not a literal (10-15, alarm f7a4bb6a)]")
-    # okww_effective.py and healthcheck.py passed 「落渊南丘」 after 2a7ff78d moved to two nests,
-    # so the 10-15 09:20 run - 梦枢天罗 48 then 落渊南丘 41, exactly the setting - printed ❌.
     import re
     from ark_relay.core.mastercfg import ONLY_NESTS
     text = lines(("name", "梦枢天罗残象聚落"), ("click", 48), ("name", "落渊南丘残象聚落"), ("click", 41),
@@ -4599,17 +4166,6 @@ rule over every click, named or 「?」, and per wanted name no two different ca
 
 def _part_okww_nest_travel_retry():
     """A nest given up after two failed travels is 「not done」 in the verdict and the report, even when another nest was fought.
-
-10-27 the 快速旅行 click on 梦枢天罗 took no effect (someone was connected over
-TeamViewer at 09:22:44-09:23:51), the nest was cached as unreachable, 落渊南丘 was
-fought, and nest_state read the fight and booked the run 「fought」: the report said
-鸣潮 ran fine while one of the two nests he asked for was never farmed
-(fixtures/okww-1027-nest-unreachable.log, the real task lines 09:22:58-09:25:32).
-
-The overlay now retries a failed travel once and logs NEST_GAVE_UP_LINE only when the
-second try fails too (test_okww_nest_v373.py); this is the relay reading that line.
-
-    Formerly test_okww_nest_travel_retry.py.
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -4664,24 +4220,6 @@ second try fails too (test_okww_nest_v373.py); this is the relay reading that li
 
 def _part_okww_nest_v373():
     """OK-WW v3.7.3 changed find_nest; the 「only 落渊南丘」 filter must survive that and the next one.
-
-10-03 upstream moved the nest list's OCR box from 0.13 to 0.25 and added a second,
-scrolled page (go_nest_scroll). Our find_nest was pinned to the old body, so the
-mornings of 10-04 and 10-05 skipped it: upstream picked the top 0/48 nest, called it
-unreachable a second after clicking travel, left the map open, and died on
-「can't find gray_book_boss」 (ok-script.log 10-05 10:35:14 - 10:35:22). The relay then
-pushed 「这一轮没干完」 twice.
-
-This runs upstream's real v3.7.3 NightmareNestTask (fixture, stored as shipped) against
-the override:
-* the pin matches v3.7.3, and a changed body is adapted to, not skipped;
-* the box top is read from upstream (0.25), not hard-coded;
-* a page without 南丘 is not an error - only 「no page had it」 is, once, at the end;
-* after 「nightmare nest unreachable」 the map is closed once before the book is opened
-  again - also inside the daily, where upstream replaces the nest task's ensure_main
-  with a do-nothing lambda (v3.7.4 DailyTask.py:98-99), so ensure_main cannot do it.
-
-    Formerly test_okww_nest_v373.py.
     """
     import re
     import types
@@ -4691,7 +4229,6 @@ the override:
     from ark_relay.features import okww_overlay
 
 
-    # The OK-WW the machine runs (test_gl_okww_contract.INSTALLED); v3.7.3/v3.7.4 body until 2026-11-02.
     UPSTREAM = (fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
 
 
@@ -4779,7 +4316,6 @@ the override:
     check("没有跳过的", ns["_skipped"], [])
     check("也没有要适配的", ns["_adapted"], [])
 
-    # 南丘 (/41) is the second row since 3.7; a new /48 nest sits on top (10-05 10:35:14 read 0/48 at y=374).
     NAME_NEW, NAME_NANQIU = Box("新区残象聚落", 300), Box("落渊南丘残象聚落", 450)
 
 
@@ -4866,9 +4402,6 @@ the override:
     check("说了这一轮不刷", any("这一轮不刷巢穴" in m for m in t.infos))
 
     print("\n[上游的识字区上沿读不出来：不猜 0.25，记为没贴上进群，这一轮不刷]")
-    # 10-03 v3.7.3 moved the box from 0.13 to 0.25 and an unreachable 0/48 nest was clicked
-    # without a word. A guessed top is that failure again, so an unreadable or implausible
-    # one keeps find_nest out and goes through the not-applied report like any skip.
     OCR_LINE = "counts = self.ocr(0.35, 0.25, 1, 0.96, match=self.count_re)"
     unreadable = UPSTREAM.replace(OCR_LINE, "box = (0.35, 0.25, 1, 0.96)\n"
                                   "        counts = self.ocr(*box, match=self.count_re)")
@@ -5002,9 +4535,6 @@ the override:
           ["nightmare nest: nest name: 新区残象聚落"])
 
     print("\n[10-27: a travel that failed once is tried again at once; only a second failure gives the nest up]")
-    # ok-script.log 10-27 09:23:00-09:25:18: 梦枢天罗 0/48 clicked, 快速旅行 at 09:23:03 took no
-    # effect (TeamViewer connected 09:22:44-09:23:51), 「unreachable, skip this run」 at
-    # 09:25:04, then 「skip cached unreachable nightmare nest: go_nest:48:18」 and 落渊南丘 only.
     NestTarget = sys.modules["src.task.NightmareNestTask"].NestTarget
     MENGSHU = [Box("梦枢天罗残象聚落", 300), Box("已击败残象：0/48", 374),
                Box("落渊南丘残象聚落", 450), Box("已击败残象：10/41", 524)]
@@ -5066,18 +4596,7 @@ the override:
 
 
 def _part_okww_no_challenge_window():
-    """The no-challenge-button reason is told from the line of the same raise, by time.
-
-collector_okww._okww_say turned 「Teleport to boss failed」 into the reason that the
-challenge button never came when the overlay's 「找不到开启挑战」 line was within
-3000 characters before the traceback header - a guess about stack lengths. On every
-real log with both (2026-09-01 05:43, 06:35; fixtures/m6-okww/0921-weekly.log) the
-line is 0.001-0.02 s before its header. Now: within 2 s before the header's own
-timestamp (audit 2026-10-13 item 24, the rule of 29a44215 / bec95a17), the old
-window only for a header line without a timestamp. Lines in upstream's format.
-
-    Formerly test_okww_no_challenge_window.py.
-    """
+    """The no-challenge-button reason is told from the line of the same raise, by time."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as co
@@ -5115,14 +4634,7 @@ window only for a header line without a timestamp. Lines in upstream's format.
 
 
 def _part_okww_weekly_boss_step():
-    """周本要进 OK-WW 的步骤清单，否则「领满记账、周一恢复」永远触发不了。
-
-2026-09-07：三趟各领一次（3/3→0），手动补跑碰上「次数已达上限」正常退出，
-账本步骤里只有「无音区 ×1、残象聚落、周常乐园」，周本一个字没有，
-handle 里找「4C声骸 已完成」自然找不到，周本状态一直是「本周还没领满」。
-
-    Formerly test_okww_weekly_boss_step.py.
-    """
+    """周本要进 OK-WW 的步骤清单，否则「领满记账、周一恢复」永远触发不了。"""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
@@ -5181,12 +4693,8 @@ handle 里找「4C声骸 已完成」自然找不到，周本状态一直是「�
     check("打了没领（有 enter combat）", steps(HEAD + OCR.format(k=3) + LAND + FIGHT), ["周本（打了，没领到奖励）"])
     check("进了本没打（10-05 早：只有 prepared as）", steps(HEAD + OCR.format(k=3) + LAND), ["周本（进了本，没打起来，没领到奖励）"])
     check("没进本", steps(HEAD + OCR.format(k=3)), ["周本（没进本，一次没打）"])
-    # Real line, replay 2026-09-01 OK-WW-06-58-23 (11:01:39): used to read 「打了，没领到奖励」.
     NOWAVE = "2026-09-01 11:01:39,518 INFO TaskExecutor FarmEchoTask:波片不足挡住开启挑战，点取消跳过本次周本\n"
     check("波片不够跳过：说奖励没领、没打", steps(HEAD + OCR.format(k=1) + NOWAVE), ["周本（奖励没领：结晶波片不足，这一趟没打）"])
-    # On 2026-10-06 the overlay also ended the run as failed right after the skip line
-    # (since 2026-10-07 it ends as skipped, _skip_short); old logs keep that line.
-    # Constructed from that day's click_team_challenge wording.
     NOWAVE_END = ("2026-09-01 11:01:40,000 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束：周本：结晶波片不够领奖"
               "（游戏提示「结晶波片不足，无法获取奖励」），点了取消，这一趟没打\n")
     check("波片不够跳过＋按失败结束：日报同一行", steps(HEAD + OCR.format(k=1) + NOWAVE + NOWAVE_END),
@@ -5200,30 +4708,11 @@ handle 里找「4C声骸 已完成」自然找不到，周本状态一直是「�
     G = "2026-09-14 10:02:11,001 INFO TaskExecutor GardenTask:Garden current: [Box(name='2000/2000')]\n"
     check("做完了（中文）", steps(G + "2026-09-14 10:02:12,001 INFO TaskExecutor GardenTask:乐园任务完成, 已达到上限\n"), ["周常乐园（本周已完成）"])
     check("做完了（旧英文）", steps("x GardenTask:weekly garden already completed\n"), ["周常乐园（本周已完成）"])
-    # Only the counter read, no 「乐园任务完成」: not shown as done (2026-10-05 evidence rule).
     check("跑了但没有完成那句：不算完成", steps(G), ["周常乐园（没读到做完，不算完成）"])
 
 
 def _part_okww_weekly_entry_paths():  # noqa: C901
-    """Weekly boss entry: one path that looks at every screen, for every screen seen so far.
-
-The entry broke one shape at a time: first only the plain entry was known, then a
-「限时提前开放」 spoiler dialog that dropped us in the arena (2026-09-09 天傀劫煞),
-then a dialog that opened the boss's level page (2026-10-05 22:05, 天演溯心) - which
-the 10-05 morning run took for the arena and the 22:05 run walked the open world
-for. This file runs every known screen through the real overlay, upstream's own
-call order around it, and the real text the game showed:
-
-  (a) dialog -> level page   ok-script.log 2026-10-05 22:17:26 / 22:17:31
-  (b) dialog -> arena        bosstip.py (2026-09-09)
-  (c) no dialog -> level page   tests/replay/2026-09-07/wuwa/OK-WW-06-00-55.log:160-168
-  (c') the travel / team screen comes after upstream's 10 s
-  anything else -> screenshot, the screen's text in the log, stop; never a walk
-
-and the two deliberate stops on the way in: 0/3 claims left, short on waveplates.
-
-    Formerly test_okww_weekly_entry_paths.py.
-    """
+    """Weekly boss entry: one path that looks at every screen, for every screen seen so far."""
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -5345,8 +4834,6 @@ and the two deliberate stops on the way in: 0/3 claims left, short on waveplates
           "FarmEchoTask.click_team_challenge" in ns["_applied"])
     check("不再有「认不出就去大世界走路」那条", "_EarlyLanded" in ns, False)
 
-    # Real text. ok-script.log 2026-10-05 22:17:26 (the dialog box) and 22:17:31 (the
-    # whole screen after 确认, as logged - the first 300 characters).
     DIALOG = ["Box(name='提前到达目标位置可能影响剧情体验，是否确认前往？', x=600, y=502, width=693, height=33, confidence=99)"]
     LEVEL_PAGE = ("Box(name='定序诸理之律', x=102, y=52, width=168, height=33, confidence=100) "
                   "Box(name='136', x=1326, y=42, width=72, height=43, confidence=100) "
@@ -5726,16 +5213,7 @@ and the two deliberate stops on the way in: 0/3 claims left, short on waveplates
 
 
 def _part_okww_weekly_spend():
-    """Verified weekly-boss claims count in 「消耗 波片」 (audit 2026-10-13 item 12).
-
-okww_stamina_spent was summed only from the drops between get_stamina readings
-(`info_set current_stamina`). The weekly claim does not take a reading, so its
-60 waveplates per claim were missing: 10-12 11:41 (okww-task.sh 2) claimed three
-times, read back 3->2->1->0, and the run showed no waveplates spent at all. Each
-verified claim now adds 60, unless a drop between two readings already shows it.
-
-    Formerly test_okww_weekly_spend.py.
-    """
+    """Verified weekly-boss claims count in 「消耗 波片」 (audit 2026-10-13 item 12)."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as co
@@ -5802,19 +5280,7 @@ verified claim now adds 60, unless a drop between two readings already shows it.
 
 
 def _part_okww_overlay_main():
-    """Ark's OK-WW changes live in OK-WW's own extension point, not in its source.
-
-ok-script executes every .py under `<working>/ok_tasks/` at startup, so our changes
-can rebind methods on upstream's classes without a single upstream file being
-edited. That removes the whole family of failures the text patches kept producing:
-half-applied, applied twice, or reverted to the wrong previous version - all silent.
-
-What must not become silent in exchange: an override that did not take because
-upstream renamed the method. The file writes a report; this pins that the relay
-reads it and says so.
-
-    Formerly test_okww_overlay.py.
-    """
+    """Ark's OK-WW changes live in OK-WW's own extension point, not in its source."""
     import json
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -5847,18 +5313,11 @@ reads it and says so.
     check("文件里有顶层类", "\nclass " in src)
     check("重绑之前先检查方法还在不在", "上游没有这个方法了" in src)
     check("抄整段的要比对上游正文", "expect_sha" in src)
-    # 2026-09-09 pilot: the tacet teleport's team screen arrived just after upstream's
-    # 10-second wait ran out. 19 runs across five days had already died there.
     check("传送界面等不到时会多等一次", "多等 15 秒" in src)
     check("多等那次不许自己抛，找不到才抛", "raise_if_not_found=False" in src)
-    # 2026-09-09, the user asked the right question: if we replace a method outright and
-    # upstream later changes theirs, we would never know. Only a pin catches that, so
-    # every whole-method replacement must carry one.
     whole = [l for l in src.splitlines() if "@override(" in l]
     pinned = [l for l in whole if "expect_sha=" in l]
     check("整段替换的都钉住了上游哈希", len(pinned) >= 1)
-    # revive_action is no longer overridden at all (2026-10-13, upstream v3.7.4 handles
-    # the realm death); the whole-method replacements are the pinned ones below.
     check("被替换的是那两个小方法", any("click_team_challenge" in l or "find_nest" in l
                                         for l in pinned))
 
@@ -5880,8 +5339,6 @@ reads it and says so.
         okww_overlay.REPORT.write_text(json.dumps({"error": "Traceback ... ImportError"}),
                                        encoding="utf-8")
         check("整个文件炸了也要说", "一条都没生效" in okww_overlay.report_line())
-        # Raised part-way (audit 2026-10-13, A5): the overrides are applied one by
-        # one, so the ones before the error are live - say which.
         okww_overlay.REPORT.write_text(json.dumps(
             {"applied": ["FarmEchoTask.revive_action", "FarmEchoTask.handle_claim_button"],
              "skipped": [], "error": "Traceback ... KeyError"}), encoding="utf-8")
@@ -5977,7 +5434,6 @@ reads it and says so.
         return list(ns["_applied"]), [x["why"] for x in ns["_skipped"]]
 
 
-    # The 10-13 case: v3.7.4 retries with self.run(retries - 1); a run(self) copy made that a TypeError.
     applied, why = gate("run", lambda self: "ours")
     check("ours run(self) vs upstream run(self, retries=3): not bound", applied, [])
     check("listed as skipped, naming the parameter", len(why) == 1 and "参数变了" in why[0] and "retries" in why[0], True)
@@ -5999,7 +5455,6 @@ reads it and says so.
 
     print("\n[体力读数：数/数 没读到是「没读到」，不是 0]")
     parse = ns["_parse_stamina"]
-    # The strip as OCR reads it on the 2026-09-21 screenshots (10-20-43.029 and two more):
     check("09-21 截图原样", parse(["55", "240/240", "+"]), (240, 55))
     check("240/240 拆成两块也拼得回", parse(["55", "240", "/240"]), (240, 55))
     check("拆成三块也拼得回", parse(["55", "240", "/", "240"]), (240, 55))
@@ -6079,8 +5534,6 @@ reads it and says so.
     check("领奖框读 5 次都没有就算没读到", (read(t, True), t.slept, t.shots), (None, 4, ["stamina_error"]))
 
     print("\n[母本指路文件：改动文件靠它读「只刷落渊南丘」]")
-    # ok-script rewrites configs/ at load and drops the key (09-10..09-13 farmed all
-    # four nests), so the value is only ever readable from AUTO-MAS's master.
     automas = tmpdir()
     mdir = automas / "data" / "c5e9-okww" / "Default" / "ConfigFile"
     mdir.mkdir(parents=True)
@@ -6115,8 +5568,6 @@ reads it and says so.
 
     print("\n[the launch argument is OK-WW's own since v3.7.4: no hook on start_controller.execute]")
     src_now = okww_overlay.source_text()
-    # 2026-11-10: the file does name start_controller now (StartController._do_start, the command-line task,
-    # _part_okww_overlay_param_start), so this looks for what it is about - a hook on its `execute`.
     import re as _re
     hooked = _re.search(r"""start_controller\w*\s*\.\s*execute\b|override\([^)]*["']execute["']""",
                         src_now.split("# The launch-argument hook")[0])
@@ -6128,21 +5579,7 @@ reads it and says so.
 
 
 def _part_okww_overlay_faults():
-    """An overlay that is not in place reaches the group, whatever its words.
-
-Audit 2026-10-13 (A1): when the overrides could not be installed, or the master
-pointer could not be written, the lines said 没装上 / 装不上 / 写不了 / 找不到 -
-none of them in texts._PATCH_TROUBLE - so the push title was the healthy
-「🩹 OK-WW 补丁」, which notify.route_of keeps in the log. OK-WW ran as plain
-upstream while every report stayed green.
-
-install() and write_master_pointer() now raise OverlayTrouble on each failure path,
-and boot_stages._stage_patch_okww counts those as failures by construction. Each
-path is driven through the boot stage here and must end with the ⚠️ title routed
-to the group; the healthy install stays 🩹 / log.
-
-    Formerly test_okww_overlay_faults.py.
-    """
+    """An overlay that is not in place reaches the group, whatever its words."""
     import os
     import types
 
@@ -6269,17 +5706,6 @@ to the group; the healthy install stays 🩹 / log.
 def _part_okww_overlay_install_guard():
     """install() leaves ok_tasks/ark_overrides.py alone unless it must change, and never
 rewrites it under a running OK-WW (audit 2026-10-13, A2).
-
-ok-script watches ok_tasks/ while OK-WW runs and executes again any .py there that
-changes (ok-script task_manager.py _on_debug_dir_changed, which hands a file it has
-not recorded as a task to load_single_user_task). Executing the overrides twice
-wraps our wrappers again. So:
-
-* identical bytes -> nothing is written and no process list is asked for;
-* different bytes while OK-WW runs -> not written, a logged line says so;
-* different bytes and OK-WW not running, or no way to tell -> written.
-
-    Formerly test_okww_overlay_install_guard.py.
     """
     import os
 
@@ -6383,15 +5809,6 @@ wraps our wrappers again. So:
 def _part_okww_overlay_pending():
     """An overlay install skipped because OK-WW was running is tried again before the
 relay next starts a run itself, and is said to the group if it still cannot be done.
-
-Review 2026-10-13 item 20: install() skips while OK-WW runs (a relay restart
-mid-run, e.g. a deploy). Until then the old overlay stayed until the next relay
-start - normally the next boot - with one 🩹 log line. Now okww_overlay.retry_pending
-runs after the pre-update closed OK-WW and right before phone.commands dispatches a
-script or a queue; still running there -> a WARNING (errwatch pushes every WARNING
-to the group).
-
-    Formerly test_okww_overlay_pending.py.
     """
     import logging
     import os
@@ -6428,8 +5845,6 @@ to the group).
     from ark_relay.features import preupdate
     from ark_relay.features import errwatch
 
-    # The stubbed win32api would make GetSystemMetrics read as "Windows is going down", and the
-    # boot pre-update stops at once for a stopping relay (boot_stages._stage_preupdate, 10-16).
     errwatch.system_shutting_down = lambda: False
 
 
@@ -6517,18 +5932,7 @@ to the group).
 
 
 def _part_okww_overlay_param_start():
-    """The task AUTO-MAS names on OK-WW's command line (`-t 1 -e`) is started, not dropped.
-
-2026-11-10 (ledger #158): OK-WW updated itself to v3.7.20-beta.3 at 08:48 and both starts of
-the morning shift logged 「<DailyTask> was cancelled while the game was starting」 (09:21:04,
-09:22:39); the game was up, no task ran, OK-WW never exited, the shift stood still until
-the 10:51 overtime alarm. Upstream's new pending list exempts an index, but _do_start has
-turned the index into the task object before it looks.
-
-Upstream is run, not imitated: fixtures/okww-v3.7.20-beta.3-start_controller.py.txt is
-ok/core/start_controller.py as it stood on the game PC that morning (sha256 3c4eb217…6d6521),
-executed here with stand-ins only for what it imports.
-    """
+    """The task AUTO-MAS names on OK-WW's command line (`-t 1 -e`) is started, not dropped."""
     import threading
     import types
 
@@ -6804,12 +6208,6 @@ def _part_okww_overlay_copies():
         check(f"调用了 {captured.split('(')[0]}", captured in src)
 
     print("\n[每一条绑定都要么有「触发→痕迹」核对，要么有一个真的去跑它的测试]")
-    # The nest filter was bound and reported applied for four days while doing
-    # nothing (09-10..09-13). A binding without a way to see it ran is not allowed,
-    # and a written reason is not a way: each binding either has a log trigger→trace
-    # check (PATCH_COVERAGE) or a behaviour test file that drives the method.
-    # Naming the method in that file is the cheapest proof the file is about it; for
-    # 「run」 the name alone says little, the mapping itself is the claim.
     from ark_relay.features import outcome
     TESTS = Path(__file__).resolve().parent
     bound = set(re.findall(r'@override\((\w+), "(\w+)"', src))
@@ -6836,16 +6234,7 @@ def _part_okww_overlay_copies():
 
 
 def _part_echo_farm_main():  # noqa: C901
-    """Farm a boss until a wall-clock time, then put everything back.
-
-Asked for on 2026-09-09 as 「刷的时候不要按次数，而是时间来」 - to a clock time, not a
-repeat count. OK-WW only counts runs, so the clock lives in the relay. Two things must hold or
-this quietly costs him tomorrow's morning run: the FarmEchoTask config is shared
-with the daily's weekly-boss step and has to be restored exactly, and a failure to
-launch must not leave the config pointed somewhere else.
-
-    Formerly test_echo_farm.py.
-    """
+    """Farm a boss until a wall-clock time, then put everything back."""
     import json
     from datetime import datetime
 
@@ -6907,7 +6296,6 @@ launch must not leave the config pointed somewhere else.
     c = fresh()
     ok, msg = echofarm.start(c, 1, "08:30", "天傀劫煞", now=NOW)
     check("开跑了", ok, True)
-    # the receipt says the phone's clock (Tokyo, an hour ahead): machine 08:30 is 09:30 there (App review 10-14)
     check("话里有目标和时刻（手机的时间）", "天傀劫煞" in msg and "09:30" in msg and "机器时间" not in msg, True)
     check("真的启动了一次", len(launched), 1)
     after = cfg_now(c)
@@ -6983,10 +6371,6 @@ launch must not leave the config pointed somewhere else.
     check("话里说是手动停的", "手动停止" in note, True)
     check("配置还原", cfg_now(c), ORIGINAL)
 
-    # 2026-10-12 (mute audit item 9): a wrap-up that says something went wrong (the farm
-    # stopped because OK-WW could not be relaunched or farmed nothing, the end time unreadable,
-    # the game left open, the boss setting not put back) went to Server酱 only, inside the
-    # 「🥚 刷声骸收工」 text. A fault still there reaches the group; a clean wrap-up stays info.
     print("\n[the engine's wrap-up: a failed one is a group alarm, a clean one is not]")
     import types
     from datetime import timedelta
@@ -7028,7 +6412,6 @@ launch must not leave the config pointed somewhere else.
                          "2026-09-09 04:02:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n",
                          encoding="utf-8")
     check("on time, all put back, OK-WW farmed: one info wrap-up", _wrapup(_farm()), [("info", True)])
-    # 2026-10-13 audit: a night that farmed nothing ended as a clean 「到点了」.
     _wrap_log.write_text("2026-09-09 03:00:00,000 INFO TaskExecutor FarmEchoTask:farm echo before the start\n"
                          + "".join(f"2026-09-09 04:{m:02d}:00,000 INFO hwnd_window changed\n" for m in range(1, 50)),
                          encoding="utf-8")
@@ -7042,15 +6425,9 @@ launch must not leave the config pointed somewhere else.
     _c1 = _farm()
     _note1, _bad1 = echofarm.tick_result(_c1)
     check("a farmed night's line gives the count", ("有 2 次进展" in _note1, _bad1), (True, False))
-    # App review 10-14: no log name, no 「配置已还原」, the span on the phone's clock
     check("…without the log name or 「配置已还原」", ("OK-WW 日志" in _note1 or "配置已还原" in _note1, "从 " in _note1), (False, True))
 
     print("\n[the wrap-up names the level the game showed, never the configured one]")
-    # The owner's own order on 10-13 at 13:0x, quoted: 「把日报和收工消息改成写游戏里实际读到的等级」.
-    # The 10-13 run: FarmEchoTask.json said "Boss Level": "80", but boss 1's book entry opens the team
-    # screen with no level page, and every lap logged boss_string [Lv.90天傀劫煞_0.97].
-    # Line formats below are OK-WW's own: [Lv.90天傀劫煞_0.97] and [Lv.90.天傀劫煞_0.97]
-    # (10-13), [] (2026-10-05 log), [Lv.90天演溯心·衍律化形_0.92] (ok-script.2026-10-12.log).
     _BS = "INFO TaskExecutor FarmEchoTask:boss_string is "
     _wrap_log.write_text(
         f"2026-09-09 03:50:00,000 {_BS}[Lv.90天演溯心·衍律化形_0.92]\n"     # an earlier session
@@ -7133,8 +6510,6 @@ launch must not leave the config pointed somewhere else.
         echofarm.stop_okww = _stub_stop
 
     print("\n[还原的是母本那份，不是 working 里上一次刷声骸留下的]")
-    # 2026-09-09: the working file already held a farm's 「Boss Challenge / 30」 when
-    # the next farm started, so 「配置已还原」 restored a farm config.
     c = fresh()
     leftover = dict(ORIGINAL, **{"Teleport to Boss": "Boss Challenge", "Repeat Farm Count": 30})
     echofarm._cfg_path(c.okww_dir).write_text(json.dumps(leftover, ensure_ascii=False), encoding="utf-8")
@@ -7202,9 +6577,6 @@ launch must not leave the config pointed somewhere else.
     echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
 
     print("\n[OK-WW 长时间一行日志都不写就自己停下来并说话]")
-    # 2026-09-09: the game exited mid-farm and OK-WW sat against a window that was no
-    # longer there - six minutes without a single line and not one word about it.
-    # Silence that long now ends the run and says so.
     import ark_relay.features.weeklyboss as _wb
     _real_log = _wb._okww_log
     _logfile = tmpdir() / "ok-ww.log"
@@ -7228,13 +6600,9 @@ launch must not leave the config pointed somewhere else.
         check("刚重开完不重复开", echofarm.tick(c, datetime(2026, 9, 9, 4, 38, tzinfo=SERVER_TZ)), "")
         check("还是只开过一次", launched[_before:].count(1), 1)
         check("第一次只重开脚本，不动游戏", "stop" in launched[_before:], False)
-        # 2026-10-13 audit: nothing was stopped before the first relaunch, so a live
-        # OK-WW and a new `pythonw main.py -t 2 -e` could both drive one game.
         check("first relaunch: the old OK-WW script is stopped before the new one starts",
               launched[_before:], ["script", 1])
 
-        # 2026-09-09: the game itself wedged on a loading screen and restarting the
-        # script against it did nothing, twice, while the farm stood still.
         _rec3 = echofarm.current(c.state_dir)
         _rec3["restarted"] = "2026-09-09 04:36"
         echofarm._store(c.state_dir).set("queues", "echo_farm", _rec3)
@@ -7262,10 +6630,6 @@ launch must not leave the config pointed somewhere else.
         _wb._okww_log = _real_log
 
     print("\n[判据是「有没有刷到东西」，不是「日志有没有在写」]")
-    # 2026-09-09: the game hung on a loading screen for sixteen minutes while OK-WW kept
-    # writing window-size and update-check lines. A watchdog that measured silence saw a
-    # busy log and never fired, and restarting the script against a wedged game did
-    # nothing twice over.
     _noisy = tmpdir() / "noisy.log"
     _wb2 = __import__("ark_relay.features.weeklyboss", fromlist=["x"])
     _real2 = _wb2._okww_log
@@ -7287,9 +6651,6 @@ launch must not leave the config pointed somewhere else.
         check("阈值给到五分钟（一趟约一分钟，死一次约两分钟）",
               echofarm.RESTART_QUIET_MINUTES, 5)
 
-        # 2026-10-13 audit: a game in a retry loop logs 20-39 KB a minute, so the last
-        # progress line falls out of the 300 KB tail. The fallback was the file's mtime -
-        # "now" for a log that keeps growing - so quiet read 0 and nothing ever fired.
         import os as _os2
         _noise = "".join(f"2026-09-09 05:{m // 60:02d}:{m % 60:02d},000 INFO TaskExecutor retry loop "
                          + "x" * 200 + "\n" for m in range(0, 3000))
@@ -7322,10 +6683,6 @@ launch must not leave the config pointed somewhere else.
         _wb2._okww_log = _real2
 
     print("\n[an earlier session's progress in the same file does not count for this launch]")
-    # 2026-10-13 review replay: the machine's real ok-script.2026-10-12.log, cut at
-    # 15:25:32 (the farm launched 15:23 after a morning run whose last progress line is
-    # 11:47:53). Read with a 15:28 restart at 15:33:30, quiet was 225.6 minutes - past
-    # STALL_MINUTES, a failed stop for a farm 10 minutes old.
     import gzip as _gz
     _day = tmpdir() / "ok-script.2026-10-12.log"
     _day.write_bytes(_gz.decompress((fx_dir(Path(__file__), "fixtures")
@@ -7344,8 +6701,6 @@ launch must not leave the config pointed somewhere else.
         _wbw._okww_log = _real4
 
     print("\n[进度关键词：只认今天真的会写出来的句子]")
-    # Real lines: OK-WW v3.7.3's from tests/replay/2026-09-07/wuwa/OK-WW-06-00-55.log
-    # (lines 168, 226, 275), the overrides' copied from their log_info calls.
     _replay = (fx_dir(Path(__file__), "replay") / "2026-09-07" / "wuwa"
                / "OK-WW-06-00-55.log").read_text(encoding="utf-8")
     from ark_relay.features import okww_overlay as _ov
@@ -7390,10 +6745,6 @@ launch must not leave the config pointed somewhere else.
     check("读得出就是那个时刻", echofarm._started_at({"started": "2026-09-09 04:00"}).hour, 4)
 
     print("\n[stopping only the old script: bounded in time, confirmed gone, or the full stop]")
-    # 2026-10-13: the old script was given a blind two seconds; then it was looked for
-    # ten times with each PowerShell call free to run to its 60 s guard, and an
-    # unreadable list closed the game at once. Now the step has STOP_SCRIPT_SECONDS in
-    # all, an unreadable list is asked again once, and the caller is told why.
     import ark_relay.features.preupdate as _pko
     import logging as _lg
 
@@ -7522,8 +6873,6 @@ launch must not leave the config pointed somewhere else.
         check("游戏也关干净了就不多话", _mod.stop_okww(sleep=lambda _s: None), "")
 
         print("\n[游戏关不掉就必须说出来，不许报「已收工」]")
-        # 2026-09-09: 收工 said 「配置已还原」 twice while 鸣潮 was still on screen. The
-        # relay is a service in session 0 and taskkill from there does not reach the game.
         _mod.game_alive = lambda timeout=None: ["Client-Win64-Shipping.exe"]
         _ran.clear()
         _note = _mod.stop_okww(sleep=lambda _s: None)
@@ -7546,9 +6895,6 @@ launch must not leave the config pointed somewhere else.
         _note = _mod.stop_okww(sleep=lambda _s: None)
         check("stop does not say 收工 cleanly", _note != "" and "程序列表" in _note, True)
 
-        # 2026-10-13 audit: game_alive looked only at the game's process names, so a
-        # stop could say clean while OK-WW (pythonw.exe) lived on and later wrote its
-        # in-memory config over the restored FarmEchoTask.json.
         print("\n[OK-WW's own pythonw counts as still up]")
         class _Py(_Done):
             stdout = b'[{"ProcessId": 777}]'
@@ -7558,7 +6904,6 @@ launch must not leave the config pointed somewhere else.
         check("a live OK-WW script is named, in plain words", _mod.game_alive(), ["OK-WW 脚本"])
         _note = _mod.stop_okww(sleep=lambda _s: None)
         check("stop does not report clean while it lives", "OK-WW 脚本" in _note, True)
-        # 2026-10-13 review: the owner read 「OK-WW 脚本（pythonw.exe，编号 777）」.
         check("…without the program file or its number", ("pythonw" in _note, "777" in _note, "编号" in _note),
               (False, False, False))
         class _Py2(_Done):
@@ -7577,8 +6922,6 @@ launch must not leave the config pointed somewhere else.
         _sp.run, _pk._okww_quiesce = _real_run, _real_q
 
     print("\n[the wrap-up stop is bounded in time, and out of time it never says clean]")
-    # 2026-10-13 review: after the desktop kill, ten looks each ran a process query free
-    # to take its 60 s guard - one tick could last over ten minutes.
     _mod = importlib.reload(sys.modules["ark_relay.features.echofarm"])
     _mod.STOP_BAT = str(tmpdir() / "ark-okww-stop.bat")
     _BOUND2 = getattr(_mod, "STOP_OKWW_SECONDS", None)   # None before the bound: checks fail, not crash
@@ -7645,15 +6988,6 @@ launch must not leave the config pointed somewhere else.
 
 def _part_echo_farm_stop_and_backlog():
     """The red button ends an echo farm, and a farm order that waited out its deadline is refused.
-
-Both from the 0.4.4 review (BOARD/0.4.4-审查/指令与显示.txt):
-* :38 estop stopped AUTO-MAS and killed processes only. The farm's record stayed,
-  and echofarm.tick relaunched OK-WW minutes later (from the second try with the
-  game), farming until the deadline and holding off the shutdown.
-* :31 a 「刷到 08:30」 pressed while the machine was off waited in the mailbox; read
-  against the boot time it rolled to the next day's 08:30 - a whole day of farming.
-
-    Formerly test_echo_farm_stop_and_backlog.py.
     """
     import json
     import os
@@ -7801,8 +7135,6 @@ Both from the 0.4.4 review (BOARD/0.4.4-审查/指令与显示.txt):
     check("ntfy 的时间优先（手机钟可能快几分钟）", bodies[0].get("sent"), 1759672805)
     check("没有 ntfy 时间就用手机的", bodies[1].get("sent"), 1759672800)
     check("别的指令不加这个字段", "sent" in bodies[2], False)
-    # A phone order that did not take is an error: the group, every time (the user,
-    # 2026-10-06 02:46: every error to the group; phone_channel._phone_execute alert=not ok).
     check("失败回执报群（每一条都带 alert=True）", [a for _, a in notes.sent], [True, True, True])
 
     print("\n[刷声骸进行中按「停止一切」：刷声骸一起结束，tick 不再把它开起来]")
@@ -7833,10 +7165,6 @@ Both from the 0.4.4 review (BOARD/0.4.4-审查/指令与显示.txt):
     check("算没停干净", ok, False)
     check("说了刷声骸没结束、怎么办", "刷声骸没结束" in msg and "结束刷声骸" in msg)
 
-    # The owner, 2026-10-12 20:04: an error left unreported is worse than the error.
-    # A wrap-up that went wrong on a stop by hand (the phone's stop-farm order, red button) is the
-    # same group alarm as at the deadline (engine._echo_farm_deadline); until then it was
-    # only on the phone receipt.
     print("\n[手动停刷声骸 / 红按钮：收工出问题报群，干净收工不报群]")
     from ark_relay.core import texts
 

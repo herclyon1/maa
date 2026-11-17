@@ -22,7 +22,7 @@ def _part_stop_push_slow_network():
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
+    from _parts import tmpdir
 
     DATA = tmpdir()
     (DATA / "state").mkdir()
@@ -140,17 +140,10 @@ def _part_stop_push_slow_network():
     code, took, new, _ = run(BUDGET, limits=False)
     check("not sent: exit code 1", code, 1)
     check("the 15:42:28 line", "状态没能上报到手机（停止前）：看门服务等了" in new, True)
-    # Since audit 11 #2 (2026-10-13) a phone publish reads only snapshot.read_runtime, so
-    # AUTO-MAS is not asked even without stop-push's limits; ntfy alone runs out the time.
     check("AUTO-MAS not asked even without stop-push's limits", calls["mas"], 0)
     check("the timing line says the send did not finish", "还没发完" in new.split("看门服务代发用时：", 1)[-1], True)
 
     print("[2. stop-push's limits: the same wire -> sent well inside the budget]")
-    # The wall budget gets REAL_WORK_S on top: only the waits are scaled, the real work
-    # (state_payload, gzip, logging) is not, and on a loaded Windows runner it alone went past
-    # the scaled 1.75 s (relay-windows 38411893227, 2026-10-13: exit code 1, no success line).
-    # How far inside the budget the push ends is judged on the waits alone, unscaled
-    # (the 15:42 limits wait 20 s for Skland and 2 x 20 s + 3 s for ntfy).
     REAL_WORK_S = 10.0
     code, took, new, marker = run(BUDGET + REAL_WORK_S)
     check("sent: exit code 0", code, 0)

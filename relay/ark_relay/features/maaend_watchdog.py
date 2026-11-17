@@ -7,12 +7,6 @@ ends MaaEnd only after 40 minutes without a log line.
 Judged only while AUTO-MAS's runtime-snapshot says MaaEnd is exactly 「运行」
 (no snapshot -> no judgment, no kill). Hung means one of:
 
-  1. the plugin crashed: go-service.stderr.log gained `Exception 0x` /
-     `panic:` / `fatal error`; or MaaEnd.exe has been seen for 3 minutes and
-     go-service.exe is missing on two checks at least 60 s apart
-  2. stalled: MaaEnd.exe alive and maafw.log without a new line for
-     STALL_SECONDS (user-approved threshold, 2026-10-01 17:28)
-
 Then only MaaEnd.exe is ended, plus its two plugins by their own PIDs - never
 with `taskkill /T`: MaaEnd can launch Endfield.exe itself, so the game may sit
 in MaaEnd's process tree, and the game is never killed here. One alarm per
@@ -20,16 +14,6 @@ MaaEnd PID, whether the kill worked or not.
 
 No timer of its own: collect_watch's thread calls `tick` on every wake, at
 least once a minute.
-
-A MaaEnd that finished every task but does not exit (upstream MistEO/MXU#371)
-is not judged here: AUTO-MAS v5.7.0-beta.2 ends it itself. Its _wait_maaend_stage
-(app/task/MaaEnd/AutoProxy.py) watches MXU's log for 「kind: tasks-completed」,
-records the result first (check_log), then terminates MaaEnd.exe, logging
-「MaaEnd 队列已结束但进程未退出，正在中止脚本进程」. It ends MaaEnd.exe only, but
-the two plugins are gone by then: MXU stops both agent processes as the queue
-completes (mxu-tauri.log 2026-10-01 16:58:22 「Agent #0 child process exited」 /
-「Agent #1 child process exited」, the hang of that day). The outcome check books
-such a run (verdict._mark_no_self_exit).
 """
 from __future__ import annotations
 
@@ -88,14 +72,7 @@ def _tasklist() -> "list[tuple[str, int]] | None":
 
 
 def _taskkill(pid: int, image: str) -> "tuple[bool, str]":
-    """End one PID, but only if it still carries `image` (no /T, see the module docstring).
-
-    The name filter closes the gap between tasklist and taskkill: a PID freed and
-    reused in between belongs to some other program, and the filter makes taskkill
-    match nothing instead of ending it. A filter that matches nothing still exits 0
-    (「信息: 没有运行的带有指定标准的任务。」, read on the machine 2026-10-01), so
-    success is read from the 「成功」 / SUCCESS line, not from the exit code.
-    """
+    """End one PID, but only if it still carries `image` (no /T, see the module docstring)."""
     try:
         r = subprocess.run(["taskkill", "/F", "/FI", f"PID eq {pid}", "/FI", f"IMAGENAME eq {image}"],
                            capture_output=True, timeout=30)
@@ -280,8 +257,6 @@ class Watchdog:
         self._handled.add(pid)
         ok, why = self.kill(pid, "MaaEnd.exe")
         if ok:
-            # AUTO-MAS starts MaaEnd again: the shift's overrun clocks restart from now, as after
-            # MAA's hung start (maa_start_watchdog; audit 2026-11-08 B-06).
             from ark_relay.features.maa_start_watchdog import mark_restart  # noqa: PLC0415
             mark_restart(self.state_dir, "MaaEnd", self.wall())
         # Plugins left running (skipped or kill failed), in path form: the texts gate

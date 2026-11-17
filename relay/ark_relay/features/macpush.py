@@ -1,15 +1,10 @@
 """Each group alarm is also POSTed straight to the Mac, so the Mac never polls for it.
 
-The user, 2026-10-11 18:25: 「又在那轮询你们他妈只会做轮询是吗」, about the Mac
-pulling COS alerts/ every two minutes.
-The decision (BOARD/DECISIONS.md, the amended 「D-1011-报警交到手上」): no polling,
-the relay pushes.
-
 What is sent. The very row alertlog.py writes to COS alerts/<day>.jsonl (its
 FIELDS: ts, game, title, text, version, evidence_run, channel - nothing added), one JSON
 object per request:
 
-    POST <Config.alert_push_url>          default http://100.110.87.36:8931/alert
+POST <Config.alert_push_url>          default http://100.110.87.36:8931/alert
     Content-Type: application/json; charset=utf-8
     body: {"ts": ..., "game": ..., "title": ..., "text": ..., "version": ..., "evidence_run": ..., "channel": ...}
 
@@ -85,8 +80,6 @@ class MacPush:
         except FileNotFoundError:
             return []
         except ValueError as exc:
-            # Corrupt: the alarms in it would be lost without a word (audit 2026-11-08 C-09).
-            # Kept aside for a session to read, and said once at WARNING (errwatch takes it to the group).
             aside = self._path.with_name(f"{self._path.stem}.corrupt-{int(time.time())}{self._path.suffix}")
             try:
                 self._path.replace(aside)

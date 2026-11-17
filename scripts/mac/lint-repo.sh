@@ -186,7 +186,7 @@ echo "▶ 9/18 测试语料必须入库"
 missing=0
 while IFS= read -r f; do
   git ls-files --error-unmatch "$f" >/dev/null 2>&1 || { note "测试语料没入库：$f"; missing=1; }
-done < <(find relay/tests/fixtures -type f 2>/dev/null; ls relay/tests/fx_*.json 2>/dev/null)
+done < <(find relay/tests/fixtures -type f 2>/dev/null; ls relay/tests/fx_samples.json 2>/dev/null)
 [ "$missing" = 0 ] && ok "测试语料都在库里"
 
 echo "▶ 10/18 中继的状态只能由中继自己写"
@@ -286,7 +286,7 @@ echo "▶ 14/18 日志名要和模块名对得上"
 # sanity_plan.py 叫 ark.sanity。翻日志时按模块名 grep 一无所获，会得出「这个模块没跑」
 # 的错误结论——PITFALLS.md 里那条 WinError 10054 当时就是这么被找了半天。
 # Modules that share a name on purpose (preupdate_*, gameupdate_*, the collector split, __main__ as the root) are allow-listed.
-if out=$(python3 scripts/mac/lib/loggernames.py); then
+if out=$(python3 scripts/mac/lib/deadcode.py --loggernames); then
   ok "每个模块的日志名都等于 ark.<模块名>"
 else
   note "日志名和模块名对不上，按模块名翻日志会翻空："
@@ -298,7 +298,7 @@ echo "▶ 15/18 测试里的 check() 只准有一个意思"
 # （名字, 成立与否, 补充说明）。在那两个文件里按大多数人的习惯写一句比较，
 # 期望值会被当成说明打出来，断言退化成「实际值是不是真的」——永远通过，一声不吭。
 # 现在比较相等的叫 check(label, got, want)，判真假的叫 require(name, ok, detail)。
-if out=$(python3 scripts/mac/lib/checkshape.py); then
+if out=$(python3 scripts/mac/lib/deadcode.py --checkshape); then
   ok "check() 与 require() 的参数意思全仓一致"
 else
   note "测试里的断言函数参数意思对不上，写反了不会报错："

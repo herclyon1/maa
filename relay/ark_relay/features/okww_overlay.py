@@ -49,13 +49,7 @@ def target(okww_dir) -> "Path | None":
 
 
 class OverlayTrouble(Exception):
-    """install() or write_master_pointer() could not do its job; str(exc) is the plain line.
-
-    Raised, not returned as a line, so the caller cannot mistake it for a healthy
-    note: until 2026-10-13 these were plain strings, and the push title was chosen
-    by matching words (texts._PATCH_TROUBLE) that none of them contained - OK-WW ran
-    as plain upstream while every report said 🩹 (log only).
-    """
+    """install() or write_master_pointer() could not do its job; str(exc) is the plain line."""
 
 
 def install(okww_dir) -> str:
@@ -100,11 +94,6 @@ _pending: dict = {}
 def retry_pending(where: str) -> str:
     """Install a skipped overlay now: right before the relay starts a script or queue
     itself (phone.commands) and after the pre-update closed OK-WW (boot_stages).
-
-    Until 2026-10-13 a skipped install waited for the next relay start, normally the
-    next boot, with the old overlay in place and only a 🩹 log line (review item 20).
-    Still skipped here (OK-WW still running) or failing: a WARNING, which reaches the
-    group (errwatch). Returns the line, '' when nothing was pending.
     """
     if "dir" not in _pending:
         return ""
@@ -303,22 +292,8 @@ def nest_source_pristine(okww_dir) -> "tuple[bool, str]":
     return True, f"{len(cur)} 字节，sha1 {sha}"
 
 
-# ── before the run: do the pinned copies still match the source on disk? ─────
-# The report above only exists once OK-WW has started with the overrides, and OK-WW
-# updates itself on start: 10-04 the queue's own launch went v3.7.2 -> v3.7.3 at 09:18
-# and the stale copy was found out by the result check, as an alarm, after the run.
-# This reads the files instead, right after the boot pre-update, with the same hash the
-# overrides compute (inspect.getsource of the method), so a mismatch is known before
-# anything runs.
 _PIN = re.compile(r'@override\((\w+), "(\w+)", expect_sha=(_\w+)(, adapt=True)?\)')
 _SHA_CONST = re.compile(r'^(_\w+) = "([0-9a-f]{12})"', re.M)
-# The copies that check their fingerprint themselves instead of through expect_sha
-# (claim_daily, claim_battle_pass: on a mismatch they hand the call to upstream's
-# body), written as
-#     claim = DailyTask.claim_battle_pass
-#     sha = _src_sha(claim)
-#     if sha != _BATTLE_PASS_SHA:
-# Without this the pre-run drift check missed them (audit 2026-10-13, A3).
 _SELF_PIN = re.compile(r'^\s*(\w+) = (\w+)\.(\w+)\s*\n\s*(\w+) = _src_sha\(\1\)\s*\n\s*if \4 != (_\w+):', re.M)
 # All of src/: the bases are spread over it (CombatCheck lives in src/combat/).
 _SRC = ("data", "apps", "ok-ww", "working", "src")
@@ -377,12 +352,6 @@ def _method_sha(classes: dict, cls: str, name: str, seen=None) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest()[:12] if text else ""
 
 
-# ── the shape of a method: what the overrides compute at OK-WW start ─────────────
-# A copy whose upstream body changed only in words - the log text, self.tr(...),
-# docstrings, comments, layout - is applied there anyway and listed as adapted
-# (ark_overrides.tasks.py _SHAPES / _same_shape; dispatch relay-opt-round3-1108 O-02,
-# ledger #130). The same transform here, so the check before the run says the same:
-# tests/test_preupdate.py pins the two equal. Keep them alike.
 _LOG_CALLS = frozenset({"log_info", "log_debug", "log_error", "log_warning"})
 
 
@@ -478,14 +447,7 @@ def drift(okww_dir) -> list[dict]:
 
 
 def drift_line(okww_dir, state_dir=None) -> str:
-    """One plain line about pinned copies that no longer match, '' when none or already said.
-
-    A copy that goes in skipped (no `adapt`) leaves that override off until it is
-    copied again - a fault nothing fixes by itself, so it is said at every boot and
-    pre-update (the user, 2026-10-06: 「不论多少次什么错误都要发」; until then it was
-    said once per distinct mismatch like the rest). Copies the relay adapted itself
-    are said once per distinct mismatch (remembered in `state_dir`).
-    """
+    """One plain line about pinned copies that no longer match, '' when none or already said."""
     found = drift(okww_dir)
     if not found:
         return ""
@@ -502,11 +464,6 @@ def drift_line(okww_dir, state_dir=None) -> str:
             atomic_write_text(mark, sig)
     except OSError:
         pass
-    # Adapting can still refuse at OK-WW start (find_nest: box top unreadable);
-    # that start's report then lists it as skipped, said at the next boot. Until
-    # then an adapted copy is not a fault, so its sentence carries none of the
-    # words texts._PATCH_TROUBLE turns into the ⚠️ title (audit 2026-10-13, A5):
-    # it stays a logged line.
     adapt_part = "；".join(x for x in (
         f"OK-WW 升级改了 {'、'.join(adapted)}，中继会按新版适配后换上，适配不了就不换，并另外报出来" if adapted else "",
         f"OK-WW 升级只改了 {'、'.join(worded)} 的日志文字或排版，中继的改动照样换上" if worded else "",

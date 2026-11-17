@@ -17,9 +17,6 @@ from datetime import datetime
 
 log = logging.getLogger("ark.preupdate")
 
-# Hang guards of the subprocess calls in the pre-update: the most one call may take,
-# not what it takes (pwsh + Get-CimInstance measured 0.39-0.54 s on the game machine,
-# 2026-10-13 11:08). preupdate.worst_case_seconds() sums them.
 PWSH_GUARD_S = 60
 TASKKILL_GUARD_S = 30
 
@@ -66,18 +63,6 @@ def _close(exe: Path) -> None:
         log.warning("预更新：关闭 %s 失败", exe.name, exc_info=True)
 
 
-# The direct route. The installed relay (app_main.py) runs in the logged-on user's session,
-# elevated (\ArkRelay\main has highest privileges); the scheduled task below was for the
-# old service in session 0. From there a program is started directly, with no PowerShell and
-# no 3 s wait (audit 11-08 A-21). Two things the task route gave are kept:
-# * the user's own environment (CreateEnvironmentBlock), not the relay's (PYTHONUTF8 and the
-#   ARK_* variables would reach OK-WW's own Python);
-# * a life of its own: the relay is the process of the \ArkRelay\main task, and ending that
-#   task (schtasks /end, as estop.sh does) can end what runs in its job. Out of the job with
-#   CREATE_BREAKAWAY_FROM_JOB, as pkg_layout.restart_soon does for its helper; where the job
-#   does not allow that, the task route from then on.
-# Win32 values (learn.microsoft.com "Process Creation Flags", "STARTUPINFOA"); subprocess
-# names them on Windows only.
 _CREATE_NEW_CONSOLE = 0x00000010
 _CREATE_NEW_PROCESS_GROUP = 0x00000200
 _CREATE_BREAKAWAY_FROM_JOB = 0x01000000
@@ -178,12 +163,7 @@ def _task_name(stem: str) -> str:
 def _ps_literal(text: str) -> str:
     """`text` as one single-quoted PowerShell string: nothing inside is expanded and
     a double quote is an ordinary character; a single quote is written twice.
-
-    The arguments string holds double quotes whenever an argument has a space
-    (list2cmdline quotes it), and in a double-quoted PowerShell string the first of
-    them ends the string. The windowless route puts the program path among the
-    arguments, so from 2026-10-11 (07d90b11) the OK-WW failure screenshot, whose
-    program is C:\\Program Files\\PowerShell\\7\\pwsh.exe, could not build its task."""
+    """
     return "'" + str(text).replace("'", "''") + "'"
 
 
@@ -193,11 +173,6 @@ def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = (),
 
     `task` overrides the task name's stem, `label` the program name in the log line.
     """
-    # One task name per launch: Register-ScheduledTask -Force stops a running instance, and
-    # until 11-08 the name was one per program, so two launches of one program within the
-    # 3 s before the unregister (two threads taking pictures) replaced or unregistered each
-    # other's task (audit 11-08 A-21). A task left behind by a script killed inside those
-    # 3 s keeps its name and never runs again (it has no trigger).
     task = f"{task or _task_name(exe.stem)}-{uuid.uuid4().hex[:8]}"
     quoted = subprocess.list2cmdline(list(args)) if args else ""
     ps = (
@@ -233,23 +208,6 @@ def _spawn_via_task(exe: Path, cwd: Path, args: tuple[str, ...] = (),
     return True
 
 
-# The windowless route. powershell.exe and pwsh.exe are console programs: started
-# by the Interactive scheduled task they get a console window of their own, and
-# that window takes the foreground for a moment even with -WindowStyle Hidden
-# (the switch only hides it after PowerShell is up; on this Windows 11 machine,
-# with no default-terminal choice under HKCU\Console\%%Startup, the console may
-# also be handed to Windows Terminal). MaaEnd drives Endfield with its
-# foreground controller (MXU log: 「需要游戏窗口保持在最前且不被遮挡」), so every
-# picture taken mid-run knocked the game out of the foreground. On 2026-10-11 at
-# 09:39:02 the game did not get it back for 25 s; the taskbar covered the
-# 「ENDFIELD」 mark MaaEnd's InMenuList check reads (OCR got 「ENDI」 / 「ENDF」 next
-# to 「搜索」 / 「晴朗」), __ScenePrivateMenuListLoadingEnterWorld timed out and
-# 转交委托 failed (evidence 2026-10-11_endfield_MaaEnd-05-30-34, maafw.log:
-# 159 x 「Failed to ensure foreground window before screencap」 09:39:02-09:39:27).
-# pythonw.exe is a GUI program with no window, and it starts the console program
-# with CREATE_NO_WINDOW, so nothing on the desktop is created or activated. It
-# waits for the child, so the task's process lives as long as the program, as
-# when the program itself was the task's process.
 HIDDEN_LAUNCHER_NAME = "ark-hidden-launch.py"
 HIDDEN_LAUNCHER = (
     "import subprocess, sys\n"
@@ -407,11 +365,6 @@ def _spawn_fallback(exe: Path, cwd: Path, args: tuple[str, ...],
 
 def _tcb_enabled() -> bool:
     """True when this process may call WTSQueryUserToken (SE_TCB_NAME enabled), enabling it if held.
-
-    On the game machine the relay's service host has never held it: every pre-update since
-    08-26 took the token route first, failed with winerror 1314 and then used the scheduled
-    task - and 2026-10-12 08:46 that expected failure went to the group as 「中继自己报错了」.
-    A route that cannot work here is not tried; the scheduled task is the route.
     """
     try:
         import win32api  # noqa: PLC0415
@@ -493,11 +446,6 @@ def _spawn_interactive(exe: Path, cwd: Path,
         log.info("预更新：已在会话 %s 启动 %s", session, exe.name)
         return True
     except Exception as e:
-        # The relay's service host normally ends up here: WTSQueryUserToken needs
-        # SE_TCB_NAME, which the service does not hold (winerror 1314). That is the
-        # route the scheduled task exists for, not a fault - 2026-10-12 08:46 it was
-        # logged as a WARNING with a traceback and went to the group as 「中继自己报错了」.
-        # Any other failure is still a WARNING; a failed fallback warns in _spawn_fallback.
         if getattr(e, "winerror", None) == 1314:
             log.info("预更新：中继服务没有拿控制台令牌的权限（平常如此），走计划任务方式启动 %s", exe.name)
         else:
@@ -799,22 +747,9 @@ OKWW_BUDGET_SECONDS = 240
 # pyappify update check in 30000ms"), while app.json is rewritten within seconds
 # of launch. A verdict of "checked, no update" waits at least this long.
 OKWW_MIN_WAIT_SECONDS = 45
-# Where run_okww keeps the switch's value from before it turned it off, until it has put
-# it back. 2026-10-16 02:35 the 15 s hard exit killed the relay inside run_okww, the
-# `finally` that restores the switch never ran, and the next run read the switch as off
-# and "restored" it to off. The next run and every boot restore from this file instead.
 AUTOSTART_MEMO = "okww-autostart-was.json"
 
 
-# OK-WW's own python processes: python.exe or pythonw.exe (the echo farm launches
-# pythonw so no console covers the game) whose command line holds OK-WW's install
-# folder. One filter for stopping them and for looking for them.
-# The folder, not a bare "ok-ww" or `-m ok`: -like ignores case, so any python with
-# "OK-WW" among its arguments matched - `dispatch_guard.py start OK-WW` saw itself
-# (scripts/windows/dispatch_guard.py). A path fragment carries separators no
-# argument has. OK-WW's real line (ok-script.2026-10-12.log, 15:23:30):
-# D:\ark\okww\data\apps\ok-ww\working\main.py -t 2 -e, run by the pythonw.exe under
-# data\apps\ok-ww\python (echofarm._launch).
 _OKWW_PY = ("Get-CimInstance Win32_Process -Filter "
             "\"Name='python.exe' OR Name='pythonw.exe'\" | "
             r"Where-Object { $_.CommandLine -like '*\ok-ww\*' }")
@@ -824,10 +759,6 @@ def _okww_py(tail: str, timeout: "float | None" = None):
     """Run `_OKWW_PY | tail` in PowerShell 7; the CompletedProcess, or None when it
     could not run (or ran past `timeout` seconds)."""
     ps = _OKWW_PY + " | " + tail
-    # 60 s is a hang guard, not an expected duration (kept from _okww_quiesce,
-    # bc3b709d). Measured on the game machine 2026-10-13 11:08 Beijing: this call
-    # (okww_python_pids) took 0.54, 0.39, 0.39, 0.41, 0.41 s over 5 runs, so the
-    # guard fires only when pwsh or WMI hangs.
     try:
         return subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
                        capture_output=True, timeout=PWSH_GUARD_S if timeout is None else timeout)
@@ -996,12 +927,6 @@ def _wuwa_launcher_procs(root: Path | None = None,
     ps = ("Get-CimInstance Win32_Process -Filter "
           "\"Name='launcher.exe' OR Name='launcher_main.exe'\" | "
           "Select-Object ProcessId, ExecutablePath | ConvertTo-Json -Compress")
-    # 60 s is a hang guard. Not timed itself; the same pwsh + Get-CimInstance call
-    # for OK-WW's python was measured on the game machine 2026-10-13 11:08 Beijing
-    # at 0.39-0.54 s over 5 runs.
-    # As okww_python_pids: a query that failed inside pwsh prints nothing on stdout too, so
-    # a nonzero exit, or empty output with an error on stderr, is "could not read", never
-    # "no launcher" (audit 11-08 A-22).
     try:
         r = subprocess.run([_pwsh(), "-NoProfile", "-Command", ps],
                            capture_output=True, timeout=PWSH_GUARD_S if timeout is None else timeout)
@@ -1239,7 +1164,6 @@ def _memo_write(memo: "Path | None", value: bool) -> None:
         memo.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_text(memo, json.dumps({"was": value, "at": time.strftime("%Y-%m-%d %H:%M:%S")}))
     except OSError:
-        # Without the record a hard exit loses the value again, as before 10-16; the run goes on.
         log.warning("预更新：记不下 OK-WW 自动开游戏开关的原值（%s）", memo, exc_info=True)
 
 
@@ -1281,13 +1205,6 @@ def restore_autostart_leftover(okww_dir: "Path | None", state_dir: "Path | None"
     return f"OK-WW 的自动开游戏开关上次没放回，已放回原来的「{'开' if was else '关'}」"
 
 
-# ── after the pre-update: are OK-WW's own Python packages all there? (ledger #115) ──
-# 10-24 OK-WW updated itself to v3.7.11-beta.1, whose ok/core/plugins.py imports
-# `packaging`; its bundled Python had none, and the morning run crashed at start three
-# times. It was fixed by a pip install by hand, and the ledger said an update that
-# rebuilds the environment would crash again (dispatch relay-opt-round3-1108 O-01).
-# So, with OK-WW closed, its own python imports what main.py imports (config, ok) and
-# `packaging`, and names each module it cannot find.
 _OKWW_PYTHON = ("data", "apps", "ok-ww", "python", "python.exe")
 _OKWW_WORKING = ("data", "apps", "ok-ww", "working")
 # The probe, run by OK-WW's own python in its working folder. Two looks, one line each:
@@ -1496,10 +1413,6 @@ def run_okww(okww_dir: Path | None,
         # The stop came during the quiesce: no switch flip, no launch.
         log.info("预更新：中继正在停止，不启动 OK-WW")
         return ""
-    # ok-ww.exe has no launch argument that keeps it from starting the game, so
-    # the auto-start switch is turned off for this launch and restored in the
-    # `finally` below. Its value is kept in state first, so a process killed before
-    # the `finally` (10-16 02:35) does not lose it.
     memo = _memo_path(state_dir)
     kept = _memo_read(memo)
     if kept is None and (now := _okww_autostart_now(root)) is not None:
@@ -1534,15 +1447,6 @@ def run_okww(okww_dir: Path | None,
                             f"（现在是 {_okww_state(root)[0] or '版本未知'}）")
         return f"OK-WW 已更新：{_span(before_version, settled)}" if settled else ""
     finally:
-        # Close OK-WW and anything it started, also when something above raised,
-        # and before the switch is restored (a running OK-WW writes its settings
-        # back). The ok-ww.exe killed here is the one started above: _okww_quiesce
-        # ran before the spawn. It is also closed when the update is still running
-        # (stuck); the problem note lets the relay retry later.
-        # Closed for real before the switch is put back (audit 11-08 A-22): a quiesce alone
-        # does not wait for ok-ww.exe to be gone, and one that exits slowly writes its
-        # in-memory settings - the switch off - over the restored file. A stopping relay
-        # has its 15 s hard exit: the quiesce only, as before.
         clean = not launched
         try:
             if launched:
@@ -1659,12 +1563,7 @@ def wanted_today(automas_dir: Path | None, now: datetime | None = None,
 def worst_case_seconds() -> float:
     """The longest the boot pre-update can run, summed from its own budgets and hang guards.
 
-    scripts/windows/deploy_watch.py waits up to this much longer for the main loop's
-    「已挂上 AUTO-MAS 进程句柄」 while the pre-update runs: on 2026-10-16 02:33 a deploy
-    restart was the day's first boot, AUTO-MAS really updated (72 s) and OK-WW took its
-    45 s minimum, the 120 s watch failed, and the rollback's stop hard-exited the relay.
-
-    AUTO-MAS: the wait for its backend, plus one more HTTP try that began just before that
+AUTO-MAS: the wait for its backend, plus one more HTTP try that began just before that
     wait ran out (a check and a version read), the download, the install. OK-WW: a quiesce
     before, the close after (okww_close_max_seconds: until 11-08 a quiesce that did not look
     again), the scheduled-task launch, closing ok-ww.exe, its budget, and the

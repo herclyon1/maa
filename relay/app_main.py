@@ -103,13 +103,6 @@ def _relay_env() -> Path:
     os.environ.setdefault("ARK_LOG_FILE", str(DATA / "relay.log"))
     from ark_relay.__main__ import _load_dotenv  # noqa: PLC0415
     _load_dotenv(DATA / ".env")
-    # One state folder for everything, as on the old relay (config.NO_STAMINA_FARM_FLAG
-    # and docs/OPERATIONS.md both use C:\ProgramData\ark-relay\state): selfupdate keeps
-    # versions.code / versions.announced under <code>/state, and the boot reads
-    # cfg.state_dir. <code>/state is a junction to that same folder, resolved once here
-    # (.env's ARK_STATE_DIR, else <data>/state) and handed to Config as an absolute path.
-    # Two different state.json files made every boot log "code version v?" (cloud
-    # package smoke, 2026-10-10 22:37:41 and 22:38:00).
     os.environ.setdefault("ARK_STATE_DIR", str(state_default(DATA)))
     state = pkg_layout.state_dir(DATA)
     os.environ["ARK_STATE_DIR"] = str(state)
@@ -129,19 +122,12 @@ def _packaged_selfupdate(log) -> bool:
         return False
     from ark_relay.features import errwatch  # noqa: PLC0415
     if errwatch.going_down():
-        # Told to stop during the update (Windows going down, `app_main.py stop` from the
-        # installer): no restart behind that stop (audit 11-08 A-23). current.txt already
-        # names the new folder, so the next start runs it. Not SELF_UPDATE_LINE: this
-        # session ends in a stop, and machine check #11 judges its last push.
         log.info("代码已更新，已切到新版本文件夹；中继正在停止，不重启，下次启动就是新版本：%s", "、".join(changed))
         return True
     log.info("%s: %s", SELF_UPDATE_LINE, "、".join(changed))
     try:
         pkg_layout.restart_soon(pkg_layout.app_root(HERE))
     except Exception:
-        # current.txt already names the new folder: exit all the same and let the
-        # watchdog start it (its next look, CHECK_S = 30 s), rather than run on in the
-        # old code and announce the new version (audit s24 F1).
         log.exception("自更新后没能排上重启，退出后由看门服务拉起新版本")
     return True
 
@@ -258,9 +244,6 @@ def run() -> int:
         host.main()
     except Exception:
         log.exception("中继主流程出错退出")
-        # Said where the watchdog looks when it has to start the relay again and
-        # again (START_ERROR, quoted in its alarm), and as the exit code: until
-        # 2026-11-08 a crash ended with 0 like a clean stop (清单-1108 A-07).
         import traceback  # noqa: PLC0415
         _record_crash(traceback.format_exc())
         code = 1
@@ -303,15 +286,7 @@ ERROR_ACCESS_DENIED = 5
 
 def _stop(running, ask, end_task, sleep=time.sleep, clock=time.monotonic,
           note=lambda _msg: None) -> int:
-    """stop()'s loop with the Windows calls passed in (relay/tests/test_stop.py).
-
-    `ask()` sets the stop event: "asked", "not yet" (no event: the relay is still
-    starting) or "denied" (the event is there but this account may not set it - a relay
-    running as another account, e.g. SYSTEM on the cloud runner). Denied used to count
-    as "not yet", and stop() waited its 40 s for nothing (package-windows runs
-    38095462157 and 38095838036): now the task is ended at once (`schtasks /end`, the
-    same fallback estop.sh uses), without the relay's last push. `note` puts a line
-    in the relay's log first, so a hard end can be found afterwards (review round 9 #25)."""
+    """stop()'s loop with the Windows calls passed in (relay/tests/test_stop.py)."""
     deadline = clock() + STOP_WAIT_S
     asked = ended = False
     while clock() < deadline:
@@ -414,26 +389,7 @@ STOP_PUSH_SITE_S = 4
 def stop_push(wait_s: float = STOP_PUSH_WAIT_S) -> int:
     """`app_main.py stop-push`: the last 「停止前」 state at a Windows shutdown, sent from
     the watchdog service (packaging/watchdog/ark_watchdog.py, SERVICE_CONTROL_PRESHUTDOWN).
-
-    The relay sends that state itself from WM_ENDSESSION (service.SvcStop), but it is a
-    program in the user's session, and those end before any service is told of the
-    shutdown; a forced one (`shutdown /r /t 5`: /t above 0 implies /f) ends it without
-    waiting, cutting the push off (relay.log 2026-10-11 14:25:10: the stop notice, then
-    nothing until the next boot). A service gets its preshutdown notice after that, with
-    time to finish. Same data folder and .env as the relay, the same push and log line
-    (phone.send_state), nothing else of the relay's start-up (_relay_env, not
-    _prepare_env). 0 = sent, 1 = not sent (the line says why), 2 = nothing to send: the
-    relay's own push already got out (phone.STOP_PUSHED_FILE) or no phone mailbox is set.
-
-    Every step is bounded so the push ends well inside wait_s (2026-10-11 15:41:53, the
-    first real run: the payload took 15 s, 4 of them on two refused AUTO-MAS calls; the
-    state was on COS and its ntfy notice reached ntfy at 15:42:09, but the notice's
-    answer never came back and the 20 s wait for it ran the 35 s out - a delivered state
-    logged as not delivered). So: errwatch.mark_os_shutdown() makes snapshot.read skip the
-    AUTO-MAS sections (the backend is gone, as at the relay's own stop); the notice gets
-    one try of STOP_PUSH_NOTICE_S (a state stored on COS counts as delivered without it,
-    Mailbox.publish); Skland and the official sites get short limits and one try. Whatever
-    still hangs (a DNS lookup, which socket time-outs do not cover) meets wait_s."""
+    """
     state = _relay_env()
     from ark_relay.__main__ import _setup_logging  # noqa: PLC0415
     _setup_logging(verbose=False)
@@ -508,9 +464,6 @@ def _stop_push_limits(box) -> None:
     from ark_relay.features import errwatch  # noqa: PLC0415
     from ark_relay.features import maintenance  # noqa: PLC0415
     errwatch.mark_stopping()
-    # Run only at the watchdog's preshutdown notice: Windows is shutting down. Said as
-    # such, since a plain service stop no longer keeps AUTO-MAS failures from the group
-    # (annihilation._going_down, 2026-10-12).
     errwatch.mark_os_shutdown()
     box.POST_TIMEOUT, box.ATTEMPTS = STOP_PUSH_NOTICE_S, 1
     skland._TIMEOUT = STOP_PUSH_SKLAND_S
@@ -572,9 +525,6 @@ def rollback() -> int:
     if prev is None:
         print("no earlier version folder")
         return 1
-    # current.txt is switched before the stop, so a watchdog restart while it stops
-    # already starts `prev`. A relay that did not stop runs on in the version rolled
-    # away from; `launch.py relaunch` would wait for its exit and give up (audit s24 F4).
     if stop():
         print(f"current.txt -> {prev}, but the relay did not stop: it still runs the "
               f"version rolled away from; {prev} starts at the next restart")

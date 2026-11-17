@@ -19,7 +19,7 @@ def _run_mc28_one_alarm():
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import fx_dir, tmpdir
+    from _parts import fx_dir, tmpdir
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_HISTORY_DIR=str(TMP / "history"),
@@ -66,8 +66,6 @@ def _run_mc28_one_alarm():
     handle._hand_started = lambda eng, rec: ""
     handle._weekly_gates = lambda eng, rec: None
 
-    # AUTO-MAS's failed list for MaaEnd-06-31-06 (the 10-08 sim ledger): every task after
-    # the abort; 装备制造 itself is not on it.
     FAILED_0631 = ["拜访好友", "基建任务", "信用点购物", "转交委托", "据点交易", "环境监测", "自动囤货", "售卖弹性物资",
                    "购买稳定物资", "协议空间", "选剑演武", "自动采集", "日常奖励领取"]
     ABORT = ("2026-10-08_MaaEnd-06-31-06.log", datetime(2026, 10, 8, 10, 32, 8, tzinfo=SERVER_TZ), 2.2)
@@ -159,8 +157,6 @@ def _run_mc28_one_alarm():
     show(notes)
     check("the morning abort: one message", n_morning, 1)
     check("the evening abort reaches the group too: two messages in all", len(group(notes)), 2)
-    # D210 (audit 2026-11-08 C-01): every run's 「没证据」 is its own alarm; until then the evening's
-    # went out as #28's FAIL, the morning alarm's key holding the same items.
     check("…the second is the evening run's own 「没证据」 alarm naming 装备制造 and MaaEnd's reason",
           [("装备制造" in b, "账号编号显示不全" in b) for _t, b in group(notes)[1:]], [(True, True)])
     check("…so #28 does not push it again", mc28_pushes(notes), [])
@@ -244,20 +240,6 @@ def _run_mc28_one_alarm():
 def _part_mc28_settle_once():
     """A held #28 FAIL reaches the group once, even when a state file cannot be written
 or read at the wrong moment.
-
-Review of runs.settle_28 / runs._hold_28 (10-17):
-  A. settle_28 pushed, then mc.restate raised (machinecheck.json not written): the
-     entry stayed in machinecheck-runs.json and the next settle pushed it again.
-  B. machinecheck-runs.json cannot be replaced (a Windows sharing violation on
-     os.replace): _state_set dropped the error, the entry stayed, and every settle
-     pushed the same FAIL again - 1, 2, 3 pushes over three ticks, no ERROR logged.
-  C. _hold_28 wrote the hold, then read it back; one failed read made it push a plain
-     FAIL at once while the entry stayed held, so the end of the hold pushed it again.
-
-Each tick is one handle._flush_pending (it settles the held FAILs at its end), on the
-held abort of test_mc28_one_alarm.py whose retries never get through.
-
-    Formerly test_mc28_settle_once.py.
     """
     import logging
 
@@ -388,44 +370,6 @@ held abort of test_mc28_one_alarm.py whose retries never get through.
 def _part_mc28_state():  # noqa: C901
     """Machine check #28's held FAILs and state/machinecheck-runs.json under the failures a
 Windows relay meets: one cause reaches the group once, and no alarm is lost.
-
-Review of 46e7e5bc (10-17), one scenario per finding:
-  1. covered_28 read the file once to see whether anything was held, and returned
-     without a word when that read failed: the 「没证据」 alarm went out, the cover was
-     not written, and settle_28 pushed the same cause as #28's own FAIL.
-  2. _hold_28, when the hold could not be kept, marked the run sent (#28|<run id>)
-     before judge pushed: a push that failed then left an older entry of the run on
-     file dropped by settle_28 without any push.
-  3. judge wrote machinecheck.json with nothing around it: a Windows lock on it raised
-     out of judge and none of that judging's FAILs was pushed.
-  4. A machinecheck-runs.json that stayed broken (bad JSON, a UTF-8 BOM from a hand
-     edit, not a table) stopped every settle without a word and made every later
-     write an ERROR.
-  5. A brief lock on os.replace was one group ERROR per refused write.
-  6. #7-miss / #28-miss were read apart from their write: one failed read started
-     the streak over at 1.
-  7. _seen read as an empty set on a failed read: #6 / #24a judged a settled
-     restart again.
-  8. pushes._push_unverified marked its record before covered_28: a state.json that
-     could not take the mark skipped the cover, logged 「没证据」这一项没能推到群里
-     though it went out, and #28 then pushed the same cause again.
-
-Review of 9743738a (10-17):
-  9. held_stuck sent a group ERROR for an unreadable stretch even when the last good
-     read held nothing - noise origin/main did not have.
- 10. every read that kept failing slept all of mc.LOCK_WAITS, about six times a
-     booking: ~3 s of the engine thread per booking while a lock lasted.
- 11. _state_read(None) raised TypeError (Path(None)); the old _state_get gave None.
- 12. StateStore._flush had no lock waits, and unresolved.send let a failed day mark
-     after a push that went out escape: _push_now skipped the #28 cover and #28
-     pushed the same cause again, with a misleading 「没能推到群里」 line.
-
-Review of 87b9ee74 (10-17):
- 13. covered_28 wrote through _state_update on every 「没证据」 alarm: with the file
-     locked it logged a group ERROR about a cover it had nothing to write, even when
-     the last good read held nothing - noise origin/main did not have (as item 9).
-
-    Formerly test_mc28_state.py.
     """
     import contextlib
     import json
@@ -1079,27 +1023,7 @@ Review of 87b9ee74 (10-17):
 
 
 def _part_mc28_task_trail():  # noqa: C901
-    """Machine check #28 judged from MaaEnd's own steps, not from the desktop picture.
-
-Verify ledger #28 (Endfield gift / gear / delivery / environment monitoring left no in-game picture): #28 passed
-when the picture file existed, and the pictures show the next task - the COS bundle
-2026-10-08_endfield_MaaEnd-05-29-15 has 093302-赠送干员礼物.png on the 装备制造 page and
-103416-装备制造.png on the bare desktop after MaaEnd stopped itself at 10:34:16
-(its scene check failed and __SceneCheckAbortPipeline ended the task chain; AUTO-MAS
-sent no stop - verify ledger #28 review).
-Now each task must show in MaaFW's own log (maaend_fwlog.task_trail) either the step
-that does its job or a 「nothing to do」 end; the picture is named with how late it was.
-
-Data (fixtures/maaend-task-trail/): the AUTO-MAS history logs of 2026-10-08
-MaaEnd-05-29-15 / -06-31-06 / -06-34-21, 2026-10-13 MaaEnd-05-36-57 and 2026-10-16
-MaaEnd-09-53-33; MaaFW's task and step event lines of those windows, cut unchanged
-from the machine's maaend/debug/maafw*.log (pull 2026-10-13 15:26 for 10-08 and 10-13,
-the COS evidence bundle of 10-16 for 10-16, kept in the three rotated files the lines
-really sat in); and the pictures' real capture times from the evidence bundles
-(shot-times.json).
-
-    Formerly test_mc28_task_trail.py.
-    """
+    """Machine check #28 judged from MaaEnd's own steps, not from the desktop picture."""
     import gzip
     import json
     import os
@@ -1270,8 +1194,6 @@ really sat in); and the pictures' real capture times from the evidence bundles
 
     print("\n[10-08 日报：06-31-06 没做的那些，10:35 那趟重试按项说：选剑演武没证据，其余做成了]")
     judge("2026-10-08_MaaEnd-06-34-21.log", fw08, ledger=day08)
-    # The failed tasks AUTO-MAS booked for 06-31-06 (its history record; the 10-08 daysim
-    # ledger row 2026-10-08/endfield/MaaEnd-06-31-06): every task after the abort.
     FAILED_0631 = ["拜访好友", "基建任务", "信用点购物", "转交委托", "据点交易", "环境监测", "自动囤货", "售卖弹性物资",
                    "购买稳定物资", "协议空间", "选剑演武", "自动采集", "日常奖励领取"]
     aborted = dict(day08.rows[1], ok=False, failed_tasks=FAILED_0631)
@@ -1402,10 +1324,6 @@ really sat in); and the pictures' real capture times from the evidence bundles
     check("…and judged from the log when it is there", st, "PASS")
 
     print("\n[框架日志在一趟里面换了文件、前一段没了：没盖到的任务先不判，盖到的照判]")
-    # MaaFW rotates maafw.log into maafw.bak.<time>.log (10-16: three files in seven
-    # minutes, ROT above) and MaaEnd clears its debug folder when it restarts, so the
-    # files can begin inside a run. The real 10-08 lines, split at 09:38:30 - inside
-    # 05-29-15's 转交委托 (09:37:39→09:39:28) - into the rotated part and maafw.log.
     SPLIT = "[2026-10-08 09:38:30"
 
 
@@ -1511,12 +1429,6 @@ really sat in); and the pictures' real capture times from the evidence bundles
           (None, 1, False))
 
     print("\n[StopTask 这种节点照样记一步、任务记成功（10-16 13:58:58 信用点商店）]")
-    # The gift task's all-full end, GiftOperatorGiftFullFail, is a StopTask node. Whether
-    # such a node is logged decides whether that end can be read at all: the real 10-16
-    # line of another StopTask node (CreditShoppingBuyItemStop, CreditShopping/Flow/
-    # BuyItem.json) shows it is, and that MaaFW books its task Succeeded. MaaFramework's
-    # Actuator::stop_task returns success; PipelineTask::run_next notifies the node before
-    # its loop checks need_to_stop.
     c0, c1 = datetime(2026, 10, 16, 13, 58, 50), datetime(2026, 10, 16, 13, 58, 59)
     events = maaend_fwlog.task_events(maaend(*ROT), c0, c1)
     stop = [(w, d) for w, msg, d in events if msg == "Node.PipelineNode.Succeeded"
@@ -1528,28 +1440,6 @@ really sat in); and the pictures' real capture times from the evidence bundles
           [f"{w:%H:%M:%S.%f}"[:12] for w, msg, d in events
            if msg == "Tasker.Task.Succeeded" and d.get("entry") == "CreditShoppingMain"][:1], ["13:58:58.769"])
 
-    # ---- The 「nothing to do」 ends, which no run on the machine has hit yet --------------
-    # GiftOperatorGiftFull / GiftOperatorGiftFullFail, GearAssemblyCheckMaterialEnough and
-    # GearAssemblyCheckFailedAndFinish have no Node.PipelineNode.Succeeded line in any
-    # maafw*.log of the corpus pull 2026-10-13 15:26 (D/ark/maaend/debug and the evidence
-    # bundles of 09-14..10-13) nor in the 10-16 bundle: no run hit them. A StopTask node
-    # is logged when hit (the check just above). So the trails below are synthetic:
-    # the real 10-13 run with its gift / gear steps replaced by the steps MaaEnd's own
-    # pipeline takes, each one in its predecessor's "next" list as written in
-    # assets/resource/pipeline/GearAssembly/GearAssembly.json and
-    # GiftOperator/GiftOperatorGiftFlow.json of MaaEnd v2.33.0-beta.3 (the version on the
-    # machine, daysim-corpus/_install/D/ark/maaend/interface.json):
-    #   GearAssemblySelectFirstGear.next = [ClickProduceBtn, CheckFailedAndContinue]
-    #   GearAssemblyClickProduceBtn.next = [CheckMaterialEnough 「检测背包是否已满，背包已满直接结束」,
-    #                                       SceneNoticeRewardsConfirm]
-    #   GearAssemblyCheckFailedAndContinue.next = [GearListScrollEnd, SwipeToNextRow]
-    #   GearAssemblyGearListScrollEnd.next = [CheckFailedAndFinish 「检查制作失败，退出任务」]
-    #   GiftOperatorGiftUI.next = [GiftFull, ClickGift]; GiftFull.next = [GiftFullLeave];
-    #   GiftFullLeave.next = [.., GiftFullBackInWorld]; GiftFullBackInWorld.next =
-    #   [GiftFullRetry (max_hit 5, next GiftOperatorEntry), GiftFullFail (StopTask)];
-    #   GiftFullFail's own desc: 「重试五次也只能找到送满的干员，正常失败」 (all operators full).
-    # A synthetic line carries what task_trail reads (time, task_id, node_id, the node hit
-    # and its predecessor) in the machine's line format.
     GEAR_TASK, GIFT_TASK = 200000002, 200000001
 
 
@@ -1580,9 +1470,6 @@ really sat in); and the pictures' real capture times from the evidence bundles
         return judge("2026-10-13_MaaEnd-05-36-57.log", maaend("maafw-2026-10-13.log.gz", edit=edit))
 
 
-    # 10-13 gear (09:41:36→09:41:55): SelectFirstGear 300000425 at 09:41:45.408, then
-    # ClickProduceBtn 300000426, SceneNoticeRewardsConfirm 300000427, its click 300000436
-    # and __ScenePrivateNextTrue 300000441 before the task's end at 09:41:55.671.
     REWARD = (300000427, 300000436, 300000441)
     print("\n[装备制造：点了「制作」后背包已满（GearAssemblyCheckMaterialEnough），是没东西可做，不是做成了]")
     st, ev, pushed = run_1013(splice(REWARD, [
@@ -1600,9 +1487,6 @@ really sat in); and the pictures' real capture times from the evidence bundles
     check("evidence names both causes the step recognises (NotEnough or NotUnlocked)",
           "装备制造（09:41:36→09:41:55）装备列表翻到底，没有能做的（材料不够或没解锁），算没东西可做" in ev, True)
 
-    # 10-13 gift (09:38:17→09:41:36): GiftOperatorGiftUI 300000354 at 09:41:29.394, then
-    # ClickGift 300000358, GiftSelected 300000361, ConfirmGift 300000363, GiftDialog
-    # 300000366 / 300000367, Leave 300000368; the task ends 09:41:36.138.
     GIFT_AFTER_UI = (300000358, 300000361, 300000363, 300000366, 300000367, 300000368)
 
 
@@ -1615,9 +1499,6 @@ really sat in); and the pictures' real capture times from the evidence bundles
         return out, t
 
 
-    # One operator whose gifts are full. Between GiftOperatorEntry and the next GiftUI a
-    # retry walks the same steps as the real run (09:40:08-09:41:29); they are left out,
-    # the verdict reads only the named ones.
     FULL = (("GiftOperatorGiftFull", "GiftOperatorGiftUI"),
             ("GiftOperatorGiftFullLeave", "GiftOperatorGiftFull"),
             ("GiftOperatorGiftFullBackInWorld", "GiftOperatorGiftFullLeave"))
@@ -1643,8 +1524,6 @@ really sat in); and the pictures' real capture times from the evidence bundles
     check("all full: PASS (normal end), nothing pushed", (st, pushed), ("PASS", []))
     check("evidence reads as the nothing-to-do end",
           "赠送干员礼物（09:38:17→09:41:36）连换 5 次干员，礼物都已送满，算没东西可做" in ev, True)
-    # GiftFullFail stops the task with StopTask, which MaaFW books Succeeded (the 10-16
-    # CreditShoppingBuyItemStop check above); the end step is read whatever is booked.
     booked_failed = splice(GIFT_AFTER_UI, steps)
     st, ev, pushed = run_1013(lambda text: booked_failed(text).replace(
         '[msg=Tasker.Task.Succeeded] [details={"entry":"GiftOperatorMain"',
@@ -1652,9 +1531,6 @@ really sat in); and the pictures' real capture times from the evidence bundles
     check("…the same when MaaFW books that stop as Failed", (st, "礼物都已送满，算没东西可做" in ev), ("PASS", True))
 
     print("\n[送礼：只碰到一次送满、后面什么也没有 → 不算没东西可做]")
-    # Not a normal end: GiftFull's only next is GiftFullLeave, and when nothing more is
-    # logged MaaFW did not get on (on_error, the task booked Failed); an all-full run logs
-    # GiftFullFail, as a StopTask node is logged (10-16 13:58:58.769 above).
     steps, _ = chain(30.0, FULL)
     st, ev, pushed = run_1013(splice(GIFT_AFTER_UI, steps))
     check("GiftFull alone is not an end (its next is the retry): FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
@@ -1737,22 +1613,7 @@ def _part_mc28_one_alarm():
 
 
 def _part_maaend_app_log():
-    """核对 MaaEnd 时必须连它自己的 app 日志一起看。
-
-2026-08-29 早班：中继推了一条「MaaEnd 这一轮有 2 项没干成」的告警，两条都是误报。
-
-第一条「日志里没有『自动执行任务完成』」——这句收尾标记只写在 MaaEnd 自己的
-`<maaend>/debug/YYYY-MM-DD-N.log` 里（`INFO [App] 自动执行任务完成，关闭自身`），
-而核对时只喂了 AUTO-MAS 的 history 日志，那里面永远没有这句。翻 10 天 22 份
-history 日志，出现 0 次——也就是这条判据恒为假。当天 MaaEnd 其实 09:54:38
-打了那句，16 个任务全部收尾。**判据没错，错在没给它该看的文件。**
-
-第二条「有 6 张出错截图」——那 6 张是 ScenePrivateMapZoomOut，重试后恢复，
-环境监测和基质刷取都报了「任务完成」。万能跳转失败（SceneAnyEnterWorld）
-仍然一律算故障，那是 2026-08-27 真事故的判据，不放宽。
-
-    Formerly test_maaend_app_log.py.
-    """
+    """核对 MaaEnd 时必须连它自己的 app 日志一起看。"""
     import tempfile
     from datetime import datetime, timedelta
 
@@ -1827,23 +1688,7 @@ history 日志，出现 0 次——也就是这条判据恒为假。当天 MaaEn
 
 
 def _part_maaend_dir_resolve():
-    """MaaEnd 路径必须自己解析出来，解析不出来必须喊。
-
-2026-08-28 查实：机器上的 `.env` 从来没设过 `ARK_MAAEND_DIR`
-（`ARK_OKWW_DIR`、`ARK_AUTOMAS_DIR` 都设了，唯独漏了它）。
-于是 `cfg.maaend_dir` 一直是 None，`Engine._archive_maaend_evidence`
-在第一行 `if not src.is_dir(): return` 静默退出——**从写出来那天起一次都没跑成**。
-
-代价是真的：MaaEnd 启动时会「Auto-cleared log files and debug artifacts」，
-当天早上三轮选剑演武失败的 on_error 截图，在中午重试的瞬间就被清空了，
-而本该抢救它们的代码从没执行过，还一个字都没打。
-
-`plan.script_dir` 的文档字符串本来就写着「省得把 MaaEnd 路径配第二遍：
-AUTO-MAS 已经知道了」——只是 `service.py` 用了，`Engine` 没用。
-现在提到 `Config.__post_init__`，一次修好所有调用方。
-
-    Formerly test_maaend_dir_resolve.py.
-    """
+    """MaaEnd 路径必须自己解析出来，解析不出来必须喊。"""
     import json
     import tempfile
 
@@ -1941,16 +1786,7 @@ AUTO-MAS 已经知道了」——只是 `service.py` 用了，`Engine` 没用。
 
 
 def _part_maaend_false_green():
-    """A MaaEnd run that ends cleanly but does no work must not be reported green.
-
-Real logs, 2026-09-10. MaaEnd had updated to v2.28.0-beta.5 at boot; the master
-config still carried the old 自动采集 route keys, MaaEnd discarded them on load
-(36 「已丢弃保存值」 lines), the scheduler walked zero routes, wrote 「任务完成」
-after 38 seconds, AUTO-MAS recorded Success, and the report opened with 全绿.
-The user's words, on why a false green is worse than a false red: 「明明没有完成任务，却按照完成任务的通知去报，这个其实比假红更严重」.
-
-    Formerly test_maaend_false_green.py.
-    """
+    """A MaaEnd run that ends cleanly but does no work must not be reported green."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
@@ -2005,24 +1841,17 @@ The user's words, on why a false green is worse than a false red: 「明明没�
                "[2026-09-11 10:01:51.482] 现在游戏时间是周五，根据执行周期跳过任务\n"
                "[2026-09-11 10:01:51.566] 任务完成: 🧺自动采集\n")
     check("按周期跳过不报「没走路线」", "自动采集 真的走了路线" not in bad(maaend_checks(skipped, [])))
-    # 2026-10-12: a skipped 自动采集 was listed under 「干成的」 as 「自动采集 真的走了路线」.
     msg_skip = summarize(maaend_checks(skipped + fake, []), "MaaEnd") or ""
     check("跳过的单独一行「按周期今天不跑」", "按周期今天不跑：自动采集" in msg_skip.splitlines())
     check("跳过的不列进「干成的」", not any(ln.startswith("干成的") and "自动采集" in ln for ln in msg_skip.splitlines()))
 
     print("\n[2026-10-10 早班：新版把 6 项囤货清单改成开关，旧值被重置为默认——也算丢了旧设置]")
-    # Real MaaEnd app log of that morning. From 10-03 to 10-10 every launch said
-    # 「选项 "AutoStockBuy…" 的类型已从 "checkbox" 变更为 "switch"，已重置为默认值」 and
-    # bought by the defaults instead of the per-item lists in the master; this
-    # check stayed green because it only knew the 「已丢弃保存值」 wording.
     app1010 = (fx_dir(Path(__file__), "fixtures") / "maaend-2026-10-10" / "app-2026-10-10-3.log").read_text(encoding="utf-8")
     b3 = bad(maaend_checks(app1010, [], own_log=True))
     check("类型变了被重置 被判为故障", "自动囤货的设置" in b3)
     check("说清是 6 个购买选项、没按设置买", "6 个购买选项被 MaaEnd 新版本重置成默认值，今天没按你的设置买"
           in b3.get("自动囤货的设置", ""))
     check("点名囤货那几项", "AutoStockBuyCulturalGoodsValleyIV" in b3.get("自动囤货的设置", ""))
-    # 2026-10-12: this alone was said as 「MaaEnd 这一轮有 1 项没干成」 - the work was done, by defaults.
-    # With AUTO-MAS's own record of that run (tests/replay/2026-10-10), every task finished.
     hist1010 = (fx_dir(Path(__file__), "replay") / "2026-10-10" / "endfield" / "MaaEnd-05-13-19.log").read_text(encoding="utf-8")
     msg3 = summarize(maaend_checks(hist1010 + "\n" + app1010, [], own_log=True), "MaaEnd") or ""
     check("只有设置被重置：不说「没干成」", "没干成" not in msg3)
@@ -2038,18 +1867,6 @@ The user's words, on why a false green is worse than a false red: 「明明没�
 
 def _part_maaend_logged_out():
     """A MaaEnd task that failed because the account was logged in elsewhere names that as its cause.
-
-2026-11-05 11:43:57 (Beijing) the account was logged in on another device (his brother). The game put
-「登录认证已失效，请重新登录」 over everything; MaaFW's batch OCR logged it in maafw.log
-(fixtures/maaend-2026-11-05/maafw-logged-out-ocr.log, one real line), every route after it failed, and
-AUTO-MAS booked 「任务失败: 🧺自动采集」 at 11:54:57 (fixtures/.../history-MaaEnd-07-24-54-gathering.log,
-real lines). The alarm said gathering failed and nothing more. Checked, on those real lines:
-* the failed task gets the logged-out cause and the record the dialog's time;
-* the alarm's 卡在 part carries it (ledger_rows._with_causes);
-* no dialog in the framework log, or no framework log: no cause;
-* a task that failed before the dialog: no cause.
-
-    Formerly test_maaend_logged_out.py.
     """
 
 
@@ -2099,31 +1916,7 @@ real lines). The alarm said gathering failed and nothing more. Checked, on those
 
 
 def _part_maaend_recovered():
-    """MaaEnd hung and the relay ends it: which of the two log lines is "recovered".
-
-The morning shift of 2026-10-06 pushed three messages for one event - the watchdog
-ERROR, the ⚠️ notice, the bookkeeping ERROR (all in relay-1006.log). The ⚠️ stays a
-group alarm (it is written for the human). The other two are the same event written
-as ERRORs in the log; the user's rule of 2026-10-06 05:07 made them daily-report-only
-when the relay's own kill let AUTO-MAS wrap the round up. Since 2026-10-10 both are
-pushed again: why MaaEnd does not exit is not known and it keeps happening (10-09
-09:33, 10-10 09:38), so it is not a fault that fixed itself. What follows was:
-
-* the watchdog's 「MaaEnd 卡死」 WARNING after a crash / stall / plugin-gone kill:
-  the ⚠️ is that event's one push (errwatch.group_pushed);
-* handle._mark_no_self_exit's 「🟠 任务全部完成」 bookkeeping line: pushed, unless
-  AUTO-MAS (v5.7.0-beta.2) logged that it ended the finished MaaEnd right after
-  recording the result - then recovered (daily report) with a 「自愈待查」 red item.
-  The watchdog no longer judges a MaaEnd that finished but did not exit (upstream
-  MistEO/MXU#371): AUTO-MAS ends it itself.
-
-MXU lines and the stderr crash line are verbatim machine lines (the same ones
-test_maaend_watchdog.py replays, from D:\\ark\\maaend\\debug);
-the 10-06 evidence pack is not in COS (a successful run has no bundle), so the 09:51:51
-lines themselves could not be fetched.
-
-    Formerly test_maaend_recovered.py.
-    """
+    """MaaEnd hung and the relay ends it: which of the two log lines is "recovered"."""
     import logging
     import os
     from datetime import datetime
@@ -2316,8 +2109,6 @@ lines themselves could not be fetched.
         check("the bookkeeping line is not marked recovered",
               recovered_of(LINES.records, "🟠 MaaEnd", "任务全部完成"), [False])
         check("it is queued for the group", any("任务全部完成" in str(x.get("line")) for x in h.pending()), True)
-        # 10-06 09:51:51 and 10-09 09:31:56: an ok run ships no bundle on the failure
-        # path, so MXU's log of the hang never left the machine. The no-exit run ships one.
         check("the no-exit run ships its evidence bundle", SHIPPED, [rec.run_id])
         handle._mark_no_self_exit(_Eng(), rec)
         check("a replay of the same record does not ship it twice", SHIPPED, [rec.run_id])
@@ -2326,9 +2117,6 @@ lines themselves could not be fetched.
         unwatch(h)
 
     print("\n[bookkeeping: AUTO-MAS ended the finished MaaEnd -> recovered, a red item, not pushed]")
-    # AUTO-MAS v5.7.0-beta.2 app/task/MaaEnd/AutoProxy.py: check_log logs the result, then
-    # _wait_maaend_stage logs the kill; the result line's shape is the machine's
-    # (2026-10-01 16:10:00.012 in that day's evidence bundle, automas-app.log).
     MAS_RESULT = "2026-10-06 09:52:55.101 | INFO     | MaaEnd 自动代理 | MaaEnd 任务结果: Success!, 日志锁已释放"
     MAS_ENDED = "2026-10-06 09:52:55.104 | WARNING  | MaaEnd 自动代理 | MaaEnd 队列已结束但进程未退出，正在中止脚本进程"
     handle._ship_evidence = _fake_ship
@@ -2341,8 +2129,6 @@ lines themselves could not be fetched.
         eng = _Eng(automas_app_log([MAS_RESULT, MAS_ENDED]))
         handle._mark_no_self_exit(eng, rec)
         rows = LINES.said("MaaEnd", "任务全部完成", "AUTO-MAS")
-        # 10-12 20:38 the user asked why a case AUTO-MAS already fixed is reported at all -
-        # AUTO-MAS ends it by design every time: one INFO line, no red item.
         check("one INFO line naming AUTO-MAS's kill", [r.levelno for r in rows], [logging.INFO])
         check("not marked recovered", [getattr(r, errwatch.RECOVERED, False) for r in rows], [False])
         red = [t for f in sorted(techlog.tech_dir(sd).glob("*.md")) for _, t in techlog.unhandled(f.read_text(encoding="utf-8"))
@@ -2375,40 +2161,6 @@ lines themselves could not be fetched.
 
 def _part_maaend_reenable():  # noqa: C901
     """Boot: the booster step is read and rings the group when unknown; no task is switched off or on.
-
-The user, 2026-10-06, on the sanity booster: 「那个要一直开着，如果上游maaend改了导致没生效就要报警」,
-and on who switched it off: 「我开的任务是谁说要关的」. Until then three boot-time functions in gameupdate.py
-kept tasks off: the booster until its confirm node read as "fixed" and MaaEnd had
-changed version, the four 1.5.3 dailies until MaaEnd changed version. Now every
-leftover record (updates.maaend_disabled_1_5_3 / maaend_reenable_next_boot /
-maaend_disabled_spmed) has its tasks switched on at the next boot, whatever the
-version or the node shape, and is dropped; switching on is logged at INFO and not
-pushed. The booster step is still read at every boot, and a shape the relay does not
-know to work rings the group each time (texts.SPMED_UNRECOGNISED).
-
-Since 10-13 (audit s18 F5) that re-enable step is gone: nothing writes those records
-any more and the machine's state.json holds none of them (machine check #63 keeps
-watching). A record found now is left alone and the master is not touched.
-
-Run through boot_stages._stage_reenable_maaend, the entry the service calls at boot.
-
-Inputs are real files:
-* master: relay/tests/fixtures/maaend-2026-09-10/master-before.json (the
-  machine's mxu-MaaEnd.json), placed at AUTO-MAS's
-  data/<script id>/Default/ConfigFile/mxu-MaaEnd.json; the recorded tasks are
-  switched off in the copy, which is the state the record describes. The
-  standalone AutoUseSpMedication task (gone from MaaEnd since v2.28) is added to the
-  copy the way the 09-03 master had it.
-* MaaEnd version: interface.json from fixtures/maaend228 (v2.28.0-beta.4),
-  fixtures/maaend-2026-09-10 (v2.28.0-beta.5) and
-  fixtures/maaend-v2.30.0-beta.4-spmed (see its SOURCE.txt).
-* nodes.json shapes: "fixed" / "broken" are the shapes described in gameupdate.py
-  above SPMED_NODE (beta.5 read off the machine 09-03, upstream PR #5453); the
-  "no recognition block" shape is the one gameupdate.py records for v2.28.0-beta.4
-  (no copy of that file was kept, so it is built from the comment). The renamed-node
-  shape is real (fixtures/maaend-v2.30.0-beta.4-spmed).
-
-    Formerly test_maaend_reenable.py.
     """
     import json
     import logging
@@ -2640,26 +2392,7 @@ Inputs are real files:
 
 
 def _part_maaend_stopped_between_tasks():
-    """A MaaEnd that stopped between two tasks is not a finished round.
-
-`_judge_result` overrules AUTO-MAS in two places when MaaEnd's own log says the
-round was done: 「部分任务执行失败: X」 (AUTO-MAS's stale name table, 2026-09-06
-SellProduct -> 据点交易) and 「MaaEnd 进程超时」 (done, then never exited,
-2026-09-28 11:22). Both used to accept any log in which every started task also
-completed. A MaaEnd that died or was killed right after one task's 「任务完成」
-leaves exactly such a log, while the tasks AUTO-MAS names never started - and the
-run went into the ledger and the daily report as green.
-
-The round is finished only when its closing task (「❌关闭游戏（PC）」 since
-2026-09-18, 「⛔ 结束进程」 before) ran last and completed.
-
-Real data: fixtures/maaend-farm-drops/2026-09-28a.log (the 09-28 11:22
-done-then-hung run, ends with 关闭游戏（PC） at lines 811-812) and
-fixtures/maaend_full_2026-09-01.log (ends with 结束进程 at lines 49-50). The
-stopped-between-tasks logs are real prefixes of 2026-09-28a.log.
-
-    Formerly test_maaend_stopped_between_tasks.py.
-    """
+    """A MaaEnd that stopped between two tasks is not a finished round."""
     import json
     import pathlib
 
@@ -2783,18 +2516,7 @@ stopped-between-tasks logs are real prefixes of 2026-09-28a.log.
 
 
 def _part_maaend_stub_record():
-    """A MaaEnd record AUTO-MAS wrote for an attempt that never ran is not a run.
-
-Real records, 2026-09-18 morning (tests/fixtures/maaend-2026-09-18/): AUTO-MAS
-relaunched MaaEnd at 09:54:35 while MaaEnd was installing its own update and
-restarting; the attempt's record is a 30-byte stub with 「未捕获到日志」. The
-relay counted it: 「❌ MaaEnd 失败（尝试 3 次）」 for two real attempts, and the
-report would have listed a third row. Also: every bundle now carries the
-window's slice of relay.log and AUTO-MAS's app.log, because that stub could only
-be explained from those two files and neither was in any bundle.
-
-    Formerly test_maaend_stub_record.py.
-    """
+    """A MaaEnd record AUTO-MAS wrote for an attempt that never ran is not a run."""
     import os
     import shutil
     import tempfile
@@ -2847,8 +2569,6 @@ be explained from those two files and neither was in any bundle.
         check("标题只数两趟真失败，不含空记录", "终末地失败 2 次" in title)
 
         print("\n[老版本记的账没有 transitional 标记（09-18 早上的三条就是）：照样不算失败]")
-        # The evening report of 2026-09-18 listed the stub as one of three failures:
-        # the morning entries were booked by v20260918005050, before the flag existed.
         old_ledger = [dict(e) for e in ledger]
         for e in old_ledger:
             e.pop("transitional", None)
@@ -2898,25 +2618,6 @@ be explained from those two files and neither was in any bundle.
 def _part_maaend_bagfull():
     """An essence claim that never lands: a full bag when the storage-full notice was
 seen, otherwise an ordinary failure that carries the raw MaaEnd lines.
-
-The fixture is the AUTO-MAS log of the 2026-09-25 09:50 MaaEnd run (evidence
-bundle 2026-09-25/endfield/MaaEnd-05-47-21), verbatim: 「点击确认领取按钮」,
-then 「任务失败: 🎱基质刷取」 25 seconds later. The user ruled it a full bag
-on 2026-09-26 16:30, not an upstream bug. The proof is MaaEnd's OCR of the
-mail opened seconds later: maaend_bagfull_2026-09-25_maafw.log is the two
-DailyEmailConfirmTSA OCR lines carrying 「因仓储空间已满」, verbatim from that
-run's maafw.log (evidence 2026-09-25_endfield_MaaEnd-05-54-06, logs zip).
-
-Counter-example: fixtures/maaend-farm-drops/2026-09-24_MaaEnd-06-07-50.log has
-the same claim click then 「任务失败: 🎱基质刷取」 (10:16:51), but the mail right
-after was claimed and that run's maafw logs (evidence
-2026-09-24_endfield_MaaEnd-06-07-50) carry no storage-full notice - so not a
-full bag. Since 2026-10-06 such a failure is reported as the task failing, like any
-other (no softened 「unconfirmed」 cause), and the raw lines from the claim click to
-the failure - the run log's and the framework log's - go with the failure text, so
-whatever else made it fail can be read off them.
-
-    Formerly test_maaend_bagfull.py.
     """
     #!/usr/bin/env python3
 
@@ -2932,10 +2633,6 @@ whatever else made it fail can be read off them.
 
     FAILED: list[str] = []
     FIX = fx_dir(Path(__file__), "fixtures")
-    # Two framework lines in the shape of fixtures/collect-watch-2026-09-14/maafw-attempt3.log
-    # (an event line and the same event from the second process), moved to the seconds
-    # between the 09-24 click (10:16:26) and its failure (10:16:51); plus one line of a
-    # later minute that must stay out.
     FW_IN_WINDOW = (
         '[2026-09-24 10:16:40.100][INF][Px7172][Tx32558][Utils/EventDispatcher.hpp][L65]'
         '[MaaNS::EventDispatcher::notify] !!!OnEventNotify!!! [handle=true] [msg=Node.Action.Starting] '
@@ -3067,30 +2764,7 @@ whatever else made it fail can be read off them.
 
 
 def _part_maaend_bagfull_collect():
-    """The 2026-09-25 full bag is still found by the collector on the machine.
-
-The parser only proves a full bag from MaaEnd's framework log, which lives in
-<maaend_dir>/debug (collector_maaend._maaend_fail_causes). This replays the
-real 09-25 evidence through the path the relay really takes - LocalSource ->
-collector.scan -> parse_record -> parse_maaend_log - and checks that the MaaEnd
-folder from Config reaches the parser:
-
-* fixtures/maaend_bagfull_2026-09-25.log is that run's AUTO-MAS log, verbatim;
-* fixtures/maaend_bagfull_2026-09-25_maafw.log is the two OCR lines of the
-  storage-full notice from that run's maafw.log, verbatim.
-
-The AUTO-MAS result line is the single-name shape of the real ones in
-tests/replay (「MaaEnd 部分任务执行失败: 🎱基质刷取」); the 09-25 result JSON
-itself is not on file.
-
-Also: without the framework log the click-then-fail is still reported - as an
-ordinary failure carrying the raw lines around the claim (since 2026-10-06; it was a
-softened 「unconfirmed」 cause before), never silently dropped - and the evening
-recompute does not downgrade a full bag proven at bookkeeping time once MaaEnd has
-wiped its debug folder.
-
-    Formerly test_maaend_bagfull_collect.py.
-    """
+    """The 2026-09-25 full bag is still found by the collector on the machine."""
     #!/usr/bin/env python3
 
     import json
@@ -3233,16 +2907,7 @@ wiped its debug folder.
 
 
 def _part_maaend_close_game_wrapup():
-    """关闭游戏（PC） is the round's wrap-up step, not a daily task.
-
-The fixture is the real 2026-10-12 MaaEnd-14-25-41 ledger record: tasks_done
-['日常奖励领取', '关闭游戏（PC）'], 关闭游戏 with no log evidence and no task picture.
-Before, the report counted it as a daily task and called it 「没证据，不算完成」
-(and pushes.py sends that list to the group); a gathering-only record holding it
-was not recognised as gathering-only either.
-
-    Formerly test_maaend_close_game_wrapup.py.
-    """
+    """关闭游戏（PC） is the round's wrap-up step, not a daily task."""
     #!/usr/bin/env python3
     import json
     from datetime import datetime
@@ -3266,15 +2931,6 @@ was not recognised as gathering-only either.
 
 def _part_maaend_collect_items_v236():
     """MaaEnd v2.36.0-beta.5 picks 自动采集 by item, not by route (installed 2026-10-29 10:27 Beijing).
-
-Real files from that release (tasks/AutoCollect.json and the zh_cn locale, fetched from MaaEnd/MaaEnd at the
-tag). The four *Routes checkboxes became *Items checkboxes; the relay logged eight 「没有中文名」 warnings and
-the gathering retry stopped recognising failures (账本 #122). Checked here:
-- the master's route picks become the items those routes gathered (route 7 gathered two);
-- the phone page lists the item lists with Chinese names and real choices, nothing untranslated;
-- the retry reads v2.36's failure texts and keeps only the failed item's nodes in its override.
-
-    Formerly test_maaend_collect_items_v236.py.
     """
     import json
     import tempfile
@@ -3372,7 +3028,6 @@ the gathering retry stopped recognising failures (账本 #122). Checked here:
                                          "00:00:00"),
               {"AutoCollectValleyIVChrysodendra1": False, "AutoCollectWulingCosmagaric1": True})
 
-        # Real 2026-11-02 morning MaaEnd-06-37-16 log lines (ledger #134): 16 item-named routes in 1654 s.
         log_1102 = "\n".join([
             "[2026-11-02 10:37:28.880] 开始执行任务, 数量: 1",
             "[2026-11-02 11:02:29.664] 任务开始: 🧺自动采集",
@@ -3421,14 +3076,7 @@ the gathering retry stopped recognising failures (账本 #122). Checked here:
 
 
 def _part_maaend_collect_xianlu():
-    """自动采集 walking only routes 1-3 is work done, not a false green.
-
-MaaEnd spells its first routes 「线路N：」 (fixtures/maaend-collect-xianlu-1012.log:
-the start, 线路1-3 and finish lines of 2026-10-12 MaaEnd-06-04-00.log). The work
-check accepted only 「路线N：」, so a day with routes 1-3 alone would be red.
-
-    Formerly test_maaend_collect_xianlu.py.
-    """
+    """自动采集 walking only routes 1-3 is work done, not a false green."""
     #!/usr/bin/env python3
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -3443,18 +3091,7 @@ check accepted only 「路线N：」, so a day with routes 1-3 alone would be re
 
 
 def _part_maaend_farm_drops():
-    """MaaEnd farming drops read from its 「获得以下物品：」 blocks (2026-09-29).
-
-MaaEnd prints a claim's items as a block whose item lines carry no 「获得」
-(fixtures/maaend-farm-drops/2026-09-27.log lines 320-322: the header, then
-one line per item with its count). `_maaend_farm` only knew 「是X基质」
-lines and the single-line 「获得 X ×n」, so after the switch to 协议空间
-`maaend_farm_drops` stayed empty and the daily report printed no output row.
-Every log below is a real, unedited MaaEnd log from the machine
-(fixtures/maaend-farm-drops/).
-
-    Formerly test_maaend_farm_drops.py.
-    """
+    """MaaEnd farming drops read from its 「获得以下物品：」 blocks (2026-09-29)."""
     import pathlib
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
     from ark_relay.features import collector_maaend
@@ -3483,30 +3120,18 @@ Every log below is a real, unedited MaaEnd log from the machine
         return {k: r.get(k) for k in ("maaend_sanity_spent", "sanity", "sanity_cap", "protocol_runs")}
 
 
-    # Protocol Space, 2026-09-27 09:45: two entries, one claim that landed.
-    # Line 317 reads 277, 318-319 claim, 320-322 the block; line 350 reads 117,
-    # 351-352 claim, 353 「理智不足，结束任务」 with no block - refused. So one
-    # run, 160 spent (277 -> 117), 117 left.
-    # The exact dict also proves the 基建任务 / 信用点购物 / 选剑演武 /
-    # 日常奖励领取 blocks of the same log (信用, 武库配额, 协议棱柱 …) stay out.
     chk("09-27 协议空间", pick(farm("2026-09-27.log")),
         {"maaend_farm": "协议空间", "maaend_farm_runs": 1,
          "maaend_farm_drops": {"折金票": 68000, "行动资历": 960}})
     chk("09-27 理智", sanity("2026-09-27.log"),
         {"maaend_sanity_spent": 160, "sanity": 117, "sanity_cap": 360, "protocol_runs": 2})
 
-    # Protocol Space, 2026-09-28 10:46: two claims, both landed. Line 307 reads
-    # 326, 310-312 block; line 339 reads 166, 342-344 block; 354 「理智不足，
-    # 结束任务」 comes after the second block. 160 per run (326 -> 166), so 320
-    # spent and 166 - 160 = 6 left.
     chk("09-28a 协议空间", pick(farm("2026-09-28a.log")),
         {"maaend_farm": "协议空间", "maaend_farm_runs": 2,
          "maaend_farm_drops": {"折金票": 136000, "行动资历": 1920}})
     chk("09-28a 理智", sanity("2026-09-28a.log"),
         {"maaend_sanity_spent": 320, "sanity": 6, "sanity_cap": 360, "protocol_runs": 2})
 
-    # Negative: 2026-09-28 12:10:45 opened 协议空间 with 17 sanity, never got
-    # 「进入协议空间成功」, and went straight on to 选剑演武.
     r = farm("2026-09-28b.log")
     chk("09-28b 没进去", pick(r), {"maaend_farm": "协议空间"})
     full = collector_maaend.parse_maaend_log(D / "2026-09-28b.log")
@@ -3516,17 +3141,13 @@ Every log below is a real, unedited MaaEnd log from the machine
     chk("09-28b 理智", sanity("2026-09-28b.log"),
         {"maaend_sanity_spent": None, "sanity": 17, "sanity_cap": 360, "protocol_runs": None})
 
-    # Essence, 2026-09-24 10:09: two runs, ten 「是X基质」 lines, no block.
     chk("09-24 基质刷取", pick(farm("2026-09-24_MaaEnd-06-07-50.log")),
         {"maaend_farm": "基质刷取", "maaend_farm_place": "清波寨", "maaend_farm_runs": 2,
          "maaend_farm_drops": {"无暇基质": 6, "高纯基质": 4}})
 
-    # Essence, 2026-09-25 09:44: the claim never landed (full bag), nothing counted.
     chk("09-25 基质刷取 背包满", pick(farm("2026-09-25_MaaEnd-05-25-36.log")),
         {"maaend_farm": "基质刷取", "maaend_farm_place": "清波寨"})
 
-    # The same 09-27 log has plenty of blocks outside the farming task; the
-    # block reader sees them, the farm reader must not.
     whole = collector_maaend._item_blocks((D / "2026-09-27.log").read_text(encoding="utf-8").splitlines())
     chk("09-27 全日 信用", whole.get("信用"), 20 + 400 + 300)
     chk("09-27 全日 武库配额", whole.get("武库配额"), 80)
@@ -3564,17 +3185,7 @@ Every log below is a real, unedited MaaEnd log from the machine
 
 
 def _part_maaend_two_farms():
-    """Both sanity tasks in one round are both read.
-
-ProtocolSpace sits before AutoEssence and the phone page can switch each on
-(mastercfg `@enabled`). No real round has run both yet, so the round here is
-two real segments back to back: the 协议空间 task of
-fixtures/maaend-farm-drops/2026-09-27.log and the 基质刷取 task of
-2026-09-24_MaaEnd-06-07-50.log, each from its 「任务开始」 to its own end line.
-Before 2026-10-06 only the first was read: the essence runs and drops vanished.
-
-    Formerly test_maaend_two_farms.py.
-    """
+    """Both sanity tasks in one round are both read."""
     #!/usr/bin/env python3
 
 
@@ -3627,29 +3238,7 @@ Before 2026-10-06 only the first was read: the essence runs and drops vanished.
 
 
 def _part_unreachable_evidence():
-    """「进不了游戏」needs official evidence; the log's shape alone silences nothing.
-
-The shape (every task fails within 30 s, none completes, >= 3 fails;
-collector_maaend.maaend_unreachable) is what the 2026-09-02 maintenance looked
-like, but a local fault can look the same. The fixture is the real 2026-09-25
-09:55 MaaEnd round (bag full - a local fault: three tasks failed, none
-completed), every line kept, with the first two failure times moved to within
-30 s of their start (24 s and 28 s, like its third task's real 24 s) - the
-same local fault, failing a little faster. No real log in ark-evidence or
-relay/tests has the shape at all (0 of 80), so this is the nearest real round.
-
-* shape, no maintenance window, no update notice -> an ordinary failure:
-  held, make-up eligible, not booked as 「进不了游戏」, no client update
-  registered, and the final alarm goes to the group naming the shape;
-* shape + an official maintenance window -> no make-up, a client update
-  registered, and one group alarm 「进不了游戏」 naming the official notice. From
-  2026-09-02 until 2026-10-06 it was one explanation to Server酱 and no alarm (the
-  user's words then: 「检测到服务器在维护时候就跳过，不报警」); his order of 2026-10-06,
-  「不论多少次什么错误都要发」, reverses that;
-* shape + an official update notice for today -> the same, naming that notice.
-
-    Formerly test_unreachable_evidence.py.
-    """
+    """「进不了游戏」needs official evidence; the log's shape alone silences nothing."""
     import json
     import logging
     import os
@@ -3754,8 +3343,6 @@ relay/tests has the shape at all (0 of 80), so this is the nearest real round.
     handle.log.addHandler(loud)
     handle._handle(e, r)
     handle.log.removeHandler(loud)
-    # Audit 2026-10-13 s7 #5: errwatch pushed this WARNING at once as a relay error
-    # while the failure was still held for its retry; the final alarm says it.
     check("held failure: no 「像没进游戏」 WARNING (errwatch would push it now)",
           [m for m in loud.lines if "像没进游戏" in m], [])
     check("压着等补跑", ("MaaEnd", "endfield") in e._pending)
@@ -3844,17 +3431,7 @@ relay/tests has the shape at all (0 of 80), so this is the nearest real round.
 
 
 def _part_unreachable_note_pushed_now():
-    """The 「像没进游戏」 note is on every MaaEnd failure alarm, not only the held one.
-
-Review of s7 #5 (5a407a4f): _confirm_unreachable's WARNING became INFO and only
-pushes._push_unresolved (the held final alarm) adds texts.UNREACHABLE_SHAPE_NOTE.
-A MaaEnd failure alarmed outside that path - a run a person started at AUTO-MAS
-(held only for its own task's retries, then pushed by the flush), a run 停一切 cut
-short - said it nowhere. Both now carry it (or the 「公告没读到」 note when
-the notices could not be read), as the held alarm does.
-
-    Formerly test_unreachable_note_pushed_now.py.
-    """
+    """The 「像没进游戏」 note is on every MaaEnd failure alarm, not only the held one."""
     import os
     from datetime import datetime, timedelta
 

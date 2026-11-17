@@ -195,7 +195,6 @@ class WeeklyBossGate(WeekGate):
     def configure(self, *, index: "int | None" = None) -> tuple[bool, str]:
         s = self._load()
         if index is not None:
-            # True is an int to Python and would read as boss 1 (11-08 [D-03]).
             if isinstance(index, bool) or not isinstance(index, (int, str)) or not str(index).strip().isdigit():
                 return False, f"周本序号 {index!r} 不像话（应在 1~{WEEKLY_BOSSES}）"
             if not 1 <= int(index) <= WEEKLY_BOSSES:

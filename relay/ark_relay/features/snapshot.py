@@ -1,10 +1,5 @@
 """The config **actually in effect** on the machine: read in one place, used in two.
 
-The user, 2026-08-31, on why the phone must match the machine:
-「手机上的所有状态必须和机器保持一致， (everything on the phone must match the machine,
-否则你动了配置不同步到我这边会造成麻烦。」 (or a config change you make that never reaches
-me causes trouble).
-
 So what the phone shows and what `scripts/mac/config-check.py` shows come out of
 **the same code**: two readers would sooner or later disagree. config-check calls
 read() here.
@@ -89,8 +84,6 @@ def _mas(out: dict) -> None:
             # user (audit 11 #5); _queues marks the same case 「脚本读不到」.
             out[_section_of(name)] = {"用户读不到": f"{type(exc).__name__}: {exc}"}
             continue
-        # One user per script, the one the phone's changes go to (masuser.pick; until 11-08
-        # every user was written in turn and the last one shown, audit 11-08 D-11).
         for _, u in [got] if (got := masuser.pick(users)) else []:
             if name == "MAA":
                 out["MAA"] = maa_fields(masuser.info_view(u), u.get("Task", {}))
@@ -170,12 +163,6 @@ def maa_from_files(automas_dir) -> dict:
 
 
 def _queues(out: dict) -> None:
-    # Use .get: field names differ between AUTO-MAS versions, and one missing key
-    # would otherwise take out the whole queue section.
-    # Which scripts each shift runs. The phone filters config by shift with this.
-    # The user, 2026-09-04, show only the current shift: 「早班晚班切换的时候应该只显示
-    # 当次班次的游戏，否则极容易和早班混淆。」 - or it is easily confused with the
-    # morning shift.
     names = {sid: str((v.get("Info") or {}).get("Name") or "")
              for sid, v in _post("/api/scripts/get")["data"].items()}
     from ark_relay.features.annihilation import _backend_unreachable, _going_down  # noqa: PLC0415
@@ -327,16 +314,7 @@ def read_runtime() -> dict:
 def read(only: "tuple[str, ...] | None" = None) -> dict:
     """Read one full snapshot (config-check.py); `only` limits it to the sections
     with those error labels. A section that fails records an error; the rest is unaffected.
-
-    Once the machine is going down - the relay's own power-off, or Windows shutting down,
-    whoever started it (annihilation._going_down) - the AUTO-MAS backend is being torn
-    down, so the `_MAS错误`/`_队列错误` sections would fail for no reason but the shutdown:
-    skip them then. They only reflect the AUTO-MAS side that is going away;
-    `_OKWW错误`/`_运行时错误` stay because they read files and Windows services, which are
-    still there. A section that fails while the machine is going down is logged at INFO,
-    not pushed. A plain service stop (`sc stop`, the self-update restart) leaves the
-    machine and AUTO-MAS up: read as usual, a failure warns (until 2026-10-12 any service
-    stop counted)."""
+    """
     out: dict = {}
     from ark_relay.features.annihilation import _going_down as down  # noqa: PLC0415
 

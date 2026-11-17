@@ -12,19 +12,7 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_mc_phone_banners():  # noqa: C901
-    """Machine checks of the phone channel, the phone orders and the banner section.
-
-The user, 2026-10-06 04:59: the machine has to confirm by itself, after a deploy,
-what nobody had confirmed on it (ark_relay/features/machinechecks.py).
-Each check here gets a realistic input - recorded fixtures, the real code path
-that produces the evidence (the trace, the receipts, the queue file, the
-relay's own WARNING lines through errwatch) - that PASSes, and a broken one that
-FAILs and is pushed to the group. The wiring is driven through the real call
-sites: banners.save_trace, boot_stages publish_state / run_phone_cmd / drain.
-No network, no thread left running.
-
-    Formerly test_mc_phone_banners.py.
-    """
+    """Machine checks of the phone channel, the phone orders and the banner section."""
     import functools
     import json
     import logging
@@ -350,8 +338,6 @@ No network, no thread left running.
     page = (FX / "prts_limited_page.html").read_text(encoding="utf-8")
 
 
-    # The official site's two endpoints (banners.ak_news_pages / ak_post_text): the
-    # NEWS tab holds newsletter #69 (09-25 16:00 +8), the ACTIVITY tab nothing.
     NEWS = {"NEWS": [{"cid": "7366", "title": "《明日方舟》制作组通讯#69期", "displayTime": 1790326800}]}
     COMM = ("<p>●SideStory「昨日海」限时活动将于10月上旬开启，该活动除包含全新活动关卡与剧情外，"
             "新干员和新时装以及相关主题家具也将伴随本次活动登场及上架。</p>")
@@ -461,7 +447,6 @@ No network, no thread left running.
     skland.bindings = lambda c: [
         {"appCode": "endfield", "bindingList": [{"uid": "247481631", "roles": [{"roleId": "1234567890", "serverId": "1"}]}]},
         {"appCode": "arknights", "bindingList": [{"uid": "19237299"}]}]
-    # The 09-15 03:45 card/detail sample quoted in web/stamina.js.
     DUNGEON = {"curStamina": "179", "maxTs": "1789490362", "maxStamina": "360"}
     asked = []
     skland.endfield_card = lambda cred, role="", server="": (asked.append((role, server)),
@@ -984,14 +969,6 @@ No network, no thread left running.
 
 def _part_mc_runs():
     """Machine checks judged from a run record (ark_relay/features/machinechecks.py, event 「run」).
-
-The user, 2026-10-06 04:59: the open ledger items must be confirmed by the machine
-after a deploy, not by a person reading logs. Each check here gets a recorded or
-realistic run (PASS, nothing pushed) and a broken one (FAIL, pushed to the group),
-and handle._handle is driven once per script to show the wiring: the verdict lands
-in state/machinecheck.json right after the record is booked.
-
-    Formerly test_mc_runs.py.
     """
     import json
     import logging
@@ -1136,8 +1113,6 @@ in state/machinecheck.json right after the record is booked.
     check("list opened with no filter line (10-04 / 10-05): FAIL", st, "FAIL")
     st, _, _ = judge("#5", wwctx(NEST_OK, outcome=dict(NEST, only_nest="")))
     check("no 「only these nests」 setting: not judged", st, None)
-    # Audit 11-08 C-11: a nest fought with no filter line and no 「opened gray_book_boss」 line
-    # (an upstream that logs the page under other words) is the copy missing from that run.
     st, ev, pushed = judge("#5", wwctx(["NightmareNestTask:open_boss_book canxiang",
                                         "NightmareNestTask:enter combat None"], outcome=NEST))
     check("fought a nest, no filter line, no page line: FAIL, pushed", (st, len(pushed)), ("FAIL", 1))
@@ -1227,10 +1202,6 @@ in state/machinecheck.json right after the record is booked.
     check("essence farming (no item list): not judged", st, None)
 
     print("\n[#20 剩余理智按最后一次领奖的到账算（daysim-R3：10-07、10-08、10-11 最后一次是单倍）]")
-    # The three real runs the day replays found (docs/BACKLOG.md daysim-R3). Each ends with a
-    # single-reward claim (折金票 ×34000) after the last reading: 117 -> 37 (10-07, 10-11;
-    # 10-08's first reading 237 = 37 + 200 regenerated), 118 + one potion -> 78 (10-08). The
-    # old #20 took one claim as the largest drop between readings (160) and wanted 0.
     R3 = FIX / "maaend-sanity-1013"
     for name, left in (("2026-10-07_MaaEnd-05-29-05", 37), ("2026-10-08_MaaEnd-05-29-15", 78),
                        ("2026-10-11_MaaEnd-05-30-34", 37)):
@@ -1246,12 +1217,6 @@ in state/machinecheck.json right after the record is booked.
         check(f"{name}: evidence names 0≠{left}", f"剩余理智 0≠{left}" in ev, True)
 
     print("\n[#7 环境监测：每趟收下那一段的框架日志，只收不判，不推]")
-    # The coordinator, 2026-10-06: no line of its own in the AUTO-MAS log is no proof of
-    # failure (the 110 s run of 09-04 wrote none either), and the repo has no framework-log
-    # sample of 环境监测 to tell working from not. So #7 captures and never pushes on what
-    # it captured. The node names below are placeholders in MaaFW's event-line shape
-    # (fixtures/collect-watch-2026-09-14/maafw-attempt3.log); the check does not read meaning
-    # into them.
     ENV_FW = "[2026-09-27 09:42:{}][INF][Px7172][Tx32558][Utils/EventDispatcher.hpp][L65][MaaNS::EventDispatcher::notify] "
     fwdir = tmpdir()
     (fwdir / "debug").mkdir(parents=True)
@@ -1358,8 +1323,6 @@ in state/machinecheck.json right after the record is booked.
                                       ("战斗中无法使用",)), [])
     st, _, _ = judge("#29", {"rec": CREC, "raw": {}, "log_text": COLLECT, "maaend_dir": str(fw)})
     check("the toast text alone, no picture: not judged (the text is in no real log, ledger #29)", st, None)
-    # Judged by MaaEnd's on_error picture of the relay-device node inside a route's window
-    # (tests/test_collect.py has the real 10-05 / 10-08 / 10-12 runs).
     SHOT = "2026.10.05-10.10.03.000___MapNavigatorObstacleDevice_InteractPost.png"
     (fw / "debug" / "on_error").mkdir()
     (fw / "debug" / "on_error" / SHOT).write_bytes(b"")
@@ -1397,8 +1360,6 @@ in state/machinecheck.json right after the record is booked.
     check("still held (the push step lets it go): not judged yet", st, None)
     st, _, _ = judge("#6", {"rec": R4, "raw": {}, "update_restarts": {RID: dict(UR[RID], done="")}}, state=tmpdir())
     check("no done round in the shift: not this case", st, None)
-    # Two restarts settled in one batch: both are marked seen at once, so the verdict must
-    # cover both (until 2026-10-13 the first FAIL returned and the second was never judged).
     RID2 = "2026-10-04/endfield/MaaEnd-06-40-02"
     UR2 = dict(UR, **{RID2: {"version": "v2.32.0-beta.2", "started": "2026-10-04T10:40:02+08:00",
                              "done": "2026-10-04/endfield/MaaEnd-05-26-41", "held": False}})
@@ -1572,27 +1533,7 @@ in state/machinecheck.json right after the record is booked.
 
 
 def _part_mc_runs_state_read_fails():  # noqa: C901
-    """A failed read of state/machinecheck-runs.json never rewrites it from nothing.
-
-Review of commit 28306025 (10-17), left open there:
-  _hold_28's first read and _state_set's own read both fell back to {} when the read
-  failed, so one failed read at the moment a hold was written rewrote the file with
-  that one hold: every other held #28 FAIL was gone and never pushed (a lost alarm),
-  and the seen lists (#6 / #24a) and miss counts (#7-miss, #28-miss) went with it.
-
-Now a read that fails leaves the file as it was and is an ERROR; a hold that cannot
-be kept is pushed at once and marked sent (#28|<run id>) once that push went out
-(Result.after_push, called by judge), so an older entry of the same run on file is
-not pushed again when its hold ends. Also a Windows sharing violation on os.replace:
-the file stays as it was, nothing is left behind.
-
-Since the 10-17 review (test_mc28.py) a read that fails once is tried
-again (mc.LOCK_WAITS) and gets through, so the 「cannot be read」 cases here keep
-failing on every try; a file that keeps reading as something other than a table is
-copied aside and replaced.
-
-    Formerly test_mc_runs_state_read_fails.py.
-    """
+    """A failed read of state/machinecheck-runs.json never rewrites it from nothing."""
     import json
     import logging
     import os
@@ -1849,20 +1790,7 @@ copied aside and replaced.
 
 
 def _part_mc_system():  # noqa: C901
-    """Machine checks of the relay's own machinery (ark_relay/features/machinechecks.py).
-
-The user, 2026-10-06 04:59: the machine must check the open ledger items by itself
-after a deploy, instead of a person reading logs. Each check here gets a realistic
-input that passes and a broken one that fails - and every FAIL is pushed to the
-group (alert=True) - and the wiring at the natural point is driven for real: the
-last boot stage reading the previous session of relay.log, unresolved.send, the
-overrun check, the make-up, the MaaEnd pre-update, the watchdog, the desktop agent's
-trace, the busy-snapshot note and the game-update stage. The relay.log lines below
-have the shape __main__._setup_logging writes; their texts are the ones the modules
-log (quoted next to each constant in system.py).
-
-    Formerly test_mc_system.py.
-    """
+    """Machine checks of the relay's own machinery (ark_relay/features/machinechecks.py)."""
     import json
     import os
     import types
@@ -1978,11 +1906,6 @@ log (quoted next to each constant in system.py).
     check("推了一条，带原因", any("COS 403" in b for b in n.fails("#11")), True)
 
     print("[#11 关机前那份已送到，看门服务代发的停止前那份没发完 → 照样没过（发失败本身就是要看的毛病）]")
-    # The watchdog's own failure line, verbatim from relay.log 10-11 15:42:28. The page holds
-    # the 关机前 state, but a stop push that failed is a fault of the push path the next
-    # shutdown needs, so it is not covered by the 关机前 fallback (only a stop push that
-    # left no line at all is: the case below). No such session is on record (10-11 15:42
-    # had no 关机前 push); this pins the order of the checks in _stop_push.
     dog = [x if "停止前；" not in x else logline(
                "10-06 21:59:40", "状态没能上报到手机（停止前）：看门服务等了 35 秒还没发完，Windows 要关机了不再等；手机上留着上一份状态",
                level="WARNING", name="ark.app.stop_push") for x in EVENING]
@@ -2076,11 +1999,6 @@ log (quoted next to each constant in system.py).
     check("不是中继关的机：#37/#38 不判", ("#37" in got, "#38" in got), (False, False))
 
     print("\n[#59 系统的程序启动通知断了又自己订上：报群一次（或期间已报过群、这一行记成自己好了），diag 说出是哪种]")
-    # Since 324b640b (2026-10-10) a drop of unknown cause that came back by itself is pushed
-    # to the group once (procwatch._subscribed: no errwatch.recovered() unless the outage was
-    # already pushed meanwhile). The lines are the machine's: relay.log 10-06 16:16:59 and
-    # 18:08:22 (the day replay's 2026-10-06 events.jsonl lines 215 and 288), two drops with
-    # the same words on one day; the push text is errwatch's (texts.relay_error_body).
     WMI = "系统的程序启动通知断过 15 秒（远程过程调用失败，0x800706BE），已经自己重新订上"
     DIAG = ("diag: hresult 0x80020009, scode 0x800706BE, source SWbemEventSource, text 远程过程调用失败。; "
             "subscription up 18.3 s, 0 events, last -; relay up 37 s; machine up 0:29:01; "
@@ -2538,14 +2456,6 @@ log (quoted next to each constant in system.py).
     check("run_deferred 用过的那张桌子的 trace 拿得到", (gameupdate._LAST_DESK.__setitem__(0, d), gameupdate.last_trace())[1] == d.trace, True)
 
     print("\n[#61 重放 10-15 12:32-12:49 那一轮：没认出字的帧不到连着 3 帧不报，连着 3 帧才报；「系统提示」那一帧算认出]")
-    # relay.log 2026-10-15 (ark-evidence/daily/2026-10-15/relay-2026-10-15.log lines 753-811), the
-    # round after c47dfca6: the first look was the disk-space 「系统提示」 (12:32:13, 「确认」 clicked),
-    # then one wait frame each ~36 s. A frame the log shows as Line(text='正在下载', x=1376, y=788,
-    # w=64, h=16) is replayed with that line; a frame the log shows as desktop-icon text (the
-    # wait loop logged dump(4) when no word was read) is replayed with those icon lines only.
-    # 12:44:15 is the alarm's frame: its screenshot shot-84e4bfdf.png shows the launcher in
-    # front with 「正在下载」 on the yellow button, so on that frame the OCR missed the button.
-    # The other four such frames have no screenshot here; the replay keeps them as read.
     ICONS = ["控]面板", "Clashfor", "Windows", "EPIC", "EPICGames", "Launcher", "0", "ToDesk"]
 
 
@@ -2664,21 +2574,6 @@ log (quoted next to each constant in system.py).
 
 def _part_mc_system_fixes():
     """What writing the machine checks of the relay's machinery found broken, fixed (each red on the old code).
-
-1. service.py: SvcStop pushes the last state on the SCM's thread after setting the
-   stop event; the main thread came out of the loop at once and went on to
-   os._exit, so the 「停止前」 push (5-20 s) was cut off. SvcDoRun now waits for it
-   (STOP_PUSH_WAIT_S). SvcStop also says which control stopped it, so a Windows
-   shutdown reaching SvcShutdown shows in relay.log (machine check #11).
-2. service.py: the WMI listener's diag line names the case it fits (H1 the WMI
-   service restarted / H2 a provider host is gone / H3 neither), as the
-   _wmi_hosts docstring defines them (machine check #59).
-3. (removed 2026-10-11: the MaaEnd pre-update it covered was handed to AUTO-MAS.)
-4. maaend_watchdog.py: a kill taskkill called a success is looked at again; still
-   in the process list is said as a WARNING (machine check #31).
-5. desktop.py: the agent says which whole OCR line click_text hit (machine check #60).
-
-    Formerly test_mc_system_fixes.py.
     """
     import logging
     import os
@@ -2870,12 +2765,6 @@ def _part_mc_system_fixes():
 def _part_selfcheck_main():
     """Boot self-check: every broken assumption is named and pushed to the group at
 once; the daily report gets the two relay lines a person used to run by hand.
-
-2026-09-17: the process table had been unreadable for three weeks (wmic gone)
-and the relay found out from a lost queue. The self-check exists so a boot
-tells on itself instead.
-
-    Formerly test_selfcheck.py.
     """
     import copy
     import json
@@ -2889,12 +2778,6 @@ tells on itself instead.
     from ark_relay.features import commands
 
 
-    # The machine's AUTO-MAS as /api/scripts/get answers it: the script ids and names of
-    # fixtures/automas-config-2026-10-11 (the machine's own config), with the update
-    # settings the switch-over handed it (relay/handover/automas_handover.py): 10a read back
-    # True in switch.log 10-11 10:04:30; 10b set and read back 10-12 (commit a0a7b7f2:
-    # Game.Enabled true, Game.Path D:\Wuthering Waves\launcher.exe; Game.IfAutoUpdate is
-    # AUTO-MAS's default true, fixtures/automas-models/config.py.txt OkwwConfig).
     _CFG = json.loads((fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11" / "config"
                        / "ScriptConfig.json").read_text(encoding="utf-8"))
     MACHINE_SCRIPTS = {sid: {"Info": dict(sc["Info"])} for sid, sc in _CFG.items() if sid != "instances"}
@@ -2941,7 +2824,6 @@ tells on itself instead.
                     run_ok=lambda cmd: (True, ""), has_module=lambda m: True,
                     # The AUTO-MAS settings check reads config files; test_mas.py covers it.
                     contract=lambda automas_dir: mascontract.Result([], [], 1),
-                    # 11-06 12:07 the machine answered this after VBS was turned off (VT-x again).
                     virt=lambda: "VBS=0 HV=False")
 
         print("[一切正常：全部成立、不报警]")
@@ -2959,7 +2841,6 @@ tells on itself instead.
         check("点名调度程序没应答", "调度程序有应答" in names)
         check("点名任务计划", "调度程序的开机任务计划还在" in names)
         check("别的项照常成立", len(names), 3)
-        # 2026-10-10 16:14:07: one unreadable process table showed as two failures.
         dep = [c for c in cs if c.name == "调度程序的后台程序在跑"][0]
         check("后台程序那项判不了，不算不成立", dep.ok, None)
         check("进程表那项说明后台程序判不了", any("判不了" in c.detail for c in cs if c.ok is False))
@@ -2985,8 +2866,6 @@ tells on itself instead.
               (selfcheck._has_module("json"), selfcheck._has_module("no_such_pkg_ark")), (True, False))
 
         print("\n[11-04 21:25 那种机器：系统自己打开了「基于虚拟化的安全」，雷电落到慢路]")
-        # 11-06 10:2x the machine read VirtualizationBasedSecurityStatus 2 while VBS was on;
-        # 12:07 after it was turned off: 0, HypervisorPresent False.
         cs = selfcheck.run(cfg, **dict(good, virt=lambda: "VBS=2 HV=True"))
         miss = [c for c in cs if not c.ok]
         check("VBS on: only this line fails", [(c.name, c.ok) for c in miss], [(selfcheck.VIRT_NAME, False)])
@@ -3008,8 +2887,6 @@ tells on itself instead.
                   [(c.name, c.ok) for c in cs if not c.ok], [(selfcheck.VIRT_NAME, None)])
 
         print("\n[AUTO-MAS 还管着两个游戏客户端的更新（交接 10a、10b）：被改掉了就点名]")
-        # s26 audit 2026-10-13: the handover runs once; an AUTO-MAS upgrade or a click in its
-        # window could turn these off again and nobody would update the client.
         UPD = "调度程序还管着两个游戏客户端的更新（明日方舟、鸣潮）"
         cs = selfcheck.run(cfg, **good)
         check("the machine's values: the line holds", [(c.name, c.ok) for c in cs if c.name == UPD], [(UPD, True)])
@@ -3117,8 +2994,6 @@ tells on itself instead.
     check("the unreadable line is plain words", texts.plain(missing), [])
 
     print("\n[a start that died before the self-check is not 「开机时已经在」 (real 10-10 16:28-17:22)]")
-    # relay.log 10-10 16:28-16:32: 15 starts about 18 s apart, none reaching the boot
-    # self-check (the AUTO-MAS step runs before it), then boots that did reach it.
     crash = (fx_dir(Path(__file__), "fixtures") / "relay-1010-crashloop-boots.log").read_text(encoding="utf-8")
     boots = selfcheck.daily_lines("2026-10-10", crash)[1].removeprefix("· 调度程序开机：").split("；")
     check("22 starts", len(boots), 22)
@@ -3153,20 +3028,7 @@ tells on itself instead.
 
 
 def _part_selfcheck_one_push():
-    """A failing boot self-check reaches the group once, through the real errwatch handler.
-
-alerts/20261010.jsonl 16:14:08-16:14:14 (and again at 16:33, 16:59, 17:02): each
-「🩺 开机自检没过」 was followed by one 「🩺 中继自己报错了」 per failing ✗ line,
-because errwatch pushed the ✗ WARNINGs the self-check had already put in its own
-alarm. 38246899 (10-10 17:44) marks those lines `errwatch.group_pushed`; no
-self-check line has failed on the machine since, so this is where the fix is run:
-selfcheck.report with one forced failing check, under a real
-errwatch.ErrorKindAlert on the "ark" logger (a push = a record reaching its
-_take), counts the pushes. When the self-check's own send fails, the ✗ line is
-not marked and errwatch carries it instead (still one push).
-
-    Formerly test_selfcheck_one_push.py.
-    """
+    """A failing boot self-check reaches the group once, through the real errwatch handler."""
     import logging
     import tempfile
 
@@ -3225,14 +3087,7 @@ not marked and errwatch carries it instead (still one push).
 
 
 def _part_machinecheck_main():
-    """Machine checks: the machine confirms deployed changes by itself (machinecheck.py).
-
-The user, 2026-10-06 04:59: the machine must check the open ledger items by itself
-after a deploy, instead of a person reading logs. Every FAIL goes to the group,
-every time it is judged; PASS and still-waiting go to the daily report only.
-
-    Formerly test_machinecheck.py.
-    """
+    """Machine checks: the machine confirms deployed changes by itself (machinecheck.py)."""
     import logging
     from datetime import datetime
 
@@ -3364,17 +3219,7 @@ every time it is judged; PASS and still-waiting go to the daily report only.
 
 
 def _part_machinecheck_wait():
-    """E2 of the deploy: machinecheck_wait.py decides boot-judged-and-quiet / alarm / wait.
-
-The gate reads the two files the relay keeps - state/machinecheck.json and
-state/alerts/<day>.jsonl - and answers whether this deploy's version has had
-its boot batch judged and whether the group was quiet since. These checks pin
-the three verdicts on realistic rows, including the traps: an old version's row
-must not count, a non-boot event is not the boot batch, and an alarm wins over
-a judged boot.
-
-    Formerly test_machinecheck_wait.py.
-    """
+    """E2 of the deploy: machinecheck_wait.py decides boot-judged-and-quiet / alarm / wait."""
     import contextlib
     import io
     import json
@@ -3514,8 +3359,6 @@ a judged boot.
             os.chmod(ad / "20261006.jsonl", 0o644)
 
     print("[pushes docs/NOTIFICATIONS.md routes `group (report)` are not alarms]")
-    # The real rows: 10-13 10:00 the 🖼️ 无音区产出 the owner asked for (version 20261012131940;
-    # the old gate printed MCWAIT_ALARM 1 on it), and 10-12 08:46 a 🩺 中继自己报错了 alarm.
     DOC = str(ROOT.parent / "docs" / "NOTIFICATIONS.md")
     real = [json.loads(ln) for ln in (fx_dir(ROOT, "fixtures") / "alerts-e2-report-push.jsonl")
             .read_text(encoding="utf-8").splitlines() if ln.strip()]
@@ -3567,21 +3410,14 @@ def _part_replay():
     sys.path.insert(0, str(ROOT))
     if str(Path(__file__).resolve().parent) not in sys.path:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import fx_dir
+    from _parts import fx_dir
     from ark_relay.core import collector
 
     REPLAY = fx_dir(ROOT, "replay")
     FLOOR = 40          # minimum corpus size, see main()
-    # Raised from 10 to 40 on 2026-09-08 when the corpus grew from 1 day (10 records)
-    # to 4 days (42): the 09-01 weekly boss stuck on its results page, the 09-04/09-05
-    # essence runs farming the wrong region, and 09-01 Endfield's 「赠送干员礼物」
-    # failure. The floor exists so the corpus cannot quietly disappear - `.gitignore`'s
-    # `*.log` once kept the whole corpus out of the repo, and this test printed
-    # "all checks passed" with not a single sample.
     FIELDS = ("okww_steps", "okww_unreachable", "okww_error", "okww_farm", "okww_runs",
               "okww_stamina_spent", "okww_stamina_left", "maaend_name_mismatch", "tasks_failed",
               "tasks_done", "okww_exit_race", "maaend_unreachable", "maaend_unreachable_shape")
-
 
 
     # The os module has PRIO_DARWIN_PROCESS from Python 3.12 on; deploy-relay.sh runs some of these scripts with
@@ -3614,22 +3450,13 @@ def _part_replay():
         return snapshot(rec) if rec else None
 
 
-
-
     def judge_all(todo: list[tuple[str, Path, Path, object]]) -> list:
         return [judge(js, day_root) for _, js, day_root, _ in todo]
 
 
     def verdict_cases() -> list[tuple[str, Path, Path, dict, dict]]:
         """(label, record json, day root, sidecar, expected) for every record a verdict.json names.
-
-    The outcome check (features/alarm/verdict.py) reads more than the record: MaaEnd's
-    own app log (whose wrap-up line tells 「did not exit」 apart). A sample that brings
-    it lists it per record in verdict.json: {stem: {"maaend_debug": [file, ...],
-    "want": {"says": first line or null, "maaend_no_self_exit": bool}}}. Added
-    2026-10-11 so the deploy gate's replay pass reaches verdict.py on a real run
-    (changed_covered.py: 「判定类模块改了却没有回放案例跑到」).
-    """
+        """
         out = []
         for vf in sorted(REPLAY.glob("*/*/verdict.json")):
             for stem, spec in json.loads(vf.read_text(encoding="utf-8")).items():
@@ -3647,9 +3474,6 @@ def _part_replay():
             maaend = Path(tmp) / "maaend"
             (maaend / "debug").mkdir(parents=True)
             for name in spec.get("maaend_debug") or []:
-                # The relay reads only debug/20??-??-??-*.log (gamelogs._maaend_app_log); a
-                # fixture-style name like app-2026-10-10-3.log would be skipped without a word
-                # and the run judged as if MaaEnd's own log were missing.
                 if not fnmatch.fnmatch(name, "20??-??-??-*.log"):
                     raise ValueError(f"{js.parent / 'verdict.json'}: {name!r} is not named the way MaaEnd "
                                  "names its app log (2026-10-10-3.log), the relay would not read it")
@@ -3692,10 +3516,6 @@ def _part_replay():
                 print(f"  ✗ {label}: 期望 {want!r} 实际 {got!r}")
             else:
                 print(f"  ✓ {label}")
-        # The floor: finding no corpus at all must never pass. Both gates look only
-        # for "passed" on the last line, so "replayed 0, all checks passed" would leave
-        # every judging function in the collector unprotected without a word -
-        # measured 2026-09-08, after .gitignore swallowed the corpus, that was the output.
         if n < FLOOR:
             fails.append(f"回放样本只找到 {n} 条（至少要有 {FLOOR} 条）"
                      "——语料库丢了、被 .gitignore 挡了，或者目录层级变了")

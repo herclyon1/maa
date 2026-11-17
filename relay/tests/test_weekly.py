@@ -12,28 +12,7 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_annihilation_no_progress():
-    """Annihilation without a progress line is not "done for the week".
-
-2026-09-14 09:00-09:06 the Monday annihilation check ran three times at 17
-sanity against a 25 cost; nothing was fought, yet every ledger row says
-annihilation_done: true (fixtures/ledger-2026-09-14/ledger.jsonl lines 1-3).
-collector_maa read "no 「剿灭模式」 line and no sanity spent" as "MAA saw the
-cap was met and left". The only real logs we hold say otherwise: on 2026-09-21
-21:32, with the week already full, MAA still fought once (-25) and printed
-「剿灭模式 : 1800 / 1800」 (fixtures/maa-annihilation-2026-09-21, copied from
-ark-evidence/M6-0923/automas/history/2026-09-21/arknights/MAA-17-30-02.log).
-handle._weekly_gates used to close annihilation for the week on
-annihilation_done of a run that reports success - and MAA reports Success! when
-it stops for lack of sanity. Since the 2026-10-11 hand-over (item 13) AUTO-MAS
-books the week itself, so handle must not touch the annihilation gate at all;
-the parsed flag still feeds the daily report.
-
-No 09-14 history log survived, so the "nothing fought" input is the 09-21 real
-log with its fight block (开始行动 ... 剿灭模式) removed: annihilation
-selected, chain started and finished, no fight, no progress - the 09-14 shape.
-
-    Formerly test_annihilation_no_progress.py.
-    """
+    """Annihilation without a progress line is not "done for the week"."""
     import json
     from datetime import datetime
 
@@ -147,26 +126,7 @@ selected, chain started and finished, no fight, no progress - the 09-14 shape.
 
 
 def _part_annihilation_not_healed_by_routine():
-    """A Routine success does not heal an Annihilation failure; a locked 代理指挥 is named.
-
-2026-10-26 Beijing: AUTO-MAS ran MAA in its Annihilation mode three times (09:00:57,
-09:02:41, 09:04:5x), each stopped ten seconds into the fight at MAA's
-Annihilation@UnableToAgent2 (the new map 灰石剧场, 代理指挥 locked; 每周报酬 0/1800),
-then ran the Routine mode, which went through at 09:24. The relay read the Routine
-success as AUTO-MAS's retry of the held failure: relay.log 09:24:51 「↩️ MAA 重试后成功，
-改为自愈通知」 and 「自己好了，只进日报」; the daily line said 「09:07 补跑成功」. The
-week's annihilation was never done and the group never heard of it - against the
-user's rule that only what recovered by itself stays out of the group (relay/USER-SWITCHES.txt,
-handle._flush_pending). Pinned here:
-
-* a Routine success leaves a held Annihilation failure held, and it reaches the group;
-* an Annihilation success still heals a held Annihilation failure (only the daily report);
-* the asst.log line Annihilation@UnableToAgent marks the record, and the alarm and the
-  daily row say 代理指挥 is locked (texts.ANNIHILATION_NO_PROXY);
-* the daily report no longer calls the Routine run a 「补跑成功」 of the annihilation.
-
-    Formerly test_annihilation_not_healed_by_routine.py.
-    """
+    """A Routine success does not heal an Annihilation failure; a locked 代理指挥 is named."""
     import json
     import os
     from datetime import datetime, timedelta
@@ -258,7 +218,6 @@ handle._flush_pending). Pinned here:
     handle._ship_evidence = lambda eng, r: ""
     handle._weekly_gates = lambda eng, r: None
 
-    # What MAA's asst.log said at the first attempt's stop (2026-10-26 09:02:39), trimmed.
     LOCKED_LOG = ("[2026-10-26 09:02:38.378][INF] Start Task Chain: StartUp\n"
                   "[2026-10-26 09:02:39.816][TRC] asst::PipelineAnalyzer::analyze | MatchTemplate Annihilation@UnableToAgent2\n"
                   "[2026-10-26 09:02:40.343][INF] Assistant::append_callback | TaskChainError {\"taskchain\":\"Fight\"}\n")
@@ -321,27 +280,7 @@ handle._flush_pending). Pinned here:
 
 
 def _part_annihilation_status():
-    """Annihilation (剿灭) weekly status, read from AUTO-MAS (hand-over item 13, 2026-10-11).
-
-Running annihilation once a week is AUTO-MAS's job since the switch-over: with
-the MAA account's Info.IfQuickConfig on it records the completed game-week in
-Data.AnnihilationCompletedWeek and skips annihilation until the Monday 04:00
-reset. The relay only reads. Here the gate is the real class against a fake
-AUTO-MAS at the HTTP layer (urllib.request.urlopen, the transport under
-commands._mas), and ScriptConfig.json is a real file.
-
-Sources for the shapes used:
-* the week marker: AUTO-MAS AutoProxy._current_week_marker,
-  f"{iso_year:04d}-W{iso_week:02d}" on the UTC+4 game day; the machine held
-  Data.AnnihilationCompletedWeek = "2026-W41" on 2026-10-11
-  (BOARD/新中继-重叠可撤核对.md, settings table).
-* API: every endpoint is POST; /api/scripts/get, /api/scripts/user/get
-  {"scriptId"}; only the `data` member is read (docs/TOOLING.md "AUTO-MAS API").
-* ScriptConfig.json: instances[] + <uid>/{Info, SubConfigsInfo/UserData/<uid>/...}
-  (docs/CONFIG.md); MAA's install path D:\\ark\\maa.
-
-    Formerly test_annihilation_status.py.
-    """
+    """Annihilation (剿灭) weekly status, read from AUTO-MAS (hand-over item 13, 2026-10-11)."""
     import json
     import logging
     import os
@@ -372,7 +311,6 @@ Sources for the shapes used:
     MAA_SID, MAA_UID = "8e4f0b4a-maa-script", "c2d1a0f3-maa-user"
     END_SID, END_UID = "59da8762-maaend-script", "a7b6c5d4-maaend-user"
 
-    # Monday 2026-10-05 is game-week 2026-W41; the reset is 04:00 server time.
     MON_0846 = datetime(2026, 10, 5, 8, 46, 3, tzinfo=SERVER_TZ)
     MON_0300 = datetime(2026, 10, 5, 3, 0, tzinfo=SERVER_TZ)
     print("[week marker: the one AUTO-MAS writes]")
@@ -383,11 +321,7 @@ Sources for the shapes used:
 
 
     class Backend:
-        """AUTO-MAS's backend as seen through urlopen.
-
-    mode: "up" answers; "down" refuses every connection (AUTO-MAS not running);
-    "hung" accepts and never answers (timeout); "no_maa" answers without "MAA".
-    """
+        """AUTO-MAS's backend as seen through urlopen."""
 
         def __init__(self, user, mode="up"):
             self.mode = mode
@@ -531,8 +465,6 @@ Sources for the shapes used:
         check("backend answers without MAA: not the file either", g.settings(MON_0846)["本周已完成"], None)
 
         print("\n[machine going down: the backend is not asked, the file is read, nothing warned]")
-        # 10-11 21:46:43 (relay.log): SvcStop's last state push asked the backend while Windows
-        # was killing AUTO-MAS -> ConnectionResetError 10054 -> WARNING -> group push.
         from ark_relay.features import errwatch
         A._READ_SAID.clear()
         CAP.lines.clear()
@@ -549,8 +481,6 @@ Sources for the shapes used:
         finally:
             errwatch._os_shutdown.clear()
         A._READ_SAID.clear()
-        # Mute audit 10-12 item 10: a plain service stop (sc stop, the self-update restart) is
-        # not the machine going down - AUTO-MAS stays up, so it is asked, and failing is said.
         be.calls.clear()
         CAP.lines.clear()
         errwatch.mark_stopping()
@@ -576,25 +506,7 @@ Sources for the shapes used:
 
 
 def _part_annihilation_unreadable_none():
-    """An unreadable annihilation week record is "unknown", not "not done".
-
-Audit 2026-10-13 (weekly block, finding 5): WeeklyGate.settings() returned
-bool(done), so when AUTO-MAS's record could not be read (_status gives done None)
-the phone payload said 本周已完成 False and tomorrow's plan
-(plan._annihilation_done_tomorrow) wrote 「剿灭 Annihilation」 - "it will run" -
-instead of saying it could not tell. week_line already said 读不到 for the same
-state. settings() now carries None, and the plan says 「剿灭 本周打没打满读不到」,
-the wording the weekly boss uses (plan.py, _weekly_boss_state).
-
-plan._annihilation_done_tomorrow's except stays: settings() does raise on a
-ScriptConfig.json of the wrong shape (a top-level list -> AttributeError in
-_maa_users), checked below; it now also answers None.
-
-Plan text through next_plan with the machine's AUTO-MAS config
-(fixtures/automas-config-2026-10-11), its MAA switch set to "Annihilation".
-
-    Formerly test_annihilation_unreadable_none.py.
-    """
+    """An unreadable annihilation week record is "unknown", not "not done"."""
 
     import json
     import logging
@@ -696,21 +608,6 @@ Plan text through next_plan with the machine's AUTO-MAS config
 
 def _part_annihilation_skipped_checked_on_skland():
     """A pass MAA skipped because the terminal listed no annihilation counts as done only on Skland's figure.
-
-2026-11-16 Beijing 09:02:19 MAA 6.22 found no annihilation entry in the terminal's to-do list,
-said the week was maybe done and fought nothing (fixtures/maa-annihilation-2026-11-16/
-MAA-05-00-29.log, the real evidence-bundle 0.log of that pass). No progress line, so both of
-the morning's MAA records went to the group as unverified (ledger #174). The week was in fact
-full: Skland read campaign.reward 1800/1800 at 09:20:38, storeTs 09:09:57, and the account had
-spent ~89 sanity while the machine was off (1/210 at 11-15 21:36, 26/210 at 09:03). Pinned here:
-
-* the parser marks the skip (annihilation_no_entry) and still says not done, no progress;
-* the 09-14 shape (no skip line) is not marked, so it never reaches Skland;
-* handle asks Skland once and backs the pass only when the figure is full and stored in
-  the pass's own game-week; stale, short, failing or missing-token readings give None and
-  the alarm goes out as before; a pass that is not a skip never calls Skland;
-* the backed pass's ledger line clears annihilation from the day's unverified items for every
-  record of the day, the routine run's included; without it annihilation stays on the list.
     """
     import os
     from datetime import datetime, timedelta
@@ -822,19 +719,6 @@ spent ~89 sanity while the machine was off (1/210 at 11-15 21:36, 26/210 at 09:0
 
 def _part_annihilation_day_rechecked():
     """A later MAA record of the day backs an earlier skipped pass the first Skland read missed.
-
-2026-11-16 21:53 Beijing (ledger #177): the evening Routine record MAA-17-34-36 had no annihilation
-in it - AUTO-MAS logged that it skipped the pass with the week booked as 2026-W47 - yet the day's
-ledger still held the 09:00 pass with no Skland reading, so 剿灭 went to the group again under
-「明日方舟晚班」. That 09:00 line was booked by the code before the Skland check; the same repeat
-follows whenever the read at the pass's own landing misses. Pinned here:
-
-* the Routine record reads Skland once and marks the earlier row (its own run_id, its own week);
-  the day's unverified items then hold no annihilation;
-* Skland failing, or a reading from last week, marks nothing and the item stays (alarm as before);
-* no unbacked skip that day, or a non-MAA record, never calls Skland; failed, hand-stopped and
-  sanity-short rows are not candidates;
-* the hand-started path runs the same checks before pushing the day's unverified items.
     """
     import os
     from datetime import datetime, timedelta
@@ -976,25 +860,7 @@ follows whenever the read at the pass's own landing misses. Pinned here:
 
 
 def _part_sanity_plan_both_on():
-    """Both sanity tasks on: the evening plan must name both, not only the first.
-
-mastercfg.MAAEND_TREE_TASKS: MaaEnd puts ProtocolSpace and AutoEssence in the
-same "sanity_sink" group and runs them in list order, so with both enabled the
-first spends sanity and the second takes what is left. sanity_plan.read() took
-on[0] only, so plan.py's 「理智用于 …」 line dropped 基质刷取 entirely.
-
-Input is a real master copy already in the repo
-(fixtures/maaend-2026-09-10/master-before.json): AutoEssence on, ProtocolSpace
-off with its real options (干员养成 → 干员经验). The both-on case flips only
-ProtocolSpace's `enabled`, the switch MaaEnd's own task list exposes.
-
-Adapted from audit-maa-core-1006's test of the same name, which carried a
-56 KB copy of the 2026-09-25 master for the same two facts; the labels are
-the ones sanity_plan writes since the relay2-patchC-1005 version was chosen
-(an unknown or missing ProtocolSpace tab is reported as unreadable).
-
-    Formerly test_sanity_plan_both_on.py.
-    """
+    """Both sanity tasks on: the evening plan must name both, not only the first."""
     import json
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1053,14 +919,7 @@ the ones sanity_plan writes since the relay2-patchC-1005 version was chosen
 
 
 def _part_sanity_plan_master():
-    """理智方案读写母本——不再依赖 AUTO-MAS 的快速配置。
-
-2026-08-28：原实现写 MAS 用户配置的 `Task.SanityTaskType`，那条路要求
-`Info.IfQuickConfig` 开着。快速配置被废掉后整个功能失效，这组用例
-把新的口径钉住：母本里 `ProtocolSpace` / `AutoEssence` 谁 enabled 谁生效。
-
-    Formerly test_sanity_plan_master.py.
-    """
+    """理智方案读写母本——不再依赖 AUTO-MAS 的快速配置。"""
     import json
     import tempfile
 
@@ -1171,10 +1030,6 @@ def _part_sanity_plan_master():
             check("母本里没有 AutoEssence 就拒绝（这正是那个静默故障）", ok, False)
             check("说清要先加任务", "拒绝新建" in msg, True)
 
-            # Audit 2026-10-05 (C, sanity_plan.py:140-145): with both sanity tasks
-            # on (mastercfg.MAAEND_TREE_TASKS says MaaEnd runs them in list order),
-            # read() reported only the first, so tomorrow's plan never mentioned
-            # essence farming (AutoEssence).
             print("\n[两项理智任务都开着]")
             am3 = make(root / "both", essence_on=False)
             f3 = am3 / "data/59da8762/Default/ConfigFile/mxu-MaaEnd.json"
@@ -1219,27 +1074,7 @@ def _part_sanity_plan_master():
 
 
 def _part_sanity_plan_reward_names():
-    """The sanity plan speaks MaaEnd's own reward-set names, not AUTO-MAS's A / B.
-
-Audit 2026-10-13 (weekly block, finding 1): sanity_plan keyed its reward table by
-"RewardsSetA" / "RewardsSetB" - the names of AUTO-MAS's quick-config field
-(fixtures/automas-models/config.py.txt:286-288), which this module does not use.
-MaaEnd's master copy holds one case per line, defined in ProtocolSpace.json as
-f"{line}RewardsSetOption" (fixtures/maaend-protocolspace-v2.30.0-rc.1,
-tasks/ProtocolSpace.json:898-1010; Chinese labels in locales/interface/zh_cn.json).
-On the machine's own master (fixtures/maaend-2026-09-10/master-before.json:
-OperatorEXPRewardsSetOption = CognitiveCarriers) the old code:
-- named no reward item (read()["item"] == ""),
-- refused every value MaaEnd defines ("只能 RewardsSetA / RewardsSetB"),
-- accepted "RewardsSetA", wrote a case MaaEnd does not define, and the phone's
-  answer said ✅ (phone/inbox.py _apply).
-
-MaaEnd's install is found the way production finds it: AUTO-MAS's own config
-(fixtures/automas-config-2026-10-11) with the MaaEnd script's path pointed at
-the v2.30.0-rc.1 definition fixture.
-
-    Formerly test_sanity_plan_reward_names.py.
-    """
+    """The sanity plan speaks MaaEnd's own reward-set names, not AUTO-MAS's A / B."""
 
     import json
     import shutil
@@ -1374,24 +1209,7 @@ the v2.30.0-rc.1 definition fixture.
 
 
 def _part_sanity_plan_weekday():
-    """Tomorrow's sanity line honours MaaEnd's weekday ticks for the sanity tasks.
-
-Audit 2026-10-13 (weekly block, finding 2): sanity_plan.read() took every
-enabled ProtocolSpace / AutoEssence as "runs tomorrow", and plan.py printed
-「理智用于 …」 for it, though MaaEnd runs a task only on the weekdays ticked in
-its f"{task}Schedule" option (the master holds ProtocolSpaceSchedule /
-AutoEssenceSchedule; with none saved MaaEnd uses the option's default_case).
-plan._maaend_extra_bits already applies that rule to AutoCollect.
-
-Input is the machine's own master (fixtures/maaend-2026-09-10/master-before.json:
-AutoEssence on, ProtocolSpace off, all seven days ticked), with MaaEnd's
-definitions from the same day's install fixture (AutoEssenceSchedule default_case
-is all seven days). Checked through next_plan (the 「明日安排」 text), with the
-machine's AUTO-MAS config (fixtures/automas-config-2026-10-11) pointing MaaEnd at
-a temp install.
-
-    Formerly test_sanity_plan_weekday.py.
-    """
+    """Tomorrow's sanity line honours MaaEnd's weekday ticks for the sanity tasks."""
 
     import json
     import shutil
@@ -1517,19 +1335,7 @@ a temp install.
 
 
 def _part_sanity_span():
-    """理智/波片的「消耗」和「剩余」不能漏掉最后一趟。
-
-两个游戏同一个毛病：读数都在每趟**开打前**播报。
-* 终末地 09-03：五次领取只看到五个读数、四个步长，相邻差求和得 320，真花 400。
-  正确写法是「趟数 × 步长」。
-* 终末地 09-04：只刷一趟，一个读数零个步长，这一条自己算不出，
-  要拿当天上一条的余量来补（116 → 37）。
-* 鸣潮 09-04：收尾那行写的是 `current stamina: 37 must_use completed`，
-  原正则只认 `not enough to continue`，于是最后一趟整个漏掉，
-  报成「消耗 159、剩余 77」，真实是 199 和 37。
-
-    Formerly test_sanity_span.py.
-    """
+    """理智/波片的「消耗」和「剩余」不能漏掉最后一趟。"""
     import sys, pathlib
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
     from ark_relay.features import collector_maaend, outcome as collector_okww
@@ -1581,17 +1387,7 @@ def _part_sanity_span():
 
 
 def _part_weeklyboss_count():
-    """「任务跑完」不等于「三次领满」。
-
-The weekly reward is claimed after the fight, 60 waveplates per claim (entering is free), so short waveplates mean fewer claims.
-2026-08-31 实测：贝币刷取把波片吃到只剩 1 点，第二天早上只回到约 147，
-只够领两次。而 on_success 原来只要任务跑完就记「本周已打」并摘掉开关——
-第三次就永远丢了，而且不出声。
-
-现在改成读游戏页面上的「本周剩余可收取次数」，归零才记账。
-
-    Formerly test_weeklyboss_count.py.
-    """
+    """「任务跑完」不等于「三次领满」。"""
     import os, sys
     from datetime import datetime
 
@@ -1691,18 +1487,7 @@ The weekly reward is claimed after the fight, 60 waveplates per claim (entering 
 
 
 def _part_weeklyboss_cycle():
-    """周本要和剿灭一个作息：周一 04:00 自动挂回来，领满就摘掉、之后不再检测。
-
-用户 2026-08-31：「我要的是能做到像明日方舟的剿灭那样的，每周一自动刷新
-状态，然后优先打周本三次，完事才是普通体力副本。打完副本计入已完成，
-并且之后不再检测，周一刷新。」
-
-这里只测「挂上/摘掉/周一挂回来」这条状态机；
-「周本排在体力副本之前」由 ok_tasks 覆盖层的 DailyTask.run 钩子保证，
-见 docs/OKWW-WEEKLY-BOSS.md。
-
-    Formerly test_weeklyboss_cycle.py.
-    """
+    """周本要和剿灭一个作息：周一 04:00 自动挂回来，领满就摘掉、之后不再检测。"""
     import json, os, sys
     from datetime import datetime
 
@@ -1757,7 +1542,6 @@ def _part_weeklyboss_cycle():
     check("同周内再跑也不挂回来", W.TASK_NAME in tasks(), False)
 
     print("\n[周一 04:00 前仍算上一周]")
-    # 2026-09-07 是周一。03:59 仍属于上一周，不许刷新。
     g.enforce(datetime(2026, 9, 7, 3, 59, tzinfo=SERVER_TZ))
     check("周一 03:59 还不刷新", W.TASK_NAME in tasks(), False)
 
@@ -1795,8 +1579,6 @@ def _part_weeklyboss_cycle():
     g.enforce(MON)
     farm_warn = lambda: [m for lv, m in _log.lines if lv == "WARNING" and W.FARM in m]  # noqa: E731
     check("one WARNING for two rounds (enforce runs every round)", len(farm_warn()), 1)
-    # 2026-10-13 audit: the task stayed listed with no target, and upstream's
-    # validate_additional_tasks then raises before login (the whole daily fails).
     check("no target: the weekly boss is not left listed", W.TASK_NAME in tasks(), False)
     (CFG / "FarmEchoTask.json").write_text(json.dumps({}), encoding="utf-8")
     g.enforce(MON)
@@ -1842,14 +1624,7 @@ def _part_weeklyboss_cycle():
 
 
 def _part_weeklyboss_reopen():
-    """「新的一周」通知要带上鸣潮周本（用户 2026-09-07）。
-
-2026-09-07（周一）08:48 的通知只有「新的一周，剿灭已重新开启」，
-周本那边 weeklyboss.json 里 done_week 还是上周（2026-W36），
-用户看不到周本这周会不会打、打哪个、打几次。
-
-    Formerly test_weeklyboss_reopen.py.
-    """
+    """「新的一周」通知要带上鸣潮周本（用户 2026-09-07）。"""
     import json, os, sys, types
     from datetime import datetime
 
@@ -1898,8 +1673,6 @@ def _part_weeklyboss_reopen():
                  "win32con", "win32file", "servicemanager", "win32process",
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
         sys.modules.setdefault(name, _Stub(name))
-    # 开机的各个阶段 2026-09-08 从 service.py 搬进了 boot_stages.py；
-    # 私有名要用就直接引它本尊，不经 service.py 转手。
     import boot_stages
 
     sent = []
@@ -1948,17 +1721,7 @@ def _part_weeklyboss_reopen():
 
 
 def _part_garden_gate():
-    """周常乐园的周门：本周做完就关掉检查，周一 04:00 开回来。
-
-和剿灭那道门是同一个形状，所以周界口径必须一致——直接复用
-`annihilation.week_key`，不许自己再算一遍。这个文件把三件事钉住：
-
-  1. 周界就是周一 04:00（周一 03:59 还算上一周）；
-  2. 记账只写状态文件，不碰配置（落盘交给 enforce）；
-  3. enforce 幂等，而且新的一周会把检查放回去。
-
-    Formerly test_garden_gate.py.
-    """
+    """周常乐园的周门：本周做完就关掉检查，周一 04:00 开回来。"""
     import json
     import tempfile
     from datetime import datetime, timedelta
@@ -2036,15 +1799,11 @@ def _part_garden_gate():
         nxt = now + timedelta(days=7)
         check("新的一周会把检查放回去", g.enforce(nxt), True)
         check("检查回来了", garden.TASK_NAME in _read(automas), True)
-        # The earlier week's booking is left for maybe_reopen at boot, so the new-week
-        # notice still sees the roll-over (audit 10-13, test_garden_rollover_after_tick.py).
         check("过期记账留给开机清", json.loads((tmp / "state.json").read_text())["weekly"]["garden"].get("done_week"),
               week_key(now))
         check("开机清账并说新的一周", bool(g.maybe_reopen(nxt)), True)
         check("过期记账已清掉", json.loads((tmp / "state.json").read_text())["weekly"].get("garden") or {}, {})
 
-        # Written but read back unchanged (another program wrote it back): not reported as set,
-        # False, pushed again next round (audit 11-08 D-13).
         g.on_success(nxt)
         real_write = garden.atomic_write_text
         garden.atomic_write_text = lambda f, text: None          # the write "went through", the file did not change
@@ -2074,27 +1833,7 @@ def _part_garden_gate():
 
 
 def _part_garden_rollover_after_tick():
-    """A periodic tick after Monday 04:00 must not eat the weekly garden's roll-over.
-
-Audit 2026-10-13 (weekly block, finding 3). GardenGate.enforce() popped a
-done_week from an earlier week itself (garden.py:113-114, :132-133), so the
-boot-time WeekGate.maybe_reopen found nothing to roll over and the garden never
-joined the new-week notice. The machine's record of Monday 2026-10-05 (Beijing
-time, relay.log of the 10-13 copy):
-
-    10-05 04:43:37 INFO    ark.garden  周常乐园检查已恢复
-    10-05 08:45:19 INFO    ark.service  服务模式启动 ...
-    10-05 08:46:03 INFO    ark.weeklyboss  新的一周，周本记账已清（上周 2026-W40）
-
-No 「新的一周，周常乐园记账已清」 line: the 04:43 tick had already cleared it.
-That day's new-week notice went out only because the weekly boss rolled over;
-with only the garden done the week before, none would have gone out.
-
-Replayed here: garden done in 2026-W40, switch off; ticks at 04:43:37 and 05:00
-on Monday 10-05; boot at 08:46:03.
-
-    Formerly test_garden_rollover_after_tick.py.
-    """
+    """A periodic tick after Monday 04:00 must not eat the weekly garden's roll-over."""
 
     import json
     from datetime import datetime
@@ -2193,14 +1932,7 @@ on Monday 10-05; boot at 08:46:03.
 
 
 def _part_garden_unified():
-    """周常乐园和剿灭、周本一套接口：settings / week_line / maybe_reopen / configure。
-
-用户 2026-09-07：「鸣潮有两个东西，一个是周常乐园（不消耗体力完成），一个是周本
-材料（一周三次，要消耗体力）。我希望手机网页界面操作逻辑、中继每周判定他们的
-逻辑、推送的通知里应该统一。目前通知是散开的而且没有周常乐园。」
-
-    Formerly test_garden_unified.py.
-    """
+    """周常乐园和剿灭、周本一套接口：settings / week_line / maybe_reopen / configure。"""
     import json, sys
     from datetime import datetime
 
@@ -2242,21 +1974,7 @@ def _part_garden_unified():
 
 
 def _part_nest_patch_visible():
-    """A refused nest patch must not leave every report saying 「只打落渊南丘」.
-
-「Only Farm These Nests」 is an option **our copy** of NightmareNestTask.py adds;
-upstream has no such setting. So when the patch is refused - upstream restructured
-the file and the hash no longer matches - nothing reads that value and every nest
-gets farmed, all night. The config value is untouched, which is exactly why
-tomorrow's plan went on announcing 「只打落渊南丘」: it read the config and never
-looked at whether the code that honours it is there.
-
-That breaks a standing instruction (nests: 落渊南丘 only) while every surface says
-it is being kept. And the notification could not tell it either: a patch that could
-not be applied shared its title with one that went on cleanly.
-
-    Formerly test_nest_patch_visible.py.
-    """
+    """A refused nest patch must not leave every report saying 「只打落渊南丘」."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
@@ -2270,9 +1988,6 @@ not be applied shared its title with one that went on cleanly.
 
 
     print("[改动在不在，看 OK-WW 自己写下的那份报告，不看配置也不看源文件]")
-    # Since 2026-09-09 the change lives in ok_tasks/ark_overrides.py, so the source file
-    # is upstream's own and looking at it would report 「没贴上」 on a healthy machine -
-    # which is what tomorrow's plan said that night.
 
     _real_report = okww_overlay.last_report
     try:
@@ -2285,7 +2000,6 @@ not be applied shared its title with one that went on cleanly.
         check("被跳过了就是不在", nest_patch_present(okww(None)), False)
         okww_overlay.last_report = lambda: {"error": "Traceback ..."}
         check("整个文件炸了也是不在", nest_patch_present(okww(None)), False)
-        # The file raised after find_nest was bound (audit 2026-10-13, A5): it is bound.
         okww_overlay.last_report = lambda: {"applied": ["NightmareNestTask.find_nest"], "error": "Traceback ..."}
         check("raised after binding find_nest: present", nest_patch_present(okww(None)), True)
         okww_overlay.last_report = lambda: {"applied": ["FarmEchoTask.run"], "error": "Traceback ..."}
@@ -2303,9 +2017,6 @@ not be applied shared its title with one that went on cleanly.
     nest = {"Only Farm These Nests": "落渊南丘"}
     zh = {"Tacet Discord Nest": "残象聚落"}
 
-    # Presence is read from OK-WW's binding report (okww_overlay.last_report), not
-    # from the source file. Until 2026-09-14 this block passed only because a stray
-    # report file with an error in it sat in the repo's cwd - stub the report here.
     os.environ["ARK_OKWW_DIR"] = str(okww(None))
     okww_overlay.last_report = lambda: {"applied": ["NightmareNestTask.find_nest"], "skipped": []}
     good = plan._okww_nest_bit({}, nest, [], zh)
@@ -2333,17 +2044,7 @@ not be applied shared its title with one that went on cleanly.
 
 
 def _part_nest_source_pristine():
-    """The health check's 「nest source = upstream's own」 item follows OK-WW's updates.
-
-10-10 22:4x the item was red: the machine's working/src/task/NightmareNestTask.py
-(11932 bytes, sha1 8e3a251042, 10-04 08:47) was compared byte for byte with the copy
-stored in okww_files (08-27, 11138 bytes). The machine's file was upstream's own -
-the same bytes as OK-WW v3.7.4 on cnb.cool and on GitHub - so every OK-WW update
-turned the item red. It is judged against OK-WW's own git checkout (repo/); the stored
-copy itself was removed 2026-10-12 with the code that restored it.
-
-    Formerly test_nest_source_pristine.py.
-    """
+    """The health check's 「nest source = upstream's own」 item follows OK-WW's updates."""
     import tempfile
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -2390,19 +2091,7 @@ copy itself was removed 2026-10-12 with the code that restored it.
 
 
 def _part_nest_strings_pinned():
-    """The two nest sentences the relay reads are written by our own override.
-
-outcome.py and collector_okww.py decide whether the nests were farmed by looking
-for two sentences in OK-WW's log (the "all full, skipping" one and the "spot not
-found in the list" one). Both are printed by
-relay/ark_relay/features/okww_files/ark_overrides.tasks.py - our file, not
-upstream's (until 2026-09-09 the whole-file NightmareNestTask replacement printed them).
-Nothing tied the two sides together: change a character in the override and 99 tests
-stay green while the daily report starts saying, every day, that the nests were opened
-and never fought.
-
-    Formerly test_nest_strings_pinned.py.
-    """
+    """The two nest sentences the relay reads are written by our own override."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as collector_okww, outcome
@@ -2423,20 +2112,7 @@ and never fought.
 
 
 def _part_wuwa_bulletin():
-    """Wuthering Waves banners: how the bulletin and the notices are read (2026-10-13 audit).
-
-* Collaboration and memory banners say 「角色联动唤取」 / 「角色忆旅唤取」, not only
-  「角色活动唤取」; the pool-name and notice-title patterns took only 活动.
-* A bulletin that yields no debut (title or 「全新角色」 format changed) dropped every
-  running pool without a log line; it now warns and reports them all.
-* Once both halves are out, the 「下期」 line listed every wiki entry with the
-  previewed badge, including a character whose own banner was running (锁暝,
-  2026-10-22 audit run5.py); running and current-debut names are now left out.
-  With no debut read (the fallback above), a name the bulletin quotes is left out
-  too, and with no bulletin text the line is not said at all (review run6).
-
-    Formerly test_wuwa_bulletin.py.
-    """
+    """Wuthering Waves banners: how the bulletin and the notices are read (2026-10-13 audit)."""
     import logging
     from datetime import datetime
 
@@ -2544,9 +2220,6 @@ def _part_wuwa_bulletin():
           notes.get("鸣潮", ""), "官方已预告下一版新角色：新来的")
 
     print("[no debut read (the fallback): this version's second half is not the next version's]")
-    # 2026-10-13 review run6 (live data with the debut lines' star prefix rewritten):
-    # first half running, the debut list unreadable, and this version's second-half
-    # character was announced as the next version's.
     first = home(("但愿长圆如此夜", "X", "2026-10-01 11:00", "2026-10-22 09:59"))
     five = {"game": [{"tabTitle": "3.7版本内容说明",
                       "content": "<p>全新角色</p><p>五星共鸣者「心」</p><p>※可通过[但愿长圆如此夜]角色活动唤取获得</p>"
@@ -2565,16 +2238,7 @@ def _part_wuwa_bulletin():
 
 
 def _part_wuwa_middot():
-    """A debut whose name has a middle dot is not dropped as a rerun.
-
-The Kuro wiki spells 秧秧·玄翎 with U+00B7 (wuwa_catalogue_2026-09-12.json); the
-in-game notice spells it 秧秧・玄翎 with U+30FB (maint/ww_notice.json). _wuwa keeps
-only the running pools whose character is in the bulletin's 「全新角色」 section,
-comparing the strings as they are, so the running debut was filtered out as a
-rerun and its line vanished without a warning. Runs _wuwa itself with fakes.
-
-    Formerly test_wuwa_middot.py.
-    """
+    """A debut whose name has a middle dot is not dropped as a rerun."""
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -2637,18 +2301,6 @@ rerun and its line vanished without a warning. Runs _wuwa itself with fakes.
 
 def _part_wuwa_update_close():
     """Closing WuWa for real: the game, OK-WW and the Kuro launcher (preupdate_okww._okww_close).
-
-The launcher runs as launcher_main.exe in a version folder
-(D:\\Wuthering Waves\\2.6.5.0\\launcher_main.exe), which the old full-path match on
-…\\Wuthering Waves\\launcher.exe missed (2026-09-30). And 「已关掉」 was said without
-looking: taskkill from session 0 does not reach the game under its anti-cheat
-(echofarm._kill_on_desktop, 2026-09-09), and its return code was never read.
-
-The relay's own WuWa client update through the launcher (update_wuwa, whose ready
-words and timeouts were tested here) went on 2026-10-12: AUTO-MAS updates the
-client before an OK-WW run (item 10b).
-
-    Formerly test_wuwa_update_close.py.
     """
     import json
     import subprocess
@@ -2757,8 +2409,6 @@ client before an OK-WW run (item 10b).
         subprocess.run = real_run
     check("都没关掉 → 点名", left, ["Client-Win64-Shipping.exe", "launcher_main.exe"])
 
-    # Bounded as echofarm.stop_okww (audit 11-08 A-22: run_okww now waits on this before it puts
-    # the switch back): a look that takes long uses the budget up and the looks stop.
     clock = [0.0]
 
 
@@ -2825,7 +2475,6 @@ def _part_boss_table_matches():
             fails.append(label)
 
 
-    # web/schema.js `const BOSSES` as of 2026-11-17 (git show 1c8b5828:web/schema.js).
     PAGE = [(1, "天傀劫煞"), (2, "万囿牢·朽躯"), (3, "梦魇亚当·重锤"), (4, "无铭探索者")]
     check("手机那份和中继一字不差", PAGE, wuwa_boss.choices())
 

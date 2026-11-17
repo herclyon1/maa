@@ -755,23 +755,7 @@ def maaend_round_only_gathering(read_ledger, last: dict, history_dir=None) -> st
     """Why running MaaEnd's whole script again would only redo finished work: an attempt of the
     round that `last` ended ran to its end with gathering (自动采集) the only task AUTO-MAS
     found unfinished, so every other task was done in that attempt; '' otherwise.
-
-    2026-11-05 早班: the 10:22 attempt finished every task but one gathering route
-    (AUTO-MAS 「MaaEnd 未完成任务列表: {'🧺自动采集': [...]}」, ledger raw maaend_result
-    「MaaEnd 部分任务执行失败: 🧺自动采集」); the 11:26 and 12:02 attempts were cut by the
-    account being logged in elsewhere and by AUTO-MAS's 120-minute cap, and then the whole
-    make-up ran everything a fourth time. The routes that did not make it are collect_retry's
-    to re-run, one by one, before the power-off. Only AUTO-MAS's own unfinished list counts:
-    a cut attempt (「运行超过 120 分钟，已终止」) names no task and says nothing about the rest.
-    `read_ledger` is State.read_ledger; an unreadable ledger is a no (the make-up runs).
-
-    Any one such attempt is enough, not all of them (audit 2026-11-08 B-01 asked for all):
-    that attempt did every other task, so a later attempt failing 协议空间 failed work already
-    done, and a whole make-up would only run it a second time (the 11-05 policy: 只缺采集路线
-    单补，真缺活才整轮补). With `history_dir`, that attempt's AUTO-MAS log must be on disk too:
-    collect_retry reads its 「…采集失败」 lines to know what to re-walk, and without them the
-    hand-over re-walks nothing (until 2026-11-08 it built only the pre-v5.8 path and never
-    found one)."""
+    """
     from ark_relay.features import collector_maaend  # noqa: PLC0415
     from ark_relay.core import texts  # noqa: PLC0415
     started_at = _at(last.get("started"))
@@ -882,17 +866,6 @@ def maybe_run(eng, now: datetime | None = None) -> bool:
     _settle_stale(eng, now)
     marker = read_marker(state_dir, day)
     _restore_at_top(eng, now, day, marker)
-    # A MAA round that already worked gets no make-up (a second whole run uses
-    # potions again). Spent at once, not when the queue goes idle, so it is not held.
-    # MaaEnd needs no such guard (audit s16 #4, settled from its option definitions,
-    # tests/fixtures/maaend-2026-09-10/tasks/AutoEssence/AutoEssence.json and
-    # maaend-v2.30.0-beta.4-spmed/resource/pipeline/nodes.json): AutoUseSpMedication
-    # =UseMedication only uses an emergency sanity booster whose remaining time OCRs
-    # inside AutoEssenceSpMedicationExpireWithinDays, once per low-sanity prompt, with
-    # no count kept across launches. A run that fought to the end has used every
-    # booster in the window, so a whole re-run finds none (AUTO-MAS's own re-runs:
-    # 10-08 MaaEnd-06-34-21 and 10-12 06-58-38 read 「理智不足，结束任务」 and refilled
-    # nothing); one cut short uses what the full run would have used anyway.
     for r in candidates(eng, now):
         if r.script == "MAA" and (why := maa_work_done(eng, r)):
             log.info("补跑：明日方舟这次不补（%s），失败照常进群", why)
@@ -1051,9 +1024,6 @@ def on_record(eng, rec) -> None:
     day, marker, ent, since = found
     if not _belongs(ent, rec, since):
         return
-    # 2026-11-05 13:19: the make-up the red button stopped had no raw.manual_stop yet (the estop window
-    # was not backfilled), only AUTO-MAS's 「任务被用户手动停止」, so it was booked failed and pushed as
-    # 「补跑也没成」. AUTO-MAS writes those words only for a task someone (he or 停一切) stopped.
     from ark_relay.core import texts  # noqa: PLC0415
     stopped = bool((rec.raw or {}).get("manual_stop")) or any(texts.AUTOMAS_MANUAL_STOP in str(t) for t in (rec.failed_tasks or []))
     ent["result"] = OK if rec.ok and not stopped else FAILED
@@ -1092,9 +1062,6 @@ def on_record(eng, rec) -> None:
             rows += _yesterday_tail(eng.state.read_ledger, rec.script, rec.user, day, first_start)
         except Exception:
             log.warning("补跑：前一天的账本读不出来，跨午夜那几次没记上补跑做成", exc_info=True)
-    # Tied to the earlier failures only once this record's own outcome check passed
-    # (after_outcome, called by handle._handle_success): AUTO-MAS's 「正常退出」 is not the work
-    # done, and the earlier lines read 「补跑走通」 off these marks (audit 2026-11-08 B-01).
     _TIE_UP[rec.run_id] = (rows, when)
     log.info("✅ 补跑：%s %s AUTO-MAS 记成功，等结果核对过了再记到之前那几次上", rec.script, rec.run_id)
 

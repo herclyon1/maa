@@ -70,11 +70,6 @@ def parse_endfield(pools: list, name_of) -> list[Banner]:
 # The 「全新干员」 section contains no reruns by construction, which is exactly what
 # makes it usable as the debut criterion.
 _EF_DEBUT_SEG = re.compile(r"全新干员(.{0,300}?)■", re.S)
-# 6-stars only. The 2026-09-02 bulletin read 「6星干员【提弗洛斯】、5星干员【噗切娜】」
-# -- 噗切娜 is a gifted 5-star that never appears on a banner at all, yet it got
-# reported as the next banner.
-# Set by the user: for Endfield and Arknights report only new limited 6-star UPs; for
-# Wuthering Waves only 5-stars (its highest rarity).
 _EF_SIX = re.compile(r"6星干员((?:【[^】]+】)+)")
 _EF_BRACKET = re.compile(r"【([^】]+)】")
 _EF_UP = re.compile(r"6星干员【([^】]+)】获取概率提升")
@@ -134,10 +129,6 @@ def parse_endfield_notice(html: str) -> "list[tuple[str, str]]":
 def endfield_pools_from_notice(html: str) -> "list[tuple[str, str, datetime | None, bool]]":
     """Every 6-star UP banner in the bulletin: (operator, banner name, opening time
     or None, is it a debut).
-
-    The user, 2026-09-03: 「不要光顾着删卡池，你要补充预期卡池的角色」.
-    From the 2026-09-02 bulletin: 「冬猎」 提弗洛斯 (debut, opens after the version
-    update); 「绚丽异彩」 重构寻访#1 伊冯 (rerun, opens 2026/09/24 12:00).
     """
     txt = re.sub(r"<[^>]+>", " ", html or "").replace("&nbsp;", " ")
     txt = re.sub(r"\s+", " ", txt)
@@ -162,15 +153,6 @@ def endfield_pools_from_notice(html: str) -> "list[tuple[str, str, datetime | No
             when = datetime(y, mo, d, hh, mm)
         out.append((name, pool, when, name in debut))
     return out
-# Compared 2026-10-12 with gacha-calendar-core 0.11.3 (npm, MIT), i.e.
-# EastMG/dsh-gacha-calendar src/client/30-game-hypergryph.js @ 8070578: upstream
-# has no official Endfield source. It scrapes end.canmoe.com's minified Next.js
-# chunk (its own comments say the variable names change per build), with
-# GachaTracker and endfield.wiki.gg (English) as fallbacks. Skland char-pool
-# (timestamps) and the Hypergryph bulletin / CMS / version briefing used here
-# are first-party, so nothing is ported.
-# Endfield's official bulletin aggregate endpoint, no token needed. code is a
-# channel constant.
 _EF_BULLETIN = ("https://game-hub.hypergryph.com/bulletin/v2/aggregate"
                 "?lang=zh-cn&platform=Windows&channel=1&type=0"
                 "&code=endfield_5SD9TN&hideDetail=0")
@@ -276,10 +258,6 @@ def _ef_bulletin() -> "tuple[str, list[tuple[str, str]], bool]":
             for n in ((d.get("data") or {}).get("list") or [])
             if "版本更新说明" in str(n.get("title") or "")])
         if not html:
-            # No version notes in the list: no debuts can be told apart, which is
-            # "not read", not "no new banner". On 2026-10-13 the list still had the
-            # notes of 09-02 beside 10-13's pre-download notice, so the entry stays
-            # up all version; this guards a list that drops it.
             raise ValueError("公告列表里没有「版本更新说明」")
         return html, parse_endfield_notice(html), True
     except Exception:
@@ -472,29 +450,13 @@ def _ef_next(now: datetime, on: "set[str]", debut: "list[tuple[str, str]]", pool
     return None
 
 _EF_NEWS = "https://endfield.hypergryph.com/news"
-# The backend the news page itself pages through (page 2 onwards is fetched in the
-# browser): host and appCode are module 56006 of the site's Next.js bundle, the call
-# is `GET /api/bulletin?lang&code&page&pageSize&tabs` in chunk 226 (read
-# 2026-10-06). pageSize is capped at 20 server-side; total was 99, back to 2024.
 _EF_CMS = "https://web-news.hypergryph.com/api/bulletin"
 _EF_CMS_LIST = _EF_CMS + "?lang=zh-cn&code=endfield_web&page={page}&pageSize=20"
 _EF_CMS_POST = _EF_CMS + "/{cid}?lang=zh-cn&code=endfield_web"
 _EF_SIX_UP = re.compile(r"概率提升的6星干员为【([^】]+)】")
 _EF_CLOCK = r"(\d{4})/(\d{1,2})/(\d{1,2})\s*(\d{1,2}):(\d{2})"
-# Every 开放时间 wording the 11 特许寻访 notices use (all read 2026-10-06):
-#   start: a clock (5 of 11); 「<version>」版本开启后, i.e. once that version is
-#     out (5 of 11, e.g. cid 5992); 公测开启后, i.e. at launch (cid 1188 only).
-#   end: a clock (7 of 11); 版本更新维护前, i.e. before the next update's
-#     maintenance (4 of 11, e.g. cid 7226).
-# Either side may be followed by the 服务器时间 marker in full-width brackets.
-# Groups: 1-5 start clock, 6 the version it opens with, 7 the launch marker,
-# 8-12 end clock, 13 the before-maintenance marker.
 _EF_SPAN = re.compile(r"开放时间[：:]?\s*(?:" + _EF_CLOCK + r"|「([^」]+)」版本(?:开启|更新)后|(公测)开启后)"
                       r"[^-~～/\d]{0,12}[-~～]\s*(?:" + _EF_CLOCK + r"|(版本更新维护前))")
-# 「维护时间」, 「更新维护时间」 and 「版本维护时间」 all occur; both ends are kept: the
-# end is when a 「版本开启后」 banner opens, the start is when a 「版本更新维护前」
-# banner closes (Skland's char-pool agrees: 晨星于此闪耀 poolEndAtTs 1788300000 =
-# 2026-09-02 06:00, the start of the 雪凇幽梦 window).
 _EF_WINDOW = re.compile(r"维护时间\s*" + _EF_CLOCK + r"\s*[-~～]\s*" + _EF_CLOCK)
 # Launch time: cid 7231, the 2026-01-20 pre-download post, says the launch is at
 # 2026-01-22 11:00 (UTC+8) in the form matched below.
@@ -631,15 +593,7 @@ def endfield_next_from_news(now: datetime, get=None) -> "tuple[datetime | None, 
     """The newest banner notice on the official site whose banner has not opened:
     (opening time, operator「banner」). None when there is none.
 
-    Same page shape as the Arknights site (a Next.js list of cid/title/displayTime).
-    Recorded 2026-09-12: cid 6097 「冬猎」特许寻访说明, posted 09-01; its body gives
-    the opening as "after the version update - 2026/09/30 11:59" and names the
-    rate-up six-star 【提弗洛斯】. A banner that opens "after the version update"
-    opens when that version's maintenance window in the pre-download notice ends
-    (2026/09/02 06:00 - 12:00 there). Read by ef_banner_posts, the same reader
-    endfield_history uses for every past banner.
-
-    The posts come from the same CMS API endfield_history pages through (its first
+The posts come from the same CMS API endfield_history pages through (its first
     page, the newest 20 posts); the SSR news page, which shows only 10, is the
     fallback when the API does not answer.
     """
@@ -658,17 +612,6 @@ def endfield_next_from_news(now: datetime, get=None) -> "tuple[datetime | None, 
     return ef_next_banner(posts, now)
 
 
-# The 新版本导览 (version briefing) page. Bulletin cid 2183 「「丹青渡」新版本导览专题网页
-# 上线说明」 (startAt 1791288000 = 2026-10-06 20:00 UTC+8) links to it; it is up from
-# a version's preview broadcast until the next one's, about a week before the
-# banner notice (「…」特许寻访说明) goes out - on 2026-10-08 the notice for the
-# 10-15 version was not posted yet and the report said 「官方未公告」 for a week.
-# The HTML only loads a bundle under web.hycdn.cn/endfield/webview/_version_briefing/
-# whose name changes per version (v1d6/version-v1d6.0dca1e.js on 2026-10-08), so
-# it is found through the page each time. The bundle carries the page content as
-# JSON.parse('...') literals; the one with characters[] lists each new operator
-# with gachaPoolName and gachaTimeByServer.cn (meta.sourceTables names
-# GachaCharPool, i.e. the game's own tables).
 _EF_BRIEFING = "https://endfield.hypergryph.com/version_briefing/latest"
 _EF_BRIEFING_JS = re.compile(r'src="(https://[^"]+/_version_briefing/[^"]+\.js)"')
 _JS_PARSE = re.compile(r"JSON\.parse\('((?:[^'\\]|\\.)*)'\)")
@@ -686,9 +629,6 @@ def _js_unescape(lit: str) -> str:
 
 
 def _ef_brief_time(s: str) -> "datetime | None":
-    # Two shapes occur: 「2026/10/15 7:00:00」 and 「2026-11-05T11:59」; "" = not set.
-    # Any other text raises: read as "not set", a new shape turned the announced
-    # operator into 「官方未公告」 without a word (_endfield warns on the raise).
     if not s.strip():
         return None
     for fmt in ("%Y/%m/%d %H:%M:%S", "%Y-%m-%dT%H:%M"):
@@ -814,14 +754,6 @@ def ef_cms_posts(get=None, max_pages: int = 20) -> "list[tuple[str, str, int, st
 def endfield_history(get=None) -> "list[tuple[str, str, datetime | None, datetime | None, str]]":
     """Every new-operator banner the official site still has a notice for:
     [(period, operator「banner」, start, end, source)], oldest first.
-
-    The user, 2026-10-06 18:55, asked for past banners to be fetched the way the
-    next one is (his words are in BOARD/replay-终末地-1006.txt). Same site, same
-    reader (ef_banner_posts) as
-    endfield_next_from_news; only the listing goes past the page's first ten posts.
-    Only 「特许寻访」 notices: reruns are 「重构寻访」 and 「辉光庆典」 is a
-    「特殊寻访」 with no rate-up operator. Skland's char-pool lists only running
-    banners (0 rows on 2026-10-06, code 0), so it cannot be a history source.
     """
     rows = ef_banner_posts(ef_cms_posts(get))
     far = datetime.max

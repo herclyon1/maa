@@ -113,9 +113,6 @@ SELFCHECK_FAILED = "🩺 开机自检没过"
 AUTOMAS_CONTRACT = "⚠️ 调度程序升级后，中继有设置读不到"
 AUTOMAS_DOWN = "🔌 AUTO-MAS 启动不起来"
 ROUND_INCOMPLETE = "⚠️ 这一轮没干完"
-# OK-WW's daily activity short of 100 because the waveplates ran out: a notice in the group,
-# not an alarm, and the evening shift tops it up (features/makeup/activity.py, which quotes
-# the user's words of 2026-10-23).
 ACTIVITY_TOPUP = "🔁 鸣潮早班活跃没满，晚班补"
 ACTIVITY_TOPUP_WAIT = "鸣潮活跃晚班补还没完"
 
@@ -158,7 +155,6 @@ MAKEUP_RESTORE_FAILED = "⚠️ 终末地设置没能自动改回"
 MAAEND_PRUNED = "🧹 终末地配置清掉了死条目"
 MAAEND_PRUNED_REFUSED = "⚠️ 终末地配置里的死条目没能清"
 MAAEND_MIGRATED = "🧩 终末地新版本改了设置格式，已按原意换写"
-# efstart_setup: AUTO-MAS's own pre-run check will refuse every MaaEnd run (10-16 09:34).
 ENDFIELD_NO_LAUNCHER = ("调度程序会拒绝开终末地：它从游戏所在的位置往上找不到终末地的官方启动器，"
                         "MaaEnd 每一趟都会在开跑前直接跳过")
 # efstart_setup: AUTO-MAS cannot be put on 「MaaEnd 启动」 (window 1280x720, fullscreen back after),
@@ -217,7 +213,6 @@ def collect_retry_body(passed: list[str], failed: list[str], unknown: list[str],
     if note:
         lines.append(note)
     return "\n".join(lines) or "没有要补跑的路线"
-
 
 
 def maaend_crash_reason(code: str) -> str:
@@ -383,10 +378,6 @@ def unresolved_head(game: str, shift: str, makeup: str, stuck: str, page: str) -
     return head + "\n"
 
 
-# What a 「没干完」 alarm says instead of 「这一类不补跑」 when gathering routes are among what
-# is undone: no whole make-up is run, and the routes are walked again one by one before the
-# power-off (collect_retry.maybe_run), whose outcome is its own message. Until 11-17 the head
-# said 「这一类不补跑」 and the retry followed a quarter of an hour later (ledger #166, #170).
 NO_WHOLE_MAKEUP = "这一类不整轮补跑"
 
 
@@ -503,9 +494,6 @@ def makeup_passed(game: str, shift: str) -> str:
     return f"⚠️ {game}{shift}失败过，补跑后走通了"
 
 
-# MAA read less sanity than the stage costs and fought nothing; AUTO-MAS booked the
-# run as failed (handle._handle, outcome.maa_sanity_short), or an Annihilation pass as
-# done (handle._say_annihilation_short, 2026-11-09).
 MAA_SANITY_SHORT = "⚠️ 明日方舟理智不够，这一趟没打"
 # MaaEnd restarted itself to install a new build after its shift's round was already
 # done; AUTO-MAS booked that attempt as failed (handle._drop_update_after_done). Not
@@ -667,9 +655,6 @@ def makeup_no_fight(failed: str) -> str:
     return f"失败的不只是开始唤醒或连模拟器（{failed}），日志里这一轮一仗都没打"
 
 
-# The words makeup_only_gathering always carries: pushes._unresolved_title_head tells this
-# make-up decision from the others by them.
-# Endfield's failure retry limit found back at 3 and written back to 1 (run_limit.py, 2026-11-05).
 RUN_LIMIT_RESET = "终末地失败重试上限已改回 1"
 RUN_LIMIT_STUCK = "⚠️ 终末地失败重试上限改不回 1"
 
@@ -684,9 +669,6 @@ def run_limit_stuck_body(game: str, cur, want, why: str) -> str:
             f"不改回来，{game}一失败 AUTO-MAS 会自己连跑几遍；已交给我们这边去查")
 
 
-# 2026-11-05 13:19: a make-up stopped by the red button (停一切) was pushed as 「补跑也没成：卡在 任务被用户手动停止」,
-# read as the make-up failing on its own. A stopped make-up is said as such; AUTO-MAS's words for a
-# task someone stopped are not where it got stuck.
 MAKEUP_STOPPED_PHRASE = "补跑被红按钮（停一切）停掉了，没再补"
 AUTOMAS_MANUAL_STOP = "任务被用户手动停止"
 MAKEUP_ONLY_GATHERING_MARK = "除了自动采集，别的都干完了"
@@ -849,8 +831,6 @@ _RELAY_PARTS = {
     "ark.maaend": "终末地设置", "ark.queues": "队列设置", "ark.modes": "跳过开关", "ark.plan": "排期",
     "ark.sanity_plan": "理智安排", "ark.summary": "文字撰写", "ark.watch": "盯运行记录目录",
     "ark.procs": "程序列表", "ark.tape": "回放用的输入记录",
-    # Named 2026-10-13 (review s1 #8): each of these logs WARNINGs that errwatch pushes,
-    # and read 「一个不常见的部分」 until then. test_texts_gate checks every ark… logger name.
     "ark": "主程序", "ark.errwatch": "报错转发", "ark.error_evidence": "当天日志外送",
     "ark.gamelog_errors": "游戏日志报错核对", "ark.outcome": "核对干没干成", "ark.logfile": "中继日志文件", "ark.machinecheck": "机器上的核对",
     "ark.runs": "按每趟记录做的机器上核对", "ark.system": "中继自身的机器上核对",
@@ -1000,16 +980,9 @@ OKWW_BATTLE_PASS_LABEL = "战令（先约电台）点了领取"
 OKWW_BATTLE_PASS_FAILED = "同一趟里重开了一次，战令页还是没打开，今天的战令点数没领到"
 OKWW_BATTLE_PASS_RETRIED = "第一次没打开，同一趟里重开一次领了"
 OKWW_BATTLE_PASS_UNCHECKED = "OK-WW 领战令的写法变了，这次照它原样领，没打开时不会重试"
-# Between two podcast seasons the game itself refuses the page with a notice (11-11 09:32:03,
-# run OK-WW-05-17-52, read twice at confidence 100): 「提示 / 当前先约电台各频道暂未开播，请于下期
-# 先约电台频道开启时间段内进入。 / 确认」. Nothing can be claimed until the next season opens,
-# so this is said under 「按周期今天不跑」, not as an item undone (alarm #164 was this).
 OKWW_BATTLE_PASS_CLOSED = "战令（先约电台）这期已结束、下期还没开播，没有可领的"
 
 
-# The last line of every 「🩺 中继自己报错了」 push (errwatch.py). Since 10-06 every
-# WARNING is pushed, game and scheduler states included (AUTO-MAS backend down = the
-# shift does not run), so it no longer says the scripts were unaffected.
 RELAY_ERROR_TAIL = "已交给我们这边去修。"
 
 
@@ -1065,11 +1038,6 @@ LOST_ALARM_QUEUE = "中继重启前还排着没送出去的群报警，这次开
 EVIDENCE_UPLOAD_FAILED = "当天日志这次没传上去，原因记在机器上的中继日志里，我们这边照着查。"
 
 
-# What a relay WARNING / ERROR quotes from Python, Windows or the network stack, said as
-# what happened. In order: the first pattern found in the line wins, so the specific ones
-# (name resolution, the file held by another program) come before the general ones.
-# 2026-11-11 05:20 (ledger #162): the game PC's line dropped, five 「停服维护公告」 warnings
-# ended in 「getaddrinfo failed」 and each reached the group as a sentence that named nothing.
 _FAULTS = (
     (re.compile(r"getaddrinfo failed|Name or service not known|Temporary failure in name resolution"
                 r"|nodename nor servname|SuspectDnsProbeFailed|gaierror|NameResolutionError", re.I),
@@ -1314,11 +1282,6 @@ def shift_no_result_body(queue: str, due, now, missing: str, limit_min: int, sla
             f"{_overrun_basis(limit_min, days)}，{_restart_note(restarted)}按 {limit_min} + {slack_min} 分钟算早该跑完了。")
 
 
-# ---- what a group alarm says when the relay could not finish the job itself ----
-# The user, 2026-10-11 17:44: an alarm goes to our side to be fixed first, it is not
-# handed to a person to go and look. These lines say what happened and that our side
-# has it; none of them asks him to go and look.
-
 def estop_farm_left_body(farm: str, stopped: str) -> str:
     """The red button could not end the echo farm (redbutton.emergency_stop)."""
     return (f"刷声骸没结束{farm}。中继几分钟后会把鸣潮的脚本重新开起来，"
@@ -1363,7 +1326,6 @@ def echo_farm_progress(n: "int | None") -> str:
         return "**读不到 OK-WW 的日志，刷到没有不知道**"
     if n == 0:
         return "**OK-WW 日志里一次都没刷到（没打怪、没捡到声骸）**"
-    # no log name: what the reader needs is what happened (App review 10-14)
     return f"刷的过程中有 {n} 次进展（打怪、捡声骸、回到副本）"
 
 

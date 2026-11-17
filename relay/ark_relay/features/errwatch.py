@@ -24,9 +24,6 @@ from pathlib import Path
 from ark_relay.core import texts
 
 KNOWN: dict[str, dict] = {
-    # 9960c184 (first in relay-20261005151027): the boot self-check alarms when
-    # Pillow is missing (selfcheck.NEEDED_MODULES); relay3.log 10-05 21:47 had
-    # this WARNING with a ModuleNotFoundError for PIL.
     "ark.banners|官方图转 PNG 失败，原样交给系统 OCR|ModuleNotFoundError": {
         "fixed_in": "20261005151027",
         "what": "游戏机缺读图组件，官方长图读不了",
@@ -110,10 +107,6 @@ class AlertLog:
     def __init__(self, state_dir, put=None, get=None):
         self.dir = Path(state_dir) / "alerts"
         self._put, self._get = put, get
-        # _lock guards the local files and marks only, never a COS call: record()
-        # takes it on the alarm caller's thread (errwatch's push thread,
-        # _flush_pending), which a slow COS (15 s per GET / PUT) must not stall
-        # (audit 2026-10-13 s7 #8). _sync_lock keeps two syncs from interleaving.
         self._lock = threading.Lock()
         self._sync_lock = threading.Lock()
         # Whether the last sync worked, kept apart for the push path: errwatch drops
@@ -628,9 +621,6 @@ class ErrorKindAlert(logging.Handler):
 
     def _day(self, day: str) -> dict:
         if day not in self._days:
-            # One day is cached: write the one leaving first. _count saves a repeat
-            # only every SAVE_EVERY seconds, so dropping it unsaved lost counts around
-            # midnight (audit 2026-10-13 s7 #7).
             if self._dir:
                 for old, rows in self._days.items():
                     self._write(self._dir / DAY_DIR / f"{old}.json", rows)
@@ -662,8 +652,6 @@ class ErrorKindAlert(logging.Handler):
                 self._note_recovered(record)
                 return
             if record.threadName.startswith(PUSH_THREAD):
-                # Never pushed from the push path (it would loop), but counted: errkinds and
-                # the day file kept no trace of a fault there (audit 2026-11-08 C-05).
                 self._count_only(record)
                 return
             self._take(record)

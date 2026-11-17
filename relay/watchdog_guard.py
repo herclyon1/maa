@@ -7,16 +7,6 @@ during START_PENDING and stay stopped), and its failure actions cover a crash, n
 start that never came up or a clean stop. So the relay (app_main.run, packaged install
 only) looks FIRST_S after it starts and every EVERY_S after that:
 
-  RUNNING / START_PENDING / STOP_PENDING ... nothing to do;
-  STOPPED, start type automatic, no stop marker from this boot ... start it;
-  start type disabled (switch.py revert, a failed switch-over) ... stopped on purpose;
-  a stop marker written this boot ... stopped on purpose (below);
-  not installed (a machine on the old relay, a dev run) ... nothing to do;
-  not installed, but an earlier look found it installed, no stop marker this boot ...
-      one WARNING (MISSING_AFTER_SEEN, pushed by errwatch) until it is seen again:
-      deleted, nothing starts the relay again (audit s24 F3). switch.py uninstall
-      stops it with the marker before removing it, so that one stays quiet.
-
 Stopped on purpose: switch.py stop_watchdog (the installer before it replaces files,
 uninstall, revert) and scripts/mac/estop.sh write MARKER into the data folder before
 `sc stop`; switch.py start_watchdog and `estop.sh --restore` delete it. A marker older
@@ -31,12 +21,6 @@ start that ends stopped, or not running within START_WAIT_S, is a failure; so is
 it stopped again at the next look after a start that did work (it did not stay up). Each
 failure is logged (INFO); FAIL_LIMIT in a row log one ERROR, which errwatch pushes to the
 group (docs/NOTIFICATIONS.md, 「🩺 中继自己报错了」), once until a look finds it running.
-
-The first look that finds it stopped with no marker logs one WARNING (STOPPED_UNASKED),
-pushed by errwatch, whatever the start then did: nobody knows why it stopped, so it is a
-fault, not a normal state (until 2026-10-12 a start that worked was one INFO line). Looks
-that raised and were followed by a look that worked, with no ERROR pushed for them, end
-in one WARNING marked errwatch.recovered() (daily report and one 「自愈待查」 red item).
 """
 from __future__ import annotations
 

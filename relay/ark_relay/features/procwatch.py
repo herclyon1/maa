@@ -1,6 +1,4 @@
 """Is the machine going down? The relay's own power-off (errwatch) and the System log's 1074 / 1075, so an exit or a dropped listener that a shutdown explains is not pushed as a fault.
-
-Split out of relay/service.py (2026-10-11); behaviour unchanged.
 """
 from __future__ import annotations
 
@@ -22,28 +20,9 @@ wmi_diag = _sys.modules[__name__]
 shutdown_signs = _sys.modules[__name__]
 wmi_subscription = _sys.modules[__name__]
 
-# How long a failure that a shutdown would also explain - the process-start
-# listener dropping, the AUTO-MAS backend exiting - waits for a sign that the
-# machine is going down before it is logged as a fault. On a shutdown Windows
-# closes the logged-on session and tells services to stop in no fixed order with
-# each other or with WMI going down (2026-10-10 04:28 the AUTO-MAS exit came ~16 s
-# before the stop notice; in the ten Windows-shutdown stops from 10-10 23:31 to
-# 10-13 11:14 the stop notice came first), so either can reach us before any flag
-# (errwatch.going_down) is set. The first sign ends the wait at once; no sign at
-# all means it was not a shutdown, and it is logged as the fault it is.
 GOING_DOWN_SETTLE_SECONDS = 15.0
 
 
-# A System-log 1074 ("shutdown requested") this recent, with no 1075 ("aborted") and no
-# boot (6005) after it, means an AUTO-MAS exit is the shutdown's doing. 2026-10-10:
-# `shutdown /s /t 60` by hand wrote its 1074 at 04:27:24 (machine clock), AUTO-MAS exited
-# ~04:28:29, the stop notice came 04:28:45; the relay's own power-offs of 10-09 21:41:51 /
-# 21:49:11 wrote one too (docs/OPERATIONS.md, the 6005 / 6006 / 1074 check). The 1074 is
-# written when the command is given, the countdown earlier: 120 s (until 2026-10-13)
-# missed `shutdown /s /t 300` and read its exit as unexpected (audit s15 #5), so this is
-# the same hour as SHUTDOWN_BEFORE_WINDOW_SECONDS. A 6005 (the Event Log service started:
-# a boot) newer than the 1074 ends it - a request from before this boot is over.
-# Measured (10-10, above): after a `/t 60` 1074 AUTO-MAS was gone 65 s later.
 SHUTDOWN_EVENT_WINDOW_SECONDS = 3600
 
 
@@ -58,14 +37,7 @@ _SETTLE_STEP = 0.5
 
 
 def _going_down_soon(seconds: "float | None" = None) -> bool:
-    """True when the relay ITSELF has issued the machine power-off, now or within `seconds`.
-
-    The only case where a dropped WMI link or AUTO-MAS exiting is logged at INFO
-    instead of being pushed (the user, 2026-10-06: only the planned power-off the
-    relay started may stay out of the group). A shutdown by hand, `sc stop` or
-    Windows' own shutdown is NOT that: errwatch.relay_shutdown_issued() is false
-    for them, so the event is a WARNING/ERROR and reaches the group.
-    """
+    """True when the relay ITSELF has issued the machine power-off, now or within `seconds`."""
     from ark_relay.features import errwatch  # noqa: PLC0415
     if seconds is None:
         seconds = GOING_DOWN_SETTLE_SECONDS
@@ -124,17 +96,8 @@ def shutdown_requested(xmls: "list[str]") -> "dict | None":
     return None
 
 
-# Our own Arknights farm scripts (the Mac-side farm scripts spa_run.py, is_run.py) power the machine off at their
-# deadline (08:20, before the 08:40 plug cut) and leave this mark right before `shutdown /s`. 2026-11-13
-# 08:22:20 the AUTO-MAS exit that followed one went to the group as a relay fault. Gemini 10:19: such a
-# power-off is ours like the relay's own, so it stays out of the group - only when the mark names a farm
-# script, its outcome is a normal end (not "failed"), the request came from shutdown.exe, and the mark was
-# left at most FARM_POWEROFF_MAX_LEAD_SECONDS before that request. Anything else is pushed as before.
 FARM_POWEROFF_MARK = "ark-farm-poweroff.json"
 FARM_POWEROFF_SCRIPTS = ("spa_run.py", "is_run.py")
-# Measured: 2026-11-13 relay.log 1074 at 08:20:06 for the farm's `shutdown /s /t 120`; the farm writes the mark
-# in the same second, right before that command. 1800 s is the cap Gemini set (2026-11-13 10:19), so a mark
-# from an earlier night or an earlier run never explains a later power-off.
 FARM_POWEROFF_MAX_LEAD_SECONDS = 1800
 
 
@@ -268,9 +231,6 @@ def _wmi_hypothesis(at_subscribe: str, now: str) -> str:
     return "H3 WMI service and provider hosts unchanged"
 
 
-# How far back the System log is read when the subscription drops. The two drops
-# of 10-06 (16:16:59, 18:08:22) came 18-19 s after subscribing; five minutes
-# covers whatever stopped or crashed winmgmt before that.
 SCM_LOOKBACK_MS = 300_000
 
 
@@ -398,18 +358,7 @@ PROC_START_QUERY = "SELECT * FROM Win32_ProcessStartTrace WHERE ProcessName = 'p
 class _AsyncSubscription:
     """One asynchronous WMI subscription to python.exe starts, which can be cancelled.
 
-    SWbemServices.ExecNotificationQueryAsync "returns immediately and the
-    results and status are returned to the caller through events delivered to
-    the sink" - OnObjectReady per event, OnCompleted when the call ends
-    (https://learn.microsoft.com/en-us/windows/win32/wmisdk/swbemservices-execnotificationqueryasync)
-    - and SWbemSink.Cancel ends it: "You cannot assign this sink to Nothing to
-    cancel an asynchronous operation. You must call the Cancel method"
-    (https://learn.microsoft.com/en-us/windows/win32/wmisdk/swbemsink-cancel).
-    It replaced the semisynchronous ExecNotificationQuery (2026-10-10), whose
-    NextEvent() blocks inside COM with no way for another thread to end it, so
-    the relay exited with the subscription still live (_ProcessWatch).
-
-    Everything here runs on the listener's thread, in its single-threaded
+Everything here runs on the listener's thread, in its single-threaded
     apartment: COM delivers the sink's callbacks there as window messages, so
     wait() sleeps in MsgWaitForMultipleObjects on [the stop event, the WMI
     service host] plus any message (QS_ALLINPUT), with no timeout, and pumps
@@ -418,7 +367,7 @@ class _AsyncSubscription:
     MsgWaitForMultipleObjects again
     (https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-msgwaitformultipleobjects).
 
-    The WMI service host's process is in the wait as well (opened for
+The WMI service host's process is in the wait as well (opened for
     SYNCHRONIZE, the WMI service runs in its own svchost on this machine:
     svchost.exe_Winmgmt in the crash records): no Microsoft page says whether an
     asynchronous call is told through OnCompleted when that host dies, and a
@@ -508,10 +457,6 @@ log = logging.getLogger("ark.service")
 AUTOMAS_CHECK_SECONDS = 120
 
 
-# A listener outage this long is pushed: by then it is not a blip that the
-# 5-second resubscribe will fix. The drop itself is INFO; a resubscribe before
-# this is pushed too since 2026-10-10 (why it drops is not known). The directory
-# watch (_DirWatch) uses the same bound.
 OUTAGE_ALARM_SECONDS = 600.0
 
 
@@ -527,45 +472,6 @@ _STARTED = time.monotonic()
 
 class _ProcessWatch:
     """One listener's subscription to python.exe starts, and what it says when that subscription fails.
-
-    Split out of `_start_process_watch` (2026-10-06) so that every decision can
-    be driven without Windows: `subscribe` is the only door to WMI, and it
-    returns the subscription (_AsyncSubscription: wait() -> "event" / "stop" /
-    ("done", failure), and cancel()); `wake` makes a wait() in progress return
-    "stop".
-
-    The subscription is cancelled before the relay exits (stopping(), since
-    2026-10-10). Until then the process exited with this listener blocked in
-    SWbemEventSource.NextEvent() on a live semisynchronous subscription
-    (relay.log's stop line 「…还活着的线程：…、proc-watch」), the next process
-    subscribed again seconds later, and Windows' WMI service host crashed soon
-    after: 11 of the 12 Winmgmt crashes since 08-24 (System log 7031; Application
-    Error 1000, svchost.exe_Winmgmt, ntdll.dll, 0xc0000005, one WER bucket) came
-    6-100 s after an in-place restart, ~3% of ~355 such restarts. 2026-10-06:
-    18:07:28 stop with proc-watch alive -> 18:07:47 new subscription -> 18:08:04
-    Winmgmt crash -> 18:08:22 the relay logs the drop with Windows' error 0x800706BE
-    (「远程过程调用失败」, remote procedure call failed).
-    The crash itself is inside Windows (an access violation in ntdll inside the
-    WMI service host); this removes the trigger the relay controls. Whether it
-    stops the crashes can only be shown on the machine: no Winmgmt 7031 across
-    the next ~100 restarts, and stop lines that no longer list proc-watch.
-
-    Levels, now that every WARNING and ERROR reaches the group (the user on
-    2026-10-06, between 02:46 and 03:12 Tokyo time, on what a healthy machine
-    should send there: 「你正常情况应该一条都不发的」), and a fault the relay
-    recovered from by itself goes to the daily report only (why each is not a
-    fault: USER-SWITCHES.txt at ark_relay/features/host/procwatch.py:_ProcessWatch._subscribed):
-    * the relay's own power-off takes WMI with it - INFO, not a fault;
-    * a subscription that drops (or cannot be made) while the machine stays
-      up - INFO at once, with the codes and timings that tell its causes apart
-      on the machine (the diag line), and decided later:
-      - resubscribed by itself: ONE WARNING saying how long it was down, with
-        that diag line - pushed since 2026-10-10 (why it drops is not known; it
-        was daily report only before), marked recovered only when the outage was
-        already pushed meanwhile;
-      - still down at OUTAGE_ALARM_SECONDS: ERROR, pushed (once per outage);
-      - still down when the service stops (stopping()): ERROR, pushed;
-    * the resubscribe attempts in between - INFO.
     """
 
     def __init__(self, evt, alive: dict, log, subscribe, wake=None):
@@ -654,13 +560,6 @@ class _ProcessWatch:
             down = time.monotonic() - self.down_since
             fault = self.fault
             if fault is not None and (fault["diag"] or released):
-                # Back by itself, but why it dropped is not known (10-05 22:45:46,
-                # 10-06 16:16:59 and 18:08:22, each 37-51 s after a restart): pushed
-                # until that is fixed - until 2026-10-10 it was daily-report-only under
-                # the user's 2026-10-06 05:07 rule, which covers faults that are
-                # understood and fixed themselves, not ones that keep coming back.
-                # An outage already pushed meanwhile (long, or at a stop) is one fault
-                # with one push: this line is its end, daily report only.
                 from ark_relay.features import errwatch  # noqa: PLC0415
                 self.log.warning("系统的程序启动通知%s %.0f 秒（%s），已经自己%s订上%s\n%s",
                                  "断过" if fault["live"] else "订不上的情况持续了", down, fault["why"],
@@ -799,12 +698,6 @@ class _ProcessWatch:
             # Undecided from here: stopping() pushes it if the service stops first.
             self.fault = {"why": why, "detail": detail, "live": live, "t0": t0, "diag": ""}
         if shutdown_signs._going_down_soon():
-            # The power-off this relay issued itself: WMI goes down with the
-            # machine (relay.log 09-20 10:11:05, about a minute after the relay
-            # announced its 60-second shutdown). A shutdown by hand or `sc stop`
-            # does not get here - it is pushed (the user, 2026-10-06). The record is kept
-            # (held): a power-off that does not go ahead releases it (_release_if_cancelled),
-            # and from then on the drop alarms like any other.
             self.alarmed = True
             self.fault["held"] = True
             self.log.info("%s，系统的程序启动通知此时断开，按关机处理，不算故障\n%s",

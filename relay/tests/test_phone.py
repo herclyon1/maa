@@ -12,14 +12,7 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_phone_main():
-    """手机通道：PIN 对不上、太老的指令、状态和指令别混。
-
-凭证就一个 PIN（用户 2026-08-31：「留一个 pin 就行了，那那么多事」）。
-这里钉住的是「不该被执行的消息有没有被挡住」，以及机器一天只开两趟
-带来的那个时效窗——指令要能在信箱里等到下次开机。
-
-    Formerly test_phone.py.
-    """
+    """手机通道：PIN 对不上、太老的指令、状态和指令别混。"""
     import json
     import time
 
@@ -72,19 +65,6 @@ def _part_phone_main():
 
 def _part_phone_channel_boot():
     """phone_channel._start_phone_channel: the one state WARNING says why, a missed boot read is read again.
-
-Two lines of the 10-06 sweep came from here:
-* #42 #47 #48 「状态没能上报到手机（开机；今天 ntfy 已发 0 条）」 - no reason, and a
-  count that disagreed with ntfy's own 42908. Now the line is written only
-  when the phone cannot see the state at all (phone.Mailbox.publish) and
-  carries Mailbox.last_error;
-* #41 a boot mailbox read that timed out lost the presses made while the
-  machine was off. The listener now reads it again (on_backlog), through the
-  same boot_backlog filter and the same single folded state push as at boot.
-Every WARNING is pushed to the group now (2026-10-06). Fakes for the mailbox,
-the heartbeat and win32; no network, no thread left running.
-
-    Formerly test_phone_channel_boot.py.
     """
     import logging
     import time
@@ -233,21 +213,7 @@ the heartbeat and win32; no network, no thread left running.
 
 
 def _part_phone_cmd_gate():
-    """The one button that is only ever pressed while a run is going must not be gated.
-
-Everything the phone can change goes through one gate: 「a script is running, so
-writing config now would be clobbered by AUTO-MAS's in-memory copy」. That is
-correct for the settings AUTO-MAS owns, and wrong for the two switches that live
-in the relay's own StateStore - 「下次跑完不关机」 above all, which is pressed
-*because* a run is going. It was refused every time it mattered, and the message
-said to press it again after the run, by which time the machine has powered off.
-
-Every other order pressed during a run waits on disk for the run to end
-(phone.CmdQueue; test_phone_cmd_queue.py pins the queue itself). Until
-2026-10-05 it was dropped with a 「等这一趟跑完再按一次」 push instead.
-
-    Formerly test_phone_cmd_gate.py.
-    """
+    """The one button that is only ever pressed while a run is going must not be gated."""
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -349,9 +315,6 @@ Every other order pressed during a run waits on disk for the run to end
     check("改设置执行了", applied, ["set_config"])
 
     print("\n[开机读信箱积压：关机期间按的红按钮不执行，其余照常]")
-    # 2026-09-19 17:5x the red button was pressed on the phone page while the machine
-    # had been off since 14:47; the 21:20 boot would have read it back and fired it
-    # against nothing, minutes before the 21:30 queue.
     _recorded = []
     class _Log:
         def warning(self, fmt, *a): _recorded.append(fmt % a)
@@ -365,10 +328,6 @@ Every other order pressed during a run waits on disk for the run to end
     check("红按钮是唯一的 live-only 动作（活着时照旧立刻执行）", phone_channel.LIVE_ONLY_ACTIONS, ("estop",))
 
     print("\n[刷新：一份状态已经答过就不再发（ntfy 每天 250 条，一份状态 4 条）]")
-    # 2026-10-02 19:19 the quota ran out: the App re-asks 4 s after every refresh and
-    # each ask bought a whole state (17:02:23 / 17:02:31, 18:30:05 / 18:30:12); the
-    # refreshes pressed while the machine was off replayed one by one at boot
-    # (09-30 08:46:03-08:47:44, eleven states).
     import time as _time
     from ark_relay.features import phone as _phone
     _pushed = []
@@ -420,38 +379,7 @@ Every other order pressed during a run waits on disk for the run to end
 
 
 def _part_phone_cmd_queue():
-    """A phone order pressed while a script runs waits for the run to end - it is not dropped.
-
-Until 2026-10-05 every order but 「下次跑完不关机」 / 调试模式 that arrived during a
-run got a 「等这一趟跑完再按一次」 push and nothing else: no receipt, and its
-message id was already recorded as handled (phone.Mailbox.listen), so no later
-boot ever ran it - while the App told the user the change was
-「推迟到跑完再生效」. Pinned here:
-
-* during a run the order goes to disk (phone.CmdQueue), is not applied, and
-  nothing is pushed to the group or Server酱;
-* once nothing runs, the queue is applied in arrival order through the same
-  apply_command, each with its receipt, and one state is pushed;
-* the queue survives a relay restart;
-* the existing expiry rules hold at drain time (24 h from the send; skip_today's
-  own `day`), an expired order gets a failure receipt and is not applied;
-* the same message id is queued and run once;
-* D207: the moment an order is queued a receipt {queued: true, ok: true,
-  「排队中，这一趟跑完执行」} is written and one state pushed; the final receipt
-  after the run has no "queued"; pressing the same order (same action and
-  content) again while it waits does not queue it twice but gets its own
-  queued receipt, and the final receipt carries the latest send time;
-  a different content queues on its own; 「开 → 关 → 开」 still ends on 开;
-* skip_shutdown / debug_mode still act at once;
-* Engine.tick drains before its shutdown decision;
-* an order that starts a run (「现在跑」, 开始刷声骸) is never queued: pressed
-  during a run it is answered at once - 「这时正在跑，这一趟就是」 - because applied
-  after the run it would start the whole queue once more (2026-09-01, MAA ran
-  twice and ate sanity potions); no push;
-* applying any order drops engine's 3-second 「is anything running」 cache.
-
-    Formerly test_phone_cmd_queue.py.
-    """
+    """A phone order pressed while a script runs waits for the run to end - it is not dropped."""
     import os
     import time
     import types
@@ -861,19 +789,7 @@ boot ever ran it - while the App told the user the change was
 
 
 def _part_phone_drained_failure_pushed():
-    """A phone order that waited for the run and then failed goes to the group too.
-
-Found while writing the machine check #23 (machinechecks/phone_banners.py): an
-order pressed during a run waits in phone.CmdQueue and is applied by drain()
-with notify=False, and phone_channel._phone_execute pushed nothing at all then -
-a failure after the run was only a red receipt on the phone page. The user's
-rule of 2026-10-06 is every error to the group, every time (「不论多少次什么错误都要发」;
-docs/NOTIFICATIONS.md, the 「📱 配置没改成」 row: his phone order failed - the
-group). A drained order that went through still pushes nothing: the receipt is
-the answer.
-
-    Formerly test_phone_drained_failure_pushed.py.
-    """
+    """A phone order that waited for the run and then failed goes to the group too."""
     import os
     import time
     import types
@@ -972,18 +888,7 @@ the answer.
 
 
 def _part_phone_gzip():
-    """状态包超限时压缩，而不是砍字段。
-
-2026-08-31 量到整包 3783 字节，上限 3900，**只剩 117 字节余量**。
-超线时原来的处理是先砍「明日安排」、再砍「选项表」——而选项表正是手机上
-那一堆中文下拉候选，占了整包 57%。砍掉等于功能没了，而且不出声地没了。
-压缩后 2464 字节，余量回到一千多。
-
-发的那头只在明文会超限时才压，收的那头两种都认，
-所以手机上就算跑的是旧页面也不会突然读不懂。
-
-    Formerly test_phone_gzip.py.
-    """
+    """状态包超限时压缩，而不是砍字段。"""
     import json, sys, time
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1020,14 +925,7 @@ def _part_phone_gzip():
 
 
 def _part_phone_order_failed_pushed():
-    """A phone order that did not take is an error, so it goes to the group (2026-10-06).
-
-The user's order of 2026-10-06: every error goes to the group (「不论多少次什么错误都要发」).
-Until then phone_channel._phone_execute sent 「📱 配置没改成」 without alert=True,
-so it went to Server酱 only.
-
-    Formerly test_phone_order_failed_pushed.py.
-    """
+    """A phone order that did not take is an error, so it goes to the group (2026-10-06)."""
     import logging
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1089,47 +987,7 @@ so it went to Server酱 only.
 
 
 def _part_phone_quiet():  # noqa: C901
-    """The phone channel says WARNING only when something is wrong (2026-10-06).
-
-Every WARNING the relay logs is now pushed to the group. The user, 10-06:
-「你正常情况应该一条都不发的」. The 10-06 sweep of relay.log found the phone
-channel behind most of them; each check below is one of those lines:
-
-* #40 #52 #54 ntfy's 42908 (the day's 250 used up) was logged by every beat,
-  every state, every piece and every restart's bye: now once per UTC day, and
-  nothing is posted into a refused day;
-* #42 #47 #48 a state stored on COS was logged 「状态没能上报到手机」 because the
-  one-line notice after it was refused: stored on COS is delivered;
-* #44 a timed-out post was a WARNING per try: one reason in last_error, the
-  caller writes the one line, and only when the phone cannot see the state;
-* #39 #49 a 429 (42901) or a 5xx was not retried, or retried without a pause:
-  one more try after a pause, Retry-After honoured; 42908 / other 4xx never;
-* #51 a lost piece dropped the rest with a WARNING: the piece is retried
-  first, a set that still breaks is the caller's one line;
-* #41 a boot mailbox read that timed out lost the presses made while the
-  machine was off: read again by listen() once ntfy answers;
-* #45 #49 #57 every dropped stream was a WARNING and the reconnect only
-  replayed 10 minutes: drops are INFO and replay from the last line read; ten
-  minutes down is one WARNING;
-* #56 one COS heartbeat timeout was a WARNING: INFO (ntfy still beats);
-* the ledger said 「今天 ntfy 已发 0 条」 beside ntfy's 42908: ntfy's own count
-  (GET /v1/account) is taken in, and the relay stops itself short of 250.
-
-Since the user's rule of 2026-10-06 05:07 (「报错后自己好了的，只进日报、不进群」)
-a fault the relay got over is not silent either: ONE WARNING marked
-errwatch.recovered() - not pushed, in the daily report's 「中继自己记下的报错」
-- for a post that went through on its retry, a state one route refused and
-the other carried, the boot mailbox read done late, a stream that dropped on a
-fault (502, reset, no connection) and reconnected, a COS heartbeat written
-again. An open stream that only timed out reading (idle) stays INFO. What did
-not recover stays a plain WARNING, pushed: the day's quota, a state the phone
-cannot get from anywhere (the caller's line), the channel or the COS
-heartbeat down for 10 minutes. A real errwatch handler on the phone logger
-shows what is pushed and what the daily report lists.
-Fake network throughout; nothing waits for real.
-
-    Formerly test_phone_quiet.py.
-    """
+    """The phone channel says WARNING only when something is wrong (2026-10-06)."""
     import io
     import json
     import logging
@@ -1151,8 +1009,6 @@ Fake network throughout; nothing waits for real.
     from ark_relay.features.evidence import Cos
     from datetime import datetime
 
-    # A COS write or read the network cut short is tried again inside its own 8 s (netretry,
-    # dispatch relay-opt-round3-1108 O-03): COS that is down answers every one of those attempts.
     netretry._sleep = lambda s: None
     DOWN = netretry.ATTEMPTS
 
@@ -1338,7 +1194,6 @@ Fake network throughout; nothing waits for real.
         return mb
 
 
-    # 43 KB raw, ~13 KB gzipped on 10-02: incompressible, so it is pieces or COS.
     BIG = {"at": 1, "options": {"x": __import__("base64").b64encode(os.urandom(9600)).decode()}}
 
 
@@ -1655,10 +1510,7 @@ Fake network throughout; nothing waits for real.
 
 
 def _part_phone_receipts():
-    """Phone-order receipts: the relay's answer to each order shows on the phone page.
-
-    Formerly test_phone_receipts.py.
-    """
+    """Phone-order receipts: the relay's answer to each order shows on the phone page."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import modes
@@ -1679,17 +1531,7 @@ def _part_phone_receipts():
 
 
 def _part_phone_sent():
-    """A phone order keeps the time it was sent: in relay.log and on its receipt.
-
-2026-09-30: three skip orders were found in the mailbox at 08:46 and nobody could
-say when they had been sent - relay.log and the receipts held only the moment the
-relay acted, and ntfy drops a message after 12 hours. The user asked 「谁干的？」
-and there was no answer. Pinned here: the log line names the envelope's ts, ntfy's
-time and id; the receipt stores "sent" and keeps its text plain (the page shows
-「HH:MM 发出 · HH:MM 执行」 from sent / at); no command body ever sees "_meta".
-
-    Formerly test_phone_sent.py.
-    """
+    """A phone order keeps the time it was sent: in relay.log and on its receipt."""
     import json
     import logging
     import types
@@ -1833,12 +1675,6 @@ time and id; the receipt stores "sent" and keeps its text plain (the page shows
 def _part_phone_silent():
     """phone.state_payload says when the relay block or tomorrow's plan could not be
 built (audit docs/SILENT-FAILURES-AUDIT.md, phone.py:1862 and :1884).
-
-state_payload runs on every phone-state publish and a WARNING is a group
-message, so each is said once per condition; the payload keeps its shape
-(relay = {}, plan = "").
-
-    Formerly test_phone_silent.py.
     """
     import logging
     import types
@@ -1908,19 +1744,7 @@ message, so each is said once per condition; the payload keeps its shape
 
 
 def _part_phone_stale_cmd():
-    """A phone command dropped as too old is marked handled (audit 9 A3, 2026-10-13).
-
-wire.unpack returns None for a command older than MAX_AGE, and the mailbox
-skipped it without adding its ntfy id to the handled list. While ntfy kept the
-message, every boot and every reconnect re-read it and logged 「信箱里那条指令太老了」
-again: relay.log 2026-10-05 logged the same two messages 11 times (the cause, a
-phone clock a day off, was fixed in the App, ark-remote 745e96e).
-
-Both read paths are checked: the boot read (Mailbox.fetch / _read_backlog) and
-the held stream (Mailbox.listen). Fake network; nothing waits for real.
-
-    Formerly test_phone_stale_cmd.py.
-    """
+    """A phone command dropped as too old is marked handled (audit 9 A3, 2026-10-13)."""
     import io
     import json
     import logging
@@ -2035,26 +1859,7 @@ the held stream (Mailbox.listen). Fake network; nothing waits for real.
 
 
 def _part_phone_state():  # noqa: C901
-    """手机页那一份状态包：形状、大小、去重、额度。全程注入假网络。
-
-这个文件防的是**一类损失：用户唯一的日常操作界面变成一张白纸**，
-而机器这头一片绿——它以为自己发出去了。
-
-具体的坏法都出过：
-* `state_payload` 少一个键，页面那一段就整块不渲染（2026-09-02 晚 AUTO-MAS 没开着，
-  页面把空配置当成真配置显示，用户的评价是「一坨屎」）；
-* 单条消息超过 ntfy 上限会被**截断**，手机上 JSON.parse 直接失败，
-  表现成「状态永远不更新」，于是被判成关机中（2026-08-31 真发生过）；
-* 已经执行过的指令再执行一遍——同一条「现在跑一趟」跑两趟，烧掉一趟的理智；
-* PIN 不对的消息被当成指令执行；
-* 心跳盲发：匿名 ntfy 每 IP 每天 250 条，闷头跳就把状态推送和指令应答一起挤掉。
-
-`phone.py` 25 个函数里 16 个从来没被执行过，上面这些没有一条被钉住过。
-已有的 test_phone.py（PIN/时效）、test_phone_gzip.py（pack/unpack 压缩往返）、
-test_heartbeat.py（有人看才跳）覆盖的部分这里不重复。
-
-    Formerly test_phone_state.py.
-    """
+    """手机页那一份状态包：形状、大小、去重、额度。全程注入假网络。"""
     import io
     import json
     import time
@@ -2140,25 +1945,17 @@ test_heartbeat.py（有人看才跳）覆盖的部分这里不重复。
     print("[state_payload 的形状：手机页靠这几个键渲染，少一个就是一块空白]")
 
     FULL = {
-        # Not the config any more: config.MAA comes from ScriptConfig.json below
-        # (the 10-07 10:55 push had none of this and sent `config: {}`).
         "MAA": {"关卡": "1-7", "理智药": 9},
         "MaaEnd": {"Stage": "藏剑谷", "MedicineNumb": 2},
         "OK-WW": {"WhichToFarm": "残象聚落"},
         "ark-relay": "跑着",
         "程序": {"MAA.exe": True, "Endfield.exe": False, "MaaEnd.exe": True},
-        # The 10-07 10:55 state (the service-stop push): snapshot.read() had no queue
-        # section, the plan text had both shifts. The queues come from the config
-        # files below now, the ones the plan reads.
         "OK-WW配置": {"一大坨": "不该出现在手机包里"},
     }
 
     STATE = tmpdir()
     AUTOMAS = tmpdir()
 
-    # A stand-in for AUTO-MAS's own models file: this is where the Chinese labels on
-    # the phone come from (the user, 2026-08-31: the UI is all Chinese, the labels
-    # must be read from upstream, never invented here).
     models = AUTOMAS / "app" / "models"
     models.mkdir(parents=True)
     (models / "user_config.py").write_text('''
@@ -2186,8 +1983,6 @@ class OkwwUserConfig(ConfigBase):
         )
 ''', encoding="utf-8")
 
-    # QueueConfig.json / ScriptConfig.json shaped the way AUTO-MAS writes them
-    # (as in test_next_deadline.py): the same two shifts the 10-07 plan text listed.
     (AUTOMAS / "config").mkdir()
     SCRIPTS = {"s1": "MAA", "s2": "MaaEnd", "s3": "OK-WW"}
     (AUTOMAS / "config" / "ScriptConfig.json").write_text(json.dumps(
@@ -2351,11 +2146,6 @@ class OkwwUserConfig(ConfigBase):
     # ---------------------------------------------------------------- publish
 
     print("\n[publish：什么都不砍。通道不是 4096，那只是「转成附件」的分界]")
-    # Measured 2026-09-09: a 9046-byte body posts fine, ntfy stores it as an attachment
-    # and hands back a URL that returns it byte-for-byte. 4096 was treated as a hard
-    # ceiling here and the state was trimmed section by section to fit - features thrown
-    # away for a problem that did not exist, and when trimming was not enough the message
-    # went out unparseable and the page kept showing values almost an hour old.
 
     mb = phone.Mailbox("topic-abc", PIN, tmpdir())
     check("有 topic 有 pin 才算启用", mb.enabled, True)
@@ -2438,9 +2228,6 @@ class OkwwUserConfig(ConfigBase):
     check("缺一片就解不开，不会解出半份", broke, True)
     check("总数写在每一片上，凑没凑齐一看便知", short[0]["n"] > len(short), True)
 
-    # One retry after a network exception (2026-09-18 19:27: the second of two boot
-    # pieces hit a read timeout once, and the phone showed a 13-minute-old state until
-    # shutdown). No wait in tests.
     mb.RETRY_AFTER = 0
     net = FakeNet()
     net.queue.append(urllib.error.URLError("网断了"))
@@ -2582,8 +2369,6 @@ class OkwwUserConfig(ConfigBase):
     check("跳一次记一次", hb.sent_today(), 3)
     check("没到快档线用 30 秒间隔", hb.interval(), phone.HEARTBEAT_SEC)
 
-    # The tiers follow everything sent today, not beats alone: on 10-02 the beat
-    # counter said 196, nobody counted the 4-piece states, and 248 hit the 250.
     hb.quota.add("state", phone.HB_FAST_UNTIL - 3 - 1)
     check("差一条到快档线，还是快的", hb.interval(), phone.HEARTBEAT_SEC)
     hb.quota.add("state")
@@ -2638,8 +2423,6 @@ class OkwwUserConfig(ConfigBase):
     check("过了慢档线报 1800", (_hb.beat(), _sent[-1]), (True, b"hb 1800"))
     check("报的就是 interval() 说的那个",
           _sent[-1].decode(), f"hb {_hb.interval()}")
-    # 2026-10-06: past HB_STOP_AT the beat stops on ntfy altogether (COS only), so
-    # the relay alone can never spend the 250 - the old crawl beat had no end.
     _hb.quota.add("state", phone.HB_STOP_AT - _hb.quota.total())
     _n = len(_sent)
     check("到停跳线（200）：ntfy 一跳都不发了", (_hb.beat(), len(_sent)), (False, _n))
@@ -2837,8 +2620,6 @@ class OkwwUserConfig(ConfigBase):
     # ---------------------------------------------------------------- a whole day's count
 
     print("\n[一天的账：照 10-02 那样开着 App 测一晚上，也落在 250 以内]")
-    # The real state size: 43 KB on 10-02, 13003 bytes gzipped, 4 pieces
-    # (relay.log 10-02 17:02:18, 「状态 43465 字节，压缩到 13003 字节」 / 「切成 4 条」).
     import os as _os
     _big = {"at": 1, "options": {"x": _b64.b64encode(_os.urandom(9600)).decode()}}   # incompressible; ~13 KB as gzip+base64
     _net = FakeNet()
@@ -2855,9 +2636,6 @@ class OkwwUserConfig(ConfigBase):
         day.quota.add("state", PIECES)
 
 
-    # 10-02's day: two boots and one shutdown state; from 17:00 the App stays open
-    # for 4 hours (a watch every 8 minutes); 21 refresh presses, each re-asked by
-    # the App 4 s later (answered once); 5 config changes.
     for _ in range(3):
         push_state_sim()
     OPEN_S = 4 * 3600
@@ -2908,25 +2686,7 @@ class OkwwUserConfig(ConfigBase):
 
 
 def _part_phone_state_cos():
-    """The whole state on Tencent COS, one notice on ntfy (the user, 2026-10-02 22:22).
-
-The loss this guards against: states eating ntfy's 250 a day (10-02: a state
-was 4 pieces; 13 states + 196 beats = 248, and from 19:19 the phone could not
-see the machine). Now the envelope is PUT to COS whole and the topic only gets
-one line, `state <ts> <bytes>`.
-
-Pinned here:
-* what is stored is the envelope that would have gone to ntfy (PIN inside, the
-  App decodes it as before);
-* the object is public-read, never cached, named from the topic the same way
-  the App names it (lower-case, first 32 hex of sha256);
-* stored -> one short notice on ntfy, one message on the ledger;
-* not stored (refused / no network) -> the old pieces, nothing lost;
-* a machine without COS -> exactly the old path.
-Fake network throughout.
-
-    Formerly test_phone_state_cos.py.
-    """
+    """The whole state on Tencent COS, one notice on ntfy (the user, 2026-10-02 22:22)."""
     import hashlib
     import io
     import json
@@ -2996,8 +2756,6 @@ Fake network throughout.
 
 
     COS = Cos("AKIDtest", "secret", "ark-evidence-1", "ap-shanghai")
-    # A state the size of 10-02's (43 KB raw): random text so gzip cannot fold it
-    # under the 4096-byte inline limit.
     import random
 
     random.seed(7)
@@ -3100,17 +2858,6 @@ def _part_receipt_target():
     """A receipt says when its order was sent to the second and which setting or queue it was about
 (audit 11-08 D-07, relay side; dispatch relay-opt-round6-1108 R6-04; modes.add_receipt,
 phone_channel.receipt_target).
-
-Before: "sent" was 「MM-dd HH:mm」 and "action" the only other key, so a save of several
-settings at once - set_master / set_config pressed within one minute - gave receipts the App
-could not tell apart. Pinned here:
-
-* "ts" is the send time in seconds beside the old "sent"; "target" names
-  set_master game:path, set_config script:path, skip_today / unskip_today the queue;
-* neither key is written when there is nothing to say, and every older key is unchanged;
-* _phone_execute hands its receipt the target of the order it ran.
-
-    Formerly test_receipt_target.py.
     """
     import json
     import logging
@@ -3164,18 +2911,7 @@ could not tell apart. Pinned here:
 
 
 def _part_channel_down():
-    """A channel that refuses a send is announced every time it refuses one.
-
-From 2026-08-22 until 2026-10-06 the same fault was announced once (a record on
-disk, keyed by the error with 企业微信's hint and egress IP stripped, so that a
-day of relay restarts did not repeat it). The user's order of 2026-10-06, every
-error to the group, every time (「不论多少次什么错误都要发」), ended that.
-Pinned: each refused send is announced over the channels still
-working; the per-channel log line comes with it, marked as already in the group
-only when the group robot took the notice (errwatch does not push it twice).
-
-    Formerly test_channel_down.py.
-    """
+    """A channel that refuses a send is announced every time it refuses one."""
     import json, os, sys
 
     TMP = tmpdir()
@@ -3238,14 +2974,7 @@ only when the group robot took the notice (errwatch does not push it twice).
 
 
 def _part_cli_commands():
-    """The two new CLI commands exist, parse, and hand off to the right code.
-
-`collect-retry` and `evidence` are what I run by hand to verify the relay's
-new work on the machine; if the parser or the dispatch breaks, the manual
-verification path is gone and nobody notices until the next incident.
-
-    Formerly test_cli_commands.py.
-    """
+    """The two new CLI commands exist, parse, and hand off to the right code."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay import __main__ as cli
@@ -3285,8 +3014,6 @@ verification path is gone and nobody notices until the next incident.
     from datetime import datetime, timedelta
     import io, contextlib
     def fake_collect(now, *, skland_token="", failed=None, notes=None, trace=None, **_):
-        # The end is relative: a fixed 09-29 11:59:59 made this fail from that noon on,
-        # when the pool was no longer current (2026-09-29).
         b = _bn.Banner("鸣潮", "身赴三途", ("景燃",), datetime(2026, 9, 10, 10, 0),
                        datetime.now().replace(microsecond=0) + timedelta(days=10))
         trace.ends |= _bn._stamps(b.end)
@@ -3318,14 +3045,7 @@ verification path is gone and nobody notices until the next incident.
 
 
 def _part_cmd_test_channels():
-    """`python -m ark_relay test` must try every channel and name only the ones that took it.
-
-Audit s5 #3 (2026-10-13): cmd_test called send(alert=True), which stops at the first
-channel that accepts, yet printed 「✅ 已通过 <every configured channel> 发出」; and it
-filed the test as a real group alarm (alerts/ copy). Channels are faked here.
-
-    Formerly test_cmd_test_channels.py.
-    """
+    """`python -m ark_relay test` must try every channel and name only the ones that took it."""
     import contextlib
     import io
     import os
@@ -3379,17 +3099,7 @@ filed the test as a real group alarm (alerts/ copy). Channels are faked here.
 
 
 def _part_command_table():
-    """relay/README.md 的命令表必须和代码里的白名单一一对上。
-
-2026-09-08 审出来的：表里说 `run_now` 是「没实现、会明确拒绝」，代码里它真会调
-`/api/dispatch/start` 派发一趟队列；`skip_shutdown`、`weekly_boss`、`set_config`、
-`set_master` 四个命令干脆不在表里——其中 skip_shutdown 就是「吃掉下一次关机机会
-且不带时效」的那个开关，已经让机器白开两夜，而唯一一张说明表里找不到它。
-
-文档和代码分头维护，早晚会分家。这条测试让它们分不了家。
-
-    Formerly test_command_table.py.
-    """
+    """relay/README.md 的命令表必须和代码里的白名单一一对上。"""
     import re
 
     ROOT = Path(__file__).resolve().parents[1]
@@ -3417,26 +3127,7 @@ def _part_command_table():
 
 
 def _part_commands_gates():  # noqa: C901
-    """往生产配置里写东西的那条路——四道闸门一道都不许塌。
-
-这个文件防的是**一类损失：配置被写坏，于是刷错关卡、烧掉理智药**。
-826 就是这么来的：凭空造了一个字段、编了一个下标的含义，写进去，第二天早班
-按错的配置跑了一整趟。`commands.py` 25 个函数里 19 个从来没有被任何测试调用过，
-包括「结构化 diff 不符预期就回滚」这道唯一能拦住 826 的闸门本身。
-
-四道闸门（relay/README.md「命令的四道闸门」）：
-  ① 白名单——不在表里的动作直接拒，模型不许自己发 JSON patch
-  ② 人工确认——会写盘的动作没确认不动手
-  ③ 落地校验——备份→改→解析→结构化 diff，多改一个字段就整个放弃并回滚
-  ④ 回报——成功、失败、拒绝都要说出来，而且要说人话
-
-外加一条同样致命的：白名单里有名字、apply_command 里却没有分支，
-手机上按下去什么也不会发生，而屏幕上一片绿。
-
-全程用临时目录里的假配置，`_mas` 换成假的，不碰网络、不碰真机。
-
-    Formerly test_commands_gates.py.
-    """
+    """往生产配置里写东西的那条路——四道闸门一道都不许塌。"""
     import json
     import os
 
@@ -3746,8 +3437,6 @@ def _part_commands_gates():  # noqa: C901
     # ---------------------------------------------------------------- 闸门 ④
 
     print("\n[闸门④ 回报要说人话：路径里的 uuid 不许出现在推送里]")
-    # The operator reads this on a phone; `/59da8762-.../Game/WaitTime` says nothing
-    # (operator feedback, 2026-08-20).
     check("等待秒数带单位",
           commands._humanize(f"/{SID}/Game/WaitTime", 60, 120),
           "终末地启动后等待：60 秒 → 120 秒")
@@ -4035,9 +3724,6 @@ def _part_commands_gates():  # noqa: C901
     # ---------------------------------------------------------------- 队列进出
 
     print("\n[skip a script in a queue for today: only Schedule.Days changes, and it goes back verbatim]")
-    # Since the 2026-10-11 hand-over (item 16) the item stays in the queue; today's
-    # weekday leaves its Schedule.Days (AUTO-MAS schema.py QueueItem_Schedule.Days,
-    # task_manager.py _is_script_scheduled_today) and the saved list is written back.
     ALL_DAYS = list(commands.WEEKDAYS)
     TODAY = commands.WEEKDAYS[datetime.now(tz=SERVER_TZ).weekday()]
 
@@ -4203,26 +3889,7 @@ def _part_commands_gates():  # noqa: C901
 
 
 def _part_mailbox_close_windows():
-    """Mailbox.close() cuts the held stream at once, on macOS and on Windows.
-
-The service stop (SvcStop) calls Mailbox.close() while the listener thread is
-blocked reading the ntfy stream. Until 2026-10-07 close() returned only with
-the next line the server sent - a keepalive, 45 s apart on ntfy.sh - because
-r.close() waits for the read the listener holds; the fix shuts the socket down
-first (see Mailbox.close). test_phone_mailbox_e2e.py checks this against a
-real ntfy; this file checks the same thing with nothing but the standard
-library, so it runs wherever Python runs (the Windows CI job included, the
-machine the relay really lives on being Windows).
-
-The server below holds a GET open and writes one ntfy-shaped keepalive line
-every KEEPALIVE seconds. KEEPALIVE is well over the 1 s limit, so a close()
-that waits for the next line cannot pass by luck.
-
-Basis: "If you want to close the connection in a timely fashion, call
-shutdown() before close()." (https://docs.python.org/3/library/socket.html#socket.socket.close)
-
-    Formerly test_mailbox_close_windows.py.
-    """
+    """Mailbox.close() cuts the held stream at once, on macOS and on Windows."""
     import json
     import threading
     import time
@@ -4314,8 +3981,6 @@ def _part_payload_roundtrip():
     """A held failure survives a relay restart through pending.json. Everything the
 alert wording depends on has to survive with it - the relay now restarts itself
 for every selfupdate, so this path runs far more often than it used to.
-
-    Formerly test_payload_roundtrip.py.
     """
     from datetime import datetime
 
@@ -4359,14 +4024,7 @@ for every selfupdate, so this path runs far more often than it used to.
 
 
 def _part_test_windows():
-    """Records inside a marked test window stay out of the daily report's rows.
-
-Fixture: the real ledger of 2026-09-14 - the 09:00 queue (rows 0-9, retries
-included, running until 11:49) and then my test dispatches from 12:57 (two
-killed runs, one gathering-only run with two retries).
-
-    Formerly test_test_windows.py.
-    """
+    """Records inside a marked test window stay out of the daily report's rows."""
     import json
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -4410,10 +4068,7 @@ killed runs, one gathering-only run with two retries).
 
 
 def _part_heartbeat_main():
-    """心跳：有人看才跳、看了立刻跳（刚跳过就不重跳）、停服务发 bye、今天发得多了就放慢。不碰网络。
-
-    Formerly test_heartbeat.py.
-    """
+    """心跳：有人看才跳、看了立刻跳（刚跳过就不重跳）、停服务发 bye、今天发得多了就放慢。不碰网络。"""
     import threading
     import time
 
@@ -4433,8 +4088,6 @@ def _part_heartbeat_main():
     sent = []
     STATE = tmpdir()
     hb = phone.Heartbeat("t", STATE, post=lambda payload, title: sent.append(title))
-    # 把等待切片缩到 20 毫秒：这个测试验的是「有人看才跳」的逻辑，不是真的计时。
-    # 2026-09-08 之前它真等 4 秒，而部署每次都跑整套测试。
     hb._slice_s = 0.02
     stop = {"v": False}
     th = threading.Thread(target=hb.loop, args=(lambda: stop["v"],), daemon=True)
@@ -4446,9 +4099,6 @@ def _part_heartbeat_main():
     check("之后没人看就不跳了", sent, [])
     hb.watch()
     time.sleep(0.2)
-    # On open the page reads the last 90 s of beats itself (probeHb since=90s), so a
-    # beat that just went out already answers a watch; no extra message for it
-    # (10-02 the quota ran out and 196 of the messages were beats).
     check("刚跳过（不到 HB_KICK_GAP）：说「我在看」不再多跳", sent, [])
     hb._last = time.time() - phone.HB_KICK_GAP - 1
     hb.watch()
@@ -4480,25 +4130,6 @@ def _part_heartbeat_main():
 def _part_heartbeat_cos():
     """The heartbeat on COS too (the user, 10-03 00:12: the online verdict must not
 rest on the mailbox's heartbeat alone).
-
-The loss this guards against: 2026-10-02 19:19 ntfy's 250 a day ran out, every
-beat after that was refused, and at 23:58 the App showed
-「关机 · 最后心跳 22:34」 while the machine was running and writing its state to
-COS. Now every beat also PUTs `state/<hash>.hb.json`.
-
-Pinned here:
-* the object sits next to the state (same hash, `.hb.json`), public-read,
-  never cached, {"at", "every", "cos_every"};
-* written whether or not the ntfy beat went out, and while the quota has
-  stopped the ntfy beats (then `every` is at least HB_SLOW_SEC);
-* a COS failure is one log line and the ntfy beat still goes out;
-* a service stop writes it once more with "bye": true, after the ntfy bye;
-* while watched, the loop rewrites it every HB_COS_SEC and at once on a watch,
-  even when the ntfy beat is not due or the quota stopped it;
-* no COS -> exactly the old ntfy beat, no request.
-Fake network throughout.
-
-    Formerly test_heartbeat_cos.py.
     """
     import json
     import logging
@@ -4636,8 +4267,6 @@ Fake network throughout.
     logs.lines.clear()
     logs.recovered.clear()
     check("恢复后写得进", flaky.cos_beat(), True)
-    # Since 2026-10-06 the recovery is one WARNING marked errwatch.recovered()
-    # (daily report only), saying how long it was down and the first reason.
     check("恢复记一行", [l.splitlines()[0].split("（")[0] for l in logs.lines if "腾讯云" in l],
           ["心跳又写得进腾讯云了"])
     check("……marked recovered (not pushed)", logs.recovered, [True])
@@ -4676,8 +4305,6 @@ Fake network throughout.
     check("但 COS 立刻再写一次（App 几秒后来读）", len(net.sent), 2)
     # The loop sleeps up to HB_COS_SEC slices (0.3 s here) before it looks again.
     lp._cos_last = time.time() - phone.HB_COS_SEC - 1
-    # Wait for the write rather than a fixed 0.5 s: 30 slices of time.sleep(0.01) ran
-    # past 0.5 s on a loaded Mac (load 10-29, 2026-10-10 00:45) and the check failed.
     _until = time.time() + 5
     while len(net.sent) < 3 and time.time() < _until:
         time.sleep(0.05)
@@ -4794,12 +4421,10 @@ def _part_resources():
     resources._session["sk"] = None
 
     print("\n[森空岛给了不止一个终末地角色：不读，报群]")
-    # The account has exactly one Endfield role (checked 2026-10-06); more than one
-    # in an answer is a refusal (skland.endfield_role) the group has to hear of.
     import inspect
     import logging
     import time
-    from _tmp import fx_dir, tmpdir
+    from _parts import fx_dir, tmpdir
     from ark_relay.features import errwatch
     from ark_relay.core import texts
 
@@ -4865,13 +4490,10 @@ def _part_resources():
           {"跑了": 3, "失败": 1, "最近": "MaaEnd"})
 
     print("\n[today: failures by the daily headline's rule, on the machine's ledgers]")
-    # Audit 11 (2026-10-13): the App showed 「失败 1 趟」 on 10-06 and 10-07 for a MaaEnd
-    # self-update restart (transitional; episode_kinds 「update」) while the daily
-    # report said all green. Ledgers copied from the machine's state/ on 10-13.
     import json
     import shutil
 
-    from _tmp import tmpdir
+    from _parts import tmpdir
     from ark_relay.core.ledger import State
 
     LEDGERS = fx_dir(Path(__file__), "fixtures") / "phone-ledgers"
@@ -4897,10 +4519,6 @@ def _part_resources():
           resources.today(State(real_dir), "2026-10-06")["失败"], 0)
 
     print("\n[开机推送和停止前推送同时要会话：#10 不会读到做了一半的体力]")
-    # 2026-10-10 16:32:53 the stop notice came 7 s after boot: the boot state and the
-    # 停止前 state both asked for the session while none existed yet, both logged in and
-    # both ran _probe_stamina; check #10 read probe() between one call's 「at」 and its
-    # dungeon and pushed 「终末地体力没读到：没读」 (relay.log 16:32:55-16:32:58).
     import threading
 
     calls["login"] = 0
@@ -5102,12 +4720,10 @@ def _part_snapshot():
     check("没关机时读不到：照样 WARNING", len(grab.warned), 1)
 
     print("[a phone publish reads only the runtime section (audit 11 #2)]")
-    # relay.log 10-06 / 10-10: every phone publish ran _mas / _queues / _okww, kept only
-    # 「ark-relay」 and 「程序」 (from _runtime), and an AUTO-MAS hiccup reached the group.
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
+    from _parts import tmpdir
     from ark_relay.features import phone
 
 
@@ -5245,7 +4861,7 @@ def _part_inbox_poll():  # noqa: C901
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from ark_relay.features import phone as inbox
-    from _tmp import tmpdir
+    from _parts import tmpdir
 
     fails = []
 
@@ -5348,8 +4964,6 @@ def _part_inbox_poll():  # noqa: C901
     check("理智方案那条说了跳过", "✗ 理智方案：找不到 AUTO-MAS 目录" in body, True)
 
     print("\n[maaend_option is gone (audit 11 #8): refused, nothing written]")
-    # Nothing sends it since 08-20 (order.sh refuses an action outside commands.ALLOWED,
-    # the App never had it); maaend.apply_changes and its inbox branch are deleted.
     d = tmpdir()
     mfile = d / "automas" / "data" / "sid1" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"
     mfile.parent.mkdir(parents=True)
@@ -5364,10 +4978,6 @@ def _part_inbox_poll():  # noqa: C901
     check("the master copy is untouched", mfile.read_text(encoding="utf-8"), before)
     check("the writer module is gone", (Path(inbox.__file__).parent / "maaend.py").exists(), False)
 
-    # ---- A stale configured address must fall back to the built-in one ----
-    # 2026-09-08 I deleted inbox/todo.json while the machine's .env still pointed at
-    # it. Every order after that 404-ed on all four doors and only the relay's own
-    # log knew. The command channel must not die over one stale line in .env.
     _calls = []
     def _fake_fetch(url, *a, **k):
         _calls.append(url)
@@ -5387,10 +4997,6 @@ def _part_inbox_poll():  # noqa: C901
     finally:
         inbox._fetch = _real_fetch
 
-    # ---- A round in which no door answered, then a later round that got it ----
-    # The user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群」 - recovered on the
-    # retry: one WARNING marked errwatch.recovered() (daily report only); every
-    # round failing: a plain WARNING (pushed).
     import logging
     from ark_relay.features import errwatch
 
@@ -5445,12 +5051,6 @@ def _part_inbox_poll():  # noqa: C901
         inbox._fetch_once, inbox.time.sleep = _real_once, _real_sleep
         inbox._cos_client = _real_cos_client
         inbox._log_inbox.removeHandler(_lines)
-
-    # ---- The COS door (2026-10-07) ----
-    # order.sh writes the file to GitHub and then to COS; jsDelivr caches a branch
-    # file for up to 12 hours, COS has no cache. COS is asked first, but every door
-    # is still asked and the highest version wins: a COS that missed a write, or a
-    # file edited on GitHub by hand, must not hold back a newer copy elsewhere.
 
 
     class _FakeCos:
@@ -5564,11 +5164,6 @@ def _part_inbox_poll():  # noqa: C901
         inbox._log_inbox.removeHandler(_lines)
 
     print("\n[the receipt of an order.sh batch: all through -> log only; any ✗ -> the group, with the ✗ lines]")
-    # CLAUDE.md 「测试不进他眼」 and docs/NOTIFICATIONS.md (the 「Config command applied」 row, de038830):
-    # our own order.sh orders are not his business when they went through. Until 2026-10-13 every
-    # receipt went to his Server酱 (route info; day replay 2026-10-12 / 10-13, BACKLOG daysim-R2).
-    # A failed one takes the phone's failure route (texts.CONFIG_FAILED, alert=True, the group),
-    # never the log list's 「⚙️ 配置已更新」 title, which route_of would keep out of the group.
     import types as _types
 
 
@@ -5612,14 +5207,12 @@ def _part_inbox_poll():  # noqa: C901
         return n.sent[0] if n.sent else ("", "", False)
 
 
-    # relay.log 10-12 08:46 (day replay 2026-10-12 events.jsonl line 15): the debug-mode order, through.
     DEBUG_OK = ("✅ 🔧 调试模式已开启，至 10-12 21:10（下次预定开机 10-12 21:20 前 10 分钟）：不关机。"
             "注意：要让机器什么都不刷，还需停用相应队列。")
     title, body, alert = collected({"version": 2026101201, "name": "调试模式", "note": "从电脑发来的指令：调试模式",
                                     "commands": [{"action": "debug_mode"}]}, [DEBUG_OK])
     check("all through: the title is the receipt", title, "⚙️ 配置已更新：调试模式")
     check("all through: log only, not his Server酱", route_of(title, alert=alert), "log")
-    # relay.log 10-12 12:10 (events.jsonl line 461): an empty batch, the safe state.
     title, body, alert = collected({"version": 2026101202, "name": "空（安全状态）", "commands": []}, [])
     check("an empty batch: log only", route_of(title, alert=alert), "log")
     FAILED = "✗ set_stage: 「YW-4」MAA 走不到，修改失败"

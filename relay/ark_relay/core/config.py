@@ -281,11 +281,7 @@ class Config:
             self.maa_dir = self.maa_dir or None
 
     def warnings(self) -> list[str]:
-        """Setup that works but is not the intended one; never stops the relay.
-
-        A missing group robot was a startup stop until 2026-10-13 (audit s6 #2),
-        saying nothing would be delivered; group alarms fall back to Server酱
-        (notify._GROUP_ORDER, since a95f6b49)."""
+        """Setup that works but is not the intended one; never stops the relay."""
         out: list[str] = []
         if not self.wecom_bot_url and self.serverchan_key:
             out.append("没有配置群机器人（WECOM_BOT_URL）——报警改走 Server酱，群里看不到")
@@ -452,14 +448,6 @@ def okww_root() -> Path:
 
 
 def no_stamina_farm() -> bool:
-    """Is the hand-set "do not spend any stamina" flag in place?
-
-    Always the fixed NO_STAMINA_FARM_FLAG, never ARK_STATE_DIR: the OK-WW override
-    obeys that fixed path and reads no environment variable (ark_overrides.tasks.py
-    NO_STAMINA_FLAG, the same string - test_verify), so the relay and OK-WW
-    look at one file by construction. Until 2026-10-13 this followed ARK_STATE_DIR,
-    and a .env pointing it elsewhere would have read a different file. Only
-    ARK_PROGRAMDATA moves it, and only the day simulator sets that.
-    """
+    """Is the hand-set "do not spend any stamina" flag in place?"""
     from pathlib import Path as _P  # noqa: PLC0415
     return _P(NO_STAMINA_FARM_FLAG).exists()

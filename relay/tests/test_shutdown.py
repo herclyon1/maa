@@ -12,15 +12,7 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_shutdown_main():
-    """Exercise the shutdown gate against a fake AUTO-MAS + ledger.
-
-Since the user's rule of 2026-10-10 18:31 (Tokyo; quoted at shutdown.py:_say_if_moment_passed in
-USER-SWITCHES.txt) only the decision right after a scheduled shift finished on this boot may power
-off: not one after a relay restart, not one on a machine booted by hand, not before or
-during the queue.
-
-    Formerly test_shutdown.py.
-    """
+    """Exercise the shutdown gate against a fake AUTO-MAS + ledger."""
     import json, os, sys
     from datetime import datetime, timedelta
 
@@ -100,8 +92,6 @@ during the queue.
     check("shift done at 22:25", verdict(at(22, 25)), "go")
 
     print("\n[18:31] relay restarted after the run finished: not a shift ending, stays on")
-    # Until 2026-10-10 this was the bug the file was written for (nobody left to power off);
-    # under the whitelist it is exactly what must not power off.
     E._handled_any = False                    # a fresh process, as after selfupdate
     E._started_at = at(22, 20)
     check("restarted after the shift -> not-shift", verdict(at(22, 35)), "not-shift")
@@ -132,13 +122,6 @@ during the queue.
     check("finished 23:50, judged 23:55 -> go", verdict(at(23, 55)), "go")
 
     print("\n[调试模式] 吃掉一次关机机会，而不是到期就补关")
-    # 用户 2026-08-31：「我开了调试模式是指把一次队列的中继关机指令跳过，
-    # 而不是中继一直尝试关机，要不然人类没办法使用这个电脑每次都要开调试模式。」
-    # 改判前：调试模式只是让每次判定返回 False，判定每 30 秒重来，到期后条件
-    # 没变就立刻关机——人一走开机器自己关了。
-    # 改判后：生效期间记下「这一次关机机会」并吃掉它；到期后只要没有新队列
-    # 跑完（机会标识没变）就不补关；新队列一跑完标识变了，恢复正常关机。
-    # 这里把真正执行关机那步挡掉，只看判定结果。
     issued = []
     # Like the real subprocess.run: a finished process with exit code 0 (_power_off reads it).
     eng.subprocess = type("X", (), {"run": staticmethod(
@@ -186,8 +169,6 @@ during the queue.
     check("没开过调试模式时，本来就该关机", E._maybe_shutdown(at(23, 0)), True)
 
     print("\n[人工开关] 桌面那个 .bat：只跳过下一次，用完即失效")
-    # 用户 2026-08-31：「你给一个人类好去调这个模式的方法，独立于你的。」
-    # 它不带到期时间，就是把**下一次真正要执行的关机**吃掉一次。
     dbg_clear(); skipped_clear()
     ledger(run)
     store.set("modes", "skip_next_shutdown", True)
@@ -208,8 +189,6 @@ during the queue.
 
     print("\n[手动关调试] 明确关掉要恢复正常，自然到期不恢复")
     from ark_relay.features import modes
-    # 2026-08-31：我维护完手动关掉调试模式，机器却因为「这次已跳过」的标记
-    # 还在，准备空开一整夜到早班跑完。明确说「关掉」＝维护结束，标记要一起清。
     dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
     skipped_clear(); store.pop("modes", "skip_next_shutdown")
     ledger(run)
@@ -223,9 +202,6 @@ during the queue.
     skipped_clear(); dbg_clear()
 
     print("\n[one-shot mark] spent at a shift end; re-checks stay on; re-arming carries to the next run")
-    # The 「下次跑完不关机」 mark is one-shot, not a state (the user, 2026-10-11 15:25, quoted
-    # in the _part_skip_shutdown_wording part). relay.log 2026-10-11: spent at 09:59:26, then the
-    # re-checks at 10:04:55 / 12:26:28 / 12:29:16 all stayed on.
     dbg_clear(); skipped_clear(); store.pop("modes", "skip_next_shutdown")
     ledger(run)
     K = E._shutdown_key(at(23, 0))
@@ -260,9 +236,6 @@ during the queue.
     skipped_clear()
 
     print("\n[one-shot mark] turning debug mode off keeps an occasion the mark skipped")
-    # 2026-10-13: the mark was spent at 10:00:36; a test turned debug mode on and its
-    # test-off turned it off again, which used to release the mark's skip and power the
-    # machine off right after the test. The mark promised: on until the next shift ends.
     ledger(run)
     modes.set_skip_shutdown(STATE, True)
     E._shutdown_issued = False; issued.clear()
@@ -275,8 +248,6 @@ during the queue.
     E._shutdown_issued = False; skipped_clear()
 
     print("\n[手机开关] 待办指令 skip_shutdown：手机上改仓库里那个文件")
-    # 用户 2026-08-31：「我要的是手机上面操作」。中继本来就有「公开仓库放一个
-    # 文件、手机网页编辑」的收信通道，这里把开关接进那条通道。
     os.environ["ARK_STATE_DIR"] = str(STATE)
     from ark_relay.features.commands import apply_command, ALLOWED
 
@@ -300,7 +271,6 @@ during the queue.
     check("关机前拉到了「下次跑完不关机」：不关", E._maybe_shutdown(at(23, 0)), False)
     check("并且没有发出关机命令", len(issued), 0)
 
-    # The last pull turned on debug mode or dispatched a script: it still holds (11-08 [A-05])
     skipped_clear(); store.pop("modes", "skip_next_shutdown")
     E._shutdown_issued = False; issued.clear()
     E._before_shutdown = lambda: dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
@@ -328,8 +298,6 @@ during the queue.
 
 
     print("\n[countdown] 「下次跑完不关机」 pressed inside the relay's own 60-second countdown")
-    # 2026-10-09 22:42: the order only stored "skip the next one" and Windows
-    # powered off at 22:43 anyway (relay.log 22:43:14 heartbeat bye).
     calls = []
     RC = {"/a": 0}
     def fake_run(args, *a, **k):
@@ -396,10 +364,6 @@ during the queue.
 
 
     print("\n[debug outside a shift end] debug mode spends only a real power-off opportunity")
-    # relay.log 2026-10-11: debug mode on from 14:24, every check said 「调试模式开着，这一次关机
-    # 跳过」 and recorded 2026-10-11:4 with no shift anywhere near; at 21:21:40 (booted a minute
-    # before, the 21:30 shift not started) it read 「这一次关机已经跳过了」. The user, 2026-10-12
-    # 08:39: 「调试模式会不会造成下次不关机」. Why: docs/CODE-HISTORY.md「shutdown.py:decide」.
     RC["/a"] = 0
     store.pop("modes", "skip_next_shutdown")
 
@@ -443,11 +407,6 @@ during the queue.
     check("(a) the evening shift ends -> powers off", E._maybe_shutdown(day_at(21, 22, 25)), True)
     check("(a) …with one power-off command", len(power_offs()), 1)
 
-    # (b) the shift ends without a new row in today's ledger: an evening shift judged after
-    # midnight, its row filed under the day it started (State.append_ledger). Debug mode was
-    # on while it was still running and has run out by its end. Until 2026-10-12 the
-    # mid-shift check recorded 2026-08-22:0, the key did not change, and this power-off was
-    # skipped.
     skipped_clear(); dbg_set(f"{real + timedelta(hours=1):%Y-%m-%d %H:%M}")
     ledgers({21: [morning]})
     fresh(day_at(21, 21, 20))
@@ -510,10 +469,6 @@ during the queue.
     check("(d) the next shift end powers off", E._maybe_shutdown(day_at(21, 23, 40)), True)
     E._shutdown_issued = False; sd._ISSUED[0] = None; skipped_clear(); dbg_clear()
 
-    # (e) the mark spent at the evening shift's end stays skipped across the 00:00 midnight
-    # day roll (11-08 [A-01]): when the new day has no shift records yet, _shutdown_key keeps
-    # yesterday's shift key, so the machine does not power off at midnight and waits for the
-    # next scheduled shift to finish.
     skipped_clear(); dbg_clear()
     ledgers({21: [run]})
     fresh(day_at(21, 21, 20))
@@ -532,20 +487,7 @@ during the queue.
 
 
 def _part_shutdown_after_restart():
-    """A relay restarted after the shift does not power the machine off.
-
-2026-10-01: the morning shift closed at 17:27:43, the relay was redeployed at
-17:41, and the new process judged 「本次开机还没有跑完任何队列」. From then until
-2026-10-10 the ledger (_ran_since_boot) let it power off anyway. The user, 2026-10-10
-18:31 (Tokyo), quoted in USER-SWITCHES.txt at shutdown.py:_say_if_moment_passed: a decision
-made by a process that did not see the shift's records land is not the one right after
-the shift, so it is 「not-shift」 and the machine stays on. Since 2026-10-11 that one reason - no relay
-process on this boot saw the records land - is a WARNING (pushed): the relay lost track
-(USER-SWITCHES.txt at shutdown.py:_say_if_moment_passed).
-The ledger below is that day's, copied from the machine (start / end as written).
-
-    Formerly test_shutdown_after_restart.py.
-    """
+    """A relay restarted after the shift does not power the machine off."""
     import json
     import os
     from datetime import datetime
@@ -589,7 +531,6 @@ The ledger below is that day's, copied from the machine (start / end as written)
         return datetime(2026, 10, 1, hh, mm, ss, tzinfo=SERVER_TZ)
 
 
-    # Verbatim from C:\ProgramData\ark-relay\state\ledger-2026-10-01.jsonl
     ROWS = [("2026-10-01/arknights/MAA-05-00-01", "MAA", at(9, 0, 50), at(9, 18, 15), True),
             ("2026-10-01/wuwa/OK-WW-05-18-20", "OK-WW", at(9, 18, 37), at(9, 19, 16), "超时"),
             ("2026-10-01/wuwa/OK-WW-07-20-22", "OK-WW", at(11, 20, 35), at(11, 21, 10), "超时"),
@@ -726,23 +667,7 @@ The ledger below is that day's, copied from the machine (start / end as written)
 
 
 def _part_shutdown_hand_and_test_runs():
-    """Hand-started and test-window runs never join a 早班/晚班 round nor move the skip key.
-
-Replays the real ledgers of 2026-10-10..13 (fixtures/shutdown-1010-1013: the machine's
-ledger rows cut to the fields the shutdown decision reads, its test-windows.json and
-relay-dispatches.json) at every moment relay.log shows a power-off verdict.
-
-Two of them went wrong on the old code:
-* 10-12 21:45:34 the relay stayed on as 「最近一轮是手动触发的」 (a round started by hand) - the two
-  test-window MaaEnd runs (18:26, 20:04, hand_started) were chained into the 21:30
-  evening shift, whose first record then sat nowhere near a scheduled time;
-* 10-13 11:13:55 「本轮已处理完毕，60 秒后关机」 - the hand-started test OK-WW of 11:07 was
-  chained into the morning shift, and as a 4th ledger row it moved the skip key from
-  2026-10-13:3 (the spent 「下次跑完不关机」, 10:00:36) to :4, so the skip no longer held.
-The user's rule (10-10 18:31, DECISIONS D-1010-关机): only a finished 早班/晚班 powers off.
-
-    Formerly test_shutdown_hand_and_test_runs.py.
-    """
+    """Hand-started and test-window runs never join a 早班/晚班 round nor move the skip key."""
     import json
     from datetime import datetime
     from types import SimpleNamespace
@@ -828,24 +753,7 @@ The user's rule (10-10 18:31, DECISIONS D-1010-关机): only a finished 早班/�
 
 
 def _part_shutdown_held_past_shift():
-    """A power-off opportunity belongs to the moment a shift finished, not to the whole boot.
-
-The user's rule of 2026-10-10 18:31 (Tokyo), quoted verbatim in USER-SWITCHES.txt at
-shutdown.py:_say_if_moment_passed: only right after a morning / evening shift finished.
-
-2026-10-15 (Endfield maintenance day, relay.log on the machine, Beijing time): the morning
-shift ran MAA and OK-WW (MaaEnd skipped in the queue for the maintenance) and finished at
-09:3x. The deferred client update and the MaaEnd make-up then held the power-off
-(09:33 ... 13:16); 13:01:52 the make-up was cancelled, 13:06:59 「不关机：游戏客户端正在更新或重跑」,
-13:17:18 the update found the launcher at 「开始游戏」, and at 13:18:00 the relay said
-「本轮已处理完毕，60 秒后关机」 - hours after the shift. The whitelist (_not_shift) never
-expired, and the update / make-up gates only deferred the go.
-
-The times below are that day's; the ledger rows are modelled (start / end per relay.log),
-the queue time 08:50 stands for the morning shift's.
-
-    Formerly test_shutdown_held_past_shift.py.
-    """
+    """A power-off opportunity belongs to the moment a shift finished, not to the whole boot."""
     import json
     import os
     import shutil
@@ -987,9 +895,6 @@ the queue time 08:50 stands for the morning shift's.
     e._started_at = at(13, 0)
     v = tick(at(13, 20))
     check("restarted 13:00 on the same boot -> not-shift, no power-off", (v.code, powered), ("not-shift", []))
-    # The after-shift check still counts the shift as finished: the hold took only its
-    # power-off. Before, a restart after the hold logged 「收工体检（早班）这班没查」 for a shift
-    # that had been checked (daysim 10-09, 10:29:21 after the 10:19 restart).
     from ark_relay.features import selfcheck as shiftcheck
     check("shiftcheck: the held shift is a finished shift", (shiftcheck.finished_shift(e, at(13, 20)) or {}).get("name"), "早班")
     e.state.store.pop("marks", "handled_boot")
@@ -1071,15 +976,7 @@ the queue time 08:50 stands for the morning shift's.
 
 
 def _part_shutdown_notice():
-    """The 「今晚不关机」 message must never go out when the machine is in fact shutting down.
-
-At 22:46 on 2026-09-09 the command had already been sent, and the push still read
-「到点了但没关机：关机令已经下过了。机器会一直开着」 - then the machine shut down.
-The verdict code for "the command has gone out" was listed among the reasons a machine
-stays awake, and its wording read as though someone had ordered it to stay on.
-
-    Formerly test_shutdown_notice.py.
-    """
+    """The 「今晚不关机」 message must never go out when the machine is in fact shutting down."""
     import re
     from datetime import datetime, timedelta
     from types import SimpleNamespace
@@ -1159,9 +1056,6 @@ stays awake, and its wording read as though someone had ordered it to stay on.
     print("[关机命令被取消了：取消前后有人在用 -> 只记日报；看不出有人 -> 进群（2026-10-10）]")
     NS = "http://schemas.microsoft.com/win/2004/08/events/event"
     FIX = fx_dir(Path(__file__), "fixtures")
-    # Real System log events read on the machine 2026-10-10 (newest first, as shutdown_event_xml returns them):
-    # 10-01: 1074 13:48:52Z (the relay), 566 13:49:36Z (Reason 32, input woke the display), 1075 13:49:52Z by INS\Administrator.
-    # 10-02: 1074 13:49:01Z (the relay), 1075 13:49:08Z by INS\Administrator, no 566.
     REAL_1001 = (FIX / "system-1001-cancel.xml").read_text(encoding="utf-8").splitlines()
     REAL_1002 = (FIX / "system-1002-cancel.xml").read_text(encoding="utf-8").splitlines()
 
@@ -1191,7 +1085,6 @@ stays awake, and its wording read as though someone had ordered it to stay on.
 
 
     print(" [an aborted power-off, whoever did it: one line to the group, nobody named (10-10 23:22)]")
-    # The user, 2026-10-10 23:22 (Tokyo), quoted in USER-SWITCHES.txt at _say_if_moment_passed.
     for label, xmls, when in (("10-01 (a 566 before the abort)", REAL_1001, datetime(2026, 10, 1, 21, 48, 52, tzinfo=SERVER_TZ)),
                               ("10-02 (no 566, 7 s after the command)", REAL_1002, datetime(2026, 10, 2, 21, 49, 1, tzinfo=SERVER_TZ))):
         e, v, at = run(xmls, None, when)
@@ -1274,20 +1167,7 @@ stays awake, and its wording read as though someone had ordered it to stay on.
 
 
 def _part_shutdown_open_test_window():
-    """A test window can never swallow a 早班/晚班, even when test-off is never run.
-
-The review of 25ebc227 (10-13): a window with no "until" counted as lasting forever,
-so every later record - real shift runs included - was a test run; the newest round
-read as manual, the skip key stopped at 2026-10-13:3, and the machine never powered
-off (the real 10-13 ledger with the 11:05 window left open and an evening shift
-added: 21:50 stayed on). A scheduled shift starting while a window was open counted
-as test too.
-
-Replays the real ledgers of fixtures/shutdown-1010-1013 with the windows left open,
-plus a 晚班 on 10-13 (MAA 21:30, MaaEnd 21:46, shaped like the 10-12 / 10-11 ones).
-
-    Formerly test_shutdown_open_test_window.py.
-    """
+    """A test window can never swallow a 早班/晚班, even when test-off is never run."""
     import json
     import shutil
     import tempfile
@@ -1399,16 +1279,7 @@ plus a 晚班 on 10-13 (MAA 21:30, MaaEnd 21:46, shaped like the 10-12 / 10-11 o
 
 
 def _part_shutdown_round():
-    """The round a record belongs to, for the 「最近一轮是手动触发的」 gate.
-
-2026-09-19: OK-WW hung at 09:34, AUTO-MAS killed it at 11:35 and reran it, MaaEnd
-followed 11:42-12:09. The old rule took "everything started within two hours of the
-newest record", judged that tail by its own first record (11:35, not 09:00) and read
-the whole scheduled queue as started by hand - the machine stayed on all day. A
-hand-started afternoon run must still read as manual, that is the gate's job.
-
-    Formerly test_shutdown_round.py.
-    """
+    """The round a record belongs to, for the 「最近一轮是手动触发的」 gate."""
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1509,20 +1380,6 @@ hand-started afternoon run must still read as manual, that is the gate's job.
 def _part_shutdown_stale_shift():
     """A script the morning shift never recorded does not keep the evening shift from powering off
 (audit 11-08 A-16; dispatch relay-opt-round4-1108 R4-01; shutdown._current_shift).
-
-The schedule is the machine's (docs/CONFIG.md): 早班 09:00 MAA, MaaEnd, OK-WW; 晚班 21:30 MAA
-only. A boot the power-off skipped (debug mode, 「下次跑完不关机」) holds both shifts. Before:
-_shift_queues gave every queue due since the boot, and an OK-WW the morning never recorded
-(no evening record stands in for it: the evening queue runs MAA only) kept every decision of
-the evening at 「等排期的那趟跑完再判关机（队列「早班」还差 OK-WW）」 - the machine stayed on.
-
-Pinned here:
-* 21:50, the evening's MAA recorded: go, and the after-shift check counts the evening shift;
-* the evening's MAA not recorded yet: still waiting, naming 晚班 (not 早班);
-* before the evening is due, the morning still missing OK-WW: still waiting on 早班 (unchanged);
-* _current_shift: queues of one shift (minutes apart) stay together; 12.5 hours apart do not.
-
-    Formerly test_shutdown_stale_shift.py.
     """
     import json
     import os
@@ -1616,15 +1473,7 @@ Pinned here:
 
 
 def _part_shutdown_waits_for_farm():
-    """A farm in progress has to hold off the automatic shutdown.
-
-「还有脚本或游戏在跑」 only covers the farm while OK-WW is actually up. The character
-dies every ten laps or so, OK-WW stops, and the relay takes up to three minutes to
-relaunch it. A shutdown landing in that window would end a four-hour farm early and
-say nothing about why.
-
-    Formerly test_shutdown_waits_for_farm.py.
-    """
+    """A farm in progress has to hold off the automatic shutdown."""
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1676,20 +1525,7 @@ say nothing about why.
 
 
 def _part_shutdown_whitelist():
-    """Only the decision right after a morning / evening shift finished may power off.
-
-The user's rule of 2026-10-10 18:31 (Tokyo; only after a morning / evening shift), quoted
-verbatim in USER-SWITCHES.txt at shutdown.py:_say_if_moment_passed. The 18:30 gate (not while
-someone uses the machine) was removed on his order of 23:20.
-
-The ledger is that day's, copied from C:\\ProgramData\\ark-relay\\state\\ledger-2026-10-10.jsonl
-(start / end / ok as written). The boots are from the machine: the relay started at 08:45:18
-(relay.log 「中继代码版本」) for the 09:00 shift and judged 「本轮已处理完毕」 at 09:39:30;
-LastBootUpTime 11:45:20 for the boot by hand, after which MAA was started by hand at 12:05:54.
-The evening shift is the morning one moved to 21:30.
-
-    Formerly test_shutdown_whitelist.py.
-    """
+    """Only the decision right after a morning / evening shift finished may power off."""
     import json
     import os
     from datetime import datetime, timedelta
@@ -1732,7 +1568,6 @@ The evening shift is the morning one moved to 21:30.
         return datetime(2026, 10, 10, hh, mm, ss, tzinfo=SERVER_TZ)
 
 
-    # Verbatim from the machine's ledger-2026-10-10.jsonl (the fields decide reads).
     MORNING = [("MAA-05-00-01", "MAA", "arknights", at(9, 0, 51), at(9, 1, 10), False),
                ("MAA-05-01-15", "MAA", "arknights", at(9, 1, 59), at(9, 2, 14), False),
                ("MAA-05-02-18", "MAA", "arknights", at(9, 3, 1), at(9, 3, 17), False),
@@ -1797,8 +1632,6 @@ The evening shift is the morning one moved to 21:30.
           judge(at(9, 49), at(8, 45), at(9, 20), handled=True).code, "go")
 
     print("\n[a deploy restarts the relay after the shift was seen landing: the decision goes on (10-10 21:45)]")
-    # 10-10: the evening shift finished, 21:44:51 in-use; the deploy restarted the relay at 21:45 and
-    # from 21:46:36 the new process said not-shift. The landing is now kept on disk per boot.
     e.state.store.pop("marks", "handled_boot")
     BOOT[0] = at(8, 45)
     shutdown.note_handled(e, at(9, 37, 40))           # the old process saw MaaEnd land
@@ -1823,8 +1656,6 @@ The evening shift is the morning one moved to 21:30.
     check("08:55:19, booted 08:45 -> shift-ahead", judge(at(8, 55, 19), at(8, 45), at(8, 45, 18)).code, "shift-ahead")
 
     print("\n[a shift not finished yet (or never): no judging until every script has recorded]")
-    # 2026-10-10 21:30:01 the evening shift had just started and the decision went on to
-    # 「还有脚本或游戏在跑」, pushed to the group.
     ledger(MORNING[:4])               # no MaaEnd
     v = judge(at(11, 40), at(8, 45), at(8, 45, 18))
     check("11:40, MaaEnd never ran, past the old two-hour window -> shift-running", v.code, "shift-running")
@@ -1833,17 +1664,12 @@ The evening shift is the morning one moved to 21:30.
     check("09:00:01, the shift just started -> shift-running", judge(at(9, 0, 1), at(8, 45), at(8, 45, 18)).code, "shift-running")
 
     print("\n[shift finished while someone uses the machine: powered off all the same (10-10 23:20)]")
-    # The user, 2026-10-10 23:20 (Tokyo): who uses the machine is not the relay's business; the 15-minute input gate was removed.
     ledger(MORNING)
     check("09:39:30 -> go, nothing asks about keyboard / mouse",
           judge(at(9, 39, 30), at(8, 45), at(8, 45, 18)).code, "go")
     check("the gate is gone", hasattr(shutdown, "console_idle_s"), False)
 
     print("\n[a shift script that never records: one group alarm once the shift is overdue (10-12 20:04)]")
-    # The user's order of 2026-10-12 20:04 (Tokyo), quoted in shutdown.py:_alarm_shift_overdue.
-    # Until then a script that never recorded kept shift-running all night with one relay.log
-    # line: runwatch.check_overrun needs AUTO-MAS to show the task unfinished, and
-    # missed._check_partial_queues stays quiet while a game process is up.
     from ark_relay.core import texts
     from ark_relay.features import handle
     from ark_relay.features import runwatch
@@ -1911,10 +1737,6 @@ The evening shift is the morning one moved to 21:30.
     check("every script recorded: no such alarm", e.notifier.sent, [])
 
     print("\n[#176: the queue's planned end is past, the script whose turn it is has not spent its own minutes yet]")
-    # 11-16 (Monday): 鸣潮 took 54 minutes with the weekly boss, MaaEnd began at 10:15, and at 10:35 the
-    # alarm counted 95 minutes of shift against MaaEnd twenty minutes into its own run. Here: MAA and
-    # OK-WW recorded by 09:13:15, MaaEnd's turn since then; the queue's planned 20 + 30 ends 09:50,
-    # MaaEnd's own longest clean run is 64, so both alarms wait until 09:13:15 + 64 + 30 = 10:47:15.
     from unittest import mock
     ledger(MORNING[:4])
     e.state.store.pop("marks", f"alerted:{due:%Y-%m-%d}")
@@ -1963,19 +1785,6 @@ The evening shift is the morning one moved to 21:30.
 
 def _part_exit_shutdown_window():
     """An AUTO-MAS exit looks back an hour for a Windows shutdown request, not 120 s (audit s15 #5).
-
-_exited asked the System log for a 1074 of the last 120 s. The 1074 is written when the
-command is given, the countdown before the shutdown: `shutdown /s /t 300` by hand
-puts it ~300 s before AUTO-MAS is closed, outside that window, so the exit read as an
-unexpected one and a revival ran into the closing session. _shutdown_before
-(the WMI drop) already looks back SHUTDOWN_BEFORE_WINDOW_SECONDS (an hour).
-
-The 1074 is the real one of 2026-10-10 04:27:24 (machine clock; `shutdown /s /t 60` by
-hand, tests/fixtures/system-1010-0427-manual-shutdown.xml), moved to 300 s ago. With the
-hour, a 1074 from before the current boot must not count: a 6005 (the Event Log service
-started, docs/OPERATIONS.md "6005 boot") newer than it ends it.
-
-    Formerly test_exit_shutdown_window.py.
     """
     import logging
     import re
@@ -2092,20 +1901,6 @@ started, docs/OPERATIONS.md "6005 boot") newer than it ends it.
 
 def _part_power_off_returncode():
     """A shutdown command that failed must not count as a power-off (review of 2026-10-07, item 1).
-
-`shutdown /s` was run with check=False and its exit code never read: when Windows
-refuses (1190, a shutdown is already scheduled; or no privilege) _power_off still
-returned True, shutdown._maybe_shutdown set _shutdown_issued and marked the
-machine as going down, and every teardown after that was waved through as "the
-relay's own power-off" while the machine stayed on.
-
-Pinned: a non-zero exit code returns False; one ERROR line carries the exit
-code and what shutdown printed (errwatch pushes a new kind of ERROR to the
-group - the existing alarm path); and 「本轮已处理完毕，60 秒后关机」 is written only
-after the command succeeded, because machine checks #37/#38 read that line as
-proof the relay powered the machine off.
-
-    Formerly test_power_off_returncode.py.
     """
     import logging
 
@@ -2167,15 +1962,7 @@ proof the relay powered the machine off.
 
 
 def _part_poweroff_ok():
-    """A hand power-off waits for the relay's own work (scripts/mac/lib/poweroff_ok.py).
-
-Ledger #110 (2026-10-22): 调试模式 off at 16:44:18 Beijing, the gathering retry started by
-the shutdown decision at 16:44:20, a hand `shutdown /s /t 60` at 16:44:5x cut it, and the
-evening boot re-ran it with 「中继自己报错了」 in the group. Each case below is one thing a
-person's power-off must not cut, the first two being that afternoon's.
-
-    Formerly test_poweroff_ok.py.
-    """
+    """A hand power-off waits for the relay's own work (scripts/mac/lib/poweroff_ok.py)."""
     import json
     from datetime import datetime, timedelta
 
@@ -2228,25 +2015,7 @@ person's power-off must not cut, the first two being that afternoon's.
 
 
 def _part_skip_shutdown_wording():
-    """The 「下次跑完不关机」 mark is named and described one way everywhere a human reads it.
-
-The mark is one-shot: it is spent when the next 早班/晚班 run finishes, that
-shutdown occasion is skipped, the re-checks after it stay on, and the run after
-that shuts down as usual (modes.skip_armed; behaviour pinned in test_shutdown.py
-"[one-shot mark]"). We misread it twice because the words around it were wrong:
-other names for the same mark (「今晚别关机」, 「这次别关机」, ...) and a receipt
-that said 「已取消，跑完照常关机」 as if a spent mark could still be cancelled.
-The user's words are kept below as data (USER_1011).
-
-Checks:
-1. No file a human reads (relay code and comments, web/, docs/, scripts/) uses
-   another name for the mark. Dated audit/handover records are history and keep
-   the words they were written with.
-2. set_skip_shutdown's receipts, as returned by the function, name the mark;
-   pulling it back always says the mark was 「还没用上」 and never a bare 「已取消」.
-
-    Formerly test_skip_shutdown_wording.py.
-    """
+    """The 「下次跑完不关机」 mark is named and described one way everywhere a human reads it."""
     import re
 
 
@@ -2268,7 +2037,6 @@ Checks:
     # ---------- 1. one name ----------
     print("[one name for the mark in every human-read file]")
     OTHER_NAMES = re.compile(r"今晚别关机|这次别关机|下一次别关机|下次不关机|下一次跑完别关机")
-    # The phone page (web/) was in this walk until it was removed on 2026-11-17.
     ROOTS = [RELAY / "ark_relay", REPO / "docs", REPO / "scripts" / "windows", REPO / "scripts" / "mac"]
     TOP = [p for p in RELAY.glob("*.py")] + [RELAY / "README.md", REPO / "README.md"]
     EXTS = {".py", ".js", ".html", ".css", ".md", ".bat", ".ps1", ".sh", ".txt", ".json"}
@@ -2312,7 +2080,6 @@ Checks:
         check(f"{label}: names the mark", NAME in text, True)
         check(f"{label}: names the run (早班/晚班)", "早班/晚班" in text, True)
     check("arm: says it is one-time", "只管一次" in on, True)
-    # App review 10-14: one sentence, not three clauses about the run after the next
     check("arm: one short sentence", len(on) <= 32 and "再下一趟" not in on, True)
     _ok_off, off = modes.set_debug(d, off=True)
     check("debug off: says it is off, asks for nothing", off, "调试模式已关闭")
@@ -2324,20 +2091,7 @@ Checks:
 
 
 def _part_skip_failed_pushed():
-    """A skip of a queue that did not take effect, or whose restore failed, reaches the group.
-
-engine._observe_modes sent every message of modes.process_skip under texts.SKIP_MODE,
-which notify.route_of sends to the log only - so 「跳过「早班」失败：…——没生效，今天
-照常跑」 (the queue the user wanted skipped runs anyway) and 「跳过「早班」后恢复失败：…」
-(the queue stays switched off) never reached anyone. The user's rule, 2026-10-06:
-「不论多少次什么错误都要发」 - a failure that did not recover goes to the group every
-time. The acknowledgements of a skip that took stay on the log route.
-
-Driven through a real Engine tick step with modes.process_skip's real code; only
-queues.apply (AUTO-MAS's answer) and plan.schedule are faked.
-
-    Formerly test_skip_failed_pushed.py.
-    """
+    """A skip of a queue that did not take effect, or whose restore failed, reaches the group."""
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -2439,17 +2193,7 @@ queues.apply (AUTO-MAS's answer) and plan.schedule are faked.
 
 
 def _part_skip_flag_collision():
-    """两个功能共用「skip-」这个前缀，清理陈旧标记时把对方扫掉了。
-
-「某天跳过队列」写 skip-<YYYY-MM-DD>.flag，「下次跑完不关机」写
-skip-next-shutdown.flag，两者住同一个 state 目录。process_skip 每一拍
-（30 秒）都会清理「不是今天的」skip-*.flag，glob 把后者也匹配上，于是
-人在手机上按下开关，半分钟内就被删掉，日志还写「未曾生效（当天机器
-没开机）」——而机器正开着。发现于 2026-08-31：按下后回读 True，40 秒后
-再读已经没了。
-
-    Formerly test_skip_flag_collision.py.
-    """
+    """两个功能共用「skip-」这个前缀，清理陈旧标记时把对方扫掉了。"""
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -2596,16 +2340,7 @@ skip-next-shutdown.flag，两者住同一个 state 目录。process_skip 每一�
 
 
 def _part_skip_receipt_lost():
-    """A skip that failed stays a failure when its red receipt could not be written.
-
-Audit s1 (outside its scope, modes.py:467, 10-13): engine.skip_failed tells a failed
-skip from an acknowledgement only by the red receipt modes writes with the same words.
-_skip_receipt swallowed a write failure, so the failure went out on the quiet
-acknowledgement route (texts.SKIP_MODE) instead of the SKIP_FAILED group alarm, and
-the phone page kept showing the press's green 「已记下」.
-
-    Formerly test_skip_receipt_lost.py.
-    """
+    """A skip that failed stays a failure when its red receipt could not be written."""
 
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY))
@@ -2647,20 +2382,6 @@ the phone page kept showing the press's green 「已记下」.
 
 def _part_skip_receipts():
     """Skip-queue outcomes reach the phone page's receipts, and a failed skip lets go of the day.
-
-2026-09-30 (检查, BOARD/evidence/回执显示-0930 row 2a): process_skip only returned
-strings, which the engine pushed as notifications. Nothing went to the receipts
-the phone page shows, and on failure _maybe_engage kept the day flag "to retry on
-the next tick", so the snapshot's 「今天跳过队列」 still listed the queue and the
-page showed the switch as skipped and applied while the queue was going to run.
-
-Now: a failed engage drops the flag and writes a red receipt saying the skip did
-not take and the queue runs today; a successful one writes a green receipt whose
-text is queues.apply's own answer (「调度程序已确认」 only when the backend read
-the value back). Restores write receipts too. The engine pushes a fresh snapshot
-after a skip step so the receipt reaches the page without waiting for a refresh.
-
-    Formerly test_skip_receipts.py.
     """
     import os
     from datetime import datetime
@@ -2847,14 +2568,7 @@ after a skip step so the receipt reaches the page without waiting for a refresh.
 
 
 def _part_skip_sat_out():
-    """A queue skipped on purpose stays skipped for that day's checks after its restore.
-
-2026-11-01: 晚班 was skipped (skip_today), the machine stayed on, the restore re-enabled the
-queue at 22:03:45 (Beijing) and at 22:03:47 the missed-run check pushed 「🔌 晚班 没有运行」;
-the overdue check and the shutdown wait also still counted 晚班 as missing MAA.
-
-    Formerly test_skip_sat_out_1101.py.
-    """
+    """A queue skipped on purpose stays skipped for that day's checks after its restore."""
     import json
     import os
     from datetime import datetime
@@ -2951,17 +2665,7 @@ the overdue check and the shutdown wait also still counted 晚班 as missing MAA
 
 
 def _part_skip_shutdown_bat_error():
-    """skip-shutdown.bat shows Python's own error when the status read gives nothing.
-
-The status read sent stderr to nul (`2^>nul`), so every failure - an import error
-after a version change, an unreadable state.json - showed the same 「读不出来 ——
-中继没装好，或者 Python 路径不对」. Now stderr goes to a temp file that is typed
-when the read gives nothing (and the missing-Python case says that). STATE is
-also cleared before each read: a menu redraw after a failed read showed the
-previous value. No cmd.exe on the Mac, so the file is read as text.
-
-    Formerly test_skip_shutdown_bat_error.py.
-    """
+    """skip-shutdown.bat shows Python's own error when the status read gives nothing."""
     import re
 
     ROOT = Path(__file__).resolve().parents[2]
@@ -2989,7 +2693,7 @@ def _part_farm_poweroff():
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
+    from _parts import tmpdir
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import procwatch as S
@@ -3085,10 +2789,7 @@ def _part_place_desktop_bat():
 
 
 def _part_statestore_main():
-    """state.json：一个文件、登记过的字段才能写、原子落盘、旧文件自动迁入。
-
-    Formerly test_statestore.py.
-    """
+    """state.json：一个文件、登记过的字段才能写、原子落盘、旧文件自动迁入。"""
     import json, logging, sys
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -3219,8 +2920,6 @@ def _part_statestore_main():
     check("陈旧文件也收走", (d5 / "okww-version.txt").exists(), False)
 
     print("[state.json unreadable: copied aside before anything overwrites it, said once per mtime]")
-    # Until 2026-10-10 the WARNING said the old content was untouched on disk, and the
-    # next set() overwrote state.json with the near-empty dict it fell back to.
     import os
     d6 = tmpdir()
     SS._SWEPT.clear()
@@ -3260,20 +2959,6 @@ def _part_statestore_main():
 def _part_state_read_lock():  # noqa: C901
     """state.json reads that a Windows lock refuses, and alarm day marks written by two
 writers: no alarm pushed twice, no mark lost, no relay state lost.
-
-Review of 99999b8e (10-17), one scenario per finding:
-  1. A plain read of state.json that hit a lock (PermissionError, or any OSError)
-     copied the healthy file aside as state.json.corrupt-* and cached {} until the
-     file's mtime changed: every alarm day mark answered "not sent", so an alarm going
-     through unresolved.send was pushed a second time. A write that met an OSError
-     other than a lock on its read put the near-empty fallback over the file; the
-     legacy sweep did the same after a plain read that a lock refused; a state.json
-     holding JSON that is not a table crashed every read.
-  2. daymarks._mark_alerted built the day's list from a read outside the write lock
-     (served from the cached copy) and set() wrote it whole: a mark another writer
-     made in between was dropped.
-
-    Formerly test_state_read_lock_1017.py.
     """
     import json
     import logging
@@ -3513,26 +3198,6 @@ Review of 99999b8e (10-17), one scenario per finding:
 
 def _part_state_unread():
     """Reads put off with nothing to bring them back (dispatch relay-audit-round2-1108 N-02 / N-05).
-
-N-02, the running half of 08635a7b (its boot half stays shelved, BOARD D-1017): state.json
-refusing reads (a lock outlasting LOCK_WAITS, any OSError) was one INFO line per refused read
-and nothing else - a lock that never let go kept every write failing, the relay silent and the
-machine on. Pinned here:
-
-* a refused read starts a run: one INFO line, statestore.refused_since names when; a plain
-  read still answers with the last good copy, a write still raises;
-* while the run lasts every read tries the file again (the cached copy is not served);
-* UNREAD_WARN_S (600 s, the relay's other outage marks) after the first refusal: one WARNING
-  (the group), not repeated while the same run lasts; a read that gets through ends the run
-  with one INFO line, and a later lock is a new run;
-* engine.next_deadline wakes the loop UNREAD_RETRY_S (45 s) later while the run lasts.
-
-N-05: the need table's same-day second try (「过半小时再试一次」) and AUTO-MAS records the
-last scan put off (a missing log, a history.db read that failed) had no moment either; the
-loop slept to the hour backstop. needtable.next_moment / collector.next_moment and their
-place in next_deadline are pinned here too.
-
-    Formerly test_state_unread_1108.py.
     """
     import json
     import logging
@@ -3752,24 +3417,7 @@ place in next_deadline are pinned here too.
 
 
 def _part_atomic_write():
-    """落盘只能走 config.atomic_write_*，不许自己手抄「临时文件 + replace」。
-
-2026-09-08 数出来的：仓库里有 5 处手抄的原子写，各写各的——有的漏 fsync、有的
-失败了不清理临时文件、报错方式还各不相同。同一件事五种写法，改一处别处不会跟着改，
-而它们写的都是 AUTO-MAS / OK-WW / MaaEnd 没有就起不来的配置。
-
-（当初我给的理由是「机器每天硬断电两次」，操作者纠正：一天只有一次，而且那一刻
-机器已经关着。这条测试守的是「实现只有一份」，不是防断电。）
-
-这条测试盯两件事：实现只有一份、别处不许再抄。
-
-Section 4 (added 2026-10-12) is about power cuts after all, for state files
-the relay reads back: the 08:40 socket cut takes the machine down whether
-it is on or off (memory queue-schedule-what-runs.md), and a forced shutdown
-or kill can land mid-write too.
-
-    Formerly test_atomic_write.py.
-    """
+    """落盘只能走 config.atomic_write_*，不许自己手抄「临时文件 + replace」。"""
     import re
 
     ROOT = Path(__file__).resolve().parents[1]
@@ -3835,18 +3483,7 @@ or kill can land mid-write too.
 
 
 def _part_state_pending():
-    """待推告警的存/取。**这条路没有测试过，结果炸在生产上。**
-
-2026-09-08 上午：`core.State.save_pending` 上面被贴了一行多余的 `@property`。
-后果不是「保存失败」这么轻——属性访问本身就抛 TypeError（getter 缺 payload），
-于是 `_persist_pending` 每一轮都炸，三条鸣潮失败记录永远落不了账；
-中继下一轮扫到它们，当成**新**失败又推一遍，每十几秒一条，把用户的群轰炸了半小时。
-
-88 个测试里没有任何一个调用过 save_pending，静态检查也没有「@property 带参数」
-这条规则，所以这行改动一路绿灯上了机器。这个文件补的就是那条路。
-
-    Formerly test_state_pending.py.
-    """
+    """待推告警的存/取。**这条路没有测试过，结果炸在生产上。**"""
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -3891,21 +3528,7 @@ def _part_state_pending():
 
 
 def _part_statestore_threads():
-    """Two threads writing state.json must not lose each other's key.
-
-Audit s9 A2 (2026-10-13): the phone listen thread writes queues.phone_seen and,
-through live commands, modes.* (set_debug, set_skip_shutdown ...), while the
-engine thread writes the same file. StateStore.set/pop did load-modify-write with
-no lock, and config.atomic_write_bytes always used the same temp name
-(state.json.tmp). Run with two threads: 200/200 trials lost one update, 199 raised
-FileNotFoundError on the rename. A lost modes.skip_next_shutdown means the reply
-says 「已记下」 and the machine powers off anyway.
-
-Both halves are made deterministic here: the first writer is held between its read
-and its write while the second writer runs.
-
-    Formerly test_statestore_threads.py.
-    """
+    """Two threads writing state.json must not lose each other's key."""
     import os
     import threading
     import time

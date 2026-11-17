@@ -273,8 +273,6 @@ def _compose_daily(eng, day: str, entries: list[dict]) -> tuple[str, str]:
     # computed and logged here; it is not put into the message.
     log.info("记分：%s", scoreboard.line(eng.state.store, str(eng.state.store.get("versions", "code") or "")))
     tail = "".join(f"\n\n{x}" for x in (act, pool) if x)
-    # The structured template is the only path (the model-written report was
-    # retired on 08-30 and removed), so this is INFO, not WARNING.
     log.info("日报用结构化模板（模型撰写已废弃，这是正常路径）")
     entries, tests = core.split_test(entries, test_windows(eng.cfg.state_dir))
     shifts = _shifts(eng)
@@ -501,9 +499,6 @@ def write_daily_techlog(eng, day: str) -> bool:
             eng.state.mark_techlog_written(day, done | wrote)
         return len(wrote) == len(todo)
     except Exception as exc:  # noqa: BLE001
-        # A WARNING, so the group hears it: the report still goes out, but the technical
-        # log we read every day would be missing the day (the user, 2026-10-11 17:43:
-        # nothing that did not fix itself stays out of the group).
         log.warning("日报的技术部分没写进技术日志：%s: %s", type(exc).__name__, exc)
         return False
 
@@ -535,7 +530,6 @@ def retry_line(state_dir, day: str, maaend_dir=None) -> str:
     if d.get("unknown"):
         parts.append("没结论 " + "、".join(name(r) for r in d["unknown"]))
     if d.get("recurrent"):
-        # Also its own group alarm (collect_retry; daily-only 2026-10-05..06).
         parts.append("连续两天没走通 " + "、".join(name(r) for r in d["recurrent"]) + "，已交给我们这边去查")
     if d.get("note"):
         parts.append(str(d["note"]))

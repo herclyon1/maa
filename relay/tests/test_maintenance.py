@@ -203,10 +203,7 @@ def _part_maintenance_deadline():
 
 
 def _part_maintenance_main():
-    """三家停服维护公告解析——夹具是 2026-09-02/03 从官网原样抓的页面。
-
-    Formerly test_maintenance.py.
-    """
+    """三家停服维护公告解析——夹具是 2026-09-02/03 从官网原样抓的页面。"""
     import json
     from datetime import datetime, timedelta
 
@@ -219,8 +216,6 @@ def _part_maintenance_main():
     from ark_relay.features import banners as B
 
     FXT = FX.parent
-    # The JSON endpoints, recorded 2026-10-07 (the Wuthering Waves site's article
-    # index and its 3.6 预告 2026-09-12); the in-game notice is of 2026-09-02.
     JSON_FX = {B._AK_NEWS_API.format(cat="ANNOUNCEMENT", page=1): FX / "ak_announcement_p1.json",
                B._AK_POST.format(cid="5102"): FX / "ak_5102.json",
                B._EF_CMS_LIST.format(page=1): FX / "ef_list_p1.json",
@@ -247,7 +242,6 @@ def _part_maintenance_main():
     ef = M.endfield_window(now, get=fake_get)
     check("终末地：09-02 06:00–12:00", (ef[0].strftime("%m-%d %H:%M"), ef[1].strftime("%H:%M")) if ef else None, ("09-02 06:00", "12:00"))
     check("终末地：取的是预告帖 1164", ef[2], "官方公告：「雪凇幽梦」版本预下载与更新预告（09-02 06:00–12:00）")
-    # The page bodies of 2026-09-02/03 read the same windows as the endpoints' posts.
     check("方舟：旧网页正文与接口正文窗口一致",
           M._AK_BODY.search(M._text((FX / "ak_5102.html").read_text(encoding="utf-8", errors="replace"))).groups(),
           M._AK_BODY.search(B.ak_post_text(fake_get, "5102")).groups())
@@ -263,8 +257,6 @@ def _part_maintenance_main():
         except ValueError:
             check(f"{name}：code 不是 0 要报错", "报错", "报错")
 
-    # Wuthering Waves: the site's 3.6 预告 (posted 08-13) a week ahead, the in-game
-    # notice not asked; once the window is over, the in-game notice.
     asked.clear()
     ww_pre = M.wuwa_window(datetime(2026, 8, 15, 9, 0, tzinfo=SERVER_TZ), get=fake_get)
     check("鸣潮：官网维护预告提前一周给出 08-20 04:00–11:00",
@@ -286,9 +278,6 @@ def _part_maintenance_main():
     failed = []
     M.today(now, sources={**bad, "终末地": lambda n: None}, failed=failed)
     check("取不到的记进 failed，读到了没有的不记", failed, ["明日方舟"])
-    # ---- 明日安排里的维护提示（用户 2026-09-03：「这个务必要体现」）----
-    # maintenance_lines 是这条要求唯一的落点，之前没有任何测试碰过它。漏掉这一行，
-    # 队列会在停服时段照常开跑：全是失败，客户端也不会更新。
     from ark_relay.core import plan as P
     from datetime import date
 
@@ -297,7 +286,6 @@ def _part_maintenance_main():
     lines = P.maintenance_lines(date(2026, 9, 4))
     check("维护当天出一行", len(lines), 1)
     check("点名游戏", "明日方舟" in lines[0], True)
-    # App review 10-14: the window on the phone's clock (Tokyo, one hour ahead) and in plain words
     check("写清窗口（手机的东京时间）", "09-04 07:00–13:00" in lines[0], True)
     check("说清这一班不跑它", "这一班先跳过它" in lines[0], True)
     check("说清跑完就更新它", "跑完就更新它" in lines[0], True)
@@ -319,8 +307,6 @@ def _part_maintenance_main():
     check("取不到公告时安静返回空，不许把明日安排带走", P.maintenance_lines(date(2026, 9, 4)), [])
 
 
-    # 2026-11-08: a game whose bulletin could not be read was left out of today()'s
-    # result, and the plan read that as "no maintenance tomorrow".
     def _unread(at, failed=None):
         failed.extend(["终末地", "终末地"])
         return {"明日方舟": ak}
@@ -335,27 +321,7 @@ def _part_maintenance_main():
 
 
 def _part_maintenance_cache():  # noqa: C901
-    """The official maintenance bulletins: one retry, a cache, one WARNING per real failure.
-
-10-02 23:05:34 and 23:05:54 (#50 #53) ak.hypergryph.com and
-endfield.hypergryph.com each timed out once, 20 s apart, inside one phone
-state push: every state push builds tomorrow's plan, which read all three
-official sites each time - dozens of times that evening, a WARNING for every
-timeout. Every WARNING is pushed to the group now (2026-10-06);
-the user on that: 「你正常情况应该一条都不发的」.
-
-Pinned here: a site that does not answer is asked once more after a pause (an
-HTTP answer is not); a good read is reused for OK_TTL; a failed read is a
-WARNING once and, for FAIL_TTL, an INFO without asking again; `sources` given
-(the tests, gameupdate's injected readers) is read as given. Fake network.
-
-Since the user's rule of 2026-10-06 05:07 (「报错后自己好了的，只进日报、不进群」),
-a retry that gets the page is one WARNING marked errwatch.recovered(): not
-pushed, in the daily report; both tries failing is today()'s plain WARNING,
-pushed (a real errwatch handler shows both).
-
-    Formerly test_maintenance_cache.py.
-    """
+    """The official maintenance bulletins: one retry, a cache, one WARNING per real failure."""
     import logging
     import tempfile
     import time
@@ -560,9 +526,6 @@ pushed (a real errwatch handler shows both).
         M.SOURCES.update(saved)
 
     print("\n[缓存按问的是哪一天分开：先问明天（开机推手机状态）再问今天（开机查更新），今天的鸣潮维护照样看得到]")
-    # 10-10: 「08:45:57 📱 已上报状态到手机（开机）」 (the plan asks about tomorrow), then
-    # 「08:47:42 游戏更新：维护公告」 (gameupdate.boot_check asks about today). 鸣潮's answer
-    # depends on the day asked (wuwa_window); one cache entry per game answered both (s16 #3).
     from datetime import timedelta
     TODAY = datetime(2026, 9, 30, 8, 45, tzinfo=SERVER_TZ)
     WIN = (datetime(2026, 9, 30, 4, 0, tzinfo=SERVER_TZ), datetime(2026, 9, 30, 11, 0, tzinfo=SERVER_TZ))
@@ -584,18 +547,6 @@ pushed (a real errwatch handler shows both).
 def _part_maintenance_mark_every_script():
     """A failure inside an official maintenance window is marked for every script, on
 the ledger and in the persisted hold, and its re-run is registered.
-
-Audit 2026-10-13 s7 #1 / s1 #2: the mark sat in _archive_maaend_evidence - after
-the ledger line was written and after its early returns - so the daily report
-booked a plain failure, gameupdate.needs_rerun (it reads the ledger) never re-ran
-what the 「进不了游戏」 alarm promised, and MAA / OK-WW never got the mark. The
-alarm text also said 「20 秒内」 while the threshold is 30 seconds.
-Review of 308e21b3: the mark is for a scheduled run being held (and the MaaEnd
-update-restart hold, which lost it); a hand-started run (held only for its own
-task's retries since 2026-10-16) and a MAA failure pushed at once on the update day
-are not booked ⏸ nor re-run by the relay.
-
-    Formerly test_maintenance_mark_every_script.py.
     """
     import os
     from datetime import datetime, timedelta

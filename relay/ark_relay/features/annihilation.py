@@ -251,14 +251,7 @@ MARKER = "DailyTask.json"
 
 
 class GardenGate(WeekGate):
-    """Which game week the weekly garden was done in.
-
-    Same interface as annihilation and the weekly boss: settings() for the phone page,
-    week_line() for the "new week" notification, on_success() books the week,
-    enforce() sets the switch, maybe_reopen() clears the booking on Monday. State:
-    weekly.garden = {"done_week": <week_key>}. There is no on/off setting: it stops
-    once done and resumes Monday (the user, 2026-09-07: 「三个周常都应该只显示状态」).
-    """
+    """Which game week the weekly garden was done in."""
 
     NAME = "鸣潮 · 周常乐园"
     STATE_KEY = "garden"
@@ -329,8 +322,6 @@ class GardenGate(WeekGate):
             return False
         tasks = list(cfg.get(KEY) or [])
         has = TASK_NAME in tasks
-        # An earlier week's booking is left for WeekGate.maybe_reopen at boot: clearing it
-        # here hid the roll-over from the new-week notice (audit 10-13: the 10-05 04:43 tick).
         if want_on == has:
             return False
         if want_on:
@@ -347,8 +338,6 @@ class GardenGate(WeekGate):
                 _log_garden.warning("周常乐园开关写不进去：%s", exc)
                 self._last_write_error = str(exc)
             return False
-        # Read back before saying it is set, as weeklyboss does (audit 11-08 D-13: until then
-        # the write alone counted).
         try:
             back = TASK_NAME in (json.loads(f.read_text(encoding="utf-8")).get(KEY) or [])
         except (OSError, ValueError, AttributeError) as exc:

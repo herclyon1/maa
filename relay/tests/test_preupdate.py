@@ -16,8 +16,6 @@ def _part_preupdate_main():
 today that runs OK-WW, the one program it still launches (its update overwrites
 the local patches, re-applied right after). MaaEnd's own update is AUTO-MAS's
 job since the 2026-10-11 switch-over. The launching itself is Windows-only.
-
-    Formerly test_preupdate.py.
     """
     import json, os, sys
     from datetime import datetime
@@ -76,21 +74,6 @@ job since the 2026-10-11 switch-over. The launching itself is Windows-only.
 def _part_preupdate_automas_carry():
     """An AUTO-MAS install the first try could not see land, found landed by the second try
 (audit 11-08 A-20; dispatch relay-opt-round4-1108 R4-04; preupdate_automas.run_automas `carry`).
-
-Before: the first try clicked install, the backend took longer than MAS_INSTALL_WAIT_SECONDS
-to come back on the new version, so it left a note and returned 「…（安装已启动，还没确认装成）」.
-boot_stages._once_more ran it again; the backend now said the new version, the check said
-nothing to update, the try returned "" - and `step(problems) or out` kept the first try's
-「还没确认装成」, and after_update (the settings check after an update) never ran.
-
-Pinned here, through the real _once_more with AUTO-MAS's HTTP faked:
-* second try finds the first try's version running: 「AUTO-MAS 已更新：旧 → 新」, after_update
-  called once with the new version, no note left, one recovered WARNING (daily report only);
-* second try finds the old version still running: the first try's text and note stand, no
-  after_update;
-* without `carry` (any other caller): as before.
-
-    Formerly test_preupdate_automas_carry.py.
     """
     import logging
     import types
@@ -184,24 +167,7 @@ Pinned here, through the real _once_more with AUTO-MAS's HTTP faked:
 
 
 def _part_preupdate_mas_force():
-    """AUTO-MAS 查更新必须带 if_force，否则下载地址是过期的一次性令牌。
-
-2026-08-29 查实：AUTO-MAS 从 08-27 起反复打「开始下载」却始终装不上，
-版本一直停在 v5.4.0。真因不在 CDK（CDK 有效，版本检查一直是成功的），
-在于两件事凑一起：
-
-* `app/services/update.py:178-184` 把检查结果缓存四小时；
-* MirrorChyan 的下载地址是**一次性令牌**，随检查响应带回来存进
-  `mirror_chyan_download_url`，下载时直接用它。
-
-于是走缓存 = 拿早就过期的令牌去下载 → 三次重试全 404 → 更新包一个字节都不落地
-→ 中继在 `_wait_for_package` 里干等 600 秒超时。日志里只有「开始下载」，
-没有任何失败行，看上去像网络慢，其实压根没在下。
-
-机器上实测：不强制 → 404；`if_force=True` → 换到新令牌，状态码 200。
-
-    Formerly test_preupdate_mas_force.py.
-    """
+    """AUTO-MAS 查更新必须带 if_force，否则下载地址是过期的一次性令牌。"""
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -388,27 +354,7 @@ def _part_preupdate_mas_force():
 
 
 def _part_preupdate_not_alarm():
-    """A pre-update item that gave no verdict is tried once more, then pushed to the group.
-
-relay.log 09-29 08:49:14: MAA gave no verdict in its 180 seconds, then
-08:50:34 ERROR 「预更新有 1 项没能确认」. From 10-05 (the user, 13:07: 「几乎就是遇到
-一点小毛病就停下来报错」) until 2026-10-06 the notice was demoted to Server酱 and
-not an alarm. The user's order of 2026-10-06, every error to the group robot,
-every time (「不论多少次什么错误都要发」), reverses that. Pinned:
-
-* an item with no verdict runs once more, as a person would; a verdict then
-  leaves nothing to report and the day's pre-update counts as clean;
-* no verdict twice -> one group alarm (alert=True, route group) saying the queue
-  runs as usual and the scripts check themselves, and one WARNING line after it,
-  marked as already in the group when the group robot took the alarm (errwatch
-  does not push it a second time); nothing at ERROR;
-* no second try when the next queue is too close for a whole one;
-* the AUTO-MAS slot retries the same way (MAA and MaaEnd are no longer
-  pre-updated: AUTO-MAS updates them, items 9a/9b of the 2026-10-11 hand-over);
-* the game-update notice is a group alarm too, the same way.
-
-    Formerly test_preupdate_not_alarm.py.
-    """
+    """A pre-update item that gave no verdict is tried once more, then pushed to the group."""
     import logging
     import types
 
@@ -476,8 +422,6 @@ every time (「不论多少次什么错误都要发」), reverses that. Pinned:
     marks = []
     boot_stages._stop_requested = lambda: False
     boot_stages.ensure_automas = lambda *a, **k: True
-    # AUTO-MAS answers: since audit s23 F2 the pre-update asks mas_up() rather than
-    # running ensure_automas() a second time (test_automas_boot_one_alarm.py).
     commands.mas_up = lambda: True
     boot_stages._revive_automas = lambda: None
     preupdate.wanted_today = lambda *a, **k: True
@@ -529,8 +473,6 @@ every time (「不论多少次什么错误都要发」), reverses that. Pinned:
     check("nothing at ERROR", errors(), [])
     from ark_relay.features import errwatch
     healed = [r for r in REC.records if r.levelno == logging.WARNING and getattr(r, errwatch.RECOVERED, False)]
-    # 2026-10-12 (mute audit item 5): the first try's problem was deleted with only an INFO
-    # line; a fault that fixed itself writes one red item (errwatch.recovered()) each time.
     check("one WARNING marked recovered for the first try's problem",
           [("OK-WW" in r.getMessage(), NO_VERDICT in r.getMessage()) for r in healed], [(True, True)])
     check("…its first line reads as plain words", [texts.plain(errwatch.first_line(r)) for r in healed], [[]])
@@ -596,16 +538,7 @@ every time (「不论多少次什么错误都要发」), reverses that. Pinned:
 
 
 def _part_main_2():
-    """OK-WW's pre-update must not start 鸣潮, and must put the switch back.
-
-OK-WW updates through pyappify from a CNB git mirror, and that only happens
-when ok-ww.exe - the pyappify shell - is the thing launched. But ok-ww.exe
-honours "Auto Start Game When App Starts", which is on for unattended running.
-Launching it at boot without disarming that would start the game itself, which
-is the same hazard MAA's RunDirectly and MaaEnd's autostart already taught us.
-
-    Formerly test_preupdate_okww.py.
-    """
+    """OK-WW's pre-update must not start 鸣潮, and must put the switch back."""
     import ast
     import json
     import os
@@ -674,9 +607,6 @@ is the same hazard MAA's RunDirectly and MaaEnd's autostart already taught us.
         check("目录为 None 时也安全", preupdate.run_okww(None), "")
 
         src = "".join(q.read_text(encoding="utf-8") for q in sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features").glob("preupdate*.py")))  # 预更新拆成了五个文件，一起看
-        # 2026-08-25：控制台令牌拿不到时退回 session 0，OK-WW 的更新流程根本不跑，
-        # 而未变的版本文件被读成"无需更新"——那天 v3.6.5 已经发布十四小时。
-        # 拿不到桌面就必须拒绝启动，并把这件事报上去。
         check("拒绝在 session 0 启动",
               "_spawn_interactive(exe, root, require_console=True, minimized=True)" in src, True)
         check("拿不到控制台会话要上报",
@@ -690,24 +620,14 @@ is the same hazard MAA's RunDirectly and MaaEnd's autostart already taught us.
                     if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id == "_okww_autostart"
                     and any(isinstance(a, ast.Name) and a.id == "was" for a in c.args)]
         check("在 finally 里还原开关", len({id(c) for c in restores}), 1)
-        # 2026-08-24: flipping the JSON was not enough - a leftover `ok web` held the
-        # settings in memory and wrote them back, so ok-ww.exe read True and started
-        # 鸣潮 during a check that was meant to open nothing.
         check("改配置前先停掉在跑的实例", "_okww_quiesce(" in src
               and src.index("_okww_quiesce(", src.index("def run_okww"))
               < src.index("was = _okww_autostart"), True)
-        # 数的是**真正的调用点**，不是字面量出现次数。2026-09-08 栽过一次：
-        # 给 _okww_quiesce 加了个可注入的 sleep 参数（为了测试不真等两秒），
-        # 定义那一行就不再长得像 `_okww_quiesce()`，字面量计数少了一个，测试当场变红——
-        # 而调用点一个没少。按字面量数等于让断言依赖签名的写法。
         calls = sum(1 for n in ast.walk(ast.parse(src))
                     if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
                     and n.func.id == "_okww_quiesce")
         check("收尾也清一次，不留游戏在后台", calls >= 2, True)
 
-        # 2026-09-06: the pre-update judged 「无需更新」 three seconds after launch, while
-        # OK-WW only checks for updates 30 s after its window shows (moved here from the
-        # removed test_okww_patch_on_update.py, 2026-10-12).
         check("the minimum wait covers OK-WW's 30 s update check", preupdate.OKWW_MIN_WAIT_SECONDS >= 40, True)
         pre_src = "".join(q.read_text(encoding="utf-8") for q in sorted(
             (Path(__file__).resolve().parents[1] / "ark_relay" / "features").glob("preupdate*.py")))
@@ -1020,9 +940,6 @@ is the same hazard MAA's RunDirectly and MaaEnd's autostart already taught us.
             check("(c) next run: the switch goes back to the recorded on, not the off it found",
                   (basic(d)["Auto Start Game When App Starts"], memo.exists()), (True, False))
 
-            # (d) audit 11-08 A-22: OK-WW does not close for real after the run. The switch still
-            # goes back, but the record stays: a slow ok-ww.exe can write the switch off again on
-            # its way out, and the next boot puts it back while nothing runs.
             m._okww_close = lambda *a, **kw: order.append("closed") or ["ok-ww.exe"]
             order.clear()
             m.run_okww(d, budget_s=240, problems=[], state_dir=state, stopping=lambda: False)
@@ -1070,26 +987,6 @@ is the same hazard MAA's RunDirectly and MaaEnd's autostart already taught us.
 def _part_okww_deps():
     """OK-WW's own Python packages are checked after the pre-update (ledger #115; dispatch
 relay-opt-round3-1108 O-01; preupdate_okww.ensure_okww_deps).
-
-10-24 OK-WW updated itself to v3.7.11-beta.1, whose ok/core/plugins.py imports `packaging`;
-its bundled Python had none and the morning run crashed at start three times. Pinned here,
-with subprocess faked (no Windows, no pip):
-
-* no OK-WW python on disk: nothing, no note;
-* everything imports: nothing to do, no note, no install;
-* requirements.txt read to the name (`onnxocr-ppocrv5>=0.0.20`, extras, markers);
-* `packaging` missing (not in OK-WW's requirements.txt, the #115 case): installed, imported
-  again, one WARNING marked recovered (daily report only), no note;
-* a dist OK-WW lists that is not installed - found by its dist name (importlib.metadata), not
-  by a module name (cv2 / opencv-python): installed as listed (round3b-1108);
-* a missing module no listed dist is named after: not installed (pip would fetch whatever
-  PyPI holds under a guessed name), a note for the group;
-* the probe itself, run by this Mac's python: a dist not installed, a module ok.core.plugins
-  imports (`import ok` alone never reaches it), a plugins file this ok-script lacks (no note);
-* still missing after pip, or a probe that could not run: a note;
-* run_okww calls it after closing OK-WW; worst_case_seconds counts its three guards.
-
-    Formerly test_okww_deps_1108.py.
     """
     import inspect
     import logging
@@ -1229,8 +1126,6 @@ with subprocess faked (no Windows, no pip):
     (w / "ok" / "core" / "__init__.py").write_text("", encoding="utf-8")
     (w / "ok" / "core" / "plugins.py").write_text("import no_such_module_for_ark_test\n", encoding="utf-8")
     got = subprocess.run([sys.executable, "-c", po._DEPS_PROBE], cwd=str(w), capture_output=True, timeout=60)
-    # 11-14: splitlines, not split("\n") - on Windows the child prints CRLF and every line kept its \r,
-    # so "DIST ..." never matched (relay-windows red since at least 11-10).
     lines = set(got.stdout.decode("utf-8", "replace").splitlines()) - {""}
     check("清单里没装的包：DIST 按包名报", "DIST no-such-dist-for-ark-test" in lines, True)
     check("装着的（ark-fake-dist）不报", any(x.startswith("DIST ark-fake-dist") for x in lines), False)
@@ -1250,19 +1145,7 @@ with subprocess faked (no Windows, no pip):
 
 
 def _part_preupdate_once():
-    """预更新一天只跑一遍。
-
-2026-08-31：`wanted_today()` 只看「今天还有没有要跑 MaaEnd 的队列」，
-没有记「今天已经跑过了」——于是**每次服务重启都重跑一整轮**，把
-MAA / MaaEnd / OK-WW 挨个拉起来查更新。那天上午部署了三次，它跑了三次，
-第三次 MAA 没在 180 秒内给出结论，推了一条「预更新没能确认」。
-那条告警本身没说错，只是根本不该有第三次。
-
-留出重试的口子：这一轮真有没确认的项时，隔 RETRY_MIN 分钟还能再试一次——
-早上 08:45 查失败、09:00 队列就要开跑，那一次重试是有价值的。
-
-    Formerly test_preupdate_once.py.
-    """
+    """预更新一天只跑一遍。"""
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1314,26 +1197,7 @@ MAA / MaaEnd / OK-WW 挨个拉起来查更新。那天上午部署了三次，�
 
 
 def _part_preupdate_problems():
-    """预更新查不出结果时，必须报错，而不是静静地当成「无需更新」。
-
-2026-08-25 早上的实况：控制台令牌拿不到 → OK-WW 被扔进 session 0 →
-它的更新流程根本没跑 → 版本文件原样不动 → 中继把这读成
-「预更新：OK-WW 无需更新（v3.6.4）」写进日志就完事了。
-而 v3.6.5 当时已经发布十四个小时，CNB 镜像上也有。手动在控制台会话里
-重启一次，十秒就更新完了。
-
-**假的「没问题」比诚实的失败更糟**：没人会去查一件被报告为正常的事。
-所以每个 run_* 都要能把「我没能确认」这件事送出函数，
-开机流程再把它作为**报警**发出去（不是日常通知）。
-（那段开机流程 2026-09-08 从 service.py 搬进了同目录的 boot_stages.py，
-整段一起走的，判据一个字没动。）
-
-From 2026-10-05 until 2026-10-06 it was said, but not as an alarm; since the
-user's order of 2026-10-06 (「不论多少次什么错误都要发」) it is a group alarm again
-(see the note above the boot-stage checks below).
-
-    Formerly test_preupdate_problems.py.
-    """
+    """预更新查不出结果时，必须报错，而不是静静地当成「无需更新」。"""
     import os, sys
     import re
 
@@ -1372,17 +1236,9 @@ user's order of 2026-10-06 (「不论多少次什么错误都要发」) it is a 
     except Exception as e:  # noqa: BLE001
         check(f"默认不传也安全（炸了：{e}）", False)
 
-    # Since 2026-10-05 an unconfirmed item is tried once more; what is still
-    # unconfirmed is, since 2026-10-06, a group alarm (alert=True) and a WARNING line
-    # after it, not an ERROR (an ERROR line would be a second group alarm of its own,
-    # errwatch). The behaviour is pinned in test_preupdate_not_alarm.py; this only
-    # checks the source.
     print("\n[开机流程照样说出来，当报警进群（2026-10-06 起）]")
     src = (Path(__file__).resolve().parents[1] / "boot_stages.py").read_text(encoding="utf-8")
     check("收集 problems", "problems: list[str] = []" in src)
-    # 2026-09-08 修：原来这里写了个循环，第一轮就 break，而且 f-string 里没有占位符，
-    # 于是四个函数只查了一个、查的还是「源码里随便哪儿有 problems=problems」。
-    # 现在逐个查：每个 preupdate.<函数>( 的调用参数里都要带 problems=problems。
     for fname in ("run_automas", "run_okww"):
         calls = re.findall(rf"preupdate\.{fname}\((?:[^()]|\([^()]*\))*\)", src, re.S)
         check(f"boot_stages.py 里调了 preupdate.{fname}", len(calls) >= 1, True)
@@ -1403,25 +1259,13 @@ user's order of 2026-10-06 (「不论多少次什么错误都要发」) it is a 
 
 
 def _part_preupdate_session():
-    """The pre-update must not launch a GUI program from session 0.
-
-The relay runs as LocalSystem, so its processes land in session 0, which has
-no desktop. OK-WW is a GUI program: started there it would touch its own
-log file and die (as MaaEnd and MAA did while the relay still pre-updated them). That failed silently for three nightly runs - the
-pre-update simply timed out at its full budget every time and reported
-"本轮照旧". Only _spawn_interactive, which hands the child the console user's
-token, may start them.
-
-    Formerly test_preupdate_session.py.
-    """
+    """The pre-update must not launch a GUI program from session 0."""
     import ast
 
     SRC_FILES = sorted((Path(__file__).resolve().parents[1] / "ark_relay" / "features").glob("preupdate*.py"))  # 拆成了五个文件
     # The functions that actually start a program.
     LAUNCHERS = {"run_okww"}
     ALLOWED = {"_spawn_detached"}   # the fallback is the one place Popen belongs
-    # Popen only once _here_in_console said this process runs on the console session, not in
-    # session 0 (the installed relay, 11-08 R4-02): checked below that it asks first.
     ON_CONSOLE = {"_spawn_here"}
 
     FAILED = []
@@ -1504,9 +1348,6 @@ token, may start them.
                 require(f"run_automas 会调 {ep}", ep in joined)
             require("安装前先等更新包落地",
                   calls_named(fns_node["run_automas"], "_wait_for_package"))
-            # AUTO-MAS's backend is not listening the moment the relay wakes at
-            # boot. Asking once and giving up is what actually happened on
-            # 2026-08-24 08:45:33, nine minutes before its backend answered.
             has_loop = any(isinstance(n, (ast.While, ast.For))
                            for n in ast.walk(fns_node["run_automas"]))
             require("等 AUTO-MAS 后端起来（不是问一次就放弃）", has_loop)
@@ -1528,14 +1369,7 @@ token, may start them.
 
 
 def _part_preupdate_span():
-    """预更新通知统一成「程序 已更新：旧 → 新」。
-
-2026-08-30 实证：MaaEnd 08:46:23 启动、08:46:33 就「刚更新完成」，通知只有
-「已更新：v2.27.0-beta.1」——旧版本号靠日志正则没捞到。用户 2026-09-01
-要求四个程序样式统一，都带老版本号 → 新版本号。
-
-    Formerly test_preupdate_span.py.
-    """
+    """预更新通知统一成「程序 已更新：旧 → 新」。"""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import preupdate as preupdate_common
@@ -1556,16 +1390,7 @@ def _part_preupdate_span():
 
 
 def _part_preupdate_token():
-    """The service host's expected token failure (winerror 1314) is not a WARNING.
-
-2026-10-12 08:46:12 the relay logged 「预更新：拿控制台令牌失败，改用计划任务方式」 as a WARNING with
-the traceback ``pywintypes.error: (1314, 'WTSQueryUserToken', '客户端没有所需的特权。')``; the
-scheduled task then started ok-ww.exe at 08:46:17, yet the WARNING went to the group as
-「中继自己报错了」. 1314 is the normal case for a LocalSystem service (the code's own
-comment). Other failures stay WARNINGs, and the fallback is still taken in both cases.
-
-    Formerly test_preupdate_token.py.
-    """
+    """The service host's expected token failure (winerror 1314) is not a WARNING."""
     import logging
     import types
 
@@ -1636,29 +1461,7 @@ comment). Other failures stay WARNINGs, and the fallback is still taken in both 
 
 
 def _part_preupdate_unknown_not_fine():
-    """Pre-update: "could not tell" must reach the problem list, never read as fine.
-
-2026-10-06 audit (BOARD/补丁审查-1005.md, MAA/启动器/更新):
-
-1. preupdate_common._spawn_interactive: when pywin32 failed to import it went
-   straight to a plain session-0 launch, ignoring require_console - the exact
-   path of 08-25. Real lines (ark-evidence/relay-log-1006/relay.log:1338-1347):
-       08-25 08:48:55 WARNING ark.preupdate  预更新：拿控制台令牌失败，退回普通启动
-       08-25 08:49:40 INFO    ark.preupdate  预更新：OK-WW 无需更新（v3.6.4）
-   (v3.6.5 had been out for fourteen hours.)
-
-2. preupdate_automas.run_automas:
-   (a) AUTO-MAS answers a failed check with HTTP 200 and this body
-       (upstream AUTO-MAS-Project/AUTO-MAS c6ca4fb, app/api/update.py:57-75):
-           UpdateCheckOut(code=500, status="error", message=..., if_need_update=False,
-                          latest_version="", update_info={})
-       which the relay logged as 「AUTO-MAS 已是 …（无需更新）」.
-   (b) a failed install only went to the log, never to the problem list.
-
-Run: python3 relay/tests/test_preupdate_unknown_not_fine.py
-
-    Formerly test_preupdate_unknown_not_fine.py.
-    """
+    """Pre-update: "could not tell" must reach the problem list, never read as fine."""
     import os
 
     TMP = tmpdir()
@@ -1824,22 +1627,6 @@ Run: python3 relay/tests/test_preupdate_unknown_not_fine.py
 def _part_okww_shape():
     """A pinned OK-WW copy survives an upstream change that is only words (ledger #130; dispatch
 relay-opt-round3-1108 O-02).
-
-11-02 OK-WW v3.7.14-beta.2 wrapped the log text of claim_daily and claim_battle_pass in
-self.tr(...) and changed nothing else; the text hash no longer matched, both copies were
-skipped and upstream's bodies ran. The shape (the syntax tree without docstrings, log text and
-self.tr; comments and layout are not in the tree) is checked next to the hash. Pinned here:
-
-* the shape the overrides compute at OK-WW start and the one okww_overlay computes before the
-  run are the same function: same answers on every sample;
-* _SHAPES holds the shapes of the bodies the hashes were copied from (the installed
-  v3.7.14-beta.2 fixture), and the overrides file and okww_overlay.shapes() read one table;
-* words only (the v3.7.13 form: no self.tr, f-strings, comments, a docstring, layout): the
-  hash differs, the shape does not - drift() calls it adapted, drift_line says so without a
-  fault word, said once;
-* a coordinate, a call or a feature name changed: the shape differs - skipped, said every boot.
-
-    Formerly test_okww_shape.py.
     """
     import ast
     import re
@@ -1944,10 +1731,7 @@ self.tr; comments and layout are not in the tree) is checked next to the hash. P
 
 
 def _part_gameupdate_main():  # noqa: C901
-    """大版本更新自动化：决策逻辑用假桌面/假命令跑一遍，不碰网络不碰机器。
-
-    Formerly test_gameupdate.py.
-    """
+    """大版本更新自动化：决策逻辑用假桌面/假命令跑一遍，不碰网络不碰机器。"""
     import json
     import types
 
@@ -1971,9 +1755,6 @@ def _part_gameupdate_main():  # noqa: C901
         def click(self, x, y, focus=None):
             self.clicks.append((x, y)); return True
 
-    # 打桩要打在名字真正被查找的那个模块上：2026-09-08 三家游戏的更新流程搬进了
-    # gameupdate_games，update_endfield 查的是那边的 _spawn/kill；run_deferred 还在
-    # gameupdate 里，它用的 kill 得单独打一份。
     spawned = []
     gug._spawn = lambda exe, cwd=None: spawned.append(exe.name) or True
     gug.kill = lambda *names: None
@@ -1991,8 +1772,6 @@ def _part_gameupdate_main():  # noqa: C901
     probs = []
     out = gu.update_endfield(d, Path("Endfield.exe"), Path("Launcher.exe"), poll_s=0, problems=probs, sleep=nosleep)
     check("报了更新", out, "终末地 客户端已通过启动器更新")
-    # Client 1.6.3 (2026-10-15) runs only when the launcher starts it: the restart is a
-    # second 「开始游戏」 on the launcher, never Endfield.exe itself.
     check("点击顺序", d.clicks, ["更新游戏", "开始游戏", "确认", "开始游戏"])
     check("重启经启动器，没直接拉 Endfield.exe", "Endfield.exe" in spawned, False)
     check("没有问题", probs, [])
@@ -2101,8 +1880,6 @@ def _part_gameupdate_main():  # noqa: C901
     def clk0():
         ticks0.append(ticks0[-1] + _td(minutes=10)); return ticks0[-1]
     notes, probs, reran = gu.run_deferred(cfg, now=_dt(2026, 9, 4, 13, 0, tzinfo=gu.SERVER_TZ), desk=FakeDesk([["开始游戏"]]), dispatch=lambda s: (True, "ok"), sleep=lambda s: slept.append(s), clock=clk0)
-    # Since the 2026-10-11 hand-over AUTO-MAS updates the Arknights client before the MAA
-    # run, so there is nothing to prepare: servers back -> re-run MAA at once.
     check("明日方舟不用准备客户端：开服后直接补跑 MAA", (reran, 600 in slept, probs), (["MAA"], False, []))
     # 终末地：客户端准备好了、离开服还远 → 关游戏、一分钟一分钟等到开服、缓 2 分钟、再补跑
     gu.save_windows(ST, {"终末地": (_dt(2026, 9, 4, 6, 0, tzinfo=gu.SERVER_TZ), _dt(2026, 9, 4, 12, 0, tzinfo=gu.SERVER_TZ), "官方公告")})
@@ -2183,7 +1960,6 @@ def _part_gameupdate_main():  # noqa: C901
 
     keep = _Keep(); gu.log.addHandler(keep); gu.log.setLevel(logging.INFO)
     T = gu.SERVER_TZ
-    # The machine's ledger-2026-09-30.jsonl, in order (run_id is the path-like form handle.py books)
     L930 = [
         {"script": "MAA", "run_id": "2026-09-30/maa/MAA-05-01-02", "started": "2026-09-30T05:01:02+08:00",
          "finished": "2026-09-30T05:39:10+08:00", "ok": True, "raw": {}},
@@ -2214,7 +1990,6 @@ def _part_gameupdate_main():  # noqa: C901
     check("last_run_ok(MAA) 不受影响", gu.last_run_ok(ST, n930, "MAA"), True)
     check("needs_rerun(OK-WW)：前一趟是普通失败 → 不补跑", gu.needs_rerun(ST, n930, "OK-WW"), False)
     check("needs_rerun(MaaEnd)：只有停一切那趟 → 不补跑", gu.needs_rerun(ST, n930, "MaaEnd"), False)
-    # Settled 2026-09-30 18:04: a script the red button stopped is not re-run after the update that day (this used to be True)
     _ledger930(L930[:3] + [dict(L930[2], raw={"okww_unreachable": True})] + L930[3:])
     check("needs_rerun(OK-WW)：停一切之前那趟是进不了游戏，但今天被停一切停过 → 不补跑",
           gu.needs_rerun(ST, n930, "OK-WW"), False)
@@ -2223,8 +1998,6 @@ def _part_gameupdate_main():  # noqa: C901
           gu.needs_rerun(ST, n930, "OK-WW"), False)
     check("stopped_today 给出按下的时刻", gu.stopped_today(ST, n930, "OK-WW"), "09:46 停一切")
     check("stopped_today：没被停过的脚本 → 空", gu.stopped_today(ST, n930, "MAA"), "")
-    # A hard power-off can tear the last appended line. Until 2026-10-10 that one line
-    # emptied the whole day here, so the red-button stop above was forgotten.
     with (ST / "ledger-2026-09-30.jsonl").open("a", encoding="utf-8") as _f:
         _f.write('{"script": "MAA", "ok": tr\n[1, 2]\n')
     check("账目最后一行撕裂：stopped_today 仍记得停一切", gu.stopped_today(ST, n930, "OK-WW"), "09:46 停一切")
@@ -2272,9 +2045,6 @@ def _part_gameupdate_main():  # noqa: C901
     check("日志：维护那条写「已成功过，不登记」", any("鸣潮维护——" in m and "OK-WW 今天已成功过，不登记" in m for m in msgs), True)
 
     print("[开机检查：公告读不到要说出来]")
-    # 2026-10-06 audit: an unreadable notice used to be only a log line - "no update
-    # today" as far as anyone reading the pushes could tell. boot_check's problems
-    # (pushed as 「⚠️ 游戏更新没能确认」) now say so; checked just below.
     keep.recs.clear()
     gu.boot_check(cfg, budget_s=600, now=n930, maint_sources={}, hint=lambda n: "")
     check("开机检查：没有维护也写一行", any("维护公告——今天没有游戏停服维护" in m for _l, m, _e in keep.recs), True)
@@ -2372,9 +2142,6 @@ def _part_gameupdate_main():  # noqa: C901
     _ledger_rows[0]["raw"] = {"maa_error": "关卡失败"}
     (A / "ledger-2026-09-30.jsonl").write_text("".join(json.dumps(r) + "\n" for r in _ledger_rows), encoding="utf-8")
     check("MAA 普通失败 → 不重跑", gu.needs_rerun(A, n930, "MAA"), False)
-    # 4. spmed. The user, 2026-10-06, on the sanity booster: 「那个要一直开着，如果上游maaend改了导致没生效就要报警」
-    #    and 「我开的任务是谁说要关的」. The node shape only decides the group alarm; the task is
-    #    never switched (the leftover-record re-enable went with s18 F5).
     E = A / "maaend"; (E / "resource" / "pipeline").mkdir(parents=True)
     (E / "interface.json").write_text(json.dumps({"version": "v2.28.0-beta.4"}), encoding="utf-8")
     master = A / "data" / "u1" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"; master.parent.mkdir(parents=True)
@@ -2423,11 +2190,6 @@ def _part_gameupdate_main():  # noqa: C901
     check("留一条问题说清楚", any("客户端已过时" in x and "没准备好" in x for x in _pr), True)
 
     print("[a round that was not ready for another reason, then a ready one: one recovered red item (2026-10-12)]")
-    # Mute audit 10-12 item 12: every problem of a round that was not ready was deleted when
-    # a later round was ready, with no trace. Only 「the update package is not out yet」 (the
-    # game says its client is outdated) is the expected wait; anything else that a later
-    # round got past is a fault that fixed itself: one WARNING marked errwatch.recovered().
-    # Not ready by the deadline: the earlier rounds' problems are reported with the last one's.
     from ark_relay.features import errwatch
     from ark_relay.core import texts
 
@@ -2521,17 +2283,7 @@ def _part_gameupdate_main():  # noqa: C901
 
 
 def _part_gameupdate_restore_paths():
-    """A script pulled from a queue for a game update goes back on every path.
-
-The user, 2026-09-03: 「当天队列里不跑他」 - today's queue only. A pull that is not
-put back takes his task out of every later day, which nobody asked for
-(「我开的任务是谁说要关的」, 2026-10-06). So: the after-queue job puts it back on
-every way out (an exception included), the boot check puts back a pull from an
-earlier day before it does anything else, and the update switch being off does
-not keep it out.
-
-    Formerly test_gameupdate_restore_paths.py.
-    """
+    """A script pulled from a queue for a game update goes back on every path."""
     import types
     from datetime import datetime
 
@@ -2598,19 +2350,7 @@ not keep it out.
 
 
 def _part_efstart_main():
-    """Endfield is started through the official launcher, never as Endfield.exe (2026-10-15).
-
-Client 1.6.3 refuses a start whose parent is not the Hypergryph launcher: on 2026-10-15
-15:14 AUTO-MAS started Endfield.exe directly, the game showed 「游戏启动失败」
-「请通过官方启动器打开游戏」 and every MaaEnd task failed. Measured by the parent session.
-
-Since 10-17 the relay's own start (efstart, for the gathering retry) runs MaaEnd's launcher
-pretask, windowed; test_maaend_windowed_start.py pins that flow. Here: the helper's lock
-and running.json, the watchdog's view of it, run_on_desktop, and efstart_setup's convergence of
-AUTO-MAS (its launcher discovery rule, the relay's old preAction, Game.Path and the wait).
-
-    Formerly test_efstart.py.
-    """
+    """Endfield is started through the official launcher, never as Endfield.exe (2026-10-15)."""
     import json
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -2791,10 +2531,6 @@ AUTO-MAS (its launcher discovery rule, the relay's old preAction, Game.Path and 
             sys.modules["win32event"] = saved_mod
 
     print("\n[10-16：开游戏交还给调度程序自己的官方启动器方式（AUTO-MAS v5.7.0-beta.4 / #1394）]")
-    # The machine on 10-16 (AUTO-MAS API read, mxu-MaaEnd.json, state/efstart/target.json): Game.Path
-    # was the relay's .cmd, LaunchMode Launcher, LauncherPath empty, WaitTime 180; the master's
-    # helper entry had kept the replaced entry's id jw75pty. AUTO-MAS's pre-run check found no
-    # launcher from the .cmd: 09:34:05 「未找到终末地官方启动器」, the 早班 MaaEnd never ran.
     from ark_relay.core import texts
     from ark_relay.features import commands
 
@@ -2967,28 +2703,6 @@ AUTO-MAS (its launcher discovery rule, the relay's old preAction, Game.Path and 
 
 def _part_maaend_windowed_start():  # noqa: C901
     """Endfield starts windowed through MaaEnd's own launcher pretask, and goes back to fullscreen (10-17).
-
-DECISIONS D-1016-终末地等AUTO-MAS新版 (the owner said 「好」 on 10-16): the launcher's
-「DirectX 11 启动」 box is to be unticked, so the game must run windowed below the 1920x1080
-desktop, which MaaEnd reads on any graphics API. AUTO-MAS v5.7.0-beta.5's Game.LaunchMode
-"MaaEnd" does that: MaaEnd's pretask LaunchGamePC writes a 1280x720 window, starts the real
-launcher and clicks 「开始游戏」 (Games.exe stays the parent), and CloseGamePC writes Fullscreen
-1920x1080 back after the run. The machine ran it once on 2026-10-17 11:31-11:35 Beijing:
-go-service.log 11:31:05 「Pretask invoked」 with MACHINE_ARGS below, 11:33:31 「CloseGameAction:
-applied game settings」 Fullscreen 1920x1080.
-
-Pinned here:
-* maaend_launch builds exactly the pretask arguments AUTO-MAS sent that day from MaaEnd
-  v2.33.0's own files (fixtures/maaend-v2.33.0-launch), and refuses, in plain Chinese, a MaaEnd
-  that no longer declares a name it needs;
-* efstart_setup puts AUTO-MAS on 「MaaEnd 启动」 with the four window settings (written before the
-  mode, each read back), and when MaaEnd cannot do it, keeps 「启动器启动」 with a WARNING (the
-  group): with the box unticked every run of that mode fails;
-* the relay's own start (the gathering retry, efstart) runs the same pretask on the desktop,
-  checks its exit code and never touches the DirectX 11 box; collect_retry puts fullscreen back
-  through CloseGamePC before MaaEnd is closed, and says so when it could not.
-
-    Formerly test_maaend_windowed_start.py.
     """
     import json
     import logging
@@ -3016,7 +2730,6 @@ Pinned here:
 
     FX = fx_dir(HERE, "fixtures") / "maaend-v2.33.0-launch"
     BETA2 = fx_dir(HERE, "gamesim") / "upstream" / "maaend-v2.33.0-beta.2"     # still the old GameSetting pretask
-    # go-service.log on the machine, 2026-10-17 11:31:05 (AUTO-MAS v5.7.0-beta.5, 「Pretask invoked」 args).
     MACHINE_ARGS = ('{"LaunchGamePCRegion":"CN","LaunchGamePCLauncherPath":"Auto","LaunchGamePCGameSetting":"Yes",'
                     '"LaunchGamePCLanguage":"Unchanged","LaunchGamePCDisplayType":"Window","LaunchGamePCResolution":"1280x720",'
                     '"LaunchGamePCGraphicsQuality":"Unchanged","LaunchGamePCFrameRate":"Unchanged","LaunchGamePCAutoHDR":"Unchanged"}')
@@ -3145,7 +2858,6 @@ Pinned here:
     home.mkdir(parents=True)
     (home / ef.TARGET).write_text(json.dumps({"game": game_exe, "original": {"game_path": game_exe, "wait_time": 60}}),
                                   encoding="utf-8")
-    # AUTO-MAS's MaaEnd script as the API read it on the machine 10-17 10:2x (Game section).
     BEFORE = {"ControllerType": "Win32-Front", "LaunchMode": "Launcher", "Path": game_exe, "LauncherPath": "",
               "WaitTime": 60, "SetResolution": False, "CloseOnFinish": True, "RestoreDisplayType": "Window",
               "RestoreResolution": "Off", "RestoreResolutionWidth": 1920, "RestoreResolutionHeight": 1080,
@@ -3405,8 +3117,6 @@ Pinned here:
     mxu = MXU(md)
     seen, note, got = retry(md, mxu)
     check("the helper is given the MaaEnd folder", seen, [("SD", md)])
-    # The gathering's agents stop before CloseGamePC starts its own: MXU does not stop them, and
-    # beside them the new go-service could not connect (10-22 21:56:40, ledger #111).
     check("gathering, the gathering's agents stop, CloseGamePC, then its agents stop",
           mxu.entries(), [("start", "AutoCollectSchedule"), ("stop", None), ("start", "CloseGamePC"), ("stop", None)])
     close_body = next((b for p, b in mxu.calls if p.endswith("/tasks/start") and b["tasks"][0]["entry"] == "CloseGamePC"), None)
@@ -3484,19 +3194,6 @@ Pinned here:
 
 def _part_automas_backend_match():
     """Only AUTO-MAS's own main.py is the backend; a failed OpenProcess tries the next match (audit s15 #3).
-
-_automas_running / _automas_handle took any python.exe with "main.py" on its command
-line. OK-WW runs `D:\\ark\\okww\\data\\apps\\ok-ww\\working\\main.py`
-(tests/fixtures/okww_argv_20261012.log, ok-script.2026-10-12.log line 1) and may run
-as python.exe (preupdate_okww.py). Then a dead backend read as alive while OK-WW ran
-(nothing revived), and with no handle held an OK-WW start was adopted as the backend
-(its exit logged as 「AUTO-MAS 后台意外退出了」). And the first match whose OpenProcess
-failed ended the search, so a live backend listed after it was never attached.
-
-The backend's command line as WMI returned it on the machine (2026-10-10, see
-test_procs.py): `D:\\ark\\automas\\runtime\\environment\\venv\\Scripts\\python.exe main.py`.
-
-    Formerly test_automas_backend_match.py.
     """
     import ast
     import re
@@ -3574,22 +3271,7 @@ test_procs.py): `D:\\ark\\automas\\runtime\\environment\\venv\\Scripts\\python.e
 
 
 def _part_automas_boot_one_alarm():  # noqa: C901
-    """One AUTO-MAS start failure at boot is one group message (audit s23 F2, 10-13).
-
-Before: ensure_automas logged 「AUTO-MAS 拉起后 120 秒内接口仍不通」 as a plain ERROR
-(errwatch pushes it: 🩺), then the boot caller phone_channel._start_phone_channel sent
-「🔌 AUTO-MAS 启动不起来」 for the same fault; on the morning boot _stage_preupdate
-called ensure_automas() again - another 150 s wait, kill, 120 s wait and the same
-ERROR (a second 🩺) - before its own 「预更新没能确认」. Last real cases: 09-04 22:49:26
-and 09-17 21:21:28.
-
-Now the boot caller hands ensure_automas the notifier: 🔌 goes out and the ERROR line
-is marked as already in the group (errwatch.group_pushed). The pre-update asks
-mas_up() and, when AUTO-MAS is still not answering, skips its AUTO-MAS item with one
-problem line instead of waiting again; OK-WW's item does not need AUTO-MAS and runs.
-
-    Formerly test_automas_boot_one_alarm.py.
-    """
+    """One AUTO-MAS start failure at boot is one group message (audit s23 F2, 10-13)."""
     import logging
     import time
     import types
@@ -3790,18 +3472,6 @@ problem line instead of waiting again; OK-WW's item does not need AUTO-MAS and r
 def _part_automas_boot_revival():
     """The boot-time revival must wait for a shell that is already starting, kill the
 runtime as well when it does restart, and the keeper must not go blind without wmic.
-
-Real sequence, 2026-09-17 21:20 (first evening boot after AUTO-MAS v5.5.0-beta.6):
-21:20:28 the logon task starts AUTO-MAS.exe, which begins its bootstrap
-(repo sync, managed Python, locked dependencies); 21:20:39 the relay finds no
-API, runs `taskkill /IM AUTO-MAS.exe` at once, `schtasks /run`; the bootstrap
-child `auto-mas-runtime.exe` (pid 19116) survives and keeps the environment
-lock; 21:20:45 the new shell fails with MUTATION_IN_PROGRESS and parks on
-「等待用户处理」; 21:21:28 the relay gives up after 45 s with one ERROR line and
-no alarm; the keeper (wmic gone since 25H2) reads "cannot tell" as alive and
-never tries again; 21:30 the queue does not run; 21:55 「该跑没跑」.
-
-    Formerly test_automas_boot_revival.py.
     """
     import types
 
@@ -3837,9 +3507,6 @@ never tries again; 21:30 the queue does not run; 21:55 「该跑没跑」.
     from ark_relay.core import texts
 
 
-    # boot_stages.time is the time module itself: put both back at the end, or every
-    # test the coverage driver runs after this one in the same process sees a frozen
-    # clock (10-05: gameupdate_games.update_wuwa's 40-minute wait never ended).
     _real_sleep, _real_monotonic = boot_stages.time.sleep, boot_stages.time.monotonic
     boot_stages.time.sleep = lambda s: None
     clock = {"t": 0.0}
@@ -3926,7 +3593,6 @@ never tries again; 21:30 the queue does not run; 21:55 「该跑没跑」.
     commands.mas_up = _api(20)
     check("拉起后接口开了返回 True", boot_stages.ensure_automas(timeout=120, grace=150), True)
     check("立刻杀/拉起，没有先等宽限期", revived == [0.0])
-    # Why AUTO-MAS was not answering is not known: pushed (2026-10-10; daily-report-only before).
     check("nothing marked recovered", _levels.recovered(), [])
     rec_lines = _levels.loud()
     check("one WARNING for the group", len(rec_lines), 1)
@@ -3952,8 +3618,6 @@ never tries again; 21:30 the queue does not run; 21:55 「该跑没跑」.
     boot_stages._stop_requested = lambda: False
 
     print("\n[等待中收到停止信号：立刻返回，不杀不拉，不发「AUTO-MAS 没起来」]")
-    # 2026-09-18 23:10: the self-update restarted the service inside this 150 s wait;
-    # SvcStop waited 15 s and the hard guard force-exited the process.
     clock["t"] = 0; revived.clear()
     boot_stages.shell_running = lambda: True
     commands.mas_up = _api(10**9)
@@ -4035,21 +3699,6 @@ never tries again; 21:30 the queue does not run; 21:55 「该跑没跑」.
 def _part_automas_contract_watch():
     """scripts/mac/lib/automas_contract_watch.py: a new AUTO-MAS release is compared with the settings
 the relay reads before the game machine installs it.
-
-AUTO-MAS v5.7.0-beta.3 was published 2026-10-13 07:23 UTC and installed on the machine 10-14
-08:46 Beijing; it moved the MAA user's stage items from Info to Stage. With the relay's list as it
-stood before masuser (every MAA user item in Info), the tool must name that move from the release's
-app/models/config.py alone; with the current list (ark_relay/core/mastercfg.py + masuser) it must
-report nothing for v5.7.0-beta.4, and for v5.7.0-beta.3 and v5.7.0-beta.2 only the two MaaEnd
-launcher settings beta.4 brought in (Game.LaunchMode, Game.LauncherPath; read since 10-16).
-
-Fixtures (public upstream source): fixtures/automas-models/config.py.txt is v5.7.0-beta.2's whole
-config.py (already used by test_mas.py); config-v5.7.0-beta.3-excerpt.py.txt holds only the
-ConfigItem statements of the listed settings from v5.7.0-beta.3, verbatim, under their classes;
-config-v5.7.0-beta.4-excerpt.py.txt the same from v5.7.0-beta.4.
-GitHub itself is not asked here (main() is given the file); the exit codes are checked on that path.
-
-    Formerly test_automas_contract_watch.py.
     """
     import io
     from contextlib import redirect_stdout
@@ -4067,8 +3716,6 @@ GitHub itself is not asked here (main() is given the file); the exit codes are c
     BETA2 = fx_dir(HERE, "fixtures") / "automas-models" / "config.py.txt"
     BETA3 = fx_dir(HERE, "fixtures") / "automas-models" / "config-v5.7.0-beta.3-excerpt.py.txt"
     BETA4 = fx_dir(HERE, "fixtures") / "automas-models" / "config-v5.7.0-beta.4-excerpt.py.txt"
-    # The two MaaEnd settings AUTO-MAS v5.7.0-beta.4 brought in (PR #1394, the launcher start);
-    # the relay reads them since 10-16 (efstart_setup), so an older release lacks them.
     NEW_IN_BETA4 = ["MaaEndConfig Game.LaunchMode", "MaaEndConfig Game.LauncherPath"]
 
 
@@ -4156,20 +3803,7 @@ GitHub itself is not asked here (main() is given the file); the exit codes are c
 
 
 def _part_automas_handover():
-    """relay/handover/automas_handover.py against a fake AUTO-MAS at the HTTP layer.
-
-Only `urllib.request.urlopen` is replaced. The config shapes are the ones the
-handover reads on the machine (BOARD/新中继-重叠可撤核对.md, values read
-2026-10-11 02:45-02:55 Beijing): MAA user Info.Annihilation "Close",
-Info.IfQuickConfig true, Info.Server "Official"; MAA script
-Run.IfCheckGameUpdate / Run.IfAutoInstallGameApk false; Start.IfSelfStart true.
-Endpoints and bodies as relay/ark_relay/commands.py and annihilation.py use them
-(every endpoint POST; /api/scripts/update {"scriptId","data"},
-/api/scripts/user/update {"scriptId","userId","data"}); /api/setting/get and
-/update {"data"} as AUTO-MAS app/api/setting.py (v5.7.0 line, 699de5a).
-
-    Formerly test_automas_handover.py.
-    """
+    """relay/handover/automas_handover.py against a fake AUTO-MAS at the HTTP layer."""
 
     import io
     import json
@@ -4520,8 +4154,6 @@ Endpoints and bodies as relay/ark_relay/commands.py and annihilation.py use them
             state = Path(d)
             sd = ["--state-dir", str(state), "--okww-dir", str(Path(d) / "okww")]
             print("uninstall with the old relay gone: 13, 10a, 10b stay with AUTO-MAS, the rest goes back")
-            # s26 audit 2026-10-13: the old relay was retired 10-11 22:33; putting back its
-            # Close and the update switches it owned would leave nobody doing those jobs.
             (state / "state.json").write_text(json.dumps(
                 {"weekly": {"annihilation": {"done_week": "2026-W41", "restore_to": "Chernobog@Annihilation"}}}),
                 encoding="utf-8")
@@ -4561,11 +4193,6 @@ Endpoints and bodies as relay/ark_relay/commands.py and annihilation.py use them
 
 def _part_automas_jobfix():
     """AUTO-MAS's job-object fallback is put back in its venv at boot and after an AUTO-MAS update (11-09).
-
-From 2026-11-08 21:30 AUTO-MAS's starts of MAA failed with (5, 'AssignProcessToJobObject',
-'拒绝访问。'). auto-mas-runtime puts its repo back to upstream at every start, so session 2499's
-fallback lives in the venv's site-packages (a module and the .pth importing it); an update that
-rebuilds the venv drops them. features/host/automas_jobfix.py keeps them there.
     """
     import ast
     import hashlib
@@ -4579,7 +4206,6 @@ rebuilds the venv drops them. features/host/automas_jobfix.py keeps them there.
     from ark_relay.features import automas_keeper as jf
 
     print("[the payload: the two files session 2499 tried on the machine, byte for byte]")
-    # SHA-256 of zz_automas_job_fix.py / .pth as installed on 2026-11-09 (2499's scratchpad ex/jobfix).
     check("module unchanged", hashlib.sha256(jf.payload("zz_automas_job_fix.py")).hexdigest(),
           "979bea5fe532c281e6a843018fc48dd14b8a79e9ff3423beb0094f27d623a7b2")
     check(".pth imports the module", jf.payload("zz_automas_job_fix.pth"), b"import zz_automas_job_fix\n")
@@ -4659,11 +4285,6 @@ rebuilds the venv drops them. features/host/automas_jobfix.py keeps them there.
 
 def _part_automas_ld_adb():
     """AUTO-MAS hands MAA the LDPlayer instance's own ADB address, not another port its VM listens on (11-09).
-
-The 11-09 morning shift did not run: LDManager.getInfo took the first port the LDPlayer VM
-process listens on, and four of five tries handed MAA 127.0.0.1:11159 / 12508 / 12783 / 14245
-(app.log 09:01-09:08 「MAA 的 ADB 连接异常」). zz_automas_ld_adb.py, loaded from AUTO-MAS's venv by
-its .pth, rewrites a 127.0.0.1 port other than 5555+2*index to emulator-<5554+2*index>.
     """
     import ast
     import dataclasses
@@ -4749,17 +4370,7 @@ its .pth, rewrites a 127.0.0.1 port other than 5555+2*index to emulator-<5554+2*
 
 
 def _part_mas_address():
-    """AUTO-MAS 的地址只有一处出处，而且 ARK_MAS_PORT 真的管得住全部。
-
-2026-09-08 审出来：地址在 relay 里有 4 份（commands / snapshot / engine 各自写死
-36163，只有预更新那份读 ARK_MAS_PORT），改端口只有四分之一生效——而「四分之一生效」
-比「完全不生效」难查得多。
-
-还有一条：出处**必须是函数**。config.py 顶部那段注释写着，模块级读 os.environ 会在
-.env 加载之前求值，做成常量等于让这个变量「设了也不生效」。
-
-    Formerly test_mas_address.py.
-    """
+    """AUTO-MAS 的地址只有一处出处，而且 ARK_MAS_PORT 真的管得住全部。"""
     import ast
     import os
     import re
@@ -4804,14 +4415,7 @@ def _part_mas_address():
 
 
 def _part_mas_api_silent():
-    """mas-api.py must exit non-zero when AUTO-MAS answered with an HTTP error.
-
-Silent-failure audit rows scripts/mac/mas-api.py:50 and :58: an HTTP 4xx/5xx
-came back as {"__status", "__detail"} or {"__status", "__body"}, was printed,
-and the tool exited 0.
-
-    Formerly test_mas_api_silent.py.
-    """
+    """mas-api.py must exit non-zero when AUTO-MAS answered with an HTTP error."""
     import contextlib
     import importlib.util
     import io
@@ -4846,27 +4450,7 @@ and the tool exited 0.
 
 
 def _part_mas_labels():
-    """AUTO-MAS field labels: every labelled ConfigItem is read (audit 11 #4, 2026-10-13).
-
-mas_labels matched `## 中文名` + `self.X = ConfigItem(` lazily up to a `
-)`. A
-one-line ConfigItem(...) has no such line of its own, so the match swallowed
-the next field and its label went to the wrong key or nowhere; the MaaEnd
-sanity-task fields are declared as `config.X = ConfigItem` in the module-level
-init_maaend_task_config(config), which MaaEndUserConfig calls with itself, and
-were not read at all. Of the 19 SHOWN fields 7 had no label.
-
-The fixture is AUTO-MAS app/models/config.py at v5.7.0-beta.2 (ff285a39), the version
-the machine runs since 2026-10-11 08:48 (relay.log 「AUTO-MAS 已更新到 v5.7.0-beta.2」),
-byte-identical to gamesim/upstream/maa-v6.19.0/automas/app/models/config.py.txt. Audit 11
-ran on an older copy that lacked beta.2's Info_IfScriptBeforeTask / ScriptAfterTask,
-Update_*, Embedded_FollowSource and Run_LoopGuard; the labels below are the same on both.
-Of the 7, Task.TaskIndex (OK-WW) carries only a `#`
-comment and Task.IfSanity / Task.IfAutoUseSpMedication are no ConfigItem in
-this file (only schema.py Field descriptions): no `##` label exists for them.
-
-    Formerly test_mas_labels.py.
-    """
+    """AUTO-MAS field labels: every labelled ConfigItem is read (audit 11 #4, 2026-10-13)."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import phone as mas_labels
@@ -4939,19 +4523,6 @@ class MaaEndUserConfig(ConfigBase):
 def _part_mas_user_pick():
     """The phone's changes, its snapshot and the plan look at one and the same AUTO-MAS user
 (audit 11-08 D-11; dispatch relay-opt-round6-1108 R6-01; masuser.pick).
-
-Before: commands._find_user (every phone change through the backend) took the first user,
-snapshot._mas / maa_from_files (what the phone shows) and plan._scripts (the plan text)
-went through every user and kept the last. With two users the phone showed one account and
-changed the other. Pinned here, with two MAA users:
-
-* both run: the first, everywhere;
-* the first one AUTO-MAS does not run (Info.Status off, or RemainedDay 0 -
-  manager_base.is_user_selected): the second, everywhere;
-* neither runs: the first, everywhere;
-* the backend's reply or the file's UserData holding an "instances" list: skipped.
-
-    Formerly test_mas_user_pick_1108.py.
     """
     import json
 
@@ -5021,17 +4592,6 @@ changed the other. Pinned here, with two MAA users:
 
 def _part_masconfig_yaml():
     """AUTO-MAS v5.8's YAML settings read like v5.7's JSON (core/masconfig.py, core/miniyaml.py).
-
-Ledger #113 (2026-10-23 08:48 Beijing): AUTO-MAS updated itself to v5.8.0-beta.1, moved
-config/QueueConfig.json, ScriptConfig.json and PlanConfig.json into config/legacy-json and kept
-the settings in queues.yaml, scripts.yaml and plans.yaml, with every time as UTC ISO. The relay
-then found 「设置里一个脚本、队列都没有」 and 「读取 QueueConfig.json 失败: [Errno 2]」.
-The YAML here is written in the shape of that machine's own files (indentless sequences, long
-JSON strings folded in single quotes, quoted UTC times); the files themselves are not in this
-public repo. Against the real files, miniyaml matched PyYAML on all four and plan.schedule,
-plan._scripts, plan.next_plan and mascontract.check gave the same answers as from the JSON.
-
-    Formerly test_masconfig_yaml.py.
     """
     import json
 
@@ -5227,28 +4787,13 @@ data:
 
 
 def _part_mascontract():
-    """The relay notices at once when an AUTO-MAS update moves a setting it reads.
-
-10-14: AUTO-MAS v5.7.0-beta.3, installed by the relay's own pre-update at 08:46 Beijing, moved
-the MAA user's stage items from Info to a new Stage group. The relay read Info, got nothing,
-treated it as "no stage set" (stage gate placeholder at 08:55:27), and nothing reached the
-group for 13 hours: the boot self-check had run at 08:45, on the old version.
-
-* ark_relay/core/mastercfg.py lists every AUTO-MAS setting the relay reads, and check()
-  finds each one in the config files (through masuser for the moved keys);
-* the boot self-check has it as one item, and a miss reaches the group with the self-check;
-* right after the pre-update installs a new AUTO-MAS (and only then) the check runs again and
-  a miss goes to the group under its own title.
-Each part fails on the code before it (no list, no item, no hook).
-
-    Formerly test_mascontract.py.
-    """
+    """The relay notices at once when an AUTO-MAS update moves a setting it reads."""
     import inspect
     import json
     import os
     import types
 
-    from _tmp import stagegate_fx; fx = stagegate_fx()
+    from _parts import stagegate_fx; fx = stagegate_fx()
 
     os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -5315,10 +4860,6 @@ Each part fails on the code before it (no list, no item, no hook).
         check("that line is plain words", [p for x in lines for p in texts.plain(x)], [])
 
     print("\n[settings new in AUTO-MAS v5.7.0-beta.4: MaaEnd's launcher start (10-16)]")
-    # 10-16: beta.4 (PR #1394) brought Game.LaunchMode / Game.LauncherPath, and its pre-run check
-    # found no launcher from the relay's .cmd in Game.Path; the 早班 MaaEnd never ran. The relay
-    # now reads and writes all three (efstart_setup). The two new ones are judged only on beta.4
-    # or later: the recorded days of the day simulator run v5.6.2 to beta.3.
     if mascontract is not None:
         launch = {(i.kind, i.path) for i in mascontract.CONTRACT if i.use == "maaend_launch"}
         check("MaaEnd Game.Path, Game.LaunchMode, Game.LauncherPath, Game.ControllerType are listed",
@@ -5495,22 +5036,12 @@ Each part fails on the code before it (no list, no item, no hook).
 
 
 def _part_masuser_beta3():
-    """The relay reads and writes the MAA user's settings where AUTO-MAS keeps them.
-
-AUTO-MAS v5.7.0-beta.3 (its own updater, game machine 10-14 08:46 Beijing) moved the stage
-items into a Stage group and Annihilation into Task, and stopped keeping them in Info. From
-then on the relay saw nothing: the stage gate logged its "current stage" placeholder at
-08:55:27 instead of YW-4, and the snapshot, the plan, the annihilation switch and the phone's
-stage / sanity-potion writes all used Info.* (ark_relay/core/mastercfg.py has the details).
-Each check below fails on the code before the fix and holds for both layouts.
-
-    Formerly test_masuser_beta3.py.
-    """
+    """The relay reads and writes the MAA user's settings where AUTO-MAS keeps them."""
     import json
     import os
     from datetime import datetime
 
-    from _tmp import stagegate_fx; fx = stagegate_fx()
+    from _parts import stagegate_fx; fx = stagegate_fx()
 
     os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

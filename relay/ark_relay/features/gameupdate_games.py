@@ -112,11 +112,6 @@ def endfield_paths(maaend_dir: Path | None) -> tuple[Path | None, Path | None]:
 # first look, it is resuming an earlier download: wait, do not click, do not kill.
 _EF_BUSY = ("正在下载", "安装中")
 
-# The disk-space confirm the launcher (1.6.0) opens after 「更新游戏」: title 「系统提示」,
-# 所需空间 / 剩余空间 and the patch size, buttons 取消 / 确认. The download starts only
-# after 「确认」. On 2026-10-15 nothing clicked it: three rounds of 40 minutes each
-# waited on this dialog and nothing was downloaded (relay.log 09:33:18-12:02:25;
-# screenshots shot-0956fb2a.png 09:33:52 and shot-cde1c7d2.png 12:02:25).
 _EF_SPACE_WORDS = ("系统提示", "所需空间", "剩余空间")
 # Neither OCR pass reads 「确认」 (white button, dark text; nor 「取消」), so the button is
 # placed from a line that is read. Offsets from that line's top-left corner to the
@@ -205,8 +200,6 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
             log.info("游戏更新：终末地启动器弹「系统提示」（%s），%s", _space_line(scr),
                      f"已点「确认」（{how}），等它下载" if how else "「确认」没点上，下一轮再点")
             continue
-        # A frame with none of the words: its screenshot, not the first OCR lines (those
-        # are the desktop icons left of the launcher, 10-15 12:44:15).
         log.info("游戏更新：终末地启动器 %s", _unread(scr) or
                  (next((ln for w in _EF_BUSY if (ln := scr.find(w))), None)
                   or f"这一帧没认出下载 / 安装的字（截图 {scr.shot}）"))
@@ -237,11 +230,6 @@ def update_endfield(desk: Desktop, game: Path, launcher: Path, *,
             sleep(8)
             kill("Endfield.exe")
             sleep(3)
-            # Again through the launcher, still open: client 1.6.3 refuses to start as
-            # Endfield.exe directly (efstart.py). Its window may have gone to the tray
-            # after the first 「开始游戏」; Launcher.exe again brings it back. Then the same
-            # 25 s as after the first start above (measured 2026-09-02: a read 25 s after
-            # starting the launcher found its window).
             if not desk.click_text("开始游戏", focus="Games"):
                 _spawn(launcher)
                 sleep(25)

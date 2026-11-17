@@ -46,7 +46,6 @@ def _with_causes(names: list[str], causes: dict | None) -> list[str]:
     return [f"{n}（{causes[n]}）" if n in causes else n for n in names]
 
 
-# The date and time in MAA's sentence, e.g. "理智将在 2026-08-17 05:33 回满。"
 _FULL_AT = re.compile(r"(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})")
 
 
@@ -327,20 +326,10 @@ def _maaend_listed(raw: dict) -> list[str]:
 def maaend_unverified(raw: dict) -> list[str]:
     """Listed MaaEnd tasks with no game evidence.
 
-    A task MaaFW's own log was read for at booking (raw['tasks_trail'],
-    alarm.records._mark_task_trails: the four of maaend_fwlog.TRAIL_TASKS) is backed
-    exactly when its steps show the job done or nothing to do - also when MaaEnd wrote
-    a line inside it: on 2026-10-08 10:34 装备制造's only line was its scene-check note,
-    and the task was aborted. Any other task is backed by a line of its own in the log
-    (collector_maaend.task_evidence). The desktop picture is no evidence for any task:
-    it is taken 5-8 s after the task ended and shows the next task (task_shots.py,
-    verify ledger #28). A record without the evidence table at all (a log that could not
-    be read again) has none for any task. The four left unjudged because MaaFW's log
-    held none of them (maaend_unjudged) are neither backed nor unbacked.
-
-    A record booked before raw['tasks_trail'] existed (no such key) is read by the rule
+A record booked before raw['tasks_trail'] existed (no such key) is read by the rule
     it was booked under, picture included, so the days before this change keep the
-    verdict they were reported with."""
+    verdict they were reported with.
+    """
     ev = raw.get("tasks_evidence") or {}
     if "tasks_trail" not in raw:
         shot = set(raw.get("tasks_shot") or [])
@@ -472,12 +461,7 @@ def _span(started: datetime, finished: datetime, known: bool = True) -> str:
 def maa_mode(e: dict) -> str:
     """Which of AUTO-MAS's MAA jobs a ledger line (or a record's fields) was: its
     Annihilation mode (raw.annihilation from collector_maa) or its Routine mode.
-
-    A success of one is no retry of the other: on 2026-10-26 three Annihilation
-    attempts failed (auto-deploy locked) and the Routine round AUTO-MAS ran next was
-    read as their retry, so the failure reached only the daily report, as made up
-    at 09:07, and never the group, with the week's annihilation still undone.
-    Other scripts have one job: ''."""
+    """
     if not isinstance(e, dict) or e.get("script") != "MAA":
         return ""
     raw = e.get("raw")
@@ -544,10 +528,6 @@ def episode_kinds(entries: list[dict]) -> dict[str, str]:
                         if (x.get("raw") or {}).get("maaend_update_restart"):
                             kinds.setdefault(x["run_id"], "update")
                 elif any(x.get("transitional") for x in streak):
-                    # The whole streak, on purpose (audit 2026-11-08 B-04 asked for the
-                    # transitional record alone): 2026-09-02 OK-WW 09:18 update restart, 09:20
-                    # failed as the game came back, 09:28 ok - two ❌ and a self-heal push were
-                    # the false alarm tests/test_verify.py pins.
                     for x in streak:
                         kinds.setdefault(x["run_id"], "update")
                 streak = []
@@ -629,10 +609,6 @@ def retried_notes(entries: list[dict]) -> dict[str, str]:
             # 「超时」 names no task: a later success of the same script covers it.
             # Every task the record does name still has to be in that success.
             named = {t for t in want if "超时" not in t}
-            # A later run whose own outcome check failed still covers a bare timeout (audit
-            # 2026-11-08 B-04 asked otherwise): its undone items are their own title item
-            # (「终末地 1 项没干完」, tests/test_maaend_watchdog.py 10-01), so the round is
-            # not green either way and 「没跑成」 on top would say the one problem twice.
             if (named != want and named <= done) or want <= done:
                 # By start time on both clocks, the way the run's own line is labelled.
                 st = datetime.fromisoformat(later["started"])
@@ -691,9 +667,6 @@ def _count_by_script(entries: list) -> list[tuple[str, int]]:
     return list(counts.items())
 
 
-# The daily report names games, never the tools that play them (D-1010; the
-# acceptance session, 2026-10-11). Whole phrases the tools write first, then any
-# remaining tool word becomes the game (AUTO-MAS: the scheduler).
 _PLAIN_PHRASES = {
     "MAA 在完成任务前中止": "明日方舟这一趟没跑完就停了",
     "MaaEnd 部分任务执行失败": "终末地有任务没做成",
@@ -1041,9 +1014,6 @@ def split_test(entries: list[dict], windows: list[dict]) -> tuple[list[dict], li
     for w in windows or []:
         try:
             since = datetime.fromisoformat(w["since"])
-            # A window left open ends OPEN_TEST_WINDOW_MAX_H after it opened, as the shutdown
-            # decision already reads it (shutdown.OPEN_WINDOW_MAX_H): open for ever, it took
-            # every later scheduled run out of the report's rows (audit 2026-11-08 C-07).
             until = (datetime.fromisoformat(w["until"]) if w.get("until")
                      else since + timedelta(hours=OPEN_TEST_WINDOW_MAX_H))
         except (KeyError, TypeError, ValueError):
@@ -1245,7 +1215,6 @@ def format_missing(what: str, expected_at: datetime, detail: str = "") -> tuple[
 # ledger.<name>, so every name defined there is importable from here too.
 
 
-
 # This module's public names plus every name re-exported from the modules above
 # (callers and tests say ledger.<name>); pyflakes and ruff count a listed name as used.
 
@@ -1269,11 +1238,7 @@ _LEDGER_TORN_SAID: dict[str, frozenset] = {}
 # count again.
 _INTERIM_SAID: dict[str, str] = {}
 
-# Held by append_ledger and _rewrite_entry. A rewrite reads the day's file, edits
-# one line and replaces the whole file; an append landing between its read and its
-# replace was lost, which is a run missing from the day (audit s4 A6).
 _LEDGER_LOCK = threading.RLock()
-
 
 
 _UNDONE_HEAD = re.compile(r"这一轮有 (\d+) 项没干成")
@@ -1424,10 +1389,7 @@ class State:
     def clear_incomplete_items(self, day: str, run_id: str, keyword: str) -> bool:
         """Drop from the line's `incomplete` only the undone items naming `keyword`
         (strip_incomplete_items); the field empties only when no undone item is left.
-
-        The gathering retry used to write "" over the whole field: an ok run whose 自动采集
-        and 基质刷取 both failed their checks read as done once its routes were re-walked
-        (audit 2026-11-08 B-01)."""
+        """
         def put(e: dict) -> None:
             if why := e.get("incomplete"):
                 e["incomplete"] = strip_incomplete_items(str(why), keyword)
@@ -1585,7 +1547,6 @@ class State:
     def mark_banner_announced(self, key: str) -> None:
         self.store.set("marks", f"banner:{key}",
                        datetime.now(tz=SERVER_TZ).isoformat(timespec="seconds"))
-
 
 
 from ark_relay.features import report as scoreboard  # noqa: E402

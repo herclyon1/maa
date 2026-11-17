@@ -69,6 +69,6 @@ EOF
     echo "$page"; open "$page" ;;
   daily)
     shift
-    python3 "$HERE/lib/evidence_daily.py" "$@" ;;
+    python3 "$HERE/lib/evidence_pull.py" --daily "$@" ;;
   *) echo "usage: evidence.sh list | pull <run-id fragment> | open <run-id fragment> | daily <YYYY-MM-DD> [HH:MM HH:MM]" >&2; exit 2 ;;
 esac

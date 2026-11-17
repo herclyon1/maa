@@ -25,6 +25,7 @@
 from __future__ import annotations
 
 import ast
+import re as _re
 import sys
 from pathlib import Path
 
@@ -94,7 +95,89 @@ def mentioned_names(text: str, tree: ast.AST) -> set[str]:
     return names
 
 
+
+
+# --- loggernames & checkshape subcommands ---
+ALLOW = {
+    "relay/app_main.py": ("ark.app", "ark.app.stop", "ark.app.stop_push"),
+    "relay/ark_relay/__main__.py": "ark",
+    "relay/ark_relay/core/desktop.py": "ark.procs",
+    "relay/ark_relay/core/ledger.py": "ark.core",
+    "relay/ark_relay/core/notify.py": "ark.netretry",
+    "relay/ark_relay/core/statestore.py": ("ark.logfile", "ark.techlog"),
+    "relay/ark_relay/features/annihilation.py": ("ark.weekgate", "ark.garden"),
+    "relay/ark_relay/features/automas_keeper.py": "ark.service",
+    "relay/ark_relay/features/efstart.py": "ark.efstart_setup",
+    "relay/ark_relay/features/errwatch.py": "ark.alertlog",
+    "relay/ark_relay/features/evidence.py": "ark.error_evidence",
+    "relay/ark_relay/features/gameupdate_games.py": "ark.gameupdate",
+    "relay/ark_relay/features/handle.py": ("ark.missed", "ark.unresolved"),
+    "relay/ark_relay/features/machinechecks.py": ("ark.system", "ark.phone_banners", "ark.runs"),
+    "relay/ark_relay/features/outcome.py": ("ark.gamelog_errors", "ark.collector"),
+    "relay/ark_relay/features/phone.py": ("ark.monthcard", "ark.inbox", "ark.service"),
+    "relay/ark_relay/features/procwatch.py": "ark.service",
+    "relay/ark_relay/features/redbutton.py": "ark.commands",
+    "relay/ark_relay/features/selfcheck.py": ("ark.shiftcheck", "ark.tape"),
+    "relay/boot_stages.py": "ark.service",
+    "relay/pkg_layout.py": "ark.pkg",
+    "relay/tests/test_boot.py": ("ark.test", "ark.test.stopwake"),
+}
+
+_LOG_PAT = _re.compile(r'getLogger\("([^"]+)"\)')
+_EQ = ("label", "got", "want")
+_TRUTH = ("name", "ok", "detail")
+
+
+def check_loggernames(root: str = "relay") -> int:
+    bad = []
+    for f in sorted(Path(root).rglob("*.py")):
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if not (m := _LOG_PAT.search(line)):
+                continue
+            got, want = m.group(1), "ark." + f.stem
+            allowed = ALLOW.get(str(f), ())
+            if got == want or got in ((allowed,) if isinstance(allowed, str) else allowed):
+                continue
+            bad.append(f"{f}:{i} 日志名 {got}，模块叫 {f.stem}，应该是 {want}")
+    print("\n".join(bad))
+    return 1 if bad else 0
+
+
+def check_shapes(root: str = "relay/tests") -> int:
+    bad = []
+    for f in sorted(Path(root).glob("*.py")):
+        try:
+            tree = ast.parse(f.read_text(encoding="utf-8"))
+        except SyntaxError as e:
+            bad.append(f"{f}: 语法错误 {e}")
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef) or node.name not in ("check", "require"):
+                continue
+            args = [a.arg for a in node.args.args]
+            if node.name == "check" and tuple(args[:3]) not in (_EQ, ("name", "got", "want"), ("what", "got", "want"), ("label", "got")):
+                bad.append(f"{f}:{node.lineno} check() 的参数是 {args}，应该是 (label, got, want)——判真假的请改叫 require")
+            if node.name == "require" and tuple(args[:3]) != _TRUTH:
+                bad.append(f"{f}:{node.lineno} require() 的参数是 {args}，应该是 (name, ok, detail='')")
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Path" and node.args):
+                continue
+            a = node.args[0]
+            if not (isinstance(a, ast.Constant) and isinstance(a.value, str)):
+                continue
+            v = a.value
+            if v.startswith(("/", "~")) or not v or "/" not in v or _re.match(r"[A-Za-z]:[\\/]", v):
+                continue
+            bad.append(f"{f}:{node.lineno} Path({v!r}) 是相对当前工作目录的，换个地方跑就找不到——仓库里的文件请从 __file__ 起算")
+    print("\n".join(bad))
+    return 1 if bad else 0
+
+
 def main(argv: list[str]) -> int:
+    if len(argv) > 1 and argv[1] == "--loggernames":
+        return check_loggernames(*(argv[2:3]))
+    if len(argv) > 1 and argv[1] == "--checkshape":
+        return check_shapes(*(argv[2:3]))
     roots = argv[1:] or ["relay", "scripts"]
     files = py_files(roots)
     if not files:

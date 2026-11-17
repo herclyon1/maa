@@ -12,18 +12,7 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_alert_dedup():
-    """The alerted-today marks (state.json marks.alerted:<day>), and what still uses them.
-
-2026-09-01 the group got the same OK-WW failure three times (17:00/08:29/11:54), and
-the user said 「赶紧去修，报了三次了。」 From then until 2026-10-06 the key script +
-failed step kept a second final alarm for the same step off the group that day. The
-user's order of 2026-10-06, 「不论多少次什么错误都要发」, replaced that: every final
-failure is pushed, the same step again included (checked at the end). The marks
-stay for what is one event checked again and again (a queue overrun, a timeout
-line, the same record handled twice) and for the self-heal notice.
-
-    Formerly test_alert_dedup.py.
-    """
+    """The alerted-today marks (state.json marks.alerted:<day>), and what still uses them."""
     import sys, types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -97,16 +86,6 @@ line, the same record handled twice) and for the self-heal notice.
 def _part_first_error_alert():  # noqa: C901
     """Every WARNING / ERROR the relay logs is pushed to the group, every time, at once;
 nothing is dropped when the group refuses; nothing loops back from the push path.
-
-The user's order of 2026-10-06 (full words in docs/NOTIFICATIONS.md, the 🩺 row)
-ends with the rule itself: 「不论多少次什么错误都要发」. Before that:
-one push per new ERROR kind (state/errsigs.json), WARNINGs to the daily report only,
-at most 3 pushes an hour, nothing while the machine was going down - each of which
-is checked here as gone.
-2026-09-17 21:21:28: 「AUTO-MAS 拉起后 45 秒内接口仍不通」 was one ERROR line that
-nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
-
-    Formerly test_first_error_alert.py.
     """
     import importlib
     import json
@@ -352,10 +331,6 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
 
     def section_5b():
         print("\n[the queue file on disk is unreadable at start: the group hears it]")
-        # Until 2026-10-10 the alarms queued before the restart were lost with no word;
-        # until 2026-10-11 a daily-only row said it. errwatch cannot log about itself (its
-        # own records never come back in), so the lost queue is the new queue's first item.
-        # The user's words of 2026-10-11 17:43 are in relay/USER-SWITCHES.txt's header.
         Q = TMP / "q5b"
         Q.mkdir()
         (Q / errwatch.QUEUE_FILE).write_text('[{"title": "重启前排着的', encoding="utf-8")
@@ -554,9 +529,6 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
             ban.warning("官方图转 PNG 失败，原样交给系统 OCR", exc_info=True)   # relay3.log:27778-27785
         _wait(n, 3)
         check("复发的 WARNING 也报，三条三推", len(n.sent), 3)
-        # The 库街区 keys left the registry once that message became log.info
-        # (audit s8 #5, the _part_known_fixed_live part): logged as a WARNING anyway,
-        # it is an ordinary relay error.
         check("没登记的照普通报错推", [t for t, _, _ in n.sent[:2]], [texts.RELAY_ERROR] * 2)
         check("复发有自己的标题，带修好的版本", n.sent[2][0] if len(n.sent) > 2 else None,
               texts.relay_error_recurred("20261005151027"))
@@ -652,9 +624,6 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
 
     def section_recovered_push_thread():
         print("\n[推送途中自己好了的（推送重试送到了）：照样记一条「自愈待查」红项]")
-        # notify.py:_post logs a transport failure that went through on a later attempt
-        # with errwatch.recovered(); on the errwatch push thread that record used to be
-        # dropped by the thread-name filter before the recovered check (audit 10-12 #8).
         from ark_relay.core import statestore as techlog
         R = TMP / "recovered-push" / "state"
         n = _Notifier()
@@ -674,7 +643,6 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
         red = [x for f in sorted(techlog.tech_dir(R).glob("*.md"))
                for _, x in techlog.unhandled(f.read_text(encoding="utf-8")) if "推送线程自愈样例" in x]
         check("推送线程上自己好了的写一条「自愈待查」红项", [techlog.SELF_HEAL in x for x in red], [True])
-        # audit 11-08 C-05: counted (errkinds keeps a trace of a fault on the push path), never as recovered.
         check("没好的那条记进报错表，但不记成自己好了",
               [bool(r.get("recovered")) for r in faults(R) if "推送线程样例" in str(r.get("line"))], [False])
         drop(h)
@@ -790,29 +758,7 @@ nobody read; the 21:30 queue never ran and the first alarm came at 21:55.
 
 
 def _part_failure_alert():
-    """The immediate failure alert, and the three marks nobody ever read back.
-
-`core.format_failure` builds the message the user gets on his phone the moment
-a run fails - the single most-read thing the relay produces - and no test had
-ever called it. Neither had `State.interim_sent` nor
-`State.mark_banner_announced`, both of which are one half of a writer/reader
-pair: a mark written under one key and read back under another silently means
-"never sent", and the symptom is not an error but a missing report, or the
-same banner announced every hour.
-
-What is pinned here:
-
-* A run whose duration came from the filename must not print a duration as
-  fact. That fallback is hours wrong on this install, and it is exactly the
-  class of run (「未捕获到日志」) most likely to end up in a failure alert.
-* Which step broke has to be visible. The daily report of 2026-08-27 lost the
-  words 「失败于」 and became unreadable - a bare list of task names that could
-  equally have been the list of things that ran.
-* Every mark survives a restart, because the machine is hard power-cut twice a
-  day and an in-memory mark is not a mark.
-
-    Formerly test_failure_alert.py.
-    """
+    """The immediate failure alert, and the three marks nobody ever read back."""
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -885,20 +831,7 @@ What is pinned here:
 
 
 def _part_group_long_alarm():
-    """One alarm must never flood the group (2026-11-05 北京 10:56).
-
-runwatch's overrun alarm took runtime-snapshot's task `log` as 「AUTO-MAS 最后一句」, but that field
-is the task's whole log (38151 characters in 343 lines that morning). WeComBot split the text into
-44 messages and sent 20 before the robot's 20-a-minute cap refused the 21st (45009); the user saw
-20 pieces of log in the group, and every other alarm of that minute failed.
-
-Checked here: runwatch.last_log_line keeps only the last non-empty line, cut to 200 characters;
-the overrun text built from such a log stays one message; WeComBot sends at most MAX_PARTS
-messages for any text (many lines or one huge line), the last ending with a plain note, and
-leaves short and two-part texts exactly as before.
-
-    Formerly test_group_long_alarm.py.
-    """
+    """One alarm must never flood the group (2026-11-05 北京 10:56)."""
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -907,7 +840,6 @@ leaves short and two-part texts exactly as before.
     from ark_relay.features import runwatch
 
 
-    # A task log shaped like the 11-05 one: 343 lines, about 38000 characters, mostly Chinese.
     LOG = "\n".join(f"[2026-11-05 11:{i // 60:02d}:{i % 60:02d}.212] 正在识别画面并点击开始唤醒按钮第 {i} 次，等待游戏响应中……" * 2
                     for i in range(343)) + "\n[2026-11-05 11:26:30.212] 正在连接窗口... Endfield\n\n"
 
@@ -960,14 +892,7 @@ leaves short and two-part texts exactly as before.
 
 
 def _part_uptime_alarm():
-    """The shutdown floor is an alarm: once 「开机不够久」 passes, the relay judges again.
-
-2026-10-01: the relay restarted at 18:03:57, judged 「开机不够久」 at 18:04:15
-(floor 600 s) and then slept until its next alarm, 21:30. Nothing judged again
-when the floor passed at 18:13:57.
-
-    Formerly test_uptime_alarm.py.
-    """
+    """The shutdown floor is an alarm: once 「开机不够久」 passes, the relay judges again."""
     import json
     import os
     from datetime import datetime
@@ -1025,15 +950,7 @@ when the floor passed at 18:13:57.
 
 
 def _part_errwatch_midnight_counts():
-    """errwatch's per-day counts survive the switch to the next day.
-
-Audit 2026-10-13 s7 #7: the count cache holds one day, and _count saves a
-repeat only every SAVE_EVERY seconds; the first record after midnight replaced
-the cache and the previous day's unsaved repeat was lost, so the daily report's
-「中继自己记下的报错」 undercounted.
-
-    Formerly test_errwatch_midnight_counts.py.
-    """
+    """errwatch's per-day counts survive the switch to the next day."""
     import json
     import logging
     from datetime import datetime
@@ -1070,19 +987,7 @@ the cache and the previous day's unsaved repeat was lost, so the daily report's
 
 
 def _part_known_fixed_live():
-    """Every known_fixed entry can still match: its message is logged at WARNING or above.
-
-errwatch only sees WARNING and above, so a known_fixed key whose message is now
-logged at INFO is dead weight - a recurrence of that kind could never be tagged.
-The two 「库街区官方资讯里没找到 … 版本资讯帖」 keys were such entries after that
-message became log.info (banners/wuwa_posters.py), audit s8 #5.
-
-For each key: the fixed text before its first blanked part (# / <path> / ...) must
-appear inside a .warning( / .error( / .exception( / .critical( call somewhere under
-ark_relay/.
-
-    Formerly test_known_fixed_live.py.
-    """
+    """Every known_fixed entry can still match: its message is logged at WARNING or above."""
     import re
 
     ROOT = Path(__file__).resolve().parents[1]
@@ -1110,40 +1015,7 @@ ark_relay/.
 
 
 def _part_unresolved():
-    """A MAA / MaaEnd problem the relay could not fix goes to the group - every time.
-
-From 13:07 to 15:38 on 2026-10-05 such failures went to the daily report only,
-and the group heard of a game only after a whole day without a good run
-(dayfail.py, now removed). The user, 15:38: 「为啥群里不响？你们不是没处理好吗？
-你这样不会错失第一时间修复的那个吗。」 Until 2026-10-06 a shift then rang at most
-once, a MaaEnd round short of only 自动采集 / 应急理智加强剂 (engine.SOFT_FAILS)
-stayed in the daily report, and runs started by hand at AUTO-MAS and MAA failures
-on the update day were never pushed; the user's order of 2026-10-06, 「不论多少次
-什么错误都要发」, ended all four, and put in the group as well a failure the make-up
-got past, could-not-enter on an official notice and MAA short of sanity. At 05:07
-that day he took the make-up that got past it back out of the group: 「报错后自己好了
-的，只进日报、不进群。」 Pinned here, against a queue config shaped like AUTO-MAS's own
-(早班 09:00 MAA + MaaEnd + OK-WW, 晚班 21:30 MAA):
-
-* 早班 failed -> held for its make-up; the make-up failed too -> an alarm naming
-  the game, the shift, what came of the make-up, where it failed and the
-  evidence link; another 早班 failure rings again; a 晚班 failure (the day's
-  make-up spent) rings for 晚班, and so does the next one;
-* the make-up went through -> nothing pushed; the daily report's make-up line says
-  「失败过，补跑后走通了」 with where it failed;
-* a MAA failure the make-up is not for (it had fought already) -> one alarm,
-  with the reason no make-up ran;
-* every 「没干完」 rings, a failure of the same shift too; MaaEnd short of only
-  自动采集 / 应急理智加强剂 rings like any other, and fails into the make-up path;
-* a run started by hand and a MAA failure on the update day ring at once;
-* could not enter (official notice), MAA short of sanity and a failure cut short by
-  the red button (his own 停一切) ring at once, not held;
-* a push that did not go out is tried again on the next tick, and the same
-  record is never pushed twice;
-* the whole-day alarm is gone.
-
-    Formerly test_unresolved.py.
-    """
+    """A MAA / MaaEnd problem the relay could not fix goes to the group - every time."""
     import json
     import os
     from datetime import datetime, timedelta
@@ -1385,7 +1257,6 @@ that day he took the make-up that got past it back out of the group: 「报错�
     check("晚班没干完：再报", alarms(e)[2:], [texts.unresolved_undone("明日方舟", "晚班")])
 
     print("\n[终末地只是设置被新版本重置：照样进群，但说「没按你的设置跑」，不说没干完]")
-    # 2026-10-12: six reset buy lists went out as 「终末地早班没干完」 / 「有 1 项没干成」.
     e = build()
     _reset = outcome.summarize([outcome.Check("任务全部完成（跑完没自己退出）", True),
                                 *outcome._dropped_checks(["AutoStockBuyDailyGoodsValleyIV", "AutoStockBuyDailyGoodsWuling"])],
@@ -1509,8 +1380,6 @@ that day he took the make-up that got past it back out of the group: 「报错�
     real_hand = handle._hand_started
     handle._hand_started = lambda eng, r: "手动开始"
     handle._handle(e, rec("MAA", at(9, 5)))
-    # Held until the same AUTO-MAS task's later attempts decide (handle._hold_hand_started,
-    # 2026-10-16), never handed to the make-up.
     check("手动开的失败：先压着，等同一任务后面那次", (alarms(e), list(e._pending)), ([], [("MAA", "arknights")]))
     e._flush_pending()
     check("手动开的失败：同一任务里没有后来跑成的，进群", (alarms(e), dict(e._pending)), ([texts.failed("MAA")], {}))
@@ -1526,11 +1395,8 @@ that day he took the make-up that got past it back out of the group: 「报错�
     e = build()
     handle._handle(e, rec("MAA", at(9, 5), raw={"manual_stop": "停一切"}))
     e._flush_pending()
-    # da99a04d (2026-10-06): a failure cut short by 停一切 is pushed, saying so - it did not recover.
     check("红按钮停的失败：进群，不压着", (alarms(e), dict(e._pending)), ([texts.failed("MAA")], {}))
     check("…说是停一切停掉的", last_body(e).startswith("这一趟是停一切停掉的（停一切）"), True)
-    # Audit 2026-10-13 s7 #2: a held failure a person's own run got past was dropped
-    # with one INFO line. A person fixing it is not "fixed itself": pushed, saying so.
     e = build()
     handle._handle(e, rec("MAA", at(9, 5)))
     check("压着的失败：先不进群", (alarms(e), list(e._pending)), ([], [("MAA", "arknights")]))
@@ -1611,8 +1477,6 @@ that day he took the make-up that got past it back out of the group: 「报错�
     e = build()
     handle._handle(e, rec("MAA", at(9, 5), ok=True, raw={"annihilation": "Annihilation", "maa_sanity_short": True}))
     check("理智不够没打剿灭是正常状态：不推", alarms(e), [])
-    # 2026-11-09 MAA-05-02-32: AUTO-MAS v5.8 booked an Annihilation pass 「Success!」 that read
-    # 理智 20 against 25 and fought nothing; it went out as 「剿灭 拿不出证据」 (verify ledger #153).
     real_short = outcome.maa_sanity_short
     outcome.maa_sanity_short = lambda text: {"have": 20, "cost": 25}
     try:
@@ -1683,20 +1547,7 @@ that day he took the make-up that got past it back out of the group: 「报错�
 
 
 def _part_silent_green_guards():
-    """前置条件不满足时，绝不许静默变成「全绿」。
-
-2026-08-30 一次排查里同一个形状的 bug 出现了三次：
-  1. `_verify_outcome` 压根没有 MAA 分支，走到就 return None（=全干成）
-  2. `_okww_nest_expected` 读不到配置返回 False，和「配置说不用打」不可区分，
-     残象聚落那一项**整个消失**
-  3. 我给 MAA 加核对时，`_maa_app_log` 读不到日志返回 ""，
-     空文本喂给 `maa_checks` 全部判过——又一次假全绿
-外加 `_verify_outcome` 的 except 分支直接 return None：核对自己崩了也报全绿。
-
-这个文件把这四条钉死。
-
-    Formerly test_silent_green_guards.py.
-    """
+    """前置条件不满足时，绝不许静默变成「全绿」。"""
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1754,14 +1605,6 @@ def _part_silent_green_guards():
 
 def _part_alertlog_main():
     """Every group alarm is also kept in COS alerts/<Beijing YYYYMMDD>.jsonl, one JSON line each.
-
-The user, 2026-10-06 00:23, asked for a copy to his Mac of every alarm the relay sends to
-the group, at the moment it sends it (「中继每往群里发一条报警，就同时抄一份给 Mac」).
-Fields exactly ts (Beijing, from UTC, whatever the machine's zone), game, title,
-text, version, evidence_run; "" when unknown. The uploader is a fake here -
-nothing in this file talks to COS.
-
-    Formerly test_alertlog.py.
     """
     import io
     import json
@@ -1830,7 +1673,6 @@ nothing in this file talks to COS.
         time.sleep(0.05)
 
 
-    # relay3.log:27539-27545, the 10-05 10:39 鸣潮 round that did not finish.
     WW_BODY = ("OK-WW 2026-10-05/wuwa/OK-WW-05-39-25 有项目没干成：\n"
                "· 周本领到了奖励：周本打了，但没有领奖那一步：奖励没拿到\n"
                "干成的：每日任务跑完、刷体力")
@@ -1873,9 +1715,6 @@ nothing in this file talks to COS.
           alertlog.row("x", "", now=datetime(2026, 10, 5, 15, 30, tzinfo=timezone.utc))["ts"][:10], "2026-10-05")
     check("对象名", alertlog.key_for("20261005"), "alerts/20261005.jsonl")
 
-    # The day files below are kept by AlertLog.sync(), which prunes synced local days
-    # older than KEEP_DAYS on the real clock (alertlog._prune). A fixed 10-05 day was
-    # pruned from 10-13 on and 「本地也有这一天」 failed; these sections use today.
     TODAY_BJ = alertlog.beijing()
     AT_TODAY = TODAY_BJ.replace(hour=22, minute=39, second=0, microsecond=0)
     DAY_TODAY = AT_TODAY.strftime("%Y%m%d")
@@ -2023,16 +1862,7 @@ nothing in this file talks to COS.
 
 
 def _part_alertlog_channel():
-    """The alarm copy (alertlog row) names the channel that actually delivered it.
-
-Review 2026-10-13 s5 #4: an alarm the group robot refused and Server酱 took left a
-row that looked like any group alarm, so the Mac could not tell where it went.
-The channel comes from what Notifier._fan_out reports as delivered; "" when not
-known. Rows written before the field existed (a real machine row, fixture
-alerts-20261013-old-row.jsonl) must still read and merge fine.
-
-    Formerly test_alertlog_channel.py.
-    """
+    """The alarm copy (alertlog row) names the channel that actually delivered it."""
     import json
     import os
     import threading
@@ -2161,14 +1991,6 @@ alerts-20261013-old-row.jsonl) must still read and merge fine.
 def _part_alertlog_no_lock_on_cos():
     """alertlog: no lock held across a COS call; a failure first met on the push path
 does not silence the next one.
-
-Audit 2026-10-13 s7 #8: sync held _lock across GET and PUT (15 s each), and
-record() takes the same lock on the alarm caller's thread, so a slow COS stalled
-the caller after every delivered alarm. And self._ok was shared: a failure on
-errwatch's copy thread (whose WARNING errwatch drops) set it, and no later
-failure was ever said.
-
-    Formerly test_alertlog_no_lock_on_cos.py.
     """
     import logging
     import threading
@@ -2247,7 +2069,7 @@ def _part_macpush():  # noqa: C901
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
+    from _parts import tmpdir
 
     TMP = tmpdir()
     os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
@@ -2390,9 +2212,6 @@ def _part_macpush():  # noqa: C901
           [texts.ROUND_INCOMPLETE, "📣 明天开卡池"])
 
     print("\n[POST 超时（3 秒上限，测试里缩短）：进队列，推送不等它]")
-    # 11-14: no stopwatch. The old check (push back within 0.5 s) went red once on the GitHub windows runner
-    # when a thread started late. The fake Mac now holds the request on a latch: push is back here while the
-    # sender thread is still waiting for the answer - that is what "POST 在自己的线程里" means.
     gate = Mac()
     gate.hold = True
     mp0 = macpush.MacPush(TMP / "gate", gate.url, timeout=5.0)
@@ -2574,7 +2393,7 @@ def _part_every_failure_pushed():
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
+    from _parts import tmpdir
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -2614,8 +2433,6 @@ def _part_every_failure_pushed():
     from ark_relay.core.notify import route_of
     from ark_relay.features import errwatch
 
-    # The stubbed win32api would make GetSystemMetrics read as "Windows is going down", and the
-    # boot pre-update stops at once for a stopping relay (boot_stages._stage_preupdate, 10-16).
     errwatch.system_shutting_down = lambda: False
 
     fails = []
@@ -2789,7 +2606,7 @@ def _part_recovered_daily_only():  # noqa: C901
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
+    from _parts import tmpdir
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -3151,24 +2968,7 @@ def _part_recovered_daily_only():  # noqa: C901
 
 
 def _part_manual_stop_backfill():
-    """Runs the red button cut short before the press was recorded get ⏹ at the next boot.
-
-2026-09-30 09:46:28-09:47:22 (Beijing) the red button was pressed through a
-one-off script, before commands.estop wrote estop-windows.json. The ledger
-already held the OK-WW run it stopped (ok=True, which AUTO-MAS wrote as
-Success!) and the MaaEnd run it stopped (ok=False), neither with
-raw.manual_stop, so the evening report would show ✅ and ❌ for two runs nobody
-let finish.
-
-At boot, after the self-update, handle.backfill_manual_stops marks every ledger
-line of today and yesterday that overlaps a press recorded in estop-windows.json,
-and drops held alarms for those runs the way _handle does at record time. (The
-09-30 window was shipped as a seed merged at boot until 10-03; removed 10-13.)
-The report is rendered through report._compose_daily, the same function the
-`python -m ark_relay report --again` command pushes.
-
-    Formerly test_manual_stop_backfill.py.
-    """
+    """Runs the red button cut short before the press was recorded get ⏹ at the next boot."""
     import json
     import os
     import types
@@ -3304,12 +3104,9 @@ The report is rendered through report._compose_daily, the same function the
     check("共用判定：有 manual_stop 才算", [_core.manual_stop(x) for x in (
         {"raw": {"manual_stop": "09:46 停一切"}}, {"raw": {}}, {"raw": None}, {})], [True, False, False, False])
 
-    # The 09-30 press, as estop-windows.json holds it.
     W0930 = [{"start": "2026-09-30T09:46:28+08:00", "end": "2026-09-30T09:47:22+08:00"}]
 
     print("\n[no press recorded: nothing is booked (the shipped seed went, audit 11 #7)]")
-    # ESTOP_SEED / merge_estop_seed carried the 09-30 window for three days after
-    # 2026-09-30 and did nothing after 10-03; they and their boot call are gone.
     e = build(windows=None)
     check("no window file: nothing booked", handle.backfill_manual_stops(e, EVENING), 0)
     check("and no window file written", (Path(e.cfg.state_dir) / commands.ESTOP_WINDOWS_FILE).exists(), False)
@@ -3351,7 +3148,6 @@ The report is rendered through report._compose_daily, the same function the
     check("OK-WW 不算重试后成功", list(e._recovered), [])
     check("MaaEnd 不再等着重试", ("MaaEnd", "endfield") in e._pending, False)
     check("MAA 的照旧压着", list(e._pending), [("MAA", "ark")])
-    # 2026-10-06: both failures are pushed now, not dropped (「只要是报错…都要发」).
     check("两条失败都进群", sorted(t for t, _ in e.notifier.sent), ["❌ MaaEnd 失败", "❌ OK-WW 失败"])
     check("都说明后面那趟是停一切停掉的", all("停一切停掉" in b for _, b in e.notifier.sent), True)
     disk = State(e.cfg.state_dir).load_pending()
@@ -3393,8 +3189,6 @@ The report is rendered through report._compose_daily, the same function the
 
     lg = Log()
     e = build(windows=W0930)
-    # The stage passes no clock, and backfill looks at yesterday and today only: pin "now" to the
-    # evening of the fixture day, or this check starts failing two days after the fixture (2026-10-02).
     _real_backfill = handle.backfill_manual_stops
     handle.backfill_manual_stops = lambda eng, now=None: _real_backfill(eng, now or EVENING)
     try:
@@ -3414,19 +3208,6 @@ The report is rendered through report._compose_daily, the same function the
 
 def _part_manual_stop_not_selfheal():
     """A run the red button (停一切) cut short is a manual stop, not the retry that healed the day.
-
-2026-09-30 morning: OK-WW failed at 09:19 and 09:30 (both held in _pending). At
-09:46:58 the phone's red button stopped the third attempt; AUTO-MAS recorded that
-stopped run as Success!, and the relay took it as 「重试后成功」 - a self-heal
-notice for a run nobody let finish, and a green row in the daily report.
-
-commands.estop now writes when it was pressed (estop-windows.json); handle._handle
-marks any run overlapping that window raw.manual_stop, books it, drops the held
-failures' final alarm (they stay in the ledger) and does nothing else. The daily
-report shows it as ⏹, never ✅, and never as the later run that 「做成了」 the
-earlier failures.
-
-    Formerly test_manual_stop_not_selfheal.py.
     """
     import json
     import os
@@ -3518,7 +3299,6 @@ earlier failures.
     check("前面的失败不再等着重试", dict(e._pending), {})
     check("重启读回来也是空的", dict(State(e.cfg.state_dir).load_pending() or {}).get("pending") or [], [])
     check("没走成功那条路（周常门没碰）", gates, [])
-    # 2026-10-06: the failure before the stop is pushed, not dropped (「只要是报错…都要发」).
     check("停一切之前那次失败进群一条", [t for t, _ in e.notifier.sent], ["❌ OK-WW 失败"])
     check("说明后面那趟是停一切停掉的", all("停一切停掉" in b for _, b in e.notifier.sent), True)
     ledger = e.state.read_ledger("2026-09-30")
@@ -3588,7 +3368,6 @@ earlier failures.
     check("那一行不是 ✅", bool(row3) and row3[0].startswith("✅"), False)
     check("有备注说明被停一切停掉", "被停一切中途停掉，不算成功也不算失败" in body, True)
     check("标题不含「重试后成功」", "重试后成功" in title, False)
-    # Since 2026-10-11 (验收) two bare failures in a row are one line and one title item.
     check("前两次仍按失败算（合成一行：连试 2 次没跑成）", ("鸣潮没跑成" in title, "连试 2 次没跑成" in body), (True, True))
 
     title, body = core.format_daily("2026-09-30", [manual])
@@ -3614,19 +3393,7 @@ earlier failures.
 
 
 def _part_notify_routing_main():
-    """日常消息只发一个渠道，报警才全发。
-
-2026-08-24 用户的原话："中继也不要同时发两边通知，只允许在一侧不通的时候采用
-另一侧……除了报警之外（报警的时候用双通道全发），其他时候都默认走一个通知。"
-
-同一份日报落到微信和 Server酱 两处只是烦，不会更可靠；冗余的价值在报警。把两者
-混为一谈的代价是真告警被日常噪声淹掉。
-
-Server酱 排在第一位不是随手定的：它没有 IP 白名单，用户实测"长期稳定，从来没出过
-问题"；企业微信在家宽后面，公网 IP 一转就 60020 全拒。
-
-    Formerly test_notify_routing.py.
-    """
+    """日常消息只发一个渠道，报警才全发。"""
     import os, sys
 
     TMP = tmpdir()
@@ -3721,12 +3488,9 @@ Server酱 排在第一位不是随手定的：它没有 IP 白名单，用户实
               "⚠️ 终末地 MaaEnd 卡住，已结束它让 AUTO-MAS 接着走", "⚠️ 终末地 MaaEnd 卡死，没能结束",
               "⏱️ 鸣潮（OK-WW）跑超时，AUTO-MAS 正在重试", "⏰ 早班超时还没跑完",
               "❌ 明日方舟早班没跑成", "⚠️ 终末地晚班没干完",
-              # failures, so the group (the user, 2026-10-06: every error, every time)
               "⚠️ 自动采集：补跑仍有路线没走通", "🚩 自动采集：有路线连续两天补跑失败，是复发性问题",
               "⚠️ 森空岛给了不止一个终末地角色，没有读",
               "🩺 中继自己报错了（3 条）",
-              # 2026-10-06 (「不论多少次什么错误都要发」): these left the log list / the
-              # Server酱 demotion, or are new
               "⚠️ 明日方舟理智不够，这一趟没打",
               "⏸ MaaEnd 进不了游戏，稍后补跑", "📱 配置没改成", "🧹 终末地配置清掉了死条目", "⚠️ 终末地配置里的死条目没能清", "⚠️ 预更新没能确认（1 项）", "⚠️ 游戏更新没能确认（2 项）",
               "⚠️ OK-WW 补丁有 1 条没贴上（共 18 条）", "🔌 推送通道故障：企业微信机器人"):
@@ -3761,11 +3525,6 @@ Server酱 排在第一位不是随手定的：它没有 IP 白名单，用户实
         check(f"表：{cell} → {want}", route_of(title, alert=alert, daily=daily), want)
 
     print("\n[自己好了的：一条都不发，日报里有（用户 2026-10-06 05:07）]")
-    # The user, 2026-10-06 05:07, on faults that fixed themselves: 「报错后自己好了的，只进日报、
-    # 不进群。本来不就这样吗？」 The doc's table 「Recovered by itself」 lists them; route_of cannot carry them (a
-    # failure-shaped title on the log list breaks R7 of test_user_switches), so the callers
-    # do not send them at all. Checked two ways: the table holds every one of them, and no
-    # send / push call in the relay names their texts.* title.
     _sec = _doc.split("### Recovered by itself", 1)
     check("文档有「Recovered by itself」那张表", len(_sec), 2)
     _rec_rows = re.findall(r"^\| ([^|]+?) \| [^|]+ \| [^|]+ \|$", _sec[1].split("\n### ", 1)[0], flags=re.M) if len(_sec) == 2 else []
@@ -3866,30 +3625,7 @@ Server酱 排在第一位不是随手定的：它没有 IP 白名单，用户实
 
 
 def _part_notify_channels():  # noqa: C901
-    """推送通道自己那一层：一个挂了不能拖垮其余，失败原因必须回到调用方手里。
-
-`tests/test_notify_routing.py` 钉的是 `Notifier` 的**路由**（日常只走一处、报警全发），
-它底下挂的是假通道。这个文件钉的是**真通道类和它们的 HTTP 契约**——notify.py 的
-35 个函数里 22 个从来没被执行过，而这条路是「出了事你会不会知道」的唯一通道。
-
-这里防的损失，每一条都实际发生过（docs/PITFALLS.md）：
-
-* 企业微信因 60020（家宽公网 IP 一转就不在可信 IP 名单里）长期不可用。那天
-  `send()` 只要有一个通道报错就算失败，于是告警每 30 秒重推一次、`mark_report_sent`
-  永远不被调用、日报整夜重发，而关机要等日报——**机器一夜没关**。
-* 从日本连 sctapi.ftqq.com 偶尔在 TLS 握手中超时，下一次一秒就通。告警是一次性的、
-  没人补发，所以**传输失败必须重试**；而 HTTP 状态码是服务器的回答，403 问一百遍还是
-  403，必须立刻抛出去换下一个端点或通道，不许干等退避。
-* 企业微信文本上限是 2048 **字节**不是字数：自建应用悄悄截断（日报尾巴没了），群机器人
-  直接整条拒收——而正文是原样重试的，于是模型写出的一个超长段落能让日报每一次重试都
-  失败，关机路径就在那儿等一整夜。
-* 通道报错时把原因吞掉，调用方就没法判断要不要重试、更没法把「这条通道坏了」说给人听。
-
-所有 HTTP 都是假的：`urllib.request.urlopen` 在本进程里被换掉，没挂假响应的 URL 直接
-断言失败，任何一次真的联网都会当场变红。
-
-    Formerly test_notify_channels.py.
-    """
+    """推送通道自己那一层：一个挂了不能拖垮其余，失败原因必须回到调用方手里。"""
     import json
     import os
     import types
@@ -4276,9 +4012,6 @@ def _part_notify_channels():  # noqa: C901
     blank = Config()
     check("闸门认得出「没有任何推送渠道」",
           any("推送渠道" in p for p in blank.validate()), True)
-    # 2026-09-08 补测试时发现的不对称：send_group 早就兜住了这一格，send 没有——
-    # 一个通道都没配时 failed 是空的，返回空列表就等于告诉调用方「送到了」。
-    # 生产上这条路够不到（上面那道配置闸门先拦），但「够不到所以无所谓」错一次就够了。
     got = Notifier(blank).send("标题", "正文")
     check("没有通道时 send() 必须报「没送到」，不许返回空", got != [], True)
     check("原因说的是没配渠道", any("渠道" in x for x in got), True)

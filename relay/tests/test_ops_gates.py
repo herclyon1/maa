@@ -26,7 +26,7 @@ def _part_techlog_tool():
 
     ROOT = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(ROOT / "relay" / "tests"))
-    from _tmp import tmpdir
+    from _parts import tmpdir
 
     TOOL = ROOT / "scripts" / "mac" / "techlog.py"
     spec = importlib.util.spec_from_file_location("techlog_tool", TOOL)
@@ -172,10 +172,6 @@ runpy.run_path(sys.argv[0], run_name="__main__")
         locked.unlink()
 
     print("[machine unreachable: one fast line, exit 3, nothing else tried]")
-    # "No answer" without leaving the Mac (this test runs on the Mac only; relay-windows.yml
-    # excludes it): macOS puts only 127.0.0.1 on lo0, so a SYN to 127.0.0.2 stays on lo0 and
-    # is never answered - measured 2026-10-13: create_connection(("127.0.0.2", 22), timeout=1)
-    # raised TimeoutError after 1.01 s. It was 203.0.113.1 (TEST-NET-3), out the default route.
     for label, probe in (("refused", CLOSED), ("no answer", "127.0.0.2:22")):
         log.write_text("")
         t0 = time.monotonic()
@@ -243,8 +239,6 @@ runpy.run_path(sys.argv[0], run_name="__main__")
     print("[relay crash-restart loop, read live from relay.log]")
     for f in tech.glob("*.md"):
         f.unlink()
-    # 2026-10-10 16:27:59 stop, then 16 boots 18-20 s apart with no stop between (16:28:03 .. 16:32:46),
-    # then a clean stop and boot at 16:33:03 - as read from the machine's relay.log. Placed 20 minutes ago.
     gaps = [18, 19, 20, 22, 19, 18, 18, 20, 18, 17, 19, 19, 19, 18, 19]
     t, loop = 20 * 60, [(20 * 60 + 4, STOP), (20 * 60 + 4, RET), (20 * 60, BOOT)]
     for g in gaps:
@@ -303,17 +297,7 @@ runpy.run_path(sys.argv[0], run_name="__main__")
 
 
 def _part_build_notes_at_deploy_tip():
-    """packaging/build.py builds at a deploy commit, whose RELEASE-NOTES.md is emptied.
-
-2026-10-13 (audit of the install / switch-over block, item 3): deploy-relay.sh builds the
-manifest with the notes filled in, then empties relay/RELEASE-NOTES.md and commits both
-in the commit it tags with the manifest's `ref`. build.py compared every listed file with
-the tree, so at each deploy tip (7ce92679, d6fb8004, 45584225) it stopped with "hash
-differs: RELEASE-NOTES.md". Now the notes come from the first of the tree, `<ref>^` and
-`<ref>` whose hashes match the manifest. Run on a throwaway git repo shaped like that.
-
-    Formerly test_build_notes_at_deploy_tip.py.
-    """
+    """packaging/build.py builds at a deploy commit, whose RELEASE-NOTES.md is emptied."""
     import hashlib
     import json
     import subprocess
@@ -406,22 +390,7 @@ differs: RELEASE-NOTES.md". Now the notes come from the first of the tree, `<ref
 
 
 def _part_dead_helpers_gone():
-    """Helpers nothing called are gone and stay gone (review 2026-10-13, s5 #10).
-
-* Notifier.send_image / WeCom.send_image / WeCom._upload: the self-built app is in
-  no automatic order (push.py --private sends text only); group images go through
-  Notifier.send_group_image.
-* notify._hint: advice for the self-built app's errcode 60020 inside the outage
-  notice; that app is never in an automatic order, so it could never fire.
-* techlog.red_items: numbered from 1 on every call (duplicate ids); add_red is the
-  one writer.
-* Desktop.click(x, y) was here too; it came back on 2026-10-15 with a caller: the
-  launcher's 「确认」 button that no OCR pass reads (gameupdate_games._confirm_space).
-
-Checked two ways: the names are not defined, and no relay or scripts source calls them.
-
-    Formerly test_dead_helpers_gone.py.
-    """
+    """Helpers nothing called are gone and stay gone (review 2026-10-13, s5 #10)."""
     import re
 
     ROOT = Path(__file__).resolve().parents[1]
@@ -450,15 +419,7 @@ Checked two ways: the names are not defined, and no relay or scripts source call
 
 
 def _part_diag_pull_silent():
-    """diag-pull.py must not exit 0 when a record could not be fetched.
-
-Silent-failure audit row scripts/mac/diag-pull.py:54: a per-object GET that
-failed was printed to stderr, then the summary said 「新取回 N 条」 and the tool
-exited 0, so a session that checks only the exit code believed every record
-was on disk. The bucket deletes records after 7 days, so a missed one is lost.
-
-    Formerly test_diag_pull_silent.py.
-    """
+    """diag-pull.py must not exit 0 when a record could not be fetched."""
     import contextlib
     import importlib.util
     import io
@@ -503,19 +464,7 @@ was on disk. The bucket deletes records after 7 days, so a missed one is lost.
 
 
 def _part_release_notes():
-    """更新播报要说「修好了什么毛病」，不是列一串文件名。
-
-2026-08-26 用户看到的播报是「改动文件：service.py、preupdate.py……」，
-对着不看代码的人等于什么都没说。原话：「**更新内容用人话写**」。
-
-所以 `relay/RELEASE-NOTES.md` 跟代码一起部署，播报优先念它；
-没有这个文件时才退回列文件名（老行为，不能退化）。
-
-这里测的是「说明文件在不在决定播报内容」，以及那份说明本身够不够人话——
-后者用一条粗但有效的判据：**不许出现代码符号**。
-
-    Formerly test_release_notes.py.
-    """
+    """更新播报要说「修好了什么毛病」，不是列一串文件名。"""
     import re
     import tempfile
 
@@ -533,11 +482,7 @@ def _part_release_notes():
 
 
     def render(notes_dir: Path, files: list[str]) -> str:
-        """service.py 里组装播报正文的那几行，原样复刻。
-
-    复刻而不是 import：那段逻辑埋在服务主循环里，拆出来单测要动生产代码，
-    而这里真正要钉住的是「有说明文件就念说明、没有就列文件名」这个取舍。
-    """
+        """service.py 里组装播报正文的那几行，原样复刻。"""
         lines = ["刚刚生效", "版本 v1 → v2"]
         notes = ""
         nf = notes_dir / "RELEASE-NOTES.md"
@@ -579,12 +524,7 @@ def _part_release_notes():
 
 
     def test_is_plain_language() -> None:
-        """随仓库的那份说明本身要是人话。
-
-    判据故意粗：**不许出现代码符号**（下划线函数名、括号调用、驼峰、路径后缀）。
-    这拦不住所有术语，但拦得住「修复 `maa_update_pending()` 未识别 MirrorChyan
-    zip 制品」这种——而那正是当天被点名的写法。
-    """
+        """随仓库的那份说明本身要是人话。"""
         print("[RELEASE-NOTES.md 是不是人话]")
         nf = HERE / "RELEASE-NOTES.md"
         check("说明文件存在", nf.exists(), True)
@@ -622,18 +562,7 @@ def _part_release_notes():
 
 
 def _part_replay_gate():
-    """Deploy gate E1: the offline replay of outcome / errwatch over the real 2026-10-06 logs.
-
-Before a deploy, ``scripts/mac/deploy-relay.sh`` runs ``ark_relay.features.selfcheck`` over
-the two checked-in fixtures - the OK-WW weekly-boss run whose update note once
-matched 「结晶波片不足」, and the relay.log fragment holding the banner calendar
-#2 and shutdown snapshot false alarms. This test pins what the replay must see:
-the current code pushes nothing, the code with one of the fixes undone pushes that
-false alarm again (the producers run under the real errwatch handler), and a
-genuine ERROR still pushes.
-
-    Formerly test_replay_gate.py.
-    """
+    """Deploy gate E1: the offline replay of outcome / errwatch over the real 2026-10-06 logs."""
     import importlib.util
 
     ROOT = Path(__file__).resolve().parents[1]
@@ -676,9 +605,6 @@ genuine ERROR still pushes.
     print("[relay.log: the banner calendar #2 and shutdown snapshot false alarms]")
     check("this code pushes nothing", replay.errwatch_pushes(RELAY), [])
 
-    # The producers run again under the real errwatch handler, so breaking one of the
-    # fixes brings its false alarm back into the replay (until 2026-10-13 the quiet lines
-    # were a hand list of wordings and every one of these still passed).
     from ark_relay.features import banners as _hub
     from ark_relay.features import annihilation as _ann
 
@@ -735,9 +661,6 @@ genuine ERROR still pushes.
         outcome.okww_checks = orig
 
     print("[the deploy script's `python3 -m` target can be run by runpy]")
-    # 2026-10-11: deploy-relay.sh still ran `-m ark_relay.replay`, an old name served by
-    # _aliases; runpy needs the loader's get_code, which the alias loader lacks, so the
-    # gate died with a traceback and the deploy was refused.
     import re as _re
     _deploy = (Path(__file__).resolve().parents[2] / "scripts" / "mac" / "deploy-relay.sh").read_text(encoding="utf-8")
     for _mod in _re.findall(r"python3 -m (ark_relay[\w.]*)", _deploy):
@@ -746,34 +669,7 @@ genuine ERROR still pushes.
 
 
 def _part_tools_import_installed_relay():
-    """Tools that import ark_relay on the gaming machine import the installed relay's code.
-
-Since the switch-over (packaging/switch.py install) the relay runs
-C:\\Program Files\\ArkRelay\\versions\\<current.txt>\\ (relay/pkg_layout.py), and
-C:\\ProgramData\\ark-relay holds only its data. The ark_relay folder still lying there is
-the old relay's, frozen at the switch-over. Until 2026-10-11 healthcheck.py,
-okww_effective.py, config-check.py, okww-landed.py, maaend_only_task.py,
-waittime_roundtrip.py, boot_check_remote.py, the desktop switch skip-shutdown.bat and the
-commands in docs/OPERATIONS.md all put that folder on sys.path: every check judged the
-machine by the old code, and healthcheck.py's ensure_patches wrote the old OK-WW patches
-over newer fixes. They now take the folder from scripts/mac/lib/relay_code.py (the .bat,
-which sits alone on his desktop, reads current.txt itself).
-
-Checked here:
-  1. nothing under scripts/ or docs/ puts C:\\ProgramData\\ark-relay itself (literally, or
-     through a name or %VAR% bound to it in the same file) on sys.path, or reads a file
-     under C:\\ProgramData\\ark-relay\\ark_relay - except the listed files that are about
-     the old relay on purpose;
-  2. each of those tools imports relay_code on a line winrun.sh's module shipping sees;
-  3. relay_code.code_root() picks versions\\<current.txt>, and the old folder (saying so)
-     only when there is no installed relay;
-  4. skip-shutdown.bat reads current.txt, has CRLF line endings, and does not start a
-     for /f command with a quote (cmd /c then drops the first and last quote and the
-     Python path no longer parses: its menu read 「读不出来」 every time, seen on the machine
-     2026-10-11; with LF line endings cmd.exe ran fragments of its lines as commands).
-
-    Formerly test_tools_import_installed_relay.py.
-    """
+    """Tools that import ark_relay on the gaming machine import the installed relay's code."""
     import contextlib
     import io
     import re
@@ -842,7 +738,6 @@ Checked here:
     require(f"{len(files)} files under scripts/ and docs/", not found,
           "; ".join(f"{k}: {v[0]}" for k, v in sorted(found.items())))
 
-    # The scan has to recognise each shape the tools used before 2026-10-11.
     SHAPES = {
         "literal": 'import sys\nsys.path.insert(0, r"C:\\ProgramData\\ark-relay")\n',
         "named": 'R = Path(r"C:\\ProgramData\\ark-relay")\nsys.path.insert(0, str(R))\n',
@@ -918,26 +813,7 @@ Checked here:
 
 
 def _part_unmerged_fixes():
-    """deploy-relay.sh step 0.6: a finished relay fix may not sit on a branch, unreviewed.
-
-On 10-11 23 local branches held relay changes that never reached main (one was the
-10-10 Endfield-hang fix a4be51cb). Checked here on a temporary git repo whose
-origin/main is the baseline commit:
-  - a branch commit touching relay/ that is not in main and not listed blocks (exit 1),
-    and the output names its branch, hash and subject;
-  - the same commit listed in the review file passes;
-  - a docs-only commit on a branch is ignored, and so is one that touches only files
-    that never reach the machine: relay/tests/ and relay/make-manifest.py (make-manifest.py
-    ships relay/ark_relay/**/*.py|*.txt, relay/*.py and RELEASE-NOTES.md); a top-level
-    relay/*.py commit still blocks (2026-10-13: the daysim test commits were counted);
-  - a commit whose patch is already in main (cherry-picked: `git cherry` says "-") is
-    ignored, and so is a commit on HEAD (the deploy pushes HEAD to main);
-  - a malformed review line (unknown verdict) fails closed;
-  - all of it under diff.noprefix / diff.mnemonicPrefix / diff.renames=false;
-  - deploy-relay.sh runs the gate before the pre-deploy replay.
-
-    Formerly test_unmerged_fixes.py.
-    """
+    """deploy-relay.sh step 0.6: a finished relay fix may not sit on a branch, unreviewed."""
     import contextlib
     import importlib.util
     import io
@@ -1053,13 +929,7 @@ origin/main is the baseline commit:
 
 
 def _part_winps_shutdown_guard():
-    """winps.sh refuses to power the machine off while a game or automation process is up.
-
-2026-11-16 10:4x a Claude session told the user it would shut the machine down after a deploy while the
-morning shift was still running OK-WW / MaaEnd; the relay powers the machine off itself once the shift
-is done (debug mode skips only that one shutdown). Gemini's fix: the entry point checks first. Here
-`ssh` is a fake on PATH that decodes the PowerShell winps.sh would send and answers as the machine would.
-    """
+    """winps.sh refuses to power the machine off while a game or automation process is up."""
     import os
     import re
     import stat
@@ -1259,25 +1129,6 @@ if out:
 
 def _part_mac_one_at_a_time_main():
     """Nothing we run on the Mac starts programs in bulk while macOS runs it at background priority.
-
-The Mac runs a macOS 27.2 beta whose kernel locks itself when a background-priority process
-execs while it updates its own importance (09-23 04:19 panic, symbolicated in
-the board write-up of the 09-23 04:19 panic: the locking grep was started by lint-repo.sh's `xargs -P 8`).
-The Mac froze the same way 10-10 01:06 and 03:09, and 10-14 19:52 while a lint-repo.sh run
-(started 19:50:33) was still going. macOS puts every other app's processes, Claude's included, at
-background priority while a game is in front (runningboardd: "Set darwin role to: Background" each
-time Game Mode turned on, 10-14). So the runners keep starting tests in parallel, but each start
-first waits while the run is at background priority.
-
-Checks:
-  * every `xargs -P` above 1 under scripts/mac/ starts a function whose first step is
-    wait_not_background (deploy-relay.sh defines it inside the block CI sources);
-  * every Python file that starts programs from a thread or process pool waits on
-    getpriority(PRIO_DARWIN_PROCESS) first, except FORK_ONLY (forked workers that never exec);
-  * the wait itself, with a fake ps; the priority read, live, without starting a program;
-  * launchd jobs we install are not Background jobs.
-
-    Formerly test_mac_one_at_a_time.py.
     """
     import os
     import re
@@ -1337,11 +1188,6 @@ Checks:
             bad_py.append(rel)
     check("pools that start programs wait while at background priority", bad_py, [])
 
-    # 3a. The wait also runs under the system python3 (3.9), which deploy-relay.sh uses for tools_latest.py
-    #     and changed_covered.py --tests-for: os.PRIO_DARWIN_PROCESS only exists from Python 3.12, so a bare
-    #     os.PRIO_DARWIN_PROCESS raised AttributeError there and tools_latest.py stopped at its first check
-    #     (deploy log 10-14 23:2x). Text check everywhere; on the Mac, each file's _wait_not_background runs
-    #     under /usr/bin/python3 (a sleep exits at once, so a background run does not wait here).
     bare = [p.relative_to(ROOT).as_posix() for p in files if p.name != Path(__file__).name
             and "os.PRIO_DARWIN_PROCESS" in p.read_text(errors="replace").replace('getattr(os, "PRIO_DARWIN_PROCESS"', "")]
     check("no bare os.PRIO_DARWIN_PROCESS (missing before Python 3.12)", bare, [])

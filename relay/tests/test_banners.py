@@ -23,7 +23,7 @@ def _part_banners():  # noqa: C901
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import fx_dir
+    from _parts import fx_dir
 
     import ark_relay.features.banners as _b
     from ark_relay.features.banners import _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights, group_notice, newest_version, opening_tomorrow, parse_endfield, parse_endfield_notice, parse_wuwa, parse_wuwa_preview, render, upcoming
@@ -58,10 +58,6 @@ def _part_banners():  # noqa: C901
         return sum(1 for r in recs if r.levelno == logging.WARNING and part in r.getMessage())
 
 
-    # The Arknights official site as the relay reads it since 2026-10-07: the list
-    # endpoint (one tab, 6 a page, newest first) and the bulletin backend's posts.
-    # The /news pages recorded earlier give the lists: their items carry the tab
-    # (tab 0 = 公告 announcements, 1 = 活动 events, 2 = 新闻 news).
     _AK_ITEM_TAB = re.compile(r'\\"cid\\":\\"(\d+)\\",\\"tab\\":\\"(\w+)\\",\\"sticky\\":(?:true|false),'
                           r'\\"title\\":\\"([^"\\]+)\\",\\"author\\":\\"[^"\\]*\\",\\"displayTime\\":(\d+)')
     _AK_TAB = {"0": "ANNOUNCEMENT", "1": "ACTIVITY", "2": "NEWS"}
@@ -144,7 +140,6 @@ def _part_banners():  # noqa: C901
               len(_AK_PAGES), 1)
 
         ak = parse_arknights((FX / "prts_limited.wikitext").read_text(encoding="utf-8"))
-        # 164 since 2026-10-06: the row 「雪融之诺 复刻」 writes 「2022-12-1 16:00」 and was dropped before
         check("限时寻访解析条数", len(ak), 164)
         check("一位数的日子也读（2022-12-1 16:00）",
               [(b.start, b.end) for b in ak if b.name == "雪融之诺 复刻"],
@@ -163,15 +158,12 @@ def _part_banners():  # noqa: C901
               ("予愿安洁莉娜", "珊比", "嘉辛塔"))
 
 
-
     def _endfield() -> None:
         """终末地：森空岛 char-pool + 官方版本说明。"""
         ef_pools = json.loads((FX / "endfield_pools.json").read_text(encoding="utf-8"))
         ef = parse_endfield(ef_pools, lambda gid: {"1683": "梨诺"}.get(gid, ""))
         check("终末地池名", [b.name for b in ef], ["晨星于此闪耀"])
         check("角色名要按 pcLink 里的 gameEntryId 去查", ef[0].chars, ("梨诺",))
-        # Wall clock in the server's zone regardless of where the test runs (from Tokyo the
-        # old local conversion read 12:59 for the bulletin's 11:59, 2026-09-12).
         check("起止按北京时间还原（1786248000 = 08-09 12:00，1788300000 = 09-02 06:00）",
               (ef[0].start.strftime("%m-%d %H:%M"), ef[0].end.strftime("%m-%d %H:%M")),
               ("08-09 12:00", "09-02 06:00"))
@@ -245,7 +237,6 @@ def _part_banners():  # noqa: C901
               newest_version([("9.9版本内容说明", "旧"),
                               ("10.0版本内容说明", "新")]), "新")
         check("一条都没有时返回空", newest_version([]), "")
-
 
 
     def _opening_tomorrow() -> None:
@@ -387,7 +378,6 @@ def _part_banners():  # noqa: C901
         finally:
             _b.log.removeHandler(grab)
         check("下期时刻没有来源就扣下", ("⚠️ 这一行没通过来源核对" in out, len(tr.withheld)), (True, 1))
-        # 09-26 21:46:53: as an ERROR this rang the group (errwatch) for one line of the report.
         check("held back as a WARNING, not an ERROR", levels, [logging.WARNING])
 
 
@@ -548,7 +538,7 @@ def _part_banners():  # noqa: C901
         # 6. the trace file: one per day next to the state, sources and checks inside
         import sys as _sys
         _sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from _tmp import tmpdir
+        from _parts import tmpdir
         sd = tmpdir()
         tr2.src("鸣潮", "当期", "库街区", "身赴三途 景燃")
         _b.save_trace(sd, now, out2, tr2)
@@ -676,16 +666,7 @@ def _part_banners():  # noqa: C901
     def _ak_history() -> None:
         """Asked for by the user on 2026-10-06 at 18:5x, for the running banner and
     every past one alike, in his words: 「本期及之前的都必须适配」.
-
-    Every sample below is a real official post (cut to the page's own article
-    HTML) or a real page of the site's list endpoint. Each one pins a wording
-    the reader met when replayed over all 239 ACTIVITY posts (2019-05 to
-    2026-10): a banner as a section of an event post (5101 - the reader read
-    titles only and missed every regular banner), 「[限定] \\」 between names
-    (6247), two banners in one post (2019084798), a rerun section (2021079658),
-    the year written in the span (2021120792), 「版本更新后」 with no clock (6262),
-    and the 2019 「限时卡池【…】开启」 / 「上午10:00」 / no colon (201905517).
-    """
+        """
         fx = lambda n: (FX / n).read_text(encoding="utf-8")  # noqa: E731
         page_items = {n: json.loads(fx(f"ak-history-news-p{n}.json"))["data"]["list"] for n in (1, 7, 28, 29, 39, 40)}
         meta = {it["cid"]: it for items in page_items.values() for it in items}
@@ -693,7 +674,6 @@ def _part_banners():  # noqa: C901
                 ("5101", "1455", "9681", "9605", "6262", "2830", "2021079658", "2021120792", "2019084798", "201905517")}
         arts["1457"] = (FX / "ak_banner_1457.html").read_text(encoding="utf-8", errors="replace")
         arts["6247"] = (FX / "ak_banner_6247.html").read_text(encoding="utf-8", errors="replace")
-        # The same posts from the bulletin backend (what the relay reads since 2026-10-07)
         cms = {c: ak_post_fx(c) for c in arts}
 
         def read(cid, text):
@@ -720,7 +700,6 @@ def _part_banners():  # noqa: C901
         }
         for cid, w in want.items():
             check(f"官网公告 {cid} 按节读出的卡池", sections(cid), w)
-            # Texts cached off the page before 2026-10-07 stay in use (update_arknights_history)
             check(f"官网公告 {cid}：网页正文与接口正文读出的一样", read(cid, _b._ak_article_text(arts[cid])), w)
         # The gate: these samples must keep coming from different banners and years,
         # so a later change to the reader is checked against more than one period.
@@ -734,7 +713,6 @@ def _part_banners():  # noqa: C901
         check("限定池六星分开、去掉 [限定]", [w for _, w, _, _, _ in posts],
               ["结城理「石白深蓝之夜」", "予愿安洁莉娜、珊比「车辙与风的归所」"])
 
-        # The next banner on 2026-10-06: announced only inside the 「昨日海」 event post
         get = ak_site(ak_lists(fx("ak-history-news-2026-10-06.txt")), cms)
         check("10-06 的下期：克莱门莎「海渊巡游」10-09 12:00（只在活动预告里）",
               _ak_next(datetime(2026, 10, 6, 12, 0), get=get),
@@ -747,7 +725,6 @@ def _part_banners():  # noqa: C901
         check("一帖两池：第一池开了以后下期是久铸尘铁",
               _ak_next(datetime(2019, 9, 1), get=get19), (datetime(2019, 9, 10, 16, 0), "赫拉格「久铸尘铁」"))
 
-        # The same through _arknights (PRTS of 08-31 has no row for it yet)
         wt = fx("prts_limited.wikitext")
         real_json, real_text = _b._json, _b._text
 
@@ -791,7 +768,6 @@ def _part_banners():  # noqa: C901
                ("石白深蓝之夜", "2026-09-04 12:00"), ("海渊巡游", "2026-10-09 12:00")])
         by = {h.name: h for h in off}
         check("两帖同一池并成一行、两个来源都记", by["以风雪为誓"].source.count("/news/"), 2)
-        # the PRTS sample is of 08-31: its last row is 联合行动23 (08-18)
         check("官网与 PRTS 对上的记 + PRTS", [n for n, h in by.items() if "+ PRTS" not in h.source], ["石白深蓝之夜", "海渊巡游"])
         check("PRTS 写 07:00、官网写 12:00 的差异记下",
               by["现实之上六百米"].check, "开始 官网 2025-12-05 12:00 / PRTS 2025-12-05 07:00")
@@ -812,8 +788,6 @@ def _part_banners():  # noqa: C901
         n1 = len([u for u in asked if "/api/news" not in u])
         _b.update_arknights_history(sd, counted, parse_arknights(wt), budget=1000, max_pages=len(order))
         check("方舟往期记账：第二次不再取帖子正文", len([u for u in asked if "/api/news" not in u]) - n1, 0)
-        # A cache written before 2026-10-07 holds the page texts under the page address:
-        # read as they are, nothing fetched again.
         sd2 = Path(tempfile.mkdtemp())
         (sd2 / "banners").mkdir(parents=True)
         old_cache = {f"{_b._AK_NEWS}/{c}": _b._ak_article_text(h) for c, h in arts.items()}
@@ -936,10 +910,6 @@ def _part_banners():  # noqa: C901
               _b.parse_wuwa_calendar(lines, "余心所向九死未悔", now), datetime(2026, 10, 22))
         typo = [Line("余心所问九死未悔", o.x, o.y, o.w, o.h) if o.text == "余心所向九死未悔" else o for o in lines]
         check("池名认错一个字也配得上", _b.parse_wuwa_calendar(typo, "余心所向九死未悔", now), datetime(2026, 10, 22))
-        # 2026-10-06 06:20:17 incident: Windows OCR dropped two characters off the name
-        # and garbled the date row into 「10．22一]I.11」 and 「]0．22」 (]→1, 一→~,
-        # full-width dots). The old _fuzzy_in only saw same-length substitution, never
-        # dropped characters, so every case above read red.
         dropped = [Line("余心所向九悔", o.x, o.y, o.w, o.h) if o.text == "余心所向九死未悔" else o for o in lines]
         check("名字掉两字也配得上（事故原文「余心所向九悔」）",
               _b.parse_wuwa_calendar(dropped, "余心所向九死未悔", now), datetime(2026, 10, 22))
@@ -1047,11 +1017,6 @@ def _part_banners():  # noqa: C901
               _b.parse_wuwa_poster(win, "余心所向九死未悔", "锁暝"), span)
         check("同一份真读数：第一期池没有起始日期，不给", _b.parse_wuwa_poster(win, "但愿长圆如此夜", "心"), None)
 
-        # Every "each version has one" reader is checked against real samples of at least
-        # two different versions (the user, 2026-10-06 17:10 / 17:14: a fix that only fits
-        # the current sample fails at the next version). 3.6 is the Windows OCR of the 3.6
-        # post's poster: the second-half span is two lines with no 「～」 between them, and
-        # the names are garbled (「雪色所千般来」, 「纟史星光于兄穷还」).
         win36 = [Line(**o) for o in json.loads((FX / "ww-3.6-news-4-winocr.json").read_text(encoding="utf-8"))]
         span36 = (datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59))
         samples = [("3.7", win, [("余心所向九死未悔", "锁暝", span)]),
@@ -1155,8 +1120,6 @@ def _part_banners():  # noqa: C901
         check("日历图（1080x2159）整张读，放大两倍（原样读时 Windows OCR 读乱了日期）", _b.strip_plan(1080, 2159),
               (2.0, [(0, 2159)]))
         check("放大后超过 8000 像素的不放大", _b.strip_plan(2400, 4400), (1.0, [(0, 4400)]))
-        # The machine's real Windows OCR of the 3.7 calendar (notice 50868), 2026-10-06 16:07: read at its
-        # own size the second-half label is garbled, read at two times the date comes out.
         _fx = fx_dir(Path(__file__), "fixtures")
         _l1 = [Line(**o) for o in json.loads((_fx / "ww-3.7-calendar-ocr-win-1x.json").read_text(encoding="utf-8"))]
         _l2 = [Line(**o) for o in json.loads((_fx / "ww-3.7-calendar-ocr-win-2x.json").read_text(encoding="utf-8"))]
@@ -1196,7 +1159,6 @@ def _part_banners():  # noqa: C901
         def detail_of(pid):
             asked.append(pid)
             return posts[pid]
-        # 3.6 second half, real: the notices went up 09-09 11:00-11:15 Beijing for 09-10 10:00
         got = _b.wuwa_gacha_notice(events, detail_of, "3.6", "身赴三途", datetime(2026, 9, 9, 13, 0))
         check("3.6 第二期公告出了：取公告原文 09-10 10:00～09-29 11:59",
               got[:3], ("公告原文", datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59)))
@@ -1264,8 +1226,6 @@ def _part_banners():  # noqa: C901
         check("3.6 第二期：09-10 10:00～09-29 11:59，千般渡",
               (h36["start"], h36["end"], h36["weapons"]),
               (datetime(2026, 9, 10, 10, 0), datetime(2026, 9, 29, 11, 59), ["千般渡"]))
-        # 2026-10-13: `ups` mixed weapon names into the featured characters
-        # (1.1 gave ["今汐", "时和岁稔"]) and nothing read it; it is gone.
         check("往期记录里没有 ups 这一项", any("ups" in h for h in hist), False)
         h36a = by[("3.6", "第一期", "仙风玉影水天清")]
         check("3.6 第一期：开 = 维护结束 08-20 11:00，09-10 09:59 结束",
@@ -1329,7 +1289,6 @@ def _part_banners():  # noqa: C901
         finally:
             _b.update_wuwa_history, _b.update_endfield_history, _b.update_arknights_history = real_ww, real_ef, real_ak
 
-        # the whole of _wuwa on the 10-05 game notice: four cases
         notice = json.loads((FX / "ww-notice-2026-10-05.json").read_text(encoding="utf-8"))
         news = json.loads((FX / "ww-news-events.json").read_text(encoding="utf-8"))["data"]["list"]
         news_post = json.loads((FX / "ww-3.7-news-post.json").read_text(encoding="utf-8"))
@@ -1502,8 +1461,6 @@ def _part_banners():  # noqa: C901
         get, asked = fake(lambda n, off: last)
         check("B 站：列表到底了就停", (_b._bili_poster("3.8", now, get, slept.append, lambda: next(ticks)),
                                     len(asked["feed"])), (None, 1))
-        # 2026-11-07 21:48: 3.8 maintenance notice out, 3.8版本前瞻 posted on page 1, 3.8版本资讯 not out
-        # yet; once page 1's unpinned items pass the preview timestamp, stop instead of paging into 3.7 (page 4 empty)
         p1_38 = json.loads(json.dumps(pages[0], ensure_ascii=False).replace("3.7版本前瞻", "3.8版本前瞻"))
         p1_38["data"]["items"][0]["modules"]["module_author"]["pub_ts"] = p1_38["data"]["items"][8]["modules"]["module_author"]["pub_ts"]
         get, asked = fake(lambda n, off: p1_38 if off == "" else empty)
@@ -1717,9 +1674,6 @@ def _part_banners():  # noqa: C901
         check("silent 244: the readable pool is kept", [b.name for b in got], ["晨星于此闪耀"])
         check("silent 244: one unreadable pool is one WARNING", _warned(recs, "坏池"), 1)
         with _logs() as recs:
-            # The parser's own answer only: whether a banner is running is _endfield's,
-            # with the official sources (_audit_1108_endfield: Skland empty while 明河
-            # was open from 11-05 to 11-08).
             check("silent 244: an empty char-pool parses to no Skland rows", parse_endfield([], name), [])
         check("silent 244: ...and the parser says nothing about it", _warned(recs, ""), 0)
 
@@ -2067,11 +2021,9 @@ def _part_banners():  # noqa: C901
             if path == "/web/v1/wiki/char-pool":
                 return {"data": {"list": ef}}
             return {"data": {"item": {"name": "梨诺"}}}
-        # 晨星于此闪耀: the bulletin gives 08-09 12:00 to open and no closing clock.
         tr = _b.Trace.new()
         _ef_offline(sk, datetime(2026, 8, 20), bulletin_html=html, trace=tr)
         check("终末地：公告没写结束就不拿森空岛自己比", tr.checks, ["终末地：森空岛=公告 ✓（公告没写结束时刻，只核了开始）"])
-        # 临渊望北 (诀): the bulletin opens it 「版本更新后」 and closes it 08-09 11:59.
         jue = json.loads(json.dumps(ef))
         jue[0].update(name="临渊望北", poolStartAtTs="1784700000", poolEndAtTs="1786247999")
 
@@ -2088,8 +2040,6 @@ def _part_banners():  # noqa: C901
                         datetime(2026, 10, 9, 7, 0), datetime(2026, 10, 23, 3, 59))
         out, tr, _recs = _ak_offline(datetime(2026, 10, 10, 12, 0), [row], _ak_site_1006(), {"克莱门莎": 5})
         got = " ".join(tr.checks)
-        # Since 11-09 (alarm #157, Gemini): the 07:00 PRTS lists is its own bookkeeping, the
-        # post's 12:00 is first-hand, so the opening is corrected and the line is a ✓.
         check("方舟：PRTS 名字带前缀、07:00 也对得上官网那帖，开始按官网补正",
               ("找不到" in got, "池名" in got, "✗" in got,
                "开始不同（PRTS 10-09 07:00 / 官网公告 10-09 12:00），已按官网公告补正 ✓" in got),
@@ -2179,12 +2129,6 @@ def _part_banners():  # noqa: C901
         got, warns = run(down, lambda: post, down, lambda url: [], first_end=end)
         check("silent 2666: the poster giving the end is no group message", (got, warns), (end, []))
 
-
-    # ------------------------------------------------------------------ 2026-11-08 audit
-    # The user, 2026-11-08 00:12 / 00:15: 明河「烟火邀星河」 had been open since 11-05
-    # 12:00 while the report said 「当期无新角色卡池」; the group had been told on 11-04
-    # that it opens 11-05 12:00; and he wants the hidden mines of the whole section
-    # cleared, not only the one that rang (BOARD/中继卡池与关联模块清雷清单-1108.md).
 
     EF1107 = FX / "ef-1107"
     EF_NOW = datetime(2026, 11, 7, 23, 28)
@@ -2277,7 +2221,6 @@ def _part_banners():  # noqa: C901
         v = pb._no_open_mismatch({"trace": tr})
         check("1109 #66: passes, both corrections counted as filled",
               (v.status, "其中 2 条是官方来源补上的" in v.evidence), (mc.PASS, True))
-        # Had Skland closed it at the briefing's 11-26 06:00, only the opening is corrected.
         got, _nxt, tr, _recs = _ef_1109(end_ts="1795644000")
         check("1109 ef: the same end -> the end line is a plain ✓",
               ([b.end for b in got], "终末地：森空岛和新版本导览的结束时刻对得上 ✓（11-26 06:00）" in tr.checks,
@@ -2335,7 +2278,6 @@ def _part_banners():  # noqa: C901
               (wiki.start, datetime(2026, 11, 26, 6, 0),
                "终末地：森空岛 和 公告 结束不同（森空岛 11-25 06:00 / 公告 11-26 06:00），已按公告补正 ✓"
            "（公告开始写「版本更新后」，只核了结束）"))
-        # 2026-11-12, alarms #168/#169: Kuro BBS printed only the beginning of the name.
         from dataclasses import replace
         ww_now = datetime(2026, 11, 12, 11, 38)
         kuro = _b.Banner("鸣潮", "盛放于昨日梦土的", ("莉莉",), datetime(2026, 11, 12, 11, 0), datetime(2026, 12, 3, 9, 59, 59))
@@ -2402,9 +2344,6 @@ def _part_banners():  # noqa: C901
         check("1108 ef: 明河 running means no next banner yet", nxt, None)
         check("1108 ef: the end is a source date", "11-26 06:00" in tr.ends, True)
 
-        # 11-01: 祀 running (Skland empty, filled from the notices), 明河 announced for
-        # 11-05 12:00: its end is recorded like the other games' (the 下期 line and the
-        # trace file's "until", which the cross-day gate puts it back with).
         nov1 = datetime(2026, 11, 1, 12, 0)
         got, nxt, tr, recs = _ef_1107(nov1)
         out = render(got, nov1, {"终末地": nxt}, {}, tr)
@@ -2419,7 +2358,6 @@ def _part_banners():  # noqa: C901
               (_ef._ef_until(None, [], _b.Trace.new()), _ef._ef_until((None, "x「y」"), [], _b.Trace.new())),
               (None, None))
 
-        # 11-27: everything in the bulletin, the notices and the briefing has closed.
         got, nxt, tr, recs = _ef_1107(datetime(2026, 11, 27, 12, 0))
         out = render(got, datetime(2026, 11, 27, 12, 0), {}, {}, tr)
         check("silent 244: Skland empty and no official banner open -> no banner, said plainly",
@@ -2635,7 +2573,6 @@ def _part_banners():  # noqa: C901
             f = sd / "banners" / f"{day}.json"
             f.write_text(raw if raw is not None else json.dumps({"next": nxt, "until": until or {}}, ensure_ascii=False),
                          encoding="utf-8")
-        # 11-04's report: 「明天开」 明河 at 11-05 12:00 (what the group was told).
         snap("2026-11-04", {"终末地": ["2026-11-05 12:00", "明河「烟火邀星河」"], "鸣潮": [None, "锁暝"]})
         snap("2026-11-05", {}, raw="{broken")
 
@@ -2812,27 +2749,7 @@ def _part_banners():  # noqa: C901
 
 
 def _part_banner_post_miss():
-    """The Wuthering Waves version-news post: a door's miss is INFO, no door is one WARNING.
-
-10-05 21:47:23 (#58) 「库街区官方资讯里没找到 3.7 版本资讯帖」 was a WARNING on its
-own, before the Bilibili copy was even asked. Every WARNING is pushed to the
-group now (2026-10-06; the user: 「你正常情况应该一条都不发的」), so the rule is:
-库街区 missing the post while Bilibili has it is INFO; neither giving the
-second half's time is one WARNING naming what each door said. A 库街区 answer
-without a list is a source problem (KuroListProblem, kept in the trace), not
-"no post". Fixtures are the real 3.7 post (库街区 list 10-01, Bilibili feed,
-the poster's OCR) as test_banners.py uses them; no network.
-
-Since the user's rule of 2026-10-06 05:07 (「报错后自己好了的，只进日报、不进群」),
-a source that FAILED (an exception, not "no such post") while another gave
-the time is one WARNING marked errwatch.recovered(): not pushed, in the daily
-report. Here for the 库街区 door (KuroListProblem) with Bilibili giving the
-span, the PRTS API with its page giving the table, and the 库街区 gacha notice
-with the poster giving the second half's start; when nothing else gives it,
-the failure is a plain WARNING, pushed. A real errwatch handler shows both.
-
-    Formerly test_banner_post_miss.py.
-    """
+    """The Wuthering Waves version-news post: a door's miss is INFO, no door is one WARNING."""
     import json
     import logging
     import tempfile
@@ -3070,16 +2987,7 @@ the failure is a plain WARNING, pushed. A real errwatch handler shows both.
 
 
 def _part_bili_pinned_post():
-    """A pinned old post on page 1 does not stop the Bilibili feed paging.
-
-Page 1 of the real feed (ww-bili-feed-2026-10-05.json) starts with a pinned post
-from 09-19 above the 10-04/10-05 items. Paging stopped on the page's OLDEST item
-being past the cutoff, so once the pinned post aged past it the feed stopped at
-page 1 every day and the Bilibili door was closed without a word. It now stops
-on the page's NEWEST item.
-
-    Formerly test_bili_pinned_post.py.
-    """
+    """A pinned old post on page 1 does not stop the Bilibili feed paging."""
     import json
     import urllib.parse
     from datetime import datetime
@@ -3109,8 +3017,6 @@ on the page's NEWEST item.
     first = [P._bili_at(i) for i in pages[0]["data"]["items"]]
     check("fixture: page 1 starts with the old pinned post", (f"{first[0]:%m-%d}", f"{max(first):%m-%d}"), ("09-19", "10-05"))
 
-    # Cutoff = now - 50 days = 09-21: past the pinned 09-19 post, before every other
-    # item on pages 1-3 (the 3.7 version-news post is on page 3, 09-28).
     now = datetime(2026, 11, 10, 12, 0)
     check("the cutoff falls between the pinned post and the rest",
           first[0] < now - P._BILI_OLDEST < sorted(first)[1], True)
@@ -3122,18 +3028,7 @@ on the page's NEWEST item.
 
 
 def _part_event_expiry():
-    """活动结束后的提醒：三天窗口，文案讲的是活动商店。
-
-2026-08-24 运营看到"活动「直到大地变成一颗酸橙」已结束——主关卡若还是活动关，
-下一轮必失败，记得换关"，说它过时。查了真机数据：活动是 08-22 03:59 结束的，
-距今 2.77 天，**三天窗口本身是生效的**，第二天就会自己消失。过时的是内容——
-主关卡早就是 AT-4 这种常驻关，"换关"永远不可能适用。
-
-改成两件事：说活动商店该搬空了（结束后真正还来得及做的事），并写出这条提醒
-还会出现多久，免得同一句话连出三天看起来像卡死。
-
-    Formerly test_event_expiry.py.
-    """
+    """活动结束后的提醒：三天窗口，文案讲的是活动商店。"""
     import json, os, sys
     from datetime import datetime, timedelta, timezone
 
@@ -3217,21 +3112,7 @@ def _part_event_expiry():
 
 
 def _part_skland_api():
-    """The Skland calls: device id, login, refresh, bindings, Endfield card, role.
-
-No network: urllib.request.urlopen is replaced by a recorder that answers
-each URL with a canned JSON body (gzip-compressed where the real server does
-it, see skland._read). What is tested is the relay's own judgement: a wrong
-return code raises with its reason and is never taken as a success, the
-device id is cached and sent where it must be, and with several Endfield
-roles and none named the role lookup refuses with the list instead of
-silently taking the first (audit 2026-10-05).
-
-The response shapes follow docs/SKLAND-API.md (roleId / serverId in
-bindingList[].roles[]); no real binding response is on file.
-
-    Formerly test_skland_api.py.
-    """
+    """The Skland calls: device id, login, refresh, bindings, Endfield card, role."""
     #!/usr/bin/env python3
 
     import gzip
@@ -3378,15 +3259,7 @@ bindingList[].roles[]); no real binding response is on file.
 
 
 def _part_skland_http_error_body():
-    """A Skland 4xx must keep the {"code", "message"} body it came with.
-
-Audit s6 #5 (2026-10-13): _get / _post let urllib raise a bare HTTPError, so
-Skland's own reason (10001 「操作失败，请稍后重试」 on a 403, measured 2026-08-27,
-docs/SKLAND-API.md) never reached the log or the phone tile, which showed only
-「HTTP Error 403」. Network is faked; no request leaves.
-
-    Formerly test_skland_http_error_body.py.
-    """
+    """A Skland 4xx must keep the {"code", "message"} body it came with."""
     import email.message
     import io
     import urllib.error
@@ -3429,15 +3302,7 @@ docs/SKLAND-API.md) never reached the log or the phone tile, which showed only
 
 
 def _part_skland_role():
-    """endfield_role never guesses between several bound Endfield roles.
-
-No binding response has been recorded (fixtures/skland-endfield holds wiki and
-catalog pages only), so the shape below follows docs/SKLAND-API.md line 24:
-roleId and serverId sit in bindingList[].roles[]. Before 2026-10-06 the first
-role was returned whatever else was bound.
-
-    Formerly test_skland_role.py.
-    """
+    """endfield_role never guesses between several bound Endfield roles."""
     #!/usr/bin/env python3
 
 
@@ -3497,26 +3362,7 @@ role was returned whatever else was bound.
 
 
 def _part_skland_sign():
-    """The Skland request signature, recomputed independently.
-
-Every Skland call carries a `sign`. Get any part of it wrong and the server
-answers HTTP 403 `{"code":10001,"message":"操作失败，请稍后重试"}` - **it never
-says which part**. On 2026-08-27 three things were wrong at once (platform,
-vName, serverId) and the whole day went into the wrong line of investigation.
-
-So this test does not trust the implementation to check itself. It rebuilds the
-signature from the algorithm written in the module docstring, with its own
-constants and its own key order, and demands the two agree:
-
-    secret = path + query + timestamp + json({platform,timestamp,dId,vName})
-    sign   = MD5(HMAC-SHA256(cred.token, secret))
-
-That pins two things a refactor cannot see it has broken: the exact key order
-inside the signed JSON (a dict rebuilt in a different order signs a different
-string), and `platform` / `vName` staying at "3" / "1.0.0".
-
-    Formerly test_skland_sign.py.
-    """
+    """The Skland request signature, recomputed independently."""
     import hashlib
     import hmac
     import json
@@ -3591,15 +3437,7 @@ string), and `platform` / `vName` staying at "3" / "1.0.0".
 
 
 def _part_skland_sync_guard():
-    """skland.get / bindings must align clocks first when this process has not yet.
-
-Audit s6 #3 (2026-10-13): only endfield_card had the `if not _synced: refresh()`
-guard. banners.py calls login() then get(), so in a process where no phone
-session had refreshed first, the request was signed with the local clock
-(Skland answers 10003 when it is off). Network is faked; no request leaves.
-
-    Formerly test_skland_sync_guard.py.
-    """
+    """skland.get / bindings must align clocks first when this process has not yet."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import skland
@@ -3636,10 +3474,6 @@ session had refreshed first, the request was signed with the local clock
 
 def _part_skland_arknights_annihilation():
     """arknights_uid picks the default Arknights role; arknights_annihilation reads campaign.reward.
-
-The response shape is the one measured 2026-11-16 09:20:38 from the Mac (code 0,
-data.campaign.reward {"current": 1800, "total": 1800}, data.status.storeTs), with
-made-up uids. Network is faked; no request leaves.
     """
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import skland
@@ -3687,33 +3521,7 @@ made-up uids. Network is faked; no request leaves.
 
 
 def _part_needtable_publish():
-    """The relay keeps the App's need table current by itself (needtable.py).
-
-Until 2026-10-14 the table was rebuilt only when someone ran scripts/mac/build-need-tables.py
-and deploy-web.sh by hand; the last run was 09-23, and the two six-stars announced since
-(祀, 明河) never reached the App. Pinned here:
-
-* the object's name is the phone state's hash + `.need.json` (the App derives the same:
-  ark-remote Relay.needURL; the hex for "ark-test-topic" is pinned on both sides);
-* a due day builds once, on a thread of its own, and PUTs the table public-read (cos_put's
-  default) with the state's timeout; a day that has its table does not build again; the next does;
-* a build or a PUT that fails is an INFO line and a red item in the technical log, never
-  raises, and is tried once more the same day at least 30 min later - at most two builds a
-  server day, even when the mark file cannot be written;
-* a day's second failed try, or two failed builds in a row that no group message covered
-  yet (a day's lone try and the next day's first), is one plain WARNING (the group) at
-  once, every time - no three-day wait (Gemini's dispatch relay-audit-round2-1108 N-01, 2026-11-08);
-* a build that works after a failure (the same day's second try, or a later day) is one
-  WARNING marked errwatch.recovered() (daily report only) naming the failure and the days
-  missed;
-* a machine without a topic, COS or Skland token builds nothing and says so at INFO;
-* the engine's tick runs the step.
-
-No network: the table is built offline from fixtures/skland-endfield-1015 (祀 current, 明河 next;
-skland-endfield-1014 until the 2026-10-15 two-standard caliber), the PUT is a recorder.
-
-    Formerly test_needtable_publish.py.
-    """
+    """The relay keeps the App's need table current by itself (needtable.py)."""
     import inspect
     import json
     import logging
@@ -3981,16 +3789,7 @@ skland-endfield-1014 until the 2026-10-15 two-standard caliber), the PUT is a re
 
 
 def _part_needtable_trims():
-    """The need table's trims: what each keeps of a live Skland / GitHub answer.
-
-The relay runs these on every live answer of the daily build (needtable/build.py,
-RulesSource.get / get_url); the offline tests read fixtures that were trimmed already, so
-until 2026-10-14 no test ran them (the deploy's coverage gate: 9 new functions never
-touched). Each case feeds an answer shaped like the live one, with the extra fields the
-trim must drop, and checks exactly what is kept.
-
-    Formerly test_needtable_trims.py.
-    """
+    """The need table's trims: what each keeps of a live Skland / GitHub answer."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -4053,8 +3852,6 @@ trim must drop, and checks exactly what is kept.
     check("origin keeps the 物品来源 chapter's blocks in order", build.trim_wiki_origin(origin),
           {"itemId": "9", "name": "O", "lines": ["采集：四号谷地"]})
 
-    # The client-data mirrors: from the game PC raw.githubusercontent.com reset the TLS
-    # handshake (2026-10-14 10:30:06); the jsDelivr doors come first.
     raw = "https://raw.githubusercontent.com/MaaEnd/MaaEnd/v2/assets/locales/interface/zh_cn.json"
     check("doors: three jsDelivr mirrors, then raw", build.github_doors(raw), [
         "https://fastly.jsdelivr.net/gh/MaaEnd/MaaEnd@v2/assets/locales/interface/zh_cn.json",
@@ -4098,8 +3895,6 @@ trim must drop, and checks exactly what is kept.
     check("an answer is kept for the rest of the build (no second request)",
           (src.get_url("client-item-names", raw, build.trim_item_names), len(tried)), ({"item_gold": "折金票"}, 3))
 
-    # MaaEnd's essence files (build.essence_advice), shaped like assets/data/EssenceFilter/* and
-    # tasks/AutoEssence/Target/Target.json of MaaEnd v2 on 2026-10-15.
     check("essence weapons: code -> CN name, CN skills, type, rarity", build.trim_essence_weapons(
         {"wpn_claym_0018": {"internal_id": "wpn_claym_0018", "weapon_type": "Claymores", "rarity": 6, "icon_path": "x.png",
                             "skill_ids": ["a"], "names": {"CN": "玉中身", "EN": "Jade Vessel"},
@@ -4135,7 +3930,7 @@ def _part_need_table():
     sys.path.insert(0, str(HERE.parent))
     if str(Path(__file__).resolve().parent) not in sys.path:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import fx_dir
+    from _parts import fx_dir
 
     from ark_relay.features import needtable as bnt
 
@@ -4165,7 +3960,6 @@ def _part_need_table():
     # 寒夜幽影 1→90, every breakthrough (rules?weaponIds=4e7f3757…).
     WEAPON = {"重型强固模具": 50, "强固模具": 23, "中黯石": 5, "重黯石": 5, "轻黯石": 3, "协议纹石": 8, "武器经验": 2_524_080}
     SHARED = {"象限拟合液": (132, "干员 116 + 专武 16"), "折金票": (841_000 + 385_420 + 125_700 + 341_390, "干员 1,226,420 + 专武 467,090")}
-    # The use section each of them lands in (rules: charBreak* nodes / skill levels 2-9 and 10-12 / weapon breakthroughs).
     USE_OF = {"协议圆盘组": "干员精英化", "协议圆盘": "干员精英化", "重红柱状菌": "干员精英化", "中红柱状菌": "干员精英化",
               "轻红柱状菌": "干员精英化", "快子遴捡晶格": "干员精英化", "塔罗斯菌": "干员精英化",
               "协议棱柱": "干员技能升级", "纯晶多齿叶": "干员技能升级", "至晶多齿叶": "干员技能升级", "晶化多齿叶": "干员技能升级",
@@ -4306,9 +4100,6 @@ def _part_need_table():
             str(order[:8]))
 
     print("\n[未来的干员：--rarity 5 时未实装的噗切娜是「下一位」；她的用量来自客户端预览表]")
-    # 2026-10-15: the first standard is the newest released one, the announced one the second
-    # (build.pick_standards). This fixture holds no numbers for the released five-star, so her
-    # build is pinned by name (--char), which takes the same path as the second standard.
     _, ranked5 = bnt.newest(fives)
     check("五星：已上线最新的那位在前，未实装的噗切娜是下一位", [(w, r) for w, r, _l, _c in bnt.pick_standards(ranked5, TODAY, "5")],
           [(next(e["name"] for e in ranked5 if e["onlineDate"] <= TODAY), "current"), ("噗切娜", "next")])
@@ -4415,8 +4206,6 @@ def _part_need_table():
           [(x["slot"], x["id"], x["name"]) for x in ess["terms"]],
           [("基础属性", "s1_5", "智识提升"), ("附加属性", "s2_1", "寒冷伤害提升"), ("技能属性", "s3_7", "效益")])
     check("玉中身：MaaEnd 武器代号", ess["code"], "wpn_claym_0018")
-    # CEP, read 2026-10-15: weapons.ts 玉中身 = gat_passive_attr_wisd / gat_passive_attr_icedam / gst_passive_keyword;
-    # dungeons.ts points whose s2Pool and s3Pool hold the last two (names after the 「·」).
     CEP_POINTS = {"玉中身": ["枢纽区", "源石研究园", "矿脉源区", "藏剑谷", "应龙关"],
                   "唤月": ["源石研究园", "供能高地", "首墩", "应龙关"]}
     check("玉中身：能同时出三条的地方 = CEP 算出来的五处", [x["name"] for x in ess["points"]], CEP_POINTS["玉中身"])
@@ -4494,9 +4283,6 @@ def _part_need_table():
     check("名字尾巴的换行被去掉", mt["x"]["name"], "D96钢样品四")
 
     print("\n[自选箱：只补不够一人份的高阶素材，最缺的先补（用户 2026-09-23 09:05）]")
-    # Until 2026-11-17 this part also read the committed web/data/need.json (the published copy had
-    # to equal the offline rebuild) and ran web/inventory.js applyBox in JavaScriptCore; the phone
-    # page (web/) was removed that day, so the box is checked on the offline rebuild alone.
     box = g["box"]
     check("箱子 = material-list 的 SELFSELECT 项", (box["id"], box["name"], box["per"]), ("e55ebf79deddbe781f2a33fb65fd7c61", "高阶培养自选箱Ⅰ", 2))
     check("可选 = priorities RARE 五种", box["pickNames"], ["超距辉映管", "D96钢样品四", "快子遴捡晶格", "象限拟合液", "三相纳米片"])

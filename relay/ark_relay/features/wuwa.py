@@ -13,16 +13,6 @@ from ark_relay.features import banners as hub
 from ark_relay.core.config import SERVER_TZ
 from ark_relay.features.banners import record_history, _UA_BROWSER, log, _stamps, Trace, Banner, crosscheck_fix, newest_version, _SWAP, upcoming
 
-# Past Wuthering Waves banner periods, read the way the next one is: the Kuro BBS
-# banner notices (every half of a version since 3.1 is still in the list: 43 notices,
-# 2026-02-25 .. 09-29) give the pools and the span; a half that opens 「X版本更新后」
-# starts when that version's maintenance window (the site's 「X版本更新维护预告」, kept
-# back to 1.1) ends. The facts of an ended period do not change, so the same read must
-# give the same record for ever (the user, 2026-10-06 18:56: the banner feature must be
-# perfect, these facts are fixed).
-# Titles over the years: 「x」 / <x> / [x] around the pool name, 「角色|武器」, 活动 / 联动 /
-# 忆旅 唤取, and from 1.x to 2.x a trailing 「——「<up>」概率UP」 naming the featured one
-# (group 3; nothing reads it since the unread `ups` field was dropped, 2026-10-13).
 _WW_HIST_TITLE = re.compile(r"^[\[「<《]([^\]」>》]+)[\]」>》](角色|武器)(?:活动|联动|忆旅)?唤取(?:——「([^」]+)」概率UP)?")
 
 
@@ -192,14 +182,6 @@ def wuwa_maint_notice(articles: list, now: datetime, get=None) -> "tuple[str, da
 _KURO = "https://api.kurobbs.com"
 
 
-# The version-news post (「《鸣潮》版本资讯 | 3.7版本…」, 库街区 1551271800597471232,
-# 2026-09-28 18:00; the same images on Bilibili an hour later) is the one official
-# place the second-half banner's time of day appears before it opens: its third
-# long image has the heading 「角色/武器活动唤取」, the label 「活动时间」, then the span
-# 2026年10月22日10:00～2026年11月11日11:59 (server time) with the banner names under
-# it. It is a 新闻 (eventType 2) in the
-# official-news list. getPostDetail answers 102 「服务器外部错误」 without a devCode
-# and a browser User-Agent; any devCode value does (2026-10-01).
 _KURO_NEWS = "/forum/companyEvent/findEventList"
 _KURO_POST = "/forum/getPostDetail"
 _KURO_BBS_HDR = {"source": "h5", "version": "2.5.0", "devCode": "ark-relay"}
@@ -248,8 +230,6 @@ def parse_wuwa_poster(lines: list, pool: str, char: str = "") -> "tuple[datetime
     miss = 2 if len(want) >= 6 else 1 if len(want) >= 4 else 0
     rows = _rows(lines)
     for i, (_y, txt) in enumerate(rows):
-        # Windows.Media.Ocr reads 「～」 as 「、」 and 「锁暝UP!」 as 「锁暝U」 (2026-10-05
-        # on the PC, fixture ww-3.7-news-4-winocr.json)
         if not (_name_in(want, txt, miss) or (char and f"{char}U" in txt.upper())):
             continue
         k = next((j for j in range(i - 1, -1, -1) if "服务器时间" in rows[j][1]), None)
@@ -268,24 +248,6 @@ def parse_wuwa_poster(lines: list, pool: str, char: str = "") -> "tuple[datetime
     return None
 
 
-# The same post on Bilibili (the official space, uid 1955897084: dynamic
-# 1253061864718336024, 2026-09-28 19:00, image 3 is the 1080x14717 original of
-# the 库街区 poster) is the second door. Its space feed needs a visitor buvid
-# (finger/spi) and a WBI-signed query: unsigned it answers -352. Signed, it is
-# still risk-controlled without saying so: the answer is code 0 with no items,
-# has_more false and an empty offset (fixture ww-bili-feed-2026-10-05.json,
-# "empty") - the same shape a space with no dynamics would give, so read alone
-# it looks like "no post". Measured 2026-10-05 from a cloud container, the same
-# signed page-1 request listed 13 items in 4 of 6 tries with a fresh buvid per
-# try, and in 1 of 6 with one buvid reused for ~30 requests; one buvid per run
-# with a single retry (what the relay did until then) gave up on the first empty
-# page; a live run of this code the same evening needed 4 tries for page 2. So
-# each empty page is retried with a new buvid and a new wts, and a page
-# that stays empty is a source problem (BiliFeedProblem, raw shape in the
-# message and the trace), never "no banner". The signature follows the
-# community write-up (bilibili-API-collect docs/misc/sign/wbi.md - that
-# repository was emptied in 2026-01 after a lawyer's letter from Bilibili; its
-# worked example is pinned in the tests); Bilibili publishes no documentation.
 _BILI_UID = 1955897084
 _BILI_SPI = "https://api.bilibili.com/x/frontend/finger/spi"
 _BILI_NAV = "https://api.bilibili.com/x/web-interface/nav"
@@ -295,14 +257,6 @@ _BILI_MIX = (46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43
              33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40,
              61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11,
              36, 20, 34, 44, 52)
-# The account posts about five dynamics a day, 12-13 per page: on 2026-10-05 the
-# 3.7 post (09-28) was on page 3, so four pages lost it about two weeks before
-# the second half it times (10-22). Paging stops at the first page whose NEWEST
-# item is older than _BILI_OLDEST (a version runs about 40 days and its post
-# comes out two days before it), or at _BILI_PAGES, whichever is first. Newest,
-# not oldest: a pinned post sits on page 1 whatever its age (the 09-19 item above
-# 10-04/10-05 in ww-bili-feed-2026-10-05.json), and once it passed the cutoff the
-# oldest-item rule stopped at page 1 every time.
 _BILI_PAGES = 12
 _BILI_OLDEST = timedelta(days=50)
 _BILI_TRIES = 5
@@ -440,11 +394,6 @@ def _bili_poster(ver: "str | None", now: datetime, get=None, sleep=None, clock=N
                     preview_at = at
             unpinned = dated[1:] if len(dated) > 1 and dated[0] < dated[1] else dated
             if preview_at is not None and min(unpinned) <= preview_at:
-                # The version-news poster comes out days after the preview livestream
-                # (3.7: preview 09-19, version-news 09-28; 3.8: preview 11-06). Once the
-                # chronological feed has scrolled back to the preview without seeing it,
-                # the post is not published yet; paging further only walks into the
-                # previous version and hits multi-page risk control (11-07 21:48 page 4).
                 log.info("Bilibili feed: no %s version-news post; page %d reached %s, past %s版本前瞻 (%s)",
                          ver, page + 1, f"{min(unpinned):%Y-%m-%d}", ver, f"{preview_at:%Y-%m-%d}")
                 return None
@@ -472,9 +421,6 @@ class KuroAnswerProblem(RuntimeError):
     "nothing found"."""
 
 
-# Every saved 库街区 answer (tests/fixtures/wuwa_home.json, ww-news-events.json,
-# ww-kuro-events3-2026-10-05.json, ww-3.7-news-post.json, wuwa_entry_jingran.json,
-# wuwa_catalogue_2026-09-12.json) carries "code": 200 on success.
 _KURO_OK = 200
 
 
@@ -505,8 +451,6 @@ def _kuro_poster(ver: "str | None", now: datetime, get=None):
                               f"{json.dumps(answer, ensure_ascii=False)[:300]}")
     hit = wuwa_news_post(events, ver, now)
     if not hit:
-        # Not a fault by itself: the Bilibili copy is the next door
-        # (_wuwa_poster_span), and only both missing is one (10-05 21:47).
         log.info("库街区官方资讯里没找到 %s 版本资讯帖（列表 %d 条）", ver or "当期", len(events))
         return None
     pid, title, _at = hit
@@ -518,14 +462,6 @@ def _kuro_poster(ver: "str | None", now: datetime, get=None):
     return _KURO_POST_URL.format(id=pid), title, imgs
 
 
-# The banner notices (Kuro BBS official eventType 3, posted about 11:00 Beijing the
-# day before a half opens) print the span as text, to the minute: the second half
-# of 3.6 gives its start and end dates, the first half of 3.7 gives "after the 3.7
-# update" and its end (fixtures ww-kuro-gacha-posts.json). Until the second half's notice is out, its start is the first half's printed
-# end plus one minute. Checked against every pair the list still holds
-# (2025-08-13..2026-09-29): 2.6 09-17, 2.7 10-30, 2.8 12-11, 3.0 01-15, 3.1 02-26,
-# 3.2 04-09, 3.3 05-21, 3.5 07-30, 3.6 09-10 - first half ends 09:59, second
-# opens 10:00 the same day, 9 of 9 (3.4's first-half notice is not in the list).
 _WW_GACHA_SPAN = re.compile(r"活动时间[✦\s：:]*(?:(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2})[:：](\d{2})|(\d+\.\d+)版本更新后)"
                             r"\s*[~～\-—至]+\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2})[:：](\d{2})")
 _WW_GACHA_CHECKED = "2.6–3.6 九期第一期结束 09:59、第二期同日 10:00 开，9 期全中"
@@ -605,10 +541,6 @@ def _poster_read(what: str, page: str, title: str, imgs: list, pool: str, char: 
         try:
             lines = read_image(url)
         except Exception as e:
-            # a download that timed out (the posters are several MB; 2026-10-01
-            # 02:5x the Mac's fetch of one timed out) says nothing about the OCR
-            # agent: go on to the next image (INFO: the next image or door may
-            # still give the span; none giving it is _wuwa_poster_span's WARNING)
             log.info("%s版本资讯第 %d 张图读图失败", what, n, exc_info=True)
             if failed is not None:
                 failed.append(f"{what}那一帖第 {n} 张图没读下来（{type(e).__name__}）")
@@ -642,14 +574,6 @@ def _wuwa_poster_span(ver: "str | None", pool: str, char: str, now: datetime,
     gave nothing, so an evening costs one poster's OCR. None when neither did."""
     if not read_image:
         return None
-    # A door that misses is only a fault when the other one misses too: until
-    # 2026-10-06 each door's miss was its own WARNING (10-05 21:47 「库街区官方资讯
-    # 里没找到 3.7 版本资讯帖」) whether or not Bilibili then had the post. Now
-    # each miss is INFO and the WARNING is one line, when no door gave the span.
-    # A door or an image that FAILED (an exception, not "no such post") while
-    # another one gave the span is a fault the relay got over: one WARNING
-    # marked errwatch.recovered(), the daily report only (why: USER-SWITCHES.txt
-    # at wuwa_posters.py:_wuwa_poster_span).
     misses: list[str] = []
     failed: list[str] = []
     for what, find in (("库街区", lambda: hub._kuro_poster(ver, now, get)),
@@ -710,8 +634,6 @@ def image_reader(state_dir):
             cache = json.loads(cache_f.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             cache = {}
-        # The key carries the read recipe: a result cached before the not-tall images
-        # were enlarged (the garbled 10-06 calendar) must not be served again.
         key = f"{url}#2x"
         if key not in cache:
             req = urllib.request.Request(url, headers={"User-Agent": _UA_BROWSER})
@@ -743,13 +665,6 @@ def image_reader(state_dir):
     return read
 
 
-# Long posters (the 「版本资讯」 images are 733x10000 on 库街区, 1080x14717 on
-# Bilibili) come back as three garbled lines when OCR'd whole: the engine shrinks
-# them until the text is unreadable (2026-10-01, Vision on the Mac and the 01:37
-# read). So every image is cut into strips that overlap, a line cut by one
-# boundary being whole in the next, and narrow ones are enlarged first. Each strip
-# stays within _STRIP_MAX px a side: OcrEngine.MaxImageDimension exists but its
-# documentation gives no number.
 _STRIP = 1400
 _STRIP_OVERLAP = 200
 _STRIP_MAX = 2000
@@ -808,13 +723,6 @@ def ocr_strips(raw: bytes, ocr_png) -> "list | None":
     return out
 
 
-# While the second half of a version runs, the next version's first half has no banner
-# list yet, but two things are published early: the maintenance window (the site's
-# 「X版本更新维护预告」, about a week ahead; the first half opens when it ends - 3.6:
-# 08-20 04:00~11:00, banner start 11:00) and the first half's end, printed on the
-# version-news poster as 「X.Y版本更新后～2026年…09:59」 and, the day before, in the Kuro
-# BBS first-half notice. The user, 2026-10-06 18:03: the period after the next one must
-# have its time complete, start and end.
 _WW_FIRST_END = re.compile(r"版本更新后[~～\-—一至、]*(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2})[:：](\d{2})")
 
 
@@ -859,11 +767,6 @@ def _kuro_default(path: str, payload: dict) -> dict:
     return hub._json(_KURO + path, _UA_BROWSER, urllib.parse.urlencode(payload).encode(), h)
 
 
-# A character name with a middle dot is spelled with different dot characters by
-# different sources: the Kuro wiki writes 秧秧·玄翎 with U+00B7
-# (wuwa_catalogue_2026-09-12.json), the in-game notice 秧秧・玄翎 with U+30FB
-# (maint/ww_notice.json). Every parser below folds all the variants to U+00B7, so
-# the debut / running / notice comparisons in _wuwa compare like with like.
 _DOTS = str.maketrans({"\u30fb": "\u00b7", "\uff65": "\u00b7", "\u2022": "\u00b7", "\u2027": "\u00b7"})
 
 
@@ -871,16 +774,6 @@ def _one_dot(name: str) -> str:
     return name.translate(_DOTS)
 
 
-# ── Wuthering Waves: the Kuro BBS wiki homepage (no token) ─────
-# POST /wiki/core/homepage/getPage with just three fixed headers.
-# In data.contentJson.sideModules[], the modules whose title contains 「角色…唤取」;
-# their content.tabs[] are the banners running concurrently:
-#   tab.name                        banner name
-#   tab.countDown.dateRange         ["2026-08-20 11:00", "2026-09-10 09:59"]
-#   tab.imgs[0].linkConfig.entryId  character entry id
-# **The imgs after the first are the same generic entries in every tab; only the
-# first one is the character.**
-# Weapon banners are not reported.
 def wuwa_tabs(home: dict) -> "tuple[list[tuple[str, str, datetime, datetime]], list[str], int]":
     """The homepage's character-banner tabs: ([(banner name, the character's entry
     id or "", start, end)], the tabs whose dateRange cannot be read, how many tabs)."""
@@ -917,8 +810,6 @@ def parse_wuwa(home: dict, name_of) -> list[Banner]:
     out: list[Banner] = []
     tabs, bad, n_tabs = wuwa_tabs(home)
     for name, eid, a, b in tabs:
-        # The wiki entry name can carry whitespace (a leading space on 2026-09-12);
-        # a raw compare against the bulletin's spelling dropped the running banner.
         who = _one_dot((name_of(eid) if eid else "").strip())
         if who:
             out.append(Banner("鸣潮", name, (who,), a, b))
@@ -933,15 +824,7 @@ def parse_wuwa(home: dict, name_of) -> list[Banner]:
 
 
 def wuwa_teased(records: list, now: datetime) -> list[str]:
-    """Characters the Kuro wiki marks as previewed (announced, not yet released).
-
-    The character catalogue (id 1105) carries a corner badge per entry:
-    `content.showTeaserIcon` with `showTeaserIconNum` 1 = new, 2 = previewed,
-    3 = rerun, valid inside `teaserDateRange`. Read off the wiki on 2026-09-12:
-    景燃 1, 绯雪 3, 莫宁 3, 心 2, 锁暝 2 - matching the badges the page draws. Stale
-    flags stay on old entries (a rerun badge whose range ended 2026-04-29), so the
-    range is required.
-    """
+    """Characters the Kuro wiki marks as previewed (announced, not yet released)."""
     out: list[str] = []
     for r in records or []:
         c = r.get("content") or {}
@@ -990,22 +873,6 @@ def parse_wuwa_preview(content: str) -> "list[tuple[str, str]]":
     return out
 
 
-# Compared 2026-10-12 with gacha-calendar-core 0.11.3 (npm, MIT), i.e.
-# EastMG/dsh-gacha-calendar src/client/30-game-kuro.js @ 8070578: the same file.
-# Upstream reaches it through .../<hash>/entrypoint.json, whose contentUrl
-# points back into the same <hash> directory, so the hop adds a request and no
-# robustness. Upstream takes a banner's window from recommend[].startTimeMs /
-# endTimeMs instead of the text; not ported, because startTimeMs is when the
-# notice shows, not when the banner opens: notice 50840 [但愿长圆如此夜] had
-# startTimeMs 2026-09-30 04:00 while the Kuro wiki getPage dateRange and the
-# game opened it at 11:00 (the text says 「3.7版本更新后」, which
-# _WW_NOTICE_SPAN keeps as start_note). endTimeMs (10-22 09:59:59) equals the
-# text's end. Upstream's Bwiki 角色轮换池 fallback is not ported either: the
-# Kuro wiki getPage is the primary source here and upstream notes that page
-# was stale.
-# This hash is a channel constant and does not change with the version; if it ever
-# does stop working, read metadata.source_url from data/ww/game/notice.json in
-# 555me/game-CDN-List.
 _WW_NOTICE = ("https://aki-gm-resources-back.aki-game.com/gamenotice/G152/"
               "76402e5b20be2c39f095a152090afddc/zh-Hans.json")
 # The character catalogue on the wiki (its id, read off the homepage's index tab).
@@ -1015,9 +882,6 @@ _WW_HDR = {"wiki_type": "9", "source": "h5",
 
 
 _WW_NOTICE_UP = re.compile(r"5星角色「([^」]+)」")
-# The start is a date, or 「3.7版本更新后」 for a banner that opens with the version
-# (its maintenance end, which the notice does not print): 2026-10-01, every
-# first-half 3.7 banner post reads 「活动时间✦ 3.7版本更新后 ~ 2026年10月22日09:59」.
 _WW_NOTICE_SPAN = re.compile(r"活动时间[✦\s]*(?:(\d{4})年(\d{1,2})月(\d{1,2})日(\d{1,2}):(\d{2})|(\d+\.\d+版本更新后))"
                              r"\s*[~～-]\s*(\d{4})年(\d{1,2})月(\d{1,2})日\s*(\d{1,2}):(\d{2})")
 _WW_NOTICE_TITLE = re.compile(r"[\[「]([^\]」]+)[\]」]\s*角色(?:活动|联动|忆旅)唤取")
@@ -1026,9 +890,6 @@ _WW_NOTICE_TITLE = re.compile(r"[\[「]([^\]」]+)[\]」]\s*角色(?:活动|联�
 def parse_wuwa_notice_banners(notice: dict) -> list[Banner]:
     """The in-game notice's own banner posts (`recommend[]`, 「[X]角色活动唤取」):
     the second official source for the running 鸣潮 banners.
-
-    Read 2026-09-12: tabTitle 「[身赴三途]角色活动唤取」, the content names the
-    five-star 「景燃」 and gives the activity span 2026-09-10 10:00 to 2026-09-29 11:59.
     """
     out: list[Banner] = []
     for n in (notice or {}).get("recommend") or []:
@@ -1049,19 +910,8 @@ def parse_wuwa_notice_banners(notice: dict) -> list[Banner]:
     return out
 
 
-# The version's activity calendar (the notice's activity[] post 「3.7版本活动日历」)
-# is the only official place the second-half banner's date appears before it opens:
-# the version bulletin says only 「※可通过[余心所向九死未悔]角色活动唤取获得」 and
-# the in-game banner post goes up when the banner opens. The calendar is a single
-# image; each banner card carries a 「10.22~11.11」 label right above its name.
-# Read 2026-10-01 from notice id 50868, notice/image/fYrvOmEkgCfEKFTy.png: dates
-# only, no time of day.
 _WW_CAL_TITLE = re.compile(r"(\d+\.\d+)版本活动日历")
 _WW_CAL_IMG = re.compile(r"""src=["']([^"']+)["']""")
-# The date label 「10.22~11.11」 above a banner card. Windows OCR reads its digits
-# and separators its own way: on the machine 2026-10-06 「10.22~11.11」 came out
-# 「]0．22」+「]1月」 split across lines, 「10.22」 as 「]0」. `_WW_CAL_FIX` normalises
-# those confusions before the label is looked for; the name is matched unnormalised.
 _WW_CAL_FIX = str.maketrans({
     "．": ".", "。": ".", "·": ".", "˙": ".",
     "]": "1", "］": "1", "I": "1", "l": "1", "|": "1", "丨": "1",
@@ -1136,12 +986,7 @@ def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
                          ) -> "datetime | None":
     """`pool`'s start date from the version calendar image, or None (and a note
     saying where the date is, so the line does not claim it was never published).
-
-    `notes is None` means another source already gave the time (the caller passes
-    None exactly then): the image is not read at all and nothing is logged but the
-    trace line. Below that return every failure is a plain WARNING (pushed). Until
-    2026-10-11 three `if cross:` branches below it marked their WARNING recovered;
-    they could never run (cross is False past the return) and were removed."""
+    """
     cal = hub.wuwa_calendar_image(notice)
     if not cal:
         return None
@@ -1149,16 +994,9 @@ def _wuwa_calendar_start(notice: dict, pool: str, now: datetime, end: datetime,
     where = f"{_WW_NOTICE} activity id={nid}「{ver}版本活动日历」{url}"
     cross = notes is None
     if cross:
-        # Another source already gave the start with its time of day (the Kuro BBS
-        # version-news post, or the first banner's end + 1 minute). The calendar image
-        # carries dates only, no hour or minute, so it cannot add anything: it is not
-        # read at all (user, 2026-10-06 17:41: the image has no hour or minute and the
-        # relay already has a source that does). Reading it only made OCR noise and alarms.
         tr.src("鸣潮", "版本日历", where, f"{pool} 没读图：另一来源已给出开启时刻（图上只有日期，没有几点）")
         return None
     day = None
-    # Why the date was not read, kept in the trace for the machine check #2 (the
-    # 10-02 「只有图没读到字」 lines never said whether the image was read at all).
     got = "这台机器不读图" if not read_image else ""
     try:
         lines = read_image(url) if read_image else None
@@ -1337,9 +1175,7 @@ def _wuwa_name_from_notice(home: dict, nameless: "dict[str, Exception]",
     fault the relay got over (WARNING marked recovered, the daily report only; why:
     USER-SWITCHES.txt at wuwa.py:_wuwa_name_from_notice); one found nowhere is the
     plain WARNING it always was, and the banner stays out.
-
-    2026-11-07: one cut-short getEntryDetail left 锁暝 nameless and 「余心所向九死
-    未悔」 vanished from the report, though both notices named him on it."""
+    """
     from ark_relay.features import errwatch  # noqa: PLC0415
     by_pool = {p: w for w, p in debut if p}
     for x in notice_banners:
@@ -1510,17 +1346,6 @@ def _wuwa(now: datetime, notes: "dict[str, str] | None" = None,
     try:
         page = post("/wiki/core/catalogue/item/getPage",
                     {"catalogueId": _WW_CHAR_CATALOGUE, "page": 1, "limit": 100})
-        # A previewed badge can stay on long after the character is out (锁暝: badge 2
-        # with a year-long window while its own banner ran, 2026-10-22), so names that
-        # are running now or are this version's debuts are not 「the next version's」.
-        # When no debut was read (the fallback above) this point is reached with the
-        # second half still to come, so a name the bulletin quotes (「name」, as every
-        # bulletin writes a character; bare, a one-character name like 心 would match
-        # any text) is this version's too (2026-10-13 review, run6: 锁暝 shown as
-        # next version's while it was this version's second half). With no bulletin
-        # text either, they are said only when the running banners last until the
-        # announced update maintenance (the version's last half, as on the 3.7 eve);
-        # otherwise this version's names cannot be told from the next one's.
         current = live | {w for w, _ in debut}
         text = _one_dot(body)
         badged = wuwa_teased((((page.get("data") or {}).get("results") or {}).get("records")) or [], now)

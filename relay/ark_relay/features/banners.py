@@ -1,12 +1,6 @@
 """Countdowns for the three games' new-character banners, and when the next one
 starts.
 
-**Only banners that debut a brand-new character are reported** -- reruns, standard
-and rotating banners are never reported. The user, 2026-08-30: 「我有且只要全新角色的
-卡池信息，其他的不要，因为我都有老角色了。」
-
-## Data sources (each measured 2026-08-30)
-
 | Game | Source | What it gives |
 |------|------|---------|
 | Wuthering Waves | Kuro BBS `api.kurobbs.com/wiki/core/homepage/getPage` (no token) | banner name, start/end; character names need a further `getEntryDetail` |
@@ -20,14 +14,6 @@ Fandom is not used: it follows the global servers, whose banner names, character
 and schedule differ from the CN servers'.
 
 ## Only what is published
-
-The user, 2026-09-30 23:56: 「尤其是推测内容，我不希望见到有推测，信息全部都是能查到的。」
-Every line says only what an official source states. Nothing is worked out:
-no "the next one opens when this one ends", no stream date from a rule, no
-community schedule, no "announced N days ahead". A version bulletin that names
-the second-half banner but gives no time yields the name and "time not
-published"; nothing announced yields "not announced". All three games always
-get a block.
 
 If nothing can be fetched this returns empty: one line missing from the report beats
 having no report.
@@ -60,13 +46,6 @@ from ark_relay.features import selfcheck as tape
 
 log = logging.getLogger("ark.banners")
 
-# The User-Agent for PRTS (a MediaWiki site): the project and where to reach it,
-# as the MediaWiki API etiquette asks - "Set an informative User-Agent string with
-# contact information" (https://www.mediawiki.org/wiki/API:Etiquette), in the
-# 「client/version (contact) library/version」 shape of the Wikimedia User-Agent
-# policy (https://foundation.wikimedia.org/wiki/Policy:Wikimedia_Foundation_User-Agent_Policy).
-# PRTS answers this one 200 (API and rendered page, measured 2026-10-07); a browser
-# UA gets a 403 (measured 2026-08-30 and again 2026-10-07), so never a Chrome UA here.
 _UA_PLAIN = "ark-relay/1.0 (https://github.com/herclyon1/maa) Python-urllib/3"
 _UA_BROWSER = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
@@ -92,26 +71,7 @@ class Banner:
 
 @dataclass
 class Trace:
-    """Where every line of the section came from, and what was checked.
-
-    Asked for by the user on 2026-09-12, after two invented previews in one day:
-    is there nothing that guards this section against invention or bad data?
-    Three things stand between the fetchers and the notification now:
-
-    * provenance - every fetched value is recorded with its URL/field
-      (`sources`), and the trace is written next to the state so a line can be
-      traced back after the fact;
-    * cross-checks - each running Arknights / Endfield banner is read from two
-      sources and whether they agree is written to `checks`. Only the trace file
-      carries them: the section's footer that listed them was dropped on
-      2026-09-14 at the user's request (see render);
-    * the date gate in `render` - a next-banner line may only carry a date that an
-      official source assigned to a *start* (`starts`: an opening time, or a
-      maintenance window), or an end when the line says it ends. A line
-      that fails is withheld and logged instead of sent. There is no class for
-      a worked-out or predicted date any more (2026-09-30, the user: no
-      guesses at all), so such a date can never pass.
-    """
+    """Where every line of the section came from, and what was checked."""
 
     sources: list[str]
     starts: set
@@ -292,20 +252,8 @@ def render(banners: list[Banner], now: datetime,
     """The section at the end of the daily report: a heading that names the time
     zone, then all three games, two lines each, e.g. for Wuthering Waves:
 
-        · 当期：但愿长圆如此夜 · 心 · 北京 10-22 09:59 结束 · 剩 21 天 10 小时
+· 当期：但愿长圆如此夜 · 心 · 北京 10-22 09:59 结束 · 剩 21 天 10 小时
         · 下期：余心所向九死未悔 · 锁暝 · 北京 10-22 10:00 开 · 11-11 11:59 结束
-
-    The user, 2026-09-02: 「要有当期新 UP 角色的卡池倒计时（如果没有 UP 就不显示），
-    而且得要有卡池预告」, and the three games must look the same. 2026-09-30 23:56:
-    no guesses - only what can be looked up. So:
-    · no new-character banner running -> 「当期无新角色卡池」 (reruns stay out);
-    · `next_starts[game] = (start, who)` is an announced debut banner; `start` is
-      None when the publisher named it but gave no time. Nothing announced ->
-      「下期：官方未公告」, plus `notes[game]` (other official facts) if any, or
-      「下期：<leads[game]>」 when the publisher has hinted at it;
-    · the running banner's end and the next one's start being the same moment
-      prints once, as a changeover;
-    · a game in `failed` says it was not read - never "none".
     """
     if trace is not None:
         trace.nexts = dict(next_starts or {})
@@ -349,21 +297,13 @@ def render(banners: list[Banner], now: datetime,
         else:
             ln = "· 下期：官方未公告" + (f" · {nt[game]}" if game in nt else "")
         if trace is not None and (why := gate_preview(ln, trace)):
-            # WARNING: holding a line back is the check working, and the report
-            # already says 「已扣下」. As an ERROR it rang the group (errwatch;
-            # 09-26 21:46:53) for one line of the daily report.
             log.warning("卡池下期没通过来源核对，扣下：%s ← %s", ln, why)
             trace.withheld.append(f"{ln} ← {why}")
             ln = "· 下期：⚠️ 这一行没通过来源核对，已扣下（原文在日志）"
         lines.append(ln)
         blocks.append("\n".join(lines))
-    # The cross-check results stay in the trace file (state/banners/<day>.json) and
-    # withheld lines still say so; the footer listing them was dropped on
-    # 2026-09-14 at the user's request (it carried nothing he acts on).
     return "🎴 卡池（时间为北京时间）\n" + "\n".join(blocks)
 
-# Measured on the game machine 2026-08-31: raw.githubusercontent.com takes 33 s
-# (past the timeout), jsDelivr 2.8-4.6 s. Mirrors in measured order, raw last.
 def gh_raw(owner: str, repo: str, branch: str, path: str) -> list[str]:
     """Several routes to the same GitHub file, ordered by speed measured on the
     game machine.
@@ -377,11 +317,6 @@ def gh_raw(owner: str, repo: str, branch: str, path: str) -> list[str]:
     ]
 
 
-# The two Yituliu tables the user pointed us at (Arknights, Endfield). Both are
-# hand-maintained. They are read and recorded next to the official sources, but
-# they are not official: the Arknights one marks predictions with
-# `accuracyFlag: false` (and on 08-31 still marked 「P3R联动」 09-04 false two days
-# after the official post), the Endfield one has no such mark at all.
 _AK_SCHEDULE = gh_raw("Arknights-yituliu", "frontend-v2-plus", "main",
                       "src/utils/gachaScheduleOptions.js")
 _EF_YITULIU = gh_raw("Arknights-yituliu", "ef-frontend-v1", "main",
@@ -544,21 +479,11 @@ def same_clock(x: datetime, y: datetime) -> bool:
     return x.replace(second=0, microsecond=0) == y.replace(second=0, microsecond=0)
 
 
-# How much of a banner name a wiki must print before 「the official name starts with
-# it」 is read as the same name cut short, not as two names that begin alike.
-# Measured: 2026-11-12 11:45, Kuro BBS homepage tabs: the cut name kept 8 of its 10
-# characters, the two whole names beside it were 6 and 7 long. The number itself is a
-# choice, not a measurement: half of that cut name, and the pair must already share
-# the character (crosscheck_fix), so a short common beginning alone corrects nothing.
 NAME_CUT_MIN = 4
 
 
 def name_cut_short(wiki: str, official: str) -> bool:
-    """The wiki printed only the beginning of the official banner name.
-
-    Kuro BBS's homepage tab for 莉莉's banner read 「盛放于昨日梦土的」 on 2026-11-12
-    (tab.name, eight characters; its other tabs that day were six and seven long), the
-    in-game notice 「盛放于昨日梦土的花朵」: alarms #168 and #169."""
+    """The wiki printed only the beginning of the official banner name."""
     bare = lambda n: re.sub(r"^【[^】]*】", "", n)  # noqa: E731
     w, o = bare(wiki), bare(official)
     return len(w) >= NAME_CUT_MIN and len(o) > len(w) and o.startswith(w)
@@ -597,19 +522,10 @@ def crosscheck_fix(game: str, a_name: str, a: Banner, b_name: str, b: "Banner | 
     to come or an official close already past (the wiki says open, the official
     source says not yet / no longer: correcting it would take a banner off the report
     on one source's word).
-
-    Why (Gemini, 2026-11-09, alarm #157): Skland listed 明河「烟火邀星河」 on 11-09
-    with poolStartAtTs 11-09 00:00, the day it was entered, and poolEndAtTs 11-25
-    06:00; the bulletin, the banner notice and the version briefing open it 11-05
-    12:00, the briefing closes it 11-26 06:00. Her ruling: the first-hand source's
-    time wins, start and end alike, and a wiki that differs from it is corrected and
-    a ✓, not an alarm."""
+    """
     if b is None:
         return a, crosscheck(game, a_name, a, b_name, b)
     diffs = dict(_xdiffs(a_name, a, b_name, b))
-    # 2026-11-12 (#168/#169): the first-hand source wins on the name as it does on the
-    # times, when the wiki's is the same name cut short - the pair is already matched
-    # on the character, and the report then prints the name the game uses.
     cut = "池名" in diffs and name_cut_short(a.name, b.name)
     if (not diffs or not set(diffs) <= ({"开始", "结束", "池名"} if cut else {"开始", "结束"})
             or ("开始" in diffs and b.start > now) or ("结束" in diffs and b.end < now)):
@@ -636,9 +552,6 @@ def official_fill(game: str, main: str, b: Banner, by: str, tr: "Trace") -> None
     banners.py:official_fill); with no end published it is a ✗, which machine
     check #66 pushes to the group once (the log line is INFO: a WARNING of its own
     rang the group a second time for the same banner).
-
-    The user, 2026-11-08 00:12, after 明河「烟火邀星河」 had been open three days
-    while the report said 「当期无新角色卡池」: 「现在实际上是有卡池的」.
     """
     from ark_relay.features import errwatch  # noqa: PLC0415
     when = f"{b.start:%m-%d %H:%M}" if b.start else (b.start_note or "开始时刻没写")
@@ -869,10 +782,6 @@ def check_continuity(state_dir, now: datetime, rows: "list[Banner]", failed: "li
     or, with no end anywhere, the game is listed as not read - never 「当期无新角色
     卡池」 - and the verdict in `tr.continuity` makes machine check #68 push it to
     the group once (the log line is INFO, as in official_fill).
-
-    The group was told on 11-04 that 明河「烟火邀星河」 opens 11-05 12:00, and from
-    that moment the report said no banner was running. The user, 2026-11-08 00:12,
-    in his words: 「更新卡池之前它居然是有通知过的，结果居然把这个丢失了」 (the banner was announced, then lost).
     """
     from ark_relay.features import errwatch  # noqa: PLC0415
     tr.continuity = []
@@ -945,16 +854,9 @@ def opening_tomorrow(now: datetime,
     """New banners opening tomorrow. Set by the user 2026-08-31: only these get sent
     to the WeChat group.
 
-    The comparison is on the **date**, not "within 24 hours" -- the daily report goes
+The comparison is on the **date**, not "within 24 hours" -- the daily report goes
     out in the evening, and at 21:30 "within 24 hours" would sweep in a banner opening
     at six the morning after tomorrow, which is not tomorrow.
-
-    An entry with no character name is not a new banner: it is the running banner's
-    end with the next debut not announced yet (Endfield once both halves of a version
-    are done), or a PRTS row that is not a debut. The daily report still says so;
-    the group does not get it. 2026-09-29 the group was told a new Endfield banner
-    opens 09-30 11:59, with no name: that was the running banner ending. The user
-    (10:53) asked why the name was missing and called it a rerun reported as new.
     """
     day = (now + timedelta(days=1)).date()
     # No published time (None) means nothing to announce.

@@ -13,14 +13,6 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 def _part_activity_topup():
     """A waveplate-short daily activity is topped up by the evening shift (features/makeup/activity.py).
-
-2026-10-23: OK-WW started the morning with 98/240 waveplates and no backup (he had spent them
-himself), spent 80, and the daily stopped at 80 points; the group got an alarm. His rule (quoted
-in activity.py): no alarm, a word in the group, the evening tops it up, an alarm if the evening
-fails too. The lines below are that morning's own (ok-script.log 09:28:40-09:29:22); the queues are the machine's (早班
-09:00, 晚班 21:30, AUTO-MAS v5.8 YAML).
-
-    Formerly test_activity_topup.py.
     """
     import types
     from datetime import datetime, timedelta
@@ -202,16 +194,7 @@ data:
 
 
 def _part_attempts_streak():
-    """「重试 N 次全部失败」 counts the failed streak of this shift, not the whole day.
-
-Real MAA rows of 2026-10-10 (tests/fixtures/ledger-2026-10-10-maa.jsonl, copied
-from the machine's ledger): three morning failures (alarmed at 09:03:39 as
-「重试 3 次」), a person's own run at 12:05 and the evening run at 21:30. Had the
-evening run failed once, the old count (every row of the day) said 5 (audit
-2026-10-13 s7 #4 / s1 #1).
-
-    Formerly test_attempts_streak.py.
-    """
+    """「重试 N 次全部失败」 counts the failed streak of this shift, not the whole day."""
     import json
     import tempfile
     import types
@@ -265,20 +248,7 @@ evening run failed once, the old count (every row of the day) said 5 (audit
 
 
 def _part_claim_no_claim_gate():
-    """The claim patch must never spend waveplates while the 4-cost echo farm runs.
-
-Claiming a boss reward costs 60 waveplates every time. Farming echoes is free. On
-2026-09-09 the time-bounded farm was wired onto the very branch that claims, so an
-unattended overnight run would have drained the waveplates and then the reserve.
-The gate is a marker file the relay writes while farming; this pins both halves of
-it together so neither can drift away from the other.
-
-Since 2026-09-09 (d035709a) the gate lives in the ok_tasks overlay's incr_drop (the
-old text patch and the code that restored it were removed 2026-10-12), so the gate is
-tested on the overlay that actually runs.
-
-    Formerly test_claim_no_claim_gate.py.
-    """
+    """The claim patch must never spend waveplates while the 4-cost echo farm runs."""
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -377,19 +347,6 @@ tested on the overlay that actually runs.
 def _part_drops():
     """MAA's drop blocks carry a running total per stage. Both directions are easy
 to get wrong, and both have been wrong in production.
-
-The log lines here are the real format, taken from a 2026-08-15 run:
-
-    [2026-08-15 09:06:29.091][INF][TaskQueueViewModel]     <2> TO-5 掉落统计: 
-    龙门币 : 864 (+864)
-    [2026-08-15 09:06:58.883][INF][TaskQueueViewModel]     <2> 完成任务: 理智作战
-
-The stage line carries a bracketed timestamp; the item lines do not, and the
-next timestamped line is what closes the block. An earlier version of this file
-used timestamps without brackets, which `_HAS_TS` does not match - so the block
-never closed and the tests passed without exercising the real path.
-
-    Formerly test_drops.py.
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -489,8 +446,6 @@ never closed and the tests passed without exercising the real path.
     check("no key", "drop_statistics" in out, False)
 
     print("\n[MAA's ~9000-character 「Request body:」 lines: parsed fast, same result]")
-    # The stage-drop pattern `(\S+)\s*掉落统计` backtracked quadratically over a long run
-    # of non-blanks: 1.3 s for one such line, 6.6 s for this file (2026-09-07 morning).
     import time
     from ark_relay.features import collector_maa
     REPLAY = fx_dir(Path(__file__), "replay") / "2026-09-07" / "arknights" / "MAA-05-03-55.log"
@@ -515,15 +470,7 @@ never closed and the tests passed without exercising the real path.
 
 
 def _part_episodes():
-    """假报警两例（2026-09-02 早班实录）：
-
-鸣潮：09:18 客户端更新重启（transitional）、09:20 失败、09:28 成功 →
-      日报写了两个 ❌ 还推了 ⚠️ 自愈。应当整串算「更新插曲」：↪️、不计失败。
-终末地：服务器维护，三趟每个任务 20 秒内失败、零完成 → 报了三次失败。
-      应当认出「进不了游戏」：⏸、不计失败、只发一条说明。
-
-    Formerly test_episodes.py.
-    """
+    """假报警两例（2026-09-02 早班实录）："""
     import json
     from datetime import datetime, timedelta
 
@@ -590,8 +537,6 @@ def _part_episodes():
     check("鸣潮画 ↪️", body.count("↪️ 鸣潮"), 2)
     check("终末地画 ⏸", body.count("⏸ 终末地"), 3)
     check("插曲说明", "游戏更新后重跑，不算失败" in body, True)
-    # 2026-09-12 09:21: the dialog was the anti-cheat module refreshing, no client file
-    # changed - the note must not claim the game updated.
     for change, files, want in (("anticheat", ["AntiCheatExpert\\pld.dat"], "游戏更新成功（只更新了反作弊组件），重启后重跑，不算失败"),
                                 ("none", [], "游戏弹了「即将重启」但客户端文件没有变，重启后重跑，不算失败"),
                                 ("patch", ["Content\\Paks\\pakchunk0.pak"], "游戏更新成功（更新了客户端文件），重启后重跑，不算失败"),
@@ -607,9 +552,6 @@ def _part_episodes():
     check("维护说明", "进不了游戏" in body, True)
 
     print("[终末地只差自动采集 / 应急理智加强剂：照样算失败（2026-10-06 起，之前是 🟡 不计失败）]")
-    # The user, 2026-10-06: 「不论多少次什么错误都要发」 - the soft kind is gone: such a run is
-    # alarmed on, and the daily report says it failed, with the routes named
-    # (the user asked on 2026-09-12: 「没做成哪些，做成了哪些」).
     soft = [ent("m", "MAA", 9, 0, 17, True), ent("s", "MaaEnd", 9, 28, 50, False, failed=["应急理智加强剂", "自动采集"],
                 raw={"maaend_collect_done": 13, "maaend_collect_total": 15, "maaend_collect_failed": ["路线15：红矛叶", "路线16：协议纹石"]})]
     check("不再分成 soft", core.episode_kinds(soft).get("s"), None)
@@ -639,20 +581,7 @@ def _part_episodes():
 
 
 def _part_flush_waits_own_script():
-    """A held failure alarm waits only for its own script, never for the whole queue.
-
-2026-10-01 morning shift: OK-WW timed out three times in a row, two hours each
-(09:18 / 11:20 / 13:21), and AUTO-MAS wrote all three records at 15:23:06. The
-relay held the failure, and _flush_pending's first line returned while anything
-was running - MaaEnd started at 15:23, so the alarm stayed held. At 17:12 the
-user asked why a shift due to end four hours earlier was still stuck.
-
-Replayed here with that day's shape: three OK-WW failures plus the real
-runtime-snapshot read on the machine at 16:11 (MAA done, OK-WW failed, MaaEnd running).
-Before the fix nothing is pushed; after it, exactly one alarm.
-
-    Formerly test_flush_waits_own_script.py.
-    """
+    """A held failure alarm waits only for its own script, never for the whole queue."""
     import json
     import os
     from datetime import datetime
@@ -783,25 +712,6 @@ Before the fix nothing is pushed; after it, exactly one alarm.
 
 def _part_gathering_route_node_failed():
     """A gathering route whose own Goto / Start node fails is booked as failed, and gets no whole make-up.
-
-2026-11-05 早班 (Beijing): MaaEnd's 10:22 attempt finished every task but one route, 协议纹石（路线2）,
-whose Goto node failed (maafw.log 11:20:43 Node.PipelineNode.Failed AutoCollectWulingProtocolith2Goto).
-The 11:26 attempt was logged out mid-run (「登录认证已失效」 at 11:43:57) and every route after that failed
-at its Start node within 20 s. Such a failure writes no 「…采集失败」 line: the AUTO-MAS history log has
-「FailureCollector subtask failed task=AutoCollectValleyIVPinkBolete1Start」 instead, and the relay booked
-that attempt as 17 of 17 routes walked; the live watch said 「日志里没有点名哪条路线」. Then the relay's
-make-up ran the whole script a fourth time although the first attempt had done everything else.
-
-Checked here, with the line shapes of that morning:
-* collector_maaend books the routes the failure collector named as failed - by item through MaaEnd's
-  locale, else by the 「采集…」 line before the failure line - and leaves a log without them as before;
-* collect_retry.failed_routes returns them for the per-route retry, route_label gives v2.36 routes their
-  Chinese words, and judge counts a route's own failed node as a failure;
-* collect_watch's live pattern names the route in all three shapes;
-* makeup.maaend_round_only_gathering: no whole make-up when an attempt of the round ran to its end
-  with gathering the only unfinished task; a make-up as before otherwise.
-
-    Formerly test_gathering_route_node_failed.py.
     """
     import tempfile
 
@@ -820,8 +730,6 @@ Checked here, with the line shapes of that morning:
                 f"common/failurecollector/action.go:60 > FailureCollector subtask failed task={node}")
 
 
-    # The 11:26 attempt's gathering, as its AUTO-MAS history log has it (two routes walked, then the
-    # logout; 协议纹石（路线2） is a Wuling route the 10-29 locale does not have).
     LOG = "\n".join([
         "[2026-11-05 11:39:04.400] 任务开始: 🧺自动采集",
         "[2026-11-05 11:39:40.100] 采集纯晶多齿叶",
@@ -999,17 +907,7 @@ Checked here, with the line shapes of that morning:
 
 
 def _part_healthcheck_annihilation():
-    """The evening health check judges annihilation by the post-hand-over model.
-
-Review fix 3 of the 2026-10-11 hand-over (item 13): scripts/mac/lib/healthcheck.py
-still required Info.Annihilation == "Close", the value the relay used to write
-after the week's pass. AUTO-MAS now keeps the switch on the map and the week in
-Data.AnnihilationCompletedWeek, so that check failed every night. The script runs
-on the game machine against a live AUTO-MAS, so only its two pure functions are
-loaded here (by AST, without running the script's top level).
-
-    Formerly test_healthcheck_annihilation.py.
-    """
+    """The evening health check judges annihilation by the post-hand-over model."""
     import ast
     import time
     from datetime import datetime
@@ -1067,16 +965,7 @@ loaded here (by AST, without running the script's top level).
 
 
 def _part_kuro_error_code():
-    """库街区 answering HTTP 200 with an error code in the body is a failed fetch.
-
-Every saved success carries "code": 200. An error body ({"code": <other>,
-"data": null}) used to read as an empty list or an empty post at four places -
-_kuro_gacha, _wuwa_first_half_end, _wuwa (wiki homepage / entry names) and
-update_wuwa_history - i.e. "nothing found", with no log line. Each now raises
-KuroAnswerProblem into that place's existing failure path.
-
-    Formerly test_kuro_error_code.py.
-    """
+    """库街区 answering HTTP 200 with an error code in the body is a failed fetch."""
     import json
     import logging
     import tempfile
@@ -1195,12 +1084,6 @@ KuroAnswerProblem into that place's existing failure path.
 def _part_logfile_silent():
     """A relay.log rotation that keeps failing is said through logging, once per
 failure streak (audit docs/SILENT-FAILURES-AUDIT.md, logfile.py:63).
-
-The line used to be written straight into the file from inside the handler,
-so errwatch (a handler on the "ark" logger) never saw it and nobody was told
-that relay.log had stopped rotating.
-
-    Formerly test_logfile_silent.py.
     """
     import logging
     import time
@@ -1280,15 +1163,7 @@ that relay.log had stopped rotating.
 
 
 def _part_logslice_new_year():
-    """A relay.log slice across New Year keeps the January lines.
-
-relay.log stamps `MM-DD HH:MM:SS` without a year; slice_log dated every such
-line in the year of the window's start, so for a window 12-31 23:50 -> 01-01
-00:20 the 01-01 lines landed eleven months before it and were dropped (audit
-s17, low item).
-
-    Formerly test_logslice_new_year.py.
-    """
+    """A relay.log slice across New Year keeps the January lines."""
     import os
     import time
     from datetime import datetime
@@ -1335,13 +1210,6 @@ s17, low item).
 def _part_main_logfile_silent():
     """relay.log that cannot be created is said once errwatch is listening (audit
 docs/SILENT-FAILURES-AUDIT.md, __main__.py:75).
-
-_setup_logging runs before errwatch is installed, so a WARNING there would reach
-stderr only. It keeps the OSError instead; boot_stages._stage_bootstrap says it
-right after errwatch.install, so the group hears that the relay is running with
-no relay.log (evidence slices, self-check and machine checks lose their source).
-
-    Formerly test_main_logfile_silent.py.
     """
     import ast
     import logging
@@ -1433,15 +1301,7 @@ no relay.log (evidence slices, self-check and machine checks lose their source).
 
 
 def _part_monthcard():
-    """Monthly-card reminders (user order 2026-09-26 02:47, spec BOARD/月卡到期提示-规格.md).
-
-His own definition of the last claim day, verbatim: 「有效期比如说还剩一天，那就是到明天登录时领取算最后一次」
-So the last claim day = today + days left; a renewal adds 30 per purchase; a lapsed card restarts on the
-purchase day (day 1). From five days before the last claim day, one Server酱 a day,
-and a push that reached nobody must be tried again rather than lost for the day.
-
-    Formerly test_monthcard.py.
-    """
+    """Monthly-card reminders (user order 2026-09-26 02:47, spec BOARD/月卡到期提示-规格.md)."""
     from datetime import date
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1565,21 +1425,7 @@ and a push that reached nobody must be tried again rather than lost for the day.
 
 
 def _part_nofarm_visible():
-    """A one-shot switch nobody displays is a switch that gets forgotten.
-
-`no-stamina-farm.flag` is set by hand while testing the weekly boss and makes the
-patched OK-WW skip stamina entirely. Nothing reported it: tomorrow's plan still
-announced what the stamina would be spent on, healthcheck still ticked, and the
-phone page still offered the choice. Only an ssh session running okww-landed.py by
-hand could see it. Forget it and waveplates sit at the 240 cap, overflowing every
-minute, while every surface says farming is happening.
-
-This is the same shape as 「下次跑完不关机」, which has already cost a whole night
-twice - and the answer is the same: the switch has to show up where the person is
-looking.
-
-    Formerly test_nofarm_visible.py.
-    """
+    """A one-shot switch nobody displays is a switch that gets forgotten."""
     import os
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1638,15 +1484,7 @@ looking.
 
 
 def _part_refresh_raw_unread():
-    """refresh_raw applies the "MAA sanity never read" rule, like bookkeeping does.
-
-Real 2026-10-09 MAA-08-03-19 (fixtures/refresh-unread-1009): Success!, combat off,
-AUTO-MAS wrote sanity 0 with no refill sentence. It was booked before the rule
-(cf246b6f) as sanity 0; re-reported, it has to read as unread, not 0. The log is
-the original's first 8 and last 5 lines.
-
-    Formerly test_refresh_raw_unread.py.
-    """
+    """refresh_raw applies the "MAA sanity never read" rule, like bookkeeping does."""
     #!/usr/bin/env python3
     import json
 
@@ -1664,18 +1502,7 @@ the original's first 8 and last 5 lines.
 
 
 def _part_revive_gates():
-    """The revival must not force-kill a window that is legitimately busy.
-
-On 2026-08-22 an AUTO-MAS update was running its first-time environment
-wizard - installing Python, pip and git, then cloning the backend. Throughout
-that, no backend process exists. The revival read that as the stuck state it
-guards against and ran `taskkill /IM AUTO-MAS.exe /F` twice, mid-clone. The
-wizard then reported "所有镜像源都尝试失败" although every mirror was reachable
-and carried the branch; the update completed on its own the moment the relay
-was stopped.
-
-    Formerly test_revive_gates.py.
-    """
+    """The revival must not force-kill a window that is legitimately busy."""
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1736,11 +1563,6 @@ was stopped.
         automas_procs.subprocess.run = _fake_run({"tasklist /nh": b"explorer.exe 4 Console"})
         ok &= check("平时 _installer_running", automas_procs._installer_running(), False)
 
-        # 3. tasklist unavailable -> unknown (None), and _revive keeps its hands
-        #    off on unknown. The wrong failure here kills a window; the right one
-        #    merely delays a revival. (None rather than True since 2026-10-07: True
-        #    made _revive say an installer was running when nobody had looked;
-        #    the hold itself is pinned in test_procs.py.)
         def boom(cmd, **kw): raise OSError("no tasklist")
         automas_procs.subprocess.run = boom
         ok &= check("探测失败时 _installer_running 答「不知道」(None)",
@@ -1770,13 +1592,7 @@ was stopped.
 
 
 def _part_scan_skips_seen():
-    """scan() 对处理过的记录不再解析：先按路径算 run_id，见过的直接跳过。
-
-2026-09-07 实测：每个周期把整个 history 目录几百条记录全部重新解析一遍再过滤，
-启动一次十几秒、停服务撞 15 秒硬保险、8 月的老失败记录每次都重新报警。
-
-    Formerly test_scan_skips_seen.py.
-    """
+    """scan() 对处理过的记录不再解析：先按路径算 run_id，见过的直接跳过。"""
     import json, os, sys, time
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1803,24 +1619,11 @@ def _part_scan_skips_seen():
 
 
 def _part_setup_tasks_verify():
-    """setup-tasks.ps1's verify list covers what the relay itself needs.
-
-Its header and docs/OPERATIONS.md say it checks the scheduled tasks this system
-needs, but until 2026-10-13 it checked only AUTO-MAS_AutoStart: a machine without
-the installed relay's task (\\ArkRelay\\main) or its watchdog service
-(ArkRelayWatchdog) printed OK. The names came from retire_legacy.py, which checked
-exactly these before it retired the old service (new_relay_problems). No pwsh on
-the Mac, so the script is read as text.
-
-    Formerly test_setup_tasks_verify.py.
-    """
+    """setup-tasks.ps1's verify list covers what the relay itself needs."""
     import re
 
     ROOT = Path(__file__).resolve().parents[2]
     PS1 = (ROOT / "scripts" / "windows" / "setup-tasks.ps1").read_text(encoding="utf-8")
-    # The names as scripts/windows/retire_legacy.py had them (NEW_TASK_FOLDER, NEW_TASK_NAME,
-    # NEW_WATCHDOG) until that one-off script was removed on 2026-11-17 (the old relay was
-    # retired with it on 2026-10-11); relay/pkg_layout.py is where the relay itself names them.
     NEW_TASK_FOLDER, NEW_TASK_NAME, NEW_WATCHDOG = "\\ArkRelay", "main", "ArkRelayWatchdog"
 
 
@@ -1836,27 +1639,7 @@ the Mac, so the script is read as text.
 
 
 def _part_tape():  # noqa: C901
-    """The relay's day tape (ark_relay/features/selfcheck.py, daysim W8).
-
-* the hooks: mas_client.mas_post, engine._automas_snapshot, shutdown.shutdown_event_xml,
-  maintenance._get, efstatus.update_hint and banners._json / _text each put what they
-  received on the tape, and still return / raise exactly as before;
-* recording never gets in the way: a broken tape folder or a failing write changes
-  nothing the caller sees; before install() nothing is written at all;
-* masking: the secret shapes, key-name masking and the game UID label never reach the
-  file (the lists are the ones scripts/mac/redact.py uses);
-* the day cap (one `truncated` line, then nothing, also after a restart), pruning of old
-  day files, the Beijing day boundary, and repeats written once (also across a restart);
-* (until 2026-11-17 also the round trip into the day replay, relay/tests/daysim: removed with it.)
-
-Sizes behind DAY_CAP_BYTES / BODY_CAP, measured 2026-10-14 by replaying every recorded
-day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB per day
-(10-06 453 804 B, 10-07 450 817, 10-08 450 194, 10-09 455 531, 10-11 457 539, 10-12
-451 810, 10-13 448 000 bytes), 94 % of it web answers; the biggest single answer
-210 425 bytes (a banner source); 14-28 AUTO-MAS lines a day after repeats are dropped.
-
-    Formerly test_tape.py.
-    """
+    """The relay's day tape (ark_relay/features/selfcheck.py, daysim W8)."""
     import hashlib
     import json
     import os
@@ -1997,9 +1780,6 @@ day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB pe
         finally:
             urllib.request.urlopen = real
 
-        # The System log: the real reader through a stand-in win32evtlog.
-        # One System-log event as Windows renders it (the shape the day replay's fake_proc.SysEvent
-        # built until relay/tests/daysim was removed on 2026-11-17).
         def esc(v) -> str:
             return (str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                     .replace("'", "&apos;").replace('"', "&quot;"))
@@ -2191,18 +1971,7 @@ day (relay/tests/daysim/run.py --all --keep) with the hooks in place: 0.45 MB pe
 
 
 def _part_transitional():
-    """「中途重启」不是失败。
-
-2026-08-28：中继在日报里列了四项失败，其中一项是鸣潮客户端更新后
-正常重启。根因在 AUTO-MAS：`task/Okww/AutoProxy.py:50-54` 把
-「游戏更新成功, 游戏即将重启」和「未连接游戏客户端」「流程产生错误」
-一起放进 `_OKWW_BUILTIN_FATAL`，于是它写出一条非成功结果、标记 ERROR。
-
-中继照单全收就是假警报。这组用例把新口径钉住：这类记录既不算成功、
-也不进失败清单，而且这个标记必须能穿过 payload 往返（重启后重放会用到）。
-
-    Formerly test_transitional.py.
-    """
+    """「中途重启」不是失败。"""
     import json
     import tempfile
 
@@ -2275,12 +2044,6 @@ def _part_transitional():
 def _part_undone_fallback_full():
     """When the 「⚠️ 这一轮没干完」 push fails, the fallback errwatch pushes carries the
 whole message, not its first line.
-
-Audit 2026-10-13 s7 #6: errwatch keeps first_line only, and the WARNING's first
-line ends at 「有项目没干成：」 (relay.log 10-11 09:30:45, 10-12 10:04:11), so the
-undone items were cut off and the line went out under the relay-error title.
-
-    Formerly test_undone_fallback_full.py.
     """
     import logging
     import os
@@ -2368,14 +2131,6 @@ undone items were cut off and the line went out under the relay-error title.
 def _part_verdict_no_history_log():
     """A run AUTO-MAS booked as 「正常退出」 with no history .log is not verified, not
 「everything done」.
-
-Audit 2026-10-13 s8 #4: verdict._verify_outcome returned None (= all done) when
-the history log was missing or empty, contradicting its own rule that empty text
-is a false green; collector sets log_path None when the .log is absent. The
-machine's copied history (10-06..10-13, 38 records + hist.zip) has a .log for
-every .json, so no real record shows it yet; the rule follows the code.
-
-    Formerly test_verdict_no_history_log.py.
     """
     import types
     from datetime import datetime, timedelta
@@ -2417,17 +2172,7 @@ every .json, so no real record shows it yet; the rule follows the code.
 
 
 def _part_weekly_three_claims():
-    """The weekly boss claims every reward left in one run, not one a day.
-
-The user, 2026-09-29 13:28: the report said 「领了 1 次，本周还剩 1 次」 - one
-claim a day, three days for what one Monday run should do. One claim per call
-to FarmEchoTask was never a design: until 2026-09-07 the three claims came
-from AUTO-MAS retrying an error (replay/2026-09-07/wuwa below). The claim step
-then learned to click 「退出副本」, the error and the retries went away, and the
-laps after the claim ran in the open world where nothing is claimed.
-
-    Formerly test_weekly_three_claims.py.
-    """
+    """The weekly boss claims every reward left in one run, not one a day."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
@@ -2443,8 +2188,6 @@ laps after the claim ran in the open world where nothing is claimed.
     check("第一趟领了几次", first.count("周本领奖：已点确认"), 1)
     check("第一趟领完就报错（AUTO-MAS 因此重试）", "farm 4c error" in first, True)
     check("重试那趟进本前剩余", weeklyboss.left_after_claims(retry.split("周本领奖")[0]), 1)
-    # 09-07 predates the read-back: its 「已点确认」 is a click, so the switch keeps the
-    # pre-entry reading (2) and the next entry's own reading (1/3, the retry) decides.
     check("第一趟之后剩余：没回读就不减，留进本前读数 2", weeklyboss.left_after_claims(first), 2)
     check("重试那趟自己读到 1", weeklyboss.left_after_claims(retry), 1)
 
@@ -2468,8 +2211,6 @@ laps after the claim ran in the open world where nothing is claimed.
     check("读出 3/3（OCR 的全角斜杠）", left_of("本周剩余可收取次数：3／3"), 3)
     check("读不到就是 None", left_of("[x60_0.79]"), None)
 
-    # The level page as the game showed it on the way back in, ok-script.log 2026-10-05:
-    # 22:15:19 after the first claim, 22:17:31 after the second, 22:39:48 after the third.
     PAGE = {2: "本周剩余可收取次数：2/3_1.00", 1: "本周剩余可收取次数：1/3_1.00", 0: "本周剩余可收取次数：0/3_0.99"}
 
 
@@ -2621,17 +2362,7 @@ laps after the claim ran in the open world where nothing is claimed.
 
 
 def _part_maa_checks():
-    """MAA 的结果核对——2026-08-30 之前这里是个洞，第一版判据又太吵。
-
-洞：`_verify_outcome` 走到 MAA 直接 return None（=全干成），
-所以 MAA 只要进程正常退出就恒为绿。
-
-太吵：第一版按错误字符串计数判，拿真实日志空跑时 08-29 晚和 08-30 早
-**两趟都会被推送**，推的还是已确认无害的噪音。换成结构化判据：
-每条任务链都该有一对 TaskChainStart / TaskChainCompleted。
-
-    Formerly test_maa_checks.py.
-    """
+    """MAA 的结果核对——2026-08-30 之前这里是个洞，第一版判据又太吵。"""
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -2739,21 +2470,7 @@ def _part_maa_checks():
 
 
 def _part_maa_closedown_postaction():
-    """MAA's CloseDown post-action cut off by AUTO-MAS's own close is not 「开了没收尾」.
-
-Real record, 2026-10-21 (fixtures/maa-2026-10-21/asst-callbacks.log: the task
-chain lines of that morning's D:\\ark\\maa\\debug\\asst.log, unchanged). The run
-ended with 「任务已全部完成！」 and AllTasksCompleted at 09:19:25.078; MAA's post
-action 「退出 明日方舟」 started CloseDown at 09:19:25.579; AUTO-MAS stopped
-MAA.exe at 09:19:25.929 and quit LDPlayer instance 1000 itself. CloseDown's
-completion receipt never came, and at 09:19:35 the relay pushed 「⚠️ 明日方舟早班
-没干完：CloseDown」 to the group (ledger #107).
-
-A CloseDown that starts before the run's tasks are all completed is still a
-dangling chain, and any other dangling chain still fails.
-
-    Formerly test_maa_closedown_postaction.py.
-    """
+    """MAA's CloseDown post-action cut off by AUTO-MAS's own close is not 「开了没收尾」."""
     #!/usr/bin/env python3
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -2789,28 +2506,7 @@ dangling chain, and any other dangling chain still fails.
 
 
 def _part_maa_config_rejected():
-    """MAA refusing its own config, a round with no fight, and sanity MAA never read.
-
-Morning shift 2026-10-10 (machine clock): MAA core had no navigation task for
-the event stage YW-4, so the GUI could not hand the Fight task over -
-gui.log says 「理智作战: 理智作战 序列化失败」 and then 「已停止」, with no
-「开始任务: 理智作战」 at all. AUTO-MAS tried three times with the same config,
-every record read 「MAA 在完成任务前中止」 with `sanity: 0` and an empty
-`sanity_full_at`. The relay then
-
-* held the failure 「⏳ 等重试结果」 for another tick although re-running the same
-  config can only be refused again;
-* refused the make-up with 「拿不准有没有打过仗」 although the log it had read
-  showed not one fight;
-* put 「剩余理智 0」 in the alarm although MAA never read sanity that round.
-
-The real files are under tests/fixtures/maa-2026-10-10/: MAA-05-02-18 (the
-failed try, json + log), MAA-05-00-01 (the first try, json only) and
-MAA-08-05-07 (a normal run at 12:05 the same day: 14 fights on YW-4, sanity 2
-with MAA's own refill sentence) as the control.
-
-    Formerly test_maa_config_rejected.py.
-    """
+    """MAA refusing its own config, a round with no fight, and sanity MAA never read."""
     import json
     import os
     import shutil
@@ -2979,24 +2675,6 @@ with MAA's own refill sentence) as the control.
 
 def _part_maa_start_watchdog():
     """A hung Arknights start -> end MAA.exe so AUTO-MAS restarts it now, not 45 minutes later (#137).
-
-2026-11-05 早班: MAA began starting the game at 09:03:23 (asst.log TaskChainStart StartUp), saw
-the integrity-check screen at 09:03:45 (GameStartCheckResourceOCR 「资源完整性」), then pressed
-「开始唤醒」 every 4.4 s (GameStart, 609 times) until AUTO-MAS's own limit at 09:48:24. Normal
-starts take 58-66 s; the retry took 101 s.
-
-Replayed here with that day's line shapes. The clock, the AUTO-MAS snapshot, the process list,
-the kill and the log file are stand-ins; nothing touches a real process. Checked:
-* the 11-05 hang is ended 5 minutes after the last resource-check screen, not before, once;
-* a normal start, a download (GameStartUpdateOCR repeating) and a resource check are not hangs;
-* never blind: no snapshot, MAA not 「运行」, no process list, or the MAA that began the start gone;
-* a new MAA (banner, new PID) or a closed chain (Completed / Error / Stopped) clears the start;
-* other chains' presses do not count; reading resumes across partial lines, a rotated log and a
-  relay that starts mid-hang (the backlog read, its first partial line skipped);
-* the alarm: group route, the kill-failed title, and plain language for both texts;
-* a kill that worked leaves 「超时|MAA|<time>」, so runwatch.retry_clock restarts the shift's clocks.
-
-    Formerly test_maa_start_watchdog.py.
     """
     from datetime import datetime, timedelta
 
@@ -3261,23 +2939,7 @@ the kill and the log file are stand-ins; nothing touches a real process. Checked
 
 
 def _part_maa_unreachable_cleared_notes():
-    """test_maa_unreachable.py still passes on a relay tree whose RELEASE-NOTES.md is empty.
-
-scripts/mac/deploy-relay.sh empties relay/RELEASE-NOTES.md and commits that to main on
-every deploy, so an empty notes file is the normal state between deploys. The test read
-the notes with a bare `next(...)` looking for the re-run line; on the emptied file that
-raised StopIteration, the test exited 1 and the sections after it never ran. The test is
-mapped to some 40 relay modules, so the deploy gate would have gone red on the first relay
-change after the next deploy.
-
-Here a copy of ark_relay sits next to an empty RELEASE-NOTES.md, and test_maa_unreachable.py
-runs against it with --relay. Before the fix: exit 1, StopIteration. After: exit 0, and the
-last section (the make-up in flight) still runs.
-
-  python3 tests/test_maa_unreachable_cleared_notes.py
-
-    Formerly test_maa_unreachable_cleared_notes.py.
-    """
+    """test_maa_unreachable.py still passes on a relay tree whose RELEASE-NOTES.md is empty."""
 
     import shutil
     import subprocess
@@ -3308,15 +2970,7 @@ last section (the make-up in flight) still runs.
 
 
 def _part_maa_window_overlap():
-    """时间窗的 5 分钟余量会伸进下一趟，把下一趟的「开始」当成本趟的悬挂。
-
-2026-08-31 晚上实测：第一趟 21:30:50→21:33:38（窗口到 21:38:38），
-第二趟 21:33:43 就开跑，Infrast 21:35 开始、21:43 完成。
-第一趟的窗口捞到了「Infrast 开始」却够不到「完成」，
-推了一条「开了没收尾：Infrast」——而基建好好干完了，纯误报。
-
-    Formerly test_maa_window_overlap.py.
-    """
+    """时间窗的 5 分钟余量会伸进下一趟，把下一趟的「开始」当成本趟的悬挂。"""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome
@@ -3360,16 +3014,7 @@ def _part_maa_window_overlap():
 
 
 def _part_maa_write_master_first():
-    """MAA setting writes: the master copy is required, and a failure says what was written.
-
-AUTO-MAS copies data/<script>/<user>/ConfigFile over MAA's config dir before each
-run (AUTO-MAS v5.7 task/MAA/AutoProxy.py _copy_source_config). The old writer
-skipped a missing master, wrote only MAA's own copy and reported success - the
-change was gone at the next run. And when the second file failed, the first was
-already written but the reply said the change was refused.
-
-    Formerly test_maa_write_master_first.py.
-    """
+    """MAA setting writes: the master copy is required, and a failure says what was written."""
     #!/usr/bin/env python3
 
     import json
@@ -3469,7 +3114,7 @@ def _part_maa_unreachable():
     sys.path.insert(0, str(RELAY))
     sys.path.insert(0, str(HERE))
 
-    from _tmp import fx_dir, tmpdir
+    from _parts import fx_dir, tmpdir
     from ark_relay.core import collector
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import Config
@@ -3570,10 +3215,6 @@ def _part_maa_unreachable():
     check("没有一条对不上", disagree, [])
 
     print("\n[同一轮：前一次打过仗才中止、后一次没登录上，客户端更新后不再整轮重跑]")
-    # 2026-08-26 MAA-05-16-47 (A) fought and used sanity potions, then 「MAA 在完成任务前中止」;
-    # 2026-09-23 MAA-05-00-01 (B) 「MAA 未能正确登录 PRTS」. Moved onto today's ledger as
-    # one round, B's own record is never-started (flagged), but the round already
-    # fought: the make-up refuses, and the re-run after a client update must too.
     from datetime import datetime
     from ark_relay.core.config import SERVER_TZ
 
@@ -3747,13 +3388,7 @@ def _part_maa_unreachable():
 
 
 def _part_outcome_main():
-    """结果核对：出现在日志里 != 做成了。
-
-样本全部取自 2026-08-27 当天的真实日志——那天 OK-WW 连着三轮没打残象聚落、
-MaaEnd 卡在弹窗上自己关掉，两边都没报错，而中继报了「全绿」。
-
-    Formerly test_outcome.py.
-    """
+    """结果核对：出现在日志里 != 做成了。"""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -3830,7 +3465,6 @@ MaaEnd 卡在弹窗上自己关掉，两边都没报错，而中继报了「全�
         print("\n[MaaEnd 干净跑完]")
         check("没有截图就不报警", summarize(maaend_checks(mtext, []), "MaaEnd"), None)
 
-        # ── 2026-08-27 13:24 的误报：日常早已完成的第二轮，不许再报「没干成」──
         text6 = ("DailyTask:info_set current daily progress 0\n"
                  "DailyTask:info_set total daily points 110\n"
                  "DailyTask:info_set current task claim daily\n"
@@ -3865,9 +3499,6 @@ MaaEnd 卡在弹窗上自己关掉，两边都没报错，而中继报了「全�
         day = ("2026-09-13 09:21:58,916 INFO TaskExecutor NightmareNestTask:opened gray_book_boss\n"
                "2026-09-13 12:45:52,773 INFO TaskExecutor NightmareNestTask:nightmare nest: 只刷 ['落渊南丘']（设置来自母本）\n"
                "2026-09-13 09:33:01,760 INFO TaskExecutor TacetTask:info_set current_stamina 239\n")
-        # M7 (09-23): get_stamina logs its raw read. 09-13 predates it, so the real day alone
-        # must now flag the stamina override; with the M7 line (format from _read_stamina,
-        # not a real log line) the day is clean again.
         check("M7 之前的日志没有体力原文＝体力改动没跑", bad_labels(patch_effect_checks(day, tacet_shot_today=True)),
               ["体力读数改动在跑（读字原文进日志）"])
         day += "2026-09-13 09:33:01,700 INFO TaskExecutor TacetTask:体力读字原文（第 1 次）: ['55', '239/240', '+']\n"
@@ -3885,8 +3516,6 @@ MaaEnd 卡在弹窗上自己关掉，两边都没报错，而中继报了「全�
         check("打了一次就不算", maa_sanity_short(sh.replace('"times_finished":0', '"times_finished":1')), None)
         check("理智够就不算", maa_sanity_short(sh.replace("Current Sanity: 17", "Current Sanity: 90")), None)
         check("没有这些行就不判", maa_sanity_short("TaskChainStart Fight\n"), None)
-        # 2026-11-09: the 09:01:37 attempt (Px12844) never connected, so it had no StartUp; its
-        # window (to 5 minutes past its end) held the 09:03 attempt's (Px2236) reading.
         no_conn = ("[2026-11-09 09:01:43.100][INF][Px12844][Tx3] -----------------------------\n"
                    "[2026-11-09 09:01:57.063][INF][Px12844][Tx11] connect return: false\n")
         nxt = ("[2026-11-09 09:03:19.000][INF][Px2236][Tx5] -----------------------------\n"
@@ -3904,7 +3533,6 @@ MaaEnd 卡在弹窗上自己关掉，两边都没报错，而中继报了「全�
               "DailyTask:Daily Task Completed\n"
               "ForgeryTask:used all stamina\n")
         check("打了没领＝红", "周本领到了奖励" in bad_labels(okww_checks(wb, expect_nest=False)), True)
-        # 2026-09-21: the key is logged before the book opens; no 「prepared as」 = never got in.
         nowb = wb.replace("2026-09-14 10:02:30,615 INFO TaskExecutor FarmEchoTask:teleport_to_boss prepared as realm\n", "")
         nowb = nowb.replace("2026-09-14 10:02:32,000 INFO TaskExecutor FarmEchoTask:enter combat None\n", "")
         check("没进本不说「打了」", bad_labels(okww_checks(nowb, expect_nest=False)).count("周本"), 1)
@@ -3934,10 +3562,6 @@ MaaEnd 卡在弹窗上自己关掉，两边都没报错，而中继报了「全�
             check(f"失败行不算痕迹：{fail_line[:12]}", "周本领奖改动在跑（打完按 F 领奖）" in bad_labels(got), True)
         wb_cap = wb.replace("3/3_1.00", "0/3_0.99") + "FarmEchoTask:本周周本次数已领满（0/3），不进本，跳过\n"
         check("本周领满＝绿", "周本领到了奖励" not in bad_labels(okww_checks(wb_cap, expect_nest=False)), True)
-        # 2026-10-11: a waveplate shortage is red and reaches the group (an item undone):
-        # the dialog cannot tell a normal cause from a fault, and the 10-07 "normal state"
-        # rested on a changelog false match (outcome.okww_checks, USER-SWITCHES.txt
-        # _skip_short). The check still says the reward was not claimed (old and new wording).
         short_label = "周本（结晶波片不足，奖励没领）"
         short_old = wb + "2026-09-14 10:04:20,000 INFO TaskExecutor FarmEchoTask:结晶波片不足，取消并跳过本次周本\n"
         got_old = okww_checks(short_old, expect_nest=False)
@@ -3959,21 +3583,11 @@ MaaEnd 卡在弹窗上自己关掉，两边都没报错，而中继报了「全�
         # A genuinely incomplete weekly run still fails and reaches the group: the claim
         # step is absent AND no waveplate shortage explains it.
         check("没进本的周本仍然进群", summarize(okww_checks(nowb, expect_nest=False), "OK-WW") is not None, True)
-        # 2026-10-06 true root cause (ticket 1006b item H): line 104 of this log is
-        # the changelog pyappify-update prints, which contains 「结晶波片不足」. The
-        # substring match of `short` against the whole log hit it and raised a false
-        # 「结晶波片不够领奖」 into the group. The fix reads only the TaskExecutor's
-        # own lines. The regression uses the evidence-package lines verbatim (do not
-        # edit them; fixture okww-1006-weekly-full.log holds lines 104/153/175/176).
         weekly_full = (fx_dir(Path(__file__), "fixtures")
                        / "okww-1006-weekly-full.log").read_text(encoding="utf-8")
         wfull = okww_checks(weekly_full, expect_nest=False, expect_daily=False, expect_stamina=False)
         check("更新说明里的「结晶波片不足」不再判没干完", "周本领到了奖励" not in bad_labels(wfull), True)
         check("更新说明里的「结晶波片不足」不进群", summarize(wfull, "OK-WW"), None)
-        # A real waveplate shortage, constructed (no real sample yet: the 10-06 log above
-        # was the changelog false alarm). Lines follow the overlay's click_team_challenge
-        # path (okww_files/ark_overrides.tasks.py): its skip line, then the failed mark.
-        # Since 2026-10-11 it reaches the group again (from 10-07 it did not).
         real_short = ("2026-10-06 09:21:23,627 INFO TaskExecutor FarmEchoTask:info_set Teleport to Boss Weekly Challenge 0\n"
                       "2026-10-06 09:21:52,194 INFO TaskExecutor FarmEchoTask:周本本周剩余次数原文: [本周剩余可收取次数：3/3_0.99, x60_0.79]\n"
                       "2026-10-06 09:21:59,000 INFO TaskExecutor FarmEchoTask:波片不足挡住开启挑战，点取消跳过本次周本\n"
@@ -4012,7 +3626,6 @@ MaaEnd 卡在弹窗上自己关掉，两边都没报错，而中继报了「全�
               "周本领奖改动在跑（打完按 F 领奖）" in bad_labels(patch_effect_checks(oct5)), False)
 
         print("\n[只刷落渊南丘：2026-09-13 真实日志——四个点位全进了，四天没人发现]")
-        # Verbatim from history/2026-09-13/wuwa/OK-WW-05-19-22.log (nest lines only).
         text5 = ("2026-09-13 09:22:07,105 INFO TaskExecutor NightmareNestTask:Box(name='已击败残象：0/41', x=889, y=373, width=195, height=30, confidence=100) is not complete\n"
                  "2026-09-13 09:22:07,306 INFO TaskExecutor NightmareNestTask:left_click 已击败残象：0/41 (1729, 347) after_sleep 2\n"
                  "2026-09-13 09:24:38,554 INFO TaskExecutor NightmareNestTask:left_click 已击败残象：0/48 (1729, 567) after_sleep 2\n"
@@ -4047,20 +3660,12 @@ MaaEnd 卡在弹窗上自己关掉，两边都没报错，而中继报了「全�
 
 
 def _part_outcome_nest_words():
-    """The nest-filter check says what the log shows, not what might have happened.
-
-10-04 and 10-05 it told the group 「过滤没拿到点位名，按上游行为刷了全部」. The log
-(ok-script.log 10-05 10:35:14-18) shows one nest clicked, 0/48, 「nightmare nest
-unreachable, skip this run」 a second later: not one nest farmed.
-
-    Formerly test_outcome_nest_words.py.
-    """
+    """The nest-filter check says what the log shows, not what might have happened."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome
 
 
-    # Real lines, ok-script.log 2026-10-05 (the filter was skipped: v3.7.3 find_nest).
     DAY_1005 = """\
 2026-10-05 10:35:06,057 INFO TaskExecutor NightmareNestTask:opened gray_book_boss
 2026-10-05 10:35:14,196 INFO TaskExecutor NightmareNestTask:Box(name='已击败残象：0/48', x=889, y=374, width=198, height=30, confidence=100) is not complete
@@ -4161,10 +3766,6 @@ unreachable, skip this run」 a second later: not one nest farmed.
     check("新句子：周本照样判没领到", got["周本领到了奖励"].ok, False)
 
     print("\n[兜底：日志有「这一趟按失败结束」或「附加任务出错」，不管别的分支怎么判，这趟都不算干成]")
-    # The 11:41 run's own log was never archived (ark-evidence has only the 05:18 run and
-    # screenshots for 10-12), so the lines are real ones from other days in the 11:41 order:
-    # the weekly boss runs in open_daily_first, before the dailies page reads the points.
-    # 附加任务出错 wording: OK-WW log 2026-09-21 10:21:00,184 and 2026-10-05 10:34:52,359.
     WHY = "周本领奖：点了确认后没等到结算页（没有「退出副本」），停下不按 ESC。"
     TAIL = ("2026-10-12 07:45:20,100 INFO TaskExecutor DailyTask:info_set total daily points 160\n"
             "2026-10-12 07:58:51,996 INFO TaskExecutor DailyTask:Daily Task Completed\n")
@@ -4217,7 +3818,7 @@ def _part_gamelog_errors():
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
+    from _parts import tmpdir
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="")
@@ -4269,10 +3870,6 @@ def _part_gamelog_errors():
             "2026-10-15 09:20:31,127 ERROR ok.core.start_controller start_controller:waiting for game to start error 'NoneType' object is not subscriptable",
         ],
     }
-    # The ERROR kinds of one whole successful round, each line as the machine wrote it (trailing
-    # spaces kept; a few INFO and traceback lines between them, the whole log is in the OK-WW
-    # corpus): 2026-10-15/wuwa/OK-WW-05-19-01, alarm f7a4bb6a. The first three were unlisted and
-    # pushed; the round logged in at 09:20:33 and ended with 「Daily Task Completed」.
     ROUND_1015 = """\
 2026-10-15 09:20:31,117 ERROR ok.core.start_controller DeviceManager:refresh error Traceback (most recent call last):
   File "D:\\ark\\okww\\data\\apps\\ok-ww\\working\\ok\\util\\window.py", line 343, in is_match
@@ -4294,8 +3891,6 @@ TypeError: 'NoneType' object is not subscriptable
             "2026-10-05 10:34:50,807 ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card Traceback (most recent call last):",
             "2026-10-05 10:35:22,335 ERROR TaskExecutor NightmareNestTask:can't find gray_book_boss, make sure f2 is the hotkey for book",
             "2026-10-05 10:34:52,359 ERROR TaskExecutor DailyTask:附加任务出错，不拖垮当趟日常:  Traceback (most recent call last):",
-            # Made up from the real 10-15 lines: the same words outside the start-wait loop, or
-            # a start error with another message, are not what was checked; they go to the group.
             "2026-10-15 09:25:00,000 ERROR TaskExecutor DeviceManager:refresh error Traceback (most recent call last):",
             "2026-10-15 09:20:31,127 ERROR ok.core.start_controller start_controller:waiting for game to start error 'NoneType' object has no attribute 'hwnd'",
         ],
@@ -4417,8 +4012,6 @@ TypeError: 'NoneType' object is not subscriptable
         check("one red item quoting the raw line", [("can not battle pass" in t, rec.run_id in t) for _, t in red],
               [(True, True)])
         h.records.clear()
-        # 2026-10-12 (mute audit item 4): a listed `recovered` line is a fault the program got
-        # past by itself - one red item per round (errwatch.recovered()), never silence.
         logp.write_text("\n".join(SAMPLES["OK-WW"]), encoding="utf-8")
         check("a log with listed recovered lines only: nothing unlisted", ge.check_round(eng, rec), [])
         check("... but one WARNING marked recovered for the round, not pushed",
@@ -4466,16 +4059,7 @@ TypeError: 'NoneType' object is not subscriptable
 
 
 def _part_m6_counts():
-    """M6 (2026-09-23): run counts and sanity spent against the real 09-20..22 logs.
-
-* MAA: a drop block line with no "(+N)" ("酯原料 : 2") ended the block, so the
-  "当前次数" after it was lost - 1-7 farmed 19 times was reported x10.
-  The count now comes from MAA's own "开始行动 a~b 次" numbering.
-* MaaEnd: five runs read 237/158/78/38/38/39; median step 79 gave "395"
-  for 5 x 80 = 400.
-
-    Formerly test_m6_counts.py.
-    """
+    """M6 (2026-09-23): run counts and sanity spent against the real 09-20..22 logs."""
     import sys, pathlib, tempfile
     from datetime import datetime, timedelta
     from unittest import mock
@@ -4490,7 +4074,6 @@ def _part_m6_counts():
         if got != want:
             fails.append(f"{name}: got {got!r}, want {want!r}")
 
-    # history/2026-09-20/arknights/MAA-05-00-01.log lines 86-114 (report headers dropped)
     maa = """[2026-09-20 09:02:43.459][INF][TaskQueueViewModel]     <2> 开始行动 1~10 次, -60理智
 理智: 117/210
 [2026-09-20 09:04:10.692][INF][TaskQueueViewModel]     <2> 1-7 掉落统计: 
@@ -4521,7 +4104,6 @@ def _part_m6_counts():
         chk("方舟 09-20 早 理智", r.get("sanity_spent"), 114)
         chk("方舟 09-20 早 酯原料", r.get("drop_statistics", {}).get("酯原料"), 2)
         chk("方舟 09-20 早 龙门币", r.get("drop_statistics", {}).get("龙门币"), 1368)
-        # "开始行动 21 次" (single run) counts too - 09-20 21:36:28
         f.write_text(maa + "[2026-09-20 21:36:28.217][INF][TaskQueueViewModel]     <2> 开始行动 20~21 次, -12理智\n", encoding="utf-8")
         chk("方舟 单趟编号", collector_maa.parse_maa_log(f).get("run_times"), 21)
 
@@ -4533,8 +4115,6 @@ def _part_m6_counts():
     ])
     chk("终末地 09-22 理智", collector_maaend._maaend_farm(end).get("maaend_sanity_spent"), 400)
 
-    # plan: gathering routes live under per-region keys since MaaEnd split them
-    # (mxu-MaaEnd.json 2026-09-23: ValleyIV rare 5 + Wuling rare 12 = 17 walked 09-21)
     ov = {
         "AutoCollectValleyIV": {"type": "switch", "value": True},
         "AutoCollectValleyIVRareRoutes": {"caseNames": ["Route4", "Route5", "Route6", "Route13", "Route14"]},
@@ -4548,8 +4128,6 @@ def _part_m6_counts():
     chk("采集路线 关掉的区不算", plan._collect_route_count(ov), 5)
     chk("采集路线 旧键仍认", plan._collect_route_count({"AutoCollectRoutes": {"caseNames": ["a", "b"]}}), 2)
 
-    # plan: tomorrow's annihilation follows AUTO-MAS's week record
-    # (Data.AnnihilationCompletedWeek) since the 2026-10-11 hand-over, item 13.
     sun = datetime(2026, 9, 20, 21, 0, tzinfo=SERVER_TZ)
     done_this_week = {"Info": {"Annihilation": "Annihilation"},
                       "Data": {"AnnihilationCompletedWeek": annihilation.week_key(sun)}}
@@ -4567,18 +4145,6 @@ def _part_m6_counts():
 def _part_m6_okww():
     """M6 OK-WW report fixes, replayed on the machine's own logs (slices under
 fixtures/m6-okww, cut from the 09-21 and 09-22 runs pulled back on 09-23).
-
-- 09-21 weekly boss: the Teleport-to-Boss key is logged before the book opens;
-  the run never got in (no start-challenge button, then Teleport to boss
-  failed) and used to be reported as fought-but-unclaimed.
-- 09-22 weekly boss: read 0/3 before entering and skipped - full, but not by
-  this run.
-- 09-21 tacet: the reward dialog showed 180 left, OK-WW read 0 (reserve 240)
-  and stopped. The correction from the dialog's 「剩余 N」 was deleted on
-  2026-10-13 (audit item 13): none of the real dialog lines the override logs
-  carries 「剩余」, so it never applied; the last reading is reported as such.
-
-    Formerly test_m6_okww.py.
     """
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -4596,8 +4162,6 @@ fixtures/m6-okww, cut from the 09-21 and 09-22 runs pulled back on 09-23).
 
     r = c.parse_okww_log(FX / "0921-weekly.log")
     t = (FX / "0921-weekly.log").read_text(encoding="utf-8")
-    # 「等了 10 秒」: the timeout line is 0.6 s before the header but more than 600
-    # characters back (collector_okww._wait_before, audit 2026-10-13 item 8).
     check("09-21 失败原因不再说「没能退出副本」", r.get("okww_error"), "周本：选了等级后没等到「开启挑战」，没进本，一次没打（等了 10 秒）")
     check("09-21 步骤：没进本", [s for s in r.get("okww_steps", []) if "周本" in s], ["周本（没进本，一次没打，原因见失败于）"])
     check("09-21 核对：没进本不说「打了」",

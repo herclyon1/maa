@@ -1,19 +1,11 @@
 """Entry point.
 
-    python -m ark_relay local     runs on the game machine: reads history directly,
+python -m ark_relay local     runs on the game machine: reads history directly,
                                   judges for itself and pushes for itself
 
-    python -m ark_relay check     self-check: config, directories, push channels
+python -m ark_relay check     self-check: config, directories, push channels
     python -m ark_relay test      send one test message
     python -m ark_relay report    push today's daily report right now
-
-There is no server mode any more. The 7×24 half of the system - "did the
-machine ever power on" - is GitHub Actions asking the Tailscale API for the
-machine's lastSeen (.github/workflows/watchdog.yml), and queued config changes
-already travel through the repo (inbox.py). The game machine cannot reach any
-GitHub write endpoint (api.github.com is TCP-blocked from there, measured
-2026-08-20), so nothing on it uploads anything; the watchdog reads a signal
-that tailscaled emits anyway, just by being connected.
 """
 from __future__ import annotations
 
@@ -108,14 +100,7 @@ def _load_dotenv(path: Path) -> None:
 
 
 def _dotenv_value(raw: str) -> str:
-    """One .env value, read the way python-dotenv reads it.
-
-    A quoted value is everything between its quotes, '#' included; an unquoted one
-    ends at a ' #' comment, and one that starts with '#' (`KEY=   # note`) is all
-    comment, so empty. A quote with no closing one is stripped, as before. Cutting
-    every value at the first '#' (as before 2026-10-13, audit s2 F7) truncated a
-    URL or key carrying one.
-    """
+    """One .env value, read the way python-dotenv reads it."""
     v = raw.strip()
     if v[:1] in ('"', "'"):
         if (end := v.find(v[0], 1)) > 0:
@@ -172,10 +157,6 @@ def cmd_test(cfg: Config) -> int:
         print("✗ 没有配置任何推送渠道")
         return 1
     now = datetime.now(tz=SERVER_TZ)
-    # The point of a self-check is to exercise every channel, so each one is tried
-    # on its own and named only if it took the message. Not through send(): that
-    # stops at the first channel that accepts, and files the message as a group
-    # alarm (alerts/ copy) - a test is neither (audit s5 #3).
     delivered, failed = n._fan_out("🔧 中继自检", f"这是一条测试消息。\n当前 {both_clocks(now)}",
                                    order=tuple(n.channels), stop_on_first=False)
     for name, err in failed.items():

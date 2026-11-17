@@ -1,6 +1,4 @@
 """The AUTO-MAS processes as tasklist and OpenProcess see them: the Electron shell, the Python backend and its handle, an installer running.
-
-Split out of relay/service.py (2026-10-11); behaviour unchanged.
 """
 from __future__ import annotations
 
@@ -57,12 +55,7 @@ def _installer_running() -> "bool | None":
 def is_backend(cmd: str) -> bool:
     """True if a python.exe command line is AUTO-MAS's backend: main.py run from under the
     install root's \\automas\\ directory.
-
-    On the machine (2026-10-10, relay/tests/test_procs.py) it reads
-    `D:\\ark\\automas\\runtime\\environment\\venv\\Scripts\\python.exe main.py`. "main.py"
-    alone also matched OK-WW (`D:\\ark\\okww\\data\\apps\\ok-ww\\working\\main.py`, which
-    may run as python.exe - preupdate_okww.py): a dead backend then read as alive,
-    and an OK-WW start was adopted as the backend (audit s15 #3)."""
+    """
     low = (cmd or "").lower().replace("/", "\\")
     return "main.py" in low and "\\automas\\" in low
 
@@ -248,29 +241,14 @@ class _DayRoll:
 class _DirWatch:
     """Change notifications for AUTO-MAS's history directory: arming, rebuilding and re-arming all live here.
 
-    Split out of `_loop` (2026-09-08). Not a word of behaviour changed; the
-    three pieces - arm, rebuild, re-arm - were simply moved out of the middle of
-    the main loop into somewhere with a name. They used to be interleaved with
-    keeping AUTO-MAS alive in a single 241-line function, where changing any one
-    piece meant reading the other two first.
-
-    Wake on the directory changing, not on a timer. AUTO-MAS writes a run record
+Wake on the directory changing, not on a timer. AUTO-MAS writes a run record
     the moment a script finishes, and Windows will say so; asking every thirty
     seconds instead was just the lazy way to find out.
 
-    The loop's timeout stays, because some of what tick() does is genuinely
+The loop's timeout stays, because some of what tick() does is genuinely
     time-based - the report cutoff, "a queue was due and produced nothing", the
     shutdown window - and none of those are announced by a file appearing.
     So: whichever comes first, a change or the interval.
-
-    Losing the watch (it cannot be armed, or re-armed) is INFO at once and
-    decided later, like the WMI listener (USER-SWITCHES.txt at
-    ark_relay/features/host/dirwatch.py:_DirWatch._rebuilt): rebuilt by itself -> one WARNING,
-    pushed since 2026-10-10 (why it is lost is not known), marked recovered only
-    when the loss was already pushed meanwhile; not rebuilt within
-    OUTAGE_ALARM_SECONDS -> the 「⚠️ 中继暂时不能在脚本跑完时马上处理结果」 alarm
-    (until 2026-10-06 sent at once), and each failed rebuild after it a
-    WARNING; still lost when the service stops -> a WARNING (stopping()).
     """
 
     def __init__(self, cfg, notifier, log):
@@ -340,7 +318,6 @@ class _DirWatch:
         if since is None:
             self.log.info("目录变更通知已重建，恢复「记录一落盘立即处理」")
             return
-        # Why it was lost is not known: pushed (until 2026-10-10 daily-report-only).
         # Already pushed meanwhile (told): one fault, one push - this end is daily only.
         from ark_relay.features import errwatch  # noqa: PLC0415
         self.log.warning("目录变更通知断过 %s，已经自己重建，跑完的结果又能马上处理了%s\n原因：%s",
@@ -527,15 +504,6 @@ def _fired(handles: list, rc: int) -> "set[int]":
 # service.py's logger: these lines were always ark.service, and machine checks and tests read them there.
 
 
-# When AUTO-MAS is missing, how long to give it (or our own revival of it)
-# before trying again. Doubles on each failed revival - this is failure
-# backoff, not an interval; it resets the moment a backend handle is held.
-# A check that revived nothing (an installer or the window's grace held it off)
-# re-arms with the wait as it stands; one that found the backend up but could
-# not attach to it re-arms with procwatch.AUTOMAS_CHECK_SECONDS. Until 2026-10-13
-# every handle-less check doubled it: 10-10 16:14-17:21 the process list was
-# unreadable while the API answered, nothing was revived, and the checks drifted
-# out to every 30 minutes without a line in the log (audit s15 #1).
 REVIVE_FIRST_WAIT = 180
 
 
@@ -556,17 +524,6 @@ REVIVE_ALERT_AFTER = 3
 SHELL_GRACE_SECONDS = 900
 
 
-# An AUTO-MAS exit this close before a Windows shutdown's stop notice is said to be
-# the shutdown's doing. Microsoft documents SERVICE_CONTROL_PRESHUTDOWN / SHUTDOWN
-# as sent while "the running applications are shutting down, which occurs before
-# services are shut down"
-# (https://learn.microsoft.com/en-us/windows/win32/api/winsvc/nc-winsvc-lphandler_function_ex),
-# which does not order an application's exit against the stop notice. On the machine
-# both orders occur: 2026-10-10 04:28 (one sample, inferred: the exit line is logged
-# after the 15 s settle wait) the stop notice came about 16 s after the exit; in the
-# ten Windows-shutdown stops from 10-10 23:31:10 to 10-13 11:14:56 (relay.log) the stop
-# notice came first, with no AUTO-MAS exit logged before it. Only the first order
-# reaches this window (and _exited's shutdown branch, stopping()'s first two returns).
 EXIT_BEFORE_SHUTDOWN_SECONDS = 60.0
 
 
@@ -594,9 +551,7 @@ def _api_up() -> bool:
 class _AutomasKeeper:
     """Keeping the AUTO-MAS backend alive: hold the handle, detect absence, revive with backoff, alert after repeated failures.
 
-    Split out of `_loop` (2026-09-08); not a word of behaviour changed.
-
-    Two of the four things that can wake the loop live here: the backend dying,
+Two of the four things that can wake the loop live here: the backend dying,
     and a python.exe starting (so a freshly launched backend gets its handle
     immediately instead of at the next liveness check).
     """
@@ -660,10 +615,6 @@ class _AutomasKeeper:
     def _adopted(self) -> None:
         gone, self.gone = self.gone, None
         if gone is not None:
-            # Back after an exit nothing explained: the exit's cause is not known,
-            # so it is pushed (until 2026-10-10 it was daily-report-only). Back
-            # after an installer ran (AUTO-MAS updating itself) is the update, not a
-            # fault: daily report only, and so is the end of an exit already pushed
             # meanwhile (decided) - one fault, one push.
             from ark_relay.features import errwatch  # noqa: PLC0415
             down = wmi_diag._span(time.monotonic() - gone["at"])
@@ -793,25 +744,6 @@ class _AutomasKeeper:
 
     def _exited(self) -> None:
         """The backend's handle signalled: say why it went, as far as the relay can know, and let go of the handle.
-
-        #37 in the 2026-10-06 log sweep: 「AUTO-MAS 后端退出了」 68 times from
-        08-20 to 10-05, each at WARNING, and #38 「AUTO-MAS 后端不在，正在拉起」
-        62 times. Nothing here asked whether the machine was going down, yet
-        the relay powers it off after every queue (`shutdown /s /t 60`, with
-        errwatch.mark_stopping at once) and Windows closes the logged-on
-        session - the backend with it - when the countdown ends. Such an exit
-        read as a crash, and a revival was started against a closing session.
-        Now the relay's own power-off is INFO with its reason (the user, 10-06:
-        not at ERROR when the relay knows the machine is going down - it is not
-        a fault). Every other exit is INFO too, with the evidence it was judged
-        on - the exit code, whether the window was still there, an installer or
-        uninstaller on screen (AUTO-MAS installing an update; the relay keeps
-        its hands off until it is done), that no shutdown or update was under
-        way - and is decided later (self.gone): back by itself or by the
-        relay's revival -> one WARNING (_adopted), pushed since 2026-10-10 (why
-        it exits is not known), daily report only after an installer or when the
-        exit was already pushed; not back by the REVIVE_ALERT_AFTER-th check
-        (_revive) or by the time the service stops (stopping) -> pushed.
         """
         code = automas_procs._exit_code(self.handle)
         win32api.CloseHandle(self.handle)
@@ -890,9 +822,6 @@ class _AutomasKeeper:
                                  self.gone["clock"], self.gone["said"])
                 return
             if errwatch.os_shutdown() and before <= EXIT_BEFORE_SHUTDOWN_SECONDS:
-                # Still pushed (only the relay's own power-off may skip the group), but
-                # said as what it is: 2026-10-10 04:28 this read 「意外退出…当时机器没在关机」
-                # for an exit Windows' own shutdown caused.
                 self.log.warning("Windows 关机（不是中继下的关机令）：AUTO-MAS 后台在关机通知前 %s 被关掉"
                                  "（%s 退出，退出码 %s），中继停下时它没再起来",
                                  wmi_diag._span(before), self.gone["clock"], self.gone["said"])

@@ -12,25 +12,7 @@ _SHARED = (check, fails, require, tmpdir)
 
 
 def _part_pkg_appfiles_update():
-    """A relay deploy keeps every installer-written file current, or refuses loudly.
-
-The user, 10-11 16:48: 「打包漏多少东西？能不能一次性搞好？」 packaging/ark-relay.iss
-writes, outside the version folders, launch.py, switch.py, legacy.py, handover\\*,
-watchdog\\* and runtime\\; until 10-11 only setup.exe ever wrote them again. Checked here:
-  - every [Files] entry of the .iss has an owner in the deploy (so a new installer-written
-    path cannot be left out silently);
-  - per plain file (launch.py, switch.py, legacy.py, each handover file): unchanged =
-    the deploy does nothing with it; changed = swapped, read back, and put back by
-    appfiles-back; a file that does not load or arrives damaged = nothing changed;
-  - the Mac half of step 4.5p run in bash, with ssh and the package's Python stood in by
-    local commands that run the real scripts/windows/pkg_deploy.py on a temp {app};
-  - the runtime: what the machine has against packaging/build.py PY_VERSION and
-    relay/requirements.txt (a difference is swapped: test_pkg_runtime_update.py);
-  - the order of it all in deploy-pkg.sh.
-The watchdog file has its own test (test_pkg_watchdog_update.py).
-
-    Formerly test_pkg_appfiles_update.py.
-    """
+    """A relay deploy keeps every installer-written file current, or refuses loudly."""
     import contextlib
     import hashlib
     import importlib.util
@@ -283,19 +265,7 @@ if [ -n "$APP_CHANGED" ]; then pkg_appfiles_step && echo STEP_OK || echo "STEP_F
 
 
 def _part_pkg_install_messages():
-    """What the installer and switch.py tell him matches what they did.
-
-2026-10-13 (audit of the install / switch-over block, item 1): since e1033fb1 a failed
-switch-over switches the same new relay on again (there is no old relay any more: its
-service was deleted 2026-10-11 22:33), but the installer's message box still said
-「已经退回老中继继续跑」 and switch.log said "reverting to the old relay". These checks
-read the installer script and switch.py as text: no message may promise the old relay,
-and the failed-install box names the way back that exists (launch.py rollback).
-Item 6 of the same audit: the box after a failed resume promised the relay back at the
-next re-login, which brings back the relay but not a watchdog whose stop marker remains.
-
-    Formerly test_pkg_install_messages.py.
-    """
+    """What the installer and switch.py tell him matches what they did."""
     import re
 
     RELAY = Path(__file__).resolve().parents[1]
@@ -352,14 +322,7 @@ next re-login, which brings back the relay but not a watchdog whose stop marker 
 
 
 def _part_pkg_layout_names():
-    """Every pkg_layout name the packaged relay's callers use exists in pkg_layout.py.
-
-2026-10-11: dd96d5a8 dropped link_state while app_main.py and pkg_deploy.py still
-called it; the installed relay died at its first start with no log (cloud run
-38091113646). The callers reach the module as `pkg_layout.x` or `pl.x`.
-
-    Formerly test_pkg_layout_names.py.
-    """
+    """Every pkg_layout name the packaged relay's callers use exists in pkg_layout.py."""
     import ast
     import re
 
@@ -390,14 +353,7 @@ called it; the installed relay died at its first start with no log (cloud run
 
 
 def _part_pkg_pin_whole_write():
-    """The rollback pin and current.txt are written whole: temp file, then os.replace.
-
-Before 2026-10-12 _pin wrote the file in place. A power cut mid-write left it empty;
-_pinned read that as 0, the rollback was forgotten and selfupdate moved straight back
-into the version it had rolled away from.
-
-    Formerly test_pkg_pin_whole_write.py.
-    """
+    """The rollback pin and current.txt are written whole: temp file, then os.replace."""
     import os
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -454,28 +410,7 @@ into the version it had rolled away from.
 
 
 def _part_pkg_runtime_update():  # noqa: C901
-    """A relay deploy swaps the installed relay's runtime when it is not what the repo builds.
-
-Until 2026-10-11 only setup.exe replaced {app}\\runtime\\python, and a deploy whose
-runtime differed stopped with exit 5, so every Python patch release meant running the
-installer again. The user's words, 10-11 16:37, kept verbatim: 「为啥要重新安装？你们现在搞一次更新这么麻烦了吗？」
-Now (packaging/README.md, "The runtime"): 3.0p builds the runtime on the Mac
-(packaging/build.py --runtime-only), sends it, and the machine checks and runs it
-(pkg_deploy.py runtime-check); 4.6p swaps it in on its own python.exe (pkg_deploy.py
-runtime) right before the restart; a failure puts the previous runtime back. Checked here:
-  - build.py: the pins come from relay/requirements.txt's Windows lines (pywin32 too, on
-    a Mac, where pip's marker evaluation dropped it: the first --runtime-only try,
-    10-11), the runtime is staged as the installer stages it, the workflows use the
-    same Python;
-  - pkg_deploy.py with a stand-in for the services and processes: different = swapped
-    in this order and verified; the same = deploy-pkg.sh never calls the machine;
-    a failed stop / rename / verify / watchdog start = the previous runtime back as it
-    was; runtime-back and the leftovers;
-  - deploy-pkg.sh's 3.0p and 4.6p blocks in bash (ssh and the machine's Python run
-    locally on a temp {app}; the "python.exe" probed is a shell script), and the order.
-
-    Formerly test_pkg_runtime_update.py.
-    """
+    """A relay deploy swaps the installed relay's runtime when it is not what the repo builds."""
     import contextlib
     import importlib.util
     import io
@@ -1026,16 +961,7 @@ if pkg_runtime_swap; then echo "SWAPPED $RUNTIME_TOUCHED"; else echo "FAILED $RU
 
 
 def _part_pkg_state_dir():
-    """The packaged relay reads and writes its code version in one state folder.
-
-2026-10-11: selfupdate keeps versions.code under <version folder>/state, a junction
-to <data>/state, while app_main defaulted ARK_STATE_DIR to <data>/ark-state; the boot
-read the other state.json and logged "code version v?" at every start (cloud package
-smoke, 2026-10-10 22:37:41 and 22:38:00). Both now name the same folder, and
-pkg_deploy's idea of the relay's state folder (STATEDIR=) agrees.
-
-    Formerly test_pkg_state_dir.py.
-    """
+    """The packaged relay reads and writes its code version in one state folder."""
     import os
 
     RELAY = Path(__file__).resolve().parents[1]
@@ -1148,25 +1074,7 @@ pkg_deploy's idea of the relay's state folder (STATEDIR=) agrees.
 
 
 def _part_pkg_switch_failed_announce():
-    """A switch to the new version folder that fails says 「更新没生效」, not 「中继已更新」.
-
-Audit s24 F1 (10-13): pkg_layout.update runs selfupdate.check on a staging copy whose
-`state` is the shared state folder. A round that lands records the new version, clears
-update-failed.json and writes update-announce.json there. When the rename of the copy
-or the current.txt write then raised, update's except put only the version record back:
-the same boot's _stage_announce_update pushed 「🔄 中继已更新」 while the old folder
-ran, and no 「更新没生效」 went out (repro: scratchpad core-audit/s24/repro.py).
-
-Also checked here:
-- a power cut between check and the switch leaves the same note behind; the next start
-  (record_running_version) drops a note for code newer than the folder in use, while a
-  note for the folder in use (the first boot after a real switch) stays;
-- app_main._packaged_selfupdate exits (True) when update() already switched current.txt
-  and only restart_soon raised: the watchdog starts the new folder, instead of the old
-  process running on and announcing the new version.
-
-    Formerly test_pkg_switch_failed_announce.py.
-    """
+    """A switch to the new version folder that fails says 「更新没生效」, not 「中继已更新」."""
     import logging
     import os
 
@@ -1310,18 +1218,7 @@ Also checked here:
 
 
 def _part_pkg_switch_flushed():
-    """The new version folder is on disk before current.txt names it.
-
-Audit s24 F2 (10-13): pkg_layout.update copied the folder in use (copytree), let
-selfupdate.check write the changed files into the copy, renamed it and wrote
-current.txt with fsync - but nothing flushed the copy's files. A power cut right after
-the switch could leave current.txt naming a folder whose files were never written out,
-and launch.py (which only checks that app_main.py exists) would pick it at every start.
-Now every file of the copy, and each of its folders where the OS allows (not Windows),
-is fsynced before the switch.
-
-    Formerly test_pkg_switch_flushed.py.
-    """
+    """The new version folder is on disk before current.txt names it."""
     import os
 
     RELAY = Path(__file__).resolve().parents[1]
@@ -1426,18 +1323,7 @@ is fsynced before the switch.
 
 
 def _part_pkg_update_nothing_changed():
-    """A deploy with nothing to change leaves the recorded code version on the folder in use.
-
-Audit s19 #4/#5 (10-13): when the manifest is newer but every file already matches,
-selfupdate.check stages nothing yet still records the manifest's version
-(selfupdate.py, `_remember_version(root, remote_ver)` after an empty `updated`).
-The staging copy's `state` is the shared state folder, so versions.code then named a
-version pkg_layout.update never switched to (it drops the staging copy when nothing
-changed). pending_announcement could say 「中继已更新 → vN」 for code that is not
-running. update now puts the record back on the running folder in that case.
-
-    Formerly test_pkg_update_nothing_changed.py.
-    """
+    """A deploy with nothing to change leaves the recorded code version on the folder in use."""
     import os
 
     RELAY = Path(__file__).resolve().parents[1]
@@ -1485,28 +1371,7 @@ running. update now puts the record back on the running folder in that case.
 
 
 def _part_pkg_watchdog_update():
-    """A relay deploy updates the watchdog service's file when it changed (no setup.exe).
-
-2026-10-11: {app}\\watchdog\\ark_watchdog.py sits outside the version folders and only
-the installer wrote it, so the preshutdown push (d0c0e12b) could ship only by running
-setup.exe again.
-The user's words, 10-11 16:37, kept verbatim: 「为啥要重新安装？你们现在搞一次更新这么麻烦了吗？」
-Now deploy-pkg.sh step 5.3, after the relay is live and watched, sends the file when
-its sha1 differs from the installed one and scripts/windows/pkg_deploy.py `watchdog`
-does copy -> install -> restart -> verify. Checked here:
-  - pkg_deploy.update_watchdog: unchanged = no service call at all; changed = exactly
-    that order; disabled / not installed / a bad transfer = nothing changed; a failed
-    step = the previous file back, the service started on it, exit 1;
-  - WinService.stop / start against stand-in pywin32 modules: the stop marker is
-    written before the stop and deleted before the start, and relay/watchdog_guard.py
-    reads the stopped watchdog as stopped on purpose meanwhile (no race);
-  - the Mac half (the `# >>> watchdog step` block of deploy-pkg.sh, run in bash with
-    scp / pkg_py stood in): unchanged = no scp, no machine command, one line;
-  - where the step sits: after the watch and the rollback exits, and deploy-relay.sh
-    reports a failure only after COS and the smoke, exiting 14 at the very end.
-
-    Formerly test_pkg_watchdog_update.py.
-    """
+    """A relay deploy updates the watchdog service's file when it changed (no setup.exe)."""
     import contextlib
     import hashlib
     import importlib.util
@@ -1798,8 +1663,6 @@ echo "FAIL_WHY=$WATCHDOG_FAIL_WHY"
           order == sorted(order), True)
     check("deploy-pkg.sh: the staged file is deleted on exit", "del $WD_STAGED" in pkg_sh, True)
     sh = (ROOT / "scripts/mac/deploy-relay.sh").read_text(encoding="utf-8")
-    # The smoke runs before COS since 2026-10-13 (a failed smoke takes the way back, so it
-    # must come before the version is published).
     q = {k: sh.find(k) for k in ('\nWATCHDOG_FAIL_WHY=""\n', 'lib/deploy-pkg.sh"', "grep -q '^SMOKE_OK$'", 'publish-cos.py"',
                                  'if [ -n "$WATCHDOG_FAIL_WHY" ]; then\n  echo "❌❌ 中继已上线', 'echo "✅ 部署完成',
                                  "push -q origin HEAD:refs/heads/main", "lib/ff-toplevel.sh",
@@ -1817,16 +1680,7 @@ echo "FAIL_WHY=$WATCHDOG_FAIL_WHY"
 
 
 def _part_stop_denied():
-    """app_main.stop(): a stop event this account may not set ends the task at once.
-
-2026-10-11: on the cloud runner the relay ran as SYSTEM and the runner's admin could
-not open its stop event (winerror 5). stop() took that for "event not made yet" and
-waited its 40 s, exit 1, relay still up (package-windows runs 38095462157 and
-38095838036). Now access denied ends the task (schtasks /end) straight away; only a
-missing event (winerror 2, the relay still starting) is waited for.
-
-    Formerly test_stop_denied.py.
-    """
+    """app_main.stop(): a stop event this account may not set ends the task at once."""
 
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY))
@@ -1929,18 +1783,7 @@ missing event (winerror 2, the relay still starting) is waited for.
 
 
 def _part_stop_event_manual_reset():
-    """停服务的事件必须是手动复位的（CreateEvent 第二个参数为 1）。
-
-2026-09-07 09:02 部署停服务时，relay.log 里手机通道打了一整段 traceback
-（AttributeError: 'NoneType' object has no attribute 'peek'）。
-它的 except 里明明先问了 stop()，可 stop_event 是自动复位事件：
-主循环、手机通道、心跳三个线程都用 WaitForSingleObject(…, 0) 轮它，
-谁先看到谁把信号吃掉，其余线程看到的就是「没停」。手机通道于是把
-被 close() 掐断的连接当成意外断线；心跳同理可能发不出下线。
-2026-08-31 几次「卡在 STOP_PENDING」也是同一个根：主循环没抢到信号。
-
-    Formerly test_stop_event_manual_reset.py.
-    """
+    """停服务的事件必须是手动复位的（CreateEvent 第二个参数为 1）。"""
     import re
 
     SRC = Path(__file__).resolve().parents[1] / "service.py"
@@ -1950,9 +1793,6 @@ def _part_stop_event_manual_reset():
     print("  stop_event 的 CreateEvent 第二个参数：", hits)
     ok = hits == ["1"]
 
-    # 第二道：main() 返回后必须自己报告 STOPPED 并 os._exit，不能交给解释器收尾。
-    # 2026-09-07 实测：主流程 09:16:42 返回、剩下的全是 daemon 线程，SCM 却 27.5 秒后
-    # 才看到停止，15 秒硬保险一次都没触发（Timer 线程在收尾阶段拿不到 GIL）。
     run = text[text.index("def SvcDoRun"):text.index("\n    def ", text.index("def SvcDoRun") + 10)]
     tail_ok = ("ReportServiceStatus(win32service.SERVICE_STOPPED)" in run
                and run.rstrip().endswith("os._exit(0)"))
@@ -1964,21 +1804,6 @@ def _part_stop_event_manual_reset():
 
 def _part_stop_push_errwatch_budget():
     """stop-push's errwatch: the relay's power-off probe, and the whole run inside the watchdog's time.
-
-Review of e20dc77f + 7c1ba65c (audit 2026-10-13 s5):
-  1. `app_main.py stop-push` installed errwatch without the relay's power-off probe, so
-     errwatch.relay_shutdown_issued() was always false in that process. The engine that
-     knows lives in the relay's process; the relay now keeps the moment in state.json
-     (shutdown._record_poweroff) and stop-push's probe reads it
-     (shutdown.relay_poweroff_recorded), cleared when the countdown is cancelled and
-     stale after ISSUED_STUCK_MIN, as boot_stages._relay_poweroff_live.
-  2. The lint commit moved stop-push's drain from 2 s to errwatch.drain's default (3 s);
-     the slow-network test stubs the drain out. Here the real stop_push runs with the
-     send hanging and a WARNING the group never acknowledges, the drain as it is, and
-     STOP_PUSH_WAIT_S + what stop_push adds around the send + a Python start must stay
-     inside the watchdog's PUSH_TIMEOUT_S (packaging/watchdog/ark_watchdog.py).
-
-    Formerly test_stop_push_errwatch_budget.py.
     """
     import logging
     import os
@@ -2076,16 +1901,6 @@ Review of e20dc77f + 7c1ba65c (audit 2026-10-13 s5):
 
 def _part_switch_resume():
     """An upgrade that is cancelled after it stopped the relay starts the previous version again.
-
-2026-10-11 (review round 10 #28): the installer's PrepareToInstall runs `switch.py stop`
-(watchdog, restart helper, relay; stop marker written). When Setup then ended before
-ssPostInstall - Cancel, or a file that could not be replaced (Abort) - nothing started
-the relay again until the next logon. Now DeinitializeSetup runs `switch.py resume
---current=<the name current.txt held before>`: current.txt goes back to that folder when
-the rollback left it on another one (Inno Setup keeps files it already replaced), then
-the watchdog and the task start as uninstall's way back does (switch.start).
-
-    Formerly test_switch_resume.py.
     """
     import re
     import tempfile
@@ -2204,16 +2019,7 @@ the watchdog and the task start as uninstall's way back does (switch.start).
 
 
 def _part_switch_run_encoding():
-    """switch.run decodes Windows tools' output in the console code page, not UTF-8.
-
-2026-10-13 (audit of the install / switch-over block, item 4): the machine's switch.log
-(the install of 2026-10-11 10:04) has `[SC] ChangeServiceConfig �ɹ�` where sc.exe wrote
-成功 in code page 936; switch.run decoded every tool's output as UTF-8. Now "oem".
-The codec exists only on Windows, so this checks what run() passes to subprocess.run
-and that 936 bytes decode cleanly under the code page "oem" maps to on his machine.
-
-    Formerly test_switch_run_encoding.py.
-    """
+    """switch.run decodes Windows tools' output in the console code page, not UTF-8."""
 
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY.parent / "packaging"))
@@ -2259,15 +2065,6 @@ and that 936 bytes decode cleanly under the code page "oem" maps to on his machi
 def _part_switch_stop():
     """switch.py stop() - before an upgrade, at uninstall and at revert - ends the update's
 restart helper before it stops the relay.
-
-2026-10-11 (review round 8 #23): stop() stopped the watchdog and the relay but not
-`launch.py relaunch` (pkg_layout.restart_soon). Within two minutes of a self-update or
-rollback the helper started the relay again under the installer, or left one running
-after an uninstall. a8c22829's launch.py gives up once a running watchdog stops, but not
-a helper that started while the watchdog was down, nor one from an older package; stop()
-now ends it as scripts/mac/estop.sh does.
-
-    Formerly test_switch_stop.py.
     """
     import fnmatch
     import subprocess
@@ -2329,7 +2126,6 @@ now ends it as scripts/mac/estop.sh does.
     check("launch.py stop does not match", like(stop_line, switch.HELPER_LIKE), False)
 
     print("[uninstall(): the task, then its \\ArkRelay\\ folder in Task Scheduler]")
-    # schtasks /delete removes the task and leaves its folder (found comparing the install with the old service, 2026-10-11).
 
 
     class FakeScheduler:
@@ -2374,20 +2170,7 @@ now ends it as scripts/mac/estop.sh does.
 
 
 def _part_switch_uninstall():
-    """An uninstall that fails part way still does every other step and says what is left.
-
-2026-10-13 (audit of the install / switch-over block, item 2): after `switch.py
-uninstall` had stopped the relay and put AUTO-MAS back, any exception (a state link that
-would not go, a locked leftover file, an unreadable legacy-items.json) ended Python with
-exit 1, skipping the rest; the uninstaller treated every non-zero exit as "AUTO-MAS not
-put back" and said 「中继已经重新开起来，什么都没删」 - with no relay, no watchdog and
-nothing restarted. Now each step after the rollback runs on its own, legacy.remove()
-tries each item on its own, a partial uninstall exits 7 with the failed steps in
-uninstall-left.txt, and the installer script shows that message only for exit 3.
-Fakes for every Windows call; no Windows needed.
-
-    Formerly test_switch_uninstall.py.
-    """
+    """An uninstall that fails part way still does every other step and says what is left."""
     import contextlib
     import io
     import re
@@ -2617,12 +2400,6 @@ def _part_manifest_covers_tree():
             fails.append(label)
 
 
-    # The generator stamps a fresh version and ref every time it runs, so the
-    # probe below must never run it against the real tree. Restoring the bytes in a
-    # `finally` was not enough: a run killed mid-way (or one from an older checkout)
-    # still left a version nobody deployed in the shared tree - 2026-09-23 10:55:04,
-    # maa-automation-controls, version 20260923001824, which exists on no branch.
-    # The probe now runs on a throwaway copy; the real file is only read.
     original = (RELAY / "manifest.json").read_bytes()
     man = json.loads(original.decode("utf-8"))
     listed = set(man["files"])

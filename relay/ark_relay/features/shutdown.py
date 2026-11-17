@@ -63,8 +63,6 @@ def _recent_entries(eng, now: datetime) -> list[dict]:
 def _missing_kinds(eng, q: dict, entries: list[dict]) -> list[str]:
     """The scripts of queue `q` not recorded since its own time."""
     from ark_relay.features import handle as missed  # noqa: PLC0415
-    # A queue skipped on purpose that day owes nothing (11-01: after the evening queue's skip was
-    # restored, the overdue check and the shutdown wait both counted it as still missing MAA).
     if missed._sat_out(eng, q["due"].astimezone(SERVER_TZ).strftime("%Y-%m-%d"), q["name"]):
         return []
     # Only runs started at or after this queue's own time count -
@@ -167,14 +165,6 @@ def _not_shift(eng, now: datetime, entries: list[dict], booted, shift: list[dict
 BOOT_SLACK_S = 120   # the boot time is now - uptime, so two reads of one boot differ by seconds
 
 
-# ---------- the opportunity is the moment the shift finished, not the rest of the boot ----------
-# Verdicts that hold the machine on past the moment a shift finished with work the relay
-# started itself after the shift: its make-up run (makeup.py) and the deferred client
-# update with its re-run (engine._maybe_deferred_update). Once one of them has held the
-# power-off, that shift's opportunity is gone; the machine stays on and powers off after
-# the next shift. 2026-10-15: the morning shift finished at 09:3x, the update and the
-# MaaEnd make-up held the power-off until 13:17, and the go came at 13:18 - hours after
-# the shift, against the user's rule (USER-SWITCHES.txt at shutdown.py:_say_if_moment_passed).
 HELD_PAST_SHIFT = ("makeup", "updating")
 # Verdicts reached only after _not_shift passed (the shift finished) that can sit in front
 # of 「updating」 in decide's chain: the update thread running behind one of them still
@@ -341,9 +331,6 @@ ROUND_GAP_H = 2
 # Such a retry belongs to the round of the attempt it repeats; the bound only
 # keeps a hand-run repeat the next afternoon from being chained back.
 RETRY_LINK_H = 4
-# AUTO-MAS's per-script time limits, minutes (read from ScriptConfig.json on the
-# machine on 2026-10-01: OK-WW RunTimeLimit 120, MaaEnd RunTimeLimit 40, MAA
-# RoutineTimeLimit 45), and the slack for AUTO-MAS to notice and move on.
 TIMEOUT_LIMIT_MIN = {"OK-WW": 120, "MaaEnd": 40, "MAA": 45}
 TIMEOUT_SLACK_MIN = 10
 # A single script the relay itself dispatched (commands.run_script: the make-up,
@@ -479,13 +466,6 @@ def _linked(prev: dict, cur: dict) -> bool:
     return gap <= timedelta(hours=ROUND_GAP_H) or retry or moved_on
 
 
-# A test window run-one.sh opened and nobody closed (no "until") is taken to end
-# this long after it opened: a --test run is one script, and the longest
-# AUTO-MAS limit is OK-WW's 120 minutes (TIMEOUT_LIMIT_MIN) plus start-up.
-# Without it a forgotten test-off made every later record a test run, and the
-# machine never powered off again (review of 25ebc227, 10-13). Measured in the 10-01..10-13
-# ledgers (86 runs): the longest MAA run 67.9 min, MaaEnd 60.3, OK-WW 60.0; with OK-WW's
-# 120 + TIMEOUT_SLACK_MIN, 3 h leaves 50 min for the wait before the run starts.
 OPEN_WINDOW_MAX_H = 3     # ledger_report.OPEN_TEST_WINDOW_MAX_H reads open windows the same way
 
 
@@ -508,15 +488,7 @@ def _test_spans(eng) -> list[tuple[datetime, datetime]]:
 def _off_shift(eng, entries: list[dict]) -> set[int]:
     """id() of every record in `entries` that is no part of a 早班/晚班.
 
-    Such a record never joins a scheduled round and never moves the skip key: on
-    10-12 two test-window MaaEnd runs (18:26, 20:04) chained into the 21:30 evening
-    shift and made it read as started by hand (no power-off, 21:45:34), and on 10-13
-    the hand-started OK-WW at 11:07 chained into the morning shift and gave it a new
-    key, so the spent 「下次跑完不关机」 no longer matched and the machine powered off
-    at 11:13:55. The user's rule, 2026-10-10 18:31 (quoted in USER-SWITCHES.txt):
-    the relay powers off only after a 早班/晚班 has finished.
-
-    Off-shift is a run a person started at AUTO-MAS (raw.hand_started, written by
+Off-shift is a run a person started at AUTO-MAS (raw.hand_started, written by
     handle._book), or one inside a marked test window that is not a scheduled run.
     A window can never swallow a shift: an in-window record still belongs to a
     shift when it starts within MANUAL_WINDOW_MIN of a scheduled time, or continues
@@ -842,14 +814,6 @@ def overdue_moments(eng, now: datetime) -> list[tuple[datetime, str]]:
 def _alarm_shift_overdue(eng, now: datetime) -> None:
     """A shift script still without a record past the shift's planned end: one group alarm
     per shift run (key: the queue and its due time; re-checked every tick).
-
-    runwatch.check_overrun alarms at this same moment only when AUTO-MAS's runtime-snapshot
-    shows the shift's task unfinished; it says nothing when AUTO-MAS cannot be asked, when
-    the task is gone or done but its record never landed, or when the running task reads as
-    hand-started. missed._check_partial_queues waits while a game process is up and stops
-    after partial_window. Either way 「shift-running」 held the machine on all night with one
-    relay.log line (the user, 2026-10-12 20:04: 「不能压警报…就是有错，但是不报，那是比报错
-    更严重的事情。」). A run check_overrun already alarmed on is not pushed again.
     """
     from ark_relay.features import errwatch, handle  # noqa: PLC0415
     from ark_relay.features import runwatch  # noqa: PLC0415
@@ -934,9 +898,6 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
             eng._before_shutdown()
         except Exception:
             log.warning("关机前的待办检查失败，按原计划关机", exc_info=True)
-        # That pull may have just turned on debug mode or dispatched a script: an
-        # order that took effect a moment ago must still hold this power-off
-        # (11-08 [A-05]). 「下次跑完不关机」 is spent right below (take_skip).
         if modes.debug_active(eng.state.dir):
             key = eng._shutdown_key(now)
             if modes.shutdown_skipped(eng.state.dir) != key:
@@ -958,15 +919,6 @@ def _maybe_shutdown(eng, now: datetime | None = None) -> bool:
         log.info("⏸ 「下次跑完不关机」用掉了：这一次关机跳过（%s），"
                  "机器开着，等下一趟早班/晚班跑完照常关机", key)
         return False
-    # The final upload of today's relay.log and AUTO-MAS app.log before the power goes
-    # (error_evidence.py): the error-path uploads throttle to one a minute, so this is
-    # the definitive copy of the day. A failed upload must not stop the shutdown, but it
-    # is a plain WARNING (pushed): upload_daily_logs keys the object by today's date and
-    # nothing uploads a past day, so the day's COS copy stays without its last lines for
-    # good, and COS / the network refusing is not something the relay got over. errwatch
-    # keeps it on disk and pushes it at the next boot if the machine is down first.
-    # Until 2026-10-11 it was marked recovered (daily report only); relay.log from 08-15
-    # to 10-11 holds no such line.
     try:
         from ark_relay.features import evidence as error_evidence  # noqa: PLC0415
         _up = error_evidence.upload_daily_logs(eng.cfg, force=True)

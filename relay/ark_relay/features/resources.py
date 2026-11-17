@@ -39,15 +39,7 @@ def probe() -> dict:
 
 
 def _probe_stamina(skland, cred, sk: dict) -> None:
-    """One read of card/detail with the session just made, kept for the check #10.
-
-    Built aside and published by one assignment, so a reader never sees 「at」 without
-    its outcome.
-    The boot push and the 停止前 push can both make a session at the same moment (a stop
-    7 s after boot, 2026-10-10 16:32:53); when this cleared the probe and then waited on
-    Skland, #10 read the half-made one and pushed 「终末地体力没读到：没读」. Not a lock
-    around the session: the 停止前 push has its own short Skland time-outs
-    (app_main.stop_push) and must not wait on the boot push's."""
+    """One read of card/detail with the session just made, kept for the check #10."""
     p: dict = {"at": time.time()}
     if not sk.get("efRole"):
         p["错误"] = "会话里没有终末地的角色"
@@ -76,9 +68,6 @@ def skland_session(cfg) -> dict:
     if not getattr(cfg, "skland_token", ""):
         return {"错误": "没配森空岛 token"}
     try:
-        # A session cached while the Endfield role lookup failed (a timeout, say) is
-        # remade after EF_ROLE_RETRY_S, so one bad moment does not leave the phone
-        # saying 「没有终末地角色」 until the relay restarts (11-08 [D-04]).
         if (_session["sk"] is not None and "efRole" not in _session["sk"]
                 and time.monotonic() >= _session.get("ef_retry_at", float("inf"))):
             _session["sk"] = None

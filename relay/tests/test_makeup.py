@@ -12,15 +12,7 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_collect_history_db():
-    """AUTO-MAS v5.8.0-beta.2 records runs in data/history.db, not in per-run JSON files.
-
-The machine updated itself to it on 2026-10-28 08:47. The relay read only the JSON
-layout, booked none of that morning's runs (MAA 09:01, OK-WW 09:18 and 09:19, MaaEnd
-09:33) and pushed 「早班 没有运行」 at 10:04 (ledger #120). The fixture is that
-morning's real history.db and the five 0.log files it points to.
-
-    Formerly test_collect_history_db.py.
-    """
+    """AUTO-MAS v5.8.0-beta.2 records runs in data/history.db, not in per-run JSON files."""
     import shutil
     from datetime import timedelta, timezone
 
@@ -178,15 +170,7 @@ morning's real history.db and the five 0.log files it points to.
 
 
 def _part_collect_main():
-    """Per-route gathering retry, checked against the real files of 2026-09-11.
-
-That day routes 15 and 16 failed in the 10:18 run, AUTO-MAS re-ran all 17,
-and upstream declined a per-route retry (MaaEnd/MaaEnd#5660). The fixtures
-are the AUTO-MAS log of that run, MXU's logged override line, and MaaEnd's
-zh_cn locale.
-
-    Formerly test_collect_retry.py.
-    """
+    """Per-route gathering retry, checked against the real files of 2026-09-11."""
     import http.server
     import json
     import threading
@@ -238,9 +222,6 @@ zh_cn locale.
     check("没结论：也报群", [x for x in got if x[0] == _texts.COLLECT_RETRY_FAILED], [(_texts.COLLECT_RETRY_FAILED, True)])
     got, _ = _retry_outcome({"AutoCollectRoute15": False}, {"AutoCollectRoute15": ["2026-09-11"]})
     check("连续两天：报群", [x for x in got if x[0] == _texts.COLLECT_RECURRENT], [(_texts.COLLECT_RECURRENT, True)])
-    # The user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」 The start is not
-    # sent at all; all walked goes out only as COLLECT_RETRY_OK, which notify routes to
-    # the log (not pushed); the daily report's 「自动采集补跑：…」 line carries both.
     got, sd = _retry_outcome({"AutoCollectRoute15": True})
     check("补跑走通：开始那条不发", [x for x in got if x[0] == _texts.COLLECT_RETRY_START], [])
     check("补跑走通：只有「补跑后全部走完」一条，不带 alert", got, [(_texts.COLLECT_RETRY_OK, False)])
@@ -355,8 +336,6 @@ zh_cn locale.
     mdir.mkdir(parents=True)
     FULL_W = ["Route1", "Route2", "Route3", "Route15", "Route16", "Route17"]
     FULL_V = ["Route4", "Route5", "Route6", "Route13", "Route14"]
-    # The master as a relay before 2026-10-06 left it after narrowing to 15, 16 and 4,
-    # with the original lists saved in narrow.json.
     master = {"instances": [{"tasks": [{"taskName": "AutoCollect", "enabled": True, "optionValues": {
         "AutoCollectSchedule": {"type": "checkbox", "caseNames": ["AutoCollectScheduleSaturday"]},
         "AutoCollectValleyIVRareRoutes": {"type": "checkbox", "caseNames": ["Route4"]},
@@ -538,9 +517,6 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     check("日报这句是人话", texts.plain(line), [])
 
     print("\n[半路断掉的那趟（09-11 06-47-30，最后一行是「路线5：轻黯石」）：后来的截图不算它的]")
-    # on_error keeps pictures for days; refresh_raw re-parses every row of the day at report
-    # time. A later run's picture (same day 12:30, or the real 10-05/10-08/10-12 ones) used
-    # to land in the cut-short run's open last window and book 路线5 as not gathered.
     later = PIC.format("2026.09.11-12.30.00.000")
     cut = log("MaaEnd-06-47-30.log")
     check("半路断掉：后面的截图都不认成路线5", cm.blocked_routes(cut, [later, P1005, P1008, P1012A, P1012]), {})
@@ -672,20 +648,12 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     check("核对没记它（改之前的样子）：FAIL", st, "FAIL")
     st, ev = c29(good, {"maaend_collect_total": 17})
     check("日报那行没写：FAIL", st, "FAIL")
-    # A failed run is not outcome-checked (AUTO-MAS re-runs it: 10-12 06-04-00, 10-08 05-29-15);
-    # its daily row is the booking (daysim 10-08 / 10-12 had #29 go red on exactly those).
     st, ev = c29(None, {"maaend_collect_total": 17, "maaend_collect_blocked": [R10]})
     check("失败的那趟（没做结果核对）：日报记了就 PASS", st, "PASS")
     st, ev = c29(None, {"maaend_collect_total": 17})
     check("失败的那趟：日报也没记：FAIL", st, "FAIL")
 
     print("\n[边界：同一秒里按毫秒分（截图名、历史日志、maafw.log 都带毫秒），日志和补跑用同一条规矩]")
-    # 10-12 10:45:39 holds, to the millisecond (maafw.bak.2026.10.12-10.56.34.166.log and
-    # the history log MaaEnd-06-04-00): AutoCollectRoute10End recognised .488 / acted .489,
-    # AutoCollectRoute11Start recognised .510 - the moment MaaEnd announces 「路线11：重黯石」,
-    # which AUTO-MAS stamps .533 - and acted .717. Cut to the second, a picture anywhere in
-    # that second went to route 11 in the history log (route 10 booked as walked, route 11
-    # re-run for nothing) and to route 11 or nothing in the retry (Start->End windows).
     R11 = "路线11：重黯石"
     ms = {k: PIC.format("2026.10.12-10.45.39." + k) for k in ("400", "500", "600")}
     check("in_window 是半开区间", [cm.in_window(datetime(2026, 1, 1, 0, 0, s), datetime(2026, 1, 1, 0, 0, 1),
@@ -763,11 +731,6 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     check("…#29 也不判", st, None)
 
     print("\n[只隔一个下划线的息壤中继器截图：日报、补跑名单、补跑结果、#29 用同一个认法]")
-    # MaaFW also writes on_error names with a single underscore before the node
-    # (2026.10.08-10.01.43.463_AutoCollectRoute1Start.png). shot_time reads both, so the
-    # outcome check and #29 took such a relay-device picture; obstacle_shots globbed only
-    # ___ names, so the daily row and the retry list (_blocked_in) did not - #29 then failed
-    # 「日报那一行没写它没采到」 and route 10 was never re-run.
     ONE = "{}_MapNavigatorObstacleDevice_InteractPost.png"
     P1008_1, P1012_1 = ONE.format("2026.10.08-10.59.41.495"), ONE.format("2026.10.12-11.25.16.239")
     P1012A_1 = ONE.format("2026.10.12-10.44.55.895")
@@ -793,15 +756,6 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     check("关机前补跑真去补路线10", asked, [["AutoCollectRoute10"]])
 
     print("\n[最后一条路线：日志和补跑都到任务结束为止（不是一个到「任务完成」、一个到 End）]")
-    # A gathering task's last route ends, in the history log, at 「任务完成/任务失败: 自动采集」
-    # (route_windows); MaaFW announces the same moment as Tasker.Task.Succeeded/Failed of
-    # AutoCollectSchedule, some 25 s after the last route's End node (maafw-attempt3 of
-    # 2026-09-14: AutoCollectRoute17End 11:19:57.922, Tasker.Task.Failed 11:20:23.065). The
-    # retry used to close the last route at End, so a picture in that tail was the route's
-    # in the daily row (re-run) and nobody's in the retry (judged walked).
-    # Both logs below are constructed for a run whose last route is 11: the maafw fixture
-    # keeps only the route 9-11 node lines, so it gains the task's end event; the history
-    # log 06-04-00 is cut before its 「路线12」 line and gains its real 「任务完成」 line.
     TASK_END = ('[2026-10-12 10:56:34.150][INF][Px2472][Tx52502][Utils/EventDispatcher.hpp][L65]'
                 '[MaaNS::EventDispatcher::notify] !!!OnEventNotify!!! [handle=true] [msg=Tasker.Task.Succeeded] '
                 '[details={"entry":"AutoCollectSchedule","hash":"","task_id":200000001,"uuid":""}]')
@@ -832,8 +786,6 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
           [texts.collect_blocked_check(R10)])
 
     print("\n[补跑时又撞上「战斗中无法使用」的路线，在同一次补跑里单独再走一轮，按第二轮的结果算（账本 #170）]")
-    # 11-12: the retry of 11:46 was blocked on 协议纹石 路线2 again and went to the group; the same route
-    # walked when the retry was run by hand at 11:59. Lines below are built in maafw.log's own form.
     A, B = "AutoCollectRoute10", "AutoCollectRoute11"
 
 
@@ -883,7 +835,6 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
                 if start_fails and sent_over:
                     raise OSError("connection reset")
                 if agents["n"]:
-                    # mxu-tauri.log 10-22 21:56:40: a start beside the last task's agents fails
                     raise urllib.error.HTTPError(path, 500, "agent failed to start", {}, None)
                 agents["n"] = 2
                 sent_over.append(json.loads(body["tasks"][0]["pipeline_override"]))
@@ -1006,14 +957,6 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
 
 def _part_collect_retry_cutoff():
     """The gathering retry, cut off mid-way, is run once more; every way out closes MaaEnd and the game.
-
-Audit s16 #2: the 「done today」 stamp is written before run_retry, which can take
-half an hour. The relay does stop on this machine (relay.log:30844, 「10-10 12:29:59
-收到停止通知（停止服务）」); a stamp left without `finished` then said 「已经跑过」 for
-the rest of the day - no retry, no alarm, MaaEnd.exe / Endfield.exe left running.
-run_retry's early 「gave up」 returns also left both running.
-
-    Formerly test_collect_retry_cutoff.py.
     """
     import json
     import types
@@ -1186,11 +1129,6 @@ def _part_collect_watch():
     """collect_watch: failed gathering routes are read from the live maafw.log, and the
 master is never narrowed (the user, 2026-10-06: 「我开的任务是谁说要关的」);
 lists an older relay version narrowed go back at the next attempt's start.
-
-Fixture: the real MaaFW event lines of 2026-09-14 attempt 3 (10:53-11:20),
-where Route10 failed and AUTO-MAS retried all 17 routes at 11:21:43.
-
-    Formerly test_collect_watch.py.
     """
     import json
     import logging
@@ -1200,9 +1138,6 @@ where Route10 failed and AUTO-MAS retried all 17 routes at 11:21:43.
     from ark_relay.features import collect_watch
 
 
-    # Every 「目录监听掉了」 the watcher logs while the test runs. It must stay empty:
-    # the line Windows CI showed after the result line (2026-10-07) is the watcher
-    # seeing its directory removed by _tmp's cleanup at exit, not a drop mid-test.
     class _Drops(logging.Handler):
         def __init__(self):
             super().__init__(logging.WARNING)
@@ -1405,23 +1340,6 @@ where Route10 failed and AUTO-MAS retried all 17 routes at 11:21:43.
 
 def _part_makeup_main():  # noqa: C901
     """A MAA / MaaEnd failure gets one make-up run; still failed after it, the group hears once.
-
-The user asked for one thing only (2026-10-05 13:07): 「中继我就要求一个，他不要再报错了……
-几乎就是遇到一点小毛病就停下来报错」 - it stopped at every small glitch.
-On 2026-09-25 three MaaEnd tasks (赠送干员礼物 / 基质刷取 / 日常奖励领取) failed
-3/3 (tests/fixtures/maaend_bagfull_2026-09-25.log) and the
-group got 「最终失败」. Here those failures are replayed against the real master
-(tests/fixtures/maaend-2026-09-10/master-before.json, with that install's own
-zh_cn.json), and the alarm path before and after the make-up.
-
-Since 2026-10-06 (the user: 「我开的任务是谁说要关的」) the make-up never switches a
-task off: the master runs as the user left it, byte for byte. The one change is for
-a proven full bag - 存放背包 switched on and moved in front, put back afterwards.
-Until then the master was narrowed to the failed tasks (every other task, 自动采集
-among them, switched off) and failures of only 自动采集 / 应急理智加强剂 got no make-up
-(SKIP_TASKS); the checks marked 「不关」 below are red on that code.
-
-    Formerly test_makeup.py.
     """
     import copy
     import json
@@ -1674,9 +1592,6 @@ among them, switched off) and failures of only 自动采集 / 应急理智加强
     row = {x["run_id"]: x for x in e.state.read_ledger(day)}[r.run_id]
     check("原来那趟记上补跑做成的时间", bool((row.get("raw") or {}).get("makeup_ok")))
     check("压着的那条转成自愈", list(e._recovered), [("MaaEnd", "endfield")])
-    # A failure the make-up got past recovered: the daily report only, its make-up line
-    # says it (the user, 2026-10-06 05:07: 「报错后自己好了的，只进日报、不进群。」). From
-    # 2026-10-06 (「不论多少次什么错误都要发」) until 05:07 it was pushed to the group.
     e._flush_pending()
     check("补跑走通的失败不推（群、Server酱都没有）", e.notifier.sent, [])
     check("放下", dict(e._recovered), {})
@@ -2174,8 +2089,6 @@ among them, switched off) and failures of only 自动采集 / 应急理智加强
     check("没干完那条清掉了", {x["run_id"]: x for x in e.state.read_ledger(day)}[inc.run_id].get("incomplete"), "")
 
     print("\n[the day's make-up marker is there but corrupt: no second make-up, said once]")
-    # Until 2026-10-10 a corrupt marker read as {}: a second whole make-up could run the
-    # same day (stamina spent again) and the file was overwritten, with no log line.
     import logging
 
 
@@ -2215,26 +2128,7 @@ among them, switched off) and failures of only 自动采集 / 应急理智加强
 
 
 def _part_hand_started_retry():
-    """A task a person started at AUTO-MAS that retried inside itself gives one outcome.
-
-2026-10-16 (machine clock), AUTO-MAS task c6d40887 (app.log 13:21:27 「创建任务: …,
-触发来源: manual_task」, no relay start in state/relay-dispatches.json) ran MaaEnd
-three times: 「原配置阶段尝试次数: 1/3」 13:21:28 -> MaaEnd-09-21-28 游戏启动失败;
-「2/3」 13:23:36 -> MaaEnd-09-23-36 转交委托、选剑演武、基质刷取 failed; MaaEnd's
-update install (MaaEnd-09-53-01, not a run); 「3/3」 13:53:33 -> MaaEnd-09-53-33
-Success!. AUTO-MAS wrote all four records at the task's end, 14:11:40. The relay
-pushed each failed attempt as its own final failure: relay.log 14:11:55 and 14:12:04
-「❌ MaaEnd 失败」, both saying 「这一趟是有人在 AUTO-MAS 上手动开的」, although the
-third attempt redid every failed step. (Its 14:12:12 「⚠️ 这一轮没干完」 came from
-the outcome check on 基质刷取, a separate matter; stubbed here.)
-
-The scheduled path folds such attempts: held, replaced by the next failure, healed
-by a later success (daily report only), only the last failure pushed. These are
-the real records (tests/fixtures/hand-started-1016/, dates moved to today: a
-make-up is only for a failure of today, so the no-make-up checks mean something).
-
-    Formerly test_hand_started_retry.py.
-    """
+    """A task a person started at AUTO-MAS that retried inside itself gives one outcome."""
     import json
     import os
     from datetime import datetime, timedelta
@@ -2492,18 +2386,7 @@ make-up is only for a failure of today, so the no-make-up checks mean something)
 
 
 def _part_makeup_midnight():
-    """A MAA round that crossed midnight sits on two ledger files; the make-up reads both.
-
-Real records (state/ledger-2026-10-02.jsonl and -03.jsonl, copied into
-tests/fixtures/ledger-midnight-*.jsonl): the evening retry chain ran 23:40 -> 01:35.
-`MAA-19-44-16` (23:44:58 -> 00:18:54, 「MAA 部分任务执行失败」, 34 minutes of fighting)
-is filed on 10-02; the next attempt `MAA-20-18-59` (00:19:45) on 10-03. With that
-attempt's failure set to a login failure, maa_work_done read only 10-03 and said
-「never got going」 - a whole re-run, a second round of potions (audit s16 #1).
-on_record likewise tied only 10-03's failures to a successful make-up.
-
-    Formerly test_makeup_midnight.py.
-    """
+    """A MAA round that crossed midnight sits on two ledger files; the make-up reads both."""
     import os
     import shutil
     from datetime import datetime
@@ -2579,20 +2462,6 @@ on_record likewise tied only 10-03's failures to a successful make-up.
 def _part_hand_started_runs():
     """A run a person starts from AUTO-MAS's own screen is told apart from the shift, and
 its failures are pushed like any other's, saying whose run it was.
-
-2026-10-03 00:40-02:35 (JST) someone ran 自动肉鸽 ten times from AUTO-MAS
-(app.log: 「创建任务: …, 模式: AutoProxy, 触发来源: manual_task」, 「任务被用户手动中止」).
-The relay booked them as the evening shift's failures, held them for the final alarm
-and pushed 「⏰ 晚班 21:30 开跑…还没跑完」 at 00:43. From then until 2026-10-06 such a
-run was booked for the daily report only; the user's order of 2026-10-06 (「不论多少次
-什么错误都要发」) puts its failures, 「没干完」 and timeouts back in the group. It is
-still not the shift: no make-up, no shift-overrun alarm. Since 2026-10-16 a failed
-attempt is held until the same AUTO-MAS task's later attempts decide, as the shift's are.
-
-trigger.py reads who created each task; the relay notes its own starts, because
-/api/dispatch/start is 「manual_task」 too and a rerun the relay makes keeps its alarms.
-
-    Formerly test_hand_started_runs.py.
     """
     import json
     import os
@@ -2620,8 +2489,6 @@ trigger.py reads who created each task; the relay notes its own starts, because
     from ark_relay.core.ledger import State
 
 
-    # Real lines (automas-app.log in the 10-02 23:4x / 10-03 00:19 evidence; 09-25 21:30 for
-    # the timer's own), shortened to the four tasks used here.
     APP_LOG = """\
 2026-09-25 21:30:00.780 | INFO     | 业务调度 | 创建任务: e715210d-7445-4ff4-97c4-642e1a55afe7, 模式: AutoProxy, 触发来源: scheduled_task
 2026-09-25 22:01:10.000 | INFO     | 业务调度 | 任务结束: e715210d-7445-4ff4-97c4-642e1a55afe7
@@ -2690,8 +2557,6 @@ trigger.py reads who created each task; the relay notes its own starts, because
     check("只有手动那个开着时才算", trigger.hand_started_at(both[1:], at(4, 9, 20), TMP / "state").id[:4], "bbbb")
 
     print("\n[有人手动开的失败：记账、不补跑，同一任务的重试结束就报群并写明是手动开的]")
-    # Held until the task's later attempts decide (handle._hold_hand_started, 2026-10-16
-    # task c6d40887: tests/test_makeup.py), pushed by the flush.
     from ark_relay.core import texts
     from ark_relay.features import makeup as marker
     e = build()
@@ -2768,9 +2633,6 @@ trigger.py reads who created each task; the relay notes its own starts, because
     check("进了待推队列", ("MAA", "arknights") in e._pending)
 
     print("\n[the relay's own-starts file is unreadable: said once, not on every read]")
-    # Until 2026-10-10 a corrupt file read as [] with no word, and the relay's own
-    # make-up starts were booked as a person's (no further make-up, 手动 label).
-    # Read every tick (shutdown decision, runwatch), so once per condition.
     import logging
 
 
@@ -2805,15 +2667,7 @@ trigger.py reads who created each task; the relay notes its own starts, because
 
 
 def _part_retry_note_time():
-    """The 「后来在 … 那趟重试里」 note names the retry by its start, on both clocks.
-
-Real 2026-10-08 Endfield records (fixtures/ledger-1008-maaend-two-lists.jsonl):
-the 09:30 run's 自动采集 was done by the 10:35→11:12 run. The note said
-「后来在 11:12 那趟重试里」: the finish time, machine clock only, while the run's
-own line reads 「10:35→11:12 … 东京 11:35→12:12」.
-
-    Formerly test_retry_note_time.py.
-    """
+    """The 「后来在 … 那趟重试里」 note names the retry by its start, on both clocks."""
     #!/usr/bin/env python3
     import json
 

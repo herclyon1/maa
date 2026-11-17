@@ -113,15 +113,7 @@ def _estop_alive() -> list[str]:
 
 
 def _estop_live_tasks() -> "list[tuple[str, str]] | None":
-    """AUTO-MAS's unfinished dispatch tasks: [(taskId, label)]. None when it cannot be asked.
-
-    The taskId here is the dispatch id, the only id /api/dispatch/stop acts on
-    (scripts/windows/dispatch_guard.py live_tasks, 2026-09-14). runtime-snapshot
-    is a GET, unlike every other AUTO-MAS endpoint, so this does not go through
-    _mas(). "Unfinished" is engine._task_unfinished, the same criterion the
-    relay uses everywhere else. The label is the task_info names joined with
-    「、」, or the mode when there are none.
-    """
+    """AUTO-MAS's unfinished dispatch tasks: [(taskId, label)]. None when it cannot be asked."""
     from ark_relay.core.config import mas_base  # noqa: PLC0415 - avoids an import cycle
     from ark_relay.core.engine import _RUNTIME_PATH, _task_unfinished  # noqa: PLC0415
     try:
@@ -143,12 +135,7 @@ def _estop_live_tasks() -> "list[tuple[str, str]] | None":
 
 
 def _estop_stop_by_config_ids() -> None:
-    """Post every script and queue id to /api/dispatch/stop.
-
-    AUTO-MAS answers 操作成功 to these and stops nothing (dispatch_guard.py,
-    2026-09-14). Used only as the fallback when runtime-snapshot cannot be read:
-    harmless, and it costs nothing to try.
-    """
+    """Post every script and queue id to /api/dispatch/stop."""
     try:
         ids = [sid for sid in _mas("/api/scripts/get")["data"]]
         ids += [qid for qid in _mas("/api/queue/get")["data"]]
@@ -306,28 +293,19 @@ ESTOP_LAST: dict = {}
 def estop(sleep=None, state_dir=None) -> tuple[bool, str]:
     """The red button: stop every script and game. The red one on the phone page.
 
-    The order is the one in scripts/windows/dispatch_guard.py:
+The order is the one in scripts/windows/dispatch_guard.py:
     (1) stop every running AUTO-MAS task by its dispatch taskId, so it does not
     treat this as a fault and retry; (2) wait 12 seconds, and only taskkill what
     is left; (3) check again - both the process list and AUTO-MAS's own list of
     unfinished tasks - and if either still shows something, run another stop
     round.
 
-    Step (3) is what makes the answer true: AUTO-MAS relaunches the whole queue
-    when a member is killed under it, so "killed it twice" says nothing about
-    whether anything is still running half a minute later, and an empty process
-    list does not mean AUTO-MAS has not started the queue's next member. An
-    unreadable task list counts as "still running", the same way an unreadable
-    process list does. (The user, 2026-08-26, on a stop that only
-    reported success: 「你没有进行任何有效的停止行为，
-    全是我手动关的」 - nothing had really been stopped, he closed it all by hand.)
-
-    Killing AUTO-MAS itself is deliberately NOT done here: service.py's reviver
+Killing AUTO-MAS itself is deliberately NOT done here: service.py's reviver
     holds its process handle and brings it back within seconds. When the relay
     cannot get the machine quiet, the honest answer is to say so and let the
     operator use scripts/mac/estop.sh, which stops this service first.
 
-    Start and end of the press go to <state_dir>/estop-windows.json (see
+Start and end of the press go to <state_dir>/estop-windows.json (see
     estop_windows), so the run it cut short is not booked as a success.
     """
     import time  # noqa: PLC0415

@@ -12,23 +12,7 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
 def _part_boot_backend_wait():
-    """Boot steps that need the AUTO-MAS backend wait for it right before they run.
-
-Real sequence, 2026-10-17 21:20 (relay-2026-10-17.log on the evidence bucket):
-21:20:55 ensure_automas logged that AUTO-MAS came up by itself after 24 s; 21:21:25
-efstart_setup found the API refusing the connection (a WARNING, ledger #104); 21:21:30
-the boot self-check failed its "scheduler answers" and "backend process running" lines
-(the self-check alarm, ledger #105). The backend's processes then on the machine had
-started 21:21:34 and it answered again by 21:23: AUTO-MAS restarted its own backend
-mid-boot, and the steps judged it in the gap.
-
-Here the backend is down for the first polls (a fake clock, no real sleep): the boot
-steps must wait and pass with no alarm; still down past the limit, the same failure
-lines as before must come, saying how long they waited. Fails on the code before
-boot_stages.await_backend (the steps asked once, at once).
-
-    Formerly test_boot_backend_wait.py.
-    """
+    """Boot steps that need the AUTO-MAS backend wait for it right before they run."""
     import logging
     import os
     import tempfile
@@ -116,9 +100,6 @@ boot_stages.await_backend (the steps asked once, at once).
         return _real_run(cfg, procs=lambda: [BACKEND] if _up() else [(1, "explorer.exe")],
                          run_ok=lambda cmd: (True, ""), schedule=lambda: [{"times": ["21:30"]}],
                          contract=lambda d: types.SimpleNamespace(missing=[], unreadable=[], judged=True),
-                         # 11-14: the virtualization read is faked too. Unfaked it asked the real machine: the
-                         # Mac has no pwsh (not judged), but the GitHub windows runner is a Hyper-V guest, so
-                         # the self-check failed there on VIRT_NAME (relay-windows red since at least 11-10).
                          has_module=lambda m: True, virt=lambda: "VBS=0 HV=False", **kw)
 
 
@@ -200,8 +181,6 @@ boot_stages.await_backend (the steps asked once, at once).
     check("its failure line says the 120 s", any("等了 120 秒" in w for w in rec.warnings()))
 
     print("\n[a wait ran out, then the backend answered, then went again: the next step waits again]")
-    # Audit 11-08 A-20: the gave-up mark was never cleared, so after one timeout at boot every
-    # later step that found the backend down gave up at once and said it had waited 120 s.
     lg = logging.getLogger("ark.test_boot")
     lg.handlers[:] = [_Rec()]
     lg.propagate = False
@@ -239,20 +218,7 @@ boot_stages.await_backend (the steps asked once, at once).
 
 
 def _part_boot_config_alarm():
-    """Config warnings and a bad-config exit at boot reach the group (audit s23 F1, 10-13).
-
-Until 10-13 boot_stages._stage_bootstrap ran cfg.validate() - which logs
-「配置提醒: …」 (config.py) and whose problems were logged as 「配置有问题」 before the
-early return - before errwatch.install. Nothing buffers records logged before the
-handler exists, so both reached relay.log only: a relay that would not start said
-why to nobody, and the 「没有配置群机器人」 warning added 10-13 (0cd624e2) was never
-pushed. Now errwatch is installed first, and the bad-config exit waits for its push.
-
-Runs the real _stage_bootstrap with the real Config (from environment variables) and
-a recording notifier in place of the real channels.
-
-    Formerly test_boot_config_alarm.py.
-    """
+    """Config warnings and a bad-config exit at boot reach the group (audit s23 F1, 10-13)."""
 
     import logging
     import os
@@ -355,18 +321,6 @@ a recording notifier in place of the real channels.
 def _part_boot_restore_recovered():
     """boot_stages._stage_reenable_maaend: a narrowed MaaEnd master left over from the
 last session and put back at boot is a fault the relay got over by itself.
-
-The user on 2026-10-06 05:07, about faults the relay recovered from by itself: 「报错后自己好了的，只进日报、不进群」.
-Until then 「开机：…（上次关机前没改回）」 was a plain WARNING, so a master the
-relay had just put right before anything ran still rang the group. Now:
-* put back (the gathering routes, or the make-up's narrowing) -> one WARNING
-  marked errwatch.recovered(): not pushed, in the daily report tagged with
-  the words 「自己好了，只进日报」 there;
-* could not be put back -> the WARNING stays plain, pushed.
-Every other step of the stage is faked; a real errwatch handler on the
-stage's logger shows what is pushed and what the daily report lists.
-
-    Formerly test_boot_restore_recovered.py.
     """
     import logging
     import tempfile
@@ -483,22 +437,7 @@ stage's logger shows what is pushed and what the daily report lists.
 
 
 def _part_keeper_blind_backoff():
-    """The keeper does not back off when it revived nothing (audit s15 #1, 2026-10-13).
-
-Machine record (tests/fixtures/keeper_blind_20261010.log, relay.log 10-10 16:14:07):
-the process table could not be read (「读得到每个程序是怎么启动的…读不到」) while
-AUTO-MAS answered (「✓ 调度程序有应答」). Five relay starts from 16:14 to 17:21 got no
-backend handle. In that state _automas_running() is True (it falls back to the
-API), nothing is revived, and every handle-less check still doubled revive_wait:
-checks at 180, 360, 720, 1440, 2880 s ... out to every 30 minutes, with not one
-keeper line in the log. A backend that died then was found up to 30 minutes late.
-
-Now: the wait doubles only after a real revival; a backend that is up but cannot
-be attached is checked every procwatch.AUTOMAS_CHECK_SECONDS, and that is said
-once at INFO.
-
-    Formerly test_keeper_blind_backoff.py.
-    """
+    """The keeper does not back off when it revived nothing (audit s15 #1, 2026-10-13)."""
     import itertools
     import logging
     import types
@@ -622,28 +561,6 @@ once at INFO.
 
 def _part_keeper_exit():  # noqa: C901
     """The AUTO-MAS keeper: an exit while the machine goes down is INFO with its reason; any other exit is decided by whether the backend comes back.
-
-2026-10-06 log sweep (08-20 to 10-05): 「AUTO-MAS 后端退出了」 68 times and
-「AUTO-MAS 后端不在，正在拉起（第 1 次）」 62 times, every one at WARNING. The keeper
-never asked whether the machine was going down - and the relay powers the machine
-off after every queue (`shutdown /s /t 60`), so Windows closing the session took
-the backend with it, the keeper read that as a crash and started a revival
-against a closing session. Every WARNING now reaches the group (2026-10-06).
-
-The going-down signals are errwatch's (mark_stopping: the relay's power-off and
-SvcStop/SvcShutdown; Windows' SM_SHUTTINGDOWN), and the keeper waits a moment
-for one when the exit comes first. Time is a virtual clock: nothing here waits.
-
-Since the user's rule of 2026-10-06 05:07 (「报错后自己好了的，只进日报、不进群」)
-any other exit is INFO with its evidence and decided later: the backend back
-(the relay's revival, or by itself after an update) -> one WARNING marked
-errwatch.recovered(), the daily report only; not back at the
-REVIVE_ALERT_AFTER-th check -> 「🔌 AUTO-MAS 启动不起来」 (alert=True) after three
-failed revivals, a WARNING while the relay holds off (an installer on screen);
-not back when the service stops -> a WARNING. A real errwatch handler on each
-keeper's logger shows what is pushed and what the daily report lists.
-
-    Formerly test_keeper_exit.py.
     """
     import logging
     import subprocess
@@ -902,9 +819,6 @@ keeper's logger shows what is pushed and what the daily report lists.
         check("no revival against the closing session", rv, [])
         check("handle let go", k.handle, None)
 
-        # Mute audit 10-12 item 10: after an exit put down to the relay's own power-off no
-        # deadline was armed, so when that power-off was cancelled (「下次跑完不关机」) and the
-        # machine stayed up, nothing ever revived AUTO-MAS or said it was gone.
         print("\n[the relay's power-off cancelled after the exit: the next check revives it and says so]")
         rec, rv, k = run_exit(0x40010004, down=relay_poweroff)   # run_exit puts the power-off back: cancelled
         check("a check is armed while the power-off is under way", k.revive_deadline is not None, True)
@@ -940,8 +854,6 @@ keeper's logger shows what is pushed and what the daily report lists.
         check("ruled at once: an exit nothing explained, no 15 s stall",
               (k.gone is not None, any("不算故障" in m for m in rec.at(logging.INFO))), (True, False))
 
-        # The user, 2026-10-06: only the planned power-off the relay itself started may
-        # stay out of the group; every other shutdown is pushed.
         print("\n[a `shutdown /s` by hand: the service stop control comes 2 s later - pushed at the stop]")
         rec, rv, k = run_exit(1, down_after=2.0)
         check("not called 「not a fault」", any("不算故障" in m for m in rec.at(logging.INFO)), False)
@@ -971,8 +883,6 @@ keeper's logger shows what is pushed and what the daily report lists.
               bool(warns) and "Windows 关机" in warns[0] and "没在关机" not in warns[0] and "意外" not in warns[0])
         check("it reached the group", len(pushed(rec, 1)), 1)
 
-        # 2026-10-10 04:28 (machine clock): `shutdown /s /t 60` by hand wrote its 1074 at
-        # 04:27:24 (20:27:24 UTC); AUTO-MAS exited ~04:28:29; the stop notice came 04:28:45.
         print("\n[10-10 04:28 sample: a 1074 80 s before the exit - no revival, the stop says who shut down]")
         events["xml"] = [ev1074("2026-10-09T20:27:24.5512345Z", r"C:\Windows\system32\shutdown.exe (INS)",
                                 r"INS\Administrator")]
@@ -1317,15 +1227,6 @@ keeper's logger shows what is pushed and what the daily report lists.
 
 def _part_keeper_hold_once():
     """A hold that lasts is said at WARNING once, not at every check (review of bd80586d, 2026-10-13).
-
-bd80586d stopped doubling revive_wait when a check revived nothing, so a hold
-(an installer on screen, or the program list unreadable) re-armed at 180 s for as
-long as it lasted, and each check logged its hold line at WARNING through `say`,
-which errwatch pushes to the group: 40 pushes in 2 hours against 8 before (when
-every check doubled the wait). Now the hold keeps the 180 s check and is said at
-WARNING the first time, at INFO while it lasts; a real revival says it again.
-
-    Formerly test_keeper_hold_once.py.
     """
     import logging
     import types
@@ -1467,7 +1368,7 @@ def _part_stop_during_boot():  # noqa: C901
 
     import boot_stages
     import service
-    from _tmp import tmpdir
+    from _parts import tmpdir
     from ark_relay.features import errwatch
 
     fails = []
@@ -1541,8 +1442,6 @@ def _part_stop_during_boot():  # noqa: C901
     check("steps", boot("selfupdate"), ["selfupdate"])
 
     print("[self-update found new code: the outgoing process flushes and patches nothing]")
-    # relay.log 10-05 21:20:19 / 21:20:27: the same 🩹 note from the outgoing and the
-    # new process, 8 s apart (audit s23 F3).
     check("steps", boot(None, updated=True), ["selfupdate"])
 
     print("[stop during the inbox step: no stage gate, no pre-update, no loop]")
@@ -1580,10 +1479,6 @@ def _part_stop_during_boot():  # noqa: C901
 
 
     print("[stop during the boot pre-update (10-16 02:35): no OK-WW launch, no mark_run, no alarm]")
-    # 2026-10-16 02:35: a deploy rollback stopped the relay mid pre-update. A stop that only
-    # ended the AUTO-MAS wait would go straight on to launch OK-WW (boot_stages forbids a
-    # stopping process to start programs), and a pre-update cut short must be neither marked
-    # done nor reported as 「没能确认」: the next boot runs it again.
     from ark_relay.features import okww_overlay
     from ark_relay.features import commands
     from ark_relay.features import preupdate
@@ -1728,7 +1623,7 @@ def _part_smoke_boot_lines():
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import fx_dir, tmpdir
+    from _parts import fx_dir, tmpdir
 
     ROOT = Path(__file__).resolve().parents[2]
     SMOKE = ROOT / "scripts" / "windows" / "smoke.py"
@@ -1746,10 +1641,6 @@ def _part_smoke_boot_lines():
 
     def run(log_text: str) -> str:
         work = tmpdir()
-        # The script's DATA, given with --data. Until 10-13 it was a relative folder named
-        # C:\ProgramData\ark-relay under the cwd, which on Windows is the real absolute
-        # folder: the first run wrote the runner's own ProgramData, the second failed with
-        # FileExistsError (run 38360295330).
         data = work / "data"
         data.mkdir()
         (data / "relay.log").write_text(log_text, encoding="utf-8")
@@ -1784,14 +1675,7 @@ def _part_smoke_boot_lines():
 
 
 def _part_update_announce_main():
-    """Cover the "tell me the moment an update takes effect" path.
-
-The tricky case is the first update after this feature ships: the process that
-applies it is running the old code and cannot leave a marker, so the
-announcement has to be derivable from the version file alone.
-
-    Formerly test_update_announce.py.
-    """
+    """Cover the "tell me the moment an update takes effect" path."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import selfupdate as su
@@ -1876,15 +1760,7 @@ announcement has to be derivable from the version file alone.
 
 
 def _part_update_announce_dedup():
-    """The same change deployed twice must not be pushed twice.
-
-A deploy refused by a gate, fixed, and deployed again is two versions but one
-change. On 2026-09-09 the user got the same paragraph twice inside five minutes
-and asked why. The version number differs every time, so it cannot be the test;
-what he reads is the release notes, so those are what gets compared.
-
-    Formerly test_update_announce_dedup.py.
-    """
+    """The same change deployed twice must not be pushed twice."""
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.statestore import StateStore
@@ -1916,14 +1792,6 @@ what he reads is the release notes, so those are what gets compared.
 
 def _part_announce_update_log():
     """The update announcement says 「更新说明已记入当天日报」 only when it recorded them (audit s23 F6, 10-13).
-
-boot_stages._stage_announce_update logged that line whenever the 🔄 send returned no
-errors - and 🔄 is log-only (notify.route_of), so always - even with no
-RELEASE-NOTES.md text, when nothing was handed to the daily report. relay/RELEASE-NOTES.md
-is 0 bytes between deploys, so the empty case is live. The failed-send branch could no
-longer happen and is gone.
-
-    Formerly test_announce_update_log.py.
     """
     import logging
 

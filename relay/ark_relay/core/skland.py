@@ -16,10 +16,8 @@ fails is a person asked for a new token.
 
 **Signing**: every request carries `sign`:
 
-    secret = path + query + timestamp + json({platform,timestamp,dId,vName})
+secret = path + query + timestamp + json({platform,timestamp,dId,vName})
     sign   = MD5(HMAC-SHA256(cred.token, secret))     # the second digest is MD5, not SHA256
-
-Required values (measured 2026-08-27):
 
 * `platform` must be **"3"**, not "1".
 * `vName` must be **"1.0.0"**, not an empty string.
@@ -35,10 +33,6 @@ Timestamps have to be aligned with the server: first `GET /web/v1/auth/refresh`
 from then on send `server time + local elapsed` on every request. Reusing the
 raw timestamp from the moment of the refresh for any length of time is rejected
 as 「请勿修改设备本地时间」 (10003).
-
-Endpoint source: otae-1204/otae-bot-entari `docs/skland_endfield_personal_api.md`
-(reverse-engineered 2026-07, re-checked 2026-08-19, with a measured code:0 record
-for every endpoint).
 """
 from __future__ import annotations
 
@@ -145,17 +139,6 @@ def _get(url: str, headers: dict) -> dict:
     return _open(urllib.request.Request(url, headers=headers))
 
 
-# ── Device fingerprint (dId) ───────────────────────────────────
-# The `/web/v1/` endpoints (Endfield lives among them) reject requests without a
-# dId: measured 2026-08-27, sending only `sign` is turned away with a 403 whose
-# body is {"code":10001,"message":"操作失败，请稍后重试"} - **it does not tell you
-# what is missing**. Control case: Arknights' /api/v1/game/player/info goes
-# through first try with the same signing, so the problem is not the signature,
-# it is that these web endpoints additionally require a device fingerprint.
-#
-# The three constants below are taken verbatim from api/dId.py in
-# FrostN0v0/nonebot-plugin-skland (the only publicly available implementation).
-# They are a fixed device-profile payload that is exchanged for a deviceId.
 V4_URL = "https://fp-it.portal101.cn/deviceprofile/v4"
 V4_DATA = (
     "4ac13cbe759d757cf4fd5465233024db2b7ae6bfbddd6d2d3eb964b246b2d4c3a8405b1601c3f3cc556257bd2784bfa6"
@@ -189,8 +172,6 @@ V4_EP = (
     "B619CtNVToVp3epdI+Vs+83TzC4TqDXU18jGqMQJgA3f+GIwMWduJpCh+Tm26BiBdasrIE3I2w="
 )
 ORG_ID = "UWXspnCCJN4sfYlNfqps"
-
-
 
 
 _did_cache = ""
@@ -231,14 +212,7 @@ def server_now() -> int:
 
 
 def sign_headers(cred: Cred, url: str) -> dict:
-    """Signed GET headers. The algorithm is in the module docstring.
-
-    The device fingerprint signed is the cred's own: a cred lifted out of a live
-    Skland app session must carry the full smidV2 or it fails with 10001
-    「设备信息无效」. GET only: the POST-body branch and the fetch-a-new-dId switch
-    had no caller and the POST one was never checked against the real API (audit
-    s6 #4, removed 2026-10-13).
-    """
+    """Signed GET headers. The algorithm is in the module docstring."""
     ts = server_now()
     parsed = urlparse(url)
     header_ca = {**_SIGN_KEYS, "dId": cred.dId, "timestamp": str(ts)}
@@ -324,12 +298,7 @@ def endfield_role(cred: Cred, role_id: str = "") -> tuple[str, str]:
 
 
 def _synced_cred(cred: Cred) -> Cred:
-    """`cred`, refreshed first when this process has not aligned clocks yet.
-
-    Forgetting to align clocks yields an "expired" timestamp and a 10003. Rather
-    than rely on the caller remembering, every business call does it here; get()
-    and bindings() lacked it until 2026-10-13 (audit s6 #3: banners.py calls
-    login() then get() with no refresh())."""
+    """`cred`, refreshed first when this process has not aligned clocks yet."""
     return cred if _synced else refresh(cred)
 
 
@@ -375,10 +344,7 @@ def arknights_annihilation(cred: Cred) -> dict:
     {'current', 'total', 'store_ts'} (`data.campaign.reward`, and `data.status.storeTs`,
     the moment the game server last stored the account's data - a reading from
     before Monday 04:00 still shows last week's figure).
-
-    Measured 2026-11-16 09:20:38 (Beijing): code 0, reward {"current": 1800,
-    "total": 1800}, storeTs 09:09:57, while MAA had found no annihilation entry in
-    the terminal at 09:02:19 and the account had spent ~89 sanity overnight."""
+    """
     r = get(cred, f"{ARKNIGHTS_INFO_PATH}?uid={arknights_uid(cred)}")
     if r.get("code") not in (0, None):
         raise SklandError(f"取明日方舟账号数据失败：code={r.get('code')} {r.get('message')}")

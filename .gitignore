@@ -10,3 +10,11 @@ __pycache__/
 .claude/worktrees/
 /.venv-relaytest/
 /.venv-relaytest.lock/
+*.pyc
+.coverage
+packaging/stage/
+packaging/cache/
+packaging/dist/
+relay/.env
+relay/ark-state/
+relay/state/config-snapshot.json

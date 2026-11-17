@@ -1,10 +1,5 @@
 """MaaEnd's own windowed start of Endfield and its fullscreen restore, read from MaaEnd's files.
 
-Why windowed (2026-10-16/17): with the launcher's 「DirectX 11 启动」 box unticked the game
-runs on Vulkan, and MaaEnd reads a fullscreen Vulkan game as 「当前环境识别异常」. MaaEnd's
-own hint names the way out: a window smaller than the desktop. MaaEnd v2.33.0 ships both
-halves:
-
 * the pretask LaunchGamePC (assets/tasks/pretasks/LaunchGamePC.json, exec agent/go-service
   with args ["--pretask", "LaunchGamePC", <options as JSON>]; exit code 0 = success,
   agent/go-service/pretask/pretask.go). With LaunchGamePCGameSetting "Yes" it writes the
@@ -14,14 +9,6 @@ halves:
 * the task CloseGamePC (assets/tasks/CloseGamePC.json, custom action CloseGameAction in
   go-service, common/closegame/action.go): kills Endfield.exe and, with
   attach.ApplyGameSetting, writes the display type and the resolution back.
-
-AUTO-MAS v5.7.0-beta.5's Game.LaunchMode "MaaEnd" runs the first before a MaaEnd run and
-the second after it (AutoProxy.py:502-519, 557-658, 2215-2222, 1937-2031). The machine ran
-that once on 2026-10-17 11:31-11:35 Beijing (go-service.log): LAUNCH_VALUES below are the
-options it sent, a 1280x720 window came up with Games.exe as the parent, and CloseGamePC
-wrote Fullscreen 1920x1080 back. The relay's own gathering retry (collect_retry) starts
-and closes the game the same way (efstart.py), and efstart_setup checks before switching
-AUTO-MAS to that mode that the installed MaaEnd still declares every name used here.
 
 Nothing here guesses: a name or case MaaEnd no longer declares is a reason, said in Chinese
 (the WARNING the group hears); the technical detail goes to the log.
@@ -36,12 +23,6 @@ log = logging.getLogger("ark.maaend_launch")
 
 PRETASK = "LaunchGamePC"
 CLOSE_TASK = "CloseGamePC"
-# The options AUTO-MAS v5.7.0-beta.5 sent on 2026-10-17 11:31:05 (go-service.log
-# 「Pretask invoked」): its own SetResolution switch sets LaunchGamePCGameSetting, the rest
-# are LaunchGamePC.json's default cases. Window 1280x720 is the only listed size below the
-# machine's 1920x1080 desktop. Options not named here take their default case, as AUTO-MAS
-# does (run_plan._collect_pretask_option_values); for v2.33.0 that is "Unchanged" for the
-# language, graphics quality, frame rate and Auto HDR.
 LAUNCH_VALUES = {
     "LaunchGamePCRegion": "CN",
     "LaunchGamePCLauncherPath": "Auto",
@@ -57,11 +38,6 @@ LAUNCH_VALUES = {
 AUTOMAS_DEFAULTED = ("LaunchGamePCDisplayType", "LaunchGamePCResolution",
                      "LaunchGamePCRegion", "LaunchGamePCLauncherPath")
 STORED_TASK = "__MXU_PRETASK__LaunchGamePC"   # AutoProxy.py _MAAEND_LAUNCH_GAME_PRETASK
-# What CloseGamePC writes back: the owner's own settings, fullscreen 1920x1080 (registry on
-# 2026-10-17 10:2x: Screenmanager Fullscreen mode 1, 1920x1080). Both width and height, or
-# CloseGameAction refuses before closing the game ("incomplete or invalid resolution
-# attach"); region and language as CloseGameAction defaults them (CN, Unchanged); graphics
-# quality, frame rate and Auto HDR left out = unchanged (loadAttach).
 RESTORE_ATTACH = {
     "ApplyGameSetting": True,
     "GameSettingRegion": "CN",

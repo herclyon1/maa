@@ -1,11 +1,5 @@
 """relay.log: rotated by size, and read across the rotation.
 
-Until 2026-10-07 relay.log was a plain FileHandler that only ever grew: the
-copy fetched on 2026-10-06 held every line since 08-15, 2.38 MB over 52 days.
-That is slow (about 46 KB a day; the busiest day in it, 10-05, wrote 90 KB),
-but it never stops, and one error loop that logs every second would fill the
-disk at a rate nothing watches.
-
 Sizes. MAX_BYTES = 16 MB is about a year of ordinary days at that rate and
 still 180 of the busiest one, so a rotation is a rare event - the forensics in
 this codebase read months of relay.log at a time (selfupdate.py quotes 521
@@ -89,14 +83,6 @@ class RelayLogHandler(logging.handlers.RotatingFileHandler):
     def _roll(self) -> None:
         """RotatingFileHandler.doRollover with the steps reordered so a refused
         rename of relay.log moves nothing.
-
-        The stdlib shifts .2 -> .3 and .1 -> .2 first and renames relay.log last.
-        When Windows refuses that last rename, every retry shifted the backups once
-        more and the oldest fell off: with .1/.2/.3 = A/B/C, two failed retries left
-        only .3 = A (review of 2026-10-13, s5 #1). Here relay.log is renamed first,
-        to HOLD; only then do the backups shift and HOLD become .1. A shift that
-        fails puts HOLD back as relay.log, so nothing has moved but the oldest
-        backup that a successful rotation drops anyway.
         """
         if self.stream:
             self.stream.close()
@@ -215,9 +201,6 @@ def append(day: str, heading: str, text: str, *, state_dir=None, now: "datetime 
             fh.write(f"\n## {at} {heading}\n{text}\n")
         return True
     except OSError as exc:
-        # A WARNING, so the group hears it (the user, 2026-10-11 17:43: nothing that
-        # did not fix itself stays out of the group): a red item that cannot be
-        # written is a fault nobody would otherwise look at. The report still goes out.
         _log_techlog.warning("技术日志写不进 %s：%s", day, type(exc).__name__)
         return False
 
@@ -239,11 +222,6 @@ def add_red(day: str, heading: str, texts: "list[str]", *, state_dir=None,
         return []
     stamp = at.strftime("%Y%m%d-%H%M")
     with _ids:
-        # The stamp comes from `at` but the item goes into `day`'s file, and the two
-        # differ for a round that started before midnight and is handled after it
-        # (gamelog_errors passes the round's start day). scripts/mac/techlog.py joins
-        # every day's file by id, so the numbers already used for this stamp are read
-        # from `day`, `at`'s own day and the day before it (review 2026-10-13, s5 #2).
         old = ""
         at_day = at.strftime("%Y-%m-%d")
         prev_day = (at - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -264,13 +242,7 @@ SELF_HEAL = "自愈待查"
 
 
 def self_heal(where: str, why: str, *, state_dir=None, now: "datetime | None" = None) -> list[str]:
-    """One red item for a fault that fixed itself and so stayed out of the group.
-
-    The user, 2026-10-11 17:44 (Tokyo; his words are in relay/USER-SWITCHES.txt's header):
-    what stays out of the group because it fixed itself must still be looked at by us. Every way a fault leaves the group because it
-    recovered (errwatch.recovered(), handle's heals, the gathering retry that walked)
-    writes one of these, with where it happened and the first reason, and it counts
-    as unhandled until scripts/mac/techlog.py handled marks it."""
+    """One red item for a fault that fixed itself and so stayed out of the group."""
     at = now or datetime.now(tz=SERVER_TZ)
     return add_red(at.strftime("%Y-%m-%d"), SELF_HEAL, [f"{SELF_HEAL}：{where}：{why or '没记下原因'}"],
                    state_dir=state_dir, now=at)
@@ -295,10 +267,6 @@ def handled_line(item_id: str, commit: str) -> str:
 log = logging.getLogger("ark.statestore")
 
 FILE = "state.json"
-# A state.json temp file (atomic_write_bytes) older than this was left by a write
-# that never finished (power cut); StateStore removes it once per process. Measured 10-13
-# on the game PC: writing the 39.5 KB state.json (write + fsync + replace) takes 2-12 ms
-# (10 runs), and no stray temp file was there; a day is far past any live write.
 STRAY_TMP_AGE_S = 24 * 3600
 SECTIONS = ("marks", "modes", "weekly", "versions", "updates", "queues")
 
@@ -456,16 +424,7 @@ _LAST_GOOD: dict[str, dict] = {}
 # when no write came in between (清单-1108 A-07).
 _WRITE_SEQ: dict[str, int] = {}
 
-# While reads of a state file are refused (a lock outlasting LOCK_WAITS, any OSError), the
-# loop wakes this often to read it again (engine.next_deadline): nothing else woke it once
-# the shift's last record had landed, so what waited on a write waited for the hour backstop.
-# Measured 10-17 on the Mac (commit 08635a7b): one refused read with the shipped LOCK_WAITS
-# takes 0.53 s, so retrying every 45 s spends about 1 % of the time waiting.
 UNREAD_RETRY_S = 45
-# Refused this long without a read getting through: one WARNING, which errwatch pushes. The
-# user on an error left unreported, 10-12 20:04: 「就是有错，但是不报，那是比报错更严重的事情。」
-# 600 s: the relay's other outages are pushed at the same mark (procwatch.OUTAGE_ALARM_SECONDS,
-# Mailbox.OUTAGE_SEC); tests/test_statestore.py pins them equal.
 UNREAD_WARN_S = 600
 # path -> [time.monotonic() of the first refusal of the current run, its WARNING sent].
 _UNREAD: dict[str, list] = {}
@@ -609,18 +568,6 @@ class StateStore:
             return self._data
         data: dict = {}
         if m >= 0:
-            # Only content that is there and broken (not JSON, not a table) is set aside
-            # and read as empty. A read the file refused (a Windows lock: an antivirus
-            # scan or backup tool holding it a moment, or any other OSError) says nothing
-            # about its content: read as empty, every alarm's day mark answered "not sent"
-            # (one cause pushed twice) and a healthy file was copied aside (10-17).
-            # A write waits out a lock on reading it (LOCK_WAITS) and raises when it
-            # outlasts them, or at once for any other OSError: read as empty, the write
-            # that follows would put the near-empty fallback over everything on file.
-            # A plain read answers with the last good copy (this instance's, else the
-            # last this process read or wrote: most call sites build a StateStore per
-            # call) and tries the file again next time; with none yet it waits the lock
-            # out once, then answers empty for this call only.
             last = self._data if self._data is not None else _LAST_GOOD.get(str(self.path))
             waits = LOCK_WAITS if fresh or last is None else ()
             for wait in (*waits, None):

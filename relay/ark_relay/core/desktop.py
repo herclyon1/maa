@@ -1,12 +1,4 @@
-"""Process listing through WMI's COM interface - the one door that still exists.
-
-`wmic.exe` is gone from Windows 11 25H2 (this machine, build 26200). From
-2026-08-28 to 2026-09-17 the keeper in service.py kept calling it, took the
-FileNotFoundError as "cannot tell" and read that as "alive": three weeks blind,
-no revival, no alarm, and on the 17th the evening queue was lost. The WMI
-service itself is fine - the process-start subscription uses it - so the same
-door is used here, and the boot self-check verifies it opens.
-"""
+"""Process listing through WMI's COM interface - the one door that still exists."""
 from __future__ import annotations
 
 import logging
@@ -126,11 +118,6 @@ def python_processes(*, warn: bool = True,
 log = logging.getLogger("ark.desktop")
 
 POWERSHELL = Path(r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe")
-# One agent at a time in this process: two agents would take pictures and click on the
-# one desktop at once. task_shots.py takes its pictures on a thread of its own, so it can
-# overlap the launcher OCR (gameupdate) or the banner OCR (banners). (Until 11-08 the lock
-# also kept two agents from sharing one scheduled task; each launch now has a task of its
-# own, or none: preupdate_common._spawn_via_task / _spawn_here.)
 _RUN_LOCK = threading.Lock()
 
 # The agent script. Embedded here in full rather than as a separate .ps1,
@@ -482,16 +469,7 @@ class Screen:
         self.error = error
 
     def find(self, text: str) -> Line | None:
-        """Exact match first, then tolerate one wrong character (only for >=4 chars).
-
-        Measured 2026-09-02: the Hypergryph launcher's 开始游戏 is read by the
-        system OCR as 丹始游戏 - one character off. A four-character button with
-        one wrong character still counts as a hit.
-        Two characters or fewer must be the whole line (spaces ignored), not a
-        substring: 「更新」 is also inside a news headline like 「版本更新公告」,
-        and a button is always its own OCR line. Three or more characters match
-        as a substring.
-        """
+        """Exact match first, then tolerate one wrong character (only for >=4 chars)."""
         want = text.replace(" ", "")
         short = len(want) <= 2
         for ln in self.lines:
@@ -568,27 +546,16 @@ class Desktop:
         want = hashlib.sha256(AGENT_PS.encode("utf-8")).hexdigest()
         stamp = self.dir / "agent.sha256"
         if not (self.agent.exists() and stamp.exists() and stamp.read_text().strip() == want):
-            # The BOM is mandatory: Windows PowerShell 5.1 parses a .ps1 without
-            # one as ANSI (GBK), the 「」 in the script blow the strings apart and
-            # the whole file fails to parse (measured 2026-09-02).
             atomic_write_bytes(self.agent, b"\xef\xbb\xbf" + AGENT_PS.encode("utf-8"))
             atomic_write_text(stamp, want)
 
     @staticmethod
     def _spawn_default(exe: Path, cwd: Path, args: tuple[str, ...]) -> bool:
-        # Go through an interactive scheduled task, not a direct token-based
-        # start: measured 2026-09-02, an agent started via the token took the
-        # screenshot but OCR'd 0 lines (the user environment was not fully
-        # loaded), while the scheduled-task route read 45 lines.
         from ark_relay.features.preupdate import _spawn_via_task  # noqa: PLC0415 - avoids a circular import
         return _spawn_via_task(exe, cwd, args)
 
     @staticmethod
     def _spawn_hidden_default(exe: Path, cwd: Path, args: tuple[str, ...]) -> bool:
-        # The same scheduled task, but PowerShell gets no console window: a
-        # window flashing up takes the foreground from the game MaaEnd is
-        # driving (2026-10-11 09:39, 转交委托; preupdate_common's comment above
-        # HIDDEN_LAUNCHER has the evidence).
         from ark_relay.features.preupdate import _spawn_hidden_via_task  # noqa: PLC0415 - avoids a circular import
         return _spawn_hidden_via_task(exe, cwd, args)
 
@@ -602,12 +569,6 @@ class Desktop:
             log.debug("桌面助手这一次没记进核对用的记录", exc_info=True)
         return data
 
-    # The agent's working files (req-/res-<id>.json, shot-<id>.png and its -x2 copy)
-    # are kept this long: a screenshot's path is quoted in problem notes and in the
-    # trace the machine checks read (gameupdate_games), so it is not deleted at once.
-    # Until 2026-10-13 nothing removed any of them (review, s5 #7). Measured on the game PC
-    # 10-13: 1289 files / 679 MB had piled up since 09-02 (busiest day 09-30, 345 MB); the
-    # last 7 days held 87 MB.
     WORK_KEEP_SECONDS = 7 * 24 * 3600
     _WORK_GLOBS = ("req-*.json", "res-*.json", "shot-*.png")
 
@@ -723,23 +684,15 @@ class Desktop:
         return bool(data.get("ok")) and bool(data.get("clicked"))
 
 
-
 # taskkill's exit code when no process has that image name: not being there is not
 # an error here. Any other non-zero code (1 = access denied) is a kill that failed.
 _TASKKILL_NOT_FOUND = 128
 
 
 def kill(*names: str) -> bool:
-    """taskkill a few process names; not being there is not an error.
-
-    False when any of them could not be ended; each such one is a WARNING with
-    taskkill's own words. Until 2026-10-13 every result was dropped, so an
-    「access denied」 read like a kill that worked (review, s5 #8)."""
+    """taskkill a few process names; not being there is not an error."""
     ok = True
     for name in names:
-        # Measured 10-13 on the game PC: taskkill /F returns in 0.04-0.05 s (5 runs on our
-        # own ping.exe), 0.04 s for a name that is not running; 30 s is the cap the other
-        # taskkill calls use (preupdate_okww, collect_retry).
         try:
             r = subprocess.run(["taskkill", "/F", "/IM", name],
                                capture_output=True, timeout=30)

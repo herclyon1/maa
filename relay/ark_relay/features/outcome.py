@@ -1,14 +1,5 @@
 """Turn OK-WW's translated (zh_CN) log lines back into the English source strings our checks look for.
 
-On the machine OK-WW runs with the zh_CN locale, and both OK-WW and the ok-script framework under it
-translate their own log text: OK-WW through its gettext catalog (working/i18n/zh_CN/LC_MESSAGES/ok.po),
-the framework through Qt (python/Lib/site-packages/ok/ui/qt/i18n/zh_CN.ts). Every check in outcome.py
-and every entry of gamelog_errors.txt is written against the English source strings, so each upgrade
-that translated one more string broke a check until someone hand-added the pair to
-outcome._OKWW_ZH_TO_EN. Ledger #136 (2026-11-04) was the framework's
-「当前游戏或模拟器不支持选择的截图方式!」 for "Selected capture method is not supported by the game
-or your system!", which is in ok-script's zh_CN.ts and not in OK-WW's ok.po.
-
 Here the reverse table is read from the catalogs the machine itself has, so the upgrade that
 translates a string also ships what turns it back. Only a whole log message is turned back (the
 text after 「<logger>:」 in an OK-WW log line), never a piece of a longer line: a short catalog entry
@@ -50,8 +41,6 @@ _HAN = re.compile(r"[\u4e00-\u9fff]")
 _LATIN = re.compile(r"[A-Za-z]")
 # str.format ({}, {0}, {name}, {name:>3}), printf (%s, %d, %(name)s) and Qt's %1 .. %99.
 _HOLE = re.compile(r"\{[^{}]*\}|%\(\w+\)[sdfr]|%[sdfr]|%\d{1,2}")
-# 「2026-10-06 09:19:26,058 INFO MainThread TaskExecutor:message」 (OK-WW's own log and the copy
-# AUTO-MAS keeps next to its history record).
 _LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d[,.]\d+ +[A-Z]+ +\S+ +[^\s:]+:)(.*)$")
 _CONCAT_END = (" ", ":", "：")
 
@@ -334,9 +323,6 @@ def error_lines(script: str, text: str) -> "list[str]":
     if mark is None:
         return []
     if script == "OK-WW":
-        # OK-WW v3.7.14-beta.2 prints the ok-script framework's own messages in zh_CN too
-        # (2026-11-04 09:21:32, the capture-method line of start_controller); the list holds the
-        # upstream English, so restore it first, as every other OK-WW reader does (ledger #136).
         pass
         text = normalize_okww_log(text)
     return [ln.rstrip() for ln in text.splitlines() if mark.search(ln)]
@@ -452,11 +438,6 @@ SATISFIED = "satisfied"
 RETRY = "retry"
 
 
-# ── OK-WW ──────────────────────────────────────────────────────────
-# OK-WW v3.7.14-beta.2 (installed 2026-11-02 08:46) wrapped upstream log/error strings in
-# self.tr(), which on the zh_CN machine logged Chinese until our BaseWWTask.tr override
-# (ark_overrides.tasks.py) restored canonical English. Normalize any v3.7.14-beta.2 zh_CN
-# log lines (and the new English GardenTask string) in one place before checking rules.
 _OKWW_ZH_TO_EN = (
     ("每日任务已完成，开始传送并刷取", "Daily task completed, start teleport to farm "),
     ("每日任务已完成", "Daily Task Completed"),
@@ -483,7 +464,6 @@ _OKWW_ZH_TO_EN = (
     ("每日任务异常停止", "Daily Task exception stopped"),
     ("等待游戏启动错误", "waiting for game to start error"),
     ("游戏窗口未连接", "Game window is not connected"),
-    # ok-script framework (start_controller), seen 2026-11-04 09:21:32 in run OK-WW-05-19-58 (ledger #136)
     ("当前游戏或模拟器不支持选择的截图方式!", "Selected capture method is not supported by the game or your system!"),
 )
 
@@ -557,10 +537,6 @@ _STAMINA_SPENT = re.compile(_STAMINA_TASK + r"(?:enter combat|start walk_to_trea
 # Nothing (more) to farm: TacetTask.py:105 (not_enough_stamina, logged when the total
 # is under one run) and DomainTask.py:63 / :106.
 _STAMINA_SHORT = re.compile(_STAMINA_TASK + r"(?:used all stamina|not enough stamina)")
-# The overlay's boss-material farm (ark_overrides.tasks.py _boss_material, 2026-11-13). While its
-# marker is there the tacet farm is off (the user: no tacet field before the material is done), so
-# its own lines are the 刷体力 item's outcome: a stop is red with its reason; the material read full,
-# or under one claim before any fight, is green with what it says.
 _BOSS_FAILED = re.compile(_STAMINA_TASK + r"强敌领奖：(出错，[^\n]*|培养目标不是[^\n]*|设置读不出[^\n]*|已经打了[^\n]*)")
 _BOSS_FULL = re.compile(_STAMINA_TASK + r"强敌领奖：(\S+?)的(\S+?)已经够了（([^）\n]*)）")
 _BOSS_SHORT = re.compile(_STAMINA_TASK + r"强敌领奖：体力 -?\d+ \+ 备用 -?\d+ 不够领一次")
@@ -606,24 +582,12 @@ _DAILY_REWARD_FAILED = re.compile(r"活跃奖励没领到：(.+)")
 _DAILY_REWARD_OK = "活跃奖励：领完核对通过"
 _DAILY_REWARD_UNCHECKED = re.compile(r"活跃奖励：没有核对，(.+)")
 
-# The overlay's battle-pass lines (okww_files/ark_overrides.tasks.py BATTLE_PASS_*).
-# A day not claimed is an item undone (docs/NOTIFICATIONS.md, 「⚠️ 这一轮没干完」): the
-# day's podcast points are lost if not claimed that day (what the user wants kept, 10-11
-# 17:36), and upstream does nothing about a miss - claim_battle_pass logs one ERROR
-# 「can not battle pass」, goes back to the world and returns: no screenshot, no retry,
-# and the run goes on to 「Daily Task Completed」 (tests/fixtures/okww-DailyTask-v3.7.4.py.txt:210),
-# so without this line a miss is a clean run. Upstream's own sentence counts too, for a
-# run without the overlay (09-29 09:28 was one such line, unread).
 _BATTLE_PASS_OK = "战令：页面打开了，点了领取（等级 "
 _BATTLE_PASS_RETRY = "战令：第一次没打开，回大世界再开一次"
 _BATTLE_PASS_FAILED = "战令没领到："
 _BATTLE_PASS_UNCHECKED = "战令：没有重试，"
 # upstream's 「can not battle pass, maybe ended」
 _BATTLE_PASS_UPSTREAM_FAILED = "can not battle pass"
-# The game's own notice between two podcast seasons ("no channel is on air, come back when
-# the next season opens"; the full sentence is in tests/fixtures/okww-1111-battle-pass-closed.log),
-# as the overlay's final-miss line carries it in its screen dump (11-11 09:32:16, OK-WW-05-17-52).
-# Read only on the overlay's own final-miss line - the screen as it was on the last try.
 _BATTLE_PASS_CLOSED = "暂未开播"
 
 # ── weekly boss claims ──
@@ -640,9 +604,6 @@ WEEKLY_READ = re.compile(r"本周剩余可收取次数[：:]\s*(\d+)\s*[/／]\s*
 # and the line it starts.
 FAILED_MARK = "这一趟按失败结束："
 _WEEKLY_FAILED = re.compile(FAILED_MARK + r"(.+)")
-# The overlay appends what it read off the screen (「整屏读到 [0_1.00, 41/240_1.00, …]」)
-# to a stop reason. That OCR dump is for the log; a reason pushed to the phone ends
-# before it (audit 2026-10-13 item 14).
 _SCREEN_DUMP = re.compile(r"[。，,；;\s]*整屏读到.*$", re.S)
 
 
@@ -658,10 +619,6 @@ WEEKLY_SHORT_SAY = "周本奖励没领：结晶波片不足"
 # 「周本领奖：打完了」 can be logged without a fight; a real fight logs upstream's
 # 「FarmEchoTask:enter combat」, and the claim dialog appears only after a won fight.
 _WEEKLY_FOUGHT = re.compile(r"FarmEchoTask:enter combat|周本领奖：认出弹窗|周本领奖：回读确认领到")
-# The overlay's line when an additional task (weekly boss, garden, echo merge) raised
-# and the daily went on without it (okww_files/ark_overrides.tasks.py open_daily_first):
-#   DailyTask:附加任务出错，不拖垮当趟日常: Teleport to boss failed Traceback (most recent call last):
-# The exception text can be empty (10-05 10:34:52), and the traceback header shares the line.
 _ADDITIONAL_FAILED = re.compile(r"附加任务出错[^:：\n]*[:：][ \t]*(.*)")
 _TRACEBACK_TAIL = re.compile(r"\s*Traceback \(most recent call last\):.*$")
 
@@ -736,9 +693,6 @@ def latest_okww_run_log(history_dir) -> "tuple[Path, str] | None":
         return None
     days = sorted((d for d in hist.iterdir() if d.is_dir()), reverse=True)[:7]
     logs = [f for d in days for f in d.rglob("OK-WW-*.log")]
-    # AUTO-MAS v5.8.0-beta.2 on: no OK-WW-*.log, each run is a history.db row whose log is
-    # <date>/<record id>/0.log; the glob alone found nothing newer than 2026-10-28
-    # (audit 2026-11-08 B-01).
     from ark_relay.core.collector import _db_rows  # noqa: PLC0415 - collector imports this module
     week = {d.name for d in days}
     for rid, _t, date_s, _u, script_name, _m, _d, log_rel in _db_rows(hist):
@@ -751,13 +705,6 @@ def latest_okww_run_log(history_dir) -> "tuple[Path, str] | None":
     return newest, newest.read_text(encoding="utf-8", errors="replace")
 
 
-# Each OK-WW override leaves a sentence in the log when its code path runs. A
-# check fires only when the upstream *trigger* for that path is in the log and
-# our sentence is not - "bound" is not "did its job" (nest filter, 09-10..09-13).
-# (label, trigger regex, effect regex, what the trigger means)
-# An effect is the line the override writes when it *did its job*, never one of
-# its failure lines: an empty read (`周本本周剩余次数原文: []`) or 「周本领奖：这一步没做成」
-# prove the code ran, not that it worked.
 _PATCH_EFFECTS = (
     ("周本改动在跑（进本前读剩余次数）",
      r"FarmEchoTask:left_click boss_proceed",
@@ -847,10 +794,6 @@ def patch_effect_checks(text: str, tacet_shot_today: bool | None = None) -> list
     return out
 
 
-# MAA's FightTimesTaskPlugin announces the sanity it read and the stage cost before
-# each attempt. Real lines, 2026-09-14 09:02 (annihilation, Monday re-arm):
-#   asst::FightTimesTaskPlugin::analyze_sanity_remain Current Sanity: 17 , Max Sanity: 210
-#   SubTaskExtraInfo {"class":"asst::FightTimesTaskPlugin","details":{"sanity_cost":25,"series":1,"times_finished":0}
 _MAA_SANITY = re.compile(r"analyze_sanity_remain Current Sanity: (\d+) , Max Sanity: (\d+)")
 _MAA_COST = re.compile(r'"sanity_cost":(\d+),"series":\d+,"times_finished":(\d+)')
 
@@ -863,10 +806,6 @@ def maa_annihilation_no_proxy(text: str) -> bool:
 
 def maa_sanity_short(text: str) -> "dict | None":
     """{'have': 17, 'cost': 25} when the Fight chain never ran because sanity was below the cost; else None.
-
-    Read from this run only (`_one_run_only`, as maa_checks): the caller's window reaches
-    5 minutes past the end, and on 2026-09-14 that held the next attempt's 「Current
-    Sanity: 18」, so the 09:02 and 09:04 attempts, which read 17, were reported as 18.
     """
     text = _one_run_only(text)
     have = [int(m.group(1)) for m in _MAA_SANITY.finditer(text)]
@@ -911,12 +850,8 @@ def nest_filter_checks(text: str, only_nest: str) -> list[Check]:
         return out      # nothing was fought, so 「没进别的点位」 says nothing worth a green line
     names = [n.strip() for n in re.split(r"[,，]", only_nest) if n.strip()]
     problems = []
-    # The cap rule, over every click whether named or not (user 10-12 11:2x: the
-    # first two nests): more different denominators than names asked for.
     if len(denoms) > max(1, len(names)):
         problems.append(f"这一趟进了 {len(denoms)} 个不同的点位（计数上限 {'、'.join(denoms)}）")
-    # The names, per click (audit 2026-10-13 items 10, 17). OCR reads
-    # 「落渊南丘残象聚落」 for the setting 「落渊南丘」: containment, not equality.
     clicks = _nest_clicks(text)
     outside = list(dict.fromkeys(n for _d, n in clicks if n and not any(w in n for w in names)))
     if outside:
@@ -988,8 +923,6 @@ def battle_pass_checks(text: str) -> list[Check]:
     read only after the overlay's own lines."""
     text = normalize_okww_log(text)
     if _BATTLE_PASS_FAILED in text:
-        # The last miss decides: with the game's 「暂未开播」 notice on that screen there is
-        # no season to claim from, which is not an item undone (alarm #164, 11-11).
         last = [ln for ln in text.splitlines() if _BATTLE_PASS_FAILED in ln][-1]
         if _BATTLE_PASS_CLOSED in last:
             return [Check(texts.OKWW_BATTLE_PASS_CLOSED, True, kind=SKIPPED)]
@@ -1044,13 +977,8 @@ def nest_state(text: str) -> str:
         return "not_found"
     if _NEST_COUNT_UNREAD in text and not engaged:
         return "count_unread"
-    # A nest given up after two failed travels was not farmed, whatever the other
-    # nests did (10-27: 梦枢天罗 unreachable, 落渊南丘 fought, booked as 「fought」).
     if _NEST_GAVE_UP.search(text):
         return "partly" if engaged else "unreachable"
-    # A fight first, then 「all full」: the run farmed the nest until it was full.
-    # That is 「fought」; 「full」 (skipped) is for a run that found it full before
-    # fighting at all (audit 2026-10-13 item 11).
     if engaged:
         return "fought"
     if _NEST_ALL_FULL in text:
@@ -1108,10 +1036,6 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
     out: list[Check] = []
     out.extend(nest_filter_checks(text, only_nest))
 
-    # Dailies already done before this run: no stamina farming is owed, and the nest
-    # is judged only when its task ran. The weekly boss still is: it runs as an
-    # additional task either way, and returning here hid the 10-12 11:45 stop of a
-    # second run (claim confirmed, no settlement) - nothing was pushed.
     m = _DAILY_POINTS.search(text)
     dailies_done = bool(m and int(m.group(1)) >= _DAILY_POINTS_TARGET)
     if dailies_done:
@@ -1138,19 +1062,6 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
     if "Teleport to Boss Weekly Challenge" in text:
         c = weekly_claims(text)
         capped = "收取物资次数已达到上限" in text or bool(re.search(r"本周剩余可收取次数[：:]\s*0\s*/", text))
-        # 「本周周本次数已领满」: the game's own counter read 0/3 before entering.
-        # A waveplate shortage is red, an item undone (pushed): the claim of this run
-        # was not made, and nothing checks that the week's three are made later. The
-        # dialog alone cannot tell a cause that is normal from one that is not (a run
-        # minutes after another that farmed, the farm left on, waveplates spent by
-        # hand). In the AUTO-MAS history read 10-11 (450 logs, 126 with the weekly
-        # boss) the skip line is in 6 runs, all 08-31 18:44 - 09-01 11:01 while runs
-        # were repeated minutes apart (current_stamina 8 and 2 read in the same runs),
-        # none in a shift since; the 10-06 09:28 「结晶波片不够领奖」 that had it called a
-        # normal state on 10-07 was the changelog false match fixed in 12edfb0b, not a
-        # shortage. From 10-07 until 10-11 it was green. It is read from the overlay's
-        # skip line (WEEKLY_SHORT) and tested before `stopped`, because older logs also
-        # carry the failed mark after the skip line. Any other stop is red too.
         stopped = _WEEKLY_FAILED.search(text)
         short = bool(WEEKLY_SHORT.search(text))
         ok_ = (c["verified"] > 0 or capped or "本周周本次数已领满" in text) and not (stopped or short)
@@ -1198,13 +1109,7 @@ def okww_checks(text: str, *, expect_nest: bool, expect_daily: bool = True,
 
 
 def _no_farm_reason(text: str) -> str:
-    """Why no stamina was farmed when the log shows neither a fight nor 「not enough」.
-
-    Upstream's own gate skips the farm once the daily task reads 180/180 (DailyTask.py
-    :88-89, :117-128; audit 2026-10-13 item 22) and says nothing; the overlay's
-    claim_daily farms it anyway (the standing order 「刷到空」). The reason names which
-    of those happened instead of the bare 「既没进本，也没说体力不足」.
-    """
+    """Why no stamina was farmed when the log shows neither a fight nor 「not enough」."""
     t = _task_lines(text)
     if m := _LEFTOVER_FARM.search(t):
         if e := _LEFTOVER_FAILED.search(t):
@@ -1250,31 +1155,10 @@ def _ended_failed_checks(text: str, out: list[Check]) -> list[Check]:
     return extra
 
 
-# ── MaaEnd ─────────────────────────────────────────────────────────
-# A failed universal jump saves an on_error screenshot. During the 2026-08-27 dialog
-# hang it saved three of them in 20 minutes, while MaaEnd itself reported not one
-# ERROR.
-# MaaEnd's completion marker. **It is written to MaaEnd's own app log**
-# (`<maaend>/debug/YYYY-MM-DD-N.log`: `INFO [App] 自动执行任务完成，关闭自身`),
-# not to the AUTO-MAS history log. On 2026-08-29 only the latter was fed in, so this
-# check was always false and falsely reported "MaaEnd did not finish" every day.
-# The fix was the data source, not the criterion.
 _MAAEND_DONE = "自动执行任务完成"
 _MAAEND_STUCK = re.compile(r"SceneAnyEnterWorld|PipelineTask bad next")
-# MaaEnd's own app log, on loading a config written for an older version:
-#   WARN  [Config] 选项 "AutoCollectRoutes" 已不存在，已丢弃保存值
-# MaaEnd drops a saved option two ways on load: the key is gone (2026-09-10,
-# 「选项 "AutoCollectRoutes" 已不存在，已丢弃保存值」), or the key stayed and its
-# type changed, so the saved value is thrown away for the default (2026-10-03
-# to 10-10, every launch: 「选项 "AutoStockBuyDailyGoodsValleyIV" 的类型已从
-# "checkbox" 变更为 "switch"，已重置为默认值」 - the per-item buy lists in the
-# master were replaced by the defaults, and this check stayed green).
 _MAAEND_DROPPED = re.compile(r'选项 "([^"]+)" (?:已不存在，已丢弃保存值'
                              r'|的类型已从 "[^"]*" 变更为 "[^"]*"，已重置为默认值)')
-# Which task a reset option belongs to, told by its key prefix, and what the user
-# loses with it. Only the prefixes with a known owner: AutoStockBuy* are 自动囤货's
-# buy lists (test_maaend_config, 2026-10-10), AutoCollect* are
-# 自动采集's routes (2026-09-10 above). Any other key is counted as 「其他」, not guessed.
 _DROPPED_OWNER = (
     ("AutoStockBuy", "自动囤货", "购买", "买"),
     ("AutoCollect", "自动采集", "路线", "走"),
@@ -1297,27 +1181,12 @@ def _dropped_checks(dropped: list[str]) -> list[Check]:
     return out
 
 
-# What a task leaves in the AUTO-MAS log when it actually does its job. The
-# task name is matched as a substring of the 「任务开始」 line (it carries an
-# emoji prefix). Wording from real logs: routes 2026-09-01 (MaaEnd spells routes
-# 1-3 「线路N：」, 2026-10-12), essence and protocol 2026-08-25.
 _MAAEND_WORK = (
-    # MaaEnd v2.36 (2026-10-29, ledger #122/#134) logs routes by item (「采集纯晶多齿叶」)
-    # or target-stock skip (「纯晶多齿叶 库存已达目标，本次跳过」) instead of 「路线N：」/「线路N：」.
     ("自动采集", re.compile(r"(?:路线|线路)\d+[：:]|(?m:^(?:\[[^\]]+\]\s*)?采集(?!失败\s*$)[^\s：:]+\s*$)|库存已达目标，本次跳过"), "走了路线"),
-    # 「体力不足，任务结束」: MaaEnd v2.34's out-of-sanity ending of 基质刷取 (2026-10-19
-    # MaaEnd-07-14-29.log, retry with 9 sanity left; tests/test_maaend_watchdog.py).
     ("基质刷取", re.compile(r"已完成一次基质刷取|理智不足|体力不足[，,]\s*任务结束"), "刷了"),
-    # The same v2.34 ending in 协议空间 (dispatch relay-opt-round3-1108 O-04, missed by #106).
     ("协议空间", re.compile(r"进入协议空间成功|理智不足|体力不足[，,]\s*任务结束"), "进了"),
 )
 _MAAEND_SKIPPED = re.compile(r"根据执行周期跳过")
-# Essence target mode with every ticked weapon's essence already owned: the planner
-# stops at once (upstream autoessence/plan_action.go "all targets satisfied"). Real
-# line, 2026-10-16 14:10:13 (tests/fixtures/maaend-2026-10-16/MaaEnd-09-53-33.log):
-# 「🎯目标模式：勾选武器的基质均已满足，结束任务」. Only this line: the 🎉 line after it,
-# 「目标模式：基质目标已满足或任务结束」, is AutoEssenceOnComplete's focus text on any
-# target-mode ending, farmed or not, and would hide a real false green.
 _MAAEND_ESSENCE_MET = re.compile(r"勾选武器的基质均已满足")
 _MAAEND_TS = re.compile(r"^\[(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)")
 
@@ -1346,8 +1215,6 @@ def _maaend_segments(text: str):
             start = None
 
 
-# MaaEnd's own log states how many tasks this run was given:
-#   2026-10-01 15:24:25 INFO  [Task] 实例 AUTO-MAS: 开始执行任务, 数量: 16
 _MAAEND_SCHEDULED = re.compile(r"开始执行任务, 数量: (\d+)")
 
 
@@ -1410,15 +1277,6 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
     """
     out: list[Check] = []
     done = _MAAEND_DONE in text
-    # No "every 「任务开始」 has its 「任务完成」/「任务失败」" check here any more: AUTO-MAS
-    # lists the enabled tasks that never completed and reports the run as
-    # 「MaaEnd 部分任务执行失败」 (app/task/MaaEnd/AutoProxy.py, unfinished_tasks), so
-    # the run arrives as a failure (hand-over grey item 3, 2026-10-11). What stays
-    # below is the evidence AUTO-MAS does not look at.
-    # Every task finished and none failed, but MaaEnd never wrote its wrap-up line
-    # and never closed itself (2026-10-01 16:58:22; 2026-09-28 11:22:10): the
-    # work is done, MaaEnd just did not exit. That is not 「没干完」 - the user read
-    # it as tasks left undone. Said separately (all_done_no_exit).
     all_done_no_exit = _all_done_no_exit(text, own_log)
     if all_done_no_exit:
         out.append(Check("任务全部完成（跑完没自己退出）", True))
@@ -1428,24 +1286,6 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
     done = done or all_done_no_exit
     out += _maaend_cut_short(text)
 
-    # A failed universal jump (SceneAnyEnterWorld / PipelineTask bad next) always
-    # counts as a fault -- 2026-08-27 was exactly the "stuck on a dialog, reports no
-    # error itself, only the screenshots catch it" case, so this must not be relaxed.
-    # Screenshots from other nodes are different: MaaEnd retries, and a successful
-    # retry completes the task as normal. The 2026-08-29 morning run saved 6
-    # ScenePrivateMapZoomOut shots while both the environment survey and the essence
-    # farming reported 「任务完成」 -- calling that a failure is a false alarm. So a
-    # fault is only declared when the run **really did not finish**; otherwise the
-    # screenshots are listed honestly but not counted as a fault.
-    # 2026-09-10: MaaEnd v2.28.0-beta.5 renamed 自动采集's route options. The
-    # master config still carried the old keys, MaaEnd dropped them on load
-    # (「選項 "AutoCollectRoutes" 已不存在，已丢弃保存值」), the scheduler found
-    # nothing to walk, wrote 「任务完成」 after 38 seconds, AUTO-MAS said Success,
-    # and the daily report said 全绿. Every check above passed, because every
-    # check above only asks whether the run *ended*, not whether it *did*
-    # anything. The user's words for why this is worse than a false red: 「明明没有完成任务，却按照完成任务的通知去报」.
-    # So each farming/collecting task must show the trace it leaves when it
-    # really works, and a new version discarding settings is itself a fault.
     dropped = sorted(set(_MAAEND_DROPPED.findall(text)))
     out += _dropped_checks(dropped) or [Check("新版本认得全部旧设置", True)]
     for name, seg, secs in _maaend_segments(text):
@@ -1455,15 +1295,8 @@ def maaend_checks(text: str, on_error_names: list[str], own_log: bool = False) -
             if evidence.search(seg):
                 out.append(Check(f"{key} 真的{what}", True))
             elif key == "基质刷取" and _MAAEND_ESSENCE_MET.search(seg):
-                # Nothing to farm: the ticked weapons' essences are owned already
-                # (2026-10-16 14:10, a 180 s inventory scan, then this line). Not a
-                # false green and not work done today (summarize).
                 out.append(Check(key, True, kind=SATISFIED))
             elif _MAAEND_SKIPPED.search(seg):
-                # The task itself said it was not due today (weekday schedule);
-                # a quick completion is then the right outcome, not a false green.
-                # The real line from 2026-09-11 10:01 is in test_maaend.
-                # Not listed as 「干成的」 though: it did nothing today (summarize).
                 out.append(Check(key, True, kind=SKIPPED))
             else:
                 out.append(Check(f"{key} 真的{what}", False,
@@ -1516,24 +1349,12 @@ _MAA_CHAIN = re.compile(
 
 _MAA_STARTUP = re.compile(
     r'TaskChainStart\b.*?"taskchain":"StartUp"')
-# Every asst.log line names the MAA process that wrote it, and each launch is a new
-# process: 「[2026-11-09 09:04:43.712][INF][Px2236][Tx55856] ...」.
 _MAA_PROCESS = re.compile(r"^\[[^\]]*\]\[\w+\]\[Px(\d+)\]", re.M)
 
 
 def _one_run_only(text: str) -> str:
     """Keep only this run: from the first line another MAA process wrote, and from
     the second StartUp, the rest belongs to the next run and is cut off.
-
-    The caller's window is [start, end + 5 minutes], which can reach into a run that
-    started right after. Each AUTO-MAS attempt launches MAA anew (app.log: the old
-    MAA.exe 「进程已中止」 before 「启动MAA进程」, so the window opens on this run's
-    own process), and every line carries its process id. A run that never connected
-    has no StartUp: on 2026-11-09 the 09:01:37 attempt (Px12844, 「MAA 的 ADB 连接异常」)
-    kept the 09:03 attempt's (Px2236) 「Current Sanity: 20」 and was reported as the run
-    short of sanity, while the 09:03 one was reported as 剿灭 without evidence. Within
-    one process, every MAA run begins with StartUp, so the second StartUp marks the
-    boundary. With neither the text is returned unchanged.
     """
     procs = list(_MAA_PROCESS.finditer(text))
     if procs and (other := next((m for m in procs if m.group(1) != procs[0].group(1)), None)):
@@ -1578,12 +1399,6 @@ def maa_checks(text: str) -> list[Check]:
         return out
 
     dangling = started - ended
-    # CloseDown after AllTasksCompleted is MAA's own post-action (「退出 明日方舟」).
-    # AUTO-MAS reads 「任务已全部完成」 as the end of the run, stops MAA.exe and quits
-    # the emulator itself, so whether MAA's StopGameTask got its receipt in first
-    # is a race, not work left undone: 2026-10-21 09:19:25 CloseDown started 350 ms
-    # before AUTO-MAS stopped MAA.exe and closed LDPlayer instance 1000 (ledger
-    # #107; tests/test_maa.py); on 10-20 it won by 0.1 s.
     if dangling.get("CloseDown") and _closedown_after_all_done(text):
         del dangling["CloseDown"]
     out.append(Check("每一项都做到了结尾", not dangling,
@@ -1606,8 +1421,6 @@ def summarize(checks: list[Check], who: str) -> str | None:
         lines.append(f"{who} 这一轮有 {len(undone)} 项没干成，但它自己没报错：")
         lines += [_bullet(c) for c in undone]
     if reset:
-        # 2026-10-12: six reset buy lists were said as 「有 1 项没干成」; the work was done,
-        # by the defaults instead of the user's settings.
         lines.append(f"{who} {_SETTINGS_HEAD}" if not undone else f"另外{_SETTINGS_HEAD}")
         lines += [_bullet(c) for c in reset]
     if skipped := [c.label for c in checks if c.ok and c.kind == SKIPPED]:
@@ -1681,9 +1494,6 @@ def _okww_farm(text: str, info: dict | None = None) -> "tuple[str, str]":
         idx = int(hits[-1]) + 1 if hits else 0
         return (_forgery_label(text), wuwa_forgery.reward(idx))
     if _OKWW_BOSS_CLAIM in text:
-        # The overlay spent the stamina on the cultivation target's boss material first
-        # (ark_overrides _boss_material, 2026-11-13), inside the TacetTask run: say that, not
-        # 「无音区（日志里没有序号）」. The count is the last one read on the 培养目标 page.
         hits = _OKWW_BOSS_COUNT.findall(text)
         who, row, owned, need = hits[-1] if hits else ("", "共鸣者突破材料", "", "")
         label = f"强敌·{who}{row}" + (f"（最后读到 {owned}/{need}）" if owned else "")
@@ -1746,24 +1556,14 @@ _OKWW_EXC_ZH = {
     "TimeoutError": "超时", "TaskDisabledException": "任务被关掉了",
 }
 _OKWW_MSG_ZH = (
-    # 「farm 4c error, try handle monthly card」 is FarmEchoTask.run's catch-all
-    # around do_run (FarmEchoTask.py:106-107): it names no step, so it is not
-    # translated here - _okww_error reads the exception under it instead. It
-    # used to read 「打完 Boss 领完奖之后没能退出副本」, which on 2026-09-21 was
-    # said of a run that never got into the realm (OK-WW-05-33-53.log:1172-1177).
     ("Teleport to boss failed", "传送去打 Boss 没成（图鉴传送、选关卡、进本其中一步没过），没进本，一次没打"),
     ("can't find gray_book_boss", "按 F2 打不开图鉴——先核对键位是不是游戏默认"),
     ("NightmareNestTask Failed", "没打成"),
     ("Logger.error() got an unexpected keyword", "旧版补丁自己的日志调用写错（已撤回）"),
-    # DailyTask.claim_battle_pass: 「can not battle pass, maybe ended」 is a battle-pass
-    # page with no level digits read, the claim skipped. It read 「没能进入战斗」 until 10-11
-    # (the 09-29 09:28 run, BOARD 未进群报错-OKWW-AUTOMAS-1010.md).
     ("can not battle pass", texts.OKWW_BATTLE_PASS_UNCLAIMED),
     ("Game window is not connected", "连不上游戏窗口"),
     ("not in combat", "没有进入战斗"),
     ("can't find boss_proceed", "图鉴里找不到「前往」按钮"),
-    # All three of the morning's failures on 2026-09-08 carried exactly this, and
-    # the notification never showed it - see the wrapper branch in _okww_say.
     ("Please start in game world and in team",
      "开跑时游戏不在大世界、或者没有出战队伍，OK-WW 不肯开工"),
 )
@@ -1879,8 +1679,6 @@ def _okww_error(text: str) -> str:
     return _okww_say(task, msg, exc, text, head.start())
 
 
-# One raise prints its tracebacks within about a second (on 2026-09-01 06:35:
-# 10:50:13.348 / 14.879 / 15.017); two events are minutes apart.
 _EVENT_GAP_SECONDS = 2.0
 _HEAD_TS = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),(\d{1,6})")
 
@@ -1895,11 +1693,6 @@ def _head_time(text: str, m: re.Match) -> "float | None":
 def _last_event(text: str, heads: list) -> list:
     """The traceback headers of the last event: walking back from the last header,
     each one within _EVENT_GAP_SECONDS of the next.
-
-    Grouped by time, not by distance in the text: a long stack between the headers
-    put one event's headers 36352 / 36937 characters apart (2026-09-01 06:35), past
-    the 6000 characters this used, and the task's own header fell out. A header line
-    without a timestamp falls back to that distance.
     """
     cluster = [heads[-1]]
     for m in reversed(heads[:-1]):
@@ -1934,8 +1727,6 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
         # The overlay ended the run as failed and logged why in Chinese.
         why = outcome.without_screen_dump(msg.split(_OKWW_ENDED_FAILED, 1)[1])
         who = task_zh or "某个任务"
-        # The overlay already names the step: 「周本：…」 and also 「周本领奖：…」,
-        # which became 「周本：周本领奖：…」 (audit 2026-10-13 item 14).
         return why if why.startswith(who) else f"{who}：{why}"
     msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
     exc_zh = _OKWW_EXC_ZH.get(exc)
@@ -1976,14 +1767,7 @@ _OKWW_WAIT_LINE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),(\d{1,6}) 
 
 
 def _wait_before(text: str, at: int) -> str:
-    """Seconds of the 「wait_until timeout」 that raised the traceback at `at`; '' when none.
-
-    Anchored on time: the timeout line of the same raise is logged within a second
-    of the header (at most 0.62 s over every real log, 2026-10-13), while the
-    stack text in between reached 2558 characters - past the 600 this used to look
-    back, so the seconds were dropped. A header line without a timestamp falls back
-    to a character window that covers that measured maximum.
-    """
+    """Seconds of the 「wait_until timeout」 that raised the traceback at `at`; '' when none."""
     if not text:
         return ""
     line = text.rfind("\n", 0, at) + 1
@@ -2007,13 +1791,7 @@ _LINE_TS = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),(\d{1,6}) ", re.M
 
 
 def _said_before(text: str, at: int, what: "re.Pattern") -> bool:
-    """Is `what` on a line logged within _EVENT_GAP_SECONDS before the header at `at`?
-
-    By time, like _wait_before: on every real log with both (2026-09-01 05:43 and
-    06:35, 09-21 weekly) the 「找不到开启挑战」 line is 0.001-0.02 s before its
-    header, while a 3000-character window is a guess about stack lengths (audit
-    2026-10-13 item 24). A header line without a timestamp keeps that window.
-    """
+    """Is `what` on a line logged within _EVENT_GAP_SECONDS before the header at `at`?"""
     hm = _HEAD_TS.match(text, text.rfind("\n", 0, at) + 1)
     head_t = _ts(hm.group(1), hm.group(2)) if hm else None
     if head_t is None:
@@ -2167,14 +1945,7 @@ _REGEN_SECONDS = 360
 
 
 def _weekly_claim_costs(text: str) -> "list[tuple[int, int | None, int | None]]":
-    """(position, waveplates, backup) for each verified weekly claim.
-
-    Without a top-up the claim is 60 waveplates. With one, the backup made up the
-    shortfall (upstream BaseWWTask.use_stamina counts it that way: total -= used):
-    60 - W waveplates' worth of backup, W read off the top bar before confirming.
-    Logs from before the overlay logged the top bar: (position, None, None) - the
-    split is not in the log (10-12 15:29 and 15:31, audit 2026-10-13 item 18).
-    """
+    """(position, waveplates, backup) for each verified weekly claim."""
     out: list = []
     prev = 0
     for m in outcome.WEEKLY_CLAIM_OK.finditer(text):
@@ -2192,12 +1963,6 @@ def _weekly_claim_costs(text: str) -> "list[tuple[int, int | None, int | None]]"
 
 def _not_yet_shown(text: str, pos: "list[int]", series: "list[int]", items: "list[tuple[int, int]]") -> int:
     """The part of `items` ((position, amount) spent between readings) the readings do not show.
-
-    The stamina readings come from get_stamina, which the weekly claim does not call,
-    so a claim usually falls in no drop at all and was left out of 「消耗」 (audit
-    2026-10-13 item 12; 10-12 11:41, three claims, nothing spent shown). Claims between
-    two readings whose drop already covers them, give or take the regeneration over
-    that gap, are not counted again (item 18: 100 -> claim -> 42 is the claim).
     """
     per_gap: dict = {}
     for at, amount in items:
@@ -2265,11 +2030,7 @@ def _okww_stamina_left(text: str, out: dict, readings: list) -> None:
 
 
 def _okww_progress(text: str, out: dict) -> None:
-    """Nightmare Nests all full, daily points, and why it stopped.
-
-    okww_nest (the last 「已击败残象 N/M」, read before the fight) and okww_daily
-    (always 0/180 or 180/180) were dropped on 2026-10-13: nothing outside this
-    collector read them (audit item 15)."""
+    """Nightmare Nests all full, daily points, and why it stopped."""
     if _OKWW_NEST_FULL.search(text):
         out["okww_nest_full"] = True
     if points := _OKWW_POINTS.findall(text):
@@ -2402,8 +2163,4 @@ def _okww_steps(text: str, entries: int) -> list[str]:
         # Ran, but no 「乐园任务完成」: the counter read alone does not show it done
         # (core.UNVERIFIED_STEP; the daily title counts it as unverified).
         steps.append("周常乐园（没读到做完，不算完成）")
-    # No 「声骸五合一」 step: the only line there was to read is 「check discarded
-    # echo」, logged before the merge; a merge that then failed (upstream logs
-    # 「… Failed」 and carries on) was listed as done next to its own alarm
-    # (gamelog_errors.check_round). Removed 2026-10-13 (audit item 16).
     return steps

@@ -109,7 +109,6 @@ def _scripts(cfg_dir: Path) -> dict[str, dict]:
             "kind": _script_kind(info_node.get("Path") or info_node.get("RootPath") or ""),
             "path": info_node.get("Path") or info_node.get("RootPath") or "",
         }
-        # The user the phone shows and changes (masuser.pick; until 11-08 the last one won).
         for _uid, user in [got] if (got := masuser.pick((node.get("SubConfigsInfo") or {}).get("UserData"))) else []:
             # masuser: AUTO-MAS v5.7.0-beta.3 moved the stage and annihilation items out of Info.
             info, task = masuser.info_view(user), user.get("Task") or {}
@@ -689,9 +688,6 @@ def maintenance_lines(day) -> list[str]:
         _say_once("maintenance", exc, "明日安排的停服维护那一行没算出来，这次不写", exc_info=True)
         return []
     _last_error.pop("maintenance", None)
-    # On the phone's clock, as every other time the App shows, and in plain words: the App puts
-    # this line under that game's row of the shift (App review 10-14: 「当天队列里不跑它」,
-    # 「客户端」 were the relay's words). "明天" when the window is tomorrow there.
     tomorrow_user = (datetime.now(tz=USER_TZ) + timedelta(days=1)).date()
 
     def when(t) -> str:
@@ -701,8 +697,6 @@ def maintenance_lines(day) -> list[str]:
     lines = [f"⚠️ {game} {when(start)} {start.astimezone(USER_TZ):%H:%M}–{end.astimezone(USER_TZ):%H:%M} 停服维护："
              f"这一班先跳过它，跑完就更新它，{end.astimezone(USER_TZ):%H:%M} 开服后单独补跑"
              for game, (start, end, _why) in wins.items()]
-    # A game whose bulletin could not be read is not "no maintenance": an empty
-    # result said both until 2026-11-08 (maintenance.today WARNs the read itself).
     return lines + [f"⚠️ {game} 明天的停服维护公告这次没读到：不知道有没有维护，这一班照常排"
                     for game in dict.fromkeys(unread) if game not in wins]
 
@@ -780,9 +774,6 @@ def next_plan(automas_dir: Path | None) -> str:
     lines += maintenance_lines((_dt.now(tz=_TZ) + _td(days=1)).date())
     tomorrow = _tomorrow()
     for q in queues:
-        # Tomorrow only: a time off that weekday is left out, and an item that sits the
-        # day out (the weekday rules, the relay's own one-day skip) is not listed
-        # (runs_at; audit 10-13: the plan listed skipped items).
         times = [t for t in q["times"] if runs_at(q, t, tomorrow)]
         if not times:
             continue
@@ -831,8 +822,6 @@ def next_plan(automas_dir: Path | None) -> str:
             if s.get("kind") == "OK-WW":
                 bits += _okww_plan_bits(automas_dir, s.get("path"))
             if s.get("kind") == "MAA" and not bits:
-                # Combat on but no StageMode read (and no annihilation setting): the row
-                # had no line under it while 鸣潮 and 终末地 had theirs (10-14 review).
                 bits.append("理智 读不到关卡设置")
             # One thing per line: a phone wraps one long line into several.
             label = s.get("name", "?")
@@ -924,8 +913,6 @@ def activity_countdown(automas_dir: Path | None, now=None,
         log.info("MAA 存的活动表还没有（%s），日报这次没有活动倒计时", cache_path)
         return ""
     except (OSError, json.JSONDecodeError, ValueError) as exc:
-        # MAA's event cache is there but cannot be read: the countdown vanished
-        # from the report in silence until 2026-11-08.
         _say_once("activity", exc, "MAA 存的活动表读不了（%s），日报这次没有活动倒计时", cache_path, exc_info=True)
         return ""
     _last_error.pop("activity", None)

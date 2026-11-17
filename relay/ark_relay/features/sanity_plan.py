@@ -170,14 +170,7 @@ _DAYS_ZH = "一二三四五六日"
 
 
 def _ticked_days(t: dict, maaend_dir) -> "list[int] | None":
-    """The weekdays (0 = Monday) the task is ticked for in f"{task}Schedule".
-
-    With no schedule saved MaaEnd uses the option's default_case from its
-    definition, as plan._maaend_extra_bits reads AutoCollect's. None when that
-    definition cannot be read either: the caller then keeps the task, because
-    every MaaEnd version on record defaults to all seven days
-    (fixtures/maaend-2026-09-10, maaend228, maaend-protocolspace-v2.30.0-rc.1).
-    """
+    """The weekdays (0 = Monday) the task is ticked for in f"{task}Schedule"."""
     key = f"{t.get('taskName')}Schedule"
     v = (t.get("optionValues") or {}).get(key)
     if isinstance(v, dict):
@@ -328,12 +321,6 @@ def _write_options(ov: dict, want_task: str, tab: str, line: str,
     """
     if tab == "Essence":
         if location:
-            # AutoEssenceChooseLocation is an option of AutoEssenceMenu's Random case only
-            # (MaaEnd tasks/AutoEssence/AutoEssence.json, v2.33.0-beta.2; Random is the
-            # default_case, so no key reads as Random). In Target or Location mode the region
-            # written here does nothing: refused, not reported as set (audit 11-08 D-13). The
-            # menu is not switched here: Target mode is the owner's weapon farming of 10-16
-            # (essence.py), which the relay leaves only when its targets are met.
             if (menu := _case(ov, "AutoEssenceMenu")) and menu != "Random":
                 return (f"母本的基质刷取现在是「{ESSENCE_MENU_LABELS.get(menu, menu)}」，刷取地点只在「随机模式」下生效，"
                         "中继不会替你切回随机模式（那样会停掉现在的刷法）；要按地点刷，先把「刷取设置」改成随机模式")

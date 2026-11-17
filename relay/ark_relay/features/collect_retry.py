@@ -56,14 +56,9 @@ ENTRY = "AutoCollectSchedule"
 _ROUTE_KEY = re.compile(r"^(AutoCollect(?:Common)?Route\d+)(Start|Dispatch)$")
 _FAILED_LINE = re.compile(r"^\[[^\]]+\]\s*(.+?采集失败)\s*$")
 _OVERRIDE_LINE = re.compile(r"entry=" + ENTRY + r", pipelineOverride=(\[.*\])\s*$")
-# v2.36 (2026-10-29) names routes by item - AutoCollectValleyIVChrysodendra1Start/End, a Failed node with two
-# leading underscores, and per item __AutoCollect<Item>Dispatch/Skipped - so a route id is AutoCollect<name><n>
 _NEW_START = re.compile(r"^(AutoCollect(?!(?:Common)?Route\d)[A-Za-z]+\d+)Start$")
 _NEW_ITEM = re.compile(r"^__AutoCollect([A-Za-z]+)(Dispatch|Skipped)$")
 _NODE = re.compile(r"\[msg=Node\.Action\.Starting\].*?\"name\":\"(?:__)?(AutoCollect[A-Za-z]*\d+)(End|Failed)\"")
-# A route's own node failing (its Goto when the navigator loses its place, its Start when the
-# world cannot be entered): no End and no Failed node runs, only this (maafw.log 2026-11-05
-# 11:43:56.702 「[msg=Node.PipelineNode.Failed] ... "name":"AutoCollectValleyIVPinkBolete1Goto"」).
 _NODE_FAILED = re.compile(r"\[msg=Node\.PipelineNode\.Failed\].*?\"name\":\"(AutoCollect[A-Za-z]+?\d+)[A-Z][A-Za-z]*\"")
 # A route node's recognition or action in maafw.log (retry_blocked): the Start
 # node's recognition is the moment the route is announced, its action 0.2 s later.
@@ -72,10 +67,6 @@ _ROUTE_EVENT = re.compile(r"\[msg=Node\.(?:Recognition\.Succeeded|Action\.Starti
 # CloseGamePC's own end in maafw.log (_close_game): Succeeded once CloseGameAction killed the
 # game and wrote the display settings, Failed when either went wrong (action.go returns false).
 _CLOSE_END = re.compile(r'\[msg=Tasker\.Task\.(Succeeded|Completed|Failed)\].*?"entry":"CloseGamePC"')
-# CloseGamePC kills the game, waits up to 5 s for it to go and writes the registry
-# (https://github.com/MaaEnd/MaaEnd/blob/v2.33.0/agent/go-service/common/closegame/action.go
-# waitEndfieldExit); a minute is twelve times that. Measured on the machine 10-17: AUTO-MAS's
-# CloseGamePC took 2 s (go-service.log 11:33:29 「Endfield.exe killed」, 11:33:31 「applied」).
 CLOSE_TIMEOUT_S = 60
 # MaaEnd's two agents, as MaaEnd's interface.json declares them; every task start passes them.
 AGENTS = [{"child_exec": "agent/go-service"}, {"child_exec": "agent/cpp-algo", "child_args": []}]
@@ -161,30 +152,12 @@ STAMP_FMT = "%Y-%m-%d %H:%M:%S"   # `since` for the maafw.log readers below (_af
 
 def _after(line: str, since: str) -> bool:
     """A stamped maafw.log line ([YYYY-MM-DD HH:MM:SS.mmm]...) at or after `since` (STAMP_FMT).
-
-    The full date is compared: _maafw_text reads the last two maafw*.log files, so a line of
-    an earlier day with a later clock time passed the old HH:MM:SS cut (line[12:20]), as did
-    nothing after midnight for a retry begun before it (audit 2026-11-08 B-01). Unstamped
-    lines are never after: every event these readers take is stamped."""
+    """
     return len(line) >= 20 and line[0] == "[" and line[1:20] >= since
 
 
 def retry_blocked(maafw_log: str, routes: list[str], since: str, shot_names: list[str]) -> dict[str, list[str]]:
-    """{route: relay-device pictures} for the retried routes that hit 「战斗中无法使用」 again.
-
-    Route windows after `since` (STAMP_FMT, as judge) by the history log's rule
-    (collector_maaend.spans) on the same event: a route opens where MaaFW recognises
-    its Start node - the moment MaaEnd announces 「路线10：重红柱状菌」, which AUTO-MAS
-    stamps into the history log some 25 ms later - and runs to the next route's
-    start, its Failed node or the task's end (Tasker.Task.Succeeded/Failed of
-    AutoCollectSchedule, which AUTO-MAS stamps 「任务完成: 自动采集」 - where the history
-    log ends its last route); its End node closes it only when none of these follows
-    (a retry stopped short). The last route's End comes some 25 s before the task's
-    end (maafw-attempt3 2026-09-14: Route17End 11:19:57.922, Task.Failed 11:20:23.065);
-    closed at End, a picture in that stretch was the route's in the daily row and
-    nobody's here. MaaEnd still runs End on such a route (maafw.log 2026-10-12
-    10:45:39 AutoCollectRoute10End, four pickups instead of 6-10). All to the
-    millisecond."""
+    """{route: relay-device pictures} for the retried routes that hit 「战斗中无法使用」 again."""
     from ark_relay.features import collector_maaend as cm  # noqa: PLC0415
     events: list[tuple] = []
     last = None
@@ -263,15 +236,6 @@ def _merge(parts: list[dict]) -> dict:
     return out
 
 
-# A route that meets a relay device (息壤中继器) in its way stops before it to move or remove it
-# (MaaEnd assets/resource/pipeline/MapNavigator/ObstacleDevice.json); while a fight is on the game
-# answers the interact with 「战斗中无法使用」, no device dialog opens, __..._InteractPost's next
-# list times out after its 1 s and MaaEnd gives the route up (路线10 on 10-05, 10-08, 10-12, 10-22
-# and 10-26, the retry each time too; ledgers #29, #112). The retry waits instead: on that error it
-# stops 8 s and recognises the interact button again, at most 4 times (MaaFW max_hit, which MaaEnd's
-# coding standard asks for on a node that can loop), then gives up the way MaaEnd did (_NoHit).
-# Whether a fight ends while the operator stands still is what the next retry shows: its maafw.log
-# names ArkRelayObstacleCombatWait each time it ran.
 OBSTACLE_COMBAT_WAIT = {
     "__MapNavigatorObstacleDevice_InteractPost": {
         "on_error": ["ArkRelayObstacleCombatWait", "__MapNavigatorObstacleDevice_NoHit"],
@@ -645,22 +609,12 @@ def _bring_up_and_run(maaend_dir: Path, routes: list[str], override: dict, *, sp
         return finished
     since = time.strftime(STAMP_FMT)
     done = _run(override)
-    # A route that hit 「战斗中无法使用」 at a relay device gathered nothing although MaaEnd ended
-    # it normally (retry_blocked). Whether the fight is over is only seen by walking the route
-    # again: 11-12 the retry of 11:46 was blocked on 协议纹石 路线2 and the one run by hand at
-    # 11:59 walked it (ledger #170). So those routes, and only those, get one more round here,
-    # with the game still open. A second round that cannot be started leaves the first round's
-    # verdict as it is: blocked, failed, said to the group.
     second: list[str] = []
     since2 = ""
     if done and again is not None:
         first = retry_blocked(_maafw_text(debug), routes, since, collector_maaend.obstacle_shots(maaend_dir))
         if first:
             log.info("自动采集补跑：%s 这一轮撞上「战斗中无法使用」没采到，单独再补一轮", "、".join(first))
-            # The first round's agents are stopped before the second start, as before
-            # CloseGamePC (_close_game): MXU starts a task's agents afresh and leaves the
-            # finished task's attached, and beside them the new go-service cannot connect
-            # (10-22 21:56:40, ledger #111 - tasks/start then answers 500).
             _stop_agents(inst)
             # STAMP_FMT counts whole seconds and _after compares with >=: started in the same
             # second as the first round's last line, the second round would take that line for
@@ -805,13 +759,10 @@ def walked_today(ledger_entries: list[dict], history_dir: Path, by_label: dict[s
     """Route ids walked through by any of the day's MaaEnd runs (walked_routes over each run's
     history log), less those a run walked but gathered nothing on (「战斗中无法使用」, _blocked_in).
 
-    2026-11-05: the 10:24 attempt walked 16 of 17 routes; the 11:26 and 12:02 attempts, logged out
-    mid-run, failed 15 and 13 of them. The retry took the routes of the last run with a verdict,
-    so it would have re-walked 12 routes gathered in the morning for the one that never made it.
-
-    Known limit: when no run of the day walked a route (every attempt cut before its gathering got
+Known limit: when no run of the day walked a route (every attempt cut before its gathering got
     going), the retry gets every route against run_retry's 1200 s; those it does not reach in time
-    are booked as no verdict (没拿到结果), not as failed."""
+    are booked as no verdict (没拿到结果), not as failed.
+    """
     out: set[str] = set()
     for e in ledger_entries:
         if e.get("script") != "MaaEnd" or not e.get("run_id"):
@@ -832,11 +783,6 @@ def walked_today(ledger_entries: list[dict], history_dir: Path, by_label: dict[s
 
 def latest_gathering_run(ledger_entries: list[dict], history_dir: Path, labels: dict[str, str]) -> tuple[dict | None, list[str]]:
     """Walk the day's MaaEnd records from the last one back to the first whose log reached a gathering verdict.
-
-    AUTO-MAS's own retries come later in the ledger, and a retry that was
-    stopped by hand leaves a log with 「任务开始」 and no verdict (2026-09-11
-    10:46 and 10:48). Such a run says nothing about the routes, so the one
-    before it is the one that counts. Returns (record, failed route ids).
     """
     runs = [e for e in ledger_entries if e.get("script") == "MaaEnd" and e.get("run_id")]
     for rec in reversed(runs):

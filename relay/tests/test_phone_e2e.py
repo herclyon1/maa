@@ -28,7 +28,7 @@ def _part_phone_mailbox_e2e():  # noqa: C901
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _tmp import tmpdir
+    from _parts import tmpdir
 
     # boot_stages imports the Windows service modules at top level (same stubs as
     # test_phone.py).
@@ -293,11 +293,7 @@ log-level: "warn"
             return box
 
         def shutdown(self):
-            """SvcStop: stop flag, cut the stream (Mailbox.close keeps the mark).
-
-        close() has to return at once and take the listener with it: until
-        2026-10-07 it waited for the next line ntfy sent (a keepalive, 5 s
-        here, 45 s on ntfy.sh) - see Mailbox.close."""
+            """SvcStop: stop flag, cut the stream (Mailbox.close keeps the mark)."""
             self.stop.set()
             if self.box is not None:
                 t = _real_time.time()

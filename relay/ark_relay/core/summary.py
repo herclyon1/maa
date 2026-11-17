@@ -83,16 +83,7 @@ def _extract(cfg: Config, data: dict) -> str:
     return str((choices[0].get("message") or {}).get("content") or "").strip()
 
 
-# When the endpoint last failed (time.monotonic), None while it answers. Calls within
-# REST_S of that skip it: the wording is optional (the alert and the report are complete
-# without it), and each attempt against a dead endpoint can cost the full _TIMEOUT inside
-# the path that must finish before power-off. Until 11-08 one failure closed it for the
-# whole process, so one blip at boot left a boot's alerts and its daily report without
-# wording (audit 11-08 B-D7).
 _endpoint_dead: "float | None" = None
-# Not measured: the number is Gemini's (dispatch relay-opt-round4-1108 R4-06, 11-08:
-# 「将 _endpoint_dead 改为带冷却时间（如 600 秒）的时间戳」). Ten _TIMEOUTs: a dead endpoint
-# costs at most one timeout in ten minutes.
 REST_S = 600
 _clock = time.monotonic
 # The group hears of a failing endpoint once per process, as before (every WARNING is a

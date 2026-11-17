@@ -94,21 +94,7 @@ Window = tuple[datetime, datetime, str]
 # failing raises, and today() logs the WARNING.
 GET_ATTEMPTS = 2
 GET_PAUSE = 3.0
-# One try, whole: connect, headers and body (it was per socket operation, so a server
-# sending a byte now and then held a read for as long as it liked). A try cut off here
-# is a time-out like any other: retried once, then today()'s WARNING and FAIL_TTL.
-# Measured 2026-10-13 from the Mac, 140 timed reads of the seven bulletin URLs:
-# median 0.57 s, 90th percentile 1.88 s, slowest good reads 14.0 / 17.9 s; one read of
-# the 26 KB kurogame article/5477.json took 164.8 s. relay.log 10-02 23:05:34 / 23:05:54:
-# the machine's two failures, 20 s apart (silence until the per-op time-out).
-# app_main.stop_push (a fresh process at a Windows shutdown, no cache) lowers it and
-# GET_ATTEMPTS so tomorrow's plan cannot eat its time limit.
 GET_TIMEOUT = 20
-# All of one today() call's real reads together (up to seven URLs, a try each and a
-# retry): what is left after it fails at once, as a time-out. Measured with the same
-# reads: a whole today() took 3.2-22.2 s in 18 of 20 runs; the other two 47.4 s (a
-# 24.9 s read) and 169.7 s (the 164.8 s read). relay.log 10-11 16:57 / 18:31 / 21:47:
-# the whole stop-push state, all reads included, built in 11.3-11.6 s on the machine.
 TODAY_BUDGET = 60
 _sleep = time.sleep
 # When the running today() call's budget ends (time.monotonic()); None outside one.

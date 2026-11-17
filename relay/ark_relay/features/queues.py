@@ -1,12 +1,5 @@
 """Keep Endfield's failure retry limit in AUTO-MAS at 1.
 
-2026-11-05 morning: AUTO-MAS's Run.RunTimesLimit was 3, so one failed Endfield round was run
-twice more by AUTO-MAS itself, all three stuck at the same gathering route, and the relay's
-make-up made it five. The user then asked for a morning shift that just completes:
-「我要你交的保证真的是，我正常早班能跑完，我不管别的，把中继给我根治了」 (11-05 13:0x Tokyo, his words in the chat with the session that root-fixed the relay that day).
-The limit went to 1 that day (memory maaend-retry-policy-1105): what is missing after a round
-is the relay's call (collect_retry, makeup), not three blind re-runs.
-
 The limit is AUTO-MAS's own setting, written through its API. An AUTO-MAS update, or one click
 in its window, puts it back to 3 with nobody noticing. So every engine tick reads it, and a
 value other than 1 is written back and read back (commands._script_item_via_api). AUTO-MAS
@@ -29,9 +22,7 @@ _log_run_limit = logging.getLogger(__name__)
 WANT = {"MaaEnd": 1}
 GAME = {"MaaEnd": "终末地"}
 PATH = "Run.RunTimesLimit"
-# The decision is of 2026-11-05 (module docstring); a replayed day before it ran under 3.
 SINCE = "2026-11-05"
-# AUTO-MAS's refusal while the script runs (11-05 13:1x); not a fault, the next tick retries.
 BUSY = "正在运行"
 ALARM_AFTER = 3
 
@@ -93,8 +84,6 @@ def step(eng, now: "datetime | None" = None) -> None:
         st["n"] += 1
         n = st["n"]
         _log_run_limit.info("%s 的失败重试上限是 %s，改回 %s 没成（第 %d 次）：%s", script, cur, want, n, msg)
-        # From ALARM_AFTER on until the group has it: an alarm whose send failed was never
-        # tried again while the count ran past it (audit 2026-11-08 B-07).
         if n >= ALARM_AFTER and not st["alarmed"]:
             errs = eng.notifier.send(texts.RUN_LIMIT_STUCK, texts.run_limit_stuck_body(game, cur, want, msg), alert=True)
             st["alarmed"] = not errs

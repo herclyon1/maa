@@ -1,25 +1,10 @@
 """Machine checks: changes not yet confirmed on the game machine, judged by the machine itself.
 
-Asked for by the user on 2026-10-06 04:59. Each open ledger item is a check here:
-
 * kind "A": exercised by the normal runs - judged from the relay's own logs,
   screenshots and game readings right after the run that exercises it;
 * kind "B": needs one natural trigger (a phone command, a game update day, the
   red button, ...) - judged the next time that trigger happens on its own. A check
   never starts a game task, spends stamina or presses anything to get judged.
-
-A check is a function of the event that just happened. It returns None when that
-event did not exercise it (nothing to say yet), else PASS or FAIL with the one
-evidence line it rests on (a log line, a screenshot path, a game reading). Every
-FAIL is pushed to the group, every time it is judged (the user's order of 2026-10-06:
-「只要是报错…不论多少次什么错误都要发」); PASS and still-waiting go to the daily
-report's 「上机核对」 section only. A FAIL whose facts went to the group inside another
-alarm of the same booking (Result.pushed_with: #28 inside 「没证据」) is not pushed a
-second time; the group still hears it, in that one message. A FAIL about a run held
-for its retry (Result.deferred: #28) is pushed when the hold is over, unless an alarm
-sent by then carries it or another run of the day made up for it (runs.settle_28).
-Results live in state/machinecheck.json, per
-item: the last verdict, its evidence, when, event, version, and pass / fail counts.
 
 Items that cannot be automated are listed in CANNOT with the reason, shown in the
 daily section.

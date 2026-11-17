@@ -1,11 +1,5 @@
 """MaaEnd's essence farming (基质刷取, task AutoEssence) in the AUTO-MAS master.
 
-The owner's order, 2026-10-16 16:29 Tokyo (confirmed 17:01; quoted in full in
-relay/USER-SWITCHES.txt): farm 唤月 next to 玉中身, and once both are complete switch to
-filler mode (刷垫子) with engraving off and any region - the upstream note naming the best
-regions is outdated. Two changes, both to the master copy only (AUTO-MAS copies
-it over MaaEnd's own config before each run, mastercfg module docstring):
-
 * `pick_weapons` - target mode (AutoEssenceMenu = Target) farms toward exactly the given
   weapons: each weapon-type switch on when one of its weapons is given, off otherwise, and
   that type's list holds exactly the given ones. Run once by hand
@@ -299,9 +293,6 @@ def step(eng, now: datetime | None = None) -> None:
     try:
         res = apply(cfg, to_filler, "filler")
     except OSError as exc:
-        # The master held by another program for a moment (MaaEnd or AUTO-MAS just let go of
-        # it): tried again on the next tick, up to OS_ATTEMPTS (audit 11-08 D-10: until then
-        # the first such error gave up for good).
         tries += 1
         if tries < OS_ATTEMPTS:
             st.set(SECTION, PENDING, dict(pending, **{OS_TRIES: tries, OS_LAST: f"{type(exc).__name__}: {exc}"}))
@@ -325,8 +316,6 @@ def step(eng, now: datetime | None = None) -> None:
                        {"at": (now or datetime.now(tz=SERVER_TZ)).isoformat(), "weapons": names})
     log.info("基质刷取：已切成随机地区刷垫子、刻写券关了（%s 之后；%s → %s；原文件备份为 %s）",
              run_id, res.before, res.after, res.note)
-    # The phone page shows the essence settings: tell it, as the skip step does
-    # (engine 「跳过队列」), or it shows the old mode until the next publish (11-08 [D-08]).
     push = getattr(eng, "_push_state", None)
     if push is not None:
         try:

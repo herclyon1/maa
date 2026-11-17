@@ -77,8 +77,6 @@ def _windows(path: str, wake: threading.Event) -> bool:
                 wake.set()
                 if not k.FindNextChangeNotification(handle):
                     break
-            # Close the dropped handle before opening another: each rebuild leaked
-            # one kernel handle otherwise (audit s2 F5).
             if handle is not None:
                 k.FindCloseChangeNotification(handle)
             handle = None

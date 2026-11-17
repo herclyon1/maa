@@ -1,11 +1,5 @@
 """Farm 4-cost boss echoes until a wall-clock time.
 
-Farm to a clock time, not to a repeat count; the user's words on 2026-09-09:
-「刷的时候不要按次数，而是时间来， (not by count but by time,
-比如说刷到北京时间八点半这种」 (say, until half past eight Beijing time). OK-WW only understands
-`Repeat Farm Count`, so the count is set high and **this** decides when to stop:
-the engine checks the deadline on every tick and stops the run when it passes.
-
 Two rules:
 
 * **The previous FarmEchoTask config is saved and put back.** That file is shared
@@ -57,16 +51,6 @@ RESTART_QUIET_MINUTES = 5
 # Enough to cover a night, few enough that something genuinely broken still gives up
 # and says so instead of relaunching into a wall until morning.
 MAX_RESTARTS = 40
-# The lowest boss level that drops an echo. OK-WW's own description of the field is
-# "Choose the Lowest that Drop a Echo" (FarmEchoTask.py:38, v3.7.4), i.e. some lower
-# levels drop none, and its default for the field is "80" (:24). The user, 2026-10-13:
-# 「刷声骸确实是80级才能刷，50级不可能刷」. The earlier "50" (868d09f5) had no source and
-# would have farmed all night for nothing. The original value is restored when the
-# farm ends. It is only the value written to FarmEchoTask.json: it applies where a
-# level page appears (the override picks it there, 35d6166b). Boss 1 天傀劫煞's book
-# entry opens the team screen directly, and the 10-13 run fought at the game's
-# remembered Lv.90 with 80 set - so what owners read is the level the game showed
-# (level_since), never this.
 FARM_LEVEL = "80"
 # How many overworld bosses OK-WW's Boss Challenge list has: FarmEchoTask.total_boss_number
 # = 20 (v3.7.4, FarmEchoTask.py:64), the total teleport_to_configured_boss passes to
@@ -254,10 +238,6 @@ def quiet_minutes(now: datetime | None = None, since: "datetime | None" = None) 
         if last is None:
             return None
     elif since is not None and last < since:
-        # Progress from an earlier session in the same day's file says nothing about
-        # this launch. 10-12: farm started 15:23 after a morning run; its log, cut
-        # at 15:25:32 and read with a 15:28 restart at 15:33:30, gave 225.6 minutes
-        # from an 11:47 line instead of 5.5 from the restart.
         last = since
     return (now - last).total_seconds() / 60.0
 
@@ -295,13 +275,6 @@ def _lines_since(started: "datetime | None") -> "list[tuple[datetime, str]] | No
         return None
 
 
-# FarmEchoTask logs what it read off the boss's level badge on every lap
-# (upstream FarmEchoTask.py:721, the OCR boxes starting with "Lv"), e.g.
-#   FarmEchoTask:boss_string is [Lv.90天傀劫煞_0.97]
-# and, OCR'd with a stray dot, [Lv.90.天傀劫煞_0.97]; "[]" when nothing was read.
-# This is the level the game fought at: "Boss Level" in FarmEchoTask.json applies only
-# where a level page appears, and boss 1's book entry opens the team screen directly
-# (10-13 run), so the game keeps the level it remembers for that realm.
 _BOSS_STRING = re.compile(r"FarmEchoTask:boss_string is \[(.*)\]")
 _BOSS_BOX = re.compile(r"^L[Vv]\.?\s*(\d{1,3})\.?\s*(.*?)_\d+(?:\.\d+)?$")
 
@@ -367,11 +340,6 @@ def game_alive(timeout: "float | None" = None) -> "list[str]":
     return [n for n in GAME_PROCS if n.lower() in low] + script
 
 
-# The whole stop-the-old-script step, PowerShell calls included: each list call may
-# otherwise run to its 60 s hang guard, and ten of them held a tick for ten minutes.
-# Measured on the game machine 2026-10-13 11:08 Beijing: okww_python_pids() took
-# 0.54, 0.39, 0.39, 0.41, 0.41 s (5 runs, OK-WW running, its real PID found), so
-# 15 s (the bound the review of this branch set) holds the stop and ~30 looks.
 STOP_SCRIPT_SECONDS = 15
 
 
@@ -436,12 +404,6 @@ def _kill_on_desktop(pids=()) -> None:
     subprocess.run(["schtasks", "/run", "/tn", STOP_TASK], capture_output=True)
 
 
-# The whole wrap-up stop, PowerShell calls included. Before, the ten looks after the
-# desktop kill each ran a process query free to take its 60 s guard: one tick could
-# last over ten minutes. Measured on the game machine 2026-10-13 11:08 Beijing: that
-# query (okww_python_pids) took 0.39-0.54 s over 5 runs, so a normal stop - three
-# queries, the 2 s pause, ten one-second looks - fits in about 20 s; 60 s is that
-# with room, and what one query's hang guard alone allowed before.
 STOP_OKWW_SECONDS = 60
 
 
@@ -504,16 +466,9 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
           weekly: bool = False) -> tuple[bool, str]:
     """Point OK-WW at one overworld boss and farm it until `until_hhmm`.
 
-    `weekly` farms the `boss`-th weekly boss (F2 → 战歌重奏) instead. Its echoes drop
-    without the reward claim, and the claim stays refused by the same no-claim
-    marker: the patch's weekly claim / count / solo-challenge hooks all hand back to
-    upstream while it exists (ark_overrides.tasks.farming_echoes). The App's farm
-    could only pick an overworld boss, so on 2026-10-22 a weekly-boss farm had to be
-    set up by hand (the user: 「做了半截导致我现在还得手动找你」).
+`now` pins the clock in tests.
 
-    `now` pins the clock in tests.
-
-    `sent` is when the phone sent the order. A press made while the machine was off
+`sent` is when the phone sent the order. A press made while the machine was off
     waits in the mailbox until the next boot; read against the boot time, 「刷到
     08:30」 sent at 22:00 and acted on at 08:45 would roll to the next day's 08:30.
     So the deadline is resolved against `sent`, and an order whose deadline passed
@@ -587,12 +542,7 @@ def user_clock(t: datetime, now: "datetime | None" = None) -> str:
 
 
 def retime(cfg, until_hhmm: str, now: datetime | None = None) -> tuple[bool, str]:
-    """Move a running farm's finishing time, earlier or later.
-
-    The user, 2026-09-09: 「他在跑刷声骸了，我想改一下时间，提前或者延后」. Stopping
-    and starting again would rewrite the saved config and lose the restart count, so
-    the deadline is edited in place and nothing else is touched.
-    """
+    """Move a running farm's finishing time, earlier or later."""
     rec = current(cfg.state_dir)
     if not rec:
         return False, "现在没有在刷声骸，没有可改的时刻"
@@ -618,10 +568,7 @@ MANUAL_TROUBLE: list[str] = []
 
 
 def finish(cfg, why: str) -> str:
-    """Stop the farm and put the config back. '' when nothing was running.
-
-    A wrap-up that went wrong is also queued on MANUAL_TROUBLE, so it reaches the group
-    (the owner, 2026-10-12 20:04: an error left unreported is worse than the error)."""
+    """Stop the farm and put the config back. '' when nothing was running."""
     note, failed = _finish(cfg, why)
     if failed:
         MANUAL_TROUBLE.append(note)
@@ -661,8 +608,6 @@ def _finish(cfg, why: str, failed: bool = False, judge_progress: bool = False) -
     note += "" if not no_claim_on() else texts.echo_farm_no_claim_left(NO_CLAIM)
     path = _cfg_path(getattr(cfg, "okww_dir", None) or os.environ.get("ARK_OKWW_DIR"))
     saved = rec.get("saved")
-    # The master as it is now, not the copy taken at the start: a weekly-boss number
-    # or level changed on the phone during the farm stays changed (11-08 [D-06]).
     if path and path.is_file():
         try:
             fresh = _truth(cfg, path)
