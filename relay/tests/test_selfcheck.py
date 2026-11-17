@@ -3,12 +3,34 @@ from __future__ import annotations
 
 # ruff: noqa: PLC0415
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+
+
+class _Any:
+    """Stands in for any pywin32 attribute: callable, subclassable, truthy."""
+    def __init__(self, *a, **k): pass
+    def __call__(self, *a, **k): return _Any()
+    def __getattr__(self, _): return _Any()
+
+
+class _Stub(types.ModuleType):
+    """A pywin32 module that is not there: every public name is an _Any."""
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return _Any
+
+
+class _NoSource:
+    """A record source with nothing new."""
+    def fetch(self, seen):
+        return []
 
 
 def _part_mc_phone_banners():  # noqa: C901
@@ -25,19 +47,6 @@ def _part_mc_phone_banners():  # noqa: C901
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
 
 
     for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
@@ -963,7 +972,6 @@ def _part_mc_phone_banners():  # noqa: C901
           [(texts.machinecheck_failed("#2", mc.CHECKS["#2"].what) if "#2" in mc.CHECKS else "#2", True)])
 
     _b._pause = saved_pause
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
     skland.get_did, skland.login, skland.refresh, skland.bindings = _REAL_SKLAND
 
 
@@ -1432,11 +1440,6 @@ def _part_mc_runs():
     print("\n[handle._handle: the checks are judged right after the record is booked]")
 
 
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     handle._ship_evidence = lambda eng, r: ""
     handle._weekly_gates = lambda eng, r: None
     collect_retry.restore_master = lambda cfg: ""
@@ -1446,7 +1449,7 @@ def _part_mc_runs():
         cfg = Config()
         cfg.state_dir = tmpdir()
         cfg.maaend_dir = tmpdir()
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=N(cfg.state_dir, notifier_refuses))
+        e = eng_mod.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=N(cfg.state_dir, notifier_refuses))
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._archive_maaend_evidence = lambda r: None
@@ -1782,12 +1785,6 @@ def _part_mc_runs_state_read_fails():  # noqa: C901
     finally:
         Path.read_text, os.replace = REAL_READ_TEXT, REAL_REPLACE
 
-    print()
-    if fails:
-        print(f"✗ {len(fails)} 条没过：{fails}")
-        sys.exit(1)
-    print("all checks passed")
-
 
 def _part_mc_system():  # noqa: C901
     """Machine checks of the relay's own machinery (ark_relay/features/machinechecks.py)."""
@@ -1797,19 +1794,6 @@ def _part_mc_system():  # noqa: C901
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
 
 
     for _name in ("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
@@ -2261,16 +2245,11 @@ def _part_mc_system():  # noqa: C901
     from ark_relay.core.ledger import State
 
 
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     def engine(sd, n):
         cfg = Config()
         cfg.state_dir = sd
         cfg.automas_dir = None
-        return eng_mod.Engine(cfg, source=Src(), state=State(sd), notifier=n)
+        return eng_mod.Engine(cfg, source=_NoSource(), state=State(sd), notifier=n)
 
 
     sd = tmpdir()
@@ -2582,19 +2561,6 @@ def _part_mc_system_fixes():
     import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
 
 
     class ServiceFramework:
@@ -3021,11 +2987,6 @@ once; the daily report gets the two relay lines a person used to run by hand.
     check("a stop mid-boot", selfcheck.daily_lines("2026-10-10", stop)[1], "· 调度程序开机：22:30 开机还没走完就被叫停了")
     check("the new words are plain", texts.plain("；".join(got.values()) + "开机还没走完就被叫停了"), [])
 
-    print()
-    if fails:
-        print("FAILED:", fails); sys.exit(1)
-    print("all checks passed")
-
 
 def _part_selfcheck_one_push():
     """A failing boot self-check reaches the group once, through the real errwatch handler."""
@@ -3402,9 +3363,7 @@ def _part_replay():
     import json
     import os
     import shutil
-    import sys
     import tempfile
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
