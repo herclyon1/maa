@@ -3,6 +3,7 @@ from __future__ import annotations
 
 # ruff: noqa: PLC0415
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -11,15 +12,26 @@ from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
+class _NoSource:
+    """A record source with nothing new."""
+    def fetch(self, seen):
+        return []
+
+
+class _Notes:
+    """A notifier that keeps (title, body, alert) and reports every channel delivered."""
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body="", alert=False, **kw):
+        self.sent.append((title, body, alert))
+        return []
+
+
 def _run_mc28_one_alarm():
     import gzip
     import os
-    import sys
     from datetime import datetime, timedelta
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _parts import fx_dir, tmpdir
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_HISTORY_DIR=str(TMP / "history"),
@@ -38,28 +50,6 @@ def _run_mc28_one_alarm():
     from ark_relay.features import collector_maaend
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-task-trail"
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
-
-
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", alert=False, **kw):
-            self.sent.append((title, body, alert))
-            return []
-
-
-    class Src:
-        def fetch(self, seen):
-            return []
 
 
     handle._ship_evidence = lambda eng, rec: "https://cos.example/endfield.zip"
@@ -90,8 +80,8 @@ def _run_mc28_one_alarm():
         (end / "debug").mkdir()
         (end / "debug" / "maafw.log").write_bytes(gzip.decompress((FIX / "maafw-2026-10-08.log.gz").read_bytes()))
         cfg.maaend_dir = str(end)
-        notes = Notes()
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=notes)
+        notes = _Notes()
+        e = eng_mod.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=notes)
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._verify_outcome = lambda r: None
@@ -227,14 +217,7 @@ def _run_mc28_one_alarm():
     check("the daily section says the abort's 装备制造 failed and was made up for",
           any("装备制造" in x and "不用人管" in x for x in sec), True)
 
-    print()
-    if fails:
-        print(f"✗ {len(fails)} 条没过：{fails}")
-        sys.exit(1)
-    if fails:
-        raise SystemExit(1)
-    import types as _types
-    return _types.SimpleNamespace(**locals())
+    return types.SimpleNamespace(**locals())
 
 
 def _part_mc28_settle_once():
@@ -360,11 +343,6 @@ or read at the wrong moment.
         unresolved.after_makeup, makeup.refuse_rejected = REAL_AFTER, REAL_REFUSE
         config_mod.atomic_write_text, mc._write, Path.read_text = REAL_WRITE_TEXT, REAL_MC_WRITE, REAL_READ_TEXT
 
-    print()
-    if fails or base.fails:
-        print(f"✗ {len(fails)} 条没过：{fails}")
-        sys.exit(1)
-    print("all checks passed")
 
 
 def _part_mc28_state():  # noqa: C901
@@ -1015,11 +993,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
                       ("13: covered_28 locked while nothing is held: no ERROR", item13)):
         section(title, fn)
 
-    print()
-    if fails or base.fails:
-        print(f"✗ {len(fails)} 条没过：{fails}")
-        sys.exit(1)
-    print("all checks passed")
 
 
 def _part_mc28_task_trail():  # noqa: C901
@@ -1602,11 +1575,6 @@ def _part_mc28_task_trail():  # noqa: C901
     check("a sub-task's node before the next start still counts (sub-tasks post no Starting)",
           _tr2["nodes"].get("EnvironmentMonitoringTakePhoto"), 1)
 
-    if fails:
-        print(f"✗ {len(fails)} 条没过：{fails}")
-        sys.exit(1)
-    print("all checks passed")
-
 
 def _part_mc28_one_alarm():
     _run_mc28_one_alarm()
@@ -1622,16 +1590,6 @@ def _part_maaend_app_log():
     from ark_relay.features import handle
     from ark_relay.features import outcome
 
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
-
-
     HISTORY = "\n".join(
         f"[2026-08-29 09:3{i}:00.000] 任务开始: 任务{i}\n"
         f"[2026-08-29 09:3{i}:30.000] 任务完成: 任务{i}" for i in range(3))
@@ -1644,7 +1602,7 @@ def _part_maaend_app_log():
         return [c.label for c in checks if not c.ok]
 
 
-    def main() -> int:
+    def main() -> None:
         print("=== 只看 history 日志（早班那次的错误做法）===")
         got = outcome.maaend_checks(HISTORY, SHOTS)
         check("会误判成没跑完", "MaaEnd 跑完" in _bad(got), True)
@@ -1679,12 +1637,9 @@ def _part_maaend_app_log():
             check("读到了收尾标记", "自动执行任务完成" in txt, True)
             check("没把框架日志混进来", "框架日志" in txt, False)
 
-        print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")
-        return 0 if not FAILED else 1
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_maaend_dir_resolve():
@@ -1695,16 +1650,6 @@ def _part_maaend_dir_resolve():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core.config import Config
-
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
-
 
     def _automas(tmp: Path, path_value: str) -> Path:
         """造一个最小的 AUTO-MAS 配置目录，只够 plan.script_dir 认出 MaaEnd。"""
@@ -1717,7 +1662,7 @@ def _part_maaend_dir_resolve():
         return tmp
 
 
-    def main() -> int:
+    def main() -> None:
         print("=== maaend_dir 解析 ===")
 
         with tempfile.TemporaryDirectory() as td:
@@ -1777,12 +1722,9 @@ def _part_maaend_dir_resolve():
         check("ERROR 里点名 maaend_dir",
               any("maaend_dir" in m for _, m in seen), True)
 
-        print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")
-        return 0 if not FAILED else 1
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_maaend_false_green():
@@ -1933,17 +1875,6 @@ def _part_maaend_recovered():
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
 
-    class Notes:
-        """The watchdog's notifier: the ⚠️ notice lands here."""
-
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return []
-
-
     class Refuses:
         """errwatch's notifier: the group refuses, so what it queues stays queued."""
 
@@ -2005,7 +1936,7 @@ def _part_maaend_recovered():
             self.stderr.write_text("", encoding="utf-8")
             (self.debug / "2026-10-01-6.log").write_text("\n".join(mxu_lines) + "\n", encoding="utf-8")
             self.t, self.wall = 1000.0, datetime(2026, 10, 1, 16, 58, 22)
-            self.notes, self.killed = Notes(), []
+            self.notes, self.killed = _Notes(), []
             self.procs = list(PROCS)
             self.dog = maaend_watchdog.Watchdog(
                 self.notes, self.debug, clock=lambda: self.t, snapshot=lambda: RUNNING,
@@ -2512,8 +2443,6 @@ def _part_maaend_stopped_between_tasks():
     check("a stop after the closing task (AUTO-MAS stopping a done MaaEnd) is not a failure",
           outcome._maaend_cut_short(hung), [])
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-
 
 def _part_maaend_stub_record():
     """A MaaEnd record AUTO-MAS wrote for an attempt that never ran is not a run."""
@@ -2609,11 +2538,6 @@ def _part_maaend_stub_record():
         check("save_and_upload 的包里带上了两个切片", set(("relay.log", "automas-app.log")) <= set(res["files"]))
         check("没有 COS 时不炸、包照打", bool(res["archive"]))
 
-    print()
-    if fails:
-        print("FAILED:", fails); sys.exit(1)
-    print("all checks passed")
-
 
 def _part_maaend_bagfull():
     """An essence claim that never lands: a full bag when the storage-full notice was
@@ -2631,7 +2555,6 @@ seen, otherwise an ordinary failure that carries the raw MaaEnd lines.
     from ark_relay.features.collector_maaend import CLAIM_UNCONFIRMED, parse_maaend_log
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
-    FAILED: list[str] = []
     FIX = fx_dir(Path(__file__), "fixtures")
     FW_IN_WINDOW = (
         '[2026-09-24 10:16:40.100][INF][Px7172][Tx32558][Utils/EventDispatcher.hpp][L65]'
@@ -2645,12 +2568,6 @@ seen, otherwise an ordinary failure that carries the raw MaaEnd lines.
         '[MaaNS::EventDispatcher::notify] !!!OnEventNotify!!! [handle=true] [msg=Tasker.Task.Starting] later\n')
 
 
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -- {detail}"))
-        if not ok:
-            FAILED.append(name)
-
-
     def failure_text(raw: dict) -> str:
         t0 = datetime(2026, 9, 24, 10, 0, tzinfo=SERVER_TZ)
         r = RunRecord(run_id="2026-09-24/endfield/MaaEnd-06-07-50", script="MaaEnd", user="endfield",
@@ -2658,7 +2575,7 @@ seen, otherwise an ordinary failure that carries the raw MaaEnd lines.
         return core.format_failure(r)[1]
 
 
-    def main() -> int:
+    def main() -> None:
         end = tmpdir()
         (end / "debug").mkdir(parents=True)
         (end / "debug" / "maafw.log").write_bytes(
@@ -2751,16 +2668,9 @@ seen, otherwise an ordinary failure that carries the raw MaaEnd lines.
         require("a normal run has no causes", not ok.get("maaend_fail_causes"),
                 repr(ok.get("maaend_fail_causes")))
         require("... and no claim lines", not ok.get("maaend_claim_lines"), repr(ok.get("maaend_claim_lines")))
-        print()
-        if FAILED:
-            print(f"FAILED {len(FAILED)}: {FAILED}")
-            return 1
-        print("all checks passed")
-        return 0
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_maaend_bagfull_collect():
@@ -2783,14 +2693,7 @@ def _part_maaend_bagfull_collect():
     from ark_relay.core.collector import LocalSource
 
     FIX = fx_dir(Path(__file__), "fixtures")
-    FAILED: list[str] = []
     STEM = "MaaEnd-05-47-21"
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -- {detail}"))
-        if not ok:
-            FAILED.append(name)
 
 
     def history() -> Path:
@@ -2819,13 +2722,12 @@ def _part_maaend_bagfull_collect():
         return recs[0] if len(recs) == 1 else None
 
 
-    def main() -> int:
+    def main() -> None:
         print("[09-25 through the collector, MaaEnd folder from Config]")
         rec = fetch(history(), maaend(with_notice=True))
         require("one record", rec is not None)
         if rec is None:
-            print(f"FAILED {len(FAILED)}: {FAILED}")
-            return 1
+            return
         causes = rec.raw.get("maaend_fail_causes") or {}
         require("still a failure", rec.ok is False and "基质刷取" in rec.failed_tasks,
                 repr((rec.ok, rec.failed_tasks)))
@@ -2894,16 +2796,9 @@ def _part_maaend_bagfull_collect():
             collector.refresh_raw = real
         require("the daily report recomputes with the MaaEnd folder", seen == [Path("/maaend")], repr(seen))
 
-        print()
-        if FAILED:
-            print(f"FAILED {len(FAILED)}: {FAILED}")
-            return 1
-        print("all checks passed")
-        return 0
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_maaend_close_game_wrapup():
@@ -3072,8 +2967,6 @@ def _part_maaend_collect_items_v236():
               cr.retry_blocked(mf_blocked, ["AutoCollectWulingRubyBolete1"], "11:00:00", [shot]),
               {"AutoCollectWulingRubyBolete1": [shot]})
 
-    print("\nall checks passed" if not fails else f"\n{len(fails)} FAILED: {fails}")
-
 
 def _part_maaend_collect_xianlu():
     """自动采集 walking only routes 1-3 is work done, not a false green."""
@@ -3084,10 +2977,7 @@ def _part_maaend_collect_xianlu():
 
     text = (fx_dir(Path(__file__), "fixtures") / "maaend-collect-xianlu-1012.log").read_text(encoding="utf-8")
     got = {c.label: c.ok for c in maaend_checks(text, []) if "自动采集" in c.label}
-    ok = got.get("自动采集 真的走了路线") is True
-    print(("  ✓ " if ok else "  ✗ ") + f"线路1-3 count as walked routes: {got}")
-    print("\n" + ("all checks passed" if ok else "FAILED"))
-    sys.exit(0 if ok else 1)
+    check("线路1-3 count as walked routes", got.get("自动采集 真的走了路线") is True, True)
 
 
 def _part_maaend_farm_drops():
@@ -3097,11 +2987,6 @@ def _part_maaend_farm_drops():
     from ark_relay.features import collector_maaend
 
     D = fx_dir(pathlib.Path(__file__), "fixtures") / "maaend-farm-drops"
-
-
-    def chk(name, got, want):
-        if got != want:
-            fails.append(f"{name}: got {got!r}, want {want!r}")
 
 
     def farm(name):
@@ -3120,50 +3005,50 @@ def _part_maaend_farm_drops():
         return {k: r.get(k) for k in ("maaend_sanity_spent", "sanity", "sanity_cap", "protocol_runs")}
 
 
-    chk("09-27 协议空间", pick(farm("2026-09-27.log")),
+    check("09-27 协议空间", pick(farm("2026-09-27.log")),
         {"maaend_farm": "协议空间", "maaend_farm_runs": 1,
          "maaend_farm_drops": {"折金票": 68000, "行动资历": 960}})
-    chk("09-27 理智", sanity("2026-09-27.log"),
+    check("09-27 理智", sanity("2026-09-27.log"),
         {"maaend_sanity_spent": 160, "sanity": 117, "sanity_cap": 360, "protocol_runs": 2})
 
-    chk("09-28a 协议空间", pick(farm("2026-09-28a.log")),
+    check("09-28a 协议空间", pick(farm("2026-09-28a.log")),
         {"maaend_farm": "协议空间", "maaend_farm_runs": 2,
          "maaend_farm_drops": {"折金票": 136000, "行动资历": 1920}})
-    chk("09-28a 理智", sanity("2026-09-28a.log"),
+    check("09-28a 理智", sanity("2026-09-28a.log"),
         {"maaend_sanity_spent": 320, "sanity": 6, "sanity_cap": 360, "protocol_runs": 2})
 
     r = farm("2026-09-28b.log")
-    chk("09-28b 没进去", pick(r), {"maaend_farm": "协议空间"})
+    check("09-28b 没进去", pick(r), {"maaend_farm": "协议空间"})
     full = collector_maaend.parse_maaend_log(D / "2026-09-28b.log")
-    chk("09-28b 次数", full.get("maaend_farm_runs"), None)
-    chk("09-28b 产出", full.get("maaend_farm_drops"), None)
-    chk("09-28b 理智不足", full.get("sanity_exhausted"), True)
-    chk("09-28b 理智", sanity("2026-09-28b.log"),
+    check("09-28b 次数", full.get("maaend_farm_runs"), None)
+    check("09-28b 产出", full.get("maaend_farm_drops"), None)
+    check("09-28b 理智不足", full.get("sanity_exhausted"), True)
+    check("09-28b 理智", sanity("2026-09-28b.log"),
         {"maaend_sanity_spent": None, "sanity": 17, "sanity_cap": 360, "protocol_runs": None})
 
-    chk("09-24 基质刷取", pick(farm("2026-09-24_MaaEnd-06-07-50.log")),
+    check("09-24 基质刷取", pick(farm("2026-09-24_MaaEnd-06-07-50.log")),
         {"maaend_farm": "基质刷取", "maaend_farm_place": "清波寨", "maaend_farm_runs": 2,
          "maaend_farm_drops": {"无暇基质": 6, "高纯基质": 4}})
 
-    chk("09-25 基质刷取 背包满", pick(farm("2026-09-25_MaaEnd-05-25-36.log")),
+    check("09-25 基质刷取 背包满", pick(farm("2026-09-25_MaaEnd-05-25-36.log")),
         {"maaend_farm": "基质刷取", "maaend_farm_place": "清波寨"})
 
     whole = collector_maaend._item_blocks((D / "2026-09-27.log").read_text(encoding="utf-8").splitlines())
-    chk("09-27 全日 信用", whole.get("信用"), 20 + 400 + 300)
-    chk("09-27 全日 武库配额", whole.get("武库配额"), 80)
-    chk("09-27 产出不含信用", "信用" in (farm("2026-09-27.log").get("maaend_farm_drops") or {}), False)
+    check("09-27 全日 信用", whole.get("信用"), 20 + 400 + 300)
+    check("09-27 全日 武库配额", whole.get("武库配额"), 80)
+    check("09-27 产出不含信用", "信用" in (farm("2026-09-27.log").get("maaend_farm_drops") or {}), False)
 
     # Not tied to the task name: the same log with the task renamed is still read
     # as the farming task because its own lines carry 「当前理智 N/M」.
     t27 = (D / "2026-09-27.log").read_text(encoding="utf-8")
     renamed = t27.replace("⚔️协议空间", "⚔️某新理智玩法")
-    chk("改名 仍认", pick(collector_maaend._maaend_farm(renamed)),
+    check("改名 仍认", pick(collector_maaend._maaend_farm(renamed)),
         {"maaend_farm": "某新理智玩法", "maaend_farm_runs": 1,
          "maaend_farm_drops": {"折金票": 68000, "行动资历": 960}})
     # Renamed and without the sanity readings: no farming task at all, and the
     # 基建任务 / 信用点购物 blocks do not turn into one.
     bare = "\n".join(x for x in renamed.splitlines() if "当前理智" not in x)
-    chk("改名无理智行 不认", collector_maaend._maaend_farm(bare), {})
+    check("改名无理智行 不认", collector_maaend._maaend_farm(bare), {})
 
     # Block boundary: the first non-item line closes it, even at the same
     # timestamp; a framework line closes it too.
@@ -3177,11 +3062,7 @@ def _part_maaend_farm_drops():
         "[2026-09-27 09:46:38.001][ERR][Px1][Tx1][A.cpp][L1][f] size x 16",
         "[2026-09-27 09:46:38.002] 信用 ×400",
     ]
-    chk("块边界", collector_maaend._item_blocks(lines), {"折金票": 68000, "信用": 20})
-
-    if fails:
-        print("\n".join(fails)); sys.exit(1)
-    print("all checks passed")
+    check("块边界", collector_maaend._item_blocks(lines), {"折金票": 68000, "信用": 20})
 
 
 def _part_maaend_two_farms():
@@ -3193,14 +3074,7 @@ def _part_maaend_two_farms():
 
     from ark_relay.features import collector_maaend as cm
 
-    FAILED: list[str] = []
     D = fx_dir(Path(__file__), "fixtures") / "maaend-farm-drops"
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -- {detail}"))
-        if not ok:
-            FAILED.append(name)
 
 
     def _task(path: Path, key: str) -> str:
@@ -3210,7 +3084,7 @@ def _part_maaend_two_farms():
         return "\n".join(lines[a:b + 1]) + "\n"
 
 
-    def main() -> int:
+    def main() -> None:
         ps = _task(D / "2026-09-27.log", "协议空间")
         ess = _task(D / "2026-09-24_MaaEnd-06-07-50.log", "基质刷取")
         one_ps, one_ess = cm._maaend_farm(ps), cm._maaend_farm(ess)
@@ -3225,16 +3099,9 @@ def _part_maaend_two_farms():
             want[k] = want.get(k, 0) + n
         require("drops of both are kept", both.get("maaend_farm_drops") == want, repr(both.get("maaend_farm_drops")))
         require("a single task reads as before", cm._maaend_farm(ps) == one_ps)
-        print()
-        if FAILED:
-            print(f"FAILED {len(FAILED)}: {FAILED}")
-            return 1
-        print("all checks passed")
-        return 0
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_unreachable_evidence():
@@ -3262,20 +3129,6 @@ def _part_unreachable_evidence():
     FIX = fx_dir(ROOT, "fixtures") / "maaend_shape_local_fault_2026-09-25.log"
 
 
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return []
-
-
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     DAY = datetime.now(tz=SERVER_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     START = DAY.replace(hour=9, minute=55)
 
@@ -3287,7 +3140,7 @@ def _part_unreachable_evidence():
         cfg.maa_dir = None
         cfg.maaend_dir = tmpdir()
         (Path(cfg.maaend_dir) / "debug").mkdir()
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._unfinished_queues = lambda now, entries: []
@@ -3424,11 +3277,6 @@ def _part_unreachable_evidence():
     check("用了没读到公告那句", UNREAD in body, True)
     check("没说今天没有公告", texts.UNREACHABLE_SHAPE_NOTE in body, False)
 
-    if fails:
-        print(f"\n✗ {len(fails)} 项失败")
-        sys.exit(1)
-    print("\nall checks passed")
-
 
 def _part_unreachable_note_pushed_now():
     """The 「像没进游戏」 note is on every MaaEnd failure alarm, not only the held one."""
@@ -3458,11 +3306,6 @@ def _part_unreachable_note_pushed_now():
             return []
 
 
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     handle._ship_evidence = lambda eng, r: ""
     handle._weekly_gates = lambda eng, r: None
     handle.efstatus.update_hint = lambda now=None, fetch=None, strict=False: ""   # no official notice today
@@ -3473,7 +3316,7 @@ def _part_unreachable_note_pushed_now():
         cfg = Config()
         cfg.state_dir = state_dir
         cfg.maaend_dir = None
-        e = eng_mod.Engine(cfg, source=Src(), state=State(state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=_NoSource(), state=State(state_dir), notifier=Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._archive_maaend_evidence = lambda r: None
@@ -3521,8 +3364,6 @@ def _part_unreachable_note_pushed_now():
     body = (e.notifier.sent or [("", "")])[0][1]
     check("写了「没读到」", texts.UNREACHABLE_UNREAD_NOTE in body)
     check("不写「今天没有官方公告」", texts.UNREACHABLE_SHAPE_NOTE in body, False)
-
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 
 
 if __name__ == "__main__":
