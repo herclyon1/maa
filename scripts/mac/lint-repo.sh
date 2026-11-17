@@ -14,7 +14,7 @@ FAIL=0
 note() { printf '  ✗ %s\n' "$1"; FAIL=1; }
 ok()   { printf '  ✅ %s\n' "$1"; }
 
-echo "▶ 1/18 shellcheck"
+echo "▶ 1/17 shellcheck"
 if command -v shellcheck >/dev/null || [ -x "$HOME/.local/bin/shellcheck" ]; then
   SC="$(command -v shellcheck || echo "$HOME/.local/bin/shellcheck")"
   bad=""
@@ -27,7 +27,7 @@ else
 fi
 
 # PowerShell 5.1 does not read UTF-8 by default: Chinese JSON breaks.
-echo "▶ 2/18 不许用 powershell 5.1（要用 pwsh 7）"
+echo "▶ 2/17 不许用 powershell 5.1（要用 pwsh 7）"
 # grep -rn 的输出是 `文件:行号:内容`，所以过滤注释要跳过前两段，
 # 不能直接 `^\s*#`——2026-08-26 第一版就是这么写的，注释全都漏了过去。
 # 2026-09-06：原正则只认 `powershell ` 带空格，`["powershell", "-NoProfile"` 这种
@@ -42,13 +42,13 @@ hits=$(grep -rn "['\"\` ]powershell[ '\",]" scripts/ relay/ 2>/dev/null \
 [ -z "$hits" ] && ok "没有裸 powershell 调用" || { note "发现裸 powershell（应改 pwsh 或 base64）"; echo "$hits" | head -5 | sed 's/^/       /'; }
 
 # bash, ssh and cmd each strip a layer of quotes; -EncodedCommand survives all three.
-echo "▶ 3/18 ssh 送 PowerShell 必须走 base64"
+echo "▶ 3/17 ssh 送 PowerShell 必须走 base64"
 hits=$(grep -rn 'ssh .*pwsh -\(NoProfile \)\?-\?[Cc]ommand' scripts/ 2>/dev/null \
        | grep -v EncodedCommand | grep -v "^\s*#" || true)
 [ -z "$hits" ] && ok "没有内联拼接的远端 PowerShell" || { note "有内联 -Command（应改 -EncodedCommand）"; echo "$hits" | head -5 | sed 's/^/       /'; }
 
 # A script directory resolved after cd points nowhere, and the step that uses it fails silently.
-echo "▶ 4/18 脚本目录必须在 cd 之前算好"
+echo "▶ 4/17 脚本目录必须在 cd 之前算好"
 hits=""
 while IFS= read -r f; do
   cdline=$(grep -n '^cd ' "$f" | head -1 | cut -d: -f1)
@@ -60,7 +60,7 @@ while IFS= read -r f; do
 done < <(find scripts -name '*.sh' ! -path "*/lint-repo.sh")
 [ -z "$hits" ] && ok "没有 cd 之后才解析脚本目录的写法" || note "在 cd 之后解析路径: $hits"
 
-echo "▶ 5/18 部署清单要包含更新说明"
+echo "▶ 5/17 部署清单要包含更新说明"
 if grep -q 'RELEASE-NOTES.md' relay/make-manifest.py 2>/dev/null; then
   ok "make-manifest 会带上 RELEASE-NOTES.md"
 else
@@ -68,10 +68,10 @@ else
 fi
 
 if [ -n "${LINT_SKIP_TESTS:-}" ]; then
-  echo "▶ 6/18 中继测试全绿"
+  echo "▶ 6/17 中继测试全绿"
   echo "  ⏭ 已跳过（调用方自己会跑一遍，这里再跑是重复）"
 else
-echo "▶ 6/18 中继测试全绿"
+echo "▶ 6/17 中继测试全绿"
 # Criteria: exit code 0 and the last line says passed.
 # 失败时把**报错内容**打出来，不是只报一个文件名。原来只吐文件名，人还得自己
 # 再跑一遍才知道错在哪；而收进变量再 tr '\n' ' ' 会把 traceback 压成一整行，
@@ -128,7 +128,7 @@ fi
 
 # A function defined and never called (a test placed after `if __name__`) never runs, and its file still
 # says passed; the whole class is checked, not one way of writing it.
-echo "▶ 7/18 没有永远不会被执行的代码"
+echo "▶ 7/17 没有永远不会被执行的代码"
 if out=$(python3 scripts/mac/lib/deadcode.py relay scripts 2>&1); then
   ok "$(tail -1 <<<"$out")"
 else
@@ -138,7 +138,7 @@ fi
 
 # pyflakes catches a name read before it is bound (F823), which the tests can miss; the strict 3.14
 # compile catches invalid escapes ('\d') that the Mac's own 3.9 accepts in silence.
-echo "▶ 8/18 静态检查（pyflakes + 3.14 严格编译）"
+echo "▶ 8/17 静态检查（pyflakes + 3.14 严格编译）"
 PY314="$HOME/.local/bin/python3.14"
 if ! command -v uvx >/dev/null; then
   note "uvx 没装（brew install uv），pyflakes 跑不了"
@@ -170,14 +170,14 @@ else
   note "找不到 $PY314，没法按机器的 Python 版本编译"
 fi
 
-echo "▶ 9/18 测试语料必须入库"
+echo "▶ 9/17 测试语料必须入库"
 missing=0
 while IFS= read -r f; do
   git ls-files --error-unmatch "$f" >/dev/null 2>&1 || { note "测试语料没入库：$f"; missing=1; }
 done < <(find relay/tests/fixtures -type f 2>/dev/null; ls relay/tests/fx_samples.json 2>/dev/null)
 [ "$missing" = 0 ] && ok "测试语料都在库里"
 
-echo "▶ 10/18 中继的状态只能由中继自己写"
+echo "▶ 10/17 中继的状态只能由中继自己写"
 # A state the relay reads is changed only through its own functions, never by writing the file.
 if hits=$(grep -rnE 'ark-relay[\\/]state[\\/][A-Za-z0-9_.-]+' scripts/windows scripts/mac 2>/dev/null \
           | grep -vE 'statestore|state\.json|\.migrated|^\s*(#|rem )' \
@@ -188,7 +188,7 @@ else
   ok "没有外部脚本直接写状态文件"
 fi
 
-echo "▶ 11/18 公开仓库里不许有他人身份信息"
+echo "▶ 11/17 公开仓库里不许有他人身份信息"
 # 仓库是 public 的。别人的姓名、主机名、登录方式一旦提交就等于公开挂出去。
 # The owner's game UID too: OK-WW's OCR dumps read it off the screen as the UID label followed
 # by digits (the last alternative of ID_RE), and until 2026-10-13 it sat in plain text in eight
@@ -219,7 +219,7 @@ else
   ok "没有他人身份信息"
 fi
 
-echo "▶ 12/18 文档和脚本都要有入口"
+echo "▶ 12/17 文档和脚本都要有入口"
 # A document or script nothing points to is never read again, and gets written a second time.
 orphan=0
 for f in docs/*.md; do
@@ -237,7 +237,7 @@ for f in scripts/mac/*.sh scripts/windows/*.py scripts/windows/*.bat; do
 done
 [ "$miss" = 0 ] && ok "每个入口脚本都有文档提到"
 
-echo "▶ 13/18 部署清单要和代码对得上"
+echo "▶ 13/17 部署清单要和代码对得上"
 # Code that differs from the manifest never reaches the machine, and nothing says so.
 # RELEASE-NOTES.md differs on purpose: the deploy builds the manifest, then empties the notes.
 if out=$(python3 - <<'PY'
@@ -263,7 +263,7 @@ else
   sed 's/^/       /' <<<"$out"
 fi
 
-echo "▶ 14/18 日志名要和模块名对得上"
+echo "▶ 14/17 日志名要和模块名对得上"
 # A logger named other than its module makes a grep of the log by module name find nothing.
 # Modules that share a name on purpose (preupdate_*, gameupdate_*, the collector split, __main__ as the root) are allow-listed.
 if out=$(python3 scripts/mac/lib/deadcode.py --loggernames); then
@@ -273,7 +273,7 @@ else
   sed 's/^/       /' <<<"$out"
 fi
 
-echo "▶ 15/18 测试里的 check() 只准有一个意思"
+echo "▶ 15/17 测试里的 check() 只准有一个意思"
 # check(label, got, want) compares, require(name, ok, detail) asserts; swapped arguments would pass silently.
 if out=$(python3 scripts/mac/lib/deadcode.py --checkshape); then
   ok "check() 与 require() 的参数意思全仓一致"
@@ -282,7 +282,7 @@ else
   sed 's/^/       /' <<<"$out"
 fi
 
-echo "▶ 16/18 ruff（让那些 noqa 真的有人验）"
+echo "▶ 16/17 ruff（让那些 noqa 真的有人验）"
 # 2026-09-08: the repo held 521 `# noqa:` comments while there was no ruff config and
 # nothing - no script, no CI - had ever run ruff. Not one of them had been checked.
 # One named the rule PLC4015 (the real one is PLC0415) and had been quietly wrong ever
