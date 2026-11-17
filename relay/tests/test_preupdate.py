@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+# relay/ first for every part, as each part used to put it (run_parts restores sys.path after one)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def _part_preupdate_main():
@@ -17,7 +19,7 @@ today that runs OK-WW, the one program it still launches (its update overwrites
 the local patches, re-applied right after). MaaEnd's own update is AUTO-MAS's
 job since the 2026-10-11 switch-over. The launching itself is Windows-only.
     """
-    import json, os, sys
+    import json, os
     from datetime import datetime
 
     TMP = tmpdir()
@@ -47,7 +49,6 @@ job since the 2026-10-11 switch-over. The launching itself is Windows-only.
 
     os.environ.update(ARK_HISTORY_DIR=str(TMP), ARK_AUTOMAS_DIR=str(AUTOMAS),
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import preupdate
     from ark_relay.core.config import SERVER_TZ
 
@@ -77,8 +78,6 @@ def _part_preupdate_automas_carry():
     """
     import logging
     import types
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     import boot_stages
     from ark_relay.features import errwatch
@@ -170,18 +169,7 @@ def _part_preupdate_mas_force():
     """AUTO-MAS 查更新必须带 if_force，否则下载地址是过期的一次性令牌。"""
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.features import preupdate as P  # run_automas 住在这个模块里，猴子补丁要打在它身上
-
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
 
 
     def main() -> int:
@@ -261,8 +249,7 @@ def _part_preupdate_mas_force():
 
         stop_hears_each_wait()
 
-        print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")
-        return 0 if not FAILED else 1
+        return 0 if not fails else 1
 
 
     def stop_hears_each_wait() -> None:
@@ -349,8 +336,7 @@ def _part_preupdate_mas_force():
             (P._mas_post, P._automas_version, P._live_version, P._wait_for_package, P._wait_for_version) = orig
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_preupdate_not_alarm():
@@ -544,18 +530,8 @@ def _part_main_2():
     import os
     import tempfile
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import preupdate
     from ark_relay.features import preupdate as preupdate_okww
-
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
 
 
     def make(root: Path, autostart: bool) -> Path:
@@ -638,8 +614,7 @@ def _part_main_2():
         baseline_unknown(root)
         newer_listed_not_installed(root)
         stop_and_switch_memo(root)
-        print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
-        return 0 if not FAILED else 1
+        return 0 if not fails else 1
 
 
     def timeout_mid_download(root: Path) -> None:
@@ -993,8 +968,6 @@ relay-opt-round3-1108 O-01; preupdate_okww.ensure_okww_deps).
     import subprocess
     from types import SimpleNamespace
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.features import errwatch
     from ark_relay.features import preupdate, preupdate as po
     from ark_relay.features.preupdate import PWSH_GUARD_S
@@ -1148,18 +1121,9 @@ def _part_preupdate_once():
     """预更新一天只跑一遍。"""
     from datetime import datetime, timedelta
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.statestore import StateStore
     from ark_relay.features.preupdate import RETRY_MIN, mark_run, should_run
-
-    FAILED: list[str] = []
-
-
-    def check(what, got, want):
-        if got != want:
-            FAILED.append(f"{what}: 得到 {got!r}，应为 {want!r}")
 
 
     def main() -> int:
@@ -1188,22 +1152,20 @@ def _part_preupdate_once():
         StateStore(d).set("updates", "preupdate", {"day": "2026-08-31"})   # 缺 at
         check("记账缺时间戳 → 照跑", should_run(d, now), True)
 
-        print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
-        return 0 if not FAILED else 1
+        print("all checks passed" if not fails else "FAILED: " + "; ".join(fails))
+        return 0 if not fails else 1
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_preupdate_problems():
     """预更新查不出结果时，必须报错，而不是静静地当成「无需更新」。"""
-    import os, sys
+    import os
     import re
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import preupdate
 
 
@@ -1267,14 +1229,6 @@ def _part_preupdate_session():
     LAUNCHERS = {"run_okww"}
     ALLOWED = {"_spawn_detached"}   # the fallback is the one place Popen belongs
     ON_CONSOLE = {"_spawn_here"}
-
-    FAILED = []
-
-
-    def require(name, ok, detail=""):
-        print(f"  {'ok  ' if ok else 'FAIL'} {name}{'' if ok else ': ' + detail}")
-        if not ok:
-            FAILED.append(name)
 
 
     def popen_calls(fn):
@@ -1360,18 +1314,15 @@ def _part_preupdate_session():
         require("中继在安装器运行时不抢着拉起 AUTO-MAS",
               "auto-mas-setup" in svc and "_installer_running" in svc)
 
-        print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
-        return 0 if not FAILED else 1
+        return 0 if not fails else 1
 
 
-    if __name__ == "__main__":
-        sys.exit(main())
+    sys.exit(main())
 
 
 def _part_preupdate_span():
     """预更新通知统一成「程序 已更新：旧 → 新」。"""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import preupdate as preupdate_common
 
 
@@ -1393,15 +1344,6 @@ def _part_preupdate_token():
     """The service host's expected token failure (winerror 1314) is not a WARNING."""
     import logging
     import types
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    FAILED = []
-
-
-    def require(name, ok, detail=""):
-        print(f"  {'ok  ' if ok else 'FAIL'} {name}{'' if ok else ': ' + detail}")
-        if not ok:
-            FAILED.append(name)
 
 
     class WinErr(Exception):
@@ -1454,10 +1396,9 @@ def _part_preupdate_token():
     ok, took, recs = run(5)
     require("别的错：照样走计划任务", ok and took == [True])
     require("别的错：仍是 WARNING", any(r.levelno == logging.WARNING for r in recs))
-    if FAILED:
-        print("FAILED:", FAILED)
+    if fails:
+        print("FAILED:", fails)
         sys.exit(1)
-    print("all checks passed")
 
 
 def _part_preupdate_unknown_not_fine():
@@ -1466,7 +1407,6 @@ def _part_preupdate_unknown_not_fine():
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import preupdate as C
     from ark_relay.features import preupdate as O
@@ -1735,7 +1675,6 @@ def _part_gameupdate_main():  # noqa: C901
     import json
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import gameupdate as gu
     from ark_relay.features import gameupdate_games as gug
     from ark_relay.core.desktop import Line, Screen
@@ -2287,7 +2226,6 @@ def _part_gameupdate_restore_paths():
     import types
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import gameupdate as gu
 
 
@@ -2352,8 +2290,6 @@ def _part_gameupdate_restore_paths():
 def _part_efstart_main():
     """Endfield is started through the official launcher, never as Endfield.exe (2026-10-15)."""
     import json
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import efstart as ef
     from ark_relay.features import efstart as setup
@@ -2698,7 +2634,6 @@ def _part_efstart_main():
     finally:
         setup.install, selfcheck.report_contract = saved[0], saved_rc
         commands.mas_up = saved_up
-    print("\nPASS" if not fails else f"\nFAILED: {fails}")
 
 
 def _part_maaend_windowed_start():  # noqa: C901
@@ -3199,8 +3134,6 @@ def _part_automas_backend_match():
     import re
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 
     class _Any:
         def __init__(self, *a, **k): pass
@@ -3276,8 +3209,6 @@ def _part_automas_boot_one_alarm():  # noqa: C901
     import time
     import types
     from datetime import datetime, timezone
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
     class _Any:
@@ -3474,8 +3405,6 @@ def _part_automas_boot_revival():
 runtime as well when it does restart, and the keeper must not go blind without wmic.
     """
     import types
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
     class _Any:
@@ -3693,7 +3622,6 @@ runtime as well when it does restart, and the keeper must not go blind without w
     print()
     if fails:
         print("FAILED:", fails); sys.exit(1)
-    print("all checks passed")
 
 
 def _part_automas_contract_watch():
@@ -3813,7 +3741,6 @@ def _part_automas_handover():
     from contextlib import nullcontext
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "handover"))
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     os.environ["ARK_MAS_PORT"] = "36163"
     import automas_handover as H
     from ark_relay.core import mastercfg as masuser
@@ -4201,7 +4128,6 @@ def _part_automas_jobfix():
     import types
     from unittest import mock
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import boot_stages
     from ark_relay.features import automas_keeper as jf
 
@@ -4290,7 +4216,6 @@ def _part_automas_ld_adb():
     import dataclasses
     import subprocess
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import automas_keeper as jf
 
     print("[the payload: a module, and a .pth that imports it after pywin32.pth]")
@@ -4452,7 +4377,6 @@ def _part_mas_api_silent():
 def _part_mas_labels():
     """AUTO-MAS field labels: every labelled ConfigItem is read (audit 11 #4, 2026-10-13)."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import phone as mas_labels
 
 
@@ -4526,8 +4450,6 @@ def _part_mas_user_pick():
     """
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.core import mastercfg as masuser, plan
     from ark_relay.features import commands, snapshot
 
@@ -4595,7 +4517,6 @@ def _part_masconfig_yaml():
     """
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import mastercfg as masconfig, mastercfg as miniyaml, plan
 
 
@@ -4796,7 +4717,6 @@ def _part_mascontract():
     from _parts import stagegate_fx; fx = stagegate_fx()
 
     os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
     from ark_relay.features import commands
     from ark_relay.features import preupdate as P
@@ -5044,7 +4964,6 @@ def _part_masuser_beta3():
     from _parts import stagegate_fx; fx = stagegate_fx()
 
     os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import mastercfg as masuser, plan
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import stagegate as sg

@@ -9,11 +9,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+# relay/ first for every part, as each part used to put it (run_parts restores sys.path after one)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def _part_shutdown_main():
     """Exercise the shutdown gate against a fake AUTO-MAS + ledger."""
-    import json, os, sys
+    import json, os
     from datetime import datetime, timedelta
 
     TMP = tmpdir()
@@ -41,7 +43,6 @@ def _part_shutdown_main():
     os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                       ARK_STATE_DIR=str(STATE), ARK_SHUTDOWN_AFTER_RUN="1",
                       ARK_SHUTDOWN_MIN_UPTIME="600", SERVERCHAN_KEY="", ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core.config import Config, SERVER_TZ
     from ark_relay.core.ledger import State
@@ -514,7 +515,6 @@ def _part_shutdown_after_restart():
                       ARK_STATE_DIR=str(STATE), ARK_SHUTDOWN_AFTER_RUN="1",
                       ARK_SHUTDOWN_MIN_UPTIME="600", SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng
     from ark_relay.features import shutdown
@@ -672,7 +672,6 @@ def _part_shutdown_hand_and_test_runs():
     from datetime import datetime
     from types import SimpleNamespace
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import plan
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import shutdown
@@ -749,8 +748,6 @@ def _part_shutdown_hand_and_test_runs():
     print("\n[a scheduled record is still chained as before: a retry within the round]")
     check("10-12 11:39 早班 with the MaaEnd retry 10:59 -> not manual", manual("10-12T11:39:00"), False)
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_shutdown_held_past_shift():
     """A power-off opportunity belongs to the moment a shift finished, not to the whole boot."""
@@ -786,7 +783,6 @@ def _part_shutdown_held_past_shift():
                       ARK_STATE_DIR=str(STATE), ARK_SHUTDOWN_AFTER_RUN="1",
                       ARK_SHUTDOWN_MIN_UPTIME="600", SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng
     from ark_relay.core.config import SERVER_TZ, Config
@@ -982,7 +978,6 @@ def _part_shutdown_notice():
     from types import SimpleNamespace
 
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import shutdown
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
@@ -1174,7 +1169,6 @@ def _part_shutdown_open_test_window():
     from datetime import datetime
     from types import SimpleNamespace
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import plan
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import shutdown
@@ -1275,14 +1269,11 @@ def _part_shutdown_open_test_window():
     check("11:13:55 OK-WW 11:07 (window opened 11:05, after the shift ended): manual, key :3",
           (manual(d, "10-13T11:13:55"), key(d, "10-13T11:13:55")), (True, "2026-10-13:3"))
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_shutdown_round():
     """The round a record belongs to, for the 「最近一轮是手动触发的」 gate."""
     from datetime import datetime, timedelta
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import shutdown
     from ark_relay.core.config import SERVER_TZ
 
@@ -1406,7 +1397,6 @@ def _part_shutdown_stale_shift():
                       ARK_STATE_DIR=str(STATE), ARK_SHUTDOWN_AFTER_RUN="1",
                       ARK_SHUTDOWN_MIN_UPTIME="600", SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng
     from ark_relay.core.config import SERVER_TZ, Config
@@ -1476,7 +1466,6 @@ def _part_shutdown_waits_for_farm():
     """A farm in progress has to hold off the automatic shutdown."""
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import echofarm
     from ark_relay.features import shutdown
     from ark_relay.core.config import SERVER_TZ
@@ -1551,7 +1540,6 @@ def _part_shutdown_whitelist():
                       ARK_STATE_DIR=str(STATE), ARK_SHUTDOWN_AFTER_RUN="1",
                       ARK_SHUTDOWN_MIN_UPTIME="600", SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng
     from ark_relay.features import shutdown
@@ -1791,8 +1779,6 @@ def _part_exit_shutdown_window():
     import types
     from datetime import datetime, timedelta, timezone
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 
     class _Any:
         def __init__(self, *a, **k): pass
@@ -1904,7 +1890,6 @@ def _part_power_off_returncode():
     """
     import logging
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import engine
     from ark_relay.features.machinechecks import POWER_OFF
 
@@ -2094,8 +2079,6 @@ def _part_skip_failed_pushed():
     """A skip of a queue that did not take effect, or whose restore failed, reaches the group."""
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.core import engine as eng_mod
     from ark_relay.features import modes
     from ark_relay.core import texts
@@ -2196,7 +2179,6 @@ def _part_skip_flag_collision():
     """两个功能共用「skip-」这个前缀，清理陈旧标记时把对方扫掉了。"""
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import modes
     from ark_relay.features import queues as _q
     from ark_relay.core import plan as _plan
@@ -2377,7 +2359,6 @@ def _part_skip_receipt_lost():
     if fails:
         print("FAIL:", fails)
         sys.exit(1)
-    print("all checks passed")
 
 
 def _part_skip_receipts():
@@ -2385,8 +2366,6 @@ def _part_skip_receipts():
     """
     import os
     from datetime import datetime
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import modes
     from ark_relay.core import plan as _plan
@@ -2595,7 +2574,6 @@ def _part_skip_sat_out():
 
     os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                       ARK_STATE_DIR=str(STATE), SERVERCHAN_KEY="", ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core.config import Config, SERVER_TZ
     from ark_relay.core.ledger import State
@@ -2661,8 +2639,6 @@ def _part_skip_sat_out():
     print("\n[only that day] tomorrow's 21:30 is checked as usual")
     check("tomorrow not sat out", modes.sat_out(STATE, "2026-11-02"), [])
 
-    print("\nall checks passed" if not fails else f"\n{len(fails)} FAILED: {fails}")
-
 
 def _part_skip_shutdown_bat_error():
     """skip-shutdown.bat shows Python's own error when the status read gives nothing."""
@@ -2695,17 +2671,7 @@ def _part_farm_poweroff():
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _parts import tmpdir
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import procwatch as S
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(("  ✓ " if ok else "  ✗ ") + label + ("" if ok else f"  got {got!r} want {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     TMP = tmpdir()
@@ -2746,7 +2712,6 @@ def _part_farm_poweroff():
     if fails:
         print("FAILED:", fails)
         sys.exit(1)
-    print("all checks passed")
 
 
 def _part_place_desktop_bat():
@@ -2758,14 +2723,6 @@ def _part_place_desktop_bat():
     sys.path.insert(0, str(ROOT / "relay"))
     from ark_relay.core.statestore import StateStore
     from ark_relay.features import modes
-
-    fails = []
-
-
-    def require(name, ok, detail=""):
-        print(("ok   " if ok else "FAIL ") + name + ("" if ok or not detail else f": {detail}"))
-        if not ok:
-            fails.append(name)
 
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -2790,9 +2747,8 @@ def _part_place_desktop_bat():
 
 def _part_statestore_main():
     """state.json：一个文件、登记过的字段才能写、原子落盘、旧文件自动迁入。"""
-    import json, logging, sys
+    import json, logging
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.statestore import StateStore
 
 
@@ -2867,7 +2823,6 @@ def _part_statestore_main():
     check("旧文件都改名了", sorted(p.name for p in d3.glob("*.sent")), [])
 
     print("[State 读回来的语义没变]")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.ledger import State
     st = State(d3)
     check("report_sent", st.report_sent("2026-09-06"), True)
@@ -2964,8 +2919,6 @@ writers: no alarm pushed twice, no mark lost, no relay state lost.
     import logging
     import os
     import types
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import statestore
     from ark_relay.core.statestore import StateStore
@@ -3193,7 +3146,6 @@ writers: no alarm pushed twice, no mark lost, no relay state lost.
     if fails:
         print(f"✗ {len(fails)} 条没过：{fails}")
         sys.exit(1)
-    print("all checks passed")
 
 
 def _part_state_unread():
@@ -3486,7 +3438,6 @@ def _part_state_pending():
     """待推告警的存/取。**这条路没有测试过，结果炸在生产上。**"""
     from datetime import datetime, timedelta
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ, RunRecord
     from ark_relay.core.ledger import State
     from ark_relay.core.collector import record_to_payload, payload_to_record
@@ -3534,7 +3485,6 @@ def _part_statestore_threads():
     import time
 
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import config, statestore
     from ark_relay.core.statestore import StateStore
 

@@ -7,6 +7,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+# relay/ first for every part, as each part used to put it (run_parts restores sys.path after one)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def _part_okww_alive_cache():
@@ -16,7 +18,6 @@ def _part_okww_alive_cache():
     import tempfile
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import phone, redbutton, snapshot
 
     # getattr: on the old code (no cache) the test reaches its assertions and fails there.
@@ -83,13 +84,11 @@ def _part_okww_alive_cache():
     if fails:
         print(f"\n{len(fails)} failed")
         sys.exit(1)
-    print("\nall passed")
 
 
 def _part_okww_drift():
     """Before the run, the relay knows whether OK-WW's update broke a pinned copy."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import okww_overlay
 
 
@@ -178,13 +177,10 @@ def _part_okww_drift():
     okww_overlay.REPORT.write_text('{"applied": [], "skipped": [], "adapted": [{"what": "NightmareNestTask.find_nest", "why": "x"}], "error": ""}', encoding="utf-8")
     check("说了已按新版适配", "已按新版适配：NightmareNestTask.find_nest" in okww_overlay.report_line())
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_error_event():
     """The reason a run failed is read from the last event's own tracebacks, grouped by time."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as co
 
 
@@ -236,13 +232,10 @@ def _part_okww_error_event():
              + head("10:50:13,900", "FarmEchoTask", "farm 4c error"))
     check("a wait a minute earlier is another event", co._wait_before(stale, stale.rindex(" ERROR")), "")
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_error_reason():
     """OK-WW 失败原因要写真的，「进不了游戏」只给真没进去的那种。"""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
 
 
@@ -462,7 +455,6 @@ def _part_okww_exit_race():
 def _part_okww_failed_reason():
     """A run the overlay ended as failed is pushed with its reason once, without the OCR dump."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as co, outcome
 
 
@@ -489,8 +481,6 @@ def _part_okww_failed_reason():
           any(d.startswith("周本领奖：点了确认后没等到结算页") for d in details), True)
     check("without_screen_dump on a plain reason is the identity",
           outcome.without_screen_dump("周本：没进本"), "周本：没进本")
-
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 
 
 def _part_okww_i18n():
@@ -648,8 +638,6 @@ msgstr ""
     check("after the upgrade: the new source", I.tables(R2).message("第一句"), "Alpha two")
     check("after the upgrade: the new string", I.tables(R2).message("第二句"), "Beta")
 
-    print("all checks passed" if not fails else f"FAILED: {fails}")
-
 
 def _part_okww_landed():
     """scripts/windows/okww-landed.py judges the OK-WW install the right way round."""
@@ -702,7 +690,6 @@ def _part_okww_landed():
     check("reads config.NO_STAMINA_FARM_FLAG",
           any(isinstance(n, ast.ImportFrom) and n.module == "ark_relay.core.config"
               and any(a.name == "NO_STAMINA_FARM_FLAG" for a in n.names) for n in ast.walk(tree)), True)
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import config
     overrides = (Path(__file__).resolve().parents[1] / "ark_relay" / "features" / "okww_files"
                  / "ark_overrides.tasks.py").read_text(encoding="utf-8")
@@ -805,7 +792,6 @@ def _part_okww_python_filter():
     import fnmatch
     import re
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import preupdate as P
 
 
@@ -860,7 +846,6 @@ def _part_okww_quiesce_order():
     """Stopping OK-WW has to kill the script before the game."""
     import subprocess
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import preupdate as pk
 
 
@@ -971,11 +956,10 @@ def _part_okww_quiesce_order():
 
 def _part_okww_report():
     """鸣潮的运行结果要能进日报——即使它给不出掉落物。"""
-    import json, os, sys
+    import json, os
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
     from ark_relay.features import outcome as collector_okww
     from ark_relay.core import ledger as core
@@ -1173,7 +1157,6 @@ def _part_okww_structured():
 def _part_okww_battle_pass():
     """OK-WW's battle-pass line is about the battle pass, not about a fight."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
     from ark_relay.features import outcome as collector_okww
 
@@ -1518,7 +1501,6 @@ def _part_okww_claim_readback():  # noqa: C901
     """Weekly boss claim: upstream's claim step with 确认 for its ESC, and the read-back."""
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import okww_overlay
 
 
@@ -2003,8 +1985,6 @@ def _part_okww_claim_readback():  # noqa: C901
         else:
             sys.modules[k] = v
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_daily_chests():
     """OK-WW's daily activity chests: every chest up to the points is claimed, and checked."""
@@ -2241,7 +2221,6 @@ def _part_okww_farm_hook():  # noqa: C901
     import re
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import okww_overlay
 
 
@@ -3063,13 +3042,10 @@ def _part_okww_farm_hook():  # noqa: C901
         else:
             sys.modules[k] = v
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_merge_step():
     """The step list does not claim 「声骸五合一」 from the line logged before the merge."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as co
 
 
@@ -3087,16 +3063,12 @@ def _part_okww_merge_step():
     print("\n[the garden's 「不算完成」 marking is unchanged]")
     check("garden ran, not read as done", co._okww_steps(GARDEN, 0), ["周常乐园（没读到做完，不算完成）"])
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_plan_bits():
     """Tomorrow's OK-WW plan lines, read from the master config that takes effect."""
     import json
     import os
     from unittest import mock
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     os.environ["ARK_STATE_DIR"] = str(tmpdir())        # no no-stamina-farm flag
     os.environ.pop("ARK_OKWW_DIR", None)
@@ -3167,7 +3139,6 @@ def _part_okww_revive_and_retry():  # noqa: C901
     import re
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import okww_overlay
 
 
@@ -3509,24 +3480,11 @@ def _part_okww_revive_and_retry():  # noqa: C901
         else:
             sys.modules[k] = v
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_stamina_end():
     """结束时的剩余波片要认 OK-WW 自己报的那个数。"""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.core import collector
-
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
 
 
     REAL = """
@@ -3575,18 +3533,15 @@ def _part_okww_stamina_end():
         check("no okww_nest field (dropped 2026-10-13, read by nothing)", "okww_nest" in out3, False)
         check("抓到已打满", out3.get("okww_nest_full"), True)
 
-        print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")
-        return 0 if not FAILED else 1
+        return 0 if not fails else 1
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_okww_stamina_nest_verdict():
     """刷体力 and the nest item are judged from the lines of the task that did the work."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as collector_okww, outcome
 
     FX = fx_dir(Path(__file__), "fixtures")
@@ -3737,13 +3692,10 @@ def _part_okww_stamina_nest_verdict():
           (nest_state(SAMPLES["fought"] + SAMPLES["failed"]),
            collector_okww._nest_step(SAMPLES["fought"] + SAMPLES["failed"])), ("fought", "梦魇巢穴"))
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_upstream_no_farm():
     """When upstream's own gate skips the stamina farm, the verdict says so."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome
 
 
@@ -3781,15 +3733,12 @@ def _part_okww_upstream_no_farm():
     check("unchanged", [c.detail for c in outcome.okww_checks(text, expect_nest=False) if c.label == "刷体力"],
           ["既没进本，也没说体力不足"])
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_nest_capture():
     """Nest overrides, part two: both entries, an unread count, an adapted install."""
     import re
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as collector_okww, outcome
     from ark_relay.features import okww_overlay
 
@@ -3998,14 +3947,11 @@ def _part_okww_nest_capture():
     plain = head + "2026-10-06 09:21:00 INFO TaskExecutor NightmareNestTask:enter combat None\n"
     check("没适配时日报照旧", [s for s in collector_okww._okww_steps(plain, 0) if "残象聚落" in s], ["残象聚落"])
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_nest_expected():
     """Whether a run should have farmed nests follows upstream's own condition."""
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features.handle import _okww_nest_expected
 
 
@@ -4065,13 +4011,10 @@ def _part_okww_nest_expected():
     check("names DailyTask.json", "DailyTask.json" in detail, True)
     check("no longer names NightmareNestTask.json", "NightmareNestTask.json" in detail, False)
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_nest_fought_then_full():
     """A nest fought until full is 「fought」, not 「full, skipped」 (audit 2026-10-13 item 11)."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as co, outcome
 
 
@@ -4092,13 +4035,10 @@ def _part_okww_nest_fought_then_full():
     got = [c for c in outcome.okww_checks(FULL, expect_nest=True) if c.label.startswith("残象聚落")]
     check("the verdict item", [(c.label, c.ok) for c in got], [("残象聚落（已满，跳过）", True)])
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_nest_names():
     """「Only these nests」: the cap rule and the overlay's nest names, both must pass."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome
 
 
@@ -4161,14 +4101,11 @@ def _part_okww_nest_names():
         check(f"{name} calls nest_filter_checks", "nest_filter_checks(" in src, True)
         check(f"{name}: no literal nest name passed to it", literal.findall(src), [])
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_nest_travel_retry():
     """A nest given up after two failed travels is 「not done」 in the verdict and the report, even when another nest was fought.
     """
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import okww_overlay
     from ark_relay.features import outcome as co, outcome
 
@@ -4215,8 +4152,6 @@ def _part_okww_nest_travel_retry():
     check("nest_state", outcome.nest_state(alone), "unreachable")
     check("verdict red", verdict(alone)[0], False)
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_nest_v373():
     """OK-WW v3.7.3 changed find_nest; the 「only 落渊南丘」 filter must survive that and the next one.
@@ -4224,7 +4159,6 @@ def _part_okww_nest_v373():
     import re
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
     from ark_relay.features import okww_overlay
 
@@ -4592,13 +4526,10 @@ def _part_okww_nest_v373():
     check("stamp dropped", t._ark_nest_tried, set())
     check("both pictures as before", t.shots, ["nest_travel", "nest_unreachable"])
 
-    print("\n" +("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_no_challenge_window():
     """The no-challenge-button reason is told from the line of the same raise, by time."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as co
 
 
@@ -4630,13 +4561,10 @@ def _part_okww_no_challenge_window():
     text = NO_BTN + " ERROR TaskExecutor FarmEchoTask:farm 4c error Traceback (most recent call last):\n" + TAIL
     check("near in the text: found", co._said_before(text, text.index(" ERROR"), co._NO_CHALLENGE), True)
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_weekly_boss_step():
     """周本要进 OK-WW 的步骤清单，否则「领满记账、周一恢复」永远触发不了。"""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
 
 
@@ -4715,7 +4643,6 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
     """Weekly boss entry: one path that looks at every screen, for every screen seen so far."""
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import okww_overlay
 
 
@@ -5209,13 +5136,10 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
         else:
             sys.modules[k] = v
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_weekly_spend():
     """Verified weekly-boss claims count in 「消耗 波片」 (audit 2026-10-13 item 12)."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import outcome as co
 
 
@@ -5276,14 +5200,12 @@ def _part_okww_weekly_spend():
     from ark_relay.core import ledger as ledger_rows
     cost = ledger_rows._block_okww(got, datetime(2026, 10, 12, 15, 33))[1]
     check("the daily report says so", any("另有周本领奖 2 次用备用体力补足" in c for c in cost), True)
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 
 
 def _part_okww_overlay_main():
     """Ark's OK-WW changes live in OK-WW's own extension point, not in its source."""
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import okww_overlay
 
 
@@ -5587,7 +5509,6 @@ def _part_okww_overlay_faults():
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
     class _Any:
@@ -5700,8 +5621,6 @@ def _part_okww_overlay_faults():
           "1 条没贴上" in texts.patches(1, ["OK-WW 有改动没贴上"], ["OK-WW 有改动没贴上"]), True)
     check("the old two-argument call is unchanged", texts.patches(2, ["a", "b"]), "🩹 OK-WW 补丁（2 条）")
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_overlay_install_guard():
     """install() leaves ok_tasks/ark_overrides.py alone unless it must change, and never
@@ -5709,7 +5628,6 @@ rewrites it under a running OK-WW (audit 2026-10-13, A2).
     """
     import os
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import desktop as procs, texts
     from ark_relay.core import config as C
     from ark_relay.features import okww_overlay as ov
@@ -5803,8 +5721,6 @@ rewrites it under a running OK-WW (audit 2026-10-13, A2).
           bool(queries) and "Name='pythonw.exe'" in queries[0] and "Name='python.exe'" in queries[0])
     check("the default query is unchanged", queries[1:], [procs._QUERY])
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_overlay_pending():
     """An overlay install skipped because OK-WW was running is tried again before the
@@ -5818,7 +5734,6 @@ relay next starts a run itself, and is said to the group if it still cannot be d
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
     class _Any:
@@ -5928,15 +5843,12 @@ relay next starts a run itself, and is said to the group if it still cannot be d
         ov.okww_running = REAL_RUNNING
         ov._pending.clear()
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_overlay_param_start():
     """The task AUTO-MAS names on OK-WW's command line (`-t 1 -e`) is started, not dropped."""
     import threading
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import okww_overlay
 
     FIXTURE = fx_dir(Path(__file__), "fixtures") / "okww-v3.7.20-beta.3-start_controller.py.txt"
@@ -6130,25 +6042,12 @@ def _part_okww_overlay_param_start():
             else:
                 sys.modules[n] = m
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_okww_overlay_copies():
     import re
-    import sys
     from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import okww_overlay
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     src = okww_overlay.source_text()
@@ -6229,16 +6128,12 @@ def _part_okww_overlay_copies():
     stale = (set(outcome.PATCH_COVERAGE) | set(outcome.BEHAVIOUR_TESTS)) - bound
     check("登记表里没有已经不存在的绑定", sorted(stale), [])
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_echo_farm_main():  # noqa: C901
     """Farm a boss until a wall-clock time, then put everything back."""
     import json
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import echofarm
     from ark_relay.core.config import SERVER_TZ
 
@@ -6994,8 +6889,6 @@ def _part_echo_farm_stop_and_backlog():
     import types
     from datetime import datetime, timedelta
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 
     class _Any:
         def __init__(self, *a, **k): pass
@@ -7200,8 +7093,6 @@ def _part_echo_farm_stop_and_backlog():
     check("红按钮、游戏还开着：报群一条", troubles(n), [True])
     n = farm_then({"action": "estop"}, game_left=False)
     check("红按钮、干净收工：不报群", troubles(n), [])
-
-    print("\n" +("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 
 
 if __name__ == "__main__":

@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+# relay/ first for every part, as each part used to put it (run_parts restores sys.path after one)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def _part_phone_main():
@@ -16,18 +18,9 @@ def _part_phone_main():
     import json
     import time
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.features.phone import MAX_AGE, pack, unpack
 
     PIN = "8964"
-    FAILED: list[str] = []
-
-
-    def check(what, got, want):
-        if got != want:
-            FAILED.append(f"{what}: 得到 {got!r}，应为 {want!r}")
-
 
     def main() -> int:
         raw = pack(PIN, {"action": "skip_shutdown"})
@@ -55,12 +48,11 @@ def _part_phone_main():
         check("状态消息的类型是 state，取指令时不会被当指令执行",
               st and st["kind"], "state")
 
-        print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
-        return 0 if not FAILED else 1
+        print("all checks passed" if not fails else "FAILED: " + "; ".join(fails))
+        return 0 if not fails else 1
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_phone_channel_boot():
@@ -70,8 +62,6 @@ def _part_phone_channel_boot():
     import time
     import types
     from datetime import datetime, timezone
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
     class _Any:
@@ -216,7 +206,6 @@ def _part_phone_cmd_gate():
     """The one button that is only ever pressed while a run is going must not be gated."""
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     # service.py imports pywin32 at module scope; stub what is missing so the
     # module-level helpers can be imported on any machine.
     class _Any:
@@ -384,8 +373,6 @@ def _part_phone_cmd_queue():
     import time
     import types
     from datetime import datetime, timedelta
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
     class _Any:
@@ -794,8 +781,6 @@ def _part_phone_drained_failure_pushed():
     import time
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 
     class _Any:
         def __init__(self, *a, **k): pass
@@ -889,9 +874,8 @@ def _part_phone_drained_failure_pushed():
 
 def _part_phone_gzip():
     """状态包超限时压缩，而不是砍字段。"""
-    import json, sys, time
+    import json, time
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import phone
 
 
@@ -928,7 +912,6 @@ def _part_phone_order_failed_pushed():
     """A phone order that did not take is an error, so it goes to the group (2026-10-06)."""
     import logging
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import types
 
 
@@ -997,8 +980,6 @@ def _part_phone_quiet():  # noqa: C901
     import types
     import urllib.error
     import urllib.request
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import errwatch
     from ark_relay.features import phone
@@ -1512,7 +1493,6 @@ def _part_phone_quiet():  # noqa: C901
 def _part_phone_receipts():
     """Phone-order receipts: the relay's answer to each order shows on the phone page."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import modes
 
 
@@ -1536,8 +1516,6 @@ def _part_phone_sent():
     import logging
     import types
     from datetime import datetime
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
     class _Any:
@@ -1680,8 +1658,6 @@ built (audit docs/SILENT-FAILURES-AUDIT.md, phone.py:1862 and :1884).
     import types
     from unittest import mock
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.features import modes
     from ark_relay.features import phone, snapshot
     from ark_relay.core import plan
@@ -1752,8 +1728,6 @@ def _part_phone_stale_cmd():
     import types
     import urllib.error
     import urllib.request
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import phone as phone_mailbox
     from ark_relay.features import phone
@@ -1865,8 +1839,6 @@ def _part_phone_state():  # noqa: C901
     import time
     import types
     import urllib.error
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import phone
     from ark_relay.features import phone as phone_cos_store, phone as phone_heartbeat, phone as phone_mailbox, phone as phone_quota
@@ -2694,8 +2666,6 @@ def _part_phone_state_cos():
     import types
     import urllib.error
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.features import phone
     from ark_relay.features import phone as phone_cos_store, phone as phone_heartbeat, phone as phone_mailbox, phone as phone_quota
     from ark_relay.features.evidence import Cos
@@ -2866,8 +2836,6 @@ phone_channel.receipt_target).
     # phone_channel imports win32event at module level (Windows only); nothing here calls it.
     sys.modules.setdefault("win32event", types.ModuleType("win32event"))
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.features import modes
     from ark_relay.features import phone as phone_channel
 
@@ -2912,12 +2880,11 @@ phone_channel.receipt_target).
 
 def _part_channel_down():
     """A channel that refuses a send is announced every time it refuses one."""
-    import json, os, sys
+    import json, os
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
                       SERVERCHAN_KEY="", WECOM_CORPID="", ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import Config
     from ark_relay.core.notify import Notifier
 
@@ -2976,7 +2943,6 @@ def _part_channel_down():
 def _part_cli_commands():
     """The two new CLI commands exist, parse, and hand off to the right code."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay import __main__ as cli
     from ark_relay.features import collect_retry
     import argparse
@@ -3052,7 +3018,6 @@ def _part_cmd_test_channels():
 
 
     os.environ.update(ARK_STATE_DIR=str(tmpdir()), ARK_HISTORY_DIR=str(tmpdir()))
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay import __main__ as relay_main
     from ark_relay.core import notify
     from ark_relay.core.config import Config
@@ -3095,8 +3060,6 @@ def _part_cmd_test_channels():
     check("a refused channel fails the self-test", rc, 1)
     check("not filed as a group alarm", copied, [])
 
-    print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
-
 
 def _part_command_table():
     """relay/README.md 的命令表必须和代码里的白名单一一对上。"""
@@ -3130,8 +3093,6 @@ def _part_commands_gates():  # noqa: C901
     """往生产配置里写东西的那条路——四道闸门一道都不许塌。"""
     import json
     import os
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     STATE = tmpdir()
     AUTOMAS = tmpdir()
@@ -3895,8 +3856,6 @@ def _part_mailbox_close_windows():
     import time
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.features import phone
     from ark_relay.features import phone as phone_mailbox
 
@@ -3984,7 +3943,6 @@ for every selfupdate, so this path runs far more often than it used to.
     """
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import RunRecord, SERVER_TZ
     from ark_relay.core.collector import record_to_payload, payload_to_record
 
@@ -4027,7 +3985,6 @@ def _part_test_windows():
     """Records inside a marked test window stay out of the daily report's rows."""
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger as core
 
 
@@ -4072,7 +4029,6 @@ def _part_heartbeat_main():
     import threading
     import time
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import phone
 
 
@@ -4137,8 +4093,6 @@ rest on the mailbox's heartbeat alone).
     import time
     import types
     import urllib.error
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import phone
     from ark_relay.features import phone as phone_cos_store, phone as phone_heartbeat, phone as phone_mailbox, phone as phone_quota
@@ -4334,18 +4288,8 @@ def _part_resources():
     import sys
     from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from ark_relay.features import resources
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     print("[森空岛会话：没配 token 就是一句说明]")
@@ -4596,27 +4540,14 @@ def _part_resources():
     check("broken again after a good read -> WARNING again", _g.n, 2)
     resources.log.removeHandler(_g)
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_snapshot():
     import logging
     import sys
     from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import errwatch
     from ark_relay.features import snapshot
-
-    fails: list[str] = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: 得到 {got!r}，应为 {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     class Grab(logging.Handler):
@@ -4853,24 +4784,14 @@ def _part_snapshot():
     sys.exit(1 if fails else 0)
 
 
-def _part_inbox_poll():  # noqa: C901
+def _part_inbox_poll():
     import json
     import sys
     from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from ark_relay.features import phone as inbox
     from _parts import tmpdir
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" if not ok else f"  ✓ {label}")
-        if not ok:
-            fails.append(label)
 
 
     class FakeInbox(inbox.Inbox):
@@ -5225,9 +5146,6 @@ def _part_inbox_poll():  # noqa: C901
     check("broken mid-batch: says so", "应用中途出错" in body, True)
     check("the receipt title is log only even with alert=True, so a failure must not use it",
           route_of("⚙️ 配置已更新：x", alert=True), "log")
-
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 if __name__ == "__main__":

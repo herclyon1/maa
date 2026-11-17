@@ -9,13 +9,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+# relay/ first for every part, as each part used to put it (run_parts restores sys.path after one)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def _part_alert_dedup():
     """The alerted-today marks (state.json marks.alerted:<day>), and what still uses them."""
-    import sys, types
+    import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.engine import Engine
 
 
@@ -103,7 +104,6 @@ nothing is dropped when the group refuses; nothing loops back from the push path
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
                       COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import errwatch as alertlog, errwatch, errwatch as known_fixed
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
@@ -754,14 +754,12 @@ nothing is dropped when the group refuses; nothing loops back from the push path
     if fails:
         print("FAILED:", fails)
         sys.exit(1)
-    print("all checks passed")
 
 
 def _part_failure_alert():
     """The immediate failure alert, and the three marks nobody ever read back."""
     from datetime import datetime, timedelta
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ, RunRecord
     from ark_relay.core.ledger import State, format_failure
@@ -834,7 +832,6 @@ def _part_group_long_alarm():
     """One alarm must never flood the group (2026-11-05 北京 10:56)."""
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import notify, texts
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import runwatch
@@ -888,8 +885,6 @@ def _part_group_long_alarm():
     check("the evidence link is the last line", _capped.splitlines()[-1], "证据包：https://example.invalid/e/abc")
     check("the cut is said, in the middle", "（中间还有很长一段没发，免得刷屏）" in _capped, True)
 
-    print("all checks passed" if not fails else f"FAILED: {fails}")
-
 
 def _part_uptime_alarm():
     """The shutdown floor is an alarm: once 「开机不够久」 passes, the relay judges again."""
@@ -909,7 +904,6 @@ def _part_uptime_alarm():
                       ARK_SHUTDOWN_MIN_UPTIME="600", ARK_CHECK_TIMES="",
                       SERVERCHAN_KEY="", ARK_LLM_KEY="", WECOM_CORPID="", WECOM_SECRET="",
                       WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng
     from ark_relay.core.config import SERVER_TZ, Config
@@ -956,7 +950,6 @@ def _part_errwatch_midnight_counts():
     from datetime import datetime
 
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import errwatch
 
@@ -983,8 +976,6 @@ def _part_errwatch_midnight_counts():
     day = json.loads((state / errwatch.DAY_DIR / "2026-10-12.json").read_text(encoding="utf-8"))
     check("10-12 keeps both records", [r.get("count") for r in day.values()], [2])
 
-    print(f"\n{'all passed' if not fails else f'{len(fails)} failed: {fails}'}")
-
 
 def _part_known_fixed_live():
     """Every known_fixed entry can still match: its message is logged at WARNING or above."""
@@ -1010,8 +1001,6 @@ def _part_known_fixed_live():
         head = re.split(r"#|<path>|<url>|<id>", msg)[0].strip()
         found = {lv for lit, lvs in levels.items() if head in lit for lv in lvs}
         check(f"{key!r}: logged at WARNING or above", bool(found & LOUD), True)
-
-    print("\n" + (f"✗ {len(fails)} failed" if fails else "all checks passed"))
 
 
 def _part_unresolved():
@@ -1550,19 +1539,8 @@ def _part_silent_green_guards():
     """前置条件不满足时，绝不许静默变成「全绿」。"""
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.features import outcome
     from ark_relay.features.handle import _maa_app_log, _okww_nest_expected
-
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
 
 
     def main():
@@ -1595,12 +1573,10 @@ def _part_silent_green_guards():
         check("summarize 会把它报出来", outcome.summarize(checks, "OK-WW") is not None,
               True)
 
-        print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
-        return 0 if not FAILED else 1
+        return 0 if not fails else 1
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_alertlog_main():
@@ -1629,7 +1605,6 @@ def _part_alertlog_main():
     if hasattr(time, "tzset"):
         os.environ.update(TZ="Asia/Tokyo")
         time.tzset()
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import errwatch as alertlog
     from ark_relay.features import phone
     from ark_relay.core import texts
@@ -1858,7 +1833,6 @@ def _part_alertlog_main():
     if fails:
         print("FAILED:", fails)
         sys.exit(1)
-    print("all checks passed")
 
 
 def _part_alertlog_channel():
@@ -1874,7 +1848,6 @@ def _part_alertlog_channel():
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
                       COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="",
                       ARK_ALERT_PUSH_URL="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import Config
     from ark_relay.core.notify import Notifier
     from ark_relay.features import errwatch as alertlog
@@ -1985,7 +1958,6 @@ def _part_alertlog_channel():
     for th in threading.enumerate():
         if th.name in ("alarm-copy", "alarm-mac"):
             th.join(5)
-    print(f"\n{'FAIL: ' + ', '.join(fails) if fails else 'all passed'}")
 
 
 def _part_alertlog_no_lock_on_cos():
@@ -1996,7 +1968,6 @@ does not silence the next one.
     import threading
 
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import errwatch as alertlog, errwatch
 
 
@@ -2055,8 +2026,6 @@ does not silence the next one.
     said = [n for n, m in grab.lines if "COS 没成" in m]
     check("the failure is said off the push path too", said, [f"{errwatch.PUSH_THREAD}-copy", "MainThread"])
 
-    print(f"\n{'all passed' if not fails else f'{len(fails)} failed: {fails}'}")
-
 
 def _part_macpush():  # noqa: C901
     import json
@@ -2076,21 +2045,11 @@ def _part_macpush():  # noqa: C901
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
                       COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import errwatch as alertlog, macpush
     from ark_relay.core import texts
     from ark_relay.core.config import Config
     from ark_relay.core.notify import Notifier
     from ark_relay.core.statestore import StateStore
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     class Mac:
@@ -2380,7 +2339,6 @@ def _part_macpush():  # noqa: C901
     if fails:
         print("FAILED:", fails)
         sys.exit(1)
-    print("all checks passed")
 
 
 def _part_every_failure_pushed():
@@ -2434,15 +2392,6 @@ def _part_every_failure_pushed():
     from ark_relay.features import errwatch
 
     errwatch.system_shutting_down = lambda: False
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def automas_dir(queues) -> Path:
@@ -2591,9 +2540,6 @@ def _part_every_failure_pushed():
     e._flush_pending()
     check("the failure reached the group", alarms(e), [texts.unresolved("明日方舟", "早班")])
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_recovered_daily_only():  # noqa: C901
     import json
@@ -2611,7 +2557,6 @@ def _part_recovered_daily_only():  # noqa: C901
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import errwatch, handle
     from ark_relay.features import makeup
@@ -2625,15 +2570,6 @@ def _part_recovered_daily_only():  # noqa: C901
     _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
     _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc.py
     from ark_relay.core.ledger import State
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def automas_dir() -> Path:
@@ -2979,7 +2915,6 @@ def _part_manual_stop_backfill():
     os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import commands
     from ark_relay.features import handle
@@ -3224,7 +3159,6 @@ def _part_manual_stop_not_selfheal():
     os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import collect_retry
     from ark_relay.features import commands
@@ -3394,12 +3328,11 @@ def _part_manual_stop_not_selfheal():
 
 def _part_notify_routing_main():
     """日常消息只发一个渠道，报警才全发。"""
-    import os, sys
+    import os
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
                       SERVERCHAN_KEY="", WECOM_CORPID="", ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import Config
     from ark_relay.core.notify import Notifier
 
@@ -3637,7 +3570,6 @@ def _part_notify_channels():  # noqa: C901
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
                       SERVERCHAN_KEY="", WECOM_CORPID="", WECOM_BOT_URL="",
                       ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import notify
     from ark_relay.core.config import Config
     from ark_relay.core.notify import (

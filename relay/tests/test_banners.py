@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+# relay/ first for every part, as each part used to put it (run_parts restores sys.path after one)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def _part_banners():  # noqa: C901
@@ -21,7 +23,6 @@ def _part_banners():  # noqa: C901
     from datetime import datetime, timedelta
     from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from _parts import fx_dir
 
@@ -29,13 +30,6 @@ def _part_banners():  # noqa: C901
     from ark_relay.features.banners import _AK_PAGES, _PRTS, debut_only, parse_ak_schedule, parse_arknights, group_notice, newest_version, opening_tomorrow, parse_endfield, parse_endfield_notice, parse_wuwa, parse_wuwa_preview, render, upcoming
 
     FX = fx_dir(Path(__file__), "fixtures")
-    FAILED: list[str] = []
-
-
-    def check(what, got, want):
-        if got != want:
-            FAILED.append(f"{what}: 得到 {got!r}，应为 {want!r}")
-
 
     @contextmanager
     def _logs():
@@ -2740,12 +2734,11 @@ def _part_banners():  # noqa: C901
         _audit_1108_render()
         _audit_1109_skland_backfill()
         _crosscheck_fix_cases()
-        print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
-        return 0 if not FAILED else 1
+        print("all checks passed" if not fails else "FAILED: " + "; ".join(fails))
+        return 0 if not fails else 1
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_banner_post_miss():
@@ -2756,7 +2749,6 @@ def _part_banner_post_miss():
     import time
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import banners as _b
     from ark_relay.features import errwatch
     from ark_relay.core import texts
@@ -2992,7 +2984,6 @@ def _part_bili_pinned_post():
     import urllib.parse
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import ark_relay.features.banners as _b
     from ark_relay.features import wuwa as P
 
@@ -3029,12 +3020,11 @@ def _part_bili_pinned_post():
 
 def _part_event_expiry():
     """活动结束后的提醒：三天窗口，文案讲的是活动商店。"""
-    import json, os, sys
+    import json, os
     from datetime import datetime, timedelta, timezone
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.plan import activity_countdown
 
     CN = timezone(timedelta(hours=8))
@@ -3113,12 +3103,9 @@ def _part_event_expiry():
 
 def _part_skland_api():
     """The Skland calls: device id, login, refresh, bindings, Endfield card, role."""
-    #!/usr/bin/env python3
-
     import gzip
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import skland
 
 
@@ -3246,16 +3233,10 @@ def _part_skland_api():
         check("wrong return code -> raises with the reason",
               "时间戳过期" in raises(lambda: skland.endfield_card(CRED, "111", "1")))
 
-        print()
-        if fails:
-            print(f"FAILED {len(fails)}: {fails}")
-            return 1
-        print("all checks passed")
-        return 0
+        return 1 if fails else 0
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_skland_http_error_body():
@@ -3264,7 +3245,6 @@ def _part_skland_http_error_body():
     import io
     import urllib.error
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import skland
 
 
@@ -3298,25 +3278,11 @@ def _part_skland_http_error_body():
     check("bare HTTPError", got, "HTTPError")
     skland.urllib.request.urlopen = real
 
-    print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
-
 
 def _part_skland_role():
     """endfield_role never guesses between several bound Endfield roles."""
-    #!/usr/bin/env python3
-
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import skland
-
-    FAILED: list[str] = []
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -- {detail}"))
-        if not ok:
-            FAILED.append(name)
 
 
     def _apps(*roles):
@@ -3349,16 +3315,10 @@ def _part_skland_role():
                 (kind, roles) == ("SklandMultiRole", [("1001", "1"), ("2002", "2")]), repr((kind, roles)))
         none = _role(_apps())
         require("no role: refused", isinstance(none, str) and "没找到" in none, repr(none))
-        print()
-        if FAILED:
-            print(f"FAILED {len(FAILED)}: {FAILED}")
-            return 1
-        print("all checks passed")
-        return 0
+        return 1 if fails else 0
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_skland_sign():
@@ -3367,7 +3327,6 @@ def _part_skland_sign():
     import hmac
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import skland
 
 
@@ -3439,7 +3398,6 @@ def _part_skland_sign():
 def _part_skland_sync_guard():
     """skland.get / bindings must align clocks first when this process has not yet."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import skland
 
 
@@ -3469,13 +3427,10 @@ def _part_skland_sync_guard():
         call()
         check("only the request", calls, [target])
 
-    print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
-
 
 def _part_skland_arknights_annihilation():
     """arknights_uid picks the default Arknights role; arknights_annihilation reads campaign.reward.
     """
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import skland
 
     asked: list = []
@@ -3791,8 +3746,6 @@ def _part_needtable_publish():
 def _part_needtable_trims():
     """The need table's trims: what each keeps of a live Skland / GitHub answer."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.features import needtable as build
 
 
@@ -3933,21 +3886,6 @@ def _part_need_table():
     from _parts import fx_dir
 
     from ark_relay.features import needtable as bnt
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" + ("" if ok else f" (want {want!r})"))
-        if not ok:
-            fails.append(label)
-
-
-    def require(name, ok, detail=""):
-        print(f"  {'✓' if ok else '✗'} {name}{(' - ' + detail) if detail and not ok else ''}")
-        if not ok:
-            fails.append(name)
 
 
     # 提弗洛斯 1→90, every breakthrough, four skills to 12 (rules?charIds=9de117d5…).

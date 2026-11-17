@@ -9,6 +9,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+# relay/ first for every part, as each part used to put it (run_parts restores sys.path after one)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 def _part_texts_gate_main():  # noqa: C901
@@ -2579,7 +2581,6 @@ def _part_user_switches():  # noqa: C901
         for f in fails:
             if f.startswith(("self-check", "rule 2", "R4", "R7")):
                 print("  ✗ " + f)
-        print("\n" + (f"FAILED: {len(fails)} problem(s)" if fails else "all checks passed"))
         return 1 if fails else 0
 
 
@@ -2595,15 +2596,6 @@ def _part_mute_verdicts():  # noqa: C901
 
     RELAY = Path(__file__).resolve().parents[1]
     LIST = RELAY / "USER-SWITCHES.txt"
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: got {got!r}, want {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     # Places that keep something from the group because it is not a fault at all - not
@@ -2845,7 +2837,6 @@ def _part_daily_format():
     """日报三家一个语义模板，以 MAA 为样板（用户 2026-09-02）："""
     from datetime import datetime, timedelta
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
     from ark_relay.core import ledger as core
     from ark_relay.core.config import SERVER_TZ
@@ -2988,7 +2979,6 @@ def _part_daily_partial_failure():
     """A run that failed one task still has to report the nineteen it finished."""
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger as core
 
 
@@ -3034,10 +3024,8 @@ def _part_daily_partial_failure():
 
 def _part_daily_range_prefix():
     """「日常 1-N 项完成」 only when the run's list is the footnote's first N names."""
-    #!/usr/bin/env python3
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger as core
 
 
@@ -3061,7 +3049,6 @@ def _part_daily_techlog():
     import types
     from datetime import datetime, timedelta
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import errwatch
     from ark_relay.features import report
     from ark_relay.core.config import SERVER_TZ
@@ -3349,15 +3336,12 @@ def _part_daily_techlog():
     if fails:
         print(f"\nFAILED: {fails}")
         sys.exit(1)
-    print("\nall checks passed")
 
 
 def _part_no_model_daily_report():
     """The model-written daily report is gone; the template is the only path."""
-    #!/usr/bin/env python3
     import inspect
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import summary
     from ark_relay.features import report
 
@@ -3375,7 +3359,6 @@ def _part_report_due():
     import types
     from datetime import datetime, timedelta
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import report, report as scoreboard
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.ledger import State
@@ -3756,9 +3739,8 @@ machine may power off. After a failure it rests summary.REST_S, then is asked ag
 hears of it once per process.
     """
     import logging
-    import sys, time
+    import time
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import summary
 
 
@@ -3864,7 +3846,6 @@ def _part_scoreboard_main():
     import json
     from datetime import datetime, timedelta
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import report as scoreboard
     from ark_relay.core.config import SERVER_TZ, RunRecord
     from ark_relay.core.ledger import State
@@ -3957,9 +3938,6 @@ def _part_scoreboard_main():
 
 def _part_scoreboard_log_time():
     """The scoreboard's 「自 … 起」 is on the machine clock, like the rest of relay.log."""
-    #!/usr/bin/env python3
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.ledger import State
     from ark_relay.features import report as scoreboard
 
@@ -3975,11 +3953,9 @@ def _part_scoreboard_log_time():
 
 def _part_scoreboard_test_window():
     """A run inside a test window does not count on the scoreboard (like the report rows)."""
-    #!/usr/bin/env python3
     import json
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.ledger import State
     from ark_relay.features import report as scoreboard
@@ -4041,9 +4017,8 @@ def _part_ledger_bad_times():
 
 def _part_ledger_guard():
     """A malformed ledger line must not be able to keep the machine powered on."""
-    import json, logging, sys
+    import json, logging
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.ledger import State, format_daily, log as core_log
 
 
@@ -4122,7 +4097,6 @@ def _part_ledger_incomplete():
     import json
     import tempfile
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger as core
 
 
@@ -4188,7 +4162,6 @@ def _part_ledger_once_per_run():
     from datetime import datetime, timedelta
 
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger
     from ark_relay.core.config import RunRecord, SERVER_TZ
 
@@ -4235,7 +4208,6 @@ def _part_ledger_once_per_run():
     if fails:
         print(f"\n{len(fails)} FAIL: {fails}")
         sys.exit(1)
-    print("\nall checks passed")
 
 
 def _part_ledger_rewrite_race():
@@ -4245,7 +4217,6 @@ def _part_ledger_rewrite_race():
     from datetime import datetime, timedelta
 
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger
     from ark_relay.core.config import RunRecord, SERVER_TZ
 
@@ -4284,15 +4255,12 @@ def _part_ledger_rewrite_race():
           rows.get("2026-10-13/arknights/05-00-00", {}).get("incomplete"), "no evidence")
     check("the appended run is still in the day", "2026-10-13/arknights/06-00-00" in rows, True)
 
-    print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
-
 
 def _part_ledger_scoreboard_started():
     """append_ledger hands the run's start time to the scoreboard when it takes one."""
     from datetime import datetime, timedelta
 
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger
     from ark_relay.core.config import RunRecord, SERVER_TZ
 
@@ -4331,7 +4299,6 @@ def _part_ledger_scoreboard_started():
     if fails:
         print(f"\n{len(fails)} FAIL: {fails}")
         sys.exit(1)
-    print("\nall checks passed")
 
 
 def _part_ledger_truth():
@@ -4339,7 +4306,6 @@ def _part_ledger_truth():
     import json
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
     from ark_relay.core.config import SERVER_TZ
 
@@ -4459,7 +4425,6 @@ def _part_relay_log_rotation():
     import time
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay import __main__ as relay_main
     from ark_relay.features import evidence as error_evidence, evidence
     from ark_relay.features import selfcheck
@@ -4639,8 +4604,6 @@ def _part_relay_poweroff_live():
     import types
     from datetime import datetime, timedelta
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 
     class _Any:
         def __init__(self, *a, **k): pass
@@ -4707,22 +4670,11 @@ def _part_relay_poweroff_live():
 
 def _part_record_names():
     import json
-    import sys
     import tempfile
     from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
     from ark_relay.core.config import SERVER_TZ
-
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
 
 
     BODY = {"recruit_statistics": {}, "drop_statistics": {"AT-4": {"龙门币": 1008}},
@@ -4795,8 +4747,7 @@ def _part_record_names():
         finally:
             collector.log.removeHandler(h)
 
-        print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
-        return 0 if not FAILED else 1
+        return 0 if not fails else 1
 
 
     if __name__ == "__main__":
@@ -4813,7 +4764,6 @@ def _part_config_no_bot():
     HIST = tmpdir()
     os.environ.update(ARK_HISTORY_DIR=str(HIST), WECOM_BOT_URL="", SERVERCHAN_KEY="SCT-test",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_AGENTID="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import Config
 
 
@@ -4832,8 +4782,6 @@ def _part_config_no_bot():
     print("\n[WeCom app only: group alarms have no channel at all -> still a problem]")
     os.environ.update(SERVERCHAN_KEY="", WECOM_CORPID="c", WECOM_SECRET="s", WECOM_AGENTID="1")
     check("blocked", len(Config().validate()), 1)
-
-    print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
 
 
 def _part_config_skip():
@@ -4870,7 +4818,6 @@ def _part_config_skip():
                       ARK_STATE_DIR=str(TMP / "state"), ARK_SHUTDOWN_AFTER_RUN="1",
                       ARK_SHUTDOWN_MIN_UPTIME="600", SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng
     from ark_relay.core import ledger as core, texts
@@ -5103,22 +5050,10 @@ def _part_config_skip():
 
 def _part_config_warn_once():
     """Warnings from the config readers are said once per condition, not on every call."""
-    #!/usr/bin/env python3
-
     import json
     import logging
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.core import mastercfg, mastercfg as mastercfg_maa, plan
-
-    FAILED: list[str] = []
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'✅' if ok else '❌'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
 
 
     class Catch(logging.Handler):
@@ -5195,9 +5130,6 @@ def _part_config_warn_once():
     plan._asar_value_labels(root / "AUTO-MAS", root)
     require("「找不到 app.asar」 said once", said("找不到 app.asar") == 1, repr(catch.msgs))
 
-    print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
-    sys.exit(1 if FAILED else 0)
-
 
 def _part_config_writers():
     """The writers that touch production config, and the reader of the
@@ -5205,7 +5137,6 @@ sanity-booster step.
     """
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import gameupdate
     from ark_relay.core import mastercfg
 
@@ -5421,7 +5352,6 @@ def _part_dotenv_hash():
     import os
 
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay import __main__ as relay_main
 
 
@@ -5453,8 +5383,6 @@ def _part_dotenv_hash():
     check("a value that is only a ' #' comment loads as empty (not set)", got["ARKT_EMPTY"], None)
     check("an unclosed quote is stripped, as before", got["ARKT_UNCLOSED"], "abc")
 
-    print(f"\n{'FAIL' if fails else 'PASS'}: {len(fails)} failed")
-
 
 def _part_engine_pending():  # noqa: C901
     """engine.py 里没人碰过的四段：告警落盘、首启接管历史、在跑判断的缓存、tick 逐段兜底。"""
@@ -5475,7 +5403,6 @@ def _part_engine_pending():  # noqa: C901
     os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng
     from ark_relay.features import modes
@@ -5918,8 +5845,6 @@ def _part_loop_parts():  # noqa: C901
     """主循环拆出来的两个部件：目录监听的退避、AUTO-MAS 保活的睡眠上限与退避。"""
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 
     class _Any:
         def __init__(self, *a, **k): pass
@@ -6222,8 +6147,6 @@ def _part_netretry():
     import urllib.request
     from types import SimpleNamespace
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.core import notify as netretry, notify
     from ark_relay.features import errwatch
     from ark_relay.features import maintenance as efstatus
@@ -6414,7 +6337,6 @@ def _part_tick_isolation():
     (AUTOMAS / "config" / "ScriptConfig.json").write_text(json.dumps({"instances": []}), encoding="utf-8")
     os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                       ARK_STATE_DIR=str(STATE), SERVERCHAN_KEY="", ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng
     from ark_relay.core.config import Config
