@@ -2,13 +2,119 @@
 from __future__ import annotations
 
 # ruff: noqa: PLC0415
+import json
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+
+
+class _Any:
+    """Stands in for any pywin32 attribute: callable, subclassable, truthy."""
+    def __init__(self, *a, **k): pass
+    def __call__(self, *a, **k): return _Any()
+    def __getattr__(self, _): return _Any()
+
+
+class _Stub(types.ModuleType):
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return _Any
+
+
+def _stub_pywin32():
+    """boot_stages and the service helpers import pywin32 at module scope; stub what is missing."""
+    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+                 "win32con", "win32file", "servicemanager", "win32process",
+                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
+        sys.modules.setdefault(name, _Stub(name))
+
+
+class _NoSource:
+    """A record source with nothing new."""
+    def fetch(self, seen):
+        return []
+
+
+class _Notes:
+    """A notifier with the real send() signature that keeps (title, body, alert)."""
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body, *, alert=False, daily=False):
+        self.sent.append((title, body, alert))
+        return []
+
+
+def _pinned_clock():
+    """A datetime class whose now() answers its `at`; a new class each call, `at` is the part's own."""
+    from datetime import datetime
+
+    class Clock(datetime):
+        at = None
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.at
+
+    return Clock
+
+
+def _queue_backend(all_days, okww=True):
+    """AUTO-MAS's queue API over one queue 「早班」 of MAA, MaaEnd (and OK-WW), as a class.
+
+    `fail_get_after_update`: the item/get after the n-th update raises (the
+    write landed, the read-back timed out). `fail_update`: the n-th update
+    lands and then raises (the reply was lost)."""
+
+    class Backend:
+        def __init__(self, extra=None, fail_get_after_update=0, fail_update=0):
+            self.scripts = {"s-maa": {"Info": {"Name": "MAA"}}, "s-end": {"Info": {"Name": "MaaEnd"}}}
+            self.queues = {"q1": {"Info": {"Name": "早班"}}}
+            self.items = {"i1": {"Info": {"ScriptId": "s-maa"}, "Schedule": {"Days": list(all_days)}},
+                          "i2": {"Info": {"ScriptId": "s-end"}, "Schedule": {"Days": list(all_days)}}}
+            if okww:
+                self.scripts["s-ww"] = {"Info": {"Name": "OK-WW"}}
+                self.items["i3"] = {"Info": {"ScriptId": "s-ww"}, "Schedule": {"Days": list(all_days)}}
+            self.items.update(extra or {})
+            self.updates = 0
+            self.fail_get, self.fail_update = fail_get_after_update, fail_update
+
+        def __call__(self, path, body=None, timeout=20):
+            if path == "/api/queue/get":
+                return {"data": self.queues}
+            if path == "/api/scripts/get":
+                return {"data": self.scripts}
+            if path == "/api/queue/item/get":
+                if self.fail_get and self.updates == self.fail_get:
+                    self.fail_get = 0
+                    raise TimeoutError("timed out")
+                return {"index": [{"uid": u} for u in self.items], "data": json.loads(json.dumps(self.items))}
+            if path == "/api/queue/item/update":
+                for sec, val in body["data"].items():
+                    self.items[body["queueItemId"]].setdefault(sec, {}).update(val)
+                self.updates += 1
+                if self.fail_update and self.updates == self.fail_update:
+                    raise ConnectionResetError("reply lost")
+                return {"status": "success"}
+            raise AssertionError(f"unexpected call {path}")
+
+        def days(self, uid):
+            return self.items[uid]["Schedule"]["Days"]
+
+    return Backend
+
+
+def _write_ledger(state, day, rows):
+    """That day's ledger: one ok row per (script, started, finished)."""
+    lines = [json.dumps({"run_id": f"r{i}", "script": s, "started": a.isoformat(),
+                         "finished": b.isoformat(), "ok": True}) for i, (s, a, b) in enumerate(rows)]
+    state.ledger_path(day.strftime("%Y-%m-%d")).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _part_stagegate_main():
@@ -111,15 +217,6 @@ def _part_stagegate_main():
     sg.PULL_FROM_QUEUE = True
 
 
-    class Note:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body, *, alert=False, daily=False):
-            self.sent.append((title, body, alert))
-            return []
-
-
     def world(maa=None, **kw):
         st = tmpdir()
         return types.SimpleNamespace(state_dir=st, automas_dir=fx.automas_dir(tmpdir(), **kw),
@@ -144,7 +241,7 @@ def _part_stagegate_main():
         sg.step(cfg, n, now, busy=lambda: busy, skipper=kw.get("skip", skipper), restorer=restorer)
 
 
-    cfg, n = world(), Note()
+    cfg, n = world(), _Notes()
     step(cfg, n, at(10, 8, 45))
     check("08:45: outside the 10-minute lead, nothing", (skipped, n.sent), ([], []))
     step(cfg, n, at(10, 8, 52))
@@ -155,7 +252,7 @@ def _part_stagegate_main():
     step(cfg, n, at(10, 8, 53))
     step(cfg, n, at(10, 8, 59))
     check("later ticks: no second pull, no second alarm", (len(skipped), len(n.sent)), (1, 1))
-    n2 = Note()
+    n2 = _Notes()
     step(cfg, n2, at(10, 8, 56))            # a relay restart reads the same state
     check("after a relay restart: still one", (len(skipped), n2.sent), (1, []))
     check("excused: 早班 09:00", sg.excused(cfg.state_dir, "早班", at(10, 9, 0)), True)
@@ -184,7 +281,7 @@ def _part_stagegate_main():
     print("\n[it becomes reachable before the due: put back at once]")
     skipped.clear()
     restored.clear()
-    cfg, n = world(), Note()
+    cfg, n = world(), _Notes()
     step(cfg, n, at(10, 8, 52))
     check("pulled", skipped, [("早班", "MAA")])
     time.sleep(0.01)
@@ -197,52 +294,52 @@ def _part_stagegate_main():
 
     print("\n[a pull left over from yesterday: put back]")
     restored.clear()
-    cfg, n = world(), Note()
+    cfg, n = world(), _Notes()
     step(cfg, n, at(10, 21, 22))
     step(cfg, n, at(11, 7, 0), busy=False)
     check("next morning: back", restored, [("晚班", "MAA")])
 
     print("\n[reachable or unknown: nothing]")
     skipped.clear()
-    cfg, n = world(maa=fx.maa_dir(tmpdir(), yw=fx.YW_AFTERNOON)), Note()
+    cfg, n = world(maa=fx.maa_dir(tmpdir(), yw=fx.YW_AFTERNOON)), _Notes()
     step(cfg, n, at(10, 8, 52))
     check("reachable: no pull, no alarm", (skipped, n.sent), ([], []))
     bad = fx.maa_dir(tmpdir())
     (bad / "resource" / "tasks" / "Stages" / "ZZ.json").write_text("{", encoding="utf-8")
-    cfg, n = world(maa=bad), Note()
+    cfg, n = world(maa=bad), _Notes()
     step(cfg, n, at(10, 8, 52))
     check("unknown (a task file does not parse): no pull, no alarm", (skipped, n.sent), ([], []))
-    cfg, n = world(fight=False), Note()
+    cfg, n = world(fight=False), _Notes()
     step(cfg, n, at(10, 8, 52))
     check("Fight off: no pull, no alarm", (skipped, n.sent), ([], []))
 
     print("\n[the boot pass: the machine is up at 08:40 / 21:20 for 09:00 / 21:30]")
     skipped.clear()
-    cfg, n = world(), Note()
+    cfg, n = world(), _Notes()
     sg.step(cfg, n, at(10, 8, 46), busy=lambda: False, skipper=skipper, restorer=restorer, lead_min=sg.BOOT_LEAD_MIN)
     check("boot at 08:46 (14 min before): a no is acted on at once", (skipped, len(n.sent)), ([("早班", "MAA")], 1))
     step(cfg, n, at(10, 8, 52))
     check("the tick in the last 10 minutes does not repeat it", (len(skipped), len(n.sent)), (1, 1))
     skipped.clear()
-    cfg, n = world(stage="1-7"), Note()
+    cfg, n = world(stage="1-7"), _Notes()
     sg.step(cfg, n, at(10, 8, 46), busy=lambda: False, skipper=skipper, restorer=restorer, lead_min=sg.BOOT_LEAD_MIN)
     check("boot: reachable, nothing done", (skipped, n.sent), ([], []))
     fx.automas_dir(cfg.automas_dir, stage="YW-4")      # changed after boot (e.g. from AUTO-MAS's own screen)
     step(cfg, n, at(10, 8, 52))
     check("a boot-time yes is not kept: the tick checks again and catches the change", skipped, [("早班", "MAA")])
     skipped.clear()
-    cfg, n = world(), Note()
+    cfg, n = world(), _Notes()
     sg.step(cfg, n, at(10, 9, 1), busy=lambda: False, skipper=skipper, restorer=restorer, lead_min=sg.BOOT_LEAD_MIN)
     check("boot at 09:01 (after the due): too late for 早班, nothing", (skipped, n.sent), ([], []))
 
     print("\n[pull not possible]")
-    cfg, n = world(), Note()
+    cfg, n = world(), _Notes()
     step(cfg, n, at(10, 8, 52), skip=lambda q, s: None)
     check("MAA was not in the queue any more: still the one alarm (the next shift has the same stage)",
           [t for t, _b, _a in n.sent], [texts.stage_gate("早班")])
     check("... saying MAA was not in this shift", "本来就没有 MAA" in n.sent[0][1], True)
     check("... and nothing to put back", sg.skips(cfg.state_dir), [])
-    cfg, n = world(), Note()
+    cfg, n = world(), _Notes()
 
 
     def boom(q, s):
@@ -258,14 +355,14 @@ def _part_stagegate_main():
     sg.PULL_FROM_QUEUE = False
     skipped.clear()
     restored.clear()
-    cfg, n = world(), Note()
+    cfg, n = world(), _Notes()
     step(cfg, n, at(10, 8, 52))
     check("no pull", skipped, [])
     check("one alarm, to the group, its own title", [(t, a) for t, _b, a in n.sent], [(texts.stage_gate_warn("早班"), True)])
     check("it says which stage, why, and that MAA still runs and will be refused",
           ("YW-4" in n.sent[0][1], "resource/tasks" in n.sent[0][1], "MAA 照跑" in n.sent[0][1]), (True, True, True))
     step(cfg, n, at(10, 8, 55))
-    step(cfg, Note(), at(10, 8, 57))
+    step(cfg, _Notes(), at(10, 8, 57))
     check("once per due, restarts included", (len(n.sent), skipped), (1, []))
     check("nothing to put back", sg.skips(cfg.state_dir), [])
     check("missed checks: not excused", (sg.excused(cfg.state_dir, "早班", at(10, 9, 0)),
@@ -275,7 +372,7 @@ def _part_stagegate_main():
           sg.report_line(cfg.state_dir, "2026-10-10"), "")
     step(cfg, n, at(10, 21, 22))
     check("晚班: its own alarm", [t for t, _b, _a in n.sent][-1], texts.stage_gate_warn("晚班"))
-    cfg, n = world(), Note()
+    cfg, n = world(), _Notes()
     sg.step(cfg, n, at(10, 8, 46), busy=lambda: False, skipper=skipper, restorer=restorer, lead_min=sg.BOOT_LEAD_MIN)
     step(cfg, n, at(10, 8, 52))
     check("boot pass + tick: still one alarm", (len(n.sent), skipped), (1, []))
@@ -296,11 +393,11 @@ def _part_stagegate_main():
     sg.log.addHandler(grab)
     bad = fx.maa_dir(tmpdir())
     (bad / "resource" / "tasks" / "Stages" / "ZZ.json").write_text("{", encoding="utf-8")
-    cfg, n = world(maa=bad), Note()
+    cfg, n = world(maa=bad), _Notes()
     sg.step(cfg, n, at(10, 8, 46), busy=lambda: False, skipper=skipper, restorer=restorer, lead_min=sg.BOOT_LEAD_MIN)
     step(cfg, n, at(10, 8, 51))
     step(cfg, n, at(10, 8, 52))
-    step(cfg, Note(), at(10, 8, 55))             # a relay restart
+    step(cfg, _Notes(), at(10, 8, 55))             # a relay restart
     check("boot pass, ticks and a restart: one WARNING for 早班", len(grab.lines), 1)
     check("it names the file it could not read", "ZZ.json" in (grab.lines or [""])[0], True)
     step(cfg, n, at(10, 21, 22))
@@ -373,22 +470,13 @@ are not looked at, and a pull never takes MAA from a user whose stage is reachab
           sg.UNKNOWN)
 
 
-    class Note:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body, *, alert=False, daily=False):
-            self.sent.append((title, body, alert))
-            return []
-
-
     print("\n[打开「拿掉 MAA」时：只有一个用户走不到，只报不拿（拿掉会连走得到的那个一起拿）]")
     pulled = []
     saved = sg.PULL_FROM_QUEUE
     sg.PULL_FROM_QUEUE = True
     try:
         cfg = types.SimpleNamespace(state_dir=tmpdir(), automas_dir=two_users(), maa_dir=MORNING)
-        n = Note()
+        n = _Notes()
         sg.step(cfg, n, datetime(2026, 10, 10, 8, 52, tzinfo=SERVER_TZ), busy=lambda: False,
                 skipper=lambda q, s: pulled.append((q, s)) or {"queue": q, "script": s}, restorer=lambda rec: True)
         check("没拿掉 MAA", pulled, [])
@@ -403,29 +491,11 @@ def _part_stage_set_refused():
     import json
     import logging
     import os
-    import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
-    class _Any:
-        """Stands in for any pywin32 attribute (boot_stages pulls in service helpers)."""
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
-                  "win32con", "win32file", "servicemanager", "win32process",
-                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(_name, _Stub(_name))
+    _stub_pywin32()
 
     from _parts import stagegate_fx; fx = stagegate_fx()
 
@@ -462,7 +532,7 @@ def _part_stage_set_refused():
 
     def phone(body):
         """One order through the phone channel's executor, as live / drained / boot backlog do."""
-        n, receipts = Note(), []
+        n, receipts = _Notes(), []
         phone_channel._phone_execute(commands.apply_command, n, logging.getLogger("ark.test_schedule"),
                                    lambda *a, **k: None, lambda a, s, ok, msg, **k: receipts.append((ok, msg)),
                                    dict(body, confirmed=True), body["action"], None, True)
@@ -714,14 +784,7 @@ def _part_plan_after_accomplish():
     # fetches on Windows until the 180 s limit).
     plan.maintenance_lines = lambda day: []
 
-    FAILED: list[str] = []
     REAL = fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11"
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'✅' if ok else '❌'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
 
 
     def power_lines(after: "str | None") -> list[str]:
@@ -743,9 +806,6 @@ def _part_plan_after_accomplish():
         got = power_lines(value)
         require(f"{value} -> {zh}", got == [f"⏻ 跑完自动{zh}"] * 2, repr(got))
 
-    print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
-    sys.exit(1 if FAILED else 0)
-
 
 def _part_plan_collect_days_master():
     """The plan's gathering-day line reads the master copy, not MaaEnd's own file."""
@@ -765,15 +825,8 @@ def _part_plan_collect_days_master():
     # fetches on Windows until the 180 s limit).
     plan.maintenance_lines = lambda day: []
 
-    FAILED: list[str] = []
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-10" / "tasks" / "AutoCollect.json"
     AUTOMAS_FX = fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11" / "config"
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'✅' if ok else '❌'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
 
 
     def doc(schedule):
@@ -828,9 +881,6 @@ def _part_plan_collect_days_master():
     got = maaend_lines(automas, TUESDAY)
     require("the line is still there and says it runs", len(got) == 1 and got[0].startswith("⏳ 先跑自动采集"), repr(got))
 
-    print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
-    sys.exit(1 if FAILED else 0)
-
 
 def _part_plan_queue_weekdays():
     """The relay's view of which scripts a queue runs follows AUTO-MAS v5.7's own rules."""
@@ -865,13 +915,6 @@ def _part_plan_queue_weekdays():
     EVENING = "6f09a385-b0ae-4ff6-9890-50339bdaddeb"       # 晚班 21:30: MAA
     MAAEND_ITEM = "572b030a-6eb2-4122-954e-07b3010c8d88"
     ALL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    FAILED: list[str] = []
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'✅' if ok else '❌'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
 
 
     def at(day: int, hh: int, mm: int) -> datetime:
@@ -960,9 +1003,6 @@ def _part_plan_queue_weekdays():
     edit(add_empty_item)
     morning = next(q for q in plan.schedule(AUTOMAS) if q["name"] == "早班")
     require("ScriptId \"-\" is not a script", "-" not in morning["items"], repr(morning["items"]))
-
-    print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
-    sys.exit(1 if FAILED else 0)
 
 
 def _part_plan_silent():
@@ -1130,15 +1170,8 @@ def _part_plan_stage_modes():
     # fetches on Windows until the 180 s limit).
     plan.maintenance_lines = lambda day: []
 
-    FAILED: list[str] = []
     REAL = fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11"
     PLAN_UID = "c88cfe9e-6617-4fb8-9225-183ca571e3ae"
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'✅' if ok else '❌'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
 
 
     def maa_block(edit_info=None, edit_plan=None) -> list[str]:
@@ -1203,9 +1236,6 @@ def _part_plan_stage_modes():
             f"理智 S-{day}（计划表「新 MAA 计划表」）" in got and not any(PLAN_UID in b for b in got), repr(got))
     require("potions from the plan table, not the user's 999", "理智药最多 2 个" in got, repr(got))
 
-    print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
-    sys.exit(1 if FAILED else 0)
-
 
 def _part_plan_startup_mode():
     """queue_rows' 「开机跑」 comes from AUTO-MAS v5.7's StartUpMode."""
@@ -1218,14 +1248,7 @@ def _part_plan_startup_mode():
 
     from ark_relay.core import plan
 
-    FAILED: list[str] = []
     REAL = fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11"
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'✅' if ok else '❌'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
 
 
     print("[real 10-11 config: both queues StartUpMode Never]")
@@ -1243,9 +1266,6 @@ def _part_plan_startup_mode():
     qf.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
     rows = plan.queue_rows(root / "a")
     require("both say True", [r["开机跑"] for r in rows] == [True, True], repr(rows))
-
-    print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
-    sys.exit(1 if FAILED else 0)
 
 
 def _part_queue_apply_backend():
@@ -1390,8 +1410,6 @@ def _part_queue_apply_backend():
     finally:
         commands._mas = real_mas
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-
 
 def _part_queue_apply_runnow():
     """队列启停和「现在跑一趟」不能一调用就崩。"""
@@ -1463,8 +1481,6 @@ def _part_queue_apply_runnow():
         if ok4 or "早班" not in msg4 or "晚班" not in msg4:
             fails.append(f"不存在的队列应失败并列出现有队列：{msg4}")
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-
 
 def _part_queue_names():
     """队列改名「早班/晚班」后，旧名字（新队列 / Evening-MAA）仍然被认。"""
@@ -1513,14 +1529,7 @@ def _part_queue_rows_times():
 
     from ark_relay.core import plan
 
-    FAILED: list[str] = []
     REAL = fx_dir(Path(__file__), "fixtures") / "automas-config-2026-10-11"
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'✅' if ok else '❌'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
 
 
     print("[real 10-11 config]")
@@ -1540,13 +1549,9 @@ def _part_queue_rows_times():
     off = plan.queue_rows(root / "a")
     require("定时 off but 时刻 still there", off[0]["定时"] is False and off[0].get("时刻") == rows[0].get("时刻"), repr(off[0]))
 
-    print("all checks passed" if not FAILED else "FAILED: " + ", ".join(FAILED))
-    sys.exit(1 if FAILED else 0)
-
 
 def _part_queue_skip_holders():
     """Today-only queue skips held by two sources, across days, and over repeated items."""
-    import json
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1559,12 +1564,7 @@ def _part_queue_skip_holders():
     ALL = list(commands.WEEKDAYS)
 
 
-    class Clock(datetime):
-        at = None
-
-        @classmethod
-        def now(cls, tz=None):
-            return cls.at
+    Clock = _pinned_clock()
 
 
     commands.datetime = Clock
@@ -1579,31 +1579,7 @@ def _part_queue_skip_holders():
         return t.strftime("%Y-%m-%d")
 
 
-    class Backend:
-        def __init__(self, extra=None):
-            self.scripts = {"s-maa": {"Info": {"Name": "MAA"}}, "s-end": {"Info": {"Name": "MaaEnd"}},
-                            "s-ww": {"Info": {"Name": "OK-WW"}}}
-            self.queues = {"q1": {"Info": {"Name": "早班"}}}
-            self.items = {"i1": {"Info": {"ScriptId": "s-maa"}, "Schedule": {"Days": list(ALL)}},
-                          "i2": {"Info": {"ScriptId": "s-end"}, "Schedule": {"Days": list(ALL)}},
-                          "i3": {"Info": {"ScriptId": "s-ww"}, "Schedule": {"Days": list(ALL)}}}
-            self.items.update(extra or {})
-
-        def __call__(self, path, body=None, timeout=20):
-            if path == "/api/queue/get":
-                return {"data": self.queues}
-            if path == "/api/scripts/get":
-                return {"data": self.scripts}
-            if path == "/api/queue/item/get":
-                return {"index": [{"uid": u} for u in self.items], "data": json.loads(json.dumps(self.items))}
-            if path == "/api/queue/item/update":
-                for sec, val in body["data"].items():
-                    self.items[body["queueItemId"]].setdefault(sec, {}).update(val)
-                return {"status": "success"}
-            raise AssertionError(f"unexpected call {path}")
-
-        def days(self, uid):
-            return self.items[uid]["Schedule"]["Days"]
+    Backend = _queue_backend(ALL)
 
 
     real = commands._mas
@@ -1680,7 +1656,6 @@ def _part_queue_skip_holders():
 
 def _part_queue_skip_partial():
     """A today-only queue skip that fails part-way keeps its undo record."""
-    import json
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1693,12 +1668,7 @@ def _part_queue_skip_partial():
     ALL = list(commands.WEEKDAYS)
 
 
-    class Clock(datetime):
-        at = None
-
-        @classmethod
-        def now(cls, tz=None):
-            return cls.at
+    Clock = _pinned_clock()
 
 
     commands.datetime = Clock
@@ -1708,41 +1678,7 @@ def _part_queue_skip_partial():
     MON = commands.WEEKDAYS[D.weekday()]
 
 
-    class Backend:
-        """`fail_get_after_update`: the item/get after the n-th update raises (the
-    write landed, the read-back timed out). `fail_update`: the n-th update
-    lands and then raises (the reply was lost)."""
-
-        def __init__(self, extra=None, fail_get_after_update=0, fail_update=0):
-            self.scripts = {"s-maa": {"Info": {"Name": "MAA"}}, "s-end": {"Info": {"Name": "MaaEnd"}}}
-            self.queues = {"q1": {"Info": {"Name": "早班"}}}
-            self.items = {"i1": {"Info": {"ScriptId": "s-maa"}, "Schedule": {"Days": list(ALL)}},
-                          "i2": {"Info": {"ScriptId": "s-end"}, "Schedule": {"Days": list(ALL)}}}
-            self.items.update(extra or {})
-            self.updates = 0
-            self.fail_get, self.fail_update = fail_get_after_update, fail_update
-
-        def __call__(self, path, body=None, timeout=20):
-            if path == "/api/queue/get":
-                return {"data": self.queues}
-            if path == "/api/scripts/get":
-                return {"data": self.scripts}
-            if path == "/api/queue/item/get":
-                if self.fail_get and self.updates == self.fail_get:
-                    self.fail_get = 0
-                    raise TimeoutError("timed out")
-                return {"index": [{"uid": u} for u in self.items], "data": json.loads(json.dumps(self.items))}
-            if path == "/api/queue/item/update":
-                for sec, val in body["data"].items():
-                    self.items[body["queueItemId"]].setdefault(sec, {}).update(val)
-                self.updates += 1
-                if self.fail_update and self.updates == self.fail_update:
-                    raise ConnectionResetError("reply lost")
-                return {"status": "success"}
-            raise AssertionError(f"unexpected call {path}")
-
-        def days(self, uid):
-            return self.items[uid]["Schedule"]["Days"]
+    Backend = _queue_backend(ALL, okww=False)
 
 
     real = commands._mas
@@ -1820,7 +1756,6 @@ def _part_queue_skip_partial():
 
 def _part_queue_skip_partial_receipt():
     """A queue's today-only script list that fails part-way names what it had already changed."""
-    import json
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1832,12 +1767,7 @@ def _part_queue_skip_partial_receipt():
     ALL = list(commands.WEEKDAYS)
 
 
-    class Clock(datetime):
-        at = None
-
-        @classmethod
-        def now(cls, tz=None):
-            return cls.at
+    Clock = _pinned_clock()
 
 
     commands.datetime = Clock
@@ -1850,31 +1780,7 @@ def _part_queue_skip_partial_receipt():
         return t.strftime("%Y-%m-%d")
 
 
-    class Backend:
-        def __init__(self, extra=None):
-            self.scripts = {"s-maa": {"Info": {"Name": "MAA"}}, "s-end": {"Info": {"Name": "MaaEnd"}},
-                            "s-ww": {"Info": {"Name": "OK-WW"}}}
-            self.queues = {"q1": {"Info": {"Name": "早班"}}}
-            self.items = {"i1": {"Info": {"ScriptId": "s-maa"}, "Schedule": {"Days": list(ALL)}},
-                          "i2": {"Info": {"ScriptId": "s-end"}, "Schedule": {"Days": list(ALL)}},
-                          "i3": {"Info": {"ScriptId": "s-ww"}, "Schedule": {"Days": list(ALL)}}}
-            self.items.update(extra or {})
-
-        def __call__(self, path, body=None, timeout=20):
-            if path == "/api/queue/get":
-                return {"data": self.queues}
-            if path == "/api/scripts/get":
-                return {"data": self.scripts}
-            if path == "/api/queue/item/get":
-                return {"index": [{"uid": u} for u in self.items], "data": json.loads(json.dumps(self.items))}
-            if path == "/api/queue/item/update":
-                for sec, val in body["data"].items():
-                    self.items[body["queueItemId"]].setdefault(sec, {}).update(val)
-                return {"status": "success"}
-            raise AssertionError(f"unexpected call {path}")
-
-        def days(self, uid):
-            return self.items[uid]["Schedule"]["Days"]
+    Backend = _queue_backend(ALL)
 
 
     real = commands._mas
@@ -1916,8 +1822,6 @@ def _part_queue_skip_partial_receipt():
     be.fail_item = "i2"
     ok, msg = run(be, lambda: queues.apply(automas, "早班", scripts=["MAA"], state_dir=state), D)
     check("failed, no 「这之前已经改了」", (ok, "这之前已经改了" in msg), (False, False))
-
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 
 
 def _part_queue_skip_scripts():
@@ -2039,23 +1943,7 @@ def _part_dayroll_skips():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
-                 "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+    _stub_pywin32()
 
     from ark_relay.features import automas_keeper as day_roll
     from ark_relay.core.config import SERVER_TZ
@@ -2291,8 +2179,6 @@ and the daily report's 「明日安排」 listed skipped items).
         check("早班 off on Tuesday: its time is not listed", "🕘 09:00" in text, False)
         check("晚班 still listed", "🕘 21:30" in text, True)
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_shift_clock_after_retry():
     """A script that timed out and was retried by AUTO-MAS restarts the shift's clock (ledger #138).
@@ -2386,8 +2272,6 @@ def _part_shift_clock_after_retry():
     check("the overrun text ends at the restarted deadline", "该在 11:45 前结束" in ov, True)
     ov0 = texts.shift_overrun_body("早班", due, t(11, 50), LIMIT, 30, "", "", 7)
     check("without a retry the overrun deadline is 10:57 as before", "该在 10:57 前结束" in ov0 and "重新算" not in ov0, True)
-
-    print("all checks passed" if not fails else f"FAILED: {fails}")
 
 
 def _part_shiftcheck():
@@ -2642,8 +2526,6 @@ def _part_overdue_after_update_rerun():
     e._gu_reran, e._gu_rerun_at = {"MAA"}, datetime(2026, 10, 31, 22, 0, tzinfo=SERVER_TZ)
     check("yesterday's re-run does not move today's shift", shutdown._overdue_from(e, due, ["MAA"]), due)
 
-    print("all checks passed" if not fails else f"FAILED: {fails}")
-
 
 def _part_next_deadline():
     """When the loop is allowed to sleep until - the one number that decides
@@ -2699,15 +2581,10 @@ whether the relay wakes up at all.
             return False
 
 
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     def build(state_dir=None):
         cfg = Config()
         cfg.state_dir = state_dir or tmpdir()
-        e = eng.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=Notes())
         e._scripts_running = lambda: False
         return e
 
@@ -2888,8 +2765,6 @@ def _part_next_queue_weekdays():
               boot_stages._seconds_to_next_queue(None, at(13, 22, 0)), 3600.0)
     finally:
         plan.schedule = real_schedule
-
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 
 
 def _part_dispatch_guard_idle():
@@ -3217,8 +3092,6 @@ def _part_dispatch_guard_test_debug():
     rc, out = run(g.start, "OK-WW")
     check("dispatched, debug still off", (rc, modes.debug_active(state)), (0, False))
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_dispatch_note_timing():
     """The relay notes "this run is mine" right before the dispatch call, after the
@@ -3277,8 +3150,6 @@ OK-WW overlay step.
     finally:
         ov.retry_pending, commands._mas, trigger.note_dispatch = real
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_runwatch_main():
     """Watch a running queue: push every timeout at once, and a shift that overruns."""
@@ -3328,11 +3199,6 @@ def _part_runwatch_main():
             return False
 
 
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     APPLOG = AUTOMAS / "debug" / "app.log"
     LINES = [
         "2026-10-01 09:18:20.376 | INFO     | OK-WW 自动代理 | 用户 wuwa - 尝试次数: 1/3",
@@ -3365,7 +3231,7 @@ def _part_runwatch_main():
     def build():
         cfg = Config()
         cfg.state_dir = tmpdir()
-        e = eng.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=Notes())
         e._scripts_running = lambda: False
         return e
 
@@ -3463,10 +3329,7 @@ def _part_runwatch_main():
     from ark_relay.features import runwatch
 
 
-    def ledger(state, day, rows):
-        lines = [json.dumps({"run_id": f"r{i}", "script": s, "started": a.isoformat(),
-                             "finished": b.isoformat(), "ok": True}) for i, (s, a, b) in enumerate(rows)]
-        state.ledger_path(day.strftime("%Y-%m-%d")).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    ledger = _write_ledger
 
 
     def t(day, hh, mm, ss=0, month=9):
@@ -3724,11 +3587,6 @@ def _part_runwatch_chain_retry():
     check("10-05: MaaEnd's last record failed (a retry used up by its self-update) -> not clean",
           morning(5), (150, False, False))
 
-    if fails:
-        print("FAIL:", fails)
-        sys.exit(1)
-    print("all checks passed")
-
 
 def _part_run_limit():
     """Endfield's failure retry limit in AUTO-MAS kept at 1 (run_limit.py)."""
@@ -3742,14 +3600,7 @@ def _part_run_limit():
     from ark_relay.features import queues as R
 
 
-    class Notifier:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body, *, alert=False, daily=False):
-            self.sent.append((title, body, alert))
-            return []
-
+    Notifier = _Notes
 
     class Eng:
         def __init__(self):
@@ -3918,10 +3769,7 @@ def _part_same_weekday():
 
     em = types.SimpleNamespace(cfg=types.SimpleNamespace(automas_dir=None), state=State(tmpdir()))
 
-    def ledger(state, day, rows):
-        lines = [json.dumps({"run_id": f"r{i}", "script": s, "started": a.isoformat(),
-                             "finished": b.isoformat(), "ok": True}) for i, (s, a, b) in enumerate(rows)]
-        state.ledger_path(day.strftime("%Y-%m-%d")).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    ledger = _write_ledger
 
 
     print("[11-09 (Monday): the same weekday back counts when clean - #155, 11-02 was not clean, 10-26 was]")
@@ -4266,13 +4114,6 @@ def _part_missed_weekdays():
     PRISTINE = QC.read_text(encoding="utf-8")
     EVENING = "6f09a385-b0ae-4ff6-9890-50339bdaddeb"       # 晚班 21:30: MAA only
     ALL = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    FAILED: list[str] = []
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'✅' if ok else '❌'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
 
 
     def at(day: int, hh: int, mm: int) -> datetime:
@@ -4337,15 +4178,11 @@ def _part_missed_weekdays():
     got = evening_alarms()
     require("no missed-run alarm when every item sits today out", got == [], repr(sent))
 
-    print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
-    sys.exit(1 if FAILED else 0)
-
 
 def _part_debug_window():
     import os
-    import sys
+    import tempfile
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -4353,16 +4190,6 @@ def _part_debug_window():
     from ark_relay.features.commands import apply_command
     from ark_relay.core.statestore import StateStore
     from ark_relay.core.config import SERVER_TZ
-
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
-
 
     def at(s):
         return datetime.strptime(s, "%Y-%m-%d %H:%M").replace(tzinfo=SERVER_TZ)
@@ -4427,14 +4254,10 @@ def _part_debug_window():
         check("the debug_mode off order releases the mark's skip",
               (ok, StateStore(tmp).get("modes", "shutdown_skipped")), (True, None))
 
-        print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
-        return 0 if not FAILED else 1
 
 
-    if __name__ == "__main__":
-        import tempfile
-        with tempfile.TemporaryDirectory() as d:
-            raise SystemExit(main(Path(d)))
+    with tempfile.TemporaryDirectory() as d:
+        main(Path(d))
 
 
 if __name__ == "__main__":
