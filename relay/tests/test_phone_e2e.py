@@ -96,6 +96,7 @@ log-level: "warn"
             self.base = f"http://127.0.0.1:{self.port}"
             self.dir = tmpdir("ntfy-e2e-")
             self.proc = None
+            self._log_fp = None
             self.started = 0.0
 
         def start(self):
@@ -110,22 +111,33 @@ log-level: "warn"
             # the second, + 5 s), so the order is gone at the first prune, not the second.
             time.sleep(1.02 - (time.time() % 1.0))
             self.started = time.time()
-            self.proc = subprocess.Popen([SERVER, "serve", "--config", str(self.dir / "server.yml")],
-                                         stdout=open(self.dir / "server.log", "w"), stderr=subprocess.STDOUT,
-                                         stdin=subprocess.DEVNULL, start_new_session=True)
-            deadline = time.time() + 10
-            while time.time() < deadline:
-                if self.proc.poll() is not None:
-                    raise RuntimeError(f"ntfy exited {self.proc.returncode}: "
-                                   f"{(self.dir / 'server.log').read_text()[-400:]}")
-                try:
-                    with _real_urlopen(f"{self.base}/v1/health", timeout=1) as r:
-                        if json.loads(r.read()).get("healthy") is True:
-                            return self
-                except OSError:
-                    pass
-                time.sleep(0.03)
-            raise RuntimeError("ntfy not healthy within 10 s")
+            # Kept so stop() can close it: an open handle on server.log makes Windows
+            # refuse to remove self.dir (WinError 32).
+            self._log_fp = open(self.dir / "server.log", "w")
+            try:
+                self.proc = subprocess.Popen([SERVER, "serve", "--config", str(self.dir / "server.yml")],
+                                             stdout=self._log_fp, stderr=subprocess.STDOUT,
+                                             stdin=subprocess.DEVNULL, start_new_session=True)
+            except BaseException:
+                self._close_log()
+                raise
+            try:
+                deadline = time.time() + 10
+                while time.time() < deadline:
+                    if self.proc.poll() is not None:
+                        raise RuntimeError(f"ntfy exited {self.proc.returncode}: "
+                                           f"{(self.dir / 'server.log').read_text()[-400:]}")
+                    try:
+                        with _real_urlopen(f"{self.base}/v1/health", timeout=1) as r:
+                            if json.loads(r.read()).get("healthy") is True:
+                                return self
+                    except OSError:
+                        pass
+                    time.sleep(0.03)
+                raise RuntimeError("ntfy not healthy within 10 s")
+            except BaseException:
+                self.stop()            # a start that failed leaves no process and no open log
+                raise
 
         def stop(self):
             p, self.proc = self.proc, None
@@ -136,7 +148,13 @@ log-level: "warn"
                 except subprocess.TimeoutExpired:
                     p.kill()
                     p.wait(5)
+            self._close_log()
             return p
+
+        def _close_log(self):
+            fp, self._log_fp = self._log_fp, None
+            if fp is not None:
+                fp.close()
 
         # What the phone does: post an envelope, read the topic.
         def send(self, topic: str, body: dict) -> dict:

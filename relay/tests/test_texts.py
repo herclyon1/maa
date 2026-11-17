@@ -207,6 +207,25 @@ def _part_texts_wording():
           False)
     unknown = texts.relay_error_body("ark.service", "Traceback: KeyError 'x'", "09:00:01")
     check("认不出原因的：说中继还不认识、原文已记日志", (texts.RELAY_ERROR_UNREAD in unknown, texts.plain(unknown)), (True, []))
+    # #180: the relay's own warning names the upstream file it pins; a file name standing alone
+    # is not English prose, so the line is quoted instead of replaced by RELAY_ERROR_UNREAD.
+    from ark_relay.features import evidence as _ev
+    check("三处钉的上游名字", [p.name for p in _ev.PINS],
+          ["MaaEnd 导出（MXU file_ops.rs）", "MAA 生成日志压缩包（IssueReportUserControlModel.cs）", "OK-WW 导出日志（diagnostics.py）"])
+    for pin in _ev.PINS:
+        said = f"上游导出代码变了：{pin.name}"
+        check(f"带文件名的中文原话过得了检查：{pin.name}", texts.plain(said), [])
+        body = texts.relay_error_body("ark.service", said, "09:09:46")
+        check(f"群里照抄原话，不说还不认识：{pin.name}", (f"它说：{said}" in body, texts.RELAY_ERROR_UNREAD in body, texts.plain(body)),
+              (True, False, []))
+    all3 = "上游导出代码变了：" + "、".join(p.name for p in _ev.PINS) + "（都已报过，不再重发）"
+    check("三处一起变、已报过的那句也照抄", "它说：" + all3[:20] in texts.relay_error_body("ark.service", all3, ""), True)
+    check("文件名后面紧跟中文、带两段后缀也认得", texts.plain("旧日志 maafw.bak.log.gz变成压缩的了，file_ops.rs也改了"), [])
+    for line in ("PermissionError: [Errno 13] Permission denied: 'state.json'", "Traceback: KeyError 'x'",
+                 "can't open file 'run.py': [Errno 2] No such file or directory"):
+        check(f"英文报错里带文件名的照旧算英文：{line[:24]}", any(p.startswith("英文") for p in texts.plain(line)), True)
+        check(f"也照旧不抄原话：{line[:24]}", "它说" in texts.relay_error_body("ark.service", line, ""), False)
+    check("不是文件后缀的英文照旧拦（file.ops、e.g）", [bool(texts.plain(x)) for x in ("看 file.ops", "参见 readme.rst")], [True, True])
     check("原话是人话时照抄", "它说：日报没发出去" in texts.relay_error_body("ark.report", "日报没发出去", "10:47"), True)
     check("原话全是中文、只是带我们自己的术语：也照抄", "它说：AUTO-MAS 拉起后 45 秒内接口仍不通"
           in texts.relay_error_body("ark.service", "AUTO-MAS 拉起后 45 秒内接口仍不通", "21:21"), True)

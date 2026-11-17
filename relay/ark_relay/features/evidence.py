@@ -217,10 +217,12 @@ def pinned_text(pin: "Pin", raw: bytes) -> bytes:
 PINS = (
     Pin("MaaEnd 导出（MXU file_ops.rs）", "MistEO/MXU", "main",
         "src-tauri/src/commands/file_ops.rs",
-        "316ac0f6fb0ba7dd1187f8667c4a50b1b159db35",
-        "1573c2683360d9056d3eb39ca7fdaae4afe1e822134cdb00ca264fa4f0cff849",
-        ("export_logs_blocking", "collect_files_recursively", "collect_debug_subdir_files",
-         "add_file_to_zip", "normalize_archive_path", "is_image_file", "has_extension",
+        "04ad07ba056b0198d38b9438c4cdee6a25d251f1",
+        "34d3d635f33833305f230e7a72312cfd616c13697aadaf7766bd5b34279adabc",
+        ("export_logs_blocking", "export_logs_from_dir", "is_gzip_log", "write_redacted_text",
+         "prepare_gzip_logs", "collect_files_recursively", "collect_debug_subdir_files",
+         "collect_debug_images", "encode_image_archive_path", "add_file_to_zip",
+         "normalize_archive_path", "is_image_file", "has_extension",
          "estimate_compressed_upper_bound", "pre_compress_measure")),
     Pin("MAA 生成日志压缩包（IssueReportUserControlModel.cs）",
         "MaaAssistantArknights/MaaAssistantArknights", "dev-v2",
@@ -230,7 +232,7 @@ PINS = (
         "53870a7a5214c04ae25abd5a02f0bcfb8ad99507",
         "c392771bccda4f98eb1caa22404d37491c8c8c8414e94e001198c6357c2dafaa",
         ("GenerateSupportPayload", "CopyDirectoryIfExists")),
-    Pin("OK-WW Export Logs（ok-script diagnostics.py）", "ok-oldking/ok-script", "master",
+    Pin("OK-WW 导出日志（diagnostics.py）", "ok-oldking/ok-script", "master",
         "ok/ui/qt/shell/diagnostics.py",
         "f90444e11713496bd41de389a886501673531bad",
         "d43f0e28ce473e881945ede50ee7aaa8a9c73bcbc3ff4a9e788189b24804230c",
@@ -451,9 +453,11 @@ def _write_zip(zp: Path, entries, compression: int = zipfile.ZIP_DEFLATED) -> Pa
 
 
 # ------------------------------------------------------ MaaEnd (MXU export)
-# Mirrors export_logs_blocking: regular files first (debug/*.log|*.dmp sorted by
-# name, then config/** recursively, then debug/<subdir>/**.{log,json,dmp}
-# keeping the subfolder), then on_error and vision images newest first, split
+# Mirrors export_logs_from_dir: regular files first (debug/*.log|*.log.gz|*.dmp
+# sorted by name, then config/** recursively, then
+# debug/<subdir>/**.{log,log.gz,json,dmp} keeping the subfolder), then the
+# images of on_error and vision (direct children) and screencap (recursive),
+# each group newest first and by archive name within one mtime, split
 # into volumes of at most MAAEND_MAX_VOLUME bytes, part numbers zero-padded to 2
 # digits (3 when there are 100+ entries), named
 # `<project>-logs-<version>-<YYYYmmdd-HHMMSS>-partNN.zip`.
@@ -532,7 +536,26 @@ def _dedup(paths: list[Path]) -> list[Path]:
     return out
 
 
+def _is_gzip_log(p: Path) -> bool:
+    """MXU's is_gzip_log: MaaFramework 6 rotates its logs to `*.log.gz`."""
+    return p.name.lower().endswith(".log.gz")
+
+
+def _image_archive_name(rel: Path) -> str:
+    """MXU's encode_image_archive_path: the path's own components joined by `/`,
+    with `%`, `\\` and `:` inside a component percent-encoded."""
+    return "/".join(c.replace("%", "%25").replace("\\", "%5C").replace(":", "%3A") for c in rel.parts)
+
+
+def _mtime(p: Path) -> float:
+    try:
+        return p.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def _maaend_keep(p: Path, window: "tuple[float, float]") -> bool:
+    # A .log.gz is a finished rotation (suffix `.gz`): kept by its mtime alone.
     return _log_in_window(p, window) if p.suffix.lower() == ".log" else _in_window(p, window)
 
 
@@ -557,7 +580,7 @@ def maaend_entries(maaend_dir: Path, window: "tuple[float, float]",
 
     Only files modified inside the window are taken - the config always, and
     a .log that was still being written at t1 (_log_in_window) - and the
-    screenshots are capped at `max_images` after dropping duplicates. The
+    images (on_error, vision, screencap, in that order) are capped at `max_images` after dropping duplicates. The
     order and the volume rules are MXU's; the selection is ours. A test checks
     the order against a real export with a window covering the whole tree.
     """
@@ -567,23 +590,32 @@ def maaend_entries(maaend_dir: Path, window: "tuple[float, float]",
         return []
     regular: list[tuple[Path, str]] = []
     for p in sorted(debug.glob("*"), key=lambda q: q.name):
-        if p.is_file() and p.suffix.lower() in (".log", ".dmp") and _maaend_keep(p, window):
+        if (p.is_file() and (p.suffix.lower() in (".log", ".dmp") or _is_gzip_log(p))
+                and _maaend_keep(p, window)):
             regular.append((p, p.name))
     regular += _walk_sorted(maaend_dir / "config", "config")
     for sub in sorted(q for q in debug.iterdir() if q.is_dir()):
         regular += [(p, n) for p, n in _walk_sorted(sub, sub.name)
-                    if p.suffix.lower() in (".log", ".json", ".dmp") and _maaend_keep(p, window)]
+                    if (p.suffix.lower() in (".log", ".json", ".dmp") or _is_gzip_log(p))
+                    and _maaend_keep(p, window)]
     images: list[tuple[Path, str]] = []
-    for name in ("on_error", "vision"):
+    # collect_debug_images(dir, prefix, recursive): on_error and vision take the
+    # folder's own files, screencap (its saver may be given subfolders) the tree.
+    for name, recursive in (("on_error", False), ("vision", False), ("screencap", True)):
         d = debug / name
-        if d.is_dir():
-            files = [p for p in d.rglob("*")
-                     if p.is_file() and p.suffix.lower() in _IMAGE_EXT and _in_window(p, window)]
-            files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-            files = _dedup(files)
-            if max_images is not None:
-                files = files[:max(0, max_images - len(images))]
-            images += [(p, f"{name}/{p.relative_to(d).as_posix()}") for p in files]
+        if not d.is_dir() or d.is_symlink():
+            continue
+        named = {p: f"{name}/{_image_archive_name(p.relative_to(d))}"
+                 for p in (d.rglob("*") if recursive else d.iterdir())
+                 if p.is_file() and not p.is_symlink() and p.suffix.lower() in _IMAGE_EXT
+                 and _in_window(p, window)}
+        # MXU's order: mtime newest first, then archive name (two stable sorts).
+        files = sorted(named, key=named.__getitem__)
+        files.sort(key=_mtime, reverse=True)
+        files = _dedup(files)
+        if max_images is not None:
+            files = files[:max(0, max_images - len(images))]
+        images += [(p, named[p]) for p in files]
     return regular + images
 
 

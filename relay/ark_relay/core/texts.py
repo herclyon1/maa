@@ -41,7 +41,15 @@ _URL = re.compile(r"https?://\S+")
 # An error code (0xc0000005) is copied whole and searched for, like a link; it
 # is not English prose.
 _HEX = re.compile(r"(?<![A-Za-z0-9])0x[0-9A-Fa-f]+(?![A-Za-z0-9])")
-_PATH = re.compile(r"[A-Za-z]:\\\S+|(?<![A-Za-z0-9_/:.])[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+")
+_PATH = re.compile(r"[A-Za-z]:\\\S+|(?<![A-Za-z0-9_/:.])[A-Za-z0-9_.-]+(?:[\\/][A-Za-z0-9_.-]+)+"
+                   # A file named on its own (「MXU file_ops.rs」, 「maafw.log.gz」): a name and one
+                   # or more extensions a program, setting, log or archive file carries. The
+                   # relay's own warning naming such a file read as English and was replaced
+                   # whole by RELAY_ERROR_UNREAD (#180). An English error line still fails on
+                   # its other words.
+                   r"|(?<![A-Za-z0-9_/:.-])[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*?"
+                   r"(?:\.(?:py|rs|cs|js|ts|jsonl|json|log|gz|zst|zip|exe|dll|dmp|bat|ps1|sh|toml|yaml|yml"
+                   r"|md|txt|html|db|ini|cfg|png|jpg))+(?![A-Za-z0-9_])")
 
 
 # Engineering words that mean nothing to the reader. A sentence has to say what
