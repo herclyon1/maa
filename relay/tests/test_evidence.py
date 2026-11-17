@@ -195,7 +195,7 @@ def _part_evidence_main():  # noqa: C901
     FXP = fx_dir(Path(__file__), "fixtures") / "source-pins"
     files = {"IssueReportUserControlModel.cs": "MAA 生成日志压缩包（IssueReportUserControlModel.cs）",
              "file_ops.rs": "MaaEnd 导出（MXU file_ops.rs）",
-             "diagnostics.py": "OK-WW Export Logs（ok-script diagnostics.py）"}
+             "diagnostics.py": "OK-WW 导出日志（diagnostics.py）"}
     def from_fixtures(url):
         for fname in files:
             if url.endswith("/" + fname):
@@ -227,6 +227,31 @@ def _part_evidence_main():  # noqa: C901
     rs = (FXP / "file_ops.rs").read_text(encoding="utf-8")
     seg = ev.region_text(rs, "file_ops.rs", ("export_logs_blocking",))
     check("Rust 按花括号截到函数结尾", seg.startswith("fn export_logs_blocking(") and seg.rstrip().endswith("}") and "pub async fn export_logs" not in seg)
+    # #180: MXU 04ad07ba moved the body into export_logs_from_dir and added the gzip-log and
+    # screencap helpers; every one of them is pinned and found whole in the stored copy.
+    mxu = ev.PINS[0]
+    check("MXU 钉在 04ad07ba", mxu.commit, "04ad07ba056b0198d38b9438c4cdee6a25d251f1")
+    check("MXU 钉的函数：新旧打包函数、压缩日志、截图收集都在",
+          mxu.regions,
+          ("export_logs_blocking", "export_logs_from_dir", "is_gzip_log", "write_redacted_text",
+           "prepare_gzip_logs", "collect_files_recursively", "collect_debug_subdir_files",
+           "collect_debug_images", "encode_image_archive_path", "add_file_to_zip",
+           "normalize_archive_path", "is_image_file", "has_extension",
+           "estimate_compressed_upper_bound", "pre_compress_measure"))
+    segs = {n: ev.region_text(rs, "file_ops.rs", (n,)) for n in mxu.regions}
+    check("每个钉的函数都从函数头截到收尾的花括号",
+          [n for n, s in segs.items() if not (__import__("re").match(rf"(?:pub )?fn {n}\b", s) and s.endswith("\n}"))], [])
+    check("截出来的是新版的内容：压缩日志、三组图片、图片名转义",
+          ('ends_with(".log.gz")' in segs["is_gzip_log"],
+           'collect_debug_images(&debug_dir.join("screencap"), "screencap", true)' in segs["export_logs_from_dir"],
+           "|| is_gzip_log(&export.source_path)" in segs["collect_debug_subdir_files"],
+           "recursive: bool" in segs["collect_debug_images"],
+           '.replace(\'%\', "%25")' in segs["encode_image_archive_path"]),
+          (True, True, True, True, True))
+    check("存的副本的哈希就是钉的哈希", __import__("hashlib").sha256(ev.pinned_text(mxu, rs.encode("utf-8"))).hexdigest(), mxu.sha256)
+    changed, _ = ev.check_sources(fetch=lambda url: rs.replace('"screencap", true', '"screencap", false').encode()
+                                  if url.endswith(".rs") else from_fixtures(url))
+    check("截图收集那一行一变就报", changed, [files["file_ops.rs"]])
 
     print("\n[一趟的时间窗：只带这一趟的日志，截图去重、封顶；不给窗就是 MXU 全量]")
     wt = tmpdir() / "win"
@@ -265,6 +290,52 @@ def _part_evidence_main():  # noqa: C901
     check("窗覆盖全部时才等于 MXU 全量（去重后少一张）", (len(full), "2026-09-10-1.log" in full, "on_error/old.png" in full), (7 + 17, True, True))
     parts = ev.bundle_maaend(wt, tmpdir() / "wout", "v1", win)
     check("按窗打的包只有一卷", len(parts), 1)
+
+    print("\n[MXU 04ad07ba：压缩过的旧日志（.log.gz）和 screencap 截图也进包（#180）]")
+    gz = tmpdir() / "gz"
+    for sub_ in ("debug/on_error/deep", "debug/vision", "debug/screencap/sub", "debug/cpp-algo", "config"):
+        (gz / sub_).mkdir(parents=True)
+    def _gk(rel, mtime, content=None):
+        p = gz / rel
+        p.write_bytes(content if content is not None else rel.encode())
+        os.utime(p, (mtime, mtime)); return p
+    _gk("config/mxu-MaaEnd.json", T - 86400 * 30)
+    _gk("debug/maa.log", T + 50)
+    _gk("debug/maa.bak.1.log.gz", T + 40)                 # rotated inside the run: in
+    _gk("debug/maa.bak.2.LOG.GZ", T + 41)                 # case-insensitive, as is_gzip_log
+    _gk("debug/maa.bak.0.log.gz", T - 86400)              # rotated yesterday: out
+    _gk("debug/notes.gz", T + 42)                         # a .gz that is not a log: never in
+    _gk("debug/crash.dmp", T + 43)
+    _gk("debug/cpp-algo/algo.log.gz", T + 44)
+    _gk("debug/cpp-algo/algo.json", T + 45)
+    _gk("debug/cpp-algo/algo.txt", T + 46)                # not an exported extension
+    _gk("debug/on_error/e1.png", T + 10)
+    _gk("debug/on_error/deep/e2.png", T + 99)             # on_error is not recursive
+    _gk("debug/vision/v1.jpg", T + 20)
+    _gk("debug/screencap/a.png", T + 30)
+    _gk("debug/screencap/sub/s.png", T + 60)              # newest: first of its group
+    _gk("debug/screencap/sub/b.png", T + 30)              # same mtime as a.png: by archive name
+    _gk("debug/screencap/50%.png", T + 5)                 # `%` is encoded in the archive name
+    _gk("debug/screencap/old.png", T - 86400)             # out of the window
+    gwin = (T - ev.WINDOW_SLACK, T + 240 + ev.WINDOW_SLACK)
+    got = [n for _, n in ev.maaend_entries(gz, gwin, max_images=None)]
+    check("顺序照 MXU：日志（含 .log.gz）→ 配置 → 子文件夹 → on_error → vision → screencap（新的在前，同时间按名字）", got,
+          ["crash.dmp", "maa.bak.1.log.gz", "maa.bak.2.LOG.GZ", "maa.log", "config/mxu-MaaEnd.json",
+           "cpp-algo/algo.json", "cpp-algo/algo.log.gz",
+           "on_error/e1.png", "vision/v1.jpg",
+           "screencap/sub/s.png", "screencap/a.png", "screencap/sub/b.png", "screencap/50%25.png"])
+    capped = [n for _, n in ev.maaend_entries(gz, gwin, max_images=3) if n.endswith((".png", ".jpg"))]
+    check("截图封顶时先留 on_error、vision，剩下的名额才给 screencap 最新的", capped,
+          ["on_error/e1.png", "vision/v1.jpg", "screencap/sub/s.png"])
+    _gk("debug/screencap/sub/dup.png", T + 70, b"debug/on_error/e1.png")   # same bytes, another group: both kept
+    _gk("debug/screencap/sub/dup2.png", T + 65, b"debug/on_error/e1.png")  # same bytes, same group: dropped
+    shots = [n for _, n in ev.maaend_entries(gz, gwin, max_images=None) if n.startswith("screencap/")]
+    check("screencap 里内容相同的只留最新一张", shots[:2] + ["screencap/sub/dup2.png" in shots], ["screencap/sub/dup.png", "screencap/sub/s.png", False])
+    gparts = ev.bundle_maaend(gz, tmpdir() / "gzout", "v1", gwin)
+    with zipfile.ZipFile(gparts[0]) as z:
+        check("包里真有压缩日志和子文件夹里的截图，压缩日志原样没被改",
+              ("maa.bak.1.log.gz" in z.namelist() and "screencap/sub/s.png" in z.namelist(), z.read("maa.bak.1.log.gz")),
+              (True, b"debug/maa.bak.1.log.gz"))
 
     print("\n[上传：索引里记下每一趟，失败也记]")
     class FakeUp:
