@@ -11,9 +11,8 @@ from ark_relay.features import weeklyboss as W  # noqa: E402
 ok = lambda b: "✅" if b else "❌"  # noqa: E731
 A = os.environ.get("ARK_AUTOMAS_DIR")
 
-# Since 2026-09-09 nothing of ours edits an upstream file: the changes live in
-# ok_tasks/ark_overrides.py (okww_overlay.py), so every upstream task file must be
-# identical to OK-WW's own checkout - 0 changed spots, no exceptions.
+# Nothing of ours edits an upstream file (the changes live in ok_tasks/ark_overrides.py), so every
+# upstream task file must be identical to OK-WW's own checkout - 0 changed spots, no exceptions.
 UPSTREAM_TASKS = ("FarmEchoTask.py", "DailyTask.py", "NightmareNestTask.py")
 
 
