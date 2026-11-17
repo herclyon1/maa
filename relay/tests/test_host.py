@@ -3,12 +3,36 @@ from __future__ import annotations
 
 # ruff: noqa: PLC0415
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+
+
+class _Any:
+    """Stands in for any pywin32 attribute: callable, subclassable, truthy."""
+    def __init__(self, *a, **k): pass
+    def __call__(self, *a, **k): return _Any()
+    def __getattr__(self, _): return _Any()
+
+
+class _Stub(types.ModuleType):
+    """A pywin32 module that is not there: every public name is an _Any."""
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return _Any
+
+
+def _module(name, **attrs):
+    """Put a module with exactly these attributes in sys.modules (run_parts takes it out again)."""
+    m = types.ModuleType(name)
+    m.__dict__.update(attrs)
+    sys.modules[name] = m
+    return m
 
 
 def _part_apphost_covers_service():  # noqa: C901
@@ -193,8 +217,6 @@ def _part_apphost_covers_service():  # noqa: C901
     print("[the first version missed the round-8 case: service._loop(svc) reading svc.xxx]")
     require("borrowed-methods-only reading misses it",
           "_not_on_host" not in borrowed_only(plant(trees, "automas_keeper", "_loop", "svc", "_not_on_host")))
-
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 
 
 def _part_estop_verifies():
@@ -990,7 +1012,6 @@ def _part_launcher_states():
     d = FakeDesk([["-以％36．。6．78678967", "么"]])
     gug.update_endfield(d, *EF, problems=probs, sleep=fake_sleep)
     check("没杀 Games.exe", [e for e in events if e[0] == "kill" and "Games.exe" in e], [])
-    print("\nPASS" if not fails else f"\nFAILED: {fails}")
 
 
 def _part_procs_wmi():
@@ -1136,12 +1157,6 @@ def _part_procs_wmi():
     slept.clear()
     check("返回 None", procs.python_processes(warn=False), None)
     check("没等", slept, [])
-
-    print()
-    if fails:
-        print("FAILED:", fails)
-        sys.exit(1)
-    print("all checks passed")
 
 
 def _part_relaunch():
@@ -1330,8 +1345,6 @@ watchdog's next check.
     check("mutex", launch.MUTEX, app_main.MUTEX)
     check("task", launch.MAIN_TASK, pkg_layout.MAIN_TASK)
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-
 
 def _part_rollback_stop_failed():
     """`app_main.py rollback` says so and exits 1 when the relay does not stop."""
@@ -1375,32 +1388,13 @@ def _part_rollback_stop_failed():
     check("says when 100 starts", "next restart" in out, True)
     check("no restart helper (it would wait 120 s and give up)", restarts, [])
 
-    if fails:
-        print("FAIL:", fails)
-        sys.exit(1)
-    print("all checks passed")
-
 
 def _part_unknown_process_list():
     """A process list that cannot be read is "unknown", never a yes (review of 2026-10-07, item 2).
     """
     import subprocess
-    import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
 
 
     for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
@@ -1644,19 +1638,6 @@ def _part_procwatch_cancel():  # noqa: C901
     import weakref
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
 
 
     # ---------- a fake kernel: waitable objects and one STA message queue ----------
@@ -2103,19 +2084,6 @@ def _part_procwatch_drop():  # noqa: C901
     import weakref
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
 
 
     # ---------- fakes: pywin32's service framework (311, verbatim logic), WMI ----------
@@ -2577,39 +2545,13 @@ def _part_procwatch_drop():  # noqa: C901
                 sys.modules[k] = v
 
 
-def _part_wmi_listener():  # noqa: C901
+def _part_wmi_listener():
     import logging
-    import sys
     import tempfile
     import time
-    import types
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" + ("" if ok else f": {got!r} != {want!r}"))
-        if not ok:
-            fails.append(label)
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
 
     FAKES = {}
     for name in ("win32serviceutil", "win32service", "win32file", "servicemanager", "win32security",
@@ -2844,27 +2786,14 @@ def _part_wmi_listener():  # noqa: C901
             else:
                 sys.modules[key] = v
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_procnames():
     import re
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import config as C
 
     ROOT = Path(__file__).resolve().parents[2]
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" if not ok else f"  ✓ {label}")
-        if not ok:
-            fails.append(label)
 
 
     def text(rel):
@@ -2910,9 +2839,6 @@ def _part_procnames():
     check("派发闸门认得鸣潮本体", "Client-Win64-Shipping.exe" in dg, True)
     check("派发闸门认得雷电", "dnplayer.exe" in dg, True)
     check("派发闸门按命令行找 OK-WW", "pythonw.exe" in dg, True)
-
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_watchdog_copy():
@@ -2973,7 +2899,6 @@ def _part_watchdog_crashloop():
     """The watchdog says why the relay does not start, and rings when it keeps crashing."""
     import os
     import time
-    import types
 
     RELAY = Path(__file__).resolve().parents[1]
     ROOT = RELAY.parent
@@ -2982,13 +2907,6 @@ def _part_watchdog_crashloop():
 
     DATA = tmpdir()
     os.environ["ARK_HOME"] = str(DATA)
-
-
-    def _module(name, **attrs):
-        m = types.ModuleType(name)
-        m.__dict__.update(attrs)
-        sys.modules[name] = m
-        return m
 
 
     class _PyError(Exception):
@@ -3173,8 +3091,6 @@ def _part_watchdog_crashloop():
         tick(w, 5 * k, up=True)
         tick(w, 5 * k + 0.5)
     check("crash-loop push carries the record", (len(pushed), W.REASON_HEAD in pushed[-1]), (1, True))
-
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 
 
 def _part_watchdog_guard():  # noqa: C901
@@ -3493,8 +3409,6 @@ def _part_watchdog_guard():  # noqa: C901
           "target=watchdog_guard.run, args=(host.stop_event, DATA)" in body, True)
     check("logger under ark. (errwatch hooks ark)", G.log.name.startswith("ark."), True)
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-
 
 def _part_watchdog_guard_missing():
     """A watchdog service that vanishes after the relay saw it installed is pushed once."""
@@ -3552,11 +3466,6 @@ def _part_watchdog_guard_missing():
     got, loud, _ = run([R, M, M], marker=True)
     check("no WARNING", loud, [])
 
-    if fails:
-        print("FAIL:", fails)
-        sys.exit(1)
-    print("all checks passed")
-
 
 def _part_watchdog_push_delivery():
     """The watchdog's own group alarm counts as sent only when the group bot took it."""
@@ -3564,7 +3473,6 @@ def _part_watchdog_push_delivery():
     import io
     import json
     import os
-    import types
 
     RELAY = Path(__file__).resolve().parents[1]
     ROOT = RELAY.parent
@@ -3574,13 +3482,6 @@ def _part_watchdog_push_delivery():
     os.environ["ARK_HOME"] = str(DATA)
     (DATA / ".env").write_text("WECOM_BOT_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test\n",
                                encoding="utf-8")
-
-
-    def _module(name, **attrs):
-        m = types.ModuleType(name)
-        m.__dict__.update(attrs)
-        sys.modules[name] = m
-        return m
 
 
     class _PyError(Exception):
@@ -3744,8 +3645,6 @@ def _part_watchdog_push_delivery():
         running["on"] = False
         w.tick(300.0 * k + 30, wall=1_000_030.0 + 300 * k)
     check("5th start refused, 6th start delivered", (len(posts), w.loop_alerted_at), (2, 300.0 * 5 + 30))
-
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 
 
 def _part_gh_watchdog():
