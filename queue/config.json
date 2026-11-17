@@ -1,12 +1,6 @@
 {
-  "version": 2026111701,
-  "name": "set_stage",
-  "note": "从电脑发来的指令：set_stage",
-  "commands": [
-    {
-      "action": "set_stage",
-      "value": "1-7",
-      "confirmed": true
-    }
-  ]
+  "version": 2026111702,
+  "name": "空（安全状态）",
+  "note": "从电脑发来的指令：空（安全状态）",
+  "commands": []
 }
