@@ -3,12 +3,56 @@ from __future__ import annotations
 
 # ruff: noqa: PLC0415
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+
+
+class _Any:
+    """Stands in for any pywin32 attribute: callable, subclassable, truthy."""
+    def __init__(self, *a, **k): pass
+    def __call__(self, *a, **k): return _Any()
+    def __getattr__(self, _): return _Any()
+
+
+class _Stub(types.ModuleType):
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return _Any
+
+
+def _stub_pywin32():
+    """boot_stages imports pywin32 at module scope; stub what is missing."""
+    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+                 "win32con", "win32file", "servicemanager", "win32process",
+                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
+        sys.modules.setdefault(name, _Stub(name))
+
+
+class _Log:
+    """A logger that keeps each line as it would read."""
+    def __init__(self): self.lines = []
+    def warning(self, *a): self.lines.append(a[0] % a[1:])
+    def info(self, *a): self.lines.append(a[0] % a[1:] if len(a) > 1 else a[0])
+    def exception(self, *a): self.lines.append(a[0])
+
+
+class _NoSource:
+    """A record source with nothing new."""
+    def fetch(self, seen):
+        return []
+
+
+class _EmptyAnswer:
+    """What urlopen hands back for a request that went through with no body."""
+    def read(self): return b""
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
 
 
 def _part_evidence_main():  # noqa: C901
@@ -329,11 +373,7 @@ def _part_evidence_main():  # noqa: C901
             opened.append(req.get_method())
             if req.get_method() == "HEAD" and (exc := next(heads, None)) is not None:
                 raise exc
-            class _R:
-                def read(self): return b""
-                def __enter__(self): return self
-                def __exit__(self, *a): return False
-            return _R()
+            return _EmptyAnswer()
         urllib.request.urlopen = _head_once
         _real_sleep = ev.time.sleep
         ev.time.sleep = lambda s: None
@@ -350,11 +390,7 @@ def _part_evidence_main():  # noqa: C901
         def _put_403(req, timeout=0):
             opened.append(req.get_method())
             if req.get_method() == "HEAD":
-                class _R:
-                    def read(self): return b""
-                    def __enter__(self): return self
-                    def __exit__(self, *a): return False
-                return _R()
+                return _EmptyAnswer()
             raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
         urllib.request.urlopen = _put_403
         try:
@@ -603,7 +639,6 @@ def _part_evidence_archive():  # noqa: C901
     if 'startswith("automas-")' not in warn:
         fails.append("时间检查没跳过 automas- 那几份（它们必然对得上）")
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 
 
 def _part_evidence_cli_window():
@@ -683,10 +718,6 @@ script in the ledger. The user, 2026-09-18: 「证据包永远按时间窗取」
             got = type(exc).__name__
         check("拒绝", got in ("ValueError", "TypeError"))
 
-    print()
-    if fails:
-        print("FAILED:", fails); sys.exit(1)
-    print("all checks passed")
 
 
 def _part_evidence_daily_silent():
@@ -861,10 +892,6 @@ def _part_evidence_maaend_live_logs():
     check("the source logs are not touched", ("MaaEnd Agent Service" in (dbg / "go-service.log").read_text(encoding="utf-8"),
                                               src_size > len(gs.encode())), (True, True))
 
-    if fails:
-        print(f"\n{len(fails)} failed")
-        sys.exit(1)
-    print("\nall passed")
 
 
 def _part_evidence_notify_once():
@@ -875,33 +902,10 @@ def _part_evidence_notify_once():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
-                 "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+    _stub_pywin32()
 
     import boot_stages
     from ark_relay.features import evidence
-
-
-    class _Log:
-        def __init__(self): self.lines = []
-        def warning(self, *a): self.lines.append(a[0] % a[1:])
-        def info(self, *a): self.lines.append(a[0] % a[1:] if len(a) > 1 else a[0])
-        def exception(self, *a): self.lines.append(a[0])
 
 
     class _Notifier:
@@ -1124,10 +1128,6 @@ def _part_evidence_relay_after_run():
     check("账本记了没干完", entry.get("incomplete"), "MAA 这一轮有 1 项没干成，但它自己没报错：\n· 基建换班：没换上")
     check("账本里也有链接", (entry.get("raw") or {}).get("evidence_page"), "https://cos.example/MAA.zip")
 
-    print()
-    if fails:
-        print("FAILED:", fails); sys.exit(1)
-    print("all checks passed")
 
 
 def _part_evidence_saved_count():
@@ -1158,15 +1158,10 @@ def _part_evidence_saved_count():
             return []
 
 
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     cfg = Config()
     cfg.state_dir = tmpdir()
     cfg.history_dir = None
-    e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+    e = eng_mod.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=Notes())
     start = datetime(2026, 10, 12, 10, 5, tzinfo=SERVER_TZ)
     rec = RunRecord(run_id="2026-10-12/endfield/MaaEnd-06-04-00", script="MaaEnd", user="endfield",
                     started=start, finished=start + timedelta(minutes=30), ok=False, failed_tasks=["x"], raw={})
@@ -1193,32 +1188,9 @@ def _part_evidence_sources_unreachable():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
-                 "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+    _stub_pywin32()
 
     import boot_stages
-
-
-    class _Log:
-        def __init__(self): self.lines = []
-        def warning(self, *a): self.lines.append(a[0] % a[1:])
-        def info(self, *a): self.lines.append(a[0] % a[1:] if len(a) > 1 else a[0])
-        def exception(self, *a): self.lines.append(a[0])
 
 
     def down(*a, **k):
@@ -1238,10 +1210,6 @@ def _part_evidence_sources_unreachable():
     check("it names the exception", "timed out" in line and "URLError" in line)
     check("it says the next boot compares again, not tomorrow", ("下次开机再比" in line, "明天" in line), (True, False))
 
-    if fails:
-        print(f"\n{len(fails)} failed")
-        sys.exit(1)
-    print("\nall passed")
 
 
 def _part_error_evidence():
@@ -1884,10 +1852,6 @@ def _part_game_evidence():
           "[2026-11-08 10:00:02.000] FailureCollector dump\n[2026-11-08 10:00:03.000] 任务完成: 🚚转交委托\n")
     check("[WRN] and FailureCollector lines are not evidence", collector_maaend.task_evidence(_w).get("转交委托"), "")
 
-    if fails:
-        print("FAILED:", fails)
-        sys.exit(1)
-    print("all checks passed")
 
 
 def _part_held_push_keeps_evidence():
@@ -1927,11 +1891,6 @@ def _part_held_push_keeps_evidence():
             return []      # no errors: sent
 
 
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     captures = Counter()
     handle._archive_okww_evidence = lambda eng, r: captures.update([r.run_id])
     handle._weekly_gates = lambda eng, r: None
@@ -1944,7 +1903,7 @@ def _part_held_push_keeps_evidence():
         cfg = Config()
         cfg.state_dir = TMP / "state"
         cfg.state_dir.mkdir(exist_ok=True)
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=Notes())
         e._scripts_running = lambda: False
         e._verify_outcome = lambda r: None
         e._archive_maaend_evidence = lambda r: captures.update([r.run_id])
@@ -1979,7 +1938,6 @@ def _part_held_push_keeps_evidence():
         check("停一切那条报出去了", bool(e.notifier.sent))
         check("报的时候没再取证（还是 1 次）", captures[f"{script}-fail2"], 1)
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 
 
 def _part_task_shots():
@@ -2200,11 +2158,6 @@ def _part_task_shots():
             return []
 
 
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     class Up:
         def __init__(self):
             self.files = []
@@ -2233,7 +2186,7 @@ def _part_task_shots():
     def build(notes=None):
         cfg = Config()
         cfg.state_dir = tmpdir()
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=notes or Notes())
+        e = eng_mod.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=notes or Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._verify_outcome = lambda r: None
@@ -2331,24 +2284,14 @@ def _part_task_shots():
 
 
 def _part_tacet_shots():
-    import json, os, sys, types
+    import json, os, types
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import report
     from ark_relay.core import notify
     from ark_relay.core.config import SERVER_TZ
 
-    fails = []
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _parts import tmpdir
     TMP = tmpdir()
     shots = TMP / "okww" / "data" / "apps" / "ok-ww" / "working" / "screenshots"; shots.mkdir(parents=True)
     state = TMP / "state"; state.mkdir()
@@ -2441,8 +2384,6 @@ def _part_tacet_shots():
     print("[关掉之后又不发了]")
     check("关的回话", modes.set_tacet_shots(state, False), "无音区结算截图：不发了")
     check("读回是关", modes.tacet_shots_on(state), False)
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_self_attrs_main():  # noqa: C901
@@ -2731,7 +2672,6 @@ def _part_self_heal_red():
     src = (RELAY / "ark_relay" / "features" / "errwatch.py").read_text(encoding="utf-8")
     check("errwatch has no daily-only door any more", "def note_daily" in src, False)
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 
 
 def _part_undefined_names():  # noqa: C901
@@ -2872,8 +2812,6 @@ def _part_undefined_names():  # noqa: C901
 
 def _part_module_table():
     import re
-    import sys
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[1]
     doc = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -2884,7 +2822,6 @@ def _part_module_table():
     missing = sorted(mods - listed)
     extra = sorted(n for n in listed - mods if n not in ("run", "make-manifest") and not n.startswith("_"))
 
-    fails = []
     print(f"  模块 {len(mods)} 个，表里提到 {len(listed & mods)} 个")
     if missing:
         fails.append(f"表里没提到：{missing}")
@@ -2897,9 +2834,6 @@ def _part_module_table():
     for name in ("shutdown", "report", "missed", "handle"):
         if re.search(rf"engine\.py[^|\n]*{name}", doc):
             fails.append(f"{name} 已经从 engine 拆出来了，表里还说在 engine 里")
-
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_parts():
