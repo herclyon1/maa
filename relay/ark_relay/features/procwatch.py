@@ -2,7 +2,6 @@
 """
 from __future__ import annotations
 
-import sys as _sys
 import time
 import subprocess
 import logging
@@ -16,9 +15,6 @@ except ImportError:
     win32api = win32service = win32con = win32event = None  # type: ignore[assignment]
 from datetime import datetime, timedelta, timezone
 from ark_relay.core.config import SERVER_TZ
-wmi_diag = _sys.modules[__name__]
-shutdown_signs = _sys.modules[__name__]
-wmi_subscription = _sys.modules[__name__]
 
 GOING_DOWN_SETTLE_SECONDS = 15.0
 
@@ -392,7 +388,7 @@ The WMI service host's process is in the wait as well (opened for
                 box["done"] = iHResult
 
         self._host_pid, self._host = None, None
-        pid = wmi_diag._winmgmt_pid()
+        pid = _winmgmt_pid()
         if pid:
             try:
                 self._host = win32api.OpenProcess(win32con.SYNCHRONIZE, False, pid)
@@ -417,7 +413,7 @@ The WMI service host's process is in the wait as well (opened for
                 self._box["events"] -= 1
                 return "event"
             if self._box["done"] is not None:
-                return "done", wmi_diag._hresult_failure(self._box["done"])
+                return "done", _hresult_failure(self._box["done"])
             rc = win32event.MsgWaitForMultipleObjects(handles, False, win32event.INFINITE,
                                                       win32event.QS_ALLINPUT)
             if rc == win32event.WAIT_OBJECT_0:
@@ -513,7 +509,7 @@ class _ProcessWatch:
         live subscription has just been cancelled and let go."""
         # Read before the subscription counts as in progress: tasklist can take
         # up to 25 s, and a stop meanwhile has nothing to wait for.
-        hosts = wmi_diag._wmi_hosts()
+        hosts = _wmi_hosts()
         with self._lock:
             if self._stop.is_set():
                 return False
@@ -535,7 +531,7 @@ class _ProcessWatch:
                     failure = got[1]
                 break
         except Exception as exc:  # noqa: BLE001 - every failure is reported in _failed
-            failure = wmi_diag._wmi_error(exc)
+            failure = _wmi_error(exc)
         finally:
             # Cancel and let go of the subscription before anything else, on a
             # drop as on the stop: WMI keeps an asynchronous call until it is
@@ -631,9 +627,9 @@ class _ProcessWatch:
         if fault is None or since is None or self.alarmed:
             return
         if not fault["diag"] and errwatch.relay_shutdown_issued():
-            self.log.info("%s，系统的程序启动通知断开后中继也停下了", shutdown_signs._down_reason())
+            self.log.info("%s，系统的程序启动通知断开后中继也停下了", _down_reason())
             return
-        asked = shutdown_signs._shutdown_before(since)
+        asked = _shutdown_before(since)
         if asked is not None:
             self.log.info("Windows 关机（%s 于 %s 发起，账户 %s），系统的程序启动通知在那之后断开，"
                           "随后中继停下，按正常关机处理，不算故障", asked["process"] or "读不到",
@@ -653,10 +649,10 @@ class _ProcessWatch:
             sub = f"subscription up {t0 - live['at']:.1f} s, {live['events']} events, last {last}"
         else:
             sub = "subscription not made"
-        now = wmi_diag._wmi_hosts()
-        return (f"diag: {detail}; {sub}; relay up {t0 - _STARTED:.0f} s; machine up {wmi_diag._uptime()}; "
+        now = _wmi_hosts()
+        return (f"diag: {detail}; {sub}; relay up {t0 - _STARTED:.0f} s; machine up {_uptime()}; "
                 f"WMI hosts at subscribe [{self.hosts}] now [{now}]; "
-                f"hypothesis: {wmi_diag._wmi_hypothesis(self.hosts, now)}")
+                f"hypothesis: {_wmi_hypothesis(self.hosts, now)}")
 
     def _left(self, t0: float) -> "tuple[float, str]":
         """(seconds still to wait before resubscribing, the same in words): the backoff counts from the failure, not from the log line."""
@@ -697,17 +693,17 @@ class _ProcessWatch:
         if first:
             # Undecided from here: stopping() pushes it if the service stops first.
             self.fault = {"why": why, "detail": detail, "live": live, "t0": t0, "diag": ""}
-        if shutdown_signs._going_down_soon():
+        if _going_down_soon():
             self.alarmed = True
             self.fault["held"] = True
             self.log.info("%s，系统的程序启动通知此时断开，按关机处理，不算故障\n%s",
-                          shutdown_signs._down_reason(), self._diag(live, detail, t0))
+                          _down_reason(), self._diag(live, detail, t0))
             return self._left(t0)[0]
         diag = self._diag(live, detail, t0)
         if first:
             # Not on the relay's own power-off above (WMI goes down with the
             # machine there): only a drop that is a fault gets the System log.
-            diag += "; " + wmi_diag._wmi_scm_events()
+            diag += "; " + _wmi_scm_events()
         left, when = self._left(t0)
         if long_outage:
             # Not back after OUTAGE_ALARM_SECONDS: not recovered, pushed.
@@ -754,7 +750,7 @@ def _start_process_watch(evt, alive: dict, log) -> bool:
 
     # Manual reset: once the stop has set it, every later wait sees it too.
     stop = win32event.CreateEvent(None, 1, 0, None)
-    watch = _ProcessWatch(evt, alive, log, lambda: wmi_subscription._AsyncSubscription(stop),
+    watch = _ProcessWatch(evt, alive, log, lambda: _AsyncSubscription(stop),
                           wake=lambda: win32event.SetEvent(stop))
     alive["watch"] = watch      # the keeper's stopping() reaches it here
 

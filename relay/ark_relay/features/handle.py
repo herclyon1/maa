@@ -4,7 +4,6 @@ window registered today, and which alarm keys were already marked sent today
 """
 from __future__ import annotations
 
-import sys as _sys
 import json
 import logging
 import re
@@ -363,21 +362,20 @@ def _push_undone(eng, rec: RunRecord, msg: str, page: str) -> tuple[str, list]:
     is run for it, so the group hears of it now (unresolved.py), whichever items
     they are - 自动采集 and 应急理智加强剂 included. Returns (title, errors) of the
     push."""
-    unresolved = _sys.modules[__name__]
-    day, shift = unresolved.where(eng, rec)
-    game = unresolved.GAME[rec.script]
+    day, shift = where(eng, rec)
+    game = GAME[rec.script]
     # The caller has just tried the bundle (_ship_evidence); no second upload here.
     note = "" if page else texts.EVIDENCE_NOT_SHIPPED + "\n"
     # Settings reset to defaults is said as such, not as 「没干完」 (outcome.summarize).
     if texts.outcome_settings_only(msg):
         title = texts.unresolved_settings(game, shift)
-        first = texts.unresolved_settings_head(game, shift, unresolved.undone_label(msg), page)
+        first = texts.unresolved_settings_head(game, shift, undone_label(msg), page)
     else:
         title = texts.unresolved_undone(game, shift)
-        first = texts.unresolved_undone_head(game, shift, unresolved.undone_label(msg), page,
+        first = texts.unresolved_undone_head(game, shift, undone_label(msg), page,
                                              _gathering_retry_note(eng, rec, msg))
     body = first + note + "\n" + msg
-    return title, _push_now(eng, day, unresolved.UNRESOLVED_KIND, rec.run_id, title, body)
+    return title, _push_now(eng, day, UNRESOLVED_KIND, rec.run_id, title, body)
 
 
 def _gathering_retry_note(eng, rec: RunRecord, msg: str) -> str:
@@ -386,9 +384,8 @@ def _gathering_retry_note(eng, rec: RunRecord, msg: str) -> str:
     did not walk (collect_retry.retry_ahead). '' - the usual words - for anything else, when
     the round's log names no such route, and when that cannot be read: the alarm goes out
     at once either way, this only keeps its first line true."""
-    unresolved = _sys.modules[__name__]
     from ark_relay.features import collect_retry, makeup  # noqa: PLC0415
-    if rec.script != "MaaEnd" or makeup.GATHERING not in unresolved._undone_items(msg):
+    if rec.script != "MaaEnd" or makeup.GATHERING not in _undone_items(msg):
         return ""
     try:
         names, state = collect_retry.retry_ahead(eng, rec)
@@ -448,7 +445,6 @@ def _push_unverified(eng, rec: RunRecord) -> None:
     round's end, after AUTO-MAS's own retries: an item another run of the day backs up is not on the list, so what is
     pushed is what nothing recovered. Never raises: bookkeeping goes on."""
     try:
-        unresolved = _sys.modules[__name__]
         # Read from handle at call time: tests rebind handle._ship_evidence.
         pass
         day = run_day(rec)
@@ -456,7 +452,7 @@ def _push_unverified(eng, rec: RunRecord) -> None:
         items = dict(core.day_unverified_items(entries)).get(rec.script)
         if not items:
             return
-        _, shift = unresolved.where(eng, rec)
+        _, shift = where(eng, rec)
         game = core._game(rec.script)
         page = _ship_evidence(eng, rec)
         head = texts.unverified_alarm_head(game, shift, "、".join(items),
@@ -466,17 +462,16 @@ def _push_unverified(eng, rec: RunRecord) -> None:
         key = f"{rec.script}:{rec.run_id}:{'、'.join(items)}"
         # Which record's booking sent it: a record replayed after its handling broke
         # off (_append_ledger_once) finds its own alarm, not an earlier run's.
-        mine = unresolved._key(UNVERIFIED_BY, rec.run_id)
-        sent_now = not eng._already_alerted(day, unresolved._key(UNVERIFIED_KIND, key))
+        mine = _key(UNVERIFIED_BY, rec.run_id)
+        sent_now = not eng._already_alerted(day, _key(UNVERIFIED_KIND, key))
         queued = False
         if sent_now:
             queued = bool(_push_now(eng, day, UNVERIFIED_KIND, key, texts.unverified_alarm(game, shift, len(items)), body))
         if sent_now or eng._already_alerted(day, mine):
-            runchecks = _sys.modules[__name__]
             from ark_relay.features import machinechecks as runs  # noqa: PLC0415
-            runchecks._UNVERIFIED[rec.run_id] = list(items)
+            _UNVERIFIED[rec.run_id] = list(items)
             runs.covered_28(eng.cfg.state_dir, rec.script, day, list(items))
-            if sent_now and not queued and not eng._already_alerted(day, unresolved._key(UNVERIFIED_KIND, key)):
+            if sent_now and not queued and not eng._already_alerted(day, _key(UNVERIFIED_KIND, key)):
                 # Went out, but its own day mark did not land (unresolved.send said so in
                 # one ERROR, replay included): the mark of this record would fail on the
                 # same lock and say the same cause again.
@@ -499,8 +494,7 @@ def _push_now(eng, day: str, kind: str, run_id: str, title: str, body: str) -> l
     """Push one alarm of `kind` about the record `run_id` to the group now; one that
     did not go out is kept and tried again on the next tick (unresolved.retry_unsent).
     -> errors."""
-    unresolved = _sys.modules[__name__]
-    if unresolved.send(eng, day, kind, run_id, title, body):
+    if send(eng, day, kind, run_id, title, body):
         return []
     eng._unsent_unresolved.append((day, kind, run_id, title, body))
     eng._persist_pending()
@@ -537,9 +531,8 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> 
     for every such failure (unresolved.py).
     A make-up that went through is not pushed (_flush_pending; the daily report
     says it). False when the push failed (keep it held)."""
-    unresolved = _sys.modules[__name__]
-    day, shift = unresolved.where(eng, rec)
-    game = unresolved.GAME[rec.script]
+    day, shift = where(eng, rec)
+    game = GAME[rec.script]
     note = _evidence_note(eng, rec)
     raw = rec.raw or {}
     names = core._with_causes(list(rec.failed_tasks or []), raw.get("maaend_fail_causes"))
@@ -558,7 +551,7 @@ def _push_unresolved(eng, rec: RunRecord, makeup_phrase: str, attempts: int) -> 
         unread_note = getattr(texts, "UNREACHABLE_UNREAD_NOTE", None)
         body += "\n" + (unread_note if raw.get("maaend_unreachable_unread") and unread_note
                          else texts.UNREACHABLE_SHAPE_NOTE)
-    return unresolved.send(eng, day, unresolved.UNRESOLVED_KIND, rec.run_id, title, body)
+    return send(eng, day, UNRESOLVED_KIND, rec.run_id, title, body)
 
 
 def _unresolved_title_head(game: str, shift: str, makeup_phrase: str, stuck: str, page: str) -> tuple[str, str]:
@@ -602,9 +595,8 @@ def _append_ledger_once(eng, rec: RunRecord) -> None:
 
 
 def _same_shift(eng, a: RunRecord, b: RunRecord) -> bool:
-    unresolved = _sys.modules[__name__]
     try:
-        return unresolved.where(eng, a) == unresolved.where(eng, b)
+        return where(eng, a) == where(eng, b)
     except Exception:  # not knowing keeps the held record on its usual path
         log.warning("分不清 %s 和 %s 是不是同一班，按原样处理", a.run_id, b.run_id, exc_info=True)
         return False
@@ -876,9 +868,8 @@ def _attempts(eng, rec: RunRecord, day: str) -> int:
     same script and user in `rec`'s shift since the last row that exited normally,
     plus the success that healed it when there is one (「跑了 N 次」).
     """
-    unresolved = _sys.modules[__name__]
     try:
-        shift = unresolved.where(eng, rec)
+        shift = where(eng, rec)
     except Exception:  # noqa: BLE001 - no shift known: the streak alone bounds the count
         shift = None
     rows = []
@@ -895,7 +886,7 @@ def _attempts(eng, rec: RunRecord, day: str) -> int:
             continue
         if shift is not None and e.get("run_id") != rec.run_id:
             try:
-                if unresolved.where(eng, unresolved._row_rec(e)) != shift:
+                if where(eng, _row_rec(e)) != shift:
                     continue
             except Exception:  # noqa: BLE001 - unknown shift: judged by the streak alone
                 pass
@@ -972,9 +963,8 @@ def _healed_title(eng, rec: RunRecord, day: str) -> str:
     its make-up went through (MAA / MaaEnd), it sat in an update's streak
     (core.episode_kinds 「update」), or AUTO-MAS's own retry got past it."""
     if rec.script in ("MAA", "MaaEnd"):
-        unresolved = _sys.modules[__name__]
-        if unresolved.after_makeup(eng, rec)[0] == unresolved.PASSED:
-            return texts.makeup_passed(unresolved.GAME[rec.script], unresolved.where(eng, rec)[1])
+        if after_makeup(eng, rec)[0] == PASSED:
+            return texts.makeup_passed(GAME[rec.script], where(eng, rec)[1])
     if core.episode_kinds(eng.state.read_ledger(day)).get(rec.run_id) == "update":
         return texts.healed_after_update(rec.script)
     return texts.self_healed(rec.script)
@@ -1105,7 +1095,6 @@ def _update_restarts(eng, rec: RunRecord) -> dict:
     ledger of the record's day and the day before (this record included): `done` is
     the round of the same shift that got everything done (unresolved.done_in_shift),
     '' when there is none; `held` whether it is still held for a later push."""
-    unresolved = _sys.modules[__name__]
     day = rec.started.astimezone(SERVER_TZ)
     rows: dict[str, dict] = {}
     for d in ((day - timedelta(days=1)).strftime("%Y-%m-%d"), day.strftime("%Y-%m-%d")):
@@ -1115,11 +1104,11 @@ def _update_restarts(eng, rec: RunRecord) -> dict:
     held = {r.run_id for r in eng._pending.values()}
     out: dict = {}
     for rid, e in rows.items():
-        r = unresolved._row_rec(e)
+        r = _row_rec(e)
         if r.started is None:
             continue
         try:
-            done = unresolved.done_in_shift(eng, r)
+            done = done_in_shift(eng, r)
         except Exception:  # the check then has nothing to judge about it
             log.warning("查不了 %s 那一班有没有做完的那趟，上机核对跳过它", rid, exc_info=True)
             continue
@@ -2277,9 +2266,8 @@ def _update_restart_done(eng, rec: RunRecord) -> bool:
     two records came in."""
     if rec.script != "MaaEnd" or not (rec.raw or {}).get("maaend_update_restart"):
         return False
-    unresolved = _sys.modules[__name__]
     try:
-        done = unresolved.done_in_shift(eng, rec)
+        done = done_in_shift(eng, rec)
     except Exception:  # not knowing keeps it on its usual path
         log.warning("查不了这一班有没有做完的那趟，%s 照旧处理", rec.run_id, exc_info=True)
         return False
@@ -2628,9 +2616,8 @@ def _book(eng, rec: RunRecord) -> None:
         # The shift's round already got everything done: this attempt is MaaEnd
         # restarting into its new build - not held, no make-up, not pushed; its
         # ledger line stays and the daily report says it (_drop_update_after_done).
-        unresolved = _sys.modules[__name__]
         try:
-            done = unresolved.done_in_shift(eng, rec)
+            done = done_in_shift(eng, rec)
         except Exception:  # not knowing keeps it held, as before
             log.warning("查不了这一班有没有做完的那趟，%s 照旧压着", rec.run_id, exc_info=True)
             done = ""
@@ -2751,8 +2738,7 @@ def _flush_pending(eng) -> None:
     machine-check FAILs kept while their run was held (runchecks._settle_held)."""
     try:
         if getattr(eng, "_unsent_unresolved", None):
-            unresolved = _sys.modules[__name__]
-            unresolved.retry_unsent(eng)
+            retry_unsent(eng)
         if not (eng._pending or eng._recovered):
             return
 
@@ -2788,8 +2774,7 @@ def _flush_pending(eng) -> None:
                 # its retries are over, so its alarm goes out now, saying whose run it was.
                 # Not a shift's: no update-restart, make-up or maintenance branch below.
                 title, body = _failure_alarm(eng, rec, texts.HAND_STARTED_NOTE, held=True)
-                unresolved = _sys.modules[__name__]
-                if not unresolved.send(eng, run_day(rec), "手动", rec.run_id, title, body):
+                if not send(eng, run_day(rec), "手动", rec.run_id, title, body):
                     continue
                 eng._pending.pop((rec.script, rec.user), None)
                 eng._persist_pending()
@@ -2830,18 +2815,17 @@ def _flush_pending(eng) -> None:
                 # every time (unresolved.py). Went through -> recovered: the daily report
                 # only, its make-up line and the failed run's row say it.
                 from ark_relay.features import makeup  # noqa: PLC0415
-                unresolved = _sys.modules[__name__]
                 # MAA refused the config itself: no make-up can help, so it is refused
                 # here and the alarm goes out on this tick, not after maybe_run's.
                 makeup.refuse_rejected(eng, rec)
-                verdict, phrase = unresolved.after_makeup(eng, rec)
-                if verdict == unresolved.WAIT:
+                verdict, phrase = after_makeup(eng, rec)
+                if verdict == WAIT:
                     continue
-                if verdict == unresolved.PASSED:
+                if verdict == PASSED:
                     eng._pending.pop((rec.script, rec.user), None)
                     eng._persist_pending()
                     eng.log_tails.pop(rec.run_id, None)
-                    passed = texts.makeup_passed(unresolved.GAME[rec.script], unresolved.where(eng, rec)[1])
+                    passed = texts.makeup_passed(GAME[rec.script], where(eng, rec)[1])
                     log.info("%s（尝试 %d 次）：补跑走通了，只进日报", passed, attempts)
                     _self_heal_red(eng, f"{rec.script} {rec.run_id} {passed}",
                                    "、".join(rec.failed_tasks or []) or "没写失败项")

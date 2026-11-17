@@ -22,7 +22,6 @@ from ark_relay.core import texts
 automas_keeper = _sys.modules[__name__]
 day_roll = _sys.modules[__name__]
 dirwatch = _sys.modules[__name__]
-automas_procs = _sys.modules[__name__]
 
 # Processes whose presence vetoes any revival outright.
 INSTALLER_HINTS = (b"auto-mas-setup", b"unins")
@@ -563,7 +562,7 @@ Two of the four things that can wake the loop live here: the backend dying,
 
     def __init__(self, log, notifier):
         self.log, self.notifier = log, notifier
-        self.handle = automas_procs._automas_handle()
+        self.handle = _automas_handle()
         if self.handle:
             log.info("已挂上 AUTO-MAS 进程句柄，它一退出立即拉起")
         self.proc_evt = win32event.CreateEvent(None, 0, 0, None)
@@ -661,7 +660,7 @@ Two of the four things that can wake the loop live here: the backend dying,
         """A python.exe has started: if it is the backend, take the handle at once instead of waiting for the next liveness check."""
         if self.handle:
             return
-        self.handle = automas_procs._automas_handle()
+        self.handle = _automas_handle()
         if self.handle:
             self.log.info("AUTO-MAS 已启动，进程句柄已挂上")
             self._confirm()
@@ -709,7 +708,7 @@ Two of the four things that can wake the loop live here: the backend dying,
         if not (died or due_check):
             return
         self.next_check = now + procwatch.AUTOMAS_CHECK_SECONDS
-        running = automas_procs._automas_running()
+        running = _automas_running()
         revived_before = self.revive_failures
         if not running:
             self._revive(now, after_exit=died)
@@ -717,7 +716,7 @@ Two of the four things that can wake the loop live here: the backend dying,
         # Adopt whichever backend now exists - our revival, or one that
         # was there all along. A revived backend is a new process, so
         # the old handle (already closed above) never signals again.
-        self.handle = automas_procs._automas_handle()
+        self.handle = _automas_handle()
         if self.handle:
             self.log.info("AUTO-MAS 进程句柄已挂上")
             self._confirm()
@@ -745,7 +744,7 @@ Two of the four things that can wake the loop live here: the backend dying,
     def _exited(self) -> None:
         """The backend's handle signalled: say why it went, as far as the relay can know, and let go of the handle.
         """
-        code = automas_procs._exit_code(self.handle)
+        code = _exit_code(self.handle)
         win32api.CloseHandle(self.handle)
         self.handle = None
         said = f"0x{code & 0xFFFFFFFF:X}" if code is not None else "读不到"
@@ -771,8 +770,8 @@ Two of the four things that can wake the loop live here: the backend dying,
             return
         if xmls is None:
             self.log.info("AUTO-MAS 后台退出：系统日志读不到，判断不了是不是 Windows 在关机，按没在关机处理")
-        out = automas_procs._tasklist()
-        installer = out is not None and any(h in out for h in automas_procs.INSTALLER_HINTS)
+        out = _tasklist()
+        installer = out is not None and any(h in out for h in INSTALLER_HINTS)
         if installer:
             # AUTO-MAS installs an update by starting AUTO-MAS-Setup.exe and
             # exiting (preupdate_automas.py); _revive leaves it alone meanwhile.
@@ -846,7 +845,7 @@ Two of the four things that can wake the loop live here: the backend dying,
             self.hold_said = reason
         # Two gates before the force-kill, because reviving is not
         # free: it kills a window somebody may be looking at.
-        installer = automas_procs._installer_running()
+        installer = _installer_running()
         if installer is None:
             # Unknown is not "no installer": killing a window mid-install is the
             # worse mistake (test_verify.py), so hands off - but said as
@@ -863,7 +862,7 @@ Two of the four things that can wake the loop live here: the backend dying,
             self.shell_only_since = None
             self.shell_grace_noted = False
             holding = "安装或卸载程序还开着，中继不去动它"
-        elif automas_procs._automas_shell_running():
+        elif _automas_shell_running():
             # Shell up, backend down: it may be doing first-run setup or a
             # self-update, so give it a grace period first.
             if self.shell_only_since is None:

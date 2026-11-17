@@ -22,8 +22,6 @@ from dataclasses import dataclass
 from ark_relay.core.config import atomic_write_text, master_config_dir
 from ark_relay.features import errwatch
 from ark_relay.core import texts
-miniyaml = _sys.modules[__name__]
-masconfig = _sys.modules[__name__]
 masuser = _sys.modules[__name__]
 
 _BOOL = {"yes": True, "true": True, "on": True, "no": False, "false": False, "off": False}
@@ -331,7 +329,7 @@ def parse_text(src: Path, text: str) -> dict:
     """Parse `text` from `src` (.json or .yaml) into the v5.7 JSON shape."""
     if Path(src).suffix == ".json":
         return json.loads(text)
-    doc = miniyaml.loads(text)
+    doc = loads(text)
     if not isinstance(doc, dict):
         raise ValueError(f"{Path(src).name}: not a mapping")
     return legacy(doc)
@@ -507,7 +505,7 @@ def _load(path: Path):
     """The file's settings - the JSON, or AUTO-MAS v5.8's YAML in the same shape (masconfig,
     ledger #113); None when it is not there; raises ValueError / OSError otherwise."""
     try:
-        return masconfig.read(path)
+        return read(path)
     except FileNotFoundError:
         return None
 
