@@ -1520,18 +1520,19 @@ def _part_error_evidence():
 
     D1, D2, D3, D4 = (DAY - timedelta(days=n) for n in (1, 2, 3, 4))
     bf_log = tmpdir() / "relay.log"
-    bf_log.write_text("".join(f"{stamp(d, hh, mm)} INFO    ark.test  {text}\n" for d, hh, mm, text in (
+    bf_log.write_bytes("".join(f"{stamp(d, hh, mm)} INFO    ark.test  {text}\n" for d, hh, mm, text in (
         (D4, 9, 0, "four days back"), (D3, 9, 0, "d3 morning"), (D3, 21, 40, "d3 evening"),
         (D2, 9, 0, "d2 morning"), (D2, 14, 7, "d2 afternoon"), (D1, 9, 0, "d1 morning"),
-        (D1, 23, 59, "d1 last minute"), (DAY, 0, 0, "today midnight"), (DAY, 9, 0, "today"))), encoding="utf-8")
-    d3_bytes = "".join(f"{stamp(D3, hh, mm)} INFO    ark.test  {t}\n" for hh, mm, t in ((9, 0, "d3 morning"), (21, 40, "d3 evening"))).encode()
-    cos = FakeCos({key_of(D3): d3_bytes, key_of(D2): f"{stamp(D2, 9, 0)} INFO    ark.test  d2 morning\n".encode()})
+        (D1, 23, 59, "d1 last minute"), (DAY, 0, 0, "today midnight"), (DAY, 9, 0, "today"))).encode("utf-8"))
+    d3_bytes = "".join(f"{stamp(D3, hh, mm)} INFO    ark.test  {t}\n" for hh, mm, t in ((9, 0, "d3 morning"), (21, 40, "d3 evening"))).encode("utf-8")
+    d2_morning = f"{stamp(D2, 9, 0)} INFO    ark.test  d2 morning\n".encode("utf-8")
+    cos = FakeCos({key_of(D3): d3_bytes, key_of(D2): d2_morning})
     before = (error_evidence._last_attempt[0], dict(error_evidence._last_ok), list(error_evidence._last_errors))
     got = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=cos)
     check("yesterday (no object) and the day before (a shorter object) are sent; three days back is whole and stays",
           (cos.puts, got["kept"], got["errors"]), ([key_of(D1), key_of(D2)], 1, []))
     check("what was sent says what COS held before", [(d, k, h) for d, k, h, _n in got["sent"]],
-          [(f"{D1:%Y-%m-%d}", "relay", None), (f"{D2:%Y-%m-%d}", "relay", len(f"{stamp(D2, 9, 0)} INFO    ark.test  d2 morning\n"))])
+          [(f"{D1:%Y-%m-%d}", "relay", None), (f"{D2:%Y-%m-%d}", "relay", len(d2_morning))])
     check("yesterday's object is that day's lines to its last minute, nothing of today or the day before",
           (b"d1 morning" in cos.held[key_of(D1)], b"d1 last minute" in cos.held[key_of(D1)],
            b"today" in cos.held[key_of(D1)], b"d2" in cos.held[key_of(D1)]), (True, True, False, False))
