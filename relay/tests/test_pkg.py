@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 # ruff: noqa: PLC0415
+import contextlib
+import importlib.util
+import io
+import re
 import sys
 from pathlib import Path
 
@@ -11,13 +15,31 @@ from _parts import check, fails, require, run_parts, tmpdir
 _SHARED = (check, fails, require, tmpdir)
 
 
+def _load(name, path):
+    """Load a script outside the relay package as a module."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _quiet(fn, *args):
+    """Run `fn`, return (its result, the lines it printed)."""
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = fn(*args)
+    return rc, buf.getvalue().splitlines()
+
+
+def _iss_proc(code: str, name: str) -> str:
+    """The text of one procedure / function in the installer's [Code] section."""
+    m = re.search(rf"\n(?:procedure|function) {name}\b.*?\nend;", code, re.S)
+    return m.group(0) if m else ""
+
+
 def _part_pkg_appfiles_update():
     """A relay deploy keeps every installer-written file current, or refuses loudly."""
-    import contextlib
     import hashlib
-    import importlib.util
-    import io
-    import re
     import subprocess
     import tempfile
 
@@ -25,22 +47,8 @@ def _part_pkg_appfiles_update():
     PD_PATH = ROOT / "scripts/windows/pkg_deploy.py"
 
 
-    def load(name, path):
-        spec = importlib.util.spec_from_file_location(name, path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
-
-
-    pd = load("pkg_deploy", PD_PATH)
-    pa = load("pkg_appfiles", ROOT / "scripts/mac/lib/pkg_appfiles.py")
-
-
-    def quiet(fn, *args):
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            rc = fn(*args)
-        return rc, buf.getvalue().splitlines()
+    pd = _load("pkg_deploy", PD_PATH)
+    pa = _load("pkg_appfiles", ROOT / "scripts/mac/lib/pkg_appfiles.py")
 
 
     def sha(p: Path) -> str:
@@ -89,7 +97,7 @@ def _part_pkg_appfiles_update():
     def stage_send(app: Path, rels, content=None):
         """What 4.5p does on the machine before `appfiles`: an empty incoming folder holding
     the files sent; returns the <rel>=<sha1> arguments (of the repo file)."""
-        quiet(pd.appfiles_stage, app)
+        _quiet(pd.appfiles_stage, app)
         pairs = []
         for rel in rels:
             dst = app / pd.APPFILES_IN / rel
@@ -108,29 +116,29 @@ def _part_pkg_appfiles_update():
             old = '{"old": true}\n' if rel.endswith(".json") else "OLD = 1\n"
             app = make_app(td, {rel: old})
             check("changed: in the deploy's list, alone", pa.changed(info_of(app), FILES), [rel])
-            rc, out = quiet(pd.appfiles, app, stage_send(app, [rel]))
+            rc, out = _quiet(pd.appfiles, app, stage_send(app, [rel]))
             check("changed: swapped", (rc, out), (0, [f"APPFILE {rel}", "APPFILES_OK 1"]))
             check("changed: reads back as the repo file", sha(app / rel), sha(FILES[rel]))
             check("changed: no .new and no incoming folder left",
                   ((app / (rel + ".new")).exists(), (app / pd.APPFILES_IN).exists()), (False, False))
             check("changed: the deploy's list is empty now", pa.changed(info_of(app), FILES), [])
-            rc, out = quiet(pd.appfiles_back, app)
+            rc, out = _quiet(pd.appfiles_back, app)
             check("appfiles-back: the old one back", (app / rel).read_text(encoding="utf-8"), old)
         with tempfile.TemporaryDirectory() as td:
             app = make_app(td, {rel: "OLD = 1\n"})
             broken = b"{not json" if rel.endswith(".json") else b"def broken(:\n"
             pairs = [f"{rel}={hashlib.sha1(broken).hexdigest()}"]
-            quiet(pd.appfiles_stage, app)
+            _quiet(pd.appfiles_stage, app)
             (app / pd.APPFILES_IN / rel).parent.mkdir(parents=True, exist_ok=True)
             (app / pd.APPFILES_IN / rel).write_bytes(broken)
-            rc, out = quiet(pd.appfiles, app, pairs)
+            rc, out = _quiet(pd.appfiles, app, pairs)
             check("does not load: exit 1, nothing changed",
                   (rc, out[-1].startswith("APPFILES_FAIL nothing changed"), (app / rel).read_text(encoding="utf-8")),
                   (1, True, "OLD = 1\n"))
         with tempfile.TemporaryDirectory() as td:
             app = make_app(td, {rel: "OLD = 1\n"})
             pairs = stage_send(app, [rel], {rel: FILES[rel].read_bytes()[:-1]})
-            rc, out = quiet(pd.appfiles, app, pairs)
+            rc, out = _quiet(pd.appfiles, app, pairs)
             check("arrived damaged: exit 1, nothing changed",
                   (rc, out[-1].startswith("APPFILES_FAIL nothing changed"), (app / rel).read_text(encoding="utf-8")),
                   (1, True, "OLD = 1\n"))
@@ -141,20 +149,20 @@ def _part_pkg_appfiles_update():
         (app / "handover" / "leftovers.py").unlink()
         want = pa.changed(info_of(app), FILES)
         check("the three in the list", sorted(want), ["handover/leftovers.py", "launch.py", "switch.py"])
-        rc, out = quiet(pd.appfiles, app, stage_send(app, want))
+        rc, out = _quiet(pd.appfiles, app, stage_send(app, want))
         check("all swapped", (rc, out[-1]), (0, "APPFILES_OK 3"))
-        quiet(pd.appfiles_back, app)
+        _quiet(pd.appfiles_back, app)
         check("back: old contents, the new one gone",
               ((app / "launch.py").read_text(encoding="utf-8"), (app / "switch.py").read_text(encoding="utf-8"),
                (app / "handover" / "leftovers.py").exists()), ("OLD = 1\n", "OLD = 2\n", False))
-        rc, out = quiet(pd.appfiles_back, app)
+        rc, out = _quiet(pd.appfiles_back, app)
         check("back again: nothing left to put back", out, ["APPFILES_BACK 0"])
     with tempfile.TemporaryDirectory() as td:
         app = make_app(td, {"launch.py": "OLD = 1\n"})
-        quiet(pd.appfiles, app, stage_send(app, ["launch.py"]))
+        _quiet(pd.appfiles, app, stage_send(app, ["launch.py"]))
         (app / "launch.py").write_text("NEXT = 1\n", encoding="utf-8")
-        quiet(pd.appfiles_stage, app)                       # the next deploy starts
-        quiet(pd.appfiles_back, app)
+        _quiet(pd.appfiles_stage, app)                       # the next deploy starts
+        _quiet(pd.appfiles_back, app)
         check("an earlier deploy's backup is dropped at the next stage (back cannot restore it)",
               (app / "launch.py").read_text(encoding="utf-8"), "NEXT = 1\n")
 
@@ -266,7 +274,6 @@ if [ -n "$APP_CHANGED" ]; then pkg_appfiles_step && echo STEP_OK || echo "STEP_F
 
 def _part_pkg_install_messages():
     """What the installer and switch.py tell him matches what they did."""
-    import re
 
     RELAY = Path(__file__).resolve().parents[1]
     ROOT = RELAY.parent
@@ -275,11 +282,6 @@ def _part_pkg_install_messages():
     iss = (ROOT / "packaging" / "ark-relay.iss").read_text(encoding="utf-8-sig")
     code = iss.split("[Code]", 1)[1]
     switch_src = (ROOT / "packaging" / "switch.py").read_text(encoding="utf-8")
-
-
-    def proc(name: str) -> str:
-        m = re.search(rf"\n(?:procedure|function) {name}\b.*?\nend;", code, re.S)
-        return m.group(0) if m else ""
 
 
     def boxes(body: str) -> "list[str]":
@@ -291,7 +293,7 @@ def _part_pkg_install_messages():
 
 
     print("[a failed switch-over: the box says what happened]")
-    step = proc("CurStepChanged")
+    step = _iss_proc(code, "CurStepChanged")
     texts = boxes(step)
     check("CurStepChanged has message boxes", len(texts) >= 1, True)
     check("no box says the old relay took over", [t for t in texts if "退回老中继" in t], [])
@@ -306,7 +308,7 @@ def _part_pkg_install_messages():
     # switch.py stop writes the stop marker; a resume that fails before start_watchdog leaves
     # it, and the relay's guard leaves the watchdog down until the next boot (switch.py
     # WATCHDOG_MARKER), so a re-login brings back the relay but not its watchdog.
-    resume_box = " ".join(boxes(proc("DeinitializeSetup")))
+    resume_box = " ".join(boxes(_iss_proc(code, "DeinitializeSetup")))
     check("the failed-resume box does not promise a re-login", "重新登录" in resume_box, False)
     check("the failed-resume box says a restart brings it back", "重启电脑" in resume_box, True)
 
@@ -324,7 +326,6 @@ def _part_pkg_install_messages():
 def _part_pkg_layout_names():
     """Every pkg_layout name the packaged relay's callers use exists in pkg_layout.py."""
     import ast
-    import re
 
     RELAY = Path(__file__).resolve().parents[1]
     ROOT = RELAY.parent
@@ -411,11 +412,7 @@ def _part_pkg_pin_whole_write():
 
 def _part_pkg_runtime_update():  # noqa: C901
     """A relay deploy swaps the installed relay's runtime when it is not what the repo builds."""
-    import contextlib
-    import importlib.util
-    import io
     import os
-    import re
     import subprocess
     import tempfile
     import zipfile
@@ -425,23 +422,9 @@ def _part_pkg_runtime_update():  # noqa: C901
     PA_PATH = ROOT / "scripts/mac/lib/pkg_appfiles.py"
 
 
-    def load(name, path):
-        spec = importlib.util.spec_from_file_location(name, path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
-
-
-    pd = load("pkg_deploy", PD_PATH)
-    pa = load("pkg_appfiles", PA_PATH)
-    build = load("build", ROOT / "packaging/build.py")
-
-
-    def quiet(fn, *args):
-        buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            rc = fn(*args)
-        return rc, buf.getvalue().splitlines()
+    pd = _load("pkg_deploy", PD_PATH)
+    pa = _load("pkg_appfiles", PA_PATH)
+    build = _load("build", ROOT / "packaging/build.py")
 
 
     WANT_PY = pa.py_version((ROOT / "packaging/build.py").read_text(encoding="utf-8"))
@@ -583,7 +566,7 @@ def _part_pkg_runtime_update():  # noqa: C901
     with tempfile.TemporaryDirectory() as td:
         app = make_app(td)
         ops = FakeRuntime()
-        rc, out = quiet(pd.runtime_check, app, WANT_PY, PINS, ops)
+        rc, out = _quiet(pd.runtime_check, app, WANT_PY, PINS, ops)
         check("complete and the one wanted: ready, its python.exe named",
               (rc, out[-1]), (0, f"RUNTIME_READY={app / 'runtime' / pd.RUNTIME_IN / 'python' / 'python.exe'}"))
         check("every file counted", out[0], "RUNTIME_FILES 3")
@@ -598,7 +581,7 @@ def _part_pkg_runtime_update():  # noqa: C901
             app = make_app(td)
             damage(app / "runtime" / pd.RUNTIME_IN)
             ops = FakeRuntime()
-            rc, out = quiet(pd.runtime_check, app, WANT_PY, PINS, ops)
+            rc, out = _quiet(pd.runtime_check, app, WANT_PY, PINS, ops)
             check(f"{label}: refused, nothing run", (rc, out[-1].startswith("RUNTIME_FAIL nothing changed"), want in out[-1], ops.calls),
                   (1, True, True, []))
     for label, ops, want in (
@@ -607,7 +590,7 @@ def _part_pkg_runtime_update():  # noqa: C901
             ("it does not run", FakeRuntime(fail={"probe"}), "does not run")):
         with tempfile.TemporaryDirectory() as td:
             app = make_app(td)
-            rc, out = quiet(pd.runtime_check, app, WANT_PY, PINS, ops)
+            rc, out = _quiet(pd.runtime_check, app, WANT_PY, PINS, ops)
             check(f"{label}: refused", (rc, want in out[-1]), (1, True))
     check("names compared as PEP 503", pd.runtime_gaps(probe_json(WANT_PY, {"PILLOW": "12.3.0", "PyWin32": "312"}), WANT_PY, PINS), [])
 
@@ -615,7 +598,7 @@ def _part_pkg_runtime_update():  # noqa: C901
     with tempfile.TemporaryDirectory() as td:
         app = make_app(td)
         ops = FakeRuntime(busy=2)
-        rc, out = quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
+        rc, out = _quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
         check("exit 0, swapped", (rc, out[-1]), (0, f"RUNTIME=swapped {WANT_PY} {' '.join(PINS)}"))
         check("calls in order: watchdog stopped first, waited until nothing runs from it, the new one probed, watchdog started",
               ops.calls, ["start_type", "stop_watchdog", "stop_relay", "holders", "holders", "holders", ("probe", "NEW"), "start_watchdog"])
@@ -626,14 +609,14 @@ def _part_pkg_runtime_update():  # noqa: C901
         check("the old one is python.prev", tree(app / "runtime" / pd.RUNTIME_PREV), OLD_TREE)
         check(".incoming kept (it is the swap's interpreter, and runtime-back's)",
               tree(app / "runtime" / pd.RUNTIME_IN / "python"), NEW_TREE)
-        rc, out = quiet(pd.runtime_back, app, FakeRuntime())
+        rc, out = _quiet(pd.runtime_back, app, FakeRuntime())
         check("runtime-back after it: the old one back", (rc, out[-1], tree(app / "runtime" / "python")),
               (0, "RUNTIME_BACK restored", OLD_TREE))
         check("runtime-back: the new one kept as python.failed", tree(app / "runtime" / pd.RUNTIME_FAILED), NEW_TREE)
     with tempfile.TemporaryDirectory() as td:
         app = make_app(td)
         ops = FakeRuntime(kind="DISABLED")
-        rc, out = quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
+        rc, out = _quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
         check("watchdog disabled (a revert): swapped, the watchdog neither stopped nor started",
               (rc, ops.calls), (0, ["start_type", "stop_relay", "holders", ("probe", "NEW")]))
 
@@ -641,12 +624,12 @@ def _part_pkg_runtime_update():  # noqa: C901
     with tempfile.TemporaryDirectory() as td:
         app = make_app(td, staged=False)
         ops = FakeRuntime()
-        rc, out = quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
+        rc, out = _quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
         check("nothing staged: exit 1, no call at all", (rc, ops.calls, tree(app / "runtime" / "python")), (1, [], OLD_TREE))
     with tempfile.TemporaryDirectory() as td:
         app = make_app(td)
         ops = FakeRuntime(busy="always")
-        rc, out = quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
+        rc, out = _quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
         check("still running from it after the stops: exit 1, nothing changed, the watchdog started again",
               (rc, out[-2].startswith("RUNTIME_FAIL stop: still running"), ops.calls[-1], tree(app / "runtime" / "python"),
                (app / "runtime" / pd.RUNTIME_PREV).exists()), (1, True, "start_watchdog", OLD_TREE, False))
@@ -654,7 +637,7 @@ def _part_pkg_runtime_update():  # noqa: C901
     with tempfile.TemporaryDirectory() as td:
         app = make_app(td)
         ops = FakeRuntime(fail={"stop_watchdog"})
-        rc, out = quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
+        rc, out = _quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
         check("watchdog does not stop: exit 1, the relay not even stopped, nothing changed",
               (rc, "stop_relay" in ops.calls, tree(app / "runtime" / "python")), (1, False, OLD_TREE))
     with tempfile.TemporaryDirectory() as td:
@@ -668,7 +651,7 @@ def _part_pkg_runtime_update():  # noqa: C901
 
         pd.os.rename = locked
         try:
-            rc, out = quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
+            rc, out = _quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
         finally:
             pd.os.rename = real_rename
         check("the folder cannot be renamed: tried RENAME_TRIES times, exit 1, nothing changed, watchdog started",
@@ -682,7 +665,7 @@ def _part_pkg_runtime_update():  # noqa: C901
             ("the watchdog does not come up on it", FakeRuntime(fail={"start_watchdog"}), "watchdog")):
         with tempfile.TemporaryDirectory() as td:
             app = make_app(td)
-            rc, out = quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
+            rc, out = _quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
             check(f"{label}: exit 1, failed at {step}, restored",
                   (rc, out[-2].startswith(f"RUNTIME_FAIL {step}"), out[-1]), (1, True, "RUNTIME_RESTORED the previous runtime is back"))
             check(f"{label}: runtime\\python is the old one again, the new one in python.failed, no python.prev",
@@ -702,7 +685,7 @@ def _part_pkg_runtime_update():  # noqa: C901
 
         pd.shutil.copytree = half_copy
         try:
-            rc, out = quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
+            rc, out = _quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
         finally:
             pd.shutil.copytree = real_copytree
         check("the copy beside it breaks half way: exit 1 before anything is stopped, the half copy gone",
@@ -721,7 +704,7 @@ def _part_pkg_runtime_update():  # noqa: C901
 
         pd.os.rename = second_fails
         try:
-            rc, out = quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
+            rc, out = _quiet(pd.runtime_swap, app, WANT_PY, PINS, ops)
         finally:
             pd.os.rename = real_rename
         check("python.next cannot take the name: restored, python.prev back as python",
@@ -751,7 +734,7 @@ def _part_pkg_runtime_update():  # noqa: C901
         app = make_app(td)
         (app / "runtime" / "python").rename(app / "runtime" / pd.RUNTIME_PREV)   # the swap died between its renames
         ops = FakeRuntime(fail={"stop_relay"})
-        rc, out = quiet(pd.runtime_back, app, ops)
+        rc, out = _quiet(pd.runtime_back, app, ops)
         check("runtime-back with no runtime\\python and a relay stop that raises: still restored",
               (rc, out[-1], tree(app / "runtime" / "python"), ops.calls[-1]), (0, "RUNTIME_BACK restored", OLD_TREE, "start_watchdog"))
 
@@ -759,7 +742,7 @@ def _part_pkg_runtime_update():  # noqa: C901
     with tempfile.TemporaryDirectory() as td:
         app = make_app(td)
         ops = FakeRuntime()
-        rc, out = quiet(pd.runtime_back, app, ops)
+        rc, out = _quiet(pd.runtime_back, app, ops)
         check("no python.prev: nothing put back, only the watchdog started (a lost answer may have stopped it)",
               (rc, out, ops.calls, tree(app / "runtime" / "python")), (0, ["RUNTIME_BACK nothing"], ["start_type", "start_watchdog"], OLD_TREE))
     with tempfile.TemporaryDirectory() as td:
@@ -767,17 +750,17 @@ def _part_pkg_runtime_update():  # noqa: C901
         for name in (pd.RUNTIME_PREV, pd.RUNTIME_FAILED):
             (app / "runtime" / name).mkdir()
             (app / "runtime" / name / "python.exe").write_text("EARLIER", encoding="utf-8")
-        rc, out = quiet(pd.runtime_stage, app)
+        rc, out = _quiet(pd.runtime_stage, app)
         check("runtime-stage: an empty .incoming, an earlier change's python.prev and python.failed gone",
               (out, os.listdir(app / "runtime" / pd.RUNTIME_IN), (app / "runtime" / pd.RUNTIME_PREV).exists(),
                (app / "runtime" / pd.RUNTIME_FAILED).exists(), tree(app / "runtime" / "python")),
               ([f"RUNTIME_IN={app / 'runtime' / pd.RUNTIME_IN}"], [], False, False, OLD_TREE))
-        rc, out = quiet(pd.runtime_back, app, FakeRuntime())
+        rc, out = _quiet(pd.runtime_back, app, FakeRuntime())
         check("so a runtime-back in this deploy cannot bring back an earlier runtime", out, ["RUNTIME_BACK nothing"])
     with tempfile.TemporaryDirectory() as td:
         app = make_app(td)
-        quiet(pd.runtime_swap, app, WANT_PY, PINS, FakeRuntime())
-        quiet(pd.runtime_done, app)
+        _quiet(pd.runtime_swap, app, WANT_PY, PINS, FakeRuntime())
+        _quiet(pd.runtime_done, app)
         check("runtime-done: .incoming gone, python.prev kept",
               ((app / "runtime" / pd.RUNTIME_IN).exists(), tree(app / "runtime" / pd.RUNTIME_PREV)), (False, OLD_TREE))
 
@@ -1372,10 +1355,7 @@ def _part_pkg_update_nothing_changed():
 
 def _part_pkg_watchdog_update():
     """A relay deploy updates the watchdog service's file when it changed (no setup.exe)."""
-    import contextlib
     import hashlib
-    import importlib.util
-    import io
     import os
     import subprocess
     import tempfile
@@ -1784,7 +1764,6 @@ def _part_stop_denied():
 
 def _part_stop_event_manual_reset():
     """停服务的事件必须是手动复位的（CreateEvent 第二个参数为 1）。"""
-    import re
 
     SRC = Path(__file__).resolve().parents[1] / "service.py"
     text = SRC.read_text(encoding="utf-8")
@@ -1807,7 +1786,6 @@ def _part_stop_push_errwatch_budget():
     """
     import logging
     import os
-    import re
     import subprocess
     import threading
     import time
@@ -1902,7 +1880,6 @@ def _part_stop_push_errwatch_budget():
 def _part_switch_resume():
     """An upgrade that is cancelled after it stopped the relay starts the previous version again.
     """
-    import re
     import tempfile
 
     RELAY = Path(__file__).resolve().parents[1]
@@ -1996,12 +1973,7 @@ def _part_switch_resume():
     code = iss.split("[Code]", 1)[1]
 
 
-    def proc(name: str) -> str:
-        m = re.search(rf"\n(?:procedure|function) {name}\b.*?\nend;", code, re.S)
-        return m.group(0) if m else ""
-
-
-    prep, step, deinit = proc("PrepareToInstall"), proc("CurStepChanged"), proc("DeinitializeSetup")
+    prep, step, deinit = _iss_proc(code, "PrepareToInstall"), _iss_proc(code, "CurStepChanged"), _iss_proc(code, "DeinitializeSetup")
     check("PrepareToInstall sets the flag before switch.py stop",
           0 <= prep.find("StoppedForUpgrade := True") < prep.find("stop',"), True)
     check("ssPostInstall clears it before switch.py install",
@@ -2171,9 +2143,6 @@ restart helper before it stops the relay.
 
 def _part_switch_uninstall():
     """An uninstall that fails part way still does every other step and says what is left."""
-    import contextlib
-    import io
-    import re
     import tempfile
 
     RELAY = Path(__file__).resolve().parents[1]
@@ -2384,20 +2353,10 @@ def _part_manifest_covers_tree():
     import json
     import shutil
     import subprocess
-    import sys
     import tempfile
-    from pathlib import Path
 
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY))
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" if not ok else f"  ✓ {label}")
-        if not ok:
-            fails.append(label)
 
 
     original = (RELAY / "manifest.json").read_bytes()

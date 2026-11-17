@@ -14,15 +14,12 @@ _SHARED = (check, fails, require, tmpdir)
 def _part_stop_push_slow_network():
     import os
     import socket
-    import sys
     import threading
     import time
-    from pathlib import Path
 
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _parts import tmpdir
 
     DATA = tmpdir()
     (DATA / "state").mkdir()
@@ -40,15 +37,6 @@ def _part_stop_push_slow_network():
     from ark_relay.core import skland
     from ark_relay.features import maintenance
     from ark_relay.features import commands, phone as mailbox, redbutton as mas_client
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'ok' if ok else 'FAIL'} {label}" + ("" if ok else f": {got!r} != {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     print("[4. defaults before stop-push touches anything]")

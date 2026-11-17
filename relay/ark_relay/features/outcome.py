@@ -18,7 +18,6 @@ relay picks up the new ones without a restart.
 """
 from __future__ import annotations
 
-import sys as _sys
 import re
 import xml.etree.ElementTree as ET
 import logging
@@ -31,7 +30,6 @@ from collections import Counter
 from ark_relay.features import collector_maaend, weeklyboss
 from ark_relay.core.wuwa_tables import wuwa_forgery, wuwa_tacet
 from ark_relay.core.config import okww_root
-outcome = _sys.modules[__name__]
 
 PO_REL = Path("data") / "apps" / "ok-ww" / "working" / "i18n" / "zh_CN" / "LC_MESSAGES" / "ok.po"
 TS_REL = (Path("data") / "apps" / "ok-ww" / "python" / "Lib" / "site-packages" / "ok" / "ui" / "qt"
@@ -476,9 +474,8 @@ def normalize_okww_log(text: str) -> str:
     the hand-written pairs above, for what the catalogs do not hold (pieces of longer messages,
     strings from elsewhere). A catalog that cannot be read leaves the text to the pairs alone, and
     a line neither turns back keeps failing its check, which is pushed as before."""
-    okww_i18n = _sys.modules[__name__]
     try:
-        text = okww_i18n.normalize(text)
+        text = normalize(text)
     except Exception:  # see above: the pairs still apply and unmatched lines still alarm
         log.warning("OK-WW 翻译表读不出来，只用手写对照表", exc_info=True)
     for zh, en in _OKWW_ZH_TO_EN:
@@ -571,6 +568,7 @@ _DAILY_PROGRESS = re.compile(r"DailyTask:info_set current daily progress (\d+)")
 # claim_daily_after_farm).
 _LEFTOVER_FARM = re.compile(r"DailyTask:(上游这趟不刷体力（[^）\n]*）)")
 _LEFTOVER_FAILED = re.compile(r"DailyTask:补刷体力出错，照常领日常奖励: ([^\n]*)")
+# Full value of the daily activity meter; the reading can go above it.
 _DAILY_POINTS_TARGET = 100
 
 # The overlay's daily-chest lines (okww_files/ark_overrides.tasks.py DAILY_*): every
@@ -1421,7 +1419,7 @@ def summarize(checks: list[Check], who: str) -> str | None:
         lines.append(f"{who} 这一轮有 {len(undone)} 项没干成，但它自己没报错：")
         lines += [_bullet(c) for c in undone]
     if reset:
-        lines.append(f"{who} {_SETTINGS_HEAD}" if not undone else f"另外{_SETTINGS_HEAD}")
+        lines.append(f"{who} {texts.OUTCOME_SETTINGS_HEAD}" if not undone else f"另外{texts.OUTCOME_SETTINGS_HEAD}")
         lines += [_bullet(c) for c in reset]
     if skipped := [c.label for c in checks if c.ok and c.kind == SKIPPED]:
         lines.append("按周期今天不跑：" + "、".join(skipped))
@@ -1432,9 +1430,6 @@ def summarize(checks: list[Check], who: str) -> str | None:
     if ok:
         lines.append("干成的：" + "、".join(ok))
     return "\n".join(lines)
-
-
-_SETTINGS_HEAD = texts.OUTCOME_SETTINGS_HEAD
 
 
 def _bullet(c: Check) -> str:
@@ -1453,12 +1448,9 @@ _OKWW_BACKUP = re.compile(r"info_set back_up_stamina (\d+)")
 # (「not enough to continue」, 「must_use completed, no need to use back_up」), so
 # only the first half is matched.
 _OKWW_STAMINA_END = re.compile(r"current stamina:\s*(\d+)")
-_OKWW_POINTS = outcome._DAILY_POINTS
 # One of these is logged per domain entry, so counting them counts the runs.
 _OKWW_ENTRY = re.compile(r"使用单倍体力|当前体力大于等于双倍|使用双倍")
 _OKWW_NEST_FULL = re.compile(r"指定点位都已打满")
-# Full value of the daily activity meter; the reading can go above it.
-_OKWW_POINTS_TARGET = outcome._DAILY_POINTS_TARGET
 
 _OKWW_FORGERY_INDEX = re.compile(r"info_set Teleport to Forgery Challenge (\d+)")
 # The Simulation Challenge target (one of three in OK-WW's SimulationTask);
@@ -1634,7 +1626,7 @@ def _okww_error(text: str) -> str:
     「Daily Task exception stopped」) for the same event; the innermost one
     carries the explanation.
     """
-    text = outcome.normalize_okww_log(text)
+    text = normalize_okww_log(text)
     info = okww_info(text)
     heads = list(_OKWW_TB_HEAD.finditer(text))
     if not heads:
@@ -1713,19 +1705,15 @@ _OKWW_TASK_BY_STEP = {
 }
 
 
-# The overlay's end-as-failed mark (okww_files/ark_overrides.tasks.py FAILED_MARK).
-_OKWW_ENDED_FAILED = outcome.FAILED_MARK
-
-
 def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str:
     """Turn (task, raw message, exception name) into one plain-language
     sentence. When it cannot be translated, say so outright -- never be vague.
     """
-    msg = outcome.normalize_okww_log(msg)
+    msg = normalize_okww_log(msg)
     task_zh = _OKWW_TASK_ZH.get(task)
-    if _OKWW_ENDED_FAILED in msg:
+    if FAILED_MARK in msg:
         # The overlay ended the run as failed and logged why in Chinese.
-        why = outcome.without_screen_dump(msg.split(_OKWW_ENDED_FAILED, 1)[1])
+        why = without_screen_dump(msg.split(FAILED_MARK, 1)[1])
         who = task_zh or "某个任务"
         return why if why.startswith(who) else f"{who}：{why}"
     msg_zh = next((zh for en, zh in _OKWW_MSG_ZH if en in msg), "")
@@ -1819,7 +1807,7 @@ def parse_okww_log(log_path: Path) -> dict:
     naive subtraction reads that refill as if it had never been spent.
     """
     try:
-        text = outcome.normalize_okww_log(log_path.read_text(encoding="utf-8", errors="replace"))
+        text = normalize_okww_log(log_path.read_text(encoding="utf-8", errors="replace"))
     except OSError:
         return {}
 
@@ -1948,7 +1936,7 @@ def _weekly_claim_costs(text: str) -> "list[tuple[int, int | None, int | None]]"
     """(position, waveplates, backup) for each verified weekly claim."""
     out: list = []
     prev = 0
-    for m in outcome.WEEKLY_CLAIM_OK.finditer(text):
+    for m in WEEKLY_CLAIM_OK.finditer(text):
         seg, prev = text[prev:m.start()], m.end()
         if _WEEKLY_TOPUP not in seg:
             out.append((m.start(), _WEEKLY_CLAIM_WAVEPLATES, 0))
@@ -2033,20 +2021,20 @@ def _okww_progress(text: str, out: dict) -> None:
     """Nightmare Nests all full, daily points, and why it stopped."""
     if _OKWW_NEST_FULL.search(text):
         out["okww_nest_full"] = True
-    if points := _OKWW_POINTS.findall(text):
+    if points := _DAILY_POINTS.findall(text):
         top = max(int(x) for x in points)
-        out["okww_points"] = f"{top}/{_OKWW_POINTS_TARGET}"
-        if top >= _OKWW_POINTS_TARGET:
+        out["okww_points"] = f"{top}/{_DAILY_POINTS_TARGET}"
+        if top >= _DAILY_POINTS_TARGET:
             out["okww_points"] += "（已满）"
         # The first reading already at the target: the dailies were done before
         # this run started, so farming nothing is expected.
-        if int(points[0]) >= _OKWW_POINTS_TARGET:
+        if int(points[0]) >= _DAILY_POINTS_TARGET:
             out["okww_daily_done_at_start"] = True
     # Why it stopped, in its own words. A failure the 刷体力 verdict reports
     # (outcome.stamina_failure: three revives, or a stop judged on a stamina reading
     # that failed) comes first, in the verdict's words. Otherwise "used all stamina"
     # is the good ending.
-    if why := outcome.stamina_failure(text):
+    if why := stamina_failure(text):
         out["okww_stopped"] = why
     elif "used all stamina" in text:
         # OK-WW's `used all stamina` means what is left is less than one run,
@@ -2078,10 +2066,10 @@ def _nest_step(text: str) -> str:
     # 残象聚落 item of the result check cannot disagree. A nest counts as farmed
     # only on a fight line, not on the task appearing in the log; the bare name
     # means farmed (selfcheck #25 reads it that way).
-    line = nest + _NEST_STEP[outcome.nest_state(text)]
-    if names := outcome.nests_given_up(text):
+    line = nest + _NEST_STEP[nest_state(text)]
+    if names := nests_given_up(text):
         line += f"（{'、'.join(names)}）"
-    if outcome._NEST_ADAPTED in text:
+    if _NEST_ADAPTED in text:
         # find_nest was installed adapted to a changed upstream body.
         line += "（只刷指定点位的过滤按 OK-WW 新版适配，请核对）"
     return line
@@ -2113,12 +2101,12 @@ def _okww_steps(text: str, entries: int) -> list[str]:
         # Only a claim the overlay re-read the counter for counts (outcome.weekly_claims);
         # 「已点确认」 alone is a click, not a claim. handle.py books the week on
         # 「周本…已完成」, so no unverified wording below may contain 已完成.
-        c = outcome.weekly_claims(text)
+        c = weekly_claims(text)
         claims, tried = c["verified"], c["attempted"]
-        unverified = outcome.weekly_unverified(c)
+        unverified = weekly_unverified(c)
         left = [int(m) for m in re.findall(r"本周剩余可收取次数[：:]\s*(\d+)\s*/", text)]
         # The same shortage reading as the run's result check (outcome.WEEKLY_SHORT).
-        short = bool(outcome.WEEKLY_SHORT.search(text))
+        short = bool(WEEKLY_SHORT.search(text))
         if "本周周本次数已领满" in text and not tried:
             # Read 0/3 before entering and skipped: full, but not by this run.
             steps.append("周本（已完成：进本前读到本周 0/3，早已领满，这一趟没领）")
@@ -2148,7 +2136,7 @@ def _okww_steps(text: str, entries: int) -> list[str]:
             steps.append(f"周本（已完成，领了 {claims} 次，{where}{extra}）")
         elif tried:
             steps.append(f"周本（{unverified}）")
-        elif outcome._WEEKLY_FOUGHT.search(text):
+        elif _WEEKLY_FOUGHT.search(text):
             steps.append("周本（打了，没领到奖励）")
         elif "teleport_to_boss prepared as" in text:
             # Landed in the realm, no fight line.

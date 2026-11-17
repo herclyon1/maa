@@ -17,27 +17,16 @@ def _part_disk_tidy():  # noqa: C901
     import os
     import re
     import subprocess
-    import sys
     import time
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(ROOT / "relay" / "tests"))
-    from _parts import tmpdir
 
     TOOL = ROOT / "scripts" / "mac" / "disk-tidy.py"
     spec = importlib.util.spec_from_file_location("disk_tidy", TOOL)
     dt = importlib.util.module_from_spec(spec)
     sys.modules["disk_tidy"] = dt          # dataclasses look the module up while it loads
     spec.loader.exec_module(dt)
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     BASE = tmpdir("disktidy-").resolve()

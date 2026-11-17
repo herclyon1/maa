@@ -9,6 +9,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+# relay/ first for every part, as each part used to put it (run_parts restores sys.path after one)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+def _stub_win32(*names: str) -> None:
+    """Stand-ins for the Windows-only modules the relay imports (pywin32, wmi, ...) on the Mac:
+    any attribute of one is a callable returning another stand-in. setdefault: a module already
+    in sys.modules stays; run_parts drops what a part added once the part is over."""
+    import types
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+    for name in names:
+        sys.modules.setdefault(name, _Stub(name))
 
 
 def _part_preupdate_main():
@@ -17,7 +40,7 @@ today that runs OK-WW, the one program it still launches (its update overwrites
 the local patches, re-applied right after). MaaEnd's own update is AUTO-MAS's
 job since the 2026-10-11 switch-over. The launching itself is Windows-only.
     """
-    import json, os, sys
+    import json, os
     from datetime import datetime
 
     TMP = tmpdir()
@@ -47,7 +70,6 @@ job since the 2026-10-11 switch-over. The launching itself is Windows-only.
 
     os.environ.update(ARK_HISTORY_DIR=str(TMP), ARK_AUTOMAS_DIR=str(AUTOMAS),
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import preupdate
     from ark_relay.core.config import SERVER_TZ
 
@@ -77,8 +99,6 @@ def _part_preupdate_automas_carry():
     """
     import logging
     import types
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     import boot_stages
     from ark_relay.features import errwatch
@@ -170,19 +190,7 @@ def _part_preupdate_mas_force():
     """AUTO-MAS 查更新必须带 if_force，否则下载地址是过期的一次性令牌。"""
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.features import preupdate as P  # run_automas 住在这个模块里，猴子补丁要打在它身上
-
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
-
 
     def main() -> int:
         calls = []
@@ -261,9 +269,7 @@ def _part_preupdate_mas_force():
 
         stop_hears_each_wait()
 
-        print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")
-        return 0 if not FAILED else 1
-
+        return 0 if not fails else 1
 
     def stop_hears_each_wait() -> None:
         """2026-10-16 02:35: a stop came while the pre-update could not hear it and the 15 s
@@ -289,7 +295,6 @@ def _part_preupdate_mas_force():
             _stop_hears_each_wait(stop_after, slept, far)
         finally:
             P.time = real_time
-
 
     def _stop_hears_each_wait(stop_after, slept, far) -> None:
         import tempfile
@@ -348,9 +353,7 @@ def _part_preupdate_mas_force():
         finally:
             (P._mas_post, P._automas_version, P._live_version, P._wait_for_package, P._wait_for_version) = orig
 
-
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_preupdate_not_alarm():
@@ -361,25 +364,10 @@ def _part_preupdate_not_alarm():
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY))
 
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
-                 "win32com", "win32com.client"):
-        sys.modules.setdefault(name, _Stub(name))
+                 "win32com", "win32com.client")
 
     import boot_stages
     from ark_relay.features import gameupdate
@@ -389,7 +377,6 @@ def _part_preupdate_not_alarm():
     from ark_relay.core import texts
     from ark_relay.features.errwatch import ARK
     from ark_relay.core.notify import route_of
-
 
     class Notes:
         def __init__(self):
@@ -402,7 +389,6 @@ def _part_preupdate_not_alarm():
         def went_to_group(self):
             return True
 
-
     class Records(logging.Handler):
         def __init__(self):
             super().__init__(level=logging.DEBUG)
@@ -410,7 +396,6 @@ def _part_preupdate_not_alarm():
 
         def emit(self, record):
             self.records.append(record)
-
 
     REC = Records()
     ARK_LOG = logging.getLogger(ARK)          # every module logs under it; errwatch listens here
@@ -431,7 +416,6 @@ def _part_preupdate_not_alarm():
     okww_overlay.drift_line = lambda okww, state_dir: ""
     CFG = types.SimpleNamespace(automas_dir=None, maaend_dir=Path("maaend"), okww_dir=Path("okww"), state_dir=None)
 
-
     def scripted(answers, calls, verdict=""):
         """A run_* that leaves the next note in `answers` (None = it gave a verdict)."""
         def run(*a, problems=None, **k):
@@ -442,7 +426,6 @@ def _part_preupdate_not_alarm():
                 return ""
             return verdict
         return run
-
 
     def stage(okww_answers, automas_answers=(), left=3600.0):
         REC.records.clear()
@@ -455,14 +438,11 @@ def _part_preupdate_not_alarm():
         boot_stages._stage_preupdate(CFG, notes, LOG)
         return notes, {k: len(v) for k, v in calls.items()}
 
-
     def errors():
         return [r.getMessage() for r in REC.records if r.levelno >= logging.ERROR]
 
-
     def said(fragment):
         return any(fragment in r.getMessage() for r in REC.records)
-
 
     print("[OK-WW gave no verdict, the second try did: nothing to report]")
     notes, calls = stage([NO_VERDICT, None])
@@ -544,19 +524,8 @@ def _part_main_2():
     import os
     import tempfile
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import preupdate
     from ark_relay.features import preupdate as preupdate_okww
-
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
-
 
     def make(root: Path, autostart: bool) -> Path:
         d = root / "okww"
@@ -573,11 +542,9 @@ def _part_main_2():
         }), encoding="utf-8")
         return d
 
-
     def basic(d: Path) -> dict:
         return json.loads((d / "data" / "apps" / "ok-ww" / "working" / "configs"
                            / "Basic Options.json").read_text(encoding="utf-8"))
-
 
     def main(root: Path) -> int:
         d = make(root, autostart=True)
@@ -638,9 +605,7 @@ def _part_main_2():
         baseline_unknown(root)
         newer_listed_not_installed(root)
         stop_and_switch_memo(root)
-        print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
-        return 0 if not FAILED else 1
-
+        return 0 if not fails else 1
 
     def timeout_mid_download(root: Path) -> None:
         """Out of time while app.json still says downloading: a failure, never 「无需更新」."""
@@ -759,7 +724,6 @@ def _part_main_2():
             for k, v in saved.items():
                 setattr(m, k, v)
 
-
     def baseline_unknown(root: Path) -> None:
         """app.json unreadable at the pre-launch read: the first version read later is
     not an update (audit row preupdate_okww.py:243 via :392)."""
@@ -800,7 +764,6 @@ def _part_main_2():
         finally:
             for k, v in saved.items():
                 setattr(m, k, v)
-
 
     def newer_listed_not_installed(root: Path) -> None:
         """OK-WW lists a newer version during the wait but does not install it: a problem,
@@ -849,7 +812,6 @@ def _part_main_2():
         probs = []
         m._okww_report(probs, 240, "v3.7.3", ("v3.7.4", "v3.7.3"), "", True, "", "", None)
         check("the verdict reads the list it is given (the latest one)", len(probs), 1)
-
 
     def stop_and_switch_memo(root: Path) -> None:
         """2026-10-16 02:35: a deploy rollback stopped the relay during the OK-WW wait, which
@@ -978,7 +940,6 @@ def _part_main_2():
         from ark_relay.core import texts
         check("the boot line is plain words", texts.plain(line), [])
 
-
     if __name__ == "__main__":
         with tempfile.TemporaryDirectory() as tmp:
             raise SystemExit(main(Path(tmp)))
@@ -992,8 +953,6 @@ relay-opt-round3-1108 O-01; preupdate_okww.ensure_okww_deps).
     import logging
     import subprocess
     from types import SimpleNamespace
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import errwatch
     from ark_relay.features import preupdate, preupdate as po
@@ -1148,19 +1107,9 @@ def _part_preupdate_once():
     """预更新一天只跑一遍。"""
     from datetime import datetime, timedelta
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.statestore import StateStore
     from ark_relay.features.preupdate import RETRY_MIN, mark_run, should_run
-
-    FAILED: list[str] = []
-
-
-    def check(what, got, want):
-        if got != want:
-            FAILED.append(f"{what}: 得到 {got!r}，应为 {want!r}")
-
 
     def main() -> int:
         d = tmpdir()
@@ -1188,24 +1137,20 @@ def _part_preupdate_once():
         StateStore(d).set("updates", "preupdate", {"day": "2026-08-31"})   # 缺 at
         check("记账缺时间戳 → 照跑", should_run(d, now), True)
 
-        print("all checks passed" if not FAILED else "FAILED: " + "; ".join(FAILED))
-        return 0 if not FAILED else 1
+        print("all checks passed" if not fails else "FAILED: " + "; ".join(fails))
+        return 0 if not fails else 1
 
-
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_preupdate_problems():
     """预更新查不出结果时，必须报错，而不是静静地当成「无需更新」。"""
-    import os, sys
+    import os
     import re
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import preupdate
-
 
     print("[每个 run_* 都收得下 problems]")
     import inspect
@@ -1268,15 +1213,6 @@ def _part_preupdate_session():
     ALLOWED = {"_spawn_detached"}   # the fallback is the one place Popen belongs
     ON_CONSOLE = {"_spawn_here"}
 
-    FAILED = []
-
-
-    def require(name, ok, detail=""):
-        print(f"  {'ok  ' if ok else 'FAIL'} {name}{'' if ok else ': ' + detail}")
-        if not ok:
-            FAILED.append(name)
-
-
     def popen_calls(fn):
         out = []
         for node in ast.walk(fn):
@@ -1285,11 +1221,9 @@ def _part_preupdate_session():
                 out.append(node.lineno)
         return out
 
-
     def calls_named(fn, name):
         return any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
                    and n.func.id == name for n in ast.walk(fn))
-
 
     def main() -> int:
         tree = ast.parse("")
@@ -1360,20 +1294,15 @@ def _part_preupdate_session():
         require("中继在安装器运行时不抢着拉起 AUTO-MAS",
               "auto-mas-setup" in svc and "_installer_running" in svc)
 
-        print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
-        return 0 if not FAILED else 1
+        return 0 if not fails else 1
 
-
-    if __name__ == "__main__":
-        sys.exit(main())
+    sys.exit(main())
 
 
 def _part_preupdate_span():
     """预更新通知统一成「程序 已更新：旧 → 新」。"""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import preupdate as preupdate_common
-
 
     print("[_span：旧 → 新，缺旧版明说]")
     check("正常", preupdate_common._span("v1", "v2"), "v1 → v2")
@@ -1394,21 +1323,10 @@ def _part_preupdate_token():
     import logging
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    FAILED = []
-
-
-    def require(name, ok, detail=""):
-        print(f"  {'ok  ' if ok else 'FAIL'} {name}{'' if ok else ': ' + detail}")
-        if not ok:
-            FAILED.append(name)
-
-
     class WinErr(Exception):
         def __init__(self, code):
             super().__init__(code, "WTSQueryUserToken", "客户端没有所需的特权。")
             self.winerror = code
-
 
     def run(code, tcb=True):
         fake = {n: types.ModuleType(n) for n in ("win32con", "win32process", "win32profile", "win32ts")}
@@ -1441,7 +1359,6 @@ def _part_preupdate_token():
                     sys.modules[n] = m
         return ok, took, records
 
-
     # The machine's real case: the service host holds no SE_TCB_NAME - the token route is not tried at all.
     ok, took, recs = run(1314, tcb=False)
     require("没有权限：直接走计划任务", ok and took == [True])
@@ -1454,10 +1371,9 @@ def _part_preupdate_token():
     ok, took, recs = run(5)
     require("别的错：照样走计划任务", ok and took == [True])
     require("别的错：仍是 WARNING", any(r.levelno == logging.WARNING for r in recs))
-    if FAILED:
-        print("FAILED:", FAILED)
+    if fails:
+        print("FAILED:", fails)
         sys.exit(1)
-    print("all checks passed")
 
 
 def _part_preupdate_unknown_not_fine():
@@ -1466,12 +1382,10 @@ def _part_preupdate_unknown_not_fine():
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import preupdate as C
     from ark_relay.features import preupdate as O
     from ark_relay.features import preupdate as A
-
 
     # ── 1. pywin32 import failure must not bypass require_console ──────────────
     # Force the ImportError even if this ever runs on Windows with pywin32 present.
@@ -1535,7 +1449,6 @@ def _part_preupdate_unknown_not_fine():
             else:
                 sys.modules[m] = v
 
-
     # ── 2. AUTO-MAS answers that are not a verdict ─────────────────────────────
     # Upstream error body for a failed check (app/api/update.py:63-72, c6ca4fb).
     # Field set and the message format f"{type(e).__name__}: {e}" are upstream's;
@@ -1549,7 +1462,6 @@ def _part_preupdate_unknown_not_fine():
     CHECK_UPDATE = {"code": 200, "status": "success", "message": "操作成功",
                     "if_need_update": True, "latest_version": "v5.5.0-beta.5",
                     "update_info": {}}
-
 
     def run_mas(answers, *, pack=Path("UpdatePack_v5.5.0-beta.5.zip")):
         """Run run_automas against scripted answers; returns (note, problems, paths posted, waits)."""
@@ -1576,7 +1488,6 @@ def _part_preupdate_unknown_not_fine():
             (A._mas_post, A._automas_version, A._live_version,
              A._wait_for_package, A._wait_for_version) = saved
         return note, problems, posted, waits
-
 
     print("\n[AUTO-MAS check fails: HTTP 200, code 500, if_need_update=False]")
     note, problems, posted, _ = run_mas({"/api/update/check": CHECK_ERROR})
@@ -1735,11 +1646,9 @@ def _part_gameupdate_main():  # noqa: C901
     import json
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import gameupdate as gu
     from ark_relay.features import gameupdate_games as gug
     from ark_relay.core.desktop import Line, Screen
-
 
     class FakeDesk:
         """按顺序回放屏幕；记录点了什么。"""
@@ -1950,13 +1859,11 @@ def _part_gameupdate_main():  # noqa: C901
     print("[停一切停掉的那趟既不算成功也不算失败（2026-09-30 鸣潮 3.7 维护日漏接）]")
     import logging
 
-
     class _Keep(logging.Handler):
         def __init__(self):
             super().__init__(logging.INFO); self.recs = []
         def emit(self, record):
             self.recs.append((record.levelno, record.getMessage(), record.exc_info is not None))
-
 
     keep = _Keep(); gu.log.addHandler(keep); gu.log.setLevel(logging.INFO)
     T = gu.SERVER_TZ
@@ -1977,11 +1884,9 @@ def _part_gameupdate_main():  # noqa: C901
          "raw": {"maaend_result": "中止", "manual_stop": "09:46 停一切"}},
     ]
 
-
     def _ledger930(rows):
         (ST / "ledger-2026-09-30.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows),
                                                      encoding="utf-8")
-
 
     _ledger930(L930)
     n930 = _dt(2026, 9, 30, 8, 49, 50, tzinfo=T)
@@ -2193,7 +2098,6 @@ def _part_gameupdate_main():  # noqa: C901
     from ark_relay.features import errwatch
     from ark_relay.core import texts
 
-
     class _AllRecords(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -2201,7 +2105,6 @@ def _part_gameupdate_main():  # noqa: C901
 
         def emit(self, r):
             self.records.append(r)
-
 
     def _retry(rounds, minutes=60):
         it = iter(rounds)
@@ -2224,7 +2127,6 @@ def _part_gameupdate_main():  # noqa: C901
             if getattr(r, errwatch.RECOVERED, False):
                 check("the recovered line's first line reads as plain words", texts.plain(errwatch.first_line(r)), [])
         return ready, pr, healed
-
 
     _CLICK = "终末地：点「更新游戏」没点上"
     _ready, _pr, _healed = _retry([lambda pr: (pr.append(_CLICK), (False, ""))[1],
@@ -2263,13 +2165,11 @@ def _part_gameupdate_main():  # noqa: C901
     _rb = []
     _t = [_t0]
 
-
     def _round_f6(cfg, desk, game, problems, sleep, budget_s=2400.0):
         _rb.append(budget_s)
         _t[0] += _tdl(minutes=10)
         problems.append(f"终末地：{budget_s / 60:.0f} 分钟内没等到下载完")
         return False, ""
-
 
     gu._prepare_client = _round_f6
     try:
@@ -2287,28 +2187,22 @@ def _part_gameupdate_restore_paths():
     import types
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import gameupdate as gu
-
 
     def _cfg():
         st = tmpdir()
         return types.SimpleNamespace(state_dir=st, automas_dir=None, maa_dir=None, maaend_dir=None, okww_dir=None)
 
-
     REC = {"queue": "早班", "queueId": "Q", "script": "MAA", "scriptId": "S", "position": 1}
     restored = []
     saved = gu.restore_skips
-
 
     def _fake_restorer(rec):
         restored.append((rec["script"], rec.get("day")))
         return True
 
-
     def _restore(state_dir, restorer=None, **kw):
         return saved(state_dir, restorer=_fake_restorer, **kw)
-
 
     gu.restore_skips = _restore
     try:
@@ -2353,15 +2247,11 @@ def _part_efstart_main():
     """Endfield is started through the official launcher, never as Endfield.exe (2026-10-15)."""
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.features import efstart as ef
     from ark_relay.features import efstart as setup
 
-
     FX = fx_dir(Path(__file__), "fixtures") / "maaend-v2.33.0-launch"
     BETA2 = fx_dir(Path(__file__), "gamesim") / "upstream" / "maaend-v2.33.0-beta.2"
-
 
     class Probe:
         """A start with nothing to do: the game is not running and the pretask exits 0."""
@@ -2374,7 +2264,6 @@ def _part_efstart_main():
                              run=lambda argv, cwd, timeout: (self.ran.append(argv), (0, ""))[1],
                              wake=lambda: True, sleep=lambda s: None)
 
-
     print("\n[一次开游戏：running.json 只在开的时候有；没说 MaaEnd 在哪 → 2]")
     home = tmpdir() / "efstart"
     home.mkdir()
@@ -2385,7 +2274,6 @@ def _part_efstart_main():
     (md / "agent" / "go-service.exe").write_bytes(b"")
     w = Probe()
     seen = []
-
 
     class _Lock:
         def __init__(self, got):
@@ -2400,7 +2288,6 @@ def _part_efstart_main():
 
         def __exit__(self, *a):
             return False
-
 
     r = ef.run_once(home, "test", "", probes=w.probes(), single=_Lock(True))
     check("没说 MaaEnd 在哪就是 2", r.code, ef.SETUP)
@@ -2428,11 +2315,9 @@ def _part_efstart_main():
     dbg.mkdir()
     (dbg / "go-service.stderr.log").write_text("", encoding="utf-8")
 
-
     class _N:
         def send(self, *a, **k):
             return []
-
 
     dog = maaend_watchdog.Watchdog(_N(), dbg, clock=lambda: clock["t"], snapshot=lambda: RUNNING,
                                    processes=lambda: procs, kill=lambda pid, img: killed.append(pid) or (True, ""),
@@ -2477,13 +2362,11 @@ def _part_efstart_main():
     (sd2 / "efstart" / ef.TRAMPOLINE).write_text("# trampoline\n", encoding="utf-8")
     calls = []
 
-
     def fake_spawn(exe, cwd, args):
         calls.append((Path(exe).name, args[0], args[1:3]))
         res = Path(args[args.index("--result") + 1])
         res.write_text(json.dumps({"code": 0, "reason": "终末地已经开着，没再开"}), encoding="utf-8")
         return True
-
 
     r = ef.run_on_desktop(sd2, fake_spawn, md, pythonw=Path("pythonw.exe"), sleep=lambda s: None)
     check("起的是 pythonw 跑入口", calls, [("pythonw.exe", str(sd2 / "efstart" / ef.TRAMPOLINE), ("--caller", "relay"))])
@@ -2500,13 +2383,11 @@ def _part_efstart_main():
 
     print("\n[_single：互斥锁用完，句柄关掉（PyHANDLE 自己的 Close）]")
 
-
     class _H:
         closed = False
 
         def Close(self):  # noqa: N802
             self.closed = True
-
 
     h = _H()
     fake_ev = types.SimpleNamespace(CreateMutex=lambda *a: h, WaitForSingleObject=lambda hh, ms: 0, WAIT_OBJECT_0=0,
@@ -2598,7 +2479,6 @@ def _part_efstart_main():
                                     "RestoreResolution": "1920x1080"}}}}
     writes = []
 
-
     def fake_mas(path, body=None, timeout=20):
         if path == "/api/scripts/get":
             return json.loads(json.dumps(mas))
@@ -2608,7 +2488,6 @@ def _part_efstart_main():
                 mas["data"][body["scriptId"]][k].update(v)
             return {"code": 200}
         raise AssertionError(path)
-
 
     cfg = types.SimpleNamespace(state_dir=root / "state", automas_dir=automas, maaend_dir=None)
     saved_mas = commands._mas
@@ -2673,7 +2552,6 @@ def _part_efstart_main():
     saved_up = commands.mas_up
     commands.mas_up = lambda: True
 
-
     class _L:
         def __init__(self):
             self.warned = []
@@ -2687,7 +2565,6 @@ def _part_efstart_main():
         def exception(self, *a, **k):
             self.warned.append(a[0])
 
-
     try:
         boot_stages._contract_after_update("CFG", None, _L(), "v5.7.0-beta.4")
         check("调度程序升级后（开机那次核对是对着旧版的）再核对一遍", seen, ["CFG"])
@@ -2698,7 +2575,6 @@ def _part_efstart_main():
     finally:
         setup.install, selfcheck.report_contract = saved[0], saved_rc
         commands.mas_up = saved_up
-    print("\nPASS" if not fails else f"\nFAILED: {fails}")
 
 
 def _part_maaend_windowed_start():  # noqa: C901
@@ -2727,7 +2603,6 @@ def _part_maaend_windowed_start():  # noqa: C901
     NO_MAAEND_START = getattr(texts, "ENDFIELD_NO_MAAEND_START", "\0 not defined")
     PRETASK = getattr(ef, "PRETASK", -5)
 
-
     FX = fx_dir(HERE, "fixtures") / "maaend-v2.33.0-launch"
     BETA2 = fx_dir(HERE, "gamesim") / "upstream" / "maaend-v2.33.0-beta.2"     # still the old GameSetting pretask
     MACHINE_ARGS = ('{"LaunchGamePCRegion":"CN","LaunchGamePCLauncherPath":"Auto","LaunchGamePCGameSetting":"Yes",'
@@ -2736,7 +2611,6 @@ def _part_maaend_windowed_start():  # noqa: C901
     RESTORE = {"CloseGamePC": {"attach": {"ApplyGameSetting": True, "GameSettingRegion": "CN",
                                           "GameSettingLanguage": "Unchanged", "GameSettingDisplayType": "Fullscreen",
                                           "ResolutionWidth": 1920, "ResolutionHeight": 1080}}}
-
 
     def maaend_copy(edit=None) -> Path:
         """The fixture MaaEnd in a temp folder, with go-service.exe where AUTO-MAS finds it."""
@@ -2748,12 +2622,10 @@ def _part_maaend_windowed_start():  # noqa: C901
             edit(d)
         return d
 
-
     def edit_json(path: Path, fn) -> None:
         data = json.loads(path.read_text(encoding="utf-8"))
         fn(data)
         path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-
 
     print("[maaend_launch: MaaEnd v2.33.0's own files give exactly what AUTO-MAS sent on 10-17]")
     check("maaend_launch exists", ml is not None)
@@ -2865,7 +2737,6 @@ def _part_maaend_windowed_start():  # noqa: C901
     mas = {"data": {"59da8762": {"Info": {"Name": "MaaEnd", "Path": str(FX)}, "Game": dict(BEFORE)}}}
     writes, refuse = [], set()
 
-
     def fake_mas(path, body=None, timeout=20):
         if path == "/api/queue/get":    # commands.mas_up: the backend answers (boot_stages.await_backend)
             return {"code": 200, "data": {}}
@@ -2879,7 +2750,6 @@ def _part_maaend_windowed_start():  # noqa: C901
             mas["data"][body["scriptId"]]["Game"][k] = v
             return {"code": 200}
         raise AssertionError(path)
-
 
     cfg = types.SimpleNamespace(state_dir=root / "state", automas_dir=automas, maaend_dir=None)
     game = mas["data"]["59da8762"]["Game"]
@@ -2994,7 +2864,6 @@ def _part_maaend_windowed_start():  # noqa: C901
     check("nothing in efstart ticks the DirectX 11 box any more",
           [n for n in ("_ensure_d3d11", "_toggle_d3d11", "D3D11_BOX_FROM_START", "box_brightness") if hasattr(ef, n)], [])
 
-
     class Desk:
         """The machine as the helper sees it: processes, the pretask's exit code, the display."""
 
@@ -3021,7 +2890,6 @@ def _part_maaend_windowed_start():  # noqa: C901
 
         def probes(self):
             return ef.Probes(running=self.running, kill=self.kill, run=self.run, wake=self.wake, sleep=lambda s: None)
-
 
     if has_flow:
         md = maaend_copy()
@@ -3072,7 +2940,6 @@ def _part_maaend_windowed_start():  # noqa: C901
                   '!!!OnEventNotify!!! [handle=true] [msg=Tasker.Task.{}] '
                   '[details={{"entry":"CloseGamePC","hash":"","task_id":200000002,"uuid":""}}]')
 
-
     class MXU:
         def __init__(self, md, close="Succeeded"):
             self.md, self.close, self.calls = md, close, []
@@ -3094,7 +2961,6 @@ def _part_maaend_windowed_start():  # noqa: C901
             return [(p.rsplit("/", 1)[-1], b["tasks"][0]["entry"] if p.endswith("/tasks/start") else None)
                     for p, b in self.calls if p.endswith(("/tasks/start", "/agent/stop"))]
 
-
     def retry(md, mxu, started=None):
         seen, got = [], {}
         saved = (cr._running, cr._wait, cr.api, cr.mxu_port, cr.time, ef.run_on_desktop)
@@ -3111,7 +2977,6 @@ def _part_maaend_windowed_start():  # noqa: C901
         finally:
             cr._running, cr._wait, cr.api, cr.mxu_port, cr.time, ef.run_on_desktop = saved
         return seen, note, got
-
 
     md = maaend_copy()
     mxu = MXU(md)
@@ -3145,7 +3010,6 @@ def _part_maaend_windowed_start():  # noqa: C901
 
     print("\n[maybe_run: every route walked but fullscreen not back → a WARNING (the group); otherwise none]")
 
-
     class _Warn(logging.Handler):
         def __init__(self):
             super().__init__(level=logging.WARNING)
@@ -3153,7 +3017,6 @@ def _part_maaend_windowed_start():  # noqa: C901
 
         def emit(self, record):
             self.lines.append(record.getMessage())
-
 
     def outcome(not_restored):
         from datetime import datetime as _dt
@@ -3183,7 +3046,6 @@ def _part_maaend_windowed_start():  # noqa: C901
             cr.latest_gathering_run, cr.run_retry, cr._locale, cr.restore_master = saved
         return [x for x in h.lines if "全屏" in x], sent
 
-
     warned, sent = outcome(True)
     check("not back: one WARNING", len(warned), 1)
     check("the routes still count as walked (daily report only)", sent, [(texts.COLLECT_RETRY_OK, False)])
@@ -3197,32 +3059,13 @@ def _part_automas_backend_match():
     """
     import ast
     import re
-    import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                   "win32con", "win32file", "servicemanager", "win32process",
-                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(_name, _Stub(_name))
+                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
 
     from ark_relay.features import automas_keeper as automas_procs
     from ark_relay.features import commands
-
 
     line = (fx_dir(Path(__file__), "fixtures") / "okww_argv_20261012.log").read_text(encoding="utf-8")
     okww_script = ast.literal_eval(re.search(r"(\[.*?\])", line).group(1))[0]
@@ -3237,11 +3080,9 @@ def _part_automas_backend_match():
     check("_automas_running", automas_procs._automas_running(), False)
     opened = []
 
-
     def _open(access, inherit, pid):
         opened.append(pid)
         return f"handle:{pid}"
-
 
     automas_procs.win32api.OpenProcess = _open
     check("_automas_handle does not adopt OK-WW", automas_procs._automas_handle(), None)
@@ -3257,47 +3098,28 @@ def _part_automas_backend_match():
     print("[第一个匹配打不开：接着试下一个]")
     opened.clear()
 
-
     def _open_second(access, inherit, pid):
         opened.append(pid)
         if pid == 4100:
             raise OSError("access denied / gone")
         return f"handle:{pid}"
 
-
     automas_procs.win32api.OpenProcess = _open_second
     automas_procs._python_processes = lambda: [(4100, BACKEND), (5088, BACKEND)]
     check("the second match is attached", automas_procs._automas_handle(), "handle:5088")
 
 
-def _part_automas_boot_one_alarm():  # noqa: C901
+def _part_automas_boot_one_alarm():
     """One AUTO-MAS start failure at boot is one group message (audit s23 F2, 10-13)."""
     import logging
     import time
     import types
     from datetime import datetime, timezone
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
-                 "win32com", "win32com.client"):
-        sys.modules.setdefault(name, _Stub(name))
+                 "win32com", "win32com.client")
 
     import boot_stages
     from ark_relay.core import texts
@@ -3305,7 +3127,6 @@ def _part_automas_boot_one_alarm():  # noqa: C901
     from ark_relay.features import okww_overlay
     from ark_relay.features import commands, phone, phone as phone_channel
     from ark_relay.features import preupdate
-
 
     class Records(logging.Handler):
         """Every record under the "ark" logger, as errwatch sees them."""
@@ -3322,7 +3143,6 @@ def _part_automas_boot_one_alarm():  # noqa: C901
             return [r.getMessage() for r in self.recs if r.levelno >= logging.WARNING
                     and not getattr(r, errwatch.PUSHED, False) and not getattr(r, errwatch.RECOVERED, False)]
 
-
     class Notes:
         def __init__(self):
             self.sent: list[tuple[str, bool]] = []
@@ -3337,7 +3157,6 @@ def _part_automas_boot_one_alarm():  # noqa: C901
         def alarms(self) -> list[str]:
             return [t for t, alert in self.sent if alert]
 
-
     REC = Records()
     ARK = logging.getLogger(errwatch.ARK)
     ARK.addHandler(REC)
@@ -3351,10 +3170,8 @@ def _part_automas_boot_one_alarm():  # noqa: C901
              boot_stages._stop_requested, phone.Mailbox, phone.Heartbeat, phone.state_payload,
              phone_channel._make_phone_cmd)
 
-
     def advance(s):
         clock["t"] += s
-
 
     class FakeBox:
         def __init__(self, topic, pin, state_dir, cos=None):
@@ -3371,19 +3188,16 @@ def _part_automas_boot_one_alarm():  # noqa: C901
         def listen(self, on_cmd, stop, **kw):
             pass
 
-
     class FakeHb:
         def __init__(self, *a, **k): pass
         def loop(self, stop): return None
         def watch(self): pass
-
 
     def fake_make_phone_cmd(*a, **k):
         def run(body):
             pass
         run.drain = lambda: None
         return run
-
 
     try:
         boot_stages.time.sleep = advance
@@ -3475,27 +3289,11 @@ runtime as well when it does restart, and the keeper must not go blind without w
     """
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
-                 "win32com", "win32com.client"):
-        sys.modules.setdefault(name, _Stub(name))
+                 "win32com", "win32com.client")
 
     import logging
 
@@ -3693,7 +3491,6 @@ runtime as well when it does restart, and the keeper must not go blind without w
     print()
     if fails:
         print("FAILED:", fails); sys.exit(1)
-    print("all checks passed")
 
 
 def _part_automas_contract_watch():
@@ -3813,16 +3610,13 @@ def _part_automas_handover():
     from contextlib import nullcontext
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "handover"))
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     os.environ["ARK_MAS_PORT"] = "36163"
     import automas_handover as H
     from ark_relay.core import mastercfg as masuser
 
     H.this_week = lambda: "2026-W41"   # the game week every case below is run in
 
-
     MAA, END, OKWW, UID = "s-maa", "s-end", "s-okww", "u-1"
-
 
     def merge(dst: dict, src: dict) -> None:
         for k, v in src.items():
@@ -3830,7 +3624,6 @@ def _part_automas_handover():
                 merge(dst[k], v)
             else:
                 dst[k] = v
-
 
     class Backend:
         """mode: "up" | "down" (connection refused) | "running" (updates answer
@@ -3895,7 +3688,6 @@ def _part_automas_handover():
         def updates(self):
             return [p for p, _ in self.calls if p.endswith("/update")]
 
-
     class _Resp:
         def __init__(self, obj):
             self._raw = json.dumps(obj, ensure_ascii=False).encode()
@@ -3909,9 +3701,7 @@ def _part_automas_handover():
         def __exit__(self, *a):
             return False
 
-
     _real = urllib.request.urlopen
-
 
     def run(be, *argv):
         urllib.request.urlopen = be.urlopen
@@ -3922,7 +3712,6 @@ def _part_automas_handover():
         finally:
             sys.stdout = old
         return code, out.getvalue()
-
 
     try:
         with nullcontext(tmpdir()) as d:   # tmpdir() is a plain Path, removed at exit
@@ -4201,7 +3990,6 @@ def _part_automas_jobfix():
     import types
     from unittest import mock
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import boot_stages
     from ark_relay.features import automas_keeper as jf
 
@@ -4290,7 +4078,6 @@ def _part_automas_ld_adb():
     import dataclasses
     import subprocess
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import automas_keeper as jf
 
     print("[the payload: a module, and a .pth that imports it after pywin32.pth]")
@@ -4378,7 +4165,6 @@ def _part_mas_address():
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
 
-
     print("[地址只有一处出处]")
     hard = []
     for p in sorted([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files", "machinechecks", "machinechecks.py"} & set(p.parts)]):
@@ -4425,14 +4211,12 @@ def _part_mas_api_silent():
     mas = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mas)
 
-
     def run(answer):
         mas.call = lambda path, body=None, method="POST": answer
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             rc = mas.main(["post", "/api/scripts/get"])
         return rc, out.getvalue()
-
 
     print("[HTTP error with a JSON body]")
     rc, out = run({"__status": 422, "__detail": {"detail": "field required"}})
@@ -4452,9 +4236,7 @@ def _part_mas_api_silent():
 def _part_mas_labels():
     """AUTO-MAS field labels: every labelled ConfigItem is read (audit 11 #4, 2026-10-13)."""
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import phone as mas_labels
-
 
     # Kept as .txt so the repo's Python tools (ruff, the comment ratchet) do not read
     # upstream code as ours; laid out as AUTO-MAS's app/models for the run.
@@ -4464,10 +4246,8 @@ def _part_mas_labels():
     (AM / "app" / "models" / "config.py").write_bytes(SRC.read_bytes())
     out = mas_labels._mas_labels(AM)
 
-
     def label(game, path):
         return (out[game].get(path) or {}).get("label")
-
 
     print("[the AUTO-MAS source audit 11 ran on]")
     check("MAA Info.MedicineNumb (one-line ConfigItem before it)", label("MAA", "Info.MedicineNumb"), "理智药数量")
@@ -4525,8 +4305,6 @@ def _part_mas_user_pick():
 (audit 11-08 D-11; dispatch relay-opt-round6-1108 R6-01; masuser.pick).
     """
     import json
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import mastercfg as masuser, plan
     from ark_relay.features import commands, snapshot
@@ -4595,9 +4373,7 @@ def _part_masconfig_yaml():
     """
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import mastercfg as masconfig, mastercfg as miniyaml, plan
-
 
     print("[miniyaml: the constructs AUTO-MAS's files use]")
     doc = miniyaml.loads("""\
@@ -4796,7 +4572,6 @@ def _part_mascontract():
     from _parts import stagegate_fx; fx = stagegate_fx()
 
     os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
     from ark_relay.features import commands
     from ark_relay.features import preupdate as P
@@ -4806,7 +4581,6 @@ def _part_mascontract():
     except ImportError:          # the code before this change
         mascontract = None
 
-
     def edit_user(root: Path, fn) -> Path:
         """Apply fn to the MAA user of the fixture's ScriptConfig.json."""
         f = root / "config" / "ScriptConfig.json"
@@ -4815,12 +4589,10 @@ def _part_mascontract():
         f.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         return root
 
-
     def drop_stage(user):
         """A later AUTO-MAS that keeps the main stage neither in Stage nor in Info."""
         user["Stage"].pop("Stage")
         user["Info"].pop("Stage", None)
-
 
     print("[the list of AUTO-MAS settings the relay reads]")
     check("ark_relay/core/mastercfg.py exists", mascontract is not None)
@@ -4927,7 +4699,6 @@ def _part_mascontract():
                      schedule=lambda: [{"name": "早班", "times": ["09:00"]}], channels=lambda: ["群"],
                      run_ok=lambda cmd: (True, ""), has_module=lambda m: True)
 
-
     class _Notifier:
         channels = ["企业微信机器人"]
 
@@ -4937,7 +4708,6 @@ def _part_mascontract():
         def send(self, title, body, *, alert=False, daily=False):
             self.sent.append((title, body, alert))
             return []
-
 
     def self_items(root):
         cfg = types.SimpleNamespace(automas_dir=str(root), state_dir=Path(root) / "state", history_dir=str(root),
@@ -4951,7 +4721,6 @@ def _part_mascontract():
             return selfcheck.run(cfg, **SELF_GOOD)
         finally:
             selfcheck._handed_updates_gaps, commands._mas = orig, orig_mas
-
 
     name = getattr(texts, "MAS_CONTRACT_CHECK", "中继要读的调度程序设置都在原处")
     os.environ["ARK_LOG_FILE"] = str(tmpdir() / "log" / "relay.log")
@@ -4968,7 +4737,6 @@ def _part_mascontract():
     print("\n[right after the pre-update installed a new AUTO-MAS, and only then]")
     has_hook = "after_update" in inspect.signature(P.run_automas).parameters
     check("run_automas takes an after_update hook", has_hook)
-
 
     def update_run(*, need: bool, confirmed: bool) -> list:
         """run_automas against a fake backend; the versions after_update was called with."""
@@ -4988,7 +4756,6 @@ def _part_mascontract():
         finally:
             (P._mas_post, P._automas_version, P._live_version, P._wait_for_package, P._wait_for_version) = orig
         return seen
-
 
     check("a new version came up: the check runs once, with it", update_run(need=True, confirmed=True), ["v5.7.0-beta.3"])
     check("no update: no check", update_run(need=False, confirmed=False), [])
@@ -5044,12 +4811,10 @@ def _part_masuser_beta3():
     from _parts import stagegate_fx; fx = stagegate_fx()
 
     os.environ.update(SERVERCHAN_KEY="", ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import mastercfg as masuser, plan
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import stagegate as sg
     from ark_relay.features import snapshot, commands
-
 
     OLD = {"Info": {"Stage": "YW-4", "MedicineNumb": 3, "Annihilation": "Close"}, "Task": {}}
     NEW = {"Info": {"Name": "x"}, "Stage": {"Stage": "YW-4", "MedicineNumb": 3},

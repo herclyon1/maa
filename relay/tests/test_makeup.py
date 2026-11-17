@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 # ruff: noqa: PLC0415
+import logging
 import sys
 from pathlib import Path
 
@@ -9,6 +10,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+
+
+class _Messages(logging.Handler):
+    """Keeps the message of every WARNING-and-above record."""
+
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append(record.getMessage())
+
+
+class _NoSrc:
+    """An order source with nothing in it."""
+
+    def fetch(self, seen):
+        return []
 
 
 def _part_collect_history_db():
@@ -111,7 +130,6 @@ def _part_collect_history_db():
 
     print("\n[audit 11-08 B-07: history.db failing in a row, a same-second row, a 0.log not there yet]")
     if True:
-        import logging
         import sqlite3
 
         class _Cap(logging.Handler):
@@ -362,7 +380,6 @@ def _part_collect_main():
     check("母本里一个字都没再动", json.loads((mdir / "mxu-MaaEnd.json").read_text(encoding="utf-8")), doc)
 
     # ---------------------------------------------------------------- silent-failure audit
-    import logging
     import types
     from datetime import datetime as _dt2
 
@@ -590,7 +607,6 @@ MaaEnd's debug/on_error; the 10-05 one is recorded to the second only
     check("连续两天：照旧按复发报群", [(t, a) for t, _, a in sent], [(texts.COLLECT_RECURRENT, True)])
 
     print("\n[MaaEnd 的路线名里找不到这条：说一次，不每个关机判断都说（每条警告都会进群）]")
-    import logging
 
 
     class _Warns(logging.Handler):
@@ -1034,16 +1050,6 @@ def _part_collect_retry_cutoff():
     print("\n[补跑被打断后这次没补成（脚本还在跑）：下一次调用不再报、不再关一遍]")
     # Review of c6922283: the WARNING and the kills came before the early returns while the
     # stamp was rewritten only on the path that re-runs, so every later tick said and killed again.
-    import logging
-
-
-    class _Warnings(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.WARNING)
-            self.msgs = []
-
-        def emit(self, r):
-            self.msgs.append(r.getMessage())
 
 
     sd = tmpdir()
@@ -1056,7 +1062,7 @@ def _part_collect_retry_cutoff():
     saved = (cr.latest_gathering_run, cr._locale, cr.restore_master)
     cr.latest_gathering_run = lambda entries, hist, labels: ({"run_id": "r1"}, ["AutoCollectRoute15"])
     cr._locale, cr.restore_master = (lambda d: zh), (lambda cfg: "")
-    w = _Warnings()
+    w = _Messages()
     cr.log.addHandler(w)
     del killed[:]
     try:
@@ -1066,20 +1072,20 @@ def _part_collect_retry_cutoff():
         cr.log.removeHandler(w)
         cr.latest_gathering_run, cr._locale, cr.restore_master = saved
     check("两次都没补（脚本还在跑）", (r1, r2), (False, False))
-    check("只报一次没跑完", sum("没跑完" in m for m in w.msgs), 1)
+    check("只报一次没跑完", sum("没跑完" in m for m in w.lines), 1)
     check("只关一次 MaaEnd 和游戏", killed, ["MaaEnd.exe", "Endfield.exe"])
     check("印记还没写结束，脚本停了还会补", "finished" in json.loads(f.read_text(encoding="utf-8")), False)
 
     print("\n[没跑完的两句警告原样进群：时刻写成「10-22 16:44」，不带 ISO 的「T16」（账本 #110）]")
     from ark_relay.core.texts import plain
-    w2 = _Warnings()
+    w2 = _Messages()
     cr.log.addHandler(w2)
     try:
         outcome(cut)
         outcome(dict(cut, cut_off="earlier"))
     finally:
         cr.log.removeHandler(w2)
-    said = [m for m in w.msgs + w2.msgs if "没跑完" in m]
+    said = [m for m in w.lines + w2.lines if "没跑完" in m]
     check("两种没跑完都说了", (any("再补一次" in m for m in said), any("今天不再补" in m for m in said)), (True, True))
     check("每句都是白话（texts.plain 没挑出毛病）", [plain(m) for m in said], [[] for _ in said])
     check("时刻是机器上的「月-日 时:分」", all(cr._clock(cut["started"]) in m for m in said), True)
@@ -1131,23 +1137,13 @@ master is never narrowed (the user, 2026-10-06: 「我开的任务是谁说要�
 lists an older relay version narrowed go back at the next attempt's start.
     """
     import json
-    import logging
     import time
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import collect_watch
 
 
-    class _Drops(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.WARNING)
-            self.msgs = []
-
-        def emit(self, record):
-            self.msgs.append(record.getMessage())
-
-
-    _drops = _Drops()
+    _drops = _Messages()
     from ark_relay.core import watch as _watch
     _watch.log.addHandler(_drops)
 
@@ -1335,7 +1331,7 @@ lists an older relay version narrowed go back at the next attempt's start.
         state_dir = str(tmpdir())   # collect_watch.start prunes old task shots there first
     check("没目录返回 False", collect_watch.start(_NoDir, _N()), False)
 
-    check("目录监听在测试期间没掉过", _drops.msgs, [])
+    check("目录监听在测试期间没掉过", _drops.lines, [])
 
 
 def _part_makeup_main():  # noqa: C901
@@ -1393,11 +1389,6 @@ def _part_makeup_main():  # noqa: C901
             return []
 
 
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     def put_master(doc) -> Path:
         """A fresh AUTO-MAS data dir holding `doc` as the MaaEnd master; returns its root."""
         root = tmpdir()
@@ -1421,7 +1412,7 @@ def _part_makeup_main():  # noqa: C901
         cfg.state_dir = tmpdir()
         cfg.automas_dir = automas
         cfg.maaend_dir = FX
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=_NoSrc(), state=State(cfg.state_dir), notifier=Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._unfinished_queues = lambda now, entries: []
@@ -2089,19 +2080,9 @@ def _part_makeup_main():  # noqa: C901
     check("没干完那条清掉了", {x["run_id"]: x for x in e.state.read_ledger(day)}[inc.run_id].get("incomplete"), "")
 
     print("\n[the day's make-up marker is there but corrupt: no second make-up, said once]")
-    import logging
 
 
-    class _Warn(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.WARNING)
-            self.lines = []
-
-        def emit(self, record):
-            self.lines.append(record.getMessage())
-
-
-    _w = _Warn()
+    _w = _Messages()
     makeup.log.addHandler(_w)
     try:
         dispatched.clear()
@@ -2201,8 +2182,7 @@ def _part_hand_started_retry():
         cfg.state_dir = state_dir or tmpdir()
         cfg.automas_dir = AUTOMAS
         cfg.history_dir = HIST
-        e = eng_mod.Engine(cfg, source=type("Src", (), {"fetch": lambda self, seen: []})(),
-                           state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=_NoSrc(), state=State(cfg.state_dir), notifier=Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._unfinished_queues = lambda now, entries: []
@@ -2511,11 +2491,6 @@ its failures are pushed like any other's, saying whose run it was.
             return False
 
 
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     def at(d, hh, mm, ss=0):
         return datetime(2026, 9 if d == 25 else 10, d, hh, mm, ss, tzinfo=SERVER_TZ)
 
@@ -2530,7 +2505,7 @@ its failures are pushed like any other's, saying whose run it was.
         cfg = Config()
         cfg.state_dir = TMP / "state"
         cfg.state_dir.mkdir(exist_ok=True)
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=_NoSrc(), state=State(cfg.state_dir), notifier=Notes())
         e._scripts_running = lambda: False
         e._verify_outcome = lambda r: None
         return e
@@ -2633,19 +2608,9 @@ its failures are pushed like any other's, saying whose run it was.
     check("进了待推队列", ("MAA", "arknights") in e._pending)
 
     print("\n[the relay's own-starts file is unreadable: said once, not on every read]")
-    import logging
 
 
-    class _Warn(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.WARNING)
-            self.lines = []
-
-        def emit(self, record):
-            self.lines.append(record.getMessage())
-
-
-    _w = _Warn()
+    _w = _Messages()
     trigger.log.addHandler(_w)
     try:
         sd = tmpdir()

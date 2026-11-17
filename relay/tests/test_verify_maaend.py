@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 # ruff: noqa: PLC0415
+import logging
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -11,15 +13,36 @@ from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
+class _NoSource:
+    """A record source with nothing new."""
+    def fetch(self, seen):
+        return []
+
+
+class _Lines(logging.Handler):
+    """Keeps the message of every record from `level` up."""
+    def __init__(self, level):
+        super().__init__(level)
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append(record.getMessage())
+
+
+class _Notes:
+    """A notifier that keeps (title, body, alert) and reports every channel delivered."""
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body="", alert=False, **kw):
+        self.sent.append((title, body, alert))
+        return []
+
+
 def _run_mc28_one_alarm():
     import gzip
     import os
-    import sys
     from datetime import datetime, timedelta
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _parts import fx_dir, tmpdir
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_HISTORY_DIR=str(TMP / "history"),
@@ -38,29 +61,6 @@ def _run_mc28_one_alarm():
     from ark_relay.features import collector_maaend
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-task-trail"
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
-
-
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", alert=False, **kw):
-            self.sent.append((title, body, alert))
-            return []
-
-
-    class Src:
-        def fetch(self, seen):
-            return []
-
 
     handle._ship_evidence = lambda eng, rec: "https://cos.example/endfield.zip"
     handle._hand_started = lambda eng, rec: ""
@@ -74,10 +74,8 @@ def _run_mc28_one_alarm():
     MC28_FAILED = texts.machinecheck_failed("#28", "")
     REASON = "· 装备制造：终末地自己检查画面没过，把后面的任务全停了，这一项没做成"
 
-
     def held_28(state):
         return runs._state_get(state, getattr(runs, "HELD_28", "#28-held")) or {}
-
 
     def engine(state=None):
         """(Engine, Notes, state folder): a fresh Engine on `state` (a new folder when None)."""
@@ -90,13 +88,12 @@ def _run_mc28_one_alarm():
         (end / "debug").mkdir()
         (end / "debug" / "maafw.log").write_bytes(gzip.decompress((FIX / "maafw-2026-10-08.log.gz").read_bytes()))
         cfg.maaend_dir = str(end)
-        notes = Notes()
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=notes)
+        notes = _Notes()
+        e = eng_mod.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=notes)
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._verify_outcome = lambda r: None
         return e, notes, state
-
 
     def book(e, run, ok, rid=None, later_h=0):
         name, started, mins = run
@@ -109,19 +106,15 @@ def _run_mc28_one_alarm():
         handle._handle(e, rec)
         return rec
 
-
     def group(*notes):
         return [(t, b) for n in notes for t, b, alert in n.sent if alert]
-
 
     def show(*notes):
         for t, b in group(*notes):
             print(f"    group: {t} | {b[:120]!r}")
 
-
     def mc28_pushes(*notes):
         return [b for t, b in group(*notes) if t.startswith(MC28_FAILED)]
-
 
     print("[real shape: 06-31-06 ok=False with 13 failed tasks, held; its retry 06-34-21 ok=True]")
     e, notes, state = engine()
@@ -227,14 +220,7 @@ def _run_mc28_one_alarm():
     check("the daily section says the abort's 装备制造 failed and was made up for",
           any("装备制造" in x and "不用人管" in x for x in sec), True)
 
-    print()
-    if fails:
-        print(f"✗ {len(fails)} 条没过：{fails}")
-        sys.exit(1)
-    if fails:
-        raise SystemExit(1)
-    import types as _types
-    return _types.SimpleNamespace(**locals())
+    return types.SimpleNamespace(**locals())
 
 
 def _part_mc28_settle_once():
@@ -251,19 +237,7 @@ or read at the wrong moment.
     from ark_relay.features import machinecheck as mc
     from ark_relay.features import machinechecks as runs
 
-
-    class Errors(logging.Handler):
-        """ERROR lines of runs.py's logger."""
-
-        def __init__(self):
-            super().__init__(logging.ERROR)
-            self.lines = []
-
-        def emit(self, record):
-            self.lines.append(record.getMessage())
-
-
-    ERRORS = Errors()
+    ERRORS = _Lines(logging.ERROR)
     runs._log_runs.addHandler(ERRORS)
 
     REAL_AFTER, REAL_REFUSE = unresolved.after_makeup, makeup.refuse_rejected
@@ -272,10 +246,8 @@ or read at the wrong moment.
     unresolved.after_makeup = lambda eng, rec, now=None: (unresolved.UNRESOLVED, "补跑也没成")
     makeup.refuse_rejected = lambda eng, rec: None
 
-
     def pushes(notes):
         return len(base.mc28_pushes(notes))
-
 
     try:
         print("\n[A: machinecheck.json cannot be written once, right after #28's push]")
@@ -360,11 +332,6 @@ or read at the wrong moment.
         unresolved.after_makeup, makeup.refuse_rejected = REAL_AFTER, REAL_REFUSE
         config_mod.atomic_write_text, mc._write, Path.read_text = REAL_WRITE_TEXT, REAL_MC_WRITE, REAL_READ_TEXT
 
-    print()
-    if fails or base.fails:
-        print(f"✗ {len(fails)} 条没过：{fails}")
-        sys.exit(1)
-    print("all checks passed")
 
 
 def _part_mc28_state():  # noqa: C901
@@ -394,21 +361,10 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
     REAL_RUNS_TIME, REAL_SS_WRITE = runs.time, statestore.atomic_write_text
     NO_WAITS = (0.0, 0.0, 0.0)
 
-
-    class Errors(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.ERROR)
-            self.lines = []
-
-        def emit(self, record):
-            self.lines.append(record.getMessage())
-
-
-    ERRORS = Errors()
+    ERRORS = _Lines(logging.ERROR)
     for name in ("ark.runs", "ark.machinecheck", "ark.pushes", "ark.unresolved", "ark.statestore"):
         logging.getLogger(name).addHandler(ERRORS)
     pushes.log.addHandler(ERRORS)
-
 
     class Notes:
         def __init__(self, errs=()):
@@ -418,16 +374,13 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
             self.sent.append((title, body))
             return list(self.errs)
 
-
     class Rec:
         def __init__(self, rid):
             self.run_id, self.script, self.user = rid, "MaaEnd", "endfield"
 
-
     def entry(rid):
         return {"script": "MaaEnd", "user": "endfield", "day": DAY, "tasks": ["装备制造"],
                 "evidence": f"{rid} 装备制造没做成", "covered": []}
-
 
     def fresh(*held, raw=None):
         """A state folder whose machinecheck-runs.json holds `held` and the other keys, or
@@ -439,26 +392,21 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         (state / runs.SEEN_FILE).write_bytes(raw.encode("utf-8") if isinstance(raw, str) else raw)
         return state
 
-
     def on_file(state, key):
         return json.loads((state / runs.SEEN_FILE).read_text(encoding="utf-8-sig")).get(key)
-
 
     def marks():
         got = set()
         return got, (lambda day, key: (day, key) in got, lambda day, key: got.add((day, key)))
-
 
     def settle(state, alerted, notes):
         """settle_28 with every hold over; the run ids #28 pushed so far."""
         runs.settle_28(state, lambda script, user: True, lambda day: [], notes, alerted=alerted)
         return sorted(rid for rid in (R1, R2, R3) for t, b in notes.sent if t.startswith(MC28) and rid in b)
 
-
     def ctx28(state, rid, alerted):
         return {"rec": Rec(rid), "held": [rid], "state_dir": state, "day": DAY, "alerted": alerted,
                 "unverified_alarm": []}
-
 
     class read_fails:
         """Path.read_text of machinecheck-runs.json fails `n` times with `exc`."""
@@ -477,7 +425,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
 
         def __exit__(self, *a):
             Path.read_text = REAL_READ_TEXT
-
 
     class replace_locked:
         """os.replace onto machinecheck-runs.json refused `n` times as Windows refuses a
@@ -498,7 +445,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         def __exit__(self, *a):
             os.replace = REAL_REPLACE
 
-
     class no_waits:
         """A lock that outlasts every wait, without the test sleeping through the waits."""
 
@@ -513,7 +459,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
             else:
                 mc.LOCK_WAITS = self.was
 
-
     def judge_one(state, result, notifier):
         """mc.judge with one check of event 「run」 that returns `result`."""
         saved = dict(mc.CHECKS)
@@ -525,10 +470,8 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
             mc.CHECKS.clear()
             mc.CHECKS.update(saved)
 
-
     def mc28_sent(notes):
         return len([t for t, _ in notes.sent if t.startswith(MC28)])
-
 
     def section(title, fn):
         print(f"\n[{title}]")
@@ -541,9 +484,7 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
             Path.read_text, os.replace, mc._write = REAL_READ_TEXT, REAL_REPLACE, REAL_MC_WRITE
             runs.time, statestore.atomic_write_text = REAL_RUNS_TIME, REAL_SS_WRITE
 
-
     mc.load()
-
 
     def item1():
         for exc in (PermissionError(13, "locked (test)"), OSError(5, "Input/output error (test)")):
@@ -559,7 +500,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         before = (state / runs.SEEN_FILE).read_bytes()
         runs.covered_28(state, "MaaEnd", "2026-10-09", ["装备制造"])
         check("an alarm about another day changes nothing", (state / runs.SEEN_FILE).read_bytes(), before)
-
 
     def item2():
         state = fresh(R1)                     # an older entry of R1 on file
@@ -582,7 +522,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         check("…so the older entry of R1 is dropped without a second push",
               (mc28_sent(notes), settle(state, alerted, Notes())), (1, []))
 
-
     def item3():
         state = tmpdir() / "state"
         state.mkdir()
@@ -598,7 +537,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
             check("judge does not raise", type(exc).__name__, "")
         check("machinecheck.json locked: the FAIL is pushed all the same", mc28_sent(notes), 1)
         check("…and the write that failed is an ERROR", any(mc.STATE_FILE in x for x in ERRORS.lines))
-
 
     def item4():
         good = json.dumps({runs.HELD_28: {R1: entry(R1)}, "#6": [R1]}, ensure_ascii=False)
@@ -624,7 +562,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
             check(f"{name}: then written from empty: R3 held, the others written",
                   (r.deferred, sorted(on_file(state, runs.HELD_28) or {}), on_file(state, "#7-miss"),
                    on_file(state, "#6")), (True, [R3], 1, [R2]))
-
 
     def item4b():
         state = fresh(R1, R2)
@@ -658,7 +595,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         check("readable again: both settled, each pushed once",
               (mc28_sent(eng.notifier), on_file(state, runs.HELD_28)), (2, {}))
 
-
     def item5():
         state = fresh(R1)
         with replace_locked(2) as rl:
@@ -671,7 +607,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         check("a lock that outlasts the waits: not written, one ERROR",
               (wrote, on_file(state, "#7-miss"), len([x for x in ERRORS.lines if "PermissionError" in x])),
               (False, 2, 1))
-
 
     def item6():
         t0 = datetime(2026, 10, 8, 10, 0, tzinfo=SERVER_TZ)
@@ -705,7 +640,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         finally:
             runs.cm.task_times, runs.maaend_fwlog.trail_table = REAL_TASK_TIMES, REAL_TRAIL
 
-
     def item7():
         t0 = datetime(2026, 10, 8, 10, 0, tzinfo=SERVER_TZ)
         rec = type("R", (), {"run_id": R2, "script": "MaaEnd", "user": "endfield", "started": t0})()
@@ -724,7 +658,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         check("…and not marked seen meanwhile", on_file(state, "#24a"), None)
         check("readable again: judged then",
               getattr(runs._update_restart_check(ctx(state), "#24a"), "status", None), mc.PASS)
-
 
     def item8():
         e, notes, state = base.engine()
@@ -751,7 +684,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
               any("已经发出" in x and "没记下" in x for x in ERRORS.lines))
         check("nothing of #28 is left waiting", base.held_28(state), {})
 
-
     class Eng4b:
         """The engine attributes runchecks._settle_held reads."""
         _pending = {}
@@ -769,7 +701,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
 
         def _mark_alerted(self, day, key):
             pass
-
 
     def item9():
         state = fresh()                       # nothing held
@@ -789,7 +720,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         check("locked, never read: one ERROR saying what is held is not known",
               (len(stuck), bool(stuck) and "不知道" in stuck[0]), (1, True))
 
-
     class Sleeps:
         """runs.time with a sleep that only counts."""
 
@@ -799,11 +729,9 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         def sleep(self, s):
             self.n += 1
 
-
     def one_pass():
         """runs.one_pass, or no pass at all where there is none (before 10-17)."""
         return getattr(runs, "one_pass", contextlib.nullcontext)()
-
 
     class ss_no_waits:
         """statestore.LOCK_WAITS set to no waits (set even where it does not exist yet)."""
@@ -817,7 +745,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
                 del statestore.LOCK_WAITS
             else:
                 statestore.LOCK_WAITS = self.was
-
 
     def item10():
         state = fresh(R1)
@@ -853,7 +780,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         check("one booking and one tick with the file locked: LOCK_WAITS waited once each",
               clock.n, 2 * waits)
 
-
     def item11():
         clock = runs.time = Sleeps()
         try:
@@ -863,7 +789,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
             got = f"TypeError: {exc}"
         check("no state folder: unreadable, nothing raised", got, (None, None, None, None, False))
         check("…without waiting", clock.n, 0)
-
 
     def item12():
         st = tmpdir() / "state"
@@ -888,7 +813,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
             statestore.atomic_write_text = REAL_SS_WRITE
         check("state.json locked twice, then let through: the day mark is written", wrote, ["k"])
 
-
     def item12b():
         st = tmpdir() / "state"
         st.mkdir()
@@ -911,7 +835,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
             Path.read_text = REAL_READ_TEXT
         check("a write whose read stays locked raises, never writing the empty fallback over it",
               (raised, (st / statestore.FILE).read_text(encoding="utf-8")), ("PermissionError", good))
-
 
     def item12c():
         e, notes, state = base.engine()
@@ -936,7 +859,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         check("one ERROR saying the alarm went out and its mark did not land",
               (len(said), bool(said) and "已进群" in said[0]), (1, True))
         check("nothing of #28 is left waiting", base.held_28(state), {})
-
 
     def item12d():
         e, notes, state = base.engine()
@@ -967,7 +889,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         check("the mark not on file is not answered from memory either",
               any(str(k).startswith(mark) for k in e.state.store.get("marks", f"alerted:{DAY}") or []), False)
 
-
     def item13():
         e, notes, state = base.engine()
         (state / runs.SEEN_FILE).write_text(json.dumps({"#6": []}), encoding="utf-8")
@@ -995,7 +916,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
         check("locked while a FAIL was held: the cover not written is still an ERROR",
               len([x for x in ERRORS.lines if cover in x]), 1)
 
-
     for title, fn in (("1: covered_28 when its read fails once", item1),
                       ("2: a held run's FAIL pushed at once is marked sent only after its push", item2),
                       ("3: machinecheck.json locked while judging", item3),
@@ -1015,11 +935,6 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
                       ("13: covered_28 locked while nothing is held: no ERROR", item13)):
         section(title, fn)
 
-    print()
-    if fails or base.fails:
-        print(f"✗ {len(fails)} 条没过：{fails}")
-        sys.exit(1)
-    print("all checks passed")
 
 
 def _part_mc28_task_trail():  # noqa: C901
@@ -1028,7 +943,6 @@ def _part_mc28_task_trail():  # noqa: C901
     import json
     import os
     from datetime import datetime, timedelta
-
 
     TMP = tmpdir()
     os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_STATE_DIR=str(TMP / "state"),
@@ -1051,7 +965,6 @@ def _part_mc28_task_trail():  # noqa: C901
     SHOT_TIMES = {k: v for k, v in json.loads((FIX / "shot-times.json").read_text(encoding="utf-8")).items()
                   if not k.startswith("_")}
 
-
     class N:
         def __init__(self):
             self.sent = []
@@ -1063,10 +976,8 @@ def _part_mc28_task_trail():  # noqa: C901
         def send_group(self, title, body=""):
             return self.send(title, body, alert=True)
 
-
     mc.load()
     NOW = datetime(2026, 10, 16, 21, 40, tzinfo=SERVER_TZ)
-
 
     def maaend(*names, edit=None):
         """A MaaEnd folder whose debug/ holds the named fixture logs, unpacked."""
@@ -1078,7 +989,6 @@ def _part_mc28_task_trail():  # noqa: C901
                 text = edit(text)
             (d / "debug" / name.removesuffix(".gz")).write_bytes(text.encode("utf-8"))
         return d
-
 
     def shots(state, prefix):
         """The pictures of one run under state/shots/, with the times they were really taken."""
@@ -1094,7 +1004,6 @@ def _part_mc28_task_trail():  # noqa: C901
             files[rel.rsplit("-", 1)[-1].removesuffix(".png")] = rel
         return files
 
-
     class Ledger:
         """The ledger rows handle._book leaves for the next run: what
     records._trail_miss_streak and #28's 「another run did it」 read."""
@@ -1103,7 +1012,6 @@ def _part_mc28_task_trail():  # noqa: C901
 
         def read_ledger(self, day):
             return [r for r in self.rows if r["started"][:10] == day]
-
 
     def judge(log, end_dir, state=None, files=None, ledger=None, later=0, book=True):
         """#28 on one fixture run, booked the way handle._book books it (records.
@@ -1136,7 +1044,6 @@ def _part_mc28_task_trail():  # noqa: C901
             print(f"    #28 {r.status}: {r.evidence}")
             check("…the line reads as plain Chinese", texts.plain(r.evidence), [])
         return (r.status if r else None), (r.evidence if r else ""), pushed
-
 
     print("\n[10-08 06-31-06：装备制造查画面没过，终末地自己停了整条任务链；截图文件在 → 以前算它做成了]")
     state = tmpdir()
@@ -1264,7 +1171,6 @@ def _part_mc28_task_trail():  # noqa: C901
     print("\n[没有框架日志：第一趟不判（#28 和账本都不报），连续两趟判不过（两边都报）]")
     import logging
 
-
     class Levels(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -1272,7 +1178,6 @@ def _part_mc28_task_trail():  # noqa: C901
 
         def emit(self, record):
             self.got.append((record.levelno, record.getMessage()))
-
 
     FOUR = ["赠送干员礼物", "装备制造", "转交委托", "环境监测"]
     state, empty, book = tmpdir(), tmpdir(), Ledger()
@@ -1326,7 +1231,6 @@ def _part_mc28_task_trail():  # noqa: C901
     print("\n[框架日志在一趟里面换了文件、前一段没了：没盖到的任务先不判，盖到的照判]")
     SPLIT = "[2026-10-08 09:38:30"
 
-
     def split_1008(*parts, edit=None):
         text = gzip.decompress((FIX / "maafw-2026-10-08.log.gz").read_bytes()).decode("utf-8")
         if edit:
@@ -1339,7 +1243,6 @@ def _part_mc28_task_trail():  # noqa: C901
         for part in parts:
             (d / "debug" / names[part]).write_text(files[part], encoding="utf-8")
         return d
-
 
     st, ev, pushed = judge("2026-10-08_MaaEnd-05-29-15.log", split_1008("bak", "cur"))
     check("both parts: the split alone changes nothing, PASS", (st, pushed, "确认转交了 5 单" in ev), ("PASS", [], True))
@@ -1442,7 +1345,6 @@ def _part_mc28_task_trail():  # noqa: C901
 
     GEAR_TASK, GIFT_TASK = 200000002, 200000001
 
-
     def fw_step(at, task_id, node_id, name, parent):
         details = {"action_details": {"action": "DoNothing", "action_id": node_id + 200000000, "box": [0, 0, 0, 0],
                                       "detail": {}, "name": name, "success": True},
@@ -1454,7 +1356,6 @@ def _part_mc28_task_trail():  # noqa: C901
                 f"[MaaNS::EventDispatcher::notify] !!!OnEventNotify!!! [handle=true] "
                 f"[msg=Node.PipelineNode.Succeeded] [details={json.dumps(details, separators=(',', ':'))}] \n")
 
-
     def splice(drop_nodes, steps):
         """An edit for maaend(): the real 10-13 lines without the steps whose node_id is in
     `drop_nodes` (both processes' copies), plus `steps` [(time, task_id, name, parent)]."""
@@ -1465,10 +1366,8 @@ def _part_mc28_task_trail():  # noqa: C901
                                            for i, (at, task, name, parent) in enumerate(steps))
         return edit
 
-
     def run_1013(edit):
         return judge("2026-10-13_MaaEnd-05-36-57.log", maaend("maafw-2026-10-13.log.gz", edit=edit))
-
 
     REWARD = (300000427, 300000436, 300000441)
     print("\n[装备制造：点了「制作」后背包已满（GearAssemblyCheckMaterialEnough），是没东西可做，不是做成了]")
@@ -1489,7 +1388,6 @@ def _part_mc28_task_trail():  # noqa: C901
 
     GIFT_AFTER_UI = (300000358, 300000361, 300000363, 300000366, 300000367, 300000368)
 
-
     def chain(t, pairs, step=0.08):
         """[(time, gift task, name, parent)] from second `t` of 09:41, `step` apart; and the next second."""
         out = []
@@ -1497,7 +1395,6 @@ def _part_mc28_task_trail():  # noqa: C901
             out.append((f"09:41:{t:06.3f}", GIFT_TASK, name, parent))
             t += step
         return out, t
-
 
     FULL = (("GiftOperatorGiftFull", "GiftOperatorGiftUI"),
             ("GiftOperatorGiftFullLeave", "GiftOperatorGiftFull"),
@@ -1570,10 +1467,8 @@ def _part_mc28_task_trail():  # noqa: C901
     judged = [{"script": "MaaEnd", "raw": {"tasks_trail": {"装备制造": {"found": True, "ok": False}}}},
               {"script": "MaaEnd", "raw": {"tasks_done": ["赠送干员礼物"]}}]
 
-
     def why(script, items):
         return pushes._unverified_why(script, items, judged)
-
 
     check("only tasks judged by their log line: that, MaaEnd's own record not named",
           (why("MaaEnd", ["基建任务"]), why("MaaEnd", ["赠送干员礼物"])), ("日志里没有游戏回显", "日志里没有游戏回显"))
@@ -1602,11 +1497,6 @@ def _part_mc28_task_trail():  # noqa: C901
     check("a sub-task's node before the next start still counts (sub-tasks post no Starting)",
           _tr2["nodes"].get("EnvironmentMonitoringTakePhoto"), 1)
 
-    if fails:
-        print(f"✗ {len(fails)} 条没过：{fails}")
-        sys.exit(1)
-    print("all checks passed")
-
 
 def _part_mc28_one_alarm():
     _run_mc28_one_alarm()
@@ -1622,16 +1512,6 @@ def _part_maaend_app_log():
     from ark_relay.features import handle
     from ark_relay.features import outcome
 
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
-
-
     HISTORY = "\n".join(
         f"[2026-08-29 09:3{i}:00.000] 任务开始: 任务{i}\n"
         f"[2026-08-29 09:3{i}:30.000] 任务完成: 任务{i}" for i in range(3))
@@ -1639,12 +1519,10 @@ def _part_maaend_app_log():
     SHOTS = [f"2026.08.29-09.39.5{i}___ScenePrivateMapZoomOut.png" for i in range(3)]
     STUCK = ["2026.08.27-09.44.59_SceneAnyEnterWorld.png"]
 
-
     def _bad(checks):
         return [c.label for c in checks if not c.ok]
 
-
-    def main() -> int:
+    def main() -> None:
         print("=== 只看 history 日志（早班那次的错误做法）===")
         got = outcome.maaend_checks(HISTORY, SHOTS)
         check("会误判成没跑完", "MaaEnd 跑完" in _bad(got), True)
@@ -1679,12 +1557,7 @@ def _part_maaend_app_log():
             check("读到了收尾标记", "自动执行任务完成" in txt, True)
             check("没把框架日志混进来", "框架日志" in txt, False)
 
-        print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")
-        return 0 if not FAILED else 1
-
-
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_maaend_dir_resolve():
@@ -1696,16 +1569,6 @@ def _part_maaend_dir_resolve():
 
     from ark_relay.core.config import Config
 
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
-
-
     def _automas(tmp: Path, path_value: str) -> Path:
         """造一个最小的 AUTO-MAS 配置目录，只够 plan.script_dir 认出 MaaEnd。"""
         cfg = tmp / "config"
@@ -1716,8 +1579,7 @@ def _part_maaend_dir_resolve():
         }, ensure_ascii=False), encoding="utf-8")
         return tmp
 
-
-    def main() -> int:
+    def main() -> None:
         print("=== maaend_dir 解析 ===")
 
         with tempfile.TemporaryDirectory() as td:
@@ -1777,12 +1639,7 @@ def _part_maaend_dir_resolve():
         check("ERROR 里点名 maaend_dir",
               any("maaend_dir" in m for _, m in seen), True)
 
-        print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")
-        return 0 if not FAILED else 1
-
-
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_maaend_false_green():
@@ -1794,10 +1651,8 @@ def _part_maaend_false_green():
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-10"
 
-
     def bad(checks):
         return {c.label: c.detail for c in checks if not c.ok}
-
 
     app = (FIX / "app-2026-09-10-4.log").read_text(encoding="utf-8")
     collect = (FIX / "MaaEnd-06-08-39.log").read_text(encoding="utf-8")
@@ -1835,7 +1690,6 @@ def _part_maaend_false_green():
     fake_ok = fake.replace("任务完成: ⚔️协议空间", "进入协议空间成功\n[2026-09-10 09:05:00.000] 任务完成: ⚔️协议空间")
     check("进了就通过", "协议空间 真的进了" not in bad(maaend_checks(fake_ok, [])))
 
-
     print("[排班说今天不采，秒完成是对的，不能当假绿]")
     skipped = ("[2026-09-11 10:01:51.385] 任务开始: 🧺自动采集\n"
                "[2026-09-11 10:01:51.482] 现在游戏时间是周五，根据执行周期跳过任务\n"
@@ -1869,7 +1723,6 @@ def _part_maaend_logged_out():
     """A MaaEnd task that failed because the account was logged in elsewhere names that as its cause.
     """
 
-
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.ledger import _with_causes
     from ark_relay.features import collector_maaend as C
@@ -1879,7 +1732,6 @@ def _part_maaend_logged_out():
     FW_LINE = (FIX / "maafw-logged-out-ocr.log").read_text(encoding="utf-8")
     TMP = tmpdir()
 
-
     def maaend_dir(name, fw_text):
         d = TMP / name
         (d / "debug").mkdir(parents=True, exist_ok=True)
@@ -1887,12 +1739,10 @@ def _part_maaend_logged_out():
             (d / "debug" / "maafw.log").write_text(fw_text, encoding="utf-8")
         return d
 
-
     def parse(name, history, fw_text):
         log = TMP / f"{name}.log"
         log.write_text(history, encoding="utf-8")
         return C.parse_maaend_log(log, maaend_dir(name, fw_text))
-
 
     print("[11-05 原样：11:43:57 弹「登录认证已失效」，11:54:57 自动采集失败]")
     out = parse("real", HISTORY, FW_LINE)
@@ -1921,7 +1771,6 @@ def _part_maaend_recovered():
     import os
     from datetime import datetime
 
-
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
@@ -1932,18 +1781,6 @@ def _part_maaend_recovered():
     from ark_relay.core import statestore as techlog, texts
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
-
-    class Notes:
-        """The watchdog's notifier: the ⚠️ notice lands here."""
-
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return []
-
-
     class Refuses:
         """errwatch's notifier: the group refuses, so what it queues stays queued."""
 
@@ -1952,7 +1789,6 @@ def _part_maaend_recovered():
 
         def send(self, title, body, **kw):
             return ["拒收"]
-
 
     class Lines(logging.Handler):
         """Captures every ark.* record, so the test can read `ark_recovered`."""
@@ -1967,12 +1803,10 @@ def _part_maaend_recovered():
         def said(self, *parts):
             return [r for r in self.records if all(p in r.getMessage() for p in parts)]
 
-
     ARK_LOGGER = logging.getLogger(errwatch.ARK)
     LINES = Lines()
     ARK_LOGGER.addHandler(LINES)
     ARK_LOGGER.setLevel(logging.DEBUG)
-
 
     def watch():
         sd = tmpdir() / "state"                          # its own tech/ next to it (techlog.tech_dir)
@@ -1981,11 +1815,9 @@ def _part_maaend_recovered():
         LINES.records.clear()
         return h, sd
 
-
     def unwatch(h):
         ARK_LOGGER.removeHandler(h)
         h.close()
-
 
     RUNNING = {"tasks": [{"task_info": [{"name": "MaaEnd", "status": "运行"}]}]}
     PID = 11224
@@ -1993,7 +1825,6 @@ def _part_maaend_recovered():
     CRASH_LINE = "Exception 0xc0000005 0x0 0xffffffffffffffff 0x7ffc630b5456"
     HUNG_MXU = ["2026-10-01 16:58:19 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: task-progress",
                 "2026-10-01 16:58:22 DEBUG [App] 收到 state-changed，已刷新运行时状态, kind: tasks-completed"]
-
 
     class Dog:
         """One watchdog with everything outside replaced."""
@@ -2005,7 +1836,7 @@ def _part_maaend_recovered():
             self.stderr.write_text("", encoding="utf-8")
             (self.debug / "2026-10-01-6.log").write_text("\n".join(mxu_lines) + "\n", encoding="utf-8")
             self.t, self.wall = 1000.0, datetime(2026, 10, 1, 16, 58, 22)
-            self.notes, self.killed = Notes(), []
+            self.notes, self.killed = _Notes(), []
             self.procs = list(PROCS)
             self.dog = maaend_watchdog.Watchdog(
                 self.notes, self.debug, clock=lambda: self.t, snapshot=lambda: RUNNING,
@@ -2023,12 +1854,10 @@ def _part_maaend_recovered():
             self.wall = new
             return self.dog.tick(1, "")
 
-
     def recovered_of(records, *parts):
         rows = [r for r in records if all(p in r.getMessage() for p in parts)]
         assert rows, f"no log record matching {parts}"
         return [getattr(r, errwatch.RECOVERED, False) for r in rows]
-
 
     print("[finished, did not exit -> left to AUTO-MAS (v5.7.0-beta.2): no kill, no send, no WARNING]")
     h, sd = watch()
@@ -2059,11 +1888,9 @@ def _part_maaend_recovered():
 
     print("\n[bookkeeping: the 「🟠 任务全部完成」 line with no AUTO-MAS kill line is pushed]")
 
-
     class _Cfg:
         def __init__(self, history_dir=None):
             self.history_dir = history_dir                # None: no app.log read, idle stays 0
-
 
     class _State:
         def __init__(self):
@@ -2072,12 +1899,10 @@ def _part_maaend_recovered():
         def mark_raw(self, *a):
             self.marks.append(a)
 
-
     class _Eng:
         def __init__(self, history_dir=None):
             self.cfg = _Cfg(history_dir)
             self.state = _State()
-
 
     def automas_app_log(lines):
         """<automas>/history next to <automas>/debug/app.log, as collector reads it."""
@@ -2087,10 +1912,8 @@ def _part_maaend_recovered():
         (root / "debug" / "app.log").write_text("\n".join(lines) + "\n", encoding="utf-8")
         return root / "history"
 
-
     SHIPPED = []
     _real_ship = handle._ship_evidence
-
 
     def _fake_ship(eng, rec):
         # The real one uploads to COS; here only who asked for a bundle is recorded.
@@ -2098,13 +1921,15 @@ def _part_maaend_recovered():
         rec.raw["evidence_page"] = "https://example.invalid/bundle"
         return rec.raw["evidence_page"]
 
+    def exit_rec(n):
+        return RunRecord(run_id=f"2026-10-06/endfield/MaaEnd-05-28-0{n}", script="MaaEnd", user="endfield",
+                         started=datetime(2026, 10, 6, 9, 51, 51, tzinfo=SERVER_TZ),
+                         finished=datetime(2026, 10, 6, 9, 52, 54, tzinfo=SERVER_TZ), ok=True)
 
     handle._ship_evidence = _fake_ship
     h, sd = watch()
     try:
-        rec = RunRecord(run_id="2026-10-06/endfield/MaaEnd-05-28-01", script="MaaEnd", user="endfield",
-                        started=datetime(2026, 10, 6, 9, 51, 51, tzinfo=SERVER_TZ),
-                        finished=datetime(2026, 10, 6, 9, 52, 54, tzinfo=SERVER_TZ), ok=True)
+        rec = exit_rec(1)
         handle._mark_no_self_exit(_Eng(), rec)
         check("the bookkeeping line is not marked recovered",
               recovered_of(LINES.records, "🟠 MaaEnd", "任务全部完成"), [False])
@@ -2123,9 +1948,7 @@ def _part_maaend_recovered():
     SHIPPED.clear()
     h, sd = watch()
     try:
-        rec = RunRecord(run_id="2026-10-06/endfield/MaaEnd-05-28-02", script="MaaEnd", user="endfield",
-                        started=datetime(2026, 10, 6, 9, 51, 51, tzinfo=SERVER_TZ),
-                        finished=datetime(2026, 10, 6, 9, 52, 54, tzinfo=SERVER_TZ), ok=True)
+        rec = exit_rec(2)
         eng = _Eng(automas_app_log([MAS_RESULT, MAS_ENDED]))
         handle._mark_no_self_exit(eng, rec)
         rows = LINES.said("MaaEnd", "任务全部完成", "AUTO-MAS")
@@ -2146,9 +1969,7 @@ def _part_maaend_recovered():
     h, sd = watch()
     try:
         late = "2026-10-06 09:55:00.000 | WARNING  | MaaEnd 自动代理 | MaaEnd 队列已结束但进程未退出，正在中止脚本进程"
-        rec = RunRecord(run_id="2026-10-06/endfield/MaaEnd-05-28-03", script="MaaEnd", user="endfield",
-                        started=datetime(2026, 10, 6, 9, 51, 51, tzinfo=SERVER_TZ),
-                        finished=datetime(2026, 10, 6, 9, 52, 54, tzinfo=SERVER_TZ), ok=True)
+        rec = exit_rec(3)
         handle._mark_no_self_exit(_Eng(automas_app_log([MAS_RESULT, late])), rec)
         check("not marked recovered", recovered_of(LINES.records, "🟠 MaaEnd", "任务全部完成"), [False])
         check("it is queued for the group", any("任务全部完成" in str(x.get("line")) for x in h.pending()), True)
@@ -2170,19 +1991,16 @@ def _part_maaend_reenable():  # noqa: C901
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-
     class _Any:
         def __init__(self, *a, **k): pass
         def __call__(self, *a, **k): return _Any()
         def __getattr__(self, _): return _Any()
-
 
     class _Stub(types.ModuleType):
         def __getattr__(self, name):
             if name.startswith("__"):
                 raise AttributeError(name)
             return _Any
-
 
     for _n in ("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
                "servicemanager", "win32process", "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
@@ -2215,7 +2033,6 @@ def _part_maaend_reenable():  # noqa: C901
         "YellowConfirmButtonType2", {"param": {"expected": "确认"}, "type": "OCR"}]}}}}
     NO_RECOGNITION = {"AutoUseSpMedicationQuickUse": {"next": ["AutoUseSpMedicationDialogText"]}}
 
-
     class Capture(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -2224,11 +2041,9 @@ def _part_maaend_reenable():  # noqa: C901
         def emit(self, record):
             self.lines.append((record.levelname, record.getMessage()))
 
-
     CAP = Capture()
     logging.getLogger(errwatch.ARK).addHandler(CAP)
     logging.getLogger(errwatch.ARK).setLevel(logging.DEBUG)
-
 
     class Notes:
         def __init__(self):
@@ -2237,7 +2052,6 @@ def _part_maaend_reenable():  # noqa: C901
         def send(self, title, body="", **kw):
             self.sent.append((title, body, bool(kw.get("alert"))))
             return []
-
 
     class Log:
         def __init__(self):
@@ -2248,14 +2062,12 @@ def _part_maaend_reenable():  # noqa: C901
 
         info = warning = error = debug = exception = _rec
 
-
     # Only the booster check is under test: the later steps of the
     # stage (dead entries, option migration, route restore) are stubbed.
     mastercfg.prune_maaend_orphans = lambda *a: ([], "")
     mastercfg.migrate_maaend_options = lambda *a: ([], "")
     collect_retry.restore_master = lambda cfg: ""
     TITLE = getattr(texts, "SPMED_UNRECOGNISED", "<no such title>")
-
 
     def machine(*, version=None, nodes=None, off=(), extra_tasks=(), master=True, record=None):
         """state dir + MaaEnd dir + AUTO-MAS dir. Returns (cfg, master path, store)."""
@@ -2292,12 +2104,10 @@ def _part_maaend_reenable():  # noqa: C901
         cfg = SimpleNamespace(state_dir=state, maaend_dir=maaend, automas_dir=automas)
         return cfg, target, store
 
-
     def enabled(target, names):
         j = json.loads(target.read_text(encoding="utf-8"))
         by = {t.get("taskName"): t.get("enabled") for t in j["instances"][0]["tasks"]}
         return {n: by.get(n) for n in names}
-
 
     def others(target, names):
         """Every task not named, as (name, enabled, controllers) - to prove nothing else moved."""
@@ -2305,10 +2115,8 @@ def _part_maaend_reenable():  # noqa: C901
         return [(t.get("taskName"), t.get("enabled"), json.dumps(t.get("enabledByController")))
                 for t in j["instances"][0]["tasks"] if t.get("taskName") not in names]
 
-
     def updates(store):
         return dict(StateStore(store.dir).section("updates"))
-
 
     def boot(cfg):
         """One boot's re-enable stage. Returns (pushes, log lines of ark.*)."""
@@ -2317,10 +2125,8 @@ def _part_maaend_reenable():  # noqa: C901
         boot_stages._stage_reenable_maaend(cfg, n, Log())
         return n.sent, list(CAP.lines)
 
-
     def spmed_pushes(sent):
         return [(t, a) for t, _b, a in sent if t == TITLE]
-
 
     others(MASTER, FOUR)
     check("fixture versions are what the names say",
@@ -2418,14 +2224,12 @@ def _part_maaend_stopped_between_tasks():
     day.mkdir(parents=True)
     _n = [0]
 
-
     def record(result, log, stem=None):
         _n[0] += 1
         stem = stem or f"MaaEnd-06-{_n[0]:02d}-00"
         (day / f"{stem}.json").write_text(json.dumps({"maaend_result": result}, ensure_ascii=False), encoding="utf-8")
         (day / f"{stem}.log").write_text(log, encoding="utf-8")
         return stem, collector.parse_record(day / f"{stem}.json", root)
-
 
     print("[stopped after 环境监测; AUTO-MAS lists 自动采集, which never started]")
     stem_stopped, r = record("[日常] MaaEnd 部分任务执行失败: 🧺自动采集", STOPPED)
@@ -2512,8 +2316,6 @@ def _part_maaend_stopped_between_tasks():
     check("a stop after the closing task (AUTO-MAS stopping a done MaaEnd) is not a failure",
           outcome._maaend_cut_short(hung), [])
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-
 
 def _part_maaend_stub_record():
     """A MaaEnd record AUTO-MAS wrote for an attempt that never ran is not a run."""
@@ -2530,7 +2332,6 @@ def _part_maaend_stub_record():
     from ark_relay.core import ledger as core
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-18"
-
 
     with tempfile.TemporaryDirectory() as td:
         root = Path(td) / "history"
@@ -2609,11 +2410,6 @@ def _part_maaend_stub_record():
         check("save_and_upload 的包里带上了两个切片", set(("relay.log", "automas-app.log")) <= set(res["files"]))
         check("没有 COS 时不炸、包照打", bool(res["archive"]))
 
-    print()
-    if fails:
-        print("FAILED:", fails); sys.exit(1)
-    print("all checks passed")
-
 
 def _part_maaend_bagfull():
     """An essence claim that never lands: a full bag when the storage-full notice was
@@ -2631,7 +2427,6 @@ seen, otherwise an ordinary failure that carries the raw MaaEnd lines.
     from ark_relay.features.collector_maaend import CLAIM_UNCONFIRMED, parse_maaend_log
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
-    FAILED: list[str] = []
     FIX = fx_dir(Path(__file__), "fixtures")
     FW_IN_WINDOW = (
         '[2026-09-24 10:16:40.100][INF][Px7172][Tx32558][Utils/EventDispatcher.hpp][L65]'
@@ -2644,21 +2439,13 @@ seen, otherwise an ordinary failure that carries the raw MaaEnd lines.
         '[2026-09-24 10:20:00.000][INF][Px7172][Tx32558][Utils/EventDispatcher.hpp][L65]'
         '[MaaNS::EventDispatcher::notify] !!!OnEventNotify!!! [handle=true] [msg=Tasker.Task.Starting] later\n')
 
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -- {detail}"))
-        if not ok:
-            FAILED.append(name)
-
-
     def failure_text(raw: dict) -> str:
         t0 = datetime(2026, 9, 24, 10, 0, tzinfo=SERVER_TZ)
         r = RunRecord(run_id="2026-09-24/endfield/MaaEnd-06-07-50", script="MaaEnd", user="endfield",
                       started=t0, finished=t0, ok=False, failed_tasks=list(raw.get("tasks_failed") or []), raw=raw)
         return core.format_failure(r)[1]
 
-
-    def main() -> int:
+    def main() -> None:
         end = tmpdir()
         (end / "debug").mkdir(parents=True)
         (end / "debug" / "maafw.log").write_bytes(
@@ -2751,16 +2538,8 @@ seen, otherwise an ordinary failure that carries the raw MaaEnd lines.
         require("a normal run has no causes", not ok.get("maaend_fail_causes"),
                 repr(ok.get("maaend_fail_causes")))
         require("... and no claim lines", not ok.get("maaend_claim_lines"), repr(ok.get("maaend_claim_lines")))
-        print()
-        if FAILED:
-            print(f"FAILED {len(FAILED)}: {FAILED}")
-            return 1
-        print("all checks passed")
-        return 0
 
-
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_maaend_bagfull_collect():
@@ -2769,7 +2548,6 @@ def _part_maaend_bagfull_collect():
 
     import json
     import os
-
 
     os.environ.update(ARK_STATE_DIR=str(tmpdir()), ARK_AUTOMAS_DIR="", ARK_MAAEND_DIR="")
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -2783,15 +2561,7 @@ def _part_maaend_bagfull_collect():
     from ark_relay.core.collector import LocalSource
 
     FIX = fx_dir(Path(__file__), "fixtures")
-    FAILED: list[str] = []
     STEM = "MaaEnd-05-47-21"
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -- {detail}"))
-        if not ok:
-            FAILED.append(name)
-
 
     def history() -> Path:
         root = tmpdir()
@@ -2802,14 +2572,12 @@ def _part_maaend_bagfull_collect():
         (d / f"{STEM}.log").write_bytes((FIX / "maaend_bagfull_2026-09-25.log").read_bytes())
         return root
 
-
     def maaend(with_notice: bool) -> Path:
         root = tmpdir()
         (root / "debug").mkdir(parents=True)
         body = (FIX / "maaend_bagfull_2026-09-25_maafw.log").read_bytes() if with_notice else b""
         (root / "debug" / "maafw.log").write_bytes(body)
         return root
-
 
     def fetch(hist: Path, end: Path | None):
         cfg = Config()
@@ -2818,14 +2586,12 @@ def _part_maaend_bagfull_collect():
         recs = LocalSource(cfg).fetch(set())
         return recs[0] if len(recs) == 1 else None
 
-
-    def main() -> int:
+    def main() -> None:
         print("[09-25 through the collector, MaaEnd folder from Config]")
         rec = fetch(history(), maaend(with_notice=True))
         require("one record", rec is not None)
         if rec is None:
-            print(f"FAILED {len(FAILED)}: {FAILED}")
-            return 1
+            return
         causes = rec.raw.get("maaend_fail_causes") or {}
         require("still a failure", rec.ok is False and "基质刷取" in rec.failed_tasks,
                 repr((rec.ok, rec.failed_tasks)))
@@ -2894,16 +2660,7 @@ def _part_maaend_bagfull_collect():
             collector.refresh_raw = real
         require("the daily report recomputes with the MaaEnd folder", seen == [Path("/maaend")], repr(seen))
 
-        print()
-        if FAILED:
-            print(f"FAILED {len(FAILED)}: {FAILED}")
-            return 1
-        print("all checks passed")
-        return 0
-
-
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_maaend_close_game_wrapup():
@@ -2915,7 +2672,6 @@ def _part_maaend_close_game_wrapup():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import ledger as ledger_report, ledger as ledger_rows
     from ark_relay.core.config import SERVER_TZ
-
 
     e = json.loads((fx_dir(Path(__file__), "fixtures") / "ledger-1012-maaend-close-game.jsonl").read_text(encoding="utf-8"))
     raw = e["raw"]
@@ -2941,7 +2697,6 @@ def _part_maaend_collect_items_v236():
     from ark_relay.features import collector_maaend as cm, outcome
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-10-29"
-
 
     with tempfile.TemporaryDirectory() as d:
         d = Path(d)
@@ -3072,8 +2827,6 @@ def _part_maaend_collect_items_v236():
               cr.retry_blocked(mf_blocked, ["AutoCollectWulingRubyBolete1"], "11:00:00", [shot]),
               {"AutoCollectWulingRubyBolete1": [shot]})
 
-    print("\nall checks passed" if not fails else f"\n{len(fails)} FAILED: {fails}")
-
 
 def _part_maaend_collect_xianlu():
     """自动采集 walking only routes 1-3 is work done, not a false green."""
@@ -3084,10 +2837,7 @@ def _part_maaend_collect_xianlu():
 
     text = (fx_dir(Path(__file__), "fixtures") / "maaend-collect-xianlu-1012.log").read_text(encoding="utf-8")
     got = {c.label: c.ok for c in maaend_checks(text, []) if "自动采集" in c.label}
-    ok = got.get("自动采集 真的走了路线") is True
-    print(("  ✓ " if ok else "  ✗ ") + f"线路1-3 count as walked routes: {got}")
-    print("\n" + ("all checks passed" if ok else "FAILED"))
-    sys.exit(0 if ok else 1)
+    check("线路1-3 count as walked routes", got.get("自动采集 真的走了路线") is True, True)
 
 
 def _part_maaend_farm_drops():
@@ -3098,15 +2848,8 @@ def _part_maaend_farm_drops():
 
     D = fx_dir(pathlib.Path(__file__), "fixtures") / "maaend-farm-drops"
 
-
-    def chk(name, got, want):
-        if got != want:
-            fails.append(f"{name}: got {got!r}, want {want!r}")
-
-
     def farm(name):
         return collector_maaend._maaend_farm((D / name).read_text(encoding="utf-8"))
-
 
     def pick(d):
         """Farm name, place, runs and drops. Sanity is checked separately below,
@@ -3114,56 +2857,54 @@ def _part_maaend_farm_drops():
         keys = ("maaend_farm", "maaend_farm_place", "maaend_farm_runs", "maaend_farm_drops")
         return {k: d[k] for k in keys if k in d}
 
-
     def sanity(name):
         r = collector_maaend.parse_maaend_log(D / name)
         return {k: r.get(k) for k in ("maaend_sanity_spent", "sanity", "sanity_cap", "protocol_runs")}
 
-
-    chk("09-27 协议空间", pick(farm("2026-09-27.log")),
+    check("09-27 协议空间", pick(farm("2026-09-27.log")),
         {"maaend_farm": "协议空间", "maaend_farm_runs": 1,
          "maaend_farm_drops": {"折金票": 68000, "行动资历": 960}})
-    chk("09-27 理智", sanity("2026-09-27.log"),
+    check("09-27 理智", sanity("2026-09-27.log"),
         {"maaend_sanity_spent": 160, "sanity": 117, "sanity_cap": 360, "protocol_runs": 2})
 
-    chk("09-28a 协议空间", pick(farm("2026-09-28a.log")),
+    check("09-28a 协议空间", pick(farm("2026-09-28a.log")),
         {"maaend_farm": "协议空间", "maaend_farm_runs": 2,
          "maaend_farm_drops": {"折金票": 136000, "行动资历": 1920}})
-    chk("09-28a 理智", sanity("2026-09-28a.log"),
+    check("09-28a 理智", sanity("2026-09-28a.log"),
         {"maaend_sanity_spent": 320, "sanity": 6, "sanity_cap": 360, "protocol_runs": 2})
 
     r = farm("2026-09-28b.log")
-    chk("09-28b 没进去", pick(r), {"maaend_farm": "协议空间"})
+    check("09-28b 没进去", pick(r), {"maaend_farm": "协议空间"})
     full = collector_maaend.parse_maaend_log(D / "2026-09-28b.log")
-    chk("09-28b 次数", full.get("maaend_farm_runs"), None)
-    chk("09-28b 产出", full.get("maaend_farm_drops"), None)
-    chk("09-28b 理智不足", full.get("sanity_exhausted"), True)
-    chk("09-28b 理智", sanity("2026-09-28b.log"),
+    check("09-28b 次数", full.get("maaend_farm_runs"), None)
+    check("09-28b 产出", full.get("maaend_farm_drops"), None)
+    check("09-28b 理智不足", full.get("sanity_exhausted"), True)
+    check("09-28b 理智", sanity("2026-09-28b.log"),
         {"maaend_sanity_spent": None, "sanity": 17, "sanity_cap": 360, "protocol_runs": None})
 
-    chk("09-24 基质刷取", pick(farm("2026-09-24_MaaEnd-06-07-50.log")),
+    check("09-24 基质刷取", pick(farm("2026-09-24_MaaEnd-06-07-50.log")),
         {"maaend_farm": "基质刷取", "maaend_farm_place": "清波寨", "maaend_farm_runs": 2,
          "maaend_farm_drops": {"无暇基质": 6, "高纯基质": 4}})
 
-    chk("09-25 基质刷取 背包满", pick(farm("2026-09-25_MaaEnd-05-25-36.log")),
+    check("09-25 基质刷取 背包满", pick(farm("2026-09-25_MaaEnd-05-25-36.log")),
         {"maaend_farm": "基质刷取", "maaend_farm_place": "清波寨"})
 
     whole = collector_maaend._item_blocks((D / "2026-09-27.log").read_text(encoding="utf-8").splitlines())
-    chk("09-27 全日 信用", whole.get("信用"), 20 + 400 + 300)
-    chk("09-27 全日 武库配额", whole.get("武库配额"), 80)
-    chk("09-27 产出不含信用", "信用" in (farm("2026-09-27.log").get("maaend_farm_drops") or {}), False)
+    check("09-27 全日 信用", whole.get("信用"), 20 + 400 + 300)
+    check("09-27 全日 武库配额", whole.get("武库配额"), 80)
+    check("09-27 产出不含信用", "信用" in (farm("2026-09-27.log").get("maaend_farm_drops") or {}), False)
 
     # Not tied to the task name: the same log with the task renamed is still read
     # as the farming task because its own lines carry 「当前理智 N/M」.
     t27 = (D / "2026-09-27.log").read_text(encoding="utf-8")
     renamed = t27.replace("⚔️协议空间", "⚔️某新理智玩法")
-    chk("改名 仍认", pick(collector_maaend._maaend_farm(renamed)),
+    check("改名 仍认", pick(collector_maaend._maaend_farm(renamed)),
         {"maaend_farm": "某新理智玩法", "maaend_farm_runs": 1,
          "maaend_farm_drops": {"折金票": 68000, "行动资历": 960}})
     # Renamed and without the sanity readings: no farming task at all, and the
     # 基建任务 / 信用点购物 blocks do not turn into one.
     bare = "\n".join(x for x in renamed.splitlines() if "当前理智" not in x)
-    chk("改名无理智行 不认", collector_maaend._maaend_farm(bare), {})
+    check("改名无理智行 不认", collector_maaend._maaend_farm(bare), {})
 
     # Block boundary: the first non-item line closes it, even at the same
     # timestamp; a framework line closes it too.
@@ -3177,31 +2918,18 @@ def _part_maaend_farm_drops():
         "[2026-09-27 09:46:38.001][ERR][Px1][Tx1][A.cpp][L1][f] size x 16",
         "[2026-09-27 09:46:38.002] 信用 ×400",
     ]
-    chk("块边界", collector_maaend._item_blocks(lines), {"折金票": 68000, "信用": 20})
-
-    if fails:
-        print("\n".join(fails)); sys.exit(1)
-    print("all checks passed")
+    check("块边界", collector_maaend._item_blocks(lines), {"折金票": 68000, "信用": 20})
 
 
 def _part_maaend_two_farms():
     """Both sanity tasks in one round are both read."""
     #!/usr/bin/env python3
 
-
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import collector_maaend as cm
 
-    FAILED: list[str] = []
     D = fx_dir(Path(__file__), "fixtures") / "maaend-farm-drops"
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -- {detail}"))
-        if not ok:
-            FAILED.append(name)
-
 
     def _task(path: Path, key: str) -> str:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -3209,8 +2937,7 @@ def _part_maaend_two_farms():
         b = next(i for i, x in enumerate(lines) if i > a and ("任务完成" in x or "任务失败" in x) and key in x)
         return "\n".join(lines[a:b + 1]) + "\n"
 
-
-    def main() -> int:
+    def main() -> None:
         ps = _task(D / "2026-09-27.log", "协议空间")
         ess = _task(D / "2026-09-24_MaaEnd-06-07-50.log", "基质刷取")
         one_ps, one_ess = cm._maaend_farm(ps), cm._maaend_farm(ess)
@@ -3225,16 +2952,8 @@ def _part_maaend_two_farms():
             want[k] = want.get(k, 0) + n
         require("drops of both are kept", both.get("maaend_farm_drops") == want, repr(both.get("maaend_farm_drops")))
         require("a single task reads as before", cm._maaend_farm(ps) == one_ps)
-        print()
-        if FAILED:
-            print(f"FAILED {len(FAILED)}: {FAILED}")
-            return 1
-        print("all checks passed")
-        return 0
 
-
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_unreachable_evidence():
@@ -3243,7 +2962,6 @@ def _part_unreachable_evidence():
     import logging
     import os
     from datetime import datetime, timedelta
-
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -3261,24 +2979,8 @@ def _part_unreachable_evidence():
 
     FIX = fx_dir(ROOT, "fixtures") / "maaend_shape_local_fault_2026-09-25.log"
 
-
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return []
-
-
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     DAY = datetime.now(tz=SERVER_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     START = DAY.replace(hour=9, minute=55)
-
 
     def build():
         cfg = Config()
@@ -3287,7 +2989,7 @@ def _part_unreachable_evidence():
         cfg.maa_dir = None
         cfg.maaend_dir = tmpdir()
         (Path(cfg.maaend_dir) / "debug").mkdir()
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._unfinished_queues = lambda now, entries: []
@@ -3296,18 +2998,15 @@ def _part_unreachable_evidence():
         e._maintenance_today = lambda game: False
         return e
 
-
     handle._ship_evidence = lambda eng, rec: ""
     makeup._dispatch = lambda script: (True, "已开跑")
     makeup._kill_game = lambda: None
-
 
     def rec_from_fixture():
         raw = collector.parse_maaend_log(FIX)
         return RunRecord(run_id=f"{START:%Y-%m-%d}/endfield/MaaEnd-{START:%H-%M-%S}", script="MaaEnd",
                          user="endfield", started=START, finished=START + timedelta(minutes=4), ok=False,
                          failed_tasks=["🎁赠送干员礼物", "🎱基质刷取", "📅日常奖励领取"], raw=raw)
-
 
     def ledger_raw(e, r):
         p = Path(e.cfg.state_dir) / f"ledger-{START:%Y-%m-%d}.jsonl"
@@ -3317,10 +3016,8 @@ def _part_unreachable_evidence():
                 return ent.get("raw") or {}
         return None
 
-
     def cant_enter_sent(e):
         return any(t == texts.cant_enter("MaaEnd") for t, _b, _a in e.notifier.sent)
-
 
     check("反例日志确实是「秒败、零完成」的形状", collector.maaend_unreachable(FIX.read_text(encoding="utf-8")), True)
 
@@ -3329,17 +3026,7 @@ def _part_unreachable_evidence():
     e = build()
     r = rec_from_fixture()
 
-
-    class _Loud(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.WARNING)
-            self.lines = []
-
-        def emit(self, rec_):
-            self.lines.append(rec_.getMessage())
-
-
-    loud = _Loud()
+    loud = _Lines(logging.WARNING)
     handle.log.addHandler(loud)
     handle._handle(e, r)
     handle.log.removeHandler(loud)
@@ -3360,13 +3047,11 @@ def _part_unreachable_evidence():
 
     print("[形状有、公告读不到 → 普通故障，但记下「没读到」，不说成「没有公告」（审计 10-13 s1 #3）]")
 
-
     def hint_unreadable(now=None, fetch=None, strict=False):
         # efstatus.update_hint's own contract: "" on a failed read unless strict.
         if strict:
             raise OSError("notice page unreachable")
         return ""
-
 
     handle.efstatus.update_hint = hint_unreadable
     e = build()
@@ -3424,17 +3109,11 @@ def _part_unreachable_evidence():
     check("用了没读到公告那句", UNREAD in body, True)
     check("没说今天没有公告", texts.UNREACHABLE_SHAPE_NOTE in body, False)
 
-    if fails:
-        print(f"\n✗ {len(fails)} 项失败")
-        sys.exit(1)
-    print("\nall checks passed")
-
 
 def _part_unreachable_note_pushed_now():
     """The 「像没进游戏」 note is on every MaaEnd failure alarm, not only the held one."""
     import os
     from datetime import datetime, timedelta
-
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_HISTORY_DIR=str(TMP / "history"),
@@ -3448,7 +3127,6 @@ def _part_unreachable_note_pushed_now():
     from ark_relay.core.ledger import State
     from ark_relay.features import handle
 
-
     class Notes:
         def __init__(self):
             self.sent = []
@@ -3457,28 +3135,20 @@ def _part_unreachable_note_pushed_now():
             self.sent.append((title, body))
             return []
 
-
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     handle._ship_evidence = lambda eng, r: ""
     handle._weekly_gates = lambda eng, r: None
     handle.efstatus.update_hint = lambda now=None, fetch=None, strict=False: ""   # no official notice today
     WHO = {"hand": ("", "task-hand"), "stop": ("06:10 停一切", "")}
 
-
     def build(state_dir):
         cfg = Config()
         cfg.state_dir = state_dir
         cfg.maaend_dir = None
-        e = eng_mod.Engine(cfg, source=Src(), state=State(state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=_NoSource(), state=State(state_dir), notifier=Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._archive_maaend_evidence = lambda r: None
         return e
-
 
     T0 = datetime(2026, 10, 12, 6, 4, tzinfo=SERVER_TZ)
 
@@ -3504,10 +3174,8 @@ def _part_unreachable_note_pushed_now():
     handle._estop_overlap = lambda eng, r: ""
     handle._hand_started = lambda eng, r: "task-hand"
 
-
     def _unread(now=None, fetch=None, strict=False):
         raise OSError("efstatus down")
-
 
     handle.efstatus.update_hint = _unread
     state = TMP / "unread"
@@ -3521,8 +3189,6 @@ def _part_unreachable_note_pushed_now():
     body = (e.notifier.sent or [("", "")])[0][1]
     check("写了「没读到」", texts.UNREACHABLE_UNREAD_NOTE in body)
     check("不写「今天没有官方公告」", texts.UNREACHABLE_SHAPE_NOTE in body, False)
-
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 
 
 if __name__ == "__main__":

@@ -3,12 +3,44 @@ from __future__ import annotations
 
 # ruff: noqa: PLC0415
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+
+
+class _Any:
+    """Stands in for any pywin32 attribute: callable, subclassable, truthy."""
+    def __init__(self, *a, **k): pass
+    def __call__(self, *a, **k): return _Any()
+    def __getattr__(self, _): return _Any()
+
+
+class _Stub(types.ModuleType):
+    """A pywin32 module that is not there: every public name is an _Any."""
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return _Any
+
+
+def _time_setter(*mods):
+    """service.py's code now lives in several modules, each reading its own `time`; the setter swaps it in all."""
+    def set_time(t):
+        for m in mods:
+            m.time = t
+    return set_time
+
+
+def _module(name, **attrs):
+    """Put a module with exactly these attributes in sys.modules (run_parts takes it out again)."""
+    m = types.ModuleType(name)
+    m.__dict__.update(attrs)
+    sys.modules[name] = m
+    return m
 
 
 def _part_apphost_covers_service():  # noqa: C901
@@ -20,13 +52,11 @@ def _part_apphost_covers_service():  # noqa: C901
                "automas_keeper": "ark_relay/features/automas_keeper.py",
                "phone_channel": "ark_relay/features/phone.py"}
 
-
     def cls(tree: ast.Module, name: str) -> ast.ClassDef:
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef) and node.name == name:
                 return node
         raise SystemExit(f"FAIL no class {name}")
-
 
     def host_has(tree: ast.Module) -> "tuple[set[str], dict[str, str]]":
         """What AppHost defines, and which ArkRelayService methods it borrows (name -> source)."""
@@ -41,14 +71,11 @@ def _part_apphost_covers_service():  # noqa: C901
                     and n.value.value.attr == "ArkRelayService"}
         return has, borrowed
 
-
     def _params(fn) -> "list[str]":
         return [a.arg for a in fn.args.posonlyargs + fn.args.args]
 
-
     def _is(node, name: str) -> bool:
         return isinstance(node, ast.Name) and node.id == name
-
 
     def module_funcs(trees: "dict[str, ast.Module]") -> "tuple[dict[str, dict], dict[int, str]]":
         """Each file's functions by the name its code calls them, and the file each one lives in."""
@@ -62,7 +89,6 @@ def _part_apphost_covers_service():  # noqa: C901
                     funcs[m].update({a.asname or a.name: funcs[src][a.name] for a in n.names
                                      if a.name in funcs[src]})
         return funcs, home
-
 
     def walk_host(trees: "dict[str, ast.Module]") -> "tuple[dict[str, str], set[str], set[str]]":
         """Every attribute read off the host, with the call path that reaches it; every one
@@ -130,16 +156,13 @@ def _part_apphost_covers_service():  # noqa: C901
                 visit("app_main", fn, "host", f"app_main.{fn.name}")
         return used, stored, {f"{m}.{f}" for m, f, _ in seen}
 
-
     def missing(trees) -> "dict[str, str]":
         has, _ = host_has(trees["app_main"])
         used, stored, _ = walk_host(trees)
         return {a: p for a, p in used.items() if a not in has and a not in stored}
 
-
     def parse() -> "dict[str, ast.Module]":
         return {m: ast.parse((RELAY / f).read_text(encoding="utf-8")) for m, f in MODULES.items()}
-
 
     def plant(trees, mod: str, fn: str, param: str, attr: str):
         """A read of `<param>.<attr>` at the top of mod.fn, in a fresh copy of the trees."""
@@ -150,7 +173,6 @@ def _part_apphost_covers_service():  # noqa: C901
                 return out
         raise SystemExit(f"FAIL no {mod}.{fn}")
 
-
     def borrowed_only(trees) -> "set[str]":
         """The first version's reading: the borrowed methods' own self.xxx, nothing else."""
         has, borrowed = host_has(trees["app_main"])
@@ -159,7 +181,6 @@ def _part_apphost_covers_service():  # noqa: C901
         used = {n.attr for src in borrowed.values() if src in methods for n in ast.walk(methods[src])
                 if isinstance(n, ast.Attribute) and _is(n.value, "self")}
         return used - has
-
 
     trees = parse()
 
@@ -194,19 +215,15 @@ def _part_apphost_covers_service():  # noqa: C901
     require("borrowed-methods-only reading misses it",
           "_not_on_host" not in borrowed_only(plant(trees, "automas_keeper", "_loop", "svc", "_not_on_host")))
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-
 
 def _part_estop_verifies():
     """The red button on the phone must not say 「已停一切」 unless it checked."""
     import json
 
-
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import commands
     # estop() reads its stop steps and _mas from redbutton, so the fakes go there.
     from ark_relay.features import redbutton
-
 
     print("[要杀要查的名单里必须有鸣潮的三个真名——08-26 的假确认就漏在这里]")
     for exe in ("Wuthering Waves.exe", "Client-Win64-Shipping.exe", "KRSDKExternal.exe",
@@ -214,7 +231,6 @@ def _part_estop_verifies():
         check(f"名单含 {exe}", exe in redbutton._ESTOP_EXES, True)
     print("  ✓ 终末地启动器 Games.exe 也在" if "Games.exe" in redbutton._ESTOP_EXES else "")
     check("终末地启动器也在", "Games.exe" in redbutton._ESTOP_EXES, True)
-
 
     class Rig:
         """Stands in for the four actions: API stop, kill, who is alive, which AUTO-MAS tasks are unfinished.
@@ -243,7 +259,6 @@ def _part_estop_verifies():
 
         def run(self):
             return commands.estop(sleep=self.sleep, state_dir=self.state)
-
 
     real = (redbutton._estop_stop_via_mas, redbutton._estop_kill, redbutton._estop_alive,
             redbutton._estop_live_tasks, redbutton._mas)
@@ -364,7 +379,6 @@ def _part_estop_verifies():
     print("\n[停的时候发的是 AUTO-MAS 在跑任务的 taskId，不是脚本 / 队列编号（09-30 的根因）]")
     calls = []
 
-
     def fake_mas(path, body=None, timeout=20):
         calls.append((path, body))
         if path == "/api/scripts/get":
@@ -372,7 +386,6 @@ def _part_estop_verifies():
         if path == "/api/queue/get":
             return {"data": {"queue-uuid": {"Info": {"Name": "早班"}}}}
         return {"code": 200, "message": "操作成功"}
-
 
     redbutton._mas = fake_mas
     redbutton._estop_live_tasks = lambda: [("dispatch-abc", "MaaEnd"), ("dispatch-def", "早班")]
@@ -403,7 +416,6 @@ def _part_estop_verifies():
     real_urlopen = _ur.urlopen
     seen_req = []
 
-
     class Resp:
         def __init__(self, body):
             self.body = body
@@ -417,7 +429,6 @@ def _part_estop_verifies():
         def __exit__(self, *a):
             return False
 
-
     SNAP = {"tasks": [
         {"taskId": "done-1", "mode": "AutoProxy",
          "task_info": [{"name": "OK-WW", "status": "完成"}]},
@@ -426,11 +437,9 @@ def _part_estop_verifies():
         {"taskId": "fresh-3", "mode": "早班", "task_info": []},
     ]}
 
-
     def fake_urlopen(req, timeout=None):
         seen_req.append(req)
         return Resp(json.dumps(SNAP, ensure_ascii=False).encode("utf-8"))
-
 
     _ur.urlopen = fake_urlopen
     live = redbutton._estop_live_tasks()
@@ -442,10 +451,8 @@ def _part_estop_verifies():
     from ark_relay.core import engine as _engine
     check("和 engine 的判断一致", bool(live), _engine._judge_snapshot(SNAP))
 
-
     def _down(*a, **k):
         raise OSError("连不上")
-
 
     _ur.urlopen = _down
     check("读不到时返回 None（不是空列表）", redbutton._estop_live_tasks(), None)
@@ -460,11 +467,9 @@ def _part_estop_verifies():
     real_run, real_win = _sp.run, _config.IS_WINDOWS
     _config.IS_WINDOWS = True     # the machine: the red button lists processes
 
-
     class Out:
         def __init__(self, text):
             self.stdout = text.encode("utf-8")
-
 
     _ov.okww_running = lambda: False
     _sp.run = lambda *a, **k: Out('"MAA.exe","1","Console"\n"client-win64-shipping.exe","2","C"\n')
@@ -473,10 +478,8 @@ def _part_estop_verifies():
     _sp.run = lambda *a, **k: Out('"explorer.exe","1","Console"\n')
     check("干净时是空的", redbutton._estop_alive(), [])
 
-
     def _boom(*a, **k):
         raise OSError("tasklist 挂了")
-
 
     print("\n[OK-WW's python: invisible to tasklist names, seen by its command line (audit 11 #3)]")
     # OK-WW runs as pythonw.exe (config.py "process names"); a press while it ran could
@@ -495,7 +498,6 @@ def _part_estop_verifies():
     class Txt:
         def __init__(self, text):
             self.stdout = text
-
 
     _sp.run = lambda *a, **k: Txt("AUTO-MAS.exe 1 Console\npythonw.exe 2 Console\n")
     for got_ww, want in ((True, True), (None, True), (False, False)):
@@ -520,7 +522,6 @@ def _part_farm_launcher():
 
     from ark_relay.features import echofarm
 
-
     root = tmpdir()
     py = root / "data" / "apps" / "ok-ww" / "python" / "pythonw.exe"
     main = root.joinpath(*echofarm._WORKING, "main.py")
@@ -536,11 +537,9 @@ def _part_farm_launcher():
     ran = []
     real_run = subprocess.run
 
-
     class Done:
         returncode = 0
         stderr = b""
-
 
     subprocess.run = lambda *a, **k: (ran.append(list(a[0]) if a else []), Done())[1]
     try:
@@ -576,7 +575,6 @@ def _part_hidden_launch_quoting():  # noqa: C901
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import preupdate as C
-
 
     def ps_statements(script: str) -> list[list[str]]:
         """Statements of a PowerShell command line, each a list of argument-mode tokens."""
@@ -632,7 +630,6 @@ def _part_hidden_launch_quoting():  # noqa: C901
             out.append(cur)
         return out
 
-
     def win_argv(line: str) -> list[str]:
         """Split a command line as the C runtime / CommandLineToArgvW does (the inverse of list2cmdline)."""
         args, cur, inq, have, i = [], "", False, False, 0
@@ -674,7 +671,6 @@ def _part_hidden_launch_quoting():  # noqa: C901
             args.append(cur)
         return args
 
-
     def action_params(script: str) -> dict:
         """The New-ScheduledTaskAction statement as {"-Execute": v, ..., "loose": [...]}."""
         stmt = next(s for s in ps_statements(script) if any("New-ScheduledTaskAction" in t for t in s))
@@ -689,7 +685,6 @@ def _part_hidden_launch_quoting():  # noqa: C901
                 i += 1
         got["loose"] = loose
         return got
-
 
     def captured_command(exe, cwd, args):
         """The -Command string _spawn_hidden_via_task passes to pwsh, with pythonw.exe present."""
@@ -708,7 +703,6 @@ def _part_hidden_launch_quoting():  # noqa: C901
             C.subprocess.run, C._pythonw, C._pwsh = saved
         check("the launch reports success", ok, True)
         return seen[0][seen[0].index("-Command") + 1]
-
 
     print("[the OK-WW failure screenshot: pwsh.exe under C:\\Program Files, windowless]")
     work = tmpdir() / "desktop"             # no space: the program path alone breaks the old string
@@ -759,16 +753,13 @@ def _part_launcher_states():
     from ark_relay.features import gameupdate_games as gug
     from ark_relay.core.desktop import Line, Screen
 
-
     # ── a clock that only moves when the code sleeps, so every budget runs out ──
     clock = {"t": 0.0}
     slept = []
 
-
     def fake_sleep(s):
         slept.append(s)
         clock["t"] += s
-
 
     gug.time = types.SimpleNamespace(monotonic=lambda: clock["t"], sleep=fake_sleep)
 
@@ -776,7 +767,6 @@ def _part_launcher_states():
     events = []
     gug.kill = lambda *names: events.append(("kill",) + names)
     gug._spawn = lambda exe, cwd=None: events.append(("spawn", exe.name)) or True
-
 
     class FakeDesk:
         """Replays screens in order (the last one repeats). A screen is a list of
@@ -813,12 +803,10 @@ def _part_launcher_states():
         def click(self, x, y, focus=None):
             return self._ok((x, y))
 
-
     def reset():
         events.clear()
         slept.clear()
         clock["t"] = 0.0
-
 
     def before_first_click(kind):
         """Events of `kind` that happened before anything was clicked."""
@@ -829,7 +817,6 @@ def _part_launcher_states():
             if e[0] == kind:
                 out.append(e)
         return out
-
 
     EF = (Path("Endfield.exe"), Path("Launcher.exe"))
 
@@ -906,7 +893,6 @@ def _part_launcher_states():
     ]
     CONFIRM_BOX = (968, 587, 1170, 626)
 
-
     class DialogLauncher:
         """The real launcher: 「更新游戏」 opens the confirm, and the confirm stays on screen
     until a click lands inside 「确认」; then it downloads, then shows 「开始游戏」.
@@ -951,11 +937,9 @@ def _part_launcher_states():
                 self.state = "downloading"
             return True
 
-
     def confirm_hits(d):
         return [c for c in d.clicks if isinstance(c, tuple)
                 and CONFIRM_BOX[0] <= c[0] <= CONFIRM_BOX[2] and CONFIRM_BOX[1] <= c[1] <= CONFIRM_BOX[3]]
-
 
     print("\n[10-15 终末地：点「更新游戏」后弹「系统提示」（所需空间）→ 点「确认」，不干等 40 分钟]")
     reset(); probs = []
@@ -990,7 +974,6 @@ def _part_launcher_states():
     d = FakeDesk([["-以％36．。6．78678967", "么"]])
     gug.update_endfield(d, *EF, problems=probs, sleep=fake_sleep)
     check("没杀 Games.exe", [e for e in events if e[0] == "kill" and "Games.exe" in e], [])
-    print("\nPASS" if not fails else f"\nFAILED: {fails}")
 
 
 def _part_procs_wmi():
@@ -1003,27 +986,22 @@ def _part_procs_wmi():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import desktop as procs
 
-
     class _ComError(Exception):
         def __init__(self, hresult):
             super().__init__(hresult, "fake", None, None)
             self.hresult = hresult
 
-
     _alive = weakref.WeakSet()
     _leaked = []          # objects still alive at a CoUninitialize
-
 
     class _Com:
         def __init__(self):
             _alive.add(self)
 
-
     class _Prop(_Com):
         def __init__(self, value):
             super().__init__()
             self.Value = value
-
 
     class _EarlyBoundRow(_Com):
         """An early-bound SWbemObject: the class's properties only through Properties_."""
@@ -1037,7 +1015,6 @@ def _part_procs_wmi():
                 raise _ComError(-2147352567)          # 0x80020009, as on the machine
             return _Prop(self._p[name])
 
-
     class _Result(_Com):
         def __init__(self, rows, fail_at=None):
             super().__init__()
@@ -1049,9 +1026,7 @@ def _part_procs_wmi():
                     raise _ComError(-2147217358)      # 0x80041032 WBEM_E_CALL_CANCELLED
                 yield r
 
-
     plan = []             # per try: "ok" | "cancel"
-
 
     class _Services(_Com):
         def ExecQuery(self, q):  # noqa: N802
@@ -1060,17 +1035,14 @@ def _part_procs_wmi():
                     _EarlyBoundRow(2076, r"C:\Program Files\Python314\python.exe x.py")]
             return _Result(rows, fail_at=0 if step == "cancel" else None)
 
-
     def _co_uninit():
         gc.collect()
         _leaked.extend(type(o).__name__ for o in list(_alive))
-
 
     sys.modules["pythoncom"] = types.SimpleNamespace(CoInitialize=lambda: None, CoUninitialize=_co_uninit)
     client = types.SimpleNamespace(GetObject=lambda moniker: _Services())
     sys.modules["win32com"] = types.SimpleNamespace(client=client)
     sys.modules["win32com.client"] = client
-
 
     class _Logs(logging.Handler):
         def __init__(self):
@@ -1079,7 +1051,6 @@ def _part_procs_wmi():
 
         def emit(self, record):
             self.records.append(record)
-
 
     logs = _Logs()
     procs._log_procs.addHandler(logs)
@@ -1137,12 +1108,6 @@ def _part_procs_wmi():
     check("返回 None", procs.python_processes(warn=False), None)
     check("没等", slept, [])
 
-    print()
-    if fails:
-        print("FAILED:", fails)
-        sys.exit(1)
-    print("all checks passed")
-
 
 def _part_relaunch():
     """After an update or a rollback the relay starts again within seconds, not with the
@@ -1157,7 +1122,6 @@ watchdog's next check.
 
     import launch
     import pkg_layout
-
 
     class Machine:
         """A fake clock, the relay's mutex and the task. `exits_after`: polls until the old
@@ -1203,11 +1167,9 @@ watchdog's next check.
             self.alive = True
             self.exits_after = None
 
-
     def relaunch(m):
         return launch.relaunch(running=m.running, run_task=m.run_task, sleep=m.sleep, clock=m.clock,
                                watchdog_stopping=m.watchdog_stopping)
-
 
     print("[the old relay takes 6 s to exit: one task run, after it is gone]")
     m = Machine(exits_after=12)
@@ -1242,12 +1204,10 @@ watchdog's next check.
     m = Machine(exits_after=2)
     real_run = m.run_task
 
-
     def watchdog_first():
         m.alive = True                      # the watchdog's run won the race
         m.exits_after = None
         real_run()
-
 
     m.run_task = watchdog_first
     check("result", relaunch(m), 0)
@@ -1290,10 +1250,8 @@ watchdog's next check.
     app = Path("C:/Program Files/ArkRelay")
     calls = []
 
-
     def popen(cmd, creationflags=0):
         calls.append((cmd, creationflags))
-
 
     pkg_layout.restart_soon(app, popen=popen)
     check("one process", len(calls), 1)
@@ -1310,12 +1268,10 @@ watchdog's next check.
     print("[a job that forbids breakaway: started again without that flag]")
     calls.clear()
 
-
     def popen_no_breakaway(cmd, creationflags=0):
         calls.append(creationflags)
         if len(calls) == 1 and sys.platform == "win32":
             raise PermissionError(5, "Access is denied")
-
 
     pkg_layout.restart_soon(app, popen=popen_no_breakaway)
     if sys.platform == "win32":
@@ -1330,8 +1286,6 @@ watchdog's next check.
     check("mutex", launch.MUTEX, app_main.MUTEX)
     check("task", launch.MAIN_TASK, pkg_layout.MAIN_TASK)
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-
 
 def _part_rollback_stop_failed():
     """`app_main.py rollback` says so and exits 1 when the relay does not stop."""
@@ -1343,7 +1297,6 @@ def _part_rollback_stop_failed():
 
     import app_main
     import pkg_layout
-
 
     def rollback_with(stop_result):
         restarts = []
@@ -1360,7 +1313,6 @@ def _part_rollback_stop_failed():
             pkg_layout.app_root, pkg_layout.rollback, pkg_layout.restart_soon, app_main.stop = real
         return code, out.getvalue(), restarts
 
-
     print("[the relay stops]")
     code, out, restarts = rollback_with(0)
     check("exit 0", code, 0)
@@ -1375,33 +1327,13 @@ def _part_rollback_stop_failed():
     check("says when 100 starts", "next restart" in out, True)
     check("no restart helper (it would wait 120 s and give up)", restarts, [])
 
-    if fails:
-        print("FAIL:", fails)
-        sys.exit(1)
-    print("all checks passed")
-
 
 def _part_unknown_process_list():
     """A process list that cannot be read is "unknown", never a yes (review of 2026-10-07, item 2).
     """
     import subprocess
-    import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
 
     for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
                   "win32con", "win32file", "servicemanager", "win32process",
@@ -1411,10 +1343,8 @@ def _part_unknown_process_list():
     import boot_stages
     from ark_relay.features import automas_keeper, automas_keeper as automas_procs
 
-
     def _boom(*a, **k):
         raise OSError("tasklist is gone")
-
 
     # ------------------------------------------------------------ service.py
     print("[automas_procs._installer_running：进程表读不到 → None，不是「有安装程序」]")
@@ -1427,18 +1357,15 @@ def _part_unknown_process_list():
     check("没有 → False", automas_procs._installer_running(), False)
     automas_procs.subprocess.run = orig_run
 
-
     class _Log:
         def __init__(self): self.rows = []
         def info(self, msg, *a, **k): self.rows.append(("INFO", msg % a if a else msg))
         def warning(self, msg, *a, **k): self.rows.append(("WARNING", msg % a if a else msg))
         def exception(self, msg, *a, **k): self.rows.append(("ERROR", msg % a if a else msg))
 
-
     class _Notifier:
         def __init__(self): self.sent = []
         def send(self, title, body, **k): self.sent.append(title); return []
-
 
     print("\n[_revive：进程表读不到时不动 AUTO-MAS，但说的是「读不到」而不是「安装程序在跑」]")
     k = automas_keeper._AutomasKeeper.__new__(automas_keeper._AutomasKeeper)
@@ -1476,7 +1403,6 @@ abandoned before the doors were ever reachable.
     start = SRC.index("def _wait_for_network")
     end = SRC.index("class ArkRelayService")
 
-
     class Clock:
         """假时钟：sleep 只是把指针往前拨，不真等。`gaps` is the time slept between two
     DNS lookups (the lookup stub calls lookup())."""
@@ -1504,7 +1430,6 @@ abandoned before the doors were ever reachable.
             self.lookup()
             return self.gaps
 
-
     def load(clock, stopping=lambda: False):
         """按给定时钟装一份被测函数。它自己 `import socket`，所以解析器要打真模块。
     `stopping` stands in for boot_stages._stop_requested (the stop request)."""
@@ -1513,12 +1438,10 @@ abandoned before the doors were ever reachable.
         exec(compile(SRC[start:end], "service.py", "exec"), ns)
         return ns["_wait_for_network"]
 
-
     class Log:
         def __init__(self): self.lines = []
         def info(self, msg, *a): self.lines.append(("info", msg % a if a else msg))
         def warning(self, msg, *a): self.lines.append(("warn", msg % a if a else msg))
-
 
     real = socket.getaddrinfo
     FAKE_OK = [(2, 1, 6, "", ("140.82.114.4", 443))]
@@ -1584,7 +1507,6 @@ def _part_watch_handle_close():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import watch
 
-
     class Fn:
         """A kernel32 function: restype / argtypes are set on it, calls go to `body`."""
 
@@ -1594,12 +1516,10 @@ def _part_watch_handle_close():
         def __call__(self, *a):
             return self.body(*a)
 
-
     opened: list = []
     closed: list = []
     second_open = threading.Event()
     park = threading.Event()        # never set: the rebuilt handle just waits
-
 
     def first(path, sub, flags):
         h = len(opened) + 100
@@ -1608,13 +1528,11 @@ def _part_watch_handle_close():
             second_open.set()
         return h
 
-
     def wait(h, ms):
         if h == 100:
             return 0xFFFFFFFF       # WAIT_FAILED: the first handle drops
         park.wait()
         return 0
-
 
     k = types.SimpleNamespace(
         FindFirstChangeNotificationW=Fn(first),
@@ -1645,25 +1563,10 @@ def _part_procwatch_cancel():  # noqa: C901
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
     # ---------- a fake kernel: waitable objects and one STA message queue ----------
 
     COND = threading.Condition()
     MESSAGES = []          # callbacks COM would deliver to the listener's STA as window messages
-
 
     class Waitable:
         def __init__(self, name):
@@ -1674,31 +1577,25 @@ def _part_procwatch_cancel():  # noqa: C901
                 self.signalled = True
                 COND.notify_all()
 
-
     def post(fn):
         """WMI calling back into the sink: delivered only when the STA pumps."""
         with COND:
             MESSAGES.append(fn)
             COND.notify_all()
 
-
     w32event = _Stub("win32event")
     w32event.WAIT_OBJECT_0, w32event.INFINITE, w32event.QS_ALLINPUT = 0, 0xFFFFFFFF, 0x04FF
     set_events = []
 
-
     def _create_event(sa, manual, initial, name):
         return Waitable("event")
-
 
     def _set_event(h):
         set_events.append(h)
         if isinstance(h, Waitable):
             h.set()
 
-
     waits = []
-
 
     def _msg_wait(handles, wait_all, ms, mask):
         """MsgWaitForMultipleObjects: the first signalled handle's index, or len(handles) for a message."""
@@ -1714,16 +1611,13 @@ def _part_procwatch_cancel():  # noqa: C901
                 COND.wait(0.05)
         raise RuntimeError("fake MsgWaitForMultipleObjects: nothing happened in 10 s")
 
-
     w32event.CreateEvent, w32event.SetEvent, w32event.MsgWaitForMultipleObjects = _create_event, _set_event, _msg_wait
 
     calls = []      # (what, thread name) in order
 
-
     pythoncom = types.ModuleType("pythoncom")
     pythoncom.CoInitialize = lambda: calls.append(("CoInitialize", threading.current_thread().name))
     pythoncom.CoUninitialize = lambda: calls.append(("CoUninitialize", threading.current_thread().name))
-
 
     def _pump():
         with COND:
@@ -1733,20 +1627,16 @@ def _part_procwatch_cancel():  # noqa: C901
             fn()
         return 0
 
-
     pythoncom.PumpWaitingMessages = _pump
-
 
     class com_error(Exception):   # pywintypes' own name, which the code matches on
         pass
-
 
     pythoncom.com_error = com_error
 
     # WMI scripting: SWbemServices.ExecNotificationQueryAsync with an SWbemSink.
     sinks = []
     cancel_block = [None]     # a threading.Event Cancel waits on, to make it hang
-
 
     class FakeSink:
         """The makepy SWbemSink class DispatchWithEvents puts in front of the user's handler class."""
@@ -1761,10 +1651,8 @@ def _part_procwatch_cancel():  # noqa: C901
             if cancel_block[0] is not None:
                 cancel_block[0].wait(5)
 
-
     subscribed = threading.Event()
     script = []      # what each ExecNotificationQueryAsync does: None = succeed, an exception = raise
-
 
     class Services:
         def ExecNotificationQueryAsync(self, sink, query):  # noqa: N802
@@ -1776,10 +1664,8 @@ def _part_procwatch_cancel():  # noqa: C901
             sinks.append(sink)
             subscribed.set()
 
-
     client = types.ModuleType("win32com.client")
     client.GetObject = lambda moniker: Services()
-
 
     def _dispatch_with_events(progid, user_class):
         calls.append((f"DispatchWithEvents {progid}", threading.current_thread().name))
@@ -1789,7 +1675,6 @@ def _part_procwatch_cancel():  # noqa: C901
             user_class.__init__(inst)
         return inst
 
-
     client.DispatchWithEvents = _dispatch_with_events
     pkg = types.ModuleType("win32com")
     pkg.client = client
@@ -1797,12 +1682,10 @@ def _part_procwatch_cancel():  # noqa: C901
     w32api = _Stub("win32api")
     host = {"proc": None}
 
-
     def _open_process(access, inherit, pid):
         host["proc"] = Waitable(f"process {pid}")
         host["opened"] = (access, pid)
         return host["proc"]
-
 
     w32api.OpenProcess = _open_process
     w32api.CloseHandle = lambda h: calls.append(("CloseHandle", threading.current_thread().name))
@@ -1825,12 +1708,7 @@ def _part_procwatch_cancel():  # noqa: C901
     from ark_relay.features import errwatch
     from ark_relay.core import texts
 
-
-    def set_time(t):
-        """service.py's code now lives in several modules, each reading its own `time`; swap it in all."""
-        for m in (service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop):
-            m.time = t
-
+    set_time = _time_setter(service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop)
 
     class FastTime:
         """time for the listener: monotonic is real plus whatever sleep skipped; sleep returns at once."""
@@ -1852,7 +1730,6 @@ def _part_procwatch_cancel():  # noqa: C901
                 self.gate.wait(5)
             self.skipped += max(0.0, s)
 
-
     class Records(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -1864,7 +1741,6 @@ def _part_procwatch_cancel():  # noqa: C901
         def at(self, level):
             return [r.getMessage() for r in self.records if r.levelno == level]
 
-
     orig = (procwatch.time, wmi_diag._wmi_hosts, wmi_diag._uptime, wmi_diag._wmi_scm_events,
             errwatch.system_shutting_down, getattr(service, "_winmgmt_pid", None))
     wmi_diag._wmi_hosts = lambda: "winmgmt pid 1234; WmiPrvSE pids 5,6"
@@ -1872,7 +1748,6 @@ def _part_procwatch_cancel():  # noqa: C901
     wmi_diag._wmi_scm_events = lambda: "SCM winmgmt: none in 5 min"
     wmi_diag._winmgmt_pid = lambda: 1234
     errwatch.system_shutting_down = lambda: False
-
 
     def start(name):
         """A fresh listener through _start_process_watch, its real thread running; returns (alive, evt, rec, clock)."""
@@ -1897,10 +1772,8 @@ def _part_procwatch_cancel():  # noqa: C901
         check("the listener started", ok, True)
         return alive, evt, rec, clock
 
-
     def thread_alive():
         return any(t.name == "proc-watch" and t.is_alive() for t in threading.enumerate())
-
 
     def wait_for(pred, secs=3.0):
         end = time.time() + secs
@@ -1908,10 +1781,8 @@ def _part_procwatch_cancel():  # noqa: C901
             time.sleep(0.01)
         return pred()
 
-
     def names(what):
         return [c for c in calls if c[0] == what]
-
 
     try:
         print("[1. the stop cancels the live subscription and the listener has ended before stop returns]")
@@ -2104,20 +1975,6 @@ def _part_procwatch_drop():  # noqa: C901
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
     # ---------- fakes: pywin32's service framework (311, verbatim logic), WMI ----------
 
     w32svc = _Stub("win32service")
@@ -2129,7 +1986,6 @@ def _part_procwatch_drop():  # noqa: C901
     w32svc.OpenService = lambda scm, name, access: f"svc:{name}"
     w32svc.QueryServiceStatusEx = lambda h: {"ProcessId": 1234} if h == "svc:winmgmt" else {}
     w32svc.CloseServiceHandle = lambda h: None
-
 
     class ServiceFramework:
         """GetAcceptedControls and ServiceCtrlHandlerEx as pywin32 311 has them (win32/lib/win32serviceutil.py)."""
@@ -2157,7 +2013,6 @@ def _part_procwatch_drop():  # noqa: C901
                 return self.SvcShutdown()
             return None
 
-
     w32su = _Stub("win32serviceutil")
     w32su.ServiceFramework = ServiceFramework
 
@@ -2176,28 +2031,22 @@ def _part_procwatch_drop():  # noqa: C901
     pythoncom.CoUninitialize = lambda: co.__setitem__("uninit", co["uninit"] + 1)
     live = []     # the SWbemSink of the subscription made last
 
-
     def _pump():
         """PumpWaitingMessages: WMI's next callback into the live sink (Source.deliver)."""
         if live:
             live[-1]._src.deliver(live[-1])
         return 0
 
-
     pythoncom.PumpWaitingMessages = _pump
-
 
     class com_error(Exception):   # pywintypes' own name, which the code matches on
         pass
 
-
     # relay.log / docs/PITFALLS.md, verbatim
     RPC_FAILED = (-2147352567, "发生意外。", (0, "SWbemEventSource", "远程过程调用失败。 ", None, 0, -2147023170), None)
 
-
     class _Stop(BaseException):
         """Ends a scenario: neither the old nor the new listener catches it."""
-
 
     class VClock:
         """time.monotonic / time.sleep on a virtual clock, with callbacks due at given moments."""
@@ -2220,7 +2069,6 @@ def _part_procwatch_drop():  # noqa: C901
         def time(self):
             return self.now
 
-
     class Source:
         """What WMI does with one asynchronous subscription: `events` OnObjectReady
     callbacks, then the pump raises a fresh `then()` (what ended the old
@@ -2241,7 +2089,6 @@ def _part_procwatch_drop():  # noqa: C901
                 self.on_raise()
             raise self.then()
 
-
     class Sink:
         """The makepy SWbemSink class in front of the listener's handler class."""
 
@@ -2249,7 +2096,6 @@ def _part_procwatch_drop():  # noqa: C901
             self._src = None
             if live and live[-1] is self:
                 live.pop()
-
 
     class Services:
         def __init__(self, script, seen):
@@ -2266,7 +2112,6 @@ def _part_procwatch_drop():  # noqa: C901
             sink._src = step()
             live.append(sink)
 
-
     def make_client(script, seen):
         client = types.ModuleType("win32com.client")
         client.GetObject = lambda moniker: Services(script, seen)
@@ -2275,14 +2120,12 @@ def _part_procwatch_drop():  # noqa: C901
         pkg.client = client
         return pkg, client
 
-
     class SyncThread:
         def __init__(self, target=None, name=None, daemon=None, **kw):
             self._target = target
 
         def start(self):
             self._target()
-
 
     FAKES = {"win32service": w32svc, "win32serviceutil": w32su, "win32event": w32event,
              "pythoncom": pythoncom}
@@ -2297,16 +2140,10 @@ def _part_procwatch_drop():  # noqa: C901
     from ark_relay.features import errwatch
     from ark_relay.core import texts
 
-
-    def set_time(t):
-        """service.py's code now lives in several modules, each reading its own `time`; swap it in all."""
-        for m in (service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop):
-            m.time = t
-
+    set_time = _time_setter(service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop)
 
     orig_ssd, orig_time, orig_run = errwatch.system_shutting_down, procwatch.time, subprocess.run
     errwatch.system_shutting_down = lambda: False
-
 
     def fake_run(cmd, **kw):
         key = " ".join(cmd).lower()
@@ -2315,9 +2152,7 @@ def _part_procwatch_drop():  # noqa: C901
             out = b'"WmiPrvSE.exe","5","Services","0","9,000 K"\r\n"WmiPrvSE.exe","6","Services","0","9,000 K"\r\n'
         return types.SimpleNamespace(stdout=out, returncode=0)
 
-
     subprocess.run = fake_run
-
 
     class Records(logging.Handler):
         def __init__(self):
@@ -2340,13 +2175,11 @@ def _part_procwatch_drop():  # noqa: C901
         def recovered(self):
             return [r for r in self.faults() if getattr(r, errwatch.RECOVERED, False)]
 
-
     def stop(alive):
         """The service's stop reaching the listener (_AutomasKeeper.stopping); absent before 2026-10-06."""
         watch = alive.get("watch")
         if watch is not None and hasattr(watch, "stopping"):
             watch.stopping()
-
 
     def scenario(script, before=None):
         """Run the listener over `script` until it ends; returns (records, alive, refs seen at each subscribe)."""
@@ -2380,7 +2213,6 @@ def _part_procwatch_drop():  # noqa: C901
             errwatch._relay_poweroff[0] = lambda: False
         return rec, alive, seen
 
-
     def stop_on_clock(alive):
         """stop() on the virtual clock the scenario ran on: the drop time is on that clock."""
         set_time(scenario.vt)
@@ -2389,15 +2221,12 @@ def _part_procwatch_drop():  # noqa: C901
         finally:
             set_time(orig_time)
 
-
     def relay_poweroff():
         """The relay itself issued the machine power-off (errwatch.relay_shutdown_issued)."""
         errwatch._relay_poweroff[0] = lambda: True
 
-
     def first(record):
         return record.getMessage().splitlines()[0]
-
 
     try:
         print("[the relay's own power-off lands 0.3 s after WMI went: INFO, not a fault]")
@@ -2577,39 +2406,13 @@ def _part_procwatch_drop():  # noqa: C901
                 sys.modules[k] = v
 
 
-def _part_wmi_listener():  # noqa: C901
+def _part_wmi_listener():
     import logging
-    import sys
     import tempfile
     import time
-    import types
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" + ("" if ok else f": {got!r} != {want!r}"))
-        if not ok:
-            fails.append(label)
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
 
     FAKES = {}
     for name in ("win32serviceutil", "win32service", "win32file", "servicemanager", "win32security",
@@ -2625,12 +2428,7 @@ def _part_wmi_listener():  # noqa: C901
     from ark_relay.features import errwatch
     from ark_relay.core.config import SERVER_TZ
 
-
-    def set_time(t):
-        """service.py's code now lives in several modules, each reading its own `time`; swap it in all."""
-        for m in (service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop):
-            m.time = t
-
+    set_time = _time_setter(service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop)
 
     class VClock:
         def __init__(self):
@@ -2649,7 +2447,6 @@ def _part_wmi_listener():  # noqa: C901
         def at(self, delay, fn):
             self.due.append((self.now + delay, fn))
 
-
     class Records(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -2661,7 +2458,6 @@ def _part_wmi_listener():  # noqa: C901
         def at(self, level):
             return [r for r in self.records if r.levelno == level]
 
-
     class Pushes:
         """errwatch's notifier: what reached the group."""
 
@@ -2671,7 +2467,6 @@ def _part_wmi_listener():  # noqa: C901
         def send(self, title, body, **k):
             self.sent.append((title, body))
             return []
-
 
     def setup(name):
         """A logger with a recorder and a real errwatch handler on a fresh state dir."""
@@ -2685,7 +2480,6 @@ def _part_wmi_listener():  # noqa: C901
         lg.addHandler(h)
         return lg, rec, pushes, h, state
 
-
     def settle(h, pushes, want, secs=3.0):
         """Wait (real time) until errwatch has nothing left to send and `want` pushes went out."""
         end = time.time() + secs
@@ -2693,14 +2487,11 @@ def _part_wmi_listener():  # noqa: C901
             time.sleep(0.02)
         time.sleep(0.1)
 
-
     def daily(state):
         return errwatch.daily_section(state, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
 
-
     def watch(lg):
         return procwatch._ProcessWatch(object(), {"ok": True}, lg, subscribe=lambda: None)
-
 
     FAILURE = ("远程过程调用失败，0x800706BE", "hresult 0x80020009, scode 0x800706BE, source -, text 远程过程调用失败。")
     LIVE = {"at": 0.0, "events": 3, "last": None}
@@ -2844,32 +2635,17 @@ def _part_wmi_listener():  # noqa: C901
             else:
                 sys.modules[key] = v
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_procnames():
     import re
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import config as C
 
     ROOT = Path(__file__).resolve().parents[2]
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}" if not ok else f"  ✓ {label}")
-        if not ok:
-            fails.append(label)
-
 
     def text(rel):
         return (ROOT / rel).read_text(encoding="utf-8")
-
 
     print("[名单本身：三个游戏、模拟器、三个脚本，一个都不能少]")
     for name in ("Endfield.exe", "Client-Win64-Shipping.exe", "dnplayer.exe",
@@ -2910,9 +2686,6 @@ def _part_procnames():
     check("派发闸门认得鸣潮本体", "Client-Win64-Shipping.exe" in dg, True)
     check("派发闸门认得雷电", "dnplayer.exe" in dg, True)
     check("派发闸门按命令行找 OK-WW", "pythonw.exe" in dg, True)
-
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_watchdog_copy():
@@ -2973,7 +2746,6 @@ def _part_watchdog_crashloop():
     """The watchdog says why the relay does not start, and rings when it keeps crashing."""
     import os
     import time
-    import types
 
     RELAY = Path(__file__).resolve().parents[1]
     ROOT = RELAY.parent
@@ -2983,17 +2755,8 @@ def _part_watchdog_crashloop():
     DATA = tmpdir()
     os.environ["ARK_HOME"] = str(DATA)
 
-
-    def _module(name, **attrs):
-        m = types.ModuleType(name)
-        m.__dict__.update(attrs)
-        sys.modules[name] = m
-        return m
-
-
     class _PyError(Exception):
         pass
-
 
     SHUTTING = {"on": 0}
     _module("pywintypes", error=_PyError)
@@ -3080,11 +2843,9 @@ def _part_watchdog_crashloop():
     W._log = lambda line: None
     NOW = time.time()
 
-
     def tick(w, minute, up=False, wall_base=NOW):
         running["on"] = up
         w.tick(minute * 60.0, wall=wall_base + minute * 60.0)
-
 
     print("\n[never comes up: 「中继停了」 at the 3rd start, with the record's last lines]")
     (DATA / launch.START_ERROR).unlink()
@@ -3174,8 +2935,6 @@ def _part_watchdog_crashloop():
         tick(w, 5 * k + 0.5)
     check("crash-loop push carries the record", (len(pushed), W.REASON_HEAD in pushed[-1]), (1, True))
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-
 
 def _part_watchdog_guard():  # noqa: C901
     """The relay starts its watchdog again (watchdog_guard.py), except when it was stopped on purpose.
@@ -3193,7 +2952,6 @@ def _part_watchdog_guard():  # noqa: C901
 
     import watchdog_guard as G
 
-
     class Logs:
         def __init__(self):
             self.lines = []
@@ -3207,7 +2965,6 @@ def _part_watchdog_guard():  # noqa: C901
         def __exit__(self, *exc):
             G.log.info, G.log.error = self.real
 
-
     def guard(states, start_results=(), marker=False):
         states, results, started = list(states), list(start_results), []
 
@@ -3216,7 +2973,6 @@ def _part_watchdog_guard():  # noqa: C901
             return results.pop(0) if results else ""
         g = G.Guard(lambda: states.pop(0) if len(states) > 1 else states[0], start, lambda: marker)
         return g, started
-
 
     print("[what it does on each look]")
     for label, state, marker, want in [
@@ -3259,7 +3015,6 @@ def _part_watchdog_guard():  # noqa: C901
     print("[a watchdog found stopped that nobody stopped: WARNING to the group (audit 10-12 #6)]")
     from ark_relay.features import errwatch
 
-
     class WarnLogs(Logs):
         """Logs, plus WARNINGs with their recovered mark ("WARNING" / "RECOVERED")."""
 
@@ -3273,7 +3028,6 @@ def _part_watchdog_guard():  # noqa: C901
         def __exit__(self, *exc):
             G.log.warning = self.real_warning
             super().__exit__(*exc)
-
 
     g, started = guard([("STOPPED", "AUTO"), ("RUNNING", "AUTO")])
     with WarnLogs() as logs:
@@ -3376,7 +3130,6 @@ def _part_watchdog_guard():  # noqa: C901
     # Only the two Windows calls are stubbed: StartService and QueryServiceStatus.
     # 2 = START_PENDING, 1 = STOPPED, 4 = RUNNING (winsvc.h).
 
-
     class Clock:
         def __init__(self):
             self.t = 0.0
@@ -3387,7 +3140,6 @@ def _part_watchdog_guard():  # noqa: C901
         def wait(self, seconds):
             self.t += seconds
             return False
-
 
     def fake_service(states, start_error=None):
         """StartService records the call (raising start_error if given); each status query
@@ -3405,12 +3157,10 @@ def _part_watchdog_guard():  # noqa: C901
         win32serviceutil.QueryServiceStatus = lambda name: (0, states.pop(0) if len(states) > 1 else states[0])
         return calls
 
-
     def real_start(states, start_error=None):
         clock = Clock()
         calls = fake_service(states, start_error)
         return G._start(clock.wait, clock.now), calls["start"], clock.t
-
 
     got, starts, waited = real_start([2, 2, 1])
     check("START_PENDING then STOPPED (cloud run 38095391114) is a failure, not a start",
@@ -3433,7 +3183,6 @@ def _part_watchdog_guard():  # noqa: C901
 
     print("[the guard over the real start: a watchdog that starts then stops reaches the ERROR]")
 
-
     def guard_over_real_start(looks, service_each_start):
         """looks: what each look finds; service_each_start: the states a start then goes through."""
         looks, clock = list(looks), Clock()
@@ -3442,7 +3191,6 @@ def _part_watchdog_guard():  # noqa: C901
             fake_service(service_each_start)
             return G._start(clock.wait, clock.now)
         return G.Guard(lambda: looks.pop(0) if len(looks) > 1 else looks[0], start, lambda: False)
-
 
     g = guard_over_real_start([("STOPPED", "AUTO")], [2, 2, 1])
     with Logs() as logs:
@@ -3493,8 +3241,6 @@ def _part_watchdog_guard():  # noqa: C901
           "target=watchdog_guard.run, args=(host.stop_event, DATA)" in body, True)
     check("logger under ark. (errwatch hooks ark)", G.log.name.startswith("ark."), True)
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-
 
 def _part_watchdog_guard_missing():
     """A watchdog service that vanishes after the relay saw it installed is pushed once."""
@@ -3503,7 +3249,6 @@ def _part_watchdog_guard_missing():
     sys.path.insert(0, str(RELAY))
 
     import watchdog_guard as G
-
 
     class Logs:
         def __enter__(self):
@@ -3517,14 +3262,12 @@ def _part_watchdog_guard_missing():
         def __exit__(self, *exc):
             G.log.info, G.log.warning, G.log.error = self.real
 
-
     def run(states, marker=False):
         states = list(states)
         g = G.Guard(lambda: states.pop(0), lambda: "", lambda: marker)
         with Logs() as logs:
             got = [g.tick() for _ in range(len(states))]
         return got, [lvl for lvl, _ in logs.lines if lvl != "INFO"], logs.lines
-
 
     R, M, S = ("RUNNING", "AUTO"), ("MISSING", "OTHER"), ("STOPPED", "AUTO")
 
@@ -3552,11 +3295,6 @@ def _part_watchdog_guard_missing():
     got, loud, _ = run([R, M, M], marker=True)
     check("no WARNING", loud, [])
 
-    if fails:
-        print("FAIL:", fails)
-        sys.exit(1)
-    print("all checks passed")
-
 
 def _part_watchdog_push_delivery():
     """The watchdog's own group alarm counts as sent only when the group bot took it."""
@@ -3564,7 +3302,6 @@ def _part_watchdog_push_delivery():
     import io
     import json
     import os
-    import types
 
     RELAY = Path(__file__).resolve().parents[1]
     ROOT = RELAY.parent
@@ -3575,17 +3312,8 @@ def _part_watchdog_push_delivery():
     (DATA / ".env").write_text("WECOM_BOT_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test\n",
                                encoding="utf-8")
 
-
-    def _module(name, **attrs):
-        m = types.ModuleType(name)
-        m.__dict__.update(attrs)
-        sys.modules[name] = m
-        return m
-
-
     class _PyError(Exception):
         pass
-
 
     _module("pywintypes", error=_PyError)
     _module("servicemanager", LogMsg=lambda *a: None, EVENTLOG_INFORMATION_TYPE=4, PYS_SERVICE_STARTED=1)
@@ -3598,7 +3326,6 @@ def _part_watchdog_push_delivery():
     _module("win32ts")
 
     import ark_watchdog as W
-
 
     class _Resp:
         def __init__(self, status, obj):
@@ -3614,10 +3341,8 @@ def _part_watchdog_push_delivery():
         def __exit__(self, *a):
             return False
 
-
     answers = []      # what each urlopen call does, in order: a reply or an exception
     posts = []
-
 
     def fake_urlopen(req, timeout=None):
         posts.append(json.loads(req.data.decode("utf-8"))["text"]["content"])
@@ -3626,15 +3351,12 @@ def _part_watchdog_push_delivery():
             raise a
         return a
 
-
     def refused():
         return _Resp(200, {"errcode": 45009, "errmsg": "api freq out of limit"})
-
 
     def dropped():
         # BadStatusLine is an HTTPException and not an OSError (RemoteDisconnected is both).
         return http.client.BadStatusLine("")
-
 
     W.urllib.request.urlopen = fake_urlopen
     logged = []
@@ -3648,13 +3370,11 @@ def _part_watchdog_push_delivery():
     W.START_ERROR = DATA / "no-start-error.txt"
     CAP = getattr(W, "PUSH_TRIES", 3)
 
-
     def new_watch():
         try:
             return W.Watch()
         except TypeError:               # the old signature, Watch(now)
             return W.Watch(0.0)
-
 
     def deliver(text):
         """push() as a bool; the old one returned None and let HTTPException out."""
@@ -3662,7 +3382,6 @@ def _part_watchdog_push_delivery():
             return W.push(text)
         except http.client.HTTPException as exc:
             return f"raised {type(exc).__name__}"
-
 
     print("[push(): delivered only on HTTP 200 with errcode 0]")
     answers[:] = [_Resp(200, {"errcode": 0, "errmsg": "ok"})]
@@ -3745,8 +3464,6 @@ def _part_watchdog_push_delivery():
         w.tick(300.0 * k + 30, wall=1_000_030.0 + 300 * k)
     check("5th start refused, 6th start delivered", (len(posts), w.loop_alerted_at), (2, 300.0 * 5 + 30))
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-
 
 def _part_gh_watchdog():
     """The GitHub Actions boot watchdog (scripts/watchdog.py; queue/watchdog.json has it off since
@@ -3762,10 +3479,8 @@ ask Tailscale says so (audit 11-08 A-25; dispatch relay-opt-round5-1108 R5-02).
     wd = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(wd)
 
-
     def srv(d, hh, mm):
         return datetime(2026, 11, d, hh, mm, tzinfo=wd.SERVER_TZ)
-
 
     print("[today_at：凌晨迟到的检查算前一晚，白天手动跑算今晚]")
     check("11-09 00:30 查 23:10：是 11-08 那晚的", wd.today_at("23:10", srv(9, 0, 30)), srv(8, 23, 10))
@@ -3786,10 +3501,8 @@ ask Tailscale says so (audit 11-08 A-25; dispatch relay-opt-round5-1108 R5-02).
     sent = []
     saved = (wd.CONFIG, wd.alert, wd.tailscale_last_seen, dict(wd.os.environ))
 
-
     def broken(device):
         raise RuntimeError("缺 TS_OAUTH_CLIENT_ID / TS_OAUTH_SECRET secrets")
-
 
     wd.CONFIG, wd.alert, wd.tailscale_last_seen = cfg, (lambda t, b: sent.append((t, b)) or True), broken
     try:

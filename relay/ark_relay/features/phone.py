@@ -6,7 +6,6 @@ re-exports every name here); the design notes are in phone.py's module docstring
 """
 from __future__ import annotations
 
-import sys as _sys
 import base64
 import gzip
 import hashlib
@@ -2319,18 +2318,17 @@ def _phone_enqueue(queue, log, queued_receipt, raw: dict, action: str, mid: str,
     """Put one order on the queue (phone.CmdQueue). While a script runs (`queued_receipt`
     given), a new order - or a new press of the same waiting one - is answered at
     once with a 「排队中」 receipt and a state push (D207)."""
-    _phone = _sys.modules[__name__]
     got = queue.add(raw)
-    if got == _phone.QUEUED:
+    if got == QUEUED:
         log.info("📱 手机指令 %s 排队，等脚本跑完再执行（id %s）", action, mid)
-    elif got == _phone.RESENT:
+    elif got == RESENT:
         # Pressed again while the same order waits: not queued twice, but this
         # press gets its own receipt (the App matches a receipt to a press by
         # send time).
         log.info("📱 手机指令 %s 又按了一次，和排着的那条一样，不重复排（id %s）", action, mid)
     else:
         log.info("📱 手机指令 %s 已经排过队或执行过，不再重复（id %s）", action, mid)
-    if queued_receipt is not None and got in (_phone.QUEUED, _phone.RESENT):
+    if queued_receipt is not None and got in (QUEUED, RESENT):
         queued_receipt(action, sent, receipt_target(raw))
 
 
@@ -2343,12 +2341,11 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
     same logic.
     """
     from ark_relay.features.commands import apply_command  # noqa: PLC0415
-    _phone = _sys.modules[__name__]
 
     # Orders that came in while a script was running wait here for the end of
     # the run (phone.CmdQueue). Same state dir the commands themselves use.
     state_dir = cfg_state_dir if cfg_state_dir is not None else os.environ.get("ARK_STATE_DIR", "./ark-state")
-    queue = _phone.CmdQueue(state_dir)
+    queue = CmdQueue(state_dir)
     drain_lock = threading.Lock()
 
     def _receipt(action, sent, ok, msg, queued=False, target=""):
@@ -2402,15 +2399,15 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
                 body = dict(item["body"])
                 meta = body.pop("_meta", None) or {}
                 # The latest press of it: the final receipt answers every press (D207).
-                sent = _phone.item_sent(item)
+                sent = item_sent(item)
                 action = str(body.get("action") or "")
-                if action in _phone.DISPATCHING_ACTIONS:
+                if action in DISPATCHING_ACTIONS:
                     # Queued before this rule (or behind older orders when a run
                     # started): it would start a run the user did not see coming.
                     _refuse_dispatch(action, sent)
                     n += 1
                     continue
-                if _phone.cmd_expired(item):
+                if cmd_expired(item):
                     msg = (f"「{texts.action_name(action)}」等这一趟跑完时已过了 24 小时，"
                            "过期没执行；需要就重新发一次")
                     log.warning("📱 排队的手机指令 %s 过期没执行（id %s）",
@@ -2482,7 +2479,7 @@ def _make_phone_cmd(engine, notifier, log, hb, push_state, cfg_state_dir=None):
             # comes in while older ones still wait queues behind them, so they
             # run in the order they were pressed.
             running = engine.scripts_running()
-            if action in _phone.DISPATCHING_ACTIONS:
+            if action in DISPATCHING_ACTIONS:
                 # Never queued (see _refuse_dispatch). Older orders still waiting
                 # go first, so a setting pressed before it is in place for its run.
                 if not running and len(queue):
@@ -2732,7 +2729,6 @@ def state_payload(cfg, state_dir: Path) -> dict:
     """The payload the phone displays. Same code config-check reads (snapshot.py)."""
     from ark_relay.features import modes  # noqa: PLC0415
     from ark_relay.features import snapshot  # noqa: PLC0415
-    monthcard = _sys.modules[__name__]
     from ark_relay.core import plan  # noqa: PLC0415 - avoids an import cycle
     out: dict = {"at": int(time.time())}
     # Only the keys the phone displays. The full snapshot is not sent: of it the
@@ -2789,7 +2785,7 @@ def state_payload(cfg, state_dir: Path) -> dict:
             "今天跳过队列": modes.skipped_today_all(state_dir),
             "无音区截图": modes.tacet_shots_on(state_dir),
             # Monthly cards the user registered (monthcard.py, spec 月卡到期提示-规格.md).
-            "月卡": monthcard.status(state_dir),
+            "月卡": status(state_dir),
             "最近指令": modes.receipts(state_dir),
             # Windows the mailbox could not read: presses sent in one never
             # arrived (mailbox_status).

@@ -3,12 +3,56 @@ from __future__ import annotations
 
 # ruff: noqa: PLC0415
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+
+
+class _Any:
+    """Stands in for any pywin32 attribute: callable, subclassable, truthy."""
+    def __init__(self, *a, **k): pass
+    def __call__(self, *a, **k): return _Any()
+    def __getattr__(self, _): return _Any()
+
+
+class _Stub(types.ModuleType):
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return _Any
+
+
+def _stub_pywin32():
+    """boot_stages imports pywin32 at module scope; stub what is missing."""
+    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+                 "win32con", "win32file", "servicemanager", "win32process",
+                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
+        sys.modules.setdefault(name, _Stub(name))
+
+
+class _Log:
+    """A logger that keeps each line as it would read."""
+    def __init__(self): self.lines = []
+    def warning(self, *a): self.lines.append(a[0] % a[1:])
+    def info(self, *a): self.lines.append(a[0] % a[1:] if len(a) > 1 else a[0])
+    def exception(self, *a): self.lines.append(a[0])
+
+
+class _NoSource:
+    """A record source with nothing new."""
+    def fetch(self, seen):
+        return []
+
+
+class _EmptyAnswer:
+    """What urlopen hands back for a request that went through with no body."""
+    def read(self): return b""
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
 
 
 def _part_evidence_main():  # noqa: C901
@@ -21,7 +65,6 @@ def _part_evidence_main():  # noqa: C901
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import evidence as ev
-
 
     FX = fx_dir(Path(__file__), "fixtures") / "collect-retry-2026-09-11"
     official = json.loads((FX / "mxu-export-namelist.json").read_text(encoding="utf-8"))
@@ -329,11 +372,7 @@ def _part_evidence_main():  # noqa: C901
             opened.append(req.get_method())
             if req.get_method() == "HEAD" and (exc := next(heads, None)) is not None:
                 raise exc
-            class _R:
-                def read(self): return b""
-                def __enter__(self): return self
-                def __exit__(self, *a): return False
-            return _R()
+            return _EmptyAnswer()
         urllib.request.urlopen = _head_once
         _real_sleep = ev.time.sleep
         ev.time.sleep = lambda s: None
@@ -350,11 +389,7 @@ def _part_evidence_main():  # noqa: C901
         def _put_403(req, timeout=0):
             opened.append(req.get_method())
             if req.get_method() == "HEAD":
-                class _R:
-                    def read(self): return b""
-                    def __enter__(self): return self
-                    def __exit__(self, *a): return False
-                return _R()
+                return _EmptyAnswer()
             raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
         urllib.request.urlopen = _put_403
         try:
@@ -457,7 +492,6 @@ def _part_evidence_archive():  # noqa: C901
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-
     import logging
     import os
     import tempfile
@@ -467,7 +501,6 @@ def _part_evidence_archive():  # noqa: C901
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import errwatch, handle
 
-
     class _Grab(logging.Handler):
         def __init__(self):
             super().__init__(logging.INFO)
@@ -475,7 +508,6 @@ def _part_evidence_archive():  # noqa: C901
 
         def emit(self, record):
             self.lines.append((record.levelno, record.getMessage()))
-
 
     def _run_check(started, files, ew=None):
         """Records _warn_if_evidence_stale logs for debug logs {name: mtime}, captured from INFO up.
@@ -505,7 +537,6 @@ def _part_evidence_archive():  # noqa: C901
             d.rmdir()
         return grab.lines
 
-
     def _stale_notes(started, mtime, name="2026-10-12-3.log"):
         """Messages for one debug log last written at `mtime`; also checks nothing reached WARNING."""
         got = _run_check(started, {name: mtime})
@@ -513,7 +544,6 @@ def _part_evidence_archive():  # noqa: C901
         if loud:
             fails.append(f"别轮日志的说明不是中继故障，不该到 WARNING（errwatch 会推进群）：{loud}")
         return [m for _, m in got]
-
 
     START = datetime(2026, 10, 12, 10, 59, 40, tzinfo=SERVER_TZ)
     got = _stale_notes(START, datetime(2026, 10, 12, 10, 58, 9, tzinfo=SERVER_TZ))
@@ -544,7 +574,6 @@ def _part_evidence_archive():  # noqa: C901
     if any("多半" in m for _, m in got):
         fails.append(f"说明里还有「多半」（时间比过了，就是别轮的）：{got}")
 
-
     class _Refuses:
         """errwatch's notifier: the group refuses, so whatever it queues stays readable in pending()."""
 
@@ -554,11 +583,9 @@ def _part_evidence_archive():  # noqa: C901
         def send(self, title, body, **kw):
             return ["拒收"]
 
-
     def _errwatch():
         return errwatch.ErrorKindAlert(_Refuses(), state_dir=tmpdir("arktest-ew-"),
                                        known={}, retry=(3600.0,), fallback_after=3600.0)
-
 
     ew = _errwatch()
     try:
@@ -603,7 +630,6 @@ def _part_evidence_archive():  # noqa: C901
     if 'startswith("automas-")' not in warn:
         fails.append("时间检查没跳过 automas- 那几份（它们必然对得上）")
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 
 
 def _part_evidence_cli_window():
@@ -620,7 +646,6 @@ script in the ledger. The user, 2026-09-18: 「证据包永远按时间窗取」
     from ark_relay import __main__ as cli
     from ark_relay.features import evidence
     from ark_relay.core.config import SERVER_TZ
-
 
     now = datetime.now(tz=SERVER_TZ)
     with tempfile.TemporaryDirectory() as td:
@@ -683,10 +708,6 @@ script in the ledger. The user, 2026-09-18: 「证据包永远按时间窗取」
             got = type(exc).__name__
         check("拒绝", got in ("ValueError", "TypeError"))
 
-    print()
-    if fails:
-        print("FAILED:", fails); sys.exit(1)
-    print("all checks passed")
 
 
 def _part_evidence_daily_silent():
@@ -698,7 +719,6 @@ def _part_evidence_daily_silent():
     sys.path.insert(0, str(ROOT / "relay" / "tests"))
     sys.path.insert(0, str(ROOT / "scripts" / "mac" / "lib"))
     import evidence_pull as ed
-
 
     def run(missing):
         def cos_get(e, u, dest):
@@ -719,7 +739,6 @@ def _part_evidence_daily_silent():
         finally:
             sys.argv = old
         return rc, out.getvalue()
-
 
     print("[both logs fetched]")
     rc, out = run(missing=[])
@@ -753,25 +772,20 @@ def _part_evidence_maaend_live_logs():
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import evidence as ev
 
-
     def at(hms: str, day: str = "2026-10-12") -> float:
         return datetime.fromisoformat(f"{day}T{hms}+08:00").timestamp()
-
 
     def loc(hms: str, day: str = "2026-10-12", fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
         """The Beijing moment day hms as the machine stamps it: in its local time."""
         return datetime.fromtimestamp(at(hms, day)).strftime(fmt)
 
-
     def go_time(hms: str, day: str = "2026-10-12") -> str:
         """go-service.log's "time": local time with the local offset (+08:00 on the machine)."""
         return datetime.fromtimestamp(at(hms, day)).astimezone().isoformat(timespec="seconds")
 
-
     def tauri(hms: str, day: str = "2026-10-12") -> str:
         """mxu-tauri.log's `[YYYY-MM-DD][HH:MM:SS]`, local time."""
         return loc(hms, day, "[%Y-%m-%d][%H:%M:%S]")
-
 
     def maafw_lines(start: str, end: str, step_s: int = 60) -> str:
         out, t = [], at(start)
@@ -781,13 +795,11 @@ def _part_evidence_maaend_live_logs():
             t += step_s
         return "\n".join(out) + "\n"
 
-
     root = tmpdir() / "maaend"
     dbg = root / "debug"
     (dbg / "on_error").mkdir(parents=True)
     (dbg / "cpp-algo" / "debug").mkdir(parents=True)
     (root / "config").mkdir()
-
 
     def mk(rel: str, text: str, mtime: float) -> Path:
         # Bytes, not write_text: in text mode Windows writes "\n" as "\r\n" (run 38363145659), and the
@@ -796,7 +808,6 @@ def _part_evidence_maaend_live_logs():
         p.write_bytes(text.encode("utf-8"))
         os.utime(p, (mtime, mtime))
         return p
-
 
     window = ev.run_window(datetime.fromisoformat("2026-10-12T10:05:05+08:00"),
                            datetime.fromisoformat("2026-10-12T10:58:09+08:00"))
@@ -861,10 +872,6 @@ def _part_evidence_maaend_live_logs():
     check("the source logs are not touched", ("MaaEnd Agent Service" in (dbg / "go-service.log").read_text(encoding="utf-8"),
                                               src_size > len(gs.encode())), (True, True))
 
-    if fails:
-        print(f"\n{len(fails)} failed")
-        sys.exit(1)
-    print("\nall passed")
 
 
 def _part_evidence_notify_once():
@@ -874,40 +881,14 @@ def _part_evidence_notify_once():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
-                 "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+    _stub_pywin32()
 
     import boot_stages
     from ark_relay.features import evidence
 
-
-    class _Log:
-        def __init__(self): self.lines = []
-        def warning(self, *a): self.lines.append(a[0] % a[1:])
-        def info(self, *a): self.lines.append(a[0] % a[1:] if len(a) > 1 else a[0])
-        def exception(self, *a): self.lines.append(a[0])
-
-
     class _Notifier:
         def __init__(self): self.sent = []
         def send(self, title, body, *a, **k): self.sent.append((title, body))
-
 
     def run(state, upstream):
         def fake_check():
@@ -923,16 +904,13 @@ def _part_evidence_notify_once():
         finally:
             evidence.check_sources = saved
 
-
     from ark_relay.core import statestore as techlog
-
 
     def new_reds(d, before):
         import glob
         text = "".join(Path(f).read_text(encoding="utf-8") for f in sorted(glob.glob(str(techlog.tech_dir(d) / "*.md"))))
         got = techlog.unhandled(text)
         return got[len(before):], got
-
 
     with tempfile.TemporaryDirectory() as root:
         d = str(Path(root) / "state")
@@ -974,11 +952,9 @@ def _part_evidence_relay_after_run():
     from ark_relay.core import ledger as core
     from ark_relay.core.config import SERVER_TZ, RunRecord
 
-
     def at(h, m, s):
         """09-24 h:m:s on the machine's clock (Beijing), the moment the real bundle names."""
         return datetime(2026, 9, 24, h, m, s, tzinfo=SERVER_TZ)
-
 
     def at_(h, m, s):
         """That moment as relay.log stamps it: in the local time of the computer running
@@ -987,7 +963,6 @@ def _part_evidence_relay_after_run():
     Windows CI runner (UTC, run 37519943859) literal Beijing stamps read back eight
     hours late, and 09:03 started a 晚班 round."""
         return at(h, m, s).astimezone().strftime("%m-%d %H:%M:%S")
-
 
     T = tmpdir()
     relay_log = T / "relay.log"
@@ -1022,11 +997,9 @@ def _part_evidence_relay_after_run():
     evidence.context_files(types.SimpleNamespace(automas_dir=None), win, T / "cli")
     check("手工导出不多带", at_(9, 20, 3) in (T / "cli" / "relay.log").read_text(encoding="utf-8"), False)
 
-
     class Up:
         def upload(self, p):
             return {"name": p.name, "size": p.stat().st_size, "store": "cos", "page": "https://cos.example/MAA.zip"}
-
 
     class Notifier:
         def __init__(self):
@@ -1036,10 +1009,8 @@ def _part_evidence_relay_after_run():
             self.sent.append((title, body, alert))
             return []
 
-
     evidence.uploaders = lambda cfg, run_id="": [Up()]
     handle.time = types.SimpleNamespace(time=lambda: handled)
-
 
     def engine(d: Path):
         cfg = types.SimpleNamespace(state_dir=d, history_dir=None, automas_dir=None,
@@ -1049,11 +1020,9 @@ def _part_evidence_relay_after_run():
         eng._persist_pending = lambda: eng.persisted.append(dict(eng._pending))
         return eng
 
-
     def record(run_id):
         return RunRecord(run_id=run_id, script="MAA", user="u", started=started, finished=finished,
                          ok=False, failed_tasks=["StartUp"], raw={"maa_result": "MAA 未能正确登录 PRTS"})
-
 
     day = started.astimezone(SERVER_TZ).strftime("%Y-%m-%d")
 
@@ -1124,17 +1093,12 @@ def _part_evidence_relay_after_run():
     check("账本记了没干完", entry.get("incomplete"), "MAA 这一轮有 1 项没干成，但它自己没报错：\n· 基建换班：没换上")
     check("账本里也有链接", (entry.get("raw") or {}).get("evidence_page"), "https://cos.example/MAA.zip")
 
-    print()
-    if fails:
-        print("FAILED:", fails); sys.exit(1)
-    print("all checks passed")
 
 
 def _part_evidence_saved_count():
     """The 🗂️ evidence line counts the files inside the bundle, not the uploads."""
     import os
     from datetime import datetime, timedelta
-
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -1148,7 +1112,6 @@ def _part_evidence_saved_count():
     from ark_relay.features import handle
     from ark_relay.features import evidence
 
-
     class Notes:
         def __init__(self):
             self.sent = []
@@ -1157,16 +1120,10 @@ def _part_evidence_saved_count():
             self.sent.append((title, body))
             return []
 
-
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     cfg = Config()
     cfg.state_dir = tmpdir()
     cfg.history_dir = None
-    e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+    e = eng_mod.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=Notes())
     start = datetime(2026, 10, 12, 10, 5, tzinfo=SERVER_TZ)
     rec = RunRecord(run_id="2026-10-12/endfield/MaaEnd-06-04-00", script="MaaEnd", user="endfield",
                     started=start, finished=start + timedelta(minutes=30), ok=False, failed_tasks=["x"], raw={})
@@ -1192,38 +1149,12 @@ def _part_evidence_sources_unreachable():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
-                 "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+    _stub_pywin32()
 
     import boot_stages
 
-
-    class _Log:
-        def __init__(self): self.lines = []
-        def warning(self, *a): self.lines.append(a[0] % a[1:])
-        def info(self, *a): self.lines.append(a[0] % a[1:] if len(a) > 1 else a[0])
-        def exception(self, *a): self.lines.append(a[0])
-
-
     def down(*a, **k):
         raise urllib.error.URLError(TimeoutError("timed out"))
-
 
     print("[jsDelivr unreachable on boot: the log line carries the reason]")
     saved, urllib.request.urlopen = urllib.request.urlopen, down
@@ -1238,10 +1169,6 @@ def _part_evidence_sources_unreachable():
     check("it names the exception", "timed out" in line and "URLError" in line)
     check("it says the next boot compares again, not tomorrow", ("下次开机再比" in line, "明天" in line), (True, False))
 
-    if fails:
-        print(f"\n{len(fails)} failed")
-        sys.exit(1)
-    print("\nall passed")
 
 
 def _part_error_evidence():
@@ -1250,7 +1177,6 @@ def _part_error_evidence():
     import logging
     import os
     from datetime import datetime, timedelta
-
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -1261,7 +1187,6 @@ def _part_error_evidence():
     from ark_relay.features import evidence as error_evidence
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ, Config
-
 
     class FakeUp:
         """One COS store that records what was PUT, in order, and answers with a URL."""
@@ -1280,7 +1205,6 @@ def _part_error_evidence():
             self.uploads.append((key, data))
             return {"name": path.name, "url": f"https://host/{key}", "store": "cos", "key": key}
 
-
     def cfg_with(relay_log: "Path | None", automas: "Path | None", state: Path) -> Config:
         cfg = Config()
         cfg.state_dir = state
@@ -1292,10 +1216,8 @@ def _part_error_evidence():
             os.environ.pop("ARK_LOG_FILE", None)
         return cfg
 
-
     DAY = datetime.now(tz=SERVER_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     NOW = DAY.replace(hour=9, minute=52)
-
 
     def stamp(day: datetime, hh: int, mm: int, fmt: str = "%m-%d %H:%M:%S") -> str:
         """The server-clock moment day hh:mm as the machine stamps it: in its own local
@@ -1306,14 +1228,12 @@ def _part_error_evidence():
     00:00-09:52 day (run 37519943859)."""
         return day.replace(hour=hh, minute=mm).astimezone().strftime(fmt)
 
-
     def write_day_log(p: Path, day: datetime, lines):
         p.parent.mkdir(parents=True, exist_ok=True)
         out = []
         for hh, mm, text in lines:
             out.append(f"{stamp(day, hh, mm)} INFO    ark.test  {text}")
         p.write_text("\n".join(out) + "\n", encoding="utf-8")
-
 
     print("[whole-day relay.log + app.log go up as one dated object each, same key all day]")
     st = tmpdir()
@@ -1336,12 +1256,10 @@ def _part_error_evidence():
 
     print("\n[the push link is the signed GET: the bucket is private, the plain URL answers 403]")
 
-
     class SignedUp(FakeUp):
         def upload(self, path, timeout=900):
             got = super().upload(path, timeout)
             return dict(got, page=got["url"] + "?q-signature=abc")
-
 
     error_evidence._last_attempt[0] = 0.0
     got = error_evidence.upload_daily_logs(cfg_with(relay, None, st), force=True, now=NOW,
@@ -1435,10 +1353,8 @@ def _part_error_evidence():
     finally:
         error_evidence.DAY_MAX_BYTES = old_cap
 
-
     print("\n[a relay-error push ends with 「日志：…」 when the upload landed]")
     ARK_LOGGER = logging.getLogger(errwatch.ARK)
-
 
     class Captures:
         """errwatch's notifier: records what reached the group, accepts everything."""
@@ -1454,7 +1370,6 @@ def _part_error_evidence():
             self.sent.append((title, body))
             return []
 
-
     def watch():
         sd = tmpdir()
         h = errwatch.ErrorKindAlert(Captures(), state_dir=sd, known={}, retry=(3600.0,),
@@ -1462,11 +1377,9 @@ def _part_error_evidence():
         ARK_LOGGER.addHandler(h)
         return h, sd
 
-
     def unwatch(h):
         ARK_LOGGER.removeHandler(h)
         h.close()
-
 
     real_up = error_evidence._last_attempt[0]
     try:
@@ -1560,11 +1473,9 @@ def _part_error_evidence():
 
     print("\n[audit 11-08 C-08: a throttled call after a failed upload carries that failure]")
 
-
     class DownUp:
         def upload(self, path, timeout=0):
             raise OSError("connection reset")
-
 
     error_evidence._last_attempt[0] = 0.0
     first = error_evidence.upload_daily_logs(cfg_with(relay, None, st), force=True, now=NOW,
@@ -1578,7 +1489,6 @@ def _part_error_evidence():
     print("\n[past days COS lacks, or holds shorter than the machine does, are sent again (11-11 / 11-13 answered 404)]")
     import urllib.error
     from ark_relay.features.evidence import PermanentUploadError
-
 
     class FakeCos:
         """A COS store that knows what it holds: `held` is key -> bytes."""
@@ -1605,10 +1515,8 @@ def _part_error_evidence():
             self.puts.append(key)
             return {"name": path.name, "url": f"https://host/{key}", "store": "cos", "key": key}
 
-
     def key_of(day, kind="relay"):
         return f"daily/{kind}-{day:%Y-%m-%d}.log"
-
 
     D1, D2, D3, D4 = (DAY - timedelta(days=n) for n in (1, 2, 3, 4))
     bf_log = tmpdir() / "relay.log"
@@ -1671,11 +1579,9 @@ def _part_error_evidence():
 
     seen = []
 
-
     class Catch(logging.Handler):
         def emit(self, record):
             seen.append((record.levelname, record.getMessage()))
-
 
     catch = Catch()
     error_evidence._log_error_evidence.addHandler(catch)
@@ -1706,7 +1612,6 @@ def _part_game_evidence():
     from datetime import datetime, timedelta
     from types import SimpleNamespace
 
-
     TMP = tmpdir()
     os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -1717,7 +1622,6 @@ def _part_game_evidence():
     from ark_relay.features import handle
     from ark_relay.core import ledger as core
     from ark_relay.core.config import SERVER_TZ, RunRecord
-
 
     FX = fx_dir(Path(__file__), "fixtures")
     FULL = (FX / "maaend_full_2026-09-01.log").read_text(encoding="utf-8")
@@ -1752,13 +1656,11 @@ def _part_game_evidence():
     run_dir = STATE / "shots" / "2026-10-05" / "MaaEnd-10-41-05"
     run_dir.mkdir(parents=True)
 
-
     def picture(name, at):
         p = run_dir / f"{name}.png"
         p.write_bytes(b"png")
         ts = datetime.strptime(f"2026-10-05 {at}", "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ).timestamp()
         os.utime(p, (ts, ts))
-
 
     picture("104105-赠送干员礼物", "10:41:08")     # the launch's first-start picture: not an end picture
     picture("104213-赠送干员礼物", "10:42:15")     # its end picture
@@ -1789,7 +1691,6 @@ def _part_game_evidence():
 
     print("\n[日报：只把有证据的算做了，没证据的点名；标题不再是全绿]")
 
-
     def ent(run_id, script, hh, mm, dur, ok=True, **kw):
         st = datetime(2026, 10, 5, hh, mm, tzinfo=SERVER_TZ)
         e = {"run_id": run_id, "script": script, "user": "u", "ok": ok,
@@ -1798,7 +1699,6 @@ def _part_game_evidence():
              "raw": {}, "drops": {}, "recruits": {}, "sanity": None, "sanity_full_at": ""}
         e.update(kw)
         return e
-
 
     end = ent("2026-10-05/endfield/MaaEnd-06-39-48", "MaaEnd", 10, 41, 4, raw=fresh["raw"])
     title, body = core.format_daily("2026-10-05", [end])
@@ -1884,10 +1784,6 @@ def _part_game_evidence():
           "[2026-11-08 10:00:02.000] FailureCollector dump\n[2026-11-08 10:00:03.000] 任务完成: 🚚转交委托\n")
     check("[WRN] and FailureCollector lines are not evidence", collector_maaend.task_evidence(_w).get("转交委托"), "")
 
-    if fails:
-        print("FAILED:", fails)
-        sys.exit(1)
-    print("all checks passed")
 
 
 def _part_held_push_keeps_evidence():
@@ -1896,7 +1792,6 @@ def _part_held_push_keeps_evidence():
     import os
     from collections import Counter
     from datetime import datetime, timedelta
-
 
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
@@ -1916,7 +1811,6 @@ def _part_held_push_keeps_evidence():
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
 
-
     class Notes:
         def __init__(self):
             self.sent, self.bodies = [], []
@@ -1926,12 +1820,6 @@ def _part_held_push_keeps_evidence():
             self.bodies.append(body)
             return []      # no errors: sent
 
-
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     captures = Counter()
     handle._archive_okww_evidence = lambda eng, r: captures.update([r.run_id])
     handle._weekly_gates = lambda eng, r: None
@@ -1939,23 +1827,20 @@ def _part_held_push_keeps_evidence():
     HAND = {"OK-WW-ok", "MaaEnd-ok"}
     handle._hand_started = lambda eng, r: "task-1" if r.run_id in HAND else ""
 
-
     def build():
         cfg = Config()
         cfg.state_dir = TMP / "state"
         cfg.state_dir.mkdir(exist_ok=True)
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=Notes())
         e._scripts_running = lambda: False
         e._verify_outcome = lambda r: None
         e._archive_maaend_evidence = lambda r: captures.update([r.run_id])
         return e
 
-
     def rec(run_id, started, ok=False, script="OK-WW", user="wuthering"):
         return RunRecord(run_id=run_id, script=script, user=user, started=started,
                          finished=started + timedelta(minutes=5), ok=ok,
                          failed_tasks=[] if ok else ["日常任务"], raw={})
-
 
     T0 = datetime(2026, 10, 12, 6, 0, tzinfo=SERVER_TZ)
 
@@ -1979,7 +1864,6 @@ def _part_held_push_keeps_evidence():
         check("停一切那条报出去了", bool(e.notifier.sent))
         check("报的时候没再取证（还是 1 次）", captures[f"{script}-fail2"], 1)
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
 
 
 def _part_task_shots():
@@ -1989,7 +1873,6 @@ def _part_task_shots():
     import os
     import zipfile
     from datetime import date, datetime
-
 
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
@@ -2015,7 +1898,6 @@ def _part_task_shots():
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
 
-
     ROUND = [
         ("10:41:07", "10:43:33", "🎁赠送干员礼物", "GiftOperatorMain"),
         ("10:43:33", "10:43:53", "🔧装备制造", "GearAssemblyStart"),
@@ -2036,14 +1918,12 @@ def _part_task_shots():
     ]
     LABELS = {entry: label for _, _, label, entry in ROUND}
 
-
     def ev(day, hms, kind, entry, task_id, px="7172"):
         details = json.dumps({"entry": entry, "hash": "1dd55aee6e9ac409", "task_id": task_id,
                               "uuid": "00000000001E0236"}, separators=(",", ":"))
         return (f"[{day} {hms}.264][INF][Px{px}][Tx32558][Utils/EventDispatcher.hpp][L65]"
                 f"[MaaNS::EventDispatcher::notify] !!!OnEventNotify!!! [handle=true] "
                 f"[msg=Tasker.Task.{kind}] [details={details}] ")
-
 
     def round_lines(day="2026-10-05", first_id=200000001, rows=ROUND):
         out = []
@@ -2053,7 +1933,6 @@ def _part_task_shots():
                 out.append(ev(day, hms, kind, entry, tid))
                 out.append(ev(day, hms, kind, entry, tid, px="18500"))   # the agent's echo
         return out
-
 
     class Cam:
         """A fake desktop: writes a file, or raises on the calls listed in `bad`."""
@@ -2070,12 +1949,10 @@ def _part_task_shots():
             p.write_bytes(b"\x89PNG fake " + name.encode())
             return p
 
-
     class Cfg:
         automas_dir = AUTOMAS
         maaend_dir = MAAEND
         state_dir = TMP / "watch-state"
-
 
     print("[10-05's round: one picture per 任务完成, plus the first 任务开始]")
     cam = Cam()
@@ -2106,7 +1983,6 @@ def _part_task_shots():
 
         def emit(self, record):
             self.msgs.append(record.getMessage())
-
 
     grab = Grab()
     task_shots.log.addHandler(grab)
@@ -2164,10 +2040,8 @@ def _part_task_shots():
     check("named", got and got.name, "104333-赠送干员礼物.png")
     check("moved, not copied", (src.exists(), got.read_bytes() if got else b""), (False, b"png"))
 
-
     def boom():
         raise OSError("no desktop")
-
 
     check("a failing agent -> None", evidence.desktop_shot(Cfg, TMP / "out", boom, quiet=True), None)
 
@@ -2187,7 +2061,6 @@ def _part_task_shots():
     # ---------------------------------------------------------------- Part B
     print("\n[the update-restart record that is held ships its bundle at once, with the task pictures]")
 
-
     class Notes:
         def __init__(self, fail_first=0):
             self.sent, self.fail_first = [], fail_first
@@ -2199,12 +2072,6 @@ def _part_task_shots():
             self.sent.append((title, body, kw.get("alert", False)))
             return []
 
-
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     class Up:
         def __init__(self):
             self.files = []
@@ -2213,10 +2080,8 @@ def _part_task_shots():
             self.files.append(p)
             return {"page": "https://cos.example/ev/MaaEnd.zip", "store": "cos"}
 
-
     def at(hh, mm, ss=0):
         return datetime(2026, 10, 1, hh, mm, ss, tzinfo=SERVER_TZ)
-
 
     (MAAEND / "debug" / "2026-10-01-4.log").write_text("\n".join([
         "2026-10-01 16:11:06 INFO  [App] 检测到待安装更新: v2.31.0-beta.6",
@@ -2229,17 +2094,15 @@ def _part_task_shots():
     evidence.uploaders = lambda cfg, run_id: [up]
     evidence.context_files = lambda cfg, window, dst, relay_until=None: []
 
-
     def build(notes=None):
         cfg = Config()
         cfg.state_dir = tmpdir()
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=notes or Notes())
+        e = eng_mod.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=notes or Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._verify_outcome = lambda r: None
         e._alert_key = lambda r: handle._alert_key(e, r)
         return e
-
 
     e = build()
     shot_dir = Path(e.cfg.state_dir) / "shots" / "2026-10-01" / "MaaEnd-16-11-06"
@@ -2272,11 +2135,9 @@ def _part_task_shots():
     calls = []
     real_ship = handle._ship_evidence
 
-
     def ship_fails(eng, r):
         calls.append(r.run_id)
         return ""
-
 
     handle._ship_evidence = ship_fails
     e = build(Notes(fail_first=1))
@@ -2297,12 +2158,10 @@ def _part_task_shots():
     print("\n[same, but the late upload works -> the alarm carries the link and no extra line]")
     calls.clear()
 
-
     def ship_works(eng, r):
         calls.append(r.run_id)
         r.raw["evidence_page"] = "https://cos.example/late.zip"
         return "https://cos.example/late.zip"
-
 
     handle._ship_evidence = ship_works
     e = build()
@@ -2331,24 +2190,14 @@ def _part_task_shots():
 
 
 def _part_tacet_shots():
-    import json, os, sys, types
+    import json, os, types
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import report
     from ark_relay.core import notify
     from ark_relay.core.config import SERVER_TZ
 
-    fails = []
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _parts import tmpdir
     TMP = tmpdir()
     shots = TMP / "okww" / "data" / "apps" / "ok-ww" / "working" / "screenshots"; shots.mkdir(parents=True)
     state = TMP / "state"; state.mkdir()
@@ -2441,8 +2290,6 @@ def _part_tacet_shots():
     print("[关掉之后又不发了]")
     check("关的回话", modes.set_tacet_shots(state, False), "无音区结算截图：不发了")
     check("读回是关", modes.tacet_shots_on(state), False)
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_self_attrs_main():  # noqa: C901
@@ -2466,7 +2313,6 @@ def _part_self_attrs_main():  # noqa: C901
             "generic_visit",
         },
     }
-
 
     def defined_names(cls: ast.ClassDef) -> set[str]:
         out = set()
@@ -2495,7 +2341,6 @@ def _part_self_attrs_main():  # noqa: C901
                     out.add(tgt.attr)
         return out
 
-
     def used_names(cls: ast.ClassDef) -> dict[str, int]:
         out: dict[str, int] = {}
         for node in ast.walk(cls):
@@ -2505,14 +2350,12 @@ def _part_self_attrs_main():  # noqa: C901
                 out.setdefault(node.attr, node.lineno)
         return out
 
-
     def module_name(f: Path) -> str:
         """Dotted import name of a scanned file: ark_relay/core/config.py -> ark_relay.core.config."""
         parts = list(f.relative_to(ROOT).with_suffix("").parts)
         if parts[-1] == "__init__":
             parts.pop()
         return ".".join(parts)
-
 
     class Index:
         """Top-level classes and `from ... import` bindings of every scanned module."""
@@ -2559,7 +2402,6 @@ def _part_self_attrs_main():  # noqa: C901
                 out |= self.inherited(hit[0], hit[1], seen)
             return out
 
-
     def main() -> int:
         files = sorted(list([p for p in (ROOT / "ark_relay").rglob("*.py") if not {"okww_files"} & set(p.parts)])
                        + [ROOT / "service.py", ROOT / "boot_stages.py"])
@@ -2592,7 +2434,6 @@ def _part_self_attrs_main():  # noqa: C901
         print("all checks passed")
         return 0
 
-
     if __name__ == "__main__":
         raise SystemExit(main())
 
@@ -2607,7 +2448,6 @@ def _part_self_heal_red():
     import types
     from datetime import datetime
 
-
     TMP = tmpdir()
     os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="", ARK_STATE_DIR=str(TMP / "state"),
                       SERVERCHAN_KEY="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
@@ -2617,14 +2457,12 @@ def _part_self_heal_red():
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import errwatch, handle
 
-
     def reds(state_dir, day):
         try:
             text = techlog.path_for(day, state_dir).read_text(encoding="utf-8")
         except OSError:
             return []
         return techlog.unhandled(text)
-
 
     print("[add_red: ids stay unique within a day, across calls in the same minute]")
     d = TMP / "a" / "state"
@@ -2652,7 +2490,6 @@ def _part_self_heal_red():
 
     print("[errwatch: a recovered record writes one 「自愈待查」 red item, a plain WARNING none]")
 
-
     class _N:
         channels = ()
 
@@ -2662,7 +2499,6 @@ def _part_self_heal_red():
         def send(self, title, body, *, alert=False, daily=False):
             self.sent.append((title, body))
             return []
-
 
     ARK = logging.getLogger(errwatch.ARK)
     ARK.setLevel(logging.INFO)
@@ -2731,7 +2567,6 @@ def _part_self_heal_red():
     src = (RELAY / "ark_relay" / "features" / "errwatch.py").read_text(encoding="utf-8")
     check("errwatch has no daily-only door any more", "def note_daily" in src, False)
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
 
 
 def _part_undefined_names():  # noqa: C901
@@ -2746,7 +2581,6 @@ def _part_undefined_names():  # noqa: C901
     }
 
     FAILED = []
-
 
     def _bound_by(node: ast.AST) -> set[str]:
         """这个节点直接绑定了哪些名字（不下钻到子作用域）。"""
@@ -2789,7 +2623,6 @@ def _part_undefined_names():  # noqa: C901
             targets(node.target)
         return out
 
-
     def _scope_binds(scope: ast.AST) -> set[str]:
         """一个作用域里绑定的全部名字。子作用域的函数体不算，但它们的**名字**算。"""
         out: set[str] = set()
@@ -2817,7 +2650,6 @@ def _part_undefined_names():  # noqa: C901
             walk(n, top=True)
         return out
 
-
     def _check_scope(scope: ast.AST, visible: set[str], path: Path) -> None:
         here = visible | _scope_binds(scope)
 
@@ -2838,7 +2670,6 @@ def _part_undefined_names():  # noqa: C901
 
         for c in ast.iter_child_nodes(scope):
             loads(c)
-
 
     def main() -> int:
         # ark_relay/ was split into core/ and features/<name>/ packages, so scan it
@@ -2865,15 +2696,12 @@ def _part_undefined_names():  # noqa: C901
         print("all checks passed")
         return 0
 
-
     if __name__ == "__main__":
         sys.exit(main())
 
 
 def _part_module_table():
     import re
-    import sys
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[1]
     doc = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -2884,7 +2712,6 @@ def _part_module_table():
     missing = sorted(mods - listed)
     extra = sorted(n for n in listed - mods if n not in ("run", "make-manifest") and not n.startswith("_"))
 
-    fails = []
     print(f"  模块 {len(mods)} 个，表里提到 {len(listed & mods)} 个")
     if missing:
         fails.append(f"表里没提到：{missing}")
@@ -2897,9 +2724,6 @@ def _part_module_table():
     for name in ("shutdown", "report", "missed", "handle"):
         if re.search(rf"engine\.py[^|\n]*{name}", doc):
             fails.append(f"{name} 已经从 engine 拆出来了，表里还说在 engine 里")
-
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
 
 
 def _part_parts():
@@ -2916,20 +2740,17 @@ def _part_parts():
 
     fails = []
 
-
     def check(label, got, want):
         ok = got == want
         print(f"  {'✓' if ok else '✗'} {label}: {got!r}" + ("" if ok else f" (want {want!r})"))
         if not ok:
             fails.append(label)
 
-
     REAL = urllib.request.urlopen
     # A variable of this test only (not a setting of the relay, so not in docs/CONFIG.md).
     VAR = "PARTS_TEST_VARIABLE"
     CWD = os.getcwd()
     seen = {}
-
 
     def _part_changes_everything():
         os.environ[VAR] = "1"
@@ -2940,7 +2761,6 @@ def _part_parts():
         os.chdir(tmpdir())
         sys.exit(1)
 
-
     def _part_sees_nothing_of_it():
         seen["env"] = VAR in os.environ
         seen["urlopen"] = urllib.request.urlopen is REAL
@@ -2948,10 +2768,8 @@ def _part_parts():
         seen["module"] = "colorsys" in sys.modules
         seen["cwd"] = os.getcwd()
 
-
     def _part_raises():
         raise RuntimeError("a part that crashes")
-
 
     print("[three parts: one exits 1, one checks, one raises]")
     check("the run fails", run_parts([_part_changes_everything, _part_sees_nothing_of_it, _part_raises]), 1)
@@ -2963,19 +2781,15 @@ def _part_parts():
     check("……nor its working directory", seen.get("cwd"), CWD)
     check("all passing parts: 0", run_parts([_part_sees_nothing_of_it]), 0)
 
-
     print("\n[the shared check (_parts.check): a failed one fails its part only]")
     later = {}
-
 
     def _part_fails_a_shared_check():
         _parts.check("one equals two", 1, 2)
 
-
     def _part_after_it():
         later["fails"] = list(_parts.fails)
         _parts.require("still true", True)
-
 
     check("a part with a failed shared check fails the run", run_parts([_part_fails_a_shared_check, _part_after_it]), 1)
     check("……the next part starts with no failed check", later.get("fails"), [])
@@ -2995,7 +2809,6 @@ def _part_scripts_relay_attrs():
 
     ROOT = Path(__file__).resolve().parents[2]
     DIRS = [ROOT / "scripts" / "windows", ROOT / "scripts" / "mac" / "lib"]
-
 
     def missing_names(src: str) -> list:
         tree = ast.parse(src)
@@ -3028,7 +2841,6 @@ def _part_scripts_relay_attrs():
                     out.append(f"{alias[node.value.id]}.{node.attr}")
         return out
 
-
     bad = {}
     for d in DIRS:
         for f in sorted(d.glob("*.py")):
@@ -3052,7 +2864,6 @@ def _part_scripts_running_asks_automas():
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import engine
-
 
     REAL = {"tasks": [{"taskId": "8cebb1be", "mode": "AutoProxy", "stopping": False,
                        "task_info": [

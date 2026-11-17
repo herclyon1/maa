@@ -9,6 +9,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+# relay/ first for every part, as each part used to put it (run_parts restores sys.path after one)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+def _stub_win32(*names: str) -> None:
+    """Stand-ins for the Windows-only modules the relay imports (pywin32, wmi, ...) on the Mac:
+    any attribute of one is a callable returning another stand-in. setdefault: a module already
+    in sys.modules stays; run_parts drops what a part added once the part is over."""
+    import types
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+    for name in names:
+        sys.modules.setdefault(name, _Stub(name))
 
 
 def _make_maaend_schema():
@@ -39,24 +62,29 @@ def _make_maaend_schema():
     )
 
 
+class _Notes:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body="", **kw):
+        self.sent.append((title, body, kw.get("alert", False)))
+        return False
+
+
+class _N:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body, alert=False, **kw):
+        self.sent.append((title, alert))
+        return []
+
+
 def _part_mastercfg_main():
     """母本配置的读写。"""
-    #!/usr/bin/env python3
-
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.core import mastercfg
-
-    FAILED: list[str] = []
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'✅' if ok else '❌'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
-
 
     def _fixture() -> tuple[Path, Path]:
         """造一份假的 AUTO-MAS 母本目录 + 假的 MaaEnd 安装目录。"""
@@ -261,38 +289,20 @@ def _part_mastercfg_main():
         nest.write_text(good_nest, encoding="utf-8")
         mastercfg.log.removeHandler(g)
 
-        print("\n" + "=" * 46)
-        if FAILED:
-            print(f"❌ {len(FAILED)} 项没过：{FAILED}")
-            return 1
-        print("all checks passed")
-        return 0
+        return 1 if fails else 0
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_mastercfg_jsonc_strings():
     """MaaEnd definitions are JSONC: comments and trailing commas go, string contents stay."""
-    #!/usr/bin/env python3
-
     import json
     import re
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import mastercfg
 
     FX = fx_dir(Path(__file__), "fixtures") / "maaend-v2.32-autostock"
-    FAILED: list[str] = []
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'✅' if ok else '❌'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
-
 
     def master_with_reserve(value: str) -> Path:
         automas = tmpdir() / "automas"
@@ -303,7 +313,6 @@ def _part_mastercfg_jsonc_strings():
                 "AutoStockReserveWuling": {"type": "input", "values": {"ReserveWuling": value}}}},
         ]}]}), encoding="utf-8")
         return automas
-
 
     # 1. The walker itself: string contents survive, commas outside strings go.
     src = '{"a": "x,}", "b": "\\\\d{6,}", "c": [1, 2, ], // note\n "d": {"e": 1, },}'
@@ -352,30 +361,15 @@ def _part_mastercfg_jsonc_strings():
     finally:
         mastercfg._strip_jsonc = real_strip
 
-    print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
-    sys.exit(1 if FAILED else 0)
-
 
 def _part_mastercfg_protocolspace():
     """The phone can read and write MaaEnd's ProtocolSpace (the other sanity sink)."""
-    #!/usr/bin/env python3
-
     import json
     import shutil
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.core import mastercfg
 
-    FAILED: list[str] = []
     DEFS = fx_dir(Path(__file__), "fixtures") / "maaend-protocolspace-v2.30.0-rc.1"
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'OK ' if ok else 'BAD'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
-
 
     def _fixture() -> tuple[Path, Path]:
         root = tmpdir()
@@ -403,7 +397,6 @@ def _part_mastercfg_protocolspace():
         maaend = root / "maaend"
         shutil.copytree(DEFS, maaend)
         return root / "automas", maaend
-
 
     def main() -> int:
         automas, maaend = _fixture()
@@ -508,22 +501,13 @@ def _part_mastercfg_protocolspace():
         require("the file itself holds T-Creds",
                 ov["OperatorProgression"] == {"type": "select", "caseName": "T-Creds"}, repr(ov["OperatorProgression"]))
 
-        print()
-        if FAILED:
-            print(f"FAILED {len(FAILED)}: {FAILED}")
-            return 1
-        print("all checks passed")
-        return 0
+        return 1 if fails else 0
+
+    raise SystemExit(main())
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
-
-
-def _part_maaend_controller_cache():  # noqa: C901
+def _part_maaend_controller_cache():
     """Every relay write of a MaaEnd task's switch leaves the master as MXU's UI saves it."""
-    #!/usr/bin/env python3
-
     import json
     import types
 
@@ -539,14 +523,6 @@ def _part_maaend_controller_cache():  # noqa: C901
     FX = fx_dir(HERE, "fixtures") / "maaend-v2.33-essence"
     MASTER = json.loads((FX / "master-1016.json").read_text(encoding="utf-8"))
     CTRL = "Win32-Front"
-    FAILED: list[str] = []
-
-
-    def require(name: str, ok: bool, detail: object = "") -> None:
-        print(f"  {'ok  ' if ok else 'FAIL'} {name}" + ("" if ok else f": {detail}"))
-        if not ok:
-            FAILED.append(name)
-
 
     def put_master(doc: dict) -> Path:
         """A fresh AUTO-MAS dir holding `doc` as the MaaEnd master; returns its root."""
@@ -556,19 +532,15 @@ def _part_maaend_controller_cache():  # noqa: C901
         (d / "mxu-MaaEnd.json").write_text(json.dumps(doc, ensure_ascii=False, indent=2), encoding="utf-8")
         return root
 
-
     def master_file(root: Path) -> Path:
         return root / "data" / "sid" / "Default" / "ConfigFile" / "mxu-MaaEnd.json"
-
 
     def task_of(doc: dict, name: str) -> dict:
         return next(t for t in doc["instances"][0]["tasks"] if t.get("taskName") == name)
 
-
     def flags(doc: dict) -> list:
         return [(t.get("taskName"), t.get("enabled"), t.get("enabledByController"))
                 for inst in doc.get("instances") or [] for t in inst.get("tasks") or []]
-
 
     def check_written(label: str, root: Path, touched: list[str], untouched: dict) -> None:
         """The touched tasks are consistent and survive an MXU load + save; the others
@@ -588,7 +560,6 @@ def _part_maaend_controller_cache():  # noqa: C901
         for name, was in untouched.items():
             require(f"[{label}] {name} left as it was", task_of(doc, name) == was, task_of(doc, name))
 
-
     def section_fixture() -> None:
         print("[fixture: the 10-16 master carries stale per-controller copies]")
         saved = ms.mxu_load_save_flags(MASTER)
@@ -599,7 +570,6 @@ def _part_maaend_controller_cache():  # noqa: C901
         require("[fixture] an MXU load + save of it would rewrite those two",
                 [n for (n, *_a), b in zip(flags(MASTER), flags(saved), strict=True) if tuple(_a) != b[1:]]
                 == ["ProtocolSpace", "AutoEssence"], flags(saved))
-
 
     def section_port() -> None:
         print("[port: the relay setter is MXU's cacheTaskEnabledForController]")
@@ -631,7 +601,6 @@ def _part_maaend_controller_cache():  # noqa: C901
                             return
         require("[port] setter == port on every cache shape, controller and value", True)
 
-
     def section_write_maaend() -> None:
         print("[mastercfg.write_maaend @enabled]")
         root = put_master(MASTER)
@@ -645,7 +614,6 @@ def _part_maaend_controller_cache():  # noqa: C901
         ok, msg = mastercfg.write_maaend(root, FX, "AutoEssence/@enabled", False)
         require("[write_maaend] AutoEssence (bare true cache) off accepted", ok, msg)
         check_written("write_maaend bare", root, ["AutoEssence"], {"DailyRewards": keep["DailyRewards"]})
-
 
     def section_sanity_plan() -> None:
         print("[sanity_plan.set_plan]")
@@ -664,7 +632,6 @@ def _part_maaend_controller_cache():  # noqa: C901
         ok, msg = sanity_plan.set_plan(root, "Essence")
         require("[sanity_plan] switch back to essence accepted", ok, msg)
         check_written("sanity_plan Essence", root, ["ProtocolSpace", "AutoEssence"], keep)
-
 
     def section_makeup() -> None:
         print("[makeup.stash_first]")
@@ -718,22 +685,15 @@ def _part_maaend_controller_cache():  # noqa: C901
         require("[makeup] the other controller's entry is kept", st["enabledByController"] == {"ADB": True, CTRL: True},
                 st["enabledByController"])
 
-
     def main() -> int:
         for section in (section_fixture, section_port, section_write_maaend, section_sanity_plan, section_makeup):
             try:
                 section()
             except Exception as exc:  # noqa: BLE001
                 require(f"{section.__name__} ran", False, f"{type(exc).__name__}: {exc}")
-        if FAILED:
-            print(f"FAILED {len(FAILED)}: {FAILED}")
-            return 1
-        print("all checks passed")
-        return 0
+        return 1 if fails else 0
 
-
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_maaend_defs_228():
@@ -741,11 +701,9 @@ def _part_maaend_defs_228():
     import json
     import re
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import mastercfg
 
     HAN = re.compile(r"[一-鿿]")
-
 
     FX = fx_dir(Path(__file__), "fixtures") / "maaend228"
     root = tmpdir()
@@ -800,7 +758,6 @@ def _part_maaend_defs_228():
     print("\n[死条目不光报警，要清掉——但要两个独立信号都说它死了才动手]")
     import logging
 
-
     class _Grab(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -810,7 +767,6 @@ def _part_maaend_defs_228():
         def emit(self, record):
             self.recs.append((record.levelno, record.getMessage()))
             self.titles.append((getattr(record, "ark_alarm", None) or (None,))[0])
-
 
     _g = _Grab()
     mastercfg.log.addHandler(_g)
@@ -839,16 +795,13 @@ def _part_maaend_defs_228():
     print("\n[绝不删 MaaEnd 还定义着的：定义看不全就不动，WARNING 说明原因]")
     import shutil
 
-
     def _fx_copy():
         d = tmpdir() / "maaend"
         shutil.copytree(FX, d)
         return d
 
-
     def _master(tasks):
         (cf / "mxu-MaaEnd.json").write_text(json.dumps({"instances": [{"tasks": tasks}]}), encoding="utf-8")
-
 
     ORPHAN_OFF = {"taskName": "AutoUseSpMedication", "enabled": False, "optionValues": {}}
     _master([dict(ORPHAN_OFF)])
@@ -898,11 +851,9 @@ def _part_maaend_migrate_options():
     import shutil
     import tempfile
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import mastercfg
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-10"
-
 
     with tempfile.TemporaryDirectory() as d:
         d = Path(d)
@@ -991,7 +942,6 @@ def _part_maaend_migrate_stock_switch():
     import shutil
     import tempfile
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import mastercfg
 
     FIX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-10-10"
@@ -999,10 +949,8 @@ def _part_maaend_migrate_stock_switch():
             "AutoStockBuyCulturalGoodsValleyIV", "AutoStockBuyDailyGoodsWuling",
             "AutoStockBuyStockFactoryGoodsWuling", "AutoStockBuyCulturalGoodsWuling")
 
-
     def stock(doc):
         return next(t for t in doc["instances"][0]["tasks"] if t.get("taskName") == "AutoStockStaple")["optionValues"]
-
 
     def setup(d: Path, master_doc: dict) -> "tuple[Path, Path, Path]":
         maaend = d / "maaend"
@@ -1017,7 +965,6 @@ def _part_maaend_migrate_stock_switch():
         cfgdir.mkdir(parents=True)
         (cfgdir / "mxu-MaaEnd.json").write_text(json.dumps(master_doc, ensure_ascii=False), encoding="utf-8")
         return automas, maaend, cfgdir
-
 
     before = json.loads((FIX / "master-before.json").read_text(encoding="utf-8"))
     picks = {k: stock(before)[k]["caseNames"] for k in KEYS}
@@ -1073,22 +1020,9 @@ def _part_maaend_migrate_stock_switch():
 def _part_maaend_migrate_unread_defs():
     """migrate_maaend_options does not drop a live value because a definition file was unreadable.
     """
-    #!/usr/bin/env python3
-
     import json
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.core import mastercfg
-
-    FAILED: list[str] = []
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'✅' if ok else '❌'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
-
 
     def setup(stash_text: str, interface: "str | None" = '{"import": ["tasks/AutoCollect.json", "tasks/StashBackpack.json"]}'):
         root = tmpdir()
@@ -1110,10 +1044,8 @@ def _part_maaend_migrate_unread_defs():
         (maaend / "tasks" / "StashBackpack.json").write_text(stash_text, encoding="utf-8")
         return automas, maaend, cfg / "mxu-MaaEnd.json"
 
-
     def values(master: Path) -> dict:
         return json.loads(master.read_text(encoding="utf-8"))["instances"][0]["tasks"][0]["optionValues"]
-
 
     GOOD = json.dumps({"option": {"StashBackpackMode": {"type": "select", "cases": [{"name": "Deposit"}]}}})
     BROKEN = GOOD[:-1] + " oops"           # StashBackpack.json does not parse but names its option
@@ -1145,9 +1077,6 @@ def _part_maaend_migrate_unread_defs():
     require("no automas: the first",
             (_mc._maaend_task({"instances": [{"tasks": [{"taskName": "T", "x": 3}]}]}, "T") or {}).get("x") == 3)
 
-    print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
-    sys.exit(1 if FAILED else 0)
-
 
 def _part_maaend_name_mismatch():
     """When AUTO-MAS cannot name a renamed MaaEnd task, the relay judges by MaaEnd's own log."""
@@ -1163,7 +1092,6 @@ def _part_maaend_name_mismatch():
     REAL_0906 = (fx_dir(HERE, "gamesim") / "corpus" / "maaend" / "v3-0906-automas-misjudged" / "automas" / "history"
                  / "2026-09-06" / "endfield" / "MaaEnd-05-40-21")
     REAL_0918 = fx_dir(HERE, "fixtures") / "maaend-2026-09-18" / "MaaEnd-05-26-03"
-
 
     log_0906 = REAL_0906.with_suffix(".log").read_text(encoding="utf-8")
     lines_0906 = log_0906.splitlines(keepends=True)
@@ -1230,11 +1158,9 @@ def _part_maaend_phone_page_beta5():
     """The phone page must show the per-region gathering lists MaaEnd v2.28.0-beta.5 uses."""
     import re
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import mastercfg
 
     HAN = re.compile(r"[一-鿿]")
-
 
     FX = fx_dir(Path(__file__), "fixtures") / "maaend-2026-09-10"
     root = tmpdir()
@@ -1286,22 +1212,10 @@ def _part_maaend_phone_page_beta5():
 
 def _part_maaend_schedule_skip():
     """A task MaaEnd skips by its weekday schedule is reported as skipped, not done."""
-    #!/usr/bin/env python3
-
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features.collector_maaend import parse_maaend_log
 
-    FAILED: list[str] = []
     HERE = Path(__file__).resolve().parent
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -- {detail}"))
-        if not ok:
-            FAILED.append(name)
-
 
     def main() -> int:
         r = parse_maaend_log(fx_dir(HERE, "replay") / "2026-09-05" / "endfield" / "MaaEnd-05-27-42.log")
@@ -1327,33 +1241,21 @@ def _part_maaend_schedule_skip():
         require("a run that really farmed is unchanged", full.get("maaend_farm") == "协议空间"
                 and "协议空间" in (full.get("tasks_done") or []) and not full.get("maaend_tasks_skipped"),
                 repr((full.get("maaend_farm"), full.get("maaend_tasks_skipped"))))
-        print()
-        if FAILED:
-            print(f"FAILED {len(FAILED)}: {FAILED}")
-            return 1
-        print("all checks passed")
-        return 0
+        return 1 if fails else 0
 
-
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_maaend_skipped_report():
     """The daily report says a weekday-skipped MaaEnd task was skipped: not done,
 not missing.
     """
-    #!/usr/bin/env python3
-
     from datetime import datetime, timedelta
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import ledger as core
     from ark_relay.features.collector_maaend import parse_maaend_log
     from ark_relay.core.config import SERVER_TZ
 
-    FAILED: list[str] = []
     HERE = Path(__file__).resolve().parent
 
     LOG = ("[2026-09-06 09:41:39.529] 任务开始: 🎁赠送干员礼物\n"
@@ -1365,12 +1267,6 @@ not missing.
            "[2026-09-06 09:53:40.221] 任务完成: ⚔️协议空间\n"
            "[2026-09-06 09:53:41.000] 任务开始: 📅日常奖励领取\n"
            "[2026-09-06 09:55:00.000] 任务完成: 📅日常奖励领取\n")
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -- {detail}"))
-        if not ok:
-            FAILED.append(name)
 
 
     def ent(raw: dict) -> dict:
@@ -1404,38 +1300,20 @@ not missing.
         _t3, b3 = core.format_daily("2026-09-05", [ent(gather)])
         require("a skipped 自动采集 keeps its own sentence", "自动采集 今天周六不是采集日" in b3, b3)
         require("... and is not repeated in the generic one", "按排班跳过、没有做：自动采集" not in b3, b3)
-        print()
-        if FAILED:
-            print(f"FAILED {len(FAILED)}: {FAILED}")
-            return 1
-        print("all checks passed")
-        return 0
+        return 1 if fails else 0
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_maaend_write_readback():
     """write_maaend reads back the very item it wrote and compares it with what it wrote."""
-    #!/usr/bin/env python3
-
     import json
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import mastercfg
 
     FX = fx_dir(Path(__file__), "fixtures") / "maaend-v2.32-autostock"
     PATH = "AutoStockStaple/AutoStockReserveWuling"
-    FAILED: list[str] = []
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'✅' if ok else '❌'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
-
 
     def master() -> Path:
         automas = tmpdir() / "automas"
@@ -1446,7 +1324,6 @@ def _part_maaend_write_readback():
                 "AutoStockReserveWuling": {"type": "input", "values": {"ReserveWuling": "240000"}}}},
         ]}]}), encoding="utf-8")
         return automas
-
 
     # 1. A good write names the value it read back, not None.
     ok, msg = mastercfg.write_maaend(master(), FX, PATH, "240001")
@@ -1475,9 +1352,6 @@ def _part_maaend_write_readback():
         mastercfg.atomic_write_text = real
     require("a task switch that reads back unchanged is not a success", not ok, msg)
 
-    print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
-    sys.exit(1 if FAILED else 0)
-
 
 def _part_maaend_watchdog_main():
     """MaaEnd hung -> end MaaEnd.exe so AUTO-MAS retries now, not 45 minutes later."""
@@ -1486,13 +1360,9 @@ def _part_maaend_watchdog_main():
     import threading
     import time
 
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.features import collect_watch, maaend_watchdog
     from ark_relay.core import texts
     from ark_relay.core.notify import route_of
-
 
     class _Drops(logging.Handler):
         def __init__(self):
@@ -1502,11 +1372,9 @@ def _part_maaend_watchdog_main():
         def emit(self, record):
             self.msgs.append(record.getMessage())
 
-
     _drops = _Drops()
     from ark_relay.core import watch as _watch
     _watch.log.addHandler(_drops)
-
 
     CRASH_LINE = "Exception 0xc0000005 0x0 0xffffffffffffffff 0x7ffc630b5456"
     RUNNING = {"tasks": [{"task_info": [{"name": "MAA", "status": "完成"},
@@ -1520,7 +1388,6 @@ def _part_maaend_watchdog_main():
               ("go-service.exe", 21932), ("cpp-algo.exe", 21940), ("python.exe", 9000)]
     NO_GO = [p for p in ALL_UP if p[0] != "go-service.exe"]
 
-
     class Notes:
         def __init__(self):
             self.sent = []
@@ -1528,7 +1395,6 @@ def _part_maaend_watchdog_main():
         def send(self, title, body="", **kw):
             self.sent.append((title, body, kw.get("alert", False)))
             return []
-
 
     class Rig:
         """One watchdog with every outside thing replaced."""
@@ -1573,7 +1439,6 @@ def _part_maaend_watchdog_main():
                 if r := self.step(every, **kw):
                     out.append(r)
             return out
-
 
     print("[2026-10-01：MaaEnd 在跑，go-service 崩溃 → 结束 MaaEnd 一次，群里一条报警]")
     r = Rig()
@@ -1696,10 +1561,8 @@ def _part_maaend_watchdog_main():
 
     print("\n[maafw.log 的行数：跟轮转，变短但 bak 里有新行也算有新行]")
 
-
     class _Cfg:
         pass
-
 
     cfg = _Cfg()
     cfg.maaend_dir = str(tmpdir())
@@ -1725,14 +1588,12 @@ def _part_maaend_watchdog_main():
     print("\n[监听线程：日志不动也每隔一段时间叫一次看门狗]")
     ticks = []
 
-
     class _FakeDog:
         def __init__(self, *a, **kw):
             pass
 
         def tick(self, lines, stamp):
             ticks.append(lines)
-
 
     real_dog, real_tick = maaend_watchdog.Watchdog, collect_watch.TICK_SECONDS
     maaend_watchdog.Watchdog, collect_watch.TICK_SECONDS = _FakeDog, 0.2
@@ -1802,7 +1663,6 @@ def _part_maaend_watchdog_main():
     print("\n[not one maafw.log line read for this MaaEnd: report once, never kill]")
     from ark_relay.features import errwatch
 
-
     class _Warns(logging.Handler):
         def __init__(self):
             super().__init__(logging.WARNING)
@@ -1810,7 +1670,6 @@ def _part_maaend_watchdog_main():
 
         def emit(self, record):
             self.recs.append(record)
-
 
     _warns = _Warns()
     maaend_watchdog.log.addHandler(_warns)
@@ -1839,13 +1698,11 @@ def _part_maaend_watchdog_main():
     real_run = maaend_watchdog.subprocess.run
     calls = []
 
-
     def fake_run(out, rc=0):
         def run(args, **kw):
             calls.append(args)
             return type("R", (), {"returncode": rc, "stdout": out.encode("gbk"), "stderr": b""})()
         return run
-
 
     try:
         maaend_watchdog.subprocess.run = fake_run("成功: 已终止 PID 为 21260 的进程。")
@@ -1869,7 +1726,6 @@ def _part_maaend_no_d3d11_alarm():
     import os
     from datetime import datetime, timedelta
 
-
     TMP = tmpdir()
     MAAEND = TMP / "maaend"
     (MAAEND / "debug").mkdir(parents=True)
@@ -1888,7 +1744,6 @@ def _part_maaend_no_d3d11_alarm():
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
 
-
     class Warned(logging.Handler):
         """What errwatch.ErrorKindAlert would take: every WARNING or worse (it sits on the relay's top logger)."""
 
@@ -1898,7 +1753,6 @@ def _part_maaend_no_d3d11_alarm():
 
         def emit(self, record):
             self.lines.append(f"{record.name}: {record.getMessage()}")
-
 
     WARNED = Warned()
     logging.getLogger().addHandler(WARNED)
@@ -1918,7 +1772,6 @@ def _part_maaend_no_d3d11_alarm():
     # would read the file above. Code without the function never reads it.
     efstart_setup._player_logs = lambda: [str(player)]
 
-
     def automas_dir() -> Path:
         root = tmpdir()
         (root / "config").mkdir()
@@ -1936,39 +1789,26 @@ def _part_maaend_no_d3d11_alarm():
         (root / "config" / "QueueConfig.json").write_text(json.dumps(qc), encoding="utf-8")
         return root
 
-
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return False
-
-
     class Src:
         def fetch(self, seen):
             return []
 
-
     handle._ship_evidence = lambda eng, rec: ""
     handle._weekly_gates = lambda eng, rec: None
     collect_retry.restore_master = lambda cfg: ""
-
 
     def build():
         cfg = Config()
         cfg.state_dir = tmpdir() / "state"
         cfg.automas_dir = automas_dir()
         cfg.maaend_dir = MAAEND
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._verify_outcome = lambda r: None
         e._archive_maaend_evidence = lambda r: None
         e._alert_key = lambda r: handle._alert_key(e, r)
         return e
-
 
     print("[the capture sees a WARNING from the relay's loggers at all]")
     efstart_setup._log_efstart_setup.warning("probe")
@@ -1992,7 +1832,7 @@ def _part_maaend_no_d3d11_alarm():
     _t = player.stat().st_mtime + 60
     os.utime(player, (_t, _t))
     boot_stages._endfield_launch = lambda cfg, log, when: None
-    boot_stages._stage_endfield_start(Config(), Notes(), efstart_setup._log_efstart_setup)
+    boot_stages._stage_endfield_start(Config(), _Notes(), efstart_setup._log_efstart_setup)
     check("no WARNING at boot", WARNED.lines, [])
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
@@ -2002,11 +1842,7 @@ def _part_maaend_essence_met():
     """Essence target mode with nothing left to farm is its own ending: not a
 false green, not work done.
     """
-    #!/usr/bin/env python3
-
     from datetime import datetime
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import ledger as core
     from ark_relay.core import texts
@@ -2019,14 +1855,6 @@ false green, not work done.
     APP = "\n" + (REC / "2026-10-16-3.log").read_text(encoding="utf-8")
     MET_LINE = "勾选武器的基质均已满足"
     GENERIC = "基质目标已满足或任务结束"
-    FAILED: list[str] = []
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -- {detail}"))
-        if not ok:
-            FAILED.append(name)
-
 
     def bad(checks) -> dict:
         return {c.label: c.detail for c in checks if not c.ok}
@@ -2091,19 +1919,14 @@ false green, not work done.
         for t in (texts.ESSENCE_TARGET_MET, texts.OUTCOME_ESSENCE_MET_HEAD):
             require(f"plain language: {t}", texts.plain(t) == [], repr(texts.plain(t)))
 
-        print("\n" + ("FAILED: " + ", ".join(FAILED) if FAILED else "all checks passed"))
-        return 1 if FAILED else 0
+        return 1 if fails else 0
 
 
-    if __name__ == "__main__":
-        sys.exit(main())
+    sys.exit(main())
 
 
 def _part_maaend_essence_stamina_out():
     """MaaEnd v2.34's 「体力不足，任务结束」 is the out-of-sanity ending of 基质刷取."""
-    #!/usr/bin/env python3
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features.collector_maaend import parse_maaend_log
     from ark_relay.features.outcome import maaend_checks
 
@@ -2111,10 +1934,8 @@ def _part_maaend_essence_stamina_out():
     LOG = LOG_PATH.read_text(encoding="utf-8")
     STOP = "😴**体力不足，任务结束**"
 
-
     def bad(checks):
         return {c.label: c.detail for c in checks if not c.ok}
-
 
     require("the real record holds the stop line", STOP in LOG)
     got = bad(maaend_checks(LOG, []))
@@ -2141,19 +1962,15 @@ def _part_maaend_essence_stamina_out():
     if fails:
         print(f"\n{len(fails)} failed")
         sys.exit(1)
-    print("\nall checks passed")
 
 
 def _part_maaend_full_at_anchor():
     """Endfield's full-again time counts from the reading, and a floor 0 gets none."""
-    #!/usr/bin/env python3
     import tempfile
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
     from ark_relay.core.config import SERVER_TZ
-
 
     fin = datetime(2026, 10, 12, 10, 58, 40, tzinfo=SERVER_TZ)
     log = fx_dir(Path(__file__), "fixtures") / "maaend-sanity-1013" / "2026-10-12_MaaEnd-06-04-00.log"
@@ -2186,7 +2003,6 @@ not on those of the rounds after it.
     from datetime import datetime, timedelta
 
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ, RunRecord
     from ark_relay.features import handle as gamelogs, handle as verdict
 
@@ -2252,25 +2068,20 @@ not on those of the rounds after it.
     check("the later picture is not named", LATER_SHOT in msg, False)
     check("its own picture is (the round, like 10-01's, has no 「自动执行任务完成」)", own in msg, True)
 
-    print(f"\n{'all passed' if not fails else f'{len(fails)} failed: {fails}'}")
-
 
 def _part_maaend_sanity():
     """MaaEnd 的「剩余理智」报的是扣费之前的数字。"""
-    import os, sys
+    import os
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP))
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import collector
     from ark_relay.features import collector_maaend
-
 
     def parse(text):
         p = TMP / "x.log"
         p.write_text(text, encoding="utf-8")
         return collector.parse_maaend_log(p)
-
 
     print("[最后一次扣成了 —— 要减掉一次消耗]")
     got = parse("""\
@@ -2357,12 +2168,8 @@ def _part_maaend_sanity_fit():
     """Endfield sanity is reported as a figure only when the log's readings fit the
 per-claim rule (40 per 「补充理智」 booster, collector_maaend._claims_fit).
     """
-    #!/usr/bin/env python3
-
     import tempfile
     from datetime import datetime
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import ledger as ledger_rows
     from ark_relay.core.config import SERVER_TZ
@@ -2396,18 +2203,13 @@ per-claim rule (40 per 「补充理智」 booster, collector_maaend._claims_fit)
 
 def _part_maaend_sanity_one_formula():
     """Endfield sanity spent and left come from one rule, checked on real logs."""
-    #!/usr/bin/env python3
-
     from datetime import datetime
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import ledger as ledger_rows
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features.collector_maaend import parse_maaend_log
 
     D = fx_dir(Path(__file__), "fixtures") / "maaend-sanity-1013"
-
 
     CASES = [
         ("2026-10-13_MaaEnd-05-36-57.log", 1, 160, 38, None),
@@ -2444,7 +2246,6 @@ def _part_maaend_update_after_done():
     import os
     from datetime import datetime, timedelta
 
-
     TMP = tmpdir()
     MAAEND = TMP / "maaend"
     (MAAEND / "debug").mkdir(parents=True)
@@ -2452,7 +2253,6 @@ def _part_maaend_update_after_done():
     os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_MAAEND_DIR=str(MAAEND),
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import collect_retry
     from ark_relay.features import handle, handle as unresolved
@@ -2460,7 +2260,6 @@ def _part_maaend_update_after_done():
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
-
 
     def automas_dir(queues) -> Path:
         """An AUTO-MAS config dir shaped like the machine's: queues = [(name, [times], [kinds])]."""
@@ -2486,26 +2285,14 @@ def _part_maaend_update_after_done():
         (root / "config" / "QueueConfig.json").write_text(json.dumps(qc), encoding="utf-8")
         return root
 
-
     # The machine: 早班 09:00 runs MaaEnd, 晚班 21:30 is MAA only.
     MACHINE = automas_dir([("早班", ["09:00"], ["MAA", "MaaEnd", "OK-WW"]), ("晚班", ["21:30"], ["MAA"])])
     # For the other-shift case MaaEnd has to be in both.
     BOTH = automas_dir([("早班", ["09:00"], ["MAA", "MaaEnd", "OK-WW"]), ("晚班", ["21:30"], ["MAA", "MaaEnd"])])
 
-
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return False
-
-
     class Src:
         def fetch(self, seen):
             return []
-
 
     class Lines(logging.Handler):
         def __init__(self):
@@ -2515,7 +2302,6 @@ def _part_maaend_update_after_done():
         def emit(self, record):
             self.lines.append(record.getMessage())
 
-
     LINES = Lines()
     handle.log.addHandler(LINES)
     handle.log.setLevel(logging.DEBUG)
@@ -2523,7 +2309,6 @@ def _part_maaend_update_after_done():
     handle._ship_evidence = lambda eng, rec: ""
     handle._weekly_gates = lambda eng, rec: None
     collect_retry.restore_master = lambda cfg: ""
-
 
     def mxu_install(at: datetime, version: str) -> None:
         """MXU's own log for the attempt that installed `version` at its start."""
@@ -2537,23 +2322,19 @@ def _part_maaend_update_after_done():
             f"{s} INFO  [App] 已清除待安装更新信息",
         ]) + "\n", encoding="utf-8")
 
-
     def t(day, hh, mm, ss=0):
         return datetime(2026, 10, day, hh, mm, ss, tzinfo=SERVER_TZ)
-
 
     def success(day, run, start, minutes):
         return RunRecord(run_id=f"2026-10-{day:02d}/endfield/MaaEnd-{run}", script="MaaEnd", user="endfield",
                          started=start, finished=start + timedelta(minutes=minutes), ok=True, failed_tasks=[],
                          raw={"maaend_result": "Success!"})
 
-
     def restart(day, run, start):
         return RunRecord(run_id=f"2026-10-{day:02d}/endfield/MaaEnd-{run}", script="MaaEnd", user="endfield",
                          started=start, finished=start + timedelta(seconds=30), ok=False,
                          failed_tasks=["赠送干员礼物", "据点交易", "日常奖励领取"],
                          raw={"maaend_result": "MaaEnd 部分任务执行失败: 🎁赠送干员礼物"})
-
 
     mxu_install(t(4, 9, 50, 53), "v2.32.0-beta.1")
     mxu_install(t(4, 21, 50, 53), "v2.32.0-beta.9")
@@ -2563,20 +2344,18 @@ def _part_maaend_update_after_done():
     S5 = success(5, "06-39-48", t(5, 10, 39, 48), 49)
     R5 = restart(5, "07-30-14", t(5, 11, 30, 14))
 
-
     def build(automas, undone=None):
         cfg = Config()
         cfg.state_dir = tmpdir() / "state"   # its own tech/ next to it (techlog.tech_dir)
         cfg.automas_dir = automas
         cfg.maaend_dir = MAAEND
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._verify_outcome = lambda r: undone
         e._archive_maaend_evidence = lambda r: None
         e._alert_key = lambda r: handle._alert_key(e, r)
         return e
-
 
     def run(e, recs):
         LINES.lines.clear()
@@ -2585,10 +2364,8 @@ def _part_maaend_update_after_done():
         e._flush_pending()
         return [(ti, b) for ti, b, a in e.notifier.sent if a]
 
-
     def said(fragment):
         return any(fragment in ln for ln in LINES.lines)
-
 
     DROPPED = "前面那趟已经做完"
 
@@ -2687,13 +2464,11 @@ def _part_maaend_update_after_done():
     check("held", list(e._pending), [("MaaEnd", "endfield")])
     check("「先压着」 as before", said("先压着看后面的重试"))
 
-
     def reds(e, fragment):
         """Red items in e's technical log whose text names `fragment`."""
         from ark_relay.core import statestore as techlog
         return [x for f in sorted(techlog.tech_dir(e.cfg.state_dir).glob("*.md"))
                 for _, x in techlog.unhandled(f.read_text(encoding="utf-8")) if fragment in x]
-
 
     mxu_install(t(12, 10, 58, 11), "v2.33.0-beta.2")
     R12 = restart(12, "06-58-11", t(12, 10, 58, 11))
@@ -2744,7 +2519,6 @@ def _part_maaend_update_record():
     import os
     from datetime import datetime
 
-
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
     (AUTOMAS / "config").mkdir(parents=True)
@@ -2757,7 +2531,6 @@ def _part_maaend_update_record():
                       ARK_MAAEND_DIR=str(MAAEND), ARK_STATE_DIR=str(TMP / "state"),
                       SERVERCHAN_KEY="", ARK_LLM_KEY="", WECOM_CORPID="", WECOM_SECRET="",
                       WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import collector
     from ark_relay.features import errwatch
@@ -2767,7 +2540,6 @@ def _part_maaend_update_record():
     from ark_relay.features import handle, handle as records
     from ark_relay.features import collect_retry
 
-
     class Grab(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -2776,29 +2548,16 @@ def _part_maaend_update_record():
         def emit(self, r):
             self.lines.append((r.name, r.levelno, r.getMessage()))
 
-
     grab = Grab()
     logging.getLogger(errwatch.ARK).addHandler(grab)
     logging.getLogger(errwatch.ARK).setLevel(logging.DEBUG)
-
-
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return False
-
 
     class Src:
         def fetch(self, seen):
             return []
 
-
     DAY = HISTORY / "2026-10-12" / "endfield"
     DAY.mkdir(parents=True)
-
 
     def write(stem, result, log_lines, mtime):
         (DAY / f"{stem}.json").write_text(json.dumps({"maaend_result": result}, ensure_ascii=False, indent=4),
@@ -2807,7 +2566,6 @@ def _part_maaend_update_record():
         t = datetime(2026, 10, 12, *mtime, tzinfo=SERVER_TZ).timestamp()
         for suffix in (".json", ".log"):
             os.utime(DAY / f"{stem}{suffix}", (t, t))
-
 
     CLOSE = "❌关闭游戏（PC）"
 
@@ -2853,11 +2611,10 @@ def _part_maaend_update_record():
     collect_retry.restore_master = lambda cfg: ""
     handle._weekly_gates = lambda eng, rec: None
 
-
     def build():
         cfg = Config()
         cfg.state_dir = tmpdir()
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._verify_outcome = lambda r: None
@@ -2865,10 +2622,8 @@ def _part_maaend_update_record():
         e._alert_key = lambda r: handle._alert_key(e, r)
         return e
 
-
     def collector_lines(level):
         return [m for n, lv, m in grab.lines if n == "ark.collector" and lv == level]
-
 
     print("[10-12 replay: the collector sees two runs, not three]")
     got = collector.scan(HISTORY, set(), MAAEND)
@@ -2903,14 +2658,12 @@ def _part_maaend_update_record():
     # they are not about this record.)
     check("no push mentions the update", [t for t, b, a in e.notifier.sent if "更新" in t + b], [])
 
-
     def judge(stem, result, log_lines=("[2026-10-13 12:00:00.000] 窗口连接成功: Endfield",)):
         d = HISTORY / "2026-10-13" / "endfield"
         d.mkdir(parents=True, exist_ok=True)
         (d / f"{stem}.json").write_text(json.dumps({"maaend_result": result}, ensure_ascii=False), encoding="utf-8")
         (d / f"{stem}.log").write_text("".join(x + "\n" for x in log_lines), encoding="utf-8")
         return collector.parse_record(d / f"{stem}.json", HISTORY, MAAEND)
-
 
     print("\n[stage prefixes are stripped before judging]")
     r = judge("MaaEnd-01-00-00", "[日常] Success!")
@@ -2971,7 +2724,6 @@ def _part_maaend_update_restart():
     import os
     from datetime import datetime
 
-
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
     (AUTOMAS / "config").mkdir(parents=True)
@@ -2984,7 +2736,6 @@ def _part_maaend_update_restart():
                       ARK_MAAEND_DIR=str(MAAEND), ARK_STATE_DIR=str(TMP / "state"),
                       SERVERCHAN_KEY="", ARK_LLM_KEY="", WECOM_CORPID="", WECOM_SECRET="",
                       WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import collect_retry
     from ark_relay.features import handle
@@ -2993,24 +2744,12 @@ def _part_maaend_update_restart():
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
 
-
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return False
-
-
     class Src:
         def fetch(self, seen):
             return []
 
-
     def at(hh, mm, ss=0):
         return datetime(2026, 10, 1, hh, mm, ss, tzinfo=SERVER_TZ)
-
 
     (MAAEND / "debug" / "2026-10-01-3.log").write_text("\n".join([
         "2026-10-01 15:24:11 INFO  [App] 检查更新: MaaEnd, 当前版本: v2.31.0-beta.5, 频道: beta",
@@ -3028,7 +2767,6 @@ def _part_maaend_update_restart():
     FIFTEEN = ["赠送干员礼物", "装备制造", "拜访好友", "基建任务", "信用点购物", "转交委托", "据点交易",
                "环境监测", "自动囤货", "售卖弹性物资", "购买稳定物资", "协议空间", "选剑演武", "自动采集", "日常奖励领取"]
 
-
     def runs(with_success=True):
         out = [RunRecord(run_id="2026-10-01/endfield/MaaEnd-11-23-07", script="MaaEnd", user="endfield",
                          started=at(15, 24, 12), finished=at(16, 10, 0), ok=False,
@@ -3043,16 +2781,14 @@ def _part_maaend_update_restart():
                                       "tasks_evidence": {"日常奖励领取": "获得 通行证经验 ×2000"}}))
         return out
 
-
     handle._ship_evidence = lambda eng, rec: ""
     collect_retry.restore_master = lambda cfg: ""
     handle._weekly_gates = lambda eng, rec: None
 
-
     def build():
         cfg = Config()
         cfg.state_dir = tmpdir()
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._verify_outcome = lambda r: None
@@ -3060,10 +2796,8 @@ def _part_maaend_update_restart():
         e._alert_key = lambda r: handle._alert_key(e, r)
         return e
 
-
     def alarms(e):
         return [(t, b) for t, b, a in e.notifier.sent if a]
-
 
     print("[the reader: only the attempt that installed counts]")
     check("16:11:06 attempt installed beta.6", update_restart_version(MAAEND, at(16, 11, 6)),
@@ -3206,7 +2940,6 @@ def _part_maaend_update_restart_never_final():  # noqa: C901
     import os
     from datetime import datetime, timedelta
 
-
     TMP = tmpdir()
     MAAEND = TMP / "maaend"
     (MAAEND / "debug").mkdir(parents=True)
@@ -3214,7 +2947,6 @@ def _part_maaend_update_restart_never_final():  # noqa: C901
     os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_MAAEND_DIR=str(MAAEND),
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import collect_retry
     from ark_relay.features import handle
@@ -3225,7 +2957,6 @@ def _part_maaend_update_restart_never_final():  # noqa: C901
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
-
 
     def automas_dir() -> Path:
         """AUTO-MAS config as on the machine: 早班 09:00 runs MaaEnd, 晚班 21:30 is MAA only."""
@@ -3252,9 +2983,7 @@ def _part_maaend_update_restart_never_final():  # noqa: C901
         (root / "config" / "QueueConfig.json").write_text(json.dumps(qc), encoding="utf-8")
         return root
 
-
     MACHINE = automas_dir()
-
 
     class Notes:
         def __init__(self):
@@ -3268,11 +2997,9 @@ def _part_maaend_update_restart_never_final():  # noqa: C901
             self.sent.append((title, body, True))
             return []
 
-
     class Src:
         def fetch(self, seen):
             return []
-
 
     class Lines(logging.Handler):
         """Every ark.* line, with its level: a WARNING / ERROR one reaches the group (errwatch)."""
@@ -3284,7 +3011,6 @@ def _part_maaend_update_restart_never_final():  # noqa: C901
         def emit(self, record):
             self.lines.append((record.levelno, record.getMessage()))
 
-
     LINES = Lines()
     ARK = logging.getLogger(handle.log.name.rsplit(".", 1)[0])
     ARK.addHandler(LINES)
@@ -3293,7 +3019,6 @@ def _part_maaend_update_restart_never_final():  # noqa: C901
     handle._ship_evidence = lambda eng, rec: ""
     handle._weekly_gates = lambda eng, rec: None
     collect_retry.restore_master = lambda cfg: ""
-
 
     def mxu_install(at: datetime, version: str) -> None:
         """MXU's own log for the attempt that installed `version` at its start (real shape, 10-01)."""
@@ -3307,16 +3032,13 @@ def _part_maaend_update_restart_never_final():  # noqa: C901
             f"{s} INFO  [App] 已清除待安装更新信息",
         ]) + "\n", encoding="utf-8")
 
-
     def t(day, hh, mm, ss=0):
         return datetime(2026, 10, day, hh, mm, ss, tzinfo=SERVER_TZ)
-
 
     def success(day, run, start, minutes):
         return RunRecord(run_id=f"2026-10-{day:02d}/endfield/MaaEnd-{run}", script="MaaEnd", user="endfield",
                          started=start, finished=start + timedelta(minutes=minutes), ok=True, failed_tasks=[],
                          raw={"maaend_result": "Success!"})
-
 
     def restart(day, run, start, raw=None):
         return RunRecord(run_id=f"2026-10-{day:02d}/endfield/MaaEnd-{run}", script="MaaEnd", user="endfield",
@@ -3324,11 +3046,9 @@ def _part_maaend_update_restart_never_final():  # noqa: C901
                          failed_tasks=["赠送干员礼物", "据点交易", "日常奖励领取"],
                          raw=dict(raw or {}, maaend_result="MaaEnd 部分任务执行失败: 🎁赠送干员礼物"))
 
-
     # The two mornings, run ids + 4 h as relay.log shows them (the _part_maaend_update_after_done part).
     mxu_install(t(4, 9, 50, 53), "v2.32.0-beta.1")
     mxu_install(t(5, 11, 30, 14), "v2.32.0-beta.2")
-
 
     def build():
         cfg = Config()
@@ -3342,7 +3062,6 @@ def _part_maaend_update_restart_never_final():  # noqa: C901
         e._archive_maaend_evidence = lambda r: None
         return e
 
-
     def drive(e, recs, flushes=1):
         LINES.lines.clear()
         for r in recs:
@@ -3350,19 +3069,15 @@ def _part_maaend_update_restart_never_final():  # noqa: C901
         for _ in range(flushes):
             e._flush_pending()
 
-
     def said(fragment):
         return any(fragment in m for _, m in LINES.lines)
-
 
     def alarms(e):
         return [ti for ti, _, a in e.notifier.sent if a]
 
-
     def loud(e):
         """WARNING / ERROR lines: errwatch pushes each one to the group."""
         return [m for lv, m in LINES.lines if lv >= logging.WARNING]
-
 
     for day, s_run, s_at, mins, r_run, r_at in ((4, "05-26-41", t(4, 9, 26, 41), 23, "05-50-53", t(4, 9, 50, 53)),
                                                  (5, "06-39-48", t(5, 10, 39, 48), 49, "07-30-14", t(5, 11, 30, 14))):
@@ -3432,16 +3147,13 @@ def _part_maaend_watchdog_onepush():
     import logging
     import os
 
-
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
     from ark_relay.features import errwatch
     from ark_relay.features import maaend_watchdog
-
 
     CRASH_LINE = "Exception 0xc0000005 0x0 0xffffffffffffffff 0x7ffc630b5456"
     RUNNING = {"tasks": [{"task_info": [{"name": "MaaEnd", "status": "运行"}]}]}
@@ -3450,7 +3162,6 @@ def _part_maaend_watchdog_onepush():
               ("go-service.exe", 21932), ("cpp-algo.exe", 21940)]
     NO_GO = [p for p in ALL_UP if p[0] != "go-service.exe"]
     ROBOT = "企业微信机器人"
-
 
     class Notes:
         """The relay's notifier: `refuse` returns errors, `fallback` delivers by Server酱 instead of the robot."""
@@ -3465,7 +3176,6 @@ def _part_maaend_watchdog_onepush():
         def went_to_group(self):
             return not self.fallback
 
-
     class Refuses:
         """errwatch's own notifier: the group refuses, so what it queues stays queued (readable)."""
 
@@ -3475,9 +3185,7 @@ def _part_maaend_watchdog_onepush():
         def send(self, title, body, **kw):
             return ["拒收"]
 
-
     ARK_LOGGER = logging.getLogger(errwatch.ARK)
-
 
     class Rig:
         def __init__(self, notes, kill_ok=True, state_dir=None):
@@ -3522,12 +3230,10 @@ def _part_maaend_watchdog_onepush():
             ARK_LOGGER.removeHandler(self.h)
             self.h.close()
 
-
     def crash(r):
         r.run_for(240, new_lines=40)
         r.stderr.write_text(CRASH_LINE + "\n", encoding="utf-8")
         r.step(60)
-
 
     print("[2026-10-01 go-service crash -> MaaEnd ended: one group message, the ⚠️]")
     r = Rig(Notes())
@@ -3605,26 +3311,10 @@ group at every boot (2026-10-06).
     import shutil
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
 
     import boot_stages
     from ark_relay.features import collect_retry
@@ -3699,26 +3389,9 @@ def _part_spmed_v232():
     import shutil
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                   "win32con", "win32file", "servicemanager", "win32process",
-                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(_name, _Stub(_name))
+                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
 
     import boot_stages
     from ark_relay.features import gameupdate
@@ -3726,41 +3399,28 @@ def _part_spmed_v232():
 
     LIVE = fx_dir(Path(__file__), "fixtures") / "maaend-v2.32-spmed"
 
-
     def maaend_with(nodes: dict) -> Path:
         d = tmpdir()
         (d / "resource" / "pipeline").mkdir(parents=True)
         (d / "resource" / "pipeline" / "nodes.json").write_text(json.dumps(nodes, ensure_ascii=False), encoding="utf-8")
         return d
 
-
-    class N:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body, alert=False, **kw):
-            self.sent.append((title, alert))
-            return []
-
-
     class Log:
         def info(self, *a, **k): pass
         def warning(self, *a, **k): pass
         def exception(self, *a, **k): pass
-
 
     def boot_alarms(maaend_dir) -> list:
         """What the boot stage pushes about the booster for this MaaEnd folder."""
         real = mastercfg.prune_maaend_orphans
         mastercfg.prune_maaend_orphans = lambda *a: ([], "")
         try:
-            n = N()
+            n = _N()
             cfg = types.SimpleNamespace(maaend_dir=str(maaend_dir), automas_dir=None, state_dir=str(tmpdir()))
             boot_stages._stage_reenable_maaend(cfg, n, Log())
             return [t for t, a in n.sent if t == texts.SPMED_UNRECOGNISED and a]
         finally:
             mastercfg.prune_maaend_orphans = real
-
 
     print("[v2.32 的真实节点（机器上的 nodes.json）：认得是修好的写法，不报群]")
     live = tmpdir() / "maaend"
@@ -3801,26 +3461,9 @@ def _part_spmed_v233_rc1():
     import shutil
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                   "win32con", "win32file", "servicemanager", "win32process",
-                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(_name, _Stub(_name))
+                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
 
     import boot_stages
     from ark_relay.features import gameupdate
@@ -3829,41 +3472,28 @@ def _part_spmed_v233_rc1():
     LIVE = fx_dir(Path(__file__), "fixtures") / "maaend-v2.33.0-rc.1-spmed"
     V232 = fx_dir(Path(__file__), "fixtures") / "maaend-v2.32-spmed"
 
-
     def maaend_with(nodes: dict) -> Path:
         d = tmpdir()
         (d / "resource" / "pipeline").mkdir(parents=True)
         (d / "resource" / "pipeline" / "nodes.json").write_text(json.dumps(nodes, ensure_ascii=False), encoding="utf-8")
         return d
 
-
-    class N:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body, alert=False, **kw):
-            self.sent.append((title, alert))
-            return []
-
-
     class Log:
         def info(self, *a, **k): pass
         def warning(self, *a, **k): pass
         def exception(self, *a, **k): pass
-
 
     def boot_alarms(maaend_dir) -> list:
         """What the boot stage pushes about the booster for this MaaEnd folder."""
         real = mastercfg.prune_maaend_orphans
         mastercfg.prune_maaend_orphans = lambda *a: ([], "")
         try:
-            n = N()
+            n = _N()
             cfg = types.SimpleNamespace(maaend_dir=str(maaend_dir), automas_dir=None, state_dir=str(tmpdir()))
             boot_stages._stage_reenable_maaend(cfg, n, Log())
             return [t for t, a in n.sent if t == texts.SPMED_UNRECOGNISED and a]
         finally:
             mastercfg.prune_maaend_orphans = real
-
 
     print("[v2.33.0-rc.1 的真实节点（机器上的 nodes.json）：认得，不报群]")
     live = tmpdir() / "maaend"
@@ -3880,12 +3510,10 @@ def _part_spmed_v233_rc1():
     rc1 = json.loads((LIVE / "resource" / "pipeline" / "nodes.json").read_text(encoding="utf-8"))
     NAME = "__AutoUseSpMedicationUseEmergencySpBooster"
 
-
     def variant(edit, name=NAME):
         node = json.loads(json.dumps(rc1[NAME]))
         edit(node)
         return maaend_with({name: node})
-
 
     print("[和 rc.1 不一样的文字识别写法：认不出，报群]")
     for label, edit in (
@@ -3935,8 +3563,6 @@ def _part_essence_filler_main():
     """基质刷取: tick 唤月 next to 玉中身 (target mode), and once every ticked weapon's
 essence is owned, switch to filler mode (刷垫子) by itself.
     """
-    #!/usr/bin/env python3
-
     import json
     import logging
     import os
@@ -3957,7 +3583,6 @@ essence is owned, switch to filler mode (刷垫子) by itself.
     os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng_mod
     from ark_relay.core import ledger as core
@@ -3974,14 +3599,6 @@ essence is owned, switch to filler mode (刷垫子) by itself.
     GENERIC = "基质目标已满足或任务结束"
     DAY = "2026-10-16"
     ESS = "AutoEssence"
-    FAILED: list[str] = []
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(("  ✓ " if ok else "  ✗ ") + name + ("" if ok else f"  -- {detail}"))
-        if not ok:
-            FAILED.append(name)
-
 
     class Notes:
         def __init__(self):
@@ -4227,12 +3844,10 @@ essence is owned, switch to filler mode (刷垫子) by itself.
         finally:
             essence.apply = real_apply
 
-        print("\n" + ("FAILED: " + ", ".join(FAILED) if FAILED else "all checks passed"))
-        return 1 if FAILED else 0
+        return 1 if fails else 0
 
 
-    if __name__ == "__main__":
-        sys.exit(main())
+    sys.exit(main())
 
 
 def _part_essence_filler_pushes_state():
@@ -4240,18 +3855,7 @@ def _part_essence_filler_pushes_state():
     """
     import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import essence
-
-    FAILED = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {label}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(label)
-
 
     class Store:
         def __init__(self):
@@ -4266,7 +3870,6 @@ def _part_essence_filler_pushes_state():
         def pop(self, s, k):
             self.d.pop((s, k), None)
 
-
     pushed = []
     eng = types.SimpleNamespace(cfg=types.SimpleNamespace(maaend_dir=None), _scripts_running=lambda: False,
                                 state=types.SimpleNamespace(mark_raw=lambda *a: None),
@@ -4278,9 +3881,6 @@ def _part_essence_filler_pushes_state():
     essence.weapon_names = lambda d, n: []
     essence.step(eng)
     check("switched: phone state pushed once", pushed, ["基质切刷垫子"])
-
-    print("\n" + ("FAILED: " + ", ".join(FAILED) if FAILED else "all checks passed"))
-    sys.exit(1 if FAILED else 0)
 
 
 if __name__ == "__main__":

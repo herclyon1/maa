@@ -6,14 +6,12 @@ Re-exported by makeup.py; callers use the makeup module.
 """
 from __future__ import annotations
 
-import sys as _sys
 import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from ark_relay.core.config import SERVER_TZ, atomic_write_text
 from ark_relay.features import collector_maa as _collector_maa
-_marker = _sys.modules[__name__]
 
 log = logging.getLogger("ark.makeup")
 

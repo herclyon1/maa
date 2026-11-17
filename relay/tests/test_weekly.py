@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 # ruff: noqa: PLC0415
+import json
+import logging
+import shutil
 import sys
 from pathlib import Path
 
@@ -11,9 +14,60 @@ from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
+class _Lines(logging.Handler):
+    """Keeps (level name, message) of every record."""
+
+    def __init__(self):
+        super().__init__(logging.DEBUG)
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append((record.levelname, record.getMessage()))
+
+
+def _maaend_automas(automas: Path, master: Path, automas_fx: Path, maaend: Path, edit) -> Path:
+    """An AUTO-MAS dir holding the MaaEnd master `master`, each of its tasks passed through
+    `edit`, whose ScriptConfig points the MaaEnd script at `maaend`."""
+    cfg = automas / "data" / "59da8762" / "Default" / "ConfigFile"
+    cfg.mkdir(parents=True)
+    data = json.loads(master.read_text(encoding="utf-8"))
+    for t in data["instances"][0]["tasks"]:
+        edit(t)
+    (cfg / "mxu-MaaEnd.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    shutil.copytree(automas_fx, automas / "config")
+    sc = automas / "config" / "ScriptConfig.json"
+    d = json.loads(sc.read_text(encoding="utf-8"))
+    for inst in d["instances"]:
+        info = d[inst["uid"]]["Info"]
+        if "maaend" in str(info.get("Path", "")).lower():
+            info["Path"] = str(maaend)
+    sc.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+    return automas
+
+
+def _offline(url, *a, **k):
+    raise OSError(f"offline: {url}")
+
+
+def _fake_skland(skland, calls: list, reading: dict):
+    """Skland's login and annihilation read: each call is noted in `calls`; the read answers
+    `reading["value"]`, and the login raises when `reading["raise"]` is set."""
+
+    def fake_login(token, d_id=""):
+        calls.append("login")
+        if reading.get("raise"):
+            raise skland.SklandError("boom")
+        return object()
+
+    def fake_anni(cred):
+        calls.append("info")
+        return dict(reading["value"])
+
+    return fake_login, fake_anni
+
+
 def _part_annihilation_no_progress():
     """Annihilation without a progress line is not "done for the week"."""
-    import json
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -127,7 +181,6 @@ def _part_annihilation_no_progress():
 
 def _part_annihilation_not_healed_by_routine():
     """A Routine success does not heal an Annihilation failure; a locked 代理指挥 is named."""
-    import json
     import os
     from datetime import datetime, timedelta
 
@@ -281,8 +334,6 @@ def _part_annihilation_not_healed_by_routine():
 
 def _part_annihilation_status():
     """Annihilation (剿灭) weekly status, read from AUTO-MAS (hand-over item 13, 2026-10-11)."""
-    import json
-    import logging
     import os
     import urllib.error
     import urllib.request
@@ -295,16 +346,7 @@ def _part_annihilation_status():
     from ark_relay.core.config import SERVER_TZ
 
 
-    class Capture(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.DEBUG)
-            self.lines = []
-
-        def emit(self, record):
-            self.lines.append((record.levelname, record.getMessage()))
-
-
-    CAP = Capture()
+    CAP = _Lines()
     logging.getLogger(errwatch.ARK).addHandler(CAP)
     logging.getLogger(errwatch.ARK).setLevel(logging.DEBUG)
 
@@ -508,9 +550,6 @@ def _part_annihilation_status():
 def _part_annihilation_unreadable_none():
     """An unreadable annihilation week record is "unknown", not "not done"."""
 
-    import json
-    import logging
-    import shutil
     from datetime import datetime
     from unittest import mock
 
@@ -525,15 +564,6 @@ def _part_annihilation_unreadable_none():
     # them, and no relay test may reach the internet (run 38363145659 sat in those
     # fetches on Windows until the 180 s limit).
     plan.maintenance_lines = lambda day: []
-
-    FAILED: list[str] = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}")
-        if not ok:
-            FAILED.append(name)
 
 
     class Grab(logging.Handler):
@@ -602,8 +632,8 @@ def _part_annihilation_unreadable_none():
     logging.getLogger().removeHandler(grab)
     check("one WARNING", len([r for r in grab.records if "剿灭" in r.getMessage()]), 1)
 
-    print("\n" + ("FAILED: " + ", ".join(FAILED) if FAILED else "all checks passed"))
-    sys.exit(1 if FAILED else 0)
+    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
 
 
 def _part_annihilation_skipped_checked_on_skland():
@@ -657,18 +687,8 @@ def _part_annihilation_skipped_checked_on_skland():
     calls = []
     reading = {}
 
-    def fake_login(token, d_id=""):
-        calls.append("login")
-        if reading.get("raise"):
-            raise skland.SklandError("boom")
-        return object()
-
-    def fake_anni(cred):
-        calls.append("info")
-        return dict(reading["value"])
-
     real_login, real_anni = skland.login, skland.arknights_annihilation
-    skland.login, skland.arknights_annihilation = fake_login, fake_anni
+    skland.login, skland.arknights_annihilation = _fake_skland(skland, calls, reading)
     try:
         skip = {"annihilation": True, "annihilation_no_entry": True, "annihilation_done": False}
         stored_now = int(datetime(2026, 11, 16, 9, 9, 57, tzinfo=SERVER_TZ).timestamp())
@@ -771,18 +791,8 @@ def _part_annihilation_day_rechecked():
     calls = []
     reading = {}
 
-    def fake_login(token, d_id=""):
-        calls.append("login")
-        if reading.get("raise"):
-            raise skland.SklandError("boom")
-        return object()
-
-    def fake_anni(cred):
-        calls.append("info")
-        return dict(reading["value"])
-
     real_login, real_anni = skland.login, skland.arknights_annihilation
-    skland.login, skland.arknights_annihilation = fake_login, fake_anni
+    skland.login, skland.arknights_annihilation = _fake_skland(skland, calls, reading)
     try:
         print("[11-16 晚班：Routine 那趟落地，早班跳过的剿灭还没读数 → 读一次森空岛，标在早班那行]")
         reading["value"] = {"current": 1800, "total": 1800, "store_ts": stored_now}
@@ -861,7 +871,6 @@ def _part_annihilation_day_rechecked():
 
 def _part_sanity_plan_both_on():
     """Both sanity tasks on: the evening plan must name both, not only the first."""
-    import json
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import sanity_plan
@@ -920,21 +929,11 @@ def _part_sanity_plan_both_on():
 
 def _part_sanity_plan_master():
     """理智方案读写母本——不再依赖 AUTO-MAS 的快速配置。"""
-    import json
     import tempfile
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import sanity_plan
-
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
 
 
     def make(root: Path, *, essence_on: bool) -> Path:
@@ -1065,8 +1064,8 @@ def _part_sanity_plan_master():
             ok, _ = sanity_plan.set_plan(root / "nowhere", "Essence")
             check("写也不炸", ok, False)
 
-        print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")
-        return 0 if not FAILED else 1
+        print("\nall checks passed" if not fails else f"\nFAILED: {fails}")
+        return 0 if not fails else 1
 
 
     if __name__ == "__main__":
@@ -1076,8 +1075,6 @@ def _part_sanity_plan_master():
 def _part_sanity_plan_reward_names():
     """The sanity plan speaks MaaEnd's own reward-set names, not AUTO-MAS's A / B."""
 
-    import json
-    import shutil
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -1090,36 +1087,15 @@ def _part_sanity_plan_reward_names():
     MAAEND = FX / "maaend-protocolspace-v2.30.0-rc.1"
     AUTOMAS_FX = FX / "automas-config-2026-10-11" / "config"
 
-    FAILED: list[str] = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}")
-        if not ok:
-            FAILED.append(name)
-
 
     def setup(name: str) -> Path:
         """The real master with ProtocolSpace on, under an AUTO-MAS dir whose
     ScriptConfig points the MaaEnd script at the definition fixture."""
-        automas = tmpdir() / name / "automas"
-        cfg = automas / "data" / "59da8762" / "Default" / "ConfigFile"
-        cfg.mkdir(parents=True)
-        data = json.loads(MASTER.read_text(encoding="utf-8"))
-        for t in data["instances"][0]["tasks"]:
+        def on(t):
             if t["taskName"] == "ProtocolSpace":
                 t["enabled"] = True
-        (cfg / "mxu-MaaEnd.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-        shutil.copytree(AUTOMAS_FX, automas / "config")
-        sc = automas / "config" / "ScriptConfig.json"
-        d = json.loads(sc.read_text(encoding="utf-8"))
-        for inst in d["instances"]:
-            info = d[inst["uid"]]["Info"]
-            if "maaend" in str(info.get("Path", "")).lower():
-                info["Path"] = str(MAAEND)
-        sc.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
-        return automas
+
+        return _maaend_automas(tmpdir() / name / "automas", MASTER, AUTOMAS_FX, MAAEND, on)
 
 
     def protocolspace(automas: Path) -> dict:
@@ -1204,15 +1180,13 @@ def _part_sanity_plan_reward_names():
     inbox.apply_command = _saved_ac
     check("the earlier order answers first", [o.startswith("✅ first") for o in out], [True, False])
 
-    print("\n" + ("FAILED: " + ", ".join(FAILED) if FAILED else "all checks passed"))
-    sys.exit(1 if FAILED else 0)
+    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
 
 
 def _part_sanity_plan_weekday():
     """Tomorrow's sanity line honours MaaEnd's weekday ticks for the sanity tasks."""
 
-    import json
-    import shutil
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1227,44 +1201,25 @@ def _part_sanity_plan_weekday():
     AUTOMAS_FX = FX / "automas-config-2026-10-11" / "config"
     DAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
 
-    FAILED: list[str] = []
 
     # next_plan's maintenance notices come from the official sites; nothing here is about
     # them, and run 38363145659 (Windows) sat in those fetches until the 180 s limit.
     plan.maintenance_lines = lambda day: []
 
 
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}")
-        if not ok:
-            FAILED.append(name)
-
-
     def setup(name: str, edit) -> Path:
         root = tmpdir() / name
-        automas = root / "automas"
-        cfg = automas / "data" / "59da8762" / "Default" / "ConfigFile"
-        cfg.mkdir(parents=True)
-        data = json.loads(MASTER.read_text(encoding="utf-8"))
-        for t in data["instances"][0]["tasks"]:
+        maaend = root / "maaend"
+        maaend.mkdir(parents=True)
+        shutil.copy(MAAEND_FX / "interface.json", maaend / "interface.json")
+        shutil.copytree(MAAEND_FX / "tasks", maaend / "tasks")
+
+        def each(t):
             if t["taskName"] == "AutoCollect":
                 t["enabled"] = False         # keeps the gathering line out of the way
             edit(t)
-        (cfg / "mxu-MaaEnd.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-        maaend = root / "maaend"
-        maaend.mkdir()
-        shutil.copy(MAAEND_FX / "interface.json", maaend / "interface.json")
-        shutil.copytree(MAAEND_FX / "tasks", maaend / "tasks")
-        shutil.copytree(AUTOMAS_FX, automas / "config")
-        sc = automas / "config" / "ScriptConfig.json"
-        d = json.loads(sc.read_text(encoding="utf-8"))
-        for inst in d["instances"]:
-            info = d[inst["uid"]]["Info"]
-            if "maaend" in str(info.get("Path", "")).lower():
-                info["Path"] = str(maaend)
-        sc.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
-        return automas
+
+        return _maaend_automas(root / "automas", MASTER, AUTOMAS_FX, maaend, each)
 
 
     def sanity_lines(automas: Path, tomorrow: datetime) -> list[str]:
@@ -1330,8 +1285,8 @@ def _part_sanity_plan_weekday():
     check("the sit-out line", sanity_lines(am, TUESDAY),
           ["理智任务明天（周二）不跑（基质刷取仅周一、三、四、五、六、日 跑）"])
 
-    print("\n" + ("FAILED: " + ", ".join(FAILED) if FAILED else "all checks passed"))
-    sys.exit(1 if FAILED else 0)
+    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
 
 
 def _part_sanity_span():
@@ -1450,16 +1405,6 @@ def _part_weeklyboss_count():
     # docs/SILENT-FAILURES-AUDIT.md weeklyboss.py:263 - this was INFO only, so a broken
     # OCR patch meant the boss was never booked done and nobody was told.
     print("\n[remaining claims unreadable after a won round: a WARNING, not INFO]")
-    import logging
-
-
-    class _Lines(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.DEBUG)
-            self.lines = []
-
-        def emit(self, record):
-            self.lines.append((record.levelname, record.getMessage()))
 
 
     _log = _Lines()
@@ -1559,16 +1504,6 @@ def _part_weeklyboss_cycle():
     # docs/SILENT-FAILURES-AUDIT.md weeklyboss.py:75 - an unreadable FarmEchoTask.json
     # used to leave the weekly boss armed with no teleport target and no word.
     print("\n[FarmEchoTask.json unreadable while switching on: said once per condition]")
-    import logging
-
-
-    class _Lines(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.DEBUG)
-            self.lines = []
-
-        def emit(self, record):
-            self.lines.append((record.levelname, record.getMessage()))
 
 
     _log = _Lines()
@@ -1722,7 +1657,6 @@ def _part_weeklyboss_reopen():
 
 def _part_garden_gate():
     """周常乐园的周门：本周做完就关掉检查，周一 04:00 开回来。"""
-    import json
     import tempfile
     from datetime import datetime, timedelta
 
@@ -1730,15 +1664,6 @@ def _part_garden_gate():
     from ark_relay.features import annihilation as garden
     from ark_relay.features.annihilation import week_key
     from ark_relay.core.config import SERVER_TZ
-
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
 
 
     def test_week_boundary() -> None:
@@ -1823,8 +1748,8 @@ def _part_garden_gate():
     def main(tmp: Path) -> int:
         test_week_boundary()
         test_gate(tmp)
-        print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
-        return 0 if not FAILED else 1
+        print("all checks passed" if not fails else f"FAILED: {fails}")
+        return 0 if not fails else 1
 
 
     if __name__ == "__main__":
@@ -1835,7 +1760,6 @@ def _part_garden_gate():
 def _part_garden_rollover_after_tick():
     """A periodic tick after Monday 04:00 must not eat the weekly garden's roll-over."""
 
-    import json
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1845,15 +1769,6 @@ def _part_garden_rollover_after_tick():
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import annihilation as G
     from ark_relay.features.annihilation import week_key
-
-    FAILED: list[str] = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}")
-        if not ok:
-            FAILED.append(name)
 
 
     SAT = datetime(2026, 10, 3, 20, 0, tzinfo=SERVER_TZ)
@@ -1886,7 +1801,7 @@ def _part_garden_rollover_after_tick():
 
     class Log:
         def exception(self, *a, **k):
-            FAILED.append("boot stage logged an exception")
+            fails.append("boot stage logged an exception")
 
         def warning(self, *a, **k):
             pass
@@ -1927,8 +1842,8 @@ def _part_garden_rollover_after_tick():
     check("asked again: nothing more", g.maybe_reopen(), "")
     check("switch stays on", switch_on(f), True)
 
-    print("\n" + ("FAILED: " + ", ".join(FAILED) if FAILED else "all checks passed"))
-    sys.exit(1 if FAILED else 0)
+    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
+    sys.exit(1 if fails else 0)
 
 
 def _part_garden_unified():
@@ -2113,7 +2028,6 @@ def _part_nest_strings_pinned():
 
 def _part_wuwa_bulletin():
     """Wuthering Waves banners: how the bulletin and the notices are read (2026-10-13 audit)."""
-    import logging
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -2144,10 +2058,6 @@ def _part_wuwa_bulletin():
             self.recs.append((record.levelno, record.getMessage()))
 
 
-    def offline(url, *a, **k):
-        raise OSError(f"offline: {url}")
-
-
     def home(*tabs):
         """A wiki homepage with one character tab per (banner, entry id, start, end)."""
         return {"code": 200, "data": {"contentJson": {"sideModules": [{
@@ -2172,7 +2082,7 @@ def _part_wuwa_bulletin():
         g = Grab()
         _b.log.addHandler(g)
         real = _b._json, _b._text
-        _b._json, _b._text = fake, offline
+        _b._json, _b._text = fake, _offline
         notes: dict = {}
         try:
             got, nxt = _b._wuwa(now, notes=notes, trace=_b.Trace.new())
@@ -2276,10 +2186,6 @@ def _part_wuwa_middot():
         raise OSError(f"offline: {url}")
 
 
-    def offline(url, *a, **k):
-        raise OSError(f"offline: {url}")
-
-
     print("[parsers fold every middle dot to U+00B7]")
     check("bulletin debut", W.parse_wuwa_preview(notice["game"][0]["content"]), [(WIKI, "某某之池")])
     check("notice banner", W.parse_wuwa_notice_banners(notice)[0].chars, (WIKI,))
@@ -2288,7 +2194,7 @@ def _part_wuwa_middot():
 
     print("[_wuwa keeps the running debut]")
     real = _b._json, _b._text
-    _b._json, _b._text = fake_json, offline
+    _b._json, _b._text = fake_json, _offline
     try:
         tr = _b.Trace.new()
         got, _nxt = _b._wuwa(NOW, notes={}, trace=tr)
@@ -2302,7 +2208,6 @@ def _part_wuwa_middot():
 def _part_wuwa_update_close():
     """Closing WuWa for real: the game, OK-WW and the Kuro launcher (preupdate_okww._okww_close).
     """
-    import json
     import subprocess
     from pathlib import Path, PureWindowsPath
 
@@ -2459,20 +2364,9 @@ def _part_wuwa_update_close():
 
 
 def _part_boss_table_matches():
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.wuwa_tables import wuwa_boss
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r} vs {want!r}" if not ok else f"  ✓ {label}")
-        if not ok:
-            fails.append(label)
 
 
     PAGE = [(1, "天傀劫煞"), (2, "万囿牢·朽躯"), (3, "梦魇亚当·重锤"), (4, "无铭探索者")]

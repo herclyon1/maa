@@ -13,7 +13,6 @@ every ark_relay/*.py, so the registry cannot be left off the machine.
 """
 from __future__ import annotations
 
-import sys as _sys
 import json
 import logging
 import re
@@ -169,8 +168,7 @@ class AlertLog:
                     problems.append(why)
             with self._lock:
                 self._prune()
-        errwatch = _sys.modules[__name__]
-        push = errwatch.in_push_path()
+        push = in_push_path()
         if problems and self._ok[push]:
             _log_alertlog.warning("报警抄到腾讯云 COS 没成，下一条报警或下次开机再补：%s", "；".join(problems))
         elif not problems and not self._ok[push]:
@@ -236,8 +234,7 @@ class AlertLog:
             except Exception:  # noqa: BLE001 - the copy never breaks anything else
                 _log_alertlog.warning("报警抄到腾讯云 COS 出错", exc_info=True)
 
-        errwatch = _sys.modules[__name__]
-        name = f"{errwatch.PUSH_THREAD}-copy" if errwatch.in_push_path() else "alarm-copy"
+        name = f"{PUSH_THREAD}-copy" if in_push_path() else "alarm-copy"
         t = threading.Thread(target=run, name=name, daemon=True)
         t.start()
         return t

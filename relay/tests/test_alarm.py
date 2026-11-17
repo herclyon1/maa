@@ -9,18 +9,29 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+# relay/ first for every part, as each part used to put it (run_parts restores sys.path after one)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+
+class _Notes:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body="", **kw):
+        self.sent.append((title, body, kw.get("alert", False)))
+        return []
+
+    def went_to_group(self):
+        return True
 
 
 def _part_alert_dedup():
     """The alerted-today marks (state.json marks.alerted:<day>), and what still uses them."""
-    import sys, types
+    import types
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.engine import Engine
 
-
     E = object.__new__(Engine)
-
 
     def _fake_state(d):
         """替身 state：带上真的 StateStore，记账走 state.json（2026-09-08 收口后）。"""
@@ -50,7 +61,6 @@ def _part_alert_dedup():
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
 
-
     class Notes:
         def __init__(self):
             self.sent = []
@@ -59,11 +69,9 @@ def _part_alert_dedup():
             self.sent.append((title, kw.get("alert", False)))
             return []
 
-
     class Src:
         def fetch(self, seen):
             return []
-
 
     os.environ.setdefault("ARK_LLM_KEY", "")
     cfg = Config()
@@ -103,7 +111,6 @@ nothing is dropped when the group refuses; nothing loops back from the push path
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
                       COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import errwatch as alertlog, errwatch, errwatch as known_fixed
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
@@ -754,18 +761,15 @@ nothing is dropped when the group refuses; nothing loops back from the push path
     if fails:
         print("FAILED:", fails)
         sys.exit(1)
-    print("all checks passed")
 
 
 def _part_failure_alert():
     """The immediate failure alert, and the three marks nobody ever read back."""
     from datetime import datetime, timedelta
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ, RunRecord
     from ark_relay.core.ledger import State, format_failure
-
 
     def rec(**kw):
         now = datetime(2026, 9, 8, 9, 18, tzinfo=SERVER_TZ)
@@ -774,7 +778,6 @@ def _part_failure_alert():
                     failed_tasks=["任务执行：残象聚落"], raw={})
         base.update(kw)
         return RunRecord(**base)
-
 
     print("[标题就是失败标题，脚本名原样带出去]")
     title, body = format_failure(rec())
@@ -834,11 +837,9 @@ def _part_group_long_alarm():
     """One alarm must never flood the group (2026-11-05 北京 10:56)."""
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import notify, texts
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import runwatch
-
 
     LOG = "\n".join(f"[2026-11-05 11:{i // 60:02d}:{i % 60:02d}.212] 正在识别画面并点击开始唤醒按钮第 {i} 次，等待游戏响应中……" * 2
                     for i in range(343)) + "\n[2026-11-05 11:26:30.212] 正在连接窗口... Endfield\n\n"
@@ -888,15 +889,12 @@ def _part_group_long_alarm():
     check("the evidence link is the last line", _capped.splitlines()[-1], "证据包：https://example.invalid/e/abc")
     check("the cut is said, in the middle", "（中间还有很长一段没发，免得刷屏）" in _capped, True)
 
-    print("all checks passed" if not fails else f"FAILED: {fails}")
-
 
 def _part_uptime_alarm():
     """The shutdown floor is an alarm: once 「开机不够久」 passes, the relay judges again."""
     import json
     import os
     from datetime import datetime
-
 
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
@@ -909,21 +907,17 @@ def _part_uptime_alarm():
                       ARK_SHUTDOWN_MIN_UPTIME="600", ARK_CHECK_TIMES="",
                       SERVERCHAN_KEY="", ARK_LLM_KEY="", WECOM_CORPID="", WECOM_SECRET="",
                       WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.core import engine as eng
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
 
-
     class Notes:
         def send(self, title, body="", **kw):
             return False
 
-
     def at(hh, mm, ss=0):
         return datetime(2026, 10, 1, hh, mm, ss, tzinfo=SERVER_TZ)
-
 
     def build(after_run=True):
         cfg = Config()
@@ -933,7 +927,6 @@ def _part_uptime_alarm():
         e._scripts_running = lambda: False
         e._started_at = at(18, 3, 57)
         return e
-
 
     print("[10-01: restarted 18:03:57, floor 600 s -> the next alarm is 18:13:57]")
     when, why = build().next_deadline(at(18, 4, 15))
@@ -955,22 +948,17 @@ def _part_errwatch_midnight_counts():
     import logging
     from datetime import datetime
 
-
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import errwatch
-
 
     class Notes:
         def send(self, title, body="", **kw):
             return []
 
-
     def record(at: datetime, msg: str) -> logging.LogRecord:
         r = logging.LogRecord("ark.report", logging.WARNING, __file__, 1, msg, None, None)
         r.created = at.timestamp()
         return r
-
 
     state = tmpdir()
     h = errwatch.ErrorKindAlert(Notes(), state_dir=state, known={}, clock=lambda: 1000.0, pace=0, retry=(0,))
@@ -983,8 +971,6 @@ def _part_errwatch_midnight_counts():
     day = json.loads((state / errwatch.DAY_DIR / "2026-10-12.json").read_text(encoding="utf-8"))
     check("10-12 keeps both records", [r.get("count") for r in day.values()], [2])
 
-    print(f"\n{'all passed' if not fails else f'{len(fails)} failed: {fails}'}")
-
 
 def _part_known_fixed_live():
     """Every known_fixed entry can still match: its message is logged at WARNING or above."""
@@ -994,7 +980,6 @@ def _part_known_fixed_live():
     sys.path.insert(0, str(ROOT))
 
     from ark_relay.features import errwatch as known_fixed
-
 
     CALL = re.compile(r"\.(warning|error|exception|critical|info|debug)\(\s*(f?\"[^\"]*\"|f?'[^']*')", re.S)
     levels: dict[str, set[str]] = {}
@@ -1011,15 +996,12 @@ def _part_known_fixed_live():
         found = {lv for lit, lvs in levels.items() if head in lit for lv in lvs}
         check(f"{key!r}: logged at WARNING or above", bool(found & LOUD), True)
 
-    print("\n" + (f"✗ {len(fails)} failed" if fails else "all checks passed"))
-
 
 def _part_unresolved():
     """A MAA / MaaEnd problem the relay could not fix goes to the group - every time."""
     import json
     import os
     from datetime import datetime, timedelta
-
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -1040,7 +1022,6 @@ def _part_unresolved():
     _mc.load()
     _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
     _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc.py
-
 
     def automas_dir(queues) -> Path:
         """An AUTO-MAS config dir: queues = [(name, [times], [script kinds])]."""
@@ -1066,17 +1047,14 @@ def _part_unresolved():
         (root / "config" / "QueueConfig.json").write_text(json.dumps(qc), encoding="utf-8")
         return root
 
-
     AUTOMAS = automas_dir([("早班", ["09:00"], ["MAA", "MaaEnd", "OK-WW"]), ("晚班", ["21:30"], ["MAA"])])
     # Today (real clock): makeup.eligible and _flush_pending read today's date.
     DAY = datetime.now(tz=SERVER_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     D = f"{DAY:%Y-%m-%d}"
     PAGE = "https://cos.example/run.zip"
 
-
     def at(hh, mm=0, day=DAY):
         return day.replace(hour=hh, minute=mm)
-
 
     class Notes:
         def __init__(self, fail=False):
@@ -1088,11 +1066,9 @@ def _part_unresolved():
             self.sent.append((title, body, kw.get("alert", False)))
             return []
 
-
     class Src:
         def fetch(self, seen):
             return []
-
 
     def build(automas=AUTOMAS, notes=None):
         cfg = Config()
@@ -1109,17 +1085,14 @@ def _part_unresolved():
         e._maintenance_today = lambda game: False
         return e
 
-
     def ship(eng, rec):
         rec.raw["evidence_page"] = PAGE
         return PAGE
-
 
     handle._ship_evidence = ship
     dispatched = []
     makeup._dispatch = lambda script: (dispatched.append(script) or (True, "已开跑"))
     makeup._kill_game = lambda: None
-
 
     def rec(script, started, ok=False, failed=None, raw=None, tag=""):
         user = {"MAA": "arknights", "MaaEnd": "endfield", "OK-WW": "wuwa"}[script]
@@ -1128,15 +1101,12 @@ def _part_unresolved():
                          failed_tasks=list(failed if failed is not None else ([] if ok else ["开始唤醒"])),
                          raw=dict(raw or {}))
 
-
     def alarms(e):
         return [t for t, _, a in e.notifier.sent if a]
-
 
     def last_body(e):
         bodies = [b for _, b, a in e.notifier.sent if a]
         return bodies[-1] if bodies else ""
-
 
     def fail_and_makeup_fails(e, script, started, failed=None):
         """A failure held, its make-up dispatched, the make-up's record failed too."""
@@ -1150,7 +1120,6 @@ def _part_unresolved():
         handle._handle(e, rec(script, started + timedelta(hours=1, minutes=1), failed=failed))
         e._flush_pending()
         return held, waiting
-
 
     print("[哪一班：按 AUTO-MAS 的队列时刻，读不到就按中午前后]")
     e = build()
@@ -1550,20 +1519,8 @@ def _part_silent_green_guards():
     """前置条件不满足时，绝不许静默变成「全绿」。"""
     from datetime import datetime
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
     from ark_relay.features import outcome
     from ark_relay.features.handle import _maa_app_log, _okww_nest_expected
-
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
-
 
     def main():
         print("1) MAA 日志读不到 → 必须 None，不能是空串")
@@ -1595,12 +1552,9 @@ def _part_silent_green_guards():
         check("summarize 会把它报出来", outcome.summarize(checks, "OK-WW") is not None,
               True)
 
-        print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
-        return 0 if not FAILED else 1
+        return 0 if not fails else 1
 
-
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    raise SystemExit(main())
 
 
 def _part_alertlog_main():
@@ -1615,7 +1569,6 @@ def _part_alertlog_main():
     import urllib.request
     from datetime import datetime, timezone
 
-
     TMP = tmpdir()
     os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -1629,14 +1582,12 @@ def _part_alertlog_main():
     if hasattr(time, "tzset"):
         os.environ.update(TZ="Asia/Tokyo")
         time.tzset()
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import errwatch as alertlog
     from ark_relay.features import phone
     from ark_relay.core import texts
     from ark_relay.core.config import Config
     from ark_relay.core.notify import Notifier
     from ark_relay.core.statestore import StateStore
-
 
     class FakeCos:
         """put/get the way alertlog.for_config wires phone.cos_put / cos_get."""
@@ -1661,17 +1612,14 @@ def _part_alertlog_main():
                 return None, self.get_fail
             return self.objects.get(key), ""
 
-
     def lines(cos, key):
         return [json.loads(x) for x in cos.objects.get(key, b"").decode("utf-8").splitlines()]
-
 
     def wait_puts(cos, n, secs=3.0):
         t0 = time.monotonic()
         while len(cos.puts) < n and time.monotonic() - t0 < secs:
             time.sleep(0.02)
         time.sleep(0.05)
-
 
     WW_BODY = ("OK-WW 2026-10-05/wuwa/OK-WW-05-39-25 有项目没干成：\n"
                "· 周本领到了奖励：周本打了，但没有领奖那一步：奖励没拿到\n"
@@ -1693,14 +1641,12 @@ def _part_alertlog_main():
     got = datetime.strptime(alertlog.row("x", "y")["ts"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
     check("不传时间：用当前 UTC + 8 小时（不是东京钟）", abs(got - now_bj) < 3)
 
-
     def _raises(f):
         try:
             f()
         except ValueError:
             return True
         return False
-
 
     check("裸时间（不知道时区）不收", _raises(lambda: alertlog.beijing(datetime(2026, 10, 5, 12, 0))))
     r2 = alertlog.row(texts.RELAY_ERROR, texts.relay_error_body("ark.report", "日报没发出去", "21:21"), "", now=at)
@@ -1733,11 +1679,9 @@ def _part_alertlog_main():
     print("\n[COS 写不进：行留在本地、只记一条 WARNING；下一条报警把前面的一起补上]")
     records = []
 
-
     class _Grab(logging.Handler):
         def emit(self, record):
             records.append(record)
-
 
     grab = _Grab()
     alertlog._log_alertlog.addHandler(grab)
@@ -1813,7 +1757,6 @@ def _part_alertlog_main():
 
     print("\n[真的 PUT：私有（不带 public-read），404 当成还没有]")
 
-
     class _Resp(io.BytesIO):
         status = 200
 
@@ -1823,9 +1766,7 @@ def _part_alertlog_main():
         def __exit__(self, *a):
             return False
 
-
     seen = []
-
 
     def fake_urlopen(req, timeout=None):
         seen.append((req.get_method(), req.full_url, {k.lower(): v for k, v in req.header_items()}))
@@ -1833,13 +1774,11 @@ def _part_alertlog_main():
             raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
         return _Resp(b"")
 
-
     class _Cos:
         host = "bucket.cos.ap-shanghai.myqcloud.com"
 
         def authorization(self, method, key, now=None, ttl=3600):
             return f"sig-{method}-{key}"
-
 
     real = urllib.request.urlopen
     urllib.request.urlopen = fake_urlopen
@@ -1858,7 +1797,6 @@ def _part_alertlog_main():
     if fails:
         print("FAILED:", fails)
         sys.exit(1)
-    print("all checks passed")
 
 
 def _part_alertlog_channel():
@@ -1867,21 +1805,18 @@ def _part_alertlog_channel():
     import os
     import threading
 
-
     TMP = tmpdir()
     os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
                       COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="",
                       ARK_ALERT_PUSH_URL="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import Config
     from ark_relay.core.notify import Notifier
     from ark_relay.features import errwatch as alertlog
     from ark_relay.features import machinecheck as mc
 
     FIX = fx_dir(Path(__file__), "fixtures") / "alerts-20261013-old-row.jsonl"
-
 
     class Fake:
         def __init__(self, name, broken=False):
@@ -1891,7 +1826,6 @@ def _part_alertlog_channel():
             if self.broken:
                 raise RuntimeError(f"{self.name} down")
 
-
     class Pushes:
         """Stands in for macpush: keeps the rows instead of POSTing them."""
 
@@ -1900,7 +1834,6 @@ def _part_alertlog_channel():
 
         def push(self, row):
             self.rows.append(row)
-
 
     def build(name, broken=()):
         cfg = Config()
@@ -1913,11 +1846,9 @@ def _part_alertlog_channel():
         n._mac = Pushes()
         return n
 
-
     def rows(n):
         day = alertlog.beijing().strftime("%Y%m%d")
         return mc.alert_rows(n._cfg.state_dir, day)
-
 
     print("[group robot takes the alarm: channel 企业微信机器人]")
     n = build("ok")
@@ -1954,7 +1885,6 @@ def _part_alertlog_channel():
     old = FIX.read_bytes()
     check("fixture row has no channel field", "channel" in json.loads(old), False)
 
-
     class Cos:
         def __init__(self):
             self.objects = {}
@@ -1964,7 +1894,6 @@ def _part_alertlog_channel():
 
         def get(self, key):
             return self.objects.get(key), ""
-
 
     cos = Cos()
     day = alertlog.beijing().strftime("%Y%m%d")
@@ -1985,7 +1914,6 @@ def _part_alertlog_channel():
     for th in threading.enumerate():
         if th.name in ("alarm-copy", "alarm-mac"):
             th.join(5)
-    print(f"\n{'FAIL: ' + ', '.join(fails) if fails else 'all passed'}")
 
 
 def _part_alertlog_no_lock_on_cos():
@@ -1996,7 +1924,6 @@ does not silence the next one.
     import threading
 
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import errwatch as alertlog, errwatch
 
 
@@ -2055,8 +1982,6 @@ does not silence the next one.
     said = [n for n, m in grab.lines if "COS 没成" in m]
     check("the failure is said off the push path too", said, [f"{errwatch.PUSH_THREAD}-copy", "MainThread"])
 
-    print(f"\n{'all passed' if not fails else f'{len(fails)} failed: {fails}'}")
-
 
 def _part_macpush():  # noqa: C901
     import json
@@ -2076,22 +2001,11 @@ def _part_macpush():  # noqa: C901
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="",
                       COS_SECRET_ID="", COS_SECRET_KEY="", COS_BUCKET="", COS_REGION="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import errwatch as alertlog, macpush
     from ark_relay.core import texts
     from ark_relay.core.config import Config
     from ark_relay.core.notify import Notifier
     from ark_relay.core.statestore import StateStore
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
-
 
     class Mac:
         """A stand-in for the Mac's listener: keeps every body it was POSTed."""
@@ -2134,7 +2048,6 @@ def _part_macpush():  # noqa: C901
         def titles(self):
             return [x.get("title") for x in self.got]
 
-
     def closed_port_url():
         s = socket.socket()
         s.bind(("127.0.0.1", 0))
@@ -2142,11 +2055,9 @@ def _part_macpush():  # noqa: C901
         s.close()
         return f"http://127.0.0.1:{port}/alert"
 
-
     def join(t):
         if t is not None:
             t.join(10)
-
 
     class FakeCos:
         def __init__(self):
@@ -2159,7 +2070,6 @@ def _part_macpush():  # noqa: C901
         def get(self, key):
             return None, ""
 
-
     def notifier(name, url):
         cfg = Config()
         cfg.state_dir = TMP / name
@@ -2171,13 +2081,11 @@ def _part_macpush():  # noqa: C901
         n._alerts = alertlog.AlertLog(cfg.state_dir, put=cos.put, get=cos.get)
         return n, cos
 
-
     def last_threads(n):
         """Wait for the Mac push and the COS copy threads this notifier started."""
         for t in threading.enumerate():
             if t.name in ("alarm-mac", "alarm-copy"):
                 t.join(10)
-
 
     print("\n[默认地址：Mac 的 Tailscale 地址、验收端口 8931；.env 可改；测试里一律关着]")
     saved = os.environ.pop("ARK_ALERT_PUSH_URL", None)
@@ -2275,11 +2183,9 @@ def _part_macpush():  # noqa: C901
     import logging
     seen = []
 
-
     class Grab(logging.Handler):
         def emit(self, record):
             seen.append(record)
-
 
     grab = Grab(level=logging.DEBUG)
     logging.getLogger("ark.test_alarm").parent.addHandler(grab)
@@ -2296,11 +2202,9 @@ def _part_macpush():  # noqa: C901
     check("Mac 没开是正常状态：只记 INFO，没有 WARNING", sorted({r.levelname for r in mine}), ["INFO"])
     check("连续两次不通只说一次", len(mine), 1)
 
-
     class Boom:
         def push(self, row):
             raise RuntimeError("boom")
-
 
     n._mac = Boom()
     seen.clear()
@@ -2339,11 +2243,9 @@ def _part_macpush():  # noqa: C901
     (_bad_dir / macpush.QUEUE_FILE).write_text("[{not json", encoding="utf-8")
     _seen = []
 
-
     class _H(_logging.Handler):
         def emit(self, r):
             _seen.append(r.levelno)
-
 
     _h = _H()
     macpush.log.addHandler(_h)
@@ -2356,11 +2258,9 @@ def _part_macpush():  # noqa: C901
     print()
     print("\n[11-13: an alarm left queued is sent after the next phone push, not only with the next alarm]")
 
-
     class _Cfg:
         def __init__(self, d, url):
             self.state_dir, self.alert_push_url = d, url
-
 
     _got = []
     _cfg = _Cfg(TMP / "netok", "http://127.0.0.1:9/")
@@ -2380,7 +2280,6 @@ def _part_macpush():  # noqa: C901
     if fails:
         print("FAILED:", fails)
         sys.exit(1)
-    print("all checks passed")
 
 
 def _part_every_failure_pushed():
@@ -2401,19 +2300,16 @@ def _part_every_failure_pushed():
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY))
 
-
     class _Any:
         def __init__(self, *a, **k): pass
         def __call__(self, *a, **k): return _Any()
         def __getattr__(self, _): return _Any()
-
 
     class _Stub(types.ModuleType):
         def __getattr__(self, name):
             if name.startswith("__"):
                 raise AttributeError(name)
             return _Any
-
 
     for _name in ("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
                   "servicemanager", "win32process", "win32security", "win32ts", "win32profile", "wmi",
@@ -2435,16 +2331,6 @@ def _part_every_failure_pushed():
 
     errwatch.system_shutting_down = lambda: False
 
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
-
-
     def automas_dir(queues) -> Path:
         """An AUTO-MAS config dir: queues = [(name, [times], [script kinds])]."""
         root = tmpdir()
@@ -2465,39 +2351,23 @@ def _part_every_failure_pushed():
         (root / "config" / "QueueConfig.json").write_text(json.dumps(qc), encoding="utf-8")
         return root
 
-
     AUTOMAS = automas_dir([("早班", ["09:00"], ["MAA", "MaaEnd", "OK-WW"]), ("晚班", ["21:30"], ["MAA"])])
     DAY = datetime.now(tz=SERVER_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     D = f"{DAY:%Y-%m-%d}"
 
-
     def at(hh, mm=0):
         return DAY.replace(hour=hh, minute=mm)
-
-
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return []
-
-        def went_to_group(self):
-            return True
-
 
     class Src:
         def fetch(self, seen):
             return []
-
 
     def build():
         cfg = Config()
         cfg.state_dir = tmpdir()
         cfg.automas_dir = AUTOMAS
         cfg.maa_dir = None
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._unfinished_queues = lambda now, entries: []
@@ -2507,7 +2377,6 @@ def _part_every_failure_pushed():
         e._maintenance_today = lambda game: False
         return e
 
-
     def rec(script, started, ok=False, failed=None, raw=None, transitional=False):
         user = {"MAA": "arknights", "MaaEnd": "endfield", "OK-WW": "wuwa"}[script]
         return RunRecord(run_id=f"{started:%Y-%m-%d}/{user}/{script}-{started:%H-%M-%S}", script=script, user=user,
@@ -2515,15 +2384,12 @@ def _part_every_failure_pushed():
                          failed_tasks=list(failed if failed is not None else ([] if ok or transitional else ["日常"])),
                          raw=dict(raw or {}), transitional=transitional)
 
-
     def alarms(e):
         return [t for t, _, a in e.notifier.sent if a]
-
 
     handle._ship_evidence = lambda eng, r: ""
     handle._archive_okww_evidence = lambda eng, r: None
     handle._weekly_gates = lambda eng, r: None
-
 
     class Lines(logging.Handler):
         def __init__(self):
@@ -2533,12 +2399,10 @@ def _part_every_failure_pushed():
         def emit(self, record):
             self.lines.append(record.getMessage())
 
-
     LINES = Lines()
     for name in ("ark.handle", "ark.makeup", "ark.engine"):
         logging.getLogger(name).addHandler(LINES)
         logging.getLogger(name).setLevel(logging.DEBUG)
-
 
     print("[OK-WW overrides that did not bind: alert=True from both boot stages]")
     BAD = ["OK-WW 升级后，中继的改动有 1 处和新版对不上：NightmareNestTask.find_nest 这一处先按 OK-WW 新版跑，等我们重抄"]
@@ -2558,10 +2422,10 @@ def _part_every_failure_pushed():
     okww_overlay.report_line = lambda: ""
     okww_overlay.drift_line = lambda okww, state_dir: BAD[0]
     preupdate.run_okww = lambda okww, problems=None, **_k: ""
-    notes = Notes()
+    notes = _Notes()
     boot_stages._stage_patch_okww(CFG, notes, LOG)
     check("boot: sent as an alarm", [(t, a) for t, _, a in notes.sent], [(texts.patches(1, BAD), True)])
-    notes = Notes()
+    notes = _Notes()
     boot_stages._preupdate_okww(CFG, notes, LOG, [])
     check("pre-update: sent as an alarm", [(t, a) for t, _, a in notes.sent], [(texts.patches(1, BAD), True)])
     (okww_overlay.install, okww_overlay.write_master_pointer,
@@ -2591,9 +2455,6 @@ def _part_every_failure_pushed():
     e._flush_pending()
     check("the failure reached the group", alarms(e), [texts.unresolved("明日方舟", "早班")])
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_recovered_daily_only():  # noqa: C901
     import json
@@ -2611,7 +2472,6 @@ def _part_recovered_daily_only():  # noqa: C901
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import errwatch, handle
     from ark_relay.features import makeup
@@ -2625,16 +2485,6 @@ def _part_recovered_daily_only():  # noqa: C901
     _mc_real = dict(_mc.CHECKS)   # put back at the end: the coverage pass runs every test file in one process
     _mc.CHECKS.clear()   # the alarms themselves are tested here; the machine checks in tests/test_mc.py
     from ark_relay.core.ledger import State
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
-
 
     def automas_dir() -> Path:
         """AUTO-MAS's config with one 早班 09:00 queue running all three scripts."""
@@ -2652,41 +2502,25 @@ def _part_recovered_daily_only():  # noqa: C901
         (root / "config" / "QueueConfig.json").write_text(json.dumps(qc), encoding="utf-8")
         return root
 
-
     AUTOMAS = automas_dir()
     # Today (real clock): makeup.eligible and _flush_pending read today's date.
     DAY = datetime.now(tz=SERVER_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
     D = f"{DAY:%Y-%m-%d}"
     UPDATE = "游戏更新成功，即将重启任务"
 
-
     def at(hh, mm=0):
         return DAY.replace(hour=hh, minute=mm)
-
-
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return []
-
-        def went_to_group(self):
-            return True
-
 
     class Src:
         def fetch(self, seen):
             return []
-
 
     def build():
         cfg = Config()
         cfg.state_dir = tmpdir()
         cfg.automas_dir = AUTOMAS
         cfg.maa_dir = None
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._unfinished_queues = lambda now, entries: []
@@ -2696,7 +2530,6 @@ def _part_recovered_daily_only():  # noqa: C901
         e._maintenance_today = lambda game: False
         return e
 
-
     def rec(script, started, ok=False, failed=None, raw=None, transitional=False):
         user = {"MAA": "arknights", "MaaEnd": "endfield", "OK-WW": "wuwa"}[script]
         return RunRecord(run_id=f"{started:%Y-%m-%d}/{user}/{script}-{started:%H-%M-%S}", script=script, user=user,
@@ -2704,31 +2537,25 @@ def _part_recovered_daily_only():  # noqa: C901
                          failed_tasks=list(failed if failed is not None else ([] if ok or transitional else ["日常"])),
                          raw=dict(raw or {}), transitional=transitional)
 
-
     def restart(script, started):
         """An attempt AUTO-MAS recorded as a restart (collector._TRANSITIONAL)."""
         key = {"MAA": "maa_result", "MaaEnd": "maaend_result", "OK-WW": "general_result"}[script]
         return rec(script, started, raw={key: UPDATE if script == "OK-WW" else "未捕获到日志"}, transitional=True)
 
-
     def alarms(e):
         return [t for t, _, a in e.notifier.sent if a]
-
 
     def body_of(e, title):
         return next((b for t, b, a in e.notifier.sent if a and t == title), "")
 
-
     def daily(e):
         return core.format_daily(D, e.state.read_ledger(D))
-
 
     handle._ship_evidence = lambda eng, r: ""
     handle._archive_okww_evidence = lambda eng, r: None
     handle._weekly_gates = lambda eng, r: None
     makeup._dispatch = lambda script: (True, "已开跑")
     makeup._kill_game = lambda: None
-
 
     class Lines(logging.Handler):
         def __init__(self):
@@ -2741,12 +2568,10 @@ def _part_recovered_daily_only():  # noqa: C901
         def said(self, *parts):
             return any(all(p in r.getMessage() for p in parts) for r in self.records)
 
-
     LINES = Lines()
     for _name in ("ark.handle", "ark.notify"):
         logging.getLogger(_name).addHandler(LINES)
         logging.getLogger(_name).setLevel(logging.DEBUG)
-
 
     print("[AUTO-MAS 自己重试过去了：什么都不发，日报那一行说重试做成了]")
     e = build()
@@ -2850,9 +2675,7 @@ def _part_recovered_daily_only():  # noqa: C901
     check("落地时什么都没发", e.notifier.sent, [])
     check("压着", list(e._pending), [("MaaEnd", "endfield")])
 
-
     print("\n[推送传输：后一次送到了 → 一条标「自己好了」的 WARNING，只进日报；全没送到 → 照样报]")
-
 
     class Resp:
         def __init__(self, data):
@@ -2866,7 +2689,6 @@ def _part_recovered_daily_only():  # noqa: C901
 
         def read(self):
             return json.dumps(self.data).encode("utf-8")
-
 
     def fake_urlopen(script):
         """urlopen that, for each URL in turn, raises (an Exception in `script`) or answers (a dict)."""
@@ -2882,7 +2704,6 @@ def _part_recovered_daily_only():  # noqa: C901
         urlopen.calls = calls
         return urlopen
 
-
     class Refuses:
         """errwatch's notifier: the group refuses, so whatever it queues stays queued."""
         def send_group(self, title, body):
@@ -2891,7 +2712,6 @@ def _part_recovered_daily_only():  # noqa: C901
         def send(self, title, body, **kw):
             return ["拒收"]
 
-
     def watch():
         sd = tmpdir()
         h = errwatch.ErrorKindAlert(Refuses(), state_dir=sd, known={}, retry=(3600.0,), fallback_after=1e9)
@@ -2899,15 +2719,12 @@ def _part_recovered_daily_only():  # noqa: C901
         LINES.records.clear()
         return h, sd
 
-
     def unwatch(h):
         logging.getLogger(errwatch.ARK).removeHandler(h)
         h.close()
 
-
     def warnings():
         return [r for r in LINES.records if r.levelno >= logging.WARNING]
-
 
     real_urlopen, real_sleep = urllib.request.urlopen, notify.time.sleep
     notify.time.sleep = lambda s: None
@@ -2974,12 +2791,10 @@ def _part_manual_stop_backfill():
     import types
     from datetime import datetime
 
-
     TMP = tmpdir()
     os.environ.update(ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="",
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import commands
     from ark_relay.features import handle
@@ -2988,7 +2803,6 @@ def _part_manual_stop_backfill():
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
-
 
     # No network: the banner section and the report-writing model are stubbed, as in
     # test_daily.py.
@@ -3006,7 +2820,6 @@ def _part_manual_stop_backfill():
     )
     report.summary = types.SimpleNamespace(daily_report=lambda cfg, entries, plan="": "")
 
-
     class Notes:
         def __init__(self):
             self.sent = []
@@ -3018,28 +2831,23 @@ def _part_manual_stop_backfill():
         def send_group(self, title, body):
             return []
 
-
     class Src:
         def fetch(self, seen):
             return []
 
-
     def at(d, hh, mm, ss=0):
         return datetime(2026, 9, d, hh, mm, ss, tzinfo=SERVER_TZ)
-
 
     def line(rid, script, user, s, f, ok, failed=None):
         return {"run_id": rid, "script": script, "user": user, "started": s.isoformat(),
                 "finished": f.isoformat(), "ok": ok, "failed_tasks": failed or [],
                 "duration_known": True, "transitional": False, "raw": {"tasks_done": ["日常"]} if ok else {}}
 
-
     OKWW = line("OK-WW-05-40-56", "OK-WW", "wuwa", at(30, 9, 38), at(30, 9, 46, 58), True)
     MAAEND = line("MaaEnd-05-46-45", "MaaEnd", "endfield", at(30, 9, 46, 58), at(30, 9, 47, 10), False,
                   ["据点交易"])
     MAA = line("MAA-09-00-00", "MAA", "ark", at(30, 9, 0), at(30, 9, 30), True)
     TORN = '{"run_id": "half'
-
 
     def build(windows=None):
         cfg = Config()
@@ -3056,14 +2864,11 @@ def _part_manual_stop_backfill():
         e._scripts_running = lambda: False
         return e
 
-
     def stops(e, day="2026-09-30"):
         return {x["run_id"]: (x.get("raw") or {}).get("manual_stop") for x in e.state.read_ledger(day)}
 
-
     def kind_line(body, script):
         return next((ln for ln in body.splitlines() if f" {script}" in ln and ln[:1] in "✅❌⏹↻⚠"), "")
-
 
     EVENING = at(30, 21, 25)
 
@@ -3124,14 +2929,12 @@ def _part_manual_stop_backfill():
 
     print("\n[压着的告警：被停掉的两趟相关的清掉，别的不动]")
 
-
     def rec_of(d, **over):
         x = dict(d, **over)
         return RunRecord(run_id=x["run_id"], script=x["script"], user=x["user"],
                          started=datetime.fromisoformat(x["started"]),
                          finished=datetime.fromisoformat(x["finished"]), ok=x["ok"],
                          failed_tasks=x["failed_tasks"], raw=dict(x["raw"]))
-
 
     e = build(windows=W0930)
     # 09:30 OK-WW failure moved to _recovered when the stopped OK-WW run read as a success.
@@ -3175,7 +2978,6 @@ def _part_manual_stop_backfill():
     sys.modules.setdefault("win32event", types.ModuleType("win32event"))
     import boot_stages
 
-
     class Log:
         def __init__(self):
             self.lines = []
@@ -3185,7 +2987,6 @@ def _part_manual_stop_backfill():
 
         def exception(self, *a, **k):
             self.lines.append(("EXC",) + a)
-
 
     lg = Log()
     e = build(windows=W0930)
@@ -3213,7 +3014,6 @@ def _part_manual_stop_not_selfheal():
     import os
     from datetime import datetime
 
-
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
     (AUTOMAS / "config").mkdir(parents=True)
@@ -3224,7 +3024,6 @@ def _part_manual_stop_not_selfheal():
     os.environ.update(ARK_HISTORY_DIR=str(HIST), ARK_AUTOMAS_DIR=str(AUTOMAS),
                       ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
     from ark_relay.features import collect_retry
     from ark_relay.features import commands
@@ -3235,7 +3034,6 @@ def _part_manual_stop_not_selfheal():
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
 
-
     class Notes:
         def __init__(self):
             self.sent = []
@@ -3244,21 +3042,17 @@ def _part_manual_stop_not_selfheal():
             self.sent.append((title, body))
             return False
 
-
     class Src:
         def fetch(self, seen):
             return []
 
-
     def at(hh, mm, ss=0):
         return datetime(2026, 9, 30, hh, mm, ss, tzinfo=SERVER_TZ)
-
 
     def rec(run_id, started, finished, script="OK-WW", user="wuwa", ok=False):
         return RunRecord(run_id=run_id, script=script, user=user, started=started, finished=finished,
                          ok=ok, failed_tasks=[] if ok else ["任务执行：卡在对话框"],
                          raw={"tasks_done": ["日常"]} if ok else {})
-
 
     def build():
         cfg = Config()
@@ -3268,16 +3062,13 @@ def _part_manual_stop_not_selfheal():
         e._verify_outcome = lambda r: None
         return e
 
-
     def press(e, start, end):
         (Path(e.cfg.state_dir) / commands.ESTOP_WINDOWS_FILE).write_text(
             json.dumps([{"start": start.isoformat(timespec="seconds"),
                          "end": end.isoformat(timespec="seconds")}]), encoding="utf-8")
 
-
     gates = []
     handle._weekly_gates = lambda eng, r: gates.append(r.run_id)
-
 
     def morning(e):
         """The two genuine failures of 09-30, booked and held the way _hold_for_retry leaves them."""
@@ -3287,7 +3078,6 @@ def _part_manual_stop_not_selfheal():
             e.state.append_ledger(r)
             e._pending[("OK-WW", "wuwa")] = r
         e._persist_pending()
-
 
     print("[09-30 原样：两次失败在等，第三趟被停一切停掉、AUTO-MAS 记成功]")
     e = build()
@@ -3347,13 +3137,11 @@ def _part_manual_stop_not_selfheal():
 
     print("\n[日报：停掉的那趟是 ⏹ 不是 ✅，标题不说重试后成功]")
 
-
     def entry(rid, s, f, ok, raw=None, failed=None):
         return {"run_id": rid, "script": "OK-WW", "user": "wuwa",
                 "started": s.isoformat(), "finished": f.isoformat(), "ok": ok,
                 "failed_tasks": failed or [], "duration_known": True, "transitional": False,
                 "raw": raw or {}}
-
 
     fail1 = entry("r1", at(9, 12), at(9, 19), False, failed=["日常"])
     fail2 = entry("r2", at(9, 21), at(9, 30), False, failed=["日常"])
@@ -3394,15 +3182,13 @@ def _part_manual_stop_not_selfheal():
 
 def _part_notify_routing_main():
     """日常消息只发一个渠道，报警才全发。"""
-    import os, sys
+    import os
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
                       SERVERCHAN_KEY="", WECOM_CORPID="", ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import Config
     from ark_relay.core.notify import Notifier
-
 
     class Fake:
         """一个够用的假通道：记下被调用过、可以被设成必然失败。"""
@@ -3416,7 +3202,6 @@ def _part_notify_routing_main():
             if self.broken:
                 raise RuntimeError(f"{self.name} 挂了")
 
-
     def build(broken=()):
         log = []
         n = Notifier(Config())
@@ -3424,7 +3209,6 @@ def _part_notify_routing_main():
         n.wecom_bot = Fake(log, "企业微信机器人", "企业微信机器人" in broken)
         n.wecom = Fake(log, "企业微信", "企业微信" in broken)
         return n, log
-
 
     print("[三个通道各司其职：真报警进群，日报和其余走 Server酱，私聊永远不自动发]")
     n, log = build()
@@ -3557,7 +3341,6 @@ def _part_notify_routing_main():
     print("\n[每条送到的推送记一行：走哪一路、哪个渠道收下（审查 10-13 s5 #4）]")
     import logging
 
-
     class _Grab(logging.Handler):
         def __init__(self):
             super().__init__()
@@ -3565,7 +3348,6 @@ def _part_notify_routing_main():
 
         def emit(self, record):
             self.lines.append((record.levelno, record.getMessage()))
-
 
     _g = _Grab()
     from ark_relay.core import notify as _notify_mod
@@ -3600,13 +3382,11 @@ def _part_notify_routing_main():
     inside, release = threading.Event(), threading.Event()
     _sc_send = n.serverchan.send_text
 
-
     def _slow(title, body=""):
         if title.startswith("🔌") and not inside.is_set():
             inside.set()                     # thread A is now inside its announcement
             release.wait(5)
         return _sc_send(title, body)
-
 
     n.serverchan.send_text = _slow
     ta = threading.Thread(target=lambda: n.send("⚠️ 甲线程的报警", "正文", alert=True))
@@ -3637,19 +3417,16 @@ def _part_notify_channels():  # noqa: C901
     os.environ.update(ARK_STATE_DIR=str(TMP), ARK_HISTORY_DIR=str(TMP),
                       SERVERCHAN_KEY="", WECOM_CORPID="", WECOM_BOT_URL="",
                       ARK_LLM_KEY="")
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core import notify
     from ark_relay.core.config import Config
     from ark_relay.core.notify import (
         Notifier, ServerChan, WeCom, WeComBot, _image_bytes_for_wecom,
     )
 
-
     def _short(v):
         # 这个文件里有整段日报那么长的值，原样打出来会把屏幕刷满，反而看不见哪条红了。
         text = repr(v)
         return text if len(text) <= 120 else text[:117] + "..."
-
 
     # ---------------------------------------------------------------- fake HTTP
     # Replaces urlopen for this process only. An unrouted URL is a hard failure:
@@ -3668,21 +3445,17 @@ def _part_notify_channels():  # noqa: C901
         def __exit__(self, *a):
             return False
 
-
     ROUTES: list = []       # [(url fragment, handler)]
     CALLS: list = []        # [(url, decoded request body)]
 
-
     def route(fragment, handler):
         ROUTES.append((fragment, handler))
-
 
     def reset(*routes):
         ROUTES.clear()
         CALLS.clear()
         for frag, handler in routes:
             route(frag, handler)
-
 
     def once(*results):
         """A handler that hands back one result per call, then repeats the last."""
@@ -3691,7 +3464,6 @@ def _part_notify_channels():  # noqa: C901
         def handler(_req):
             return box.pop(0) if len(box) > 1 else box[0]
         return handler
-
 
     def fake_urlopen(req, timeout=None):
         url = req if isinstance(req, str) else req.full_url
@@ -3707,9 +3479,7 @@ def _part_notify_channels():  # noqa: C901
                 return _Resp(json.dumps(out) if isinstance(out, dict) else out)
         raise AssertionError(f"没挂假响应的 URL，测试差点真的联网: {url}")
 
-
     urllib.request.urlopen = fake_urlopen
-
 
     class _Clock:
         """Stand-in for the `time` module inside notify: records the backoff sleeps
@@ -3725,30 +3495,23 @@ def _part_notify_channels():  # noqa: C901
         def sleep(self, seconds):
             self.slept.append(seconds)
 
-
     CLOCK = _Clock()
     notify.time = CLOCK
-
 
     def posted(fragment):
         return [b for u, b in CALLS if fragment in u]
 
-
     def urls(fragment=""):
         return [u for u, _ in CALLS if fragment in u]
-
 
     OK = {"errcode": 0, "errmsg": "ok"}
     TOKEN = {"errcode": 0, "access_token": "tok-1", "expires_in": 7200}
 
-
     def transport_error(_req):
         return urllib.error.URLError("TLS handshake timed out")
 
-
     def http_403(_req):
         return urllib.error.HTTPError("https://x/", 403, "Forbidden", {}, None)
-
 
     # --------------------------------------------------- _post: 什么该重试什么不该
     print("[传输失败要重试：告警是一次性的，没人补发]")
@@ -3760,7 +3523,6 @@ def _part_notify_channels():  # noqa: C901
     check("每次都在 [0, 上限] 里随机（full jitter）",
           all(0 <= w <= hi for w, hi in zip(CLOCK.slept, (1.5, 3.0), strict=True)), True)
 
-
     class _Edge:
         """Stand-in for notify._rng that always draws one end of the interval."""
 
@@ -3769,7 +3531,6 @@ def _part_notify_channels():  # noqa: C901
 
         def uniform(self, lo, hi):
             return hi if self.top else lo
-
 
     print("\n[退避上限按指数翻倍、封顶；随机从 0 起，几台一起失败也不会一起重试]")
     real_rng = notify._rng
@@ -3867,10 +3628,8 @@ def _part_notify_channels():  # noqa: C901
     # 序号是**打包之后**才贴上去的，所以要验的是成品，不是打包时用的那个数。
     API_CAP = 2048
 
-
     def widest(parts):
         return max(len(p.encode("utf-8")) for p in parts)
-
 
     print("\n[中文长日报：按 utf-8 **字节**算上限（按字数算，中文会整段漏过去）]")
     # 这一段是专门挑的：字数**没到**上限，字节数早就超了。判据写成 len(text) 的话，
