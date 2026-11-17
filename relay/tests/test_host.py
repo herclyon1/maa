@@ -27,6 +27,14 @@ class _Stub(types.ModuleType):
         return _Any
 
 
+def _time_setter(*mods):
+    """service.py's code now lives in several modules, each reading its own `time`; the setter swaps it in all."""
+    def set_time(t):
+        for m in mods:
+            m.time = t
+    return set_time
+
+
 def _module(name, **attrs):
     """Put a module with exactly these attributes in sys.modules (run_parts takes it out again)."""
     m = types.ModuleType(name)
@@ -1700,10 +1708,7 @@ def _part_procwatch_cancel():  # noqa: C901
     from ark_relay.features import errwatch
     from ark_relay.core import texts
 
-    def set_time(t):
-        """service.py's code now lives in several modules, each reading its own `time`; swap it in all."""
-        for m in (service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop):
-            m.time = t
+    set_time = _time_setter(service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop)
 
     class FastTime:
         """time for the listener: monotonic is real plus whatever sleep skipped; sleep returns at once."""
@@ -2135,10 +2140,7 @@ def _part_procwatch_drop():  # noqa: C901
     from ark_relay.features import errwatch
     from ark_relay.core import texts
 
-    def set_time(t):
-        """service.py's code now lives in several modules, each reading its own `time`; swap it in all."""
-        for m in (service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop):
-            m.time = t
+    set_time = _time_setter(service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop)
 
     orig_ssd, orig_time, orig_run = errwatch.system_shutting_down, procwatch.time, subprocess.run
     errwatch.system_shutting_down = lambda: False
@@ -2426,10 +2428,7 @@ def _part_wmi_listener():
     from ark_relay.features import errwatch
     from ark_relay.core.config import SERVER_TZ
 
-    def set_time(t):
-        """service.py's code now lives in several modules, each reading its own `time`; swap it in all."""
-        for m in (service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop):
-            m.time = t
+    set_time = _time_setter(service, shutdown_signs, procwatch, dirwatch, automas_keeper, mainloop)
 
     class VClock:
         def __init__(self):

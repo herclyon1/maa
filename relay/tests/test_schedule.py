@@ -110,6 +110,30 @@ def _queue_backend(all_days, okww=True):
     return Backend
 
 
+def _mas_runner(commands, clock):
+    """run(be, fn, at): fn() with AUTO-MAS's API answered by `be` and the clock at `at`; the real API is put back."""
+    real = commands._mas
+
+    def run(be, fn, at):
+        commands._mas, clock.at = be, at
+        try:
+            return fn()
+        finally:
+            commands._mas = real
+
+    return run
+
+
+def _doc_editor(pristine, path):
+    """edit(fn): write `path` as the pristine JSON document with fn applied to it."""
+    def edit(fn) -> None:
+        doc = json.loads(pristine)
+        fn(doc)
+        path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    return edit
+
+
 def _write_ledger(state, day, rows):
     """That day's ledger: one ok row per (script, started, finished)."""
     lines = [json.dumps({"run_id": f"r{i}", "script": s, "started": a.isoformat(),
@@ -883,10 +907,7 @@ def _part_plan_queue_weekdays():
     def at(day: int, hh: int, mm: int) -> datetime:
         return datetime(2026, 10, day, hh, mm, tzinfo=SERVER_TZ)   # 10-12 is a Monday
 
-    def edit(fn) -> None:
-        doc = json.loads(PRISTINE)
-        fn(doc)
-        QC.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    edit = _doc_editor(PRISTINE, QC)
 
     def timeset(doc, queue):
         ts = doc[queue]["SubConfigsInfo"]["TimeSet"]
@@ -1510,14 +1531,7 @@ def _part_queue_skip_holders():
 
     Backend = _queue_backend(ALL)
 
-    real = commands._mas
-
-    def run(be, fn, at):
-        commands._mas, Clock.at = be, at
-        try:
-            return fn()
-        finally:
-            commands._mas = real
+    run = _mas_runner(commands, Clock)
 
     automas = tmpdir()
 
@@ -1602,14 +1616,7 @@ def _part_queue_skip_partial():
 
     Backend = _queue_backend(ALL, okww=False)
 
-    real = commands._mas
-
-    def run(be, fn, at):
-        commands._mas, Clock.at = be, at
-        try:
-            return fn()
-        finally:
-            commands._mas = real
+    run = _mas_runner(commands, Clock)
 
     def caught(fn):
         try:
@@ -1693,14 +1700,7 @@ def _part_queue_skip_partial_receipt():
 
     Backend = _queue_backend(ALL)
 
-    real = commands._mas
-
-    def run(be, fn, at):
-        commands._mas, Clock.at = be, at
-        try:
-            return fn()
-        finally:
-            commands._mas = real
+    run = _mas_runner(commands, Clock)
 
     automas = tmpdir()
 
@@ -1943,7 +1943,6 @@ and the daily report's 「明日安排」 listed skipped items).
     """
     #!/usr/bin/env python3
 
-    import json
     import os
     import shutil
     from datetime import datetime
@@ -1984,10 +1983,7 @@ and the daily report's 「明日安排」 listed skipped items).
     def at(day: int, hh: int, mm: int) -> datetime:
         return datetime(2026, 10, day, hh, mm, tzinfo=SERVER_TZ)   # 10-12 is a Monday
 
-    def edit(fn) -> None:
-        doc = json.loads(PRISTINE)
-        fn(doc)
-        QC.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    edit = _doc_editor(PRISTINE, QC)
 
     def timeset(doc, queue):
         ts = doc[queue]["SubConfigsInfo"]["TimeSet"]
@@ -3889,7 +3885,6 @@ def _part_missed_weekdays():
     """「🔌 晚班 没有运行」 follows AUTO-MAS v5.7's weekday rules."""
     #!/usr/bin/env python3
 
-    import json
     import os
     import shutil
     from datetime import datetime
@@ -3918,10 +3913,7 @@ def _part_missed_weekdays():
     def at(day: int, hh: int, mm: int) -> datetime:
         return datetime(2026, 10, day, hh, mm, tzinfo=SERVER_TZ)   # 10-13 is a Tuesday
 
-    def edit(fn) -> None:
-        doc = json.loads(PRISTINE)
-        fn(doc)
-        QC.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    edit = _doc_editor(PRISTINE, QC)
 
     def evening_timeset(doc):
         ts = doc[EVENING]["SubConfigsInfo"]["TimeSet"]

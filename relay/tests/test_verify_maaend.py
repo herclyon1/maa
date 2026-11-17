@@ -1921,12 +1921,15 @@ def _part_maaend_recovered():
         rec.raw["evidence_page"] = "https://example.invalid/bundle"
         return rec.raw["evidence_page"]
 
+    def exit_rec(n):
+        return RunRecord(run_id=f"2026-10-06/endfield/MaaEnd-05-28-0{n}", script="MaaEnd", user="endfield",
+                         started=datetime(2026, 10, 6, 9, 51, 51, tzinfo=SERVER_TZ),
+                         finished=datetime(2026, 10, 6, 9, 52, 54, tzinfo=SERVER_TZ), ok=True)
+
     handle._ship_evidence = _fake_ship
     h, sd = watch()
     try:
-        rec = RunRecord(run_id="2026-10-06/endfield/MaaEnd-05-28-01", script="MaaEnd", user="endfield",
-                        started=datetime(2026, 10, 6, 9, 51, 51, tzinfo=SERVER_TZ),
-                        finished=datetime(2026, 10, 6, 9, 52, 54, tzinfo=SERVER_TZ), ok=True)
+        rec = exit_rec(1)
         handle._mark_no_self_exit(_Eng(), rec)
         check("the bookkeeping line is not marked recovered",
               recovered_of(LINES.records, "🟠 MaaEnd", "任务全部完成"), [False])
@@ -1945,9 +1948,7 @@ def _part_maaend_recovered():
     SHIPPED.clear()
     h, sd = watch()
     try:
-        rec = RunRecord(run_id="2026-10-06/endfield/MaaEnd-05-28-02", script="MaaEnd", user="endfield",
-                        started=datetime(2026, 10, 6, 9, 51, 51, tzinfo=SERVER_TZ),
-                        finished=datetime(2026, 10, 6, 9, 52, 54, tzinfo=SERVER_TZ), ok=True)
+        rec = exit_rec(2)
         eng = _Eng(automas_app_log([MAS_RESULT, MAS_ENDED]))
         handle._mark_no_self_exit(eng, rec)
         rows = LINES.said("MaaEnd", "任务全部完成", "AUTO-MAS")
@@ -1968,9 +1969,7 @@ def _part_maaend_recovered():
     h, sd = watch()
     try:
         late = "2026-10-06 09:55:00.000 | WARNING  | MaaEnd 自动代理 | MaaEnd 队列已结束但进程未退出，正在中止脚本进程"
-        rec = RunRecord(run_id="2026-10-06/endfield/MaaEnd-05-28-03", script="MaaEnd", user="endfield",
-                        started=datetime(2026, 10, 6, 9, 51, 51, tzinfo=SERVER_TZ),
-                        finished=datetime(2026, 10, 6, 9, 52, 54, tzinfo=SERVER_TZ), ok=True)
+        rec = exit_rec(3)
         handle._mark_no_self_exit(_Eng(automas_app_log([MAS_RESULT, late])), rec)
         check("not marked recovered", recovered_of(LINES.records, "🟠 MaaEnd", "任务全部完成"), [False])
         check("it is queued for the group", any("任务全部完成" in str(x.get("line")) for x in h.pending()), True)
