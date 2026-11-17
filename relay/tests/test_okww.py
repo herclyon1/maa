@@ -152,7 +152,9 @@ def _part_okww_drift():
     check("体力读数钉住", "BaseWWTask.get_stamina" in got)
 
     print("\n[the two copies that check their own fingerprint are pinned too (audit 2026-10-13, A3)]")
-    check("five pins in all", len(okww_overlay.pins()), 5)
+    check("six pins in all", len(okww_overlay.pins()), 6)
+    check("get_total_daily_points pinned to v3.7.14-beta.2, not adapted",
+          got.get("DailyTask.get_total_daily_points"), ("b082b5c41b29", False))
     check("claim_daily pinned to v3.7.14-beta.2, not adapted", got.get("DailyTask.claim_daily"), ("555de9348dc7", False))
     check("claim_battle_pass pinned to v3.7.14-beta.2, not adapted",
           got.get("DailyTask.claim_battle_pass"), ("0a11121c349a", False))
@@ -161,6 +163,10 @@ def _part_okww_drift():
     changed = DAILY_INST.replace("    def claim_daily(self):\n", "    def claim_daily(self):\n        pass\n", 1)
     d = okww_overlay.drift(okww(VINST, {"DailyTask.py": changed}))
     check("a changed claim_daily is found before the run", [x["what"] for x in d], ["DailyTask.claim_daily"])
+    changed = DAILY_INST.replace("points_boxes[0].name", "points_boxes[-1].name", 1)
+    d = okww_overlay.drift(okww(VINST, {"DailyTask.py": changed}))
+    check("a changed get_total_daily_points is found before the run", [x["what"] for x in d],
+          ["DailyTask.get_total_daily_points"])
 
     print("\n[装着的 v3.7.14-beta.2 在盘上：对得上，不出声]")
     check("没有对不上的", okww_overlay.drift(okww(VINST)), [])
@@ -2024,8 +2030,9 @@ def _part_okww_daily_chests():
     class Game:
         """The dailies page: OCR answers, clicks claim a chest (when the game takes them)."""
 
-        def __init__(self, frame, points="80", takes=True, ocr_labels=None, chests=None):
+        def __init__(self, frame, points="80", takes=True, ocr_labels=None, chests=None, points_boxes=None):
             self.frame, self.points, self.takes = frame, points, takes
+            self.points_boxes = points_boxes
             self.ocr_labels = LABELS + DECOYS if ocr_labels is None else ocr_labels
             self.chests = chest if chests is None else chests
             self.clicks, self.logs, self.keys = [], [], []
@@ -2036,6 +2043,8 @@ def _part_okww_daily_chests():
         def ocr(self, *a, match=None, **k):
             if match is not None and "100" in match.pattern:
                 return self.ocr_labels
+            if self.points_boxes is not None:
+                return self.points_boxes
             return [box(self.points, 225, 15, 280, 65)] if self.points else []
 
         def click_relative(self, rx, ry, **k):
@@ -2159,6 +2168,45 @@ def _part_okww_daily_chests():
     g = Game(ROW.copy(), points="80")
     ns["_claim_tiers"](g)
     check("the tier at the points read, claimed, is fine", any(m.startswith("活跃奖励：领完核对通过") for m in g.logs), True)
+
+    print("\n[11-17 09:31 (#181): PP-OCRv6 reads quest-row scraps above the big number -> the big number wins]")
+    # As the points box came back after OK-WW v3.8.3: the compass icon's edge 「4」 and the
+    # clipped reward 「+40」 of the last quest row first, a quest row's 「20」, then the total.
+    NOISE = [box("4", 195, 2, 210, 16), box("+40", 180, 2, 215, 14), box("20", 180, 4, 205, 16),
+             box("140", 225, 15, 295, 65)]
+    g = Game(morning(), points_boxes=NOISE)
+    check("_read_points: 140, not 4, 40 or 20", ns["_read_points"](g), 140)
+    ns["_claim_tiers"](g)
+    check("the points line says 140", "活跃奖励：活跃度 140" in g.logs, True)
+    check("all five chests clicked", sorted(set(g.clicks)), [20, 40, 60, 80, 100])
+    check("no 「活跃度 4」 line", any("活跃度 4，" in m or m == "活跃奖励：活跃度 4" for m in g.logs), False)
+    for label, boxes, want in (
+            ("only the scraps (4, +40, 1/4): unread, not 4", [box("4", 195, 2, 210, 16), box("+40", 180, 2, 215, 14),
+                                                             box("1/4", 180, 2, 215, 14)], None),
+            ("「+20」 is a quest reward, not 20 points", [box("+20", 180, 2, 215, 14)], None),
+            ("not a multiple of 10 (14 of a clipped 140): unread", [box("14", 225, 15, 260, 65)], None),
+            ("0 points is a reading", [box("0", 225, 15, 250, 65)], 0),
+            ("the same height: the lower one", [box("20", 180, 2, 205, 52), box("60", 225, 15, 280, 65)], 60),
+            ("the order OCR gives them in does not matter", NOISE[::-1], 140),
+            ("nothing read", [], None)):
+        check(f"_read_points: {label}", ns["_read_points"](Game(morning(), points_boxes=boxes)), want)
+    g = Game(morning(), points_boxes=NOISE[:3])
+    ns["_claim_tiers"](g)
+    check("the 11-17 boxes without the total: only the quest row's 20 is left -> 20 clicked, nothing above it",
+          sorted(set(g.clicks)), [20])
+
+    print("\n[short of 100 and nothing wrong with the chests -> the page is kept as a screenshot]")
+    g = Game(ROW.copy(), points="80")
+    ns["_claim_tiers"](g)
+    check("80 points, checked: screenshot daily_reward_short", "[shot daily_reward_short]" in g.logs, True)
+    check("...and still 「领完核对通过」", any(m.startswith("活跃奖励：领完核对通过") for m in g.logs), True)
+    g = Game(ROW11.copy(), points="140", takes=False, ocr_labels=LABELS11, chests=ch11)
+    ns["_claim_tiers"](g)
+    check("140 points, all claimed: no screenshot", [m for m in g.logs if m.startswith("[shot ")], [])
+    g = Game(ROW.copy(), points="40")
+    ns["_claim_tiers"](g)
+    check("a failure keeps its own screenshot only", [m for m in g.logs if m.startswith("[shot ")],
+          ["[shot daily_reward_unclaimed]"])
 
     print("\n[the relay: the overlay's lines -> items undone (pushed as 「这一轮没干完」)]")
     LOG_OK = "活跃奖励：活跃度 80\n活跃奖励：领完核对通过（活跃度 80，已领 20、40、60、80）\nDaily Task Completed"
@@ -2314,6 +2362,21 @@ def _part_okww_farm_hook():  # noqa: C901
         def claim_battle_pass(self):
             EV.append("claim_battle_pass")
 
+    # get_total_daily_points is replaced only while upstream's body hashes to the pin, so the
+    # stand-in carries the installed v3.7.14-beta.2 body, from a file (inspect.getsource).
+    import ast
+    UP_DAILY = (fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task"
+                / "DailyTask.py.txt").read_text(encoding="utf-8")
+    _fn = next(x for c in ast.parse(UP_DAILY).body if isinstance(c, ast.ClassDef) and c.name == "DailyTask"
+               for x in c.body if isinstance(x, ast.FunctionDef) and x.name == "get_total_daily_points")
+    _up_file = tmpdir() / "_upstream_daily_points.py"
+    _up_file.write_text("import re\n\nnumber_re = re.compile(r'(\\d+)')\n\n\nclass DailyTask:\n"
+                        + "".join(UP_DAILY.splitlines(keepends=True)[_fn.lineno - 1:_fn.end_lineno]), encoding="utf-8")
+    _scope = {}
+    exec(compile(_up_file.read_text(encoding="utf-8"), str(_up_file), "exec"), _scope)
+    UPSTREAM_POINTS = _scope["DailyTask"].get_total_daily_points
+    DailyTask.get_total_daily_points = UPSTREAM_POINTS
+
     mods = {
         "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
                                     Logger=types.SimpleNamespace(get_logger=lambda n: types.SimpleNamespace(
@@ -2335,8 +2398,34 @@ def _part_okww_farm_hook():  # noqa: C901
     print("[绑定都换上了]")
     for b in ("DailyTask.run", "DailyTask.open_daily", "DailyTask.run_additional_tasks", "DailyTask.claim_daily",
               "TacetTask.farm_tacet", "ForgeryTask.farm_forgery", "SimulationTask.farm_simulation",
-              "TacetTask.use_stamina", "BaseWWTask.get_stamina"):
+              "TacetTask.use_stamina", "BaseWWTask.get_stamina", "DailyTask.get_total_daily_points"):
         check(f"{b} 已换上", b in ns["_applied"])
+    check("get_total_daily_points 不在没贴上的里面",
+          [s for s in ns["_skipped"] if s["what"] == "DailyTask.get_total_daily_points"], [])
+
+    print("\n[11-17 (#181) get_total_daily_points：杂字在前、大号分数在后，读大号的]")
+
+    def pbox(name, x0, y0, x1, y1):
+        return types.SimpleNamespace(name=name, x=x0, y=y0, width=x1 - x0 + 1, height=y1 - y0 + 1)
+
+    def points_task(boxes):
+        t = types.SimpleNamespace(info={}, asked=[])
+        t.info_set = lambda k, v: t.info.__setitem__(k, v)
+        t.ocr = lambda *a, **k: (t.asked.append(a), boxes)[1]
+        return t
+
+    NOISE = [pbox("4", 195, 2, 210, 16), pbox("+40", 180, 2, 215, 14), pbox("20", 180, 4, 205, 16),
+             pbox("140", 225, 15, 295, 65)]
+    t = points_task(NOISE)
+    check("上游原来的写法读成 4（就是 11-17 那条 total daily points 4）", (UPSTREAM_POINTS(t), t.info),
+          (4, {"total daily points": 4}))
+    t = points_task(NOISE)
+    check("换上的读成 140", DailyTask.get_total_daily_points(t), 140)
+    check("写进 total daily points", t.info, {"total daily points": 140})
+    check("读的还是上游那个框", t.asked, [(0.19, 0.8, 0.30, 0.93)])
+    for label, boxes in (("什么都没读到", []), ("只有杂字", NOISE[:2])):
+        t = points_task(boxes)
+        check(f"{label}：0 分，也写进去", (DailyTask.get_total_daily_points(t), t.info), (0, {"total daily points": 0}))
 
     tmp = str(tmpdir("ark-farm-hook-"))
     no_farm = os.path.join(tmp, "no-stamina-farm.flag")
@@ -5879,9 +5968,9 @@ def _part_okww_overlay_copies():
 
     # A replacement stops upstream's body from running, so it must be pinned.
     # Everything else wraps.
-    REPLACEMENTS = {"click_team_challenge", "find_nest", "get_stamina"}
+    REPLACEMENTS = {"click_team_challenge", "find_nest", "get_stamina", "get_total_daily_points"}
 
-    print("[只有三处整段替换，而且都钉了指纹]")
+    print("[只有四处整段替换，而且都钉了指纹]")
     bound = re.findall(r'@override\((\w+), "(\w+)"([^)]*)\)', src)
     bound += [(c, m, r) for c, m, r in re.findall(r'override\((\w+), "(\w+)"([^)]*)\)\(', src)]
     names = {m for _, m, _ in bound}

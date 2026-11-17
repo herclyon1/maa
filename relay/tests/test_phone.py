@@ -3656,7 +3656,7 @@ def _part_mailbox_close_windows():
     from ark_relay.features import phone as phone_mailbox
 
     KEEPALIVE = 5.0          # seconds between keepalive lines (ntfy.sh: 45 s)
-    LIMIT = 1.0              # close() and the listener's exit must each take less
+    LIMIT = 2.5              # close() and the listener's exit must each take well under KEEPALIVE
 
     stopping = threading.Event()
     held = threading.Event()           # the server has sent the headers and the open line

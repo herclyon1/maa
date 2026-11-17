@@ -769,6 +769,7 @@ BEHAVIOUR_TESTS = {
     "TacetTask.farm_tacet": "test_okww.py",
     "ForgeryTask.farm_forgery": "test_okww.py",
     "SimulationTask.farm_simulation": "test_okww.py",
+    "DailyTask.get_total_daily_points": "test_okww.py",
 }
 
 

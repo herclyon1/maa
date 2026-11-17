@@ -77,6 +77,7 @@ _LOG_CALLS = frozenset({"log_info", "log_debug", "log_error", "log_warning"})
 # same shapes.
 _SHAPES = {
     "DailyTask.claim_daily": "bb38fbec282a",
+    "DailyTask.get_total_daily_points": "3801bf94c417",
     "DailyTask.claim_battle_pass": "18db027b93ca",
     "FarmEchoTask.click_team_challenge": "d669deb3d44c",
     "BaseWWTask.get_stamina": "63b1734dc1bb",
@@ -1280,6 +1281,8 @@ def _read_stamina(task, in_dialog):
 _CLAIM_DAILY_SHA = "555de9348dc7"       # upstream claim_daily as copied in _claim_daily_checked
 # (v3.7.14-beta.2, 2026-11-02: v3.7.4..v3.7.13 were 2b4977b62f7c; the new body only wraps its two
 # log sentences in self.tr(), so the copy is unchanged and keeps English lines the relay reads)
+_GET_POINTS_SHA = "b082b5c41b29"        # upstream get_total_daily_points, replaced by _read_points
+# (v3.7.14-beta.2 fixture, tests/gamesim/upstream/okww-v3.7.14-beta.2/src/task/DailyTask.py.txt)
 DAILY_TIERS = (20, 40, 60, 80, 100)
 DAILY_POINTS_LINE = "活跃奖励：活跃度 "
 DAILY_OK = "活跃奖励：领完核对通过"
@@ -1410,14 +1413,28 @@ def _bar(task):
 
 
 def _read_points(task):
-    """The big points number, read the way upstream's get_total_daily_points does
-    (number_re = (\\d+), non-digits stripped), or None when there is none."""
+    """The big points number in upstream's own box (get_total_daily_points), or None.
+
+    Upstream takes the first box and strips its non-digits. 2026-11-17 (#181), OK-WW
+    v3.8.3 with PP-OCRv6: the box's top edge (y 0.80) cuts through the last quest row,
+    whose clipped reward 「+40」 came back as 「4」 ahead of the big number. Read as 4
+    points, no chest was due and all five stayed unclaimed. So a candidate has to be
+      * digits only: 「+20」 and 「1/4」 are a quest's reward and counter, never the total;
+      * 0 or a multiple of 10 up to 300: every daily quest grants a multiple of 10;
+    and of those the tallest box wins (the lower one on a tie): the total is drawn
+    three to four times the height of any quest-row text and sits below it."""
     boxes = task.ocr(0.19, 0.8, 0.30, 0.93, match=re.compile(r'(\d+)'))
+    candidates = []
     for b in boxes or []:
-        digits = re.sub(r'\D', '', str(b.name))
-        if 1 <= len(digits) <= 3:
-            return int(digits)
-    return None
+        text = str(getattr(b, "name", "")).strip()
+        if not re.fullmatch(r"\d{1,3}", text):
+            continue
+        val = int(text)
+        if val == 0 or (10 <= val <= 300 and val % 10 == 0):
+            candidates.append((val, b))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: (getattr(item[1], "height", 0), getattr(item[1], "y", 0)))[0]
 
 
 def _claim_tiers(task):
@@ -1476,6 +1493,10 @@ def _claim_tiers(task):
         _shot(task, "daily_reward_unclaimed")
         task.log_info(f"{DAILY_FAILED}{'；'.join(said)}（活跃度 {points}，各档对勾分 {shown}）")
     else:
+        if points < 100:
+            # Short of 100 the relay says 「没满 100」: the page goes into the evidence
+            # bundle, so a misread total can be told from a day that really was short.
+            _shot(task, "daily_reward_short")
         task.log_info(f"{DAILY_OK}（活跃度 {points}，已领 {'、'.join(map(str, due)) or '无'}，各档对勾分 {shown}）")
 
 
@@ -2026,6 +2047,17 @@ def _install_hooks():
     _farm_hook(TacetTask, "farm_tacet")
     _farm_hook(ForgeryTask, "farm_forgery")
     _farm_hook(SimulationTask, "farm_simulation")
+
+    # -- daily: the total read by _read_points, in open_daily too ---------------
+    @override(DailyTask, "get_total_daily_points", expect_sha=_GET_POINTS_SHA)
+    def get_total_daily_points(self):
+        # Upstream's body with its first-box read replaced (see _read_points): on
+        # 2026-11-17 open_daily's 「total daily points 4」 came from the same misread.
+        points = _read_points(self)
+        if points is None:
+            points = 0
+        self.info_set('total daily points', points)
+        return points
 
     # -- daily: farm to empty even when upstream's gate says not to ----------
     claim_daily = DailyTask.claim_daily

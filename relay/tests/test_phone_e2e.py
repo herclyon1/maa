@@ -271,7 +271,10 @@ log-level: "warn"
             self.sent: list = []
 
         def wait_time(self) -> int:
-            return json.loads(self.cfgf.read_text(encoding="utf-8"))[SID]["Game"]["WaitTime"]
+            try:
+                return json.loads(self.cfgf.read_text(encoding="utf-8"))[SID]["Game"]["WaitTime"]
+            except PermissionError:
+                return -1
 
         def boot(self, listen: bool = True):
             """What _start_phone_channel does with the mailbox: construct, boot read

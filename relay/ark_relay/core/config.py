@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PureWindowsPath
@@ -108,7 +109,14 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, path)
+        for attempt in range(6):
+            try:
+                os.replace(tmp, path)
+                break
+            except PermissionError:
+                if os.name != "nt" or attempt == 5:
+                    raise
+                time.sleep(0.01)
     except OSError:
         tmp.unlink(missing_ok=True)
         raise

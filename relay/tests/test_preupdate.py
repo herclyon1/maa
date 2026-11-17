@@ -1583,7 +1583,8 @@ relay-opt-round3-1108 O-02).
 
     print("\n[钉住的形状就是装着的 v3.7.14-beta.2 那几段]")
     pinned = ov.shapes()
-    check("覆盖文件里有四处", sorted(pinned), sorted(["DailyTask.claim_daily", "DailyTask.claim_battle_pass",
+    check("覆盖文件里有五处", sorted(pinned), sorted(["DailyTask.claim_daily", "DailyTask.claim_battle_pass",
+                                                  "DailyTask.get_total_daily_points",
                                                   "FarmEchoTask.click_team_challenge", "BaseWWTask.get_stamina"]))
     for label, want in pinned.items():
         cls, name = label.split(".")
@@ -1592,7 +1593,7 @@ relay-opt-round3-1108 O-02).
         text = ov._method_text(classes, cls, name) or ov._method_text(classes, "BaseWWTask", name)
         check(f"{label} 对得上", ov._shape_text(text), want)
     check("没有正文就没有形状（不是空文本的哈希）", (ov._shape_text(""), theirs("")), ("", ""))
-    check("这四处都是钉了哈希的", sorted(set(pinned) - {f"{c}.{m}" for c, m, _s, _a in ov.pins()}), [])
+    check("这五处都是钉了哈希的", sorted(set(pinned) - {f"{c}.{m}" for c, m, _s, _a in ov.pins()}), [])
 
 
     def okww(daily_text):

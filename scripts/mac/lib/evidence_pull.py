@@ -17,6 +17,8 @@ newest entry matching the fragment, and fetches its files:
 
 Files land in <dest root>/<run_id with / as _>/.
 """
+from __future__ import annotations
+
 import hashlib
 import hmac
 import json
