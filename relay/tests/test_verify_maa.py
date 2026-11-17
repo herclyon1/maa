@@ -2,13 +2,64 @@
 from __future__ import annotations
 
 # ruff: noqa: PLC0415
+import logging
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+
+
+class _Any:
+    """Stands in for any pywin32 attribute: callable, subclassable, truthy."""
+    def __init__(self, *a, **k): pass
+    def __call__(self, *a, **k): return _Any()
+    def __getattr__(self, _): return _Any()
+
+
+class _Stub(types.ModuleType):
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return _Any
+
+
+def _stub_pywin32():
+    """service.py imports pywin32 at module scope; stub what is missing so the
+    module-level helpers can be imported on any machine."""
+    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+                 "win32con", "win32file", "servicemanager", "win32process",
+                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
+        sys.modules.setdefault(name, _Stub(name))
+
+
+class _NoSource:
+    """A record source with nothing new."""
+    def fetch(self, seen):
+        return []
+
+
+class _Warnings(logging.Handler):
+    """Keeps every record from WARNING up."""
+    def __init__(self):
+        super().__init__(logging.WARNING)
+        self.records = []
+
+    def emit(self, r):
+        self.records.append(r)
+
+
+class _Notes:
+    """A notifier that keeps (title, body, alert) and answers `answer` ([] when not given)."""
+    def __init__(self, answer=None):
+        self.sent, self._answer = [], answer
+
+    def send(self, title, body="", **kw):
+        self.sent.append((title, body, kw.get("alert", False)))
+        return [] if self._answer is None else self._answer
 
 
 def _part_activity_topup():
@@ -244,7 +295,6 @@ def _part_attempts_streak():
         rows = real[:3] + [healed] + real[3:]
         check("three failures and the success -> 4", records._attempts(eng_of(rows), rec_of(real[0]), "2026-10-10"), 4)
 
-    print(f"\n{'all passed' if not fails else f'{len(fails)} failed: {fails}'}")
 
 
 def _part_claim_no_claim_gate():
@@ -604,20 +654,6 @@ def _part_flush_waits_own_script():
     from ark_relay.core.ledger import State
 
 
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return False
-
-
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
     def snap(okww, maaend):
         """The runtime-snapshot read on the machine at 2026-10-01 16:11, two statuses swapped in."""
         return {"tasks": [{"taskId": "8f47a684", "mode": "AutoProxy", "stopping": False,
@@ -647,7 +683,7 @@ def _part_flush_waits_own_script():
     def build(snapshot):
         cfg = Config()
         cfg.state_dir = tmpdir()
-        e = eng.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=_Notes(False))
         # The queue-wide check answers truthfully (MaaEnd running -> busy), as on the machine
         e._scripts_running = lambda: True if snapshot is None else eng._judge_snapshot(snapshot)
         eng._automas_snapshot = lambda: snapshot
@@ -902,8 +938,6 @@ def _part_gathering_route_node_failed():
     t2, h2 = pushes._unresolved_title_head("终末地", "早班", "补跑也没成", "自动采集", "")
     check("any other make-up outcome: as before", (t2, h2), (texts.unresolved("终末地", "早班"),
                                                          texts.unresolved_head("终末地", "早班", "补跑也没成", "自动采集", "")))
-
-    print("all checks passed" if not fails else f"FAILED: {fails}")
 
 
 def _part_healthcheck_annihilation():
@@ -1201,11 +1235,6 @@ def _part_logslice_new_year():
                     d / "out2" / "relay.log")
     check("only the line inside", out.read_text(encoding="utf-8") if out else "", "10-12 11:00:00 INFO b\n")
 
-    if fails:
-        print(f"\n{len(fails)} failed")
-        sys.exit(1)
-    print("\nall passed")
-
 
 def _part_main_logfile_silent():
     """relay.log that cannot be created is said once errwatch is listening (audit
@@ -1214,28 +1243,11 @@ docs/SILENT-FAILURES-AUDIT.md, __main__.py:75).
     import ast
     import logging
     import os
-    import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
-                 "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+    _stub_pywin32()
 
     import boot_stages
     from ark_relay import __main__ as relay_main
@@ -1494,39 +1506,16 @@ def _part_refresh_raw_unread():
     D = fx_dir(Path(__file__), "fixtures") / "refresh-unread-1009"
     e = json.loads((D / "ledger.jsonl").read_text(encoding="utf-8"))
     out = collector.refresh_raw(e, D)
-    got = (out.get("sanity"), out["raw"].get("sanity"), out["raw"].get("sanity_unread"))
-    ok = got == (None, None, True)
-    print(("  ✓ " if ok else "  ✗ ") + f"unread after refresh: {got}")
-    print("\n" + ("all checks passed" if ok else "FAILED"))
-    sys.exit(0 if ok else 1)
+    check("unread after refresh", (out.get("sanity"), out["raw"].get("sanity"), out["raw"].get("sanity_unread")),
+          (None, None, True))
 
 
 def _part_revive_gates():
     """The revival must not force-kill a window that is legitimately busy."""
-    import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-    # service.py imports pywin32 at module scope; stub what is missing so the
-    # module-level helpers can be imported on any machine.
-    class _Any:
-        """Stands in for any pywin32 attribute: callable, subclassable, truthy."""
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
-                 "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+    _stub_pywin32()
 
     from ark_relay.features import automas_keeper, automas_keeper as automas_procs
 
@@ -1545,50 +1534,41 @@ def _part_revive_gates():
         return run
 
 
-    def check(name, got, want):
-        print(f"  {'ok  ' if got == want else 'FAIL'} {name}: got {got!r}, want {want!r}")
-        return got == want
-
-
     def main():
-        ok = True
         orig = automas_procs.subprocess.run
 
         # 1. Installer on screen -> veto, whatever else is true.
         automas_procs.subprocess.run = _fake_run(
             {"tasklist /nh": b"AUTO-MAS-Setup.exe  1234 Console"})
-        ok &= check("安装程序在跑时 _installer_running", automas_procs._installer_running(), True)
+        check("安装程序在跑时 _installer_running", automas_procs._installer_running(), True)
 
         # 2. Ordinary process list -> no veto.
         automas_procs.subprocess.run = _fake_run({"tasklist /nh": b"explorer.exe 4 Console"})
-        ok &= check("平时 _installer_running", automas_procs._installer_running(), False)
+        check("平时 _installer_running", automas_procs._installer_running(), False)
 
         def boom(cmd, **kw): raise OSError("no tasklist")
         automas_procs.subprocess.run = boom
-        ok &= check("探测失败时 _installer_running 答「不知道」(None)",
-                    automas_procs._installer_running(), None)
-        ok &= check("探测失败时 _automas_shell_running 保守取 True",
-                    automas_procs._automas_shell_running(), True)
+        check("探测失败时 _installer_running 答「不知道」(None)",
+              automas_procs._installer_running(), None)
+        check("探测失败时 _automas_shell_running 保守取 True",
+              automas_procs._automas_shell_running(), True)
 
         # 4. Shell detection reads the shell, not the backend.
         automas_procs.subprocess.run = _fake_run(
             {"imagename eq auto-mas.exe": b"AUTO-MAS.exe  18864 Console"})
-        ok &= check("窗口在时 _automas_shell_running", automas_procs._automas_shell_running(), True)
+        check("窗口在时 _automas_shell_running", automas_procs._automas_shell_running(), True)
         automas_procs.subprocess.run = _fake_run(
             {"imagename eq auto-mas.exe": b"INFO: No tasks are running"})
-        ok &= check("窗口不在时 _automas_shell_running", automas_procs._automas_shell_running(), False)
+        check("窗口不在时 _automas_shell_running", automas_procs._automas_shell_running(), False)
 
         # 5. The grace period is long enough for a real first-run wizard and far
         #    shorter than the stuck state it guards against.
-        ok &= check("宽限期至少 10 分钟", automas_keeper.SHELL_GRACE_SECONDS >= 600, True)
+        check("宽限期至少 10 分钟", automas_keeper.SHELL_GRACE_SECONDS >= 600, True)
 
         automas_procs.subprocess.run = orig
-        print("PASS" if ok else "FAIL")
-        return 0 if ok else 1
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_scan_skips_seen():
@@ -1610,12 +1590,8 @@ def _part_scan_skips_seen():
     collector.parse_record = lambda p, r, *a: calls.append(p.name) or orig(p, r, *a)
     seen = {"2026-08-25/arknights/MAA-05-00-00"}
     out = collector.scan(root, seen)
-    ok1 = [r.run_id for r in out] == ["2026-09-07/arknights/MAA-05-00-00"]
-    ok2 = len(calls) == 1
-    print("  ", "✓" if ok1 else "✗", "只返回没见过的", [r.run_id for r in out])
-    print("  ", "✓" if ok2 else "✗", "见过的根本不解析（解析次数）", len(calls))
-    print("all checks passed" if ok1 and ok2 else "FAILED")
-    sys.exit(0 if ok1 and ok2 else 1)
+    check("只返回没见过的", [r.run_id for r in out], ["2026-09-07/arknights/MAA-05-00-00"])
+    check("见过的根本不解析（解析次数）", len(calls), 1)
 
 
 def _part_setup_tasks_verify():
@@ -1979,16 +1955,6 @@ def _part_transitional():
 
     from ark_relay.core import collector, collector as transport
 
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
-
-
     def write(root: Path, stem: str, result: str) -> Path:
         d = root / "2026-08-28" / "wuwa"
         d.mkdir(parents=True, exist_ok=True)
@@ -1998,7 +1964,7 @@ def _part_transitional():
         return f
 
 
-    def main() -> int:
+    def main() -> None:
         with tempfile.TemporaryDirectory() as t:
             root = Path(t)
 
@@ -2033,19 +1999,15 @@ def _part_transitional():
             check("老 payload 没这个键时默认 False（不改判历史）",
                   transport.payload_to_record(old).transitional, False)
 
-        print("\nall checks passed" if not FAILED else f"\nFAILED: {FAILED}")
-        return 0 if not FAILED else 1
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_undone_fallback_full():
     """When the 「⚠️ 这一轮没干完」 push fails, the fallback errwatch pushes carries the
 whole message, not its first line.
     """
-    import logging
     import os
     from datetime import datetime, timedelta
 
@@ -2071,20 +2033,6 @@ whole message, not its first line.
             return list(self.errs)
 
 
-    class Src:
-        def fetch(self, seen):
-            return []
-
-
-    class Grab(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.WARNING)
-            self.records = []
-
-        def emit(self, r):
-            self.records.append(r)
-
-
     handle._ship_evidence = lambda eng, rec: "https://cos.example/okww.zip"
     handle._hand_started = lambda eng, rec: ""
     handle._weekly_gates = lambda eng, rec: None
@@ -2098,13 +2046,13 @@ whole message, not its first line.
         cfg = Config()
         cfg.state_dir = TMP / f"s-{len(errs)}"
         cfg.state_dir.mkdir()
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes(errs))
+        e = eng_mod.Engine(cfg, source=_NoSource(), state=State(cfg.state_dir), notifier=Notes(errs))
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._verify_outcome = lambda r: MSG
         rec = RunRecord(run_id="2026-10-11/wuwa/OK-WW-05-00-05", script="OK-WW", user="wuwa",
                         started=START, finished=START + timedelta(minutes=30), ok=True)
-        grab = Grab()
+        grab = _Warnings()
         handle.log.addHandler(grab)
         try:
             handle._handle(e, rec)
@@ -2125,7 +2073,6 @@ whole message, not its first line.
     lines = run([])
     check("not an own alarm", getattr(lines[0], errwatch.ALARM, None) if lines else "-", None)
 
-    print(f"\n{'all passed' if not fails else f'{len(fails)} failed: {fails}'}")
 
 
 def _part_verdict_no_history_log():
@@ -2168,7 +2115,6 @@ def _part_verdict_no_history_log():
     msg = verdict._verify_outcome(eng, rec("MAA")) or ""
     check("asks for MAA's own log, not AUTO-MAS's", ("MAA 自己的日志" in msg, "AUTO-MAS 这一轮" in msg), (True, False))
 
-    print(f"\n{'all passed' if not fails else f'{len(fails)} failed: {fails}'}")
 
 
 def _part_weekly_three_claims():
@@ -2370,16 +2316,6 @@ def _part_maa_checks():
     from ark_relay.features.handle import _maa_app_log
     from ark_relay.features.outcome import maa_checks, summarize
 
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
-
-
     CHAINS = ["StartUp", "Fight", "Infrast", "Recruit", "Mall", "Award", "CloseDown"]
 
 
@@ -2461,12 +2397,9 @@ def _part_maa_checks():
             check("窗口内一行都没有也返回 None",
                   _maa_app_log(d, datetime(2030, 1, 1)), None)
 
-        print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
-        return 0 if not FAILED else 1
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_maa_closedown_postaction():
@@ -2498,11 +2431,6 @@ def _part_maa_closedown_postaction():
     cut_award = "\n".join(l for i, l in enumerate(lines) if not (i > award_start and '"taskchain":"Award"' in l and "Start" not in l))
     require("another dangling chain still fails",
             "Award" in bad(maa_checks(cut_award)).get("每一项都做到了结尾", ""))
-
-    if fails:
-        print(f"\n{len(fails)} failed")
-        sys.exit(1)
-    print("\nall checks passed")
 
 
 def _part_maa_config_rejected():
@@ -2595,21 +2523,12 @@ def _part_maa_config_rejected():
         cfg.state_dir = tmpdir()
         cfg.automas_dir = AUTOMAS
         e = eng_mod.Engine(cfg, source=type("Src", (), {"fetch": lambda self, seen: []})(),
-                           state=State(cfg.state_dir), notifier=Notes())
+                           state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._unfinished_queues = lambda now, entries: []
         e._deferred_update_busy = lambda: False
         return e
-
-
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return []
 
 
     handle._ship_evidence = lambda eng, rec: ""
@@ -2935,8 +2854,6 @@ def _part_maa_start_watchdog():
     w.at(T0 + timedelta(seconds=6))
     check("another MAA's chain does not close this start", w.dog.start and w.dog.start.pid, PID)
 
-    print("all checks passed" if not fails else f"FAILED: {fails}")
-
 
 def _part_maa_unreachable_cleared_notes():
     """test_maa_unreachable.py still passes on a relay tree whose RELEASE-NOTES.md is empty."""
@@ -3023,15 +2940,8 @@ def _part_maa_write_master_first():
 
     from ark_relay.core import mastercfg
 
-    FAILED: list[str] = []
     DOC = {"Current": "Default", "Configurations": {"Default": {"TaskQueue": [
         {"Type": "StartUp"}, {"Type": "Infrast", "UsesOfDrones": "Money"}]}}}
-
-
-    def require(name: str, ok: bool, detail: str = "") -> None:
-        print(f"  {'✅' if ok else '❌'} {name}{('  ' + detail) if detail else ''}")
-        if not ok:
-            FAILED.append(name)
 
 
     def drones(f: Path) -> str:
@@ -3096,25 +3006,18 @@ def _part_maa_write_master_first():
     require("master is written", drones(mf) == "PureGold", drones(mf))
     require("the reply says the master is already changed", "母本已经改好" in msg, msg)
 
-    print("FAILED: " + ", ".join(FAILED) if FAILED else "all passed")
-    sys.exit(1 if FAILED else 0)
-
 
 def _part_maa_unreachable():
 
     import gzip
     import shutil
-    import sys
-    from pathlib import Path
 
     HERE = Path(__file__).resolve().parent
     RELAY = HERE.parent
     if "--relay" in sys.argv:
         RELAY = Path(sys.argv[sys.argv.index("--relay") + 1]).resolve()
     sys.path.insert(0, str(RELAY))
-    sys.path.insert(0, str(HERE))
 
-    from _parts import fx_dir, tmpdir
     from ark_relay.core import collector
     from ark_relay.core import engine as eng_mod
     from ark_relay.core.config import Config
@@ -3124,14 +3027,6 @@ def _part_maa_unreachable():
     from ark_relay.features import machinecheck as mc
 
     CORPUS = fx_dir(HERE, "gamesim") / "corpus" / "maa" / "history"
-    fails: list[str] = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" + ("" if ok else f": {got!r} != {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     class N:
@@ -3144,11 +3039,6 @@ def _part_maa_unreachable():
 
         def alert_log(self):
             return None
-
-
-    class Src:
-        def fetch(self, seen):
-            return []
 
 
     def booked(day: str, stem: str):
@@ -3167,7 +3057,7 @@ def _part_maa_unreachable():
         cfg.state_dir = sd
         cfg.automas_dir = None
         cfg.maa_dir = tmpdir()            # MAA's own debug logs: none kept for the corpus runs
-        return eng_mod.Engine(cfg, source=Src(), state=State(sd), notifier=N())
+        return eng_mod.Engine(cfg, source=_NoSource(), state=State(sd), notifier=N())
 
 
     print("\n[没进游戏：2026-09-23 MAA-05-00-01「MAA 未能正确登录 PRTS」]")
@@ -3383,9 +3273,6 @@ def _part_maa_unreachable():
     finally:
         gameupdate.pending, gameupdate.run_deferred = real_gu
 
-    print("\n" + ("FAILED: " + ", ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_outcome_main():
     """结果核对：出现在日志里 != 做成了。"""
@@ -3394,21 +3281,11 @@ def _part_outcome_main():
 
     from ark_relay.features.outcome import maa_sanity_short, maaend_checks, okww_checks, patch_effect_checks, summarize
 
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok ' if ok else 'FAIL'}  {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
-
-
     def bad_labels(checks):
         return sorted(c.label for c in checks if not c.ok)
 
 
-    def main() -> int:
+    def main() -> None:
         print("[三轮真实日志：任务起来了但一场没打]")
         # 11:13 那轮：找到了任务、开了界面，然后原地退出
         text = ("NightmareNestTask:opened gray_book_boss\n"
@@ -3651,12 +3528,9 @@ def _part_outcome_main():
         check("过滤生效且只进一个点位", bad_labels(got6), [])
         check("没配过滤就不加这两条", [c.label for c in okww_checks(text6, expect_nest=True) if "指定点位" in c.label or "别的点位" in c.label], [])
 
-        print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
-        return 0 if not FAILED else 1
 
 
-    if __name__ == "__main__":
-        raise SystemExit(main())
+    main()
 
 
 def _part_outcome_nest_words():
@@ -3806,19 +3680,12 @@ def _part_outcome_nest_words():
           [(False, "连续 3 次失败，退出本次任务，不再重试")])
     check("干净的日常早做完：照旧全绿", outcome.summarize(outcome.okww_checks(TAIL, expect_nest=False), "OK-WW"), None)
 
-    print("\n" + ("all checks passed" if not fails else f"{len(fails)} FAILED: {fails}"))
-
 
 def _part_gamelog_errors():
     import logging
     import os
-    import sys
     import types
     from datetime import datetime
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _parts import tmpdir
 
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), ARK_HISTORY_DIR=str(TMP / "history"), ARK_AUTOMAS_DIR="")
@@ -3828,15 +3695,6 @@ def _part_gamelog_errors():
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import errwatch
     from ark_relay.features import outcome as ge
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: got {got!r}, want {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     # One real line per known shape, as the machine wrote it.
@@ -3977,17 +3835,8 @@ TypeError: 'NoneType' object is not subscriptable
     print("[check_round: one alarm per round, plain words, raw lines to the technical log]")
 
 
-    class _H(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.WARNING)
-            self.records = []
-
-        def emit(self, r):
-            self.records.append(r)
-
-
     ARK = logging.getLogger(errwatch.ARK)
-    h = _H()
+    h = _Warnings()
     ARK.addHandler(h)
     try:
         sd = TMP / "r" / "state"
@@ -4054,9 +3903,6 @@ TypeError: 'NoneType' object is not subscriptable
     check("a real failure in zh still reaches the group", len(ge.unregistered(
         "OK-WW", "2026-11-04 09:30:00,000 ERROR TaskExecutor 无法领取先约电台奖励")), 1)
 
-    print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
-    sys.exit(1 if fails else 0)
-
 
 def _part_m6_counts():
     """M6 (2026-09-23): run counts and sanity spent against the real 09-20..22 logs."""
@@ -4069,10 +3915,6 @@ def _part_m6_counts():
     from ark_relay.features import annihilation
     from ark_relay.core.config import SERVER_TZ
 
-
-    def chk(name, got, want):
-        if got != want:
-            fails.append(f"{name}: got {got!r}, want {want!r}")
 
     maa = """[2026-09-20 09:02:43.459][INF][TaskQueueViewModel]     <2> 开始行动 1~10 次, -60理智
 理智: 117/210
@@ -4100,12 +3942,12 @@ def _part_m6_counts():
         f = pathlib.Path(d) / "maa.log"
         f.write_text(maa, encoding="utf-8")
         r = collector_maa.parse_maa_log(f)
-        chk("方舟 09-20 早 次数", r.get("run_times"), 19)
-        chk("方舟 09-20 早 理智", r.get("sanity_spent"), 114)
-        chk("方舟 09-20 早 酯原料", r.get("drop_statistics", {}).get("酯原料"), 2)
-        chk("方舟 09-20 早 龙门币", r.get("drop_statistics", {}).get("龙门币"), 1368)
+        check("方舟 09-20 早 次数", r.get("run_times"), 19)
+        check("方舟 09-20 早 理智", r.get("sanity_spent"), 114)
+        check("方舟 09-20 早 酯原料", r.get("drop_statistics", {}).get("酯原料"), 2)
+        check("方舟 09-20 早 龙门币", r.get("drop_statistics", {}).get("龙门币"), 1368)
         f.write_text(maa + "[2026-09-20 21:36:28.217][INF][TaskQueueViewModel]     <2> 开始行动 20~21 次, -12理智\n", encoding="utf-8")
-        chk("方舟 单趟编号", collector_maa.parse_maa_log(f).get("run_times"), 21)
+        check("方舟 单趟编号", collector_maa.parse_maa_log(f).get("run_times"), 21)
 
     end = "\n".join([
         "[2026-09-22 09:47:29.620] 任务开始: 🎱基质刷取",
@@ -4113,7 +3955,7 @@ def _part_m6_counts():
         *["[2026-09-22 09:50:42.245] ✅已完成一次基质刷取"] * 5,
         "[2026-09-22 09:58:39.769] 任务完成: 🎱基质刷取",
     ])
-    chk("终末地 09-22 理智", collector_maaend._maaend_farm(end).get("maaend_sanity_spent"), 400)
+    check("终末地 09-22 理智", collector_maaend._maaend_farm(end).get("maaend_sanity_spent"), 400)
 
     ov = {
         "AutoCollectValleyIV": {"type": "switch", "value": True},
@@ -4123,23 +3965,19 @@ def _part_m6_counts():
         "AutoCollectWulingRareRoutes": {"caseNames": [f"Route{i}" for i in (1, 2, 3, 7, 8, 9, 10, 11, 12, 15, 16, 17)]},
         "AutoCollectSchedule": {"caseNames": ["AutoCollectScheduleMonday"]},
     }
-    chk("采集路线 新两键", plan._collect_route_count(ov), 17)
+    check("采集路线 新两键", plan._collect_route_count(ov), 17)
     ov["AutoCollectWuling"]["value"] = False
-    chk("采集路线 关掉的区不算", plan._collect_route_count(ov), 5)
-    chk("采集路线 旧键仍认", plan._collect_route_count({"AutoCollectRoutes": {"caseNames": ["a", "b"]}}), 2)
+    check("采集路线 关掉的区不算", plan._collect_route_count(ov), 5)
+    check("采集路线 旧键仍认", plan._collect_route_count({"AutoCollectRoutes": {"caseNames": ["a", "b"]}}), 2)
 
     sun = datetime(2026, 9, 20, 21, 0, tzinfo=SERVER_TZ)
     done_this_week = {"Info": {"Annihilation": "Annihilation"},
                       "Data": {"AnnihilationCompletedWeek": annihilation.week_key(sun)}}
     with mock.patch.object(annihilation, "_maa_user", lambda d: done_this_week):
         with mock.patch.object(plan, "_tomorrow", lambda: sun + timedelta(days=1)):
-            chk("周日排周一 剿灭照打（新的一周）", plan._annihilation_done_tomorrow(pathlib.Path("automas")), False)
+            check("周日排周一 剿灭照打（新的一周）", plan._annihilation_done_tomorrow(pathlib.Path("automas")), False)
         with mock.patch.object(plan, "_tomorrow", lambda: sun - timedelta(days=2)):
-            chk("周五排周六 本周已打满", plan._annihilation_done_tomorrow(pathlib.Path("automas")), True)
-
-    if fails:
-        print("\n".join(fails)); sys.exit(1)
-    print("all checks passed")
+            check("周五排周六 本周已打满", plan._annihilation_done_tomorrow(pathlib.Path("automas")), True)
 
 
 def _part_m6_okww():
@@ -4151,14 +3989,6 @@ fixtures/m6-okww, cut from the 09-21 and 09-22 runs pulled back on 09-23).
     from ark_relay.features import outcome as c, outcome as o
 
     FX = fx_dir(Path(__file__), "fixtures") / "m6-okww"
-    bad = []
-
-
-    def check(label, got, want):
-        print(("  ✓ " if got == want else "  ✗ ") + label + ("" if got == want else f": got {got!r}, want {want!r}"))
-        if got != want:
-            bad.append(label)
-
 
     r = c.parse_okww_log(FX / "0921-weekly.log")
     t = (FX / "0921-weekly.log").read_text(encoding="utf-8")
@@ -4183,11 +4013,6 @@ fixtures/m6-okww, cut from the 09-21 and 09-22 runs pulled back on 09-23).
         check("没有领奖框原文时照旧：最后一次读数 0", (r.get("okww_stamina_left"), r.get("okww_stamina_left_exact")), (0, False))
     finally:
         p.unlink(missing_ok=True)
-
-    if bad:
-        print("FAILED: " + ", ".join(bad))
-        sys.exit(1)
-    print("all checks passed")
 
 
 if __name__ == "__main__":
