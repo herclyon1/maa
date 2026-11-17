@@ -64,14 +64,11 @@ def _part_okww_alive_cache():
     TTL = getattr(snapshot, "OKWW_ALIVE_TTL", 30.0)
     NO_QUERY = getattr(snapshot, "no_process_query", contextlib.nullcontext)
 
-
     asked = []
-
 
     def fake_alive():
         asked.append(1)
         return True
-
 
     class Box:
         last_error = ""
@@ -80,10 +77,8 @@ def _part_okww_alive_cache():
         def publish(self, payload):
             return True
 
-
     def tmp():
         return tempfile.mkdtemp()
-
 
     cfg = types.SimpleNamespace(automas_dir=tmp(), maaend_dir=tmp(), okww_dir=tmp(), state_dir=tmp())
     saved = (redbutton._okww_python_alive, subprocess.run, dict(CACHE))
@@ -130,7 +125,6 @@ def _part_okww_drift():
 
     from ark_relay.features import okww_overlay
 
-
     V373 = (fx_dir(Path(__file__), "fixtures")
             / "okww-NightmareNestTask-v3.7.3.py.txt").read_text(encoding="utf-8")
     # v3.7.2's find_nest differs from v3.7.3's in the box top only (diff of the two releases).
@@ -141,7 +135,6 @@ def _part_okww_drift():
     VINST = (INST / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
     DAILY_INST = (INST / "DailyTask.py.txt").read_text(encoding="utf-8")
 
-
     def okww(nest_text, extra=None):
         root = tmpdir()
         src = root.joinpath(*okww_overlay._SRC)
@@ -151,7 +144,6 @@ def _part_okww_drift():
         for name, text in (extra or {}).items():
             (src / name).write_text(text, encoding="utf-8")
         return root
-
 
     print("\n[钉住的三处都从覆盖文件里读出来]")
     got = {f"{c}.{m}": (sha, a) for c, m, sha, a in okww_overlay.pins()}
@@ -222,7 +214,6 @@ def _part_okww_error_event():
 
     from ark_relay.features import outcome as co
 
-
     print("[the real 09-01 log: the weekly claim's own wait, not the wrapper]")
     real = (fx_dir(Path(__file__), "replay") / "2026-09-01" / "wuwa" / "OK-WW-06-35-43.log"
             ).read_text(encoding="utf-8", errors="replace")
@@ -232,10 +223,8 @@ def _part_okww_error_event():
 
     STACK = "".join(f'  File "x{i}.py", line {i}, in f\n    g()\n' for i in range(600))   # ~16 KB
 
-
     def head(ts, who, msg):
         return f"2026-09-01 {ts} ERROR TaskExecutor {who}:{msg} Traceback (most recent call last):\n"
-
 
     print("\n[one event, headers far apart in the text but within 2 s: grouped]")
     text = ("2026-09-01 10:50:13,335 INFO TaskExecutor TaskExecutor:wait_until timeout <f> 10 seconds\n"
@@ -276,7 +265,6 @@ def _part_okww_error_reason():
     """OK-WW 失败原因要写真的，「进不了游戏」只给真没进去的那种。"""
 
     from ark_relay.core import collector
-
 
     TODAY = """2026-09-07 09:19:33,751 INFO MainThread ok:ok-script init v3.6.7
 2026-09-07 09:20:14,057 ERROR ok.core.start_controller start_controller:Game window is not connected BitBlt_True_1920x1080
@@ -496,7 +484,6 @@ def _part_okww_failed_reason():
 
     from ark_relay.features import outcome as co, outcome
 
-
     L1 = ("2026-10-12 09:52:20,812 ERROR TaskExecutor FarmEchoTask:这一趟按失败结束：周本领奖：这一步没做成 "
           "WaitFailedException()，停下不乱点 Traceback (most recent call last):\n"
           "ark_relay.ArkStopped\n")
@@ -529,13 +516,11 @@ def _part_okww_i18n():
     import shutil
     import time
 
-
     TMP = tmpdir()
     HERE = Path(__file__).resolve().parent
     sys.path.insert(0, str(HERE.parent))
     from ark_relay.features import outcome as I
     from ark_relay.features import outcome
-
 
     def root_with(po_text=None, ts_text=None, name="r"):
         root = TMP / name
@@ -550,10 +535,8 @@ def _part_okww_i18n():
         root.mkdir(parents=True, exist_ok=True)
         return root
 
-
     def line(msg, logger="NightmareNestTask", level="INFO"):
         return f"2026-11-05 09:21:32,123 {level} TaskExecutor {logger}:{msg}"
-
 
     print("[readers]")
     PO = '''msgid ""
@@ -683,7 +666,6 @@ def _part_okww_landed():
     import ast
 
     SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "windows" / "okww-landed.py"
-
 
     src = SCRIPT.read_text(encoding="utf-8")
     tree = ast.parse(src)
@@ -833,12 +815,10 @@ def _part_okww_python_filter():
 
     from ark_relay.features import preupdate as P
 
-
     def is_okww(cmdline: str, ps: str = P._OKWW_PY) -> bool:
         """Does the Where-Object of `ps` keep a process with this command line?"""
         pats = re.findall(r"-like\s+'([^']*)'", ps)
         return any(fnmatch.fnmatchcase(cmdline.lower(), p.lower()) for p in pats)
-
 
     print("[the filter: OK-WW's install folder, nothing else]")
     REAL = r'"D:\ark\okww\data\apps\ok-ww\python\pythonw.exe" D:\ark\okww\data\apps\ok-ww\working\main.py -t 2 -e'
@@ -857,11 +837,9 @@ def _part_okww_python_filter():
 
     print("[an unreadable list is None (unknown), never [] (none left)]")
 
-
     class Done:
         def __init__(self, rc, out=b"", err=b""):
             self.returncode, self.stdout, self.stderr = rc, out, err
-
 
     real_py = P._okww_py
     cases = [
@@ -887,16 +865,13 @@ def _part_okww_quiesce_order():
 
     from ark_relay.features import preupdate as pk
 
-
     calls = []
     real_run = subprocess.run
-
 
     class Done:
         returncode = 0
         stdout = b""
         stderr = b""
-
 
     subprocess.run = lambda *a, **k: (calls.append(list(a[0]) if a else []), Done())[1]
     try:
@@ -927,19 +902,15 @@ def _part_okww_quiesce_order():
     PROCS = [{"ProcessId": 4242, "ExecutablePath": "D:\\Wuthering Waves\\launcher.exe"},
              {"ProcessId": 5151, "ExecutablePath": "C:\\Program Files\\Other Game\\launcher.exe"}]
 
-
     class Listed(Done):
         stdout = json.dumps(PROCS).encode()
 
-
     calls.clear()
-
 
     def fake_run(*a, **k):
         cmd = list(a[0]) if a else []
         calls.append(cmd)
         return Listed() if any("Name='launcher.exe'" in str(x) for x in cmd) else Done()
-
 
     subprocess.run = fake_run
     try:
@@ -967,12 +938,10 @@ def _part_okww_quiesce_order():
     print("[a caller's time budget reaches every PowerShell call (echofarm.stop_okww, 2026-10-13)]")
     _pwsh_timeouts = []
 
-
     def _rec(*a, **k):
         if a and "-Command" in a[0]:
             _pwsh_timeouts.append(k.get("timeout"))
         return Done()
-
 
     subprocess.run = _rec
     try:
@@ -1002,7 +971,6 @@ def _part_okww_report():
     from ark_relay.core import collector
     from ark_relay.features import outcome as collector_okww
     from ark_relay.core import ledger as core
-
 
     LOG = """\
 2026-08-25 21:31:02 INFO ok.task.task DailyTask:info_set Chars 清宵, 折枝, 维里奈
@@ -1119,7 +1087,6 @@ def _part_okww_structured():
     sys.path.insert(0, str(ROOT))
     from ark_relay.features import outcome as collector_okww
 
-
     REAL = (fx_dir(ROOT, "replay") / "2026-09-07" / "wuwa" / "OK-WW-07-27-50.log"
             ).read_text(encoding="utf-8", errors="replace")
 
@@ -1199,7 +1166,6 @@ def _part_okww_battle_pass():
     from ark_relay.core import texts
     from ark_relay.features import outcome as collector_okww
 
-
     REAL = """2026-09-29 09:28:42,334 INFO TaskExecutor DailyTask:info_set current task in main esc=True
 2026-09-29 09:28:43,334 INFO TaskExecutor DailyTask:battle pass
 2026-09-29 09:28:53,798 INFO TaskExecutor TaskExecutor:wait_until timeout <function OCR.wait_ocr.<locals>.<lambda> at 0x000002BC775F9C60> 10 seconds
@@ -1239,9 +1205,7 @@ def _part_okww_battle_pass_claim():
     from ark_relay.features import okww_overlay
     from ark_relay.features import outcome
 
-
     UPSTREAM = (fx_dir(HERE, "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "DailyTask.py.txt").read_text(encoding="utf-8")
-
 
     def overlay():
         """A fresh copy of the overrides file. Its own install block fails here (no OK-WW) and is caught."""
@@ -1250,7 +1214,6 @@ def _part_okww_battle_pass_claim():
         ns["_applied"].clear()
         ns["_skipped"].clear()
         return ns
-
 
     def upstream_method(text=UPSTREAM):
         """Upstream's claim_battle_pass as a plain function of self, cut out of the file."""
@@ -1262,11 +1225,9 @@ def _part_okww_battle_pass_claim():
         exec(compile(textwrap.dedent("".join(lines)), "DailyTask.py", "exec"), scope)
         return scope["claim_battle_pass"]
 
-
     class Box:
         def __init__(self, name):
             self.name = name
-
 
     class Game:
         """The world and the podcast page. `opens` says, per Alt+click, whether the page comes up."""
@@ -1328,17 +1289,14 @@ def _part_okww_battle_pass_claim():
         def tr(self, msg):
             return msg
 
-
     def as_log(game):
         """The lines as OK-WW writes them for the task executor (what the relay reads)."""
         out = [f"2026-10-12 09:30:{i:02d},000 INFO TaskExecutor DailyTask:{m}" for i, m in enumerate(game.logs)]
         out += [f"2026-10-12 09:31:{i:02d},000 ERROR TaskExecutor DailyTask:{m} " for i, m in enumerate(game.errors)]
         return "\n".join(out) + "\n"
 
-
     def no_logs(acts):
         return [a for a in acts if a[0] != "sleep"]
-
 
     ns = overlay()
 
@@ -1400,7 +1358,6 @@ def _part_okww_battle_pass_claim():
 
     print("\n[installed on DailyTask: our copy when the body matches, upstream's otherwise]")
 
-
     def install(text):
         mod = types.ModuleType("src.task.DailyTask")
         mod.DailyTask = type("DailyTask", (), {})
@@ -1417,13 +1374,11 @@ def _part_okww_battle_pass_claim():
         n["_install_battle_pass"]()
         return n, mod.DailyTask
 
-
     def _span(text):
         tree = ast.parse(text)
         cls = next(x for x in tree.body if isinstance(x, ast.ClassDef) and x.name == "DailyTask")
         fn = next(x for x in cls.body if isinstance(x, ast.FunctionDef) and x.name == "claim_battle_pass")
         return fn.lineno - 1, fn.end_lineno
-
 
     n, cls = install(UPSTREAM)
     check("applied, nothing skipped", (n["_applied"], n["_skipped"]), (["DailyTask.claim_battle_pass"], []))
@@ -1542,14 +1497,11 @@ def _part_okww_claim_readback():  # noqa: C901
 
     from ark_relay.features import okww_overlay
 
-
     class Disabled(Exception):
         """ok.TaskDisabledException."""
 
-
     class Revived(Exception):
         """src.task.BaseCombatTask.CharRevivedException."""
-
 
     class BaseWWTask(metaclass=_AnyMeta):
         # Upstream v3.7.4 BaseWWTask.py:520-526, verbatim: ESC, i.e. 取消.
@@ -1578,7 +1530,6 @@ def _part_okww_claim_readback():  # noqa: C901
         def click_team_challenge(self):
             self.wait_click_feature('team_start_challenge', raise_if_not_found=True, click_after_delay=0.5, after_sleep=1)
             self.wait_click_skip_dialog_confirm()
-
 
     class FarmEchoTask(BaseWWTask):
         def teleport_to_configured_boss(self):
@@ -1614,7 +1565,6 @@ def _part_okww_claim_readback():  # noqa: C901
         def incr_drop(self, dropped):
             self.events.append("incr")
 
-
     mods = {
         "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
                                     Logger=types.SimpleNamespace(get_logger=lambda n: types.SimpleNamespace(
@@ -1644,7 +1594,6 @@ def _part_okww_claim_readback():  # noqa: C901
             1: ["本周剩余可收取次数：1/3_1.00", "x60_0.79"], 0: ["本周剩余可收取次数：0/3_0.99", "x60_0.79"]}
     UNREAD = ["x60_0.79"]
 
-
     class _At:
         """An OCR box with a place on the 1920x1080 screen."""
         def __init__(self, name, x, y):
@@ -1654,16 +1603,13 @@ def _part_okww_claim_readback():  # noqa: C901
             return (f"Box(name='{self.name}', x={self.x}, y={self.y}, width={self.width}, "
                     f"height={self.height}, confidence=100)")
 
-
     def claim_screen(wave, spare, cap="240"):
         """The claim dialog over the top bar (10-12 11:44:41: backup 24 at x=1208, y=50)."""
         return [_At(str(spare), 1208, 50), _At(f"{wave}/{cap}", 1480, 50), _At("15652", 1800, 50),
                 _At(CLAIM_DIALOG[0], 700, 500), _At("取消", 640, 700), _At("确认", 1280, 700)]
 
-
     FULL = claim_screen(240, 0, cap="240+")
     TOPUP = claim_screen(41, 24)
-
 
     def task(left=None, pages=(), screens=(), after=(), dialogs=(), gems=0, arena_at=None, crystal=True,
              walk_error=None, claim_up=True, boss="Weekly Challenge"):
@@ -1743,7 +1689,6 @@ def _part_okww_claim_readback():  # noqa: C901
         t.find_one = lambda *a, **kw: t.dialogs.pop(0) if t.dialogs else None
         return t
 
-
     def lap(t):
         """One lap's end: the fight is over, upstream calls incr_drop. 'stop' on a deliberate stop."""
         try:
@@ -1751,7 +1696,6 @@ def _part_okww_claim_readback():  # noqa: C901
         except Disabled:
             return "stop"
         return "on"
-
 
     print("[(E) 结晶按 F→领奖弹窗点确认（不按 ESC）→波片不够动用备用体力→确认→结算页「退出副本」→回去读到 2/3]")
     t = task(left=3, pages=[PAGE[2]], screens=[TOPUP, SETTLEMENT], gems=1)
@@ -1795,7 +1739,6 @@ def _part_okww_claim_readback():  # noqa: C901
     def on_screen(t):
         t.height_of_screen = lambda r: r * 1080
         return t
-
 
     print("\n[领奖弹窗：波片 17 + 备用 24 不够 60（10-12 11:44）：先读顶栏，点取消、按波片不足跳过，不动备用体力]")
     t = on_screen(task(left=3, screens=[claim_screen(17, 24)], gems=2))
@@ -1911,10 +1854,8 @@ def _part_okww_claim_readback():  # noqa: C901
     # walk_to_treasure, 09:52:20 WaitFailedException. Handing it back (a8cc86b6) let
     # upstream's next lap ESC out of the realm with the reward not taken.
 
-
     class WaitFailedException(Exception):
         """ok.WaitFailedException."""
-
 
     t = task(left=3, walk_error=WaitFailedException())
     check("stopped", lap(t), "stop")
@@ -2026,7 +1967,6 @@ def _part_okww_daily_chests():
     from ark_relay.features import okww_overlay
     from ark_relay.features import outcome
 
-
     ns = {"__name__": "ark_overrides_test"}
     exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
 
@@ -2036,11 +1976,9 @@ def _part_okww_daily_chests():
     GLYPHS = {20: (592, 93, 615, 112), 40: (884, 93, 907, 112), 60: (1177, 93, 1201, 112),
               80: (1471, 93, 1493, 112), 100: (1749, 93, 1787, 112)}
 
-
     def box(name, x0, y0, x1, y1, pad=0):
         return types.SimpleNamespace(name=name, x=x0 - pad, y=y0 - pad, width=x1 - x0 + 1 + 2 * pad,
                                      height=y1 - y0 + 1 + 2 * pad)
-
 
     LABELS = [box(str(t), *g, pad=4) for t, g in GLYPHS.items()]
     # What else the OCR reads as a tier number: the big points 「80」 at the left, above the row,
@@ -2076,14 +2014,12 @@ def _part_okww_daily_chests():
     CLAIMED = {t: ROW[round(chest[t][1]) - R:round(chest[t][1]) + R, round(chest[t][0]) - R:round(chest[t][0]) + R].copy()
                for t in (20, 40, 60, 80)}
 
-
     def morning():
         img = ROW.copy()
         for t in (20, 40, 60, 80):
             x, y = (round(v) for v in chest[t])
             img[y - R:y + R, x - R:x + R] = UNCLAIMED
         return img
-
 
     class Game:
         """The dailies page: OCR answers, clicks claim a chest (when the game takes them)."""
@@ -2128,7 +2064,6 @@ def _part_okww_daily_chests():
 
         def screenshot(self, name):
             self.logs.append(f"[shot {name}]")
-
 
     print("\n[the morning: 80 points, 20-80 not claimed -> each clicked, each checked]")
     g = Game(morning())
@@ -2192,13 +2127,11 @@ def _part_okww_daily_chests():
 
     print("\n[the row is not found again after a click -> its own failure, no verdict from the frame before the click]")
 
-
     class LostRow(Game):
         def ocr(self, *a, match=None, **k):
             if match is not None and "100" in match.pattern and self.clicks:
                 return []
             return super().ocr(*a, match=match, **k)
-
 
     g = LostRow(morning())
     ns["_claim_tiers"](g)
@@ -2251,9 +2184,7 @@ def _part_okww_farm_hook():  # noqa: C901
 
     from ark_relay.features import okww_overlay
 
-
     REPLAY = fx_dir(Path(__file__), "replay") / "2026-09-07" / "wuwa"
-
 
     def logged(path, lineno, pattern):
         """The integer `pattern` captures on line `lineno` of a replay log (1-based)."""
@@ -2263,7 +2194,6 @@ def _part_okww_farm_hook():  # noqa: C901
         m = re.search(pattern, line)
         assert m, f"{path.name}:{lineno} no longer reads {pattern!r}: {line}"
         return int(m.group(1))
-
 
     # Real numbers. OK-WW-07-27-50.log:410-411 read the daily after the farm had spent
     # 180 (the old copy farmed on anyway: :419-420 read 75 + 26 and went in);
@@ -2275,14 +2205,11 @@ def _part_okww_farm_hook():  # noqa: C901
     BACK_UP = logged(DAY, 420, r"TacetTask:info_set back_up_stamina (\d+)$")
     USED_PART = logged(REPLAY / "OK-WW-06-08-44.log", 131, r"current daily progress (\d+)$")
 
-
     class Disabled(Exception):
         """ok.TaskDisabledException."""
 
-
     class Revived(Exception):
         """src.task.BaseCombatTask.CharRevivedException."""
-
 
     class _Any(type):
         """A stand-in upstream class: any method the overlay reads exists and does nothing."""
@@ -2294,16 +2221,13 @@ def _part_okww_farm_hook():  # noqa: C901
                 return None
             return anything
 
-
     number_re = re.compile(r"^(\d+)$")
     stamina_re = re.compile(r"^(\d+)/(\d+)$")
     EV = []          # one call order across every task object
 
-
     class Box:
         def __init__(self, name, x=0):
             self.name, self.x = name, x
-
 
     class BaseWWTask(metaclass=_Any):
         # Upstream v3.7.3 BaseWWTask.py:409-424, verbatim: the overlay replaces it only
@@ -2325,7 +2249,6 @@ def _part_okww_farm_hook():  # noqa: C901
             self.info_set('back_up_stamina', back_up)
             return current, back_up, current + back_up
 
-
     class TacetTask(BaseWWTask):
         def farm_tacet(self, daily=False, used_stamina=0, config=None, max_recovery_retries=3):
             # TacetTask.py:48-55: must_use is how much the daily step insists on spending.
@@ -2340,16 +2263,13 @@ def _part_okww_farm_hook():  # noqa: C901
             self.read = self.get_stamina()
             return self.result
 
-
     class ForgeryTask(BaseWWTask):
         def farm_forgery(self, daily=False, used_stamina=0, config=None):
             EV.append(("farm_forgery", 180 - used_stamina if daily else 0, config))
 
-
     class SimulationTask(BaseWWTask):
         def farm_simulation(self, daily=False, used_stamina=0, config=None):
             EV.append(("farm_simulation", 180 - used_stamina if daily else 0, config))
-
 
     class DailyTask(BaseWWTask):
         def run(self):
@@ -2394,7 +2314,6 @@ def _part_okww_farm_hook():  # noqa: C901
         def claim_battle_pass(self):
             EV.append("claim_battle_pass")
 
-
     mods = {
         "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
                                     Logger=types.SimpleNamespace(get_logger=lambda n: types.SimpleNamespace(
@@ -2424,7 +2343,6 @@ def _part_okww_farm_hook():  # noqa: C901
     ns["NO_STAMINA_FLAG"] = no_farm
     SUPPORT = ["Tacet Suppression", "Forgery Challenge", "Simulation Challenge"]
 
-
     def wire(t):
         t.logs, t.shots, t.sleeps, t.info = [], [], [], {}
         t.log_info = lambda msg, notify=False: t.logs.append(msg)
@@ -2434,7 +2352,6 @@ def _part_okww_farm_hook():  # noqa: C901
         t.info_set = lambda k, v: t.info.__setitem__(k, v)
         t.ensure_main = lambda time_out=30: EV.append("ensure_main")
         return t
-
 
     def daily(used, points=POINTS, target=SUPPORT[0], additional_error=None, farm_error=None):
         EV.clear()
@@ -2448,10 +2365,8 @@ def _part_okww_farm_hook():  # noqa: C901
         d.farms = farms
         return d
 
-
     def farm_calls():
         return [e for e in EV if isinstance(e, tuple)]
-
 
     # ---------------------------------------------------------------------------
     print(f"\n[附加任务（周本）排在读日常之前；尾巴上那次是空操作。已用 {USED_PART}/180]")
@@ -3076,7 +2991,6 @@ def _part_okww_merge_step():
 
     from ark_relay.features import outcome as co
 
-
     T = "2026-10-12 10:{:02d}:00,000 {} TaskExecutor {}"
     MERGE_FAILED = "\n".join([
         T.format(1, "INFO", "MergeEchoTask:check discarded echo"),
@@ -3102,7 +3016,6 @@ def _part_okww_plan_bits():
     os.environ.pop("ARK_OKWW_DIR", None)
     from ark_relay.core import plan
 
-
     def automas(daily, *, farm=None, quick=None):
         root = tmpdir()
         d = root / "data" / "okww-sid" / "Default" / "ConfigFile"
@@ -3117,7 +3030,6 @@ def _part_okww_plan_bits():
                        "SubConfigsInfo": {"UserData": {"u1": {
                            "Info": {"IfQuickConfig": True}, "Task": quick}}}}}), encoding="utf-8")
         return root, d
-
 
     print("[_okww_plan_bits]")
     check("no AUTO-MAS dir -> nothing", plan._okww_plan_bits(None), [])
@@ -3169,17 +3081,13 @@ def _part_okww_revive_and_retry():  # noqa: C901
 
     from ark_relay.features import okww_overlay
 
-
     REPLAY = fx_dir(Path(__file__), "replay")
-
 
     class Disabled(Exception):
         """ok.TaskDisabledException."""
 
-
     class Revived(Exception):
         """src.task.BaseCombatTask.CharRevivedException."""
-
 
     class _Any(type):
         """A stand-in upstream class: any method the overlay reads exists and does nothing."""
@@ -3191,7 +3099,6 @@ def _part_okww_revive_and_retry():  # noqa: C901
                 return None
             return anything
 
-
     class Box:
         """ok-script's OCR box: the overlay reads .name and str()."""
         def __init__(self, name, x=0, y=0, width=10, height=10):
@@ -3200,10 +3107,8 @@ def _part_okww_revive_and_retry():  # noqa: C901
         def __str__(self):
             return f"Box(name='{self.name}', x={self.x}, y={self.y}, width={self.width}, height={self.height})"
 
-
     class BaseWWTask(metaclass=_Any):
         pass
-
 
     class FarmEchoTask(BaseWWTask):
         def revive_action(self):
@@ -3255,7 +3160,6 @@ def _part_okww_revive_and_retry():  # noqa: C901
                 raise RuntimeError("revive failed")
             return True
 
-
     mods = {
         "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
                                     Logger=types.SimpleNamespace(get_logger=lambda n: types.SimpleNamespace(
@@ -3303,7 +3207,6 @@ def _part_okww_revive_and_retry():  # noqa: C901
         t.click = lambda target, after_sleep=0: t.clicks.append(str(getattr(target, "name", target)))
         t.wait_in_team_and_world = lambda time_out=10, **kw: t.waits.append(time_out) or True
         return t
-
 
     # ---------------------------------------------------------------------------
     print("\n[revive_action: a realm death while farming echoes runs upstream's revive (cancel the popup), no revive item]")
@@ -3384,7 +3287,6 @@ def _part_okww_revive_and_retry():  # noqa: C901
     t = task()
     t.screenshot = lambda name: t.events.append(f"shot {name}")
 
-
     def _odd_lap(self=t):
         self.bodies += 1
         ns["_stop"](self, "weekly_claim_unchanged", "周本领奖：回读次数没变（2/3），这次没领到")
@@ -3402,7 +3304,6 @@ def _part_okww_revive_and_retry():  # noqa: C901
 
     print("\n[FarmEchoTask.run: a waveplate shortage (_skip_short) is a normal state - returns, no FAILED_MARK, no ArkStopped]")
     t = task()
-
 
     def _short_lap(self=t):
         self.bodies += 1
@@ -3423,7 +3324,6 @@ def _part_okww_revive_and_retry():  # noqa: C901
     t = task()
     t.screenshot = lambda name: t.events.append(f"shot {name}")
 
-
     def _odd_lap2(self=t):
         self.bodies += 1
         ns["_stop"](self, "weekly_claim_unchanged", "周本领奖：回读次数没变（2/3），这次没领到")
@@ -3438,7 +3338,6 @@ def _part_okww_revive_and_retry():  # noqa: C901
 
     print("\n[FarmEchoTask.run：真没事可做（上游自己的跳过）照旧是跳过]")
     t = task()
-
 
     def _done_lap(self=t):
         self.bodies += 1
@@ -3514,7 +3413,6 @@ def _part_okww_stamina_end():
 
     from ark_relay.core import collector
 
-
     REAL = """
 2026-08-28 13:40:57,971 INFO TaskExecutor ForgeryTask:info_set current_stamina 240
 2026-08-28 13:41:59,293 INFO TaskExecutor BaseWWTask:当前体力大于等于双倍, 240 >= 80
@@ -3574,21 +3472,17 @@ def _part_okww_stamina_nest_verdict():
 
     FX = fx_dir(Path(__file__), "fixtures")
 
-
     def line(t, who, msg):
         return f"2026-10-13 10:{t},000 INFO TaskExecutor {who}:{msg}\n"
-
 
     def stamina(text):
         got = [c for c in outcome.okww_checks(text, expect_nest=False, expect_daily=False) if c.label == "刷体力"]
         return (got[0].ok, got[0].detail) if got else None
 
-
     def stopped(text):
         out = {}
         collector_okww._okww_progress(text, out)
         return out.get("okww_stopped")
-
 
     # Read with a fallback so that the checks run, and fail, on code without them.
     UNREAD_SAY = getattr(outcome, "STAMINA_UNREAD_SAY", "体力读不出来，没刷")
@@ -3726,7 +3620,6 @@ def _part_okww_upstream_no_farm():
 
     from ark_relay.features import outcome
 
-
     T = "2026-10-14 09:{:02d}:00,000 {} TaskExecutor {}"
     OPEN = [T.format(27, "INFO", "DailyTask:open_daily"),
             T.format(27, "INFO", "DailyTask:info_set current daily progress 180"),
@@ -3734,12 +3627,10 @@ def _part_okww_upstream_no_farm():
     LEFTOVER = T.format(28, "INFO", "DailyTask:上游这趟不刷体力（已用 180/180，活跃度满 False），按「刷到空」把剩下的体力刷掉")
     DONE = T.format(40, "INFO", "DailyTask:Daily Task Completed")
 
-
     def stamina(*lines):
         got = [c for c in outcome.okww_checks("\n".join([*OPEN, *lines, DONE]) + "\n", expect_nest=False)
                if c.label == "刷体力"]
         return [(c.ok, c.detail) for c in got]
-
 
     print("[180/180, the overlay's leftover farm fought: green]")
     check("green", stamina(LEFTOVER, T.format(29, "INFO", "TacetTask:enter combat None")), [(True, "")])
@@ -3770,9 +3661,7 @@ def _part_okww_nest_capture():
     from ark_relay.features import outcome as collector_okww, outcome
     from ark_relay.features import okww_overlay
 
-
     UPSTREAM = (fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
-
 
     def upstream_class(text=UPSTREAM):
         class WWOneTimeTask:
@@ -3801,7 +3690,6 @@ def _part_okww_nest_capture():
         sys.modules["src.task.NightmareNestTask"] = mod
         return mod.NightmareNestTask
 
-
     def overlay(cls_text=UPSTREAM):
         cls = upstream_class(cls_text)
         ns = {}
@@ -3812,11 +3700,9 @@ def _part_okww_nest_capture():
         ns["_install_nest"]()
         return cls, ns
 
-
     class Box:
         def __init__(self, name, y, height=30):
             self.name, self.x, self.y, self.width, self.height = name, 889, y, 198, height
-
 
     def fake(cls, pages, ns, only="落渊南丘", capture=False):
         """A task whose screen is pages[page]; a page may be a list of reads, used in turn."""
@@ -3854,14 +3740,11 @@ def _part_okww_nest_capture():
         t.combat_nest = combat_nest
         return t
 
-
     NAME_NEW, NAME_NANQIU = Box("新区残象聚落", 300), Box("落渊南丘残象聚落", 450)
     PAGE2 = [Box("别的残象聚落", 300), Box("已击败残象：3/24", 374)]
 
-
     def page1(nanqiu):
         return [NAME_NEW, Box("已击败残象：0/48", 374), NAME_NANQIU, Box(f"已击败残象：{nanqiu}", 524)]
-
 
     # 南丘's count box centre is (524 + 15) / 1080 = 0.499 of the screen: row slot 25.
     NANQIU_KEY = "go_nest:41:25"
@@ -3982,7 +3865,6 @@ def _part_okww_nest_expected():
 
     from ark_relay.features.handle import _okww_nest_expected
 
-
     def automas(daily=None, nest=None):
         root = tmpdir()
         d = root / "data" / "okww-id" / "Default" / "ConfigFile"
@@ -3992,7 +3874,6 @@ def _part_okww_nest_expected():
         if nest is not None:
             (d / "NightmareNestTask.json").write_text(json.dumps(nest), encoding="utf-8")
         return root
-
 
     ADDS = "Additional Tasks to Run After Daily Task"
     ECHO = "Farm Nightmare Nest for Daily Echo"
@@ -4045,7 +3926,6 @@ def _part_okww_nest_fought_then_full():
 
     from ark_relay.features import outcome as co, outcome
 
-
     T = "2026-10-13 09:27:{:02d},000 INFO TaskExecutor NightmareNestTask:{}"
     CLICK = T.format(34, "left_click 已击败残象：0/48 (1729, 348) after_sleep 2")
     FIGHT = T.format(46, "enter combat None")
@@ -4069,9 +3949,7 @@ def _part_okww_nest_names():
 
     from ark_relay.features import outcome
 
-
     T = "2026-10-14 09:00:{:02d},000 INFO TaskExecutor NightmareNestTask:{}"
-
 
     def lines(*events, only="落渊南丘"):
         out = [T.format(0, f"nightmare nest: 只刷 {[n for n in only.split(',')]}")]
@@ -4081,10 +3959,8 @@ def _part_okww_nest_names():
         out.append(T.format(59, "enter combat None"))          # a fight, so the scope item is said
         return "\n".join(out) + "\n"
 
-
     def scope(text, only):
         return [(c.ok, c.detail) for c in outcome.nest_filter_checks(text, only) if c.label == "残象聚落没进别的点位"]
-
 
     print("[review case: two clicks both logged 落渊南丘, caps 48 and 41 -> red]")
     text = lines(("click", 48), ("name", "落渊南丘残象聚落"), ("click", 41), ("name", "落渊南丘残象聚落"))
@@ -4137,25 +4013,21 @@ def _part_okww_nest_travel_retry():
     from ark_relay.features import okww_overlay
     from ark_relay.features import outcome as co, outcome
 
-
     REAL = (fx_dir(Path(__file__), "fixtures") / "okww-1027-nest-unreachable.log").read_text(encoding="utf-8")
     ns = {}
     exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
     GAVE_UP = ns["NEST_GAVE_UP_LINE"]
-
 
     def verdict(text):
         got = [c for c in outcome.okww_checks(text, expect_nest=True, expect_daily=False, expect_stamina=False)
                if c.label == "残象聚落"]
         return (got[0].ok, got[0].detail) if got else None
 
-
     def after(text, at, msg):
         """`text` with one NightmareNestTask line inserted before the line stamped `at`."""
         line = f"2026-10-27 {at},000 INFO TaskExecutor NightmareNestTask:{msg}\n"
         i = text.index(f"2026-10-27 {at}")
         return text[:i] + line + text[i:]
-
 
     print("[the real 10-27 log, before the overlay retried: booked 「fought」 - the gap]")
     check("nest_state", outcome.nest_state(REAL), "fought")
@@ -4190,9 +4062,7 @@ def _part_okww_nest_v373():
     from ark_relay.core import texts
     from ark_relay.features import okww_overlay
 
-
     UPSTREAM = (fx_dir(Path(__file__), "gamesim") / "upstream" / "okww-v3.7.14-beta.2" / "src" / "task" / "NightmareNestTask.py.txt").read_text(encoding="utf-8")
-
 
     def upstream_class(text=UPSTREAM):
         """Upstream's NightmareNestTask, loaded from a real file so inspect.getsource works."""
@@ -4222,7 +4092,6 @@ def _part_okww_nest_v373():
         sys.modules["src.task.NightmareNestTask"] = mod
         return mod.NightmareNestTask
 
-
     def overlay():
         ns = {}
         exec(compile(okww_overlay.source_text(), "ark_overrides.py", "exec"), ns)
@@ -4231,14 +4100,12 @@ def _part_okww_nest_v373():
         ns["TaskDisabledException"] = type("TaskDisabledException", (Exception,), {})
         return ns
 
-
     class Box:
         def __init__(self, name, y, height=30):
             self.name, self.x, self.y, self.width, self.height = name, 889, y, 198, height
 
         def __repr__(self):
             return self.name
-
 
     def fake(cls, pages, ns, only="落渊南丘"):
         """A task whose screen is `pages[page]`; go_nest_scroll's click turns the page."""
@@ -4266,7 +4133,6 @@ def _part_okww_nest_v373():
         t.combat_nest = lambda nest: t.fought.append(nest.cache_key)
         return t
 
-
     Nest = upstream_class()
     ns = overlay()
 
@@ -4280,10 +4146,8 @@ def _part_okww_nest_v373():
 
     NAME_NEW, NAME_NANQIU = Box("新区残象聚落", 300), Box("落渊南丘残象聚落", 450)
 
-
     def page1(nanqiu):
         return [NAME_NEW, Box("已击败残象：0/48", 374), NAME_NANQIU, Box(f"已击败残象：{nanqiu}", 524)]
-
 
     PAGE2 = [Box("别的残象聚落", 300), Box("已击败残象：3/24", 374)]
 
@@ -4410,11 +4274,9 @@ def _part_okww_nest_v373():
     t.world, t.shots = False, []
     t.in_team_and_world = lambda: t.world
 
-
     def _back(after_sleep=0):
         t.events.append("back")
         t.world = len([e for e in t.events if e == "back"]) >= 2   # upstream's back, then ours
-
 
     t.back = _back
     t.screenshot = lambda name: t.shots.append(name)
@@ -4501,7 +4363,6 @@ def _part_okww_nest_v373():
     MENGSHU = [Box("梦枢天罗残象聚落", 300), Box("已击败残象：0/48", 374),
                Box("落渊南丘残象聚落", 450), Box("已击败残象：10/41", 524)]
 
-
     def travel_fake(ns_, results):
         """A nest run whose 快速旅行 works or not by `results`, in order (True = travelled; then always works)."""
         t = fake(Nest, [MENGSHU, PAGE2], ns_, only="梦枢天罗,落渊南丘")
@@ -4518,7 +4379,6 @@ def _part_okww_nest_v373():
             if cond == t._find_travel_button else cond()
         t.combat_nest = lambda nest: t.fought.append(nest.cache_key) if Nest._travel_to_nest_or_skip(t, nest) else None
         return t
-
 
     ns6 = overlay()
     ns6["_install_nest"]()
@@ -4560,15 +4420,12 @@ def _part_okww_no_challenge_window():
 
     from ark_relay.features import outcome as co
 
-
     STACK = "".join(f'  File "x{i}.py", line {i}, in f\n    g()\n' for i in range(200))   # ~5.5 KB
     NO_BTN = "2026-09-21 10:20:58,624 INFO TaskExecutor FarmEchoTask:找不到开启挑战，整屏读到: [失坠困咎之庭_1.00]\n"
-
 
     def head(ts):
         return (f"2026-09-21 {ts} ERROR TaskExecutor FarmEchoTask:farm 4c error, try handle monthly card "
                 "Traceback (most recent call last):\n")
-
 
     TAIL = "    raise RuntimeError('Teleport to boss failed') from e\nRuntimeError: Teleport to boss failed\n"
     SAY = "选了等级后没等到「开启挑战」"
@@ -4594,7 +4451,6 @@ def _part_okww_weekly_boss_step():
     """周本要进 OK-WW 的步骤清单，否则「领满记账、周一恢复」永远触发不了。"""
 
     from ark_relay.core import collector
-
 
     d = tmpdir()
     def steps(text):
@@ -4673,14 +4529,11 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
 
     from ark_relay.features import okww_overlay
 
-
     class Disabled(Exception):
         """ok.TaskDisabledException."""
 
-
     class Revived(Exception):
         """src.task.BaseCombatTask.CharRevivedException."""
-
 
     class BaseWWTask(metaclass=_AnyMeta):
         def click_on_book_target(self, serial_number, total_number, structure=None):
@@ -4696,7 +4549,6 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
         def click_team_challenge(self):
             self.wait_click_feature('team_start_challenge', raise_if_not_found=True, click_after_delay=0.5, after_sleep=1)
             self.wait_click_skip_dialog_confirm()
-
 
     class FarmEchoTask(BaseWWTask):
         def teleport_to_configured_boss(self):
@@ -4749,7 +4601,6 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
         def incr_drop(self, dropped):
             self.events.append("incr")
 
-
     mods = {
         "ok": types.SimpleNamespace(TaskDisabledException=Disabled,
                                     Logger=types.SimpleNamespace(get_logger=lambda n: types.SimpleNamespace(
@@ -4790,10 +4641,8 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
     ARENA = ("Lv.90", True, True)
     WORLD = ("终端", True, False)
 
-
     class Late:
         name = "team_close"
-
 
     def task(book="dialog", looks=(LOADING,), left=LEFT_1, start=True, after=(), late=None):
         t = object.__new__(FarmEchoTask)
@@ -4850,10 +4699,8 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
         t.sleep = lambda s: None
         return t
 
-
     def entered(t):
         return [e for e in t.events if e in ("confirm", "level", "start", "walk", "travel")]
-
 
     def stopped(t):
         try:
@@ -4868,7 +4715,6 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
         except RuntimeError as exc:
             return f"stop: {exc}"
         return "in"
-
 
     print("\n[(a) 有框→确认后是选等级页（10-05 22:17 天演溯心）：交回上游原路，选等级→单人挑战→开启挑战]")
     t = task(looks=[LOADING, (LEVEL_PAGE, False, False)])
@@ -4917,7 +4763,6 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
 
     class Map:
         name = "fast_travel_custom"
-
 
     print("\n[有框→确认后是传送地图（09-09 868d09f5 处理过、cfdd4f04 丢了）：讨伐强敌按上游传送原路走]")
     t = task(late=Map())
@@ -4975,11 +4820,9 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
         def __str__(self):
             return f"Box(name='{self.name}', x={self.x}, y={self.y}, width=40, height=30, confidence=100)"
 
-
     # The reminder after 单人挑战 (v3.7.4 FarmEchoTask.py:375-376: 「无法获取奖励, 是否继续进入」;
     # the game's wording, docs/OKWW-WEEKLY-BOSS.md), over the top bar (backup, waveplates/240).
     REMINDER = "结晶波片不足，无法获取奖励，请确认是否继续进入？"
-
 
     def solo_dialog(t, wave, spare, text=REMINDER):
         """After the click on 单人挑战 a dialog is up, until 取消 or 确认 is clicked."""
@@ -5008,7 +4851,6 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
         t.click_dialog_left_button = lambda: answer("cancel")
         t.click_dialog_right_button = lambda: answer("confirm")
         return t
-
 
     print("\n[v3.7.4: after 单人挑战 the 「无法获取奖励」 reminder, waveplates 17 + backup 24 < 60 -> 取消, skipped as short]")
     t = solo_dialog(task(book="team"), 17, 24)
@@ -5080,7 +4922,6 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
     print("\n[echo farm (Boss Challenge) through the book onto the level page -> Boss Level picked, 单人挑战, then 开启挑战]")
     LEVEL_PAGE = ["Box(name='推荐等级80', x=206, y=169)", "Box(name='推荐等级90', x=206, y=609)", "Box(name='单人挑战', x=1650, y=980)"]
 
-
     def boss_challenge(screen, start_btn=False, missing=False):
         t = task(book="team")
         t.config = {"Teleport to Boss": "Boss Challenge", "Boss Level": "80"}
@@ -5097,7 +4938,6 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
         t.level_missing = missing
         t.wait_click_skip_dialog_confirm = lambda **kw: t.events.append("skip-confirm")
         return t
-
 
     t = boss_challenge(LEVEL_PAGE)
     check("went in", stopped(t), "in")
@@ -5159,21 +4999,17 @@ def _part_okww_weekly_spend():
 
     from ark_relay.features import outcome as co
 
-
     def spent(*lines):
         p = tmpdir() / "OK-WW.log"
         p.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return co.parse_okww_log(p).get("okww_stamina_spent")
 
-
     def claim(before):
         return (f"2026-10-12 11:5{before},000 INFO TaskExecutor FarmEchoTask:"
                 f"周本领奖：回读确认领到，本周剩余 {before}/3→{before - 1}/3")
 
-
     def reading(n, task="TacetTask"):
         return f"2026-10-12 11:40:00,000 INFO TaskExecutor {task}:info_set current_stamina {n}"
-
 
     print("[claims with no reading around them: 60 each]")
     check("three verified claims", spent(claim(3), claim(2), claim(1)), 180)
@@ -5196,12 +5032,10 @@ def _part_okww_weekly_spend():
          "2026-10-14 09:12:00,000 INFO TaskExecutor TacetTask:info_set current_stamina 42\n")
     check("100 -> claim -> 42: 58, not 118", spent(t), 58)
 
-
     def full(*lines):
         p = tmpdir() / "OK-WW.log"
         p.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return co.parse_okww_log(p)
-
 
     TOPUP = "2026-10-12 15:29:47,649 INFO TaskExecutor FarmEchoTask:周本领奖：波片不够，动用备用体力"
     print("\n[a claim topped up with backup: the backup is counted (item 18)]")
@@ -5224,7 +5058,6 @@ def _part_okww_overlay_main():
     import json
 
     from ark_relay.features import okww_overlay
-
 
     print("[装到 OK-WW 自己的扩展目录里，不碰它的源文件]")
     root = tmpdir()
@@ -5299,16 +5132,13 @@ def _part_okww_overlay_main():
     ns["_applied"].clear()
     ns["_skipped"].clear()
 
-
     class Upstream:
         def still_here(self):
             return "上游的"
 
-
     @ns["override"](Upstream, "still_here")
     def _mine(self):
         return "我们的"
-
 
     check("方法在就换掉", Upstream().still_here(), "我们的")
     check("记到已贴上里", ns["_applied"], ["Upstream.still_here"])
@@ -5316,11 +5146,9 @@ def _part_okww_overlay_main():
     ns["_applied"].clear()
     ns["_skipped"].clear()
 
-
     @ns["override"](Upstream, "上游改名之后就没有的方法")
     def _orphan(self):
         return "不该生效"
-
 
     check("上游没这个方法就不贴", ns["_applied"], [])
     check("而且要记下来", len(ns["_skipped"]), 1)
@@ -5329,11 +5157,9 @@ def _part_okww_overlay_main():
     ns["_applied"].clear()
     ns["_skipped"].clear()
 
-
     @ns["override"](Upstream, "still_here", expect_sha="0123456789ab")
     def _stale(self):
         return "照着旧正文抄的"
-
 
     check("上游正文变了就不贴", ns["_applied"], [])
     check("并且说明是正文对不上", "正文变了" in ns["_skipped"][0]["why"])
@@ -5343,17 +5169,14 @@ def _part_okww_overlay_main():
     ns["_applied"].clear()
     ns["_skipped"].clear()
 
-
     @ns["override"](Upstream, "still_here", expect_sha=real_sha)
     def _fresh(self):
         return "对得上就贴"
-
 
     check("正文对得上就照贴", Upstream().still_here(), "对得上就贴")
     check("没有被跳过的", ns["_skipped"], [])
 
     print("\n[the gate compares call shapes: a copy that does not take upstream's parameters is not bound]")
-
 
     class Up2:
         def run(self, retries=3):
@@ -5365,13 +5188,11 @@ def _part_okww_overlay_main():
         def free(self, *a, **kw):  # how the test fakes look: no constraint from upstream
             return "upstream free"
 
-
     def gate(name, fn):
         ns["_applied"].clear()
         ns["_skipped"].clear()
         ns["override"](Up2, name)(fn)
         return list(ns["_applied"]), [x["why"] for x in ns["_skipped"]]
-
 
     applied, why = gate("run", lambda self: "ours")
     check("ours run(self) vs upstream run(self, retries=3): not bound", applied, [])
@@ -5403,14 +5224,12 @@ def _part_okww_overlay_main():
     check("什么都没读到", parse([]), None)
     check("真读到 0/240 就是 0", parse(["0/240"]), (0, 0))
 
-
     class _Box:
         def __init__(self, name, x=0, y=0, width=10, height=10):
             self.name, self.x, self.y, self.width, self.height = name, x, y, width, height
 
         def __str__(self):
             return f"Box(name='{self.name}')"
-
 
     class FakeTask:
         """Plays back a script of screens; records what the override does."""
@@ -5442,7 +5261,6 @@ def _part_okww_overlay_main():
 
         def sleep(self, s):
             self.slept += s
-
 
     solo_btn = _Box("单人挑战", 1474, 965, 124, 36)
     still_solo = lambda box: [solo_btn]  # noqa: E731
@@ -5522,11 +5340,9 @@ def _part_okww_overlay_faults():
     import os
     import types
 
-
     TMP = tmpdir()
     os.environ.update(ARK_STATE_DIR=str(TMP / "state"), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
-
 
     _stub_win32("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
                   "servicemanager", "win32process", "win32security", "win32ts", "win32profile", "wmi",
@@ -5537,7 +5353,6 @@ def _part_okww_overlay_faults():
     from ark_relay.core.notify import route_of
     from ark_relay.features import okww_overlay as ov
 
-
     class Notes:
         def __init__(self):
             self.sent = []
@@ -5546,11 +5361,9 @@ def _part_okww_overlay_faults():
             self.sent.append((title, body, kw.get("alert", False)))
             return []
 
-
     REAL = {k: getattr(ov, k) for k in ("atomic_write_text", "master_config_dir", "MASTER_POINTER", "REPORT")}
     MASTER = TMP / "master"
     MASTER.mkdir()
-
 
     def boot(okww_dir, *, write=None, master="ok"):
         """Run the boot stage once with a fresh pointer and no report; ([(title, alert)], [body])."""
@@ -5567,13 +5380,11 @@ def _part_okww_overlay_faults():
                 setattr(ov, k, v)
         return [(t, a) for t, _, a in notes.sent], [b for _, b, _ in notes.sent]
 
-
     def is_alarm(label, sent):
         check(f"{label}: one push", len(sent), 1)
         title, alert = sent[0] if sent else ("", False)
         check(f"{label}: ⚠️ title", title.startswith("⚠️"), True)
         check(f"{label}: routed to the group", route_of(title, alert=alert), "group")
-
 
     def raising(name):
         """atomic_write_text that raises OSError for the file called `name`."""
@@ -5583,13 +5394,11 @@ def _part_okww_overlay_faults():
             return REAL["atomic_write_text"](path, text, newline)
         return w
 
-
     def garbling(name):
         """atomic_write_text that writes something else into the file called `name`."""
         def w(path, text, newline=None):
             return REAL["atomic_write_text"](path, text + "x" if Path(path).name == name else text, newline)
         return w
-
 
     print("[healthy: installed once -> 🩹, log only]")
     sent, bodies = boot(tmpdir())
@@ -6038,7 +5847,6 @@ def _part_okww_overlay_copies():
 
     from ark_relay.features import okww_overlay
 
-
     src = okww_overlay.source_text()
 
     # Everything we change, and the marker that proves it is still in the file.
@@ -6126,11 +5934,9 @@ def _part_echo_farm_main():  # noqa: C901
     from ark_relay.features import echofarm
     from ark_relay.core.config import SERVER_TZ
 
-
     ORIGINAL = {"Teleport to Boss": "Weekly Challenge", "Boss Level": "90",
                 "Which Boss Challenge to Teleport": 1, "Which Weekly Boss to Teleport": 1,
                 "Repeat Farm Count": 3, "Echo Pickup Method": "Walk"}
-
 
     def fresh():
         """An OK-WW tree shaped the way the machine's is: the live config sits under
@@ -6142,10 +5948,8 @@ def _part_echo_farm_main():  # noqa: C901
         (d / "FarmEchoTask.json").write_text(json.dumps(ORIGINAL, ensure_ascii=False), encoding="utf-8")
         return _Cfg(root)
 
-
     def cfg_now(c):
         return json.loads(echofarm._cfg_path(c.okww_dir).read_text(encoding="utf-8"))
-
 
     launched = []
     echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
@@ -6224,7 +6028,6 @@ def _part_echo_farm_main():  # noqa: C901
     check("没在刷的时候改不了", echofarm.retime(c, "21:00", now=NOW)[0], False)
     check("而且说清是没在刷", "没有在刷" in echofarm.retime(c, "21:00", now=NOW)[1], True)
 
-
     print("\n[刷的时候手机改了母本：收工按现在的母本还原，五项都核（11-08 [D-06]）]")
     c = fresh()
     echofarm.start(c, 3, "08:30", "第 3 个")
@@ -6255,7 +6058,6 @@ def _part_echo_farm_main():  # noqa: C901
     from ark_relay.core.engine import Engine
     from ark_relay.core.notify import route_of
 
-
     class _Sent:
         def __init__(self):
             self.sent = []
@@ -6264,13 +6066,11 @@ def _part_echo_farm_main():  # noqa: C901
             self.sent.append((title, body, kw.get("alert", False)))
             return []
 
-
     def _wrapup(c):
         """The engine's tick step on the real clock; (route, is a wrap-up title) of each push."""
         eng = types.SimpleNamespace(cfg=c, notifier=_Sent())
         Engine._echo_farm_deadline(eng)
         return [(route_of(t, alert=a), "收工" in t) for t, _, a in eng.notifier.sent]
-
 
     def _farm(**fields):
         c = fresh()
@@ -6279,7 +6079,6 @@ def _part_echo_farm_main():  # noqa: C901
         rec.update(fields)
         echofarm._store(c.state_dir).set("queues", "echo_farm", rec)
         return c
-
 
     import ark_relay.features.weeklyboss as _wbw
     _wrap_log = tmpdir() / "wrap.log"
@@ -6414,7 +6213,6 @@ def _part_echo_farm_main():  # noqa: C901
         c2 = fresh()
         check(f"拒绝 {bad!r}", echofarm.start(c2, bad, "08:30")[0], False)
         check(f"拒绝 {bad!r} 后配置没动", cfg_now(c2), ORIGINAL)
-
 
     print("\n[weekly boss farm (2026-10-22): Weekly Challenge, its own index key, level 90, no-claim marker on]")
     echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
@@ -6625,7 +6423,6 @@ def _part_echo_farm_main():  # noqa: C901
     import ark_relay.features.preupdate as _pko
     import logging as _lg
 
-
     class _Clock:
         """A monotonic clock that pwsh calls and sleeps move forward."""
         def __init__(self):
@@ -6633,7 +6430,6 @@ def _part_echo_farm_main():  # noqa: C901
 
         def __call__(self):
             return self.t
-
 
     def _stop_run(answers, pwsh_secs=0.5):
         """Run the real stop_okww_script against fake pwsh: `answers` are what each
@@ -6669,7 +6465,6 @@ def _part_echo_farm_main():  # noqa: C901
         finally:
             _pko._stop_okww_python, _pko.okww_python_pids = real
 
-
     # None before this bound existed, so the checks below fail rather than crash.
     _BOUND = getattr(echofarm, "STOP_SCRIPT_SECONDS", None)
     _res, _took, _to, _naps = _stop_run([[4242], [4242], []])
@@ -6690,7 +6485,6 @@ def _part_echo_farm_main():  # noqa: C901
     check("…every pwsh call got only the time left, never its 60 s guard",
           _BOUND is not None and all(x is not None and x <= _BOUND for x in _to), True)
 
-
     class _Warn(_lg.Handler):
         def __init__(self):
             super().__init__(_lg.WARNING)
@@ -6698,7 +6492,6 @@ def _part_echo_farm_main():  # noqa: C901
 
         def emit(self, record):
             self.msgs.append(record.getMessage())
-
 
     for _why, _says, _want in (("running", "停不掉", ["script", "stop", 1]),
                                ("unreadable", "查了两次都查不到", ["script", "stop", 1]),
@@ -6734,7 +6527,6 @@ def _part_echo_farm_main():  # noqa: C901
         returncode = 0
         stdout = b""
         stderr = b""
-
 
     _sp.run = lambda *a, **k: (_ran.append(list(a[0]) if a else []), _Done())[1]
     _pk._okww_quiesce = lambda *a, **k: _quiesced.append(1)
@@ -6803,7 +6595,6 @@ def _part_echo_farm_main():  # noqa: C901
     _mod.STOP_BAT = str(tmpdir() / "ark-okww-stop.bat")
     _BOUND2 = getattr(_mod, "STOP_OKWW_SECONDS", None)   # None before the bound: checks fail, not crash
 
-
     def _wrapup_stop(alive, query_secs):
         """The real stop_okww with fake time: `alive` gives each look's answer, and every
     query runs `query_secs`, or to its timeout when None (a hung pwsh).
@@ -6845,7 +6636,6 @@ def _part_echo_farm_main():  # noqa: C901
         finally:
             (_sp.run, _pk._okww_quiesce, _pk.okww_python_pids, _mod.game_alive, _mod._kill_on_desktop) = real
 
-
     _note, _took, _handed, _looks = _wrapup_stop(lambda n: [_mod.UNREADABLE_SCRIPT], None)
     # Past the bound each remaining call still gets its one-second minimum: two in the
     # quiesce, the look, the PID query, plus the quiesce's 2 s pause.
@@ -6871,7 +6661,6 @@ def _part_echo_farm_stop_and_backlog():
     import types
     from datetime import datetime, timedelta
 
-
     _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
@@ -6882,10 +6671,8 @@ def _part_echo_farm_stop_and_backlog():
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import phone as phone_channel
 
-
     ORIGINAL = {"Teleport to Boss": "Weekly Challenge", "Which Boss Challenge to Teleport": 1,
                 "Repeat Farm Count": 3}
-
 
     def fresh():
         root = tmpdir()
@@ -6894,16 +6681,13 @@ def _part_echo_farm_stop_and_backlog():
         (d / "FarmEchoTask.json").write_text(json.dumps(ORIGINAL), encoding="utf-8")
         return _Cfg(root)
 
-
     launched = []
     echofarm._launch = lambda: (launched.append("launch"), (True, ""))[1]
     echofarm.stop_okww = lambda: launched.append("stop")
     echofarm.NO_CLAIM = str(tmpdir() / "no-claim")
 
-
     def at(d, hh, mm):
         return datetime(2026, 10, d, hh, mm, tzinfo=SERVER_TZ)
-
 
     print("\n[关机时 22:00 按「刷到 08:30」、第二天 08:45 开机才收到：不开刷]")
     c, launched[:] = fresh(), []
@@ -6953,11 +6737,9 @@ def _part_echo_farm_stop_and_backlog():
     check("only a real true means weekly", got.get("weekly"), False)
     echofarm.start = real_start
 
-
     class Eng:
         def scripts_running(self):
             return False
-
 
     class Notes:
         def __init__(self):
@@ -6967,12 +6749,10 @@ def _part_echo_farm_stop_and_backlog():
             self.sent.append((title, kw.get("alert", False)))
             return False
 
-
     class Log:
         def info(self, *a, **k): pass
         def warning(self, *a, **k): pass
         def exception(self, *a, **k): pass
-
 
     print("\n[开机读到的 echo_farm：发出时刻按 ntfy 收到的时间带进去，回执失败不报警]")
     bodies = []
@@ -7022,10 +6802,8 @@ def _part_echo_farm_stop_and_backlog():
     print("\n[手动停刷声骸 / 红按钮：收工出问题报群，干净收工不报群]")
     from ark_relay.core import texts
 
-
     def troubles(n):
         return [a for t, a in n.sent if t == texts.ECHO_FARM_TROUBLE]
-
 
     def farm_then(press, game_left):
         c = fresh()
@@ -7040,7 +6818,6 @@ def _part_echo_farm_stop_and_backlog():
         echofarm.stop_okww = lambda: launched.append("stop")
         check("刷声骸记录没了", echofarm.current(c.state_dir), {})
         return n
-
 
     n = farm_then({"action": "echo_farm_stop", "confirmed": True}, game_left=True)
     check("手机停、游戏还开着：报群一条", troubles(n), [True])

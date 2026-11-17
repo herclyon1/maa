@@ -24,7 +24,6 @@ def _part_texts_gate_main():  # noqa: C901
     from ark_relay.features import annihilation as garden, annihilation, weeklyboss
     from ark_relay.core import ledger as core
 
-
     print("[texts.py 里每一句都是人话]")
     for s in texts.samples():
         check(s[:40], texts.plain(s), [])
@@ -141,7 +140,6 @@ def _part_texts_wording():
     _KEEPER = ast.parse((ROOT / "ark_relay/features/automas_keeper.py").read_text(encoding="utf-8"))
     KEEPER = {t.id: n.value.value for n in _KEEPER.body if isinstance(n, ast.Assign)
               for t in n.targets if isinstance(t, ast.Name) and isinstance(n.value, ast.Constant)}
-
 
     print("[AUTO-MAS 开机没起来：重拉的间隔写的是翻倍，不是每 3 分钟（s1 #9）]")
     body = texts.automas_boot_down_body()
@@ -291,13 +289,10 @@ def _part_user_switches():  # noqa: C901
 
     OFF, DECISION, CARRIED, ON = "off", "decision", "carried", "on"
 
-
     class _Missing:
         pass
 
-
     MISSING = _Missing()
-
 
     def _is_off(v) -> bool:
         if isinstance(v, bool):
@@ -306,11 +301,9 @@ def _part_user_switches():  # noqa: C901
             return v == 0
         return isinstance(v, str) and v in OFF_STRINGS
 
-
     def _call_name(call: ast.Call) -> str:
         f = call.func
         return f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else ""
-
 
     # ----------------------------------------------------------------- per function
 
@@ -367,7 +360,6 @@ def _part_user_switches():  # noqa: C901
         def method_params(self) -> list[str]:
             return self.params[1:] if self.cls and self.params[:1] in (["self"], ["cls"]) else self.params
 
-
     # ----------------------------------------------------------------- per module
 
     class Hit:
@@ -377,7 +369,6 @@ def _part_user_switches():  # noqa: C901
 
         def __repr__(self):
             return f"{self.rel}:{self.line}  {self.key}  [{self.rule}]  {self.text}"
-
 
     class Module:
         def __init__(self, rel: str, src: str):
@@ -590,7 +581,6 @@ def _part_user_switches():  # noqa: C901
                 return DECISION
             return CARRIED
 
-
     def _combine(results):
         for level in (OFF, DECISION):
             if level in results:
@@ -599,7 +589,6 @@ def _part_user_switches():  # noqa: C901
         if ps:
             return ("param", set().union(*(p[1] for p in ps)))
         return CARRIED if CARRIED in results else ON
-
 
     # ----------------------------------------------------------------- the scan
 
@@ -1532,11 +1521,9 @@ def _part_user_switches():  # noqa: C901
                         out += self._reader_calls(m, fn, x, seen | {e.id})
             return out
 
-
     def _ref(e) -> str:
         """`self._handled` -> "_handled", `seen` -> "seen"; '' for anything else."""
         return e.attr if isinstance(e, ast.Attribute) else e.id if isinstance(e, ast.Name) else ""
-
 
     def _words(e) -> set[str]:
         """Names, attributes and strings in an expression."""
@@ -1546,10 +1533,8 @@ def _part_user_switches():  # noqa: C901
                 for x in ast.walk(e) if isinstance(x, (ast.Name, ast.Attribute))
                 or (isinstance(x, ast.Constant) and isinstance(x.value, str))}
 
-
     def _switch_strings(keys: set[str]) -> set[str]:
         return {k for k in keys if SWITCH_KEY.match(k)}
-
 
     def _is_log(n) -> bool:
         if not isinstance(n, ast.Call) or not isinstance(n.func, ast.Attribute) or n.func.attr not in LOG_METHODS:
@@ -1557,7 +1542,6 @@ def _part_user_switches():  # noqa: C901
         b = n.func.value
         name = b.id if isinstance(b, ast.Name) else b.attr if isinstance(b, ast.Attribute) else ""
         return "log" in name.lower()
-
 
     def _body_if(m: Module, node, fn: Fn):
         """The nearest `if` whose body (not its test, not its else) holds `node`, or None."""
@@ -1569,7 +1553,6 @@ def _part_user_switches():  # noqa: C901
             x = p
         return None
 
-
     def _positive_calls(test) -> list:
         """Calls a condition makes true by being true: the call itself, or one and-ed in."""
         if isinstance(test, ast.Call):
@@ -1578,11 +1561,9 @@ def _part_user_switches():  # noqa: C901
             return [c for v in test.values for c in _positive_calls(v)]
         return []
 
-
     def _constant_only(e) -> bool:
         """An expression built from constants alone (no name, attribute, call or subscript)."""
         return not any(isinstance(x, (ast.Name, ast.Attribute, ast.Call, ast.Subscript)) for x in ast.walk(e))
-
 
     def _nearest_if(m: Module, node, fn: Fn):
         """(the nearest `if` around `node`, whether `node` is in its body - not its test
@@ -1595,11 +1576,9 @@ def _part_user_switches():  # noqa: C901
             x = p
         return None, False
 
-
     def _is_task_log(n) -> bool:
         """A log line: `log.info(...)`, or OK-WW's own `self.log_info(...)`."""
         return _is_log(n) or (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in TASK_LOGS)
-
 
     def _unnegated_calls(test) -> list:
         """Calls in a condition that are not under a `not`."""
@@ -1613,7 +1592,6 @@ def _part_user_switches():  # noqa: C901
             todo += list(ast.iter_child_nodes(e))
         return out
 
-
     def _exists_target(c: ast.Call):
         """The path an existence test asks about: `os.path.exists(p)` -> p, `p.exists()` -> p."""
         f = c.func
@@ -1624,7 +1602,6 @@ def _part_user_switches():  # noqa: C901
         if f.attr in EXISTS_METHODS and not c.args and not c.keywords:
             return f.value
         return None
-
 
     def _title_tests(m: Module, test, title, routed: set[str]):
         """R7: [(how, collection)] when `test` checks the title against routed
@@ -1654,7 +1631,6 @@ def _part_user_switches():  # noqa: C901
                 return [("contains", gen.iter.id)]
         return None
 
-
     def _plain_strings(m: Module):
         """(text, line) of every string in `m` that could be a title: literals and the
     literal parts of f-strings, not docstrings and not the arguments of a log line."""
@@ -1672,12 +1648,10 @@ def _part_user_switches():  # noqa: C901
             if not _is_log(x):
                 yield text, n.lineno
 
-
     def _is_screen_read(c) -> bool:
         """OK-WW reading text off the game screen: `self.ocr(...)` / `task.ocr(...)`."""
         return isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute) and c.func.attr == SCREEN_READ \
             and isinstance(c.func.value, ast.Name)
-
 
     def _screen_chain(fn: Fn, name: str) -> set[str]:
         """R8: the locals from `name` back to a screen read in `fn`, when every binding
@@ -1708,7 +1682,6 @@ def _part_user_switches():  # noqa: C901
                         todo.append(y.id)
         return chain if rooted else set()
 
-
     def _failure_raise(r, skips: set[str]) -> bool:
         """`raise X(...)` of a class that is neither TaskDisabledException nor a subclass of it."""
         if not isinstance(r, ast.Raise) or r.exc is None:
@@ -1716,7 +1689,6 @@ def _part_user_switches():  # noqa: C901
         e = r.exc.func if isinstance(r.exc, ast.Call) else r.exc
         name = e.id if isinstance(e, ast.Name) else e.attr if isinstance(e, ast.Attribute) else ""
         return bool(name) and name not in skips
-
 
     def _expr_words(fn: Fn, e) -> set[str]:
         """_words of `e` and of what its locals are bound to, two assignments deep."""
@@ -1731,7 +1703,6 @@ def _part_user_switches():  # noqa: C901
                         todo.append((x, depth + 1))
         return words
 
-
     def _inside_if(m: Module, node, fn: Fn) -> bool:
         n = node
         while n in m.parent and n is not fn.node:
@@ -1741,14 +1712,12 @@ def _part_user_switches():  # noqa: C901
             n = p
         return False
 
-
     # ----------------------------------------------------------------- the list
 
     # The key may hold spaces (`_LOG_ONLY_PREFIXES[⚠️ 自动采集：…]`): it is everything before the first " | ".
     LINE_RE = re.compile(r"^(?P<key>[^|\s][^|]*?\.py:[^|]*?\S)\s+\|\s+(?P<what>.+?)\s+\|\s+(?P<words>.+?)\s+\|\s+(?P<when>.+?)\s*$")
     QUOTE_RE = re.compile(r"「[^」]*[\u4e00-\u9fff][^」]*」")
     WHEN_RE = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}\b")
-
 
     def read_list(text: str) -> tuple[dict[str, str], list[str]]:
         """{key: line}, and what is wrong with lines that lack one of the four fields."""
@@ -1768,12 +1737,10 @@ def _part_user_switches():  # noqa: C901
             out[mt["key"]] = line
         return out, bad
 
-
     def relay_sources(root: Path = RELAY) -> dict[str, str]:
         files = sorted((root / "ark_relay").rglob("*.py")) + [root / "service.py", root / "boot_stages.py",
                                                                    root / "watchdog_guard.py"]
         return {f.relative_to(root).as_posix(): f.read_text(encoding="utf-8") for f in files if f.is_file()}
-
 
     def command_records_hold(scan: Scan) -> list[str]:
         """Rule 2's readers are what COMMAND_RECORDS says: whitelisted, dispatched, present."""
@@ -1799,7 +1766,6 @@ def _part_user_switches():  # noqa: C901
                 out.append(f"rule 2: the reader {reader} does not exist")
         return out
 
-
     # Queue pulls behind a module switch. The scan finds the API delete inside
     # commands.skip_script_in_queue, but not relay code that reaches it through a
     # default-argument wrapper (stagegate._gate_due -> skipper=_skip_default -> it), so
@@ -1807,7 +1773,6 @@ def _part_user_switches():  # noqa: C901
     # other and needs its line with the user's words. Read from the source (a literal
     # True / False at module level), not by importing the module.
     SWITCHED_PULLS = {"ark_relay/features/stagegate.py:_gate_due": "PULL_FROM_QUEUE"}
-
 
     def switched_pulls(sources: dict[str, str]) -> tuple[list[Hit], list[str]]:
         """(a hit for each SWITCHED_PULLS place whose switch is on, what is wrong with the table)."""
@@ -1834,7 +1799,6 @@ def _part_user_switches():  # noqa: C901
                                 f"{flag} is on: takes a script out of a queue (commands.skip_script_in_queue)"))
         return hits, problems
 
-
     def verdict(hits: list[Hit], listed: dict[str, str]) -> list[str]:
         fails = [f"{h.rel}:{h.line}: {h.key} [{h.rule}] is not in USER-SWITCHES.txt - {h.text}"
                  for h in hits if h.key not in listed]
@@ -1842,7 +1806,6 @@ def _part_user_switches():  # noqa: C901
         fails += [f"USER-SWITCHES.txt: {k} has no hit any more - delete the line (a stale line pre-approves the next one)"
                   for k in listed if k not in keys]
         return fails
-
 
     def findings(scan: Scan) -> tuple[list[Hit], list[tuple[Hit, str]], list[tuple[Hit, str]]]:
         """(hits that need a line, hits that apply a stored user command, hits that pass R3-R5)."""
@@ -1855,7 +1818,6 @@ def _part_user_switches():  # noqa: C901
             else:
                 need.append(h)
         return need, commands, allowed
-
 
     # ----------------------------------------------------------------- self-checks
 
@@ -2487,10 +2449,8 @@ def _part_user_switches():  # noqa: C901
     # the write, so it is not a hit that needs a line.
     COMMAND_SAMPLE = dict(COMMAND_SAMPLE_BASE)
 
-
     def _sample_scan(src) -> Scan:
         return Scan(src if isinstance(src, dict) else {"ark_relay/_sample.py": src})
-
 
     def self_check() -> list[str]:
         fails = []
@@ -2543,7 +2503,6 @@ def _part_user_switches():  # noqa: C901
             fails.append("a switch that is not a literal must be refused")
         return fails
 
-
     def main(argv: list[str]) -> int:
         fails = ["self-check: " + f for f in self_check()]
         print(f"  self-check: {len(BAD)} known-bad samples flagged, {len(GOOD)} known-good samples clean, "
@@ -2583,7 +2542,6 @@ def _part_user_switches():  # noqa: C901
                 print("  ✗ " + f)
         return 1 if fails else 0
 
-
     if __name__ == "__main__":
         sys.exit(main(sys.argv[1:]))
 
@@ -2596,7 +2554,6 @@ def _part_mute_verdicts():  # noqa: C901
 
     RELAY = Path(__file__).resolve().parents[1]
     LIST = RELAY / "USER-SWITCHES.txt"
-
 
     # Places that keep something from the group because it is not a fault at all - not
     # because it fixed itself. Adding one means editing this test, with its source.
@@ -2632,12 +2589,10 @@ def _part_mute_verdicts():  # noqa: C901
                "不明", "待查", "没查清", "还没查")
     KEPT = ("recovered", "daily report only", "daily-report-only", "not pushed", "只进日报", "不进群")
 
-
     def commit_exists(sha: str) -> bool:
         r = subprocess.run(["git", "-C", str(RELAY), "cat-file", "-e", f"{sha}^{{commit}}"],
                            capture_output=True, timeout=30)
         return r.returncode == 0
-
 
     REPO = RELAY.parent
     LAZY_RE = re.compile(r"his words|his own words|he asked|he did not want|he wants|his order|his rule|he said|"
@@ -2650,7 +2605,6 @@ def _part_mute_verdicts():  # noqa: C901
     URL_RE = re.compile(r"https?://\S+")
     COMMIT_REF_RE = re.compile(r"\bcommit (?P<sha>[0-9a-f]{7,40})\b")
 
-
     def code_ref_holds(path: str, name: str) -> bool:
         """`path.py:name` names a file under relay/ (or the repo) that defines or assigns `name`'s last part."""
         for base in (RELAY, REPO):
@@ -2660,7 +2614,6 @@ def _part_mute_verdicts():  # noqa: C901
                 src = f.read_text(encoding="utf-8")
                 return bool(re.search(rf"^\s*(?:async\s+)?(?:def|class)\s+{leaf}\b|^\s*{leaf}\s*[:=]", src, re.M))
         return False
-
 
     def reason_problems(why: str, has_commit=commit_exists) -> list[str]:
         """A normal-state why: no lean on the user's words, and at least one source that holds."""
@@ -2690,7 +2643,6 @@ def _part_mute_verdicts():  # noqa: C901
                    "docs/…, a URL or `commit <sha>`)")
         return out
 
-
     def place_source(key: str) -> "str | None":
         """The source of the function a line's key names (file:func, file:Class.method,
     nested defs dotted), or None when it is not there."""
@@ -2708,7 +2660,6 @@ def _part_mute_verdicts():  # noqa: C901
             if node is None:
                 return None
         return ast.get_source_segment(text, node)
-
 
     def problems(line: str, has_commit=commit_exists, source=place_source) -> list[str]:
         """What is wrong with one entry line's verdict ([] when nothing)."""
@@ -2750,7 +2701,6 @@ def _part_mute_verdicts():  # noqa: C901
         what = head.lower()
         bad = [w for w in KEPT if w in what]
         return [f"task-switch that keeps a failure from the group ({bad[0]})"] if bad else []
-
 
     print("[the gate itself rejects the known-bad shapes]")
     GOOD = "x.py:f | does a thing | 「他的话」 | 2026-10-10 13:35"
@@ -2981,7 +2931,6 @@ def _part_daily_partial_failure():
 
     from ark_relay.core import ledger as core
 
-
     entries = json.loads((fx_dir(Path(__file__), "fixtures") / "daily-2026-09-09.json")
                          .read_text(encoding="utf-8"))
     bare_title, _ = core.format_daily("2026-09-09", entries)
@@ -3028,7 +2977,6 @@ def _part_daily_range_prefix():
 
     from ark_relay.core import ledger as core
 
-
     es = [json.loads(x) for x in (fx_dir(Path(__file__), "fixtures") / "ledger-1008-maaend-two-lists.jsonl").read_text(encoding="utf-8").splitlines()]
     _t, body = core.format_daily("2026-10-08", es, "", "")
     blocks = body.split("\n\n")
@@ -3054,7 +3002,6 @@ def _part_daily_techlog():
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core import ledger as core, statestore as techlog
     from ark_relay.core.ledger import State
-
 
     report.plan = types.SimpleNamespace(
         schedule=lambda automas_dir: [{"name": "早班", "times": ["09:00"]}, {"name": "晚班", "times": ["21:30"]}],
@@ -3083,7 +3030,6 @@ def _part_daily_techlog():
     SCRIPT_ROW = re.compile(r"^\S+ (MAA|OK-WW|MaaEnd)(（|　)", re.M)
     TOOL_WORD = re.compile(r"(?<![A-Za-z])(MaaEnd|MAA|OK-WW|AUTO-MAS)(?![A-Za-z])")
 
-
     class Notifier:
         def __init__(self):
             self.sent: list = []
@@ -3098,7 +3044,6 @@ def _part_daily_techlog():
 
         def send_group_image(self, path):
             return []
-
 
     class Eng:
         """The slice of Engine the report uses; forwards exactly as engine.py does."""
@@ -3131,14 +3076,12 @@ def _part_daily_techlog():
         def send_daily_now(self, mark=True, label="临时查看"):
             return report.send_daily_now(self, mark, label)
 
-
     def run(rid, script, hhmm, mins, ok, failed=(), transitional=False, **raw):
         start = datetime.fromisoformat(f"{TODAY}T{hhmm}:00+08:00")
         return {"run_id": f"{TODAY}/x/{rid}", "script": script, "user": "u",
                 "started": start.isoformat(), "finished": (start + timedelta(minutes=mins)).isoformat(),
                 "ok": ok, "failed_tasks": list(failed), "duration_known": True,
                 "transitional": transitional, "raw": raw}
-
 
     ENTRIES = [
         # OK-WW: the restart dialog swapped a client file, then a clean run.
@@ -3153,7 +3096,6 @@ def _part_daily_techlog():
         # MAA's evening run failed for good; its evidence bundle was uploaded.
         run("maa", "MAA", "21:30", 3, False, failed=["基建换班"], evidence_page=URL),
     ]
-
 
     def machine() -> Eng:
         """A machine with every technical source seeded."""
@@ -3176,15 +3118,12 @@ def _part_daily_techlog():
         os.environ["ARK_LOG_FILE"] = str(log)
         return e
 
-
     def at(hhmm):
         return datetime.fromisoformat(f"{TODAY}T{hhmm}:00+08:00").astimezone(SERVER_TZ)
-
 
     def tech_of(e) -> str:
         p = techlog.path_for(TODAY, e.cfg.state_dir)
         return p.read_text(encoding="utf-8") if p.exists() else ""
-
 
     print("[每一路技术内容都进技术日志（先证明它真被造出来了）]")
     e = machine()
@@ -3263,7 +3202,6 @@ def _part_daily_techlog():
     def maa_stop(rid, hhmm):
         return run(rid, "MAA", hhmm, 1, False, failed=["MAA 在完成任务前中止"], fight_count=0,
                    maa_result="MAA 在完成任务前中止", maa_config_rejected="理智作战 序列化失败，关卡 YW-4")
-
 
     day10 = [maa_stop("m1", "09:00"), maa_stop("m2", "09:01"), maa_stop("m3", "09:03"),
              run("m4", "MAA", "12:15", 19, True, stages=["YW-4"], run_times=14, sanity_spent=168,
@@ -3363,7 +3301,6 @@ def _part_report_due():
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.ledger import State
 
-
     # ---------------------------------------------------------- 把外面的世界掐掉
     # 卡池要连 prts.wiki / 库街区 / 森空岛；撰写模型要连大模型。两个都换成本地假货，
     # 这个文件才既跑得快又不会因为别人家的网站抖一下就变红。
@@ -3383,7 +3320,6 @@ def _part_report_due():
         update_history=lambda state_dir, now: [],
     )
 
-
     class LogGrab(logging.Handler):
         def __init__(self):
             super().__init__()
@@ -3395,12 +3331,10 @@ def _part_report_due():
         def worst(self):
             return max((r.levelno for r in self.records), default=0)
 
-
     GRAB = LogGrab()
     # 直接挂 report 自己那个 logger 对象，不写死日志名：名字要是改了，这里跟着走。
     report.log.addHandler(GRAB)
     report.log.setLevel(logging.DEBUG)
-
 
     # --------------------------------------------------------------- 替身零件
     class FakeNotifier:
@@ -3424,7 +3358,6 @@ def _part_report_due():
 
         def titles(self):
             return [t for t, *_ in self.sent]
-
 
     class Eng:
         """Engine 里跟日报有关的那一小块，其余全部换成可控的替身。
@@ -3461,10 +3394,8 @@ def _part_report_due():
         def send_daily_now(self, mark=True, label="临时查看"):
             return report.send_daily_now(self, mark, label)
 
-
     TODAY = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
     YDAY = (datetime.now(tz=SERVER_TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
-
 
     def entry(day, n=1, script="MAA", ok=True):
         start = datetime.fromisoformat(f"{day}T09:0{n}:00+08:00")
@@ -3472,7 +3403,6 @@ def _part_report_due():
                 "started": start.isoformat(),
                 "finished": (start + timedelta(minutes=20)).isoformat(),
                 "ok": ok, "failed_tasks": [] if ok else ["某一步炸了"], "raw": {}}
-
 
     def make(entries_by_day=None, **kw):
         """一台干净的机器：真 State（记号和账本都是真的），假通知和假队列。"""
@@ -3483,10 +3413,8 @@ def _part_report_due():
                 encoding="utf-8")
         return Eng(st, **kw)
 
-
     def at(day, hhmm):
         return datetime.fromisoformat(f"{day}T{hhmm}:00+08:00").astimezone(SERVER_TZ)
-
 
     # =========================================================== 日报什么时候到点
     print("[到点时刻跟着 AUTO-MAS 自己的队列走，不是写死的]")
@@ -3548,13 +3476,11 @@ def _part_report_due():
     print("\n[当天部署过的更新说明进技术日志，日报只留一句次数（D-1010；更新通知本身不再推）]")
     from _parts import tmpdir as _tmpd0
 
-
     def _tmpd():
         # <tmp>/state, so the technical log (<state>/../tech) stays inside the tmp dir.
         d = _tmpd0() / "state"
         d.mkdir()
         return d
-
 
     e = make({TODAY: [entry(TODAY)]})
     e.cfg.state_dir = _tmpd()
@@ -3850,7 +3776,6 @@ def _part_scoreboard_main():
     from ark_relay.core.config import SERVER_TZ, RunRecord
     from ark_relay.core.ledger import State
 
-
     def rec(ok=True, transitional=False, run_id="r1"):
         now = datetime.now(tz=SERVER_TZ)
         return RunRecord(
@@ -3858,7 +3783,6 @@ def _part_scoreboard_main():
             started=now - timedelta(minutes=5), finished=now,
             ok=ok, failed_tasks=[] if ok else ["某一步"], duration_known=True,
             transitional=transitional, raw={})
-
 
     print("[数得对：成功、失败、被重试取代的各算什么]")
     d = tmpdir()
@@ -3960,7 +3884,6 @@ def _part_scoreboard_test_window():
     from ark_relay.core.ledger import State
     from ark_relay.features import report as scoreboard
 
-
     V = "20261013030327"
     d = tmpdir()
     st = State(Path(d))
@@ -4021,7 +3944,6 @@ def _part_ledger_guard():
 
     from ark_relay.core.ledger import State, format_daily, log as core_log
 
-
     GOOD = {"run_id": "2026-08-21/arknights/21-30-00", "script": "MAA",
             "user": "arknights", "started": "2026-08-21T21:30:00+08:00",
             "finished": "2026-08-21T22:15:00+08:00", "ok": True,
@@ -4046,7 +3968,6 @@ def _part_ledger_guard():
 
     print("\n[unparseable line is said once, not on every read]")
 
-
     class _Warn(logging.Handler):
         def __init__(self):
             super().__init__(logging.WARNING)
@@ -4054,7 +3975,6 @@ def _part_ledger_guard():
 
         def emit(self, record):
             self.lines.append(record.getMessage())
-
 
     _w = _Warn()
     core_log.addHandler(_w)
@@ -4098,7 +4018,6 @@ def _part_ledger_incomplete():
     import tempfile
 
     from ark_relay.core import ledger as core
-
 
     with tempfile.TemporaryDirectory() as d:
         st = core.State(Path(d)) if hasattr(core, "State") else None
@@ -4161,21 +4080,17 @@ def _part_ledger_once_per_run():
     import json
     from datetime import datetime, timedelta
 
-
     from ark_relay.core import ledger
     from ark_relay.core.config import RunRecord, SERVER_TZ
-
 
     def rec(hms: str, ok: bool = True) -> RunRecord:
         t = datetime(2026, 10, 13, int(hms[:2]), int(hms[3:5]), int(hms[6:]), tzinfo=SERVER_TZ)
         return RunRecord(run_id=f"2026-10-13/arknights/{hms}", script="MAA", user="arknights",
                          started=t, finished=t + timedelta(minutes=20), ok=ok)
 
-
     def lines(st, day="2026-10-13"):
         p = st.ledger_path(day)
         return [json.loads(ln) for ln in p.read_text(encoding="utf-8").splitlines() if ln.strip()]
-
 
     print("[handling raises after the ledger write; the record is retried 3 times]")
     st = ledger.State(tmpdir())
@@ -4216,23 +4131,19 @@ def _part_ledger_rewrite_race():
     import time
     from datetime import datetime, timedelta
 
-
     from ark_relay.core import ledger
     from ark_relay.core.config import RunRecord, SERVER_TZ
-
 
     def rec(hms: str) -> RunRecord:
         t = datetime(2026, 10, 13, int(hms[:2]), int(hms[3:5]), int(hms[6:]), tzinfo=SERVER_TZ)
         return RunRecord(run_id=f"2026-10-13/arknights/{hms}", script="MAA", user="arknights",
                          started=t, finished=t + timedelta(minutes=20), ok=True)
 
-
     print("[an append runs while mark_incomplete is between its read and its replace]")
     st = ledger.State(tmpdir())
     st.append_ledger(rec("05-00-00"))
     real_write = ledger.atomic_write_text
     other: list = []
-
 
     def slow_write(path, text, *a, **k):
         if not other:
@@ -4241,7 +4152,6 @@ def _part_ledger_rewrite_race():
             t.start()
             time.sleep(0.3)          # the append gets every chance to land now
         return real_write(path, text, *a, **k)
-
 
     ledger.atomic_write_text = slow_write
     try:
@@ -4260,16 +4170,13 @@ def _part_ledger_scoreboard_started():
     """append_ledger hands the run's start time to the scoreboard when it takes one."""
     from datetime import datetime, timedelta
 
-
     from ark_relay.core import ledger
     from ark_relay.core.config import RunRecord, SERVER_TZ
-
 
     def rec(hms: str) -> RunRecord:
         t = datetime(2026, 10, 13, int(hms[:2]), int(hms[3:5]), int(hms[6:]), tzinfo=SERVER_TZ)
         return RunRecord(run_id=f"2026-10-13/arknights/{hms}", script="MAA", user="arknights",
                          started=t, finished=t + timedelta(minutes=20), ok=True)
-
 
     real = ledger.scoreboard.record
     calls = []
@@ -4309,7 +4216,6 @@ def _part_ledger_truth():
     from ark_relay.core import collector
     from ark_relay.core.config import SERVER_TZ
 
-
     root = tmpdir() / "AUTO-MAS"
     hist = root / "history"
     (root / "debug").mkdir(parents=True)
@@ -4323,7 +4229,6 @@ def _part_ledger_truth():
         "2026-10-01 17:27:43.100 | INFO     | MaaEnd 自动代理 | MaaEnd 任务结果: Success!, 日志锁已释放",
     ]) + "\n", encoding="utf-8")
 
-
     def record(user, stem, verdict, log_lines):
         d = hist / "2026-10-01" / user
         d.mkdir(parents=True, exist_ok=True)
@@ -4331,15 +4236,12 @@ def _part_ledger_truth():
         (d / f"{stem}.log").write_text("\n".join(log_lines) + "\n", encoding="utf-8")
         return collector.parse_record(d / f"{stem}.json", hist)
 
-
     def at(hh, mm, ss=0):
         return datetime(2026, 10, 1, hh, mm, ss, tzinfo=SERVER_TZ)
-
 
     def okww_log(h, m, s, h2, m2, s2):
         return [f"2026-10-01 {h:02d}:{m:02d}:{s:02d},787 INFO MainThread ok:ok-script init v3.6.9-beta.1",
                 f"2026-10-01 {h2:02d}:{m2:02d}:{s2:02d},632 INFO MainThread UpdateCard:update_available=False"]
-
 
     print("[OK-WW's three timed-out attempts end when AUTO-MAS killed them]")
     for stem, a, b, want in (("OK-WW-05-18-20", (9, 18, 37), (9, 19, 16), at(11, 20, 12)),
@@ -4435,7 +4337,6 @@ def _part_relay_log_rotation():
         from ark_relay.core import statestore as logfile
     except ImportError:          # before the fix: there is no rotating handler at all
         logfile = None
-
 
     print("[_setup_logging：relay.log 用带大小上限的轮转 handler]")
     d = tmpdir()
@@ -4604,19 +4505,16 @@ def _part_relay_poweroff_live():
     import types
     from datetime import datetime, timedelta
 
-
     class _Any:
         def __init__(self, *a, **k): pass
         def __call__(self, *a, **k): return _Any()
         def __getattr__(self, _): return _Any()
-
 
     class _Stub(types.ModuleType):
         def __getattr__(self, name):
             if name.startswith("__"):
                 raise AttributeError(name)
             return _Any
-
 
     for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
                   "win32con", "win32file", "servicemanager", "win32process",
@@ -4627,7 +4525,6 @@ def _part_relay_poweroff_live():
     from ark_relay.features import errwatch
     from ark_relay.features import shutdown
     from ark_relay.core.config import SERVER_TZ
-
 
     now = datetime(2026, 10, 6, 22, 0, tzinfo=SERVER_TZ)
     eng = types.SimpleNamespace(_shutdown_issued=False, _shutdown_issued_at=None)
@@ -4650,11 +4547,9 @@ def _part_relay_poweroff_live():
         errwatch._stopping.clear()
     print("[install wires the probe in]")
 
-
     class _N:
         def send(self, *a, **k):
             return []
-
 
     h = errwatch.install(_N(), lambda: True)
     try:
@@ -4676,10 +4571,8 @@ def _part_record_names():
     from ark_relay.core import collector
     from ark_relay.core.config import SERVER_TZ
 
-
     BODY = {"recruit_statistics": {}, "drop_statistics": {"AT-4": {"龙门币": 1008}},
             "sanity": 1, "maa_result": "Success!"}
-
 
     def one(root: Path, day: str, user: str, stem: str):
         d = root / day / user
@@ -4690,7 +4583,6 @@ def _part_record_names():
         # a run still being written. Give it the pair a finished run would have.
         p.with_suffix(".log").write_text("", encoding="utf-8")
         return collector.parse_record(p, root)
-
 
     def main(root: Path) -> int:
         old = one(root, "2026-08-22", "arknights", "05-00-01")
@@ -4749,7 +4641,6 @@ def _part_record_names():
 
         return 0 if not fails else 1
 
-
     if __name__ == "__main__":
         with tempfile.TemporaryDirectory() as d:
             raise SystemExit(main(Path(d)))
@@ -4760,12 +4651,10 @@ def _part_config_no_bot():
     import logging
     import os
 
-
     HIST = tmpdir()
     os.environ.update(ARK_HISTORY_DIR=str(HIST), WECOM_BOT_URL="", SERVERCHAN_KEY="SCT-test",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_AGENTID="")
     from ark_relay.core.config import Config
-
 
     said: list = []
     h = logging.Handler()
@@ -4790,7 +4679,6 @@ def _part_config_skip():
     import logging
     import os
     from datetime import datetime, timedelta
-
 
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
@@ -4831,7 +4719,6 @@ def _part_config_skip():
     _mc_real = dict(_mc.CHECKS)
     _mc.CHECKS.clear()
 
-
     class Notes:
         def __init__(self):
             self.sent = []
@@ -4840,15 +4727,12 @@ def _part_config_skip():
             self.sent.append((title, body, kw.get("alert", False)))
             return False
 
-
     class Src:
         def fetch(self, seen):
             return []
 
-
     def at(hh, mm, ss=0):
         return datetime(2026, 10, 16, hh, mm, ss, tzinfo=SERVER_TZ)
-
 
     APPLOG = AUTOMAS / "debug" / "app.log"
     LINES = [
@@ -4878,7 +4762,6 @@ def _part_config_skip():
               ("2026-10-16/wuwa/OK-WW-05-18-27", "OK-WW", "wuwa", at(9, 19, 47), at(9, 20, 1), False, True),
               ("2026-10-16/wuwa/OK-WW-05-20-13", "OK-WW", "wuwa", at(9, 21, 26), at(9, 33, 54), True, False)]
 
-
     def build(state_dir=None, lines=None):
         APPLOG.write_text("".join(ln + "\n" for ln in LINES[:lines]), encoding="utf-8")
         cfg = Config()
@@ -4897,10 +4780,8 @@ def _part_config_skip():
         e.state.report_sent = lambda d: True
         return e
 
-
     def alarms(e):
         return [(t, b) for t, b, a in e.notifier.sent if a]
-
 
     print("[10-16 09:34:07: the tick that read app.log tells the group at once, with AUTO-MAS's reason]")
     e = build()
@@ -4927,7 +4808,6 @@ def _part_config_skip():
     A check before the deadline proves nothing: the overdue alarm cannot fire yet."""
         limit, _ = runwatch.planned_minutes(e, 9, 0, at(9, 0))
         return at(9, 0) + timedelta(minutes=limit + runwatch.OVERRUN_SLACK_MIN + 1)
-
 
     print("\n[10:34 (the hour backstop) and the overdue check (12:08 on the machine): nothing more for the same fault]")
     first = list(got)
@@ -4985,11 +4865,9 @@ def _part_config_skip():
     check("next wake is 10:15 (09:00 + 75)", nd and nd[0], at(10, 15))
     cap = []
 
-
     class _H(logging.Handler):
         def emit(self, rec):
             cap.append(rec)
-
 
     h = _H()
     missed._log_missed.addHandler(h)
@@ -5019,7 +4897,6 @@ def _part_config_skip():
 
     print("\n[the skip alarm fails to send: the machine is held on, as for any failed alarm, and it goes out later]")
 
-
     class Down(Notes):
         def __init__(self):
             super().__init__()
@@ -5029,7 +4906,6 @@ def _part_config_skip():
             if not self.up:
                 return ["wecom: down"]
             return super().send(title, body, **kw)
-
 
     e6 = build()
     e6.notifier = Down()
@@ -5055,7 +4931,6 @@ def _part_config_warn_once():
 
     from ark_relay.core import mastercfg, mastercfg as mastercfg_maa, plan
 
-
     class Catch(logging.Handler):
         def __init__(self) -> None:
             super().__init__(logging.WARNING)
@@ -5064,15 +4939,12 @@ def _part_config_warn_once():
         def emit(self, record: logging.LogRecord) -> None:
             self.msgs.append(record.getMessage())
 
-
     catch = Catch()
     for name in ("ark.mastercfg", "ark.plan"):
         logging.getLogger(name).addHandler(catch)
 
-
     def said(part: str) -> int:
         return sum(part in m for m in catch.msgs)
-
 
     root = tmpdir()
     automas = root / "automas"
@@ -5351,9 +5223,7 @@ def _part_dotenv_hash():
     """
     import os
 
-
     from ark_relay import __main__ as relay_main
-
 
     env = tmpdir() / ".env"
     env.write_text("\n".join([
@@ -5392,7 +5262,6 @@ def _part_engine_pending():  # noqa: C901
     import types
     from datetime import datetime, timedelta
 
-
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
     (AUTOMAS / "config").mkdir(parents=True)
@@ -5409,7 +5278,6 @@ def _part_engine_pending():  # noqa: C901
     from ark_relay.core.config import SERVER_TZ, Config, RunRecord
     from ark_relay.core.ledger import State
 
-
     class Notes:
         """假通知渠道：只记下来，不发出去。"""
 
@@ -5419,7 +5287,6 @@ def _part_engine_pending():  # noqa: C901
         def send(self, title, body="", **kw):
             self.sent.append((title, body))
             return False        # False = 送出去了（真 Notifier 的口径：返回值是「有没有失败」）
-
 
     class Src:
         """假记录源：只给没见过的记录。"""
@@ -5432,13 +5299,11 @@ def _part_engine_pending():  # noqa: C901
             self.calls += 1
             return [r for r in self.records if r.run_id not in (seen or set())]
 
-
     def rec(run_id, script="OK-WW", user="wuwa", ok=False):
         now = datetime.now(tz=SERVER_TZ)
         return RunRecord(run_id=run_id, script=script, user=user,
                          started=now - timedelta(minutes=10), finished=now,
                          ok=ok, failed_tasks=[] if ok else ["任务执行：某个错"], raw={})
-
 
     def build(state_dir=None, source=None):
         """一台干净的中继。state_dir 复用同一个就等于「重启一次」。"""
@@ -5448,7 +5313,6 @@ def _part_engine_pending():  # noqa: C901
                        notifier=Notes())
         e._scripts_running = lambda: False
         return e
-
 
     # ---------------------------------------------------------------- 告警落盘
 
@@ -5508,7 +5372,6 @@ def _part_engine_pending():  # noqa: C901
         fails.append(f"save_pending 抛异常：{type(exc).__name__}: {exc}")
     import logging
 
-
     class _Warnings(logging.Handler):
         def __init__(self):
             super().__init__(logging.WARNING)
@@ -5516,7 +5379,6 @@ def _part_engine_pending():  # noqa: C901
 
         def emit(self, record):
             self.lines.append(record.getMessage())
-
 
     _w = _Warnings()
     eng.log.addHandler(_w)
@@ -5536,7 +5398,6 @@ def _part_engine_pending():  # noqa: C901
     except Exception as exc:  # noqa: BLE001
         raised = f"{type(exc).__name__}: {exc}"
     check("空目录能起来", raised, "")
-
 
     # ---------------------------------------------------------------- 首次启动
 
@@ -5568,18 +5429,15 @@ def _part_engine_pending():  # noqa: C901
     e8 = build(sdir4, source=Src([rec("2026-09-08/wuwa/OK-WW-新的")]))
     check("下次启动不再当第一次", e8.bootstrap(), 0)
 
-
     # ---------------------------------------------------------------- 在跑判断
 
     print("\n[scripts_running：三秒缓存——一轮里十几处都在问，只许问一次]")
     real_win, real_busy, real_sub = eng.config.IS_WINDOWS, eng._automas_busy, eng.subprocess
     asked = []
 
-
     def fake_busy():
         asked.append(1)
         return fake_busy.answer
-
 
     try:
         eng.config.IS_WINDOWS = True     # the machine: the busy check asks AUTO-MAS
@@ -5669,14 +5527,12 @@ def _part_engine_pending():  # noqa: C901
         eng.config.IS_WINDOWS, eng._automas_busy, eng.subprocess = real_win, real_busy, real_sub
         eng._SCRIPTS_CACHE.update(at=-1e9, val=False)
 
-
     # ---------------------------------------------------------------- tick 逐段兜底
 
     print("\n[tick 逐段兜底：八段里随便哪一段炸，另外七段照跑]")
     STEPS = ("_monthcard_notice", "_flush_pending",
              "_weekly_gates", "_check_missed_runs", "_maybe_interim_report",
              "_maybe_deferred_update", "_maybe_daily_report", "_maybe_shutdown")
-
 
     def arm(engine, broken):
         """把八段全换成记录器，其中一段改成会炸的。"""
@@ -5692,7 +5548,6 @@ def _part_engine_pending():  # noqa: C901
         for name in STEPS:
             setattr(engine, name, make(name))
         return ran
-
 
     e10 = build()
     for broken in STEPS:
@@ -5749,12 +5604,10 @@ def _part_engine_pending():  # noqa: C901
     e12 = build(source=Src([rec("r1"), rec("r2"), rec("r3")]))
     handled = []
 
-
     def flaky(r):
         handled.append(r.run_id)
         if r.run_id == "r2":
             raise RuntimeError("这条记录处理不了")
-
 
     e12._handle = flaky
     for name in STEPS:
@@ -5765,13 +5618,11 @@ def _part_engine_pending():  # noqa: C901
     print("\n[一条记录次次处理都出错：重试 HANDLE_TRIES 轮就放弃，群里只收到一条（audit s2 F3）]")
     from ark_relay.features import errwatch
 
-
     class GroupCount(errwatch.ErrorKindAlert):
         """The real errwatch handler (its level and filters), with the push replaced by a list."""
 
         def _take(self, record):
             self.taken.append(record.getMessage())
-
 
     sdir13 = tmpdir()
     src13 = Src([rec("bad")])
@@ -5780,12 +5631,10 @@ def _part_engine_pending():  # noqa: C901
     broken = [True]
     calls13 = []
 
-
     def _bad(r):
         calls13.append(r.run_id)
         if broken[0]:
             raise RuntimeError("这条记录永远处理不了")
-
 
     e13._handle = _bad
     for name in STEPS:
@@ -5826,7 +5675,6 @@ def _part_engine_pending():  # noqa: C901
     e13c.tick()
     check("代码没变就不再试", tried, [])
 
-
     print("[读模式开关炸了，也不许带走整轮——日报和关机在最后]")
     eng2 = build()
     ran = []
@@ -5845,19 +5693,16 @@ def _part_loop_parts():  # noqa: C901
     """主循环拆出来的两个部件：目录监听的退避、AUTO-MAS 保活的睡眠上限与退避。"""
     import types
 
-
     class _Any:
         def __init__(self, *a, **k): pass
         def __call__(self, *a, **k): return _Any()
         def __getattr__(self, _): return _Any()
-
 
     class _Stub(types.ModuleType):
         def __getattr__(self, name):
             if name.startswith("__"):
                 raise AttributeError(name)
             return _Any
-
 
     for name in ("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
@@ -5866,7 +5711,6 @@ def _part_loop_parts():  # noqa: C901
 
     import service
     from ark_relay.features import automas_keeper, automas_keeper as automas_procs, automas_keeper as dirwatch, automas_keeper as mainloop, procwatch, procwatch as shutdown_signs
-
 
     def set_time(t):
         """service.py's code now lives in several modules, each reading its own `time`; swap it in all."""
@@ -5877,17 +5721,14 @@ def _part_loop_parts():  # noqa: C901
     dirwatch.win32con.FILE_NOTIFY_CHANGE_LAST_WRITE = 0x10
     import boot_stages
 
-
     class Log:
         def info(self, *a, **k): pass
         def warning(self, *a, **k): pass
         def exception(self, *a, **k): pass
 
-
     class Notifier:
         def __init__(self): self.sent = []
         def send(self, title, body, **k): self.sent.append(title); return []
-
 
     print("[目录监听：重建失败按 5→10→20…封顶 60 秒退避]")
     cfg = types.SimpleNamespace(history_dir=Path("/nope"))
@@ -5934,7 +5775,6 @@ def _part_loop_parts():  # noqa: C901
         def recovered(self):
             return [m for lv, m, rec in self.lines if lv != "INFO" and rec]
 
-
     def lost_watch():
         """A _DirWatch whose re-arm has just failed (the 2026-10-06 rule: decided by the rebuild)."""
         lg, n = RecLog(), Notifier()
@@ -5945,7 +5785,6 @@ def _part_loop_parts():  # noqa: C901
         dirwatch.win32file = rearm_fail
         w.rearm()
         return w, lg, n
-
 
     print("[目录监听：重新武装失败、几秒后自己重建好了 -> 报群（断开的原因还没查清，2026-10-10 起）]")
     now[0] = 5000.0
@@ -6103,16 +5942,13 @@ def _part_loop_parts():  # noqa: C901
     print("\n[清单-1108 A-05：脚本刚停，先补做推迟的待办，再跑 tick（关机判断要看见它）]")
     order = []
 
-
     def _keeper(*a):
         return types.SimpleNamespace(proc_evt="proc", handle=None, cap_wait=lambda w: w,
                                      on_process_started=lambda: order.append("proc"),
                                      stopping=lambda: None, check=lambda *x: None)
 
-
     def _roll(*a):
         return types.SimpleNamespace(cap_wait=lambda w: w, check=lambda: order.append("dayroll"))
-
 
     class _Watch:
         handle = None
@@ -6121,7 +5957,6 @@ def _part_loop_parts():  # noqa: C901
         def cap_wait(self, w): return w
         def stopping(self): pass
         def close(self): pass
-
 
     waits = iter([258, 0])
     mainloop.win32event = types.SimpleNamespace(WAIT_OBJECT_0=0, WaitForMultipleObjects=lambda h, a, ms: next(waits),

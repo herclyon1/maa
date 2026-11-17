@@ -89,7 +89,6 @@ def _part_phone_main():
         print("all checks passed" if not fails else "FAILED: " + "; ".join(fails))
         return 0 if not fails else 1
 
-
     raise SystemExit(main())
 
 
@@ -101,7 +100,6 @@ def _part_phone_channel_boot():
     import types
     from datetime import datetime, timezone
 
-
     _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
@@ -111,7 +109,6 @@ def _part_phone_channel_boot():
     from ark_relay.features import phone as phone_channel
     from ark_relay.features import phone
 
-
     class Logs(logging.Handler):
         def __init__(self):
             super().__init__()
@@ -120,10 +117,8 @@ def _part_phone_channel_boot():
         def emit(self, record):
             self.recs.append((record.levelno, record.getMessage()))
 
-
     WHY = "腾讯云 COS 没存上（回 403），ntfy 也没发出去（ntfy 回 502（试了 2 次））"
     boxes: list = []
-
 
     class FakeBox:
         def __init__(self, topic, pin, state_dir, cos=None):
@@ -142,7 +137,6 @@ def _part_phone_channel_boot():
         def listen(self, on_cmd, stop, **kw):
             self.listened = {"on_cmd": on_cmd, **kw}
 
-
     class FakeHb:
         def __init__(self, *a, **k):
             pass
@@ -153,16 +147,13 @@ def _part_phone_channel_boot():
         def watch(self):
             pass
 
-
     ran: list = []
-
 
     def fake_make_phone_cmd(*a, **k):
         def run(body):
             ran.append(body)
         run.drain = lambda: None
         return run
-
 
     saved = (phone.Mailbox, phone.Heartbeat, phone.state_payload, boot_stages.ensure_automas,
              phone_channel._make_phone_cmd)
@@ -238,13 +229,11 @@ def _part_phone_cmd_gate():
         def __call__(self, *a, **k): return _Any()
         def __getattr__(self, _): return _Any()
 
-
     class _Stub(types.ModuleType):
         def __getattr__(self, name):
             if name.startswith("__"):
                 raise AttributeError(name)
             return _Any
-
 
     for name in ("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
@@ -259,16 +248,13 @@ def _part_phone_cmd_gate():
     from ark_relay.features import phone as phone_channel
     from ark_relay.core import texts
 
-
     class Log:
         def info(self, *a, **k): pass
         def warning(self, *a, **k): pass
         def exception(self, *a, **k): pass
 
-
     class HB:
         def watch(self): pass
-
 
     def run(action, busy, applied):
         notes = _Notes()
@@ -282,7 +268,6 @@ def _part_phone_cmd_gate():
         finally:
             C.apply_command = real
         return notes
-
 
     print("[跑着的时候：改 AUTO-MAS 的设置先排队，不当场改]")
     applied = []
@@ -381,11 +366,9 @@ def _part_phone_cmd_queue():
     import types
     from datetime import datetime, timedelta
 
-
     _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
-
 
     os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
@@ -395,7 +378,6 @@ def _part_phone_cmd_queue():
     from ark_relay.features import modes
     from ark_relay.features import phone
     from ark_relay.core.config import SERVER_TZ
-
 
     class Log:
         def __init__(self):
@@ -409,19 +391,15 @@ def _part_phone_cmd_queue():
         def exception(self, fmt, *a, **k):
             self.lines.append("EXC " + (fmt % a if a else fmt))
 
-
     class HB:
         def watch(self): pass
 
-
     APPLIED: list = []
-
 
     def fake_apply(body):
         APPLIED.append(body["action"] + (f":{body['value']}" if "value" in body else ""))
         assert "_meta" not in body, "apply_command must never see _meta"
         return True, f"改好了 {body.get('value', '')}".strip()
-
 
     def order(action, mid, sent=None, **kw):
         """An order as phone.stamp hands it over."""
@@ -430,12 +408,10 @@ def _part_phone_cmd_queue():
                          "ntfy_time": int(time.time()), "ntfy_id": mid, "via": "live"}
         return body
 
-
     def make(engine, state_dir, notes=None, pushed=None, log=None):
         """A fresh run_phone_cmd: building it again on the same dir is a relay restart."""
         pusher = phone.StatePusher(lambda why: (pushed.append(why) if pushed is not None else None) or True)
         return phone_channel._make_phone_cmd(engine, notes or _Notes(), log or Log(), HB(), pusher, state_dir)
-
 
     REAL_APPLY = C.apply_command
     C.apply_command = fake_apply      # bound into the closure when _make_phone_cmd runs
@@ -564,7 +540,6 @@ def _part_phone_cmd_queue():
         eng7.busy = True          # a queue started right after the first order
         return out
 
-
     eng7.busy = False
     C.apply_command = _apply_then_busy
     fn7 = make(eng7, d7)
@@ -681,7 +656,6 @@ def _part_phone_cmd_queue():
     check("还能接着排", phone.CmdQueue(d9).add(order("set_config", "z1", value="1")), phone.QUEUED)
     check("排进去了", len(phone.CmdQueue(d9)), 1)
 
-
     print("\n[D207：排着的时候同一条（action + 内容一样）又按一次：不重复排，这次也有排队回执]")
     d14 = tmpdir()
     eng14 = _Eng(busy=True)
@@ -735,7 +709,6 @@ def _part_phone_cmd_queue():
     check("只有第一条有排队回执", [(r.get("queued", False), r["text"][:3]) for r in modes.receipts(d16)],
           [(True, "排队中"), (False, "改好了"), (False, "改好了")])
 
-
     print("\n[D207：排队回执原样进推给 App 的状态（relay.最近指令），queued 跟着出去]")
     from ark_relay.core import plan as _plan
     from ark_relay.features import snapshot as _snap
@@ -756,11 +729,9 @@ def _part_phone_drained_failure_pushed():
     import os
     import time
 
-
     _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                   "win32con", "win32file", "servicemanager", "win32process",
                   "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
-
 
     os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY="",
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
@@ -772,7 +743,6 @@ def _part_phone_drained_failure_pushed():
     from ark_relay.core import texts
     from ark_relay.core.notify import route_of
 
-
     class Notes:
         def __init__(self):
             self.sent = []
@@ -781,24 +751,20 @@ def _part_phone_drained_failure_pushed():
             self.sent.append((title, body, alert))
             return []
 
-
     class Log:
         def _rec(self, *a, **k):
             pass
 
         info = warning = debug = exception = _rec
 
-
     class HB:
         def watch(self):
             pass
-
 
     def order(action, mid, **kw):
         body = {"action": action, "confirmed": True, **kw}
         body["_meta"] = {"sent": int(time.time()), "ntfy_time": int(time.time()), "ntfy_id": mid, "via": "live"}
         return body
-
 
     real = C.apply_command
     C.apply_command = lambda body: ((False, "刷取关卡：找不到 TO-9") if body.get("value") == "TO-9"
@@ -830,7 +796,6 @@ def _part_phone_gzip():
     import json, time
 
     from ark_relay.features import phone
-
 
     PIN = "8964"
     BODY = {"options": {f"键{i}": ["候选甲", "候选乙", "候选丙"] for i in range(60)},
@@ -867,20 +832,17 @@ def _part_phone_order_failed_pushed():
 
     import types
 
-
     class _Any:
         """Stands in for any pywin32 attribute (boot_stages pulls in service helpers)."""
         def __init__(self, *a, **k): pass
         def __call__(self, *a, **k): return _Any()
         def __getattr__(self, _): return _Any()
 
-
     class _Stub(types.ModuleType):
         def __getattr__(self, name):
             if name.startswith("__"):
                 raise AttributeError(name)
             return _Any
-
 
     for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
                   "win32con", "win32file", "servicemanager", "win32process",
@@ -893,7 +855,6 @@ def _part_phone_order_failed_pushed():
     from ark_relay.core import texts
     from ark_relay.core.notify import route_of
 
-
     class FakeNotifier:
         def __init__(self):
             self.sent = []
@@ -902,14 +863,12 @@ def _part_phone_order_failed_pushed():
             self.sent.append((title, body, alert))
             return []
 
-
     def run(ok):
         n = FakeNotifier()
         phone_channel._phone_execute(lambda body: (ok, "刷取关卡：找不到 TO-9" if not ok else "刷取关卡：TO-5"),
                                    n, logging.getLogger("ark.test_phone"), lambda *a, **k: None, lambda *a, **k: None,
                                    {"action": "set_stage"}, "set_stage", None, True)
         return n.sent
-
 
     print("[手机指令没改成：进群]")
     bad = run(False)
@@ -950,7 +909,6 @@ def _part_phone_quiet():  # noqa: C901
     TOPIC = "topic-abc"
     COS = Cos("AKIDtest", "secret", "ark-evidence-1", "ap-shanghai")
 
-
     def section(title, fn):
         """Run one block; an exception (old code without the new names) is a failure, not an abort."""
         print(f"\n[{title}]")
@@ -959,7 +917,6 @@ def _part_phone_quiet():  # noqa: C901
         except Exception as exc:  # noqa: BLE001
             print(f"  ✗ {title}: {type(exc).__name__}: {exc}")
             fails.append(title)
-
 
     class FakeResp:
         def __init__(self, body: bytes = b"", status: int = 200):
@@ -981,7 +938,6 @@ def _part_phone_quiet():  # noqa: C901
         def close(self):
             pass
 
-
     class FakeNet:
         """Records every request (url, method, body); canned answers in order, then 200."""
 
@@ -1001,7 +957,6 @@ def _part_phone_quiet():  # noqa: C901
         def posts(self):
             return [(u, b) for u, m, b in self.sent if m == "POST"]
 
-
     def use(net):
         fake_urllib = types.SimpleNamespace(
             request=types.SimpleNamespace(Request=urllib.request.Request, urlopen=net.urlopen),
@@ -1009,7 +964,6 @@ def _part_phone_quiet():  # noqa: C901
         # phone.py's network code lives in these sibling modules; each reads its own urllib.
         for m in (phone_quota, phone_cos_store, phone_mailbox, phone_heartbeat):
             m.urllib = fake_urllib
-
 
     class Logs(logging.Handler):
         def __init__(self):
@@ -1040,7 +994,6 @@ def _part_phone_quiet():  # noqa: C901
             self.recs.clear()
             self.marks.clear()
 
-
     class Pushes:
         def __init__(self):
             self.sent = []
@@ -1049,11 +1002,9 @@ def _part_phone_quiet():  # noqa: C901
             self.sent.append((title, body))
             return []
 
-
     STATE = Path(tempfile.mkdtemp(prefix="phone-quiet-"))
     PUSHES = Pushes()
     WATCH = errwatch.ErrorKindAlert(PUSHES, state_dir=STATE, known={}, pace=0, retry=(0.05,))
-
 
     def pushed(want=0, secs=3.0):
         """What errwatch pushed to the group from the phone logger's records so far."""
@@ -1062,7 +1013,6 @@ def _part_phone_quiet():  # noqa: C901
             time.sleep(0.02)
         time.sleep(0.1)
         return [b for _, b in PUSHES.sent]
-
 
     def settled(secs=10.0):
         """The group's push count once errwatch's queue is empty: the baseline a block
@@ -1077,10 +1027,8 @@ def _part_phone_quiet():  # noqa: C901
             raise AssertionError(f"errwatch still holds {len(left)} push(es) after {secs:.0f} s")
         return len(PUSHES.sent)
 
-
     def daily():
         return errwatch.daily_section(STATE, datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d"))
-
 
     def recovered_ok(word):
         """One recovered WARNING containing `word`, its first line plain (the daily report
@@ -1098,7 +1046,6 @@ def _part_phone_quiet():  # noqa: C901
         new_pushes = len(pushed()) - before + int(row.get("pushed") or 0)
         return (len(rec), texts.plain(first), new_pushes, bool(row.get("recovered")))
 
-
     logs = Logs()
     phone.log.addHandler(logs)
     phone.log.addHandler(WATCH)
@@ -1110,15 +1057,12 @@ def _part_phone_quiet():  # noqa: C901
     netretry._log_netretry.setLevel(logging.DEBUG)
     netretry._log_netretry.propagate = False
 
-
     def ntfy_error(http: int, code: int = 0, text: str = "", headers=None):
         body = json.dumps({"code": code, "http": http, "error": text}).encode() if code else b""
         return urllib.error.HTTPError("https://ntfy.sh/x", http, "err", headers or {}, io.BytesIO(body))
 
-
     def quota_full():
         return ntfy_error(429, 42908, "limit reached: daily message quota reached")
-
 
     def mailbox(cos=None, state_dir=None):
         mb = phone.Mailbox(TOPIC, PIN, state_dir or tmpdir(), cos=cos)
@@ -1127,9 +1071,7 @@ def _part_phone_quiet():  # noqa: C901
         mb._sleep = mb.slept.append
         return mb
 
-
     BIG = {"at": 1, "options": {"x": __import__("base64").b64encode(os.urandom(9600)).decode()}}
-
 
     def a_quota_once():
         logs.clear()
@@ -1159,7 +1101,6 @@ def _part_phone_quiet():  # noqa: C901
         use(FakeNet())
         mailbox(state_dir=d2).publish({"at": 1})
         check("心跳先撞到 42908、状态后到：一天一共一条 WARNING", len(logs.warnings()), 1)
-
 
     def b_cos_is_delivered():
         logs.clear()
@@ -1200,7 +1141,6 @@ def _part_phone_quiet():  # noqa: C901
         check("……只有 COS 的 PUT，ntfy 一个请求都没有", [m for _, m, _ in net.sent], ["PUT"])
         check("……不记 WARNING (the quota's own WARNING is once a day)", logs.warnings(), [])
 
-
     def c_timeout_one_reason():
         logs.clear()
         mb = mailbox()
@@ -1217,7 +1157,6 @@ def _part_phone_quiet():  # noqa: C901
         use(FakeNet(*[urllib.error.URLError("timed out")] * DOWN, TimeoutError("t1"), TimeoutError("t2")))
         check("COS 和 ntfy 都不通：没送到", mb.publish({"at": 1}), False)
         check("……原因两边都说", ("腾讯云 COS" in mb.last_error, "ntfy" in mb.last_error), (True, True))
-
 
     def d_retry_rules():
         mb = mailbox()
@@ -1244,7 +1183,6 @@ def _part_phone_quiet():  # noqa: C901
         use(net)
         check("42908：不重试", (mb.publish({"at": 1}), len(net.sent)), (False, 1))
 
-
     def e_pieces():
         logs.clear()
         mb = mailbox()
@@ -1265,10 +1203,8 @@ def _part_phone_quiet():  # noqa: C901
         check("……不记 WARNING（调用方记那一条）", logs.warnings(), [])
         check("……last_error 说是第 2 片", "第 2 片" in getattr(mb, "last_error", ""), True)
 
-
     def ntfy_lines(*events):
         return ("\n".join(json.dumps(e, ensure_ascii=False) for e in events) + "\n").encode("utf-8")
-
 
     def f_backlog_read_again():
         logs.clear()
@@ -1297,14 +1233,12 @@ def _part_phone_quiet():  # noqa: C901
               any("timed out" in m for m in logs.recovered() if "开机时没读到" in m), True)
         check("……nothing for the group", logs.loud(), [])
 
-
     class Idle(FakeResp):
         """An open stream that times out reading after its lines (ntfy sent nothing more)."""
 
         def __iter__(self):
             yield from io.BytesIO(self._body)
             raise TimeoutError("The read operation timed out")
-
 
     def g_stream_drops():
         logs.clear()
@@ -1348,7 +1282,6 @@ def _part_phone_quiet():  # noqa: C901
         check("……back at last: one recovered WARNING that says it was pushed meanwhile",
               [("期间报过群" in m) for m in logs.recovered()], [True])
 
-
     def h_cos_beat_info():
         logs.clear()
         net = FakeNet(urllib.error.URLError("timed out"))
@@ -1382,7 +1315,6 @@ def _part_phone_quiet():  # noqa: C901
         check("……back at last: one recovered WARNING that says it was pushed meanwhile",
               [("期间报过群" in m) for m in logs.recovered()], [True])
 
-
     def i_ntfy_count():
         logs.clear()
         q = phone.Quota(tmpdir())
@@ -1409,7 +1341,6 @@ def _part_phone_quiet():  # noqa: C901
         check("测试里给了假心跳就不去问 ntfy 的计数", plain._account, None)
         check("线上（不给 post）才问", phone.Heartbeat(TOPIC, tmpdir())._account, phone.ntfy_account)
 
-
     def j_budget():
         d = tmpdir()
         mb = mailbox(cos=COS, state_dir=d)
@@ -1426,7 +1357,6 @@ def _part_phone_quiet():  # noqa: C901
         check("今天已用到 200：ntfy 不再跳", (hb.beat(), beats), (False, []))
         check("……COS 心跳照写，App 照样看得到开机", [m for _, m, _ in net.sent], ["PUT"])
         check("……COS 上告诉 App 节奏放宽了", json.loads(net.sent[0][2])["every"] >= phone.HB_SLOW_SEC, True)
-
 
     for title, fn in (("#40 #52 #54：额度用完一天只说一次，之后不再去撞", a_quota_once),
                       ("#42 #47 #48：存进 COS 就算送到", b_cos_is_delivered),
@@ -1448,7 +1378,6 @@ def _part_phone_receipts():
 
     from ark_relay.features import modes
 
-
     print("[回执：记下来、最新在后、只留最近几条]")
     d = tmpdir()
     check("一开始是空的", modes.receipts(d), [])
@@ -1469,7 +1398,6 @@ def _part_phone_sent():
     import logging
     from datetime import datetime
 
-
     _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
@@ -1480,7 +1408,6 @@ def _part_phone_sent():
     from ark_relay.features import phone
     from ark_relay.core.config import SERVER_TZ
 
-
     class Grab(logging.Handler):
         def __init__(self):
             super().__init__()
@@ -1488,7 +1415,6 @@ def _part_phone_sent():
 
         def emit(self, record):
             self.lines.append(record.getMessage())
-
 
     grab = Grab()
     phone.log.addHandler(grab)
@@ -1515,26 +1441,21 @@ def _part_phone_sent():
     phone.stamp({"ts": T, "body": {"action": "watch"}}, ENV, "live")
     check("没多出行", len(grab.lines), n)
 
-
     class Eng:
         def scripts_running(self):
             return False
 
-
     class Notes:
         def send(self, *a, **k):
             return False
-
 
     class Log:
         def info(self, *a, **k): pass
         def warning(self, *a, **k): pass
         def exception(self, *a, **k): pass
 
-
     class HB:
         def watch(self): pass
-
 
     def run(stamped):
         d = tmpdir()
@@ -1546,7 +1467,6 @@ def _part_phone_sent():
         finally:
             C.apply_command = real
         return got, modes.receipts(d)
-
 
     print("\n[在线指令：回执多存 sent，文字不变，指令体里没有 _meta]")
     got, rec = run(phone.stamp({"ts": T, "body": {"action": "skip_today", "queue": "晚班"}}, ENV, "live"))
@@ -1673,7 +1593,6 @@ def _part_phone_stale_cmd():
     PIN = "8964"
     TOPIC = "topic-abc"
 
-
     class FakeResp:
         def __init__(self, body: bytes):
             self._body = body
@@ -1693,17 +1612,14 @@ def _part_phone_stale_cmd():
         def close(self):
             pass
 
-
     def ntfy_lines(*msgs):
         """ntfy's JSON stream: one `message` event per (id, raw message)."""
         now = int(time.time())
         return "\n".join(json.dumps({"id": mid, "time": now, "event": "message", "message": raw})
                          for mid, raw in msgs).encode() + b"\n"
 
-
     def cmd(body, ts):
         return json.dumps({"v": 1, "kind": "cmd", "pin": PIN, "ts": ts, "body": body})
-
 
     def use(body):
         fake = types.SimpleNamespace(
@@ -1712,7 +1628,6 @@ def _part_phone_stale_cmd():
             error=urllib.error)
         phone_mailbox.urllib = fake
 
-
     class Logs(logging.Handler):
         def __init__(self):
             super().__init__()
@@ -1720,7 +1635,6 @@ def _part_phone_stale_cmd():
 
         def emit(self, record):
             self.lines.append(record.getMessage())
-
 
     logs = Logs()
     phone.log.addHandler(logs)
@@ -1733,10 +1647,8 @@ def _part_phone_stale_cmd():
     STATE = json.dumps({"v": 1, "kind": "state", "pin": PIN, "ts": now - 60, "body": {}})
     BACKLOG = ntfy_lines(("m-old", OLD), ("m-new", NEW), ("m-foreign", FOREIGN), ("m-state", STATE))
 
-
     def too_old_lines():
         return sum("太老了" in line for line in logs.lines)
-
 
     print("[boot read: a too-old command is marked handled, and logged once]")
     state = tmpdir()
@@ -1758,12 +1670,10 @@ def _part_phone_stale_cmd():
     mb = phone.Mailbox(TOPIC, PIN, state)
     calls = []
 
-
     def stop():
         """False for the loop check and the one line; True once the stream ends."""
         calls.append(1)
         return len(calls) > 2
-
 
     mb.listen(lambda c: None, stop)
     check("the stream marks it handled", mb._seen, ["s-old"])
@@ -1783,11 +1693,9 @@ def _part_phone_state():  # noqa: C901
 
     PIN = "8964"
 
-
     def bare(bodies):
         """The command bodies without phone.stamp's "_meta" (when / how it arrived)."""
         return [{k: v for k, v in b.items() if k != "_meta"} for b in bodies]
-
 
     # ---------------------------------------------------------------- 假网络
     #
@@ -1814,7 +1722,6 @@ def _part_phone_state():  # noqa: C901
         def close(self):
             self.closed = True
 
-
     class FakeNet:
         """Records every request; hands back canned responses."""
 
@@ -1831,10 +1738,8 @@ def _part_phone_state():  # noqa: C901
                 raise nxt
             return nxt
 
-
     # phone.py's network code lives in these sibling modules; each reads its own urllib.
     NET_MODULES = (phone_quota, phone_cos_store, phone_mailbox, phone_heartbeat)
-
 
     def with_net(net, fn):
         saved = [m.urllib for m in NET_MODULES]
@@ -1848,7 +1753,6 @@ def _part_phone_state():  # noqa: C901
         finally:
             for m, s in zip(NET_MODULES, saved, strict=True):
                 m.urllib = s
-
 
     # ---------------------------------------------------------------- state_payload
 
@@ -2611,7 +2515,6 @@ def _part_phone_state_cos():
     PIN = "8964"
     TOPIC = "topic-abc"
 
-
     class FakeResp:
         def __init__(self, body: bytes = b"", status: int = 200):
             self.status = status
@@ -2625,7 +2528,6 @@ def _part_phone_state_cos():
 
         def read(self):
             return self._body
-
 
     class FakeNet:
         """Records every request (url, method, body, headers); canned answers in order."""
@@ -2644,10 +2546,8 @@ def _part_phone_state_cos():
                 raise nxt
             return nxt
 
-
     # phone.py's network code lives in these sibling modules; each reads its own urllib.
     NET_MODULES = (phone_quota, phone_cos_store, phone_mailbox, phone_heartbeat)
-
 
     def with_net(net, fn):
         saved = [m.urllib for m in NET_MODULES]
@@ -2661,7 +2561,6 @@ def _part_phone_state_cos():
         finally:
             for m, s in zip(NET_MODULES, saved, strict=True):
                 m.urllib = s
-
 
     COS = Cos("AKIDtest", "secret", "ark-evidence-1", "ap-shanghai")
     import random
@@ -2707,7 +2606,6 @@ def _part_phone_state_cos():
         d = json.loads(raw)
         d.pop("ts", None)
         return d
-
 
     check("……就是 pack(gz=True) 那一份（除了时间戳，一字节不差）",
           no_ts(put_body), no_ts(phone.pack(PIN, BIG, "state", gz=True)))
@@ -2826,7 +2724,6 @@ def _part_channel_down():
     from ark_relay.core.config import Config
     from ark_relay.core.notify import Notifier
 
-
     ERR1 = ("企业微信发送失败: 60020 not allow to access from your ip, "
             "hint: [1787373915609110759172198], from ip: 112.43.40.209")
     ERR2 = ("企业微信发送失败: 60020 not allow to access from your ip, "
@@ -2884,7 +2781,6 @@ def _part_cli_commands():
     from ark_relay import __main__ as cli
     from ark_relay.features import collect_retry
     import argparse
-
 
     print("[evidence 命令：没配置的脚本什么也传不了，退出码 1，但不炸]")
     class Cfg:
@@ -2954,12 +2850,10 @@ def _part_cmd_test_channels():
     import io
     import os
 
-
     os.environ.update(ARK_STATE_DIR=str(tmpdir()), ARK_HISTORY_DIR=str(tmpdir()))
     from ark_relay import __main__ as relay_main
     from ark_relay.core import notify
     from ark_relay.core.config import Config
-
 
     class Chan:
         def __init__(self, ok):
@@ -2970,18 +2864,15 @@ def _part_cmd_test_channels():
                 raise RuntimeError("refused")
             self.got.append(a)
 
-
     bot, sc = Chan(True), Chan(False)
     copied: list = []
     real_init = notify.Notifier.__init__
-
 
     def fake_init(self, cfg):
         real_init(self, cfg)
         self.wecom_bot, self.serverchan = bot, sc
         self.wecom = Chan(True)
         self.wecom.enabled = False
-
 
     notify.Notifier.__init__ = fake_init
     notify.Notifier._copy_alarm = lambda self, t, b: copied.append(t)
@@ -3043,12 +2934,10 @@ def _part_commands_gates():  # noqa: C901
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.statestore import StateStore
 
-
     # The real config's shape, cut down to what these gates touch: one script uuid,
     # one user uuid, Info/* per user and Game/WaitTime per script (docs/CONFIG.md).
     SID = "59da8762-8fa7-4f2b-9c1e-000000000001"
     UID = "b0c1d2e3-0000-0000-0000-000000000002"
-
 
     def sample() -> dict:
         return {SID: {
@@ -3058,9 +2947,7 @@ def _part_commands_gates():  # noqa: C901
                 "Stage": "AT-4", "StageMode": "Fixed", "MedicineNumb": 0,
                 "Annihilation": "Close", "RunTimesLimit": 3}}}}}}
 
-
     CFG = AUTOMAS / "config" / "ScriptConfig.json"
-
 
     def reset_cfg(data: "dict | None" = None) -> str:
         CFG.parent.mkdir(parents=True, exist_ok=True)
@@ -3071,14 +2958,11 @@ def _part_commands_gates():  # noqa: C901
         CFG.write_text(raw, encoding="utf-8")
         return raw
 
-
     def cfg_raw() -> str:
         return CFG.read_text(encoding="utf-8")
 
-
     def backups() -> list[Path]:
         return sorted(CFG.parent.glob("ScriptConfig.json.bak-*"))
-
 
     # ---------------------------------------------------------------- 闸门 ①
 
@@ -3103,12 +2987,10 @@ def _part_commands_gates():  # noqa: C901
     print("\n[白名单里有名字，apply_command 里就必须有分支]")
     # Otherwise the button exists on the phone, does nothing, and reports nothing.
 
-
     def offline_mas(path, body=None, timeout=20):
         # What urlopen raises when nothing listens: the one shape that means "AUTO-MAS
         # is down" (annihilation._backend_unreachable); any other error means it is up.
         raise __import__("urllib.error").error.URLError(ConnectionRefusedError(61, "Connection refused"))
-
 
     commands._mas = offline_mas
     minimal = {
@@ -3268,26 +3150,21 @@ def _part_commands_gates():  # noqa: C901
         d[SID]["Info"]["凭空造的"] = 1
         return json.dumps(d, ensure_ascii=False, indent=2)
 
-
     ok, msg = commands._safe_rewrite(CFG, add_key, expect_changed=1)
     check("凭空多出一个字段，放弃", (ok, "新增 1" in msg), (False, True))
     check("多字段时文件没动", cfg_raw(), before)
-
 
     def drop_key(raw: str) -> str:
         d = json.loads(raw)
         del d[SID]["Game"]["WaitTime"]
         return json.dumps(d, ensure_ascii=False, indent=2)
 
-
     ok, msg = commands._safe_rewrite(CFG, drop_key, expect_changed=0)
     check("少了一个字段，放弃", (ok, "删除 1" in msg), (False, True))
     check("少字段时文件没动", cfg_raw(), before)
 
-
     def boom(raw: str) -> str:
         raise ValueError("正则没匹配上")
-
 
     ok, msg = commands._safe_rewrite(CFG, boom, expect_changed=1)
     check("生成改动时抛异常，不碰盘", (ok, "生成改动失败" in msg), (False, True))
@@ -3305,10 +3182,8 @@ def _part_commands_gates():  # noqa: C901
     before = reset_cfg()
     saved_write = commands.atomic_write_text
 
-
     def cannot_write(path, text, newline=None):
         raise OSError("磁盘满了")
-
 
     commands.atomic_write_text = cannot_write
     ok, msg = commands._safe_rewrite(CFG, lambda raw: raw.replace('"Fixed"', '"Auto"'),
@@ -3359,7 +3234,6 @@ def _part_commands_gates():  # noqa: C901
 
     print("\n[set_config：读现值、路径必须已存在、写完回读——826 缺的就是这三条]")
 
-
     class FakeMas:
         """The AUTO-MAS backend, in memory. Records every call so «没写盘» is provable."""
 
@@ -3395,14 +3269,12 @@ def _part_commands_gates():  # noqa: C901
         def wrote(self):
             return [c for c in self.calls if c[0] == "/api/scripts/user/update"]
 
-
     def with_mas(fake, fn):
         saved, commands._mas = commands._mas, fake
         try:
             return fn()
         finally:
             commands._mas = saved
-
 
     check("缺 script/path 就拒",
           with_mas(FakeMas(), lambda: commands._set_config({"script": "MAA"}))[0],
@@ -3447,7 +3319,6 @@ def _part_commands_gates():  # noqa: C901
     print("\n[后端在：关卡 / 理智药 / 等待秒数走调度程序，不碰文件（2026-09-30 早班停用被内存写回盖掉的同一个坑）]")
     MAAEND_SID = "3e5d0000-0000-0000-0000-0000000maaend"
 
-
     class BackendMas(FakeMas):
         """FakeMas plus the script-level endpoints and AUTO-MAS's failure shape."""
 
@@ -3474,7 +3345,6 @@ def _part_commands_gates():  # noqa: C901
 
         def script_writes(self):
             return [c for c in self.calls if c[0] == "/api/scripts/update"]
-
 
     before = reset_cfg()
     b = BackendMas()
@@ -3553,10 +3423,8 @@ def _part_commands_gates():  # noqa: C901
     print("\n[后端不在（连不上）：走原来的文件路]")
     from urllib.error import URLError
 
-
     def refused(path, body=None, timeout=20):
         raise URLError(ConnectionRefusedError(61, "Connection refused"))
-
 
     reset_cfg()
     ok, msg = with_mas(refused, lambda: commands._set_stage("TO-5"))
@@ -3626,7 +3494,6 @@ def _part_commands_gates():  # noqa: C901
     ALL_DAYS = list(commands.WEEKDAYS)
     TODAY = commands.WEEKDAYS[datetime.now(tz=SERVER_TZ).weekday()]
 
-
     class FakeQueueMas(FakeMas):
         def __init__(self):
             super().__init__()
@@ -3659,7 +3526,6 @@ def _part_commands_gates():  # noqa: C901
                 return {"status": "success"}
             return super().__call__(path, body, timeout)
 
-
     q = FakeQueueMas()
     rec = with_mas(q, lambda: commands.skip_script_in_queue("早班", "MAA"))
     check("the record keeps the item, its position and its original days",
@@ -3690,7 +3556,6 @@ def _part_commands_gates():  # noqa: C901
     check("the user's own days already leave out today: None, nothing written",
           (with_mas(q5, lambda: commands.skip_script_in_queue("早班", "MAA")), q5.writes), (None, []))
 
-
     class StuckQueueMas(FakeQueueMas):
         """AUTO-MAS accepts item/update but the days never change."""
 
@@ -3700,15 +3565,12 @@ def _part_commands_gates():  # noqa: C901
                 return {"status": "success"}            # accepted, not applied
             return super().__call__(path, body, timeout)
 
-
     import logging
     _warned = []
-
 
     class _Grab(logging.Handler):
         def emit(self, record):
             _warned.append((record.levelno, record.getMessage()))
-
 
     _h = _Grab()
     commands.log.addHandler(_h)
@@ -3759,13 +3621,11 @@ def _part_commands_gates():  # noqa: C901
     ok, msg = with_mas(offline_mas, lambda: commands._run_now("早班"))
     check("拿不到队列列表时明确失败", (ok, "取不到队列列表" in msg), (False, True))
 
-
     class NoSuchQueueMas(FakeMas):
         def __call__(self, path, body=None, timeout=20):
             if path == "/api/queue/get":
                 return {"data": {"q1": {"Info": {"Name": "早班"}}}}
             return super().__call__(path, body, timeout)
-
 
     ok, msg = with_mas(NoSuchQueueMas(), lambda: commands._run_now("不存在的班"))
     check("队列名不存在时把现有的列出来（人才知道该按哪个）",
@@ -3773,10 +3633,8 @@ def _part_commands_gates():  # noqa: C901
 
     print("\n[apply_command 永远不抛：抛出去就没人回报了]")
 
-
     def explode(*a, **k):
         raise RuntimeError("底下炸了")
-
 
     saved, commands._set_stage = commands._set_stage, explode
     ok, msg = commands.apply_command({"action": "set_stage", "value": "1-7",
@@ -3800,10 +3658,8 @@ def _part_mailbox_close_windows():
     KEEPALIVE = 5.0          # seconds between keepalive lines (ntfy.sh: 45 s)
     LIMIT = 1.0              # close() and the listener's exit must each take less
 
-
     stopping = threading.Event()
     held = threading.Event()           # the server has sent the headers and the open line
-
 
     class Stream(BaseHTTPRequestHandler):
         """GET /<topic>/json?...: what ntfy sends a subscriber - an open line, then a
@@ -3829,7 +3685,6 @@ def _part_mailbox_close_windows():
 
         def log_message(self, *a):   # no per-request lines on stderr
             pass
-
 
     srv = ThreadingHTTPServer(("127.0.0.1", 0), Stream)
     srv.daemon_threads = True
@@ -3925,7 +3780,6 @@ def _part_test_windows():
 
     from ark_relay.core import ledger as core
 
-
     FIX = fx_dir(Path(__file__), "fixtures") / "ledger-2026-09-14" / "ledger.jsonl"
     entries = [json.loads(x) for x in FIX.read_text(encoding="utf-8").splitlines() if x.strip()]
     check("样本 16 条", len(entries), 16)
@@ -3969,7 +3823,6 @@ def _part_heartbeat_main():
 
     from ark_relay.features import phone
 
-
     def wait_for(pred, limit=10.0):
         """Poll until pred() holds or `limit` seconds pass. A fixed 0.2 s sleep went red on a
     loaded Windows runner (relay-windows runs 38391031443 and 38409766185, 2026-10-13: the
@@ -3977,7 +3830,6 @@ def _part_heartbeat_main():
         end = time.monotonic() + limit
         while not pred() and time.monotonic() < end:
             time.sleep(0.01)
-
 
     sent = []
     STATE = tmpdir()
@@ -4229,13 +4081,10 @@ def _part_resources():
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from ark_relay.features import resources
 
-
     print("[森空岛会话：没配 token 就是一句说明]")
-
 
     class NoTok:
         skland_token = ""
-
 
     check("没配", resources.skland_session(NoTok), {"错误": "没配森空岛 token"})
 
@@ -4244,15 +4093,12 @@ def _part_resources():
 
     calls = {"login": 0}
 
-
     class Cred:
         cred, token = "c1", "t1"
-
 
     def fake_login(token, did=""):
         calls["login"] += 1
         return Cred()
-
 
     # Put the real functions back at the end: the coverage pass runs many test files in one
     # process, and a later file (test_skland, its part skland_api) must reach the real skland functions.
@@ -4264,10 +4110,8 @@ def _part_resources():
         {"appCode": "arknights", "bindingList": [{"uid": "19237299", "channelMasterId": "1"}]},
     ]
 
-
     class Tok:
         skland_token = "sk-token"
-
 
     resources._session["sk"] = None
     got = resources.skland_session(Tok)
@@ -4275,16 +4119,13 @@ def _part_resources():
     resources.skland_session(Tok)
     check("只登录一次", calls["login"], 1)
 
-
     def boom(c):
         raise RuntimeError("HTTP Error 401")
-
 
     resources._session["sk"] = None
     skland.bindings = boom
     check("失败给原因", resources.skland_session(Tok)["错误"].startswith("RuntimeError: HTTP Error 401"), True)
     check("失败后不留半个会话", resources._session["sk"], None)
-
 
     print("\n[终末地角色这次没读到：过一阵重做会话，不一直缺（11-08 [D-04]）]")
     _saved_role, _saved_bind = skland.endfield_role, skland.bindings
@@ -4310,7 +4151,6 @@ def _part_resources():
     from ark_relay.features import errwatch
     from ark_relay.core import texts
 
-
     class Group:
         def __init__(self):
             self.sent = []
@@ -4318,7 +4158,6 @@ def _part_resources():
         def send(self, title, body, *, alert=False, daily=False):
             self.sent.append((title, body, alert))
             return []
-
 
     grp = Group()
     takes = inspect.signature(errwatch.ErrorKindAlert.__init__).parameters
@@ -4349,15 +4188,12 @@ def _part_resources():
 
     print("\n[今天：从账目数]")
 
-
     class St:
         def read_ledger(self, day):
             return [{"run_id": "a", "script": "MAA", "ok": True}, {"run_id": "b", "script": "OK-WW", "ok": False},
                     {"run_id": "c", "script": "MaaEnd", "ok": True}]
 
-
     check("跑了 3 失败 1 最近 MaaEnd", resources.today(St(), "2026-09-15"), {"跑了": 3, "失败": 1, "最近": "MaaEnd"})
-
 
     class StStop:
         """2026-09-30: the 停一切 press stopped MaaEnd (ok=False) - not a failure."""
@@ -4366,7 +4202,6 @@ def _part_resources():
             return [{"run_id": "a", "script": "OK-WW", "ok": False, "raw": {"okww_error": "x"}},
                     {"run_id": "b", "script": "OK-WW", "ok": True, "raw": {"manual_stop": "09:46 停一切"}},
                     {"run_id": "c", "script": "MaaEnd", "ok": False, "raw": {"manual_stop": "09:46 停一切"}}]
-
 
     check("停一切停掉的不算失败（跑了 3 失败 1）", resources.today(StStop(), "2026-09-30"),
           {"跑了": 3, "失败": 1, "最近": "MaaEnd"})
@@ -4411,17 +4246,14 @@ def _part_resources():
     ]
     _REAL_CARD = getattr(skland, "endfield_card", None)
 
-
     def slow_card(cred, role, server):
         reads["n"] += 1
         time.sleep(0.3)
         return {"detail": {"dungeon": {"curStamina": 1, "maxStamina": 360, "maxTs": 2}}}
 
-
     skland.endfield_card = slow_card
     resources._session["sk"] = None
     seen = []
-
 
     def watch():
         t_end = time.monotonic() + 1.5
@@ -4430,7 +4262,6 @@ def _part_resources():
             if p.get("at") and "dungeon" not in p and "错误" not in p:
                 seen.append(p)
             time.sleep(0.005)
-
 
     w = threading.Thread(target=watch)
     w.start()
@@ -4450,7 +4281,6 @@ def _part_resources():
     print("[today: the ledger cannot be read]")
     import logging
 
-
     class _Grab(logging.Handler):
         def __init__(self):
             super().__init__(logging.WARNING)
@@ -4459,11 +4289,9 @@ def _part_resources():
         def emit(self, record):
             self.n += 1
 
-
     class StBroken:
         def read_ledger(self, day):
             raise OSError("ledger locked")
-
 
     _g = _Grab()
     resources.log.addHandler(_g)
@@ -4487,7 +4315,6 @@ def _part_snapshot():
     from ark_relay.features import errwatch
     from ark_relay.features import snapshot
 
-
     class Grab(logging.Handler):
         def __init__(self):
             super().__init__()
@@ -4497,20 +4324,17 @@ def _part_snapshot():
             if record.levelno >= logging.WARNING:
                 self.warned.append(record.getMessage())
 
-
     grab = Grab()
     snapshot.log.addHandler(grab)
     snapshot.log.propagate = False
 
     calls: list[str] = []
 
-
     def fake(label):
         def f(out):
             calls.append(label)
             out[label] = "ok"
         return f
-
 
     saved = (snapshot._mas, snapshot._queues, snapshot._okww, snapshot._runtime,
              errwatch.relay_shutdown_issued, errwatch.os_shutdown)
@@ -4563,11 +4387,9 @@ def _part_snapshot():
     state = {"down": False}
     errwatch.os_shutdown = lambda: state["down"]
 
-
     def gone(out):
         state["down"] = True
         raise ConnectionRefusedError("AUTO-MAS backend gone")
-
 
     snapshot._mas = gone
     grab.warned.clear()
@@ -4578,10 +4400,8 @@ def _part_snapshot():
     print("[not shutting down: a failing section still warns]")
     state["down"] = False
 
-
     def refused(out):
         raise ConnectionRefusedError("x")
-
 
     snapshot._mas = refused
     grab.warned.clear()
@@ -4595,11 +4415,9 @@ def _part_snapshot():
     from _parts import tmpdir
     from ark_relay.features import phone
 
-
     def runtime(out):
         calls.append("_runtime")
         out["ark-relay"], out["程序"] = "RUNNING", {"MAA": True}
-
 
     snapshot._runtime = runtime
     calls.clear()
@@ -4624,7 +4442,6 @@ def _part_snapshot():
     item_err = {"exc": None}
     queue_info = {"q1": {"Info": {"Name": "早班", "TimeEnabled": True, "StartUpEnabled": False}}}
 
-
     def fake_post(path, body=None, timeout=15):
         if path == "/api/scripts/get":
             return {"data": {"s1": {"Info": {"Name": "MAA"}}}}
@@ -4634,7 +4451,6 @@ def _part_snapshot():
             raise item_err["exc"]
         return {"data": {"i1": {"Info": {"ScriptId": "s1"}}}}
 
-
     class Grab2(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -4643,7 +4459,6 @@ def _part_snapshot():
         def emit(self, record):
             if record.levelno >= logging.WARNING:
                 self.warned.append(record)
-
 
     g2 = Grab2()
     snapshot.log.addHandler(g2)
@@ -4688,7 +4503,6 @@ def _part_snapshot():
 
     print("\n[_mas: one script's user unreadable is marked, not dropped (audit 11 #5)]")
 
-
     def users_post(path, body=None, timeout=15):
         if path == "/api/scripts/get":
             return {"data": {"s1": {"Info": {"Name": "MAA"}}, "s2": {"Info": {"Name": "MaaEnd"}},
@@ -4698,7 +4512,6 @@ def _part_snapshot():
         if path == "/api/scripts/user/get" and body["scriptId"] == "s3":
             raise urllib.error.URLError("refused")
         return {"data": {"u1": {"Info": {"Stage": "1-7"}, "Task": {}}}}
-
 
     o = {}
     with mock.patch.object(snapshot, "_post", users_post):
@@ -4731,7 +4544,6 @@ def _part_inbox_poll():
     from ark_relay.features import phone as inbox
     from _parts import tmpdir
 
-
     class FakeInbox(inbox.Inbox):
         """不联网：把「取回来的那份 JSON」直接塞进来。"""
 
@@ -4740,12 +4552,10 @@ def _part_inbox_poll():
         def _fetch_or_none(self):
             return self.payload
 
-
     def box(payload):
         b = FakeInbox(tmpdir())
         b.payload = payload
         return b
-
 
     print("[版本号严格变大才执行]")
     b = box({"version": 5, "name": "第一批", "commands": []})
@@ -4859,7 +4669,6 @@ def _part_inbox_poll():
     import logging
     from ark_relay.features import errwatch
 
-
     class _Lines(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -4869,20 +4678,17 @@ def _part_inbox_poll():
             if record.levelno >= logging.WARNING:
                 self.got.append((record.getMessage(), bool(getattr(record, errwatch.RECOVERED, False))))
 
-
     _lines = _Lines()
     inbox._log_inbox.addHandler(_lines)
     _real_once, _real_sleep = inbox._fetch_once, inbox.time.sleep
     inbox.time.sleep = lambda s: None
     _answers: list = []
 
-
     def _fake_once(url, timeout=20, errors=None):
         got = _answers.pop(0) if _answers else None
         if got is None and errors is not None:
             errors.append(f"{inbox._netloc(url)}: timed out")
         return got
-
 
     print("\n[a round with no door answering, then a later round got it: daily report only]")
     inbox._fetch_once = _fake_once
@@ -4911,7 +4717,6 @@ def _part_inbox_poll():
         inbox._cos_client = _real_cos_client
         inbox._log_inbox.removeHandler(_lines)
 
-
     class _FakeCos:
         prefix = "relay"
         host = "bucket.cos.ap-shanghai.myqcloud.com"
@@ -4919,10 +4724,8 @@ def _part_inbox_poll():
         def authorization(self, method, key):
             return f"sig {method} {key}"
 
-
     _cos_answer: list = []
     _order: list = []
-
 
     def _fake_cos_once(cos, timeout=20, errors=None):
         _order.append("cos")
@@ -4931,11 +4734,9 @@ def _part_inbox_poll():
             errors.append("cos: timed out")
         return got
 
-
     def _gh_once(url, timeout=20, errors=None):
         _order.append(inbox._netloc(url))
         return _gh_answer[0]
-
 
     _gh_answer: list = [None]
     inbox._log_inbox.addHandler(_lines)
@@ -4985,7 +4786,6 @@ def _part_inbox_poll():
 
     _seen: list = []
 
-
     class _Resp(io.BytesIO):
         def __enter__(self):
             return self
@@ -4993,15 +4793,12 @@ def _part_inbox_poll():
         def __exit__(self, *a):
             return False
 
-
     def _urlopen_ok(req, timeout=None):
         _seen.append((req.full_url, req.get_header("Authorization")))
         return _Resp(json.dumps({"version": 2026100701, "commands": []}).encode())
 
-
     def _urlopen_404(req, timeout=None):
         raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
-
 
     _real_urlopen = inbox.urllib.request.urlopen
     try:
@@ -5025,13 +4822,11 @@ def _part_inbox_poll():
     print("\n[the receipt of an order.sh batch: all through -> log only; any ✗ -> the group, with the ✗ lines]")
     import types as _types
 
-
     class _Stub(_types.ModuleType):
         def __getattr__(self, name):
             if name.startswith("__"):
                 raise AttributeError(name)
             return lambda *a, **k: None
-
 
     for _name in ("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
                   "servicemanager", "win32process", "pythoncom"):
@@ -5042,7 +4837,6 @@ def _part_inbox_poll():
     from ark_relay.core import texts
     from ark_relay.core.notify import route_of
 
-
     class _Note:
         def __init__(self):
             self.sent = []
@@ -5050,7 +4844,6 @@ def _part_inbox_poll():
         def send(self, title, body="", alert=False, **_k):
             self.sent.append((title, body, alert))
             return []
-
 
     def collected(payload, lines):
         """One collect('boot') over a batch whose commands answer `lines` (None: _apply raises)."""
@@ -5064,7 +4857,6 @@ def _part_inbox_poll():
         boot_stages._make_collect(b, engine, n, logging.getLogger("ark.test_phone"), [False])("boot")
         check("one send", len(n.sent), 1)
         return n.sent[0] if n.sent else ("", "", False)
-
 
     DEBUG_OK = ("✅ 🔧 调试模式已开启，至 10-12 21:10（下次预定开机 10-12 21:20 前 10 分钟）：不关机。"
             "注意：要让机器什么都不刷，还需停用相应队列。")

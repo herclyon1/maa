@@ -73,17 +73,14 @@ def _part_shutdown_main():
     def at(hh, mm):
         return datetime(2026, 8, 21, hh, mm, tzinfo=SERVER_TZ)
 
-
     run = {"script": "MAA", "started": at(21, 31).isoformat(),
            "finished": at(22, 15).isoformat(), "ok": True, "run_id": "x"}
 
     from ark_relay.features import shutdown as sd
     E.state.report_sent = lambda d: True          # the report gate is not what is tested here
 
-
     def verdict(now):
         return sd.decide(E, now).code
-
 
     print("\n[18:31] the shift finished on this boot and this relay saw it land: go")
     ledger(run)
@@ -297,7 +294,6 @@ def _part_shutdown_main():
     E._before_shutdown = None
     skipped_clear()
 
-
     print("\n[countdown] 「下次跑完不关机」 pressed inside the relay's own 60-second countdown")
     calls = []
     RC = {"/a": 0}
@@ -363,15 +359,12 @@ def _part_shutdown_main():
     check("refused: no flag stored", modes.skip_armed(STATE), False)
     E._shutdown_issued = False; sd._ISSUED[0] = None; skipped_clear()
 
-
     print("\n[debug outside a shift end] debug mode spends only a real power-off opportunity")
     RC["/a"] = 0
     store.pop("modes", "skip_next_shutdown")
 
-
     def day_at(d, hh, mm):
         return datetime(2026, 8, d, hh, mm, tzinfo=SERVER_TZ)
-
 
     def ledgers(by_day):
         """{day of August: rows}; every other file this test touches is emptied."""
@@ -380,16 +373,13 @@ def _part_shutdown_main():
             (STATE / f"ledger-2026-08-{d:02}.jsonl").write_text(
                 "\n".join(json.dumps(r) for r in rows), encoding="utf-8")
 
-
     def power_offs():
         return [c for c in calls if c[:2] == ["shutdown", "/s"]]
-
 
     def fresh(boot):
         E._shutdown_issued = False; sd._ISSUED[0] = None
         E._handled_any = True; E._started_at = boot; BOOT[0] = boot
         calls.clear()
-
 
     morning = {"script": "MAA", "started": day_at(21, 4, 10).isoformat(),
                "finished": day_at(21, 4, 50).isoformat(), "ok": True, "run_id": "m"}
@@ -493,7 +483,6 @@ def _part_shutdown_after_restart():
     import os
     from datetime import datetime
 
-
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
     (AUTOMAS / "config").mkdir(parents=True)
@@ -521,15 +510,12 @@ def _part_shutdown_after_restart():
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
 
-
     class Notes:
         def send(self, title, body="", **kw):
             return False
 
-
     def at(hh, mm, ss=0):
         return datetime(2026, 10, 1, hh, mm, ss, tzinfo=SERVER_TZ)
-
 
     ROWS = [("2026-10-01/arknights/MAA-05-00-01", "MAA", at(9, 0, 50), at(9, 18, 15), True),
             ("2026-10-01/wuwa/OK-WW-05-18-20", "OK-WW", at(9, 18, 37), at(9, 19, 16), "超时"),
@@ -567,7 +553,6 @@ def _part_shutdown_after_restart():
     print("\n[2026-10-11: the relay losing track is a WARNING (pushed), a state stays INFO]")
     import logging
 
-
     class Grab(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -576,7 +561,6 @@ def _part_shutdown_after_restart():
         def emit(self, record):
             if record.getMessage().startswith("不关机："):
                 self.got.append((record.levelname, record.getMessage()))
-
 
     grab = Grab()
     _lg = shutdown.log
@@ -612,13 +596,11 @@ def _part_shutdown_after_restart():
     e._power_off = lambda: False             # stop right after the upload
     up_logs = []
 
-
     class UpGrab(logging.Handler):
         def emit(self, record):
             if record.getMessage().startswith("关机前证据上传失败"):
                 up_logs.append((record.levelname, bool(getattr(record, "ark_recovered", False)),
                                 sorted(k for k in vars(record) if "recover" in k.lower())))
-
 
     _ul = shutdown.log
     _ul.addHandler(UpGrab())
@@ -678,11 +660,9 @@ def _part_shutdown_hand_and_test_runs():
 
     FIX = fx_dir(Path(__file__), "fixtures") / "shutdown-1010-1013"
 
-
     def ledger(day):
         p = FIX / f"ledger-{day}.jsonl"
         return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()] if p.is_file() else []
-
 
     class Eng:
         """The engine as the shutdown decision sees it, at moment `now`: only the records
@@ -701,24 +681,19 @@ def _part_shutdown_hand_and_test_runs():
         def _round_is_manual(self, group):
             return shutdown._round_is_manual(self, group)
 
-
     # The machine's AUTO-MAS schedule: 早班 09:00, 晚班 21:30 (every shift record in the fixtures).
     plan.schedule = lambda _d: [{"name": "早班", "times": ["09:00"], "items": ["s1"]}, {"name": "晚班", "times": ["21:30"], "items": ["s1"]}]
 
-
     def at(s):
         return datetime.fromisoformat(f"2026-{s}").replace(tzinfo=SERVER_TZ)
-
 
     def manual(when):
         eng = Eng(at(when))
         return shutdown._last_round_manual(eng, eng.now, shutdown._recent_entries(eng, eng.now))
 
-
     def key(when):
         eng = Eng(at(when))
         return shutdown._shutdown_key(eng, eng.now)
-
 
     print("[the two moments that went wrong]")
     check("10-12 21:45:34 晚班 MAA 21:30 finished: a shift, not 「手动触发」 (test-window MaaEnd 18:26 / 20:04 left out)",
@@ -755,7 +730,6 @@ def _part_shutdown_held_past_shift():
     import os
     import shutil
     from datetime import datetime
-
 
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
@@ -794,21 +768,17 @@ def _part_shutdown_held_past_shift():
     from ark_relay.features import phone as heartbeat
     from ark_relay.features import shutdown
 
-
     class Notes:
         def send(self, title, body="", **kw):
             return []
 
-
     def at(hh, mm, ss=0, day=15):
         return datetime(2026, 10, day, hh, mm, ss, tzinfo=SERVER_TZ)
-
 
     MORNING = [("MAA-1", "MAA", "arknights", at(8, 50, 40), at(9, 9, 12), True),
                ("OK-WW-1", "OK-WW", "wuwa", at(9, 9, 40), at(9, 31, 5), True)]
     EVENING = [("MAA-2", "MAA", "arknights", at(21, 30, 40), at(21, 49, 2), True),
                ("OK-WW-2", "OK-WW", "wuwa", at(21, 49, 30), at(22, 8, 10), True)]
-
 
     def ledger(rows):
         (STATE / "ledger-2026-10-15.jsonl").write_text("\n".join(
@@ -816,14 +786,12 @@ def _part_shutdown_held_past_shift():
                         "finished": b.isoformat(), "ok": ok, "failed_tasks": []})
             for r, s, u, a, b, ok in rows) + "\n", encoding="utf-8")
 
-
     def marker(result, dispatched):
         d = STATE / "makeup"
         d.mkdir(exist_ok=True)
         (d / "2026-10-15.json").write_text(json.dumps(
             {"MaaEnd": {"dispatched_at": dispatched.isoformat(), "result": result, "tries": 1,
                         "tasks": [makeup.WHOLE_MAAEND]}}), encoding="utf-8")
-
 
     cfg = Config()
     e = eng.Engine(cfg, source=None, state=State(cfg.state_dir), notifier=Notes())
@@ -840,7 +808,6 @@ def _part_shutdown_held_past_shift():
     error_evidence.upload_daily_logs = lambda cfg, **kw: {}
     collect_retry.maybe_run = lambda eng_, now: False
 
-
     def fresh(boot=None, started=None):
         """A new relay process on boot `boot` that saw the shift's records land."""
         BOOT[0] = boot or at(8, 35)
@@ -856,11 +823,9 @@ def _part_shutdown_held_past_shift():
             e.state.store.pop("marks", k)
         shutil.rmtree(STATE / "makeup", ignore_errors=True)
 
-
     def tick(now):
         shutdown._maybe_shutdown(e, now)
         return shutdown.decide(e, now)
-
 
     print("[2026-10-15: shift done, update / make-up held the power-off, then let go: stays on]")
     fresh()
@@ -941,10 +906,8 @@ def _part_shutdown_held_past_shift():
     e.state.store.set("marks", "relay_poweroff", now_real.isoformat())   # as if issued just now
     e.state.store.set("marks", "relay_poweroff_why", dict(why, at=now_real.isoformat()))
 
-
     class Cos:
         pass
-
 
     puts = []
     saved_put = heartbeat.cos_put
@@ -977,11 +940,9 @@ def _part_shutdown_notice():
     from datetime import datetime, timedelta
     from types import SimpleNamespace
 
-
     from ark_relay.features import shutdown
     from ark_relay.core import texts
     from ark_relay.core.config import SERVER_TZ
-
 
     src = Path(shutdown.__file__).read_text(encoding="utf-8")
 
@@ -993,7 +954,6 @@ def _part_shutdown_notice():
     check("不再像「有人下令别关」", "已经下过了" in (verdict.group(1) if verdict else ""), False)
     check("改成说清是正在关", "机器正在关" in src)
 
-
     class _Store:
         def __init__(self):
             self.d = {}
@@ -1004,7 +964,6 @@ def _part_shutdown_notice():
         def set(self, ns, key, value):
             self.d[(ns, key)] = value
 
-
     def engine(cutoff):
         sent = []
         return SimpleNamespace(
@@ -1012,7 +971,6 @@ def _part_shutdown_notice():
             notifier=SimpleNamespace(send=lambda t, b, alert=False: sent.append((t, b, alert)) or []),
             _report_cutoff=lambda now: cutoff, sent=sent, cfg=SimpleNamespace(shutdown_after_run=True),
             _shutdown_issued=False, _shutdown_key=lambda now: f"{now:%Y-%m-%d}:3")
-
 
     NIGHT = datetime(2026, 10, 6, 22, 0, tzinfo=SERVER_TZ)
     CUTOFF = NIGHT.replace(hour=21, minute=30)
@@ -1054,7 +1012,6 @@ def _part_shutdown_notice():
     REAL_1001 = (FIX / "system-1001-cancel.xml").read_text(encoding="utf-8").splitlines()
     REAL_1002 = (FIX / "system-1002-cancel.xml").read_text(encoding="utf-8").splitlines()
 
-
     def ev(eid, utc):
         data = "".join(f"<Data>{d}</Data>" for d in ("C:\\Windows\\system32\\shutdown.exe (INS)", "INS",
                                                        "x", "0x80040001", "关机", "ark-relay: run complete",
@@ -1062,10 +1019,8 @@ def _part_shutdown_notice():
         return (f'<Event xmlns="{NS}"><System><EventID>{eid}</EventID>'
                 f'<TimeCreated SystemTime="{utc}"/></System><EventData>{data}</EventData></Event>')
 
-
     saved_reader = shutdown.shutdown_event_xml
     asked = []
-
 
     def run(xmls, idle, issued):
         """decide at ISSUED_STUCK_MIN after `issued`, the day's report already out (10-01 21:48:40)."""
@@ -1077,7 +1032,6 @@ def _part_shutdown_notice():
         v = shutdown.decide(e, at)
         shutdown._say_if_moment_passed(e, at, v)
         return e, v, at
-
 
     print(" [an aborted power-off, whoever did it: one line to the group, nobody named (10-10 23:22)]")
     for label, xmls, when in (("10-01 (a 566 before the abort)", REAL_1001, datetime(2026, 10, 1, 21, 48, 52, tzinfo=SERVER_TZ)),
@@ -1182,7 +1136,6 @@ def _part_shutdown_open_test_window():
          "started": "2026-10-13T21:46:00+08:00", "finished": "2026-10-13T22:05:00+08:00", "ok": True, "failed_tasks": []},
     ]
 
-
     def state_dir(windows, extra=(), strip_hand=()):
         """A copy of the fixture state with `windows` as test-windows.json, `extra` records
     appended to their day's ledger, and raw.hand_started dropped from run ids `strip_hand`."""
@@ -1201,7 +1154,6 @@ def _part_shutdown_open_test_window():
             p.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
         return d
 
-
     class Eng:
         """The engine as the shutdown decision sees it at `now`: only records landed by then."""
         _gu_rerun_at = None
@@ -1219,23 +1171,18 @@ def _part_shutdown_open_test_window():
         def _round_is_manual(self, group):
             return shutdown._round_is_manual(self, group)
 
-
     plan.schedule = lambda _d: [{"name": "早班", "times": ["09:00"], "items": ["s1"]}, {"name": "晚班", "times": ["21:30"], "items": ["s1"]}]
-
 
     def at(s):
         return datetime.fromisoformat(f"2026-{s}").replace(tzinfo=SERVER_TZ)
-
 
     def manual(d, when):
         eng = Eng(d, at(when))
         return shutdown._last_round_manual(eng, eng.now, shutdown._recent_entries(eng, eng.now))
 
-
     def key(d, when):
         eng = Eng(d, at(when))
         return shutdown._shutdown_key(eng, eng.now)
-
 
     real = json.loads((FIX / "test-windows.json").read_text(encoding="utf-8"))
     open_all = [{k: v for k, v in w.items() if k != "until"} for w in real]
@@ -1277,7 +1224,6 @@ def _part_shutdown_round():
     from ark_relay.features import shutdown
     from ark_relay.core.config import SERVER_TZ
 
-
     def e(run_id, script, start, end, ok=True, user=None):
         day = datetime(2026, 9, 19, tzinfo=SERVER_TZ)
         def at(hms):
@@ -1285,7 +1231,6 @@ def _part_shutdown_round():
             return (day + timedelta(hours=h, minutes=m, seconds=s)).isoformat()
         return {"run_id": run_id, "script": script, "user": user or script.lower(),
                 "started": at(start), "finished": at(end), "ok": ok}
-
 
     class Eng:
         """Just enough engine: the schedule is 09:00 and 21:30, MANUAL_WINDOW_MIN=30."""
@@ -1300,7 +1245,6 @@ def _part_shutdown_round():
                 if abs((first - due).total_seconds()) <= shutdown.MANUAL_WINDOW_MIN * 60:
                     return False
             return True
-
 
     eng = Eng()
     NOW = datetime(2026, 9, 19, 12, 9, 32, tzinfo=SERVER_TZ)
@@ -1470,12 +1414,10 @@ def _part_shutdown_waits_for_farm():
     from ark_relay.features import shutdown
     from ark_relay.core.config import SERVER_TZ
 
-
     class Cfg:
         def __init__(self, root):
             self.state_dir = root
             self.shutdown_min_uptime = 0
-
 
     class Eng:
         def __init__(self, root):
@@ -1489,7 +1431,6 @@ def _part_shutdown_waits_for_farm():
 
         def _deferred_update_busy(self):
             return False
-
 
     root = tmpdir()
     eng = Eng(root)
@@ -1519,7 +1460,6 @@ def _part_shutdown_whitelist():
     import os
     from datetime import datetime, timedelta
 
-
     TMP = tmpdir()
     AUTOMAS = TMP / "AUTO-MAS"
     (AUTOMAS / "config").mkdir(parents=True)
@@ -1546,15 +1486,12 @@ def _part_shutdown_whitelist():
     from ark_relay.core.config import SERVER_TZ, Config
     from ark_relay.core.ledger import State
 
-
     class Notes:
         def send(self, title, body="", **kw):
             return False
 
-
     def at(hh, mm, ss=0):
         return datetime(2026, 10, 10, hh, mm, ss, tzinfo=SERVER_TZ)
-
 
     MORNING = [("MAA-05-00-01", "MAA", "arknights", at(9, 0, 51), at(9, 1, 10), False),
                ("MAA-05-01-15", "MAA", "arknights", at(9, 1, 59), at(9, 2, 14), False),
@@ -1565,14 +1502,12 @@ def _part_shutdown_whitelist():
     EVENING = [(r.replace("-05-", "-17-"), s, u, a + timedelta(hours=12, minutes=30), b + timedelta(hours=12, minutes=30), ok)
                for r, s, u, a, b, ok in MORNING]
 
-
     def ledger(rows):
         (STATE / "ledger-2026-10-10.jsonl").write_text("\n".join(
             json.dumps({"run_id": f"2026-10-10/x/{r}", "script": s, "user": u, "started": a.isoformat(),
                         "finished": b.isoformat(), "ok": ok,
                         "failed_tasks": [] if ok else ["MAA 在完成任务前中止"]})
             for r, s, u, a, b, ok in rows) + "\n", encoding="utf-8")
-
 
     cfg = Config()
     e = eng.Engine(cfg, source=None, state=State(cfg.state_dir), notifier=Notes())
@@ -1581,11 +1516,9 @@ def _part_shutdown_whitelist():
     BOOT = [None]
     e._boot_time = lambda now: BOOT[0]
 
-
     def judge(now, boot, started, handled=True):
         BOOT[0], e._started_at, e._handled_any = boot, started, handled
         return shutdown.decide(e, now)
-
 
     print("[morning shift finished on its own boot, this relay saw it land: go]")
     ledger(MORNING)
@@ -1662,7 +1595,6 @@ def _part_shutdown_whitelist():
     from ark_relay.features import handle
     from ark_relay.features import runwatch
 
-
     class Rec:
         def __init__(self):
             self.sent = []
@@ -1670,7 +1602,6 @@ def _part_shutdown_whitelist():
         def send(self, title, body="", **kw):
             self.sent.append((title, body, kw.get("alert")))
             return []
-
 
     saved_notifier, saved_power_off = e.notifier, e._power_off
     powered = []
@@ -1779,19 +1710,16 @@ def _part_exit_shutdown_window():
     import types
     from datetime import datetime, timedelta, timezone
 
-
     class _Any:
         def __init__(self, *a, **k): pass
         def __call__(self, *a, **k): return _Any()
         def __getattr__(self, _): return _Any()
-
 
     class _Stub(types.ModuleType):
         def __getattr__(self, name):
             if name.startswith("__"):
                 raise AttributeError(name)
             return _Any
-
 
     for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
                   "win32con", "win32file", "servicemanager", "win32process",
@@ -1803,19 +1731,15 @@ def _part_exit_shutdown_window():
     from ark_relay.features import automas_keeper, automas_keeper as automas_procs, procwatch as shutdown_signs
     from ark_relay.features import shutdown
 
-
     REAL_1074 = (fx_dir(Path(__file__), "fixtures") /
                  "system-1010-0427-manual-shutdown.xml").read_text(encoding="utf-8").strip()
     NS = "http://schemas.microsoft.com/win/2004/08/events/event"
 
-
     def stamp(utc: datetime) -> str:
         return utc.strftime("%Y-%m-%dT%H:%M:%S.0000000Z")
 
-
     def at(xml: str, utc: datetime) -> str:
         return re.sub(r"SystemTime='[^']*'", f"SystemTime='{stamp(utc)}'", xml)
-
 
     def boot_event(utc: datetime) -> str:
         """A 6005 as EvtRender gives it (Provider EventLog)."""
@@ -1823,9 +1747,7 @@ def _part_exit_shutdown_window():
                 f"<TimeCreated SystemTime='{stamp(utc)}'/><Channel>System</Channel></System>"
                 "<EventData><Binary/></EventData></Event>")
 
-
     log_events: list = []     # (utc, event id, xml) - the System log, any order
-
 
     def fake_reader(window_s, ids=(1074, 1075)):
         """shutdown.shutdown_event_xml over log_events: the query's id and time filter, newest first."""
@@ -1834,14 +1756,12 @@ def _part_exit_shutdown_window():
                 if eid in ids and (now - t).total_seconds() <= window_s]
         return [x for t, x in sorted(hits, key=lambda h: h[0], reverse=True)]
 
-
     shutdown.shutdown_event_xml = fake_reader
     shutdown_signs.GOING_DOWN_SETTLE_SECONDS = 0.0
     errwatch.relay_shutdown_issued = lambda: False
     automas_procs._exit_code = lambda h: 0
     automas_procs._tasklist = lambda: b"explorer.exe"
     automas_keeper.win32api.CloseHandle = lambda h: None
-
 
     class _Keep(logging.Handler):
         def __init__(self):
@@ -1850,7 +1770,6 @@ def _part_exit_shutdown_window():
 
         def emit(self, record):
             self.msgs.append(record.getMessage())
-
 
     def exit_now():
         keep = _Keep()
@@ -1862,7 +1781,6 @@ def _part_exit_shutdown_window():
         k.log, k.handle, k.gone = log, object(), None
         k._exited()
         return k, keep.msgs
-
 
     now = datetime.now(tz=timezone.utc)
 
@@ -1893,7 +1811,6 @@ def _part_power_off_returncode():
     from ark_relay.core import engine
     from ark_relay.features.machinechecks import POWER_OFF
 
-
     class _Grab(logging.Handler):
         def __init__(self):
             super().__init__(logging.DEBUG)
@@ -1902,11 +1819,9 @@ def _part_power_off_returncode():
         def emit(self, record):
             self.rows.append((record.levelno, record.getMessage()))
 
-
     class _Done:
         def __init__(self, code, err=b""):
             self.returncode, self.stdout, self.stderr = code, b"", err
-
 
     grab = _Grab()
     lg = engine.log
@@ -1959,20 +1874,16 @@ def _part_poweroff_ok():
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import echofarm
 
-
     NOW = datetime(2026, 10, 22, 16, 44, 50, tzinfo=SERVER_TZ)
     idle = lambda: False  # noqa: E731
 
-
     def why(sd, running=idle, lines=()):
         return poweroff_ok.reasons(NOW, sd, running, list(lines))
-
 
     def stamp(sd, **rec):
         f = sd / "collect-retry" / f"{NOW:%Y-%m-%d}.json"
         f.parent.mkdir(parents=True, exist_ok=True)
         f.write_text(json.dumps(rec), encoding="utf-8")
-
 
     print("[10-22 那天下午的两件事]")
     sd = tmpdir()
@@ -2003,7 +1914,6 @@ def _part_skip_shutdown_wording():
     """The 「下次跑完不关机」 mark is named and described one way everywhere a human reads it."""
     import re
 
-
     RELAY = Path(__file__).resolve().parents[1]
     REPO = RELAY.parent
     sys.path.insert(0, str(RELAY))
@@ -2018,7 +1928,6 @@ def _part_skip_shutdown_wording():
     NAME = "下次跑完不关机"
     print("  (the user's words this part holds the relay to:)", *USER_1011, sep="\n    ")
 
-
     # ---------- 1. one name ----------
     print("[one name for the mark in every human-read file]")
     OTHER_NAMES = re.compile(r"今晚别关机|这次别关机|下一次别关机|下次不关机|下一次跑完别关机")
@@ -2029,7 +1938,6 @@ def _part_skip_shutdown_wording():
     # them would falsify the record, so they are left out.
     HISTORY = re.compile(r"^docs/(SURVEY-.*|ERROR-LEDGER-.*|NEXT-BOOT|SILENT-FAILURES-AUDIT|CODE-HISTORY)\.md$")
 
-
     def files():
         for root in ROOTS:
             for p in root.rglob("*"):
@@ -2038,7 +1946,6 @@ def _part_skip_shutdown_wording():
         for p in TOP:
             if p.is_file():
                 yield p
-
 
     hits = []
     scanned = 0
@@ -2052,7 +1959,6 @@ def _part_skip_shutdown_wording():
                 hits.append(f"{rel}:{n}: {line.strip()[:80]}")
     check("files scanned (sanity: the walk found the tree)", scanned >= 50, True)
     check("no other name for the mark", hits, [])
-
 
     # ---------- 2. receipts ----------
     print("\n[set_skip_shutdown receipts say which run, and that only an unspent mark is pulled back]")
@@ -2088,7 +1994,6 @@ def _part_skip_failed_pushed():
     from ark_relay.core.ledger import State
     from ark_relay.core.notify import route_of
 
-
     class Notes:
         def __init__(self):
             self.sent = []
@@ -2097,15 +2002,12 @@ def _part_skip_failed_pushed():
             self.sent.append((title, body, alert))
             return []
 
-
     class Src:
         def fetch(self, seen):
             return []
 
-
     ANSWER = {"早班": (True, "调度程序已确认")}
     live = {"早班": True}
-
 
     def fake_apply(d, q, enabled):
         ok, detail = ANSWER[q]
@@ -2113,11 +2015,9 @@ def _part_skip_failed_pushed():
             live[q] = enabled
         return ok, detail
 
-
     _real = _q.apply, _plan.schedule
     _q.apply = fake_apply
     _plan.schedule = lambda d: [{"name": q, "times": ["09:00"]} for q in live if live[q]]
-
 
     def engine():
         sd = tmpdir()
@@ -2127,10 +2027,8 @@ def _part_skip_failed_pushed():
         live["早班"] = True
         return eng_mod.Engine(cfg, source=Src(), state=State(sd), notifier=Notes())
 
-
     def pushed(e):
         return [(t, a, route_of(t, alert=a)) for t, b, a in e.notifier.sent]
-
 
     today = datetime.now(tz=SERVER_TZ).strftime("%Y-%m-%d")
     try:
@@ -2187,7 +2085,6 @@ def _part_skip_flag_collision():
 
     STATE = tmpdir() / "state"; STATE.mkdir(parents=True)
     NOW = datetime(2026, 8, 31, 12, 44, tzinfo=SERVER_TZ)
-
 
     print("\n[the bug] 清理陈旧队列标记不许碰「下次跑完不关机」")
     modes.set_skip_shutdown(STATE, True)
@@ -2292,7 +2189,6 @@ def _part_skip_flag_collision():
     finally:
         _q.apply, _plan.schedule = _real_apply, _real_sched
 
-
     print("\n[2026-09-15] skipped_today / unskip：手机页的队列开关要能读到、也能关回去")
     S2 = tmpdir() / "state"; S2.mkdir(parents=True)
     DAY = NOW.strftime("%Y-%m-%d")
@@ -2327,19 +2223,15 @@ def _part_skip_receipt_lost():
     RELAY = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(RELAY))
 
-
     from ark_relay.core import engine
     from ark_relay.features import modes
-
 
     sd = tmpdir()
     other = tmpdir()
     real_add = modes.add_receipt
 
-
     def broken_add(*a, **k):
         raise OSError(28, "No space left on device")
-
 
     modes.add_receipt = broken_add
     try:
@@ -2374,13 +2266,11 @@ def _part_skip_receipts():
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.statestore import StateStore
 
-
     T0 = datetime(2026, 9, 30, 8, 51, tzinfo=SERVER_TZ)
     DAY = T0.strftime("%Y-%m-%d")
     AM = Path("/tmp/automas-not-used")
     ANSWER = {"早班": (True, ""), "晚班": (True, "")}
     live = {"早班": True, "晚班": True}
-
 
     def fake_apply(d, q, enabled):
         ok, detail = ANSWER[q]
@@ -2388,12 +2278,10 @@ def _part_skip_receipts():
             live[q] = enabled
         return ok, detail
 
-
     _real_apply, _real_sched = _q.apply, _plan.schedule
     _q.apply = fake_apply
     _plan.schedule = lambda d: [{"name": q, "times": {"早班": ["09:00"], "晚班": ["21:00"]}[q]}
                                for q in live if live[q]]
-
 
     def fresh():
         s = tmpdir() / "state"
@@ -2401,10 +2289,8 @@ def _part_skip_receipts():
         live.update({"早班": True, "晚班": True})
         return s
 
-
     def rcpt(s):
         return [(r["action"], r["ok"], r["text"]) for r in modes.receipts(s)]
-
 
     try:
         print("[a] 生效时失败：回执红、说今天照常跑、当天跳过标记清掉、快照不再列它")
@@ -2507,7 +2393,6 @@ def _part_skip_receipts():
     from ark_relay.core.config import Config
     from ark_relay.core.ledger import State
 
-
     class Notes:
         def __init__(self):
             self.sent = []
@@ -2516,11 +2401,9 @@ def _part_skip_receipts():
             self.sent.append((title, body))
             return []
 
-
     class Src:
         def fetch(self, seen):
             return []
-
 
     cfg = Config()
     cfg.state_dir = tmpdir()
@@ -2585,31 +2468,25 @@ def _part_skip_sat_out():
 
     sent = []
 
-
     class FakeNotifier(Notifier):
         def send(self, title, body, *, alert=False, daily=False):
             sent.append((title, alert))
             return []
 
-
     cfg = Config()
     E = Engine(cfg, source=None, state=State(cfg.state_dir), notifier=FakeNotifier(cfg))
     E._boot_time = lambda now: at(8, 0)
 
-
     def at(hh, mm):
         return datetime(2026, 11, 1, hh, mm, 45, tzinfo=SERVER_TZ)
 
-
     DAY = "2026-11-01"
-
 
     def reset():
         sent.clear()
         E._missed_alerted.clear()
         E.state.store.pop("marks", f"alerted:{DAY}")
         E.state.store.pop("queues", f"skip_done:{DAY}")
-
 
     print("[control] not skipped: 22:03 with no 21:30 record still alarms")
     reset()
@@ -2647,7 +2524,6 @@ def _part_skip_shutdown_bat_error():
     ROOT = Path(__file__).resolve().parents[2]
     bat = (ROOT / "scripts" / "windows" / "skip-shutdown.bat").read_bytes().decode("utf-8").replace("\r\n", "\n")
 
-
     read = next((ln for ln in bat.splitlines() if ln.startswith("for /f") and "skip_armed" in ln), "")
     check("the status read is there", bool(read), True)
     check("its stderr is not thrown away", "2^>nul" in read, False)
@@ -2673,11 +2549,9 @@ def _part_farm_poweroff():
 
     from ark_relay.features import procwatch as S
 
-
     TMP = tmpdir()
     REQ_AT = datetime(2026, 11, 13, 0, 20, 6, tzinfo=timezone.utc)      # 08:20:06 on the relay's clock
     ASKED = {"clock": "08:20:06", "at": REQ_AT, "process": r"C:\WINDOWS\system32\shutdown.exe (INS)", "user": r"INS\Administrator"}
-
 
     def mark(**kw):
         d = TMP / f"m{len(list(TMP.iterdir()))}"
@@ -2686,7 +2560,6 @@ def _part_farm_poweroff():
         body.update(kw)
         (d / S.FARM_POWEROFF_MARK).write_text(json.dumps(body), encoding="utf-8")
         return d
-
 
     print("[the farm's own deadline power-off is recognised]")
     got = S.farm_poweroff_planned(ASKED, base=mark())
@@ -2724,7 +2597,6 @@ def _part_place_desktop_bat():
     from ark_relay.core.statestore import StateStore
     from ark_relay.features import modes
 
-
     with tempfile.TemporaryDirectory() as tmp:
         st = Path(tmp)
         relay_store = StateStore(st)
@@ -2751,7 +2623,6 @@ def _part_statestore_main():
 
     from ark_relay.core.statestore import StateStore
 
-
     class Warns(logging.Handler):
         """Collects the WARNING lines of one logger (each one is a group message)."""
 
@@ -2762,7 +2633,6 @@ def _part_statestore_main():
 
         def emit(self, record):
             self.lines.append(record.getMessage())
-
 
     d = tmpdir()
     s = StateStore(d)
@@ -3179,7 +3049,6 @@ def _part_state_unread():
     from ark_relay.features import errwatch
     from ark_relay.features import needtable
 
-
     class Rows(logging.Handler):
         def __init__(self):
             super().__init__(level=logging.DEBUG)
@@ -3187,7 +3056,6 @@ def _part_state_unread():
 
         def emit(self, record):
             self.rows.append((record.levelname, record.getMessage(), bool(getattr(record, errwatch.RECOVERED, False))))
-
 
     rows = Rows()
     statestore.log.addHandler(rows)
@@ -3207,20 +3075,16 @@ def _part_state_unread():
     REAL_READ = Path.read_text
     lock = {"on": False, "tries": 0}
 
-
     def read_text(self, *a, **kw):
         if lock["on"] and self.name == statestore.FILE:
             lock["tries"] += 1
             raise PermissionError(13, "being used by another process (test)")
         return REAL_READ(self, *a, **kw)
 
-
     Path.read_text = read_text
-
 
     def levels():
         return [lv for lv, _, _ in rows.rows]
-
 
     d = tmpdir() / "state"
     st = statestore.StateStore(d)
@@ -3289,7 +3153,6 @@ def _part_state_unread():
 
     print("\n[主循环：读不出来时 45 秒后再醒一次]")
 
-
     def build():
         cfg = Config()
         cfg.state_dir = tmpdir()
@@ -3297,7 +3160,6 @@ def _part_state_unread():
                        notifier=SimpleNamespace(send=lambda *a, **k: False))
         e._scripts_running = lambda: False
         return e
-
 
     NOW = datetime(2026, 11, 8, 10, 0, tzinfo=SERVER_TZ)
     e = build()
@@ -3332,11 +3194,9 @@ def _part_state_unread():
         (nd / needtable.MARK).write_text(json.dumps(m), encoding="utf-8")
         check(f"不用再试（{done}）：没有闹钟", needtable.next_moment(nd, NOW), None)
 
-
     class Alive:
         def is_alive(self):
             return True
-
 
     needtable._running.update(thread=Alive(), day="2026-11-08", count=1)
     check("正在建：最晚 30 分钟后看一眼", needtable.next_moment(nd, NOW), (NOW + timedelta(minutes=30), "看终末地需求表重算完没有"))
@@ -3374,7 +3234,6 @@ def _part_atomic_write():
 
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
-
 
     # 1. 唯一的实现在 config.py，而且带 fsync
     cfg = (ROOT / "ark_relay" / "core" / "config.py").read_text(encoding="utf-8")
@@ -3442,13 +3301,11 @@ def _part_state_pending():
     from ark_relay.core.ledger import State
     from ark_relay.core.collector import record_to_payload, payload_to_record
 
-
     def rec(run_id="2026-09-08/wuwa/OK-WW-05-22-26"):
         now = datetime.now(tz=SERVER_TZ)
         return RunRecord(run_id=run_id, script="OK-WW", user="wuwa",
                          started=now - timedelta(minutes=10), finished=now,
                          ok=False, failed_tasks=["任务执行：某个错"], raw={})
-
 
     print("[save_pending 是方法，不是属性——这正是 09-08 那次的原形]")
     check("是普通函数", type(State.__dict__["save_pending"]).__name__, "function")
@@ -3484,10 +3341,8 @@ def _part_statestore_threads():
     import threading
     import time
 
-
     from ark_relay.core import config, statestore
     from ark_relay.core.statestore import StateStore
-
 
     print("[a second writer runs while the first is between its read and its write]")
     d = tmpdir()
@@ -3495,7 +3350,6 @@ def _part_statestore_threads():
     real_write = statestore.atomic_write_text
     errors: list = []
     other: list = []
-
 
     def slow_first_write(path, text, *a, **k):
         # Only the first write is slowed down: the engine-thread writer below.
@@ -3511,7 +3365,6 @@ def _part_statestore_threads():
             time.sleep(0.3)          # the phone thread gets every chance to write now
         return real_write(path, text, *a, **k)
 
-
     statestore.atomic_write_text = slow_first_write
     try:
         StateStore(d).set("modes", "debug_until", "2026-10-13 21:10")
@@ -3526,7 +3379,6 @@ def _part_statestore_threads():
     print("\n[pop is under the same lock]")
     other.clear()
 
-
     def slow_first_write2(path, text, *a, **k):
         if not other:
             t = threading.Thread(target=lambda: StateStore(d).set("queues", "phone_seen", ["ntfy-2"]))
@@ -3534,7 +3386,6 @@ def _part_statestore_threads():
             t.start()
             time.sleep(0.3)
         return real_write(path, text, *a, **k)
-
 
     statestore.atomic_write_text = slow_first_write2
     try:
@@ -3553,7 +3404,6 @@ def _part_statestore_threads():
     inner_err: list = []
     nested = []
 
-
     def fsync_then_second_write(fd):
         real_fsync(fd)
         if not nested:
@@ -3563,7 +3413,6 @@ def _part_statestore_threads():
                 config.atomic_write_bytes(target, b'{"b": 1}')
             except OSError as exc:
                 inner_err.append(exc)
-
 
     config.os.fsync = fsync_then_second_write
     outer_err = None
