@@ -40,6 +40,22 @@ SCRIPT_EXES = ("MAA.exe", "MaaEnd.exe")
 GAME_EXES = ("dnplayer.exe", "Client-Win64-Shipping.exe", "Endfield.exe")
 
 
+# AUTO-MAS's /api/dispatch/start body since its update of 2026-11-16 21:21 (Beijing): the old
+# {"taskId", "mode"} gets 422. The relay builds the same bodies (ark_relay/features/commands.py
+# dispatch_body, where the upstream sources are named); relay/tests/test_schedule.py checks the two
+# agree. Kept here as well: this script runs on its own over winrun.
+def start_body(*, script_id="", queue_id=""):
+    node = {"uid": queue_id} if queue_id else {"uid": "-", "children": {"0": {"uid": script_id}}}
+    return {"mode": "AutoProxy", "tasks": {"0": node}}
+
+
+def _said(r) -> str:
+    """The start's answer in words: a 422 is AUTO-MAS not taking the body's shape."""
+    if r.get("HTTP") == 422:
+        return "调度程序不认这次派发的写法（它回 422），它升级后改过派发的格式，这个脚本要跟着改：" + str(r.get("msg", ""))
+    return f"{r.get('status')} {r.get('message', '')}"
+
+
 def post(path, body=None):
     req = urllib.request.Request(API + path, data=json.dumps(body or {}).encode(),
                                  headers={"Content-Type": "application/json"},
@@ -326,8 +342,8 @@ def start(name, test=False) -> int:
             return 6
         print(line)
         test_on(name, debug_set)
-    r = post("/api/dispatch/start", {"taskId": table[name], "mode": "AutoProxy"})
-    print(f"派发「{name}」:", r.get("status"), r.get("message", ""))
+    r = post("/api/dispatch/start", start_body(script_id=table[name]))
+    print(f"派发「{name}」:", _said(r))
     return 0 if str(r.get("status", "")).lower() == "success" else 4
 
 
@@ -342,8 +358,8 @@ def start_queue(name) -> int:
     if name not in table:
         print(f"❌ 没有叫「{name}」的队列。有：{'、'.join(table)}")
         return 3
-    r = post("/api/dispatch/start", {"taskId": table[name], "mode": "AutoProxy"})
-    print(f"派发队列「{name}」:", r.get("status"), r.get("message", ""))
+    r = post("/api/dispatch/start", start_body(queue_id=table[name]))
+    print(f"派发队列「{name}」:", _said(r))
     return 0 if str(r.get("status", "")).lower() == "success" else 4
 
 

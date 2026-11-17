@@ -5703,7 +5703,7 @@ relay next starts a run itself, and is said to the group if it still cannot be d
                 return {"data": {"s1": {"Info": {"Name": "OK-WW"}}}}
             if path == "/api/queue/get":
                 return {"data": {"q1": {"Info": {"Name": "早班"}}}}
-            order.append(("dispatch", body["taskId"]))
+            order.append(("dispatch", body["tasks"]["0"]["uid"]))
             return {"status": "success"}
         commands._mas = mas
         try:

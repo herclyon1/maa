@@ -1432,8 +1432,8 @@ def _part_queue_apply_runnow():
     else:
         if not ok or "晚班" not in msg:
             fails.append(f"_run_now 旧名应映射到晚班并成功：{ok} {msg}")
-        if ("/api/dispatch/start", {"taskId": "qid2", "mode": "AutoProxy"}) not in calls:
-            fails.append(f"没有派发晚班：{calls}")
+        if ("/api/dispatch/start", {"mode": "AutoProxy", "tasks": {"0": {"uid": "qid2"}}}) not in calls:
+            fails.append(f"没有派发晚班（调度程序 11-16 起的格式：顶层 uid 是队列）：{calls}")
         ok4, msg4 = commands._run_now("没有的队列")
         if ok4 or "早班" not in msg4 or "晚班" not in msg4:
             fails.append(f"不存在的队列应失败并列出现有队列：{msg4}")
@@ -2828,7 +2828,7 @@ def _part_dispatch_guard_test_debug():
     dispatched = []
     g.status = lambda: []
     g.ids = lambda: {"OK-WW": "sid-okww"}
-    g.post = lambda path, body=None: dispatched.append(body["taskId"]) or {"status": "success"}
+    g.post = lambda path, body=None: dispatched.append(body["tasks"]["0"]["children"]["0"]["uid"]) or {"status": "success"}
     g._modes = lambda: modes
 
     def run(fn, *a, **k):
@@ -2845,6 +2845,23 @@ def _part_dispatch_guard_test_debug():
     dispatched.clear()
     rc, out = run(g.start, "OK-WW", test=True)
     check("dispatched", (rc, dispatched), (0, ["sid-okww"]))
+
+    print("\n[the bodies it sends are the relay's own (commands.dispatch_body): AUTO-MAS's shape since 11-16 21:21]")
+    from ark_relay.features import commands as relay_commands
+    check("one script: the same body as the relay's", g.start_body(script_id="sid-okww"),
+          relay_commands.dispatch_body(script_id="sid-okww"))
+    check("one queue: the same body as the relay's", g.start_body(queue_id="qid-m"),
+          relay_commands.dispatch_body(queue_id="qid-m"))
+    sent = []
+    saved = (g.post, g.qids)
+    g.post = lambda path, body=None: sent.append((path, body)) or {"HTTP": 422, "msg": "Unprocessable"}
+    g.qids = lambda: {"早班": "qid-m"}
+    try:
+        rc, out = run(g.start_queue, "早班")
+    finally:
+        g.post, g.qids = saved
+    check("start_queue sends the queue's body", sent, [("/api/dispatch/start", relay_commands.dispatch_body(queue_id="qid-m"))])
+    check("a 422 is a refusal, said in words", (rc, "不认这次派发的写法" in out), (4, True))
     check("debug mode on", modes.debug_active(state), True)
     check("the window records the debug_until it wrote", windows()[-1].get("debug_set"), modes.debug_until(state))
     rc, out = run(g.test_status)
@@ -2963,7 +2980,9 @@ OK-WW overlay step.
         if path == "/api/queue/get":
             return {"data": {"q1": {"Info": {"Name": "早班"}}}}
         # AUTO-MAS labels the relay's start manual_task, like a click on its screen.
-        created.append(trigger.Task(id=body["taskId"], mode="AutoProxy", source=trigger.MANUAL,
+        top = body["tasks"]["0"]       # the queue, or "-" with the one script under it (commands.dispatch_body)
+        created.append(trigger.Task(id=top["children"]["0"]["uid"] if top["uid"] == "-" else top["uid"],
+                                    mode="AutoProxy", source=trigger.MANUAL,
                                     created=clock["t"] + timedelta(seconds=2)))
         return {"status": "success"}
 

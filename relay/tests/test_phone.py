@@ -51,6 +51,52 @@ class _Notes:
         return False
 
 
+def _task_create_in_problems(body) -> list:
+    """Why `body` would not pass AUTO-MAS's /api/dispatch/start model, [] when it would.
+
+    TaskCreateIn (app/api/dispatch.py) and TaskSelectionNode (app/models/schema.py), upstream dev
+    5daeb977 and the machine's 002d2cac, read 2026-11-17: no keys beyond mode / tasks; mode one of
+    TaskMode (AutoProxy, ScriptConfig, ScriptView); tasks exactly one node, at index 0; a node only
+    uid (a string, required), params (an object), children (indices 0..n-1 without gaps)."""
+    if not isinstance(body, dict):
+        return ["not an object"]
+    out = []
+    if set(body) != {"mode", "tasks"}:
+        out.append(f"keys {sorted(body)}")
+    if body.get("mode") not in ("AutoProxy", "ScriptConfig", "ScriptView"):
+        out.append(f"mode {body.get('mode')!r}")
+
+    def nodes(where, given):
+        if not isinstance(given, dict) or [str(k) for k in given] != [str(i) for i in range(len(given))]:
+            return [f"{where}: indices {given!r}"]
+        got = []
+        for k, n in given.items():
+            if not isinstance(n, dict) or not isinstance(n.get("uid"), str):
+                got.append(f"{where}[{k}]: no uid")
+                continue
+            if set(n) - {"uid", "params", "children"}:
+                got.append(f"{where}[{k}]: keys {sorted(n)}")
+            if not isinstance(n.get("params", {}), dict):
+                got.append(f"{where}[{k}]: params")
+            got += nodes(f"{where}[{k}].children", n.get("children", {}))
+        return got
+    tasks = body.get("tasks")
+    if not isinstance(tasks, dict) or len(tasks) != 1:
+        out.append("tasks must hold exactly one node")
+    else:
+        out += nodes("tasks", tasks)
+    return out
+
+
+def _raises(fn) -> bool:
+    """True when `fn()` raises."""
+    try:
+        fn()
+    except Exception:  # noqa: BLE001 - any refusal counts
+        return True
+    return False
+
+
 def _part_phone_main():
     """手机通道：PIN 对不上、太老的指令、状态和指令别混。"""
     import json
@@ -2922,6 +2968,7 @@ def _part_commands_gates():  # noqa: C901
     """往生产配置里写东西的那条路——四道闸门一道都不许塌。"""
     import json
     import os
+    import urllib.error
 
     STATE = tmpdir()
     AUTOMAS = tmpdir()
@@ -2933,6 +2980,7 @@ def _part_commands_gates():  # noqa: C901
     from ark_relay.features import modes
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.core.statestore import StateStore
+    from ark_relay.core import texts
 
     # The real config's shape, cut down to what these gates touch: one script uuid,
     # one user uuid, Info/* per user and Game/WaitTime per script (docs/CONFIG.md).
@@ -3609,9 +3657,13 @@ def _part_commands_gates():  # noqa: C901
     f = FakeMas()
     ok, msg = with_mas(f, lambda: commands.run_script("MAA"))
     check("找得到就单独派发", (ok, "单独开跑" in msg), (True, True))
-    check("派发的是脚本 id、模式 AutoProxy",
+    check("派发的是脚本 id、模式 AutoProxy（调度程序 11-16 起的格式：不进队列的「-」下挂这一个脚本）",
           [c[1] for c in f.calls if c[0] == "/api/dispatch/start"],
-          [{"taskId": SID, "mode": "AutoProxy"}])
+          [{"mode": "AutoProxy", "tasks": {"0": {"uid": "-", "children": {"0": {"uid": SID}}}}}])
+    check("……请求体严格合调度程序的 TaskCreateIn（多一个键、少一个键、编号断开都会被它 422）",
+          [_task_create_in_problems(c[1]) for c in f.calls if c[0] == "/api/dispatch/start"], [[]])
+    check("……这条规矩认得出旧格式（{taskId, mode} 就是 11-17 10:05 被 422 的那份）",
+          bool(_task_create_in_problems({"taskId": SID, "mode": "AutoProxy"})), True)
     f = FakeMas()
     ok, msg = with_mas(f, lambda: commands.run_script("终末地"))
     check("找不到脚本就明说，且什么也不派发",
@@ -3630,6 +3682,33 @@ def _part_commands_gates():  # noqa: C901
     ok, msg = with_mas(NoSuchQueueMas(), lambda: commands._run_now("不存在的班"))
     check("队列名不存在时把现有的列出来（人才知道该按哪个）",
           (ok, "早班" in msg), (False, True))
+
+    print("\n[派队列：调度程序 11-16 起的格式，顶层 uid 就是队列、不挂子项（整条队列按序跑）]")
+    q = NoSuchQueueMas()
+    ok, msg = with_mas(q, lambda: commands._run_now("早班"))
+    starts = [c[1] for c in q.calls if c[0] == "/api/dispatch/start"]
+    check("派队列成功", (ok, "已开始跑" in msg), (True, True))
+    check("派的是这条队列", starts, [{"mode": "AutoProxy", "tasks": {"0": {"uid": "q1"}}}])
+    check("……请求体严格合 TaskCreateIn", [_task_create_in_problems(b) for b in starts], [[]])
+
+    print("\n[调度程序回 422（不认派发的写法）：说人话，不把 HTTP 原话甩给人（11-17 10:05 那次）]")
+
+    class Refuses422(NoSuchQueueMas):
+        def __call__(self, path, body=None, timeout=20):
+            if path == "/api/dispatch/start":
+                self.calls.append((path, body))
+                raise urllib.error.HTTPError(path, 422, "Unprocessable Entity", {}, None)
+            return super().__call__(path, body, timeout)
+
+    for what, fn in (("单派脚本", lambda: commands.run_script("MAA")), ("派队列", lambda: commands._run_now("早班"))):
+        ok, msg = with_mas(Refuses422(), fn)
+        check(f"{what}：422 判失败，说是调度程序不认这次派发的写法", (ok, commands.START_SHAPE_REFUSED in msg), (False, True))
+        check(f"{what}：不带英文原话", ("Unprocessable" in msg, "HTTP Error" in msg), (False, False))
+    check("这句白话本身合文案规矩", texts.plain(commands.START_SHAPE_REFUSED), [])
+    ok, msg = with_mas(offline_mas, lambda: commands.run_script("MAA"))
+    check("别的错（连不上）照旧带原因，不说成 422", (ok, commands.START_SHAPE_REFUSED in msg), (False, False))
+    check("dispatch_body 只认一个：脚本或队列", _raises(lambda: commands.dispatch_body()), True)
+    check("……两个都给也不行", _raises(lambda: commands.dispatch_body(script_id="a", queue_id="b")), True)
 
     print("\n[apply_command 永远不抛：抛出去就没人回报了]")
 

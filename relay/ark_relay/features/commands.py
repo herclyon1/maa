@@ -681,6 +681,37 @@ def _overlay_before_start(where: str) -> None:
         log.exception("%s：重装 OK-WW 改动文件这一步自己出错", where)
 
 
+# AUTO-MAS's /api/dispatch/start body: TaskCreateIn {mode, tasks} (app/api/dispatch.py, extra
+# keys refused), `tasks` holding exactly one top node at index 0 (app/models/schema.py
+# TaskSelectionNode: uid, params, children; indices from 0 without gaps). A queue is that node's
+# uid and, with no children, runs every item of the queue in order; one script runs outside any
+# queue as the one child of a "-" node (app/core/task_manager.py _launch), which is how AUTO-MAS
+# itself starts one (app/core/notify/commands.py retry_script). Since its update of 2026-11-16
+# 21:21 (Beijing) the old {"taskId", "mode"} is refused with 422; every start the relay made after
+# it failed (11-17 10:05, commands.run_script("OK-WW")). Upstream dev 5daeb977 / the machine's
+# 002d2cac, read 11-17.
+DISPATCH_MODE = "AutoProxy"
+
+
+def dispatch_body(*, script_id: str = "", queue_id: str = "") -> dict:
+    """The /api/dispatch/start body that runs one script (`script_id`) or one queue (`queue_id`).
+    scripts/windows/dispatch_guard.py builds the same two bodies (test_schedule checks they match)."""
+    if bool(script_id) == bool(queue_id):
+        raise ValueError("dispatch_body: give exactly one of script_id, queue_id")
+    node = {"uid": queue_id} if queue_id else {"uid": "-", "children": {"0": {"uid": script_id}}}
+    return {"mode": DISPATCH_MODE, "tasks": {"0": node}}
+
+
+# What a start refused with 422 says: AUTO-MAS did not take the body's shape, which only an
+# AUTO-MAS update that changed it can cause (11-16 21:21).
+START_SHAPE_REFUSED = "调度程序不认这次派发的写法（它回 422），它升级后改过派发的格式，中继要跟着改"
+
+
+def _start_failed(exc: Exception) -> str:
+    """Why /api/dispatch/start did not start anything, said for a 422 in words."""
+    return START_SHAPE_REFUSED if getattr(exc, "code", None) == 422 else str(exc)
+
+
 def run_script(script: str) -> tuple[bool, str]:
     """Dispatch a single script (not a whole queue) through the AUTO-MAS dispatch API.
 
@@ -700,9 +731,9 @@ def run_script(script: str) -> tuple[bool, str]:
         # own run was booked as hand-started.
         _note_dispatch(f"脚本 {script}")
         try:
-            r = _mas("/api/dispatch/start", {"taskId": sid, "mode": "AutoProxy"})
+            r = _mas("/api/dispatch/start", dispatch_body(script_id=sid))
         except Exception as exc:  # noqa: BLE001
-            return False, f"脚本「{script}」没能启动: {exc}"
+            return False, f"脚本「{script}」没能启动: {_start_failed(exc)}"
         if str(r.get("status")) != "success":
             return False, f"脚本「{script}」没能启动: {r.get('message')}"
         return True, f"脚本「{script}」已单独开跑"
@@ -724,13 +755,11 @@ def _run_now(queue: str) -> tuple[bool, str]:
             _overlay_before_start(f"开跑队列「{queue}」前")
             _note_dispatch(f"队列 {queue}")     # after the overlay step, as in run_script
             try:
-                # The only valid values for mode are AutoProxy / ScriptConfig /
-                # Update (TaskCreateIn in app/models/schema.py); anything else
-                # gets a 422.
-                r = _mas("/api/dispatch/start",
-                         {"taskId": qid, "mode": "AutoProxy"})
+                # mode is one of AutoProxy / ScriptConfig / ScriptView (TaskMode in
+                # app/models/task.py); a wrong mode or body shape gets a 422.
+                r = _mas("/api/dispatch/start", dispatch_body(queue_id=qid))
             except Exception as exc:  # noqa: BLE001
-                return False, f"队列「{queue}」没能启动: {exc}"
+                return False, f"队列「{queue}」没能启动: {_start_failed(exc)}"
             if str(r.get("status")) != "success":
                 return False, f"队列「{queue}」没能启动: {r.get('message')}"
             return True, f"队列「{queue}」已开始跑"
@@ -886,4 +915,4 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
         return False, f"执行出错: {exc}"
     return False, f"未处理的动作: {action}"
 
-__all__ = ['ALLOWED', 'ESTOP_LAST', 'ESTOP_WINDOWS_FILE', 'MUTATING', 'REVERSIBLE', 'apply_command', 'estop', 'estop_label', 'estop_windows', 'mas_post', 'mas_up', 'restore_script_in_queue', 'run_script', 'SkipError', 'skip_script_all_items', 'skip_script_in_queue']
+__all__ = ['ALLOWED', 'DISPATCH_MODE', 'ESTOP_LAST', 'ESTOP_WINDOWS_FILE', 'MUTATING', 'REVERSIBLE', 'START_SHAPE_REFUSED', 'apply_command', 'dispatch_body', 'estop', 'estop_label', 'estop_windows', 'mas_post', 'mas_up', 'restore_script_in_queue', 'run_script', 'SkipError', 'skip_script_all_items', 'skip_script_in_queue']

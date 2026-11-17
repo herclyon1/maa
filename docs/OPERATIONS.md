@@ -575,7 +575,7 @@ The ones that matter here:
 
 | Endpoint | What it replaces |
 |---|---|
-| `/api/dispatch/start` `{taskId, mode}` | triggering a queue by hand |
+| `/api/dispatch/start` `{"mode": "AutoProxy", "tasks": {"0": {"uid": <queue id>}}}` (one script: `{"uid": "-", "children": {"0": {"uid": <script id>}}}` as the node; since AUTO-MAS's update of 2026-11-16 21:21 the old `{taskId, mode}` gets 422 - `commands.dispatch_body`) | triggering a queue by hand |
 | `/api/dispatch/stop` | stopping a run |
 | `/api/dispatch/set/power` `{signal}` · `get/power` · `cancel/power` | the power-off decision |
 | `/api/queue/*` (add / update / item / time / order / delete) | the stop-edit-restart JSON dance on `QueueConfig.json` |

@@ -225,8 +225,12 @@ starts the game only when no game window is connected (ok-script
 `start_controller.start_device`: `if device and not device['connected']`), so with the game
 already up it does not launch a second one.
 The patch download counts against the OK-WW script's `Run.HardTimeLimit` (120 minutes).
-An update-only run, without OK-WW or the game: `POST /api/dispatch/start
-{"taskId": "<OK-WW user id>", "mode": "Update"}` (`Okww/Update.py`).
+An update-only run, without OK-WW or the game, was `POST /api/dispatch/start
+{"taskId": "<OK-WW user id>", "mode": "Update"}` (`Okww/Update.py`) until AUTO-MAS's update of
+2026-11-16 21:21: its dispatch body is now `{"mode", "tasks"}` (TaskCreateIn, see
+`relay/ark_relay/features/commands.py` dispatch_body) and mode is only AutoProxy / ScriptConfig /
+ScriptView. The update-only path is AUTO-MAS's internal `TaskManager.start_maintenance`; which request
+starts it from outside was not checked (11-17).
 
 ## Master copy vs the script's own copy: your edits in the MaaEnd UI get wiped
 
