@@ -1528,7 +1528,8 @@ def _part_error_evidence():
     d2_morning = f"{stamp(D2, 9, 0)} INFO    ark.test  d2 morning\n".encode("utf-8")
     cos = FakeCos({key_of(D3): d3_bytes, key_of(D2): d2_morning})
     before = (error_evidence._last_attempt[0], dict(error_evidence._last_ok), list(error_evidence._last_errors))
-    got = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=cos)
+    check("default look-back covers a full week (7 days)", error_evidence.BACKFILL_DAYS, 7)
+    got = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=cos, days=3)
     check("yesterday (no object) and the day before (a shorter object) are sent; three days back is whole and stays",
           (cos.puts, got["kept"], got["errors"]), ([key_of(D1), key_of(D2)], 1, []))
     check("what was sent says what COS held before", [(d, k, h) for d, k, h, _n in got["sent"]],
@@ -1541,11 +1542,15 @@ def _part_error_evidence():
           (key_of(D4) in cos.asked, key_of(DAY) in cos.asked), (False, False))
     check("the error path's throttle and last link are untouched",
           (error_evidence._last_attempt[0], dict(error_evidence._last_ok), list(error_evidence._last_errors)), before)
-    again_bf = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=cos)
+    again_bf = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=cos, days=3)
     check("a second pass finds every object as long as the machine's part: nothing sent", (again_bf["sent"], again_bf["kept"]), ([], 3))
     longer = FakeCos({key_of(D1): b"x" * 5000})
     error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=longer, days=1)
     check("an object longer than the machine's part is never replaced", (longer.puts, len(longer.held[key_of(D1)])), ([], 5000))
+    week = FakeCos({key_of(D3): d3_bytes})
+    got = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=week)
+    check("the default week reaches the day four days back; days the log holds nothing of are not asked about",
+          (week.puts, got["kept"], sorted(week.asked)), ([key_of(D1), key_of(D2), key_of(D4)], 1, sorted(key_of(d) for d in (D1, D2, D3, D4))))
 
     empty_log = tmpdir() / "relay.log"
     write_day_log(empty_log, DAY, [(9, 0, "only today")])
@@ -1558,7 +1563,7 @@ def _part_error_evidence():
     check("the line is down: one error, and the other objects are not waited for", (len(got["errors"]), len(down.asked)), (1, 1))
     http = FakeCos(size_fail=lambda key: urllib.error.HTTPError("u", 500, "x", None, None) if key == key_of(D1) else None)
     http.size = lambda key, timeout=20, _f=http.size_fail: (_ for _ in ()).throw(_f(key)) if _f(key) else None
-    got = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=http)
+    got = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=http, days=3)
     check("one object answered 500: said, and the other days still go up", (len(got["errors"]), http.puts), (1, [key_of(D2), key_of(D3)]))
     refused = FakeCos(upload_fail=PermanentUploadError("COS 回了 403：密钥不对或没有这个桶的权限"))
     got = error_evidence.backfill_past_days(cfg_with(bf_log, None, tmpdir()), now=NOW, uploader=refused)
@@ -1594,7 +1599,7 @@ def _part_error_evidence():
         error_evidence._daily_uploader = lambda cfg: ok_cos
         error_evidence._run_backfill(cfg_bf, NOW)
         check("each object sent is one INFO line saying what COS lacked", [(lv, "没有" in m and "补传上去" in m) for lv, m in seen],
-              [("INFO", True)] * 3)
+              [("INFO", True)] * 4)       # D1..D4: every day bf_log holds, inside the default week
         del seen[:]
         error_evidence._daily_uploader = lambda cfg: FakeCos(size_fail=OSError("getaddrinfo failed"))
         error_evidence._run_backfill(cfg_bf, NOW)

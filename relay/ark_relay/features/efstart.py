@@ -137,7 +137,7 @@ def launcher_for(game_path: str, launcher_path: str = "") -> "PureWindowsPath | 
 
 
 def trampoline_text(code_root: Path) -> str:
-    return ("# Written by the relay at every start (ark_relay/features/gameupdate/efstart_setup.py).\n"
+    return ("# Written by the relay at every start (ark_relay/features/efstart.py).\n"
             "# Runs the launcher helper from the code folder in use; do not edit.\n"
             "import sys\n"
             "from pathlib import Path\n"

@@ -114,7 +114,7 @@ ALLOW = {
     "relay/ark_relay/features/handle.py": ("ark.missed", "ark.unresolved"),
     "relay/ark_relay/features/machinechecks.py": ("ark.system", "ark.phone_banners", "ark.runs"),
     "relay/ark_relay/features/outcome.py": ("ark.gamelog_errors", "ark.collector"),
-    "relay/ark_relay/features/phone.py": ("ark.monthcard", "ark.inbox", "ark.service"),
+    "relay/ark_relay/features/phone.py": ("ark.monthcard", "ark.inbox"),
     "relay/ark_relay/features/procwatch.py": "ark.service",
     "relay/ark_relay/features/redbutton.py": "ark.commands",
     "relay/ark_relay/features/selfcheck.py": ("ark.shiftcheck", "ark.tape"),

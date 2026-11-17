@@ -1173,7 +1173,9 @@ def upload_daily_logs(cfg, *, force: bool = False, now: "datetime | None" = None
     return result
 
 
-BACKFILL_DAYS = 3
+# A week: a day missed while the machine stayed up, or while the line was down for
+# days, is still in relay.log / app.log and gets sent at the next start.
+BACKFILL_DAYS = 7
 _backfill: dict = {"day": None, "thread": None}
 _backfill_lock = threading.Lock()
 

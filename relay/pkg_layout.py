@@ -247,6 +247,38 @@ def _drop(folder: Path) -> None:
     shutil.rmtree(folder, ignore_errors=True)
 
 
+def _drop_stale_packages(code: Path) -> list[str]:
+    """Remove what a package that became a module left behind in a copied tree.
+
+    The copy starts from the folder in use, so `features/phone/` (once a package) is
+    still there after the update wrote `features/phone.py` beside it, and Python
+    imports the directory first: the new folder would run the old code. selfupdate
+    prunes by the manifest (_unlisted); this needs no manifest and is the second
+    layer: under ark_relay, a directory with a `<name>.py` beside it goes, and so
+    does a directory left with no file in it (copytree skipped its __pycache__).
+    Returns what was removed, relative to `code`.
+    """
+    top = code / "ark_relay"
+    gone: list[str] = []
+    if not top.is_dir():
+        return gone
+    for folder, dirs, _names in os.walk(top):
+        for name in sorted(dirs):
+            full = Path(folder) / name
+            if _is_link(full) or full.is_symlink():
+                dirs.remove(name)
+                continue
+            if name == "__pycache__":
+                continue
+            shadows = full.with_name(name + ".py").is_file()
+            hollow = not any(f for _d, _s, fs in os.walk(full) for f in fs if not f.endswith(".pyc"))
+            if shadows or hollow:
+                dirs.remove(name)
+                shutil.rmtree(full)
+                gone.append(full.relative_to(code).as_posix() + "/")
+    return gone
+
+
 def update(here: Path, check) -> list[str]:
     """Bring a copy of the folder in use up to the deployed manifest and switch to it.
 
@@ -279,6 +311,8 @@ def update(here: Path, check) -> list[str]:
     from ark_relay.features import selfupdate  # noqa: PLC0415
     version = "0"
     try:
+        if gone := _drop_stale_packages(staging):
+            log.info("新版本里清掉改成单文件后留下的旧文件夹: %s", "、".join(gone))
         version = str(selfupdate._applied_version(staging) or 0)
         name, n = version, 0
         while (app / "versions" / name).exists():

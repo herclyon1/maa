@@ -150,7 +150,7 @@ inbox are confirmed by the act of editing the repo file, so `phone.py` supplies
 
 Applying any of them: back up → write → `json.loads` → structural diff → **roll
 back unless added=0, removed=0 and changed matches expectation**. That gate has
-caught one real incident already; see [PITFALLS.md](../docs/PITFALLS.md).
+caught one real incident already; see [OPERATIONS.md](../docs/OPERATIONS.md), "Changing game configuration".
 
 ## The timezone contract
 
@@ -168,8 +168,7 @@ code runs on.
    `09:00（东京 10:00）`.
 4. **No bare `datetime.now()` anywhere.** Every call carries `tz=SERVER_TZ`.
 
-Rule 4 is not fastidiousness - see [PITFALLS.md](../docs/PITFALLS.md), "Timing
-and time zones".
+Rule 4 is not fastidiousness - see [OPERATIONS.md](../docs/OPERATIONS.md), "Schedule".
 
 ## Where the model's authority ends
 

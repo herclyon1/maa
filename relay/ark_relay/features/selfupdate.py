@@ -611,17 +611,73 @@ def _stage_files(root: Path, base: str, files: dict, deadline: float | None,
     return [(rel, target, bodies[rel]) for rel, target in plan]
 
 
-def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
-                  remote_ver: int, local_ver: int, wanted: list[str]) -> "list[str] | None":
-    """Put the staged content in place, all of it or none; the files that landed, or None.
+# Inside STAGING_DIR: where _write_staged parks what the manifest no longer lists,
+# until the round is known to have landed (so a failed round can put it all back).
+PRUNED_DIR = ".pruned"
+# Only the package is pruned: next to it sit the state link, the logs and the
+# files a deploy places by hand, none of which a manifest lists.
+PRUNE_ROOT = "ark_relay"
 
-    Three steps, each of which leaves the originals in place when it fails:
+
+def _unlisted(root: Path, listed) -> list[str]:
+    """What sits under PRUNE_ROOT that the manifest does not list, as paths relative
+    to root, topmost first; a directory holding no listed file is one entry ending
+    in "/" (its __pycache__ goes with it).
+
+    A package that became a module (features/phone/__init__.py -> features/phone.py)
+    leaves its directory behind in a tree that is only ever written into, and Python
+    imports the directory before the .py beside it: the old code would keep running.
+
+    __pycache__ and *.pyc in directories that stay are left alone, links are never
+    entered, and a manifest that lists nothing under PRUNE_ROOT prunes nothing.
+    """
+    keep = {rel for rel in listed if rel.startswith(PRUNE_ROOT + "/")}
+    top = root / PRUNE_ROOT
+    if not keep or not top.is_dir():
+        return []
+    keep_dirs = {PRUNE_ROOT}
+    for rel in keep:
+        parts = rel.split("/")[:-1]
+        keep_dirs.update("/".join(parts[:n]) for n in range(1, len(parts) + 1))
+    out: list[str] = []
+    for folder, dirs, names in os.walk(top):
+        here = Path(folder).relative_to(root).as_posix()
+        for name in sorted(dirs):
+            full = Path(folder) / name
+            link = full.is_symlink() or getattr(full, "is_junction", lambda: False)()
+            if name == "__pycache__" or link:
+                dirs.remove(name)
+            elif f"{here}/{name}" not in keep_dirs:
+                dirs.remove(name)
+                out.append(f"{here}/{name}/")
+        out.extend(f"{here}/{name}" for name in sorted(names)
+                   if f"{here}/{name}" not in keep and not name.endswith(".pyc"))
+    return out
+
+
+def _park(src: Path, dst: Path) -> None:
+    """One unlisted file or directory out of the tree. Its own name so a test can make it fail."""
+    os.replace(src, dst)
+
+
+def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
+                  remote_ver: int, local_ver: int, wanted: list[str],
+                  listed=None) -> "list[str] | None":
+    """Put the staged content in place, all of it or none; what changed, or None.
+
+    Four steps, each of which leaves the originals in place when it fails:
     1. every new file is written to STAGING_DIR and read back; every original is
        read into memory;
     2. the staged files are swapped in one by one (a rename on the same volume);
-    3. if a swap fails, the files already swapped get their original bytes back and
-       files that did not exist before are removed.
+    3. with `listed` (the manifest's paths), what it no longer lists under PRUNE_ROOT
+       (_unlisted) is moved into STAGING_DIR/PRUNED_DIR, also a rename, and is only
+       deleted with the staging directory once everything went through;
+    4. if a swap or a move fails, what was moved out is moved back, the files already
+       swapped get their original bytes back and files that did not exist before are
+       removed.
     A failure here is a disk or permission fault, recorded as such.
+
+    Returns the files that landed followed by what was pruned.
     """
     stage = root / STAGING_DIR
     shutil.rmtree(stage, ignore_errors=True)       # a round killed mid-way leaves one
@@ -642,6 +698,8 @@ def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
         return None
 
     done = 0
+    doomed = _unlisted(root, listed) if listed else []
+    parked: list[str] = []
     try:
         for rel, target, _data in staged:
             # A new module may sit in a new package directory; the path itself
@@ -649,10 +707,28 @@ def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
             target.parent.mkdir(parents=True, exist_ok=True)
             _swap_in(stage / rel, target)
             done += 1
+        for rel in doomed:
+            hold = stage / PRUNED_DIR / rel.rstrip("/")
+            hold.parent.mkdir(parents=True, exist_ok=True)
+            _park(root / rel.rstrip("/"), hold)
+            parked.append(rel)
     except OSError:
-        rel = staged[done][0]
-        log.exception("把新文件 %s 换上去失败，已换上的 %d 个改回原样", rel, done)
+        if done < len(staged):
+            rel = staged[done][0]
+            what = f"换上新代码时 {rel} 失败"
+            log.exception("把新文件 %s 换上去失败，已换上的 %d 个改回原样", rel, done)
+        else:
+            rel = doomed[len(parked)]
+            what = f"新代码都换上了，清掉清单里已经没有的旧文件 {rel} 时失败"
+            log.exception("清掉清单里已经没有的 %s 失败，已换上的 %d 个改回原样，"
+                          "已挪走的 %d 处挪回去", rel, done, len(parked))
         put_back = []
+        for back_rel in reversed(parked):
+            try:
+                os.replace(stage / PRUNED_DIR / back_rel.rstrip("/"), root / back_rel.rstrip("/"))
+            except OSError:
+                log.exception("把 %s 挪回原处也失败了", back_rel)
+                put_back.append(back_rel)
         for (back_rel, target, _data), orig in zip(staged[:done], originals[:done], strict=True):
             try:
                 if orig is None:
@@ -662,20 +738,24 @@ def _write_staged(root: Path, staged: list[tuple[str, Path, bytes]],
             except OSError:
                 log.exception("把 %s 改回原样也失败了", back_rel)
                 put_back.append(back_rel)
-        shutil.rmtree(stage, ignore_errors=True)
-        _record_failure(root, (f"换上新代码时 {rel} 失败（磁盘或权限，或文件被占用），"
+        if not any(r in parked for r in put_back):
+            shutil.rmtree(stage, ignore_errors=True)    # else it still holds what could not go back
+        _record_failure(root, (f"{what}（磁盘或权限，或文件被占用），"
                                + (f"{'、'.join(put_back)} 没能改回原样，机器上新旧代码混着"
                                   if put_back else "已换上的都改回了原样")
                                + "，本次不更新；下次开机会再试"),
                         remote_ver, local_ver, wanted)
         return None
     shutil.rmtree(stage, ignore_errors=True)
-    return [rel for rel, _target, _data in staged]
+    if parked:
+        log.info("清单里已经没有的旧文件清掉 %d 处: %s", len(parked), "、".join(parked))
+    return [rel for rel, _target, _data in staged] + parked
 
 
 def check(root: Path, base_url: str = "",
           budget_s: float = BUDGET_SECONDS) -> list[str]:
-    """Fetch and apply any changed files. Returns the manifest paths that landed.
+    """Fetch and apply any changed files. Returns the manifest paths that landed, then
+    what was removed because the manifest no longer lists it (_unlisted).
 
     `budget_s` is the wall-clock budget for the whole round (0: none); when it runs
     out the round gives up rather than hold up the queue.
@@ -742,7 +822,7 @@ def check(root: Path, base_url: str = "",
     if staged is None:
         return []
 
-    updated = _write_staged(root, staged, remote_ver, local_ver, wanted)
+    updated = _write_staged(root, staged, remote_ver, local_ver, wanted, listed=set(files))
     if updated is None:
         # Nothing landed (the originals are back in place) and the failure is
         # recorded; none of the success bookkeeping below may run.

@@ -943,6 +943,153 @@ if pkg_runtime_swap; then echo "SWAPPED $RUNTIME_TOUCHED"; else echo "FAILED $RU
     print("all checks passed")
 
 
+def _part_pkg_stale_package_dirs():
+    """A package that became a module leaves no directory behind to shadow the .py."""
+    import os
+
+    RELAY = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(RELAY))
+
+    TMP = tmpdir()
+    DATA = TMP / "data"
+    DATA.mkdir()
+    os.environ["ARK_HOME"] = str(DATA)
+    for k in ("ARK_STATE_DIR", "ARK_LOG_FILE"):
+        os.environ.pop(k, None)
+
+    import pkg_layout
+    from ark_relay.features import selfupdate
+
+    NEW_PHONE = b"WHERE = 'module'\n"
+    LISTED = {"app_main.py", "ark_relay/__init__.py", "ark_relay/features/__init__.py",
+              "ark_relay/features/phone.py", "ark_relay/features/kept/__init__.py",
+              "ark_relay/features/words.txt"}
+
+    def old_tree(code: Path) -> None:
+        """Before the flatten: phone is a package, and it has been imported once."""
+        feats = code / "ark_relay" / "features"
+        (feats / "phone" / "__pycache__").mkdir(parents=True)
+        (feats / "phone" / "sub" / "__pycache__").mkdir(parents=True)
+        (feats / "kept" / "__pycache__").mkdir(parents=True)
+        (feats / "gone" / "__pycache__").mkdir(parents=True)      # only bytecode left
+        (code / "app_main.py").write_text("# old\n", encoding="utf-8")
+        (code / "ark_relay" / "__init__.py").write_text("", encoding="utf-8")
+        (feats / "__init__.py").write_text("", encoding="utf-8")
+        (feats / "words.txt").write_text("listed data\n", encoding="utf-8")
+        (feats / "phone" / "__init__.py").write_text("WHERE = 'package'\n", encoding="utf-8")
+        (feats / "phone" / "phone.py").write_text("OLD = 1\n", encoding="utf-8")
+        (feats / "phone" / "__pycache__" / "__init__.cpython-314.pyc").write_bytes(b"pyc")
+        (feats / "phone" / "sub" / "__init__.py").write_text("", encoding="utf-8")
+        (feats / "phone" / "sub" / "__pycache__" / "__init__.cpython-314.pyc").write_bytes(b"pyc")
+        (feats / "kept" / "__init__.py").write_text("K = 1\n", encoding="utf-8")
+        (feats / "kept" / "dropped.py").write_text("D = 1\n", encoding="utf-8")
+        (feats / "kept" / "__pycache__" / "__init__.cpython-314.pyc").write_bytes(b"pyc")
+        (feats / "gone" / "__pycache__" / "gone.cpython-314.pyc").write_bytes(b"pyc")
+
+    def staged_for(root: Path):
+        return [("ark_relay/features/phone.py", root / "ark_relay" / "features" / "phone.py", NEW_PHONE)]
+
+    def snapshot(root: Path) -> dict:
+        return {q.relative_to(root).as_posix(): q.read_bytes() for q in sorted(root.rglob("*"))
+                if q.is_file() and not q.relative_to(root).as_posix().startswith("state")}
+
+    print("[selfupdate: what the manifest no longer lists]")
+    root = TMP / "inplace"
+    old_tree(root)
+    (root / "state").mkdir()
+    (root / "loose.py").write_text("# outside the package: never pruned\n", encoding="utf-8")
+    check("the old package directory, the bytecode-only directory and the dropped module, nothing else",
+          selfupdate._unlisted(root, LISTED),
+          ["ark_relay/features/gone/", "ark_relay/features/phone/", "ark_relay/features/kept/dropped.py"])
+    check("a manifest that lists nothing of the package prunes nothing",
+          selfupdate._unlisted(root, {"app_main.py", "service.py"}), [])
+
+    print("[selfupdate: moving the old directory out fails - everything goes back]")
+    before = snapshot(root)
+    real_park, moved = selfupdate._park, []
+
+    def park_fails_second(src, dst):
+        moved.append(src.name)
+        if len(moved) == 2:
+            raise PermissionError(32, "being used by another process")
+        real_park(src, dst)
+
+    selfupdate._park = park_fails_second
+    try:
+        got = selfupdate._write_staged(root, staged_for(root), 200, 100, ["ark_relay/features/phone.py"], listed=LISTED)
+    finally:
+        selfupdate._park = real_park
+    check("the round did not land", got, None)
+    check("every file is back as it was: phone.py not created, the package and its bytecode whole", snapshot(root), before)
+    check("no staging directory left", (root / selfupdate.STAGING_DIR).exists(), False)
+    fail = selfupdate.take_failure(root) or {}
+    check("the failure names what could not be moved", "ark_relay/features/phone/" in (fail.get("reason") or ""), True)
+
+    print("[selfupdate: a round that lands]")
+    got = selfupdate._write_staged(root, staged_for(root), 200, 100, ["ark_relay/features/phone.py"], listed=LISTED)
+    feats = root / "ark_relay" / "features"
+    check("what landed, then what was pruned", got,
+          ["ark_relay/features/phone.py", "ark_relay/features/gone/", "ark_relay/features/phone/",
+           "ark_relay/features/kept/dropped.py"])
+    check("phone.py is the new module", (feats / "phone.py").read_bytes(), NEW_PHONE)
+    check("ark_relay/features/phone/ is gone completely (with its __pycache__ and sub-package)", (feats / "phone").exists(), False)
+    check("the bytecode-only directory is gone", (feats / "gone").exists(), False)
+    check("the unlisted module in a kept package is gone", (feats / "kept" / "dropped.py").exists(), False)
+    check("listed files and a kept package's __pycache__ stay",
+          ((feats / "kept" / "__init__.py").exists(), (feats / "words.txt").exists(),
+           (feats / "kept" / "__pycache__" / "__init__.cpython-314.pyc").exists()), (True, True, True))
+    check("outside the package nothing is touched", (root / "loose.py").exists(), True)
+    check("no staging directory left", (root / selfupdate.STAGING_DIR).exists(), False)
+    import importlib.machinery
+    spec = importlib.machinery.PathFinder.find_spec("phone", [str(feats)])
+    check("Python now finds the module, not a package", (spec.origin or "").endswith("phone.py") and not spec.submodule_search_locations, True)
+    check("a second round has nothing to prune", selfupdate._write_staged(root, [], 200, 200, [], listed=LISTED), [])
+    check("without the manifest's paths nothing is pruned (the old call)", selfupdate._write_staged(root, [], 200, 200, []), [])
+
+    print("[pkg_layout: the new version folder is copied from the old one]")
+    app = TMP / "app"
+    here = app / "versions" / "100"
+    old_tree(here)
+    (app / "current.txt").write_text("100\n", encoding="ascii")
+    pkg_layout.link_state(here, pkg_layout.state_dir(DATA))
+    pkg_layout.record_running_version(here)
+
+    def flatten_round(code: Path) -> list[str]:
+        # A check that only writes (an older selfupdate): the sweep in update is what cleans.
+        (code / "ark_relay" / "features" / "phone.py").write_bytes(NEW_PHONE)
+        selfupdate._remember_version(code, 200)
+        return ["ark_relay/features/phone.py"]
+
+    got = pkg_layout.update(here, flatten_round)
+    new = app / "versions" / "200" / "ark_relay" / "features"
+    check("update landed", (got, pkg_layout.current(app)), (["ark_relay/features/phone.py"], "200"))
+    check("the new folder has phone.py", (new / "phone.py").read_bytes(), NEW_PHONE)
+    check("the new folder has no ark_relay/features/phone/ at all", (new / "phone").exists(), False)
+    check("the directory that held only bytecode is gone too", (new / "gone").exists(), False)
+    check("a real package is kept", (new / "kept" / "__init__.py").exists(), True)
+    check("the folder in use is untouched (the way back)", (here / "ark_relay" / "features" / "phone" / "__init__.py").exists(), True)
+
+    print("[pkg_layout + selfupdate together: the copy is pruned by the manifest]")
+    here2 = app / "versions" / "200"
+
+    def real_round(code: Path) -> list[str]:
+        out = selfupdate._write_staged(code, [("ark_relay/features/kept/__init__.py",
+                                               code / "ark_relay" / "features" / "kept" / "__init__.py", b"K = 2\n")],
+                                       300, 200, [], listed=LISTED)
+        selfupdate._remember_version(code, 300)
+        return out
+
+    got = pkg_layout.update(here2, real_round)
+    check("the unlisted module counts as a change and is not in the new folder",
+          (got, (app / "versions" / "300" / "ark_relay" / "features" / "kept" / "dropped.py").exists()),
+          (["ark_relay/features/kept/__init__.py", "ark_relay/features/kept/dropped.py"], False))
+
+    if fails:
+        print("FAIL:", fails)
+        sys.exit(1)
+    print("all checks passed")
+
+
 def _part_pkg_state_dir():
     """The packaged relay reads and writes its code version in one state folder."""
     import os
@@ -2399,4 +2546,4 @@ def _part_manifest_covers_tree():
 
 
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_pkg_appfiles_update, _part_pkg_install_messages, _part_pkg_layout_names, _part_pkg_pin_whole_write, _part_pkg_runtime_update, _part_pkg_state_dir, _part_pkg_switch_failed_announce, _part_pkg_switch_flushed, _part_pkg_update_nothing_changed, _part_pkg_watchdog_update, _part_stop_denied, _part_stop_event_manual_reset, _part_stop_push_errwatch_budget, _part_switch_resume, _part_switch_run_encoding, _part_switch_stop, _part_switch_uninstall, _part_manifest_covers_tree]))
+    sys.exit(run_parts([_part_pkg_appfiles_update, _part_pkg_install_messages, _part_pkg_layout_names, _part_pkg_pin_whole_write, _part_pkg_runtime_update, _part_pkg_stale_package_dirs, _part_pkg_state_dir, _part_pkg_switch_failed_announce, _part_pkg_switch_flushed, _part_pkg_update_nothing_changed, _part_pkg_watchdog_update, _part_stop_denied, _part_stop_event_manual_reset, _part_stop_push_errwatch_budget, _part_switch_resume, _part_switch_run_encoding, _part_switch_stop, _part_switch_uninstall, _part_manifest_covers_tree]))

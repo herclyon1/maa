@@ -6,8 +6,8 @@
 
 The records are what `web/view.js` writes when he taps 诊断记录 on the phone: one
 JSON object per tap, PUT with no credentials at all into `diag/` of the
-diagnostics bucket (COS_DIAG_BUCKET in ~/.config/ark/push.env, built by
-`cos-setup.py --diag`). Nobody can read or list that bucket anonymously - this
+diagnostics bucket (COS_DIAG_BUCKET in ~/.config/ark/push.env, see
+docs/CONFIG.md). Nobody can read or list that bucket anonymously - this
 script is the reader, and it signs with the COS key the same way
 relay/ark_relay/features/evidence.py does.
 
@@ -89,7 +89,7 @@ def main() -> int:
     bucket, region = e.get("COS_DIAG_BUCKET", ""), e.get("COS_REGION", "ap-shanghai")
     if not (sid and skey and bucket):
         print("push.env 里缺 COS_SECRET_ID / COS_SECRET_KEY / COS_DIAG_BUCKET；"
-              "先跑 scripts/mac/cos-setup.py --diag。", file=sys.stderr)
+              "在 ~/.config/ark/push.env 里补上（见 docs/CONFIG.md）。", file=sys.stderr)
         return 2
     cos = Cos(sid, skey, bucket, region)
     items = listing(cos)

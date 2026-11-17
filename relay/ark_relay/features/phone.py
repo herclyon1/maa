@@ -2179,10 +2179,6 @@ class Mailbox:
             delay = min(delay * 2, 60)
 
 
-# boot_stages' logger: these lines were always ark.service, and machine checks and tests read them there.
-_log_phone_channel = logging.getLogger("ark.service")
-
-
 LIVE_ONLY_ACTIONS = ("estop",)
 
 
