@@ -13,6 +13,27 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
+def _stub_win32(*names: str) -> None:
+    """Stand-ins for the Windows-only modules the relay imports (pywin32, wmi, ...) on the Mac:
+    any attribute of one is a callable returning another stand-in. setdefault: a module already
+    in sys.modules stays; run_parts drops what a part added once the part is over."""
+    import types
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+    for name in names:
+        sys.modules.setdefault(name, _Stub(name))
+
+
 def _part_preupdate_main():
     """When the boot-window pre-update is wanted: only before a queue still to come
 today that runs OK-WW, the one program it still launches (its update overwrites
@@ -348,24 +369,10 @@ def _part_preupdate_not_alarm():
     sys.path.insert(0, str(RELAY))
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
-                 "win32com", "win32com.client"):
-        sys.modules.setdefault(name, _Stub(name))
+                 "win32com", "win32com.client")
 
     import boot_stages
     from ark_relay.features import gameupdate
@@ -3132,26 +3139,11 @@ def _part_automas_backend_match():
     """
     import ast
     import re
-    import types
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                   "win32con", "win32file", "servicemanager", "win32process",
-                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(_name, _Stub(_name))
+                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
 
     from ark_relay.features import automas_keeper as automas_procs
     from ark_relay.features import commands
@@ -3203,7 +3195,7 @@ def _part_automas_backend_match():
     check("the second match is attached", automas_procs._automas_handle(), "handle:5088")
 
 
-def _part_automas_boot_one_alarm():  # noqa: C901
+def _part_automas_boot_one_alarm():
     """One AUTO-MAS start failure at boot is one group message (audit s23 F2, 10-13)."""
     import logging
     import time
@@ -3211,24 +3203,10 @@ def _part_automas_boot_one_alarm():  # noqa: C901
     from datetime import datetime, timezone
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
-                 "win32com", "win32com.client"):
-        sys.modules.setdefault(name, _Stub(name))
+                 "win32com", "win32com.client")
 
     import boot_stages
     from ark_relay.core import texts
@@ -3407,24 +3385,10 @@ runtime as well when it does restart, and the keeper must not go blind without w
     import types
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
-                 "win32com", "win32com.client"):
-        sys.modules.setdefault(name, _Stub(name))
+                 "win32com", "win32com.client")
 
     import logging
 

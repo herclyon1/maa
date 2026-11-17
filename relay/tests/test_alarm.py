@@ -13,6 +13,18 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
+class _Notes:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body="", **kw):
+        self.sent.append((title, body, kw.get("alert", False)))
+        return []
+
+    def went_to_group(self):
+        return True
+
+
 def _part_alert_dedup():
     """The alerted-today marks (state.json marks.alerted:<day>), and what still uses them."""
     import types
@@ -2424,18 +2436,6 @@ def _part_every_failure_pushed():
         return DAY.replace(hour=hh, minute=mm)
 
 
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return []
-
-        def went_to_group(self):
-            return True
-
-
     class Src:
         def fetch(self, seen):
             return []
@@ -2446,7 +2446,7 @@ def _part_every_failure_pushed():
         cfg.state_dir = tmpdir()
         cfg.automas_dir = AUTOMAS
         cfg.maa_dir = None
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._unfinished_queues = lambda now, entries: []
@@ -2507,10 +2507,10 @@ def _part_every_failure_pushed():
     okww_overlay.report_line = lambda: ""
     okww_overlay.drift_line = lambda okww, state_dir: BAD[0]
     preupdate.run_okww = lambda okww, problems=None, **_k: ""
-    notes = Notes()
+    notes = _Notes()
     boot_stages._stage_patch_okww(CFG, notes, LOG)
     check("boot: sent as an alarm", [(t, a) for t, _, a in notes.sent], [(texts.patches(1, BAD), True)])
-    notes = Notes()
+    notes = _Notes()
     boot_stages._preupdate_okww(CFG, notes, LOG, [])
     check("pre-update: sent as an alarm", [(t, a) for t, _, a in notes.sent], [(texts.patches(1, BAD), True)])
     (okww_overlay.install, okww_overlay.write_master_pointer,
@@ -2600,18 +2600,6 @@ def _part_recovered_daily_only():  # noqa: C901
         return DAY.replace(hour=hh, minute=mm)
 
 
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return []
-
-        def went_to_group(self):
-            return True
-
-
     class Src:
         def fetch(self, seen):
             return []
@@ -2622,7 +2610,7 @@ def _part_recovered_daily_only():  # noqa: C901
         cfg.state_dir = tmpdir()
         cfg.automas_dir = AUTOMAS
         cfg.maa_dir = None
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._unfinished_queues = lambda now, entries: []

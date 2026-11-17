@@ -11,6 +11,45 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
+def _stub_win32(*names: str) -> None:
+    """Stand-ins for the Windows-only modules the relay imports (pywin32, wmi, ...) on the Mac:
+    any attribute of one is a callable returning another stand-in. setdefault: a module already
+    in sys.modules stays; run_parts drops what a part added once the part is over."""
+    import types
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+    for name in names:
+        sys.modules.setdefault(name, _Stub(name))
+
+
+class _AnyMeta(type):
+    """A stand-in upstream class: any method _install_hooks reads exists and does nothing."""
+    def __getattr__(cls, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+
+        def anything(self, *a, **kw):
+            return None
+        return anything
+
+
+class _Cfg:
+    def __init__(self, root):
+        self.okww_dir = root
+        self.state_dir = root / "state"
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+
+
 def _part_okww_alive_cache():
     """OK-WW's python check on a phone publish: cached, and never asked by the stop push."""
     import contextlib
@@ -1512,18 +1551,7 @@ def _part_okww_claim_readback():  # noqa: C901
         """src.task.BaseCombatTask.CharRevivedException."""
 
 
-    class _Any(type):
-        """A stand-in upstream class: any method _install_hooks reads exists and does nothing."""
-        def __getattr__(cls, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-
-            def anything(self, *a, **kw):
-                return None
-            return anything
-
-
-    class BaseWWTask(metaclass=_Any):
+    class BaseWWTask(metaclass=_AnyMeta):
         # Upstream v3.7.4 BaseWWTask.py:520-526, verbatim: ESC, i.e. 取消.
         def handle_claim_button(self):
             while self.wait_until(self.has_claim, raise_if_not_found=False, time_out=1.5):
@@ -1597,7 +1625,7 @@ def _part_okww_claim_readback():  # noqa: C901
         "src.task.FarmEchoTask": types.SimpleNamespace(FarmEchoTask=FarmEchoTask),
     }
     for name in ("DailyTask", "ForgeryTask", "SimulationTask", "TacetTask"):
-        mods[f"src.task.{name}"] = types.SimpleNamespace(**{name: _Any(name, (), {})})
+        mods[f"src.task.{name}"] = types.SimpleNamespace(**{name: _AnyMeta(name, (), {})})
     _saved = {k: sys.modules.get(k) for k in mods}
     sys.modules.update(mods)
 
@@ -4654,18 +4682,7 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
         """src.task.BaseCombatTask.CharRevivedException."""
 
 
-    class _Any(type):
-        """A stand-in upstream class: any method _install_hooks reads exists and does nothing."""
-        def __getattr__(cls, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-
-            def anything(self, *a, **kw):
-                return None
-            return anything
-
-
-    class BaseWWTask(metaclass=_Any):
+    class BaseWWTask(metaclass=_AnyMeta):
         def click_on_book_target(self, serial_number, total_number, structure=None):
             # Upstream (v3.7.3 BaseWWTask.py:1070-1112): click 前往, then wait 10 s for
             # the travel or team screen; True means the team screen.
@@ -4743,7 +4760,7 @@ def _part_okww_weekly_entry_paths():  # noqa: C901
         "src.task.FarmEchoTask": types.SimpleNamespace(FarmEchoTask=FarmEchoTask),
     }
     for name in ("DailyTask", "ForgeryTask", "SimulationTask", "TacetTask"):
-        mods[f"src.task.{name}"] = types.SimpleNamespace(**{name: _Any(name, (), {})})
+        mods[f"src.task.{name}"] = types.SimpleNamespace(**{name: _AnyMeta(name, (), {})})
     _saved = {k: sys.modules.get(k) for k in mods}
     sys.modules.update(mods)
 
@@ -5511,23 +5528,9 @@ def _part_okww_overlay_faults():
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for _name in ("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
                   "servicemanager", "win32process", "win32security", "win32ts", "win32profile", "wmi",
-                  "pythoncom", "win32com", "win32com.client"):
-        sys.modules.setdefault(_name, _Stub(_name))
+                  "pythoncom", "win32com", "win32com.client")
 
     import boot_stages
     from ark_relay.core import texts
@@ -5736,23 +5739,9 @@ relay next starts a run itself, and is said to the group if it still cannot be d
                       WECOM_CORPID="", WECOM_SECRET="", WECOM_BOT_URL="", ARK_PHONE_TOPIC="")
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for _name in ("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api", "win32con", "win32file",
                   "servicemanager", "win32process", "win32security", "win32ts", "win32profile", "wmi",
-                  "pythoncom", "win32com", "win32com.client"):
-        sys.modules.setdefault(_name, _Stub(_name))
+                  "pythoncom", "win32com", "win32com.client")
 
     import boot_stages
     from ark_relay.features import okww_overlay as ov
@@ -6143,13 +6132,6 @@ def _part_echo_farm_main():  # noqa: C901
                 "Repeat Farm Count": 3, "Echo Pickup Method": "Walk"}
 
 
-    class Cfg:
-        def __init__(self, root):
-            self.okww_dir = root
-            self.state_dir = root / "state"
-            self.state_dir.mkdir(parents=True, exist_ok=True)
-
-
     def fresh():
         """An OK-WW tree shaped the way the machine's is: the live config sits under
     the pyappify working directory, not at the install root. The first attempt on
@@ -6158,7 +6140,7 @@ def _part_echo_farm_main():  # noqa: C901
         d = root.joinpath(*echofarm._WORKING, "configs")
         d.mkdir(parents=True)
         (d / "FarmEchoTask.json").write_text(json.dumps(ORIGINAL, ensure_ascii=False), encoding="utf-8")
-        return Cfg(root)
+        return _Cfg(root)
 
 
     def cfg_now(c):
@@ -6890,23 +6872,9 @@ def _part_echo_farm_stop_and_backlog():
     from datetime import datetime, timedelta
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
 
     from ark_relay.features import commands
     from ark_relay.features import echofarm
@@ -6919,19 +6887,12 @@ def _part_echo_farm_stop_and_backlog():
                 "Repeat Farm Count": 3}
 
 
-    class Cfg:
-        def __init__(self, root):
-            self.okww_dir = root
-            self.state_dir = root / "state"
-            self.state_dir.mkdir(parents=True, exist_ok=True)
-
-
     def fresh():
         root = tmpdir()
         d = root.joinpath(*echofarm._WORKING, "configs")
         d.mkdir(parents=True)
         (d / "FarmEchoTask.json").write_text(json.dumps(ORIGINAL), encoding="utf-8")
-        return Cfg(root)
+        return _Cfg(root)
 
 
     launched = []

@@ -13,6 +13,44 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
+def _stub_win32(*names: str) -> None:
+    """Stand-ins for the Windows-only modules the relay imports (pywin32, wmi, ...) on the Mac:
+    any attribute of one is a callable returning another stand-in. setdefault: a module already
+    in sys.modules stays; run_parts drops what a part added once the part is over."""
+    import types
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+    for name in names:
+        sys.modules.setdefault(name, _Stub(name))
+
+
+class _Eng:
+    def __init__(self, busy):
+        self.busy = busy
+
+    def scripts_running(self):
+        return self.busy
+
+
+class _Notes:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body="", **kw):
+        self.sent.append((title, body))
+        return False
+
+
 def _part_phone_main():
     """手机通道：PIN 对不上、太老的指令、状态和指令别混。"""
     import json
@@ -64,24 +102,10 @@ def _part_phone_channel_boot():
     from datetime import datetime, timezone
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
-                 "win32com", "win32com.client"):
-        sys.modules.setdefault(name, _Stub(name))
+                 "win32com", "win32com.client")
 
     import boot_stages
     from ark_relay.features import phone as phone_channel
@@ -236,23 +260,6 @@ def _part_phone_cmd_gate():
     from ark_relay.core import texts
 
 
-    class Eng:
-        def __init__(self, busy):
-            self.busy = busy
-
-        def scripts_running(self):
-            return self.busy
-
-
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body))
-            return False
-
-
     class Log:
         def info(self, *a, **k): pass
         def warning(self, *a, **k): pass
@@ -264,13 +271,13 @@ def _part_phone_cmd_gate():
 
 
     def run(action, busy, applied):
-        notes = Notes()
+        notes = _Notes()
         real = C.apply_command
         # _make_phone_cmd binds apply_command into its closure, so the module
         # attribute has to be swapped before the closure is built.
         C.apply_command = lambda body: (applied.append(body["action"]), (True, "改好了"))[1]
         try:
-            fn = phone_channel._make_phone_cmd(Eng(busy), notes, Log(), HB(), lambda *_: None)
+            fn = phone_channel._make_phone_cmd(_Eng(busy), notes, Log(), HB(), lambda *_: None)
             fn({"action": action, "confirmed": True})
         finally:
             C.apply_command = real
@@ -325,7 +332,7 @@ def _part_phone_cmd_gate():
     _ensured = []
     boot_stages.ensure_automas = lambda *a, **k: _ensured.append(1) or True
     try:
-        _fn = phone_channel._make_phone_cmd(Eng(False), Notes(), Log(), HB(), _pusher)
+        _fn = phone_channel._make_phone_cmd(_Eng(False), _Notes(), Log(), HB(), _pusher)
         _fn({"action": "refresh", "_meta": {"ntfy_time": int(_time.time())}})
         check("第一次刷新照常答一份", _pushed, ["手机请求"])
         _fn({"action": "refresh", "_meta": {"ntfy_time": int(_time.time()) + 4}})
@@ -338,7 +345,7 @@ def _part_phone_cmd_gate():
         check("隔久了再按：照常答", _pushed, ["手机请求", "手机请求"])
         # A plain push_state (a lambda, no `answered`) still answers every time
         _plain = []
-        phone_channel._make_phone_cmd(Eng(False), Notes(), Log(), HB(),
+        phone_channel._make_phone_cmd(_Eng(False), _Notes(), Log(), HB(),
                                     lambda why: _plain.append(why))({"action": "refresh"})
         check("普通的 push_state 照旧能用", _plain, ["手机请求"])
 
@@ -347,7 +354,7 @@ def _part_phone_cmd_gate():
         real = C.apply_command
         C.apply_command = lambda body: (True, "改好了")
         try:
-            _fn = phone_channel._make_phone_cmd(Eng(False), Notes(), Log(), HB(), _pusher)
+            _fn = phone_channel._make_phone_cmd(_Eng(False), _Notes(), Log(), HB(), _pusher)
             with _pusher.held():
                 for _b in ({"action": "set_config"}, {"action": "skip_shutdown", "on": True},
                            {"action": "refresh", "_meta": {"ntfy_time": 0}}):
@@ -375,23 +382,9 @@ def _part_phone_cmd_queue():
     from datetime import datetime, timedelta
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
 
 
     os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -402,23 +395,6 @@ def _part_phone_cmd_queue():
     from ark_relay.features import modes
     from ark_relay.features import phone
     from ark_relay.core.config import SERVER_TZ
-
-
-    class Eng:
-        def __init__(self, busy):
-            self.busy = busy
-
-        def scripts_running(self):
-            return self.busy
-
-
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body))
-            return False
 
 
     class Log:
@@ -458,7 +434,7 @@ def _part_phone_cmd_queue():
     def make(engine, state_dir, notes=None, pushed=None, log=None):
         """A fresh run_phone_cmd: building it again on the same dir is a relay restart."""
         pusher = phone.StatePusher(lambda why: (pushed.append(why) if pushed is not None else None) or True)
-        return phone_channel._make_phone_cmd(engine, notes or Notes(), log or Log(), HB(), pusher, state_dir)
+        return phone_channel._make_phone_cmd(engine, notes or _Notes(), log or Log(), HB(), pusher, state_dir)
 
 
     REAL_APPLY = C.apply_command
@@ -466,8 +442,8 @@ def _part_phone_cmd_queue():
 
     print("[跑着的时候：改设置落盘排队，不当场改，什么都不推]")
     d = tmpdir()
-    eng = Eng(busy=True)
-    notes, pushed, lg = Notes(), [], Log()
+    eng = _Eng(busy=True)
+    notes, pushed, lg = _Notes(), [], Log()
     fn = make(eng, d, notes, pushed, lg)
     APPLIED.clear()
     fn(order("set_config", "m1", value="1-7"))
@@ -498,8 +474,8 @@ def _part_phone_cmd_queue():
     check("还是三条", len(q), 3)
 
     print("\n[中继重启：队列还在，跑完后按顺序执行]")
-    eng2 = Eng(busy=False)
-    notes2, pushed2 = Notes(), []
+    eng2 = _Eng(busy=False)
+    notes2, pushed2 = _Notes(), []
     fn2 = make(eng2, d, notes2, pushed2)
     APPLIED.clear()
     check("跑了三条", fn2.drain(), 3)
@@ -526,7 +502,7 @@ def _part_phone_cmd_queue():
 
     print("\n[过期：发出超过 24 小时才轮到它——不执行，回执写明]")
     d3 = tmpdir()
-    eng3 = Eng(busy=True)
+    eng3 = _Eng(busy=True)
     fn3 = make(eng3, d3)
     old = int(time.time()) - phone.MAX_AGE - 60
     fn3(order("set_config", "x1", sent=old, value="TO-5"))
@@ -542,7 +518,7 @@ def _part_phone_cmd_queue():
     C.apply_command = REAL_APPLY            # the real one: its own `day` check decides
     d4 = tmpdir()
     os.environ["ARK_STATE_DIR"] = str(d4)
-    eng4 = Eng(busy=True)
+    eng4 = _Eng(busy=True)
     fn4 = make(eng4, d4)
     yesterday = (datetime.now(tz=SERVER_TZ) - timedelta(days=1)).strftime("%Y-%m-%d")
     fn4(order("skip_today", "y1", queue="晚班", day=yesterday))
@@ -556,7 +532,7 @@ def _part_phone_cmd_queue():
 
     print("\n[跑着的时候：下次跑完不关机 / 调试模式照旧当场执行]")
     d5 = tmpdir()
-    eng5 = Eng(busy=True)
+    eng5 = _Eng(busy=True)
     fn5 = make(eng5, d5)
     APPLIED.clear()
     fn5(order("skip_shutdown", "s1", on=True))
@@ -566,7 +542,7 @@ def _part_phone_cmd_queue():
 
     print("\n[没在跑但前面还有排着的：新来的排在后面，一起按顺序跑]")
     d6 = tmpdir()
-    eng6 = Eng(busy=True)
+    eng6 = _Eng(busy=True)
     fn6 = make(eng6, d6)
     APPLIED.clear()
     fn6(order("set_config", "a1", value="A"))
@@ -578,7 +554,7 @@ def _part_phone_cmd_queue():
 
     print("\n[跑到一半又开跑：剩下的继续等]")
     d7 = tmpdir()
-    eng7 = Eng(busy=True)
+    eng7 = _Eng(busy=True)
     fn7 = make(eng7, d7)
     for i in range(3):
         fn7(order("set_config", f"b{i}", value=str(i)))
@@ -605,7 +581,7 @@ def _part_phone_cmd_queue():
     cfg = Config()
     cfg.state_dir = tmpdir()
     E = engmod.Engine(cfg, source=types.SimpleNamespace(fetch=lambda seen: []),
-                      state=State(cfg.state_dir), notifier=Notes())
+                      state=State(cfg.state_dir), notifier=_Notes())
     E._scripts_running = lambda: False
     calls = []
     STEPS = ("_echo_farm_deadline", "_run_watch", "_flush_pending",
@@ -617,7 +593,7 @@ def _part_phone_cmd_queue():
 
     # The real drain, wired the way boot_stages wires it.
     d8 = tmpdir()
-    eng8 = Eng(busy=True)
+    eng8 = _Eng(busy=True)
     fn8 = make(eng8, d8)
     fn8(order("set_config", "r1", value="1-7"))
     eng8.busy = False
@@ -631,8 +607,8 @@ def _part_phone_cmd_queue():
 
     print("\n[跑着的时候按「现在跑」/「开始刷声骸」：不排队，当场回「这时正在跑」，不推群]")
     d10 = tmpdir()
-    eng10 = Eng(busy=True)
-    notes10, pushed10, lg10 = Notes(), [], Log()
+    eng10 = _Eng(busy=True)
+    notes10, pushed10, lg10 = _Notes(), [], Log()
     fn10 = make(eng10, d10, notes10, pushed10, lg10)
     APPLIED.clear()
     fn10(order("run_now", "n1", queue="早班"))
@@ -651,7 +627,7 @@ def _part_phone_cmd_queue():
 
     print("\n[没在跑、前面还有排着的设置：先改设置，再当场跑「现在跑」]")
     d11 = tmpdir()
-    eng11 = Eng(busy=True)
+    eng11 = _Eng(busy=True)
     fn11 = make(eng11, d11)
     APPLIED.clear()
     fn11(order("set_config", "p1", value="1-7"))
@@ -663,7 +639,7 @@ def _part_phone_cmd_queue():
     print("\n[盘上留着一条旧的「现在跑」（规则改之前排的）：跑完时不执行，回执说明]")
     d12 = tmpdir()
     phone.CmdQueue(d12).add(order("run_now", "q1", queue="早班"))
-    fn12 = make(Eng(busy=False), d12)
+    fn12 = make(_Eng(busy=False), d12)
     APPLIED.clear()
     check("算处理了一条", fn12.drain(), 1)
     check("没开跑", APPLIED, [])
@@ -671,7 +647,7 @@ def _part_phone_cmd_queue():
 
     print("\n[执行了指令就让「有没有在跑」的三秒缓存作废，同一轮的关机判断重新问]")
     d13 = tmpdir()
-    eng13 = Eng(busy=True)
+    eng13 = _Eng(busy=True)
     fn13 = make(eng13, d13)
     fn13(order("set_config", "c1", value="1-7"))
     eng13.busy = False
@@ -708,7 +684,7 @@ def _part_phone_cmd_queue():
 
     print("\n[D207：排着的时候同一条（action + 内容一样）又按一次：不重复排，这次也有排队回执]")
     d14 = tmpdir()
-    eng14 = Eng(busy=True)
+    eng14 = _Eng(busy=True)
     pushed14 = []
     fn14 = make(eng14, d14, pushed=pushed14)
     t0 = int(time.time()) - 600
@@ -741,7 +717,7 @@ def _part_phone_cmd_queue():
 
     print("\n[D207：只和同一动作最近排着的那条比：开 → 关 → 开 最后是开]")
     d15 = tmpdir()
-    fn15 = make(Eng(busy=True), d15)
+    fn15 = make(_Eng(busy=True), d15)
     fn15(order("toggle_task", "f1", name="基建", on=True))
     fn15(order("toggle_task", "f2", name="基建", on=False))
     fn15(order("toggle_task", "f3", name="基建", on=True))
@@ -751,7 +727,7 @@ def _part_phone_cmd_queue():
 
     print("\n[D207：没在跑、前面有排着的：直接执行，不写排队回执]")
     d16 = tmpdir()
-    eng16 = Eng(busy=True)
+    eng16 = _Eng(busy=True)
     fn16 = make(eng16, d16)
     fn16(order("set_config", "g1", value="A"))
     eng16.busy = False
@@ -779,26 +755,11 @@ def _part_phone_drained_failure_pushed():
     """A phone order that waited for the run and then failed goes to the group too."""
     import os
     import time
-    import types
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                   "win32con", "win32file", "servicemanager", "win32process",
-                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(_name, _Stub(_name))
+                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
 
 
     os.environ.update(ARK_STATE_DIR=str(tmpdir()), SERVERCHAN_KEY="", ARK_LLM_KEY="",
@@ -810,14 +771,6 @@ def _part_phone_drained_failure_pushed():
     from ark_relay.features import phone
     from ark_relay.core import texts
     from ark_relay.core.notify import route_of
-
-
-    class Eng:
-        def __init__(self, busy):
-            self.busy = busy
-
-        def scripts_running(self):
-            return self.busy
 
 
     class Notes:
@@ -852,7 +805,7 @@ def _part_phone_drained_failure_pushed():
                                     else (True, f"刷取关卡：{body.get('value')}"))
     try:
         d = tmpdir()
-        eng, notes = Eng(True), Notes()
+        eng, notes = _Eng(True), Notes()
         fn = phone_channel._make_phone_cmd(eng, notes, Log(), HB(), phone.StatePusher(lambda why: True), d)
         fn(order("set_config", "m1", value="TO-9"))
         fn(order("set_config", "m2", value="1-7"))
@@ -1514,27 +1467,12 @@ def _part_phone_sent():
     """A phone order keeps the time it was sent: in relay.log and on its receipt."""
     import json
     import logging
-    import types
     from datetime import datetime
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
 
     import ark_relay.features.commands as C
     from ark_relay.features import phone as phone_channel

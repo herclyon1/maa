@@ -13,6 +13,27 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
+def _stub_win32(*names: str) -> None:
+    """Stand-ins for the Windows-only modules the relay imports (pywin32, wmi, ...) on the Mac:
+    any attribute of one is a callable returning another stand-in. setdefault: a module already
+    in sys.modules stays; run_parts drops what a part added once the part is over."""
+    import types
+
+    class _Any:
+        def __init__(self, *a, **k): pass
+        def __call__(self, *a, **k): return _Any()
+        def __getattr__(self, _): return _Any()
+
+    class _Stub(types.ModuleType):
+        def __getattr__(self, name):
+            if name.startswith("__"):
+                raise AttributeError(name)
+            return _Any
+
+    for name in names:
+        sys.modules.setdefault(name, _Stub(name))
+
+
 def _make_maaend_schema():
     import json
     import types
@@ -39,6 +60,24 @@ def _make_maaend_schema():
         cache_task_enabled_for_controller=cache_task_enabled_for_controller,
         mxu_load_save_flags=mxu_load_save_flags,
     )
+
+
+class _Notes:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body="", **kw):
+        self.sent.append((title, body, kw.get("alert", False)))
+        return False
+
+
+class _N:
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body, alert=False, **kw):
+        self.sent.append((title, alert))
+        return []
 
 
 def _part_mastercfg_main():
@@ -1804,15 +1843,6 @@ def _part_maaend_no_d3d11_alarm():
         return root
 
 
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return False
-
-
     class Src:
         def fetch(self, seen):
             return []
@@ -1828,7 +1858,7 @@ def _part_maaend_no_d3d11_alarm():
         cfg.state_dir = tmpdir() / "state"
         cfg.automas_dir = automas_dir()
         cfg.maaend_dir = MAAEND
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._verify_outcome = lambda r: None
@@ -1859,7 +1889,7 @@ def _part_maaend_no_d3d11_alarm():
     _t = player.stat().st_mtime + 60
     os.utime(player, (_t, _t))
     boot_stages._endfield_launch = lambda cfg, log, when: None
-    boot_stages._stage_endfield_start(Config(), Notes(), efstart_setup._log_efstart_setup)
+    boot_stages._stage_endfield_start(Config(), _Notes(), efstart_setup._log_efstart_setup)
     check("no WARNING at boot", WARNED.lines, [])
 
     print("\n" + ("FAILED: " + "; ".join(fails) if fails else "all checks passed"))
@@ -2327,15 +2357,6 @@ def _part_maaend_update_after_done():
     BOTH = automas_dir([("早班", ["09:00"], ["MAA", "MaaEnd", "OK-WW"]), ("晚班", ["21:30"], ["MAA", "MaaEnd"])])
 
 
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return False
-
-
     class Src:
         def fetch(self, seen):
             return []
@@ -2403,7 +2424,7 @@ def _part_maaend_update_after_done():
         cfg.state_dir = tmpdir() / "state"   # its own tech/ next to it (techlog.tech_dir)
         cfg.automas_dir = automas
         cfg.maaend_dir = MAAEND
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._verify_outcome = lambda r: undone
@@ -2615,15 +2636,6 @@ def _part_maaend_update_record():
     logging.getLogger(errwatch.ARK).setLevel(logging.DEBUG)
 
 
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return False
-
-
     class Src:
         def fetch(self, seen):
             return []
@@ -2690,7 +2702,7 @@ def _part_maaend_update_record():
     def build():
         cfg = Config()
         cfg.state_dir = tmpdir()
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._verify_outcome = lambda r: None
@@ -2826,15 +2838,6 @@ def _part_maaend_update_restart():
     from ark_relay.core.ledger import State
 
 
-    class Notes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body="", **kw):
-            self.sent.append((title, body, kw.get("alert", False)))
-            return False
-
-
     class Src:
         def fetch(self, seen):
             return []
@@ -2884,7 +2887,7 @@ def _part_maaend_update_restart():
     def build():
         cfg = Config()
         cfg.state_dir = tmpdir()
-        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=Notes())
+        e = eng_mod.Engine(cfg, source=Src(), state=State(cfg.state_dir), notifier=_Notes())
         e._scripts_running = lambda: False
         e._script_running = lambda name: False
         e._verify_outcome = lambda r: None
@@ -3436,23 +3439,9 @@ group at every boot (2026-10-06).
     import types
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                  "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
 
     import boot_stages
     from ark_relay.features import collect_retry
@@ -3528,23 +3517,9 @@ def _part_spmed_v232():
     import types
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                   "win32con", "win32file", "servicemanager", "win32process",
-                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(_name, _Stub(_name))
+                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
 
     import boot_stages
     from ark_relay.features import gameupdate
@@ -3560,15 +3535,6 @@ def _part_spmed_v232():
         return d
 
 
-    class N:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body, alert=False, **kw):
-            self.sent.append((title, alert))
-            return []
-
-
     class Log:
         def info(self, *a, **k): pass
         def warning(self, *a, **k): pass
@@ -3580,7 +3546,7 @@ def _part_spmed_v232():
         real = mastercfg.prune_maaend_orphans
         mastercfg.prune_maaend_orphans = lambda *a: ([], "")
         try:
-            n = N()
+            n = _N()
             cfg = types.SimpleNamespace(maaend_dir=str(maaend_dir), automas_dir=None, state_dir=str(tmpdir()))
             boot_stages._stage_reenable_maaend(cfg, n, Log())
             return [t for t, a in n.sent if t == texts.SPMED_UNRECOGNISED and a]
@@ -3628,23 +3594,9 @@ def _part_spmed_v233_rc1():
     import types
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
+    _stub_win32("win32serviceutil", "win32service", "win32event", "win32api",
                   "win32con", "win32file", "servicemanager", "win32process",
-                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(_name, _Stub(_name))
+                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
 
     import boot_stages
     from ark_relay.features import gameupdate
@@ -3661,15 +3613,6 @@ def _part_spmed_v233_rc1():
         return d
 
 
-    class N:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body, alert=False, **kw):
-            self.sent.append((title, alert))
-            return []
-
-
     class Log:
         def info(self, *a, **k): pass
         def warning(self, *a, **k): pass
@@ -3681,7 +3624,7 @@ def _part_spmed_v233_rc1():
         real = mastercfg.prune_maaend_orphans
         mastercfg.prune_maaend_orphans = lambda *a: ([], "")
         try:
-            n = N()
+            n = _N()
             cfg = types.SimpleNamespace(maaend_dir=str(maaend_dir), automas_dir=None, state_dir=str(tmpdir()))
             boot_stages._stage_reenable_maaend(cfg, n, Log())
             return [t for t, a in n.sent if t == texts.SPMED_UNRECOGNISED and a]
