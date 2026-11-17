@@ -18,28 +18,17 @@ def _part_techlog_tool():
     import re
     import socket
     import subprocess
-    import sys
     import threading
     import time
     from datetime import datetime, timedelta
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(ROOT / "relay" / "tests"))
-    from _parts import tmpdir
 
     TOOL = ROOT / "scripts" / "mac" / "techlog.py"
     spec = importlib.util.spec_from_file_location("techlog_tool", TOOL)
     tool = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(tool)
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     FAKE = r'''
@@ -471,15 +460,6 @@ def _part_release_notes():
     HERE = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(HERE))
 
-    FAILED = []
-
-
-    def check(name, got, want):
-        ok = got == want
-        print(f"  {'ok  ' if ok else 'FAIL'} {name}: got {got!r}, want {want!r}")
-        if not ok:
-            FAILED.append(name)
-
 
     def render(notes_dir: Path, files: list[str]) -> str:
         """service.py 里组装播报正文的那几行，原样复刻。"""
@@ -552,8 +532,8 @@ def _part_release_notes():
     def main(tmp: Path) -> int:
         test_switch(tmp)
         test_is_plain_language()
-        print("all checks passed" if not FAILED else f"FAILED: {FAILED}")
-        return 0 if not FAILED else 1
+        print("all checks passed" if not fails else f"FAILED: {fails}")
+        return 0 if not fails else 1
 
 
     if __name__ == "__main__":
@@ -983,21 +963,10 @@ print("WINPS_B64=" + base64.b64encode(out.encode()).decode())
 def _part_estop_layout():
     import os
     import subprocess
-    import sys
     import tempfile
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[2]
     SCRIPT = Path(os.environ.get("ESTOP_SH") or ROOT / "scripts" / "mac" / "estop.sh")
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     FAKE_SSH = r'''#!PYTHON
@@ -1268,19 +1237,9 @@ n=$(cat {state}); set -- {seq}; shift $n 2>/dev/null; echo "${{1:-31}}"; echo $(
 
 def _part_ff_toplevel():
     import subprocess
-    import sys
     import tempfile
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[2]
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok' if ok else 'FAIL'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     with tempfile.TemporaryDirectory() as t:

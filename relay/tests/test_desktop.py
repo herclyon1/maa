@@ -3,12 +3,59 @@ from __future__ import annotations
 
 # ruff: noqa: PLC0415
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 
 _SHARED = (check, fails, fx_dir, require, tmpdir)
+
+
+class _NoSleep:
+    """重试之间的等待与测试无关，跳过它；单调时钟保持真的，预算判断还要用。"""
+
+    monotonic = staticmethod(time.monotonic)
+
+    @staticmethod
+    def sleep(_seconds):
+        return None
+
+
+def _net_class(su):
+    """The fake network class for one part's own copy of the selfupdate module `su`."""
+
+    class Net:
+        """假网络。doors: {域名: {文件相对路径: bytes}}；没有的键就是这扇门取不到。"""
+
+        def __init__(self, doors):
+            self.doors = doors
+            self.tried = []
+
+        def get(self, url, timeout=20):
+            host = su._netloc(url)
+            rel = url.split("/relay/", 1)[-1]
+            self.tried.append((host, rel))
+            return self.doors.get(host, {}).get(rel)
+
+        @property
+        def hosts(self):
+            return [h for h, _ in self.tried]
+
+    return Net
+
+
+def _workdir(StateStore, files, code_version=""):
+    """一台机器：root 下摆好现有文件，state 里记好本机代码版本。"""
+    root = tmpdir()
+    (root / "state").mkdir()
+    for rel, body in files.items():
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(body)
+    if code_version:
+        StateStore(root / "state").set("versions", "code", str(code_version))
+    return root
 
 
 def _part_desktop_focus():
@@ -297,7 +344,6 @@ png the request names).
     """
     import json
     import threading
-    import time
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.desktop import Desktop
@@ -386,7 +432,6 @@ def _part_desktop_workfiles():
     """
     import json
     import os
-    import time
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.desktop import Desktop
@@ -589,7 +634,6 @@ def _part_display_wake():
     import json
     import logging
     import threading
-    import time
     from datetime import datetime, timedelta
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -808,7 +852,6 @@ def _part_selfupdate_atomic_sha256():
     import shutil
     import subprocess
     import tempfile
-    import time
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     import os
@@ -817,14 +860,6 @@ def _part_selfupdate_atomic_sha256():
 
     os.environ[su.GITHUB_FALLBACK_ENV] = "1"     # the GitHub doors, as in test_selfupdate_doors.py
     RELAY = Path(__file__).resolve().parents[1]
-
-
-    class _NoSleep:
-        monotonic = staticmethod(time.monotonic)
-
-        @staticmethod
-        def sleep(_s):
-            return None
 
 
     su.time = _NoSleep
@@ -982,20 +1017,11 @@ def _part_selfupdate_cos():
     import json
     import os
     import threading
-    import time
     import zipfile
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import selfupdate as su
     from ark_relay.core.statestore import StateStore
-
-
-    class _NoSleep:
-        monotonic = staticmethod(time.monotonic)
-
-        @staticmethod
-        def sleep(_s):
-            return None
 
 
     su.time = _NoSleep
@@ -1014,14 +1040,7 @@ def _part_selfupdate_cos():
             return "sig"
 
 
-    class Net:
-        def __init__(self, doors):
-            self.doors, self.tried = doors, []
-
-        def get(self, url, timeout=20):
-            host = su._netloc(url); rel = url.split("/relay/", 1)[-1]
-            self.tried.append((host, rel))
-            return self.doors.get(host, {}).get(rel)
+    Net = _net_class(su)
 
 
     def fake_cos_get(cos, key, timeout=20):
@@ -1030,12 +1049,7 @@ def _part_selfupdate_cos():
 
 
     def workdir(files, code_version=""):
-        root = tmpdir(); (root / "state").mkdir()
-        for rel, body in files.items():
-            p = root / rel; p.parent.mkdir(parents=True, exist_ok=True); p.write_bytes(body)
-        if code_version:
-            StateStore(root / "state").set("versions", "code", str(code_version))
-        return root
+        return _workdir(StateStore, files, code_version)
 
 
     def bundle(files: dict) -> bytes:
@@ -1217,7 +1231,6 @@ def _part_selfupdate_cos():
 def _part_selfupdate_doors():
     """selfupdate.py 的四扇门、粘性、拒绝旧清单、对不上哈希就一个字节都不落盘。"""
     import json
-    import time
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.features import selfupdate as su
@@ -1232,35 +1245,10 @@ def _part_selfupdate_doors():
                                "gcore.jsdelivr.net", "raw.githubusercontent.com")
 
 
-    class _NoSleep:
-        """重试之间的等待与测试无关，跳过它；单调时钟保持真的，预算判断还要用。"""
-
-        monotonic = staticmethod(time.monotonic)
-
-        @staticmethod
-        def sleep(_seconds):
-            return None
-
-
     su.time = _NoSleep
 
 
-    class Net:
-        """假网络。doors: {域名: {文件相对路径: bytes}}；没有的键就是这扇门取不到。"""
-
-        def __init__(self, doors):
-            self.doors = doors
-            self.tried = []
-
-        def get(self, url, timeout=20):
-            host = su._netloc(url)
-            rel = url.split("/relay/", 1)[-1]
-            self.tried.append((host, rel))
-            return self.doors.get(host, {}).get(rel)
-
-        @property
-        def hosts(self):
-            return [h for h, _ in self.tried]
+    Net = _net_class(su)
 
 
     def use(net):
@@ -1274,16 +1262,7 @@ def _part_selfupdate_doors():
 
 
     def workdir(files, code_version=""):
-        """一台机器：root 下摆好现有文件，state 里记好本机代码版本。"""
-        root = tmpdir()
-        (root / "state").mkdir()
-        for rel, body in files.items():
-            p = root / rel
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_bytes(body)
-        if code_version:
-            StateStore(root / "state").set("versions", "code", str(code_version))
-        return root
+        return _workdir(StateStore, files, code_version)
 
 
     # ------------------------------------------------------------------ 门的顺序

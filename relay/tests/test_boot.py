@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 # ruff: noqa: PLC0415
+import logging
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -11,12 +13,78 @@ from _parts import check, fails, fx_dir, require, run_parts, tmpdir
 _SHARED = (check, fails, fx_dir, require, tmpdir)
 
 
+class _Any:
+    """Whatever a pywin32 module is asked for: callable, and any attribute of it is another one."""
+    def __init__(self, *a, **k): pass
+    def __call__(self, *a, **k): return _Any()
+    def __getattr__(self, _): return _Any()
+
+
+class _Stub(types.ModuleType):
+    def __getattr__(self, name):
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return _Any
+
+
+_WIN32 = ("win32serviceutil", "win32service", "win32event", "win32api",
+          "win32con", "win32file", "servicemanager", "win32process",
+          "win32security", "win32ts", "win32profile", "wmi", "pythoncom")
+
+
+def _stub_win32(*more: str) -> None:
+    """Stand-ins for the pywin32 modules the Mac does not have; one already there is left alone."""
+    for name in (*_WIN32, *more):
+        sys.modules.setdefault(name, _Stub(name))
+
+
+class _Keep(logging.Handler):
+    """Keeps (level name, message) of every record."""
+
+    def __init__(self):
+        super().__init__()
+        self.rows = []
+
+    def emit(self, record):
+        self.rows.append((record.levelname, record.getMessage()))
+
+
+class _Records(logging.Handler):
+    """Keeps every record."""
+
+    def __init__(self, level=logging.DEBUG):
+        super().__init__(level)
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+
+class _Pushes:
+    """errwatch's notifier: what its WARNING / ERROR records pushed to the group."""
+
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, body, **k):
+        self.sent.append((title, body))
+        return []
+
+
+class _TitleNotifier:
+    """A notifier that keeps the title of every push."""
+
+    def __init__(self):
+        self.sent = []
+
+    def send(self, title, *a, **k):
+        self.sent.append(title)
+
+
 def _part_boot_backend_wait():
     """Boot steps that need the AUTO-MAS backend wait for it right before they run."""
-    import logging
     import os
     import tempfile
-    import types
 
     ROOT = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(ROOT))
@@ -28,13 +96,9 @@ def _part_boot_backend_wait():
     from ark_relay.features import selfcheck
 
 
-    class _Rec(logging.Handler):
+    class _Rec(_Records):
         def __init__(self):
-            super().__init__()
-            self.records = []
-
-        def emit(self, record):
-            self.records.append(record)
+            super().__init__(logging.NOTSET)
 
         def warnings(self):
             return [r.getMessage() for r in self.records if r.levelno >= logging.WARNING]
@@ -220,7 +284,6 @@ def _part_boot_backend_wait():
 def _part_boot_config_alarm():
     """Config warnings and a bad-config exit at boot reach the group (audit s23 F1, 10-13)."""
 
-    import logging
     import os
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -322,32 +385,14 @@ def _part_boot_restore_recovered():
     """boot_stages._stage_reenable_maaend: a narrowed MaaEnd master left over from the
 last session and put back at boot is a fault the relay got over by itself.
     """
-    import logging
     import tempfile
     import time
-    import types
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
-                 "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+    _stub_win32()
 
     import boot_stages
     from ark_relay.features import collect_retry, makeup
@@ -357,32 +402,16 @@ last session and put back at boot is a fault the relay got over by itself.
     from ark_relay.core.config import SERVER_TZ
 
 
-    class Records(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.DEBUG)
-            self.records = []
-
-        def emit(self, record):
-            self.records.append(record)
-
+    class Records(_Records):
         def warnings(self):
             return [(r.getMessage(), bool(getattr(r, errwatch.RECOVERED, False)))
                     for r in self.records if r.levelno == logging.WARNING]
 
 
-    class Pushes:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body, **k):
-            self.sent.append((title, body))
-            return []
-
-
     def run(restore_master, try_restore):
         """One pass of the stage with the two restores faked; (records, pushes, state dir)."""
         state = Path(tempfile.mkdtemp(prefix="boot-restore-"))
-        rec, pushes = Records(), Pushes()
+        rec, pushes = Records(), _Pushes()
         lg = logging.getLogger(f"ark.test_boot_restore.{id(rec)}")
         lg.propagate = False
         lg.setLevel(logging.DEBUG)
@@ -439,30 +468,11 @@ last session and put back at boot is a fault the relay got over by itself.
 def _part_keeper_blind_backoff():
     """The keeper does not back off when it revived nothing (audit s15 #1, 2026-10-13)."""
     import itertools
-    import logging
-    import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
-                  "win32con", "win32file", "servicemanager", "win32process",
-                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
-                  "win32evtlog", "win32gui"):
-        sys.modules.setdefault(_name, _Stub(_name))
+    _stub_win32("win32evtlog", "win32gui")
 
     import time
 
@@ -487,31 +497,14 @@ def _part_keeper_blind_backoff():
     boot_stages._revive_automas = lambda: revives.append(clock[0])
 
 
-    class _Keep(logging.Handler):
-        def __init__(self):
-            super().__init__()
-            self.rows = []
-
-        def emit(self, record):
-            self.rows.append((record.levelname, record.getMessage()))
-
-
     keep = _Keep()
     log = automas_keeper.log
     log.addHandler(keep)
     log.setLevel(logging.INFO)
 
 
-    class _Notifier:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, *a, **k):
-            self.sent.append(title)
-
-
     print("[进程表读不到、接口有应答：没拉起过就不退避，按活性检查间隔查]")
-    k = automas_keeper._AutomasKeeper(log, _Notifier())
+    k = automas_keeper._AutomasKeeper(log, _TitleNotifier())
     check("no handle at start", k.handle, None)
     keep.rows.clear()
     checks = []
@@ -536,7 +529,7 @@ def _part_keeper_blind_backoff():
     automas_procs._installer_running = lambda: False
     automas_procs._automas_shell_running = lambda: False
     clock[0] = 50000.0
-    k2 = automas_keeper._AutomasKeeper(log, _Notifier())
+    k2 = automas_keeper._AutomasKeeper(log, _TitleNotifier())
     waits = []
     for _ in range(4):
         clock[0] = k2.revive_deadline
@@ -549,7 +542,7 @@ def _part_keeper_blind_backoff():
     automas_procs._installer_running = lambda: True
     revives.clear()
     clock[0] = 90000.0
-    k3 = automas_keeper._AutomasKeeper(log, _Notifier())
+    k3 = automas_keeper._AutomasKeeper(log, _TitleNotifier())
     waits = []
     for _ in range(3):
         clock[0] = k3.revive_deadline
@@ -562,27 +555,12 @@ def _part_keeper_blind_backoff():
 def _part_keeper_exit():  # noqa: C901
     """The AUTO-MAS keeper: an exit while the machine goes down is INFO with its reason; any other exit is decided by whether the backend comes back.
     """
-    import logging
     import subprocess
     import tempfile
     import time
-    import types
     from datetime import datetime
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
 
 
     SYNCHRONIZE = 0x00100000
@@ -680,14 +658,7 @@ def _part_keeper_exit():  # noqa: C901
         return types.SimpleNamespace(stdout=out, returncode=0)
 
 
-    class Records(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.DEBUG)
-            self.records = []
-
-        def emit(self, record):
-            self.records.append(record)
-
+    class Records(_Records):
         def at(self, level):
             return [r.getMessage() for r in self.records if r.levelno == level]
 
@@ -700,17 +671,6 @@ def _part_keeper_exit():  # noqa: C901
         def send(self, title, body, **k):
             self.sent.append(title)
             self.calls.append((title, body, k.get("alert", False)))
-            return []
-
-
-    class Pushes:
-        """errwatch's notifier: what its WARNING / ERROR records pushed to the group."""
-
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, body, **k):
-            self.sent.append((title, body))
             return []
 
 
@@ -767,7 +727,7 @@ def _part_keeper_exit():  # noqa: C901
         log.propagate = False
         log.setLevel(logging.DEBUG)
         log.addHandler(rec)
-        rec.state, rec.pushes = Path(tempfile.mkdtemp(prefix="keeper-exit-")), Pushes()
+        rec.state, rec.pushes = Path(tempfile.mkdtemp(prefix="keeper-exit-")), _Pushes()
         rec.errwatch = errwatch.ErrorKindAlert(rec.pushes, state_dir=rec.state, known={}, pace=0, retry=(0.05,))
         log.addHandler(rec.errwatch)
         automas_procs._automas_handle = lambda: handle
@@ -1228,30 +1188,11 @@ def _part_keeper_exit():  # noqa: C901
 def _part_keeper_hold_once():
     """A hold that lasts is said at WARNING once, not at every check (review of bd80586d, 2026-10-13).
     """
-    import logging
-    import types
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for _name in ("win32serviceutil", "win32service", "win32event", "win32api",
-                  "win32con", "win32file", "servicemanager", "win32process",
-                  "win32security", "win32ts", "win32profile", "wmi", "pythoncom",
-                  "win32evtlog", "win32gui"):
-        sys.modules.setdefault(_name, _Stub(_name))
+    _stub_win32("win32evtlog", "win32gui")
 
     import time
 
@@ -1270,27 +1211,10 @@ def _part_keeper_hold_once():
     boot_stages._revive_automas = lambda: revives.append(clock[0])
 
 
-    class _Keep(logging.Handler):
-        def __init__(self):
-            super().__init__()
-            self.rows = []
-
-        def emit(self, record):
-            self.rows.append((record.levelname, record.getMessage()))
-
-
     keep = _Keep()
     log = automas_keeper.log
     log.addHandler(keep)
     log.setLevel(logging.INFO)
-
-
-    class _Notifier:
-        def __init__(self):
-            self.sent = []
-
-        def send(self, title, *a, **k):
-            self.sent.append(title)
 
 
     OLD_COUNT = 8   # before bd80586d: checks at 180, 540, 1260, 2700, 4500, 6300 s ... within 2 hours
@@ -1301,7 +1225,7 @@ def _part_keeper_hold_once():
         automas_procs._installer_running = lambda: installer
         revives.clear()
         clock[0] += 100000.0
-        k = automas_keeper._AutomasKeeper(log, _Notifier())
+        k = automas_keeper._AutomasKeeper(log, _TitleNotifier())
         keep.rows.clear()
         checks = 0
         start = clock[0]
@@ -1336,49 +1260,19 @@ def _part_keeper_hold_once():
           [lv for lv, m in keep.rows if "安装程序正在运行" in m], ["WARNING", "INFO", "INFO"])
 
 
-def _part_stop_during_boot():  # noqa: C901
+def _part_stop_during_boot():
 
-    import logging
-    import sys
     import threading
     import time
-    import types
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
-    class _Any:
-        def __init__(self, *a, **k): pass
-        def __call__(self, *a, **k): return _Any()
-        def __getattr__(self, _): return _Any()
-
-
-    class _Stub(types.ModuleType):
-        def __getattr__(self, name):
-            if name.startswith("__"):
-                raise AttributeError(name)
-            return _Any
-
-
-    for name in ("win32serviceutil", "win32service", "win32event", "win32api",
-                 "win32con", "win32file", "servicemanager", "win32process",
-                 "win32security", "win32ts", "win32profile", "wmi", "pythoncom"):
-        sys.modules.setdefault(name, _Stub(name))
+    _stub_win32()
 
     import boot_stages
     import service
-    from _parts import tmpdir
     from ark_relay.features import errwatch
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'ok' if ok else 'FAIL'} {label}: {got!r}")
-        if not ok:
-            fails.append(label)
 
 
     STAGES = ("selfupdate", "flush_copies", "patch_okww", "automas_jobfix", "backfill_manual_stops", "announce_update",
@@ -1619,24 +1513,12 @@ def _part_stop_during_boot():  # noqa: C901
 
 def _part_smoke_boot_lines():
     import subprocess
-    import sys
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _parts import fx_dir, tmpdir
 
     ROOT = Path(__file__).resolve().parents[2]
     SMOKE = ROOT / "scripts" / "windows" / "smoke.py"
     FIX = fx_dir(Path(__file__), "fixtures") / "relay-0909-boot-smoke.log"
-
-    fails = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     def run(log_text: str) -> str:
@@ -1793,7 +1675,6 @@ def _part_update_announce_dedup():
 def _part_announce_update_log():
     """The update announcement says 「更新说明已记入当天日报」 only when it recorded them (audit s23 F6, 10-13).
     """
-    import logging
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 

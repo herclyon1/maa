@@ -18,17 +18,14 @@ def _part_phone_mailbox_e2e():  # noqa: C901
     import shutil
     import socket
     import subprocess
-    import sys
     import threading
     import time
     import types
     import urllib.error
     import urllib.request
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from _parts import tmpdir
 
     # boot_stages imports the Windows service modules at top level (same stubs as
     # test_phone.py).
@@ -65,14 +62,6 @@ def _part_phone_mailbox_e2e():  # noqa: C901
 
     PIN = "8964"
     HOUR = 3600
-    fails: list[str] = []
-
-
-    def check(label, got, want):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: got {got!r}, want {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     # ---------------------------------------------------------------- the server

@@ -11,22 +11,19 @@ from _parts import check, fails, require, run_parts, tmpdir
 _SHARED = (check, fails, require, tmpdir)
 
 
-def _part_stop_push_watchdog():  # noqa: C901
+def _part_stop_push_watchdog():
     import logging
     import os
     import re
-    import sys
     import threading
     import types
     from datetime import datetime
-    from pathlib import Path
 
     RELAY = Path(__file__).resolve().parents[1]
     ROOT = RELAY.parent
     sys.path.insert(0, str(RELAY))
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     sys.path.insert(0, str(ROOT / "packaging" / "watchdog"))
-    from _parts import tmpdir
 
     DATA = tmpdir()
     (DATA / "state").mkdir()
@@ -34,15 +31,6 @@ def _part_stop_push_watchdog():  # noqa: C901
     for _k in ("ARK_LOG_FILE", "ARK_STATE_DIR", "ARK_PHONE_TOPIC", "ARK_PHONE_PIN"):
         os.environ.pop(_k, None)
     LOG = DATA / "relay.log"
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'ok' if ok else 'FAIL'} {label}" + ("" if ok else f": {got!r} != {want!r}"))
-        if not ok:
-            fails.append(label)
 
 
     # ---------------------------------------------------------------- pywin32, faked
@@ -364,24 +352,13 @@ def _part_stop_push_watchdog():  # noqa: C901
 
 def _part_deploy_watch():
     import importlib.util
-    import sys
     import tempfile
     from datetime import datetime
-    from pathlib import Path
 
     ROOT = Path(__file__).resolve().parents[2]
     spec = importlib.util.spec_from_file_location("deploy_watch", ROOT / "scripts/windows/deploy_watch.py")
     dw = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(dw)
-
-    fails = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  {'✓' if ok else '✗'} {label}" if ok else f"  ✗ {label}: {got!r} != {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     CRASH_LOOP = """10-10 16:27:59 INFO    ark.service  系统的程序启动通知已取消订阅（用了 0.0 秒），中继停下时不留订阅

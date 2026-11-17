@@ -14,24 +14,13 @@ _SHARED = (check, fails, fx_dir, require, tmpdir)
 def _part_maintenance_deadline():
     import http.server
     import logging
-    import sys
     import threading
     import time
     from datetime import datetime
-    from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ark_relay.core.config import SERVER_TZ
     from ark_relay.features import maintenance as M
-
-    fails: list[str] = []
-
-
-    def check(label, got, want=True):
-        ok = got == want
-        print(f"  ✓ {label}" if ok else f"  ✗ {label}: got {got!r}, want {want!r}")
-        if not ok:
-            fails.append(label)
 
 
     class Logs(logging.Handler):
