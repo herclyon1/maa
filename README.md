@@ -16,12 +16,13 @@
 | `relay/` | 中继源码与测试 |
 | `queue/` | 下发给机器的指令 |
 | `scripts/` | 控制端与游戏机两侧的工具脚本 |
-| `docs/` | 运维参考、配置清单、故障记录 |
+| `packaging/` | 安装包与看门狗 |
+| `docs/` | 运维参考、配置清单、通知一览、待办 |
 
-维护说明、配置清单与故障记录在 [`docs/`](docs/)，索引见 [docs/README.md](docs/README.md)。
+维护说明、配置清单与通知一览在 [`docs/`](docs/)，索引见 [docs/README.md](docs/README.md)。
 
 ## 许可
 
-本仓库 MIT，见 [LICENSE](LICENSE)。`relay/ark_relay/okww_files/` 下是上游
+本仓库 MIT，见 [LICENSE](LICENSE)。`relay/ark_relay/features/okww_files/` 下是上游
 [OK-WW](https://github.com/ok-oldking/ok-wuthering-waves) 的源码，AGPL-3.0，
 版权归上游作者。

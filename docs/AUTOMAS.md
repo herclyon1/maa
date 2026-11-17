@@ -1,12 +1,8 @@
 # AUTO-MAS and OK-WW: the UI, the config, and headless operation
 
-Written 2026-08-25. **The purpose of this document is that nobody has to work this out again.**
-Every conclusion here was checked that day on the real machine, either by reading source or by
-calling the API. None of it is guesswork.
-
-Related: HEADLESS.md (removed; `git show 1c8b5828:docs/HEADLESS.md`) (headless entry points for each program),
-[CONFIG.md](CONFIG.md) (the individual config items, and master copy vs working copy),
-PITFALLS.md (removed; `git show 1c8b5828:docs/PITFALLS.md`).
+Every conclusion here was checked on the real machine, either by reading source or by calling
+the API. Related: [CONFIG.md](CONFIG.md) (the individual config items),
+[OPERATIONS.md](OPERATIONS.md) (driving each program without a window).
 
 ---
 
@@ -27,9 +23,6 @@ editing the `config/*.json` files directly **does not take effect**: AUTO-MAS re
 into memory and writes it back on exit, so any file you edit while it is running gets overwritten
 by its in-memory values. Going through the API means the backend itself persists the change, so
 the problem does not arise.
-
-> Already stepped in this on 2026-08-24: edited the files, saw no change in the UI, concluded
-> "it did not take effect" — when in fact the writing method was simply wrong.
 
 ---
 
@@ -71,10 +64,8 @@ Plan tables let you change farming targets by day of week. **They are optional**
 - A MAA user's `Info.StageMode`: `"Fixed"` = use the user's own fixed stage; otherwise it holds a plan uid.
 - A MaaEnd user's `Info.SanityMode`: same idea.
 
-**Both are currently `Fixed`** (MAA fixed on AT-4 with 0 sanity potions; MaaEnd uses the sanity
-task fields on the user), so the 「新 MAA 计划表」 plan table is an **empty shell that nothing
-references** — every field is `-`, and a `grep` across the whole config directory finds it only in
-its own definition file. Deleting it or keeping it makes no difference to operation.
+**Both are currently `Fixed`**, so the 「新 MAA 计划表」 plan table is an empty shell that nothing
+references. Deleting it or keeping it makes no difference to operation.
 
 ### 模拟器管理
 
@@ -99,9 +90,8 @@ The two current queues are in [CONFIG.md](CONFIG.md). Both are `AfterAccomplish=
 
 A runtime panel; there is nothing to configure. **Manual dispatch always goes through
 `scripts/mac/run-one.sh MAA|MaaEnd|OK-WW`**, which has the busy/idle gate built in. Calling
-`/api/dispatch/start` bare fights with AUTO-MAS's own whole-queue retry — that is exactly how, on
-the morning of 2026-09-01, we ended up with 「MAA 重复吃药、三个游戏同时在线」 and had to pull the
-power to recover.
+`/api/dispatch/start` bare fights with AUTO-MAS's own whole-queue retry (2026-09-01: 「MAA 重复吃药、
+三个游戏同时在线」).
 
 `/api/dispatch/start` starts one task manually, `/api/dispatch/stop` aborts it, and
 `/api/dispatch/get|set/power` reads and writes the power flag (currently `NoAction`, matching the
@@ -128,13 +118,13 @@ OK-WW is an ok-script family program. Its task list can be read straight off the
 
 ### Weekly bosses: upstream OK-WW cannot claim them; the relay adds the claim
 
-The relay runs the weekly boss (since 2026-08-31, OKWW-WEEKLY-BOSS.md (removed; `git show 1c8b5828:docs/OKWW-WEEKLY-BOSS.md`)):
+The relay runs the weekly boss:
 `relay/ark_relay/features/weeklyboss.py` switches it on in OK-WW's config each week and
 off once the three claims are used, and the OK-WW overlay
 (`relay/ark_relay/features/okww_files/ark_overrides.tasks.py`, `_install_claim`) inserts the claim step upstream lacks.
 What follows is why that patch is needed.
 
-Confirmed 2026-08-25 by reading the `FarmEchoTask.py` source: **it only picks up echoes, it does
+Upstream's `FarmEchoTask.py`: **it only picks up echoes, it does
 not claim the boss's material rewards.** The only thing that handles the harvest is
 `pick_echo()` / `yolo_find_echo()`; there is **no logic at all for spending waveplates to absorb
 or for clicking to claim rewards**. It also **does not check the three-per-week limit**
@@ -142,10 +132,6 @@ or for clicking to claim rewards**. It also **does not check the three-per-week 
 is just a repeat count, it will not stop on its own).
 
 So with upstream's code alone, weekly boss materials (e.g. 「万囮牢·朽躯」) could only be claimed by hand.
-
-(Lesson: at one point I saw `Teleport to Boss = Weekly Challenge` and declared "it has weekly boss
-support", having verified only that it can teleport there and not what it does once it arrives.
-The user caught it on the spot.)
 
 ### The weekly-boss teleport itself does exist (but as above, it only picks up echoes)
 
@@ -165,8 +151,8 @@ The user caught it on the spot.)
 
 **The route in use**: the daily's own hook - `DailyTask.json` `Additional Tasks to Run After Daily
 Task` gets `Teleport and Farm 4C Echo`, so the 日常 AUTO-MAS already launches runs it (set by
-`weeklyboss.py`; details in OKWW-WEEKLY-BOSS.md (removed; `git show 1c8b5828:docs/OKWW-WEEKLY-BOSS.md`)). Running it from the
-command line (`python.exe -m ok run_task <task name> -e`, see HEADLESS.md) also works.
+`weeklyboss.py`). Running it from the
+command line (`python.exe -m ok run_task <task name> -e`) also works.
 
 ### There is no "maintain inventory" feature
 
@@ -177,7 +163,7 @@ OK-WW only has the concept of **counts**; there is no "farm until inventory reac
   `RunTimeLimit` (per-run timeout) are also counts/times, not inventory targets
 
 To decide whether to farm based on inventory, the decision has to be made outside. **终末地 does
-have inventory data** (IMS, see HEADLESS.md); 鸣潮 has no equivalent.
+have inventory data** (IMS, see [OPERATIONS.md](OPERATIONS.md)); 鸣潮 has no equivalent.
 
 ### Nor is there a material index
 
@@ -237,35 +223,26 @@ OK-WW's own `Auto Start Game When App Starts=true` (game path in its `configs/de
 `pc_full_path = D:\Wuthering Waves Game\Client\Binaries\Win64\Client-Win64-Shipping.exe`)
 starts the game only when no game window is connected (ok-script
 `start_controller.start_device`: `if device and not device['connected']`), so with the game
-already up it does not launch a second one. Until 2026-10-12 this table said to keep
-`Game.Enabled=false` because both sides would launch; the `start_device` check is why they do not.
+already up it does not launch a second one.
 The patch download counts against the OK-WW script's `Run.HardTimeLimit` (120 minutes).
 An update-only run, without OK-WW or the game: `POST /api/dispatch/start
 {"taskId": "<OK-WW user id>", "mode": "Update"}` (`Okww/Update.py`).
 
 ## Master copy vs the script's own copy: your edits in the MaaEnd UI get wiped
 
-2026-08-28: the user said 「我记得手动在 MaaEnd 上加过自动采集」, and the task list I had reported
-did not contain it. Comparing the two copies made it obvious:
-
-    D:\ark\maaend\config\mxu-MaaEnd.json          08-28 10:41  AUTO-MAS instance, 15 tasks (has AutoCollect)
-    <automas>\data\<sid>\Default\ConfigFile\...   08-21 12:39  AUTO-MAS instance, 14 tasks (does not)
-
 `AutoProxy.py:514-515` does a `shutil.rmtree` of `<maaend>\config` before every run and then
 `copytree`s the master over. **A task added in the MaaEnd UI is gone on the next run.**
-This is the same pattern as OK-WW, see [[maa-config-master-copy]].
+This is the same pattern as OK-WW.
 
-For a change to survive, it has to be written into the **master**. The live task list has now been
-synced into the master (which is how AutoCollect was saved), plus `AutoEssence` was added and
-`ProtocolSpace` disabled.
+For a change to survive, it has to be written into the **master**.
 
-### What is really going on with those six "decorative" MAS switches
+### The six MAS switches that toggle only tasks the master already has
 
 `IfAutoCollect` / `IfTrialOfSwordmancy` / `IfAutoEcoFarm` / `IfSeizeEntrustTask` /
 `IfResourceRecycleStation` / `IfPullCountCalculator` — **MaaEnd really does have these six
-features**; MAS did not invent the switches. They became decorative because **the master's task
-list does not contain those tasks**: MAS can only toggle tasks that already exist, it will not
-create them. To use one, first add the task to the master.
+features**. A switch does nothing while **the master's task list does not contain that task**: MAS
+can only toggle tasks that already exist, it will not create them. To use one, first add the task
+to the master.
 
 ## OK-WW's `-t` and 「周常」
 
@@ -282,9 +259,8 @@ create them. To use one, first add the task to the master.
 **There is no such thing as "remember that the weekly is done".** What exists is
 `Check Weekly Garden`, whose original description reads
 「领完每日奖励后检查每周乐园进度，不足 6000 分就跑乐园任务」 — it **checks the progress every
-time**, it does not remember a result. It lives under 「附加任务」; before 2026-08-28 the MAS
-quick-config overwrote additional tasks with `[]`, **which is why 周常乐园 had never once run**.
-It is now back to `["Check Weekly Garden"]`.
+time**, it does not remember a result. It lives under 「附加任务」; the relay's `annihilation.GardenGate`
+takes it out for the rest of a week once the garden is done and puts it back on Monday 04:00.
 
 The other two additional tasks were not added (they take a lot of time; enable them yourself when
 you want them): `Merge Echo If discarded > 1000`, `Teleport and Farm 4C Echo`.
@@ -299,8 +275,7 @@ you want them): `Merge Echo If discarded > 1000`, `Teleport and Farm 4C Echo`.
 
 ## Turning quick-config off ≠ the config directory stops being overwritten
 
-2026-08-28, the user asked 「我不是已经关了快速配置吗，不是说不会覆盖吗？」 — I had earlier
-conflated two separate things. They are separate:
+Two separate things:
 
 | | Governed by | Current state |
 |---|---|---|
@@ -325,14 +300,13 @@ is on or off.** The only place a change survives is the master at
   count per day of week (`AutoProxy.py:733-739`). `AutoProxy.py:421` also uses it to decide
   whether to take the plan-table branch.
 
-Currently `Fixed`: `Stage=AT-4`, `MedicineNumb=999`, `SeriesNumb=0`.
-**The copy in the plan table (every day `Stage='-' MedicineNumb=0`) is never read at all.**
+Currently `Fixed` (the values are in [CONFIG.md](CONFIG.md)); the copy in the plan table is never read.
 
-## Post-battle auto-filter and the manual EssenceFilter rules are now aligned
+## Post-battle auto-filter and the manual EssenceFilter rules are aligned
 
 The user asked for the two to match, both locking flawless only. `AutoEssence`'s post-battle
-filter has been enabled and aligned item by item with the defaults in `maaend_essence.py`; the
-values were read back and compared immediately after writing, and all 9 items match:
+filter is enabled and aligned item by item with the manual set's defaults (read back after
+writing, all 9 items match):
 
     input_language CN｜rarity6 ✓ rarity5 ✗ rarity4 ✗
     flawless ✓ pure ✗｜keep_future_promising ✗ keep_slot3 ✗ discard_unmatched ✗
@@ -341,55 +315,22 @@ Note that the sub-option names use a **different prefix** from the manual set: t
 ones are all `EssenceFilterAfterBattle*` (e.g. `EssenceFilterAfterBattleFlawlessEssence`), while
 the manual set is `FlawlessEssence`. Changing one does not sync the other.
 
-## 2026-08-28: quick-config abolished, the relay now reads and writes the master directly
+## The relay reads and writes the master directly
 
-That day I first turned `IfQuickConfig` off for MaaEnd and OK-WW, on the grounds that "MAS's
-coverage is incomplete and it manufactures silent failures". **That was wrong, because our own
-relay works through MAS's user fields:**
+`IfQuickConfig` is `false` for MaaEnd and OK-WW (since 2026-08-28), so the relay does not go
+through MAS's user fields (the user: 「中继依赖你就改成不依赖呀」):
 
-| Relay feature | Which MAS field it writes | After quick-config is off |
-|---|---|---|
-| `garden.py` weekly-garden memory | OK-WW `Task.AdditionalTasks` | **Broken** |
-| `sanity_plan.py` sanity plan | MaaEnd `Task.SanityTaskType` etc. | **Broken** |
-| `annihilation.py` annihilation status (reads only since 2026-10-11) | none: AUTO-MAS keeps `Data.AnnihilationCompletedWeek` itself | Needs MAA quick-config **on**: AUTO-MAS records the week only then |
+* `annihilation.GardenGate` rewrites `Additional Tasks to Run After Daily Task` in the master's
+  `DailyTask.json`. To check garden status read the relay's state (`garden`, `done_week`), not the
+  config: an empty additional-task list in a finished week is deliberate.
+* `sanity_plan.py` reads and writes the master's `mxu-MaaEnd.json` - the sanity plan is which of
+  `ProtocolSpace` / `AutoEssence` is `enabled`, plus the sedimentation-point region.
+* `annihilation.WeeklyGate` only reads: AUTO-MAS keeps `Data.AnnihilationCompletedWeek` itself,
+  which needs the MAA account's quick-config **on**.
+* All locate the master directory via `config.master_config_dir()`, using a marker file, and
+  refuse explicitly when the master has no corresponding task.
 
-**The relay was changed the same day so that it no longer depends on it** (the user's words:
-「中继依赖你就改成不依赖呀，你怎么就这么会偷懒？」 — turning the switch back on is a detour, not
-a fix):
-
-* `garden.py` now rewrites `Additional Tasks to Run After Daily Task` in the master's
-  `DailyTask.json`
-* `sanity_plan.py` now reads and writes the master's `mxu-MaaEnd.json` — the sanity plan is simply
-  which of `ProtocolSpace` / `AutoEssence` is `enabled`, and it also supports writing the
-  sedimentation-point region
-* Both locate the master directory via `config.master_config_dir()`, using a marker file
-* When the master has no corresponding task, they now **refuse explicitly and say why**, instead
-  of silently skipping
-
-`IfQuickConfig` is now `false` for both, and the relay features were verified on the machine:
-`sanity_plan.read()` returned 「基质刷取 → 枢纽区」, and `garden` read `done_week=2026-W35` with
-`enforce()` deciding no change was needed.
-
-### Two more misjudgements the same day
-
-1. **OK-WW's `AdditionalTasks=[]` was not "MAS overwriting it with empty"**; `garden.py` turned it
-   off deliberately — `state/garden.json` says `{"done_week": "2026-W35"}`, this week's garden is
-   already done, and `Check Weekly Garden` gets added back automatically at 04:00 on Monday.
-   I added that entry to the master on the strength of the wrong reading, which would have made it
-   run pointlessly for six days this week; that has been reverted.
-   **To check garden status read `garden.json`, not the config.**
-
-2. **Those six MAS switches are not "decorative"; the tasks were lost in the config corruption on
-   08-14.** In `mxu-MaaEnd.json.corrupt-20260814-054934` the AUTO-MAS instance has **17** tasks,
-   including `SeizeEntrustTask` / `AutoCollect` / `ResourceRecycleStation` / `AutoEcoFarm` /
-   `AutoEssence`; every config after that has only 14. Three have been restored from that backup
-   (AutoCollect and AutoEssence were added back separately), and the master now has 19.
-
-   **`TrialOfSwordmancy` (选剑演武) is not even in that backup**, so there is nothing to restore
-   from. To use it, it has to be re-added in the MaaEnd UI and then **synced into the master**, or
-   it will be gone again on the next run.
-
-## MaaEnd task list and order (settled 2026-08-28)
+## MaaEnd task list and order
 
 | # | Task | Notes |
 |---:|---|---|
@@ -411,10 +352,8 @@ a fix):
 | 16 | 🧺自动采集 | **Monday/Thursday**, 15 routes, about 30 minutes, **needs to stay in the foreground and the mouse must not be touched** |
 | 17 | 📅日常奖励领取 | Wrap-up, must be last |
 
-**自动采集 was moved from position 1 to position 16**: it is the longest and the most fragile (it
-needs the foreground and no mouse movement), so putting it first meant one stall took out all 16
-tasks behind it. Moved to the back, the short tasks in front are already done. Placing it before
-日常奖励领取 does not disturb the wrap-up.
+**自动采集 sits at position 16**: it is the longest and the most fragile (it needs the foreground
+and no mouse movement), so the short tasks in front are already done when it stalls.
 
 `AutoCollectSchedule` has only `Monday` + `Thursday` ticked — **twice a week**, skipped the other
 five days.
@@ -425,7 +364,7 @@ collection run will not be cut off.
 
 ## Morning queue order
 
-`MAA → OK-WW → MaaEnd` (changed 2026-08-28; it used to be MAA → MaaEnd → OK-WW).
+`MAA → OK-WW → MaaEnd`.
 Reason: on Mondays and Thursdays MaaEnd takes an extra half hour for 自动采集, so putting it last
 keeps it from blocking 鸣潮.
 How to change it: `POST /api/queue/item/order`, where `indexList` is the **queue-item IDs**
@@ -433,9 +372,8 @@ arranged in the new order.
 
 ## 选剑演武: enabled; when it fails it leaves the character inside the challenge
 
-**Status (2026-10-16)**: enabled and runs every day. It was switched off on 2026-08-28 (ed84e6a5,
-the history below) and is on again: AUTO-MAS history shows `任务完成: 🗡️选剑演武` in every MaaEnd
-run from 09-15 to 10-15. When it was switched back on is not recorded in git.
+**Status (2026-10-16)**: enabled and runs every day (AUTO-MAS history shows `任务完成: 🗡️选剑演武`
+in every MaaEnd run from 09-15 to 10-15).
 
 **Last failure, 2026-10-16 13:47** (make-up round, MaaEnd v2.33.0-beta.5): the third paid round's
 node `TrialOfSwordmancyFight` timed out after 20 s because neither `AutoFight` nor
@@ -443,29 +381,11 @@ node `TrialOfSwordmancyFight` timed out after 20 s because neither `AutoFight` n
 HUD). Cause unknown; not a MaaEnd version change (the fight pipeline is unchanged since upstream
 605da581, 10-12) and not a relay desktop shot. The upstream node has no timeout fallback and does
 not press 中止挑战, so the character stayed in the arena and the next 基质刷取 failed on the map
-with 「当前禁止传送」 - the same knock-on as 08-28 point 1 below.
+with 「当前禁止传送」.
 
-### History: 2026-08-28, succeeds in the game, reported as a failure by MaaEnd
+Two costs of a failure, known since 2026-08-28 (then: `TrialOfSwordmancyEnemyCard5` matched at 0.286
+against a threshold of 0.7 although the reward had arrived):
 
-It broke on 2026-08-28, the very day it was first enabled, and was then set to `enabled: false`.
-
-**Symptom**: the task ran to completion in the game and the reward arrived
-(`获得 武陵调度券 ×320000`, exactly the 「奖励数额 320000」 shown on the challenge screen), yet
-MaaEnd still reported `任务失败: 🗡️选剑演武`.
-
-**Root cause** (`maafw.log`): the recognition node `TrialOfSwordmancyEnemyCard5` scored only
-**0.286** on template matching against a threshold of 0.7, so it could not identify the enemy
-cards → `Tasker.Task.Failed`.
-
-**Why it was disabled then rather than shrugged off as "the reward arrived anyway"**:
-
-1. **When it fails it leaves the character inside the challenge arena.** The 基质刷取 that follows
-   therefore failed as a knock-on — from the MXU log: `↩️返回大世界` (21 seconds, could not get
-   out) → `✈️准备传送到最近锚点` (33 seconds, not in the open world) → task failed.
-   **The root cause of that 基质 failure was this task, not the 基质 config.**
-2. **It burns AUTO-MAS's retry budget** (`RunTimesLimit=3`). All three rounds that day were
-   consumed by it.
-
-**What was advised then before re-enabling it**: fix the recognition first: switch to `刷镀层` mode (which does not enter
-combat and does not need to identify cards), or confirm that the game's resolution and graphics
-settings match the upstream templates.
+1. The character is left inside the challenge arena, so the 基质刷取 that follows fails as a
+   knock-on (`↩️返回大世界` cannot get out). The root cause of that 基质 failure is this task.
+2. It burns AUTO-MAS's retry budget (`RunTimesLimit=3`).

@@ -1,391 +1,130 @@
 # Work owed to the user
 
-**Why this file exists**: on 2026-08-27 the user asked 「角色练度推荐怎么又欠我了？你记不住事吗？」
-Conversations get compacted, and a todo that lives only in my head is guaranteed to fall out.
-**Write down what you promised the moment you promise it, and cross it off the moment it is done.**
+Write down what was promised the moment it is promised, and cross it off the moment it is done
+(the user, 2026-08-27: 「角色练度推荐怎么又欠我了？你记不住事吗？」).
 
-**2026-11-17:** the phone page (`web/`), the day replay (`relay/tests/daysim`), the game-layer simulator lanes and the
-gates `guardcheck.sh` / `check-docs.py` / `changed_covered.py` were removed from the repository. Entries below that name
-them are the record of what was done then; `scripts/mac/deploy-web.sh` in particular no longer exists.
-
-**Todos live in exactly one place.** Before 2026-09-08, the WeCom 60020 problem and the three
-watchdog secrets were written up both here and in `OPERATIONS.md`; edit one and the other became
-wrong. `OPERATIONS.md` now keeps only "standing limits we do not plan to change", and
-`NEXT-BOOT.md` keeps only "the first thing to do at the next boot".
+**Todos live in exactly one place.** `OPERATIONS.md` keeps only standing limits we do not plan to
+change; anything still owed is here. Finished items are deleted, not kept; `git log` has them.
+Skipped tests are registered here too and may stay at most one week.
 
 ## Todo
-- [ ] **Endfield version-briefing parser has only one sample (added 2026-10-08, due 2026-11-05).**
+
+- [ ] **Endfield version-briefing parser has only one sample (added 2026-10-08).**
       `banners.ef_briefing_banners` reads the official version briefing (bulletin cid 2183 ->
-      endfield.hypergryph.com/version_briefing/latest -> content script, JSON.parse blocks). Only the v1d6 page
-      exists as a fixture (`relay/tests/fixtures/ef-briefing-v1d6`); older briefings' hashed script names are not
-      reachable. When the next version's briefing goes live (expected before the 11-05 banner change), save it as a
-      second fixture and add it to `test_banners.py`, so the parser is checked against two issues, not one.
-- [ ] **Debug mode swallows a shutdown chance and does not give it back when it expires (found 2026-10-07).**
-      2026-10-06: debug mode was on until 21:10 Beijing; every shutdown point from 17:38 to 19:26 met it and was
-      consumed (modes.py:128-148). When debug mode expired nothing re-ran the shutdown decision, so at 21:30 the
-      relay judged "skipped" and pushed 「🌙 今晚不关机」 to the group (shutdown.py:455-468), then shut down at 21:49
-      once the next MAA record arrived. A misleading group alarm caused by our own maintenance window.
-      Not changed that night: shutdown behaviour could not be verified with the machine off. Until fixed: do not
-      leave debug mode on across a shutdown point and do not arm 「下次跑完不关机」 without a reason.
-      Fix: when debug mode expires, release the consumed chance and re-run the shutdown decision; test with the
-      10-06 relay.log lines 762-1010 as the replay.
-- [ ] **Osaka HP ProOne 600 G3 as a cloud server - shelved 2026-09-01, recovery notes kept here.** The user shelved it
-      after I said the box was not needed for anything we run; plans must treat it as non-existent. If it is ever
-      revived: it reached the net through the Cloudflare tunnel `osaka` plus the Mac's WARP team, SSH on port 2222.
-      Failure mode: on the shared-flat Wi-Fi its LAN address is re-issued by DHCP on every reboot (`10.32.24.34` ->
-      `10.32.30.142`), which kills the hard-coded /32 route and the SSH path with it. Recovery (verified): Cloudflare
-      dashboard -> Networks -> Tunnels & Mesh -> `osaka` -> the connector diagnostics page reports the box's current
-      LAN address as **Private IP** (cloudflared reports it itself, no scanning) - put that address into both the
-      tunnel's CIDR route and the WARP split-tunnel include list, and SSH answers within seconds. Permanent fix: buy a
-      cheap domain, add a Cloudflare Public Hostname pointing at `ssh://localhost:2222`, and cloudflared dials
-      localhost so the LAN address stops mattering. Longer write-up: `~/Claude/HANDOFF-hp-cloud-server.md`.
-      (Moved out of the session memory store on 2026-09-23 so the shelved box is not re-read every session.)
-- **Web page (unmaintained, not worked):** the phone page (`web/`) has not been maintained since 10-10 - the
-      project moved to the native App `~/Claude/ark-remote`. The phone-page items below are kept as a record and
-      are not worked; they matter only if someone touches `web/` again.
-- [ ] **Phone page, alert first open ≈ 776 ms (acceptance measured on Mac Chromium, v=20260919002833, `?demo=1`, real click, rAF after pointerup):**
-      showModal is called within 0.3 ms, the first frame comes 776 ms later on the FIRST open after a load (28 ms on the second); with
-      `dialog > .pane`'s backdrop-filter removed the first open paints in 3 ms. Cause: the blur layer's first creation (top layer + backdrop
-      root + a full-page raster), not the per-frame blur. The user sees exactly that: a very transparent panel first, the blur arriving later
-      (Android Chrome and Mac Chrome alike) — so 556aaab's 「flat pane during the appear animation, blur at animationend」 (index.html
-      `dialog[open]:not(.settled) > .pane`) must be REMOVED: it is that same 「clear first, blurred later」. Fix to build: create the blur layer
-      at page load — the pane living outside the dialog (position: fixed at its final rect, backdrop-filter always on, hidden in a way that
-      keeps Chrome's compositor layer alive: try opacity .01 / clip to 1 px, not visibility: hidden), or a silent showModal + close after load
-      (then check the layer is not reclaimed). Verify each variant the acceptance way, in a real Chromium (headless does not show this
-      compositor behaviour): reload → real click → ms from pointerup to the first frame, AND the first frame already blurred (capture it);
-      target ≤ 2 frames; Android and desktop Chrome each once; numbers into the commit message.
-- [ ] **Phone page, tab-bar lens while held / dragged (user's simulator photo 2026-09-19, `?accept=1`):** ours slides as an opaque flat white
-      capsule — labels under it neither show through nor bend; native lifts a glass lens with the labels refracted through it. Do: (1) the
-      lifted / dragging lens material from the probe originals (remote-ref/tools/uiprobe/uiprobe-lensdiff-seg-{light,dark}.json + subtree:
-      _UILiquidLensView after the lift — glassBackground keys, opacity, colour matrix); rest state stays flat white (correct); the lens must sit
-      under the labels, labels visible through it. (2) Refraction from remote-ref/lens-refraction.md as ONE SVG displacement map
-      (`filter: url()` on the label layer — the acceptance dropped the cheap magnify tier and the switch): centre ×1.22, 12-pt edge compression,
-      colour fringes, the lenstrace curve (~20 ms after touch-down, 370 ms to 115.7 × 73.6, r 27 → 35). (3) Fill remote-ref/seg-state-table.md
-      (data session) row by row 已做 / 未做 / 做不了 and match the data session's native-vs-web frame strips (hold, drag, release) by eye before
-      pushing. A partial implementation (two tiers, ?lens= switch, hole mask + portal copy, ?lift=<ms> freeze, ?pattern=gx grating) is in the
-      shared git stash tagged `ui-lens-trial-wip-20260919` (a12f9dd9) — reuse the map generator and the freeze / pattern hooks, drop the tier
-      machinery.
-- [ ] **Phone page, standalone status-bar strip under a sheet / alert:** com.apple.webapp lays a readability gradient over the top ~100 pt of
-      a black-translucent web app (≈ grey 238 at ~50 % fading out; black in dark), so our .2 dimming reads 218 at y 0–62 where native AX-38 is a
-      flat 194 (data session, shots-556aaab README, verified with an empty test page). Only fix: deepen our own dimming over the top ~100 pt
-      (black α ≈ .38 fading to .2 — sampling substitute). Whether to do it is the acceptance's call.
-- [ ] **Phone page, the shift segment switched itself to 晚班 after a relaunch** (data session, shots-556aaab dark-7: `ark-remote-cfg-queue`
-      became 晚班 without a touch), and with 晚班 = MAA only the tab bar drops to 状态 / 方舟 / 手机. Find what writes the queue key on load; and
-      decide whether the tab set should follow the shift at all.
-- [ ] **Inventory page (界面2号 / ui2 branch owns it now):** add reference 61 (设置 › 屏幕时间 › 查看所有 App 与网站活动 「最常使用」: icon 29 + name
-      17 + grey usage bar (proportional, min 10) + grey value 13 + chevron, row 52, card r 26; index.md row 61 / 61-ax.json /
-      inject-com.apple.Preferences-61.json) to `~/Money/styl-work/remote-mock/v4/inventory-plan.md` §4 and compare it with 59 before deciding —
-      the 人份 as a bar length shows the scarcest at a glance.
-- [ ] **The two Wuthering Waves "which one" numbers on the phone page have to become names a human can
-      read (requested by the user on 2026-09-04)**:
-      The user's words: 「给我标数字，我怎么知道 1234 是什么东西呢？」「无音区的名字没有必要，
-      但是他刷的套装非常重要」. What he wants is the 无音区 at 玄幽东岳 (it drops one white set + one
-      green set).
-      * OK-WW stores only the index; it teleports by counting down the in-game **F2 teleport list**
-        (`TacetTask.py:66` `index = config.get(...) - 1`), and knows neither the names nor the drops.
-      * So **the only authoritative source is the in-game F2 list itself**; guide orderings found online
-        cannot be used directly - the list order changes with the version and with which areas are
-        unlocked. **Do not guess by aligning positions** (see memory idmap-no-guessing).
-      * Approach: open Wuthering Waves → F2 → read "index → 无音区 name → echo set" off a screenshot,
-        write it into a registry table in the repo, and change those two phone-page fields into dropdowns
-        that show the set names.
+      endfield.hypergryph.com/version_briefing/latest -> content script, JSON.parse blocks). Only the
+      v1d6 page is a sample in `relay/tests/test_banners.py`. When the next version's briefing goes
+      live, save it as a second sample so the parser is checked against two issues, not one.
+- [ ] **Debug mode swallows a shutdown chance and does not give it back when it expires (found
+      2026-10-07).** 2026-10-06: debug mode was on until 21:10 Beijing; every shutdown point from
+      17:38 to 19:26 met it and was consumed (`modes.py`). When debug mode expired nothing re-ran the
+      shutdown decision, so at 21:30 the relay judged "skipped" and pushed 「🌙 今晚不关机」 to the
+      group (`shutdown.py`), then shut down at 21:49 once the next MAA record arrived. Until fixed: do
+      not leave debug mode on across a shutdown point and do not arm 「下次跑完不关机」 without a
+      reason. Fix: when debug mode expires, release the consumed chance and re-run the shutdown
+      decision; test with the 10-06 relay.log lines as the sample.
+- [ ] **The two Wuthering Waves "which one" numbers on the remote have to become names a human can
+      read (the user, 2026-09-04):** 「给我标数字，我怎么知道 1234 是什么东西呢？」「无音区的名字没有必要，
+      但是他刷的套装非常重要」. OK-WW stores only the index and teleports by counting down the in-game
+      F2 teleport list, so the only authoritative source is that list itself; its order changes with
+      the version and with which areas are unlocked. Do not guess by aligning positions. Approach:
+      read "index → 无音区 name → echo set" off a screenshot of the F2 list, write it into a table in
+      the repo, and show the set names.
+- [ ] **MaaEnd support for Endfield 1.5.3 「雪凇幽梦」.** On 2026-09-02 23:10 four tasks were turned
+      off in the master config as the user instructed (GiftOperator / GearAssembly / DeliveryJobs /
+      EnvironmentMonitoring; backup as `.bak-*` next to the master, recorded in state as
+      `maaend-disabled-for-1.5.3.json`). Turn them back on once MaaEnd supports 1.5.3.
+- [ ] **Update the client automatically on Endfield version-update days.** A version update downloads
+      through the Hypergryph launcher, it is not a hot patch. The relay recognises the day and does
+      not alarm; updating the client still needs a person to run the launcher once (「更新游戏」 at the
+      bottom right). Candidate: during the pre-update, when the day's official announcements include a
+      「版本更新说明」, start `Launcher.exe` in the interactive session, click update, and wait for
+      「开始游戏」 before releasing the morning shift.
+- [ ] **MaaEnd 「赠送干员礼物」 fails intermittently** (2026-09-01 11:06; the 11:31 retry healed
+      itself). When it recurs the evidence bundle holds the material; report it upstream by the rules
+      under 「Upstream issues」 below.
+- [ ] **Noise reduction (waiting on the user's decision):** (1) while debug mode is on, failures from
+      runs dispatched by hand go to the log only; (2) repeated failures of the same problem within a
+      short window are reported once.
+- [ ] **MaaEnd stuck on the 「获得」 popup during the morning shift** (2026-08-27). Upstream's
+      medication flow does have a node for that popup, `AutoUseSpMedicationRewardsConfirm` (5-second
+      timeout), so #5267's "missing template" claim was wrong. Why it timed out that day cannot be
+      established any more. The user's decision: wait for a recurrence; the evidence bundle taken at
+      the failure will hold it.
+- [ ] **The parameters for Skland's `team/index` (the full strategy list) are not figured out**; it
+      answers 「参数错误」. Per-character queries (`team/char-list?charId=`) are enough; the full list
+      would be a bonus.
+- [ ] **The AUTO-MAS queue does not advance:** after MaaEnd exits on its own the queue stalls,
+      `Run.RunTimeLimit=40` did not trigger a retry, and `Game.CloseOnFinish=True` did not close the
+      game.
+- [ ] **`ARK_LLM_*` (DeepSeek) reports that the model is unavailable.** The daily report falls back to
+      the structured layout and loses its one-sentence summary; nothing else is affected. Restoring it
+      needs a working key.
+- [ ] **Alert latency is bounded by when AUTO-MAS writes to disk.** It buffers every attempt of a
+      round and writes them when the script ends, so a 09:17 login failure cannot be known before
+      09:58; the relay needs only 34 seconds from seeing the file to pushing. Getting ahead of that
+      means reading MaaEnd's live log as a second source and deciding who wins when the two disagree.
+      **Do not touch this the night before a queue run.**
+- [ ] **Upstream progress on MaaEnd's two broken tasks (checked 2026-09-03):**
+      * 应急理智加强剂: inside the `all_of` of the node `AutoUseSpMedicationQuickUse`, the inline OCR
+        criterion hangs `type` / `param` at the top level of the node, which the framework does not
+        recognise, so the confirm button is never clicked. Upstream fix: PR #5453. The relay checks
+        the shape of that criterion in the resource file at every boot (`gameupdate.spmed_check`).
+      * Auto-collect Route3 (武陵城-至晶多齿叶) dies at `AutoCollectRoute3Goto`, Route13
+        (四号谷地-中黯石) at `MapNavigatorObstacleDevice_InteractPost`. Both are in MapNavigator,
+        compiled-in logic that cannot be changed locally; upstream rewrote the NavMesh planner
+        (#5434). Next step: run the two routes on their own in a gap that is not a maintenance day,
+        and once they pass add them back to `AutoCollectRoutes`.
+- [ ] **The two Endfield 「理智」 numbers do not agree (2026-09-03, unresolved).** On the sinkhole
+      start screen MaaEnd OCR'd 「当前理智」 as 979/360 three times that day; Skland's `card/detail`
+      `dungeon` reported curStamina 103 / max 360 the same night with a slope of 1 point per 6
+      minutes - the server-side base sanity. The 979 very likely includes a temporary layer that does
+      not decrease when rewards are claimed. Waiting on the user's in-game numbers; until then a
+      reading above the cap is a screen reading and is paired with Skland's base sanity and its time.
+- [ ] **One open finding from the 2026-09-30 audit of every file the relay writes into another
+      program:** whether an AUTO-MAS 「设置脚本」 session counts as `engine._automas_busy()` is not
+      verified; a master edit made during such a session is overwritten when the session ends
+      (AUTO-MAS's `ScriptConfig.py` of each script type copies the directory back).
 
-- [ ] **MaaEnd support for Endfield 1.5.3 「雪凇幽梦」** (rerun 2026-09-02 16:29: 赠送干员礼物 /
-      装备制造 / 转交委托 / 环境监测 all four failed, AUTO-MAS retried twice with the same result;
-      everything else including essence farming succeeded). Upstream had identical reports the same day:
-      #5397 #5398 #5400 #5401 #5402 (转交委托, 赠送礼物, daily reward claiming, and so on), and the
-      newest release is still v2.27.0-beta.4 (9/1, older than the game update).
-      Not our problem; pre-update follows the beta channel, so a new upstream release installs itself.
-      **On 2026-09-02 23:10 these four were turned off in the master config as the user instructed**
-      (GiftOperator / GearAssembly / DeliveryJobs / EnvironmentMonitoring, backup as .bak-* next to the
-      master config, recorded in state/maaend-disabled-for-1.5.3.json).
-      **Remember to turn them back on once MaaEnd ships a version that supports 1.5.3.**
+## Decided, do not re-open
 
-- [ ] **Run the launcher automatically to update the client on Endfield version-update days**
-      (2026-09-02, observed: a version update downloads through the Hypergryph launcher, it is not a hot
-      patch; MaaEnd launching Endfield.exe directly stops at 「客户端版本已过时」 and all three runs
-      failed). Today the relay only gets as far as "recognize it, skip for the day, do not alarm";
-      updating the client still needs a human to run the launcher once (process name Games, 「更新游戏」
-      at the bottom right).
-      Candidate approach: during the pre-update phase, if the official announcements for that day include
-      a 「版本更新说明」, launch `Launcher.exe` in an interactive session, click update, and wait for the
-      button to turn into 「开始游戏」 before releasing the morning shift.
+- **The git history of this public repo still contains a person's real name and how that machine is
+  logged into.** Closed 2026-09-08 by the user: 「git 历史里那个真名和登录方式不管」. The working tree
+  stays clean and `lint-repo.sh` keeps watching it; do not propose rewriting history again.
+- **Osaka HP ProOne 600 G3 as a cloud server: shelved 2026-09-01.** Plans treat it as non-existent.
+  If it is ever revived: it reached the net through the Cloudflare tunnel `osaka` plus the Mac's WARP
+  team, SSH on port 2222; its LAN address is re-issued by DHCP on every reboot, which kills the /32
+  route. Recovery: Cloudflare dashboard -> Networks -> Tunnels -> `osaka` -> the connector
+  diagnostics page shows the current **Private IP**; put it into the tunnel's CIDR route and the WARP
+  split-tunnel include list. Longer write-up: `~/Claude/HANDOFF-hp-cloud-server.md`.
 
-- [ ] **Queue rename + notification styling, to be applied the moment the machine boots**:
-      (History, 09-02 boot steps - not current: the relay they deployed was replaced on 10-11 and the phone page
-      in step (4) is unmaintained since 10-10.)
-      (1) `scripts/mac/rename-queues.py` (renames the queues inside AUTO-MAS, reads back to verify);
-      (2) `scripts/mac/deploy-relay.sh`; (3) ~~verify interface.json's version~~ (verified 09-02 09:16:
-      v2.27.0-beta.4);
-      (4) `scripts/mac/deploy-web.sh` (the page's live online status has to point at the new relay);
-      (5) turn off debug mode (turned on 09-02 09:16, runs until 21:10); (6) the next time any program
-      really updates, check that the notification reads 「old → new」.
+## Standing limits with a way out
 
-- [ ] **MaaEnd 「赠送干员礼物」 fails intermittently** (the 2026-09-01 11:06 run; the 11:31 retry healed
-      itself). The evidence was not salvaged; when it recurs, `state/evidence/` will hold the material,
-      and then handle it per `docs/UPSTREAM-ISSUE-RULES.md`.
+- **WeCom self-built app push is unavailable:** `errcode=60020`, the caller's IP is not in the
+  enterprise's trusted-IP list. The group bot (`WECOM_BOT_URL`, no trusted-IP list) carries the
+  alarms and Server酱 the daily report ([NOTIFICATIONS.md](NOTIFICATIONS.md)).
+- **Boot supervision from outside is not enabled:** the machine cannot detect on its own that it
+  failed to boot, so that check is `scripts/watchdog.py` under GitHub Actions. Enabling it needs
+  `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` and `SERVERCHAN_KEY` in the repository secrets and
+  `enabled` set to `true` in `queue/watchdog.json`.
 
-- [ ] **Refile the MaaEnd issue (one failed auto-collect route drags down the whole run)**:
-      the #5365 version was written in my own voice - section headings, parallel bullet lists, bold
-      everywhere - and was judged AI-generated. **Copy how real humans in that repo write** (read a
-      dozen or so real issues first), and **follow their template requirements strictly, attaching every
-      log they ask for**.
-      Several times before I refused to attach logs on the grounds that they "contain local paths"; that
-      was wrong: either redact and attach, or submit the way they specify. Deciding on my own not to
-      hand them over is not allowed.
+## Upstream issues
 
-- [ ] **Noise reduction (waiting on the user's decision)**:
-      1. while debug mode is on, failures from **runs I dispatched by hand** do not go to the group, only
-         to the log;
-      2. repeated failures of the same problem within a short window are reported only once.
-      Three of the five alerts in the group on 2026-09-01 were produced by my own test runs.
+Rules: one or two sentences of fact plus the attachments their template asks for (logs redacted,
+never withheld); no analysis paragraphs and no AI-styled writing (AUTO-MAS maintainer HarcoChen,
+2026-09-06: MaaEnd and MXU have no AI template, and such replies add to the maintainers' work). When
+the author asks something, answer and wait for their decision; do not close our own issue or PR
+unless its premise was wrong. Read replies when asked; no self-scheduled polling.
 
-- [ ] **MaaEnd stuck on the 「获得」 popup during the morning shift**: investigation result (afternoon of
-      2026-08-27) - the upstream medication flow **does** have a node that handles that popup,
-      `AutoUseSpMedicationRewardsConfirm` (5-second timeout), so the claim in #5267 that it was "a
-      missing template, same as #4589" was **wrong**, and the maintainer was right to close it.
-      Why it timed out that day can no longer be established: MaaEnd wipes its debug artifacts on the
-      next start, and that morning's three on_error screenshots are gone. Per the user's decision:
-      **wait and see whether tomorrow's morning shift reproduces it**; the relay now salvages evidence
-      into `state/evidence/<run_id>/` at the moment MaaEnd fails, so a recurrence will leave evidence
-      behind.
+| Issue | State |
+|---|---|
+| OK-WW PR [#1657](https://github.com/ok-oldking/ok-wuthering-waves/pull/1657) | 梦魇巢穴 "farm only the specified spot" switch; open. Once merged, the local nest override keeps only "continue farming" and "no idle spinning" |
+| OK-WW #1621 / #1622 / #1647 | suggestions (missing docs, specified nest spot, configurable order); open |
+| OK-WW #1649 / #1626 | closed by us: the premises were wrong (`Logger.error` does print the stack trace; we had changed the game's keybinds) |
+| AUTO-MAS #573 | MaaEnd task rename judged as a failure: a cache-refresh problem, restarting AUTO-MAS fixes it. The pre-update restarts AUTO-MAS after upgrading MaaEnd |
+| AUTO-MAS #575 | OK-WW success criterion: closed by the maintainer (judging by the last line is deliberate); they want reproduction steps, full logs and a recording if it recurs. The relay's own judgement by 「Daily Task Completed」 is unaffected |
+| [MaaEnd#5608](https://github.com/MaaEnd/MaaEnd/issues/5608) | theirs: navigation fails after the second fight, 「YOLO is confident but zone validation failed」. Our comment 2026-09-18 with the mirror case at 藏剑谷. Same family: #5833 |
+| [MaaEnd#5851](https://github.com/MaaEnd/MaaEnd/issues/5851) | ours, 2026-09-18: 基质刷取 at 清波寨, `AutoEssenceConfirmObtain` hit its 20 s timeout after 「点击确认领取」. Once only |
+| [MaaEnd#5660](https://github.com/MaaEnd/MaaEnd/issues/5660) | ours, 2026-09-11: retry failed gathering routes once at the end of a run instead of failing the whole task (the re-filing of #5365 by their rules) |
+| MaaEnd #5073 / #5184 | community roll-up of per-route bugs / 「红矛叶开场失败」; open |
 
-- [ ] **The parameters for `team/index` (the full strategy list) are still not figured out**; it keeps
-      answering 「参数错误」. Querying per character is already enough
-      (`team/char-list?charId=`); the full list would only be a bonus.
-
-
-- [ ] **Relay's WMI listener exits**: reported once on 08-27 08:17,
-      `进程启动事件监听退出，改用 120 秒活性检查`. Needs the actual exception before it can be fixed.
-
-- [ ] **The AUTO-MAS queue does not advance**: after MaaEnd exits on its own the queue stalls,
-      `Run.RunTimeLimit=40` did not trigger a retry either, and `Game.CloseOnFinish=True` did not close
-      the game either.
-
-- [ ] **`ARK_LLM` (DeepSeek) reports that the model is unavailable**. The daily report falls back to the
-      structured layout and loses its one-sentence plain-language summary; nothing else is affected.
-      Restoring it needs a working key. (moved in from OPERATIONS.md)
-
-- [ ] **Alert latency is bounded by when AUTO-MAS writes to disk.** It buffers every attempt of a whole
-      round and writes them all out when the script ends, so a 09:17 login failure cannot be known before
-      09:58 at the earliest; the relay itself needs only 34 seconds from seeing the file to pushing the
-      alert. Getting ahead of that means reading MaaEnd's live log as a second source, and deciding who
-      wins when the two disagree. **Do not touch this the night before a queue run**: one misread line in
-      freshly written log parsing turns the whole night into false alarms. (moved in from OPERATIONS.md)
-
-- [x] ~~**The git history of this public repo still contains a person's real name and how that machine is
-      logged into**~~ — **closed 2026-09-08 by the user's decision: 「git 历史里那个真名和登录方式不管」.**
-      Not doing it. The working tree stays clean and check 12 keeps watching that; the history keeps
-      what it has. Do not re-open this or re-propose rewriting history — it has been asked and answered.
-      Everything below is the original entry, kept for the reasoning (needs your decision before anything moves; exactly which two strings is written in
-      the regex of `lint-repo.sh` check 12, and is not repeated here - writing it here would trip that
-      gate itself). The working tree was cleaned long ago and the gate keeps watching it; but that
-      "redaction" in e9c2e75 only changed the current files, and the original text is still there in
-      368d109 and earlier commits, visible by opening the history on GitHub.
-      **Clearing it for real requires rewriting history**, at the cost of: every existing clone and fork
-      breaks, every commit hash changes, and anyone who already fetched cannot fetch it back. The command
-      is `git filter-repo --replace-text <replacement table>` followed by `git push --force`.
-      This is irreversible and public-facing, so **I will not touch it without you explicitly saying to
-      clear it**. Leaving it is also acceptable - that machine is only reachable inside the Tailscale
-      network and has no entry point on the public internet.)
-
-## Done (kept around for a while so the same question is not asked twice)
-
-- [x] **daysim-R3: machine check #20 called the collector's correct MaaEnd sanity wrong** (found 2026-10-13 by the
-      day replays of 2026-10-07, 10-08 and 10-11; fixed 2026-10-13): #20 no longer prices the claim after the last
-      reading as the largest drop between readings; it reads that claim's own payout (折金票 ×68000 = double, 160;
-      ×34000 = single, 80), adds the potions used after the reading, and leaves the figure unjudged for any other
-      amount - independent of the collector's rule (`machinechecks/runs.py` `_c20`, `relay/tests/test_mc.py`
-      with the three runs' logs: 37 / 78 / 37 pass, 0 fails). Its known-red entries are gone; the list is empty.
-- [x] **daysim-R2: 「⚙️ 配置已更新：…」 had no row in docs/NOTIFICATIONS.md** (found 2026-10-13 by the day
-      replays of 2026-10-12 / 10-13; decided by 验收 and fixed 2026-10-13): the receipt of our own order.sh batch
-      that went through is log only (`notify._LOG_ONLY_PREFIXES`, texts.INBOX_APPLIED); one with a ✗ line is
-      「📱 配置没改成：<name>」 to the group, like a failed phone order (`inbox.receipt_failed`,
-      `boot_stages._make_collect`, `relay/tests/test_inbox_poll.py`). Rows in NOTIFICATIONS.md; known-red entries gone.
-- [x] **daysim-R1: machine check #59 contradicted the 10-10 WMI routing rule** (found 2026-10-13 by the day
-      replay of 2026-10-06; fixed 2026-10-13): #59 now checks what procwatch does since 324b640b - a drop that
-      came back by itself is pushed to the group once (or, when the outage was already pushed, its end line is
-      tagged recovered and not pushed again), and its diag names H1/H2/H3 (`machinechecks/system.py`
-      `_wmi_recovered`, `relay/tests/test_mc.py`). Its known-red entry is gone.
-- [x] All four OK-WW patches submitted upstream (2026-08-27):
-      [#1625](https://github.com/ok-oldking/ok-wuthering-waves/pull/1625) a failed instance no longer
-      drags down the dailies,
-      [#1629](https://github.com/ok-oldking/ok-wuthering-waves/pull/1629) keep farming the nest + farm
-      only the specified spot,
-      [#1631](https://github.com/ok-oldking/ok-wuthering-waves/pull/1631) reward claim order,
-      [#1632](https://github.com/ok-oldking/ok-wuthering-waves/pull/1632) fallback for starving the main
-      DPS.
-      Each comes with tests, and each was actually run on the game machine using OK-WW's bundled Python.
-- [x] Limited vs standard: the official API **does not expose** that attribute (`labelType` is only the
-      current banner's tag). The standard-pool six-star list comes from `STANDARD_CHARS` in
-      cmyyx/cep's `src/data/banner.ts`: 艾尔黛拉、余烬、黎风、别礼、骏卫.
-
-- [x] Results of pre-updating the four programs (08-27)
-- [x] The complete Wuthering Waves daily flow from wake to finish → WUWA-DAILY.md (removed; `git show 1c8b5828:docs/WUWA-DAILY.md`)
-- [x] Endfield character investment levels → four Excel sheets + Server酱 push; reissued as "six-stars
-      only" per request
-- [x] Character investment plan: 11 of the six-stars are below 90, existing materials are **enough for
-      all of them**, and after maxing them out there are still 16.37M EXP and 4M gold left over
-      (ascension materials not included)
-- [x] MaaEnd getting stuck on the popup filed upstream → MaaEnd/MaaEnd#5267
-- [x] The official four investment templates and their numbers (basic 60/6/60, advanced 80/9/80,
-      high 90/9/90, perfect 90/12/90) and the resource gap for each tier
-- [x] Investment advice and team strategies: `char-pair/char-list?charId=`, `team/char-list?charId=`
-      - all 16 six-stars captured, including recommended skill levels, recommended weapons, recommended
-      partners and the reasoning
-- [x] The full consumption rules for ascension/skills/talents: `calculate/rules?charIds=<single id>`
-      (comma-joining several ids returns an empty table, so they have to be asked one at a time)
-- [x] 残象聚落 farmed on 08-27 (0/41 → 24/41), all three bugs in the patch fixed
-- [x] Outcome verification `outcome.py`: after a run, check against evidence and notify immediately when
-      something did not actually happen, instead of silently booking it as done
-- [x] MaaEnd really did start running at 12:00 (restarting AUTO-MAS cleared a stale task lock)
-- [x] Gate self-check `scripts/mac/guardcheck.sh` (15 checks), wired into the deploy gate
-- [x] Dead-code check `scripts/mac/lib/deadcode.py`, wired into the repo self-check and the deploy gate
-- [x] A patch change takes effect immediately (the relay applies it as soon as it starts, instead of
-      waiting for the next boot)
-- [x] "Farm 落渊南丘 only" written into the master config that actually takes effect →
-      [maa-config-master-copy memory] (since 10-12: first two nests 梦枢天罗,落渊南丘)
-- [x] All 森空岛 APIs working → SKLAND-API.md (removed; `git show 1c8b5828:docs/SKLAND-API.md`)
-- [x] `winrun.sh --put` (fixes hand-written scp using the wrong username)
-- [x] MaaEnd update notification carries the old version number
-- [x] OK-WW launch error 740
-
-## WeCom push unavailable (moved in from README)
-
-`errcode=60020`: the caller's IP is not in the enterprise's trusted-IP list. It can be added in the
-WeCom admin console, or switched to a group bot with `WECOM_BOT_URL` configured - group bots have no
-trusted-IP list. Now the group bot sends only the alerts that need action right away, and Server酱
-carries the daily report (CLAUDE.md, 通知与手机页).
-
-## Boot supervision not enabled (moved in from README)
-
-The machine cannot detect on its own that it failed to boot, so that check lives in GitHub Actions
-(`scripts/watchdog.py`). Enabling it requires configuring `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_SECRET` and
-`SERVERCHAN_KEY` in the repository secrets, and setting `enabled` in `queue/watchdog.json` to `true`.
-
-### Upstream issue status (updated 2026-09-06)
-
-* **OK-WW PR [#1657](https://github.com/ok-oldking/ok-wuthering-waves/pull/1657)**: the "farm only the
-  specified spot" switch for 梦魇巢穴, filed using the PR template, with #954 as the prerequisite
-  discussion. If the author asks something, **answer and then wait for him to decide; do not close it
-  myself** (see memory okww-prs-i-closed-myself).
-  Once merged, the local 「巢穴任务」 patch can keep only the two pieces about continuing to farm and not
-  spinning idle, and the specified-spot part switches over to the upstream option.
-
-* AUTO-MAS#573 (MaaEnd task rename judged as a failure): HarcoChen determined it is **a cache-refresh
-  problem, and restarting MAS fixes it**.
-  Verified on this machine: starting a fresh process with AUTO-MAS's own python and calling
-  `load_maaend_task_i18n` maps SellProduct → 🛒据点交易 correctly;
-  that run was using the stale resource table MAS preloaded at the 08:46 boot (`_loader_cache`), and
-  MaaEnd was only upgraded by the pre-update after 08:47.
-  Relay-side countermeasure: the pre-update restarts AUTO-MAS after upgrading MaaEnd (added 09-06).
-  **HarcoChen also cautioned: do not post purely AI-generated replies in the MAS / MXU / MaaEnd issue
-  trackers; MaaEnd and MXU have no AI template, and it increases the maintainers' workload.**
-  From now on, anything sent to those three repos is one or two sentences of fact plus attachments, with
-  no analysis paragraphs; whether to keep using my own phrasing is the user's call.
-* AUTO-MAS#575 (OK-WW success criterion): maintainer 1w1w11w1 closed it: they cannot reproduce it locally
-  over a long period, and putting the criterion on the last line is deliberate - judging success by Daily
-  Task Completed would make MAS kill ok-ww early and leave the game not cleanly closed (which happened in
-  the early days). They want the reproduction steps + full logs + a screen recording.
-  Replied accepting that, with two full runs' logs attached; if it happens again I will add a recording.
-  The relay's approach of judging by Completed is unaffected (we do not kill the process).
-
-### Upstream issue status (updated 2026-09-18)
-
-* [MaaEnd#5608](https://github.com/MaaEnd/MaaEnd/issues/5608) (their issue, 2026-09-08, open,
-  maintainer zmdyy0318 replied 「zone误判」 on 09-18) - after the second fight the navigation to the
-  energy point fails: YOLO classifies the minimap into the wrong base map and `MapLocator` returns
-  「YOLO is confident but zone validation failed」. **Our comment 2026-09-18 23:04 (UTC+8)**: the mirror
-  case at 藏剑谷 (武陵 read as ValleyIV_Base, 102 rejections in 13 s, 09-17 09:46 and 09-18 09:52),
-  attachments `MaaEnd-logs-v2.29.0-rc.1-20260918-100635-part01.zip`, `-part02.zip` and the on_error
-  screenshot `2026.09.18-09.52.39.241_GotoTriggerPointMove_WLSwordVaultDale.png`. Draft and evidence:
-  `~/Money/styl-work/issue-drafts-0918/`. Same family: #5833 (藏剑谷, 「zone校验失败」).
-* [MaaEnd#5851](https://github.com/MaaEnd/MaaEnd/issues/5851) (**ours**, filed 2026-09-18 23:18 UTC+8
-  through the web form, labels bug) - 基质刷取 at 清波寨: after 「点击确认领取」 the obtain dialog never
-  came, `AutoEssenceConfirmObtain` hit its 20 s reco_timeout, task failed at 10:05:56; the on_error
-  screenshot shows the point's 「领取奖励 / 放弃奖励并重置」 menu back on screen. Once on 09-18 only
-  (09-12 to 09-17 the same point ran to 体力不足). Attachments:
-  `MaaEnd-logs-v2.29.0-rc.1-20260918-100656-part01/02/03.zip`, `maaend-main.png` (MaaEnd v2.29.0-rc.1
-  main window, taken 09-18 23:15 with MaaEnd opened by hand, game not started),
-  `2026.09.18-10.05.55.720_AutoEssenceConfirmObtain.png`. The bot's analysis was still running at
-  filing time. Follow-up: read the replies when asked (no self-scheduled polling); answer with facts
-  and attachments only, per UPSTREAM-ISSUE-RULES.md.
-* Not filed: the 「未捕获到日志」 stub record of 09-18 09:54 (MaaEnd's own incremental update restarting
-  MXU seconds after AUTO-MAS launched it, counted by AUTO-MAS as one of the three daily-stage attempts).
-  Judged low value; the relay side now reports it as one information line (7f49b93). A draft exists in
-  `~/Money/styl-work/issue-drafts-0918/2-automas-stub-record.md` should it ever be worth sending.
-
-### Upstream issue status (updated 2026-09-11)
-
-* [MaaEnd#5660](https://github.com/MaaEnd/MaaEnd/issues/5660) (2026-09-11) - retry failed
-  gathering routes once at the end of a run instead of failing the whole task. Filed through
-  the web form with the 🗄️-exported bundle (3 parts, pasted from the macOS clipboard - the
-  extension's own upload caps at 10 MB), game screenshots of routes 15/16 and the software
-  screen. This is the re-filing of #5365 done by their rules.
-* [MaaEnd#5365](https://github.com/MaaEnd/MaaEnd/issues/5365) one failed auto-collect route drags down
-  the whole run - **to be refiled per the "Todo" entry above**, since this version of the writing was
-  judged to be AI.
-* ~~ok-wuthering-waves#1649~~ **closed by me**: the premise was wrong to begin with
-  (`ok.util.logger.Logger.error(message, exception=None)` prints the stack trace anyway, and I asserted
-  otherwise from my impression of the standard library's logging), and the real cause was on our side.
-* ~~ok-wuthering-waves#1626~~ **closed by me**: the real cause was that we had changed the game's
-  keybinds.
-* The three still open are all suggestions: #1621 missing docs, #1622 specified nest spot, #1647 make
-  the order configurable.
-* **The claim "OK-WW cannot claim the weekly boss chest" is void** -
-  on 2026-09-01 07:27 it was made to work with a patch and verified live (3/3 → 2/3, 波片 down by 60).
-  How it is done: `docs/OKWW-WEEKLY-BOSS.md`.
-
-- [ ] **Upstream progress on MaaEnd's two broken tasks (checked 2026-09-03 21:50)**:
-      * **应急理智加强剂** - the real cause is pinned down: inside the `all_of` of the node
-        `AutoUseSpMedicationQuickUse`, the inline OCR criterion hangs `type`/`param` at the top level of
-        the node, which the framework does not recognize, so it is as good as not written and the confirm
-        button never gets clicked. The upstream fix is PR #5453 (it changes only one pipeline file:
-        wraps it in `recognition`, widens the roi, and adds a wait for the screen to settle), which
-        **had still not been merged by the night of 09-03**, so it will not be in beta.6. The relay now
-        judges "turn it back on" by reading the shape of that criterion in the resource file, so it only
-        turns on once the fix has really arrived. To take the fix early, the machine's
-        `resource/pipeline/nodes.json` could be edited by hand following the PR (the release build merges
-        all pipelines into that one file), but a MaaEnd update overwrites it, so it would have to become
-        a patch that reapplies itself.
-      * **Auto-collect Route3 (武陵城-至晶多齿叶) / Route13 (四号谷地-中黯石)** - the salvaged evidence
-        shows the failure points clearly: Route3 dies at `AutoCollectRoute3Goto` (pathfinding cannot
-        reach the spot), Route13 dies at `MapNavigatorObstacleDevice_InteractPost`.
-        Both are in MapNavigator, which is compiled-in logic and cannot be changed locally. On 09-03
-        02:03 upstream rewrote the whole NavMesh planner and merged it into the main branch (#5434, it
-        had been reverted once before and then merged again); it is not in beta.5 and will only arrive in
-        beta.6. On the community side, #5073 is the roll-up thread for the per-route bugs, and
-        #5184 「红矛叶开场失败」 is still open.
-      * **Next step**: once beta.6 is out, run these two routes once on their own in a gap that is **not**
-        a maintenance day (auto-collect costs no sanity, only time), and once they pass, add them back to
-        `AutoCollectRoutes`.
-
-- [ ] **The two Endfield 「理智」 numbers do not agree (night of 2026-09-03, unresolved)**:
-      * On the sinkhole start screen, MaaEnd OCR'd 「当前理智」 as **979/360** all three times
-        (09:47, the 10:49 booster-popup screenshot, and 11:52); each claim steps it down by 80, so one
-        run goes 979→579, and the next run starts at 979 again. Natural regeneration is 1 point per
-        6 minutes, which cannot recover 400 in an hour.
-      * 森空岛's `card/detail` `dungeon` reported **curStamina 103 / max 360** at 22:30 the same night,
-        with `maxTs` corresponding to a full refill at 09-05 05:17; the slope matches 1 point per
-        6 minutes - this is the server-side base sanity.
-      * Both essence-farming runs really did claim their rewards (the second run got 15 无暇 + 10 高纯),
-        and both booster tasks stopped at the 「快捷使用」 popup without clicking confirm (screenshots
-        prove it), so **no potion was consumed at all**.
-      * The conclusion waits on the user reporting the actual in-game numbers: the 979 on screen very
-        likely includes a temporary/compensation sanity layer that does not decrease when rewards are
-        claimed, while 森空岛 reports only the base layer. Until this is clear, the daily report's
-        「剩余 659/360」 cannot be taken at face value - a reading above the cap has to be labelled as a
-        screen reading, and paired with 森空岛's base sanity and its timestamp.
-      * One accounting bug is already fixed: the reading is announced before each claim, and there is no
-        reading after the last claim, so it used to be short by one (320 → 400).
-
-- [ ] **Five small findings from the 2026-09-30 audit of every file the relay writes into another
-      program** (full table: BOARD/中继一-0930-写文件清单.md; none is known to have misfired yet):
-      * `commands.py` weekly_boss (phone path, ~:681-683) ignores the result of `gate.enforce()`: when
-        writing the master copy fails, the phone still reports success.
-      * `echofarm.py:398/400` assign `note =` and so drop the earlier stop_okww / no-claim notes.
-      * `engine.py:407` `_scripts_running` process fallback knows MAA.exe / MaaEnd.exe / Endfield.exe
-        but not OK-WW (only used when the AUTO-MAS backend does not answer).
-      * Whether an AUTO-MAS "设置脚本" session counts as `_automas_busy()` is not verified; a master
-        edit made during such a session is overwritten when the session ends (MAA/ScriptConfig.py:266,
-        MaaEnd/ScriptConfig.py:265, Okww/ScriptConfig.py:165 copy the directory back).
+Drafts and evidence of the 09-18 filings: `~/Money/styl-work/issue-drafts-0918/`.

@@ -19,7 +19,7 @@
 ## 通知与开关
 * 群机器人只发真报警；日报走 Server酱；企业微信私聊不自动发；测试不进他眼。每个标题走哪一路见 `docs/NOTIFICATIONS.md`。
 * 不进群的报错都要在 `relay/USER-SWITCHES.txt` 登记判定（已修 / 正常状态 / 任务开关），原因不明的不许压下。
-* 遥控端已迁至原生 App `~/Claude/ark-remote`；中继每个服务器日在游戏机上重算需求表并发到 COS（`relay/ark_relay/features/needtable/`）。
+* 遥控端已迁至原生 App `~/Claude/ark-remote`；中继每个服务器日在游戏机上重算需求表并发到 COS（`relay/ark_relay/features/needtable.py`）。
 
 ## 三条不许
 * 推断出来的字段含义不许写进生产配置：枚举、下标、布尔的含义由代码 / 日志 / 文档确认，找不到就不动。

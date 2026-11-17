@@ -7,61 +7,48 @@
 > [Its manual](https://github.com/MaaAssistantArknights/MaaAssistantArknights/tree/dev-v2/docs/zh-cn/manual)
 > covers connection, emulators, the depot tool and the rest;
 > `resource/tasks/tasks.json` and `src/MaaCore/` hold the behaviour itself.
-> On 2026-08-22 an evening went into discovering by trial that LDPlayer's
-> instance 1000 answers at `emulator-7554`. Its connection guide links the
-> vendor page that states the rule outright: device port = 5554 + index * 2.
-> Two page loads against several hours.
-
+> (Example: LDPlayer's instance 1000 answers at `emulator-7554` because device
+> port = 5554 + index * 2, stated on the vendor page MAA's connection guide links.)
 
 How to do things to the running system. Facts only; if a line cannot be checked
 against the machine or the code, it does not belong here.
 
-Until 2026-11-17 `scripts/mac/check-docs.py` verified the checkable claims on this page and its
-siblings - paths, the service, the scheduled tasks, config values - against the
-live machine; it was removed that day, so nothing checks them now. It was run after any change to the system or to these docs, and
-believe it over this page.
-
-Reviewed 2026-08-21. Claims carried over from older documents have been wrong
-before: "the Mi Home timers are not set" survived here for six days while the
-morning round ran every one of them. Anything inherited rather than checked is
-a candidate for the same failure.
+Nothing checks this page against the machine automatically. Anything inherited
+rather than checked is a candidate for being wrong: read the value back first.
 
 ## The buttons on the game machine's desktop
 
 That machine's desktop carries a `中继关机开关.bat` (source: `scripts/windows/skip-shutdown.bat`).
-What it controls is the 「下次跑完不关机」 mark (the phone switch of the same name sets the same
-mark). It is a one-time mark, not a state, and it has no expiry:
+What it controls is the 「下次跑完不关机」 mark (the remote App's switch of the same name sets the
+same mark). It is a one-time mark, not a state, and it has no expiry:
 
 * It is spent at the first shutdown attempt that passes every gate, i.e. when the next 早班/晚班
   queue run finishes. Spending it records that shutdown occasion as skipped; the periodic
   re-checks that follow (「开机满下限，重新判一次关机」) stop at 「不关机：这一次关机已经跳过了」
   and never power off. The machine stays on until the queue run after that finishes, which
-  shuts down as usual. relay.log 2026-10-11: 09:59:26 the mark is spent, then 10:04:55,
-  12:26:28 and 12:29:16 the re-checks stay on.
+  shuts down as usual.
 * Once spent there is nothing to cancel. Pulling it back ([2], or the phone switch off) only
   means something before it is spent.
 * Arming it again while the current occasion is already skipped carries it to the next queue
   run, so that run does not shut down either.
 * Turning debug mode off by hand (the phone's switch, or
   `scripts/mac/order-now.sh '{"action":"debug_mode","off":true,"confirmed":true}'`) releases
-  the skipped occasion, whichever skipped it, so the next re-check powers off (2026-10-14:
-  how a deploy that needed the PC on after a shift lets it power off once verified).
-  dispatch_guard's test-off releases only an occasion debug mode itself skipped (8bc5e2f6),
+  the skipped occasion, whichever skipped it, so the next re-check powers off (how a deploy
+  that needed the PC on after a shift lets it power off once verified).
+  dispatch_guard's test-off releases only an occasion debug mode itself skipped,
   so a test after a spent mark does not power the machine off.
 * The occasion is keyed by the latest day with shift records plus its shift count
   (shutdown._shutdown_key), so an occasion skipped after the evening shift stays skipped
   across the 00:00 midnight wake until the next scheduled shift runs and records.
 
-It calls the relay's own `ark_relay.features.modes.modes.set_skip_shutdown`;
-**it must not be changed to write the state file directly**: after the 2026-09-08 state
-consolidation the old approach failed silently once - the button showed 「不关机」 on screen and
-the machine shut down as usual.
+It calls the relay's own `ark_relay.features.modes.set_skip_shutdown`;
+**it must not be changed to write the state file directly**: the relay caches its state in
+memory, so an outside write shows 「不关机」 on screen and the machine shuts down as usual.
 
 Manual dispatch goes through `scripts/mac/run-one.sh`, which sits on top of
 `scripts/windows/dispatch_guard.py` on the machine (check busy/idle before dispatching; when
 stopping, follow the order API → wait → kill only what is left over → re-check). **A bare call to
-`/api/dispatch/start` is forbidden, and so is `taskkill`** - that is exactly how the power-pull
-reboot on the morning of 2026-09-01 happened.
+`/api/dispatch/start` is forbidden, and so is `taskkill`** (the power-pull reboot of 2026-09-01).
 
 
 ## Map
@@ -71,7 +58,7 @@ Japan (UTC+9)                          China (UTC+8, "server time")
   control Mac  ── Tailscale + SSH ──▶  Windows 11 game machine, host "INS"
   control only                          awake ~3h/day, off the rest
        │                                     ▲
-       └── push to GitHub ──▶ repo ──────────┘  machine pulls at every boot
+       └── deploy ──▶ COS bucket ────────────┘  machine pulls at every boot
 ```
 
 The Mac is on **no** automated path. Everything that must happen while the Mac
@@ -81,7 +68,6 @@ is closed happens either on the game machine or in GitHub Actions.
 |---|---|---|
 | Game machine | Tailscale `$ARK_HOST`, hostname `INS` | runs AUTO-MAS + MAA + MaaEnd + OK-WW + the relay |
 | Mac | Tailscale, Tokyo | control; not depended on |
-| HP server | Osaka; cloudflared tunnel + sshd on :2222 + RustDesk | **unused by this system** since the relay's server mode was retired. Its credentials are kept outside this repository |
 
 `ssh Administrator@$ARK_HOST` over Tailscale. No port forwarding. Public key
 must live in `C:\ProgramData\ssh\administrators_authorized_keys` - for accounts
@@ -89,25 +75,21 @@ in the Administrators group, sshd does not read the user's own directory.
 
 ## Runtimes: independent, not borrowed
 
-Both machines run their own Python now, and the game machine has PowerShell 7.
+Both machines run their own Python 3.14, and the game machine has PowerShell 7
+(`pwsh`; Windows PowerShell 5.1 reads files as ANSI and must not be used).
 
-| | Was | Is | Why |
-|---|---|---|---|
-| Game machine, relay | AUTO-MAS's embedded `environment\python\python.exe` | `C:\Program Files\Python314\python.exe` | **A watchdog must not depend on the runtime of the program it watches.** AUTO-MAS moving, replacing or breaking its bundled interpreter would take the relay down with it - and the relay exists precisely for when AUTO-MAS is in trouble |
-| Game machine, shell | Windows PowerShell 5.1 only | + `pwsh` 7.6.5 | 5.1 reads files as ANSI and cannot be changed; 7 is UTF-8 by default |
-| This Mac | Apple's Python 3.9 (frozen, deprecated) | `~/.local/bin/python3.14` via `uv` | 3.9 cannot run modern syntax; Apple's copy is an OS component and must not be replaced |
-
-Bundling a runtime inside an application is for making *that application* easy
-to deploy. Borrowing it for something else inherits every one of its upgrades
-as a risk.
+| | Runtime | Why |
+|---|---|---|
+| Game machine, relay | its own embedded Python (below) | **A watchdog must not depend on the runtime of the program it watches**, so not AUTO-MAS's bundled copy |
+| Game machine, tools sent by `winrun.sh --py` | `C:\Program Files\Python314\python.exe` | |
+| This Mac | `~/.local/bin/python3.14` via `uv` | Apple's 3.9 is an OS component and must not be replaced |
 
 ### The relay's interpreter
 
 The installed relay runs on its own embedded Python,
 `C:\Program Files\ArkRelay\runtime\python\` (packaging/ark-relay.iss): only a new
 installer changes it, and a deploy refuses a runtime that is not what the repo builds
-(relay/pkg_layout.py). There is no service to re-point: the old relay's Windows service
-`ark-relay` was deleted on 2026-10-11 (by a one-off script, removed 2026-11-17).
+(relay/pkg_layout.py).
 
 ### Stopping and starting the installed relay
 
@@ -122,7 +104,7 @@ scripts/mac/winps.sh '& "C:\Program Files\ArkRelay\runtime\python\python.exe" "C
 
 Both are logged to `C:\ProgramData\ark-relay\switch.log`. Only to restart (it reads
 `.env` again), the watchdog can stay up: `launch.py stop`, then the logon task, as
-`scripts/mac/lib/deploy-pkg.sh` and `scripts/mac/cos-setup.py` do:
+`scripts/mac/lib/deploy-pkg.sh` does:
 
 ```bash
 scripts/mac/winps.sh '& "C:\Program Files\ArkRelay\runtime\python\python.exe" "C:\Program Files\ArkRelay\launch.py" stop; schtasks.exe /run /tn "\ArkRelay\main"'
@@ -134,23 +116,20 @@ scripts/mac/winps.sh '& "C:\Program Files\ArkRelay\runtime\python\python.exe" "C
 
 The code the relay runs is `C:\Program Files\ArkRelay\versions\<current.txt>\`
 (relay/pkg_layout.py); `C:\ProgramData\ark-relay` holds only its data (.env, `state\`,
-`relay.log`). The old relay's `ark_relay` folder that used to lie there was moved to
-`C:\ProgramData\ark-relay-retired-1011` on 2026-10-11 (a one-off script, removed 2026-11-17
-`OLD_CODE`). A script sent with `winrun.sh --py` gets the right folder from
+`relay.log`). A script sent with `winrun.sh --py` gets the right folder from
 `scripts/mac/lib/relay_code.py`:
 
 ```python
 from relay_code import DATA, use_relay_code   # its own line: winrun ships relay_code.py
 use_relay_code()                              # puts versions\<current.txt> first on sys.path
-from ark_relay.features.modes.modes import skip_armed
+from ark_relay.features.modes import skip_armed
 print(skip_armed(DATA / "state"))
 ```
 
 ### Downloading anything onto that machine
 
-- **Use `curl.exe`, not `Invoke-WebRequest`.** Measured 2026-08-23 on the same
-  file and mirror: PowerShell managed 19 MB in 24 minutes, curl did 108 MB in
-  85 seconds. Its progress rendering is the difference, not the network.
+- **Use `curl.exe`, not `Invoke-WebRequest`** (measured: 19 MB in 24 minutes
+  against 108 MB in 85 seconds; the progress rendering is the difference).
 - **GitHub release assets need a mirror.** `github.com` times out; `ghfast.top`
   served at 1.26 MB/s. `gh-proxy.com` answers HEAD but stalls on the body.
   python.org and the Tsinghua PyPI mirror are both reachable directly.
@@ -166,11 +145,7 @@ The three programs live under `D:\ark\` with names that carry no version:
 D:\ark\automas\   D:\ark\maa\   D:\ark\maaend\
 ```
 
-**Renamed 2026-08-24, because the old names lied.** `MAA-v5.1.0-win-x64` held
-v6.17.0; `MaaEnd-win-x86_64-v1.6.5` held v2.26.0-beta.3. Both self-update in
-place and neither renames its folder, so the name freezes at whatever was first
-downloaded - and it misled three separate investigations in one day, twice
-badly enough to reach a wrong conclusion. A directory name is not a version;
+Both MAA and MaaEnd self-update in place, so a directory name is not a version;
 `MAA.exe`'s `FileVersion` and MaaEnd's `interface.json` are.
 
 ```
@@ -185,26 +160,17 @@ D:\ark\maa\  Arknights bot
 D:\ark\maaend\                 Endfield bot
 C:\ProgramData\ark-relay\                           the relay's data (its code: C:\Program Files\ArkRelay\versions\<current.txt>)
   relay.log                                         its log
-  state\                                            ledger-<date>.jsonl, seen.txt, pending.json,
-                                                    code-version.txt, announced-version.txt,
-                                                    report-/interim-<date>.sent
+  state\                                            state.json (marks, versions, queues, modes; written only
+                                                    by the relay), ledger-<date>.jsonl, seen.txt,
+                                                    alerts\, evidence\
   tech\<YYYY-MM-DD>.md                              the technical log (Beijing dates), see below
 C:\ProgramData\ark-gui.ps1 / ark-gui-cmd.txt / ark-gui.txt / ark-gui.png
                                                     remote GUI input and screenshots (wingui.sh pushes them)
 C:\ProgramData\ark-shot.png                          the emulator screenshot adbdo.sh pulls
 ```
 
-<!-- check: win D:\ark\automas -->
-<!-- check: win D:\ark\automas\config\ScriptConfig.json -->
-<!-- check: win D:\ark\automas\config\QueueConfig.json -->
-<!-- check: win D:\ark\automas\config\Config.json -->
-<!-- check: win D:\ark\maa\config\gui.new.json -->
-<!-- check: win D:\ark\maa\cache\gui\StageActivityV2.json -->
-<!-- check: win D:\ark\maaend -->
-<!-- check: win C:\ProgramData\ark-relay -->
 
-AUTO-MAS users are `arknights` (MAA) and `endfield` (MaaEnd) - ASCII since
-2026-08-21. **Renaming a user means rewriting the relay's `state\seen.txt` too**:
+AUTO-MAS users are `arknights` (MAA), `endfield` (MaaEnd) and `wuwa` (OK-WW). **Renaming a user means rewriting the relay's `state\seen.txt` too**:
 a record's identity is `<date>/<user>/<time>`, so old records would look new and
 replay every alert they ever raised.
 
@@ -248,11 +214,8 @@ a normal stop (「收到停止信号」 / 「主流程已返回」) before each 
 its own red item. It needs no `handled`. `handled` appends the line on the machine
 through `winrun.sh --py`, re-reads, and exits non-zero unless the item is gone.
 
-Nothing runs this automatically: the SessionStart hook that used to
-(`~/.claude/hooks/techlog-red-remind.py`, outside the repo) is off, like every Claude Code
-hook on the Mac except `record-check.py` since 2026-10-12. 游戏-中继一, 游戏-中继二 and
-网页-验收 run `scripts/mac/techlog.py red` by hand when they start.
-Tests: `relay/tests/test_techlog_tool.py`.
+Nothing runs this automatically; a session runs `scripts/mac/techlog.py red` by hand when it
+starts. Tests: `relay/tests/test_ops_gates.py`.
 
 ## Schedule (server time; Tokyo is +1h)
 
@@ -260,8 +223,8 @@ Tests: `relay/tests/test_techlog_tool.py`.
 |---|---|---|
 | 08:40 / 08:45 | smart plug cuts then restores power | Mi Home timer |
 | 08:46-08:47 | boot, auto-login, AUTO-MAS + relay start | BIOS "restore on AC", logon tasks |
-| 09:00 | queue `早班`: MAA → OK-WW → MaaEnd (order as in `QueueConfig.json`, read from the 09-23 state push), ~85 min | AUTO-MAS timer |
-| 21:20 | the machine powers on | BIOS RTC (`08-10 21:20:16 BOOT` in the event log) |
+| 09:00 | queue `早班`: MAA → OK-WW → MaaEnd (order as in `QueueConfig.json`), ~85 min | AUTO-MAS timer |
+| 21:20 | the machine powers on | BIOS RTC |
 | 21:30 | queue `晚班`: MAA only, ~45 min | AUTO-MAS timer |
 | after the last queue | relay sends the report, then powers off | relay |
 
@@ -281,9 +244,8 @@ anything. That blind spot is what GitHub Actions covers (see below).
 ## Remote input: wingui.sh and the ark-gui task
 
 An SSH session has no desktop (session 0 isolation), so `CopyFromScreen` and any
-synthetic mouse input fail outright - on 2026-08-26 `GetCursorPos` over SSH returned
-err 1459 (`ERROR_REQUIRES_INTERACTIVE_WINDOWSTATION`), which looks like a locked
-screen and is not. Everything that touches the screen goes through a scheduled task
+synthetic mouse input fail outright (`GetCursorPos` over SSH returns err 1459,
+`ERROR_REQUIRES_INTERACTIVE_WINDOWSTATION`, which looks like a locked screen and is not). Everything that touches the screen goes through a scheduled task
 running in the interactive session. `scripts/mac/wingui.sh` does all of it: on every
 call it pushes `C:\ProgramData\ark-gui.ps1`, (re)creates the interactive task
 `ark-gui` (`/it /rl highest`, so it can also drive MAA, which runs elevated), runs it,
@@ -301,12 +263,11 @@ ARK_GUI_PROC=MAA scripts/mac/wingui.sh shot   # target another window (default: 
 ```
 
 Each call costs a task round trip (about ten seconds), so batch with `seq` when
-driving a game. The lessons that still hold, learnt with the earlier ark-do task
-(retired, gone from the machine 2026-10-12):
+driving a game. The lessons that hold:
 
 * **Focus first.** A window that is not in the foreground spends the first click
   on activating itself, and Wuthering Waves keeps rendering while unfocused but
-  takes no input at all - the 2026-08-26 `target_enemy failed` was exactly that.
+  takes no input at all.
   wingui raises the target window (SetForegroundWindow) before every key and click.
 * **Electron / WebView UIs arm on hover.** A press and release with no `mouseover`
   before it is ignored, silently: the cursor lands and nothing happens. wingui's
@@ -323,22 +284,17 @@ driving a game. The lessons that still hold, learnt with the earlier ark-do task
 * **A sleeping screen returns an old frame.** After five idle minutes
   `CopyFromScreen` gives the last frame drawn, with no error; wingui wakes the
   display with a zero-distance mouse move before capturing.
-* **Remote GUI work does not hold off the shutdown.** An earlier version stamped
-  `state\ark-do-last.txt` and the relay treated a recent stamp as "somebody is
-  working on this desktop"; the operator removed that on 2026-08-22 - a countdown
-  that moves whenever a screenshot is taken makes the power-off time
-  unpredictable. To keep the machine up while working on it, use debug mode
+* **Remote GUI work does not hold off the shutdown** (operator, 2026-08-22: a
+  countdown that moves whenever a screenshot is taken makes the power-off time
+  unpredictable). To keep the machine up while working on it, use debug mode
   (below), which is explicit and self-expiring.
 * **Never blind-retry a toggle.** A second click on a checkbox undoes the first;
   if a click needs repeating, repeat it after looking at a screenshot.
 
-<!-- check: repo scripts/mac/wingui.sh -->
 
 ## Driving the game over ADB - use this, not the mouse
 
 ### The emulator has two instances. Only one has the game.
-
-This cost an entire evening on 2026-08-22, so it goes first.
 
 ```
 ldconsole list2
@@ -381,10 +337,7 @@ scripts/mac/wingui.sh launch 'D:\LD-MRFZ\LDPlayer9\ldconsole.exe -- launch --ind
 | Run it in the interactive session (`wingui.sh launch`) | over SSH it is session 0 with no desktop, and **no process appears at all** |
 | Pass the arguments after `--` | without it the whole string is taken as the exe path, which does not exist |
 
-These were verified through the retired ark-do task on 2026-08-22; the
-`wingui.sh launch` form has not yet been run against ldconsole, so check
-`tasklist` afterwards. `scripts/windows/emu-start.py` starts the instance and
-waits for adb.
+Check `tasklist` afterwards.
 
 Note `ldconsole runninglist` and `list2` reported "nothing running" even while
 the instance was up and serving ADB. **Do not use them as the readiness test.**
@@ -397,9 +350,7 @@ scripts/mac/wingui.sh launch 'D:\LD-MRFZ\LDPlayer9\ldconsole.exe -- quit --index
 ```
 
 Over SSH this command exits 0 and does nothing - `dnplayer.exe` and
-`Ld9BoxHeadless.exe` stay in the task list. Verified 2026-08-22: two SSH
-attempts left the emulator running, the same command from the interactive
-session (then the ark-do task) closed it.
+`Ld9BoxHeadless.exe` stay in the task list.
 Check with `tasklist | findstr /I "dnplayer Ld9BoxHeadless"`, not with the exit
 code.
 
@@ -414,8 +365,7 @@ adb -s emulator-7554 shell pm list packages | findstr hypergryph   # the game is
 ```
 
 The last one is the real test: an emulator can be up, booted and serving ADB
-while being the wrong instance. Waiting on "a device exists" spent four minutes
-watching the empty instance on 2026-08-22.
+while being the wrong instance.
 
 MAA's own order is worth copying: **connect first, launch only if that fails**,
 then wait and reconnect - not "launch and sleep".
@@ -455,7 +405,7 @@ The device is **1600x900**. `screencap` returns exactly that, containing only
 the game - no desktop, no window frame, no overlays. **Measure coordinates off
 that screenshot and send them unchanged.** There is nothing to convert.
 
-Three things this fixes at once, each of which cost time on 2026-08-22:
+Three things this fixes at once:
 
 - **Overlays stop mattering.** A ToDesk panel was covering a 218x190 patch of
   the game's bottom-right corner, exactly where the depot button is. Over ADB
@@ -508,10 +458,8 @@ Reaching the home screen is not the end: MAA checks it **three consecutive
 times** before believing it, because "sometimes it is already at home, then a
 window pops up a moment later" (its own comment). Do the same.
 
-**Do not write click-sleep-click-sleep.** That was tried here and one slow load
-desynchronised everything after it; the run ended up dragging the launcher's
-home screen around and losing the game icon. A sequence assumes; a state
-machine looks.
+**Do not write click-sleep-click-sleep.** One slow load desynchronises
+everything after it. A sequence assumes; a state machine looks.
 
 ### Depot specifics
 
@@ -531,7 +479,6 @@ consecutive views overlap and items must be de-duplicated by id.
 Two levers, both in `C:\ProgramData\ark-relay\state\`, both self-expiring by
 design so that "just this once" cannot silently become permanent.
 
-<!-- check: dir C:\ProgramData\ark-relay\state -->
 
 ### Debug mode - do not power off, do not alarm
 
@@ -539,7 +486,7 @@ The file holds a **moment**, `YYYY-MM-DD HH:MM` on the server clock, and the
 mode releases **ten minutes before the next scheduled power-on** - not at
 midnight.
 
-**Do not write the state file directly.** Since 2026-09-08 these levers live inside
+**Do not write the state file directly.** These levers live inside
 `state/state.json`, and the relay's state access is memory-cached (each process scans the old
 files only once), so a write from outside is never read back - you will believe debug mode is on
 when it is not. Go through the relay's own write path:
@@ -547,16 +494,16 @@ when it is not. Go through the relay's own write path:
 ```bash
 # on: skip the next power-on cycle (this writes modes.debug_until in state.json)
 printf '%s\n' 'from relay_code import DATA, use_relay_code' 'use_relay_code()' \
-  'from ark_relay.features.modes.modes import set_debug' 'print(set_debug(DATA / "state", cycles=1)[1])' > /tmp/ark-debug-on.py
+  'from ark_relay.features.modes import set_debug' 'print(set_debug(DATA / "state", cycles=1)[1])' > /tmp/ark-debug-on.py
 scripts/mac/winrun.sh --py /tmp/ark-debug-on.py
 # off: the same function, off=True
 printf '%s\n' 'from relay_code import DATA, use_relay_code' 'use_relay_code()' \
-  'from ark_relay.features.modes.modes import set_debug' 'print(set_debug(DATA / "state", off=True)[1])' > /tmp/ark-debug-off.py
+  'from ark_relay.features.modes import set_debug' 'print(set_debug(DATA / "state", off=True)[1])' > /tmp/ark-debug-off.py
 scripts/mac/winrun.sh --py /tmp/ark-debug-off.py
 ```
 
-Day to day, the switch on the phone page is easier, or drop a `debug_mode` command into the
-inbox. For what the state looks like, see STATE-MODEL.md (removed; `git show 1c8b5828:docs/STATE-MODEL.md`).
+Day to day, the switch in the remote App is easier, or send a `debug_mode` order
+(`scripts/mac/order-now.sh '{"action":"debug_mode","cycles":1,"confirmed":true}'`).
 
 `modes.set_debug(state_dir, cycles=1)` computes that moment. A power-on less
 than 150 minutes away counts as the cycle already under way and is skipped -
@@ -577,38 +524,28 @@ A bare `YYYY-MM-DD` is still read as end-of-that-day, and anything unparseable
 reads as "debug on" on purpose: the wrong failure here powers off a box
 somebody is working on.
 
-**Why it is not days.** Until 2026-08-23 this took a day count and expired at
-midnight. Asked at 21:00 on the 22nd for "no shutdown tonight", it expired
-forty minutes later, in the middle of an AUTO-MAS update.
-
 ### Skip mode - one queue sits out one occasion
 
-**Again, do not write the file directly** (since 2026-09-08 "skip this queue today" is recorded
-in `state.json` as `queues.skip_day:<date>`). Use the phone page, or drop a `skip_today` command
-into the inbox; to do it from the command line, call the relay's own function:
+**Again, do not write the file directly** ("skip this queue today" is recorded
+in `state.json` as `queues.skip_day:<date>`). Use the remote App, or send a `skip_today` order; to do it from the command line, call the relay's own function:
 
 ```bash
 printf '%s\n' 'import os' 'from relay_code import DATA, use_relay_code' \
   'os.environ["ARK_STATE_DIR"] = str(DATA / "state")' 'use_relay_code()' \
-  'from ark_relay.features.phone.commands import apply_command' \
+  'from ark_relay.features.commands import apply_command' \
   'print(apply_command({"action": "skip_today", "queue": "晚班"}))' > /tmp/ark-skip-today.py
 scripts/mac/winrun.sh --py /tmp/ark-skip-today.py
 ```
 
 The first relay tick that sees the flag disables that queue in AUTO-MAS and
-writes `skip-restore.json` capturing the queue's times; 30 minutes past the last
+writes the restore marker (`queues.skip_restore` in `state.json`) capturing the queue's times; 30 minutes past the last
 of those times, a later tick re-enables it and deletes the marker. The marker is
 written **before** the disable, so a crash in between leaves a marker that
 restores an already-enabled queue - a no-op - rather than a queue disabled
 forever.
 
 **Do not disable a queue by hand instead.** Editing `TimeEnabled` over SSH works
-for tonight and then leaves it off for every night after. If it has already been
-done, drop a `skip-restore.json` in by hand to hand it back to the machinery:
-
-```json
-{"queue": "晚班", "day": "2026-08-22", "last_time": "21:30"}
-```
+for tonight and then leaves it off for every night after.
 
 **Known gap:** `queues.apply` writes `QueueConfig.json` without stopping
 AUTO-MAS, so a skip engaged or restored while AUTO-MAS is running can be undone
@@ -617,14 +554,9 @@ documents for hand edits. Verify with a read-back after the restore fires.
 
 ## Driving all three without a window
 
-**The full method now lives in HEADLESS.md (removed; `git show 1c8b5828:docs/HEADLESS.md`)** - the API client,
-the request-shape traps, MAA's binding, MaaEnd's inventory file, and an audit of
-what the relay can and cannot hand over. What follows is the summary.
-
 The desktop is only composited while something consumes frames, so with nobody
 watching, screen grabs return a stale frame and MAA's window comes back blank.
-Every one of these three programs can be driven without its UI, and that is the
-direction this system is moving.
+Every one of these three programs can be driven without its UI.
 
 ### AUTO-MAS - a FastAPI backend, 126 endpoints
 
@@ -634,11 +566,10 @@ Because it is FastAPI, the machine itself publishes the contract:
 ```bash
 # the backend is the python.exe running main.py; find the port it listens on
 netstat -ano | findstr LISTENING | findstr <pid>
-curl http://127.0.0.1:<port>/openapi.json      # measured 2026-08-23: port 36163
+curl http://127.0.0.1:<port>/openapi.json      # port 36163 (`ARK_MAS_PORT`)
 ```
 
-**The port looked dynamic** - do not hard-code 36163 without checking. Verified
-by fetching the spec live: 126 paths, almost all `POST` with a JSON body.
+126 paths, almost all `POST` with a JSON body.
 
 The ones that matter here:
 
@@ -660,8 +591,6 @@ The ones that matter here:
 **This removes the reason config edits needed the program stopped.** The API
 writes through the running backend, so there is no in-memory copy to be
 clobbered - which was the whole basis of the stop-edit-restart procedure.
-Verified end to end on 2026-08-23: read a setting, write the opposite, read it
-back changed, restore it - all over HTTP from the Mac, with AUTO-MAS running.
 
 **Reachable from here, and unauthenticated.** `http://<tailscale-ip>:36163`
 answers directly; the port survived a reboot. It binds `0.0.0.0`, so anything
@@ -687,10 +616,10 @@ envelope and changes nothing - a silent no-op. Read the schema out of
 
 The client lives at `scripts/mac/mas-api.py`.
 
-### MAA - MaaCore, already in use
+### MAA - MaaCore
 
-`scripts/windows/copilot-drive.py` drives it through the binding MAA ships at
-`Python/asst/`. See the copilot section below.
+MAA ships a Python binding at `Python/asst/` that talks to `MaaCore.dll` with no
+window; see the copilot section below.
 
 ### MaaEnd - MaaFramework
 
@@ -698,10 +627,8 @@ MaaEnd is built on MaaFramework, whose Go/Python bindings and CLI are the same
 shape as MaaCore's. Its own agent is a Go service plus C++ algorithms, so the
 headless surface exists; it has not been exercised here yet.
 
-**MaaEnd does have an inventory readout - IMS.** An earlier reading of its
-feature list said otherwise; that was wrong. The feature is not advertised as
-"check my depot" because it exists to answer "do I have enough", so it is easy
-to miss from the outside.
+**MaaEnd does have an inventory readout - IMS.** It is not advertised as
+"check my depot" because it exists to answer "do I have enough".
 
 IMS (Item Management System) lives in MaaEnd's go-service and is documented at
 `docs/zh_cn/developers/components/ims.md`. Two recognisers and three actions:
@@ -731,220 +658,39 @@ the 43 ids seen on 2026-08-23 were in that catalog; the rest are the
 fixed-point currency nodes (`T_CREDS`, `OROBERYL`, `VALLEY_STOCK_BILL`, ...)
 declared per-task rather than in the catalog.
 
-## MAA's auto-battle (自动战斗 / Copilot) - run, 2026-08-23
+## MAA's auto-battle (自动战斗 / Copilot)
 
-Read before touching it. Everything below is either from
-[MAA's own manual](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev-v2/docs/zh-cn/manual/introduction/copilot.md)
-and [integration protocol](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev-v2/docs/zh-cn/protocol/integration.md),
-or measured on this machine on 2026-08-22.
+Read [MAA's own manual](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev-v2/docs/zh-cn/manual/introduction/copilot.md)
+and [integration protocol](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev-v2/docs/zh-cn/protocol/integration.md)
+before touching it (MAA's default branch is `dev-v2`; a `dev` URL 404s). No tool in this
+repository drives it; what was measured on this machine in 2026-08:
 
-Note MAA's default branch is **`dev-v2`**, not `dev` - a `dev` URL 404s.
-
-### Raid mode (突袭), and what a 1-star clear means
-
-An EX stage has two difficulties and they are separate clears with separate
-rewards. From the stage's detail panel, **突袭模式** at the bottom switches it;
-the title turns red, an 附加条件 appears (AT-EX-8's is "「斩」所需费用提升") and
-the button becomes **开始突袭**.
-
-**A raid clear settles at ONE star and that is correct.** Three stars is not
-available in raid. So a success detector keyed on `StageDrops-Stars-3` will
-report a perfectly good raid as a failure - which is what happened here on
-2026-08-23. What is *wrong* is a one-star settlement on a stage that does have
-three stars.
-
-In `copilot_list` an entry carries `is_raid`; in single-copilot mode there is
-no such field, because the game is already in raid mode when you started from
-that screen.
-
-Jobs declare which difficulties they support in `difficulty`: `1` normal, `2`
-raid, `3` both, `0` unset. Filter on it - and note that the copilot site indexes
-the raid variant under its own level id, `act44side_ex08#f#` beside
-`act44side_ex08`.
-
-### When auto-formation rejects an operator - read `reason`, not `why`
-
-Two different failures wear the same wrapper. The outer error always says
-`"why": "OperatorMissing"`; the useful field is `reason` inside `details.opers`.
-
-| `reason` | What it means | Fix |
-|---|---|---|
-| `Unavailable` | The operator **is owned and was found**. The job declares a 练度要求 - usually `skill_level`, i.e. a specialised skill - that this account has not reached, and MAA enforces it | set **`ignore_requirements: true`** |
-| `Missing` | MAA did not find the operator in the list at all | check 特别关注 per the FAQ |
-
-Measured 2026-08-23 on AT-EX-8's most-popular job: 丰川祥子, 八幡海铃 and 酒神
-were all rejected with `requirement_type: "skill_level"`. All three are owned.
-With `ignore_requirements: true` the identical job formed the full six-operator
-squad and reached `BattleStartAll` - the requirement is the job author's
-preference, not a constraint the game imposes.
-
-**So `ignore_requirements: true` is the default here**, and a job should only
-be swapped out after that has been tried.
-
-Two mistakes made this take hours instead of minutes:
-
-1. **The logger truncated the callback to 260 characters** - and the field that
-   distinguishes the two cases sits past that cut. Never truncate diagnostic
-   output for readability; log it whole and read the whole thing.
-2. `reason: "Missing"` was read as "the account does not own this operator",
-   and two perfectly usable jobs were discarded on that basis.
-
-### When auto-formation says an operator is "Missing"
-
-It does **not** mean the account lacks the operator. It means MAA did not find
-it in the formation list. The official FAQ names the cause in one line:
-
-> 若自动编队无法正常识别干员，请取消对应干员的特别关注。
-> — [MAA FAQ](https://github.com/MaaAssistantArknights/MaaAssistantArknights/blob/dev-v2/docs/zh-cn/manual/faq.md)
-
-On 2026-08-23 this was read as "the operator is not owned" and two jobs were
-swapped away on that basis; the operator owned both of them. **Check the
-special-focus marks before the first run, not after the third failure.** The
-filter is the rook icon in the sort bar, present on every operator list.
-
-The headless path loses nothing here: the callback carries
-`{"opers": {"<name>": [{"reason": "Missing"}]}}`, which is the same fact the
-GUI turns into its message box. What was missing was the translation, not the
-data.
-
-### Run it through MaaCore, not the window
-
-`scripts/windows/copilot-drive.py` clears a list of stages unattended. It talks
-to `MaaCore.dll` through the binding MAA ships at `Python/asst/`, so there is no
-window to see and nothing to click - which matters here because MAA's window
-cannot be screenshotted at all when nobody is watching the machine (see
-PITFALLS).
-
-Six stages of 墟 were cleared this way on 2026-08-23, and every failure along
-the way came from the same mistake in different clothes: **assuming a starting
-screen instead of establishing one.**
-
-| What was assumed | What happened |
-|---|---|
-| `filename` mode navigates | It does not. It expects the formation screen and errors on `BattleStartAll` from anywhere else. `copilot_list` navigates; single mode fights |
-| Copilot navigation works from the main screen | For an event stage it does not - it hunts the main-story chapters. 224 swipes and 100 chapter turns looking for AT-5 |
-| BACK a few times reaches a neutral screen | BACK on the main screen raises 是否确认退出游戏, and the tap meant to dismiss it opened the event shop twice |
-| Hand-timed taps reach the game | 70 s to the splash is enough until it is not. MAA's `StartUp` task waits on what it sees; use it |
-| MAA can navigate any stage | It could not find this event's **EX** map. Tapping there by hand and running `filename` mode worked first try |
-
-The working recipe, in order:
-
-1. `StartUp` task - MAA opens the game and reaches the main screen.
-2. Tap into the event map (banner, then section). Only safe *because* step 1
-   guarantees the screen it starts from.
-3. `copilot_list` with one entry - it navigates within the event map and fights.
-4. On `BattleFormationTask` + `reason: Missing`, move to the next job for that
-   stage. `support_unit_usage: 1` borrows when exactly one operator is missing,
-   which the operator reckons covers 90% of the cases.
-
-**Detect a stall by repetition, not by silence.** A navigation that cannot find
-its stage emits callbacks forever, so a quiet-timer never fires. The driver
-counts consecutive identical subtasks and gives up at 30.
-
-### What it is
-
-A copilot ("作业") is a JSON timeline for one stage: which operators, which
-skills, and an ordered `actions` list of deploy / skill / retreat steps, each
-gated on kills, cost, cost change, cooling count or elapsed time. MAA replays
-it. It is not a solver - it does exactly what the file says, so a file written
-for a different roster or a different stage fails rather than adapts.
-
-### Prerequisites - both are hard requirements
-
-| Requirement | Status here |
-|---|---|
-| **60+ stable FPS** in the emulator | **unverified** - LDPlayer stores no fps key in `leidian1000.config` or the global `leidians.config`, so it is on the default and can only be confirmed in the emulator's own settings UI |
-| Touch mode **MiniTouch or MaaTouch** | **OK** - the `Default` profile (the one the queue runs, `emulator-7554`) is `MiniTouch`; the second profile is `MaaTouch` |
-
-`ConnectSettings/TouchMode` in `config\gui.new.json` holds this. **Plain ADB
-`input tap` - what this system uses for manual poking - is not one of the
-accepted modes.** Deployment is a press-drag-release with a direction flick and
-frame-accurate timing; the tap-based approach used to read the depot cannot do
-it, which is why this is MAA's job and not something to reimplement.
-
-### Where a copilot comes from
-
-- **prts.plus 神秘代码**, pasted into MAA's 自动战斗 box, or
-- **a local JSON file**.
-
-Both routes are open from the game machine - measured 2026-08-22: `prts.plus`
-returned HTTP 200 three times out of three and the API MAA actually calls,
-`prts.maa.plus/copilot/get/<id>`, returned 200. **This is not the same as
-`prts.wiki`, which 403s from that address.** Do not generalise either result to
-the other host.
-
-There is already a local library: 39 files in
-`D:\ark\maa\config\copilot\` (`ME-*`, `AD-EX-*`, `15-3`, `15-4`, ...)
-plus MAA's bundled `resource\copilot\`.
-
-### Which screen it has to start from - this is the usual failure
-
-| Mode | Start MAA here |
-|---|---|
-| single copilot | the formation screen, the one with **开始行动** |
-| 战斗列表 (battle list) | the **map screen** holding those stages, not the formation screen |
-| 保全派驻 | after doing the initial setup by hand, at **开始部署** |
-| 悖论模拟 | **自动编队 off**, skills chosen by hand, at **开始模拟** |
-
-For a battle list, every stage must be in one area - reachable by swiping the
-map left and right only. The list stops itself on insufficient sanity, a lost
-battle, or a non-3-star clear.
-
-### Auto-formation wipes the current formation
-
-`自动编队` **clears whatever is in the formation** and rebuilds it from the
-copilot's operator list. Two consequences worth knowing before the first run:
-
-- 特别关注 (special-focus) marks on those operators must be cleared, or the
-  pick fails.
-- MAA does **not** borrow a support unit unless `support_unit_usage` says so,
-  and loop counts are meaningless when borrowing.
-
-`LoopTimes` applies to single-copilot mode only, never to a battle list.
-Current settings: `Default` profile has `SelectFormation=1`, `LoopTimes=3`,
-`SupportMode=WhenNeeded`, and an empty `TaskList`.
-
-### AUTO-MAS cannot start it - this is the blocker
-
-AUTO-MAS's MAA integration exposes only `IfFight`, `IfSeizeEntrustTask`,
-`SanityTaskType` and `TaskTransitionMethod`. There is **no copilot field**, so a
-copilot cannot be put in the nightly queue the way farming is. Two routes exist:
-
-1. **Drive MAA's GUI** through `scripts/mac/wingui.sh` (`ARK_GUI_PROC=MAA`) - focus
-   first and check each click on a screenshot, since MAA's window is the
-   Electron-style UI that swallows clicks without a hover.
-2. **Call MaaCore's `Copilot` task** directly, which is what the GUI does
-   underneath:
-
-```json
-{
-  "enable": true,
-  "filename": "copilot/1-7.json",
-  "loop_times": 2,
-  "formation": true,
-  "formation_index": 0,
-  "use_sanity_potion": false,
-  "support_unit_usage": 0
-}
-```
-
-`copilot_list` replaces `filename` for a battle list, each entry being
-`{filename, nav_name_override, is_raid}`; with a list, `loop_times` is ignored
-and `set_params` may be called only once.
-
-### Before the first real run
-
-1. Confirm the emulator's frame rate in its settings UI (the config file cannot
-   answer it).
-2. Pick a stage that costs little to fail.
-3. Expect the formation to be rebuilt - do not run it on a formation that
-   matters.
-4. Watch the first attempt with a screenshot, not by trusting the exit code.
-
-### Emulator frame rate
-
-60 FPS, stated by the operator. It is not in any LDPlayer config file - do not
-go looking for it again.
+- **AUTO-MAS cannot start a copilot** (its MAA integration has no copilot field). Call
+  MaaCore's `Copilot` task through the binding at `Python/asst/` (`filename` for one job,
+  `copilot_list` of `{filename, nav_name_override, is_raid}` for a battle list), or drive
+  MAA's window with `ARK_GUI_PROC=MAA scripts/mac/wingui.sh`.
+- **Establish the starting screen, never assume it.** `filename` mode expects the formation
+  screen (the one with 开始行动) and does not navigate; `copilot_list` navigates only within
+  the map already open, and cannot find an event's EX map from the main screen. Recipe:
+  the `StartUp` task, tap into the event map, then `copilot_list` with one entry.
+- **Touch mode must be MiniTouch or MaaTouch** (`ConnectSettings/TouchMode` in
+  `config\gui.new.json`; `Default` is `MiniTouch`), and the emulator must hold 60 FPS (it
+  does, stated by the operator; no LDPlayer config file records it).
+- **A raid (突袭) clear settles at one star and that is correct**; do not key success on
+  `StageDrops-Stars-3`. Jobs declare `difficulty` (`1` normal, `2` raid, `3` both); the
+  copilot site indexes the raid variant under its own level id (`act44side_ex08#f#`).
+- **When auto-formation rejects an operator, read `reason` in `details.opers`, not `why`.**
+  `Unavailable` = owned, but the job's 练度要求 is not met: `ignore_requirements: true` is the
+  default here. `Missing` = MAA did not find the operator in the list, usually a 特别关注
+  mark (MAA FAQ: 「若自动编队无法正常识别干员，请取消对应干员的特别关注」) - it does not
+  mean the account lacks it. Never truncate the callback when logging it.
+- **Auto-formation wipes the current formation.** `support_unit_usage: 1` borrows when
+  exactly one operator is missing. `LoopTimes` applies to single-copilot mode only.
+- **Detect a stall by repetition, not by silence**: a navigation that cannot find its stage
+  emits callbacks forever.
+- Copilots come from prts.plus 神秘代码 or local JSON (`D:\ark\maa\config\copilot\`,
+  MAA's bundled `resource\copilot\`). `prts.maa.plus` answers from the machine; `prts.wiki`
+  403s.
 
 ## Changing game configuration
 
@@ -952,12 +698,11 @@ go looking for it again.
 starting one also brings up the emulator or the game itself. Go in through
 AUTO-MAS's UI - `run AUTO-MAS.exe` focuses the already-running instance.
 
-**AUTO-MAS is the authority for everything downstream.** Before each run it
-rewrites MAA's task table and stage config, and rewrites MaaEnd's `optionValues`
-from its own `ScriptConfig.json` (when that user has `Info.IfQuickConfig` true,
-which this machine does). Editing MAA's or MaaEnd's own config is a no-op that
-looks like it worked. Anything automated must write AUTO-MAS's config; see
-`relay/ark_relay/sanity_plan.py`.
+**Which copy is the authority differs per program**: AUTO-MAS rewrites MAA's task table and
+stage config before each run, and replaces MaaEnd's and OK-WW's config directories with its
+master copies ([AUTOMAS.md](AUTOMAS.md), [CONFIG.md](CONFIG.md)). Editing a program's own
+config is a no-op that looks like it worked. The relay's writers go to the master, e.g.
+`relay/ark_relay/features/sanity_plan.py`.
 
 **AUTO-MAS holds its config in memory and writes the whole thing back.** A JSON
 edit made while it runs succeeds, reads back correctly, and is gone at the next
@@ -980,29 +725,21 @@ schtasks /run  /tn "AUTO-MAS_AutoStart"
 
 Then read the value back **after AUTO-MAS has restarted**, not before.
 
-Three write paths, and the differences between them are deliberate.
+Two kinds of write path, and the differences between them are deliberate.
 
 `commands.py` edits the JSON **as text**, so it carries the full structural diff
 described below: added=0, removed=0, changed exactly as expected, or roll back.
 
-`maaend.py` parses to a dict but still diffs, with the check scoped to the
-options it meant to touch - a checkbox going from seven days to two genuinely
-adds and removes leaves, so a blanket added=0/removed=0 would reject real edits
-while a stray change anywhere else is still caught.
-
 `sanity_plan.py` and `queues.py` parse to a dict and do not diff. Structure
 cannot be broken that way, so they rely on a different set of guards: refuse to
 create a key that does not already exist, validate types, back up, write
-atomically, roll back on failure, and (sanity_plan) read back. Do not "add the
-diff for consistency" there; it guards against a failure mode those two do not
-have.
+atomically, roll back on failure, and (sanity_plan) read back.
 
 Never regex-edit JSON on the remote host. The procedure that has never failed:
 fetch base64 → edit locally within the located block → `json.loads` → flatten
 both sides to `path → value` and require added=0 / removed=0 / changed=N →
-back up remotely → upload → re-read and re-parse. `scripts/mac/edit-json.py`
-does this. Step 4 is not optional: it is what caught a regex that disabled 2 of
-3 webhooks and damaged an unrelated section.
+back up remotely → upload → re-read and re-parse. The structural diff is not
+optional.
 
 Some numeric fields have hidden floors. `Game/WaitTime` is `Field(ge=60)` in
 AUTO-MAS's `app/models/schema.py`: writing 30 succeeds, reads back as 30, and is
@@ -1016,26 +753,21 @@ ARK_HOST=<tailscale ip> scripts/mac/deploy-relay.sh
 ```
 
 Two more hard gates sit in `deploy-relay.sh` (user 2026-10-06): step 0.75 replays the
-checked-in false-alarm log fragments (`relay/tests/fixtures/`, `ark_relay/replay.py`) through this
+checked-in false-alarm log fragments (`relay/tests/fixtures/`, `python -m ark_relay.features.selfcheck`) through this
 version's outcome / errwatch offline and refuses the deploy when any would push to the group; step 5.75
 copies `scripts/windows/machinecheck_wait.py` to the machine and waits for this version's boot batch of
 machine checks to judge with zero group pushes before it prints 部署完成 (machine off: skipped, check
-after the next boot). Nothing gates the deploy on the day's alert ledger
-(`BOARD/今日报错-<MMDD>.txt`) any more: the hook that did (`~/.claude/hooks/alert-review-guard.py`)
-is off, like every Claude Code hook on the Mac except `record-check.py` since 2026-10-12; that
-ledger is now written and checked by hand. The whole day's relay.log is read with
+after the next boot). The whole day's relay.log is read with
 `scripts/mac/evidence.sh daily <YYYY-MM-DD> [HH:MM HH:MM]` even with the machine off.
 
-Step 0.6 (10-11, after 23 local branches turned out to hold relay changes that never reached
-main, among them the 10-10 Endfield-hang fix a4be51cb): `scripts/mac/lib/unmerged_fixes.py` lists
+Step 0.6: `scripts/mac/lib/unmerged_fixes.py` lists
 every commit on a local branch or origin/* ref that touches `relay/` or `scripts/windows/`, is not
 in origin/main or HEAD and has no same-patch twin there, and stops the deploy unless each one is in
 `docs/UNMERGED-REVIEWED.txt` (`<hash8> <a|b|declined> <reason>`: same fix in main, superseded,
 or decided not to ship). The list is hand-checked because `git cherry` cannot match a fix whose
 files moved. A stale local origin/main makes merged commits look unmerged: `git fetch origin` first.
 
-Step 5.2 (验收 2026-10-10, after a deploy left a relay crashing on every start for five
-minutes while the script printed green): before the files go up, `scripts/windows/deploy_watch.py
+Step 5.2: before the files go up, `scripts/windows/deploy_watch.py
 snapshot` copies the files about to be overwritten and the code version to
 `C:\ProgramData\ark-relay-deploy-prev`; after the restart, `deploy_watch.py watch` watches for
 `WATCH_S` (120) seconds - another 「服务模式启动」, a changed service PID, a 7031 / 7034 event, any
@@ -1055,7 +787,7 @@ and `back <folder>` (point `current.txt` at the previous folder again, used when
 watch fails). The folder in use is never written to.
 
 The other files the installer writes outside the version folders are kept current by the
-deploy too (since 2026-10-11, `scripts/mac/lib/pkg_appfiles.py`): `info` also returns the sha1 of
+deploy too (`scripts/mac/lib/pkg_appfiles.py`): `info` also returns the sha1 of
 `launch.py`, `switch.py`, `legacy.py`, each `handover\` file and `watchdog\ark_watchdog.py`, and
 only the ones that differ from the repo are sent. Step 4.5p (`pkg_deploy.py appfiles`, after
 `commit`, before the restart, so the restart runs through the new `launch.py`) checks every hash
@@ -1072,42 +804,38 @@ and refuses with exit 5, before anything changes, when they differ. The self-upd
 of these (its COS bundle holds the `relay/` manifest files only; every version on COS went live
 through such a deploy first).
 
-That matters for the last phone state at a Windows shutdown: the relay
+That matters for the last state sent to the remote at a Windows shutdown: the relay
 pushes 「停止前」 from WM_ENDSESSION, but a forced shutdown (`shutdown /r /t 5`) ends user-session
-programs without waiting (2026-10-11 14:25:10: the stop notice, then nothing), so the watchdog
+programs without waiting, so the watchdog
 service also takes SERVICE_CONTROL_PRESHUTDOWN and runs `launch.py stop-push`
 (`relay/app_main.py stop_push`, the relay's own `phone.send_state`, logged as `ark.app.stop_push`)
 unless the relay's push left `state\stop-pushed.txt`. The `stop-push` side ships with a deploy, and
 so, since step 5.3, do the watchdog side and its 60 s preshutdown time-out (`install()`). Machine check #11 accepts either push.
 
 `deploy-relay.sh` still carries the old service layout's direct-push branch (`LAYOUT=legacy`);
-no machine has been on that layout since the old service was deleted on 2026-10-11 (below).
+no machine has been on that layout since 2026-10-11.
 
-Never plain `scp`. On 2026-08-20 an scp returned 0 without transferring; the
-service restarted onto old code and only a hash comparison found it. *Believing
-you deployed is worse than not deploying.*
+Never plain `scp`: it can return 0 without transferring, and only a hash comparison
+finds that. *Believing you deployed is worse than not deploying.*
 
-## The relay's processes (the old service is retired)
+## The relay's processes
 
-Since the switch to the installed relay the machine runs `\ArkRelay\main` (a scheduled task
-in the user's session, `relay/app_main.py`) kept alive by the `ArkRelayWatchdog` service
-(`packaging/watchdog/ark_watchdog.py`); the doc checks below look for those two:
+The machine runs `\ArkRelay\main` (a scheduled task in the user's session,
+`relay/app_main.py`) kept alive by the `ArkRelayWatchdog` service
+(`packaging/watchdog/ark_watchdog.py`). The way back from a broken version is the previous
+version folder: `launch.py rollback` (`relay/app_main.py rollback()`: `pkg_layout.rollback`
+switches `current.txt` to the version before, then the relay is stopped and started again).
+The old Windows service `ark-relay` was retired on 2026-10-11; `switch.py revert` only says
+so and exits 6.
+
+The two things to look for on the machine (`relay/tests/test_selfcheck.py` keeps these two
+markers naming the installed relay, not the retired service):
 
 <!-- check: svc ArkRelayWatchdog -->
-
 <!-- check: task \ArkRelay\main -->
 
-The old relay's Windows service `ark-relay` and its logon task were retired on 2026-10-11 22:33:
-both deleted, the old code moved to `C:\ProgramData\ark-relay-retired-1011`
-(a one-off script, removed 2026-11-17). The way back from a broken version is now the previous
-version folder: `launch.py rollback` (`relay/app_main.py rollback()`: `pkg_layout.rollback`
-switches `current.txt` to the version before, then the relay is stopped and started again);
-`switch.py revert` only says the old relay is retired and exits 6.
-
-The relay sets `PYTHONUTF8` and `PYTHONIOENCODING` itself (`relay/boot_stages.py:272-273`) and
-defaults `ARK_LOG_FILE` to `C:\ProgramData\ark-relay\relay.log` (`relay/app_main.py:103`):
-the old service, started without the environment `ark-relay.ps1` used to set, once ran fine and
-logged into nothing.
+The relay sets `PYTHONUTF8` and `PYTHONIOENCODING` itself (`relay/boot_stages.py`) and
+defaults `ARK_LOG_FILE` to `C:\ProgramData\ark-relay\relay.log` (`relay/app_main.py`).
 
 ### Watchdogs
 
@@ -1120,13 +848,10 @@ silently:
 | `ArkRelayWatchdog` → relay | looks for the relay's mutex every 30 s (`ark_watchdog.py` `CHECK_S`) | runs the task `\ArkRelay\main` again |
 | relay → AUTO-MAS | WMI `Win32_ProcessStartTrace` + a handle on the backend | restarts it immediately |
 
-On 2026-08-15 the relay and AUTO-MAS stopped together, the 21:30 round was lost,
-and **no alarm fired - the thing that raises alarms was the thing that died.**
 
 A watchdog only answers "is the process there". Whether the run was correct is
 the relay's judgement and has nothing to do with it.
 
-<!-- check: task AUTO-MAS_AutoStart -->
 
 Reviving AUTO-MAS takes three steps and skipping one fails silently:
 
@@ -1161,9 +886,7 @@ scripts/mac/watch-run.sh          # follow a run live: OK/FAIL per record, OFFLI
 **The window between a run finishing and the machine powering off is about a
 minute**, and it is not a good time to be collecting anything. The report goes
 out as soon as the last record lands, the shutdown countdown is 60 s, and a
-watcher polling every three minutes will simply miss it - which is how the
-2026-08-22 morning's MaaEnd logs went uncollected despite a watcher being armed
-for exactly that.
+watcher polling every three minutes will simply miss it.
 
 Collect while the run is still going, or wait for the next boot. Nothing is
 lost by waiting: `history/` is on disk and survives the
@@ -1200,68 +923,19 @@ lit for its whole run and that cannot be avoided.
 
 ## MaaEnd's pre-update
 
-`relay/ark_relay/preupdate.py`, run once per boot when a queue still to come that
+`relay/ark_relay/features/preupdate.py`, run once per boot when a queue still to come that
 day includes MaaEnd. It launches MaaEnd, waits up to 180 s for its update check
 to settle (`更新检查完成: ... 有更新=false` in `MaaEnd/debug/<date>-<n>.log`),
 then closes it. If an update landed, the operator is told.
 
 It exists because MaaEnd restarts its own process after updating, which kills
-whatever round AUTO-MAS had just started - see PITFALLS.md (removed; `git show 1c8b5828:docs/PITFALLS.md`).
+whatever round AUTO-MAS had just started.
 Auto-update is deliberately left on; only its timing moved.
 
 Skipped when the day's remaining queues are MAA-only, so the evening boot does
 not start a program nothing will use. Failure is cheap by design: if it cannot
 run or does not finish, the round behaves exactly as it did before - one wasted
 attempt, then the retry succeeds.
-
-## What the new runtimes actually buy us
-
-Both machines run Python 3.14 and PowerShell 7. Most of what those releases
-changed is irrelevant to this project; this is the short list of things that
-are, so the next person does not have to read seven changelogs to find out.
-
-### Python (we came from 3.9 on the Mac, and from AUTO-MAS's bundled copy on the game machine)
-
-- **`zoneinfo`** (3.9+) is the one that matters here. This project lives in two
-  clocks - the machine is UTC+8, the operator is UTC+9 - and every hand-rolled
-  offset is a DST bug waiting for a country to change its mind.
-  `ZoneInfo("Asia/Shanghai")` and `ZoneInfo("Asia/Tokyo")` are in the standard
-  library, no `pytz`, no vendored table.
-- **Deferred annotation evaluation** (PEP 649/749, 3.14) means
-  `from __future__ import annotations` is no longer needed for `X | None` in
-  signatures. Harmless to keep - the relay still has it - but new modules do
-  not need the line.
-- **`tomllib`** (3.11) reads TOML with no dependency. Worth remembering if a
-  config ever wants comments, which JSON cannot carry.
-- **Much better tracebacks** (3.11 onward): the failing sub-expression is
-  underlined, and `ExceptionGroup` renders readably. This is not a feature we
-  call, it is one we benefit from every time a remote script dies.
-- **`match`** (3.10) suits dispatch on record shape. Not a reason to rewrite
-  anything working.
-
-Deliberately not used: free-threading (PEP 703), sub-interpreters (PEP 734),
-t-strings (PEP 750). Nothing here is CPU-bound or templating-heavy.
-
-### PowerShell (we came from Windows PowerShell 5.1)
-
-- **UTF-8 by default.** This is the whole reason the mojibake chapter in
-  PITFALLS.md ends where it does. 5.1 reads files as ANSI (CP936 here) unless a
-  BOM says otherwise; 7 reads and writes UTF-8. `scripts/mac/winrun.sh` still
-  writes a BOM, because it must survive whichever host picks the script up.
-- **`ForEach-Object -Parallel`** (7.0) for bulk remote checks, ad-hoc work.
-- **`&&` / `||` pipeline chain operators, `?:`, `??`, `??=`** (7.0). These make
-  one-liners over SSH shorter, which matters when every character has to
-  survive bash quoting on the way in.
-- **`Test-Json`** (6.1) validates before writing. Our policy is JSON-first for
-  config changes - stop the program, diff, write atomically, read back - and
-  this is a cheap extra gate in that sequence.
-- **`Get-Error`** renders the full error record including inner exceptions,
-  which the default one-line view hides.
-
-Deliberately not used: `Invoke-WebRequest` for anything large. It moved 19 MB
-in 24 minutes on this machine where `curl.exe` moved 108 MB in 85 seconds. Use
-`curl.exe`; Windows has shipped it since 1803.
-
 
 ## Four programs, four update mechanisms
 
@@ -1284,7 +958,7 @@ The ones that are easy to step on:
 
 
 - **OK-WW is the only one of the four that does not go through MirrorChyan.** MirrorChyan does carry `okww` (an anonymous query returns a version), but that is only the first-install download channel; its own updater is the git kind, and the CN-server profile points at CNB. Measured on this machine, `cnb.cool` answers 200 in 0.32 s while `github.com` is completely unreachable, so the CNB route is correct - do not change it.
-- **OK-WW must be stopped before its config is changed.** Stepped on this 2026-08-24: an `ok web` instance was left running, it holds the settings in memory and writes them back to disk, so turning off "auto-start the game" achieved nothing - `ok-ww.exe` read True and brought 鸣潮 up. Same class of mistake as MAA's master vs. copy - **editing a file owned by a running process is editing a copy**. `preupdate._okww_quiesce()` exists for exactly this.
+- **OK-WW must be stopped before its config is changed.** An `ok web` instance was left running, it holds the settings in memory and writes them back to disk, so turning off "auto-start the game" achieved nothing - `ok-ww.exe` read True and brought 鸣潮 up. Same class of mistake as MAA's master vs. copy - **editing a file owned by a running process is editing a copy**. `preupdate._okww_quiesce()` exists for exactly this.
 
 ## Update channels
 
@@ -1298,52 +972,36 @@ nothing can ever be uploaded from the machine.
   changed, all-or-nothing, inside a 240s budget, then restarts itself. The wait
   is not optional: the relay is logon-triggered and comes up before Windows has
   a resolver, so without it every boot-window update failed with
-  `getaddrinfo failed` before reaching any door - see PITFALLS.md (removed; `git show 1c8b5828:docs/PITFALLS.md`). **At service start specifically, never at the end of a
+  `getaddrinfo failed` before reaching any door. **At service start specifically, never at the end of a
   queue** - the machine boots at 21:20 for a 21:30 queue, and that gap is the
   window this is meant to use. Once the new code is running it pushes a notice
   saying so; see [NOTIFICATIONS.md](NOTIFICATIONS.md).
   The manifest covers every `.py` / `.txt` under `relay/ark_relay/` at any depth,
   the top-level `relay/*.py` except `make-manifest.py`, and `relay/RELEASE-NOTES.md`
-  (`relay/make-manifest.py:23,29-31`). Anything else - a script under `scripts/windows/`,
+  (`relay/make-manifest.py`). Anything else - a script under `scripts/windows/`,
   for instance - has to be copied by hand (`scripts/mac/winrun.sh` ships what it runs). A brand-new relay file is created by selfupdate
-  since 2026-09-15 as long as it is plain source (`.py/.md/.txt/.json`, path
-  confined to the relay tree) - the earlier refusal stalled every update after
-  a module split (banners.py 09-08, resources.py 09-15) until a manual deploy;
-  a new file with any other suffix still abandons the round.
+  as long as it is plain source (`.py/.md/.txt/.json`, path confined to the relay
+  tree); a new file with any other suffix abandons the round.
 - **Config**: `queue/config.json`, applied once per strictly-newer integer
   `version`. See `queue/README.md` for the command format.
 
-**First door since 2026-09-18: the Tencent COS bucket** (the same one evidence
+**First door: the Tencent COS bucket** (the same one evidence
 goes to; `COS_*` in the machine's `.env`). `deploy-relay.sh` ends by running
 `scripts/mac/publish-cos.py`, which PUTs `relay/<version>/manifest.json`,
 `relay/<version>/bundle.zip` (every file, one archive) and last `relay/latest.json`
 (`{"version", "uploaded", "files", "bundle_bytes"}`). At boot the relay GETs
 `latest.json` (a hundred bytes); only when its version beats the local one does
 it GET that version's manifest and bundle, verifying every wanted file against
-the manifest's SHA-1. COS has no cache layer, so "pushed at 02:31, still the old
-manifest on the machine's CDN node at 08:45" (2026-09-18) cannot happen there.
+the manifest's SHA-1. COS has no cache layer, so a stale manifest on a CDN node
+cannot happen there.
 
-**Why the bucket's lifecycle rule cannot hurt this path**: since 2026-09-23 the
-rule is `expire-30d-not-relay` - evidence expires after 30 days (the user,
-06:13) and the filter `<PrefixNotEquals>relay/</PrefixNotEquals>` keeps it off
-`relay/` entirely. Before that it was a whole-bucket 90-day rule, which would
-have deleted `latest.json` and its version directory after three months without
-a deploy; with the GitHub doors off by default (selfupdate.py) that would have
-stopped self-update. Read-back after the change (`cos-setup.py --lifecycle`,
-2026-09-23 06:19): `GET /?lifecycle` 200, one rule, `<PrefixNotEquals>relay/`,
-`<Days>30</Days>`. The config inbox depends on the same exemption since
-2026-10-07: `scripts/mac/order.sh` writes `relay/queue/config.json`, which
-`relay/ark_relay/inbox.py` asks before the GitHub doors - keep that key under
-`relay/` if the rule ever changes.
+**The bucket's lifecycle rule** is `expire-30d-not-relay`: evidence expires after 30 days
+and the filter `<PrefixNotEquals>relay/</PrefixNotEquals>` keeps it off `relay/` entirely.
+The config inbox depends on the same exemption: `scripts/mac/order.sh` writes
+`relay/queue/config.json`, which the relay (`features/phone.py`) asks before the GitHub
+doors - keep that key under `relay/` if the rule ever changes.
 
-Anything wrong on COS - missing object, refused key (451 unpaid bill on
-2026-09-13), hash mismatch in the bundle, `latest.json` and manifest
-disagreeing - is a silent fallback to the GitHub doors below, never an abandoned
-round. Files that do have to come from GitHub are fetched
-`selfupdate.PARALLEL_FETCHES` (6) at a time, so a twenty-file update on a day
-when only `raw` answers fits in one raw round-trip instead of twenty; the
-all-or-nothing landing is unchanged. `scripts/mac/publish-cos.py --check` shows
-which version COS would hand the machine.
+`scripts/mac/publish-cos.py --check` shows which version COS would hand the machine.
 
 Doors of the (default-off) GitHub fallback, in the order the code tries them
 after COS (measured from the machine 2026-08-21, 8 attempts each):
@@ -1360,54 +1018,27 @@ never serve a stale copy, so it stays as the final fallback. Both fetchers query
 **every** door and take the highest `version` - a lagging mirror used to make a
 config change silently do nothing.
 
-**Files are fetched at the manifest's tag, not at `main` (since 2026-09-18
-evening).** `make-manifest.py` writes `"ref": "relay-<version>"` into the
+**Files are fetched at the manifest's tag, not at `main`.** `make-manifest.py` writes `"ref": "relay-<version>"` into the
 manifest and `deploy-relay.sh` pushes a tag of that name on the deploy commit,
 in the same push. `selfupdate._pinned_base` swaps the branch segment of the
 raw URL for that tag before `_alternates` fans it out to the mirrors, so every
 door serves `gh/herclyon1/maa@relay-<version>/relay/<file>`. Why: jsDelivr
 caches a branch for 12 hours and its purge is only promised for semver
-releases (its README). Measured that evening: eight hours after a push and a
-purge, `cdn` and `gcore` still served the previous `RELEASE-NOTES.md` while
-`raw` and `fastly` were reset (WinError 10054) or timed out from the machine;
-three rounds on that one file spent the whole 240 s budget and the round was
-abandoned - the machine ran the old code until a manual deploy. Purged again
-and fetched at once from the Mac, `fastly` and `gcore` still returned the
-previous commit's bytes with `x-cache: MISS`: the stale copy sits behind the
-layer the purge clears. The same file at `@<tag>` came back right on all three
-mirrors 3 s after the tag was pushed. A tag never moves, so "a door answered"
-now equals "a door answered correctly"; the manifest itself still comes from
-`main` and may be up to 12 hours stale on the GitHub path - that only ever
-means "no update this boot", and COS is the first door anyway. **Never move or
-delete a `relay-*` tag**: a machine mid-update fetches from it. A manifest
-without `ref` (anything before 2026-09-18) keeps the branch.
+releases, so a mirror can serve the previous commit's bytes hours after a purge;
+a tag never moves, so "a door answered" equals "a door answered correctly". The
+manifest itself still comes from `main` and may be up to 12 hours stale on the
+GitHub path - that only ever means "no update this boot". **Never move or
+delete a `relay-*` tag**: a machine mid-update fetches from it.
 
-**The GitHub doors are off by default (since the evening of 2026-09-18).**
+**The GitHub doors are off by default.**
 When COS cannot be used - `latest.json` unreadable, that version's manifest or
 bundle missing, a wrong hash in the bundle, `latest.json` and the manifest
 disagreeing, COS not configured - the round ends as a recorded failure: the
 next boot pushes `⚠️ 中继自更新没成功` with the reason and tries again, and
-nothing waits on GitHub. Operator decision, on this evidence from the whole of
-the machine's `relay.log` (521 service starts, 2026-08-16 00:27 to 09-18 19:32;
-the jsDelivr doors exist since 08-20/21, so ~455 rounds for them; only
-failures are logged, so a door's successes are "rounds minus failures"):
-
-| Door | Manifest fetch failures | of which reset / timeout | Stale file served | File fetch failures |
-|---|---|---|---|---|
-| `fastly.jsdelivr.net` | 2 | 0 / 1 (+1 DNS) | 8 | 11 (2 reset, 9 timeout) |
-| `cdn.jsdelivr.net` | 14 | 5 / 7 | 11 | 1 |
-| `gcore.jsdelivr.net` | 15 | 5 / 9 | 10 | 1 |
-| `raw.githubusercontent.com` | 206 | 134 / 58 (+14 other) | 1 | 19 |
-
-"Stale file served" counts `给的是旧副本` lines: 29 across the 33 rounds that
-needed a file (29 landed, 4 abandoned: 08-21 ×2, 09-18 19:06). So the mirrors
-fetch reliably but could not be trusted for content until the tag fix, and raw
-- the only always-fresh door - fails 40% of the time from that network. A live
-probe from the machine at 19:36 on 09-18 (4 attempts each, 15 s timeout):
-fastly 4/4 median 0.44 s, cdn 4/4 1.47 s, gcore 4/4 0.43 s, raw 4/4 0.55 s,
-**COS `latest.json` 4/4 0.31 s, COS manifest 4/4 0.30 s**. COS is paid for,
-has no cache layer and answered every time; nothing on GitHub earns a place in
-the boot window next to it.
+nothing waits on GitHub. Operator decision (2026-09-18), on the machine's whole
+`relay.log`: the mirrors served stale files until the tag fix, `raw` - the only
+always-fresh door - failed 40% of the time from that network, and COS answered
+every time in about 0.3 s.
 
 **To switch the GitHub doors back on**: add `SELFUPDATE_GITHUB_FALLBACK=1` to
 `C:\ProgramData\ark-relay\.env` on the machine and restart the relay
@@ -1429,32 +1060,11 @@ After pushing, run `scripts/mac/purge-cdn.py`: it purges jsDelivr (only
 need no purge) and then waits until the machine could actually fetch the new
 version. Its success test mirrors
 what selfupdate really does - the newest manifest across **all** doors equals
-the local one, and every file is served correctly by **at least one** door -
-because an earlier version only watched fastly and reported failure during the
-minutes fastly lagged, while the machine was already able to update fine. A test
-stricter than reality is a false alarm generator.
-
-It also reports how many files only `raw` can serve. That number matters: raw's
-measured median is 38 s, the whole round has a 240 s budget, so once more than
-about five files fall through to raw alone the update will not finish in time
-and will be abandoned cleanly. When that is the situation and a boot is close,
-use `deploy-relay.sh` instead - it is certain.
-
-**Fetch speed and cache-refresh speed are different things**, measured
-2026-08-21. The table above ranks fetches. On refresh the order inverted: after
-a purge that the API reported as `"status": "finished"` with both providers
-acknowledging, `cdn.jsdelivr.net` served the new manifest within seconds while
-`fastly.jsdelivr.net` - the fastest door for fetching - was still serving the
-previous version minutes later. A second purge in quick succession is also
-slower than the first.
-
-That is survivable by design rather than by luck: `raw.githubusercontent.com`
-carries the new manifest immediately, `_best_manifest` takes the highest version
-across all doors, and `_get_with_retry(expect_sha=...)` treats a hash mismatch
-as "this door is stale, try the next". So a machine booting mid-refresh still
-gets the right code - just slowly, since more files fall through to raw. When
-the purge script times out and the boot window is close, prefer the certain
-path: `deploy-relay.sh` pushes over SSH with hash verification.
+the local one, and every file is served correctly by **at least one** door.
+It also reports how many files only `raw` can serve: raw's median is 38 s and
+the whole round has a 240 s budget, so past about five such files the update
+will not finish in time. When a boot is close, use `deploy-relay.sh` instead -
+it pushes over SSH with hash verification.
 
 A stale manifest could also downgrade the relay. `deploy-relay.sh` stamps
 `state\code-version.txt` and selfupdate refuses any manifest not strictly newer,
@@ -1488,40 +1098,14 @@ outside the machine - silently, which is the whole hazard this file is about.
 
 ## Scripts
 
+The tool table is in [../CLAUDE.md](../CLAUDE.md); the machine-side entry scripts are in
+[README.md](README.md). Not listed there:
+
 | Script | Purpose |
 |---|---|
-| `scripts/mac/deploy-relay.sh` | push relay code with hash verification (see above) |
-| `scripts/mac/watch-run.sh` | follow a run from the Mac until DONE or OFFLINE |
-| `scripts/mac/purge-cdn.py` | purge jsDelivr and wait for the new version to be served |
-| `scripts/mac/edit-json.py` | safe remote JSON edit: locate → replace → validate → structural diff |
-| `scripts/mac/mem-sample.sh` | memory-pressure sampler. **The collection period is over (2026-08-17 to 09-08, 3169 samples), the LaunchAgent has been removed, and running it now produces output nobody reads**. Findings and data are in `data/README.md` and `data/mem-pressure.csv`; the script is kept so that another stretch of sampling would not have to be rewritten |
-| `scripts/mac/push.py` | manual push to the notification channels |
-| `scripts/mac/make-app.sh` | wrap a script as a double-clickable .app |
-| `scripts/mac/strip-transcript-images.py` | shrink a session transcript that has grown huge with screenshots |
-| `scripts/windows/setup-tasks.ps1` | sshd restart-on-failure, and a check that the scheduled tasks this system needs exist (wingui.sh creates its own `ark-gui`) |
-| `scripts/windows/run-probe.py` | emit run records as pure ASCII so nothing must survive the GBK console |
-| `scripts/windows/probe-mirrors.py` | measure which mirrors work from the machine, including content freshness |
-| `scripts/windows/push-wecom.ps1` | push an image to WeCom |
-| `scripts/windows/hp-fix.ps1` | one-off repair of the HP server's sshd. Nothing references it and the HP server is not part of this system; kept because that machine still runs the daemon it fixed |
-| `scripts/watchdog.py` | the GitHub Actions boot supervisor |
-
-<!-- check: repo scripts/mac/deploy-relay.sh -->
-<!-- check: repo scripts/mac/watch-run.sh -->
-<!-- check: repo scripts/mac/purge-cdn.py -->
-<!-- check: repo scripts/mac/edit-json.py -->
-<!-- check: repo scripts/mac/mem-sample.sh -->
-<!-- check: repo scripts/mac/push.py -->
-<!-- check: repo scripts/mac/make-app.sh -->
-<!-- check: repo scripts/mac/strip-transcript-images.py -->
-<!-- check: repo scripts/windows/setup-tasks.ps1 -->
-<!-- check: repo scripts/windows/run-probe.py -->
-<!-- check: repo scripts/windows/probe-mirrors.py -->
-<!-- check: repo scripts/windows/push-wecom.ps1 -->
-<!-- check: repo scripts/watchdog.py -->
-<!-- check: repo .github/workflows/watchdog.yml -->
-<!-- check: repo relay/manifest.json -->
-<!-- check: repo queue/config.json -->
-<!-- check: repo queue/watchdog.json -->
+| `scripts/windows/setup-tasks.ps1` | sshd restart-on-failure, and a check that the scheduled tasks this system needs exist |
+| `scripts/watchdog.py` | the GitHub Actions boot supervisor (`.github/workflows/watchdog.yml`, `queue/watchdog.json`) |
+| `scripts/ci/` | what the GitHub workflows run: `relay-tests.sh`, the package smoke tests and their fakes |
 
 ## Symptom → first thing to check
 
@@ -1532,7 +1116,7 @@ outside the machine - silently, which is the whole hazard this file is about.
 | Protocol space failed | was someone connected over ToDesk - its session panel covers the button |
 | MaaEnd failed on attempt 1, fine on attempt 2 | expected; window race on first launch. Not a fault |
 | No notifications at all | AUTO-MAS's switches are layered - see [CONFIG.md](CONFIG.md) |
-| WeCom `errcode=60020` | the caller IP is not in the trusted list. Add it with `scripts/mac/wecom-trust-ip.sh` (needs the admin console logged in once in Chrome by QR scan) |
+| WeCom `errcode=60020` | the caller IP is not in the trusted list. Add it in the WeCom admin console; the group bot needs no list ([BACKLOG.md](BACKLOG.md)) |
 | The emulator started but it was the wrong instance | emulator type must be `ldplayer` + `ldconsole.exe` |
 | A config change reverted itself | AUTO-MAS was running and overwrote it from memory, or the field has a `ge` floor in its schema |
 | A deploy "succeeded" but behaviour is unchanged | compare hashes; use `deploy-relay.sh`, never bare scp |
@@ -1541,11 +1125,8 @@ outside the machine - silently, which is the whole hazard this file is about.
 
 ## Known limits
 
-Todos are **not here**, they are in [BACKLOG.md](BACKLOG.md) - before 2026-09-08 the same
-entry had to be written twice (the WeCom 60020 problem and the three watchdog secrets each
-had a copy in both places), and editing one made the other wrong.
-This section keeps only the settled behaviour that has been thought through and is not going
-to change; those are not work items, they are this system's character.
+Todos are **not here**, they are in [BACKLOG.md](BACKLOG.md). This section keeps only the
+settled behaviour that has been thought through and is not going to change.
 
 ### Accepted limits - understood, not going to be fixed
 
@@ -1556,11 +1137,7 @@ to change; those are not work items, they are this system's character.
 - **The 21:30 checkpoint cannot tell maintenance from an idle machine.** Boot
   the machine in the afternoon, still be working at 21:30, and it powers off
   underneath you. `debug_mode` is the workaround.
-
-  A 20-minute hold keyed off remote GUI activity was built for this on
-  2026-08-21 and removed on 2026-08-22 at the operator's request: it made the
-  shutdown time unpredictable, and an unpredictable shutdown is worse than the
-  problem it solved. Shutdown timing should stay boring.
+  Shutdown timing stays predictable (operator, 2026-08-22).
 - **A relay restart more than two hours after a run still leaves nobody to
   shut down.** `recent_due_queues` forgets a queue after that, and widening the
   window would also widen the "wait for a script that never ran" hold that
@@ -1584,7 +1161,7 @@ under PlayCover locally.
 4. **Read the whole shop before buying anything.** Tokens are finite and what
    you buy first decides what you can no longer afford.
 
-## Operating constraints (moved in from README)
+## Operating constraints
 
 These are not suggestions. They are this system's settled behaviour, and the code implements
 them:

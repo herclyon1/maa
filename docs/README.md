@@ -15,16 +15,16 @@ Rule: **a newly added document must be registered here**; gate 12 of `scripts/ma
 
 `UNMERGED-REVIEWED.txt` lists branch commits reviewed for `scripts/mac/deploy-relay.sh` step 0.6 (`scripts/mac/lib/unmerged_fixes.py`).
 
-## Internal Windows / CI entry scripts
+## Machine-side entry scripts (`scripts/windows/`)
 
 | Script | Role |
 |---|---|
-| `scripts/windows/deploy.py` | Unpacks and verifies legacy relay tar streams during `deploy-relay.sh` |
+| `scripts/windows/deploy.py` | Places an Arknights operator through MaaTouch (press, drag, release, flick), which `adb shell input` cannot do: `deploy.py <card x> <card y> <tile x> <tile y> <up\|down\|left\|right>`, `--probe` to only hold; run with `winrun.sh --py` |
 | `scripts/windows/deploy_watch.py` | Watches `relay.log` after restart to confirm boot self-check passes |
 | `scripts/windows/dispatch_guard.py` | Busy/idle guard shared by `run-one.sh`, `okww-task.sh`, and `estop.sh` |
 | `scripts/windows/machinecheck_wait.py` | Waits for machinecheck rows to settle after deploy |
 | `scripts/windows/okww-landed.py` | Verifies OK-WW settings took effect (`okww-check.sh`) |
-| `scripts/windows/pkg_deploy.py` | Stages version folders for installed relay (`deploy-pkg.sh`) |
+| `scripts/windows/pkg_deploy.py` | Stages version folders for installed relay (`scripts/mac/lib/deploy-pkg.sh`) |
 | `scripts/windows/run-probe.py` | Live run probe on the game PC (`watch-run.sh`) |
 | `scripts/windows/skip-shutdown.bat` | Desktop toggle writing `skip_next_shutdown` into `StateStore` |
 | `scripts/windows/smoke.py` | Post-deploy import and boot-line smoke check on the game PC |
