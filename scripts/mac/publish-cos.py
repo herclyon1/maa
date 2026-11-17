@@ -117,8 +117,7 @@ USAGE = """usage: scripts/mac/publish-cos.py            publish relay/ as it is 
 
 
 def main(argv: list[str]) -> int:
-    # 2026-10-10 18:04 `publish-cos.py --help` published a branch to COS: every
-    # argument but --check used to mean "publish". Only no argument publishes now.
+    # Only no argument publishes; any other argument must be --check (--help once published a branch).
     args = list(argv)
     if args and args != ["--check"]:
         print(USAGE)

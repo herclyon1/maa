@@ -170,8 +170,6 @@ def main(argv: list[str]) -> int:
     tried: list[str] = []
     for name, channel, call in order:
         if not channel.enabled:
-            # Until 2026-09-23 push.env had no WECOM_BOT_URL, and --group went to
-            # the fallback with nothing saying the group had been skipped.
             print(f"  ✗ {name}: {ENV_FILE} 里没配，跳过", file=sys.stderr)
             tried.append(name)
             continue

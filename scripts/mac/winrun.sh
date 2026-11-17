@@ -241,15 +241,8 @@ PS1EOF
 fi
 
 if [ "${1:-}" = "--py" ]; then
-  # 2026-08-26：这个分支曾经能**静默失败**——三处叠加：
-  #   ssh ... >/dev/null 2>&1 || true   ssh 挂了不说
-  #   scp ... 2>/dev/null   || true     取不到文件不说
-  #   [ -s "$TMP" ] && ...              文件是空的就什么都不打印，然后退出码 0
-  # 于是「命令成功但没有输出」，我当天撞了三次，以为工具坏了就改用裸 ssh 绕过去。
-  #
-  # 而卡住的根因 --py1 早就写在上面了（见那段注释）：脚本被超时杀掉后，
-  # **远端 python 进程还活着占着 winrun.out**，之后每次调用都只能拿到 0 字节。
-  # 那套清理当时只加进了 --py1，没加进 --py。现在补齐，并且**失败一律出声**。
+  # Every failure here speaks. A script killed by the timeout can leave its remote python holding
+  # winrun.out (0 bytes on every later call), so this branch cleans up first, as --py1 does.
   LOCAL_PY="${2:?用法: winrun.sh --py <本地 .py 文件> [参数...]}"
   [ -f "$LOCAL_PY" ] || { echo "找不到 $LOCAL_PY" >&2; exit 1; }
   shift 2

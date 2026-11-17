@@ -58,11 +58,8 @@ def post(path, body=None):
 
 
 print("=== 1. OK-WW 本地改动（都在 ok_tasks/ark_overrides.py 里，源文件必须是上游原样）===")
-# Since 2026-09-09 nothing is patched into OK-WW's source: the changes are
-# installed as an ok_tasks extension and bind at OK-WW start-up, which writes
-# C:\ProgramData\ark-okww-overlay.json. This section used to look for patch
-# markers inside the source files and went red on every boot after the move
-# (2026-09-12) - the truth is the overlay report plus a pristine source tree.
+# OK-WW's source is never patched (the changes are an ok_tasks extension bound at OK-WW start-up,
+# which writes C:\ProgramData\ark-okww-overlay.json): the truth is that report plus a pristine source tree.
 work = Path(r"D:\ark\okww\data\apps\ok-ww\working\src\task")
 from ark_relay.features import okww_overlay                 # noqa: E402
 _ov = okww_overlay.target(r"D:\ark\okww")
@@ -184,9 +181,7 @@ check("预更新除 AUTO-MAS 下载超时外没有别的未确认项",
 check("AUTO-MAS 预更新有明确结论（装了 / 无需更新 / 干净放弃）",
       any(("留到下次开机再装" in l or "无需更新" in l or "已更新" in l)
           and "AUTO-MAS" in l for l in recent))
-# 2026-09-17: one ERROR line at 21:21 (AUTO-MAS not up after the boot revival)
-# sat unread all evening while the 21:30 queue never ran. Every ERROR the relay
-# writes is a fault by definition - list them, do not let them hide.
+# Every ERROR the relay writes is a fault by definition - list them, do not let them hide.
 errors = [l for l in recent if " ERROR " in l[:40]]
 check("今天 relay.log 没有 ERROR 行", not errors,
       "；".join(x.rstrip()[:90] for x in errors[:5]) or "无")
@@ -198,9 +193,7 @@ check("今天每次开机 AUTO-MAS 都自己起来了（没等到要杀重拉）
       "；".join(x.rstrip()[:90] for x in revive[:3]) or "无")
 
 print("\n=== 6. 会让机器整夜不关的一次性开关 ===")
-# 09-03 and 09-04 the machine stayed on all night because 「下次跑完不关机」 was
-# left armed; it is spent at the next queue run's shutdown and never expires. NEXT-BOOT.md closed
-# that with "check state.json's modes before signing off" - and nothing did.
+# 「下次跑完不关机」 is spent at the next queue run's shutdown and never expires, so it is checked before signing off.
 try:
     _st = json.loads(Path(r"C:\ProgramData\ark-relay\state\state.json").read_text(encoding="utf-8"))
     _modes = _st.get("modes") or {}

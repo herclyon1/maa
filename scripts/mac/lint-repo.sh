@@ -26,8 +26,7 @@ else
   note "shellcheck 没装（gh release download --repo koalaman/shellcheck）"
 fi
 
-# 2026-08-26：我在 winrun.sh 的清理逻辑里用了 `powershell`（5.1），每次都失败。
-# 5.1 默认不是 UTF-8，读中文 JSON 必挂。规矩立完当轮就违反了，所以要机器来查。
+# PowerShell 5.1 does not read UTF-8 by default: Chinese JSON breaks.
 echo "▶ 2/18 不许用 powershell 5.1（要用 pwsh 7）"
 # grep -rn 的输出是 `文件:行号:内容`，所以过滤注释要跳过前两段，
 # 不能直接 `^\s*#`——2026-08-26 第一版就是这么写的，注释全都漏了过去。
@@ -42,15 +41,13 @@ hits=$(grep -rn "['\"\` ]powershell[ '\",]" scripts/ relay/ 2>/dev/null \
                     if (rest !~ /^[[:space:]]*#/) print }' || true)
 [ -z "$hits" ] && ok "没有裸 powershell 调用" || { note "发现裸 powershell（应改 pwsh 或 base64）"; echo "$hits" | head -5 | sed 's/^/       /'; }
 
-# 2026-08-26：`pwsh -c "... \"A|B\" ..."` 被 bash/ssh/cmd 三层引号吃掉，
-# 报 `'Wuthering' 不是内部或外部命令`。正解是 base64 -EncodedCommand。
+# bash, ssh and cmd each strip a layer of quotes; -EncodedCommand survives all three.
 echo "▶ 3/18 ssh 送 PowerShell 必须走 base64"
 hits=$(grep -rn 'ssh .*pwsh -\(NoProfile \)\?-\?[Cc]ommand' scripts/ 2>/dev/null \
        | grep -v EncodedCommand | grep -v "^\s*#" || true)
 [ -z "$hits" ] && ok "没有内联拼接的远端 PowerShell" || { note "有内联 -Command（应改 -EncodedCommand）"; echo "$hits" | head -5 | sed 's/^/       /'; }
 
-# 2026-08-26：deploy-relay.sh 在 `cd` 之后才解析 $(dirname "${BASH_SOURCE[0]}")，
-# 相对路径当场失效，取日志那步静默失败。当天 cwd 类问题共撞 37 次。
+# A script directory resolved after cd points nowhere, and the step that uses it fails silently.
 echo "▶ 4/18 脚本目录必须在 cd 之前算好"
 hits=""
 while IFS= read -r f; do
@@ -63,7 +60,6 @@ while IFS= read -r f; do
 done < <(find scripts -name '*.sh' ! -path "*/lint-repo.sh")
 [ -z "$hits" ] && ok "没有 cd 之后才解析脚本目录的写法" || note "在 cd 之后解析路径: $hits"
 
-# 2026-08-26：RELEASE-NOTES.md 忘了加进清单，部署报成功而机器上根本没这个文件。
 echo "▶ 5/18 部署清单要包含更新说明"
 if grep -q 'RELEASE-NOTES.md' relay/make-manifest.py 2>/dev/null; then
   ok "make-manifest 会带上 RELEASE-NOTES.md"
@@ -71,8 +67,6 @@ else
   note "make-manifest.py 没有把 RELEASE-NOTES.md 放进清单"
 fi
 
-# 2026-08-26：新写的测试函数被 `>>` 追加到了 `main()` 之后，调用时还没定义。
-# 测试跑一遍就会 NameError，所以这条直接用「全部测试能跑通」兜住。
 if [ -n "${LINT_SKIP_TESTS:-}" ]; then
   echo "▶ 6/18 中继测试全绿"
   echo "  ⏭ 已跳过（调用方自己会跑一遍，这里再跑是重复）"
@@ -132,10 +126,8 @@ fi
 
 fi
 
-# 2026-08-27：同一类错的第三次——把测试函数写在 `if __name__` 之后，
-# 它永远不会被调用，测试照样打印 "all checks passed"、闸门照样放行。
-# 上面那条「测试全绿」拦不住：那个函数根本没被执行，谈不上红不红。
-# 所以这里查的是「定义了却没人调用」这一整类，而不是某一次的写法。
+# A function defined and never called (a test placed after `if __name__`) never runs, and its file still
+# says passed; the whole class is checked, not one way of writing it.
 echo "▶ 7/18 没有永远不会被执行的代码"
 if out=$(python3 scripts/mac/lib/deadcode.py relay scripts 2>&1); then
   ok "$(tail -1 <<<"$out")"
@@ -144,12 +136,8 @@ else
   sed 's/^/    /' <<<"$out"
 fi
 
-# 2026-09-06：queues.apply / commands._run_now 里一个局部变量叫 names，把模块
-# names 遮住了，函数第一行 names.canonical() 就 UnboundLocalError——从 09-02
-# 起四天里每次调用必崩，61 个测试全绿，自写的 test_undefined_names 也没抓到
-# （它只看名字有没有绑定过，不看先读后绑定）。pyflakes 的 F823 一行就报。
-# 顺带用机器上那个版本的 Python（3.14）严格编译：`'\d'` 这类非法转义在 3.12+
-# 是 SyntaxWarning、将来是 SyntaxError，本地 3.9 一声不吭。
+# pyflakes catches a name read before it is bound (F823), which the tests can miss; the strict 3.14
+# compile catches invalid escapes ('\d') that the Mac's own 3.9 accepts in silence.
 echo "▶ 8/18 静态检查（pyflakes + 3.14 严格编译）"
 PY314="$HOME/.local/bin/python3.14"
 if ! command -v uvx >/dev/null; then
@@ -190,9 +178,7 @@ done < <(find relay/tests/fixtures -type f 2>/dev/null; ls relay/tests/fx_sample
 [ "$missing" = 0 ] && ok "测试语料都在库里"
 
 echo "▶ 10/18 中继的状态只能由中继自己写"
-# 2026-09-08：状态收口把开关搬进 state.json，桌面那个 .bat 还在写旧的
-# skip-next-shutdown.flag——按下去界面显示「不关机」，中继照常关机，一声不吭。
-# 凡是中继会读的状态，外部脚本只能调它的函数，不许自己写文件。
+# A state the relay reads is changed only through its own functions, never by writing the file.
 if hits=$(grep -rnE 'ark-relay[\\/]state[\\/][A-Za-z0-9_.-]+' scripts/windows scripts/mac 2>/dev/null \
           | grep -vE 'statestore|state\.json|\.migrated|^\s*(#|rem )' \
           | grep -iE '>|set-content|write_text|echo .*>|del |remove-item'); then
@@ -234,9 +220,7 @@ else
 fi
 
 echo "▶ 12/18 文档和脚本都要有入口"
-# 2026-09-08：40 篇文档没有任何索引，只有 5 篇能从 CLAUDE.md 走到；
-# 66 个脚本里只有 18 个在工具表里，包括「手动派发唯一入口」run-one.sh。
-# 没有入口 = 下一次会话读不到 = 写了白写，而且会重复造一个。
+# A document or script nothing points to is never read again, and gets written a second time.
 orphan=0
 for f in docs/*.md; do
   base=$(basename "$f")
@@ -254,10 +238,8 @@ done
 [ "$miss" = 0 ] && ok "每个入口脚本都有文档提到"
 
 echo "▶ 13/18 部署清单要和代码对得上"
-# 2026-09-08 审出来：历史上 546 个带 manifest 的提交里，174 个改了真代码却和清单
-# 对不上（32%）。后果是**静默的**：机器开机比哈希，发现「本机文件都和清单一致」，
-# 不下载、不写日志、不播报，还照样把版本号刻上去——那次修改永远上不了机器。
-# RELEASE-NOTES.md 例外：部署是先建清单、后清空正文，这个差异是设计如此。
+# Code that differs from the manifest never reaches the machine, and nothing says so.
+# RELEASE-NOTES.md differs on purpose: the deploy builds the manifest, then empties the notes.
 if out=$(python3 - <<'PY'
 import hashlib, json, sys
 from pathlib import Path
@@ -282,9 +264,7 @@ else
 fi
 
 echo "▶ 14/18 日志名要和模块名对得上"
-# 2026-09-08 审出来：selfupdate.py 的日志名叫 ark.update、statestore.py 叫 ark.state、
-# sanity_plan.py 叫 ark.sanity。翻日志时按模块名 grep 一无所获，会得出「这个模块没跑」
-# 的错误结论——PITFALLS.md 里那条 WinError 10054 当时就是这么被找了半天。
+# A logger named other than its module makes a grep of the log by module name find nothing.
 # Modules that share a name on purpose (preupdate_*, gameupdate_*, the collector split, __main__ as the root) are allow-listed.
 if out=$(python3 scripts/mac/lib/deadcode.py --loggernames); then
   ok "每个模块的日志名都等于 ark.<模块名>"
@@ -294,10 +274,7 @@ else
 fi
 
 echo "▶ 15/18 测试里的 check() 只准有一个意思"
-# 2026-09-08：66 个测试各写各的 check()，其中两个把第二、第三个参数的意思写反了
-# （名字, 成立与否, 补充说明）。在那两个文件里按大多数人的习惯写一句比较，
-# 期望值会被当成说明打出来，断言退化成「实际值是不是真的」——永远通过，一声不吭。
-# 现在比较相等的叫 check(label, got, want)，判真假的叫 require(name, ok, detail)。
+# check(label, got, want) compares, require(name, ok, detail) asserts; swapped arguments would pass silently.
 if out=$(python3 scripts/mac/lib/deadcode.py --checkshape); then
   ok "check() 与 require() 的参数意思全仓一致"
 else

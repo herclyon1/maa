@@ -117,11 +117,8 @@ def live_tasks():
 
 
 def _api_stop():
-    # 2026-09-14: this used to post the *script* and *queue* ids. AUTO-MAS answered
-    # 操作成功 to every one of them and stopped nothing; the taskkill that followed
-    # then read as a crashed attempt and AUTO-MAS retried the script - twice in a
-    # row, the same chain as 2026-09-01. The running task's own id is the one to send.
-    # Returns False when AUTO-MAS could not be asked, True otherwise.
+    # The running task's own id is the one to send: AUTO-MAS answers 操作成功 to the script and queue
+    # ids and stops nothing. Returns False when AUTO-MAS could not be asked, True otherwise.
     live = live_tasks()
     if live is None:
         return False

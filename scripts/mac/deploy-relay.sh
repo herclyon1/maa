@@ -481,15 +481,8 @@ echo "    code-version = $VER"
 
 lap
 echo "▶ 5/5 重启服务并确认真的起来了"
-# 2026-08-26：这一段原本是
-#   ... & net stop ... & net start ... & echo RESTARTED
-# 三个问题叠在一起：
-#   1. `echo RESTARTED` 是**无条件**的，start 失败也照样打印；
-#   2. 所谓「确认」只是 tail 了几行日志，**从没查过服务状态**；
-#   3. 最后无脑打印「✅ 部署完成并已核对」。
-# 结果那天一次部署把服务停了没起回来，脚本全程绿灯，
-# 直到我手动 `sc query` 才发现 STATE=STOPPED——**通知链路断了一小时没人知道**。
-# 现在：先等它真的停，再启，再轮询到 RUNNING 为止，起不来就非零退出。
+# Wait until the service has really stopped, start it, poll until RUNNING; not up means a non-zero exit.
+# Tailing the log is not a confirmation.
 
 # 整个停—等—清—起—等，一次往返在机器上做完。
 # 原来是 stop 一次 ssh，然后每 2 秒 sc query 一次直到 STOPPED，start 再来一遍，
