@@ -157,8 +157,8 @@ shutting it down) breaks both paths at once.
 | MAA `RoutineTimeLimit` | `45` min (10 ran into false timeouts) |
 | MaaEnd path | `D:\ark\maaend` |
 | MaaEnd `RunTimeLimit` | `40` min |
-| `Info.Stage` / `StageMode` | `1-7` / `Fixed` |
-| `Info.MedicineNumb` | `0` - do not use sanity potions |
+| `Info.Stage` / `StageMode` | `1-7` (the fallback; changed for events, read it back) / `Fixed` |
+| `Info.MedicineNumb` | `0` when written here - do not use sanity potions (read it back) |
 | `Info.Annihilation` | the map (e.g. `Annihilation`), not `Close` - **see below** |
 | `Game/WaitTime` | `60` s (**hard floor, see below**) |
 | Emulator | LDPlayer: `ldplayer` + `ldconsole.exe` in `EmulatorConfig.json`; the **instance number lives elsewhere** - `ScriptConfig.json` -> `<script>/Emulator/Index` = `1000` |
@@ -429,14 +429,14 @@ no `.env.example`.
 | `ARK_MAAEND_DIR` | MaaEnd root |
 | `ARK_MAA_DIR` | MAA root (asst.log, and the stage gate's `resource/tasks` + `cache/resource/tasks`). Unset, it is taken from AUTO-MAS's ScriptConfig.json (the MAA script's path) |
 | `ARK_OKWW_DIR` | OK-WW root (`D:\ark\okww`). The weekly boss master/copy configs and OK-WW's own logs are all derived from this |
-| `ARK_PROGRAMDATA` | never set on the machine: moves Windows' `C:\ProgramData` for the relay's fixed hand-off files (`no-stamina-farm.flag`, the echo-farm `.bat` files and no-claim mark, the OK-WW overlay report and master pointer; `config.PROGRAMDATA`). Only tests set it, to keep those files inside their own tree |
+| `ARK_PROGRAMDATA` | never set on the machine: moves Windows' `C:\ProgramData` for the relay's fixed hand-off files (`no-stamina-farm.flag`, the echo-farm `.bat` files and no-claim mark, the OK-WW overlay report and master pointer; `config.PROGRAMDATA`). Nothing in the repository sets it |
 | `ARK_OKWW_LOG` | names OK-WW's log file directly. Unset, it takes the newest file under `ARK_OKWW_DIR`'s `data/apps/ok-ww/working/logs` |
 | `DISK_TIDY_TMP_ROOT` / `DISK_TIDY_TMPDIR` / `DISK_TIDY_BREW_PREFIX` / `DISK_TIDY_OPEN_PATHS` / `DISK_TIDY_PROCS` / `DISK_TIDY_FREE_BYTES` | not relay settings; read by `scripts/mac/disk-tidy.py` and set only by `relay/tests/test_ops_mac.py`: the session tmp root (default `/private/tmp/claude-501`), `$TMPDIR`, the Homebrew prefix (default `/opt/homebrew`), a file of in-use paths used instead of `lsof`, a file of process names used instead of `ps`, and the free bytes used instead of measuring the disk |
 | `ARK_KEEP_TMP` | affects tests only: set it to 1 and temporary directories are not cleaned up, so the scene is left intact for investigation |
 | `ESTOP_SH` / `FAKE_LOG` / `FAKE_LAYOUT` | affects tests only, read by `relay/tests/test_ops_gates.py`: another copy of `scripts/mac/estop.sh` to run (default the repo's; used to show the test fails on an older copy), and, for the fake ssh it puts on PATH, the file it records commands in and its answer to the relay-layout question (`pkg`, `legacy`, `timeout`, `garbage`) |
 | `NTFY_SERVER` | affects tests only, on the Mac: the path of the local ntfy server binary that `relay/tests/test_phone_e2e.py` starts to run the phone mailbox end to end. Unset, it uses `~/.local/bin/ntfy-server` |
 | `RELAY_PY` | affects tests only: the relay's Python 3.14. `scripts/mac/lint-repo.sh` sets it (`scripts/mac/lib/relay-python.sh`) to run every relay test |
-| `TZ` | not a relay setting: no code under `relay/` or `scripts/` reads it outside two tests. `relay/tests/test_banners.py` and `relay/tests/test_alarm.py` set it to `Asia/Tokyo` (the Mac's zone) and call `time.tzset()`, to prove that banner post times are read on the server clock (+8) and that the alert log (`alerts/<date>.jsonl`) stamps Beijing time, whatever the local zone; `test_banners.py` restores the old value afterwards |
+| `TZ` | not a relay setting: no code under `relay/` or `scripts/` reads it outside tests. `relay/tests/test_banners.py` and `relay/tests/test_alarm.py` (among others) set it to `Asia/Tokyo` (the Mac's zone) and call `time.tzset()`, to prove that banner post times are read on the server clock (+8) and that the alert log (`alerts/<date>.jsonl`) stamps Beijing time, whatever the local zone; `test_banners.py` restores the old value afterwards |
 | `ARK_PHONE_TOPIC` | the ntfy topic the remote (the native App) uses. **Without it the remote is deaf** - the machine receives no commands and the remote sees no status |
 | `ARK_PHONE_PIN` | the remote's passphrase. A command is only accepted when it carries the right one; leaving it unset means anyone who learns the topic name can issue commands |
 | `ARK_INBOX_URL` | the address of the repository inbox's `queue/config.json`. Unset, it uses the built-in GitHub address; change it only when moving to another repository. Since 2026-10-07 the relay asks the COS bucket's `relay/queue/config.json` first (written by `scripts/mac/order.sh`; needs the `COS_*` variables) and takes the highest version over COS and the GitHub doors |

@@ -21,7 +21,7 @@ Rule: **a newly added document must be registered here**; gate 12 of `scripts/ma
 |---|---|
 | `scripts/windows/deploy.py` | Places an Arknights operator through MaaTouch (press, drag, release, flick), which `adb shell input` cannot do: `deploy.py <card x> <card y> <tile x> <tile y> <up\|down\|left\|right>`, `--probe` to only hold; run with `winrun.sh --py` |
 | `scripts/windows/deploy_watch.py` | Watches `relay.log` after restart to confirm boot self-check passes |
-| `scripts/windows/dispatch_guard.py` | Busy/idle guard shared by `run-one.sh`, `okww-task.sh`, and `estop.sh` |
+| `scripts/windows/dispatch_guard.py` | The gate behind `run-one.sh`: dispatches one script only when nothing is running, and stops in order (API, wait, kill leftovers, re-check) |
 | `scripts/windows/machinecheck_wait.py` | Waits for machinecheck rows to settle after deploy |
 | `scripts/windows/okww-landed.py` | Verifies OK-WW settings took effect (`okww-check.sh`) |
 | `scripts/windows/pkg_deploy.py` | Stages version folders for installed relay (`scripts/mac/lib/deploy-pkg.sh`) |

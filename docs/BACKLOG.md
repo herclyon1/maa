@@ -9,7 +9,7 @@ Skipped tests are registered here too and may stay at most one week.
 
 ## Todo
 
-- [ ] **Endfield version-briefing parser has only one sample (added 2026-10-08).**
+- [ ] **Endfield version-briefing parser has only one sample (added 2026-10-08, due 2026-11-05 - overdue).**
       `banners.ef_briefing_banners` reads the official version briefing (bulletin cid 2183 ->
       endfield.hypergryph.com/version_briefing/latest -> content script, JSON.parse blocks). Only the
       v1d6 page is a sample in `relay/tests/test_banners.py`. When the next version's briefing goes
@@ -113,7 +113,7 @@ Rules: one or two sentences of fact plus the attachments their template asks for
 never withheld); no analysis paragraphs and no AI-styled writing (AUTO-MAS maintainer HarcoChen,
 2026-09-06: MaaEnd and MXU have no AI template, and such replies add to the maintainers' work). When
 the author asks something, answer and wait for their decision; do not close our own issue or PR
-unless its premise was wrong. Read replies when asked; no self-scheduled polling.
+ourselves. Read replies when asked; no self-scheduled polling.
 
 | Issue | State |
 |---|---|
