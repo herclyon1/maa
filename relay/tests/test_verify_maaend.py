@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 # ruff: noqa: PLC0415
+import logging
 import sys
 import types
 from pathlib import Path
@@ -16,6 +17,16 @@ class _NoSource:
     """A record source with nothing new."""
     def fetch(self, seen):
         return []
+
+
+class _Lines(logging.Handler):
+    """Keeps the message of every record from `level` up."""
+    def __init__(self, level):
+        super().__init__(level)
+        self.lines = []
+
+    def emit(self, record):
+        self.lines.append(record.getMessage())
 
 
 class _Notes:
@@ -235,18 +246,7 @@ or read at the wrong moment.
     from ark_relay.features import machinechecks as runs
 
 
-    class Errors(logging.Handler):
-        """ERROR lines of runs.py's logger."""
-
-        def __init__(self):
-            super().__init__(logging.ERROR)
-            self.lines = []
-
-        def emit(self, record):
-            self.lines.append(record.getMessage())
-
-
-    ERRORS = Errors()
+    ERRORS = _Lines(logging.ERROR)
     runs._log_runs.addHandler(ERRORS)
 
     REAL_AFTER, REAL_REFUSE = unresolved.after_makeup, makeup.refuse_rejected
@@ -373,16 +373,7 @@ Windows relay meets: one cause reaches the group once, and no alarm is lost.
     NO_WAITS = (0.0, 0.0, 0.0)
 
 
-    class Errors(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.ERROR)
-            self.lines = []
-
-        def emit(self, record):
-            self.lines.append(record.getMessage())
-
-
-    ERRORS = Errors()
+    ERRORS = _Lines(logging.ERROR)
     for name in ("ark.runs", "ark.machinecheck", "ark.pushes", "ark.unresolved", "ark.statestore"):
         logging.getLogger(name).addHandler(ERRORS)
     pushes.log.addHandler(ERRORS)
@@ -3183,16 +3174,7 @@ def _part_unreachable_evidence():
     r = rec_from_fixture()
 
 
-    class _Loud(logging.Handler):
-        def __init__(self):
-            super().__init__(logging.WARNING)
-            self.lines = []
-
-        def emit(self, rec_):
-            self.lines.append(rec_.getMessage())
-
-
-    loud = _Loud()
+    loud = _Lines(logging.WARNING)
     handle.log.addHandler(loud)
     handle._handle(e, r)
     handle.log.removeHandler(loud)

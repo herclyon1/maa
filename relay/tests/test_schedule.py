@@ -3948,25 +3948,18 @@ when the machine simply was not awake for it.
         E._missed_alerted.clear()
         E.state.store.pop("marks", "alerted:2026-08-21")   # the settled keys on disk too
 
-    print("[the swallowed alarm] selfupdate restarted the relay past the queue time")
-    reset()
-    BOOT[0] = at(21, 20)        # the machine WAS awake for 21:30
-    E._started_at = at(21, 33)  # but this process only started at 21:33
-    E._check_missed_runs(at(22, 0))
-    check("alarms", len(sent), 1)
-
-    print("\n[machine really was off] must stay quiet")
-    reset()
-    BOOT[0] = at(22, 40)        # powered on well after the queue
-    E._started_at = at(22, 42)
-    E._check_missed_runs(at(23, 10))
-    check("silent", len(sent), 0)
-
-    print("\n[not late yet] grace is 25 minutes")
-    reset()
-    BOOT[0] = at(21, 20); E._started_at = at(21, 22)
-    E._check_missed_runs(at(21, 50))
-    check("silent at +20min", len(sent), 0)
+    for title, boot, started, now, label, want in (
+            # the machine WAS awake for 21:30, but this process only started at 21:33
+            ("[the swallowed alarm] selfupdate restarted the relay past the queue time",
+             at(21, 20), at(21, 33), at(22, 0), "alarms", 1),
+            # powered on well after the queue
+            ("\n[machine really was off] must stay quiet", at(22, 40), at(22, 42), at(23, 10), "silent", 0),
+            ("\n[not late yet] grace is 25 minutes", at(21, 20), at(21, 22), at(21, 50), "silent at +20min", 0)):
+        print(title)
+        reset()
+        BOOT[0], E._started_at = boot, started
+        E._check_missed_runs(now)
+        check(label, len(sent), want)
     reset()
     E._check_missed_runs(at(21, 56))
     check("alarms at +26min", len(sent), 1)
@@ -4202,14 +4195,11 @@ def _part_debug_window():
         check("到期时刻 = 08:40 前 10 分钟",
               modes.debug_until(tmp), "2026-08-23 08:30")
 
-        check("当晚 23:30 仍然生效",
-              modes.debug_active(tmp, at("2026-08-22 23:30")), True)
-        check("跨过午夜 00:10 仍然生效（旧实现在这里失效）",
-              modes.debug_active(tmp, at("2026-08-23 00:10")), True)
-        check("次日 08:29 仍然生效",
-              modes.debug_active(tmp, at("2026-08-23 08:29")), True)
-        check("次日 08:31 已经失效",
-              modes.debug_active(tmp, at("2026-08-23 08:31")), False)
+        for label, when, want in (("当晚 23:30 仍然生效", "2026-08-22 23:30", True),
+                                  ("跨过午夜 00:10 仍然生效（旧实现在这里失效）", "2026-08-23 00:10", True),
+                                  ("次日 08:29 仍然生效", "2026-08-23 08:29", True),
+                                  ("次日 08:31 已经失效", "2026-08-23 08:31", False)):
+            check(label, modes.debug_active(tmp, at(when)), want)
 
         # Set in the morning -> the evening power-on is the next boundary.
         modes.set_debug(tmp, 1, now=at("2026-08-23 10:00"))
