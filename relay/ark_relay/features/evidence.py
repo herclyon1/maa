@@ -590,13 +590,15 @@ def maaend_entries(maaend_dir: Path, window: "tuple[float, float]",
         return []
     regular: list[tuple[Path, str]] = []
     for p in sorted(debug.glob("*"), key=lambda q: q.name):
-        if (p.is_file() and (p.suffix.lower() in (".log", ".dmp") or _is_gzip_log(p))
-                and _maaend_keep(p, window)):
+        if (p.is_file() and not p.is_symlink()
+                and (p.suffix.lower() in (".log", ".dmp") or _is_gzip_log(p)) and _maaend_keep(p, window)):
             regular.append((p, p.name))
-    regular += _walk_sorted(maaend_dir / "config", "config")
-    for sub in sorted(q for q in debug.iterdir() if q.is_dir()):
+    # MXU does not follow links (collect_files_recursively), here and below.
+    regular += [(p, n) for p, n in _walk_sorted(maaend_dir / "config", "config") if not p.is_symlink()]
+    for sub in sorted(q for q in debug.iterdir() if q.is_dir() and not q.is_symlink()):
         regular += [(p, n) for p, n in _walk_sorted(sub, sub.name)
-                    if (p.suffix.lower() in (".log", ".json", ".dmp") or _is_gzip_log(p))
+                    if not p.is_symlink()
+                    and (p.suffix.lower() in (".log", ".json", ".dmp") or _is_gzip_log(p))
                     and _maaend_keep(p, window)]
     images: list[tuple[Path, str]] = []
     # collect_debug_images(dir, prefix, recursive): on_error and vision take the

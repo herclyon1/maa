@@ -1,8 +1,8 @@
 {
- "version": 20261117012319,
- "ref": "relay-20261117012319",
+ "version": 20261117012809,
+ "ref": "relay-20261117012809",
  "files": {
-  "RELEASE-NOTES.md": "484d3a20d33a6f0f24fa512775a02138adb1e01c",
+  "RELEASE-NOTES.md": "d3c1cd5b22b14907ba952fecda007cda5c20a666",
   "app_main.py": "f39c46e3878537a3f7a65de1f44fcf1265fe0666",
   "ark_relay/__init__.py": "220422105081b19504b583592cac9d5a06d03304",
   "ark_relay/__main__.py": "c0a631ddcc33578f69f308469124c1ca716b3171",
@@ -42,7 +42,7 @@
   "ark_relay/features/endfield.py": "ca4d599e7fcceb65336e7f59ce12c83a54cde708",
   "ark_relay/features/errwatch.py": "af708c3ebd514b471bf742fdf0f8dccbe2eb6041",
   "ark_relay/features/essence.py": "e9803474f7c91405d0a637c68ca4888eb15e1b19",
-  "ark_relay/features/evidence.py": "d1e65230e53f20528c90d58e00efe5aaf002fbf3",
+  "ark_relay/features/evidence.py": "bfb889863577ba328d0c017485c717119e026ee3",
   "ark_relay/features/gamelog_errors.txt": "d153c8d1bfefb2a15297b554ef3208dea969e922",
   "ark_relay/features/gameupdate.py": "f85e1ed957240d16abb9888837e7d2c2e023e0cf",
   "ark_relay/features/gameupdate_games.py": "49e1150c69b80b68dfdcbd3b11c47aa4212a562a",
@@ -85,7 +85,7 @@
   "watchdog_guard.py": "30e8a798a30b7404b09772caea11320901f4580d"
  },
  "sha256": {
-  "RELEASE-NOTES.md": "bb1f20d91ddb1afeaa57cca943c52e872067079582ba9d4c585eb02c3b554129",
+  "RELEASE-NOTES.md": "65f1a17ef1d2be44f8a84ac599ef2c95b80498135f977e102359a5709e1b6950",
   "app_main.py": "5f30b2cbaa7058518f593a8a910948f99b0151324fefb3f49354c19e42878134",
   "ark_relay/__init__.py": "ece15ad2c77e3fa50c2de8be81aa2a6c8fb79fb987785c4382b4d52878a86904",
   "ark_relay/__main__.py": "7895467b7d9212cc1ece9932e52e114f5336168f833bbe06828a577b200d2389",
@@ -125,7 +125,7 @@
   "ark_relay/features/endfield.py": "5a92ce8081819e8925821ad96f8a5d02f9ed1be070ae42057b5bd68dcf55be08",
   "ark_relay/features/errwatch.py": "ae9dfe0229ffc71b9a793a9af2cc27310a8f122dbbf536b56654634840877f5a",
   "ark_relay/features/essence.py": "301f8992d445eb7858a5281e91b96943955150755dc00b1c0502314c106cd079",
-  "ark_relay/features/evidence.py": "a03620b10b39d2e02d8165f87a8ef713b98d40dbe6c517ccf2412c084331eddc",
+  "ark_relay/features/evidence.py": "f4002293425fa9bfbc83e4188eaf74c6185f5d8902d391d4ed0264b9693687ac",
   "ark_relay/features/gamelog_errors.txt": "4bc06a3ac0d4c705f4e6eba82614a582d36f8cd83556dc51dde66382ea6d6d80",
   "ark_relay/features/gameupdate.py": "d9a5b61e10c9480d86e2013b58b66b5171c0797fb77facc56910213085388415",
   "ark_relay/features/gameupdate_games.py": "c73e16fbcba50ea23bbbc84a498c7732c591a700dd41882a6f213d15bb1549c3",
