@@ -2775,7 +2775,9 @@ def state_payload(cfg, state_dir: Path) -> dict:
                                   **({"目标词条": r.get("target_stat"), "目标套装": r.get("target_set") or "",
                                       "目标数": r.get("target_count"),
                                       "已出": r.get("已出", 0), "总捡": r.get("总捡", 0),
-                                      "未读出": r.get("未读出", 0)} if r.get("target_count") else {})}
+                                      "未读出": r.get("未读出", 0),
+                                      # an estimate to show, never a reason to stop (echofarm.eta_minutes)
+                                      "参考剩余分钟": r.get("参考剩余分钟")} if r.get("target_count") else {})}
                        if r else {})(
                 __import__("ark_relay.features.echofarm", fromlist=["x"]).current(state_dir)),
             "下次别关机": modes.skip_armed(state_dir),

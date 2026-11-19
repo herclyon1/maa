@@ -353,6 +353,24 @@ def hits(drops: "dict | None", stat: str, sonata: str = "") -> int:
     return drops["套装"].get((stat, sonata), 0) if sonata else drops.get(stat, 0)
 
 
+def eta_minutes(drops: "dict | None", stat: str, sonata: str, target: int,
+                minutes: float) -> "int | None":
+    """For the phone only - never a reason to stop (the owner, 2026-11-20: a time from a
+    probability is not 「完成」): about how many more minutes at this farm's pace. With hits
+    so far, their own rate; before the first, the pickup rate times 1/6 for the stat (and
+    1/2 for a set: the bosses drop two). None when nothing was picked up yet."""
+    if not drops or minutes <= 0:
+        return None
+    got = hits(drops, stat, sonata)
+    left = max(0, target - got)
+    if got:
+        return round(left * minutes / got)
+    if drops["总捡"]:
+        per_hit = minutes / drops["总捡"] * 6 * (2 if sonata else 1)
+        return round(left * per_hit)
+    return None
+
+
 def unread(drops: "dict | None", sonata: str = "") -> int:
     """Drops that might have been the target but could not be read: no stat, or (a set
     named) no set."""
@@ -785,7 +803,10 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
         drops = drops_since(_started_at(rec))
         got = hits(drops, stat, sonata)
         if drops is not None:
-            seen = {"已出": got, "总捡": drops["总捡"], "未读出": unread(drops, sonata)}
+            begun = _started_at(rec)
+            spent = (now - begun).total_seconds() / 60.0 if begun else 0.0
+            seen = {"已出": got, "总捡": drops["总捡"], "未读出": unread(drops, sonata),
+                    "参考剩余分钟": eta_minutes(drops, stat, sonata, target, spent)}
             if any(rec.get(k) != v for k, v in seen.items()):
                 rec.update(seen)
                 _store(cfg.state_dir).set("queues", "echo_farm", rec)

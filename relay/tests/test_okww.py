@@ -6507,6 +6507,14 @@ def _part_echo_farm_main():  # noqa: C901
         check("1 of 2 of the set (two others of another or no set): keeps farming", note, "")
         check("phone counts", {k: echofarm.current(cset.state_dir).get(k) for k in ("已出", "总捡", "未读出")},
               {"已出": 1, "总捡": 4, "未读出": 1})
+        check("a reference time for the phone: 10 minutes for 1 of the set, 1 left -> about 10",
+              echofarm.current(cset.state_dir).get("参考剩余分钟"), 10)
+        check("before the first hit: the pickup rate x 6 for the stat x 2 for the set",
+              echofarm.eta_minutes({"总捡": 4, "未读出": 0, "套装未读出": 0, "套装": {}}, "治疗效果加成", "茜染怀想之花", 2, 8.0), 48)
+        check("nothing picked up yet: no estimate", echofarm.eta_minutes({"总捡": 0, "未读出": 0, "套装未读出": 0, "套装": {}},
+                                                                     "治疗效果加成", "", 30, 8.0), None)
+        check("the estimate never ends a farm: 0 minutes left is not 刷满", echofarm.eta_minutes(
+            {"总捡": 60, "未读出": 0, "套装未读出": 0, "套装": {}}, "治疗效果加成", "", 1, 600.0) is not None, True)
         _dl.write_text(_dl.read_text(encoding="utf-8") + drop2("04:12", "治疗效果加成", "茜染怀想之花"), encoding="utf-8")
         note, failed = echofarm.tick_result(cset, datetime(2026, 9, 9, 4, 13, tzinfo=SERVER_TZ))
         check("2 of 2 of the set: done", ("刷满了" in note, "茜染怀想之花·治疗效果加成" in note, "已出 2/2" in note, failed),
