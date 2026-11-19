@@ -34,6 +34,12 @@ uncommitted changes, anything a running process has open or as its cwd, ~/.claud
 (a mount of his phone), simulators (only `xcrun simctl delete unavailable`), and anything no
 rule matches. Worktrees go only through `git worktree remove` (never --force); branches stay.
 
+One rule cleans what Chrome, not a session, leaves: the code-signing clones of Google Chrome.app
+under <user dir>/X/com.google.Chrome.code_sign_clone/ (11-19: 30 of them, the disk at 27 GiB).
+A clone goes once idle 24 h (mtime and ctime) and nothing in it is open; while Chrome runs and
+lsof shows neither a clone nor the app's own binary open, every clone stays, since where it runs
+from is then unknown.
+
 Test hooks (relay/tests/test_disk_tidy.py): HOME, DISK_TIDY_TMP_ROOT, DISK_TIDY_TMPDIR,
 DISK_TIDY_BREW_PREFIX, DISK_TIDY_OPEN_PATHS (file of in-use paths instead of lsof),
 DISK_TIDY_PROCS (file of process names and command lines instead of ps), DISK_TIDY_FREE_BYTES,
@@ -131,6 +137,15 @@ DD_PATH_ARG = re.compile(r"""-derivedDataPath["',\s]+["']?([^"'\s,\]\)]+)""")
 # Measured 10-18 22:5x: `find` over ~/Money/styl-work (no .git / node_modules / *.noindex) took
 # 4.4 s; the deepest DerivedData folder in the 10-18 inventory sat 5 levels below it.
 MONEY_DD_DEPTH = 8
+# Chrome's code-signing clones (11-19 10:4x, free space 27 GiB): Chrome clones its own app bundle
+# into <user dir>/X/com.google.Chrome.code_sign_clone/code_sign_clone.XXXXXX and leaves the old
+# ones behind. There were 30, 11-07 to 11-19; du said 62 GB but APFS clones share blocks: removing
+# 29 of them took df from 27 to 29 GiB. lsof showed one open: the running Chrome's own binary
+# inside code_sign_clone.RYW2bO (11-15). ps names Chrome's main process "Google Chrome". A Chrome
+# started straight from the app (no clone) holds CHROME_APP_BIN open instead.
+CHROME_CLONE_PREFIX = "code_sign_clone."
+CHROME_PROCS = {"Google Chrome"}
+CHROME_APP_BIN = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 
 
@@ -254,6 +269,8 @@ class Env:
         self.sessions, self.projects = h / ".claude/sessions", h / ".claude/projects"
         self.hooks, self.ref_tools = h / ".claude/hooks", h / "Money/styl-work/remote-ref/tools"
         self.log, self.lock = h / "Library/Logs/disk-tidy.log", h / "Library/Logs/disk-tidy.lock"
+        # tmpdir is the user's T dir (/private/var/folders/xx/yyy/T); Chrome's clones sit in X beside it.
+        self.chrome_clones = self.tmpdir.parent / "X" / "com.google.Chrome.code_sign_clone"
 
     @classmethod
     def from_environ(cls) -> "Env":
@@ -608,6 +625,8 @@ def zone_ok(env: Env, ctx: Ctx, p: str) -> bool:
     for root in child_of:
         if within(p, root) and p != str(root):
             return True
+    if os.path.dirname(p) == str(env.chrome_clones) and os.path.basename(p).startswith(CHROME_CLONE_PREFIX):
+        return True
     if within(p, env.tmpdir) and os.path.basename(p).startswith("precheck-"):
         return True
     if within(p, env.tmpdir) and any(within(p, o) for o in env.known_outputs()):
@@ -1204,11 +1223,42 @@ def rule_unavailable_simulators(env: Env, ctx: Ctx) -> list[Item]:
                  cmd=["xcrun", "simctl", "delete", "unavailable"])]
 
 
+def rule_chrome_sign_clones(env: Env, ctx: Ctx) -> list[Item]:
+    """Chrome's code-signing clones (CHROME_CLONE_PREFIX): one goes once nothing in it changed
+    within 24 h (mtime or ctime: a fresh clone keeps the app's old mtimes) and no process has
+    anything in it open. The running Chrome holds its own binary open, so lsof keeps its clone.
+    If Chrome may be running (ps names it, or ps gave nothing) but lsof shows neither a clone nor
+    CHROME_APP_BIN open, where it runs from is unknown and every clone stays. The guard runs before
+    the idle walk, so the running Chrome's 2 GB bundle is not walked every hour. Sizes are upper
+    bounds: the clones share blocks with the app and each other."""
+    rule = "chrome-sign-clone"
+    try:
+        dirs = sorted(d for d in env.chrome_clones.iterdir()
+                      if d.name.startswith(CHROME_CLONE_PREFIX) and d.is_dir() and not d.is_symlink())
+    except OSError:
+        return []
+    # Where the running Chrome runs from must be seen: a clone held open, or the app's own binary.
+    seen = ctx.in_use is not None and (any(sorted_hit(ctx.in_use, str(d)) for d in dirs)
+                                       or sorted_hit(ctx.in_use, CHROME_APP_BIN))
+    chrome_up = not ctx.procs or bool(CHROME_PROCS & ctx.procs)     # ps failed = maybe running
+    blind = chrome_up and ctx.in_use is not None and not seen
+    cut = env.cutoff(STALE_HOURS)
+    items = []
+    for d in dirs:
+        p = str(d)
+        why = ("Chrome may be running but neither a clone nor the app shows open, so where it runs from "
+               "is unknown" if blind else None) \
+            or guard(env, ctx, p) \
+            or (f"a file in it changed within {STALE_HOURS} h" if changed_since(p, cut, ctime=True) else None)
+        items.append(keep(rule, p, why) if why else Item(rule, p, upper_bound=True))
+    return items
+
+
 NORMAL_RULES = [rule_merged_worktrees, rule_stale_registrations, rule_derived_data, rule_old_gradle,
                 rule_gradle_transforms, rule_old_swift_toolchains, rule_dead_session_dirs,
                 rule_live_session_scratch, rule_known_build_outputs, rule_money_derived_data,
                 rule_uv_cache, rule_brew_cache, rule_go_cache, rule_pyright_cache,
-                rule_unavailable_simulators]
+                rule_unavailable_simulators, rule_chrome_sign_clones]
 FLOOR_RULES = [rule_merged_worktrees_floor, rule_derived_data_floor, rule_shared_derived_caches,
                rule_idle_build_outputs, rule_live_session_scratch_floor, rule_gradle_transforms_floor,
                rule_money_derived_data_floor]
@@ -1276,7 +1326,8 @@ def log_line(env: Env, it: Item, size_k: int | None) -> None:
     env.log.parent.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     with env.log.open("a", encoding="utf-8") as fh:
-        fh.write(f"{stamp}\t{it.rule}\t{it.path}\t{'' if size_k is None else size_k}K\n")
+        fh.write(f"{stamp}\t{it.rule}\t{it.path}\t{'<=' if it.upper_bound and size_k is not None else ''}"
+                 f"{'' if size_k is None else size_k}K\n")
 
 
 def measure(items: list[Item]) -> None:
@@ -1318,9 +1369,11 @@ def run_pass(env: Env, ctx: Ctx, rules: list, apply: bool, seen: set[str],
                 print(f"FAILED        {it.rule:<22} {size:>9}  {what}  -- {err}")
                 continue
             freed = (before or 0) - (du_k(it.path) or 0) if it.upper_bound else it.size_k
-            it.size_k, it.upper_bound = freed, False
+            # A cache tool's freed size is measured exactly; a removed tree of clones that share
+            # blocks (chrome-sign-clone) freed at most what du counted.
+            it.size_k, it.upper_bound = freed, it.upper_bound and it.action == "rm"
             log_line(env, it, freed)
-            print(f"removed       {it.rule:<22} {human(freed):>9}  {what}")
+            print(f"removed       {it.rule:<22} {('<=' if it.upper_bound else '') + human(freed):>9}  {what}")
         t = totals.setdefault(it.rule, [0, 0, 0])
         t[0] += 1
         t[1] += it.size_k or 0

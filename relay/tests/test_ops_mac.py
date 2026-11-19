@@ -33,6 +33,7 @@ def _part_disk_tidy():  # noqa: C901
     HOME = BASE / "home"
     TMP_ROOT = BASE / "claude-501"
     TDIR = BASE / "T"
+    CLONES = BASE / "X/com.google.Chrome.code_sign_clone"
     BREW = BASE / "brew"
     STUBS = BASE / "bin"
     CALLS = BASE / "calls.log"
@@ -221,6 +222,11 @@ def _part_disk_tidy():  # noqa: C901
                   "Money/styl-work/ds-relay-tree", "Money/other-tree"):
             age_wt(HOME / p, 72)
         write(dd / "Proj-new/Build/x", "fresh")
+        # Chrome's code-signing clones: X beside the T dir (DISK_TIDY_TMPDIR = BASE/T).
+        for n in ("code_sign_clone.Old1", "code_sign_clone.Open1", "other"):
+            write(CLONES / n / "Google Chrome.app.bundle/Contents/MacOS/Google Chrome")
+            age(CLONES / n, 72)
+        write(CLONES / "code_sign_clone.New1/Google Chrome.app.bundle/Contents/MacOS/Google Chrome")
 
         sp = proj / U["live"] / "scratchpad"
         for name in ("sp-old", "sp-open", "sp-journal", "sp-prompt", "sp-longrun", "sp-plain", "sp-gitlink",
@@ -254,7 +260,8 @@ if [ "{tool}" = xcrun ] && [ "$3" = "-j" ]; then
 fi
 """)
             os.chmod(STUBS / tool, 0o755)
-        write(OPEN, f"{WT / 'wt-cwd' / 'sub'}\n{proj / U['live'] / 'scratchpad/sp-open/deep/f.txt'}\n")
+        write(OPEN, f"{WT / 'wt-cwd' / 'sub'}\n{proj / U['live'] / 'scratchpad/sp-open/deep/f.txt'}\n"
+                    f"{CLONES / 'code_sign_clone.Open1/Google Chrome.app.bundle/Contents/MacOS/Google Chrome'}\n")
         write(PROCS, "launchd\nzsh\n")
 
 
@@ -303,7 +310,8 @@ fi
             proj / U["dead"], TDIR / "precheck-abc", HOME / "Claude/transit-app/build",
             HOME / "Money/styl-work/remote-ref/tools/bugexam/xcr-dd", HOME / ".cache/pyright-python",
             SP / "sp-old", SP / "big.bin", HOME / ".gradle/caches/9.8.1/transforms",
-            HOME / "Money/styl-work/evidence/x/dd", HOME / "Money/styl-work/evidence/deep/a/b/dd"]
+            HOME / "Money/styl-work/evidence/x/dd", HOME / "Money/styl-work/evidence/deep/a/b/dd",
+            CLONES / "code_sign_clone.Old1"]
     KEPT = {
         WT / "wt-new": "changed within 24",
         WT / "wt-dirty": "uncommitted changes",
@@ -340,11 +348,14 @@ fi
         HOME / "Money/styl-work/remote-ref/tools/axd-dd": "-derivedDataPath .../axd-dd",
         HOME / ".gradle/caches/9.8.1": "version in use",
         HOME / "Library/Developer/Toolchains/swift-6.4.1-RELEASE.xctoolchain": "in use",
+        CLONES / "code_sign_clone.Open1": "running process",
+        CLONES / "code_sign_clone.New1": "changed within 24",
     }
     UNTOUCHED = [HOME / "Money/styl-work/BOARD/OPEN.md", HOME / "Documents/mine.txt", TMP_ROOT / "disk-tidy",
                  HOME / ".gradle/caches/modules-2", dd / "ModuleCache.noindex", SP, SP / "small.log",
                  proj / U["live"] / "tasks", HOME / "Money/styl-work/evidence/y/dd",
-                 HOME / "Money/styl-work/evidence/x/a.png", HOME / "Money/styl-work/evidence/x"]
+                 HOME / "Money/styl-work/evidence/x/a.png", HOME / "Money/styl-work/evidence/x",
+                 CLONES, CLONES / "other"]
 
     print("[dry run: decides everything, removes nothing, logs nothing]")
     r = tool()
@@ -386,7 +397,9 @@ fi
     logged = {ln.split("\t")[2] for ln in log}
     check("one log line per removed path", sorted(str(p) for p in GONE if str(p) not in logged), [])
     check("log line shape: time, rule, path, size",
-          all(re.match(r"^\d{4}-\d\d-\d\dT[\d:]+[+-]\d{4}\t[a-z0-9-]+\t\S.*\t\d*K$", ln) for ln in log), True)
+          all(re.match(r"^\d{4}-\d\d-\d\dT[\d:]+[+-]\d{4}\t[a-z0-9-]+\t\S.*\t(?:<=)?\d*K$", ln) for ln in log), True)
+    check("a removed clone logs its size as an upper bound (blocks shared with the app)",
+          [ln.split("\t")[3][:2] for ln in log if ln.split("\t")[1] == "chrome-sign-clone"], ["<="])
     check("log lines == removals", len(log), sum(1 for v in res.values() if v[0] == "removed"))
 
     print("[below the floor: build outputs in kept trees, today's DerivedData, shared caches]")
@@ -438,7 +451,9 @@ fi
                     (HOME / "Library/Containers/com.kurogame.mingchao", "containers"),
                     (proj / "link-to-money", "symlink"),
                     (env.dd, "not in a place"),
-                    (TMP_ROOT, "not in a place")):
+                    (TMP_ROOT, "not in a place"),
+                    (CLONES, "not in a place"),
+                    (CLONES / "other", "not in a place")):
         got = dt.guard(env, ctx, str(p)) or ""
         check(f"guard refuses {p.relative_to(BASE)}", want in got, True)
     check("guard allows a dead session dir", dt.guard(env, ctx, str(proj / U["cwd"])), None)
@@ -472,6 +487,30 @@ fi
         sleeper.kill()
         sleeper.wait()
     ctx.in_use = saved
+
+    print("[chrome clones: while Chrome runs, the clone it runs from must show open]")
+    old2 = CLONES / "code_sign_clone.Old2"
+    write(old2 / "Google Chrome.app.bundle/Contents/MacOS/Google Chrome")
+    age(old2, 72, NOW)
+
+    def clone_keep(procs, in_use):
+        ctx.procs, ctx.in_use = procs, sorted(in_use)
+        return {i.path: i.keep for i in dt.rule_chrome_sign_clones(env, ctx)}.get(str(old2), "-")
+
+    no_clone_open = [x for x in saved if "code_sign_clone" not in x]
+    check("Chrome running, no clone shows open: an idle clone stays",
+          "unknown" in (clone_keep({"launchd", "Google Chrome"}, no_clone_open) or ""), True)
+    check("Chrome not running, nothing open: the idle clone goes", clone_keep({"launchd"}, no_clone_open), None)
+    check("Chrome running from this clone: it stays",
+          "running process" in (clone_keep({"Google Chrome"}, no_clone_open + [str(
+              old2 / "Google Chrome.app.bundle/Contents/MacOS/Google Chrome")]) or ""), True)
+    check("Chrome running from another clone: this idle one goes",
+          clone_keep({"Google Chrome"}, saved), None)
+    check("Chrome running straight from the app (no clone): the idle clone goes",
+          clone_keep({"Google Chrome"}, no_clone_open + [dt.CHROME_APP_BIN]), None)
+    check("ps gave nothing and no clone shows open: the idle clone stays",
+          "unknown" in (clone_keep(set(), no_clone_open) or ""), True)
+    ctx.procs, ctx.in_use = dt.proc_names(), saved
     nobrew = dt.Env(HOME, TMP_ROOT, TDIR, BASE / "no-brew", NOW)
     write(HOME / ".gradle/caches/9.7.0/f")
     age(HOME / ".gradle/caches/9.7.0", 72, NOW)
