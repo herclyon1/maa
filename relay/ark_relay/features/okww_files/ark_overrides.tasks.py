@@ -275,12 +275,15 @@ def farming_echoes() -> bool:
 # The 4-cost main stats as the game writes them. Longest first where one is the start of
 # another (暴击伤害 before 暴击), though matching is whole-string, never a substring.
 ECHO_STATS = ("暴击伤害", "暴击", "治疗效果加成", "攻击", "生命", "防御")
-# The pickup toast's second row, the main stat (1920x1080, 2026-11-20 toasts of 千傀重楼:
-# row 1 the echo's name at y 534-552, row 2 the stat at 565-578, row 3 the fixed 攻击 at
-# 589-604). The box (y 557-583) keeps about 5 px off rows 1 and 3, starts right of the row's
-# icon and is wide enough for the longest stat, 治疗效果加成 (nine real toasts read whole
-# at x2 0.250, Gemini B's bench).
-ECHO_STAT_BOX = (0.085, 0.516, 0.250, 0.540)
+# The pickup toast (1920x1080, 2026-11-20 toasts of 千傀重楼): row 1 the echo's name at y 534-552,
+# row 2 the main stat at 565-578, row 3 the fixed 攻击 at 589-604; each row starts with a small
+# icon at x 155-171, its text from x 180. Read as one card, the three rows' text right of the
+# icons (x 175-422, y 527-610), and the stat taken from the box whose middle lies in row 2's
+# band. A box just around row 2 (26 px high, cutting the icon in half at x 163) read 治疗效果加成
+# as 「台疗效果加成」 on a real toast (B's bench, 07:45:29 Beijing), while the whole card read it
+# whole at 1.0 in all six stats over fourteen pickups; the band keeps rows 1 and 3 out.
+ECHO_CARD_BOX = (0.091, 0.488, 0.220, 0.565)
+ECHO_STAT_ROW = (0.516, 0.540)
 # When the toast is up is measured from the 「farm echo …」 line logged right before
 # incr_drop: not at +0.3 s, steady from +1.2 s to +2.4 s, there at +1.5 s in nine of nine
 # (B's bench). Looked at from the start, every 0.3 s, ten looks (about 3 s): the first
@@ -379,10 +382,19 @@ def _echo_drop_stat(task):
                 if stop(exc):
                     raise
             frame = getattr(task, "frame", None)
-            found = task.ocr(box=task.box_of_screen(*ECHO_STAT_BOX)) or []
-            read = " ".join(str(getattr(b, "name", b)).strip() for b in found).strip()
+            found = task.ocr(box=task.box_of_screen(*ECHO_CARD_BOX)) or []
+            # Boxes come back in frame pixels (ok task._ocr_boxes adds the box's x / y). Row 2 is
+            # the boxes whose middle is in its band; a box placed nowhere (no y) is not row 2.
+            top, bottom = task.height_of_screen(ECHO_STAT_ROW[0]), task.height_of_screen(ECHO_STAT_ROW[1])
+            row = [b for b in found if getattr(b, "y", None) is not None and getattr(b, "height", None) is not None
+                   and top <= b.y + b.height / 2 <= bottom]
+            names = [str(getattr(b, "name", b)).strip() for b in row]
+            read = " ".join(names).strip()
             raw = read or raw          # the last thing read, kept when the toast has gone
-            stat = echo_stat(read)
+            # Each box on its own: one that reads as a stat is it, a stray box beside it does not
+            # spoil it; two different stats in the row are unread.
+            got = {st for st in (echo_stat(n) for n in names) if st}
+            stat = got.pop() if len(got) == 1 else None
             if stat or looks >= _TOAST_LOOKS:
                 break
             task.sleep(_TOAST_STEP)

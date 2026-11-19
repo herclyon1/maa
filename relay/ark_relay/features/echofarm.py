@@ -302,9 +302,11 @@ def _lines_since(started: "datetime | None", only: str = "") -> "list[tuple[date
     f = _okww_log()
     if started is None or not f:
         return None
+    # The newest file and its own rotations only, as quiet_minutes reads them.
+    same = re.compile(re.escape(f.stem) + r"\.\d{4}-\d{2}-\d{2}" + re.escape(f.suffix) + "$")
     try:
         files = {f} | {q for q in f.parent.glob("*.log*")
-                       if q.is_file() and q.stat().st_mtime >= started.timestamp()}
+                       if same.match(q.name) and q.is_file() and q.stat().st_mtime >= started.timestamp()}
         out = []
         for q in files:
             for line in q.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -608,7 +610,7 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
     # and [] or False would quietly mean 「by time」.
     if target_count is None or target_count == "":
         target_count = 0
-    elif isinstance(target_count, str) and target_count.strip().isdigit():
+    elif isinstance(target_count, str) and target_count.strip().isascii() and target_count.strip().isdigit():
         target_count = int(target_count.strip())
     elif type(target_count) is not int:
         return False, f"「刷几个」要是整数，收到 {target_count!r}"
@@ -674,13 +676,12 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
         atomic_write_text(path, json.dumps(saved, ensure_ascii=False, indent=1))
         return False, f"{why}；配置已还原"
 
+    begun = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     _store(cfg.state_dir).set("queues", "echo_farm", {
         "boss": boss, "name": name or f"第 {boss} 个", "weekly": weekly,
         "until": until.strftime("%Y-%m-%d %H:%M"),
-        "started": (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-                   .strftime("%Y-%m-%d %H:%M"),
-        "started_s": (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-                     .strftime("%Y-%m-%d %H:%M:%S"),
+        "started": begun.strftime("%Y-%m-%d %H:%M"),
+        "started_s": begun.strftime("%Y-%m-%d %H:%M:%S"),       # the same moment, to the second
         "saved": saved,
         **({"target_stat": target_stat, "target_count": target_count, "target_set": target_set}
            if target_count else {}),

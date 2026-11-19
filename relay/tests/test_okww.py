@@ -1975,11 +1975,17 @@ def _part_okww_claim_readback():  # noqa: C901
         tt.next_frame = nf
 
         def ocr(box=None, **kw):
-            if box == ns["ECHO_STAT_BOX"][:2]:
-                return tt.toast.pop(0) if tt.toast else []
+            # The card's boxes in frame pixels: a plain string is a box on row 2 (y 565, 13 high).
+            if box == ns["ECHO_CARD_BOX"][:2]:
+                got = tt.toast.pop(0) if tt.toast else []
+                return [b if not isinstance(b, str) else types.SimpleNamespace(name=b, x=181, y=565, width=90, height=13)
+                        for b in got]
             return []
         tt.ocr = ocr
         return tt
+
+    def box(name, y, x=181, h=14):
+        return types.SimpleNamespace(name=name, x=x, y=y, width=90, height=h)
 
     ns["NO_CLAIM"] = str(_flag)
     tt = toast_task([[], ["治疗效果加成"]])
@@ -1999,6 +2005,30 @@ def _part_okww_claim_readback():  # noqa: C901
     tt = toast_task([["治疗效果"]] * 10)
     tt.incr_drop(True)
     check("a cut-off stat stays unknown", "stat=unknown" in [m for m in tt.logs if m.startswith("刷声骸掉落：")][0], True)
+    print("\n[the whole card is read; the stat is the box in row 2's band (B's real toast 07:45:29: a 26 px strip read 台疗效果加成)]")
+    _card = [box("4千傀重楼", 534), box("治疗效果加成", 565), box("攻击", 590)]
+    tt = toast_task([_card])
+    tt.incr_drop(True)
+    check("three rows: row 2 is the stat, not row 3's fixed 攻击",
+          "stat=治疗效果加成" in [m for m in tt.logs if m.startswith("刷声骸掉落：")][0], True)
+    tt = toast_task([[box("4千傀重楼", 534), box("攻击", 565), box("攻击", 590)]])
+    tt.incr_drop(True)
+    check("a 攻击 main stat is read off row 2 (row 3 is 攻击 too)", "stat=攻击" in " ".join(tt.logs), True)
+    tt = toast_task([[box("暴击伤害", 565), box("2脚本", 565, x=361)]])
+    tt.incr_drop(True)
+    check("a stray box beside the stat in the band does not spoil it", "stat=暴击伤害" in " ".join(tt.logs), True)
+    tt = toast_task([[box("台疗效果加成", 565)]] * 10)
+    tt.incr_drop(True)
+    check("台疗效果加成 is unread, not a guess", "stat=unknown" in " ".join(tt.logs), True)
+    tt = toast_task([[box("生命", 565), box("防御", 568, x=300)]] * 10)
+    tt.incr_drop(True)
+    check("two different stats in the band: unread", "stat=unknown" in " ".join(tt.logs), True)
+    tt = toast_task([[types.SimpleNamespace(name="生命")]] * 10)
+    tt.incr_drop(True)
+    check("a box with no place is not row 2", "stat=unknown" in " ".join(tt.logs), True)
+    tt = toast_task([[box("生命", 534), box("生命", 595)]] * 10)
+    tt.incr_drop(True)
+    check("a stat on row 1 or row 3 is not row 2's", "stat=unknown" in " ".join(tt.logs), True)
     tt = toast_task([["生命"]])
     tt.incr_drop(False)
     check("nothing picked up: no toast read, no line", (tt.frames, [m for m in tt.logs if m.startswith("刷声骸掉落：")]), (0, []))
@@ -6486,7 +6516,7 @@ def _part_echo_farm_main():  # noqa: C901
         check("…and at the backstop says the count is unknown", ("目标未满" in note, "个数没读到" in note), (True, True))
         _wbw2._okww_log = lambda: _dl      # the blocks above left the log unreadable on purpose
         print("\n[a bad count is refused, never read as something else (blind review 2026-11-20)]")
-        for bad in (True, 3.9, -1, [], {}, "3.0", False):
+        for bad in (True, 3.9, -1, [], {}, "3.0", False, "²"):
             cb2 = fresh()
             okb2, msgb2 = echofarm.start(cb2, 2, "08:30", now=NOW, weekly=True, target_stat="治疗效果加成", target_count=bad)
             check(f"target_count {bad!r} refused", (okb2, cfg_now(cb2) == ORIGINAL), (False, True))
