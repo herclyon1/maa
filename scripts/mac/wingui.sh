@@ -28,7 +28,35 @@
 #
 # 发键一律先 SetForegroundWindow：鸣潮失焦时照常渲染但**不收输入**，
 # 这正是当天 `target_enemy failed` 的真因。
+#
+# 2026-11-19 夜里一次进游戏看界面踩了四个坑（时间都是游戏机的北京时间），这里都堵上了：
+#  · **刷声骸在跑时不许动画面。** 那晚有人在刷的同时进游戏看界面，OK-WW 停了下来；
+#    22:32:59 中继照规矩判「OK-WW 停了 6 分钟」，把它重开、拉回副本，还报了警。
+#    除了只读的 shot，所有动作先读游戏机中继状态里的 queues.echo_farm：在刷就拒绝
+#    （退出码 7），并打出先停、查完再续刷的两条 order-now.sh 原样命令。
+#    确实要边刷边动，显式加 ARK_GUI_DURING_FARM=1。
+#  · **launch wuwa 要带画质包参数。** 不带 `-krqlv=` 时 Wuthering Waves.exe 起不来游戏，
+#    22:39、22:43 两次都这样，工具却照样回「已启动」。现在照 OK-WW 的读法
+#    （它的 src/game_launcher.py）读启动器选的包，读不到用 hd，和 OK-WW 一样。
+#    **别直接起 Client-Win64-Shipping.exe**：22:41 这样起，游戏弹
+#    「The Game has crashed and will close / kuro: Use launcher to start game!」。现在直接拒绝。
+#  · **launch 等结果的时间要够。** 远端起完游戏要等它出窗口，本地原来只按 35 秒等，
+#    每次都报「没有产出结果」（退出码 3）。现在两头用同一个数（WUWA_LAUNCH_MAX）。
+#    launch wuwa 等到游戏窗口真出来才算成；残留的崩溃弹窗先关掉；进程在但窗口是崩溃
+#    弹窗的不算「已在运行」。
+#  · **远端报了 ERR 就不许回 0。** 动作没做成（找不到进程、窗口没出来……）时退出码 6，
+#    截图照样取回。
+#
+# 每次调用都在 ~/.cache/ark-relay/mac_actions.log 留一行（lib/mac-action-log.sh）。
 set -euo pipefail
+# Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
+# (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
+# alone, as the tests make, still runs.)
+ARK_ACTION_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/mac-action-log.sh"
+if [ -f "$ARK_ACTION_LIB" ]; then
+  # shellcheck source=lib/mac-action-log.sh
+  . "$ARK_ACTION_LIB"; ark_action_log ${1+"$@"}
+fi
 
 HOST="${ARK_HOST:?请先 export ARK_HOST=<游戏机 Tailscale IP>}"
 USER_AT="Administrator@${HOST}"
@@ -56,6 +84,7 @@ public class ArkW {
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, UIntPtr e);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
   [DllImport("user32.dll")] public static extern uint MapVirtualKey(uint code, uint mapType);
+  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
 }
 "@
 $log = @()
@@ -83,25 +112,119 @@ if ($cmd -like 'launch*') {
   if ($what -eq 'wuwa') { $exe = 'D:\Wuthering Waves Game\Wuthering Waves.exe' }
   else { $exe = $what }
 
-  if ($exe -notmatch '^[A-Za-z]:\\') {
+  if ($exe -match '(^|\\)Client-Win64-Shipping\.exe$') {
+    # 2026-11-19 22:41: started directly, the game shows 「The Game has crashed and will
+    # close / Fatal error ... kuro: Use launcher to start game!」 and goes away.
+    $log += "ERR 别直接起 Client-Win64-Shipping.exe：游戏会弹「Use launcher to start game」然后崩。用 launch wuwa"
+  } elseif ($exe -notmatch '^[A-Za-z]:\\') {
     $log += "ERR 不认识 '$what'。只接受别名 wuwa 或完整 exe 路径。"
   } elseif (-not (Test-Path $exe)) {
     $log += "ERR 找不到 $exe —— 路径不对就去核对，别硬猜。"
+  } elseif ([IO.Path]::GetFileNameWithoutExtension($exe) -eq 'Wuthering Waves') {
+    # 鸣潮单独走：进程名和 exe 名不一样（Client-Win64-Shipping），要带画质包参数，
+    # 要等游戏窗口真的出来才算起好了。
+    $crash = '^The Game has crashed'      # the box's title, 2026-11-19 22:41 screenshot
+    # 1. 残留的崩溃弹窗先关掉。22:41 那个框到 22:46 还在屏幕上，那时游戏进程早没了，
+    #    框是别的进程挂着的；按「确定」等于发 WM_CLOSE。挂框的若是游戏本身，框关了它
+    #    还不退，就结束它：框上写着 will close，它已经没法玩了。
+    $boxes = @(Get-Process -ErrorAction SilentlyContinue |
+               Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -match $crash })
+    foreach ($b in $boxes) {
+      [ArkW]::PostMessage($b.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null  # WM_CLOSE
+      $log += "关掉残留的崩溃弹窗「$($b.MainWindowTitle)」（$($b.ProcessName) pid $($b.Id)）"
+    }
+    if ($boxes.Count -gt 0) {
+      Start-Sleep -Seconds 3
+      foreach ($b in $boxes) {
+        $b.Refresh()
+        if (-not $b.HasExited -and $b.ProcessName -eq 'Client-Win64-Shipping') {
+          Stop-Process -Id $b.Id -Force -ErrorAction SilentlyContinue
+          $log += "崩掉的游戏进程 pid $($b.Id) 框关了还不退，已结束"
+          Start-Sleep -Seconds 2
+        } elseif (-not $b.HasExited) {
+          $log += "WARN 挂崩溃弹窗的 $($b.ProcessName) pid $($b.Id) 框关了还在，没动它"
+        }
+      }
+    }
+    # 2. 画质包：照 OK-WW src/game_launcher.py 的读法。先读启动器界面状态
+    #    （<游戏目录的上一级>\kr_game_cache\platform_ui_state.bin，Base64 后每字节异或 0x63），
+    #    再看游戏目录下 launcherDownloadConfig.json 是否只有一个包；都不行用 hd（OK-WW 也是）。
+    #    调用方自己用 `-- -krqlv=xx` 给了就照用。
+    if (-not ($extra -match '^-krqlv=')) {
+      $pkg = $null; $how = ''
+      $dir = Split-Path $exe
+      $ui = Join-Path (Split-Path $dir) 'kr_game_cache\platform_ui_state.bin'
+      try {
+        if (Test-Path -LiteralPath $ui) {
+          $raw = [Convert]::FromBase64String((Get-Content -LiteralPath $ui -Raw).Trim())
+          $plain = [byte[]]@($raw | ForEach-Object { $_ -bxor 0x63 })
+          $st = [Text.Encoding]::UTF8.GetString($plain).TrimStart([char]0xFEFF) | ConvertFrom-Json
+          $active = $st.activeGameScope
+          if ($active -and $active.gameIdentity -eq 'Aki' -and "$($active.bundleName)".ToLower() -in 'sd','hd','uhd') {
+            $pkg = "$($active.bundleName)".ToLower(); $how = '启动器当前选的'
+          } elseif ($st.recentGames -and "$($st.recentGames.Aki.bundleName)".ToLower() -in 'sd','hd','uhd') {
+            $pkg = "$($st.recentGames.Aki.bundleName)".ToLower(); $how = '启动器最近一次的'
+          }
+        }
+      } catch { $log += "WARN 启动器界面状态读不出：$($_.Exception.Message)" }
+      if (-not $pkg) {
+        try {
+          $man = Get-Content -LiteralPath (Join-Path $dir 'launcherDownloadConfig.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+          $have = @($man.bundles.PSObject.Properties.Name | ForEach-Object { $_.ToLower() } |
+                    Where-Object { $_ -in 'sd','hd','uhd' } | Select-Object -Unique)
+          if ($have.Count -eq 1) { $pkg = $have[0]; $how = '下载清单里唯一的' }
+        } catch { $log += "WARN launcherDownloadConfig.json 读不出：$($_.Exception.Message)" }
+      }
+      if (-not $pkg) { $pkg = 'hd'; $how = 'WARN 哪儿都读不到，照 OK-WW 的做法用' }
+      $log += "画质包 $pkg（$how）"
+      $extra = @("-krqlv=$pkg") + $extra
+    }
+    # 3. 已在运行＝游戏进程在、而且它的窗口不是崩溃弹窗。进程在但还没窗口，
+    #    多半是别人刚起的、正在启动：不重复起，等它出窗口。
+    $game = @(Get-Process -Name 'Client-Win64-Shipping' -ErrorAction SilentlyContinue)
+    $up = $game | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -notmatch $crash } | Select-Object -First 1
+    $t0 = Get-Date
+    if ($up) {
+      $log += "Client-Win64-Shipping 已在运行（窗口「$($up.MainWindowTitle)」），没有重复启动"
+    } else {
+      if ($game.Count -gt 0) {
+        $log += "Client-Win64-Shipping 进程在（pid $($game[0].Id)）但还没有窗口，不重复启动，等它出窗口"
+      } else {
+        Start-Process -FilePath $exe -ArgumentList $extra -WorkingDirectory (Split-Path $exe)
+        $log += "已启动 $exe [" + ($extra -join ' ') + "]，最多等 __WUWA_LAUNCH_MAX__ 秒游戏窗口"
+      }
+      $win = $null; $box = $null
+      while (((Get-Date) - $t0).TotalSeconds -lt __WUWA_LAUNCH_MAX__) {
+        Start-Sleep -Seconds 2
+        $win = Get-Process -Name 'Client-Win64-Shipping' -ErrorAction SilentlyContinue |
+               Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -notmatch $crash } | Select-Object -First 1
+        $box = Get-Process -ErrorAction SilentlyContinue |
+               Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -match $crash } | Select-Object -First 1
+        if ($win -or $box) { break }
+      }
+      $secs = [int]((Get-Date) - $t0).TotalSeconds
+      if ($box) {
+        $log += "ERR 启动后 $secs 秒弹了崩溃框「$($box.MainWindowTitle)」（$($box.ProcessName)），游戏没起来。截图里有框上的原文"
+      } elseif ($win) {
+        $log += "游戏窗口出来了（启动后 $secs 秒，「$($win.MainWindowTitle)」），再等 8 秒截图"
+        Start-Sleep -Seconds 8
+      } else {
+        $log += "ERR 等了 $secs 秒游戏窗口也没出来，游戏没起来（别当成功）"
+      }
+    }
   } else {
     $proc = [IO.Path]::GetFileNameWithoutExtension($exe)
-    # 鸣潮的进程名和 exe 名不一样，单独映射；其余按 exe 名判断。
-    if ($proc -eq 'Wuthering Waves') { $proc = 'Client-Win64-Shipping' }
     if (Get-Process -Name $proc -ErrorAction SilentlyContinue) {
       $log += "$proc 已在运行，没有重复启动"
     } else {
       if ($extra.Count -gt 0) {
         Start-Process -FilePath $exe -ArgumentList $extra -WorkingDirectory (Split-Path $exe)
-        $log += "已启动 $exe [" + ($extra -join ' ') + "]，等 45 秒"
+        $log += "已启动 $exe [" + ($extra -join ' ') + "]，等 __LAUNCH_WAIT__ 秒"
       } else {
         Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe)
-        $log += "已启动 $exe，等 45 秒"
+        $log += "已启动 $exe，等 __LAUNCH_WAIT__ 秒"
       }
-      Start-Sleep -Seconds 45
+      Start-Sleep -Seconds __LAUNCH_WAIT__
     }
   }
 } elseif ($cmd -ne 'shot') {
@@ -272,6 +395,50 @@ $log += "shot $($b.Width)x$($b.Height) $(Get-Date -Format 'HH:mm:ss')"
 $log -join "`n" | Set-Content 'C:\ProgramData\ark-gui.txt' -Encoding utf8
 PS1
 
+# 远端起程序等多久、本地等结果等多久，用同一组数。2026-11-19 之前远端写死等 45 秒，
+# 本地预算却只按动作串算（launch 一个动作 = 35 秒），launch 每次都假超时（退出码 3）。
+WUWA_LAUNCH_MAX=120   # launch wuwa：最多等这么久让游戏窗口出来
+LAUNCH_WAIT=45        # launch 别的程序：起完固定等这么久
+sed -e "s/__WUWA_LAUNCH_MAX__/$WUWA_LAUNCH_MAX/g" -e "s/__LAUNCH_WAIT__/$LAUNCH_WAIT/g" \
+  "$TMP/ark-gui.ps1" >"$TMP/ark-gui.ps1.new" && mv "$TMP/ark-gui.ps1.new" "$TMP/ark-gui.ps1"
+if grep -q '__[A-Z_]*__' "$TMP/ark-gui.ps1"; then
+  echo "✋ wingui.sh 自己的毛病：远端脚本里还有没替换的占位符" >&2; exit 2
+fi
+
+# 刷声骸在跑时读出来的样子：一段说明，含停和续刷的原样命令；没在刷就什么也不打；
+# 状态读不出就退出 1。
+FARM_PY='
+import json, sys
+from datetime import datetime, timedelta, timezone
+t = sys.stdin.read().lstrip("\ufeff").strip()
+try:
+    rec = (json.loads(t).get("queues") or {}).get("echo_farm")
+except (ValueError, AttributeError):
+    sys.exit(1)
+if not isinstance(rec, dict) or not rec:
+    sys.exit(0)
+until = str(rec.get("until") or "")
+print("✋ 刷声骸正在跑：%s，%s 开始，刷到 %s（游戏机时钟）。没有动画面。"
+      % (rec.get("name") or "第 %s 个" % rec.get("boss"), rec.get("started"), until))
+print("   边刷边点界面会跟 OK-WW 抢键鼠；OK-WW 一停，中继过 5 分钟就把它重开、拉回副本，还会报警。也别单杀 OK-WW。")
+q = chr(39)   # a single quote; this program sits inside a single-quoted bash string
+print("   要进游戏看，先停：scripts/mac/order-now.sh " + q + json.dumps({"action": "echo_farm_stop"}) + q)
+try:
+    end = datetime.strptime(until, "%Y-%m-%d %H:%M").replace(tzinfo=timezone(timedelta(hours=8)))
+except ValueError:
+    end = None
+if end is not None and end > datetime.now(timezone.utc):
+    go = {"action": "echo_farm", "boss": rec.get("boss"), "until": until[-5:], "confirmed": True}
+    if rec.get("weekly"):
+        go["weekly"] = True
+    if rec.get("name"):
+        go["name"] = rec["name"]
+    print("   看完续刷：scripts/mac/order-now.sh " + q + json.dumps(go, ensure_ascii=False) + q)
+else:
+    print("   原定收工时刻已过或读不懂，看完不用续刷（续刷会被当成明天这个点）。")
+print("   确实要边刷边动，加 ARK_GUI_DURING_FARM=1。")
+'
+
 case "$ACTION" in
   shot) CMD="shot" ;;
   launch) CMD="launch ${2:-wuwa}" ;;   # wuwa 或完整 exe 路径
@@ -288,7 +455,7 @@ case "$ACTION" in
 用法:
   wingui.sh shot [out.png]              截图
   wingui.sh focus                       把目标窗口拉到前台
-  wingui.sh launch [wuwa|<完整exe路径>]  在交互桌面启动图形程序
+  wingui.sh launch [wuwa|<完整exe路径>]  在交互桌面启动图形程序（鸣潮只用 wuwa：自动带 -krqlv，等到窗口出来）
   wingui.sh key <esc|esc2|f1..f12|字母|数字>
   wingui.sh click <x> <y>               真实鼠标左键点击
   wingui.sh scroll <格数> [x y]         滚轮（负数向下）；不给坐标就在屏幕中央滚
@@ -297,9 +464,26 @@ case "$ACTION" in
   wingui.sh seq '<动作1; 动作2; ...>'    一次往返跑一串
       动作还支持 rdown/rup/ldown/lup（按住鼠标键）、wait <毫秒>
 目标窗口: ARK_GUI_PROC=<进程名> 或 ARK_GUI_PROC=title:<窗口标题片段>
+刷声骸在跑时除 shot 外一律拒绝（退出码 7），先 order-now.sh echo_farm_stop；硬要动加 ARK_GUI_DURING_FARM=1
+退出码：3 没等到结果  6 远端报了 ERR  7 刷声骸在跑/状态读不出
 USAGE
         exit 2 ;;
 esac
+
+# 刷声骸在跑时，除了只读的 shot 一律不动画面（见文件头）。状态读不出也不动：宁可让人
+# 看一眼再加开关，也不能在不知道的时候跟 OK-WW 抢键鼠。
+if [ "$ACTION" != shot ] && [ "${ARK_GUI_DURING_FARM:-}" != 1 ]; then
+  STATE=$(ssh -o ConnectTimeout=20 "$USER_AT" 'type C:\ProgramData\ark-relay\state\state.json' 2>/dev/null | tr -d '\r') || STATE=""
+  if ! FARM=$(printf '%s' "$STATE" | python3 -c "$FARM_PY"); then
+    echo "✋ 读不到游戏机上中继的状态（C:\\ProgramData\\ark-relay\\state\\state.json），不知道刷声骸在不在跑，没有动画面。" >&2
+    echo "   确认没在刷（或者就是要边刷边动）再加 ARK_GUI_DURING_FARM=1 重跑。" >&2
+    exit 7
+  fi
+  if [ -n "$FARM" ]; then
+    printf '%s\n' "$FARM" >&2
+    exit 7
+  fi
+fi
 
 printf '%s' "$CMD" > "$TMP/cmd.txt"
 # 按键/点击要作用在哪个进程的窗口上。默认鸣潮；终末地传 ARK_GUI_PROC=Endfield。
@@ -332,6 +516,12 @@ BUDGET=$(printf '%s' "$CMD" | awk '
       s = substr(s, RSTART + RLENGTH)
     } }
   END { printf "%d", 30 + ms/1000 + 5*n }')
+# launch 远端自己要等：鸣潮最多 WUWA_LAUNCH_MAX 秒等窗口、再 8 秒截图，关崩溃框 5 秒；
+# 别的程序固定 LAUNCH_WAIT 秒。按大的那个加，加 15 秒余量。预算只管失败时等多久，
+# 结果一出来就不等了，所以宁大勿小。
+if [ "$ACTION" = launch ]; then
+  BUDGET=$((BUDGET + (WUWA_LAUNCH_MAX > LAUNCH_WAIT ? WUWA_LAUNCH_MAX : LAUNCH_WAIT) + 15))
+fi
 BUDGET=${ARK_GUI_WAIT:-$BUDGET}
 OUT=""
 for _ in $(seq 1 $(( (BUDGET + 1) / 2 ))); do
@@ -359,3 +549,9 @@ if ! scp -q -o ConnectTimeout=30 "${USER_AT}:C:/ProgramData/ark-gui.png" "$DEST"
 fi
 [ -s "$DEST" ] || { echo "✋ 取回的截图是 0 字节。" >&2; exit 5; }
 echo "  → $DEST ($(wc -c <"$DEST" | tr -d ' ') 字节)"
+# 远端报了 ERR（找不到进程、游戏窗口没出来、崩溃框……）就是动作没做成，不许回 0。
+# 截图照样取回来了，看图就知道卡在哪。
+if grep -q '^ERR' <<<"$OUT"; then
+  echo "✋ 远端报了错（上面 ERR 那行），这次动作没做成。" >&2
+  exit 6
+fi

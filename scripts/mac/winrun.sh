@@ -29,6 +29,14 @@
 # bash string instead. That has cost this project several wasted round trips.
 # Shipping the script as a file means no layer has to parse it at all.
 set -euo pipefail
+# Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
+# (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
+# alone, as the tests make, still runs.)
+ARK_ACTION_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/mac-action-log.sh"
+if [ -f "$ARK_ACTION_LIB" ]; then
+  # shellcheck source=lib/mac-action-log.sh
+  . "$ARK_ACTION_LIB"; ark_action_log ${1+"$@"}
+fi
 
 # 远端脚本的**硬墙钟上限**（秒）。ConnectTimeout 只管建连接，管不了脚本跑多久，
 # 所以 2026-08-26 一个全盘 rglob 在远端跑了十分钟，期间用户完全插不上手。

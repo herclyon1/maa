@@ -20,6 +20,14 @@
 # 让 AUTO-MAS 的整队重试和手动派发打架——MAA 重复吃药、三个游戏同时在线。
 # 详见 scripts/windows/dispatch_guard.py 顶部注释。
 set -euo pipefail
+# Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
+# (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
+# alone, as the tests make, still runs.)
+ARK_ACTION_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/mac-action-log.sh"
+if [ -f "$ARK_ACTION_LIB" ]; then
+  # shellcheck source=lib/mac-action-log.sh
+  . "$ARK_ACTION_LIB"; ark_action_log ${1+"$@"}
+fi
 HERE="$(cd "$(dirname "$0")" && pwd)"
 G="$HERE/../windows/dispatch_guard.py"
 case "${1:-status}" in

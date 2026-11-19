@@ -897,5 +897,144 @@ echo "GATE_PASSED"
     check("exit 7 and the way back ran", (rc, "pkg_py back" in kinds(calls)), (7, True))
 
 
+def _part_wingui_guards():
+    """scripts/mac/wingui.sh (2026-11-19): no input while the echo farm runs, a launch budget
+    that covers the machine's own wait, ERR is a non-zero exit, every call logged."""
+    import json
+    import os
+    import re
+    import subprocess
+
+    ROOT = Path(__file__).resolve().parents[2]
+    MAC = ROOT / "scripts" / "mac"
+    WINGUI = MAC / "wingui.sh"
+    FAKE = tmpdir("wingui-")
+    (FAKE / "bin").mkdir()
+    (FAKE / "tmp").mkdir()
+    # ssh: the state read answers from state.json (none = unreachable), the result read
+    # from gui.txt (none = not written yet), anything else is the scheduled task.
+    (FAKE / "bin" / "ssh").write_text(
+        "#!/bin/bash\n"
+        f"F='{FAKE}'\n"
+        'printf "%s\\n" "ssh $*" >>"$F/calls"\n'
+        'case "$*" in\n'
+        '  *state.json*) [ -f "$F/state.json" ] || exit 255; cat "$F/state.json" ;;\n'
+        '  *ark-gui.txt*) [ -f "$F/gui.txt" ] && cat "$F/gui.txt"; exit 0 ;;\n'
+        '  *) echo STARTED ;;\n'
+        'esac\n', encoding="utf-8")
+    # scp: an upload is kept as pushed-<name>, a download writes a stand-in picture.
+    (FAKE / "bin" / "scp").write_text(
+        "#!/bin/bash\n"
+        f"F='{FAKE}'\n"
+        'printf "%s\\n" "scp $*" >>"$F/calls"\n'
+        'src=""; dst=""; for a in "$@"; do src="$dst"; dst="$a"; done\n'
+        'case "$dst" in *:*) cp "$src" "$F/pushed-${dst##*/}" ;; *) printf PNG >"$dst" ;; esac\n',
+        encoding="utf-8")
+    (FAKE / "bin" / "sleep").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")   # the wait loop, instantly
+    for f in (FAKE / "bin").iterdir():
+        f.chmod(0o755)
+    LOG = FAKE / "actions.log"
+    FARM = {"queues": {"echo_farm": {"boss": 2, "name": "千傀重楼", "weekly": True,
+                                     "until": "2099-11-19 21:15", "started": "2099-11-19 16:13"}}}
+
+    def run(*args: str, state: "dict | None", gui: "str | None", **extra: str):
+        for name in ("calls", "state.json", "gui.txt"):
+            (FAKE / name).unlink(missing_ok=True)
+        for old in FAKE.glob("pushed-*"):
+            old.unlink()
+        for old in (FAKE / "tmp").glob("*"):
+            old.unlink()
+        if state is not None:
+            (FAKE / "state.json").write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+        if gui is not None:
+            (FAKE / "gui.txt").write_text(gui, encoding="utf-8")
+        env = {**os.environ, "PATH": f"{FAKE / 'bin'}:{os.environ['PATH']}", "ARK_HOST": "test-host",
+               "ARK_ACTION_LOG": str(LOG), "TMPDIR": str(FAKE / "tmp"), **extra}
+        env.pop("ARK_GUI_WAIT", None)
+        if "ARK_GUI_DURING_FARM" not in extra:
+            env.pop("ARK_GUI_DURING_FARM", None)
+        r = subprocess.run(["bash", str(WINGUI), *args], capture_output=True, env=env, timeout=60)
+        calls = (FAKE / "calls").read_text(encoding="utf-8") if (FAKE / "calls").exists() else ""
+        return r.returncode, (r.stderr + r.stdout).decode("utf-8", "replace"), calls
+
+    def pushed_ps1() -> str:
+        p = FAKE / "pushed-ark-gui.ps1"
+        return p.read_text(encoding="utf-8") if p.exists() else ""
+
+    print("[echo farm running: input refused before anything reaches the machine]")
+    code, out, calls = run("key", "esc", state=FARM, gui="cmd=esc\nsent esc")
+    check("key refused, exit 7", code, 7)
+    check("says how to stop first", "echo_farm_stop" in out, True)
+    check("gives the resume order with its boss and end", '"boss": 2' in out and '"until": "21:15"' in out, True)
+    check("nothing pushed, no task started", ("ark-gui.ps1" in calls, "schtasks" in calls), (False, False))
+    for action in (("click", "960", "540"), ("launch",), ("focus",), ("scroll", "-3"), ("seq", "focus; wait 100")):
+        check(f"{action[0]} refused too", run(*action, state=FARM, gui="x")[0], 7)
+
+    print("\n[shot is read-only: never stopped, never reads the state]")
+    code, out, calls = run("shot", state=FARM, gui="cmd=shot\nshot 1920x1080 22:00:00")
+    check("shot goes through", code, 0)
+    check("shot does not read the relay state", "state.json" in calls, False)
+
+    print("\n[ARK_GUI_DURING_FARM=1 is the one way through while it farms]")
+    code, out, calls = run("key", "esc", state=FARM, gui="cmd=esc\nsent esc", ARK_GUI_DURING_FARM="1")
+    check("with the switch: sent", code, 0)
+    check("with the switch: the state is not read", "state.json" in calls, False)
+
+    print("\n[state unreadable: refused, not guessed]")
+    code, out, calls = run("click", "1", "2", state=None, gui="cmd=click 1 2\nclicked 1,2")
+    check("unreadable state: exit 7", code, 7)
+    check("says it could not read it", "读不到" in out, True)
+
+    print("\n[no farm: input goes through as before]")
+    code, out, calls = run("key", "esc", state={"queues": {}}, gui="cmd=esc\nsent esc")
+    check("no farm: exit 0", code, 0)
+    check("no farm: the task ran", "schtasks" in calls, True)
+
+    print("\n[a farm whose end has passed: no resume order offered]")
+    old = {"queues": {"echo_farm": {**FARM["queues"]["echo_farm"], "until": "2020-01-01 08:30"}}}
+    code, out, calls = run("key", "esc", state=old, gui="x")
+    check("still refused while the record is there", code, 7)
+    check("no resume order for a past end", '"action": "echo_farm"' in out, False)
+
+    print("\n[launch: the wait covers the machine's own wait for the game window]")
+    code, out, calls = run("launch", state={"queues": {}}, gui=None)
+    waited = re.search(r"等了 (\d+) 秒", out)
+    ps1 = pushed_ps1()
+    check("no result: exit 3", code, 3)
+    m = re.search(r"\.TotalSeconds -lt (\d+)\)", ps1)   # the launch wuwa wait loop
+    check("the machine waits a stated number of seconds", m is not None, True)
+    check("the budget is longer than that wait plus start-up",
+          bool(waited and m and int(waited.group(1)) >= int(m.group(1)) + 30), True)
+    check("no placeholder left in what was pushed", re.search(r"__[A-Z_]+__", ps1), None)
+    check("launch wuwa passes a quality pack", "$extra = @(\"-krqlv=$pkg\") + $extra" in ps1, True)
+    check("Client-Win64-Shipping.exe is refused", "别直接起 Client-Win64-Shipping.exe" in ps1, True)
+    code, out, _ = run("key", "esc", state={"queues": {}}, gui=None)
+    check("other actions keep their budget (35 s for one key)", re.search(r"等了 (\d+) 秒", out).group(1), "35")
+
+    print("\n[ERR from the machine is a failure, the screenshot still comes back]")
+    code, out, _ = run("key", "esc", state={"queues": {}},
+                       gui="cmd=esc\nproc=Client-Win64-Shipping\nERR 进程 Client-Win64-Shipping 不在，按键跳过\nshot 1920x1080")
+    check("ERR: exit 6", code, 6)
+    check("ERR: the picture was fetched", len(list((FAKE / "tmp").glob("wingui-*.png"))), 1)
+
+    print("\n[every call leaves one line in the action log]")
+    LOG.unlink(missing_ok=True)
+    run("key", "esc", state={"queues": {}}, gui="cmd=esc\nsent esc")
+    run("seq", "focus\nwait 100", state={"queues": {}}, gui="cmd=focus\nfocus only")
+    run("shot", state=FARM, gui="cmd=shot\nshot")
+    lines = LOG.read_text(encoding="utf-8").splitlines()
+    check("one line per call, a newline in the argument included", len(lines), 3)
+    check("script and arguments in it", [ln.split("\t")[1:3] for ln in lines],
+          [["wingui.sh", "key esc"], ["wingui.sh", "seq focus wait 100"], ["wingui.sh", "shot"]])
+
+    print("\n[the entry scripts that drive the machine all log]")
+    check("the shared log file exists", (MAC / "lib" / "mac-action-log.sh").is_file(), True)
+    for name in ("wingui.sh", "winps.sh", "winrun.sh", "order-now.sh", "order.sh", "run-one.sh",
+                 "estop.sh", "okww-task.sh", "adbdo.sh"):
+        text = (MAC / name).read_text(encoding="utf-8")
+        check(f"{name} logs its calls", "lib/mac-action-log.sh" in text and "ark_action_log" in text, True)
+
+
 if __name__ == "__main__":
-    sys.exit(run_parts([_part_disk_tidy, _part_order_now_confirmed, _part_order_push_main, _part_deploy_pkg_bash32, _part_deploy_smoke_gate]))
+    sys.exit(run_parts([_part_disk_tidy, _part_order_now_confirmed, _part_order_push_main, _part_deploy_pkg_bash32, _part_deploy_smoke_gate,
+                       _part_wingui_guards]))

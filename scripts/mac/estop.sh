@@ -26,6 +26,14 @@
 # no answer means the installed relay, the one every machine has run since the old
 # service was deleted on 2026-10-11 (scripts/windows/retire_legacy.py).
 set -uo pipefail
+# Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
+# (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
+# alone, as the tests make, still runs.)
+ARK_ACTION_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/mac-action-log.sh"
+if [ -f "$ARK_ACTION_LIB" ]; then
+  # shellcheck source=lib/mac-action-log.sh
+  . "$ARK_ACTION_LIB"; ark_action_log ${1+"$@"}
+fi
 
 HOST="${ARK_HOST:-100.65.39.119}"
 USER_AT="Administrator@${HOST}"

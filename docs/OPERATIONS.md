@@ -290,6 +290,33 @@ driving a game. The lessons that hold:
   (below), which is explicit and self-expiring.
 * **Never blind-retry a toggle.** A second click on a checkbox undoes the first;
   if a click needs repeating, repeat it after looking at a screenshot.
+* **Not while the echo farm runs** (2026-11-19). Driving the game while OK-WW farms
+  fights it for the keyboard and mouse; once OK-WW stops, the relay relaunches it after
+  five quiet minutes, drags the game back into the boss, and alarms (22:32:59 that
+  night: 「OK-WW 停了 6 分钟，已经重开第 1 次」). Killing OK-WW by hand ends the same way.
+  So every action but `shot` first reads `queues.echo_farm` in the machine's
+  `C:\ProgramData\ark-relay\state\state.json`; while a farm is on (or the state cannot
+  be read) it does nothing and exits 7, printing the stop order and, while the farm's end
+  is still ahead, the resume order with its boss and end time:
+  `scripts/mac/order-now.sh '{"action":"echo_farm_stop"}'`, look, then the printed
+  `echo_farm` order. `ARK_GUI_DURING_FARM=1` is the explicit way through.
+* **`launch wuwa` is the only way to start the game.** It starts
+  `Wuthering Waves.exe -krqlv=<pack>`, the pack read the way OK-WW reads it
+  (`src/game_launcher.py`: the launcher's `platform_ui_state.bin`, else the one bundle in
+  `launcherDownloadConfig.json`, else `hd`; this machine: `hd`). Without `-krqlv` the
+  game never came up (22:39, 22:43) while the old wingui said 「已启动」; started directly,
+  `Client-Win64-Shipping.exe` shows 「The Game has crashed and will close ... kuro: Use
+  launcher to start game!」 (22:41), so that path is refused. A leftover crash box is
+  closed first; the game counts as running only with a window that is not a crash box;
+  the launch waits up to `WUWA_LAUNCH_MAX` (120 s) for the window and the Mac side waits
+  longer than that (it used to give up at 35 s while the machine was still waiting 45).
+* **ERR means it did not happen.** A remote `ERR` line (no such process, no game window,
+  a crash box) ends wingui with exit 6; the screenshot is still fetched.
+* **Who touched the machine.** wingui, winps, winrun, order-now, order, run-one, estop,
+  okww-task and adbdo each add one line to the Mac's `~/.cache/ark-relay/mac_actions.log`
+  (time, script, first 120 characters of the arguments, the Claude session id or the
+  parent process chain, working directory; `scripts/mac/lib/mac-action-log.sh`). After
+  an alarm, `tail` it before anything else.
 
 
 ## Driving the game over ADB - use this, not the mouse
