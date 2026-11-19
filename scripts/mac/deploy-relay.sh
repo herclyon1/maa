@@ -10,6 +10,14 @@
 #   scripts/mac/deploy-relay.sh --dry-run   # local gates 0-0.75 only, then stop: no network, no game PC
 #
 set -euo pipefail
+# Every call leaves one line in ~/.cache/ark-relay/mac_actions.log (lib/mac-action-log.sh).
+# (`.` of a missing file ends a bash script, so it is looked for first: a copy of this script
+# alone, as the tests make, still runs.)
+ARK_ACTION_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/mac-action-log.sh"
+if [ -f "$ARK_ACTION_LIB" ]; then
+  # shellcheck source=lib/mac-action-log.sh
+  . "$ARK_ACTION_LIB"; ark_action_log ${1+"$@"}
+fi
 
 REDEPLOY=0
 DRY_RUN=0

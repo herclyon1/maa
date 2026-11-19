@@ -313,10 +313,13 @@ driving a game. The lessons that hold:
 * **ERR means it did not happen.** A remote `ERR` line (no such process, no game window,
   a crash box) ends wingui with exit 6; the screenshot is still fetched.
 * **Who touched the machine.** wingui, winps, winrun, order-now, order, run-one, estop,
-  okww-task and adbdo each add one line to the Mac's `~/.cache/ark-relay/mac_actions.log`
-  (time, script, first 120 characters of the arguments, the Claude session id or the
-  parent process chain, working directory; `scripts/mac/lib/mac-action-log.sh`). After
-  an alarm, `tail` it before anything else.
+  okww-task, adbdo and deploy-relay each add one line to the Mac's
+  `~/.cache/ark-relay/mac_actions.log` (mode 0600: time, script, the arguments with
+  secrets masked by `redact.py`'s key-name rule plus `Bearer` tokens and adbdo's whole
+  `text`, first 120 characters, the Claude session id or the parent process chain,
+  working directory; `scripts/mac/lib/mac-action-log.sh`). The logger runs in a subshell
+  with no output and always returns 0, so it cannot stop or garble its caller. After an
+  alarm, `tail` it before anything else.
 
 
 ## Driving the game over ADB - use this, not the mouse

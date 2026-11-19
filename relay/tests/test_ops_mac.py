@@ -1027,10 +1027,90 @@ def _part_wingui_guards():
     check("script and arguments in it", [ln.split("\t")[1:3] for ln in lines],
           [["wingui.sh", "key esc"], ["wingui.sh", "seq focus wait 100"], ["wingui.sh", "shot"]])
 
+    print("\n[wingui with no action is a shot: let through while it farms]")
+    code, out, calls = run(state=FARM, gui="cmd=shot\nshot 1920x1080")
+    check("bare wingui.sh: exit 0", code, 0)
+    check("bare wingui.sh: no state read", "state.json" in calls, False)
+
+    print("\n[state shapes: no farm record, an empty one, a broken file]")
+    for label, st in (("echo_farm null", {"queues": {"echo_farm": None}}), ("echo_farm {}", {"queues": {"echo_farm": {}}}),
+                      ("no queues", {})):
+        check(f"{label}: input goes through", run("key", "esc", state=st, gui="cmd=esc\nsent esc")[0], 0)
+    (FAKE / "state.json").unlink(missing_ok=True)
+    code, out, calls = run("key", "esc", state=None, gui="cmd=esc\nsent esc")
+    check("no state file: refused", code, 7)
+    for name in ("calls", "gui.txt"):
+        (FAKE / name).unlink(missing_ok=True)
+    (FAKE / "state.json").write_text("{not json", encoding="utf-8")
+    env = {**os.environ, "PATH": f"{FAKE / 'bin'}:{os.environ['PATH']}", "ARK_HOST": "test-host",
+           "ARK_ACTION_LOG": str(LOG), "TMPDIR": str(FAKE / "tmp")}
+    env.pop("ARK_GUI_DURING_FARM", None)
+    r = subprocess.run(["bash", str(WINGUI), "key", "esc"], capture_output=True, env=env, timeout=60)
+    check("broken state.json: refused", r.returncode, 7)
+
+    print("\n[launch keeps every argument after the action, quoted or not]")
+    run("launch", "wuwa", "--", "-krqlv=sd", state={"queues": {}}, gui="cmd=launch\nERR x")
+    check("unquoted arguments all reach the machine", (FAKE / "pushed-ark-gui-cmd.txt").read_text(encoding="utf-8"),
+          "launch wuwa -- -krqlv=sd")
+    run("launch", state={"queues": {}}, gui="cmd=launch\nERR x")
+    check("no argument is wuwa", (FAKE / "pushed-ark-gui-cmd.txt").read_text(encoding="utf-8"), "launch wuwa")
+    ps1 = pushed_ps1()
+    check("a crash box that will not close stops the launch", "ERR 残留的崩溃弹窗关不掉" in ps1, True)
+    check("a throw in the launch branch becomes an ERR line", "ERR 起鸣潮这段出错了" in ps1, True)
+    check("the game window needs a title", "$p.MainWindowTitle -and $p.MainWindowTitle -notmatch $crash" in ps1, True)
+    code, out, _ = run("key", "esc", state={"queues": {}}, gui="cmd=esc\nERRATIC is not an error line\nsent esc")
+    check("only a line starting with 'ERR ' counts", code, 0)
+
+    print("\n[the log never breaks or talks to its caller]")
+    DRV = FAKE / "drv"
+    DRV.mkdir()
+    driver = DRV / "adbdo.sh"     # named so: adbdo.sh text is masked whole
+    driver.write_text("#!/bin/bash\nset -euo pipefail\n"
+                      f". '{MAC / 'lib' / 'mac-action-log.sh'}'\n"
+                      'ark_action_log "$@"\necho survived\n', encoding="utf-8")
+    ALOG = FAKE / "drv.log"
+    ALOG.write_text("", encoding="utf-8")
+    ALOG.chmod(0o644)
+
+    def drive(*args, env_extra=None, drop=()):
+        e = {**os.environ, "ARK_ACTION_LOG": str(ALOG), "LC_CTYPE": "UTF-8", **(env_extra or {})}
+        for k in drop:
+            e.pop(k, None)
+        r = subprocess.run(["/bin/bash", str(driver), *args], capture_output=True, env=e, timeout=30)
+        return r.returncode, r.stdout, r.stderr
+
+    rc, so, se = drive(b"ab\xff\xfecd")
+    check("a non-UTF-8 argument: caller goes on", (rc, so), (0, b"survived\n"))
+    check("...and says nothing on stderr", se, b"")
+    rc, so, _ = drive("x", env_extra={"ARK_ACTION_LOG": str(FAKE / "no" / "such" / "dir" / "x.log")})
+    check("an unwritable log: caller goes on", (rc, so), (0, b"survived\n"))
+    rc, so, _ = drive("x", drop=("HOME", "ARK_ACTION_LOG"))
+    check("no HOME and no ARK_ACTION_LOG: caller goes on", (rc, so), (0, b"survived\n"))
+    rc, so, _ = drive("WECOM_SECRET=abcdef123456", "password=hunter2xyz", "token=tok_9876543",
+                      'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig')
+    check("stdout is the caller's own only", so, b"survived\n")
+    rc, so, _ = drive("text", "834221")
+    text = ALOG.read_text(encoding="utf-8")
+    for secret in ("abcdef123456", "hunter2xyz", "tok_9876543", "eyJhbGciOiJIUzI1NiJ9", "834221"):
+        check(f"{secret[:6]}... not in the log", secret in text, False)
+    check("masked, not dropped", text.count("<已隐藏>") >= 5, True)
+    check("the log is 0600 (it was 0644)", oct(ALOG.stat().st_mode & 0o777), "0o600")
+    check("one line per call so far", len(text.splitlines()), 3)
+
+    print("\n[a copy of wingui.sh without the lib still runs]")
+    ALONE = FAKE / "alone"
+    ALONE.mkdir()
+    (ALONE / "wingui.sh").write_text(WINGUI.read_text(encoding="utf-8"), encoding="utf-8")
+    for name in ("calls", "gui.txt"):
+        (FAKE / name).unlink(missing_ok=True)
+    (FAKE / "gui.txt").write_text("cmd=shot\nshot", encoding="utf-8")
+    r = subprocess.run(["bash", str(ALONE / "wingui.sh"), "shot"], capture_output=True, env=env, timeout=60)
+    check("no lib next to it: shot still works", r.returncode, 0)
+
     print("\n[the entry scripts that drive the machine all log]")
     check("the shared log file exists", (MAC / "lib" / "mac-action-log.sh").is_file(), True)
     for name in ("wingui.sh", "winps.sh", "winrun.sh", "order-now.sh", "order.sh", "run-one.sh",
-                 "estop.sh", "okww-task.sh", "adbdo.sh"):
+                 "estop.sh", "okww-task.sh", "adbdo.sh", "deploy-relay.sh"):
         text = (MAC / name).read_text(encoding="utf-8")
         check(f"{name} logs its calls", "lib/mac-action-log.sh" in text and "ark_action_log" in text, True)
 

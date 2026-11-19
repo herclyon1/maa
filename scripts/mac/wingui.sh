@@ -123,94 +123,125 @@ if ($cmd -like 'launch*') {
   } elseif ([IO.Path]::GetFileNameWithoutExtension($exe) -eq 'Wuthering Waves') {
     # 鸣潮单独走：进程名和 exe 名不一样（Client-Win64-Shipping），要带画质包参数，
     # 要等游戏窗口真的出来才算起好了。
-    $crash = '^The Game has crashed'      # the box's title, 2026-11-19 22:41 screenshot
-    # 1. 残留的崩溃弹窗先关掉。22:41 那个框到 22:46 还在屏幕上，那时游戏进程早没了，
-    #    框是别的进程挂着的；按「确定」等于发 WM_CLOSE。挂框的若是游戏本身，框关了它
-    #    还不退，就结束它：框上写着 will close，它已经没法玩了。
-    $boxes = @(Get-Process -ErrorAction SilentlyContinue |
-               Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -match $crash })
-    foreach ($b in $boxes) {
-      [ArkW]::PostMessage($b.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null  # WM_CLOSE
-      $log += "关掉残留的崩溃弹窗「$($b.MainWindowTitle)」（$($b.ProcessName) pid $($b.Id)）"
-    }
-    if ($boxes.Count -gt 0) {
-      Start-Sleep -Seconds 3
-      foreach ($b in $boxes) {
-        $b.Refresh()
-        if (-not $b.HasExited -and $b.ProcessName -eq 'Client-Win64-Shipping') {
-          Stop-Process -Id $b.Id -Force -ErrorAction SilentlyContinue
-          $log += "崩掉的游戏进程 pid $($b.Id) 框关了还不退，已结束"
-          Start-Sleep -Seconds 2
-        } elseif (-not $b.HasExited) {
-          $log += "WARN 挂崩溃弹窗的 $($b.ProcessName) pid $($b.Id) 框关了还在，没动它"
+    # 这一段整个包在 try 里：这里任何一处抛错都会让结果文件写不出来，wingui 空等满预算
+    # 再报「没有产出结果」；抛错就写成一行 ERR。读进程属性也一样：进程刚退、或者查不了
+    # （受保护）时读 ProcessName / MainWindowTitle 会抛，所以每个进程单独 try，只留读到的。
+    try {
+      $crash = '^The Game has crashed'      # the box's title, 2026-11-19 22:41 screenshot
+      function Find-CrashBoxes {
+        foreach ($p in @(Get-Process -ErrorAction SilentlyContinue)) {
+          try {
+            if ($p.MainWindowHandle -ne 0 -and $p.MainWindowTitle -match $crash) {
+              [pscustomobject]@{ Id = $p.Id; Name = $p.ProcessName; Title = $p.MainWindowTitle; Hwnd = $p.MainWindowHandle }
+            }
+          } catch { }
         }
       }
-    }
-    # 2. 画质包：照 OK-WW src/game_launcher.py 的读法。先读启动器界面状态
-    #    （<游戏目录的上一级>\kr_game_cache\platform_ui_state.bin，Base64 后每字节异或 0x63），
-    #    再看游戏目录下 launcherDownloadConfig.json 是否只有一个包；都不行用 hd（OK-WW 也是）。
-    #    调用方自己用 `-- -krqlv=xx` 给了就照用。
-    if (-not ($extra -match '^-krqlv=')) {
-      $pkg = $null; $how = ''
-      $dir = Split-Path $exe
-      $ui = Join-Path (Split-Path $dir) 'kr_game_cache\platform_ui_state.bin'
-      try {
-        if (Test-Path -LiteralPath $ui) {
-          $raw = [Convert]::FromBase64String((Get-Content -LiteralPath $ui -Raw).Trim())
-          $plain = [byte[]]@($raw | ForEach-Object { $_ -bxor 0x63 })
-          $st = [Text.Encoding]::UTF8.GetString($plain).TrimStart([char]0xFEFF) | ConvertFrom-Json
-          $active = $st.activeGameScope
-          if ($active -and $active.gameIdentity -eq 'Aki' -and "$($active.bundleName)".ToLower() -in 'sd','hd','uhd') {
-            $pkg = "$($active.bundleName)".ToLower(); $how = '启动器当前选的'
-          } elseif ($st.recentGames -and "$($st.recentGames.Aki.bundleName)".ToLower() -in 'sd','hd','uhd') {
-            $pkg = "$($st.recentGames.Aki.bundleName)".ToLower(); $how = '启动器最近一次的'
+      # 游戏窗口：Client-Win64-Shipping 的窗口，标题不空、不是崩溃框（OK-WW 认的标题是
+      # 「鸣潮  」，UnrealWindow；刚起的一瞬间可能是没标题的过渡窗口，不算）。
+      function Find-GameWindow {
+        foreach ($p in @(Get-Process -Name 'Client-Win64-Shipping' -ErrorAction SilentlyContinue)) {
+          try {
+            if ($p.MainWindowHandle -ne 0 -and $p.MainWindowTitle -and $p.MainWindowTitle -notmatch $crash) {
+              return [pscustomobject]@{ Id = $p.Id; Title = $p.MainWindowTitle }
+            }
+          } catch { }
+        }
+      }
+      # 1. 残留的崩溃弹窗先关掉。22:41 那个框到 22:46 还在屏幕上，那时游戏进程早没了，
+      #    框是别的进程挂着的；按「确定」等于发 WM_CLOSE。挂框的若是游戏本身，框关了它
+      #    还不退，就结束它：框上写着 will close，它已经没法玩了。
+      #    关完再查一遍：还有框就不起游戏，写 ERR——顶着旧框起，新游戏出窗口之前，
+      #    下面等窗口时看到的框分不清是新崩的还是旧的。
+      $boxes = @(Find-CrashBoxes)
+      foreach ($b in $boxes) {
+        [ArkW]::PostMessage($b.Hwnd, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null  # WM_CLOSE
+        $log += "关掉残留的崩溃弹窗「$($b.Title)」（$($b.Name) pid $($b.Id)）"
+      }
+      if ($boxes.Count -gt 0) {
+        Start-Sleep -Seconds 3
+        foreach ($b in @(Find-CrashBoxes)) {
+          if ($b.Name -eq 'Client-Win64-Shipping') {
+            try {
+              Stop-Process -Id $b.Id -Force -ErrorAction Stop
+              $log += "崩掉的游戏进程 pid $($b.Id) 框关了还不退，已结束"
+            } catch { $log += "WARN 结束崩掉的游戏进程 pid $($b.Id) 没成：$($_.Exception.Message)" }
           }
         }
-      } catch { $log += "WARN 启动器界面状态读不出：$($_.Exception.Message)" }
-      if (-not $pkg) {
-        try {
-          $man = Get-Content -LiteralPath (Join-Path $dir 'launcherDownloadConfig.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-          $have = @($man.bundles.PSObject.Properties.Name | ForEach-Object { $_.ToLower() } |
-                    Where-Object { $_ -in 'sd','hd','uhd' } | Select-Object -Unique)
-          if ($have.Count -eq 1) { $pkg = $have[0]; $how = '下载清单里唯一的' }
-        } catch { $log += "WARN launcherDownloadConfig.json 读不出：$($_.Exception.Message)" }
-      }
-      if (-not $pkg) { $pkg = 'hd'; $how = 'WARN 哪儿都读不到，照 OK-WW 的做法用' }
-      $log += "画质包 $pkg（$how）"
-      $extra = @("-krqlv=$pkg") + $extra
-    }
-    # 3. 已在运行＝游戏进程在、而且它的窗口不是崩溃弹窗。进程在但还没窗口，
-    #    多半是别人刚起的、正在启动：不重复起，等它出窗口。
-    $game = @(Get-Process -Name 'Client-Win64-Shipping' -ErrorAction SilentlyContinue)
-    $up = $game | Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -notmatch $crash } | Select-Object -First 1
-    $t0 = Get-Date
-    if ($up) {
-      $log += "Client-Win64-Shipping 已在运行（窗口「$($up.MainWindowTitle)」），没有重复启动"
-    } else {
-      if ($game.Count -gt 0) {
-        $log += "Client-Win64-Shipping 进程在（pid $($game[0].Id)）但还没有窗口，不重复启动，等它出窗口"
-      } else {
-        Start-Process -FilePath $exe -ArgumentList $extra -WorkingDirectory (Split-Path $exe)
-        $log += "已启动 $exe [" + ($extra -join ' ') + "]，最多等 __WUWA_LAUNCH_MAX__ 秒游戏窗口"
-      }
-      $win = $null; $box = $null
-      while (((Get-Date) - $t0).TotalSeconds -lt __WUWA_LAUNCH_MAX__) {
         Start-Sleep -Seconds 2
-        $win = Get-Process -Name 'Client-Win64-Shipping' -ErrorAction SilentlyContinue |
-               Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -notmatch $crash } | Select-Object -First 1
-        $box = Get-Process -ErrorAction SilentlyContinue |
-               Where-Object { $_.MainWindowHandle -ne 0 -and $_.MainWindowTitle -match $crash } | Select-Object -First 1
-        if ($win -or $box) { break }
       }
-      $secs = [int]((Get-Date) - $t0).TotalSeconds
-      if ($box) {
-        $log += "ERR 启动后 $secs 秒弹了崩溃框「$($box.MainWindowTitle)」（$($box.ProcessName)），游戏没起来。截图里有框上的原文"
-      } elseif ($win) {
-        $log += "游戏窗口出来了（启动后 $secs 秒，「$($win.MainWindowTitle)」），再等 8 秒截图"
-        Start-Sleep -Seconds 8
+      $left = @(Find-CrashBoxes)
+      if ($left.Count -gt 0) {
+        $log += "ERR 残留的崩溃弹窗关不掉：" + (($left | ForEach-Object { "「$($_.Title)」$($_.Name) pid $($_.Id)" }) -join '；') +
+                "。没有起游戏，先看截图"
       } else {
-        $log += "ERR 等了 $secs 秒游戏窗口也没出来，游戏没起来（别当成功）"
+        # 2. 画质包：照 OK-WW src/game_launcher.py 的读法。先读启动器界面状态
+        #    （<游戏目录的上一级>\kr_game_cache\platform_ui_state.bin，Base64 后每字节异或 0x63），
+        #    再看游戏目录下 launcherDownloadConfig.json 是否只有一个包；都不行用 hd（OK-WW 也是）。
+        #    调用方自己用 `-- -krqlv=xx` 给了就照用。
+        if (-not ($extra -match '^-krqlv=')) {
+          $pkg = $null; $how = ''
+          $dir = Split-Path $exe
+          $ui = Join-Path (Split-Path $dir) 'kr_game_cache\platform_ui_state.bin'
+          try {
+            if (Test-Path -LiteralPath $ui) {
+              $raw = [Convert]::FromBase64String((Get-Content -LiteralPath $ui -Raw).Trim())
+              $plain = [byte[]]@($raw | ForEach-Object { $_ -bxor 0x63 })
+              $st = [Text.Encoding]::UTF8.GetString($plain).TrimStart([char]0xFEFF) | ConvertFrom-Json
+              $active = $st.activeGameScope
+              if ($active -and $active.gameIdentity -eq 'Aki' -and "$($active.bundleName)".ToLower() -in 'sd','hd','uhd') {
+                $pkg = "$($active.bundleName)".ToLower(); $how = '启动器当前选的'
+              } elseif ($st.recentGames -and "$($st.recentGames.Aki.bundleName)".ToLower() -in 'sd','hd','uhd') {
+                $pkg = "$($st.recentGames.Aki.bundleName)".ToLower(); $how = '启动器最近一次的'
+              }
+            }
+          } catch { $log += "WARN 启动器界面状态读不出：$($_.Exception.Message)" }
+          if (-not $pkg) {
+            try {
+              $man = Get-Content -LiteralPath (Join-Path $dir 'launcherDownloadConfig.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+              $have = @($man.bundles.PSObject.Properties.Name | ForEach-Object { $_.ToLower() } |
+                        Where-Object { $_ -in 'sd','hd','uhd' } | Select-Object -Unique)
+              if ($have.Count -eq 1) { $pkg = $have[0]; $how = '下载清单里唯一的' }
+            } catch { $log += "WARN launcherDownloadConfig.json 读不出：$($_.Exception.Message)" }
+          }
+          if (-not $pkg) { $pkg = 'hd'; $how = 'WARN 哪儿都读不到，照 OK-WW 的做法用' }
+          $log += "画质包 $pkg（$how）"
+          $extra = @("-krqlv=$pkg") + $extra
+        }
+        # 3. 已在运行＝游戏有窗口（见 Find-GameWindow）。进程在但还没窗口，
+        #    多半是别人刚起的、正在启动：不重复起，等它出窗口。
+        $up = Find-GameWindow
+        $game = @(Get-Process -Name 'Client-Win64-Shipping' -ErrorAction SilentlyContinue)
+        $t0 = Get-Date
+        if ($up) {
+          $log += "Client-Win64-Shipping 已在运行（窗口「$($up.Title)」），没有重复启动"
+        } else {
+          if ($game.Count -gt 0) {
+            $log += "Client-Win64-Shipping 进程在（pid $($game[0].Id)）但还没有游戏窗口，不重复启动，等它出窗口"
+          } else {
+            Start-Process -FilePath $exe -ArgumentList $extra -WorkingDirectory (Split-Path $exe)
+            $log += "已启动 $exe [" + ($extra -join ' ') + "]，最多等 __WUWA_LAUNCH_MAX__ 秒游戏窗口"
+          }
+          $win = $null; $box = $null
+          while (((Get-Date) - $t0).TotalSeconds -lt __WUWA_LAUNCH_MAX__) {
+            Start-Sleep -Seconds 2
+            $win = Find-GameWindow
+            $box = @(Find-CrashBoxes) | Select-Object -First 1
+            if ($win -or $box) { break }
+          }
+          $secs = [int]((Get-Date) - $t0).TotalSeconds
+          if ($box) {
+            $log += "ERR 启动后 $secs 秒弹了崩溃框「$($box.Title)」（$($box.Name)），游戏没起来。截图里有框上的原文"
+          } elseif ($win) {
+            $log += "游戏窗口出来了（启动后 $secs 秒，「$($win.Title)」），再等 8 秒截图"
+            Start-Sleep -Seconds 8
+          } else {
+            $log += "ERR 等了 $secs 秒游戏窗口也没出来，游戏没起来（别当成功）"
+          }
+        }
       }
+    } catch {
+      $log += "ERR 起鸣潮这段出错了：$($_.Exception.Message)"
     }
   } else {
     $proc = [IO.Path]::GetFileNameWithoutExtension($exe)
@@ -441,7 +472,8 @@ print("   确实要边刷边动，加 ARK_GUI_DURING_FARM=1。")
 
 case "$ACTION" in
   shot) CMD="shot" ;;
-  launch) CMD="launch ${2:-wuwa}" ;;   # wuwa 或完整 exe 路径
+  # 动作后面的参数全收：没加引号的 `launch wuwa -- -krqlv=sd` 原来只剩 wuwa。
+  launch) shift; CMD="launch ${*:-wuwa}" ;;   # wuwa 或完整 exe 路径
   key)  CMD="${ARG:?用法: wingui.sh key <esc|esc2|enter|space|shift|tab|f1-f12|单个字母或数字>}" ;;
   focus) CMD="focus" ;;
   scroll) CMD="scroll ${2:?用法: wingui.sh scroll <格数，负数向下> [x y]}${3:+ $3 ${4:?给了 x 就得给 y}}" ;;
@@ -551,7 +583,7 @@ fi
 echo "  → $DEST ($(wc -c <"$DEST" | tr -d ' ') 字节)"
 # 远端报了 ERR（找不到进程、游戏窗口没出来、崩溃框……）就是动作没做成，不许回 0。
 # 截图照样取回来了，看图就知道卡在哪。
-if grep -q '^ERR' <<<"$OUT"; then
+if grep -q '^ERR ' <<<"$OUT"; then
   echo "✋ 远端报了错（上面 ERR 那行），这次动作没做成。" >&2
   exit 6
 fi
