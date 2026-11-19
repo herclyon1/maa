@@ -285,6 +285,66 @@ _TOAST_FIRST, _TOAST_STEP, _TOAST_LOOKS = 1.0, 0.3, 6
 ECHO_DROP_LINE = "刷声骸掉落："
 
 
+# The toast's set badge: 15x15 at (125, 589) on a 1920x1080 frame, left of row 3. Templates:
+# ark-remote's 11 set icons cut 12% at the edge, on black, 15x15 RGB (scripts/mac/echo-set-badges.py
+# prints this table). Nine real 千傀重楼 toasts scored 0.89-0.91 on their own set and at most 0.54
+# on any other (relay/tests/fixtures/echo_badges); a set is named only at ECHO_SET_MIN and
+# ECHO_SET_GAP above the next, else it is unread.
+ECHO_SET_BADGES = {
+    "长路启航之星": "AAAAlEcw/35V0mdGfT4rTCUaSCMYSCIXSCMYTCQZfT4r0mdG/35VlEgwAAAAkkcw/35VrVY7RR4TNhQKSSQZSSQZSSUaSSQZSSUaNxULRB0RrVY7/39Vk0cw/35UrVY7MBAGWzsxeVxUQBkOQx0SoIyGTCkePBQIdVhPYUI6Lw8GrVU6/35V02hHPxcLemBY7OfmzcPByr+8TyshoI2HUS8kva+szsTB7urpiHFqPhYK02hHdTQgUzYu/Pn4oo+KmIN9t6ik4dzZdVlQ2NDNvK6qmIN9nIiB//7+YkhAcTEdQBcKxru3uKqlxLi0////zsXBzcPAcFNKxbq2zMG+////zcPAsaGc1c3KRBwQPxgN0MbDqJeR29TS////////4NrYa01E1c3K////////5N7dopCL29TSRB8UQx0SVzUr3NXTl4J8y8G+saKdg2pjTCcdgWdgrJuWzsTBlH544tzbYkM5QRoPSiYbPhcMZ0g/2NDOlYB59PLx39jWaUtC1s3L+fj4lYB52dLQeFxUPBQISiYcSyQZSyccOxMHdVpRyr+8o5CK0cfFZ0hAyb67p5SPyL26g2pjOREFSycdSyQZfDwpPx8VTikeOREFfGFava+r5N/d1MzK5d/evrGtiXFqOBAETikdQB8VfDwp0GVESiQYRiIXTSgdOxMHd1tU9fPz1czK+Pf3hGtjOhIGTSgdRiIXSiQY0GRE/35Vq1M4OhwTRiIXTikdOhMGdFhQ3NXTgWhhOREFTigdRiIYOhwTq1M4/35Vk0cw/39Vq1M4SiQZQB8VSiUaQRsQpZOOSiYbRyMYQB8WSiQZq1M4/39Vk0cwAAAAlEgw/35V0GVEezwpSyQZSSQaYEA2SyccSyQZezwp0GVE/35VlEgwAAAA",
+    "斑驳粉饰之沫": "AAAAlEcw/35V0WVEfD0qTigdSCIYRiAVRyEWTiccfT4r0WVE/35VlEgwAAAAkkcw/39Vq1M4TCYbPRwSORIGRiAVUzEnSyccOxQIOBYMTCccq1M4/39Vk0cw/35Vq1M3PB8WQBoPUi4jr56a4NrYoIyH2NDOyL26a0tCOxQJPB8Xq1M4/35V0GVDTCYbQBsQXz406+blw7azdVlQel9XclZNpJGM9fLyiXFpOxQJTCcc0GRDezwpQCAWRyEV5uHgpJGMSCMYWDYsiHBpYUE4TiofcVVM+vn5bExDORcMfT4rTiccMggAo5CL2dHOSSUaXz81OxQJtqejUzEnUCwhTishoo+K2dLQNw4DSiIXRiEWdlpS////mYV/WzowUzAmk313////vK+rVTIoXz41bVBH////pZONSCMYZkY9o5CKrZyXgWhggmhhoo+K9/b2////////uqyohW1le2FZpZONsKCbeFxURSAVQBoOvK6qjndwUC0iRR8UXTwy8/DviHBpOBAEVjQpaElAzMK/WTctPhgMTygdPRYKinJr7+vqUC0iZEU7RyEWqJeRVzUqXT0zSyccwLSwxbq2OhMHTykefDwpQiEYPxYKy8G+yr+8TyshUCwiiG9oXDsxSiUamIN98u/uVjEnPRsRfT0q0GVESyUaRSAVSiUZy8G9497cn4uFhWxllH53zsTB6OPhZkY8PhgNTCYb0GRE/35Vq1M4Ox4VRSAVQhoOgmhhw7e0moZ/wraynYmDTikePxkOPB8Wq1M3/35Vk0cw/39Vq1M4SyUaQSEXPRUKOhIGRyIXPBUJOhIGPh0TTCYbq1M3/39Vk0cwAAAAlEgw/35V0GVEezwpTiccSyYbSSMYSiYbTigdfD0p0GVE/35VlEgwAAAA",
+    "听唤语义之愿": "AAAANJxvXP/EStudK39bHVE7G044VnxsG044HVI7K4BbStudXP/ENZxvAAAANJtuXf/HPbaDG044HEg1DUMsKFhD2+PgKFhDDUMsHEg1G044PbaDXf/HNJtuXP/EPbiDFkEuG0w3DkYuKFhDprqx////prqxKFhED0YuG0w3FkEuPbiDXP/EStycGk44G0w3D0Yuf5yP/f7+3eThtsa/3OTg/Pz8gJyQD0YuG0w3Gk44StycK39bHEg1DkUtfZqN////b4+BSnNiVnxrUHhndpSH////fZqODkUtHEg1K39bHVE7EkYwI1Q/////dZSHTHRjYIN0Ml9LYoV2jaebepeL////I1Q+EUYvHVE7Gk03Gk03j6ie5+3rRm9dY4Z3Bz4mFko0CUAoXIBxVXtr5evplKuhHVA6GUw2UHhn1t/b////wc/JWn9vQmxZEUYvIVI9FkozMmBMX4NzwtDK////3eXhWX5uHlA7M2FNnbOp7fHvQmxadJOFE0gxEUYvCD8nXIBwVXtr6+/toLatN2RQH1E7G1A5D0QtGEw1+Pr5hqGVbo+BeZaKPmlWYIN1THRijKWa+fr6GEw1DkMsG1A5K39bHEk1D0cvZYd4////iqSZSnJhYIN0VHpqjqec////ZYd5D0cvHEk1K39bStycGk44HE04DkUtYoR17fHv8fTzz9rV7/Px7PDuYoV2DkUtHE04Gk44StycXP/EPbiEFkEuHE04EEcvFEgxk6uh////k6uhFEgxEEcvHE04FkEuPbiEXP/ENJtuXf/HPbaDGk44HEg1EUYvK1pG3+bjK1pGEUYvHEg1Gk44PbaDXf/HNJtuAAAANJxvXP/EStudKn9bHFE6G044XoNzG044HFE6K39bStudXP/ENZxvAAAA",
+    "雪落无声之愿": "AQMELnaoN6/+Yrv6wuX++Pz/////////////+Pz/wuX+Yrv6N6/+LnaoAQMELXWnOrP/jc379vv////+////7u7udHR07+/v///////+9vv/jc37OrP/LXWnN7D/js77///////+/P3+////q6urAAAArKys/////P3+///+////js77N7D/Yrv6+v3/////////8/Pzzs7Od3d3REREeHh4z8/P8/Pz////////+v3/Yrv6xOX8////X2BhMDAwi4uLxsbGn5+fICAgoaGhxcXFi4uLMDAwX2Bh////xOX89/r7/v//lpaWISEhMjIydHR01dXVAAAA1tbWc3NzMzMzISEhl5eX/v//+Pr7////////////nJycWFhYFhYWIyMjX19fIiIiFxcXWFhYnJyc/////////////v///////Pz8tra27u7uo6OjSUlJ////RUVFpaWl7u7ut7e3/f39/////v//////////////nJycWlpaFhYWIiIiYGBgIiIiFhYWWlpanZ2d////////////9/r7/v//lpaWIiIiMzMzc3Nz1dXVAAAA1tbWc3NzMzMzIiIil5eX/v//9/r7w+X8////X2BhLy8vioqKxsbGoKCgICAgoaGhxcXFi4uLLy8vX2Bh////w+X8Yrv6+v3/////////8/Pzzs7Od3d3RUVFeHh4z8/P8/Pz////////+v3/Y7v6N7D/js77///////+/P3+////q6urAAAArKys/////P3+///+////js77N7D/LXWnOrP/js779vv////+////7u7udHNz7+/v///////+9vv/js37OrP/LXWnAQMELnaoN6/+Yrv6wuX++Pz/////////////+Pz/wuX+Yrv6N6/+LnapAQME",
+    "剪心辑梦之影": "AAAAV3Kcmsn/fKHcS2GEMT5UKTZLIS9FKTZLMT5US2GFfKHcmsn/V3KcAAAAV3Gbm8r/Z4a1LDlPICw/GCY9MT5So6myMT5SGCY9ISxALDlPZ4a1m8r/V3Gbm8n/ZoW3GyY4LDlNSVVngoqW4ePm5efp293hg4uXSlVoLDhMGyY4ZoW3m8n/c5rWXWh4yMvQ2t3h4+Xo0tXZfIWSW2V1oqixyczS3uDj3N7iyMrPW2V2c5nWSmCEHio+0NTZ293hLzxRJTJIDx42naOt4+XosbW9cnqI293hztLYHik9SmCEMD5UHCpAZ3CA6evsKjdMKDVKKDVLmZ+p////////nKKs3d/jZ3B/HStBMD5TLTlOJDJHS1Zo8/T1SFNlJzRJd4CNlZymtrvC8vP0j5Wh5+nrS1ZoJTJILTlOLTlPJDJIRlJk8fL0XWd3bXaF7O7wjpWgO0dbtLjAg4uX7O3vRVFjJTJILDlPLDlOJjRJPUld9PX2VmFyFSQ6U15ul56o3+Hk////j5ah6uvtPUldJzRKLDlOLjtRKjdMKjhN7O3vd3+MHy1DJzVKl52o////5+nrkJah5efpKjdMKjdMLjtRSWCEKTVHGypBtrvCy87TGSc+IS5FmqCq////kZijxMjNtbnBHCpBKTVHSWCEe6HdLjtQIzBFR1Nm////iZGcCBYvj5ahpKqzh4+b/f39RlFlJDFGLTtQe6Dcmsn/ZYS2JTBBHixBbHWF/v7+u8DGbneGtrrB+vr7anSEHixBJTBBZYS2msn/V3Gbm8r/ZYS0LzxRGic6TFZoyMzR+Pj5yMvRS1ZnGic7LzxRZYS0m8r/V3GbAAAAWHKcmsn/e6HcTGKGJDJIIS5EQU1gIS5EJDJJTGKGe6Dbmsn/WHKdAAAA",
+    "羽落空尘之歌": "AAAAnJyc////2trahISEUVFRTU1NTk5OTU1NUVFRhISE3d3d////nJycAAAAnJyc////w8PDXFxcQkJCTU1NTU1NTU1NTU1NTU1NRkZGTk5OsrKy////m5ub////qqqqmJiYeXl5RkZGT09PTU1NTU1NTU1NTU1NSEhIUVFRTk5OuLi4////3t7eR0dH3d3dl5eXQEBAUFBQTU1NTk5OT09PREREsrKy2dnZmpqaSkpK3t7egoKCRkZG5+fnysrKQEBATk5OUFBQTExMOzs7pKSk8vLy6Ojoi4uLOjo6hoaGT09PUlJS2tra8PDwoqKiQkJCRUVFVVVVoqKi////6+vrpaWlTU1NTExMUVFRTU1NSUlJ4ODg29vb/Pz8zc3Nb29vVVVVhYWFjIyMdnZ2RkZGTExMTk5OTU1NUFBQQ0NDsLCw7u7uv7+/////////h4eHZGRkOjo6RkZGTk5OTU1NTU1NTk5OTk5OR0dHZWVl9vb22NjYurq6////3Nzc8PDwnp6eRERET09PTU1NTU1NTU1NUVFRTU1NSkpKz8/P////0NDQtLS06urq////////dnZ2RERET09PTExMUVFRhISERkZGSkpKYGBg8PDw////5+fnsrKywsLC8vLy4eHhTExMUVFRREREhISE3d3dT09PTk5ORkZGbW1t4ODg/v7++fn509PTsbGxv7+/YGBgQkJCUFBQ3Nzc////tra2Pj4+Tk5OSUlJUFBQcXFxtLS07u7u8PDw0dHRoaGhV1dXtLS0////m5ub////tLS0T09PR0dHS0tLSEhITk5OUFBQVVVVVFRUYGBgvb29////m5ubAAAAnJyc////3Nzcg4ODUVFRTk5OTU1NS0tLTk5OgICA19fX////nZ2dAAAA",
+    "清邪荡煞之心": "AAAANZxwXP/EStydLYReGU84HE85iKKXK1pGGU43LIReStydXP/ENZxvAAAANJtuXf/FPbSCGk84Gkc0CkApla2j9Pb1HU85FEgyGkc0Gk84PbSCXf/FNJtuXP/FPbaCFT4sG0w3Fkw1OWZT////////ucjCFkozFkw1HE45FT4sPbaBXP/FSt2dGk84GUs2H1I8DUMrLl1JUXhnWX5u7/LxydXPIlM+FEozHE04Gk84SdydLINdF0QxHVE6D0UuNmNQcpKEb4+BNWJPJ1dC8vX00tzYIlM+F0w2GEYyLINdG1A5HE85D0QtWn9v8fTz////////////Zoh6cpGD////r8C5D0UuHE45G1E6G003GEw2IVI95evo////9ff2fpqOpLivzdjTUnlo/f79/P39PmlWEkcwHE44HFA6EEUuSHBf/////v7+k6qgMmBMLl1JL11JjKWb/v7+////UHdnD0QtHVA6G044FEgyNmJP+Pn5/f39WX5uxNHLsMK6f5uP9Pb2////7PDuJVZBGEs1G004G1E6HU45DkMsoLat////fpuOWX5u////////////8fTyXYFyD0UtHE85G1E5LIRdGEUyGE43HE45x9TO+/z8Ml9MLVxIaYp8b4+BNmNPD0QtHVE6F0QxLIReSt2dGk84G003Fks0G044vMvF9vj3ZIZ3VXtrNGFNDEIrH1I8GUs2Gk84SdydXP/FPbaBFT4sHE04GE42EUYvrb+3////////QGpYFUszG003FT4sPbaBXP/ENJtuXf/FPbSBGk84GkYzF0o0Fko07fHvnLKpCkApGkczG084PbSBXf/FNJtvAAAANZxwXP/FStydLIReGU84J1dCg5+THlA6GU43LYReStydXP/FNZ1wAAAA",
+    "冥途夜行之灯": "AAAAlEcw/35V0WVEfT4qSCAVOxMIPhYKOxMISCAUfT4q0GVE/35VlEgwAAAAkkcw/39Vq1M4SyYaOhgOVTMqpJKMxbq2pZONVjQqOhgOSyYbq1M4/39Vk0cw/35Vq1M4PB4WRiIYVjIn4tza////////////493cWDQpRiIXPB4Wq1M4/35V0GRDTCYaRyIXMAUAppSP////3NTSdVlR3NXT////qpiTMAQARyIXSyYa0GRDfD4qOhgOVzMooI6ImYV+oY6K0cfEclVN0cjFoY+KmYN+oI6IVzMpOhgOfD4qSCAUVjQq4tza////qZiTIgAAeF1V7erpeF1VIgAAqJaR////4dvZVTQqSCAUOhMHqJaR////29PR0MfEd1xUPRYLZkc+PhYLdltSz8bD29PR////qJaROhMHPRYKx7y5/Pv7dFhQclZN7urqZkg/NQ0CZUY87OjoclVNdlpS+/v7x7y4PRYKOhMHqJaQ////29TS0cjFeF1UPRYKZ0g/PRYKd1xT0sjF3NXT////p5aQOhMHSCAUVTMp4dvZ////qZiTIwAAeF1V7uvqeV1VIwAAqZeR////4dvZVTMpSCAUfT4rOhgOVjMooI2ImoV/o5CM0sjGclZN0cjFo5CMmoV/oI2HVjIoOhkOfT4r0GRDSyYaRyIYMAQAp5aQ////3NXTdVpS29TS////qZiTMAUARyIXSyYa0GRD/35Vq1M4PB4WRiIYVzMo4t3b////////////493cVzQpRiIXPB8Wq1M4/35Vk0cw/39Vq1M4SyYaOhgOVjQqpZOOxbq2pZOOVjQqOhgOSyYbq1M4/39Vk0cwAAAAlEgw/35V0GVEfT4qRyAUOxQIPhYKOxQIRyAUfT4q0GVE/35VlEgwAAAA",
+    "衔梦照世之心": "AAAAXT19z5T9pF3jZT2LOSJSMx5JMx5JMx5JOSJSZj2LpF7kz5T9XT19AAAAWDR+xHf/1rzsPCNULhtCNSBMNyBONyBONyBONSBMLhtCPCRU17vsxHf/WDR+xXf/fUKzxsLJiHyUJAs/OyZSNiBNOSNPNiBNOyZSJAs/iHyVxcLJfUKzxXf/qmboLhVHkIWa+/n8RjJbKxRENyFOKRJCNyFOKxRERjJb+/n8kISaLRVHqmboYzqLMR9FzMXT+/v76+jtQy9ZNiBNd2iHNiBNQy9Z6+jt+/v7zMXSMR9FYzqLPSZVIww8tKu9opmtpJuu7Onu1M/Z////1M7Y7OnupJquopqttau9Iww8PSZVNSBKLRZGWUdsnpKpEQAswrvJ////+fb4////wbrIEQAsnpOpWUdsLRZGNSBKNB9JMhtKTTlhhXiTNR5MVEJo8O7xlomh8O7xVEFnNB5MhXiTTTlhMhtKNB9JNCBKMhtKNR9Mh3uUX01xiHuV1M/YOSRQ1M/ZiHuVX0xxh3uUNR9MMhtKNCBKOSJSOyZReGmH7OnuWkdtOCNPsqm6Tjpisqm6OCJPWkht7OnueGmHOyZROSJSYzqKPi1QnpKq/v3+9/X3RzJcNiBMXkxxNh9MRzNc9/b3/v39npKpPi1QYzqLqGXnNB1NLRdETjljp56x7+3xPCZSLBVEPCdS7+3xp52xTjljLRdENB1NqGXnwnP/j1XBLBtALhlFHQM4n5WquK/AEgAtuK+/n5SqHQM4LhlFLBtAj1XBwnP/WDR9xXX/jlS/OyRSMR9GKBFBqJ2yaVh6p52xKBFAMR9FOyRSjlS/xXX/WDR9AAAAVzR9wnP/p2PkZj6NMxpLSjhdvbfESjhdMhpLZj6Np2TlwnP/VzR9AAAA",
+    "镜影流电之瞬": "AAAAWzh/tGT8unj938H/+vT///7///7///7/+vT/38H/uXf9tGT8Wzh/AAAAWzh/tmX/ypf++PH+/////////v7+/v7+/v7+///+///+9u/9yZX8tWX/Wzh/tmb/zZn//v/+/////fz+/fz9////////////////////////////zpr/tGT/s3H38O3z////+Pf5////////+vr6+/v78vLy4uLi09PTysrLycnJ5ODnvHn95Mj6ur+28vHz29vbp6eny8vLGBgYKCgoSUlJbW1toKCgwcHB2djZ9vf14sX///3/7OzrkI+Q8fHxHBwcBgYGUFBQampqYWFhZmZmfX19zs7O////////+/f//Pz9////xMTEe3t7gYGBQ0ND5eXlenp6g4ODISEhKCgov7+/8/Pz/v7+////////+/v7////gICAXl5eW1tbb29v////w8PDSEhIXl5e/////f39//////7//////////Pz8/v7+KysrU1NTwsLCkJCQUVFRMDAwV1dX/f39/Pz8////////+/j///7//Pv8////v7+/AAAAQUFBTU1NcnJyLy8v7u7u/v///f3+//7/+/j/4cT//////v3//////f393d3dLy8vHh4eiYmJhoaG/////Pz8/v3/////4cT/uXf++vb//////v3//Pz8////i4uL0NDQg4OD5eXl/v7+/fz+////+vb/uXf+tWX/ypf+/////////v3/9PT08/Pz6OjonJyc/////Pv9////////ypf+tWX/Wzh/tmX/ypf++PL////////+////vLy839/f///+///++PH/y5f+tmX/Wzh/AAAAWzh/tGT8unj938H/+fT+/fz939/f////+vX/38H/uXf9tGT8Wzh/AAAA",
+    "茜染怀想之花": "AAAAN00QoOItnNwtb5YlSFwfO0gcOUYaO0gbSl4fcJklnd4tnt8tMkcPAAAAOVERpOkvjcUrRlkeND4bOUUcNkMWrrSiSVUtND8WNT4cSFwej8krouUuNEkPoeMujMQrO0YeOkQfQ1EjMT8QdX5f////m6KMLjwNRFIkOUMePEgfj8krnuAtmtktRVceKTUMLz4MLDoLKTcHz9LI8fLv6ermO0gcKDcGMUAOKTQMRlkcnd0uZ40gQEkptLqmtLiopqyYbHZV8PHt3N/X////f4huqK6bvsO0xcq7XmVMZY4aRlcgLDkMs7in////4ePc+vr5zdDG3+LazNDG+vr55+nk/Pz74uTdNUEYRloeOkcdOUYZOEUa2dzT3uDZy87Cub6vx8u+uL6vztHG0tXL7/DsVWA7MkASPUkfOUUcPUoeNkMWPUkf3+Haxcm8ub2uOUYar7Siu7+x8/PxXWdELTsMP0whOkYbOUYcPkseLz0PnaOO8PHtztHGvsK0jpZ9vsK0y8/D6uvnwcW3O0ccOkcaO0gdRFQhLDkLe4Rm////2t3U8vPvt7yu4uTetbqs9/f12NvS////q7KeKTYJSFkiYoYhOkQi3eDV7u/s5ObftLmp7e7q3N7W9/j1tbqr4ePd7O3p8/XwVVxBYocbk9AqR1cmSVMuSFUqP0wiKTcH2tzU6Orl8vPwPksgNkQXS1gtR1EtT18rltQqpuswgrUnLzgVNUEXPkweMD0OkpmB////tLmpMT8QP00fNEAXMDoVhLgmpOgvRmMUqO4whLcqQE8eNj8cOEQZP0wg1djOWGM9Mj8SN0AdQVEeh7sqp+0wQVsTAAAARmMVpuovldEsY4QjQE8eNkIYSVQuOEQbQVAdZIYjltMspekvQl0TAAAA",
+}
+ECHO_SET_AT, ECHO_SET_SIZE = (125, 589), 15
+ECHO_SET_MIN, ECHO_SET_GAP = 0.65, 0.12
+_ECHO_SET_T = {}
+
+
+def echo_set(frame):
+    """(set or None, best score, its lead over the next) for the badge on `frame`, a BGR image
+    as OK-WW captures it (windows_graphics: COLOR_BGRA2BGR). Sampled to 15x15 for other sizes;
+    looked for within 3 pixels of where it sits."""
+    import numpy as np  # noqa: PLC0415 - OK-WW's own; the gate's tests load this file without it
+    if not _ECHO_SET_T:
+        import base64  # noqa: PLC0415
+        for name, b64 in ECHO_SET_BADGES.items():
+            _ECHO_SET_T[name] = np.frombuffer(base64.b64decode(b64), dtype=np.uint8).reshape(
+                ECHO_SET_SIZE, ECHO_SET_SIZE, 3).astype(np.float64)
+
+    def ncc(a, b):
+        a = a - a.mean()
+        b = b - b.mean()
+        d = float(np.sqrt((a * a).sum() * (b * b).sum()))
+        return float((a * b).sum()) / d if d else 0.0
+
+    h, w = frame.shape[:2]
+    sx, sy = w / 1920.0, h / 1080.0
+    crops = []
+    for dy in range(-3, 4):
+        for dx in range(-3, 4):
+            rows = ((ECHO_SET_AT[1] + dy + np.arange(ECHO_SET_SIZE)) * sy).astype(int)
+            cols = ((ECHO_SET_AT[0] + dx + np.arange(ECHO_SET_SIZE)) * sx).astype(int)
+            if rows.min() < 0 or cols.min() < 0 or rows.max() >= h or cols.max() >= w:
+                continue
+            crops.append(frame[np.ix_(rows, cols)][..., 2::-1].astype(np.float64))   # BGR -> RGB
+    scores = {}
+    for name, t in _ECHO_SET_T.items():
+        scores[name] = max((0.5 * ncc(c.mean(axis=2), t.mean(axis=2)) + 0.5 * ncc(c, t) for c in crops),
+                           default=-1.0)
+    ranked = sorted(scores.items(), key=lambda kv: -kv[1])
+    best, lead = ranked[0][1], ranked[0][1] - ranked[1][1]
+    name = ranked[0][0] if best >= ECHO_SET_MIN and lead >= ECHO_SET_GAP else None
+    return name, best, lead
+
+
 def echo_stat(text):
     """The main stat a toast row reads as, or None. Whole-string only: everything that is
     not a CJK character is dropped (an icon read as 「X」, spaces, a stray dot), and what is
@@ -305,7 +365,7 @@ def _echo_drop_stat(task):
     def stop(exc):
         return TaskDisabledException is not Exception and isinstance(exc, TaskDisabledException)
 
-    raw, stat, looks = "", None, 0
+    raw, stat, looks, frame = "", None, 0, None
     try:
         task.sleep(_TOAST_FIRST)
         while looks < _TOAST_LOOKS:
@@ -315,6 +375,7 @@ def _echo_drop_stat(task):
             except Exception as exc:  # noqa: BLE001 - an older frame is still worth reading
                 if stop(exc):
                     raise
+            frame = getattr(task, "frame", None)
             found = task.ocr(box=task.box_of_screen(*ECHO_STAT_BOX)) or []
             raw = " ".join(str(getattr(b, "name", b)).strip() for b in found)
             stat = echo_stat(raw)
@@ -325,8 +386,17 @@ def _echo_drop_stat(task):
         if stop(exc):
             raise
         raw = f"读不出（{exc!r}）"
+    # The set from the frame the stat was read on (the badge shows with the text).
+    sonata, score, lead = None, 0.0, 0.0
+    if stat and frame is not None:
+        try:
+            sonata, score, lead = echo_set(frame)
+        except Exception as exc:  # noqa: BLE001 - an unread set, never a stopped farm
+            if stop(exc):
+                raise
     try:
-        task.log_info(f"{ECHO_DROP_LINE}stat={stat or 'unknown'} looks={looks} raw={raw[:60]!r}")
+        task.log_info(f"{ECHO_DROP_LINE}stat={stat or 'unknown'} set={sonata or 'unknown'} "
+                      f"setscore={score:.2f}/{lead:.2f} looks={looks} raw={raw[:60]!r}")
     except Exception:  # noqa: BLE001
         pass
     return stat

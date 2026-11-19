@@ -310,30 +310,55 @@ def _lines_since(started: "datetime | None", only: str = "") -> "list[tuple[date
 # echo picked up (okww_files/ark_overrides.tasks.py, _echo_drop_stat); these are counted.
 # The same six stats as the overlay's ECHO_STATS (test_okww checks the two match).
 ECHO_STATS = ("暴击伤害", "暴击", "治疗效果加成", "攻击", "生命", "防御")
+# The 3.x sonata sets the overlay tells apart by the toast's badge (its ECHO_SET_BADGES keys).
+# A boss drops more than one (千傀重楼: 茜染怀想之花 and 羽落空尘之歌, about half each), so a
+# target may name one; then only that set counts and an unread badge never does.
+ECHO_SETS = ("长路启航之星", "斑驳粉饰之沫", "听唤语义之愿", "雪落无声之愿", "剪心辑梦之影", "羽落空尘之歌",
+             "清邪荡煞之心", "冥途夜行之灯", "衔梦照世之心", "镜影流电之瞬", "茜染怀想之花")
 DROP_LINE = "刷声骸掉落："
-_DROP = re.compile(r"刷声骸掉落：stat=(\S+)")
+_DROP = re.compile(r"刷声骸掉落：stat=(\S+)(?: set=(\S+))?")
 MAX_TARGET = 500
 
 
 def drops_since(started: "datetime | None") -> "dict | None":
-    """{"总捡": all echoes picked up, "未读出": those whose stat was not read, <stat>: n}
-    since `started`, from the overlay's drop lines; None when the log cannot be read.
-    Only this farm's lines: an earlier farm tonight, or the bag, is not in it."""
+    """{"总捡": all echoes picked up, "未读出": those whose stat was not read, "套装未读出":
+    those with a stat but no set read, <stat>: n, "套装": {(stat, set): n}} since `started`,
+    from the overlay's drop lines; None when the log cannot be read. Only this farm's
+    lines: an earlier farm tonight, or the bag, is not in it."""
     lines = _lines_since(started, only=DROP_LINE)
     if lines is None:
         return None
-    out: dict = {"总捡": 0, "未读出": 0}
+    out: dict = {"总捡": 0, "未读出": 0, "套装未读出": 0, "套装": {}}
     for _at, line in lines:
         m = _DROP.search(line)
         if not m:
             continue
         out["总捡"] += 1
-        stat = m.group(1)
-        if stat in ECHO_STATS:
-            out[stat] = out.get(stat, 0) + 1
-        else:
+        stat, sonata = m.group(1), m.group(2) or "unknown"
+        if stat not in ECHO_STATS:
             out["未读出"] += 1
+            continue
+        out[stat] = out.get(stat, 0) + 1
+        if sonata in ECHO_SETS:
+            out["套装"][(stat, sonata)] = out["套装"].get((stat, sonata), 0) + 1
+        else:
+            out["套装未读出"] += 1
     return out
+
+
+def hits(drops: "dict | None", stat: str, sonata: str = "") -> int:
+    """How many of `drops` count toward the target: the stat, and the set when one is named."""
+    if not drops:
+        return 0
+    return drops["套装"].get((stat, sonata), 0) if sonata else drops.get(stat, 0)
+
+
+def unread(drops: "dict | None", sonata: str = "") -> int:
+    """Drops that might have been the target but could not be read: no stat, or (a set
+    named) no set."""
+    if not drops:
+        return 0
+    return drops["未读出"] + (drops["套装未读出"] if sonata else 0)
 
 
 _BOSS_STRING = re.compile(r"FarmEchoTask:boss_string is \[(.*)\]")
@@ -524,13 +549,15 @@ def _truth(cfg, working: Path) -> dict:
 
 def start(cfg, boss: int, until_hhmm: str, name: str = "",
           now: datetime | None = None, sent: datetime | None = None,
-          weekly: bool = False, target_stat: str = "", target_count=0) -> tuple[bool, str]:
+          weekly: bool = False, target_stat: str = "", target_count=0,
+          target_set: str = "") -> tuple[bool, str]:
     """Point OK-WW at one overworld boss and farm it until `until_hhmm`.
 
 `target_stat` / `target_count` (2026-11-20): farm until this farm has picked up
     `target_count` echoes whose main stat read as `target_stat` (drops_since); then
     `until_hhmm` is only the backstop, and reaching it first is said as 「目标未满」.
-    0 (the default) is the old way: farm until the time.
+    0 (the default) is the old way: farm until the time. `target_set` ('' = any set): only
+    echoes of that sonata set count.
 
 `now` pins the clock in tests.
 
@@ -545,13 +572,16 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
     except (TypeError, ValueError):
         return False, f"「刷几个」要是数字，收到 {target_count!r}"
     target_stat = str(target_stat or "").strip()
+    target_set = str(target_set or "").strip()
     if target_count:
         if not 1 <= target_count <= MAX_TARGET:
             return False, f"「刷几个」超出范围：{target_count}（1 到 {MAX_TARGET}）"
         if target_stat not in ECHO_STATS:
             return False, f"主词条不认识：{target_stat!r}（只认 {'、'.join(ECHO_STATS)}）"
-    elif target_stat:
-        return False, f"给了主词条「{target_stat}」却没给刷几个，没有开刷"
+        if target_set and target_set not in ECHO_SETS:
+            return False, f"套装不认识：{target_set!r}（只认 {'、'.join(ECHO_SETS)}，或不限套装）"
+    elif target_stat or target_set:
+        return False, f"给了主词条或套装（{target_set}{target_stat}）却没给刷几个，没有开刷"
     path = _cfg_path(getattr(cfg, "okww_dir", None) or os.environ.get("ARK_OKWW_DIR"))
     if not path or not path.is_file():
         return False, "找不到 OK-WW 的 FarmEchoTask 配置"
@@ -609,10 +639,12 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
         "started": (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
                    .strftime("%Y-%m-%d %H:%M"),
         "saved": saved,
-        **({"target_stat": target_stat, "target_count": target_count} if target_count else {}),
+        **({"target_stat": target_stat, "target_count": target_count, "target_set": target_set}
+           if target_count else {}),
     })
     if target_count:
-        return True, (f"开始刷{name or f'第 {boss} 个'}，主词条「{target_stat}」捡满 {target_count} 个才收工"
+        want = f"{target_set}·{target_stat}" if target_set else target_stat
+        return True, (f"开始刷{name or f'第 {boss} 个'}，「{want}」捡满 {target_count} 个才收工"
                       f"（只数这一趟捡到的），没捡够最晚也在 {user_clock(until, at)} 停下")
     return True, f"开始刷{name or f'第 {boss} 个'}，刷到 {user_clock(until, at)} 为止"
 
@@ -722,7 +754,8 @@ def _finish(cfg, why: str, failed: bool = False, judge_progress: bool = False) -
     if judge_progress and not laps:
         failed = True
     name = rec.get("name") or ""
-    picked = texts.echo_farm_drops(drops_since(begun), rec.get("target_stat") or "") if rec.get("target_count") else ""
+    picked = (texts.echo_farm_drops(drops_since(begun), rec.get("target_stat") or "", rec.get("target_set") or "")
+              if rec.get("target_count") else "")
     return (f"刷{name}{texts.echo_farm_level(level, name)}结束（{why}），{span}{again}，{texts.echo_farm_progress(laps)}"
             f"{picked}{note}", failed or bool(note))
 
@@ -748,17 +781,19 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
         # Never by time or by an estimate (the owner, 2026-11-20: 「你拿一个概率的事件说任务
         # 已完成」); the deadline is a backstop and says the target was not met.
         stat = rec.get("target_stat") or ""
+        sonata = rec.get("target_set") or ""
         drops = drops_since(_started_at(rec))
-        got = (drops or {}).get(stat, 0)
+        got = hits(drops, stat, sonata)
         if drops is not None:
-            seen = {"已出": got, "总捡": drops["总捡"], "未读出": drops["未读出"]}
+            seen = {"已出": got, "总捡": drops["总捡"], "未读出": unread(drops, sonata)}
             if any(rec.get(k) != v for k, v in seen.items()):
                 rec.update(seen)
                 _store(cfg.state_dir).set("queues", "echo_farm", rec)
+        want = f"{sonata}·{stat}" if sonata else stat
         if got >= target:
-            return _finish(cfg, f"刷满了：「{stat}」已出 {got}/{target} 个")
+            return _finish(cfg, f"刷满了：「{want}」已出 {got}/{target} 个")
         if now >= until:
-            return _finish(cfg, f"到了最晚收工时刻（{user_clock(until, now)}）停下，**目标未满**：「{stat}」已出 {got}/{target} 个"
+            return _finish(cfg, f"到了最晚收工时刻（{user_clock(until, now)}）停下，**目标未满**：「{want}」已出 {got}/{target} 个"
                                 + ("" if drops is not None else "（读不到 OK-WW 日志，个数不准）"),
                            judge_progress=True)
     elif now >= until:

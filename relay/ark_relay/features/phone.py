@@ -2772,7 +2772,8 @@ def state_payload(cfg, state_dir: Path) -> dict:
             # By main stat (target_count set): the counts tick_result last read off the drop
             # lines; "到" is then the backstop, not the end. Counts are this farm's only.
             "刷声骸": (lambda r: {"名字": r.get("name"), "到": r.get("until"), "从": r.get("started"),
-                                  **({"目标词条": r.get("target_stat"), "目标数": r.get("target_count"),
+                                  **({"目标词条": r.get("target_stat"), "目标套装": r.get("target_set") or "",
+                                      "目标数": r.get("target_count"),
                                       "已出": r.get("已出", 0), "总捡": r.get("总捡", 0),
                                       "未读出": r.get("未读出", 0)} if r.get("target_count") else {})}
                        if r else {})(

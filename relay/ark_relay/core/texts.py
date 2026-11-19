@@ -1337,12 +1337,16 @@ def echo_farm_progress(n: "int | None") -> str:
     return f"刷的过程中有 {n} 次进展（打怪、捡声骸、回到副本）"
 
 
-def echo_farm_drops(drops: "dict | None", stat: str) -> str:
+def echo_farm_drops(drops: "dict | None", stat: str, sonata: str = "") -> str:
     """echofarm._finish of a farm by main stat: the echoes this farm picked up, the
-    target stat's count and how many toasts were not read (each one may have been it)."""
+    target's count and how many toasts were not read (each one may have been it)."""
     if drops is None:
         return "；**读不到 OK-WW 日志，捡了几个不知道**"
     unread = f"，{drops['未读出']} 个没读出主词条" if drops["未读出"] else ""
+    if sonata:
+        got = drops["套装"].get((stat, sonata), 0)
+        unread += f"，{drops['套装未读出']} 个没认出套装" if drops["套装未读出"] else ""
+        return f"；这一趟捡到声骸 {drops['总捡']} 个，其中「{sonata}·{stat}」{got} 个{unread}"
     return f"；这一趟捡到声骸 {drops['总捡']} 个，其中「{stat}」{drops.get(stat, 0)} 个{unread}"
 
 

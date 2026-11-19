@@ -2025,6 +2025,44 @@ def _part_okww_claim_readback():  # noqa: C901
     tt.incr_drop(True)
     check("not farming (the daily weekly claim): no toast read", (tt.frames, [m for m in tt.logs if m.startswith("刷声骸掉落：")]), (0, []))
 
+    print("\n[echo farm: the toast's set badge, on nine real 千傀重楼 toasts (2026-11-20)]")
+    import numpy as _np
+    from PIL import Image as _Image
+    echo_set = ns["echo_set"]
+    _fx = Path(__file__).resolve().parent / "fixtures" / "echo_badges"
+    _names = {6: "羽落空尘之歌", 11: "茜染怀想之花"}
+
+    def _frame_with(png, w=1920, h=1080):
+        """A 1920x1080 BGR frame (as OK-WW captures) with the badge crop where the toast puts it,
+        then scaled to w x h."""
+        f = _np.zeros((1080, 1920, 3), dtype=_np.uint8)
+        crop = _np.asarray(_Image.open(png).convert("RGB"))[..., ::-1]       # RGB -> BGR
+        f[589 - 6:589 - 6 + crop.shape[0], 125 - 6:125 - 6 + crop.shape[1]] = crop
+        if (w, h) != (1920, 1080):
+            f = _np.asarray(_Image.fromarray(f).resize((w, h), _Image.NEAREST))
+        return f
+
+    _cases = sorted(_fx.glob("drop_*_set*.png"))
+    check("nine real badge crops", len(_cases), 9)
+    for png in _cases:
+        want = _names[int(png.stem.split("set")[1])]
+        got, score, lead = echo_set(_frame_with(png))
+        check(f"{png.stem}: {want}", (got, score >= 0.85, lead >= 0.3), (want, True, True))
+        small, _s, _l = echo_set(_frame_with(png, 1280, 720))
+        check(f"{png.stem} at 1280x720: its own set or unread, never the other", small in (want, None), True)
+    check("a frame with no badge: unread", echo_set(_np.zeros((1080, 1920, 3), dtype=_np.uint8))[0], None)
+    ns["NO_CLAIM"] = str(_flag)
+    tt = toast_task([["治疗效果加成"]])
+    tt.frame = _frame_with(_fx / "drop_01_set11.png")
+    tt.incr_drop(True)
+    _line = [m for m in tt.logs if m.startswith("刷声骸掉落：")][0]
+    check("the drop line carries the set read off the same frame", ("stat=治疗效果加成" in _line, "set=茜染怀想之花" in _line), (True, True))
+    tt = toast_task([[]])
+    tt.frame = _frame_with(_fx / "drop_01_set11.png")
+    tt.incr_drop(True)
+    check("no stat read: no set either", "set=unknown" in [m for m in tt.logs if m.startswith("刷声骸掉落：")][0], True)
+    ns["NO_CLAIM"] = str(Path(__file__).resolve().parent / "no-such-no-claim-flag")
+
     # The coverage driver runs every test in one process: leave sys.modules as found.
     for k, v in _saved.items():
         if v is None:
@@ -6381,6 +6419,7 @@ def _part_echo_farm_main():  # noqa: C901
     exec(compile(_ov.source_text(), "ark_overrides.py", "exec"), _ovns)
     check("the relay's stat list is the overlay's", echofarm.ECHO_STATS, _ovns["ECHO_STATS"])
     check("…and so is the line it counts", echofarm.DROP_LINE, _ovns["ECHO_DROP_LINE"])
+    check("the relay's set list is the overlay's templates", echofarm.ECHO_SETS, tuple(_ovns["ECHO_SET_BADGES"]))
     echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
     for bad, why in (({"target_stat": "治疗", "target_count": 30}, "不认识"),
                      ({"target_stat": "治疗效果加成", "target_count": 0}, "没给刷几个"),
@@ -6414,8 +6453,10 @@ def _part_echo_farm_main():  # noqa: C901
                        + "2026-09-09 04:05:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n"
                        + drop("04:05", "治疗效果加成") + drop("04:07", "生命") + drop("04:09", "unknown")
                        + drop("04:11", "治疗效果加成"), encoding="utf-8")
-        check("counted since the start only", echofarm.drops_since(echofarm._started_at(rect)),
+        _d0 = echofarm.drops_since(echofarm._started_at(rect))
+        check("counted since the start only", {k: _d0.get(k) for k in ("总捡", "未读出", "治疗效果加成", "生命")},
               {"总捡": 4, "未读出": 1, "治疗效果加成": 2, "生命": 1})
+        check("lines from before sets were read: no set, counted as such", (_d0["套装"], _d0["套装未读出"]), ({}, 3))
         note, failed = echofarm.tick_result(ct, datetime(2026, 9, 9, 4, 12, tzinfo=SERVER_TZ))
         check("2 of 3: keeps farming", (note, failed), ("", False))
         check("the counts are on the record for the phone", {k: echofarm.current(ct.state_dir).get(k) for k in ("已出", "总捡", "未读出")},
@@ -6439,6 +6480,45 @@ def _part_echo_farm_main():  # noqa: C901
         check("log unreadable: no count, so no 刷满 - it keeps going", note, "")
         note, failed = echofarm.tick_result(cu, datetime(2026, 9, 9, 8, 31, tzinfo=SERVER_TZ))
         check("…and at the backstop says the count is unknown", ("目标未满" in note, "个数不准" in note), (True, True))
+        print("\n[a target set: stat and set both read, an unread badge never counts]")
+        cbad = fresh()
+        okb, msgb = echofarm.start(cbad, 2, "08:30", now=NOW, weekly=True, target_stat="治疗效果加成",
+                                   target_count=3, target_set="茜染")
+        check("an unknown set is refused", (okb, "套装不认识" in msgb, cfg_now(cbad) == ORIGINAL), (False, True, True))
+        cset = fresh()
+        oks, msgs = echofarm.start(cset, 2, "08:30", "千傀重楼", now=NOW, weekly=True, target_stat="治疗效果加成",
+                                   target_count=2, target_set="茜染怀想之花")
+        check("started with the set, said in the reply", (oks, "茜染怀想之花·治疗效果加成" in msgs,
+                                                       echofarm.current(cset.state_dir).get("target_set")),
+              (True, True, "茜染怀想之花"))
+        _wbw2._okww_log = lambda: _dl
+
+        def drop2(hhmm, stat, sonata):
+            return (f"2026-09-09 {hhmm}:00,000 INFO TaskExecutor FarmEchoTask:刷声骸掉落：stat={stat} set={sonata} "
+                    f"setscore=0.91/0.37 looks=1 raw='{stat}'\n")
+        _dl.write_text(drop2("04:05", "治疗效果加成", "羽落空尘之歌") + drop2("04:06", "治疗效果加成", "unknown")
+                       + drop2("04:07", "生命", "茜染怀想之花") + drop2("04:08", "治疗效果加成", "茜染怀想之花"),
+                       encoding="utf-8")
+        _d = echofarm.drops_since(echofarm._started_at(echofarm.current(cset.state_dir)))
+        check("only the target set with the target stat counts", echofarm.hits(_d, "治疗效果加成", "茜染怀想之花"), 1)
+        check("…without a set, every 治疗效果加成 does", echofarm.hits(_d, "治疗效果加成"), 3)
+        check("an unread badge is unread when a set is named", (echofarm.unread(_d, "茜染怀想之花"), echofarm.unread(_d)), (1, 0))
+        note, failed = echofarm.tick_result(cset, datetime(2026, 9, 9, 4, 10, tzinfo=SERVER_TZ))
+        check("1 of 2 of the set (two others of another or no set): keeps farming", note, "")
+        check("phone counts", {k: echofarm.current(cset.state_dir).get(k) for k in ("已出", "总捡", "未读出")},
+              {"已出": 1, "总捡": 4, "未读出": 1})
+        _dl.write_text(_dl.read_text(encoding="utf-8") + drop2("04:12", "治疗效果加成", "茜染怀想之花"), encoding="utf-8")
+        note, failed = echofarm.tick_result(cset, datetime(2026, 9, 9, 4, 13, tzinfo=SERVER_TZ))
+        check("2 of 2 of the set: done", ("刷满了" in note, "茜染怀想之花·治疗效果加成" in note, "已出 2/2" in note, failed),
+              (True, True, True, False))
+        check("the wrap-up names the set's count and the unread badges", ("「茜染怀想之花·治疗效果加成」2 个" in note,
+                                                                       "1 个没认出套装" in note), (True, True))
+        cold = fresh()
+        echofarm.start(cold, 2, "08:30", now=NOW, weekly=True, target_stat="生命", target_count=1)
+        _dl.write_text("2026-09-09 04:05:00,000 INFO TaskExecutor FarmEchoTask:刷声骸掉落：stat=生命 looks=1 raw='生命'\n",
+                       encoding="utf-8")
+        note, _f = echofarm.tick_result(cold, datetime(2026, 9, 9, 4, 6, tzinfo=SERVER_TZ))
+        check("a line from before sets (no set=) still counts when no set is named", "刷满了" in note, True)
     finally:
         _wbw2._okww_log, echofarm.quiet_minutes = _real_dl, _quiet_dl
 

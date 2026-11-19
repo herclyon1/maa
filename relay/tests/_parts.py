@@ -234,8 +234,16 @@ def _settle(s: dict) -> None:
         t.join(max(0.0, end - time.monotonic()))
 
 
+# Packages with C extensions cannot be imported a second time in one process (numpy:
+# 「cannot load module more than once per process」), so a part that imports one first must
+# not take it away from the parts after it. They hold no state a part could leave behind.
+_KEEP_LOADED = ("numpy", "PIL")
+
+
 def _restore(s: dict) -> None:
     for name in [n for n in sys.modules if n not in s["mods"]]:
+        if name.split(".")[0] in _KEEP_LOADED:
+            continue
         del sys.modules[name]
     for name, m in s["mods"].items():
         sys.modules[name] = m

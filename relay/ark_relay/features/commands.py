@@ -876,7 +876,8 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             # main stat were picked up; "until" is then the backstop. Without them, by time.
             return echofarm.start(Config(), cmd.get("boss"), cmd.get("until"), name,
                                   sent=sent, weekly=weekly, target_stat=cmd.get("target_stat") or "",
-                                  target_count=cmd.get("target_count") or 0)
+                                  target_count=cmd.get("target_count") or 0,
+                                  target_set=cmd.get("target_set") or "")
         if action == "echo_farm_until":
             from ark_relay.features.echofarm import retime  # noqa: PLC0415
             from ark_relay.core.config import Config  # noqa: PLC0415
