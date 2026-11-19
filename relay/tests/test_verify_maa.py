@@ -343,8 +343,11 @@ def _part_claim_no_claim_gate():
         t.incr_drop(True)
     finally:
         flag.unlink()
-    check("上游的掉落计数照跑", t.events[:1], ["upstream-incr"])
-    check("没走去结晶、没按 F、没点确认、没重进", t.events[1:], [])
+    # 2026-11-20: while farming, the pickup toast's main stat is read first and logged
+    # (「刷声骸掉落：」, counted by echofarm); nothing else happens.
+    check("刷声骸时先记一行掉落的主词条", [e for e in t.events if e.startswith("log:刷声骸掉落：")][:1] != [], True)
+    check("上游的掉落计数照跑", [e for e in t.events if not e.startswith("log:")][:1], ["upstream-incr"])
+    check("没走去结晶、没按 F、没点确认、没重进", [e for e in t.events if not e.startswith("log:")][1:], [])
     flag.write_text("farming 4c echoes\n", encoding="utf-8")
     try:
         t = Task()

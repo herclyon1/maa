@@ -1953,6 +1953,78 @@ def _part_okww_claim_readback():  # noqa: C901
     check("BaseWWTask.tr 返回英文原句（不让 zh_CN 破坏 AUTO-MAS 完成判定）",
           t.tr("Daily Task Completed"), "Daily Task Completed")
 
+    print("\n[echo farm: the pickup toast's main stat, one log line per echo (2026-11-20)]")
+    echo_stat = ns["echo_stat"]
+    check("a clean read", echo_stat("生命"), "生命")
+    check("the icon read as a letter is dropped", echo_stat("X治疗效果加成"), "治疗效果加成")
+    check("暴击伤害 is not 暴击", (echo_stat("暴击伤害"), echo_stat("暴击")), ("暴击伤害", "暴击"))
+    check("a partial read is unread, never a guess", (echo_stat("治疗效果"), echo_stat("治疗"), echo_stat("")), (None, None, None))
+    check("two stats in one read are unread", echo_stat("生命 攻击"), None)
+    _flag = tmpdir() / "farm.no-claim"
+    _flag.write_text("", encoding="utf-8")
+
+    def toast_task(reads, boss="Weekly Challenge"):
+        tt = task(boss=boss)
+        tt.toast = list(reads)
+        tt.frames = 0
+        tt.slept = []
+        tt.sleep = lambda s: tt.slept.append(s)
+
+        def nf():
+            tt.frames += 1
+        tt.next_frame = nf
+
+        def ocr(box=None, **kw):
+            if box == ns["ECHO_STAT_BOX"][:2]:
+                return tt.toast.pop(0) if tt.toast else []
+            return []
+        tt.ocr = ocr
+        return tt
+
+    ns["NO_CLAIM"] = str(_flag)
+    tt = toast_task([[], ["治疗效果加成"]])
+    tt.incr_drop(True)
+    drop = [m for m in tt.logs if m.startswith("刷声骸掉落：")]
+    check("farming, an echo picked up: one line with the stat", (len(drop), "stat=治疗效果加成" in drop[0]), (1, True))
+    check("read on the second look, from a fresh frame each time", (tt.frames, tt.slept[:2]), (2, [1.0, 0.3]))
+    check("upstream's count still runs", "incr" in tt.events, True)
+    tt = toast_task([])
+    tt.incr_drop(True)
+    drop = [m for m in tt.logs if m.startswith("刷声骸掉落：")]
+    check("no toast read in six looks: unknown, not a guess", (len(drop), "stat=unknown" in drop[0], "looks=6" in drop[0]), (1, True, True))
+    tt = toast_task([["治疗效果"]] * 6)
+    tt.incr_drop(True)
+    check("a cut-off stat stays unknown", "stat=unknown" in [m for m in tt.logs if m.startswith("刷声骸掉落：")][0], True)
+    tt = toast_task([["生命"]])
+    tt.incr_drop(False)
+    check("nothing picked up: no toast read, no line", (tt.frames, [m for m in tt.logs if m.startswith("刷声骸掉落：")]), (0, []))
+    tt = toast_task([["生命"]], boss="Boss Challenge")
+    tt.incr_drop(True)
+    check("an overworld boss farm counts too", "stat=生命" in " ".join(tt.logs), True)
+
+    def boom(box=None, **kw):
+        raise RuntimeError("ocr died")
+    tt = toast_task([])
+    tt.ocr = boom
+    tt.incr_drop(True)
+    check("an OCR failure is logged as unknown and the lap goes on",
+          ("stat=unknown" in " ".join(tt.logs), "incr" in tt.events), (True, True))
+    tt = toast_task([])
+
+    def stop_now(s):
+        raise Disabled()
+    tt.sleep = stop_now
+    try:
+        tt.incr_drop(True)
+        stopped = False
+    except Disabled:
+        stopped = True
+    check("a deliberate stop goes up untouched", stopped, True)
+    ns["NO_CLAIM"] = str(Path(__file__).resolve().parent / "no-such-no-claim-flag")
+    tt = toast_task([["生命"]])
+    tt.incr_drop(True)
+    check("not farming (the daily weekly claim): no toast read", (tt.frames, [m for m in tt.logs if m.startswith("刷声骸掉落：")]), (0, []))
+
     # The coverage driver runs every test in one process: leave sys.modules as found.
     for k, v in _saved.items():
         if v is None:

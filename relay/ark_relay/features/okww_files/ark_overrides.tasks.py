@@ -271,6 +271,67 @@ def farming_echoes() -> bool:
     return os.path.exists(NO_CLAIM)
 
 
+# -- echo farm: the main stat of every echo picked up ---------------------------
+# The 4-cost main stats as the game writes them. Longest first where one is the start of
+# another (暴击伤害 before 暴击), though matching is whole-string, never a substring.
+ECHO_STATS = ("暴击伤害", "暴击", "治疗效果加成", "攻击", "生命", "防御")
+# The pickup toast's second row, the main stat (1920x1080, 2026-11-20 toasts of 千傀重楼:
+# row 1 the echo's name at y 534-552, row 2 the stat at 565-578, row 3 the fixed 攻击 at
+# 589-604). The box stays inside row 2 and right of its icon.
+ECHO_STAT_BOX = (0.085, 0.516, 0.220, 0.543)
+# The toast is not up at +0.3 s and is steady from +1.2 s to +2.4 s after the pickup:
+# a first look after 1 s, then every 0.3 s, six looks in all (about 2.5 s).
+_TOAST_FIRST, _TOAST_STEP, _TOAST_LOOKS = 1.0, 0.3, 6
+ECHO_DROP_LINE = "刷声骸掉落："
+
+
+def echo_stat(text):
+    """The main stat a toast row reads as, or None. Whole-string only: everything that is
+    not a CJK character is dropped (an icon read as 「X」, spaces, a stray dot), and what is
+    left must be one of ECHO_STATS exactly. A partial read is unread, never a guess: a
+    stat read as the target that is not one would end a farm short."""
+    left = re.sub(r"[^\u4e00-\u9fff]", "", text or "")
+    return left if left in ECHO_STATS else None
+
+
+def _echo_drop_stat(task):
+    """Read the main stat off the pickup toast and log one line for the relay to count.
+
+    Only while the relay farms echoes, and never in the way of the farm: any failure is
+    a logged 「unknown」, a deliberate stop goes up untouched."""
+    # Only OK-WW's own stop goes up. Until _install_hooks binds it, TaskDisabledException
+    # is Exception itself, and `except TaskDisabledException: raise` would pass every
+    # error up: this one checks it is the real class first.
+    def stop(exc):
+        return TaskDisabledException is not Exception and isinstance(exc, TaskDisabledException)
+
+    raw, stat, looks = "", None, 0
+    try:
+        task.sleep(_TOAST_FIRST)
+        while looks < _TOAST_LOOKS:
+            looks += 1
+            try:
+                task.next_frame()
+            except Exception as exc:  # noqa: BLE001 - an older frame is still worth reading
+                if stop(exc):
+                    raise
+            found = task.ocr(box=task.box_of_screen(*ECHO_STAT_BOX)) or []
+            raw = " ".join(str(getattr(b, "name", b)).strip() for b in found)
+            stat = echo_stat(raw)
+            if stat or looks >= _TOAST_LOOKS:
+                break
+            task.sleep(_TOAST_STEP)
+    except Exception as exc:  # noqa: BLE001 - counting must never stop the farm
+        if stop(exc):
+            raise
+        raw = f"读不出（{exc!r}）"
+    try:
+        task.log_info(f"{ECHO_DROP_LINE}stat={stat or 'unknown'} looks={looks} raw={raw[:60]!r}")
+    except Exception:  # noqa: BLE001
+        pass
+    return stat
+
+
 # 「本周剩余可收取次数：2/3」 as read before entering the weekly boss.
 _WEEKLY_LEFT = re.compile(r"次数[^0-9]{0,6}(\d)\s*[/／]\s*3")
 
@@ -545,6 +606,9 @@ def _install_claim():
 
     @override(FarmEchoTask, "incr_drop")
     def incr_drop(self, dropped):
+        # Echo farm: one 「刷声骸掉落：stat=…」 line per echo picked up (echofarm counts them).
+        if dropped and farming_echoes():
+            _echo_drop_stat(self)
         upstream_incr(self, dropped)
         if not _weekly(self) or farming_echoes():
             return
