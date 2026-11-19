@@ -280,9 +280,10 @@ def progress_since(started: "datetime | None") -> "int | None":
     return sum(1 for _at, line in lines if any(k in line for k in PROGRESS))
 
 
-def _lines_since(started: "datetime | None") -> "list[tuple[datetime, str]] | None":
+def _lines_since(started: "datetime | None", only: str = "") -> "list[tuple[datetime, str]] | None":
     """(time, line) of every OK-WW log line since `started`, oldest first, from every
-    log file written since then; None when that cannot be read."""
+    log file written since then; None when that cannot be read. `only`: just the lines
+    holding it (looked for before any timestamp is parsed - a night's log is big)."""
     from ark_relay.features.weeklyboss import _okww_log  # noqa: PLC0415 - avoids an import cycle
     f = _okww_log()
     if started is None or not f:
@@ -293,6 +294,8 @@ def _lines_since(started: "datetime | None") -> "list[tuple[datetime, str]] | No
         out = []
         for q in files:
             for line in q.read_text(encoding="utf-8", errors="replace").splitlines():
+                if only and only not in line:
+                    continue
                 at = _line_time(line)
                 if at is not None and at >= started:
                     out.append((at, line))
@@ -300,6 +303,37 @@ def _lines_since(started: "datetime | None") -> "list[tuple[datetime, str]] | No
         return out
     except OSError:
         return None
+
+
+# Farming by main stat (2026-11-20, the owner: 「收工要确认真的刷到」, not by time or by
+# what probability says). The overlay logs one 「刷声骸掉落：stat=<stat|unknown> …」 line per
+# echo picked up (okww_files/ark_overrides.tasks.py, _echo_drop_stat); these are counted.
+# The same six stats as the overlay's ECHO_STATS (test_okww checks the two match).
+ECHO_STATS = ("暴击伤害", "暴击", "治疗效果加成", "攻击", "生命", "防御")
+DROP_LINE = "刷声骸掉落："
+_DROP = re.compile(r"刷声骸掉落：stat=(\S+)")
+MAX_TARGET = 500
+
+
+def drops_since(started: "datetime | None") -> "dict | None":
+    """{"总捡": all echoes picked up, "未读出": those whose stat was not read, <stat>: n}
+    since `started`, from the overlay's drop lines; None when the log cannot be read.
+    Only this farm's lines: an earlier farm tonight, or the bag, is not in it."""
+    lines = _lines_since(started, only=DROP_LINE)
+    if lines is None:
+        return None
+    out: dict = {"总捡": 0, "未读出": 0}
+    for _at, line in lines:
+        m = _DROP.search(line)
+        if not m:
+            continue
+        out["总捡"] += 1
+        stat = m.group(1)
+        if stat in ECHO_STATS:
+            out[stat] = out.get(stat, 0) + 1
+        else:
+            out["未读出"] += 1
+    return out
 
 
 _BOSS_STRING = re.compile(r"FarmEchoTask:boss_string is \[(.*)\]")
@@ -490,8 +524,13 @@ def _truth(cfg, working: Path) -> dict:
 
 def start(cfg, boss: int, until_hhmm: str, name: str = "",
           now: datetime | None = None, sent: datetime | None = None,
-          weekly: bool = False) -> tuple[bool, str]:
+          weekly: bool = False, target_stat: str = "", target_count=0) -> tuple[bool, str]:
     """Point OK-WW at one overworld boss and farm it until `until_hhmm`.
+
+`target_stat` / `target_count` (2026-11-20): farm until this farm has picked up
+    `target_count` echoes whose main stat read as `target_stat` (drops_since); then
+    `until_hhmm` is only the backstop, and reaching it first is said as 「目标未满」.
+    0 (the default) is the old way: farm until the time.
 
 `now` pins the clock in tests.
 
@@ -501,6 +540,18 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
     So the deadline is resolved against `sent`, and an order whose deadline passed
     before it could be acted on is refused, as skip_today refuses a day already gone.
     """
+    try:
+        target_count = int(target_count or 0)
+    except (TypeError, ValueError):
+        return False, f"「刷几个」要是数字，收到 {target_count!r}"
+    target_stat = str(target_stat or "").strip()
+    if target_count:
+        if not 1 <= target_count <= MAX_TARGET:
+            return False, f"「刷几个」超出范围：{target_count}（1 到 {MAX_TARGET}）"
+        if target_stat not in ECHO_STATS:
+            return False, f"主词条不认识：{target_stat!r}（只认 {'、'.join(ECHO_STATS)}）"
+    elif target_stat:
+        return False, f"给了主词条「{target_stat}」却没给刷几个，没有开刷"
     path = _cfg_path(getattr(cfg, "okww_dir", None) or os.environ.get("ARK_OKWW_DIR"))
     if not path or not path.is_file():
         return False, "找不到 OK-WW 的 FarmEchoTask 配置"
@@ -558,7 +609,11 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
         "started": (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
                    .strftime("%Y-%m-%d %H:%M"),
         "saved": saved,
+        **({"target_stat": target_stat, "target_count": target_count} if target_count else {}),
     })
+    if target_count:
+        return True, (f"开始刷{name or f'第 {boss} 个'}，主词条「{target_stat}」捡满 {target_count} 个才收工"
+                      f"（只数这一趟捡到的），没捡够最晚也在 {user_clock(until, at)} 停下")
     return True, f"开始刷{name or f'第 {boss} 个'}，刷到 {user_clock(until, at)} 为止"
 
 
@@ -667,8 +722,9 @@ def _finish(cfg, why: str, failed: bool = False, judge_progress: bool = False) -
     if judge_progress and not laps:
         failed = True
     name = rec.get("name") or ""
+    picked = texts.echo_farm_drops(drops_since(begun), rec.get("target_stat") or "") if rec.get("target_count") else ""
     return (f"刷{name}{texts.echo_farm_level(level, name)}结束（{why}），{span}{again}，{texts.echo_farm_progress(laps)}"
-            f"{note}", failed or bool(note))
+            f"{picked}{note}", failed or bool(note))
 
 
 def tick(cfg, now: datetime | None = None) -> str:
@@ -686,7 +742,26 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
     if until is None:
         return _finish(cfg, "结束时刻读不出来，为安全起见停掉", failed=True)
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-    if now >= until:
+    target = int(rec.get("target_count") or 0)
+    if target:
+        # By main stat: done only when the count read off the toasts reaches the target.
+        # Never by time or by an estimate (the owner, 2026-11-20: 「你拿一个概率的事件说任务
+        # 已完成」); the deadline is a backstop and says the target was not met.
+        stat = rec.get("target_stat") or ""
+        drops = drops_since(_started_at(rec))
+        got = (drops or {}).get(stat, 0)
+        if drops is not None:
+            seen = {"已出": got, "总捡": drops["总捡"], "未读出": drops["未读出"]}
+            if any(rec.get(k) != v for k, v in seen.items()):
+                rec.update(seen)
+                _store(cfg.state_dir).set("queues", "echo_farm", rec)
+        if got >= target:
+            return _finish(cfg, f"刷满了：「{stat}」已出 {got}/{target} 个")
+        if now >= until:
+            return _finish(cfg, f"到了最晚收工时刻（{user_clock(until, now)}）停下，**目标未满**：「{stat}」已出 {got}/{target} 个"
+                                + ("" if drops is not None else "（读不到 OK-WW 日志，个数不准）"),
+                           judge_progress=True)
+    elif now >= until:
         return _finish(cfg, f"到点了（{user_clock(until, now)}）", judge_progress=True)
     quiet = quiet_minutes(now, _stamp(rec.get("restarted")) or _started_at(rec))
     if quiet is None or quiet < RESTART_QUIET_MINUTES:

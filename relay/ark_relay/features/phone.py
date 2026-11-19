@@ -2769,8 +2769,13 @@ def state_payload(cfg, state_dir: Path) -> dict:
             # only while it holds: an expired end time would read as "on" on the phone; shutdown also goes by
             # debug_active
             "调试模式": modes.debug_until(state_dir) if modes.debug_active(state_dir) else "",
-            "刷声骸": (lambda r: {"名字": r.get("name"), "到": r.get("until"),
-                                  "从": r.get("started")} if r else {})(
+            # By main stat (target_count set): the counts tick_result last read off the drop
+            # lines; "到" is then the backstop, not the end. Counts are this farm's only.
+            "刷声骸": (lambda r: {"名字": r.get("name"), "到": r.get("until"), "从": r.get("started"),
+                                  **({"目标词条": r.get("target_stat"), "目标数": r.get("target_count"),
+                                      "已出": r.get("已出", 0), "总捡": r.get("总捡", 0),
+                                      "未读出": r.get("未读出", 0)} if r.get("target_count") else {})}
+                       if r else {})(
                 __import__("ark_relay.features.echofarm", fromlist=["x"]).current(state_dir)),
             "下次别关机": modes.skip_armed(state_dir),
             # Which queues sit out today: the page shows each as its queue

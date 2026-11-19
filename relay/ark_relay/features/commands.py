@@ -872,8 +872,11 @@ def apply_command(cmd: dict) -> tuple[bool, str]:
             weekly = cmd.get("weekly") is True
             name = str(cmd.get("name") or "") or (f"周本第 {cmd.get('boss')} 个" if weekly
                                                   else label(cmd.get("boss")))
+            # "target_stat" + "target_count" (2026-11-20): stop once that many echoes with that
+            # main stat were picked up; "until" is then the backstop. Without them, by time.
             return echofarm.start(Config(), cmd.get("boss"), cmd.get("until"), name,
-                                  sent=sent, weekly=weekly)
+                                  sent=sent, weekly=weekly, target_stat=cmd.get("target_stat") or "",
+                                  target_count=cmd.get("target_count") or 0)
         if action == "echo_farm_until":
             from ark_relay.features.echofarm import retime  # noqa: PLC0415
             from ark_relay.core.config import Config  # noqa: PLC0415

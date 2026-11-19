@@ -1337,6 +1337,15 @@ def echo_farm_progress(n: "int | None") -> str:
     return f"刷的过程中有 {n} 次进展（打怪、捡声骸、回到副本）"
 
 
+def echo_farm_drops(drops: "dict | None", stat: str) -> str:
+    """echofarm._finish of a farm by main stat: the echoes this farm picked up, the
+    target stat's count and how many toasts were not read (each one may have been it)."""
+    if drops is None:
+        return "；**读不到 OK-WW 日志，捡了几个不知道**"
+    unread = f"，{drops['未读出']} 个没读出主词条" if drops["未读出"] else ""
+    return f"；这一趟捡到声骸 {drops['总捡']} 个，其中「{stat}」{drops.get(stat, 0)} 个{unread}"
+
+
 def echo_farm_no_claim_left(path: str) -> str:
     """echofarm.finish: the no-claim marker of the farm could not be deleted."""
     return f"；**不领奖标记没删掉，周本会不领奖，已交给我们这边去删 {path}**"

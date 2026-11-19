@@ -6375,6 +6375,73 @@ def _part_echo_farm_main():  # noqa: C901
         check(f"拒绝 {bad!r}", echofarm.start(c2, bad, "08:30")[0], False)
         check(f"拒绝 {bad!r} 后配置没动", cfg_now(c2), ORIGINAL)
 
+    print("\n[farm by main stat (2026-11-20): done only when the count read off the toasts reaches the target]")
+    from ark_relay.features import okww_overlay as _ov
+    _ovns = {}
+    exec(compile(_ov.source_text(), "ark_overrides.py", "exec"), _ovns)
+    check("the relay's stat list is the overlay's", echofarm.ECHO_STATS, _ovns["ECHO_STATS"])
+    check("…and so is the line it counts", echofarm.DROP_LINE, _ovns["ECHO_DROP_LINE"])
+    echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
+    for bad, why in (({"target_stat": "治疗", "target_count": 30}, "不认识"),
+                     ({"target_stat": "治疗效果加成", "target_count": 0}, "没给刷几个"),
+                     ({"target_stat": "治疗效果加成", "target_count": 501}, "超出范围"),
+                     ({"target_stat": "治疗效果加成", "target_count": "三十"}, "要是数字")):
+        cb = fresh()
+        okb, msgb = echofarm.start(cb, 2, "08:30", now=NOW, weekly=True, **bad)
+        check(f"refused: {bad}", (okb, why in msgb, cfg_now(cb) == ORIGINAL), (False, True, True))
+    ct = fresh()
+    okt, msgt = echofarm.start(ct, 2, "08:30", "千傀重楼", now=NOW, weekly=True,
+                               target_stat="治疗效果加成", target_count=3)
+    rect = echofarm.current(ct.state_dir)
+    check("started, the target on the record", (okt, rect.get("target_stat"), rect.get("target_count")),
+          (True, "治疗效果加成", 3))
+    check("the reply says it stops on the count, the time is the latest stop", ("捡满 3 个才收工" in msgt, "最晚也在" in msgt), (True, True))
+    cplain = fresh()
+    echofarm.start(cplain, 1, "08:30", "天傀劫煞", now=NOW)
+    check("by time as before: no target fields", "target_count" in echofarm.current(cplain.state_dir), False)
+    echofarm.finish(cplain, "收尾")
+
+    _dl = tmpdir() / "ok-script.log"
+    _wbw2 = __import__("ark_relay.features.weeklyboss", fromlist=["x"])
+    _real_dl, _quiet_dl = _wbw2._okww_log, echofarm.quiet_minutes
+    _wbw2._okww_log = lambda: _dl
+    echofarm.quiet_minutes = lambda now=None, since=None: 0.0
+
+    def drop(hhmm, stat):
+        return f"2026-09-09 {hhmm}:00,000 INFO TaskExecutor FarmEchoTask:刷声骸掉落：stat={stat} looks=2 raw='{stat}'\n"
+    try:
+        _dl.write_text(drop("03:50", "治疗效果加成")            # before this farm: not counted
+                       + "2026-09-09 04:05:00,000 INFO TaskExecutor FarmEchoTask:farm echo on the face\n"
+                       + drop("04:05", "治疗效果加成") + drop("04:07", "生命") + drop("04:09", "unknown")
+                       + drop("04:11", "治疗效果加成"), encoding="utf-8")
+        check("counted since the start only", echofarm.drops_since(echofarm._started_at(rect)),
+              {"总捡": 4, "未读出": 1, "治疗效果加成": 2, "生命": 1})
+        note, failed = echofarm.tick_result(ct, datetime(2026, 9, 9, 4, 12, tzinfo=SERVER_TZ))
+        check("2 of 3: keeps farming", (note, failed), ("", False))
+        check("the counts are on the record for the phone", {k: echofarm.current(ct.state_dir).get(k) for k in ("已出", "总捡", "未读出")},
+              {"已出": 2, "总捡": 4, "未读出": 1})
+        _dl.write_text(_dl.read_text(encoding="utf-8") + drop("04:20", "治疗效果加成"), encoding="utf-8")
+        note, failed = echofarm.tick_result(ct, datetime(2026, 9, 9, 4, 21, tzinfo=SERVER_TZ))
+        check("3 of 3: done, a clean wrap-up", ("刷满了" in note, "已出 3/3" in note, failed), (True, True, False))
+        check("the wrap-up gives this farm's pickups and the unread", ("捡到声骸 5 个" in note, "1 个没读出主词条" in note), (True, True))
+        check("…and puts everything back", (echofarm.current(ct.state_dir), cfg_now(ct)), ({}, ORIGINAL))
+
+        cs = fresh()
+        echofarm.start(cs, 2, "08:30", "千傀重楼", now=NOW, weekly=True, target_stat="治疗效果加成", target_count=30)
+        note, failed = echofarm.tick_result(cs, datetime(2026, 9, 9, 8, 31, tzinfo=SERVER_TZ))
+        check("the backstop before the target: says 目标未满 with the count, never 完成",
+              ("目标未满" in note, "已出 3/30" in note, "刷满" in note), (True, True, False))
+        check("…and it is not a fault (progress was made)", failed, False)
+        cu = fresh()
+        echofarm.start(cu, 2, "08:30", "千傀重楼", now=NOW, weekly=True, target_stat="治疗效果加成", target_count=1)
+        _wbw2._okww_log = lambda: None
+        note, failed = echofarm.tick_result(cu, datetime(2026, 9, 9, 4, 30, tzinfo=SERVER_TZ))
+        check("log unreadable: no count, so no 刷满 - it keeps going", note, "")
+        note, failed = echofarm.tick_result(cu, datetime(2026, 9, 9, 8, 31, tzinfo=SERVER_TZ))
+        check("…and at the backstop says the count is unknown", ("目标未满" in note, "个数不准" in note), (True, True))
+    finally:
+        _wbw2._okww_log, echofarm.quiet_minutes = _real_dl, _quiet_dl
+
     print("\n[weekly boss farm (2026-10-22): Weekly Challenge, its own index key, no-claim marker on; level 80 like the overworld farm (2026-11-19)]")
     echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
     cw = fresh()
