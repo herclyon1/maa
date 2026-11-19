@@ -1056,6 +1056,10 @@ def _part_wingui_guards():
     check("no argument is wuwa", (FAKE / "pushed-ark-gui-cmd.txt").read_text(encoding="utf-8"), "launch wuwa")
     ps1 = pushed_ps1()
     check("a crash box that will not close stops the launch", "ERR 残留的崩溃弹窗关不掉" in ps1, True)
+    after_close = ps1[ps1.index("Start-Sleep -Seconds 3"):ps1.index("$left = @(Find-CrashBoxes)")]
+    check("after WM_CLOSE the game is ended by the list taken before (its box is gone by then)",
+          ("foreach ($b in $boxes)" in after_close, "Find-CrashBoxes" in after_close,
+           "Get-Process -Id $b.Id" in after_close), (True, False, True))
     check("a throw in the launch branch becomes an ERR line", "ERR 起鸣潮这段出错了" in ps1, True)
     check("the game window needs a title", "$p.MainWindowTitle -and $p.MainWindowTitle -notmatch $crash" in ps1, True)
     code, out, _ = run("key", "esc", state={"queues": {}}, gui="cmd=esc\nERRATIC is not an error line\nsent esc")
@@ -1082,8 +1086,10 @@ def _part_wingui_guards():
     rc, so, se = drive(b"ab\xff\xfecd")
     check("a non-UTF-8 argument: caller goes on", (rc, so), (0, b"survived\n"))
     check("...and says nothing on stderr", se, b"")
-    rc, so, _ = drive("x", env_extra={"ARK_ACTION_LOG": str(FAKE / "no" / "such" / "dir" / "x.log")})
-    check("an unwritable log: caller goes on", (rc, so), (0, b"survived\n"))
+    # A log whose parent is a regular file: mkdir -p fails (ENOTDIR), nothing can be written.
+    rc, so, se = drive("x", env_extra={"ARK_ACTION_LOG": str(ALOG / "x.log")})
+    check("an unwritable log: caller goes on", (rc, so, se), (0, b"survived\n", b""))
+    check("an unwritable log: nothing created", (ALOG / "x.log").exists() or not ALOG.is_file(), False)
     rc, so, _ = drive("x", drop=("HOME", "ARK_ACTION_LOG"))
     check("no HOME and no ARK_ACTION_LOG: caller goes on", (rc, so), (0, b"survived\n"))
     rc, so, _ = drive("WECOM_SECRET=abcdef123456", "password=hunter2xyz", "token=tok_9876543",
@@ -1096,6 +1102,35 @@ def _part_wingui_guards():
     check("masked, not dropped", text.count("<已隐藏>") >= 5, True)
     check("the log is 0600 (it was 0644)", oct(ALOG.stat().st_mode & 0o777), "0o600")
     check("one line per call so far", len(text.splitlines()), 3)
+
+    print("\n[fail closed: no redact.py, or no python3, and the arguments are not written]")
+    BARE = FAKE / "bare-lib"
+    BARE.mkdir()
+    (BARE / "mac-action-log.sh").write_text((MAC / "lib" / "mac-action-log.sh").read_text(encoding="utf-8"),
+                                            encoding="utf-8")      # no ../redact.py next to it
+    bare_drv = DRV / "bare.sh"
+    bare_drv.write_text("#!/bin/bash\nset -euo pipefail\n"
+                        f". '{BARE / 'mac-action-log.sh'}'\n"
+                        'ark_action_log "$@"\necho survived\n', encoding="utf-8")
+    BLOG = FAKE / "bare.log"
+    r = subprocess.run(["/bin/bash", str(bare_drv), "password=hunter2xyz"], capture_output=True,
+                       env={**os.environ, "ARK_ACTION_LOG": str(BLOG)}, timeout=30)
+    check("no redact.py: caller goes on", (r.returncode, r.stdout), (0, b"survived\n"))
+    check("no redact.py: no argument written", ("hunter2xyz" in BLOG.read_text(encoding="utf-8"),
+                                                "找不到 redact.py" in BLOG.read_text(encoding="utf-8")), (False, True))
+    NOPY = FAKE / "nopy-bin"
+    NOPY.mkdir()
+    for tool in ("basename", "dirname", "ps", "tr", "date", "mkdir", "chmod"):
+        for d in ("/bin", "/usr/bin"):
+            if Path(d, tool).exists():
+                (NOPY / tool).symlink_to(Path(d, tool))
+                break
+    PLOG = FAKE / "nopy.log"
+    r = subprocess.run(["/bin/bash", str(driver), "password=hunter2xyz"], capture_output=True,
+                       env={"PATH": str(NOPY), "HOME": str(FAKE), "ARK_ACTION_LOG": str(PLOG)}, timeout=30)
+    check("no python3: caller goes on", (r.returncode, r.stdout), (0, b"survived\n"))
+    check("no python3: no argument written", ("hunter2xyz" in PLOG.read_text(encoding="utf-8"),
+                                              "脱敏没跑成" in PLOG.read_text(encoding="utf-8")), (False, True))
 
     print("\n[a copy of wingui.sh without the lib still runs]")
     ALONE = FAKE / "alone"

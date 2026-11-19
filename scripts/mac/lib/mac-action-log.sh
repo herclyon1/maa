@@ -23,7 +23,8 @@
 # Secrets: the arguments go through scripts/mac/redact.py's redact_text (KEY=value by
 # key name), plus `Bearer <token>`, plus adbdo.sh's `text <what is typed>` (often a
 # code or a password), which is masked whole. If python3 or redact.py is not there,
-# the arguments are not written at all. Local only - nothing here is sent anywhere.
+# the arguments are not written at all. `-B`: no __pycache__ next to redact.py.
+# Local only - nothing here is sent anywhere.
 
 ARK_ACTION_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || ARK_ACTION_LIB_DIR=""
 
@@ -55,7 +56,7 @@ ark_action_log() {
     [ "$file" = /dev/null ] && exit 0
     me=$(basename -- "$0")
     if [ -n "$ARK_ACTION_LIB_DIR" ] && [ -f "$ARK_ACTION_LIB_DIR/../redact.py" ]; then
-      args=$(python3 -I -c "$ARK_ACTION_PY" "$ARK_ACTION_LIB_DIR/.." "$me" "$@") || args="<参数没记：脱敏没跑成>"
+      args=$(python3 -I -B -c "$ARK_ACTION_PY" "$ARK_ACTION_LIB_DIR/.." "$me" "$@") || args="<参数没记：脱敏没跑成>"
     else
       args="<参数没记：找不到 redact.py>"
     fi

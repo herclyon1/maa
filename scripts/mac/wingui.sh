@@ -160,11 +160,15 @@ if ($cmd -like 'launch*') {
       }
       if ($boxes.Count -gt 0) {
         Start-Sleep -Seconds 3
-        foreach ($b in @(Find-CrashBoxes)) {
+        # 按关框前记下的那份查，不重新找框：框一关，挂它的游戏进程就没有框了，重新找
+        # 找不到它；它若赖着不退，下面会被当成「正在启动」白等 120 秒。
+        foreach ($b in $boxes) {
           if ($b.Name -eq 'Client-Win64-Shipping') {
             try {
-              Stop-Process -Id $b.Id -Force -ErrorAction Stop
-              $log += "崩掉的游戏进程 pid $($b.Id) 框关了还不退，已结束"
+              if (Get-Process -Id $b.Id -ErrorAction SilentlyContinue) {
+                Stop-Process -Id $b.Id -Force -ErrorAction Stop
+                $log += "崩掉的游戏进程 pid $($b.Id) 框关了还不退，已结束"
+              }
             } catch { $log += "WARN 结束崩掉的游戏进程 pid $($b.Id) 没成：$($_.Exception.Message)" }
           }
         }
