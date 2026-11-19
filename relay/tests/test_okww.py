@@ -6467,6 +6467,58 @@ def _part_echo_farm_main():  # noqa: C901
     finally:
         _wbw._okww_log = _real4
 
+    print("\n[midnight rotation: a farm fighting through 00:00 is not 63 minutes quiet (#185, 2026-11-20 00:00:02)]")
+    import os as _os5
+    _rot = tmpdir()
+    _old = _rot / "ok-script.2026-11-19.log"
+    _new = _rot / "ok-script.log"
+
+    def _put(path, text, hh_mm_ss):
+        path.write_text(text, encoding="utf-8")
+        _ts = hh_mm_ss.timestamp()
+        _os5.utime(path, (_ts, _ts))
+
+    _since5 = datetime(2026, 11, 19, 22, 57, tzinfo=SERVER_TZ)
+    _at5 = datetime(2026, 11, 20, 0, 0, 2, tzinfo=SERVER_TZ)
+    _real5 = _wbw._okww_log
+    _wbw._okww_log = lambda: _new
+    try:
+        # The machine's two files at 00:00:02: the renamed one ends 23:59:59 with its last
+        # progress at 23:58:54,223; the new one holds two seconds of combat, no progress yet.
+        _put(_old, "2026-11-19 22:57:30,000 INFO TaskExecutor FarmEchoTask:enter combat\n"
+                   "2026-11-19 23:58:54,223 INFO TaskExecutor FarmEchoTask:enter combat\n"
+                   "2026-11-19 23:59:59,500 INFO TaskExecutor BaseCombatTask:switch_next_char end 0.057s\n",
+             datetime(2026, 11, 19, 23, 59, 59, tzinfo=SERVER_TZ))
+        _put(_new, "2026-11-20 00:00:00,762 INFO TaskExecutor BaseCombatTask:switch_next_char current_con 0.82\n"
+                   "2026-11-20 00:00:01,294 INFO TaskExecutor TaskExecutor:wait_until timeout\n",
+             datetime(2026, 11, 20, 0, 0, 1, tzinfo=SERVER_TZ))
+        _q5 = echofarm.quiet_minutes(_at5, _since5)
+        check("two seconds after the switch: quiet since 23:58:54, about a minute", round(_q5, 1), 1.1)
+        check("…below the relaunch threshold", _q5 < echofarm.RESTART_QUIET_MINUTES, True)
+        # Stuck for real across the switch: no progress in either file since the launch.
+        _put(_old, "2026-11-19 22:50:00,000 INFO TaskExecutor FarmEchoTask:enter combat\n"
+                   "2026-11-19 23:59:59,500 INFO TaskExecutor TaskExecutor:wait_until timeout\n",
+             datetime(2026, 11, 19, 23, 59, 59, tzinfo=SERVER_TZ))
+        check("no progress in either file since the launch: measured from the launch",
+              round(echofarm.quiet_minutes(_at5, _since5)), 63)
+        # A rotated file last written before this launch is not read: its progress is not this launch's.
+        _put(_old, "2026-11-19 22:40:00,000 INFO TaskExecutor FarmEchoTask:enter combat\n",
+             datetime(2026, 11, 19, 22, 40, tzinfo=SERVER_TZ))
+        check("a file older than the launch is not read", round(echofarm.quiet_minutes(_at5, _since5)), 63)
+        # A newest file cut at the tail has unread lines before it: its tail stays the floor,
+        # older files are not consulted.
+        _put(_old, "2026-11-19 23:59:00,000 INFO TaskExecutor FarmEchoTask:enter combat\n",
+             datetime(2026, 11, 19, 23, 59, 59, tzinfo=SERVER_TZ))
+        _put(_new, "".join(f"2026-11-20 00:{m // 60:02d}:{m % 60:02d},000 INFO TaskExecutor retry loop " + "x" * 200 + "\n"
+                           for m in range(0, 1800)), datetime(2026, 11, 20, 0, 30, tzinfo=SERVER_TZ))
+        check("fixture: the new file is beyond the tail", _new.stat().st_size > echofarm._TAIL_BYTES, True)
+        _q6 = echofarm.quiet_minutes(datetime(2026, 11, 20, 0, 30, tzinfo=SERVER_TZ), _since5)
+        # No progress in the tail of a cut file: measured from the launch as before (93), not
+        # from the older file's 23:59 progress (that would read 31).
+        check("a cut newest file: older files not consulted, the launch is the floor", round(_q6), 93)
+    finally:
+        _wbw._okww_log = _real5
+
     print("\n[进度关键词：只认今天真的会写出来的句子]")
     _replay = (fx_dir(Path(__file__), "replay") / "2026-09-07" / "wuwa"
                / "OK-WW-06-00-55.log").read_text(encoding="utf-8")

@@ -184,6 +184,8 @@ def no_claim_on() -> bool:
 PROGRESS = ("farm echo", "enter combat", "teleport_to_boss prepared as",
             "限时提前开放：确认后直接进场", "刷声骸模式：复活成功")
 _TAIL_BYTES = 300_000
+# How many rotated OK-WW logs quiet_minutes may read past the newest one (one day each).
+_OLDER_FILES = 2
 
 
 def _line_time(line: str) -> "datetime | None":
@@ -213,24 +215,49 @@ def quiet_minutes(now: datetime | None = None, since: "datetime | None" = None) 
     f = _okww_log()
     if not f:
         return None
-    try:
-        size = f.stat().st_size
-        with f.open("rb") as fh:
-            if size > _TAIL_BYTES:
-                fh.seek(size - _TAIL_BYTES)
-            tail = fh.read().decode("utf-8", "replace")
-    except OSError:
-        return None
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
     last = None
     first = None
-    for line in tail.splitlines():
-        at = _line_time(line)
-        if at is None:
-            continue
-        first = first or at
-        if any(k in line for k in PROGRESS):
-            last = at
+    # OK-WW starts a new ok-script.log at midnight and renames the old one
+    # (ok-script.2026-11-19.log). Reading the newest file alone, two seconds after the
+    # 2026-11-20 00:00:00 switch the new file had no progress line yet, the floor fell
+    # back to the launch (22:57) and a farm fighting normally was relaunched as
+    # 「OK-WW 停了 63 分钟」 (00:00:02, group alarm #185); the old file's last progress was
+    # 23:58:54. So while a whole file holds no progress line, the next older one is read,
+    # newest first: only files written since `since`, and only after a file read whole
+    # (one cut at _TAIL_BYTES has unread lines before its tail, so its tail's first line
+    # stays the floor, as before).
+    try:
+        older = sorted((q for q in f.parent.glob("*.log*") if q.is_file() and q != f),
+                       key=lambda q: q.stat().st_mtime, reverse=True)
+    except OSError:
+        older = []
+    for q in [f, *older[:_OLDER_FILES]]:
+        if q is not f and since is not None:
+            try:
+                if q.stat().st_mtime < since.timestamp():
+                    break
+            except OSError:
+                break
+        try:
+            size = q.stat().st_size
+            with q.open("rb") as fh:
+                if size > _TAIL_BYTES:
+                    fh.seek(size - _TAIL_BYTES)
+                tail = fh.read().decode("utf-8", "replace")
+        except OSError:
+            if q is f:
+                return None
+            break
+        for line in tail.splitlines():
+            at = _line_time(line)
+            if at is None:
+                continue
+            first = at if first is None or at < first else first
+            if any(k in line for k in PROGRESS) and (last is None or at > last):
+                last = at
+        if last is not None or size > _TAIL_BYTES:
+            break
     if last is None:
         # Nothing in the whole tail: either the run just started (tick already skips
         # a run that young) or it has been stuck for longer than the tail covers.
