@@ -277,11 +277,15 @@ def farming_echoes() -> bool:
 ECHO_STATS = ("暴击伤害", "暴击", "治疗效果加成", "攻击", "生命", "防御")
 # The pickup toast's second row, the main stat (1920x1080, 2026-11-20 toasts of 千傀重楼:
 # row 1 the echo's name at y 534-552, row 2 the stat at 565-578, row 3 the fixed 攻击 at
-# 589-604). The box stays inside row 2 and right of its icon.
-ECHO_STAT_BOX = (0.085, 0.516, 0.220, 0.543)
-# The toast is not up at +0.3 s and is steady from +1.2 s to +2.4 s after the pickup:
-# a first look after 1 s, then every 0.3 s, six looks in all (about 2.5 s).
-_TOAST_FIRST, _TOAST_STEP, _TOAST_LOOKS = 1.0, 0.3, 6
+# 589-604). The box (y 557-583) keeps about 5 px off rows 1 and 3, starts right of the row's
+# icon and is wide enough for the longest stat, 治疗效果加成 (nine real toasts read whole
+# at x2 0.250, Gemini B's bench).
+ECHO_STAT_BOX = (0.085, 0.516, 0.250, 0.540)
+# When the toast is up is measured from the 「farm echo …」 line logged right before
+# incr_drop: not at +0.3 s, steady from +1.2 s to +2.4 s, there at +1.5 s in nine of nine
+# (B's bench). Looked at from the start, every 0.3 s, ten looks (about 3 s): the first
+# whole stat read ends it.
+_TOAST_STEP, _TOAST_LOOKS = 0.3, 10
 ECHO_DROP_LINE = "刷声骸掉落："
 
 
@@ -367,7 +371,6 @@ def _echo_drop_stat(task):
 
     raw, stat, looks, frame = "", None, 0, None
     try:
-        task.sleep(_TOAST_FIRST)
         while looks < _TOAST_LOOKS:
             looks += 1
             try:
@@ -377,8 +380,9 @@ def _echo_drop_stat(task):
                     raise
             frame = getattr(task, "frame", None)
             found = task.ocr(box=task.box_of_screen(*ECHO_STAT_BOX)) or []
-            raw = " ".join(str(getattr(b, "name", b)).strip() for b in found)
-            stat = echo_stat(raw)
+            read = " ".join(str(getattr(b, "name", b)).strip() for b in found).strip()
+            raw = read or raw          # the last thing read, kept when the toast has gone
+            stat = echo_stat(read)
             if stat or looks >= _TOAST_LOOKS:
                 break
             task.sleep(_TOAST_STEP)

@@ -102,7 +102,12 @@ def _stamp(text) -> datetime | None:
 
 
 def _started_at(rec: dict) -> datetime | None:
-    return _stamp(rec.get("started"))
+    # "started_s" (to the second, 2026-11-20): drops are counted from it, and a farm stopped
+    # and started again within one minute must not count the earlier one's last drops.
+    try:
+        return datetime.strptime(str(rec.get("started_s")), "%Y-%m-%d %H:%M:%S").replace(tzinfo=SERVER_TZ)
+    except (TypeError, ValueError):
+        return _stamp(rec.get("started"))
 
 
 def resolve_until(hhmm: str, now: datetime | None = None) -> datetime | None:
@@ -227,28 +232,37 @@ def quiet_minutes(now: datetime | None = None, since: "datetime | None" = None) 
     # newest first: only files written since `since`, and only after a file read whole
     # (one cut at _TAIL_BYTES has unread lines before its tail, so its tail's first line
     # stays the floor, as before).
-    try:
-        older = sorted((q for q in f.parent.glob("*.log*") if q.is_file() and q != f),
-                       key=lambda q: q.stat().st_mtime, reverse=True)
-    except OSError:
-        older = []
+    # Only the newest file's own rotations (ok-script.log -> ok-script.2026-11-19.log): another
+    # log in the folder must not take a rotated one's place among the _OLDER_FILES read (blind
+    # review 2026-11-20). One file that cannot be looked at is skipped, never the list.
+    same = re.compile(re.escape(f.stem) + r"\.\d{4}-\d{2}-\d{2}" + re.escape(f.suffix) + "$")
+    older = []
+    for q in f.parent.iterdir() if f.parent.is_dir() else ():
+        if q == f or not same.match(q.name):
+            continue
+        try:
+            older.append((q.stat().st_mtime, q.name, q))
+        except OSError:
+            continue
+    older = [q for _m, _n, q in sorted(older, reverse=True)]
     for q in [f, *older[:_OLDER_FILES]]:
         if q is not f and since is not None:
             try:
                 if q.stat().st_mtime < since.timestamp():
                     break
             except OSError:
-                break
+                continue
         try:
-            size = q.stat().st_size
+            # The size from the open handle, not a stat before it: at the switch the name can
+            # be a new, empty file by the time it is opened.
             with q.open("rb") as fh:
-                if size > _TAIL_BYTES:
-                    fh.seek(size - _TAIL_BYTES)
+                size = fh.seek(0, os.SEEK_END)
+                fh.seek(max(0, size - _TAIL_BYTES))
                 tail = fh.read().decode("utf-8", "replace")
         except OSError:
             if q is f:
                 return None
-            break
+            continue
         for line in tail.splitlines():
             at = _line_time(line)
             if at is None:
@@ -353,22 +367,27 @@ def hits(drops: "dict | None", stat: str, sonata: str = "") -> int:
     return drops["套装"].get((stat, sonata), 0) if sonata else drops.get(stat, 0)
 
 
+# The share of pickups expected to hit before any are seen: one stat in six, and one set in
+# two (the bosses drop two), as ETA_PRIOR pickups' worth of evidence.
+ETA_PRIOR = 12
+
+
 def eta_minutes(drops: "dict | None", stat: str, sonata: str, target: int,
                 minutes: float) -> "int | None":
     """For the phone only - never a reason to stop (the owner, 2026-11-20: a time from a
-    probability is not 「完成」): about how many more minutes at this farm's pace. With hits
-    so far, their own rate; before the first, the pickup rate times 1/6 for the stat (and
-    1/2 for a set: the bosses drop two). None when nothing was picked up yet."""
-    if not drops or minutes <= 0:
+    probability is not 「完成」): about how many more minutes at this farm's pace.
+
+    Pickups per minute from this farm; the share of them that hit from this farm too, pulled
+    toward 1/6 (1/12 with a set) by ETA_PRIOR pickups, so one early hit or miss does not swing
+    it by hours. None before the first pickup."""
+    if not drops or minutes <= 0 or not drops.get("总捡"):
         return None
+    total = drops["总捡"]
     got = hits(drops, stat, sonata)
     left = max(0, target - got)
-    if got:
-        return round(left * minutes / got)
-    if drops["总捡"]:
-        per_hit = minutes / drops["总捡"] * 6 * (2 if sonata else 1)
-        return round(left * per_hit)
-    return None
+    prior = 1 / 6 / (2 if sonata else 1)
+    share = (got + prior * ETA_PRIOR) / (total + ETA_PRIOR)
+    return round(left / share * minutes / total)
 
 
 def unread(drops: "dict | None", sonata: str = "") -> int:
@@ -585,10 +604,14 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
     So the deadline is resolved against `sent`, and an order whose deadline passed
     before it could be acted on is refused, as skip_today refuses a day already gone.
     """
-    try:
-        target_count = int(target_count or 0)
-    except (TypeError, ValueError):
-        return False, f"「刷几个」要是数字，收到 {target_count!r}"
+    # Only a whole number (or its digits as text) or nothing: True would be 1, 3.9 would be 3,
+    # and [] or False would quietly mean 「by time」.
+    if target_count is None or target_count == "":
+        target_count = 0
+    elif isinstance(target_count, str) and target_count.strip().isdigit():
+        target_count = int(target_count.strip())
+    elif type(target_count) is not int:
+        return False, f"「刷几个」要是整数，收到 {target_count!r}"
     target_stat = str(target_stat or "").strip()
     target_set = str(target_set or "").strip()
     if target_count:
@@ -656,6 +679,8 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
         "until": until.strftime("%Y-%m-%d %H:%M"),
         "started": (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
                    .strftime("%Y-%m-%d %H:%M"),
+        "started_s": (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
+                     .strftime("%Y-%m-%d %H:%M:%S"),
         "saved": saved,
         **({"target_stat": target_stat, "target_count": target_count, "target_set": target_set}
            if target_count else {}),
@@ -725,7 +750,11 @@ def push_manual_trouble(notifier) -> None:
         push_wrapup(notifier, MANUAL_TROUBLE.pop(0), True)
 
 
-def _finish(cfg, why: str, failed: bool = False, judge_progress: bool = False) -> "tuple[str, bool]":
+_UNREAD = object()
+
+
+def _finish(cfg, why: str, failed: bool = False, judge_progress: bool = False,
+            drops=_UNREAD) -> "tuple[str, bool]":
     """finish(), and whether its line says something went wrong: `failed` (the farm was
     stopped by a fault: the caller says so), the game left open, the no-claim marker left,
     the boss setting not put back, the config not found.
@@ -772,7 +801,9 @@ def _finish(cfg, why: str, failed: bool = False, judge_progress: bool = False) -
     if judge_progress and not laps:
         failed = True
     name = rec.get("name") or ""
-    picked = (texts.echo_farm_drops(drops_since(begun), rec.get("target_stat") or "", rec.get("target_set") or "")
+    if drops is _UNREAD:
+        drops = drops_since(begun) if rec.get("target_count") else None
+    picked = (texts.echo_farm_drops(drops, rec.get("target_stat") or "", rec.get("target_set") or "")
               if rec.get("target_count") else "")
     return (f"刷{name}{texts.echo_farm_level(level, name)}结束（{why}），{span}{again}，{texts.echo_farm_progress(laps)}"
             f"{picked}{note}", failed or bool(note))
@@ -793,8 +824,8 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
     if until is None:
         return _finish(cfg, "结束时刻读不出来，为安全起见停掉", failed=True)
     now = (now or datetime.now(tz=SERVER_TZ)).astimezone(SERVER_TZ)
-    target = int(rec.get("target_count") or 0)
-    if target:
+    target = rec.get("target_count") if type(rec.get("target_count")) is int else 0
+    if target > 0:
         # By main stat: done only when the count read off the toasts reaches the target.
         # Never by time or by an estimate (the owner, 2026-11-20: 「你拿一个概率的事件说任务
         # 已完成」); the deadline is a backstop and says the target was not met.
@@ -811,12 +842,14 @@ def tick_result(cfg, now: datetime | None = None) -> "tuple[str, bool]":
                 rec.update(seen)
                 _store(cfg.state_dir).set("queues", "echo_farm", rec)
         want = f"{sonata}·{stat}" if sonata else stat
-        if got >= target:
-            return _finish(cfg, f"刷满了：「{want}」已出 {got}/{target} 个")
+        # The wrap-up reports these same counts (drops=): read once, so the line cannot say
+        # 29/30 and 「其中 30 个」 at once.
+        if drops is not None and got >= target:
+            return _finish(cfg, f"刷满了：「{want}」已出 {got}/{target} 个", drops=drops)
         if now >= until:
-            return _finish(cfg, f"到了最晚收工时刻（{user_clock(until, now)}）停下，**目标未满**：「{want}」已出 {got}/{target} 个"
-                                + ("" if drops is not None else "（读不到 OK-WW 日志，个数不准）"),
-                           judge_progress=True)
+            count = f"已出 {got}/{target} 个" if drops is not None else "个数没读到"
+            return _finish(cfg, f"到了最晚收工时刻（{user_clock(until, now)}）停下，**目标未满**：「{want}」{count}",
+                           judge_progress=True, drops=drops)
     elif now >= until:
         return _finish(cfg, f"到点了（{user_clock(until, now)}）", judge_progress=True)
     quiet = quiet_minutes(now, _stamp(rec.get("restarted")) or _started_at(rec))

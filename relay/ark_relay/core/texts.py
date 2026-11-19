@@ -1341,7 +1341,7 @@ def echo_farm_drops(drops: "dict | None", stat: str, sonata: str = "") -> str:
     """echofarm._finish of a farm by main stat: the echoes this farm picked up, the
     target's count and how many toasts were not read (each one may have been it)."""
     if drops is None:
-        return "；**读不到 OK-WW 日志，捡了几个不知道**"
+        return ""          # the progress part already says the log could not be read
     unread = f"，{drops['未读出']} 个没读出主词条" if drops["未读出"] else ""
     if sonata:
         got = drops["套装"].get((stat, sonata), 0)
@@ -1395,7 +1395,10 @@ def makeup_restore_skipped(err: str) -> str:
 def samples() -> list[str]:
     from datetime import datetime as _dt  # noqa: PLC0415
     t0, t1, t2 = _dt(2026, 10, 1, 9, 0), _dt(2026, 10, 1, 9, 18), _dt(2026, 10, 1, 11, 20)
+    drops = {"总捡": 61, "未读出": 2, "套装未读出": 3, "套装": {("治疗效果加成", "茜染怀想之花"): 4}, "治疗效果加成": 9}
     return [
+        echo_farm_drops(drops, "治疗效果加成", "茜染怀想之花"), echo_farm_drops(drops, "治疗效果加成"),
+        echo_farm_drops(None, "治疗效果加成"),
         attempt_timeout_body(1, 3, t1, t2), attempt_timeout_body(3, 3, t1, t2),
         attempt_timeout_body(0, 0, None, t2),
         shift_overrun_body("早班", t0, _dt(2026, 10, 1, 13, 10), 220, 30,

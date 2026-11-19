@@ -1926,6 +1926,20 @@ class OkwwUserConfig(ConfigBase):
     try:
         check("调试模式过了结束时间就发空串（手机上不再显示「开着」）",
               phone.state_payload(cfg, STATE)["relay"]["调试模式"], "")
+        print("\n[relay 刷声骸: the old three for a farm by time, the target and its counts when farming by main stat]")
+        from ark_relay.features import echofarm as _ef
+        _ef._store(STATE).set("queues", "echo_farm", {"name": "千傀重楼", "until": "2026-11-20 08:15",
+                                                        "started": "2026-11-20 03:30"})
+        check("by time: exactly the old fields", phone.state_payload(cfg, STATE)["relay"]["刷声骸"],
+              {"名字": "千傀重楼", "到": "2026-11-20 08:15", "从": "2026-11-20 03:30"})
+        _ef._store(STATE).set("queues", "echo_farm", {"name": "千傀重楼", "until": "2026-11-20 08:15",
+                                                        "started": "2026-11-20 03:30", "target_stat": "治疗效果加成",
+                                                        "target_set": "茜染怀想之花", "target_count": 30,
+                                                        "已出": 4, "总捡": 61, "未读出": 2, "参考剩余分钟": 412})
+        check("by main stat: the target and its counts", phone.state_payload(cfg, STATE)["relay"]["刷声骸"],
+              {"名字": "千傀重楼", "到": "2026-11-20 08:15", "从": "2026-11-20 03:30", "目标词条": "治疗效果加成",
+               "目标套装": "茜染怀想之花", "目标数": 30, "已出": 4, "总捡": 61, "未读出": 2, "参考剩余分钟": 412})
+        _ef._store(STATE).pop("queues", "echo_farm")
         _modes._store(STATE).set("modes", "debug_until", "2999-01-01 00:00")
         check("调试模式还在期内照发结束时间",
               phone.state_payload(cfg, STATE)["relay"]["调试模式"], "2999-01-01 00:00")

@@ -1986,13 +1986,17 @@ def _part_okww_claim_readback():  # noqa: C901
     tt.incr_drop(True)
     drop = [m for m in tt.logs if m.startswith("刷声骸掉落：")]
     check("farming, an echo picked up: one line with the stat", (len(drop), "stat=治疗效果加成" in drop[0]), (1, True))
-    check("read on the second look, from a fresh frame each time", (tt.frames, tt.slept[:2]), (2, [1.0, 0.3]))
+    check("looked at from the start, read on the second look, a fresh frame each time", (tt.frames, tt.slept), (2, [0.3]))
     check("upstream's count still runs", "incr" in tt.events, True)
     tt = toast_task([])
     tt.incr_drop(True)
     drop = [m for m in tt.logs if m.startswith("刷声骸掉落：")]
-    check("no toast read in six looks: unknown, not a guess", (len(drop), "stat=unknown" in drop[0], "looks=6" in drop[0]), (1, True, True))
-    tt = toast_task([["治疗效果"]] * 6)
+    check("no toast read in ten looks: unknown, not a guess", (len(drop), "stat=unknown" in drop[0], "looks=10" in drop[0]), (1, True, True))
+    tt = toast_task([["治疗效果"]] + [[]] * 9)
+    tt.incr_drop(True)
+    check("the last thing read is kept for the log when the toast has gone",
+          "raw='治疗效果'" in [m for m in tt.logs if m.startswith("刷声骸掉落：")][0], True)
+    tt = toast_task([["治疗效果"]] * 10)
     tt.incr_drop(True)
     check("a cut-off stat stays unknown", "stat=unknown" in [m for m in tt.logs if m.startswith("刷声骸掉落：")][0], True)
     tt = toast_task([["生命"]])
@@ -6424,7 +6428,7 @@ def _part_echo_farm_main():  # noqa: C901
     for bad, why in (({"target_stat": "治疗", "target_count": 30}, "不认识"),
                      ({"target_stat": "治疗效果加成", "target_count": 0}, "没给刷几个"),
                      ({"target_stat": "治疗效果加成", "target_count": 501}, "超出范围"),
-                     ({"target_stat": "治疗效果加成", "target_count": "三十"}, "要是数字")):
+                     ({"target_stat": "治疗效果加成", "target_count": "三十"}, "要是整数")):
         cb = fresh()
         okb, msgb = echofarm.start(cb, 2, "08:30", now=NOW, weekly=True, **bad)
         check(f"refused: {bad}", (okb, why in msgb, cfg_now(cb) == ORIGINAL), (False, True, True))
@@ -6479,7 +6483,74 @@ def _part_echo_farm_main():  # noqa: C901
         note, failed = echofarm.tick_result(cu, datetime(2026, 9, 9, 4, 30, tzinfo=SERVER_TZ))
         check("log unreadable: no count, so no 刷满 - it keeps going", note, "")
         note, failed = echofarm.tick_result(cu, datetime(2026, 9, 9, 8, 31, tzinfo=SERVER_TZ))
-        check("…and at the backstop says the count is unknown", ("目标未满" in note, "个数不准" in note), (True, True))
+        check("…and at the backstop says the count is unknown", ("目标未满" in note, "个数没读到" in note), (True, True))
+        _wbw2._okww_log = lambda: _dl      # the blocks above left the log unreadable on purpose
+        print("\n[a bad count is refused, never read as something else (blind review 2026-11-20)]")
+        for bad in (True, 3.9, -1, [], {}, "3.0", False):
+            cb2 = fresh()
+            okb2, msgb2 = echofarm.start(cb2, 2, "08:30", now=NOW, weekly=True, target_stat="治疗效果加成", target_count=bad)
+            check(f"target_count {bad!r} refused", (okb2, cfg_now(cb2) == ORIGINAL), (False, True))
+        cb3 = fresh()
+        check("a count without a stat is refused", echofarm.start(cb3, 2, "08:30", now=NOW, weekly=True, target_count=5)[0], False)
+        cb4 = fresh()
+        check("digits as text are a count", (echofarm.start(cb4, 2, "08:30", now=NOW, weekly=True, target_stat="生命",
+                                                            target_count="7")[0], echofarm.current(cb4.state_dir).get("target_count")), (True, 7))
+        echofarm.finish(cb4, "收尾")
+
+        print("\n[counted from the second the farm started: an earlier farm's drop in the same minute is not this one's]")
+        csec = fresh()
+        echofarm.start(csec, 2, "08:30", now=datetime(2026, 9, 9, 4, 10, 40, tzinfo=SERVER_TZ), weekly=True,
+                       target_stat="生命", target_count=1)
+        check("the record keeps the second", echofarm.current(csec.state_dir).get("started_s"), "2026-09-09 04:10:40")
+        _dl.write_text("2026-09-09 04:10:05,000 INFO TaskExecutor FarmEchoTask:刷声骸掉落：stat=生命 set=unknown looks=1 raw='生命'\n",
+                       encoding="utf-8")
+        note, _f = echofarm.tick_result(csec, datetime(2026, 9, 9, 4, 11, 30, tzinfo=SERVER_TZ))
+        check("04:10:05 is before 04:10:40: not counted, keeps farming", (note, echofarm.current(csec.state_dir).get("总捡")), ("", 0))
+        _dl.write_text(_dl.read_text(encoding="utf-8")
+                       + "2026-09-09 04:10:50,000 INFO TaskExecutor FarmEchoTask:刷声骸掉落：stat=生命 set=unknown looks=1 raw='生命'\n",
+                       encoding="utf-8")
+        note, _f = echofarm.tick_result(csec, datetime(2026, 9, 9, 4, 11, 40, tzinfo=SERVER_TZ))
+        check("…04:10:50, after it in the same minute, is", "刷满了" in note, True)
+
+        print("\n[drops across OK-WW's midnight rotation and across relaunches: each counted once]")
+        _old = _dl.parent / "ok-script.2026-09-08.log"
+        _old.write_text("".join(f"2026-09-08 23:5{m}:00,000 INFO TaskExecutor FarmEchoTask:刷声骸掉落：stat=生命 set=unknown looks=1 raw='生命'\n"
+                                for m in (0, 5)), encoding="utf-8")
+        _dl.write_text("2026-09-09 00:02:00,000 INFO TaskExecutor FarmEchoTask:刷声骸掉落：stat=生命 set=unknown looks=1 raw='生命'\n"
+                       "2026-09-09 00:20:00,000 INFO TaskExecutor FarmEchoTask:刷声骸掉落：stat=攻击 set=unknown looks=1 raw='攻击'\n",
+                       encoding="utf-8")
+        import os as _os6
+        _ts = datetime(2026, 9, 8, 23, 59, 59, tzinfo=SERVER_TZ).timestamp()
+        _os6.utime(_old, (_ts, _ts))
+        _rec6 = {"started_s": "2026-09-08 23:52:00", "restarts": 2, "restarted": "2026-09-09 00:10"}
+        _d6 = echofarm.drops_since(echofarm._started_at(_rec6))
+        check("both files read, the 23:50 drop before the start left out, a relaunch changes nothing",
+              (_d6["总捡"], _d6.get("生命"), _d6.get("攻击")), (3, 2, 1))
+        _old.unlink()
+
+        print("\n[the wrap-up reports the counts the decision was made on, read once]")
+        cone = fresh()
+        echofarm.start(cone, 2, "08:30", "千傀重楼", now=NOW, weekly=True, target_stat="生命", target_count=2)
+        _dl.write_text("2026-09-09 04:05:00,000 INFO TaskExecutor FarmEchoTask:刷声骸掉落：stat=生命 set=unknown looks=1 raw='生命'\n"
+                       "2026-09-09 04:06:00,000 INFO TaskExecutor FarmEchoTask:刷声骸掉落：stat=生命 set=unknown looks=1 raw='生命'\n",
+                       encoding="utf-8")
+        _reads = []
+        _real_ds = echofarm.drops_since
+        echofarm.drops_since = lambda started: (_reads.append(1), _real_ds(started))[1]
+        try:
+            note, _f = echofarm.tick_result(cone, datetime(2026, 9, 9, 4, 7, tzinfo=SERVER_TZ))
+        finally:
+            echofarm.drops_since = _real_ds
+        check("one read for the decision and the line", len(_reads), 1)
+        check("…which agree", ("已出 2/2" in note, "「生命」2 个" in note), (True, True))
+        cnone = fresh()
+        echofarm.start(cnone, 2, "08:30", "千傀重楼", now=NOW, weekly=True, target_stat="生命", target_count=2)
+        _wbw2._okww_log = lambda: None
+        note, _f = echofarm.tick_result(cnone, datetime(2026, 9, 9, 8, 31, tzinfo=SERVER_TZ))
+        check("log unreadable at the latest stop: 「个数没读到」, no made-up 0/2, said once",
+              ("个数没读到" in note, "0/2" in note, note.count("读不到")), (True, False, 1))
+        _wbw2._okww_log = lambda: _dl
+
         print("\n[a target set: stat and set both read, an unread badge never counts]")
         cbad = fresh()
         okb, msgb = echofarm.start(cbad, 2, "08:30", now=NOW, weekly=True, target_stat="治疗效果加成",
@@ -6507,10 +6578,18 @@ def _part_echo_farm_main():  # noqa: C901
         check("1 of 2 of the set (two others of another or no set): keeps farming", note, "")
         check("phone counts", {k: echofarm.current(cset.state_dir).get(k) for k in ("已出", "总捡", "未读出")},
               {"已出": 1, "总捡": 4, "未读出": 1})
-        check("a reference time for the phone: 10 minutes for 1 of the set, 1 left -> about 10",
-              echofarm.current(cset.state_dir).get("参考剩余分钟"), 10)
-        check("before the first hit: the pickup rate x 6 for the stat x 2 for the set",
-              echofarm.eta_minutes({"总捡": 4, "未读出": 0, "套装未读出": 0, "套装": {}}, "治疗效果加成", "茜染怀想之花", 2, 8.0), 48)
+        # 4 pickups in 10 min, 1 hit, 1 left: share (1 + 12/12) / (4 + 12) = 1/8 -> 8 pickups x 2.5 min
+        check("a reference time for the phone, pulled toward 1/12 for a set",
+              echofarm.current(cset.state_dir).get("参考剩余分钟"), 20)
+        check("before the first hit: the prior share alone (1/12 with a set): 2 left / (1/16) x 2 min",
+              echofarm.eta_minutes({"总捡": 4, "未读出": 0, "套装未读出": 0, "套装": {}}, "治疗效果加成", "茜染怀想之花", 2, 8.0), 64)
+        _one = {"总捡": 1, "未读出": 0, "套装未读出": 0, "套装": {}, "治疗效果加成": 1}
+        _none = {"总捡": 1, "未读出": 0, "套装未读出": 0, "套装": {}}
+        # Unsmoothed, one hit in one pickup would read 29 minutes and a miss no estimate at all;
+        # with the prior both stay near 30 x 6 = 180: 29 / (3/13) = 126, 30 / (2/13) = 195.
+        check("one early pickup, hit or miss, stays near the prior's 180 (30 wanted, 1 min a pickup)",
+              (echofarm.eta_minutes(_one, "治疗效果加成", "", 30, 1.0), echofarm.eta_minutes(_none, "治疗效果加成", "", 30, 1.0)),
+              (126, 195))
         check("nothing picked up yet: no estimate", echofarm.eta_minutes({"总捡": 0, "未读出": 0, "套装未读出": 0, "套装": {}},
                                                                      "治疗效果加成", "", 30, 8.0), None)
         check("the estimate never ends a farm: 0 minutes left is not 刷满", echofarm.eta_minutes(
@@ -7106,6 +7185,17 @@ def _part_echo_farm_stop_and_backlog():
     check("overworld default name from wuwa_boss", got.get("name"), "天傀劫煞")
     commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 1, "until": "08:30", "weekly": "yes"})
     check("only a real true means weekly", got.get("weekly"), False)
+
+    print("\n[target_stat / target_set / target_count reach echofarm.start as sent (2026-11-20)]")
+    echofarm.start = lambda cfg, boss, until, name, **kw: (got.clear(), got.update(kw), (True, ""))[2]
+    commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 2, "until": "08:15", "weekly": True,
+                            "target_stat": "治疗效果加成", "target_set": "茜染怀想之花", "target_count": 30})
+    check("all three passed on", (got.get("target_stat"), got.get("target_set"), got.get("target_count")),
+          ("治疗效果加成", "茜染怀想之花", 30))
+    commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 2, "until": "08:15", "target_count": []})
+    check("a bad count is passed as it came, for start to refuse - not turned into 0 (by time)", got.get("target_count"), [])
+    commands.apply_command({"action": "echo_farm", "confirmed": True, "boss": 2, "until": "08:15"})
+    check("none sent: None, by time", got.get("target_count"), None)
     echofarm.start = real_start
 
     class Eng:
