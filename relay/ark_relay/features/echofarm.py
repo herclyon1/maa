@@ -482,8 +482,12 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
     except (TypeError, ValueError):
         return False, f"「第几个」要是数字，收到 {boss!r}"
     # The weekly boss as the daily's weekly step writes it: same teleport mode, index
-    # key, level and 1..9 range.
-    from ark_relay.features.weeklyboss import MAX_LEVEL, WEEKLY, WEEKLY_BOSSES  # noqa: PLC0415
+    # key and 1..9 range. The level is not: farming claims no reward (the no-claim
+    # marker below), and the 4C echo a weekly boss drops is the same at 80 as at 90
+    # with less HP to chew through (user, 2026-11-19 17:16: 「能选等级的，就选80级」).
+    # So both kinds farm at FARM_LEVEL; only the daily's reward claim
+    # (weeklyboss.py) stays at its MAX_LEVEL 90, where the level sets the reward tier.
+    from ark_relay.features.weeklyboss import WEEKLY, WEEKLY_BOSSES  # noqa: PLC0415
     top = WEEKLY_BOSSES if weekly else BOSSES
     if not 1 <= boss <= top:
         return False, f"「第几个」超出范围：{boss}（OK-WW 的列表只有 1 到 {top}）"
@@ -506,10 +510,10 @@ def start(cfg, boss: int, until_hhmm: str, name: str = "",
     which = "Which Weekly Boss to Teleport" if weekly else "Which Boss Challenge to Teleport"
     back = _write_cfg(path, {"Teleport to Boss": WEEKLY if weekly else "Boss Challenge",
                              which: boss,
-                             "Boss Level": MAX_LEVEL if weekly else FARM_LEVEL,
+                             "Boss Level": FARM_LEVEL,
                              "Repeat Farm Count": BIG_COUNT})
     wrote = {"Teleport to Boss": WEEKLY if weekly else "Boss Challenge", which: boss,
-             "Boss Level": MAX_LEVEL if weekly else FARM_LEVEL, "Repeat Farm Count": BIG_COUNT}
+             "Boss Level": FARM_LEVEL, "Repeat Farm Count": BIG_COUNT}
     if any(back.get(k) != v for k, v in wrote.items()):
         atomic_write_text(path, json.dumps(saved, ensure_ascii=False, indent=1))
         return False, "写进去之后读出来和写的不一样，设置已改回，没有开跑"

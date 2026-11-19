@@ -6303,7 +6303,7 @@ def _part_echo_farm_main():  # noqa: C901
         check(f"拒绝 {bad!r}", echofarm.start(c2, bad, "08:30")[0], False)
         check(f"拒绝 {bad!r} 后配置没动", cfg_now(c2), ORIGINAL)
 
-    print("\n[weekly boss farm (2026-10-22): Weekly Challenge, its own index key, level 90, no-claim marker on]")
+    print("\n[weekly boss farm (2026-10-22): Weekly Challenge, its own index key, no-claim marker on; level 80 like the overworld farm (2026-11-19)]")
     echofarm._launch = lambda: (launched.append(1), (True, ""))[1]
     cw = fresh()
     okw, msgw = echofarm.start(cw, 2, "08:30", "周本第 2 个", now=NOW, weekly=True)
@@ -6312,12 +6312,15 @@ def _part_echo_farm_main():  # noqa: C901
     check("teleport mode is the weekly one", w["Teleport to Boss"], "Weekly Challenge")
     check("weekly index written", w["Which Weekly Boss to Teleport"], 2)
     check("overworld index untouched", w["Which Boss Challenge to Teleport"], ORIGINAL["Which Boss Challenge to Teleport"])
-    check("weekly level 90", w["Boss Level"], "90")
+    check("weekly farm level 80, not the claim's 90", w["Boss Level"], "80")
+    check("weekly farm level is FARM_LEVEL", w["Boss Level"], echofarm.FARM_LEVEL)
+    check("master copy still has the claim's 90", ORIGINAL["Boss Level"], "90")
     check("count handed to the clock", w["Repeat Farm Count"], echofarm.BIG_COUNT)
     check("no-claim marker on", echofarm.no_claim_on(), True)
     check("record says weekly", echofarm.current(cw.state_dir).get("weekly"), True)
     echofarm.finish(cw, "手动停止")
     check("config restored after a weekly farm", cfg_now(cw), ORIGINAL)
+    check("claim level 90 back after a weekly farm", cfg_now(cw)["Boss Level"], "90")
     check("marker off after a weekly farm", echofarm.no_claim_on(), False)
     for bad in (0, 10):
         cb = fresh()
