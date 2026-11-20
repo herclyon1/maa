@@ -1871,6 +1871,63 @@ def _part_maaend_agreement():
     check("10:30 之前失败的：协议窗口", causes.get("据点交易"), C.AGREEMENT)
     check("10:30 之后失败的：被挤下线", causes.get("基质刷取"), C.LOGGED_OUT)
 
+    print("\n[边界回归：损坏 deflate 体、cpp-algo 独立轮转、毫秒级任务切分、首行 slack、点同意后不再记时刻]")
+    d_edge = TMP / "gz_edge"
+    (d_edge / "debug" / "cpp-algo" / "debug").mkdir(parents=True, exist_ok=True)
+    # M2: valid gzip header + corrupted deflate payload (raises zlib.error, not BadGzipFile)
+    good_gz = bytearray(gzip.compress(b"[2026-11-20 09:34:28.920] hello world\n" * 20))
+    good_gz[14:18] = b"\xff\xff\xff\xff"
+    (d_edge / "debug" / "maafw.bak.2026.11.20-09.45.00.000.log.gz").write_bytes(bytes(good_gz))
+    # M3: cpp-algo earlier rotation must not break main debug/ scan; invalid date must not raise
+    (d_edge / "debug" / "maafw.bak.2026.11.20-10.30.00.000.log.gz").write_bytes(
+        gzip.compress(read_at("2026-11-20 09:34:28.920").encode("utf-8")))
+    (d_edge / "debug" / "cpp-algo" / "debug" / "maafw.bak.2026.11.20-10.05.00.000.log.gz").write_bytes(
+        gzip.compress(b"[2026-11-20 09:35:00.000] cpp-algo line\n"))
+    (d_edge / "debug" / "maafw.bak.2026.99.99-99.99.99.000.log.gz").write_bytes(b"bad date")
+    sel = C._fw_files(d_edge, datetime(2026, 11, 20, 9, 30), datetime(2026, 11, 20, 10, 0))
+    check("cpp-algo 不截断主 debug/ 且包含 cpp-algo .log.gz，非法日期跳过",
+          (any(f.parent == d_edge / "debug" and "10.30.00" in f.name for f in sel),
+           any("cpp-algo" in str(f) and f.suffix == ".gz" for f in sel)), (True, True))
+    lines = C._fw_lines(sel, datetime(2026, 11, 20, 9, 30), datetime(2026, 11, 20, 10, 0))
+    check("损坏 deflate 体（zlib.error）跳过不崩，正常文件仍读出",
+          any(C.AGREEMENT_TEXT in x for x in lines), True)
+    # N2: maafw_text reads rotated .log.gz
+    (d_edge / "debug" / "maafw.bak.2026.11.20-10.30.00.000.log.gz").write_bytes(
+        gzip.compress(b"[2026-11-20 09:36:00.000] \xe4\xbb\x93\xe5\x82\xa8\xe7\xa9\xba\xe9\x97\xb4\xe5\xb7\xb2\xe6\xbb\xa1\n"))
+    check("maafw_text 也能从 .log.gz 读到仓储空间已满", "仓储空间已满" in C.maafw_text(d_edge), True)
+    # M5: adjacent task boundary (0.15s apart), millisecond precision, first-line slack, and no false stamp
+    h_adj = (
+        "[2026-11-20 09:34:27.524] 任务开始: 💝赠送干员礼物\n"
+        "[2026-11-20 09:40:02.875] 任务失败: 💝赠送干员礼物\n"
+        "[2026-11-20 09:40:03.020] 任务开始: 🔧装备制造\n"
+        "[2026-11-20 09:42:00.000] 任务失败: 🔧装备制造\n"
+    )
+    out = parse("adj", h_adj, read_at("2026-11-20 09:40:01.000"))
+    check("相邻任务 0.15s 切分：任务 1 末尾弹窗不串台给任务 2",
+          out.get("maaend_fail_causes"), {"赠送干员礼物": C.AGREEMENT})
+    h_ms = (
+        "[2026-11-20 10:41:05.000] 任务开始: ♻️基质分解回收\n"
+        "[2026-11-20 10:46:38.835] 任务失败: ♻️基质分解回收\n"
+        "[2026-11-20 10:46:38.927] 任务开始: 🎱基质刷取\n"
+        "[2026-11-20 10:52:11.606] 任务失败: 🎱基质刷取\n"
+    )
+    out = parse("ms", h_ms, read_at("2026-11-20 10:46:38.990"))
+    check("毫秒精度：同秒后半段的弹窗不反标给已结束的上一任务",
+          out.get("maaend_fail_causes"), {"基质刷取": C.AGREEMENT})
+    out = parse("slack", h_adj, read_at("2026-11-20 09:34:26.800"))
+    check("首行前 0.7s 读到弹窗：t0 向前扩 slack 不漏标",
+          (out.get("maaend_agreement_at"), out.get("maaend_fail_causes")),
+          ("09:34:26", {"赠送干员礼物": C.AGREEMENT}))
+    h_done = (
+        "[2026-11-20 09:34:27.524] 任务开始: 💝赠送干员礼物\n"
+        "[2026-11-20 09:35:00.000] 任务完成: 💝赠送干员礼物\n"
+        "[2026-11-20 09:35:01.000] 任务开始: 🔧装备制造\n"
+        "[2026-11-20 09:40:00.000] 任务失败: 🔧装备制造\n"
+    )
+    out = parse("done", h_done, read_at("2026-11-20 09:34:28.920"))
+    check("任务 1 读弹窗后成功、任务 2 无关失败：不标原因也不写 maaend_agreement_at",
+          ("maaend_agreement_at" in out, out.get("maaend_fail_causes")), (False, None))
+
 
 def _part_maaend_recovered():
     """MaaEnd hung and the relay ends it: which of the two log lines is "recovered"."""

@@ -562,7 +562,7 @@ def _stuck(failed: list[str], causes: "dict | None", drop_manual_stop: bool) -> 
              if not (drop_manual_stop and texts.AUTOMAS_MANUAL_STOP in n)]
     more = "…" if len(pairs) > 3 else ""
     shown = pairs[:3]
-    whys = {n[len(f):] for f, n in shown}
+    whys = {n[len(f):] for f, n in pairs}
     if len(shown) > 1 and len(whys) == 1 and next(iter(whys)):
         return "、".join(f for f, _ in shown) + more + next(iter(whys))
     return "、".join(n for _, n in shown) + more

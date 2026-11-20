@@ -27,6 +27,20 @@ def _without_unfixed_gate(shutdown):
     return real
 
 
+def _restore_unfixed_after(fn):
+    """Ensure a part that swaps shutdown._shift_unfixed always restores it, even on failure."""
+    def wrapped():
+        from ark_relay.features import shutdown
+        real = getattr(shutdown._shift_unfixed, "real", shutdown._shift_unfixed)
+        try:
+            return fn()
+        finally:
+            shutdown._shift_unfixed = real
+    wrapped.__name__ = fn.__name__
+    wrapped.__doc__ = fn.__doc__
+    return wrapped
+
+
 def _part_shutdown_main():
     """Exercise the shutdown gate against a fake AUTO-MAS + ledger."""
     import json, os
@@ -491,6 +505,7 @@ def _part_shutdown_main():
     E._shutdown_issued = False; sd._ISSUED[0] = None; skipped_clear(); dbg_clear()
 
 
+@_restore_unfixed_after
 def _part_shutdown_after_restart():
     """A relay restarted after the shift does not power the machine off."""
     import json
@@ -683,8 +698,8 @@ def _part_shutdown_unfixed_shift():
     EVENING = {"name": "晚班", "due": at(21, 30), "kinds": ["MAA", "MaaEnd", "OK-WW"]}
 
     def rec(script, h, m, ok, failed=(), **raw_or_flags):
-        flags = {k: v for k, v in raw_or_flags.items() if k == "transitional"}
-        raw = {k: v for k, v in raw_or_flags.items() if k != "transitional"}
+        flags = {k: v for k, v in raw_or_flags.items() if k in ("transitional", "incomplete", "user")}
+        raw = {k: v for k, v in raw_or_flags.items() if k not in ("transitional", "incomplete", "user")}
         return dict(script=script, started=at(h, m).isoformat(), finished=(at(h, m) + timedelta(minutes=20)).isoformat(),
                     ok=ok, failed_tasks=list(failed), raw=raw, **flags)
     TASKS = ["赠送干员礼物", "装备制造", "拜访好友", "基建任务"]
@@ -699,14 +714,36 @@ def _part_shutdown_unfixed_shift():
     check("先成功后失败：按最新的，失败", shutdown._shift_unfixed([MORNING], [rec("MaaEnd", 9, 34, True),
                                                                 rec("MaaEnd", 11, 30, False, ["基质刷取"])]),
           ["终末地（基质刷取）"])
-    print("\n[官方停服、连不上官方、你自己停的：不是我们能修的，不留]")
-    for flag in ("maintenance", "maaend_unreachable", "manual_stop"):
+    print("\n[官方停服、连不上官方（含鸣潮）、方舟理智不足、你自己停的：不是我们能修的，不留]")
+    for flag in ("maintenance", "maaend_unreachable", "okww_unreachable", "manual_stop", "maaend_update_after_done"):
         check(flag, shutdown._shift_unfixed([MORNING], [rec("MaaEnd", 9, 34, False, TASKS, **{flag: True})]), [])
-    print("\n[一趟里没跑完的中间那次（transitional）不算最后结论]")
+    check("okww_unreachable 不留",
+          shutdown._shift_unfixed([MORNING], [rec("OK-WW", 11, 0, False, ["等不到窗口"], okww_unreachable=True)]), [])
+    check("maa_sanity_short 不留",
+          shutdown._shift_unfixed([MORNING], [rec("MAA", 9, 30, False, ["开始作战"], maa_sanity_short={"have": 17, "cost": 25})]), [])
+    print("\n[停一切不能掩盖先前真实失败]")
+    for stop_ok in (False, True):
+        check(f"先失败后停一切(ok={stop_ok})：仍留着不关机",
+              shutdown._shift_unfixed([MORNING], [rec("MaaEnd", 9, 34, False, TASKS),
+                                                  rec("MaaEnd", 9, 50, stop_ok, manual_stop=True)]),
+              ["终末地（赠送干员礼物、装备制造、拜访好友…）"])
+    print("\n[方舟剿灭与日常分别判断：剿灭失败不被日常成功覆盖]")
+    check("MAA 剿灭失败 + MAA 日常成功：仍拦关机",
+          shutdown._shift_unfixed([MORNING], [rec("MAA", 9, 30, False, ["剿灭"], annihilation=True),
+                                              rec("MAA", 9, 45, True, annihilation=False)]),
+          ["明日方舟剿灭（剿灭）"])
+    print("\n[ok=True 但「这一轮没干完」（incomplete，如 #186）：拦关机；仅差自动采集除外]")
+    check("鸣潮 ok=True 但每日活跃没满：拦关机",
+          shutdown._shift_unfixed([MORNING], [rec("OK-WW", 11, 0, True, incomplete="· 每日活跃：60/100")]),
+          ["鸣潮（没干完：· 每日活跃：60/100）"])
+    check("终末地 ok=True 但仅差自动采集：放行给关机前补跑",
+          shutdown._shift_unfixed([MORNING], [rec("MaaEnd", 9, 34, True, incomplete="· 自动采集 真的没走通")]), [])
+    print("\n[一趟里没跑完的中间那次（transitional）：有后续成功记录覆盖就放行；唯一记录就是失败则必须拦]")
     check("中间失败、最后成功", shutdown._shift_unfixed([MORNING], [rec("OK-WW", 11, 0, False, ["x"], transitional=True),
                                                          rec("OK-WW", 11, 5, True)]), [])
-    check("只有中间失败的，没有最后结论：不留（等它落地）",
-          shutdown._shift_unfixed([MORNING], [rec("OK-WW", 11, 0, False, ["x"], transitional=True)]), [])
+    check("只有中间失败（如装新版自重启、无重试）：必须拦",
+          shutdown._shift_unfixed([MORNING], [rec("MaaEnd", 9, 34, False, TASKS, transitional=True, maaend_update_restart="v2.40")]),
+          ["终末地（赠送干员礼物、装备制造、拜访好友…）"])
     check("鸣潮也点名", shutdown._shift_unfixed([MORNING], [rec("OK-WW", 11, 0, False, ["每日活跃奖励"])]),
           ["鸣潮（每日活跃奖励）"])
     print("\n[早上的失败不拖到晚班：晚班跑成了照常关机]")
@@ -1580,6 +1617,7 @@ def _part_shutdown_waits_for_farm():
     check("话里会带上收工时刻", rec.get("until"), "2026-09-09 17:45")
 
 
+@_restore_unfixed_after
 def _part_shutdown_whitelist():
     """Only the decision right after a morning / evening shift finished may power off."""
     import json

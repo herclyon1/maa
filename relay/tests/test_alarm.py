@@ -1172,6 +1172,9 @@ def _part_unresolved():
     TASKS = ["赠送干员礼物", "装备制造", "拜访好友", "基建任务"]
     check("同一个原因：说一次，放在后面", handle._stuck(TASKS, {t: AGREEMENT for t in TASKS}, False),
           f"赠送干员礼物、装备制造、拜访好友…（{AGREEMENT}）")
+    check("前 3 项相同但第 4 项不同/无原因：不把尾因硬挂到省略号后",
+          handle._stuck(TASKS, {t: AGREEMENT for t in TASKS[:3]}, False),
+          f"赠送干员礼物（{AGREEMENT}）、装备制造（{AGREEMENT}）、拜访好友（{AGREEMENT}）…")
     check("三个以内也一样", handle._stuck(TASKS[:2], {t: AGREEMENT for t in TASKS}, False),
           f"赠送干员礼物、装备制造（{AGREEMENT}）")
     check("原因不同：各说各的（跟以前一样）",

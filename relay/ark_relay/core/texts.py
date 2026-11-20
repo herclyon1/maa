@@ -238,7 +238,14 @@ def maaend_agreement_reason() -> str:
     """maaend_watchdog: the game held at the one-time 「协议更新」 dialog (2026-11-20, #187)."""
     return ("判定原因：终末地停在一次性的「协议更新」窗口，要点「同意」才进得去；MaaEnd 认不出这个窗口，"
             "后面的任务只会一个个等到超时（11 月 20 日早班这样白等了 83 分钟）。"
-            "程序不替你点同意：你在游戏里点一下，补跑就能接上。")
+            "程序不替你点同意，也不做无效补跑，机器留着等你点完再跑。")
+
+
+def maaend_logged_out_reason() -> str:
+    """maaend_watchdog: the game held at the 「登录认证已失效」 dialog (logged in elsewhere)."""
+    return ("判定原因：终末地弹出「登录认证已失效」（这个号在别的设备上登录了），之后进不了游戏；"
+            "MaaEnd 认不出这个窗口，后面的任务只会一个个等到超时。"
+            "不做无效补跑，机器留着等你重新登录。")
 
 
 def maaend_stall_reason(minutes: int, last: str) -> str:
@@ -1542,6 +1549,7 @@ def samples() -> list[str]:
         maaend_stuck_body(maaend_plugin_gone_reason(60), True, "", ["agent\\go-service.exe"]),
         maaend_stuck_body(maaend_stall_reason(10, "15:30:03"), False, "结束命令 30 秒没返回"),
         maaend_stuck_body(maaend_agreement_reason(), True, ""),
+        maaend_stuck_body(maaend_logged_out_reason(), True, ""),
         machinecheck_failed("#4", "周本领奖"), machinecheck_failed_body("周本领奖", "领完奖再看选等级页，本周剩余次数没读到"),
         machinecheck_section([("#4", "周本领奖", "A", "PASS", "领完奖本周剩余 3/3→2/3", "2026-10-06 21:40:00"),
                               ("#11", "中继停下时推状态给手机", "B", "", "", "")],
