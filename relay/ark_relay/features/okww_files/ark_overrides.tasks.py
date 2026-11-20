@@ -1578,17 +1578,26 @@ def _read_points(task):
     「160」 came back as 「.160」 (PP-OCRv6 0.979, the same with the box tighter or wider),
     and 「digits only」 threw the total away: no chest claimed. So a dot, a middle dot, a
     degree sign, a comma or a quote at either END of the digits is a speck and is dropped;
-    anything inside them (「1.60」, 「1/4」) or a sign (「+20」, 「-20」) still is not points."""
+    anything inside them (「1.60」, 「1/4」) or a sign (「+20」, 「-20」) still is not points.
+    The digits are ASCII with no leading zero: 「.00」 is a 「100」 whose 1 a particle hid,
+    and taking it as 0 would skip the second look and claim nothing."""
     return _points_read(task)[0]
 
 
-# Specks the background's particles read as, at either end of the big number (#186).
-_POINTS_TEXT = re.compile(r"[\s.·•・°,:;'\"`~^*]*(\d{1,3})[\s.·•・°,:;'\"`~^*]*")
+# Specks the background's particles read as, at either end of the big number (#186):
+# ASCII and full-width dots, commas, colons, quotes, degree signs. The number itself is
+# ASCII digits without a leading zero (0 alone is a reading).
+_POINTS_SPECK = "\\s.·•・°,:;'\"`~^*。、，．‘’"
+_POINTS_TEXT = re.compile(f"[{_POINTS_SPECK}]*(0|[1-9][0-9]{{1,2}})[{_POINTS_SPECK}]*")
 
 
 def _points_read(task):
-    """(the points or None, every box text read): _read_points, with what OCR gave for the log."""
-    boxes = task.ocr(0.19, 0.8, 0.30, 0.93, match=re.compile(r'(\d+)'))
+    """(the points or None, every box text read): _read_points, with what OCR gave for the log.
+
+    No `match` on the OCR: OK-WW reads the whole box anyway and then drops the boxes the
+    pattern does not find in (ok/task/task.py ocr -> find_boxes_by_name), so a `match` only
+    hid 「活跃度」 or an 「IOO」 from the log line that says what was there."""
+    boxes = task.ocr(0.19, 0.8, 0.30, 0.93)
     candidates, texts = [], []
     for b in boxes or []:
         text = str(getattr(b, "name", "")).strip()
@@ -1604,6 +1613,11 @@ def _points_read(task):
     return max(candidates, key=lambda item: (getattr(item[1], "height", 0), getattr(item[1], "y", 0)))[0], texts
 
 
+def _said_boxes(texts):
+    """「.1.6」「活跃度」, or 什么也没读到: box texts for a log line, without a Python list."""
+    return "".join(f"「{t}」" for t in texts) or "什么也没读到"
+
+
 def _claim_tiers(task):
     """Click every chest the points reach, then check each one shows the claimed tick."""
     bar = _bar(task)
@@ -1611,21 +1625,26 @@ def _claim_tiers(task):
         _shot(task, "daily_reward_row_unread")
         task.log_info(f"{DAILY_FAILED}活跃度那一排宝箱没认出来，没法领")
         return
-    points, texts = _points_read(task)
+    points, first = _points_read(task)
+    again = None
     if points is None and callable(getattr(task, "sleep", None)):
         # A particle drifting over the number for one frame: one more look on a fresh frame.
         task.sleep(0.5)
         try:
             task.next_frame()
-        except TaskDisabledException:
-            raise
-        except Exception:  # noqa: BLE001 - the frame in hand is still worth reading
-            pass
+        except Exception as exc:  # noqa: BLE001 - the frame in hand is still worth reading
+            # Only OK-WW's own stop goes up; until _install_hooks binds it,
+            # TaskDisabledException is Exception itself (see _echo_drop_stat).
+            if TaskDisabledException is not Exception and isinstance(exc, TaskDisabledException):
+                raise
         points, again = _points_read(task)
-        texts += again
     if points is None:
         _shot(task, "daily_reward_points_unread")
-        task.log_info(f"{DAILY_FAILED}活跃度的分数没读到，没法领（OCR 读到 {texts or '什么也没有'}）")
+        # What was in the box, on a line of its own: the DAILY_FAILED line below is what
+        # the relay quotes in the group's alarm (outcome.py), and stays plain words.
+        task.log_info(f"活跃奖励：分数框里读到的原文，第 1 帧 {_said_boxes(first)}，"
+                      f"第 2 帧 {_said_boxes(again) if again is not None else '没有再读'}")
+        task.log_info(f"{DAILY_FAILED}活跃度的分数没读到，没法领")
         return
     task.log_info(f"{DAILY_POINTS_LINE}{points}")
     due = [t for t in DAILY_TIERS if t <= points]

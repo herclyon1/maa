@@ -1,5 +1,6 @@
 """OK-WW collector, daily/nest/echo-farm overrides, and upstream patch pins."""
 # ruff: noqa: PLC0415
+import re
 import sys
 from pathlib import Path
 
@@ -2105,6 +2106,90 @@ def _part_okww_claim_readback():  # noqa: C901
             sys.modules[k] = v
 
 
+def _daily_points_186(ns, Game, box, morning, NOISE, outcome):
+    """#186 (11-20 09:31): the points read, its second look and what it logs. Called from
+    _part_okww_daily_chests with that part's page fixtures; a function of its own so the part
+    stays under the complexity limit."""
+    print("\n[11-20 09:31 (#186): a background particle beside the total read as 「.160」 -> 160; signs and inner marks still not]")
+    for text, want in ((".160", 160), ("·160", 160), ("160.", 160), (" ・160° ", 160), ("'140'", 140),
+                       ("。160", 160), ("．160", 160), ("\u3000160\u3000", 160), ("0", 0), ("100", 100),
+                       ("1.60", None), ("+20", None), ("-20", None), ("0/1", None), (".4", None), (".14", None),
+                       ("1 60", None), ("310", None),
+                       # a 「100」 whose 1 a particle hid is not 0 points; nor are leading zeros or full-width digits
+                       ("00", None), ("000", None), (".00", None), ("010", None), ("020", None), ("＋20", None),
+                       ("1600", None), ("", None), ("1/4", None), ("１６０", None), ("IOO", None)):
+        check(f"_read_points: {text!r}", ns["_read_points"](Game(morning(), points_boxes=[box(text, 225, 15, 295, 65)])), want)
+    g = Game(morning(), points_boxes=NOISE[:3] + [box(".160", 225, 10, 295, 65)])
+    check("#181 and #186 together: the scraps 4, +40, 20 and the tall .160 -> 160", ns["_read_points"](g), 160)
+    g = Game(morning(), points_boxes=[box(".160", 225, 15, 295, 65), box("活跃度", 225, 70, 280, 90)])
+    ns["_claim_tiers"](g)
+    check("the 11-20 page: 160 read, all five chests clicked", ("活跃奖励：活跃度 160" in g.logs, sorted(set(g.clicks))),
+          (True, [20, 40, 60, 80, 100]))
+
+    class Flicker(Game):
+        """A particle over the number for one frame: unread first; the fresh frame after the
+        half-second wait has `later` in the box. The new frame comes with next_frame() (not with
+        the sleep), so a retry that only waits reads the same frame again."""
+        def __init__(self, *a, later=None, frame_error=None, **k):
+            super().__init__(*a, **k)
+            self.later, self.frame_error, self.order, self.waited = later, frame_error, [], False
+
+        def ocr(self, *a, match=None, **k):
+            self.order.append("ocr" if match is None else "ocr " + match.pattern)
+            return super().ocr(*a, match=match, **k)
+
+        def sleep(self, s):
+            self.order.append(f"sleep {s}")
+            self.waited = True
+
+        def next_frame(self):
+            self.order.append("next_frame")
+            if self.waited and self.later is not None:
+                self.points_boxes = self.later
+            if self.frame_error is not None:
+                raise self.frame_error
+            return self.frame
+
+    RETRY = ["ocr", "sleep 0.5", "next_frame", "ocr"]
+
+    def retried(g):
+        """(the points reads are read, wait, fresh frame, read - in a row; how many points reads)."""
+        seq = [x for x in g.order if not x.startswith("ocr ^")]     # the tier labels' reads left out
+        return any(seq[i:i + len(RETRY)] == RETRY for i in range(len(seq))), seq.count("ocr")
+    g = Flicker(morning(), points_boxes=[box(".1.6", 225, 15, 295, 65)], later=[box("140", 225, 15, 295, 65)])
+    ns["_claim_tiers"](g)
+    check("unread once: read, 0.5 s, a fresh frame, read again -> 140 and the chests",
+          (retried(g), "活跃奖励：活跃度 140" in g.logs, sorted(set(g.clicks))), ((True, 2), True, [20, 40, 60, 80, 100]))
+    check("the points box is read without a pattern, the tier labels with theirs",
+          sorted({x for x in g.order if x.startswith("ocr")}), ["ocr", "ocr ^(20|40|60|80|100)$"])
+    g = Flicker(morning(), points_boxes=[box(".1.6", 225, 15, 295, 65)], later=[box("140", 225, 15, 295, 65)],
+                frame_error=RuntimeError("capture lost"))
+    ns["_claim_tiers"](g)
+    check("next_frame raising an ordinary error: read again all the same", (retried(g), "活跃奖励：活跃度 140" in g.logs),
+          ((True, 2), True))
+
+    def unread_lines(g):
+        return ([m for m in g.logs if m.startswith("活跃奖励：分数框里读到的原文")],
+                [m for m in g.logs if m.startswith("活跃奖励没领到：")])
+    g = Flicker(morning(), points_boxes=[box(".1.6", 225, 15, 295, 65), box("活跃度", 225, 70, 280, 90)],
+                later=[box("IOO", 225, 15, 295, 65)])
+    ns["_claim_tiers"](g)
+    check("unread twice: what each frame had, 「活跃度」 and 「IOO」 too, on a line of its own; the alarm line plain",
+          unread_lines(g), (["活跃奖励：分数框里读到的原文，第 1 帧 「.1.6」「活跃度」，第 2 帧 「IOO」"],
+                            ["活跃奖励没领到：活跃度的分数没读到，没法领"]))
+    check("nothing clicked", g.clicks, [])
+    g = Flicker(morning(), points_boxes=[], later=[])
+    ns["_claim_tiers"](g)
+    check("both frames empty", unread_lines(g)[0], ["活跃奖励：分数框里读到的原文，第 1 帧 什么也没读到，第 2 帧 什么也没读到"])
+    g = Game(morning(), points_boxes=[])
+    ns["_claim_tiers"](g)
+    check("a task that cannot wait: one read, said so", unread_lines(g)[0],
+          ["活跃奖励：分数框里读到的原文，第 1 帧 什么也没读到，第 2 帧 没有再读"])
+    alarm = outcome.daily_reward_checks("\n".join(unread_lines(g)[0] + unread_lines(g)[1]))
+    check("what the group is told: plain words, no box texts", [(c.ok, c.detail) for c in alarm],
+          [(False, "活跃度的分数没读到，没法领")])
+
+
 def _part_okww_daily_chests():
     """OK-WW's daily activity chests: every chest up to the points is claimed, and checked."""
     import types
@@ -2186,10 +2271,16 @@ def _part_okww_daily_chests():
 
         def ocr(self, *a, match=None, **k):
             if match is not None and "100" in match.pattern:
-                return self.ocr_labels
-            if self.points_boxes is not None:
-                return self.points_boxes
-            return [box(self.points, 225, 15, 280, 65)] if self.points else []
+                boxes = self.ocr_labels
+            elif self.points_boxes is not None:
+                boxes = self.points_boxes
+            else:
+                boxes = [box(self.points, 225, 15, 280, 65)] if self.points else []
+            # As OK-WW does it (ok/task/task.py ocr -> Box.find_boxes_by_name): the whole box is
+            # read, then only the boxes the pattern is found in come back.
+            if match is not None:
+                boxes = [b for b in boxes if isinstance(b.name, str) and re.search(match, b.name)]
+            return boxes
 
         def click_relative(self, rx, ry, **k):
             x, y = rx * self.frame.shape[1], ry * self.frame.shape[0]
@@ -2339,36 +2430,7 @@ def _part_okww_daily_chests():
     check("the 11-17 boxes without the total: only the quest row's 20 is left -> 20 clicked, nothing above it",
           sorted(set(g.clicks)), [20])
 
-    print("\n[11-20 09:31 (#186): a background particle beside the total read as 「.160」 -> 160; signs and inner marks still not]")
-    for text, want in ((".160", 160), ("·160", 160), ("160.", 160), (" ・160° ", 160), ("'140'", 140),
-                       ("1.60", None), ("+20", None), ("-20", None), ("0/1", None), (".4", None), (".14", None),
-                       ("1 60", None), ("310", None)):
-        check(f"_read_points: {text!r}", ns["_read_points"](Game(morning(), points_boxes=[box(text, 225, 15, 295, 65)])), want)
-    g = Game(morning(), points_boxes=[box(".160", 225, 15, 295, 65), box("活跃度", 225, 70, 280, 90)])
-    ns["_claim_tiers"](g)
-    check("the 11-20 page: 160 read, all five chests clicked", ("活跃奖励：活跃度 160" in g.logs, sorted(set(g.clicks))),
-          (True, [20, 40, 60, 80, 100]))
-
-    class Flicker(Game):
-        """A particle over the number for one frame: unread first, read after the fresh frame."""
-        def __init__(self, *a, later=None, **k):
-            super().__init__(*a, **k)
-            self.later, self.slept = later, []
-
-        def sleep(self, s):
-            self.slept.append(s)
-            if self.later is not None:
-                self.points_boxes = self.later
-    g = Flicker(morning(), points_boxes=[box(".1.6", 225, 15, 295, 65)], later=[box("140", 225, 15, 295, 65)])
-    ns["_claim_tiers"](g)
-    check("unread once, 0.5 s and a fresh frame, then 140 and the chests", (g.slept, "活跃奖励：活跃度 140" in g.logs,
-          sorted(set(g.clicks))), ([0.5], True, [20, 40, 60, 80, 100]))
-    g = Flicker(morning(), points_boxes=[box(".1.6", 225, 15, 295, 65)])
-    ns["_claim_tiers"](g)
-    failed = [m for m in g.logs if m.startswith("活跃奖励没领到：活跃度的分数没读到，没法领")]
-    check("unread twice: said once, with what OCR read both times", (len(failed), "OCR 读到 ['.1.6', '.1.6']" in failed[0]),
-          (1, True))
-    check("nothing clicked", g.clicks, [])
+    _daily_points_186(ns, Game, box, morning, NOISE, outcome)
 
     print("\n[short of 100 and nothing wrong with the chests -> the page is kept as a screenshot]")
     g = Game(ROW.copy(), points="80")
@@ -2601,6 +2663,8 @@ def _part_okww_farm_hook():  # noqa: C901
     for label, boxes in (("什么都没读到", []), ("只有杂字", NOISE[:2])):
         t = points_task(boxes)
         check(f"{label}：0 分，也写进去", (DailyTask.get_total_daily_points(t), t.info), (0, {"total daily points": 0}))
+    t = points_task([pbox(".160", 225, 15, 295, 65)])
+    check("#186 的「.160」：读成 160", (DailyTask.get_total_daily_points(t), t.info), (160, {"total daily points": 160}))
 
     tmp = str(tmpdir("ark-farm-hook-"))
     no_farm = os.path.join(tmp, "no-stamina-farm.flag")
