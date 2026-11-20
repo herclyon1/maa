@@ -1572,19 +1572,36 @@ def _read_points(task):
       * digits only: 「+20」 and 「1/4」 are a quest's reward and counter, never the total;
       * 0 or a multiple of 10 up to 300: every daily quest grants a multiple of 10;
     and of those the tallest box wins (the lower one on a tie): the total is drawn
-    three to four times the height of any quest-row text and sits below it."""
+    three to four times the height of any quest-row text and sits below it.
+
+    2026-11-20 09:31 (#186): a white particle of the page's background touching the
+    「160」 came back as 「.160」 (PP-OCRv6 0.979, the same with the box tighter or wider),
+    and 「digits only」 threw the total away: no chest claimed. So a dot, a middle dot, a
+    degree sign, a comma or a quote at either END of the digits is a speck and is dropped;
+    anything inside them (「1.60」, 「1/4」) or a sign (「+20」, 「-20」) still is not points."""
+    return _points_read(task)[0]
+
+
+# Specks the background's particles read as, at either end of the big number (#186).
+_POINTS_TEXT = re.compile(r"[\s.·•・°,:;'\"`~^*]*(\d{1,3})[\s.·•・°,:;'\"`~^*]*")
+
+
+def _points_read(task):
+    """(the points or None, every box text read): _read_points, with what OCR gave for the log."""
     boxes = task.ocr(0.19, 0.8, 0.30, 0.93, match=re.compile(r'(\d+)'))
-    candidates = []
+    candidates, texts = [], []
     for b in boxes or []:
         text = str(getattr(b, "name", "")).strip()
-        if not re.fullmatch(r"\d{1,3}", text):
+        texts.append(text)
+        m = _POINTS_TEXT.fullmatch(text)
+        if not m:
             continue
-        val = int(text)
+        val = int(m.group(1))
         if val == 0 or (10 <= val <= 300 and val % 10 == 0):
             candidates.append((val, b))
     if not candidates:
-        return None
-    return max(candidates, key=lambda item: (getattr(item[1], "height", 0), getattr(item[1], "y", 0)))[0]
+        return None, texts
+    return max(candidates, key=lambda item: (getattr(item[1], "height", 0), getattr(item[1], "y", 0)))[0], texts
 
 
 def _claim_tiers(task):
@@ -1594,10 +1611,21 @@ def _claim_tiers(task):
         _shot(task, "daily_reward_row_unread")
         task.log_info(f"{DAILY_FAILED}活跃度那一排宝箱没认出来，没法领")
         return
-    points = _read_points(task)
+    points, texts = _points_read(task)
+    if points is None and callable(getattr(task, "sleep", None)):
+        # A particle drifting over the number for one frame: one more look on a fresh frame.
+        task.sleep(0.5)
+        try:
+            task.next_frame()
+        except TaskDisabledException:
+            raise
+        except Exception:  # noqa: BLE001 - the frame in hand is still worth reading
+            pass
+        points, again = _points_read(task)
+        texts += again
     if points is None:
         _shot(task, "daily_reward_points_unread")
-        task.log_info(f"{DAILY_FAILED}活跃度的分数没读到，没法领")
+        task.log_info(f"{DAILY_FAILED}活跃度的分数没读到，没法领（OCR 读到 {texts or '什么也没有'}）")
         return
     task.log_info(f"{DAILY_POINTS_LINE}{points}")
     due = [t for t in DAILY_TIERS if t <= points]

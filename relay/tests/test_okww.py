@@ -2339,6 +2339,37 @@ def _part_okww_daily_chests():
     check("the 11-17 boxes without the total: only the quest row's 20 is left -> 20 clicked, nothing above it",
           sorted(set(g.clicks)), [20])
 
+    print("\n[11-20 09:31 (#186): a background particle beside the total read as 「.160」 -> 160; signs and inner marks still not]")
+    for text, want in ((".160", 160), ("·160", 160), ("160.", 160), (" ・160° ", 160), ("'140'", 140),
+                       ("1.60", None), ("+20", None), ("-20", None), ("0/1", None), (".4", None), (".14", None),
+                       ("1 60", None), ("310", None)):
+        check(f"_read_points: {text!r}", ns["_read_points"](Game(morning(), points_boxes=[box(text, 225, 15, 295, 65)])), want)
+    g = Game(morning(), points_boxes=[box(".160", 225, 15, 295, 65), box("活跃度", 225, 70, 280, 90)])
+    ns["_claim_tiers"](g)
+    check("the 11-20 page: 160 read, all five chests clicked", ("活跃奖励：活跃度 160" in g.logs, sorted(set(g.clicks))),
+          (True, [20, 40, 60, 80, 100]))
+
+    class Flicker(Game):
+        """A particle over the number for one frame: unread first, read after the fresh frame."""
+        def __init__(self, *a, later=None, **k):
+            super().__init__(*a, **k)
+            self.later, self.slept = later, []
+
+        def sleep(self, s):
+            self.slept.append(s)
+            if self.later is not None:
+                self.points_boxes = self.later
+    g = Flicker(morning(), points_boxes=[box(".1.6", 225, 15, 295, 65)], later=[box("140", 225, 15, 295, 65)])
+    ns["_claim_tiers"](g)
+    check("unread once, 0.5 s and a fresh frame, then 140 and the chests", (g.slept, "活跃奖励：活跃度 140" in g.logs,
+          sorted(set(g.clicks))), ([0.5], True, [20, 40, 60, 80, 100]))
+    g = Flicker(morning(), points_boxes=[box(".1.6", 225, 15, 295, 65)])
+    ns["_claim_tiers"](g)
+    failed = [m for m in g.logs if m.startswith("活跃奖励没领到：活跃度的分数没读到，没法领")]
+    check("unread twice: said once, with what OCR read both times", (len(failed), "OCR 读到 ['.1.6', '.1.6']" in failed[0]),
+          (1, True))
+    check("nothing clicked", g.clicks, [])
+
     print("\n[short of 100 and nothing wrong with the chests -> the page is kept as a screenshot]")
     g = Game(ROW.copy(), points="80")
     ns["_claim_tiers"](g)
