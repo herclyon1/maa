@@ -770,6 +770,53 @@ def _screen_text(task) -> str:
     return _screen_read(task)[1]
 
 
+# 2026-11-20 11:03 (Beijing): someone logged in to the account somewhere else, the game
+# put up 「连接已断开｜账号在别处登录｜确认」, the leftover farm's walk to the chest timed out
+# and the claim's F2 book did not open. The relay said 「按 F2 打不开图鉴——先核对键位」 and a
+# session read it as a key problem. Where a step fails, the screen is read once: with this
+# notice on it, KICKED_LINE says so, and the relay (outcome.py) gives that as the reason.
+# Retries and makeup runs are not touched.
+KICKED_LINE = "鸣潮账号在别处登录，游戏被顶下线："
+# Matched on the screen's text with every box joined and the blanks taken out: OCR may split
+# 「账号在别处登录」 into 「账号在别处」「登录」. 「连接已断开」 alone is not enough (a network drop).
+_KICKED_TEXT = re.compile(r"别处登[录陆]|其他设备登[录陆]")
+
+
+def _say_if_kicked(task, where) -> bool:
+    """On a fresh frame, read the screen; on the game's 「账号在别处登录」 notice log KICKED_LINE
+    with what was read, once per run (DailyTask.run clears _ark_kicked).
+
+    True when the notice is (or already was) seen in this run. Only OK-WW's own stop goes up
+    (see _echo_drop_stat); a frame that cannot be grabbed reads the one in hand, a failed
+    read is False."""
+    if getattr(task, "_ark_kicked", False):
+        return True
+
+    def stop(exc):
+        return TaskDisabledException is not Exception and isinstance(exc, TaskDisabledException)
+
+    try:
+        task.next_frame()
+    except Exception as exc:  # noqa: BLE001 - the frame in hand is still worth reading
+        if stop(exc):
+            raise
+    try:
+        found = task.ocr(box=task.box_of_screen(0.0, 0.0, 1.0, 1.0)) or []
+    except Exception as exc:  # noqa: BLE001 - unread is not kicked
+        if stop(exc):
+            raise
+        return False
+    said = _names(found)
+    if not _KICKED_TEXT.search(re.sub(r"[\s|]+", "", said)):
+        return False
+    try:
+        task._ark_kicked = True
+    except Exception:  # noqa: BLE001 - a task that takes no attribute is logged every time
+        pass
+    task.log_info(f"{KICKED_LINE}{where}屏幕上读到：{said[:200]}")
+    return True
+
+
 def _names(found) -> str:
     """Every name of one screen read, in the order read, short enough for one log line.
 
@@ -1700,7 +1747,14 @@ def _claim_tiers(task):
 def _claim_daily_checked(task):
     """Upstream claim_daily (sha _CLAIM_DAILY_SHA) up to its one blind click, then _claim_tiers."""
     task.info_set('current task', 'claim daily')
-    task.openF2Book('gray_book_quest')
+    try:
+        task.openF2Book('gray_book_quest')
+    except Exception as exc:
+        # Only OK-WW's own stop goes straight up (see _echo_drop_stat); any other failure
+        # still goes up, after a look for the 「账号在别处登录」 notice (KICKED_LINE).
+        if not (TaskDisabledException is not Exception and isinstance(exc, TaskDisabledException)):
+            _say_if_kicked(task, "领活跃奖励时 F2 指南没打开，")
+        raise
     if not task.find_one('boss_proceed', box=task.box_of_screen(0.803, 0.189, 0.960, 0.312)):
         task.log_info('no_boss_proceed, click claim')
         task.click(0.885, 0.250, after_sleep=2)
@@ -2152,6 +2206,7 @@ def _install_hooks():
         # One flag per run. Without resetting it here the second daily of a boot
         # would skip its additional tasks entirely.
         self._ark_additional_ran = False
+        self._ark_kicked = False         # 「账号在别处登录」 is said once per run (_say_if_kicked)
         farm_called["ran"] = False
         return daily_run(self)
 
@@ -2297,6 +2352,7 @@ def _install_hooks():
                 raise
             except Exception as exc:  # noqa: BLE001 - upstream would have claimed without it
                 self.log_error(f"补刷体力出错，照常领日常奖励: {exc}", exception=exc)
+                _say_if_kicked(self, "补刷体力出错时，")
                 try:
                     self.screenshot("leftover_farm_error")
                     self.ensure_main(time_out=180)

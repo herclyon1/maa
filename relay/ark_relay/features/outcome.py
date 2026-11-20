@@ -568,6 +568,17 @@ _DAILY_PROGRESS = re.compile(r"DailyTask:info_set current daily progress (\d+)")
 # claim_daily_after_farm).
 _LEFTOVER_FARM = re.compile(r"DailyTask:(上游这趟不刷体力（[^）\n]*）)")
 _LEFTOVER_FAILED = re.compile(r"DailyTask:补刷体力出错，照常领日常奖励: ([^\n]*)")
+# The overlay's line when a failed step had the game's 「连接已断开｜账号在别处登录」 notice on
+# screen (okww_files/ark_overrides.tasks.py KICKED_LINE): the account was logged in somewhere
+# else and the game went off the server, so the reason is that, not the step's own error
+# (11-20 11:03: 「按 F2 打不开图鉴——先核对键位」 was said for it).
+KICKED_LINE = "鸣潮账号在别处登录，游戏被顶下线："
+KICKED_SAY = "这个号在别处登录了，游戏被顶下线"
+# How long before the error it explains a KICKED_LINE may be: 13 s on 11-20 (the farm's kick at
+# 11:03:44, the book's error at 11:03:57); the claim can wait out ensure_main (180 s) and the book.
+KICKED_WINDOW_S = 300
+# Where one OK-WW run ends and the next begins: a KICKED_LINE before either explains nothing after it.
+_RUN_BOUNDS = ("Daily Task Completed", " MainThread ok:pyappify ")
 # Full value of the daily activity meter; the reading can go above it.
 _DAILY_POINTS_TARGET = 100
 
@@ -1112,6 +1123,11 @@ def _no_farm_reason(text: str) -> str:
     t = _task_lines(text)
     if m := _LEFTOVER_FARM.search(t):
         if e := _LEFTOVER_FAILED.search(t):
+            # Only the overlay's line from the farm's own except (between its error and the claim):
+            # a kick at the claim's F2 after a farm that failed by itself is not the farm's reason.
+            claim = t.find("info_set current task claim daily", e.end())
+            if KICKED_LINE in t[e.end():claim if claim >= 0 else len(t)]:
+                return f"{m.group(1)}，中继按「刷到空」补刷时{KICKED_SAY}"
             return f"{m.group(1)}，中继按「刷到空」补刷时出错：{without_screen_dump(e.group(1))}"
         return f"{m.group(1)}，中继按「刷到空」补刷了，但既没进本，也没说体力不足"
     progress = [int(x) for x in _DAILY_PROGRESS.findall(t)]
@@ -1634,7 +1650,11 @@ def _okww_error(text: str) -> str:
         # No traceback, but upstream said 「错误 …」itself: write what it said
         if info["error"] and info["tasks"]:
             step = info["tasks"][-1].split()[0]
-            return _okww_say(_OKWW_TASK_BY_STEP.get(step, step), info["error"], "")
+            task = _OKWW_TASK_BY_STEP.get(step, step)
+            said = text.rfind("info_set 错误")
+            if _kicked_before(text, said if said >= 0 else None):
+                return f"{_OKWW_TASK_ZH.get(task) or '某个任务'}：{KICKED_SAY}"
+            return _okww_say(task, info["error"], "")
         return ""
     cluster = _last_event(text, heads)
     inner = [m for m in cluster if m.group(1) not in ("DailyTask", "TaskExecutor")]
@@ -1706,12 +1726,31 @@ _OKWW_TASK_BY_STEP = {
 }
 
 
-def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str:
+def _kicked_before(text: str, at: "int | None") -> bool:
+    """Whether the overlay's KICKED_LINE explains the error at offset `at` (None: the end of
+    `text`): the last one before it, in the same OK-WW run (no _RUN_BOUNDS line between), and,
+    when both lines are stamped, at most KICKED_WINDOW_S before the error's line."""
+    end = len(text) if at is None else at
+    k = text.rfind(KICKED_LINE, 0, end)
+    if k < 0 or any(text.find(b, k, end) >= 0 for b in _RUN_BOUNDS):
+        return False
+    km = _LINE_TS.match(text, text.rfind("\n", 0, k) + 1)
+    em = _LINE_TS.match(text, text.rfind("\n", 0, end) + 1) if at is not None else None
+    if km and em:
+        gap = (_ts(em.group(1), em.group(2)) or 0) - (_ts(km.group(1), km.group(2)) or 0)
+        return 0 <= gap <= KICKED_WINDOW_S
+    return True
+
+
+def _okww_say(task: str, msg: str, exc: str, text: str = "", at: "int | None" = None) -> str:
     """Turn (task, raw message, exception name) into one plain-language
     sentence. When it cannot be translated, say so outright -- never be vague.
     """
     msg = normalize_okww_log(msg)
     task_zh = _OKWW_TASK_ZH.get(task)
+    if text and _kicked_before(text, at):
+        # The overlay saw 「账号在别处登录」 just before this error: that is why the step failed.
+        return f"{task_zh or '某个任务'}：{KICKED_SAY}"
     if FAILED_MARK in msg:
         # The overlay ended the run as failed and logged why in Chinese.
         why = without_screen_dump(msg.split(FAILED_MARK, 1)[1])
@@ -1741,11 +1780,12 @@ def _okww_say(task: str, msg: str, exc: str, text: str = "", at: int = 0) -> str
         raw = " ".join((msg or "").split())[:110] or exc or "（连原文都没抓到）"
         return f"{who}：中继还不认识这条错，原文照抄——「{raw}」"
     what = msg_zh or exc_zh
-    if "Teleport to boss failed" in msg and text and _said_before(text, at, _NO_CHALLENGE):
+    pos = at if at is not None else 0     # the helpers below as before (0 when not given)
+    if "Teleport to boss failed" in msg and text and _said_before(text, pos, _NO_CHALLENGE):
         what = "选了等级后没等到「开启挑战」，没进本，一次没打"
     # The 「wait_until timeout … N seconds」 line right before the traceback says
     # how long it waited.
-    if (w := _wait_before(text, at)) and "等" in what:
+    if (w := _wait_before(text, pos)) and "等" in what:
         sec = w[:-2] if w.endswith(".0") else w
         what += f"（等了 {sec} 秒）"
     return f"{task_zh}：{what}"
