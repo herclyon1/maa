@@ -245,7 +245,7 @@ def maaend_logged_out_reason() -> str:
     """maaend_watchdog: the game held at the 「登录认证已失效」 dialog (logged in elsewhere)."""
     return ("判定原因：终末地弹出「登录认证已失效」（这个号在别的设备上登录了），之后进不了游戏；"
             "MaaEnd 认不出这个窗口，后面的任务只会一个个等到超时。"
-            "不做无效补跑，机器留着等你重新登录。")
+            "之后照常重试和补跑：补跑会关掉游戏、重开客户端再试一次，不会替你输密码。")
 
 
 def maaend_stall_reason(minutes: int, last: str) -> str:

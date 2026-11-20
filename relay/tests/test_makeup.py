@@ -1292,6 +1292,9 @@ lists an older relay version narrowed go back at the next attempt's start.
                            ("maaend_logged_out_at", True, "被别处登录挤下线：照常补跑")):
         r_blk = _RR("r1", "MaaEnd", "u", now_t, now_t, False, ["赠送干员礼物"], raw={k: "09:34:28"})
         check(label, _mk.eligible(r_blk, now_t), want)
+    r_both = _RR("r1", "MaaEnd", "u", now_t, now_t, False, ["赠送干员礼物"],
+                 raw={"maaend_agreement_at": "09:34:28", "maaend_logged_out_at": "10:30:00"})
+    check("两样都有：协议窗口优先，不补跑", _mk.eligible(r_both, now_t), False)
 
     print("\n[旧版本收窄过的母本：新一趟（Tasker.Task.Starting）一开始就改回]")
     cfg, f, n = _setup()

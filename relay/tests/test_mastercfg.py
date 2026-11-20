@@ -1439,6 +1439,12 @@ def _watchdog_agreement(Rig, MAAEND_PID, RUNNING, texts, collect_watch):
     check("被挤下线也提前结束 MaaEnd", r.killed[:1], [MAAEND_PID])
     check("报警写明登录认证已失效且过人话检查",
           ("登录认证已失效" in r.notes.sent[0][1], texts.plain(r.notes.sent[0][1])), (True, []))
+    # 11-20: a logged-out run gets its make-up again (makeup.eligible); the alarm must not say otherwise,
+    # nor promise a re-login the program does not do. The agreement dialog still gets none.
+    out_reason, agree_reason = texts.maaend_logged_out_reason(), texts.maaend_agreement_reason()
+    check("被挤下线的说法：不说「不做无效补跑」，不承诺「重新登录」",
+          ("不做无效补跑" in out_reason, "重新登录" in out_reason), (False, False))
+    check("协议窗口的说法：照旧不做无效补跑", "不做无效补跑" in agree_reason, True)
 
     print("\n[真数据回放：11-20 09:32-10:13 的任务事件和弹窗读字行（两份轮转日志里原样摘出），一行一行喂]")
     import types
